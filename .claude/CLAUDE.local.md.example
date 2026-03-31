@@ -1,0 +1,20 @@
+# Local/Private Instructions Template
+
+Copy this file to `CLAUDE.local.md` in the same folder and fill in real values.
+
+## Azure Defaults
+
+- **Subscription Name**: <your-subscription-name>
+- **Subscription ID**: <your-subscription-id>
+- **Tenant ID**: <your-tenant-id>
+- **Resource Group**: <your-resource-group>
+- **Location**: <your-location>
+- **Static Web App Name**: <your-swa-name>
+- **Entra App Registration Name**: <your-app-reg-name>
+- **Application (Client) ID**: <your-client-id>
+
+## Constraints
+
+- Do not prompt for subscription selection when running Azure commands
+- Do not create new resource groups unless explicitly requested
+- Never commit secrets — use GitHub Secrets / Key Vault / environment variables

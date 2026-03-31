@@ -1,0 +1,191 @@
+{
+  "permissions": {
+    "defaultMode": "default",
+    "allow": [
+      "Read",
+      "Glob",
+      "Grep",
+      "Bash(git status)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git branch *)",
+      "Bash(git checkout *)",
+      "Bash(git switch *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git stash *)",
+      "Bash(git show *)",
+      "Bash(git blame *)",
+      "Bash(git fetch*)",
+      "Bash(git rev-parse*)",
+      "Bash(git ls-files*)",
+      "Bash(gh pr *)",
+      "Bash(gh issue *)",
+      "Bash(gh run *)",
+      "Bash(gh workflow *)",
+      "Bash(* --version)",
+      "Bash(* --help)",
+      "Bash(echo *)",
+      "Bash(ls *)",
+      "Bash(pwd)",
+      "Bash(which*)",
+      "Bash(where*)",
+      "Bash(cat*)",
+      "Bash(type*)",
+      "Bash(mkdir*)",
+      "Bash(cp*)",
+      "Bash(mv*)",
+      "Bash(pwsh -Command Get-ChildItem *)",
+      "Bash(pwsh -Command Get-Content *)",
+      "Bash(pwsh -Command Test-Path *)",
+      "Bash(pwsh -Command Write-Output *)",
+      "Bash(dotnet build*)",
+      "Bash(dotnet test*)",
+      "Bash(dotnet run*)",
+      "Bash(dotnet restore*)",
+      "Bash(dotnet format*)",
+      "Bash(dotnet ef*)",
+      "Bash(dotnet add*)",
+      "Bash(dotnet list*)",
+      "Bash(dotnet tool*)",
+      "Bash(dotnet clean*)",
+      "Bash(dotnet pack*)",
+      "Bash(dotnet nuget*)",
+      "Bash(dotnet publish*)",
+      "Bash(dotnet sln*)",
+      "Bash(dotnet watch*)",
+      "Bash(dotnet new*)",
+      "Bash(docker compose*)",
+      "Bash(docker ps*)",
+      "Bash(docker logs*)",
+      "WebFetch(domain:learn.microsoft.com)",
+      "WebFetch(domain:docs.microsoft.com)",
+      "WebFetch(domain:nuget.org)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:docs.github.com)",
+      "WebFetch(domain:json.schemastore.org)",
+      "WebFetch(domain:claudelog.com)",
+      "WebFetch(domain:docs.anthropic.com)"
+    ],
+    "deny": [
+      "Bash(rm -rf*)",
+      "Bash(rm -r *)",
+      "Bash(mkfs*)",
+      "Bash(dd if=*)",
+      "Bash(git push --force*)",
+      "Bash(git push --force-with-lease*)",
+      "Bash(git reset --hard *)",
+      "Bash(git clean -fd *)",
+      "Bash(git clean -f*)",
+      "Bash(rmdir *)",
+      "Bash(curl *)",
+      "Bash(wget *)",
+      "Bash(ssh *)",
+      "Bash(scp *)",
+      "Bash(sudo *)",
+      "Bash(chmod 777 *)",
+      "Bash(kill -9 *)",
+      "Bash(pkill *)",
+      "Bash(pwsh -Command Invoke-Expression *)",
+      "Bash(pwsh -Command iex *)",
+      "Bash(pwsh -Command Remove-Item *)",
+      "Bash(pwsh -Command Set-ExecutionPolicy *)",
+      "Read(.env*)",
+      "Read(**/*.pem)",
+      "Read(**/*.key)",
+      "Read(**/*secret*)",
+      "Read(**/*credential*)",
+      "Read(**/.ssh/*)",
+      "Edit(.env*)",
+      "Edit(**/*.pem)",
+      "Edit(**/*.key)",
+      "Edit(**/*secret*)",
+      "Edit(**/*credential*)",
+      "Write(.env*)",
+      "Write(**/*.pem)",
+      "Write(**/*.key)",
+      "Write(**/*secret*)",
+      "Write(**/*credential*)",
+      "Bash(git remote remove*)",
+      "Bash(source *)",
+      "Bash(. *)",
+      "Bash(del /s*)",
+      "Bash(format *)",
+      "Bash(docker system prune*)",
+      "Bash(docker image prune*)",
+      "Bash(docker volume prune*)",
+      "Bash(docker container prune*)",
+      "Edit(**/appsettings.Production.json)",
+      "Edit(**/appsettings.Staging.json)",
+      "Edit(**/*.pfx)",
+      "Edit(**/*.p12)"
+    ]
+  },
+  "enabledPlugins": {
+    "superpowers@claude-plugins-official": true,
+    "context7@claude-plugins-official": true,
+    "github@claude-plugins-official": true,
+    "skill-creator@claude-plugins-official": true,
+    "code-simplifier@claude-plugins-official": true,
+    "claude-code-setup@claude-plugins-official": false,
+    "commit-commands@claude-plugins-official": true,
+    "playwright@claude-plugins-official": true,
+    "csharp-lsp@claude-plugins-official": true,
+    "claude-md-management@claude-plugins-official": true,
+    "feature-dev@claude-plugins-official": true,
+    "frontend-design@claude-plugins-official": true,
+    "security-guidance@claude-plugins-official": true,
+    "code-review@claude-plugins-official": true,
+    "pr-review-toolkit@claude-plugins-official": false
+  },
+  "mcpServers": {
+    "github": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/"
+    }
+  },
+  "env": {
+    "MAX_MCP_OUTPUT_TOKENS": "50000"
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash(git commit*)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NonInteractive -File .claude/hooks/pre-commit-format.ps1",
+            "statusMessage": "Checking formatting..."
+          },
+          {
+            "type": "command",
+            "command": "pwsh -NonInteractive -File .claude/hooks/pre-commit-antipattern.ps1",
+            "statusMessage": "Checking for anti-patterns..."
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/pre-bash-guard.sh",
+            "statusMessage": "Checking for destructive operations..."
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NonInteractive -File .claude/hooks/post-edit-format.ps1",
+            "statusMessage": "Auto-formatting .cs file..."
+          }
+        ]
+      }
+    ]
+  }
+}
