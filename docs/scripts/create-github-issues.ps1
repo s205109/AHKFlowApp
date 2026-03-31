@@ -29,6 +29,33 @@ $epicMapping = @{
     "Script generation & download" = "epic: script generation"
 }
 
+# Ensure a GitHub label exists, creating it if missing
+function Ensure-Label {
+    param([string]$Name, [string]$Color, [string]$Description)
+
+    $existing = gh label list --search $Name --json name | ConvertFrom-Json
+    if ($existing | Where-Object { $_.name -eq $Name }) {
+        return
+    }
+
+    Write-Host "  Creating label: $Name" -ForegroundColor DarkGray
+    if ($Execute) {
+        gh label create $Name --color $Color --description $Description 2>$null
+    }
+}
+
+Write-Host "Ensuring labels exist..." -ForegroundColor Yellow
+
+foreach ($label in $epicMapping.Values) {
+    Ensure-Label -Name $label -Color "7B61FF" -Description "Epic grouping"
+}
+Ensure-Label -Name "api"         -Color "0075ca" -Description "API layer"
+Ensure-Label -Name "ui"          -Color "e4e669" -Description "UI layer"
+Ensure-Label -Name "cli"         -Color "d93f0b" -Description "CLI layer"
+Ensure-Label -Name "enhancement" -Color "a2eeef" -Description "New feature or request"
+
+Write-Host ""
+
 $backlogPath = $BacklogPath
 
 $files = Get-ChildItem -Path $backlogPath -Filter "*.md" |
@@ -66,7 +93,7 @@ foreach ($file in $files) {
 
     if ($Execute) {
         Invoke-Expression $command
-        Write-Host "  ? Created" -ForegroundColor Green
+        Write-Host "  ✓ Created" -ForegroundColor Green
     }
     else {
         Write-Host "  [DRY RUN] $command" -ForegroundColor DarkGray
