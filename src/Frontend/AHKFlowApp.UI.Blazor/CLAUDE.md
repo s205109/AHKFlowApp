@@ -1,0 +1,18 @@
+# AHKFlowApp.UI.Blazor
+
+Blazor WebAssembly PWA frontend for AHKFlowApp.
+
+## Conventions
+
+- MudBlazor components for all UI — no raw HTML inputs or buttons
+- `[Inject]` properties with `= default!` for DI
+- `_loading = true` before async calls, `false` after
+- `ISnackbar.Add()` for success/error feedback
+- `IDialogService.ShowAsync<T>` for create/edit forms
+- No `StateHasChanged()` after standard event handlers — Blazor re-renders automatically
+
+## Adding a Page
+
+1. Create `Pages/MyPage.razor` with `@page "/my-page"` directive
+2. Add nav link in `Layout/NavMenu.razor`
+3. Use `MudContainer` + `MudTable` / `MudForm` as the page structure
