@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/Backend/">
+    <Project Path="src/Backend/AHKFlowApp.Domain/AHKFlowApp.Domain.csproj" />
+    <Project Path="src/Backend/AHKFlowApp.Application/AHKFlowApp.Application.csproj" />
+    <Project Path="src/Backend/AHKFlowApp.Infrastructure/AHKFlowApp.Infrastructure.csproj" />
+    <Project Path="src/Backend/AHKFlowApp.API/AHKFlowApp.API.csproj" />
+  </Folder>
+  <Folder Name="/src/Frontend/">
+    <Project Path="src/Frontend/AHKFlowApp.UI.Blazor/AHKFlowApp.UI.Blazor.csproj" />
+  </Folder>
+</Solution>
