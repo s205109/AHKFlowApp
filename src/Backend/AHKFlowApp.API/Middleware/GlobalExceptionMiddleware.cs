@@ -19,9 +19,11 @@ internal sealed class GlobalExceptionMiddleware(
             context.Response.ContentType = "application/problem+json";
             await context.Response.WriteAsJsonAsync(new ProblemDetails
             {
+                Type = "https://tools.ietf.org/html/rfc9110#section-15.5.1",
                 Title = "Validation failed",
                 Status = StatusCodes.Status400BadRequest,
                 Detail = string.Join("; ", ex.Errors.Select(e => e.ErrorMessage)),
+                Instance = context.Request.Path,
                 Extensions =
                 {
                     ["errors"] = ex.Errors
@@ -39,8 +41,10 @@ internal sealed class GlobalExceptionMiddleware(
             context.Response.ContentType = "application/problem+json";
             await context.Response.WriteAsJsonAsync(new ProblemDetails
             {
+                Type = "https://tools.ietf.org/html/rfc9110#section-15.6.1",
                 Title = "An unexpected error occurred",
-                Status = StatusCodes.Status500InternalServerError
+                Status = StatusCodes.Status500InternalServerError,
+                Instance = context.Request.Path
             });
         }
     }
