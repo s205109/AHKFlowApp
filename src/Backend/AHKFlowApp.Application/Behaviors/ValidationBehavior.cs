@@ -21,8 +21,10 @@ internal sealed class ValidationBehavior<TRequest, TResponse>(
 
         var context = new ValidationContext<TRequest>(request);
 
-        var failures = validators
-            .Select(v => v.Validate(context))
+        FluentValidation.Results.ValidationResult[] results = await Task.WhenAll(
+            validators.Select(v => v.ValidateAsync(context, ct)));
+
+        var failures = results
             .SelectMany(r => r.Errors)
             .Where(f => f is not null)
             .ToList();
