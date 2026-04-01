@@ -18,7 +18,6 @@ As a developer, I want a working solution skeleton so that feature development c
 
 - [ ] Solution contains projects for UI (Blazor WASM PWA), API (ASP.NET Core), Application/Core, Domain, Infrastructure, and CLI.
 - [ ] Add repository .editorconfig for consistent code style.
-- [ ] Add Copilot instructions in the .github/ folder (instructions, prompts, agent personas).
 - [ ] Configure project references correctly.
 - [ ] MudBlazor is wired in with at least one example page.
 - [ ] Basic local run documentation exists.
