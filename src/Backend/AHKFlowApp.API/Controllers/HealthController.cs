@@ -10,7 +10,8 @@ namespace AHKFlowApp.API.Controllers;
 [AllowAnonymous]
 public sealed class HealthController(
     HealthCheckService healthCheckService,
-    IHostEnvironment hostEnvironment) : ControllerBase
+    IHostEnvironment hostEnvironment,
+    TimeProvider timeProvider) : ControllerBase
 {
     [HttpGet]
     [ProducesResponseType(typeof(HealthResponse), StatusCodes.Status200OK)]
@@ -26,9 +27,11 @@ public sealed class HealthController(
         var response = new HealthResponse(
             Status: report.Status.ToString(),
             Environment: hostEnvironment.EnvironmentName,
-            Timestamp: DateTimeOffset.UtcNow,
+            Timestamp: timeProvider.GetUtcNow(),
             Checks: checks);
 
+        // Healthy and Degraded both return 200 — the API is functional in both cases.
+        // Only Unhealthy (critical dependency down) returns 503.
         return report.Status == HealthStatus.Unhealthy
             ? StatusCode(StatusCodes.Status503ServiceUnavailable, response)
             : Ok(response);

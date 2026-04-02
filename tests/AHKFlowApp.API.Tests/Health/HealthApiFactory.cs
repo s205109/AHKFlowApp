@@ -10,9 +10,7 @@ namespace AHKFlowApp.API.Tests.Health;
 
 public sealed class HealthApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
-#pragma warning disable CS0618 // MsSqlBuilder() default ctor is obsolete in Testcontainers 4.x
-    private readonly MsSqlContainer _sqlContainer = new MsSqlBuilder().Build();
-#pragma warning restore CS0618
+    private readonly MsSqlContainer _sqlContainer = new MsSqlBuilder("mcr.microsoft.com/mssql/server:2022-CU14-ubuntu-22.04").Build();
 
     public async Task InitializeAsync() => await _sqlContainer.StartAsync();
 
