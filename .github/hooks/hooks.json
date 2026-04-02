@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "hooks": {
+    "postToolUse": [
+      {
+        "type": "command",
+        "powershell": ".claude/hooks/post-edit-format.ps1",
+        "comment": "Auto-format .cs files after edits"
+      }
+    ],
+    "preToolUse": [
+      {
+        "type": "command",
+        "bash": ".claude/hooks/pre-bash-guard.sh",
+        "comment": "Block destructive bash commands"
+      },
+      {
+        "type": "command",
+        "powershell": ".claude/hooks/pre-commit-antipattern.ps1",
+        "comment": "Detect bad C# patterns before commit"
+      },
+      {
+        "type": "command",
+        "powershell": ".claude/hooks/pre-commit-format.ps1",
+        "comment": "Verify formatting before commit"
+      }
+    ]
+  }
+}
