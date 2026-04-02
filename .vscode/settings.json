@@ -1,0 +1,13 @@
+{
+  "chat.tools.terminal.autoApprove": {
+    "Test-Path": true,
+    "ForEach-Object": true,
+    "Resolve-Path": true,
+    "dotnet run": true
+  },
+  "workbench.externalBrowser": "chrome",
+  "liveServer.settings.CustomBrowser": "chrome",
+  "chat.useClaudeHooks": true,
+  "chat.useCustomAgentHooks": true,
+  "claudeCode.useCtrlEnterToSend": true
+}
