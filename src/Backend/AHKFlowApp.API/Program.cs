@@ -21,6 +21,18 @@ if (!app.Environment.IsDevelopment())
 
 app.UseSwaggerDocs();
 app.UseHttpsRedirection();
+
+// Redirect root to Swagger UI (after HTTPS redirect so the redirect is served over HTTPS)
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path == "/")
+    {
+        context.Response.Redirect("/swagger");
+        return;
+    }
+    await next(context);
+});
+
 app.UseAuthorization();
 app.MapControllers();
 

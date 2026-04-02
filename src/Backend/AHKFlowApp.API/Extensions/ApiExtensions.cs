@@ -27,17 +27,6 @@ internal static class ApiExtensions
             options.RoutePrefix = "swagger";
         });
 
-        // Redirect root to Swagger UI
-        app.Use(async (context, next) =>
-        {
-            if (context.Request.Path == "/")
-            {
-                context.Response.Redirect("/swagger");
-                return;
-            }
-            await next(context);
-        });
-
         return app;
     }
 }
