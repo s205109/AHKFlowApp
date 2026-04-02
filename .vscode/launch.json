@@ -1,0 +1,51 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "API: https + Docker SQL (Recommended)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "Open Swagger (Docker SQL)",
+      "program": "${workspaceFolder}/src/Backend/AHKFlowApp.API/bin/Debug/net10.0/AHKFlowApp.API.dll",
+      "cwd": "${workspaceFolder}/src/Backend/AHKFlowApp.API",
+      "launchSettingsFilePath": "${workspaceFolder}/src/Backend/AHKFlowApp.API/Properties/launchSettings.json",
+      "launchSettingsProfile": "https + Docker SQL (Recommended)",
+      "console": "externalTerminal"
+    },
+    {
+      "name": "API: https + LocalDB SQL",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "Open Swagger (LocalDB)",
+      "program": "${workspaceFolder}/src/Backend/AHKFlowApp.API/bin/Debug/net10.0/AHKFlowApp.API.dll",
+      "cwd": "${workspaceFolder}/src/Backend/AHKFlowApp.API",
+      "launchSettingsFilePath": "${workspaceFolder}/src/Backend/AHKFlowApp.API/Properties/launchSettings.json",
+      "launchSettingsProfile": "https + LocalDB SQL",
+      "console": "externalTerminal"
+    },
+    {
+      "name": "UI: https",
+      "type": "dotnet",
+      "request": "launch",
+      "projectPath": "${workspaceFolder}/src/Frontend/AHKFlowApp.UI.Blazor/AHKFlowApp.UI.Blazor.csproj"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Full Stack: https + Docker SQL (Recommended)",
+      "configurations": [
+        "API: https + Docker SQL (Recommended)",
+        "UI: https"
+      ],
+      "stopAll": true
+    },
+    {
+      "name": "Full Stack: https + LocalDB SQL",
+      "configurations": [
+        "API: https + LocalDB SQL",
+        "UI: https"
+      ],
+      "stopAll": true
+    }
+  ]
+}
