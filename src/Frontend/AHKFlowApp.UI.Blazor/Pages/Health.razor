@@ -1,0 +1,130 @@
+@page "/health"
+@using AHKFlowApp.UI.Blazor.Services
+@using AHKFlowApp.UI.Blazor.DTOs
+
+@implements IDisposable
+
+<PageTitle>Health Check</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">System Health</MudText>
+
+<MudPaper Class="pa-4">
+    @if (_loading)
+    {
+        <MudProgressCircular Color="Color.Primary" Indeterminate="true" Size="Size.Small" />
+        <MudText Typo="Typo.body2" Class="mt-2">Checking system health...</MudText>
+    }
+    else if (_healthCheck != null)
+    {
+        <MudSimpleTable Dense="true" Striped="true">
+            <tbody>
+                <tr>
+                    <td><strong>Status</strong></td>
+                    <td>
+                        <MudText Typo="Typo.body1"
+                                 Color="@(_healthCheck.Status == "Healthy" ? Color.Success : Color.Error)">
+                            @_healthCheck.Status
+                        </MudText>
+                    </td>
+                </tr>
+                <tr>
+                    <td><strong>Environment</strong></td>
+                    <td>@_healthCheck.Environment</td>
+                </tr>
+                <tr>
+                    <td><strong>Timestamp</strong></td>
+                    <td>@_healthCheck.Timestamp.ToString("yyyy-MM-dd HH:mm:ss") UTC</td>
+                </tr>
+            </tbody>
+        </MudSimpleTable>
+
+        @if (_healthCheck.Checks.Count > 0)
+        {
+            <MudText Typo="Typo.h6" Class="mt-4 mb-2">Component Checks</MudText>
+            <MudSimpleTable Dense="true" Striped="true">
+                <thead>
+                    <tr>
+                        <th>Component</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var check in _healthCheck.Checks)
+                    {
+                        <tr>
+                            <td>@check.Key</td>
+                            <td>
+                                <MudText Typo="Typo.body2"
+                                         Color="@(check.Value == "Healthy" ? Color.Success : Color.Error)">
+                                    @check.Value
+                                </MudText>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+        }
+
+        <MudButton Variant="Variant.Outlined" Color="Color.Primary" Class="mt-4"
+                   OnClick="RefreshHealthAsync">
+            Refresh
+        </MudButton>
+    }
+    else if (_hasError)
+    {
+        <MudAlert Severity="Severity.Error">
+            <strong>Unable to retrieve health status</strong> — the API may not be running.
+        </MudAlert>
+        <MudButton Variant="Variant.Outlined" Color="Color.Primary" Class="mt-4"
+                   OnClick="RefreshHealthAsync">
+            Retry
+        </MudButton>
+    }
+</MudPaper>
+
+@inject IAhkFlowAppApiHttpClient ApiClient
+
+@code {
+    private HealthResponse? _healthCheck;
+    private bool _loading = true;
+    private bool _hasError;
+    private readonly CancellationTokenSource _cts = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadHealthAsync();
+    }
+
+    private async Task LoadHealthAsync()
+    {
+        _loading = true;
+        _hasError = false;
+
+        try
+        {
+            _healthCheck = await ApiClient.GetHealthAsync(_cts.Token);
+            if (_healthCheck is null)
+                _hasError = true;
+        }
+        catch (OperationCanceledException)
+        {
+            // page was disposed
+        }
+        catch
+        {
+            _hasError = true;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task RefreshHealthAsync() => await LoadHealthAsync();
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+    }
+}
