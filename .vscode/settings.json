@@ -6,8 +6,5 @@
     "dotnet run": true
   },
   "workbench.externalBrowser": "chrome",
-  "liveServer.settings.CustomBrowser": "chrome",
-  "chat.useClaudeHooks": true,
-  "chat.useCustomAgentHooks": true,
-  "claudeCode.useCtrlEnterToSend": true
+  "liveServer.settings.CustomBrowser": "chrome"
 }
