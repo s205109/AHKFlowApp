@@ -82,9 +82,9 @@
     }
 </MudPaper>
 
-@inject IAhkFlowAppApiHttpClient ApiClient
-
 @code {
+    [Inject] private IAhkFlowAppApiHttpClient ApiClient { get; set; } = default!;
+
     private HealthResponse? _healthCheck;
     private bool _loading = true;
     private bool _hasError;
@@ -99,6 +99,7 @@
     {
         _loading = true;
         _hasError = false;
+        StateHasChanged(); // render the spinner before awaiting
 
         try
         {
