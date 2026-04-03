@@ -9,10 +9,15 @@ internal static class ApiExtensions
     {
         return services.AddCors(options =>
             options.AddPolicy(policyName, policy =>
-                policy.WithOrigins(allowedOrigins)
-                      .AllowAnyMethod()
-                      .AllowAnyHeader()
-                      .AllowCredentials()));
+            {
+                if (allowedOrigins is { Length: > 0 })
+                {
+                    policy.WithOrigins(allowedOrigins)
+                          .AllowAnyMethod()
+                          .AllowAnyHeader()
+                          .AllowCredentials();
+                }
+            }));
     }
 
     internal static IServiceCollection AddSwaggerDocs(this IServiceCollection services)
