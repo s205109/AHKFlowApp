@@ -1,0 +1,28 @@
+[
+  {
+    "Name": "Full Stack: https + Docker SQL (Recommended)",
+    "Projects": [
+      {
+        "Path": "src\\Backend\\AHKFlowApp.API\\AHKFlowApp.API.csproj",
+        "Action": "Start"
+      },
+      {
+        "Path": "src\\Frontend\\AHKFlowApp.UI.Blazor\\AHKFlowApp.UI.Blazor.csproj",
+        "Action": "Start"
+      }
+    ]
+  },
+  {
+    "Name": "Full Stack: https + LocalDB SQL",
+    "Projects": [
+      {
+        "Path": "src\\Backend\\AHKFlowApp.API\\AHKFlowApp.API.csproj",
+        "Action": "Start"
+      },
+      {
+        "Path": "src\\Frontend\\AHKFlowApp.UI.Blazor\\AHKFlowApp.UI.Blazor.csproj",
+        "Action": "Start"
+      }
+    ]
+  }
+]
