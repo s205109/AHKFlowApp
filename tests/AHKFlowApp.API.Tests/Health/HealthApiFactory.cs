@@ -34,7 +34,8 @@ public sealed class HealthApiFactory : WebApplicationFactory<Program>, IAsyncLif
 
             // Register with the test container connection string
             services.AddDbContext<AppDbContext>(options =>
-                options.UseSqlServer(_sqlContainer.GetConnectionString()));
+                options.UseSqlServer(_sqlContainer.GetConnectionString(),
+                    sql => sql.EnableRetryOnFailure()));
         });
     }
 }
