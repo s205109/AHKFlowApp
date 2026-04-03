@@ -422,5 +422,5 @@ FodyWeavers.xsd
 .claude/settings.local.json
 .claude/logs/
 
-
 .worktrees/
+.playwright-cli/
