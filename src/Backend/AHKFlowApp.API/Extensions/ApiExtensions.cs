@@ -4,6 +4,17 @@ namespace AHKFlowApp.API.Extensions;
 
 internal static class ApiExtensions
 {
+    internal static IServiceCollection AddConfiguredCors(
+        this IServiceCollection services, string[] allowedOrigins, string policyName)
+    {
+        return services.AddCors(options =>
+            options.AddPolicy(policyName, policy =>
+                policy.WithOrigins(allowedOrigins)
+                      .AllowAnyMethod()
+                      .AllowAnyHeader()
+                      .AllowCredentials()));
+    }
+
     internal static IServiceCollection AddSwaggerDocs(this IServiceCollection services)
     {
         services.AddEndpointsApiExplorer();

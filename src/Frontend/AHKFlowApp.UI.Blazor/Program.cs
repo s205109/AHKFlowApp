@@ -9,10 +9,15 @@ builder.RootComponents.Add<HeadOutlet>("head::after");
 
 builder.Services.AddMudServices();
 
+string apiBaseUrl = await ApiBaseUrlResolver.ResolveAsync(
+    builder.HostEnvironment.BaseAddress,
+    builder.Configuration["ApiHttpClient:BaseAddress"],
+    builder.Configuration.GetSection("ApiHttpClient:BaseAddressCandidates").Get<string[]>());
+
 builder.Services.AddHttpClient<IAhkFlowAppApiHttpClient, AhkFlowAppApiHttpClient>(client =>
 {
-    client.BaseAddress = new Uri(builder.Configuration["ApiBaseUrl"]
-        ?? throw new InvalidOperationException("'ApiBaseUrl' is not configured."));
+    client.BaseAddress = new Uri(apiBaseUrl);
+    client.Timeout = TimeSpan.FromSeconds(30);
 }).AddStandardResilienceHandler();
 
 await builder.Build().RunAsync();

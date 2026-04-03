@@ -17,6 +17,10 @@ builder.Services.AddHealthChecks()
         name: "database",
         failureStatus: HealthStatus.Unhealthy);
 
+const string corsPolicyName = "AllowConfiguredOrigins";
+string[] allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
+builder.Services.AddConfiguredCors(allowedOrigins, corsPolicyName);
+
 WebApplication app = builder.Build();
 
 app.UseMiddleware<GlobalExceptionMiddleware>();
@@ -28,6 +32,11 @@ if (!app.Environment.IsDevelopment())
 
 app.UseSwaggerDocs();
 app.UseHttpsRedirection();
+
+if (allowedOrigins.Length > 0)
+{
+    app.UseCors(corsPolicyName);
+}
 
 // Redirect root to Swagger UI (after HTTPS redirect so the redirect is served over HTTPS)
 app.Use(async (context, next) =>
