@@ -12,7 +12,7 @@ public sealed class HealthApiFactory : WebApplicationFactory<Program>, IAsyncLif
 {
     private readonly MsSqlContainer _sqlContainer = new MsSqlBuilder("mcr.microsoft.com/mssql/server:2022-CU14-ubuntu-22.04").Build();
 
-    public async Task InitializeAsync() => await _sqlContainer.StartAsync();
+    public Task InitializeAsync() => _sqlContainer.StartAsync();
 
     public new async Task DisposeAsync()
     {
