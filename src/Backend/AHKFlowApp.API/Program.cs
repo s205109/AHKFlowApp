@@ -1,3 +1,4 @@
+using AHKFlowApp.API;
 using AHKFlowApp.API.Extensions;
 using AHKFlowApp.API.Middleware;
 using AHKFlowApp.Application;
@@ -6,6 +7,13 @@ using AHKFlowApp.Infrastructure.Persistence;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+
+// Start SQL Server in Docker if requested (for "https + Docker SQL" launch profile)
+if (builder.Environment.IsDevelopment() &&
+    string.Equals(Environment.GetEnvironmentVariable("AHKFLOW_START_DOCKER_SQL"), "true", StringComparison.OrdinalIgnoreCase))
+{
+    DevDockerSqlServer.EnsureStarted(builder.Environment.ContentRootPath);
+}
 
 builder.Services.AddControllers();
 builder.Services.AddSingleton(TimeProvider.System);
