@@ -4,6 +4,8 @@ using AHKFlowApp.API.Middleware;
 using AHKFlowApp.Application;
 using AHKFlowApp.Infrastructure;
 using AHKFlowApp.Infrastructure.Persistence;
+using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
@@ -30,6 +32,21 @@ string[] allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins"
 builder.Services.AddConfiguredCors(allowedOrigins, corsPolicyName);
 
 WebApplication app = builder.Build();
+
+// Auto-apply migrations in Development (creates database if it doesn't exist)
+if (app.Environment.IsDevelopment())
+{
+    await using AsyncServiceScope scope = app.Services.CreateAsyncScope();
+    AppDbContext dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    try
+    {
+        await dbContext.Database.MigrateAsync();
+    }
+    catch (SqlException ex) when (ex.Number == 1801)
+    {
+        // Database already exists (persisted Docker volume from a previous run) — migrations already applied
+    }
+}
 
 app.UseMiddleware<GlobalExceptionMiddleware>();
 
