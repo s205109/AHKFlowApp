@@ -1,4 +1,5 @@
 <Solution>
+  <Folder Name="/src/" />
   <Folder Name="/src/Backend/">
     <Project Path="src/Backend/AHKFlowApp.Domain/AHKFlowApp.Domain.csproj" />
     <Project Path="src/Backend/AHKFlowApp.Application/AHKFlowApp.Application.csproj" />
@@ -7,5 +8,8 @@
   </Folder>
   <Folder Name="/src/Frontend/">
     <Project Path="src/Frontend/AHKFlowApp.UI.Blazor/AHKFlowApp.UI.Blazor.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AHKFlowApp.API.Tests/AHKFlowApp.API.Tests.csproj" />
   </Folder>
 </Solution>
