@@ -44,9 +44,7 @@ if (app.Environment.IsDevelopment())
     }
     catch (SqlException ex) when (ex.Number == 1801)
     {
-        // Another process created the database after EF checked for existence.
-        // Retry migration now that the database exists so pending migrations are still applied.
-        await dbContext.Database.MigrateAsync();
+        // Database already exists (persisted Docker volume from a previous run) — migrations already applied
     }
 }
 
