@@ -2,32 +2,23 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Open Swagger (Docker SQL)",
-      "type": "shell",
-      "command": "powershell",
+      "label": "build: AHKFlowApp.API",
+      "type": "process",
+      "command": "dotnet",
       "args": [
-        "-NoProfile",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-Command",
-        "for ($i = 0; $i -lt 60; $i++) { try { Invoke-WebRequest -Uri 'https://localhost:7600/swagger' -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop | Out-Null; Start-Process 'https://localhost:7600/swagger'; break } catch { Start-Sleep -Seconds 1 } }"
+        "build",
+        "${workspaceFolder}/src/Backend/AHKFlowApp.API/AHKFlowApp.API.csproj",
+        "--configuration",
+        "Debug",
+        "--verbosity",
+        "minimal"
       ],
-      "isBackground": true,
-      "problemMatcher": []
-    },
-    {
-      "label": "Open Swagger (LocalDB)",
-      "type": "shell",
-      "command": "powershell",
-      "args": [
-        "-NoProfile",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-Command",
-        "for ($i = 0; $i -lt 60; $i++) { try { Invoke-WebRequest -Uri 'https://localhost:7600/swagger' -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop | Out-Null; Start-Process 'https://localhost:7600/swagger'; break } catch { Start-Sleep -Seconds 1 } }"
-      ],
-      "isBackground": true,
-      "problemMatcher": []
+      "group": "build",
+      "presentation": {
+        "reveal": "silent",
+        "panel": "shared"
+      },
+      "problemMatcher": "$msCompile"
     }
   ]
 }
