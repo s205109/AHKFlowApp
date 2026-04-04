@@ -1,21 +1,25 @@
 using System.Net;
 using System.Net.Http.Json;
 using AHKFlowApp.API.Models;
+using AHKFlowApp.TestUtilities.Fixtures;
 using FluentAssertions;
 using Xunit;
 
 namespace AHKFlowApp.API.Tests.Health;
 
-[Collection("HealthApi")]
-public sealed class HealthControllerTests(HealthApiFactory factory)
+[Collection("WebApi")]
+public sealed class HealthControllerTests(SqlContainerFixture sqlFixture) : IDisposable
 {
-    private readonly HttpClient _client = factory.CreateClient();
+    private readonly CustomWebApplicationFactory _factory = new(sqlFixture);
 
     [Fact]
     public async Task GetHealth_WhenDatabaseReachable_Returns200WithHealthyStatus()
     {
+        // Arrange
+        using HttpClient client = _factory.CreateClient();
+
         // Act
-        HttpResponseMessage response = await _client.GetAsync("/api/v1/health");
+        HttpResponseMessage response = await client.GetAsync("/api/v1/health");
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -29,8 +33,11 @@ public sealed class HealthControllerTests(HealthApiFactory factory)
     [Fact]
     public async Task GetHealth_ReturnsExpectedShape()
     {
+        // Arrange
+        using HttpClient client = _factory.CreateClient();
+
         // Act
-        HttpResponseMessage response = await _client.GetAsync("/api/v1/health");
+        HttpResponseMessage response = await client.GetAsync("/api/v1/health");
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -42,12 +49,17 @@ public sealed class HealthControllerTests(HealthApiFactory factory)
     [Fact]
     public async Task GetHealth_InfrastructureEndpoint_ReturnsHealthyText()
     {
+        // Arrange
+        using HttpClient client = _factory.CreateClient();
+
         // Act
-        HttpResponseMessage response = await _client.GetAsync("/health");
+        HttpResponseMessage response = await client.GetAsync("/health");
         string body = await response.Content.ReadAsStringAsync();
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         body.Should().Be("Healthy");
     }
+
+    public void Dispose() => _factory.Dispose();
 }
