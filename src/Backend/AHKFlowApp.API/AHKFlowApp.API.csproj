@@ -14,4 +14,7 @@
     <ProjectReference Include="..\AHKFlowApp.Application\AHKFlowApp.Application.csproj" />
     <ProjectReference Include="..\AHKFlowApp.Infrastructure\AHKFlowApp.Infrastructure.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="AHKFlowApp.API.Tests" />
+  </ItemGroup>
 </Project>

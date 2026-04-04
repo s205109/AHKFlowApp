@@ -16,7 +16,6 @@ internal sealed class GlobalExceptionMiddleware(
         catch (ValidationException ex)
         {
             context.Response.StatusCode = StatusCodes.Status400BadRequest;
-            context.Response.ContentType = "application/problem+json";
             await context.Response.WriteAsJsonAsync(new ProblemDetails
             {
                 Type = "https://tools.ietf.org/html/rfc9110#section-15.5.1",
@@ -32,20 +31,19 @@ internal sealed class GlobalExceptionMiddleware(
                             g => g.Key,
                             g => g.Select(e => e.ErrorMessage).ToArray())
                 }
-            });
+            }, options: null, contentType: "application/problem+json");
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Unhandled exception");
             context.Response.StatusCode = StatusCodes.Status500InternalServerError;
-            context.Response.ContentType = "application/problem+json";
             await context.Response.WriteAsJsonAsync(new ProblemDetails
             {
                 Type = "https://tools.ietf.org/html/rfc9110#section-15.6.1",
                 Title = "An unexpected error occurred",
                 Status = StatusCodes.Status500InternalServerError,
                 Instance = context.Request.Path
-            });
+            }, options: null, contentType: "application/problem+json");
         }
     }
 }
