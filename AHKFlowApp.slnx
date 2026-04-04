@@ -11,6 +11,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/AHKFlowApp.API.Tests/AHKFlowApp.API.Tests.csproj" />
+    <Project Path="tests/AHKFlowApp.Application.Tests/AHKFlowApp.Application.Tests.csproj" />
     <Project Path="tests/AHKFlowApp.TestUtilities/AHKFlowApp.TestUtilities.csproj" />
   </Folder>
 </Solution>
