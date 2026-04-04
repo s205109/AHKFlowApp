@@ -34,7 +34,7 @@ tests/
   AHKFlowApp.API.Tests/           # API integration tests (WebApplicationFactory)
   AHKFlowApp.Application.Tests/   # Validator + service unit tests
   AHKFlowApp.Domain.Tests/        # Domain logic unit tests
-  AHKFlowApp.Infrastructure.Test/ # Repository integration tests
+  AHKFlowApp.Infrastructure.Tests/ # Repository integration tests
   AHKFlowApp.UI.Blazor.Tests/     # Blazor component tests (bUnit)
 ```
 
