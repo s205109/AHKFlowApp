@@ -424,3 +424,7 @@ FodyWeavers.xsd
 
 .worktrees/
 .playwright-cli/
+
+# Code coverage reports
+coverage-report/
+**/TestResults/
