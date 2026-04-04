@@ -15,5 +15,6 @@
     <Project Path="tests/AHKFlowApp.Domain.Tests/AHKFlowApp.Domain.Tests.csproj" />
     <Project Path="tests/AHKFlowApp.Infrastructure.Tests/AHKFlowApp.Infrastructure.Tests.csproj" />
     <Project Path="tests/AHKFlowApp.TestUtilities/AHKFlowApp.TestUtilities.csproj" />
+    <Project Path="tests/AHKFlowApp.UI.Blazor.Tests/AHKFlowApp.UI.Blazor.Tests.csproj" />
   </Folder>
 </Solution>
