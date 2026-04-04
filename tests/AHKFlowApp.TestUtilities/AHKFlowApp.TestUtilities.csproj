@@ -11,5 +11,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Backend\AHKFlowApp.Infrastructure\AHKFlowApp.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Backend\AHKFlowApp.API\AHKFlowApp.API.csproj" />
   </ItemGroup>
 </Project>
