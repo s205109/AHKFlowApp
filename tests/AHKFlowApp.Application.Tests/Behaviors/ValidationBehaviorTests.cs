@@ -19,7 +19,7 @@ public sealed class ValidationBehaviorTests
     public async Task Handle_WhenNoValidators_CallsNext()
     {
         // Arrange
-        IEnumerable<IValidator<TestRequest>> validators = Enumerable.Empty<IValidator<TestRequest>>();
+        IEnumerable<IValidator<TestRequest>> validators = [];
         var behavior = new ValidationBehavior<TestRequest, string>(validators);
         var request = new TestRequest("test");
         bool nextCalled = false;
@@ -84,7 +84,7 @@ public sealed class ValidationBehaviorTests
         };
 
         // Act
-        Func<Task> act = () => behavior.Handle(request, next, CancellationToken.None);
+        Func<Task> act = async () => await behavior.Handle(request, next, CancellationToken.None);
 
         // Assert
         await act.Should().ThrowAsync<ValidationException>()
@@ -108,7 +108,7 @@ public sealed class ValidationBehaviorTests
         RequestHandlerDelegate<string> next = ct => Task.FromResult("result");
 
         // Act
-        Func<Task> act = () => behavior.Handle(new TestRequest("x"), next, CancellationToken.None);
+        Func<Task> act = async () => await behavior.Handle(new TestRequest("x"), next, CancellationToken.None);
 
         // Assert
         ExceptionAssertions<ValidationException> ex = await act.Should().ThrowAsync<ValidationException>();

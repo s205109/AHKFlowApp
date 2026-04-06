@@ -48,7 +48,7 @@ public sealed class AhkFlowAppApiHttpClientTests
         var client = new AhkFlowAppApiHttpClient(httpClient);
 
         // Act
-        Func<Task> act = () => client.GetHealthAsync();
+        Func<Task> act = async () => await client.GetHealthAsync();
 
         // Assert
         await act.Should().ThrowAsync<HttpRequestException>();

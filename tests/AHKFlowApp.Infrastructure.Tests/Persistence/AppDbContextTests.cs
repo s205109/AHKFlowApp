@@ -46,7 +46,7 @@ public sealed class AppDbContextTests(SqlContainerFixture sqlFixture)
         await using AppDbContext context = CreateContext("AppDbContextTests_EnsureCreated");
 
         // Act
-        Func<Task> act = () => context.Database.EnsureCreatedAsync();
+        Func<Task> act = async () => await context.Database.EnsureCreatedAsync();
 
         // Assert
         await act.Should().NotThrowAsync();
