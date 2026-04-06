@@ -1,5 +1,5 @@
 ---
-name: dependency-injection
+name: cck-dependency-injection
 description: >
   Dependency injection patterns for .NET 10. Covers service lifetimes, keyed
   services, the decorator pattern, factory pattern, and common DI pitfalls.

@@ -1,5 +1,5 @@
 ---
-name: ef-core
+name: cck-ef-core
 description: >
   Entity Framework Core patterns for AHKFlowApp (.NET 10, SQL Server).
   Covers DbContext configuration with SQL Server + EnableRetryOnFailure,

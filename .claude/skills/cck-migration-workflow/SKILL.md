@@ -1,5 +1,5 @@
 ---
-name: migration-workflow
+name: cck-migration-workflow
 description: >
   Safe migration workflows for EF Core database migrations, .NET version upgrades,
   and NuGet dependency updates. Includes rollback strategies and verification steps.

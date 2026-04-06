@@ -1,5 +1,5 @@
 ---
-name: docker
+name: cck-docker
 description: >
   Docker containerization for .NET 10 applications. Covers multi-stage builds,
   .NET container images, non-root user configuration, health checks, and
