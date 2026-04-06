@@ -23,11 +23,11 @@ public sealed class ValidationBehaviorTests
         var behavior = new ValidationBehavior<TestRequest, string>(validators);
         var request = new TestRequest("test");
         bool nextCalled = false;
-        RequestHandlerDelegate<string> next = ct =>
+        Task<string> next(CancellationToken ct)
         {
             nextCalled = true;
             return Task.FromResult("result");
-        };
+        }
 
         // Act
         string result = await behavior.Handle(request, next, CancellationToken.None);
@@ -48,11 +48,11 @@ public sealed class ValidationBehaviorTests
         var behavior = new ValidationBehavior<TestRequest, string>([validator]);
         var request = new TestRequest("valid");
         bool nextCalled = false;
-        RequestHandlerDelegate<string> next = ct =>
+        Task<string> next(CancellationToken ct)
         {
             nextCalled = true;
             return Task.FromResult("result");
-        };
+        }
 
         // Act
         string result = await behavior.Handle(request, next, CancellationToken.None);
@@ -77,11 +77,11 @@ public sealed class ValidationBehaviorTests
         var behavior = new ValidationBehavior<TestRequest, string>([validator]);
         var request = new TestRequest("");
         bool nextCalled = false;
-        RequestHandlerDelegate<string> next = ct =>
+        Task<string> next(CancellationToken ct)
         {
             nextCalled = true;
             return Task.FromResult("result");
-        };
+        }
 
         // Act
         Func<Task> act = async () => await behavior.Handle(request, next, CancellationToken.None);
@@ -105,7 +105,10 @@ public sealed class ValidationBehaviorTests
             .Returns(new ValidationResult([new ValidationFailure("Name", "Invalid chars")]));
 
         var behavior = new ValidationBehavior<TestRequest, string>([validator1, validator2]);
-        RequestHandlerDelegate<string> next = ct => Task.FromResult("result");
+        static Task<string> next(CancellationToken ct)
+        {
+            return Task.FromResult("result");
+        }
 
         // Act
         Func<Task> act = async () => await behavior.Handle(new TestRequest("x"), next, CancellationToken.None);
