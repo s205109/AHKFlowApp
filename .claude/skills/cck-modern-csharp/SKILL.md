@@ -1,5 +1,5 @@
 ---
-name: modern-csharp
+name: cck-modern-csharp
 description: >
   Modern C# language features for .NET 10 and C# 14. Covers primary constructors,
   collection expressions, the field keyword, extension members, records, pattern

@@ -1,5 +1,5 @@
 ---
-name: configuration
+name: cck-configuration
 description: >
   Configuration patterns for .NET 10 applications. Covers the Options pattern,
   IOptionsSnapshot vs IOptions, secrets management, and environment-based

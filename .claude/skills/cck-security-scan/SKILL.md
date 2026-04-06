@@ -1,5 +1,5 @@
 ---
-name: security-scan
+name: cck-security-scan
 description: >
   Deep security scanning for .NET applications across 6 layers: vulnerable packages,
   secrets detection, OWASP code patterns, auth configuration, CORS policy, and

@@ -1,5 +1,5 @@
 ---
-name: clean-architecture
+name: cck-clean-architecture
 description: >
   Clean Architecture for AHKFlowApp (.NET 10). Covers the 4-project layout (Domain,
   Application, Infrastructure, API), strict inward dependencies, MediatR handlers

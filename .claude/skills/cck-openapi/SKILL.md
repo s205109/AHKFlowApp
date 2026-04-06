@@ -1,5 +1,5 @@
 ---
-name: openapi
+name: cck-openapi
 description: >
   OpenAPI documentation for AHKFlowApp (.NET 10, controller-based APIs).
   Covers Swagger UI setup (AddSwaggerGen + UseSwaggerUI), ProducesResponseType
