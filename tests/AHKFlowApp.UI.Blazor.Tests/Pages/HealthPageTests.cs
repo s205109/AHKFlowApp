@@ -78,7 +78,7 @@ public sealed class HealthPageTests : BunitContext
     }
 
     [Fact]
-    public async Task Health_WhenRefreshClicked_RefetchesData()
+    public Task Health_WhenRefreshClicked_RefetchesData()
     {
         // Arrange
         _apiClient.GetHealthAsync(Arg.Any<CancellationToken>())
@@ -98,6 +98,6 @@ public sealed class HealthPageTests : BunitContext
         cut.WaitForState(() => !cut.Find(".mud-paper").TextContent.Contains("Checking"));
 
         // Assert
-        await _apiClient.Received(2).GetHealthAsync(Arg.Any<CancellationToken>());
+        return _apiClient.Received(2).GetHealthAsync(Arg.Any<CancellationToken>());
     }
 }
