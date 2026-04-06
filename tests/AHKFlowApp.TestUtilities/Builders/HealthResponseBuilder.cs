@@ -39,5 +39,5 @@ public sealed class HealthResponseBuilder
         return this;
     }
 
-    public HealthResponse Build() => new(_status, _environment, _timestamp, new Dictionary<string, string>(_checks));
+    public HealthResponse Build() => new(_status, _environment, _timestamp, new(_checks));
 }
