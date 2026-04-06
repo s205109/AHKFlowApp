@@ -39,5 +39,7 @@ public sealed class HealthResponseBuilder
         return this;
     }
 
+#pragma warning disable IDE0028 // Simplify collection initialization
     public HealthResponse Build() => new(_status, _environment, _timestamp, new(_checks));
+#pragma warning restore IDE0028 // Simplify collection initialization
 }
