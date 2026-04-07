@@ -84,7 +84,9 @@ public sealed class SerilogRequestLoggingTests(SqlContainerFixture sqlFixture) :
                    builder.ConfigureAppConfiguration((_, configBuilder) =>
                        configBuilder.AddInMemoryCollection(new Dictionary<string, string?>
                        {
-                           ["Serilog:WriteTo:1:Args:path"] = logFilePath
+                           ["Serilog:WriteTo:0:Name"] = "File",
+                           ["Serilog:WriteTo:0:Args:path"] = logFilePath,
+                           ["Serilog:WriteTo:0:Args:rollingInterval"] = "Day"
                        }))))
             using (HttpClient client = testFactory.CreateClient())
             {
