@@ -448,44 +448,33 @@ git commit -m "feat: add Version field to health response"
 
 ## Task 4: Document versioning scheme
 
-- [ ] **Step 1: Create docs/development/versioning.md**
+- [ ] **Step 1: Update/validate docs/development/versioning.md**
 
-```markdown
-# Versioning
+Review the existing `docs/development/versioning.md` and update it as needed so it accurately documents the MinVer-based versioning workflow described in this plan, including:
 
-AHKFlowApp uses [MinVer](https://github.com/adamralph/minver) for automatic semantic versioning based on git tags.
-
-## How it works
-
-MinVer runs during the build and sets the assembly version from the nearest reachable git tag using [Semantic Versioning 2.0](https://semver.org/).
+- how MinVer derives versions from git tags
+- example version shapes for tagged and untagged histories
+- how to create and push a release tag (using the `v` prefix, e.g. `v1.0.0`)
+- where to check the version at runtime (`GET /api/v1/version` and `GET /api/v1/health`)
 
 | State | Example version |
 |---|---|
 | No tags yet | `0.0.0-alpha.0.5+abc1234` |
-| On tag `1.0.0` | `1.0.0` |
-| 3 commits after `1.0.0` | `1.0.1-alpha.0.3+def5678` |
-
-The `+<sha>` suffix is the short git commit hash.
-
-## Creating a release
+| On tag `v1.0.0` | `1.0.0` |
+| 3 commits after `v1.0.0` | `1.0.1-alpha.0.3+def5678` |
 
 ```bash
-git tag 1.0.0
-git push origin 1.0.0
+git tag v1.0.0
+git push origin v1.0.0
 ```
 
-The next build on or after that tag will produce version `1.0.0`.
-
-## Checking the version
-
-At runtime, the version is available from `GET /api/v1/version` and in the `version` field of `GET /api/v1/health`.
-```
+Ensure the document stays aligned with the implemented behavior rather than creating a duplicate file.
 
 - [ ] **Step 2: Commit**
 
 ```bash
 git add docs/development/versioning.md
-git commit -m "docs: add versioning scheme documentation"
+git commit -m "docs: update versioning scheme documentation"
 ```
 
 ---
