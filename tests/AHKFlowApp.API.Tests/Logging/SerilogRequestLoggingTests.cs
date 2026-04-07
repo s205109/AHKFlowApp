@@ -137,20 +137,40 @@ public sealed class SerilogRequestLoggingTests(SqlContainerFixture sqlFixture) :
     private static async Task<string> WaitForLogContentAsync(string logFilePath, string expectedContent)
     {
         const int maxAttempts = 20;
+        Exception? lastReadException = null;
 
         for (int attempt = 0; attempt < maxAttempts; attempt++)
         {
-            string content = await File.ReadAllTextAsync(logFilePath);
-
-            if (content.Contains(expectedContent, StringComparison.Ordinal))
+            try
             {
-                return content;
+                string content = await File.ReadAllTextAsync(logFilePath);
+
+                if (content.Contains(expectedContent, StringComparison.Ordinal))
+                {
+                    return content;
+                }
+
+                lastReadException = null;
+            }
+            catch (IOException ex)
+            {
+                lastReadException = ex;
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                lastReadException = ex;
             }
 
             await Task.Delay(250);
         }
 
-        throw new XunitException($"Expected log file '{logFilePath}' to contain '{expectedContent}'.");
+        string message = $"Expected log file '{logFilePath}' to contain '{expectedContent}'.";
+        if (lastReadException is not null)
+        {
+            message += $" Last read attempt failed with {lastReadException.GetType().Name}: {lastReadException.Message}";
+        }
+
+        throw new XunitException(message);
     }
 
     private sealed class LogCaptureSink : ILogEventSink
