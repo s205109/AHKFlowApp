@@ -1,6 +1,7 @@
 using AHKFlowApp.Infrastructure.Persistence;
 using AHKFlowApp.TestUtilities.Fixtures;
 using FluentAssertions;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
 
@@ -13,7 +14,10 @@ public sealed class MigrationTests(SqlContainerFixture sqlFixture)
     {
         string connectionString = sqlFixture.ConnectionString;
         if (databaseName is not null)
-            connectionString = connectionString.Replace("master", databaseName);
+        {
+            var csb = new SqlConnectionStringBuilder(connectionString) { InitialCatalog = databaseName };
+            connectionString = csb.ConnectionString;
+        }
 
         DbContextOptions<AppDbContext> options = new DbContextOptionsBuilder<AppDbContext>()
             .UseSqlServer(connectionString,
