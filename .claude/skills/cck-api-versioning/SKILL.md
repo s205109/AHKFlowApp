@@ -1,5 +1,5 @@
 ---
-name: api-versioning
+name: cck-api-versioning
 description: >
   API versioning strategies for ASP.NET Core. Covers Asp.Versioning library,
   URL segment, header, and query string strategies, version deprecation, and

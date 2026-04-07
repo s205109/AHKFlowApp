@@ -9,4 +9,7 @@
     <PackageReference Include="FluentValidation.DependencyInjectionExtensions" />
     <PackageReference Include="MediatR" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="AHKFlowApp.Application.Tests" />
+  </ItemGroup>
 </Project>

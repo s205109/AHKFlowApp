@@ -1,5 +1,5 @@
 ---
-name: verify
+name: cck-verify
 description: >
   Run verification commands to confirm the project builds, all tests pass, and
   code is properly formatted before committing or creating a PR.

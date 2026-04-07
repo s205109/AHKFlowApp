@@ -1,5 +1,5 @@
 ---
-name: authentication
+name: cck-authentication
 description: >
   Authentication and authorization for ASP.NET Core. Covers JWT bearer tokens,
   OpenID Connect, ASP.NET Identity, authorization policies, role and claim-based

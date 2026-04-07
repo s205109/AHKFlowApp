@@ -1,5 +1,5 @@
 ---
-name: blazor-mudblazor
+name: cck-blazor-mudblazor
 description: >
   Blazor WebAssembly UI patterns with MudBlazor 9.x. Covers MudTable (client
   and server-side), MudForm validation, MudDialog CRUD workflows, MudSnackbar
