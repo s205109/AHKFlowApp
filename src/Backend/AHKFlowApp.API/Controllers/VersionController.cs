@@ -1,3 +1,4 @@
+using AHKFlowApp.API.Models;
 using AHKFlowApp.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -16,6 +17,4 @@ public sealed class VersionController(IVersionService versionService) : Controll
         string version = await versionService.GetVersionAsync(cancellationToken);
         return Ok(new VersionResponse(version));
     }
-
-    public sealed record VersionResponse(string Version);
 }

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using AHKFlowApp.API.Models;
 using AHKFlowApp.TestUtilities.Fixtures;
 using FluentAssertions;
 using Xunit;
@@ -28,6 +29,4 @@ public sealed class VersionControllerTests(SqlContainerFixture sqlFixture) : IDi
     }
 
     public void Dispose() => _factory.Dispose();
-
-    private sealed record VersionResponse(string Version);
 }
