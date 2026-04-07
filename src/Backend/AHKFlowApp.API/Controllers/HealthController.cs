@@ -1,4 +1,5 @@
 using AHKFlowApp.API.Models;
+using AHKFlowApp.Infrastructure.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -11,7 +12,8 @@ namespace AHKFlowApp.API.Controllers;
 public sealed class HealthController(
     HealthCheckService healthCheckService,
     IHostEnvironment hostEnvironment,
-    TimeProvider timeProvider) : ControllerBase
+    TimeProvider timeProvider,
+    IVersionService versionService) : ControllerBase
 {
     [HttpGet]
     [ProducesResponseType(typeof(HealthResponse), StatusCodes.Status200OK)]
@@ -19,6 +21,7 @@ public sealed class HealthController(
     public async Task<ActionResult<HealthResponse>> GetHealthAsync(CancellationToken cancellationToken)
     {
         HealthReport report = await healthCheckService.CheckHealthAsync(cancellationToken);
+        string version = await versionService.GetVersionAsync(cancellationToken);
 
         var checks = report.Entries.ToDictionary(
             e => e.Key,
@@ -26,6 +29,7 @@ public sealed class HealthController(
 
         var response = new HealthResponse(
             Status: report.Status.ToString(),
+            Version: version,
             Environment: hostEnvironment.EnvironmentName,
             Timestamp: timeProvider.GetUtcNow(),
             Checks: checks);
