@@ -1,5 +1,5 @@
 ---
-name: testing
+name: cck-testing
 description: >
   Testing strategy for AHKFlowApp (.NET 10). Covers WebApplicationFactory integration
   tests with SQL Server Testcontainers, MediatR handler unit tests, Ardalis.Result

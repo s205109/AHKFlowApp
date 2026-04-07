@@ -1,5 +1,5 @@
 ---
-name: build-fix
+name: cck-build-fix
 description: >
   Diagnose and fix build failures, test failures, and formatting violations in AHKFlowApp.
   Load when: "build error", "build failed", "test failed", "compilation error",

@@ -1,5 +1,5 @@
 ---
-name: ci-cd
+name: cck-ci-cd
 description: >
   CI/CD pipelines for .NET applications. Covers GitHub Actions and Azure DevOps
   YAML pipelines with build, test, publish, and deploy stages.

@@ -1,5 +1,5 @@
 ---
-name: project-structure
+name: cck-project-structure
 description: >
   .NET solution and project structure conventions. Covers .slnx format,
   Directory.Build.props, Directory.Packages.props for central package management,

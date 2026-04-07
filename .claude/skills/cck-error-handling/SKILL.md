@@ -1,5 +1,5 @@
 ---
-name: error-handling
+name: cck-error-handling
 description: >
   Error handling strategy for AHKFlowApp (.NET 10). Covers Ardalis.Result for typed
   outcomes, MediatR ValidationBehavior pipeline, GlobalExceptionMiddleware,

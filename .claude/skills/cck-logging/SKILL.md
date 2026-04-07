@@ -1,5 +1,5 @@
 ---
-name: logging
+name: cck-logging
 description: >
   Observability for .NET 10 applications. Covers Serilog structured logging
   (two-stage bootstrap, appsettings config, enrichers, sinks, destructuring,

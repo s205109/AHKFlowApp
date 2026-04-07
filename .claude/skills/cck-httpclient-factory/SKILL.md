@@ -1,5 +1,5 @@
 ---
-name: httpclient-factory
+name: cck-httpclient-factory
 description: >
   IHttpClientFactory and typed HTTP clients for .NET 10 applications. Covers
   named/typed/keyed clients, DelegatingHandlers, resilience with
