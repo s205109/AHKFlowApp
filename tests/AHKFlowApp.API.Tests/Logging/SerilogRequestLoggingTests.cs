@@ -2,10 +2,12 @@ using System.Net;
 using AHKFlowApp.TestUtilities.Fixtures;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Serilog.Core;
 using Serilog.Events;
 using Xunit;
+using Xunit.Sdk;
 
 namespace AHKFlowApp.API.Tests.Logging;
 
@@ -67,7 +69,89 @@ public sealed class SerilogRequestLoggingTests(SqlContainerFixture sqlFixture) :
             "sensitive property names must not appear in any log event");
     }
 
+    [Fact]
+    public async Task FileLogging_WhenRequestReceived_WritesRequestEntryToConfiguredLogFile()
+    {
+        // Arrange
+        string logDirectory = Path.Combine(Path.GetTempPath(), $"ahkflowapp-api-tests-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(logDirectory);
+
+        try
+        {
+            string logFilePath = Path.Combine(logDirectory, "AHKFlowApp.API-.log");
+
+            using (WebApplicationFactory<global::Program> testFactory = _factory.WithWebHostBuilder(builder =>
+                   builder.ConfigureAppConfiguration((_, configBuilder) =>
+                       configBuilder.AddInMemoryCollection(new Dictionary<string, string?>
+                       {
+                           ["Serilog:WriteTo:1:Args:path"] = logFilePath
+                       }))))
+            using (HttpClient client = testFactory.CreateClient())
+            {
+                // Act
+                HttpResponseMessage response = await client.GetAsync("/health");
+
+                // Assert
+                response.StatusCode.Should().Be(HttpStatusCode.OK);
+            }
+
+            string writtenLogFile = await WaitForLogFileAsync(logDirectory);
+            string logContent = await WaitForLogContentAsync(writtenLogFile, "/health");
+
+            logContent.Should().Contain("/health");
+            logContent.Should().Contain("200");
+        }
+        finally
+        {
+            if (Directory.Exists(logDirectory))
+            {
+                Directory.Delete(logDirectory, recursive: true);
+            }
+        }
+    }
+
     public void Dispose() => _factory.Dispose();
+
+    private static async Task<string> WaitForLogFileAsync(string logDirectory)
+    {
+        const int maxAttempts = 20;
+
+        for (int attempt = 0; attempt < maxAttempts; attempt++)
+        {
+            string? logFile = Directory
+                .EnumerateFiles(logDirectory, "AHKFlowApp.API-*.log")
+                .OrderByDescending(File.GetLastWriteTimeUtc)
+                .FirstOrDefault();
+
+            if (logFile is not null)
+            {
+                return logFile;
+            }
+
+            await Task.Delay(250);
+        }
+
+        throw new XunitException($"Expected Serilog file sink to create a log file in '{logDirectory}'.");
+    }
+
+    private static async Task<string> WaitForLogContentAsync(string logFilePath, string expectedContent)
+    {
+        const int maxAttempts = 20;
+
+        for (int attempt = 0; attempt < maxAttempts; attempt++)
+        {
+            string content = await File.ReadAllTextAsync(logFilePath);
+
+            if (content.Contains(expectedContent, StringComparison.Ordinal))
+            {
+                return content;
+            }
+
+            await Task.Delay(250);
+        }
+
+        throw new XunitException($"Expected log file '{logFilePath}' to contain '{expectedContent}'.");
+    }
 
     private sealed class LogCaptureSink : ILogEventSink
     {
