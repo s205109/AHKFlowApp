@@ -2,5 +2,5 @@ namespace AHKFlowApp.Infrastructure.Services;
 
 public interface IVersionService
 {
-    Task<string> GetVersionAsync(CancellationToken cancellationToken = default);
+    ValueTask<string> GetVersionAsync(CancellationToken cancellationToken = default);
 }
