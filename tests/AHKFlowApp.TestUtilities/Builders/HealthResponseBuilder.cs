@@ -5,6 +5,7 @@ namespace AHKFlowApp.TestUtilities.Builders;
 public sealed class HealthResponseBuilder
 {
     private string _status = "Healthy";
+    private string _version = "0.0.0-dev";
     private string _environment = "Test";
     private DateTimeOffset _timestamp = DateTimeOffset.UtcNow;
     private readonly Dictionary<string, string> _checks = new() { ["database"] = "Healthy" };
@@ -12,6 +13,12 @@ public sealed class HealthResponseBuilder
     public HealthResponseBuilder WithStatus(string status)
     {
         _status = status;
+        return this;
+    }
+
+    public HealthResponseBuilder WithVersion(string version)
+    {
+        _version = version;
         return this;
     }
 
@@ -40,6 +47,6 @@ public sealed class HealthResponseBuilder
     }
 
 #pragma warning disable IDE0028 // Simplify collection initialization
-    public HealthResponse Build() => new(_status, _environment, _timestamp, new(_checks));
+    public HealthResponse Build() => new(_status, _version, _environment, _timestamp, new(_checks));
 #pragma warning restore IDE0028 // Simplify collection initialization
 }

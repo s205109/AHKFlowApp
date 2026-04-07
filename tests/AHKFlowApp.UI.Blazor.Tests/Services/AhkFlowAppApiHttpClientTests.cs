@@ -10,6 +10,32 @@ namespace AHKFlowApp.UI.Blazor.Tests.Services;
 public sealed class AhkFlowAppApiHttpClientTests
 {
     [Fact]
+    public async Task GetHealthAsync_WhenApiReturnsJson_DeserializesVersionField()
+    {
+        // Arrange
+        var expected = new HealthResponse
+        {
+            Status = "Healthy",
+            Version = "2.0.0",
+            Environment = "Production",
+            Timestamp = DateTimeOffset.Parse("2026-04-04T12:00:00Z"),
+            Checks = []
+        };
+
+        using HttpClient httpClient = CreateMockHttpClient(
+            HttpStatusCode.OK,
+            JsonContent.Create(expected));
+
+        var client = new AhkFlowAppApiHttpClient(httpClient);
+
+        // Act
+        HealthResponse? result = await client.GetHealthAsync();
+
+        // Assert
+        result!.Version.Should().Be("2.0.0");
+    }
+
+    [Fact]
     public async Task GetHealthAsync_WhenApiReturnsJson_DeserializesResponse()
     {
         // Arrange
