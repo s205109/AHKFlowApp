@@ -43,6 +43,7 @@ public sealed class HealthControllerTests(SqlContainerFixture sqlFixture) : IDis
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         HealthResponse? body = await response.Content.ReadFromJsonAsync<HealthResponse>();
         body!.Environment.Should().NotBeNullOrEmpty();
+        body.Version.Should().NotBeNullOrWhiteSpace();
         body.Timestamp.Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromMinutes(1));
     }
 

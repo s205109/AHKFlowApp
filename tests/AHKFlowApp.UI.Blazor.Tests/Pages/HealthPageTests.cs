@@ -24,6 +24,29 @@ public sealed class HealthPageTests : BunitContext
     }
 
     [Fact]
+    public void Health_WhenApiReturnsData_DisplaysVersion()
+    {
+        // Arrange
+        var response = new HealthResponse
+        {
+            Status = "Healthy",
+            Version = "1.2.3",
+            Environment = "Test",
+            Timestamp = DateTimeOffset.UtcNow,
+            Checks = []
+        };
+        _apiClient.GetHealthAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<HealthResponse?>(response));
+
+        // Act
+        IRenderedComponent<Health> cut = Render<Health>();
+        cut.WaitForState(() => !cut.Find(".mud-paper").TextContent.Contains("Checking"));
+
+        // Assert
+        cut.Markup.Should().Contain("1.2.3");
+    }
+
+    [Fact]
     public void Health_WhenApiReturnsData_DisplaysStatus()
     {
         // Arrange
