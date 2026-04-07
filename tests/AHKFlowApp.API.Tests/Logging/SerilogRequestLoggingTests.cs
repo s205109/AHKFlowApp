@@ -177,7 +177,7 @@ public sealed class SerilogRequestLoggingTests(SqlContainerFixture sqlFixture) :
 
     private sealed class LogCaptureSink : ILogEventSink
     {
-        private readonly object _syncRoot = new();
+        private readonly Lock _syncRoot = new();
         private readonly List<LogEvent> _events = [];
 
         public IReadOnlyList<LogEvent> Events
