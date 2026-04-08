@@ -9,7 +9,7 @@ EXPOSE 8080
 RUN mkdir -p /app/AppData/Logs && chown -R $APP_UID:$APP_UID /app/AppData
 USER $APP_UID
 
-# build — restore + compile
+# build — restore + copy sources
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
