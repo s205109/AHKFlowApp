@@ -13,14 +13,7 @@ public sealed class AhkFlowAppApiHttpClientTests
     public async Task GetHealthAsync_WhenApiReturnsJson_DeserializesVersionField()
     {
         // Arrange
-        var expected = new HealthResponse
-        {
-            Status = "Healthy",
-            Version = "2.0.0",
-            Environment = "Production",
-            Timestamp = DateTimeOffset.Parse("2026-04-04T12:00:00Z"),
-            Checks = []
-        };
+        var expected = new HealthResponse("Healthy", "2.0.0", "Production", DateTimeOffset.Parse("2026-04-04T12:00:00Z"), []);
 
         using HttpClient httpClient = CreateMockHttpClient(
             HttpStatusCode.OK,
@@ -39,13 +32,7 @@ public sealed class AhkFlowAppApiHttpClientTests
     public async Task GetHealthAsync_WhenApiReturnsJson_DeserializesResponse()
     {
         // Arrange
-        var expected = new HealthResponse
-        {
-            Status = "Healthy",
-            Environment = "Production",
-            Timestamp = DateTimeOffset.Parse("2026-04-04T12:00:00Z"),
-            Checks = new Dictionary<string, string> { ["database"] = "Healthy" }
-        };
+        var expected = new HealthResponse("Healthy", string.Empty, "Production", DateTimeOffset.Parse("2026-04-04T12:00:00Z"), new Dictionary<string, string> { ["database"] = "Healthy" });
 
         using HttpClient httpClient = CreateMockHttpClient(
             HttpStatusCode.OK,

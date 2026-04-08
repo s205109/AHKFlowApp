@@ -27,14 +27,7 @@ public sealed class HealthPageTests : BunitContext
     public void Health_WhenApiReturnsData_DisplaysVersion()
     {
         // Arrange
-        var response = new HealthResponse
-        {
-            Status = "Healthy",
-            Version = "1.2.3",
-            Environment = "Test",
-            Timestamp = DateTimeOffset.UtcNow,
-            Checks = []
-        };
+        var response = new HealthResponse("Healthy", "1.2.3", "Test", DateTimeOffset.UtcNow, []);
         _apiClient.GetHealthAsync(Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<HealthResponse?>(response));
 
@@ -50,13 +43,7 @@ public sealed class HealthPageTests : BunitContext
     public void Health_WhenApiReturnsData_DisplaysStatus()
     {
         // Arrange
-        var response = new HealthResponse
-        {
-            Status = "Healthy",
-            Environment = "Test",
-            Timestamp = DateTimeOffset.UtcNow,
-            Checks = new Dictionary<string, string> { ["database"] = "Healthy" }
-        };
+        var response = new HealthResponse("Healthy", string.Empty, "Test", DateTimeOffset.UtcNow, new Dictionary<string, string> { ["database"] = "Healthy" });
         _apiClient.GetHealthAsync(Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<HealthResponse?>(response));
 
@@ -105,13 +92,7 @@ public sealed class HealthPageTests : BunitContext
     {
         // Arrange
         _apiClient.GetHealthAsync(Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult<HealthResponse?>(new HealthResponse
-            {
-                Status = "Healthy",
-                Environment = "Test",
-                Timestamp = DateTimeOffset.UtcNow,
-                Checks = []
-            }));
+            .Returns(Task.FromResult<HealthResponse?>(new HealthResponse("Healthy", string.Empty, "Test", DateTimeOffset.UtcNow, [])));
 
         IRenderedComponent<Health> cut = Render<Health>();
         cut.WaitForState(() => !cut.Find(".mud-paper").TextContent.Contains("Checking"));
