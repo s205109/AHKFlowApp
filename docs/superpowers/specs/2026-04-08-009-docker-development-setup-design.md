@@ -43,11 +43,12 @@ Standard 4-stage VS-compatible multi-stage build (`base` / `build` / `publish` /
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base
 WORKDIR /app
 EXPOSE 8080
-# Serilog file sink writes to /app/AppData/Logs at startup; create as root before dropping privileges
-RUN mkdir -p /app/AppData/Logs && chown -R $APP_UID:$APP_UID /app/AppData
-USER $APP_UID
+# Serilog file sink writes to /app/AppData/Logs at startup;
+# create the directory as root and hand it to the non-root user before dropping privileges.
+RUN mkdir -p /app/AppData/Logs && chown -R app:app /app/AppData
+USER app
 
-# build — restore + compile
+# build — restore + copy sources
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
@@ -63,20 +64,14 @@ COPY ["src/Backend/AHKFlowApp.Infrastructure/AHKFlowApp.Infrastructure.csproj", 
 RUN dotnet restore "src/Backend/AHKFlowApp.API/AHKFlowApp.API.csproj"
 
 COPY . .
-WORKDIR "/src/src/Backend/AHKFlowApp.API"
-# MinVerSkip=true: .git/ is excluded from build context, so MinVer cannot read tags.
-# Skipping MinVer prevents the MINVER0001 warning that would otherwise fail the build
-# (TreatWarningsAsErrors=true in Directory.Build.props). The published assembly version
-# defaults to 1.0.0 — fine for local dev containers; CI/CD owns real versioning.
-RUN dotnet build "AHKFlowApp.API.csproj" \
-    -c $BUILD_CONFIGURATION \
-    -o /app/build \
-    --no-restore \
-    /p:MinVerSkip=true
 
 # publish — produce final binaries
 FROM build AS publish
 ARG BUILD_CONFIGURATION=Release
+WORKDIR "/src/src/Backend/AHKFlowApp.API"
+# MinVerSkip=true: .git/ is excluded from build context (.dockerignore), so MinVer cannot
+# read tags. Skipping it prevents MINVER0001 — which would fail the build under
+# TreatWarningsAsErrors=true. Local dev containers don't need real versions; CI/CD owns that.
 RUN dotnet publish "AHKFlowApp.API.csproj" \
     -c $BUILD_CONFIGURATION \
     -o /app/publish \
@@ -94,12 +89,12 @@ ENTRYPOINT ["dotnet", "AHKFlowApp.API.dll"]
 Decisions:
 
 - **4 stages** (`base` / `build` / `publish` / `final`), not 2. VS container tooling (`commandName: Docker` launch profile) requires the `base` stage for fast-mode debugging, where it volume-mounts source over `/app`. Dropping `base` would silently break the existing `Docker (API only)` launch profile documented in `docs/development/docker-setup.md`.
-- **Serilog log directory** (`/app/AppData/Logs`) is created in the `base` stage as root, then `chown`'d to `$APP_UID` before the `USER` switch. Without this, the file sink would silently fail in the container (Serilog SelfLog) because the non-root user cannot create directories under `/app`.
-- **`/p:MinVerSkip=true`** on both `dotnet build` and `dotnet publish`. MinVer reads `.git/` to compute the version from tags. Since `.dockerignore` excludes `.git/` (saves ~tens of MB of context), MinVer would emit `MINVER0001` and fall back to `0.0.0-alpha.0.0`. Combined with `TreatWarningsAsErrors=true` in `Directory.Build.props`, that warning would fail the build. Skipping MinVer in containers is the right tradeoff: dev containers don't need real versions, and CI/CD (item 010) will build with the full git history available.
+- **Serilog log directory** (`/app/AppData/Logs`) is created in the `base` stage as root, then `chown`'d to `app` before the `USER` switch. Without this, the file sink would silently fail in the container (Serilog SelfLog) because the non-root user cannot create directories under `/app`.
+- **`/p:MinVerSkip=true`** on `dotnet publish`. MinVer reads `.git/` to compute the version from tags. Since `.dockerignore` excludes `.git/` (saves ~tens of MB of context), MinVer would emit `MINVER0001` and fall back to `0.0.0-alpha.0.0`. Combined with `TreatWarningsAsErrors=true` in `Directory.Build.props`, that warning would fail the build. There is no separate `dotnet build` step — a single `dotnet publish` compiles and produces the output. Skipping MinVer in containers is the right tradeoff: dev containers don't need real versions, and CI/CD (item 010) will build with the full git history available.
 - **Targets `net10.0`** via `dotnet/sdk:10.0` and `dotnet/aspnet:10.0` (matches `AHKFlowApp.API.csproj`).
 - **CPM aware** — copies `Directory.Build.props` and `Directory.Packages.props` before restore. `nuget.config` is intentionally omitted (does not exist at repo root).
 - **Frontend not copied** — only the four backend csproj files are pulled for restore. The final `COPY . .` includes everything not excluded by `.dockerignore`.
-- **`USER $APP_UID`** for non-root runtime (matches the official .NET image conventions).
+- **`USER app`** for non-root runtime (uses the built-in non-root user from the official .NET runtime image).
 - **`EXPOSE 8080`** matches `ASPNETCORE_HTTP_PORTS=8080` set in `docker-compose.yml`.
 - **No `HEALTHCHECK`** in the Dockerfile — Compose owns service-level healthchecks.
 

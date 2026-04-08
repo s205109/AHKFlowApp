@@ -35,11 +35,11 @@ No source code or tests are touched. Verification is manual (docker compose) —
 **Why this exists:** `docker-compose.yml` already references this path (`src/Backend/AHKFlowApp.API/Dockerfile`). Without the file, `docker compose up --build` fails immediately. The Dockerfile must:
 - Use `mcr.microsoft.com/dotnet/sdk:10.0` and `mcr.microsoft.com/dotnet/aspnet:10.0` (matches `<TargetFramework>net10.0</TargetFramework>` in `Directory.Build.props`).
 - Preserve the `base` stage (VS `commandName: Docker` profile mounts source over `/app` in fast-mode).
-- Create `/app/AppData/Logs` and `chown` it to `$APP_UID` BEFORE the `USER` switch (Serilog file sink in `appsettings.json` writes there).
-- Pass `/p:MinVerSkip=true` on build and publish (`.git/` is excluded from context, MinVer would warn, `TreatWarningsAsErrors=true` would fail the build).
+- Create `/app/AppData/Logs` and `chown` it to `app` BEFORE the `USER` switch (Serilog file sink in `appsettings.json` writes there).
+- Pass `/p:MinVerSkip=true` on publish only (`.git/` is excluded from context, MinVer would warn, `TreatWarningsAsErrors=true` would fail the build). No separate `dotnet build` step — `dotnet publish` compiles and produces output in a single pass.
 - Copy CPM files (`Directory.Build.props`, `Directory.Packages.props`) before restore.
 - Copy only the four backend csproj files for restore-layer caching.
-- Run as `$APP_UID` and expose port 8080 (matches `ASPNETCORE_HTTP_PORTS=8080` in compose).
+- Run as `USER app` and expose port 8080 (matches `ASPNETCORE_HTTP_PORTS=8080` in compose).
 
 - [ ] **Step 1: Create the Dockerfile**
 
@@ -54,10 +54,10 @@ WORKDIR /app
 EXPOSE 8080
 # Serilog file sink writes to /app/AppData/Logs at startup;
 # create the directory as root and hand it to the non-root user before dropping privileges.
-RUN mkdir -p /app/AppData/Logs && chown -R $APP_UID:$APP_UID /app/AppData
-USER $APP_UID
+RUN mkdir -p /app/AppData/Logs && chown -R app:app /app/AppData
+USER app
 
-# build — restore + compile
+# build — restore + copy sources
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
@@ -73,19 +73,14 @@ COPY ["src/Backend/AHKFlowApp.Infrastructure/AHKFlowApp.Infrastructure.csproj", 
 RUN dotnet restore "src/Backend/AHKFlowApp.API/AHKFlowApp.API.csproj"
 
 COPY . .
-WORKDIR "/src/src/Backend/AHKFlowApp.API"
-# MinVerSkip=true: .git/ is excluded from build context (.dockerignore), so MinVer cannot
-# read tags. Skipping it prevents MINVER0001 — which would fail the build under
-# TreatWarningsAsErrors=true. Local dev containers don't need real versions; CI/CD owns that.
-RUN dotnet build "AHKFlowApp.API.csproj" \
-    -c $BUILD_CONFIGURATION \
-    -o /app/build \
-    --no-restore \
-    /p:MinVerSkip=true
 
 # publish — produce final binaries
 FROM build AS publish
 ARG BUILD_CONFIGURATION=Release
+WORKDIR "/src/src/Backend/AHKFlowApp.API"
+# MinVerSkip=true: .git/ is excluded from build context (.dockerignore), so MinVer cannot
+# read tags. Skipping it prevents MINVER0001 — which would fail the build under
+# TreatWarningsAsErrors=true. Local dev containers don't need real versions; CI/CD owns that.
 RUN dotnet publish "AHKFlowApp.API.csproj" \
     -c $BUILD_CONFIGURATION \
     -o /app/publish \
@@ -112,7 +107,7 @@ Run (Grep):
 ```
 grep -n "MinVerSkip" src/Backend/AHKFlowApp.API/Dockerfile
 ```
-Expected: 2 matches (one in build stage, one in publish stage).
+Expected: 1 match (in publish stage only).
 
 - [ ] **Step 3: Commit**
 
@@ -229,7 +224,7 @@ docker compose -f C:/Dev/segocom-github/AHKFlowApp/docker-compose.yml build ahkf
 Expected: `Successfully built` (or BuildKit equivalent), no errors. First build will take a few minutes (pulling base images, restoring NuGet packages).
 
 If this fails:
-- `MINVER0001` warning treated as error → confirm both `dotnet build` and `dotnet publish` lines have `/p:MinVerSkip=true`.
+- `MINVER0001` warning treated as error → confirm the `dotnet publish` line has `/p:MinVerSkip=true`.
 - `COPY` failed for a csproj → confirm the four `COPY` lines match the actual project paths.
 - `permission denied` writing to `/app/AppData/Logs` → confirm `mkdir`/`chown` runs in the `base` stage BEFORE `USER $APP_UID`.
 
@@ -303,7 +298,7 @@ gh pr create \
 ## Design notes
 - 4-stage layout (`base`/`build`/`publish`/`final`) preserves the existing `Docker (API only)` VS launch profile (fast-mode source mount on the `base` stage).
 - `/app/AppData/Logs` is created and chowned in the `base` stage so the Serilog file sink works under `$APP_UID`.
-- `/p:MinVerSkip=true` on build+publish: `.git/` is excluded from the context to keep the image lean, so MinVer can't read tags. Without the skip, `MINVER0001` fails the build under `TreatWarningsAsErrors=true`. CI/CD (item 010) will run publish outside Docker for real versioning.
+- `/p:MinVerSkip=true` on publish: `.git/` is excluded from the context to keep the image lean, so MinVer can't read tags. Without the skip, `MINVER0001` fails the build under `TreatWarningsAsErrors=true`. A single `dotnet publish` pass compiles and outputs the binaries. CI/CD (item 010) will run publish outside Docker for real versioning.
 
 ## Out of scope
 - Production container hardening (chiseled images, multi-arch) — not in AC.
