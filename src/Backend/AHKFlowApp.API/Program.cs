@@ -37,6 +37,7 @@ try
         DevDockerSqlServer.EnsureStarted(builder.Environment.ContentRootPath);
     }
 
+    builder.Services.AddProblemDetails();
     builder.Services.AddControllers();
     builder.Services.AddSingleton(TimeProvider.System);
     builder.Services.AddSwaggerDocs();
