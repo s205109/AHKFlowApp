@@ -29,6 +29,9 @@ public sealed class GlobalExceptionMiddlewareTests(SqlContainerFixture sqlFixtur
             {
                 services.AddRouting();
                 services.AddLogging();
+                services.AddProblemDetails(options =>
+                    options.CustomizeProblemDetails = ctx =>
+                        ctx.ProblemDetails.Extensions["traceId"] = ctx.HttpContext.TraceIdentifier);
             });
             builder.Configure(app =>
             {
@@ -62,6 +65,9 @@ public sealed class GlobalExceptionMiddlewareTests(SqlContainerFixture sqlFixtur
         problem.Should().NotBeNull();
         problem!.Status.Should().Be(400);
         problem.Title.Should().Be("Validation failed");
+        problem!.Extensions.Should().ContainKey("errors");
+        problem.Extensions.Should().ContainKey("traceId");
+        problem.Extensions["traceId"].Should().NotBeNull();
     }
 
     [Fact]
@@ -74,6 +80,9 @@ public sealed class GlobalExceptionMiddlewareTests(SqlContainerFixture sqlFixtur
             {
                 services.AddRouting();
                 services.AddLogging();
+                services.AddProblemDetails(options =>
+                    options.CustomizeProblemDetails = ctx =>
+                        ctx.ProblemDetails.Extensions["traceId"] = ctx.HttpContext.TraceIdentifier);
             });
             builder.Configure(app =>
             {
@@ -99,6 +108,8 @@ public sealed class GlobalExceptionMiddlewareTests(SqlContainerFixture sqlFixtur
         problem.Should().NotBeNull();
         problem!.Status.Should().Be(500);
         problem.Title.Should().Be("An unexpected error occurred");
+        problem!.Extensions.Should().ContainKey("traceId");
+        problem.Extensions["traceId"].Should().NotBeNull();
     }
 
     public void Dispose() => _factory.Dispose();
