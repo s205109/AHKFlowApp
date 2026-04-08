@@ -58,13 +58,22 @@ try
     {
         await using AsyncServiceScope scope = app.Services.CreateAsyncScope();
         AppDbContext dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        ILogger<Program> logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
         try
         {
+            logger.LogInformation("Applying database migrations...");
             await dbContext.Database.MigrateAsync();
+            logger.LogInformation("Database migrations applied successfully.");
         }
         catch (SqlException ex) when (ex.Number == 1801)
         {
             // Database already exists (persisted Docker volume from a previous run) — migrations already applied
+            logger.LogInformation("Database already exists; skipping migration apply.");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error applying database migrations.");
+            throw;
         }
     }
 
