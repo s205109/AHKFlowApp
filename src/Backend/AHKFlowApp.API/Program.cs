@@ -4,6 +4,7 @@ using AHKFlowApp.API.Middleware;
 using AHKFlowApp.Application;
 using AHKFlowApp.Infrastructure;
 using AHKFlowApp.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -37,9 +38,34 @@ try
         DevDockerSqlServer.EnsureStarted(builder.Environment.ContentRootPath);
     }
 
-    builder.Services.AddControllers();
+    builder.Services.AddProblemDetails(options =>
+        options.CustomizeProblemDetails = ctx =>
+            ctx.ProblemDetails.Extensions["traceId"] = ctx.HttpContext.TraceIdentifier);
+
+    builder.Services.AddControllers()
+        .ConfigureApiBehaviorOptions(options =>
+            options.InvalidModelStateResponseFactory = ctx =>
+            {
+                var pd = new ValidationProblemDetails(ctx.ModelState)
+                {
+                    Detail = "See the errors field for details.",
+                    Instance = ctx.HttpContext.Request.Path,
+                    Status = StatusCodes.Status422UnprocessableEntity,
+                    Title = "One or more validation errors occurred."
+                };
+                pd.Extensions["traceId"] = ctx.HttpContext.TraceIdentifier;
+                return new UnprocessableEntityObjectResult(pd)
+                {
+                    ContentTypes = { "application/problem+json" }
+                };
+            });
+
     builder.Services.AddSingleton(TimeProvider.System);
-    builder.Services.AddSwaggerDocs();
+
+    if (builder.Environment.IsDevelopment())
+    {
+        builder.Services.AddSwaggerDocs();
+    }
     builder.Services.AddApplication();
     builder.Services.AddInfrastructure(builder.Configuration);
     builder.Services.AddHealthChecks()
@@ -94,24 +120,26 @@ try
         };
     });
 
-    app.UseSwaggerDocs();
+    if (app.Environment.IsDevelopment())
+    {
+        app.UseSwaggerDocs();
+        app.Use(async (context, next) =>
+        {
+            if (context.Request.Path == "/")
+            {
+                context.Response.Redirect("/swagger");
+                return;
+            }
+            await next(context);
+        });
+    }
+
     app.UseHttpsRedirection();
 
     if (allowedOrigins.Length > 0)
     {
         app.UseCors(corsPolicyName);
     }
-
-    // Redirect root to Swagger UI (after HTTPS redirect so the redirect is served over HTTPS)
-    app.Use(async (context, next) =>
-    {
-        if (context.Request.Path == "/")
-        {
-            context.Response.Redirect("/swagger");
-            return;
-        }
-        await next(context);
-    });
 
     app.UseAuthorization();
     app.MapControllers();
