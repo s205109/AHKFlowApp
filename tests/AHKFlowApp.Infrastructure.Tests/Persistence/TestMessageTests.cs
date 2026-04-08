@@ -11,14 +11,14 @@ namespace AHKFlowApp.Infrastructure.Tests.Persistence;
 [Collection("SqlServer")]
 public sealed class TestMessageTests(SqlContainerFixture sqlFixture)
 {
-    private AppDbContext CreateMigratedContext(string databaseName)
+    private async Task<AppDbContext> CreateMigratedContextAsync(string databaseName)
     {
         var csb = new SqlConnectionStringBuilder(sqlFixture.ConnectionString) { InitialCatalog = databaseName };
         DbContextOptions<AppDbContext> options = new DbContextOptionsBuilder<AppDbContext>()
             .UseSqlServer(csb.ConnectionString, sql => sql.EnableRetryOnFailure())
             .Options;
         var context = new AppDbContext(options);
-        context.Database.Migrate();
+        await context.Database.MigrateAsync();
         return context;
     }
 
@@ -26,7 +26,7 @@ public sealed class TestMessageTests(SqlContainerFixture sqlFixture)
     public async Task Add_TestMessage_PersistsMessage()
     {
         // Arrange
-        await using AppDbContext context = CreateMigratedContext("TestMessageTests_Persist");
+        await using AppDbContext context = await CreateMigratedContextAsync("TestMessageTests_Persist");
         var message = new TestMessage { Message = "hello", CreatedAt = DateTime.UtcNow };
 
         // Act
@@ -34,7 +34,7 @@ public sealed class TestMessageTests(SqlContainerFixture sqlFixture)
         await context.SaveChangesAsync();
 
         // Assert
-        await using AppDbContext readContext = CreateMigratedContext("TestMessageTests_Persist");
+        await using AppDbContext readContext = await CreateMigratedContextAsync("TestMessageTests_Persist");
         TestMessage? saved = await readContext.TestMessages.FindAsync(message.Id);
         saved.Should().NotBeNull();
         saved!.Message.Should().Be("hello");
@@ -44,7 +44,7 @@ public sealed class TestMessageTests(SqlContainerFixture sqlFixture)
     public async Task Add_TestMessage_PersistsCreatedAt()
     {
         // Arrange
-        await using AppDbContext context = CreateMigratedContext("TestMessageTests_CreatedAt");
+        await using AppDbContext context = await CreateMigratedContextAsync("TestMessageTests_CreatedAt");
         DateTime now = DateTime.UtcNow;
         var message = new TestMessage { Message = "ts-test", CreatedAt = now };
 
@@ -53,7 +53,7 @@ public sealed class TestMessageTests(SqlContainerFixture sqlFixture)
         await context.SaveChangesAsync();
 
         // Assert
-        await using AppDbContext readContext = CreateMigratedContext("TestMessageTests_CreatedAt");
+        await using AppDbContext readContext = await CreateMigratedContextAsync("TestMessageTests_CreatedAt");
         TestMessage? saved = await readContext.TestMessages.FindAsync(message.Id);
         saved.Should().NotBeNull();
         saved!.CreatedAt.Should().BeCloseTo(now, TimeSpan.FromSeconds(1));
