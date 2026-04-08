@@ -23,7 +23,7 @@ public sealed class GlobalExceptionMiddlewareTests(SqlContainerFixture sqlFixtur
     public async Task Middleware_WhenValidationExceptionThrown_Returns400ProblemDetails()
     {
         // Arrange
-        WebApplicationFactory<global::Program> factory = _factory.WithWebHostBuilder(builder =>
+        using WebApplicationFactory<global::Program> factory = _factory.WithWebHostBuilder(builder =>
         {
             builder.ConfigureServices(services =>
             {
@@ -68,7 +68,7 @@ public sealed class GlobalExceptionMiddlewareTests(SqlContainerFixture sqlFixtur
     public async Task Middleware_WhenUnhandledExceptionThrown_Returns500ProblemDetails()
     {
         // Arrange
-        WebApplicationFactory<global::Program> factory = _factory.WithWebHostBuilder(builder =>
+        using WebApplicationFactory<global::Program> factory = _factory.WithWebHostBuilder(builder =>
         {
             builder.ConfigureServices(services =>
             {
