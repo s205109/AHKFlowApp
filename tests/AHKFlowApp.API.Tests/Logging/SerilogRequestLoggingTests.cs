@@ -27,8 +27,7 @@ public sealed class SerilogRequestLoggingTests(SqlContainerFixture sqlFixture) :
         // Arrange
         var sink = new LogCaptureSink();
         using WebApplicationFactory<global::Program> testFactory = _factory.WithWebHostBuilder(builder =>
-            builder.ConfigureServices(services =>
-                services.AddSingleton<ILogEventSink>(sink)));
+            builder.ConfigureServices(services => services.AddSingleton<ILogEventSink>(sink)));
         using HttpClient client = testFactory.CreateClient();
 
         // Act
@@ -53,8 +52,7 @@ public sealed class SerilogRequestLoggingTests(SqlContainerFixture sqlFixture) :
         // Arrange
         var sink = new LogCaptureSink();
         using WebApplicationFactory<global::Program> testFactory = _factory.WithWebHostBuilder(builder =>
-            builder.ConfigureServices(services =>
-                services.AddSingleton<ILogEventSink>(sink)));
+            builder.ConfigureServices(services => services.AddSingleton<ILogEventSink>(sink)));
         using HttpClient client = testFactory.CreateClient();
 
         // Act

@@ -23,7 +23,7 @@ public sealed class GlobalExceptionMiddlewareTests(SqlContainerFixture sqlFixtur
     public async Task Middleware_WhenValidationExceptionThrown_Returns400ProblemDetails()
     {
         // Arrange
-        using HttpClient client = _factory.WithWebHostBuilder(builder =>
+        using WebApplicationFactory<global::Program> factory = _factory.WithWebHostBuilder(builder =>
         {
             builder.ConfigureServices(services =>
             {
@@ -48,7 +48,8 @@ public sealed class GlobalExceptionMiddlewareTests(SqlContainerFixture sqlFixtur
                     });
                 });
             });
-        }).CreateClient();
+        });
+        using HttpClient client = factory.CreateClient();
 
         // Act
         HttpResponseMessage response = await client.GetAsync("/test/validation-error");
@@ -67,7 +68,7 @@ public sealed class GlobalExceptionMiddlewareTests(SqlContainerFixture sqlFixtur
     public async Task Middleware_WhenUnhandledExceptionThrown_Returns500ProblemDetails()
     {
         // Arrange
-        using HttpClient client = _factory.WithWebHostBuilder(builder =>
+        using WebApplicationFactory<global::Program> factory = _factory.WithWebHostBuilder(builder =>
         {
             builder.ConfigureServices(services =>
             {
@@ -84,7 +85,8 @@ public sealed class GlobalExceptionMiddlewareTests(SqlContainerFixture sqlFixtur
                         throw new InvalidOperationException("Something broke"));
                 });
             });
-        }).CreateClient();
+        });
+        using HttpClient client = factory.CreateClient();
 
         // Act
         HttpResponseMessage response = await client.GetAsync("/test/unhandled-error");
