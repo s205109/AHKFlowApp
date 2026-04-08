@@ -14,5 +14,12 @@ internal sealed class TestMessageConfiguration : IEntityTypeConfiguration<TestMe
 
         builder.Property(x => x.CreatedAt)
             .IsRequired();
+
+        builder.HasData(new TestMessage
+        {
+            Id = 1,
+            Message = "hello test record",
+            CreatedAt = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+        });
     }
 }

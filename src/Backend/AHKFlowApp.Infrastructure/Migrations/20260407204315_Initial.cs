@@ -24,6 +24,11 @@ public partial class Initial : Migration
             {
                 table.PrimaryKey("PK_TestMessages", x => x.Id);
             });
+
+        migrationBuilder.InsertData(
+            table: "TestMessages",
+            columns: ["Id", "CreatedAt", "Message"],
+            values: [1, new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc), "hello test record"]);
     }
 
     /// <inheritdoc />

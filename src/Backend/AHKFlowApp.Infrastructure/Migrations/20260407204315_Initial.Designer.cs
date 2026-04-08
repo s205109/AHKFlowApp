@@ -44,6 +44,14 @@ partial class Initial
                 b.HasKey("Id");
 
                 b.ToTable("TestMessages");
+
+                b.HasData(
+                    new
+                    {
+                        Id = 1,
+                        CreatedAt = new DateTime(2025, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc),
+                        Message = "hello test record"
+                    });
             });
 #pragma warning restore 612, 618
     }
