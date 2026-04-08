@@ -6,8 +6,8 @@ WORKDIR /app
 EXPOSE 8080
 # Serilog file sink writes to /app/AppData/Logs at startup;
 # create the directory as root and hand it to the non-root user before dropping privileges.
-RUN mkdir -p /app/AppData/Logs && chown -R $APP_UID:$APP_UID /app/AppData
-USER $APP_UID
+RUN mkdir -p /app/AppData/Logs && chown -R app:app /app/AppData
+USER app
 
 # build — restore + copy sources
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
