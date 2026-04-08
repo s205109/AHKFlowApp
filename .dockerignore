@@ -19,7 +19,7 @@ docs/
 old_project_reference/
 .claude/
 .github/
-*.md
+**/*.md
 
 # Misc
 **/node_modules/
