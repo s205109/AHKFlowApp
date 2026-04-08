@@ -1,5 +1,5 @@
 ---
-name: de-sloppify
+name: cck-de-sloppify
 description: >
   Systematic code cleanup pipeline for .NET projects. Runs 7 ordered steps:
   formatting, unused usings, analyzer warnings, dead code removal, TODO resolution,
