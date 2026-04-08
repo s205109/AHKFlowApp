@@ -25,19 +25,14 @@ COPY ["src/Backend/AHKFlowApp.Infrastructure/AHKFlowApp.Infrastructure.csproj", 
 RUN dotnet restore "src/Backend/AHKFlowApp.API/AHKFlowApp.API.csproj"
 
 COPY . .
-WORKDIR "/src/src/Backend/AHKFlowApp.API"
-# MinVerSkip=true: .git/ is excluded from build context (.dockerignore), so MinVer cannot
-# read tags. Skipping it prevents MINVER0001 — which would fail the build under
-# TreatWarningsAsErrors=true. Local dev containers don't need real versions; CI/CD owns that.
-RUN dotnet build "AHKFlowApp.API.csproj" \
-    -c $BUILD_CONFIGURATION \
-    -o /app/build \
-    --no-restore \
-    /p:MinVerSkip=true
 
 # publish — produce final binaries
 FROM build AS publish
 ARG BUILD_CONFIGURATION=Release
+WORKDIR "/src/src/Backend/AHKFlowApp.API"
+# MinVerSkip=true: .git/ is excluded from build context (.dockerignore), so MinVer cannot
+# read tags. Skipping it prevents MINVER0001 — which would fail the build under
+# TreatWarningsAsErrors=true. Local dev containers don't need real versions; CI/CD owns that.
 RUN dotnet publish "AHKFlowApp.API.csproj" \
     -c $BUILD_CONFIGURATION \
     -o /app/publish \
