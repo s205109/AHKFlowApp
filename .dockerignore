@@ -1,0 +1,26 @@
+# VCS / IDE
+.git/
+.vs/
+.vscode/
+.idea/
+
+# Build output
+**/bin/
+**/obj/
+**/TestResults/
+
+# User-local files
+**/*.user
+**/*.suo
+
+# Tests, docs, and reference material — not needed in the image
+tests/
+docs/
+old_project_reference/
+.claude/
+.github/
+*.md
+
+# Misc
+**/node_modules/
+**/.DS_Store
