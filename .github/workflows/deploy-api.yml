@@ -118,6 +118,7 @@ jobs:
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
         run: |
+          dotnet restore
           dotnet tool install --global dotnet-ef --version "${{ steps.ef.outputs.version }}"
           dotnet ef database update \
             --project src/Backend/AHKFlowApp.Infrastructure \
