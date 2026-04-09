@@ -1,0 +1,44 @@
+# Normalize line endings on checkout to match .editorconfig settings.
+# Without this, git on Linux checks out files with LF regardless of .editorconfig,
+# causing dotnet format --verify-no-changes to fail in CI.
+
+# Default: normalize to LF in the repo, checkout as-is
+* text=auto
+
+# C# and VB source files — .editorconfig mandates CRLF; enforce on checkout
+*.cs text eol=crlf
+*.vb text eol=crlf
+*.csproj text eol=crlf
+*.sln text eol=crlf
+*.slnx text eol=crlf
+*.props text eol=crlf
+*.targets text eol=crlf
+*.config text eol=crlf
+
+# Shell scripts — always LF
+*.sh text eol=lf
+
+# Windows scripts — always CRLF
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# YAML — LF (Linux runners, Docker)
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# Markdown and JSON — LF
+*.md text eol=lf
+*.json text eol=lf
+
+# Binaries — no line ending conversion
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.zip binary
+*.dll binary
+*.exe binary
