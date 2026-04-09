@@ -1,0 +1,162 @@
+name: Deploy API
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/Backend/**'
+      - 'tests/**'
+      - 'Directory.*.props'
+      - 'global.json'
+      - '.github/workflows/deploy-api.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+  packages: write
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/ahkflowapp-api
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-dotnet@v4
+        with: { global-json-file: global.json }
+      - run: dotnet restore
+      - run: dotnet build --configuration Release --no-restore
+      - run: dotnet test --configuration Release --no-build
+
+  build-push-image:
+    needs: build-test
+    runs-on: ubuntu-latest
+    outputs:
+      image-ref: ${{ steps.image-ref.outputs.value }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: docker/setup-buildx-action@v3  # Required for type=gha cache backend below
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,format=long
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=branch
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: src/Backend/AHKFlowApp.API/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Verify digest is set
+        run: |
+          digest="${{ steps.build.outputs.digest }}"
+          test -n "$digest" || { echo "docker/build-push-action produced an empty digest — deploy would deploy a stale image"; exit 1; }
+          echo "Digest: $digest"
+      - id: image-ref
+        # Deploy uses the immutable digest so re-running an old workflow run redeploys
+        # exactly that run's image — true rollback by re-run.
+        run: echo "value=${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}" >> "$GITHUB_OUTPUT"
+
+  migrate-db:
+    # Sequential after image push so `deploy` has a clean linear dependency chain.
+    # If migration fails, the image is still in GHCR (harmless, garbage-collected later).
+    needs: build-push-image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-dotnet@v4
+        with: { global-json-file: global.json }
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Add runner IP to SQL firewall
+        run: |
+          runner_ip=$(curl -s https://api.ipify.org)
+          az sql server firewall-rule create \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --server "${{ vars.SQL_SERVER_NAME }}" \
+            --name "gh-runner-${GITHUB_RUN_ID}" \
+            --start-ip-address "$runner_ip" \
+            --end-ip-address "$runner_ip"
+      - name: Derive EF Core version from Directory.Packages.props
+        id: ef
+        run: |
+          # Microsoft.EntityFrameworkCore.Design version === dotnet-ef tool version we need.
+          ef_version=$(grep -oE 'Include="Microsoft\.EntityFrameworkCore\.Design"[[:space:]]+Version="[^"]+"' Directory.Packages.props \
+            | grep -oE 'Version="[^"]+"' | head -n1 | cut -d'"' -f2)
+          test -n "$ef_version" || { echo "Could not find Microsoft.EntityFrameworkCore.Design version in Directory.Packages.props"; exit 1; }
+          echo "version=$ef_version" >> "$GITHUB_OUTPUT"
+          echo "Using dotnet-ef $ef_version"
+      - name: Apply migrations via dotnet ef database update
+        env:
+          ConnectionStrings__DefaultConnection: >-
+            Server=tcp:${{ vars.SQL_SERVER_FQDN }},1433;
+            Database=${{ vars.SQL_DATABASE_NAME }};
+            Authentication=Active Directory Default;
+            Encrypt=True;
+            TrustServerCertificate=False;
+            Connection Timeout=30;
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        run: |
+          dotnet tool install --global dotnet-ef --version "${{ steps.ef.outputs.version }}"
+          dotnet ef database update \
+            --project src/Backend/AHKFlowApp.Infrastructure \
+            --startup-project src/Backend/AHKFlowApp.API
+      - name: Remove runner IP from SQL firewall
+        if: always()
+        run: |
+          az sql server firewall-rule delete \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --server "${{ vars.SQL_SERVER_NAME }}" \
+            --name "gh-runner-${GITHUB_RUN_ID}" || true
+
+  deploy:
+    needs: [build-push-image, migrate-db]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Set container image on App Service
+        run: |
+          az webapp config container set \
+            --name "${{ vars.APP_SERVICE_NAME }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --container-image-name "${{ needs.build-push-image.outputs.image-ref }}" \
+            --container-registry-url "https://ghcr.io"
+          az webapp restart \
+            --name "${{ vars.APP_SERVICE_NAME }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}"
+      - name: Health check
+        # 12 x 15s = 3 minutes. Covers Entra propagation + container cold start.
+        run: |
+          url="https://${{ vars.APP_SERVICE_NAME }}.azurewebsites.net/health"
+          for i in $(seq 1 12); do
+            if curl -fsS "$url"; then exit 0; fi
+            echo "Attempt $i/12 failed, retrying in 15s..."
+            sleep 15
+          done
+          echo "Health check failed after 3 minutes. Check App Service logs: az webapp log tail ..."
+          exit 1
