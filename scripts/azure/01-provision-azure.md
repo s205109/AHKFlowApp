@@ -1,6 +1,6 @@
 # 01 — Provision Azure resources
 
-This runbook stands up the full Azure environment for a single environment (default: `dev`). All `az X create` calls are idempotent (preceded by `az X show ...`). Re-running a section is safe.
+This runbook stands up the full Azure environment for a single environment (default: `test`). All `az X create` calls are idempotent (preceded by `az X show ...`). Re-running a section is safe.
 
 Prerequisite: you have completed [`00-prerequisites.md`](./00-prerequisites.md) and run `az login`.
 
@@ -13,7 +13,7 @@ Set these once at the top of your shell. Re-export them if you open a new termin
 ```bash
 export MSYS_NO_PATHCONV=1  # Git Bash: prevents /subscriptions/... paths being mangled to C:/Program Files/Git/...
 
-ENVIRONMENT="dev"                                      # dev | prod
+ENVIRONMENT="test"                                     # test | prod
 LOCATION="westeurope"                                  # any Azure region
 BASE_NAME="ahkflowapp"                                    # project prefix
 
