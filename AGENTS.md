@@ -232,11 +232,11 @@ Primary way to interact with GitHub is the `gh` CLI.
 - Frontend: `https://localhost:7601`, `http://localhost:5601`
 - Docker Compose API: `http://localhost:5602`
 
-## Production URLs (dev environment)
+## Production URLs (test environment)
 
-- API: `https://ahkflowapp-api-dev.azurewebsites.net`
-- API health: `https://ahkflowapp-api-dev.azurewebsites.net/health`
-- Frontend (SWA): `https://jolly-pond-007f20803.7.azurestaticapps.net`
+- API: `https://ahkflowapp-api-test.azurewebsites.net`
+- API health: `https://ahkflowapp-api-test.azurewebsites.net/health`
+- Frontend (SWA): update after re-provisioning (`az staticwebapp show --name ahkflowapp-swa-test --query defaultHostname -o tsv`)
 
 ## Domain Terms
 
