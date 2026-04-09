@@ -102,12 +102,12 @@ rm /tmp/create-runtime-user.sql
 2. Sign in with your Entra ID (the account that's a member of the admin group).
 3. Paste and run:
    ```sql
-   CREATE USER [ahkflowapp-uami-runtime-dev] FROM EXTERNAL PROVIDER;
-   ALTER ROLE db_datareader ADD MEMBER [ahkflowapp-uami-runtime-dev];
-   ALTER ROLE db_datawriter ADD MEMBER [ahkflowapp-uami-runtime-dev];
-   GRANT EXECUTE TO [ahkflowapp-uami-runtime-dev];
+   CREATE USER [ahkflowapp-uami-runtime-test] FROM EXTERNAL PROVIDER;
+   ALTER ROLE db_datareader ADD MEMBER [ahkflowapp-uami-runtime-test];
+   ALTER ROLE db_datawriter ADD MEMBER [ahkflowapp-uami-runtime-test];
+   GRANT EXECUTE TO [ahkflowapp-uami-runtime-test];
    ```
-   (Replace `ahkflowapp-uami-runtime-dev` with your actual `$UAMI_RUNTIME_NAME` if different.)
+   (Replace `ahkflowapp-uami-runtime-test` with your actual `$UAMI_RUNTIME_NAME` if different.)
 
 ## 4. GitHub repo secrets
 
@@ -230,7 +230,7 @@ Expected: `Healthy` (or JSON `{"status":"Healthy",...}`).
 
 If `$APP_SERVICE_NAME` is not set, use the literal URL:
 ```bash
-curl -fsS "https://ahkflowapp-api-dev.azurewebsites.net/health"
+curl -fsS "https://ahkflowapp-api-test.azurewebsites.net/health"
 ```
 
 ### Step 7 — Verify the frontend is live
@@ -240,7 +240,7 @@ SWA_HOSTNAME=$(az staticwebapp show --name "$SWA_NAME" --resource-group "$RESOUR
 echo "Frontend: https://${SWA_HOSTNAME}"
 ```
 
-Open the URL in a browser. The Blazor app should load and be able to reach the API (frontend `appsettings.json` points to `https://ahkflowapp-api-dev.azurewebsites.net`).
+Open the URL in a browser. The Blazor app should load and be able to reach the API (frontend `appsettings.json` points to `https://ahkflowapp-api-test.azurewebsites.net`).
 
 ---
 

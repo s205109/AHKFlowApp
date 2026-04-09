@@ -7,7 +7,7 @@ Stop paying for dev resources. Deletes the entire resource group, the SQL admin 
 ## Variables
 
 ```bash
-ENVIRONMENT="dev"
+ENVIRONMENT="test"
 BASE_NAME="ahkflowapp"
 RESOURCE_GROUP="rg-${BASE_NAME}-${ENVIRONMENT}"
 SQL_ADMIN_GROUP="${BASE_NAME}-sql-admins-${ENVIRONMENT}"
