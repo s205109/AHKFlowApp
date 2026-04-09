@@ -1,0 +1,66 @@
+name: Migrate Database (Manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "migrate" to confirm'
+        required: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  migrate:
+    if: inputs.confirm == 'migrate'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-dotnet@v4
+        with: { global-json-file: global.json }
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Add runner IP to SQL firewall
+        run: |
+          runner_ip=$(curl -s https://api.ipify.org)
+          az sql server firewall-rule create \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --server "${{ vars.SQL_SERVER_NAME }}" \
+            --name "gh-runner-${GITHUB_RUN_ID}" \
+            --start-ip-address "$runner_ip" \
+            --end-ip-address "$runner_ip"
+      - name: Derive EF Core version from Directory.Packages.props
+        id: ef
+        run: |
+          ef_version=$(grep -oE 'Include="Microsoft\.EntityFrameworkCore\.Design"[[:space:]]+Version="[^"]+"' Directory.Packages.props \
+            | grep -oE 'Version="[^"]+"' | head -n1 | cut -d'"' -f2)
+          test -n "$ef_version" || { echo "Could not find Microsoft.EntityFrameworkCore.Design version in Directory.Packages.props"; exit 1; }
+          echo "version=$ef_version" >> "$GITHUB_OUTPUT"
+      - name: Apply migrations
+        env:
+          ConnectionStrings__DefaultConnection: >-
+            Server=tcp:${{ vars.SQL_SERVER_FQDN }},1433;
+            Database=${{ vars.SQL_DATABASE_NAME }};
+            Authentication=Active Directory Default;
+            Encrypt=True;
+            TrustServerCertificate=False;
+            Connection Timeout=30;
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        run: |
+          dotnet tool install --global dotnet-ef --version "${{ steps.ef.outputs.version }}"
+          dotnet ef database update \
+            --project src/Backend/AHKFlowApp.Infrastructure \
+            --startup-project src/Backend/AHKFlowApp.API
+      - name: Remove runner IP from SQL firewall
+        if: always()
+        run: |
+          az sql server firewall-rule delete \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --server "${{ vars.SQL_SERVER_NAME }}" \
+            --name "gh-runner-${GITHUB_RUN_ID}" || true
