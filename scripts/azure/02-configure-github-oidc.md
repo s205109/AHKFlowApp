@@ -4,6 +4,8 @@ Wires up the OIDC trust between GitHub Actions and Azure. After this, the 4 work
 
 Prerequisite: you have completed [`01-provision-azure.md`](./01-provision-azure.md) and still have the environment variables set.
 
+> **Git Bash (MINGW64) users:** Prefix every `az ... -o tsv` assignment that captures an ARM resource ID with `MSYS_NO_PATHCONV=1` to prevent Git Bash from mangling the `/subscriptions/...` path. See the note in `01-provision-azure.md` for details.
+
 ## Variables (continues from 01)
 
 ```bash
