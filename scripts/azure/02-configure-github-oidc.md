@@ -167,8 +167,77 @@ The next run should succeed end-to-end.
 
 > **Tighter alternative (future improvement):** keep GHCR private and configure App Service with a PAT that has `read:packages`. Or switch to Azure Container Registry and use the runtime UAMI with AcrPull.
 
+## 9. Merge the PR and test the pipeline
+
+### Step 1 — Verify all secrets and variables are set
+
+```bash
+gh secret list --repo "${GITHUB_ORG}/${GITHUB_REPO}"
+gh variable list --repo "${GITHUB_ORG}/${GITHUB_REPO}"
+```
+
+Expected secrets: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `AZURE_STATIC_WEB_APPS_API_TOKEN`
+Expected variables: `AZURE_RESOURCE_GROUP`, `APP_SERVICE_NAME`, `SQL_SERVER_NAME`, `SQL_SERVER_FQDN`, `SQL_DATABASE_NAME`
+
+### Step 2 — Merge the PR
+
+```bash
+gh pr merge --squash --delete-branch --repo "${GITHUB_ORG}/${GITHUB_REPO}"
+```
+
+This triggers `deploy-api.yml` and `deploy-frontend.yml` on `main`.
+
+### Step 3 — Watch the API deploy
+
+```bash
+# Get the run ID for the deploy-api workflow
+gh run list --workflow=deploy-api.yml --repo "${GITHUB_ORG}/${GITHUB_REPO}" --limit 1
+
+# Watch it (Ctrl-C to stop watching without cancelling the run)
+gh run watch --repo "${GITHUB_ORG}/${GITHUB_REPO}" \
+  $(gh run list --workflow=deploy-api.yml --repo "${GITHUB_ORG}/${GITHUB_REPO}" --limit 1 --json databaseId -q '.[0].databaseId')
+```
+
+**Expected on first run:**
+- `build-test` ✓
+- `build-push-image` ✓ — image pushed to GHCR (private by default)
+- `migrate-db` ✓ — initial schema created in Azure SQL
+- `deploy` ✗ — **fails** with "manifest unknown" or "unauthorized" (expected — GHCR is private)
+
+### Step 4 — Flip GHCR package visibility to public
+
+1. Go to your packages tab:
+   - Personal account: `https://github.com/<your-username>?tab=packages`
+   - Organization: `https://github.com/orgs/<your-org>/packages`
+2. Find `ahkflowapp-api` → **Package settings** → **Change visibility** → **Public** → confirm.
+
+### Step 5 — Re-run the failed deploy job
+
+```bash
+gh run rerun --failed --repo "${GITHUB_ORG}/${GITHUB_REPO}" \
+  $(gh run list --workflow=deploy-api.yml --repo "${GITHUB_ORG}/${GITHUB_REPO}" --limit 1 --json databaseId -q '.[0].databaseId')
+```
+
+Watch it again — all 4 jobs should now be green.
+
+### Step 6 — Verify the API is live
+
+```bash
+curl -fsS "https://${APP_SERVICE_NAME}.azurewebsites.net/health"
+```
+
+Expected: `Healthy` (or JSON `{"status":"Healthy",...}`).
+
+### Step 7 — Verify the frontend is live
+
+```bash
+gh run list --workflow=deploy-frontend.yml --repo "${GITHUB_ORG}/${GITHUB_REPO}" --limit 1
+```
+
+Open the SWA default URL in a browser (find it in the output of `az staticwebapp show --name "$SWA_NAME" --query defaultHostname -o tsv`). The Blazor app should load.
+
 ---
 
-**Next:** merge your PR to `main`, watch the workflows run, flip GHCR visibility. You're done.
+**Done.** CI/CD is live.
 
 **Teardown (when finished):** [`99-teardown.md`](./99-teardown.md)
