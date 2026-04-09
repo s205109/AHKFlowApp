@@ -232,6 +232,12 @@ Primary way to interact with GitHub is the `gh` CLI.
 - Frontend: `https://localhost:7601`, `http://localhost:5601`
 - Docker Compose API: `http://localhost:5602`
 
+## Production URLs (dev environment)
+
+- API: `https://ahkflowapp-api-dev.azurewebsites.net`
+- API health: `https://ahkflowapp-api-dev.azurewebsites.net/health`
+- Frontend (SWA): `https://jolly-pond-007f20803.7.azurestaticapps.net`
+
 ## Domain Terms
 
 - **Hotstring** — text replacement trigger: type an abbreviation (e.g., `btw`), auto-expands to full text (`by the way`). Core domain entity.
