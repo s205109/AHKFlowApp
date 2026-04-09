@@ -228,13 +228,19 @@ curl -fsS "https://${APP_SERVICE_NAME}.azurewebsites.net/health"
 
 Expected: `Healthy` (or JSON `{"status":"Healthy",...}`).
 
+If `$APP_SERVICE_NAME` is not set, use the literal URL:
+```bash
+curl -fsS "https://ahkflowapp-api-dev.azurewebsites.net/health"
+```
+
 ### Step 7 — Verify the frontend is live
 
 ```bash
-gh run list --workflow=deploy-frontend.yml --repo "${GITHUB_ORG}/${GITHUB_REPO}" --limit 1
+SWA_HOSTNAME=$(az staticwebapp show --name "$SWA_NAME" --resource-group "$RESOURCE_GROUP" --query defaultHostname -o tsv)
+echo "Frontend: https://${SWA_HOSTNAME}"
 ```
 
-Open the SWA default URL in a browser (find it in the output of `az staticwebapp show --name "$SWA_NAME" --query defaultHostname -o tsv`). The Blazor app should load.
+Open the URL in a browser. The Blazor app should load and be able to reach the API (frontend `appsettings.json` points to `https://ahkflowapp-api-dev.azurewebsites.net`).
 
 ---
 
