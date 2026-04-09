@@ -8,7 +8,7 @@ Stop paying for dev resources. Deletes the entire resource group, the SQL admin 
 
 ```bash
 ENVIRONMENT="dev"
-BASE_NAME="ahkflow"
+BASE_NAME="ahkflowapp"
 RESOURCE_GROUP="rg-${BASE_NAME}-${ENVIRONMENT}"
 SQL_ADMIN_GROUP="${BASE_NAME}-sql-admins-${ENVIRONMENT}"
 GITHUB_ORG="<your-github-username-or-org>"
