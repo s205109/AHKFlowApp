@@ -4,13 +4,15 @@ This runbook stands up the full Azure environment for a single environment (defa
 
 Prerequisite: you have completed [`00-prerequisites.md`](./00-prerequisites.md) and run `az login`.
 
-> **Git Bash (MINGW64) users:** Azure CLI resource IDs start with `/subscriptions/...`. Git Bash converts leading slashes to Windows paths (e.g. `C:/Program Files/Git/subscriptions/...`), breaking any step that captures an ARM ID into a shell variable. **Prefix every `az ... -o tsv` assignment with `MSYS_NO_PATHCONV=1`** — for example: `LAW_ID=$(MSYS_NO_PATHCONV=1 az monitor log-analytics workspace show ... --query id -o tsv)`. Alternatively, run the scripts in PowerShell (`pwsh`) which has no path mangling.
+> **Git Bash (MINGW64) users:** Git Bash converts paths starting with `/` to Windows paths (e.g. `/subscriptions/...` → `C:/Program Files/Git/subscriptions/...`). This breaks both ARM ID captures *and* ARM ID arguments to `az`. The fix: run `export MSYS_NO_PATHCONV=1` once at the start of your shell session (included in the Variables block below). PowerShell (`pwsh`) has no path mangling and needs no workaround.
 
 ## Variables
 
 Set these once at the top of your shell. Re-export them if you open a new terminal. To provision a `prod` environment later, set `ENVIRONMENT=prod` and re-run everything.
 
 ```bash
+export MSYS_NO_PATHCONV=1  # Git Bash: prevents /subscriptions/... paths being mangled to C:/Program Files/Git/...
+
 ENVIRONMENT="dev"                                      # dev | prod
 LOCATION="westeurope"                                  # any Azure region
 BASE_NAME="ahkflowapp"                                    # project prefix

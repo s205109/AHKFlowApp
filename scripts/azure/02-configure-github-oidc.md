@@ -4,12 +4,14 @@ Wires up the OIDC trust between GitHub Actions and Azure. After this, the 4 work
 
 Prerequisite: you have completed [`01-provision-azure.md`](./01-provision-azure.md) and still have the environment variables set.
 
-> **Git Bash (MINGW64) users:** Prefix every `az ... -o tsv` assignment that captures an ARM resource ID with `MSYS_NO_PATHCONV=1` to prevent Git Bash from mangling the `/subscriptions/...` path. See the note in `01-provision-azure.md` for details.
+> **Git Bash (MINGW64) users:** Run `export MSYS_NO_PATHCONV=1` (included in the Variables block below) or carry it over from script 01. See script 01 for the full explanation.
 
 ## Variables (continues from 01)
 
 ```bash
 # Add these on top of the variables already set in script 01:
+export MSYS_NO_PATHCONV=1  # Git Bash: carry over from script 01 or re-export here
+
 GITHUB_ORG="<your-github-username-or-org>"
 GITHUB_REPO="AHKFlowApp"
 
@@ -100,12 +102,12 @@ rm /tmp/create-runtime-user.sql
 2. Sign in with your Entra ID (the account that's a member of the admin group).
 3. Paste and run:
    ```sql
-   CREATE USER [ahkflow-uami-runtime-dev] FROM EXTERNAL PROVIDER;
-   ALTER ROLE db_datareader ADD MEMBER [ahkflow-uami-runtime-dev];
-   ALTER ROLE db_datawriter ADD MEMBER [ahkflow-uami-runtime-dev];
-   GRANT EXECUTE TO [ahkflow-uami-runtime-dev];
+   CREATE USER [ahkflowapp-uami-runtime-dev] FROM EXTERNAL PROVIDER;
+   ALTER ROLE db_datareader ADD MEMBER [ahkflowapp-uami-runtime-dev];
+   ALTER ROLE db_datawriter ADD MEMBER [ahkflowapp-uami-runtime-dev];
+   GRANT EXECUTE TO [ahkflowapp-uami-runtime-dev];
    ```
-   (Replace `ahkflow-uami-runtime-dev` with your actual `$UAMI_RUNTIME_NAME` if different.)
+   (Replace `ahkflowapp-uami-runtime-dev` with your actual `$UAMI_RUNTIME_NAME` if different.)
 
 ## 4. GitHub repo secrets
 
