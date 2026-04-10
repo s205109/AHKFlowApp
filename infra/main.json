@@ -1,0 +1,610 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.42.1.51946",
+      "templateHash": "11682724465029076565"
+    }
+  },
+  "parameters": {
+    "environment": {
+      "type": "string",
+      "allowedValues": [
+        "test",
+        "prod"
+      ],
+      "metadata": {
+        "description": "Target environment."
+      }
+    },
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]",
+      "metadata": {
+        "description": "Azure region. Defaults to the resource group location."
+      }
+    },
+    "baseName": {
+      "type": "string",
+      "defaultValue": "ahkflowapp",
+      "metadata": {
+        "description": "Base name prefix for all resources."
+      }
+    },
+    "sqlAdminGroupId": {
+      "type": "string",
+      "metadata": {
+        "description": "Object ID of the Entra security group that will be the SQL admin."
+      }
+    },
+    "sqlAdminGroupName": {
+      "type": "string",
+      "metadata": {
+        "description": "Display name of the Entra security group that will be the SQL admin."
+      }
+    }
+  },
+  "variables": {
+    "aspnetcoreEnvironment": "[if(equals(parameters('environment'), 'prod'), 'Production', 'Test')]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "identity",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "baseName": {
+            "value": "[parameters('baseName')]"
+          },
+          "environment": {
+            "value": "[parameters('environment')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.42.1.51946",
+              "templateHash": "12052455223537809781"
+            }
+          },
+          "parameters": {
+            "baseName": {
+              "type": "string",
+              "metadata": {
+                "description": "Base name prefix for all resources."
+              }
+            },
+            "environment": {
+              "type": "string",
+              "allowedValues": [
+                "test",
+                "prod"
+              ],
+              "metadata": {
+                "description": "Target environment: test or prod."
+              }
+            },
+            "location": {
+              "type": "string",
+              "defaultValue": "[resourceGroup().location]",
+              "metadata": {
+                "description": "Azure region for resources."
+              }
+            }
+          },
+          "variables": {
+            "deployerName": "[format('{0}-uami-deployer-{1}', parameters('baseName'), parameters('environment'))]",
+            "runtimeName": "[format('{0}-uami-runtime-{1}', parameters('baseName'), parameters('environment'))]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+              "apiVersion": "2023-01-31",
+              "name": "[variables('deployerName')]",
+              "location": "[parameters('location')]"
+            },
+            {
+              "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+              "apiVersion": "2023-01-31",
+              "name": "[variables('runtimeName')]",
+              "location": "[parameters('location')]"
+            }
+          ],
+          "outputs": {
+            "deployerUamiName": {
+              "type": "string",
+              "value": "[variables('deployerName')]"
+            },
+            "deployerUamiId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deployerName'))]"
+            },
+            "deployerUamiClientId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deployerName')), '2023-01-31').clientId]"
+            },
+            "deployerUamiPrincipalId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deployerName')), '2023-01-31').principalId]"
+            },
+            "runtimeUamiName": {
+              "type": "string",
+              "value": "[variables('runtimeName')]"
+            },
+            "runtimeUamiId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('runtimeName'))]"
+            },
+            "runtimeUamiClientId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('runtimeName')), '2023-01-31').clientId]"
+            },
+            "runtimeUamiPrincipalId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('runtimeName')), '2023-01-31').principalId]"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "sql",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "baseName": {
+            "value": "[parameters('baseName')]"
+          },
+          "environment": {
+            "value": "[parameters('environment')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "sqlAdminGroupId": {
+            "value": "[parameters('sqlAdminGroupId')]"
+          },
+          "sqlAdminGroupName": {
+            "value": "[parameters('sqlAdminGroupName')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.42.1.51946",
+              "templateHash": "3141768233905161941"
+            }
+          },
+          "parameters": {
+            "baseName": {
+              "type": "string",
+              "metadata": {
+                "description": "Base name prefix for all resources."
+              }
+            },
+            "environment": {
+              "type": "string",
+              "allowedValues": [
+                "test",
+                "prod"
+              ],
+              "metadata": {
+                "description": "Target environment: test or prod."
+              }
+            },
+            "location": {
+              "type": "string",
+              "defaultValue": "[resourceGroup().location]",
+              "metadata": {
+                "description": "Azure region for resources."
+              }
+            },
+            "sqlAdminGroupId": {
+              "type": "string",
+              "metadata": {
+                "description": "Object ID of the Entra security group that will be the SQL admin."
+              }
+            },
+            "sqlAdminGroupName": {
+              "type": "string",
+              "metadata": {
+                "description": "Display name of the Entra security group that will be the SQL admin."
+              }
+            }
+          },
+          "variables": {
+            "serverName": "[format('{0}-sql-{1}', parameters('baseName'), parameters('environment'))]",
+            "databaseName": "[format('{0}-db', parameters('baseName'))]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Sql/servers",
+              "apiVersion": "2023-08-01-preview",
+              "name": "[variables('serverName')]",
+              "location": "[parameters('location')]",
+              "properties": {
+                "administrators": {
+                  "administratorType": "ActiveDirectory",
+                  "azureADOnlyAuthentication": true,
+                  "login": "[parameters('sqlAdminGroupName')]",
+                  "sid": "[parameters('sqlAdminGroupId')]",
+                  "tenantId": "[tenant().tenantId]",
+                  "principalType": "Group"
+                }
+              }
+            },
+            {
+              "type": "Microsoft.Sql/servers/databases",
+              "apiVersion": "2023-08-01-preview",
+              "name": "[format('{0}/{1}', variables('serverName'), variables('databaseName'))]",
+              "location": "[parameters('location')]",
+              "sku": {
+                "name": "Basic",
+                "tier": "Basic"
+              },
+              "properties": {
+                "collation": "SQL_Latin1_General_CP1_CI_AS",
+                "requestedBackupStorageRedundancy": "Local"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Sql/servers', variables('serverName'))]"
+              ]
+            },
+            {
+              "type": "Microsoft.Sql/servers/firewallRules",
+              "apiVersion": "2023-08-01-preview",
+              "name": "[format('{0}/{1}', variables('serverName'), 'AllowAllAzureServices')]",
+              "properties": {
+                "startIpAddress": "0.0.0.0",
+                "endIpAddress": "0.0.0.0"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Sql/servers', variables('serverName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "sqlServerName": {
+              "type": "string",
+              "value": "[variables('serverName')]"
+            },
+            "sqlServerFqdn": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Sql/servers', variables('serverName')), '2023-08-01-preview').fullyQualifiedDomainName]"
+            },
+            "sqlDatabaseName": {
+              "type": "string",
+              "value": "[variables('databaseName')]"
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "web",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "baseName": {
+            "value": "[parameters('baseName')]"
+          },
+          "environment": {
+            "value": "[parameters('environment')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "runtimeUamiId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'identity'), '2025-04-01').outputs.runtimeUamiId.value]"
+          },
+          "runtimeUamiClientId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'identity'), '2025-04-01').outputs.runtimeUamiClientId.value]"
+          },
+          "aspnetcoreEnvironment": {
+            "value": "[variables('aspnetcoreEnvironment')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.42.1.51946",
+              "templateHash": "11350409661391440320"
+            }
+          },
+          "parameters": {
+            "baseName": {
+              "type": "string",
+              "metadata": {
+                "description": "Base name prefix for all resources."
+              }
+            },
+            "environment": {
+              "type": "string",
+              "allowedValues": [
+                "test",
+                "prod"
+              ],
+              "metadata": {
+                "description": "Target environment: test or prod."
+              }
+            },
+            "location": {
+              "type": "string",
+              "defaultValue": "[resourceGroup().location]",
+              "metadata": {
+                "description": "Azure region for resources."
+              }
+            },
+            "runtimeUamiId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the runtime UAMI to assign to the App Service."
+              }
+            },
+            "runtimeUamiClientId": {
+              "type": "string",
+              "metadata": {
+                "description": "Client ID of the runtime UAMI (used by DefaultAzureCredential)."
+              }
+            },
+            "aspnetcoreEnvironment": {
+              "type": "string",
+              "metadata": {
+                "description": "ASPNETCORE_ENVIRONMENT value for the App Service."
+              }
+            }
+          },
+          "variables": {
+            "planName": "[format('{0}-plan-{1}', parameters('baseName'), parameters('environment'))]",
+            "appName": "[format('{0}-api-{1}', parameters('baseName'), parameters('environment'))]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Web/serverfarms",
+              "apiVersion": "2023-12-01",
+              "name": "[variables('planName')]",
+              "location": "[parameters('location')]",
+              "kind": "linux",
+              "sku": {
+                "name": "B1",
+                "tier": "Basic"
+              },
+              "properties": {
+                "reserved": true
+              }
+            },
+            {
+              "type": "Microsoft.Web/sites",
+              "apiVersion": "2023-12-01",
+              "name": "[variables('appName')]",
+              "location": "[parameters('location')]",
+              "identity": {
+                "type": "UserAssigned",
+                "userAssignedIdentities": {
+                  "[format('{0}', parameters('runtimeUamiId'))]": {}
+                }
+              },
+              "properties": {
+                "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('planName'))]",
+                "httpsOnly": true,
+                "siteConfig": {
+                  "linuxFxVersion": "DOCKER|nginx:latest",
+                  "alwaysOn": true,
+                  "appSettings": [
+                    {
+                      "name": "DOCKER_REGISTRY_SERVER_URL",
+                      "value": "https://ghcr.io"
+                    },
+                    {
+                      "name": "WEBSITES_PORT",
+                      "value": "8080"
+                    },
+                    {
+                      "name": "AZURE_CLIENT_ID",
+                      "value": "[parameters('runtimeUamiClientId')]"
+                    },
+                    {
+                      "name": "ASPNETCORE_ENVIRONMENT",
+                      "value": "[parameters('aspnetcoreEnvironment')]"
+                    }
+                  ]
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Web/serverfarms', variables('planName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "appServiceName": {
+              "type": "string",
+              "value": "[variables('appName')]"
+            },
+            "appServiceDefaultHostname": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Web/sites', variables('appName')), '2023-12-01').defaultHostName]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'identity')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "swa",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "baseName": {
+            "value": "[parameters('baseName')]"
+          },
+          "environment": {
+            "value": "[parameters('environment')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.42.1.51946",
+              "templateHash": "8849775080548069468"
+            }
+          },
+          "parameters": {
+            "baseName": {
+              "type": "string",
+              "metadata": {
+                "description": "Base name prefix for all resources."
+              }
+            },
+            "environment": {
+              "type": "string",
+              "allowedValues": [
+                "test",
+                "prod"
+              ],
+              "metadata": {
+                "description": "Target environment: test or prod."
+              }
+            },
+            "location": {
+              "type": "string",
+              "defaultValue": "[resourceGroup().location]",
+              "metadata": {
+                "description": "Azure region for resources. Note: Static Web Apps Free tier is only available in a subset of regions."
+              }
+            }
+          },
+          "variables": {
+            "swaName": "[format('{0}-swa-{1}', parameters('baseName'), parameters('environment'))]"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Web/staticSites",
+              "apiVersion": "2023-12-01",
+              "name": "[variables('swaName')]",
+              "location": "[parameters('location')]",
+              "sku": {
+                "name": "Free",
+                "tier": "Free"
+              },
+              "properties": {}
+            }
+          ],
+          "outputs": {
+            "swaName": {
+              "type": "string",
+              "value": "[variables('swaName')]"
+            },
+            "swaDefaultHostname": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.Web/staticSites', variables('swaName')), '2023-12-01').defaultHostname]"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "outputs": {
+    "deployerUamiName": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'identity'), '2025-04-01').outputs.deployerUamiName.value]"
+    },
+    "deployerUamiId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'identity'), '2025-04-01').outputs.deployerUamiId.value]"
+    },
+    "deployerUamiClientId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'identity'), '2025-04-01').outputs.deployerUamiClientId.value]"
+    },
+    "deployerUamiPrincipalId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'identity'), '2025-04-01').outputs.deployerUamiPrincipalId.value]"
+    },
+    "runtimeUamiName": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'identity'), '2025-04-01').outputs.runtimeUamiName.value]"
+    },
+    "runtimeUamiId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'identity'), '2025-04-01').outputs.runtimeUamiId.value]"
+    },
+    "runtimeUamiClientId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'identity'), '2025-04-01').outputs.runtimeUamiClientId.value]"
+    },
+    "runtimeUamiPrincipalId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'identity'), '2025-04-01').outputs.runtimeUamiPrincipalId.value]"
+    },
+    "sqlServerName": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'sql'), '2025-04-01').outputs.sqlServerName.value]"
+    },
+    "sqlServerFqdn": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'sql'), '2025-04-01').outputs.sqlServerFqdn.value]"
+    },
+    "sqlDatabaseName": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'sql'), '2025-04-01').outputs.sqlDatabaseName.value]"
+    },
+    "appServiceName": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'web'), '2025-04-01').outputs.appServiceName.value]"
+    },
+    "appServiceDefaultHostname": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'web'), '2025-04-01').outputs.appServiceDefaultHostname.value]"
+    },
+    "swaName": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'swa'), '2025-04-01').outputs.swaName.value]"
+    },
+    "swaDefaultHostname": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'swa'), '2025-04-01').outputs.swaDefaultHostname.value]"
+    }
+  }
+}
