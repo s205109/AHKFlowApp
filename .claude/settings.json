@@ -1,6 +1,8 @@
 {
+  "env": {
+    "MAX_MCP_OUTPUT_TOKENS": "50000"
+  },
   "permissions": {
-    "defaultMode": "default",
     "allow": [
       "Read",
       "Glob",
@@ -119,33 +121,8 @@
       "Edit(**/appsettings.Staging.json)",
       "Edit(**/*.pfx)",
       "Edit(**/*.p12)"
-    ]
-  },
-  "enabledPlugins": {
-    "superpowers@claude-plugins-official": true,
-    "context7@claude-plugins-official": true,
-    "github@claude-plugins-official": true,
-    "skill-creator@claude-plugins-official": true,
-    "code-simplifier@claude-plugins-official": true,
-    "claude-code-setup@claude-plugins-official": false,
-    "commit-commands@claude-plugins-official": true,
-    "playwright@claude-plugins-official": true,
-    "csharp-lsp@claude-plugins-official": true,
-    "claude-md-management@claude-plugins-official": true,
-    "feature-dev@claude-plugins-official": true,
-    "frontend-design@claude-plugins-official": true,
-    "security-guidance@claude-plugins-official": true,
-    "code-review@claude-plugins-official": true,
-    "pr-review-toolkit@claude-plugins-official": false
-  },
-  "mcpServers": {
-    "github": {
-      "type": "http",
-      "url": "https://api.githubcopilot.com/mcp/"
-    }
-  },
-  "env": {
-    "MAX_MCP_OUTPUT_TOKENS": "50000"
+    ],
+    "defaultMode": "default"
   },
   "hooks": {
     "PreToolUse": [
@@ -187,5 +164,28 @@
         ]
       }
     ]
+  },
+  "enabledPlugins": {
+    "superpowers@claude-plugins-official": true,
+    "context7@claude-plugins-official": true,
+    "github@claude-plugins-official": true,
+    "skill-creator@claude-plugins-official": true,
+    "code-simplifier@claude-plugins-official": true,
+    "claude-code-setup@claude-plugins-official": true,
+    "commit-commands@claude-plugins-official": true,
+    "playwright@claude-plugins-official": true,
+    "csharp-lsp@claude-plugins-official": true,
+    "claude-md-management@claude-plugins-official": true,
+    "feature-dev@claude-plugins-official": true,
+    "frontend-design@claude-plugins-official": true,
+    "security-guidance@claude-plugins-official": false,
+    "code-review@claude-plugins-official": true,
+    "pr-review-toolkit@claude-plugins-official": false
+  },
+  "mcpServers": {
+    "github": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/"
+    }
   }
 }

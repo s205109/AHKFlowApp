@@ -22,11 +22,26 @@ Satisfy all 4 backlog acceptance criteria:
 
 Plus: make a brand-new contributor able to stand up a working dev env in Azure from zero by running four markdown scripts under `scripts/azure/`.
 
+## Environment Strategy
+
+This design supports **three distinct environments**:
+
+| Environment | Name | ASPNETCORE_ENVIRONMENT | Location | Database | Purpose |
+|-------------|------|------------------------|----------|----------|---------|
+| **DEV** | Development | `Development` | Local machine | LocalDB or Docker SQL | Local development and testing |
+| **TEST** | Test | `Test` | Azure | Azure SQL Database | Pre-production testing and validation |
+| **PROD** | Production | `Production` | Azure | Azure SQL Database | Production workload |
+
+- **DEV** runs on the developer's local machine with no Azure resources required
+- **TEST** deploys automatically on push to `main` branch via `deploy-api.yml` and `deploy-frontend.yml`
+- **PROD** deploys via manual `workflow_dispatch` trigger (future: can add approval requirements via GitHub Environments)
+- Each Azure environment (TEST/PROD) gets isolated Azure resources: separate resource groups, App Services, SQL databases, etc.
+- Environment-specific configuration is set via `ASPNETCORE_ENVIRONMENT` App Service application setting
+
 ## Out of scope
 
 - Blue/green deployments, deployment slots (explicit AC exclusion).
-- Production environment. This spec sets up **one** environment (`dev`); prod is documented as "re-run with `ENVIRONMENT=prod`".
-- GitHub Environments protection rules / required reviewers.
+- GitHub Environments protection rules / required reviewers (can be added later).
 - Bicep / ARM / Terraform infrastructure-as-code. Bash-in-markdown only.
 - ACR (Azure Container Registry). GHCR only.
 - Frontend Dockerfile. Frontend ships as static files to Static Web Apps.
@@ -47,7 +62,8 @@ Plus: make a brand-new contributor able to stand up a working dev env in Azure f
 | Script format | Bash in markdown with variables at top | Matches old project; readable + executable; `az` CLI is bash-idiomatic |
 | Script location | `scripts/azure/` | User choice |
 | Region | `${LOCATION}` variable, default `westeurope` | User choice |
-| Environment strategy | Single `dev`, parameterised via `ENVIRONMENT` variable | Simpler start; re-run with `prod` later |
+| Environment strategy | Three environments: DEV (local), TEST (Azure auto-deploy), PROD (Azure manual deploy) | Clear separation between local dev, pre-prod testing, and production |
+| Environment variable | `ASPNETCORE_ENVIRONMENT` set to Development/Test/Production | Standard ASP.NET Core convention; enables environment-specific configuration |
 | GitHub Environments | None initially | User opted out of protection rules |
 | Action pinning | `azure/*` + `actions/*` by major tag; third-party by SHA | GitHub 2026 security roadmap |
 
@@ -79,22 +95,24 @@ Plus: make a brand-new contributor able to stand up a working dev env in Azure f
 
 ### Azure resource inventory
 
-Created by `scripts/azure/01-provision-azure.md`, all in a single resource group `rg-ahkflow-${ENVIRONMENT}`:
+Created by `scripts/azure/01-provision-azure.md`, all in environment-specific resource groups `rg-ahkflowapp-${ENVIRONMENT}` (where `ENVIRONMENT` is `test` or `prod`):
 
-| Resource | Name (dev) | Purpose | Tier |
-|---|---|---|---|
-| Resource group | `rg-ahkflow-dev` | Container for all below | — |
-| Log Analytics workspace | `ahkflow-logs-dev` | Backing store for App Insights | Pay-as-you-go |
-| Application Insights | `ahkflow-insights-dev` | Telemetry (shared API + frontend) | Workspace-based |
-| SQL logical server | `ahkflow-sql-dev` | Hosts the database | — |
-| SQL database | `ahkflow-db` | Application database | Basic (5 DTU) |
-| App Service plan | `ahkflow-plan-dev` | Linux compute | B1 Linux |
-| App Service | `ahkflow-api-dev` | API runtime (container) | — |
-| Static Web App | `ahkflow-swa-dev` | Blazor WASM frontend | Free |
-| Key Vault | `ahkflow-kv-dev` | App secrets (App Insights conn string, Azure AD IDs, etc.) — **not** SQL password | Standard |
-| UAMI (deployer) | `ahkflow-uami-deployer-dev` | GitHub Actions identity for provisioning + migrations | — |
-| UAMI (runtime) | `ahkflow-uami-runtime-dev` | App Service identity for SQL + Key Vault | — |
-| Entra security group | `ahkflow-sql-admins-dev` | SQL server Entra admin | — |
+| Resource | Name (test) | Name (prod) | Purpose | Tier |
+|---|---|---|---|---|
+| Resource group | `rg-ahkflowapp-test` | `rg-ahkflowapp-prod` | Container for all below | — |
+| Log Analytics workspace | `ahkflowapp-logs-test` | `ahkflowapp-logs-prod` | Backing store for App Insights | Pay-as-you-go |
+| Application Insights | `ahkflowapp-insights-test` | `ahkflowapp-insights-prod` | Telemetry (shared API + frontend) | Workspace-based |
+| SQL logical server | `ahkflowapp-sql-test` | `ahkflowapp-sql-prod` | Hosts the database | — |
+| SQL database | `ahkflowapp-db` | `ahkflowapp-db` | Application database | Basic (5 DTU) |
+| App Service plan | `ahkflowapp-plan-test` | `ahkflowapp-plan-prod` | Linux compute | B1 Linux |
+| App Service | `ahkflowapp-api-test` | `ahkflowapp-api-prod` | API runtime (container) | — |
+| Static Web App | `ahkflowapp-swa-test` | `ahkflowapp-swa-prod` | Blazor WASM frontend | Free |
+| Key Vault | `ahkflowapp-kv-test` | `ahkflowapp-kv-prod` | App secrets (App Insights conn string, Azure AD IDs, etc.) — **not** SQL password | Standard |
+| UAMI (deployer) | `ahkflowapp-uami-deployer-test` | `ahkflowapp-uami-deployer-prod` | GitHub Actions identity for provisioning + migrations | — |
+| UAMI (runtime) | `ahkflowapp-uami-runtime-test` | `ahkflowapp-uami-runtime-prod` | App Service identity for SQL + Key Vault | — |
+| Entra security group | `ahkflowapp-sql-admins-test` | `ahkflowapp-sql-admins-prod` | SQL server Entra admin | — |
+
+**Note:** DEV environment runs locally and requires no Azure resources.
 
 ### Authentication chain
 

@@ -206,12 +206,45 @@ HTTP Request -> Controller (thin, maps Result to HTTP)
 ## CI/CD
 
 GitHub Actions workflows in `.github/workflows/`:
-- `ahkflowapp-deploy-api.yml` — build, test, publish, migrate DB, deploy to Azure App Service
-- `ahkflowapp-deploy-frontend.yml` — build and deploy Blazor to Azure Static Web Apps
-- `ahkflowapp-migrate-db.yml` — manual database migration workflow
-- `ahkflowapp-configure-production.yml` — Azure infrastructure configuration (Key Vault, CORS, env vars)
+- `ci.yml` — PR gate: build, test, format check
+- `deploy-api.yml` — build, test, push container to GHCR, migrate DB, deploy to Azure App Service (TEST on push to main, PROD on manual trigger)
+- `deploy-frontend.yml` — build and deploy Blazor to Azure Static Web Apps (TEST on push to main, PROD on manual trigger)
+- `migrate-db.yml` — manual database migration workflow with environment selection
 
-Configuration: Frontend `appsettings.json` is committed (public, no secrets). Backend secrets managed via Azure App Service Configuration + Key Vault.
+**Environments:**
+- **DEV:** Local development environment (`ASPNETCORE_ENVIRONMENT=Development`)
+  - LocalDB or Docker SQL Server
+  - No Azure resources required
+  - Run locally with `dotnet run`
+- **TEST:** Azure pre-production environment (`ASPNETCORE_ENVIRONMENT=Test`)
+  - Auto-deploys on push to `main` branch
+  - Azure App Service, Azure SQL Database, Static Web Apps
+  - Resource suffix: `-test`
+- **PROD:** Azure production environment (`ASPNETCORE_ENVIRONMENT=Production`)
+  - Manual deployment via workflow_dispatch trigger
+  - Azure App Service, Azure SQL Database, Static Web Apps
+  - Resource suffix: `-prod`
+
+Configuration: Frontend `appsettings.json` is committed (public, no secrets). Backend secrets managed via Azure App Service Configuration + Key Vault. Environment-specific settings in `appsettings.{Environment}.json` files.
+
+Azure resources are provisioned per-environment using scripts in `scripts/azure/`. Each environment gets its own isolated resource group, SQL database, App Service, and Static Web App.
+
+## Environment URLs
+
+### DEV (Local)
+- API: `https://localhost:7600` (HTTPS), `http://localhost:5600` (HTTP)
+- Frontend: `https://localhost:7601`, `http://localhost:5601`
+- Docker Compose API: `http://localhost:5602`
+
+### TEST (Azure)
+- API: `https://ahkflowapp-api-test.azurewebsites.net`
+- API health: `https://ahkflowapp-api-test.azurewebsites.net/health`
+- Frontend (SWA): update after provisioning (`az staticwebapp show --name ahkflowapp-swa-test --query defaultHostname -o tsv`)
+
+### PROD (Azure)
+- API: `https://ahkflowapp-api-prod.azurewebsites.net`
+- API health: `https://ahkflowapp-api-prod.azurewebsites.net/health`
+- Frontend (SWA): update after provisioning (`az staticwebapp show --name ahkflowapp-swa-prod --query defaultHostname -o tsv`)
 
 ## Git Workflow
 
@@ -225,18 +258,6 @@ Keep PRs focused on a single concern; split large changes into stacked PRs.
 ## GitHub
 
 Primary way to interact with GitHub is the `gh` CLI.
-
-## Local URLs
-
-- API: `https://localhost:7600` (HTTPS), `http://localhost:5600` (HTTP)
-- Frontend: `https://localhost:7601`, `http://localhost:5601`
-- Docker Compose API: `http://localhost:5602`
-
-## Production URLs (test environment)
-
-- API: `https://ahkflowapp-api-test.azurewebsites.net`
-- API health: `https://ahkflowapp-api-test.azurewebsites.net/health`
-- Frontend (SWA): update after re-provisioning (`az staticwebapp show --name ahkflowapp-swa-test --query defaultHostname -o tsv`)
 
 ## Domain Terms
 

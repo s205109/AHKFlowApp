@@ -10,6 +10,15 @@ on:
       - 'global.json'
       - '.github/workflows/deploy-api.yml'
   workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - test
+          - prod
+        default: 'test'
 
 permissions:
   contents: read
@@ -18,6 +27,8 @@ permissions:
 
 env:
   IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/ahkflowapp-api
+  # Determine target environment: manual trigger uses input, push to main uses test
+  TARGET_ENV: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || 'test' }}
 
 jobs:
   build-test:
@@ -36,7 +47,10 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       image-ref: ${{ steps.image-ref.outputs.value }}
+      environment: ${{ steps.set-env.outputs.environment }}
     steps:
+      - id: set-env
+        run: echo "environment=${{ env.TARGET_ENV }}" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
       - uses: docker/setup-buildx-action@v3  # Required for type=gha cache backend below
@@ -51,7 +65,8 @@ jobs:
           images: ${{ env.IMAGE_NAME }}
           tags: |
             type=sha,format=long
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest-${{ env.TARGET_ENV }},enable={{is_default_branch}}
+            type=raw,value=${{ env.TARGET_ENV }}-{{date 'YYYYMMDD-HHmmss'}}
             type=ref,event=branch
       - id: build
         uses: docker/build-push-action@v6
@@ -78,6 +93,8 @@ jobs:
     # If migration fails, the image is still in GHCR (harmless, garbage-collected later).
     needs: build-push-image
     runs-on: ubuntu-latest
+    env:
+      ENV_SUFFIX: ${{ needs.build-push-image.outputs.environment == 'test' && 'TEST' || 'PROD' }}
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
@@ -85,15 +102,15 @@ jobs:
         with: { global-json-file: global.json }
       - uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          client-id: ${{ secrets[format('AZURE_CLIENT_ID_{0}', env.ENV_SUFFIX)] }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       - name: Add runner IP to SQL firewall
         run: |
           runner_ip=$(curl -s https://api.ipify.org)
           az sql server firewall-rule create \
-            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-            --server "${{ vars.SQL_SERVER_NAME }}" \
+            --resource-group "${{ vars[format('AZURE_RESOURCE_GROUP_{0}', env.ENV_SUFFIX)] }}" \
+            --server "${{ vars[format('SQL_SERVER_NAME_{0}', env.ENV_SUFFIX)] }}" \
             --name "gh-runner-${GITHUB_RUN_ID}" \
             --start-ip-address "$runner_ip" \
             --end-ip-address "$runner_ip"
@@ -109,13 +126,13 @@ jobs:
       - name: Apply migrations via dotnet ef database update
         env:
           ConnectionStrings__DefaultConnection: >-
-            Server=tcp:${{ vars.SQL_SERVER_FQDN }},1433;
-            Database=${{ vars.SQL_DATABASE_NAME }};
+            Server=tcp:${{ vars[format('SQL_SERVER_FQDN_{0}', env.ENV_SUFFIX)] }},1433;
+            Database=${{ vars[format('SQL_DATABASE_NAME_{0}', env.ENV_SUFFIX)] }};
             Authentication=Active Directory Default;
             Encrypt=True;
             TrustServerCertificate=False;
             Connection Timeout=30;
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets[format('AZURE_CLIENT_ID_{0}', env.ENV_SUFFIX)] }}
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
         run: |
           dotnet restore
@@ -127,33 +144,35 @@ jobs:
         if: always()
         run: |
           az sql server firewall-rule delete \
-            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-            --server "${{ vars.SQL_SERVER_NAME }}" \
+            --resource-group "${{ vars[format('AZURE_RESOURCE_GROUP_{0}', env.ENV_SUFFIX)] }}" \
+            --server "${{ vars[format('SQL_SERVER_NAME_{0}', env.ENV_SUFFIX)] }}" \
             --name "gh-runner-${GITHUB_RUN_ID}" || true
 
   deploy:
     needs: [build-push-image, migrate-db]
     runs-on: ubuntu-latest
+    env:
+      ENV_SUFFIX: ${{ needs.build-push-image.outputs.environment == 'test' && 'TEST' || 'PROD' }}
     steps:
       - uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          client-id: ${{ secrets[format('AZURE_CLIENT_ID_{0}', env.ENV_SUFFIX)] }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       - name: Set container image on App Service
         run: |
           az webapp config container set \
-            --name "${{ vars.APP_SERVICE_NAME }}" \
-            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --name "${{ vars[format('APP_SERVICE_NAME_{0}', env.ENV_SUFFIX)] }}" \
+            --resource-group "${{ vars[format('AZURE_RESOURCE_GROUP_{0}', env.ENV_SUFFIX)] }}" \
             --container-image-name "${{ needs.build-push-image.outputs.image-ref }}" \
             --container-registry-url "https://ghcr.io"
           az webapp restart \
-            --name "${{ vars.APP_SERVICE_NAME }}" \
-            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}"
+            --name "${{ vars[format('APP_SERVICE_NAME_{0}', env.ENV_SUFFIX)] }}" \
+            --resource-group "${{ vars[format('AZURE_RESOURCE_GROUP_{0}', env.ENV_SUFFIX)] }}"
       - name: Health check
         # 12 x 15s = 3 minutes. Covers Entra propagation + container cold start.
         run: |
-          url="https://${{ vars.APP_SERVICE_NAME }}.azurewebsites.net/health"
+          url="https://${{ vars[format('APP_SERVICE_NAME_{0}', env.ENV_SUFFIX)] }}.azurewebsites.net/health"
           for i in $(seq 1 12); do
             if curl -fsS "$url"; then exit 0; fi
             echo "Attempt $i/12 failed, retrying in 15s..."
