@@ -21,3 +21,10 @@ jobs:
       - run: dotnet build --configuration Release --no-restore
       - run: dotnet test --configuration Release --no-build --verbosity normal
       - run: dotnet format --verify-no-changes
+
+  bicep-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint Bicep
+        run: az bicep build --file infra/main.bicep
