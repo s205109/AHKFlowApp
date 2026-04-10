@@ -2,9 +2,14 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Ship first real CI/CD for AHKFlowApp — CI on PRs, containerised API deploy to Azure App Service for Linux via GHCR, Blazor frontend deploy to Azure Static Web Apps, and a one-run Azure bootstrap that a brand-new contributor can execute from zero.
+**Goal:** Ship first real CI/CD for AHKFlowApp — CI on PRs, containerised API deploy to Azure App Service for Linux via GHCR, Blazor frontend deploy to Azure Static Web Apps, and a one-run Azure bootstrap that a brand-new contributor can execute from zero. Supports three environments: **DEV** (local development), **TEST** (Azure pre-production), and **PROD** (Azure production).
 
-**Architecture:** Four GitHub Actions workflows (`ci`, `deploy-api`, `deploy-frontend`, `migrate-db`) authenticating to Azure via user-assigned managed identity + OIDC federated credentials (no long-lived secrets). API deploys as a container (GHCR → App Service for Linux). SQL uses Entra-only auth — no passwords. EF Core migrations run from CI via `dotnet ef database update` with a temporary firewall rule for the runner's IP. Four markdown provisioning runbooks in `scripts/azure/` stand up the whole Azure environment idempotently.
+**Architecture:** Four GitHub Actions workflows (`ci`, `deploy-api`, `deploy-frontend`, `migrate-db`) authenticating to Azure via user-assigned managed identity + OIDC federated credentials (no long-lived secrets). API deploys as a container (GHCR → App Service for Linux). SQL uses Entra-only auth — no passwords. EF Core migrations run from CI via `dotnet ef database update` with a temporary firewall rule for the runner's IP. Four markdown provisioning runbooks in `scripts/azure/` stand up the whole Azure environment idempotently for each environment (TEST/PROD).
+
+**Environment Configuration:**
+- **DEV:** Local machine (`ASPNETCORE_ENVIRONMENT=Development`), LocalDB or Docker SQL Server
+- **TEST:** Azure deployment (`ASPNETCORE_ENVIRONMENT=Test`), Azure SQL Database, deployed from `main` branch
+- **PROD:** Azure deployment (`ASPNETCORE_ENVIRONMENT=Production`), Azure SQL Database, deployed via manual workflow trigger with approval
 
 **Tech Stack:** GitHub Actions, Azure CLI, Azure App Service for Linux (containers), Azure Static Web Apps (Free), Azure SQL Database, Azure Key Vault, Entra ID (security groups + UAMI + federated credentials), GHCR, Docker Buildx, EF Core 10 tools.
 

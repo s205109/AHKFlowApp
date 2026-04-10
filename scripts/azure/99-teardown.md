@@ -1,13 +1,15 @@
 # 99 — Teardown
 
-Stop paying for dev resources. Deletes the entire resource group, the SQL admin Entra group, and the GitHub secrets/variables.
+Stop paying for TEST or PROD resources. Deletes the entire resource group, the SQL admin Entra group, and the environment-specific GitHub secrets/variables.
 
-> **⚠️ Destructive.** This deletes **everything** created by scripts 01 and 02. Only run this on a dev environment you're finished with. There is **no undo** — including the SQL database.
+> **⚠️ Destructive.** This deletes **everything** created by scripts 01 and 02 for the specified environment. Only run this when you're finished with the environment. There is **no undo** — including the SQL database.
 
 ## Variables
 
+Set `ENVIRONMENT` to match the environment you want to delete (`test` or `prod`).
+
 ```bash
-ENVIRONMENT="test"
+ENVIRONMENT="test"                      # test | prod (REQUIRED: set this first!)
 BASE_NAME="ahkflowapp"
 RESOURCE_GROUP="rg-${BASE_NAME}-${ENVIRONMENT}"
 SQL_ADMIN_GROUP="${BASE_NAME}-sql-admins-${ENVIRONMENT}"

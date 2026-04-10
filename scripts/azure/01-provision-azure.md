@@ -1,6 +1,11 @@
 # 01 — Provision Azure resources
 
-This runbook stands up the full Azure environment for a single environment (default: `test`). All `az X create` calls are idempotent (preceded by `az X show ...`). Re-running a section is safe.
+This runbook stands up the full Azure environment for TEST or PROD. All `az X create` calls are idempotent (preceded by `az X show ...`). Re-running a section is safe.
+
+**Environments:**
+- **DEV:** Local development only — no Azure resources needed. Run the API locally with LocalDB or Docker SQL Server.
+- **TEST:** Azure pre-production environment — set `ENVIRONMENT=test` below.
+- **PROD:** Azure production environment — set `ENVIRONMENT=prod` below.
 
 Prerequisite: you have completed [`00-prerequisites.md`](./00-prerequisites.md) and run `az login`.
 
@@ -8,15 +13,16 @@ Prerequisite: you have completed [`00-prerequisites.md`](./00-prerequisites.md) 
 
 ## Variables
 
-Set these once at the top of your shell. Re-export them if you open a new terminal. To provision a `prod` environment later, set `ENVIRONMENT=prod` and re-run everything.
+Set these once at the top of your shell. Re-export them if you open a new terminal. To provision PROD, set `ENVIRONMENT=prod` and re-run everything.
 
 ```bash
 export MSYS_NO_PATHCONV=1  # Git Bash: prevents /subscriptions/... paths being mangled to C:/Program Files/Git/...
 
-ENVIRONMENT="test"                                     # test | prod
+ENVIRONMENT="test"                                     # test | prod (do NOT use "dev" — that's for local development only)
 LOCATION="westeurope"                                  # any Azure region
-BASE_NAME="ahkflowapp"                                    # project prefix
+BASE_NAME="ahkflowapp"                                 # project prefix
 
+# Derived resource names
 RESOURCE_GROUP="rg-${BASE_NAME}-${ENVIRONMENT}"
 SQL_SERVER_NAME="${BASE_NAME}-sql-${ENVIRONMENT}"
 SQL_DATABASE_NAME="${BASE_NAME}-db"
@@ -29,6 +35,16 @@ APP_INSIGHTS_NAME="${BASE_NAME}-insights-${ENVIRONMENT}"
 UAMI_DEPLOYER_NAME="${BASE_NAME}-uami-deployer-${ENVIRONMENT}"
 UAMI_RUNTIME_NAME="${BASE_NAME}-uami-runtime-${ENVIRONMENT}"
 SQL_ADMIN_GROUP="${BASE_NAME}-sql-admins-${ENVIRONMENT}"
+
+# Map environment to ASPNETCORE_ENVIRONMENT value
+if [ "$ENVIRONMENT" = "test" ]; then
+  ASPNETCORE_ENV="Test"
+elif [ "$ENVIRONMENT" = "prod" ]; then
+  ASPNETCORE_ENV="Production"
+else
+  echo "ERROR: ENVIRONMENT must be 'test' or 'prod'"
+  exit 1
+fi
 ```
 
 ## 1. Register resource providers
@@ -208,13 +224,14 @@ az webapp identity assign \
   --identities "$UAMI_RUNTIME_ID"
 
 # Tell DefaultAzureCredential which identity to use
+# Set ASPNETCORE_ENVIRONMENT based on target environment (Test or Production)
 az webapp config appsettings set \
   --name "$APP_SERVICE_NAME" \
   --resource-group "$RESOURCE_GROUP" \
   --settings \
     "AZURE_CLIENT_ID=$UAMI_RUNTIME_CLIENT_ID" \
     "WEBSITES_PORT=8080" \
-    "ASPNETCORE_ENVIRONMENT=Production"
+    "ASPNETCORE_ENVIRONMENT=$ASPNETCORE_ENV"
 ```
 
 ## 10. Static Web App (Free tier)
