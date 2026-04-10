@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Updates AHKFlowApp to the latest release by pulling the newest container image.
 

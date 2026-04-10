@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Tears down an AHKFlowApp Azure environment.
 
