@@ -206,10 +206,11 @@ HTTP Request -> Controller (thin, maps Result to HTTP)
 ## CI/CD
 
 GitHub Actions workflows in `.github/workflows/`:
-- `ci.yml` — PR gate: build, test, format check
+- `ci.yml` — PR gate: build, test, format check, Bicep lint
 - `deploy-api.yml` — build, test, push container to GHCR, migrate DB, deploy to Azure App Service (TEST on push to main, PROD on manual trigger)
 - `deploy-frontend.yml` — build and deploy Blazor to Azure Static Web Apps (TEST on push to main, PROD on manual trigger)
 - `migrate-db.yml` — manual database migration workflow with environment selection
+- `provision.yml` — manual Bicep-only provisioning (advanced path; initial setup always requires `deploy.ps1`)
 
 **Environments:**
 - **DEV:** Local development environment (`ASPNETCORE_ENVIRONMENT=Development`)
@@ -227,7 +228,7 @@ GitHub Actions workflows in `.github/workflows/`:
 
 Configuration: Frontend `appsettings.json` is committed (public, no secrets). Backend secrets managed via Azure App Service Configuration + Key Vault. Environment-specific settings in `appsettings.{Environment}.json` files.
 
-Azure resources are provisioned per-environment using scripts in `scripts/azure/`. Each environment gets its own isolated resource group, SQL database, App Service, and Static Web App.
+Azure resources are provisioned per-environment using `.\scripts\deploy.ps1`. Each environment gets its own isolated resource group, SQL database, App Service, and Static Web App. See `docs/deployment/getting-started.md` for full instructions.
 
 ## Environment URLs
 
