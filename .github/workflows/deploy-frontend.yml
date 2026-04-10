@@ -7,15 +7,30 @@ on:
       - 'src/Frontend/**'
       - '.github/workflows/deploy-frontend.yml'
   workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - test
+          - prod
+        default: 'test'
 
 permissions:
   contents: read
   id-token: write
   pull-requests: write  # SWA action comments on PRs for preview envs (future)
 
+env:
+  # Determine target environment: manual trigger uses input, push to main uses test
+  TARGET_ENV: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || 'test' }}
+
 jobs:
   build-deploy:
     runs-on: ubuntu-latest
+    env:
+      ENV_SUFFIX: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.environment == 'test' && 'TEST' || 'PROD') || 'TEST' }}
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
@@ -26,7 +41,7 @@ jobs:
         run: dotnet publish src/Frontend/AHKFlowApp.UI.Blazor --configuration Release --output publish
       - uses: Azure/static-web-apps-deploy@v1
         with:
-          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          azure_static_web_apps_api_token: ${{ secrets[format('AZURE_STATIC_WEB_APPS_API_TOKEN_{0}', env.ENV_SUFFIX)] }}
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           action: upload
           app_location: publish/wwwroot

@@ -3,6 +3,13 @@ name: Migrate Database (Manual)
 on:
   workflow_dispatch:
     inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - test
+          - prod
       confirm:
         description: 'Type "migrate" to confirm'
         required: true
@@ -15,6 +22,8 @@ jobs:
   migrate:
     if: inputs.confirm == 'migrate'
     runs-on: ubuntu-latest
+    env:
+      ENV_SUFFIX: ${{ github.event.inputs.environment == 'test' && 'TEST' || 'PROD' }}
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
@@ -22,15 +31,15 @@ jobs:
         with: { global-json-file: global.json }
       - uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          client-id: ${{ secrets[format('AZURE_CLIENT_ID_{0}', env.ENV_SUFFIX)] }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       - name: Add runner IP to SQL firewall
         run: |
           runner_ip=$(curl -s https://api.ipify.org)
           az sql server firewall-rule create \
-            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-            --server "${{ vars.SQL_SERVER_NAME }}" \
+            --resource-group "${{ vars[format('AZURE_RESOURCE_GROUP_{0}', env.ENV_SUFFIX)] }}" \
+            --server "${{ vars[format('SQL_SERVER_NAME_{0}', env.ENV_SUFFIX)] }}" \
             --name "gh-runner-${GITHUB_RUN_ID}" \
             --start-ip-address "$runner_ip" \
             --end-ip-address "$runner_ip"
@@ -44,13 +53,13 @@ jobs:
       - name: Apply migrations
         env:
           ConnectionStrings__DefaultConnection: >-
-            Server=tcp:${{ vars.SQL_SERVER_FQDN }},1433;
-            Database=${{ vars.SQL_DATABASE_NAME }};
+            Server=tcp:${{ vars[format('SQL_SERVER_FQDN_{0}', env.ENV_SUFFIX)] }},1433;
+            Database=${{ vars[format('SQL_DATABASE_NAME_{0}', env.ENV_SUFFIX)] }};
             Authentication=Active Directory Default;
             Encrypt=True;
             TrustServerCertificate=False;
             Connection Timeout=30;
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets[format('AZURE_CLIENT_ID_{0}', env.ENV_SUFFIX)] }}
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
         run: |
           dotnet restore
@@ -62,6 +71,6 @@ jobs:
         if: always()
         run: |
           az sql server firewall-rule delete \
-            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
-            --server "${{ vars.SQL_SERVER_NAME }}" \
+            --resource-group "${{ vars[format('AZURE_RESOURCE_GROUP_{0}', env.ENV_SUFFIX)] }}" \
+            --server "${{ vars[format('SQL_SERVER_NAME_{0}', env.ENV_SUFFIX)] }}" \
             --name "gh-runner-${GITHUB_RUN_ID}" || true
