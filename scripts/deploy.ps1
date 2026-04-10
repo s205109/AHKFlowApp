@@ -67,6 +67,22 @@ function Invoke-Az-Json {
     return $raw | ConvertFrom-Json
 }
 
+# Run an az command that is expected to sometimes return "not found" (exit code 1).
+# Returns the output string on success, $null on failure.
+# Uses $ErrorActionPreference = 'Continue' to prevent PowerShell from treating
+# native command stderr as a terminating error when $ErrorActionPreference = 'Stop'.
+function Try-Az {
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $output = az @args 2>&1
+        if ($LASTEXITCODE -ne 0) { return $null }
+        return $output
+    } finally {
+        $ErrorActionPreference = $prevEap
+    }
+}
+
 # ---------------------------------------------------------------------------
 # Phase 1: Prerequisites
 # ---------------------------------------------------------------------------
@@ -163,7 +179,7 @@ if ($confirm -notmatch '^[Yy]') { Write-Host "Aborted."; exit 0 }
 Write-Step "Phase 3: Provisioning Azure resources via Bicep..."
 
 # Resource group
-$rgExists = az group show --name $ResourceGroup 2>$null
+$rgExists = (az group exists --name $ResourceGroup) -eq 'true'
 if (-not $rgExists) {
     Write-Host "  Creating resource group '$ResourceGroup' in '$Location'..."
     Invoke-Az group create --name $ResourceGroup --location $Location | Out-Null
@@ -171,7 +187,7 @@ if (-not $rgExists) {
 Write-Success "Resource group: $ResourceGroup"
 
 # Entra security group for SQL admin (must exist before Bicep runs)
-$GroupId = az ad group show --group $SqlAdminGroup --query id -o tsv 2>$null
+$GroupId = az ad group list --filter "displayName eq '$SqlAdminGroup'" --query "[0].id" -o tsv
 if (-not $GroupId) {
     Write-Host "  Creating Entra security group '$SqlAdminGroup'..."
     $GroupId = (Invoke-Az-Json ad group create --display-name $SqlAdminGroup --mail-nickname $SqlAdminGroup).id
@@ -180,7 +196,7 @@ Write-Success "Entra group: $SqlAdminGroup ($GroupId)"
 
 # Add current user to the SQL admin group
 $MeId = (Invoke-Az-Json ad signed-in-user show).id
-$isMember = az ad group member check --group $GroupId --member-id $MeId --query value -o tsv 2>$null
+$isMember = az ad group member check --group $GroupId --member-id $MeId --query value -o tsv
 if ($isMember -ne 'true') {
     Invoke-Az ad group member add --group $GroupId --member-id $MeId | Out-Null
     Write-Success "Added current user to SQL admin group"
@@ -236,9 +252,9 @@ $RgScope         = (Invoke-Az-Json group show --name $ResourceGroup).id
 
 # Federated identity credentials — main branch
 $credNameMain = "gh-$(($GitHubOrgRepo -split '/')[-1])-main"
-$existingCred = az identity federated-credential show `
+$existingCred = Try-Az identity federated-credential show `
     --name $credNameMain --identity-name $DeployerUamiName `
-    --resource-group $ResourceGroup 2>$null
+    --resource-group $ResourceGroup
 if (-not $existingCred) {
     Invoke-Az identity federated-credential create `
         --name $credNameMain `
@@ -254,9 +270,9 @@ if (-not $existingCred) {
 
 # Federated identity credentials — pull_request
 $credNamePr = "gh-$(($GitHubOrgRepo -split '/')[-1])-pull-request"
-$existingCredPr = az identity federated-credential show `
+$existingCredPr = Try-Az identity federated-credential show `
     --name $credNamePr --identity-name $DeployerUamiName `
-    --resource-group $ResourceGroup 2>$null
+    --resource-group $ResourceGroup
 if (-not $existingCredPr) {
     Invoke-Az identity federated-credential create `
         --name $credNamePr `
@@ -273,7 +289,7 @@ if (-not $existingCredPr) {
 # Contributor role on RG for deployer UAMI
 $existingRole = az role assignment list `
     --assignee $DeployerUamiPrincipalId `
-    --role "Contributor" --scope $RgScope --query "[0].id" -o tsv 2>$null
+    --role "Contributor" --scope $RgScope --query "[0].id" -o tsv
 if (-not $existingRole) {
     Invoke-Az role assignment create `
         --role "Contributor" `
@@ -287,7 +303,7 @@ if (-not $existingRole) {
 
 # Add deployer UAMI to SQL admin group
 $deployerMember = az ad group member check `
-    --group $GroupId --member-id $DeployerUamiPrincipalId --query value -o tsv 2>$null
+    --group $GroupId --member-id $DeployerUamiPrincipalId --query value -o tsv
 if ($deployerMember -ne 'true') {
     Invoke-Az ad group member add --group $GroupId --member-id $DeployerUamiPrincipalId | Out-Null
     Write-Success "Added deployer UAMI to SQL admin group"
@@ -346,11 +362,11 @@ GRANT EXECUTE TO [$RuntimeUamiName];
     }
 } finally {
     # Always remove the temporary firewall rule
-    az sql server firewall-rule delete `
+    $null = Try-Az sql server firewall-rule delete `
         --resource-group $ResourceGroup `
         --server $SqlServerName `
         --name $FirewallRuleName `
-        --yes 2>$null | Out-Null
+        --yes
     Write-Success "Removed temporary firewall rule"
 }
 
