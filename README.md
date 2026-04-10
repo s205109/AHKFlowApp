@@ -38,7 +38,23 @@ See `docs/development/docker-setup.md`.
 | Frontend | https://localhost:7601 |
 | Docker Compose API | http://localhost:5602 |
 
-### Building
+### Environments
+
+The application supports three distinct environments:
+
+| Environment | Description | ASPNETCORE_ENVIRONMENT | Deployment |
+|-------------|-------------|------------------------|------------|
+| **DEV** | Local development | `Development` | Local machine (LocalDB or Docker SQL) |
+| **TEST** | Pre-production testing | `Test` | Azure (auto-deploy from `main` branch) |
+| **PROD** | Production | `Production` | Azure (manual deployment via workflow) |
+
+Each Azure environment (TEST/PROD) has isolated resources:
+- Resource Group: `rg-ahkflowapp-{test|prod}`
+- App Service: `ahkflowapp-api-{test|prod}`
+- SQL Server: `ahkflowapp-sql-{test|prod}`
+- Static Web App: `ahkflowapp-swa-{test|prod}`
+
+See `scripts/azure/01-provision-azure.md` for provisioning instructions.
 
 ```bash
 dotnet restore AHKFlowApp.slnx

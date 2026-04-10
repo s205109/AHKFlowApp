@@ -1,6 +1,8 @@
 # 02 — Configure GitHub OIDC + Azure
 
-Wires up the OIDC trust between GitHub Actions and Azure. After this, the 4 workflows in `.github/workflows/` will be able to log into Azure with zero long-lived secrets.
+Wires up the OIDC trust between GitHub Actions and Azure for the specified environment (TEST or PROD). After this, the 4 workflows in `.github/workflows/` will be able to log into Azure with zero long-lived secrets.
+
+**Note:** GitHub secrets are shared across environments. Variables are environment-specific and must have the environment suffix added (e.g., `AZURE_RESOURCE_GROUP_TEST`, `AZURE_RESOURCE_GROUP_PROD`).
 
 Prerequisite: you have completed [`01-provision-azure.md`](./01-provision-azure.md) and still have the environment variables set.
 
@@ -14,7 +16,6 @@ export MSYS_NO_PATHCONV=1  # Git Bash: carry over from script 01 or re-export he
 
 GITHUB_ORG="<your-github-username-or-org>"
 GITHUB_REPO="AHKFlowApp"
-
 UAMI_DEPLOYER_CLIENT_ID=$(az identity show --name "$UAMI_DEPLOYER_NAME" --resource-group "$RESOURCE_GROUP" --query clientId -o tsv)
 UAMI_DEPLOYER_PRINCIPAL_ID=$(az identity show --name "$UAMI_DEPLOYER_NAME" --resource-group "$RESOURCE_GROUP" --query principalId -o tsv)
 UAMI_RUNTIME_PRINCIPAL_ID=$(az identity show --name "$UAMI_RUNTIME_NAME" --resource-group "$RESOURCE_GROUP" --query principalId -o tsv)
@@ -120,14 +121,38 @@ SWA_TOKEN=$(az staticwebapp secrets list --name "$SWA_NAME" --query "properties.
 gh secret set AZURE_STATIC_WEB_APPS_API_TOKEN --body "$SWA_TOKEN" --repo "${GITHUB_ORG}/${GITHUB_REPO}"
 ```
 
-## 5. GitHub repo variables (non-secret)
+## 5. GitHub repo secrets and variables
+
+**Secrets** (shared across all environments):
+- `AZURE_TENANT_ID` and `AZURE_SUBSCRIPTION_ID` are global (same for all envs)
+- Each environment (test/prod) gets its own `AZURE_CLIENT_ID` and `AZURE_STATIC_WEB_APPS_API_TOKEN`
+
+**Variables** (environment-specific):
+- Must be suffixed with `_TEST` or `_PROD` so workflows can select the right environment
 
 ```bash
-gh variable set AZURE_RESOURCE_GROUP --body "$RESOURCE_GROUP" --repo "${GITHUB_ORG}/${GITHUB_REPO}"
-gh variable set APP_SERVICE_NAME --body "$APP_SERVICE_NAME" --repo "${GITHUB_ORG}/${GITHUB_REPO}"
-gh variable set SQL_SERVER_NAME --body "$SQL_SERVER_NAME" --repo "${GITHUB_ORG}/${GITHUB_REPO}"
-gh variable set SQL_SERVER_FQDN --body "$SQL_SERVER_FQDN" --repo "${GITHUB_ORG}/${GITHUB_REPO}"
-gh variable set SQL_DATABASE_NAME --body "$SQL_DATABASE_NAME" --repo "${GITHUB_ORG}/${GITHUB_REPO}"
+# Shared secrets (run once, same for all environments)
+gh secret set AZURE_TENANT_ID --body "$TENANT_ID" --repo "${GITHUB_ORG}/${GITHUB_REPO}"
+gh secret set AZURE_SUBSCRIPTION_ID --body "$SUBSCRIPTION_ID" --repo "${GITHUB_ORG}/${GITHUB_REPO}"
+
+# Environment-specific secrets (suffix with _TEST or _PROD)
+ENV_SUFFIX=$(echo "$ENVIRONMENT" | tr '[:lower:]' '[:upper:]')  # test → TEST, prod → PROD
+
+gh secret set "AZURE_CLIENT_ID_${ENV_SUFFIX}" --body "$UAMI_DEPLOYER_CLIENT_ID" --repo "${GITHUB_ORG}/${GITHUB_REPO}"
+
+SWA_TOKEN=$(az staticwebapp secrets list --name "$SWA_NAME" --query "properties.apiKey" -o tsv)
+gh secret set "AZURE_STATIC_WEB_APPS_API_TOKEN_${ENV_SUFFIX}" --body "$SWA_TOKEN" --repo "${GITHUB_ORG}/${GITHUB_REPO}"
+
+# Environment-specific variables (suffix with _TEST or _PROD)
+gh variable set "AZURE_RESOURCE_GROUP_${ENV_SUFFIX}" --body "$RESOURCE_GROUP" --repo "${GITHUB_ORG}/${GITHUB_REPO}"
+gh variable set "APP_SERVICE_NAME_${ENV_SUFFIX}" --body "$APP_SERVICE_NAME" --repo "${GITHUB_ORG}/${GITHUB_REPO}"
+gh variable set "SQL_SERVER_NAME_${ENV_SUFFIX}" --body "$SQL_SERVER_NAME" --repo "${GITHUB_ORG}/${GITHUB_REPO}"
+gh variable set "SQL_SERVER_FQDN_${ENV_SUFFIX}" --body "$SQL_SERVER_FQDN" --repo "${GITHUB_ORG}/${GITHUB_REPO}"
+gh variable set "SQL_DATABASE_NAME_${ENV_SUFFIX}" --body "$SQL_DATABASE_NAME" --repo "${GITHUB_ORG}/${GITHUB_REPO}"
+
+echo "✓ Secrets and variables configured for environment: $ENVIRONMENT"
+echo "  Secrets: AZURE_CLIENT_ID_${ENV_SUFFIX}, AZURE_STATIC_WEB_APPS_API_TOKEN_${ENV_SUFFIX}"
+echo "  Variables: AZURE_RESOURCE_GROUP_${ENV_SUFFIX}, APP_SERVICE_NAME_${ENV_SUFFIX}, SQL_SERVER_NAME_${ENV_SUFFIX}, SQL_SERVER_FQDN_${ENV_SUFFIX}, SQL_DATABASE_NAME_${ENV_SUFFIX}"
 ```
 
 ## 6. Configure App Service connection string
@@ -176,8 +201,16 @@ gh secret list --repo "${GITHUB_ORG}/${GITHUB_REPO}"
 gh variable list --repo "${GITHUB_ORG}/${GITHUB_REPO}"
 ```
 
-Expected secrets: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`, `AZURE_STATIC_WEB_APPS_API_TOKEN`
-Expected variables: `AZURE_RESOURCE_GROUP`, `APP_SERVICE_NAME`, `SQL_SERVER_NAME`, `SQL_SERVER_FQDN`, `SQL_DATABASE_NAME`
+Expected secrets for environment `$ENVIRONMENT`:
+- Shared: `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`
+- Environment-specific: `AZURE_CLIENT_ID_TEST`/`AZURE_CLIENT_ID_PROD`, `AZURE_STATIC_WEB_APPS_API_TOKEN_TEST`/`AZURE_STATIC_WEB_APPS_API_TOKEN_PROD`
+
+Expected variables for environment `$ENVIRONMENT`:
+- `AZURE_RESOURCE_GROUP_TEST`/`AZURE_RESOURCE_GROUP_PROD`
+- `APP_SERVICE_NAME_TEST`/`APP_SERVICE_NAME_PROD`
+- `SQL_SERVER_NAME_TEST`/`SQL_SERVER_NAME_PROD`
+- `SQL_SERVER_FQDN_TEST`/`SQL_SERVER_FQDN_PROD`
+- `SQL_DATABASE_NAME_TEST`/`SQL_DATABASE_NAME_PROD`
 
 ### Step 2 — Merge the PR
 
