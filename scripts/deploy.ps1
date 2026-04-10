@@ -347,10 +347,27 @@ GRANT EXECUTE TO [$RuntimeUamiName];
     if ($hasSqlcmd) {
         $tmpSql = [System.IO.Path]::GetTempFileName() -replace '\.tmp$', '.sql'
         $sqlScript | Set-Content -Path $tmpSql -Encoding UTF8
-        sqlcmd -S $SqlServerFqdn -d $SqlDatabaseName -G -i $tmpSql
-        if ($LASTEXITCODE -ne 0) { throw "sqlcmd failed" }
+
+        # -G -U <email> = Active Directory Interactive auth (uses the Azure CLI logged-in
+        # account, not Windows Kerberos). Avoids "Failed to resolve UPN" errors that occur
+        # when the local Windows account isn't domain-joined to Entra ID.
+        $userEmail = az account show --query user.name -o tsv
+        sqlcmd -S $SqlServerFqdn -d $SqlDatabaseName -G -U $userEmail -i $tmpSql
+        $sqlcmdExitCode = $LASTEXITCODE
+
         Remove-Item $tmpSql -ErrorAction SilentlyContinue
-        Write-Success "SQL user '$RuntimeUamiName' created/verified via sqlcmd"
+
+        if ($sqlcmdExitCode -eq 0) {
+            Write-Success "SQL user '$RuntimeUamiName' created/verified via sqlcmd"
+        } else {
+            Write-Warn "sqlcmd could not authenticate. Create the SQL user manually in the Azure Portal:"
+            Write-Host "    URL: https://portal.azure.com" -ForegroundColor Yellow
+            Write-Host "    Navigate to: SQL Database '$SqlDatabaseName' > Query Editor" -ForegroundColor Yellow
+            Write-Host ""
+            Write-Host "    Run this SQL:" -ForegroundColor Yellow
+            Write-Host $sqlScript -ForegroundColor Gray
+            Read-Host "`n  Press Enter once you have created the SQL user..."
+        }
     } else {
         Write-Warn "sqlcmd not available. Create the SQL user manually in the Azure Portal:"
         Write-Host "    URL: https://portal.azure.com" -ForegroundColor Yellow
