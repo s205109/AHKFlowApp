@@ -54,7 +54,7 @@ Each Azure environment (TEST/PROD) has isolated resources:
 - SQL Server: `ahkflowapp-sql-{test|prod}`
 - Static Web App: `ahkflowapp-swa-{test|prod}`
 
-See `scripts/azure/01-provision-azure.md` for provisioning instructions.
+See `docs/deployment/getting-started.md` for provisioning instructions.
 
 ```bash
 dotnet restore AHKFlowApp.slnx
