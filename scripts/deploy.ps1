@@ -432,7 +432,7 @@ $ConnectionString = "Server=$SqlServerFqdn;Database=$SqlDatabaseName;Authenticat
 az webapp config connection-string set `
     --name $AppServiceName `
     --resource-group $ResourceGroup `
-    --settings ConnectionStrings__DefaultConnection="$ConnectionString" `
+    --settings DefaultConnection="$ConnectionString" `
     --connection-string-type SQLAzure | Out-Null
 Write-Success "Connection string set"
 
