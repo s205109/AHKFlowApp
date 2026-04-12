@@ -36,6 +36,12 @@ jobs:
         with: { fetch-depth: 0 }
       - uses: actions/setup-dotnet@v4
         with: { global-json-file: global.json }
+      - name: Set Blazor environment for prod
+        if: env.TARGET_ENV == 'prod'
+        run: |
+          jq '.globalHeaders["blazor-environment"] = "Production"' \
+            src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/staticwebapp.config.json > /tmp/swa.tmp
+          mv /tmp/swa.tmp src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/staticwebapp.config.json
       - name: Publish Blazor WASM
         # Oryx (used by the SWA action) cannot build Blazor WASM — publish explicitly first.
         run: dotnet publish src/Frontend/AHKFlowApp.UI.Blazor --configuration Release --output publish
