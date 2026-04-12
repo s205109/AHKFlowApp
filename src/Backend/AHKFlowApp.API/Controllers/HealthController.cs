@@ -25,7 +25,9 @@ public sealed class HealthController(
 
         var checks = report.Entries.ToDictionary(
             e => e.Key,
-            e => e.Value.Status.ToString());
+            e => e.Value.Status == HealthStatus.Healthy
+                ? e.Value.Status.ToString()
+                : $"{e.Value.Status}: {e.Value.Description ?? e.Value.Exception?.Message ?? e.Value.Exception?.GetType().Name ?? "unknown error"}");
 
         var response = new HealthResponse(
             Status: report.Status.ToString(),
