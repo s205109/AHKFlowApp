@@ -14,7 +14,7 @@ public static class DependencyInjection
     {
         services.AddDbContext<AppDbContext>(options =>
             options.UseSqlServer(
-                configuration.GetConnectionString("ConnectionStrings__DefaultConnection"),
+                configuration.GetConnectionString("DefaultConnection"),
                 sql => sql.EnableRetryOnFailure()));
 
         services.AddSingleton<IVersionService, VersionService>();
