@@ -59,7 +59,7 @@ public sealed class HealthControllerTests(SqlContainerFixture sqlFixture) : IDis
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
-        body.Should().Be("Healthy");
+        body.Should().Be("THIS_WILL_FAIL"); // intentional failure to test branch protection gate
     }
 
     public void Dispose() => _factory.Dispose();
