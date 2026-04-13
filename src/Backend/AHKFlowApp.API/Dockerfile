@@ -40,7 +40,7 @@ RUN dotnet publish "AHKFlowApp.API.csproj" \
     --no-restore \
     /p:UseAppHost=false \
     /p:MinVerSkip=true \
-    /p:Version=$MINVER_VERSION
+    "/p:Version=${MINVER_VERSION}"
 
 # final — runtime image used by docker compose / production
 FROM base AS final
