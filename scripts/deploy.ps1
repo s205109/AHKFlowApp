@@ -360,7 +360,7 @@ GRANT EXECUTE TO [$RuntimeUamiName];
         Write-Host "  │  ACTION REQUIRED: Browser authentication window opening...      │" -ForegroundColor Cyan
         Write-Host "  │                                                                 │" -ForegroundColor Cyan
         Write-Host "  │  sqlcmd will open a Microsoft Entra login window to connect     │" -ForegroundColor Cyan
-        Write-Host "  │  to Azure SQL. Please sign in with: $userEmail" -ForegroundColor Cyan
+        Write-Host "  │$("  to Azure SQL. Please sign in with: $userEmail".PadRight(65))│" -ForegroundColor Cyan
         Write-Host "  │                                                                 │" -ForegroundColor Cyan
         Write-Host "  │  The window may appear BEHIND this terminal — check your        │" -ForegroundColor Cyan
         Write-Host "  │  taskbar if nothing appears on screen.                          │" -ForegroundColor Cyan
