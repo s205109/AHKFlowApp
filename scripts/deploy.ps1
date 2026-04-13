@@ -429,6 +429,7 @@ Set-GhSecret "AZURE_SUBSCRIPTION_ID" $SubscriptionId
 $SwaToken = (Invoke-Az-Json staticwebapp secrets list --name $SwaName).properties.apiKey
 Set-GhSecret "AZURE_CLIENT_ID_${EnvSuffix}"                    $DeployerUamiClientId
 Set-GhSecret "AZURE_STATIC_WEB_APPS_API_TOKEN_${EnvSuffix}"    $SwaToken
+Set-GhSecret "AZURE_API_BASE_URL_${EnvSuffix}"                 "https://$AppServiceHostname"
 
 # Environment-specific variables
 Set-GhVariable "AZURE_RESOURCE_GROUP_${EnvSuffix}"  $ResourceGroup
