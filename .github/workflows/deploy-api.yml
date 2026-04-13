@@ -68,6 +68,13 @@ jobs:
             type=raw,value=latest-${{ env.TARGET_ENV }},enable={{is_default_branch}}
             type=raw,value=${{ env.TARGET_ENV }}-{{date 'YYYYMMDD-HHmmss'}}
             type=ref,event=branch
+      - name: Calculate version with MinVer
+        id: minver
+        run: |
+          dotnet tool install --global minver-cli
+          version=$(minver --tag-prefix v)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "MinVer version: $version"
       - id: build
         uses: docker/build-push-action@v6
         with:
@@ -78,6 +85,8 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          build-args: |
+            MINVER_VERSION=${{ steps.minver.outputs.version }}
       - name: Verify digest is set
         run: |
           digest="${{ steps.build.outputs.digest }}"

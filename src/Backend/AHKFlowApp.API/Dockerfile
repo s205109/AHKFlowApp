@@ -29,16 +29,18 @@ COPY . .
 # publish — produce final binaries
 FROM build AS publish
 ARG BUILD_CONFIGURATION=Release
+ARG MINVER_VERSION=0.0.0-local
 WORKDIR "/src/src/Backend/AHKFlowApp.API"
 # MinVerSkip=true: .git/ is excluded from build context (.dockerignore), so MinVer cannot
-# read tags. Skipping it prevents MINVER0001 — which would fail the build under
-# TreatWarningsAsErrors=true. Local dev containers don't need real versions; CI/CD owns that.
+# read tags. The version is passed in as MINVER_VERSION from CI (computed by minver-cli).
+# For local dev, defaults to 0.0.0-local.
 RUN dotnet publish "AHKFlowApp.API.csproj" \
     -c $BUILD_CONFIGURATION \
     -o /app/publish \
     --no-restore \
     /p:UseAppHost=false \
-    /p:MinVerSkip=true
+    /p:MinVerSkip=true \
+    /p:Version=$MINVER_VERSION
 
 # final — runtime image used by docker compose / production
 FROM base AS final
