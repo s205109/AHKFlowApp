@@ -13,7 +13,8 @@ public sealed class HealthController(
     HealthCheckService healthCheckService,
     IHostEnvironment hostEnvironment,
     TimeProvider timeProvider,
-    IVersionService versionService) : ControllerBase
+    IVersionService versionService,
+    ILogger<HealthController> logger) : ControllerBase
 {
     [HttpGet]
     [ProducesResponseType(typeof(HealthResponse), StatusCodes.Status200OK)]
@@ -25,7 +26,19 @@ public sealed class HealthController(
 
         var checks = report.Entries.ToDictionary(
             e => e.Key,
-            e => e.Value.Status.ToString());
+            e => e.Value.Status == HealthStatus.Healthy
+                ? e.Value.Status.ToString()
+                : $"{e.Value.Status}: {e.Value.Description ?? e.Value.Exception?.Message ?? e.Value.Exception?.GetType().Name ?? "unknown error"}");
+
+        foreach ((string name, HealthReportEntry entry) in report.Entries.Where(e => e.Value.Status != HealthStatus.Healthy))
+        {
+            logger.LogWarning(
+                entry.Exception,
+                "Health check {CheckName} is {Status}: {Detail}",
+                name,
+                entry.Status,
+                entry.Description ?? entry.Exception?.Message ?? "unknown error");
+        }
 
         var response = new HealthResponse(
             Status: report.Status.ToString(),

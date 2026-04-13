@@ -352,6 +352,22 @@ GRANT EXECUTE TO [$RuntimeUamiName];
         # account, not Windows Kerberos). Avoids "Failed to resolve UPN" errors that occur
         # when the local Windows account isn't domain-joined to Entra ID.
         $userEmail = az account show --query user.name -o tsv
+
+        Write-Host ""
+        Write-Host "  ┌─────────────────────────────────────────────────────────────────┐" -ForegroundColor Cyan
+        Write-Host "  │  ACTION REQUIRED: Browser authentication window opening...      │" -ForegroundColor Cyan
+        Write-Host "  │                                                                 │" -ForegroundColor Cyan
+        Write-Host "  │  sqlcmd will open a Microsoft Entra login window to connect     │" -ForegroundColor Cyan
+        Write-Host "  │  to Azure SQL. Please sign in with: $userEmail" -ForegroundColor Cyan
+        Write-Host "  │                                                                 │" -ForegroundColor Cyan
+        Write-Host "  │  The window may appear BEHIND this terminal — check your        │" -ForegroundColor Cyan
+        Write-Host "  │  taskbar if nothing appears on screen.                          │" -ForegroundColor Cyan
+        Write-Host "  │                                                                 │" -ForegroundColor Cyan
+        Write-Host "  │  If you close the window without signing in, sqlcmd will fail   │" -ForegroundColor Cyan
+        Write-Host "  │  and the script will print manual Portal instructions instead.  │" -ForegroundColor Cyan
+        Write-Host "  └─────────────────────────────────────────────────────────────────┘" -ForegroundColor Cyan
+        Write-Host ""
+
         sqlcmd -S $SqlServerFqdn -d $SqlDatabaseName -G -U $userEmail -i $tmpSql
         $sqlcmdExitCode = $LASTEXITCODE
 
@@ -432,7 +448,7 @@ $ConnectionString = "Server=$SqlServerFqdn;Database=$SqlDatabaseName;Authenticat
 az webapp config connection-string set `
     --name $AppServiceName `
     --resource-group $ResourceGroup `
-    --settings ConnectionStrings__DefaultConnection="$ConnectionString" `
+    --settings DefaultConnection="$ConnectionString" `
     --connection-string-type SQLAzure | Out-Null
 Write-Success "Connection string set"
 
