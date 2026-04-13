@@ -237,6 +237,8 @@ $AppServiceName         = $outputs.appServiceName.value
 $AppServiceHostname     = $outputs.appServiceDefaultHostname.value
 $SwaName                = $outputs.swaName.value
 $SwaHostname            = $outputs.swaDefaultHostname.value
+$AppInsightsName        = $outputs.appInsightsName.value
+$AppInsightsConnStr     = $outputs.appInsightsConnectionString.value
 
 Write-Success "Bicep deployment complete"
 
@@ -453,6 +455,13 @@ az webapp config connection-string set `
     --connection-string-type SQLAzure | Out-Null
 Write-Success "Connection string set"
 
+# Application Insights connection string
+az webapp config appsettings set `
+    --name $AppServiceName `
+    --resource-group $ResourceGroup `
+    --settings ApplicationInsights__ConnectionString="$AppInsightsConnStr" | Out-Null
+Write-Success "Application Insights connection string set"
+
 # Set GHCR placeholder image (will be replaced by deploy-api.yml on first CI run)
 $Owner = ($GitHubOrgRepo -split '/')[0]
 $PlaceholderImage = "ghcr.io/${Owner}/ahkflowapp-api:latest-${Environment}"
@@ -499,6 +508,7 @@ SWA_NAME=$SwaName
 SWA_HOSTNAME=$SwaHostname
 DEPLOYER_UAMI_NAME=$DeployerUamiName
 RUNTIME_UAMI_NAME=$RuntimeUamiName
+APP_INSIGHTS_NAME=$AppInsightsName
 "@ | Set-Content -Path $EnvFileOut -Encoding UTF8
 Write-Success "Config saved to scripts/.env.$Environment"
 

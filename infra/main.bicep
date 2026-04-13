@@ -57,6 +57,15 @@ module swa 'modules/swa.bicep' = {
   }
 }
 
+module monitoring 'modules/monitoring.bicep' = {
+  name: 'monitoring'
+  params: {
+    baseName: baseName
+    environment: environment
+    location: location
+  }
+}
+
 // Identity outputs
 output deployerUamiName string = identity.outputs.deployerUamiName
 output deployerUamiId string = identity.outputs.deployerUamiId
@@ -79,3 +88,8 @@ output appServiceDefaultHostname string = web.outputs.appServiceDefaultHostname
 // SWA outputs
 output swaName string = swa.outputs.swaName
 output swaDefaultHostname string = swa.outputs.swaDefaultHostname
+
+// Monitoring outputs
+output appInsightsName string = monitoring.outputs.appInsightsName
+@secure()
+output appInsightsConnectionString string = monitoring.outputs.appInsightsConnectionString
