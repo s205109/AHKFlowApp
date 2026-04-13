@@ -91,5 +91,4 @@ output swaDefaultHostname string = swa.outputs.swaDefaultHostname
 
 // Monitoring outputs
 output appInsightsName string = monitoring.outputs.appInsightsName
-@secure()
 output appInsightsConnectionString string = monitoring.outputs.appInsightsConnectionString
