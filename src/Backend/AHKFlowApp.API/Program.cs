@@ -4,6 +4,7 @@ using AHKFlowApp.API.Middleware;
 using AHKFlowApp.Application;
 using AHKFlowApp.Infrastructure;
 using AHKFlowApp.Infrastructure.Persistence;
+using Microsoft.ApplicationInsights.Extensibility;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
@@ -24,12 +25,29 @@ try
 
     WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
+    // Application Insights — only when a connection string is configured (Test/Prod)
+    string? appInsightsConnectionString = builder.Configuration["ApplicationInsights:ConnectionString"];
+    if (!string.IsNullOrWhiteSpace(appInsightsConnectionString))
+    {
+        builder.Services.AddApplicationInsightsTelemetry(options =>
+            options.ConnectionString = appInsightsConnectionString);
+    }
+
     // Stage 2: Full logger configured from appsettings.json, with DI integration
-    builder.Services.AddSerilog((services, lc) => lc
-        .ReadFrom.Configuration(builder.Configuration)
-        .ReadFrom.Services(services)
-        .Enrich.FromLogContext()
-        .Enrich.WithProperty("Application", "AHKFlowApp.API"));
+    builder.Services.AddSerilog((services, lc) =>
+    {
+        lc.ReadFrom.Configuration(builder.Configuration)
+          .ReadFrom.Services(services)
+          .Enrich.FromLogContext()
+          .Enrich.WithProperty("Application", "AHKFlowApp.API");
+
+        // Route Serilog events to Application Insights when configured
+        if (!string.IsNullOrWhiteSpace(appInsightsConnectionString))
+        {
+            TelemetryConfiguration telemetryConfig = services.GetRequiredService<TelemetryConfiguration>();
+            lc.WriteTo.ApplicationInsights(telemetryConfig, TelemetryConverter.Traces);
+        }
+    });
 
     // Start SQL Server in Docker if requested (for "https + Docker SQL" launch profile)
     if (builder.Environment.IsDevelopment() &&
