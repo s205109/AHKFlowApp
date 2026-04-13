@@ -104,4 +104,26 @@ public sealed class HealthPageTests : BunitContext
         // Assert
         return _apiClient.Received(2).GetHealthAsync(Arg.Any<CancellationToken>());
     }
+
+    [Fact]
+    public void Health_WhenApiReturnsUnhealthy_DisplaysUnhealthyStatusAndCheckDetails()
+    {
+        // Arrange
+        var checks = new Dictionary<string, string>
+        {
+            ["database"] = "Unhealthy: Login failed for user 'ahkflow'."
+        };
+        var response = new HealthResponse("Unhealthy", "1.0.0", "Production", DateTimeOffset.UtcNow, checks);
+        _apiClient.GetHealthAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<HealthResponse?>(response));
+
+        // Act
+        IRenderedComponent<Health> cut = Render<Health>();
+        cut.WaitForState(() => !cut.Find(".mud-paper").TextContent.Contains("Checking"));
+
+        // Assert
+        cut.Markup.Should().Contain("Unhealthy");
+        cut.Markup.Should().Contain("database");
+        cut.Markup.Should().Contain("Login failed for user");
+    }
 }

@@ -15,15 +15,22 @@ Different application layers require different configuration strategies:
 
 ## Frontend Configuration (Blazor WebAssembly)
 
-### Strategy: Production Values in Base Config
+### Strategy: Per-Environment Appsettings via Blazor Environment
 
-**File:** `src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/appsettings.json`
+**Files:** `src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/appsettings.*.json`
 
-**Status:** ✅ Committed to repository (contains production values)
+**Status:** ✅ All committed to repository (public values only — no secrets)
 
 **Configuration pattern:**
-- `appsettings.json` → Production values (deployed to Azure)
+- `appsettings.json` → Base config (no environment-specific values)
 - `appsettings.Development.json` → Local development override (`localhost:7600`)
+- `appsettings.Test.json` → TEST Azure API URL
+- `appsettings.Production.json` → PROD Azure API URL
+
+The active file is selected at runtime based on the `Blazor-Environment` HTTP header sent by the host:
+- Azure SWA (TEST): `staticwebapp.config.json` sets `blazor-environment: Test`
+- Azure SWA (PROD): `deploy-frontend.yml` patches `staticwebapp.config.json` to `blazor-environment: Production` before publishing
+- Local dev: ASP.NET Core host sets `Blazor-Environment: Development` automatically
 
 ### Why This Works
 
@@ -44,23 +51,34 @@ Per [Microsoft documentation](https://learn.microsoft.com/aspnet/core/blazor/fun
 
 ```
 src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/
-├── appsettings.json                     ✅ Committed (production values)
-└── appsettings.Development.json         ❌ Ignored (local dev override with localhost)
+├── appsettings.json                     ✅ Committed (base, no env-specific values)
+├── appsettings.Development.json         ✅ Committed (localhost URLs)
+├── appsettings.Test.json                ✅ Committed (TEST Azure API URL)
+└── appsettings.Production.json          ✅ Committed (PROD Azure API URL)
 ```
 
 ### What's in Frontend Config
 
 ```json
+// appsettings.Test.json
 {
-  "AzureAd": {
-    "ClientId": "18680edd-0d55-4280-a3a6-d0df5acd6c03",    // ✅ PUBLIC
-    "Authority": "https://login.microsoftonline.com/...", // ✅ PUBLIC
-    "ValidateAuthority": true                             // ✅ PUBLIC
-  },
   "ApiHttpClient": {
-    "BaseAddress": "https://ahkflowapp-api-dev.azurewebsites.net"  // ✅ PUBLIC
-  },
-  "Serilog": { ... }  // ✅ PUBLIC (logging config)
+    "BaseAddress": "https://ahkflowapp-api-test.azurewebsites.net"  // ✅ PUBLIC
+  }
+}
+
+// appsettings.Production.json
+{
+  "ApiHttpClient": {
+    "BaseAddress": "https://ahkflowapp-api-prod.azurewebsites.net"  // ✅ PUBLIC
+  }
+}
+
+// appsettings.Development.json
+{
+  "ApiHttpClient": {
+    "BaseAddress": "https://localhost:7600"  // ✅ PUBLIC
+  }
 }
 ```
 
@@ -114,11 +132,11 @@ Azure App Service loads configuration in this order (later overrides earlier):
 
 | Aspect | Implementation |
 |--------|---------------|
-| **File** | `appsettings.json` |
-| **Storage** | ✅ Committed to git |
-| **Contains** | Public config only (Client ID, API URL) |
+| **Files** | `appsettings.{Environment}.json` |
+| **Storage** | ✅ All committed to git |
+| **Contains** | Public config only (API URL) |
+| **Environment selection** | `Blazor-Environment` header from SWA (`staticwebapp.config.json`) |
 | **Why** | Client-side code is always visible to users |
-| **Microsoft Docs** | "Provide _public_ authentication configuration in an app settings file" |
 
 ### ✅ Backend (API)
 
@@ -150,14 +168,12 @@ src/Backend/AHKFlowApp.API/
 
 ```gitignore
 # Local development only
-**/appsettings.Development.json
 **/appsettings.Local.json
 
 # Backend production secrets - use Azure App Service Configuration
 src/Backend/**/appsettings.Production.json
 
-# Frontend: appsettings.json has production values (public, safe to commit)
-# Frontend: appsettings.Development.json overrides for local development
+# Frontend: all appsettings files are committed (public values only)
 ```
 
 ---
@@ -166,7 +182,7 @@ src/Backend/**/appsettings.Production.json
 
 ### Frontend
 
-No setup needed — `appsettings.Development.json` is ignored but present locally, pointing to `localhost:7600`.
+No setup needed — `appsettings.Development.json` is committed and points to `localhost:7600`. The Blazor dev server sets `Blazor-Environment: Development` automatically.
 
 ### Backend
 

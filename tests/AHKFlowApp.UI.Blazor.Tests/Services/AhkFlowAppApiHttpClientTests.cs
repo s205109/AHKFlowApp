@@ -67,6 +67,33 @@ public sealed class AhkFlowAppApiHttpClientTests
         await act.Should().ThrowAsync<HttpRequestException>();
     }
 
+    [Fact]
+    public async Task GetHealthAsync_WhenApiReturns503WithJson_DeserializesUnhealthyResponse()
+    {
+        // Arrange
+        var expected = new HealthResponse(
+            "Unhealthy",
+            "1.0.0",
+            "Production",
+            DateTimeOffset.Parse("2026-04-13T09:00:00Z"),
+            new Dictionary<string, string> { ["database"] = "Unhealthy: Login failed for user 'ahkflow'." });
+
+        using HttpClient httpClient = CreateMockHttpClient(
+            HttpStatusCode.ServiceUnavailable,
+            JsonContent.Create(expected));
+
+        var client = new AhkFlowAppApiHttpClient(httpClient);
+
+        // Act
+        HealthResponse? result = await client.GetHealthAsync();
+
+        // Assert
+        result.Should().NotBeNull();
+        result!.Status.Should().Be("Unhealthy");
+        result.Checks.Should().ContainKey("database");
+        result.Checks["database"].Should().Contain("Login failed");
+    }
+
     private static HttpClient CreateMockHttpClient(HttpStatusCode statusCode, HttpContent content)
     {
         var handler = new MockHttpMessageHandler(statusCode, content);
