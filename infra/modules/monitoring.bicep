@@ -8,8 +8,8 @@ param environment string
 @description('Azure region for resources.')
 param location string = resourceGroup().location
 
-var workspaceName = '${baseName}-law-${environment}'
-var appInsightsName = '${baseName}-ai-${environment}'
+var workspaceName = '${baseName}-loganalytics-${environment}'
+var appInsightsName = '${baseName}-appinsights-${environment}'
 
 resource logAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
   name: workspaceName

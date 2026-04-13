@@ -38,8 +38,8 @@ When done, push to `main` — GitHub Actions will deploy the API container and B
 | Static Web App | `ahkflowapp-swa-{env}` | Free tier |
 | Deployer UAMI | `ahkflowapp-uami-deployer-{env}` | Used by GitHub Actions OIDC |
 | Runtime UAMI | `ahkflowapp-uami-runtime-{env}` | Used by App Service → SQL |
-| Log Analytics Workspace | `ahkflowapp-law-{env}` | Backs Application Insights |
-| Application Insights | `ahkflowapp-ai-{env}` | Production telemetry & diagnostics |
+| Log Analytics Workspace | `ahkflowapp-loganalytics-{env}` | Backs Application Insights |
+| Application Insights | `ahkflowapp-appinsights-{env}` | Production telemetry & diagnostics |
 
 Estimated cost for the `test` environment: **~$15–25/month** (B1 App Service Plan + Basic SQL DB).
 
@@ -69,7 +69,7 @@ Each environment provisions an Application Insights instance backed by a Log Ana
 - **Local development:** No Application Insights — the connection string is empty in `appsettings.json`, so the sink is not registered.
 - **Test/Prod:** The connection string is set as an App Service configuration value (`ApplicationInsights__ConnectionString`) during provisioning.
 
-To view telemetry, open the Application Insights resource (`ahkflowapp-ai-{env}`) in the Azure Portal.
+To view telemetry, open the Application Insights resource (`ahkflowapp-appinsights-{env}`) in the Azure Portal.
 
 ## Updating After a Code Change
 
