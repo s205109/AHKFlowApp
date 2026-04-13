@@ -352,6 +352,22 @@ GRANT EXECUTE TO [$RuntimeUamiName];
         # account, not Windows Kerberos). Avoids "Failed to resolve UPN" errors that occur
         # when the local Windows account isn't domain-joined to Entra ID.
         $userEmail = az account show --query user.name -o tsv
+
+        Write-Host ""
+        Write-Host "  ┌─────────────────────────────────────────────────────────────────┐" -ForegroundColor Cyan
+        Write-Host "  │  ACTION REQUIRED: Browser authentication window opening...      │" -ForegroundColor Cyan
+        Write-Host "  │                                                                 │" -ForegroundColor Cyan
+        Write-Host "  │  sqlcmd will open a Microsoft Entra login window to connect     │" -ForegroundColor Cyan
+        Write-Host "  │  to Azure SQL. Please sign in with: $userEmail" -ForegroundColor Cyan
+        Write-Host "  │                                                                 │" -ForegroundColor Cyan
+        Write-Host "  │  The window may appear BEHIND this terminal — check your        │" -ForegroundColor Cyan
+        Write-Host "  │  taskbar if nothing appears on screen.                          │" -ForegroundColor Cyan
+        Write-Host "  │                                                                 │" -ForegroundColor Cyan
+        Write-Host "  │  If you close the window without signing in, sqlcmd will fail   │" -ForegroundColor Cyan
+        Write-Host "  │  and the script will print manual Portal instructions instead.  │" -ForegroundColor Cyan
+        Write-Host "  └─────────────────────────────────────────────────────────────────┘" -ForegroundColor Cyan
+        Write-Host ""
+
         sqlcmd -S $SqlServerFqdn -d $SqlDatabaseName -G -U $userEmail -i $tmpSql
         $sqlcmdExitCode = $LASTEXITCODE
 
@@ -413,6 +429,7 @@ Set-GhSecret "AZURE_SUBSCRIPTION_ID" $SubscriptionId
 $SwaToken = (Invoke-Az-Json staticwebapp secrets list --name $SwaName).properties.apiKey
 Set-GhSecret "AZURE_CLIENT_ID_${EnvSuffix}"                    $DeployerUamiClientId
 Set-GhSecret "AZURE_STATIC_WEB_APPS_API_TOKEN_${EnvSuffix}"    $SwaToken
+Set-GhSecret "AZURE_API_BASE_URL_${EnvSuffix}"                 "https://$AppServiceHostname"
 
 # Environment-specific variables
 Set-GhVariable "AZURE_RESOURCE_GROUP_${EnvSuffix}"  $ResourceGroup
@@ -432,7 +449,7 @@ $ConnectionString = "Server=$SqlServerFqdn;Database=$SqlDatabaseName;Authenticat
 az webapp config connection-string set `
     --name $AppServiceName `
     --resource-group $ResourceGroup `
-    --settings ConnectionStrings__DefaultConnection="$ConnectionString" `
+    --settings DefaultConnection="$ConnectionString" `
     --connection-string-type SQLAzure | Out-Null
 Write-Success "Connection string set"
 

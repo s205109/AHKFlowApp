@@ -1,5 +1,5 @@
 {
   "globalHeaders": {
-    "blazor-environment": "Production"
+    "blazor-environment": "Test"
   }
 }
