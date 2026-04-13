@@ -70,8 +70,8 @@ minver --tag-prefix v
 Once deployed, the version is available via the API:
 
 ```
-GET /api/v1/version   → { "version": "0.1.0" }
-GET /api/v1/health    → { ..., "version": "0.1.0", ... }
+GET /api/v1/version   → { "version": "<minver-version>" }
+GET /api/v1/health    → { ..., "version": "<minver-version>", ... }
 ```
 
 ## References
