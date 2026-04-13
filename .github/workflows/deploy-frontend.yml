@@ -42,6 +42,17 @@ jobs:
           jq '.globalHeaders["blazor-environment"] = "Production"' \
             src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/staticwebapp.config.json > /tmp/swa.tmp
           mv /tmp/swa.tmp src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/staticwebapp.config.json
+      - name: Substitute API base URL
+        env:
+          API_BASE_URL: ${{ secrets[format('AZURE_API_BASE_URL_{0}', env.ENV_SUFFIX)] }}
+        run: |
+          if [ "${{ env.TARGET_ENV }}" = "prod" ]; then
+            APPSETTINGS_ENV="Production"
+          else
+            APPSETTINGS_ENV="Test"
+          fi
+          sed -i "s|#{AZURE_API_BASE_URL}#|${API_BASE_URL}|g" \
+            "src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/appsettings.${APPSETTINGS_ENV}.json"
       - name: Publish Blazor WASM
         # Oryx (used by the SWA action) cannot build Blazor WASM — publish explicitly first.
         run: dotnet publish src/Frontend/AHKFlowApp.UI.Blazor --configuration Release --output publish
