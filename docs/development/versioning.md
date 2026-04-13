@@ -53,13 +53,25 @@ Follow [SemVer 2.0.0](https://semver.org/):
 - **MINOR** (`v1.1.0`): New features, backward compatible
 - **PATCH** (`v1.0.1`): Bug fixes
 
+## Checking the Version Locally
+
+Use the `minver-cli` dotnet global tool to inspect the current version without building:
+
+```powershell
+# Install once
+dotnet tool install --global minver-cli
+
+# Run from the repo root
+minver --tag-prefix v
+```
+
 ## Checking the Version at Runtime
 
 Once deployed, the version is available via the API:
 
 ```
-GET /api/v1/version   → { "version": "1.0.0" }
-GET /api/v1/health    → { ..., "version": "1.0.0", ... }
+GET /api/v1/version   → { "version": "<minver-version>" }
+GET /api/v1/health    → { ..., "version": "<minver-version>", ... }
 ```
 
 ## References
