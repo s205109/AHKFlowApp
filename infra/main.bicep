@@ -14,6 +14,12 @@ param sqlAdminGroupId string
 @description('Display name of the Entra security group that will be the SQL admin.')
 param sqlAdminGroupName string
 
+@description('Entra ID tenant ID for API token validation. See scripts/setup-entra-app.ps1.')
+param azureAdTenantId string
+
+@description('Entra ID client ID for API token validation. See scripts/setup-entra-app.ps1.')
+param azureAdClientId string
+
 var aspnetcoreEnvironment = environment == 'prod' ? 'Production' : 'Test'
 
 module identity 'modules/identity.bicep' = {
@@ -55,6 +61,8 @@ module web 'modules/web.bicep' = {
     runtimeUamiClientId: identity.outputs.runtimeUamiClientId
     aspnetcoreEnvironment: aspnetcoreEnvironment
     swaDefaultHostname: swa.outputs.swaDefaultHostname
+    azureAdTenantId: azureAdTenantId
+    azureAdClientId: azureAdClientId
   }
 }
 
