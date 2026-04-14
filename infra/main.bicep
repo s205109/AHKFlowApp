@@ -36,6 +36,15 @@ module sql 'modules/sql.bicep' = {
   }
 }
 
+module swa 'modules/swa.bicep' = {
+  name: 'swa'
+  params: {
+    baseName: baseName
+    environment: environment
+    location: location
+  }
+}
+
 module web 'modules/web.bicep' = {
   name: 'web'
   params: {
@@ -45,15 +54,7 @@ module web 'modules/web.bicep' = {
     runtimeUamiId: identity.outputs.runtimeUamiId
     runtimeUamiClientId: identity.outputs.runtimeUamiClientId
     aspnetcoreEnvironment: aspnetcoreEnvironment
-  }
-}
-
-module swa 'modules/swa.bicep' = {
-  name: 'swa'
-  params: {
-    baseName: baseName
-    environment: environment
-    location: location
+    swaDefaultHostname: swa.outputs.swaDefaultHostname
   }
 }
 
