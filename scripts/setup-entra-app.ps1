@@ -28,6 +28,22 @@ param(
 $ErrorActionPreference = 'Stop'
 $displayName = "AHKFlowApp-$Environment"
 
+# az rest --body '...' is unreliable on Windows PowerShell due to quoting.
+# Write JSON to a temp file and use --body @file instead.
+function Invoke-GraphPatch([string] $ObjectId, [string] $JsonBody) {
+    $tmp = [System.IO.Path]::GetTempFileName()
+    try {
+        [System.IO.File]::WriteAllText($tmp, $JsonBody, [System.Text.Encoding]::UTF8)
+        az rest --method PATCH `
+            --uri "https://graph.microsoft.com/v1.0/applications/$ObjectId" `
+            --headers 'Content-Type=application/json' `
+            --body "@$tmp"
+        if ($LASTEXITCODE -ne 0) { throw "az rest PATCH failed (exit $LASTEXITCODE)" }
+    } finally {
+        Remove-Item $tmp -ErrorAction SilentlyContinue
+    }
+}
+
 # ---------------------------------------------------------------------------
 # Resolve or create the app registration
 # ---------------------------------------------------------------------------
@@ -75,15 +91,8 @@ az ad app update `
     --id $objectId `
     --identifier-uris "api://$appId"
 
-$spaConfig = @{
-    redirectUris = $redirectUris
-} | ConvertTo-Json -Compress
-
-az rest `
-    --method PATCH `
-    --uri "https://graph.microsoft.com/v1.0/applications/$objectId" `
-    --headers 'Content-Type=application/json' `
-    --body "{`"spa`":{`"redirectUris`":$(($redirectUris | ConvertTo-Json -Compress))}}"
+$spaJson = @{ spa = @{ redirectUris = $redirectUris } } | ConvertTo-Json -Depth 5 -Compress
+Invoke-GraphPatch -ObjectId $objectId -JsonBody $spaJson
 
 Write-Host "Redirect URIs set: $($redirectUris -join ', ')"
 
@@ -111,11 +120,7 @@ $scopeJson = @{
 # Only add if not already present
 $currentScopes = az ad app show --id $objectId --query 'api.oauth2PermissionScopes[].value' -o json | ConvertFrom-Json
 if ('access_as_user' -notin $currentScopes) {
-    az rest `
-        --method PATCH `
-        --uri "https://graph.microsoft.com/v1.0/applications/$objectId" `
-        --headers 'Content-Type=application/json' `
-        --body $scopeJson
+    Invoke-GraphPatch -ObjectId $objectId -JsonBody $scopeJson
     Write-Host "Added oauth2PermissionScope: access_as_user"
 } else {
     Write-Host "Scope access_as_user already exists"
@@ -136,11 +141,7 @@ $preAuthBody = @{
     }
 } | ConvertTo-Json -Depth 10 -Compress
 
-az rest `
-    --method PATCH `
-    --uri "https://graph.microsoft.com/v1.0/applications/$objectId" `
-    --headers 'Content-Type=application/json' `
-    --body $preAuthBody
+Invoke-GraphPatch -ObjectId $objectId -JsonBody $preAuthBody
 
 Write-Host "Pre-authorized SPA ($appId) for scope $scopeId"
 
