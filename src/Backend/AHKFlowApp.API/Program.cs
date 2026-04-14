@@ -1,14 +1,18 @@
 using AHKFlowApp.API;
+using AHKFlowApp.API.Auth;
 using AHKFlowApp.API.Extensions;
 using AHKFlowApp.API.Middleware;
 using AHKFlowApp.Application;
+using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Infrastructure;
 using AHKFlowApp.Infrastructure.Persistence;
 using Microsoft.ApplicationInsights.Extensibility;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Identity.Web;
 using Serilog;
 using Serilog.Events;
 
@@ -95,6 +99,12 @@ try
     string[] allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
     builder.Services.AddConfiguredCors(allowedOrigins, corsPolicyName);
 
+    builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+        .AddMicrosoftIdentityWebApi(builder.Configuration.GetSection("AzureAd"));
+    builder.Services.AddAuthorization();
+    builder.Services.AddHttpContextAccessor();
+    builder.Services.AddScoped<ICurrentUser, HttpContextCurrentUser>();
+
     WebApplication app = builder.Build();
 
     // Auto-apply migrations in Development (creates database if it doesn't exist)
@@ -159,6 +169,7 @@ try
         app.UseCors(corsPolicyName);
     }
 
+    app.UseAuthentication();
     app.UseAuthorization();
     app.MapControllers();
 
