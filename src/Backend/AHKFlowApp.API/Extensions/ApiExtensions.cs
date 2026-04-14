@@ -30,6 +30,18 @@ internal static class ApiExtensions
                 Title = "AHKFlowApp API",
                 Version = "v1"
             });
+
+            options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+            {
+                Scheme = "bearer",
+                BearerFormat = "JWT",
+                In = ParameterLocation.Header,
+                Type = SecuritySchemeType.Http
+            });
+            options.AddSecurityRequirement(_ => new OpenApiSecurityRequirement
+            {
+                { new OpenApiSecuritySchemeReference("Bearer"), [] }
+            });
         });
         return services;
     }
