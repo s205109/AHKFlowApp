@@ -17,6 +17,9 @@ param runtimeUamiClientId string
 @description('ASPNETCORE_ENVIRONMENT value for the App Service.')
 param aspnetcoreEnvironment string
 
+@description('Default hostname of the Static Web App frontend, used as an allowed CORS origin.')
+param swaDefaultHostname string
+
 var planName = '${baseName}-plan-${environment}'
 var appName = '${baseName}-api-${environment}'
 
@@ -64,6 +67,10 @@ resource appService 'Microsoft.Web/sites@2023-12-01' = {
         {
           name: 'ASPNETCORE_ENVIRONMENT'
           value: aspnetcoreEnvironment
+        }
+        {
+          name: 'Cors__AllowedOrigins__0'
+          value: 'https://${swaDefaultHostname}'
         }
       ]
     }
