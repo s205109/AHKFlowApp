@@ -38,6 +38,11 @@ async function onActivate(event) {
 }
 
 async function onFetch(event) {
+    // Pass MSAL redirect routes through to the network — do not serve from cache.
+    if (event.request.url.includes('/authentication/')) {
+        return;
+    }
+
     let cachedResponse = null;
     if (event.request.method === 'GET') {
         // For all navigation requests, try to serve index.html from cache,

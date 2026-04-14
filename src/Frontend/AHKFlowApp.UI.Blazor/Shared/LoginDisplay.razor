@@ -1,0 +1,11 @@
+@inject NavigationManager Navigation
+
+<AuthorizeView>
+    <Authorized>
+        <MudText Typo="Typo.body2" Class="mr-2">@context.User.Identity!.Name</MudText>
+        <MudButton Variant="Variant.Text" Color="Color.Inherit" OnClick="@(() => Navigation.NavigateToLogout("authentication/logout"))">Log out</MudButton>
+    </Authorized>
+    <NotAuthorized>
+        <MudButton Variant="Variant.Text" Color="Color.Inherit" OnClick="@(() => Navigation.NavigateTo("authentication/login"))">Log in</MudButton>
+    </NotAuthorized>
+</AuthorizeView>

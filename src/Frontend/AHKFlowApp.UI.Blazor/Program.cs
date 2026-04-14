@@ -1,5 +1,6 @@
 using AHKFlowApp.UI.Blazor.Services;
 using Microsoft.AspNetCore.Components.Web;
+using Microsoft.AspNetCore.Components.WebAssembly.Authentication;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using MudBlazor.Services;
 
@@ -14,10 +15,18 @@ string apiBaseUrl = await ApiBaseUrlResolver.ResolveAsync(
     builder.Configuration["ApiHttpClient:BaseAddress"],
     builder.Configuration.GetSection("ApiHttpClient:BaseAddressCandidates").Get<string[]>());
 
+builder.Services.AddMsalAuthentication(options =>
+{
+    builder.Configuration.Bind("AzureAd", options.ProviderOptions.Authentication);
+    options.ProviderOptions.DefaultAccessTokenScopes.Add(builder.Configuration["AzureAd:DefaultScope"]!);
+});
+
 builder.Services.AddHttpClient<IAhkFlowAppApiHttpClient, AhkFlowAppApiHttpClient>(client =>
 {
     client.BaseAddress = new Uri(apiBaseUrl);
     client.Timeout = TimeSpan.FromSeconds(30);
-}).AddStandardResilienceHandler();
+})
+    .AddHttpMessageHandler<BaseAddressAuthorizationMessageHandler>()
+    .AddStandardResilienceHandler();
 
 await builder.Build().RunAsync();
