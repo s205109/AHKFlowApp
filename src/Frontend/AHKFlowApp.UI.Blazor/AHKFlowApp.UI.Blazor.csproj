@@ -20,4 +20,16 @@
     <ServiceWorker Include="wwwroot\service-worker.js" PublishedContent="wwwroot\service-worker.published.js" />
   </ItemGroup>
 
+  <!--
+    staticwebapp.config.json is kept outside wwwroot/ so the Blazor SDK does not
+    include it in the static web assets manifest (which would hash it and cause the
+    service worker SRI check to fail — Azure SWA consumes the file and does not
+    serve it, so the hash never matches). The target below copies it into the
+    wwwroot publish output so SWA can pick it up as normal config.
+  -->
+  <Target Name="CopyStaticWebAppConfig" AfterTargets="Publish">
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\staticwebapp.config.json"
+          DestinationFolder="$(PublishDir)wwwroot" />
+  </Target>
+
 </Project>
