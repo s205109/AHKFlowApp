@@ -1,5 +1,6 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup>
+    <UserSecretsId>5194dc43-77b9-439d-9186-32766f8ddde9</UserSecretsId>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Ardalis.Result.AspNetCore" />
