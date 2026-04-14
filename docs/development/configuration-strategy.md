@@ -187,6 +187,19 @@ src/Backend/**/appsettings.Production.json
 
 `appsettings.json` points to `http://localhost:5600` by default. If you need a machine-specific override, copy `appsettings.Development.json.example` to `appsettings.Development.json` (ignored by git). The Blazor dev server sets `Blazor-Environment: Development` automatically.
 
+**Auth setup required:** The `AzureAd` block in `appsettings.Development.json` is intentionally empty. After running `scripts/setup-entra-app.ps1 -Environment dev`, fill it in:
+
+```json
+"AzureAd": {
+  "Authority": "https://login.microsoftonline.com/<TenantId>",
+  "ClientId": "<ClientId>",
+  "ValidateAuthority": true,
+  "DefaultScope": "api://<ClientId>/access_as_user"
+}
+```
+
+These values are public — safe to commit if desired, but not required.
+
 ### Backend
 
 ```powershell
@@ -197,6 +210,15 @@ Copy-Item src/Backend/AHKFlowApp.API/appsettings.Production.json.example `
 # Edit with your local values (or leave as-is for local development)
 # This file is ignored by git
 ```
+
+**Auth setup required:** Set AzureAd values via user-secrets (never commit these to the API project — use user-secrets for dev):
+
+```bash
+dotnet user-secrets set "AzureAd:TenantId" "<TenantId>" --project src/Backend/AHKFlowApp.API
+dotnet user-secrets set "AzureAd:ClientId" "<ClientId>" --project src/Backend/AHKFlowApp.API
+```
+
+Run `scripts/setup-entra-app.ps1 -Environment dev` to get the values. See [entra-setup.md](../deployment/entra-setup.md).
 
 ---
 

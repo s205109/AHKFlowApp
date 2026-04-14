@@ -21,7 +21,7 @@ Do not implement these — they are planned for future phases or intentionally e
 - Hotstring/Hotkey/Profile CRUD features — see `.claude/backlog/` items 013-026
 - Script generation and download
 - Runtime execution of AutoHotkey scripts — intentionally excluded
-- Authentication implementation details — see backlog item 012
+- CLI authentication — see backlog item 029
 
 ## Project Configuration
 
