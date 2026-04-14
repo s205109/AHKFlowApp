@@ -158,8 +158,9 @@ Write-Host "Default scope: $defaultScope"
 Write-Host ""
 Write-Host "--- Next steps ---" -ForegroundColor Yellow
 if ($Environment -eq 'dev') {
-    Write-Host "dotnet user-secrets set 'AzureAd:TenantId' '$tenantId' --project src/Backend/AHKFlowApp.API"
-    Write-Host "dotnet user-secrets set 'AzureAd:ClientId' '$appId' --project src/Backend/AHKFlowApp.API"
+    Write-Host "Run from the repo root:"
+    Write-Host "  dotnet user-secrets set 'AzureAd:TenantId' '$tenantId' --project src/Backend/AHKFlowApp.API"
+    Write-Host "  dotnet user-secrets set 'AzureAd:ClientId' '$appId' --project src/Backend/AHKFlowApp.API"
     Write-Host "Then update wwwroot/appsettings.Development.json in AHKFlowApp.UI.Blazor:"
     Write-Host "  Authority    = https://login.microsoftonline.com/$tenantId"
     Write-Host "  ClientId     = $appId"
