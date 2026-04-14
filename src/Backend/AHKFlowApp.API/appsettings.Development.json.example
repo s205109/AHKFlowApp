@@ -17,5 +17,10 @@
       "https://localhost:7601",
       "http://localhost:5601"
     ]
+  },
+  "AzureAd": {
+    "Instance": "https://login.microsoftonline.com/",
+    "TenantId": "",
+    "ClientId": ""
   }
 }
