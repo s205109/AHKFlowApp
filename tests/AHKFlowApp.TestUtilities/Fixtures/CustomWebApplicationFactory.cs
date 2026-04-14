@@ -1,4 +1,6 @@
 using AHKFlowApp.Infrastructure.Persistence;
+using AHKFlowApp.TestUtilities.Auth;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
@@ -35,5 +37,19 @@ public sealed class CustomWebApplicationFactory(
                 options.UseSqlServer(sqlFixture.ConnectionString,
                     sql => sql.EnableRetryOnFailure()));
         });
+    }
+
+    public WebApplicationFactory<Program> WithTestAuth(Action<TestUserBuilder>? configure = null)
+    {
+        var testUser = new TestUserBuilder();
+        configure?.Invoke(testUser);
+
+        return WithWebHostBuilder(builder =>
+            builder.ConfigureServices(services =>
+            {
+                services.AddSingleton(testUser);
+                services.AddAuthentication(defaultScheme: "Test")
+                        .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>("Test", _ => { });
+            }));
     }
 }
