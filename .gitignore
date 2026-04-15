@@ -420,6 +420,14 @@ FodyWeavers.xsd
 *.msm
 *.msp
 
+# Local appsettings — use *.example files as templates
+**/appsettings.Local.json
+src/Backend/**/appsettings.Development.json
+src/Backend/**/appsettings.Production.json
+
+# Blazor dev config — tenant-specific, copy from .example and fill in values
+src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/appsettings.Development.json
+
 # Claude Code personal instructions and settings
 .claude/CLAUDE.local.md
 .claude/settings.local.json
