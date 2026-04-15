@@ -9,10 +9,8 @@ builder.RootComponents.Add<HeadOutlet>("head::after");
 
 builder.Services.AddMudServices();
 
-string apiBaseUrl = await ApiBaseUrlResolver.ResolveAsync(
-    builder.HostEnvironment.BaseAddress,
-    builder.Configuration["ApiHttpClient:BaseAddress"],
-    builder.Configuration.GetSection("ApiHttpClient:BaseAddressCandidates").Get<string[]>());
+string apiBaseUrl = builder.Configuration["ApiHttpClient:BaseAddress"]
+    ?? throw new InvalidOperationException("ApiHttpClient:BaseAddress is not configured.");
 
 builder.Services.AddHttpClient<IAhkFlowAppApiHttpClient, AhkFlowAppApiHttpClient>(client =>
 {

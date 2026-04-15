@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/launchsettings.json",
   "profiles": {
-    "https + Docker SQL (Recommended)": {
+    "Docker SQL (Recommended)": {
       "commandName": "Project",
       "launchBrowser": true,
       "launchUrl": "swagger",
@@ -11,9 +11,9 @@
         "ConnectionStrings__DefaultConnection": "Server=localhost,1433;Database=AHKFlowAppDb;User Id=sa;Password=AHKFlow_Dev!2026;TrustServerCertificate=True;MultipleActiveResultSets=true"
       },
       "dotnetRunMessages": true,
-      "applicationUrl": "https://localhost:7600;http://localhost:5600"
+      "applicationUrl": "http://localhost:5600"
     },
-    "https + LocalDB SQL": {
+    "LocalDB SQL": {
       "commandName": "Project",
       "launchBrowser": true,
       "launchUrl": "swagger",
@@ -22,14 +22,14 @@
         "AHKFLOW_START_DOCKER_SQL": "false"
       },
       "dotnetRunMessages": true,
-      "applicationUrl": "https://localhost:7600;http://localhost:5600"
+      "applicationUrl": "http://localhost:5600"
     },
     "Docker Compose (No Debugging)": {
       "commandName": "Executable",
       "executablePath": "powershell",
-      "commandLineArgs": "-NoProfile -ExecutionPolicy Bypass -Command \"docker compose up --build -d; $url = 'http://localhost:5602/swagger'; for ($i = 0; $i -lt 60; $i++) { try { $response = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 2; if ($response.StatusCode -ge 200) { Start-Process $url; exit 0 } } catch { }; Start-Sleep -Seconds 1 }; Start-Process $url\"",
+      "commandLineArgs": "-NoProfile -ExecutionPolicy Bypass -Command \"docker compose up --build -d; $url = 'http://localhost:5600/swagger'; for ($i = 0; $i -lt 60; $i++) { try { $response = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 2; if ($response.StatusCode -ge 200) { Start-Process $url; exit 0 } } catch { }; Start-Sleep -Seconds 1 }; Start-Process $url\"",
       "launchBrowser": true,
-      "launchUrl": "http://localhost:5602/swagger",
+      "launchUrl": "http://localhost:5600/swagger",
       "environmentVariables": {
         "COMPOSE_PROJECT_NAME": "ahkflowapp"
       }
@@ -37,8 +37,8 @@
     "Docker (API only - requires SQL on localhost:1433)": {
       "commandName": "Docker",
       "launchBrowser": true,
-      "launchUrl": "http://localhost:5604/swagger",
-      "httpPort": 5604,
+      "launchUrl": "http://localhost:5600/swagger",
+      "httpPort": 5600,
       "useSSL": false,
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
