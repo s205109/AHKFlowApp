@@ -152,7 +152,10 @@ try
         });
     }
 
-    app.UseHttpsRedirection();
+    if (!app.Environment.IsDevelopment())
+    {
+        app.UseHttpsRedirection();
+    }
 
     if (allowedOrigins.Length > 0)
     {
