@@ -22,8 +22,8 @@ Different application layers require different configuration strategies:
 **Status:** ✅ All committed to repository (public values only — no secrets)
 
 **Configuration pattern:**
-- `appsettings.json` → Base config (no environment-specific values)
-- `appsettings.Development.json` → Local development override (`http://localhost:5600`)
+- `appsettings.json` → Local development default (`http://localhost:5600`)
+- `appsettings.Development.json` → Optional local override (ignored by git, copy from `.example` if needed)
 - `appsettings.Test.json` → TEST Azure API URL
 - `appsettings.Production.json` → PROD Azure API URL
 
@@ -51,8 +51,8 @@ Per [Microsoft documentation](https://learn.microsoft.com/aspnet/core/blazor/fun
 
 ```
 src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/
-├── appsettings.json                     ✅ Committed (base, no env-specific values)
-├── appsettings.Development.json         ✅ Committed (localhost URLs)
+├── appsettings.json                     ✅ Committed (localhost default)
+├── appsettings.Development.json.example ✅ Committed (optional local override template)
 ├── appsettings.Test.json                ✅ Committed (TEST Azure API URL)
 └── appsettings.Production.json          ✅ Committed (PROD Azure API URL)
 ```
@@ -74,7 +74,7 @@ src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/
   }
 }
 
-// appsettings.Development.json
+// appsettings.json
 {
   "ApiHttpClient": {
     "BaseAddress": "http://localhost:5600"  // ✅ PUBLIC
@@ -154,8 +154,11 @@ Azure App Service loads configuration in this order (later overrides earlier):
 
 ```
 src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/
-├── appsettings.json                     ✅ Committed (production values)
-└── appsettings.Development.json         ❌ Ignored (local dev override)
+├── appsettings.json                     ✅ Committed (local development default)
+├── appsettings.Development.json         ❌ Ignored (optional local override)
+├── appsettings.Development.json.example ✅ Template (safe)
+├── appsettings.Test.json                ✅ Committed (TEST Azure API URL)
+└── appsettings.Production.json          ✅ Committed (PROD Azure API URL)
 
 src/Backend/AHKFlowApp.API/
 ├── appsettings.json                     ✅ Base config
@@ -182,7 +185,7 @@ src/Backend/**/appsettings.Production.json
 
 ### Frontend
 
-`appsettings.Development.json` is committed and points to `http://localhost:5600`. The Blazor dev server sets `Blazor-Environment: Development` automatically.
+`appsettings.json` points to `http://localhost:5600` by default. If you need a machine-specific override, copy `appsettings.Development.json.example` to `appsettings.Development.json` (ignored by git). The Blazor dev server sets `Blazor-Environment: Development` automatically.
 
 ### Backend
 
