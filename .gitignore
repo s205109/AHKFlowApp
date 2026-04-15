@@ -425,6 +425,7 @@ FodyWeavers.xsd
 src/Backend/**/appsettings.Development.json
 src/Backend/**/appsettings.Production.json
 
+
 # Blazor dev config — tenant-specific, copy from .example and fill in values
 src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/appsettings.Development.json
 
