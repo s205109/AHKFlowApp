@@ -17,7 +17,7 @@ dotnet ef database update \
   --project src/Backend/AHKFlowApp.Infrastructure \
   --startup-project src/Backend/AHKFlowApp.API
 
-# Start API (http://localhost:5600, OpenAPI at /openapi/v1.json)
+# Start API (http://localhost:5600, OpenAPI at /swagger/v1/swagger.json)
 dotnet run --project src/Backend/AHKFlowApp.API --launch-profile "Docker SQL (Recommended)"
 
 # Start frontend in a separate terminal (http://localhost:5601)
@@ -33,7 +33,7 @@ See `docs/development/docker-setup.md`.
 | Service | URL |
 |---------|-----|
 | API | http://localhost:5600 |
-| OpenAPI JSON | http://localhost:5600/openapi/v1.json |
+| OpenAPI JSON | http://localhost:5600/swagger/v1/swagger.json |
 | Frontend | http://localhost:5601 |
 
 ### Environments

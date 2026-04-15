@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics;
 
 namespace AHKFlowApp.API;
@@ -69,7 +70,21 @@ internal static class DevDockerSqlServer
             }
         };
 
-        process.Start();
+        try
+        {
+            process.Start();
+        }
+        catch (Win32Exception ex)
+        {
+            Console.Error.WriteLine($"[DevDockerSqlServer] Failed to start '{fileName} {arguments}': {ex.Message}");
+            return -1;
+        }
+        catch (InvalidOperationException ex)
+        {
+            Console.Error.WriteLine($"[DevDockerSqlServer] Failed to start '{fileName} {arguments}': {ex.Message}");
+            return -1;
+        }
+
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
         process.WaitForExit();
