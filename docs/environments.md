@@ -56,8 +56,9 @@ docker compose up --build
 ### Azure Resources
 
 All resources are in the `rg-ahkflowapp-test` resource group. App Service and SQL Server names
-include a short deterministic suffix (derived from the subscription + RG) to avoid global-name
-collisions — the exact names are emitted by Bicep and saved to `scripts/.env.test`:
+include a short deterministic suffix (derived from the subscription, resource group, and
+environment) to avoid global-name collisions — the exact names are emitted by Bicep and saved
+to `scripts/.env.test`:
 - App Service: `ahkflowapp-api-test-<token>`
 - SQL Server: `ahkflowapp-sql-test-<token>`
 - SQL Database: `ahkflowapp-db`
