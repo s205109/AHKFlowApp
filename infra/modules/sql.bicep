@@ -8,13 +8,16 @@ param environment string
 @description('Azure region for resources.')
 param location string = resourceGroup().location
 
+@description('Short deterministic suffix appended to globally-unique names to avoid collisions.')
+param resourceToken string
+
 @description('Object ID of the Entra security group that will be the SQL admin.')
 param sqlAdminGroupId string
 
 @description('Display name of the Entra security group that will be the SQL admin.')
 param sqlAdminGroupName string
 
-var serverName = '${baseName}-sql-${environment}'
+var serverName = '${baseName}-sql-${environment}-${resourceToken}'
 var databaseName = '${baseName}-db'
 
 resource sqlServer 'Microsoft.Sql/servers@2023-08-01-preview' = {

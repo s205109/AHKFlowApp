@@ -8,6 +8,9 @@ param environment string
 @description('Azure region for resources.')
 param location string = resourceGroup().location
 
+@description('Short deterministic suffix appended to globally-unique names to avoid collisions.')
+param resourceToken string
+
 @description('Resource ID of the runtime UAMI to assign to the App Service.')
 param runtimeUamiId string
 
@@ -21,7 +24,7 @@ param aspnetcoreEnvironment string
 param swaDefaultHostname string
 
 var planName = '${baseName}-plan-${environment}'
-var appName = '${baseName}-api-${environment}'
+var appName = '${baseName}-api-${environment}-${resourceToken}'
 
 resource appServicePlan 'Microsoft.Web/serverfarms@2023-12-01' = {
   name: planName

@@ -16,6 +16,10 @@ param sqlAdminGroupName string
 
 var aspnetcoreEnvironment = environment == 'prod' ? 'Production' : 'Test'
 
+// Short deterministic suffix to avoid global-name collisions on App Service and SQL Server.
+// Derived from the resource group ID so it stays stable across redeploys into the same RG.
+var resourceToken = take(uniqueString(subscription().subscriptionId, resourceGroup().id, environment), 6)
+
 module identity 'modules/identity.bicep' = {
   name: 'identity'
   params: {
@@ -31,6 +35,7 @@ module sql 'modules/sql.bicep' = {
     baseName: baseName
     environment: environment
     location: location
+    resourceToken: resourceToken
     sqlAdminGroupId: sqlAdminGroupId
     sqlAdminGroupName: sqlAdminGroupName
   }
@@ -51,6 +56,7 @@ module web 'modules/web.bicep' = {
     baseName: baseName
     environment: environment
     location: location
+    resourceToken: resourceToken
     runtimeUamiId: identity.outputs.runtimeUamiId
     runtimeUamiClientId: identity.outputs.runtimeUamiClientId
     aspnetcoreEnvironment: aspnetcoreEnvironment
