@@ -18,15 +18,34 @@ internal static class DevDockerSqlServer
             return;
         }
 
-        Console.WriteLine($"[DevDockerSqlServer] Starting SQL Server Docker container from {composeDir}...");
+        // Stop the API container if running from a previous 'docker compose up'.
+        // While this process blocks, Kestrel is not yet listening — a stale container on
+        // port 5602 would cause the Blazor resolver to pick the wrong base URL for the session.
+        Console.WriteLine("[DevDockerSqlServer] Stopping API container (if running) to avoid port conflict...");
+        RunCommand(composeDir, "docker", "compose stop ahkflowapp-api");
 
+        Console.WriteLine($"[DevDockerSqlServer] Starting SQL Server Docker container from {composeDir}...");
+        int exitCode = RunCommand(composeDir, "docker", "compose up sqlserver -d --wait");
+
+        if (exitCode == 0)
+        {
+            Console.WriteLine("[DevDockerSqlServer] SQL Server Docker container is ready.");
+        }
+        else
+        {
+            Console.Error.WriteLine($"[DevDockerSqlServer] Failed to start SQL Server Docker container (exit code: {exitCode}).");
+        }
+    }
+
+    private static int RunCommand(string workingDirectory, string fileName, string arguments)
+    {
         var process = new Process
         {
             StartInfo = new ProcessStartInfo
             {
-                FileName = "docker",
-                Arguments = "compose up sqlserver -d --wait",
-                WorkingDirectory = composeDir,
+                FileName = fileName,
+                Arguments = arguments,
+                WorkingDirectory = workingDirectory,
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
@@ -55,14 +74,7 @@ internal static class DevDockerSqlServer
         process.BeginErrorReadLine();
         process.WaitForExit();
 
-        if (process.ExitCode == 0)
-        {
-            Console.WriteLine("[DevDockerSqlServer] SQL Server Docker container is ready.");
-        }
-        else
-        {
-            Console.Error.WriteLine($"[DevDockerSqlServer] Failed to start SQL Server Docker container (exit code: {process.ExitCode}).");
-        }
+        return process.ExitCode;
     }
 
     private static string? FindComposeDirectory(string startingDirectory)
