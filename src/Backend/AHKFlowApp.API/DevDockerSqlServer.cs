@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics;
 
 namespace AHKFlowApp.API;
@@ -5,7 +6,7 @@ namespace AHKFlowApp.API;
 /// <summary>
 /// Development helper that starts the SQL Server Docker container
 /// when the AHKFLOW_START_DOCKER_SQL environment variable is set to "true".
-/// Used by the "https + Docker SQL (Recommended)" launch profile.
+/// Used by the "Docker SQL (Recommended)" launch profile.
 /// </summary>
 internal static class DevDockerSqlServer
 {
@@ -18,15 +19,34 @@ internal static class DevDockerSqlServer
             return;
         }
 
-        Console.WriteLine($"[DevDockerSqlServer] Starting SQL Server Docker container from {composeDir}...");
+        // Stop the API container if running from a previous 'docker compose up'.
+        // Both the container and VS-hosted Kestrel bind http://localhost:5600, so a stale
+        // container must be stopped before Kestrel can claim the port.
+        Console.WriteLine("[DevDockerSqlServer] Stopping API container (if running) to avoid port conflict...");
+        RunCommand(composeDir, "docker", "compose stop ahkflowapp-api");
 
+        Console.WriteLine($"[DevDockerSqlServer] Starting SQL Server Docker container from {composeDir}...");
+        int exitCode = RunCommand(composeDir, "docker", "compose up sqlserver -d --wait");
+
+        if (exitCode == 0)
+        {
+            Console.WriteLine("[DevDockerSqlServer] SQL Server Docker container is ready.");
+        }
+        else
+        {
+            Console.Error.WriteLine($"[DevDockerSqlServer] Failed to start SQL Server Docker container (exit code: {exitCode}).");
+        }
+    }
+
+    private static int RunCommand(string workingDirectory, string fileName, string arguments)
+    {
         var process = new Process
         {
             StartInfo = new ProcessStartInfo
             {
-                FileName = "docker",
-                Arguments = "compose up sqlserver -d --wait",
-                WorkingDirectory = composeDir,
+                FileName = fileName,
+                Arguments = arguments,
+                WorkingDirectory = workingDirectory,
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
@@ -50,19 +70,26 @@ internal static class DevDockerSqlServer
             }
         };
 
-        process.Start();
+        try
+        {
+            process.Start();
+        }
+        catch (Win32Exception ex)
+        {
+            Console.Error.WriteLine($"[DevDockerSqlServer] Failed to start '{fileName} {arguments}': {ex.Message}");
+            return -1;
+        }
+        catch (InvalidOperationException ex)
+        {
+            Console.Error.WriteLine($"[DevDockerSqlServer] Failed to start '{fileName} {arguments}': {ex.Message}");
+            return -1;
+        }
+
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
         process.WaitForExit();
 
-        if (process.ExitCode == 0)
-        {
-            Console.WriteLine("[DevDockerSqlServer] SQL Server Docker container is ready.");
-        }
-        else
-        {
-            Console.Error.WriteLine($"[DevDockerSqlServer] Failed to start SQL Server Docker container (exit code: {process.ExitCode}).");
-        }
+        return process.ExitCode;
     }
 
     private static string? FindComposeDirectory(string startingDirectory)

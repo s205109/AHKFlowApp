@@ -7,7 +7,7 @@
 docker compose up -d --build
 ```
 
-Access API (Docker Compose) at: http://localhost:5602/swagger
+Access API at: http://localhost:5600/swagger
 
 SQL Server is available on: `localhost:1433`
 
@@ -15,20 +15,23 @@ SQL Server is available on: `localhost:1433`
 
 Launch profiles are defined in `src/Backend/AHKFlowApp.API/Properties/launchSettings.json`.
 
-### 1. `https + LocalDB SQL`
+All profiles bind **`http://localhost:5600`** — only one backend scenario can run at a time.
+
+### 1. `LocalDB SQL`
 
 - Uses SQL Server LocalDB on Windows
 - Best for pure .NET development without Docker
-- API URLs: `https://localhost:7600` and `http://localhost:5600`
-- Swagger: `https://localhost:7600/swagger` (or `http://localhost:5600/swagger`)
+- API URL: `http://localhost:5600`
+- Swagger: `http://localhost:5600/swagger`
 - Database server: `(localdb)\MSSQLLocalDB`
 - Connection string: set in `appsettings.Development.json`
 
-### 2. `https + Docker SQL (Recommended)`
+### 2. `Docker SQL (Recommended)`
 
-- Runs the API locally (same URLs as LocalDB)
-- Starts the SQL Server Docker container automatically when `AHKFLOWAPP_START_DOCKER_SQL=true`
+- Runs the API locally
+- Starts the SQL Server Docker container automatically when `AHKFLOW_START_DOCKER_SQL=true`
   - Implementation: `src/Backend/AHKFlowApp.API/DevDockerSqlServer.cs`
+  - Also stops a stale `ahkflowapp-api` container (if any) so port 5600 is free
   - Command executed from solution root: `docker compose up sqlserver -d --wait`
 - Database server: `localhost,1433`
 - Connection string: overridden by environment variable in launch profile
@@ -37,7 +40,7 @@ Launch profiles are defined in `src/Backend/AHKFlowApp.API/Properties/launchSett
 
 - Starts both API and SQL Server containers
 - Runs `docker compose up --build -d` from solution root
-- Access API at `http://localhost:5602/swagger`
+- Access API at `http://localhost:5600/swagger`
 - Uses `COMPOSE_PROJECT_NAME=ahkflowapp`
 - API connects to SQL Server using `sqlserver,1433` (Docker network alias)
 - Connection string: set in `docker-compose.yml` as environment variable
@@ -47,7 +50,7 @@ Launch profiles are defined in `src/Backend/AHKFlowApp.API/Properties/launchSett
 - Runs only the API in Docker
 - Requires manually starting SQL Server (see below)
 - Useful for debugging API container issues
-- Access API at `http://localhost:5604/swagger`
+- Access API at `http://localhost:5600/swagger`
 - Database server (from inside the container): `host.docker.internal,1433`
 - Connection string: overridden by environment variable in launch profile
 
@@ -89,8 +92,8 @@ Docker and launch profiles override this via the `ConnectionStrings__DefaultConn
 
 | Profile | Server | Set By |
 |---------|--------|--------|
-| `https + LocalDB SQL` | `(localdb)\MSSQLLocalDB` | `appsettings.Development.json` |
-| `https + Docker SQL (Recommended)` | `localhost,1433` | `launchSettings.json` |
+| `LocalDB SQL` | `(localdb)\MSSQLLocalDB` | `appsettings.Development.json` |
+| `Docker SQL (Recommended)` | `localhost,1433` | `launchSettings.json` |
 | `Docker Compose (No Debugging)` | `sqlserver,1433` | `docker-compose.yml` |
 | `Docker (API only - requires SQL on localhost:1433)` | `host.docker.internal,1433` | `launchSettings.json` |
 
@@ -108,7 +111,7 @@ ConnectionStrings__DefaultConnection="Server=myserver;Database=AHKFlowAppDb;..."
 ```plaintext
 ┌──────────────────┐     ┌──────────────────────┐
 │  ahkflowapp-api  │────▶│ ahkflowapp-sqlserver │
-│ (host port 5602) │     │      (port 1433)     │
+│ (host port 5600) │     │      (port 1433)     │
 └──────────────────┘     └──────────────────────┘
         │
         ▼
@@ -122,6 +125,6 @@ Both containers run on the `ahkflowapp-network` bridge network, allowing the API
 ```plaintext
 ┌────────────────────────┐     ┌──────────────────────┐
 │ AHKFlowApp.API (local) │────▶│ ahkflowapp-sqlserver │
-│  (5600/7600, Swagger)  │     │   (localhost:1433)   │
+│    (5600, Swagger)     │     │   (localhost:1433)   │
 └────────────────────────┘     └──────────────────────┘
 ```

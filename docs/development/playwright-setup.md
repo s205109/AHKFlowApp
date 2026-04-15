@@ -35,12 +35,11 @@ Once installed, Claude Code can drive the browser during a session. Common uses 
 
 | Service | URL |
 |---------|-----|
-| Blazor UI | https://localhost:7601 |
-| API (HTTPS) | https://localhost:7600 |
-| API (HTTP) | http://localhost:5600 |
+| Blazor UI | http://localhost:5601 |
+| API | http://localhost:5600 |
 
 ## Notes
 
 - The browser opens headless by default. Add `--headed` to see the browser window.
-- The Blazor app probes several ports on startup to locate the API. If the API is not running, all health checks will fail with `ERR_CONNECTION_REFUSED` after Polly exhausts its retries.
+- The Blazor app reads `ApiHttpClient:BaseAddress` directly from `appsettings.json` (single URL, no probing). If the API is not running, health checks will fail with `ERR_CONNECTION_REFUSED`.
 - Ensure the API is running before navigating to `/health`: `dotnet run --project src/Backend/AHKFlowApp.API`

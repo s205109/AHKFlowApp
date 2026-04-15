@@ -38,9 +38,8 @@ docker compose up --build
 ```
 
 ### URLs
-- API: `https://localhost:7600` (HTTPS), `http://localhost:5600` (HTTP)
-- Frontend: `https://localhost:7601`, `http://localhost:5601`
-- Docker API: `http://localhost:5602`
+- API: `http://localhost:5600` (single port for VS, docker-compose, Docker-only scenarios)
+- Frontend: `http://localhost:5601`
 
 ## TEST Environment (Azure Pre-Production)
 
