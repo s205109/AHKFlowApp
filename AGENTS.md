@@ -233,9 +233,8 @@ Azure resources are provisioned per-environment using `.\scripts\deploy.ps1`. Ea
 ## Environment URLs
 
 ### DEV (Local)
-- API: `https://localhost:7600` (HTTPS), `http://localhost:5600` (HTTP)
-- Frontend: `https://localhost:7601`, `http://localhost:5601`
-- Docker Compose API: `http://localhost:5602`
+- API: `http://localhost:5600` (single port for all backend scenarios: VS, docker-compose, Docker-only)
+- Frontend: `http://localhost:5601`
 
 ### TEST (Azure)
 - API: `https://ahkflowapp-api-test.azurewebsites.net`

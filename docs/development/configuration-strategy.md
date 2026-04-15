@@ -23,7 +23,7 @@ Different application layers require different configuration strategies:
 
 **Configuration pattern:**
 - `appsettings.json` → Base config (no environment-specific values)
-- `appsettings.Development.json` → Local development override (`localhost:7600`)
+- `appsettings.Development.json` → Local development override (`http://localhost:5600`)
 - `appsettings.Test.json` → TEST Azure API URL
 - `appsettings.Production.json` → PROD Azure API URL
 
@@ -77,7 +77,7 @@ src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/
 // appsettings.Development.json
 {
   "ApiHttpClient": {
-    "BaseAddress": "https://localhost:7600"  // ✅ PUBLIC
+    "BaseAddress": "http://localhost:5600"  // ✅ PUBLIC
   }
 }
 ```
@@ -182,7 +182,7 @@ src/Backend/**/appsettings.Production.json
 
 ### Frontend
 
-No setup needed — `appsettings.Development.json` is committed and points to `localhost:7600`. The Blazor dev server sets `Blazor-Environment: Development` automatically.
+`appsettings.Development.json` is committed and points to `http://localhost:5600`. The Blazor dev server sets `Blazor-Environment: Development` automatically.
 
 ### Backend
 

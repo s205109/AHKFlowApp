@@ -5,7 +5,7 @@ namespace AHKFlowApp.API;
 /// <summary>
 /// Development helper that starts the SQL Server Docker container
 /// when the AHKFLOW_START_DOCKER_SQL environment variable is set to "true".
-/// Used by the "https + Docker SQL (Recommended)" launch profile.
+/// Used by the "Docker SQL (Recommended)" launch profile.
 /// </summary>
 internal static class DevDockerSqlServer
 {
@@ -19,8 +19,8 @@ internal static class DevDockerSqlServer
         }
 
         // Stop the API container if running from a previous 'docker compose up'.
-        // While this process blocks, Kestrel is not yet listening — a stale container on
-        // port 5602 would cause the Blazor resolver to pick the wrong base URL for the session.
+        // Both the container and VS-hosted Kestrel bind http://localhost:5600, so a stale
+        // container must be stopped before Kestrel can claim the port.
         Console.WriteLine("[DevDockerSqlServer] Stopping API container (if running) to avoid port conflict...");
         RunCommand(composeDir, "docker", "compose stop ahkflowapp-api");
 
