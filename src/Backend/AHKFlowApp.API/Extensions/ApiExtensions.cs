@@ -38,9 +38,12 @@ internal static class ApiExtensions
                 In = ParameterLocation.Header,
                 Type = SecuritySchemeType.Http
             });
-            options.AddSecurityRequirement(_ => new OpenApiSecurityRequirement
+            options.AddSecurityRequirement(doc => new OpenApiSecurityRequirement
             {
-                { new OpenApiSecuritySchemeReference("Bearer"), [] }
+                {
+                    new OpenApiSecuritySchemeReference("Bearer", doc),
+                    []
+                }
             });
         });
         return services;
