@@ -155,7 +155,7 @@ dotnet format
 - **FluentValidation** runs in MediatR IPipelineBehavior — handlers never see invalid requests
 - **Thin controllers** — accept requests, send via MediatR, map Result to HTTP response
 - **GlobalExceptionMiddleware** returns RFC 9457 ProblemDetails for unhandled errors
-- **Explicit mapping** — no  mapper libraries (no Mapster, no AutoMapper)
+- **Explicit mapping** — no mapper libraries (no Mapster, no AutoMapper)
 - **Layer folders** — organize by layer (Controllers/, Commands/, Queries/), not by feature
 - **Shared projects** contain only contracts (interfaces, DTOs, integration events) — never business logic
 - **Error results:** `Result.NotFound()`, `Result.Invalid(errors)`, `Result.Conflict()`, `Result.Error()` for external API failures
