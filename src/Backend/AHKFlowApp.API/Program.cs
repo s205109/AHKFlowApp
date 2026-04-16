@@ -177,8 +177,15 @@ try
         IHostApplicationLifetime lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
         lifetime.ApplicationStarted.Register(() =>
         {
-            string url = app.Urls.FirstOrDefault() ?? "http://localhost:5600";
-            Process.Start(new ProcessStartInfo($"{url}/swagger") { UseShellExecute = true });
+            string swaggerUrl = $"{app.Urls.FirstOrDefault() ?? "http://localhost:5600"}/swagger";
+            try
+            {
+                Process.Start(new ProcessStartInfo(swaggerUrl) { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                Log.Information(ex, "Unable to open Swagger UI automatically at {SwaggerUrl}", swaggerUrl);
+            }
         });
     }
 
