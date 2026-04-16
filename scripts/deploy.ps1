@@ -269,7 +269,7 @@ while ($state -notin @('Succeeded', 'Failed', 'Canceled')) {
     $deployment = Try-Az-Json deployment group show `
         --resource-group $ResourceGroup --name $DeploymentName
     if (-not $deployment) {
-        Write-Host "    [$elapsedStr] Waiting for deployment to register..." -ForegroundColor DarkGray
+        Write-Host "  · [$elapsedStr] waiting for deployment to register..." -ForegroundColor DarkGray
         continue
     }
     $state = $deployment.properties.provisioningState
@@ -295,19 +295,26 @@ while ($state -notin @('Succeeded', 'Failed', 'Canceled')) {
                     default     { 'DarkGray' }
                 }
                 $symbol = switch ($opState) {
-                    'Succeeded' { '+' }
-                    'Failed'    { 'x' }
-                    'Running'   { '-' }
-                    default     { '.' }
+                    'Succeeded' { '✓' }
+                    'Failed'    { '✗' }
+                    'Running'   { '…' }
+                    default     { '·' }
                 }
-                Write-Host "    [$elapsedStr] $symbol $key ($opState)" -ForegroundColor $color
+                $label = switch ($opState) {
+                    'Succeeded' { 'done' }
+                    'Failed'    { 'failed' }
+                    'Running'   { 'in progress' }
+                    'Accepted'  { 'queued' }
+                    default     { $opState.ToLower() }
+                }
+                Write-Host "  $symbol [$elapsedStr] $key — $label" -ForegroundColor $color
             }
         }
     }
 
     # Heartbeat when nothing new happened this tick, so the user knows we're alive.
     if (-not $newActivity -and ($ticks % 2) -eq 0) {
-        Write-Host "    [$elapsedStr] Still deploying (state: $state)..." -ForegroundColor DarkGray
+        Write-Host "  · [$elapsedStr] still working..." -ForegroundColor DarkGray
     }
 }
 
