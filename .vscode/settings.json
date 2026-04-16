@@ -6,5 +6,12 @@
     "dotnet run": true
   },
   "workbench.externalBrowser": "chrome",
-  "liveServer.settings.CustomBrowser": "chrome"
+  "liveServer.settings.CustomBrowser": "chrome",
+  "cSpell.words": [
+    "AHKFLOW",
+    "ahkflowapp",
+    "localdb",
+    "mssqllocaldb",
+    "Serilog"
+  ]
 }

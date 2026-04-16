@@ -7,4 +7,5 @@
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <MinVerTagPrefix>v</MinVerTagPrefix>
   </PropertyGroup>
+
 </Project>

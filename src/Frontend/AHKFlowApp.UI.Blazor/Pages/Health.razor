@@ -76,10 +76,17 @@
     }
     else if (_hasError)
     {
-        <MudAlert Severity="Severity.Error">
-            <strong>Unable to retrieve health status</strong> — the API may not be running.
+        <MudAlert Severity="Severity.Error" Class="mb-3">
+            <MudText Typo="Typo.subtitle2"><strong>Unable to reach the API</strong></MudText>
+            <MudText Typo="Typo.body2" Class="mt-1">
+                Possible causes:
+            </MudText>
+            <ul class="mt-1 ml-4">
+                <li>The API is not running — start it with the <em>LocalDB SQL</em> or <em>Docker SQL</em> launch profile.</li>
+                <li>CORS is misconfigured — copy <code>appsettings.Development.json.example</code> to <code>appsettings.Development.json</code> in the API project and ensure <code>http://localhost:5601</code> is in <code>Cors:AllowedOrigins</code>.</li>
+            </ul>
         </MudAlert>
-        <MudButton Variant="Variant.Outlined" Color="Color.Primary" Class="mt-4"
+        <MudButton Variant="Variant.Outlined" Color="Color.Primary"
                    OnClick="RefreshHealthAsync">
             Retry
         </MudButton>
