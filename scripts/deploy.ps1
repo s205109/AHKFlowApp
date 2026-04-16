@@ -279,10 +279,21 @@ while ($state -notin @('Succeeded', 'Failed', 'Canceled')) {
     $newActivity = $false
     if ($ops) {
         foreach ($op in $ops) {
-            $resTarget = $op.properties.targetResource.resourceName
-            $resType   = $op.properties.targetResource.resourceType
-            $opState   = $op.properties.provisioningState
-            if (-not $resTarget) { continue }
+            # Some operations (validation, read, outputs) have no targetResource.
+            # StrictMode Latest turns missing-property access into a terminating
+            # error, so use PSObject.Properties to test before dereferencing.
+            $propsMember = $op.PSObject.Properties['properties']
+            if (-not $propsMember) { continue }
+            $props = $propsMember.Value
+            $trMember = $props.PSObject.Properties['targetResource']
+            if (-not $trMember -or -not $trMember.Value) { continue }
+            $tr = $trMember.Value
+            $rnMember = $tr.PSObject.Properties['resourceName']
+            if (-not $rnMember -or -not $rnMember.Value) { continue }
+            $resTarget = $rnMember.Value
+            $rtMember = $tr.PSObject.Properties['resourceType']
+            $resType = if ($rtMember) { $rtMember.Value } else { '' }
+            $opState = $props.provisioningState
 
             $key = "$resType/$resTarget"
             if ($seenOps[$key] -ne $opState) {
