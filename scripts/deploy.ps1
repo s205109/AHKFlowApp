@@ -83,6 +83,20 @@ function Try-Az {
     }
 }
 
+function Try-Az-Json {
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $output = az @args 2>&1
+        if ($LASTEXITCODE -ne 0) { return $null }
+        return ($output | ConvertFrom-Json)
+    } catch {
+        return $null
+    } finally {
+        $ErrorActionPreference = $prevEap
+    }
+}
+
 # ---------------------------------------------------------------------------
 # Phase 1: Prerequisites
 # ---------------------------------------------------------------------------
@@ -204,21 +218,105 @@ if ($isMember -ne 'true') {
     Write-Success "Current user already in SQL admin group"
 }
 
+# Entra app registration must exist before Bicep — web.bicep wires AzureAd__TenantId
+# and AzureAd__ClientId into App Service settings as required parameters.
+# Without this, `az deployment group create` hangs on an invisible stdin prompt.
+Write-Host "  Setting up Entra app registration (pre-Bicep)..."
+$EntraScript = Join-Path $PSScriptRoot 'setup-entra-app.ps1'
+# setup-entra-app.ps1 emits a PSCustomObject at the end, but az rest calls inside
+# may also leak output. Pick the last object that has a ClientId.
+$EntraOutput = & $EntraScript -Environment $Environment
+$EntraInfo = @($EntraOutput | Where-Object { $_.ClientId }) | Select-Object -Last 1
+if (-not $EntraInfo -or -not $EntraInfo.ClientId) {
+    throw "setup-entra-app.ps1 did not return a ClientId"
+}
+$EntraTenantId = [string]$EntraInfo.TenantId
+$EntraClientId = [string]$EntraInfo.ClientId
+Write-Success "Entra app: $EntraClientId (tenant $EntraTenantId)"
+
 # Deploy Bicep
-Write-Host "  Deploying Bicep template (this may take 3-5 minutes)..."
+Write-Host "  Deploying Bicep template (usually 3-10 minutes, longer if Azure is slow)..."
+Write-Host "  Progress updates every 15s; first update may take ~30s while deployment registers."
 $BicepTemplate = Join-Path $RepoRoot "infra\main.bicep"
 $DeploymentName = "deploy-${Environment}-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
 
-$DeployOutput = Invoke-Az-Json deployment group create `
+$deployStart = Get-Date
+Invoke-Az deployment group create `
     --resource-group $ResourceGroup `
     --name $DeploymentName `
     --template-file $BicepTemplate `
+    --no-wait `
     --parameters `
         environment=$Environment `
         location=$Location `
         baseName=$BaseName `
         sqlAdminGroupId=$GroupId `
-        sqlAdminGroupName=$SqlAdminGroup
+        sqlAdminGroupName=$SqlAdminGroup `
+        azureAdTenantId=$EntraTenantId `
+        azureAdClientId=$EntraClientId | Out-Null
+
+# Poll deployment until done. Print each resource operation state change with
+# elapsed time so the user can see it's still making progress.
+$seenOps = @{}
+$state = 'Accepted'
+$ticks = 0
+while ($state -notin @('Succeeded', 'Failed', 'Canceled')) {
+    Start-Sleep -Seconds 15
+    $ticks++
+    $elapsed = (Get-Date) - $deployStart
+    $elapsedStr = '{0:D2}:{1:D2}' -f [int]$elapsed.TotalMinutes, $elapsed.Seconds
+
+    $deployment = Try-Az-Json deployment group show `
+        --resource-group $ResourceGroup --name $DeploymentName
+    if (-not $deployment) {
+        Write-Host "    [$elapsedStr] Waiting for deployment to register..." -ForegroundColor DarkGray
+        continue
+    }
+    $state = $deployment.properties.provisioningState
+
+    $ops = Try-Az-Json deployment operation group list `
+        --resource-group $ResourceGroup --name $DeploymentName
+    $newActivity = $false
+    if ($ops) {
+        foreach ($op in $ops) {
+            $resTarget = $op.properties.targetResource.resourceName
+            $resType   = $op.properties.targetResource.resourceType
+            $opState   = $op.properties.provisioningState
+            if (-not $resTarget) { continue }
+
+            $key = "$resType/$resTarget"
+            if ($seenOps[$key] -ne $opState) {
+                $seenOps[$key] = $opState
+                $newActivity = $true
+                $color = switch ($opState) {
+                    'Succeeded' { 'Green' }
+                    'Failed'    { 'Red' }
+                    'Running'   { 'Yellow' }
+                    default     { 'DarkGray' }
+                }
+                $symbol = switch ($opState) {
+                    'Succeeded' { '+' }
+                    'Failed'    { 'x' }
+                    'Running'   { '-' }
+                    default     { '.' }
+                }
+                Write-Host "    [$elapsedStr] $symbol $key ($opState)" -ForegroundColor $color
+            }
+        }
+    }
+
+    # Heartbeat when nothing new happened this tick, so the user knows we're alive.
+    if (-not $newActivity -and ($ticks % 2) -eq 0) {
+        Write-Host "    [$elapsedStr] Still deploying (state: $state)..." -ForegroundColor DarkGray
+    }
+}
+
+if ($state -ne 'Succeeded') {
+    throw "Bicep deployment ended in state: $state.`n  For details: az deployment group show --name $DeploymentName --resource-group $ResourceGroup"
+}
+
+$DeployOutput = Invoke-Az-Json deployment group show `
+    --resource-group $ResourceGroup --name $DeploymentName
 
 $outputs = $DeployOutput.properties.outputs
 
@@ -433,10 +531,11 @@ Set-GhSecret "AZURE_CLIENT_ID_${EnvSuffix}"                    $DeployerUamiClie
 Set-GhSecret "AZURE_STATIC_WEB_APPS_API_TOKEN_${EnvSuffix}"    $SwaToken
 Set-GhSecret "AZURE_API_BASE_URL_${EnvSuffix}"                 "https://$AppServiceHostname"
 
-# Entra app registration (per-environment: AHKFlowApp-{env}) — idempotent
-Write-Host "  Creating/updating Entra app registration..."
-$EntraScript = Join-Path $PSScriptRoot 'setup-entra-app.ps1'
-$EntraInfo = & $EntraScript -Environment $Environment -SwaHostname $SwaHostname
+# Re-run Entra app setup with the SWA hostname now that Bicep has created the SWA.
+# Idempotent — adds the SWA redirect URI alongside the localhost ones set in Phase 3.
+Write-Host "  Updating Entra app redirect URIs with SWA hostname..."
+$EntraOutput = & $EntraScript -Environment $Environment -SwaHostname $SwaHostname
+$EntraInfo = @($EntraOutput | Where-Object { $_.ClientId }) | Select-Object -Last 1
 if (-not $EntraInfo -or -not $EntraInfo.ClientId) {
     throw "setup-entra-app.ps1 did not return a ClientId"
 }
