@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using AHKFlowApp.API;
 using AHKFlowApp.API.Extensions;
 using AHKFlowApp.API.Middleware;
@@ -167,6 +168,16 @@ try
 
     // Plain-text infrastructure endpoint (for load balancers, k8s probes)
     app.MapHealthChecks("/health");
+
+    if (app.Environment.IsDevelopment())
+    {
+        IHostApplicationLifetime lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
+        lifetime.ApplicationStarted.Register(() =>
+        {
+            string url = app.Urls.FirstOrDefault() ?? "http://localhost:5600";
+            Process.Start(new ProcessStartInfo($"{url}/swagger") { UseShellExecute = true });
+        });
+    }
 
     Log.Information("AHKFlowApp API started successfully");
     app.Run();
