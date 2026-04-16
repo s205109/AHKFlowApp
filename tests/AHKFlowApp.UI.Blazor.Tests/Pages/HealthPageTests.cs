@@ -4,7 +4,6 @@ using AHKFlowApp.UI.Blazor.Services;
 using Bunit;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
-using MudBlazor;
 using MudBlazor.Services;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;

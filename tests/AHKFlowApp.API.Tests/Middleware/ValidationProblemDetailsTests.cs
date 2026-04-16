@@ -1,16 +1,13 @@
 using System.ComponentModel.DataAnnotations;
 using System.Net;
-using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text;
 using AHKFlowApp.TestUtilities.Fixtures;
 using FluentAssertions;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ApplicationParts;
 using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace AHKFlowApp.API.Tests.Middleware;
