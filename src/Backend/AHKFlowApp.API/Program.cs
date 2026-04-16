@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Reflection;
 using AHKFlowApp.API;
 using AHKFlowApp.API.Extensions;
 using AHKFlowApp.API.Middleware;
@@ -169,7 +170,9 @@ try
     // Plain-text infrastructure endpoint (for load balancers, k8s probes)
     app.MapHealthChecks("/health");
 
-    if (app.Environment.IsDevelopment())
+    // Only when this assembly is the process entry point — skips WebApplicationFactory-hosted tests
+    if (app.Environment.IsDevelopment() &&
+        Assembly.GetEntryAssembly()?.GetName().Name == "AHKFlowApp.API")
     {
         IHostApplicationLifetime lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
         lifetime.ApplicationStarted.Register(() =>
