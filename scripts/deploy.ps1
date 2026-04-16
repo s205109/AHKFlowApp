@@ -433,6 +433,17 @@ Set-GhSecret "AZURE_CLIENT_ID_${EnvSuffix}"                    $DeployerUamiClie
 Set-GhSecret "AZURE_STATIC_WEB_APPS_API_TOKEN_${EnvSuffix}"    $SwaToken
 Set-GhSecret "AZURE_API_BASE_URL_${EnvSuffix}"                 "https://$AppServiceHostname"
 
+# Entra app registration (per-environment: AHKFlowApp-{env}) — idempotent
+Write-Host "  Creating/updating Entra app registration..."
+$EntraScript = Join-Path $PSScriptRoot 'setup-entra-app.ps1'
+$EntraInfo = & $EntraScript -Environment $Environment -SwaHostname $SwaHostname
+if (-not $EntraInfo -or -not $EntraInfo.ClientId) {
+    throw "setup-entra-app.ps1 did not return a ClientId"
+}
+Set-GhVariable "AZURE_AD_TENANT_ID_${EnvSuffix}"      $EntraInfo.TenantId
+Set-GhVariable "AZURE_AD_CLIENT_ID_${EnvSuffix}"      $EntraInfo.ClientId
+Set-GhVariable "AZURE_AD_DEFAULT_SCOPE_${EnvSuffix}"  $EntraInfo.DefaultScope
+
 # Environment-specific variables
 Set-GhVariable "AZURE_RESOURCE_GROUP_${EnvSuffix}"  $ResourceGroup
 Set-GhVariable "APP_SERVICE_NAME_${EnvSuffix}"       $AppServiceName
@@ -497,6 +508,8 @@ RESOURCE_GROUP=$ResourceGroup
 GITHUB_ORG_REPO=$GitHubOrgRepo
 AZURE_TENANT_ID=$TenantId
 AZURE_SUBSCRIPTION_ID=$SubscriptionId
+AZURE_AD_CLIENT_ID=$($EntraInfo.ClientId)
+AZURE_AD_DEFAULT_SCOPE=$($EntraInfo.DefaultScope)
 SQL_SERVER_NAME=$SqlServerName
 SQL_SERVER_FQDN=$SqlServerFqdn
 SQL_DATABASE_NAME=$SqlDatabaseName
