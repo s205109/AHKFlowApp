@@ -144,8 +144,10 @@ if ($hasSqlcmd) {
 Write-Step "Phase 2: Gathering configuration..."
 
 if (-not $Environment) {
-    $Environment = Read-Host "  Environment [test/prod] (default: test)"
-    if ([string]::IsNullOrWhiteSpace($Environment)) { $Environment = 'test' }
+    $envInput = Read-Host "  Environment [test/prod] (default: test)"
+    # Apply default before assigning to $Environment — [ValidateSet] re-validates
+    # every assignment, so a blank intermediate value would throw.
+    $Environment = if ([string]::IsNullOrWhiteSpace($envInput)) { 'test' } else { $envInput }
     if ($Environment -notin @('test', 'prod')) { throw "Environment must be 'test' or 'prod'" }
 }
 
