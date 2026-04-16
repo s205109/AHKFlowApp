@@ -89,7 +89,7 @@ $logoutUris = $redirectUris -replace 'login-callback', 'logout-callback'
 # ---------------------------------------------------------------------------
 az ad app update `
     --id $objectId `
-    --identifier-uris "api://$appId"
+    --identifier-uris "api://$appId" | Out-Null
 
 $spaJson = @{ spa = @{ redirectUris = $redirectUris } } | ConvertTo-Json -Depth 5 -Compress
 Invoke-GraphPatch -ObjectId $objectId -JsonBody $spaJson
@@ -170,8 +170,17 @@ if ($Environment -eq 'dev') {
     Write-Host "  ClientId     = $appId"
     Write-Host "  DefaultScope = $defaultScope"
 } else {
+    Write-Host "Values wired into GitHub Variables automatically when invoked from deploy.ps1."
+    Write-Host "To set manually:"
     $envUpper = $Environment.ToUpper()
-    Write-Host "gh variable set AZURE_AD_TENANT_ID_$envUpper --body '$tenantId'"
-    Write-Host "gh variable set AZURE_AD_CLIENT_ID_$envUpper --body '$appId'"
-    Write-Host "gh variable set AZURE_AD_DEFAULT_SCOPE_$envUpper --body '$defaultScope'"
+    Write-Host "  gh variable set AZURE_AD_TENANT_ID_$envUpper --body '$tenantId'"
+    Write-Host "  gh variable set AZURE_AD_CLIENT_ID_$envUpper --body '$appId'"
+    Write-Host "  gh variable set AZURE_AD_DEFAULT_SCOPE_$envUpper --body '$defaultScope'"
+}
+
+# Emit result for programmatic callers (deploy.ps1, setup-dev-entra.ps1)
+[PSCustomObject]@{
+    ClientId     = $appId
+    TenantId     = $tenantId
+    DefaultScope = $defaultScope
 }
