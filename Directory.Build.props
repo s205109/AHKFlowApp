@@ -7,4 +7,10 @@
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <MinVerTagPrefix>v</MinVerTagPrefix>
   </PropertyGroup>
+  <!-- Suppress known low-severity advisories in transitive System.Security.Cryptography.Xml 10.0.0
+       until a patched version is available as a transitive dependency. -->
+  <ItemGroup>
+    <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-37gx-xxp4-5rgx" />
+    <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-w3x6-4m5h-cxqf" />
+  </ItemGroup>
 </Project>
