@@ -68,7 +68,7 @@ public sealed class HealthPageTests : BunitContext
         cut.WaitForState(() => !cut.Find(".mud-paper").TextContent.Contains("Checking"));
 
         // Assert
-        cut.Markup.Should().Contain("Unable to retrieve health status");
+        cut.Markup.Should().Contain("Unable to reach the API");
     }
 
     [Fact]
@@ -83,7 +83,7 @@ public sealed class HealthPageTests : BunitContext
         cut.WaitForState(() => !cut.Find(".mud-paper").TextContent.Contains("Checking"));
 
         // Assert
-        cut.Markup.Should().Contain("Unable to retrieve health status");
+        cut.Markup.Should().Contain("Unable to reach the API");
     }
 
     [Fact]
