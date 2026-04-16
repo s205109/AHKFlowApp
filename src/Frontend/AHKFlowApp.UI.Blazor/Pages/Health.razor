@@ -1,6 +1,8 @@
 @page "/health"
 @using AHKFlowApp.UI.Blazor.Services
 @using AHKFlowApp.UI.Blazor.DTOs
+@using Microsoft.AspNetCore.Authorization
+@attribute [AllowAnonymous]
 
 @implements IDisposable
 
