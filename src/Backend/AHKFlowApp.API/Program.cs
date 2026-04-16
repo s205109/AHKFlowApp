@@ -102,8 +102,17 @@ try
     string[] allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
     builder.Services.AddConfiguredCors(allowedOrigins, corsPolicyName);
 
-    builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-        .AddMicrosoftIdentityWebApi(builder.Configuration.GetSection("AzureAd"));
+    IConfigurationSection azureAdSection = builder.Configuration.GetSection("AzureAd");
+    if (!string.IsNullOrWhiteSpace(azureAdSection["TenantId"]) &&
+        !string.IsNullOrWhiteSpace(azureAdSection["ClientId"]))
+    {
+        builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+            .AddMicrosoftIdentityWebApi(azureAdSection);
+    }
+    else
+    {
+        Log.Warning("AzureAd:TenantId or AzureAd:ClientId is not configured — authentication disabled");
+    }
     builder.Services.AddAuthorization();
     builder.Services.AddHttpContextAccessor();
     builder.Services.AddScoped<ICurrentUser, HttpContextCurrentUser>();
