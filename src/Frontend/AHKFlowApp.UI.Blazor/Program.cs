@@ -4,10 +4,11 @@ using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using MudBlazor.Services;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
-builder.RootComponents.Add<AHKFlowApp.UI.Blazor.App>("#app");
 builder.RootComponents.Add<HeadOutlet>("head::after");
 
 builder.Services.AddMudServices();
+
+builder.RootComponents.Add<AHKFlowApp.UI.Blazor.App>("#app");
 
 string apiBaseUrl = builder.Configuration["ApiHttpClient:BaseAddress"]
     ?? throw new InvalidOperationException("ApiHttpClient:BaseAddress is not configured.");

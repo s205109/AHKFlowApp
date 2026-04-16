@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Reflection;
 using AHKFlowApp.API;
 using AHKFlowApp.API.Extensions;
 using AHKFlowApp.API.Middleware;
@@ -167,6 +169,25 @@ try
 
     // Plain-text infrastructure endpoint (for load balancers, k8s probes)
     app.MapHealthChecks("/health");
+
+    // Only when this assembly is the process entry point — skips WebApplicationFactory-hosted tests
+    if (app.Environment.IsDevelopment() &&
+        Assembly.GetEntryAssembly()?.GetName().Name == "AHKFlowApp.API")
+    {
+        IHostApplicationLifetime lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
+        lifetime.ApplicationStarted.Register(() =>
+        {
+            string swaggerUrl = $"{app.Urls.FirstOrDefault() ?? "http://localhost:5600"}/swagger";
+            try
+            {
+                Process.Start(new ProcessStartInfo(swaggerUrl) { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                Log.Information(ex, "Unable to open Swagger UI automatically at {SwaggerUrl}", swaggerUrl);
+            }
+        });
+    }
 
     Log.Information("AHKFlowApp API started successfully");
     app.Run();

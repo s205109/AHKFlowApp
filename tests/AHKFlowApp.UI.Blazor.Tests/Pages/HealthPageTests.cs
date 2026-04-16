@@ -4,7 +4,6 @@ using AHKFlowApp.UI.Blazor.Services;
 using Bunit;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
-using MudBlazor;
 using MudBlazor.Services;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -69,7 +68,7 @@ public sealed class HealthPageTests : BunitContext
         cut.WaitForState(() => !cut.Find(".mud-paper").TextContent.Contains("Checking"));
 
         // Assert
-        cut.Markup.Should().Contain("Unable to retrieve health status");
+        cut.Markup.Should().Contain("Unable to reach the API");
     }
 
     [Fact]
@@ -84,7 +83,7 @@ public sealed class HealthPageTests : BunitContext
         cut.WaitForState(() => !cut.Find(".mud-paper").TextContent.Contains("Checking"));
 
         // Assert
-        cut.Markup.Should().Contain("Unable to retrieve health status");
+        cut.Markup.Should().Contain("Unable to reach the API");
     }
 
     [Fact]
