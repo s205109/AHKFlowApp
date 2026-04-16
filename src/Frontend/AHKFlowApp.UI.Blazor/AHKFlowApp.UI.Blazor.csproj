@@ -6,6 +6,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.ApplicationInsights.AspNetCore" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" PrivateAssets="all" />
     <PackageReference Include="Microsoft.Extensions.Http.Resilience" />
@@ -28,8 +29,7 @@
     wwwroot publish output so SWA can pick it up as normal config.
   -->
   <Target Name="CopyStaticWebAppConfig" AfterTargets="Publish">
-    <Copy SourceFiles="$(MSBuildProjectDirectory)\staticwebapp.config.json"
-          DestinationFolder="$(PublishDir)wwwroot" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\staticwebapp.config.json" DestinationFolder="$(PublishDir)wwwroot" />
   </Target>
 
 </Project>
