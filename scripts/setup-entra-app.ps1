@@ -98,6 +98,10 @@ Write-Host "Redirect URIs set: $($redirectUris -join ', ')"
 
 # ---------------------------------------------------------------------------
 # Ensure access_as_user oauth2PermissionScope exists
+# NOTE: PATCHing api.oauth2PermissionScopes replaces the whole collection.
+# Safe here because this is a bootstrap script for a single-purpose app that
+# only needs one scope. If you later add extra scopes manually, update this
+# block to merge rather than replace.
 # ---------------------------------------------------------------------------
 $scopeId = [guid]::NewGuid().ToString()
 $scopeJson = @{
