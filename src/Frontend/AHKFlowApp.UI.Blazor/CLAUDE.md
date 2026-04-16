@@ -11,6 +11,14 @@ Blazor WebAssembly PWA frontend for AHKFlowApp.
 - `IDialogService.ShowAsync<T>` for create/edit forms
 - No `StateHasChanged()` after standard event handlers — Blazor re-renders automatically
 
+## Local Setup
+
+`wwwroot/appsettings.Development.json` is gitignored. Copy the example and fill in your Azure AD values:
+
+```bash
+cp wwwroot/appsettings.Development.json.example wwwroot/appsettings.Development.json
+```
+
 ## Adding a Page
 
 1. Create `Pages/MyPage.razor` with `@page "/my-page"` directive

@@ -20,6 +20,15 @@ param aspnetcoreEnvironment string
 @description('Default hostname of the Static Web App frontend, used as an allowed CORS origin.')
 param swaDefaultHostname string
 
+@description('Entra ID instance URL. Defaults to the active cloud login endpoint.')
+param azureAdInstance string = az.environment().authentication.loginEndpoint
+
+@description('Entra ID tenant ID for token validation.')
+param azureAdTenantId string
+
+@description('Entra ID client ID (app registration) for token validation.')
+param azureAdClientId string
+
 var planName = '${baseName}-plan-${environment}'
 var appName = '${baseName}-api-${environment}'
 
@@ -71,6 +80,18 @@ resource appService 'Microsoft.Web/sites@2023-12-01' = {
         {
           name: 'Cors__AllowedOrigins__0'
           value: 'https://${swaDefaultHostname}'
+        }
+        {
+          name: 'AzureAd__Instance'
+          value: azureAdInstance
+        }
+        {
+          name: 'AzureAd__TenantId'
+          value: azureAdTenantId
+        }
+        {
+          name: 'AzureAd__ClientId'
+          value: azureAdClientId
         }
       ]
     }
