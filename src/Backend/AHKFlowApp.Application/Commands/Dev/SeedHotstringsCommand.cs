@@ -20,14 +20,9 @@ internal sealed class SeedHotstringsCommandHandler(
 {
     private static readonly (string Trigger, string Replacement, bool Ending, bool InsideWord)[] Samples =
     [
-        ("btw",    "by the way",            true,  true),
-        ("fyi",    "for your information",  true,  true),
-        ("omw",    "on my way",             true,  true),
-        ("ty",     "thank you",             true,  true),
-        ("afaik",  "as far as I know",      true,  true),
-        ("idk",    "I don't know",          true,  true),
-        ("brb",    "be right back",         true,  true),
-        ("asap",   "as soon as possible",   true,  true),
+        ("btw", "by the way",           true, true),
+        ("fyi", "for your information", true, true),
+        ("brb", "be right back",        true, true),
     ];
 
     public async Task<Result<PagedList<HotstringDto>>> Handle(SeedHotstringsCommand request, CancellationToken ct)

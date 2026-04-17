@@ -17,7 +17,7 @@ public sealed class ListHotstringsQueryValidator : AbstractValidator<ListHotstri
 {
     public ListHotstringsQueryValidator()
     {
-        RuleFor(x => x.Page).GreaterThanOrEqualTo(1);
+        RuleFor(x => x.Page).InclusiveBetween(1, 10_000);
         RuleFor(x => x.PageSize).InclusiveBetween(1, 200);
     }
 }

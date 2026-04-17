@@ -55,11 +55,15 @@ internal sealed class UpdateHotstringCommandHandler(
         {
             await db.SaveChangesAsync(ct);
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException ex) when (IsDuplicateKeyViolation(ex))
         {
             return Result.Conflict("A hotstring with this trigger already exists for the specified profile.");
         }
 
         return Result.Success(entity.ToDto());
     }
+
+    private static bool IsDuplicateKeyViolation(DbUpdateException ex) =>
+        ex.InnerException?.GetType().GetProperty("Number")?.GetValue(ex.InnerException) is int n &&
+        n is 2601 or 2627;
 }
