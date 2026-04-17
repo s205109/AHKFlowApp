@@ -1,9 +1,10 @@
+using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace AHKFlowApp.Infrastructure.Persistence;
 
-public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
+public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options), IAppDbContext
 {
     public DbSet<TestMessage> TestMessages => Set<TestMessage>();
     public DbSet<Hotstring> Hotstrings => Set<Hotstring>();
