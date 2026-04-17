@@ -169,6 +169,11 @@ try
             await next(context);
         });
     }
+    else
+    {
+        app.MapGet("/", () => Results.Redirect("/health"))
+            .AllowAnonymous();
+    }
 
     if (allowedOrigins.Length > 0)
     {
