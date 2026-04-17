@@ -171,8 +171,15 @@ try
     }
     else
     {
-        app.MapGet("/", () => Results.Redirect("/health"))
-            .AllowAnonymous();
+        app.Use(async (context, next) =>
+        {
+            if (context.Request.Path == "/")
+            {
+                context.Response.Redirect("/health");
+                return;
+            }
+            await next(context);
+        });
     }
 
     if (allowedOrigins.Length > 0)
