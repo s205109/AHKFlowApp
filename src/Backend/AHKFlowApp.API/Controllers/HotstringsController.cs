@@ -63,6 +63,9 @@ public sealed class HotstringsController(IMediator mediator) : ControllerBase
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
-    public async Task<ActionResult> Delete(Guid id, CancellationToken ct) =>
-        (await mediator.Send(new DeleteHotstringCommand(id), ct)).ToActionResult(this);
+    public async Task<ActionResult> Delete(Guid id, CancellationToken ct)
+    {
+        Result result = await mediator.Send(new DeleteHotstringCommand(id), ct);
+        return result.IsSuccess ? NoContent() : result.ToActionResult(this);
+    }
 }
