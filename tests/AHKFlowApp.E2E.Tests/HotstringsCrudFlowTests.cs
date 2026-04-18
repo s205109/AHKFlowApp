@@ -67,5 +67,12 @@ public sealed class HotstringsCrudFlowTests(StackFixture fixture) : IClassFixtur
         await page.ClickAsync("button.commit-edit");
 
         await page.WaitForSelectorAsync("text=/already exists/i");
+
+        await page.WaitForSelectorAsync("tbody tr:has-text(\"dup\")");
+        await page.ClickAsync("button.delete");
+        await page.WaitForSelectorAsync("[role=\"dialog\"]");
+        await page.GetByRole(AriaRole.Button, new() { Name = "Delete" }).Last.ClickAsync();
+
+        await page.WaitForSelectorAsync("text=Hotstring deleted.");
     }
 }
