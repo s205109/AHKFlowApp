@@ -85,6 +85,7 @@ try
             });
 
     builder.Services.AddSingleton(TimeProvider.System);
+    builder.Services.AddSingleton<IDevEnvironment>(new DevEnvironment(builder.Environment.IsDevelopment()));
 
     if (builder.Environment.IsDevelopment())
     {
@@ -150,6 +151,11 @@ try
         };
     });
 
+    if (!app.Environment.IsDevelopment())
+    {
+        app.UseHttpsRedirection();
+    }
+
     if (app.Environment.IsDevelopment())
     {
         app.UseSwaggerDocs();
@@ -163,10 +169,17 @@ try
             await next(context);
         });
     }
-
-    if (!app.Environment.IsDevelopment())
+    else
     {
-        app.UseHttpsRedirection();
+        app.Use(async (context, next) =>
+        {
+            if (context.Request.Path == "/")
+            {
+                context.Response.Redirect("/health");
+                return;
+            }
+            await next(context);
+        });
     }
 
     if (allowedOrigins.Length > 0)
