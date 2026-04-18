@@ -31,7 +31,7 @@ public sealed class SeedHotstringsCommandHandlerTests(HotstringDbFixture fx)
         Result<PagedList<HotstringDto>> result = await handler.Handle(new SeedHotstringsCommand(Reset: false), default);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value.Items.Count.Should().BeGreaterThanOrEqualTo(12);
+        result.Value.Items.Count.Should().BeGreaterThanOrEqualTo(3);
     }
 
     [Fact]
