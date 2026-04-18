@@ -32,7 +32,7 @@ public sealed class HotstringsCrudFlowTests(StackFixture fixture) : IClassFixtur
         await page.ClickAsync("button.commit-edit");
 
         await page.WaitForSelectorAsync("text=Hotstring updated.");
-        Assert.True(await page.IsVisibleAsync("text=by the way!"));
+        await page.WaitForSelectorAsync("tbody tr:has-text(\"by the way!\")");
 
         await page.ClickAsync("button.delete");
         await page.WaitForSelectorAsync("[role=\"dialog\"]");
