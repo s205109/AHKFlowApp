@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using AHKFlowApp.UI.Blazor.DTOs;
 
 namespace AHKFlowApp.UI.Blazor.Services;
@@ -56,7 +57,7 @@ public sealed class HotstringsApiClient(HttpClient httpClient) : IHotstringsApiC
     private static async Task<ApiProblemDetails?> TryReadProblem(HttpResponseMessage resp, CancellationToken ct)
     {
         try { return await resp.Content.ReadFromJsonAsync<ApiProblemDetails>(ct); }
-        catch { return null; }
+        catch (Exception ex) when (ex is JsonException or NotSupportedException or IOException) { return null; }
     }
 
     private static ApiResultStatus MapStatus(HttpStatusCode code) => code switch
