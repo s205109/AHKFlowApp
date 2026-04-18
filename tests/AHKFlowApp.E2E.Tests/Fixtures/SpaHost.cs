@@ -24,6 +24,13 @@ public sealed class SpaHost : IAsyncDisposable
         WebApplication app = builder.Build();
         IHttpForwarder forwarder = app.Services.GetRequiredService<IHttpForwarder>();
 
+        app.Use(async (ctx, next) =>
+        {
+            await next();
+            if (ctx.Request.Path.Value?.EndsWith("blazor.boot.json", StringComparison.OrdinalIgnoreCase) == true)
+                ctx.Response.Headers["Blazor-Environment"] = "E2E";
+        });
+
         app.Map("/api/{**catch-all}", async (HttpContext ctx) =>
         {
             await forwarder.SendAsync(ctx, apiBaseUrl, apiInvoker, ForwarderRequestConfig.Empty);

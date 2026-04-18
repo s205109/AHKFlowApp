@@ -24,7 +24,9 @@ public sealed class StackFixture : IAsyncLifetime
         HttpMessageInvoker apiClient = new(Api.Server.CreateHandler());
         Spa = await SpaHost.StartAsync(wwwroot, apiClient, Api.Server.BaseAddress.ToString());
 
-        Microsoft.Playwright.Program.Main(["install", "chromium"]);
+        int exitCode = Microsoft.Playwright.Program.Main(["install", "chromium"]);
+        if (exitCode != 0)
+            throw new InvalidOperationException($"Playwright browser installation failed (exit {exitCode}).");
         Playwright = await Microsoft.Playwright.Playwright.CreateAsync();
         Browser = await Playwright.Chromium.LaunchAsync(new() { Headless = true });
     }
