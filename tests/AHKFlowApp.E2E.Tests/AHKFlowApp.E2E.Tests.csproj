@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Microsoft.Identity.Web" />
+    <PackageReference Include="Microsoft.Playwright" />
+    <PackageReference Include="Yarp.ReverseProxy" />
+    <PackageReference Include="Testcontainers.MsSql" />
+    <!-- Override transitive reference with known vulnerabilities -->
+    <PackageReference Include="System.Security.Cryptography.Xml" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Backend\AHKFlowApp.API\AHKFlowApp.API.csproj" />
+    <ProjectReference Include="..\..\src\Backend\AHKFlowApp.Infrastructure\AHKFlowApp.Infrastructure.csproj" />
+  </ItemGroup>
+  <Target Name="PublishBlazorForE2E" BeforeTargets="Build">
+    <Exec Command="dotnet publish ..\..\src\Frontend\AHKFlowApp.UI.Blazor -c $(Configuration) -o ..\..\src\Frontend\AHKFlowApp.UI.Blazor\bin\$(Configuration)\net10.0\publish" />
+  </Target>
+</Project>
