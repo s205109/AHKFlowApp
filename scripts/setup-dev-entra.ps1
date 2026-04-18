@@ -32,7 +32,9 @@ if (-not $entra -or -not $entra.ClientId -or -not $entra.TenantId) {
 # Backend: user-secrets
 $apiProject = Join-Path $RepoRoot 'src/Backend/AHKFlowApp.API'
 dotnet user-secrets set 'AzureAd:TenantId' $entra.TenantId --project $apiProject | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "dotnet user-secrets set AzureAd:TenantId failed (exit $LASTEXITCODE)" }
 dotnet user-secrets set 'AzureAd:ClientId' $entra.ClientId --project $apiProject | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "dotnet user-secrets set AzureAd:ClientId failed (exit $LASTEXITCODE)" }
 Write-Host "  Backend user-secrets set (AzureAd:TenantId, AzureAd:ClientId)"
 
 # Frontend: appsettings.Development.json (gitignored)

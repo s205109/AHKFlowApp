@@ -65,7 +65,7 @@ function Invoke-Az {
 }
 
 function Invoke-Az-Json {
-    $raw = az @args 2>&1
+    $raw = az @args --output json 2>&1
     if ($LASTEXITCODE -ne 0) { throw "az $($args -join ' ') failed:`n$raw" }
     return $raw | ConvertFrom-Json
 }
@@ -90,7 +90,7 @@ function Try-Az-Json {
     $prevEap = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
-        $output = az @args 2>&1
+        $output = az @args --output json 2>&1
         if ($LASTEXITCODE -ne 0) { return $null }
         return ($output | ConvertFrom-Json)
     } catch {
@@ -151,7 +151,7 @@ if (-not $Environment) {
     # Apply default before assigning to $Environment — [ValidateSet] re-validates
     # every assignment, so a blank intermediate value would throw.
     $Environment = if ([string]::IsNullOrWhiteSpace($envInput)) { 'test' } else { $envInput }
-    if ($Environment -notin @('test', 'prod')) { throw "Environment must be 'test' or 'prod'" }
+    if ($Environment -notin @('test', 'prod')) { throw "Environment must be 'test' or 'prod'" }  # explicit — [ValidateSet] only applies to param binding, not variable assignment
 }
 
 $Location = Read-Host "  Azure region (default: westeurope)"
