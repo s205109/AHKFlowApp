@@ -45,4 +45,12 @@ builder.Services.AddHttpClient<IAhkFlowAppApiHttpClient, AhkFlowAppApiHttpClient
     .AddHttpMessageHandler<ApiAuthorizationMessageHandler>()
     .AddStandardResilienceHandler();
 
+builder.Services.AddHttpClient<IHotstringsApiClient, HotstringsApiClient>(client =>
+{
+    client.BaseAddress = new Uri(apiBaseUrl);
+    client.Timeout = TimeSpan.FromSeconds(30);
+})
+    .AddHttpMessageHandler<ApiAuthorizationMessageHandler>()
+    .AddStandardResilienceHandler();
+
 await builder.Build().RunAsync();
