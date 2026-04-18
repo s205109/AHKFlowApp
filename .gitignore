@@ -420,14 +420,23 @@ FodyWeavers.xsd
 *.msm
 *.msp
 
-# Local appsettings — use *.example files as templates
-**/appsettings.Local.json
-src/Backend/**/appsettings.Development.json
+# ---------------------------------------------------------------------------
+# AHKFlow - appsettings
+#
+# Tracked (safe to commit):
+#   appsettings.json                    base config, no secrets
+#   appsettings.Test.json               TEST env, tokenized by CI/CD
+#   src/Frontend/.../appsettings.Production.json   tokenized by CI/CD (public client-side config)
+#   appsettings.Development.json.example           template — copy & fill locally
+#
+# Ignored (never commit — may contain secrets):
+# ---------------------------------------------------------------------------
+
+# Local dev config — copy from appsettings.Development.json.example
+**/appsettings.Development.json
+
+# Backend prod secrets — real values live in Azure App Service Config (Key Vault planned)
 src/Backend/**/appsettings.Production.json
-
-
-# Blazor dev config — tenant-specific, copy from .example and fill in values
-src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/appsettings.Development.json
 
 # Claude Code personal instructions and settings
 .claude/CLAUDE.local.md

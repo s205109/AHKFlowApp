@@ -1,63 +1,56 @@
 # Entra ID App Registration Setup
 
-AHKFlowApp uses a single Entra ID app registration per environment (dev, test, prod). The SPA is both the client and the resource — it exposes an `access_as_user` scope and pre-authorizes itself.
+AHKFlowApp uses one Entra ID app registration per environment (`AHKFlowApp-dev`, `AHKFlowApp-test`, `AHKFlowApp-prod`). The SPA is both the client and the resource — it exposes an `access_as_user` scope and pre-authorizes itself.
+
+Setup is automated. Dev has its own helper; test/prod run as part of `deploy.ps1`.
 
 ## Prerequisites
 
 - Azure CLI with `az login` completed
 - Contributor or Application Administrator role in the target tenant
 
-## Step 1: Run the setup script
+## Dev
 
-```bash
-# Dev environment
-.\scripts\setup-entra-app.ps1 -Environment dev
+```powershell
+.\scripts\setup-dev-entra.ps1
+```
 
-# Test environment (SWA hostname resolved automatically)
+Creates/updates `AHKFlowApp-dev`, sets backend user-secrets, and writes `src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/appsettings.Development.json`. Idempotent — safe to re-run.
+
+## Test / Prod
+
+Handled automatically by the full provisioning script:
+
+```powershell
+.\scripts\deploy.ps1 -Environment test
+.\scripts\deploy.ps1 -Environment prod
+```
+
+Phase 3 sets up or updates the per-env app registration via `setup-entra-app.ps1` before Bicep runs. Later in the deployment, the script re-runs that setup only to refresh redirect URIs and write all three `AZURE_AD_*_{TEST|PROD}` GitHub Variables once the final app endpoints are known. The deploy workflows substitute these into `appsettings.{Test|Production}.json` at build time and inject them into App Service configuration on every deploy.
+
+After `deploy.ps1` finishes, retrigger the API and frontend deploy workflows (they don't auto-run on `scripts/**` changes):
+
+```powershell
+gh workflow run deploy-api.yml --ref main -f environment=test
+gh workflow run deploy-frontend.yml --ref main -f environment=test
+```
+
+### Manual fallback
+
+If you only need to refresh the app registration without re-running Bicep (e.g. to add a custom domain redirect URI), call the underlying script directly:
+
+```powershell
 .\scripts\setup-entra-app.ps1 -Environment test
-
-# Prod environment
-.\scripts\setup-entra-app.ps1 -Environment prod
 ```
 
-The script is idempotent — safe to re-run. It outputs the `ClientId`, `TenantId`, and `DefaultScope` values needed for the next steps.
-
-## Step 2 (dev): Set user secrets
-
-```bash
-dotnet user-secrets set "AzureAd:TenantId" "<TenantId>" --project src/Backend/AHKFlowApp.API
-dotnet user-secrets set "AzureAd:ClientId" "<ClientId>" --project src/Backend/AHKFlowApp.API
-```
-
-Then populate `src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/appsettings.Development.json`:
-
-```json
-"AzureAd": {
-  "Authority": "https://login.microsoftonline.com/<TenantId>",
-  "ClientId": "<ClientId>",
-  "ValidateAuthority": true,
-  "DefaultScope": "api://<ClientId>/access_as_user"
-}
-```
-
-These values are public — MSAL SPA apps embed them in the browser bundle. Do not use `.gitignore` to hide them.
-
-## Step 3 (test/prod): Set GitHub Variables
-
-```bash
-gh variable set AZURE_AD_TENANT_ID_TEST --body "<TenantId>"
-gh variable set AZURE_AD_CLIENT_ID_TEST --body "<ClientId>"
-gh variable set AZURE_AD_DEFAULT_SCOPE_TEST --body "api://<ClientId>/access_as_user"
-```
-
-The deploy workflows substitute these into `appsettings.Test.json` / `appsettings.Production.json` at build time and inject them into App Service configuration on every deploy.
+It prints the resulting `ClientId`, `TenantId`, and `DefaultScope`. Update the three `AZURE_AD_*_TEST` GitHub Variables manually via `gh variable set`.
 
 ## What's public vs secret
 
-All `AzureAd:*` values are **public** — they appear in the compiled Blazor WASM bundle served to the browser. Use GitHub **Variables** (not Secrets) for them.
+All `AzureAd:*` values are **public** — they appear in the compiled Blazor WASM bundle served to the browser. Stored as GitHub **Variables** (not Secrets).
 
-The `AZURE_STATIC_WEB_APPS_API_TOKEN_*` and `AZURE_API_BASE_URL_*` values are secrets (remain in GitHub Secrets as before).
+`AZURE_STATIC_WEB_APPS_API_TOKEN_*` and `AZURE_API_BASE_URL_*` remain in GitHub **Secrets**.
 
 ## Adding a custom domain later
 
-When a custom domain is added to the SWA, re-run `setup-entra-app.ps1` with `-SwaHostname <custom-domain>` to add the custom domain redirect URIs to the app registration. Also extend `Cors:AllowedOrigins` in bicep.
+When a custom domain is added to the SWA, re-run `setup-entra-app.ps1 -Environment <env> -SwaHostname <custom-domain>` to add the custom-domain redirect URIs to the app registration. Also extend `Cors:AllowedOrigins` in bicep.
