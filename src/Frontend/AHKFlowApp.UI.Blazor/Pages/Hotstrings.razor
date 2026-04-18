@@ -1,0 +1,73 @@
+@page "/hotstrings"
+@using AHKFlowApp.UI.Blazor.DTOs
+@using AHKFlowApp.UI.Blazor.Services
+@implements IDisposable
+
+<PageTitle>Hotstrings</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Hotstrings</MudText>
+
+<MudPaper Class="pa-4">
+    @if (_loading)
+    {
+        <MudProgressCircular Color="Color.Primary" Indeterminate="true" Size="Size.Small" />
+        <MudText Typo="Typo.body2" Class="mt-2">Loading hotstrings...</MudText>
+    }
+    else if (_loadError is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-3">@_loadError</MudAlert>
+        <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="LoadAsync">Retry</MudButton>
+    }
+    else
+    {
+        <MudTable Items="_items" Dense="true" Hover="true">
+            <HeaderContent>
+                <MudTh>Trigger</MudTh>
+                <MudTh>Replacement</MudTh>
+                <MudTh>Ending char required</MudTh>
+                <MudTh>Inside word</MudTh>
+                <MudTh>Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.Trigger</MudTd>
+                <MudTd>@context.Replacement</MudTd>
+                <MudTd>@context.IsEndingCharacterRequired</MudTd>
+                <MudTd>@context.IsTriggerInsideWord</MudTd>
+                <MudTd></MudTd>
+            </RowTemplate>
+            <NoRecordsContent>
+                <MudText>No hotstrings yet.</MudText>
+            </NoRecordsContent>
+        </MudTable>
+    }
+</MudPaper>
+
+@code {
+    [Inject] private IHotstringsApiClient Api { get; set; } = default!;
+
+    private List<HotstringDto> _items = [];
+    private bool _loading = true;
+    private string? _loadError;
+    private readonly CancellationTokenSource _cts = new();
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _loadError = null;
+        StateHasChanged();
+        var result = await Api.ListAsync(profileId: null, page: 1, pageSize: 200, _cts.Token);
+        if (result.IsSuccess)
+            _items = [.. result.Value!.Items];
+        else
+            _loadError = ApiErrorMessageFactory.Build(result.Status, result.Problem);
+        _loading = false;
+    }
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+    }
+}
