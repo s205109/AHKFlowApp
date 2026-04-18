@@ -37,7 +37,7 @@ function Invoke-GraphPatch([string] $ObjectId, [string] $JsonBody) {
         az rest --method PATCH `
             --uri "https://graph.microsoft.com/v1.0/applications/$ObjectId" `
             --headers 'Content-Type=application/json' `
-            --body "@$tmp"
+            --body "@$tmp" | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "az rest PATCH failed (exit $LASTEXITCODE)" }
     } finally {
         Remove-Item $tmp -ErrorAction SilentlyContinue
@@ -90,6 +90,7 @@ $logoutUris = $redirectUris -replace 'login-callback', 'logout-callback'
 az ad app update `
     --id $objectId `
     --identifier-uris "api://$appId" | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "az ad app update failed (exit $LASTEXITCODE)" }
 
 $spaJson = @{ spa = @{ redirectUris = $redirectUris } } | ConvertTo-Json -Depth 5 -Compress
 Invoke-GraphPatch -ObjectId $objectId -JsonBody $spaJson

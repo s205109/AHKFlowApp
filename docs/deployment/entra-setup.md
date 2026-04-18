@@ -26,7 +26,7 @@ Handled automatically by the full provisioning script:
 .\scripts\deploy.ps1 -Environment prod
 ```
 
-Phase 6 creates/updates the per-env app registration via `setup-entra-app.ps1` and writes all three `AZURE_AD_*_{TEST|PROD}` GitHub Variables. The deploy workflows substitute these into `appsettings.{Test|Production}.json` at build time and inject them into App Service configuration on every deploy.
+Phase 3 sets up or updates the per-env app registration via `setup-entra-app.ps1` before Bicep runs. Later in the deployment, the script re-runs that setup only to refresh redirect URIs and write all three `AZURE_AD_*_{TEST|PROD}` GitHub Variables once the final app endpoints are known. The deploy workflows substitute these into `appsettings.{Test|Production}.json` at build time and inject them into App Service configuration on every deploy.
 
 After `deploy.ps1` finishes, retrigger the API and frontend deploy workflows (they don't auto-run on `scripts/**` changes):
 
