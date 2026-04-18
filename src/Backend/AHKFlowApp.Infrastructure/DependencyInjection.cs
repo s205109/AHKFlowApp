@@ -1,3 +1,4 @@
+using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Infrastructure.Persistence;
 using AHKFlowApp.Infrastructure.Services;
 using Microsoft.EntityFrameworkCore;
@@ -16,6 +17,8 @@ public static class DependencyInjection
             options.UseSqlServer(
                 configuration.GetConnectionString("DefaultConnection"),
                 sql => sql.EnableRetryOnFailure()));
+
+        services.AddScoped<IAppDbContext>(sp => sp.GetRequiredService<AppDbContext>());
 
         services.AddSingleton<IVersionService, VersionService>();
 
