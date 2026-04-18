@@ -41,6 +41,18 @@ public sealed class HotstringsApiClientTests
     }
 
     [Fact]
+    public async Task ListAsync_WithProfileId_AppendsProfileIdToQueryString()
+    {
+        var profileId = Guid.NewGuid();
+        var paged = new PagedList<HotstringDto>([], 1, 50, 0, 0, false, false);
+        var handler = StubHttpMessageHandler.JsonResponse(HttpStatusCode.OK, paged);
+
+        await ClientWith(handler).ListAsync(profileId: profileId, page: 1, pageSize: 50);
+
+        handler.LastRequest!.RequestUri!.Query.Should().Contain($"profileId={profileId}");
+    }
+
+    [Fact]
     public async Task DeleteAsync_OnNotFound_ReturnsNotFoundResult()
     {
         var handler = StubHttpMessageHandler.JsonResponse(HttpStatusCode.NotFound, new ApiProblemDetails(null, "Not Found", 404, null, null, null));
