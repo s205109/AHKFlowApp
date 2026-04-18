@@ -18,7 +18,10 @@
 [CmdletBinding()]
 param(
     [ValidateSet('test', 'prod')]
-    [string]$Environment
+    [string]$Environment,
+
+    [ValidateRange(1, 240)]
+    [int]$MaxWaitMinutes = 45
 )
 
 Set-StrictMode -Version Latest
@@ -228,7 +231,13 @@ $EntraScript = Join-Path $PSScriptRoot 'setup-entra-app.ps1'
 # setup-entra-app.ps1 emits a PSCustomObject at the end, but az rest calls inside
 # may also leak output. Pick the last object that has a ClientId.
 $EntraOutput = & $EntraScript -Environment $Environment
-$EntraInfo = @($EntraOutput | Where-Object { $_.ClientId }) | Select-Object -Last 1
+$EntraInfo = @(
+    $EntraOutput | Where-Object {
+        $_ -is [psobject] -and
+        $_.PSObject.Properties['ClientId'] -and
+        $_.ClientId
+    }
+) | Select-Object -Last 1
 if (-not $EntraInfo -or -not $EntraInfo.ClientId) {
     throw "setup-entra-app.ps1 did not return a ClientId"
 }
@@ -267,6 +276,15 @@ while ($state -notin @('Succeeded', 'Failed', 'Canceled')) {
     $ticks++
     $elapsed = (Get-Date) - $deployStart
     $elapsedStr = '{0:D2}:{1:D2}' -f [int]$elapsed.TotalMinutes, $elapsed.Seconds
+
+    if ($elapsed.TotalMinutes -ge $MaxWaitMinutes) {
+        throw @"
+Deployment '$DeploymentName' exceeded -MaxWaitMinutes ($MaxWaitMinutes min) in state '$state'.
+Inspect:  az deployment group show --resource-group $ResourceGroup --name $DeploymentName
+Cancel:   az deployment group cancel --resource-group $ResourceGroup --name $DeploymentName
+Re-run deploy.ps1 once resolved (it is idempotent), optionally with -MaxWaitMinutes <N>.
+"@
+    }
 
     $deployment = Try-Az-Json deployment group show `
         --resource-group $ResourceGroup --name $DeploymentName
@@ -555,7 +573,13 @@ Set-GhSecret "AZURE_API_BASE_URL_${EnvSuffix}"                 "https://$AppServ
 # Idempotent — adds the SWA redirect URI alongside the localhost ones set in Phase 3.
 Write-Host "  Updating Entra app redirect URIs with SWA hostname..."
 $EntraOutput = & $EntraScript -Environment $Environment -SwaHostname $SwaHostname
-$EntraInfo = @($EntraOutput | Where-Object { $_.ClientId }) | Select-Object -Last 1
+$EntraInfo = @(
+    $EntraOutput | Where-Object {
+        $_ -is [psobject] -and
+        $_.PSObject.Properties['ClientId'] -and
+        $_.ClientId
+    }
+) | Select-Object -Last 1
 if (-not $EntraInfo -or -not $EntraInfo.ClientId) {
     throw "setup-entra-app.ps1 did not return a ClientId"
 }

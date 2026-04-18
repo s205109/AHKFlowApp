@@ -19,9 +19,14 @@ $ErrorActionPreference = 'Stop'
 $RepoRoot = Split-Path $PSScriptRoot -Parent
 
 $EntraScript = Join-Path $PSScriptRoot 'setup-entra-app.ps1'
-$entra = & $EntraScript -Environment dev
-if (-not $entra -or -not $entra.ClientId) {
-    throw "setup-entra-app.ps1 did not return a ClientId"
+$entraOutput = @(& $EntraScript -Environment dev)
+$entra = $entraOutput | Where-Object {
+    $_ -is [psobject] -and
+    $_.PSObject.Properties['ClientId'] -and
+    $_.ClientId
+} | Select-Object -Last 1
+if (-not $entra -or -not $entra.ClientId -or -not $entra.TenantId) {
+    throw "setup-entra-app.ps1 did not return a valid Entra result with ClientId and TenantId"
 }
 
 # Backend: user-secrets
