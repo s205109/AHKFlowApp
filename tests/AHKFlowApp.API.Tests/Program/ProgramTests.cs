@@ -1,6 +1,7 @@
 using System.Net;
 using AHKFlowApp.TestUtilities.Fixtures;
 using FluentAssertions;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Xunit;
 
@@ -27,6 +28,25 @@ public sealed class ProgramTests(SqlContainerFixture sqlFixture) : IDisposable
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.Redirect);
         response.Headers.Location!.ToString().Should().Be("/swagger");
+    }
+
+    [Fact]
+    public async Task Root_InNonDevelopment_RedirectsToHealth()
+    {
+        // Arrange
+        using HttpClient client = _factory
+            .WithWebHostBuilder(builder => builder.UseEnvironment("Test"))
+            .CreateClient(new WebApplicationFactoryClientOptions
+            {
+                AllowAutoRedirect = false
+            });
+
+        // Act
+        HttpResponseMessage response = await client.GetAsync("/");
+
+        // Assert
+        response.StatusCode.Should().Be(HttpStatusCode.Redirect);
+        response.Headers.Location!.ToString().Should().Be("/health");
     }
 
     [Fact]
