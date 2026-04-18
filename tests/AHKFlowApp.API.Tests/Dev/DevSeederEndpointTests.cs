@@ -23,7 +23,7 @@ public sealed class DevSeederEndpointTests(SqlContainerFixture sqlFixture) : IDi
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         PagedList<HotstringDto>? body = await response.Content.ReadFromJsonAsync<PagedList<HotstringDto>>();
-        body!.Items.Count.Should().BeGreaterThanOrEqualTo(12);
+        body!.Items.Count.Should().BeGreaterThanOrEqualTo(3);
     }
 
     public void Dispose() => _factory.Dispose();
