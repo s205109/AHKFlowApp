@@ -22,9 +22,8 @@ public sealed class HotstringsCrudFlowTests(StackFixture fixture) : IClassFixtur
         await page.ClickAsync("button.commit-edit");
 
         await page.WaitForSelectorAsync("text=Hotstring created.");
+        await page.WaitForSelectorAsync("tbody tr:has-text(\"btw\")");
 
-        IReadOnlyList<IElementHandle> rows = await page.QuerySelectorAllAsync("tbody tr");
-        Assert.True(rows.Count >= 1);
         Assert.True(await page.IsVisibleAsync("text=by the way"));
 
         await page.ClickAsync("button.start-edit");
