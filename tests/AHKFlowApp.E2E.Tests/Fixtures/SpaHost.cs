@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -24,11 +25,30 @@ public sealed class SpaHost : IAsyncDisposable
         WebApplication app = builder.Build();
         IHttpForwarder forwarder = app.Services.GetRequiredService<IHttpForwarder>();
 
+        // In .NET 10, blazor.boot.json no longer exists — the boot config (including
+        // applicationEnvironment) is embedded inside the fingerprinted blazor.webassembly.*.js
+        // and cannot be reliably overridden via the Blazor-Environment header at runtime.
+        // Blazor WASM loads appsettings.json first, then appsettings.{Environment}.json on top —
+        // we don't know which env Blazor will pick, so intercept ALL appsettings*.json requests
+        // and inject E2E overrides so Auth:UseTestProvider=true reaches Program.cs regardless.
         app.Use(async (ctx, next) =>
         {
-            await next();
-            if (ctx.Request.Path.Value?.EndsWith("blazor.boot.json", StringComparison.OrdinalIgnoreCase) == true)
-                ctx.Response.Headers["Blazor-Environment"] = "E2E";
+            string? path = ctx.Request.Path.Value;
+            bool isAppSettings = path is not null
+                && path.StartsWith("/appsettings", StringComparison.OrdinalIgnoreCase)
+                && path.EndsWith(".json", StringComparison.OrdinalIgnoreCase);
+
+            if (!isAppSettings) { await next(); return; }
+
+            string basePath = Path.Combine(publishedWwwroot, "appsettings.json");
+            JsonNode merged = File.Exists(basePath)
+                ? JsonNode.Parse(await File.ReadAllTextAsync(basePath)) ?? new JsonObject()
+                : new JsonObject();
+            merged["Auth"] = new JsonObject { ["UseTestProvider"] = true };
+            merged["ApiBaseUrl"] = "/";
+
+            ctx.Response.ContentType = "application/json";
+            await ctx.Response.WriteAsync(merged.ToJsonString());
         });
 
         app.Map("/api/{**catch-all}", async (HttpContext ctx) =>
@@ -38,7 +58,12 @@ public sealed class SpaHost : IAsyncDisposable
 
         PhysicalFileProvider fp = new(publishedWwwroot);
         app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = fp });
-        app.UseStaticFiles(new StaticFileOptions { FileProvider = fp });
+        app.UseStaticFiles(new StaticFileOptions
+        {
+            FileProvider = fp,
+            ServeUnknownFileTypes = true,
+            DefaultContentType = "application/octet-stream",
+        });
         app.MapFallback(async (HttpContext ctx) =>
         {
             ctx.Response.ContentType = "text/html";
