@@ -1,6 +1,7 @@
 using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Mapping;
+using AHKFlowApp.Application.Validation;
 using AHKFlowApp.Domain.Entities;
 using Ardalis.Result;
 using FluentValidation;
@@ -15,13 +16,9 @@ public sealed class CreateHotstringCommandValidator : AbstractValidator<CreateHo
 {
     public CreateHotstringCommandValidator()
     {
-        RuleFor(x => x.Input.Trigger)
-            .NotEmpty()
-            .MaximumLength(50);
-
-        RuleFor(x => x.Input.Replacement)
-            .NotEmpty()
-            .MaximumLength(4000);
+        RuleFor(x => x.Input.Trigger).ValidTrigger();
+        RuleFor(x => x.Input.Replacement).ValidReplacement();
+        RuleFor(x => x.Input.ProfileId).ValidOptionalProfileId();
     }
 }
 

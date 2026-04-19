@@ -10,12 +10,16 @@ public sealed class CreateHotstringCommandValidatorTests
 {
     private readonly CreateHotstringCommandValidator _sut = new();
 
+    private static CreateHotstringCommand Cmd(
+        string trigger = "btw",
+        string replacement = "by the way",
+        Guid? profileId = null)
+        => new(new CreateHotstringDto(trigger, replacement, profileId));
+
     [Fact]
     public void Validate_WithValidInput_Succeeds()
     {
-        var cmd = new CreateHotstringCommand(new CreateHotstringDto("btw", "by the way"));
-
-        ValidationResult result = _sut.Validate(cmd);
+        ValidationResult result = _sut.Validate(Cmd());
 
         result.IsValid.Should().BeTrue();
     }
@@ -23,46 +27,124 @@ public sealed class CreateHotstringCommandValidatorTests
     [Theory]
     [InlineData("")]
     [InlineData("   ")]
-    public void Validate_WithEmptyTrigger_Fails(string trigger)
+    public void Validate_WithEmptyOrWhitespaceTrigger_Fails(string trigger)
     {
-        var cmd = new CreateHotstringCommand(new CreateHotstringDto(trigger, "exp"));
-
-        ValidationResult result = _sut.Validate(cmd);
+        ValidationResult result = _sut.Validate(Cmd(trigger: trigger));
 
         result.IsValid.Should().BeFalse();
         result.Errors.Should().Contain(e => e.PropertyName == "Input.Trigger");
     }
 
     [Fact]
-    public void Validate_WithTriggerLongerThan50_Fails()
+    public void Validate_WithTriggerAt50Chars_Succeeds()
     {
-        var cmd = new CreateHotstringCommand(new CreateHotstringDto(new string('x', 51), "exp"));
+        ValidationResult result = _sut.Validate(Cmd(trigger: new string('x', 50)));
 
-        ValidationResult result = _sut.Validate(cmd);
+        result.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Validate_WithTriggerAt51Chars_Fails()
+    {
+        ValidationResult result = _sut.Validate(Cmd(trigger: new string('x', 51)));
 
         result.IsValid.Should().BeFalse();
-        result.Errors.Should().Contain(e => e.PropertyName == "Input.Trigger");
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.Trigger" &&
+            e.ErrorMessage == "Trigger must be 50 characters or fewer.");
+    }
+
+    [Theory]
+    [InlineData(" btw")]
+    [InlineData("btw ")]
+    [InlineData(" btw ")]
+    public void Validate_WithTriggerLeadingOrTrailingWhitespace_Fails(string trigger)
+    {
+        ValidationResult result = _sut.Validate(Cmd(trigger: trigger));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.Trigger" &&
+            e.ErrorMessage == "Trigger must not have leading or trailing whitespace.");
+    }
+
+    [Theory]
+    [InlineData("bt\nw")]
+    [InlineData("bt\rw")]
+    [InlineData("bt\tw")]
+    public void Validate_WithTriggerContainingControlChars_Fails(string trigger)
+    {
+        ValidationResult result = _sut.Validate(Cmd(trigger: trigger));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.Trigger" &&
+            e.ErrorMessage == "Trigger must not contain line breaks or tabs.");
+    }
+
+    [Theory]
+    [InlineData("dür")]
+    [InlineData("café")]
+    [InlineData("niño")]
+    public void Validate_WithUnicodeTrigger_Succeeds(string trigger)
+    {
+        ValidationResult result = _sut.Validate(Cmd(trigger: trigger));
+
+        result.IsValid.Should().BeTrue();
     }
 
     [Fact]
     public void Validate_WithEmptyReplacement_Fails()
     {
-        var cmd = new CreateHotstringCommand(new CreateHotstringDto("btw", ""));
-
-        ValidationResult result = _sut.Validate(cmd);
+        ValidationResult result = _sut.Validate(Cmd(replacement: ""));
 
         result.IsValid.Should().BeFalse();
         result.Errors.Should().Contain(e => e.PropertyName == "Input.Replacement");
     }
 
     [Fact]
-    public void Validate_WithReplacementLongerThan4000_Fails()
+    public void Validate_WithReplacementAt4000Chars_Succeeds()
     {
-        var cmd = new CreateHotstringCommand(new CreateHotstringDto("btw", new string('x', 4001)));
+        ValidationResult result = _sut.Validate(Cmd(replacement: new string('x', 4000)));
 
-        ValidationResult result = _sut.Validate(cmd);
+        result.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Validate_WithReplacementAt4001Chars_Fails()
+    {
+        ValidationResult result = _sut.Validate(Cmd(replacement: new string('x', 4001)));
 
         result.IsValid.Should().BeFalse();
-        result.Errors.Should().Contain(e => e.PropertyName == "Input.Replacement");
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.Replacement" &&
+            e.ErrorMessage == "Replacement must be 4000 characters or fewer.");
+    }
+
+    [Fact]
+    public void Validate_WithEmptyGuidProfileId_Fails()
+    {
+        ValidationResult result = _sut.Validate(Cmd(profileId: Guid.Empty));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.ProfileId" &&
+            e.ErrorMessage == "ProfileId must not be an empty GUID.");
+    }
+
+    [Fact]
+    public void Validate_WithNullProfileId_Succeeds()
+    {
+        ValidationResult result = _sut.Validate(Cmd(profileId: null));
+
+        result.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Validate_WithValidProfileId_Succeeds()
+    {
+        ValidationResult result = _sut.Validate(Cmd(profileId: Guid.NewGuid()));
+
+        result.IsValid.Should().BeTrue();
     }
 }
