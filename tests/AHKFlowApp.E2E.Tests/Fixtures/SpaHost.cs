@@ -2,7 +2,6 @@ using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Yarp.ReverseProxy.Forwarder;
@@ -51,7 +50,7 @@ public sealed class SpaHost : IAsyncDisposable
             await ctx.Response.WriteAsync(merged.ToJsonString());
         });
 
-        app.Map("/api/{**catch-all}", async (HttpContext ctx) =>
+        app.Map("/api/{**catch-all}", async ctx =>
         {
             await forwarder.SendAsync(ctx, apiBaseUrl, apiInvoker, ForwarderRequestConfig.Empty);
         });
@@ -64,7 +63,7 @@ public sealed class SpaHost : IAsyncDisposable
             ServeUnknownFileTypes = true,
             DefaultContentType = "application/octet-stream",
         });
-        app.MapFallback(async (HttpContext ctx) =>
+        app.MapFallback(async ctx =>
         {
             ctx.Response.ContentType = "text/html";
             await ctx.Response.SendFileAsync(Path.Combine(publishedWwwroot, "index.html"));
@@ -75,5 +74,5 @@ public sealed class SpaHost : IAsyncDisposable
         return new SpaHost(app, addr);
     }
 
-    public async ValueTask DisposeAsync() => await _app.DisposeAsync();
+    public ValueTask DisposeAsync() => _app.DisposeAsync();
 }
