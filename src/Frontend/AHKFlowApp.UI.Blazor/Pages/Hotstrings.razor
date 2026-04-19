@@ -139,7 +139,7 @@
     {
         var confirm = await DialogService.ShowMessageBoxAsync(
             title: "Delete hotstring?",
-            markupMessage: new MarkupString($"Delete <strong>{dto.Trigger}</strong>? This cannot be undone."),
+            message: $"Delete \"{dto.Trigger}\"? This cannot be undone.",
             yesText: "Delete", cancelText: "Cancel");
         if (confirm != true) return;
 

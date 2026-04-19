@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text.Encodings.Web;
+using AHKFlowApp.UI.Blazor.Auth;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -13,7 +14,7 @@ public sealed class TestAuthHandler(
     : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
 {
     public const string SchemeName = "Test";
-    public static readonly Guid TestOwnerOid = Guid.Parse("11111111-1111-1111-1111-111111111111");
+    public static readonly Guid TestOwnerOid = Guid.Parse(TestAuthenticationProvider.TestOwnerOid);
 
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {

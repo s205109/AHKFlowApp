@@ -33,9 +33,9 @@ public sealed class StackFixture : IAsyncLifetime
 
     public async Task DisposeAsync()
     {
-        await Browser.CloseAsync();
-        Playwright.Dispose();
-        await Spa.DisposeAsync();
+        if (Browser is not null) await Browser.CloseAsync();
+        Playwright?.Dispose();
+        if (Spa is not null) await Spa.DisposeAsync();
         await Api.DisposeAsync();
     }
 }
