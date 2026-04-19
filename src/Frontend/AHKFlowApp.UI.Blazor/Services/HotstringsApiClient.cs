@@ -9,10 +9,10 @@ public sealed class HotstringsApiClient(HttpClient httpClient) : IHotstringsApiC
 {
     private const string BasePath = "api/v1/hotstrings";
 
-    public async Task<ApiResult<PagedList<HotstringDto>>> ListAsync(Guid? profileId, int page, int pageSize, CancellationToken ct = default)
+    public Task<ApiResult<PagedList<HotstringDto>>> ListAsync(Guid? profileId, int page, int pageSize, CancellationToken ct = default)
     {
         string query = $"?page={page}&pageSize={pageSize}" + (profileId is { } pid ? $"&profileId={pid}" : "");
-        return await SendAsync<PagedList<HotstringDto>>(HttpMethod.Get, BasePath + query, content: null, ct);
+        return SendAsync<PagedList<HotstringDto>>(HttpMethod.Get, BasePath + query, content: null, ct);
     }
 
     public Task<ApiResult<HotstringDto>> GetAsync(Guid id, CancellationToken ct = default) =>

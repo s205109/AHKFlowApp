@@ -18,7 +18,7 @@ internal sealed class SeedHotstringsCommandHandler(
     IDevEnvironment env)
     : IRequestHandler<SeedHotstringsCommand, Result<PagedList<HotstringDto>>>
 {
-    private static readonly (string Trigger, string Replacement, bool Ending, bool InsideWord)[] Samples =
+    private static readonly (string Trigger, string Replacement, bool Ending, bool InsideWord)[] s_samples =
     [
         ("btw", "by the way",           true, true),
         ("fyi", "for your information", true, true),
@@ -41,7 +41,7 @@ internal sealed class SeedHotstringsCommandHandler(
             db.Hotstrings.RemoveRange(existing);
         }
 
-        foreach ((string trigger, string replacement, bool ending, bool inside) in Samples)
+        foreach ((string trigger, string replacement, bool ending, bool inside) in s_samples)
         {
             bool exists = await db.Hotstrings.AnyAsync(
                 h => h.OwnerOid == ownerOid

@@ -55,5 +55,5 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncDisposabl
         await Sql.DisposeAsync();
     }
 
-    async ValueTask IAsyncDisposable.DisposeAsync() => await DisposeAsync();
+    ValueTask IAsyncDisposable.DisposeAsync() => DisposeAsync();
 }
