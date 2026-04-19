@@ -22,8 +22,9 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Backend\AHKFlowApp.API\AHKFlowApp.API.csproj" />
     <ProjectReference Include="..\..\src\Backend\AHKFlowApp.Infrastructure\AHKFlowApp.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Frontend\AHKFlowApp.UI.Blazor\AHKFlowApp.UI.Blazor.csproj" />
   </ItemGroup>
-  <Target Name="PublishBlazorForE2E" BeforeTargets="Build">
+  <Target Name="PublishBlazorForE2E" BeforeTargets="VSTest">
     <Exec Command="dotnet publish ../../src/Frontend/AHKFlowApp.UI.Blazor -c Release -o ../../src/Frontend/AHKFlowApp.UI.Blazor/bin/Release/net10.0/publish" />
   </Target>
 </Project>

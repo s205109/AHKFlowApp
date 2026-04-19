@@ -110,23 +110,6 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
-    public Task Page_DeleteRow_CallsDeleteAfterConfirm()
-    {
-        var dto = new HotstringDto(Guid.NewGuid(), null, "btw", "by the way", true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
-        _api.ListAsync(Arg.Any<Guid?>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(ApiResult<PagedList<HotstringDto>>.Ok(Page(dto)));
-        _api.DeleteAsync(dto.Id, Arg.Any<CancellationToken>()).Returns(ApiResult.Ok());
-
-        IRenderedComponent<Hotstrings> cut = Render<Hotstrings>();
-        cut.WaitForAssertion(() => cut.Find("button.delete"));
-        cut.Find("button.delete").Click();
-
-        // MudMessageBox in bUnit — if dialog click is brittle, skip the confirm click
-        // and just assert the delete button exists. E2E covers full flow.
-        return Task.CompletedTask;
-    }
-
-    [Fact]
     public void Page_OnConflictResponse_ShowsErrorSnackbar()
     {
         _api.ListAsync(Arg.Any<Guid?>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
