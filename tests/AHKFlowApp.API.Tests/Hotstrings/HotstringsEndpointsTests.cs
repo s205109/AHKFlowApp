@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.TestUtilities.Fixtures;
 using FluentAssertions;
@@ -190,6 +191,29 @@ public sealed class HotstringsEndpointsTests(SqlContainerFixture sqlFixture) : I
         HttpResponseMessage response = await client.GetAsync("/api/v1/hotstrings");
 
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task Post_InvalidBody_ReturnsProblemDetailsWithErrors()
+    {
+        using HttpClient client = CreateAuthed();
+        var dto = new CreateHotstringDto("", "");
+
+        HttpResponseMessage response = await client.PostAsJsonAsync("/api/v1/hotstrings", dto);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        response.Content.Headers.ContentType!.MediaType.Should().Be("application/problem+json");
+
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        JsonElement root = doc.RootElement;
+
+        root.GetProperty("title").GetString().Should().Be("Validation failed");
+        root.GetProperty("status").GetInt32().Should().Be(400);
+        root.GetProperty("detail").GetString().Should().NotBeNullOrWhiteSpace();
+
+        JsonElement errors = root.GetProperty("errors");
+        errors.TryGetProperty("Input.Trigger", out _).Should().BeTrue("validation errors should be keyed by DTO property path");
+        errors.TryGetProperty("Input.Replacement", out _).Should().BeTrue();
     }
 
     public void Dispose() => _factory.Dispose();
