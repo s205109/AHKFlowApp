@@ -25,7 +25,7 @@ Close backlog 015 for the API. Harden hotstring validation so it (a) catches inv
 
 ### `CreateHotstringCommand` / `UpdateHotstringCommand`
 
-Both validators apply the same DTO rules via a shared private helper on `AbstractValidator<T>` to remove duplication.
+Both validators apply the same DTO rules via shared extension methods on the rule builder (`HotstringRules` static class) to remove duplication.
 
 | Field         | Rule                                         | Message                                                  |
 |---------------|----------------------------------------------|----------------------------------------------------------|
