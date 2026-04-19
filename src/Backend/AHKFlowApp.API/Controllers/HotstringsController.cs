@@ -1,8 +1,8 @@
+using AHKFlowApp.API.Extensions;
 using AHKFlowApp.Application.Commands.Hotstrings;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Queries.Hotstrings;
 using Ardalis.Result;
-using Ardalis.Result.AspNetCore;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -27,14 +27,14 @@ public sealed class HotstringsController(IMediator mediator) : ControllerBase
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 50,
         CancellationToken ct = default) =>
-        (await mediator.Send(new ListHotstringsQuery(profileId, page, pageSize), ct)).ToActionResult(this);
+        (await mediator.Send(new ListHotstringsQuery(profileId, page, pageSize), ct)).ToProblemActionResult(this);
 
     /// <summary>Get a hotstring by id.</summary>
     [HttpGet("{id:guid}", Name = "GetHotstring")]
     [ProducesResponseType(typeof(HotstringDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     public async Task<ActionResult<HotstringDto>> Get(Guid id, CancellationToken ct) =>
-        (await mediator.Send(new GetHotstringQuery(id), ct)).ToActionResult(this);
+        (await mediator.Send(new GetHotstringQuery(id), ct)).ToProblemActionResult(this);
 
     /// <summary>Create a new hotstring for the current user.</summary>
     [HttpPost]
@@ -47,7 +47,7 @@ public sealed class HotstringsController(IMediator mediator) : ControllerBase
 
         return result.IsSuccess
             ? CreatedAtRoute("GetHotstring", new { id = result.Value.Id }, result.Value)
-            : result.ToActionResult(this);
+            : result.ToProblemActionResult(this);
     }
 
     /// <summary>Update an existing hotstring. Returns the updated representation.</summary>
@@ -57,7 +57,7 @@ public sealed class HotstringsController(IMediator mediator) : ControllerBase
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
     public async Task<ActionResult<HotstringDto>> Update(Guid id, [FromBody] UpdateHotstringDto dto, CancellationToken ct) =>
-        (await mediator.Send(new UpdateHotstringCommand(id, dto), ct)).ToActionResult(this);
+        (await mediator.Send(new UpdateHotstringCommand(id, dto), ct)).ToProblemActionResult(this);
 
     /// <summary>Delete a hotstring.</summary>
     [HttpDelete("{id:guid}")]
@@ -66,6 +66,6 @@ public sealed class HotstringsController(IMediator mediator) : ControllerBase
     public async Task<ActionResult> Delete(Guid id, CancellationToken ct)
     {
         Result result = await mediator.Send(new DeleteHotstringCommand(id), ct);
-        return result.IsSuccess ? NoContent() : result.ToActionResult(this);
+        return (ActionResult)(result.IsSuccess ? NoContent() : result.ToProblemActionResult(this));
     }
 }
