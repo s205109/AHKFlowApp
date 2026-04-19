@@ -9,7 +9,7 @@ internal static class HotstringRules
 
     public static IRuleBuilderOptions<T, string> ValidTrigger<T>(this IRuleBuilderInitial<T, string> rb) =>
         rb.Cascade(CascadeMode.Stop)
-          .NotEmpty().WithMessage("Trigger is required.")
+          .Must(t => !string.IsNullOrEmpty(t)).WithMessage("Trigger is required.")
           .MaximumLength(TriggerMaxLength).WithMessage($"Trigger must be {TriggerMaxLength} characters or fewer.")
           .Must(t => t is not null && t.Length == t.Trim().Length)
               .WithMessage("Trigger must not have leading or trailing whitespace.")
