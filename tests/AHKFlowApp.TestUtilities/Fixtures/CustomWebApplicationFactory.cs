@@ -1,11 +1,12 @@
 using AHKFlowApp.Infrastructure.Persistence;
 using AHKFlowApp.TestUtilities.Auth;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Identity.Web;
 
 namespace AHKFlowApp.TestUtilities.Fixtures;
 
@@ -14,17 +15,21 @@ public sealed class CustomWebApplicationFactory(
 {
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        // Microsoft.Identity.Web validates ClientId/TenantId on first request — provide
-        // placeholder values so anonymous endpoints work without real Entra credentials.
-        builder.ConfigureAppConfiguration(config =>
-            config.AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["AzureAd:TenantId"] = "00000000-0000-0000-0000-000000000001",
-                ["AzureAd:ClientId"] = "00000000-0000-0000-0000-000000000002"
-            }));
-
         builder.ConfigureServices(services =>
         {
+            // Program.cs conditionally skips auth when AzureAd config is empty at startup.
+            // ConfigureAppConfiguration runs too late to influence that check, so we register
+            // auth directly here — M.I.W. validates TenantId/ClientId lazily on the first
+            // authenticated request, not at startup.
+            services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+                .AddMicrosoftIdentityWebApi(
+                    _ => { },
+                    o =>
+                    {
+                        o.TenantId = "00000000-0000-0000-0000-000000000001";
+                        o.ClientId = "00000000-0000-0000-0000-000000000002";
+                    });
+
             var descriptors = services
                 .Where(d => d.ServiceType == typeof(DbContextOptions<AppDbContext>)
                          || d.ServiceType == typeof(AppDbContext))
