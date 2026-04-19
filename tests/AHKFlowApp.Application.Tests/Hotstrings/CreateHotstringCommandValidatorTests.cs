@@ -24,15 +24,26 @@ public sealed class CreateHotstringCommandValidatorTests
         result.IsValid.Should().BeTrue();
     }
 
-    [Theory]
-    [InlineData("")]
-    [InlineData("   ")]
-    public void Validate_WithEmptyOrWhitespaceTrigger_Fails(string trigger)
+    [Fact]
+    public void Validate_WithEmptyTrigger_Fails()
     {
-        ValidationResult result = _sut.Validate(Cmd(trigger: trigger));
+        ValidationResult result = _sut.Validate(Cmd(trigger: ""));
 
         result.IsValid.Should().BeFalse();
-        result.Errors.Should().Contain(e => e.PropertyName == "Input.Trigger");
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.Trigger" &&
+            e.ErrorMessage == "Trigger is required.");
+    }
+
+    [Fact]
+    public void Validate_WithWhitespaceTrigger_Fails()
+    {
+        ValidationResult result = _sut.Validate(Cmd(trigger: "   "));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.Trigger" &&
+            e.ErrorMessage == "Trigger must not have leading or trailing whitespace.");
     }
 
     [Fact]
@@ -99,7 +110,9 @@ public sealed class CreateHotstringCommandValidatorTests
         ValidationResult result = _sut.Validate(Cmd(replacement: ""));
 
         result.IsValid.Should().BeFalse();
-        result.Errors.Should().Contain(e => e.PropertyName == "Input.Replacement");
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.Replacement" &&
+            e.ErrorMessage == "Replacement is required.");
     }
 
     [Fact]
