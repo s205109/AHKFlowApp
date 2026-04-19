@@ -46,7 +46,7 @@ public sealed class HotstringsEndpointsTests(SqlContainerFixture sqlFixture) : I
     }
 
     [Fact]
-    public async Task Post_DuplicateTrigger_Returns409()
+    public async Task Post_DuplicateTrigger_Returns409_WithProblemDetails()
     {
         var owner = Guid.NewGuid();
         using HttpClient client = CreateAuthed(owner);
@@ -58,18 +58,38 @@ public sealed class HotstringsEndpointsTests(SqlContainerFixture sqlFixture) : I
         HttpResponseMessage second = await client.PostAsJsonAsync("/api/v1/hotstrings", dto);
 
         second.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        second.Content.Headers.ContentType!.MediaType.Should().Be("application/problem+json");
+
+        using var doc = JsonDocument.Parse(await second.Content.ReadAsStringAsync());
+        JsonElement root = doc.RootElement;
+        root.GetProperty("type").GetString().Should().Be("https://tools.ietf.org/html/rfc9110#section-15.5.10");
+        root.GetProperty("title").GetString().Should().Be("Conflict");
+        root.GetProperty("status").GetInt32().Should().Be(409);
+        root.GetProperty("detail").GetString().Should().Contain("already exists");
+        root.GetProperty("instance").GetString().Should().Be("/api/v1/hotstrings");
+        root.GetProperty("traceId").GetString().Should().NotBeNullOrEmpty();
     }
 
     [Fact]
-    public async Task Put_UnknownId_Returns404()
+    public async Task Put_UnknownId_Returns404_WithProblemDetails()
     {
         using HttpClient client = CreateAuthed();
         var dto = new UpdateHotstringDto("x", "y", null, true, true);
 
+        var unknownId = Guid.NewGuid();
         HttpResponseMessage response = await client.PutAsJsonAsync(
-            $"/api/v1/hotstrings/{Guid.NewGuid()}", dto);
+            $"/api/v1/hotstrings/{unknownId}", dto);
 
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        response.Content.Headers.ContentType!.MediaType.Should().Be("application/problem+json");
+
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        JsonElement root = doc.RootElement;
+        root.GetProperty("type").GetString().Should().Be("https://tools.ietf.org/html/rfc9110#section-15.5.5");
+        root.GetProperty("title").GetString().Should().Be("Resource not found");
+        root.GetProperty("status").GetInt32().Should().Be(404);
+        root.GetProperty("instance").GetString().Should().Be($"/api/v1/hotstrings/{unknownId}");
+        root.GetProperty("traceId").GetString().Should().NotBeNullOrEmpty();
     }
 
     [Fact]
