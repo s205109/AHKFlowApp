@@ -30,5 +30,6 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="AHKFlowApp.API.Tests" />
+    <InternalsVisibleTo Include="AHKFlowApp.E2E.Tests" />
   </ItemGroup>
 </Project>
