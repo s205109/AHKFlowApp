@@ -66,6 +66,6 @@ public sealed class HotstringsController(IMediator mediator) : ControllerBase
     public async Task<ActionResult> Delete(Guid id, CancellationToken ct)
     {
         Result result = await mediator.Send(new DeleteHotstringCommand(id), ct);
-        return (ActionResult)(result.IsSuccess ? NoContent() : result.ToProblemActionResult(this));
+        return result.IsSuccess ? NoContent() : result.ToProblemActionResult(this);
     }
 }
