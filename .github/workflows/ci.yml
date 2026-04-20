@@ -39,6 +39,9 @@ jobs:
           reports: 'TestResults/**/coverage.cobertura.xml'
           targetdir: 'CoverageReport'
           reporttypes: 'MarkdownSummaryGithub;JsonSummary;HtmlInline_AzurePipelines;Cobertura'
+      - name: Append thresholds to coverage summary
+        if: always()
+        run: printf '\n---\n**Thresholds:** line ≥ 70%% · branch ≥ 40%%\n' >> CoverageReport/SummaryGithub.md
       - name: Append coverage summary to job summary
         if: always()
         run: cat CoverageReport/SummaryGithub.md >> "$GITHUB_STEP_SUMMARY"
