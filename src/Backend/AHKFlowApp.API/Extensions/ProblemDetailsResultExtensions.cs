@@ -70,7 +70,8 @@ internal static class ProblemDetailsResultExtensions
         {
             Status = StatusCodes.Status400BadRequest,
             Type = TypeBadRequest,
-            Title = "Validation failed"
+            Title = "Validation failed",
+            Detail = "See the errors field for details."
         };
 
         foreach (IGrouping<string, ValidationError> g in errors.GroupBy(e => e.Identifier ?? string.Empty))
