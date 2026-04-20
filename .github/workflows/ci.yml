@@ -65,7 +65,7 @@ jobs:
       - name: Enforce line coverage threshold
         if: always()
         env:
-          THRESHOLD: '70'
+          THRESHOLD: '99'
         run: |
           set -euo pipefail
           LINE=$(jq -r '.summary.linecoverage' CoverageReport/Summary.json)
