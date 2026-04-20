@@ -448,4 +448,5 @@ src/Backend/**/appsettings.Production.json
 
 # Code coverage reports
 coverage-report/
+CoverageReport/
 **/TestResults/
