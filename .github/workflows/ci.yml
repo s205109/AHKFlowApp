@@ -60,6 +60,16 @@ jobs:
             CoverageReport
             TestResults/**/*.trx
           retention-days: 14
+      - name: Enforce line coverage threshold
+        if: always()
+        env:
+          THRESHOLD: '75'
+        run: |
+          set -euo pipefail
+          LINE=$(jq -r '.summary.linecoverage' CoverageReport/Summary.json)
+          echo "Line coverage: ${LINE}% (threshold: ${THRESHOLD}%)"
+          awk -v l="$LINE" -v t="$THRESHOLD" 'BEGIN { exit (l+0 < t+0) }' \
+            || { echo "::error::Line coverage ${LINE}% is below threshold ${THRESHOLD}%"; exit 1; }
       - run: dotnet format --verify-no-changes
 
   bicep-lint:
