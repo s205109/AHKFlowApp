@@ -39,6 +39,9 @@ jobs:
           reports: 'TestResults/**/coverage.cobertura.xml'
           targetdir: 'CoverageReport'
           reporttypes: 'MarkdownSummaryGithub;JsonSummary;HtmlInline_AzurePipelines;Cobertura'
+      - name: Append thresholds to coverage summary
+        if: always()
+        run: printf '\n---\n**Thresholds:** line ≥ 70%% · branch ≥ 40%%\n' >> CoverageReport/SummaryGithub.md
       - name: Append coverage summary to job summary
         if: always()
         run: cat CoverageReport/SummaryGithub.md >> "$GITHUB_STEP_SUMMARY"
@@ -72,6 +75,16 @@ jobs:
           echo "Line coverage: ${LINE}% (threshold: ${THRESHOLD}%)"
           awk -v l="$LINE" -v t="$THRESHOLD" 'BEGIN { exit (l+0 < t+0) }' \
             || { echo "::error::Line coverage ${LINE}% is below threshold ${THRESHOLD}%"; exit 1; }
+      - name: Enforce branch coverage threshold
+        if: always()
+        env:
+          THRESHOLD: '40'
+        run: |
+          set -euo pipefail
+          BRANCH=$(jq -r '.summary.branchcoverage' CoverageReport/Summary.json)
+          echo "Branch coverage: ${BRANCH}% (threshold: ${THRESHOLD}%)"
+          awk -v b="$BRANCH" -v t="$THRESHOLD" 'BEGIN { exit (b+0 < t+0) }' \
+            || { echo "::error::Branch coverage ${BRANCH}% is below threshold ${THRESHOLD}%"; exit 1; }
       - run: dotnet format --verify-no-changes
 
   bicep-lint:
