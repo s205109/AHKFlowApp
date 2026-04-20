@@ -33,9 +33,14 @@ To exclude additional code, prefer `[ExcludeFromCodeCoverage]` on the class/meth
 
 ## CI gate
 
-`.github/workflows/ci.yml` fails the PR if merged **line coverage** drops below **70%**. Branch coverage is reported but not gated.
+`.github/workflows/ci.yml` enforces two thresholds on the merged report:
 
-The threshold is a literal in `ci.yml` (step `Enforce line coverage threshold`). Raising it is a normal PR like any other code change.
+| Metric | Threshold |
+|---|---|
+| Line coverage | ≥ 70% |
+| Branch coverage | ≥ 40% |
+
+Both gates must pass. Thresholds are literals in `ci.yml` — raising one is a normal PR change.
 
 ## Where to see coverage on a PR
 
