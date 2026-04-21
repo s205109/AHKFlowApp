@@ -1,4 +1,6 @@
+using System.Reflection;
 using Microsoft.OpenApi;
+using Swashbuckle.AspNetCore.Filters;
 
 namespace AHKFlowApp.API.Extensions;
 
@@ -30,7 +32,31 @@ internal static class ApiExtensions
                 Title = "AHKFlowApp API",
                 Version = "v1"
             });
+
+            options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+            {
+                Scheme = "bearer",
+                BearerFormat = "JWT",
+                In = ParameterLocation.Header,
+                Type = SecuritySchemeType.Http
+            });
+            options.AddSecurityRequirement(doc => new OpenApiSecurityRequirement
+            {
+                {
+                    new OpenApiSecuritySchemeReference("Bearer", doc),
+                    []
+                }
+            });
+
+            string xmlPath = Path.Combine(AppContext.BaseDirectory, "AHKFlowApp.API.xml");
+            if (File.Exists(xmlPath))
+                options.IncludeXmlComments(xmlPath, includeControllerXmlComments: true);
+
+            options.ExampleFilters();
         });
+
+        services.AddSwaggerExamplesFromAssemblies(Assembly.GetExecutingAssembly());
+
         return services;
     }
 

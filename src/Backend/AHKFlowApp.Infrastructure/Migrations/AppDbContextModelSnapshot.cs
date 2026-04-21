@@ -17,10 +17,61 @@ partial class AppDbContextModelSnapshot : ModelSnapshot
     {
 #pragma warning disable 612, 618
         modelBuilder
-            .HasAnnotation("ProductVersion", "10.0.5")
+            .HasAnnotation("ProductVersion", "10.0.6")
             .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
         SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
+
+        modelBuilder.Entity("AHKFlowApp.Domain.Entities.Hotstring", b =>
+            {
+                b.Property<Guid>("Id")
+                    .ValueGeneratedOnAdd()
+                    .HasColumnType("uniqueidentifier");
+
+                b.Property<DateTimeOffset>("CreatedAt")
+                    .HasColumnType("datetimeoffset");
+
+                b.Property<bool>("IsEndingCharacterRequired")
+                    .HasColumnType("bit");
+
+                b.Property<bool>("IsTriggerInsideWord")
+                    .HasColumnType("bit");
+
+                b.Property<Guid>("OwnerOid")
+                    .HasColumnType("uniqueidentifier");
+
+                b.Property<Guid?>("ProfileId")
+                    .HasColumnType("uniqueidentifier");
+
+                b.Property<string>("Replacement")
+                    .IsRequired()
+                    .HasMaxLength(4000)
+                    .HasColumnType("nvarchar(4000)");
+
+                b.Property<string>("Trigger")
+                    .IsRequired()
+                    .HasMaxLength(50)
+                    .HasColumnType("nvarchar(50)");
+
+                b.Property<DateTimeOffset>("UpdatedAt")
+                    .HasColumnType("datetimeoffset");
+
+                b.HasKey("Id");
+
+                b.HasIndex("OwnerOid");
+
+                b.HasIndex("OwnerOid", "Trigger")
+                    .IsUnique()
+                    .HasDatabaseName("IX_Hotstring_Owner_Trigger_NoProfile")
+                    .HasFilter("[ProfileId] IS NULL");
+
+                b.HasIndex("OwnerOid", "ProfileId", "Trigger")
+                    .IsUnique()
+                    .HasDatabaseName("IX_Hotstring_Owner_Profile_Trigger")
+                    .HasFilter("[ProfileId] IS NOT NULL");
+
+                b.ToTable("Hotstrings");
+            });
 
         modelBuilder.Entity("AHKFlowApp.Domain.Entities.TestMessage", b =>
             {

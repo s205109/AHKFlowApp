@@ -233,9 +233,8 @@ Azure resources are provisioned per-environment using `.\scripts\deploy.ps1`. Ea
 ## Environment URLs
 
 ### DEV (Local)
-- API: `https://localhost:7600` (HTTPS), `http://localhost:5600` (HTTP)
-- Frontend: `https://localhost:7601`, `http://localhost:5601`
-- Docker Compose API: `http://localhost:5602`
+- API: `http://localhost:5600` (single port for all backend scenarios: VS, docker-compose, Docker-only)
+- Frontend: `http://localhost:5601`
 
 App Service and SQL Server names include a short deterministic suffix (e.g. `ahkflowapp-api-test-ab12cd`)
 to avoid Azure's global-name collisions. Exact names/URLs are saved to `scripts/.env.<env>` after

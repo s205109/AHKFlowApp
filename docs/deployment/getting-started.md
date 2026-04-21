@@ -26,6 +26,8 @@ The script will:
 
 When done, push to `main` — GitHub Actions will deploy the API container and Blazor frontend automatically.
 
+> **Auth app registration not included in `deploy.ps1`.** After provisioning, run the Entra app registration setup separately — see [Entra ID Setup](#entra-id-app-registration-setup) below.
+
 ## What Gets Provisioned
 
 | Resource | Name Pattern | Notes |
@@ -95,6 +97,26 @@ If you need to re-provision from GitHub Actions (e.g., after a Bicep change):
 2. Click **Run workflow** and select an environment
 
 > **Note:** This only runs the Bicep deployment. Imperative steps (Entra group, OIDC federation, SQL user, GitHub secrets) must be done locally with `deploy.ps1`.
+
+## Entra ID App Registration Setup
+
+The `deploy.ps1` script provisions infrastructure but does **not** create the Entra ID app registration used for user authentication. Run this once per environment after provisioning:
+
+```powershell
+.\scripts\setup-entra-app.ps1 -Environment test
+.\scripts\setup-entra-app.ps1 -Environment prod
+```
+
+The script outputs the `ClientId`, `TenantId`, and `DefaultScope` values. Set them as GitHub Variables so the deploy workflows can inject them:
+
+```bash
+gh variable set AZURE_AD_TENANT_ID_TEST --body "<TenantId>"
+gh variable set AZURE_AD_CLIENT_ID_TEST --body "<ClientId>"
+gh variable set AZURE_AD_DEFAULT_SCOPE_TEST --body "<DefaultScope>"
+# repeat with _PROD suffix for prod
+```
+
+For local development, use user-secrets instead — see [entra-setup.md](entra-setup.md).
 
 ## Troubleshooting
 

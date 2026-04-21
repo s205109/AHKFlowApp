@@ -16,11 +16,11 @@ As a client developer, I want consistent error responses so that UI and CLI can 
 
 ## Acceptance criteria
 
-- [ ] Validation errors return problem details with field-level information.
-- [ ] Domain errors return problem details with stable types/titles.
-- [ ] OpenAPI documents common error responses.
-- [ ] Integration tests confirm validation and domain errors return RFC 9457 Problem Details with expected fields.
-- [ ] Unit tests validate error mapping behavior for known domain exceptions.
+- [x] Validation errors return problem details with field-level information.
+- [x] Domain errors return problem details with stable types/titles.
+- [x] OpenAPI documents common error responses.
+- [x] Integration tests confirm validation and domain errors return RFC 9457 Problem Details with expected fields.
+- [x] Unit tests validate error mapping behavior for known domain exceptions.
 
 ## Out of scope
 

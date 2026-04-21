@@ -1,0 +1,11 @@
+{
+  "ApiHttpClient": {
+    "BaseAddress": "http://localhost:5600"
+  },
+  "AzureAd": {
+    "Authority": "https://login.microsoftonline.com/<your-tenant-id>",
+    "ClientId": "<your-client-id>",
+    "ValidateAuthority": true,
+    "DefaultScope": "api://<your-client-id>/access_as_user"
+  }
+}

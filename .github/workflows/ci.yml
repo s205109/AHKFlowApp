@@ -10,6 +10,10 @@ permissions:
 jobs:
   build-test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      checks: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -17,9 +21,70 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
+          cache: true
+          cache-dependency-path: '**/*.csproj'
       - run: dotnet restore
       - run: dotnet build --configuration Release --no-restore
-      - run: dotnet test --configuration Release --no-build --verbosity normal
+      - name: Test with coverage
+        run: >
+          dotnet test --configuration Release --no-build --verbosity normal
+          --logger "trx;LogFileName=test-results.trx"
+          --collect:"XPlat Code Coverage"
+          --results-directory TestResults
+          --settings coverlet.runsettings
+      - name: Merge coverage reports
+        if: always()
+        uses: danielpalme/ReportGenerator-GitHub-Action@5.3.0
+        with:
+          reports: 'TestResults/**/coverage.cobertura.xml'
+          targetdir: 'CoverageReport'
+          reporttypes: 'MarkdownSummaryGithub;JsonSummary;HtmlInline_AzurePipelines;Cobertura'
+      - name: Append thresholds to coverage summary
+        if: always()
+        run: printf '\n---\n**Thresholds:** line ≥ 70%% · branch ≥ 40%%\n' >> CoverageReport/SummaryGithub.md
+      - name: Append coverage summary to job summary
+        if: always()
+        run: cat CoverageReport/SummaryGithub.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish test results
+        if: always()
+        uses: EnricoMi/publish-unit-test-result-action/linux@v2
+        with:
+          files: 'TestResults/**/*.trx'
+      - name: Sticky coverage comment
+        if: always() && github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: coverage
+          path: CoverageReport/SummaryGithub.md
+      - name: Upload coverage artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            CoverageReport
+            TestResults/**/*.trx
+          retention-days: 14
+      - name: Enforce line coverage threshold
+        if: always()
+        env:
+          THRESHOLD: '70'
+        run: |
+          set -euo pipefail
+          LINE=$(jq -r '.summary.linecoverage' CoverageReport/Summary.json)
+          echo "Line coverage: ${LINE}% (threshold: ${THRESHOLD}%)"
+          awk -v l="$LINE" -v t="$THRESHOLD" 'BEGIN { exit (l+0 < t+0) }' \
+            || { echo "::error::Line coverage ${LINE}% is below threshold ${THRESHOLD}%"; exit 1; }
+      - name: Enforce branch coverage threshold
+        if: always()
+        env:
+          THRESHOLD: '40'
+        run: |
+          set -euo pipefail
+          BRANCH=$(jq -r '.summary.branchcoverage' CoverageReport/Summary.json)
+          echo "Branch coverage: ${BRANCH}% (threshold: ${THRESHOLD}%)"
+          awk -v b="$BRANCH" -v t="$THRESHOLD" 'BEGIN { exit (b+0 < t+0) }' \
+            || { echo "::error::Branch coverage ${BRANCH}% is below threshold ${THRESHOLD}%"; exit 1; }
       - run: dotnet format --verify-no-changes
 
   bicep-lint:

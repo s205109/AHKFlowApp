@@ -1,14 +1,20 @@
+using System.Diagnostics;
+using System.Reflection;
 using AHKFlowApp.API;
+using AHKFlowApp.API.Auth;
 using AHKFlowApp.API.Extensions;
 using AHKFlowApp.API.Middleware;
 using AHKFlowApp.Application;
+using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Infrastructure;
 using AHKFlowApp.Infrastructure.Persistence;
 using Microsoft.ApplicationInsights.Extensibility;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Identity.Web;
 using Serilog;
 using Serilog.Events;
 
@@ -79,6 +85,7 @@ try
             });
 
     builder.Services.AddSingleton(TimeProvider.System);
+    builder.Services.AddSingleton<IDevEnvironment>(new DevEnvironment(builder.Environment.IsDevelopment()));
 
     if (builder.Environment.IsDevelopment())
     {
@@ -94,6 +101,12 @@ try
     const string corsPolicyName = "AllowConfiguredOrigins";
     string[] allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
     builder.Services.AddConfiguredCors(allowedOrigins, corsPolicyName);
+
+    builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+        .AddMicrosoftIdentityWebApi(builder.Configuration.GetSection("AzureAd"));
+    builder.Services.AddAuthorization();
+    builder.Services.AddHttpContextAccessor();
+    builder.Services.AddScoped<ICurrentUser, HttpContextCurrentUser>();
 
     WebApplication app = builder.Build();
 
@@ -138,6 +151,11 @@ try
         };
     });
 
+    if (!app.Environment.IsDevelopment())
+    {
+        app.UseHttpsRedirection();
+    }
+
     if (app.Environment.IsDevelopment())
     {
         app.UseSwaggerDocs();
@@ -151,19 +169,49 @@ try
             await next(context);
         });
     }
-
-    app.UseHttpsRedirection();
+    else
+    {
+        app.Use(async (context, next) =>
+        {
+            if (context.Request.Path == "/")
+            {
+                context.Response.Redirect("/health");
+                return;
+            }
+            await next(context);
+        });
+    }
 
     if (allowedOrigins.Length > 0)
     {
         app.UseCors(corsPolicyName);
     }
 
+    app.UseAuthentication();
     app.UseAuthorization();
     app.MapControllers();
 
     // Plain-text infrastructure endpoint (for load balancers, k8s probes)
     app.MapHealthChecks("/health");
+
+    // Only when this assembly is the process entry point — skips WebApplicationFactory-hosted tests
+    if (app.Environment.IsDevelopment() &&
+        Assembly.GetEntryAssembly()?.GetName().Name == "AHKFlowApp.API")
+    {
+        IHostApplicationLifetime lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
+        lifetime.ApplicationStarted.Register(() =>
+        {
+            string swaggerUrl = $"{app.Urls.FirstOrDefault() ?? "http://localhost:5600"}/swagger";
+            try
+            {
+                Process.Start(new ProcessStartInfo(swaggerUrl) { UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                Log.Information(ex, "Unable to open Swagger UI automatically at {SwaggerUrl}", swaggerUrl);
+            }
+        });
+    }
 
     Log.Information("AHKFlowApp API started successfully");
     app.Run();

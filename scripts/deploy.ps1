@@ -18,7 +18,10 @@
 [CmdletBinding()]
 param(
     [ValidateSet('test', 'prod')]
-    [string]$Environment
+    [string]$Environment,
+
+    [ValidateRange(1, 240)]
+    [int]$MaxWaitMinutes = 45
 )
 
 Set-StrictMode -Version Latest
@@ -62,7 +65,7 @@ function Invoke-Az {
 }
 
 function Invoke-Az-Json {
-    $raw = az @args 2>&1
+    $raw = az @args --output json 2>&1
     if ($LASTEXITCODE -ne 0) { throw "az $($args -join ' ') failed:`n$raw" }
     return $raw | ConvertFrom-Json
 }
@@ -78,6 +81,20 @@ function Try-Az {
         $output = az @args 2>&1
         if ($LASTEXITCODE -ne 0) { return $null }
         return $output
+    } finally {
+        $ErrorActionPreference = $prevEap
+    }
+}
+
+function Try-Az-Json {
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $output = az @args --output json 2>&1
+        if ($LASTEXITCODE -ne 0) { return $null }
+        return ($output | ConvertFrom-Json)
+    } catch {
+        return $null
     } finally {
         $ErrorActionPreference = $prevEap
     }
@@ -130,9 +147,11 @@ if ($hasSqlcmd) {
 Write-Step "Phase 2: Gathering configuration..."
 
 if (-not $Environment) {
-    $Environment = Read-Host "  Environment [test/prod] (default: test)"
-    if ([string]::IsNullOrWhiteSpace($Environment)) { $Environment = 'test' }
-    if ($Environment -notin @('test', 'prod')) { throw "Environment must be 'test' or 'prod'" }
+    $envInput = Read-Host "  Environment [test/prod] (default: test)"
+    # Apply default before assigning to $Environment — [ValidateSet] re-validates
+    # every assignment, so a blank intermediate value would throw.
+    $Environment = if ([string]::IsNullOrWhiteSpace($envInput)) { 'test' } else { $envInput }
+    if ($Environment -notin @('test', 'prod')) { throw "Environment must be 'test' or 'prod'" }  # explicit — [ValidateSet] only applies to param binding, not variable assignment
 }
 
 $Location = Read-Host "  Azure region (default: westeurope)"
@@ -204,21 +223,138 @@ if ($isMember -ne 'true') {
     Write-Success "Current user already in SQL admin group"
 }
 
+# Entra app registration must exist before Bicep — web.bicep wires AzureAd__TenantId
+# and AzureAd__ClientId into App Service settings as required parameters.
+# Without this, `az deployment group create` hangs on an invisible stdin prompt.
+Write-Host "  Setting up Entra app registration (pre-Bicep)..."
+$EntraScript = Join-Path $PSScriptRoot 'setup-entra-app.ps1'
+# setup-entra-app.ps1 emits a PSCustomObject at the end, but az rest calls inside
+# may also leak output. Pick the last object that has a ClientId.
+$EntraOutput = & $EntraScript -Environment $Environment
+$EntraInfo = @(
+    $EntraOutput | Where-Object {
+        $_ -is [psobject] -and
+        $_.PSObject.Properties['ClientId'] -and
+        $_.ClientId
+    }
+) | Select-Object -Last 1
+if (-not $EntraInfo -or -not $EntraInfo.ClientId) {
+    throw "setup-entra-app.ps1 did not return a ClientId"
+}
+$EntraTenantId = [string]$EntraInfo.TenantId
+$EntraClientId = [string]$EntraInfo.ClientId
+Write-Success "Entra app: $EntraClientId (tenant $EntraTenantId)"
+
 # Deploy Bicep
-Write-Host "  Deploying Bicep template (this may take 3-5 minutes)..."
+Write-Host "  Deploying Bicep template (usually 3-10 minutes, longer if Azure is slow)..."
+Write-Host "  Progress updates every 15s; first update may take ~30s while deployment registers."
 $BicepTemplate = Join-Path $RepoRoot "infra\main.bicep"
 $DeploymentName = "deploy-${Environment}-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
 
-$DeployOutput = Invoke-Az-Json deployment group create `
+$deployStart = Get-Date
+Invoke-Az deployment group create `
     --resource-group $ResourceGroup `
     --name $DeploymentName `
     --template-file $BicepTemplate `
+    --no-wait `
     --parameters `
         environment=$Environment `
         location=$Location `
         baseName=$BaseName `
         sqlAdminGroupId=$GroupId `
-        sqlAdminGroupName=$SqlAdminGroup
+        sqlAdminGroupName=$SqlAdminGroup `
+        azureAdTenantId=$EntraTenantId `
+        azureAdClientId=$EntraClientId | Out-Null
+
+# Poll deployment until done. Print each resource operation state change with
+# elapsed time so the user can see it's still making progress.
+$seenOps = @{}
+$state = 'Accepted'
+$ticks = 0
+while ($state -notin @('Succeeded', 'Failed', 'Canceled')) {
+    Start-Sleep -Seconds 15
+    $ticks++
+    $elapsed = (Get-Date) - $deployStart
+    $elapsedStr = '{0:D2}:{1:D2}' -f [int]$elapsed.TotalMinutes, $elapsed.Seconds
+
+    if ($elapsed.TotalMinutes -ge $MaxWaitMinutes) {
+        throw @"
+Deployment '$DeploymentName' exceeded -MaxWaitMinutes ($MaxWaitMinutes min) in state '$state'.
+Inspect:  az deployment group show --resource-group $ResourceGroup --name $DeploymentName
+Cancel:   az deployment group cancel --resource-group $ResourceGroup --name $DeploymentName
+Re-run deploy.ps1 once resolved (it is idempotent), optionally with -MaxWaitMinutes <N>.
+"@
+    }
+
+    $deployment = Try-Az-Json deployment group show `
+        --resource-group $ResourceGroup --name $DeploymentName
+    if (-not $deployment) {
+        Write-Host "  · [$elapsedStr] waiting for deployment to register..." -ForegroundColor DarkGray
+        continue
+    }
+    $state = $deployment.properties.provisioningState
+
+    $ops = Try-Az-Json deployment operation group list `
+        --resource-group $ResourceGroup --name $DeploymentName
+    $newActivity = $false
+    if ($ops) {
+        foreach ($op in $ops) {
+            # Some operations (validation, read, outputs) have no targetResource.
+            # StrictMode Latest turns missing-property access into a terminating
+            # error, so use PSObject.Properties to test before dereferencing.
+            $propsMember = $op.PSObject.Properties['properties']
+            if (-not $propsMember) { continue }
+            $props = $propsMember.Value
+            $trMember = $props.PSObject.Properties['targetResource']
+            if (-not $trMember -or -not $trMember.Value) { continue }
+            $tr = $trMember.Value
+            $rnMember = $tr.PSObject.Properties['resourceName']
+            if (-not $rnMember -or -not $rnMember.Value) { continue }
+            $resTarget = $rnMember.Value
+            $rtMember = $tr.PSObject.Properties['resourceType']
+            $resType = if ($rtMember) { $rtMember.Value } else { '' }
+            $opState = $props.provisioningState
+
+            $key = "$resType/$resTarget"
+            if ($seenOps[$key] -ne $opState) {
+                $seenOps[$key] = $opState
+                $newActivity = $true
+                $color = switch ($opState) {
+                    'Succeeded' { 'Green' }
+                    'Failed'    { 'Red' }
+                    'Running'   { 'Yellow' }
+                    default     { 'DarkGray' }
+                }
+                $symbol = switch ($opState) {
+                    'Succeeded' { '✓' }
+                    'Failed'    { '✗' }
+                    'Running'   { '…' }
+                    default     { '·' }
+                }
+                $label = switch ($opState) {
+                    'Succeeded' { 'done' }
+                    'Failed'    { 'failed' }
+                    'Running'   { 'in progress' }
+                    'Accepted'  { 'queued' }
+                    default     { $opState.ToLower() }
+                }
+                Write-Host "  $symbol [$elapsedStr] $key — $label" -ForegroundColor $color
+            }
+        }
+    }
+
+    # Heartbeat when nothing new happened this tick, so the user knows we're alive.
+    if (-not $newActivity -and ($ticks % 2) -eq 0) {
+        Write-Host "  · [$elapsedStr] still working..." -ForegroundColor DarkGray
+    }
+}
+
+if ($state -ne 'Succeeded') {
+    throw "Bicep deployment ended in state: $state.`n  For details: az deployment group show --name $DeploymentName --resource-group $ResourceGroup"
+}
+
+$DeployOutput = Invoke-Az-Json deployment group show `
+    --resource-group $ResourceGroup --name $DeploymentName
 
 $outputs = $DeployOutput.properties.outputs
 
@@ -433,6 +569,24 @@ Set-GhSecret "AZURE_CLIENT_ID_${EnvSuffix}"                    $DeployerUamiClie
 Set-GhSecret "AZURE_STATIC_WEB_APPS_API_TOKEN_${EnvSuffix}"    $SwaToken
 Set-GhSecret "AZURE_API_BASE_URL_${EnvSuffix}"                 "https://$AppServiceHostname"
 
+# Re-run Entra app setup with the SWA hostname now that Bicep has created the SWA.
+# Idempotent — adds the SWA redirect URI alongside the localhost ones set in Phase 3.
+Write-Host "  Updating Entra app redirect URIs with SWA hostname..."
+$EntraOutput = & $EntraScript -Environment $Environment -SwaHostname $SwaHostname
+$EntraInfo = @(
+    $EntraOutput | Where-Object {
+        $_ -is [psobject] -and
+        $_.PSObject.Properties['ClientId'] -and
+        $_.ClientId
+    }
+) | Select-Object -Last 1
+if (-not $EntraInfo -or -not $EntraInfo.ClientId) {
+    throw "setup-entra-app.ps1 did not return a ClientId"
+}
+Set-GhVariable "AZURE_AD_TENANT_ID_${EnvSuffix}"      $EntraInfo.TenantId
+Set-GhVariable "AZURE_AD_CLIENT_ID_${EnvSuffix}"      $EntraInfo.ClientId
+Set-GhVariable "AZURE_AD_DEFAULT_SCOPE_${EnvSuffix}"  $EntraInfo.DefaultScope
+
 # Environment-specific variables
 Set-GhVariable "AZURE_RESOURCE_GROUP_${EnvSuffix}"  $ResourceGroup
 Set-GhVariable "APP_SERVICE_NAME_${EnvSuffix}"       $AppServiceName
@@ -497,6 +651,8 @@ RESOURCE_GROUP=$ResourceGroup
 GITHUB_ORG_REPO=$GitHubOrgRepo
 AZURE_TENANT_ID=$TenantId
 AZURE_SUBSCRIPTION_ID=$SubscriptionId
+AZURE_AD_CLIENT_ID=$($EntraInfo.ClientId)
+AZURE_AD_DEFAULT_SCOPE=$($EntraInfo.DefaultScope)
 SQL_SERVER_NAME=$SqlServerName
 SQL_SERVER_FQDN=$SqlServerFqdn
 SQL_DATABASE_NAME=$SqlDatabaseName
