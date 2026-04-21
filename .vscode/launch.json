@@ -2,39 +2,39 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "API: https + Docker SQL (Recommended)",
+      "name": "API: Docker SQL (Recommended)",
       "type": "coreclr",
       "request": "launch",
       "preLaunchTask": "build: AHKFlowApp.API",
       "program": "${workspaceFolder}/src/Backend/AHKFlowApp.API/bin/Debug/net10.0/AHKFlowApp.API.dll",
       "cwd": "${workspaceFolder}/src/Backend/AHKFlowApp.API",
       "launchSettingsFilePath": "${workspaceFolder}/src/Backend/AHKFlowApp.API/Properties/launchSettings.json",
-      "launchSettingsProfile": "https + Docker SQL (Recommended)",
+      "launchSettingsProfile": "Docker SQL (Recommended)",
       "console": "externalTerminal",
       "serverReadyAction": {
         "action": "openExternally",
         "pattern": "\\bNow listening on:",
-        "uriFormat": "https://localhost:7600/swagger"
+        "uriFormat": "http://localhost:5600/swagger"
       }
     },
     {
-      "name": "API: https + LocalDB SQL",
+      "name": "API: LocalDB SQL",
       "type": "coreclr",
       "request": "launch",
       "preLaunchTask": "build: AHKFlowApp.API",
       "program": "${workspaceFolder}/src/Backend/AHKFlowApp.API/bin/Debug/net10.0/AHKFlowApp.API.dll",
       "cwd": "${workspaceFolder}/src/Backend/AHKFlowApp.API",
       "launchSettingsFilePath": "${workspaceFolder}/src/Backend/AHKFlowApp.API/Properties/launchSettings.json",
-      "launchSettingsProfile": "https + LocalDB SQL",
+      "launchSettingsProfile": "LocalDB SQL",
       "console": "externalTerminal",
       "serverReadyAction": {
         "action": "openExternally",
         "pattern": "\\bNow listening on:",
-        "uriFormat": "https://localhost:7600/swagger"
+        "uriFormat": "http://localhost:5600/swagger"
       }
     },
     {
-      "name": "UI: https",
+      "name": "UI: http",
       "type": "dotnet",
       "request": "launch",
       "projectPath": "${workspaceFolder}/src/Frontend/AHKFlowApp.UI.Blazor/AHKFlowApp.UI.Blazor.csproj"
@@ -42,18 +42,18 @@
   ],
   "compounds": [
     {
-      "name": "Full Stack: https + Docker SQL (Recommended)",
+      "name": "Full Stack: Docker SQL (Recommended)",
       "configurations": [
-        "API: https + Docker SQL (Recommended)",
-        "UI: https"
+        "API: Docker SQL (Recommended)",
+        "UI: http"
       ],
       "stopAll": true
     },
     {
-      "name": "Full Stack: https + LocalDB SQL",
+      "name": "Full Stack: LocalDB SQL",
       "configurations": [
-        "API: https + LocalDB SQL",
-        "UI: https"
+        "API: LocalDB SQL",
+        "UI: http"
       ],
       "stopAll": true
     }

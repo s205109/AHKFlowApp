@@ -8,8 +8,18 @@ Blazor WebAssembly PWA frontend for AHKFlowApp.
 - `[Inject]` properties with `= default!` for DI
 - `_loading = true` before async calls, `false` after
 - `ISnackbar.Add()` for success/error feedback
-- `IDialogService.ShowAsync<T>` for create/edit forms
+- `IDialogService.ShowAsync<T>` for create/edit forms with non-trivial layouts (multi-section, tabs, file upload, etc.)
+- Inline `MudTable` row editing is acceptable for simple tabular CRUD (≤6 short fields). Examples: hotstrings page.
+- `IDialogService.ShowMessageBox(...)` for delete confirmations
 - No `StateHasChanged()` after standard event handlers — Blazor re-renders automatically
+
+## Local Setup
+
+`wwwroot/appsettings.Development.json` is gitignored. Copy the example and fill in your Azure AD values:
+
+```bash
+cp wwwroot/appsettings.Development.json.example wwwroot/appsettings.Development.json
+```
 
 ## Adding a Page
 

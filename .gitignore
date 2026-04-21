@@ -420,6 +420,24 @@ FodyWeavers.xsd
 *.msm
 *.msp
 
+# ---------------------------------------------------------------------------
+# AHKFlow - appsettings
+#
+# Tracked (safe to commit):
+#   appsettings.json                    base config, no secrets
+#   appsettings.Test.json               TEST env, tokenized by CI/CD
+#   src/Frontend/.../appsettings.Production.json   tokenized by CI/CD (public client-side config)
+#   appsettings.Development.json.example           template — copy & fill locally
+#
+# Ignored (never commit — may contain secrets):
+# ---------------------------------------------------------------------------
+
+# Local dev config — copy from appsettings.Development.json.example
+**/appsettings.Development.json
+
+# Backend prod secrets — real values live in Azure App Service Config (Key Vault planned)
+src/Backend/**/appsettings.Production.json
+
 # Claude Code personal instructions and settings
 .claude/CLAUDE.local.md
 .claude/settings.local.json
@@ -430,4 +448,5 @@ FodyWeavers.xsd
 
 # Code coverage reports
 coverage-report/
+CoverageReport/
 **/TestResults/

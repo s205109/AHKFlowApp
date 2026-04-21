@@ -17,10 +17,10 @@ dotnet ef database update \
   --project src/Backend/AHKFlowApp.Infrastructure \
   --startup-project src/Backend/AHKFlowApp.API
 
-# Start API (https://localhost:7600, OpenAPI at /openapi/v1.json)
-dotnet run --project src/Backend/AHKFlowApp.API --launch-profile https
+# Start API (http://localhost:5600, OpenAPI at /swagger/v1/swagger.json)
+dotnet run --project src/Backend/AHKFlowApp.API --launch-profile "Docker SQL (Recommended)"
 
-# Start frontend in a separate terminal (https://localhost:7601)
+# Start frontend in a separate terminal (http://localhost:5601)
 dotnet run --project src/Frontend/AHKFlowApp.UI.Blazor
 ```
 
@@ -32,11 +32,9 @@ See `docs/development/docker-setup.md`.
 
 | Service | URL |
 |---------|-----|
-| API (HTTPS) | https://localhost:7600 |
-| API (HTTP) | http://localhost:5600 |
-| OpenAPI JSON | https://localhost:7600/openapi/v1.json |
-| Frontend | https://localhost:7601 |
-| Docker Compose API | http://localhost:5602 |
+| API | http://localhost:5600 |
+| OpenAPI JSON | http://localhost:5600/swagger/v1/swagger.json |
+| Frontend | http://localhost:5601 |
 
 ### Environments
 

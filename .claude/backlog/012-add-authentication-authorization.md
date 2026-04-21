@@ -4,7 +4,7 @@
 
 - **Epic**: Authentication and authorization
 - **Type**: Feature
-- **Interfaces**: UI | API | CLI
+- **Interfaces**: UI | API
 
 ## Summary
 
@@ -16,15 +16,16 @@ As a user, I want to sign in securely so that my profiles and automation definit
 
 ## Acceptance criteria
 
-- [ ] UI authenticates via MSAL and calls the API with bearer tokens.
-- [ ] API validates tokens and enforces authorization.
-- [ ] CLI supports a sign-in flow appropriate for a console app.
-- [ ] Unauthorized/forbidden responses are consistent and documented.
+- [x] UI authenticates via MSAL and calls the API with bearer tokens.
+- [x] API validates tokens and enforces authorization.
+- [x] Unauthorized/forbidden responses are consistent and documented.
 
 ## Out of scope
 
 - Multiple identity providers.
+- CLI authentication — deferred to 029. Tokens validated against `access_as_user` scope; no user DB persistence (claims-only via `ICurrentUser`).
 
 ## Notes / dependencies
 
 - Impacts all feature endpoints.
+- See `docs/architecture/authentication.md` and `docs/deployment/entra-setup.md`.

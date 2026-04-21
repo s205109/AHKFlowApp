@@ -1,9 +1,9 @@
 #Requires -Version 5.1
 
 # Frees ports used by AHKFlowApp dev servers so dotnet run doesn't fail with "address already in use".
-# Ports: 5600, 7600 (API), 5601, 7601 (Blazor UI), 5602 (Docker Compose API)
+# Ports: 5600 (API, all scenarios), 5601 (Blazor UI)
 
-$ports = 5600, 7600, 5601, 7601, 5602
+$ports = 5600, 5601
 
 foreach ($port in $ports) {
     $connections = Get-NetTCPConnection -LocalPort $port -ErrorAction SilentlyContinue
