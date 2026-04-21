@@ -152,5 +152,8 @@ Each plan 2-6 opens by re-reading this section. Only items listed under its plan
 - Cross-reference: README, AGENTS.md, `.claude/CLAUDE.md`, `.github/**`.
 
 ### Deferred
-- Package upgrades: 22 outdated entries (see Outdated packages section). Major bumps: `Microsoft.ApplicationInsights.AspNetCore` 2.23.0 → 3.1.0, `coverlet.collector` 8.0.1 → 10.0.0. Patch bumps: `Microsoft.*` 10.0.6 → 10.0.7, `Microsoft.Identity.Web` 4.7.0 → 4.8.0. Re-evaluate when individual plans need a specific bump.
+- Package upgrades: 22 outdated entries (see Outdated packages section). Major bumps: `coverlet.collector` 8.0.1 → 10.0.0. Patch bumps: `Microsoft.*` 10.0.6 → 10.0.7, `Microsoft.Identity.Web` 4.7.0 → 4.8.0. Re-evaluate when individual plans need a specific bump.
 - No Bicep/infra security findings to defer.
+
+### Permanently excluded
+- **`Microsoft.ApplicationInsights.AspNetCore` 2.x → 3.x upgrade is intentionally blocked.** Stay on 2.x (currently 2.23.0). The v3 package caused runtime issues. Do not upgrade without an explicit decision to revisit this.
