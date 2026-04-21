@@ -108,7 +108,26 @@ Project `AHKFlowApp.UI.Blazor.Tests` has the following updates to its packages
 
 ## Security findings
 
-_Populated in Task 5._
+Scan via `cck-security-scan` skill on 2026-04-21.
+
+> Static analysis only — does not replace penetration testing, dynamic analysis, or threat modeling.
+
+| ID | Severity | Layer | Summary | Disposition |
+|----|----------|-------|---------|-------------|
+| S-1 | low | secrets | `launchSettings.json` lines 10 and 43 — dev Docker SA password `AHKFlow_Dev!2026` committed in two launch profiles. Dev-only credential for local Docker SQL Server; not a production secret, but a real password in source control. | plan 3 |
+| S-2 | low | secrets | `docs/environments.md:245` and `docs/superpowers/plans/2026-04-02-health-swagger-vscode.md:176,210` — same dev password appears in documentation example connection strings. | plan 6 |
+| S-3 | medium | config | `src/Backend/AHKFlowApp.API/Extensions/ApiExtensions.cs:18-20` — CORS policy uses `AllowAnyMethod()` and `AllowAnyHeader()` alongside `AllowCredentials()`. Origins are correctly restricted via `WithOrigins(allowedOrigins)`, but method and header allowlists are broader than necessary. | plan 3 |
+
+### Layer results
+
+| Layer | Status | Findings |
+|-------|--------|----------|
+| 1. Package vulnerabilities | PASS | 0 CVEs across all 12 projects |
+| 2. Secrets detection | WARN | Dev SA password in launchSettings.json and docs |
+| 3. OWASP code patterns | PASS | No injection, XSS, insecure deserialization, or weak crypto |
+| 4. Auth configuration | PASS | All controllers have explicit `[Authorize]` or `[AllowAnonymous]`; Azure AD via `AddMicrosoftIdentityWebApi` with secure defaults |
+| 5. CORS configuration | WARN | `AllowAnyMethod()` + `AllowAnyHeader()` + `AllowCredentials()` — origins restricted, methods/headers not |
+| 6. Data protection | PASS | Logs use identifiers only; no PII in log statements |
 
 ## Per-plan disposition
 
