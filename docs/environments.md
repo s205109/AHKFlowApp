@@ -46,7 +46,7 @@ docker compose up --build
 ### Configuration
 
 - **ASPNETCORE_ENVIRONMENT**: `Test` (set via App Service application setting)
-- **Database**: Azure SQL Database (`ahkflowapp-sql-test.database.windows.net`)
+- **Database**: Azure SQL Database — FQDN captured in `scripts/.env.test` after provisioning
 - **Authentication**: Entra ID (Managed Identity) — no SQL passwords
 - **Connection String**: Set via App Service connection string configuration
 - **CORS**: Configured to allow Static Web App URL
@@ -54,9 +54,12 @@ docker compose up --build
 
 ### Azure Resources
 
-All resources are in the `rg-ahkflowapp-test` resource group:
-- App Service: `ahkflowapp-api-test`
-- SQL Server: `ahkflowapp-sql-test`
+All resources are in the `rg-ahkflowapp-test` resource group. App Service and SQL Server names
+include a short deterministic suffix (derived from the subscription, resource group, and
+environment) to avoid global-name collisions — the exact names are emitted by Bicep and saved
+to `scripts/.env.test`:
+- App Service: `ahkflowapp-api-test-<token>`
+- SQL Server: `ahkflowapp-sql-test-<token>`
 - SQL Database: `ahkflowapp-db`
 - Static Web App: `ahkflowapp-swa-test`
 - Key Vault: `ahkflowapp-kv-test`
@@ -94,16 +97,16 @@ cat 00-prerequisites.md
 - `AZURE_CLIENT_ID_TEST` (deployer managed identity)
 - `AZURE_STATIC_WEB_APPS_API_TOKEN_TEST`
 
-**Variables** (TEST-specific):
+**Variables** (TEST-specific — values populated by `deploy.ps1`; App Service / SQL Server names
+include the deterministic suffix described above):
 - `AZURE_RESOURCE_GROUP_TEST=rg-ahkflowapp-test`
-- `APP_SERVICE_NAME_TEST=ahkflowapp-api-test`
-- `SQL_SERVER_NAME_TEST=ahkflowapp-sql-test`
-- `SQL_SERVER_FQDN_TEST=ahkflowapp-sql-test.database.windows.net`
+- `APP_SERVICE_NAME_TEST=ahkflowapp-api-test-<token>`
+- `SQL_SERVER_NAME_TEST=ahkflowapp-sql-test-<token>`
+- `SQL_SERVER_FQDN_TEST=ahkflowapp-sql-test-<token>.database.windows.net`
 - `SQL_DATABASE_NAME_TEST=ahkflowapp-db`
 
 ### URLs
-- API: `https://ahkflowapp-api-test.azurewebsites.net`
-- API Health: `https://ahkflowapp-api-test.azurewebsites.net/health`
+- API / API Health: `https://<APP_SERVICE_NAME_TEST>.azurewebsites.net[/health]` — read from `scripts/.env.test`
 - Frontend: Get from `az staticwebapp show --name ahkflowapp-swa-test --query defaultHostname -o tsv`
 
 ## PROD Environment (Azure Production)
@@ -111,7 +114,7 @@ cat 00-prerequisites.md
 ### Configuration
 
 - **ASPNETCORE_ENVIRONMENT**: `Production` (set via App Service application setting)
-- **Database**: Azure SQL Database (`ahkflowapp-sql-prod.database.windows.net`)
+- **Database**: Azure SQL Database — FQDN captured in `scripts/.env.prod` after provisioning
 - **Authentication**: Entra ID (Managed Identity) — no SQL passwords
 - **Connection String**: Set via App Service connection string configuration
 - **CORS**: Configured to allow Static Web App URL
@@ -119,9 +122,11 @@ cat 00-prerequisites.md
 
 ### Azure Resources
 
-All resources are in the `rg-ahkflowapp-prod` resource group:
-- App Service: `ahkflowapp-api-prod`
-- SQL Server: `ahkflowapp-sql-prod`
+All resources are in the `rg-ahkflowapp-prod` resource group. App Service and SQL Server names
+include a short deterministic suffix (derived from the subscription + RG) to avoid global-name
+collisions — the exact names are emitted by Bicep and saved to `scripts/.env.prod`:
+- App Service: `ahkflowapp-api-prod-<token>`
+- SQL Server: `ahkflowapp-sql-prod-<token>`
 - SQL Database: `ahkflowapp-db`
 - Static Web App: `ahkflowapp-swa-prod`
 - Key Vault: `ahkflowapp-kv-prod`
@@ -161,16 +166,16 @@ cat 00-prerequisites.md
 - `AZURE_CLIENT_ID_PROD` (deployer managed identity)
 - `AZURE_STATIC_WEB_APPS_API_TOKEN_PROD`
 
-**Variables** (PROD-specific):
+**Variables** (PROD-specific — values populated by `deploy.ps1`; App Service / SQL Server names
+include the deterministic suffix described above):
 - `AZURE_RESOURCE_GROUP_PROD=rg-ahkflowapp-prod`
-- `APP_SERVICE_NAME_PROD=ahkflowapp-api-prod`
-- `SQL_SERVER_NAME_PROD=ahkflowapp-sql-prod`
-- `SQL_SERVER_FQDN_PROD=ahkflowapp-sql-prod.database.windows.net`
+- `APP_SERVICE_NAME_PROD=ahkflowapp-api-prod-<token>`
+- `SQL_SERVER_NAME_PROD=ahkflowapp-sql-prod-<token>`
+- `SQL_SERVER_FQDN_PROD=ahkflowapp-sql-prod-<token>.database.windows.net`
 - `SQL_DATABASE_NAME_PROD=ahkflowapp-db`
 
 ### URLs
-- API: `https://ahkflowapp-api-prod.azurewebsites.net`
-- API Health: `https://ahkflowapp-api-prod.azurewebsites.net/health`
+- API / API Health: `https://<APP_SERVICE_NAME_PROD>.azurewebsites.net[/health]` — read from `scripts/.env.prod`
 - Frontend: Get from `az staticwebapp show --name ahkflowapp-swa-prod --query defaultHostname -o tsv`
 
 ## Environment-Specific Configuration Files

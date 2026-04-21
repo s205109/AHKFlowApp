@@ -236,15 +236,19 @@ Azure resources are provisioned per-environment using `.\scripts\deploy.ps1`. Ea
 - API: `http://localhost:5600` (single port for all backend scenarios: VS, docker-compose, Docker-only)
 - Frontend: `http://localhost:5601`
 
+App Service and SQL Server names include a short deterministic suffix (e.g. `ahkflowapp-api-test-ab12cd`)
+to avoid Azure's global-name collisions. Exact names/URLs are saved to `scripts/.env.<env>` after
+running `deploy.ps1`.
+
 ### TEST (Azure)
-- API: `https://ahkflowapp-api-test.azurewebsites.net`
-- API health: `https://ahkflowapp-api-test.azurewebsites.net/health`
-- Frontend (SWA): update after provisioning (`az staticwebapp show --name ahkflowapp-swa-test --query defaultHostname -o tsv`)
+- API: `https://<APP_SERVICE_NAME_TEST>.azurewebsites.net` — read from `scripts/.env.test`
+- API health: append `/health` to the URL above
+- Frontend (SWA): `az staticwebapp show --name ahkflowapp-swa-test --query defaultHostname -o tsv`
 
 ### PROD (Azure)
-- API: `https://ahkflowapp-api-prod.azurewebsites.net`
-- API health: `https://ahkflowapp-api-prod.azurewebsites.net/health`
-- Frontend (SWA): update after provisioning (`az staticwebapp show --name ahkflowapp-swa-prod --query defaultHostname -o tsv`)
+- API: `https://<APP_SERVICE_NAME_PROD>.azurewebsites.net` — read from `scripts/.env.prod`
+- API health: append `/health` to the URL above
+- Frontend (SWA): `az staticwebapp show --name ahkflowapp-swa-prod --query defaultHostname -o tsv`
 
 ## Git Workflow
 
