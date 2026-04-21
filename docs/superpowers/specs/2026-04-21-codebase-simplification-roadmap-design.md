@@ -24,7 +24,7 @@ Six sequential plans. Each one writes its own implementation plan via the `writi
 | 2 | Targeted coverage uplift | Tiered thresholds enforced in CI | M |
 | 3 | Code simplification | Low-value complexity removed; at most 1-2 patterns | M-L |
 | 4 | Script + deploy.ps1 overhaul | Single `/scripts/` folder; PS v5; preflight; frontend auto-trigger | M |
-| 5 | Local-install docs | README "Run locally" section backed by working compose | S |
+| 5 | Local-install path (no Azure) | Symmetric test-auth toggle + README "Run locally" section | M |
 | 6 | Docs + consistency sweep | Aligned README / AGENTS / `.claude/` / `.github/` | S |
 
 ### Sequencing rationale
@@ -93,16 +93,21 @@ Not in scope:
 - New Azure resource types or topology changes.
 - Key Vault introduction (tracked separately).
 
-### Plan 5 — Local-install docs (S)
+### Plan 5 — Local-install path, no Azure (M)
 
 In scope:
-- README section "Run locally without Azure": prerequisites (Docker Desktop or Docker Engine), `docker compose up`, local URLs, seed notes.
-- Verify `docker-compose.yml` works end-to-end on a clean checkout.
+- **Backend symmetric test-auth toggle.** Add `Auth:UseTestProvider` reader to `src/Backend/AHKFlowApp.API/Program.cs`; when true, register the existing `TestAuthHandler` (promoted from `tests/AHKFlowApp.TestUtilities/Auth/` to a non-test location, or kept referenced) as the default scheme instead of `AddMicrosoftIdentityWebApi`. Matches the frontend's existing toggle so `[Authorize]` endpoints work end-to-end without Azure AD.
+- **Compose wiring.** `docker-compose.yml` sets `Auth__UseTestProvider=true` on both API and Blazor services by default.
+- **README section "Run locally without Azure":** trust model (single-user / trusted LAN; no real auth), prerequisites (Docker Desktop or Docker Engine), `docker compose up`, local URLs, seed notes, how to switch back to Azure AD.
+- Verify `docker-compose.yml` works end-to-end on a clean checkout (sign-in bypassed, Hotstrings endpoints reachable).
 
 Not in scope:
 - A separate `run-local.ps1` / `deploy-local.ps1` script.
 - A new compose profile.
 - Raspberry Pi-specific tuning.
+- Real auth for local deployments (OIDC / Keycloak / local identity).
+
+Trust model: the test-auth provider authenticates every request as a synthetic user. This is acceptable for single-user homelab / trusted-LAN use only. The README must state this plainly.
 
 ### Plan 6 — Docs + consistency sweep (S)
 
@@ -121,7 +126,7 @@ Not in scope:
 - `scripts/` is one folder. Every script parses under Windows PowerShell 5.1.
 - `deploy.ps1` starts with a preflight block and, on success, triggers the frontend CD workflow without manual action.
 - CI enforces per-project coverage thresholds; no blanket number.
-- README has a "Run locally" path that works on a fresh clone via `docker compose up`.
+- README has a "Run locally without Azure" path that works end-to-end on a fresh clone via `docker compose up`, including sign-in bypass via the symmetric test-auth toggle.
 - No contradictions between `README.md`, `AGENTS.md`, `.claude/`, `.github/`.
 
 ## Non-goals
@@ -130,6 +135,7 @@ Not in scope:
 - New abstractions beyond the 1-2 patterns discussed in plan 3.
 - Bicep topology changes or new Azure resources.
 - A separate local-deploy script.
+- Real authentication for the local-install path (OIDC / Keycloak / local identity). Homelab build is trusted-LAN only.
 - Migrating off MediatR, Ardalis.Result, FluentValidation, or MudBlazor.
 - Package upgrades (recorded in plan 1, deferred).
 
@@ -142,6 +148,7 @@ Not in scope:
 | Auto-triggered frontend deploy runs before DB migration | Order: migrate DB → deploy API → health probe → then trigger frontend workflow. |
 | PS v5 sweep breaks PS 7 callers | Target PS 5.1 syntax — it works on PS 7 too. |
 | PR #66 rebase conflicts with plan 4 edits | Land PR #66 as the first act of plan 1, before plan 4 starts. |
+| Promoting `TestAuthHandler` out of test projects leaks test code into prod assemblies | Put it in a dedicated `AHKFlowApp.API` namespace (e.g., `Auth/TestAuthenticationHandler.cs`); registered only when `Auth:UseTestProvider=true`. Test projects can still reuse it via InternalsVisibleTo or their own handler. |
 
 ## Decisions made during brainstorming
 
@@ -149,7 +156,8 @@ Not in scope:
 |---|---|
 | Coverage blanket vs tiered | Tiered per project. |
 | UI.Blazor bUnit strategy | Cull low-value tests; threshold 65 / 45. |
-| Local install approach | Docs-only. No new script. |
+| Local install approach | Symmetric test-auth toggle on backend + docs. No new script. |
+| Local-install auth model | Backend `Auth:UseTestProvider` matches existing frontend flag; `TestAuthHandler` promoted from test-only. Trust model = trusted LAN, single-user. |
 | PR #66 handling | Land as-is before plan 4. |
 | `old_project_reference/` | Already removed manually; no repo action. |
 | Backlog items 013-029 | Ignored during simplification; adapt to new shape when implemented. |
