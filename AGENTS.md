@@ -170,6 +170,7 @@ HTTP Request -> Controller (thin, maps Result to HTTP)
 - When writing `<PackageReference>`, use `dotnet add package` first to resolve the correct version.
 - With `Directory.Packages.props` (CPM), individual .csproj files must NOT specify `Version=`.
 - Never downgrade a package unless explicitly asked. Prefer release over preview/RC.
+- **Never upgrade `Microsoft.ApplicationInsights.AspNetCore` to 3.x.** Stay on 2.x — v3 caused runtime issues. Only revisit if explicitly asked.
 
 ### Performance
 
