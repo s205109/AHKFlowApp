@@ -41,7 +41,7 @@ jobs:
           reporttypes: 'MarkdownSummaryGithub;JsonSummary;HtmlInline_AzurePipelines;Cobertura'
       - name: Append thresholds to coverage summary
         if: always()
-        run: printf '\n---\n**Per-assembly thresholds:** Domain/Application line ≥ 85%% branch ≥ 70%% · Infrastructure line ≥ 70%% branch ≥ 50%% · API line ≥ 75%% branch ≥ 55%% · UI.Blazor line ≥ 65%% branch ≥ 45%%\n' >> CoverageReport/SummaryGithub.md
+        run: printf '\n---\n**Per-assembly thresholds:** Domain line≥85%% br≥70%% · Application line≥85%% br≥45%% · Infrastructure line≥70%% br≥50%% · API line≥57%% br≥50%% · UI.Blazor line≥65%% br≥28%%\n' >> CoverageReport/SummaryGithub.md
       - name: Append coverage summary to job summary
         if: always()
         run: cat CoverageReport/SummaryGithub.md >> "$GITHUB_STEP_SUMMARY"

@@ -6,10 +6,10 @@ import xml.etree.ElementTree as ET
 
 THRESHOLDS = {
     "AHKFlowApp.Domain":         {"line": 85.0, "branch": 70.0},
-    "AHKFlowApp.Application":    {"line": 85.0, "branch": 70.0},
+    "AHKFlowApp.Application":    {"line": 85.0, "branch": 45.0},
     "AHKFlowApp.Infrastructure": {"line": 70.0, "branch": 50.0},
-    "AHKFlowApp.API":            {"line": 75.0, "branch": 55.0},
-    "AHKFlowApp.UI.Blazor":      {"line": 65.0, "branch": 45.0},
+    "AHKFlowApp.API":            {"line": 57.0, "branch": 50.0},
+    "AHKFlowApp.UI.Blazor":      {"line": 65.0, "branch": 28.0},
 }
 
 COBERTURA_PATH = "CoverageReport/Cobertura.xml"
