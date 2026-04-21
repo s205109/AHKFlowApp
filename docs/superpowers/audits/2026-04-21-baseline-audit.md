@@ -131,4 +131,26 @@ Scan via `cck-security-scan` skill on 2026-04-21.
 
 ## Per-plan disposition
 
-_Populated in Task 6._
+Each plan 2-6 opens by re-reading this section. Only items listed under its plan are in its scope.
+
+### Plan 2 — Targeted coverage uplift
+- No audit findings route here directly. Coverage gaps are discovered inside plan 2.
+
+### Plan 3 — Code simplification
+- S-1: Remove or rotate dev Docker SA password (`AHKFlow_Dev!2026`) from `launchSettings.json` (2 profiles). Replace with a random placeholder or env-var reference safe to commit.
+- S-3: Tighten CORS policy — restrict `AllowAnyMethod()` and `AllowAnyHeader()` to explicit lists matching the frontend's actual needs.
+
+### Plan 4 — Script + deploy.ps1 overhaul
+- No security findings route here.
+- Note: PR #66's unique-suffix variables are now written to `scripts/.env.<env>` after `deploy.ps1` runs — plan 4's preflight must read those values rather than hardcoding resource names.
+
+### Plan 5 — Local-install path (no Azure)
+- No audit findings route here directly. Scope is fixed by the roadmap spec.
+
+### Plan 6 — Docs + consistency sweep
+- S-2: Remove or replace dev password example strings in the two docs files flagged by the scan.
+- Cross-reference: README, AGENTS.md, `.claude/CLAUDE.md`, `.github/**`.
+
+### Deferred
+- Package upgrades: 22 outdated entries (see Outdated packages section). Major bumps: `Microsoft.ApplicationInsights.AspNetCore` 2.23.0 → 3.1.0, `coverlet.collector` 8.0.1 → 10.0.0. Patch bumps: `Microsoft.*` 10.0.6 → 10.0.7, `Microsoft.Identity.Web` 4.7.0 → 4.8.0. Re-evaluate when individual plans need a specific bump.
+- No Bicep/infra security findings to defer.
