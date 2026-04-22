@@ -11,6 +11,10 @@ Access API at: http://localhost:5600/swagger
 
 SQL Server is available on: `localhost:1433`
 
+> The bundled compose stack runs **API + SQL Server only**. Run the Blazor frontend separately with `dotnet run --project src/Frontend/AHKFlowApp.UI.Blazor`.
+>
+> The bundled compose stack is **x64/amd64 only**. It is not supported on Raspberry Pi / ARM64 because it uses `mcr.microsoft.com/mssql/server:2022-latest`.
+
 ## Visual Studio Launch Profiles
 
 Launch profiles are defined in `src/Backend/AHKFlowApp.API/Properties/launchSettings.json`.

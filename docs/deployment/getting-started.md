@@ -2,7 +2,7 @@
 
 This guide walks you through provisioning your own AHKFlowApp instance on Azure.
 
-**Prerequisites:** An Azure subscription. The deploy script will guide you through any additional tooling.
+**Prerequisites:** Azure subscription, Windows PowerShell 5.1 or newer, .NET 10 SDK, Azure CLI, and GitHub CLI. `sqlcmd` is optional.
 
 ## Quick Start (Recommended)
 
@@ -16,17 +16,16 @@ cd AHKFlowApp
 
 The script will:
 
-1. Check that required tools are installed (Azure CLI, GitHub CLI)
+1. Check that required tools are installed (.NET 10 SDK, Azure CLI, GitHub CLI)
 2. Prompt for your environment name (`test` or `prod`), Azure region, and GitHub repository
 3. Create an Azure resource group and provision all resources via Bicep
-4. Set up Entra ID (SQL access, OIDC for GitHub Actions)
+4. Set up Entra ID (app registration, SQL access, OIDC for GitHub Actions)
 5. Create the SQL database user for the application
 6. Configure GitHub secrets and variables so CI/CD works automatically
-7. Save your configuration to `scripts/.env.{environment}` for future use
+7. Trigger the frontend deploy workflow on GitHub
+8. Save your configuration to `scripts/.env.{environment}` for future use
 
-When done, push to `main` — GitHub Actions will deploy the API container and Blazor frontend automatically.
-
-> **Auth app registration not included in `deploy.ps1`.** After provisioning, run the Entra app registration setup separately — see [Entra ID Setup](#entra-id-app-registration-setup) below.
+When done, the script queues the frontend deployment automatically. The API still deploys when `deploy-api.yml` runs, typically on the next push to `main`.
 
 ## What Gets Provisioned
 
@@ -49,6 +48,8 @@ Estimated cost for the `test` environment: **~$15–25/month** (B1 App Service P
 
 The deploy script checks for these and will tell you how to install them if missing:
 
+- **Windows PowerShell 5.1+** — included on supported Windows versions
+- **.NET 10 SDK** — [install](https://dotnet.microsoft.com/download/dotnet/10.0)
 - **Azure CLI** — [install](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli)
 - **GitHub CLI** (`gh`) — [install](https://cli.github.com)
 - **sqlcmd** (optional) — [install](https://learn.microsoft.com/en-us/sql/tools/sqlcmd/sqlcmd-utility). If absent, the script prints a SQL snippet to run in the Azure Portal instead.
@@ -100,14 +101,14 @@ If you need to re-provision from GitHub Actions (e.g., after a Bicep change):
 
 ## Entra ID App Registration Setup
 
-The `deploy.ps1` script provisions infrastructure but does **not** create the Entra ID app registration used for user authentication. Run this once per environment after provisioning:
+`deploy.ps1` already creates or updates the Entra ID app registration for `test` and `prod`. Use `setup-entra-app.ps1` only as a manual fallback when you need to refresh redirect URIs or repair app-registration state without re-running the full provisioning flow:
 
 ```powershell
 .\scripts\setup-entra-app.ps1 -Environment test
 .\scripts\setup-entra-app.ps1 -Environment prod
 ```
 
-The script outputs the `ClientId`, `TenantId`, and `DefaultScope` values. Set them as GitHub Variables so the deploy workflows can inject them:
+The script outputs the `ClientId`, `TenantId`, and `DefaultScope` values. If you run it manually, update the matching GitHub Variables so the deploy workflows can inject them:
 
 ```bash
 gh variable set AZURE_AD_TENANT_ID_TEST --body "<TenantId>"

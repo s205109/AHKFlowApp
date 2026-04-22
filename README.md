@@ -5,11 +5,16 @@
 ### Prerequisites
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
-- SQL Server LocalDB (included with Visual Studio) or Docker
+- One local database path:
+  - Windows + SQL Server LocalDB, or
+  - Docker on an x64/amd64 host for the bundled SQL Server compose stack
+- Optional for Azure provisioning only: Windows PowerShell 5.1, Azure CLI, GitHub CLI
+
+> The bundled Docker stack is **not supported on Raspberry Pi / ARM64** because `docker-compose.yml` uses SQL Server 2022.
 
 ### Running Locally
 
-**Option 1 — LocalDB:**
+**Option 1 — Windows + LocalDB**
 
 ```bash
 # Apply migrations (after backlog item 007)
@@ -18,13 +23,20 @@ dotnet ef database update \
   --startup-project src/Backend/AHKFlowApp.API
 
 # Start API (http://localhost:5600, OpenAPI at /swagger/v1/swagger.json)
-dotnet run --project src/Backend/AHKFlowApp.API --launch-profile "Docker SQL (Recommended)"
+dotnet run --project src/Backend/AHKFlowApp.API --launch-profile "LocalDB SQL"
 
 # Start frontend in a separate terminal (http://localhost:5601)
 dotnet run --project src/Frontend/AHKFlowApp.UI.Blazor
 ```
 
-**Option 2 — Docker Compose (recommended):**
+**Option 2 — Windows/x64 Docker SQL + local frontend**
+
+```bash
+dotnet run --project src/Backend/AHKFlowApp.API --launch-profile "Docker SQL (Recommended)"
+dotnet run --project src/Frontend/AHKFlowApp.UI.Blazor
+```
+
+**Option 3 — Docker Compose (API + SQL only, x64/amd64):**
 
 See `docs/development/docker-setup.md`.
 
@@ -42,7 +54,7 @@ The application supports three distinct environments:
 
 | Environment | Description | ASPNETCORE_ENVIRONMENT | Deployment |
 |-------------|-------------|------------------------|------------|
-| **DEV** | Local development | `Development` | Local machine (LocalDB or Docker SQL) |
+| **DEV** | Local development | `Development` | Local machine (Windows LocalDB or x64 Docker SQL) |
 | **TEST** | Pre-production testing | `Test` | Azure (auto-deploy from `main` branch) |
 | **PROD** | Production | `Production` | Azure (manual deployment via workflow) |
 

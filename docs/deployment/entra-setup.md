@@ -28,11 +28,10 @@ Handled automatically by the full provisioning script:
 
 Phase 3 sets up or updates the per-env app registration via `setup-entra-app.ps1` before Bicep runs. Later in the deployment, the script re-runs that setup only to refresh redirect URIs and write all three `AZURE_AD_*_{TEST|PROD}` GitHub Variables once the final app endpoints are known. The deploy workflows substitute these into `appsettings.{Test|Production}.json` at build time and inject them into App Service configuration on every deploy.
 
-After `deploy.ps1` finishes, retrigger the API and frontend deploy workflows (they don't auto-run on `scripts/**` changes):
+After `deploy.ps1` finishes, the script already dispatches `deploy-frontend.yml` for the selected environment. The API workflow still runs on the next push to `main`, or you can trigger it manually if you need to redeploy the current image:
 
 ```powershell
 gh workflow run deploy-api.yml --ref main -f environment=test
-gh workflow run deploy-frontend.yml --ref main -f environment=test
 ```
 
 ### Manual fallback

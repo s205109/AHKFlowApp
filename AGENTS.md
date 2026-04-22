@@ -8,7 +8,7 @@ Blazor WebAssembly PWA frontend + ASP.NET Core Web API backend. Early stage — 
 ## Tech Stack
 
 - **.NET 10.0** — all projects target `net10.0`; Microsoft.* packages use 10.x versions
-- **EF Core** + SQL Server (LocalDB/Docker Compose/Azure SQL) with `EnableRetryOnFailure()`
+- **EF Core** + SQL Server (Windows LocalDB/x64 Docker Compose/Azure SQL) with `EnableRetryOnFailure()`
 - **Blazor WebAssembly** PWA with MudBlazor 9.x and Azure AD (MSAL) authentication
 - **MediatR** (Jimmy Bogard) for CQRS — commands, queries, pipeline behaviors
 - **Ardalis.Result** for typed operation outcomes (handlers only)
@@ -54,12 +54,12 @@ dotnet test tests/AHKFlowApp.API.Tests --configuration Release --verbosity norma
 dotnet test tests/AHKFlowApp.API.Tests --filter "FullyQualifiedName~HealthControllerTests"
 
 # Run API locally (recommended: Docker SQL on port 1433)
-dotnet run --project src/Backend/AHKFlowApp.API --launch-profile "https + Docker SQL (Recommended)"
+dotnet run --project src/Backend/AHKFlowApp.API --launch-profile "Docker SQL (Recommended)"
 
 # Run Blazor frontend (separate terminal)
 dotnet run --project src/Frontend/AHKFlowApp.UI.Blazor
 
-# Full stack via Docker Compose (SQL Server + API)
+# Full stack via Docker Compose (API + SQL Server on x64/amd64 hosts)
 docker compose up --build
 
 # EF Core migrations
@@ -214,7 +214,7 @@ GitHub Actions workflows in `.github/workflows/`:
 
 **Environments:**
 - **DEV:** Local development environment (`ASPNETCORE_ENVIRONMENT=Development`)
-  - LocalDB or Docker SQL Server
+  - Windows LocalDB or x64 Docker SQL Server
   - No Azure resources required
   - Run locally with `dotnet run`
 - **TEST:** Azure pre-production environment (`ASPNETCORE_ENVIRONMENT=Test`)
