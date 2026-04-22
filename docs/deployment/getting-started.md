@@ -25,7 +25,10 @@ The script will:
 7. Trigger the frontend deploy workflow on GitHub
 8. Save your configuration to `scripts/.env.{environment}` for future use
 
-When done, the script queues the frontend deployment automatically. The API still deploys when `deploy-api.yml` runs, typically on the next push to `main`.
+When done, the script queues the frontend deployment automatically.
+
+- **TEST:** the API deploys when `deploy-api.yml` is triggered by a qualifying push to `main` (`src/Backend/**`, `tests/**`, `Directory.*.props`, `global.json`, or `.github/workflows/deploy-api.yml`).
+- **PROD:** the API deploy is manual — run `deploy-api.yml` with `environment=prod`.
 
 ## What Gets Provisioned
 

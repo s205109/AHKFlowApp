@@ -703,7 +703,12 @@ if ($frontendDeploymentTriggered) {
 } else {
     Write-Host "  1. Trigger the frontend deploy workflow manually once ready."
 }
-Write-Host "  2. Push to 'main' to build and publish the API container image."
+if ($Environment -eq 'test') {
+    Write-Host "  2. Push qualifying backend changes to 'main' to build and publish the API container image."
+    Write-Host "     Auto-trigger paths: src/Backend/**, tests/**, Directory.*.props, global.json, .github/workflows/deploy-api.yml"
+} else {
+    Write-Host "  2. Trigger deploy-api.yml manually with environment=prod to build and publish the API container image."
+}
 Write-Host ""
 Write-Host "  IMPORTANT: GHCR packages are private by default." -ForegroundColor Yellow
 Write-Host "  After the first deploy-api.yml run, make the container image public:"
