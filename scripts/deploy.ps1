@@ -1,4 +1,5 @@
-﻿<#
+﻿#Requires -Version 5.1
+<#
 .SYNOPSIS
     Provisions an AHKFlowApp Azure environment and configures CI/CD.
 
@@ -26,47 +27,33 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-function Write-Step([string]$Message) {
-    Write-Host "`n==> $Message" -ForegroundColor Cyan
-}
-
-function Write-Success([string]$Message) {
-    Write-Host "  ✓ $Message" -ForegroundColor Green
-}
-
-function Write-Warn([string]$Message) {
-    Write-Host "  ! $Message" -ForegroundColor Yellow
-}
-
-function Write-Fail([string]$Message) {
-    Write-Host "`n  ✗ $Message" -ForegroundColor Red
-}
-
-function Confirm-Command([string]$Name, [string]$InstallUrl) {
-    if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) {
-        Write-Fail "$Name is not installed."
-        Write-Host "    Install from: $InstallUrl" -ForegroundColor Yellow
-        throw "Missing prerequisite: $Name"
-    }
-    Write-Success "$Name found"
-}
+. (Join-Path $PSScriptRoot 'Common.ps1')
 
 function Invoke-Az {
-    $output = az @args 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        throw "az $($args -join ' ') failed:`n$output"
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $output = az @args 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            throw "az $($args -join ' ') failed:`n$output"
+        }
+    } finally {
+        $ErrorActionPreference = $prevEap
     }
+
     return $output
 }
 
 function Invoke-Az-Json {
-    $raw = az @args --output json 2>&1
-    if ($LASTEXITCODE -ne 0) { throw "az $($args -join ' ') failed:`n$raw" }
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $raw = az @args --output json 2>&1
+        if ($LASTEXITCODE -ne 0) { throw "az $($args -join ' ') failed:`n$raw" }
+    } finally {
+        $ErrorActionPreference = $prevEap
+    }
+
     return $raw | ConvertFrom-Json
 }
 
@@ -120,16 +107,11 @@ try {
     Write-Success "Logged into Azure as $($account.user.name) (subscription: $($account.name))"
 } catch {
     Write-Fail "Not logged into Azure. Run: az login"
-    throw
+    Write-Host "  Azure CLI account check failed. Resolve the Azure CLI issue above and rerun." -ForegroundColor Yellow
+    exit 1
 }
 
-# Verify gh auth
-$ghStatus = gh auth status 2>&1
-if ($LASTEXITCODE -ne 0) {
-    Write-Fail "GitHub CLI not authenticated. Run: gh auth login"
-    throw "GitHub CLI not authenticated"
-}
-Write-Success "GitHub CLI authenticated"
+Assert-GitHubAuth
 
 # Verify sqlcmd (optional — we fall back to portal instructions)
 $hasSqlcmd = [bool](Get-Command 'sqlcmd' -ErrorAction SilentlyContinue)

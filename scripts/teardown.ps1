@@ -1,4 +1,5 @@
-﻿<#
+﻿#Requires -Version 5.1
+<#
 .SYNOPSIS
     Tears down an AHKFlowApp Azure environment.
 
@@ -23,11 +24,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-
-function Write-Step([string]$Message) { Write-Host "`n==> $Message" -ForegroundColor Cyan }
-function Write-Success([string]$Message) { Write-Host "  ✓ $Message" -ForegroundColor Green }
-function Write-Warn([string]$Message) { Write-Host "  ! $Message" -ForegroundColor Yellow }
-function Write-Fail([string]$Message) { Write-Host "`n  ✗ $Message" -ForegroundColor Red }
+. (Join-Path $PSScriptRoot 'Common.ps1')
 
 # Load saved config
 if (-not $Environment) {
@@ -42,11 +39,7 @@ if (-not (Test-Path $EnvFile)) {
     exit 0
 }
 
-$config = @{}
-Get-Content $EnvFile | Where-Object { $_ -match '^\s*[^#]' -and $_ -match '=' } | ForEach-Object {
-    $parts = $_ -split '=', 2
-    $config[$parts[0].Trim()] = $parts[1].Trim()
-}
+$config = Read-KeyValueFile $EnvFile
 
 $ResourceGroup   = $config['RESOURCE_GROUP']
 $SqlAdminGroup   = $config['SQL_ADMIN_GROUP']
@@ -71,12 +64,7 @@ if ($confirm -ne $ResourceGroup) {
     exit 0
 }
 
-# Verify az login
-$null = az account show 2>&1
-if ($LASTEXITCODE -ne 0) {
-    Write-Fail "Not logged into Azure. Run: az login"
-    exit 1
-}
+Assert-AzureLogin
 
 # ---------------------------------------------------------------------------
 # 1. Delete Azure resource group

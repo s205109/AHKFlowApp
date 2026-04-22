@@ -1,4 +1,5 @@
-﻿<#
+﻿#Requires -Version 5.1
+<#
 .SYNOPSIS
     Updates AHKFlowApp to the latest release by pulling the newest container image.
 
@@ -21,10 +22,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-
-function Write-Step([string]$Message) { Write-Host "`n==> $Message" -ForegroundColor Cyan }
-function Write-Success([string]$Message) { Write-Host "  ✓ $Message" -ForegroundColor Green }
-function Write-Fail([string]$Message) { Write-Host "`n  ✗ $Message" -ForegroundColor Red }
+. (Join-Path $PSScriptRoot 'Common.ps1')
 
 # Load saved config
 if (-not $Environment) {
@@ -39,11 +37,7 @@ if (-not (Test-Path $EnvFile)) {
     exit 1
 }
 
-$config = @{}
-Get-Content $EnvFile | Where-Object { $_ -match '^\s*[^#]' -and $_ -match '=' } | ForEach-Object {
-    $parts = $_ -split '=', 2
-    $config[$parts[0].Trim()] = $parts[1].Trim()
-}
+$config = Read-KeyValueFile $EnvFile
 
 $ResourceGroup    = $config['RESOURCE_GROUP']
 $AppServiceName   = $config['APP_SERVICE_NAME']
@@ -52,13 +46,7 @@ $AppHostname      = $config['APP_SERVICE_HOSTNAME']
 
 Write-Step "Updating AHKFlowApp ($Environment)..."
 
-# Verify az login
-$null = az account show 2>&1
-if ($LASTEXITCODE -ne 0) {
-    Write-Fail "Not logged into Azure. Run: az login"
-    exit 1
-}
-Write-Success "Azure login verified"
+Assert-AzureLogin
 
 # Fetch the latest image tag from GHCR
 $Owner = $GitHubOrgRepo -split '/' | Select-Object -First 1
