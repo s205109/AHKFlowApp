@@ -22,18 +22,10 @@ if (useTestAuth)
     builder.Services.AddScoped<AuthenticationStateProvider, TestAuthenticationProvider>();
 
     // No bearer token needed — backend TestAuthHandler authenticates synthetically
-    builder.Services.AddHttpClient<IAhkFlowAppApiHttpClient, AhkFlowAppApiHttpClient>(client =>
-    {
-        client.BaseAddress = new Uri(new Uri(builder.HostEnvironment.BaseAddress), apiBaseUrl);
-        client.Timeout = TimeSpan.FromSeconds(30);
-    })
+    AddApiClient<IAhkFlowAppApiHttpClient, AhkFlowAppApiHttpClient>(new Uri(new Uri(builder.HostEnvironment.BaseAddress), apiBaseUrl))
         .AddStandardResilienceHandler();
 
-    builder.Services.AddHttpClient<IHotstringsApiClient, HotstringsApiClient>(client =>
-    {
-        client.BaseAddress = new Uri(new Uri(builder.HostEnvironment.BaseAddress), apiBaseUrl);
-        client.Timeout = TimeSpan.FromSeconds(30);
-    })
+    AddApiClient<IHotstringsApiClient, HotstringsApiClient>(new Uri(new Uri(builder.HostEnvironment.BaseAddress), apiBaseUrl))
         .AddStandardResilienceHandler();
 }
 else
@@ -64,21 +56,24 @@ else
 
     builder.Services.AddTransient<ApiAuthorizationMessageHandler>();
 
-    builder.Services.AddHttpClient<IAhkFlowAppApiHttpClient, AhkFlowAppApiHttpClient>(client =>
-    {
-        client.BaseAddress = new Uri(apiBaseUrl);
-        client.Timeout = TimeSpan.FromSeconds(30);
-    })
+    AddApiClient<IAhkFlowAppApiHttpClient, AhkFlowAppApiHttpClient>(new Uri(apiBaseUrl))
         .AddHttpMessageHandler<ApiAuthorizationMessageHandler>()
         .AddStandardResilienceHandler();
 
-    builder.Services.AddHttpClient<IHotstringsApiClient, HotstringsApiClient>(client =>
-    {
-        client.BaseAddress = new Uri(apiBaseUrl);
-        client.Timeout = TimeSpan.FromSeconds(30);
-    })
+    AddApiClient<IHotstringsApiClient, HotstringsApiClient>(new Uri(apiBaseUrl))
         .AddHttpMessageHandler<ApiAuthorizationMessageHandler>()
         .AddStandardResilienceHandler();
 }
 
 await builder.Build().RunAsync();
+
+IHttpClientBuilder AddApiClient<TClient, TImplementation>(Uri baseAddress)
+    where TClient : class
+    where TImplementation : class, TClient
+{
+    return builder.Services.AddHttpClient<TClient, TImplementation>(client =>
+    {
+        client.BaseAddress = baseAddress;
+        client.Timeout = TimeSpan.FromSeconds(30);
+    });
+}

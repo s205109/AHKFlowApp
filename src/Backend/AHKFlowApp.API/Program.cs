@@ -31,29 +31,8 @@ try
 
     WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
-    // Application Insights — only when a connection string is configured (Test/Prod)
     string? appInsightsConnectionString = builder.Configuration["ApplicationInsights:ConnectionString"];
-    if (!string.IsNullOrWhiteSpace(appInsightsConnectionString))
-    {
-        builder.Services.AddApplicationInsightsTelemetry(options =>
-            options.ConnectionString = appInsightsConnectionString);
-    }
-
-    // Stage 2: Full logger configured from appsettings.json, with DI integration
-    builder.Services.AddSerilog((services, lc) =>
-    {
-        lc.ReadFrom.Configuration(builder.Configuration)
-          .ReadFrom.Services(services)
-          .Enrich.FromLogContext()
-          .Enrich.WithProperty("Application", "AHKFlowApp.API");
-
-        // Route Serilog events to Application Insights when configured
-        if (!string.IsNullOrWhiteSpace(appInsightsConnectionString))
-        {
-            TelemetryConfiguration telemetryConfig = services.GetRequiredService<TelemetryConfiguration>();
-            lc.WriteTo.ApplicationInsights(telemetryConfig, TelemetryConverter.Traces);
-        }
-    });
+    ConfigureObservability(builder, appInsightsConnectionString);
 
     // Start SQL Server in Docker if requested (for "https + Docker SQL" launch profile)
     if (builder.Environment.IsDevelopment() &&
@@ -62,76 +41,15 @@ try
         DevDockerSqlServer.EnsureStarted(builder.Environment.ContentRootPath);
     }
 
-    builder.Services.AddProblemDetails(options =>
-        options.CustomizeProblemDetails = ctx =>
-            ctx.ProblemDetails.Extensions["traceId"] = ctx.HttpContext.TraceIdentifier);
-
-    builder.Services.AddControllers()
-        .ConfigureApiBehaviorOptions(options =>
-            options.InvalidModelStateResponseFactory = ctx =>
-            {
-                var pd = new ValidationProblemDetails(ctx.ModelState)
-                {
-                    Detail = "See the errors field for details.",
-                    Instance = ctx.HttpContext.Request.Path,
-                    Status = StatusCodes.Status422UnprocessableEntity,
-                    Title = "One or more validation errors occurred."
-                };
-                pd.Extensions["traceId"] = ctx.HttpContext.TraceIdentifier;
-                return new UnprocessableEntityObjectResult(pd)
-                {
-                    ContentTypes = { "application/problem+json" }
-                };
-            });
-
-    builder.Services.AddSingleton(TimeProvider.System);
-    builder.Services.AddSingleton<IDevEnvironment>(new DevEnvironment(builder.Environment.IsDevelopment()));
-
-    if (builder.Environment.IsDevelopment())
-    {
-        builder.Services.AddSwaggerDocs();
-    }
-    builder.Services.AddApplication();
-    builder.Services.AddInfrastructure(builder.Configuration);
-    builder.Services.AddHealthChecks()
-        .AddDbContextCheck<AppDbContext>(
-            name: "database",
-            failureStatus: HealthStatus.Unhealthy);
-
     const string corsPolicyName = "AllowConfiguredOrigins";
     string[] allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
-    builder.Services.AddConfiguredCors(allowedOrigins, corsPolicyName);
-
-    builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-        .AddMicrosoftIdentityWebApi(builder.Configuration.GetSection("AzureAd"));
-    builder.Services.AddAuthorization();
-    builder.Services.AddHttpContextAccessor();
-    builder.Services.AddScoped<ICurrentUser, HttpContextCurrentUser>();
+    ConfigureServices(builder, allowedOrigins, corsPolicyName);
 
     WebApplication app = builder.Build();
 
-    // Auto-apply migrations in Development (creates database if it doesn't exist)
     if (app.Environment.IsDevelopment())
     {
-        await using AsyncServiceScope scope = app.Services.CreateAsyncScope();
-        AppDbContext dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        ILogger<Program> logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-        try
-        {
-            logger.LogInformation("Applying database migrations...");
-            await dbContext.Database.MigrateAsync();
-            logger.LogInformation("Database migrations applied successfully.");
-        }
-        catch (SqlException ex) when (ex.Number == 1801)
-        {
-            // Database already exists (persisted Docker volume from a previous run) — migrations already applied
-            logger.LogInformation("Database already exists; skipping migration apply.");
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Error applying database migrations.");
-            throw;
-        }
+        await ApplyDevelopmentMigrationsAsync(app);
     }
 
     app.UseMiddleware<GlobalExceptionMiddleware>();
@@ -159,27 +77,11 @@ try
     if (app.Environment.IsDevelopment())
     {
         app.UseSwaggerDocs();
-        app.Use(async (context, next) =>
-        {
-            if (context.Request.Path == "/")
-            {
-                context.Response.Redirect("/swagger");
-                return;
-            }
-            await next(context);
-        });
+        app.UseRootRedirect("/swagger");
     }
     else
     {
-        app.Use(async (context, next) =>
-        {
-            if (context.Request.Path == "/")
-            {
-                context.Response.Redirect("/health");
-                return;
-            }
-            await next(context);
-        });
+        app.UseRootRedirect("/health");
     }
 
     if (allowedOrigins.Length > 0)
@@ -224,4 +126,101 @@ catch (Exception ex)
 finally
 {
     await Log.CloseAndFlushAsync();
+}
+
+static void ConfigureObservability(WebApplicationBuilder builder, string? appInsightsConnectionString)
+{
+    if (!string.IsNullOrWhiteSpace(appInsightsConnectionString))
+    {
+        builder.Services.AddApplicationInsightsTelemetry(options =>
+            options.ConnectionString = appInsightsConnectionString);
+    }
+
+    builder.Services.AddSerilog((services, lc) =>
+    {
+        lc.ReadFrom.Configuration(builder.Configuration)
+          .ReadFrom.Services(services)
+          .Enrich.FromLogContext()
+          .Enrich.WithProperty("Application", "AHKFlowApp.API");
+
+        if (!string.IsNullOrWhiteSpace(appInsightsConnectionString))
+        {
+            TelemetryConfiguration telemetryConfig = services.GetRequiredService<TelemetryConfiguration>();
+            lc.WriteTo.ApplicationInsights(telemetryConfig, TelemetryConverter.Traces);
+        }
+    });
+}
+
+static void ConfigureServices(WebApplicationBuilder builder, string[] allowedOrigins, string corsPolicyName)
+{
+    builder.Services.AddProblemDetails(options =>
+        options.CustomizeProblemDetails = ctx =>
+            ctx.ProblemDetails.Extensions["traceId"] = ctx.HttpContext.TraceIdentifier);
+
+    builder.Services.AddControllers()
+        .ConfigureApiBehaviorOptions(options =>
+            options.InvalidModelStateResponseFactory = CreateValidationProblemResponse);
+
+    builder.Services.AddSingleton(TimeProvider.System);
+    builder.Services.AddSingleton(new AppEnvironment(builder.Environment.IsDevelopment()));
+
+    if (builder.Environment.IsDevelopment())
+    {
+        builder.Services.AddSwaggerDocs();
+    }
+
+    builder.Services.AddApplication();
+    builder.Services.AddInfrastructure(builder.Configuration);
+    builder.Services.AddHealthChecks()
+        .AddDbContextCheck<AppDbContext>(
+            name: "database",
+            failureStatus: HealthStatus.Unhealthy);
+
+    builder.Services.AddConfiguredCors(allowedOrigins, corsPolicyName);
+    builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+        .AddMicrosoftIdentityWebApi(builder.Configuration.GetSection("AzureAd"));
+    builder.Services.AddAuthorization();
+    builder.Services.AddHttpContextAccessor();
+    builder.Services.AddScoped<ICurrentUser, HttpContextCurrentUser>();
+}
+
+static IActionResult CreateValidationProblemResponse(ActionContext ctx)
+{
+    var pd = new ValidationProblemDetails(ctx.ModelState)
+    {
+        Detail = "See the errors field for details.",
+        Instance = ctx.HttpContext.Request.Path,
+        Status = StatusCodes.Status422UnprocessableEntity,
+        Title = "One or more validation errors occurred."
+    };
+
+    pd.Extensions["traceId"] = ctx.HttpContext.TraceIdentifier;
+
+    return new UnprocessableEntityObjectResult(pd)
+    {
+        ContentTypes = { "application/problem+json" }
+    };
+}
+
+static async Task ApplyDevelopmentMigrationsAsync(WebApplication app)
+{
+    await using AsyncServiceScope scope = app.Services.CreateAsyncScope();
+    AppDbContext dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    ILogger<Program> logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+
+    try
+    {
+        logger.LogInformation("Applying database migrations...");
+        await dbContext.Database.MigrateAsync();
+        logger.LogInformation("Database migrations applied successfully.");
+    }
+    catch (SqlException ex) when (ex.Number == 1801)
+    {
+        logger.LogInformation("Database already exists; skipping migration apply.");
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Error applying database migrations.");
+        throw;
+    }
 }

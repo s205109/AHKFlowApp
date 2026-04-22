@@ -71,4 +71,20 @@ internal static class ApiExtensions
 
         return app;
     }
+
+    internal static WebApplication UseRootRedirect(this WebApplication app, string destination)
+    {
+        app.Use(async (context, next) =>
+        {
+            if (context.Request.Path == "/")
+            {
+                context.Response.Redirect(destination);
+                return;
+            }
+
+            await next(context);
+        });
+
+        return app;
+    }
 }

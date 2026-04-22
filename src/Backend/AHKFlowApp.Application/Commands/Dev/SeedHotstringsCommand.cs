@@ -1,3 +1,4 @@
+using AHKFlowApp.Application;
 using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Mapping;
@@ -15,7 +16,7 @@ internal sealed class SeedHotstringsCommandHandler(
     IAppDbContext db,
     ICurrentUser currentUser,
     TimeProvider clock,
-    IDevEnvironment env)
+    AppEnvironment env)
     : IRequestHandler<SeedHotstringsCommand, Result<PagedList<HotstringDto>>>
 {
     private static readonly (string Trigger, string Replacement, bool Ending, bool InsideWord)[] s_samples =
