@@ -87,6 +87,41 @@ function Try-Az-Json {
     }
 }
 
+function Assert-DotNetSdkVersion([string]$RequiredMajorVersion) {
+    $installedSdks = dotnet --list-sdks 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Fail 'Unable to determine installed .NET SDK versions.'
+        exit 1
+    }
+
+    $requiredPrefix = "$RequiredMajorVersion."
+    if (-not ($installedSdks | Where-Object { $_.StartsWith($requiredPrefix) })) {
+        Write-Fail ".NET SDK $RequiredMajorVersion.x is required."
+        Write-Host '    Install from: https://dotnet.microsoft.com/download/dotnet/10.0' -ForegroundColor Yellow
+        exit 1
+    }
+
+    Write-Success ".NET SDK $RequiredMajorVersion.x found"
+}
+
+function Start-FrontendDeployment([string]$Repository, [string]$TargetEnvironment) {
+    Write-Step "Phase 8: Triggering frontend deployment workflow..."
+
+    gh workflow run deploy-frontend.yml `
+        --repo $Repository `
+        --ref main `
+        -f environment=$TargetEnvironment | Out-Null
+
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warn 'Could not trigger deploy-frontend.yml automatically.'
+        Write-Host "    Run manually: gh workflow run deploy-frontend.yml --repo $Repository --ref main -f environment=$TargetEnvironment" -ForegroundColor Yellow
+        return $false
+    }
+
+    Write-Success "Triggered deploy-frontend.yml for '$TargetEnvironment'"
+    return $true
+}
+
 # ---------------------------------------------------------------------------
 # Phase 1: Prerequisites
 # ---------------------------------------------------------------------------
@@ -100,6 +135,7 @@ Write-Step "Phase 1: Checking prerequisites..."
 Confirm-Command 'az'       'https://learn.microsoft.com/cli/azure/install-azure-cli'
 Confirm-Command 'gh'       'https://cli.github.com/'
 Confirm-Command 'dotnet'   'https://dotnet.microsoft.com/download'
+Assert-DotNetSdkVersion '10'
 
 # Verify az login
 try {
@@ -617,7 +653,7 @@ az webapp cors add `
 Write-Success "CORS configured for SWA frontend"
 
 # ---------------------------------------------------------------------------
-# Phase 8: Save config + Summary
+# Phase 8: Save config
 # ---------------------------------------------------------------------------
 
 Write-Step "Phase 8: Saving configuration..."
@@ -650,6 +686,8 @@ APP_INSIGHTS_NAME=$AppInsightsName
 "@ | Set-Content -Path $EnvFileOut -Encoding UTF8
 Write-Success "Config saved to scripts/.env.$Environment"
 
+$frontendDeploymentTriggered = Start-FrontendDeployment -Repository $GitHubOrgRepo -TargetEnvironment $Environment
+
 Write-Host ""
 Write-Host "==========================================================" -ForegroundColor Green
 Write-Host "  AHKFlowApp ($Environment) -- Provisioning Complete!" -ForegroundColor Green
@@ -660,8 +698,12 @@ Write-Host "  Frontend    : https://$SwaHostname"
 Write-Host "  Resources   : $ResourceGroup"
 Write-Host ""
 Write-Host "  Next steps:" -ForegroundColor Cyan
-Write-Host "  1. Push to 'main' to trigger GitHub Actions deploy"
-Write-Host "  2. The first push will build and push the container image to GHCR."
+if ($frontendDeploymentTriggered) {
+    Write-Host "  1. Frontend deploy workflow dispatched for '$Environment'."
+} else {
+    Write-Host "  1. Trigger the frontend deploy workflow manually once ready."
+}
+Write-Host "  2. Push to 'main' to build and publish the API container image."
 Write-Host ""
 Write-Host "  IMPORTANT: GHCR packages are private by default." -ForegroundColor Yellow
 Write-Host "  After the first deploy-api.yml run, make the container image public:"
