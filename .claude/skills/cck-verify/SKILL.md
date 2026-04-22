@@ -36,7 +36,6 @@ If tests fail: stop and fix before continuing. See the **build-fix** skill.
 ```bash
 dotnet test tests/AHKFlowApp.API.Tests --configuration Release --verbosity normal
 dotnet test tests/AHKFlowApp.Application.Tests --configuration Release --verbosity normal
-dotnet test tests/AHKFlowApp.Domain.Tests --configuration Release --verbosity normal
 ```
 
 ### Run a Single Test by Name

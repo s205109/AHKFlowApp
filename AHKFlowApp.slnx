@@ -12,7 +12,6 @@
   <Folder Name="/tests/">
     <Project Path="tests/AHKFlowApp.API.Tests/AHKFlowApp.API.Tests.csproj" />
     <Project Path="tests/AHKFlowApp.Application.Tests/AHKFlowApp.Application.Tests.csproj" />
-    <Project Path="tests/AHKFlowApp.Domain.Tests/AHKFlowApp.Domain.Tests.csproj" />
     <Project Path="tests/AHKFlowApp.E2E.Tests/AHKFlowApp.E2E.Tests.csproj" />
     <Project Path="tests/AHKFlowApp.Infrastructure.Tests/AHKFlowApp.Infrastructure.Tests.csproj" />
     <Project Path="tests/AHKFlowApp.TestUtilities/AHKFlowApp.TestUtilities.csproj" />

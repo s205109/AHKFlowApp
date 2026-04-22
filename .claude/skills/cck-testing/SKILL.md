@@ -25,7 +25,6 @@ description: >
 tests/
   AHKFlowApp.API.Tests/            # Integration tests — WebApplicationFactory + Testcontainers
   AHKFlowApp.Application.Tests/    # Validator unit tests + handler unit tests
-  AHKFlowApp.Domain.Tests/         # Domain entity logic unit tests
   AHKFlowApp.Infrastructure.Test/  # EF Core + migration tests with Testcontainers
   AHKFlowApp.UI.Blazor.Tests/      # Blazor component tests (bUnit)
 ```
