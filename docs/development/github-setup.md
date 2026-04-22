@@ -143,7 +143,7 @@ GitHub Projects v2 has limited built-in automation. Manage workflow manually:
 
 ### Batch Script
 
-See [`docs/scripts/create-github-issues.ps1`](../scripts/create-github-issues.ps1) — reads backlog files from `.claude/backlog/`, detects type/epic/interface labels, and creates GitHub Issues via `gh` CLI. Supports dry-run (default) and `-Execute` flag.
+See [`scripts/create-github-issues.ps1`](../../scripts/create-github-issues.ps1) — reads backlog files from `.claude/backlog/`, detects type/epic/interface labels, and creates GitHub Issues via `gh` CLI. Supports dry-run (default) and `-Execute` flag.
 
 ### Run
 
