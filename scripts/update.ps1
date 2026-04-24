@@ -1,4 +1,5 @@
-﻿<#
+﻿#Requires -Version 5.1
+<#
 .SYNOPSIS
     Updates AHKFlowApp to the latest release by pulling the newest container image.
 

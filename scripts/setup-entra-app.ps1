@@ -1,4 +1,4 @@
-#Requires -Version 7
+#Requires -Version 5.1
 <#
 .SYNOPSIS
     Idempotent Entra ID app registration setup for AHKFlowApp.
