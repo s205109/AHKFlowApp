@@ -15,8 +15,8 @@ internal static class ApiExtensions
                 if (allowedOrigins is { Length: > 0 })
                 {
                     policy.WithOrigins(allowedOrigins)
-                          .AllowAnyMethod()
-                          .AllowAnyHeader()
+                          .WithMethods("GET", "POST", "PUT", "DELETE")
+                          .WithHeaders("Content-Type", "Authorization")
                           .AllowCredentials();
                 }
             }));
