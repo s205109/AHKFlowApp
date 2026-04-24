@@ -7,7 +7,7 @@
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
         "AHKFLOW_START_DOCKER_SQL": "true",
-        "ConnectionStrings__DefaultConnection": "Server=localhost,1433;Database=AHKFlowAppDb;User Id=sa;Password=AHKFlow_Dev!2026;TrustServerCertificate=True;MultipleActiveResultSets=true"
+        "ConnectionStrings__DefaultConnection": "Server=localhost,1433;Database=AHKFlowAppDb;User Id=sa;Password=Dev!LocalOnly_2026;TrustServerCertificate=True;MultipleActiveResultSets=true"
       },
       "dotnetRunMessages": true,
       "applicationUrl": "http://localhost:5600"
@@ -40,7 +40,7 @@
       "useSSL": false,
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
-        "ConnectionStrings__DefaultConnection": "Server=host.docker.internal,1433;Database=AHKFlowAppDb;User Id=sa;Password=AHKFlow_Dev!2026;TrustServerCertificate=True;MultipleActiveResultSets=true"
+        "ConnectionStrings__DefaultConnection": "Server=host.docker.internal,1433;Database=AHKFlowAppDb;User Id=sa;Password=Dev!LocalOnly_2026;TrustServerCertificate=True;MultipleActiveResultSets=true"
       },
       "publishAllPorts": false
     }

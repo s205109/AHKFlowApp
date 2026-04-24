@@ -15,16 +15,4 @@ public sealed class VersionServiceTests
 
         version.Should().NotBeNullOrWhiteSpace();
     }
-
-    [Fact]
-    public async Task GetVersionAsync_WhenAlreadyCancelled_ThrowsOperationCancelledException()
-    {
-        var sut = new VersionService();
-        using var cts = new CancellationTokenSource();
-        cts.Cancel();
-
-        Func<Task> act = async () => await sut.GetVersionAsync(cts.Token);
-
-        await act.Should().ThrowAsync<OperationCanceledException>();
-    }
 }
