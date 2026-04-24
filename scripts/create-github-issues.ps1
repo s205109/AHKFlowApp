@@ -1,3 +1,4 @@
+#Requires -Version 5.1
 # Create GitHub Issues from Backlog
 # Usage:
 #   .\scripts\create-github-issues.ps1 -BacklogPath "<path>"           # Dry run (default)
@@ -93,7 +94,7 @@ foreach ($file in $files) {
 
     if ($Execute) {
         Invoke-Expression $command
-        Write-Host "  ✓ Created" -ForegroundColor Green
+        Write-Host "  Created" -ForegroundColor Green
     }
     else {
         Write-Host "  [DRY RUN] $command" -ForegroundColor DarkGray
