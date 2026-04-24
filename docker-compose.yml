@@ -4,14 +4,14 @@ services:
     container_name: ahkflowapp-sqlserver
     environment:
       - ACCEPT_EULA=Y
-      - SA_PASSWORD=AHKFlow_Dev!2026
+      - SA_PASSWORD=Dev!LocalOnly_2026
       - MSSQL_PID=Developer
     ports:
       - "1433:1433"
     volumes:
       - sqlserver-data:/var/opt/mssql
     healthcheck:
-      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "AHKFlow_Dev!2026" -Q "SELECT 1" -C || exit 1
+      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "Dev!LocalOnly_2026" -Q "SELECT 1" -C || exit 1
       interval: 10s
       timeout: 5s
       retries: 10
@@ -28,7 +28,7 @@ services:
       # DEV environment — local development only
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_HTTP_PORTS=8080
-      - ConnectionStrings__DefaultConnection=Server=sqlserver,1433;Database=AHKFlowAppDb;User Id=sa;Password=AHKFlow_Dev!2026;TrustServerCertificate=True;MultipleActiveResultSets=true
+      - ConnectionStrings__DefaultConnection=Server=sqlserver,1433;Database=AHKFlowAppDb;User Id=sa;Password=Dev!LocalOnly_2026;TrustServerCertificate=True;MultipleActiveResultSets=true
     ports:
       - "5600:8080"
     depends_on:

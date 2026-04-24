@@ -242,7 +242,7 @@ Server=(localdb)\mssqllocaldb;Database=AHKFlowApp;Trusted_Connection=True;Multip
 ```
 or (Docker):
 ```
-Server=localhost,1433;Database=AHKFlowAppDb;User Id=sa;Password=AHKFlow_Dev!2026;TrustServerCertificate=True
+Server=localhost,1433;Database=AHKFlowAppDb;User Id=sa;Password=Dev!LocalOnly_2026;TrustServerCertificate=True
 ```
 
 **TEST/PROD (Azure, Entra ID auth):**
