@@ -20,7 +20,8 @@
     <PackageReference Include="Microsoft.Playwright" />
     <PackageReference Include="Yarp.ReverseProxy" />
     <PackageReference Include="Testcontainers.MsSql" />
-    <!-- Override transitive reference with known vulnerabilities -->
+    <!-- Override transitive references with known vulnerabilities -->
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection" />
     <PackageReference Include="System.Security.Cryptography.Xml" />
   </ItemGroup>
   <ItemGroup>

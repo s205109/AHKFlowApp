@@ -9,9 +9,5 @@ public sealed class VersionService : IVersionService
         .InformationalVersion ?? "0.0.0-dev";
 
     public ValueTask<string> GetVersionAsync(CancellationToken cancellationToken = default)
-    {
-        if (cancellationToken.IsCancellationRequested)
-            return ValueTask.FromCanceled<string>(cancellationToken);
-        return ValueTask.FromResult(_version);
-    }
+        => ValueTask.FromResult(_version);
 }
