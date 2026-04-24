@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+#Requires -Version 5.1
 <#
 .SYNOPSIS
   Run tests with coverage locally and generate HTML + JSON summary matching CI.
