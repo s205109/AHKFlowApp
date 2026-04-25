@@ -86,7 +86,7 @@ src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/
 
 ## Backend Configuration (ASP.NET Core API)
 
-### Strategy: Azure App Service Configuration + Key Vault
+### Strategy: Azure App Service Configuration
 
 **Template File:** `src/Backend/AHKFlowApp.API/appsettings.Production.json.example`
 
@@ -110,7 +110,7 @@ These **must never be committed** to git.
 
 **2. Production (Azure):**
 - Secrets stored in **Azure App Service Configuration**
-- Connection strings reference **Azure Key Vault** using Managed Identity
+- Connection strings and runtime Entra SQL auth settings live directly in App Service configuration
 - CI/CD workflow sets all values automatically
 
 ### Configuration Hierarchy
@@ -146,7 +146,7 @@ Azure App Service loads configuration in this order (later overrides earlier):
 | **Storage** | ❌ NOT committed (in `.gitignore`) |
 | **Contains** | Secrets (ConnectionStrings, credentials) |
 | **Why** | Server-side secrets must never be public |
-| **Production** | Azure App Service Configuration + Key Vault |
+| **Production** | Azure App Service Configuration |
 
 ---
 

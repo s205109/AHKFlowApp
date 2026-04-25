@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "12913743757647560259"
+      "templateHash": "2659551385160803493"
     }
   },
   "parameters": {
@@ -44,11 +44,23 @@
       "metadata": {
         "description": "Display name of the Entra security group that will be the SQL admin."
       }
+    },
+    "azureAdTenantId": {
+      "type": "string",
+      "metadata": {
+        "description": "Entra ID tenant ID for API token validation. See scripts/setup-entra-app.ps1."
+      }
+    },
+    "azureAdClientId": {
+      "type": "string",
+      "metadata": {
+        "description": "Entra ID client ID for API token validation. See scripts/setup-entra-app.ps1."
+      }
     }
   },
   "variables": {
     "aspnetcoreEnvironment": "[if(equals(parameters('environment'), 'prod'), 'Production', 'Test')]",
-    "resourceToken": "[take(uniqueString(subscription().subscriptionId, resourceGroup().id, parameters('environment')), 6)]"
+    "resourceToken": "[take(uniqueString(subscription().subscriptionId, resourceGroup().id, parameters('environment')), 8)]"
   },
   "resources": [
     {
@@ -78,7 +90,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "12052455223537809781"
+              "templateHash": "15922952967696538631"
             }
           },
           "parameters": {
@@ -107,20 +119,13 @@
             }
           },
           "variables": {
-            "deployerName": "[format('{0}-uami-deployer-{1}', parameters('baseName'), parameters('environment'))]",
-            "runtimeName": "[format('{0}-uami-runtime-{1}', parameters('baseName'), parameters('environment'))]"
+            "deployerName": "[format('{0}-uami-deployer-{1}', parameters('baseName'), parameters('environment'))]"
           },
           "resources": [
             {
               "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
               "apiVersion": "2023-01-31",
               "name": "[variables('deployerName')]",
-              "location": "[parameters('location')]"
-            },
-            {
-              "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
-              "apiVersion": "2023-01-31",
-              "name": "[variables('runtimeName')]",
               "location": "[parameters('location')]"
             }
           ],
@@ -140,22 +145,6 @@
             "deployerUamiPrincipalId": {
               "type": "string",
               "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deployerName')), '2023-01-31').principalId]"
-            },
-            "runtimeUamiName": {
-              "type": "string",
-              "value": "[variables('runtimeName')]"
-            },
-            "runtimeUamiId": {
-              "type": "string",
-              "value": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('runtimeName'))]"
-            },
-            "runtimeUamiClientId": {
-              "type": "string",
-              "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('runtimeName')), '2023-01-31').clientId]"
-            },
-            "runtimeUamiPrincipalId": {
-              "type": "string",
-              "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('runtimeName')), '2023-01-31').principalId]"
             }
           }
         }
@@ -197,7 +186,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "15629321951951305207"
+              "templateHash": "1712775825272106853"
             }
           },
           "parameters": {
@@ -270,11 +259,16 @@
               "name": "[format('{0}/{1}', variables('serverName'), variables('databaseName'))]",
               "location": "[parameters('location')]",
               "sku": {
-                "name": "Basic",
-                "tier": "Basic"
+                "name": "GP_S_Gen5_1",
+                "tier": "GeneralPurpose",
+                "family": "Gen5"
               },
               "properties": {
                 "collation": "SQL_Latin1_General_CP1_CI_AS",
+                "useFreeLimit": true,
+                "autoPauseDelay": 60,
+                "minCapacity": "[json('0.5')]",
+                "maxSizeBytes": 34359738368,
                 "requestedBackupStorageRedundancy": "Local"
               },
               "dependsOn": [
@@ -417,17 +411,17 @@
           "resourceToken": {
             "value": "[variables('resourceToken')]"
           },
-          "runtimeUamiId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'identity'), '2025-04-01').outputs.runtimeUamiId.value]"
-          },
-          "runtimeUamiClientId": {
-            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'identity'), '2025-04-01').outputs.runtimeUamiClientId.value]"
-          },
           "aspnetcoreEnvironment": {
             "value": "[variables('aspnetcoreEnvironment')]"
           },
           "swaDefaultHostname": {
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'swa'), '2025-04-01').outputs.swaDefaultHostname.value]"
+          },
+          "azureAdTenantId": {
+            "value": "[parameters('azureAdTenantId')]"
+          },
+          "azureAdClientId": {
+            "value": "[parameters('azureAdClientId')]"
           }
         },
         "template": {
@@ -437,7 +431,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "3965378895939917865"
+              "templateHash": "7486815666204958627"
             }
           },
           "parameters": {
@@ -470,18 +464,6 @@
                 "description": "Short deterministic suffix appended to globally-unique names to avoid collisions."
               }
             },
-            "runtimeUamiId": {
-              "type": "string",
-              "metadata": {
-                "description": "Resource ID of the runtime UAMI to assign to the App Service."
-              }
-            },
-            "runtimeUamiClientId": {
-              "type": "string",
-              "metadata": {
-                "description": "Client ID of the runtime UAMI (used by DefaultAzureCredential)."
-              }
-            },
             "aspnetcoreEnvironment": {
               "type": "string",
               "metadata": {
@@ -492,6 +474,25 @@
               "type": "string",
               "metadata": {
                 "description": "Default hostname of the Static Web App frontend, used as an allowed CORS origin."
+              }
+            },
+            "azureAdInstance": {
+              "type": "string",
+              "defaultValue": "[environment().authentication.loginEndpoint]",
+              "metadata": {
+                "description": "Entra ID instance URL. Defaults to the active cloud login endpoint."
+              }
+            },
+            "azureAdTenantId": {
+              "type": "string",
+              "metadata": {
+                "description": "Entra ID tenant ID for token validation."
+              }
+            },
+            "azureAdClientId": {
+              "type": "string",
+              "metadata": {
+                "description": "Entra ID client ID (app registration) for token validation."
               }
             }
           },
@@ -507,8 +508,8 @@
               "location": "[parameters('location')]",
               "kind": "linux",
               "sku": {
-                "name": "B1",
-                "tier": "Basic"
+                "name": "F1",
+                "tier": "Free"
               },
               "properties": {
                 "reserved": true
@@ -519,31 +520,13 @@
               "apiVersion": "2023-12-01",
               "name": "[variables('appName')]",
               "location": "[parameters('location')]",
-              "identity": {
-                "type": "UserAssigned",
-                "userAssignedIdentities": {
-                  "[format('{0}', parameters('runtimeUamiId'))]": {}
-                }
-              },
+              "kind": "app,linux",
               "properties": {
                 "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('planName'))]",
                 "httpsOnly": true,
                 "siteConfig": {
-                  "linuxFxVersion": "DOCKER|nginx:latest",
-                  "alwaysOn": true,
+                  "linuxFxVersion": "DOTNETCORE|10.0",
                   "appSettings": [
-                    {
-                      "name": "DOCKER_REGISTRY_SERVER_URL",
-                      "value": "https://ghcr.io"
-                    },
-                    {
-                      "name": "WEBSITES_PORT",
-                      "value": "8080"
-                    },
-                    {
-                      "name": "AZURE_CLIENT_ID",
-                      "value": "[parameters('runtimeUamiClientId')]"
-                    },
                     {
                       "name": "ASPNETCORE_ENVIRONMENT",
                       "value": "[parameters('aspnetcoreEnvironment')]"
@@ -551,6 +534,18 @@
                     {
                       "name": "Cors__AllowedOrigins__0",
                       "value": "[format('https://{0}', parameters('swaDefaultHostname'))]"
+                    },
+                    {
+                      "name": "AzureAd__Instance",
+                      "value": "[parameters('azureAdInstance')]"
+                    },
+                    {
+                      "name": "AzureAd__TenantId",
+                      "value": "[parameters('azureAdTenantId')]"
+                    },
+                    {
+                      "name": "AzureAd__ClientId",
+                      "value": "[parameters('azureAdClientId')]"
                     }
                   ]
                 }
@@ -573,7 +568,6 @@
         }
       },
       "dependsOn": [
-        "[resourceId('Microsoft.Resources/deployments', 'identity')]",
         "[resourceId('Microsoft.Resources/deployments', 'swa')]"
       ]
     },
@@ -695,22 +689,6 @@
     "deployerUamiPrincipalId": {
       "type": "string",
       "value": "[reference(resourceId('Microsoft.Resources/deployments', 'identity'), '2025-04-01').outputs.deployerUamiPrincipalId.value]"
-    },
-    "runtimeUamiName": {
-      "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'identity'), '2025-04-01').outputs.runtimeUamiName.value]"
-    },
-    "runtimeUamiId": {
-      "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'identity'), '2025-04-01').outputs.runtimeUamiId.value]"
-    },
-    "runtimeUamiClientId": {
-      "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'identity'), '2025-04-01').outputs.runtimeUamiClientId.value]"
-    },
-    "runtimeUamiPrincipalId": {
-      "type": "string",
-      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'identity'), '2025-04-01').outputs.runtimeUamiPrincipalId.value]"
     },
     "sqlServerName": {
       "type": "string",

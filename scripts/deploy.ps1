@@ -1,11 +1,12 @@
 ﻿#Requires -Version 5.1
 <#
-.SYNOPSIS
+    .SYNOPSIS
     Provisions an AHKFlowApp Azure environment and configures CI/CD.
 
 .DESCRIPTION
     Single entrypoint that provisions all Azure resources via Bicep, configures
-    Entra ID, OIDC federation, SQL access, and GitHub secrets/variables.
+    Entra ID, OIDC federation, SQL access, runtime SQL credentials, and GitHub
+    secrets/variables.
 
     Run this once per environment (test or prod). It is idempotent — safe to re-run.
 
@@ -422,23 +423,19 @@ $DeployOutput = Invoke-Az-Json deployment group show `
 
 $outputs = $DeployOutput.properties.outputs
 
-$DeployerUamiName       = $outputs.deployerUamiName.value
-$DeployerUamiId         = $outputs.deployerUamiId.value
-$DeployerUamiClientId   = $outputs.deployerUamiClientId.value
+$DeployerUamiName        = $outputs.deployerUamiName.value
+$DeployerUamiId          = $outputs.deployerUamiId.value
+$DeployerUamiClientId    = $outputs.deployerUamiClientId.value
 $DeployerUamiPrincipalId = $outputs.deployerUamiPrincipalId.value
-$RuntimeUamiName        = $outputs.runtimeUamiName.value
-$RuntimeUamiId          = $outputs.runtimeUamiId.value
-$RuntimeUamiClientId    = $outputs.runtimeUamiClientId.value
-$RuntimeUamiPrincipalId = $outputs.runtimeUamiPrincipalId.value
-$SqlServerName          = $outputs.sqlServerName.value
-$SqlServerFqdn          = $outputs.sqlServerFqdn.value
-$SqlDatabaseName        = $outputs.sqlDatabaseName.value
-$AppServiceName         = $outputs.appServiceName.value
-$AppServiceHostname     = $outputs.appServiceDefaultHostname.value
-$SwaName                = $outputs.swaName.value
-$SwaHostname            = $outputs.swaDefaultHostname.value
-$AppInsightsName        = $outputs.appInsightsName.value
-$AppInsightsConnStr     = $outputs.appInsightsConnectionString.value
+$SqlServerName           = $outputs.sqlServerName.value
+$SqlServerFqdn           = $outputs.sqlServerFqdn.value
+$SqlDatabaseName         = $outputs.sqlDatabaseName.value
+$AppServiceName          = $outputs.appServiceName.value
+$AppServiceHostname      = $outputs.appServiceDefaultHostname.value
+$SwaName                 = $outputs.swaName.value
+$SwaHostname             = $outputs.swaDefaultHostname.value
+$AppInsightsName         = $outputs.appInsightsName.value
+$AppInsightsConnStr      = $outputs.appInsightsConnectionString.value
 
 Write-Success "Bicep deployment complete"
 
@@ -516,11 +513,38 @@ if ($deployerMember -ne 'true') {
 Write-Warn "Waiting 30s for Entra group membership to propagate..."
 Start-Sleep -Seconds 30
 
+# Dedicated Entra app + service principal for App Service runtime SQL auth
+Write-Host "  Setting up runtime SQL auth application..."
+$RuntimeSqlAuthScript = Join-Path $PSScriptRoot 'setup-runtime-sql-auth.ps1'
+$RuntimeSqlAuthOutput = & $RuntimeSqlAuthScript -Environment $Environment
+$RuntimeSqlAuthInfo = @(
+    $RuntimeSqlAuthOutput | Where-Object {
+        $_ -is [psobject] -and
+        $_.PSObject.Properties['ClientId'] -and
+        $_.PSObject.Properties['ClientSecret'] -and
+        $_.ClientId -and
+        $_.ClientSecret
+    }
+) | Select-Object -Last 1
+if (-not $RuntimeSqlAuthInfo) {
+    throw "setup-runtime-sql-auth.ps1 did not return runtime SQL auth credentials"
+}
+
+$RuntimeSqlAuthDisplayName = [string]$RuntimeSqlAuthInfo.DisplayName
+$RuntimeSqlAuthClientId = [string]$RuntimeSqlAuthInfo.ClientId
+$RuntimeSqlAuthClientSecret = [string]$RuntimeSqlAuthInfo.ClientSecret
+$RuntimeSqlAuthAppObjectId = [string]$RuntimeSqlAuthInfo.AppObjectId
+$RuntimeSqlAuthServicePrincipalObjectId = [string]$RuntimeSqlAuthInfo.ServicePrincipalObjectId
+
+Write-Success "Runtime SQL auth app ready: $RuntimeSqlAuthDisplayName ($RuntimeSqlAuthClientId)"
+Write-Warn "Waiting 30s for runtime SQL auth app propagation..."
+Start-Sleep -Seconds 30
+
 # ---------------------------------------------------------------------------
 # Phase 5: SQL User Setup
 # ---------------------------------------------------------------------------
 
-Write-Step "Phase 5: Creating SQL user for runtime UAMI..."
+Write-Step "Phase 5: Creating SQL user for runtime app..."
 
 # Add current public IP to SQL firewall (temporary)
 $MyIp = (Invoke-RestMethod -Uri 'https://api.ipify.org')
@@ -535,15 +559,15 @@ Write-Success "Added temporary firewall rule for $MyIp"
 
 try {
     $sqlScript = @"
-IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = '$RuntimeUamiName')
+IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = '$RuntimeSqlAuthDisplayName')
 BEGIN
-    CREATE USER [$RuntimeUamiName] FROM EXTERNAL PROVIDER;
+    CREATE USER [$RuntimeSqlAuthDisplayName] FROM EXTERNAL PROVIDER;
 END
-IF IS_ROLEMEMBER('db_datareader', '$RuntimeUamiName') = 0
-    ALTER ROLE db_datareader ADD MEMBER [$RuntimeUamiName];
-IF IS_ROLEMEMBER('db_datawriter', '$RuntimeUamiName') = 0
-    ALTER ROLE db_datawriter ADD MEMBER [$RuntimeUamiName];
-GRANT EXECUTE TO [$RuntimeUamiName];
+IF IS_ROLEMEMBER('db_datareader', '$RuntimeSqlAuthDisplayName') = 0
+    ALTER ROLE db_datareader ADD MEMBER [$RuntimeSqlAuthDisplayName];
+IF IS_ROLEMEMBER('db_datawriter', '$RuntimeSqlAuthDisplayName') = 0
+    ALTER ROLE db_datawriter ADD MEMBER [$RuntimeSqlAuthDisplayName];
+GRANT EXECUTE TO [$RuntimeSqlAuthDisplayName];
 "@
 
     if ($hasSqlcmd) {
@@ -576,7 +600,7 @@ GRANT EXECUTE TO [$RuntimeUamiName];
         Remove-Item $tmpSql -ErrorAction SilentlyContinue
 
         if ($sqlcmdExitCode -eq 0) {
-            Write-Success "SQL user '$RuntimeUamiName' created/verified via sqlcmd"
+            Write-Success "SQL user '$RuntimeSqlAuthDisplayName' created/verified via sqlcmd"
         } else {
             Write-Warn "sqlcmd could not authenticate. Create the SQL user manually in the Azure Portal:"
             Write-Host "    URL: https://portal.azure.com" -ForegroundColor Yellow
@@ -664,8 +688,8 @@ Set-GhVariable "SQL_DATABASE_NAME_${EnvSuffix}"      $SqlDatabaseName
 
 Write-Step "Phase 7: Configuring App Service..."
 
-# Connection string (Entra auth — no password)
-$ConnectionString = "Server=$SqlServerFqdn;Database=$SqlDatabaseName;Authentication=Active Directory Default;Encrypt=True;"
+# Connection string (Entra auth via App Service environment credentials)
+$ConnectionString = "Server=tcp:$SqlServerFqdn,1433;Database=$SqlDatabaseName;Authentication=Active Directory Default;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;"
 az webapp config connection-string set `
     --name $AppServiceName `
     --resource-group $ResourceGroup `
@@ -673,22 +697,16 @@ az webapp config connection-string set `
     --connection-string-type SQLAzure | Out-Null
 Write-Success "Connection string set"
 
-# Application Insights connection string
+# Runtime auth + telemetry settings
 az webapp config appsettings set `
     --name $AppServiceName `
     --resource-group $ResourceGroup `
-    --settings ApplicationInsights__ConnectionString="$AppInsightsConnStr" | Out-Null
-Write-Success "Application Insights connection string set"
-
-# Set GHCR placeholder image (will be replaced by deploy-api.yml on first CI run)
-$Owner = ($GitHubOrgRepo -split '/')[0]
-$PlaceholderImage = "ghcr.io/${Owner}/ahkflowapp-api:latest-${Environment}"
-az webapp config container set `
-    --name $AppServiceName `
-    --resource-group $ResourceGroup `
-    --container-image-name $PlaceholderImage `
-    --container-registry-url "https://ghcr.io" | Out-Null
-Write-Success "Container image placeholder set"
+    --settings `
+        ApplicationInsights__ConnectionString="$AppInsightsConnStr" `
+        AZURE_TENANT_ID="$TenantId" `
+        AZURE_CLIENT_ID="$RuntimeSqlAuthClientId" `
+        AZURE_CLIENT_SECRET="$RuntimeSqlAuthClientSecret" | Out-Null
+Write-Success "Runtime auth and telemetry app settings set"
 
 
 # CORS -- allow the SWA frontend
@@ -727,7 +745,10 @@ APP_SERVICE_HOSTNAME=$AppServiceHostname
 SWA_NAME=$SwaName
 SWA_HOSTNAME=$SwaHostname
 DEPLOYER_UAMI_NAME=$DeployerUamiName
-RUNTIME_UAMI_NAME=$RuntimeUamiName
+SQL_RUNTIME_AUTH_APP_DISPLAY_NAME=$RuntimeSqlAuthDisplayName
+SQL_RUNTIME_AUTH_APP_ID=$RuntimeSqlAuthClientId
+SQL_RUNTIME_AUTH_APP_OBJECT_ID=$RuntimeSqlAuthAppObjectId
+SQL_RUNTIME_AUTH_SERVICE_PRINCIPAL_OBJECT_ID=$RuntimeSqlAuthServicePrincipalObjectId
 APP_INSIGHTS_NAME=$AppInsightsName
 "@ | Set-Content -Path $EnvFileOut -Encoding UTF8
 Write-Success "Config saved to scripts/.env.$Environment"
@@ -775,18 +796,11 @@ gh run watch $runId --exit-status --repo $GitHubOrgRepo
 if ($LASTEXITCODE -ne 0) { throw "deploy-api.yml run #$runId failed. Check: gh run view $runId --repo $GitHubOrgRepo" }
 Write-Success "API deployment complete (run #$runId)"
 
-Write-Host ""
-Write-Host "  IMPORTANT: GHCR packages are private by default." -ForegroundColor Yellow
-Write-Host "  If the run above failed on the push step, make the package public and re-run:" -ForegroundColor Yellow
-Write-Host "  https://github.com/$($GitHubOrgRepo.Split('/')[0])?tab=packages" -ForegroundColor Yellow
-Write-Host "  Find 'ahkflowapp-api' -> Package settings -> Change visibility -> Public" -ForegroundColor Yellow
-Write-Host ""
-
 # Step 9b — Poll health endpoint
 $healthUrl = "https://$AppServiceHostname/health"
-Write-Host "  Polling health endpoint: $healthUrl (up to 3 minutes)..."
+Write-Host "  Polling health endpoint: $healthUrl (up to 5 minutes)..."
 $healthOk = $false
-for ($i = 0; $i -lt 18; $i++) {
+for ($i = 0; $i -lt 30; $i++) {
     try {
         $prevEap = $ErrorActionPreference
         $ErrorActionPreference = 'Continue'
@@ -803,8 +817,8 @@ for ($i = 0; $i -lt 18; $i++) {
     Start-Sleep -Seconds 10
 }
 if (-not $healthOk) {
-    Write-Warn "Health check at $healthUrl did not return 200 within 3 minutes."
-    Write-Warn "The App Service may still be starting. Check manually before using the frontend."
+    Write-Warn "Health check at $healthUrl did not return 200 within 5 minutes."
+    Write-Warn "App Service Free cold starts can take longer than paid tiers. Check manually before using the frontend."
     Write-Warn "Once healthy, trigger the frontend manually: gh workflow run deploy-frontend.yml --field environment=$Environment --repo $GitHubOrgRepo"
     Write-Host ""
     Write-Host "==========================================================" -ForegroundColor Yellow

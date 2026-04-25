@@ -41,17 +41,21 @@ resource sqlDatabase 'Microsoft.Sql/servers/databases@2023-08-01-preview' = {
   name: databaseName
   location: location
   sku: {
-    name: 'Basic'
-    tier: 'Basic'
+    name: 'GP_S_Gen5_1'
+    tier: 'GeneralPurpose'
+    family: 'Gen5'
   }
   properties: {
     collation: 'SQL_Latin1_General_CP1_CI_AS'
-    // Local backup redundancy keeps costs low for non-production
+    useFreeLimit: true
+    autoPauseDelay: 60
+    minCapacity: json('0.5')
+    maxSizeBytes: 34359738368
     requestedBackupStorageRedundancy: 'Local'
   }
 }
 
-// Allow Azure services to reach the server (needed for App Service → SQL via Managed Identity)
+// Allow Azure-hosted services to reach the server (App Service + deployment automation).
 resource allowAzureServices 'Microsoft.Sql/servers/firewallRules@2023-08-01-preview' = {
   parent: sqlServer
   name: 'AllowAllAzureServices'

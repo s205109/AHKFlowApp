@@ -47,8 +47,8 @@ docker compose up --build
 
 - **ASPNETCORE_ENVIRONMENT**: `Test` (set via App Service application setting)
 - **Database**: Azure SQL Database — FQDN captured in `scripts/.env.test` after provisioning
-- **Authentication**: Entra ID (Managed Identity) — no SQL passwords
-- **Connection String**: Set via App Service connection string configuration
+- **Authentication**: Entra ID via App Service environment credentials — no SQL logins
+- **Connection String**: Set via App Service connection string configuration with `Authentication=Active Directory Default`
 - **CORS**: Configured to allow Static Web App URL
 - **Logging**: Information level for application, Warning for framework
 
@@ -62,25 +62,15 @@ to `scripts/.env.test`:
 - SQL Server: `ahkflowapp-sql-test-<token>`
 - SQL Database: `ahkflowapp-db`
 - Static Web App: `ahkflowapp-swa-test`
-- Key Vault: `ahkflowapp-kv-test`
 - User-Assigned Managed Identity (deployer): `ahkflowapp-uami-deployer-test`
-- User-Assigned Managed Identity (runtime): `ahkflowapp-uami-runtime-test`
+- Runtime SQL auth app registration: `AHKFlowApp-SqlRuntime-test`
 
 ### Provisioning
 
-Run the Azure provisioning scripts with `ENVIRONMENT=test`:
+Provision the TEST environment with:
 
-```bash
-cd scripts/azure
-
-# Step 1: Verify prerequisites
-cat 00-prerequisites.md
-
-# Step 2: Provision Azure resources
-# Set ENVIRONMENT=test in 01-provision-azure.md and run commands
-
-# Step 3: Configure GitHub OIDC
-# Set ENVIRONMENT=test in 02-configure-github-oidc.md and run commands
+```powershell
+.\scripts\deploy.ps1 -Environment test
 ```
 
 ### Deployment
@@ -115,8 +105,8 @@ include the deterministic suffix described above):
 
 - **ASPNETCORE_ENVIRONMENT**: `Production` (set via App Service application setting)
 - **Database**: Azure SQL Database — FQDN captured in `scripts/.env.prod` after provisioning
-- **Authentication**: Entra ID (Managed Identity) — no SQL passwords
-- **Connection String**: Set via App Service connection string configuration
+- **Authentication**: Entra ID via App Service environment credentials — no SQL logins
+- **Connection String**: Set via App Service connection string configuration with `Authentication=Active Directory Default`
 - **CORS**: Configured to allow Static Web App URL
 - **Logging**: Warning level (minimal logging for performance)
 
@@ -129,25 +119,15 @@ collisions — the exact names are emitted by Bicep and saved to `scripts/.env.p
 - SQL Server: `ahkflowapp-sql-prod-<token>`
 - SQL Database: `ahkflowapp-db`
 - Static Web App: `ahkflowapp-swa-prod`
-- Key Vault: `ahkflowapp-kv-prod`
 - User-Assigned Managed Identity (deployer): `ahkflowapp-uami-deployer-prod`
-- User-Assigned Managed Identity (runtime): `ahkflowapp-uami-runtime-prod`
+- Runtime SQL auth app registration: `AHKFlowApp-SqlRuntime-prod`
 
 ### Provisioning
 
-Run the Azure provisioning scripts with `ENVIRONMENT=prod`:
+Provision the PROD environment with:
 
-```bash
-cd scripts/azure
-
-# Step 1: Verify prerequisites
-cat 00-prerequisites.md
-
-# Step 2: Provision Azure resources
-# Set ENVIRONMENT=prod in 01-provision-azure.md and run commands
-
-# Step 3: Configure GitHub OIDC
-# Set ENVIRONMENT=prod in 02-configure-github-oidc.md and run commands
+```powershell
+.\scripts\deploy.ps1 -Environment prod
 ```
 
 ### Deployment
@@ -231,8 +211,9 @@ No secrets are stored in frontend configuration — all values are public.
 | Variable | DEV | TEST | PROD |
 |----------|-----|------|------|
 | `ASPNETCORE_ENVIRONMENT` | `Development` | `Test` | `Production` |
-| `AZURE_CLIENT_ID` | (not set) | UAMI runtime client ID | UAMI runtime client ID |
-| `WEBSITES_PORT` | (not set) | `8080` | `8080` |
+| `AZURE_TENANT_ID` | (not set) | Runtime SQL auth tenant ID | Runtime SQL auth tenant ID |
+| `AZURE_CLIENT_ID` | (not set) | Runtime SQL auth app client ID | Runtime SQL auth app client ID |
+| `AZURE_CLIENT_SECRET` | (not set) | Runtime SQL auth app secret | Runtime SQL auth app secret |
 
 ### Connection Strings
 
@@ -260,10 +241,12 @@ Server=tcp:{SQL_SERVER_FQDN},1433;Database={SQL_DATABASE_NAME};Authentication=Ac
 - Check GitHub secrets and variables are set correctly with `_TEST` or `_PROD` suffix
 - Verify Azure UAMI has correct RBAC permissions
 - Check SQL firewall rules allow GitHub Actions runner IP
+- Expect slower cold starts on App Service Free than on the previous paid tier
 
 ### TEST/PROD: API returns 500 errors
 - Check App Service logs: `az webapp log tail --name {APP_SERVICE_NAME} --resource-group {RESOURCE_GROUP}`
 - Verify `ASPNETCORE_ENVIRONMENT` is set correctly in App Service configuration
+- Verify `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, and `AZURE_CLIENT_SECRET` are present in App Service configuration
 - Check Application Insights for exceptions
 
 ### Environment not loading correct appsettings
@@ -279,9 +262,10 @@ Server=tcp:{SQL_SERVER_FQDN},1433;Database={SQL_DATABASE_NAME};Authentication=Ac
 - Use `dotnet user-secrets` for sensitive local configuration
 
 ### TEST/PROD
-- All secrets stored in Azure Key Vault or App Service configuration
+- All secrets stored in Azure App Service configuration
 - SQL authentication uses Entra ID only (no SQL logins)
-- Managed identities eliminate long-lived secrets
+- The hosted API uses a dedicated Entra application secret stored only in App Service configuration
+- GitHub Actions still use OIDC + the deployer UAMI rather than long-lived Azure credentials
 - HTTPS enforced via HSTS
 - Connection strings never committed to source control
 

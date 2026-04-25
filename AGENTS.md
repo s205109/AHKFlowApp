@@ -184,7 +184,7 @@ HTTP Request -> Controller (thin, maps Result to HTTP)
 
 ### Security
 
-- Never hardcode secrets. Use `dotnet user-secrets` locally, Azure Key Vault in deployed environments.
+- Never hardcode secrets. Use `dotnet user-secrets` locally and Azure App Service Configuration in deployed environments.
 - Never commit `.env` files, `appsettings.Development.json` with real credentials, or `credentials.json`.
 - Validate all external input at system boundaries (FluentValidation / validation attributes).
 - Parameterized queries only — never string concatenation for SQL. EF Core `$""` interpolation is safe; `ExecuteSqlRaw` with concatenation is not.
@@ -208,7 +208,7 @@ HTTP Request -> Controller (thin, maps Result to HTTP)
 
 GitHub Actions workflows in `.github/workflows/`:
 - `ci.yml` — PR gate: build, test, format check, Bicep lint
-- `deploy-api.yml` — build, test, push container to GHCR, migrate DB, deploy to Azure App Service (TEST on push to main, PROD on manual trigger)
+- `deploy-api.yml` — build, test, publish/package the API, migrate DB, deploy to Azure App Service (TEST on push to main, PROD on manual trigger)
 - `deploy-frontend.yml` — build and deploy Blazor to Azure Static Web Apps (TEST on push to main, PROD on manual trigger)
 - `migrate-db.yml` — manual database migration workflow with environment selection
 - `provision.yml` — manual Bicep-only provisioning (advanced path; initial setup always requires `deploy.ps1`)
@@ -227,7 +227,7 @@ GitHub Actions workflows in `.github/workflows/`:
   - Azure App Service, Azure SQL Database, Static Web Apps
   - Resource suffix: `-prod`
 
-Configuration: Frontend `appsettings.json` is committed (public, no secrets). Backend secrets managed via Azure App Service Configuration + Key Vault. Environment-specific settings in `appsettings.{Environment}.json` files.
+Configuration: Frontend `appsettings.json` is committed (public, no secrets). Backend secrets are managed via Azure App Service Configuration. Environment-specific settings in `appsettings.{Environment}.json` files.
 
 Azure resources are provisioned per-environment using `.\scripts\deploy.ps1`. Each environment gets its own isolated resource group, SQL database, App Service, and Static Web App. See `docs/deployment/getting-started.md` for full instructions.
 

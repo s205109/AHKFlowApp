@@ -52,6 +52,8 @@ Get-Content $EnvFile | Where-Object { $_ -match '^\s*[^#]' -and $_ -match '=' } 
 $ResourceGroup   = $config['RESOURCE_GROUP']
 $SqlAdminGroup   = $config['SQL_ADMIN_GROUP']
 $SqlAdminGroupId = $config['SQL_ADMIN_GROUP_ID']
+$RuntimeSqlAuthAppDisplayName = $config['SQL_RUNTIME_AUTH_APP_DISPLAY_NAME']
+$RuntimeSqlAuthAppObjectId = $config['SQL_RUNTIME_AUTH_APP_OBJECT_ID']
 $GitHubOrgRepo   = $config['GITHUB_ORG_REPO']
 $EnvSuffix       = $Environment.ToUpper()
 
@@ -63,6 +65,9 @@ Write-Host ""
 Write-Warn "This will permanently delete:"
 Write-Host "    Resource group : $ResourceGroup (and ALL resources inside)"
 Write-Host "    Entra group    : $SqlAdminGroup"
+if ($RuntimeSqlAuthAppDisplayName) {
+    Write-Host "    Entra app      : $RuntimeSqlAuthAppDisplayName"
+}
 Write-Host "    GitHub secrets/variables for environment: $Environment"
 Write-Host ""
 
@@ -93,7 +98,7 @@ if ($LASTEXITCODE -eq 0) {
 }
 
 # ---------------------------------------------------------------------------
-# 2. Delete Entra security group
+# 2. Delete Entra resources
 # ---------------------------------------------------------------------------
 
 Write-Step "Deleting Entra security group: $SqlAdminGroup..."
@@ -106,6 +111,20 @@ if ($SqlAdminGroupId) {
     }
 } else {
     Write-Warn "No group ID in config — skipping Entra group deletion"
+}
+
+if ($RuntimeSqlAuthAppDisplayName) {
+    Write-Step "Deleting runtime SQL auth app registration: $RuntimeSqlAuthAppDisplayName..."
+    if ($RuntimeSqlAuthAppObjectId) {
+        az ad app delete --id $RuntimeSqlAuthAppObjectId 2>$null
+        if ($LASTEXITCODE -eq 0) {
+            Write-Success "Runtime SQL auth app registration deleted"
+        } else {
+            Write-Warn "Could not delete runtime SQL auth app registration (may already be deleted)"
+        }
+    } else {
+        Write-Warn "No runtime SQL auth app object ID in config — skipping app registration deletion"
+    }
 }
 
 # ---------------------------------------------------------------------------
