@@ -1,4 +1,5 @@
-﻿<#
+﻿#Requires -Version 5.1
+<#
 .SYNOPSIS
     Provisions an AHKFlowApp Azure environment and configures CI/CD.
 
@@ -11,9 +12,17 @@
 .PARAMETER Environment
     Target environment: 'test' or 'prod'. Prompts interactively if not provided.
 
+.PARAMETER MaxWaitMinutes
+    Maximum minutes to wait for async Azure operations. Default: 45.
+
+.PARAMETER SkipPrereqCheck
+    Skip Phase 1 prerequisite checks. Use when your environment is correct
+    and you want to skip checks on re-runs.
+
 .EXAMPLE
     .\deploy.ps1
     .\deploy.ps1 -Environment test
+    .\deploy.ps1 -Environment test -SkipPrereqCheck
 #>
 [CmdletBinding()]
 param(
@@ -21,7 +30,9 @@ param(
     [string]$Environment,
 
     [ValidateRange(1, 240)]
-    [int]$MaxWaitMinutes = 45
+    [int]$MaxWaitMinutes = 45,
+
+    [switch]$SkipPrereqCheck
 )
 
 Set-StrictMode -Version Latest
@@ -108,36 +119,89 @@ Write-Host "`n==========================================================" -Foreg
 Write-Host "  AHKFlowApp — Azure Provisioning Script" -ForegroundColor Cyan
 Write-Host "==========================================================" -ForegroundColor Cyan
 
-Write-Step "Phase 1: Checking prerequisites..."
-
-Confirm-Command 'az'       'https://learn.microsoft.com/cli/azure/install-azure-cli'
-Confirm-Command 'gh'       'https://cli.github.com/'
-Confirm-Command 'dotnet'   'https://dotnet.microsoft.com/download'
-
-# Verify az login
-try {
-    $account = Invoke-Az-Json account show
-    Write-Success "Logged into Azure as $($account.user.name) (subscription: $($account.name))"
-} catch {
-    Write-Fail "Not logged into Azure. Run: az login"
-    throw
-}
-
-# Verify gh auth
-$ghStatus = gh auth status 2>&1
-if ($LASTEXITCODE -ne 0) {
-    Write-Fail "GitHub CLI not authenticated. Run: gh auth login"
-    throw "GitHub CLI not authenticated"
-}
-Write-Success "GitHub CLI authenticated"
-
-# Verify sqlcmd (optional — we fall back to portal instructions)
-$hasSqlcmd = [bool](Get-Command 'sqlcmd' -ErrorAction SilentlyContinue)
-if ($hasSqlcmd) {
-    Write-Success "sqlcmd found (will use for SQL user creation)"
+if ($SkipPrereqCheck) {
+    Write-Host "`n  Skipping prerequisite checks (-SkipPrereqCheck)" -ForegroundColor Yellow
 } else {
-    Write-Warn "sqlcmd not found — SQL user creation step will print manual instructions"
-    Write-Warn "Install: https://learn.microsoft.com/sql/tools/sqlcmd/sqlcmd-utility"
+    Write-Step "Phase 1: Checking prerequisites..."
+
+    # PowerShell version
+    if (([version]$PSVersionTable.PSVersion) -lt [version]'5.1') {
+        Write-Fail "PowerShell 5.1 or later required (found $($PSVersionTable.PSVersion))."
+        Write-Host "    Install from: https://aka.ms/powershell" -ForegroundColor Yellow
+        throw "Insufficient PowerShell version"
+    }
+    Write-Success "PowerShell $($PSVersionTable.PSVersion)"
+
+    # .NET 10 SDK
+    if (-not (Get-Command 'dotnet' -ErrorAction SilentlyContinue)) {
+        Write-Fail ".NET 10 SDK not found."
+        Write-Host "    Install from: https://dotnet.microsoft.com/download" -ForegroundColor Yellow
+        throw "Missing prerequisite: dotnet"
+    }
+    $dotnetVersion = dotnet --version 2>&1
+    if ($LASTEXITCODE -ne 0 -or $dotnetVersion -notmatch '^10\.') {
+        Write-Fail ".NET 10 SDK required (found: $dotnetVersion)."
+        Write-Host "    Install from: https://dotnet.microsoft.com/download" -ForegroundColor Yellow
+        throw "Missing or incorrect .NET SDK version"
+    }
+    Write-Success ".NET SDK $dotnetVersion"
+
+    Confirm-Command 'az'  'https://learn.microsoft.com/cli/azure/install-azure-cli'
+    Confirm-Command 'gh'  'https://cli.github.com/'
+
+    # Bicep (installed as az extension)
+    $bicepOut = az bicep version 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        Write-Fail "Bicep CLI not found. Run: az bicep install"
+        throw "Missing prerequisite: Bicep"
+    }
+    Write-Success "Bicep: $($bicepOut -join ' ')"
+
+    # jq — optional, warn only
+    if (-not (Get-Command 'jq' -ErrorAction SilentlyContinue)) {
+        Write-Warn "jq not found — not required by this script, but useful for JSON debugging."
+        Write-Warn "Install: https://jqlang.github.io/jq/download/"
+    } else {
+        Write-Success "jq found"
+    }
+
+    # Verify az login
+    try {
+        $account = Invoke-Az-Json account show
+        Write-Success "Logged into Azure as $($account.user.name) (subscription: $($account.name))"
+    } catch {
+        Write-Fail "Not logged into Azure. Run: az login"
+        throw
+    }
+
+    # Verify gh auth
+    $ghStatus = gh auth status 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        Write-Fail "GitHub CLI not authenticated. Run: gh auth login"
+        throw "GitHub CLI not authenticated"
+    }
+    Write-Success "GitHub CLI authenticated"
+
+    # sqlcmd (optional)
+    $hasSqlcmd = [bool](Get-Command 'sqlcmd' -ErrorAction SilentlyContinue)
+    if ($hasSqlcmd) {
+        Write-Success "sqlcmd found (will use for SQL user creation)"
+    } else {
+        Write-Warn "sqlcmd not found — SQL user creation step will print manual instructions"
+        Write-Warn "Install: https://learn.microsoft.com/sql/tools/sqlcmd/sqlcmd-utility"
+    }
+}
+
+# When -SkipPrereqCheck is used, $account and $hasSqlcmd must still be populated
+# (they're used in Phase 2 and 5). Populate them here.
+if ($SkipPrereqCheck) {
+    try {
+        $account = Invoke-Az-Json account show
+    } catch {
+        Write-Fail "Not logged into Azure. Run: az login"
+        throw
+    }
+    $hasSqlcmd = [bool](Get-Command 'sqlcmd' -ErrorAction SilentlyContinue)
 }
 
 # ---------------------------------------------------------------------------
@@ -668,24 +732,106 @@ APP_INSIGHTS_NAME=$AppInsightsName
 "@ | Set-Content -Path $EnvFileOut -Encoding UTF8
 Write-Success "Config saved to scripts/.env.$Environment"
 
+Write-Host "  To update later    : .\update.ps1 -Environment $Environment"
+Write-Host "  To tear down later : .\teardown.ps1 -Environment $Environment"
+Write-Host ""
+
+# ---------------------------------------------------------------------------
+# Phase 9: Trigger initial deployment sequence
+# ---------------------------------------------------------------------------
+
+Write-Step "Phase 9: Triggering initial deployment sequence..."
+Write-Host "  Order: API deploy (build + migrate + deploy) -> health probe -> frontend deploy" -ForegroundColor DarkGray
+
+# Step 9a — Trigger deploy-api.yml
+Write-Host ""
+Write-Host "  Triggering deploy-api.yml for '$Environment'..."
+$deployApiTriggeredAtUtc = (Get-Date).ToUniversalTime()
+gh workflow run deploy-api.yml --field environment=$Environment --repo $GitHubOrgRepo
+if ($LASTEXITCODE -ne 0) { throw "Failed to trigger deploy-api.yml" }
+Write-Success "deploy-api.yml triggered"
+
+# Resolve run ID — poll until GitHub registers the dispatch (up to 60s)
+Write-Host "  Resolving the newly triggered workflow run in GitHub..."
+$runId = $null
+for ($attempt = 1; $attempt -le 12 -and -not $runId; $attempt++) {
+    if ($attempt -gt 1) { Start-Sleep -Seconds 5 }
+    $runListJson = gh run list --workflow deploy-api.yml --repo $GitHubOrgRepo --limit 20 --json databaseId,createdAt,event
+    if ($LASTEXITCODE -ne 0) { throw "Failed to list runs for deploy-api.yml. Check: gh run list --workflow deploy-api.yml --repo $GitHubOrgRepo" }
+    $matchingRun = $runListJson |
+        ConvertFrom-Json |
+        Where-Object {
+            $_.event -eq 'workflow_dispatch' -and
+            ([DateTimeOffset]::Parse($_.createdAt).UtcDateTime -ge $deployApiTriggeredAtUtc)
+        } |
+        Sort-Object { [DateTimeOffset]::Parse($_.createdAt).UtcDateTime } -Descending |
+        Select-Object -First 1
+    if ($matchingRun) { $runId = $matchingRun.databaseId }
+}
+if (-not $runId) { throw "Could not resolve run ID for deploy-api.yml created after $($deployApiTriggeredAtUtc.ToString('o')). Check: gh run list --workflow deploy-api.yml --repo $GitHubOrgRepo --json databaseId,createdAt,event" }
+Write-Host "  Watching run #$runId — this typically takes 8-15 minutes..."
+
+gh run watch $runId --exit-status --repo $GitHubOrgRepo
+if ($LASTEXITCODE -ne 0) { throw "deploy-api.yml run #$runId failed. Check: gh run view $runId --repo $GitHubOrgRepo" }
+Write-Success "API deployment complete (run #$runId)"
+
+Write-Host ""
+Write-Host "  IMPORTANT: GHCR packages are private by default." -ForegroundColor Yellow
+Write-Host "  If the run above failed on the push step, make the package public and re-run:" -ForegroundColor Yellow
+Write-Host "  https://github.com/$($GitHubOrgRepo.Split('/')[0])?tab=packages" -ForegroundColor Yellow
+Write-Host "  Find 'ahkflowapp-api' -> Package settings -> Change visibility -> Public" -ForegroundColor Yellow
+Write-Host ""
+
+# Step 9b — Poll health endpoint
+$healthUrl = "https://$AppServiceHostname/health"
+Write-Host "  Polling health endpoint: $healthUrl (up to 3 minutes)..."
+$healthOk = $false
+for ($i = 0; $i -lt 18; $i++) {
+    try {
+        $prevEap = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        $resp = Invoke-WebRequest -Uri $healthUrl -UseBasicParsing -TimeoutSec 10 -ErrorAction SilentlyContinue
+        $ErrorActionPreference = $prevEap
+        if ($resp -and $resp.StatusCode -eq 200) {
+            $healthOk = $true
+            break
+        }
+    } catch {
+        $ErrorActionPreference = $prevEap
+    }
+    Write-Host "  . [$($i * 10)s] not yet healthy..." -ForegroundColor DarkGray
+    Start-Sleep -Seconds 10
+}
+if (-not $healthOk) {
+    Write-Warn "Health check at $healthUrl did not return 200 within 3 minutes."
+    Write-Warn "The App Service may still be starting. Check manually before using the frontend."
+    Write-Warn "Once healthy, trigger the frontend manually: gh workflow run deploy-frontend.yml --field environment=$Environment --repo $GitHubOrgRepo"
+    Write-Host ""
+    Write-Host "==========================================================" -ForegroundColor Yellow
+    Write-Host "  Provisioning complete — MANUAL STEP REQUIRED" -ForegroundColor Yellow
+    Write-Host "  Trigger frontend deploy once API is healthy:" -ForegroundColor Yellow
+    Write-Host "  gh workflow run deploy-frontend.yml --field environment=$Environment --repo $GitHubOrgRepo" -ForegroundColor Yellow
+    Write-Host "==========================================================" -ForegroundColor Yellow
+    exit 0
+}
+Write-Success "API health check passed"
+
+# Step 9c — Trigger deploy-frontend.yml
+Write-Host ""
+Write-Host "  Triggering deploy-frontend.yml for '$Environment'..."
+gh workflow run deploy-frontend.yml --field environment=$Environment --repo $GitHubOrgRepo
+if ($LASTEXITCODE -ne 0) { throw "Failed to trigger deploy-frontend.yml" }
+Write-Success "deploy-frontend.yml triggered (running asynchronously)"
+Write-Host "    Monitor: gh run list --workflow deploy-frontend.yml --repo $GitHubOrgRepo" -ForegroundColor DarkGray
+
 Write-Host ""
 Write-Host "==========================================================" -ForegroundColor Green
-Write-Host "  AHKFlowApp ($Environment) -- Provisioning Complete!" -ForegroundColor Green
+Write-Host "  AHKFlowApp ($Environment) — Provisioning + Deploy DONE!" -ForegroundColor Green
 Write-Host "==========================================================" -ForegroundColor Green
 Write-Host ""
 Write-Host "  API health  : https://$AppServiceHostname/health"
 Write-Host "  Frontend    : https://$SwaHostname"
 Write-Host "  Resources   : $ResourceGroup"
-Write-Host ""
-Write-Host "  Next steps:" -ForegroundColor Cyan
-Write-Host "  1. Push to 'main' to trigger GitHub Actions deploy"
-Write-Host "  2. The first push will build and push the container image to GHCR."
-Write-Host ""
-Write-Host "  IMPORTANT: GHCR packages are private by default." -ForegroundColor Yellow
-Write-Host "  After the first deploy-api.yml run, make the container image public:"
-Write-Host "  https://github.com/$($GitHubOrgRepo.Split('/')[0])?tab=packages"
-Write-Host "  Find 'ahkflowapp-api' -> Package settings -> Change visibility -> Public"
-Write-Host "  Then re-run the failed deploy job."
 Write-Host ""
 Write-Host "  To update later    : .\update.ps1 -Environment $Environment"
 Write-Host "  To tear down later : .\teardown.ps1 -Environment $Environment"
