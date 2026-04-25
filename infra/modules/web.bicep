@@ -32,6 +32,9 @@ param azureAdTenantId string
 @description('Entra ID client ID (app registration) for token validation.')
 param azureAdClientId string
 
+@description('Use free-tier App Service plan (F1). When false, provisions Basic B1 with Always On.')
+param useFreeTier bool = true
+
 var planName = '${baseName}-plan-${environment}'
 var appName = '${baseName}-api-${environment}-${resourceToken}'
 
@@ -40,8 +43,8 @@ resource appServicePlan 'Microsoft.Web/serverfarms@2023-12-01' = {
   location: location
   kind: 'linux'
   sku: {
-    name: 'F1'
-    tier: 'Free'
+    name: useFreeTier ? 'F1' : 'B1'
+    tier: useFreeTier ? 'Free' : 'Basic'
   }
   properties: {
     reserved: true // Required for Linux
@@ -63,6 +66,7 @@ resource appService 'Microsoft.Web/sites@2023-12-01' = {
     httpsOnly: true
     siteConfig: {
       linuxFxVersion: 'DOTNETCORE|10.0'
+      alwaysOn: useFreeTier ? false : true
       appSettings: [
         {
           name: 'ASPNETCORE_ENVIRONMENT'

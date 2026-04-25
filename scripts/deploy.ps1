@@ -13,8 +13,13 @@
 .PARAMETER Environment
     Target environment: 'test' or 'prod'. Prompts interactively if not provided.
 
+.PARAMETER Tier
+    Resource tier: 'free' (App Service F1 + Azure SQL free offer) or 'basic' (App Service B1 +
+    Azure SQL Basic). Free tier is significantly slower to provision (SQL alone can take 20+ min)
+    and has CPU/cold-start limits in production. Prompts interactively if not provided.
+
 .PARAMETER MaxWaitMinutes
-    Maximum minutes to wait for async Azure operations. Default: 45.
+    Maximum minutes to wait for async Azure operations. Default: 60 (free tier SQL can take 20+ min).
 
 .PARAMETER SkipPrereqCheck
     Skip Phase 1 prerequisite checks. Use when your environment is correct
@@ -22,7 +27,8 @@
 
 .EXAMPLE
     .\deploy.ps1
-    .\deploy.ps1 -Environment test
+    .\deploy.ps1 -Environment test -Tier free
+    .\deploy.ps1 -Environment prod -Tier basic
     .\deploy.ps1 -Environment test -SkipPrereqCheck
 #>
 [CmdletBinding()]
@@ -30,8 +36,11 @@ param(
     [ValidateSet('test', 'prod')]
     [string]$Environment,
 
+    [ValidateSet('free', 'basic')]
+    [string]$Tier,
+
     [ValidateRange(1, 240)]
-    [int]$MaxWaitMinutes = 45,
+    [int]$MaxWaitMinutes = 60,
 
     [switch]$SkipPrereqCheck
 )
@@ -219,6 +228,27 @@ if (-not $Environment) {
     if ($Environment -notin @('test', 'prod')) { throw "Environment must be 'test' or 'prod'" }  # explicit — [ValidateSet] only applies to param binding, not variable assignment
 }
 
+if (-not $Tier) {
+    Write-Host ""
+    Write-Host "  Resource tier:" -ForegroundColor White
+    Write-Host "    [1] free   — App Service F1 + Azure SQL free offer (serverless)" -ForegroundColor DarkGray
+    Write-Host "                 No cost, but SQL provisioning takes 15-25 minutes and" -ForegroundColor DarkGray
+    Write-Host "                 the app cold-starts on every request after idle periods." -ForegroundColor DarkGray
+    Write-Host "    [2] basic  — App Service B1 + Azure SQL Basic (~$15-25/month)" -ForegroundColor DarkGray
+    Write-Host "                 Always On, faster provisioning, no cold-start penalty." -ForegroundColor DarkGray
+    Write-Host ""
+    $tierInput = Read-Host "  Choose tier [1=free/2=basic] (default: 1)"
+    $Tier = switch ($tierInput.Trim()) {
+        '2'     { 'basic' }
+        'basic' { 'basic' }
+        default { 'free' }
+    }
+}
+
+if ($Tier -eq 'free') {
+    Write-Warn "Free tier selected — SQL provisioning is significantly slower (15-25 min)."
+}
+
 $Location = Read-Host "  Azure region (default: westeurope)"
 if ([string]::IsNullOrWhiteSpace($Location)) { $Location = 'westeurope' }
 
@@ -244,8 +274,10 @@ $AspnetcoreEnv     = if ($Environment -eq 'prod') { 'Production' } else { 'Test'
 $RepoRoot          = Split-Path $PSScriptRoot -Parent
 
 Write-Host ""
+$tierDesc = if ($Tier -eq 'free') { 'free (F1 App Service + Azure SQL free offer)' } else { 'basic (B1 App Service + Azure SQL Basic)' }
 Write-Host "  Summary:" -ForegroundColor White
 Write-Host "    Environment    : $Environment"
+Write-Host "    Tier           : $tierDesc"
 Write-Host "    Location       : $Location"
 Write-Host "    Base name      : $BaseName"
 Write-Host "    Resource group : $ResourceGroup"
@@ -316,6 +348,7 @@ Write-Host "  Progress updates every 15s; first update may take ~30s while deplo
 $BicepTemplate = Join-Path $RepoRoot "infra\main.bicep"
 $DeploymentName = "deploy-${Environment}-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
 
+$useFreeTierParam = if ($Tier -eq 'free') { 'true' } else { 'false' }
 $deployStart = Get-Date
 Invoke-Az deployment group create `
     --resource-group $ResourceGroup `
@@ -329,7 +362,8 @@ Invoke-Az deployment group create `
         sqlAdminGroupId=$GroupId `
         sqlAdminGroupName=$SqlAdminGroup `
         azureAdTenantId=$EntraTenantId `
-        azureAdClientId=$EntraClientId | Out-Null
+        azureAdClientId=$EntraClientId `
+        useFreeTier=$useFreeTierParam | Out-Null
 
 # Poll deployment until done. Print each resource operation state change with
 # elapsed time so the user can see it's still making progress.
