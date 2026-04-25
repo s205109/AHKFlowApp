@@ -32,6 +32,9 @@ param azureAdTenantId string
 @description('Entra ID client ID (app registration) for token validation.')
 param azureAdClientId string
 
+@description('Use free-tier App Service plan (F1). When false, provisions Basic B1 with Always On.')
+param useFreeTier bool = true
+
 var planName = '${baseName}-plan-${environment}'
 var appName = '${baseName}-api-${environment}-${resourceToken}'
 
@@ -40,8 +43,8 @@ resource appServicePlan 'Microsoft.Web/serverfarms@2023-12-01' = {
   location: location
   kind: 'linux'
   sku: {
-    name: 'B1'
-    tier: 'Basic'
+    name: useFreeTier ? 'F1' : 'B1'
+    tier: useFreeTier ? 'Free' : 'Basic'
   }
   properties: {
     reserved: true // Required for Linux
@@ -51,6 +54,7 @@ resource appServicePlan 'Microsoft.Web/serverfarms@2023-12-01' = {
 resource appService 'Microsoft.Web/sites@2023-12-01' = {
   name: appName
   location: location
+  kind: 'app,linux'
   identity: {
     type: 'UserAssigned'
     userAssignedIdentities: {
@@ -61,24 +65,16 @@ resource appService 'Microsoft.Web/sites@2023-12-01' = {
     serverFarmId: appServicePlan.id
     httpsOnly: true
     siteConfig: {
-      linuxFxVersion: 'DOCKER|nginx:latest' // Placeholder — deploy-api.yml sets the real image
-      alwaysOn: true
+      linuxFxVersion: 'DOTNETCORE|10.0'
+      alwaysOn: useFreeTier ? false : true
       appSettings: [
         {
-          name: 'DOCKER_REGISTRY_SERVER_URL'
-          value: 'https://ghcr.io'
-        }
-        {
-          name: 'WEBSITES_PORT'
-          value: '8080'
+          name: 'ASPNETCORE_ENVIRONMENT'
+          value: aspnetcoreEnvironment
         }
         {
           name: 'AZURE_CLIENT_ID'
           value: runtimeUamiClientId
-        }
-        {
-          name: 'ASPNETCORE_ENVIRONMENT'
-          value: aspnetcoreEnvironment
         }
         {
           name: 'Cors__AllowedOrigins__0'
