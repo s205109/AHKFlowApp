@@ -768,13 +768,20 @@ Write-Host "  Order: API deploy (build + migrate + deploy) -> health probe -> fr
 Write-Host ""
 Write-Host "  Triggering deploy-api.yml for '$Environment'..."
 $deployApiTriggeredAtUtc = (Get-Date).ToUniversalTime()
-gh workflow run deploy-api.yml --field environment=$Environment --repo $GitHubOrgRepo
+$runDispatchOutput = gh workflow run deploy-api.yml --field environment=$Environment --repo $GitHubOrgRepo 2>&1
 if ($LASTEXITCODE -ne 0) { throw "Failed to trigger deploy-api.yml" }
+$runDispatchOutput | ForEach-Object { Write-Host $_ }
 Write-Success "deploy-api.yml triggered"
 
-# Resolve run ID — poll until GitHub registers the dispatch (up to 60s)
+# Resolve run ID — prefer the run URL returned by gh, fall back to polling if needed
 Write-Host "  Resolving the newly triggered workflow run in GitHub..."
 $runId = $null
+$dispatchText = ($runDispatchOutput | Out-String)
+$runUrlMatch = [regex]::Match($dispatchText, '/actions/runs/(?<id>\d+)')
+if ($runUrlMatch.Success) {
+    $runId = $runUrlMatch.Groups['id'].Value
+}
+
 for ($attempt = 1; $attempt -le 12 -and -not $runId; $attempt++) {
     if ($attempt -gt 1) { Start-Sleep -Seconds 5 }
     $runListJson = gh run list --workflow deploy-api.yml --repo $GitHubOrgRepo --limit 20 --json databaseId,createdAt,event
@@ -783,13 +790,13 @@ for ($attempt = 1; $attempt -le 12 -and -not $runId; $attempt++) {
         ConvertFrom-Json |
         Where-Object {
             $_.event -eq 'workflow_dispatch' -and
-            ([DateTimeOffset]::Parse($_.createdAt).UtcDateTime -ge $deployApiTriggeredAtUtc)
+            ([DateTimeOffset]::Parse($_.createdAt).UtcDateTime -ge $deployApiTriggeredAtUtc.AddMinutes(-2))
         } |
         Sort-Object { [DateTimeOffset]::Parse($_.createdAt).UtcDateTime } -Descending |
         Select-Object -First 1
     if ($matchingRun) { $runId = $matchingRun.databaseId }
 }
-if (-not $runId) { throw "Could not resolve run ID for deploy-api.yml created after $($deployApiTriggeredAtUtc.ToString('o')). Check: gh run list --workflow deploy-api.yml --repo $GitHubOrgRepo --json databaseId,createdAt,event" }
+if (-not $runId) { throw "Could not resolve run ID for deploy-api.yml. gh workflow run succeeded, but the follow-up lookup did not return a matching run. Check: gh run list --workflow deploy-api.yml --repo $GitHubOrgRepo --json databaseId,createdAt,event" }
 Write-Host "  Watching run #$runId — this typically takes 8-15 minutes..."
 
 gh run watch $runId --exit-status --repo $GitHubOrgRepo
