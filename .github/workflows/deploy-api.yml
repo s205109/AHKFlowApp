@@ -53,7 +53,7 @@ jobs:
     needs: build-test-publish
     runs-on: ubuntu-latest
     env:
-      ENV_SUFFIX: ${{ env.TARGET_ENV == 'test' && 'TEST' || 'PROD' }}
+      ENV_SUFFIX: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.environment || 'test') == 'test' && 'TEST' || 'PROD' }}
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
@@ -110,7 +110,7 @@ jobs:
     needs: [build-test-publish, migrate-db]
     runs-on: ubuntu-latest
     env:
-      ENV_SUFFIX: ${{ env.TARGET_ENV == 'test' && 'TEST' || 'PROD' }}
+      ENV_SUFFIX: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.environment || 'test') == 'test' && 'TEST' || 'PROD' }}
     steps:
       - uses: actions/download-artifact@v4
         with:
