@@ -92,6 +92,10 @@ resource appService 'Microsoft.Web/sites@2023-12-01' = {
           name: 'AzureAd__ClientId'
           value: azureAdClientId
         }
+        {
+          name: 'RESOURCE_TIER'
+          value: useFreeTier ? 'free' : 'basic'
+        }
       ]
     }
   }
