@@ -1,19 +1,25 @@
 ﻿#Requires -Version 5.1
 <#
-.SYNOPSIS
+    .SYNOPSIS
     Provisions an AHKFlowApp Azure environment and configures CI/CD.
 
 .DESCRIPTION
     Single entrypoint that provisions all Azure resources via Bicep, configures
-    Entra ID, OIDC federation, SQL access, and GitHub secrets/variables.
+    Entra ID, OIDC federation, SQL access, runtime SQL credentials, and GitHub
+    secrets/variables.
 
     Run this once per environment (test or prod). It is idempotent — safe to re-run.
 
 .PARAMETER Environment
     Target environment: 'test' or 'prod'. Prompts interactively if not provided.
 
+.PARAMETER Tier
+    Resource tier: 'free' (App Service F1 + Azure SQL free offer) or 'basic' (App Service B1 +
+    Azure SQL Basic). Free tier is significantly slower to provision (SQL alone can take 20+ min)
+    and has CPU/cold-start limits in production. Prompts interactively if not provided.
+
 .PARAMETER MaxWaitMinutes
-    Maximum minutes to wait for async Azure operations. Default: 45.
+    Maximum minutes to wait for async Azure operations. Default: 60 (free tier SQL can take 20+ min).
 
 .PARAMETER SkipPrereqCheck
     Skip Phase 1 prerequisite checks. Use when your environment is correct
@@ -21,7 +27,8 @@
 
 .EXAMPLE
     .\deploy.ps1
-    .\deploy.ps1 -Environment test
+    .\deploy.ps1 -Environment test -Tier free
+    .\deploy.ps1 -Environment prod -Tier basic
     .\deploy.ps1 -Environment test -SkipPrereqCheck
 #>
 [CmdletBinding()]
@@ -29,8 +36,11 @@ param(
     [ValidateSet('test', 'prod')]
     [string]$Environment,
 
+    [ValidateSet('free', 'basic')]
+    [string]$Tier,
+
     [ValidateRange(1, 240)]
-    [int]$MaxWaitMinutes = 45,
+    [int]$MaxWaitMinutes = 60,
 
     [switch]$SkipPrereqCheck
 )
@@ -218,6 +228,27 @@ if (-not $Environment) {
     if ($Environment -notin @('test', 'prod')) { throw "Environment must be 'test' or 'prod'" }  # explicit — [ValidateSet] only applies to param binding, not variable assignment
 }
 
+if (-not $Tier) {
+    Write-Host ""
+    Write-Host "  Resource tier:" -ForegroundColor White
+    Write-Host "    [1] free   — App Service F1 + Azure SQL free offer (serverless)" -ForegroundColor DarkGray
+    Write-Host "                 No cost, but SQL provisioning takes 15-25 minutes and" -ForegroundColor DarkGray
+    Write-Host "                 the app cold-starts on every request after idle periods." -ForegroundColor DarkGray
+    Write-Host "    [2] basic  — App Service B1 + Azure SQL Basic (~`$15-25/month)" -ForegroundColor DarkGray
+    Write-Host "                 Always On, faster provisioning, no cold-start penalty." -ForegroundColor DarkGray
+    Write-Host ""
+    $tierInput = Read-Host "  Choose tier [1=free/2=basic] (default: 1)"
+    $Tier = switch ($tierInput.Trim()) {
+        '2'     { 'basic' }
+        'basic' { 'basic' }
+        default { 'free' }
+    }
+}
+
+if ($Tier -eq 'free') {
+    Write-Warn "Free tier selected — SQL provisioning is significantly slower (15-25 min)."
+}
+
 $Location = Read-Host "  Azure region (default: westeurope)"
 if ([string]::IsNullOrWhiteSpace($Location)) { $Location = 'westeurope' }
 
@@ -243,8 +274,10 @@ $AspnetcoreEnv     = if ($Environment -eq 'prod') { 'Production' } else { 'Test'
 $RepoRoot          = Split-Path $PSScriptRoot -Parent
 
 Write-Host ""
+$tierDesc = if ($Tier -eq 'free') { 'free (F1 App Service + Azure SQL free offer)' } else { 'basic (B1 App Service + Azure SQL Basic)' }
 Write-Host "  Summary:" -ForegroundColor White
 Write-Host "    Environment    : $Environment"
+Write-Host "    Tier           : $tierDesc"
 Write-Host "    Location       : $Location"
 Write-Host "    Base name      : $BaseName"
 Write-Host "    Resource group : $ResourceGroup"
@@ -315,6 +348,7 @@ Write-Host "  Progress updates every 15s; first update may take ~30s while deplo
 $BicepTemplate = Join-Path $RepoRoot "infra\main.bicep"
 $DeploymentName = "deploy-${Environment}-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
 
+$useFreeTierParam = if ($Tier -eq 'free') { 'true' } else { 'false' }
 $deployStart = Get-Date
 Invoke-Az deployment group create `
     --resource-group $ResourceGroup `
@@ -328,13 +362,57 @@ Invoke-Az deployment group create `
         sqlAdminGroupId=$GroupId `
         sqlAdminGroupName=$SqlAdminGroup `
         azureAdTenantId=$EntraTenantId `
-        azureAdClientId=$EntraClientId | Out-Null
+        azureAdClientId=$EntraClientId `
+        useFreeTier=$useFreeTierParam | Out-Null
 
 # Poll deployment until done. Print each resource operation state change with
 # elapsed time so the user can see it's still making progress.
 $seenOps = @{}
+$seenNestedOps = @{}
 $state = 'Accepted'
 $ticks = 0
+$lastNestedCheckTick = -99
+
+function Get-OpDisplayFields([object]$op) {
+    $propsMember = $op.PSObject.Properties['properties']
+    if (-not $propsMember) { return $null }
+    $props = $propsMember.Value
+    $trMember = $props.PSObject.Properties['targetResource']
+    if (-not $trMember -or -not $trMember.Value) { return $null }
+    $tr = $trMember.Value
+    $rnMember = $tr.PSObject.Properties['resourceName']
+    if (-not $rnMember -or -not $rnMember.Value) { return $null }
+    $rtMember = $tr.PSObject.Properties['resourceType']
+    return [PSCustomObject]@{
+        ResType  = if ($rtMember) { $rtMember.Value } else { '' }
+        ResName  = $rnMember.Value
+        OpState  = $props.provisioningState
+    }
+}
+
+function Write-OpLine([string]$Prefix, [string]$Key, [string]$OpState, [string]$ElapsedStr) {
+    $color = switch ($OpState) {
+        'Succeeded' { 'Green' }
+        'Failed'    { 'Red' }
+        'Running'   { 'Yellow' }
+        default     { 'DarkGray' }
+    }
+    $symbol = switch ($OpState) {
+        'Succeeded' { '✓' }
+        'Failed'    { '✗' }
+        'Running'   { '…' }
+        default     { '·' }
+    }
+    $label = switch ($OpState) {
+        'Succeeded' { 'done' }
+        'Failed'    { 'failed' }
+        'Running'   { 'in progress' }
+        'Accepted'  { 'queued' }
+        default     { $OpState.ToLower() }
+    }
+    Write-Host "$Prefix$symbol [$ElapsedStr] $Key — $label" -ForegroundColor $color
+}
+
 while ($state -notin @('Succeeded', 'Failed', 'Canceled')) {
     Start-Sleep -Seconds 15
     $ticks++
@@ -358,51 +436,43 @@ Re-run deploy.ps1 once resolved (it is idempotent), optionally with -MaxWaitMinu
     }
     $state = $deployment.properties.provisioningState
 
+    # Top-level module operations
     $ops = Try-Az-Json deployment operation group list `
         --resource-group $ResourceGroup --name $DeploymentName
     $newActivity = $false
     if ($ops) {
         foreach ($op in $ops) {
-            # Some operations (validation, read, outputs) have no targetResource.
-            # StrictMode Latest turns missing-property access into a terminating
-            # error, so use PSObject.Properties to test before dereferencing.
-            $propsMember = $op.PSObject.Properties['properties']
-            if (-not $propsMember) { continue }
-            $props = $propsMember.Value
-            $trMember = $props.PSObject.Properties['targetResource']
-            if (-not $trMember -or -not $trMember.Value) { continue }
-            $tr = $trMember.Value
-            $rnMember = $tr.PSObject.Properties['resourceName']
-            if (-not $rnMember -or -not $rnMember.Value) { continue }
-            $resTarget = $rnMember.Value
-            $rtMember = $tr.PSObject.Properties['resourceType']
-            $resType = if ($rtMember) { $rtMember.Value } else { '' }
-            $opState = $props.provisioningState
-
-            $key = "$resType/$resTarget"
-            if ($seenOps[$key] -ne $opState) {
-                $seenOps[$key] = $opState
+            $fields = Get-OpDisplayFields $op
+            if (-not $fields) { continue }
+            $key = "$($fields.ResType)/$($fields.ResName)"
+            if ($seenOps[$key] -ne $fields.OpState) {
+                $seenOps[$key] = $fields.OpState
                 $newActivity = $true
-                $color = switch ($opState) {
-                    'Succeeded' { 'Green' }
-                    'Failed'    { 'Red' }
-                    'Running'   { 'Yellow' }
-                    default     { 'DarkGray' }
+                Write-OpLine '  ' $key $fields.OpState $elapsedStr
+            }
+        }
+    }
+
+    # Every ~60s: drill into sql and web nested deployments for resource-level detail
+    if (($ticks - $lastNestedCheckTick) -ge 4) {
+        $lastNestedCheckTick = $ticks
+        foreach ($module in @('sql', 'web')) {
+            $moduleKey = "Microsoft.Resources/deployments/$module"
+            if ($seenOps[$moduleKey] -notin @('Running', 'Succeeded', 'Failed')) { continue }
+
+            $nestedOps = Try-Az-Json deployment operation group list `
+                --resource-group $ResourceGroup --name $module
+            if (-not $nestedOps) { continue }
+
+            foreach ($op in $nestedOps) {
+                $fields = Get-OpDisplayFields $op
+                if (-not $fields) { continue }
+                $nestedKey = "$module/$($fields.ResType)/$($fields.ResName)"
+                if ($seenNestedOps[$nestedKey] -ne $fields.OpState) {
+                    $seenNestedOps[$nestedKey] = $fields.OpState
+                    $newActivity = $true
+                    Write-OpLine '      ' "$($fields.ResType)/$($fields.ResName)" $fields.OpState $elapsedStr
                 }
-                $symbol = switch ($opState) {
-                    'Succeeded' { '✓' }
-                    'Failed'    { '✗' }
-                    'Running'   { '…' }
-                    default     { '·' }
-                }
-                $label = switch ($opState) {
-                    'Succeeded' { 'done' }
-                    'Failed'    { 'failed' }
-                    'Running'   { 'in progress' }
-                    'Accepted'  { 'queued' }
-                    default     { $opState.ToLower() }
-                }
-                Write-Host "  $symbol [$elapsedStr] $key — $label" -ForegroundColor $color
             }
         }
     }
@@ -422,23 +492,23 @@ $DeployOutput = Invoke-Az-Json deployment group show `
 
 $outputs = $DeployOutput.properties.outputs
 
-$DeployerUamiName       = $outputs.deployerUamiName.value
-$DeployerUamiId         = $outputs.deployerUamiId.value
-$DeployerUamiClientId   = $outputs.deployerUamiClientId.value
+$DeployerUamiName        = $outputs.deployerUamiName.value
+$DeployerUamiId          = $outputs.deployerUamiId.value
+$DeployerUamiClientId    = $outputs.deployerUamiClientId.value
 $DeployerUamiPrincipalId = $outputs.deployerUamiPrincipalId.value
-$RuntimeUamiName        = $outputs.runtimeUamiName.value
-$RuntimeUamiId          = $outputs.runtimeUamiId.value
-$RuntimeUamiClientId    = $outputs.runtimeUamiClientId.value
-$RuntimeUamiPrincipalId = $outputs.runtimeUamiPrincipalId.value
-$SqlServerName          = $outputs.sqlServerName.value
-$SqlServerFqdn          = $outputs.sqlServerFqdn.value
-$SqlDatabaseName        = $outputs.sqlDatabaseName.value
-$AppServiceName         = $outputs.appServiceName.value
-$AppServiceHostname     = $outputs.appServiceDefaultHostname.value
-$SwaName                = $outputs.swaName.value
-$SwaHostname            = $outputs.swaDefaultHostname.value
-$AppInsightsName        = $outputs.appInsightsName.value
-$AppInsightsConnStr     = $outputs.appInsightsConnectionString.value
+$RuntimeUamiName         = $outputs.runtimeUamiName.value
+$RuntimeUamiId           = $outputs.runtimeUamiId.value
+$RuntimeUamiClientId     = $outputs.runtimeUamiClientId.value
+$RuntimeUamiPrincipalId  = $outputs.runtimeUamiPrincipalId.value
+$SqlServerName           = $outputs.sqlServerName.value
+$SqlServerFqdn           = $outputs.sqlServerFqdn.value
+$SqlDatabaseName         = $outputs.sqlDatabaseName.value
+$AppServiceName          = $outputs.appServiceName.value
+$AppServiceHostname      = $outputs.appServiceDefaultHostname.value
+$SwaName                 = $outputs.swaName.value
+$SwaHostname             = $outputs.swaDefaultHostname.value
+$AppInsightsName         = $outputs.appInsightsName.value
+$AppInsightsConnStr      = $outputs.appInsightsConnectionString.value
 
 Write-Success "Bicep deployment complete"
 
@@ -664,8 +734,8 @@ Set-GhVariable "SQL_DATABASE_NAME_${EnvSuffix}"      $SqlDatabaseName
 
 Write-Step "Phase 7: Configuring App Service..."
 
-# Connection string (Entra auth — no password)
-$ConnectionString = "Server=$SqlServerFqdn;Database=$SqlDatabaseName;Authentication=Active Directory Default;Encrypt=True;"
+# Connection string (Entra auth via App Service environment credentials)
+$ConnectionString = "Server=tcp:$SqlServerFqdn,1433;Database=$SqlDatabaseName;Authentication=Active Directory Default;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;"
 az webapp config connection-string set `
     --name $AppServiceName `
     --resource-group $ResourceGroup `
@@ -673,22 +743,12 @@ az webapp config connection-string set `
     --connection-string-type SQLAzure | Out-Null
 Write-Success "Connection string set"
 
-# Application Insights connection string
+# Application Insights connection string (UAMI for SQL auth is configured via Bicep)
 az webapp config appsettings set `
     --name $AppServiceName `
     --resource-group $ResourceGroup `
     --settings ApplicationInsights__ConnectionString="$AppInsightsConnStr" | Out-Null
 Write-Success "Application Insights connection string set"
-
-# Set GHCR placeholder image (will be replaced by deploy-api.yml on first CI run)
-$Owner = ($GitHubOrgRepo -split '/')[0]
-$PlaceholderImage = "ghcr.io/${Owner}/ahkflowapp-api:latest-${Environment}"
-az webapp config container set `
-    --name $AppServiceName `
-    --resource-group $ResourceGroup `
-    --container-image-name $PlaceholderImage `
-    --container-registry-url "https://ghcr.io" | Out-Null
-Write-Success "Container image placeholder set"
 
 
 # CORS -- allow the SWA frontend
@@ -747,13 +807,20 @@ Write-Host "  Order: API deploy (build + migrate + deploy) -> health probe -> fr
 Write-Host ""
 Write-Host "  Triggering deploy-api.yml for '$Environment'..."
 $deployApiTriggeredAtUtc = (Get-Date).ToUniversalTime()
-gh workflow run deploy-api.yml --field environment=$Environment --repo $GitHubOrgRepo
+$runDispatchOutput = gh workflow run deploy-api.yml --field environment=$Environment --repo $GitHubOrgRepo 2>&1
 if ($LASTEXITCODE -ne 0) { throw "Failed to trigger deploy-api.yml" }
+$runDispatchOutput | ForEach-Object { Write-Host $_ }
 Write-Success "deploy-api.yml triggered"
 
-# Resolve run ID — poll until GitHub registers the dispatch (up to 60s)
+# Resolve run ID — prefer the run URL returned by gh, fall back to polling if needed
 Write-Host "  Resolving the newly triggered workflow run in GitHub..."
 $runId = $null
+$dispatchText = ($runDispatchOutput | Out-String)
+$runUrlMatch = [regex]::Match($dispatchText, '/actions/runs/(?<id>\d+)')
+if ($runUrlMatch.Success) {
+    $runId = $runUrlMatch.Groups['id'].Value
+}
+
 for ($attempt = 1; $attempt -le 12 -and -not $runId; $attempt++) {
     if ($attempt -gt 1) { Start-Sleep -Seconds 5 }
     $runListJson = gh run list --workflow deploy-api.yml --repo $GitHubOrgRepo --limit 20 --json databaseId,createdAt,event
@@ -762,31 +829,24 @@ for ($attempt = 1; $attempt -le 12 -and -not $runId; $attempt++) {
         ConvertFrom-Json |
         Where-Object {
             $_.event -eq 'workflow_dispatch' -and
-            ([DateTimeOffset]::Parse($_.createdAt).UtcDateTime -ge $deployApiTriggeredAtUtc)
+            ([DateTimeOffset]::Parse($_.createdAt).UtcDateTime -ge $deployApiTriggeredAtUtc.AddMinutes(-2))
         } |
         Sort-Object { [DateTimeOffset]::Parse($_.createdAt).UtcDateTime } -Descending |
         Select-Object -First 1
     if ($matchingRun) { $runId = $matchingRun.databaseId }
 }
-if (-not $runId) { throw "Could not resolve run ID for deploy-api.yml created after $($deployApiTriggeredAtUtc.ToString('o')). Check: gh run list --workflow deploy-api.yml --repo $GitHubOrgRepo --json databaseId,createdAt,event" }
+if (-not $runId) { throw "Could not resolve run ID for deploy-api.yml. gh workflow run succeeded, but the follow-up lookup did not return a matching run. Check: gh run list --workflow deploy-api.yml --repo $GitHubOrgRepo --json databaseId,createdAt,event" }
 Write-Host "  Watching run #$runId — this typically takes 8-15 minutes..."
 
 gh run watch $runId --exit-status --repo $GitHubOrgRepo
 if ($LASTEXITCODE -ne 0) { throw "deploy-api.yml run #$runId failed. Check: gh run view $runId --repo $GitHubOrgRepo" }
 Write-Success "API deployment complete (run #$runId)"
 
-Write-Host ""
-Write-Host "  IMPORTANT: GHCR packages are private by default." -ForegroundColor Yellow
-Write-Host "  If the run above failed on the push step, make the package public and re-run:" -ForegroundColor Yellow
-Write-Host "  https://github.com/$($GitHubOrgRepo.Split('/')[0])?tab=packages" -ForegroundColor Yellow
-Write-Host "  Find 'ahkflowapp-api' -> Package settings -> Change visibility -> Public" -ForegroundColor Yellow
-Write-Host ""
-
 # Step 9b — Poll health endpoint
 $healthUrl = "https://$AppServiceHostname/health"
-Write-Host "  Polling health endpoint: $healthUrl (up to 3 minutes)..."
+Write-Host "  Polling health endpoint: $healthUrl (up to 5 minutes)..."
 $healthOk = $false
-for ($i = 0; $i -lt 18; $i++) {
+for ($i = 0; $i -lt 30; $i++) {
     try {
         $prevEap = $ErrorActionPreference
         $ErrorActionPreference = 'Continue'
@@ -803,8 +863,8 @@ for ($i = 0; $i -lt 18; $i++) {
     Start-Sleep -Seconds 10
 }
 if (-not $healthOk) {
-    Write-Warn "Health check at $healthUrl did not return 200 within 3 minutes."
-    Write-Warn "The App Service may still be starting. Check manually before using the frontend."
+    Write-Warn "Health check at $healthUrl did not return 200 within 5 minutes."
+    Write-Warn "App Service Free cold starts can take longer than paid tiers. Check manually before using the frontend."
     Write-Warn "Once healthy, trigger the frontend manually: gh workflow run deploy-frontend.yml --field environment=$Environment --repo $GitHubOrgRepo"
     Write-Host ""
     Write-Host "==========================================================" -ForegroundColor Yellow

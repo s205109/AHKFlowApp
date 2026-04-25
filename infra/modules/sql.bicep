@@ -17,6 +17,9 @@ param sqlAdminGroupId string
 @description('Display name of the Entra security group that will be the SQL admin.')
 param sqlAdminGroupName string
 
+@description('Use Azure SQL free offer (serverless GP_S_Gen5_1). When false, provisions Basic tier.')
+param useFreeTier bool = true
+
 var serverName = '${baseName}-sql-${environment}-${resourceToken}'
 var databaseName = '${baseName}-db'
 
@@ -40,18 +43,25 @@ resource sqlDatabase 'Microsoft.Sql/servers/databases@2023-08-01-preview' = {
   parent: sqlServer
   name: databaseName
   location: location
-  sku: {
+  sku: useFreeTier ? {
+    name: 'GP_S_Gen5_1'
+    tier: 'GeneralPurpose'
+    family: 'Gen5'
+  } : {
     name: 'Basic'
     tier: 'Basic'
   }
   properties: {
     collation: 'SQL_Latin1_General_CP1_CI_AS'
-    // Local backup redundancy keeps costs low for non-production
+    useFreeLimit: useFreeTier ? true : null
+    autoPauseDelay: useFreeTier ? 60 : null
+    minCapacity: useFreeTier ? json('0.5') : null
+    maxSizeBytes: useFreeTier ? 34359738368 : null
     requestedBackupStorageRedundancy: 'Local'
   }
 }
 
-// Allow Azure services to reach the server (needed for App Service → SQL via Managed Identity)
+// Allow Azure-hosted services to reach the server (App Service + deployment automation).
 resource allowAzureServices 'Microsoft.Sql/servers/firewallRules@2023-08-01-preview' = {
   parent: sqlServer
   name: 'AllowAllAzureServices'

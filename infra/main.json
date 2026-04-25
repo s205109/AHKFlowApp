@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "12913743757647560259"
+      "templateHash": "8020108042133309666"
     }
   },
   "parameters": {
@@ -44,11 +44,30 @@
       "metadata": {
         "description": "Display name of the Entra security group that will be the SQL admin."
       }
+    },
+    "azureAdTenantId": {
+      "type": "string",
+      "metadata": {
+        "description": "Entra ID tenant ID for API token validation. See scripts/setup-entra-app.ps1."
+      }
+    },
+    "azureAdClientId": {
+      "type": "string",
+      "metadata": {
+        "description": "Entra ID client ID for API token validation. See scripts/setup-entra-app.ps1."
+      }
+    },
+    "useFreeTier": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Use Azure free-tier resources (App Service F1, Azure SQL free offer). Slower to provision; has cold-start and CPU limits."
+      }
     }
   },
   "variables": {
     "aspnetcoreEnvironment": "[if(equals(parameters('environment'), 'prod'), 'Production', 'Test')]",
-    "resourceToken": "[take(uniqueString(subscription().subscriptionId, resourceGroup().id, parameters('environment')), 6)]"
+    "resourceToken": "[take(uniqueString(subscription().subscriptionId, resourceGroup().id, parameters('environment')), 8)]"
   },
   "resources": [
     {
@@ -188,6 +207,9 @@
           },
           "sqlAdminGroupName": {
             "value": "[parameters('sqlAdminGroupName')]"
+          },
+          "useFreeTier": {
+            "value": "[parameters('useFreeTier')]"
           }
         },
         "template": {
@@ -197,7 +219,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "15629321951951305207"
+              "templateHash": "11884027375156540417"
             }
           },
           "parameters": {
@@ -241,6 +263,13 @@
               "metadata": {
                 "description": "Display name of the Entra security group that will be the SQL admin."
               }
+            },
+            "useFreeTier": {
+              "type": "bool",
+              "defaultValue": true,
+              "metadata": {
+                "description": "Use Azure SQL free offer (serverless GP_S_Gen5_1). When false, provisions Basic tier."
+              }
             }
           },
           "variables": {
@@ -269,12 +298,13 @@
               "apiVersion": "2023-08-01-preview",
               "name": "[format('{0}/{1}', variables('serverName'), variables('databaseName'))]",
               "location": "[parameters('location')]",
-              "sku": {
-                "name": "Basic",
-                "tier": "Basic"
-              },
+              "sku": "[if(parameters('useFreeTier'), createObject('name', 'GP_S_Gen5_1', 'tier', 'GeneralPurpose', 'family', 'Gen5'), createObject('name', 'Basic', 'tier', 'Basic'))]",
               "properties": {
                 "collation": "SQL_Latin1_General_CP1_CI_AS",
+                "useFreeLimit": "[if(parameters('useFreeTier'), true(), null())]",
+                "autoPauseDelay": "[if(parameters('useFreeTier'), 60, null())]",
+                "minCapacity": "[if(parameters('useFreeTier'), json('0.5'), null())]",
+                "maxSizeBytes": "[if(parameters('useFreeTier'), json('34359738368'), null())]",
                 "requestedBackupStorageRedundancy": "Local"
               },
               "dependsOn": [
@@ -428,6 +458,15 @@
           },
           "swaDefaultHostname": {
             "value": "[reference(resourceId('Microsoft.Resources/deployments', 'swa'), '2025-04-01').outputs.swaDefaultHostname.value]"
+          },
+          "azureAdTenantId": {
+            "value": "[parameters('azureAdTenantId')]"
+          },
+          "azureAdClientId": {
+            "value": "[parameters('azureAdClientId')]"
+          },
+          "useFreeTier": {
+            "value": "[parameters('useFreeTier')]"
           }
         },
         "template": {
@@ -437,7 +476,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "3965378895939917865"
+              "templateHash": "6554317392053156947"
             }
           },
           "parameters": {
@@ -493,6 +532,32 @@
               "metadata": {
                 "description": "Default hostname of the Static Web App frontend, used as an allowed CORS origin."
               }
+            },
+            "azureAdInstance": {
+              "type": "string",
+              "defaultValue": "[environment().authentication.loginEndpoint]",
+              "metadata": {
+                "description": "Entra ID instance URL. Defaults to the active cloud login endpoint."
+              }
+            },
+            "azureAdTenantId": {
+              "type": "string",
+              "metadata": {
+                "description": "Entra ID tenant ID for token validation."
+              }
+            },
+            "azureAdClientId": {
+              "type": "string",
+              "metadata": {
+                "description": "Entra ID client ID (app registration) for token validation."
+              }
+            },
+            "useFreeTier": {
+              "type": "bool",
+              "defaultValue": true,
+              "metadata": {
+                "description": "Use free-tier App Service plan (F1). When false, provisions Basic B1 with Always On."
+              }
             }
           },
           "variables": {
@@ -507,8 +572,8 @@
               "location": "[parameters('location')]",
               "kind": "linux",
               "sku": {
-                "name": "B1",
-                "tier": "Basic"
+                "name": "[if(parameters('useFreeTier'), 'F1', 'B1')]",
+                "tier": "[if(parameters('useFreeTier'), 'Free', 'Basic')]"
               },
               "properties": {
                 "reserved": true
@@ -519,6 +584,7 @@
               "apiVersion": "2023-12-01",
               "name": "[variables('appName')]",
               "location": "[parameters('location')]",
+              "kind": "app,linux",
               "identity": {
                 "type": "UserAssigned",
                 "userAssignedIdentities": {
@@ -529,28 +595,32 @@
                 "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('planName'))]",
                 "httpsOnly": true,
                 "siteConfig": {
-                  "linuxFxVersion": "DOCKER|nginx:latest",
-                  "alwaysOn": true,
+                  "linuxFxVersion": "DOTNETCORE|10.0",
+                  "alwaysOn": "[if(parameters('useFreeTier'), false(), true())]",
                   "appSettings": [
                     {
-                      "name": "DOCKER_REGISTRY_SERVER_URL",
-                      "value": "https://ghcr.io"
-                    },
-                    {
-                      "name": "WEBSITES_PORT",
-                      "value": "8080"
+                      "name": "ASPNETCORE_ENVIRONMENT",
+                      "value": "[parameters('aspnetcoreEnvironment')]"
                     },
                     {
                       "name": "AZURE_CLIENT_ID",
                       "value": "[parameters('runtimeUamiClientId')]"
                     },
                     {
-                      "name": "ASPNETCORE_ENVIRONMENT",
-                      "value": "[parameters('aspnetcoreEnvironment')]"
-                    },
-                    {
                       "name": "Cors__AllowedOrigins__0",
                       "value": "[format('https://{0}', parameters('swaDefaultHostname'))]"
+                    },
+                    {
+                      "name": "AzureAd__Instance",
+                      "value": "[parameters('azureAdInstance')]"
+                    },
+                    {
+                      "name": "AzureAd__TenantId",
+                      "value": "[parameters('azureAdTenantId')]"
+                    },
+                    {
+                      "name": "AzureAd__ClientId",
+                      "value": "[parameters('azureAdClientId')]"
                     }
                   ]
                 }

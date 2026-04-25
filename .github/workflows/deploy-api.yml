@@ -23,15 +23,12 @@ on:
 permissions:
   contents: read
   id-token: write
-  packages: write
 
 env:
-  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/ahkflowapp-api
-  # Determine target environment: manual trigger uses input, push to main uses test
   TARGET_ENV: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || 'test' }}
 
 jobs:
-  build-test:
+  build-test-publish:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -41,69 +38,22 @@ jobs:
       - run: dotnet restore
       - run: dotnet build --configuration Release --no-restore
       - run: dotnet test --configuration Release --no-build
-
-  build-push-image:
-    needs: build-test
-    runs-on: ubuntu-latest
-    outputs:
-      image-ref: ${{ steps.image-ref.outputs.value }}
-      environment: ${{ steps.set-env.outputs.environment }}
-    steps:
-      - id: set-env
-        run: echo "environment=${{ env.TARGET_ENV }}" >> "$GITHUB_OUTPUT"
-      - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
-      - uses: docker/setup-buildx-action@v3  # Required for type=gha cache backend below
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.IMAGE_NAME }}
-          tags: |
-            type=sha,format=long
-            type=raw,value=latest-${{ env.TARGET_ENV }},enable={{is_default_branch}}
-            type=raw,value=${{ env.TARGET_ENV }}-{{date 'YYYYMMDD-HHmmss'}}
-            type=ref,event=branch
-      - name: Calculate version with MinVer
-        id: minver
+      - name: Publish API
+        run: dotnet publish src/Backend/AHKFlowApp.API --configuration Release --no-build --output publish
+      - name: Create deploy package
         run: |
-          dotnet tool install --global minver-cli
-          version=$(minver --tag-prefix v)
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "MinVer version: $version"
-      - id: build
-        uses: docker/build-push-action@v6
+          cd publish
+          zip -r ../api-package.zip .
+      - uses: actions/upload-artifact@v4
         with:
-          context: .
-          file: src/Backend/AHKFlowApp.API/Dockerfile
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          build-args: |
-            MINVER_VERSION=${{ steps.minver.outputs.version }}
-      - name: Verify digest is set
-        run: |
-          digest="${{ steps.build.outputs.digest }}"
-          test -n "$digest" || { echo "docker/build-push-action produced an empty digest — deploy would deploy a stale image"; exit 1; }
-          echo "Digest: $digest"
-      - id: image-ref
-        # Deploy uses the immutable digest so re-running an old workflow run redeploys
-        # exactly that run's image — true rollback by re-run.
-        run: echo "value=${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}" >> "$GITHUB_OUTPUT"
+          name: api-package
+          path: api-package.zip
 
   migrate-db:
-    # Sequential after image push so `deploy` has a clean linear dependency chain.
-    # If migration fails, the image is still in GHCR (harmless, garbage-collected later).
-    needs: build-push-image
+    needs: build-test-publish
     runs-on: ubuntu-latest
     env:
-      ENV_SUFFIX: ${{ needs.build-push-image.outputs.environment == 'test' && 'TEST' || 'PROD' }}
+      ENV_SUFFIX: ${{ env.TARGET_ENV == 'test' && 'TEST' || 'PROD' }}
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
@@ -126,7 +76,6 @@ jobs:
       - name: Derive EF Core version from Directory.Packages.props
         id: ef
         run: |
-          # Microsoft.EntityFrameworkCore.Design version === dotnet-ef tool version we need.
           ef_version=$(grep -oE 'Include="Microsoft\.EntityFrameworkCore\.Design"[[:space:]]+Version="[^"]+"' Directory.Packages.props \
             | grep -oE 'Version="[^"]+"' | head -n1 | cut -d'"' -f2)
           test -n "$ef_version" || { echo "Could not find Microsoft.EntityFrameworkCore.Design version in Directory.Packages.props"; exit 1; }
@@ -158,44 +107,35 @@ jobs:
             --name "gh-runner-${GITHUB_RUN_ID}" || true
 
   deploy:
-    needs: [build-push-image, migrate-db]
+    needs: [build-test-publish, migrate-db]
     runs-on: ubuntu-latest
     env:
-      ENV_SUFFIX: ${{ needs.build-push-image.outputs.environment == 'test' && 'TEST' || 'PROD' }}
+      ENV_SUFFIX: ${{ env.TARGET_ENV == 'test' && 'TEST' || 'PROD' }}
     steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: api-package
       - uses: azure/login@v2
         with:
           client-id: ${{ secrets[format('AZURE_CLIENT_ID_{0}', env.ENV_SUFFIX)] }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      - name: Set container image on App Service
+      - name: Deploy package to App Service
         run: |
-          az webapp config container set \
+          az webapp deploy \
             --name "${{ vars[format('APP_SERVICE_NAME_{0}', env.ENV_SUFFIX)] }}" \
             --resource-group "${{ vars[format('AZURE_RESOURCE_GROUP_{0}', env.ENV_SUFFIX)] }}" \
-            --container-image-name "${{ needs.build-push-image.outputs.image-ref }}" \
-            --container-registry-url "https://ghcr.io"
-      - name: Apply AzureAd app settings
-        run: |
-          az webapp config appsettings set \
-            --name "${{ vars[format('APP_SERVICE_NAME_{0}', env.ENV_SUFFIX)] }}" \
-            --resource-group "${{ vars[format('AZURE_RESOURCE_GROUP_{0}', env.ENV_SUFFIX)] }}" \
-            --settings \
-              AzureAd__TenantId="${{ vars[format('AZURE_AD_TENANT_ID_{0}', env.ENV_SUFFIX)] }}" \
-              AzureAd__ClientId="${{ vars[format('AZURE_AD_CLIENT_ID_{0}', env.ENV_SUFFIX)] }}"
-      - name: Restart App Service
-        run: |
-          az webapp restart \
-            --name "${{ vars[format('APP_SERVICE_NAME_{0}', env.ENV_SUFFIX)] }}" \
-            --resource-group "${{ vars[format('AZURE_RESOURCE_GROUP_{0}', env.ENV_SUFFIX)] }}"
+            --src-path api-package.zip \
+            --type zip \
+            --restart true \
+            --clean true
       - name: Health check
-        # 12 x 15s = 3 minutes. Covers Entra propagation + container cold start.
         run: |
           url="https://${{ vars[format('APP_SERVICE_NAME_{0}', env.ENV_SUFFIX)] }}.azurewebsites.net/health"
-          for i in $(seq 1 12); do
+          for i in $(seq 1 20); do
             if curl -fsS "$url"; then exit 0; fi
-            echo "Attempt $i/12 failed, retrying in 15s..."
+            echo "Attempt $i/20 failed, retrying in 15s..."
             sleep 15
           done
-          echo "Health check failed after 3 minutes. Check App Service logs: az webapp log tail ..."
+          echo "Health check failed after 5 minutes. App Service Free can cold-start slowly; inspect logs with: az webapp log tail --name ${{ vars[format('APP_SERVICE_NAME_{0}', env.ENV_SUFFIX)] }} --resource-group ${{ vars[format('AZURE_RESOURCE_GROUP_{0}', env.ENV_SUFFIX)] }}"
           exit 1

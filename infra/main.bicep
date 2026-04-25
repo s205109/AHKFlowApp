@@ -20,6 +20,9 @@ param azureAdTenantId string
 @description('Entra ID client ID for API token validation. See scripts/setup-entra-app.ps1.')
 param azureAdClientId string
 
+@description('Use Azure free-tier resources (App Service F1, Azure SQL free offer). Slower to provision; has cold-start and CPU limits.')
+param useFreeTier bool = true
+
 var aspnetcoreEnvironment = environment == 'prod' ? 'Production' : 'Test'
 
 // Deterministic suffix to reduce global-name collision risk on App Service and SQL Server.
@@ -44,6 +47,7 @@ module sql 'modules/sql.bicep' = {
     resourceToken: resourceToken
     sqlAdminGroupId: sqlAdminGroupId
     sqlAdminGroupName: sqlAdminGroupName
+    useFreeTier: useFreeTier
   }
 }
 
@@ -69,6 +73,7 @@ module web 'modules/web.bicep' = {
     swaDefaultHostname: swa.outputs.swaDefaultHostname
     azureAdTenantId: azureAdTenantId
     azureAdClientId: azureAdClientId
+    useFreeTier: useFreeTier
   }
 }
 
