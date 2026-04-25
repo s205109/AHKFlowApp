@@ -625,30 +625,44 @@ GRANT EXECUTE TO [$RuntimeUamiName];
         # when the local Windows account isn't domain-joined to Entra ID.
         $userEmail = az account show --query user.name -o tsv
 
-        Write-Host ""
-        Write-Host "  ┌─────────────────────────────────────────────────────────────────┐" -ForegroundColor Cyan
-        Write-Host "  │  ACTION REQUIRED: Browser authentication window opening...      │" -ForegroundColor Cyan
-        Write-Host "  │                                                                 │" -ForegroundColor Cyan
-        Write-Host "  │  sqlcmd will open a Microsoft Entra login window to connect     │" -ForegroundColor Cyan
-        Write-Host "  │$("  to Azure SQL. Please sign in with: $userEmail".PadRight(65))│" -ForegroundColor Cyan
-        Write-Host "  │                                                                 │" -ForegroundColor Cyan
-        Write-Host "  │  The window may appear BEHIND this terminal — check your        │" -ForegroundColor Cyan
-        Write-Host "  │  taskbar if nothing appears on screen.                          │" -ForegroundColor Cyan
-        Write-Host "  │                                                                 │" -ForegroundColor Cyan
-        Write-Host "  │  If you close the window without signing in, sqlcmd will fail   │" -ForegroundColor Cyan
-        Write-Host "  │  and the script will print manual Portal instructions instead.  │" -ForegroundColor Cyan
-        Write-Host "  └─────────────────────────────────────────────────────────────────┘" -ForegroundColor Cyan
-        Write-Host ""
+        $sqlcmdExitCode = 1
+        while ($sqlcmdExitCode -ne 0) {
+            Write-Host ""
+            Write-Host "  ┌─────────────────────────────────────────────────────────────────┐" -ForegroundColor Cyan
+            Write-Host "  │  ACTION REQUIRED: Browser authentication window opening...      │" -ForegroundColor Cyan
+            Write-Host "  │                                                                 │" -ForegroundColor Cyan
+            Write-Host "  │  sqlcmd will open a Microsoft Entra login window to connect     │" -ForegroundColor Cyan
+            Write-Host "  │$("  to Azure SQL. Please sign in with: $userEmail".PadRight(65))│" -ForegroundColor Cyan
+            Write-Host "  │                                                                 │" -ForegroundColor Cyan
+            Write-Host "  │  The window may appear BEHIND this terminal — check your        │" -ForegroundColor Cyan
+            Write-Host "  │  taskbar if nothing appears on screen.                          │" -ForegroundColor Cyan
+            Write-Host "  └─────────────────────────────────────────────────────────────────┘" -ForegroundColor Cyan
+            Write-Host ""
 
-        sqlcmd -S $SqlServerFqdn -d $SqlDatabaseName -G -U $userEmail -i $tmpSql
-        $sqlcmdExitCode = $LASTEXITCODE
+            sqlcmd -S $SqlServerFqdn -d $SqlDatabaseName -G -U $userEmail -i $tmpSql
+            $sqlcmdExitCode = $LASTEXITCODE
+
+            if ($sqlcmdExitCode -ne 0) {
+                Write-Warn "sqlcmd failed (login timeout or authentication error)."
+                Write-Host ""
+                Write-Host "  Options:" -ForegroundColor White
+                Write-Host "    [R] Retry — opens a new login popup" -ForegroundColor DarkGray
+                Write-Host "    [M] Manual — create the SQL user via the Azure Portal instead" -ForegroundColor DarkGray
+                Write-Host ""
+                $choice = Read-Host "  Choice [R/M] (default: R)"
+                if ($choice.Trim() -match '^[Mm]') {
+                    break
+                }
+                # Any other input (including blank) retries
+            }
+        }
 
         Remove-Item $tmpSql -ErrorAction SilentlyContinue
 
         if ($sqlcmdExitCode -eq 0) {
             Write-Success "SQL user '$RuntimeUamiName' created/verified via sqlcmd"
         } else {
-            Write-Warn "sqlcmd could not authenticate. Create the SQL user manually in the Azure Portal:"
+            Write-Warn "Create the SQL user manually in the Azure Portal:"
             Write-Host "    URL: https://portal.azure.com" -ForegroundColor Yellow
             Write-Host "    Navigate to: SQL Database '$SqlDatabaseName' > Query Editor" -ForegroundColor Yellow
             Write-Host ""
