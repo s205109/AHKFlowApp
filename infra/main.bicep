@@ -63,6 +63,8 @@ module web 'modules/web.bicep' = {
     environment: environment
     location: location
     resourceToken: resourceToken
+    runtimeUamiId: identity.outputs.runtimeUamiId
+    runtimeUamiClientId: identity.outputs.runtimeUamiClientId
     aspnetcoreEnvironment: aspnetcoreEnvironment
     swaDefaultHostname: swa.outputs.swaDefaultHostname
     azureAdTenantId: azureAdTenantId
@@ -84,6 +86,10 @@ output deployerUamiName string = identity.outputs.deployerUamiName
 output deployerUamiId string = identity.outputs.deployerUamiId
 output deployerUamiClientId string = identity.outputs.deployerUamiClientId
 output deployerUamiPrincipalId string = identity.outputs.deployerUamiPrincipalId
+output runtimeUamiName string = identity.outputs.runtimeUamiName
+output runtimeUamiId string = identity.outputs.runtimeUamiId
+output runtimeUamiClientId string = identity.outputs.runtimeUamiClientId
+output runtimeUamiPrincipalId string = identity.outputs.runtimeUamiPrincipalId
 
 // SQL outputs
 output sqlServerName string = sql.outputs.sqlServerName

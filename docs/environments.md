@@ -47,7 +47,7 @@ docker compose up --build
 
 - **ASPNETCORE_ENVIRONMENT**: `Test` (set via App Service application setting)
 - **Database**: Azure SQL Database — FQDN captured in `scripts/.env.test` after provisioning
-- **Authentication**: Entra ID via App Service environment credentials — no SQL logins
+- **Authentication**: Entra ID (User-Assigned Managed Identity) — no SQL passwords
 - **Connection String**: Set via App Service connection string configuration with `Authentication=Active Directory Default`
 - **CORS**: Configured to allow Static Web App URL
 - **Logging**: Information level for application, Warning for framework
@@ -63,7 +63,7 @@ to `scripts/.env.test`:
 - SQL Database: `ahkflowapp-db`
 - Static Web App: `ahkflowapp-swa-test`
 - User-Assigned Managed Identity (deployer): `ahkflowapp-uami-deployer-test`
-- Runtime SQL auth app registration: `AHKFlowApp-SqlRuntime-test`
+- User-Assigned Managed Identity (runtime): `ahkflowapp-uami-runtime-test`
 
 ### Provisioning
 
@@ -105,7 +105,7 @@ include the deterministic suffix described above):
 
 - **ASPNETCORE_ENVIRONMENT**: `Production` (set via App Service application setting)
 - **Database**: Azure SQL Database — FQDN captured in `scripts/.env.prod` after provisioning
-- **Authentication**: Entra ID via App Service environment credentials — no SQL logins
+- **Authentication**: Entra ID (User-Assigned Managed Identity) — no SQL passwords
 - **Connection String**: Set via App Service connection string configuration with `Authentication=Active Directory Default`
 - **CORS**: Configured to allow Static Web App URL
 - **Logging**: Warning level (minimal logging for performance)
@@ -120,7 +120,7 @@ collisions — the exact names are emitted by Bicep and saved to `scripts/.env.p
 - SQL Database: `ahkflowapp-db`
 - Static Web App: `ahkflowapp-swa-prod`
 - User-Assigned Managed Identity (deployer): `ahkflowapp-uami-deployer-prod`
-- Runtime SQL auth app registration: `AHKFlowApp-SqlRuntime-prod`
+- User-Assigned Managed Identity (runtime): `ahkflowapp-uami-runtime-prod`
 
 ### Provisioning
 
@@ -211,9 +211,7 @@ No secrets are stored in frontend configuration — all values are public.
 | Variable | DEV | TEST | PROD |
 |----------|-----|------|------|
 | `ASPNETCORE_ENVIRONMENT` | `Development` | `Test` | `Production` |
-| `AZURE_TENANT_ID` | (not set) | Runtime SQL auth tenant ID | Runtime SQL auth tenant ID |
-| `AZURE_CLIENT_ID` | (not set) | Runtime SQL auth app client ID | Runtime SQL auth app client ID |
-| `AZURE_CLIENT_SECRET` | (not set) | Runtime SQL auth app secret | Runtime SQL auth app secret |
+| `AZURE_CLIENT_ID` | (not set) | Runtime UAMI client ID | Runtime UAMI client ID |
 
 ### Connection Strings
 
@@ -246,7 +244,6 @@ Server=tcp:{SQL_SERVER_FQDN},1433;Database={SQL_DATABASE_NAME};Authentication=Ac
 ### TEST/PROD: API returns 500 errors
 - Check App Service logs: `az webapp log tail --name {APP_SERVICE_NAME} --resource-group {RESOURCE_GROUP}`
 - Verify `ASPNETCORE_ENVIRONMENT` is set correctly in App Service configuration
-- Verify `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, and `AZURE_CLIENT_SECRET` are present in App Service configuration
 - Check Application Insights for exceptions
 
 ### Environment not loading correct appsettings
@@ -264,8 +261,7 @@ Server=tcp:{SQL_SERVER_FQDN},1433;Database={SQL_DATABASE_NAME};Authentication=Ac
 ### TEST/PROD
 - All secrets stored in Azure App Service configuration
 - SQL authentication uses Entra ID only (no SQL logins)
-- The hosted API uses a dedicated Entra application secret stored only in App Service configuration
-- GitHub Actions still use OIDC + the deployer UAMI rather than long-lived Azure credentials
+- Managed identities eliminate long-lived secrets
 - HTTPS enforced via HSTS
 - Connection strings never committed to source control
 

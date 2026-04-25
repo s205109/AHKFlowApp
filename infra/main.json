@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "2659551385160803493"
+      "templateHash": "16455477583899307217"
     }
   },
   "parameters": {
@@ -90,7 +90,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "15922952967696538631"
+              "templateHash": "12052455223537809781"
             }
           },
           "parameters": {
@@ -119,13 +119,20 @@
             }
           },
           "variables": {
-            "deployerName": "[format('{0}-uami-deployer-{1}', parameters('baseName'), parameters('environment'))]"
+            "deployerName": "[format('{0}-uami-deployer-{1}', parameters('baseName'), parameters('environment'))]",
+            "runtimeName": "[format('{0}-uami-runtime-{1}', parameters('baseName'), parameters('environment'))]"
           },
           "resources": [
             {
               "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
               "apiVersion": "2023-01-31",
               "name": "[variables('deployerName')]",
+              "location": "[parameters('location')]"
+            },
+            {
+              "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+              "apiVersion": "2023-01-31",
+              "name": "[variables('runtimeName')]",
               "location": "[parameters('location')]"
             }
           ],
@@ -145,6 +152,22 @@
             "deployerUamiPrincipalId": {
               "type": "string",
               "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deployerName')), '2023-01-31').principalId]"
+            },
+            "runtimeUamiName": {
+              "type": "string",
+              "value": "[variables('runtimeName')]"
+            },
+            "runtimeUamiId": {
+              "type": "string",
+              "value": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('runtimeName'))]"
+            },
+            "runtimeUamiClientId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('runtimeName')), '2023-01-31').clientId]"
+            },
+            "runtimeUamiPrincipalId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('runtimeName')), '2023-01-31').principalId]"
             }
           }
         }
@@ -411,6 +434,12 @@
           "resourceToken": {
             "value": "[variables('resourceToken')]"
           },
+          "runtimeUamiId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'identity'), '2025-04-01').outputs.runtimeUamiId.value]"
+          },
+          "runtimeUamiClientId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', 'identity'), '2025-04-01').outputs.runtimeUamiClientId.value]"
+          },
           "aspnetcoreEnvironment": {
             "value": "[variables('aspnetcoreEnvironment')]"
           },
@@ -431,7 +460,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "7486815666204958627"
+              "templateHash": "12432736881956829736"
             }
           },
           "parameters": {
@@ -462,6 +491,18 @@
               "type": "string",
               "metadata": {
                 "description": "Short deterministic suffix appended to globally-unique names to avoid collisions."
+              }
+            },
+            "runtimeUamiId": {
+              "type": "string",
+              "metadata": {
+                "description": "Resource ID of the runtime UAMI to assign to the App Service."
+              }
+            },
+            "runtimeUamiClientId": {
+              "type": "string",
+              "metadata": {
+                "description": "Client ID of the runtime UAMI (used by DefaultAzureCredential)."
               }
             },
             "aspnetcoreEnvironment": {
@@ -521,6 +562,12 @@
               "name": "[variables('appName')]",
               "location": "[parameters('location')]",
               "kind": "app,linux",
+              "identity": {
+                "type": "UserAssigned",
+                "userAssignedIdentities": {
+                  "[format('{0}', parameters('runtimeUamiId'))]": {}
+                }
+              },
               "properties": {
                 "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('planName'))]",
                 "httpsOnly": true,
@@ -530,6 +577,10 @@
                     {
                       "name": "ASPNETCORE_ENVIRONMENT",
                       "value": "[parameters('aspnetcoreEnvironment')]"
+                    },
+                    {
+                      "name": "AZURE_CLIENT_ID",
+                      "value": "[parameters('runtimeUamiClientId')]"
                     },
                     {
                       "name": "Cors__AllowedOrigins__0",
@@ -568,6 +619,7 @@
         }
       },
       "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', 'identity')]",
         "[resourceId('Microsoft.Resources/deployments', 'swa')]"
       ]
     },
@@ -689,6 +741,22 @@
     "deployerUamiPrincipalId": {
       "type": "string",
       "value": "[reference(resourceId('Microsoft.Resources/deployments', 'identity'), '2025-04-01').outputs.deployerUamiPrincipalId.value]"
+    },
+    "runtimeUamiName": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'identity'), '2025-04-01').outputs.runtimeUamiName.value]"
+    },
+    "runtimeUamiId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'identity'), '2025-04-01').outputs.runtimeUamiId.value]"
+    },
+    "runtimeUamiClientId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'identity'), '2025-04-01').outputs.runtimeUamiClientId.value]"
+    },
+    "runtimeUamiPrincipalId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', 'identity'), '2025-04-01').outputs.runtimeUamiPrincipalId.value]"
     },
     "sqlServerName": {
       "type": "string",

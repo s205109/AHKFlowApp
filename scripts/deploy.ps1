@@ -427,6 +427,10 @@ $DeployerUamiName        = $outputs.deployerUamiName.value
 $DeployerUamiId          = $outputs.deployerUamiId.value
 $DeployerUamiClientId    = $outputs.deployerUamiClientId.value
 $DeployerUamiPrincipalId = $outputs.deployerUamiPrincipalId.value
+$RuntimeUamiName         = $outputs.runtimeUamiName.value
+$RuntimeUamiId           = $outputs.runtimeUamiId.value
+$RuntimeUamiClientId     = $outputs.runtimeUamiClientId.value
+$RuntimeUamiPrincipalId  = $outputs.runtimeUamiPrincipalId.value
 $SqlServerName           = $outputs.sqlServerName.value
 $SqlServerFqdn           = $outputs.sqlServerFqdn.value
 $SqlDatabaseName         = $outputs.sqlDatabaseName.value
@@ -513,38 +517,11 @@ if ($deployerMember -ne 'true') {
 Write-Warn "Waiting 30s for Entra group membership to propagate..."
 Start-Sleep -Seconds 30
 
-# Dedicated Entra app + service principal for App Service runtime SQL auth
-Write-Host "  Setting up runtime SQL auth application..."
-$RuntimeSqlAuthScript = Join-Path $PSScriptRoot 'setup-runtime-sql-auth.ps1'
-$RuntimeSqlAuthOutput = & $RuntimeSqlAuthScript -Environment $Environment
-$RuntimeSqlAuthInfo = @(
-    $RuntimeSqlAuthOutput | Where-Object {
-        $_ -is [psobject] -and
-        $_.PSObject.Properties['ClientId'] -and
-        $_.PSObject.Properties['ClientSecret'] -and
-        $_.ClientId -and
-        $_.ClientSecret
-    }
-) | Select-Object -Last 1
-if (-not $RuntimeSqlAuthInfo) {
-    throw "setup-runtime-sql-auth.ps1 did not return runtime SQL auth credentials"
-}
-
-$RuntimeSqlAuthDisplayName = [string]$RuntimeSqlAuthInfo.DisplayName
-$RuntimeSqlAuthClientId = [string]$RuntimeSqlAuthInfo.ClientId
-$RuntimeSqlAuthClientSecret = [string]$RuntimeSqlAuthInfo.ClientSecret
-$RuntimeSqlAuthAppObjectId = [string]$RuntimeSqlAuthInfo.AppObjectId
-$RuntimeSqlAuthServicePrincipalObjectId = [string]$RuntimeSqlAuthInfo.ServicePrincipalObjectId
-
-Write-Success "Runtime SQL auth app ready: $RuntimeSqlAuthDisplayName ($RuntimeSqlAuthClientId)"
-Write-Warn "Waiting 30s for runtime SQL auth app propagation..."
-Start-Sleep -Seconds 30
-
 # ---------------------------------------------------------------------------
 # Phase 5: SQL User Setup
 # ---------------------------------------------------------------------------
 
-Write-Step "Phase 5: Creating SQL user for runtime app..."
+Write-Step "Phase 5: Creating SQL user for runtime UAMI..."
 
 # Add current public IP to SQL firewall (temporary)
 $MyIp = (Invoke-RestMethod -Uri 'https://api.ipify.org')
@@ -559,15 +536,15 @@ Write-Success "Added temporary firewall rule for $MyIp"
 
 try {
     $sqlScript = @"
-IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = '$RuntimeSqlAuthDisplayName')
+IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = '$RuntimeUamiName')
 BEGIN
-    CREATE USER [$RuntimeSqlAuthDisplayName] FROM EXTERNAL PROVIDER;
+    CREATE USER [$RuntimeUamiName] FROM EXTERNAL PROVIDER;
 END
-IF IS_ROLEMEMBER('db_datareader', '$RuntimeSqlAuthDisplayName') = 0
-    ALTER ROLE db_datareader ADD MEMBER [$RuntimeSqlAuthDisplayName];
-IF IS_ROLEMEMBER('db_datawriter', '$RuntimeSqlAuthDisplayName') = 0
-    ALTER ROLE db_datawriter ADD MEMBER [$RuntimeSqlAuthDisplayName];
-GRANT EXECUTE TO [$RuntimeSqlAuthDisplayName];
+IF IS_ROLEMEMBER('db_datareader', '$RuntimeUamiName') = 0
+    ALTER ROLE db_datareader ADD MEMBER [$RuntimeUamiName];
+IF IS_ROLEMEMBER('db_datawriter', '$RuntimeUamiName') = 0
+    ALTER ROLE db_datawriter ADD MEMBER [$RuntimeUamiName];
+GRANT EXECUTE TO [$RuntimeUamiName];
 "@
 
     if ($hasSqlcmd) {
@@ -600,7 +577,7 @@ GRANT EXECUTE TO [$RuntimeSqlAuthDisplayName];
         Remove-Item $tmpSql -ErrorAction SilentlyContinue
 
         if ($sqlcmdExitCode -eq 0) {
-            Write-Success "SQL user '$RuntimeSqlAuthDisplayName' created/verified via sqlcmd"
+            Write-Success "SQL user '$RuntimeUamiName' created/verified via sqlcmd"
         } else {
             Write-Warn "sqlcmd could not authenticate. Create the SQL user manually in the Azure Portal:"
             Write-Host "    URL: https://portal.azure.com" -ForegroundColor Yellow
@@ -697,16 +674,12 @@ az webapp config connection-string set `
     --connection-string-type SQLAzure | Out-Null
 Write-Success "Connection string set"
 
-# Runtime auth + telemetry settings
+# Application Insights connection string (UAMI for SQL auth is configured via Bicep)
 az webapp config appsettings set `
     --name $AppServiceName `
     --resource-group $ResourceGroup `
-    --settings `
-        ApplicationInsights__ConnectionString="$AppInsightsConnStr" `
-        AZURE_TENANT_ID="$TenantId" `
-        AZURE_CLIENT_ID="$RuntimeSqlAuthClientId" `
-        AZURE_CLIENT_SECRET="$RuntimeSqlAuthClientSecret" | Out-Null
-Write-Success "Runtime auth and telemetry app settings set"
+    --settings ApplicationInsights__ConnectionString="$AppInsightsConnStr" | Out-Null
+Write-Success "Application Insights connection string set"
 
 
 # CORS -- allow the SWA frontend
@@ -745,10 +718,7 @@ APP_SERVICE_HOSTNAME=$AppServiceHostname
 SWA_NAME=$SwaName
 SWA_HOSTNAME=$SwaHostname
 DEPLOYER_UAMI_NAME=$DeployerUamiName
-SQL_RUNTIME_AUTH_APP_DISPLAY_NAME=$RuntimeSqlAuthDisplayName
-SQL_RUNTIME_AUTH_APP_ID=$RuntimeSqlAuthClientId
-SQL_RUNTIME_AUTH_APP_OBJECT_ID=$RuntimeSqlAuthAppObjectId
-SQL_RUNTIME_AUTH_SERVICE_PRINCIPAL_OBJECT_ID=$RuntimeSqlAuthServicePrincipalObjectId
+RUNTIME_UAMI_NAME=$RuntimeUamiName
 APP_INSIGHTS_NAME=$AppInsightsName
 "@ | Set-Content -Path $EnvFileOut -Encoding UTF8
 Write-Success "Config saved to scripts/.env.$Environment"
