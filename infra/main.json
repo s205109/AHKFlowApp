@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.42.1.51946",
-      "templateHash": "16455477583899307217"
+      "templateHash": "8020108042133309666"
     }
   },
   "parameters": {
@@ -55,6 +55,13 @@
       "type": "string",
       "metadata": {
         "description": "Entra ID client ID for API token validation. See scripts/setup-entra-app.ps1."
+      }
+    },
+    "useFreeTier": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Use Azure free-tier resources (App Service F1, Azure SQL free offer). Slower to provision; has cold-start and CPU limits."
       }
     }
   },
@@ -200,6 +207,9 @@
           },
           "sqlAdminGroupName": {
             "value": "[parameters('sqlAdminGroupName')]"
+          },
+          "useFreeTier": {
+            "value": "[parameters('useFreeTier')]"
           }
         },
         "template": {
@@ -209,7 +219,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "1712775825272106853"
+              "templateHash": "11884027375156540417"
             }
           },
           "parameters": {
@@ -253,6 +263,13 @@
               "metadata": {
                 "description": "Display name of the Entra security group that will be the SQL admin."
               }
+            },
+            "useFreeTier": {
+              "type": "bool",
+              "defaultValue": true,
+              "metadata": {
+                "description": "Use Azure SQL free offer (serverless GP_S_Gen5_1). When false, provisions Basic tier."
+              }
             }
           },
           "variables": {
@@ -281,17 +298,13 @@
               "apiVersion": "2023-08-01-preview",
               "name": "[format('{0}/{1}', variables('serverName'), variables('databaseName'))]",
               "location": "[parameters('location')]",
-              "sku": {
-                "name": "GP_S_Gen5_1",
-                "tier": "GeneralPurpose",
-                "family": "Gen5"
-              },
+              "sku": "[if(parameters('useFreeTier'), createObject('name', 'GP_S_Gen5_1', 'tier', 'GeneralPurpose', 'family', 'Gen5'), createObject('name', 'Basic', 'tier', 'Basic'))]",
               "properties": {
                 "collation": "SQL_Latin1_General_CP1_CI_AS",
-                "useFreeLimit": true,
-                "autoPauseDelay": 60,
-                "minCapacity": "[json('0.5')]",
-                "maxSizeBytes": 34359738368,
+                "useFreeLimit": "[if(parameters('useFreeTier'), true(), null())]",
+                "autoPauseDelay": "[if(parameters('useFreeTier'), 60, null())]",
+                "minCapacity": "[if(parameters('useFreeTier'), json('0.5'), null())]",
+                "maxSizeBytes": "[if(parameters('useFreeTier'), json('34359738368'), null())]",
                 "requestedBackupStorageRedundancy": "Local"
               },
               "dependsOn": [
@@ -451,6 +464,9 @@
           },
           "azureAdClientId": {
             "value": "[parameters('azureAdClientId')]"
+          },
+          "useFreeTier": {
+            "value": "[parameters('useFreeTier')]"
           }
         },
         "template": {
@@ -460,7 +476,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.42.1.51946",
-              "templateHash": "12432736881956829736"
+              "templateHash": "6554317392053156947"
             }
           },
           "parameters": {
@@ -535,6 +551,13 @@
               "metadata": {
                 "description": "Entra ID client ID (app registration) for token validation."
               }
+            },
+            "useFreeTier": {
+              "type": "bool",
+              "defaultValue": true,
+              "metadata": {
+                "description": "Use free-tier App Service plan (F1). When false, provisions Basic B1 with Always On."
+              }
             }
           },
           "variables": {
@@ -549,8 +572,8 @@
               "location": "[parameters('location')]",
               "kind": "linux",
               "sku": {
-                "name": "F1",
-                "tier": "Free"
+                "name": "[if(parameters('useFreeTier'), 'F1', 'B1')]",
+                "tier": "[if(parameters('useFreeTier'), 'Free', 'Basic')]"
               },
               "properties": {
                 "reserved": true
@@ -573,6 +596,7 @@
                 "httpsOnly": true,
                 "siteConfig": {
                   "linuxFxVersion": "DOTNETCORE|10.0",
+                  "alwaysOn": "[if(parameters('useFreeTier'), false(), true())]",
                   "appSettings": [
                     {
                       "name": "ASPNETCORE_ENVIRONMENT",
