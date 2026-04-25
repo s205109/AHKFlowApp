@@ -41,6 +41,13 @@
                     <td><strong>Timestamp</strong></td>
                     <td>@_healthCheck.Timestamp.ToString("yyyy-MM-dd HH:mm:ss") UTC</td>
                 </tr>
+                @if (_healthCheck.Tier is not null)
+                {
+                    <tr>
+                        <td><strong>Tier</strong></td>
+                        <td>@TierDescription(_healthCheck.Tier)</td>
+                    </tr>
+                }
             </tbody>
         </MudSimpleTable>
 
@@ -135,6 +142,13 @@
     }
 
     private async Task RefreshHealthAsync() => await LoadHealthAsync();
+
+    private static string TierDescription(string tier) => tier switch
+    {
+        "free"  => "Free (App Service F1 + SQL serverless)",
+        "basic" => "Basic (App Service B1 + SQL Basic)",
+        _       => tier
+    };
 
     public void Dispose()
     {
