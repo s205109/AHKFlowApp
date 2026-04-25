@@ -1,4 +1,5 @@
-﻿<#
+﻿#Requires -Version 5.1
+<#
 .SYNOPSIS
     Provisions an AHKFlowApp Azure environment and configures CI/CD.
 
@@ -11,9 +12,17 @@
 .PARAMETER Environment
     Target environment: 'test' or 'prod'. Prompts interactively if not provided.
 
+.PARAMETER MaxWaitMinutes
+    Maximum minutes to wait for async Azure operations. Default: 45.
+
+.PARAMETER SkipPrereqCheck
+    Skip Phase 1 prerequisite checks. Use when your environment is correct
+    and you want to skip checks on re-runs.
+
 .EXAMPLE
     .\deploy.ps1
     .\deploy.ps1 -Environment test
+    .\deploy.ps1 -Environment test -SkipPrereqCheck
 #>
 [CmdletBinding()]
 param(
@@ -21,7 +30,9 @@ param(
     [string]$Environment,
 
     [ValidateRange(1, 240)]
-    [int]$MaxWaitMinutes = 45
+    [int]$MaxWaitMinutes = 45,
+
+    [switch]$SkipPrereqCheck
 )
 
 Set-StrictMode -Version Latest
@@ -108,36 +119,89 @@ Write-Host "`n==========================================================" -Foreg
 Write-Host "  AHKFlowApp — Azure Provisioning Script" -ForegroundColor Cyan
 Write-Host "==========================================================" -ForegroundColor Cyan
 
-Write-Step "Phase 1: Checking prerequisites..."
-
-Confirm-Command 'az'       'https://learn.microsoft.com/cli/azure/install-azure-cli'
-Confirm-Command 'gh'       'https://cli.github.com/'
-Confirm-Command 'dotnet'   'https://dotnet.microsoft.com/download'
-
-# Verify az login
-try {
-    $account = Invoke-Az-Json account show
-    Write-Success "Logged into Azure as $($account.user.name) (subscription: $($account.name))"
-} catch {
-    Write-Fail "Not logged into Azure. Run: az login"
-    throw
-}
-
-# Verify gh auth
-$ghStatus = gh auth status 2>&1
-if ($LASTEXITCODE -ne 0) {
-    Write-Fail "GitHub CLI not authenticated. Run: gh auth login"
-    throw "GitHub CLI not authenticated"
-}
-Write-Success "GitHub CLI authenticated"
-
-# Verify sqlcmd (optional — we fall back to portal instructions)
-$hasSqlcmd = [bool](Get-Command 'sqlcmd' -ErrorAction SilentlyContinue)
-if ($hasSqlcmd) {
-    Write-Success "sqlcmd found (will use for SQL user creation)"
+if ($SkipPrereqCheck) {
+    Write-Host "`n  Skipping prerequisite checks (-SkipPrereqCheck)" -ForegroundColor Yellow
 } else {
-    Write-Warn "sqlcmd not found — SQL user creation step will print manual instructions"
-    Write-Warn "Install: https://learn.microsoft.com/sql/tools/sqlcmd/sqlcmd-utility"
+    Write-Step "Phase 1: Checking prerequisites..."
+
+    # PowerShell version
+    if (([version]$PSVersionTable.PSVersion) -lt [version]'5.1') {
+        Write-Fail "PowerShell 5.1 or later required (found $($PSVersionTable.PSVersion))."
+        Write-Host "    Install from: https://aka.ms/powershell" -ForegroundColor Yellow
+        throw "Insufficient PowerShell version"
+    }
+    Write-Success "PowerShell $($PSVersionTable.PSVersion)"
+
+    # .NET 10 SDK
+    if (-not (Get-Command 'dotnet' -ErrorAction SilentlyContinue)) {
+        Write-Fail ".NET 10 SDK not found."
+        Write-Host "    Install from: https://dotnet.microsoft.com/download" -ForegroundColor Yellow
+        throw "Missing prerequisite: dotnet"
+    }
+    $dotnetVersion = dotnet --version 2>&1
+    if ($LASTEXITCODE -ne 0 -or $dotnetVersion -notmatch '^10\.') {
+        Write-Fail ".NET 10 SDK required (found: $dotnetVersion)."
+        Write-Host "    Install from: https://dotnet.microsoft.com/download" -ForegroundColor Yellow
+        throw "Missing or incorrect .NET SDK version"
+    }
+    Write-Success ".NET SDK $dotnetVersion"
+
+    Confirm-Command 'az'  'https://learn.microsoft.com/cli/azure/install-azure-cli'
+    Confirm-Command 'gh'  'https://cli.github.com/'
+
+    # Bicep (installed as az extension)
+    $bicepOut = az bicep version 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        Write-Fail "Bicep CLI not found. Run: az bicep install"
+        throw "Missing prerequisite: Bicep"
+    }
+    Write-Success "Bicep: $($bicepOut -join ' ')"
+
+    # jq — optional, warn only
+    if (-not (Get-Command 'jq' -ErrorAction SilentlyContinue)) {
+        Write-Warn "jq not found — not required by this script, but useful for JSON debugging."
+        Write-Warn "Install: https://jqlang.github.io/jq/download/"
+    } else {
+        Write-Success "jq found"
+    }
+
+    # Verify az login
+    try {
+        $account = Invoke-Az-Json account show
+        Write-Success "Logged into Azure as $($account.user.name) (subscription: $($account.name))"
+    } catch {
+        Write-Fail "Not logged into Azure. Run: az login"
+        throw
+    }
+
+    # Verify gh auth
+    $ghStatus = gh auth status 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        Write-Fail "GitHub CLI not authenticated. Run: gh auth login"
+        throw "GitHub CLI not authenticated"
+    }
+    Write-Success "GitHub CLI authenticated"
+
+    # sqlcmd (optional)
+    $hasSqlcmd = [bool](Get-Command 'sqlcmd' -ErrorAction SilentlyContinue)
+    if ($hasSqlcmd) {
+        Write-Success "sqlcmd found (will use for SQL user creation)"
+    } else {
+        Write-Warn "sqlcmd not found — SQL user creation step will print manual instructions"
+        Write-Warn "Install: https://learn.microsoft.com/sql/tools/sqlcmd/sqlcmd-utility"
+    }
+}
+
+# When -SkipPrereqCheck is used, $account and $hasSqlcmd must still be populated
+# (they're used in Phase 2 and 5). Populate them here.
+if ($SkipPrereqCheck) {
+    try {
+        $account = Invoke-Az-Json account show
+    } catch {
+        Write-Fail "Not logged into Azure. Run: az login"
+        throw
+    }
+    $hasSqlcmd = [bool](Get-Command 'sqlcmd' -ErrorAction SilentlyContinue)
 }
 
 # ---------------------------------------------------------------------------
@@ -682,18 +746,29 @@ Write-Host "  Order: API deploy (build + migrate + deploy) -> health probe -> fr
 # Step 9a — Trigger deploy-api.yml
 Write-Host ""
 Write-Host "  Triggering deploy-api.yml for '$Environment'..."
+$deployApiTriggeredAtUtc = (Get-Date).ToUniversalTime()
 gh workflow run deploy-api.yml --field environment=$Environment --repo $GitHubOrgRepo
 if ($LASTEXITCODE -ne 0) { throw "Failed to trigger deploy-api.yml" }
 Write-Success "deploy-api.yml triggered"
 
-# Wait for GitHub to register the run (race window: gh run list may return the previous run)
-Write-Host "  Waiting 15s for the run to register in GitHub..."
-Start-Sleep -Seconds 15
-
-# Resolve run ID
-$runListJson = gh run list --workflow deploy-api.yml --repo $GitHubOrgRepo --limit 1 --json databaseId 2>&1
-$runId = ($runListJson | ConvertFrom-Json)[0].databaseId
-if (-not $runId) { throw "Could not resolve run ID for deploy-api.yml. Check: gh run list --workflow deploy-api.yml --repo $GitHubOrgRepo" }
+# Resolve run ID — poll until GitHub registers the dispatch (up to 60s)
+Write-Host "  Resolving the newly triggered workflow run in GitHub..."
+$runId = $null
+for ($attempt = 1; $attempt -le 12 -and -not $runId; $attempt++) {
+    if ($attempt -gt 1) { Start-Sleep -Seconds 5 }
+    $runListJson = gh run list --workflow deploy-api.yml --repo $GitHubOrgRepo --limit 20 --json databaseId,createdAt,event
+    if ($LASTEXITCODE -ne 0) { throw "Failed to list runs for deploy-api.yml. Check: gh run list --workflow deploy-api.yml --repo $GitHubOrgRepo" }
+    $matchingRun = $runListJson |
+        ConvertFrom-Json |
+        Where-Object {
+            $_.event -eq 'workflow_dispatch' -and
+            ([DateTimeOffset]::Parse($_.createdAt).UtcDateTime -ge $deployApiTriggeredAtUtc)
+        } |
+        Sort-Object { [DateTimeOffset]::Parse($_.createdAt).UtcDateTime } -Descending |
+        Select-Object -First 1
+    if ($matchingRun) { $runId = $matchingRun.databaseId }
+}
+if (-not $runId) { throw "Could not resolve run ID for deploy-api.yml created after $($deployApiTriggeredAtUtc.ToString('o')). Check: gh run list --workflow deploy-api.yml --repo $GitHubOrgRepo --json databaseId,createdAt,event" }
 Write-Host "  Watching run #$runId — this typically takes 8-15 minutes..."
 
 gh run watch $runId --exit-status --repo $GitHubOrgRepo
@@ -730,8 +805,7 @@ for ($i = 0; $i -lt 18; $i++) {
 if (-not $healthOk) {
     Write-Warn "Health check at $healthUrl did not return 200 within 3 minutes."
     Write-Warn "The App Service may still be starting. Check manually before using the frontend."
-    Write-Warn "Once healthy, trigger the frontend manually:"
-    Write-Warn "  gh workflow run deploy-frontend.yml --field environment=$Environment --repo $GitHubOrgRepo"
+    Write-Warn "Once healthy, trigger the frontend manually: gh workflow run deploy-frontend.yml --field environment=$Environment --repo $GitHubOrgRepo"
     Write-Host ""
     Write-Host "==========================================================" -ForegroundColor Yellow
     Write-Host "  Provisioning complete — MANUAL STEP REQUIRED" -ForegroundColor Yellow
