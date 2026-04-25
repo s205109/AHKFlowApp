@@ -334,8 +334,51 @@ Invoke-Az deployment group create `
 # Poll deployment until done. Print each resource operation state change with
 # elapsed time so the user can see it's still making progress.
 $seenOps = @{}
+$seenNestedOps = @{}
 $state = 'Accepted'
 $ticks = 0
+$lastNestedCheckTick = -99
+
+function Get-OpDisplayFields([object]$op) {
+    $propsMember = $op.PSObject.Properties['properties']
+    if (-not $propsMember) { return $null }
+    $props = $propsMember.Value
+    $trMember = $props.PSObject.Properties['targetResource']
+    if (-not $trMember -or -not $trMember.Value) { return $null }
+    $tr = $trMember.Value
+    $rnMember = $tr.PSObject.Properties['resourceName']
+    if (-not $rnMember -or -not $rnMember.Value) { return $null }
+    $rtMember = $tr.PSObject.Properties['resourceType']
+    return [PSCustomObject]@{
+        ResType  = if ($rtMember) { $rtMember.Value } else { '' }
+        ResName  = $rnMember.Value
+        OpState  = $props.provisioningState
+    }
+}
+
+function Write-OpLine([string]$Prefix, [string]$Key, [string]$OpState, [string]$ElapsedStr) {
+    $color = switch ($OpState) {
+        'Succeeded' { 'Green' }
+        'Failed'    { 'Red' }
+        'Running'   { 'Yellow' }
+        default     { 'DarkGray' }
+    }
+    $symbol = switch ($OpState) {
+        'Succeeded' { '✓' }
+        'Failed'    { '✗' }
+        'Running'   { '…' }
+        default     { '·' }
+    }
+    $label = switch ($OpState) {
+        'Succeeded' { 'done' }
+        'Failed'    { 'failed' }
+        'Running'   { 'in progress' }
+        'Accepted'  { 'queued' }
+        default     { $OpState.ToLower() }
+    }
+    Write-Host "$Prefix$symbol [$ElapsedStr] $Key — $label" -ForegroundColor $color
+}
+
 while ($state -notin @('Succeeded', 'Failed', 'Canceled')) {
     Start-Sleep -Seconds 15
     $ticks++
@@ -359,51 +402,43 @@ Re-run deploy.ps1 once resolved (it is idempotent), optionally with -MaxWaitMinu
     }
     $state = $deployment.properties.provisioningState
 
+    # Top-level module operations
     $ops = Try-Az-Json deployment operation group list `
         --resource-group $ResourceGroup --name $DeploymentName
     $newActivity = $false
     if ($ops) {
         foreach ($op in $ops) {
-            # Some operations (validation, read, outputs) have no targetResource.
-            # StrictMode Latest turns missing-property access into a terminating
-            # error, so use PSObject.Properties to test before dereferencing.
-            $propsMember = $op.PSObject.Properties['properties']
-            if (-not $propsMember) { continue }
-            $props = $propsMember.Value
-            $trMember = $props.PSObject.Properties['targetResource']
-            if (-not $trMember -or -not $trMember.Value) { continue }
-            $tr = $trMember.Value
-            $rnMember = $tr.PSObject.Properties['resourceName']
-            if (-not $rnMember -or -not $rnMember.Value) { continue }
-            $resTarget = $rnMember.Value
-            $rtMember = $tr.PSObject.Properties['resourceType']
-            $resType = if ($rtMember) { $rtMember.Value } else { '' }
-            $opState = $props.provisioningState
-
-            $key = "$resType/$resTarget"
-            if ($seenOps[$key] -ne $opState) {
-                $seenOps[$key] = $opState
+            $fields = Get-OpDisplayFields $op
+            if (-not $fields) { continue }
+            $key = "$($fields.ResType)/$($fields.ResName)"
+            if ($seenOps[$key] -ne $fields.OpState) {
+                $seenOps[$key] = $fields.OpState
                 $newActivity = $true
-                $color = switch ($opState) {
-                    'Succeeded' { 'Green' }
-                    'Failed'    { 'Red' }
-                    'Running'   { 'Yellow' }
-                    default     { 'DarkGray' }
+                Write-OpLine '  ' $key $fields.OpState $elapsedStr
+            }
+        }
+    }
+
+    # Every ~60s: drill into sql and web nested deployments for resource-level detail
+    if (($ticks - $lastNestedCheckTick) -ge 4) {
+        $lastNestedCheckTick = $ticks
+        foreach ($module in @('sql', 'web')) {
+            $moduleKey = "Microsoft.Resources/deployments/$module"
+            if ($seenOps[$moduleKey] -notin @('Running', 'Succeeded', 'Failed')) { continue }
+
+            $nestedOps = Try-Az-Json deployment operation group list `
+                --resource-group $ResourceGroup --name $module
+            if (-not $nestedOps) { continue }
+
+            foreach ($op in $nestedOps) {
+                $fields = Get-OpDisplayFields $op
+                if (-not $fields) { continue }
+                $nestedKey = "$module/$($fields.ResType)/$($fields.ResName)"
+                if ($seenNestedOps[$nestedKey] -ne $fields.OpState) {
+                    $seenNestedOps[$nestedKey] = $fields.OpState
+                    $newActivity = $true
+                    Write-OpLine '      ' "$($fields.ResType)/$($fields.ResName)" $fields.OpState $elapsedStr
                 }
-                $symbol = switch ($opState) {
-                    'Succeeded' { '✓' }
-                    'Failed'    { '✗' }
-                    'Running'   { '…' }
-                    default     { '·' }
-                }
-                $label = switch ($opState) {
-                    'Succeeded' { 'done' }
-                    'Failed'    { 'failed' }
-                    'Running'   { 'in progress' }
-                    'Accepted'  { 'queued' }
-                    default     { $opState.ToLower() }
-                }
-                Write-Host "  $symbol [$elapsedStr] $key — $label" -ForegroundColor $color
             }
         }
     }
