@@ -234,7 +234,7 @@ if (-not $Tier) {
     Write-Host "    [1] free   — App Service F1 + Azure SQL free offer (serverless)" -ForegroundColor DarkGray
     Write-Host "                 No cost, but SQL provisioning takes 15-25 minutes and" -ForegroundColor DarkGray
     Write-Host "                 the app cold-starts on every request after idle periods." -ForegroundColor DarkGray
-    Write-Host "    [2] basic  — App Service B1 + Azure SQL Basic (~$15-25/month)" -ForegroundColor DarkGray
+    Write-Host "    [2] basic  — App Service B1 + Azure SQL Basic (~`$15-25/month)" -ForegroundColor DarkGray
     Write-Host "                 Always On, faster provisioning, no cold-start penalty." -ForegroundColor DarkGray
     Write-Host ""
     $tierInput = Read-Host "  Choose tier [1=free/2=basic] (default: 1)"
