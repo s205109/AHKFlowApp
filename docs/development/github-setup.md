@@ -149,8 +149,8 @@ See [`scripts/create-github-issues.ps1`](../../scripts/create-github-issues.ps1)
 
 ```powershell
 gh auth status          # Verify authenticated
-.\scripts\create-github-issues.ps1           # Dry run (default)
-.\scripts\create-github-issues.ps1 -Execute  # Create issues for real
+.\scripts\create-github-issues.ps1 -BacklogPath .claude\backlog           # Dry run (default)
+.\scripts\create-github-issues.ps1 -BacklogPath .claude\backlog -Execute  # Create issues for real
 ```
 
 ### Add Issues to Project
