@@ -11,6 +11,12 @@ param location string = resourceGroup().location
 @description('Short deterministic suffix appended to globally-unique names to avoid collisions.')
 param resourceToken string
 
+@description('Resource ID of the runtime UAMI to assign to the App Service.')
+param runtimeUamiId string
+
+@description('Client ID of the runtime UAMI (used by DefaultAzureCredential).')
+param runtimeUamiClientId string
+
 @description('ASPNETCORE_ENVIRONMENT value for the App Service.')
 param aspnetcoreEnvironment string
 
@@ -46,6 +52,12 @@ resource appService 'Microsoft.Web/sites@2023-12-01' = {
   name: appName
   location: location
   kind: 'app,linux'
+  identity: {
+    type: 'UserAssigned'
+    userAssignedIdentities: {
+      '${runtimeUamiId}': {}
+    }
+  }
   properties: {
     serverFarmId: appServicePlan.id
     httpsOnly: true
@@ -55,6 +67,10 @@ resource appService 'Microsoft.Web/sites@2023-12-01' = {
         {
           name: 'ASPNETCORE_ENVIRONMENT'
           value: aspnetcoreEnvironment
+        }
+        {
+          name: 'AZURE_CLIENT_ID'
+          value: runtimeUamiClientId
         }
         {
           name: 'Cors__AllowedOrigins__0'

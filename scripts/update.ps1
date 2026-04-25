@@ -101,21 +101,23 @@ try {
     $HealthUrl = "https://${AppHostname}/health"
     Write-Host "  Health-checking: $HealthUrl"
     $attempts = 20
+    $healthOk = $false
     for ($i = 1; $i -le $attempts; $i++) {
         try {
-            $response = Invoke-RestMethod -Uri $HealthUrl -TimeoutSec 10
+            $null = Invoke-RestMethod -Uri $HealthUrl -TimeoutSec 10
             Write-Success "Health check passed"
+            $healthOk = $true
             break
         } catch {
-            if ($i -eq $attempts) {
-                Write-Fail "Health check failed after $attempts attempts."
-                Write-Host "  App Service Free can cold-start slowly. Check logs: az webapp log tail --name $AppServiceName --resource-group $ResourceGroup" -ForegroundColor Yellow
-                exit 1
-            }
-
             Write-Host "  Attempt $i/$attempts failed, retrying in 15s..."
             Start-Sleep -Seconds 15
         }
+    }
+
+    if (-not $healthOk) {
+        Write-Fail "Health check failed after $attempts attempts."
+        Write-Host "  App Service Free can cold-start slowly. Check logs: az webapp log tail --name $AppServiceName --resource-group $ResourceGroup" -ForegroundColor Yellow
+        exit 1
     }
 
     Write-Host ""
