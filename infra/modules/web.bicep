@@ -11,12 +11,6 @@ param location string = resourceGroup().location
 @description('Short deterministic suffix appended to globally-unique names to avoid collisions.')
 param resourceToken string
 
-@description('Resource ID of the runtime UAMI to assign to the App Service.')
-param runtimeUamiId string
-
-@description('Client ID of the runtime UAMI (used by DefaultAzureCredential).')
-param runtimeUamiClientId string
-
 @description('ASPNETCORE_ENVIRONMENT value for the App Service.')
 param aspnetcoreEnvironment string
 
@@ -40,8 +34,8 @@ resource appServicePlan 'Microsoft.Web/serverfarms@2023-12-01' = {
   location: location
   kind: 'linux'
   sku: {
-    name: 'B1'
-    tier: 'Basic'
+    name: 'F1'
+    tier: 'Free'
   }
   properties: {
     reserved: true // Required for Linux
@@ -51,31 +45,13 @@ resource appServicePlan 'Microsoft.Web/serverfarms@2023-12-01' = {
 resource appService 'Microsoft.Web/sites@2023-12-01' = {
   name: appName
   location: location
-  identity: {
-    type: 'UserAssigned'
-    userAssignedIdentities: {
-      '${runtimeUamiId}': {}
-    }
-  }
+  kind: 'app,linux'
   properties: {
     serverFarmId: appServicePlan.id
     httpsOnly: true
     siteConfig: {
-      linuxFxVersion: 'DOCKER|nginx:latest' // Placeholder — deploy-api.yml sets the real image
-      alwaysOn: true
+      linuxFxVersion: 'DOTNETCORE|10.0'
       appSettings: [
-        {
-          name: 'DOCKER_REGISTRY_SERVER_URL'
-          value: 'https://ghcr.io'
-        }
-        {
-          name: 'WEBSITES_PORT'
-          value: '8080'
-        }
-        {
-          name: 'AZURE_CLIENT_ID'
-          value: runtimeUamiClientId
-        }
         {
           name: 'ASPNETCORE_ENVIRONMENT'
           value: aspnetcoreEnvironment

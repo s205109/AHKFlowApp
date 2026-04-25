@@ -19,31 +19,29 @@ The script will:
 1. Check that required tools are installed (Azure CLI, GitHub CLI)
 2. Prompt for your environment name (`test` or `prod`), Azure region, and GitHub repository
 3. Create an Azure resource group and provision all resources via Bicep
-4. Set up Entra ID (SQL access, OIDC for GitHub Actions)
-5. Create the SQL database user for the application
-6. Configure GitHub secrets and variables so CI/CD works automatically
+4. Set up Entra ID (GitHub OIDC, user auth app, runtime SQL auth app)
+5. Create the SQL database user for the hosted API runtime
+6. Configure GitHub secrets, variables, and App Service settings so CI/CD works automatically
 7. Save your configuration to `scripts/.env.{environment}` for future use
 
-When done, push to `main` — GitHub Actions will deploy the API container and Blazor frontend automatically.
-
-> **Auth app registration not included in `deploy.ps1`.** After provisioning, run the Entra app registration setup separately — see [Entra ID Setup](#entra-id-app-registration-setup) below.
+When done, push to `main` — GitHub Actions will publish and package-deploy the API code and deploy the Blazor frontend automatically.
 
 ## What Gets Provisioned
 
 | Resource | Name Pattern | Notes |
 |----------|-------------|-------|
 | Resource Group | `rg-ahkflowapp-{env}` | Contains all resources |
-| App Service Plan | `ahkflowapp-plan-{env}` | Linux B1 |
-| App Service | `ahkflowapp-api-{env}` | Container (GHCR) |
+| App Service Plan | `ahkflowapp-plan-{env}` | Linux Free F1 |
+| App Service | `ahkflowapp-api-{env}` | Built-in .NET 10 code/package deployment |
 | SQL Server | `ahkflowapp-sql-{env}` | Entra-only auth |
-| SQL Database | `ahkflowapp-db-{env}` | Basic tier |
+| SQL Database | `ahkflowapp-db-{env}` | Azure SQL free offer (`GP_S_Gen5_1`, serverless) |
 | Static Web App | `ahkflowapp-swa-{env}` | Free tier |
 | Deployer UAMI | `ahkflowapp-uami-deployer-{env}` | Used by GitHub Actions OIDC |
-| Runtime UAMI | `ahkflowapp-uami-runtime-{env}` | Used by App Service → SQL |
+| Runtime SQL auth app | `AHKFlowApp-SqlRuntime-{env}` | Entra app/service principal used by App Service env credentials |
 | Log Analytics Workspace | `ahkflowapp-loganalytics-{env}` | Backs Application Insights |
 | Application Insights | `ahkflowapp-appinsights-{env}` | Production telemetry & diagnostics |
 
-Estimated cost for the `test` environment: **~$15–25/month** (B1 App Service Plan + Basic SQL DB).
+App Service Free plus a single Azure SQL free-offer database can fit the core backend hosting inside Azure free-tier limits. Application Insights and Log Analytics may still add cost if you leave monitoring enabled.
 
 ## Required Tools
 
@@ -100,14 +98,14 @@ If you need to re-provision from GitHub Actions (e.g., after a Bicep change):
 
 ## Entra ID App Registration Setup
 
-The `deploy.ps1` script provisions infrastructure but does **not** create the Entra ID app registration used for user authentication. Run this once per environment after provisioning:
+The `deploy.ps1` script already creates or updates the Entra ID app registration used for user authentication and the separate runtime SQL auth application. Run `setup-entra-app.ps1` manually only if you need to repair the interactive user auth app outside the full provisioning flow:
 
 ```powershell
 .\scripts\setup-entra-app.ps1 -Environment test
 .\scripts\setup-entra-app.ps1 -Environment prod
 ```
 
-The script outputs the `ClientId`, `TenantId`, and `DefaultScope` values. Set them as GitHub Variables so the deploy workflows can inject them:
+The script outputs the `ClientId`, `TenantId`, and `DefaultScope` values. If you are not using `deploy.ps1`, set them as GitHub Variables so the deploy workflows can inject them:
 
 ```bash
 gh variable set AZURE_AD_TENANT_ID_TEST --body "<TenantId>"
@@ -120,14 +118,13 @@ For local development, use user-secrets instead — see [entra-setup.md](entra-s
 
 ## Troubleshooting
 
-**Container image not pulling:**  
-GHCR packages are private by default. After the first CI push, make the package public at `https://github.com/orgs/{your-org}/packages`.
-
 **Health check fails:**  
 Check App Service logs:
 ```powershell
 az webapp log tail --name ahkflowapp-api-test --resource-group rg-ahkflowapp-test
 ```
 
+App Service Free does not support Always On, so a cold deployment can take longer to become healthy than the old paid/container setup.
+
 **SQL connection refused:**  
-Ensure the Entra group and runtime UAMI were created correctly. Re-run `deploy.ps1` — it is idempotent.
+Ensure the Entra group and runtime SQL auth app were created correctly, and verify the App Service settings `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`, and `AZURE_CLIENT_SECRET`. Re-run `deploy.ps1` — it is idempotent.
