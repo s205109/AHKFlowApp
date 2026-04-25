@@ -668,24 +668,96 @@ APP_INSIGHTS_NAME=$AppInsightsName
 "@ | Set-Content -Path $EnvFileOut -Encoding UTF8
 Write-Success "Config saved to scripts/.env.$Environment"
 
+Write-Host "  To update later    : .\update.ps1 -Environment $Environment"
+Write-Host "  To tear down later : .\teardown.ps1 -Environment $Environment"
+Write-Host ""
+
+# ---------------------------------------------------------------------------
+# Phase 9: Trigger initial deployment sequence
+# ---------------------------------------------------------------------------
+
+Write-Step "Phase 9: Triggering initial deployment sequence..."
+Write-Host "  Order: API deploy (build + migrate + deploy) -> health probe -> frontend deploy" -ForegroundColor DarkGray
+
+# Step 9a — Trigger deploy-api.yml
+Write-Host ""
+Write-Host "  Triggering deploy-api.yml for '$Environment'..."
+gh workflow run deploy-api.yml --field environment=$Environment --repo $GitHubOrgRepo
+if ($LASTEXITCODE -ne 0) { throw "Failed to trigger deploy-api.yml" }
+Write-Success "deploy-api.yml triggered"
+
+# Wait for GitHub to register the run (race window: gh run list may return the previous run)
+Write-Host "  Waiting 15s for the run to register in GitHub..."
+Start-Sleep -Seconds 15
+
+# Resolve run ID
+$runListJson = gh run list --workflow deploy-api.yml --repo $GitHubOrgRepo --limit 1 --json databaseId 2>&1
+$runId = ($runListJson | ConvertFrom-Json)[0].databaseId
+if (-not $runId) { throw "Could not resolve run ID for deploy-api.yml. Check: gh run list --workflow deploy-api.yml --repo $GitHubOrgRepo" }
+Write-Host "  Watching run #$runId — this typically takes 8-15 minutes..."
+
+gh run watch $runId --exit-status --repo $GitHubOrgRepo
+if ($LASTEXITCODE -ne 0) { throw "deploy-api.yml run #$runId failed. Check: gh run view $runId --repo $GitHubOrgRepo" }
+Write-Success "API deployment complete (run #$runId)"
+
+Write-Host ""
+Write-Host "  IMPORTANT: GHCR packages are private by default." -ForegroundColor Yellow
+Write-Host "  If the run above failed on the push step, make the package public and re-run:" -ForegroundColor Yellow
+Write-Host "  https://github.com/$($GitHubOrgRepo.Split('/')[0])?tab=packages" -ForegroundColor Yellow
+Write-Host "  Find 'ahkflowapp-api' -> Package settings -> Change visibility -> Public" -ForegroundColor Yellow
+Write-Host ""
+
+# Step 9b — Poll health endpoint
+$healthUrl = "https://$AppServiceHostname/health"
+Write-Host "  Polling health endpoint: $healthUrl (up to 3 minutes)..."
+$healthOk = $false
+for ($i = 0; $i -lt 18; $i++) {
+    try {
+        $prevEap = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        $resp = Invoke-WebRequest -Uri $healthUrl -UseBasicParsing -TimeoutSec 10 -ErrorAction SilentlyContinue
+        $ErrorActionPreference = $prevEap
+        if ($resp -and $resp.StatusCode -eq 200) {
+            $healthOk = $true
+            break
+        }
+    } catch {
+        $ErrorActionPreference = $prevEap
+    }
+    Write-Host "  . [$($i * 10)s] not yet healthy..." -ForegroundColor DarkGray
+    Start-Sleep -Seconds 10
+}
+if (-not $healthOk) {
+    Write-Warn "Health check at $healthUrl did not return 200 within 3 minutes."
+    Write-Warn "The App Service may still be starting. Check manually before using the frontend."
+    Write-Warn "Once healthy, trigger the frontend manually:"
+    Write-Warn "  gh workflow run deploy-frontend.yml --field environment=$Environment --repo $GitHubOrgRepo"
+    Write-Host ""
+    Write-Host "==========================================================" -ForegroundColor Yellow
+    Write-Host "  Provisioning complete — MANUAL STEP REQUIRED" -ForegroundColor Yellow
+    Write-Host "  Trigger frontend deploy once API is healthy:" -ForegroundColor Yellow
+    Write-Host "  gh workflow run deploy-frontend.yml --field environment=$Environment --repo $GitHubOrgRepo" -ForegroundColor Yellow
+    Write-Host "==========================================================" -ForegroundColor Yellow
+    exit 0
+}
+Write-Success "API health check passed"
+
+# Step 9c — Trigger deploy-frontend.yml
+Write-Host ""
+Write-Host "  Triggering deploy-frontend.yml for '$Environment'..."
+gh workflow run deploy-frontend.yml --field environment=$Environment --repo $GitHubOrgRepo
+if ($LASTEXITCODE -ne 0) { throw "Failed to trigger deploy-frontend.yml" }
+Write-Success "deploy-frontend.yml triggered (running asynchronously)"
+Write-Host "    Monitor: gh run list --workflow deploy-frontend.yml --repo $GitHubOrgRepo" -ForegroundColor DarkGray
+
 Write-Host ""
 Write-Host "==========================================================" -ForegroundColor Green
-Write-Host "  AHKFlowApp ($Environment) -- Provisioning Complete!" -ForegroundColor Green
+Write-Host "  AHKFlowApp ($Environment) — Provisioning + Deploy DONE!" -ForegroundColor Green
 Write-Host "==========================================================" -ForegroundColor Green
 Write-Host ""
 Write-Host "  API health  : https://$AppServiceHostname/health"
 Write-Host "  Frontend    : https://$SwaHostname"
 Write-Host "  Resources   : $ResourceGroup"
-Write-Host ""
-Write-Host "  Next steps:" -ForegroundColor Cyan
-Write-Host "  1. Push to 'main' to trigger GitHub Actions deploy"
-Write-Host "  2. The first push will build and push the container image to GHCR."
-Write-Host ""
-Write-Host "  IMPORTANT: GHCR packages are private by default." -ForegroundColor Yellow
-Write-Host "  After the first deploy-api.yml run, make the container image public:"
-Write-Host "  https://github.com/$($GitHubOrgRepo.Split('/')[0])?tab=packages"
-Write-Host "  Find 'ahkflowapp-api' -> Package settings -> Change visibility -> Public"
-Write-Host "  Then re-run the failed deploy job."
 Write-Host ""
 Write-Host "  To update later    : .\update.ps1 -Environment $Environment"
 Write-Host "  To tear down later : .\teardown.ps1 -Environment $Environment"
