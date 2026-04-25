@@ -125,7 +125,7 @@ if ($SkipPrereqCheck) {
     Write-Step "Phase 1: Checking prerequisites..."
 
     # PowerShell version
-    if ($PSVersionTable.PSVersion.Major -lt 5) {
+    if (([version]$PSVersionTable.PSVersion) -lt [version]'5.1') {
         Write-Fail "PowerShell 5.1 or later required (found $($PSVersionTable.PSVersion))."
         Write-Host "    Install from: https://aka.ms/powershell" -ForegroundColor Yellow
         throw "Insufficient PowerShell version"
@@ -133,6 +133,11 @@ if ($SkipPrereqCheck) {
     Write-Success "PowerShell $($PSVersionTable.PSVersion)"
 
     # .NET 10 SDK
+    if (-not (Get-Command 'dotnet' -ErrorAction SilentlyContinue)) {
+        Write-Fail ".NET 10 SDK not found."
+        Write-Host "    Install from: https://dotnet.microsoft.com/download" -ForegroundColor Yellow
+        throw "Missing prerequisite: dotnet"
+    }
     $dotnetVersion = dotnet --version 2>&1
     if ($LASTEXITCODE -ne 0 -or $dotnetVersion -notmatch '^10\.') {
         Write-Fail ".NET 10 SDK required (found: $dotnetVersion)."
@@ -190,7 +195,12 @@ if ($SkipPrereqCheck) {
 # When -SkipPrereqCheck is used, $account and $hasSqlcmd must still be populated
 # (they're used in Phase 2 and 5). Populate them here.
 if ($SkipPrereqCheck) {
-    $account = Invoke-Az-Json account show
+    try {
+        $account = Invoke-Az-Json account show
+    } catch {
+        Write-Fail "Not logged into Azure. Run: az login"
+        throw
+    }
     $hasSqlcmd = [bool](Get-Command 'sqlcmd' -ErrorAction SilentlyContinue)
 }
 
@@ -736,18 +746,29 @@ Write-Host "  Order: API deploy (build + migrate + deploy) -> health probe -> fr
 # Step 9a — Trigger deploy-api.yml
 Write-Host ""
 Write-Host "  Triggering deploy-api.yml for '$Environment'..."
+$deployApiTriggeredAtUtc = (Get-Date).ToUniversalTime()
 gh workflow run deploy-api.yml --field environment=$Environment --repo $GitHubOrgRepo
 if ($LASTEXITCODE -ne 0) { throw "Failed to trigger deploy-api.yml" }
 Write-Success "deploy-api.yml triggered"
 
-# Wait for GitHub to register the run (race window: gh run list may return the previous run)
-Write-Host "  Waiting 15s for the run to register in GitHub..."
-Start-Sleep -Seconds 15
-
-# Resolve run ID
-$runListJson = gh run list --workflow deploy-api.yml --repo $GitHubOrgRepo --limit 1 --json databaseId 2>&1
-$runId = ($runListJson | ConvertFrom-Json)[0].databaseId
-if (-not $runId) { throw "Could not resolve run ID for deploy-api.yml. Check: gh run list --workflow deploy-api.yml --repo $GitHubOrgRepo" }
+# Resolve run ID — poll until GitHub registers the dispatch (up to 60s)
+Write-Host "  Resolving the newly triggered workflow run in GitHub..."
+$runId = $null
+for ($attempt = 1; $attempt -le 12 -and -not $runId; $attempt++) {
+    if ($attempt -gt 1) { Start-Sleep -Seconds 5 }
+    $runListJson = gh run list --workflow deploy-api.yml --repo $GitHubOrgRepo --limit 20 --json databaseId,createdAt,event
+    if ($LASTEXITCODE -ne 0) { throw "Failed to list runs for deploy-api.yml. Check: gh run list --workflow deploy-api.yml --repo $GitHubOrgRepo" }
+    $matchingRun = $runListJson |
+        ConvertFrom-Json |
+        Where-Object {
+            $_.event -eq 'workflow_dispatch' -and
+            ([DateTimeOffset]::Parse($_.createdAt).UtcDateTime -ge $deployApiTriggeredAtUtc)
+        } |
+        Sort-Object { [DateTimeOffset]::Parse($_.createdAt).UtcDateTime } -Descending |
+        Select-Object -First 1
+    if ($matchingRun) { $runId = $matchingRun.databaseId }
+}
+if (-not $runId) { throw "Could not resolve run ID for deploy-api.yml created after $($deployApiTriggeredAtUtc.ToString('o')). Check: gh run list --workflow deploy-api.yml --repo $GitHubOrgRepo --json databaseId,createdAt,event" }
 Write-Host "  Watching run #$runId — this typically takes 8-15 minutes..."
 
 gh run watch $runId --exit-status --repo $GitHubOrgRepo
