@@ -1,6 +1,6 @@
 [
   {
-    "Name": "Full Stack: https + Docker SQL (Recommended)",
+    "Name": "Full Stack: Docker SQL (Recommended)",
     "Projects": [
       {
         "Path": "src\\Backend\\AHKFlowApp.API\\AHKFlowApp.API.csproj",
@@ -13,7 +13,7 @@
     ]
   },
   {
-    "Name": "Full Stack: https + LocalDB SQL",
+    "Name": "Full Stack: LocalDB SQL",
     "Projects": [
       {
         "Path": "src\\Backend\\AHKFlowApp.API\\AHKFlowApp.API.csproj",

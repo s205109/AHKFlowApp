@@ -56,7 +56,7 @@ try
         }
     });
 
-    // Start SQL Server in Docker if requested (for "https + Docker SQL" launch profile)
+    // Start SQL Server in Docker if requested (for "Docker SQL (Recommended)" launch profile)
     if (builder.Environment.IsDevelopment() &&
         string.Equals(Environment.GetEnvironmentVariable("AHKFLOW_START_DOCKER_SQL"), "true", StringComparison.OrdinalIgnoreCase))
     {
