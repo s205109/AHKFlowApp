@@ -8,6 +8,8 @@ COPY . .
 RUN dotnet restore src/Frontend/AHKFlowApp.UI.Blazor/AHKFlowApp.UI.Blazor.csproj
 RUN dotnet publish src/Frontend/AHKFlowApp.UI.Blazor/AHKFlowApp.UI.Blazor.csproj \
     -c Release -o /app/publish --no-restore
+# Blazor-Environment header doesn't apply to standalone WASM static files; bake local config directly
+RUN cp /app/publish/wwwroot/appsettings.Local.json /app/publish/wwwroot/appsettings.json
 
 FROM nginx:${NGINX} AS final
 COPY --from=build /app/publish/wwwroot /usr/share/nginx/html
