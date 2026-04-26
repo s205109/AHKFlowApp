@@ -6,7 +6,7 @@ What you need on a fresh checkout before running AHKFlowApp locally.
 
 - **[.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)** — all projects target `net10.0`.
 - **Git** — for cloning and the symlink-aware checkout below.
-- **Docker** — Docker Desktop (Windows / macOS) or Docker Engine (Linux). Used by the recommended `Docker SQL` launch profile and by the full `docker compose up` stack.
+- **Docker** — Docker Desktop (Windows / macOS) or Docker Engine (Linux). Used by the recommended `Docker SQL (Recommended)` launch profile and by the full `docker compose up` stack.
 
 ## Windows-specific
 

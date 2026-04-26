@@ -29,7 +29,7 @@ When done, push to `main` — GitHub Actions will publish and package-deploy the
 ## What Gets Provisioned
 
 App Service and SQL Server names include a short deterministic `<token>` suffix to avoid Azure
-global-name collisions; the exact names are emitted by Bicep and saved to `scripts/.env.{env}`.
+global-name collisions; the exact names are emitted by Bicep and saved to `scripts/.env.{environment}`.
 
 | Resource | Name Pattern | Notes |
 |----------|-------------|-------|
