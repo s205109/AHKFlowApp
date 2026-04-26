@@ -28,13 +28,16 @@ When done, push to `main` — GitHub Actions will publish and package-deploy the
 
 ## What Gets Provisioned
 
+App Service and SQL Server names include a short deterministic `<token>` suffix to avoid Azure
+global-name collisions; the exact names are emitted by Bicep and saved to `scripts/.env.{env}`.
+
 | Resource | Name Pattern | Notes |
 |----------|-------------|-------|
 | Resource Group | `rg-ahkflowapp-{env}` | Contains all resources |
 | App Service Plan | `ahkflowapp-plan-{env}` | Linux Free F1 |
-| App Service | `ahkflowapp-api-{env}` | Built-in .NET 10 code/package deployment |
-| SQL Server | `ahkflowapp-sql-{env}` | Entra-only auth |
-| SQL Database | `ahkflowapp-db-{env}` | Azure SQL free offer (`GP_S_Gen5_1`, serverless) |
+| App Service | `ahkflowapp-api-{env}-<token>` | Built-in .NET 10 code/package deployment |
+| SQL Server | `ahkflowapp-sql-{env}-<token>` | Entra-only auth |
+| SQL Database | `ahkflowapp-db` | Azure SQL free offer (`GP_S_Gen5_1`, serverless) |
 | Static Web App | `ahkflowapp-swa-{env}` | Free tier |
 | Deployer UAMI | `ahkflowapp-uami-deployer-{env}` | Used by GitHub Actions OIDC |
 | Runtime UAMI | `ahkflowapp-uami-runtime-{env}` | Assigned to App Service for SQL auth via Managed Identity |
@@ -121,7 +124,8 @@ For local development, use user-secrets instead — see [entra-setup.md](entra-s
 **Health check fails:**  
 Check App Service logs:
 ```powershell
-az webapp log tail --name ahkflowapp-api-test --resource-group rg-ahkflowapp-test
+az webapp log tail --name ahkflowapp-api-test-<token> --resource-group rg-ahkflowapp-test
+# (replace <token> with the value from scripts/.env.test)
 ```
 
 App Service Free does not support Always On, so a cold deployment can take longer to become healthy than the old paid/container setup.
