@@ -1,5 +1,7 @@
 # Docker Development Setup
 
+> Looking for the no-sign-in homelab path? See README's "Run locally without Azure" section — same `docker compose up`, with `Auth__UseTestProvider=true` already set in `docker-compose.yml`.
+
 ## Quick Start
 
 ```bash
@@ -72,7 +74,7 @@ docker compose up sqlserver -d --wait
 docker run -d \
   --name ahkflowapp-sqlserver-manual \
   -e "ACCEPT_EULA=Y" \
-  -e "SA_PASSWORD=AHKFlowApp_Dev!2026" \
+  -e "SA_PASSWORD=Dev!LocalOnly_2026" \
   -e "MSSQL_PID=Developer" \
   -p 1433:1433 \
   mcr.microsoft.com/mssql/server:2022-latest

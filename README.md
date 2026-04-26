@@ -4,8 +4,7 @@
 
 ### Prerequisites
 
-- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
-- SQL Server LocalDB (included with Visual Studio) or Docker
+.NET 10 SDK and Docker (or LocalDB). Full list — including Windows symlink setup — in [docs/development/prerequisites.md](docs/development/prerequisites.md).
 
 ### Running Locally
 
@@ -28,7 +27,7 @@ dotnet run --project src/Frontend/AHKFlowApp.UI.Blazor
 
 See `docs/development/docker-setup.md`.
 
-**Option 3 — Docker Compose without Azure (homelab / trusted-LAN):**
+**Option 3 — Run locally without Azure (homelab / trusted-LAN):**
 
 Runs the full stack — SQL Server, API, and Blazor frontend — with no Azure AD sign-in. Authentication is bypassed via a synthetic `Local User` identity on every request. nginx in the UI container reverse-proxies `/api/` to the API service, so the browser only ever talks to a single origin.
 
