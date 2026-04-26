@@ -858,8 +858,10 @@ $seenJobStates = @{}
 $runDone = $false
 while (-not $runDone) {
     Start-Sleep -Seconds 10
-    $runView = gh run view $runId --repo $GitHubOrgRepo --json status,conclusion,jobs 2>&1 | ConvertFrom-Json
-    if (-not $runView) { continue }
+    $runViewJson = gh run view $runId --repo $GitHubOrgRepo --json status,conclusion,jobs
+    if ($LASTEXITCODE -ne 0) { Write-Warning "gh run view failed (exit $LASTEXITCODE). Retrying..."; continue }
+    try { $runView = $runViewJson | ConvertFrom-Json -ErrorAction Stop }
+    catch { Write-Warning "Failed to parse gh run view output. Retrying..."; continue }
 
     foreach ($job in $runView.jobs) {
         $jobKey = $job.name
