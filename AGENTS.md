@@ -54,13 +54,15 @@ dotnet test tests/AHKFlowApp.API.Tests --configuration Release --verbosity norma
 dotnet test tests/AHKFlowApp.API.Tests --filter "FullyQualifiedName~HealthControllerTests"
 
 # Run API locally (recommended: Docker SQL on port 1433)
-dotnet run --project src/Backend/AHKFlowApp.API --launch-profile "https + Docker SQL (Recommended)"
+dotnet run --project src/Backend/AHKFlowApp.API --launch-profile "Docker SQL (Recommended)"
 
 # Run Blazor frontend (separate terminal)
 dotnet run --project src/Frontend/AHKFlowApp.UI.Blazor
 
-# Full stack via Docker Compose (SQL Server + API)
+# Full stack via Docker Compose (SQL Server + API + Blazor UI)
 docker compose up --build
+
+# Local-only stack, no Azure AD: see README "Run locally without Azure"
 
 # EF Core migrations
 dotnet ef migrations add <Name> --project src/Backend/AHKFlowApp.Infrastructure --startup-project src/Backend/AHKFlowApp.API

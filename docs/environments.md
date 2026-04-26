@@ -24,18 +24,21 @@ AHKFlowApp supports three distinct environments with environment-specific config
 
 **Option 1 — LocalDB:**
 ```bash
-dotnet run --project src/Backend/AHKFlowApp.API --launch-profile https
+dotnet run --project src/Backend/AHKFlowApp.API --launch-profile "LocalDB SQL"
 ```
 
 **Option 2 — Docker SQL (Recommended):**
 ```bash
-dotnet run --project src/Backend/AHKFlowApp.API --launch-profile "https + Docker SQL (Recommended)"
+dotnet run --project src/Backend/AHKFlowApp.API --launch-profile "Docker SQL (Recommended)"
 ```
 
 **Option 3 — Full Stack (Docker Compose):**
 ```bash
 docker compose up --build
 ```
+
+**Option 4 — Local-only / Homelab (no Azure AD):**
+Same `docker compose up --build` but with `Auth__UseTestProvider=true` (set in `docker-compose.yml`). Authenticates every request as a synthetic `Local User`. Trusted-LAN / single-user only. See README's "Run locally without Azure" section.
 
 ### URLs
 - API: `http://localhost:5600` (single port for VS, docker-compose, Docker-only scenarios)
@@ -176,10 +179,12 @@ src/Backend/AHKFlowApp.API/
 
 ```
 src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/
-  appsettings.json                 # Base config (committed)
-  appsettings.Development.json     # DEV overrides — localhost API (committed)
-  appsettings.Test.json            # TEST overrides — TEST Azure API URL (committed)
-  appsettings.Production.json      # PROD overrides — PROD Azure API URL (committed)
+  appsettings.json                     # Base config (committed)
+  appsettings.Development.json         # Optional local override (gitignored — copy from .example)
+  appsettings.Development.json.example # Template for local overrides (committed)
+  appsettings.Test.json                # TEST overrides — TEST Azure API URL (committed)
+  appsettings.Production.json          # PROD overrides — PROD Azure API URL (committed)
+  appsettings.Local.json               # Local-install / homelab override (committed; baked into image)
 ```
 
 **Load order:** `appsettings.json` → `appsettings.{BlazorEnvironment}.json`
@@ -267,9 +272,8 @@ Server=tcp:{SQL_SERVER_FQDN},1433;Database={SQL_DATABASE_NAME};Authentication=Ac
 
 ## Next Steps
 
-1. **Set up DEV:** Clone repo, run `dotnet run` or `docker compose up`
-2. **Provision TEST:** Run `scripts/azure/01-provision-azure.md` with `ENVIRONMENT=test`
-3. **Configure CI/CD for TEST:** Run `scripts/azure/02-configure-github-oidc.md` with `ENVIRONMENT=test`
-4. **Deploy to TEST:** Push to `main` or manually trigger workflow
-5. **Provision PROD:** Repeat steps 2-3 with `ENVIRONMENT=prod`
-6. **Deploy to PROD:** Manually trigger workflow with `environment=prod`
+1. **Set up DEV:** Clone repo, run `dotnet run` or `docker compose up`. See [docs/development/prerequisites.md](development/prerequisites.md).
+2. **Provision TEST:** `.\scripts\deploy.ps1 -Environment test` — see [docs/deployment/getting-started.md](deployment/getting-started.md).
+3. **Deploy to TEST:** Push to `main` or manually trigger workflow.
+4. **Provision PROD:** `.\scripts\deploy.ps1 -Environment prod`.
+5. **Deploy to PROD:** Manually trigger workflow with `environment=prod`.

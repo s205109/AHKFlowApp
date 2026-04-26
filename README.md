@@ -4,8 +4,7 @@
 
 ### Prerequisites
 
-- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
-- SQL Server LocalDB (included with Visual Studio) or Docker
+.NET 10 SDK and Docker (or LocalDB). Full list — including Windows symlink setup — in [docs/development/prerequisites.md](docs/development/prerequisites.md).
 
 ### Running Locally
 
