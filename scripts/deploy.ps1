@@ -852,8 +852,39 @@ for ($attempt = 1; $attempt -le 12 -and -not $runId; $attempt++) {
 if (-not $runId) { throw "Could not resolve run ID for deploy-api.yml. gh workflow run succeeded, but the follow-up lookup did not return a matching run. Check: gh run list --workflow deploy-api.yml --repo $GitHubOrgRepo --json databaseId,createdAt,event" }
 Write-Host "  Watching run #$runId — this typically takes 8-15 minutes..."
 
-gh run watch $runId --exit-status --repo $GitHubOrgRepo
-if ($LASTEXITCODE -ne 0) { throw "deploy-api.yml run #$runId failed. Check: gh run view $runId --repo $GitHubOrgRepo" }
+# Poll inline so output stays in the scrollback buffer (gh run watch uses an alternate screen)
+$runView = $null
+$seenJobStates = @{}
+$runDone = $false
+while (-not $runDone) {
+    Start-Sleep -Seconds 10
+    $runViewJson = gh run view $runId --repo $GitHubOrgRepo --json status,conclusion,jobs
+    if ($LASTEXITCODE -ne 0) { Write-Warning "gh run view failed (exit $LASTEXITCODE). Retrying..."; continue }
+    try { $runView = $runViewJson | ConvertFrom-Json -ErrorAction Stop }
+    catch { Write-Warning "Failed to parse gh run view output. Retrying..."; continue }
+
+    foreach ($job in $runView.jobs) {
+        $jobKey = $job.name
+        $currentState = "$($job.status)/$($job.conclusion)"
+        if ($seenJobStates[$jobKey] -ne $currentState) {
+            $seenJobStates[$jobKey] = $currentState
+            $label = if ($job.conclusion) { $job.conclusion } else { $job.status }
+            $color = switch ($job.conclusion) {
+                'success'  { 'Green'   }
+                'failure'  { 'Red'     }
+                'skipped'  { 'DarkGray' }
+                default    { 'Yellow'  }
+            }
+            Write-Host "  › $($job.name): $label" -ForegroundColor $color
+        }
+    }
+
+    $runDone = $runView.status -eq 'completed'
+}
+
+if ($runView.conclusion -ne 'success') {
+    throw "deploy-api.yml run #$runId $($runView.conclusion). Check: gh run view $runId --repo $GitHubOrgRepo"
+}
 Write-Success "API deployment complete (run #$runId)"
 
 # Step 9b — Poll health endpoint
