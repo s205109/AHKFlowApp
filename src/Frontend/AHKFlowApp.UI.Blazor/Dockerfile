@@ -5,17 +5,21 @@ ARG NGINX=1.27-alpine
 FROM mcr.microsoft.com/dotnet/sdk:${DOTNET_SDK} AS build
 WORKDIR /src
 COPY . .
+
+# Bake local config into appsettings.json BEFORE publish so PWA integrity hashes match
+# and service-worker-assets.js excludes the deleted env-specific files.
+RUN cp src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/appsettings.Local.json \
+       src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/appsettings.json && \
+    rm -f src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/appsettings.Production.json \
+          src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/appsettings.Test.json \
+          src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/appsettings.Development.json \
+          src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/appsettings.E2E.json \
+          src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/appsettings.Local.json \
+          src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/appsettings.Development.json.example
+
 RUN dotnet restore src/Frontend/AHKFlowApp.UI.Blazor/AHKFlowApp.UI.Blazor.csproj
 RUN dotnet publish src/Frontend/AHKFlowApp.UI.Blazor/AHKFlowApp.UI.Blazor.csproj \
     -c Release -o /app/publish --no-restore
-# Bake local config into appsettings.json and strip env-specific files so they cannot override
-RUN cp /app/publish/wwwroot/appsettings.Local.json /app/publish/wwwroot/appsettings.json && \
-    rm -f /app/publish/wwwroot/appsettings.Production.json \
-          /app/publish/wwwroot/appsettings.Test.json \
-          /app/publish/wwwroot/appsettings.Development.json \
-          /app/publish/wwwroot/appsettings.E2E.json \
-          /app/publish/wwwroot/appsettings.Local.json \
-          /app/publish/wwwroot/appsettings.Development.json.example
 
 FROM nginx:${NGINX} AS final
 COPY --from=build /app/publish/wwwroot /usr/share/nginx/html
