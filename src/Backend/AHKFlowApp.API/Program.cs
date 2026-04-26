@@ -9,6 +9,7 @@ using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Infrastructure;
 using AHKFlowApp.Infrastructure.Persistence;
 using Microsoft.ApplicationInsights.Extensibility;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
@@ -102,8 +103,23 @@ try
     string[] allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
     builder.Services.AddConfiguredCors(allowedOrigins, corsPolicyName);
 
-    builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-        .AddMicrosoftIdentityWebApi(builder.Configuration.GetSection("AzureAd"));
+    bool useTestAuth = builder.Configuration.GetValue<bool>("Auth:UseTestProvider");
+
+    if (useTestAuth)
+    {
+        builder.Services
+            .AddAuthentication(TestAuthenticationHandler.SchemeName)
+            .AddScheme<AuthenticationSchemeOptions, TestAuthenticationHandler>(
+                TestAuthenticationHandler.SchemeName, _ => { });
+        Log.Warning("Auth:UseTestProvider=true — synthetic auth active. Single-user / trusted-LAN only.");
+    }
+    else
+    {
+        builder.Services
+            .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+            .AddMicrosoftIdentityWebApi(builder.Configuration.GetSection("AzureAd"));
+    }
+
     builder.Services.AddAuthorization();
     builder.Services.AddHttpContextAccessor();
     builder.Services.AddScoped<ICurrentUser, HttpContextCurrentUser>();
