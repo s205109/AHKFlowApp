@@ -1,11 +1,28 @@
 @inject NavigationManager Navigation
+@inject IConfiguration Configuration
 
 <AuthorizeView>
     <Authorized>
         <MudText Typo="Typo.body2" Class="mr-2">@context.User.Identity!.Name</MudText>
-        <MudButton Variant="Variant.Text" Color="Color.Inherit" OnClick="@(() => Navigation.NavigateToLogout("authentication/logout"))">Log out</MudButton>
+        @if (_useTestAuth)
+        {
+            <MudTooltip Text="Sign-out is not available in local-install mode (no real authentication)">
+                <MudButton Variant="Variant.Text" Color="Color.Inherit" Disabled="true">Log out</MudButton>
+            </MudTooltip>
+        }
+        else
+        {
+            <MudButton Variant="Variant.Text" Color="Color.Inherit" OnClick="@(() => Navigation.NavigateToLogout("authentication/logout"))">Log out</MudButton>
+        }
     </Authorized>
     <NotAuthorized>
         <MudButton Variant="Variant.Text" Color="Color.Inherit" OnClick="@(() => Navigation.NavigateTo("authentication/login"))">Log in</MudButton>
     </NotAuthorized>
 </AuthorizeView>
+
+@code {
+    private bool _useTestAuth;
+
+    protected override void OnInitialized() =>
+        _useTestAuth = Configuration.GetValue<bool>("Auth:UseTestProvider");
+}
