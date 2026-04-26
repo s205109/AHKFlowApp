@@ -2,7 +2,6 @@ using System.Net;
 using AHKFlowApp.TestUtilities.Fixtures;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.Extensions.Configuration;
 using Xunit;
 
 namespace AHKFlowApp.API.Tests.Auth;

@@ -1,10 +1,10 @@
-namespace AHKFlowApp.API.Auth;
-
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+
+namespace AHKFlowApp.API.Auth;
 
 internal sealed class TestAuthenticationHandler(
     IOptionsMonitor<AuthenticationSchemeOptions> options,

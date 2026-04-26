@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to execute this plan task-by-task. Steps use `- [ ]` checkbox syntax for tracking.
 >
-> **On execution start:** copy this file to `docs/superpowers/plans/2026-04-26-plan-5-local-install-no-azure.md` and work from that path (this draft lives outside the repo because plan mode only permits one writable file).
+> **On execution start:** work from this checked-in file at `docs/superpowers/plans/2026-04-26-plan-5-local-install-no-azure.md` and update the checklist in place as you execute the plan.
 
 ## Context
 
