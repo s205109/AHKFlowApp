@@ -9,7 +9,7 @@
 
 Plans 1–5 of the simplification roadmap have shipped. Plan 5 (local-install via `Auth:UseTestProvider`) is the most recent — it added a docker-compose Blazor service, a synthetic-auth toggle, and an `appsettings.Local.json` bake-in for the Blazor image. Plan 4 (script overhaul) consolidated `/scripts/`. Several supporting docs still describe the pre-Plan-4/5 shape and contain commands that no longer work.
 
-This plan closes the loop: align the docs surface with what the code actually does. Pure docs work — no code or test changes. Goal is one PR, reviewable in well under 30 minutes.
+This plan closes the loop: align the docs surface with what the code actually does. Pure docs/consistency work — no functional code or test changes (cosmetic comment / display-label fixes in `Program.cs` and `AHKFlowApp.slnLaunch` are included to remove the same stale "https +" references). Goal is one PR, reviewable in well under 30 minutes.
 
 ## Sources of truth (cross-checked)
 
