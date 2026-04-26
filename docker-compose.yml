@@ -29,11 +29,25 @@ services:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_HTTP_PORTS=8080
       - ConnectionStrings__DefaultConnection=Server=sqlserver,1433;Database=AHKFlowAppDb;User Id=sa;Password=Dev!LocalOnly_2026;TrustServerCertificate=True;MultipleActiveResultSets=true
+      - Auth__UseTestProvider=true
     ports:
       - "5600:8080"
     depends_on:
       sqlserver:
         condition: service_healthy
+    networks:
+      - ahkflowapp-network
+
+  ahkflowapp-ui:
+    build:
+      context: .
+      dockerfile: src/Frontend/AHKFlowApp.UI.Blazor/Dockerfile
+    container_name: ahkflowapp-ui
+    ports:
+      - "5601:8080"
+    depends_on:
+      ahkflowapp-api:
+        condition: service_started
     networks:
       - ahkflowapp-network
 
