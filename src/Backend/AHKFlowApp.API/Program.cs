@@ -105,6 +105,12 @@ try
 
     bool useTestAuth = builder.Configuration.GetValue<bool>("Auth:UseTestProvider");
 
+    if (useTestAuth && !builder.Environment.IsDevelopment())
+    {
+        throw new InvalidOperationException(
+            "Auth:UseTestProvider=true is not permitted outside the Development environment.");
+    }
+
     if (useTestAuth)
     {
         builder.Services
