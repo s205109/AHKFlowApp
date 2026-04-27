@@ -9,6 +9,7 @@ public sealed class HealthResponseBuilder
     private string _environment = "Test";
     private DateTimeOffset _timestamp = DateTimeOffset.UtcNow;
     private readonly Dictionary<string, string> _checks = new() { ["database"] = "Healthy" };
+    private string? _tier;
 
     public HealthResponseBuilder WithStatus(string status)
     {
@@ -46,7 +47,13 @@ public sealed class HealthResponseBuilder
         return this;
     }
 
+    public HealthResponseBuilder WithTier(string? tier)
+    {
+        _tier = tier;
+        return this;
+    }
+
 #pragma warning disable IDE0028 // Simplify collection initialization
-    public HealthResponse Build() => new(_status, _version, _environment, _timestamp, new(_checks));
+    public HealthResponse Build() => new(_status, _version, _environment, _timestamp, new(_checks), _tier);
 #pragma warning restore IDE0028 // Simplify collection initialization
 }

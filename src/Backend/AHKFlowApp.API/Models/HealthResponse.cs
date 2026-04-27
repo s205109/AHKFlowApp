@@ -5,4 +5,5 @@ public sealed record HealthResponse(
     string Version,
     string Environment,
     DateTimeOffset Timestamp,
-    Dictionary<string, string> Checks);
+    Dictionary<string, string> Checks,
+    string? Tier = null);
