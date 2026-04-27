@@ -109,4 +109,40 @@ public sealed class HealthPageTests : BunitContext
         cut.Markup.Should().Contain("database");
         cut.Markup.Should().Contain("Login failed for user");
     }
+
+    [Fact]
+    public void Health_WhenTierIsNull_DoesNotRenderTierRow()
+    {
+        // Arrange
+        var response = new HealthResponse("Healthy", "1.0.0", "Test", DateTimeOffset.UtcNow, [], Tier: null);
+        _apiClient.GetHealthAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<HealthResponse?>(response));
+
+        // Act
+        IRenderedComponent<Health> cut = Render<Health>();
+        cut.WaitForState(() => !cut.Find(".mud-paper").TextContent.Contains("Checking"));
+
+        // Assert
+        cut.Markup.Should().NotContain("Tier");
+    }
+
+    [Theory]
+    [InlineData("free", "Free (App Service F1 + SQL serverless)")]
+    [InlineData("basic", "Basic (App Service B1 + SQL Basic)")]
+    [InlineData("premium", "premium")]
+    public void Health_WhenTierIsSet_RendersTierLabel(string tier, string expectedLabel)
+    {
+        // Arrange
+        var response = new HealthResponse("Healthy", "1.0.0", "Test", DateTimeOffset.UtcNow, [], Tier: tier);
+        _apiClient.GetHealthAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<HealthResponse?>(response));
+
+        // Act
+        IRenderedComponent<Health> cut = Render<Health>();
+        cut.WaitForState(() => !cut.Find(".mud-paper").TextContent.Contains("Checking"));
+
+        // Assert
+        cut.Markup.Should().Contain("Tier");
+        cut.Markup.Should().Contain(expectedLabel);
+    }
 }
