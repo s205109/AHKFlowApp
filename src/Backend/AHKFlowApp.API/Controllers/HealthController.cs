@@ -14,6 +14,7 @@ public sealed class HealthController(
     IHostEnvironment hostEnvironment,
     TimeProvider timeProvider,
     IVersionService versionService,
+    IConfiguration configuration,
     ILogger<HealthController> logger) : ControllerBase
 {
     [HttpGet]
@@ -45,7 +46,8 @@ public sealed class HealthController(
             Version: version,
             Environment: hostEnvironment.EnvironmentName,
             Timestamp: timeProvider.GetUtcNow(),
-            Checks: checks);
+            Checks: checks,
+            Tier: configuration["RESOURCE_TIER"]);
 
         // Healthy and Degraded both return 200 — the API is functional in both cases.
         // Only Unhealthy (critical dependency down) returns 503.
