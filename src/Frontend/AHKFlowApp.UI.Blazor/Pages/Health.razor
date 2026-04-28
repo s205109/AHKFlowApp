@@ -14,7 +14,17 @@
     @if (_loading)
     {
         <MudProgressCircular Color="Color.Primary" Indeterminate="true" Size="Size.Small" />
-        <MudText Typo="Typo.body2" Class="mt-2">Checking system health...</MudText>
+        @if (_retryAttempt > 0)
+        {
+            <MudAlert Severity="Severity.Warning" Class="mt-3">
+                <MudText Typo="Typo.subtitle2"><strong>Unable to reach the API — retrying (@_retryAttempt of @MaxRetries)</strong></MudText>
+                <MudText Typo="Typo.body2" Class="mt-1">The API is not responding. If it is deployed on the Free tier, the API and database may take a few minutes to cold start.</MudText>
+            </MudAlert>
+        }
+        else
+        {
+            <MudText Typo="Typo.body2" Class="mt-2">Checking system health...</MudText>
+        }
     }
     else if (_healthCheck != null)
     {
@@ -105,9 +115,12 @@
 @code {
     [Inject] private IAhkFlowAppApiHttpClient ApiClient { get; set; } = default!;
 
+    private const int MaxRetries = 10;
+
     private HealthResponse? _healthCheck;
     private bool _loading = true;
     private bool _hasError;
+    private int _retryAttempt;
     private readonly CancellationTokenSource _cts = new();
 
     protected override async Task OnInitializedAsync()
@@ -119,26 +132,37 @@
     {
         _loading = true;
         _hasError = false;
+        _retryAttempt = 0;
         StateHasChanged(); // render the spinner before awaiting
 
-        try
+        while (true)
         {
-            _healthCheck = await ApiClient.GetHealthAsync(_cts.Token);
-            if (_healthCheck is null)
-                _hasError = true;
+            try
+            {
+                _healthCheck = await ApiClient.GetHealthAsync(_cts.Token);
+                if (_healthCheck is null)
+                    _hasError = true;
+                break;
+            }
+            catch (OperationCanceledException)
+            {
+                break; // page was disposed
+            }
+            catch
+            {
+                if (++_retryAttempt >= MaxRetries)
+                {
+                    _hasError = true;
+                    break;
+                }
+                StateHasChanged();
+                int delaySeconds = Math.Min((int)Math.Pow(2, _retryAttempt), 20);
+                try { await Task.Delay(TimeSpan.FromSeconds(delaySeconds), _cts.Token); }
+                catch (OperationCanceledException) { break; }
+            }
         }
-        catch (OperationCanceledException)
-        {
-            // page was disposed
-        }
-        catch
-        {
-            _hasError = true;
-        }
-        finally
-        {
-            _loading = false;
-        }
+
+        _loading = false;
     }
 
     private async Task RefreshHealthAsync() => await LoadHealthAsync();
