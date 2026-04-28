@@ -86,7 +86,7 @@ try
             });
 
     builder.Services.AddSingleton(TimeProvider.System);
-    builder.Services.AddSingleton<IDevEnvironment>(new DevEnvironment(builder.Environment.IsDevelopment()));
+    builder.Services.AddSingleton(new AppEnvironment(builder.Environment.IsDevelopment()));
 
     if (builder.Environment.IsDevelopment())
     {
@@ -181,28 +181,8 @@ try
     if (app.Environment.IsDevelopment())
     {
         app.UseSwaggerDocs();
-        app.Use(async (context, next) =>
-        {
-            if (context.Request.Path == "/")
-            {
-                context.Response.Redirect("/swagger");
-                return;
-            }
-            await next(context);
-        });
     }
-    else
-    {
-        app.Use(async (context, next) =>
-        {
-            if (context.Request.Path == "/")
-            {
-                context.Response.Redirect("/health");
-                return;
-            }
-            await next(context);
-        });
-    }
+    app.UseRootRedirect(devTarget: "/swagger", prodTarget: "/health");
 
     if (allowedOrigins.Length > 0)
     {

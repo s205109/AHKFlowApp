@@ -25,10 +25,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-function Write-Step([string]$Message) { Write-Host "`n==> $Message" -ForegroundColor Cyan }
-function Write-Success([string]$Message) { Write-Host "  ✓ $Message" -ForegroundColor Green }
-function Write-Warn([string]$Message) { Write-Host "  ! $Message" -ForegroundColor Yellow }
-function Write-Fail([string]$Message) { Write-Host "`n  ✗ $Message" -ForegroundColor Red }
+. "$PSScriptRoot\Common.ps1"
 
 # Load saved config
 if (-not $Environment) {

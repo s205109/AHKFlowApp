@@ -48,34 +48,11 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+. "$PSScriptRoot\Common.ps1"
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-function Write-Step([string]$Message) {
-    Write-Host "`n==> $Message" -ForegroundColor Cyan
-}
-
-function Write-Success([string]$Message) {
-    Write-Host "  ✓ $Message" -ForegroundColor Green
-}
-
-function Write-Warn([string]$Message) {
-    Write-Host "  ! $Message" -ForegroundColor Yellow
-}
-
-function Write-Fail([string]$Message) {
-    Write-Host "`n  ✗ $Message" -ForegroundColor Red
-}
-
-function Confirm-Command([string]$Name, [string]$InstallUrl) {
-    if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) {
-        Write-Fail "$Name is not installed."
-        Write-Host "    Install from: $InstallUrl" -ForegroundColor Yellow
-        throw "Missing prerequisite: $Name"
-    }
-    Write-Success "$Name found"
-}
 
 function Invoke-Az {
     $output = az @args 2>&1
