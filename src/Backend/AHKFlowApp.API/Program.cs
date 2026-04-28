@@ -86,7 +86,7 @@ try
             });
 
     builder.Services.AddSingleton(TimeProvider.System);
-    builder.Services.AddSingleton<IDevEnvironment>(new DevEnvironment(builder.Environment.IsDevelopment()));
+    builder.Services.AddSingleton(new AppEnvironment(builder.Environment.IsDevelopment()));
 
     if (builder.Environment.IsDevelopment())
     {

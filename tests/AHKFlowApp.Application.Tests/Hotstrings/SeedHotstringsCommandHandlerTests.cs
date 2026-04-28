@@ -1,4 +1,4 @@
-using AHKFlowApp.Application.Abstractions;
+using AHKFlowApp.Application;
 using AHKFlowApp.Application.Commands.Dev;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Domain.Entities;
@@ -6,7 +6,6 @@ using AHKFlowApp.Infrastructure.Persistence;
 using Ardalis.Result;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
-using NSubstitute;
 using Xunit;
 
 namespace AHKFlowApp.Application.Tests.Hotstrings;
@@ -14,12 +13,7 @@ namespace AHKFlowApp.Application.Tests.Hotstrings;
 [Collection("HotstringDb")]
 public sealed class SeedHotstringsCommandHandlerTests(HotstringDbFixture fx)
 {
-    private static IDevEnvironment DevEnv(bool isDev)
-    {
-        IDevEnvironment e = Substitute.For<IDevEnvironment>();
-        e.IsDevelopment.Returns(isDev);
-        return e;
-    }
+    private static AppEnvironment DevEnv(bool isDev) => new(isDev);
 
     [Fact]
     public async Task Handle_InDevelopment_SeedsSamples()
