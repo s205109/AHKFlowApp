@@ -25,7 +25,7 @@ dotnet run --project src/Frontend/AHKFlowApp.UI.Blazor
 
 **Option 2 — Docker Compose (recommended):**
 
-See `docs/development/docker-setup.md`.
+See `docs/development/docker-setup.md`. **x64 / amd64 only** — the SQL Server image has no ARM64 build, so this stack does not run on Apple Silicon or Raspberry Pi without changing the database backend.
 
 **Option 3 — Run locally without Azure (homelab / trusted-LAN):**
 
