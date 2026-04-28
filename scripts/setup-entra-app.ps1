@@ -28,6 +28,14 @@ param(
 $ErrorActionPreference = 'Stop'
 $displayName = "AHKFlowApp-$Environment"
 
+# Safe wrapper around ConvertFrom-Json: az commands return empty stdout on
+# missing-resource / transient failures, and ConvertFrom-Json on empty/non-JSON
+# input throws under $ErrorActionPreference = 'Stop' — defeating retry loops.
+function ConvertFrom-JsonSafe([string] $Json) {
+    if ([string]::IsNullOrWhiteSpace($Json)) { return $null }
+    try { return $Json | ConvertFrom-Json } catch { return $null }
+}
+
 # az rest --body '...' is unreliable on Windows PowerShell due to quoting.
 # Write JSON to a temp file and use --body @file instead.
 function Invoke-GraphPatch([string] $ObjectId, [string] $JsonBody) {
@@ -85,7 +93,7 @@ $tenantId = az account show --query tenantId -o tsv
 # Ensure service principal exists (az ad app create does not create one automatically;
 # AADSTS500011 is thrown if the SP is missing when the app is used as an OAuth resource)
 # ---------------------------------------------------------------------------
-$existingSp = az ad sp show --id $appId -o json 2>$null | ConvertFrom-Json
+$existingSp = ConvertFrom-JsonSafe (az ad sp show --id $appId -o json 2>$null)
 if (-not $existingSp) {
     Write-Host "Creating service principal for $appId ..."
     az ad sp create --id $appId | Out-Null
@@ -96,12 +104,7 @@ if (-not $existingSp) {
 }
 
 Wait-ForCondition -Description "service principal" -Condition {
-    $spJson = az ad sp show --id $appId -o json 2>$null
-    if (-not $spJson) {
-        return $false
-    }
-
-    $sp = $spJson | ConvertFrom-Json
+    $sp = ConvertFrom-JsonSafe (az ad sp show --id $appId -o json 2>$null)
     return [bool]$sp.id
 }
 
@@ -139,7 +142,7 @@ $spaJson = @{ spa = @{ redirectUris = $redirectUris } } | ConvertTo-Json -Depth 
 Invoke-GraphPatch -ObjectId $objectId -JsonBody $spaJson
 
 Wait-ForCondition -Description "SPA redirect URIs" -Condition {
-    $configuredUris = az ad app show --id $objectId --query 'spa.redirectUris' -o json 2>$null | ConvertFrom-Json
+    $configuredUris = ConvertFrom-JsonSafe (az ad app show --id $objectId --query 'spa.redirectUris' -o json 2>$null)
     if (-not $configuredUris) {
         return $false
     }
@@ -181,11 +184,11 @@ $scopeJson = @{
 } | ConvertTo-Json -Depth 10 -Compress
 
 # Only add if not already present
-$currentScopes = az ad app show --id $objectId --query 'api.oauth2PermissionScopes[].value' -o json | ConvertFrom-Json
+$currentScopes = ConvertFrom-JsonSafe (az ad app show --id $objectId --query 'api.oauth2PermissionScopes[].value' -o json 2>$null)
 if ('access_as_user' -notin $currentScopes) {
     Invoke-GraphPatch -ObjectId $objectId -JsonBody $scopeJson
     Wait-ForCondition -Description "oauth2PermissionScope access_as_user" -Condition {
-        $scopes = az ad app show --id $objectId --query 'api.oauth2PermissionScopes[].value' -o json 2>$null | ConvertFrom-Json
+        $scopes = ConvertFrom-JsonSafe (az ad app show --id $objectId --query 'api.oauth2PermissionScopes[].value' -o json 2>$null)
         return 'access_as_user' -in $scopes
     }
     Write-Host "Added oauth2PermissionScope: access_as_user"
@@ -211,7 +214,7 @@ $preAuthBody = @{
 Invoke-GraphPatch -ObjectId $objectId -JsonBody $preAuthBody
 
 Wait-ForCondition -Description "pre-authorized SPA scope" -Condition {
-    $preAuthorizedApps = az ad app show --id $objectId --query 'api.preAuthorizedApplications' -o json 2>$null | ConvertFrom-Json
+    $preAuthorizedApps = ConvertFrom-JsonSafe (az ad app show --id $objectId --query 'api.preAuthorizedApplications' -o json 2>$null)
     if (-not $preAuthorizedApps) {
         return $false
     }

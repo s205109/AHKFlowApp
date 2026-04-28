@@ -22,7 +22,8 @@ internal static class AuthConfigurationValidator
 
         string clientId = configuration["AzureAd:ClientId"]!;
         string authority = configuration["AzureAd:Authority"]!;
-        if (clientId.Contains('<') || authority.Contains('<'))
+        string defaultScope = configuration["AzureAd:DefaultScope"]!;
+        if (clientId.Contains('<') || authority.Contains('<') || defaultScope.Contains('<'))
         {
             throw new InvalidOperationException(
                 "AzureAd configuration still contains placeholder values (e.g. '<your-client-id>'). " +
