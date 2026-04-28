@@ -1,6 +1,45 @@
 @page "/authentication/{action}"
+@using Microsoft.AspNetCore.Components.WebAssembly.Authentication
+@using Microsoft.AspNetCore.Components.WebAssembly.Hosting
+@inject IWebAssemblyHostEnvironment HostEnvironment
+@inject NavigationManager Navigation
 
-<RemoteAuthenticatorView Action="@Action" />
+<RemoteAuthenticatorView Action="@Action">
+    <LogInFailed Context="errorMessage">
+        <MudPaper Class="pa-6 ma-4" Elevation="2">
+            <MudText Typo="Typo.h5" GutterBottom="true">Sign-in failed</MudText>
+
+            @if (HostEnvironment.IsDevelopment())
+            {
+                <MudAlert Severity="Severity.Warning" Class="mb-4">
+                    <MudText>
+                        Local Entra sign-in is not fully configured or the sign-in attempt failed
+                        before the app could finish the redirect flow.
+                    </MudText>
+                    <MudText Class="mt-2">From the repo root, run:</MudText>
+                    <MudText Typo="Typo.body2" Class="mt-1"
+                             Style="font-family: monospace;">
+                        pwsh scripts/setup-dev-entra.ps1
+                    </MudText>
+                    <MudText Class="mt-2">
+                        Then refresh the page and sign in again. If Microsoft keeps you on its own
+                        sign-in page with AADSTS500011, rerun the setup script and try again there
+                        too.
+                    </MudText>
+                </MudAlert>
+            }
+
+            <MudAlert Severity="Severity.Error" Class="mb-4">
+                @(errorMessage ?? "Unknown error")
+            </MudAlert>
+
+            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                       OnClick="@(() => Navigation.NavigateTo("/"))">
+                Back to home
+            </MudButton>
+        </MudPaper>
+    </LogInFailed>
+</RemoteAuthenticatorView>
 
 @code {
     [Parameter]

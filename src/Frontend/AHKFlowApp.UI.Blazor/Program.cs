@@ -53,7 +53,7 @@ bool useTestAuth = builder.Configuration.GetValue<bool>("Auth:UseTestProvider");
 
 if (useTestAuth)
 {
-    string apiBaseUrl = builder.Configuration["ApiBaseUrl"] ?? "/";
+    string apiBaseUrl = builder.Configuration["ApiHttpClient:BaseAddress"] ?? "/";
     Uri baseAddress = new(new Uri(builder.HostEnvironment.BaseAddress), apiBaseUrl);
 
     builder.Services.AddAuthorizationCore();
@@ -66,19 +66,7 @@ if (useTestAuth)
 }
 else
 {
-    string[] requiredConfigKeys = [
-        "ApiHttpClient:BaseAddress",
-        "AzureAd:Authority",
-        "AzureAd:ClientId",
-        "AzureAd:DefaultScope"
-    ];
-    foreach (string key in requiredConfigKeys)
-    {
-        if (string.IsNullOrWhiteSpace(builder.Configuration[key]))
-        {
-            throw new InvalidOperationException($"Configuration value '{key}' is missing or empty.");
-        }
-    }
+    AuthConfigurationValidator.ValidateForMsal(builder.Configuration);
 
     string apiBaseUrl = builder.Configuration["ApiHttpClient:BaseAddress"]!;
     string defaultScope = builder.Configuration["AzureAd:DefaultScope"]!;
