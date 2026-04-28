@@ -181,28 +181,8 @@ try
     if (app.Environment.IsDevelopment())
     {
         app.UseSwaggerDocs();
-        app.Use(async (context, next) =>
-        {
-            if (context.Request.Path == "/")
-            {
-                context.Response.Redirect("/swagger");
-                return;
-            }
-            await next(context);
-        });
     }
-    else
-    {
-        app.Use(async (context, next) =>
-        {
-            if (context.Request.Path == "/")
-            {
-                context.Response.Redirect("/health");
-                return;
-            }
-            await next(context);
-        });
-    }
+    app.UseRootRedirect(devTarget: "/swagger", prodTarget: "/health");
 
     if (allowedOrigins.Length > 0)
     {
