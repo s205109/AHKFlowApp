@@ -25,9 +25,14 @@ if (useTestAuth)
     builder.Services.AddHttpClient<IAhkFlowAppApiHttpClient, AhkFlowAppApiHttpClient>(client =>
     {
         client.BaseAddress = new Uri(new Uri(builder.HostEnvironment.BaseAddress), apiBaseUrl);
-        client.Timeout = TimeSpan.FromSeconds(30);
+        client.Timeout = TimeSpan.FromSeconds(35);
     })
-        .AddStandardResilienceHandler();
+        .AddStandardResilienceHandler(options =>
+        {
+            options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(32);
+            options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(30);
+            options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(60);
+        });
 
     builder.Services.AddHttpClient<IHotstringsApiClient, HotstringsApiClient>(client =>
     {
@@ -67,10 +72,15 @@ else
     builder.Services.AddHttpClient<IAhkFlowAppApiHttpClient, AhkFlowAppApiHttpClient>(client =>
     {
         client.BaseAddress = new Uri(apiBaseUrl);
-        client.Timeout = TimeSpan.FromSeconds(30);
+        client.Timeout = TimeSpan.FromSeconds(35);
     })
         .AddHttpMessageHandler<ApiAuthorizationMessageHandler>()
-        .AddStandardResilienceHandler();
+        .AddStandardResilienceHandler(options =>
+        {
+            options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(32);
+            options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(30);
+            options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(60);
+        });
 
     builder.Services.AddHttpClient<IHotstringsApiClient, HotstringsApiClient>(client =>
     {
