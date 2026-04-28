@@ -55,6 +55,8 @@ One Entra app registration per environment. The SPA is both the client (SPA redi
 - **Authority**: `https://login.microsoftonline.com/{tenantId}`
 - **Setup**: `scripts/setup-entra-app.ps1` — see `docs/deployment/entra-setup.md`
 
+If Entra fails on its own hosted sign-in page before redirecting back to the SPA (for example `AADSTS500011`), that error stays on the Microsoft page. The app can only show friendly guidance for failures that actually return to `Authentication.razor`.
+
 ## Auth verification endpoint
 
 `GET /api/v1/whoami` — requires `[Authorize]` + `[RequiredScope("access_as_user")]`. Returns `WhoAmIResponse` with `Oid`, `Email`, `Name`, `IsAuthenticated`. Use this endpoint to verify auth is wired correctly end-to-end.

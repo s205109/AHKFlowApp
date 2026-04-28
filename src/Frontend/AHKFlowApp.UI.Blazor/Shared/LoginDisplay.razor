@@ -12,17 +12,19 @@
         }
         else
         {
-            <MudButton Variant="Variant.Text" Color="Color.Inherit" OnClick="@(() => Navigation.NavigateToLogout("authentication/logout"))">Log out</MudButton>
+            <MudButton Variant="Variant.Text" Color="Color.Inherit"
+                       OnClick="@(() => Navigation.NavigateToLogout("authentication/logout"))">Log out</MudButton>
         }
     </Authorized>
     <NotAuthorized>
-        <MudButton Variant="Variant.Text" Color="Color.Inherit" OnClick="@(() => Navigation.NavigateTo("authentication/login"))">Log in</MudButton>
+        <MudButton Variant="Variant.Text" Color="Color.Inherit"
+                   OnClick="@(() => Navigation.NavigateTo("authentication/login"))">Log in</MudButton>
     </NotAuthorized>
 </AuthorizeView>
 
 @code {
     private bool _useTestAuth;
 
-    protected override void OnInitialized() =>
-        _useTestAuth = Configuration.GetValue<bool>("Auth:UseTestProvider");
+    protected override void OnInitialized()
+        => _useTestAuth = Configuration.GetValue<bool>("Auth:UseTestProvider");
 }

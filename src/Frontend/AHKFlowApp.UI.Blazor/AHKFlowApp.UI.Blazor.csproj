@@ -22,6 +22,10 @@
     <ServiceWorker Include="wwwroot\service-worker.js" PublishedContent="wwwroot\service-worker.published.js" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="AHKFlowApp.UI.Blazor.Tests" />
+  </ItemGroup>
+
   <!--
     staticwebapp.config.json is kept outside wwwroot/ so the Blazor SDK does not
     include it in the static web assets manifest (which would hash it and cause the

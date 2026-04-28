@@ -66,19 +66,7 @@ if (useTestAuth)
 }
 else
 {
-    string[] requiredConfigKeys = [
-        "ApiHttpClient:BaseAddress",
-        "AzureAd:Authority",
-        "AzureAd:ClientId",
-        "AzureAd:DefaultScope"
-    ];
-    foreach (string key in requiredConfigKeys)
-    {
-        if (string.IsNullOrWhiteSpace(builder.Configuration[key]))
-        {
-            throw new InvalidOperationException($"Configuration value '{key}' is missing or empty.");
-        }
-    }
+    AuthConfigurationValidator.ValidateForMsal(builder.Configuration);
 
     string apiBaseUrl = builder.Configuration["ApiHttpClient:BaseAddress"]!;
     string defaultScope = builder.Configuration["AzureAd:DefaultScope"]!;
