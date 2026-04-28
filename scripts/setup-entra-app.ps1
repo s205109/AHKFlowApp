@@ -44,6 +44,25 @@ function Invoke-GraphPatch([string] $ObjectId, [string] $JsonBody) {
     }
 }
 
+function Wait-ForCondition([string] $Description, [scriptblock] $Condition, [int] $MaxAttempts = 12, [int] $DelaySeconds = 5) {
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        if (& $Condition) {
+            if ($attempt -gt 1) {
+                Write-Host "$Description verified"
+            }
+
+            return
+        }
+
+        if ($attempt -lt $MaxAttempts) {
+            Write-Host "Waiting for $Description ..."
+            Start-Sleep -Seconds $DelaySeconds
+        }
+    }
+
+    throw "$Description was not visible after $MaxAttempts attempts"
+}
+
 # ---------------------------------------------------------------------------
 # Resolve or create the app registration
 # ---------------------------------------------------------------------------
@@ -61,6 +80,30 @@ if ($existing) {
 }
 
 $tenantId = az account show --query tenantId -o tsv
+
+# ---------------------------------------------------------------------------
+# Ensure service principal exists (az ad app create does not create one automatically;
+# AADSTS500011 is thrown if the SP is missing when the app is used as an OAuth resource)
+# ---------------------------------------------------------------------------
+$existingSp = az ad sp show --id $appId -o json 2>$null | ConvertFrom-Json
+if (-not $existingSp) {
+    Write-Host "Creating service principal for $appId ..."
+    az ad sp create --id $appId | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "az ad sp create failed (exit $LASTEXITCODE)" }
+    Write-Host "Service principal created"
+} else {
+    Write-Host "Service principal already exists"
+}
+
+Wait-ForCondition -Description "service principal" -Condition {
+    $spJson = az ad sp show --id $appId -o json 2>$null
+    if (-not $spJson) {
+        return $false
+    }
+
+    $sp = $spJson | ConvertFrom-Json
+    return [bool]$sp.id
+}
 
 # ---------------------------------------------------------------------------
 # Resolve SWA hostname
@@ -95,6 +138,21 @@ if ($LASTEXITCODE -ne 0) { throw "az ad app update failed (exit $LASTEXITCODE)" 
 $spaJson = @{ spa = @{ redirectUris = $redirectUris } } | ConvertTo-Json -Depth 5 -Compress
 Invoke-GraphPatch -ObjectId $objectId -JsonBody $spaJson
 
+Wait-ForCondition -Description "SPA redirect URIs" -Condition {
+    $configuredUris = az ad app show --id $objectId --query 'spa.redirectUris' -o json 2>$null | ConvertFrom-Json
+    if (-not $configuredUris) {
+        return $false
+    }
+
+    foreach ($uri in $redirectUris) {
+        if ($uri -notin $configuredUris) {
+            return $false
+        }
+    }
+
+    return $true
+}
+
 Write-Host "Redirect URIs set: $($redirectUris -join ', ')"
 
 # ---------------------------------------------------------------------------
@@ -126,6 +184,10 @@ $scopeJson = @{
 $currentScopes = az ad app show --id $objectId --query 'api.oauth2PermissionScopes[].value' -o json | ConvertFrom-Json
 if ('access_as_user' -notin $currentScopes) {
     Invoke-GraphPatch -ObjectId $objectId -JsonBody $scopeJson
+    Wait-ForCondition -Description "oauth2PermissionScope access_as_user" -Condition {
+        $scopes = az ad app show --id $objectId --query 'api.oauth2PermissionScopes[].value' -o json 2>$null | ConvertFrom-Json
+        return 'access_as_user' -in $scopes
+    }
     Write-Host "Added oauth2PermissionScope: access_as_user"
 } else {
     Write-Host "Scope access_as_user already exists"
@@ -147,6 +209,21 @@ $preAuthBody = @{
 } | ConvertTo-Json -Depth 10 -Compress
 
 Invoke-GraphPatch -ObjectId $objectId -JsonBody $preAuthBody
+
+Wait-ForCondition -Description "pre-authorized SPA scope" -Condition {
+    $preAuthorizedApps = az ad app show --id $objectId --query 'api.preAuthorizedApplications' -o json 2>$null | ConvertFrom-Json
+    if (-not $preAuthorizedApps) {
+        return $false
+    }
+
+    foreach ($entry in $preAuthorizedApps) {
+        if ($entry.appId -eq $appId -and $scopeId -in $entry.delegatedPermissionIds) {
+            return $true
+        }
+    }
+
+    return $false
+}
 
 Write-Host "Pre-authorized SPA ($appId) for scope $scopeId"
 

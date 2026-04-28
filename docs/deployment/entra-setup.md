@@ -15,7 +15,9 @@ Setup is automated. Dev has its own helper; test/prod run as part of `deploy.ps1
 .\scripts\setup-dev-entra.ps1
 ```
 
-Creates/updates `AHKFlowApp-dev`, sets backend user-secrets, and writes `src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/appsettings.Development.json`. Idempotent — safe to re-run.
+Creates or repairs `AHKFlowApp-dev`, waits for the service principal, redirect URIs, scope, and pre-authorization wiring to become visible, sets backend user-secrets, and writes `src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/appsettings.Development.json`. Idempotent — safe to re-run.
+
+If the Microsoft-hosted sign-in page shows `AADSTS500011`, rerun `.\scripts\setup-dev-entra.ps1` and try the sign-in again. That failure page is rendered on `login.microsoftonline.com`, so the SPA cannot replace it before Entra redirects back.
 
 ## Test / Prod
 
