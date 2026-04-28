@@ -103,7 +103,7 @@ if (-not $existingSp) {
     Write-Host "Service principal already exists"
 }
 
-Wait-ForCondition -Description "service principal" -Condition {
+Wait-ForCondition -Description "service principal" -MaxAttempts 18 -Condition {
     $sp = ConvertFrom-JsonSafe (az ad sp show --id $appId -o json 2>$null)
     return [bool]$sp.id
 }

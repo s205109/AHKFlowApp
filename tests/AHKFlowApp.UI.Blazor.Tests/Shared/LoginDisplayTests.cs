@@ -7,12 +7,13 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using MudBlazor;
 using MudBlazor.Services;
 using Xunit;
 
 namespace AHKFlowApp.UI.Blazor.Tests.Shared;
 
-public sealed class LoginDisplayTests : BunitContext
+public sealed class LoginDisplayTests : BunitContext, IAsyncLifetime
 {
     public LoginDisplayTests()
     {
@@ -20,6 +21,28 @@ public sealed class LoginDisplayTests : BunitContext
         Services.AddSingleton<IAuthorizationService, AllowAuthorizationService>();
         Services.AddMudServices();
         JSInterop.Mode = JSRuntimeMode.Loose;
+    }
+
+    Task IAsyncLifetime.InitializeAsync() => Task.CompletedTask;
+
+    // MudBlazor's PopoverService is IAsyncDisposable-only; bUnit sync Dispose throws on
+    // teardown when it's been instantiated (e.g. when MudTooltip is rendered in tests).
+    async Task IAsyncLifetime.DisposeAsync() => await DisposeAsync();
+
+    [Fact]
+    public void LoginDisplay_WhenUserIsAuthenticatedInTestAuthMode_ShowsDisabledLogoutButton()
+    {
+        // Arrange — UseTestProvider suppresses real sign-out; logout button must be disabled
+        Services.AddSingleton<IConfiguration>(BuildConfiguration(useTestAuth: true));
+        Services.AddScoped<AuthenticationStateProvider>(_ => new StubAuthenticationStateProvider(isAuthenticated: true));
+
+        // Act — MudTooltip requires MudPopoverProvider in the render tree
+        Render<MudPopoverProvider>();
+        IRenderedComponent<CascadingAuthenticationState> cut = Render<CascadingAuthenticationState>(parameters =>
+            parameters.AddChildContent<LoginDisplay>());
+
+        // Assert
+        cut.Find("button").HasAttribute("disabled").Should().BeTrue();
     }
 
     [Fact]

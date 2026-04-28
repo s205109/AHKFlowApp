@@ -53,7 +53,7 @@ bool useTestAuth = builder.Configuration.GetValue<bool>("Auth:UseTestProvider");
 
 if (useTestAuth)
 {
-    string apiBaseUrl = builder.Configuration["ApiBaseUrl"] ?? "/";
+    string apiBaseUrl = builder.Configuration["ApiHttpClient:BaseAddress"] ?? "/";
     Uri baseAddress = new(new Uri(builder.HostEnvironment.BaseAddress), apiBaseUrl);
 
     builder.Services.AddAuthorizationCore();
