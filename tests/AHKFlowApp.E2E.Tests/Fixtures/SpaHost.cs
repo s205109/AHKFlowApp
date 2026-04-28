@@ -44,7 +44,7 @@ public sealed class SpaHost : IAsyncDisposable
                 ? JsonNode.Parse(await File.ReadAllTextAsync(basePath)) ?? new JsonObject()
                 : new JsonObject();
             merged["Auth"] = new JsonObject { ["UseTestProvider"] = true };
-            merged["ApiBaseUrl"] = "/";
+            merged["ApiHttpClient"] = new JsonObject { ["BaseAddress"] = "/" };
 
             ctx.Response.ContentType = "application/json";
             await ctx.Response.WriteAsync(merged.ToJsonString());
