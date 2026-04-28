@@ -343,7 +343,12 @@ $EntraClientId = [string]$EntraInfo.ClientId
 Write-Success "Entra app: $EntraClientId (tenant $EntraTenantId)"
 
 # Deploy Bicep
-Write-Host "  Deploying Bicep template (usually 3-10 minutes, longer if Azure is slow)..."
+$deployMsg = if ($Tier -eq 'free') {
+    "Deploying Bicep template (5-15 minutes on Free tier; Free tier is slower than Basic due to resource constraints)..."
+} else {
+    "Deploying Bicep template (3-5 minutes on Basic tier)..."
+}
+Write-Host "  $deployMsg"
 Write-Host "  Progress updates every 15s; first update may take ~30s while deployment registers."
 $BicepTemplate = Join-Path $RepoRoot "infra\main.bicep"
 $DeploymentName = "deploy-${Environment}-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
