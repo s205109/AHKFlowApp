@@ -24,9 +24,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-function Write-Step([string]$Message) { Write-Host "`n==> $Message" -ForegroundColor Cyan }
-function Write-Success([string]$Message) { Write-Host "  + $Message" -ForegroundColor Green }
-function Write-Fail([string]$Message) { Write-Host "`n  x $Message" -ForegroundColor Red }
+. "$PSScriptRoot\Common.ps1"
 
 if (-not $Environment) {
     $Environment = Read-Host "  Environment [test/prod] (default: test)"
