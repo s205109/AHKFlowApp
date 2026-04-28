@@ -8,6 +8,8 @@
 
 ### Running Locally
 
+> **First-time setup (Options 1 and 2 only):** run `pwsh scripts/setup-dev-entra.ps1` once after cloning. It creates or repairs the dev Entra ID app registration, waits for the required redirect URI/scope/service-principal wiring to become visible, sets backend user-secrets, and writes `src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/appsettings.Development.json`. Skip for Option 3 (no Azure AD).
+
 **Option 1 — LocalDB:**
 
 ```bash
@@ -40,6 +42,8 @@ docker compose up --build
 ```
 
 Open http://localhost:5601 in a browser. The app loads as `Local User` with no sign-in prompt. The "Log out" button is disabled (real sign-out requires Entra ID).
+
+If the Microsoft sign-in page shows `AADSTS500011`, rerun `pwsh scripts/setup-dev-entra.ps1` from the repo root and try again. That page is hosted by Microsoft, so the Blazor app cannot replace it before the redirect returns.
 
 | Service | URL |
 |---|---|
