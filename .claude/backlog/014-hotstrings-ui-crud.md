@@ -16,12 +16,12 @@ As a user, I want to manage hotstrings in the Web UI so that I can maintain my a
 
 ## Acceptance criteria
 
-- [ ] List hotstrings for the active profile.
-- [ ] Create and edit hotstrings with validation feedback.
-- [ ] Delete hotstrings with a confirmation step.
-- [ ] UI handles API errors consistently (see 016).
-- [ ] Unit/component tests cover the main UI components (list, create, edit) including validation states.
-- [ ] Integration/E2E tests exercise the create/list/delete flows against a running test API.
+- [x] List hotstrings for the active profile.
+- [x] Create and edit hotstrings with validation feedback.
+- [x] Delete hotstrings with a confirmation step.
+- [x] UI handles API errors consistently (see 016).
+- [x] Unit/component tests cover the main UI components (list, create, edit) including validation states.
+- [x] Integration/E2E tests exercise the create/list/delete flows against a running test API.
 
 ## Out of scope
 
@@ -31,3 +31,7 @@ As a user, I want to manage hotstrings in the Web UI so that I can maintain my a
 
 - Depends on 013.
 - Assumes at least one profile exists (a seeded default is fine until 024 is implemented).
+
+---
+
+**Completed:** 2026-04-29

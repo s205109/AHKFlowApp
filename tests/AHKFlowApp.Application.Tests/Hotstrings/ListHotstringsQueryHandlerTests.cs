@@ -95,4 +95,91 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
 
         result.Status.Should().Be(ResultStatus.Unauthorized);
     }
+
+    [Fact]
+    public async Task Handle_Search_MatchesTrigger()
+    {
+        var owner = Guid.NewGuid();
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(Hotstring.Create(owner, "btw", "by the way", null, true, true, TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, "fyi", "for your info", null, true, true, TimeProvider.System));
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        var handler = new ListHotstringsQueryHandler(db, CurrentUserHelper.For(owner));
+
+        Result<PagedList<HotstringDto>> result = await handler.Handle(
+            new ListHotstringsQuery(Search: "btw"), default);
+
+        result.Value.Items.Should().ContainSingle().Which.Trigger.Should().Be("btw");
+    }
+
+    [Fact]
+    public async Task Handle_Search_MatchesReplacement()
+    {
+        var owner = Guid.NewGuid();
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(Hotstring.Create(owner, "a", "needle in a haystack", null, true, true, TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, "b", "nothing relevant", null, true, true, TimeProvider.System));
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        var handler = new ListHotstringsQueryHandler(db, CurrentUserHelper.For(owner));
+
+        Result<PagedList<HotstringDto>> result = await handler.Handle(
+            new ListHotstringsQuery(Search: "needle"), default);
+
+        result.Value.Items.Should().ContainSingle().Which.Trigger.Should().Be("a");
+    }
+
+    [Fact]
+    public async Task Handle_Search_IgnoresCaseByDefault()
+    {
+        var owner = Guid.NewGuid();
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(Hotstring.Create(owner, "a", "FOO bar", null, true, true, TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, "b", "baz foo", null, true, true, TimeProvider.System));
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        var handler = new ListHotstringsQueryHandler(db, CurrentUserHelper.For(owner));
+
+        Result<PagedList<HotstringDto>> result = await handler.Handle(
+            new ListHotstringsQuery(Search: "foo"), default);
+
+        result.Value.Items.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public async Task Handle_Search_CombinedWithProfileId()
+    {
+        var owner = Guid.NewGuid();
+        var profile = Guid.NewGuid();
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(Hotstring.Create(owner, "match", "x", profile, true, true, TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, "match", "y", null, true, true, TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, "other", "z", profile, true, true, TimeProvider.System));
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        var handler = new ListHotstringsQueryHandler(db, CurrentUserHelper.For(owner));
+
+        Result<PagedList<HotstringDto>> result = await handler.Handle(
+            new ListHotstringsQuery(ProfileId: profile, Search: "match"), default);
+
+        result.Value.Items.Should().ContainSingle()
+            .Which.Should().Match<HotstringDto>(h => h.Trigger == "match" && h.ProfileId == profile);
+    }
 }

@@ -1,16 +1,20 @@
 @inherits LayoutComponentBase
+@using AHKFlowApp.UI.Blazor.Services
+@implements IDisposable
 
-<MudThemeProvider />
+<MudThemeProvider Theme="_theme" @bind-IsDarkMode="_isDarkMode" />
 <MudPopoverProvider />
 <MudDialogProvider />
 <MudSnackbarProvider />
 
 <MudLayout>
-    <MudAppBar Elevation="1">
+    <MudAppBar Elevation="1" Color="Color.Primary">
         <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit"
                        Edge="Edge.Start" OnClick="ToggleDrawer" />
         <MudText Typo="Typo.h6" Class="ml-3">AHKFlowApp</MudText>
         <MudSpacer />
+        <MudIconButton Icon="@(_isDarkMode ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode)"
+                       Color="Color.Inherit" OnClick="ToggleDarkMode" />
         <LoginDisplay />
     </MudAppBar>
     <MudDrawer @bind-Open="_drawerOpen" Elevation="2">
@@ -24,6 +28,58 @@
 </MudLayout>
 
 @code {
+    [Inject] private IUserPreferencesService Preferences { get; set; } = default!;
+
     private bool _drawerOpen = true;
+    private bool _isDarkMode;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Preferences.OnChange += OnPreferencesChanged;
+        UserPreferences prefs = await Preferences.GetAsync();
+        _isDarkMode = prefs.DarkMode;
+    }
+
+    private async void OnPreferencesChanged(UserPreferences prefs)
+    {
+        _isDarkMode = prefs.DarkMode;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose() => Preferences.OnChange -= OnPreferencesChanged;
+
     private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
+
+    private async Task ToggleDarkMode()
+    {
+        UserPreferences current = await Preferences.GetAsync();
+        await Preferences.SetAsync(current with { DarkMode = !current.DarkMode });
+    }
+
+    private readonly MudTheme _theme = new()
+    {
+        PaletteLight = new PaletteLight
+        {
+            Primary = "#6AA84F",
+            Secondary = "#3B8FC2",
+            Tertiary = "#8C3A3A",
+            Background = "#F5FAF3",
+        },
+        PaletteDark = new PaletteDark
+        {
+            Primary = "#6AA84F",
+            Secondary = "#3B8FC2",
+            Tertiary = "#8C3A3A",
+        },
+        Typography = new Typography
+        {
+            Default = new DefaultTypography { FontFamily = ["Inter", "Roboto", "sans-serif"] },
+            H1 = new H1Typography { FontFamily = ["Inter", "Roboto", "sans-serif"] },
+            H2 = new H2Typography { FontFamily = ["Inter", "Roboto", "sans-serif"] },
+            H3 = new H3Typography { FontFamily = ["Inter", "Roboto", "sans-serif"] },
+            H4 = new H4Typography { FontFamily = ["Inter", "Roboto", "sans-serif"] },
+            H5 = new H5Typography { FontFamily = ["Inter", "Roboto", "sans-serif"] },
+            H6 = new H6Typography { FontFamily = ["Inter", "Roboto", "sans-serif"] },
+        },
+    };
 }

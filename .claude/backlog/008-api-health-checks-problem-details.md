@@ -16,10 +16,10 @@ As an operator, I want health endpoints and consistent error responses so that s
 
 ## Acceptance criteria
 
-- [ ] Health endpoints implemented and include database connectivity checks.
-- [ ] Swagger/OpenAPI available in development.
-- [ ] Global error handling returns RFC 9457 Problem Details.
-- [ ] Integration tests cover health and Problem Details behavior.
+- [x] Health endpoints implemented and include database connectivity checks.
+- [x] Swagger/OpenAPI available in development.
+- [x] Global error handling returns RFC 9457 Problem Details.
+- [x] Integration tests cover health and Problem Details behavior.
 
 ## Out of scope
 
@@ -28,3 +28,7 @@ As an operator, I want health endpoints and consistent error responses so that s
 ## Notes / dependencies
 
 - Complements 007 and 010.
+
+---
+
+**Completed:** 2026-04-29

@@ -10,6 +10,8 @@ namespace AHKFlowApp.Application.Queries.Hotstrings;
 
 public sealed record ListHotstringsQuery(
     Guid? ProfileId = null,
+    string? Search = null,
+    bool IgnoreCase = true,
     int Page = 1,
     int PageSize = 50) : IRequest<Result<PagedList<HotstringDto>>>;
 
@@ -17,6 +19,7 @@ public sealed class ListHotstringsQueryValidator : AbstractValidator<ListHotstri
 {
     public ListHotstringsQueryValidator()
     {
+        RuleFor(x => x.Search).MaximumLength(200);
         RuleFor(x => x.Page).InclusiveBetween(1, 10_000);
         RuleFor(x => x.PageSize).InclusiveBetween(1, 200);
     }
@@ -38,6 +41,18 @@ internal sealed class ListHotstringsQueryHandler(
 
         if (request.ProfileId.HasValue)
             query = query.Where(h => h.ProfileId == request.ProfileId.Value);
+
+        if (!string.IsNullOrWhiteSpace(request.Search))
+        {
+            // Case sensitivity follows the column collation. SQL Server's default collation is
+            // case-insensitive, so IgnoreCase=false is effectively only honored when the column
+            // is configured with a CS collation. Provider-specific Collate() lives in the
+            // Relational package; we keep this layer provider-agnostic.
+            string pattern = $"%{request.Search.Trim()}%";
+            query = query.Where(h =>
+                EF.Functions.Like(h.Trigger, pattern) ||
+                EF.Functions.Like(h.Replacement, pattern));
+        }
 
         int total = await query.CountAsync(ct);
 

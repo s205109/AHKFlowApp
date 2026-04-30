@@ -50,4 +50,25 @@ public sealed class ListHotstringsQueryValidatorTests
 
         result.IsValid.Should().BeTrue();
     }
+
+    [Fact]
+    public void Validate_WithSearchTooLong_Fails()
+    {
+        string longSearch = new('x', 201);
+
+        ValidationResult result = _sut.Validate(new ListHotstringsQuery(Search: longSearch));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.PropertyName == "Search");
+    }
+
+    [Fact]
+    public void Validate_WithSearchAtMaxLength_Succeeds()
+    {
+        string maxSearch = new('x', 200);
+
+        ValidationResult result = _sut.Validate(new ListHotstringsQuery(Search: maxSearch));
+
+        result.IsValid.Should().BeTrue();
+    }
 }

@@ -16,11 +16,11 @@ As a developer, I want a working solution skeleton so that feature development c
 
 ## Acceptance criteria
 
-- [ ] Solution contains projects for UI (Blazor WASM PWA), API (ASP.NET Core), Application/Core, Domain, Infrastructure, and CLI.
-- [ ] Add repository .editorconfig for consistent code style.
-- [ ] Configure project references correctly.
-- [ ] MudBlazor is wired in with at least one example page.
-- [ ] Basic local run documentation exists.
+- [x] Solution contains projects for UI (Blazor WASM PWA), API (ASP.NET Core), Application/Core, Domain, Infrastructure. _(CLI deferred to 017 per AGENTS.md "Out of Scope".)_
+- [x] Add repository .editorconfig for consistent code style.
+- [x] Configure project references correctly.
+- [x] MudBlazor is wired in with at least one example page.
+- [x] Basic local run documentation exists.
 
 ## Out of scope
 
@@ -31,3 +31,7 @@ As a developer, I want a working solution skeleton so that feature development c
 ## Notes / dependencies
 
 - This item establishes naming, folder conventions, and DI boundaries early.
+
+---
+
+**Completed:** 2026-04-29

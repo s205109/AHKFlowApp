@@ -16,11 +16,11 @@ As a developer, I want a reliable database foundation so integration tests and d
 
 ## Acceptance criteria
 
-- [ ] `AHKFlowDbContext` added and registered.
-- [ ] A simple test entity exists to validate migrations.
-- [ ] Migrations can be created and applied locally.
-- [ ] Development profiles include LocalDB and Docker Compose SQL Server.
-- [ ] Integration tests can run against SQL Server using Testcontainers.
+- [x] `AHKFlowDbContext` added and registered.
+- [x] A simple test entity exists to validate migrations.
+- [x] Migrations can be created and applied locally.
+- [x] Development profiles include LocalDB and Docker Compose SQL Server.
+- [x] Integration tests can run against SQL Server using Testcontainers.
 
 ## Out of scope
 
@@ -29,3 +29,7 @@ As a developer, I want a reliable database foundation so integration tests and d
 ## Notes / dependencies
 
 - References 003 and 004.
+
+---
+
+**Completed:** 2026-04-29

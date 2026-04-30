@@ -16,10 +16,10 @@ As a developer, I want automated build/test/deploy so that changes reach a stagi
 
 ## Acceptance criteria
 
-- [ ] CI runs on pull requests: build + unit tests.
-- [ ] CD runs on main: build + tests + publish artifacts.
-- [ ] UI deploys to Azure Static Web Apps (or equivalent).
-- [ ] API deploys via container (or equivalent) to Azure or another agreed target.
+- [x] CI runs on pull requests: build + unit tests.
+- [x] CD runs on main: build + tests + publish artifacts.
+- [x] UI deploys to Azure Static Web Apps (or equivalent).
+- [x] API deploys via container (or equivalent) to Azure or another agreed target.
 
 ## Out of scope
 
@@ -28,3 +28,7 @@ As a developer, I want automated build/test/deploy so that changes reach a stagi
 ## Notes / dependencies
 
 - Requires the scaffold in 003.
+
+---
+
+**Completed:** 2026-04-29
