@@ -1,5 +1,6 @@
 @page "/settings"
 @using AHKFlowApp.UI.Blazor.Services
+@using Microsoft.AspNetCore.Components.WebAssembly.Hosting
 @using MudBlazor
 
 <PageTitle>Settings</PageTitle>
@@ -28,10 +29,15 @@
 </MudPaper>
 
 @code {
-    private static readonly int[] RowsPerPageOptions = [10, 25, 50, 100];
+    private static readonly int[] BaseRowsPerPageOptions = [10, 25, 50, 100];
 
     [Inject] private IUserPreferencesService Preferences { get; set; } = default!;
     [Inject] private ISnackbar Snackbar { get; set; } = default!;
+    [Inject] private IWebAssemblyHostEnvironment HostEnvironment { get; set; } = default!;
+
+    private int[] RowsPerPageOptions => HostEnvironment.IsDevelopment()
+        ? [2, .. BaseRowsPerPageOptions]
+        : BaseRowsPerPageOptions;
 
     private int _rowsPerPage = UserPreferences.Default.RowsPerPage;
     private bool _darkMode = UserPreferences.Default.DarkMode;

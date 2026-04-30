@@ -1,5 +1,6 @@
 @inherits LayoutComponentBase
 @using AHKFlowApp.UI.Blazor.Services
+@implements IDisposable
 
 <MudThemeProvider Theme="_theme" @bind-IsDarkMode="_isDarkMode" />
 <MudPopoverProvider />
@@ -34,9 +35,18 @@
 
     protected override async Task OnInitializedAsync()
     {
+        Preferences.OnChange += OnPreferencesChanged;
         UserPreferences prefs = await Preferences.GetAsync();
         _isDarkMode = prefs.DarkMode;
     }
+
+    private void OnPreferencesChanged(UserPreferences prefs)
+    {
+        _isDarkMode = prefs.DarkMode;
+        StateHasChanged();
+    }
+
+    public void Dispose() => Preferences.OnChange -= OnPreferencesChanged;
 
     private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
     private void ToggleDarkMode() => _isDarkMode = !_isDarkMode;
