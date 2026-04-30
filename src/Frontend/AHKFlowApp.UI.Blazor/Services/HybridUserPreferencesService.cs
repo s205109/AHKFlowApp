@@ -35,13 +35,12 @@ public sealed class HybridUserPreferencesService : IUserPreferencesService, IDis
             ApiResult<UserPreferenceDto> result = await _preferencesApi.GetAsync(ct);
             if (result.IsSuccess && result.Value is { } dto)
             {
-                // Server has saved preferences — server is authoritative, cache locally
                 UserPreferences serverPrefs = new(dto.RowsPerPage, dto.DarkMode);
                 await _localStorage.SetAsync(serverPrefs, ct);
                 _cache = serverPrefs;
                 return serverPrefs;
             }
-            // 404 = no server record yet; any other failure = fallback — preserve local storage in both cases
+            // 404 (no server record yet) and any other failure both fall through to local storage.
         }
 
         UserPreferences localPrefs = await _localStorage.GetAsync(ct);
@@ -51,8 +50,11 @@ public sealed class HybridUserPreferencesService : IUserPreferencesService, IDis
 
     public async ValueTask SetAsync(UserPreferences preferences, CancellationToken ct = default)
     {
+        bool changed = _cache != preferences;
         _cache = preferences;
-        OnChange?.Invoke(preferences);
+        if (changed)
+            OnChange?.Invoke(preferences);
+
         await _localStorage.SetAsync(preferences, ct);
 
         AuthenticationState authState = await _authStateProvider.GetAuthenticationStateAsync();
@@ -72,7 +74,6 @@ public sealed class HybridUserPreferencesService : IUserPreferencesService, IDis
         if (authState.User.Identity?.IsAuthenticated is not true)
             return;
 
-        // User just logged in — clear stale unauthenticated cache and load server preferences
         _cache = null;
         try
         {
@@ -87,7 +88,7 @@ public sealed class HybridUserPreferencesService : IUserPreferencesService, IDis
         }
         catch
         {
-            // Best-effort — if the API call fails, UI retains current preferences
+            // Best-effort: leave existing preferences in place on transient failure.
         }
     }
 }
