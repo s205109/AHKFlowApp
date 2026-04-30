@@ -16,12 +16,16 @@ As a user, I want to search and filter hotstrings so I can quickly find, edit, a
 
 ## Acceptance criteria
 
-- [ ] API supports query parameters for text search and case-insensitive flag when listing hotstrings.
-- [ ] UI provides search input and filter toggles scoped to the active profile.
-- [ ] CLI supports `--grep` and `--ignore-case` flags matching the UI behavior and returns JSON when `--json` is used.
-- [ ] Search results are paginated or limited to prevent very large responses.
-- [ ] Unit tests cover search/filter logic and parameter parsing.
-- [ ] Integration tests verify search behavior and pagination against seeded test data.
+- [x] API supports query parameters for text search and case-insensitive flag when listing hotstrings.
+- [x] UI provides search input and filter toggles scoped to the active profile.
+- [ ] CLI supports `--grep` and `--ignore-case` flags matching the UI behavior and returns JSON when `--json` is used. (Deferred to 029)
+- [x] Search results are paginated or limited to prevent very large responses.
+- [x] Unit tests cover search/filter logic and parameter parsing.
+- [x] Integration tests verify search behavior and pagination against seeded test data.
+
+---
+
+**Completed:** 2026-04-29 (API + UI; CLI deferred to 029)
 
 ## Out of scope
 

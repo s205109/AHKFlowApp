@@ -4,6 +4,7 @@ using AHKFlowApp.UI.Blazor.Services;
 using Bunit;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
+using MudBlazor;
 using MudBlazor.Services;
 using NSubstitute;
 using Xunit;
@@ -21,6 +22,12 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
         JSInterop.Mode = JSRuntimeMode.Loose;
     }
 
+    private IRenderedComponent<Hotstrings> RenderPage()
+    {
+        Render<MudPopoverProvider>();
+        return Render<Hotstrings>();
+    }
+
     Task IAsyncLifetime.InitializeAsync() => Task.CompletedTask;
 
     async Task IAsyncLifetime.DisposeAsync() => await DisposeAsync();
@@ -28,14 +35,21 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
     private static PagedList<HotstringDto> Page(params HotstringDto[] items) =>
         new(items, 1, 50, items.Length, 1, false, false);
 
+    private void StubList(PagedList<HotstringDto> page) =>
+        _api.ListAsync(Arg.Any<Guid?>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<PagedList<HotstringDto>>.Ok(page));
+
+    private void StubListFailure(ApiResultStatus status, ApiProblemDetails? problem = null) =>
+        _api.ListAsync(Arg.Any<Guid?>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<PagedList<HotstringDto>>.Failure(status, problem));
+
     [Fact]
     public void Page_OnLoad_ShowsRowsFromApi()
     {
         var dto = new HotstringDto(Guid.NewGuid(), null, "btw", "by the way", true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
-        _api.ListAsync(Arg.Any<Guid?>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(ApiResult<PagedList<HotstringDto>>.Ok(Page(dto)));
+        StubList(Page(dto));
 
-        IRenderedComponent<Hotstrings> cut = Render<Hotstrings>();
+        IRenderedComponent<Hotstrings> cut = RenderPage();
         cut.WaitForState(() => cut.Markup.Contains("btw"));
 
         cut.Markup.Should().Contain("by the way");
@@ -44,10 +58,9 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
     [Fact]
     public void Page_OnApiError_ShowsErrorAlert()
     {
-        _api.ListAsync(Arg.Any<Guid?>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(ApiResult<PagedList<HotstringDto>>.Failure(ApiResultStatus.NetworkError, null));
+        StubListFailure(ApiResultStatus.NetworkError);
 
-        IRenderedComponent<Hotstrings> cut = Render<Hotstrings>();
+        IRenderedComponent<Hotstrings> cut = RenderPage();
         cut.WaitForState(() => cut.Markup.Contains("Unable to reach"));
 
         cut.Markup.Should().Contain("Unable to reach the API");
@@ -56,11 +69,10 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
     [Fact]
     public void Page_AddButton_InsertsDraftRow()
     {
-        _api.ListAsync(Arg.Any<Guid?>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(ApiResult<PagedList<HotstringDto>>.Ok(Page()));
+        StubList(Page());
 
-        IRenderedComponent<Hotstrings> cut = Render<Hotstrings>();
-        cut.WaitForState(() => cut.Markup.Contains("No hotstrings yet") || cut.Find("table") is not null);
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find("button.add-hotstring"));
 
         cut.Find("button.add-hotstring").Click();
 
@@ -68,17 +80,37 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
+    public void Page_HasReloadButton()
+    {
+        StubList(Page());
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+
+        cut.WaitForAssertion(() => cut.Find("button.reload-hotstrings").Should().NotBeNull());
+    }
+
+    [Fact]
+    public void Page_HasSearchInput()
+    {
+        StubList(Page());
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+
+        cut.WaitForAssertion(() => cut.Find(".search-hotstrings").Should().NotBeNull());
+    }
+
+    [Fact]
     public Task Page_SaveDraftRow_CallsCreateAndRefreshes()
     {
-        _api.ListAsync(Arg.Any<Guid?>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(ApiResult<PagedList<HotstringDto>>.Ok(Page()));
+        StubList(Page());
         _api.CreateAsync(Arg.Any<CreateHotstringDto>(), Arg.Any<CancellationToken>())
             .Returns(ApiResult<HotstringDto>.Ok(new HotstringDto(Guid.NewGuid(), null, "btw", "by the way", true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow)));
 
-        IRenderedComponent<Hotstrings> cut = Render<Hotstrings>();
+        IRenderedComponent<Hotstrings> cut = RenderPage();
         cut.WaitForAssertion(() => cut.Find("button.add-hotstring"));
         cut.Find("button.add-hotstring").Click();
 
+        cut.WaitForAssertion(() => cut.Find("input[data-test=\"trigger-input\"]"));
         cut.Find("input[data-test=\"trigger-input\"]").Input("btw");
         cut.Find("input[data-test=\"replacement-input\"]").Input("by the way");
         cut.Find("button.commit-edit").Click();
@@ -90,15 +122,33 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
+    public Task Page_BlankReplacement_BlocksCommit_AndShowsValidationMessage()
+    {
+        StubList(Page());
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find("button.add-hotstring"));
+        cut.Find("button.add-hotstring").Click();
+
+        cut.WaitForAssertion(() => cut.Find("input[data-test=\"trigger-input\"]"));
+        cut.Find("input[data-test=\"trigger-input\"]").Input("btw");
+        // Leave replacement empty
+        cut.Find("button.commit-edit").Click();
+
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("ReplacementString is required"));
+        _api.DidNotReceive().CreateAsync(Arg.Any<CreateHotstringDto>(), Arg.Any<CancellationToken>());
+        return Task.CompletedTask;
+    }
+
+    [Fact]
     public Task Page_EditExistingRow_CallsUpdate()
     {
         var dto = new HotstringDto(Guid.NewGuid(), null, "btw", "by the way", true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
-        _api.ListAsync(Arg.Any<Guid?>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(ApiResult<PagedList<HotstringDto>>.Ok(Page(dto)));
+        StubList(Page(dto));
         _api.UpdateAsync(dto.Id, Arg.Any<UpdateHotstringDto>(), Arg.Any<CancellationToken>())
             .Returns(ApiResult<HotstringDto>.Ok(dto with { Replacement = "by the way!" }));
 
-        IRenderedComponent<Hotstrings> cut = Render<Hotstrings>();
+        IRenderedComponent<Hotstrings> cut = RenderPage();
         cut.WaitForAssertion(() => cut.Find("button.start-edit"));
         cut.Find("button.start-edit").Click();
         cut.Find("input[data-test=\"replacement-input\"]").Input("by the way!");
@@ -112,15 +162,15 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
     [Fact]
     public void Page_OnConflictResponse_ShowsErrorSnackbar()
     {
-        _api.ListAsync(Arg.Any<Guid?>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(ApiResult<PagedList<HotstringDto>>.Ok(Page()));
+        StubList(Page());
         _api.CreateAsync(Arg.Any<CreateHotstringDto>(), Arg.Any<CancellationToken>())
             .Returns(ApiResult<HotstringDto>.Failure(ApiResultStatus.Conflict,
                 new ApiProblemDetails(null, "Conflict", 409, "Trigger already exists", null, null)));
 
-        IRenderedComponent<Hotstrings> cut = Render<Hotstrings>();
+        IRenderedComponent<Hotstrings> cut = RenderPage();
         cut.WaitForAssertion(() => cut.Find("button.add-hotstring"));
         cut.Find("button.add-hotstring").Click();
+        cut.WaitForAssertion(() => cut.Find("input[data-test=\"trigger-input\"]"));
         cut.Find("input[data-test=\"trigger-input\"]").Input("btw");
         cut.Find("input[data-test=\"replacement-input\"]").Input("by the way");
         cut.Find("button.commit-edit").Click();

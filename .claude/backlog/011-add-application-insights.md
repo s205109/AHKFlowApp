@@ -16,10 +16,10 @@ As an operator, I want production telemetry in Azure so that I can diagnose fail
 
 ## Acceptance criteria
 
-- [ ] API writes logs to Application Insights when configured.
-- [ ] Connection string is environment-specific and not hardcoded.
-- [ ] Local development still works without Application Insights.
-- [ ] Deployment documentation includes required secret/configuration.
+- [x] API writes logs to Application Insights when configured.
+- [x] Connection string is environment-specific and not hardcoded.
+- [x] Local development still works without Application Insights.
+- [x] Deployment documentation includes required secret/configuration.
 
 ## Out of scope
 
@@ -30,3 +30,7 @@ As an operator, I want production telemetry in Azure so that I can diagnose fail
 
 - Depends on 006 and 010.
 - Requires Azure resources and GitHub secrets setup.
+
+---
+
+**Completed:** 2026-04-29

@@ -193,6 +193,33 @@ public sealed class HotstringsEndpointsTests(SqlContainerFixture sqlFixture) : I
     }
 
     [Fact]
+    public async Task List_SearchByTrigger_FiltersResults()
+    {
+        var owner = Guid.NewGuid();
+        using HttpClient client = CreateAuthed(owner);
+
+        await client.PostAsJsonAsync("/api/v1/hotstrings", new CreateHotstringDto("btw", "by the way"));
+        await client.PostAsJsonAsync("/api/v1/hotstrings", new CreateHotstringDto("fyi", "for your info"));
+
+        HttpResponseMessage response = await client.GetAsync("/api/v1/hotstrings?search=btw");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        PagedList<HotstringDto>? body = await response.Content.ReadFromJsonAsync<PagedList<HotstringDto>>();
+        body!.Items.Should().ContainSingle().Which.Trigger.Should().Be("btw");
+    }
+
+    [Fact]
+    public async Task List_SearchTooLong_Returns400()
+    {
+        using HttpClient client = CreateAuthed();
+        string longSearch = new('x', 201);
+
+        HttpResponseMessage response = await client.GetAsync($"/api/v1/hotstrings?search={longSearch}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
     public async Task Get_WithoutBearer_Returns401()
     {
         using HttpClient client = _factory.CreateClient();
