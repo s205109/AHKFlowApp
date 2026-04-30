@@ -70,13 +70,13 @@ public sealed class HybridUserPreferencesService : IUserPreferencesService, IDis
 
     private async void OnAuthStateChangedAsync(Task<AuthenticationState> task)
     {
-        AuthenticationState authState = await task;
-        if (authState.User.Identity?.IsAuthenticated is not true)
-            return;
-
-        _cache = null;
         try
         {
+            AuthenticationState authState = await task;
+            if (authState.User.Identity?.IsAuthenticated is not true)
+                return;
+
+            _cache = null;
             ApiResult<UserPreferenceDto> result = await _preferencesApi.GetAsync();
             if (result.IsSuccess && result.Value is { } dto)
             {
