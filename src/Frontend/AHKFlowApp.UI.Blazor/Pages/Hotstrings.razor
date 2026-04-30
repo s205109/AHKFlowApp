@@ -10,44 +10,67 @@
 <MudText Typo="Typo.h4" GutterBottom="true">Hotstrings</MudText>
 
 <MudPaper Class="pa-4">
-    <MudButton Class="add-hotstring mb-3" Variant="Variant.Filled" Color="Color.Primary"
-               StartIcon="@Icons.Material.Filled.Add" OnClick="StartAdd"
-               Disabled="@(_editing.ContainsKey(Guid.Empty))">
-        Add hotstring
-    </MudButton>
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Wrap="Wrap.Wrap" Class="mb-4">
+        <MudButton Class="add-hotstring" Variant="Variant.Filled" Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.Add" OnClick="StartAddAsync"
+                   Disabled="@(_editing.ContainsKey(Guid.Empty))">
+            Add
+        </MudButton>
+        <MudButton Class="reload-hotstrings" Variant="Variant.Filled" Color="Color.Secondary"
+                   StartIcon="@Icons.Material.Filled.Refresh" OnClick="ReloadAsync"
+                   Disabled="@_loading">
+            Reload
+        </MudButton>
+        <MudSpacer />
+        <MudTextField T="string" @bind-Value="_search" @bind-Value:after="OnSearchChangedAsync"
+                      DebounceInterval="300"
+                      Placeholder="Search For Hotstrings"
+                      Adornment="Adornment.Start"
+                      AdornmentIcon="@Icons.Material.Filled.Search"
+                      Class="search-hotstrings"
+                      Style="max-width: 360px;"
+                      Immediate="true" />
+    </MudStack>
 
-    @if (_loading)
-    {
-        <MudProgressCircular Indeterminate="true" Size="Size.Small" />
-    }
-    else if (_loadError is not null)
+    @if (_loadError is not null)
     {
         <MudAlert Severity="Severity.Error" Class="mb-3">@_loadError</MudAlert>
-        <MudButton Variant="Variant.Outlined" OnClick="LoadAsync">Retry</MudButton>
     }
-    else
-    {
-        <MudTable Items="VisibleRows()" Dense="true" Hover="true">
+
+    <div style="overflow-x: auto;">
+        <MudTable @ref="_table" T="HotstringDto" ServerData="LoadServerData"
+                  Dense="true" Hover="true" RowsPerPage="10" Loading="_loading">
             <HeaderContent>
-                <MudTh>Trigger</MudTh>
-                <MudTh>Replacement</MudTh>
-                <MudTh>Ending char</MudTh>
-                <MudTh>Inside word</MudTh>
+                <MudTh>TriggerString</MudTh>
+                <MudTh>ReplacementString</MudTh>
+                <MudTh>IsEndingCharacterRequired</MudTh>
+                <MudTh>IsTriggerInsideWord</MudTh>
+                <MudTh>Profile</MudTh>
                 <MudTh Style="width:160px">Actions</MudTh>
             </HeaderContent>
             <RowTemplate>
                 @if (_editing.TryGetValue(context.Id, out var edit))
                 {
+                    bool showErrors = _commitAttempted.Contains(context.Id);
+                    string? triggerError = showErrors ? ValidateTrigger(edit.Trigger) : null;
+                    string? replacementError = showErrors ? ValidateReplacement(edit.Replacement) : null;
                     <MudTd Class="@(context.Id == Guid.Empty ? "draft-row" : "edit-row")">
-                        <MudTextField @bind-Value="edit.Trigger" Required="true" MaxLength="50" Immediate="true"
+                        <MudTextField @bind-Value="edit.Trigger"
+                                      Validation="@(new Func<string, string?>(ValidateTrigger))"
+                                      Error="@(triggerError is not null)" ErrorText="@triggerError"
+                                      Immediate="true" MaxLength="50"
                                       UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "trigger-input" })" />
                     </MudTd>
                     <MudTd>
-                        <MudTextField @bind-Value="edit.Replacement" Required="true" MaxLength="4000" Immediate="true"
+                        <MudTextField @bind-Value="edit.Replacement"
+                                      Validation="@(new Func<string, string?>(ValidateReplacement))"
+                                      Error="@(replacementError is not null)" ErrorText="@replacementError"
+                                      Immediate="true" MaxLength="4000"
                                       UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "replacement-input" })" />
                     </MudTd>
-                    <MudTd><MudCheckBox @bind-Value="edit.IsEndingCharacterRequired" /></MudTd>
-                    <MudTd><MudCheckBox @bind-Value="edit.IsTriggerInsideWord" /></MudTd>
+                    <MudTd><MudCheckBox T="bool" @bind-Value="edit.IsEndingCharacterRequired" /></MudTd>
+                    <MudTd><MudCheckBox T="bool" @bind-Value="edit.IsTriggerInsideWord" /></MudTd>
+                    <MudTd Class="profile-cell">@ProfilePlaceholder</MudTd>
                     <MudTd>
                         <MudIconButton Class="commit-edit" Icon="@Icons.Material.Filled.Check"
                                        Color="Color.Success" OnClick="() => CommitEditAsync(context.Id)" />
@@ -59,19 +82,23 @@
                 {
                     <MudTd>@context.Trigger</MudTd>
                     <MudTd>@context.Replacement</MudTd>
-                    <MudTd>@context.IsEndingCharacterRequired</MudTd>
-                    <MudTd>@context.IsTriggerInsideWord</MudTd>
+                    <MudTd><MudCheckBox T="bool" Value="@context.IsEndingCharacterRequired" ReadOnly="true" /></MudTd>
+                    <MudTd><MudCheckBox T="bool" Value="@context.IsTriggerInsideWord" ReadOnly="true" /></MudTd>
+                    <MudTd>@ProfilePlaceholder</MudTd>
                     <MudTd>
-                        <MudIconButton Class="start-edit" Icon="@Icons.Material.Filled.Edit"
-                                       OnClick="() => StartEdit(context)" />
                         <MudIconButton Class="delete" Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
                                        OnClick="() => DeleteAsync(context)" />
+                        <MudIconButton Class="start-edit" Icon="@Icons.Material.Filled.Edit"
+                                       OnClick="() => StartEdit(context)" />
                     </MudTd>
                 }
             </RowTemplate>
             <NoRecordsContent><MudText>No hotstrings yet.</MudText></NoRecordsContent>
+            <PagerContent>
+                <MudTablePager PageSizeOptions="@(new[] { 10, 25, 50 })" />
+            </PagerContent>
         </MudTable>
-    }
+    </div>
 </MudPaper>
 
 @code {
@@ -79,72 +106,136 @@
     [Inject] private ISnackbar Snackbar { get; set; } = default!;
     [Inject] private IDialogService DialogService { get; set; } = default!;
 
-    private List<HotstringDto> _items = [];
+    private const string ProfilePlaceholder = "—";
+
+    private MudTable<HotstringDto>? _table;
     private readonly Dictionary<Guid, HotstringEditModel> _editing = new();
-    private bool _loading = true;
+    private readonly HashSet<Guid> _commitAttempted = [];
+    private bool _loading;
     private string? _loadError;
+    private string _search = "";
     private readonly CancellationTokenSource _cts = new();
 
     private static readonly HotstringDto _draftPlaceholder = new(
         Guid.Empty, null, "", "", true, true, DateTimeOffset.MinValue, DateTimeOffset.MinValue);
 
-    protected override Task OnInitializedAsync() => LoadAsync();
-
-    private IEnumerable<HotstringDto> VisibleRows()
+    private async Task<TableData<HotstringDto>> LoadServerData(TableState state, CancellationToken ct)
     {
-        if (_editing.ContainsKey(Guid.Empty)) yield return _draftPlaceholder;
-        foreach (var item in _items) yield return item;
-    }
+        _loading = true;
+        _loadError = null;
 
-    private async Task LoadAsync()
-    {
-        _loading = true; _loadError = null; StateHasChanged();
-        var result = await Api.ListAsync(profileId: null, page: 1, pageSize: 200, _cts.Token);
-        if (result.IsSuccess) _items = [.. result.Value!.Items];
-        else _loadError = ApiErrorMessageFactory.Build(result.Status, result.Problem);
+        ApiResult<PagedList<HotstringDto>> result = await Api.ListAsync(
+            profileId: null,
+            page: state.Page + 1,
+            pageSize: state.PageSize,
+            search: string.IsNullOrWhiteSpace(_search) ? null : _search,
+            ignoreCase: true,
+            ct: ct);
+
         _loading = false;
+
+        if (!result.IsSuccess)
+        {
+            _loadError = ApiErrorMessageFactory.Build(result.Status, result.Problem);
+            await InvokeAsync(StateHasChanged);
+            return new TableData<HotstringDto> { Items = [], TotalItems = 0 };
+        }
+
+        List<HotstringDto> items = [.. result.Value!.Items];
+        if (state.Page == 0 && _editing.ContainsKey(Guid.Empty))
+            items.Insert(0, _draftPlaceholder);
+
+        return new TableData<HotstringDto> { Items = items, TotalItems = result.Value.TotalCount };
     }
 
-    private void StartAdd() => _editing[Guid.Empty] = new HotstringEditModel();
+    private async Task ReloadAsync()
+    {
+        if (_table is not null) await _table.ReloadServerData();
+    }
 
-    private void StartEdit(HotstringDto dto) => _editing[dto.Id] = HotstringEditModel.FromDto(dto);
+    private async Task OnSearchChangedAsync()
+    {
+        if (_table is not null) await _table.ReloadServerData();
+    }
 
-    private void CancelEdit(Guid id) => _editing.Remove(id);
+    private async Task StartAddAsync()
+    {
+        _editing[Guid.Empty] = new HotstringEditModel();
+        if (_table is not null) await _table.ReloadServerData();
+    }
+
+    private void StartEdit(HotstringDto dto) =>
+        _editing[dto.Id] = HotstringEditModel.FromDto(dto);
+
+    private async void CancelEdit(Guid id)
+    {
+        _editing.Remove(id);
+        _commitAttempted.Remove(id);
+        if (id == Guid.Empty && _table is not null) await _table.ReloadServerData();
+    }
+
+    private static string? ValidateTrigger(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return "TriggerString is required";
+        if (value.Length > 50) return "TriggerString must be 50 characters or fewer";
+        return null;
+    }
+
+    private static string? ValidateReplacement(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return "ReplacementString is required";
+        if (value.Length > 4000) return "ReplacementString must be 4000 characters or fewer";
+        return null;
+    }
 
     private async Task CommitEditAsync(Guid id)
     {
-        if (!_editing.TryGetValue(id, out var edit)) return;
+        if (!_editing.TryGetValue(id, out HotstringEditModel? edit)) return;
 
-        if (string.IsNullOrWhiteSpace(edit.Trigger) || string.IsNullOrWhiteSpace(edit.Replacement))
-        {
-            Snackbar.Add("Trigger and Replacement are required.", Severity.Warning);
+        _commitAttempted.Add(id);
+        if (ValidateTrigger(edit.Trigger) is not null || ValidateReplacement(edit.Replacement) is not null)
             return;
-        }
+
+        _commitAttempted.Remove(id);
 
         if (id == Guid.Empty)
         {
-            var result = await Api.CreateAsync(edit.ToCreateDto(), _cts.Token);
-            if (result.IsSuccess) { _editing.Remove(id); Snackbar.Add("Hotstring created.", Severity.Success); await LoadAsync(); }
+            ApiResult<HotstringDto> result = await Api.CreateAsync(edit.ToCreateDto(), _cts.Token);
+            if (result.IsSuccess)
+            {
+                _editing.Remove(id);
+                Snackbar.Add("Hotstring created.", Severity.Success);
+                if (_table is not null) await _table.ReloadServerData();
+            }
             else Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
         }
         else
         {
-            var result = await Api.UpdateAsync(id, edit.ToUpdateDto(), _cts.Token);
-            if (result.IsSuccess) { _editing.Remove(id); Snackbar.Add("Hotstring updated.", Severity.Success); await LoadAsync(); }
+            ApiResult<HotstringDto> result = await Api.UpdateAsync(id, edit.ToUpdateDto(), _cts.Token);
+            if (result.IsSuccess)
+            {
+                _editing.Remove(id);
+                Snackbar.Add("Hotstring updated.", Severity.Success);
+                if (_table is not null) await _table.ReloadServerData();
+            }
             else Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
         }
     }
 
     private async Task DeleteAsync(HotstringDto dto)
     {
-        var confirm = await DialogService.ShowMessageBoxAsync(
+        bool? confirm = await DialogService.ShowMessageBoxAsync(
             title: "Delete hotstring?",
             message: $"Delete \"{dto.Trigger}\"? This cannot be undone.",
             yesText: "Delete", cancelText: "Cancel");
         if (confirm != true) return;
 
-        var result = await Api.DeleteAsync(dto.Id, _cts.Token);
-        if (result.IsSuccess) { Snackbar.Add("Hotstring deleted.", Severity.Success); await LoadAsync(); }
+        ApiResult result = await Api.DeleteAsync(dto.Id, _cts.Token);
+        if (result.IsSuccess)
+        {
+            Snackbar.Add("Hotstring deleted.", Severity.Success);
+            if (_table is not null) await _table.ReloadServerData();
+        }
         else Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
     }
 

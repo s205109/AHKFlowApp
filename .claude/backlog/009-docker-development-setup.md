@@ -16,9 +16,9 @@ As a developer, I want a reproducible development environment so onboarding and 
 
 ## Acceptance criteria
 
-- [ ] Dockerfile for API exists.
-- [ ] `docker-compose.yml` includes API and SQL Server for local development.
-- [ ] Documentation shows how to run services locally with Docker.
+- [x] Dockerfile for API exists.
+- [x] `docker-compose.yml` includes API and SQL Server for local development.
+- [x] Documentation shows how to run services locally with Docker.
 
 ## Out of scope
 
@@ -27,3 +27,7 @@ As a developer, I want a reproducible development environment so onboarding and 
 ## Notes / dependencies
 
 - Integrates with testing and DB foundation (004, 007).
+
+---
+
+**Completed:** 2026-04-29

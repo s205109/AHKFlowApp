@@ -16,10 +16,10 @@ As a developer, I want a test scaffold so that TDD and CI-based test execution a
 
 ## Acceptance criteria
 
-- [ ] Test projects created and referenced.
-- [ ] Common test utilities and fixtures available for integration tests.
-- [ ] Testcontainers + SQL Server baseline available for integration tests.
-- [ ] CI runs unit and integration tests.
+- [x] Test projects created and referenced.
+- [x] Common test utilities and fixtures available for integration tests.
+- [x] Testcontainers + SQL Server baseline available for integration tests.
+- [x] CI runs unit and integration tests.
 
 ## Out of scope
 
@@ -28,3 +28,7 @@ As a developer, I want a test scaffold so that TDD and CI-based test execution a
 ## Notes / dependencies
 
 - Depends on 003.
+
+---
+
+**Completed:** 2026-04-29

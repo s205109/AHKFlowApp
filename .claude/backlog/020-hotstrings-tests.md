@@ -16,10 +16,10 @@ As a developer, I want tests for hotstrings so that changes can be made safely a
 
 ## Acceptance criteria
 
-- [ ] Unit tests cover core hotstring rules (validation + generation-relevant constraints).
-- [ ] Integration tests cover API endpoints against a real SQL Server database via Testcontainers.
-- [ ] Tests run in CI.
-- [ ] Tests include examples for reproducible database seeding and teardown in CI.
+- [x] Unit tests cover core hotstring rules (validation + generation-relevant constraints).
+- [x] Integration tests cover API endpoints against a real SQL Server database via Testcontainers.
+- [x] Tests run in CI.
+- [x] Tests include examples for reproducible database seeding and teardown in CI.
 
 ## Out of scope
 
@@ -28,3 +28,7 @@ As a developer, I want tests for hotstrings so that changes can be made safely a
 ## Notes / dependencies
 
 - Depends on 004 and 013.
+
+---
+
+**Completed:** 2026-04-29
