@@ -4,6 +4,7 @@ namespace AHKFlowApp.UI.Blazor.Services;
 
 public sealed class LocalStorageUserPreferencesService(IJSRuntime js) : IUserPreferencesService
 {
+    public event Action<UserPreferences>? OnChange { add { } remove { } }
     private const string RowsPerPageKey = "ahkflow.prefs.rowsPerPage";
     private const string DarkModeKey = "ahkflow.prefs.darkMode";
 

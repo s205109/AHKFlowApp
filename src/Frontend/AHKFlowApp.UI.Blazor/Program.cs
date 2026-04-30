@@ -10,7 +10,8 @@ var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<HeadOutlet>("head::after");
 
 builder.Services.AddMudServices();
-builder.Services.AddScoped<IUserPreferencesService, LocalStorageUserPreferencesService>();
+builder.Services.AddScoped<LocalStorageUserPreferencesService>();
+builder.Services.AddScoped<IUserPreferencesService, HybridUserPreferencesService>();
 
 builder.RootComponents.Add<AHKFlowApp.UI.Blazor.App>("#app");
 
@@ -64,6 +65,8 @@ if (useTestAuth)
         baseAddress, TimeSpan.FromSeconds(35), useAuth: false, mainClientResilience);
     AddApiClient<IHotstringsApiClient, HotstringsApiClient>(
         baseAddress, TimeSpan.FromSeconds(30), useAuth: false);
+    AddApiClient<IPreferencesApiClient, PreferencesApiClient>(
+        baseAddress, TimeSpan.FromSeconds(10), useAuth: false);
 }
 else
 {
@@ -86,6 +89,8 @@ else
         baseAddress, TimeSpan.FromSeconds(35), useAuth: true, mainClientResilience);
     AddApiClient<IHotstringsApiClient, HotstringsApiClient>(
         baseAddress, TimeSpan.FromSeconds(30), useAuth: true);
+    AddApiClient<IPreferencesApiClient, PreferencesApiClient>(
+        baseAddress, TimeSpan.FromSeconds(10), useAuth: true);
 }
 
 await builder.Build().RunAsync();
