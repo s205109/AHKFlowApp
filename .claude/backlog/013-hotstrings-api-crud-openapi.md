@@ -16,11 +16,11 @@ As a client (UI/CLI), I want a hotstring CRUD API so that hotstrings can be mana
 
 ## Acceptance criteria
 
-- [ ] Endpoints: create, update, delete, get-by-id, list-by-profile.
-- [ ] Endpoints are secured (see 012).
-- [ ] OpenAPI documents request/response models and auth requirements.
-- [ ] Unit tests cover controller/service behavior, including validation and business rules.
-- [ ] Integration tests exercise the API endpoints against a test database and verify auth and response shapes.
+- [x] Endpoints: create, update, delete, get-by-id, list-by-profile.
+- [x] Endpoints are secured (see 012).
+- [x] OpenAPI documents request/response models and auth requirements.
+- [x] Unit tests cover controller/service behavior, including validation and business rules.
+- [x] Integration tests exercise the API endpoints against a test database and verify auth and response shapes.
 
 ## Out of scope
 
@@ -29,3 +29,7 @@ As a client (UI/CLI), I want a hotstring CRUD API so that hotstrings can be mana
 ## Notes / dependencies
 
 - Depends on 003 and 012.
+
+---
+
+**Completed:** 2026-04-29

@@ -16,9 +16,9 @@ As a developer, I want automated versioning so that builds produce consistent ve
 
 ## Acceptance criteria
 
-- [ ] MinVer is configured for the solution.
-- [ ] Build outputs expose the version (assemblies/packages).
-- [ ] Versioning scheme is documented.
+- [x] MinVer is configured for the solution.
+- [x] Build outputs expose the version (assemblies/packages).
+- [x] Versioning scheme is documented.
 
 ## Out of scope
 
@@ -27,3 +27,7 @@ As a developer, I want automated versioning so that builds produce consistent ve
 ## Notes / dependencies
 
 - Align with CI/CD in 010.
+
+---
+
+**Completed:** 2026-04-29
