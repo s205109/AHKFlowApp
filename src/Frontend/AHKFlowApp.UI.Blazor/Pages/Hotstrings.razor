@@ -74,7 +74,7 @@
                         <MudIconButton Class="commit-edit" Icon="@Icons.Material.Filled.Check"
                                        Color="Color.Success" OnClick="() => CommitEditAsync(context.Id)" />
                         <MudIconButton Class="cancel-edit" Icon="@Icons.Material.Filled.Close"
-                                       Color="Color.Default" OnClick="() => CancelEdit(context.Id)" />
+                                       Color="Color.Default" OnClick="() => CancelEditAsync(context.Id)" />
                     </MudTd>
                 }
                 else
@@ -93,7 +93,7 @@
             </RowTemplate>
             <NoRecordsContent><MudText>No hotstrings yet.</MudText></NoRecordsContent>
             <PagerContent>
-                <MudTablePager PageSizeOptions="@(new[] { 10, 25, 50 })" />
+                <MudTablePager PageSizeOptions="UserPreferences.AllowedRowsPerPage" />
             </PagerContent>
         </MudTable>
     </div>
@@ -179,7 +179,7 @@
     private void StartEdit(HotstringDto dto) =>
         _editing[dto.Id] = HotstringEditModel.FromDto(dto);
 
-    private async void CancelEdit(Guid id)
+    private async Task CancelEditAsync(Guid id)
     {
         _editing.Remove(id);
         _commitAttempted.Remove(id);

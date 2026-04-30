@@ -49,7 +49,12 @@
     public void Dispose() => Preferences.OnChange -= OnPreferencesChanged;
 
     private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
-    private void ToggleDarkMode() => _isDarkMode = !_isDarkMode;
+
+    private async Task ToggleDarkMode()
+    {
+        UserPreferences current = await Preferences.GetAsync();
+        await Preferences.SetAsync(current with { DarkMode = !current.DarkMode });
+    }
 
     private readonly MudTheme _theme = new()
     {
