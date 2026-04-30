@@ -40,10 +40,10 @@
         _isDarkMode = prefs.DarkMode;
     }
 
-    private void OnPreferencesChanged(UserPreferences prefs)
+    private async void OnPreferencesChanged(UserPreferences prefs)
     {
         _isDarkMode = prefs.DarkMode;
-        StateHasChanged();
+        await InvokeAsync(StateHasChanged);
     }
 
     public void Dispose() => Preferences.OnChange -= OnPreferencesChanged;

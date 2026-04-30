@@ -108,7 +108,6 @@ namespace AHKFlowApp.Infrastructure.Migrations
             modelBuilder.Entity("AHKFlowApp.Domain.Entities.UserPreference", b =>
                 {
                     b.Property<Guid>("OwnerOid")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<bool>("DarkMode")

@@ -9,6 +9,7 @@ internal sealed class UserPreferenceConfiguration : IEntityTypeConfiguration<Use
     public void Configure(EntityTypeBuilder<UserPreference> builder)
     {
         builder.HasKey(x => x.OwnerOid);
+        builder.Property(x => x.OwnerOid).ValueGeneratedNever();
 
         builder.Property(x => x.RowsPerPage).IsRequired();
         builder.Property(x => x.DarkMode).IsRequired();

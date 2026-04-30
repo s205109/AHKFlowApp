@@ -51,8 +51,19 @@
     private async Task SaveAsync()
     {
         _saving = true;
-        await Preferences.SetAsync(new UserPreferences(_rowsPerPage, _darkMode));
-        _saving = false;
-        Snackbar.Add("Settings saved.", Severity.Success);
+        try
+        {
+            await Preferences.SetAsync(new UserPreferences(_rowsPerPage, _darkMode));
+            Snackbar.Add("Settings saved.", Severity.Success);
+        }
+        catch
+        {
+            Snackbar.Add("Failed to save settings.", Severity.Error);
+            throw;
+        }
+        finally
+        {
+            _saving = false;
+        }
     }
 }
