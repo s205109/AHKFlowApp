@@ -1,8 +1,10 @@
+using System.Security.Claims;
 using AHKFlowApp.UI.Blazor.DTOs;
 using AHKFlowApp.UI.Blazor.Pages;
 using AHKFlowApp.UI.Blazor.Services;
 using Bunit;
 using FluentAssertions;
+using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Extensions.DependencyInjection;
 using MudBlazor;
 using MudBlazor.Services;
@@ -15,9 +17,16 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
 {
     private readonly IHotstringsApiClient _api = Substitute.For<IHotstringsApiClient>();
 
+    private static readonly Task<AuthenticationState> AuthenticatedState =
+        Task.FromResult(new AuthenticationState(
+            new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.Name, "testuser")], "test"))));
+
     public HotstringsPageTests()
     {
         Services.AddSingleton(_api);
+        IUserPreferencesService prefs = Substitute.For<IUserPreferencesService>();
+        prefs.GetAsync(Arg.Any<CancellationToken>()).Returns(UserPreferences.Default);
+        Services.AddSingleton(prefs);
         Services.AddMudServices();
         JSInterop.Mode = JSRuntimeMode.Loose;
     }
@@ -25,7 +34,7 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
     private IRenderedComponent<Hotstrings> RenderPage()
     {
         Render<MudPopoverProvider>();
-        return Render<Hotstrings>();
+        return Render<Hotstrings>(p => p.AddCascadingValue(AuthenticatedState));
     }
 
     Task IAsyncLifetime.InitializeAsync() => Task.CompletedTask;
@@ -135,7 +144,7 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
         // Leave replacement empty
         cut.Find("button.commit-edit").Click();
 
-        cut.WaitForAssertion(() => cut.Markup.Should().Contain("ReplacementString is required"));
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("Replacement is required"));
         _api.DidNotReceive().CreateAsync(Arg.Any<CreateHotstringDto>(), Arg.Any<CancellationToken>());
         return Task.CompletedTask;
     }

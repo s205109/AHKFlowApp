@@ -1,0 +1,54 @@
+@page "/settings"
+@using AHKFlowApp.UI.Blazor.Services
+@using MudBlazor
+
+<PageTitle>Settings</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Settings</MudText>
+
+<MudPaper Class="pa-4" MaxWidth="500px">
+    <MudStack Spacing="4">
+        <MudSelect T="int" Label="Rows per page" @bind-Value="_rowsPerPage" Variant="Variant.Outlined">
+            @foreach (int option in RowsPerPageOptions)
+            {
+                <MudSelectItem T="int" Value="option">@option</MudSelectItem>
+            }
+        </MudSelect>
+
+        <MudSelect T="bool" Label="Default theme" @bind-Value="_darkMode" Variant="Variant.Outlined">
+            <MudSelectItem T="bool" Value="false">Light</MudSelectItem>
+            <MudSelectItem T="bool" Value="true">Dark</MudSelectItem>
+        </MudSelect>
+
+        <MudButton Class="save-settings" Variant="Variant.Filled" Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.Save" OnClick="SaveAsync" Disabled="@_saving">
+            Save
+        </MudButton>
+    </MudStack>
+</MudPaper>
+
+@code {
+    private static readonly int[] RowsPerPageOptions = [10, 25, 50, 100];
+
+    [Inject] private IUserPreferencesService Preferences { get; set; } = default!;
+    [Inject] private ISnackbar Snackbar { get; set; } = default!;
+
+    private int _rowsPerPage = UserPreferences.Default.RowsPerPage;
+    private bool _darkMode = UserPreferences.Default.DarkMode;
+    private bool _saving;
+
+    protected override async Task OnInitializedAsync()
+    {
+        UserPreferences current = await Preferences.GetAsync();
+        _rowsPerPage = current.RowsPerPage;
+        _darkMode = current.DarkMode;
+    }
+
+    private async Task SaveAsync()
+    {
+        _saving = true;
+        await Preferences.SetAsync(new UserPreferences(_rowsPerPage, _darkMode));
+        _saving = false;
+        Snackbar.Add("Settings saved.", Severity.Success);
+    }
+}

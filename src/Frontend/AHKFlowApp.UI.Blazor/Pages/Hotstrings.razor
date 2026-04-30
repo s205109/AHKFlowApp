@@ -3,6 +3,7 @@
 @using AHKFlowApp.UI.Blazor.Services
 @using AHKFlowApp.UI.Blazor.Validation
 @using MudBlazor
+@using Microsoft.AspNetCore.Components.Authorization
 @implements IDisposable
 
 <PageTitle>Hotstrings</PageTitle>
@@ -13,12 +14,12 @@
     <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Wrap="Wrap.Wrap" Class="mb-4">
         <MudButton Class="add-hotstring" Variant="Variant.Filled" Color="Color.Primary"
                    StartIcon="@Icons.Material.Filled.Add" OnClick="StartAddAsync"
-                   Disabled="@(_editing.ContainsKey(Guid.Empty))">
+                   Disabled="@(!_isAuthenticated || _editing.ContainsKey(Guid.Empty))">
             Add
         </MudButton>
         <MudButton Class="reload-hotstrings" Variant="Variant.Filled" Color="Color.Secondary"
                    StartIcon="@Icons.Material.Filled.Refresh" OnClick="ReloadAsync"
-                   Disabled="@_loading">
+                   Disabled="@(!_isAuthenticated || _loading)">
             Reload
         </MudButton>
         <MudSpacer />
@@ -39,13 +40,12 @@
 
     <div style="overflow-x: auto;">
         <MudTable @ref="_table" T="HotstringDto" ServerData="LoadServerData"
-                  Dense="true" Hover="true" RowsPerPage="10" Loading="_loading">
+                  Dense="true" Hover="true" RowsPerPage="_rowsPerPage" Loading="_loading">
             <HeaderContent>
-                <MudTh>TriggerString</MudTh>
-                <MudTh>ReplacementString</MudTh>
-                <MudTh>IsEndingCharacterRequired</MudTh>
-                <MudTh>IsTriggerInsideWord</MudTh>
-                <MudTh>Profile</MudTh>
+                <MudTh>Trigger</MudTh>
+                <MudTh>Replacement</MudTh>
+                <MudTh>Ending char required</MudTh>
+                <MudTh>Trigger inside word</MudTh>
                 <MudTh Style="width:160px">Actions</MudTh>
             </HeaderContent>
             <RowTemplate>
@@ -70,7 +70,6 @@
                     </MudTd>
                     <MudTd><MudCheckBox T="bool" @bind-Value="edit.IsEndingCharacterRequired" /></MudTd>
                     <MudTd><MudCheckBox T="bool" @bind-Value="edit.IsTriggerInsideWord" /></MudTd>
-                    <MudTd Class="profile-cell">@ProfilePlaceholder</MudTd>
                     <MudTd>
                         <MudIconButton Class="commit-edit" Icon="@Icons.Material.Filled.Check"
                                        Color="Color.Success" OnClick="() => CommitEditAsync(context.Id)" />
@@ -84,7 +83,6 @@
                     <MudTd>@context.Replacement</MudTd>
                     <MudTd><MudCheckBox T="bool" Value="@context.IsEndingCharacterRequired" ReadOnly="true" /></MudTd>
                     <MudTd><MudCheckBox T="bool" Value="@context.IsTriggerInsideWord" ReadOnly="true" /></MudTd>
-                    <MudTd>@ProfilePlaceholder</MudTd>
                     <MudTd>
                         <MudIconButton Class="delete" Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
                                        OnClick="() => DeleteAsync(context)" />
@@ -102,22 +100,36 @@
 </MudPaper>
 
 @code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
     [Inject] private IHotstringsApiClient Api { get; set; } = default!;
     [Inject] private ISnackbar Snackbar { get; set; } = default!;
     [Inject] private IDialogService DialogService { get; set; } = default!;
-
-    private const string ProfilePlaceholder = "—";
+    [Inject] private IUserPreferencesService Preferences { get; set; } = default!;
 
     private MudTable<HotstringDto>? _table;
     private readonly Dictionary<Guid, HotstringEditModel> _editing = new();
     private readonly HashSet<Guid> _commitAttempted = [];
+    private bool _isAuthenticated;
     private bool _loading;
     private string? _loadError;
     private string _search = "";
+    private int _rowsPerPage = UserPreferences.Default.RowsPerPage;
     private readonly CancellationTokenSource _cts = new();
 
     private static readonly HotstringDto _draftPlaceholder = new(
         Guid.Empty, null, "", "", true, true, DateTimeOffset.MinValue, DateTimeOffset.MinValue);
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is not null)
+        {
+            var state = await AuthState;
+            _isAuthenticated = state.User.Identity?.IsAuthenticated ?? false;
+        }
+
+        UserPreferences prefs = await Preferences.GetAsync();
+        _rowsPerPage = prefs.RowsPerPage;
+    }
 
     private async Task<TableData<HotstringDto>> LoadServerData(TableState state, CancellationToken ct)
     {
@@ -176,15 +188,15 @@
 
     private static string? ValidateTrigger(string? value)
     {
-        if (string.IsNullOrWhiteSpace(value)) return "TriggerString is required";
-        if (value.Length > 50) return "TriggerString must be 50 characters or fewer";
+        if (string.IsNullOrWhiteSpace(value)) return "Trigger is required";
+        if (value.Length > 50) return "Trigger must be 50 characters or fewer";
         return null;
     }
 
     private static string? ValidateReplacement(string? value)
     {
-        if (string.IsNullOrWhiteSpace(value)) return "ReplacementString is required";
-        if (value.Length > 4000) return "ReplacementString must be 4000 characters or fewer";
+        if (string.IsNullOrWhiteSpace(value)) return "Replacement is required";
+        if (value.Length > 4000) return "Replacement must be 4000 characters or fewer";
         return null;
     }
 
