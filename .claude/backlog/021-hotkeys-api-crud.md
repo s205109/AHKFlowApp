@@ -31,3 +31,4 @@ As a client (UI), I want a hotkey CRUD API so that hotkeys can be managed centra
 
 - Depends on 003 and 012.
 - Assumes profiles exist (a seeded default is fine until 024 is implemented).
+- **Superseded by 022b** (Hotkey schema rebuild). The shape shipped here — free-form `Trigger` + `Action` strings + nullable single `ProfileId` — will be replaced by the structured schema (`Description/Key/Ctrl/Alt/Shift/Win/Action enum/Parameters` + M2M profile association). Kept in the backlog as a historical record.

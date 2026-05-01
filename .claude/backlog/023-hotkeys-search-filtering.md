@@ -29,4 +29,4 @@ As a user, I want to search and filter hotkeys so I can quickly find and manage 
 
 ## Notes / dependencies
 
-- Depends on 021 (Hotkeys API CRUD) and 022 (Hotkeys UI CRUD).
+- Depends on **022b** (Hotkey schema rebuild) and **022** (redesigned Hotkeys UI). Search must operate on the new structured fields (`Description`, `Key`, `Parameters`) and respect M2M profile filtering (junction OR `AppliesToAllProfiles=true` per **024b**).
