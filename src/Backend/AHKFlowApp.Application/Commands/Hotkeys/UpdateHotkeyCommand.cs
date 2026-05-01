@@ -18,7 +18,7 @@ public sealed class UpdateHotkeyCommandValidator : AbstractValidator<UpdateHotke
     {
         RuleFor(x => x.Input.Trigger).ValidHotkeyTrigger();
         RuleFor(x => x.Input.Action).ValidAction();
-        RuleFor(x => x.Input.Description!).ValidOptionalDescription();
+        RuleFor(x => x.Input.Description).ValidOptionalDescription();
         RuleFor(x => x.Input.ProfileId).ValidOptionalProfileId();
     }
 }
