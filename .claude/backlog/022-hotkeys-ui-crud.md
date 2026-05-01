@@ -32,5 +32,5 @@ As a user, I want to manage hotkeys in the Web UI so that I can define keyboard 
 ## Notes / dependencies
 
 - Depends on **022b** (Hotkey schema rebuild) and **024 + 024b** (Profile entity + M2M association).
-- Design spec: `C:\Users\btase\.claude\plans\start-your-work-on-validated-walrus.md` (Phase 3).
+- Design spec: `docs/superpowers/specs/2026-04-30-ahkflow-alignment-design.md` (Phase 3).
 - An earlier implementation on `feature/022-hotkeys-ui-crud` (unmerged) used a free-form `Trigger`/`Action`/`Description` model. It is superseded by this redesign; ACs above are intentionally reset.

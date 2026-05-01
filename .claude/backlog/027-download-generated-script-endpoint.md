@@ -31,4 +31,4 @@ As a user, I want to download the generated script for a profile so that I can i
 ## Notes / dependencies
 
 - Depends on **026** (script generation).
-- Design spec: `C:\Users\btase\.claude\plans\start-your-work-on-validated-walrus.md` (Phase 5).
+- Design spec: `docs/superpowers/specs/2026-04-30-ahkflow-alignment-design.md` (Phase 5).
