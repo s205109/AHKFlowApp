@@ -31,6 +31,7 @@ As a user, I want to manage hotstrings in the Web UI so that I can maintain my a
 
 - Depends on 013.
 - Assumes at least one profile exists (a seeded default is fine until 024 is implemented).
+- The single-profile picker shipped here will be revisited under **024b** (M2M profile association): the picker becomes a multi-select with an "Any" toggle.
 
 ---
 
