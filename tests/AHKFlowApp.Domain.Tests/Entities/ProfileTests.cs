@@ -11,7 +11,7 @@ public sealed class ProfileTests
     private readonly Guid _ownerOid = Guid.Parse("11111111-1111-1111-1111-111111111111");
 
     [Fact]
-    public void Create_assigns_id_owner_name_templates_default_flag_and_timestamps()
+    public void Create_WithAllArgs_SetsAllProperties()
     {
         var profile = Profile.Create(
             ownerOid: _ownerOid,
@@ -32,7 +32,7 @@ public sealed class ProfileTests
     }
 
     [Fact]
-    public void Update_changes_name_templates_and_bumps_updated_at_only()
+    public void Update_WithNewValues_ChangesNameTemplatesAndBumpsUpdatedAt()
     {
         var profile = Profile.Create(_ownerOid, "Work", true, "h", "f", _clock);
         DateTimeOffset originalCreated = profile.CreatedAt;
@@ -48,7 +48,7 @@ public sealed class ProfileTests
     }
 
     [Fact]
-    public void MarkDefault_true_sets_flag()
+    public void MarkDefault_WhenSetToTrue_SetsFlag()
     {
         var profile = Profile.Create(_ownerOid, "Work", false, "", "", _clock);
         profile.MarkDefault(true, _clock);
@@ -56,7 +56,7 @@ public sealed class ProfileTests
     }
 
     [Fact]
-    public void MarkDefault_bumps_updated_at()
+    public void MarkDefault_Always_BumpsUpdatedAt()
     {
         var profile = Profile.Create(_ownerOid, "Work", false, "", "", _clock);
         _clock.Advance(TimeSpan.FromMinutes(5));

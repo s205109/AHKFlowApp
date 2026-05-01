@@ -1,5 +1,6 @@
 using AHKFlowApp.Domain.Entities;
 using FluentAssertions;
+using Microsoft.Extensions.Time.Testing;
 using Xunit;
 
 namespace AHKFlowApp.Domain.Tests.Entities;
@@ -39,7 +40,7 @@ public sealed class HotstringTests
     [Fact]
     public void Update_ChangesAllMutableFields()
     {
-        var clock = new FixedClock(DateTimeOffset.Parse("2026-01-01T00:00:00Z"));
+        var clock = new FakeTimeProvider(DateTimeOffset.Parse("2026-01-01T00:00:00Z"));
         var hs = Hotstring.Create(Guid.NewGuid(), "old", "old replacement", null, true, false, clock);
 
         clock.Advance(TimeSpan.FromMinutes(1));
@@ -63,11 +64,4 @@ public sealed class HotstringTests
 
         hs.ProfileId.Should().BeNull();
     }
-}
-
-internal sealed class FixedClock(DateTimeOffset now) : TimeProvider
-{
-    private DateTimeOffset _now = now;
-    public override DateTimeOffset GetUtcNow() => _now;
-    public void Advance(TimeSpan delta) => _now = _now.Add(delta);
 }
