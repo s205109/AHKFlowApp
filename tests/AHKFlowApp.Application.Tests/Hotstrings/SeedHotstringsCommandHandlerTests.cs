@@ -40,6 +40,39 @@ public sealed class SeedHotstringsCommandHandlerTests(HotstringDbFixture fx)
     }
 
     [Fact]
+    public async Task Handle_WhenNoOid_InDevEnv_ReturnsUnauthorized()
+    {
+        await using AppDbContext db = fx.CreateContext();
+        var handler = new SeedHotstringsCommandHandler(db, CurrentUserHelper.For(null), TimeProvider.System, DevEnv(true));
+
+        Result<PagedList<HotstringDto>> result = await handler.Handle(new SeedHotstringsCommand(false), default);
+
+        result.Status.Should().Be(ResultStatus.Unauthorized);
+    }
+
+    [Fact]
+    public async Task Handle_WhenSampleExists_SkipsIt()
+    {
+        var owner = Guid.NewGuid();
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(Hotstring.Create(owner, "btw", "existing", null, true, true, TimeProvider.System));
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        var handler = new SeedHotstringsCommandHandler(db, CurrentUserHelper.For(owner), TimeProvider.System, DevEnv(true));
+
+        Result<PagedList<HotstringDto>> result = await handler.Handle(new SeedHotstringsCommand(Reset: false), default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Items.Should().Contain(h => h.Trigger == "btw" && h.Replacement == "existing");
+        result.Value.Items.Should().Contain(h => h.Trigger == "fyi");
+        result.Value.Items.Should().Contain(h => h.Trigger == "brb");
+    }
+
+    [Fact]
     public async Task Handle_WithReset_RemovesExistingFirst()
     {
         var owner = Guid.NewGuid();

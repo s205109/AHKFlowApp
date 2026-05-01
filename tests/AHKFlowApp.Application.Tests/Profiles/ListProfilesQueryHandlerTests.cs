@@ -46,6 +46,19 @@ public sealed class ListProfilesQueryHandlerTests(ProfileDbFixture fx)
     }
 
     [Fact]
+    public async Task Returns_unauthorized_when_no_oid()
+    {
+        await using AppDbContext ctx = fx.CreateContext();
+        ICurrentUser user = Substitute.For<ICurrentUser>();
+        user.Oid.Returns((Guid?)null);
+        var sut = new ListProfilesQueryHandler(ctx, user, _clock);
+
+        Result<IReadOnlyList<ProfileDto>> result = await sut.Handle(new ListProfilesQuery(), CancellationToken.None);
+
+        result.Status.Should().Be(ResultStatus.Unauthorized);
+    }
+
+    [Fact]
     public async Task Returns_users_profiles_ordered_default_first_then_name()
     {
         await using AppDbContext ctx = fx.CreateContext();

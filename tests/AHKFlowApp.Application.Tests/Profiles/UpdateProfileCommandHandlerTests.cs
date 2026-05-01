@@ -87,6 +87,21 @@ public sealed class UpdateProfileCommandHandlerTests(ProfileDbFixture fx)
     }
 
     [Fact]
+    public async Task Returns_unauthorized_when_no_oid()
+    {
+        await using AppDbContext ctx = fx.CreateContext();
+        ICurrentUser user = Substitute.For<ICurrentUser>();
+        user.Oid.Returns((Guid?)null);
+        var sut = new UpdateProfileCommandHandler(ctx, user, _clock);
+
+        Result<ProfileDto> result = await sut.Handle(
+            new UpdateProfileCommand(Guid.NewGuid(), new UpdateProfileDto("x", "", "", false)),
+            CancellationToken.None);
+
+        result.Status.Should().Be(ResultStatus.Unauthorized);
+    }
+
+    [Fact]
     public async Task Setting_IsDefault_true_clears_existing_default()
     {
         await using AppDbContext ctx = fx.CreateContext();

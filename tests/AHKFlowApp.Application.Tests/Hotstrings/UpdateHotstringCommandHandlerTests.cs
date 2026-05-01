@@ -76,6 +76,19 @@ public sealed class UpdateHotstringCommandHandlerTests(HotstringDbFixture fx)
     }
 
     [Fact]
+    public async Task Handle_WhenNoOid_ReturnsUnauthorized()
+    {
+        await using AppDbContext db = fx.CreateContext();
+        var handler = new UpdateHotstringCommandHandler(db, CurrentUserHelper.For(null), TimeProvider.System);
+        var cmd = new UpdateHotstringCommand(Guid.NewGuid(),
+            new UpdateHotstringDto("btw", "x", null, true, true));
+
+        Result<HotstringDto> result = await handler.Handle(cmd, default);
+
+        result.Status.Should().Be(ResultStatus.Unauthorized);
+    }
+
+    [Fact]
     public async Task Handle_WhenDuplicateTrigger_ReturnsConflict()
     {
         var owner = Guid.NewGuid();
