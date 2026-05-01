@@ -7,6 +7,7 @@ public interface IAppDbContext
 {
     DbSet<Hotstring> Hotstrings { get; }
     DbSet<Hotkey> Hotkeys { get; }
+    DbSet<Profile> Profiles { get; }
     DbSet<UserPreference> UserPreferences { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
