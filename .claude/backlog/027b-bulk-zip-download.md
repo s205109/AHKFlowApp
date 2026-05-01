@@ -30,4 +30,4 @@ As a user with several profiles, I want to download all my generated scripts in 
 ## Notes / dependencies
 
 - Depends on **026** and **027** (reuses the per-profile generator + endpoint behavior).
-- Design spec: `C:\Users\btase\.claude\plans\start-your-work-on-validated-walrus.md` (Phase 5, decision D5).
+- Design spec: `docs/superpowers/specs/2026-04-30-ahkflow-alignment-design.md` (Phase 5, decision D5).

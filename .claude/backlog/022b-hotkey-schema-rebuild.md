@@ -33,4 +33,4 @@ As a developer, I want the `Hotkey` schema and API to use structured fields (Des
 
 - Supersedes 021 in practice. 021 stays in the backlog as a historical record.
 - Depends on **024 + 024b** for profile association (`AppliesToAllProfiles` flag pairs with the `HotkeyProfile` junction).
-- Design spec: `C:\Users\btase\.claude\plans\start-your-work-on-validated-walrus.md` (Phase 3).
+- Design spec: `docs/superpowers/specs/2026-04-30-ahkflow-alignment-design.md` (Phase 3).

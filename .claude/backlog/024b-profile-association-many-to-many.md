@@ -32,4 +32,4 @@ As a user, I want to assign a hotkey or hotstring to multiple profiles, or to "A
 
 - Depends on **024** (Profile entity must exist).
 - Required by **022, 022b, 026**.
-- Design spec: `C:\Users\btase\.claude\plans\start-your-work-on-validated-walrus.md` (Phase 2).
+- Design spec: `docs/superpowers/specs/2026-04-30-ahkflow-alignment-design.md` (Phase 2).

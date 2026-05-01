@@ -34,4 +34,4 @@ As a user, I want one `.ahk` per profile that I can download and run locally, wi
 ## Notes / dependencies
 
 - Depends on **022b, 024, 024b, 025**.
-- Design spec: `C:\Users\btase\.claude\plans\start-your-work-on-validated-walrus.md` (Phase 4).
+- Design spec: `docs/superpowers/specs/2026-04-30-ahkflow-alignment-design.md` (Phase 4).
