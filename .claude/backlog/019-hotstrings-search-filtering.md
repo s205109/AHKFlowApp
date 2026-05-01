@@ -34,3 +34,4 @@ As a user, I want to search and filter hotstrings so I can quickly find, edit, a
 ## Notes / dependencies
 
 - Depends on 013 (list-by-profile endpoint) and 018 (CLI support).
+- The `profileId` filter behavior changes once **024b** lands: filter must include rows whose junction matches OR `AppliesToAllProfiles=true`. Existing tests should be updated then.

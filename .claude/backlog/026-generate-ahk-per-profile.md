@@ -8,25 +8,30 @@
 
 ## Summary
 
-Generate valid AutoHotkey `.ahk` output per profile from stored hotstrings/hotkeys and header template.
+Generate a valid AutoHotkey `.ahk` script per profile. Output = `HeaderTemplate` + generated hotstrings + generated hotkeys + `FooterTemplate`. Includes any row that is in the profile's junction table OR has `AppliesToAllProfiles=true`.
 
 ## User story
 
-As a user, I want an `.ahk` script generated per profile so that I can download and run a single script representing my definitions.
+As a user, I want one `.ahk` per profile that I can download and run locally, with the rules I've defined for that profile (or marked "Any") translated to valid AutoHotkey syntax.
 
 ## Acceptance criteria
 
-- [ ] Generation is profile-scoped.
-- [ ] Output includes hotstrings and hotkeys defined in that profile.
-- [ ] Output prepends the header template if configured (see 025).
-- [ ] Output ordering is deterministic.
-- [ ] Unit tests for generation logic to validate formatting and deterministic ordering.
-- [ ] Integration tests generate scripts from seeded data and assert expected content and ordering.
+- [ ] New `AhkScriptGenerator` service in the Application layer; pure, testable, no DB calls.
+- [ ] Generation is profile-scoped: includes hotkeys/hotstrings where `(HotkeyProfile/HotstringProfile contains profileId) OR AppliesToAllProfiles=true`.
+- [ ] Output structure: `{Profile.HeaderTemplate}\n; --- Hotstrings ---\n{hotstrings}\n; --- Hotkeys ---\n{hotkeys}\n{Profile.FooterTemplate}`.
+- [ ] Hotkey translation: `^!+#` modifier prefix order = Ctrl, Alt, Shift, Win; line is `{modifiers}{Key}::{Action}, {Parameters}` (e.g. `^!a::Send, hello`).
+- [ ] Hotstring translation: `:{options}:{Trigger}::{Replacement}` where `options = "*?"` if `IsTriggerInsideWord`, plus the ending-character option per `IsEndingCharacterRequired` (matches old project's syntax).
+- [ ] Deterministic ordering: hotstrings ordered by `Trigger` ASC, hotkeys ordered by `Description` ASC.
+- [ ] Unit tests on `AhkScriptGenerator` cover: empty profile (just header+footer), each modifier combo, both `HotkeyAction` values, both hotstring option flags, ordering, "Any" inclusion logic.
+- [ ] Integration test: seed a profile + mixed hotkeys/hotstrings (some specific, some Any), generate script, assert exact expected text.
 
 ## Out of scope
 
-- Runtime execution of AutoHotkey.
+- Runtime execution of AutoHotkey (intentionally excluded).
+- Comments referencing source row IDs (could be added later for debugging).
+- Linting / validating that the generated AHK is syntactically correct beyond what our generator emits.
 
 ## Notes / dependencies
 
-- Depends on 013, 021, 025.
+- Depends on **022b, 024, 024b, 025**.
+- Design spec: `C:\Users\btase\.claude\plans\start-your-work-on-validated-walrus.md` (Phase 4).
