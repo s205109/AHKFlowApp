@@ -50,4 +50,15 @@ public sealed class GetHotstringQueryHandlerTests(HotstringDbFixture fx)
 
         result.Status.Should().Be(ResultStatus.NotFound);
     }
+
+    [Fact]
+    public async Task Handle_WhenNoOid_ReturnsUnauthorized()
+    {
+        await using AppDbContext db = fx.CreateContext();
+        var handler = new GetHotstringQueryHandler(db, CurrentUserHelper.For(null));
+
+        Result<HotstringDto> result = await handler.Handle(new GetHotstringQuery(Guid.NewGuid()), default);
+
+        result.Status.Should().Be(ResultStatus.Unauthorized);
+    }
 }

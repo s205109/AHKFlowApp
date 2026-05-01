@@ -61,4 +61,16 @@ public sealed class DeleteProfileCommandHandlerTests(ProfileDbFixture fx)
         Result result = await sut.Handle(new DeleteProfileCommand(Guid.NewGuid()), CancellationToken.None);
         result.Status.Should().Be(ResultStatus.NotFound);
     }
+
+    [Fact]
+    public async Task Returns_unauthorized_when_no_oid()
+    {
+        await using AppDbContext ctx = fx.CreateContext();
+        ICurrentUser user = Substitute.For<ICurrentUser>();
+        user.Oid.Returns((Guid?)null);
+        var sut = new DeleteProfileCommandHandler(ctx, user);
+
+        Result result = await sut.Handle(new DeleteProfileCommand(Guid.NewGuid()), CancellationToken.None);
+        result.Status.Should().Be(ResultStatus.Unauthorized);
+    }
 }

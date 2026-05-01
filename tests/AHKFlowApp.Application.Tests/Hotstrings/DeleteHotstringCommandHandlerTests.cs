@@ -52,4 +52,15 @@ public sealed class DeleteHotstringCommandHandlerTests(HotstringDbFixture fx)
 
         result.Status.Should().Be(ResultStatus.NotFound);
     }
+
+    [Fact]
+    public async Task Handle_WhenNoOid_ReturnsUnauthorized()
+    {
+        await using AppDbContext db = fx.CreateContext();
+        var handler = new DeleteHotstringCommandHandler(db, CurrentUserHelper.For(null));
+
+        Result result = await handler.Handle(new DeleteHotstringCommand(Guid.NewGuid()), default);
+
+        result.Status.Should().Be(ResultStatus.Unauthorized);
+    }
 }

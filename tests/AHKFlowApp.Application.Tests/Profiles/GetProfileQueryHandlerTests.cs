@@ -49,4 +49,16 @@ public sealed class GetProfileQueryHandlerTests(ProfileDbFixture fx)
         Result<ProfileDto> result = await sut.Handle(new GetProfileQuery(p.Id), CancellationToken.None);
         result.Status.Should().Be(ResultStatus.NotFound);
     }
+
+    [Fact]
+    public async Task Returns_unauthorized_when_no_oid()
+    {
+        await using AppDbContext ctx = fx.CreateContext();
+        ICurrentUser user = Substitute.For<ICurrentUser>();
+        user.Oid.Returns((Guid?)null);
+        var sut = new GetProfileQueryHandler(ctx, user);
+
+        Result<ProfileDto> result = await sut.Handle(new GetProfileQuery(Guid.NewGuid()), CancellationToken.None);
+        result.Status.Should().Be(ResultStatus.Unauthorized);
+    }
 }

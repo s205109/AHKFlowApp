@@ -78,6 +78,18 @@ public sealed class UpdateHotkeyCommandHandlerTests(HotkeyDbFixture fx)
     }
 
     [Fact]
+    public async Task Handle_WhenNoOid_ReturnsUnauthorized()
+    {
+        await using AppDbContext db = fx.CreateContext();
+        var handler = new UpdateHotkeyCommandHandler(db, CurrentUserHelper.For(null), TimeProvider.System);
+        var cmd = new UpdateHotkeyCommand(Guid.NewGuid(), new UpdateHotkeyDto("^!K", "x", null, null));
+
+        Result<HotkeyDto> result = await handler.Handle(cmd, default);
+
+        result.Status.Should().Be(ResultStatus.Unauthorized);
+    }
+
+    [Fact]
     public async Task Handle_WhenDuplicateTrigger_ReturnsConflict()
     {
         var owner = Guid.NewGuid();

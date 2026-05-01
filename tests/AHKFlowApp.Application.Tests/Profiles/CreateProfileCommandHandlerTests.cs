@@ -68,6 +68,23 @@ public sealed class CreateProfileCommandHandlerTests(ProfileDbFixture fx)
     }
 
     [Fact]
+    public async Task Creates_profile_with_explicit_templates()
+    {
+        await using AppDbContext ctx = fx.CreateContext();
+        ICurrentUser user = Substitute.For<ICurrentUser>();
+        user.Oid.Returns(_ownerOid);
+        var sut = new CreateProfileCommandHandler(ctx, user, _clock);
+
+        Result<ProfileDto> result = await sut.Handle(
+            new CreateProfileCommand(new CreateProfileDto("Work", HeaderTemplate: "#Include work.ahk", FooterTemplate: "return")),
+            CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.HeaderTemplate.Should().Be("#Include work.ahk");
+        result.Value.FooterTemplate.Should().Be("return");
+    }
+
+    [Fact]
     public async Task IsDefault_true_clears_existing_default_for_owner()
     {
         await using AppDbContext ctx = fx.CreateContext();
