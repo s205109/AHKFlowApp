@@ -8,6 +8,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
 {
     public DbSet<TestMessage> TestMessages => Set<TestMessage>();
     public DbSet<Hotstring> Hotstrings => Set<Hotstring>();
+    public DbSet<Hotkey> Hotkeys => Set<Hotkey>();
     public DbSet<UserPreference> UserPreferences => Set<UserPreference>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

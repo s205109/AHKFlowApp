@@ -4,16 +4,19 @@ using AHKFlowApp.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
 
-namespace AHKFlowApp.Infrastructure.Migrations
+namespace AHKFlowApp.Infrastructure.Migrations;
+
+[DbContext(typeof(AppDbContext))]
+[Migration("20260501025218_AddHotkeys")]
+partial class AddHotkeys
 {
-    [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
-    {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -172,4 +175,3 @@ namespace AHKFlowApp.Infrastructure.Migrations
 #pragma warning restore 612, 618
         }
     }
-}
