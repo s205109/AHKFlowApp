@@ -15,11 +15,11 @@ internal static class ProfileRules
           .Must(n => n is not null && n.Length == n.Trim().Length)
               .WithMessage("Name must not have leading or trailing whitespace.");
 
-    public static IRuleBuilderOptions<T, string> ValidHeaderTemplate<T>(this IRuleBuilderInitial<T, string> rb) =>
+    public static IRuleBuilderOptions<T, string?> ValidHeaderTemplate<T>(this IRuleBuilderInitial<T, string?> rb) =>
         rb.MaximumLength(HeaderTemplateMaxLength)
           .WithMessage($"HeaderTemplate must be {HeaderTemplateMaxLength} characters or fewer.");
 
-    public static IRuleBuilderOptions<T, string> ValidFooterTemplate<T>(this IRuleBuilderInitial<T, string> rb) =>
+    public static IRuleBuilderOptions<T, string?> ValidFooterTemplate<T>(this IRuleBuilderInitial<T, string?> rb) =>
         rb.MaximumLength(FooterTemplateMaxLength)
           .WithMessage($"FooterTemplate must be {FooterTemplateMaxLength} characters or fewer.");
 }
