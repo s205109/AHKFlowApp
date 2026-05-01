@@ -44,6 +44,10 @@ internal sealed class ListHotkeysQueryHandler(
 
         if (!string.IsNullOrWhiteSpace(request.Search))
         {
+            // Case sensitivity follows the column collation. SQL Server's default collation is
+            // case-insensitive, so IgnoreCase=false is effectively only honored when the column
+            // is configured with a CS collation. Provider-specific Collate() lives in the
+            // Relational package; we keep this layer provider-agnostic.
             string pattern = $"%{request.Search.Trim()}%";
             query = query.Where(h =>
                 EF.Functions.Like(h.Trigger, pattern) ||
