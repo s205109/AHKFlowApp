@@ -18,7 +18,7 @@ public sealed class CreateHotkeyCommandValidator : AbstractValidator<CreateHotke
     {
         RuleFor(x => x.Input.Trigger).ValidHotkeyTrigger();
         RuleFor(x => x.Input.Action).ValidAction();
-        RuleFor(x => x.Input.Description!).ValidOptionalDescription();
+        RuleFor(x => x.Input.Description).ValidOptionalDescription();
         RuleFor(x => x.Input.ProfileId).ValidOptionalProfileId();
     }
 }
