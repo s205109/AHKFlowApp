@@ -4,7 +4,7 @@
 
 Backlog 013 asks for five REST endpoints (create / update / delete / get-by-id / list-by-profile) for hotstrings, secured, documented via OpenAPI, with unit + integration tests.
 
-The current repo is a greenfield .NET 10 rebuild — only `TestMessage` entity exists; no Hotstring/Profile code. The old MAUI-era AHKFlow at `C:\Dev\segocom-github\AHKFlowApp\old_project_reference\AHKFlowOldMAUI\` is the **semantic reference** for the feature: it has a working Hotstring domain shape, API, migrations, and UI. Port the **domain meaning** from there; do NOT copy its patterns (repository pattern, int Ids, global uniqueness, unprotected endpoints) — those conflict with the new project's AGENTS.md.
+The current repo is a greenfield .NET 10 rebuild — only `TestMessage` entity exists; no Hotstring/Profile code. The domain meaning (field names, AHK behavior flags, validation rules) is derived from the prior AHKFlow implementation. Port the **domain meaning**; do NOT copy its patterns (repository pattern, int Ids, global uniqueness, unprotected endpoints) — those conflict with the new project's AGENTS.md.
 
 **What 013 owns end-to-end** (none of this exists yet in either project in the right shape):
 1. Hotstring domain entity + EF config + migration.
@@ -28,14 +28,7 @@ The current repo is a greenfield .NET 10 rebuild — only `TestMessage` entity e
 | 7 | Dev-only seeder endpoint (improved) | Useful for manual demos and Swagger try-it-out without hand-crafting bodies |
 | 8 | Pagination on list | `page`/`pageSize` query params; `PagedResult<T>` envelope; default 50, max 200 |
 
-## What the old MAUI project tells us (key takeaways)
-
-Key files inspected:
-- `AHKFlow.Shared/Entities/Hotstring.cs` — entity shape
-- `AHKFlow.Shared/Validators/HotstringValidator.cs` — FluentValidation rules
-- `AHKFlow.API/Controllers/HotstringsController.cs` — endpoints
-- `AHKFLow.Data/Migrations/20230408090904_InitialMigration.cs` — SQLite schema
-- `AHKFlow.Service/AHKFlowApiConsumer.cs` — typed HTTP client (future ref for 014)
+## Domain shape reference
 
 ### Domain shape (port as-is for field names + semantics)
 
@@ -65,18 +58,18 @@ public int      ProfileId { get; set; }                         // FK, required
 | No `CreatedAt` / `UpdatedAt` | No audit trail | Add both, stamp via `TimeProvider` |
 | FluentValidation not pipeline-wired (manual) | Validators authored but bypassed | Auto-runs via `ValidationBehavior` pipeline |
 
-### Things old project had that new project is **missing** (and 013 needs some of)
+### Things 013 needs to add or defer
 
-| Missing in new | In old at | 013 action |
-|---|---|---|
-| `<GenerateDocumentationFile>true</GenerateDocumentationFile>` | Old also missing — both need it | **ADD** in `AHKFlowApp.API.csproj` |
-| `Swashbuckle.AspNetCore.Filters` (request/response examples) | `HotstringRequestExample.cs`, `HotstringResponseExample.cs` | **ADD** package + examples — gives 013 richer OpenAPI |
-| AutoHotkey behavior flags on entity | In `Hotstring.cs` | **ADD** `IsEndingCharacterRequired`, `IsTriggerInsideWord` |
-| `Profile` entity | `AHKFlow.Shared/Entities/Profile.cs` | **DEFER** — item 024. Use nullable `ProfileId` for now. |
-| Typed HTTP client (`AHKFlowApiConsumer`) | `AHKFlow.Service/AHKFlowApiConsumer.cs` | **DEFER** — item 014 (Blazor UI CRUD) |
-| MudBlazor hotstrings page | `AHKFlow.Wasm/Pages/Hotstrings.razor` | **DEFER** — item 014 |
-| Search/filter | client-side in Razor | **DEFER** — item 019 |
-| Seed data | `TestDataHelper.GetHotstrings()` (`btw`, `fyi`, `f2f`) | **ADD** — improved dev-only seeder endpoint, richer sample set + flag variations |
+| Item | 013 action |
+|---|---|
+| `<GenerateDocumentationFile>true</GenerateDocumentationFile>` | **ADD** in `AHKFlowApp.API.csproj` |
+| `Swashbuckle.AspNetCore.Filters` (request/response examples) | **ADD** package + examples — richer OpenAPI |
+| AutoHotkey behavior flags on entity | **ADD** `IsEndingCharacterRequired`, `IsTriggerInsideWord` |
+| `Profile` entity | **DEFER** — item 024. Use nullable `ProfileId` for now. |
+| Typed HTTP client | **DEFER** — item 014 (Blazor UI CRUD) |
+| MudBlazor hotstrings page | **DEFER** — item 014 |
+| Search/filter | **DEFER** — item 019 |
+| Seed data | **ADD** — improved dev-only seeder endpoint, richer sample set + flag variations |
 
 Other infra the new project **already has** and the old project lacked: `ICurrentUser` + Entra claim extraction, `ValidationBehavior` pipeline, `Testcontainers` SQL Server fixture, `TestAuthHandler` + `TestUserBuilder`, `TimeProvider` as singleton, Serilog, `ProblemDetails` with traceId, `Ardalis.Result.AspNetCore` package referenced. The new project is strictly ahead on platform; 013 just uses those pieces for the first time.
 

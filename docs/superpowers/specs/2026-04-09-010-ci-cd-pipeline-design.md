@@ -7,7 +7,7 @@ Backlog item [`010-create-ci-cd-pipeline.md`](../../../.claude/backlog/010-creat
 - Item 009 (Docker) — just landed. Provides `src/Backend/AHKFlowApp.API/Dockerfile` and root `docker-compose.yml`. CI reuses the Dockerfile.
 - Item 003 (scaffold) — landed. Solution layout, `Directory.Build.props`, `global.json`, MinVer.
 
-`.github/workflows/` is currently empty. CLAUDE.md / AGENTS.md reference 4 aspirational workflow files — this spec implements them for real. Old project reference at `old_project_reference/AHKFlow` used zip-publish + SQL password auth + service principal; this spec modernises that pattern.
+`.github/workflows/` is currently empty. CLAUDE.md / AGENTS.md reference 4 aspirational workflow files — this spec implements them for real. The prior AHKFlow implementation used zip-publish + SQL password auth + service principal; this spec modernises that pattern with managed identity and container-based publishing.
 
 ## Goal
 
