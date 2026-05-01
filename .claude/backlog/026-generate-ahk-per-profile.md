@@ -20,7 +20,7 @@ As a user, I want one `.ahk` per profile that I can download and run locally, wi
 - [ ] Generation is profile-scoped: includes hotkeys/hotstrings where `(HotkeyProfile/HotstringProfile contains profileId) OR AppliesToAllProfiles=true`.
 - [ ] Output structure: `{Profile.HeaderTemplate}\n; --- Hotstrings ---\n{hotstrings}\n; --- Hotkeys ---\n{hotkeys}\n{Profile.FooterTemplate}`.
 - [ ] Hotkey translation: `^!+#` modifier prefix order = Ctrl, Alt, Shift, Win; line is `{modifiers}{Key}::{Action}, {Parameters}` (e.g. `^!a::Send, hello`).
-- [ ] Hotstring translation: `:{options}:{Trigger}::{Replacement}` where `options` appends `*` when `IsEndingCharacterRequired=false` and appends `?` when `IsTriggerInsideWord=true` (matches the design spec / old project's syntax).
+- [ ] Hotstring translation: `:{options}:{Trigger}::{Replacement}` where `options` appends `*` when `IsEndingCharacterRequired=false` and appends `?` when `IsTriggerInsideWord=true`.
 - [ ] Deterministic ordering: hotstrings ordered by `Trigger` ASC, hotkeys ordered by `Description` ASC.
 - [ ] Unit tests on `AhkScriptGenerator` cover: empty profile (just header+footer), each modifier combo, both `HotkeyAction` values, both hotstring option flags, ordering, "Any" inclusion logic.
 - [ ] Integration test: seed a profile + mixed hotkeys/hotstrings (some specific, some Any), generate script, assert exact expected text.
