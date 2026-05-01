@@ -13,8 +13,6 @@ internal sealed class HotstringConfiguration : IEntityTypeConfiguration<Hotstrin
         builder.Property(x => x.OwnerOid).IsRequired();
         builder.HasIndex(x => x.OwnerOid);
 
-        builder.Property(x => x.ProfileId);
-
         builder.Property(x => x.Trigger)
             .IsRequired()
             .HasMaxLength(50);
@@ -23,22 +21,16 @@ internal sealed class HotstringConfiguration : IEntityTypeConfiguration<Hotstrin
             .IsRequired()
             .HasMaxLength(4000);
 
+        builder.Property(x => x.AppliesToAllProfiles).IsRequired();
         builder.Property(x => x.IsEndingCharacterRequired).IsRequired();
         builder.Property(x => x.IsTriggerInsideWord).IsRequired();
 
         builder.Property(x => x.CreatedAt).IsRequired();
         builder.Property(x => x.UpdatedAt).IsRequired();
 
-        // SQL Server treats NULLs as distinct for uniqueness — two filtered indexes
-        // cover both the profile-scoped case and the profile-less case per owner.
-        builder.HasIndex(x => new { x.OwnerOid, x.ProfileId, x.Trigger })
-            .IsUnique()
-            .HasFilter("[ProfileId] IS NOT NULL")
-            .HasDatabaseName("IX_Hotstring_Owner_Profile_Trigger");
-
+        // One trigger per owner globally — profiles are tracked in the junction table.
         builder.HasIndex(x => new { x.OwnerOid, x.Trigger })
             .IsUnique()
-            .HasFilter("[ProfileId] IS NULL")
-            .HasDatabaseName("IX_Hotstring_Owner_Trigger_NoProfile");
+            .HasDatabaseName("IX_Hotstring_Owner_Trigger");
     }
 }
