@@ -2,7 +2,8 @@ namespace AHKFlowApp.UI.Blazor.DTOs;
 
 public sealed record HotstringDto(
     Guid Id,
-    Guid? ProfileId,
+    Guid[] ProfileIds,
+    bool AppliesToAllProfiles,
     string Trigger,
     string Replacement,
     bool IsEndingCharacterRequired,
