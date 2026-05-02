@@ -39,16 +39,24 @@ public sealed class ListHotkeysQueryHandlerTests(HotkeyDbFixture fx)
     public async Task Handle_FiltersByProfileId()
     {
         var owner = Guid.NewGuid();
-        var profile = Guid.NewGuid();
+        var clock = new FixedClock(DateTimeOffset.Parse("2026-01-01T00:00:00Z"));
+        Guid profileId;
 
         await using (AppDbContext seed = fx.CreateContext())
         {
+            // Create a real profile so the FK constraint on HotkeyProfiles is satisfied
+            var profileEntity = Profile.Create(owner, "Work", false, "", "", clock);
+            seed.Profiles.Add(profileEntity);
+            profileId = profileEntity.Id;
+
             // Hotkey A: applies to all profiles
             seed.Hotkeys.Add(new HotkeyBuilder().WithOwner(owner).WithKey("f1").WithCtrl().WithDescription("global").AppliesToAll().Build());
-            // Hotkey B: applies to specific profile
+
+            // Hotkey B: scoped to specific profile
             Hotkey hotkeyB = new HotkeyBuilder().WithOwner(owner).WithKey("f2").WithCtrl().WithDescription("profiled").AppliesToAll(false).Build();
             seed.Hotkeys.Add(hotkeyB);
-            seed.HotkeyProfiles.Add(AHKFlowApp.Domain.Entities.HotkeyProfile.Create(hotkeyB.Id, profile));
+            seed.HotkeyProfiles.Add(HotkeyProfile.Create(hotkeyB.Id, profileId));
+
             await seed.SaveChangesAsync();
         }
 
@@ -56,7 +64,7 @@ public sealed class ListHotkeysQueryHandlerTests(HotkeyDbFixture fx)
         var handler = new ListHotkeysQueryHandler(db, CurrentUserHelper.For(owner));
 
         Result<PagedList<HotkeyDto>> result = await handler.Handle(
-            new ListHotkeysQuery(ProfileId: profile), default);
+            new ListHotkeysQuery(ProfileId: profileId), default);
 
         // Both "global" (appliesToAllProfiles=true) and "profiled" (has profile in junction) match
         result.Value.Items.Should().HaveCount(2);

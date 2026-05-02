@@ -19,10 +19,10 @@ internal static class HotkeyRules
         rb.Cascade(CascadeMode.Stop)
           .Must(k => !string.IsNullOrEmpty(k)).WithMessage("Key is required.")
           .MaximumLength(KeyMaxLength).WithMessage($"Key must be {KeyMaxLength} characters or fewer.")
-          .Must(k => k is not null && k.Length == k.Trim().Length)
-              .WithMessage("Key must not have leading or trailing whitespace.")
           .Must(k => k is not null && k.IndexOfAny(['\n', '\r', '\t']) < 0)
-              .WithMessage("Key must not contain line breaks or tabs.");
+              .WithMessage("Key must not contain line breaks or tabs.")
+          .Must(k => k is not null && k.Length == k.TrimStart(' ').TrimEnd(' ').Length)
+              .WithMessage("Key must not have leading or trailing whitespace.");
 
     public static IRuleBuilderOptions<T, string> ValidParameters<T>(this IRuleBuilderInitial<T, string> rb) =>
         rb.MaximumLength(ParametersMaxLength)
