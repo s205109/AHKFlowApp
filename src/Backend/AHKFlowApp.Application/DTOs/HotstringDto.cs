@@ -2,7 +2,8 @@ namespace AHKFlowApp.Application.DTOs;
 
 public sealed record HotstringDto(
     Guid Id,
-    Guid? ProfileId,
+    Guid[] ProfileIds,
+    bool AppliesToAllProfiles,
     string Trigger,
     string Replacement,
     bool IsEndingCharacterRequired,
@@ -13,13 +14,15 @@ public sealed record HotstringDto(
 public sealed record CreateHotstringDto(
     string Trigger,
     string Replacement,
-    Guid? ProfileId = null,
+    Guid[]? ProfileIds = null,
+    bool AppliesToAllProfiles = false,
     bool IsEndingCharacterRequired = true,
     bool IsTriggerInsideWord = true);
 
 public sealed record UpdateHotstringDto(
     string Trigger,
     string Replacement,
-    Guid? ProfileId,
+    Guid[]? ProfileIds,
+    bool AppliesToAllProfiles,
     bool IsEndingCharacterRequired,
     bool IsTriggerInsideWord);

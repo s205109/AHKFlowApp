@@ -5,7 +5,8 @@ namespace AHKFlowApp.TestUtilities.Builders;
 public sealed class HotstringBuilder
 {
     private Guid _ownerOid = Guid.NewGuid();
-    private Guid? _profileId;
+    private bool _appliesToAllProfiles = true;
+    private Guid[] _profileIds = [];
     private string _trigger = "btw";
     private string _replacement = "by the way";
     private bool _isEndingCharacterRequired = true;
@@ -18,9 +19,23 @@ public sealed class HotstringBuilder
         return this;
     }
 
-    public HotstringBuilder InProfile(Guid? profileId)
+    public HotstringBuilder InProfile(Guid profileId)
     {
-        _profileId = profileId;
+        _appliesToAllProfiles = false;
+        _profileIds = [profileId];
+        return this;
+    }
+
+    public HotstringBuilder WithProfiles(params Guid[] profileIds)
+    {
+        _appliesToAllProfiles = false;
+        _profileIds = profileIds;
+        return this;
+    }
+
+    public HotstringBuilder AppliesToAllProfiles(bool value = true)
+    {
+        _appliesToAllProfiles = value;
         return this;
     }
 
@@ -54,7 +69,15 @@ public sealed class HotstringBuilder
         return this;
     }
 
-    public Hotstring Build() => Hotstring.Create(
-        _ownerOid, _trigger, _replacement, _profileId,
-        _isEndingCharacterRequired, _isTriggerInsideWord, _clock);
+    public Hotstring Build()
+    {
+        var entity = Hotstring.Create(
+            _ownerOid, _trigger, _replacement, _appliesToAllProfiles,
+            _isEndingCharacterRequired, _isTriggerInsideWord, _clock);
+
+        foreach (Guid pid in _profileIds)
+            entity.Profiles.Add(HotstringProfile.Create(entity.Id, pid));
+
+        return entity;
+    }
 }

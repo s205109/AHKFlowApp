@@ -13,15 +13,54 @@ public sealed class UpdateHotstringCommandValidatorTests
     private static UpdateHotstringCommand Cmd(
         string trigger = "btw",
         string replacement = "by the way",
-        Guid? profileId = null)
-        => new(Guid.NewGuid(), new UpdateHotstringDto(trigger, replacement, profileId, true, true));
+        bool appliesToAllProfiles = true,
+        Guid[]? profileIds = null)
+        => new(Guid.NewGuid(), new UpdateHotstringDto(trigger, replacement, profileIds, appliesToAllProfiles, true, true));
 
     [Fact]
-    public void Validate_WithValidInput_Succeeds()
+    public void Validate_AppliesToAll_NoProfiles_Succeeds()
     {
-        ValidationResult result = _sut.Validate(Cmd());
+        ValidationResult result = _sut.Validate(Cmd(appliesToAllProfiles: true, profileIds: null));
 
         result.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Validate_ProfileScoped_WithOneProfile_Succeeds()
+    {
+        ValidationResult result = _sut.Validate(Cmd(appliesToAllProfiles: false, profileIds: [Guid.NewGuid()]));
+
+        result.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Validate_AppliesToAll_WithProfileIds_Fails()
+    {
+        ValidationResult result = _sut.Validate(Cmd(appliesToAllProfiles: true, profileIds: [Guid.NewGuid()]));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e =>
+            e.ErrorMessage == "ProfileIds must be empty when AppliesToAllProfiles is true.");
+    }
+
+    [Fact]
+    public void Validate_ProfileScoped_NoProfiles_Fails()
+    {
+        ValidationResult result = _sut.Validate(Cmd(appliesToAllProfiles: false, profileIds: null));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e =>
+            e.ErrorMessage == "At least one profile must be specified when AppliesToAllProfiles is false.");
+    }
+
+    [Fact]
+    public void Validate_ProfileScoped_EmptyGuidInArray_Fails()
+    {
+        ValidationResult result = _sut.Validate(Cmd(appliesToAllProfiles: false, profileIds: [Guid.Empty]));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e =>
+            e.ErrorMessage == "ProfileIds must not contain empty GUIDs.");
     }
 
     [Fact]
@@ -44,25 +83,6 @@ public sealed class UpdateHotstringCommandValidatorTests
         result.Errors.Should().Contain(e =>
             e.PropertyName == "Input.Trigger" &&
             e.ErrorMessage == "Trigger must not have leading or trailing whitespace.");
-    }
-
-    [Fact]
-    public void Validate_WithTriggerAt50Chars_Succeeds()
-    {
-        ValidationResult result = _sut.Validate(Cmd(trigger: new string('x', 50)));
-
-        result.IsValid.Should().BeTrue();
-    }
-
-    [Fact]
-    public void Validate_WithTriggerAt51Chars_Fails()
-    {
-        ValidationResult result = _sut.Validate(Cmd(trigger: new string('x', 51)));
-
-        result.IsValid.Should().BeFalse();
-        result.Errors.Should().Contain(e =>
-            e.PropertyName == "Input.Trigger" &&
-            e.ErrorMessage == "Trigger must be 50 characters or fewer.");
     }
 
     [Theory]
@@ -101,6 +121,25 @@ public sealed class UpdateHotstringCommandValidatorTests
     }
 
     [Fact]
+    public void Validate_WithTriggerAt50Chars_Succeeds()
+    {
+        ValidationResult result = _sut.Validate(Cmd(trigger: new string('x', 50)));
+
+        result.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Validate_WithTriggerAt51Chars_Fails()
+    {
+        ValidationResult result = _sut.Validate(Cmd(trigger: new string('x', 51)));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.Trigger" &&
+            e.ErrorMessage == "Trigger must be 50 characters or fewer.");
+    }
+
+    [Fact]
     public void Validate_WithEmptyReplacement_Fails()
     {
         ValidationResult result = _sut.Validate(Cmd(replacement: ""));
@@ -128,32 +167,5 @@ public sealed class UpdateHotstringCommandValidatorTests
         result.Errors.Should().Contain(e =>
             e.PropertyName == "Input.Replacement" &&
             e.ErrorMessage == "Replacement must be 4000 characters or fewer.");
-    }
-
-    [Fact]
-    public void Validate_WithEmptyGuidProfileId_Fails()
-    {
-        ValidationResult result = _sut.Validate(Cmd(profileId: Guid.Empty));
-
-        result.IsValid.Should().BeFalse();
-        result.Errors.Should().Contain(e =>
-            e.PropertyName == "Input.ProfileId" &&
-            e.ErrorMessage == "ProfileId must not be an empty GUID.");
-    }
-
-    [Fact]
-    public void Validate_WithNullProfileId_Succeeds()
-    {
-        ValidationResult result = _sut.Validate(Cmd(profileId: null));
-
-        result.IsValid.Should().BeTrue();
-    }
-
-    [Fact]
-    public void Validate_WithValidProfileId_Succeeds()
-    {
-        ValidationResult result = _sut.Validate(Cmd(profileId: Guid.NewGuid()));
-
-        result.IsValid.Should().BeTrue();
     }
 }

@@ -40,14 +40,15 @@ internal sealed class ListHotstringsQueryHandler(
             .Where(h => h.OwnerOid == ownerOid);
 
         if (request.ProfileId.HasValue)
-            query = query.Where(h => h.ProfileId == request.ProfileId.Value);
+        {
+            Guid pid = request.ProfileId.Value;
+            query = query.Where(h =>
+                h.AppliesToAllProfiles ||
+                h.Profiles.Any(p => p.ProfileId == pid));
+        }
 
         if (!string.IsNullOrWhiteSpace(request.Search))
         {
-            // Case sensitivity follows the column collation. SQL Server's default collation is
-            // case-insensitive, so IgnoreCase=false is effectively only honored when the column
-            // is configured with a CS collation. Provider-specific Collate() lives in the
-            // Relational package; we keep this layer provider-agnostic.
             string pattern = $"%{request.Search.Trim()}%";
             query = query.Where(h =>
                 EF.Functions.Like(h.Trigger, pattern) ||
@@ -63,7 +64,8 @@ internal sealed class ListHotstringsQueryHandler(
             .Take(request.PageSize)
             .Select(h => new HotstringDto(
                 h.Id,
-                h.ProfileId,
+                h.Profiles.Select(p => p.ProfileId).ToArray(),
+                h.AppliesToAllProfiles,
                 h.Trigger,
                 h.Replacement,
                 h.IsEndingCharacterRequired,
