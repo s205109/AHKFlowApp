@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Mapping;
@@ -74,6 +75,7 @@ internal sealed class CreateProfileCommandHandler(
         return Result.Success(profile.ToDto());
     }
 
+    [ExcludeFromCodeCoverage]
     private static bool IsDuplicateKeyViolation(DbUpdateException ex) =>
         ex.InnerException?.GetType().GetProperty("Number")?.GetValue(ex.InnerException) is int n &&
         n is 2601 or 2627;
