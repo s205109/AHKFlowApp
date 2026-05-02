@@ -19,7 +19,9 @@ public sealed class CreateHotstringCommandValidator : AbstractValidator<CreateHo
     {
         RuleFor(x => x.Input.Trigger).ValidTrigger();
         RuleFor(x => x.Input.Replacement).ValidReplacement();
-        RuleFor(x => x.Input.ProfileId).ValidOptionalProfileId();
+        this.AddProfileAssociationRules(
+            x => x.Input.AppliesToAllProfiles,
+            x => x.Input.ProfileIds);
     }
 }
 
@@ -37,24 +39,39 @@ internal sealed class CreateHotstringCommandHandler(
         CreateHotstringDto input = request.Input;
 
         bool duplicate = await db.Hotstrings.AnyAsync(
-            h => h.OwnerOid == ownerOid
-              && h.ProfileId == input.ProfileId
-              && h.Trigger == input.Trigger,
-            ct);
-
+            h => h.OwnerOid == ownerOid && h.Trigger == input.Trigger, ct);
         if (duplicate)
-            return Result.Conflict("A hotstring with this trigger already exists for the specified profile.");
+            return Result.Conflict("A hotstring with this trigger already exists.");
+
+        Guid[] distinctProfileIds = input.ProfileIds?.Distinct().ToArray() ?? [];
+        if (!input.AppliesToAllProfiles && distinctProfileIds.Length > 0)
+        {
+            int validCount = await db.Profiles
+                .CountAsync(p => p.OwnerOid == ownerOid && distinctProfileIds.Contains(p.Id), ct);
+            if (validCount != distinctProfileIds.Length)
+                return Result.Invalid(new ValidationError
+                {
+                    Identifier = "Input.ProfileIds",
+                    ErrorMessage = "One or more ProfileIds do not exist for this user.",
+                });
+        }
 
         var entity = Hotstring.Create(
             ownerOid,
             input.Trigger,
             input.Replacement,
-            input.ProfileId,
+            input.AppliesToAllProfiles,
             input.IsEndingCharacterRequired,
             input.IsTriggerInsideWord,
             clock);
 
         db.Hotstrings.Add(entity);
+
+        if (!input.AppliesToAllProfiles && distinctProfileIds.Length > 0)
+        {
+            foreach (Guid pid in distinctProfileIds)
+                db.HotstringProfiles.Add(HotstringProfile.Create(entity.Id, pid));
+        }
 
         try
         {
@@ -62,8 +79,15 @@ internal sealed class CreateHotstringCommandHandler(
         }
         catch (DbUpdateException ex) when (IsDuplicateKeyViolation(ex))
         {
-            return Result.Conflict("A hotstring with this trigger already exists for the specified profile.");
+            return Result.Conflict("A hotstring with this trigger already exists.");
         }
+
+        // Reload profiles so ToDto() has the junction rows that were just inserted
+        List<HotstringProfile> profiles = await db.HotstringProfiles
+            .Where(p => p.HotstringId == entity.Id)
+            .ToListAsync(ct);
+        foreach (HotstringProfile p in profiles)
+            entity.Profiles.Add(p);
 
         return Result.Success(entity.ToDto());
     }

@@ -24,4 +24,8 @@ internal static class HotkeyRules
 
     public static IRuleBuilderOptions<T, string?> ValidOptionalDescription<T>(this IRuleBuilder<T, string?> rb) =>
         rb.MaximumLength(DescriptionMaxLength).WithMessage($"Description must be {DescriptionMaxLength} characters or fewer.");
+
+    public static IRuleBuilderOptions<T, Guid?> ValidOptionalProfileId<T>(this IRuleBuilder<T, Guid?> rb) =>
+        rb.Must(id => id is null || id != Guid.Empty)
+          .WithMessage("ProfileId must not be an empty GUID.");
 }

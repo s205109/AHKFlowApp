@@ -15,7 +15,7 @@ public sealed class DeleteHotstringCommandHandlerTests(HotstringDbFixture fx)
     public async Task Handle_WhenOwned_Deletes()
     {
         var owner = Guid.NewGuid();
-        var entity = Hotstring.Create(owner, "del", "x", null, true, true, TimeProvider.System);
+        var entity = Hotstring.Create(owner, "del", "x", true, true, true, TimeProvider.System);
         await using (AppDbContext seed = fx.CreateContext())
         {
             seed.Hotstrings.Add(entity);
@@ -23,7 +23,7 @@ public sealed class DeleteHotstringCommandHandlerTests(HotstringDbFixture fx)
         }
 
         await using AppDbContext db = fx.CreateContext();
-        var handler = new DeleteHotstringCommandHandler(db, CurrentUserHelper.For(owner));
+        DeleteHotstringCommandHandler handler = new(db, CurrentUserHelper.For(owner));
 
         Result result = await handler.Handle(new DeleteHotstringCommand(entity.Id), default);
 
@@ -38,7 +38,7 @@ public sealed class DeleteHotstringCommandHandlerTests(HotstringDbFixture fx)
     {
         var owner = Guid.NewGuid();
         var attacker = Guid.NewGuid();
-        var entity = Hotstring.Create(owner, "del", "x", null, true, true, TimeProvider.System);
+        var entity = Hotstring.Create(owner, "del", "x", true, true, true, TimeProvider.System);
         await using (AppDbContext seed = fx.CreateContext())
         {
             seed.Hotstrings.Add(entity);
@@ -46,7 +46,7 @@ public sealed class DeleteHotstringCommandHandlerTests(HotstringDbFixture fx)
         }
 
         await using AppDbContext db = fx.CreateContext();
-        var handler = new DeleteHotstringCommandHandler(db, CurrentUserHelper.For(attacker));
+        DeleteHotstringCommandHandler handler = new(db, CurrentUserHelper.For(attacker));
 
         Result result = await handler.Handle(new DeleteHotstringCommand(entity.Id), default);
 
@@ -57,7 +57,7 @@ public sealed class DeleteHotstringCommandHandlerTests(HotstringDbFixture fx)
     public async Task Handle_WhenNoOid_ReturnsUnauthorized()
     {
         await using AppDbContext db = fx.CreateContext();
-        var handler = new DeleteHotstringCommandHandler(db, CurrentUserHelper.For(null));
+        DeleteHotstringCommandHandler handler = new(db, CurrentUserHelper.For(null));
 
         Result result = await handler.Handle(new DeleteHotstringCommand(Guid.NewGuid()), default);
 

@@ -10,24 +10,26 @@ public sealed class HotstringEditModelTests
     private static HotstringDto MakeDto(
         string trigger = "btw",
         string replacement = "by the way",
-        Guid? profileId = null,
+        Guid[]? profileIds = null,
+        bool appliesToAllProfiles = true,
         bool endingChar = true,
         bool insideWord = false)
-        => new(Guid.NewGuid(), profileId, trigger, replacement, endingChar, insideWord,
+        => new(Guid.NewGuid(), profileIds ?? [], appliesToAllProfiles, trigger, replacement, endingChar, insideWord,
                DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
 
     [Fact]
     public void FromDto_MapsAllFields()
     {
         var profileId = Guid.NewGuid();
-        HotstringDto dto = MakeDto(profileId: profileId, endingChar: false, insideWord: true);
+        HotstringDto dto = MakeDto(profileIds: [profileId], appliesToAllProfiles: false, endingChar: false, insideWord: true);
 
         var model = HotstringEditModel.FromDto(dto);
 
         model.Id.Should().Be(dto.Id);
         model.Trigger.Should().Be(dto.Trigger);
         model.Replacement.Should().Be(dto.Replacement);
-        model.ProfileId.Should().Be(profileId);
+        model.AppliesToAllProfiles.Should().BeFalse();
+        model.ProfileIds.Should().HaveCount(1).And.Contain(profileId);
         model.IsEndingCharacterRequired.Should().BeFalse();
         model.IsTriggerInsideWord.Should().BeTrue();
     }
@@ -40,7 +42,8 @@ public sealed class HotstringEditModelTests
         {
             Trigger = "btw",
             Replacement = "by the way",
-            ProfileId = profileId,
+            AppliesToAllProfiles = false,
+            ProfileIds = [profileId],
             IsEndingCharacterRequired = true,
             IsTriggerInsideWord = false
         };
@@ -49,7 +52,8 @@ public sealed class HotstringEditModelTests
 
         dto.Trigger.Should().Be("btw");
         dto.Replacement.Should().Be("by the way");
-        dto.ProfileId.Should().Be(profileId);
+        dto.AppliesToAllProfiles.Should().BeFalse();
+        dto.ProfileIds.Should().HaveCount(1).And.Contain(profileId);
         dto.IsEndingCharacterRequired.Should().BeTrue();
         dto.IsTriggerInsideWord.Should().BeFalse();
     }
@@ -61,7 +65,8 @@ public sealed class HotstringEditModelTests
         {
             Trigger = "omw",
             Replacement = "on my way",
-            ProfileId = null,
+            AppliesToAllProfiles = true,
+            ProfileIds = [],
             IsEndingCharacterRequired = false,
             IsTriggerInsideWord = true
         };
@@ -70,7 +75,8 @@ public sealed class HotstringEditModelTests
 
         dto.Trigger.Should().Be("omw");
         dto.Replacement.Should().Be("on my way");
-        dto.ProfileId.Should().BeNull();
+        dto.AppliesToAllProfiles.Should().BeTrue();
+        dto.ProfileIds.Should().BeNull();
         dto.IsEndingCharacterRequired.Should().BeFalse();
         dto.IsTriggerInsideWord.Should().BeTrue();
     }

@@ -22,6 +22,7 @@ internal sealed class GetHotstringQueryHandler(
 
         Hotstring? entity = await db.Hotstrings
             .AsNoTracking()
+            .Include(h => h.Profiles)
             .FirstOrDefaultAsync(h => h.Id == request.Id && h.OwnerOid == ownerOid, ct);
 
         return entity is null
