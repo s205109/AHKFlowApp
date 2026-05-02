@@ -7,10 +7,16 @@ internal static class HotkeyMappings
 {
     public static HotkeyDto ToDto(this Hotkey h) => new(
         h.Id,
-        h.ProfileId,
-        h.Trigger,
-        h.Action,
+        h.Profiles.Select(p => p.ProfileId).ToArray(),
+        h.AppliesToAllProfiles,
         h.Description,
+        h.Key,
+        h.Ctrl,
+        h.Alt,
+        h.Shift,
+        h.Win,
+        h.Action,
+        h.Parameters,
         h.CreatedAt,
         h.UpdatedAt);
 }

@@ -40,34 +40,42 @@ internal sealed class ListHotkeysQueryHandler(
             .Where(h => h.OwnerOid == ownerOid);
 
         if (request.ProfileId.HasValue)
-            query = query.Where(h => h.ProfileId == request.ProfileId.Value);
+        {
+            Guid pid = request.ProfileId.Value;
+            query = query.Where(h =>
+                h.AppliesToAllProfiles ||
+                h.Profiles.Any(p => p.ProfileId == pid));
+        }
 
         if (!string.IsNullOrWhiteSpace(request.Search))
         {
-            // Case sensitivity follows the column collation. SQL Server's default collation is
-            // case-insensitive, so IgnoreCase=false is effectively only honored when the column
-            // is configured with a CS collation. Provider-specific Collate() lives in the
-            // Relational package; we keep this layer provider-agnostic.
             string pattern = $"%{request.Search.Trim()}%";
             query = query.Where(h =>
-                EF.Functions.Like(h.Trigger, pattern) ||
-                EF.Functions.Like(h.Action, pattern) ||
-                (h.Description != null && EF.Functions.Like(h.Description, pattern)));
+                EF.Functions.Like(h.Description, pattern) ||
+                EF.Functions.Like(h.Key, pattern) ||
+                EF.Functions.Like(h.Parameters, pattern));
         }
 
         int total = await query.CountAsync(ct);
 
         List<HotkeyDto> items = await query
+            .Include(h => h.Profiles)
             .OrderByDescending(h => h.CreatedAt)
             .ThenBy(h => h.Id)
             .Skip((request.Page - 1) * request.PageSize)
             .Take(request.PageSize)
             .Select(h => new HotkeyDto(
                 h.Id,
-                h.ProfileId,
-                h.Trigger,
-                h.Action,
+                h.Profiles.Select(p => p.ProfileId).ToArray(),
+                h.AppliesToAllProfiles,
                 h.Description,
+                h.Key,
+                h.Ctrl,
+                h.Alt,
+                h.Shift,
+                h.Win,
+                h.Action,
+                h.Parameters,
                 h.CreatedAt,
                 h.UpdatedAt))
             .ToListAsync(ct);

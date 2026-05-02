@@ -8,8 +8,11 @@ public interface IAppDbContext
     DbSet<Hotstring> Hotstrings { get; }
     DbSet<HotstringProfile> HotstringProfiles { get; }
     DbSet<Hotkey> Hotkeys { get; }
+    DbSet<HotkeyProfile> HotkeyProfiles { get; }
     DbSet<Profile> Profiles { get; }
     DbSet<UserPreference> UserPreferences { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
+
+    Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry<TEntity> Entry<TEntity>(TEntity entity) where TEntity : class;
 }
