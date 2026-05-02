@@ -13,13 +13,24 @@ public sealed class CreateHotstringCommandValidatorTests
     private static CreateHotstringCommand Cmd(
         string trigger = "btw",
         string replacement = "by the way",
-        Guid? profileId = null)
-        => new(new CreateHotstringDto(trigger, replacement, profileId));
+        bool appliesToAllProfiles = true,
+        Guid[]? profileIds = null)
+        => new(new CreateHotstringDto(trigger, replacement, profileIds, appliesToAllProfiles));
 
     [Fact]
-    public void Validate_WithValidInput_Succeeds()
+    public void Validate_WithAppliesToAllProfiles_Succeeds()
     {
         ValidationResult result = _sut.Validate(Cmd());
+
+        result.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Validate_WithValidProfileIds_Succeeds()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            appliesToAllProfiles: false,
+            profileIds: [Guid.NewGuid()]));
 
         result.IsValid.Should().BeTrue();
     }
@@ -135,29 +146,38 @@ public sealed class CreateHotstringCommandValidatorTests
     }
 
     [Fact]
-    public void Validate_WithEmptyGuidProfileId_Fails()
+    public void Validate_AppliesToAllWithProfileIds_Fails()
     {
-        ValidationResult result = _sut.Validate(Cmd(profileId: Guid.Empty));
+        ValidationResult result = _sut.Validate(Cmd(
+            appliesToAllProfiles: true,
+            profileIds: [Guid.NewGuid()]));
 
         result.IsValid.Should().BeFalse();
         result.Errors.Should().Contain(e =>
-            e.PropertyName == "Input.ProfileId" &&
-            e.ErrorMessage == "ProfileId must not be an empty GUID.");
+            e.ErrorMessage == "ProfileIds must be empty when AppliesToAllProfiles is true.");
     }
 
     [Fact]
-    public void Validate_WithNullProfileId_Succeeds()
+    public void Validate_NotAppliesToAllWithNoProfileIds_Fails()
     {
-        ValidationResult result = _sut.Validate(Cmd(profileId: null));
+        ValidationResult result = _sut.Validate(Cmd(
+            appliesToAllProfiles: false,
+            profileIds: null));
 
-        result.IsValid.Should().BeTrue();
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e =>
+            e.ErrorMessage == "At least one profile must be specified when AppliesToAllProfiles is false.");
     }
 
     [Fact]
-    public void Validate_WithValidProfileId_Succeeds()
+    public void Validate_ProfileIdsContainsEmptyGuid_Fails()
     {
-        ValidationResult result = _sut.Validate(Cmd(profileId: Guid.NewGuid()));
+        ValidationResult result = _sut.Validate(Cmd(
+            appliesToAllProfiles: false,
+            profileIds: [Guid.Empty]));
 
-        result.IsValid.Should().BeTrue();
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e =>
+            e.ErrorMessage == "ProfileIds must not contain empty GUIDs.");
     }
 }

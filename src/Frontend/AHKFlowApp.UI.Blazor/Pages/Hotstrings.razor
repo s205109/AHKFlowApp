@@ -44,6 +44,7 @@
             <HeaderContent>
                 <MudTh>Trigger</MudTh>
                 <MudTh>Replacement</MudTh>
+                <MudTh>Profiles</MudTh>
                 <MudTh>Ending char required</MudTh>
                 <MudTh>Trigger inside word</MudTh>
                 <MudTh Style="width:160px">Actions</MudTh>
@@ -68,6 +69,27 @@
                                       Immediate="true" MaxLength="4000"
                                       UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "replacement-input" })" />
                     </MudTd>
+                    <MudTd>
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                            <MudCheckBox T="bool" @bind-Value="edit.AppliesToAllProfiles"
+                                         Label="Any"
+                                         UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "applies-to-all-checkbox" })" />
+                            @if (!edit.AppliesToAllProfiles)
+                            {
+                                <MudSelect T="Guid" MultiSelection="true"
+                                           SelectedValues="@edit.ProfileIds"
+                                           SelectedValuesChanged="@(ids => edit.ProfileIds = [.. ids])"
+                                           ToStringFunc="@(id => _profiles.FirstOrDefault(p => p.Id == id)?.Name ?? id.ToString())"
+                                           Dense="true" Placeholder="Select profiles"
+                                           UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "profile-select" })">
+                                    @foreach (ProfileDto profile in _profiles)
+                                    {
+                                        <MudSelectItem T="Guid" Value="@profile.Id">@profile.Name</MudSelectItem>
+                                    }
+                                </MudSelect>
+                            }
+                        </MudStack>
+                    </MudTd>
                     <MudTd><MudCheckBox T="bool" @bind-Value="edit.IsEndingCharacterRequired" /></MudTd>
                     <MudTd><MudCheckBox T="bool" @bind-Value="edit.IsTriggerInsideWord" /></MudTd>
                     <MudTd>
@@ -81,6 +103,20 @@
                 {
                     <MudTd>@context.Trigger</MudTd>
                     <MudTd>@context.Replacement</MudTd>
+                    <MudTd>
+                        @if (context.AppliesToAllProfiles)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Info">Any</MudChip>
+                        }
+                        else
+                        {
+                            @foreach (Guid pid in context.ProfileIds)
+                            {
+                                string name = _profiles.FirstOrDefault(p => p.Id == pid)?.Name ?? pid.ToString()[..8];
+                                <MudChip T="string" Size="Size.Small">@name</MudChip>
+                            }
+                        }
+                    </MudTd>
                     <MudTd><MudCheckBox T="bool" Value="@context.IsEndingCharacterRequired" ReadOnly="true" /></MudTd>
                     <MudTd><MudCheckBox T="bool" Value="@context.IsTriggerInsideWord" ReadOnly="true" /></MudTd>
                     <MudTd>
@@ -102,6 +138,7 @@
 @code {
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
     [Inject] private IHotstringsApiClient Api { get; set; } = default!;
+    [Inject] private IProfilesApiClient ProfilesApi { get; set; } = default!;
     [Inject] private ISnackbar Snackbar { get; set; } = default!;
     [Inject] private IDialogService DialogService { get; set; } = default!;
     [Inject] private IUserPreferencesService Preferences { get; set; } = default!;
@@ -109,6 +146,7 @@
     private MudTable<HotstringDto>? _table;
     private readonly Dictionary<Guid, HotstringEditModel> _editing = new();
     private readonly HashSet<Guid> _commitAttempted = [];
+    private IReadOnlyList<ProfileDto> _profiles = [];
     private bool _isAuthenticated;
     private bool _loading;
     private string? _loadError;
@@ -117,18 +155,25 @@
     private readonly CancellationTokenSource _cts = new();
 
     private static readonly HotstringDto _draftPlaceholder = new(
-        Guid.Empty, null, "", "", true, true, DateTimeOffset.MinValue, DateTimeOffset.MinValue);
+        Guid.Empty, [], true, "", "", true, true, DateTimeOffset.MinValue, DateTimeOffset.MinValue);
 
     protected override async Task OnInitializedAsync()
     {
         if (AuthState is not null)
         {
-            var state = await AuthState;
+            AuthenticationState state = await AuthState;
             _isAuthenticated = state.User.Identity?.IsAuthenticated ?? false;
         }
 
         UserPreferences prefs = await Preferences.GetAsync();
         _rowsPerPage = prefs.RowsPerPage;
+
+        if (_isAuthenticated)
+        {
+            ApiResult<IReadOnlyList<ProfileDto>> profilesResult = await ProfilesApi.ListAsync(_cts.Token);
+            if (profilesResult.IsSuccess)
+                _profiles = profilesResult.Value ?? [];
+        }
     }
 
     private async Task<TableData<HotstringDto>> LoadServerData(TableState state, CancellationToken ct)
