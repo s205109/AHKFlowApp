@@ -16,7 +16,7 @@ public sealed class HotstringsApiClientTests
     public async Task ListAsync_OnSuccess_ReturnsPagedList()
     {
         var paged = new PagedList<HotstringDto>(
-            Items: [new HotstringDto(Guid.NewGuid(), null, "btw", "by the way", true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow)],
+            Items: [new HotstringDto(Guid.NewGuid(), [], true, "btw", "by the way", true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow)],
             Page: 1, PageSize: 50, TotalCount: 1, TotalPages: 1, HasNextPage: false, HasPreviousPage: false);
         var handler = StubHttpMessageHandler.JsonResponse(HttpStatusCode.OK, paged);
 

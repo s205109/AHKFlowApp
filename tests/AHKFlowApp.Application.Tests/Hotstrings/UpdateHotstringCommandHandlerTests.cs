@@ -15,8 +15,8 @@ public sealed class UpdateHotstringCommandHandlerTests(HotstringDbFixture fx)
     public async Task Handle_WhenValid_UpdatesAndReturnsUpdatedDto()
     {
         var owner = Guid.NewGuid();
-        var clock = new FixedClock(DateTimeOffset.Parse("2026-01-01T00:00:00Z"));
-        var entity = Hotstring.Create(owner, "btw", "old", null, true, true, clock);
+        FixedClock clock = new(DateTimeOffset.Parse("2026-01-01T00:00:00Z"));
+        var entity = Hotstring.Create(owner, "btw", "old", true, true, true, clock);
 
         await using (AppDbContext seed = fx.CreateContext())
         {
@@ -27,9 +27,9 @@ public sealed class UpdateHotstringCommandHandlerTests(HotstringDbFixture fx)
         clock.Advance(TimeSpan.FromMinutes(5));
 
         await using AppDbContext db = fx.CreateContext();
-        var handler = new UpdateHotstringCommandHandler(db, CurrentUserHelper.For(owner), clock);
-        var cmd = new UpdateHotstringCommand(entity.Id,
-            new UpdateHotstringDto("btw", "by the way", null, false, false));
+        UpdateHotstringCommandHandler handler = new(db, CurrentUserHelper.For(owner), clock);
+        UpdateHotstringCommand cmd = new(entity.Id,
+            new UpdateHotstringDto("btw", "by the way", null, true, false, false));
 
         Result<HotstringDto> result = await handler.Handle(cmd, default);
 
@@ -44,7 +44,7 @@ public sealed class UpdateHotstringCommandHandlerTests(HotstringDbFixture fx)
     {
         var owner = Guid.NewGuid();
         var attacker = Guid.NewGuid();
-        var entity = Hotstring.Create(owner, "btw", "x", null, true, true, TimeProvider.System);
+        var entity = Hotstring.Create(owner, "btw", "x", true, true, true, TimeProvider.System);
 
         await using (AppDbContext seed = fx.CreateContext())
         {
@@ -53,9 +53,9 @@ public sealed class UpdateHotstringCommandHandlerTests(HotstringDbFixture fx)
         }
 
         await using AppDbContext db = fx.CreateContext();
-        var handler = new UpdateHotstringCommandHandler(db, CurrentUserHelper.For(attacker), TimeProvider.System);
-        var cmd = new UpdateHotstringCommand(entity.Id,
-            new UpdateHotstringDto("btw", "y", null, true, true));
+        UpdateHotstringCommandHandler handler = new(db, CurrentUserHelper.For(attacker), TimeProvider.System);
+        UpdateHotstringCommand cmd = new(entity.Id,
+            new UpdateHotstringDto("btw", "y", null, true, true, true));
 
         Result<HotstringDto> result = await handler.Handle(cmd, default);
 
@@ -66,9 +66,9 @@ public sealed class UpdateHotstringCommandHandlerTests(HotstringDbFixture fx)
     public async Task Handle_WhenMissingId_ReturnsNotFound()
     {
         await using AppDbContext db = fx.CreateContext();
-        var handler = new UpdateHotstringCommandHandler(db, CurrentUserHelper.For(Guid.NewGuid()), TimeProvider.System);
-        var cmd = new UpdateHotstringCommand(Guid.NewGuid(),
-            new UpdateHotstringDto("btw", "x", null, true, true));
+        UpdateHotstringCommandHandler handler = new(db, CurrentUserHelper.For(Guid.NewGuid()), TimeProvider.System);
+        UpdateHotstringCommand cmd = new(Guid.NewGuid(),
+            new UpdateHotstringDto("btw", "x", null, true, true, true));
 
         Result<HotstringDto> result = await handler.Handle(cmd, default);
 
@@ -79,8 +79,8 @@ public sealed class UpdateHotstringCommandHandlerTests(HotstringDbFixture fx)
     public async Task Handle_WhenDuplicateTrigger_ReturnsConflict()
     {
         var owner = Guid.NewGuid();
-        var first = Hotstring.Create(owner, "first", "a", null, true, true, TimeProvider.System);
-        var second = Hotstring.Create(owner, "second", "b", null, true, true, TimeProvider.System);
+        var first = Hotstring.Create(owner, "first", "a", true, true, true, TimeProvider.System);
+        var second = Hotstring.Create(owner, "second", "b", true, true, true, TimeProvider.System);
 
         await using (AppDbContext seed = fx.CreateContext())
         {
@@ -89,9 +89,9 @@ public sealed class UpdateHotstringCommandHandlerTests(HotstringDbFixture fx)
         }
 
         await using AppDbContext db = fx.CreateContext();
-        var handler = new UpdateHotstringCommandHandler(db, CurrentUserHelper.For(owner), TimeProvider.System);
-        var cmd = new UpdateHotstringCommand(second.Id,
-            new UpdateHotstringDto("first", "b", null, true, true));
+        UpdateHotstringCommandHandler handler = new(db, CurrentUserHelper.For(owner), TimeProvider.System);
+        UpdateHotstringCommand cmd = new(second.Id,
+            new UpdateHotstringDto("first", "b", null, true, true, true));
 
         Result<HotstringDto> result = await handler.Handle(cmd, default);
 

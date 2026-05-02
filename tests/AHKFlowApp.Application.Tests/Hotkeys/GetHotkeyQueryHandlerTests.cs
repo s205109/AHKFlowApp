@@ -51,4 +51,15 @@ public sealed class GetHotkeyQueryHandlerTests(HotkeyDbFixture fx)
 
         result.Status.Should().Be(ResultStatus.NotFound);
     }
+
+    [Fact]
+    public async Task Handle_WhenNoOid_ReturnsUnauthorized()
+    {
+        await using AppDbContext db = fx.CreateContext();
+        var handler = new GetHotkeyQueryHandler(db, CurrentUserHelper.For(null));
+
+        Result<HotkeyDto> result = await handler.Handle(new GetHotkeyQuery(Guid.NewGuid()), default);
+
+        result.Status.Should().Be(ResultStatus.Unauthorized);
+    }
 }

@@ -44,15 +44,13 @@ internal sealed class SeedHotstringsCommandHandler(
         foreach ((string trigger, string replacement, bool ending, bool inside) in s_samples)
         {
             bool exists = await db.Hotstrings.AnyAsync(
-                h => h.OwnerOid == ownerOid
-                  && h.ProfileId == null
-                  && h.Trigger == trigger,
+                h => h.OwnerOid == ownerOid && h.Trigger == trigger,
                 ct);
 
             if (exists) continue;
 
             db.Hotstrings.Add(Hotstring.Create(
-                ownerOid, trigger, replacement, profileId: null,
+                ownerOid, trigger, replacement, appliesToAllProfiles: true,
                 isEndingCharacterRequired: ending, isTriggerInsideWord: inside, clock));
         }
 
@@ -60,9 +58,19 @@ internal sealed class SeedHotstringsCommandHandler(
 
         List<HotstringDto> items = await db.Hotstrings
             .AsNoTracking()
+            .Include(h => h.Profiles)
             .Where(h => h.OwnerOid == ownerOid)
             .OrderByDescending(h => h.CreatedAt)
-            .Select(h => h.ToDto())
+            .Select(h => new HotstringDto(
+                h.Id,
+                h.Profiles.Select(p => p.ProfileId).ToArray(),
+                h.AppliesToAllProfiles,
+                h.Trigger,
+                h.Replacement,
+                h.IsEndingCharacterRequired,
+                h.IsTriggerInsideWord,
+                h.CreatedAt,
+                h.UpdatedAt))
             .ToListAsync(ct);
 
         return Result.Success(new PagedList<HotstringDto>(items, Page: 1, PageSize: items.Count, TotalCount: items.Count));

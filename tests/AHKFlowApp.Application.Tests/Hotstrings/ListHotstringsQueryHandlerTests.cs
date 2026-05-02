@@ -19,13 +19,13 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
 
         await using (AppDbContext seed = fx.CreateContext())
         {
-            seed.Hotstrings.Add(Hotstring.Create(owner, "mine", "x", null, true, true, TimeProvider.System));
-            seed.Hotstrings.Add(Hotstring.Create(other, "theirs", "y", null, true, true, TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, "mine", "x", true, true, true, TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(other, "theirs", "y", true, true, true, TimeProvider.System));
             await seed.SaveChangesAsync();
         }
 
         await using AppDbContext db = fx.CreateContext();
-        var handler = new ListHotstringsQueryHandler(db, CurrentUserHelper.For(owner));
+        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner));
 
         Result<PagedList<HotstringDto>> result = await handler.Handle(new ListHotstringsQuery(), default);
 
@@ -35,46 +35,54 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
     }
 
     [Fact]
-    public async Task Handle_FiltersByProfileId()
+    public async Task Handle_FiltersByProfileId_IncludesProfileScopedAndGlobal()
     {
         var owner = Guid.NewGuid();
-        var profile = Guid.NewGuid();
+        Guid profileId;
 
         await using (AppDbContext seed = fx.CreateContext())
         {
-            seed.Hotstrings.Add(Hotstring.Create(owner, "a", "x", profile, true, true, TimeProvider.System));
-            seed.Hotstrings.Add(Hotstring.Create(owner, "b", "y", null, true, true, TimeProvider.System));
+            var profile = Profile.Create(owner, "Work", true, "", "", TimeProvider.System);
+            seed.Profiles.Add(profile);
+            var scoped = Hotstring.Create(owner, "a", "x", false, true, true, TimeProvider.System);
+            var global = Hotstring.Create(owner, "b", "y", true, true, true, TimeProvider.System);
+            var other = Hotstring.Create(owner, "c", "z", false, true, true, TimeProvider.System);
+            seed.Hotstrings.AddRange(scoped, global, other);
+            await seed.SaveChangesAsync();
+            profileId = profile.Id;
+            seed.HotstringProfiles.Add(HotstringProfile.Create(scoped.Id, profileId));
             await seed.SaveChangesAsync();
         }
 
         await using AppDbContext db = fx.CreateContext();
-        var handler = new ListHotstringsQueryHandler(db, CurrentUserHelper.For(owner));
+        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner));
 
         Result<PagedList<HotstringDto>> result = await handler.Handle(
-            new ListHotstringsQuery(ProfileId: profile), default);
+            new ListHotstringsQuery(ProfileId: profileId), default);
 
-        result.Value.Items.Should().HaveCount(1);
-        result.Value.Items[0].Trigger.Should().Be("a");
+        result.Value.Items.Should().HaveCount(2);
+        result.Value.Items.Should().Contain(h => h.Trigger == "a");
+        result.Value.Items.Should().Contain(h => h.Trigger == "b");
     }
 
     [Fact]
     public async Task Handle_Paginates_WithCorrectTotalCount()
     {
         var owner = Guid.NewGuid();
-        var clock = new FixedClock(DateTimeOffset.Parse("2026-01-01T00:00:00Z"));
+        FixedClock clock = new(DateTimeOffset.Parse("2026-01-01T00:00:00Z"));
 
         await using (AppDbContext seed = fx.CreateContext())
         {
             for (int i = 0; i < 5; i++)
             {
-                seed.Hotstrings.Add(Hotstring.Create(owner, $"t{i}", "x", null, true, true, clock));
+                seed.Hotstrings.Add(Hotstring.Create(owner, $"t{i}", "x", true, true, true, clock));
                 clock.Advance(TimeSpan.FromSeconds(1));
             }
             await seed.SaveChangesAsync();
         }
 
         await using AppDbContext db = fx.CreateContext();
-        var handler = new ListHotstringsQueryHandler(db, CurrentUserHelper.For(owner));
+        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner));
 
         Result<PagedList<HotstringDto>> page2 = await handler.Handle(
             new ListHotstringsQuery(Page: 2, PageSize: 2), default);
@@ -89,7 +97,7 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
     public async Task Handle_WhenNoOid_ReturnsUnauthorized()
     {
         await using AppDbContext db = fx.CreateContext();
-        var handler = new ListHotstringsQueryHandler(db, CurrentUserHelper.For(null));
+        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(null));
 
         Result<PagedList<HotstringDto>> result = await handler.Handle(new ListHotstringsQuery(), default);
 
@@ -103,13 +111,13 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
 
         await using (AppDbContext seed = fx.CreateContext())
         {
-            seed.Hotstrings.Add(Hotstring.Create(owner, "btw", "by the way", null, true, true, TimeProvider.System));
-            seed.Hotstrings.Add(Hotstring.Create(owner, "fyi", "for your info", null, true, true, TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, "btw", "by the way", true, true, true, TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, "fyi", "for your info", true, true, true, TimeProvider.System));
             await seed.SaveChangesAsync();
         }
 
         await using AppDbContext db = fx.CreateContext();
-        var handler = new ListHotstringsQueryHandler(db, CurrentUserHelper.For(owner));
+        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner));
 
         Result<PagedList<HotstringDto>> result = await handler.Handle(
             new ListHotstringsQuery(Search: "btw"), default);
@@ -124,13 +132,13 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
 
         await using (AppDbContext seed = fx.CreateContext())
         {
-            seed.Hotstrings.Add(Hotstring.Create(owner, "a", "needle in a haystack", null, true, true, TimeProvider.System));
-            seed.Hotstrings.Add(Hotstring.Create(owner, "b", "nothing relevant", null, true, true, TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, "a", "needle in a haystack", true, true, true, TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, "b", "nothing relevant", true, true, true, TimeProvider.System));
             await seed.SaveChangesAsync();
         }
 
         await using AppDbContext db = fx.CreateContext();
-        var handler = new ListHotstringsQueryHandler(db, CurrentUserHelper.For(owner));
+        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner));
 
         Result<PagedList<HotstringDto>> result = await handler.Handle(
             new ListHotstringsQuery(Search: "needle"), default);
@@ -145,41 +153,17 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
 
         await using (AppDbContext seed = fx.CreateContext())
         {
-            seed.Hotstrings.Add(Hotstring.Create(owner, "a", "FOO bar", null, true, true, TimeProvider.System));
-            seed.Hotstrings.Add(Hotstring.Create(owner, "b", "baz foo", null, true, true, TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, "a", "FOO bar", true, true, true, TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, "b", "baz foo", true, true, true, TimeProvider.System));
             await seed.SaveChangesAsync();
         }
 
         await using AppDbContext db = fx.CreateContext();
-        var handler = new ListHotstringsQueryHandler(db, CurrentUserHelper.For(owner));
+        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner));
 
         Result<PagedList<HotstringDto>> result = await handler.Handle(
             new ListHotstringsQuery(Search: "foo"), default);
 
         result.Value.Items.Should().HaveCount(2);
-    }
-
-    [Fact]
-    public async Task Handle_Search_CombinedWithProfileId()
-    {
-        var owner = Guid.NewGuid();
-        var profile = Guid.NewGuid();
-
-        await using (AppDbContext seed = fx.CreateContext())
-        {
-            seed.Hotstrings.Add(Hotstring.Create(owner, "match", "x", profile, true, true, TimeProvider.System));
-            seed.Hotstrings.Add(Hotstring.Create(owner, "match", "y", null, true, true, TimeProvider.System));
-            seed.Hotstrings.Add(Hotstring.Create(owner, "other", "z", profile, true, true, TimeProvider.System));
-            await seed.SaveChangesAsync();
-        }
-
-        await using AppDbContext db = fx.CreateContext();
-        var handler = new ListHotstringsQueryHandler(db, CurrentUserHelper.For(owner));
-
-        Result<PagedList<HotstringDto>> result = await handler.Handle(
-            new ListHotstringsQuery(ProfileId: profile, Search: "match"), default);
-
-        result.Value.Items.Should().ContainSingle()
-            .Which.Should().Match<HotstringDto>(h => h.Trigger == "match" && h.ProfileId == profile);
     }
 }

@@ -49,7 +49,7 @@ public sealed class CreateHotstringCommandHandlerTests(HotstringDbFixture fx)
         var owner = Guid.NewGuid();
         await using (AppDbContext seed = fx.CreateContext())
         {
-            seed.Hotstrings.Add(Hotstring.Create(owner, "dup", "first", null, true, true, _clock));
+            seed.Hotstrings.Add(Hotstring.Create(owner, "dup", "first", true, true, true, _clock));
             await seed.SaveChangesAsync();
         }
 
@@ -70,7 +70,7 @@ public sealed class CreateHotstringCommandHandlerTests(HotstringDbFixture fx)
 
         await using (AppDbContext seed = fx.CreateContext())
         {
-            seed.Hotstrings.Add(Hotstring.Create(owner1, "shared", "x", null, true, true, _clock));
+            seed.Hotstrings.Add(Hotstring.Create(owner1, "shared", "x", true, true, true, _clock));
             await seed.SaveChangesAsync();
         }
 

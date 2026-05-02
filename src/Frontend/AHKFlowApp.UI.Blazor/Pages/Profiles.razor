@@ -1,9 +1,245 @@
 @page "/profiles"
+@using AHKFlowApp.UI.Blazor.DTOs
+@using AHKFlowApp.UI.Blazor.Services
+@using AHKFlowApp.UI.Blazor.Validation
+@using MudBlazor
+@using Microsoft.AspNetCore.Components.Authorization
+@implements IDisposable
 
 <PageTitle>Profiles</PageTitle>
 
 <MudText Typo="Typo.h4" GutterBottom="true">Profiles</MudText>
 
-<MudAlert Severity="Severity.Info">
-    Profile management is coming soon.
-</MudAlert>
+<MudPaper Class="pa-4">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Wrap="Wrap.Wrap" Class="mb-4">
+        <MudButton Class="add-profile" Variant="Variant.Filled" Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.Add" OnClick="StartAddAsync"
+                   Disabled="@(!_isAuthenticated || _editing.ContainsKey(Guid.Empty))">
+            Add
+        </MudButton>
+        <MudButton Class="reload-profiles" Variant="Variant.Filled" Color="Color.Secondary"
+                   StartIcon="@Icons.Material.Filled.Refresh" OnClick="ReloadAsync"
+                   Disabled="@(!_isAuthenticated || _loading)">
+            Reload
+        </MudButton>
+    </MudStack>
+
+    @if (_loadError is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-3">@_loadError</MudAlert>
+    }
+
+    <MudTable T="ProfileDto" Items="_profiles" Dense="true" Hover="true" Loading="_loading">
+        <HeaderContent>
+            <MudTh Style="width:80px">Default</MudTh>
+            <MudTh>Name</MudTh>
+            <MudTh Style="width:160px">Created</MudTh>
+            <MudTh Style="width:160px">Updated</MudTh>
+            <MudTh Style="width:200px">Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            @if (_editing.TryGetValue(context.Id, out var edit))
+            {
+                bool showErrors = _commitAttempted.Contains(context.Id);
+                string? nameError = showErrors ? ValidateName(edit.Name) : null;
+                <MudTd>
+                    <MudCheckBox T="bool" @bind-Value="edit.IsDefault"
+                                 UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "profile-default-input" })" />
+                </MudTd>
+                <MudTd>
+                    <MudTextField @bind-Value="edit.Name"
+                                  Validation="@(new Func<string, string?>(ValidateName))"
+                                  Error="@(nameError is not null)" ErrorText="@nameError"
+                                  Immediate="true" MaxLength="100"
+                                  UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "profile-name-input" })" />
+                </MudTd>
+                <MudTd>@(context.Id == Guid.Empty ? "—" : context.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm"))</MudTd>
+                <MudTd>@(context.Id == Guid.Empty ? "—" : context.UpdatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm"))</MudTd>
+                <MudTd>
+                    <MudIconButton Class="commit-edit" Icon="@Icons.Material.Filled.Check"
+                                   Color="Color.Success" OnClick="() => CommitEditAsync(context.Id)" />
+                    <MudIconButton Class="cancel-edit" Icon="@Icons.Material.Filled.Close"
+                                   Color="Color.Default" OnClick="() => CancelEditAsync(context.Id)" />
+                </MudTd>
+            }
+            else
+            {
+                <MudTd><MudIcon Icon="@(context.IsDefault ? Icons.Material.Filled.Star : Icons.Material.Outlined.StarBorder)" /></MudTd>
+                <MudTd>@context.Name</MudTd>
+                <MudTd>@context.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</MudTd>
+                <MudTd>@context.UpdatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</MudTd>
+                <MudTd>
+                    <MudIconButton Class="toggle-expand" Icon="@(IsExpanded(context.Id) ? Icons.Material.Filled.ExpandLess : Icons.Material.Filled.ExpandMore)"
+                                   OnClick="() => ToggleExpand(context.Id)" />
+                    <MudIconButton Class="start-edit" Icon="@Icons.Material.Filled.Edit"
+                                   OnClick="() => StartEdit(context)" />
+                    <MudIconButton Class="delete" Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
+                                   OnClick="() => DeleteAsync(context)" />
+                </MudTd>
+            }
+        </RowTemplate>
+        <ChildRowContent>
+            @if (IsExpanded(context.Id) || _editing.ContainsKey(context.Id))
+            {
+                ProfileEditModel? edit = _editing.GetValueOrDefault(context.Id);
+                <td colspan="5">
+                    <MudPaper Elevation="0" Class="pa-3" Style="background-color: var(--mud-palette-background-grey);">
+                        <MudText Typo="Typo.subtitle2">Header template</MudText>
+                        @if (edit is not null)
+                        {
+                            <MudTextField @bind-Value="edit.HeaderTemplate"
+                                          T="string" Lines="20" Variant="Variant.Outlined"
+                                          MaxLength="8000" Style="font-family: monospace;"
+                                          UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "profile-header-input" })" />
+                        }
+                        else
+                        {
+                            <pre style="white-space: pre-wrap; font-family: monospace;">@context.HeaderTemplate</pre>
+                        }
+                        <MudText Typo="Typo.subtitle2" Class="mt-3">Footer template</MudText>
+                        @if (edit is not null)
+                        {
+                            <MudTextField @bind-Value="edit.FooterTemplate"
+                                          T="string" Lines="10" Variant="Variant.Outlined"
+                                          MaxLength="4000" Style="font-family: monospace;"
+                                          UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "profile-footer-input" })" />
+                        }
+                        else
+                        {
+                            <pre style="white-space: pre-wrap; font-family: monospace;">@context.FooterTemplate</pre>
+                        }
+                    </MudPaper>
+                </td>
+            }
+        </ChildRowContent>
+        <NoRecordsContent><MudText>No profiles yet.</MudText></NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+    [Inject] private IProfilesApiClient Api { get; set; } = default!;
+    [Inject] private ISnackbar Snackbar { get; set; } = default!;
+    [Inject] private IDialogService DialogService { get; set; } = default!;
+
+    private List<ProfileDto> _profiles = [];
+    private readonly Dictionary<Guid, ProfileEditModel> _editing = new();
+    private readonly HashSet<Guid> _commitAttempted = [];
+    private readonly HashSet<Guid> _expanded = [];
+    private bool _isAuthenticated;
+    private bool _loading;
+    private string? _loadError;
+    private readonly CancellationTokenSource _cts = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is not null)
+        {
+            var state = await AuthState;
+            _isAuthenticated = state.User.Identity?.IsAuthenticated ?? false;
+        }
+        if (_isAuthenticated) await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        _loadError = null;
+        ApiResult<IReadOnlyList<ProfileDto>> result = await Api.ListAsync(_cts.Token);
+        _loading = false;
+
+        if (!result.IsSuccess)
+        {
+            _loadError = ApiErrorMessageFactory.Build(result.Status, result.Problem);
+            _profiles = [];
+            return;
+        }
+
+        _profiles = [.. result.Value!];
+        if (_editing.ContainsKey(Guid.Empty))
+        {
+            _profiles.Insert(0, new ProfileDto(Guid.Empty, "", false, "", "", DateTimeOffset.MinValue, DateTimeOffset.MinValue));
+        }
+    }
+
+    private async Task StartAddAsync()
+    {
+        _editing[Guid.Empty] = new ProfileEditModel();
+        await ReloadAsync();
+    }
+
+    private void StartEdit(ProfileDto dto) =>
+        _editing[dto.Id] = ProfileEditModel.FromDto(dto);
+
+    private async Task CancelEditAsync(Guid id)
+    {
+        _editing.Remove(id);
+        _commitAttempted.Remove(id);
+        if (id == Guid.Empty) await ReloadAsync();
+    }
+
+    private bool IsExpanded(Guid id) => _expanded.Contains(id);
+
+    private void ToggleExpand(Guid id)
+    {
+        if (!_expanded.Add(id)) _expanded.Remove(id);
+    }
+
+    private static string? ValidateName(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return "Name is required";
+        if (value.Length > 100) return "Name must be 100 characters or fewer";
+        if (value.Length != value.Trim().Length) return "Name must not have leading or trailing whitespace";
+        return null;
+    }
+
+    private async Task CommitEditAsync(Guid id)
+    {
+        if (!_editing.TryGetValue(id, out ProfileEditModel? edit)) return;
+        _commitAttempted.Add(id);
+        if (ValidateName(edit.Name) is not null) return;
+        _commitAttempted.Remove(id);
+
+        if (id == Guid.Empty)
+        {
+            ApiResult<ProfileDto> result = await Api.CreateAsync(edit.ToCreateDto(), _cts.Token);
+            if (result.IsSuccess)
+            {
+                _editing.Remove(id);
+                Snackbar.Add("Profile created.", Severity.Success);
+                await ReloadAsync();
+            }
+            else Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
+        }
+        else
+        {
+            ApiResult<ProfileDto> result = await Api.UpdateAsync(id, edit.ToUpdateDto(), _cts.Token);
+            if (result.IsSuccess)
+            {
+                _editing.Remove(id);
+                Snackbar.Add("Profile updated.", Severity.Success);
+                await ReloadAsync();
+            }
+            else Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
+        }
+    }
+
+    private async Task DeleteAsync(ProfileDto dto)
+    {
+        bool? confirm = await DialogService.ShowMessageBoxAsync(
+            title: "Delete profile?",
+            message: $"Delete \"{dto.Name}\"? This cannot be undone.",
+            yesText: "Delete", cancelText: "Cancel");
+        if (confirm != true) return;
+
+        ApiResult result = await Api.DeleteAsync(dto.Id, _cts.Token);
+        if (result.IsSuccess)
+        {
+            Snackbar.Add("Profile deleted.", Severity.Success);
+            await ReloadAsync();
+        }
+        else Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
+    }
+
+    public void Dispose() { _cts.Cancel(); _cts.Dispose(); }
+}
