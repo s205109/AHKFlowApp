@@ -23,12 +23,13 @@ public partial class Phase2ManyToManyProfiles : Migration
             name: "ProfileId",
             table: "Hotstrings");
 
+        // Default true preserves prior "ProfileId IS NULL = global" semantics for any existing rows.
         migrationBuilder.AddColumn<bool>(
             name: "AppliesToAllProfiles",
             table: "Hotstrings",
             type: "bit",
             nullable: false,
-            defaultValue: false);
+            defaultValue: true);
 
         migrationBuilder.CreateTable(
             name: "HotstringProfiles",
