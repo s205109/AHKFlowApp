@@ -24,9 +24,16 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
     public HotstringsPageTests()
     {
         Services.AddSingleton(_api);
+
         IUserPreferencesService prefs = Substitute.For<IUserPreferencesService>();
         prefs.GetAsync(Arg.Any<CancellationToken>()).Returns(UserPreferences.Default);
         Services.AddSingleton(prefs);
+
+        IProfilesApiClient profilesApi = Substitute.For<IProfilesApiClient>();
+        profilesApi.ListAsync(Arg.Any<CancellationToken>())
+            .Returns(ApiResult<IReadOnlyList<ProfileDto>>.Ok([]));
+        Services.AddSingleton(profilesApi);
+
         Services.AddMudServices();
         JSInterop.Mode = JSRuntimeMode.Loose;
     }
