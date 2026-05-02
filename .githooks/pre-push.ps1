@@ -8,7 +8,7 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$coverageScriptPath = Join-Path $repoRoot 'scripts\run-coverage.ps1'
+$coverageScriptPath = Join-Path $repoRoot 'scripts' 'run-coverage.ps1'
 
 Write-Host "[pre-push] Running coverage verification before push..." -ForegroundColor Cyan
 if ($RemoteName) {

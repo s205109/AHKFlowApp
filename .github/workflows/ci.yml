@@ -41,7 +41,9 @@ jobs:
           reporttypes: 'MarkdownSummaryGithub;JsonSummary;HtmlInline_AzurePipelines;Cobertura'
       - name: Append coverage guidance to summary
         if: always()
-        run: python scripts/check-coverage-thresholds.py --github-summary-footer >> CoverageReport/SummaryGithub.md
+        run: |
+          mkdir -p CoverageReport
+          python scripts/check-coverage-thresholds.py --github-summary-footer >> CoverageReport/SummaryGithub.md
       - name: Append coverage summary to job summary
         if: always()
         run: cat CoverageReport/SummaryGithub.md >> "$GITHUB_STEP_SUMMARY"
