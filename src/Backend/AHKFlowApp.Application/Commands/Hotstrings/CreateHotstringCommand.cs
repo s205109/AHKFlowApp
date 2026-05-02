@@ -43,12 +43,17 @@ internal sealed class CreateHotstringCommandHandler(
         if (duplicate)
             return Result.Conflict("A hotstring with this trigger already exists.");
 
-        if (!input.AppliesToAllProfiles && input.ProfileIds is { Length: > 0 })
+        Guid[] distinctProfileIds = input.ProfileIds?.Distinct().ToArray() ?? [];
+        if (!input.AppliesToAllProfiles && distinctProfileIds.Length > 0)
         {
             int validCount = await db.Profiles
-                .CountAsync(p => p.OwnerOid == ownerOid && input.ProfileIds.Contains(p.Id), ct);
-            if (validCount != input.ProfileIds.Length)
-                return Result.Invalid(new ValidationError("One or more ProfileIds do not exist for this user."));
+                .CountAsync(p => p.OwnerOid == ownerOid && distinctProfileIds.Contains(p.Id), ct);
+            if (validCount != distinctProfileIds.Length)
+                return Result.Invalid(new ValidationError
+                {
+                    Identifier = "Input.ProfileIds",
+                    ErrorMessage = "One or more ProfileIds do not exist for this user.",
+                });
         }
 
         var entity = Hotstring.Create(
@@ -62,9 +67,9 @@ internal sealed class CreateHotstringCommandHandler(
 
         db.Hotstrings.Add(entity);
 
-        if (!input.AppliesToAllProfiles && input.ProfileIds is { Length: > 0 })
+        if (!input.AppliesToAllProfiles && distinctProfileIds.Length > 0)
         {
-            foreach (Guid pid in input.ProfileIds)
+            foreach (Guid pid in distinctProfileIds)
                 db.HotstringProfiles.Add(HotstringProfile.Create(entity.Id, pid));
         }
 

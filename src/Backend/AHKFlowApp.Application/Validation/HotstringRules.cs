@@ -25,31 +25,31 @@ internal static class HotstringRules
     /// Adds profile-association validation rules to a validator.
     /// When <paramref name="appliesToAll"/> is true, <paramref name="profileIds"/> must be null/empty.
     /// When false, at least one non-empty GUID must be provided.
+    /// Failures key off the <paramref name="profileIds"/> expression so PropertyName matches the DTO path (e.g. "Input.ProfileIds").
     /// </summary>
     public static void AddProfileAssociationRules<T>(
         this AbstractValidator<T> validator,
-        Func<T, bool> appliesToAll,
-        Func<T, Guid[]?> profileIds)
+        System.Linq.Expressions.Expression<Func<T, bool>> appliesToAll,
+        System.Linq.Expressions.Expression<Func<T, Guid[]?>> profileIds)
     {
+        Func<T, bool> appliesToAllFn = appliesToAll.Compile();
+
         // When AppliesToAllProfiles = true, ProfileIds must be empty
-        validator.RuleFor(x => x)
-            .Must(x => profileIds(x) is null || profileIds(x)!.Length == 0)
-            .When(appliesToAll)
-            .WithName("ProfileIds")
+        validator.RuleFor(profileIds)
+            .Must(ids => ids is null || ids.Length == 0)
+            .When(x => appliesToAllFn(x))
             .WithMessage("ProfileIds must be empty when AppliesToAllProfiles is true.");
 
         // When AppliesToAllProfiles = false, at least one profile required
-        validator.RuleFor(x => x)
-            .Must(x => profileIds(x) is { Length: > 0 })
-            .When(x => !appliesToAll(x))
-            .WithName("ProfileIds")
+        validator.RuleFor(profileIds)
+            .Must(ids => ids is { Length: > 0 })
+            .When(x => !appliesToAllFn(x))
             .WithMessage("At least one profile must be specified when AppliesToAllProfiles is false.");
 
         // No empty GUIDs in the array
-        validator.RuleFor(x => x)
-            .Must(x => profileIds(x) is null || profileIds(x)!.All(id => id != Guid.Empty))
-            .When(x => !appliesToAll(x))
-            .WithName("ProfileIds")
+        validator.RuleFor(profileIds)
+            .Must(ids => ids is null || ids.All(id => id != Guid.Empty))
+            .When(x => !appliesToAllFn(x))
             .WithMessage("ProfileIds must not contain empty GUIDs.");
     }
 }
