@@ -31,9 +31,12 @@ pwsh .\scripts\run-coverage.ps1 -SkipThresholdCheck
 
 ```bash
 dotnet tool install -g dotnet-reportgenerator-globaltool
+git config core.hooksPath .githooks
 ```
 
 The canonical gate also requires `python` on `PATH`.
+
+That `core.hooksPath` setting enables the repo-managed `.githooks/pre-push` hook, which runs `pwsh .\scripts\run-coverage.ps1` automatically before each push.
 
 ## Outputs
 

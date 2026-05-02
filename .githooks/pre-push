@@ -1,0 +1,15 @@
+#!/bin/sh
+
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+HOOK_SCRIPT="$SCRIPT_DIR/pre-push.ps1"
+
+if command -v pwsh >/dev/null 2>&1; then
+  exec pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File "$HOOK_SCRIPT" "$@"
+fi
+
+if command -v powershell >/dev/null 2>&1; then
+  exec powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "$HOOK_SCRIPT" "$@"
+fi
+
+echo "pre-push hook requires PowerShell (pwsh or powershell)." >&2
+exit 1
