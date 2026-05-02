@@ -38,6 +38,15 @@ The canonical gate also requires `python` on `PATH`.
 
 That `core.hooksPath` setting enables the repo-managed `.githooks/pre-push` hook, which runs `pwsh .\scripts\run-coverage.ps1` automatically before each push.
 
+The hook adds a few minutes per push. Skip it for WIP pushes with either:
+
+```bash
+SKIP_COVERAGE_HOOK=1 git push   # honored by the repo hook only
+git push --no-verify            # bypasses every pre-push hook
+```
+
+Prefer `SKIP_COVERAGE_HOOK=1` so future pre-push hooks (lint, secret scan, etc.) still run.
+
 ## Outputs
 
 - `CoverageReport/index.html` — browsable HTML report.
