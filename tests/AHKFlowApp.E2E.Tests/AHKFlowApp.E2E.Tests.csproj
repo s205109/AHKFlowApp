@@ -30,6 +30,6 @@
     <ProjectReference Include="..\..\src\Frontend\AHKFlowApp.UI.Blazor\AHKFlowApp.UI.Blazor.csproj" />
   </ItemGroup>
   <Target Name="PublishBlazorForE2E" BeforeTargets="VSTest">
-    <Exec Command="dotnet publish ../../src/Frontend/AHKFlowApp.UI.Blazor -c Release -o ../../src/Frontend/AHKFlowApp.UI.Blazor/bin/Release/net10.0/publish" />
+    <Exec Command="dotnet publish ../../src/Frontend/AHKFlowApp.UI.Blazor -c Release --disable-build-servers -p:UseSharedCompilation=false -o ../../src/Frontend/AHKFlowApp.UI.Blazor/bin/Release/net10.0/publish" />
   </Target>
 </Project>
