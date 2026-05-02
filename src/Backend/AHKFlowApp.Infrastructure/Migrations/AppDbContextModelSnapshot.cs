@@ -77,6 +77,9 @@ namespace AHKFlowApp.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<bool>("AppliesToAllProfiles")
+                        .HasColumnType("bit");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -87,9 +90,6 @@ namespace AHKFlowApp.Infrastructure.Migrations
                         .HasColumnType("bit");
 
                     b.Property<Guid>("OwnerOid")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid?>("ProfileId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("Replacement")
@@ -111,15 +111,73 @@ namespace AHKFlowApp.Infrastructure.Migrations
 
                     b.HasIndex("OwnerOid", "Trigger")
                         .IsUnique()
-                        .HasDatabaseName("IX_Hotstring_Owner_Trigger_NoProfile")
-                        .HasFilter("[ProfileId] IS NULL");
-
-                    b.HasIndex("OwnerOid", "ProfileId", "Trigger")
-                        .IsUnique()
-                        .HasDatabaseName("IX_Hotstring_Owner_Profile_Trigger")
-                        .HasFilter("[ProfileId] IS NOT NULL");
+                        .HasDatabaseName("IX_Hotstring_Owner_Trigger");
 
                     b.ToTable("Hotstrings");
+                });
+
+            modelBuilder.Entity("AHKFlowApp.Domain.Entities.HotstringProfile", b =>
+                {
+                    b.Property<Guid>("HotstringId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ProfileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("HotstringId", "ProfileId");
+
+                    b.HasIndex("ProfileId");
+
+                    b.ToTable("HotstringProfiles");
+                });
+
+            modelBuilder.Entity("AHKFlowApp.Domain.Entities.Profile", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("FooterTemplate")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<string>("HeaderTemplate")
+                        .IsRequired()
+                        .HasMaxLength(8000)
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<Guid>("OwnerOid")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerOid");
+
+                    b.HasIndex("OwnerOid", "IsDefault")
+                        .IsUnique()
+                        .HasDatabaseName("IX_Profile_Owner_DefaultOnly")
+                        .HasFilter("[IsDefault] = 1");
+
+                    b.HasIndex("OwnerOid", "Name")
+                        .IsUnique()
+                        .HasDatabaseName("IX_Profile_Owner_Name");
+
+                    b.ToTable("Profiles");
                 });
 
             modelBuilder.Entity("AHKFlowApp.Domain.Entities.TestMessage", b =>
@@ -168,6 +226,26 @@ namespace AHKFlowApp.Infrastructure.Migrations
                     b.HasKey("OwnerOid");
 
                     b.ToTable("UserPreferences");
+                });
+
+            modelBuilder.Entity("AHKFlowApp.Domain.Entities.HotstringProfile", b =>
+                {
+                    b.HasOne("AHKFlowApp.Domain.Entities.Hotstring", null)
+                        .WithMany("Profiles")
+                        .HasForeignKey("HotstringId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("AHKFlowApp.Domain.Entities.Profile", null)
+                        .WithMany()
+                        .HasForeignKey("ProfileId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("AHKFlowApp.Domain.Entities.Hotstring", b =>
+                {
+                    b.Navigation("Profiles");
                 });
 #pragma warning restore 612, 618
         }

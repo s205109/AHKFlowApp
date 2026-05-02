@@ -53,4 +53,15 @@ public sealed class DeleteHotkeyCommandHandlerTests(HotkeyDbFixture fx)
 
         result.Status.Should().Be(ResultStatus.NotFound);
     }
+
+    [Fact]
+    public async Task Handle_WhenNoOid_ReturnsUnauthorized()
+    {
+        await using AppDbContext db = fx.CreateContext();
+        var handler = new DeleteHotkeyCommandHandler(db, CurrentUserHelper.For(null));
+
+        Result result = await handler.Handle(new DeleteHotkeyCommand(Guid.NewGuid()), default);
+
+        result.Status.Should().Be(ResultStatus.Unauthorized);
+    }
 }
