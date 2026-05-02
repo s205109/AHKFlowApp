@@ -16,7 +16,7 @@ public sealed class DeleteHotkeyCommandHandlerTests(HotkeyDbFixture fx)
     public async Task Handle_WhenOwned_Deletes()
     {
         var owner = Guid.NewGuid();
-        Hotkey entity = new HotkeyBuilder().WithOwner(owner).WithTrigger("del").Build();
+        Hotkey entity = new HotkeyBuilder().WithOwner(owner).WithKey("f1").WithCtrl().AppliesToAll().Build();
         await using (AppDbContext seed = fx.CreateContext())
         {
             seed.Hotkeys.Add(entity);
@@ -39,7 +39,7 @@ public sealed class DeleteHotkeyCommandHandlerTests(HotkeyDbFixture fx)
     {
         var owner = Guid.NewGuid();
         var attacker = Guid.NewGuid();
-        Hotkey entity = new HotkeyBuilder().WithOwner(owner).WithTrigger("del").Build();
+        Hotkey entity = new HotkeyBuilder().WithOwner(owner).WithKey("f1").WithCtrl().AppliesToAll().Build();
         await using (AppDbContext seed = fx.CreateContext())
         {
             seed.Hotkeys.Add(entity);

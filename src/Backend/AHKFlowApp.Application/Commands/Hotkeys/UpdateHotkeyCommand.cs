@@ -17,10 +17,13 @@ public sealed class UpdateHotkeyCommandValidator : AbstractValidator<UpdateHotke
 {
     public UpdateHotkeyCommandValidator()
     {
-        RuleFor(x => x.Input.Trigger).ValidHotkeyTrigger();
+        RuleFor(x => x.Input.Description).ValidDescription();
+        RuleFor(x => x.Input.Key).ValidKey();
+        RuleFor(x => x.Input.Parameters).ValidParameters();
         RuleFor(x => x.Input.Action).ValidAction();
-        RuleFor(x => x.Input.Description).ValidOptionalDescription();
-        RuleFor(x => x.Input.ProfileId).ValidOptionalProfileId();
+        this.ValidProfileAssociation(
+            x => x.Input.AppliesToAllProfiles,
+            x => x.Input.ProfileIds);
     }
 }
 
@@ -36,18 +39,47 @@ internal sealed class UpdateHotkeyCommandHandler(
             return Result.Unauthorized();
 
         Hotkey? entity = await db.Hotkeys
+            .Include(h => h.Profiles)
             .FirstOrDefaultAsync(h => h.Id == request.Id && h.OwnerOid == ownerOid, ct);
 
         if (entity is null)
             return Result.NotFound();
 
         UpdateHotkeyDto input = request.Input;
+
+        if (!input.AppliesToAllProfiles && input.ProfileIds is { Length: > 0 })
+        {
+            int validCount = await db.Profiles
+                .CountAsync(p => p.OwnerOid == ownerOid && input.ProfileIds.Contains(p.Id), ct);
+            if (validCount != input.ProfileIds.Length)
+                return Result.Invalid(new ValidationError("One or more ProfileIds do not exist for this user."));
+        }
+
         entity.Update(
-            input.Trigger,
-            input.Action,
             input.Description,
-            input.ProfileId,
+            input.Key,
+            input.Ctrl,
+            input.Alt,
+            input.Shift,
+            input.Win,
+            input.Action,
+            input.Parameters,
+            input.AppliesToAllProfiles,
             clock);
+
+        // Replace junction rows
+        db.HotkeyProfiles.RemoveRange(entity.Profiles);
+        entity.Profiles.Clear();
+
+        if (!input.AppliesToAllProfiles && input.ProfileIds is { Length: > 0 })
+        {
+            foreach (Guid pid in input.ProfileIds)
+            {
+                var junction = HotkeyProfile.Create(entity.Id, pid);
+                db.HotkeyProfiles.Add(junction);
+                entity.Profiles.Add(junction);
+            }
+        }
 
         try
         {
@@ -55,7 +87,7 @@ internal sealed class UpdateHotkeyCommandHandler(
         }
         catch (DbUpdateException ex) when (IsDuplicateKeyViolation(ex))
         {
-            return Result.Conflict("A hotkey with this trigger already exists for the specified profile.");
+            return Result.Conflict("A hotkey with this key + modifier combination already exists.");
         }
 
         return Result.Success(entity.ToDto());
