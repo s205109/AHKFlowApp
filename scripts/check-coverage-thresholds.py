@@ -84,7 +84,8 @@ def parse_args() -> argparse.Namespace:
 
 
 def simplify_assembly_name(assembly: str) -> str:
-    return assembly.removeprefix("AHKFlowApp.")
+    prefix = "AHKFlowApp."
+    return assembly[len(prefix):] if assembly.startswith(prefix) else assembly
 
 
 def format_path(path: Path) -> str:

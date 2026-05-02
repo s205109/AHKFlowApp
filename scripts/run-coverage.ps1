@@ -24,7 +24,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $coverageReportDirectory = Join-Path $repoRoot 'CoverageReport'
 $summaryJsonPath = Join-Path $coverageReportDirectory 'Summary.json'
 $summaryGithubPath = Join-Path $coverageReportDirectory 'SummaryGithub.md'
-$thresholdScriptPath = Join-Path $repoRoot 'scripts\check-coverage-thresholds.py'
+$thresholdScriptPath = Join-Path $repoRoot 'scripts' 'check-coverage-thresholds.py'
 
 Push-Location $repoRoot
 try {
