@@ -8,7 +8,8 @@ internal sealed class CreateHotstringDtoExample : IExamplesProvider<CreateHotstr
     public CreateHotstringDto GetExamples() => new(
         Trigger: "btw",
         Replacement: "by the way",
-        ProfileId: null,
+        ProfileIds: null,
+        AppliesToAllProfiles: true,
         IsEndingCharacterRequired: true,
         IsTriggerInsideWord: true);
 }
@@ -18,7 +19,8 @@ internal sealed class UpdateHotstringDtoExample : IExamplesProvider<UpdateHotstr
     public UpdateHotstringDto GetExamples() => new(
         Trigger: "btw",
         Replacement: "by the way",
-        ProfileId: null,
+        ProfileIds: null,
+        AppliesToAllProfiles: true,
         IsEndingCharacterRequired: true,
         IsTriggerInsideWord: true);
 }
@@ -27,7 +29,8 @@ internal sealed class HotstringDtoExample : IExamplesProvider<HotstringDto>
 {
     public HotstringDto GetExamples() => new(
         Id: Guid.Parse("11111111-1111-1111-1111-111111111111"),
-        ProfileId: null,
+        ProfileIds: [],
+        AppliesToAllProfiles: true,
         Trigger: "btw",
         Replacement: "by the way",
         IsEndingCharacterRequired: true,

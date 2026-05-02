@@ -7,7 +7,8 @@ internal static class HotstringMappings
 {
     public static HotstringDto ToDto(this Hotstring h) => new(
         h.Id,
-        h.ProfileId,
+        h.Profiles.Select(p => p.ProfileId).ToArray(),
+        h.AppliesToAllProfiles,
         h.Trigger,
         h.Replacement,
         h.IsEndingCharacterRequired,

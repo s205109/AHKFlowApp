@@ -15,7 +15,7 @@ public sealed class GetHotstringQueryHandlerTests(HotstringDbFixture fx)
     public async Task Handle_WhenOwned_ReturnsDto()
     {
         var owner = Guid.NewGuid();
-        var entity = Hotstring.Create(owner, "g", "x", null, true, true, TimeProvider.System);
+        var entity = Hotstring.Create(owner, "g", "x", true, true, true, TimeProvider.System);
         await using (AppDbContext seed = fx.CreateContext())
         {
             seed.Hotstrings.Add(entity);
@@ -23,12 +23,14 @@ public sealed class GetHotstringQueryHandlerTests(HotstringDbFixture fx)
         }
 
         await using AppDbContext db = fx.CreateContext();
-        var handler = new GetHotstringQueryHandler(db, CurrentUserHelper.For(owner));
+        GetHotstringQueryHandler handler = new(db, CurrentUserHelper.For(owner));
 
         Result<HotstringDto> result = await handler.Handle(new GetHotstringQuery(entity.Id), default);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.Id.Should().Be(entity.Id);
+        result.Value.AppliesToAllProfiles.Should().BeTrue();
+        result.Value.ProfileIds.Should().BeEmpty();
     }
 
     [Fact]
@@ -36,7 +38,7 @@ public sealed class GetHotstringQueryHandlerTests(HotstringDbFixture fx)
     {
         var owner = Guid.NewGuid();
         var attacker = Guid.NewGuid();
-        var entity = Hotstring.Create(owner, "g", "x", null, true, true, TimeProvider.System);
+        var entity = Hotstring.Create(owner, "g", "x", true, true, true, TimeProvider.System);
         await using (AppDbContext seed = fx.CreateContext())
         {
             seed.Hotstrings.Add(entity);
@@ -44,7 +46,7 @@ public sealed class GetHotstringQueryHandlerTests(HotstringDbFixture fx)
         }
 
         await using AppDbContext db = fx.CreateContext();
-        var handler = new GetHotstringQueryHandler(db, CurrentUserHelper.For(attacker));
+        GetHotstringQueryHandler handler = new(db, CurrentUserHelper.For(attacker));
 
         Result<HotstringDto> result = await handler.Handle(new GetHotstringQuery(entity.Id), default);
 
@@ -55,7 +57,7 @@ public sealed class GetHotstringQueryHandlerTests(HotstringDbFixture fx)
     public async Task Handle_WhenNoOid_ReturnsUnauthorized()
     {
         await using AppDbContext db = fx.CreateContext();
-        var handler = new GetHotstringQueryHandler(db, CurrentUserHelper.For(null));
+        GetHotstringQueryHandler handler = new(db, CurrentUserHelper.For(null));
 
         Result<HotstringDto> result = await handler.Handle(new GetHotstringQuery(Guid.NewGuid()), default);
 
