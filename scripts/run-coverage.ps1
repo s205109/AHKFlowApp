@@ -58,7 +58,7 @@ try {
         $summaryFooter = & python $thresholdScriptPath --github-summary-footer
         if ($LASTEXITCODE -ne 0) { throw "Failed to generate the coverage summary footer." }
 
-        Add-Content -Path $summaryGithubPath -Value $summaryFooter
+        Add-Content -Path $summaryGithubPath -Value $summaryFooter -Encoding utf8
     }
 
     if (-not $SkipThresholdCheck) {
