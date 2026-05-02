@@ -1,9 +1,322 @@
 @page "/hotkeys"
+@using AHKFlowApp.UI.Blazor.DTOs
+@using AHKFlowApp.UI.Blazor.Services
+@using AHKFlowApp.UI.Blazor.Validation
+@using MudBlazor
+@using Microsoft.AspNetCore.Components.Authorization
+@implements IDisposable
 
 <PageTitle>Hotkeys</PageTitle>
 
 <MudText Typo="Typo.h4" GutterBottom="true">Hotkeys</MudText>
 
-<MudAlert Severity="Severity.Info">
-    Hotkey management is coming soon.
-</MudAlert>
+<MudPaper Class="pa-4">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Wrap="Wrap.Wrap" Class="mb-4">
+        <MudButton Class="add-hotkey" Variant="Variant.Filled" Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.Add" OnClick="StartAddAsync"
+                   Disabled="@(!_isAuthenticated || _editing.ContainsKey(Guid.Empty))">
+            Add
+        </MudButton>
+        <MudButton Class="reload-hotkeys" Variant="Variant.Filled" Color="Color.Secondary"
+                   StartIcon="@Icons.Material.Filled.Refresh" OnClick="ReloadAsync"
+                   Disabled="@(!_isAuthenticated || _loading)">
+            Reload
+        </MudButton>
+        <MudSpacer />
+        <MudTextField T="string" @bind-Value="_search" @bind-Value:after="OnSearchChangedAsync"
+                      DebounceInterval="300"
+                      Placeholder="Search Hotkeys"
+                      Adornment="Adornment.Start"
+                      AdornmentIcon="@Icons.Material.Filled.Search"
+                      Class="search-hotkeys"
+                      Style="max-width: 360px;"
+                      Immediate="true" />
+    </MudStack>
+
+    @if (_loadError is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-3">@_loadError</MudAlert>
+    }
+
+    <div style="overflow-x: auto;">
+        <MudTable @ref="_table" T="HotkeyDto" ServerData="LoadServerData"
+                  Dense="true" Hover="true" RowsPerPage="_rowsPerPage" Loading="_loading">
+            <HeaderContent>
+                <MudTh>Description</MudTh>
+                <MudTh>Key</MudTh>
+                <MudTh>Ctrl</MudTh>
+                <MudTh>Alt</MudTh>
+                <MudTh>Shift</MudTh>
+                <MudTh>Win</MudTh>
+                <MudTh>Action</MudTh>
+                <MudTh>Profiles</MudTh>
+                <MudTh>Parameters</MudTh>
+                <MudTh Style="width:160px">Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                @if (_editing.TryGetValue(context.Id, out var edit))
+                {
+                    bool showErrors = _commitAttempted.Contains(context.Id);
+                    string? descError = showErrors ? ValidateDescription(edit.Description) : null;
+                    string? keyError = showErrors ? ValidateKey(edit.Key) : null;
+                    <MudTd>
+                        <MudTextField @bind-Value="edit.Description"
+                                      Validation="@(new Func<string, string?>(ValidateDescription))"
+                                      Error="@(descError is not null)" ErrorText="@descError"
+                                      Immediate="true" MaxLength="200"
+                                      UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "description-input" })" />
+                    </MudTd>
+                    <MudTd>
+                        <MudTextField @bind-Value="edit.Key"
+                                      Validation="@(new Func<string, string?>(ValidateKey))"
+                                      Error="@(keyError is not null)" ErrorText="@keyError"
+                                      Immediate="true" MaxLength="20"
+                                      Style="max-width: 80px;"
+                                      UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "key-input" })" />
+                    </MudTd>
+                    <MudTd><MudCheckBox T="bool" @bind-Value="edit.Ctrl" /></MudTd>
+                    <MudTd><MudCheckBox T="bool" @bind-Value="edit.Alt" /></MudTd>
+                    <MudTd><MudCheckBox T="bool" @bind-Value="edit.Shift" /></MudTd>
+                    <MudTd><MudCheckBox T="bool" @bind-Value="edit.Win" /></MudTd>
+                    <MudTd>
+                        <MudSelect T="HotkeyAction" @bind-Value="edit.Action" Dense="true"
+                                   UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "action-select" })">
+                            <MudSelectItem T="HotkeyAction" Value="HotkeyAction.Send">Send</MudSelectItem>
+                            <MudSelectItem T="HotkeyAction" Value="HotkeyAction.Run">Run</MudSelectItem>
+                        </MudSelect>
+                    </MudTd>
+                    <MudTd>
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                            <MudCheckBox T="bool" @bind-Value="edit.AppliesToAllProfiles" Label="Any"
+                                         UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "applies-to-all-checkbox" })" />
+                            @if (!edit.AppliesToAllProfiles)
+                            {
+                                <MudSelect T="Guid" MultiSelection="true"
+                                           SelectedValues="@edit.ProfileIds"
+                                           SelectedValuesChanged="@(ids => edit.ProfileIds = [.. ids])"
+                                           ToStringFunc="@(id => _profiles.FirstOrDefault(p => p.Id == id)?.Name ?? id.ToString())"
+                                           Dense="true" Placeholder="Select"
+                                           UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "profile-select" })">
+                                    @foreach (var profile in _profiles)
+                                    {
+                                        <MudSelectItem T="Guid" Value="@profile.Id">@profile.Name</MudSelectItem>
+                                    }
+                                </MudSelect>
+                            }
+                        </MudStack>
+                    </MudTd>
+                    <MudTd>
+                        <MudTextField @bind-Value="edit.Parameters" Immediate="true" MaxLength="4000"
+                                      UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "parameters-input" })" />
+                    </MudTd>
+                    <MudTd>
+                        <MudIconButton Class="commit-edit" Icon="@Icons.Material.Filled.Check"
+                                       Color="Color.Success" OnClick="() => CommitEditAsync(context.Id)" />
+                        <MudIconButton Class="cancel-edit" Icon="@Icons.Material.Filled.Close"
+                                       Color="Color.Default" OnClick="() => CancelEditAsync(context.Id)" />
+                    </MudTd>
+                }
+                else
+                {
+                    <MudTd>@context.Description</MudTd>
+                    <MudTd>@context.Key</MudTd>
+                    <MudTd><MudCheckBox T="bool" Value="@context.Ctrl" ReadOnly="true" /></MudTd>
+                    <MudTd><MudCheckBox T="bool" Value="@context.Alt" ReadOnly="true" /></MudTd>
+                    <MudTd><MudCheckBox T="bool" Value="@context.Shift" ReadOnly="true" /></MudTd>
+                    <MudTd><MudCheckBox T="bool" Value="@context.Win" ReadOnly="true" /></MudTd>
+                    <MudTd>@context.Action</MudTd>
+                    <MudTd>
+                        @if (context.AppliesToAllProfiles)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Info">Any</MudChip>
+                        }
+                        else
+                        {
+                            @foreach (var pid in context.ProfileIds)
+                            {
+                                var name = _profiles.FirstOrDefault(p => p.Id == pid)?.Name ?? pid.ToString()[..8];
+                                <MudChip T="string" Size="Size.Small">@name</MudChip>
+                            }
+                        }
+                    </MudTd>
+                    <MudTd>@context.Parameters</MudTd>
+                    <MudTd>
+                        <MudIconButton Class="delete" Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
+                                       OnClick="() => DeleteAsync(context)" />
+                        <MudIconButton Class="start-edit" Icon="@Icons.Material.Filled.Edit"
+                                       OnClick="() => StartEdit(context)" />
+                    </MudTd>
+                }
+            </RowTemplate>
+            <NoRecordsContent><MudText>No hotkeys yet.</MudText></NoRecordsContent>
+            <PagerContent>
+                <MudTablePager PageSizeOptions="UserPreferences.AllowedRowsPerPage" />
+            </PagerContent>
+        </MudTable>
+    </div>
+</MudPaper>
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+    [Inject] private IHotkeysApiClient Api { get; set; } = default!;
+    [Inject] private IProfilesApiClient ProfilesApi { get; set; } = default!;
+    [Inject] private ISnackbar Snackbar { get; set; } = default!;
+    [Inject] private IDialogService DialogService { get; set; } = default!;
+    [Inject] private IUserPreferencesService Preferences { get; set; } = default!;
+
+    private MudTable<HotkeyDto>? _table;
+    private readonly Dictionary<Guid, HotkeyEditModel> _editing = new();
+    private readonly HashSet<Guid> _commitAttempted = [];
+    private IReadOnlyList<ProfileDto> _profiles = [];
+    private bool _isAuthenticated;
+    private bool _loading;
+    private string? _loadError;
+    private string _search = "";
+    private int _rowsPerPage = UserPreferences.Default.RowsPerPage;
+    private readonly CancellationTokenSource _cts = new();
+
+    private static readonly HotkeyDto _draftPlaceholder = new(
+        Guid.Empty, [], true, "", "", false, false, false, false,
+        HotkeyAction.Send, "", DateTimeOffset.MinValue, DateTimeOffset.MinValue);
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is not null)
+        {
+            var state = await AuthState;
+            _isAuthenticated = state.User.Identity?.IsAuthenticated ?? false;
+        }
+
+        UserPreferences prefs = await Preferences.GetAsync();
+        _rowsPerPage = prefs.RowsPerPage;
+
+        if (_isAuthenticated)
+        {
+            ApiResult<IReadOnlyList<ProfileDto>> profilesResult = await ProfilesApi.ListAsync(_cts.Token);
+            if (profilesResult.IsSuccess)
+                _profiles = profilesResult.Value ?? [];
+        }
+    }
+
+    private async Task<TableData<HotkeyDto>> LoadServerData(TableState state, CancellationToken ct)
+    {
+        _loading = true;
+        _loadError = null;
+
+        ApiResult<PagedList<HotkeyDto>> result = await Api.ListAsync(
+            profileId: null,
+            page: state.Page + 1,
+            pageSize: state.PageSize,
+            search: string.IsNullOrWhiteSpace(_search) ? null : _search,
+            ignoreCase: true,
+            ct: ct);
+
+        _loading = false;
+
+        if (!result.IsSuccess)
+        {
+            _loadError = ApiErrorMessageFactory.Build(result.Status, result.Problem);
+            await InvokeAsync(StateHasChanged);
+            return new TableData<HotkeyDto> { Items = [], TotalItems = 0 };
+        }
+
+        List<HotkeyDto> items = [.. result.Value!.Items];
+        if (state.Page == 0 && _editing.ContainsKey(Guid.Empty))
+            items.Insert(0, _draftPlaceholder);
+
+        return new TableData<HotkeyDto> { Items = items, TotalItems = result.Value.TotalCount };
+    }
+
+    private async Task ReloadAsync()
+    {
+        if (_table is not null) await _table.ReloadServerData();
+    }
+
+    private async Task OnSearchChangedAsync()
+    {
+        if (_table is not null) await _table.ReloadServerData();
+    }
+
+    private async Task StartAddAsync()
+    {
+        _editing[Guid.Empty] = new HotkeyEditModel();
+        if (_table is not null) await _table.ReloadServerData();
+    }
+
+    private void StartEdit(HotkeyDto dto) =>
+        _editing[dto.Id] = HotkeyEditModel.FromDto(dto);
+
+    private async Task CancelEditAsync(Guid id)
+    {
+        _editing.Remove(id);
+        _commitAttempted.Remove(id);
+        if (_table is not null) await _table.ReloadServerData();
+    }
+
+    private static string? ValidateDescription(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return "Description is required";
+        if (value.Length > 200) return "Description must be 200 characters or fewer";
+        return null;
+    }
+
+    private static string? ValidateKey(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return "Key is required";
+        if (value.Length > 20) return "Key must be 20 characters or fewer";
+        return null;
+    }
+
+    private async Task CommitEditAsync(Guid id)
+    {
+        if (!_editing.TryGetValue(id, out HotkeyEditModel? edit)) return;
+
+        _commitAttempted.Add(id);
+        if (ValidateDescription(edit.Description) is not null || ValidateKey(edit.Key) is not null)
+            return;
+
+        _commitAttempted.Remove(id);
+
+        if (id == Guid.Empty)
+        {
+            ApiResult<HotkeyDto> result = await Api.CreateAsync(edit.ToCreateDto(), _cts.Token);
+            if (result.IsSuccess)
+            {
+                _editing.Remove(id);
+                Snackbar.Add("Hotkey created.", Severity.Success);
+                if (_table is not null) await _table.ReloadServerData();
+            }
+            else Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
+        }
+        else
+        {
+            ApiResult<HotkeyDto> result = await Api.UpdateAsync(id, edit.ToUpdateDto(), _cts.Token);
+            if (result.IsSuccess)
+            {
+                _editing.Remove(id);
+                Snackbar.Add("Hotkey updated.", Severity.Success);
+                if (_table is not null) await _table.ReloadServerData();
+            }
+            else Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
+        }
+    }
+
+    private async Task DeleteAsync(HotkeyDto dto)
+    {
+        bool? confirm = await DialogService.ShowMessageBoxAsync(
+            title: "Delete hotkey?",
+            message: $"Delete \"{dto.Description}\"? This cannot be undone.",
+            yesText: "Delete", cancelText: "Cancel");
+        if (confirm != true) return;
+
+        ApiResult result = await Api.DeleteAsync(dto.Id, _cts.Token);
+        if (result.IsSuccess)
+        {
+            Snackbar.Add("Hotkey deleted.", Severity.Success);
+            if (_table is not null) await _table.ReloadServerData();
+        }
+        else Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
+    }
+
+    public void Dispose() { _cts.Cancel(); _cts.Dispose(); }
+}
