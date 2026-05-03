@@ -59,7 +59,6 @@ internal sealed class ListHotkeysQueryHandler(
         int total = await query.CountAsync(ct);
 
         List<HotkeyDto> items = await query
-            .Include(h => h.Profiles)
             .OrderByDescending(h => h.CreatedAt)
             .ThenBy(h => h.Id)
             .Skip((request.Page - 1) * request.PageSize)
