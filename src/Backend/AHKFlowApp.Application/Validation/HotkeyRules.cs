@@ -52,5 +52,10 @@ internal static class HotkeyRules
             .Must(ids => ids is null || ids.All(id => id != Guid.Empty))
             .When(x => !appliesToAllFn(x))
             .WithMessage("ProfileIds must not contain empty GUIDs.");
+
+        validator.RuleFor(profileIds)
+            .Must(ids => ids is null || ids.Length == ids.Distinct().Count())
+            .When(x => !appliesToAllFn(x))
+            .WithMessage("ProfileIds must not contain duplicates.");
     }
 }
