@@ -16,7 +16,7 @@ public sealed class GetHotkeyQueryHandlerTests(HotkeyDbFixture fx)
     public async Task Handle_WhenOwned_ReturnsDto()
     {
         var owner = Guid.NewGuid();
-        Hotkey entity = new HotkeyBuilder().WithOwner(owner).WithTrigger("g").Build();
+        Hotkey entity = new HotkeyBuilder().WithOwner(owner).WithKey("g").WithCtrl().AppliesToAll().Build();
         await using (AppDbContext seed = fx.CreateContext())
         {
             seed.Hotkeys.Add(entity);
@@ -37,7 +37,7 @@ public sealed class GetHotkeyQueryHandlerTests(HotkeyDbFixture fx)
     {
         var owner = Guid.NewGuid();
         var attacker = Guid.NewGuid();
-        Hotkey entity = new HotkeyBuilder().WithOwner(owner).WithTrigger("g").Build();
+        Hotkey entity = new HotkeyBuilder().WithOwner(owner).WithKey("g").WithCtrl().AppliesToAll().Build();
         await using (AppDbContext seed = fx.CreateContext())
         {
             seed.Hotkeys.Add(entity);

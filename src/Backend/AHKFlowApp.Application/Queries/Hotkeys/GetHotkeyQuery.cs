@@ -22,6 +22,7 @@ internal sealed class GetHotkeyQueryHandler(
 
         Hotkey? entity = await db.Hotkeys
             .AsNoTracking()
+            .Include(h => h.Profiles)
             .FirstOrDefaultAsync(h => h.Id == request.Id && h.OwnerOid == ownerOid, ct);
 
         return entity is null

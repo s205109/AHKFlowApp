@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using AHKFlowApp.Application.DTOs;
+using AHKFlowApp.Domain.Enums;
 using AHKFlowApp.TestUtilities.Fixtures;
 using FluentAssertions;
 using Xunit;
@@ -20,7 +21,7 @@ public sealed class HotkeysEndpointsTests(SqlContainerFixture sqlFixture) : IDis
     public async Task Post_CreatesAndReturns201WithLocation()
     {
         using HttpClient client = CreateAuthed();
-        var dto = new CreateHotkeyDto("^!K", "Run notepad", "Open Notepad");
+        var dto = new CreateHotkeyDto("Open Notepad", "n", Ctrl: true, AppliesToAllProfiles: true);
 
         HttpResponseMessage response = await client.PostAsJsonAsync("/api/v1/hotkeys", dto);
 
@@ -28,9 +29,10 @@ public sealed class HotkeysEndpointsTests(SqlContainerFixture sqlFixture) : IDis
         response.Headers.Location.Should().NotBeNull();
 
         HotkeyDto? body = await response.Content.ReadFromJsonAsync<HotkeyDto>();
-        body!.Trigger.Should().Be("^!K");
-        body.Action.Should().Be("Run notepad");
+        body!.Key.Should().Be("n");
+        body.Ctrl.Should().BeTrue();
         body.Description.Should().Be("Open Notepad");
+        body.AppliesToAllProfiles.Should().BeTrue();
 
         HttpResponseMessage get = await client.GetAsync(response.Headers.Location);
         get.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -40,7 +42,8 @@ public sealed class HotkeysEndpointsTests(SqlContainerFixture sqlFixture) : IDis
     public async Task Post_InvalidBody_Returns400()
     {
         using HttpClient client = CreateAuthed();
-        var dto = new CreateHotkeyDto("", "");
+        // Empty description and key — both required
+        var dto = new CreateHotkeyDto("", "", AppliesToAllProfiles: true);
 
         HttpResponseMessage response = await client.PostAsJsonAsync("/api/v1/hotkeys", dto);
 
@@ -48,16 +51,17 @@ public sealed class HotkeysEndpointsTests(SqlContainerFixture sqlFixture) : IDis
     }
 
     [Fact]
-    public async Task Post_DuplicateTrigger_Returns409_WithProblemDetails()
+    public async Task Post_DuplicateKeyModifiers_Returns409_WithProblemDetails()
     {
         var owner = Guid.NewGuid();
         using HttpClient client = CreateAuthed(owner);
-        var dto = new CreateHotkeyDto("dup", "x");
+        var dto = new CreateHotkeyDto("First", "f1", Ctrl: true, AppliesToAllProfiles: true);
 
         HttpResponseMessage first = await client.PostAsJsonAsync("/api/v1/hotkeys", dto);
         first.StatusCode.Should().Be(HttpStatusCode.Created);
 
-        HttpResponseMessage second = await client.PostAsJsonAsync("/api/v1/hotkeys", dto);
+        HttpResponseMessage second = await client.PostAsJsonAsync("/api/v1/hotkeys",
+            new CreateHotkeyDto("Duplicate", "f1", Ctrl: true, AppliesToAllProfiles: true));
 
         second.StatusCode.Should().Be(HttpStatusCode.Conflict);
         second.Content.Headers.ContentType!.MediaType.Should().Be("application/problem+json");
@@ -76,7 +80,7 @@ public sealed class HotkeysEndpointsTests(SqlContainerFixture sqlFixture) : IDis
     public async Task Put_UnknownId_Returns404_WithProblemDetails()
     {
         using HttpClient client = CreateAuthed();
-        var dto = new UpdateHotkeyDto("^!K", "y", null, null);
+        var dto = new UpdateHotkeyDto("Updated", "n", true, false, false, false, HotkeyAction.Run, "", null, true);
 
         var unknownId = Guid.NewGuid();
         HttpResponseMessage response = await client.PutAsJsonAsync(
@@ -102,13 +106,13 @@ public sealed class HotkeysEndpointsTests(SqlContainerFixture sqlFixture) : IDis
 
         using HttpClient a = CreateAuthed(ownerA);
         HttpResponseMessage created = await a.PostAsJsonAsync("/api/v1/hotkeys",
-            new CreateHotkeyDto("tenant-a", "x"));
+            new CreateHotkeyDto("Owner A hotkey", "f1", Ctrl: true, AppliesToAllProfiles: true));
         HotkeyDto? body = await created.Content.ReadFromJsonAsync<HotkeyDto>();
 
         using HttpClient b = CreateAuthed(ownerB);
         HttpResponseMessage response = await b.PutAsJsonAsync(
             $"/api/v1/hotkeys/{body!.Id}",
-            new UpdateHotkeyDto("tenant-a", "hijack", null, null));
+            new UpdateHotkeyDto("Hijacked", "f1", true, false, false, false, HotkeyAction.Run, "", null, true));
 
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -118,19 +122,18 @@ public sealed class HotkeysEndpointsTests(SqlContainerFixture sqlFixture) : IDis
     {
         using HttpClient client = CreateAuthed();
         HttpResponseMessage created = await client.PostAsJsonAsync("/api/v1/hotkeys",
-            new CreateHotkeyDto("upd", "before"));
+            new CreateHotkeyDto("Before", "f3", Ctrl: true, AppliesToAllProfiles: true));
         HotkeyDto? before = await created.Content.ReadFromJsonAsync<HotkeyDto>();
 
         await Task.Delay(10);
 
         HttpResponseMessage put = await client.PutAsJsonAsync(
             $"/api/v1/hotkeys/{before!.Id}",
-            new UpdateHotkeyDto("upd", "after", "noted", null));
+            new UpdateHotkeyDto("After", "f3", true, false, false, false, HotkeyAction.Run, "", null, true));
 
         put.StatusCode.Should().Be(HttpStatusCode.OK);
         HotkeyDto? after = await put.Content.ReadFromJsonAsync<HotkeyDto>();
-        after!.Action.Should().Be("after");
-        after.Description.Should().Be("noted");
+        after!.Description.Should().Be("After");
         after.UpdatedAt.Should().BeOnOrAfter(before.CreatedAt);
     }
 
@@ -139,7 +142,7 @@ public sealed class HotkeysEndpointsTests(SqlContainerFixture sqlFixture) : IDis
     {
         using HttpClient client = CreateAuthed();
         HttpResponseMessage created = await client.PostAsJsonAsync("/api/v1/hotkeys",
-            new CreateHotkeyDto("del", "x"));
+            new CreateHotkeyDto("To delete", "f4", Ctrl: true, AppliesToAllProfiles: true));
         HotkeyDto? body = await created.Content.ReadFromJsonAsync<HotkeyDto>();
 
         HttpResponseMessage del = await client.DeleteAsync($"/api/v1/hotkeys/{body!.Id}");
@@ -150,30 +153,14 @@ public sealed class HotkeysEndpointsTests(SqlContainerFixture sqlFixture) : IDis
     }
 
     [Fact]
-    public async Task List_FiltersByProfileId()
-    {
-        var owner = Guid.NewGuid();
-        var profile = Guid.NewGuid();
-        using HttpClient client = CreateAuthed(owner);
-
-        await client.PostAsJsonAsync("/api/v1/hotkeys", new CreateHotkeyDto("a", "x", null, profile));
-        await client.PostAsJsonAsync("/api/v1/hotkeys", new CreateHotkeyDto("b", "y"));
-
-        HttpResponseMessage response = await client.GetAsync($"/api/v1/hotkeys?profileId={profile}");
-
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        PagedList<HotkeyDto>? body = await response.Content.ReadFromJsonAsync<PagedList<HotkeyDto>>();
-        body!.Items.Should().OnlyContain(h => h.ProfileId == profile);
-    }
-
-    [Fact]
     public async Task List_WithPagination_ReturnsSlice()
     {
         var owner = Guid.NewGuid();
         using HttpClient client = CreateAuthed(owner);
 
         for (int i = 0; i < 5; i++)
-            await client.PostAsJsonAsync("/api/v1/hotkeys", new CreateHotkeyDto($"p{i}", "x"));
+            await client.PostAsJsonAsync("/api/v1/hotkeys",
+                new CreateHotkeyDto($"Hotkey {i}", $"f{i + 1}", Ctrl: true, AppliesToAllProfiles: true));
 
         HttpResponseMessage response = await client.GetAsync("/api/v1/hotkeys?page=2&pageSize=2");
 
@@ -195,19 +182,21 @@ public sealed class HotkeysEndpointsTests(SqlContainerFixture sqlFixture) : IDis
     }
 
     [Fact]
-    public async Task List_SearchByTrigger_FiltersResults()
+    public async Task List_SearchByKey_FiltersResults()
     {
         var owner = Guid.NewGuid();
         using HttpClient client = CreateAuthed(owner);
 
-        await client.PostAsJsonAsync("/api/v1/hotkeys", new CreateHotkeyDto("F1", "help"));
-        await client.PostAsJsonAsync("/api/v1/hotkeys", new CreateHotkeyDto("F2", "rename"));
+        await client.PostAsJsonAsync("/api/v1/hotkeys",
+            new CreateHotkeyDto("Help", "F1", Ctrl: true, AppliesToAllProfiles: true));
+        await client.PostAsJsonAsync("/api/v1/hotkeys",
+            new CreateHotkeyDto("Rename", "F2", Ctrl: true, AppliesToAllProfiles: true));
 
         HttpResponseMessage response = await client.GetAsync("/api/v1/hotkeys?search=F1");
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         PagedList<HotkeyDto>? body = await response.Content.ReadFromJsonAsync<PagedList<HotkeyDto>>();
-        body!.Items.Should().ContainSingle().Which.Trigger.Should().Be("F1");
+        body!.Items.Should().ContainSingle().Which.Key.Should().Be("F1");
     }
 
     [Fact]
@@ -246,7 +235,7 @@ public sealed class HotkeysEndpointsTests(SqlContainerFixture sqlFixture) : IDis
     public async Task Post_InvalidBody_ReturnsProblemDetailsWithErrors()
     {
         using HttpClient client = CreateAuthed();
-        var dto = new CreateHotkeyDto("", "");
+        var dto = new CreateHotkeyDto("", "", AppliesToAllProfiles: true);
 
         HttpResponseMessage response = await client.PostAsJsonAsync("/api/v1/hotkeys", dto);
 
@@ -261,8 +250,8 @@ public sealed class HotkeysEndpointsTests(SqlContainerFixture sqlFixture) : IDis
         root.GetProperty("detail").GetString().Should().NotBeNullOrWhiteSpace();
 
         JsonElement errors = root.GetProperty("errors");
-        errors.TryGetProperty("Input.Trigger", out _).Should().BeTrue("validation errors should be keyed by DTO property path");
-        errors.TryGetProperty("Input.Action", out _).Should().BeTrue();
+        errors.TryGetProperty("Input.Description", out _).Should().BeTrue("validation errors should be keyed by DTO property path");
+        errors.TryGetProperty("Input.Key", out _).Should().BeTrue();
     }
 
     public void Dispose() => _factory.Dispose();

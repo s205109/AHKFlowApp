@@ -13,32 +13,35 @@ internal sealed class HotkeyConfiguration : IEntityTypeConfiguration<Hotkey>
         builder.Property(x => x.OwnerOid).IsRequired();
         builder.HasIndex(x => x.OwnerOid);
 
-        builder.Property(x => x.ProfileId);
-
-        builder.Property(x => x.Trigger)
+        builder.Property(x => x.Description)
             .IsRequired()
-            .HasMaxLength(100);
+            .HasMaxLength(200);
 
+        builder.Property(x => x.Key)
+            .IsRequired()
+            .HasMaxLength(20);
+
+        builder.Property(x => x.Ctrl).IsRequired();
+        builder.Property(x => x.Alt).IsRequired();
+        builder.Property(x => x.Shift).IsRequired();
+        builder.Property(x => x.Win).IsRequired();
+
+        // Persist enum as int (default for EF, made explicit here for clarity).
         builder.Property(x => x.Action)
+            .IsRequired()
+            .HasConversion<int>();
+
+        builder.Property(x => x.Parameters)
             .IsRequired()
             .HasMaxLength(4000);
 
-        builder.Property(x => x.Description)
-            .HasMaxLength(200);
-
+        builder.Property(x => x.AppliesToAllProfiles).IsRequired();
         builder.Property(x => x.CreatedAt).IsRequired();
         builder.Property(x => x.UpdatedAt).IsRequired();
 
-        // SQL Server treats NULLs as distinct for uniqueness — two filtered indexes
-        // cover both the profile-scoped case and the profile-less case per owner.
-        builder.HasIndex(x => new { x.OwnerOid, x.ProfileId, x.Trigger })
+        // One mapping per modifier-combo per user.
+        builder.HasIndex(x => new { x.OwnerOid, x.Key, x.Ctrl, x.Alt, x.Shift, x.Win })
             .IsUnique()
-            .HasFilter("[ProfileId] IS NOT NULL")
-            .HasDatabaseName("IX_Hotkey_Owner_Profile_Trigger");
-
-        builder.HasIndex(x => new { x.OwnerOid, x.Trigger })
-            .IsUnique()
-            .HasFilter("[ProfileId] IS NULL")
-            .HasDatabaseName("IX_Hotkey_Owner_Trigger_NoProfile");
+            .HasDatabaseName("IX_Hotkey_Owner_Modifiers");
     }
 }
