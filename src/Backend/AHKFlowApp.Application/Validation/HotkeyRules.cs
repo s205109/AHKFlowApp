@@ -1,31 +1,61 @@
+using System.Linq.Expressions;
+using AHKFlowApp.Domain.Enums;
 using FluentValidation;
 
 namespace AHKFlowApp.Application.Validation;
 
 internal static class HotkeyRules
 {
-    public const int TriggerMaxLength = 100;
-    public const int ActionMaxLength = 4000;
     public const int DescriptionMaxLength = 200;
+    public const int KeyMaxLength = 20;
+    public const int ParametersMaxLength = 4000;
 
-    public static IRuleBuilderOptions<T, string> ValidHotkeyTrigger<T>(this IRuleBuilderInitial<T, string> rb) =>
+    public static IRuleBuilderOptions<T, string> ValidDescription<T>(this IRuleBuilderInitial<T, string> rb) =>
         rb.Cascade(CascadeMode.Stop)
-          .Must(t => !string.IsNullOrEmpty(t)).WithMessage("Trigger is required.")
-          .MaximumLength(TriggerMaxLength).WithMessage($"Trigger must be {TriggerMaxLength} characters or fewer.")
-          .Must(t => t is not null && t.Length == t.Trim().Length)
-              .WithMessage("Trigger must not have leading or trailing whitespace.")
-          .Must(t => t is not null && t.IndexOfAny(['\n', '\r', '\t']) < 0)
-              .WithMessage("Trigger must not contain line breaks or tabs.");
+          .NotEmpty().WithMessage("Description is required.")
+          .MaximumLength(DescriptionMaxLength).WithMessage($"Description must be {DescriptionMaxLength} characters or fewer.");
 
-    public static IRuleBuilderOptions<T, string> ValidAction<T>(this IRuleBuilderInitial<T, string> rb) =>
+    public static IRuleBuilderOptions<T, string> ValidKey<T>(this IRuleBuilderInitial<T, string> rb) =>
         rb.Cascade(CascadeMode.Stop)
-          .NotEmpty().WithMessage("Action is required.")
-          .MaximumLength(ActionMaxLength).WithMessage($"Action must be {ActionMaxLength} characters or fewer.");
+          .Must(k => !string.IsNullOrEmpty(k)).WithMessage("Key is required.")
+          .MaximumLength(KeyMaxLength).WithMessage($"Key must be {KeyMaxLength} characters or fewer.")
+          .Must(k => k is not null && k.IndexOfAny(['\n', '\r', '\t']) < 0)
+              .WithMessage("Key must not contain line breaks or tabs.")
+          .Must(k => k is not null && k.Length == k.TrimStart(' ').TrimEnd(' ').Length)
+              .WithMessage("Key must not have leading or trailing whitespace.");
 
-    public static IRuleBuilderOptions<T, string?> ValidOptionalDescription<T>(this IRuleBuilder<T, string?> rb) =>
-        rb.MaximumLength(DescriptionMaxLength).WithMessage($"Description must be {DescriptionMaxLength} characters or fewer.");
+    public static IRuleBuilderOptions<T, string> ValidParameters<T>(this IRuleBuilderInitial<T, string> rb) =>
+        rb.MaximumLength(ParametersMaxLength)
+          .WithMessage($"Parameters must be {ParametersMaxLength} characters or fewer.");
 
-    public static IRuleBuilderOptions<T, Guid?> ValidOptionalProfileId<T>(this IRuleBuilder<T, Guid?> rb) =>
-        rb.Must(id => id is null || id != Guid.Empty)
-          .WithMessage("ProfileId must not be an empty GUID.");
+    public static IRuleBuilderOptions<T, HotkeyAction> ValidAction<T>(this IRuleBuilderInitial<T, HotkeyAction> rb) =>
+        rb.IsInEnum().WithMessage("Action must be a valid HotkeyAction value.");
+
+    public static void ValidProfileAssociation<T>(
+        this AbstractValidator<T> validator,
+        Expression<Func<T, bool>> appliesToAll,
+        Expression<Func<T, Guid[]?>> profileIds)
+    {
+        Func<T, bool> appliesToAllFn = appliesToAll.Compile();
+
+        validator.RuleFor(profileIds)
+            .Must(ids => ids is null || ids.Length == 0)
+            .When(x => appliesToAllFn(x))
+            .WithMessage("ProfileIds must be empty when AppliesToAllProfiles is true.");
+
+        validator.RuleFor(profileIds)
+            .Must(ids => ids is { Length: > 0 })
+            .When(x => !appliesToAllFn(x))
+            .WithMessage("At least one profile must be specified when AppliesToAllProfiles is false.");
+
+        validator.RuleFor(profileIds)
+            .Must(ids => ids is null || ids.All(id => id != Guid.Empty))
+            .When(x => !appliesToAllFn(x))
+            .WithMessage("ProfileIds must not contain empty GUIDs.");
+
+        validator.RuleFor(profileIds)
+            .Must(ids => ids is null || ids.Length == ids.Distinct().Count())
+            .When(x => !appliesToAllFn(x))
+            .WithMessage("ProfileIds must not contain duplicates.");
+    }
 }

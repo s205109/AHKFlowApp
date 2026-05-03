@@ -10,6 +10,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<Hotstring> Hotstrings => Set<Hotstring>();
     public DbSet<HotstringProfile> HotstringProfiles => Set<HotstringProfile>();
     public DbSet<Hotkey> Hotkeys => Set<Hotkey>();
+    public DbSet<HotkeyProfile> HotkeyProfiles => Set<HotkeyProfile>();
     public DbSet<Profile> Profiles => Set<Profile>();
     public DbSet<UserPreference> UserPreferences => Set<UserPreference>();
 

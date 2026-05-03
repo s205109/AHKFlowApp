@@ -65,6 +65,8 @@ if (useTestAuth)
         baseAddress, TimeSpan.FromSeconds(35), useAuth: false, mainClientResilience);
     AddApiClient<IHotstringsApiClient, HotstringsApiClient>(
         baseAddress, TimeSpan.FromSeconds(30), useAuth: false);
+    AddApiClient<IHotkeysApiClient, HotkeysApiClient>(
+        baseAddress, TimeSpan.FromSeconds(30), useAuth: false);
     AddApiClient<IProfilesApiClient, ProfilesApiClient>(
         baseAddress, TimeSpan.FromSeconds(30), useAuth: false);
     AddApiClient<IPreferencesApiClient, PreferencesApiClient>(
@@ -90,6 +92,8 @@ else
     AddApiClient<IAhkFlowAppApiHttpClient, AhkFlowAppApiHttpClient>(
         baseAddress, TimeSpan.FromSeconds(35), useAuth: true, mainClientResilience);
     AddApiClient<IHotstringsApiClient, HotstringsApiClient>(
+        baseAddress, TimeSpan.FromSeconds(30), useAuth: true);
+    AddApiClient<IHotkeysApiClient, HotkeysApiClient>(
         baseAddress, TimeSpan.FromSeconds(30), useAuth: true);
     AddApiClient<IProfilesApiClient, ProfilesApiClient>(
         baseAddress, TimeSpan.FromSeconds(30), useAuth: true);
