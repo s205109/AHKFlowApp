@@ -154,4 +154,62 @@ public sealed class AhkScriptGeneratorTests
 
         output.Should().Contain("^a::Send(\"he said \"hi\"\")");
     }
+
+    [Fact]
+    public void Generate_Hotstrings_AreSortedByTriggerOrdinalAscending()
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotstring c = new HotstringBuilder().WithTrigger("c").WithReplacement("c-rep")
+            .WithEndingCharacterRequired(true).WithTriggerInsideWord(false).Build();
+        Hotstring a = new HotstringBuilder().WithTrigger("a").WithReplacement("a-rep")
+            .WithEndingCharacterRequired(true).WithTriggerInsideWord(false).Build();
+        Hotstring b = new HotstringBuilder().WithTrigger("b").WithReplacement("b-rep")
+            .WithEndingCharacterRequired(true).WithTriggerInsideWord(false).Build();
+
+        string output = _sut.Generate(profile, [c, a, b], []);
+
+        int posA = output.IndexOf("::a::a-rep", StringComparison.Ordinal);
+        int posB = output.IndexOf("::b::b-rep", StringComparison.Ordinal);
+        int posC = output.IndexOf("::c::c-rep", StringComparison.Ordinal);
+        posA.Should().BeLessThan(posB);
+        posB.Should().BeLessThan(posC);
+    }
+
+    [Fact]
+    public void Generate_Hotkeys_AreSortedByDescriptionOrdinalAscending()
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotkey z = new HotkeyBuilder().WithDescription("Zeta").WithKey("z")
+            .WithAction(AHKFlowApp.Domain.Enums.HotkeyAction.Send).WithParameters("z").Build();
+        Hotkey a = new HotkeyBuilder().WithDescription("Alpha").WithKey("a")
+            .WithAction(AHKFlowApp.Domain.Enums.HotkeyAction.Send).WithParameters("a").Build();
+        Hotkey m = new HotkeyBuilder().WithDescription("Mike").WithKey("m")
+            .WithAction(AHKFlowApp.Domain.Enums.HotkeyAction.Send).WithParameters("m").Build();
+
+        string output = _sut.Generate(profile, [], [z, a, m]);
+
+        int posA = output.IndexOf("a::Send(\"a\")", StringComparison.Ordinal);
+        int posM = output.IndexOf("m::Send(\"m\")", StringComparison.Ordinal);
+        int posZ = output.IndexOf("z::Send(\"z\")", StringComparison.Ordinal);
+        posA.Should().BeLessThan(posM);
+        posM.Should().BeLessThan(posZ);
+    }
+
+    [Fact]
+    public void Generate_Ordering_IsCultureIndependent_OrdinalNotInvariant()
+    {
+        // Ordinal sort: uppercase letters precede lowercase. Lock this in so future
+        // refactors don't silently swap to InvariantCultureIgnoreCase.
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotstring lower = new HotstringBuilder().WithTrigger("aa").WithReplacement("lower")
+            .WithEndingCharacterRequired(true).WithTriggerInsideWord(false).Build();
+        Hotstring upper = new HotstringBuilder().WithTrigger("AA").WithReplacement("upper")
+            .WithEndingCharacterRequired(true).WithTriggerInsideWord(false).Build();
+
+        string output = _sut.Generate(profile, [lower, upper], []);
+
+        int posUpper = output.IndexOf("::AA::upper", StringComparison.Ordinal);
+        int posLower = output.IndexOf("::aa::lower", StringComparison.Ordinal);
+        posUpper.Should().BeLessThan(posLower);  // 'A' (0x41) < 'a' (0x61) in Ordinal
+    }
 }
