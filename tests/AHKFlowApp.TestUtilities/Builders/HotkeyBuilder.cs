@@ -15,6 +15,7 @@ public sealed class HotkeyBuilder
     private HotkeyAction _action = HotkeyAction.Run;
     private string _parameters = "notepad.exe";
     private bool _appliesToAllProfiles = true;
+    private Guid[] _profileIds = [];
     private TimeProvider _clock = TimeProvider.System;
 
     public HotkeyBuilder WithOwner(Guid ownerOid) { _ownerOid = ownerOid; return this; }
@@ -26,10 +27,38 @@ public sealed class HotkeyBuilder
     public HotkeyBuilder WithWin(bool value = true) { _win = value; return this; }
     public HotkeyBuilder WithAction(HotkeyAction action) { _action = action; return this; }
     public HotkeyBuilder WithParameters(string parameters) { _parameters = parameters; return this; }
-    public HotkeyBuilder AppliesToAll(bool value = true) { _appliesToAllProfiles = value; return this; }
     public HotkeyBuilder WithClock(TimeProvider clock) { _clock = clock; return this; }
 
-    public Hotkey Build() => Hotkey.Create(
-        _ownerOid, _description, _key, _ctrl, _alt, _shift, _win,
-        _action, _parameters, _appliesToAllProfiles, _clock);
+    public HotkeyBuilder InProfile(Guid profileId)
+    {
+        _appliesToAllProfiles = false;
+        _profileIds = [profileId];
+        return this;
+    }
+
+    public HotkeyBuilder WithProfiles(params Guid[] profileIds)
+    {
+        _appliesToAllProfiles = false;
+        _profileIds = profileIds;
+        return this;
+    }
+
+    public HotkeyBuilder AppliesToAll(bool value = true)
+    {
+        _appliesToAllProfiles = value;
+        if (value) _profileIds = [];
+        return this;
+    }
+
+    public Hotkey Build()
+    {
+        var entity = Hotkey.Create(
+            _ownerOid, _description, _key, _ctrl, _alt, _shift, _win,
+            _action, _parameters, _appliesToAllProfiles, _clock);
+
+        foreach (Guid pid in _profileIds)
+            entity.Profiles.Add(HotkeyProfile.Create(entity.Id, pid));
+
+        return entity;
+    }
 }
