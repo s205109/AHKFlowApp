@@ -87,4 +87,71 @@ public sealed class AhkScriptGeneratorTests
             "; --- Hotkeys ---\n" +
             "F");
     }
+
+    [Theory]
+    [InlineData(false, false, false, false, "n")]               // no modifiers
+    [InlineData(true, false, false, false, "^n")]               // Ctrl
+    [InlineData(false, true, false, false, "!n")]               // Alt
+    [InlineData(false, false, true, false, "+n")]               // Shift
+    [InlineData(false, false, false, true, "#n")]               // Win
+    [InlineData(true, true, false, false, "^!n")]               // Ctrl+Alt
+    [InlineData(true, true, true, true, "^!+#n")]               // all four, prefix-order locked
+    public void Generate_Hotkey_FormatsModifierPrefixesCorrectly(
+        bool ctrl, bool alt, bool shift, bool win, string expectedLhs)
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotkey hk = new HotkeyBuilder()
+            .WithDescription("d")
+            .WithKey("n")
+            .WithCtrl(ctrl).WithAlt(alt).WithShift(shift).WithWin(win)
+            .WithAction(AHKFlowApp.Domain.Enums.HotkeyAction.Send)
+            .WithParameters("hi")
+            .Build();
+
+        string output = _sut.Generate(profile, [], [hk]);
+
+        output.Should().Be(
+            "H\n" +
+            "; --- Hotstrings ---\n" +
+            "; --- Hotkeys ---\n" +
+            $"{expectedLhs}::Send(\"hi\")\n" +
+            "F");
+    }
+
+    [Theory]
+    [InlineData(AHKFlowApp.Domain.Enums.HotkeyAction.Send, "Send")]
+    [InlineData(AHKFlowApp.Domain.Enums.HotkeyAction.Run, "Run")]
+    public void Generate_Hotkey_EmitsCorrectActionFunctionName(
+        AHKFlowApp.Domain.Enums.HotkeyAction action, string expectedFn)
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotkey hk = new HotkeyBuilder()
+            .WithDescription("d")
+            .WithKey("F5")
+            .WithCtrl(false).WithAlt(false).WithShift(false).WithWin(false)
+            .WithAction(action)
+            .WithParameters("notepad.exe")
+            .Build();
+
+        string output = _sut.Generate(profile, [], [hk]);
+
+        output.Should().Contain($"F5::{expectedFn}(\"notepad.exe\")");
+    }
+
+    [Fact]
+    public void Generate_Hotkey_EmitsParametersVerbatim_NoEscaping()
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotkey hk = new HotkeyBuilder()
+            .WithDescription("d")
+            .WithKey("a")
+            .WithCtrl(true)
+            .WithAction(AHKFlowApp.Domain.Enums.HotkeyAction.Send)
+            .WithParameters("he said \"hi\"")
+            .Build();
+
+        string output = _sut.Generate(profile, [], [hk]);
+
+        output.Should().Contain("^a::Send(\"he said \"hi\"\")");
+    }
 }

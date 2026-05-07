@@ -1,4 +1,5 @@
 using AHKFlowApp.Domain.Entities;
+using AHKFlowApp.Domain.Enums;
 
 namespace AHKFlowApp.Application.Services;
 
@@ -22,6 +23,10 @@ public sealed class AhkScriptGenerator
             lines.Add(FormatHotstring(hs));
 
         lines.Add(HotkeysSection);
+
+        foreach (Hotkey hk in hotkeys)
+            lines.Add(FormatHotkey(hk));
+
         lines.Add(profile.FooterTemplate);
 
         return string.Join("\n", lines);
@@ -33,5 +38,23 @@ public sealed class AhkScriptGenerator
         if (!hs.IsEndingCharacterRequired) options += "*";
         if (hs.IsTriggerInsideWord) options += "?";
         return $":{options}:{hs.Trigger}::{hs.Replacement}";
+    }
+
+    private static string FormatHotkey(Hotkey hk)
+    {
+        string prefix = "";
+        if (hk.Ctrl) prefix += "^";
+        if (hk.Alt) prefix += "!";
+        if (hk.Shift) prefix += "+";
+        if (hk.Win) prefix += "#";
+
+        string fn = hk.Action switch
+        {
+            HotkeyAction.Send => "Send",
+            HotkeyAction.Run => "Run",
+            _ => throw new InvalidOperationException($"Unsupported HotkeyAction: {hk.Action}"),
+        };
+
+        return $"{prefix}{hk.Key}::{fn}(\"{hk.Parameters}\")";
     }
 }
