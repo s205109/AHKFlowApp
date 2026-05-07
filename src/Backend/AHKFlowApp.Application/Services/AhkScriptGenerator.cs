@@ -19,12 +19,12 @@ public sealed class AhkScriptGenerator
 
         List<string> lines = [profile.HeaderTemplate, HotstringsSection];
 
-        foreach (Hotstring hs in hotstrings)
+        foreach (Hotstring hs in hotstrings.OrderBy(h => h.Trigger, StringComparer.Ordinal))
             lines.Add(FormatHotstring(hs));
 
         lines.Add(HotkeysSection);
 
-        foreach (Hotkey hk in hotkeys)
+        foreach (Hotkey hk in hotkeys.OrderBy(h => h.Description, StringComparer.Ordinal))
             lines.Add(FormatHotkey(hk));
 
         lines.Add(profile.FooterTemplate);
