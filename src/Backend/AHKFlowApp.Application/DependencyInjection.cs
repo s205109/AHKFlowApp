@@ -1,4 +1,5 @@
 using AHKFlowApp.Application.Behaviors;
+using AHKFlowApp.Application.Services;
 using FluentValidation;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -15,6 +16,8 @@ public static class DependencyInjection
         });
 
         services.AddValidatorsFromAssembly(typeof(DependencyInjection).Assembly);
+
+        services.AddSingleton<AhkScriptGenerator>();
 
         return services;
     }
