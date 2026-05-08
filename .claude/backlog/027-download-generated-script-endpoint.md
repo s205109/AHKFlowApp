@@ -22,6 +22,13 @@ As a user, I want to download the generated script for a profile so that I can i
 - [ ] Integration tests: content-type, content-disposition filename, auth challenge, owner scoping (other-user profileId returns 404).
 - [ ] Unit test on the controller wiring `AhkScriptGenerator` → bytes → response headers.
 
+## Format decisions (locked in plan 2026-05-07, Phase 5)
+
+- **Content type**: `text/plain; charset=utf-8` (AHK templates may include non-ASCII; `Content-Disposition: attachment` forces download).
+- **Filename**: `ahkflow_{safe_stem}.ahk`. `safe_stem` = profile name with `[^A-Za-z0-9._-]` replaced by `_`, runs of `_` collapsed, leading/trailing `_` trimmed, truncated to 64 chars; empty → `profile`.
+- **Auth + scoping**: `[Authorize]` + `RequiredScope("access_as_user")`. 404 for non-existent or other-user `profileId` (no separate 403 for foreign ids — matches Profiles convention).
+- **UI**: rebuilds placeholder `Pages/Download.razor` → `Pages/Downloads.razor`; route changes from `/download` to `/downloads`. Auth-aware browser save uses JS interop blob save (anchor href doesn't carry bearer token).
+
 ## Out of scope
 
 - Bulk zip download (covered in **027b**).

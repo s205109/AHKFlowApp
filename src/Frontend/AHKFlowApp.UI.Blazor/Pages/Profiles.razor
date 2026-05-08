@@ -24,6 +24,11 @@
         </MudButton>
     </MudStack>
 
+    @if (!_isAuthenticated)
+    {
+        <MudAlert Severity="Severity.Info" Class="mb-3">You are not signed in.</MudAlert>
+    }
+
     @if (_loadError is not null)
     {
         <MudAlert Severity="Severity.Error" Class="mb-3">@_loadError</MudAlert>
