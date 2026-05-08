@@ -120,7 +120,7 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
-    public Task Page_SaveDraftRow_CallsCreateAndRefreshes()
+    public Task Page_SaveDraftRow_CallsCreate()
     {
         StubList(Page());
         _api.CreateAsync(Arg.Any<CreateHotkeyDto>(), Arg.Any<CancellationToken>())
@@ -199,7 +199,7 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
-    public Task Page_Delete_ConfirmCallsDeleteAsync()
+    public Task Page_Delete_CancelPreventsDeleteAsync()
     {
         HotkeyDto dto = MakeHotkey();
         StubList(Page(dto));
