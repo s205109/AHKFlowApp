@@ -16,14 +16,18 @@ As a user, I want one `.ahk` per profile that I can download and run locally, wi
 
 ## Acceptance criteria
 
-- [ ] New `AhkScriptGenerator` service in the Application layer; pure, testable, no DB calls.
-- [ ] Generation is profile-scoped: includes hotkeys/hotstrings where `(HotkeyProfile/HotstringProfile contains profileId) OR AppliesToAllProfiles=true`.
-- [ ] Output structure: `{Profile.HeaderTemplate}\n; --- Hotstrings ---\n{hotstrings}\n; --- Hotkeys ---\n{hotkeys}\n{Profile.FooterTemplate}`.
-- [ ] Hotkey translation (AHK v2): `^!+#` modifier prefix order = Ctrl, Alt, Shift, Win; line is `{modifiers}{Key}::{Action}("{Parameters}")` (e.g. `^!a::Send("hello")`, `^!+#F5::Run("notepad.exe")`). `Send` and `Run` are emitted as v2 function calls.
-- [ ] Hotstring translation: `:{options}:{Trigger}::{Replacement}` where `options` appends `*` when `IsEndingCharacterRequired=false` and appends `?` when `IsTriggerInsideWord=true`.
-- [ ] Deterministic ordering: hotstrings ordered by `Trigger` ASC, hotkeys ordered by `Description` ASC.
-- [ ] Unit tests on `AhkScriptGenerator` cover: empty profile (just header+footer), each modifier combo, both `HotkeyAction` values, both hotstring option flags, ordering, "Any" inclusion logic.
-- [ ] Integration test: seed a profile + mixed hotkeys/hotstrings (some specific, some Any), generate script, assert exact expected text.
+- [x] New `AhkScriptGenerator` service in the Application layer; pure, testable, no DB calls.
+- [x] Generation is profile-scoped: includes hotkeys/hotstrings where `(HotkeyProfile/HotstringProfile contains profileId) OR AppliesToAllProfiles=true`.
+- [x] Output structure: `{Profile.HeaderTemplate}\n; --- Hotstrings ---\n{hotstrings}\n; --- Hotkeys ---\n{hotkeys}\n{Profile.FooterTemplate}`.
+- [x] Hotkey translation (AHK v2): `^!+#` modifier prefix order = Ctrl, Alt, Shift, Win; line is `{modifiers}{Key}::{Action}("{Parameters}")` (e.g. `^!a::Send("hello")`, `^!+#F5::Run("notepad.exe")`). `Send` and `Run` are emitted as v2 function calls.
+- [x] Hotstring translation: `:{options}:{Trigger}::{Replacement}` where `options` appends `*` when `IsEndingCharacterRequired=false` and appends `?` when `IsTriggerInsideWord=true`.
+- [x] Deterministic ordering: hotstrings ordered by `Trigger` ASC, hotkeys ordered by `Description` ASC.
+- [x] Unit tests on `AhkScriptGenerator` cover: empty profile (just header+footer), each modifier combo, both `HotkeyAction` values, both hotstring option flags, ordering, "Any" inclusion logic.
+- [x] Integration test: seed a profile + mixed hotkeys/hotstrings (some specific, some Any), generate script, assert exact expected text.
+
+---
+
+**Completed:** 2026-05-07 (PR #108)
 
 ## Out of scope
 

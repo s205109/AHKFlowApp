@@ -16,11 +16,15 @@ As a client (UI), I want a hotkey CRUD API so that hotkeys can be managed centra
 
 ## Acceptance criteria
 
-- [ ] Endpoints: create, update, delete, get-by-id, list-by-profile.
-- [ ] Endpoints are secured (see 012).
-- [ ] Input validation and problem details are consistent with hotstrings.
-- [ ] Unit tests for hotkey controller/service logic and validation.
-- [ ] Integration tests for API endpoints verifying auth, validation, and database behavior.
+- [x] Endpoints: create, update, delete, get-by-id, list-by-profile.
+- [x] Endpoints are secured (see 012).
+- [x] Input validation and problem details are consistent with hotstrings.
+- [x] Unit tests for hotkey controller/service logic and validation.
+- [x] Integration tests for API endpoints verifying auth, validation, and database behavior.
+
+---
+
+**Superseded:** initial shape implemented 2026-05-01 (PR #101); replaced by **022b** (PR #107, 2026-05-03) which rebuilt the schema from free-form `Trigger/Action/Description` to structured fields. Kept as historical record.
 
 ## Out of scope
 

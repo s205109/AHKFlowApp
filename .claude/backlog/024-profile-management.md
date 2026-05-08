@@ -16,14 +16,18 @@ As a user, I want to create and manage profiles — each with its own AHK header
 
 ## Acceptance criteria
 
-- [ ] `Profile` entity: `Id`, `OwnerOid`, `Name` (≤100, unique per owner), `IsDefault` (exactly one true per owner), `HeaderTemplate` (≤8000), `FooterTemplate` (≤4000), timestamps.
-- [ ] On first sign-in, a default profile is seeded for the user (`Name="Default"`, `IsDefault=true`, `HeaderTemplate` seeded with the standard AHK v2 boilerplate defined in the design spec, `FooterTemplate=""`).
-- [ ] API endpoints: GET list, GET by id, POST create, PUT update, DELETE — all scoped to the authenticated user.
-- [ ] Setting `IsDefault=true` on one profile clears it on others (single-default invariant).
-- [ ] DELETE blocked while the profile still has hotkey/hotstring associations (returns 409); user must detach first or use cascade in UI.
-- [ ] UI: `Pages/Profiles.razor` lists profiles with inline edit; expand-row textareas for `HeaderTemplate` + `FooterTemplate` (large, monospace font).
-- [ ] Unit tests cover invariants (unique name per owner, single-default, delete blocked when associations exist).
-- [ ] Integration tests cover CRUD flows + default seeding on first sign-in.
+- [x] `Profile` entity: `Id`, `OwnerOid`, `Name` (≤100, unique per owner), `IsDefault` (exactly one true per owner), `HeaderTemplate` (≤8000), `FooterTemplate` (≤4000), timestamps.
+- [x] On first sign-in, a default profile is seeded for the user (`Name="Default"`, `IsDefault=true`, `HeaderTemplate` seeded with the standard AHK v2 boilerplate defined in the design spec, `FooterTemplate=""`).
+- [x] API endpoints: GET list, GET by id, POST create, PUT update, DELETE — all scoped to the authenticated user.
+- [x] Setting `IsDefault=true` on one profile clears it on others (single-default invariant).
+- [x] DELETE blocked while the profile still has hotkey/hotstring associations (returns 409); user must detach first or use cascade in UI.
+- [x] UI: `Pages/Profiles.razor` lists profiles with inline edit; expand-row textareas for `HeaderTemplate` + `FooterTemplate` (large, monospace font).
+- [x] Unit tests cover invariants (unique name per owner, single-default, delete blocked when associations exist).
+- [x] Integration tests cover CRUD flows + default seeding on first sign-in.
+
+---
+
+**Completed:** 2026-05-02 (PR #103)
 
 ## Out of scope
 

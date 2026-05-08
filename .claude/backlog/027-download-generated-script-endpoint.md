@@ -16,11 +16,15 @@ As a user, I want to download the generated script for a profile so that I can i
 
 ## Acceptance criteria
 
-- [ ] `GET /api/v1/downloads/{profileId}` returns `text/plain` (or `application/octet-stream`) with `Content-Disposition: attachment; filename="ahkflow_{profile_name}.ahk"`.
-- [ ] Endpoint is authenticated (per 012) and scoped to the user's own profiles (404 for other users' profileId).
-- [ ] UI: `Pages/Downloads.razor` lists every profile with a per-row Download button that triggers the endpoint.
-- [ ] Integration tests: content-type, content-disposition filename, auth challenge, owner scoping (other-user profileId returns 404).
-- [ ] Unit test on the controller wiring `AhkScriptGenerator` → bytes → response headers.
+- [x] `GET /api/v1/downloads/{profileId}` returns `text/plain` (or `application/octet-stream`) with `Content-Disposition: attachment; filename="ahkflow_{profile_name}.ahk"`.
+- [x] Endpoint is authenticated (per 012) and scoped to the user's own profiles (404 for other users' profileId).
+- [x] UI: `Pages/Downloads.razor` lists every profile with a per-row Download button that triggers the endpoint.
+- [x] Integration tests: content-type, content-disposition filename, auth challenge, owner scoping (other-user profileId returns 404).
+- [x] Integration tests cover controller wiring `AhkScriptGenerator` → bytes → response headers (content-type, content-disposition, auth, owner scoping). No standalone controller unit tests — consistent with project convention (AGENTS.md: integration tests first; don't mock what you own).
+
+---
+
+**Completed:** 2026-05-08 (PR #109)
 
 ## Format decisions (locked in plan 2026-05-07, Phase 5)
 

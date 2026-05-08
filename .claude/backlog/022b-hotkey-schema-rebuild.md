@@ -16,12 +16,16 @@ As a developer, I want the `Hotkey` schema and API to use structured fields (Des
 
 ## Acceptance criteria
 
-- [ ] `Hotkey` entity has fields: `Description` (≤200, required), `Key` (≤20, required), `Ctrl`, `Alt`, `Shift`, `Win` (bools), `Action` (HotkeyAction enum), `Parameters` (≤4000), `AppliesToAllProfiles` (bool), plus `Id`, `OwnerOid`, timestamps.
-- [ ] New `HotkeyAction` enum in Domain: `Send=0, Run=1` (extensible).
-- [ ] EF migration drops the old `Trigger`/`Action`/`Description` string columns and the nullable `ProfileId`; adds the new fields. Dev DBs are scratch (per spec D7); no copy-forward SQL.
-- [ ] Unique index on `(OwnerOid, Key, Ctrl, Alt, Shift, Win)`.
-- [ ] API DTOs (`HotkeyDto`, `Create`, `Update`) reflect the new shape; controller + handlers + FluentValidation rebuilt.
-- [ ] Existing 021 + 022 tests are deleted/rewritten; new unit + integration tests cover the rebuilt API.
+- [x] `Hotkey` entity has fields: `Description` (≤200, required), `Key` (≤20, required), `Ctrl`, `Alt`, `Shift`, `Win` (bools), `Action` (HotkeyAction enum), `Parameters` (≤4000), `AppliesToAllProfiles` (bool), plus `Id`, `OwnerOid`, timestamps.
+- [x] New `HotkeyAction` enum in Domain: `Send=0, Run=1` (extensible).
+- [x] EF migration drops the old `Trigger`/`Action`/`Description` string columns and the nullable `ProfileId`; adds the new fields. Dev DBs are scratch (per spec D7); no copy-forward SQL.
+- [x] Unique index on `(OwnerOid, Key, Ctrl, Alt, Shift, Win)`.
+- [x] API DTOs (`HotkeyDto`, `Create`, `Update`) reflect the new shape; controller + handlers + FluentValidation rebuilt.
+- [x] Existing 021 + 022 tests are deleted/rewritten; new unit + integration tests cover the rebuilt API.
+
+---
+
+**Completed:** 2026-05-03 (PR #107)
 
 ## Out of scope
 

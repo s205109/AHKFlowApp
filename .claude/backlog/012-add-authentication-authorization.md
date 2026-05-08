@@ -20,6 +20,10 @@ As a user, I want to sign in securely so that my profiles and automation definit
 - [x] API validates tokens and enforces authorization.
 - [x] Unauthorized/forbidden responses are consistent and documented.
 
+---
+
+**Completed:** 2026-04-16 (PR #63)
+
 ## Out of scope
 
 - Multiple identity providers.
