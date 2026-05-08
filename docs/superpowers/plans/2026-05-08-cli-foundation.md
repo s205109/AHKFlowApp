@@ -47,7 +47,7 @@
 | `CliRunner.cs` | In-process invocation helper — builds host with overrides, invokes root, captures stdout/stderr/exit |
 | `Commands/DownloadCommandTests.cs` | All download integration tests (Phase 3) |
 | `Services/BearerTokenHandlerTests.cs` | Header attachment unit tests (Phase 1) |
-| `Services/ProfileResolutionTests.cs` | Name → id resolution (Phase 3) |
+| `Collections.cs` | xUnit `[CollectionDefinition("WebApi")]` paired with `SqlContainerFixture` (Phase 3) |
 
 **Modified files (cumulative across phases):**
 
@@ -359,9 +359,18 @@ namespace AHKFlowApp.CLI.Commands;
 
 public static class RootCli
 {
+    public static readonly Option<bool> VerboseOption = new("--verbose", "-v")
+    {
+        Description = "Enable Information-level logs to stderr.",
+        Recursive = true,
+    };
+
     public static RootCommand Build(IServiceProvider services)
     {
-        RootCommand root = new("ahkflow — AHKFlowApp CLI");
+        RootCommand root = new("ahkflow - AHKFlowApp CLI")
+        {
+            VerboseOption,
+        };
         // Subcommands wired in subsequent phases:
         //   root.Subcommands.Add(LoginCommand.Build(services));
         //   root.Subcommands.Add(LogoutCommand.Build(services));
@@ -370,6 +379,8 @@ public static class RootCli
     }
 }
 ```
+
+`Recursive = true` makes the option available on every subcommand without redeclaring it. Program.cs pre-parses `args` for `--verbose`/`-v` to set the Serilog minimum level before the host is built.
 
 - [ ] **Step 2: Replace `Program.cs` contents**
 
@@ -392,8 +403,10 @@ builder.Configuration
 
 builder.Services.Configure<CliOptions>(builder.Configuration);
 
+bool verbose = args.Any(a => a == "--verbose" || a == "-v");
+
 Log.Logger = new LoggerConfiguration()
-    .MinimumLevel.Warning()
+    .MinimumLevel.Is(verbose ? LogEventLevel.Information : LogEventLevel.Warning)
     .Enrich.FromLogContext()
     .WriteTo.Console(
         standardErrorFromLevel: LogEventLevel.Verbose,
@@ -1259,6 +1272,7 @@ git commit -m "feat(028): add ProfilesApiClient (List)"
 
 ```csharp
 using System.Net;
+using System.Net.Http.Json;
 using AHKFlowApp.CLI.Exceptions;
 
 namespace AHKFlowApp.CLI.Services;
@@ -1278,17 +1292,42 @@ public sealed class DownloadsApiClient(HttpClient httpClient) : IDownloadsApiCli
         if (resp.StatusCode == HttpStatusCode.Unauthorized)
             throw new NotAuthenticatedException("Authentication failed. Run 'ahkflow login'.");
 
-        resp.EnsureSuccessStatusCode();
+        if (!resp.IsSuccessStatusCode)
+        {
+            string? detail = await TryReadProblemDetailAsync(resp, ct);
+            throw new HttpRequestException(
+                detail ?? resp.ReasonPhrase ?? $"HTTP {(int)resp.StatusCode}",
+                inner: null,
+                statusCode: resp.StatusCode);
+        }
 
         byte[] bytes = await resp.Content.ReadAsByteArrayAsync(ct);
         string fileName = resp.Content.Headers.ContentDisposition?.FileName?.Trim('"') ?? fallbackFileName;
         string contentType = resp.Content.Headers.ContentType?.ToString() ?? "application/octet-stream";
         return new DownloadResult(bytes, fileName, contentType);
     }
+
+    private static async Task<string?> TryReadProblemDetailAsync(HttpResponseMessage resp, CancellationToken ct)
+    {
+        string? mediaType = resp.Content.Headers.ContentType?.MediaType;
+        if (mediaType is not "application/problem+json" and not "application/json")
+            return null;
+        try
+        {
+            ProblemDetailDto? pd = await resp.Content.ReadFromJsonAsync<ProblemDetailDto>(ct);
+            return pd?.Detail;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private sealed record ProblemDetailDto(string? Detail);
 }
 ```
 
-The `EnsureSuccessStatusCode()` throws `HttpRequestException` on 4xx/5xx; the `DownloadCommand` catches it and maps to exit codes (Task 17).
+For non-2xx (and non-401) responses the client reads the `detail` field from the RFC 9457 body when available and wraps it in `HttpRequestException(message, null, statusCode)` so `DownloadCommand` can both branch on `StatusCode` and surface the server's detail via `ex.Message`. The local `ProblemDetailDto` avoids dragging `Microsoft.AspNetCore.Mvc.Core` into the CLI just for one type; `ReadFromJsonAsync` uses web defaults (case-insensitive), so the lowercase `detail` JSON field binds correctly.
 
 - [ ] **Step 2: Add registration to Program.cs**
 
@@ -1526,13 +1565,16 @@ public static class CliRunner
 
         IAuthTokenProvider authProvider = authOverride ?? StubProvider("test-token");
         sc.AddSingleton(authProvider);
+        sc.AddTransient<BearerTokenHandler>();
 
         sc.AddHttpClient<IDownloadsApiClient, DownloadsApiClient>(client =>
             client.BaseAddress = apiFactory.Server.BaseAddress)
+          .AddHttpMessageHandler<BearerTokenHandler>()
           .ConfigurePrimaryHttpMessageHandler(() => apiFactory.Server.CreateHandler());
 
         sc.AddHttpClient<IProfilesApiClient, ProfilesApiClient>(client =>
             client.BaseAddress = apiFactory.Server.BaseAddress)
+          .AddHttpMessageHandler<BearerTokenHandler>()
           .ConfigurePrimaryHttpMessageHandler(() => apiFactory.Server.CreateHandler());
 
         using ServiceProvider services = sc.BuildServiceProvider();
@@ -1587,14 +1629,28 @@ public static class CliRunner
 }
 ```
 
-The shim limitation noted in the comment is resolved in Task 21 (stdout-bytes test) by using a separate runner that overrides the OpenStandardOutput stream. For now this CliRunner is sufficient for the file-output tests in Tasks 19–20.
+The shim limitation noted in the comment is resolved in Task 21 (stdout-bytes test) by using a separate runner that overrides the OpenStandardOutput stream. For now this CliRunner is sufficient for the file-output tests in Tasks 19-20.
 
-- [ ] **Step 3: Build**
+- [ ] **Step 3: Create `tests/AHKFlowApp.CLI.Tests/Collections.cs`**
+
+xUnit collection definitions are scoped per assembly, so the new test project needs its own `[CollectionDefinition("WebApi")]` paired with `SqlContainerFixture` (the one in `tests/AHKFlowApp.API.Tests/Collections.cs` is not visible here). Without this file, the `[Collection("WebApi")]` classes added in Tasks 19-22 will run but xUnit will not construct the fixture, so `SqlContainerFixture` constructor injection fails.
+
+```csharp
+using AHKFlowApp.TestUtilities.Fixtures;
+using Xunit;
+
+namespace AHKFlowApp.CLI.Tests;
+
+[CollectionDefinition("WebApi")]
+public sealed class WebApiCollection : ICollectionFixture<SqlContainerFixture>;
+```
+
+- [ ] **Step 4: Build**
 
 Run: `dotnet build tests/AHKFlowApp.CLI.Tests --configuration Release`
 Expected: succeeds.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add tests/AHKFlowApp.CLI.Tests
@@ -1979,14 +2035,14 @@ git commit -m "test(028): cover --all zip download"
         {
             CliRunResult run = await CliRunner.RunAsync(
                 auth, null,
-                "download", "--profile", "Work", "-o", outputPath);
+                "--verbose", "download", "--profile", "Work", "-o", outputPath);
 
             run.ExitCode.Should().Be(0);
 
-            // The "Wrote N bytes to ..." line goes to stdout. Anything else on stdout
-            // (Serilog leakage, unhandled traces) would be a regression.
-            run.Stdout.Should().StartWith("Wrote ").And.EndWith($"{outputPath}{Environment.NewLine}");
-            run.Stdout.Should().NotContain("[INF]").And.NotContain("[ERR]");
+            // The "Wrote N bytes to ..." line is the only thing that should land on stdout.
+            // Any Serilog event on stdout (e.g. default WriteTo.Console without
+            // standardErrorFromLevel) would corrupt `download -o -` and is a regression.
+            run.Stdout.Trim().Should().Be($"Wrote {new FileInfo(outputPath).Length} bytes to {outputPath}");
         }
         finally
         {
@@ -1995,7 +2051,7 @@ git commit -m "test(028): cover --all zip download"
     }
 ```
 
-This guards against the most likely Serilog regression — the default `WriteTo.Console()` overload writing to stdout. The actual `--verbose` flag plumbing is not yet implemented (it's a later flag-on-root concern); when added, extend this test to assert info-level lines land in `run.Stderr`.
+`--verbose` is a recursive root option (see `RootCli.VerboseOption`), so it can appear before or after `download`. `Program.cs` pre-parses `args` for it and sets the Serilog minimum to `Information`, while `standardErrorFromLevel: LogEventLevel.Verbose` keeps every event off stdout. This test guards both: that `--verbose` is recognized (no parse error -> exit code 0) and that stdout contains only the result line.
 
 - [ ] **Step 2: Run the test**
 
@@ -2039,9 +2095,10 @@ With:
 - [x] `ahkflow download --all` downloads a zip of all the user's scripts.
 - [x] CLI supports `-o, --output <path>` (file) and `-o -` (stdout); `--force` overrides existing files.
 - [x] Authentication via MSAL device-code (backlog 029).
-- [x] Profile name → id resolved via `GET /api/v1/profiles`; case-insensitive match.
-- [x] Unit tests cover argument validation, profile resolution, BearerTokenHandler.
-- [x] Integration tests cover happy path, --all, profile not found, file collision (with and without --force), mutually-exclusive args, stdout cleanliness.
+- [x] Profile name -> id resolved via `GET /api/v1/profiles`; case-insensitive match.
+- [x] `--verbose` (recursive root option) raises Serilog minimum to Information; events still routed to stderr.
+- [x] Unit tests cover BearerTokenHandler header attachment.
+- [x] Integration tests cover happy path, --all, profile not found, file collision (with and without --force), mutually-exclusive args, stdout cleanliness with --verbose, server 403 ProblemDetails surfaced via stderr.
 
 ---
 
@@ -2088,8 +2145,11 @@ EOF
 The plan author has checked the plan against the spec — gaps and fixes documented inline above. Notable items the engineer should verify, not the plan:
 
 - **Spec coverage:** All 9 review findings from the spec review are reflected in the plan tasks (LoginResult, env var keys, slnx update, Entra Graph PATCHes, Serilog stderr, exit codes, profile resolution, etc.).
-- **Stdout-byte testing for `-o -` zip:** explicitly punted to manual smoke (Task 21 Step 2). Acceptable — the mixing concern is covered by Task 22.
-- **`--verbose` flag:** not added in this plan since the spec mentions it but no AC requires it. The Serilog wiring tolerates it (`standardErrorFromLevel: Verbose` already routes any verbose level to stderr); adding the flag itself is a small future task.
+- **Stdout-byte testing for `-o -` zip:** explicitly punted to manual smoke (Task 21 Step 2). Acceptable - the mixing concern is covered by Task 22.
+- **`--verbose` flag:** wired in Phase 1 via a recursive root option (`RootCli.VerboseOption`). Program.cs pre-parses `args` to set Serilog minimum to Information when present; `standardErrorFromLevel: Verbose` continues to route every event to stderr. Task 22 exercises it.
+- **403 ProblemDetails surfacing:** `DownloadsApiClient.GetAsync` reads the body for non-2xx responses (when content-type is JSON or `application/problem+json`), extracts the `detail` field, and throws `HttpRequestException(detail, null, statusCode)` so `DownloadCommand` prints `Forbidden: <server detail>` to stderr.
+- **xUnit collection scope:** `tests/AHKFlowApp.CLI.Tests/Collections.cs` is created in Task 18 because `[CollectionDefinition]` is per-assembly; the existing definition in `tests/AHKFlowApp.API.Tests` is not visible to the new test project.
+- **CliRunner auth pipeline:** `BearerTokenHandler` is registered on the test `IServiceCollection` and added to both typed clients via `.AddHttpMessageHandler<BearerTokenHandler>()` so the not-signed-in test exercises the real auth provider path.
 - **Type consistency:** `LoginResult(string Username, bool WasAlreadySignedIn)` used the same way in `IAuthTokenProvider`, `MsalDeviceCodeTokenProvider`, and `LoginCommand`. `DownloadResult(byte[] Bytes, string FileName, string ContentType)` likewise. `ProfileSummary(Guid Id, string Name)` matches the API DTO field names.
 
 ---

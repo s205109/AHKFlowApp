@@ -60,7 +60,6 @@ tests/AHKFlowApp.CLI.Tests/
     DownloadCommandTests.cs           # arg parsing (unit) + end-to-end (integration)
   Services/
     BearerTokenHandlerTests.cs
-    ProfileResolutionTests.cs
 ```
 
 Single console project — no separate Core library. Surface is small enough that splitting would add more boilerplate than testability.
@@ -258,7 +257,7 @@ No per-user config file. No `ahkflow config` command.
 |---|---|---|
 | `DownloadCommand` arg parsing | Unit | Invoke `System.CommandLine` parser directly; assert exit code + stderr. No I/O, no DI. |
 | `BearerTokenHandler` | Unit | NSubstitute the inner handler + `IAuthTokenProvider`; assert `Authorization: Bearer <token>` is attached. |
-| Profile name → id resolution | Unit | Stub `IProfilesApiClient`; assert correct id flows to downloads client; assert error path when name missing. |
+| Profile name → id resolution | Integration | Covered end-to-end by the happy-path and "profile not found" integration tests below; not factored into a separate unit because it's a single case-insensitive `FirstOrDefault` inside `DownloadCommand`. |
 | End-to-end download (happy path, per-profile) | Integration | Reuse the API's `WebApplicationFactory<Program>` + `WithTestAuth(builder)` extension already used in `AHKFlowApp.API.Tests` (configures a stub auth scheme via builder — oid, email, scope). CLI's `HttpClient` is pointed at `factory.Server.CreateClient()`. Testcontainers SQL via `SqlContainerFixture`. Assert bytes + filename. |
 | `--all` zip download | Integration | Same harness; assert zip entry count + names + per-entry content. |
 | `--all -o -` (zip to stdout) | Integration | Capture stdout as bytes; assert it's a valid zip with correct entries; assert no log lines on stdout when `--verbose` is set. |
