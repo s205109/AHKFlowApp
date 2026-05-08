@@ -11,7 +11,6 @@ namespace AHKFlowApp.Application.Queries.Hotkeys;
 public sealed record ListHotkeysQuery(
     Guid? ProfileId = null,
     string? Search = null,
-    bool IgnoreCase = true,
     int Page = 1,
     int PageSize = 50) : IRequest<Result<PagedList<HotkeyDto>>>;
 
