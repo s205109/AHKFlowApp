@@ -20,7 +20,7 @@ As a user, I want to download the generated script for a profile so that I can i
 - [x] Endpoint is authenticated (per 012) and scoped to the user's own profiles (404 for other users' profileId).
 - [x] UI: `Pages/Downloads.razor` lists every profile with a per-row Download button that triggers the endpoint.
 - [x] Integration tests: content-type, content-disposition filename, auth challenge, owner scoping (other-user profileId returns 404).
-- [x] Unit test on the controller wiring `AhkScriptGenerator` → bytes → response headers.
+- [x] Integration tests cover controller wiring `AhkScriptGenerator` → bytes → response headers (content-type, content-disposition, auth, owner scoping). No standalone controller unit tests — consistent with project convention (AGENTS.md: integration tests first; don't mock what you own).
 
 ---
 

@@ -25,7 +25,7 @@ As a user, I want to manage hotkeys in the Web UI so that I can define keyboard 
 
 ---
 
-**Completed:** 2026-05-03 (PR #107; bUnit page tests not written — see AC6 note)
+**Shipped with known gap:** 2026-05-03 (PR #107; AC6 bUnit page tests not written — see note above)
 
 ## Out of scope
 
