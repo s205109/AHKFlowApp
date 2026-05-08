@@ -10,6 +10,7 @@ var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<HeadOutlet>("head::after");
 
 builder.Services.AddMudServices();
+builder.Services.AddScoped<IFileSaver, JsFileSaver>();
 builder.Services.AddScoped<LocalStorageUserPreferencesService>();
 builder.Services.AddScoped<IUserPreferencesService, HybridUserPreferencesService>();
 
@@ -69,6 +70,8 @@ if (useTestAuth)
         baseAddress, TimeSpan.FromSeconds(30), useAuth: false);
     AddApiClient<IProfilesApiClient, ProfilesApiClient>(
         baseAddress, TimeSpan.FromSeconds(30), useAuth: false);
+    AddApiClient<IDownloadsApiClient, DownloadsApiClient>(
+        baseAddress, TimeSpan.FromSeconds(60), useAuth: false);
     AddApiClient<IPreferencesApiClient, PreferencesApiClient>(
         baseAddress, TimeSpan.FromSeconds(10), useAuth: false);
 }
@@ -97,6 +100,8 @@ else
         baseAddress, TimeSpan.FromSeconds(30), useAuth: true);
     AddApiClient<IProfilesApiClient, ProfilesApiClient>(
         baseAddress, TimeSpan.FromSeconds(30), useAuth: true);
+    AddApiClient<IDownloadsApiClient, DownloadsApiClient>(
+        baseAddress, TimeSpan.FromSeconds(60), useAuth: true);
     AddApiClient<IPreferencesApiClient, PreferencesApiClient>(
         baseAddress, TimeSpan.FromSeconds(10), useAuth: true);
 }
