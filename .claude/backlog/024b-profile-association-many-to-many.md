@@ -16,12 +16,16 @@ As a user, I want to assign a hotkey or hotstring to multiple profiles, or to "A
 
 ## Acceptance criteria
 
-- [ ] `HotkeyProfile (HotkeyId, ProfileId)` and `HotstringProfile (HotstringId, ProfileId)` junction tables with composite primary keys and cascade-delete on the parent side.
-- [ ] `AppliesToAllProfiles` (bool) added to both `Hotkey` and `Hotstring`. When true, the junction is empty for that row and the row is included in every profile's generated script (current and future).
-- [ ] EF migration drops the existing nullable `Hotstring.ProfileId` (and `Hotkey.ProfileId` if 022b hasn't already removed it). Dev DBs are scratch (per spec D7); no copy-forward SQL.
-- [ ] API DTOs gain `Guid[] ProfileIds` and `bool AppliesToAllProfiles`. Validation: when `AppliesToAllProfiles=true`, `ProfileIds` must be empty; when false, at least one profile must be selected.
-- [ ] List endpoints accept an optional `profileId` filter that returns rows in the junction OR with `AppliesToAllProfiles=true`.
-- [ ] Unit tests cover the validation invariant; integration tests cover create/update/delete flows for both entities under both modes.
+- [x] `HotkeyProfile (HotkeyId, ProfileId)` and `HotstringProfile (HotstringId, ProfileId)` junction tables with composite primary keys and cascade-delete on the parent side.
+- [x] `AppliesToAllProfiles` (bool) added to both `Hotkey` and `Hotstring`. When true, the junction is empty for that row and the row is included in every profile's generated script (current and future).
+- [x] EF migration drops the existing nullable `Hotstring.ProfileId` (and `Hotkey.ProfileId` if 022b hasn't already removed it). Dev DBs are scratch (per spec D7); no copy-forward SQL.
+- [x] API DTOs gain `Guid[] ProfileIds` and `bool AppliesToAllProfiles`. Validation: when `AppliesToAllProfiles=true`, `ProfileIds` must be empty; when false, at least one profile must be selected.
+- [x] List endpoints accept an optional `profileId` filter that returns rows in the junction OR with `AppliesToAllProfiles=true`.
+- [x] Unit tests cover the validation invariant; integration tests cover create/update/delete flows for both entities under both modes.
+
+---
+
+**Completed:** 2026-05-02 (PR #104)
 
 ## Out of scope
 

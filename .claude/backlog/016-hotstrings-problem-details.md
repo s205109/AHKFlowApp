@@ -22,6 +22,10 @@ As a client developer, I want consistent error responses so that UI and CLI can 
 - [x] Integration tests confirm validation and domain errors return RFC 9457 Problem Details with expected fields.
 - [x] Unit tests validate error mapping behavior for known domain exceptions.
 
+---
+
+**Completed:** 2026-04-20 (PR #76)
+
 ## Out of scope
 
 - A large custom error taxonomy.
