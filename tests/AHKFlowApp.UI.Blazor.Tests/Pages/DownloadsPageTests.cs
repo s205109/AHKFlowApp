@@ -82,7 +82,11 @@ public sealed class DownloadsPageTests : BunitContext, IAsyncLifetime
         cut.WaitForAssertion(() => cut.Find("button.download-profile"));
         cut.Find("button.download-profile").Click();
 
-        return _saver.Received(1).SaveAsync("ahkflow_Work.ahk", "text/plain; charset=utf-8", Arg.Is<byte[]>(b => b.SequenceEqual(payload.Content)));
+        // filename is {yyyyMMdd_HHmmss}_ahkflow_Work.ahk — assert suffix, not exact timestamp
+        return _saver.Received(1).SaveAsync(
+            Arg.Is<string>(n => n.EndsWith("_ahkflow_Work.ahk")),
+            "text/plain; charset=utf-8",
+            Arg.Is<byte[]>(b => b.SequenceEqual(payload.Content)));
     }
 
     [Fact]
@@ -97,7 +101,11 @@ public sealed class DownloadsPageTests : BunitContext, IAsyncLifetime
         cut.WaitForAssertion(() => cut.Find("button.download-all"));
         cut.Find("button.download-all").Click();
 
-        return _saver.Received(1).SaveAsync("ahkflow_scripts.zip", "application/zip", Arg.Is<byte[]>(b => b.SequenceEqual(zip.Content)));
+        // filename is {yyyyMMdd_HHmmss}_ahkflow_scripts.zip — assert suffix
+        return _saver.Received(1).SaveAsync(
+            Arg.Is<string>(n => n.EndsWith("_ahkflow_scripts.zip")),
+            "application/zip",
+            Arg.Is<byte[]>(b => b.SequenceEqual(zip.Content)));
     }
 
     [Fact]
