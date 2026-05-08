@@ -8,7 +8,11 @@ using Microsoft.Extensions.Hosting;
 using Serilog;
 using Serilog.Events;
 
-HostApplicationBuilder builder = Host.CreateApplicationBuilder(args);
+HostApplicationBuilder builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
+{
+    Args = args,
+    ContentRootPath = AppContext.BaseDirectory,
+});
 
 builder.Configuration
     .AddJsonFile("appsettings.json", optional: true, reloadOnChange: false)

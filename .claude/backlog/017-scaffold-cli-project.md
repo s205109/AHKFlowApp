@@ -17,14 +17,14 @@ As a developer, I want a CLI project scaffold so that CLI feature items (hotstri
 ## Acceptance criteria
 
 - [x] `src/Tools/AHKFlowApp.CLI` project created and added to the solution.
-- [x] API HttpClient registered and configured from `appsettings.json` (base address, `.AddStandardResilienceHandler()`).
+- [ ] API HttpClient registered and configured from `appsettings.json` (base address, `.AddStandardResilienceHandler()`). — deferred to backlog 028; client interfaces (`IDownloadsApiClient`, `IProfilesApiClient`) exist, registrations land with their concrete impls.
 - [x] Command-line argument parsing wired (System.CommandLine).
-- [x] `--profile <name>` argument available as shared plumbing for all commands.
+- [ ] `--profile <name>` argument available as shared plumbing for all commands. — deferred to backlog 028; `--profile` belongs to `DownloadCommand` and is added there.
 - [x] Authentication flow stubbed and ready for integration in 012.
 - [x] `dotnet run -- --help` prints help text listing available commands.
 - [x] CLI project added to CI/CD build and test pipeline.
 
-**Completed:** 2026-05-08 (PR #TBD)
+**Completed:** 2026-05-08 (PR #114) — scaffold-only; deferred ACs above are wired in PR for backlog 028.
 
 ## Out of scope
 
