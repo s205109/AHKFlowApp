@@ -28,11 +28,11 @@ public sealed class DownloadsController(IMediator mediator) : ControllerBase
     [Produces(AhkContentType)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<ProfileScript>> GetProfile(Guid profileId, CancellationToken ct)
+    public async Task<IActionResult> GetProfile(Guid profileId, CancellationToken ct)
     {
         Result<ProfileScript> result = await mediator.Send(new GenerateProfileScriptQuery(profileId), ct);
         if (!result.IsSuccess)
-            return result.ToProblemActionResult(this);
+            return result.ToProblemActionResult(this).Result!;
 
         byte[] bytes = Encoding.UTF8.GetBytes(result.Value.Content);
         return File(bytes, AhkContentType, fileDownloadName: result.Value.FileName);
@@ -42,11 +42,11 @@ public sealed class DownloadsController(IMediator mediator) : ControllerBase
     [HttpGet("zip")]
     [Produces(ZipContentType)]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    public async Task<ActionResult<IReadOnlyList<ProfileScript>>> GetAllZip(CancellationToken ct)
+    public async Task<IActionResult> GetAllZip(CancellationToken ct)
     {
         Result<IReadOnlyList<ProfileScript>> result = await mediator.Send(new GenerateAllProfileScriptsQuery(), ct);
         if (!result.IsSuccess)
-            return result.ToProblemActionResult(this);
+            return result.ToProblemActionResult(this).Result!;
 
         byte[] zipBytes;
         using (MemoryStream ms = new())
@@ -57,7 +57,7 @@ public sealed class DownloadsController(IMediator mediator) : ControllerBase
                 {
                     ZipArchiveEntry entry = archive.CreateEntry(script.FileName, CompressionLevel.Optimal);
                     using Stream entryStream = entry.Open();
-                    using StreamWriter writer = new(entryStream, Encoding.UTF8);
+                    using StreamWriter writer = new(entryStream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
                     await writer.WriteAsync(script.Content);
                 }
             }
