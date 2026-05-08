@@ -25,11 +25,10 @@ public sealed class HotstringsController(IMediator mediator) : ControllerBase
     public async Task<ActionResult<PagedList<HotstringDto>>> List(
         [FromQuery] Guid? profileId,
         [FromQuery] string? search = null,
-        [FromQuery] bool ignoreCase = true,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 50,
         CancellationToken ct = default) =>
-        (await mediator.Send(new ListHotstringsQuery(profileId, search, ignoreCase, page, pageSize), ct)).ToProblemActionResult(this);
+        (await mediator.Send(new ListHotstringsQuery(profileId, search, page, pageSize), ct)).ToProblemActionResult(this);
 
     /// <summary>Get a hotstring by id.</summary>
     [HttpGet("{id:guid}", Name = "GetHotstring")]

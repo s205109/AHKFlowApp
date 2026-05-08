@@ -25,11 +25,10 @@ public sealed class HotkeysController(IMediator mediator) : ControllerBase
     public async Task<ActionResult<PagedList<HotkeyDto>>> List(
         [FromQuery] Guid? profileId,
         [FromQuery] string? search = null,
-        [FromQuery] bool ignoreCase = true,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 50,
         CancellationToken ct = default) =>
-        (await mediator.Send(new ListHotkeysQuery(profileId, search, ignoreCase, page, pageSize), ct)).ToProblemActionResult(this);
+        (await mediator.Send(new ListHotkeysQuery(profileId, search, page, pageSize), ct)).ToProblemActionResult(this);
 
     /// <summary>Get a hotkey by id.</summary>
     [HttpGet("{id:guid}", Name = "GetHotkey")]

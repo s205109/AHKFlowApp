@@ -56,11 +56,11 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
         new(items, 1, 50, items.Length, 1, false, false);
 
     private void StubList(PagedList<HotkeyDto> page) =>
-        _api.ListAsync(Arg.Any<Guid?>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+        _api.ListAsync(Arg.Any<Guid?>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(ApiResult<PagedList<HotkeyDto>>.Ok(page));
 
     private void StubListFailure(ApiResultStatus status, ApiProblemDetails? problem = null) =>
-        _api.ListAsync(Arg.Any<Guid?>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<string?>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
+        _api.ListAsync(Arg.Any<Guid?>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(ApiResult<PagedList<HotkeyDto>>.Failure(status, problem));
 
     [Fact]
