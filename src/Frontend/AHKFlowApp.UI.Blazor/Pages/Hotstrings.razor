@@ -186,7 +186,6 @@
             page: state.Page + 1,
             pageSize: state.PageSize,
             search: string.IsNullOrWhiteSpace(_search) ? null : _search,
-            ignoreCase: true,
             ct: ct);
 
         _loading = false;
