@@ -16,11 +16,15 @@ As a user with several profiles, I want to download all my generated scripts in 
 
 ## Acceptance criteria
 
-- [ ] `GET /api/v1/downloads/zip` returns `application/zip` with `Content-Disposition: attachment; filename="ahkflow_scripts.zip"`.
-- [ ] Zip contains one entry per profile, named `ahkflow_{profile_name}.ahk` (sanitized to remove path-unsafe characters).
-- [ ] Endpoint authenticated; only the calling user's profiles are included.
-- [ ] UI: top-of-page button on `Pages/Downloads.razor` labelled "Download all (zip)".
-- [ ] Integration test: seed two profiles, hit the endpoint, assert zip entry count + filenames + content matches per-profile generator output.
+- [x] `GET /api/v1/downloads/zip` returns `application/zip` with `Content-Disposition: attachment; filename="ahkflow_scripts.zip"`.
+- [x] Zip contains one entry per profile, named `ahkflow_{profile_name}.ahk` (sanitized to remove path-unsafe characters).
+- [x] Endpoint authenticated; only the calling user's profiles are included.
+- [x] UI: top-of-page button on `Pages/Downloads.razor` labelled "Download all (zip)".
+- [x] Integration test: seed two profiles, hit the endpoint, assert zip entry count + filenames + content matches per-profile generator output.
+
+---
+
+**Completed:** 2026-05-08 (PR #109)
 
 ## Format decisions (locked in plan 2026-05-07, Phase 5)
 
