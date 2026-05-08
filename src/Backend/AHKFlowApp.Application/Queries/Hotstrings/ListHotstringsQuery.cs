@@ -11,7 +11,6 @@ namespace AHKFlowApp.Application.Queries.Hotstrings;
 public sealed record ListHotstringsQuery(
     Guid? ProfileId = null,
     string? Search = null,
-    bool IgnoreCase = true,
     int Page = 1,
     int PageSize = 50) : IRequest<Result<PagedList<HotstringDto>>>;
 
