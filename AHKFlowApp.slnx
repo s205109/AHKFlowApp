@@ -9,6 +9,9 @@
   <Folder Name="/src/Frontend/">
     <Project Path="src/Frontend/AHKFlowApp.UI.Blazor/AHKFlowApp.UI.Blazor.csproj" />
   </Folder>
+  <Folder Name="/src/Tools/">
+    <Project Path="src/Tools/AHKFlowApp.CLI/AHKFlowApp.CLI.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/AHKFlowApp.API.Tests/AHKFlowApp.API.Tests.csproj" />
     <Project Path="tests/AHKFlowApp.Application.Tests/AHKFlowApp.Application.Tests.csproj" />
