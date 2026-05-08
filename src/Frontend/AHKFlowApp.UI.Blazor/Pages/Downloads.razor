@@ -106,8 +106,9 @@
             return;
         }
 
-        await FileSaver.SaveAsync(result.Value!.FileName, result.Value.ContentType, result.Value.Content);
-        Snackbar.Add($"Downloaded {result.Value.FileName}", Severity.Success);
+        string fileName = $"{Timestamp()}_ahkflow_{SafeStem(profile.Name)}.ahk";
+        await FileSaver.SaveAsync(fileName, result.Value!.ContentType, result.Value.Content);
+        Snackbar.Add($"Downloaded {fileName}", Severity.Success);
     }
 
     private async Task DownloadAllAsync()
@@ -122,8 +123,25 @@
             return;
         }
 
-        await FileSaver.SaveAsync(result.Value!.FileName, result.Value.ContentType, result.Value.Content);
-        Snackbar.Add($"Downloaded {result.Value.FileName}", Severity.Success);
+        string fileName = $"{Timestamp()}_ahkflow_scripts.zip";
+        await FileSaver.SaveAsync(fileName, result.Value!.ContentType, result.Value.Content);
+        Snackbar.Add($"Downloaded {fileName}", Severity.Success);
+    }
+
+    private static string Timestamp() => DateTime.Now.ToString("yyyyMMdd_HHmmss");
+
+    private static string SafeStem(string name)
+    {
+        var sb = new System.Text.StringBuilder(name.Length);
+        bool prev_ = false;
+        foreach (char c in name)
+        {
+            bool safe = char.IsAsciiLetterOrDigit(c) || c == '.' || c == '-';
+            if (safe) { sb.Append(c); prev_ = false; }
+            else if (!prev_) { sb.Append('_'); prev_ = true; }
+        }
+        string s = sb.ToString().Trim('_');
+        return s.Length == 0 ? "profile" : s.Length > 64 ? s[..64] : s;
     }
 
     public void Dispose() { _cts.Cancel(); _cts.Dispose(); }
