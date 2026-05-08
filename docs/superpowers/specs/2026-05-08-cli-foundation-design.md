@@ -121,6 +121,8 @@ Default output paths when `-o` omitted:
 - `--profile Work` → `./ahkflow_Work.ahk` (uses Content-Disposition filename from server, which is already sanitized per backlog 027).
 - `--all` → `./ahkflow_scripts.zip`.
 
+`-o -` (stdout) is **supported with `--all`** — the raw zip bytes are written to stdout for piping (e.g., `ahkflow download --all -o - | tar -xf-` on macOS/Linux, or piping into PowerShell's `[System.IO.Compression.ZipArchive]`). Combined with the Serilog-to-stderr wiring above, stdout stays clean.
+
 Mutually exclusive: `--profile` and `--all`. Specifying both, or neither, → exit 2 with error.
 
 Profile not found: exit 2 with `Profile 'X' not found. Available: A, B, C` to stderr.
@@ -134,9 +136,15 @@ Not signed in (silent refresh fails): exit 3 with `Run 'ahkflow login' first.` t
 | Code | Meaning |
 |---|---|
 | 0 | Success |
-| 1 | Unexpected error (network, server 5xx) |
+| 1 | Unexpected error (network, server 5xx, server 403) |
 | 2 | User error (bad args, profile not found, file exists without --force) |
-| 3 | Not authenticated |
+| 3 | Not authenticated (no cached token, silent refresh failed, server 401) |
+
+**HTTP status mapping:**
+- `401 Unauthorized` from the API → exit 3 with `Authentication failed. Run 'ahkflow login'.` (token rejected, e.g., expired between cache check and request).
+- `403 Forbidden` from the API → exit 1 with the server's ProblemDetails `detail` field (auth ok but the principal lacks scope/permission — not something `login` will fix).
+- `404 Not Found` on `/downloads/{id}` → exit 2 with `Profile 'X' not found.` (matches the local resolution path).
+- `5xx` → exit 1 after resilience handler retries are exhausted.
 
 ### Logging
 
@@ -144,6 +152,16 @@ Not signed in (silent refresh fails): exit 3 with `Run 'ahkflow login' first.` t
 - `--verbose`: Information-level Serilog to stderr.
 - Errors: always to stderr.
 - The CLI never writes its own logs to disk; `appsettings.json` Serilog config has no file sink.
+
+**Serilog stderr wiring (non-default — `WriteTo.Console()` writes to stdout by default):**
+```csharp
+.WriteTo.Console(standardErrorFromLevel: LogEventLevel.Verbose)
+```
+This forces every log event (including Information from `--verbose`) to stderr, leaving stdout clean for command output. Critical because `download -o -` writes raw script bytes to stdout — any Serilog event landing on stdout would corrupt the output.
+
+**Test:** unit test that runs `download -o -` against the test fixture with `--verbose` and asserts:
+- stdout contains exactly the script bytes (no log lines mixed in).
+- stderr contains the expected log lines.
 
 ## Authentication
 
@@ -155,10 +173,16 @@ Not signed in (silent refresh fails): exit 3 with `Run 'ahkflow login' first.` t
 public interface IAuthTokenProvider
 {
     Task<string> GetTokenAsync(CancellationToken ct);
-    Task LoginAsync(CancellationToken ct);
+    Task<LoginResult> LoginAsync(CancellationToken ct);
     Task LogoutAsync(CancellationToken ct);
 }
+
+public sealed record LoginResult(string Username, bool WasAlreadySignedIn);
 ```
+
+`LoginCommand` formats the result: `WasAlreadySignedIn=true` → `Already signed in as {Username}`; `false` → `Signed in as {Username}`. The provider does not write to console — the command owns I/O.
+
+**Multi-account behavior:** the cache is treated as single-account. `GetTokenAsync` and `LoginAsync` use `accounts.FirstOrDefault()` after `pca.GetAccountsAsync()`. `LogoutAsync` removes **all** cached accounts (clean slate). If the user wants to switch identity, `logout` then `login` is the documented path. We do not persist a "selected account id" — adding multi-account support is a future backlog item.
 
 ### 029 implementation
 
@@ -188,9 +212,24 @@ public interface IAuthTokenProvider
 
 ### Entra registration changes
 
-- Add `http://localhost` as a public-client redirect URI on the existing Entra app registration.
-- No new app, no new scope — same `access_as_user` the UI uses.
-- One-line update to `scripts/setup-entra-app.ps1`.
+Three Graph manifest changes on the existing app registration (no new app, no new scope — same `access_as_user`):
+
+1. **Add public-client redirect URI** — `publicClient.redirectUris` must include `http://localhost`. This is a separate collection from `spa.redirectUris` (which the script already manages); the new collection has to be PATCHed in:
+   ```json
+   { "publicClient": { "redirectUris": ["http://localhost"] } }
+   ```
+
+2. **Enable public-client flows** — set `isFallbackPublicClient: true` on the application object. Without this, MSAL's device-code flow fails with `AADSTS7000218` ("client_assertion or client_secret required"). PATCH:
+   ```json
+   { "isFallbackPublicClient": true }
+   ```
+
+3. **`scripts/setup-entra-app.ps1` updates:**
+   - After the existing SPA-redirect block (around line 142), add a `publicClient.redirectUris` PATCH with the same `Wait-ForCondition` pattern.
+   - Add an `isFallbackPublicClient: true` PATCH on the application root.
+   - Both must be idempotent — read current state first, only PATCH if needed (the script's existing pattern).
+
+These are all PATCHes via `Invoke-GraphPatch`. No `az ad app update` flag exists for `isFallbackPublicClient` — Graph PATCH is required.
 
 ## Configuration
 
@@ -204,12 +243,12 @@ CLI reads config in this order (later overrides earlier):
      "TenantId": "<prod-tenant-id>"
    }
    ```
-2. Environment variables (override at runtime for dev/test):
-   - `AHKFLOW_API_URL`
-   - `AHKFLOW_CLIENT_ID`
-   - `AHKFLOW_TENANT_ID`
+2. Environment variables (override at runtime for dev/test). With `AddEnvironmentVariables("AHKFLOW_")` the prefix is stripped to produce the config key, so the env var names must match the JSON keys exactly:
+   - `AHKFLOW_ApiBaseUrl`
+   - `AHKFLOW_ClientId`
+   - `AHKFLOW_TenantId`
 
-Standard `IConfigurationBuilder` chain (`AddJsonFile` + `AddEnvironmentVariables` with `AHKFLOW_` prefix). No CLI flags for these — keeps every command invocation clean.
+Standard `IConfigurationBuilder` chain (`AddJsonFile` + `AddEnvironmentVariables("AHKFLOW_")`). On case-insensitive shells (Windows `cmd`/PowerShell) casing doesn't matter; on Linux/macOS the variable name is case-sensitive but the resulting config key resolves case-insensitively in .NET configuration. No CLI flags for these — keeps every command invocation clean.
 
 No per-user config file. No `ahkflow config` command.
 
@@ -222,6 +261,10 @@ No per-user config file. No `ahkflow config` command.
 | Profile name → id resolution | Unit | Stub `IProfilesApiClient`; assert correct id flows to downloads client; assert error path when name missing. |
 | End-to-end download (happy path, per-profile) | Integration | Reuse the API's `WebApplicationFactory<Program>` + `WithTestAuth(builder)` extension already used in `AHKFlowApp.API.Tests` (configures a stub auth scheme via builder — oid, email, scope). CLI's `HttpClient` is pointed at `factory.Server.CreateClient()`. Testcontainers SQL via `SqlContainerFixture`. Assert bytes + filename. |
 | `--all` zip download | Integration | Same harness; assert zip entry count + names + per-entry content. |
+| `--all -o -` (zip to stdout) | Integration | Capture stdout as bytes; assert it's a valid zip with correct entries; assert no log lines on stdout when `--verbose` is set. |
+| `download -o - --verbose` (stdout/stderr split) | Integration | Assert stdout contains exactly the script bytes and stderr contains the verbose log lines. Guards against the default `WriteTo.Console()` pitfall. |
+| Server 401 → exit 3 | Integration | Configure test handler to reject the token; assert exit 3 + "Authentication failed. Run 'ahkflow login'." |
+| Server 403 → exit 1 | Integration | Configure test handler to authenticate but fail scope check; assert exit 1 + ProblemDetails.detail. |
 | Not signed in | Integration | Harness with `NullAuthTokenProvider`; assert exit 3 + stderr. |
 | Profile not found | Integration | Seed two profiles; request a third; assert exit 2 + "Available: ..." list. |
 | Output collision (no `--force`) | Integration | Pre-create output file in `Path.GetTempPath()`; assert exit 2, file untouched. |
@@ -253,6 +296,7 @@ Each backlog item is one PR. Sequence avoids stub-commits-then-real-commits reba
    - New project, `Program.cs` + DI + System.CommandLine, `appsettings.json`, `--help` works.
    - `IAuthTokenProvider` exists with `NullAuthTokenProvider`.
    - `BearerTokenHandler`, `IDownloadsApiClient` interface (no impl yet).
+   - **Add new projects to `AHKFlowApp.slnx`:** `src/Tools/AHKFlowApp.CLI/AHKFlowApp.CLI.csproj` under a new `/src/Tools/` folder; `tests/AHKFlowApp.CLI.Tests/AHKFlowApp.CLI.Tests.csproj` under `/tests/`. Without this CI's root-level `dotnet build` won't pick the projects up.
    - CI smoke step added.
    - Update `.claude/CLAUDE.md` to remove "CLI application" from out-of-scope.
 
@@ -271,7 +315,7 @@ Each backlog item is one PR. Sequence avoids stub-commits-then-real-commits reba
 
 ## Decisions locked in
 
-- Binary name: `ahkflow` (not `ahkflowapp`).
+- Binary name: `ahkflow` (not `ahkflowapp`). **Backlog AC change:** item 028 originally specified `ahkflowapp download ahk --profile <name>`. This spec replaces it with `ahkflow download --profile <name>` (shorter binary, no `ahk` sub-noun since the only artifact is `.ahk`). The backlog item must be updated when 028 is implemented to reflect the new AC text.
 - Single project, no separate Core library.
 - `System.CommandLine` (not Spectre.Console.Cli).
 - `Microsoft.Extensions.Hosting` for DI/config/logging.
