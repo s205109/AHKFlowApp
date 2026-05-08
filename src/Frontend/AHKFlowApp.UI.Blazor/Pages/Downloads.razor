@@ -86,51 +86,72 @@
     {
         _loading = true;
         _loadError = null;
-        ApiResult<IReadOnlyList<ProfileDto>> result = await ProfilesApi.ListAsync(_cts.Token);
-        _loading = false;
-
-        if (!result.IsSuccess)
+        try
         {
-            _loadError = ApiErrorMessageFactory.Build(result.Status, result.Problem);
-            _profiles = [];
-            return;
-        }
+            ApiResult<IReadOnlyList<ProfileDto>> result = await ProfilesApi.ListAsync(_cts.Token);
 
-        _profiles = [.. result.Value!];
+            if (!result.IsSuccess)
+            {
+                _loadError = ApiErrorMessageFactory.Build(result.Status, result.Problem);
+                _profiles = [];
+                return;
+            }
+
+            _profiles = [.. result.Value!];
+        }
+        catch (OperationCanceledException) when (_cts.IsCancellationRequested) { }
+        finally
+        {
+            _loading = false;
+        }
     }
 
     private async Task DownloadProfileAsync(ProfileDto profile)
     {
         _busyProfileId = profile.Id;
-        ApiResult<FileDownload> result = await DownloadsApi.GetProfileScriptAsync(profile.Id, _cts.Token);
-        _busyProfileId = null;
-
-        if (!result.IsSuccess)
+        try
         {
-            Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
-            return;
-        }
+            ApiResult<FileDownload> result = await DownloadsApi.GetProfileScriptAsync(profile.Id, _cts.Token);
 
-        string fileName = $"{Timestamp()}_ahkflow_{SafeStem(profile.Name)}.ahk";
-        await FileSaver.SaveAsync(fileName, result.Value!.ContentType, result.Value.Content);
-        Snackbar.Add($"Downloaded {fileName}", Severity.Success);
+            if (!result.IsSuccess)
+            {
+                Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
+                return;
+            }
+
+            string fileName = $"{Timestamp()}_ahkflow_{SafeStem(profile.Name)}.ahk";
+            await FileSaver.SaveAsync(fileName, result.Value!.ContentType, result.Value.Content);
+            Snackbar.Add($"Downloaded {fileName}", Severity.Success);
+        }
+        catch (OperationCanceledException) when (_cts.IsCancellationRequested) { }
+        finally
+        {
+            _busyProfileId = null;
+        }
     }
 
     private async Task DownloadAllAsync()
     {
         _zipLoading = true;
-        ApiResult<FileDownload> result = await DownloadsApi.GetAllProfileScriptsZipAsync(_cts.Token);
-        _zipLoading = false;
-
-        if (!result.IsSuccess)
+        try
         {
-            Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
-            return;
-        }
+            ApiResult<FileDownload> result = await DownloadsApi.GetAllProfileScriptsZipAsync(_cts.Token);
 
-        string fileName = $"{Timestamp()}_ahkflow_scripts.zip";
-        await FileSaver.SaveAsync(fileName, result.Value!.ContentType, result.Value.Content);
-        Snackbar.Add($"Downloaded {fileName}", Severity.Success);
+            if (!result.IsSuccess)
+            {
+                Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
+                return;
+            }
+
+            string fileName = $"{Timestamp()}_ahkflow_scripts.zip";
+            await FileSaver.SaveAsync(fileName, result.Value!.ContentType, result.Value.Content);
+            Snackbar.Add($"Downloaded {fileName}", Severity.Success);
+        }
+        catch (OperationCanceledException) when (_cts.IsCancellationRequested) { }
+        finally
+        {
+            _zipLoading = false;
+        }
     }
 
     private static string Timestamp() => DateTime.Now.ToString("yyyyMMdd_HHmmss");
