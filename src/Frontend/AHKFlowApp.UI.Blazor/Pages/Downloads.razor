@@ -1,0 +1,130 @@
+@page "/downloads"
+@using AHKFlowApp.UI.Blazor.DTOs
+@using AHKFlowApp.UI.Blazor.Services
+@using MudBlazor
+@using Microsoft.AspNetCore.Components.Authorization
+@implements IDisposable
+
+<PageTitle>Downloads</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Downloads</MudText>
+
+<MudPaper Class="pa-4">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Wrap="Wrap.Wrap" Class="mb-4">
+        <MudButton Class="download-all" Variant="Variant.Filled" Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.Archive"
+                   Disabled="@(!_isAuthenticated || _zipLoading || _profiles.Count == 0)"
+                   OnClick="DownloadAllAsync">
+            Download all (zip)
+        </MudButton>
+        <MudButton Class="reload-profiles" Variant="Variant.Filled" Color="Color.Secondary"
+                   StartIcon="@Icons.Material.Filled.Refresh"
+                   Disabled="@(!_isAuthenticated || _loading)"
+                   OnClick="ReloadAsync">
+            Reload
+        </MudButton>
+    </MudStack>
+
+    @if (_loadError is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-3">@_loadError</MudAlert>
+    }
+
+    <MudTable T="ProfileDto" Items="_profiles" Dense="true" Hover="true" Loading="_loading">
+        <HeaderContent>
+            <MudTh Style="width:80px">Default</MudTh>
+            <MudTh>Name</MudTh>
+            <MudTh Style="width:200px">Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd><MudIcon Icon="@(context.IsDefault ? Icons.Material.Filled.Star : Icons.Material.Outlined.StarBorder)" /></MudTd>
+            <MudTd>@context.Name</MudTd>
+            <MudTd>
+                <MudButton Class="download-profile" Variant="Variant.Outlined" Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.Download"
+                           Disabled="@(_busyProfileId == context.Id)"
+                           OnClick="() => DownloadProfileAsync(context)">
+                    Download
+                </MudButton>
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent><MudText>No profiles yet.</MudText></NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+    [Inject] private IProfilesApiClient ProfilesApi { get; set; } = default!;
+    [Inject] private IDownloadsApiClient DownloadsApi { get; set; } = default!;
+    [Inject] private IFileSaver FileSaver { get; set; } = default!;
+    [Inject] private ISnackbar Snackbar { get; set; } = default!;
+
+    private List<ProfileDto> _profiles = [];
+    private bool _isAuthenticated;
+    private bool _loading;
+    private bool _zipLoading;
+    private Guid? _busyProfileId;
+    private string? _loadError;
+    private readonly CancellationTokenSource _cts = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is not null)
+        {
+            var state = await AuthState;
+            _isAuthenticated = state.User.Identity?.IsAuthenticated ?? false;
+        }
+        if (_isAuthenticated) await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        _loadError = null;
+        ApiResult<IReadOnlyList<ProfileDto>> result = await ProfilesApi.ListAsync(_cts.Token);
+        _loading = false;
+
+        if (!result.IsSuccess)
+        {
+            _loadError = ApiErrorMessageFactory.Build(result.Status, result.Problem);
+            _profiles = [];
+            return;
+        }
+
+        _profiles = [.. result.Value!];
+    }
+
+    private async Task DownloadProfileAsync(ProfileDto profile)
+    {
+        _busyProfileId = profile.Id;
+        ApiResult<FileDownload> result = await DownloadsApi.GetProfileScriptAsync(profile.Id, _cts.Token);
+        _busyProfileId = null;
+
+        if (!result.IsSuccess)
+        {
+            Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
+            return;
+        }
+
+        await FileSaver.SaveAsync(result.Value!.FileName, result.Value.ContentType, result.Value.Content);
+        Snackbar.Add($"Downloaded {result.Value.FileName}", Severity.Success);
+    }
+
+    private async Task DownloadAllAsync()
+    {
+        _zipLoading = true;
+        ApiResult<FileDownload> result = await DownloadsApi.GetAllProfileScriptsZipAsync(_cts.Token);
+        _zipLoading = false;
+
+        if (!result.IsSuccess)
+        {
+            Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
+            return;
+        }
+
+        await FileSaver.SaveAsync(result.Value!.FileName, result.Value.ContentType, result.Value.Content);
+        Snackbar.Add($"Downloaded {result.Value.FileName}", Severity.Success);
+    }
+
+    public void Dispose() { _cts.Cancel(); _cts.Dispose(); }
+}
