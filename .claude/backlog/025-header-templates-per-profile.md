@@ -16,11 +16,15 @@ As a user, I want each profile to carry its own AHK header and footer so I can c
 
 ## Acceptance criteria
 
-- [ ] `HeaderTemplate` (≤8000 chars) and `FooterTemplate` (≤4000 chars) on the `Profile` entity (defined in 024).
-- [ ] New profile defaults: `HeaderTemplate` seeded with the standard AHK v2 boilerplate defined in the design spec; `FooterTemplate=""`.
-- [ ] UI provides a textarea editor for both fields on the Profile detail/edit view (large, monospace).
-- [ ] API validates length limits and returns 400 with ProblemDetails on overflow.
-- [ ] Unit tests cover validation/length limits. Integration tests verify round-trip and that `GET /profiles/{id}` returns both fields.
+- [x] `HeaderTemplate` (≤8000 chars) and `FooterTemplate` (≤4000 chars) on the `Profile` entity (defined in 024).
+- [x] New profile defaults: `HeaderTemplate` seeded with the standard AHK v2 boilerplate defined in the design spec; `FooterTemplate=""`.
+- [x] UI provides a textarea editor for both fields on the Profile detail/edit view (large, monospace).
+- [x] API validates length limits and returns 400 with ProblemDetails on overflow.
+- [x] Unit tests cover validation/length limits. Integration tests verify round-trip and that `GET /profiles/{id}` returns both fields.
+
+---
+
+**Completed:** 2026-05-02 (absorbed into 024 / PR #103)
 
 ## Out of scope
 

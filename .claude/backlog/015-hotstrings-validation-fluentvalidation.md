@@ -22,6 +22,10 @@ As a developer, I want shared validation so that API and CLI behavior is consist
 - [x] Unit tests cover all validator rules and edge cases.
 - [x] Integration tests verify validation errors surface as Problem Details from the API.
 
+---
+
+**Completed:** 2026-04-19 (PR #75; CLI AC deferred to 029)
+
 ## Out of scope
 
 - Localization of messages.

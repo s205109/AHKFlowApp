@@ -16,9 +16,13 @@ As a repository administrator, I want a GitHub Flow-based branching model and pr
 
 ## Acceptance criteria
 
-- [ ] GitHub project or issue tracker is created with backlog items.
-- [ ] Branch protection rules are configured for `main` (required reviews, status checks).
-- [ ] PR template and contributing guidance exists.
+- [x] GitHub project or issue tracker is created with backlog items.
+- [x] Branch protection rules are configured for `main` (required reviews, status checks).
+- [x] PR template and contributing guidance exists.
+
+---
+
+**Completed:** 2026-04-01 (project setup)
 
 ## Out of scope
 

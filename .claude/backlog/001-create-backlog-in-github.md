@@ -16,10 +16,14 @@ As a product owner, I want the backlog represented in GitHub so that work can be
 
 ## Acceptance criteria
 
-- [ ] Epic labels exist in GitHub matching the product vision (Hotstrings, Hotkeys, Profiles, Script Generation & Download, Platform).
-- [ ] Initial backlog items are created as GitHub Issues with titles, descriptions, and acceptance criteria matching this repository backlog.
-- [ ] Items have a clear ordering (rank/stack order) via GitHub Project board.
-- [ ] Labels and issue structure are agreed and applied.
+- [x] Epic labels exist in GitHub matching the product vision (Hotstrings, Hotkeys, Profiles, Script Generation & Download, Platform).
+- [x] Initial backlog items are created as GitHub Issues with titles, descriptions, and acceptance criteria matching this repository backlog.
+- [x] Items have a clear ordering (rank/stack order) via GitHub Project board.
+- [x] Labels and issue structure are agreed and applied.
+
+---
+
+**Completed:** 2026-04-01 (project setup)
 
 ## Out of scope
 

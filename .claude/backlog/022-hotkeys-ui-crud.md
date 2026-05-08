@@ -16,12 +16,16 @@ As a user, I want to manage hotkeys in the Web UI so that I can define keyboard 
 
 ## Acceptance criteria
 
-- [ ] List hotkeys with the column set above; inline-edit per row (MudTable).
-- [ ] Create and edit hotkeys with client-side validation feedback (Description, Key required; modifier-combo unique per user).
-- [ ] Action column is a dropdown bound to the `HotkeyAction` enum (Send, Run; extensible).
-- [ ] Profile column is a multi-select; an "Any" toggle sets `AppliesToAllProfiles=true` and clears specific selections.
-- [ ] Delete hotkeys with a confirmation step.
-- [ ] bUnit tests cover the main UI components, including modifier checkboxes, Action dropdown, Profile multi-select / "Any" toggle, and validation states.
+- [x] List hotkeys with the column set above; inline-edit per row (MudTable).
+- [x] Create and edit hotkeys with client-side validation feedback (Description, Key required; modifier-combo unique per user).
+- [x] Action column is a dropdown bound to the `HotkeyAction` enum (Send, Run; extensible).
+- [x] Profile column is a multi-select; an "Any" toggle sets `AppliesToAllProfiles=true` and clears specific selections.
+- [x] Delete hotkeys with a confirmation step.
+- [ ] bUnit tests cover the main UI components, including modifier checkboxes, Action dropdown, Profile multi-select / "Any" toggle, and validation states. _(Gap: `HotkeysPageTests.cs` does not exist; `HotkeysApiClientTests.cs` covers the API client only.)_
+
+---
+
+**Completed:** 2026-05-03 (PR #107; bUnit page tests not written — see AC6 note)
 
 ## Out of scope
 
