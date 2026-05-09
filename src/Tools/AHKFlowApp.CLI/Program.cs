@@ -32,7 +32,7 @@ Log.Logger = new LoggerConfiguration()
 
 builder.Services.AddSerilog();
 
-builder.Services.AddSingleton<IAuthTokenProvider, NullAuthTokenProvider>();
+builder.Services.AddSingleton<IAuthTokenProvider, EnvVarAuthTokenProvider>();
 builder.Services.AddTransient<BearerTokenHandler>();
 
 // HttpClient registrations for IDownloadsApiClient and IProfilesApiClient land in backlog 028.
