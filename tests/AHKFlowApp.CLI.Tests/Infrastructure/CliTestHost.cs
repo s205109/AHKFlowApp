@@ -21,21 +21,24 @@ internal static class CliTestHost
 
     public static IServiceProvider WithFactory(
         WebApplicationFactory<Program> factory,
-        string? token = "test-token")
+        string? token = "test-token",
+        RequestCounter? counter = null)
     {
         ServiceCollection services = new();
         services.AddSingleton<IAuthTokenProvider>(new StubAuthTokenProvider(token));
         services.AddTransient<BearerTokenHandler>();
 
-        services.AddHttpClient<IHotstringsApiClient, HotstringsApiClient>(c =>
+        IHttpClientBuilder hsBuilder = services.AddHttpClient<IHotstringsApiClient, HotstringsApiClient>(c =>
                 c.BaseAddress = new Uri("http://localhost"))
             .ConfigurePrimaryHttpMessageHandler(() => factory.Server.CreateHandler())
             .AddHttpMessageHandler<BearerTokenHandler>();
+        if (counter is not null) hsBuilder.AddHttpMessageHandler(() => new CountingHandler(counter));
 
-        services.AddHttpClient<IProfilesApiClient, ProfilesApiClient>(c =>
+        IHttpClientBuilder pBuilder = services.AddHttpClient<IProfilesApiClient, ProfilesApiClient>(c =>
                 c.BaseAddress = new Uri("http://localhost"))
             .ConfigurePrimaryHttpMessageHandler(() => factory.Server.CreateHandler())
             .AddHttpMessageHandler<BearerTokenHandler>();
+        if (counter is not null) pBuilder.AddHttpMessageHandler(() => new CountingHandler(counter));
 
         return services.BuildServiceProvider();
     }
