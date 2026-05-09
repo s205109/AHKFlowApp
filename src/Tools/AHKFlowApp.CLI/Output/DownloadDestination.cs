@@ -51,6 +51,8 @@ public static class DownloadDestination
                 await File.WriteAllBytesAsync(file.Path, bytes, ct);
                 break;
             }
+            default:
+                throw new InvalidOperationException($"Unhandled download target type: {target.GetType().Name}");
         }
     }
 }
