@@ -22,6 +22,8 @@
 | Create | `src/Tools/AHKFlowApp.CLI/Services/WorkingDirectory.cs` | DI seam wrapping `Environment.CurrentDirectory`. |
 | Create | `src/Tools/AHKFlowApp.CLI/Services/DownloadsApiClient.cs` | Typed HttpClient impl of `IDownloadsApiClient`. |
 | Create | `src/Tools/AHKFlowApp.CLI/Output/DownloadDestination.cs` | `DownloadTarget` union + `Resolve` + `WriteAsync`. |
+| Create | `src/Tools/AHKFlowApp.CLI/Exceptions/ProfileNotFoundException.cs` | Sentinel for profile-name resolution failures. |
+| Create | `src/Tools/AHKFlowApp.CLI/Commands/Downloads/DownloadCommandRunner.cs` | Shared write/log/error chain reused by both subcommands. |
 | Create | `src/Tools/AHKFlowApp.CLI/Commands/Downloads/DownloadCommand.cs` | Parent verb group. |
 | Create | `src/Tools/AHKFlowApp.CLI/Commands/Downloads/AhkDownloadCommand.cs` | `download ahk` action. |
 | Create | `src/Tools/AHKFlowApp.CLI/Commands/Downloads/ZipDownloadCommand.cs` | `download zip` action. |
@@ -249,6 +251,24 @@ public sealed class DownloadDestinationTests : IDisposable
         t.Should().BeOfType<DownloadTarget.FileTarget>();
         ((DownloadTarget.FileTarget)t).Path.Should().Be(explicitFile);
     }
+
+    [Fact]
+    public void Resolve_RelativeFilePath_NormalizesAgainstBaseDirectory()
+    {
+        DownloadTarget t = DownloadDestination.Resolve("custom.ahk", "foo.ahk", _baseDir);
+
+        t.Should().BeOfType<DownloadTarget.FileTarget>();
+        ((DownloadTarget.FileTarget)t).Path.Should().Be(Path.Combine(_baseDir, "custom.ahk"));
+    }
+
+    [Fact]
+    public void Resolve_RelativeDirTrailingSep_NormalizesAndJoinsServerName()
+    {
+        DownloadTarget t = DownloadDestination.Resolve("subdir/", "foo.ahk", _baseDir);
+
+        t.Should().BeOfType<DownloadTarget.FileTarget>();
+        ((DownloadTarget.FileTarget)t).Path.Should().Be(Path.Combine(_baseDir, "subdir", "foo.ahk"));
+    }
 }
 ```
 
@@ -286,10 +306,15 @@ public static class DownloadDestination
         if (optionValue == "-")
             return DownloadTarget.Stdout;
 
-        if (Path.EndsInDirectorySeparator(optionValue) || Directory.Exists(optionValue))
-            return DownloadTarget.File(Path.Combine(optionValue, serverFileName));
+        bool endsWithSep = Path.EndsInDirectorySeparator(optionValue);
+        string normalized = Path.IsPathRooted(optionValue)
+            ? optionValue
+            : Path.GetFullPath(optionValue, baseDirectory);
 
-        return DownloadTarget.File(optionValue);
+        if (endsWithSep || Directory.Exists(normalized))
+            return DownloadTarget.File(Path.Combine(normalized, serverFileName));
+
+        return DownloadTarget.File(normalized);
     }
 }
 ```
@@ -300,7 +325,7 @@ public static class DownloadDestination
 dotnet test tests/AHKFlowApp.CLI.Tests --filter "FullyQualifiedName~DownloadDestinationTests"
 ```
 
-Expected: 5 passed.
+Expected: 7 passed.
 
 - [ ] **Step 5: Commit.**
 
@@ -405,7 +430,7 @@ public static async Task WriteAsync(
 dotnet test tests/AHKFlowApp.CLI.Tests --filter "FullyQualifiedName~DownloadDestinationTests"
 ```
 
-Expected: 8 passed.
+Expected: 10 passed.
 
 - [ ] **Step 5: Commit.**
 
@@ -498,6 +523,8 @@ public sealed class DownloadsApiClientTests
     [InlineData(null)]
     [InlineData("")]
     [InlineData("../escape.ahk")]
+    [InlineData("..\\escape.ahk")]
+    [InlineData("sub/dir.ahk")]
     [InlineData("/rooted/path.ahk")]
     [InlineData("with\0nul.ahk")]
     public async Task GetProfileScript_UnsafeOrMissingFilename_FallsBackToProfileAhk(string? bad)
@@ -675,11 +702,11 @@ public sealed class DownloadsApiClient(HttpClient http) : IDownloadsApiClient
     private static string SafeFileName(string raw, string fallback)
     {
         if (string.IsNullOrWhiteSpace(raw)) return fallback;
+        if (raw.Contains('/') || raw.Contains('\\')) return fallback;
         if (Path.IsPathRooted(raw)) return fallback;
-        string basename = Path.GetFileName(raw);
-        if (string.IsNullOrWhiteSpace(basename)) return fallback;
-        if (basename.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0) return fallback;
-        return basename;
+        if (raw.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0) return fallback;
+        if (Path.GetFileName(raw) != raw) return fallback;
+        return raw;
     }
 }
 ```
@@ -794,11 +821,15 @@ git commit -m "test(028): extend CliTestHost with downloads client + binary stdo
 
 ---
 
-## Task 6: `AhkDownloadCommand`
+## Task 6: `AhkDownloadCommand` (+ shared `DownloadCommandRunner`)
 
 **Files:**
+- Create: `src/Tools/AHKFlowApp.CLI/Exceptions/ProfileNotFoundException.cs`
+- Create: `src/Tools/AHKFlowApp.CLI/Commands/Downloads/DownloadCommandRunner.cs`
 - Create: `src/Tools/AHKFlowApp.CLI/Commands/Downloads/AhkDownloadCommand.cs`
 - Test: `tests/AHKFlowApp.CLI.Tests/Commands/Downloads/AhkDownloadCommandTests.cs`
+
+The shared runner handles the write/log/error chain for both ahk and zip subcommands; `ProfileNotFoundException` is a tiny sentinel that lets profile resolution flow through the same catch chain as exit 2.
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -1015,14 +1046,97 @@ dotnet test tests/AHKFlowApp.CLI.Tests --filter "FullyQualifiedName~AhkDownloadC
 
 Expected: build error — `AhkDownloadCommand` undefined.
 
-- [ ] **Step 3: Create `AhkDownloadCommand.cs`.**
+- [ ] **Step 3: Create `ProfileNotFoundException`.**
+
+`src/Tools/AHKFlowApp.CLI/Exceptions/ProfileNotFoundException.cs`:
+
+```csharp
+namespace AHKFlowApp.CLI.Exceptions;
+
+internal sealed class ProfileNotFoundException(string profileName, string availableNames)
+    : Exception($"Profile '{profileName}' not found. Available: {availableNames}");
+```
+
+- [ ] **Step 4: Create `DownloadCommandRunner`.**
+
+`src/Tools/AHKFlowApp.CLI/Commands/Downloads/DownloadCommandRunner.cs`:
+
+```csharp
+using System.CommandLine;
+using AHKFlowApp.CLI.Exceptions;
+using AHKFlowApp.CLI.Output;
+using AHKFlowApp.CLI.Services;
+using Microsoft.Extensions.DependencyInjection;
+
+namespace AHKFlowApp.CLI.Commands.Downloads;
+
+internal static class DownloadCommandRunner
+{
+    public static async Task<int> RunAsync(
+        ParseResult parse,
+        IServiceProvider services,
+        string? outputOption,
+        Func<CancellationToken, Task<DownloadResult>> fetch,
+        CancellationToken ct)
+    {
+        TextWriter stdout = parse.InvocationConfiguration.Output;
+        TextWriter stderr = parse.InvocationConfiguration.Error;
+        BinaryStdout binaryStdout = services.GetRequiredService<BinaryStdout>();
+        WorkingDirectory workingDir = services.GetRequiredService<WorkingDirectory>();
+
+        try
+        {
+            DownloadResult result = await fetch(ct);
+            DownloadTarget target = DownloadDestination.Resolve(outputOption, result.FileName, workingDir.Get());
+            await DownloadDestination.WriteAsync(target, result.Bytes, binaryStdout, ct);
+
+            if (target is DownloadTarget.FileTarget file)
+                await stdout.WriteLineAsync($"Wrote {file.Path} ({result.Bytes.Length} bytes)");
+
+            return 0;
+        }
+        catch (ProfileNotFoundException ex)
+        {
+            await stderr.WriteLineAsync(ex.Message);
+            return 2;
+        }
+        catch (NotAuthenticatedException ex)
+        {
+            await stderr.WriteLineAsync(ex.Message);
+            return 3;
+        }
+        catch (ApiException ex) when (ex.StatusCode == 401)
+        {
+            await stderr.WriteLineAsync(
+                "Not signed in. Set AHKFLOW_TOKEN environment variable to a bearer token.");
+            return 3;
+        }
+        catch (ApiException ex) when (ex.StatusCode is 400 or 404 or 409)
+        {
+            await stderr.WriteLineAsync(ex.Body ?? ex.Message);
+            return 2;
+        }
+        catch (ApiException ex)
+        {
+            await stderr.WriteLineAsync(ex.Body ?? $"Server error ({ex.StatusCode}).");
+            return 1;
+        }
+        catch (HttpRequestException ex)
+        {
+            await stderr.WriteLineAsync(ex.Message);
+            return 1;
+        }
+    }
+}
+```
+
+- [ ] **Step 5: Create `AhkDownloadCommand.cs`.**
 
 `src/Tools/AHKFlowApp.CLI/Commands/Downloads/AhkDownloadCommand.cs`:
 
 ```csharp
 using System.CommandLine;
 using AHKFlowApp.CLI.Exceptions;
-using AHKFlowApp.CLI.Output;
 using AHKFlowApp.CLI.Services;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -1046,64 +1160,27 @@ public static class AhkDownloadCommand
 
         cmd.SetAction(async (ParseResult parse, CancellationToken ct) =>
         {
-            TextWriter stdout = parse.InvocationConfiguration.Output;
-            TextWriter stderr = parse.InvocationConfiguration.Error;
             IDownloadsApiClient downloads = services.GetRequiredService<IDownloadsApiClient>();
             IProfilesApiClient profilesClient = services.GetRequiredService<IProfilesApiClient>();
-            BinaryStdout binaryStdout = services.GetRequiredService<BinaryStdout>();
-            WorkingDirectory workingDir = services.GetRequiredService<WorkingDirectory>();
 
             string profileName = parse.GetValue(profile)!;
             string? outputOption = parse.GetValue(output);
 
-            try
-            {
-                IReadOnlyList<ProfileSummary> all = await profilesClient.ListAsync(ct);
-                ProfileSummary? match = all.FirstOrDefault(p =>
-                    string.Equals(p.Name, profileName, StringComparison.OrdinalIgnoreCase));
-                if (match is null)
+            return await DownloadCommandRunner.RunAsync(
+                parse, services, outputOption,
+                async token =>
                 {
-                    string available = string.Join(", ", all.Select(a => a.Name));
-                    await stderr.WriteLineAsync(
-                        $"Profile '{profileName}' not found. Available: {available}");
-                    return 2;
-                }
-
-                DownloadResult result = await downloads.GetProfileScriptAsync(match.Id, ct);
-                DownloadTarget target = DownloadDestination.Resolve(outputOption, result.FileName, workingDir.Get());
-                await DownloadDestination.WriteAsync(target, result.Bytes, binaryStdout, ct);
-
-                if (target is DownloadTarget.FileTarget file)
-                    await stdout.WriteLineAsync($"Wrote {file.Path} ({result.Bytes.Length} bytes)");
-
-                return 0;
-            }
-            catch (NotAuthenticatedException ex)
-            {
-                await stderr.WriteLineAsync(ex.Message);
-                return 3;
-            }
-            catch (ApiException ex) when (ex.StatusCode == 401)
-            {
-                await stderr.WriteLineAsync(
-                    "Not signed in. Set AHKFLOW_TOKEN environment variable to a bearer token.");
-                return 3;
-            }
-            catch (ApiException ex) when (ex.StatusCode is 400 or 404 or 409)
-            {
-                await stderr.WriteLineAsync(ex.Body ?? ex.Message);
-                return 2;
-            }
-            catch (ApiException ex)
-            {
-                await stderr.WriteLineAsync(ex.Body ?? $"Server error ({ex.StatusCode}).");
-                return 1;
-            }
-            catch (HttpRequestException ex)
-            {
-                await stderr.WriteLineAsync(ex.Message);
-                return 1;
-            }
+                    IReadOnlyList<ProfileSummary> all = await profilesClient.ListAsync(token);
+                    ProfileSummary? match = all.FirstOrDefault(p =>
+                        string.Equals(p.Name, profileName, StringComparison.OrdinalIgnoreCase));
+                    if (match is null)
+                    {
+                        string available = string.Join(", ", all.Select(a => a.Name));
+                        throw new ProfileNotFoundException(profileName, available);
+                    }
+                    return await downloads.GetProfileScriptAsync(match.Id, token);
+                },
+                ct);
         });
 
         return cmd;
@@ -1111,7 +1188,7 @@ public static class AhkDownloadCommand
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass.**
+- [ ] **Step 6: Run the tests to verify they pass.**
 
 ```
 dotnet test tests/AHKFlowApp.CLI.Tests --filter "FullyQualifiedName~AhkDownloadCommandTests"
@@ -1119,11 +1196,11 @@ dotnet test tests/AHKFlowApp.CLI.Tests --filter "FullyQualifiedName~AhkDownloadC
 
 Expected: all 8 tests pass.
 
-- [ ] **Step 5: Commit.**
+- [ ] **Step 7: Commit.**
 
 ```
-git add src/Tools/AHKFlowApp.CLI/Commands/Downloads/AhkDownloadCommand.cs tests/AHKFlowApp.CLI.Tests/Commands/Downloads/AhkDownloadCommandTests.cs
-git commit -m "feat(028): add 'ahkflow download ahk' subcommand"
+git add src/Tools/AHKFlowApp.CLI/Exceptions/ProfileNotFoundException.cs src/Tools/AHKFlowApp.CLI/Commands/Downloads/DownloadCommandRunner.cs src/Tools/AHKFlowApp.CLI/Commands/Downloads/AhkDownloadCommand.cs tests/AHKFlowApp.CLI.Tests/Commands/Downloads/AhkDownloadCommandTests.cs
+git commit -m "feat(028): add 'ahkflow download ahk' subcommand and shared runner"
 ```
 
 ---
@@ -1220,7 +1297,38 @@ public sealed class ZipDownloadCommandTests : IDisposable
     }
 
     [Fact]
-    public async Task TokenUnset_Exit3_NotSignedIn()
+    public async Task OutputDir_WritesFileInside()
+    {
+        IDownloadsApiClient downloads = Substitute.For<IDownloadsApiClient>();
+        downloads.GetAllProfileScriptsZipAsync(Arg.Any<CancellationToken>())
+            .Returns(new DownloadResult([1, 2, 3], "ahkflow_scripts.zip", "application/zip"));
+
+        string targetDir = Path.Combine(_baseDir, "outdir");
+        Directory.CreateDirectory(targetDir);
+
+        (int exit, string _, string _) = await RunAsync(["-o", targetDir], downloads);
+
+        exit.Should().Be(0);
+        File.Exists(Path.Combine(targetDir, "ahkflow_scripts.zip")).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task OutputFile_WritesExactPath()
+    {
+        IDownloadsApiClient downloads = Substitute.For<IDownloadsApiClient>();
+        downloads.GetAllProfileScriptsZipAsync(Arg.Any<CancellationToken>())
+            .Returns(new DownloadResult([1, 2, 3], "ahkflow_scripts.zip", "application/zip"));
+
+        string explicitPath = Path.Combine(_baseDir, "renamed.zip");
+
+        (int exit, string _, string _) = await RunAsync(["-o", explicitPath], downloads);
+
+        exit.Should().Be(0);
+        File.Exists(explicitPath).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task NotAuthenticated_Exit3_NotSignedIn()
     {
         IDownloadsApiClient downloads = Substitute.For<IDownloadsApiClient>();
         downloads.GetAllProfileScriptsZipAsync(Arg.Any<CancellationToken>())
@@ -1231,6 +1339,32 @@ public sealed class ZipDownloadCommandTests : IDisposable
 
         exit.Should().Be(3);
         stderr.Should().Contain("Not signed in");
+    }
+
+    [Fact]
+    public async Task ApiException401_Exit3()
+    {
+        IDownloadsApiClient downloads = Substitute.For<IDownloadsApiClient>();
+        downloads.GetAllProfileScriptsZipAsync(Arg.Any<CancellationToken>())
+            .Throws(new ApiException(401, "unauth"));
+
+        (int exit, string _, string stderr) = await RunAsync([], downloads);
+
+        exit.Should().Be(3);
+        stderr.Should().Contain("Not signed in");
+    }
+
+    [Fact]
+    public async Task ApiException404_Exit2()
+    {
+        IDownloadsApiClient downloads = Substitute.For<IDownloadsApiClient>();
+        downloads.GetAllProfileScriptsZipAsync(Arg.Any<CancellationToken>())
+            .Throws(new ApiException(404, "no profiles"));
+
+        (int exit, string _, string stderr) = await RunAsync([], downloads);
+
+        exit.Should().Be(2);
+        stderr.Should().Contain("no profiles");
     }
 
     [Fact]
@@ -1262,8 +1396,6 @@ Expected: build error — `ZipDownloadCommand` undefined.
 
 ```csharp
 using System.CommandLine;
-using AHKFlowApp.CLI.Exceptions;
-using AHKFlowApp.CLI.Output;
 using AHKFlowApp.CLI.Services;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -1282,51 +1414,13 @@ public static class ZipDownloadCommand
 
         cmd.SetAction(async (ParseResult parse, CancellationToken ct) =>
         {
-            TextWriter stdout = parse.InvocationConfiguration.Output;
-            TextWriter stderr = parse.InvocationConfiguration.Error;
             IDownloadsApiClient downloads = services.GetRequiredService<IDownloadsApiClient>();
-            BinaryStdout binaryStdout = services.GetRequiredService<BinaryStdout>();
-            WorkingDirectory workingDir = services.GetRequiredService<WorkingDirectory>();
-
             string? outputOption = parse.GetValue(output);
 
-            try
-            {
-                DownloadResult result = await downloads.GetAllProfileScriptsZipAsync(ct);
-                DownloadTarget target = DownloadDestination.Resolve(outputOption, result.FileName, workingDir.Get());
-                await DownloadDestination.WriteAsync(target, result.Bytes, binaryStdout, ct);
-
-                if (target is DownloadTarget.FileTarget file)
-                    await stdout.WriteLineAsync($"Wrote {file.Path} ({result.Bytes.Length} bytes)");
-
-                return 0;
-            }
-            catch (NotAuthenticatedException ex)
-            {
-                await stderr.WriteLineAsync(ex.Message);
-                return 3;
-            }
-            catch (ApiException ex) when (ex.StatusCode == 401)
-            {
-                await stderr.WriteLineAsync(
-                    "Not signed in. Set AHKFLOW_TOKEN environment variable to a bearer token.");
-                return 3;
-            }
-            catch (ApiException ex) when (ex.StatusCode is 400 or 404 or 409)
-            {
-                await stderr.WriteLineAsync(ex.Body ?? ex.Message);
-                return 2;
-            }
-            catch (ApiException ex)
-            {
-                await stderr.WriteLineAsync(ex.Body ?? $"Server error ({ex.StatusCode}).");
-                return 1;
-            }
-            catch (HttpRequestException ex)
-            {
-                await stderr.WriteLineAsync(ex.Message);
-                return 1;
-            }
+            return await DownloadCommandRunner.RunAsync(
+                parse, services, outputOption,
+                token => downloads.GetAllProfileScriptsZipAsync(token),
+                ct);
         });
 
         return cmd;
@@ -1340,7 +1434,7 @@ public static class ZipDownloadCommand
 dotnet test tests/AHKFlowApp.CLI.Tests --filter "FullyQualifiedName~ZipDownloadCommandTests"
 ```
 
-Expected: 4 tests pass.
+Expected: 7 tests pass.
 
 - [ ] **Step 5: Commit.**
 
@@ -1533,10 +1627,27 @@ public sealed class DownloadCliIntegrationTests(SqlContainerFixture sql) : IAsyn
         return p;
     }
 
+    private async Task<Hotstring> SeedHotstringAsync(string trigger, string replacement, Guid? profileId = null)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        HotstringBuilder b = new HotstringBuilder()
+            .WithOwner(_testUserOid)
+            .WithTrigger(trigger)
+            .WithReplacement(replacement);
+        if (profileId is { } pid) b = b.InProfile(pid);
+        Hotstring h = b.Build();
+        db.Hotstrings.Add(h);
+        await db.SaveChangesAsync();
+        return h;
+    }
+
     [Fact]
-    public async Task Ahk_Default_WritesFileInBaseDir()
+    public async Task Ahk_Default_WritesFileWithSeededHotstringContent()
     {
         Profile p = await SeedProfileAsync("work");
+        await SeedHotstringAsync("scoped1", "scoped expansion", p.Id);
+        await SeedHotstringAsync("global1", "global expansion");
 
         (int exit, string stdout, string _, byte[] _) = await RunAsync(
             ["download", "ahk", "--profile", "work"]);
@@ -1544,7 +1655,10 @@ public sealed class DownloadCliIntegrationTests(SqlContainerFixture sql) : IAsyn
         exit.Should().Be(0);
         string expected = Path.Combine(_baseDir, $"ahkflow_{p.Name}.ahk");
         File.Exists(expected).Should().BeTrue();
-        (await File.ReadAllTextAsync(expected, Encoding.UTF8)).Should().NotBeEmpty();
+
+        string content = await File.ReadAllTextAsync(expected, Encoding.UTF8);
+        content.Should().Contain("scoped1").And.Contain("scoped expansion");
+        content.Should().Contain("global1").And.Contain("global expansion");
         stdout.Should().Contain("Wrote");
     }
 
@@ -1615,10 +1729,12 @@ public sealed class DownloadCliIntegrationTests(SqlContainerFixture sql) : IAsyn
     }
 
     [Fact]
-    public async Task Zip_Default_WritesValidZip()
+    public async Task Zip_Default_WritesValidZipWithSeededContent()
     {
-        await SeedProfileAsync("a");
-        await SeedProfileAsync("b");
+        Profile a = await SeedProfileAsync("a");
+        Profile b = await SeedProfileAsync("b");
+        await SeedHotstringAsync("trigA", "expansionA", a.Id);
+        await SeedHotstringAsync("trigB", "expansionB", b.Id);
 
         (int exit, string _, string _, byte[] _) = await RunAsync(["download", "zip"]);
 
@@ -1629,12 +1745,17 @@ public sealed class DownloadCliIntegrationTests(SqlContainerFixture sql) : IAsyn
         await using FileStream fs = File.OpenRead(zipPath);
         using ZipArchive zip = new(fs, ZipArchiveMode.Read);
         zip.Entries.Should().HaveCountGreaterThanOrEqualTo(2);
+
+        string allContent = await ReadAllEntriesAsync(zip);
+        allContent.Should().Contain("trigA").And.Contain("expansionA");
+        allContent.Should().Contain("trigB").And.Contain("expansionB");
     }
 
     [Fact]
     public async Task Zip_OutputDash_WritesValidZipBytesToInjectedStream()
     {
-        await SeedProfileAsync("a");
+        Profile a = await SeedProfileAsync("a");
+        await SeedHotstringAsync("dashTrig", "dashReplacement", a.Id);
 
         (int exit, string _, string _, byte[] stdoutBytes) = await RunAsync(
             ["download", "zip", "-o", "-"]);
@@ -1643,6 +1764,21 @@ public sealed class DownloadCliIntegrationTests(SqlContainerFixture sql) : IAsyn
         using MemoryStream ms = new(stdoutBytes);
         using ZipArchive zip = new(ms, ZipArchiveMode.Read);
         zip.Entries.Should().NotBeEmpty();
+
+        string allContent = await ReadAllEntriesAsync(zip);
+        allContent.Should().Contain("dashTrig").And.Contain("dashReplacement");
+    }
+
+    private static async Task<string> ReadAllEntriesAsync(ZipArchive zip)
+    {
+        StringBuilder sb = new();
+        foreach (ZipArchiveEntry entry in zip.Entries)
+        {
+            await using Stream s = entry.Open();
+            using StreamReader reader = new(s, Encoding.UTF8);
+            sb.AppendLine(await reader.ReadToEndAsync());
+        }
+        return sb.ToString();
     }
 
     [Fact]
@@ -1756,30 +1892,17 @@ dotnet format --verify-no-changes
 
 Expected: no diff. If diffs appear, run `dotnet format`, review, and amend a follow-up commit.
 
-- [ ] **Step 4: Mark all ACs in `028-cli-download-command.md` and add the completion line at the bottom.**
-
-Tick every `- [ ]` in `## Acceptance criteria` to `- [x]`. Add a horizontal rule separator and:
-```
-
----
-
-**Completed:** 2026-05-09 (PR #<TBD>)
-```
-
-(The `<TBD>` placeholder is fine here — replace with the PR number when the PR is opened.)
-
-- [ ] **Step 5: Commit the AC checkmarks.**
-
-```
-git add .claude/backlog/028-cli-download-command.md
-git commit -m "docs(028): mark acceptance criteria complete"
-```
-
-- [ ] **Step 6: Push the branch and open the PR.**
+- [ ] **Step 4: Push the branch.**
 
 ```
 git push -u origin feature/028-cli-download-command
-gh pr create --title "feat(028): CLI download command (ahk + zip)" --body "$(cat <<'EOF'
+```
+
+- [ ] **Step 5: Write the PR body to a temp file (PowerShell-safe, avoids heredoc).**
+
+Use the Write tool to create `pr-body-028.md` (in the repo root or temp dir) with:
+
+```markdown
 ## Summary
 - `ahkflow download ahk --profile <name>` and `ahkflow download zip` write generated scripts to a path or stdout.
 - Defaults to server-named file in cwd; `-o <path>` overrides; `-o -` writes raw bytes to stdout.
@@ -1790,13 +1913,46 @@ gh pr create --title "feat(028): CLI download command (ahk + zip)" --body "$(cat
 - [x] `dotnet test --configuration Release` (all green)
 - [x] `dotnet format --verify-no-changes`
 - [x] `dotnet run --project src/Tools/AHKFlowApp.CLI -- download --help` shows both subcommands
-
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
-EOF
-)"
 ```
 
-(Skip if the user wants to defer the PR.)
+- [ ] **Step 6: Open the PR using `--body-file`.**
+
+```
+gh pr create --title "feat(028): CLI download command (ahk + zip)" --body-file pr-body-028.md
+```
+
+Capture the PR URL/number from the command's output (e.g. `https://github.com/.../pull/123` → number 123).
+
+- [ ] **Step 7: Delete the temp body file.**
+
+```
+git clean -f pr-body-028.md
+```
+
+(Or just `Remove-Item pr-body-028.md` — file is gitignored by virtue of not being added.)
+
+- [ ] **Step 8: Mark ACs and add the completion line with the real PR number.**
+
+In `.claude/backlog/028-cli-download-command.md`: tick every `- [ ]` in `## Acceptance criteria` to `- [x]`, then append (replace `<N>` with the real PR number captured in Step 6):
+
+```
+
+---
+
+**Completed:** 2026-05-09 (PR #<N>)
+```
+
+- [ ] **Step 9: Commit and push the AC checkmarks.**
+
+```
+git add .claude/backlog/028-cli-download-command.md
+git commit -m "docs(028): mark acceptance criteria complete"
+git push
+```
+
+The follow-up commit attaches itself to the open PR automatically.
+
+(Skip Steps 4–9 if the user wants to defer the PR.)
 
 ---
 
@@ -1811,7 +1967,7 @@ The plan covers every spec section:
 - **Decision 6 (BinaryStdout seam)** → Task 1 + Task 3 + tests asserting raw bytes captured.
 - **Decision 7 (silent overwrite)** → Task 3 explicit overwrite test + Task 9 `Overwrite_Silent` integration test.
 - **Decision 8 (profile name resolution)** → Task 6 uses `IProfilesApiClient.ListAsync`.
-- **Decision 9 (exit codes)** → Task 6 / 7 catch chain mirrors 018; tested with 401/404/500 cases.
+- **Decision 9 (exit codes)** → Task 6 introduces shared `DownloadCommandRunner` (mirrors 018's chain plus `ProfileNotFoundException`); Task 7 tests cover 401/404/500 against the runner.
 - **Output handling table** → Task 2 (5 Resolve tests) + Task 9 trailing-sep integration test.
 - **API client + DI registration** → Tasks 4 + 8.
 - **Errors & exit codes** → Task 6 / 7 unit tests.
