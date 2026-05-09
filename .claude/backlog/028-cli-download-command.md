@@ -16,7 +16,7 @@ As a power user, I want to download scripts via the CLI so that I can automate u
 
 ## Acceptance criteria
 
-- [ ] `ahkflowapp download ahk --profile <name>` downloads the script.
+- [ ] `ahkflow download ahk --profile <name>` downloads the script.
 - [ ] CLI supports choosing an output path or printing to stdout.
 - [ ] Authentication is handled consistently (see 012).
 - [ ] Unit tests for CLI download command argument handling and output behavior.
@@ -29,3 +29,4 @@ As a power user, I want to download scripts via the CLI so that I can automate u
 ## Notes / dependencies
 
 - Depends on 027.
+- `IProfilesApiClient` registration + impl moved to item 018. Remaining scope: register `IDownloadsApiClient`, implement `DownloadCommand` with `--profile` resolution.
