@@ -17,7 +17,6 @@ At the end of each plan, give me a list of unresolved questions to answer, if an
 ## Out of Scope
 
 Do not implement these — they are planned for future phases or intentionally excluded:
-- CLI application (`src/Tools/AHKFlowApp.CLI`) — planned, directory not yet created
 - Hotstring/Hotkey/Profile CRUD features — see `.claude/backlog/` items 013-026
 - Script generation and download
 - Runtime execution of AutoHotkey scripts — intentionally excluded
