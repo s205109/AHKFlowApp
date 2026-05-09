@@ -32,10 +32,23 @@ Log.Logger = new LoggerConfiguration()
 
 builder.Services.AddSerilog();
 
-builder.Services.AddSingleton<IAuthTokenProvider, NullAuthTokenProvider>();
+builder.Services.AddSingleton<IAuthTokenProvider, EnvVarAuthTokenProvider>();
 builder.Services.AddTransient<BearerTokenHandler>();
 
-// HttpClient registrations for IDownloadsApiClient and IProfilesApiClient land in backlog 028.
+string apiBaseUrl = builder.Configuration["ApiBaseUrl"]
+    ?? throw new InvalidOperationException("Configuration value 'ApiBaseUrl' is required.");
+
+builder.Services.AddHttpClient<IHotstringsApiClient, HotstringsApiClient>(c =>
+        c.BaseAddress = new Uri(apiBaseUrl))
+    .AddHttpMessageHandler<BearerTokenHandler>()
+    .AddStandardResilienceHandler();
+
+builder.Services.AddHttpClient<IProfilesApiClient, ProfilesApiClient>(c =>
+        c.BaseAddress = new Uri(apiBaseUrl))
+    .AddHttpMessageHandler<BearerTokenHandler>()
+    .AddStandardResilienceHandler();
+
+// IDownloadsApiClient registration lands with backlog 028.
 
 using IHost host = builder.Build();
 

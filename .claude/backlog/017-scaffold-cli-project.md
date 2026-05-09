@@ -35,3 +35,5 @@ As a developer, I want a CLI project scaffold so that CLI feature items (hotstri
 
 - Depends on 003.
 - Required before any CLI command items (018, 028).
+- `IAuthTokenProvider` registration is no longer stubbed — `EnvVarAuthTokenProvider` (item 018) reads `AHKFLOW_TOKEN`. Item 029 will swap in the MSAL device-code provider.
+- `IProfilesApiClient` registration + impl shipped with item 018; item 028 only needs to register `IDownloadsApiClient`.
