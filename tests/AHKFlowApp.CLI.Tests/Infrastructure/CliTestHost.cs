@@ -10,19 +10,27 @@ internal static class CliTestHost
     public static IServiceProvider WithFakes(
         IHotstringsApiClient hotstrings,
         IProfilesApiClient profiles,
-        IAuthTokenProvider? auth = null)
+        IDownloadsApiClient? downloads = null,
+        IAuthTokenProvider? auth = null,
+        BinaryStdout? binaryStdout = null,
+        WorkingDirectory? workingDirectory = null)
     {
         ServiceCollection services = new();
         services.AddSingleton(hotstrings);
         services.AddSingleton(profiles);
+        if (downloads is not null) services.AddSingleton(downloads);
         services.AddSingleton(auth ?? new StubAuthTokenProvider("test-token"));
+        services.AddSingleton(binaryStdout ?? new BinaryStdout(() => new MemoryStream()));
+        services.AddSingleton(workingDirectory ?? new WorkingDirectory(() => Path.GetTempPath()));
         return services.BuildServiceProvider();
     }
 
     public static IServiceProvider WithFactory(
         WebApplicationFactory<Program> factory,
         string? token = "test-token",
-        RequestCounter? counter = null)
+        RequestCounter? counter = null,
+        Stream? stdoutSink = null,
+        string? baseDirectory = null)
     {
         ServiceCollection services = new();
         services.AddSingleton<IAuthTokenProvider>(new StubAuthTokenProvider(token));
@@ -39,6 +47,15 @@ internal static class CliTestHost
             .ConfigurePrimaryHttpMessageHandler(() => factory.Server.CreateHandler())
             .AddHttpMessageHandler<BearerTokenHandler>();
         if (counter is not null) pBuilder.AddHttpMessageHandler(() => new CountingHandler(counter));
+
+        IHttpClientBuilder dBuilder = services.AddHttpClient<IDownloadsApiClient, DownloadsApiClient>(c =>
+                c.BaseAddress = new Uri("http://localhost"))
+            .ConfigurePrimaryHttpMessageHandler(() => factory.Server.CreateHandler())
+            .AddHttpMessageHandler<BearerTokenHandler>();
+        if (counter is not null) dBuilder.AddHttpMessageHandler(() => new CountingHandler(counter));
+
+        services.AddSingleton(new BinaryStdout(stdoutSink is null ? () => new MemoryStream() : () => stdoutSink));
+        services.AddSingleton(new WorkingDirectory(() => baseDirectory ?? Path.GetTempPath()));
 
         return services.BuildServiceProvider();
     }
