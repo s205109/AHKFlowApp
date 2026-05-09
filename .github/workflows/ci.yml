@@ -27,6 +27,8 @@ jobs:
       - run: dotnet build --configuration Release --no-restore
       - name: CLI --help smoke test
         run: dotnet run --project src/Tools/AHKFlowApp.CLI --no-build --configuration Release -- --help
+      - name: CLI hotstring --help smoke test
+        run: dotnet run --project src/Tools/AHKFlowApp.CLI --no-build --configuration Release -- hotstring --help
       - name: Test with coverage
         run: >
           dotnet test --configuration Release --no-build --verbosity normal
