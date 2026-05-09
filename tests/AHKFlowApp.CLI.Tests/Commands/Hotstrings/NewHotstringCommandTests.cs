@@ -176,19 +176,30 @@ public sealed class NewHotstringCommandTests
         stderr.Should().NotBeEmpty();
     }
 
-    [Theory]
-    [InlineData(401)]
-    [InlineData(403)]
-    public async Task ApiException401Or403_Exit3_NotSignedIn(int status)
+    [Fact]
+    public async Task ApiException401_Exit3_NotSignedIn()
     {
         (IHotstringsApiClient? hs, IProfilesApiClient? profiles) = Fakes();
         hs.CreateAsync(Arg.Any<CreateHotstringDto>(), Arg.Any<CancellationToken>())
-            .Throws(new ApiException(status, null));
+            .Throws(new ApiException(401, null));
 
         (int exit, string _, string? stderr) = await Run(["hotstring", "new", "-t", "x", "-r", "y"], hs, profiles);
 
         exit.Should().Be(3);
         stderr.Should().Contain("Not signed in");
+    }
+
+    [Fact]
+    public async Task ApiException403_Exit1_ServerDetail()
+    {
+        (IHotstringsApiClient? hs, IProfilesApiClient? profiles) = Fakes();
+        hs.CreateAsync(Arg.Any<CreateHotstringDto>(), Arg.Any<CancellationToken>())
+            .Throws(new ApiException(403, "Forbidden: missing scope"));
+
+        (int exit, string _, string? stderr) = await Run(["hotstring", "new", "-t", "x", "-r", "y"], hs, profiles);
+
+        exit.Should().Be(1);
+        stderr.Should().Contain("Forbidden: missing scope");
     }
 
     [Fact]

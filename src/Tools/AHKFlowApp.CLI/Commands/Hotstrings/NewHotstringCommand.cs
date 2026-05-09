@@ -81,7 +81,7 @@ public static class NewHotstringCommand
                 await stderr.WriteLineAsync(ex.Body ?? ex.Message);
                 return 2;
             }
-            catch (ApiException ex) when (ex.StatusCode is 401 or 403)
+            catch (ApiException ex) when (ex.StatusCode == 401)
             {
                 await stderr.WriteLineAsync(
                     "Not signed in. Set AHKFLOW_TOKEN environment variable to a bearer token.");

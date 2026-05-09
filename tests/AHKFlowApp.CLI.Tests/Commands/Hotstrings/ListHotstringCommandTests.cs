@@ -129,20 +129,32 @@ public sealed class ListHotstringCommandTests
         exit.Should().Be(2);
     }
 
-    [Theory]
-    [InlineData(401)]
-    [InlineData(403)]
-    public async Task ApiException401Or403_Exit3(int status)
+    [Fact]
+    public async Task ApiException401_Exit3()
     {
         (IHotstringsApiClient? hs, IProfilesApiClient? profiles) = Fakes();
         hs.ListAsync(Arg.Any<Guid?>(), Arg.Any<string?>(), Arg.Any<int>(), Arg.Any<int>(),
                 Arg.Any<CancellationToken>())
-            .Throws(new ApiException(status, null));
+            .Throws(new ApiException(401, null));
 
         (int exit, string _, string? stderr) = await Run(["hotstring", "list"], hs, profiles);
 
         exit.Should().Be(3);
         stderr.Should().Contain("Not signed in");
+    }
+
+    [Fact]
+    public async Task ApiException403_Exit1_ServerDetail()
+    {
+        (IHotstringsApiClient? hs, IProfilesApiClient? profiles) = Fakes();
+        hs.ListAsync(Arg.Any<Guid?>(), Arg.Any<string?>(), Arg.Any<int>(), Arg.Any<int>(),
+                Arg.Any<CancellationToken>())
+            .Throws(new ApiException(403, "Forbidden: missing scope"));
+
+        (int exit, string _, string? stderr) = await Run(["hotstring", "list"], hs, profiles);
+
+        exit.Should().Be(1);
+        stderr.Should().Contain("Forbidden: missing scope");
     }
 
     [Fact]
@@ -203,9 +215,23 @@ public sealed class ListHotstringCommandTests
     }
 
     [Fact]
-    public async Task NoJsonNoProfileFilter_FetchesProfilesForTable()
+    public async Task NoJsonNoProfileFilter_AllItemsApplyToAll_DoesNotFetchProfiles()
     {
         (IHotstringsApiClient? hs, IProfilesApiClient? profiles) = Fakes();
+
+        await Run(["hotstring", "list"], hs, profiles);
+
+        await profiles.DidNotReceive().ListAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task NoJsonNoProfileFilter_ScopedItemsPresent_FetchesProfilesForNameMap()
+    {
+        var pid = Guid.NewGuid();
+        HotstringDto scoped = new(Guid.NewGuid(), [pid], false, "x", "y", true, true,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        (IHotstringsApiClient? hs, IProfilesApiClient? profiles) = Fakes(
+            new PagedList<HotstringDto>([scoped], 1, 50, 1));
 
         await Run(["hotstring", "list"], hs, profiles);
 
