@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-09
 **Epic:** Script generation & download
-**Backlog item:** [028-cli-download-command.md](../../.claude/backlog/028-cli-download-command.md)
+**Backlog item:** [028-cli-download-command.md](../../../.claude/backlog/028-cli-download-command.md)
 
 ## Overview
 
@@ -16,7 +16,7 @@ The 028 backlog item as written covers only single-profile download. Zip is incl
 
 ```
 src/Tools/AHKFlowApp.CLI/
-├── Program.cs                            (modify: register IDownloadsApiClient)
+├── Program.cs                            (modify: register IDownloadsApiClient, BinaryStdout, WorkingDirectory)
 ├── Commands/
 │   ├── RootCli.cs                        (modify: add DownloadCommand subcommand)
 │   └── Downloads/
@@ -25,7 +25,9 @@ src/Tools/AHKFlowApp.CLI/
 │       └── ZipDownloadCommand.cs         (`ahkflow download zip`)
 ├── Services/
 │   ├── IDownloadsApiClient.cs            (existing, unchanged)
-│   └── DownloadsApiClient.cs             (new — typed HttpClient impl)
+│   ├── DownloadsApiClient.cs             (new — typed HttpClient impl)
+│   ├── BinaryStdout.cs                   (new — injectable stdout Stream seam)
+│   └── WorkingDirectory.cs               (new — injectable cwd seam)
 └── Output/
     └── DownloadDestination.cs            (new — resolves -o semantics + writes bytes)
 
@@ -38,7 +40,7 @@ tests/AHKFlowApp.CLI.Tests/
 ├── Services/
 │   └── DownloadsApiClientTests.cs        (Content-Disposition parsing, fallbacks)
 ├── Infrastructure/
-│   └── CliTestHost.cs                    (modify: also register IDownloadsApiClient in WithFactory + WithFakes)
+│   └── CliTestHost.cs                    (modify: register IDownloadsApiClient + BinaryStdout + WorkingDirectory in WithFactory and WithFakes)
 └── Integration/
     └── DownloadCliIntegrationTests.cs    (end-to-end via CustomWebApplicationFactory)
 ```
@@ -51,11 +53,18 @@ tests/AHKFlowApp.CLI.Tests/
 
 3. **`IDownloadsApiClient` interface stays as-is.** Already declared with both methods returning `DownloadResult(byte[] Bytes, string FileName, string ContentType)`. We only add the impl.
 
-4. **Server-provided filename.** The 027 design locks the server filename format: `ahkflow_<safe_stem>.ahk` (per profile) and `ahkflow_scripts.zip` (zip). The CLI reads `Content-Disposition: attachment; filename=…` and uses that as-is — no client-side sanitisation. Falls back to `profile.ahk` / `ahkflow_scripts.zip` only if the header is missing or malformed.
+4. **Server-provided filename is sanitised at the CLI boundary.** Even though the 027 server emits safe names (`ahkflow_<safe_stem>.ahk`, `ahkflow_scripts.zip`), `Content-Disposition` is still external input. The API client passes the raw header value through `SafeFileName(name, fallback)` before returning `DownloadResult.FileName`:
 
-5. **Output handling lives in one helper.** `DownloadDestination.Resolve(string? optionValue, string serverName) → DownloadTarget` returns either `DownloadTarget.Stdout` or `DownloadTarget.File(string path)`. `DownloadDestination.WriteAsync(target, bytes, ct)` does the I/O. The two commands share this verbatim.
+   - Strip directory components: `Path.GetFileName(name)`.
+   - Reject empty / whitespace → fallback.
+   - Reject any char in `Path.GetInvalidFileNameChars()` → fallback.
+   - Reject rooted paths (`Path.IsPathRooted`) → fallback.
 
-6. **Stdout writes raw bytes.** `-o -` opens `Console.OpenStandardOutput()` directly and writes `bytes` to it — bypassing the parsed `TextWriter` so binary zips aren't UTF-8-mangled. Nothing else is printed when target is stdout (no "Wrote …" line). Pipes work cleanly: `ahkflow download zip -o - > out.zip`.
+   Fallbacks are constants on the API client (`"profile.ahk"` / `"ahkflow_scripts.zip"`). The destination helper trusts what it receives.
+
+5. **Output handling lives in one helper.** `DownloadDestination.Resolve(string? optionValue, string serverName, string baseDirectory) → DownloadTarget` returns either `DownloadTarget.Stdout` or `DownloadTarget.File(string path)`. The command resolves `baseDirectory` from a DI-registered `WorkingDirectory` wrapper around `Environment.CurrentDirectory` (symmetric with `BinaryStdout`); tests substitute a temp dir. No process-wide `Directory.SetCurrentDirectory` mutation — that breaks parallel xUnit collections.
+
+6. **Stdout binary writes go through an injectable seam.** A small DI-registered service `BinaryStdout` wraps `() => Console.OpenStandardOutput()` in production and lets tests substitute a `MemoryStream`. `DownloadDestination.WriteAsync(target, bytes, binaryStdout, ct)` takes the seam as a parameter and never touches `Console` directly. This matches the rest of the CLI: text I/O via `parse.InvocationConfiguration.Output/.Error`, binary stdout via `BinaryStdout`. Pipes work cleanly (`ahkflow download zip -o - > out.zip`); tests assert against the captured stream.
 
 7. **Silent overwrite.** `File.WriteAllBytesAsync` to the resolved path. No `--force`. Server is the source of truth; matches `gh release download` and `cp` defaults.
 
@@ -95,8 +104,8 @@ ahkflow download ahk --profile <name> [-o <path>] [--verbose]
 
 1. Resolve `--profile` to a Guid via `IProfilesApiClient.ListAsync`. Unknown → exit 2.
 2. Call `IDownloadsApiClient.GetProfileScriptAsync(profileId, ct)` → `DownloadResult`.
-3. Resolve target via `DownloadDestination.Resolve(option, result.FileName)`.
-4. Write bytes; if writing to a file, print `"Wrote <path> (<n> bytes)"` to stdout.
+3. Resolve target via `DownloadDestination.Resolve(option, result.FileName, workingDir.Get())`.
+4. Write bytes via `DownloadDestination.WriteAsync(target, result.Bytes, binaryStdout, ct)`; if writing to a file, print `"Wrote <path> (<n> bytes)"` to stdout.
 
 ### `ahkflow download zip`
 
@@ -124,42 +133,77 @@ No profile resolution and no `IProfilesApiClient` call — the server scopes to 
 
 ## Output handling
 
-`DownloadDestination.Resolve(string? optionValue, string serverFileName)`:
+`DownloadDestination.Resolve(string? optionValue, string serverFileName, string baseDirectory)`:
 
 | Input | Result |
 |---|---|
-| `null` (option omitted) | `File(<cwd>/<serverFileName>)` |
+| `null` (option omitted) | `File(<baseDirectory>/<serverFileName>)` |
 | `"-"` | `Stdout` |
-| existing directory path | `File(<path>/<serverFileName>)` |
+| ends with `/` or `\` | `File(<path>/<serverFileName>)`; dirs created if missing |
+| existing directory | `File(<path>/<serverFileName>)`; dirs created if missing |
 | anything else | `File(<path>)` (treated as exact filename; parent dirs created if missing) |
+
+Order matters: trailing-separator and existing-directory checks run **before** the "anything else" fallback so `-o out/scripts/` and `-o out/scripts` (when `out/scripts/` exists) both resolve to the same place.
 
 Edge cases:
 
-- A path like `out/scripts/work.ahk` where `out/scripts/` doesn't exist → `File.WriteAllBytesAsync` after `Directory.CreateDirectory(Path.GetDirectoryName(path))`.
-- Trailing separator on a non-existent path → still treated as filename; the trailing separator just produces a file with an empty name, which would error on the OS. Not worth special-casing.
-- Server returns an empty filename → fall back to `profile.ahk` / `ahkflow_scripts.zip` constant in the API client before reaching the destination helper.
+- `out/scripts/work.ahk` where `out/scripts/` doesn't exist → directory created, then file written.
+- `-o out/` where `out/` doesn't exist → treated as directory: created, then `<serverFileName>` written inside.
+- Path that resolves to an existing file (and isn't a directory) → silent overwrite per decision 7.
+- Server returns an empty / unsafe filename → API client falls back to the safe constant before the destination helper sees it (per decision 4).
 
 `DownloadDestination.WriteAsync`:
 
 ```csharp
-public static async Task WriteAsync(DownloadTarget target, byte[] bytes, CancellationToken ct)
+public static async Task WriteAsync(
+    DownloadTarget target, byte[] bytes, BinaryStdout binaryStdout, CancellationToken ct)
 {
     switch (target)
     {
         case DownloadTarget.StdoutTarget:
-            await using Stream stdout = Console.OpenStandardOutput();
+        {
+            Stream stdout = binaryStdout.Open();
             await stdout.WriteAsync(bytes, ct);
+            await stdout.FlushAsync(ct);
+            // Don't dispose — caller owns lifetime (mirrors Console.OpenStandardOutput convention).
             break;
+        }
         case DownloadTarget.FileTarget file:
+        {
             string? dir = Path.GetDirectoryName(file.Path);
             if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
             await File.WriteAllBytesAsync(file.Path, bytes, ct);
             break;
+        }
     }
 }
 ```
 
-(Sketch — final shape may differ slightly; tests pin behaviour.)
+`BinaryStdout` (in `Services/`):
+
+```csharp
+public sealed class BinaryStdout(Func<Stream>? factory = null)
+{
+    private readonly Func<Stream> _factory = factory ?? Console.OpenStandardOutput;
+    public Stream Open() => _factory();
+}
+```
+
+Registered in `Program.cs`: `builder.Services.AddSingleton<BinaryStdout>();`. Tests inject `new BinaryStdout(() => memStream)`; the helper does not dispose what `Open()` returns, so the `MemoryStream` stays open for `ToArray()` after the command returns.
+
+`WorkingDirectory` (in `Services/`) — symmetric:
+
+```csharp
+public sealed class WorkingDirectory(Func<string>? factory = null)
+{
+    private readonly Func<string> _factory = factory ?? (() => Environment.CurrentDirectory);
+    public string Get() => _factory();
+}
+```
+
+Registered alongside: `builder.Services.AddSingleton<WorkingDirectory>();`. Tests inject `new WorkingDirectory(() => tempDir)`. The command does `string baseDir = services.GetRequiredService<WorkingDirectory>().Get();` and passes it into `Resolve`.
+
+(Sketches — final shape may differ slightly; tests pin behaviour.)
 
 ## API client
 
@@ -175,7 +219,8 @@ public async Task<DownloadResult> GetProfileScriptAsync(Guid profileId, Cancella
         throw new ApiException((int)response.StatusCode, body);
     }
     byte[] bytes = await response.Content.ReadAsByteArrayAsync(ct);
-    string fileName = ExtractFileName(response.Content.Headers.ContentDisposition) ?? "profile.ahk";
+    string raw = ExtractFileName(response.Content.Headers.ContentDisposition);
+    string fileName = SafeFileName(raw, fallback: "profile.ahk");
     string contentType = response.Content.Headers.ContentType?.ToString() ?? "text/plain";
     return new DownloadResult(bytes, fileName, contentType);
 }
@@ -183,7 +228,23 @@ public async Task<DownloadResult> GetProfileScriptAsync(Guid profileId, Cancella
 
 Zip method is identical with `api/v1/downloads/zip`, fallback name `ahkflow_scripts.zip`, fallback type `application/zip`.
 
-`ExtractFileName` prefers `ContentDisposition.FileNameStar` (RFC 5987 — what ASP.NET Core sends for non-ASCII names), falls back to `FileName`. Strips surrounding quotes if present. Returns `null` on missing/empty header.
+`ExtractFileName` prefers `ContentDisposition.FileNameStar` (RFC 5987 — what ASP.NET Core sends for non-ASCII names), falls back to `FileName`. Strips surrounding quotes if present. Returns empty string on missing header.
+
+`SafeFileName(string raw, string fallback)`:
+
+```csharp
+private static string SafeFileName(string raw, string fallback)
+{
+    if (string.IsNullOrWhiteSpace(raw)) return fallback;
+    if (Path.IsPathRooted(raw)) return fallback;
+    string basename = Path.GetFileName(raw);
+    if (string.IsNullOrWhiteSpace(basename)) return fallback;
+    if (basename.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0) return fallback;
+    return basename;
+}
+```
+
+Treats Content-Disposition as untrusted external input at the boundary; `DownloadDestination` downstream trusts whatever it receives.
 
 DI registration in `Program.cs`:
 
@@ -215,44 +276,48 @@ Stays inside the existing `[Collection("CliWebApi")]` group to share the SQL Ser
 
 ### Unit tests
 
-`DownloadDestinationTests.cs`:
-- `null` → `File(<cwd>/<server>)`.
-- `"-"` → `Stdout`.
-- Existing dir path → `File(<dir>/<server>)`.
-- Nested filename in non-existent subdir → `File(<exact path>)` and dirs are created on write.
-- Nested-dir path that already exists as a file → currently a file write that overwrites; document, don't gate.
+`DownloadDestinationTests.cs` — pass an explicit `baseDirectory` (a per-test temp dir); never mutate `Environment.CurrentDirectory`:
 
-`AhkDownloadCommandTests.cs` / `ZipDownloadCommandTests.cs` (use `CliTestHost.WithFakes`):
+- `null` → `File(<baseDir>/<server>)`.
+- `"-"` → `Stdout`.
+- Path ending in `/` (or `\` on Windows) → `File(<dir>/<server>)`; dirs created on write.
+- Existing-directory path → `File(<dir>/<server>)`.
+- Nested filename in non-existent subdir → `File(<exact path>)` and dirs are created on write.
+- Path equal to an existing file → silent overwrite (per decision 7).
+
+`AhkDownloadCommandTests.cs` / `ZipDownloadCommandTests.cs` (use `CliTestHost.WithFakes` extended to register `IDownloadsApiClient` + a `BinaryStdout` backed by a `MemoryStream`):
+
 - Happy path with fake clients writes expected file and prints `"Wrote …"`.
 - Unknown profile name → exit 2 with stderr listing available names. (ahk only)
-- `-o -` writes raw bytes to a captured `Stream` stdout (test substitutes the writer); no "Wrote" line.
+- `-o -` writes raw bytes to the injected `MemoryStream`; no `"Wrote"` line on the parsed text stdout.
 - Token unset (stub auth) → exit 3.
 - 404 / 401 / 500 from fake client → exit 2 / 3 / 1 respectively.
 
 `DownloadsApiClientTests.cs`:
 - Parses `filename=` and `filename*=UTF-8''…` headers correctly; prefers `filename*` when both present.
-- Falls back to `profile.ahk` / `ahkflow_scripts.zip` when header missing.
+- Falls back to `profile.ahk` / `ahkflow_scripts.zip` when header is missing, empty, contains path separators, contains invalid filename chars, or is rooted.
 - Non-2xx body becomes `ApiException` with status + body.
 
 ### Integration tests (`DownloadCliIntegrationTests`)
 
 Seed a profile + a couple of hotstrings, hit the real `Program` API via `WebApplicationFactory<Program>`, verify CLI output:
 
+Tests inject `WorkingDirectory(() => tempDir)` (per-test temp dir from `Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString())`, deleted in teardown) and `BinaryStdout(() => memStream)`. **No `Directory.SetCurrentDirectory`** — process-wide cwd mutation breaks parallel xUnit collections.
+
 | Test | Asserts |
 |---|---|
-| `Ahk_Default_WritesFileInCwd` | `ahkflow_<name>.ahk` exists in temp cwd; content non-empty; exit 0. |
-| `Ahk_OutputDir_WritesFileInsideDir` | `-o <tmpdir>` writes inside it. |
+| `Ahk_Default_WritesFileInBaseDir` | `ahkflow_<name>.ahk` exists in temp baseDir; content non-empty; exit 0. |
+| `Ahk_OutputDir_WritesFileInsideDir` | `-o <tmpdir>` (existing) writes inside it. |
+| `Ahk_OutputDirTrailingSep_CreatesAndWrites` | `-o <new-dir>/` creates the dir and writes server filename inside. |
 | `Ahk_OutputFile_WritesExactPath` | `-o <tmpdir>/custom.ahk` writes that path. |
-| `Ahk_OutputDash_WritesBytesToStdout` | `-o -` produces raw bytes on stdout, no log line, exit 0. |
+| `Ahk_OutputDash_WritesBytesToInjectedStream` | `-o -` writes raw bytes to the injected `BinaryStdout` `MemoryStream`; nothing on parsed text stdout; exit 0. |
 | `Ahk_UnknownProfile_Exit2` | `"Profile 'missing' not found"` to stderr. |
-| `Zip_Default_WritesValidZip` | `ahkflow_scripts.zip` in cwd; opens as a valid `ZipArchive` with one entry per seeded profile. |
-| `Zip_OutputDash_WritesBytesToStdout` | Raw zip bytes on stdout. |
+| `Zip_Default_WritesValidZip` | `ahkflow_scripts.zip` in baseDir; opens as a valid `ZipArchive` with one entry per seeded profile. |
+| `Zip_OutputDash_WritesBytesToInjectedStream` | Raw zip bytes captured in injected `MemoryStream`; bytes parse as a valid zip. |
 | `Auth_TokenUnset_Exit3` | `--profile X` with no token → exit 3, stderr `"Not signed in"`. |
 | `Overwrite_Silent` | Pre-existing file at target path is replaced without warning. |
 
-Each test that writes files uses a temp directory created in test setup (`Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString())`) and `Directory.SetCurrentDirectory` for cwd-relative writes (restored in teardown). This keeps test artefacts off the repo.
-
-`CliTestHost.WithFactory` gets one extra block:
+`CliTestHost.WithFactory` gets the new client + the two seams:
 
 ```csharp
 IHttpClientBuilder dBuilder = services.AddHttpClient<IDownloadsApiClient, DownloadsApiClient>(c =>
@@ -260,13 +325,21 @@ IHttpClientBuilder dBuilder = services.AddHttpClient<IDownloadsApiClient, Downlo
     .ConfigurePrimaryHttpMessageHandler(() => factory.Server.CreateHandler())
     .AddHttpMessageHandler<BearerTokenHandler>();
 if (counter is not null) dBuilder.AddHttpMessageHandler(() => new CountingHandler(counter));
+
+services.AddSingleton(new BinaryStdout(() => testStdoutStream));
+services.AddSingleton(new WorkingDirectory(() => testBaseDir));
 ```
+
+`testStdoutStream` and `testBaseDir` are passed in by the test (new optional `WithFactory` parameters); production `Program.cs` registers the parameterless defaults.
 
 ## Backlog AC update
 
-Add one new AC line to `028-cli-download-command.md` during implementation:
+Two changes to `028-cli-download-command.md` during implementation:
 
-- [ ] `ahkflow download zip` downloads a zip of all the user's profile scripts to cwd (or `-o`).
+1. Add one new acceptance criterion line:
+   - [ ] `ahkflow download zip` downloads a zip of all the user's profile scripts to cwd (or `-o`).
+
+2. Adjust the existing out-of-scope line — `028.md:27` currently reads "Downloading additional artifacts." That conflicts with adding zip here. Replace with: "Downloading artifacts other than per-profile `.ahk` and the all-profiles zip (e.g., compiled `.exe`, signed bundles)."
 
 The other ACs already cover both subcommands implicitly (output path, auth, tests).
 
