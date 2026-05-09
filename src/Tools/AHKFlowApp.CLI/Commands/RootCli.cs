@@ -1,4 +1,5 @@
 using System.CommandLine;
+using AHKFlowApp.CLI.Commands.Downloads;
 using AHKFlowApp.CLI.Commands.Hotstrings;
 
 namespace AHKFlowApp.CLI.Commands;
@@ -17,11 +18,11 @@ public static class RootCli
         {
             VerboseOption,
             HotstringCommand.Build(services),
+            DownloadCommand.Build(services),
         };
         // Subcommands wired in subsequent phases:
         //   root.Subcommands.Add(LoginCommand.Build(services));
         //   root.Subcommands.Add(LogoutCommand.Build(services));
-        //   root.Subcommands.Add(DownloadCommand.Build(services));
         return root;
     }
 }

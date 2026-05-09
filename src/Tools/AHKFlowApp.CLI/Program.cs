@@ -48,7 +48,13 @@ builder.Services.AddHttpClient<IProfilesApiClient, ProfilesApiClient>(c =>
     .AddHttpMessageHandler<BearerTokenHandler>()
     .AddStandardResilienceHandler();
 
-// IDownloadsApiClient registration lands with backlog 028.
+builder.Services.AddHttpClient<IDownloadsApiClient, DownloadsApiClient>(c =>
+        c.BaseAddress = new Uri(apiBaseUrl))
+    .AddHttpMessageHandler<BearerTokenHandler>()
+    .AddStandardResilienceHandler();
+
+builder.Services.AddSingleton<BinaryStdout>();
+builder.Services.AddSingleton<WorkingDirectory>();
 
 using IHost host = builder.Build();
 
