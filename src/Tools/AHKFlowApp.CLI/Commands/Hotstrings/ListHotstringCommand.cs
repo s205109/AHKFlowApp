@@ -27,7 +27,6 @@ public static class ListHotstringCommand
 
             string? profileName = parse.GetValue(profile);
             bool wantJson = parse.GetValue(json);
-            bool needsProfiles = profileName is not null || !wantJson;
 
             try
             {
@@ -35,24 +34,21 @@ public static class ListHotstringCommand
                 IReadOnlyDictionary<Guid, string> idToName =
                     System.Collections.Frozen.FrozenDictionary<Guid, string>.Empty;
 
-                if (needsProfiles)
+                if (profileName is not null)
                 {
                     IReadOnlyList<ProfileSummary> all = await profilesClient.ListAsync(ct);
                     idToName = all.ToDictionary(p => p.Id, p => p.Name);
 
-                    if (profileName is not null)
+                    ProfileSummary? match = all.FirstOrDefault(p =>
+                        string.Equals(p.Name, profileName, StringComparison.OrdinalIgnoreCase));
+                    if (match is null)
                     {
-                        ProfileSummary? match = all.FirstOrDefault(p =>
-                            string.Equals(p.Name, profileName, StringComparison.OrdinalIgnoreCase));
-                        if (match is null)
-                        {
-                            string available = string.Join(", ", all.Select(a => a.Name));
-                            await stderr.WriteLineAsync(
-                                $"Profile '{profileName}' not found. Available: {available}");
-                            return 2;
-                        }
-                        profileId = match.Id;
+                        string available = string.Join(", ", all.Select(a => a.Name));
+                        await stderr.WriteLineAsync(
+                            $"Profile '{profileName}' not found. Available: {available}");
+                        return 2;
                     }
+                    profileId = match.Id;
                 }
 
                 PagedList<HotstringDto> result = await hotstrings.ListAsync(
@@ -63,9 +59,19 @@ public static class ListHotstringCommand
                     ct);
 
                 if (wantJson)
+                {
                     HotstringJsonFormatter.WritePage(stdout, result);
+                }
                 else
+                {
+                    if (profileName is null
+                        && result.Items.Any(h => !h.AppliesToAllProfiles && h.ProfileIds.Length > 0))
+                    {
+                        IReadOnlyList<ProfileSummary> all = await profilesClient.ListAsync(ct);
+                        idToName = all.ToDictionary(p => p.Id, p => p.Name);
+                    }
                     HotstringTableFormatter.Write(stdout, result, idToName);
+                }
                 return 0;
             }
             catch (NotAuthenticatedException ex)
@@ -78,7 +84,7 @@ public static class ListHotstringCommand
                 await stderr.WriteLineAsync(ex.Body ?? ex.Message);
                 return 2;
             }
-            catch (ApiException ex) when (ex.StatusCode is 401 or 403)
+            catch (ApiException ex) when (ex.StatusCode == 401)
             {
                 await stderr.WriteLineAsync(
                     "Not signed in. Set AHKFLOW_TOKEN environment variable to a bearer token.");

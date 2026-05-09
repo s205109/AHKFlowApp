@@ -260,14 +260,15 @@ public sealed class HotstringCliIntegrationTests(SqlContainerFixture sql) : IAsy
     }
 
     [Fact]
-    public async Task Auth_MissingScope_Returns403_Exit3()
+    public async Task Auth_MissingScope_Returns403_Exit1_ServerDetail()
     {
         await _factory.DisposeAsync();
         _factory = _baseFactory.WithTestAuth(u => u.WithOid(_testUserOid).WithoutScope());
 
         (int exit, string _, string? stderr) = await RunAsync(["hotstring", "new", "-t", "x", "-r", "y"]);
 
-        exit.Should().Be(3);
-        stderr.Should().Contain("Not signed in");
+        exit.Should().Be(1);
+        stderr.Should().NotBeEmpty();
+        stderr.Should().NotContain("Not signed in");
     }
 }
