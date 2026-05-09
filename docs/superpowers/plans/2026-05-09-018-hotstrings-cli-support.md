@@ -378,7 +378,7 @@ dotnet build src/Tools/AHKFlowApp.CLI --configuration Release
 
 - [ ] **Step 1: Implement typed HttpClient**
 
-The shape of `GET /api/v1/profiles` returns a paged list per the API. CLI only needs `id`/`name`, so we deserialize into a transport DTO and project to `ProfileSummary`:
+`GET /api/v1/profiles` returns `IReadOnlyList<ProfileDto>` directly (not a paged envelope) — see `src/Backend/AHKFlowApp.API/Controllers/ProfilesController.cs:23`. CLI only needs `id`/`name`, so we deserialize into a small transport record and project to `ProfileSummary`:
 
 ```csharp
 using System.Net.Http.Json;
@@ -392,23 +392,26 @@ public sealed class ProfilesApiClient(HttpClient http) : IProfilesApiClient
 
     public async Task<IReadOnlyList<ProfileSummary>> ListAsync(CancellationToken ct)
     {
-        // Pull a generous page; CLI is interactive, this is fine for v1.
-        using HttpResponseMessage response = await http.GetAsync(
-            "api/v1/profiles?page=1&pageSize=200", ct);
-        response.EnsureSuccessStatusCode();
-        ProfilesPage page = await response.Content.ReadFromJsonAsync<ProfilesPage>(JsonOptions, ct)
-            ?? throw new InvalidOperationException("API returned empty body for list profiles.");
-        return page.Items.Select(p => new ProfileSummary(p.Id, p.Name)).ToList();
+        using HttpResponseMessage response = await http.GetAsync("api/v1/profiles", ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            string body = await response.Content.ReadAsStringAsync(ct);
+            throw new ApiException((int)response.StatusCode, body);
+        }
+        IReadOnlyList<ProfileItem>? items = await response.Content
+            .ReadFromJsonAsync<IReadOnlyList<ProfileItem>>(JsonOptions, ct);
+        if (items is null)
+            throw new InvalidOperationException("API returned empty body for list profiles.");
+        return items.Select(p => new ProfileSummary(p.Id, p.Name)).ToList();
     }
 
-    private sealed record ProfilesPage(IReadOnlyList<ProfileItem> Items);
     private sealed record ProfileItem(Guid Id, string Name);
 }
 ```
 
 - [ ] **Step 2: Verify against actual API DTO**
 
-Open `src/Backend/AHKFlowApp.Application/DTOs/ProfileDto.cs` (or grep for `ProfileDto`) and confirm the paged-response shape matches `Items[].id` and `Items[].name`. If field names differ, adjust the local transport records. Document any drift in the spec.
+Confirm `ProfileDto` (`src/Backend/AHKFlowApp.Application/DTOs/ProfileDto.cs`) still exposes `Id` and `Name`; the local `ProfileItem` ignores other fields. If the controller ever switches to paged output, revise this client.
 
 ```bash
 dotnet build --configuration Release
@@ -724,14 +727,16 @@ internal static class CliTestHost
 - [ ] **Step 4: `NewHotstringCommand` impl**
 
 Behavior reference: spec section "ahkflow hotstring new". Key points:
-- Required options `-t/--trigger`, `-r/--replacement`. Optional `-p/--profile` (multi-valued), `--no-ending-char`, `--inside-word`, `--json`.
+- Required options `-t/--trigger`, `-r/--replacement`. Optional `-p/--profile` (multi-valued), `--no-ending-char`, `--no-inside-word`, `--json`.
+- **Defaults align with API/UI:** `IsEndingCharacterRequired=true`, `IsTriggerInsideWord=true` (see `CreateHotstringDto` defaults at `src/Backend/AHKFlowApp.Application/DTOs/HotstringDto.cs:14` and UI at `src/Frontend/AHKFlowApp.UI.Blazor/Validation/HotstringEditModel.cs:20`). The CLI uses `--no-*` opt-outs to match: omitting both flags sends `true/true`. **The spec table at line 93 of the design doc lists `--inside-word` defaulting `true` — that's the same intent expressed differently; this plan locks in `--no-inside-word`.**
 - If any `--profile` supplied: call `IProfilesApiClient.ListAsync`, build `Dictionary<string, Guid>` keyed by name with `StringComparer.OrdinalIgnoreCase`, resolve each input. Unknown name → write `Profile '<name>' not found. Available: A, B, C` to stderr, return `2`.
 - If no `--profile` supplied: send `ProfileIds = null`, `AppliesToAllProfiles = true`.
 - Catch `NotAuthenticatedException` → stderr message, return `3`.
-- Catch `HttpRequestException` and inspect `StatusCode`:
+- Catch `ApiException` and inspect `StatusCode`:
   - `400` / `409` → write response body (ProblemDetails) to stderr, return `2`.
-  - `401` → stderr `"Not signed in…"`, return `3`.
+  - `401` / `403` → stderr `"Not signed in…"`, return `3`. (`403` happens when the bearer token is missing the `access_as_user` scope — see `[RequiredScope]` at `src/Backend/AHKFlowApp.API/Controllers/ProfilesController.cs:16` and the equivalent on `HotstringsController`.)
   - `5xx` or null → stderr (body if present, else `"Server error"`), return `1`.
+- Catch `HttpRequestException` (transport failure) → stderr `ex.Message`, return `1`.
 - Success → `Created hotstring <id> ('<trigger>')` to stdout (or full DTO JSON if `--json`), return `0`.
 
 > `HttpClient.PostAsJsonAsync` followed by `EnsureSuccessStatusCode` is too coarse for this — switch the inner client method to return `HttpResponseMessage` *or* read the body before throwing. Recommended: change `HotstringsApiClient.CreateAsync` to throw a custom `ApiException(int status, string? body)`. Add this type in `Services/ApiException.cs`:
@@ -777,13 +782,13 @@ public static class NewHotstringCommand
         Option<string> trigger = new("--trigger", "-t") { Description = "Abbreviation to expand.", Required = true };
         Option<string> replacement = new("--replacement", "-r") { Description = "Replacement text.", Required = true };
         Option<string[]> profile = new("--profile", "-p") { Description = "Profile name (repeatable)." };
-        Option<bool> noEndingChar = new("--no-ending-char") { Description = "Don't require an ending character." };
-        Option<bool> insideWord = new("--inside-word") { Description = "Trigger inside words." };
+        Option<bool> noEndingChar = new("--no-ending-char") { Description = "Don't require an ending character (default: required)." };
+        Option<bool> noInsideWord = new("--no-inside-word") { Description = "Don't trigger inside words (default: triggers inside words)." };
         Option<bool> json = new("--json") { Description = "Emit JSON instead of human summary." };
 
         Command cmd = new("new", "Create a new hotstring.")
         {
-            trigger, replacement, profile, noEndingChar, insideWord, json,
+            trigger, replacement, profile, noEndingChar, noInsideWord, json,
         };
 
         cmd.SetAction(async (ParseResult parse, CancellationToken ct) =>
@@ -824,7 +829,7 @@ public static class NewHotstringCommand
                     ProfileIds: resolvedIds,
                     AppliesToAllProfiles: appliesToAll,
                     IsEndingCharacterRequired: !parse.GetValue(noEndingChar),
-                    IsTriggerInsideWord: parse.GetValue(insideWord));
+                    IsTriggerInsideWord: !parse.GetValue(noInsideWord));
 
                 HotstringDto created = await hotstrings.CreateAsync(input, ct);
 
@@ -845,7 +850,7 @@ public static class NewHotstringCommand
                 await stderr.WriteLineAsync(ex.Body ?? ex.Message);
                 return 2;
             }
-            catch (ApiException ex) when (ex.StatusCode is 401)
+            catch (ApiException ex) when (ex.StatusCode is 401 or 403)
             {
                 await stderr.WriteLineAsync(
                     "Not signed in. Set AHKFLOW_TOKEN environment variable to a bearer token.");
@@ -875,13 +880,18 @@ Cover (per spec test list):
 - Two `--profile` flags → resolved to `[guid1, guid2]`, `AppliesToAllProfiles=false`.
 - Mixed-case profile name (`--profile WORK`) resolves to lowercase entry.
 - Unknown profile → exit 2, stderr starts with `"Profile 'nope' not found. Available: "`.
+- Defaults (no `--no-*` flags) → `IsEndingCharacterRequired=true` AND `IsTriggerInsideWord=true`.
 - `--no-ending-char` → `IsEndingCharacterRequired=false`.
-- `--inside-word` → `IsTriggerInsideWord=true`.
+- `--no-inside-word` → `IsTriggerInsideWord=false`.
 - `--json` → stdout starts with `{`; otherwise `"Created hotstring "`.
 - API throws `ApiException(400|409)` → stderr non-empty, exit 2.
+- API throws `ApiException(401)` → exit 3, stderr `"Not signed in…"`.
+- API throws `ApiException(403)` (missing scope) → exit 3, stderr `"Not signed in…"`.
 - API throws `ApiException(500)` → exit 1.
-- `IAuthTokenProvider` throws `NotAuthenticatedException` (use `StubAuthTokenProvider(null)`) → exit 3.
+- API throws `HttpRequestException` (network failure) → exit 1.
 - Success → exit 0.
+
+> **Note on auth:** Don't test `NotAuthenticatedException` here by passing `StubAuthTokenProvider(null)` to `CliTestHost.WithFakes`. The fake `IHotstringsApiClient` skips the HTTP pipeline entirely, so the auth provider is never consulted — the test would pass for the wrong reason. Cover that path by configuring the **fake** API client to throw `NotAuthenticatedException`, and leave provider-level behavior to `EnvVarAuthTokenProviderTests` (Task 2) and integration test #13 (Task 12).
 
 Capture pattern (re-used in every test):
 
@@ -915,14 +925,25 @@ Expected: all pass.
 
 Behavior reference: spec section "ahkflow hotstring list". Key points:
 - Options: `-p/--profile` (single, optional), `-s/--search`, `--page` (default 1), `--page-size` (default 50), `--json`.
+- **Profiles fetch is conditional** (perf): call `IProfilesApiClient.ListAsync` only when needed:
+  - `--profile` is set (need name→id resolution), OR
+  - `--json` is **not** set (need id→name map for table column rendering).
+  - When `--json` is set AND `--profile` is omitted: skip the round-trip entirely. JSON output doesn't surface profile names, so name resolution adds latency and a failure point for nothing.
 - If `--profile` set: resolve to GUID via `IProfilesApiClient` (case-insensitive). Unknown → stderr `Profile '<name>' not found. Available: …`, exit 2.
-- Always call `IProfilesApiClient.ListAsync` once for name→id map (used for table column rendering).
 - Call `hotstrings.ListAsync(profileId, search, page, pageSize, ct)`.
 - `--json` → `HotstringJsonFormatter.WritePage(stdout, page)`. Else `HotstringTableFormatter.Write(stdout, page, idToNameMap)`.
-- Error mapping identical to `NewHotstringCommand` (`ApiException` → 1/2/3 as per status; `NotAuthenticatedException` → 3).
+- Error mapping identical to `NewHotstringCommand` (`ApiException` 400/409 → 2; 401/403 → 3; 5xx/null → 1; `NotAuthenticatedException` → 3; `HttpRequestException` → 1).
 - Empty page is *not* an error — formatter writes `"No hotstrings found."`, exit 0.
 
 ```csharp
+using System.CommandLine;
+using AHKFlowApp.CLI.Exceptions;
+using AHKFlowApp.CLI.Output;
+using AHKFlowApp.CLI.Services;
+using Microsoft.Extensions.DependencyInjection;
+
+namespace AHKFlowApp.CLI.Commands.Hotstrings;
+
 public static class ListHotstringCommand
 {
     public static Command Build(IServiceProvider services)
@@ -937,10 +958,80 @@ public static class ListHotstringCommand
 
         cmd.SetAction(async (ParseResult parse, CancellationToken ct) =>
         {
-            // ...same try/catch shape as NewHotstringCommand. Resolve profile name to id (or null).
-            // Build idToName dict from ProfilesApiClient response.
-            // Call hotstrings.ListAsync(...).
-            // Pick formatter based on --json.
+            TextWriter stdout = parse.InvocationConfiguration.Output;
+            TextWriter stderr = parse.InvocationConfiguration.Error;
+            IHotstringsApiClient hotstrings = services.GetRequiredService<IHotstringsApiClient>();
+            IProfilesApiClient profilesClient = services.GetRequiredService<IProfilesApiClient>();
+
+            string? profileName = parse.GetValue(profile);
+            bool wantJson = parse.GetValue(json);
+            bool needsProfiles = profileName is not null || !wantJson;
+
+            try
+            {
+                Guid? profileId = null;
+                IReadOnlyDictionary<Guid, string> idToName =
+                    System.Collections.Frozen.FrozenDictionary<Guid, string>.Empty;
+
+                if (needsProfiles)
+                {
+                    IReadOnlyList<ProfileSummary> all = await profilesClient.ListAsync(ct);
+                    idToName = all.ToDictionary(p => p.Id, p => p.Name);
+
+                    if (profileName is not null)
+                    {
+                        ProfileSummary? match = all.FirstOrDefault(p =>
+                            string.Equals(p.Name, profileName, StringComparison.OrdinalIgnoreCase));
+                        if (match is null)
+                        {
+                            string available = string.Join(", ", all.Select(a => a.Name));
+                            await stderr.WriteLineAsync(
+                                $"Profile '{profileName}' not found. Available: {available}");
+                            return 2;
+                        }
+                        profileId = match.Id;
+                    }
+                }
+
+                PagedList<HotstringDto> result = await hotstrings.ListAsync(
+                    profileId,
+                    parse.GetValue(search),
+                    parse.GetValue(page),
+                    parse.GetValue(pageSize),
+                    ct);
+
+                if (wantJson)
+                    HotstringJsonFormatter.WritePage(stdout, result);
+                else
+                    HotstringTableFormatter.Write(stdout, result, idToName);
+                return 0;
+            }
+            catch (NotAuthenticatedException ex)
+            {
+                await stderr.WriteLineAsync(ex.Message);
+                return 3;
+            }
+            catch (ApiException ex) when (ex.StatusCode is 400 or 409)
+            {
+                await stderr.WriteLineAsync(ex.Body ?? ex.Message);
+                return 2;
+            }
+            catch (ApiException ex) when (ex.StatusCode is 401 or 403)
+            {
+                await stderr.WriteLineAsync(
+                    "Not signed in. Set AHKFLOW_TOKEN environment variable to a bearer token.");
+                return 3;
+            }
+            catch (ApiException ex)
+            {
+                await stderr.WriteLineAsync(ex.Body ?? $"Server error ({ex.StatusCode}).");
+                return 1;
+            }
+            catch (HttpRequestException ex)
+            {
+                await stderr.WriteLineAsync(ex.Message);
+                return 1;
+            }
         });
 
         return cmd;
@@ -959,10 +1050,16 @@ Cover (per spec):
 - Default → table header present.
 - Unknown profile → exit 2, stderr correct.
 - API `ApiException(400)` → exit 2.
+- API `ApiException(401)` → exit 3.
+- API `ApiException(403)` (missing scope) → exit 3.
 - API `ApiException(500)` → exit 1.
-- `NotAuthenticatedException` → exit 3.
+- API `HttpRequestException` (network) → exit 1.
 - Empty page → stdout contains `"No hotstrings found."`, exit 0.
 - Success → exit 0.
+- **Profile fetch optimization (one assertion per case):**
+  - `--json` with no `--profile` → `IProfilesApiClient.ListAsync` is **never** called (`profilesClient.DidNotReceive().ListAsync(default!)`).
+  - `--json --profile work` → `ListAsync` **is** called (need to resolve name).
+  - No `--json`, no `--profile` → `ListAsync` **is** called (need name map for table).
 
 - [ ] **Step 3: Run tests**
 
@@ -1045,17 +1142,26 @@ public sealed class CliWebApiCollection : ICollectionFixture<SqlContainerFixture
 [Collection("CliWebApi")]
 public sealed class HotstringCliIntegrationTests(SqlContainerFixture sql) : IAsyncLifetime
 {
-    private CustomWebApplicationFactory _factory = null!;
+    // CustomWebApplicationFactory.WithTestAuth(...) returns the base WebApplicationFactory<Program>,
+    // not the derived type — see tests/AHKFlowApp.TestUtilities/Fixtures/CustomWebApplicationFactory.cs:42.
+    // We hold onto the base reference for HTTP handler creation; the derived instance is owned by the
+    // factory chain and disposed transitively.
+    private WebApplicationFactory<Program> _factory = null!;
+    private CustomWebApplicationFactory _baseFactory = null!;
     private Guid _testUserOid = Guid.NewGuid();
 
     public Task InitializeAsync()
     {
-        _factory = new CustomWebApplicationFactory(sql)
-            .WithTestAuth(u => u.WithOid(_testUserOid).WithEmail("test@example.com"));
+        _baseFactory = new CustomWebApplicationFactory(sql);
+        _factory = _baseFactory.WithTestAuth(u => u.WithOid(_testUserOid).WithEmail("test@example.com"));
         return Task.CompletedTask;
     }
 
-    public async Task DisposeAsync() => await _factory.DisposeAsync();
+    public async Task DisposeAsync()
+    {
+        await _factory.DisposeAsync();
+        await _baseFactory.DisposeAsync();
+    }
 
     private async Task<(int exit, string stdout, string stderr)> RunAsync(
         string[] args, string? token = "test-token")
@@ -1072,7 +1178,7 @@ public sealed class HotstringCliIntegrationTests(SqlContainerFixture sql) : IAsy
 }
 ```
 
-- [ ] **Step 3: Test cases (15 from spec § Integration test cases)**
+- [ ] **Step 3: Test cases (16 from spec § Integration test cases + scope test)**
 
 Implement each as a `[Fact]`. For database seeding use the existing `ProfileBuilder`/`HotstringBuilder` test data builders from `AHKFlowApp.TestUtilities/Builders`. Reach into the factory's `IServiceScope` for `AppDbContext` to seed/assert directly. Match exit codes and stdout/stderr substrings exactly as listed in the spec.
 
@@ -1086,14 +1192,15 @@ Critical cases that catch the most regressions:
 7. Duplicate trigger → exit 2.
 8. Unknown profile → exit 2 + stderr "Available: …".
 9. Validation 400 (`-t "" -r ""`) → exit 2.
-10. JSON output — `JsonSerializer.Deserialize<PagedList<HotstringDto>>` succeeds.
+10. JSON output — `JsonSerializer.Deserialize<PagedList<HotstringDto>>` succeeds. Also assert: `list --json` (no `--profile`) does **not** request `GET /api/v1/profiles` (count requests via a counting `DelegatingHandler` between `BearerTokenHandler` and the in-memory transport).
 11. Pagination — second page items.
 12. Search — filter applied.
 13. Auth env-unset (`StubAuthTokenProvider(null)`) → exit 3.
 14. Auth 401 (configure factory test auth to reject) → exit 3.
 15. Server 5xx (delegating handler that throws on POST) → exit 1.
+16. **Missing scope (403)** — configure `WithTestAuth` so the principal lacks the `access_as_user` scope (`[RequiredScope]` on the controllers will then return 403). Expect exit 3 and `"Not signed in…"` to stderr. If `TestUserBuilder` doesn't expose a "without scope" path, add `WithoutScope()` to `AHKFlowApp.TestUtilities/Auth/TestUserBuilder.cs` rather than baking it into the test class.
 
-For (14) and (15), use the `WithTestAuth` and `Server.CreateHandler()` extension points already present in `CustomWebApplicationFactory`. If a needed seam is missing, add it to `AHKFlowApp.TestUtilities` rather than baking it into the test class.
+For (14)–(16), use the `WithTestAuth` and `Server.CreateHandler()` extension points already present in `CustomWebApplicationFactory`. If a needed seam is missing, add it to `AHKFlowApp.TestUtilities` rather than baking it into the test class.
 
 - [ ] **Step 4: Run all tests**
 
@@ -1197,9 +1304,9 @@ If the existing `ci.yml` smoke step (017's `ahkflow --help`) needs extending to 
 
 ## Unresolved questions
 
-- Switch `ApiException` to use `Ardalis.Result`-style status enum, or leave int? (current plan: int)
-- Pre-fetch profile list once per command, or skip when `--profile` absent and `--json` present (no name resolution needed)?
-- `--profile` repeatable on `list` (filter by any), or single-valued only? (current plan: single)
-- Surface `--page-size` cap (200) as CLI-side validation, or rely on API 400? (current plan: API)
-- Add `ahkflow hotstring --help` smoke step to `ci.yml` in this PR or follow-up?
-- Cover the verbose log path (`-v`) in any test, or skip?
+- `ApiException` int status vs `Ardalis.Result` enum? (plan: int)
+- `--profile` on `list` repeatable or single? (plan: single)
+- `--page-size` cap (200) — CLI-side or rely on API 400? (plan: API)
+- Add `ahkflow hotstring --help` smoke to `ci.yml` this PR or follow-up?
+- Test `-v` verbose path?
+- Update spec § "ahkflow hotstring new" flag table to rename `--inside-word` → `--no-inside-word`, or leave the spec as-is and document the divergence in commit msg?
