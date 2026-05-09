@@ -144,8 +144,8 @@ ahkflow hotstring list [--profile <name>] [--search <text>] [--page <n>] [--page
 
 **Behavior:**
 - GETs `/api/v1/hotstrings?profileId=<guid>&search=<text>&page=<n>&pageSize=<n>`.
-- On success (200): prints human table (default) or JSON array.
-- Profile names in table column are resolved via a preliminary `GET /api/v1/profiles` call (single round-trip). If a profile ID has no name in the response, falls back to `<id>` literal.
+- On success (200): prints human table (default) or JSON object (`PagedList<HotstringDto>` envelope with `items`, `page`, `pageSize`, `totalCount`).
+- Profile names in table column are resolved via a preliminary `GET /api/v1/profiles` call (single round-trip). If all profile IDs are unresolved, falls back to `"<n> profiles"`. If some resolve but extras remain, shows resolved names with a `+N more` suffix.
 - Pagination footer shown when results span multiple pages.
 - On unknown profile name: prints `Profile '<name>' not found. Available: A, B, C` to stderr; exits 2.
 - On validation error (400 — invalid page/pageSize): prints error to stderr; exits 2.

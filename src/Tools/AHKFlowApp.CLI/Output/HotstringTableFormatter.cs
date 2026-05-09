@@ -65,7 +65,7 @@ public static class HotstringTableFormatter
         if (resolved.Count == 0) return $"{dto.ProfileIds.Length} profiles";
 
         string head = string.Join(", ", resolved.Take(3));
-        int more = resolved.Count - 3 + unresolved;
+        int more = Math.Max(0, resolved.Count - 3) + unresolved;
         return more > 0 ? $"{head} +{more} more" : head;
     }
 
