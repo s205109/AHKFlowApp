@@ -53,13 +53,23 @@ tests/AHKFlowApp.CLI.Tests/
 
 2. **DI via command handler** — Commands receive `IServiceProvider` from `RootCli.Build()`, resolve clients at handler execution time (no service-locator anti-pattern; matches 017 scaffold).
 
-3. **Text output via `TextWriter`** — Use `System.CommandLine` 3.0 preview API: `parseResult.Configuration.Output`/`.Error` are `TextWriter` properties. Formatters accept `TextWriter`, tests inject `StringWriter`. No custom `IConsoleOutput` interface.
+3. **Text output via `TextWriter`** — Use `System.CommandLine` 3.0 preview API. Inside an action, the writers are `parseResult.InvocationConfiguration.Output` / `.Error` (both `TextWriter`). Tests inject `StringWriter` by passing an `InvocationConfiguration` to `ParseResult.Invoke(InvocationConfiguration)`. Formatters accept a `TextWriter` parameter. No custom `IConsoleOutput` interface.
 
-4. **Profile name resolution** — CLI users pass profile *names* (e.g., `--profile work`), not GUIDs. `ListHotstringCommand` calls `IProfilesApiClient.ListAsync()` once, builds id→name map, looks up in `new` command and displays names in `list` table. Adds one round-trip per `list`; trade-off accepted for friendliness.
+4. **Profile name resolution** — CLI users pass profile *names* (e.g., `--profile work`), not GUIDs. Matching is **case-insensitive** (`StringComparison.OrdinalIgnoreCase`), matching 017's convention. `ListHotstringCommand` calls `IProfilesApiClient.ListAsync()` once, builds id→name map, looks up in `new` command and displays names in `list` table. Adds one round-trip per `list`; trade-off accepted for friendliness.
 
-5. **Exit codes** — Minimal: `0` success, `1` client/server/logic error, `2` auth error. All errors printed to stderr with RFC 9457 problem details when available.
+5. **Exit codes** — Aligned with 017 (cli foundation):
+   | Code | Meaning |
+   |------|---------|
+   | `0` | Success |
+   | `1` | Server/network/unhandled error (5xx, transport failure, ProblemDetails without specific mapping) |
+   | `2` | User error (validation 400, conflict 409, profile-not-found, bad page/pageSize) |
+   | `3` | Auth error (env var unset, 401 from API) |
+
+   All errors print to stderr with RFC 9457 problem details when available.
 
 6. **Auth via environment variable** — `EnvVarAuthTokenProvider` reads `AHKFLOW_TOKEN` env var. Throws `NotAuthenticatedException` with message naming the env var if unset. Replaces `NullAuthTokenProvider` registration. Item 029 will swap in MSAL provider.
+
+7. **CLI ↔ API DTO contract for "all profiles"** — When `--profile` is omitted, CLI sends `CreateHotstringDto { AppliesToAllProfiles = true, ProfileIds = null }`. The API accepts either `null` or `[]` (`CreateHotstringCommandHandler` does `input.ProfileIds?.Distinct().ToArray() ?? []`), but CLI standardises on `null` to match the DTO default and minimise wire bytes. Tests assert `ProfileIds == null` for the all-profiles case.
 
 ## Commands
 
@@ -86,11 +96,11 @@ ahkflow hotstring new --trigger <text> --replacement <text> [--profile <name>] [
 **Behavior:**
 - Posts `CreateHotstringDto` to `POST /api/v1/hotstrings`.
 - On success (201): prints `Created hotstring <id> ('<trigger>')` to stdout; exits 0. With `--json`, prints full `HotstringDto`.
-- On validation error (400): prints RFC 9457 ProblemDetails to stderr; exits 1.
-- On duplicate trigger (409): prints conflict error to stderr; exits 1.
-- On unknown profile name: prints "Profile '<name>' not found" to stderr; exits 1.
-- On auth failure: prints "Not signed in. Set AHKFLOW_TOKEN…" to stderr; exits 2.
-- On server/network error: prints problem details to stderr; exits 1.
+- On validation error (400): prints RFC 9457 ProblemDetails to stderr; exits 2.
+- On duplicate trigger (409): prints conflict error to stderr; exits 2.
+- On unknown profile name: prints `Profile '<name>' not found. Available: A, B, C` to stderr; exits 2.
+- On auth failure (env var unset or 401 from API): prints `Not signed in. Set AHKFLOW_TOKEN environment variable to a bearer token.` to stderr; exits 3.
+- On server/network error (5xx, transport failure): prints problem details to stderr; exits 1.
 
 **Examples:**
 ```bash
@@ -137,9 +147,10 @@ ahkflow hotstring list [--profile <name>] [--search <text>] [--page <n>] [--page
 - On success (200): prints human table (default) or JSON array.
 - Profile names in table column are resolved via a preliminary `GET /api/v1/profiles` call (single round-trip). If a profile ID has no name in the response, falls back to `<id>` literal.
 - Pagination footer shown when results span multiple pages.
-- On unknown profile name: prints "Profile '<name>' not found" to stderr; exits 1.
-- On validation error (400 — invalid page/pageSize): prints error to stderr; exits 1.
-- On auth failure: prints "Not signed in. Set AHKFLOW_TOKEN…" to stderr; exits 2.
+- On unknown profile name: prints `Profile '<name>' not found. Available: A, B, C` to stderr; exits 2.
+- On validation error (400 — invalid page/pageSize): prints error to stderr; exits 2.
+- On auth failure (env var unset or 401 from API): prints `Not signed in. Set AHKFLOW_TOKEN environment variable to a bearer token.` to stderr; exits 3.
+- On server/network error: prints problem details to stderr; exits 1.
 
 **Output format (human, default):**
 
@@ -155,8 +166,8 @@ Page 1/3 (showing 5 of 127) — use --page 2 for next
 ```
 
 **Formatting rules:**
-- Column widths: `Trigger` ≤20, `Replacement` ≤40, `Profiles` ≤24, `Updated` ≤10 (fixed).
-- Truncate long values with `…` (ellipsis).
+- Column widths: `Trigger` ≤20, `Replacement` ≤40, `Profiles` ≤24, `Updated` =19 (fixed; matches `yyyy-MM-dd HH:mm:ss`).
+- Truncate long values with `…` (ellipsis). `Updated` is never truncated.
 - `Updated` column: local date/time in `yyyy-MM-dd HH:mm:ss` format (via `DateTimeOffset.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")`).
 - `Profiles` column: `all` if `AppliesToAllProfiles=true`; otherwise comma-joined profile names (first 3, then `+N more` if count > 3). If no profile names resolved, show `<n> profiles`.
 - Footer line (e.g., `Page 1/3…`) only when `TotalPages > 1`.
@@ -228,6 +239,8 @@ public sealed record HotstringDto(
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt);
 
+// ProfileIds is nullable: CLI sends `null` when --profile is omitted (all profiles).
+// API handler treats null and [] equivalently (`input.ProfileIds?.Distinct().ToArray() ?? []`).
 public sealed record CreateHotstringDto(
     string Trigger,
     string Replacement,
@@ -257,8 +270,10 @@ public sealed record ProfileSummary(Guid Id, string Name);
 
 **`EnvVarAuthTokenProviderTests`**
 - Token returned when `AHKFLOW_TOKEN` env var is set (non-empty).
-- `NotAuthenticatedException` thrown when env var is unset, with message: "Not signed in. Set AHKFLOW_TOKEN environment variable to a bearer token."
+- Empty / whitespace env var treated as unset.
+- `NotAuthenticatedException` thrown when env var is unset, with message: `Not signed in. Set AHKFLOW_TOKEN environment variable to a bearer token.`
 - Exception message tests ensure message quality.
+- Tests must not leak env var to other tests: use `Environment.SetEnvironmentVariable("AHKFLOW_TOKEN", null)` in a `finally` block, or wrap each test in a small disposable helper.
 
 **`HotstringTableFormatterTests`**
 - Column truncation: long trigger/replacement/profile names.
@@ -277,83 +292,161 @@ public sealed record ProfileSummary(Guid Id, string Name);
 
 **`NewHotstringCommandTests`**
 - Required flags `-t` and `-r` enforced by System.CommandLine (framework responsibility; no explicit test needed, but document in test comments).
-- `--profile` omitted ⇒ `AppliesToAllProfiles=true`, `ProfileIds=[]` sent to API.
-- `--profile work --profile personal` ⇒ resolved to Guids, `AppliesToAllProfiles=false`, `ProfileIds=[guid1, guid2]` sent.
-- Unknown profile name ⇒ `ProfileNotFoundException` caught, stderr message "Profile 'nope' not found", exit 1.
+- `--profile` omitted ⇒ `AppliesToAllProfiles=true`, `ProfileIds=null` sent to API (matches `CreateHotstringDto` default; API accepts null or empty).
+- `--profile work --profile personal` ⇒ resolved to Guids (case-insensitive match), `AppliesToAllProfiles=false`, `ProfileIds=[guid1, guid2]` sent.
+- `--profile WORK` (mixed casing) ⇒ resolves to "work" profile (case-insensitive).
+- Unknown profile name ⇒ stderr `Profile 'nope' not found. Available: …`, exit 2.
 - `--no-ending-char` ⇒ `IsEndingCharacterRequired=false` sent.
 - `--inside-word` ⇒ `IsTriggerInsideWord=true` sent.
 - `--json` flag ⇒ JSON formatter used instead of human summary.
-- API validation error (400, ProblemDetails) ⇒ stderr, exit 1.
-- API conflict (409, duplicate trigger) ⇒ stderr, exit 1.
-- Auth error ⇒ stderr "Not signed in…", exit 2.
-- Success ⇒ stdout "Created hotstring <id> ('<trigger>')", exit 0.
+- API validation error (400, ProblemDetails) ⇒ stderr, exit 2.
+- API conflict (409, duplicate trigger) ⇒ stderr, exit 2.
+- API server error (5xx) ⇒ stderr, exit 1.
+- Auth error (env var unset or 401) ⇒ stderr `Not signed in…`, exit 3.
+- Success ⇒ stdout `Created hotstring <id> ('<trigger>')`, exit 0.
 - Use `NSubstitute` for `IHotstringsApiClient`, `IProfilesApiClient`.
-- Use `StringWriter` for `parseResult.Configuration.Output/Error` to capture output.
+- Capture output by passing `new InvocationConfiguration { Output = sw, Error = sw }` to `parseResult.Invoke(...)` (see Test Infrastructure below).
 
 **`ListHotstringCommandTests`**
 - Query parameters plumbed: `profileId`, `search`, `page`, `pageSize`.
-- `--profile work` ⇒ profiles API queried, name resolved to Guid, passed as `profileId` query param.
+- `--profile work` ⇒ profiles API queried, name resolved to Guid (case-insensitive), passed as `profileId` query param.
 - `--search btw` ⇒ `search=btw` query param.
 - `--page 2 --page-size 25` ⇒ `page=2&pageSize=25` query params.
 - `--json` ⇒ JSON formatter; default ⇒ table formatter.
-- Unknown profile name ⇒ stderr, exit 1.
-- Validation error (bad page/pageSize) ⇒ stderr, exit 1.
-- Empty result (0 items) ⇒ "No hotstrings found." to stdout.
-- Auth error ⇒ exit 2.
+- Unknown profile name ⇒ stderr, exit 2.
+- Validation error (bad page/pageSize) ⇒ stderr, exit 2.
+- Empty result (0 items) ⇒ `No hotstrings found.` to stdout, exit 0.
+- Auth error ⇒ exit 3.
+- Server error ⇒ exit 1.
 - Success ⇒ formatted output (table or JSON) to stdout, exit 0.
 
-### Integration tests
+### Test infrastructure (new — required wiring)
 
-**Setup:** `[Collection("WebApi")]` shared with API tests, reusing `SqlContainerFixture` and `CustomWebApplicationFactory.WithTestAuth()`.
+xUnit collection definitions are scoped to a single test assembly, so CLI tests **cannot** reuse `[Collection("WebApi")]` from `AHKFlowApp.API.Tests`. The CLI test project needs its own wiring:
 
-**Test helper:** Custom `DelegatingHandler` to inject `X-Test-Oid`/`X-Test-Email` headers (bypasses MSAL, allows test auth to succeed).
+**1. ProjectReferences in `tests/AHKFlowApp.CLI.Tests/AHKFlowApp.CLI.Tests.csproj`:**
 
-**Test fixture:**
-```csharp
-var factory = new CustomWebApplicationFactory(sqlFixture)
-    .WithTestAuth(u => u
-        .WithOid(testUserId)
-        .WithEmail("test@example.com"));
-
-// Replace CLI's DI container to inject factory.CreateClient()
-// Replace IAuthTokenProvider with stub returning "test-token"
+```xml
+<ItemGroup>
+  <ProjectReference Include="..\..\src\Tools\AHKFlowApp.CLI\AHKFlowApp.CLI.csproj" />
+  <ProjectReference Include="..\..\src\Backend\AHKFlowApp.API\AHKFlowApp.API.csproj" />
+  <ProjectReference Include="..\AHKFlowApp.TestUtilities\AHKFlowApp.TestUtilities.csproj" />
+</ItemGroup>
 ```
 
-**Test cases:**
+The API reference is needed for `WebApplicationFactory<Program>` (`Program` is the API entry-point class).
+
+**2. CLI test collection definition (new file, `tests/AHKFlowApp.CLI.Tests/Collections.cs`):**
+
+```csharp
+using AHKFlowApp.TestUtilities.Fixtures;
+using Xunit;
+
+namespace AHKFlowApp.CLI.Tests;
+
+[CollectionDefinition("CliWebApi")]
+public sealed class CliWebApiCollection : ICollectionFixture<SqlContainerFixture>;
+```
+
+This is a separate definition — the SQL container is shared *within* this assembly. The container itself is reused across assemblies because xUnit launches one process per assembly and `SqlContainerFixture` starts/stops a container per process. (Acceptable; integration test count is small.)
+
+**3. CLI test seam (transport replacement):**
+
+CLI commands must not reach the network in tests. The seam is the typed `HttpClient`s registered in `Program.cs` for `IHotstringsApiClient` and `IProfilesApiClient`. A test helper builds a CLI `IServiceProvider` with these clients pointed at the in-memory `WebApplicationFactory`:
+
+```csharp
+internal static class CliTestHost
+{
+    public static IServiceProvider Build(
+        WebApplicationFactory<Program> factory,
+        string token = "test-token")
+    {
+        ServiceCollection services = new();
+
+        // Replace IAuthTokenProvider with a stub returning the test token.
+        services.AddSingleton<IAuthTokenProvider>(new StubAuthTokenProvider(token));
+        services.AddTransient<BearerTokenHandler>();
+
+        // Typed clients use factory.Server.CreateHandler() so requests go in-memory
+        // (no sockets, no port collisions). BearerTokenHandler still chains in front.
+        services.AddHttpClient<IHotstringsApiClient, HotstringsApiClient>()
+            .ConfigurePrimaryHttpMessageHandler(() => factory.Server.CreateHandler())
+            .AddHttpMessageHandler<BearerTokenHandler>();
+
+        services.AddHttpClient<IProfilesApiClient, ProfilesApiClient>()
+            .ConfigurePrimaryHttpMessageHandler(() => factory.Server.CreateHandler())
+            .AddHttpMessageHandler<BearerTokenHandler>();
+
+        return services.BuildServiceProvider();
+    }
+}
+```
+
+`StubAuthTokenProvider` is a single-line test helper that returns either the supplied token or throws `NotAuthenticatedException` when constructed with `null` (used for the auth-failure test).
+
+The factory is configured with test auth (`WithTestAuth(u => u.WithOid(testUserId).WithEmail("test@example.com"))`) — same extension `AHKFlowApp.API.Tests` already uses. The supplied bearer token's *value* is ignored by the test auth scheme; only the header presence matters.
+
+**4. Capturing stdout/stderr in tests:**
+
+```csharp
+StringWriter stdout = new();
+StringWriter stderr = new();
+RootCommand root = RootCli.Build(serviceProvider);
+int exitCode = await root.Parse(args)
+    .InvokeAsync(new InvocationConfiguration { Output = stdout, Error = stderr });
+```
+
+Inside command actions, the same writers are reachable via `parseResult.InvocationConfiguration.Output` / `.Error`.
+
+### Integration test cases
+
+**Setup:** `[Collection("CliWebApi")]` (the new CLI-local collection above), reusing `SqlContainerFixture` and `CustomWebApplicationFactory.WithTestAuth()` from `AHKFlowApp.TestUtilities`.
 
 1. **Happy path — create:**
-   - `hotstring new -t btw -r "by the way"` → 201, hotstring in DB, stdout has `Created …`.
+   - `hotstring new -t btw -r "by the way"` → 201, hotstring in DB, stdout has `Created …`, exit 0.
 
 2. **Happy path — list:**
-   - Seed 3 hotstrings, run `hotstring list` → table output with 3 rows.
+   - Seed 3 hotstrings, run `hotstring list` → table output with 3 rows, exit 0.
 
 3. **Create with profile:**
-   - Seed profile "work", run `hotstring new -t omw -r x --profile work` → hotstring linked to profile.
+   - Seed profile "work", run `hotstring new -t omw -r x --profile work` → hotstring linked to profile, `ProfileIds=[work-guid]` persisted.
 
-4. **List filtered by profile:**
+4. **Create with no `--profile` (all profiles):**
+   - `hotstring new -t btw -r "by the way"` → DTO sent has `ProfileIds=null`, persisted hotstring has `AppliesToAllProfiles=true`, no junction rows.
+
+5. **List filtered by profile:**
    - Seed hotstrings in "work" and "personal" profiles, run `hotstring list --profile work` → only work hotstrings.
 
-5. **Duplicate trigger:**
-   - Create hotstring, create again with same trigger → exit 1, 409 problem details to stderr.
+6. **Profile name match is case-insensitive:**
+   - Seed profile "work", run `hotstring list --profile WORK` → matches; same for `new --profile Work`.
 
-6. **Unknown profile:**
-   - Run `hotstring new -t x -r y --profile nope` → exit 1, "Profile 'nope' not found" to stderr.
+7. **Duplicate trigger:**
+   - Create hotstring, create again with same trigger → exit 2, 409 problem details to stderr.
 
-7. **Validation error:**
-   - Run `hotstring new -t "" -r ""` → exit 1, validation error from API to stderr.
+8. **Unknown profile:**
+   - Run `hotstring new -t x -r y --profile nope` → exit 2, `Profile 'nope' not found. Available: …` to stderr.
 
-8. **JSON output:**
-   - `hotstring list --json` → valid JSON, parseable to PagedList<HotstringDto>.
-   - `hotstring new -t x -r y --json` → valid JSON HotstringDto.
+9. **Validation error:**
+   - Run `hotstring new -t "" -r ""` → exit 2, validation error from API to stderr.
 
-9. **Pagination:**
-   - Seed 150 hotstrings, run `hotstring list --page-size 50 --page 2` → second page items shown.
+10. **JSON output:**
+    - `hotstring list --json` → valid JSON, parseable to `PagedList<HotstringDto>`.
+    - `hotstring new -t x -r y --json` → valid JSON `HotstringDto`.
 
-10. **Search:**
+11. **Pagination:**
+    - Seed 150 hotstrings, run `hotstring list --page-size 50 --page 2` → second page items shown.
+
+12. **Search:**
     - Seed hotstrings with varied triggers/replacements, run `hotstring list --search "bye"` → filtered.
 
-11. **Auth failure:**
-    - Clear `AHKFLOW_TOKEN` env var, run any command → exit 2, "Not signed in…" to stderr.
+13. **Auth failure — env var unset:**
+    - Build CLI host with `StubAuthTokenProvider(null)` (mirrors unset env var) → exit 3, `Not signed in…` to stderr.
+
+14. **Auth failure — 401 from API:**
+    - Configure factory's test auth to reject the token → exit 3, `Not signed in…` to stderr.
+
+15. **Server error (5xx):**
+    - Configure a delegating handler in the factory pipeline to throw for `POST /api/v1/hotstrings` → exit 1, problem details (or generic 500 message) to stderr.
 
 ## Scope: additions from backlog 028
 
@@ -392,5 +485,6 @@ Item 017 deferred `IProfilesApiClient` registration and HttpClient wiring to 028
 ## Backlog updates required
 
 After merge:
-- Update **017** notes: `IAuthTokenProvider` registration replaced with `EnvVarAuthTokenProvider`; auth flow no longer stubbed.
+- Update **018** acceptance criteria: replace `ahkflowapp new` / `ahkflowapp list` with `ahkflow hotstring new` / `ahkflow hotstring list` (binary name `ahkflow` was locked in 017; verb-noun grouping is added here for room to grow with `hotkey`, `profile`, etc.).
+- Update **017** notes: `IAuthTokenProvider` registration replaced with `EnvVarAuthTokenProvider`; auth flow no longer stubbed (until 029 ships MSAL).
 - Update **028** notes: Profiles client impl moved to 018; only download command remains in 028 scope.
