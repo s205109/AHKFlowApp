@@ -44,7 +44,7 @@ public sealed class DownloadDestinationTests : IDisposable
         DownloadTarget t = DownloadDestination.Resolve(newDir, "foo.ahk", _baseDir);
 
         t.Should().BeOfType<DownloadTarget.FileTarget>();
-        ((DownloadTarget.FileTarget)t).Path.Should().Be(Path.Combine(newDir, "foo.ahk"));
+        ((DownloadTarget.FileTarget)t).Path.Should().Be(Path.Combine(_baseDir, "newsubdir", "foo.ahk"));
     }
 
     [Fact]
