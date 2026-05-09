@@ -1,4 +1,5 @@
 using AHKFlowApp.CLI.Output;
+using AHKFlowApp.CLI.Services;
 using FluentAssertions;
 using Xunit;
 
@@ -83,5 +84,43 @@ public sealed class DownloadDestinationTests : IDisposable
 
         t.Should().BeOfType<DownloadTarget.FileTarget>();
         ((DownloadTarget.FileTarget)t).Path.Should().Be(Path.Combine(_baseDir, "subdir", "foo.ahk"));
+    }
+
+    [Fact]
+    public async Task WriteAsync_FileTarget_WritesBytesAndCreatesParentDirs()
+    {
+        string nested = Path.Combine(_baseDir, "a", "b", "out.ahk");
+        byte[] bytes = [1, 2, 3, 4];
+
+        await DownloadDestination.WriteAsync(
+            DownloadTarget.File(nested), bytes, new BinaryStdout(() => new MemoryStream()), CancellationToken.None);
+
+        File.Exists(nested).Should().BeTrue();
+        (await File.ReadAllBytesAsync(nested)).Should().Equal(bytes);
+    }
+
+    [Fact]
+    public async Task WriteAsync_FileTarget_OverwritesExistingFile()
+    {
+        string path = Path.Combine(_baseDir, "exists.ahk");
+        await File.WriteAllBytesAsync(path, [9, 9, 9]);
+        byte[] newBytes = [1, 2];
+
+        await DownloadDestination.WriteAsync(
+            DownloadTarget.File(path), newBytes, new BinaryStdout(() => new MemoryStream()), CancellationToken.None);
+
+        (await File.ReadAllBytesAsync(path)).Should().Equal(newBytes);
+    }
+
+    [Fact]
+    public async Task WriteAsync_StdoutTarget_WritesBytesToInjectedStream()
+    {
+        using MemoryStream sink = new();
+        byte[] bytes = [42, 43, 44];
+
+        await DownloadDestination.WriteAsync(
+            DownloadTarget.Stdout, bytes, new BinaryStdout(() => sink), CancellationToken.None);
+
+        sink.ToArray().Should().Equal(bytes);
     }
 }

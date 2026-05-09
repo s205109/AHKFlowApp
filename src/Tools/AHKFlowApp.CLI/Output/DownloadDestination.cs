@@ -1,3 +1,5 @@
+using AHKFlowApp.CLI.Services;
+
 namespace AHKFlowApp.CLI.Output;
 
 public abstract record DownloadTarget
@@ -28,5 +30,27 @@ public static class DownloadDestination
             return DownloadTarget.File(Path.Combine(normalized, serverFileName));
 
         return DownloadTarget.File(normalized);
+    }
+
+    public static async Task WriteAsync(
+        DownloadTarget target, byte[] bytes, BinaryStdout binaryStdout, CancellationToken ct)
+    {
+        switch (target)
+        {
+            case DownloadTarget.StdoutTarget:
+            {
+                Stream stdout = binaryStdout.Open();
+                await stdout.WriteAsync(bytes, ct);
+                await stdout.FlushAsync(ct);
+                break;
+            }
+            case DownloadTarget.FileTarget file:
+            {
+                string? dir = Path.GetDirectoryName(file.Path);
+                if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+                await File.WriteAllBytesAsync(file.Path, bytes, ct);
+                break;
+            }
+        }
     }
 }
