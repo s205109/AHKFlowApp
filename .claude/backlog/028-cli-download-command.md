@@ -17,6 +17,7 @@ As a power user, I want to download scripts via the CLI so that I can automate u
 ## Acceptance criteria
 
 - [ ] `ahkflow download ahk --profile <name>` downloads the script.
+- [ ] `ahkflow download zip` downloads a zip of all the user's profile scripts to cwd (or `-o`).
 - [ ] CLI supports choosing an output path or printing to stdout.
 - [ ] Authentication is handled consistently (see 012).
 - [ ] Unit tests for CLI download command argument handling and output behavior.
@@ -24,7 +25,7 @@ As a power user, I want to download scripts via the CLI so that I can automate u
 
 ## Out of scope
 
-- Downloading additional artifacts.
+- Downloading artifacts other than per-profile `.ahk` and the all-profiles zip (e.g., compiled `.exe`, signed bundles).
 
 ## Notes / dependencies
 
