@@ -90,7 +90,7 @@ ahkflow hotstring new --trigger <text> --replacement <text> [--profile <name>] [
 | `--replacement` | `-r` | string | yes | — | Text to insert. Mapped to API `Replacement`. |
 | `--profile` | `-p` | string | no | — | Profile name (repeatable). Resolves to Guid(s). Empty list ⇒ `AppliesToAllProfiles=true`. Non-empty ⇒ `false` + `ProfileIds=[…]`. |
 | `--no-ending-char` | — | bool | no | false | Sets `IsEndingCharacterRequired=false` (API default is true). |
-| `--inside-word` | — | bool | no | false | Sets `IsTriggerInsideWord=true`. |
+| `--no-inside-word` | — | bool | no | false | Sets `IsTriggerInsideWord=false` (API default is true). |
 | `--json` | — | bool | no | false | Emit response as JSON instead of human summary. |
 
 **Behavior:**
@@ -297,7 +297,7 @@ public sealed record ProfileSummary(Guid Id, string Name);
 - `--profile WORK` (mixed casing) ⇒ resolves to "work" profile (case-insensitive).
 - Unknown profile name ⇒ stderr `Profile 'nope' not found. Available: …`, exit 2.
 - `--no-ending-char` ⇒ `IsEndingCharacterRequired=false` sent.
-- `--inside-word` ⇒ `IsTriggerInsideWord=true` sent.
+- `--no-inside-word` ⇒ `IsTriggerInsideWord=false` sent.
 - `--json` flag ⇒ JSON formatter used instead of human summary.
 - API validation error (400, ProblemDetails) ⇒ stderr, exit 2.
 - API conflict (409, duplicate trigger) ⇒ stderr, exit 2.
