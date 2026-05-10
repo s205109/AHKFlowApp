@@ -24,9 +24,12 @@ Small refinements for the current repository shape:
 - Put auth commands under `src/Tools/AHKFlowApp.CLI/Commands/Auth/` to match the current command folder style.
 - Keep `IAuthTokenProvider` as the stable interface used by `BearerTokenHandler`.
 - Add a small `IDeviceCodePromptWriter` so the MSAL provider can display the device-code challenge without changing `IAuthTokenProvider`.
+- `MsalDeviceCodeTokenProvider` receives `IDeviceCodePromptWriter` through primary-constructor DI, and `Program.cs` registers `ConsoleErrorDeviceCodePromptWriter` as the production implementation.
 - Replace the production DI registration of `EnvVarAuthTokenProvider` with an MSAL provider. Tests can keep using `StubAuthTokenProvider`.
 - Update current auth failure text from `Set AHKFLOW_TOKEN...` to `Run 'ahkflow login' first.`.
-- Validate `ClientId` and `TenantId` before MSAL construction so placeholder GUIDs in `appsettings.json` produce a clear CLI error.
+- Explicitly update `DownloadCommandRunner`'s existing `catch (ApiException ex) when (ex.StatusCode == 401)` block from `Not signed in. Set AHKFLOW_TOKEN environment variable to a bearer token.` to `Authentication failed. Run 'ahkflow login'.`.
+- Validate `ClientId` and `TenantId` lazily inside `GetTokenAsync` / `LoginAsync`, before MSAL construction, so placeholder GUIDs produce a clear CLI error without breaking `ahkflow --help`.
+- Update `tests/AHKFlowApp.CLI.Tests/Infrastructure/StubAuthTokenProvider.cs` to use the new `Run 'ahkflow login' first.` message when simulating unauthenticated API calls.
 
 ## Scope
 
@@ -68,7 +71,7 @@ No `--force-prompt` flag. Switching accounts is `ahkflow logout` followed by `ah
 Behavior:
 
 - Enumerates all cached accounts and removes them.
-- Deletes the cache file on a best-effort basis.
+- Deletes the cache file on a best-effort basis. `FileNotFoundException`, `IOException`, and `UnauthorizedAccessException` during cache-file delete are swallowed so logout remains idempotent.
 - Exits `0` and prints `Signed out`.
 - Idempotent when there is no cached account.
 
@@ -93,15 +96,24 @@ public sealed record LoginResult(string Username, bool WasAlreadySignedIn);
 - Use authority `https://login.microsoftonline.com/{TenantId}`.
 - Use redirect URI `http://localhost`.
 - Register the user token cache through `Microsoft.Identity.Client.Extensions.Msal`.
-- `GetTokenAsync` uses the first cached account and `AcquireTokenSilent`.
+- `GetTokenAsync` validates `ClientId` and `TenantId` lazily, uses the first cached account, and calls `AcquireTokenSilent`.
+- `GetTokenAsync` throws `NotAuthenticatedException` with message `Run 'ahkflow login' first.` when there is no cached account.
+- `GetTokenAsync` throws `NotAuthenticatedException` with message `Run 'ahkflow login' first.` when `AcquireTokenSilent` throws `MsalUiRequiredException`, including expired or revoked refresh-token cases.
 - `LoginAsync` uses silent first, then `AcquireTokenWithDeviceCode`.
-- `LogoutAsync` removes every cached account and deletes the cache file if present.
+- `LoginAsync` populates `LoginResult.Username` from `AuthenticationResult.Account.Username` (UPN).
+- `LogoutAsync` removes every cached account and deletes the cache file if present, swallowing cache-file delete failures listed above.
 
 Single-account behavior is intentional. If multiple accounts somehow exist in the cache, the provider uses the first account for token acquisition and removes all accounts on logout.
 
-`IDeviceCodePromptWriter` is intentionally narrow:
+`IDeviceCodePromptWriter` is intentionally narrow and is injected into `MsalDeviceCodeTokenProvider`:
 
 ```csharp
+public sealed class MsalDeviceCodeTokenProvider(
+    IOptions<CliOptions> options,
+    IDeviceCodePromptWriter promptWriter) : IAuthTokenProvider
+{
+}
+
 public interface IDeviceCodePromptWriter
 {
     Task WriteAsync(DeviceCodePrompt prompt, CancellationToken ct);
@@ -110,14 +122,11 @@ public interface IDeviceCodePromptWriter
 public sealed record DeviceCodePrompt(string VerificationUrl, string UserCode, string Message);
 ```
 
-The production writer writes to `Console.Error`. The command still owns final success and failure messages; the prompt writer only handles the transient MSAL device-code instruction.
+`Program.cs` registers `IDeviceCodePromptWriter` as `ConsoleErrorDeviceCodePromptWriter`. The production writer writes to `Console.Error`. The command still owns final success and failure messages; the prompt writer only handles the transient MSAL device-code instruction.
 
 ## Cache
 
-Cache file:
-
-- Windows: `%LOCALAPPDATA%\AHKFlowApp\msal-cache.bin3`
-- Linux/macOS: `Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AHKFlowApp", "msal-cache.bin3")`
+Cache file: `Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AHKFlowApp", "msal-cache.bin3")` on all platforms.
 
 The implementation should use `Microsoft.Identity.Client.Extensions.Msal` storage helpers rather than custom encryption or locking.
 
@@ -141,6 +150,8 @@ Environment variables continue to override with the `AHKFLOW_` prefix:
 
 `ClientId` and `TenantId` must be valid non-empty GUIDs and not `Guid.Empty`. Invalid values produce a concise command error instead of an MSAL stack trace.
 
+Validation is lazy. `Program.cs` must not construct MSAL or fail the host during root-command build, so `ahkflow --help` continues to work with placeholder config. The provider validates config only when `GetTokenAsync`, `LoginAsync`, or `LogoutAsync` needs MSAL state.
+
 ## Entra Setup
 
 Update `scripts/setup-entra-app.ps1` for the existing app registration:
@@ -161,6 +172,8 @@ Authentication errors map to exit code `3`:
 - Silent refresh requires interaction: `Run 'ahkflow login' first.`
 - API returns `401`: `Authentication failed. Run 'ahkflow login'.`
 
+Required existing-code change: update `src/Tools/AHKFlowApp.CLI/Commands/Downloads/DownloadCommandRunner.cs` line 47's `ApiException` `401` catch message to `Authentication failed. Run 'ahkflow login'.`.
+
 User/config errors map to exit code `2` when they are caused by command input. Unexpected MSAL, network, or server errors map to exit code `1`.
 
 Invalid `ClientId` / `TenantId` configuration maps to exit code `1` with a concise message naming the bad key. It is not a command-argument error.
@@ -176,7 +189,7 @@ Automated tests should cover behavior that does not require a real tenant:
 - `logout` calls `IAuthTokenProvider.LogoutAsync`, prints `Signed out`, and is idempotent from the command perspective.
 - `DeviceCodePromptWriter` writes the verification URL and user code to stderr.
 - `BearerTokenHandler` continues attaching cached bearer tokens.
-- Existing download/hotstring tests continue to pass with `StubAuthTokenProvider`.
+- Existing download/hotstring tests continue to pass with `StubAuthTokenProvider`; the stub's unauthenticated path should throw `NotAuthenticatedException` with `Run 'ahkflow login' first.` so tests do not preserve the old `AHKFLOW_TOKEN` copy.
 - `scripts/setup-entra-app.ps1` changes are structurally testable through script review and manual smoke; no tenant-backed automated test is required.
 
 Manual smoke after implementation:
