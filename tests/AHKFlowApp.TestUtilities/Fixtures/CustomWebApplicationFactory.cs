@@ -14,6 +14,8 @@ public sealed class CustomWebApplicationFactory(
 {
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        builder.UseSetting("Auth:UseTestProvider", "false");
+
         // Microsoft.Identity.Web validates ClientId/TenantId on first request — provide
         // placeholder values so anonymous endpoints work without real Entra credentials.
         builder.ConfigureAppConfiguration(config =>
