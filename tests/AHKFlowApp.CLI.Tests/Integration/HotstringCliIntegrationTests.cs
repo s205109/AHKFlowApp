@@ -256,7 +256,7 @@ public sealed class HotstringCliIntegrationTests(SqlContainerFixture sql) : IAsy
             ["hotstring", "new", "-t", "x", "-r", "y"], token: null);
 
         exit.Should().Be(3);
-        stderr.Should().Contain("Not signed in");
+        stderr.Should().Contain(AuthMessages.LoginRequired);
     }
 
     [Fact]
@@ -269,6 +269,6 @@ public sealed class HotstringCliIntegrationTests(SqlContainerFixture sql) : IAsy
 
         exit.Should().Be(1);
         stderr.Should().NotBeEmpty();
-        stderr.Should().NotContain("Not signed in");
+        stderr.Should().NotContain(AuthMessages.LoginRequired);
     }
 }
