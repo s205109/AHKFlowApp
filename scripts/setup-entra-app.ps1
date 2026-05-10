@@ -159,6 +159,44 @@ Wait-ForCondition -Description "SPA redirect URIs" -Condition {
 Write-Host "Redirect URIs set: $($redirectUris -join ', ')"
 
 # ---------------------------------------------------------------------------
+# Enable public-client device-code flow for the CLI
+# ---------------------------------------------------------------------------
+$publicClientRedirectUri = 'http://localhost'
+$publicClientUris = ConvertFrom-JsonSafe (az ad app show --id $objectId --query 'publicClient.redirectUris' -o json 2>$null)
+if (-not $publicClientUris) {
+    $publicClientUris = @()
+}
+
+if ($publicClientRedirectUri -notin $publicClientUris) {
+    $mergedPublicClientUris = @($publicClientUris) + $publicClientRedirectUri
+    $publicClientJson = @{ publicClient = @{ redirectUris = $mergedPublicClientUris } } |
+        ConvertTo-Json -Depth 5 -Compress
+    Invoke-GraphPatch -ObjectId $objectId -JsonBody $publicClientJson
+    Wait-ForCondition -Description "public client redirect URI" -Condition {
+        $configuredUris = ConvertFrom-JsonSafe (az ad app show --id $objectId --query 'publicClient.redirectUris' -o json 2>$null)
+        return $publicClientRedirectUri -in $configuredUris
+    }
+    Write-Host "Added public client redirect URI: $publicClientRedirectUri"
+} else {
+    Write-Host "Public client redirect URI already exists: $publicClientRedirectUri"
+}
+
+$isFallbackPublicClient = az ad app show --id $objectId --query 'isFallbackPublicClient' -o tsv 2>$null
+if ($isFallbackPublicClient -ne 'true') {
+    # Microsoft identity platform requires "allow public client flows" for device-code flow.
+    # This Graph property is broader than the CLI command surface; AHKFlowApp only implements device-code, not ROPC.
+    $fallbackJson = @{ isFallbackPublicClient = $true } | ConvertTo-Json -Compress
+    Invoke-GraphPatch -ObjectId $objectId -JsonBody $fallbackJson
+    Wait-ForCondition -Description "fallback public client flag" -Condition {
+        $value = az ad app show --id $objectId --query 'isFallbackPublicClient' -o tsv 2>$null
+        return $value -eq 'true'
+    }
+    Write-Host "Enabled fallback public client flow"
+} else {
+    Write-Host "Fallback public client flow already enabled"
+}
+
+# ---------------------------------------------------------------------------
 # Ensure access_as_user oauth2PermissionScope exists
 # NOTE: PATCHing api.oauth2PermissionScopes replaces the whole collection.
 # Safe here because this is a bootstrap script for a single-purpose app that
