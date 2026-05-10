@@ -70,6 +70,12 @@ public sealed class DownloadsApiClientTests
     [InlineData("..\\escape.ahk")]
     [InlineData("sub/dir.ahk")]
     [InlineData("/rooted/path.ahk")]
+    [InlineData(".")]
+    [InlineData("..")]
+    [InlineData("NUL")]
+    [InlineData("NUL.ahk")]
+    [InlineData("CON")]
+    [InlineData("CON.ahk")]
     public async Task GetProfileScript_UnsafeOrMissingFilename_FallsBackToProfileAhk(string? bad)
     {
         (DownloadsApiClient sut, _) = CreateClient(_ =>

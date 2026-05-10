@@ -45,13 +45,20 @@ public sealed class DownloadsApiClient(HttpClient http) : IDownloadsApiClient
         return candidate.Trim().Trim('"');
     }
 
+    private static readonly HashSet<string> WindowsReservedNames = new(
+        ["CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+         "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"],
+        StringComparer.OrdinalIgnoreCase);
+
     private static string SafeFileName(string raw, string fallback)
     {
         if (string.IsNullOrWhiteSpace(raw)) return fallback;
+        if (raw == "." || raw == "..") return fallback;
         if (raw.Contains('/') || raw.Contains('\\')) return fallback;
         if (Path.IsPathRooted(raw)) return fallback;
         if (raw.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0) return fallback;
         if (Path.GetFileName(raw) != raw) return fallback;
+        if (WindowsReservedNames.Contains(Path.GetFileNameWithoutExtension(raw))) return fallback;
         return raw;
     }
 }
