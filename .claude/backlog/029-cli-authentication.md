@@ -17,10 +17,14 @@ As a user, I want to sign in to the CLI so that my hotstrings are protected and 
 
 ## Acceptance criteria
 
-- [ ] `ahkflow login` triggers device-code flow and caches the token.
-- [ ] Cached token is attached to all subsequent API calls.
-- [ ] `ahkflow logout` clears the cached token.
-- [ ] Expired tokens are refreshed silently; user is prompted to re-login on failure.
+- [x] `ahkflow login` triggers device-code flow and caches the token.
+- [x] Cached token is attached to all subsequent API calls.
+- [x] `ahkflow logout` clears the cached token.
+- [x] Expired tokens are refreshed silently; user is prompted to re-login on failure.
+
+## Completion
+
+**Completed:** 2026-05-10
 
 ## Out of scope
 
