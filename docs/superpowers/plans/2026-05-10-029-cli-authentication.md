@@ -17,7 +17,7 @@ Create:
 - `src/Tools/AHKFlowApp.CLI/Commands/Auth/LoginCommand.cs` - `ahkflow login` command and exit-code mapping.
 - `src/Tools/AHKFlowApp.CLI/Commands/Auth/LogoutCommand.cs` - `ahkflow logout` command.
 - `src/Tools/AHKFlowApp.CLI/Services/AuthMessages.cs` - shared CLI auth messages.
-- `src/Tools/AHKFlowApp.CLI/Services/AuthConfigurationException.cs` - concise invalid auth config failure.
+- `src/Tools/AHKFlowApp.CLI/Exceptions/AuthConfigurationException.cs` - concise invalid auth config failure.
 - `src/Tools/AHKFlowApp.CLI/Services/DeviceCodePrompt.cs` - prompt DTO.
 - `src/Tools/AHKFlowApp.CLI/Services/IDeviceCodePromptWriter.cs` - prompt output seam.
 - `src/Tools/AHKFlowApp.CLI/Services/ConsoleErrorDeviceCodePromptWriter.cs` - writes device-code challenge to stderr.
@@ -43,6 +43,8 @@ Modify:
 - `tests/AHKFlowApp.CLI.Tests/Commands/Downloads/ZipDownloadCommandTests.cs` - assert new 401 and auth messages.
 - `tests/AHKFlowApp.CLI.Tests/Commands/Hotstrings/NewHotstringCommandTests.cs` - assert new 401 and auth messages.
 - `tests/AHKFlowApp.CLI.Tests/Commands/Hotstrings/ListHotstringCommandTests.cs` - assert new 401 message.
+- `src/Tools/AHKFlowApp.CLI/Services/EnvVarAuthTokenProvider.cs` - delete temporary env-var auth provider after MSAL registration is in place.
+- `tests/AHKFlowApp.CLI.Tests/Services/EnvVarAuthTokenProviderTests.cs` - delete tests for temporary env-var auth provider.
 - `scripts/setup-entra-app.ps1` - add public-client redirect URI and fallback public-client flag.
 - `docs/architecture/authentication.md` - replace "deferred" CLI section with shipped design.
 - `.claude/backlog/029-cli-authentication.md` - mark acceptance criteria complete after implementation.
@@ -221,6 +223,7 @@ git commit -m "feat(029): add CLI device-code prompt writer"
 **Files:**
 - Create: `src/Tools/AHKFlowApp.CLI/Commands/Auth/LoginCommand.cs`
 - Create: `src/Tools/AHKFlowApp.CLI/Commands/Auth/LogoutCommand.cs`
+- Create: `src/Tools/AHKFlowApp.CLI/Exceptions/AuthConfigurationException.cs`
 - Modify: `src/Tools/AHKFlowApp.CLI/Commands/RootCli.cs`
 - Test: `tests/AHKFlowApp.CLI.Tests/Commands/Auth/LoginCommandTests.cs`
 - Test: `tests/AHKFlowApp.CLI.Tests/Commands/Auth/LogoutCommandTests.cs`
@@ -323,6 +326,7 @@ Create `tests/AHKFlowApp.CLI.Tests/Commands/Auth/LogoutCommandTests.cs`:
 ```csharp
 using System.CommandLine;
 using AHKFlowApp.CLI.Commands.Auth;
+using AHKFlowApp.CLI.Exceptions;
 using AHKFlowApp.CLI.Services;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
@@ -389,10 +393,10 @@ Expected: fail because `LoginCommand`, `LogoutCommand`, and `AuthConfigurationEx
 
 - [ ] **Step 4: Add auth configuration exception**
 
-Create `src/Tools/AHKFlowApp.CLI/Services/AuthConfigurationException.cs`:
+Create `src/Tools/AHKFlowApp.CLI/Exceptions/AuthConfigurationException.cs`:
 
 ```csharp
-namespace AHKFlowApp.CLI.Services;
+namespace AHKFlowApp.CLI.Exceptions;
 
 public sealed class AuthConfigurationException(string message) : Exception(message);
 ```
@@ -456,6 +460,7 @@ Create `src/Tools/AHKFlowApp.CLI/Commands/Auth/LogoutCommand.cs`:
 
 ```csharp
 using System.CommandLine;
+using AHKFlowApp.CLI.Exceptions;
 using AHKFlowApp.CLI.Services;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -554,7 +559,7 @@ Expected: output includes `login` and `logout`; it must not fail because `Client
 - [ ] **Step 10: Commit**
 
 ```powershell
-git add src/Tools/AHKFlowApp.CLI/Commands/Auth src/Tools/AHKFlowApp.CLI/Commands/RootCli.cs src/Tools/AHKFlowApp.CLI/Services/AuthConfigurationException.cs tests/AHKFlowApp.CLI.Tests/Commands/Auth
+git add src/Tools/AHKFlowApp.CLI/Commands/Auth src/Tools/AHKFlowApp.CLI/Commands/RootCli.cs src/Tools/AHKFlowApp.CLI/Exceptions/AuthConfigurationException.cs tests/AHKFlowApp.CLI.Tests/Commands/Auth
 git commit -m "feat(029): add CLI login and logout commands"
 ```
 
@@ -601,7 +606,7 @@ Update test throws that still construct the old message:
 Run:
 
 ```powershell
-dotnet test tests/AHKFlowApp.CLI.Tests --configuration Release --filter "FullyQualifiedName~DownloadCommandTests|FullyQualifiedName~HotstringCommandTests" --verbosity normal
+dotnet test tests/AHKFlowApp.CLI.Tests --configuration Release --filter "FullyQualifiedName~AhkDownloadCommandTests|FullyQualifiedName~ZipDownloadCommandTests|FullyQualifiedName~NewHotstringCommandTests|FullyQualifiedName~ListHotstringCommandTests" --verbosity normal
 ```
 
 Expected: fail on stale production messages.
@@ -645,7 +650,7 @@ internal sealed class StubAuthTokenProvider(string? token) : IAuthTokenProvider
 Run:
 
 ```powershell
-dotnet test tests/AHKFlowApp.CLI.Tests --configuration Release --filter "FullyQualifiedName~Downloads|FullyQualifiedName~Hotstrings" --verbosity normal
+dotnet test tests/AHKFlowApp.CLI.Tests --configuration Release --filter "FullyQualifiedName~AhkDownloadCommandTests|FullyQualifiedName~ZipDownloadCommandTests|FullyQualifiedName~NewHotstringCommandTests|FullyQualifiedName~ListHotstringCommandTests" --verbosity normal
 ```
 
 Expected: pass.
@@ -666,6 +671,8 @@ git commit -m "fix(029): replace temporary token auth messages"
 - Create: `src/Tools/AHKFlowApp.CLI/Services/LocalAppDataAuthCachePathProvider.cs`
 - Create: `src/Tools/AHKFlowApp.CLI/Services/MsalDeviceCodeTokenProvider.cs`
 - Modify: `src/Tools/AHKFlowApp.CLI/Program.cs`
+- Delete: `src/Tools/AHKFlowApp.CLI/Services/EnvVarAuthTokenProvider.cs`
+- Delete: `tests/AHKFlowApp.CLI.Tests/Services/EnvVarAuthTokenProviderTests.cs`
 - Test: `tests/AHKFlowApp.CLI.Tests/Services/MsalDeviceCodeTokenProviderTests.cs`
 
 - [ ] **Step 1: Write failing provider tests**
@@ -983,7 +990,18 @@ builder.Services.AddSingleton<IAuthTokenProvider, MsalDeviceCodeTokenProvider>()
 builder.Services.AddTransient<BearerTokenHandler>();
 ```
 
-- [ ] **Step 6: Run provider tests to verify they pass**
+- [ ] **Step 6: Delete the temporary env-var provider and tests**
+
+Delete:
+
+```text
+src/Tools/AHKFlowApp.CLI/Services/EnvVarAuthTokenProvider.cs
+tests/AHKFlowApp.CLI.Tests/Services/EnvVarAuthTokenProviderTests.cs
+```
+
+The CLI no longer reads `AHKFLOW_TOKEN`; test code should use `StubAuthTokenProvider` for fake tokens.
+
+- [ ] **Step 7: Run provider tests to verify they pass**
 
 Run:
 
@@ -993,7 +1011,7 @@ dotnet test tests/AHKFlowApp.CLI.Tests --configuration Release --filter "FullyQu
 
 Expected: pass without requiring a real tenant.
 
-- [ ] **Step 7: Run build**
+- [ ] **Step 8: Run build**
 
 Run:
 
@@ -1003,7 +1021,7 @@ dotnet build src/Tools/AHKFlowApp.CLI --configuration Release
 
 Expected: build succeeds.
 
-- [ ] **Step 8: Verify help still works with zero GUID config**
+- [ ] **Step 9: Verify help still works with zero GUID config**
 
 Run:
 
@@ -1013,7 +1031,7 @@ dotnet run --project src/Tools/AHKFlowApp.CLI -- --help
 
 Expected: help output succeeds and lists `login`, `logout`, `hotstring`, and `download`.
 
-- [ ] **Step 9: Verify lazy config error for auth command**
+- [ ] **Step 10: Verify lazy config error for auth command**
 
 Run:
 
@@ -1023,10 +1041,10 @@ dotnet run --project src/Tools/AHKFlowApp.CLI -- login
 
 Expected: exit code `1`; stderr contains `ClientId is not configured.` because `appsettings.json` has `Guid.Empty`.
 
-- [ ] **Step 10: Commit**
+- [ ] **Step 11: Commit**
 
 ```powershell
-git add src/Tools/AHKFlowApp.CLI/Services/IAuthCachePathProvider.cs src/Tools/AHKFlowApp.CLI/Services/LocalAppDataAuthCachePathProvider.cs src/Tools/AHKFlowApp.CLI/Services/MsalDeviceCodeTokenProvider.cs src/Tools/AHKFlowApp.CLI/Program.cs tests/AHKFlowApp.CLI.Tests/Services/MsalDeviceCodeTokenProviderTests.cs
+git add src/Tools/AHKFlowApp.CLI/Services/IAuthCachePathProvider.cs src/Tools/AHKFlowApp.CLI/Services/LocalAppDataAuthCachePathProvider.cs src/Tools/AHKFlowApp.CLI/Services/MsalDeviceCodeTokenProvider.cs src/Tools/AHKFlowApp.CLI/Program.cs tests/AHKFlowApp.CLI.Tests/Services/MsalDeviceCodeTokenProviderTests.cs src/Tools/AHKFlowApp.CLI/Services/EnvVarAuthTokenProvider.cs tests/AHKFlowApp.CLI.Tests/Services/EnvVarAuthTokenProviderTests.cs
 git commit -m "feat(029): add MSAL device-code token provider"
 ```
 
@@ -1073,6 +1091,8 @@ if ($publicClientRedirectUri -notin $publicClientUris) {
 
 $isFallbackPublicClient = az ad app show --id $objectId --query 'isFallbackPublicClient' -o tsv 2>$null
 if ($isFallbackPublicClient -ne 'true') {
+    # Microsoft identity platform requires "allow public client flows" for device-code flow.
+    # This Graph property is broader than the CLI command surface; AHKFlowApp only implements device-code, not ROPC.
     $fallbackJson = @{ isFallbackPublicClient = $true } | ConvertTo-Json -Compress
     Invoke-GraphPatch -ObjectId $objectId -JsonBody $fallbackJson
     Wait-ForCondition -Description "fallback public client flag" -Condition {
