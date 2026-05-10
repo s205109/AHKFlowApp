@@ -40,11 +40,21 @@ try {
     if (Test-Path TestResults)   { Remove-Item -Recurse -Force TestResults }
     if (Test-Path $coverageReportDirectory) { Remove-Item -Recurse -Force $coverageReportDirectory }
 
+    dotnet restore
+    if ($LASTEXITCODE -ne 0) { throw "dotnet restore failed" }
+
+    dotnet build --configuration $Configuration `
+        --disable-build-servers `
+        --no-restore `
+        -p:UseSharedCompilation=false
+    if ($LASTEXITCODE -ne 0) { throw "dotnet build failed" }
+
     dotnet test --configuration $Configuration `
         --disable-build-servers `
+        --no-build `
+        --no-restore `
         --collect:"XPlat Code Coverage" `
         --results-directory TestResults `
-        -p:UseSharedCompilation=false `
         --settings coverlet.runsettings
     if ($LASTEXITCODE -ne 0) { throw "dotnet test failed" }
 
