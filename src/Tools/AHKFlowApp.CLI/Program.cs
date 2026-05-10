@@ -32,7 +32,9 @@ Log.Logger = new LoggerConfiguration()
 
 builder.Services.AddSerilog();
 
-builder.Services.AddSingleton<IAuthTokenProvider, EnvVarAuthTokenProvider>();
+builder.Services.AddSingleton<IDeviceCodePromptWriter, ConsoleErrorDeviceCodePromptWriter>();
+builder.Services.AddSingleton<IAuthCachePathProvider, LocalAppDataAuthCachePathProvider>();
+builder.Services.AddSingleton<IAuthTokenProvider, MsalDeviceCodeTokenProvider>();
 builder.Services.AddTransient<BearerTokenHandler>();
 
 string apiBaseUrl = builder.Configuration["ApiBaseUrl"]
