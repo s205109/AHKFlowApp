@@ -86,8 +86,7 @@ public static class ListHotstringCommand
             }
             catch (ApiException ex) when (ex.StatusCode == 401)
             {
-                await stderr.WriteLineAsync(
-                    "Not signed in. Set AHKFLOW_TOKEN environment variable to a bearer token.");
+                await stderr.WriteLineAsync(AuthMessages.AuthenticationFailed);
                 return 3;
             }
             catch (ApiException ex)

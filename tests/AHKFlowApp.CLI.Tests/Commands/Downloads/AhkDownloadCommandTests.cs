@@ -111,8 +111,7 @@ public sealed class AhkDownloadCommandTests : IDisposable
     {
         IProfilesApiClient profiles = Substitute.For<IProfilesApiClient>();
         profiles.ListAsync(Arg.Any<CancellationToken>())
-            .Throws(new NotAuthenticatedException(
-                "Not signed in. Set AHKFLOW_TOKEN environment variable to a bearer token."));
+            .Throws(new NotAuthenticatedException(AuthMessages.LoginRequired));
 
         IDownloadsApiClient downloads = Substitute.For<IDownloadsApiClient>();
 
@@ -120,7 +119,7 @@ public sealed class AhkDownloadCommandTests : IDisposable
             ["--profile", "x"], downloads, profiles);
 
         exit.Should().Be(3);
-        stderr.Should().Contain("Not signed in");
+        stderr.Should().Contain(AuthMessages.LoginRequired);
     }
 
     [Fact]
@@ -139,7 +138,7 @@ public sealed class AhkDownloadCommandTests : IDisposable
             ["--profile", "work"], downloads, profiles);
 
         exit.Should().Be(3);
-        stderr.Should().Contain("Not signed in");
+        stderr.Should().Contain(AuthMessages.AuthenticationFailed);
     }
 
     [Fact]
