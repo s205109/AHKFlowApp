@@ -197,4 +197,33 @@ public sealed class AhkDownloadCommandTests : IDisposable
 
         exit.Should().Be(0);
     }
+
+    [Fact]
+    public async Task FilesystemError_Exit1_StderrMessage()
+    {
+        var pid = Guid.NewGuid();
+        IProfilesApiClient profiles = Substitute.For<IProfilesApiClient>();
+        profiles.ListAsync(Arg.Any<CancellationToken>())
+            .Returns([new ProfileSummary(pid, "work")]);
+
+        IDownloadsApiClient downloads = Substitute.For<IDownloadsApiClient>();
+        downloads.GetProfileScriptAsync(pid, Arg.Any<CancellationToken>())
+            .Returns(new DownloadResult([1, 2, 3], "ahkflow_work.ahk", "text/plain"));
+
+        IServiceProvider services = CliTestHost.WithFakes(
+            hotstrings: Substitute.For<IHotstringsApiClient>(),
+            profiles: profiles,
+            downloads: downloads,
+            binaryStdout: new BinaryStdout(() => throw new IOException("simulated disk error")),
+            workingDirectory: new WorkingDirectory(() => _baseDir));
+
+        StringWriter so = new(), se = new();
+        Command cmd = AhkDownloadCommand.Build(services);
+        RootCommand root = new() { cmd };
+        int exit = await root.Parse(["ahk", "--profile", "work", "-o", "-"])
+            .InvokeAsync(new InvocationConfiguration { Output = so, Error = se });
+
+        exit.Should().Be(1);
+        se.ToString().Should().Contain("simulated disk error");
+    }
 }

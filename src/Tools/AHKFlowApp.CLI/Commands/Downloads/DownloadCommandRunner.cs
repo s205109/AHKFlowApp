@@ -62,5 +62,10 @@ internal static class DownloadCommandRunner
             await stderr.WriteLineAsync(ex.Message);
             return 1;
         }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            await stderr.WriteLineAsync(ex.Message);
+            return 1;
+        }
     }
 }
