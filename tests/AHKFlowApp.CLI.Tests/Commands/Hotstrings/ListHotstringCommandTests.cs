@@ -140,7 +140,7 @@ public sealed class ListHotstringCommandTests
         (int exit, string _, string? stderr) = await Run(["hotstring", "list"], hs, profiles);
 
         exit.Should().Be(3);
-        stderr.Should().Contain("Not signed in");
+        stderr.Should().Contain(AuthMessages.AuthenticationFailed);
     }
 
     [Fact]

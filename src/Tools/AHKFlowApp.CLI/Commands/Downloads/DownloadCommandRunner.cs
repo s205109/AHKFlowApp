@@ -43,8 +43,7 @@ internal static class DownloadCommandRunner
         }
         catch (ApiException ex) when (ex.StatusCode == 401)
         {
-            await stderr.WriteLineAsync(
-                "Not signed in. Set AHKFLOW_TOKEN environment variable to a bearer token.");
+            await stderr.WriteLineAsync(AuthMessages.AuthenticationFailed);
             return 3;
         }
         catch (ApiException ex) when (ex.StatusCode is 400 or 404 or 409)
