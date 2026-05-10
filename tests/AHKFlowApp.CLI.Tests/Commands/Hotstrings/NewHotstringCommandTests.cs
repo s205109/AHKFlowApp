@@ -34,7 +34,7 @@ public sealed class NewHotstringCommandTests
         string[] args, IHotstringsApiClient hs, IProfilesApiClient profiles,
         IAuthTokenProvider? auth = null)
     {
-        IServiceProvider services = CliTestHost.WithFakes(hs, profiles, auth);
+        IServiceProvider services = CliTestHost.WithFakes(hs, profiles, auth: auth);
         StringWriter so = new(), se = new();
         RootCommand root = new() { HotstringCommand.Build(services) };
         int exit = await root.Parse(args)
