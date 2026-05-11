@@ -78,8 +78,11 @@ if (Test-Path $claudeSkills) {
     if ($item.LinkType -eq 'SymbolicLink') {
         Remove-Item $claudeSkills -Force
         Write-Host "[FIX] Removed old .claude/skills symlink." -ForegroundColor Yellow
-    } else {
+    } elseif ($item.PSIsContainer) {
         Write-Host "[OK] .claude/skills/ already exists." -ForegroundColor Green
+    } else {
+        Write-Error ".claude/skills exists but is not a directory. Remove it manually, then re-run."
+        exit 1
     }
 }
 
@@ -94,9 +97,27 @@ foreach ($skillDir in $skillDirs) {
     if (Test-Path $linkPath) {
         $existing = Get-Item $linkPath -Force
         if ($existing.LinkType -eq 'SymbolicLink') {
-            $resolved = $existing.ResolveLinkTarget($true).FullName
-            $expected = $skillDir.FullName
-            if ($resolved -eq $expected) {
+            $target = $existing.Target
+            if ($target -is [array]) {
+                $target = $target[0]
+            }
+
+            $resolved = $null
+            if ($target) {
+                $targetPath = if ([System.IO.Path]::IsPathRooted($target)) {
+                    $target
+                } else {
+                    Join-Path (Split-Path -Parent $linkPath) $target
+                }
+
+                $resolvedPath = Resolve-Path -LiteralPath $targetPath -ErrorAction SilentlyContinue
+                if ($resolvedPath) {
+                    $resolved = $resolvedPath.Path
+                }
+            }
+
+            $expected = (Resolve-Path -LiteralPath $skillDir.FullName).Path
+            if ($resolved -and $resolved.TrimEnd('\') -ieq $expected.TrimEnd('\')) {
                 Write-Host "[OK] .claude/skills/$($skillDir.Name) already points to .agents/$($skillDir.Name)." -ForegroundColor Green
                 continue
             }
