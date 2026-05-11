@@ -8,6 +8,10 @@
 
 **Tech Stack:** .NET 10, PowerShell, GitHub Actions, GitHub CLI, System.Text.Json-compatible appsettings, MinVer, xUnit.
 
+## Review update
+
+Review feedback confirmed the implemented packaging, workflow, and install-doc approach is sound. The only substantive follow-up is status accuracy: keep the backlog's production smoke-test acceptance criterion open until the released zip is exercised against production, rather than treating local packaging validation as equivalent.
+
 ---
 
 ## File Structure
@@ -20,7 +24,7 @@ Create:
 
 Modify:
 
-- `.claude/backlog/030-cli-native-windows-distribution.md` - mark acceptance criteria complete after implementation.
+- `.claude/backlog/030-cli-native-windows-distribution.md` - record implemented criteria while keeping manual production acceptance explicit.
 
 No CLI command source changes are expected. The existing `AssemblyName` already emits `ahkflow.exe`, and the existing config pipeline already reads `appsettings.json` next to the executable.
 
@@ -32,7 +36,9 @@ No CLI command source changes are expected. The existing `AssemblyName` already 
 - Create: `scripts/publish-cli.ps1`
 - Test manually: generated `.tmp/cli-package-smoke/ahkflow-win-x64.zip`
 
-- [ ] **Step 1: Create the packaging script**
+Implementation note: the finalized script also validates exact packaged contents and writes stable zip timestamps for reproducible archives.
+
+- [x] **Step 1: Create the packaging script**
 
 Create `scripts/publish-cli.ps1`:
 
@@ -156,7 +162,7 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 Write-Host "Created $zipPath"
 ```
 
-- [ ] **Step 2: Parse-check the script**
+- [x] **Step 2: Parse-check the script**
 
 Run:
 
@@ -175,7 +181,7 @@ Expected: no output and exit code `0`.
 **Files:**
 - Create: `docs/cli/windows-install.md`
 
-- [ ] **Step 1: Create the install doc**
+- [x] **Step 1: Create the install doc**
 
 Create `docs/cli/windows-install.md`:
 
@@ -261,7 +267,7 @@ $env:AHKFLOW_TenantId = '22222222-2222-2222-2222-222222222222'
 - Uses: `docs/cli/windows-install.md`
 - Produces local untracked output under `.tmp/cli-package-smoke`
 
-- [ ] **Step 1: Run the packaging script with smoke values**
+- [x] **Step 1: Run the packaging script with smoke values**
 
 Run:
 
@@ -275,7 +281,7 @@ pwsh -NoProfile -File .\scripts\publish-cli.ps1 `
 
 Expected: command succeeds and prints `Created ...ahkflow-win-x64.zip`.
 
-- [ ] **Step 2: Verify zip contents**
+- [x] **Step 2: Verify zip contents**
 
 Run:
 
@@ -295,7 +301,7 @@ appsettings.json
 INSTALL.md
 ```
 
-- [ ] **Step 3: Verify injected config**
+- [x] **Step 3: Verify injected config**
 
 Run:
 
@@ -311,7 +317,7 @@ ClientId = 11111111-1111-1111-1111-111111111111
 TenantId = 22222222-2222-2222-2222-222222222222
 ```
 
-- [ ] **Step 4: Verify executable help**
+- [x] **Step 4: Verify executable help**
 
 Run:
 
@@ -335,7 +341,9 @@ git commit -m "chore(030): add validated Windows CLI package"
 **Files:**
 - Create: `.github/workflows/release-cli.yml`
 
-- [ ] **Step 1: Create the workflow**
+Implementation note: keep workflow-level `contents` permission scoped to `read` and elevate only the packaging job to `contents: write` for release publication.
+
+- [x] **Step 1: Create the workflow**
 
 Create `.github/workflows/release-cli.yml`:
 
@@ -467,21 +475,21 @@ git commit -m "ci(030): publish Windows CLI release asset"
 
 ---
 
-## Task 5: Update Backlog and Installer Follow-Up Decision
+## Task 5: Update Backlog Status and Installer Follow-Up Decision
 
 **Files:**
 - Modify: `.claude/backlog/030-cli-native-windows-distribution.md`
 
-- [ ] **Step 1: Mark acceptance criteria complete**
+- [x] **Step 1: Mark implemented criteria complete and keep production smoke pending**
 
-In `.claude/backlog/030-cli-native-windows-distribution.md`, mark each acceptance criterion as complete after Tasks 1-4 are implemented:
+In `.claude/backlog/030-cli-native-windows-distribution.md`, mark criteria 1-4 and 6-7 complete after Tasks 1-4 are implemented. Keep criterion 5 open until the Manual Production Acceptance steps succeed against the released zip:
 
 ```markdown
 - [x] CI publishes a Windows x64 self-contained `ahkflow` release artifact as a zip.
 - [x] The published artifact contains an executable users can run as `ahkflow.exe`.
 - [x] The published CLI includes production `ApiBaseUrl`, `ClientId`, and `TenantId` configuration so users do not need environment variables for normal use.
 - [x] The zip includes minimal install instructions for adding the extracted folder to `PATH`.
-- [x] `ahkflow login`, `ahkflow hotstring list`, and `ahkflow logout` work from the extracted zip against production services.
+- [ ] `ahkflow login`, `ahkflow hotstring list`, and `ahkflow logout` work from the extracted zip against production services.
 - [x] Release documentation explains the supported install path and how to uninstall or remove the local token cache.
 - [x] A follow-up installer path is documented, either Winget or an MSI/MSIX installer, with the chosen direction recorded.
 ```
@@ -489,13 +497,16 @@ In `.claude/backlog/030-cli-native-windows-distribution.md`, mark each acceptanc
 Append before `## Out of scope`:
 
 ```markdown
-## Completion
+## Status
 
-**Completed:** 2026-05-11
+**Implementation completed:** 2026-05-11
+**Production acceptance:** Pending manual smoke test from the GitHub Release asset
 
 Release channel: GitHub Releases with `ahkflow-win-x64.zip`.
 
 Follow-up installer direction: Winget, after the zip release asset is stable.
+
+Criteria 1-4 and 6-7 are implemented. Criterion 5 remains open until the released zip is smoke-tested against production without `AHKFLOW_` overrides.
 ```
 
 - [ ] **Step 2: Commit**
@@ -512,7 +523,7 @@ git commit -m "docs(030): mark CLI Windows distribution complete"
 **Files:**
 - Verifies all previous tasks.
 
-- [ ] **Step 1: Format check**
+- [x] **Step 1: Format check**
 
 Run:
 
@@ -522,7 +533,7 @@ dotnet format --verify-no-changes
 
 Expected: succeeds with no file changes.
 
-- [ ] **Step 2: Build**
+- [x] **Step 2: Build**
 
 Run:
 
@@ -532,7 +543,7 @@ dotnet build --configuration Release --no-restore
 
 Expected: succeeds.
 
-- [ ] **Step 3: Test**
+- [x] **Step 3: Test**
 
 Run:
 
@@ -542,7 +553,7 @@ dotnet test --configuration Release --no-build --verbosity normal
 
 Expected: succeeds.
 
-- [ ] **Step 4: Package smoke**
+- [x] **Step 4: Package smoke**
 
 Run:
 
@@ -556,7 +567,7 @@ pwsh -NoProfile -File .\scripts\publish-cli.ps1 `
 
 Expected: succeeds and creates `.tmp\cli-package-smoke\ahkflow-win-x64.zip`.
 
-- [ ] **Step 5: Extracted executable smoke**
+- [x] **Step 5: Extracted executable smoke**
 
 Run:
 
@@ -570,7 +581,7 @@ Expand-Archive -LiteralPath $zip -DestinationPath $extract
 
 Expected: exit code `0`; output includes `login`, `logout`, `hotstring`, and `download`.
 
-- [ ] **Step 6: Final Git status**
+- [x] **Step 6: Final Git status**
 
 Run:
 
@@ -578,13 +589,15 @@ Run:
 git status --short --branch
 ```
 
-Expected: clean branch `feature/030-cli-native-windows-distribution`.
+Expected: status shows the intended task changes plus any pre-existing unrelated worktree changes, with no leftover validation artifacts from this task.
 
 ---
 
 ## Manual Production Acceptance
 
 After the release workflow publishes a real GitHub Release asset:
+
+Current status: pending. Do not mark backlog criterion 5 complete until this smoke test succeeds against the released `ahkflow-win-x64.zip`.
 
 1. Download `ahkflow-win-x64.zip` from the GitHub Release.
 2. Extract it on Windows.
@@ -614,6 +627,6 @@ Expected:
 - Backlog criterion for `ahkflow.exe` maps to the existing project `AssemblyName` plus Tasks 1 and 3.
 - Backlog criterion for production config maps to Tasks 1 and 4.
 - Backlog criterion for install instructions maps to Task 2 and packaging copy in Task 1.
-- Backlog criterion for login/list/logout smoke maps to Manual Production Acceptance.
+- Backlog criterion for login/list/logout smoke maps to Manual Production Acceptance and remains open until that run succeeds.
 - Backlog criterion for uninstall and token cache docs maps to Task 2.
 - Backlog criterion for future installer direction maps to Task 5 with Winget recorded.
