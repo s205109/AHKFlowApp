@@ -1,5 +1,6 @@
 using System.CommandLine;
 using AHKFlowApp.CLI.Commands.Hotstrings;
+using AHKFlowApp.CLI.Exceptions;
 using AHKFlowApp.CLI.Services;
 using AHKFlowApp.CLI.Tests.Infrastructure;
 using FluentAssertions;
@@ -236,5 +237,19 @@ public sealed class ListHotstringCommandTests
         await Run(["hotstring", "list"], hs, profiles);
 
         await profiles.Received(1).ListAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task AuthConfigurationException_Exit1()
+    {
+        (IHotstringsApiClient? hs, IProfilesApiClient? profiles) = Fakes();
+        hs.ListAsync(Arg.Any<Guid?>(), Arg.Any<string?>(), Arg.Any<int>(), Arg.Any<int>(),
+                Arg.Any<CancellationToken>())
+            .Throws(new AuthConfigurationException("TenantId is not configured."));
+
+        (int exit, string _, string? stderr) = await Run(["hotstring", "list"], hs, profiles);
+
+        exit.Should().Be(1);
+        stderr.Should().Contain("TenantId is not configured.");
     }
 }

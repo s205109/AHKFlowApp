@@ -225,4 +225,23 @@ public sealed class AhkDownloadCommandTests : IDisposable
         exit.Should().Be(1);
         se.ToString().Should().Contain("simulated disk error");
     }
+
+    [Fact]
+    public async Task AuthConfigurationException_Exit1()
+    {
+        var pid = Guid.NewGuid();
+        IProfilesApiClient profiles = Substitute.For<IProfilesApiClient>();
+        profiles.ListAsync(Arg.Any<CancellationToken>())
+            .Returns([new ProfileSummary(pid, "work")]);
+
+        IDownloadsApiClient downloads = Substitute.For<IDownloadsApiClient>();
+        downloads.GetProfileScriptAsync(pid, Arg.Any<CancellationToken>())
+            .Throws(new AuthConfigurationException("ClientId is not configured."));
+
+        (int exit, string _, string stderr) = await RunAsync(
+            ["--profile", "work"], downloads, profiles);
+
+        exit.Should().Be(1);
+        stderr.Should().Contain("ClientId is not configured.");
+    }
 }

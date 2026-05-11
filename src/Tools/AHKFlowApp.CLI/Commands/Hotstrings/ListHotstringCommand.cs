@@ -79,6 +79,11 @@ public static class ListHotstringCommand
                 await stderr.WriteLineAsync(ex.Message);
                 return 3;
             }
+            catch (AuthConfigurationException ex)
+            {
+                await stderr.WriteLineAsync(ex.Message);
+                return 1;
+            }
             catch (ApiException ex) when (ex.StatusCode is 400 or 409)
             {
                 await stderr.WriteLineAsync(ex.Body ?? ex.Message);
