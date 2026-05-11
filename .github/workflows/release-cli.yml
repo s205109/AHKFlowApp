@@ -152,8 +152,8 @@ jobs:
               throw "appsettings.json TenantId does not match AZURE_AD_TENANT_ID_PROD."
           }
 
-          if ($settings.ApiBaseUrl -eq "placeholder-prod") {
-              throw "appsettings.json ApiBaseUrl must not be placeholder-prod."
+          if ($settings.ApiBaseUrl -match "placeholder-prod") {
+              throw "appsettings.json ApiBaseUrl must not contain placeholder-prod."
           }
 
           if ($settings.ClientId -eq "00000000-0000-0000-0000-000000000000") {
