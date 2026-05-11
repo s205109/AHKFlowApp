@@ -1,5 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
+    <IsTestProject>false</IsTestProject>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
