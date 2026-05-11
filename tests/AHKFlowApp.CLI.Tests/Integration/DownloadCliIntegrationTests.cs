@@ -3,6 +3,7 @@ using System.IO.Compression;
 using System.Text;
 using AHKFlowApp.API;
 using AHKFlowApp.CLI.Commands.Downloads;
+using AHKFlowApp.CLI.Services;
 using AHKFlowApp.CLI.Tests.Infrastructure;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Infrastructure.Persistence;
@@ -216,7 +217,7 @@ public sealed class DownloadCliIntegrationTests(SqlContainerFixture sql) : IAsyn
             ["download", "ahk", "--profile", "work"], token: null);
 
         exit.Should().Be(3);
-        stderr.Should().Contain("Not signed in");
+        stderr.Should().Contain(AuthMessages.LoginRequired);
     }
 
     [Fact]

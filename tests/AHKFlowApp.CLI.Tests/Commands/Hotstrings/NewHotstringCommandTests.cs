@@ -186,7 +186,7 @@ public sealed class NewHotstringCommandTests
         (int exit, string _, string? stderr) = await Run(["hotstring", "new", "-t", "x", "-r", "y"], hs, profiles);
 
         exit.Should().Be(3);
-        stderr.Should().Contain("Not signed in");
+        stderr.Should().Contain(AuthMessages.AuthenticationFailed);
     }
 
     [Fact]
@@ -232,12 +232,24 @@ public sealed class NewHotstringCommandTests
     {
         (IHotstringsApiClient? hs, IProfilesApiClient? profiles) = Fakes();
         hs.CreateAsync(Arg.Any<CreateHotstringDto>(), Arg.Any<CancellationToken>())
-            .Throws(new NotAuthenticatedException(
-                "Not signed in. Set AHKFLOW_TOKEN environment variable to a bearer token."));
+            .Throws(new NotAuthenticatedException(AuthMessages.LoginRequired));
 
         (int exit, string _, string? stderr) = await Run(["hotstring", "new", "-t", "x", "-r", "y"], hs, profiles);
 
         exit.Should().Be(3);
-        stderr.Should().Contain("Not signed in");
+        stderr.Should().Contain(AuthMessages.LoginRequired);
+    }
+
+    [Fact]
+    public async Task AuthConfigurationException_Exit1()
+    {
+        (IHotstringsApiClient? hs, IProfilesApiClient? profiles) = Fakes();
+        hs.CreateAsync(Arg.Any<CreateHotstringDto>(), Arg.Any<CancellationToken>())
+            .Throws(new AuthConfigurationException("ClientId is not configured."));
+
+        (int exit, string _, string? stderr) = await Run(["hotstring", "new", "-t", "x", "-r", "y"], hs, profiles);
+
+        exit.Should().Be(1);
+        stderr.Should().Contain("ClientId is not configured.");
     }
 }

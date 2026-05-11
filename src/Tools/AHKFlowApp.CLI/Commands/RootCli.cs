@@ -1,4 +1,5 @@
 using System.CommandLine;
+using AHKFlowApp.CLI.Commands.Auth;
 using AHKFlowApp.CLI.Commands.Downloads;
 using AHKFlowApp.CLI.Commands.Hotstrings;
 
@@ -17,12 +18,11 @@ public static class RootCli
         RootCommand root = new("ahkflow - AHKFlowApp CLI")
         {
             VerboseOption,
+            LoginCommand.Build(services),
+            LogoutCommand.Build(services),
             HotstringCommand.Build(services),
             DownloadCommand.Build(services),
         };
-        // Subcommands wired in subsequent phases:
-        //   root.Subcommands.Add(LoginCommand.Build(services));
-        //   root.Subcommands.Add(LogoutCommand.Build(services));
         return root;
     }
 }

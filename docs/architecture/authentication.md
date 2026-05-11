@@ -67,4 +67,13 @@ If Entra fails on its own hosted sign-in page before redirecting back to the SPA
 
 ## CLI authentication
 
-Deferred to backlog item 029. Will use MSAL.NET device-code flow as a public-client registration on the same Entra app.
+The `ahkflow` CLI uses MSAL.NET device-code flow against the same per-environment Entra app registration as the Blazor frontend.
+
+- **Commands**: `ahkflow login`, `ahkflow logout`
+- **Scope**: `api://{clientId}/access_as_user`
+- **Client type**: public client with redirect URI `http://localhost`
+- **Token cache**: MSAL persisted user cache at `LocalApplicationData/AHKFlowApp/msal-cache.bin3`
+
+`ahkflow login` tries silent token acquisition first. If the cache is empty or the refresh token requires interaction, the CLI prints the device-code URL and user code to stderr. API commands use `BearerTokenHandler`, which calls `IAuthTokenProvider.GetTokenAsync()` and attaches the cached access token.
+
+Run `scripts/setup-entra-app.ps1 -Environment dev`, `scripts/setup-entra-app.ps1 -Environment test`, or `scripts/setup-entra-app.ps1 -Environment prod` to ensure the app registration has `publicClient.redirectUris` containing `http://localhost` and `isFallbackPublicClient=true`.
