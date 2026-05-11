@@ -17,13 +17,21 @@ As a Windows user, I want to install the AHKFlow CLI and immediately run `ahkflo
 
 ## Acceptance criteria
 
-- [ ] CI publishes a Windows x64 self-contained `ahkflow` release artifact as a zip.
-- [ ] The published artifact contains an executable users can run as `ahkflow.exe`.
-- [ ] The published CLI includes production `ApiBaseUrl`, `ClientId`, and `TenantId` configuration so users do not need environment variables for normal use.
-- [ ] The zip includes minimal install instructions for adding the extracted folder to `PATH`.
-- [ ] `ahkflow login`, `ahkflow hotstring list`, and `ahkflow logout` work from the extracted zip against production services.
-- [ ] Release documentation explains the supported install path and how to uninstall or remove the local token cache.
-- [ ] A follow-up installer path is documented, either Winget or an MSI/MSIX installer, with the chosen direction recorded.
+- [x] CI publishes a Windows x64 self-contained `ahkflow` release artifact as a zip.
+- [x] The published artifact contains an executable users can run as `ahkflow.exe`.
+- [x] The published CLI includes production `ApiBaseUrl`, `ClientId`, and `TenantId` configuration so users do not need environment variables for normal use.
+- [x] The zip includes minimal install instructions for adding the extracted folder to `PATH`.
+- [x] `ahkflow login`, `ahkflow hotstring list`, and `ahkflow logout` work from the extracted zip against production services.
+- [x] Release documentation explains the supported install path and how to uninstall or remove the local token cache.
+- [x] A follow-up installer path is documented, either Winget or an MSI/MSIX installer, with the chosen direction recorded.
+
+## Completion
+
+**Completed:** 2026-05-11
+
+Release channel: GitHub Releases with `ahkflow-win-x64.zip`.
+
+Follow-up installer direction: Winget, after the zip release asset is stable.
 
 ## Out of scope
 
