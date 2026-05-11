@@ -1,0 +1,196 @@
+name: Release CLI
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to package, for example v1.0.0'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: true
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      checkout-ref: ${{ steps.tag.outputs.checkout-ref }}
+    steps:
+      - name: Validate release tag
+        id: tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$RELEASE_TAG" =~ ^v.+ ]]; then
+            echo "Release tag must start with 'v'. Received: $RELEASE_TAG" >&2
+            exit 1
+          fi
+
+          if ! gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" > /dev/null; then
+            echo "Release tag does not exist: $RELEASE_TAG" >&2
+            exit 1
+          fi
+
+          echo "checkout-ref=refs/tags/$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+
+  test:
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.validate.outputs.checkout-ref }}
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: '**/*.csproj'
+      - name: Restore
+        run: dotnet restore
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+      - name: Test
+        run: dotnet test --configuration Release --no-build --verbosity normal
+
+  package:
+    needs: [validate, test]
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.validate.outputs.checkout-ref }}
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: '**/*.csproj'
+      - name: Package Windows CLI
+        shell: pwsh
+        env:
+          API_BASE_URL: ${{ secrets.AZURE_API_BASE_URL_PROD }}
+          AD_CLIENT_ID: ${{ vars.AZURE_AD_CLIENT_ID_PROD }}
+          AD_TENANT_ID: ${{ vars.AZURE_AD_TENANT_ID_PROD }}
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          if ([string]::IsNullOrWhiteSpace($env:API_BASE_URL)) {
+              throw "Required secret AZURE_API_BASE_URL_PROD is missing or whitespace."
+          }
+
+          if ([string]::IsNullOrWhiteSpace($env:AD_CLIENT_ID)) {
+              throw "Required variable AZURE_AD_CLIENT_ID_PROD is missing or whitespace."
+          }
+
+          if ([string]::IsNullOrWhiteSpace($env:AD_TENANT_ID)) {
+              throw "Required variable AZURE_AD_TENANT_ID_PROD is missing or whitespace."
+          }
+
+          .\scripts\publish-cli.ps1 `
+              -ApiBaseUrl $env:API_BASE_URL `
+              -ClientId $env:AD_CLIENT_ID `
+              -TenantId $env:AD_TENANT_ID `
+              -OutputDirectory .artifacts
+      - name: Verify package
+        shell: pwsh
+        env:
+          API_BASE_URL: ${{ secrets.AZURE_API_BASE_URL_PROD }}
+          AD_CLIENT_ID: ${{ vars.AZURE_AD_CLIENT_ID_PROD }}
+          AD_TENANT_ID: ${{ vars.AZURE_AD_TENANT_ID_PROD }}
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $zipPath = Resolve-Path -LiteralPath ".artifacts\ahkflow-win-x64.zip"
+          $extractPath = Join-Path $env:RUNNER_TEMP "ahkflow-cli"
+
+          if (Test-Path -LiteralPath $extractPath) {
+              Remove-Item -LiteralPath $extractPath -Recurse -Force
+          }
+
+          New-Item -Path $extractPath -ItemType Directory | Out-Null
+          Expand-Archive -LiteralPath $zipPath -DestinationPath $extractPath
+
+          $expectedFiles = @("ahkflow.exe", "appsettings.json", "INSTALL.md")
+          $actualRootFiles = @(Get-ChildItem -LiteralPath $extractPath -File | Select-Object -ExpandProperty Name)
+          $missingFiles = @($expectedFiles | Where-Object { $_ -notin $actualRootFiles })
+
+          $allItemPaths = @(
+              Get-ChildItem -LiteralPath $extractPath -Recurse -Force |
+                  ForEach-Object { [System.IO.Path]::GetRelativePath($extractPath, $_.FullName) }
+          )
+          $extraItems = @($allItemPaths | Where-Object { $_ -notin $expectedFiles })
+
+          if ($missingFiles.Count -gt 0 -or $extraItems.Count -gt 0) {
+              throw "Package contents mismatch. Missing root files: $($missingFiles -join ', '); Extra items: $($extraItems -join ', ')"
+          }
+
+          $settingsPath = Join-Path $extractPath "appsettings.json"
+          $settings = Get-Content -LiteralPath $settingsPath -Raw | ConvertFrom-Json
+
+          if ($settings.ApiBaseUrl -ne ($env:API_BASE_URL).TrimEnd("/")) {
+              throw "appsettings.json ApiBaseUrl does not match the configured production API URL."
+          }
+
+          if ([guid]$settings.ClientId -ne [guid]$env:AD_CLIENT_ID) {
+              throw "appsettings.json ClientId does not match AZURE_AD_CLIENT_ID_PROD."
+          }
+
+          if ([guid]$settings.TenantId -ne [guid]$env:AD_TENANT_ID) {
+              throw "appsettings.json TenantId does not match AZURE_AD_TENANT_ID_PROD."
+          }
+
+          if ($settings.ApiBaseUrl -match "placeholder-prod") {
+              throw "appsettings.json ApiBaseUrl must not contain placeholder-prod."
+          }
+
+          if ($settings.ClientId -eq "00000000-0000-0000-0000-000000000000") {
+              throw "appsettings.json ClientId must not be an all-zero GUID."
+          }
+
+          if ($settings.TenantId -eq "00000000-0000-0000-0000-000000000000") {
+              throw "appsettings.json TenantId must not be an all-zero GUID."
+          }
+
+          & (Join-Path $extractPath "ahkflow.exe") --help
+          if ($LASTEXITCODE -ne 0) {
+              throw "ahkflow.exe --help failed with exit code $LASTEXITCODE."
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ahkflow-win-x64
+          path: .artifacts/ahkflow-win-x64.zip
+          retention-days: 30
+      - name: Publish GitHub Release asset
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $zipPath = Resolve-Path -LiteralPath ".artifacts\ahkflow-win-x64.zip"
+
+          gh release view $env:RELEASE_TAG 2>$null
+          if ($LASTEXITCODE -ne 0) {
+              gh release create $env:RELEASE_TAG $zipPath --verify-tag --title $env:RELEASE_TAG --notes "AHKFlow CLI Windows x64 release."
+              if ($LASTEXITCODE -ne 0) {
+                  throw "gh release create failed with exit code $LASTEXITCODE."
+              }
+          }
+          else {
+              gh release upload $env:RELEASE_TAG $zipPath --clobber
+              if ($LASTEXITCODE -ne 0) {
+                  throw "gh release upload failed with exit code $LASTEXITCODE."
+              }
+          }
