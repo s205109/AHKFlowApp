@@ -1,11 +1,11 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Sets up .agents/skills/ as the canonical skills folder in the repo.
+    Sets up repo-local Claude skill symlinks that point at .agents/.
 .DESCRIPTION
-    Skills live in .agents/skills/ (repo-local).
-    .claude/skills/ becomes a folder-level symlink to .agents/skills/ so Claude Code
-    reads them. Everything stays inside the repo — no user-folder changes.
+    Skills live directly in .agents/ (repo-local).
+    .claude/skills/ becomes a real directory containing one symlink per skill
+    back to .agents/<skill>. Everything stays inside the repo — no user-folder changes.
     Requires Windows Developer Mode and git core.symlinks=true.
 #>
 
@@ -37,45 +37,83 @@ if ($symlinks -ne 'true') {
 }
 Write-Host "[OK] git core.symlinks = true" -ForegroundColor Green
 
-$agentsSkills = Join-Path $repoRoot '.agents\skills'
 $agentsRoot = Join-Path $repoRoot '.agents'
-$claudeSkills  = Join-Path $repoRoot '.claude\skills'
+$claudeRoot = Join-Path $repoRoot '.claude'
+$claudeSkills = Join-Path $claudeRoot 'skills'
 
-# --- Ensure .agents/skills/ exists and exposes repo skills ---
+# --- Ensure .agents/ exists ---
 if (-not (Test-Path $agentsRoot)) {
     Write-Error ".agents does not exist in the repo."
     exit 1
 }
 
-if (-not (Test-Path $agentsSkills)) {
-    New-Item -ItemType Directory -Path $agentsSkills -Force | Out-Null
-    Write-Host "[OK] Created .agents/skills/" -ForegroundColor Green
-} else {
-    Write-Host "[OK] .agents/skills/ already exists." -ForegroundColor Green
+Write-Host "[OK] .agents/ exists." -ForegroundColor Green
+
+$agentsSkills = Join-Path $agentsRoot 'skills'
+if (Test-Path $agentsSkills) {
+    $item = Get-Item $agentsSkills -Force
+    if ($item.LinkType -eq 'SymbolicLink') {
+        Remove-Item $agentsSkills -Force
+        Write-Host "[FIX] Removed stale .agents/skills symlink." -ForegroundColor Yellow
+    } elseif ($item.PSIsContainer) {
+        $children = Get-ChildItem -Force $agentsSkills
+        $hasOnlySymlinks = $children -and @($children | Where-Object { $_.LinkType -ne 'SymbolicLink' }).Count -eq 0
+
+        if (-not $children -or $hasOnlySymlinks) {
+            Remove-Item $agentsSkills -Recurse -Force
+            Write-Host "[FIX] Removed stale .agents/skills directory." -ForegroundColor Yellow
+        } else {
+            Write-Error ".agents/skills exists but should not. Remove it manually, then re-run."
+            exit 1
+        }
+    } else {
+        Write-Error ".agents/skills exists but should not. Remove it manually, then re-run."
+        exit 1
+    }
 }
+
+# --- Ensure .claude/skills/ is a real directory ---
+if (Test-Path $claudeSkills) {
+    $item = Get-Item $claudeSkills -Force
+    if ($item.LinkType -eq 'SymbolicLink') {
+        Remove-Item $claudeSkills -Force
+        Write-Host "[FIX] Removed old .claude/skills symlink." -ForegroundColor Yellow
+    } else {
+        Write-Host "[OK] .claude/skills/ already exists." -ForegroundColor Green
+    }
+}
+
+New-Item -ItemType Directory -Path $claudeSkills -Force | Out-Null
 
 $skillDirs = Get-ChildItem -Force $agentsRoot -Directory |
     Where-Object { $_.Name -ne 'skills' }
 
 foreach ($skillDir in $skillDirs) {
-    $linkPath = Join-Path $agentsSkills $skillDir.Name
+    $linkPath = Join-Path $claudeSkills $skillDir.Name
 
     if (Test-Path $linkPath) {
         $existing = Get-Item $linkPath -Force
         if ($existing.LinkType -eq 'SymbolicLink') {
-            Write-Host "[OK] .agents/skills/$($skillDir.Name) already exists as a symlink." -ForegroundColor Green
-            continue
-        }
+            $resolved = $existing.ResolveLinkTarget($true).FullName
+            $expected = $skillDir.FullName
+            if ($resolved -eq $expected) {
+                Write-Host "[OK] .claude/skills/$($skillDir.Name) already points to .agents/$($skillDir.Name)." -ForegroundColor Green
+                continue
+            }
 
-        Write-Error ".agents/skills/$($skillDir.Name) exists but is not a symlink. Remove it manually, then re-run."
-        exit 1
+            Remove-Item $linkPath -Force
+            Write-Host "[FIX] Replaced old symlink for $($skillDir.Name)." -ForegroundColor Yellow
+        } else {
+            Write-Error ".claude/skills/$($skillDir.Name) exists but is not a symlink. Remove it manually, then re-run."
+            exit 1
+        }
     }
 
-    Push-Location $agentsSkills
+    Push-Location $claudeSkills
     try {
-        cmd /c mklink /D "$($skillDir.Name)" "..\$($skillDir.Name)" > $null 2>&1
+        cmd /c mklink /D "$($skillDir.Name)" "..\..\.agents\$($skillDir.Name)" > $null 2>&1
         if ($LASTEXITCODE -ne 0) {
-            Write-Error "Failed to create .agents/skills/$($skillDir.Name)."
+            Write-Error "Failed to create .claude/skills/$($skillDir.Name)."
             exit 1
         }
     } finally {
@@ -83,28 +121,4 @@ foreach ($skillDir in $skillDirs) {
     }
 }
 
-# --- Create .claude/skills/ as a folder-level symlink ---
-if (Test-Path $claudeSkills) {
-    $item = Get-Item $claudeSkills -Force
-    if ($item.LinkType -eq 'SymbolicLink') {
-        Write-Host "[OK] .claude/skills already exists as a symlink. Nothing to do." -ForegroundColor Green
-        exit 0
-    }
-    Write-Error ".claude/skills exists but is not a symlink. Remove it manually, then re-run."
-    exit 1
-}
-
-# Relative target: from .claude/ go up one level then into .agents/skills
-New-Item -ItemType Directory -Path (Join-Path $repoRoot '.claude') -Force | Out-Null
-Push-Location (Join-Path $repoRoot '.claude')
-try {
-    cmd /c mklink /D "skills" "..\.agents\skills" > $null 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "mklink failed. Ensure Developer Mode is enabled."
-        exit 1
-    }
-} finally {
-    Pop-Location
-}
-
-Write-Host "[DONE] .claude/skills -> .agents/skills (repo-local, relative symlink)" -ForegroundColor Green
+Write-Host "[DONE] .claude/skills contains symlinks to .agents/*" -ForegroundColor Green
