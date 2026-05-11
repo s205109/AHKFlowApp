@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using AHKFlowApp.CLI.Exceptions;
 using Microsoft.Extensions.Options;
 using Microsoft.Identity.Client;
@@ -100,10 +101,21 @@ public sealed class MsalDeviceCodeTokenProvider(
             .WithRedirectUri("http://localhost")
             .Build();
 
-        StorageCreationProperties storageProperties = new StorageCreationPropertiesBuilder(
-                Path.GetFileName(_cacheFilePath),
-                Path.GetDirectoryName(_cacheFilePath)!)
-            .Build();
+        var storageBuilder = new StorageCreationPropertiesBuilder(
+            Path.GetFileName(_cacheFilePath),
+            Path.GetDirectoryName(_cacheFilePath)!);
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        {
+            storageBuilder.WithLinuxKeyring(
+                schemaName: "com.ahkflowapp.cli.tokencache",
+                collection: MsalCacheHelper.LinuxKeyRingDefaultCollection,
+                secretLabel: "AHKFlowApp CLI Token Cache",
+                attribute1: new KeyValuePair<string, string>("Version", "1"),
+                attribute2: new KeyValuePair<string, string>("ProductGroup", "AHKFlowApp"));
+        }
+
+        StorageCreationProperties storageProperties = storageBuilder.Build();
 
         MsalCacheHelper cacheHelper = await MsalCacheHelper
             .CreateAsync(storageProperties)
