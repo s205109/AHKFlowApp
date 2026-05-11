@@ -21,17 +21,20 @@ As a Windows user, I want to install the AHKFlow CLI and immediately run `ahkflo
 - [x] The published artifact contains an executable users can run as `ahkflow.exe`.
 - [x] The published CLI includes production `ApiBaseUrl`, `ClientId`, and `TenantId` configuration so users do not need environment variables for normal use.
 - [x] The zip includes minimal install instructions for adding the extracted folder to `PATH`.
-- [x] `ahkflow login`, `ahkflow hotstring list`, and `ahkflow logout` work from the extracted zip against production services.
+- [ ] `ahkflow login`, `ahkflow hotstring list`, and `ahkflow logout` work from the extracted zip against production services.
 - [x] Release documentation explains the supported install path and how to uninstall or remove the local token cache.
 - [x] A follow-up installer path is documented, either Winget or an MSI/MSIX installer, with the chosen direction recorded.
 
-## Completion
+## Status
 
-**Completed:** 2026-05-11
+**Implementation completed:** 2026-05-11
+**Production acceptance:** Pending manual smoke test from the published GitHub Release asset
 
 Release channel: GitHub Releases with `ahkflow-win-x64.zip`.
 
 Follow-up installer direction: Winget, after the zip release asset is stable.
+
+Criteria 1-4 and 6-7 are implemented. Criterion 5 remains open until the released zip is smoke-tested against production without `AHKFLOW_` overrides.
 
 ## Out of scope
 
