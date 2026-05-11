@@ -7,8 +7,7 @@ internal sealed class StubAuthTokenProvider(string? token) : IAuthTokenProvider
 {
     public Task<string> GetTokenAsync(CancellationToken ct) =>
         token is null
-            ? throw new NotAuthenticatedException(
-                "Not signed in. Set AHKFLOW_TOKEN environment variable to a bearer token.")
+            ? throw new NotAuthenticatedException(AuthMessages.LoginRequired)
             : Task.FromResult(token);
 
     public Task<LoginResult> LoginAsync(CancellationToken ct) => throw new NotImplementedException();

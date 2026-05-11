@@ -114,13 +114,12 @@ public sealed class ZipDownloadCommandTests : IDisposable
     {
         IDownloadsApiClient downloads = Substitute.For<IDownloadsApiClient>();
         downloads.GetAllProfileScriptsZipAsync(Arg.Any<CancellationToken>())
-            .Throws(new NotAuthenticatedException(
-                "Not signed in. Set AHKFLOW_TOKEN environment variable to a bearer token."));
+            .Throws(new NotAuthenticatedException(AuthMessages.LoginRequired));
 
         (int exit, string _, string stderr) = await RunAsync([], downloads);
 
         exit.Should().Be(3);
-        stderr.Should().Contain("Not signed in");
+        stderr.Should().Contain(AuthMessages.LoginRequired);
     }
 
     [Fact]
@@ -133,7 +132,7 @@ public sealed class ZipDownloadCommandTests : IDisposable
         (int exit, string _, string stderr) = await RunAsync([], downloads);
 
         exit.Should().Be(3);
-        stderr.Should().Contain("Not signed in");
+        stderr.Should().Contain(AuthMessages.AuthenticationFailed);
     }
 
     [Fact]
@@ -160,5 +159,18 @@ public sealed class ZipDownloadCommandTests : IDisposable
 
         exit.Should().Be(1);
         stderr.Should().Contain("kaboom");
+    }
+
+    [Fact]
+    public async Task AuthConfigurationException_Exit1()
+    {
+        IDownloadsApiClient downloads = Substitute.For<IDownloadsApiClient>();
+        downloads.GetAllProfileScriptsZipAsync(Arg.Any<CancellationToken>())
+            .Throws(new AuthConfigurationException("ClientId is not configured."));
+
+        (int exit, string _, string stderr) = await RunAsync([], downloads);
+
+        exit.Should().Be(1);
+        stderr.Should().Contain("ClientId is not configured.");
     }
 }
