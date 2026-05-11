@@ -44,8 +44,11 @@ if [ -e "$CLAUDE_SKILLS" ] || [ -L "$CLAUDE_SKILLS" ]; then
     if [ -L "$CLAUDE_SKILLS" ]; then
         rm "$CLAUDE_SKILLS"
         echo "[FIX] Removed old .claude/skills symlink."
-    else
+    elif [ -d "$CLAUDE_SKILLS" ]; then
         echo "[OK] .claude/skills/ already exists."
+    else
+        echo "Error: .claude/skills exists but is not a directory. Remove it manually, then re-run." >&2
+        exit 1
     fi
 fi
 
