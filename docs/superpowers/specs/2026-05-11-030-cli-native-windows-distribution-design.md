@@ -49,7 +49,7 @@ appsettings.json
 Add `scripts/publish-cli.ps1` as the single local and CI packaging entrypoint. The script:
 
 1. Publishes `src/Tools/AHKFlowApp.CLI` with the Windows x64 self-contained single-file settings.
-2. Writes a release-only `appsettings.json` into the publish output using supplied production `ApiBaseUrl`, `ClientId`, and `TenantId`.
+2. Patches the publish-output `appsettings.json` with supplied production `ApiBaseUrl`, `ClientId`, and `TenantId`, preserving any other source configuration keys.
 3. Copies `docs/cli/windows-install.md` into the package as `INSTALL.md`.
 4. Creates `ahkflow-win-x64.zip` in the requested output directory.
 5. Fails if `ahkflow.exe`, `appsettings.json`, or `INSTALL.md` is missing.
@@ -80,11 +80,12 @@ Workflow behavior:
 
 1. Checkout full git history for MinVer.
 2. Setup .NET from `global.json`.
-3. Restore, build, and test the solution in Release.
-4. Run `scripts/publish-cli.ps1` using production configuration from GitHub settings.
-5. Verify the generated zip by expanding it, checking required entries, checking config values, and running `ahkflow.exe --help`.
-6. Upload the zip as a workflow artifact for traceability.
-7. Create the GitHub Release if it does not exist, or upload the asset with `--clobber` if it does.
+3. Restore, build, and test the solution in Release on `ubuntu-latest`, matching the existing CI runner for Testcontainers-based SQL Server tests.
+4. Package on `windows-latest` after the Linux test job succeeds.
+5. Run `scripts/publish-cli.ps1` using production configuration from GitHub settings.
+6. Verify the generated zip by expanding it, checking required entries, checking config values, and running `ahkflow.exe --help`.
+7. Upload the zip as a workflow artifact for traceability.
+8. Create the GitHub Release if it does not exist, or upload the asset with `--clobber` if it does.
 
 ## User Documentation
 

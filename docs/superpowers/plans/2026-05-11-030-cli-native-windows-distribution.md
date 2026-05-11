@@ -62,6 +62,10 @@ if (-not $ApiBaseUrl.IsAbsoluteUri -or $ApiBaseUrl.Scheme -ne 'https') {
     throw "ApiBaseUrl must be an absolute HTTPS URL."
 }
 
+if ($ApiBaseUrl.AbsoluteUri -match 'placeholder-prod') {
+    throw "ApiBaseUrl must not use the placeholder production URL."
+}
+
 if ($ClientId -eq [guid]::Empty) {
     throw "ClientId must be a non-empty GUID."
 }
@@ -110,12 +114,18 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $settingsPath = Join-Path $publishDir 'appsettings.json'
-$settings = [ordered]@{
-    ApiBaseUrl = $ApiBaseUrl.AbsoluteUri.TrimEnd('/')
-    ClientId = $ClientId.ToString()
-    TenantId = $TenantId.ToString()
+$settings = Get-Content -LiteralPath $settingsPath -Raw | ConvertFrom-Json
+$requiredSettings = @('ApiBaseUrl', 'ClientId', 'TenantId')
+foreach ($name in $requiredSettings) {
+    if ($settings.PSObject.Properties.Name -notcontains $name) {
+        throw "Published appsettings.json is missing required key '$name'."
+    }
 }
-$settings | ConvertTo-Json | Set-Content -LiteralPath $settingsPath -Encoding utf8
+
+$settings.ApiBaseUrl = $ApiBaseUrl.AbsoluteUri.TrimEnd('/')
+$settings.ClientId = $ClientId.ToString()
+$settings.TenantId = $TenantId.ToString()
+$settings | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $settingsPath -Encoding utf8
 
 Copy-Item -LiteralPath (Join-Path $publishDir 'ahkflow.exe') -Destination $packageDir
 Copy-Item -LiteralPath $settingsPath -Destination $packageDir
@@ -157,13 +167,6 @@ if ($errors) { $errors | Format-List; exit 1 }
 ```
 
 Expected: no output and exit code `0`.
-
-- [ ] **Step 3: Commit**
-
-```powershell
-git add scripts/publish-cli.ps1
-git commit -m "chore(030): add CLI release packaging script"
-```
 
 ---
 
@@ -249,13 +252,6 @@ $env:AHKFLOW_TenantId = '22222222-2222-2222-2222-222222222222'
 ```
 ```
 
-- [ ] **Step 2: Commit**
-
-```powershell
-git add docs/cli/windows-install.md
-git commit -m "docs(030): add Windows CLI install guide"
-```
-
 ---
 
 ## Task 3: Verify Local Package Output
@@ -325,6 +321,13 @@ Run:
 
 Expected: exit code `0`; output includes `login`, `logout`, `hotstring`, and `download`.
 
+- [ ] **Step 5: Commit validated packaging script and install doc**
+
+```powershell
+git add scripts/publish-cli.ps1 docs/cli/windows-install.md
+git commit -m "chore(030): add validated Windows CLI package"
+```
+
 ---
 
 ## Task 4: Add GitHub Release Workflow
@@ -358,8 +361,8 @@ env:
   RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
 
 jobs:
-  package:
-    runs-on: windows-latest
+  test:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
@@ -378,6 +381,19 @@ jobs:
 
       - name: Test
         run: dotnet test --configuration Release --no-build --verbosity normal
+
+  package:
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
 
       - name: Package Windows CLI
         shell: pwsh
