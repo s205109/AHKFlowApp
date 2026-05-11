@@ -4,6 +4,7 @@ using AHKFlowApp.CLI.Exceptions;
 using AHKFlowApp.CLI.Services;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Identity.Client;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using Xunit;
@@ -51,5 +52,19 @@ public sealed class LogoutCommandTests
         exit.Should().Be(1);
         stdout.Should().BeEmpty();
         stderr.Should().Contain("TenantId is not configured.");
+    }
+
+    [Fact]
+    public async Task LogoutAsync_MsalException_Exit1()
+    {
+        IAuthTokenProvider auth = Substitute.For<IAuthTokenProvider>();
+        auth.LogoutAsync(Arg.Any<CancellationToken>())
+            .Throws(new MsalClientException("cache_persistence", "Failed to persist token cache."));
+
+        (int exit, string stdout, string stderr) = await RunAsync(auth);
+
+        exit.Should().Be(1);
+        stdout.Should().BeEmpty();
+        stderr.Should().Contain("Authentication error:");
     }
 }

@@ -41,6 +41,11 @@ internal static class DownloadCommandRunner
             await stderr.WriteLineAsync(ex.Message);
             return 3;
         }
+        catch (AuthConfigurationException ex)
+        {
+            await stderr.WriteLineAsync(ex.Message);
+            return 1;
+        }
         catch (ApiException ex) when (ex.StatusCode == 401)
         {
             await stderr.WriteLineAsync(AuthMessages.AuthenticationFailed);

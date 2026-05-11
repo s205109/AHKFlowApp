@@ -2,6 +2,7 @@ using System.CommandLine;
 using AHKFlowApp.CLI.Exceptions;
 using AHKFlowApp.CLI.Services;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Identity.Client;
 
 namespace AHKFlowApp.CLI.Commands.Auth;
 
@@ -26,6 +27,11 @@ public static class LogoutCommand
             catch (AuthConfigurationException ex)
             {
                 await stderr.WriteLineAsync(ex.Message);
+                return 1;
+            }
+            catch (MsalException ex)
+            {
+                await stderr.WriteLineAsync($"Authentication error: {ex.Message}");
                 return 1;
             }
             catch (HttpRequestException ex)

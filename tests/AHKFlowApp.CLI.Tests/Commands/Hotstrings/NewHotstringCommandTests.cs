@@ -239,4 +239,17 @@ public sealed class NewHotstringCommandTests
         exit.Should().Be(3);
         stderr.Should().Contain(AuthMessages.LoginRequired);
     }
+
+    [Fact]
+    public async Task AuthConfigurationException_Exit1()
+    {
+        (IHotstringsApiClient? hs, IProfilesApiClient? profiles) = Fakes();
+        hs.CreateAsync(Arg.Any<CreateHotstringDto>(), Arg.Any<CancellationToken>())
+            .Throws(new AuthConfigurationException("ClientId is not configured."));
+
+        (int exit, string _, string? stderr) = await Run(["hotstring", "new", "-t", "x", "-r", "y"], hs, profiles);
+
+        exit.Should().Be(1);
+        stderr.Should().Contain("ClientId is not configured.");
+    }
 }

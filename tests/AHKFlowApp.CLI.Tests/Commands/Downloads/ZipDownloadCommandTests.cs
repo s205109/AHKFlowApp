@@ -160,4 +160,17 @@ public sealed class ZipDownloadCommandTests : IDisposable
         exit.Should().Be(1);
         stderr.Should().Contain("kaboom");
     }
+
+    [Fact]
+    public async Task AuthConfigurationException_Exit1()
+    {
+        IDownloadsApiClient downloads = Substitute.For<IDownloadsApiClient>();
+        downloads.GetAllProfileScriptsZipAsync(Arg.Any<CancellationToken>())
+            .Throws(new AuthConfigurationException("ClientId is not configured."));
+
+        (int exit, string _, string stderr) = await RunAsync([], downloads);
+
+        exit.Should().Be(1);
+        stderr.Should().Contain("ClientId is not configured.");
+    }
 }
