@@ -1,8 +1,6 @@
-using System.Net;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Http.Resilience;
 using Polly;
-using Polly.Timeout;
 
 namespace AHKFlowApp.CLI.Services;
 
