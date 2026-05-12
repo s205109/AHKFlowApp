@@ -57,6 +57,11 @@ internal static class DownloadCommandRunner
             await stderr.WriteLineAsync(ex.Body ?? ex.Message);
             return 2;
         }
+        catch (ApiException ex) when (CliApiFailureDetector.IsStoppedWebAppResponse(ex))
+        {
+            await stderr.WriteLineAsync(ApiMessages.WebAppUnavailable);
+            return 1;
+        }
         catch (ApiException ex)
         {
             await stderr.WriteLineAsync(ex.Body ?? $"Server error ({ex.StatusCode}).");

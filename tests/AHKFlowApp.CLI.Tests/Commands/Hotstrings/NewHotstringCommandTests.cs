@@ -203,6 +203,23 @@ public sealed class NewHotstringCommandTests
     }
 
     [Fact]
+    public async Task ApiException403_StoppedWebAppHtml_Exit1_FriendlyMessage()
+    {
+        (IHotstringsApiClient? hs, IProfilesApiClient? profiles) = Fakes();
+        hs.CreateAsync(Arg.Any<CreateHotstringDto>(), Arg.Any<CancellationToken>())
+            .Throws(new ApiException(
+                403,
+                "<!DOCTYPE html><html><head><title>Web App - Unavailable</title></head><body><h1>Error 403 - This web app is stopped.</h1></body></html>",
+                "text/html"));
+
+        (int exit, string _, string? stderr) = await Run(["hotstring", "new", "-t", "x", "-r", "y"], hs, profiles);
+
+        exit.Should().Be(1);
+        stderr.Should().Contain(ApiMessages.WebAppUnavailable);
+        stderr.Should().NotContain("<!DOCTYPE html>");
+    }
+
+    [Fact]
     public async Task ApiException500_Exit1()
     {
         (IHotstringsApiClient? hs, IProfilesApiClient? profiles) = Fakes();

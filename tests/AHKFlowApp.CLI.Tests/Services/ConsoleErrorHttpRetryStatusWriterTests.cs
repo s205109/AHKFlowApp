@@ -12,9 +12,9 @@ public sealed class ConsoleErrorHttpRetryStatusWriterTests
         StringWriter stderr = new();
         ConsoleErrorHttpRetryStatusWriter writer = new(() => stderr);
 
-        writer.WriteRetrying("hotstrings", 2, 5, TimeSpan.FromSeconds(2));
+        writer.WriteRetrying("hotstrings", 2, 10, TimeSpan.FromSeconds(2));
 
         stderr.ToString().Should().Contain(
-            "The API may be cold-starting. Retrying hotstrings request (2/5) in 2s...");
+            "The API may be cold-starting. Retrying hotstrings request (2/10) in 2s...");
     }
 }

@@ -14,7 +14,7 @@ public sealed class HotstringsApiClient(HttpClient http) : IHotstringsApiClient
         if (!response.IsSuccessStatusCode)
         {
             string body = await response.Content.ReadAsStringAsync(ct);
-            throw new ApiException((int)response.StatusCode, body);
+            throw new ApiException((int)response.StatusCode, body, response.Content.Headers.ContentType?.MediaType);
         }
         HotstringDto dto = await response.Content.ReadFromJsonAsync<HotstringDto>(JsonOptions, ct)
             ?? throw new InvalidOperationException("API returned empty body for create hotstring.");
@@ -35,7 +35,7 @@ public sealed class HotstringsApiClient(HttpClient http) : IHotstringsApiClient
         if (!response.IsSuccessStatusCode)
         {
             string body = await response.Content.ReadAsStringAsync(ct);
-            throw new ApiException((int)response.StatusCode, body);
+            throw new ApiException((int)response.StatusCode, body, response.Content.Headers.ContentType?.MediaType);
         }
         PagedList<HotstringDto> result = await response.Content
             .ReadFromJsonAsync<PagedList<HotstringDto>>(JsonOptions, ct)
