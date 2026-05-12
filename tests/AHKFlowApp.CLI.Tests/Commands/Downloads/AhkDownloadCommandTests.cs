@@ -180,6 +180,29 @@ public sealed class AhkDownloadCommandTests : IDisposable
     }
 
     [Fact]
+    public async Task ApiException403_StoppedWebAppHtml_Exit1_FriendlyMessage()
+    {
+        var pid = Guid.NewGuid();
+        IProfilesApiClient profiles = Substitute.For<IProfilesApiClient>();
+        profiles.ListAsync(Arg.Any<CancellationToken>())
+            .Returns([new ProfileSummary(pid, "work")]);
+
+        IDownloadsApiClient downloads = Substitute.For<IDownloadsApiClient>();
+        downloads.GetProfileScriptAsync(pid, Arg.Any<CancellationToken>())
+            .Throws(new ApiException(
+                403,
+                "<!DOCTYPE html><html><head><title>Web App - Unavailable</title></head><body><h1>Error 403 - This web app is stopped.</h1></body></html>",
+                "text/html"));
+
+        (int exit, string _, string stderr) = await RunAsync(
+            ["--profile", "work"], downloads, profiles);
+
+        exit.Should().Be(1);
+        stderr.Should().Contain(ApiMessages.WebAppUnavailable);
+        stderr.Should().NotContain("<!DOCTYPE html>");
+    }
+
+    [Fact]
     public async Task ProfileNameCaseInsensitive()
     {
         var pid = Guid.NewGuid();

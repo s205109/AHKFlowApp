@@ -27,7 +27,7 @@ public sealed class DownloadsApiClient(HttpClient http) : IDownloadsApiClient
         if (!response.IsSuccessStatusCode)
         {
             string body = await response.Content.ReadAsStringAsync(ct);
-            throw new ApiException((int)response.StatusCode, body);
+            throw new ApiException((int)response.StatusCode, body, response.Content.Headers.ContentType?.MediaType);
         }
 
         byte[] bytes = await response.Content.ReadAsByteArrayAsync(ct);
