@@ -3,6 +3,7 @@ using AHKFlowApp.CLI.Exceptions;
 using AHKFlowApp.CLI.Output;
 using AHKFlowApp.CLI.Services;
 using Microsoft.Extensions.DependencyInjection;
+using Polly.Timeout;
 
 namespace AHKFlowApp.CLI.Commands.Hotstrings;
 
@@ -91,6 +92,11 @@ public static class NewHotstringCommand
                 await stderr.WriteLineAsync(AuthMessages.AuthenticationFailed);
                 return 3;
             }
+            catch (ApiException ex) when (CliApiFailureDetector.IsStoppedWebAppResponse(ex))
+            {
+                await stderr.WriteLineAsync(ApiMessages.WebAppUnavailable);
+                return 1;
+            }
             catch (ApiException ex)
             {
                 await stderr.WriteLineAsync(ex.Body ?? $"Server error ({ex.StatusCode}).");
@@ -99,6 +105,11 @@ public static class NewHotstringCommand
             catch (HttpRequestException ex)
             {
                 await stderr.WriteLineAsync(ex.Message);
+                return 1;
+            }
+            catch (TimeoutRejectedException)
+            {
+                await stderr.WriteLineAsync(ApiMessages.RequestTimedOut);
                 return 1;
             }
         });
