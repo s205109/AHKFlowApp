@@ -3,6 +3,7 @@ using AHKFlowApp.CLI.Exceptions;
 using AHKFlowApp.CLI.Output;
 using AHKFlowApp.CLI.Services;
 using Microsoft.Extensions.DependencyInjection;
+using Polly.Timeout;
 
 namespace AHKFlowApp.CLI.Commands.Hotstrings;
 
@@ -102,6 +103,11 @@ public static class ListHotstringCommand
             catch (HttpRequestException ex)
             {
                 await stderr.WriteLineAsync(ex.Message);
+                return 1;
+            }
+            catch (TimeoutRejectedException)
+            {
+                await stderr.WriteLineAsync(ApiMessages.RequestTimedOut);
                 return 1;
             }
         });

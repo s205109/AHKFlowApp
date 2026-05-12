@@ -23,7 +23,7 @@ builder.Services.Configure<CliOptions>(builder.Configuration);
 bool verbose = args.Any(a => a == "--verbose" || a == "-v");
 
 Log.Logger = new LoggerConfiguration()
-    .MinimumLevel.Is(verbose ? LogEventLevel.Information : LogEventLevel.Warning)
+    .MinimumLevel.Is(verbose ? LogEventLevel.Information : LogEventLevel.Error)
     .Enrich.FromLogContext()
     .WriteTo.Console(
         standardErrorFromLevel: LogEventLevel.Verbose,
@@ -43,17 +43,32 @@ string apiBaseUrl = builder.Configuration["ApiBaseUrl"]
 builder.Services.AddHttpClient<IHotstringsApiClient, HotstringsApiClient>(c =>
         c.BaseAddress = new Uri(apiBaseUrl))
     .AddHttpMessageHandler<BearerTokenHandler>()
-    .AddStandardResilienceHandler();
+    .AddStandardResilienceHandler(static options =>
+    {
+        options.Retry.MaxRetryAttempts = 5;
+        options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(20);
+        options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(90);
+    });
 
 builder.Services.AddHttpClient<IProfilesApiClient, ProfilesApiClient>(c =>
         c.BaseAddress = new Uri(apiBaseUrl))
     .AddHttpMessageHandler<BearerTokenHandler>()
-    .AddStandardResilienceHandler();
+    .AddStandardResilienceHandler(static options =>
+    {
+        options.Retry.MaxRetryAttempts = 5;
+        options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(20);
+        options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(90);
+    });
 
 builder.Services.AddHttpClient<IDownloadsApiClient, DownloadsApiClient>(c =>
         c.BaseAddress = new Uri(apiBaseUrl))
     .AddHttpMessageHandler<BearerTokenHandler>()
-    .AddStandardResilienceHandler();
+    .AddStandardResilienceHandler(static options =>
+    {
+        options.Retry.MaxRetryAttempts = 5;
+        options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(20);
+        options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(90);
+    });
 
 builder.Services.AddSingleton<BinaryStdout>();
 builder.Services.AddSingleton<WorkingDirectory>();

@@ -3,6 +3,7 @@ using AHKFlowApp.CLI.Exceptions;
 using AHKFlowApp.CLI.Output;
 using AHKFlowApp.CLI.Services;
 using Microsoft.Extensions.DependencyInjection;
+using Polly.Timeout;
 
 namespace AHKFlowApp.CLI.Commands.Downloads;
 
@@ -64,6 +65,11 @@ internal static class DownloadCommandRunner
         catch (HttpRequestException ex)
         {
             await stderr.WriteLineAsync(ex.Message);
+            return 1;
+        }
+        catch (TimeoutRejectedException)
+        {
+            await stderr.WriteLineAsync(ApiMessages.RequestTimedOut);
             return 1;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
