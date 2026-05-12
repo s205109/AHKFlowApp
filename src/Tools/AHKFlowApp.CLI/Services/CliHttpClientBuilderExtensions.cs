@@ -8,7 +8,7 @@ namespace AHKFlowApp.CLI.Services;
 
 public static class CliHttpClientBuilderExtensions
 {
-    private const int MaxRetryAttempts = 5;
+    private const int MaxRetryAttempts = 10;
     private static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan AttemptTimeout = TimeSpan.FromSeconds(20);
     private static readonly TimeSpan TotalTimeout = TimeSpan.FromMinutes(2);
@@ -32,12 +32,7 @@ public static class CliHttpClientBuilderExtensions
                     Delay = RetryDelay,
                     UseJitter = false,
                     ShouldHandle = static args => ValueTask.FromResult(
-                        args.Outcome.Exception is HttpRequestException or TimeoutRejectedException
-                        || args.Outcome.Result?.StatusCode is HttpStatusCode.RequestTimeout
-                            or HttpStatusCode.TooManyRequests
-                            or HttpStatusCode.BadGateway
-                            or HttpStatusCode.ServiceUnavailable
-                            or HttpStatusCode.GatewayTimeout),
+                        CliApiFailureDetector.ShouldRetry(args.Outcome.Exception, args.Outcome.Result)),
                     OnRetry = args =>
                     {
                         retryStatusWriter.WriteRetrying(

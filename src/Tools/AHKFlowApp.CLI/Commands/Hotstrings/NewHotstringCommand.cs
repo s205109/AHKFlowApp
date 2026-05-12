@@ -92,6 +92,11 @@ public static class NewHotstringCommand
                 await stderr.WriteLineAsync(AuthMessages.AuthenticationFailed);
                 return 3;
             }
+            catch (ApiException ex) when (CliApiFailureDetector.IsStoppedWebAppResponse(ex))
+            {
+                await stderr.WriteLineAsync(ApiMessages.WebAppUnavailable);
+                return 1;
+            }
             catch (ApiException ex)
             {
                 await stderr.WriteLineAsync(ex.Body ?? $"Server error ({ex.StatusCode}).");

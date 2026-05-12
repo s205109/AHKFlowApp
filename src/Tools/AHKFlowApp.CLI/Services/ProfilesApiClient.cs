@@ -13,7 +13,7 @@ public sealed class ProfilesApiClient(HttpClient http) : IProfilesApiClient
         if (!response.IsSuccessStatusCode)
         {
             string body = await response.Content.ReadAsStringAsync(ct);
-            throw new ApiException((int)response.StatusCode, body);
+            throw new ApiException((int)response.StatusCode, body, response.Content.Headers.ContentType?.MediaType);
         }
         IReadOnlyList<ProfileItem>? items = await response.Content
             .ReadFromJsonAsync<IReadOnlyList<ProfileItem>>(JsonOptions, ct);
