@@ -91,6 +91,10 @@ Each Azure environment (TEST/PROD) has isolated resources:
 
 See `docs/deployment/getting-started.md` for provisioning instructions.
 
+### Releases
+
+Versioning and GitHub Release creation use MinVer tags. See [docs/development/versioning.md](docs/development/versioning.md) for the release process, including CLI package publishing.
+
 ```bash
 dotnet restore AHKFlowApp.slnx
 dotnet build AHKFlowApp.slnx --configuration Release --no-restore
