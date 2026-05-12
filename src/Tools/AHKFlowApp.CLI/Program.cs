@@ -5,6 +5,7 @@ using AHKFlowApp.CLI.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Serilog;
 using Serilog.Events;
 
@@ -17,6 +18,9 @@ HostApplicationBuilder builder = Host.CreateApplicationBuilder(new HostApplicati
 builder.Configuration
     .AddJsonFile("appsettings.json", optional: true, reloadOnChange: false)
     .AddEnvironmentVariables("AHKFLOW_");
+
+builder.Logging.AddFilter("Polly", LogLevel.None);
+builder.Logging.AddFilter("Microsoft.Extensions.Http.Resilience", LogLevel.None);
 
 builder.Services.Configure<CliOptions>(builder.Configuration);
 
@@ -33,6 +37,7 @@ Log.Logger = new LoggerConfiguration()
 builder.Services.AddSerilog();
 
 builder.Services.AddSingleton<IDeviceCodePromptWriter, ConsoleErrorDeviceCodePromptWriter>();
+builder.Services.AddSingleton<IHttpRetryStatusWriter, ConsoleErrorHttpRetryStatusWriter>();
 builder.Services.AddSingleton<IAuthCachePathProvider, LocalAppDataAuthCachePathProvider>();
 builder.Services.AddSingleton<IAuthTokenProvider, MsalDeviceCodeTokenProvider>();
 builder.Services.AddTransient<BearerTokenHandler>();
@@ -43,32 +48,17 @@ string apiBaseUrl = builder.Configuration["ApiBaseUrl"]
 builder.Services.AddHttpClient<IHotstringsApiClient, HotstringsApiClient>(c =>
         c.BaseAddress = new Uri(apiBaseUrl))
     .AddHttpMessageHandler<BearerTokenHandler>()
-    .AddStandardResilienceHandler(static options =>
-    {
-        options.Retry.MaxRetryAttempts = 5;
-        options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(20);
-        options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(90);
-    });
+    .AddCliApiResilience("hotstrings");
 
 builder.Services.AddHttpClient<IProfilesApiClient, ProfilesApiClient>(c =>
         c.BaseAddress = new Uri(apiBaseUrl))
     .AddHttpMessageHandler<BearerTokenHandler>()
-    .AddStandardResilienceHandler(static options =>
-    {
-        options.Retry.MaxRetryAttempts = 5;
-        options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(20);
-        options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(90);
-    });
+    .AddCliApiResilience("profiles");
 
 builder.Services.AddHttpClient<IDownloadsApiClient, DownloadsApiClient>(c =>
         c.BaseAddress = new Uri(apiBaseUrl))
     .AddHttpMessageHandler<BearerTokenHandler>()
-    .AddStandardResilienceHandler(static options =>
-    {
-        options.Retry.MaxRetryAttempts = 5;
-        options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(20);
-        options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(90);
-    });
+    .AddCliApiResilience("downloads");
 
 builder.Services.AddSingleton<BinaryStdout>();
 builder.Services.AddSingleton<WorkingDirectory>();
