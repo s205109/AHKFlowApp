@@ -41,76 +41,138 @@
     <MudDataGrid @ref="_grid" T="HotkeyEditModel" ServerData="LoadServerData"
                  Dense="true" Hover="true" RowsPerPage="_rowsPerPage"
                  Filterable="true" FilterMode="DataGridFilterMode.ColumnFilterMenu"
-                 SortMode="SortMode.Single" ReadOnly="false"
-                 EditMode="DataGridEditMode.Cell" EditTrigger="DataGridEditTrigger.Manual"
+                 SortMode="SortMode.Single" ReadOnly="true"
                  RowClassFunc="@GetRowClass">
         <Columns>
             <PropertyColumn Property="x => x.Description" Title="Description">
-                <EditTemplate>
-                    <MudTextField @bind-Value="context.Item.Description"
-                                  Validation="@(new Func<string, string?>(ValidateDescription))"
-                                  Error="@(_commitAttempted && ValidateDescription(context.Item.Description) is not null)"
-                                  ErrorText="@(_commitAttempted ? ValidateDescription(context.Item.Description) : null)"
-                                  Immediate="true" MaxLength="200"
-                                  UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "description-input" })" />
-                </EditTemplate>
+                <CellTemplate>
+                    @if (IsEditing(context.Item))
+                    {
+                        <MudTextField @bind-Value="context.Item.Description"
+                                      Validation="@(new Func<string, string?>(ValidateDescription))"
+                                      Error="@(_commitAttempted && ValidateDescription(context.Item.Description) is not null)"
+                                      ErrorText="@(_commitAttempted ? ValidateDescription(context.Item.Description) : null)"
+                                      Immediate="true" MaxLength="200"
+                                      UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "description-input" })" />
+                    }
+                    else
+                    {
+                        @context.Item.Description
+                    }
+                </CellTemplate>
             </PropertyColumn>
             <PropertyColumn Property="x => x.Key" Title="Key">
-                <EditTemplate>
-                    <MudTextField @bind-Value="context.Item.Key"
-                                  Validation="@(new Func<string, string?>(ValidateKey))"
-                                  Error="@(_commitAttempted && ValidateKey(context.Item.Key) is not null)"
-                                  ErrorText="@(_commitAttempted ? ValidateKey(context.Item.Key) : null)"
-                                  Immediate="true" MaxLength="20" Style="max-width: 80px;"
-                                  UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "key-input" })" />
-                </EditTemplate>
+                <CellTemplate>
+                    @if (IsEditing(context.Item))
+                    {
+                        <MudTextField @bind-Value="context.Item.Key"
+                                      Validation="@(new Func<string, string?>(ValidateKey))"
+                                      Error="@(_commitAttempted && ValidateKey(context.Item.Key) is not null)"
+                                      ErrorText="@(_commitAttempted ? ValidateKey(context.Item.Key) : null)"
+                                      Immediate="true" MaxLength="20" Style="max-width: 80px;"
+                                      UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "key-input" })" />
+                    }
+                    else
+                    {
+                        @context.Item.Key
+                    }
+                </CellTemplate>
             </PropertyColumn>
             <PropertyColumn Property="x => x.Ctrl" Title="Ctrl">
-                <EditTemplate>
-                    <MudCheckBox T="bool" @bind-Value="context.Item.Ctrl"
-                                 UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "ctrl-checkbox" })" />
-                </EditTemplate>
+                <CellTemplate>
+                    @if (IsEditing(context.Item))
+                    {
+                        <MudCheckBox T="bool" @bind-Value="context.Item.Ctrl"
+                                     UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "ctrl-checkbox" })" />
+                    }
+                    else
+                    {
+                        <MudCheckBox T="bool" Value="@context.Item.Ctrl" ReadOnly="true" />
+                    }
+                </CellTemplate>
             </PropertyColumn>
             <PropertyColumn Property="x => x.Alt" Title="Alt">
-                <EditTemplate>
-                    <MudCheckBox T="bool" @bind-Value="context.Item.Alt"
-                                 UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "alt-checkbox" })" />
-                </EditTemplate>
+                <CellTemplate>
+                    @if (IsEditing(context.Item))
+                    {
+                        <MudCheckBox T="bool" @bind-Value="context.Item.Alt"
+                                     UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "alt-checkbox" })" />
+                    }
+                    else
+                    {
+                        <MudCheckBox T="bool" Value="@context.Item.Alt" ReadOnly="true" />
+                    }
+                </CellTemplate>
             </PropertyColumn>
             <PropertyColumn Property="x => x.Shift" Title="Shift">
-                <EditTemplate>
-                    <MudCheckBox T="bool" @bind-Value="context.Item.Shift"
-                                 UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "shift-checkbox" })" />
-                </EditTemplate>
+                <CellTemplate>
+                    @if (IsEditing(context.Item))
+                    {
+                        <MudCheckBox T="bool" @bind-Value="context.Item.Shift"
+                                     UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "shift-checkbox" })" />
+                    }
+                    else
+                    {
+                        <MudCheckBox T="bool" Value="@context.Item.Shift" ReadOnly="true" />
+                    }
+                </CellTemplate>
             </PropertyColumn>
             <PropertyColumn Property="x => x.Win" Title="Win">
-                <EditTemplate>
-                    <MudCheckBox T="bool" @bind-Value="context.Item.Win"
-                                 UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "win-checkbox" })" />
-                </EditTemplate>
+                <CellTemplate>
+                    @if (IsEditing(context.Item))
+                    {
+                        <MudCheckBox T="bool" @bind-Value="context.Item.Win"
+                                     UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "win-checkbox" })" />
+                    }
+                    else
+                    {
+                        <MudCheckBox T="bool" Value="@context.Item.Win" ReadOnly="true" />
+                    }
+                </CellTemplate>
             </PropertyColumn>
             <PropertyColumn Property="x => x.Action" Title="Action">
-                <EditTemplate>
-                    <MudSelect T="HotkeyAction" @bind-Value="context.Item.Action" Dense="true"
-                               UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "action-select" })">
-                        <MudSelectItem T="HotkeyAction" Value="HotkeyAction.Send">Send</MudSelectItem>
-                        <MudSelectItem T="HotkeyAction" Value="HotkeyAction.Run">Run</MudSelectItem>
-                    </MudSelect>
-                </EditTemplate>
+                <CellTemplate>
+                    @if (IsEditing(context.Item))
+                    {
+                        <MudSelect T="HotkeyAction" @bind-Value="context.Item.Action" Dense="true"
+                                   UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "action-select" })">
+                            <MudSelectItem T="HotkeyAction" Value="HotkeyAction.Send">Send</MudSelectItem>
+                            <MudSelectItem T="HotkeyAction" Value="HotkeyAction.Run">Run</MudSelectItem>
+                        </MudSelect>
+                    }
+                    else
+                    {
+                        @context.Item.Action
+                    }
+                </CellTemplate>
             </PropertyColumn>
             <TemplateColumn Title="Profiles" Sortable="false" Filterable="false">
-                <CellTemplate>@RenderProfiles(context.Item.AppliesToAllProfiles, context.Item.ProfileIds)</CellTemplate>
-                <EditTemplate>@RenderProfileEditor(context.Item)</EditTemplate>
+                <CellTemplate>
+                    @if (IsEditing(context.Item))
+                    {
+                        @RenderProfileEditor(context.Item)
+                    }
+                    else
+                    {
+                        @RenderProfiles(context.Item.AppliesToAllProfiles, context.Item.ProfileIds)
+                    }
+                </CellTemplate>
             </TemplateColumn>
             <PropertyColumn Property="x => x.Parameters" Title="Parameters">
-                <EditTemplate>
-                    <MudTextField @bind-Value="context.Item.Parameters" Immediate="true" MaxLength="4000"
-                                  UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "parameters-input" })" />
-                </EditTemplate>
+                <CellTemplate>
+                    @if (IsEditing(context.Item))
+                    {
+                        <MudTextField @bind-Value="context.Item.Parameters" Immediate="true" MaxLength="4000"
+                                      UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "parameters-input" })" />
+                    }
+                    else
+                    {
+                        @context.Item.Parameters
+                    }
+                </CellTemplate>
             </PropertyColumn>
             <TemplateColumn Title="Actions" Sortable="false" Filterable="false" HeaderStyle="width:160px">
                 <CellTemplate>@RenderActions(context.Item)</CellTemplate>
-                <EditTemplate>@RenderActions(context.Item)</EditTemplate>
             </TemplateColumn>
         </Columns>
         <NoRecordsContent><MudText>No hotkeys yet.</MudText></NoRecordsContent>
@@ -132,8 +194,6 @@
     private HotkeyEditModel? _pendingCreate;
     private HotkeyEditModel? _editingItem;
     private bool _commitAttempted;
-    private bool _restoreEditingItem;
-    private bool _cancelEditingItem;
     private IReadOnlyList<ProfileDto> _profiles = [];
     private bool _isAuthenticated;
     private bool _loading;
@@ -159,24 +219,6 @@
             if (profilesResult.IsSuccess)
                 _profiles = profilesResult.Value ?? [];
         }
-    }
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (_grid is null)
-            return;
-
-        if (_cancelEditingItem)
-        {
-            _cancelEditingItem = false;
-            await _grid.CancelEditingItemAsync();
-        }
-
-        if (!_restoreEditingItem || _editingItem is null)
-            return;
-
-        _restoreEditingItem = false;
-        await _grid.SetEditingItemAsync(_editingItem);
     }
 
     private async Task<GridData<HotkeyEditModel>> LoadServerData(GridState<HotkeyEditModel> state, CancellationToken ct)
@@ -213,18 +255,35 @@
         }
 
         List<HotkeyEditModel> items = [.. result.Value!.Items.Select(MapItem)];
-        bool editingItemVisible = IsEditingItemVisible(items);
 
         if (state.Page == 0 && _pendingCreate is not null)
-        {
             items.Insert(0, _pendingCreate);
-            editingItemVisible |= ReferenceEquals(_editingItem, _pendingCreate);
-        }
 
-        UpdateEditingState(editingItemVisible);
+        ClearEditingIfMissing(items);
 
         int totalItems = result.Value.TotalCount + (_pendingCreate is not null ? 1 : 0);
         return new GridData<HotkeyEditModel> { Items = items, TotalItems = totalItems };
+    }
+
+    private void ClearEditingIfMissing(IReadOnlyCollection<HotkeyEditModel> items)
+    {
+        if (_editingItem is null)
+            return;
+
+        bool visible = _editingItem switch
+        {
+            { Id: Guid id } => items.Any(item => item.Id == id),
+            _ => items.Any(item => ReferenceEquals(item, _editingItem)),
+        };
+
+        if (visible)
+            return;
+
+        if (ReferenceEquals(_editingItem, _pendingCreate))
+            _pendingCreate = null;
+
+        _editingItem = null;
+        _commitAttempted = false;
     }
 
     private static (string? SortField, bool SortDescending) GetSort(GridState<HotkeyEditModel> state)
@@ -293,39 +352,6 @@
             ? _editingItem
             : HotkeyEditModel.FromDto(dto);
 
-    private bool IsEditingItemVisible(IReadOnlyCollection<HotkeyEditModel> items) =>
-        _editingItem switch
-        {
-            null => false,
-            { Id: Guid editingId } => items.Any(item => item.Id == editingId),
-            _ => items.Any(item => ReferenceEquals(item, _editingItem)),
-        };
-
-    private void UpdateEditingState(bool editingItemVisible)
-    {
-        if (_editingItem is null)
-        {
-            _restoreEditingItem = false;
-            _cancelEditingItem = false;
-            return;
-        }
-
-        if (!editingItemVisible)
-        {
-            if (ReferenceEquals(_editingItem, _pendingCreate))
-                _pendingCreate = null;
-
-            _editingItem = null;
-            _commitAttempted = false;
-            _restoreEditingItem = false;
-            _cancelEditingItem = true;
-            return;
-        }
-
-        _restoreEditingItem = true;
-        _cancelEditingItem = false;
-    }
-
     private bool IsEditing(HotkeyEditModel item) =>
         _editingItem switch
         {
@@ -352,22 +378,15 @@
         _pendingCreate = new HotkeyEditModel();
         _editingItem = _pendingCreate;
         _commitAttempted = false;
-        _restoreEditingItem = true;
-        _cancelEditingItem = false;
 
         if (_grid is not null)
             await _grid.ReloadServerData();
     }
 
-    private async Task StartEditAsync(HotkeyEditModel item)
+    private void StartEditAsync(HotkeyEditModel item)
     {
         _editingItem = item;
         _commitAttempted = false;
-        _restoreEditingItem = false;
-        _cancelEditingItem = false;
-
-        if (_grid is not null)
-            await _grid.SetEditingItemAsync(item);
     }
 
     private async Task CancelEditAsync()
@@ -377,14 +396,9 @@
 
         _editingItem = null;
         _commitAttempted = false;
-        _restoreEditingItem = false;
-        _cancelEditingItem = false;
 
         if (_grid is not null)
-        {
-            await _grid.CancelEditingItemAsync();
             await _grid.ReloadServerData();
-        }
     }
 
     private static string? ValidateDescription(string? value)
@@ -416,15 +430,10 @@
             {
                 _pendingCreate = null;
                 _editingItem = null;
-                _restoreEditingItem = false;
-                _cancelEditingItem = false;
                 Snackbar.Add("Hotkey created.", Severity.Success);
 
                 if (_grid is not null)
-                {
-                    await _grid.CancelEditingItemAsync();
                     await _grid.ReloadServerData();
-                }
             }
             else Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
         }
@@ -434,15 +443,10 @@
             if (result.IsSuccess)
             {
                 _editingItem = null;
-                _restoreEditingItem = false;
-                _cancelEditingItem = false;
                 Snackbar.Add("Hotkey updated.", Severity.Success);
 
                 if (_grid is not null)
-                {
-                    await _grid.CancelEditingItemAsync();
                     await _grid.ReloadServerData();
-                }
             }
             else Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
         }
