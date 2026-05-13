@@ -67,22 +67,26 @@
             </PropertyColumn>
             <PropertyColumn Property="x => x.Ctrl" Title="Ctrl">
                 <EditTemplate>
-                    <MudCheckBox T="bool" @bind-Value="context.Item.Ctrl" />
+                    <MudCheckBox T="bool" @bind-Value="context.Item.Ctrl"
+                                 UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "ctrl-checkbox" })" />
                 </EditTemplate>
             </PropertyColumn>
             <PropertyColumn Property="x => x.Alt" Title="Alt">
                 <EditTemplate>
-                    <MudCheckBox T="bool" @bind-Value="context.Item.Alt" />
+                    <MudCheckBox T="bool" @bind-Value="context.Item.Alt"
+                                 UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "alt-checkbox" })" />
                 </EditTemplate>
             </PropertyColumn>
             <PropertyColumn Property="x => x.Shift" Title="Shift">
                 <EditTemplate>
-                    <MudCheckBox T="bool" @bind-Value="context.Item.Shift" />
+                    <MudCheckBox T="bool" @bind-Value="context.Item.Shift"
+                                 UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "shift-checkbox" })" />
                 </EditTemplate>
             </PropertyColumn>
             <PropertyColumn Property="x => x.Win" Title="Win">
                 <EditTemplate>
-                    <MudCheckBox T="bool" @bind-Value="context.Item.Win" />
+                    <MudCheckBox T="bool" @bind-Value="context.Item.Win"
+                                 UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "win-checkbox" })" />
                 </EditTemplate>
             </PropertyColumn>
             <PropertyColumn Property="x => x.Action" Title="Action">
@@ -480,7 +484,8 @@
     </text>;
 
     private RenderFragment RenderProfileEditor(HotkeyEditModel edit) => @<MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
-        <MudCheckBox T="bool" @bind-Value="edit.AppliesToAllProfiles"
+        <MudCheckBox T="bool" Value="edit.AppliesToAllProfiles"
+                     ValueChanged="value => SetAppliesToAllProfiles(edit, value)"
                      Label="Any"
                      UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "applies-to-all-checkbox" })" />
         @if (!edit.AppliesToAllProfiles)
@@ -498,6 +503,14 @@
             </MudSelect>
         }
     </MudStack>;
+
+    private static void SetAppliesToAllProfiles(HotkeyEditModel edit, bool value)
+    {
+        edit.AppliesToAllProfiles = value;
+
+        if (value)
+            edit.ProfileIds.Clear();
+    }
 
     private RenderFragment RenderActions(HotkeyEditModel item) => @<text>
         @if (IsEditing(item))
