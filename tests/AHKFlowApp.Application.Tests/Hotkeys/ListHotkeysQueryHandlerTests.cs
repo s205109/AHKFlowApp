@@ -173,4 +173,74 @@ public sealed class ListHotkeysQueryHandlerTests(HotkeyDbFixture fx)
 
         result.Value.Items.Should().ContainSingle().Which.Key.Should().Be("f1");
     }
+
+    [Fact]
+    public async Task Handle_DescriptionFilter_ComposesWithSearch()
+    {
+        var owner = Guid.NewGuid();
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotkeys.Add(new HotkeyBuilder().WithOwner(owner).WithKey("f1").WithCtrl().WithDescription("Open browser").AppliesToAll().Build());
+            seed.Hotkeys.Add(new HotkeyBuilder().WithOwner(owner).WithKey("f2").WithCtrl().WithDescription("Open notepad").AppliesToAll().Build());
+            seed.Hotkeys.Add(new HotkeyBuilder().WithOwner(owner).WithKey("f3").WithCtrl().WithDescription("Lock workstation").AppliesToAll().Build());
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        var handler = new ListHotkeysQueryHandler(db, CurrentUserHelper.For(owner));
+
+        Result<PagedList<HotkeyDto>> result = await handler.Handle(
+            new ListHotkeysQuery(DescriptionFilter: "Open"), default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.TotalCount.Should().Be(2);
+        result.Value.Items.Should().OnlyContain(h => h.Description.StartsWith("Open"));
+    }
+
+    [Fact]
+    public async Task Handle_BooleanFilters_ReturnMatchingRows()
+    {
+        var owner = Guid.NewGuid();
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotkeys.Add(new HotkeyBuilder().WithOwner(owner).WithKey("f1").WithCtrl().WithDescription("a").AppliesToAll().Build());
+            seed.Hotkeys.Add(new HotkeyBuilder().WithOwner(owner).WithKey("f2").WithDescription("b").AppliesToAll().Build());
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        var handler = new ListHotkeysQueryHandler(db, CurrentUserHelper.For(owner));
+
+        Result<PagedList<HotkeyDto>> result = await handler.Handle(
+            new ListHotkeysQuery(Ctrl: true), default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.TotalCount.Should().Be(1);
+        result.Value.Items.Single().Key.Should().Be("f1");
+    }
+
+    [Fact]
+    public async Task Handle_SortByKeyAscending_ReturnsStableOrder()
+    {
+        var owner = Guid.NewGuid();
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotkeys.Add(new HotkeyBuilder().WithOwner(owner).WithKey("f3").WithCtrl().WithDescription("c").AppliesToAll().Build());
+            seed.Hotkeys.Add(new HotkeyBuilder().WithOwner(owner).WithKey("f1").WithCtrl().WithDescription("a").AppliesToAll().Build());
+            seed.Hotkeys.Add(new HotkeyBuilder().WithOwner(owner).WithKey("f2").WithCtrl().WithDescription("b").AppliesToAll().Build());
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        var handler = new ListHotkeysQueryHandler(db, CurrentUserHelper.For(owner));
+
+        Result<PagedList<HotkeyDto>> result = await handler.Handle(
+            new ListHotkeysQuery(SortField: "key", SortDescending: false), default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Items.Select(h => h.Key).Should().Equal("f1", "f2", "f3");
+    }
 }
