@@ -1,13 +1,100 @@
 @page "/"
+@using AHKFlowApp.UI.Blazor.Components.Home
+@using AHKFlowApp.UI.Blazor.DTOs
+@using AHKFlowApp.UI.Blazor.Services
+@inject IDashboardApiClient DashboardApi
 
-<PageTitle>AHKFlowApp</PageTitle>
+<PageTitle>AHKFlow</PageTitle>
 
-<MudText Typo="Typo.h4" GutterBottom>Welcome to AHKFlowApp</MudText>
+<MudStack Spacing="6">
 
-<MudText Class="mb-6">
-    Manage your AutoHotkey hotstrings and hotkeys in one place.
-</MudText>
+    <HeroSection />
 
-<MudAlert Severity="Severity.Info" Class="mt-4">
-    Hotstring management is coming soon.
-</MudAlert>
+    @if (_errorMessage is not null)
+    {
+        <MudAlert Severity="Severity.Warning">@_errorMessage</MudAlert>
+    }
+
+    <MudGrid>
+        <MudItem xs="12" sm="6" md="4">
+            @if (_loading)
+            {
+                <MudPaper Class="pa-4"><MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="120px" /></MudPaper>
+            }
+            else
+            {
+                <StatCard Title="HOTSTRINGS"
+                          Icon="@MudBlazor.Icons.Material.Outlined.Abc"
+                          Total="@(_stats?.Hotstrings.Total ?? 0)"
+                          FooterText="@($"+{_stats?.Hotstrings.CreatedThisWeek ?? 0} this week")"
+                          DailyBuckets="@(_stats?.Hotstrings.DailyBuckets ?? new int[14])" />
+            }
+        </MudItem>
+        <MudItem xs="12" sm="6" md="4">
+            @if (_loading)
+            {
+                <MudPaper Class="pa-4"><MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="120px" /></MudPaper>
+            }
+            else
+            {
+                <StatCard Title="HOTKEYS"
+                          Icon="@MudBlazor.Icons.Material.Outlined.Keyboard"
+                          Total="@(_stats?.Hotkeys.Total ?? 0)"
+                          FooterText="@($"+{_stats?.Hotkeys.CreatedThisWeek ?? 0} this week")"
+                          DailyBuckets="@(_stats?.Hotkeys.DailyBuckets ?? new int[14])" />
+            }
+        </MudItem>
+        <MudItem xs="12" sm="6" md="4">
+            @if (_loading)
+            {
+                <MudPaper Class="pa-4"><MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="120px" /></MudPaper>
+            }
+            else
+            {
+                <StatCard Title="PROFILES"
+                          Icon="@MudBlazor.Icons.Material.Outlined.Person"
+                          Total="@(_stats?.Profiles.Total ?? 0)"
+                          FooterText="@($"{_stats?.Profiles.Active ?? 0} active · {_stats?.Profiles.Default ?? 0} default")"
+                          DailyBuckets="@(_stats?.Profiles.DailyBuckets ?? new int[14])" />
+            }
+        </MudItem>
+    </MudGrid>
+
+    <MudGrid>
+        <MudItem xs="12" md="8">
+            @if (_loading)
+            {
+                <MudPaper Class="pa-4"><MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="200px" /></MudPaper>
+            }
+            else
+            {
+                <RecentActivityCard Items="@(_stats?.RecentActivity ?? Array.Empty<RecentActivityItemDto>())"
+                                    UtcNow="@DateTimeOffset.UtcNow" />
+            }
+        </MudItem>
+        <MudItem xs="12" md="4">
+            <CliQuickstartCard />
+        </MudItem>
+    </MudGrid>
+
+</MudStack>
+
+@code {
+    private DashboardStatsDto? _stats;
+    private bool _loading = true;
+    private string? _errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        ApiResult<DashboardStatsDto> result = await DashboardApi.GetStatsAsync();
+        if (result.IsSuccess)
+        {
+            _stats = result.Value;
+        }
+        else
+        {
+            _errorMessage = "We couldn't load your dashboard data. Please try again later.";
+        }
+        _loading = false;
+    }
+}
