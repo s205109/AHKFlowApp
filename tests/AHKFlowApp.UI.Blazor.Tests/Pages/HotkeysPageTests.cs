@@ -87,7 +87,7 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
-    public void Page_AddButton_InsertsDraftRow()
+    public void Page_AddButton_StartsDraftGridEdit()
     {
         StubList(Page());
 
@@ -97,6 +97,20 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
         cut.Find("button.add-hotkey").Click();
 
         cut.WaitForAssertion(() => cut.Find("input[data-test=\"description-input\"]").Should().NotBeNull());
+    }
+
+    [Fact]
+    public void Page_OnLoad_UsesGridListRequest()
+    {
+        StubList(Page());
+
+        RenderPage();
+
+        _api.Received().ListAsync(
+            Arg.Is<HotkeyListRequest>(request =>
+                request.Page == 1 &&
+                request.PageSize == UserPreferences.Default.RowsPerPage),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]

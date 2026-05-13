@@ -83,7 +83,7 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
-    public void Page_AddButton_InsertsDraftRow()
+    public void Page_AddButton_StartsDraftGridEdit()
     {
         StubList(Page());
 
@@ -92,7 +92,21 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
 
         cut.Find("button.add-hotstring").Click();
 
-        cut.WaitForAssertion(() => cut.Find("td.draft-row").Should().NotBeNull());
+        cut.WaitForAssertion(() => cut.Find("input[data-test=\"trigger-input\"]").Should().NotBeNull());
+    }
+
+    [Fact]
+    public void Page_OnLoad_UsesGridListRequest()
+    {
+        StubList(Page());
+
+        RenderPage();
+
+        _api.Received().ListAsync(
+            Arg.Is<HotstringListRequest>(request =>
+                request.Page == 1 &&
+                request.PageSize == UserPreferences.Default.RowsPerPage),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
