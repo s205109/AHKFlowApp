@@ -2,6 +2,7 @@ using AHKFlowApp.API.Extensions;
 using AHKFlowApp.Application.Commands.Hotkeys;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Queries.Hotkeys;
+using AHKFlowApp.Domain.Enums;
 using Ardalis.Result;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
@@ -27,8 +28,24 @@ public sealed class HotkeysController(IMediator mediator) : ControllerBase
         [FromQuery] string? search = null,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 50,
+        [FromQuery] string? sortField = null,
+        [FromQuery] bool sortDescending = true,
+        [FromQuery] string? descriptionFilter = null,
+        [FromQuery] string? keyFilter = null,
+        [FromQuery] string? parametersFilter = null,
+        [FromQuery] HotkeyAction? action = null,
+        [FromQuery] bool? appliesToAllProfiles = null,
+        [FromQuery] bool? ctrl = null,
+        [FromQuery] bool? alt = null,
+        [FromQuery] bool? shift = null,
+        [FromQuery] bool? win = null,
         CancellationToken ct = default) =>
-        (await mediator.Send(new ListHotkeysQuery(profileId, search, page, pageSize), ct)).ToProblemActionResult(this);
+        (await mediator.Send(new ListHotkeysQuery(
+            profileId, search, page, pageSize,
+            sortField, sortDescending,
+            descriptionFilter, keyFilter, parametersFilter,
+            action, appliesToAllProfiles,
+            ctrl, alt, shift, win), ct)).ToProblemActionResult(this);
 
     /// <summary>Get a hotkey by id.</summary>
     [HttpGet("{id:guid}", Name = "GetHotkey")]

@@ -71,4 +71,43 @@ public sealed class ListHotstringsQueryValidatorTests
 
         result.IsValid.Should().BeTrue();
     }
+
+    [Fact]
+    public void Validate_WithAllowedSortField_Succeeds()
+    {
+        ValidationResult result = _sut.Validate(new ListHotstringsQuery(SortField: "trigger"));
+
+        result.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Validate_WithUnknownSortField_Fails()
+    {
+        ValidationResult result = _sut.Validate(new ListHotstringsQuery(SortField: "ownerOid"));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.PropertyName == "SortField");
+    }
+
+    [Fact]
+    public void Validate_WithTriggerFilterTooLong_Fails()
+    {
+        string filter = new('x', 201);
+
+        ValidationResult result = _sut.Validate(new ListHotstringsQuery(TriggerFilter: filter));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.PropertyName == "TriggerFilter");
+    }
+
+    [Fact]
+    public void Validate_WithReplacementFilterTooLong_Fails()
+    {
+        string filter = new('x', 201);
+
+        ValidationResult result = _sut.Validate(new ListHotstringsQuery(ReplacementFilter: filter));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.PropertyName == "ReplacementFilter");
+    }
 }

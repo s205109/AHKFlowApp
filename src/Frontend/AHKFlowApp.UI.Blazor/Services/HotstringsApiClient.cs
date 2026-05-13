@@ -7,12 +7,26 @@ public sealed class HotstringsApiClient(HttpClient httpClient) : ApiClientBase(h
 {
     private const string BasePath = "api/v1/hotstrings";
 
-    public Task<ApiResult<PagedList<HotstringDto>>> ListAsync(Guid? profileId, int page, int pageSize, string? search = null, CancellationToken ct = default)
+    public Task<ApiResult<PagedList<HotstringDto>>> ListAsync(HotstringListRequest request, CancellationToken ct = default)
     {
-        string query = $"?page={page}&pageSize={pageSize}";
-        if (profileId is { } pid) query += $"&profileId={pid}";
-        if (!string.IsNullOrWhiteSpace(search)) query += $"&search={Uri.EscapeDataString(search)}";
-        return SendAsync<PagedList<HotstringDto>>(HttpMethod.Get, BasePath + query, content: null, ct);
+        var parts = new List<string>
+        {
+            $"page={request.Page}",
+            $"pageSize={request.PageSize}",
+            $"sortDescending={request.SortDescending.ToString().ToLowerInvariant()}"
+        };
+        Add(parts, "profileId", request.ProfileId?.ToString());
+        Add(parts, "search", request.Search);
+        Add(parts, "sortField", request.SortField);
+        Add(parts, "triggerFilter", request.TriggerFilter);
+        Add(parts, "replacementFilter", request.ReplacementFilter);
+        if (request.AppliesToAllProfiles.HasValue)
+            parts.Add($"appliesToAllProfiles={request.AppliesToAllProfiles.Value.ToString().ToLowerInvariant()}");
+        if (request.IsEndingCharacterRequired.HasValue)
+            parts.Add($"isEndingCharacterRequired={request.IsEndingCharacterRequired.Value.ToString().ToLowerInvariant()}");
+        if (request.IsTriggerInsideWord.HasValue)
+            parts.Add($"isTriggerInsideWord={request.IsTriggerInsideWord.Value.ToString().ToLowerInvariant()}");
+        return SendAsync<PagedList<HotstringDto>>(HttpMethod.Get, $"{BasePath}?{string.Join("&", parts)}", content: null, ct);
     }
 
     public Task<ApiResult<HotstringDto>> GetAsync(Guid id, CancellationToken ct = default) =>
@@ -26,4 +40,9 @@ public sealed class HotstringsApiClient(HttpClient httpClient) : ApiClientBase(h
 
     public Task<ApiResult> DeleteAsync(Guid id, CancellationToken ct = default) =>
         SendNoContentAsync(HttpMethod.Delete, $"{BasePath}/{id}", ct);
+
+    private static void Add(List<string> parts, string key, string? value)
+    {
+        if (!string.IsNullOrWhiteSpace(value)) parts.Add($"{key}={Uri.EscapeDataString(value)}");
+    }
 }

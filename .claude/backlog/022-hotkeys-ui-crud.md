@@ -21,11 +21,11 @@ As a user, I want to manage hotkeys in the Web UI so that I can define keyboard 
 - [x] Action column is a dropdown bound to the `HotkeyAction` enum (Send, Run; extensible).
 - [x] Profile column is a multi-select; an "Any" toggle sets `AppliesToAllProfiles=true` and clears specific selections.
 - [x] Delete hotkeys with a confirmation step.
-- [ ] bUnit tests cover the main UI components, including modifier checkboxes, Action dropdown, Profile multi-select / "Any" toggle, and validation states. _(Gap: `HotkeysPageTests.cs` does not exist; `HotkeysApiClientTests.cs` covers the API client only.)_
+- [x] bUnit tests cover the main UI components, including modifier checkboxes, Action dropdown, Profile multi-select / "Any" toggle, and validation states. _Implemented in `tests/AHKFlowApp.UI.Blazor.Tests/Pages/HotkeysPageTests.cs`._
 
 ---
 
-**Shipped with known gap:** 2026-05-03 (PR #107; AC6 bUnit page tests not written — see note above)
+**Completed:** 2026-05-13 (AC6 gap closed; the existing `HotkeysPageTests.cs` suite was extended to cover the remaining page behaviors)
 
 ## Out of scope
 

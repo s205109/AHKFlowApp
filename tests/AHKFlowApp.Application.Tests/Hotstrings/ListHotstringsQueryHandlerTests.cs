@@ -166,4 +166,70 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
 
         result.Value.Items.Should().HaveCount(2);
     }
+
+    [Fact]
+    public async Task Handle_TriggerFilter_ComposesWithSearch()
+    {
+        var owner = Guid.NewGuid();
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(Hotstring.Create(owner, "btw", "by the way", true, true, true, TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, "btw2", "other text", true, true, true, TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, "fyi", "by the way", true, true, true, TimeProvider.System));
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner));
+
+        Result<PagedList<HotstringDto>> result = await handler.Handle(
+            new ListHotstringsQuery(Search: "way", TriggerFilter: "btw"), default);
+
+        result.Value.Items.Should().HaveCount(1);
+        result.Value.Items[0].Trigger.Should().Be("btw");
+    }
+
+    [Fact]
+    public async Task Handle_BooleanFilters_ReturnMatchingRows()
+    {
+        var owner = Guid.NewGuid();
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(Hotstring.Create(owner, "a", "x", true, true, false, TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, "b", "x", true, false, true, TimeProvider.System));
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner));
+
+        Result<PagedList<HotstringDto>> result = await handler.Handle(
+            new ListHotstringsQuery(IsEndingCharacterRequired: true, IsTriggerInsideWord: false), default);
+
+        result.Value.Items.Should().ContainSingle().Which.Trigger.Should().Be("a");
+    }
+
+    [Fact]
+    public async Task Handle_SortByTriggerAscending_ReturnsStableOrder()
+    {
+        var owner = Guid.NewGuid();
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(Hotstring.Create(owner, "c", "x", true, true, true, TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, "a", "x", true, true, true, TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, "b", "x", true, true, true, TimeProvider.System));
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner));
+
+        Result<PagedList<HotstringDto>> result = await handler.Handle(
+            new ListHotstringsQuery(SortField: "trigger", SortDescending: false), default);
+
+        result.Value.Items.Select(h => h.Trigger).Should().Equal("a", "b", "c");
+    }
 }

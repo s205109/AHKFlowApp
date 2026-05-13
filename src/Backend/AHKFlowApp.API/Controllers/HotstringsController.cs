@@ -27,8 +27,26 @@ public sealed class HotstringsController(IMediator mediator) : ControllerBase
         [FromQuery] string? search = null,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 50,
+        [FromQuery] string? sortField = null,
+        [FromQuery] bool sortDescending = true,
+        [FromQuery] string? triggerFilter = null,
+        [FromQuery] string? replacementFilter = null,
+        [FromQuery] bool? appliesToAllProfiles = null,
+        [FromQuery] bool? isEndingCharacterRequired = null,
+        [FromQuery] bool? isTriggerInsideWord = null,
         CancellationToken ct = default) =>
-        (await mediator.Send(new ListHotstringsQuery(profileId, search, page, pageSize), ct)).ToProblemActionResult(this);
+        (await mediator.Send(new ListHotstringsQuery(
+            profileId,
+            search,
+            page,
+            pageSize,
+            sortField,
+            sortDescending,
+            triggerFilter,
+            replacementFilter,
+            appliesToAllProfiles,
+            isEndingCharacterRequired,
+            isTriggerInsideWord), ct)).ToProblemActionResult(this);
 
     /// <summary>Get a hotstring by id.</summary>
     [HttpGet("{id:guid}", Name = "GetHotstring")]
