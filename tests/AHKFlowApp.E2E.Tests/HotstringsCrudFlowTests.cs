@@ -16,7 +16,7 @@ public sealed class HotstringsCrudFlowTests(StackFixture fixture) : IClassFixtur
         await page.WaitForSelectorAsync("button.add-hotstring");
 
         await page.ClickAsync("button.add-hotstring");
-        await page.WaitForSelectorAsync("td.draft-row");
+        await page.WaitForSelectorAsync("tr.draft-row");
         await page.FillAsync("input[data-test=\"trigger-input\"]", "btw");
         await page.FillAsync("input[data-test=\"replacement-input\"]", "by the way");
         await page.ClickAsync("button.commit-edit");
@@ -27,7 +27,7 @@ public sealed class HotstringsCrudFlowTests(StackFixture fixture) : IClassFixtur
         Assert.True(await page.IsVisibleAsync("text=by the way"));
 
         await page.ClickAsync("button.start-edit");
-        await page.WaitForSelectorAsync("td.edit-row");
+        await page.WaitForSelectorAsync("tr.edit-row");
         await page.FillAsync("input[data-test=\"replacement-input\"]", "by the way!");
         await page.ClickAsync("button.commit-edit");
 
@@ -52,7 +52,7 @@ public sealed class HotstringsCrudFlowTests(StackFixture fixture) : IClassFixtur
         await page.WaitForSelectorAsync("button.add-hotstring");
 
         await page.ClickAsync("button.add-hotstring");
-        await page.WaitForSelectorAsync("td.draft-row");
+        await page.WaitForSelectorAsync("tr.draft-row");
         await page.FillAsync("input[data-test=\"trigger-input\"]", "dup");
         await page.FillAsync("input[data-test=\"replacement-input\"]", "duplicate");
         await page.ClickAsync("button.commit-edit");
@@ -60,7 +60,7 @@ public sealed class HotstringsCrudFlowTests(StackFixture fixture) : IClassFixtur
         await page.WaitForSelectorAsync("text=Hotstring created.");
 
         await page.ClickAsync("button.add-hotstring");
-        await page.WaitForSelectorAsync("td.draft-row");
+        await page.WaitForSelectorAsync("tr.draft-row");
         await page.FillAsync("input[data-test=\"trigger-input\"]", "dup");
         await page.FillAsync("input[data-test=\"replacement-input\"]", "duplicate again");
         await page.ClickAsync("button.commit-edit");
