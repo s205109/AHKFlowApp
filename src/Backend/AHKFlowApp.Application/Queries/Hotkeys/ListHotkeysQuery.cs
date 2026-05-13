@@ -1,6 +1,7 @@
 using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Domain.Entities;
+using AHKFlowApp.Domain.Enums;
 using Ardalis.Result;
 using FluentValidation;
 using MediatR;
@@ -12,15 +13,40 @@ public sealed record ListHotkeysQuery(
     Guid? ProfileId = null,
     string? Search = null,
     int Page = 1,
-    int PageSize = 50) : IRequest<Result<PagedList<HotkeyDto>>>;
+    int PageSize = 50,
+    string? SortField = null,
+    bool SortDescending = true,
+    string? DescriptionFilter = null,
+    string? KeyFilter = null,
+    string? ParametersFilter = null,
+    HotkeyAction? Action = null,
+    bool? AppliesToAllProfiles = null,
+    bool? Ctrl = null,
+    bool? Alt = null,
+    bool? Shift = null,
+    bool? Win = null) : IRequest<Result<PagedList<HotkeyDto>>>;
 
 public sealed class ListHotkeysQueryValidator : AbstractValidator<ListHotkeysQuery>
 {
+    private static readonly string[] AllowedSortFields =
+    [
+        "createdat", "updatedat", "description", "key",
+        "ctrl", "alt", "shift", "win", "action", "parameters"
+    ];
+
     public ListHotkeysQueryValidator()
     {
         RuleFor(x => x.Search).MaximumLength(200);
         RuleFor(x => x.Page).InclusiveBetween(1, 10_000);
         RuleFor(x => x.PageSize).InclusiveBetween(1, 200);
+        RuleFor(x => x.DescriptionFilter).MaximumLength(200);
+        RuleFor(x => x.KeyFilter).MaximumLength(200);
+        RuleFor(x => x.ParametersFilter).MaximumLength(200);
+        RuleFor(x => x.SortField)
+            .Must(f => string.IsNullOrEmpty(f) ||
+                       AllowedSortFields.Contains(f.Trim().ToLowerInvariant(),
+                           StringComparer.OrdinalIgnoreCase))
+            .WithMessage($"SortField must be one of: {string.Join(", ", AllowedSortFields)}");
     }
 }
 
@@ -55,11 +81,45 @@ internal sealed class ListHotkeysQueryHandler(
                 EF.Functions.Like(h.Parameters, pattern));
         }
 
+        if (!string.IsNullOrWhiteSpace(request.DescriptionFilter))
+        {
+            string pattern = $"%{request.DescriptionFilter.Trim()}%";
+            query = query.Where(h => EF.Functions.Like(h.Description, pattern));
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.KeyFilter))
+        {
+            string pattern = $"%{request.KeyFilter.Trim()}%";
+            query = query.Where(h => EF.Functions.Like(h.Key, pattern));
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.ParametersFilter))
+        {
+            string pattern = $"%{request.ParametersFilter.Trim()}%";
+            query = query.Where(h => EF.Functions.Like(h.Parameters ?? "", pattern));
+        }
+
+        if (request.Action.HasValue)
+            query = query.Where(h => h.Action == request.Action.Value);
+
+        if (request.AppliesToAllProfiles.HasValue)
+            query = query.Where(h => h.AppliesToAllProfiles == request.AppliesToAllProfiles.Value);
+
+        if (request.Ctrl.HasValue)
+            query = query.Where(h => h.Ctrl == request.Ctrl.Value);
+
+        if (request.Alt.HasValue)
+            query = query.Where(h => h.Alt == request.Alt.Value);
+
+        if (request.Shift.HasValue)
+            query = query.Where(h => h.Shift == request.Shift.Value);
+
+        if (request.Win.HasValue)
+            query = query.Where(h => h.Win == request.Win.Value);
+
         int total = await query.CountAsync(ct);
 
-        List<HotkeyDto> items = await query
-            .OrderByDescending(h => h.CreatedAt)
-            .ThenBy(h => h.Id)
+        List<HotkeyDto> items = await ApplySorting(query, request.SortField, request.SortDescending)
             .Skip((request.Page - 1) * request.PageSize)
             .Take(request.PageSize)
             .Select(h => new HotkeyDto(
@@ -79,5 +139,35 @@ internal sealed class ListHotkeysQueryHandler(
             .ToListAsync(ct);
 
         return Result.Success(new PagedList<HotkeyDto>(items, request.Page, request.PageSize, total));
+    }
+
+    private static IOrderedQueryable<Hotkey> ApplySorting(
+        IQueryable<Hotkey> query, string? sortField, bool descending)
+    {
+        string field = sortField?.Trim().ToLowerInvariant() ?? "createdat";
+
+        return (field, descending) switch
+        {
+            ("updatedat", true) => query.OrderByDescending(h => h.UpdatedAt).ThenBy(h => h.Id),
+            ("updatedat", false) => query.OrderBy(h => h.UpdatedAt).ThenBy(h => h.Id),
+            ("description", true) => query.OrderByDescending(h => h.Description).ThenBy(h => h.Id),
+            ("description", false) => query.OrderBy(h => h.Description).ThenBy(h => h.Id),
+            ("key", true) => query.OrderByDescending(h => h.Key).ThenBy(h => h.Id),
+            ("key", false) => query.OrderBy(h => h.Key).ThenBy(h => h.Id),
+            ("ctrl", true) => query.OrderByDescending(h => h.Ctrl).ThenBy(h => h.Id),
+            ("ctrl", false) => query.OrderBy(h => h.Ctrl).ThenBy(h => h.Id),
+            ("alt", true) => query.OrderByDescending(h => h.Alt).ThenBy(h => h.Id),
+            ("alt", false) => query.OrderBy(h => h.Alt).ThenBy(h => h.Id),
+            ("shift", true) => query.OrderByDescending(h => h.Shift).ThenBy(h => h.Id),
+            ("shift", false) => query.OrderBy(h => h.Shift).ThenBy(h => h.Id),
+            ("win", true) => query.OrderByDescending(h => h.Win).ThenBy(h => h.Id),
+            ("win", false) => query.OrderBy(h => h.Win).ThenBy(h => h.Id),
+            ("action", true) => query.OrderByDescending(h => h.Action).ThenBy(h => h.Id),
+            ("action", false) => query.OrderBy(h => h.Action).ThenBy(h => h.Id),
+            ("parameters", true) => query.OrderByDescending(h => h.Parameters).ThenBy(h => h.Id),
+            ("parameters", false) => query.OrderBy(h => h.Parameters).ThenBy(h => h.Id),
+            (_, true) => query.OrderByDescending(h => h.CreatedAt).ThenBy(h => h.Id),
+            (_, false) => query.OrderBy(h => h.CreatedAt).ThenBy(h => h.Id),
+        };
     }
 }

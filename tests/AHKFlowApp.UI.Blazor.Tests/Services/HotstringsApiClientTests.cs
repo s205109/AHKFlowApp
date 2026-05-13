@@ -20,11 +20,12 @@ public sealed class HotstringsApiClientTests
             Page: 1, PageSize: 50, TotalCount: 1, TotalPages: 1, HasNextPage: false, HasPreviousPage: false);
         var handler = StubHttpMessageHandler.JsonResponse(HttpStatusCode.OK, paged);
 
-        ApiResult<PagedList<HotstringDto>> result = await ClientWith(handler).ListAsync(profileId: null, page: 1, pageSize: 50);
+        ApiResult<PagedList<HotstringDto>> result = await ClientWith(handler).ListAsync(new HotstringListRequest());
 
         result.IsSuccess.Should().BeTrue();
         result.Value!.Items.Should().HaveCount(1);
-        handler.LastRequest!.RequestUri!.PathAndQuery.Should().Be("/api/v1/hotstrings?page=1&pageSize=50");
+        handler.LastRequest!.RequestUri!.Query.Should().Contain("page=1");
+        handler.LastRequest.RequestUri.Query.Should().Contain("pageSize=50");
     }
 
     [Fact]
@@ -47,9 +48,29 @@ public sealed class HotstringsApiClientTests
         var paged = new PagedList<HotstringDto>([], 1, 50, 0, 0, false, false);
         var handler = StubHttpMessageHandler.JsonResponse(HttpStatusCode.OK, paged);
 
-        await ClientWith(handler).ListAsync(profileId: profileId, page: 1, pageSize: 50);
+        await ClientWith(handler).ListAsync(new HotstringListRequest(ProfileId: profileId));
 
         handler.LastRequest!.RequestUri!.Query.Should().Contain($"profileId={profileId}");
+    }
+
+    [Fact]
+    public async Task ListAsync_WithGridParameters_AppendsEncodedQueryString()
+    {
+        var paged = new PagedList<HotstringDto>([], 1, 25, 0, 0, false, false);
+        var handler = StubHttpMessageHandler.JsonResponse(HttpStatusCode.OK, paged);
+
+        await ClientWith(handler).ListAsync(new HotstringListRequest(
+            Page: 2, PageSize: 25, SortField: "trigger", SortDescending: false,
+            TriggerFilter: "bt w", ReplacementFilter: null,
+            AppliesToAllProfiles: true));
+
+        string query = handler.LastRequest!.RequestUri!.Query;
+        query.Should().Contain("page=2");
+        query.Should().Contain("pageSize=25");
+        query.Should().Contain("sortField=trigger");
+        query.Should().Contain("sortDescending=false");
+        query.Should().Contain("triggerFilter=bt%20w");
+        query.Should().Contain("appliesToAllProfiles=true");
     }
 
     [Fact]

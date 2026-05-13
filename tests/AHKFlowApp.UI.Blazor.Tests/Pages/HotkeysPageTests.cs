@@ -16,6 +16,7 @@ namespace AHKFlowApp.UI.Blazor.Tests.Pages;
 public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
 {
     private readonly IHotkeysApiClient _api = Substitute.For<IHotkeysApiClient>();
+    private readonly IProfilesApiClient _profilesApi = Substitute.For<IProfilesApiClient>();
 
     private static readonly Task<AuthenticationState> AuthenticatedState =
         Task.FromResult(new AuthenticationState(
@@ -29,10 +30,8 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
         prefs.GetAsync(Arg.Any<CancellationToken>()).Returns(UserPreferences.Default);
         Services.AddSingleton(prefs);
 
-        IProfilesApiClient profilesApi = Substitute.For<IProfilesApiClient>();
-        profilesApi.ListAsync(Arg.Any<CancellationToken>())
-            .Returns(ApiResult<IReadOnlyList<ProfileDto>>.Ok([]));
-        Services.AddSingleton(profilesApi);
+        StubProfiles();
+        Services.AddSingleton(_profilesApi);
 
         Services.AddMudServices();
         JSInterop.Mode = JSRuntimeMode.Loose;
@@ -52,16 +51,36 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
         new(Guid.NewGuid(), [], true, description, key, true, false, false, false,
             HotkeyAction.Run, "", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
 
+    private static ProfileDto MakeProfile(string name = "Work") =>
+        new(Guid.NewGuid(), name, false, "header text", "footer text", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+
     private static PagedList<HotkeyDto> Page(params HotkeyDto[] items) =>
         new(items, 1, 50, items.Length, 1, false, false);
 
     private void StubList(PagedList<HotkeyDto> page) =>
-        _api.ListAsync(Arg.Any<Guid?>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+        _api.ListAsync(Arg.Any<HotkeyListRequest>(), Arg.Any<CancellationToken>())
             .Returns(ApiResult<PagedList<HotkeyDto>>.Ok(page));
 
     private void StubListFailure(ApiResultStatus status, ApiProblemDetails? problem = null) =>
-        _api.ListAsync(Arg.Any<Guid?>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<string?>(), Arg.Any<CancellationToken>())
+        _api.ListAsync(Arg.Any<HotkeyListRequest>(), Arg.Any<CancellationToken>())
             .Returns(ApiResult<PagedList<HotkeyDto>>.Failure(status, problem));
+
+    private void StubProfiles(params ProfileDto[] profiles) =>
+        _profilesApi.ListAsync(Arg.Any<CancellationToken>())
+            .Returns(ApiResult<IReadOnlyList<ProfileDto>>.Ok(profiles));
+
+    private static void StartDraftEdit(IRenderedComponent<Hotkeys> cut)
+    {
+        cut.WaitForAssertion(() => cut.Find("button.add-hotkey"));
+        cut.Find("button.add-hotkey").Click();
+        cut.WaitForAssertion(() => cut.Find("input[data-test=\"description-input\"]"));
+    }
+
+    private static void FillRequiredFields(IRenderedComponent<Hotkeys> cut, string description = "Open terminal", string key = "T")
+    {
+        cut.Find("input[data-test=\"description-input\"]").Input(description);
+        cut.Find("input[data-test=\"key-input\"]").Input(key);
+    }
 
     [Fact]
     public void Page_OnLoad_ShowsRowsFromApi()
@@ -87,7 +106,7 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
-    public void Page_AddButton_InsertsDraftRow()
+    public void Page_AddButton_StartsDraftGridEdit()
     {
         StubList(Page());
 
@@ -97,6 +116,20 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
         cut.Find("button.add-hotkey").Click();
 
         cut.WaitForAssertion(() => cut.Find("input[data-test=\"description-input\"]").Should().NotBeNull());
+    }
+
+    [Fact]
+    public void Page_OnLoad_UsesGridListRequest()
+    {
+        StubList(Page());
+
+        RenderPage();
+
+        _api.Received().ListAsync(
+            Arg.Is<HotkeyListRequest>(request =>
+                request.Page == 1 &&
+                request.PageSize == UserPreferences.Default.RowsPerPage),
+            Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -120,6 +153,30 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
+    public void Page_ReloadWhileEditingExistingRow_KeepsEditControls()
+    {
+        HotkeyDto dto = MakeHotkey("Open terminal", "T");
+        _api.ListAsync(Arg.Any<HotkeyListRequest>(), Arg.Any<CancellationToken>())
+            .Returns(
+                ApiResult<PagedList<HotkeyDto>>.Ok(Page(dto)),
+                ApiResult<PagedList<HotkeyDto>>.Ok(Page(dto)));
+
+        IRenderedComponent<Hotkeys> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find("button.start-edit"));
+        cut.Find("button.start-edit").Click();
+        cut.WaitForAssertion(() => cut.Find("button.commit-edit"));
+
+        cut.Find("button.reload-hotkeys").Click();
+
+        cut.WaitForAssertion(() => _api.Received(2).ListAsync(Arg.Any<HotkeyListRequest>(), Arg.Any<CancellationToken>()));
+        cut.WaitForAssertion(() =>
+        {
+            cut.Find("button.commit-edit").Should().NotBeNull();
+            cut.Find("input[data-test=\"key-input\"]").Should().NotBeNull();
+        });
+    }
+
+    [Fact]
     public Task Page_SaveDraftRow_CallsCreate()
     {
         StubList(Page());
@@ -127,12 +184,8 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
             .Returns(ApiResult<HotkeyDto>.Ok(MakeHotkey("Open terminal", "T")));
 
         IRenderedComponent<Hotkeys> cut = RenderPage();
-        cut.WaitForAssertion(() => cut.Find("button.add-hotkey"));
-        cut.Find("button.add-hotkey").Click();
-
-        cut.WaitForAssertion(() => cut.Find("input[data-test=\"description-input\"]"));
-        cut.Find("input[data-test=\"description-input\"]").Input("Open terminal");
-        cut.Find("input[data-test=\"key-input\"]").Input("T");
+        StartDraftEdit(cut);
+        FillRequiredFields(cut);
         cut.Find("button.commit-edit").Click();
 
         cut.WaitForAssertion(() => _api.Received(1).CreateAsync(
@@ -147,10 +200,7 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
         StubList(Page());
 
         IRenderedComponent<Hotkeys> cut = RenderPage();
-        cut.WaitForAssertion(() => cut.Find("button.add-hotkey"));
-        cut.Find("button.add-hotkey").Click();
-
-        cut.WaitForAssertion(() => cut.Find("input[data-test=\"description-input\"]"));
+        StartDraftEdit(cut);
         cut.Find("input[data-test=\"description-input\"]").Input("Open terminal");
         // Leave key empty
         cut.Find("button.commit-edit").Click();
@@ -166,10 +216,7 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
         StubList(Page());
 
         IRenderedComponent<Hotkeys> cut = RenderPage();
-        cut.WaitForAssertion(() => cut.Find("button.add-hotkey"));
-        cut.Find("button.add-hotkey").Click();
-
-        cut.WaitForAssertion(() => cut.Find("input[data-test=\"key-input\"]"));
+        StartDraftEdit(cut);
         cut.Find("input[data-test=\"key-input\"]").Input("T");
         // Leave description empty
         cut.Find("button.commit-edit").Click();
@@ -196,6 +243,102 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
         cut.WaitForAssertion(() => _api.Received(1).UpdateAsync(dto.Id,
             Arg.Is<UpdateHotkeyDto>(d => d.Key == "F1"), Arg.Any<CancellationToken>()));
         return Task.CompletedTask;
+    }
+
+    [Fact]
+    public async Task Page_SaveDraftRow_WithModifiersAndActionSelection_CallsCreate()
+    {
+        StubList(Page());
+        _api.CreateAsync(Arg.Any<CreateHotkeyDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotkeyDto>.Ok(MakeHotkey("Open terminal", "T")));
+
+        IRenderedComponent<Hotkeys> cut = RenderPage();
+        StartDraftEdit(cut);
+        FillRequiredFields(cut);
+
+        cut.Find("input[data-test=\"ctrl-checkbox\"]").Change(true);
+        cut.Find("input[data-test=\"shift-checkbox\"]").Change(true);
+        cut.Find("input[data-test=\"win-checkbox\"]").Change(true);
+
+        await cut.InvokeAsync(() =>
+            cut.FindComponent<MudSelect<HotkeyAction>>().Instance.ValueChanged.InvokeAsync(HotkeyAction.Run));
+
+        cut.Find("button.commit-edit").Click();
+
+        cut.WaitForAssertion(() => _api.Received(1).CreateAsync(
+            Arg.Is<CreateHotkeyDto>(d =>
+                d.Description == "Open terminal" &&
+                d.Key == "T" &&
+                d.Ctrl &&
+                !d.Alt &&
+                d.Shift &&
+                d.Win &&
+                d.Action == HotkeyAction.Run),
+            Arg.Any<CancellationToken>()));
+    }
+
+    [Fact]
+    public async Task Page_SaveDraftRow_WithSpecificProfiles_CallsCreate()
+    {
+        ProfileDto work = MakeProfile("Work");
+        ProfileDto personal = MakeProfile("Personal");
+        StubProfiles(work, personal);
+        StubList(Page());
+        _api.CreateAsync(Arg.Any<CreateHotkeyDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotkeyDto>.Ok(MakeHotkey("Open terminal", "T")));
+
+        IRenderedComponent<Hotkeys> cut = RenderPage();
+        StartDraftEdit(cut);
+        FillRequiredFields(cut);
+
+        cut.Find("input[data-test=\"applies-to-all-checkbox\"]").Change(false);
+        cut.WaitForAssertion(() => cut.FindComponent<MudSelect<Guid>>().Should().NotBeNull());
+
+        await cut.InvokeAsync(() =>
+            cut.FindComponent<MudSelect<Guid>>().Instance.SelectedValuesChanged
+                .InvokeAsync(new HashSet<Guid> { work.Id, personal.Id }));
+
+        cut.Find("button.commit-edit").Click();
+
+        cut.WaitForAssertion(() => _api.Received(1).CreateAsync(
+            Arg.Is<CreateHotkeyDto>(d =>
+                d.AppliesToAllProfiles == false &&
+                d.ProfileIds != null &&
+                d.ProfileIds.Length == 2 &&
+                d.ProfileIds.Contains(work.Id) &&
+                d.ProfileIds.Contains(personal.Id)),
+            Arg.Any<CancellationToken>()));
+    }
+
+    [Fact]
+    public async Task Page_WhenAnyToggleIsReenabled_ClearsSpecificProfilesBeforeCreate()
+    {
+        ProfileDto work = MakeProfile("Work");
+        StubProfiles(work);
+        StubList(Page());
+        _api.CreateAsync(Arg.Any<CreateHotkeyDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotkeyDto>.Ok(MakeHotkey("Open terminal", "T")));
+
+        IRenderedComponent<Hotkeys> cut = RenderPage();
+        StartDraftEdit(cut);
+        FillRequiredFields(cut);
+
+        cut.Find("input[data-test=\"applies-to-all-checkbox\"]").Change(false);
+        cut.WaitForAssertion(() => cut.FindComponent<MudSelect<Guid>>().Should().NotBeNull());
+        await cut.InvokeAsync(() =>
+            cut.FindComponent<MudSelect<Guid>>().Instance.SelectedValuesChanged
+                .InvokeAsync(new HashSet<Guid> { work.Id }));
+
+        cut.Find("input[data-test=\"applies-to-all-checkbox\"]").Change(true);
+        cut.WaitForAssertion(() => cut.FindAll("[data-test=\"profile-select\"]").Should().BeEmpty());
+
+        cut.Find("button.commit-edit").Click();
+
+        cut.WaitForAssertion(() => _api.Received(1).CreateAsync(
+            Arg.Is<CreateHotkeyDto>(d =>
+                d.AppliesToAllProfiles &&
+                d.ProfileIds == null),
+            Arg.Any<CancellationToken>()));
     }
 
     [Fact]
