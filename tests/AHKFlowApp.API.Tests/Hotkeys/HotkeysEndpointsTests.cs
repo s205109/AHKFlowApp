@@ -254,5 +254,36 @@ public sealed class HotkeysEndpointsTests(SqlContainerFixture sqlFixture) : IDis
         errors.TryGetProperty("Input.Key", out _).Should().BeTrue();
     }
 
+    [Fact]
+    public async Task List_WithSortAndColumnFilter_ReturnsFilteredSortedRows()
+    {
+        var owner = Guid.NewGuid();
+        using HttpClient client = CreateAuthed(owner);
+
+        await client.PostAsJsonAsync("/api/v1/hotkeys",
+            new CreateHotkeyDto("Open browser", "f3", Ctrl: true, AppliesToAllProfiles: true));
+        await client.PostAsJsonAsync("/api/v1/hotkeys",
+            new CreateHotkeyDto("Open notepad", "f1", Ctrl: true, AppliesToAllProfiles: true));
+        await client.PostAsJsonAsync("/api/v1/hotkeys",
+            new CreateHotkeyDto("Lock workstation", "f2", Ctrl: true, AppliesToAllProfiles: true));
+
+        HttpResponseMessage response = await client.GetAsync(
+            "/api/v1/hotkeys?descriptionFilter=Open&sortField=key&sortDescending=false");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        PagedList<HotkeyDto>? body = await response.Content.ReadFromJsonAsync<PagedList<HotkeyDto>>();
+        body!.Items.Select(h => h.Key).Should().Equal("f1", "f3");
+    }
+
+    [Fact]
+    public async Task List_WithUnknownSortField_Returns400()
+    {
+        using HttpClient client = CreateAuthed();
+
+        HttpResponseMessage response = await client.GetAsync("/api/v1/hotkeys?sortField=ownerOid");
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
     public void Dispose() => _factory.Dispose();
 }

@@ -251,5 +251,33 @@ public sealed class HotstringsEndpointsTests(SqlContainerFixture sqlFixture) : I
         errors.TryGetProperty("Input.Replacement", out _).Should().BeTrue();
     }
 
+    [Fact]
+    public async Task List_WithSortAndColumnFilter_ReturnsFilteredSortedRows()
+    {
+        var owner = Guid.NewGuid();
+        using HttpClient client = CreateAuthed(owner);
+
+        await client.PostAsJsonAsync("/api/v1/hotstrings", new CreateHotstringDto("ccc", "match"));
+        await client.PostAsJsonAsync("/api/v1/hotstrings", new CreateHotstringDto("aaa", "match"));
+        await client.PostAsJsonAsync("/api/v1/hotstrings", new CreateHotstringDto("bbb", "skip"));
+
+        HttpResponseMessage response = await client.GetAsync(
+            "/api/v1/hotstrings?replacementFilter=match&sortField=trigger&sortDescending=false");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        PagedList<HotstringDto>? body = await response.Content.ReadFromJsonAsync<PagedList<HotstringDto>>();
+        body!.Items.Select(h => h.Trigger).Should().Equal("aaa", "ccc");
+    }
+
+    [Fact]
+    public async Task List_WithUnknownSortField_Returns400()
+    {
+        using HttpClient client = CreateAuthed();
+
+        HttpResponseMessage response = await client.GetAsync("/api/v1/hotstrings?sortField=ownerOid");
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
     public void Dispose() => _factory.Dispose();
 }
