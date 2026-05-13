@@ -21,11 +21,12 @@ public sealed class HotkeysApiClientTests
             Page: 1, PageSize: 50, TotalCount: 1, TotalPages: 1, HasNextPage: false, HasPreviousPage: false);
         var handler = StubHttpMessageHandler.JsonResponse(HttpStatusCode.OK, paged);
 
-        ApiResult<PagedList<HotkeyDto>> result = await ClientWith(handler).ListAsync(profileId: null, page: 1, pageSize: 50);
+        ApiResult<PagedList<HotkeyDto>> result = await ClientWith(handler).ListAsync(new HotkeyListRequest());
 
         result.IsSuccess.Should().BeTrue();
         result.Value!.Items.Should().HaveCount(1);
-        handler.LastRequest!.RequestUri!.PathAndQuery.Should().Be("/api/v1/hotkeys?page=1&pageSize=50");
+        handler.LastRequest!.RequestUri!.Query.Should().Contain("page=1");
+        handler.LastRequest.RequestUri.Query.Should().Contain("pageSize=50");
     }
 
     [Fact]
@@ -49,9 +50,29 @@ public sealed class HotkeysApiClientTests
         var paged = new PagedList<HotkeyDto>([], 1, 50, 0, 0, false, false);
         var handler = StubHttpMessageHandler.JsonResponse(HttpStatusCode.OK, paged);
 
-        await ClientWith(handler).ListAsync(profileId: profileId, page: 1, pageSize: 50);
+        await ClientWith(handler).ListAsync(new HotkeyListRequest(ProfileId: profileId));
 
         handler.LastRequest!.RequestUri!.Query.Should().Contain($"profileId={profileId}");
+    }
+
+    [Fact]
+    public async Task ListAsync_WithGridParameters_AppendsEncodedQueryString()
+    {
+        var paged = new PagedList<HotkeyDto>([], 2, 25, 0, 0, false, false);
+        var handler = StubHttpMessageHandler.JsonResponse(HttpStatusCode.OK, paged);
+
+        await ClientWith(handler).ListAsync(new HotkeyListRequest(
+            Page: 2, PageSize: 25, SortField: "key", SortDescending: false,
+            DescriptionFilter: "Open browser", Ctrl: true, Action: HotkeyAction.Run));
+
+        string query = handler.LastRequest!.RequestUri!.Query;
+        query.Should().Contain("page=2");
+        query.Should().Contain("pageSize=25");
+        query.Should().Contain("sortField=key");
+        query.Should().Contain("sortDescending=false");
+        query.Should().Contain("descriptionFilter=Open%20browser");
+        query.Should().Contain("ctrl=true");
+        query.Should().Contain("action=Run");
     }
 
     [Fact]
