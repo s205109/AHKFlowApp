@@ -116,4 +116,25 @@ public sealed class ListHotkeysQueryValidatorTests
         result.IsValid.Should().BeFalse();
         result.Errors.Should().Contain(e => e.PropertyName == "KeyFilter");
     }
+
+    [Fact]
+    public void Validate_WithParametersFilterTooLong_Fails()
+    {
+        string longFilter = new('x', 201);
+
+        ValidationResult result = _sut.Validate(new ListHotkeysQuery(ParametersFilter: longFilter));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.PropertyName == "ParametersFilter");
+    }
+
+    [Fact]
+    public void Validate_WithParametersFilterAtMaxLength_Succeeds()
+    {
+        string maxFilter = new('x', 200);
+
+        ValidationResult result = _sut.Validate(new ListHotkeysQuery(ParametersFilter: maxFilter));
+
+        result.IsValid.Should().BeTrue();
+    }
 }

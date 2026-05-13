@@ -41,6 +41,7 @@ public sealed class ListHotkeysQueryValidator : AbstractValidator<ListHotkeysQue
         RuleFor(x => x.PageSize).InclusiveBetween(1, 200);
         RuleFor(x => x.DescriptionFilter).MaximumLength(200);
         RuleFor(x => x.KeyFilter).MaximumLength(200);
+        RuleFor(x => x.ParametersFilter).MaximumLength(200);
         RuleFor(x => x.SortField)
             .Must(f => string.IsNullOrEmpty(f) ||
                        AllowedSortFields.Contains(f.Trim().ToLowerInvariant(),
