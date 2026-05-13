@@ -1,6 +1,10 @@
 # Hotstrings and Hotkeys MudDataGrid Migration Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **Status:** Completed and merged to `main` on 2026-05-13. Historical record only; this is no longer an active execution plan.
+>
+> Shipped via `e885350` (`feat: add sort, column-filter params to List hotstrings and hotkeys queries`), `659d353` (`feat: add HotstringListRequest/HotkeyListRequest DTOs and update API client contracts`), `d336f71` (`feat: migrate hotstrings and hotkeys pages to MudDataGrid`), with follow-up fixes through `0a8f156` (`fix: align hotstrings profile toggle behavior`).
+>
+> PR context: plan added in `9fab6e1`, then implementation/fixes merged before PR `#122` brought this document to `main`.
 
 **Goal:** Replace the Hotstrings and Hotkeys `MudTable` pages with `MudDataGrid` pages that support server-backed paging, sorting, column filtering, and native grid editing without losing existing CRUD, validation, snackbar, and delete-confirmation behavior.
 
@@ -130,7 +134,7 @@ String filters use SQL `LIKE '%value%'`. Boolean and enum filters use exact equa
 - Test: `tests\AHKFlowApp.Application.Tests\Hotstrings\ListHotstringsQueryHandlerTests.cs`
 - Test: `tests\AHKFlowApp.API.Tests\Hotstrings\HotstringsEndpointsTests.cs`
 
-- [ ] **Step 1: Write failing validator tests for new Hotstrings list parameters**
+- [x] **Step 1: Write failing validator tests for new Hotstrings list parameters**
 
 Add these tests to `tests\AHKFlowApp.Application.Tests\Hotstrings\ListHotstringsQueryValidatorTests.cs`:
 
@@ -175,7 +179,7 @@ public void Validate_WithReplacementFilterTooLong_Fails()
 }
 ```
 
-- [ ] **Step 2: Run Hotstrings validator tests and confirm failure**
+- [x] **Step 2: Run Hotstrings validator tests and confirm failure**
 
 Run:
 
@@ -185,7 +189,7 @@ dotnet test tests/AHKFlowApp.Application.Tests --configuration Release --filter 
 
 Expected: FAIL because `ListHotstringsQuery` does not yet define `SortField`, `TriggerFilter`, or `ReplacementFilter`.
 
-- [ ] **Step 3: Write failing Hotstrings handler tests for filter/sort behavior**
+- [x] **Step 3: Write failing Hotstrings handler tests for filter/sort behavior**
 
 Add these tests to `tests\AHKFlowApp.Application.Tests\Hotstrings\ListHotstringsQueryHandlerTests.cs`:
 
@@ -257,7 +261,7 @@ public async Task Handle_SortByTriggerAscending_ReturnsStableOrder()
 }
 ```
 
-- [ ] **Step 4: Run Hotstrings handler tests and confirm failure**
+- [x] **Step 4: Run Hotstrings handler tests and confirm failure**
 
 Run:
 
@@ -267,7 +271,7 @@ dotnet test tests/AHKFlowApp.Application.Tests --configuration Release --filter 
 
 Expected: FAIL because the query record and handler do not yet support the new fields.
 
-- [ ] **Step 5: Implement Hotstrings query validation, filtering, and sorting**
+- [x] **Step 5: Implement Hotstrings query validation, filtering, and sorting**
 
 Update `src\Backend\AHKFlowApp.Application\Queries\Hotstrings\ListHotstringsQuery.cs` with these changes.
 
@@ -382,7 +386,7 @@ private static IOrderedQueryable<Hotstring> ApplySorting(
 }
 ```
 
-- [ ] **Step 6: Pass Hotstrings query params through the controller**
+- [x] **Step 6: Pass Hotstrings query params through the controller**
 
 Update `src\Backend\AHKFlowApp.API\Controllers\HotstringsController.cs` list action signature:
 
@@ -414,7 +418,7 @@ public async Task<ActionResult<PagedList<HotstringDto>>> List(
         isTriggerInsideWord), ct)).ToProblemActionResult(this);
 ```
 
-- [ ] **Step 7: Add Hotstrings API endpoint coverage**
+- [x] **Step 7: Add Hotstrings API endpoint coverage**
 
 Add these tests to `tests\AHKFlowApp.API.Tests\Hotstrings\HotstringsEndpointsTests.cs`:
 
@@ -448,7 +452,7 @@ public async Task List_WithUnknownSortField_Returns400()
 }
 ```
 
-- [ ] **Step 8: Run Hotstrings backend tests and verify pass**
+- [x] **Step 8: Run Hotstrings backend tests and verify pass**
 
 Run:
 
@@ -459,7 +463,7 @@ dotnet test tests/AHKFlowApp.API.Tests --configuration Release --filter "FullyQu
 
 Expected: PASS.
 
-- [ ] **Step 9: Commit Hotstrings backend support**
+- [x] **Step 9: Commit Hotstrings backend support**
 
 Run:
 
@@ -479,7 +483,7 @@ git commit -m "feat: add hotstring grid query support"
 - Test: `tests\AHKFlowApp.Application.Tests\Hotkeys\ListHotkeysQueryHandlerTests.cs`
 - Test: `tests\AHKFlowApp.API.Tests\Hotkeys\HotkeysEndpointsTests.cs`
 
-- [ ] **Step 1: Write failing validator tests for new Hotkeys list parameters**
+- [x] **Step 1: Write failing validator tests for new Hotkeys list parameters**
 
 Add these tests to `tests\AHKFlowApp.Application.Tests\Hotkeys\ListHotkeysQueryValidatorTests.cs`:
 
@@ -524,7 +528,7 @@ public void Validate_WithKeyFilterTooLong_Fails()
 }
 ```
 
-- [ ] **Step 2: Run Hotkeys validator tests and confirm failure**
+- [x] **Step 2: Run Hotkeys validator tests and confirm failure**
 
 Run:
 
@@ -534,7 +538,7 @@ dotnet test tests/AHKFlowApp.Application.Tests --configuration Release --filter 
 
 Expected: FAIL because `ListHotkeysQuery` does not yet define the new fields.
 
-- [ ] **Step 3: Write failing Hotkeys handler tests for filter/sort behavior**
+- [x] **Step 3: Write failing Hotkeys handler tests for filter/sort behavior**
 
 Add these tests to `tests\AHKFlowApp.Application.Tests\Hotkeys\ListHotkeysQueryHandlerTests.cs`:
 
@@ -605,7 +609,7 @@ public async Task Handle_SortByDescriptionAscending_ReturnsStableOrder()
 }
 ```
 
-- [ ] **Step 4: Run Hotkeys handler tests and confirm failure**
+- [x] **Step 4: Run Hotkeys handler tests and confirm failure**
 
 Run:
 
@@ -615,7 +619,7 @@ dotnet test tests/AHKFlowApp.Application.Tests --configuration Release --filter 
 
 Expected: FAIL because the query record and handler do not yet support the new fields.
 
-- [ ] **Step 5: Implement Hotkeys query validation, filtering, and sorting**
+- [x] **Step 5: Implement Hotkeys query validation, filtering, and sorting**
 
 Update `src\Backend\AHKFlowApp.Application\Queries\Hotkeys\ListHotkeysQuery.cs`.
 
@@ -764,7 +768,7 @@ private static IOrderedQueryable<Hotkey> ApplySorting(
 }
 ```
 
-- [ ] **Step 6: Pass Hotkeys query params through the controller**
+- [x] **Step 6: Pass Hotkeys query params through the controller**
 
 Update `src\Backend\AHKFlowApp.API\Controllers\HotkeysController.cs` list action signature:
 
@@ -806,7 +810,7 @@ public async Task<ActionResult<PagedList<HotkeyDto>>> List(
 
 Add `using AHKFlowApp.Domain.Enums;` to the controller.
 
-- [ ] **Step 7: Add Hotkeys API endpoint coverage**
+- [x] **Step 7: Add Hotkeys API endpoint coverage**
 
 Add these tests to `tests\AHKFlowApp.API.Tests\Hotkeys\HotkeysEndpointsTests.cs`:
 
@@ -843,7 +847,7 @@ public async Task List_WithUnknownSortField_Returns400()
 }
 ```
 
-- [ ] **Step 8: Run Hotkeys backend tests and verify pass**
+- [x] **Step 8: Run Hotkeys backend tests and verify pass**
 
 Run:
 
@@ -854,7 +858,7 @@ dotnet test tests/AHKFlowApp.API.Tests --configuration Release --filter "FullyQu
 
 Expected: PASS.
 
-- [ ] **Step 9: Commit Hotkeys backend support**
+- [x] **Step 9: Commit Hotkeys backend support**
 
 Run:
 
@@ -877,7 +881,7 @@ git commit -m "feat: add hotkey grid query support"
 - Test: `tests\AHKFlowApp.UI.Blazor.Tests\Services\HotstringsApiClientTests.cs`
 - Test: `tests\AHKFlowApp.UI.Blazor.Tests\Services\HotkeysApiClientTests.cs`
 
-- [ ] **Step 1: Write failing Hotstrings API client query-string test**
+- [x] **Step 1: Write failing Hotstrings API client query-string test**
 
 Update `tests\AHKFlowApp.UI.Blazor.Tests\Services\HotstringsApiClientTests.cs`.
 
@@ -908,7 +912,7 @@ public async Task ListAsync_WithGridParameters_AppendsEncodedQueryString()
 }
 ```
 
-- [ ] **Step 2: Write failing Hotkeys API client query-string test**
+- [x] **Step 2: Write failing Hotkeys API client query-string test**
 
 Update `tests\AHKFlowApp.UI.Blazor.Tests\Services\HotkeysApiClientTests.cs`.
 
@@ -943,7 +947,7 @@ public async Task ListAsync_WithGridParameters_AppendsEncodedQueryString()
 }
 ```
 
-- [ ] **Step 3: Run API client tests and confirm failure**
+- [x] **Step 3: Run API client tests and confirm failure**
 
 Run:
 
@@ -953,7 +957,7 @@ dotnet test tests/AHKFlowApp.UI.Blazor.Tests --configuration Release --filter "F
 
 Expected: FAIL because `HotstringListRequest` and `HotkeyListRequest` do not exist and interfaces still use the old signature.
 
-- [ ] **Step 4: Add frontend list request records**
+- [x] **Step 4: Add frontend list request records**
 
 Create `src\Frontend\AHKFlowApp.UI.Blazor\DTOs\HotstringListRequest.cs`:
 
@@ -997,7 +1001,7 @@ public sealed record HotkeyListRequest(
     bool? Win = null);
 ```
 
-- [ ] **Step 5: Update frontend API client interfaces**
+- [x] **Step 5: Update frontend API client interfaces**
 
 Update `src\Frontend\AHKFlowApp.UI.Blazor\Services\IHotstringsApiClient.cs`:
 
@@ -1011,7 +1015,7 @@ Update `src\Frontend\AHKFlowApp.UI.Blazor\Services\IHotkeysApiClient.cs`:
 Task<ApiResult<PagedList<HotkeyDto>>> ListAsync(HotkeyListRequest request, CancellationToken ct = default);
 ```
 
-- [ ] **Step 6: Update Hotstrings API client query builder**
+- [x] **Step 6: Update Hotstrings API client query builder**
 
 Replace `ListAsync` in `src\Frontend\AHKFlowApp.UI.Blazor\Services\HotstringsApiClient.cs` with:
 
@@ -1044,7 +1048,7 @@ private static void Add(List<string> query, string name, string? value)
 }
 ```
 
-- [ ] **Step 7: Update Hotkeys API client query builder**
+- [x] **Step 7: Update Hotkeys API client query builder**
 
 Replace `ListAsync` in `src\Frontend\AHKFlowApp.UI.Blazor\Services\HotkeysApiClient.cs` with:
 
@@ -1081,7 +1085,7 @@ private static void Add(List<string> query, string name, string? value)
 }
 ```
 
-- [ ] **Step 8: Run API client tests and verify pass**
+- [x] **Step 8: Run API client tests and verify pass**
 
 Run:
 
@@ -1091,7 +1095,7 @@ dotnet test tests/AHKFlowApp.UI.Blazor.Tests --configuration Release --filter "F
 
 Expected: PASS.
 
-- [ ] **Step 9: Commit frontend client support**
+- [x] **Step 9: Commit frontend client support**
 
 Run:
 
@@ -1108,7 +1112,7 @@ git commit -m "feat: add grid list clients"
 - Modify: `src\Frontend\AHKFlowApp.UI.Blazor\Pages\Hotstrings.razor`
 - Test: `tests\AHKFlowApp.UI.Blazor.Tests\Pages\HotstringsPageTests.cs`
 
-- [ ] **Step 1: Update Hotstrings page tests for list request and grid edit behavior**
+- [x] **Step 1: Update Hotstrings page tests for list request and grid edit behavior**
 
 In `tests\AHKFlowApp.UI.Blazor.Tests\Pages\HotstringsPageTests.cs`, replace the stubs:
 
@@ -1159,7 +1163,7 @@ public void Page_OnLoad_UsesGridListRequest()
 
 Keep the existing create/update/validation/conflict tests, but change API substitute signatures from the old `ListAsync(Guid?, int, int, string?, CancellationToken)` to `ListAsync(HotstringListRequest, CancellationToken)`.
 
-- [ ] **Step 2: Run Hotstrings page tests and confirm failure**
+- [x] **Step 2: Run Hotstrings page tests and confirm failure**
 
 Run:
 
@@ -1169,7 +1173,7 @@ dotnet test tests/AHKFlowApp.UI.Blazor.Tests --configuration Release --filter "F
 
 Expected: FAIL because the page still uses `MudTable<HotstringDto>` and the old API client signature.
 
-- [ ] **Step 3: Replace Hotstrings MudTable with MudDataGrid**
+- [x] **Step 3: Replace Hotstrings MudTable with MudDataGrid**
 
 In `src\Frontend\AHKFlowApp.UI.Blazor\Pages\Hotstrings.razor`, replace the `<MudTable>` block with:
 
@@ -1311,7 +1315,7 @@ private RenderFragment RenderProfileEditor(HotstringEditModel edit) => builder =
 
 If render-fragment builders make the file hard to read during implementation, replace them with local Razor fragments inside the same page. Preserve the exact `data-test` attributes above.
 
-- [ ] **Step 4: Replace Hotstrings page fields and server loader**
+- [x] **Step 4: Replace Hotstrings page fields and server loader**
 
 Replace:
 
@@ -1418,7 +1422,7 @@ private static string? ColumnKey(IFilterDefinition<HotstringEditModel> filter) =
     filter.Column?.Identifier ?? filter.Column?.PropertyName;
 ```
 
-- [ ] **Step 5: Replace Hotstrings edit, add, reload, search, commit, and delete methods**
+- [x] **Step 5: Replace Hotstrings edit, add, reload, search, commit, and delete methods**
 
 Replace `ReloadAsync`, `OnSearchChangedAsync`, `StartAddAsync`, `StartEdit`, `CancelEditAsync`, `CommitEditAsync`, and `DeleteAsync` with:
 
@@ -1528,7 +1532,7 @@ Update the Add button disabled expression to:
 Disabled="@(!_isAuthenticated || _pendingCreate is not null || _editingItem is not null)"
 ```
 
-- [ ] **Step 6: Run Hotstrings page tests and verify pass**
+- [x] **Step 6: Run Hotstrings page tests and verify pass**
 
 Run:
 
@@ -1538,7 +1542,7 @@ dotnet test tests/AHKFlowApp.UI.Blazor.Tests --configuration Release --filter "F
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit Hotstrings DataGrid migration**
+- [x] **Step 7: Commit Hotstrings DataGrid migration**
 
 Run:
 
@@ -1555,7 +1559,7 @@ git commit -m "feat: migrate hotstrings to MudDataGrid"
 - Modify: `src\Frontend\AHKFlowApp.UI.Blazor\Pages\Hotkeys.razor`
 - Test: `tests\AHKFlowApp.UI.Blazor.Tests\Pages\HotkeysPageTests.cs`
 
-- [ ] **Step 1: Update Hotkeys page tests for list request and grid edit behavior**
+- [x] **Step 1: Update Hotkeys page tests for list request and grid edit behavior**
 
 In `tests\AHKFlowApp.UI.Blazor.Tests\Pages\HotkeysPageTests.cs`, replace the stubs:
 
@@ -1606,7 +1610,7 @@ public void Page_OnLoad_UsesGridListRequest()
 
 Keep the existing create/update/validation/delete/conflict tests, but change API substitute signatures from the old `ListAsync(Guid?, int, int, string?, CancellationToken)` to `ListAsync(HotkeyListRequest, CancellationToken)`.
 
-- [ ] **Step 2: Run Hotkeys page tests and confirm failure**
+- [x] **Step 2: Run Hotkeys page tests and confirm failure**
 
 Run:
 
@@ -1616,7 +1620,7 @@ dotnet test tests/AHKFlowApp.UI.Blazor.Tests --configuration Release --filter "F
 
 Expected: FAIL because the page still uses `MudTable<HotkeyDto>` and the old API client signature.
 
-- [ ] **Step 3: Replace Hotkeys MudTable with MudDataGrid**
+- [x] **Step 3: Replace Hotkeys MudTable with MudDataGrid**
 
 In `src\Frontend\AHKFlowApp.UI.Blazor\Pages\Hotkeys.razor`, replace the `<MudTable>` block with a `MudDataGrid<HotkeyEditModel>` using these columns:
 
@@ -1698,7 +1702,7 @@ In `src\Frontend\AHKFlowApp.UI.Blazor\Pages\Hotkeys.razor`, replace the `<MudTab
 
 Add `RenderProfiles` and `RenderProfileEditor` equivalents for `HotkeyEditModel`. Use the same implementation as Task 4, replacing `HotstringEditModel` with `HotkeyEditModel`.
 
-- [ ] **Step 4: Replace Hotkeys page fields and server loader**
+- [x] **Step 4: Replace Hotkeys page fields and server loader**
 
 Replace:
 
@@ -1828,7 +1832,7 @@ private static string? ColumnKey(IFilterDefinition<HotkeyEditModel> filter) =>
     filter.Column?.Identifier ?? filter.Column?.PropertyName;
 ```
 
-- [ ] **Step 5: Replace Hotkeys edit, add, reload, search, commit, and delete methods**
+- [x] **Step 5: Replace Hotkeys edit, add, reload, search, commit, and delete methods**
 
 Use the same method shape from Task 4, replacing `HotstringEditModel`, `HotstringDto`, `CreateHotstringDto`, and `UpdateHotstringDto` with the Hotkeys equivalents. Preserve current messages exactly:
 
@@ -1861,7 +1865,7 @@ Update the Add button disabled expression to:
 Disabled="@(!_isAuthenticated || _pendingCreate is not null || _editingItem is not null)"
 ```
 
-- [ ] **Step 6: Run Hotkeys page tests and verify pass**
+- [x] **Step 6: Run Hotkeys page tests and verify pass**
 
 Run:
 
@@ -1871,7 +1875,7 @@ dotnet test tests/AHKFlowApp.UI.Blazor.Tests --configuration Release --filter "F
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit Hotkeys DataGrid migration**
+- [x] **Step 7: Commit Hotkeys DataGrid migration**
 
 Run:
 
@@ -1887,7 +1891,7 @@ git commit -m "feat: migrate hotkeys to MudDataGrid"
 **Files:**
 - Verify all modified files.
 
-- [ ] **Step 1: Run focused backend and frontend tests**
+- [x] **Step 1: Run focused backend and frontend tests**
 
 Run:
 
@@ -1899,7 +1903,7 @@ dotnet test tests/AHKFlowApp.UI.Blazor.Tests --configuration Release --filter "F
 
 Expected: PASS.
 
-- [ ] **Step 2: Run full build**
+- [x] **Step 2: Run full build**
 
 Run:
 
@@ -1909,7 +1913,7 @@ dotnet build --configuration Release
 
 Expected: PASS.
 
-- [ ] **Step 3: Run full test suite**
+- [x] **Step 3: Run full test suite**
 
 Run:
 
@@ -1919,7 +1923,7 @@ dotnet test --configuration Release --no-build --verbosity normal
 
 Expected: PASS.
 
-- [ ] **Step 4: Run formatting check**
+- [x] **Step 4: Run formatting check**
 
 Run:
 
@@ -1929,7 +1933,7 @@ dotnet format --verify-no-changes
 
 Expected: PASS with no formatting changes required.
 
-- [ ] **Step 5: Manual UI smoke test**
+- [x] **Step 5: Manual UI smoke test**
 
 Run the frontend and API according to the repo's local instructions:
 
@@ -1959,7 +1963,7 @@ Manual checks:
 - Confirm Edit updates an existing hotkey.
 - Confirm Delete still opens the confirmation dialog.
 
-- [ ] **Step 6: Commit final verification adjustments**
+- [x] **Step 6: Commit final verification adjustments**
 
 If verification required fixes, commit them:
 
