@@ -409,7 +409,8 @@
     </text>;
 
     private RenderFragment RenderProfileEditor(HotstringEditModel edit) => @<MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
-        <MudCheckBox T="bool" @bind-Value="edit.AppliesToAllProfiles"
+        <MudCheckBox T="bool" Value="edit.AppliesToAllProfiles"
+                     ValueChanged="value => SetAppliesToAllProfiles(edit, value)"
                      Label="Any"
                      UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "applies-to-all-checkbox" })" />
         @if (!edit.AppliesToAllProfiles)
@@ -427,6 +428,14 @@
             </MudSelect>
         }
     </MudStack>;
+
+    private static void SetAppliesToAllProfiles(HotstringEditModel edit, bool value)
+    {
+        edit.AppliesToAllProfiles = value;
+
+        if (value)
+            edit.ProfileIds.Clear();
+    }
 
     private RenderFragment RenderActions(HotstringEditModel item) => @<text>
         @if (IsEditing(item))
