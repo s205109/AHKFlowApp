@@ -182,11 +182,11 @@
         _loadError = null;
 
         ApiResult<PagedList<HotstringDto>> result = await Api.ListAsync(
-            profileId: null,
-            page: state.Page + 1,
-            pageSize: state.PageSize,
-            search: string.IsNullOrWhiteSpace(_search) ? null : _search,
-            ct: ct);
+            new HotstringListRequest(
+                Page: state.Page + 1,
+                PageSize: state.PageSize,
+                Search: string.IsNullOrWhiteSpace(_search) ? null : _search),
+            ct);
 
         _loading = false;
 
