@@ -18,18 +18,37 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0  # MinVer needs full history for version derivation
+      - name: Detect non-docs changes
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          predicate-quantifier: 'every'
+          filters: |
+            code:
+              - '!**/*.md'
+              - '!docs/**'
+              - '!.claude/**'
+      - name: Skip notice (docs-only PR)
+        if: steps.filter.outputs.code == 'false'
+        run: echo "Docs-only changes detected — skipping build, test, and coverage." >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/setup-dotnet@v4
+        if: steps.filter.outputs.code == 'true'
         with:
           global-json-file: global.json
           cache: true
           cache-dependency-path: '**/*.csproj'
-      - run: dotnet restore
-      - run: dotnet build --configuration Release --no-restore
+      - if: steps.filter.outputs.code == 'true'
+        run: dotnet restore
+      - if: steps.filter.outputs.code == 'true'
+        run: dotnet build --configuration Release --no-restore
       - name: CLI --help smoke test
+        if: steps.filter.outputs.code == 'true'
         run: dotnet run --project src/Tools/AHKFlowApp.CLI --no-build --configuration Release -- --help
       - name: CLI hotstring --help smoke test
+        if: steps.filter.outputs.code == 'true'
         run: dotnet run --project src/Tools/AHKFlowApp.CLI --no-build --configuration Release -- hotstring --help
       - name: Test with coverage
+        if: steps.filter.outputs.code == 'true'
         run: >
           dotnet test --configuration Release --no-build --verbosity normal
           --logger "trx;LogFileName=test-results.trx"
@@ -37,33 +56,33 @@ jobs:
           --results-directory TestResults
           --settings coverlet.runsettings
       - name: Merge coverage reports
-        if: always()
+        if: always() && steps.filter.outputs.code == 'true'
         uses: danielpalme/ReportGenerator-GitHub-Action@5.3.0
         with:
           reports: 'TestResults/**/coverage.cobertura.xml'
           targetdir: 'CoverageReport'
           reporttypes: 'MarkdownSummaryGithub;JsonSummary;HtmlInline_AzurePipelines;Cobertura'
       - name: Append coverage guidance to summary
-        if: always()
+        if: always() && steps.filter.outputs.code == 'true'
         run: |
           mkdir -p CoverageReport
           python scripts/check-coverage-thresholds.py --github-summary-footer >> CoverageReport/SummaryGithub.md
       - name: Append coverage summary to job summary
-        if: always()
+        if: always() && steps.filter.outputs.code == 'true'
         run: cat CoverageReport/SummaryGithub.md >> "$GITHUB_STEP_SUMMARY"
       - name: Publish test results
-        if: always()
+        if: always() && steps.filter.outputs.code == 'true'
         uses: EnricoMi/publish-unit-test-result-action/linux@v2
         with:
           files: 'TestResults/**/*.trx'
       - name: Sticky coverage comment
-        if: always() && github.event_name == 'pull_request'
+        if: always() && steps.filter.outputs.code == 'true' && github.event_name == 'pull_request'
         uses: marocchino/sticky-pull-request-comment@v2
         with:
           header: coverage
           path: CoverageReport/SummaryGithub.md
       - name: Upload coverage artifacts
-        if: always()
+        if: always() && steps.filter.outputs.code == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
@@ -72,9 +91,10 @@ jobs:
             TestResults/**/*.trx
           retention-days: 14
       - name: Enforce per-assembly coverage thresholds
-        if: always()
+        if: always() && steps.filter.outputs.code == 'true'
         run: python scripts/check-coverage-thresholds.py
-      - run: dotnet format --verify-no-changes
+      - if: steps.filter.outputs.code == 'true'
+        run: dotnet format --verify-no-changes
 
   bicep-lint:
     runs-on: ubuntu-latest
