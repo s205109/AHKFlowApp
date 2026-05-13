@@ -130,6 +130,30 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
+    public void Page_ReloadWhileEditingExistingRow_KeepsEditControls()
+    {
+        var dto = new HotstringDto(Guid.NewGuid(), [], true, "btw", "by the way", true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        _api.ListAsync(Arg.Any<HotstringListRequest>(), Arg.Any<CancellationToken>())
+            .Returns(
+                ApiResult<PagedList<HotstringDto>>.Ok(Page(dto)),
+                ApiResult<PagedList<HotstringDto>>.Ok(Page(dto)));
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find("button.start-edit"));
+        cut.Find("button.start-edit").Click();
+        cut.WaitForAssertion(() => cut.Find("button.commit-edit"));
+
+        cut.Find("button.reload-hotstrings").Click();
+
+        cut.WaitForAssertion(() => _api.Received(2).ListAsync(Arg.Any<HotstringListRequest>(), Arg.Any<CancellationToken>()));
+        cut.WaitForAssertion(() =>
+        {
+            cut.Find("button.commit-edit").Should().NotBeNull();
+            cut.Find("input[data-test=\"trigger-input\"]").Should().NotBeNull();
+        });
+    }
+
+    [Fact]
     public Task Page_SaveDraftRow_CallsCreateAndRefreshes()
     {
         StubList(Page());

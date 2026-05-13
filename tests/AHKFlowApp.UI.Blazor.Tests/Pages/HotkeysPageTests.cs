@@ -134,6 +134,30 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
+    public void Page_ReloadWhileEditingExistingRow_KeepsEditControls()
+    {
+        HotkeyDto dto = MakeHotkey("Open terminal", "T");
+        _api.ListAsync(Arg.Any<HotkeyListRequest>(), Arg.Any<CancellationToken>())
+            .Returns(
+                ApiResult<PagedList<HotkeyDto>>.Ok(Page(dto)),
+                ApiResult<PagedList<HotkeyDto>>.Ok(Page(dto)));
+
+        IRenderedComponent<Hotkeys> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find("button.start-edit"));
+        cut.Find("button.start-edit").Click();
+        cut.WaitForAssertion(() => cut.Find("button.commit-edit"));
+
+        cut.Find("button.reload-hotkeys").Click();
+
+        cut.WaitForAssertion(() => _api.Received(2).ListAsync(Arg.Any<HotkeyListRequest>(), Arg.Any<CancellationToken>()));
+        cut.WaitForAssertion(() =>
+        {
+            cut.Find("button.commit-edit").Should().NotBeNull();
+            cut.Find("input[data-test=\"key-input\"]").Should().NotBeNull();
+        });
+    }
+
+    [Fact]
     public Task Page_SaveDraftRow_CallsCreate()
     {
         StubList(Page());
