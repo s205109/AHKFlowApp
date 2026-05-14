@@ -36,9 +36,6 @@ Deliberate non-goals (mirrors 019):
 - **Filter toggles** (Ctrl/Alt/Shift/Win/Action). YAGNI — no signal anyone wants per-modifier filtering; search box already finds by key/description/parameters.
 - **Active-profile scoping** in UI. The app has no global "active profile" concept on any page; introducing one only here would create UX inconsistency with Hotstrings.
 
-Known no-op (cross-cutting, not 023):
-- `ignoreCase` query param exists but is unused — SQL Server's default collation is already CI. Same defect on Hotstrings. Either remove or implement properly as a separate cleanup.
-
 ## Out of scope
 
 - CLI support for hotkey search (hotkey CLI management is out of scope).
