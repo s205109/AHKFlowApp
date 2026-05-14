@@ -28,7 +28,7 @@ As a user, I want to search and filter hotkeys so I can quickly find and manage 
 
 Implementation:
 - `ListHotkeysQuery` LIKE-filters on `Description`, `Key`, `Parameters`; respects M2M `profileId` (junction OR `AppliesToAllProfiles=true` per 024b).
-- `HotkeysController.List` accepts `search`, `ignoreCase`, `page`, `pageSize`.
+- `HotkeysController.List` accepts `search`, `page`, `pageSize`.
 - `Pages/Hotkeys.razor` ships a debounced search box wired to `ListAsync`.
 - Tests: `ListHotkeysQueryHandlerTests` (search by Key/Description/Parameters), `HotkeysEndpointsTests` (search-by-key, search-too-long 400, page+pageSize, pageSize-too-large 400).
 
