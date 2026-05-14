@@ -54,8 +54,9 @@ Answer the prompts:
 | NestedInstallerType | `portable` |
 | NestedInstallerFiles | `ahkflow.exe` with `PortableCommandAlias: ahkflow` |
 | Architecture | `x64` |
-| Scope | `user` |
 | Commands | `ahkflow` |
+
+`Scope` is **not** supported for `InstallerType: portable`; omit it (Winget validation will warn if present).
 
 Three YAML files land in `manifests/a/AHKFlow/CLI/0.1.1/`:
 
