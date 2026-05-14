@@ -8,7 +8,7 @@
 
 ## Summary
 
-Add search and filtering capabilities for hotkeys across UI and API with optional case-insensitive matching.
+Add search and filtering capabilities for hotkeys across UI and API. Search matching is case-insensitive by default.
 
 ## User story
 
@@ -16,7 +16,7 @@ As a user, I want to search and filter hotkeys so I can quickly find and manage 
 
 ## Acceptance criteria
 
-- [x] API supports query parameters for text search and case-insensitive flag when listing hotkeys.
+- [x] API supports query parameters for text search when listing hotkeys. Matching is case-insensitive by default (collation-driven, no flag) — see `docs/architecture/search-semantics.md`.
 - [x] UI provides search input scoped to the current user's hotkeys. *(filter toggles + active-profile scoping intentionally non-goals — see below.)*
 - [x] Search results are paginated or limited to prevent very large responses.
 - [x] Unit tests cover search/filter logic and parameter parsing.
@@ -28,16 +28,13 @@ As a user, I want to search and filter hotkeys so I can quickly find and manage 
 
 Implementation:
 - `ListHotkeysQuery` LIKE-filters on `Description`, `Key`, `Parameters`; respects M2M `profileId` (junction OR `AppliesToAllProfiles=true` per 024b).
-- `HotkeysController.List` accepts `search`, `ignoreCase`, `page`, `pageSize`.
+- `HotkeysController.List` accepts `search`, `page`, `pageSize`.
 - `Pages/Hotkeys.razor` ships a debounced search box wired to `ListAsync`.
 - Tests: `ListHotkeysQueryHandlerTests` (search by Key/Description/Parameters), `HotkeysEndpointsTests` (search-by-key, search-too-long 400, page+pageSize, pageSize-too-large 400).
 
 Deliberate non-goals (mirrors 019):
 - **Filter toggles** (Ctrl/Alt/Shift/Win/Action). YAGNI — no signal anyone wants per-modifier filtering; search box already finds by key/description/parameters.
 - **Active-profile scoping** in UI. The app has no global "active profile" concept on any page; introducing one only here would create UX inconsistency with Hotstrings.
-
-Known no-op (cross-cutting, not 023):
-- `ignoreCase` query param exists but is unused — SQL Server's default collation is already CI. Same defect on Hotstrings. Either remove or implement properly as a separate cleanup.
 
 ## Out of scope
 
