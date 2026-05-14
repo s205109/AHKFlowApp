@@ -74,12 +74,16 @@ public sealed class ListHotstringCommandTests
         await hs.Received(1).ListAsync(WorkId, null, 1, 50, Arg.Any<CancellationToken>());
     }
 
-    [Fact]
-    public async Task SearchPassedThrough()
+    [Theory]
+    [InlineData("--search")]
+    [InlineData("-s")]
+    [InlineData("--grep")]
+    [InlineData("-g")]
+    public async Task SearchAliases_PassedThrough(string flag)
     {
         (IHotstringsApiClient? hs, IProfilesApiClient? profiles) = Fakes();
 
-        await Run(["hotstring", "list", "--search", "btw"], hs, profiles);
+        await Run(["hotstring", "list", flag, "btw"], hs, profiles);
 
         await hs.Received(1).ListAsync(null, "btw", 1, 50, Arg.Any<CancellationToken>());
     }

@@ -200,13 +200,13 @@ Examples:
 
 ```sh
 # Create a new hotstring
-ahkflowapp new "you're welcome" --profile work
+ahkflow hotstring new --trigger yw --replacement "you're welcome" --profile work
 
 # Search hotstrings
-ahkflowapp list --profile work --grep "typo" --ignore-case
+ahkflow hotstring list --profile work --grep "typo"
 
 # Download a generated script
-ahkflowapp download ahk --profile work
+ahkflow download ahk --profile work
 ```
 
 Notes:
