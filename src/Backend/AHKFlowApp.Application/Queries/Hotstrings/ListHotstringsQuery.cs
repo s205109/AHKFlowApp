@@ -68,6 +68,8 @@ internal sealed class ListHotstringsQueryHandler(
                 h.Profiles.Any(p => p.ProfileId == pid));
         }
 
+        // Case-insensitive: relies on the database collation (SQL_Latin1_General_CP1_CI_AS).
+        // Do not add an ignoreCase parameter — see docs/architecture/search-semantics.md.
         if (!string.IsNullOrWhiteSpace(request.Search))
         {
             string pattern = $"%{request.Search.Trim()}%";

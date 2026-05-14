@@ -12,7 +12,10 @@ public static class ListHotstringCommand
     public static Command Build(IServiceProvider services)
     {
         Option<string?> profile = new("--profile", "-p") { Description = "Filter by profile name." };
-        Option<string?> search = new("--search", "-s") { Description = "Search trigger / replacement." };
+        Option<string?> search = new("--search", "-s", "--grep", "-g")
+        {
+            Description = "Search trigger / replacement (case-insensitive).",
+        };
         Option<int> page = new("--page") { Description = "Page (1-indexed).", DefaultValueFactory = _ => 1 };
         Option<int> pageSize = new("--page-size") { Description = "Items per page (1-200).", DefaultValueFactory = _ => 50 };
         Option<bool> json = new("--json") { Description = "Emit JSON instead of human table." };
