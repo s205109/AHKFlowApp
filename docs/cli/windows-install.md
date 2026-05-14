@@ -1,6 +1,32 @@
 # Install AHKFlow CLI on Windows
 
-## Install steps
+## Install via Winget (recommended)
+
+```powershell
+winget install AHKFlow.CLI
+```
+
+Open a new terminal and confirm:
+
+```powershell
+ahkflow --help
+```
+
+Winget puts `ahkflow` on your PATH automatically — no manual PATH editing.
+
+> On first launch, Windows SmartScreen may warn because the binary is unsigned.
+> Click **More info**, then **Run anyway**.
+
+To update or remove later:
+
+```powershell
+winget upgrade AHKFlow.CLI
+winget uninstall AHKFlow.CLI
+```
+
+## Manual zip install (fallback)
+
+Use this path on machines without Winget or in restricted environments.
 
 1. Download `ahkflow-win-x64.zip` from the latest GitHub Release.
 2. Create the install folder:

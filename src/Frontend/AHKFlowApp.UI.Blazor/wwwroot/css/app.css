@@ -113,3 +113,35 @@ code {
 .form-floating > .form-control-plaintext:focus::placeholder, .form-floating > .form-control:focus::placeholder {
     text-align: start;
 }
+
+/* Home page — CLI quickstart code block */
+.cli-block {
+    background: #1e1e1e;
+    color: #f5f5f5;
+    border-radius: 6px;
+    padding: 12px 16px;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.875rem;
+    line-height: 1.6;
+}
+.cli-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 2px 0;
+}
+.cli-line + .cli-line {
+    margin-top: 2px;
+}
+.cli-prompt {
+    color: #6AA84F;
+    user-select: none;
+}
+.cli-text {
+    flex: 1;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+.cli-copy-btn {
+    color: #cccccc !important;
+}
