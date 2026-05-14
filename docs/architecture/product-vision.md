@@ -203,7 +203,7 @@ Examples:
 ahkflowapp new "you're welcome" --profile work
 
 # Search hotstrings
-ahkflowapp list --profile work --grep "typo" --ignore-case
+ahkflowapp list --profile work --grep "typo"
 
 # Download a generated script
 ahkflowapp download ahk --profile work
