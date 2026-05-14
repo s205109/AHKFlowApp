@@ -1,0 +1,42 @@
+<MudPaper Class="pa-4" Elevation="1">
+    <MudStack Spacing="2">
+        <MudStack Row Spacing="2" AlignItems="AlignItems.Center">
+            <MudIcon Icon="@Icon" Size="Size.Small" Color="Color.Default" />
+            <MudText Typo="Typo.overline">@Title</MudText>
+        </MudStack>
+        <MudText Typo="Typo.h3">@Total</MudText>
+        <MudText Typo="Typo.caption" Color="Color.Default">@FooterText</MudText>
+        <MudChart ChartType="ChartType.Bar"
+                  ChartSeries="@_series"
+                  ChartLabels="@_emptyLabels"
+                  Width="100%"
+                  Height="40px"
+                  ChartOptions="@_chartOptions" />
+    </MudStack>
+</MudPaper>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public string Icon { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public int Total { get; set; }
+    [Parameter, EditorRequired] public string FooterText { get; set; } = string.Empty;
+    [Parameter, EditorRequired] public IReadOnlyList<int> DailyBuckets { get; set; } = [];
+
+    private List<ChartSeries<double>> _series = [];
+    private string[] _emptyLabels = [];
+    private ChartOptions _chartOptions = new()
+    {
+        ShowLegend = false,
+        ShowToolTips = false,
+        ChartPalette = ["#6AA84F"],
+    };
+
+    protected override void OnParametersSet()
+    {
+        _series =
+        [
+            new ChartSeries<double> { Name = Title, Data = DailyBuckets.Select(i => (double)i).ToArray() }
+        ];
+        _emptyLabels = Enumerable.Repeat(string.Empty, DailyBuckets.Count).ToArray();
+    }
+}
