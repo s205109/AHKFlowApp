@@ -48,12 +48,14 @@ Installers:
   - Architecture: x64
     InstallerUrl: https://github.com/<owner>/AHKFlowApp/releases/download/v0.1.1/ahkflow-win-x64.zip
     InstallerSha256: <sha256 of the released zip>
-    Scope: user
 Commands:
   - ahkflow
 ManifestType: installer
 ManifestVersion: 1.6.0
 ```
+
+`Scope` is intentionally omitted — `winget validate` warns that it is not
+supported for `InstallerType: portable`.
 
 **`AHKFlow.CLI.locale.en-US.yaml`** (key fields):
 
@@ -104,7 +106,7 @@ Keep the existing zip + manual PATH section below as the offline / restricted-en
 
 **Add `docs/cli/winget-submission.md`** — the submission runbook covering:
 
-- Prerequisites: `wingetcreate` installed (`winget install wingetcreate`), GitHub PAT with `public_repo` scope.
+- Prerequisites: `wingetcreate` installed (`winget install --id Microsoft.WingetCreate --exact`), GitHub PAT with `public_repo` scope.
 - The 6-step flow above with exact commands.
 - Manifest review checklist (PackageIdentifier matches, version matches the git tag, SHA256 matches the release asset, license/publisher/tags filled).
 - Moderator feedback loop: how to amend the PR by editing the manifests in the fork.
