@@ -8,7 +8,7 @@
 
 ## Summary
 
-Add search and filtering capabilities for hotstrings across UI, API, and CLI with optional case-insensitive matching.
+Add search and filtering capabilities for hotstrings across UI, API, and CLI. Search matching is case-insensitive by default.
 
 ## User story
 
@@ -16,7 +16,7 @@ As a user, I want to search and filter hotstrings so I can quickly find, edit, a
 
 ## Acceptance criteria
 
-- [x] API supports query parameters for text search and case-insensitive flag when listing hotstrings.
+- [x] API supports query parameters for text search when listing hotstrings. Matching is case-insensitive by default (collation-driven, no flag) — see `docs/architecture/search-semantics.md`.
 - [x] UI provides search input and filter toggles scoped to the active profile.
 - [x] CLI `ahkflow hotstring list` supports text search via `--search` / `-s` (alias `--grep` / `-g`) and returns JSON when `--json` is used. Case-insensitive matching is the default (no flag) — see `docs/architecture/search-semantics.md`.
 - [x] Search results are paginated or limited to prevent very large responses.
