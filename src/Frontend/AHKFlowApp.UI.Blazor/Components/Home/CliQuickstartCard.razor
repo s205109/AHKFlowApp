@@ -1,0 +1,39 @@
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+
+<MudPaper Class="pa-4" Elevation="1">
+    <MudStack Row Spacing="2" AlignItems="AlignItems.Center" Class="mb-2">
+        <MudIcon Icon="@MudBlazor.Icons.Material.Filled.Terminal" />
+        <MudText Typo="Typo.h6">CLI quickstart</MudText>
+    </MudStack>
+    <div class="cli-block">
+        @foreach (string cmd in _commands)
+        {
+            <div class="cli-line">
+                <span class="cli-prompt">$</span>
+                <span class="cli-text">@cmd</span>
+                <MudIconButton Icon="@MudBlazor.Icons.Material.Filled.ContentCopy"
+                               Size="Size.Small"
+                               Color="Color.Inherit"
+                               Class="cli-copy-btn"
+                               aria-label="Copy command"
+                               OnClick="@(() => CopyAsync(cmd))" />
+            </div>
+        }
+    </div>
+</MudPaper>
+
+@code {
+    private static readonly string[] _commands =
+    [
+        "ahkflow new \"yw\" \"you're welcome\" --profile work",
+        "ahkflow list --profile work --grep \"typo\"",
+        "ahkflow download ahk --profile work",
+    ];
+
+    private async Task CopyAsync(string text)
+    {
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
+        Snackbar.Add("Copied", Severity.Success);
+    }
+}

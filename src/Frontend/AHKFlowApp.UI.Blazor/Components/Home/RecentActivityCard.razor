@@ -1,0 +1,59 @@
+@using AHKFlowApp.UI.Blazor.DTOs
+@using AHKFlowApp.UI.Blazor.Helpers
+
+<MudPaper Class="pa-4" Elevation="1">
+    <MudText Typo="Typo.h6" Class="mb-2">Recent activity</MudText>
+    @if (Items.Count == 0)
+    {
+        <MudText Typo="Typo.body2" Color="Color.Default">
+            No activity yet — add your first hotstring to get started.
+        </MudText>
+    }
+    else
+    {
+        <MudList T="RecentActivityItemDto" Dense Gutters="false">
+            @foreach (RecentActivityItemDto item in Items)
+            {
+                <MudListItem T="RecentActivityItemDto">
+                    <MudStack Row AlignItems="AlignItems.Center" Spacing="3">
+                        <MudIcon Icon="@MudBlazor.Icons.Material.Filled.Circle"
+                                 Size="Size.Small"
+                                 Color="@IconColorFor(item)" />
+                        <MudText Typo="Typo.body2" Class="flex-grow-1">@DescribeItem(item)</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Default">
+                            @HomeTimeFormat.Relative(UtcNow, item.OccurredAt)
+                        </MudText>
+                    </MudStack>
+                </MudListItem>
+            }
+        </MudList>
+    }
+</MudPaper>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<RecentActivityItemDto> Items { get; set; } = [];
+    [Parameter] public DateTimeOffset UtcNow { get; set; } = DateTimeOffset.UtcNow;
+
+    private static Color IconColorFor(RecentActivityItemDto item)
+    {
+        if (item.Action == "updated") return Color.Default;
+        return item.Kind switch
+        {
+            "hotstring" => Color.Success,
+            "hotkey" => Color.Warning,
+            "profile" => Color.Secondary,
+            _ => Color.Default,
+        };
+    }
+
+    private static string DescribeItem(RecentActivityItemDto item) => (item.Kind, item.Action) switch
+    {
+        ("hotstring", "created") => $"Added hotstring {item.Label}",
+        ("hotstring", "updated") => $"Updated hotstring {item.Label}",
+        ("hotkey", "created") => $"New hotkey saved — {item.Label}",
+        ("hotkey", "updated") => $"Updated hotkey — {item.Label}",
+        ("profile", "created") => $"Profile {item.Label} created",
+        ("profile", "updated") => $"Profile {item.Label} updated",
+        _ => $"{item.Kind} {item.Action} — {item.Label}",
+    };
+}
