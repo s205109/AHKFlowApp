@@ -11,7 +11,7 @@ Two stale items surfaced during review:
 1. **Backlog 019** (Hotstrings search & filtering) still has an unchecked CLI acceptance criterion calling for `--grep` and `--ignore-case` flags. The capability shipped under the flag name `--search` / `-s`; the AC text was never updated. The "Deferred to 029" note is misleading — 029 is CLI authentication, unrelated.
 2. **Backlog 023** (Hotkeys search & filtering) carries a "Known no-op" paragraph claiming an `ignoreCase` query param exists but does nothing. A code search confirms no such param exists on either controller or query handler. The note is factually wrong and refers to a phantom parameter that was never shipped.
 
-User intent: AHKFlow search should be case-insensitive by default. The current behavior already satisfies this — SQL Server's default collation (`Latin1_General_CI_AS`) makes `EF.Functions.Like` case-insensitive without any application-layer flag.
+User intent: AHKFlow search should be case-insensitive by default. The current behavior already satisfies this — the database collation (`SQL_Latin1_General_CP1_CI_AS`) makes `EF.Functions.Like` case-insensitive without any application-layer flag.
 
 ## Goals
 
@@ -68,7 +68,7 @@ Extend `tests/AHKFlowApp.CLI.Tests/Commands/Hotstrings/ListHotstringCommandTests
 In both `src/Backend/AHKFlowApp.Application/Queries/Hotstrings/ListHotstringsQuery.cs` and `src/Backend/AHKFlowApp.Application/Queries/Hotkeys/ListHotkeysQuery.cs`, above the `EF.Functions.Like` block:
 
 ```csharp
-// Case-insensitive: relies on SQL Server's default collation (Latin1_General_CI_AS).
+// Case-insensitive: relies on the database collation (SQL_Latin1_General_CP1_CI_AS).
 // Do not add an ignoreCase parameter — see docs/architecture/search-semantics.md.
 ```
 
@@ -77,7 +77,7 @@ In both `src/Backend/AHKFlowApp.Application/Queries/Hotstrings/ListHotstringsQue
 Create `docs/architecture/search-semantics.md` (~15 lines). Cover:
 
 - List endpoints search via `LIKE` (`EF.Functions.Like`).
-- Case-insensitivity is collation-driven (`Latin1_General_CI_AS`), not application-level.
+- Case-insensitivity is collation-driven (`SQL_Latin1_General_CP1_CI_AS`), not application-level.
 - An `ignoreCase` query param is explicitly **not** offered. Rationale: case-sensitive search would require a `COLLATE … CS_AS` clause on every search predicate, has no demonstrated user need, and the current behavior matches user intent ("CI by default").
 - Cross-link from the inline comments above.
 
