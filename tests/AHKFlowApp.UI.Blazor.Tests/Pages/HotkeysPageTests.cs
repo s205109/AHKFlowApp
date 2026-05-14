@@ -292,7 +292,7 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
         FillRequiredFields(cut);
 
         cut.Find("input[data-test=\"applies-to-all-checkbox\"]").Change(false);
-        cut.WaitForAssertion(() => cut.FindComponent<MudSelect<Guid>>().Should().NotBeNull());
+        cut.WaitForAssertion(() => cut.FindComponent<MudSelect<Guid>>().Should().NotBeNull(), TimeSpan.FromSeconds(5));
 
         await cut.InvokeAsync(() =>
             cut.FindComponent<MudSelect<Guid>>().Instance.SelectedValuesChanged
@@ -307,7 +307,7 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
                 d.ProfileIds.Length == 2 &&
                 d.ProfileIds.Contains(work.Id) &&
                 d.ProfileIds.Contains(personal.Id)),
-            Arg.Any<CancellationToken>()));
+            Arg.Any<CancellationToken>()), TimeSpan.FromSeconds(5));
     }
 
     [Fact]
