@@ -8,7 +8,7 @@
 
 ## Summary
 
-Add search and filtering capabilities for hotkeys across UI and API with optional case-insensitive matching.
+Add search and filtering capabilities for hotkeys across UI and API. Search matching is case-insensitive by default.
 
 ## User story
 
@@ -16,7 +16,7 @@ As a user, I want to search and filter hotkeys so I can quickly find and manage 
 
 ## Acceptance criteria
 
-- [x] API supports query parameters for text search and case-insensitive flag when listing hotkeys.
+- [x] API supports query parameters for text search when listing hotkeys. Matching is case-insensitive by default (collation-driven, no flag) — see `docs/architecture/search-semantics.md`.
 - [x] UI provides search input scoped to the current user's hotkeys. *(filter toggles + active-profile scoping intentionally non-goals — see below.)*
 - [x] Search results are paginated or limited to prevent very large responses.
 - [x] Unit tests cover search/filter logic and parameter parsing.
