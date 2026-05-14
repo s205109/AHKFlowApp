@@ -9,10 +9,16 @@ using Microsoft.Extensions.Logging;
 using Serilog;
 using Serilog.Events;
 
+// When installed via winget portable, AppContext.BaseDirectory is the Links dir (symlink),
+// not the Packages dir where appsettings.json lives. Resolve the symlink to get the real location.
+string processPath = Environment.ProcessPath ?? AppContext.BaseDirectory;
+string resolvedExePath = File.ResolveLinkTarget(processPath, returnFinalTarget: true)?.FullName ?? processPath;
+string exeDir = Path.GetDirectoryName(Path.GetFullPath(resolvedExePath)) ?? AppContext.BaseDirectory;
+
 HostApplicationBuilder builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
 {
     Args = args,
-    ContentRootPath = AppContext.BaseDirectory,
+    ContentRootPath = exeDir,
 });
 
 builder.Configuration
