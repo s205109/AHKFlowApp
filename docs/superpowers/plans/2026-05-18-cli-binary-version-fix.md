@@ -86,21 +86,39 @@ dotnet build src/Tools/AHKFlowApp.CLI/AHKFlowApp.CLI.csproj --configuration Rele
 
 Expected: build succeeds, no new warnings. MinVer prints a line like `MinVer: Calculated version 0.1.3-alpha.0.NN+<sha>` to the build log because HEAD is past `v0.1.2` on the feature branch (untagged → height-suffixed pre-release).
 
-- [ ] **Step 3: Smoke-check the produced `--version` output**
+- [ ] **Step 3: Smoke-check the produced `--version` output and assert the shape**
 
 Run:
 
 ```powershell
-dotnet run --project src/Tools/AHKFlowApp.CLI --configuration Release --no-build -- --version
+$versionLine = (dotnet run --project src/Tools/AHKFlowApp.CLI --configuration Release --no-build -- --version | Select-Object -First 1).Trim()
+Write-Host "Reported version: $versionLine"
+
+# On this feature branch the latest reachable version tag is v0.1.2 and HEAD is
+# past it (untagged), so MinVer should produce a tag-derived height-suffixed
+# pre-release of the form `0.1.X-alpha.N.M+<sha>`. Any other shape (1.0.0,
+# 0.0.0, a bare X.Y.Z with no MinVer suffix on an untagged commit, etc.)
+# indicates MinVer is not wired correctly.
+if ($versionLine -notmatch '^0\.1\.\d+-alpha\.\d+\.\d+(\+[0-9a-f]+)?$') {
+    throw "Unexpected --version shape: '$versionLine'. Expected a MinVer height-suffixed pre-release like 0.1.3-alpha.0.5+<sha>. MinVer is likely not applied."
+}
+
+Write-Host "MinVer shape OK."
 ```
 
-Expected output (the exact suffix varies — what matters is the prefix is **not** `1.0.0`):
+Expected: `MinVer shape OK.` and a printed line such as `0.1.3-alpha.0.5+1440c88`.
 
-```
-0.1.3-alpha.0.NN+<commit-sha>
-```
+Why this specific shape:
+- `0.1.\d+` — patch must derive from the `v0.1.2` tag (MinVer's default increment rule), proving the tag is being read.
+- `-alpha\.\d+\.\d+` — MinVer's untagged-commit height suffix; its presence proves we are not silently shipping the SDK default (which would be `1.0.0` with no pre-release tail) or a manually-overridden static version.
+- `(\+[0-9a-f]+)?` — optional `+sha` build metadata from the SDK's `SourceRevisionId`; we tolerate its absence so the assertion doesn't fail on rare configurations where it's stripped.
 
-If the output still starts with `1.0.0`, MinVer is not actually being applied — most commonly because `<PrivateAssets>all</PrivateAssets>` was omitted (which sometimes blocks the targets), or because the build is using a cached `obj/` from before the edit. Run `dotnet clean src/Tools/AHKFlowApp.CLI/AHKFlowApp.CLI.csproj` and rebuild. Do not proceed to Step 4 until the version line is non-`1.0.0`.
+If the regex fails, the most common causes are:
+- `<PrivateAssets>all</PrivateAssets>` omitted, blocking MinVer's targets.
+- Stale `obj/` cache from before the csproj edit — run `dotnet clean src/Tools/AHKFlowApp.CLI/AHKFlowApp.CLI.csproj` and rebuild.
+- Shallow clone with no tag history — run `git fetch --tags` to confirm `v0.1.2` is locally present.
+
+Do not proceed to Step 4 until the assertion passes.
 
 - [ ] **Step 4: Confirm the CLI test suite still passes**
 
@@ -273,7 +291,18 @@ Change only the `else { ... }` branch. The `if` branch (release does not yet exi
 ```yaml
           else {
               $assetName = Split-Path $zipPath -Leaf
-              $existingAssets = gh release view $env:RELEASE_TAG --json assets --jq ".assets[].name" 2>$null
+
+              # Reaching this branch means the outer `gh release view` succeeded,
+              # so the release definitely exists. A failure to enumerate its
+              # assets here is therefore an auth/API/transient error, not a
+              # signal that the release is empty. Treat any non-zero exit as
+              # fatal — silently falling through would risk overwriting an
+              # already-published asset via the unconditional `gh release upload`
+              # below, breaking the immutability promise this step exists to keep.
+              $existingAssets = gh release view $env:RELEASE_TAG --json assets --jq ".assets[].name"
+              if ($LASTEXITCODE -ne 0) {
+                  throw "Could not enumerate assets for tag $($env:RELEASE_TAG) (gh release view exit code $LASTEXITCODE). Refusing to upload without knowing the current asset state."
+              }
 
               if ($existingAssets -split "`n" -contains $assetName) {
                   throw "Release asset '$assetName' is already published for tag $($env:RELEASE_TAG). Treating release assets as immutable. To ship a new build, cut a new tag."
@@ -288,32 +317,62 @@ Change only the `else { ... }` branch. The `if` branch (release does not yet exi
 
 Key changes from the current code:
 - `--clobber` is gone.
-- A list of existing asset names is fetched via `gh release view --json assets --jq ".assets[].name"`.
-- If our asset name (`ahkflow-win-x64.zip`) is already in that list, the step throws — winget consumers rely on the SHA256 being stable for the lifetime of the tag.
-- If the asset is not yet present (e.g., a release was created manually with notes but no binary, or a previous workflow upload step failed before completing), the upload proceeds normally.
+- A list of existing asset names is fetched via `gh release view --json assets --jq ".assets[].name"`. **No `2>$null`** — any failure on this call must surface, because in this branch the release is known to exist.
+- A non-zero exit on the inner `gh release view` hard-fails the workflow rather than falling through to upload (which would risk overwriting via the absence of `-contains` matches against an empty `$existingAssets`).
+- If our asset name (`ahkflow-win-x64.zip`) is already in the list, the step throws — winget consumers rely on the SHA256 being stable for the lifetime of the tag.
+- If the asset is not yet present (e.g., a previous workflow run created the release entry but the upload itself never completed — say it crashed between `gh release create --notes` and the asset push), the upload proceeds normally. This is the only legitimate path that reaches the upload line.
 
 - [ ] **Step 3: Re-check the YAML parses**
 
 Repeat Step 3 from Task 2 — `ConvertFrom-Yaml` (or `python -c "import yaml; ..."`) on the file. Expected: `YAML parses OK.`
 
-- [ ] **Step 4: Dry-run the asset-existence check against a real release**
+- [ ] **Step 4: Dry-run the asset-existence check against the two production-path scenarios**
 
-This step only validates the `gh` invocation shape — it does **not** mutate anything. In a `pwsh` session with `gh` authenticated:
+This step only validates the `gh` invocation shape — it does **not** mutate anything. The else branch in the workflow is only ever reached when the release for the current tag already exists, so we dry-run the two cases that match that precondition. (The "release does not exist at all" case routes to the `if` branch in the workflow and is not exercised here.)
 
-```powershell
-$tag = "v0.1.2"
-gh release view $tag --json assets --jq ".assets[].name"
-```
+In a `pwsh` session with `gh` authenticated:
 
-Expected: a single line `ahkflow-win-x64.zip` is printed (the v0.1.2 release we already published). Confirms the JSON path and jq filter both work.
-
-Then verify the negative case against a fictitious tag:
+**Case A — asset already present (workflow would throw the immutability error):**
 
 ```powershell
-gh release view "v0.0.0-does-not-exist" --json assets --jq ".assets[].name" 2>$null
+$assetName = "ahkflow-win-x64.zip"
+$existingAssets = gh release view "v0.1.2" --json assets --jq ".assets[].name"
+if ($LASTEXITCODE -ne 0) { throw "gh release view failed (exit $LASTEXITCODE)" }
+
+Write-Host "Assets on v0.1.2:`n$existingAssets"
+
+if ($existingAssets -split "`n" -contains $assetName) {
+    Write-Host "DRYRUN-EXPECTED: would throw immutability error for v0.1.2."
+} else {
+    throw "DRYRUN UNEXPECTED: v0.1.2 has no '$assetName' asset. Investigate before continuing."
+}
 ```
 
-Expected: empty output, non-zero exit. In the workflow, `2>$null` suppresses the error message; the `-contains` comparison against an empty `$existingAssets` returns false; control falls through to the upload. That's the intended behaviour for a fresh tag.
+Expected:
+```
+Assets on v0.1.2:
+ahkflow-win-x64.zip
+DRYRUN-EXPECTED: would throw immutability error for v0.1.2.
+```
+
+**Case B — release exists but the asset slot is empty (workflow would proceed to upload):**
+
+There is no naturally-occurring empty-asset release we can poke without mutating state, so simulate by overriding `$existingAssets`:
+
+```powershell
+$assetName = "ahkflow-win-x64.zip"
+$existingAssets = ""  # simulated empty asset list — what we would see on a partially-created release
+
+if ($existingAssets -split "`n" -contains $assetName) {
+    throw "DRYRUN UNEXPECTED: empty list should not contain '$assetName'."
+} else {
+    Write-Host "DRYRUN-EXPECTED: would proceed to upload."
+}
+```
+
+Expected: `DRYRUN-EXPECTED: would proceed to upload.`
+
+These two confirm both production paths behave correctly. Note that neither case relies on `2>$null` — the production code is now sensitive to inner-view failures, and these dry-runs are checking the post-view branching logic.
 
 - [ ] **Step 5: Commit**
 
@@ -392,14 +451,42 @@ tag. This matches the new release-cli.yml behaviour."
 
 **Files:** none (git/GitHub-only)
 
-- [ ] **Step 1: Verify the branch state**
+- [ ] **Step 1: Verify the branch state by intent, not by pinned SHAs**
 
 ```powershell
-git status
-git log feature/cli-binary-version-fix --oneline -10
+# Working tree must be clean apart from build-cache noise.
+$dirty = git status --porcelain | Where-Object { $_ -notmatch '\.lscache$' }
+if ($dirty) {
+    throw "Working tree has unexpected changes:`n$($dirty -join "`n")"
+}
+
+# Confirm that exactly the expected commits sit on top of origin/main:
+#   - 4 implementation commits (Tasks 1-4)
+#   - 2 spec commits authored during brainstorming
+# Total: 6 commits ahead of origin/main.
+$aheadCount = (git rev-list --count origin/main..HEAD)
+if ([int]$aheadCount -ne 6) {
+    throw "Expected 6 commits ahead of origin/main (4 impl + 2 spec). Got $aheadCount. Run `git log origin/main..HEAD --oneline` and reconcile."
+}
+
+# Verify the four implementation commit subjects appear, regardless of order/SHA.
+$subjects = git log origin/main..HEAD --format="%s"
+$requiredSubjects = @(
+    "feat(cli): wire MinVer so --version reflects the git tag",
+    "ci(release): assert ahkflow --version matches the release tag",
+    "ci(release): refuse to overwrite an existing release asset",
+    "docs(cli): document release-asset immutability in winget runbook"
+)
+
+$missing = @($requiredSubjects | Where-Object { $_ -notin ($subjects -split "`n") })
+if ($missing.Count -gt 0) {
+    throw "Expected commits missing from branch:`n$($missing -join "`n")"
+}
+
+Write-Host "Branch state OK: 6 commits ahead, all four implementation commits present."
 ```
 
-Expected: clean working tree (apart from the `.lscache` untracked noise present at session start), and the branch shows — top to bottom — Task 4 commit, Task 3 commit, Task 2 commit, Task 1 commit, the two spec commits (`c208a07`, `1440c88`), then `6a4f85f` (origin/main HEAD).
+Expected: `Branch state OK: 6 commits ahead, all four implementation commits present.` This validates intent (four named implementation commits sit atop two spec commits, atop `origin/main`) without pinning to transient SHA values that change if commits are reworded or rebased.
 
 - [ ] **Step 2: Confirm build and tests one more time before pushing**
 
@@ -477,8 +564,9 @@ Posting a GitHub comment leaves no local repo state. The PR for this branch (Tas
 
 - [ ] All four implementation tasks committed on `feature/cli-binary-version-fix`.
 - [ ] Local `dotnet build` + `dotnet test` pass after Task 1.
-- [ ] Local `ahkflow --version` smoke (Task 1 Step 3) shows a non-`1.0.0` prefix.
+- [ ] Local `ahkflow --version` matches the tag-derived MinVer shape `^0\.1\.\d+-alpha\.\d+\.\d+(\+[0-9a-f]+)?$` (Task 1 Step 3). "Anything other than `1.0.0`" is not sufficient — the assertion is that MinVer is reading the `v0.1.2` tag and incrementing the patch with a height suffix.
 - [ ] YAML parse check passes after Tasks 2 and 3.
+- [ ] Task 3 dry-run shows the immutability case throwing on `v0.1.2`'s already-present asset (Case A) and the simulated-empty case proceeding (Case B).
 - [ ] PR opened (Task 5) and CI green.
 - [ ] Validator reply posted on PR #374595 (Task 6).
 
