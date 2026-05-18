@@ -168,6 +168,30 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
               throw "ahkflow.exe --help failed with exit code $LASTEXITCODE."
           }
+
+          $expectedVersion = $env:RELEASE_TAG.TrimStart("v")
+
+          # Capture stdout only. The CLI configures Serilog to write to stderr,
+          # so any future startup banner on stderr must not be allowed to push
+          # the version line past our parser (which is why we do NOT use 2>&1).
+          $versionOutput = & (Join-Path $extractPath "ahkflow.exe") --version
+          if ($LASTEXITCODE -ne 0) {
+              throw "ahkflow.exe --version failed with exit code $LASTEXITCODE."
+          }
+
+          $versionText = ($versionOutput -join "`n")
+
+          # Match the first SemVer token in the output, with optional +build
+          # or -prerelease tail. Robust to extra lines and to System.CommandLine
+          # changing its surrounding wording.
+          if ($versionText -notmatch '\b(\d+\.\d+\.\d+)(?:[+-][^\s]*)?\b') {
+              throw "Could not find a SemVer token in --version output. Raw output: '$versionText'"
+          }
+
+          $actualVersion = $Matches[1]
+          if ($actualVersion -ne $expectedVersion) {
+              throw "Version mismatch. Tag: $expectedVersion. Binary reports: $actualVersion. Expected the binary's InformationalVersion to match the tag (sans 'v')."
+          }
       - uses: actions/upload-artifact@v4
         with:
           name: ahkflow-win-x64
