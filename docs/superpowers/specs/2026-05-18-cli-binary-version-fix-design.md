@@ -1,7 +1,7 @@
 # CLI binary version self-reporting — design
 
 **Status:** Approved (brainstorming, 2026-05-18)
-**Related:** backlog [031](../../.claude/backlog/031-cli-winget-distribution.md), spec [2026-05-14-031-cli-winget-distribution-design.md](2026-05-14-031-cli-winget-distribution-design.md)
+**Related:** backlog [031](../../../.claude/backlog/031-cli-winget-distribution.md), spec [2026-05-14-031-cli-winget-distribution-design.md](2026-05-14-031-cli-winget-distribution-design.md)
 **Trigger:** [winget-pkgs PR #374595, comment 4480496773](https://github.com/microsoft/winget-pkgs/pull/374595#issuecomment-4480496773)
 
 ## Problem
