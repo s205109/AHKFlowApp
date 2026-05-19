@@ -159,6 +159,8 @@ wingetcreate new-version --urls $zipUrl AHKFlow.CLI
 
 `wingetcreate` clones your fork, generates manifests at `manifests/a/AHKFlow/CLI/0.1.2/` reusing metadata from the prior version, and recomputes the SHA256. Re-run steps 3–7 above.
 
+The `release-cli.yml` workflow asserts that the binary's reported version matches the tag before uploading, and refuses to overwrite an existing release asset for the same tag. So the SHA256 you compute against the published asset is stable for the lifetime of the tag — re-running the workflow on the same tag will fail rather than mutate the asset.
+
 **Versioning rule:** `PackageVersion` always equals the git tag with the `v` stripped (`v1.2.3` → `1.2.3`).
 
 ## Moderator feedback loop

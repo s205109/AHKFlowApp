@@ -168,6 +168,34 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
               throw "ahkflow.exe --help failed with exit code $LASTEXITCODE."
           }
+
+          # Drop only the +build metadata from the tag. Pre-release components
+          # (e.g. -rc.1) MUST be preserved so the gate compares full SemVer
+          # identity, not just MAJOR.MINOR.PATCH; otherwise a v0.1.3-rc.1 tag
+          # would accept a binary reporting 0.1.3-beta.9.
+          $expectedVersion = ($env:RELEASE_TAG.TrimStart("v") -replace '\+.*$', '')
+
+          # Capture stdout only. The CLI configures Serilog to write to stderr,
+          # so any future startup banner on stderr must not be allowed to push
+          # the version line past our parser (which is why we do NOT use 2>&1).
+          $versionOutput = & (Join-Path $extractPath "ahkflow.exe") --version
+          if ($LASTEXITCODE -ne 0) {
+              throw "ahkflow.exe --version failed with exit code $LASTEXITCODE."
+          }
+
+          $versionText = ($versionOutput -join "`n")
+
+          # Capture MAJOR.MINOR.PATCH plus optional -prerelease (group 1),
+          # discarding any trailing +build metadata. The full SemVer identity
+          # is what we compare against the tag.
+          if ($versionText -notmatch '\b(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)(?:\+[0-9A-Za-z.-]+)?') {
+              throw "Could not find a SemVer token in --version output. Raw output: '$versionText'"
+          }
+
+          $actualVersion = $Matches[1]
+          if ($actualVersion -ne $expectedVersion) {
+              throw "Version mismatch. Tag (sans leading 'v' and +build metadata): $expectedVersion. Binary reports (sans +build metadata): $actualVersion. Expected the binary's InformationalVersion to match the tag on MAJOR.MINOR.PATCH[-prerelease]."
+          }
       - uses: actions/upload-artifact@v4
         with:
           name: ahkflow-win-x64
@@ -189,7 +217,25 @@ jobs:
               }
           }
           else {
-              gh release upload $env:RELEASE_TAG $zipPath --clobber
+              $assetName = Split-Path $zipPath -Leaf
+
+              # Reaching this branch means the outer `gh release view` succeeded,
+              # so the release definitely exists. A failure to enumerate its
+              # assets here is therefore an auth/API/transient error, not a
+              # signal that the release is empty. Treat any non-zero exit as
+              # fatal — silently falling through would risk overwriting an
+              # already-published asset via the unconditional `gh release upload`
+              # below, breaking the immutability promise this step exists to keep.
+              $existingAssets = gh release view $env:RELEASE_TAG --json assets --jq ".assets[].name"
+              if ($LASTEXITCODE -ne 0) {
+                  throw "Could not enumerate assets for tag $($env:RELEASE_TAG) (gh release view exit code $LASTEXITCODE). Refusing to upload without knowing the current asset state."
+              }
+
+              if ($existingAssets -split "`n" -contains $assetName) {
+                  throw "Release asset '$assetName' is already published for tag $($env:RELEASE_TAG). Treating release assets as immutable. To ship a new build, cut a new tag."
+              }
+
+              gh release upload $env:RELEASE_TAG $zipPath
               if ($LASTEXITCODE -ne 0) {
                   throw "gh release upload failed with exit code $LASTEXITCODE."
               }
