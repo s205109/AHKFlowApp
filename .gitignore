@@ -410,6 +410,9 @@ FodyWeavers.xsd
 # Local History for Visual Studio Code
 .history/
 
+# C# Dev Kit language service caches (regenerated automatically — https://aka.ms/lscache)
+*.csproj.lscache
+
 # Built Visual Studio Code Extensions
 *.vsix
 
