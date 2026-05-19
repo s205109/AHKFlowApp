@@ -21,7 +21,16 @@ Two targeted schema/domain refinements:
 
 ## (1) AppliesToAllProfiles Cleanup
 
-**Decision:** keep the boolean as the canonical signal. Centralize the invariant *"if `AppliesToAllProfiles == true`, the join set is empty"* at the validator + handler boundary. The domain entity `Create`/`Update` methods do not accept profile IDs today (junction rows are managed in the handler post-entity-creation, e.g. `CreateHotstringCommand.cs:70`), so no domain API change is needed.
+**Decision:** keep the boolean as the canonical signal. Centralize the following two invariants at the validator + handler boundary. The domain entity `Create`/`Update` methods do not accept profile IDs today (junction rows are managed in the handler post-entity-creation, e.g. `CreateHotstringCommand.cs:70`), so no domain API change is needed.
+
+**Invariants:**
+
+1. **`AppliesToAllProfiles == true` ⇒ `ProfileIds` is null or empty.** Both set is rejected with `Result.Invalid("ProfileIds must be empty when AppliesToAllProfiles is true.")`.
+2. **`AppliesToAllProfiles == false` ⇒ `ProfileIds` must contain at least one profile id.** Empty here means "applies to no profiles" — the item would exist but never appear in any generated script. Reject with `Result.Invalid("Provide at least one ProfileId, or set AppliesToAllProfiles = true.")`.
+
+The second invariant tightens current behavior — the existing `UpdateHotstringCommand.cs:49` and `CreateHotstringCommand.cs:47` accept the "false + empty" combination silently. This spec changes that: orphaned items are not allowed by construction; the user must choose between "all profiles" and "at least one profile."
+
+The migration backfill audits the current data set for rows in the "false + empty junction" state and either (a) flips them to `AppliesToAllProfiles = true` (preferred — preserves visibility) or (b) attaches them to the user's default profile. Decision: **option (a)** — flip to true. Document the migration step explicitly.
 
 - **Validator**: `Application/Validation/ProfileAssociationRules.cs` (which `AddProfileAssociationRules(...)` already calls into) tightens the rule: when `AppliesToAllProfiles == true`, `ProfileIds` must be null or empty — already enforced; verify and add a test.
 - **Handler**: explicit branch in create/update — when `AppliesToAllProfiles == true`, junction rows are not added (`CreateHotstringCommand.cs:70-74`, `UpdateHotstringCommand.cs:73-81`). Already present. Add unit-level handler tests that assert no junction rows are inserted when the flag is true.

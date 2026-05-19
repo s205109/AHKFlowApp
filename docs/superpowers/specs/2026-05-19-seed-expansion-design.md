@@ -22,8 +22,41 @@ Expand dev-only seed data from 3 hotstrings + 0 hotkeys to **12 hotstrings + 12 
 3. Add `SeedCategoriesCommand` (idempotent — skips already-present names).
 4. Add `DevController` endpoints:
    - `POST /api/v1/dev/hotkeys/seed?reset={bool}`
-   - `POST /api/v1/dev/seed-all?reset={bool}` — runs all three in order (categories first).
+   - `POST /api/v1/dev/seed-all?reset={bool}` — runs categories → hotstrings → hotkeys in that order.
 5. Each seed item is assigned to the correct categories via `CategoryIds`.
+
+### `reset` Semantics
+
+When `reset=false` (default):
+- Categories: insert any seeded names not already present for the user (idempotent on `(OwnerOid, lower(Name))`).
+- Hotstrings: insert any seed triggers not already present for the user (idempotent on `(OwnerOid, Trigger)`).
+- Hotkeys: insert any seed key/modifier combos not already present for the user (idempotent on `(OwnerOid, Key, Ctrl, Alt, Shift, Win)`).
+- Existing user-created rows are never touched.
+
+When `reset=true`:
+- **Bounded delete-then-insert.** The endpoint clears, for the current user only, all `HotstringProfile`, `HotkeyProfile`, `HotstringCategory`, `HotkeyCategory`, `Hotstring`, `Hotkey`, and `Category` rows owned by that user before inserting the seed set. `Profile` rows are not touched (the user's default profile remains).
+- Junction rows in `HotstringProfile`/`HotkeyProfile` cascade via the parent delete.
+- Other users' data is never touched. Filters use `OwnerOid`.
+
+### Orchestration
+
+`SeedAllCommand` runs the three child commands inside **one EF Core transaction** via `IDbContextTransaction`:
+
+- `BeginTransactionAsync()` at handler entry.
+- Categories first, then hotstrings, then hotkeys.
+- Commit on success.
+- On exception anywhere in the chain: rollback, return `Result.Error("seed-all failed: <inner message>")` which maps to HTTP 500 with `ProblemDetails`.
+- The individual seed endpoints (`/hotstrings/seed`, `/hotkeys/seed`) each run their own transaction.
+
+This means partial seeds never leak: either the user ends up with all 8 categories + 12 hotstrings + 12 hotkeys (correctly linked), or nothing changes.
+
+### Interaction with Category Lazy-Seed
+
+`GET /api/v1/categories` also lazy-seeds the same eight starter categories when a user has zero categories (see the Categories spec). Order of operations is harmless:
+
+- If a user calls `GET /categories` first, then `POST /dev/seed-all?reset=false`: categories already exist; the seed step is a no-op on categories and proceeds with hotstrings/hotkeys.
+- If they call `seed-all` first: the seed transaction creates the categories; the subsequent `GET /categories` sees them and skips lazy-seed.
+- The seed-categories command uses the same idempotency rule (unique name per owner, case-insensitive) so concurrent paths cannot produce duplicates.
 
 ## Hotstring Seed Set
 

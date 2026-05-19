@@ -36,7 +36,8 @@ Close the remaining OpenAPI documentation gaps. Most of the foundation is alread
 3. Coordinate with the Categories spec so `CategoriesController` ships annotated.
 4. Coordinate with the UX Bundle spec so the new preview endpoint and bulk-delete endpoints ship annotated.
 5. Enable XML doc generation on `AHKFlowApp.Application.csproj`; extend `IncludeXmlComments` in `ApiExtensions.AddSwaggerDocs` to include `AHKFlowApp.Application.xml`.
-6. Suppress `CS1591` (missing XML doc) only on `AHKFlowApp.Application` to avoid noise from already-undocumented internals; add `<summary>` comments to **DTOs and command/query records** only.
+6. Suppress `CS1591` (missing XML doc) only on `AHKFlowApp.Application` to avoid noise from undocumented internals.
+7. **Scope XML comments narrowly: public API contract types only.** Concretely: DTOs in `AHKFlowApp.Application/DTOs/` (request/response shapes that appear in OpenAPI schemas) and their properties. Each DTO gets a `<summary>`; each property gets a `<summary>`. Command and query record types do **not** get XML comments in this spec — they are internal to the application layer and don't appear in the OpenAPI schema. Revisit later if those records start surfacing in Swagger (they shouldn't).
 
 Out of scope: OAuth2 auth-code flow, `SwaggerResponseExample` example bodies, public-domain XML docs on internal types.
 
@@ -48,7 +49,6 @@ Out of scope: OAuth2 auth-code flow, `SwaggerResponseExample` example bodies, pu
 - `src/Backend/AHKFlowApp.Application/AHKFlowApp.Application.csproj` — enable doc generation, optionally suppress CS1591.
 - `src/Backend/AHKFlowApp.API/Extensions/ApiExtensions.cs:51-53` — extend `IncludeXmlComments` to also include `AHKFlowApp.Application.xml`.
 - `src/Backend/AHKFlowApp.Application/DTOs/*.cs` — add `<summary>` XML comments on each DTO and its properties.
-- `src/Backend/AHKFlowApp.Application/Commands/**/*.cs` and `Queries/**/*.cs` — `<summary>` on each record type.
 
 ## Test Strategy
 
@@ -59,7 +59,7 @@ Out of scope: OAuth2 auth-code flow, `SwaggerResponseExample` example bodies, pu
 
 ## Risks and Watchouts
 
-- Adding XML comments on Application records produces many touched files. Stage as one PR for the doc generation wiring + one PR per project area for the comments to keep diffs reviewable.
+- Adding XML comments on DTOs touches many files. Stage as one PR for the doc generation wiring + one PR for the DTO comments to keep diffs reviewable.
 - `CS1591` suppression must be scoped to the Application csproj only — don't hide warnings elsewhere.
 
 ## Done Criteria

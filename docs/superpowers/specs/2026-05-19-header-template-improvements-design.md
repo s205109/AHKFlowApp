@@ -44,8 +44,16 @@ New service `HeaderTokenRenderer` (`src/Backend/AHKFlowApp.Application/Services/
 
 - Inputs: profile name, hotstring count, hotkey count, generation timestamp (`TimeProvider.GetUtcNow()`), app version.
 - Supported tokens: `{ProfileName}`, `{AppVersion}`, `{HotstringCount}`, `{HotkeyCount}`, `{GeneratedAt}` (default format `o`) or `{GeneratedAt:fmt}` where `fmt` is any valid `DateTimeOffset` format string.
+- **All token formatting uses `CultureInfo.InvariantCulture`.** This applies to `{GeneratedAt:fmt}` formatting and to numeric tokens (`{HotstringCount}`, `{HotkeyCount}`). Generated `.ahk` files must be culture-independent — a German developer's script must not produce comma decimal separators or non-English month names.
 - Unknown tokens are left as-is (no exception) to avoid surprise data loss.
 - Tokens not in the template are silently ignored.
+
+**Literal-brace escaping.** Authors who want a literal `{` or `}` in their header (e.g. a JSON snippet in a comment) write `{{` and `}}`. The renderer collapses `{{` → `{` and `}}` → `}` as a final pass *after* token substitution. Concretely:
+
+- Pass 1: substitute recognized tokens (`{ProfileName}`, `{GeneratedAt:fmt}`, etc.).
+- Pass 2: collapse `{{` → `{`, `}}` → `}`.
+
+This means a template that needs a literal `{HotstringCount}` (without substitution) is written as `{{HotstringCount}}` and will render as the literal string `{HotstringCount}`. Confirm with unit tests covering: a token, a literal brace, a token next to a literal brace, an unknown token, and an empty template.
 
 App version source: introduce `IAppVersionProvider` returning the informational version from the assembly attributes (already populated by MinVer). Injected into `HeaderTokenRenderer`.
 
@@ -68,7 +76,7 @@ App version source: introduce `IAppVersionProvider` returning the informational 
 
 ### Tests
 
-- `tests/AHKFlowApp.Application.Tests/Services/HeaderTokenRendererTests.cs` — token presence, unknown tokens preserved, format suffix on `{GeneratedAt}` honored, `{GeneratedAt}` default format `o`.
+- `tests/AHKFlowApp.Application.Tests/Services/HeaderTokenRendererTests.cs` — token presence, unknown tokens preserved, format suffix on `{GeneratedAt}` honored, `{GeneratedAt}` default format `o`, **InvariantCulture used regardless of `CurrentCulture`** (test sets `Thread.CurrentThread.CurrentCulture = new CultureInfo("de-DE")` and asserts no `,` in numeric output and no German month names in date output), **literal-brace escaping** (`{{` and `}}` collapsed to single braces, including when adjacent to tokens).
 - `tests/AHKFlowApp.Application.Tests/Services/AhkScriptGeneratorTests.cs` — generator emits header with tokens replaced.
 
 ## Test Strategy
@@ -77,8 +85,9 @@ Unit tests on `HeaderTokenRenderer` and `AhkScriptGenerator` only — no integra
 
 ## Risks and Watchouts
 
-- A user's existing custom header may already contain literal `{` and `}` — only the exact recognized tokens are substituted; bare braces stay verbatim.
+- Existing custom headers that contain literal `{` or `}` adjacent to nothing token-like are unaffected — only recognized token patterns are substituted in pass 1, and pass 2 only collapses doubled braces.
 - `{GeneratedAt:fmt}` parsing: split on first `:` to extract the format. A user could deliberately put `:` in the format — supported because the format string runs to the closing `}`.
+- InvariantCulture is a deliberate departure from a `TimeProvider` user's local culture — call this out in the renderer's XML doc so future contributors don't "fix" it.
 
 ## Done Criteria
 

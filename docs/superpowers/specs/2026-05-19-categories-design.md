@@ -34,9 +34,18 @@ Join tables:
 - `HotstringCategory(HotstringId, CategoryId)` — composite PK, cascade delete on either side.
 - `HotkeyCategory(HotkeyId, CategoryId)` — same shape.
 
-Seeded starter set (created lazily on the user's first `GET /categories` call when they own zero categories, mirroring `Profile` default behavior):
+Seeded starter set (created lazily on the user's first `GET /categories` call when they own zero categories, mirroring the existing `Profile` default-creation behavior):
 
 `Autocorrect`, `Communication`, `DateTime`, `Email`, `Code`, `Symbols`, `Window Management`, `App Launcher`.
+
+**Read-with-side-effect semantics — explicit contract:**
+
+- The endpoint remains `GET` (not `POST`) to preserve consistency with the existing `Profile` default-creation pattern.
+- The first call for a user that owns zero categories inserts the seeded starter set inside the same request, then returns the list.
+- Subsequent calls are pure reads — no writes, no duplicates.
+- Concurrent first-time calls rely on the `(OwnerOid, lower(Name))` unique index to deduplicate; the handler swallows duplicate-key violations from this seeding path.
+- Response carries `Cache-Control: no-store` to avoid caching the seeding write at proxies. (Other authenticated endpoints in this app already emit `no-store` via the default response cache profile; verify and extend if needed.)
+- The user may delete any seeded category; once deleted, they will not be re-seeded — the "user owns zero categories" trigger is only meaningful for true first-time use. The seeded state is tracked implicitly by row presence, not a flag.
 
 ## API Surface
 
@@ -46,7 +55,14 @@ Seeded starter set (created lazily on the user's first `GET /categories` call wh
 - `PUT /api/v1/categories/{id}` — update name.
 - `DELETE /api/v1/categories/{id}` — delete (cascade clears joins; hotstrings/hotkeys are not affected).
 
-Hotstring and Hotkey commands gain `CategoryIds: Guid[]`. `ListHotstringsQuery`/`ListHotkeysQuery` gain optional `categoryId` filter. DTOs gain `CategoryIds`.
+Hotstring and Hotkey commands gain `CategoryIds: Guid[]`. DTOs gain `CategoryIds`.
+
+`ListHotstringsQuery` / `ListHotkeysQuery` gain optional `categoryIds: Guid[]` filter:
+
+- Wire format: repeated query parameter (`?categoryIds=<guid>&categoryIds=<guid>`). ASP.NET Core model binding handles this natively for `Guid[]` action parameters. CSV is **not** supported.
+- Empty / missing → no category filter applied (existing behavior).
+- Semantics: **OR among `categoryIds`** — an item matches when its category set intersects the requested set (at least one match). This matches the UI chip-filter semantics defined under "UI Surface".
+- Combination with existing `search` and `profileId` is AND.
 
 ## UI Surface
 

@@ -50,8 +50,17 @@ New endpoint co-located on the existing `DownloadsController` to keep "anything 
 
 - `POST /api/v1/hotstrings/bulk-delete` body `{ "ids": ["guid", ...] }` → `BulkDeleteResultDto { deletedCount: int, missingIds: Guid[] }`.
 - `POST /api/v1/hotkeys/bulk-delete` — same shape.
-- Handler validates ownership per id; ids the user does not own (or that don't exist) are returned in `missingIds`. Partial success is allowed and reported.
-- Soft-cap request size at 500 ids per call (validator). Anything larger returns `Result.Invalid`.
+- Handler validates ownership per id; ids the user does not own (or that don't exist) are returned in `missingIds`.
+
+**HTTP contract for partial success — explicit:**
+
+- The response status is **always `200 OK`** when the request itself is well-formed and authorized. Partial success (some ids in `missingIds`) is *not* an error condition — the client receives the body and decides what to do.
+- `deletedCount: 0` and a non-empty `missingIds` array is also `200 OK`. That's still "the request was processed; here is what happened."
+- `400 Bad Request` is only returned when the request shape is invalid (e.g. `ids` empty, count > 500, malformed guid). The validator handles this — partial-success is not a validator case.
+- `401`/`403` apply as usual to the authorization layer; the handler is never reached.
+- This contract is stable for clients — they can rely on "if I get 200, parse the body" without branching on subset-success status codes (no `207 Multi-Status`).
+
+- Soft-cap request size at 500 ids per call (validator). Anything larger returns `400` with `Result.Invalid` and a clear error message.
 
 ### UI
 
