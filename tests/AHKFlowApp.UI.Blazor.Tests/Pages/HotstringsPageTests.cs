@@ -217,6 +217,7 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
         IRenderedComponent<Hotstrings> cut = RenderPage();
         cut.WaitForAssertion(() => cut.Find("button.start-edit"));
         cut.Find("button.start-edit").Click();
+        cut.WaitForAssertion(() => cut.Find("input[data-test=\"replacement-input\"]"));
         cut.Find("input[data-test=\"replacement-input\"]").Input("by the way!");
         cut.Find("button.commit-edit").Click();
 
