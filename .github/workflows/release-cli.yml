@@ -169,10 +169,11 @@ jobs:
               throw "ahkflow.exe --help failed with exit code $LASTEXITCODE."
           }
 
-          # Strip any pre-release/build suffix from the tag so the comparison
-          # is symmetric with $actualVersion (which only carries the SemVer
-          # core MAJOR.MINOR.PATCH after the regex below).
-          $expectedVersion = ($env:RELEASE_TAG.TrimStart("v") -replace '[+-].*$', '')
+          # Drop only the +build metadata from the tag. Pre-release components
+          # (e.g. -rc.1) MUST be preserved so the gate compares full SemVer
+          # identity, not just MAJOR.MINOR.PATCH; otherwise a v0.1.3-rc.1 tag
+          # would accept a binary reporting 0.1.3-beta.9.
+          $expectedVersion = ($env:RELEASE_TAG.TrimStart("v") -replace '\+.*$', '')
 
           # Capture stdout only. The CLI configures Serilog to write to stderr,
           # so any future startup banner on stderr must not be allowed to push
@@ -184,10 +185,10 @@ jobs:
 
           $versionText = ($versionOutput -join "`n")
 
-          # Match the first SemVer token in the output, with optional +build
-          # or -prerelease tail. Robust to extra lines and to System.CommandLine
-          # changing its surrounding wording.
-          if ($versionText -notmatch '\b(\d+\.\d+\.\d+)(?:[+-][^\s]*)?\b') {
+          # Capture MAJOR.MINOR.PATCH plus optional -prerelease (group 1),
+          # discarding any trailing +build metadata. The full SemVer identity
+          # is what we compare against the tag.
+          if ($versionText -notmatch '\b(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)(?:\+[0-9A-Za-z.-]+)?') {
               throw "Could not find a SemVer token in --version output. Raw output: '$versionText'"
           }
 
