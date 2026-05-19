@@ -5,99 +5,64 @@
 
 ## Goal
 
-Adopt the **builder pattern** for test data construction across all test projects, and back the development workflow with the combined `/api/v1/dev/seed-all` endpoint already specified in the Seed Expansion design.
+Extend the existing test-data builders to cover Categories and the new fields added by other 2026-05-19 specs, and use the combined `/api/v1/dev/seed-all` endpoint (delivered by the Seed Expansion spec) as a one-shot dev bootstrap.
 
-User preference recorded in memory: builders are the expected pattern for test data and scenario construction.
+## Current State (Verified)
 
-## Current State
+- `tests/AHKFlowApp.TestUtilities/AHKFlowApp.TestUtilities.csproj` already exists and is referenced from every test project (`AHKFlowApp.slnx`).
+- Builders already present in `tests/AHKFlowApp.TestUtilities/Builders/`:
+  - `HotstringBuilder.cs` — supports `WithOwner`, `InProfile`, `WithProfiles`, `AppliesToAllProfiles`, `WithTrigger`, `WithReplacement`, `WithEndingCharacterRequired`, `WithTriggerInsideWord`, `WithClock`, `Build()`.
+  - `HotkeyBuilder.cs`
+  - `ProfileBuilder.cs` — supports `WithOwner`, `WithName`, `AsDefault`, `WithHeader`, `WithFooter`, `WithClock`, `Build()`.
+  - `HealthResponseBuilder.cs`
+- Existing tests use these builders; **the original spec was wrong** about there being no shared test-support project.
 
-- Test files construct entities via factory methods inline (`Hotstring.Create(ownerOid, "btw", "by the way", appliesToAllProfiles: true, ...)`).
-- Arrange blocks grow long and brittle as parameter counts increase (Hotkey.Create already takes 9 args).
-- No shared test-support project — common helpers live as private statics scattered across `tests/*`.
+## Scope (Revised)
 
-## Builders
+This spec is now a small set of extensions, not a greenfield project.
 
-New shared project `tests/AHKFlowApp.TestSupport/AHKFlowApp.TestSupport.csproj` referenced by every test project:
+1. **Add `CategoryBuilder`** (after the Categories spec lands):
+   ```csharp
+   CategoryBuilder.WithOwner(ownerOid).Named("Email").WithClock(clock).Build();
+   ```
 
-```csharp
-// Hotstring
-var hs = HotstringBuilder.WithOwner(ownerOid)
-    .WithTrigger("btw")
-    .WithReplacement("by the way")
-    .NeedsEndingChar()             // toggles IsEndingCharacterRequired
-    .InsideWord()                  // toggles IsTriggerInsideWord
-    .WithCategory(catId)
-    .ForAllProfiles()              // sets flag, clears profile list
-    .WithDescription("greeting")
-    .Build(clock);
+2. **Extend `HotstringBuilder`** (after the Schema Polish spec lands):
+   - `WithDescription(string? description)` — sets `Description` on the produced entity.
 
-// Hotkey
-var hk = HotkeyBuilder.WithOwner(ownerOid)
-    .Ctrl().Alt().Key("T")
-    .Run("wt.exe")
-    .ForAllProfiles()
-    .WithCategory(launcherCatId)
-    .Described("Launch Windows Terminal")
-    .Build(clock);
+3. **Extend `HotstringBuilder` and `HotkeyBuilder`** (after the Categories spec lands):
+   - `WithCategory(Guid categoryId)` / `WithCategories(params Guid[] ids)` — attaches junction rows in `Build()`, matching the existing `InProfile`/`WithProfiles` pattern.
 
-// Profile
-var p = ProfileBuilder.WithOwner(ownerOid)
-    .Named("Work")
-    .AsDefault()
-    .WithHeader(DefaultProfileTemplates.Header)
-    .Build(clock);
+4. **Reuse existing builders** for `AhkScriptGenerator`-related tests added by the Header Template spec — no new builder type needed; `ProfileBuilder.WithHeader(...)` already exists.
 
-// Category
-var c = CategoryBuilder.WithOwner(ownerOid).Named("Email").Build(clock);
-```
-
-Builders compose with each entity's existing public `Create()` factory; they do **not** expose new entity APIs or break encapsulation. Defaults are sensible (e.g. `ForAllProfiles()` is the default for hotstring/hotkey to keep current test ergonomics).
-
-## Migration of Existing Tests
-
-- One PR per test project: replace inline `Entity.Create(...)` calls with builder calls. Behavior must not change.
-- Keep `Result`/DB-state assertions as-is.
-- Build pre-existing seed datasets used by `WebApplicationFactory` fixtures via the same builders for consistency.
-
-## Combined Dev Endpoint Support
-
-The `/seed-all` endpoint is delivered by the Seed Expansion spec. This spec only confirms the testing side: `WebApplicationFactory`-based tests can `POST /api/v1/dev/seed-all` against a Testcontainer to populate a known state, then assert via the public API rather than seeding through `DbContext` directly when an end-to-end shape is what's being tested.
-
-(Existing fixture helpers that seed via `DbContext` are still useful for unit-style integration tests — they remain.)
+5. **`/api/v1/dev/seed-all` test usage**: `WebApplicationFactory`-based integration tests gain a small helper extension (`SeedAllAsync(this HttpClient client, bool reset = true)`) on a shared test helper class. Use sparingly — most existing tests should keep their narrow `DbContext`-based fixtures because they're faster and easier to reason about.
 
 ## Files In Scope
 
-### New project
+### Existing project (extensions only)
 
-- `tests/AHKFlowApp.TestSupport/AHKFlowApp.TestSupport.csproj`
-- `tests/AHKFlowApp.TestSupport/Builders/HotstringBuilder.cs`
-- `tests/AHKFlowApp.TestSupport/Builders/HotkeyBuilder.cs`
-- `tests/AHKFlowApp.TestSupport/Builders/ProfileBuilder.cs`
-- `tests/AHKFlowApp.TestSupport/Builders/CategoryBuilder.cs`
+- `tests/AHKFlowApp.TestUtilities/Builders/CategoryBuilder.cs` (new file)
+- `tests/AHKFlowApp.TestUtilities/Builders/HotstringBuilder.cs` (add `WithDescription`, `WithCategory(ies)`)
+- `tests/AHKFlowApp.TestUtilities/Builders/HotkeyBuilder.cs` (add `WithCategory(ies)`)
+- `tests/AHKFlowApp.TestUtilities/Helpers/SeedAllHelper.cs` (new, optional — only if integration tests adopt it)
 
 ### Test projects
 
-- All five existing `tests/*.csproj` add `<ProjectReference>` to `AHKFlowApp.TestSupport`.
-- Existing tests migrated to builders (touched files only — no opportunistic refactors).
-
-### Solution file
-
-- `AHKFlowApp.slnx` includes the new project.
+- Existing tests that construct `Hotstring`/`Hotkey` for category-aware paths get the new builder methods applied. Touched files only; no opportunistic refactor.
 
 ## Test Strategy
 
-- One "golden" test per builder verifies the produced entity equals direct `Create()` invocation for the same inputs (sanity check).
-- No regression on existing assertions after migration; `dotnet test` stays green.
-- Builders carry no logic beyond mutating builder state — they don't deserve heavy testing themselves.
+- One golden test per new builder method verifies the produced entity matches a direct `Entity.Create(...)` invocation for the same inputs.
+- Existing tests stay green; `dotnet test` is the gate.
 
 ## Risks and Watchouts
 
-- Coordinating with Schema Polish spec: when `Description` lands on `Hotstring`, `HotstringBuilder` gets `.WithDescription(...)`. Sequence so this spec lands second.
-- Builders must default to safe values that don't accidentally hide validation gaps (e.g. don't default `Trigger` to a non-empty string — force the caller to supply it).
-- New test-support project must NOT be referenced by production code.
+- Builder defaults must remain safe: `WithCategory(...)` accumulates rather than replaces, while `WithCategories(...)` replaces — match the established `InProfile`/`WithProfiles` semantics so users aren't surprised.
+- Don't reference `AHKFlowApp.TestUtilities` from production code (it's in `tests/`).
+- The `/api/v1/dev/seed-all` helper is for end-to-end-shape tests only; for unit-style integration tests, seeding via `DbContext` directly in the fixture remains preferable.
 
 ## Done Criteria
 
-- `AHKFlowApp.TestSupport` builds and is referenced by all test projects.
-- All current tests use builders for `Hotstring`, `Hotkey`, `Profile`, `Category`.
-- `dotnet test` green across all projects.
+- `CategoryBuilder` lands after Categories ship.
+- `HotstringBuilder.WithDescription` lands after Schema Polish.
+- `HotstringBuilder.WithCategory(ies)` and `HotkeyBuilder.WithCategory(ies)` land alongside Categories.
+- `dotnet test` green.

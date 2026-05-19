@@ -51,7 +51,7 @@ Hotstring and Hotkey commands gain `CategoryIds: Guid[]`. `ListHotstringsQuery`/
 ## UI Surface
 
 - New `Categories.razor` page: simple MudDataGrid with create/edit/delete.
-- Hotstrings/Hotkeys pages: chip-filter row above the grid, chips populated from the user's categories; multi-select OR-semantics.
+- Hotstrings/Hotkeys pages: chip-filter row above the grid, chips populated from the user's categories. **Multi-select OR-semantics**: selecting multiple chips returns items in *any* of those categories. The chip filter composes with the existing text `search` box via AND (item must match `search` AND match at least one selected chip).
 - Editor dialogs gain a multi-select Categories input (`MudAutocomplete<CategoryDto>` with `MultiSelection`).
 
 ## Files In Scope
@@ -90,7 +90,7 @@ Hotstring and Hotkey commands gain `CategoryIds: Guid[]`. `ListHotstringsQuery`/
 
 ## Risks and Watchouts
 
-- The chip filter and existing `search` box must compose with OR/AND semantics that match user expectations — pick AND (item must match both search AND every selected chip) and document.
+- Chips use OR among themselves; text search composes with the chip set via AND (see UI Surface). Document this in the page-level help text.
 - Lazy-seed runs inside the list query handler; treat creation as best-effort idempotent (catch unique-violation race for paranoid).
 - New `CategoryIds` field on existing Hotstring/Hotkey DTOs is additive — clients tolerate, but the OpenAPI polish spec needs to capture the change.
 

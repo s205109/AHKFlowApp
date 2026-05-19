@@ -5,86 +5,76 @@
 
 ## Goal
 
-Three targeted schema/domain refinements:
+Two targeted schema/domain refinements:
 
 1. Resolve `AppliesToAllProfiles` dual-mechanism ambiguity on `Hotstring`/`Hotkey`.
 2. Add a `Description` field on `Hotstring` (parity with `Hotkey`).
-3. Add SQL Server `rowversion` optimistic concurrency tokens on the four editable aggregates (`Hotstring`, `Hotkey`, `Profile`, `Category`).
+
+**Removed from original scope:** RowVersion optimistic concurrency. Reason: single-user-per-tenant data model with low concurrent-edit contention. Adding `byte[] RowVersion` across four entities, every update DTO, every command/validator, every editor dialog, plus EF `OriginalValue` wiring (see below) is high-cost for marginal benefit at current scale. Revisit if concurrent-edit issues are reported.
+
+> Implementation note for any future RowVersion work: EF Core's concurrency check uses `Entry(entity).Property(e => e.RowVersion).OriginalValue`. Update handlers currently load a fresh tracked entity via `FirstOrDefaultAsync` before saving — so the just-loaded DB value becomes the "original" and stale-client detection silently no-ops. Any future spec must explicitly require decoding the DTO `RowVersion` (base64 → `byte[]`) and assigning it to `OriginalValue` before `SaveChangesAsync`.
 
 ## Current State
 
-- `Hotstring.AppliesToAllProfiles` (bool) **and** `HotstringProfile` join table — two sources of truth. Same on `Hotkey`/`HotkeyProfile`. Nothing enforces consistency.
+- `Hotstring.AppliesToAllProfiles` (bool) **and** `HotstringProfile` join table — two sources of truth. Same on `Hotkey`/`HotkeyProfile`. Nothing enforces consistency at the domain layer. Handlers and validators have ad-hoc rules (see `UpdateHotstringCommand.cs:49` — junction rows replaced only when flag is false), but the rule isn't centralized.
 - `Hotkey` has `Description` (max 200). `Hotstring` does not.
-- No concurrency token on any entity. Last-write-wins between concurrent tabs.
 
 ## (1) AppliesToAllProfiles Cleanup
 
-**Decision:** keep the boolean as the canonical signal. Enforce invariant *"if `AppliesToAllProfiles == true`, the join set is empty"*.
+**Decision:** keep the boolean as the canonical signal. Centralize the invariant *"if `AppliesToAllProfiles == true`, the join set is empty"* at the validator + handler boundary. The domain entity `Create`/`Update` methods do not accept profile IDs today (junction rows are managed in the handler post-entity-creation, e.g. `CreateHotstringCommand.cs:70`), so no domain API change is needed.
 
-- Domain guard inside `Hotstring.Create`/`Hotstring.Update` and the `Hotkey` equivalents: throw `InvalidOperationException` if both the flag is set and any profile id is supplied.
-- Validator `CreateHotstringCommandValidator` / `UpdateHotstringCommandValidator` (and hotkey equivalents) enforce the same at the boundary.
-- Migration backfill: for any existing row with `AppliesToAllProfiles == true` AND non-empty join set, the flag wins — clear the join. (Survey of current data shows few/no such rows from seed.)
-- Document `AppliesToAllProfiles == true` semantics: "applies to every profile owned by the user, including future profiles." Existing query logic already matches this.
+- **Validator**: `Application/Validation/ProfileAssociationRules.cs` (which `AddProfileAssociationRules(...)` already calls into) tightens the rule: when `AppliesToAllProfiles == true`, `ProfileIds` must be null or empty — already enforced; verify and add a test.
+- **Handler**: explicit branch in create/update — when `AppliesToAllProfiles == true`, junction rows are not added (`CreateHotstringCommand.cs:70-74`, `UpdateHotstringCommand.cs:73-81`). Already present. Add unit-level handler tests that assert no junction rows are inserted when the flag is true.
+- **Migration backfill**: one EF migration emits SQL that clears `HotstringProfile`/`HotkeyProfile` rows where the parent has `AppliesToAllProfiles == 1`. Decision: flag wins.
+- **Document** `AppliesToAllProfiles == true` semantics in inline XML doc on the entity property and DTO field: "applies to every profile owned by the user, including future profiles."
 
 Rejected alternative: introduce an "All" sentinel profile and drop the flag. Reason: more migration churn, breaks the existing API contract (DTOs expose the boolean).
 
 ## (2) Description on Hotstring
 
 - New `string? Description` on `Hotstring` (max 200, nullable). Mirror `Hotkey.Description` shape.
-- EF config sets max length and column type.
-- `HotstringDto`, `CreateHotstringCommand`, `UpdateHotstringCommand`, validators, handlers, and `ListHotstringsQuery.search` predicate all include the field.
-- UI: optional `Description` field in the hotstring editor and a column on the data grid (hidden by default until user toggles).
-
-## (3) RowVersion Concurrency
-
-- Add `byte[] RowVersion` to `Hotstring`, `Hotkey`, `Profile`, `Category`.
-- EF config: `.IsRowVersion()` — SQL Server emits `rowversion` column, auto-managed.
-- DTOs expose `RowVersion` as base64 `string` (matches MudBlazor edit-and-resubmit flow).
-- `Update*Command` accepts `RowVersion` and passes through to EF. `DbUpdateConcurrencyException` is caught at the handler layer and mapped to `Result.Conflict()`.
-- Controllers map `Result.Conflict()` to `409 Conflict` (already covered by `ToActionResult()`).
-- UI: edit form preserves the row's `RowVersion` and sends it back on save; on 409, show a snackbar prompting reload.
+- EF config sets max length and column type (`nvarchar(200) NULL`).
+- `HotstringDto`, `CreateHotstringDto`, `UpdateHotstringDto`, validators, handlers, and `ListHotstringsQuery.search` predicate all include the field.
+- UI: optional `Description` field in the hotstring editor dialog and a column on the data grid (hidden by default; toggleable via the grid column chooser).
 
 ## Files In Scope
 
 ### Backend
 
-- `src/Backend/AHKFlowApp.Domain/Entities/Hotstring.cs` — Description field, RowVersion, invariant in factory/update.
-- `src/Backend/AHKFlowApp.Domain/Entities/Hotkey.cs` — RowVersion, invariant in factory/update.
-- `src/Backend/AHKFlowApp.Domain/Entities/Profile.cs` — RowVersion.
-- `src/Backend/AHKFlowApp.Domain/Entities/Category.cs` — RowVersion (after Categories spec).
-- `src/Backend/AHKFlowApp.Infrastructure/Persistence/Configurations/*` — `IsRowVersion()` on each.
-- `src/Backend/AHKFlowApp.Infrastructure/Migrations/<timestamp>_SchemaPolish.cs` — adds Description column on `Hotstrings`, RowVersion column on all four tables, plus the AppliesToAll backfill SQL.
-- `src/Backend/AHKFlowApp.Application/DTOs/*` — fields added to DTOs.
-- `src/Backend/AHKFlowApp.Application/Commands/*` and `src/Backend/AHKFlowApp.Application/Validators/*` — new fields and invariant validation.
-- `src/Backend/AHKFlowApp.Application/Queries/Hotstrings/ListHotstringsQuery.cs` — include Description in `search`.
+- `src/Backend/AHKFlowApp.Domain/Entities/Hotstring.cs` — `Description` field, factory + update signature accept it.
+- `src/Backend/AHKFlowApp.Infrastructure/Persistence/Configurations/HotstringConfiguration.cs` — column type + max length.
+- `src/Backend/AHKFlowApp.Infrastructure/Migrations/<timestamp>_SchemaPolish.cs` — adds `Description` column on `Hotstrings`, backfills junction inconsistencies.
+- `src/Backend/AHKFlowApp.Application/DTOs/HotstringDto.cs`, `CreateHotstringDto.cs`, `UpdateHotstringDto.cs` — add `Description`.
+- `src/Backend/AHKFlowApp.Application/Commands/Hotstrings/*` — thread `Description` through create/update.
+- `src/Backend/AHKFlowApp.Application/Validators/Hotstrings/*` — max-length rule on `Description`.
+- `src/Backend/AHKFlowApp.Application/Queries/Hotstrings/ListHotstringsQuery.cs` — include `Description` in `search` LIKE clause.
 
 ### Frontend
 
-- `src/Frontend/AHKFlowApp.UI.Blazor/Pages/Hotstrings.razor` — Description editor + column toggle.
-- Editor dialogs in both pages — roundtrip RowVersion; handle 409 with reload prompt.
+- `src/Frontend/AHKFlowApp.UI.Blazor/Pages/Hotstrings.razor` — `Description` editor input + grid column (toggleable).
+- `src/Frontend/AHKFlowApp.UI.Blazor/Services/HotstringsApiClient.cs` — DTO update.
 
 ### Tests
 
-- `tests/AHKFlowApp.Application.Tests/Validators/*` — invariant rejected when flag + profile ids both set.
-- `tests/AHKFlowApp.API.Tests/Controllers/*` — concurrent update returns 409.
-- Existing tests updated for new DTO fields (additive, mostly mechanical).
+- `tests/AHKFlowApp.Application.Tests/Validators/HotstringValidatorTests.cs` — invariant test for `AppliesToAllProfiles == true` rejects non-empty `ProfileIds`.
+- `tests/AHKFlowApp.Application.Tests/Commands/Hotstrings/UpdateHotstringCommandHandlerTests.cs` — junction rows are not inserted when flag is true.
+- `tests/AHKFlowApp.API.Tests/Controllers/HotstringsControllerTests.cs` — `Description` round-trips through CRUD; search matches against `Description`.
 
 ## Test Strategy
 
-- Validator unit test: `CreateHotstringCommand` rejects flag+profileIds together.
-- Integration: two parallel updates to the same row — first succeeds, second returns 409 with `Result.Conflict()`.
-- Integration: search by Description text.
+- Validator unit tests: existing `AddProfileAssociationRules` rejects flag+profile IDs combination.
+- Handler unit tests: confirm no junction rows are added when flag is true (Create and Update).
+- Integration: search by `Description` text returns the matching hotstring.
 - Migration applies cleanly on existing seed data.
 
 ## Risks and Watchouts
 
-- Migration changes four tables in one file. If a deploy fails mid-migration, EF Core rolls back transactionally on SQL Server (default).
-- `RowVersion` round-tripping requires DTOs and validators to skip the field on create (no version yet) and require it on update.
-- Existing tests that build entities via `Hotstring.Create(...)` need a new `description = null` parameter — coordinate with the Test/Dev Tooling spec (builders) to minimize churn.
+- Migration changes only the `Hotstrings` table schema (adds `Description`) plus a one-time DELETE on the two junction tables for any inconsistent rows. EF Core's SQL Server provider runs migrations transactionally; failure rolls back cleanly.
+- Existing tests that build `Hotstring` via `Hotstring.Create(...)` need a new `description = null` parameter — coordinate with the Test/Dev Tooling spec (the existing `HotstringBuilder` should add `WithDescription(...)` so test churn is minimal).
+- `Description` is in the LIKE search clause — confirm SQL generation does not produce unbounded full-table scans for very large user data sets. Add `LIKE 'pattern%'` prefix-only? No — keep `%pattern%` to match user intent; revisit only if performance shows a problem.
 
 ## Done Criteria
 
-- One migration adds Description column, RowVersion columns, backfills any `AppliesToAll` inconsistencies.
-- Update endpoints return 409 on concurrent edit.
-- Hotstring CRUD honours Description.
-- Domain invariant enforced at factory + validator.
+- One migration adds `Description` column and backfills any `AppliesToAll` inconsistencies.
+- `Hotstring` CRUD round-trips `Description`; search hits it.
+- Validator and handler tests cover the AppliesToAll invariant.
