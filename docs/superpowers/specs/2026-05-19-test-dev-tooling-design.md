@@ -34,7 +34,7 @@ This spec is now a small set of extensions, not a greenfield project.
 
 4. **Reuse existing builders** for `AhkScriptGenerator`-related tests added by the Header Template spec — no new builder type needed; `ProfileBuilder.WithHeader(...)` already exists.
 
-5. **`/api/v1/dev/seed-all` test usage**: `WebApplicationFactory`-based integration tests gain a small helper extension (`SeedAllAsync(this HttpClient client, bool reset = true)`) on a shared test helper class. Use sparingly — most existing tests should keep their narrow `DbContext`-based fixtures because they're faster and easier to reason about.
+5. **`/api/v1/dev/seed-all` test usage**: **Deferred — no task in this batch.** A `SeedAllAsync(this HttpClient client, bool reset = true)` helper on a shared test helper class is the intended shape *if and when* an integration test wants it. Promotion criterion: the first integration test that wants `seed-all` against a `WebApplicationFactory` shapes the signature and adds the helper in the same commit. Until then, narrow `DbContext`-based fixtures remain preferable (faster, easier to reason about) and no helper file is created.
 
 ## Files In Scope
 
@@ -43,7 +43,7 @@ This spec is now a small set of extensions, not a greenfield project.
 - `tests/AHKFlowApp.TestUtilities/Builders/CategoryBuilder.cs` (new file)
 - `tests/AHKFlowApp.TestUtilities/Builders/HotstringBuilder.cs` (add `WithDescription`, `WithCategory(ies)`)
 - `tests/AHKFlowApp.TestUtilities/Builders/HotkeyBuilder.cs` (add `WithCategory(ies)`)
-- `tests/AHKFlowApp.TestUtilities/Helpers/SeedAllHelper.cs` (new, optional — only if integration tests adopt it)
+- `tests/AHKFlowApp.TestUtilities/Helpers/SeedAllHelper.cs` — **deferred, not in this batch**. Created only when the first integration test adopts it (see Scope #5).
 
 ### Test projects
 
@@ -51,18 +51,20 @@ This spec is now a small set of extensions, not a greenfield project.
 
 ## Test Strategy
 
-- One golden test per new builder method verifies the produced entity matches a direct `Entity.Create(...)` invocation for the same inputs.
+- The new builder methods are trivial pass-throughs to `Entity.Create(...)` and junction-collection appends. Coverage comes from the consuming handler/integration tests added in the same task batches (Categories Tasks 8–12, 18; Schema Polish Task 8) — if those tests pass, the builder method behaved correctly. No standalone "builder under test" suite is added.
+- Builder methods that diverge from this pass-through pattern (e.g. add validation, defaulting beyond `Entity.Create`, or non-trivial transformation) **do** require a focused test alongside.
 - Existing tests stay green; `dotnet test` is the gate.
 
 ## Risks and Watchouts
 
 - Builder defaults must remain safe: `WithCategory(...)` accumulates rather than replaces, while `WithCategories(...)` replaces — match the established `InProfile`/`WithProfiles` semantics so users aren't surprised.
 - Don't reference `AHKFlowApp.TestUtilities` from production code (it's in `tests/`).
-- The `/api/v1/dev/seed-all` helper is for end-to-end-shape tests only; for unit-style integration tests, seeding via `DbContext` directly in the fixture remains preferable.
+- The `/api/v1/dev/seed-all` helper is deferred; if ever promoted, it is for end-to-end-shape tests only. For unit-style integration tests, seeding via `DbContext` directly in the fixture remains preferable.
 
 ## Done Criteria
 
 - `CategoryBuilder` lands after Categories ship.
 - `HotstringBuilder.WithDescription` lands after Schema Polish.
 - `HotstringBuilder.WithCategory(ies)` and `HotkeyBuilder.WithCategory(ies)` land alongside Categories.
+- `SeedAllAsync` helper is **explicitly deferred** — not part of this spec's done criteria. Re-introduce as a new spec/task when an integration test actually wants it.
 - `dotnet test` green.

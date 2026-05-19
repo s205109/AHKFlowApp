@@ -16,7 +16,7 @@
 
 Five review findings applied. Execute the plan in **document order** — task numbers were preserved for stability, but several tasks have been rewritten in place. Read this section before starting.
 
-1. **CategoryBuilder moves to Task 4** (was Task 18). It is a prerequisite for handler tests in Tasks 8-12. The old Task 18 is removed; do not look for it.
+1. **CategoryBuilder moves to Task 3a** (was Task 18). It is a prerequisite for handler tests in Tasks 8-12. The `WithCategory(ies)` extensions on `HotstringBuilder`/`HotkeyBuilder` stay in **Task 18** because they depend on junction entities flowing through handlers first.
 
 2. **UserPreference seed marker** is added in Task 4 alongside CategoryBuilder. A nullable `CategoriesSeededAt: DateTimeOffset?` on `UserPreference` controls re-seed behavior. Once set, the eight starter categories are never re-created for that user — deleting them all does **not** trigger a re-seed. This replaces the original "user owns zero categories" trigger. Migration in Task 5 adds the column.
 
