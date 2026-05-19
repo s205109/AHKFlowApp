@@ -213,7 +213,25 @@ jobs:
               }
           }
           else {
-              gh release upload $env:RELEASE_TAG $zipPath --clobber
+              $assetName = Split-Path $zipPath -Leaf
+
+              # Reaching this branch means the outer `gh release view` succeeded,
+              # so the release definitely exists. A failure to enumerate its
+              # assets here is therefore an auth/API/transient error, not a
+              # signal that the release is empty. Treat any non-zero exit as
+              # fatal — silently falling through would risk overwriting an
+              # already-published asset via the unconditional `gh release upload`
+              # below, breaking the immutability promise this step exists to keep.
+              $existingAssets = gh release view $env:RELEASE_TAG --json assets --jq ".assets[].name"
+              if ($LASTEXITCODE -ne 0) {
+                  throw "Could not enumerate assets for tag $($env:RELEASE_TAG) (gh release view exit code $LASTEXITCODE). Refusing to upload without knowing the current asset state."
+              }
+
+              if ($existingAssets -split "`n" -contains $assetName) {
+                  throw "Release asset '$assetName' is already published for tag $($env:RELEASE_TAG). Treating release assets as immutable. To ship a new build, cut a new tag."
+              }
+
+              gh release upload $env:RELEASE_TAG $zipPath
               if ($LASTEXITCODE -ne 0) {
                   throw "gh release upload failed with exit code $LASTEXITCODE."
               }
