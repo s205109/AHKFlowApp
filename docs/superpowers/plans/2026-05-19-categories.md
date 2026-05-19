@@ -2374,11 +2374,18 @@ git commit -m "chore: dotnet format"
 
 After implementation:
 
-- [ ] All 23 tasks completed with their tests passing.
+- [ ] All tasks completed in document order with their tests passing (Tasks 1, 2, 3, 3a, 4, 5, …, 22, 23).
 - [ ] No `categoryId` (singular) anywhere — wire format is `categoryIds[]` (repeated query param).
 - [ ] OR semantics for chip filter verified manually.
-- [ ] Lazy-seed does not re-seed after user deletes the defaults (Task 12 test covers this).
+- [ ] **Seed marker behavior:** deleting all defaults does NOT re-seed (Task 12 test `DoesNotReseed_AfterUserDeletesAll_BecauseMarkerIsSet`).
+- [ ] **`UserPreference.CategoriesSeededAt`** column exists and is non-null after the first `GET /categories`.
+- [ ] **`GET /categories` is paginated** (`PagedList<CategoryDto>` shape, `page`/`pageSize`/`search` honored).
+- [ ] `pageSize > 200` returns 400.
 - [ ] Cache-Control: no-store on `CategoriesController` (Task 13).
+- [ ] **Frontend client returns `ApiResult<T>`** (not raw DTOs); UI pages use `.IsSuccess`/`.Status` branches, no `EnsureSuccessStatusCode`.
+- [ ] **`ICategoriesApiClient` registered in BOTH auth branches of `Program.cs`** via `AddApiClient<...>(baseAddress, timeout, useAuth: ...)`.
+- [ ] **Task 16 (Hotkey) executed with concrete code**, not by reference.
+- [ ] **`CategoryBuilder` exists from Task 3a** before any handler tests reference it.
 - [ ] `dotnet format` clean.
 - [ ] No production code references `AHKFlowApp.TestUtilities`.
 
