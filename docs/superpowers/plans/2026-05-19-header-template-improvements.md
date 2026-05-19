@@ -6,6 +6,8 @@
 
 **Architecture:** A new `HeaderTokenRenderer` service performs token substitution. `AhkScriptGenerator` gains a dependency on it (plus `TimeProvider` and a new `IAppVersionProvider`) and renders the profile's `HeaderTemplate` and `FooterTemplate` through the renderer before emitting them. No schema changes; only new code paths.
 
+> **Note on `IAppVersionProvider`:** An async sibling already exists at `src/Backend/AHKFlowApp.Infrastructure/Services/IVersionService.cs` (used by `HealthController` and `VersionController`). The generator path is sync, so a new sync `IAppVersionProvider` lives in `Application/Abstractions`. Both implementations must read **`Assembly.GetEntryAssembly()`** (where MinVer writes the attribute — the API project) and **not** `typeof(self).Assembly`, since MinVer is not applied to `AHKFlowApp.Infrastructure`. A future cleanup may consolidate the two interfaces; out of scope here.
+
 **Tech Stack:** .NET 10, MediatR, xUnit, FluentAssertions, NSubstitute, `Microsoft.Extensions.Time.Testing.FakeTimeProvider`.
 
 **Spec:** `docs/superpowers/specs/2026-05-19-header-template-improvements-design.md`
@@ -53,6 +55,7 @@
 
 ```csharp
 // tests/AHKFlowApp.Infrastructure.Tests/Services/AssemblyAppVersionProviderTests.cs
+using System.Reflection;
 using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Infrastructure.Services;
 using FluentAssertions;
@@ -70,7 +73,25 @@ public sealed class AssemblyAppVersionProviderTests
         string version = sut.GetVersion();
 
         version.Should().NotBeNullOrWhiteSpace();
-        version.Should().NotBe("0.0.0"); // sanity — MinVer should produce something more specific
+    }
+
+    [Fact]
+    public void GetVersion_MatchesEntryAssemblyInformationalVersion()
+    {
+        // Lock in that the provider reads the ENTRY assembly (MinVer target),
+        // not the Infrastructure assembly. If someone changes it to
+        // typeof(self).Assembly, this test fails because Infrastructure has no
+        // MinVer-stamped attribute.
+        string? expectedRaw = Assembly.GetEntryAssembly()?
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
+            .InformationalVersion;
+        expectedRaw.Should().NotBeNullOrWhiteSpace(
+            "test host should have an InformationalVersion attribute");
+
+        int plus = expectedRaw!.IndexOf('+');
+        string expected = plus >= 0 ? expectedRaw[..plus] : expectedRaw;
+
+        new AssemblyAppVersionProvider().GetVersion().Should().Be(expected);
     }
 }
 ```
@@ -104,15 +125,19 @@ namespace AHKFlowApp.Infrastructure.Services;
 
 public sealed class AssemblyAppVersionProvider : IAppVersionProvider
 {
-    // Read the informational version once. MinVer writes this attribute at build time.
+    // Read the informational version once. MinVer writes this attribute on the
+    // ENTRY assembly (AHKFlowApp.API), not on Infrastructure — see the existing
+    // VersionService.cs for prior art using the same approach.
     private static readonly string s_version = ResolveVersion();
 
     public string GetVersion() => s_version;
 
     private static string ResolveVersion()
     {
-        Assembly asm = typeof(AssemblyAppVersionProvider).Assembly;
-        string? info = asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        Assembly? entry = Assembly.GetEntryAssembly();
+        string? info = entry?
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
+            .InformationalVersion;
         if (!string.IsNullOrWhiteSpace(info))
         {
             // Strip git-sha trailer that MinVer sometimes appends: "1.2.3+abc1234"
@@ -120,7 +145,7 @@ public sealed class AssemblyAppVersionProvider : IAppVersionProvider
             return plus >= 0 ? info[..plus] : info;
         }
 
-        return asm.GetName().Version?.ToString() ?? "0.0.0";
+        return entry?.GetName().Version?.ToString() ?? "0.0.0-dev";
     }
 }
 ```
@@ -268,23 +293,12 @@ public sealed class HeaderTokenRendererTests
         }
     }
 
-    [Fact]
-    public void Uses_InvariantCulture_For_Counts()
-    {
-        CultureInfo original = Thread.CurrentThread.CurrentCulture;
-        try
-        {
-            Thread.CurrentThread.CurrentCulture = new CultureInfo("de-DE");
-            // 12 has no separators; use a larger number to prove the point.
-            string rendered = NewSut().Render("{HotstringCount}", Ctx(hotstrings: 1234));
-            // German would render "1.234"; invariant must render "1234".
-            rendered.Should().Be("1234");
-        }
-        finally
-        {
-            Thread.CurrentThread.CurrentCulture = original;
-        }
-    }
+    // Note: plain int.ToString() is culture-invariant for non-negative
+    // integers (no thousands separator), so a "de-DE vs invariant" assertion
+    // on a count token would pass even if InvariantCulture were removed —
+    // a false-confidence test. The Self-Review Checklist below requires the
+    // explicit InvariantCulture call regardless; the GeneratedAt culture
+    // test above covers the actual culture-sensitive path.
 
     [Fact]
     public void Renders_When_NoBraces_AtAll()
@@ -418,8 +432,6 @@ public sealed class HeaderTokenRenderer
 ```
 
 - [ ] **Step 4: Run tests — all pass**
-
-Expected: 12 tests pass.
 
 - [ ] **Step 5: Commit**
 
@@ -753,11 +765,14 @@ git commit -m "test: end-to-end header token substitution"
 
 ## Task 7: Final Verification
 
-- [ ] **Step 1: Full build + test**
+- [ ] **Step 1: Full build + test (Release — matches CI)**
+
+CI (`.github/workflows/ci.yml`) builds and tests with `--configuration Release`. Mirror that here so local verification catches the same warnings/errors CI will.
 
 ```bash
-dotnet build --no-restore
-dotnet test --no-build --verbosity normal
+dotnet restore
+dotnet build --configuration Release --no-restore
+dotnet test --configuration Release --no-build --verbosity normal
 ```
 
 - [ ] **Step 2: Format**
@@ -792,8 +807,10 @@ git commit -m "chore: dotnet format" --allow-empty=false 2>&1 || echo "nothing t
 - [ ] `AhkScriptGenerator` ctor takes `HeaderTokenRenderer`, `TimeProvider`, `IAppVersionProvider`.
 - [ ] `HeaderTokenRenderer` and `IAppVersionProvider` are registered as `AddSingleton`.
 - [ ] `DefaultProfileTemplates.Header` matches the spec exactly (no leftover `SetCapsLockState`).
-- [ ] At least one test sets `Thread.CurrentThread.CurrentCulture = new CultureInfo("de-DE")` and asserts the invariant output (covers the AGENTS.md "explicit InvariantCulture" rule).
+- [ ] At least one test sets `Thread.CurrentThread.CurrentCulture = new CultureInfo("de-DE")` and asserts invariant output on a **culture-sensitive** path — e.g. `{GeneratedAt:dd MMMM yyyy}` rendering `May` not `Mai`. (Count tokens are not culture-sensitive for plain `int.ToString()`, so they cannot prove the rule.)
+- [ ] `AssemblyAppVersionProvider` reads `Assembly.GetEntryAssembly()` (MinVer target), not `typeof(self).Assembly`.
 - [ ] `dotnet format` clean.
+- [ ] Final `dotnet build` / `dotnet test` run with `--configuration Release` to match CI.
 
 ---
 

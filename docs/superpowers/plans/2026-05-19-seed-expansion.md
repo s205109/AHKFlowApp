@@ -27,11 +27,14 @@
 - `tests/AHKFlowApp.Application.Tests/Dev/SeedCategoriesCommandHandlerTests.cs`
 - `tests/AHKFlowApp.Application.Tests/Dev/SeedHotkeysCommandHandlerTests.cs`
 - `tests/AHKFlowApp.Application.Tests/Dev/SeedAllCommandHandlerTests.cs`
+- `tests/AHKFlowApp.Application.Tests/Dev/ThrowOnNthSaveDbContext.cs` (test-only `IAppDbContext` decorator that throws on the Nth `SaveChangesAsync` — used to verify rollback)
 - `tests/AHKFlowApp.API.Tests/Dev/SeedAllEndpointTests.cs`
 
 ### Modify
 
-- `src/Backend/AHKFlowApp.Application/Commands/Dev/SeedHotstringsCommand.cs` — expand `s_samples` to 12, attach category links, expose seed-by-category-name lookup helper.
+- `src/Backend/AHKFlowApp.Application/Commands/Dev/SeedHotstringsCommand.cs` — expand `s_samples` to 12, attach category links, backfill junctions on pre-existing seed rows.
+- `src/Backend/AHKFlowApp.Application/Abstractions/IAppDbContext.cs` — add `Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken)`.
+- `src/Backend/AHKFlowApp.Infrastructure/Persistence/AppDbContext.cs` — implement the new interface method as a pass-through to `Database.BeginTransactionAsync`.
 - `src/Backend/AHKFlowApp.API/Controllers/DevController.cs` — add `hotkeys/seed`, `categories/seed`, `seed-all` endpoints.
 - `tests/AHKFlowApp.API.Tests/Dev/` — add endpoint tests.
 
@@ -289,9 +292,9 @@ private static readonly (
 
 The escaped unicode keeps the file ASCII-safe; the persisted Replacement contains the real glyph at runtime (`→` → `→`).
 
-- [ ] **Step 2: Wire category lookup and junction insert**
+- [ ] **Step 2: Wire category lookup, junction insert, and backfill**
 
-Inside the handler's existing loop (after `db.Hotstrings.Add(...)`), look up the user's categories by name (loaded once before the loop) and insert junction rows:
+Inside the handler's existing loop, after the exists/skip check, **branch**: if the hotstring already exists, look up its id and backfill any missing junctions; otherwise insert the new entity then attach junctions. Load the user's categories once before the loop:
 
 ```csharp
 // Before the foreach over s_samples:
@@ -299,28 +302,51 @@ Dictionary<string, Guid> categoryByName = await db.Categories
     .Where(c => c.OwnerOid == ownerOid)
     .ToDictionaryAsync(c => c.Name, c => c.Id, ct);
 
-// Inside the loop, after the existing exists/skip + db.Hotstrings.Add:
-Hotstring entity = Hotstring.Create(ownerOid, trigger, replacement, /* description */ null,
-    appliesToAllProfiles: true, isEndingCharacterRequired: ending, isTriggerInsideWord: inside, clock);
-db.Hotstrings.Add(entity);
+// Existing junction rows for this user's seeded hotstrings, keyed by (hotstringId, categoryId):
+HashSet<(Guid HotstringId, Guid CategoryId)> existingLinks = (await db.HotstringCategories
+        .Where(hc => hc.Hotstring.OwnerOid == ownerOid)
+        .Select(hc => new { hc.HotstringId, hc.CategoryId })
+        .ToListAsync(ct))
+    .Select(x => (x.HotstringId, x.CategoryId))
+    .ToHashSet();
+
+// Inside the loop:
+Hotstring? existing = await db.Hotstrings
+    .FirstOrDefaultAsync(h => h.OwnerOid == ownerOid && h.Trigger == trigger, ct);
+
+Guid hotstringId;
+if (existing is not null)
+{
+    hotstringId = existing.Id;
+}
+else
+{
+    Hotstring entity = Hotstring.Create(ownerOid, trigger, replacement, /* description */ null,
+        appliesToAllProfiles: true, isEndingCharacterRequired: ending, isTriggerInsideWord: inside, clock);
+    db.Hotstrings.Add(entity);
+    hotstringId = entity.Id;
+}
 
 foreach (string categoryName in sampleCategories)
 {
     if (!categoryByName.TryGetValue(categoryName, out Guid categoryId)) continue;
-    db.HotstringCategories.Add(HotstringCategory.Create(entity.Id, categoryId));
+    if (!existingLinks.Add((hotstringId, categoryId))) continue; // already linked
+    db.HotstringCategories.Add(HotstringCategory.Create(hotstringId, categoryId));
 }
 ```
 
 > The `description` parameter on `Hotstring.Create` arrives with the Schema Polish plan. If that plan has not yet landed, omit the parameter and let it default to whatever the current `Create` signature requires. After Schema Polish ships, pass `null`.
 
-If `categoryByName` is empty (user hasn't seeded categories yet), the junctions are skipped — the hotstring still inserts with no category attached. In practice the `SeedAllCommand` runs categories first, so this path only matters when `seed-hotstrings` is called standalone before `seed-categories`.
+**Backfill rationale:** if `seed-hotstrings` runs before `seed-categories`, the 12 rows insert without junctions. A subsequent `seed-hotstrings` (reset=false) MUST find the existing rows by trigger and attach the missing category links — otherwise the broken state is permanent until the user runs `reset=true`. The same branch applies to `SeedHotkeysCommand` (Task 3) — mirror the pattern there.
 
 - [ ] **Step 3: Update tests**
 
 The existing `SeedHotstringsCommand` tests assert 3 entries. Update them to assert 12, and add:
 
 - Each seed entry is attached to its expected categories (count = expected, names match).
-- Calling `seed-hotstrings` before `seed-categories` produces 12 hotstrings with **zero** junction rows. Calling `seed-categories` then `seed-hotstrings` produces 12 hotstrings with the correct junctions.
+- Calling `seed-hotstrings` before `seed-categories` produces 12 hotstrings with **zero** junction rows.
+- **Backfill test:** after the standalone call above, calling `seed-categories` then a second `seed-hotstrings` (reset=false) produces 12 hotstrings (no duplicates) **and** correct junctions backfilled onto the existing rows.
+- Re-running `seed-hotstrings` twice with categories already present does NOT duplicate junctions (HashSet guard).
 
 - [ ] **Step 4: Run + commit**
 
@@ -341,7 +367,7 @@ git commit -m "feat: expand SeedHotstrings to 12 with category links"
 
 Mirror `SeedHotstringsCommand` shape. 12 entries from the spec, each with a category list.
 
-- [ ] **Step 1: Handler tests** — assert 12 inserts on first call, idempotent on re-call, reset clears prior, 404 outside dev, category junctions present after `seed-categories`.
+- [ ] **Step 1: Handler tests** — assert 12 inserts on first call, idempotent on re-call (no duplicate rows, no duplicate junctions), reset clears prior, 404 outside dev, category junctions present after `seed-categories`, **and** backfill: calling `seed-hotkeys` before `seed-categories` produces 12 rows with zero junctions, then `seed-categories` + a second `seed-hotkeys` (reset=false) leaves 12 rows with correct junctions backfilled.
 
 - [ ] **Step 2: Implementation**
 
@@ -407,23 +433,40 @@ internal sealed class SeedHotkeysCommandHandler(
             .Where(c => c.OwnerOid == ownerOid)
             .ToDictionaryAsync(c => c.Name, c => c.Id, ct);
 
+        HashSet<(Guid HotkeyId, Guid CategoryId)> existingLinks = (await db.HotkeyCategories
+                .Where(hc => hc.Hotkey.OwnerOid == ownerOid)
+                .Select(hc => new { hc.HotkeyId, hc.CategoryId })
+                .ToListAsync(ct))
+            .Select(x => (x.HotkeyId, x.CategoryId))
+            .ToHashSet();
+
         foreach ((string descr, bool ctrl, bool alt, bool shift, bool win, string key, HotkeyAction action, string param, string[] cats) in s_samples)
         {
-            bool exists = await db.Hotkeys.AnyAsync(h =>
+            // Backfill branch: find existing seed row by unique key; if missing, insert. Either way, attach missing junctions.
+            Hotkey? existing = await db.Hotkeys.FirstOrDefaultAsync(h =>
                 h.OwnerOid == ownerOid &&
                 h.Key == key &&
                 h.Ctrl == ctrl && h.Alt == alt && h.Shift == shift && h.Win == win, ct);
-            if (exists) continue;
 
-            Hotkey entity = Hotkey.Create(
-                ownerOid, descr, ctrl, alt, shift, win, key, action, param,
-                appliesToAllProfiles: true, clock);
-            db.Hotkeys.Add(entity);
+            Guid hotkeyId;
+            if (existing is not null)
+            {
+                hotkeyId = existing.Id;
+            }
+            else
+            {
+                Hotkey entity = Hotkey.Create(
+                    ownerOid, descr, ctrl, alt, shift, win, key, action, param,
+                    appliesToAllProfiles: true, clock);
+                db.Hotkeys.Add(entity);
+                hotkeyId = entity.Id;
+            }
 
             foreach (string cat in cats)
             {
                 if (!catByName.TryGetValue(cat, out Guid cid)) continue;
-                db.HotkeyCategories.Add(HotkeyCategory.Create(entity.Id, cid));
+                if (!existingLinks.Add((hotkeyId, cid))) continue;
+                db.HotkeyCategories.Add(HotkeyCategory.Create(hotkeyId, cid));
             }
         }
 
@@ -510,22 +553,65 @@ public async Task SeedAll_Reset_ClearsAll_AndReseeds()
 }
 
 [Fact]
-public async Task SeedAll_RollsBack_OnInnerFailure()
+public async Task SeedAll_RollsBack_OnInnerFailure_LeavesNoRows()
 {
-    // Easiest way: pre-populate a hotstring trigger that violates the unique constraint
-    // against the seed set, AND set Reset=false so the existing row is skipped (which it would be...
-    // so instead pre-create the SAME trigger but for a DIFFERENT user via the same string —
-    // that won't conflict because OwnerOid is part of the key. So:
-    // The simplest forced failure is to make Reset=true but inject a DbContext failure.
-    // If forcing a failure is too elaborate, skip this test and rely on the manual transaction
-    // visual review.
-    // ...
+    // Arrange: build an IAppDbContext decorator that delegates everything to the real ctx
+    // but throws on the SECOND SaveChangesAsync call (i.e. after categories have saved,
+    // during hotstrings). Register the decorator in the DI container used by this test.
+    await using AppDbContext realCtx = fx.CreateContext();
+    IAppDbContext failingDb = new ThrowOnNthSaveDbContext(realCtx, failOnCall: 2);
+
+    ServiceCollection services = new();
+    services.AddSingleton(failingDb);
+    services.AddSingleton<ICurrentUser>(User());
+    services.AddSingleton<TimeProvider>(_clock);
+    services.AddSingleton(_devEnv);
+    services.AddMediatR(cfg => cfg.RegisterServicesFromAssemblyContaining<SeedAllCommand>());
+    ServiceProvider sp = services.BuildServiceProvider();
+    IMediator mediator = sp.GetRequiredService<IMediator>();
+
+    // Act
+    Result<SeedAllResultDto> result = await mediator.Send(new SeedAllCommand(Reset: false));
+
+    // Assert: handler returned an error AND nothing was persisted (transaction rolled back).
+    result.IsSuccess.Should().BeFalse();
+
+    await using AppDbContext verify = fx.CreateContext();
+    (await verify.Categories.CountAsync(c => c.OwnerOid == _ownerOid)).Should().Be(0);
+    (await verify.Hotstrings.CountAsync(h => h.OwnerOid == _ownerOid)).Should().Be(0);
+    (await verify.Hotkeys.CountAsync(h => h.OwnerOid == _ownerOid)).Should().Be(0);
 }
 ```
 
-Forcing a mid-transaction failure cleanly is brittle. Treat the rollback test as **optional** — verify via code review that the transaction is wired correctly.
+**`ThrowOnNthSaveDbContext`** is a test-only decorator under `tests/AHKFlowApp.Application.Tests/Dev/`. It wraps a real `AppDbContext`, forwards every member of `IAppDbContext` (DbSets, `Entry<T>`, `BeginTransactionAsync`), and increments a counter on each `SaveChangesAsync` call — throwing `InvalidOperationException("forced failure")` when the counter equals `failOnCall`. `BeginTransactionAsync` must return the **real** context's transaction so the rollback actually clears the categories that the first `SaveChangesAsync` flushed.
 
-- [ ] **Step 3: Implementation**
+This test is **required**, not optional — transactional rollback is the central new guarantee of `SeedAllCommand`.
+
+- [ ] **Step 3: Extend `IAppDbContext` with a transaction method (REQUIRED)**
+
+The Application project cannot reference `AppDbContext` — Infrastructure references Application, not the reverse (`AHKFlowApp.Application.csproj` only references Domain). Casting `IAppDbContext` to `AppDbContext` inside Application would not compile. The fix is a one-line interface addition:
+
+```csharp
+// src/Backend/AHKFlowApp.Application/Abstractions/IAppDbContext.cs
+using Microsoft.EntityFrameworkCore.Storage; // add
+
+public interface IAppDbContext
+{
+    // ... existing members ...
+
+    Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default);
+}
+```
+
+```csharp
+// src/Backend/AHKFlowApp.Infrastructure/Persistence/AppDbContext.cs — add a thin pass-through:
+public Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
+    => Database.BeginTransactionAsync(cancellationToken);
+```
+
+No cast, no extra Infrastructure ref from Application.
+
+- [ ] **Step 4: Implementation**
 
 ```csharp
 // src/Backend/AHKFlowApp.Application/Commands/Dev/SeedAllCommand.cs
@@ -533,7 +619,7 @@ using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.DTOs;
 using Ardalis.Result;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace AHKFlowApp.Application.Commands.Dev;
 
@@ -550,10 +636,7 @@ internal sealed class SeedAllCommandHandler(
         if (!env.IsDevelopment)
             return Result.NotFound();
 
-        // Use the underlying DbContext for transaction control. IAppDbContext only exposes
-        // SaveChangesAsync and Entry — to start a transaction we need the concrete DbContext.
-        var concrete = (AppDbContext)db;
-        await using IDbContextTransaction tx = await concrete.Database.BeginTransactionAsync(ct);
+        await using IDbContextTransaction tx = await db.BeginTransactionAsync(ct);
 
         try
         {
@@ -582,21 +665,16 @@ internal sealed class SeedAllCommandHandler(
 }
 ```
 
-Note: this handler casts `IAppDbContext` to the concrete `AppDbContext` to access `Database.BeginTransactionAsync`. Two alternatives if that feels wrong:
-
-1. Add `Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken)` to `IAppDbContext`.
-2. Inject `AppDbContext` directly here (less testable but acceptable for a dev-only command).
-
-Pick option 1 if you want to preserve the interface boundary — it's a one-line addition.
-
-- [ ] **Step 4: Run + commit**
+- [ ] **Step 5: Run + commit**
 
 ```bash
 dotnet test tests/AHKFlowApp.Application.Tests --filter "FullyQualifiedName~SeedAllCommandHandlerTests"
 git add src/Backend/AHKFlowApp.Application/Commands/Dev/SeedAllCommand.cs \
         src/Backend/AHKFlowApp.Application/DTOs/SeedAllResultDto.cs \
+        src/Backend/AHKFlowApp.Application/Abstractions/IAppDbContext.cs \
+        src/Backend/AHKFlowApp.Infrastructure/Persistence/AppDbContext.cs \
         tests/AHKFlowApp.Application.Tests/Dev/SeedAllCommandHandlerTests.cs \
-        src/Backend/AHKFlowApp.Application/Abstractions/IAppDbContext.cs  # if option 1
+        tests/AHKFlowApp.Application.Tests/Dev/ThrowOnNthSaveDbContext.cs
 git commit -m "feat: SeedAllCommand orchestrates seed pipeline in a single transaction"
 ```
 
@@ -709,7 +787,9 @@ git commit -m "chore: dotnet format" 2>&1 || echo "nothing to format"
 
 - [ ] Every endpoint returns 404 outside `Development`.
 - [ ] `SeedCategoriesCommand` upserts `UserPreference.CategoriesSeededAt` (so subsequent `GET /categories` does not double-seed).
-- [ ] `SeedAllCommand` wraps the three steps in a single transaction and rolls back on any failure.
+- [ ] `SeedAllCommand` wraps the three steps in a single transaction and rolls back on any failure — verified by `SeedAll_RollsBack_OnInnerFailure_LeavesNoRows` (required, not optional).
+- [ ] `IAppDbContext.BeginTransactionAsync` is the only transaction entry point used by Application code; no `AppDbContext` cast anywhere in `src/Backend/AHKFlowApp.Application/`.
+- [ ] Re-running `seed-hotstrings` / `seed-hotkeys` after `seed-categories` backfills missing junctions on pre-existing seed rows (verified by backfill test).
 - [ ] `Reset=true` is owner-scoped — never touches another user's data.
 - [ ] `Reset=true` does **not** touch `Profile` rows (default profile remains).
 - [ ] Hotstring/Hotkey samples assert idempotency via unique-key checks per entity.
