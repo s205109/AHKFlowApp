@@ -274,7 +274,7 @@ public sealed record UpdateHotstringDto(
     string? Description);
 ```
 
-Note: `Description` is added at the **end** of `HotstringDto` and `CreateHotstringDto` (with a default for the latter) to keep positional construction sites compiling where possible. For `UpdateHotstringDto`, it goes at the end without a default to force every caller to make a choice.
+Note: In `HotstringDto`, `Description` is placed after `Replacement` (before `IsEndingCharacterRequired`) to mirror the domain entity's logical grouping. In `CreateHotstringDto` and `UpdateHotstringDto` it goes at the **end** — with a default of `null` for `Create` so existing positional call sites still compile, and without a default for `Update` to force every caller to make an explicit choice.
 
 - [ ] **Step 2: Update `HotstringMappings.ToDto`**
 
@@ -607,19 +607,9 @@ public async Task Search_MatchesDescriptionLikeTriggerAndReplacement()
 
 - [ ] **Step 2: Update the handler**
 
-Find the search predicate block in `ListHotstringsQuery.cs` (around line 73-79):
+Two changes are needed in `ListHotstringsQuery.cs`:
 
-```csharp
-if (!string.IsNullOrWhiteSpace(request.Search))
-{
-    string pattern = $"%{request.Search.Trim()}%";
-    query = query.Where(h =>
-        EF.Functions.Like(h.Trigger, pattern) ||
-        EF.Functions.Like(h.Replacement, pattern));
-}
-```
-
-Replace with:
+**2a — Search predicate** (around line 73-79):
 
 ```csharp
 if (!string.IsNullOrWhiteSpace(request.Search))
@@ -631,6 +621,24 @@ if (!string.IsNullOrWhiteSpace(request.Search))
         (h.Description != null && EF.Functions.Like(h.Description, pattern)));
 }
 ```
+
+**2b — Inline `Select` projection** (around line 104): the handler constructs `HotstringDto` directly in a `Select` rather than through `HotstringMappings.ToDto`. Add `h.Description` to that projection at the same position as the DTO constructor — after `h.Replacement`, before `h.IsEndingCharacterRequired`. Example:
+
+```csharp
+new HotstringDto(
+    h.Id,
+    h.Profiles.Select(p => p.ProfileId).ToArray(),
+    h.AppliesToAllProfiles,
+    h.Trigger,
+    h.Replacement,
+    h.Description,           // ← add
+    h.IsEndingCharacterRequired,
+    h.IsTriggerInsideWord,
+    h.CreatedAt,
+    h.UpdatedAt)
+```
+
+> If the handler uses `ToDto()` exclusively (no inline `Select`), 2b is already handled by the mapping update in Task 3. Verify before editing.
 
 - [ ] **Step 3: Run tests**
 
@@ -747,7 +755,7 @@ migrationBuilder.Sql("""
 migrationBuilder.Sql("""
     UPDATE Hotstrings
     SET AppliesToAllProfiles = 1,
-        UpdatedAt = SYSUTCDATETIMEOFFSET()
+        UpdatedAt = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')
     WHERE AppliesToAllProfiles = 0
       AND NOT EXISTS (SELECT 1 FROM HotstringProfiles hp WHERE hp.HotstringId = Hotstrings.Id);
     """);
@@ -756,7 +764,7 @@ migrationBuilder.Sql("""
 migrationBuilder.Sql("""
     UPDATE Hotkeys
     SET AppliesToAllProfiles = 1,
-        UpdatedAt = SYSUTCDATETIMEOFFSET()
+        UpdatedAt = TODATETIMEOFFSET(SYSUTCDATETIME(), '+00:00')
     WHERE AppliesToAllProfiles = 0
       AND NOT EXISTS (SELECT 1 FROM HotkeyProfiles hp WHERE hp.HotkeyId = Hotkeys.Id);
     """);
@@ -837,25 +845,27 @@ public sealed class SchemaPolishBackfillTests(SchemaPolishDbFixture fx)
 }
 ```
 
-> `SchemaPolishDbFixture` is identical in shape to `ProfileDbFixture` — copy, rename the collection key. The migration runs implicitly when `MigrateAsync()` is called by the fixture's `InitializeAsync`.
+> `SchemaPolishDbFixture` differs from `ProfileDbFixture` in one important way — it must run migrations in two passes to seed inconsistent rows before the backfill executes. See the required seeding steps below.
 
-If a stronger test of the actual backfill SQL is desired, seed the database BEFORE applying the migration. That requires the fixture to:
-1. Create container.
-2. Run migrations up to the *previous* migration (use `Migrate(targetMigration: "<prevName>")`).
-3. Insert intentionally-inconsistent rows.
-4. Migrate forward.
-5. Assert the rows were corrected.
+The two `After_Migration_*` tests above only confirm the post-migration state is clean; they pass trivially on a fresh database even if the four backfill statements are absent or wrong. A real exercise of the backfill SQL requires seeding *before* `SchemaPolish` applies:
 
-Pseudocode:
+1. Start container, apply migrations **up to but not including** `SchemaPolish` (e.g. `targetMigration: "Phase3HotkeyRebuild"`).
+2. Insert intentionally-inconsistent rows directly via SQL (`ExecuteSqlRawAsync`):
+   - A `Hotstrings` row with `AppliesToAllProfiles = 1` that has a `HotstringProfiles` junction row.
+   - A `Hotstrings` row with `AppliesToAllProfiles = 0` that has **no** `HotstringProfiles` junction rows.
+   - Equivalent rows for `Hotkeys` / `HotkeyProfiles`.
+3. Apply `SchemaPolish` migration (`MigrateAsync()` with no target — picks up the remainder).
+4. Assert all four invariants are now satisfied.
+
+**This seeding path is required.** The `After_Migration_*` tests are still valuable as a smoke check but are insufficient on their own.
+
+Pseudocode for the fixture `InitializeAsync`:
 
 ```csharp
 await ctx.GetService<IMigrator>().MigrateAsync(targetMigration: "Phase3HotkeyRebuild");
-// seed inconsistent state
+// seed inconsistent state via ctx.Database.ExecuteSqlRawAsync(...)
 await ctx.GetService<IMigrator>().MigrateAsync(); // applies SchemaPolish
-// assert
 ```
-
-Treat this stronger test as **optional** if the existing data set is small and the simpler `Inconsistent == 0` assertion provides enough signal.
 
 - [ ] **Step 2: Run**
 
@@ -879,7 +889,7 @@ git commit -m "test: SchemaPolish migration backfill verification"
 - Modify: `src/Frontend/AHKFlowApp.UI.Blazor/DTOs/CreateHotstringDto.cs`
 - Modify: `src/Frontend/AHKFlowApp.UI.Blazor/DTOs/UpdateHotstringDto.cs`
 
-- [ ] **Step 1: Add `Description: string?` to each** — same positional ordering as the backend records. The frontend records mirror the backend ones; System.Text.Json round-trips records via constructor parameter names, so the property order must match for correct deserialization.
+- [ ] **Step 1: Add `Description: string?` to each** — same positional ordering as the backend records (after `Replacement` in the read DTO; at the end of the write DTOs). The frontend records mirror the backend ones; constructor parameter order must match so that positional call sites in the frontend compile without changes.
 
 - [ ] **Step 2: Build + commit**
 
@@ -1014,8 +1024,9 @@ git commit -m "chore: dotnet format"
 - [ ] `Hotstring.Description` is a `string?` (nullable).
 - [ ] `Description` is trimmed on create/update; whitespace-only is stored as `null`.
 - [ ] EF column is `nvarchar(200)`, nullable.
-- [ ] DTOs in both frontend and backend have `Description` at the same position with the same default.
+- [ ] DTOs in both frontend and backend have `Description` after `Replacement` in the read DTO and at the end of write DTOs, with the same default (`null`).
 - [ ] `ListHotstringsQuery.Search` predicate guards against `Description == null` (`h.Description != null && EF.Functions.Like(...)`).
+- [ ] `ListHotstringsQuery` inline `Select` projection (if present) includes `h.Description` in the correct position.
 - [ ] Migration `Up` adds the column AND runs the four backfill statements.
 - [ ] Migration `Down` drops only the column.
 - [ ] `HotstringBuilder.WithDescription` defaults to `null` so existing test call sites compile.

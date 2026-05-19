@@ -2,13 +2,31 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a flat, freeform Category aggregate (M:M with Hotstrings and Hotkeys) for UI organization and filtering. Categories are user-owned, lazy-seeded on first use, and do not influence script generation.
+**Goal:** Add a flat, freeform Category aggregate (M:M with Hotstrings and Hotkeys) for UI organization and filtering. Categories are user-owned, **lazy-seeded once per user (tracked by an explicit marker on `UserPreference`)**, and do not influence script generation.
 
-**Architecture:** New `Category` entity alongside `Hotstring` and `Hotkey`, two new junction tables, MediatR commands/queries for CRUD, a new `CategoriesController`, `categoryIds[]` filter on existing list queries (OR semantics), and Blazor UI for category management + chip filtering. Mirrors the existing `Profile` lazy-seed pattern in `ListProfilesQuery`.
+**Architecture:** New `Category` entity alongside `Hotstring` and `Hotkey`, two new junction tables, MediatR commands/queries for CRUD, a new `CategoriesController`, `categoryIds[]` filter on existing list queries (OR semantics), and Blazor UI for category management + chip filtering. **List endpoint is paginated** (`PagedList<CategoryDto>` with `page`/`pageSize`/`search`), mirroring `ListHotstringsQuery`. **Seed marker**: `UserPreference.CategoriesSeededAt: DateTimeOffset?` — null means never seeded; once set, never resets. Deleting all defaults does not trigger re-seed.
 
 **Tech Stack:** .NET 10, EF Core SQL Server, MediatR, Ardalis.Result, FluentValidation, MudBlazor 9.x, xUnit, FluentAssertions, NSubstitute, Testcontainers.
 
 **Spec:** `docs/superpowers/specs/2026-05-19-categories-design.md`
+
+---
+
+## Revision Log (2026-05-19, after first review)
+
+Five review findings applied. Execute the plan in **document order** — task numbers were preserved for stability, but several tasks have been rewritten in place. Read this section before starting.
+
+1. **CategoryBuilder moves to Task 4** (was Task 18). It is a prerequisite for handler tests in Tasks 8-12. The old Task 18 is removed; do not look for it.
+
+2. **UserPreference seed marker** is added in Task 4 alongside CategoryBuilder. A nullable `CategoriesSeededAt: DateTimeOffset?` on `UserPreference` controls re-seed behavior. Once set, the eight starter categories are never re-created for that user — deleting them all does **not** trigger a re-seed. This replaces the original "user owns zero categories" trigger. Migration in Task 5 adds the column.
+
+3. **`ListCategoriesQuery` is paginated** — `PagedList<CategoryDto>` with `Page`, `PageSize`, `Search`. Task 12 rewritten accordingly, including validator.
+
+4. **`CategoriesController.List` exposes `page`/`pageSize`/`search` query params.** Task 13 rewritten.
+
+5. **Task 16 (Hotkey CategoryIds wiring) now contains concrete code**, not a "mirror Tasks 14 and 15" pointer.
+
+6. **Frontend client follows `ApiClientBase` + `ApiResult<T>`** (matches `ProfilesApiClient`). DI uses the existing `AddApiClient<...>(baseAddress, timeout, useAuth: ...)` helper, registered in **both** auth branches of `Program.cs`. Task 19 rewritten.
 
 ---
 
@@ -50,7 +68,7 @@
 - `src/Frontend/AHKFlowApp.UI.Blazor/Services/CategoriesApiClient.cs`
 - `src/Frontend/AHKFlowApp.UI.Blazor/Pages/Categories.razor`
 
-**Test support:**
+**Test support (built in Task 4, BEFORE handler tests so they can reference it):**
 - `tests/AHKFlowApp.TestUtilities/Builders/CategoryBuilder.cs`
 
 **Tests:**
@@ -68,6 +86,8 @@
 
 - `src/Backend/AHKFlowApp.Domain/Entities/Hotstring.cs` — add `ICollection<HotstringCategory> Categories` navigation.
 - `src/Backend/AHKFlowApp.Domain/Entities/Hotkey.cs` — add `ICollection<HotkeyCategory> Categories` navigation.
+- `src/Backend/AHKFlowApp.Domain/Entities/UserPreference.cs` — add nullable `CategoriesSeededAt: DateTimeOffset?` + `MarkCategoriesSeeded(TimeProvider)` method.
+- `src/Backend/AHKFlowApp.Infrastructure/Persistence/Configurations/UserPreferenceConfiguration.cs` — column config for `CategoriesSeededAt`.
 - `src/Backend/AHKFlowApp.Infrastructure/Persistence/AppDbContext.cs` — add `DbSet<Category>`, `DbSet<HotstringCategory>`, `DbSet<HotkeyCategory>`.
 - `src/Backend/AHKFlowApp.Application/Abstractions/IAppDbContext.cs` — same DbSets.
 - `src/Backend/AHKFlowApp.Application/DTOs/HotstringDto.cs`, `CreateHotstringDto.cs`, `UpdateHotstringDto.cs` — add `CategoryIds`.
@@ -439,11 +459,56 @@ git commit -m "feat: add EF configurations for Category and junctions"
 
 ---
 
-## Task 4: DbContext + IAppDbContext
+## Task 3a: `CategoryBuilder` Test Utility
+
+Front-loaded — handler tests in Tasks 8-12 reference `CategoryBuilder`. The old Task 18 has been split: the bare `CategoryBuilder` lives here; the `WithCategory(ies)` extensions on `HotstringBuilder`/`HotkeyBuilder` stay in Task 18 because they depend on the junction entities being wired through handlers first.
+
+**Files:**
+- Create: `tests/AHKFlowApp.TestUtilities/Builders/CategoryBuilder.cs`
+
+- [ ] **Step 1: Add the builder**
+
+```csharp
+// tests/AHKFlowApp.TestUtilities/Builders/CategoryBuilder.cs
+using AHKFlowApp.Domain.Entities;
+
+namespace AHKFlowApp.TestUtilities.Builders;
+
+public sealed class CategoryBuilder
+{
+    private Guid _ownerOid = Guid.NewGuid();
+    private string _name = "Email";
+    private TimeProvider _clock = TimeProvider.System;
+
+    public CategoryBuilder WithOwner(Guid ownerOid) { _ownerOid = ownerOid; return this; }
+    public CategoryBuilder Named(string name) { _name = name; return this; }
+    public CategoryBuilder WithClock(TimeProvider clock) { _clock = clock; return this; }
+    public Category Build() => Category.Create(_ownerOid, _name, _clock);
+}
+```
+
+- [ ] **Step 2: Build**
+
+```bash
+dotnet build tests/AHKFlowApp.TestUtilities --no-restore
+```
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add tests/AHKFlowApp.TestUtilities/Builders/CategoryBuilder.cs
+git commit -m "test: add CategoryBuilder utility"
+```
+
+---
+
+## Task 4: DbContext + IAppDbContext + UserPreference Seed Marker
 
 **Files:**
 - Modify: `src/Backend/AHKFlowApp.Infrastructure/Persistence/AppDbContext.cs`
 - Modify: `src/Backend/AHKFlowApp.Application/Abstractions/IAppDbContext.cs`
+- Modify: `src/Backend/AHKFlowApp.Domain/Entities/UserPreference.cs`
+- Modify: `src/Backend/AHKFlowApp.Infrastructure/Persistence/Configurations/UserPreferenceConfiguration.cs`
 
 - [ ] **Step 1: Add DbSets to `IAppDbContext`**
 
@@ -457,7 +522,34 @@ DbSet<HotkeyCategory> HotkeyCategories { get; }
 
 - [ ] **Step 2: Add DbSets to `AppDbContext`** (same names, expose via concrete properties matching the interface)
 
-- [ ] **Step 3: Verify build**
+- [ ] **Step 3: Add the seed marker to `UserPreference`**
+
+In `src/Backend/AHKFlowApp.Domain/Entities/UserPreference.cs`, add the property and method:
+
+```csharp
+public DateTimeOffset? CategoriesSeededAt { get; private set; }
+
+public void MarkCategoriesSeeded(TimeProvider clock)
+{
+    if (CategoriesSeededAt is not null) return; // idempotent
+    DateTimeOffset now = clock.GetUtcNow();
+    CategoriesSeededAt = now;
+    UpdatedAt = now;
+}
+```
+
+`CategoriesSeededAt` is nullable: null = the eight defaults have never been seeded for this user. Once set, the method is idempotent — `ListCategoriesQuery` will never re-seed for this owner, even if every default is later deleted.
+
+- [ ] **Step 4: Update `UserPreferenceConfiguration`**
+
+In the existing configuration class, add:
+
+```csharp
+builder.Property(x => x.CategoriesSeededAt)
+    .IsRequired(false);
+```
+
+- [ ] **Step 5: Verify build**
 
 ```bash
 dotnet build --no-restore
@@ -465,12 +557,14 @@ dotnet build --no-restore
 
 Expected: build succeeds.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add src/Backend/AHKFlowApp.Infrastructure/Persistence/AppDbContext.cs \
-        src/Backend/AHKFlowApp.Application/Abstractions/IAppDbContext.cs
-git commit -m "feat: expose Category DbSets on AppDbContext"
+        src/Backend/AHKFlowApp.Application/Abstractions/IAppDbContext.cs \
+        src/Backend/AHKFlowApp.Domain/Entities/UserPreference.cs \
+        src/Backend/AHKFlowApp.Infrastructure/Persistence/Configurations/UserPreferenceConfiguration.cs
+git commit -m "feat: expose Category DbSets and add UserPreference.CategoriesSeededAt marker"
 ```
 
 ---
@@ -490,12 +584,13 @@ dotnet ef migrations add AddCategories \
 
 - [ ] **Step 2: Inspect the generated migration**
 
-Open the generated file under `src/Backend/AHKFlowApp.Infrastructure/Migrations/`. Verify it creates:
-- `Categories` table with PK `Id`, `OwnerOid`, `Name (nvarchar(30))`, `CreatedAt`, `UpdatedAt`.
-- `IX_Category_Owner_Name` unique index on `(OwnerOid, Name)`.
-- `IX_Categories_OwnerOid` non-unique index.
-- `HotstringCategories` table with composite PK `(HotstringId, CategoryId)`, FK cascades on both sides.
-- `HotkeyCategories` table with the same shape.
+Open the generated file under `src/Backend/AHKFlowApp.Infrastructure/Migrations/`. Verify it:
+- Adds nullable `CategoriesSeededAt datetimeoffset NULL` column on `UserPreferences`.
+- Creates `Categories` table with PK `Id`, `OwnerOid`, `Name (nvarchar(30))`, `CreatedAt`, `UpdatedAt`.
+- Creates `IX_Category_Owner_Name` unique index on `(OwnerOid, Name)`.
+- Creates `IX_Categories_OwnerOid` non-unique index.
+- Creates `HotstringCategories` table with composite PK `(HotstringId, CategoryId)`, FK cascades on both sides.
+- Creates `HotkeyCategories` table with the same shape.
 - Index on `CategoryId` for both junctions.
 
 If anything differs, regenerate after fixing the configuration.
@@ -1075,15 +1170,65 @@ internal sealed class GetCategoryQueryHandler(IAppDbContext db, ICurrentUser cur
 
 ---
 
-## Task 12: `ListCategoriesQuery` with Lazy Seed
+## Task 12: `ListCategoriesQuery` (Paginated, Marker-Based Lazy Seed)
 
 **Files:**
 - Create: `src/Backend/AHKFlowApp.Application/Queries/Categories/ListCategoriesQuery.cs`
 - Create: `tests/AHKFlowApp.Application.Tests/Categories/ListCategoriesQueryHandlerTests.cs`
+- Create: `tests/AHKFlowApp.Application.Tests/Categories/ListCategoriesQueryValidatorTests.cs`
 
-This is the core lazy-seed behavior. Mirrors `ListProfilesQuery.cs:13-65`.
+Two responsibilities in one query:
 
-- [ ] **Step 1: Tests first**
+1. **First-call seeding** — when the caller's `UserPreference.CategoriesSeededAt` is `null`, insert the eight starter categories AND mark the preference. Subsequent calls skip seeding. **The marker is the source of truth** — deleting all categories does not re-seed. Concurrent first-calls deduplicate via the `(OwnerOid, Name)` unique index.
+2. **Paginated read** — returns `PagedList<CategoryDto>` honoring `Page`, `PageSize`, `Search` (LIKE on `Name`, case-insensitive via DB collation).
+
+- [ ] **Step 1: Validator tests**
+
+```csharp
+// tests/AHKFlowApp.Application.Tests/Categories/ListCategoriesQueryValidatorTests.cs
+using AHKFlowApp.Application.Queries.Categories;
+using FluentValidation.TestHelper;
+using Xunit;
+
+namespace AHKFlowApp.Application.Tests.Categories;
+
+public sealed class ListCategoriesQueryValidatorTests
+{
+    private readonly ListCategoriesQueryValidator _sut = new();
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(10001)]
+    public void Rejects_OutOfRange_Page(int page)
+    {
+        _sut.TestValidate(new ListCategoriesQuery(Page: page))
+            .ShouldHaveValidationErrorFor(q => q.Page);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(201)]
+    public void Rejects_OutOfRange_PageSize(int pageSize)
+    {
+        _sut.TestValidate(new ListCategoriesQuery(PageSize: pageSize))
+            .ShouldHaveValidationErrorFor(q => q.PageSize);
+    }
+
+    [Fact]
+    public void Rejects_Search_LongerThan200Chars()
+    {
+        _sut.TestValidate(new ListCategoriesQuery(Search: new string('x', 201)))
+            .ShouldHaveValidationErrorFor(q => q.Search);
+    }
+
+    [Fact]
+    public void Accepts_Defaults() =>
+        _sut.TestValidate(new ListCategoriesQuery())
+            .ShouldNotHaveAnyValidationErrors();
+}
+```
+
+- [ ] **Step 2: Handler tests**
 
 ```csharp
 // tests/AHKFlowApp.Application.Tests/Categories/ListCategoriesQueryHandlerTests.cs
@@ -1109,7 +1254,7 @@ public sealed class ListCategoriesQueryHandlerTests(CategoryDbFixture fx)
     [
         "App Launcher", "Autocorrect", "Code", "Communication",
         "DateTime", "Email", "Symbols", "Window Management",
-    ]; // alphabetical — handler returns OrderBy(Name).
+    ]; // alphabetical — handler orders by Name.
 
     private readonly FakeTimeProvider _clock = new(DateTimeOffset.Parse("2026-05-19T12:00:00Z"));
 
@@ -1121,18 +1266,24 @@ public sealed class ListCategoriesQueryHandlerTests(CategoryDbFixture fx)
     }
 
     [Fact]
-    public async Task First_Call_LazySeeds_DefaultCategories()
+    public async Task First_Call_LazySeeds_Defaults_AndSetsMarker()
     {
         Guid owner = Guid.NewGuid();
         await using AppDbContext ctx = fx.CreateContext();
         var sut = new ListCategoriesQueryHandler(ctx, UserFor(owner), _clock);
 
-        Result<IReadOnlyList<CategoryDto>> result = await sut.Handle(new ListCategoriesQuery(), default);
+        Result<PagedList<CategoryDto>> result = await sut.Handle(
+            new ListCategoriesQuery(PageSize: 50), default);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value.Select(c => c.Name).Should().BeEquivalentTo(s_expectedDefaults);
-        (await ctx.Categories.CountAsync(c => c.OwnerOid == owner))
-            .Should().Be(s_expectedDefaults.Length);
+        result.Value.Items.Select(c => c.Name).Should().BeEquivalentTo(s_expectedDefaults);
+        result.Value.TotalCount.Should().Be(s_expectedDefaults.Length);
+
+        UserPreference? pref = await ctx.UserPreferences
+            .AsNoTracking()
+            .FirstOrDefaultAsync(p => p.OwnerOid == owner);
+        pref.Should().NotBeNull();
+        pref!.CategoriesSeededAt.Should().NotBeNull();
     }
 
     [Fact]
@@ -1142,25 +1293,65 @@ public sealed class ListCategoriesQueryHandlerTests(CategoryDbFixture fx)
         await using AppDbContext ctx = fx.CreateContext();
         var sut = new ListCategoriesQueryHandler(ctx, UserFor(owner), _clock);
 
-        await sut.Handle(new ListCategoriesQuery(), default);
-        await sut.Handle(new ListCategoriesQuery(), default);
+        await sut.Handle(new ListCategoriesQuery(PageSize: 50), default);
+        await sut.Handle(new ListCategoriesQuery(PageSize: 50), default);
 
         (await ctx.Categories.CountAsync(c => c.OwnerOid == owner))
             .Should().Be(s_expectedDefaults.Length);
     }
 
     [Fact]
-    public async Task DoesNotReseed_When_User_AlreadyHas_AtLeastOne_Category()
+    public async Task DoesNotReseed_AfterUserDeletesAll_BecauseMarkerIsSet()
     {
         Guid owner = Guid.NewGuid();
         await using AppDbContext ctx = fx.CreateContext();
-        ctx.Categories.Add(new CategoryBuilder().WithOwner(owner).Named("Keepme").Build());
-        await ctx.SaveChangesAsync();
-
         var sut = new ListCategoriesQueryHandler(ctx, UserFor(owner), _clock);
-        await sut.Handle(new ListCategoriesQuery(), default);
 
-        (await ctx.Categories.CountAsync(c => c.OwnerOid == owner)).Should().Be(1);
+        await sut.Handle(new ListCategoriesQuery(PageSize: 50), default);
+        // simulate the user deleting all eight defaults
+        await ctx.Categories.Where(c => c.OwnerOid == owner).ExecuteDeleteAsync();
+
+        Result<PagedList<CategoryDto>> result = await sut.Handle(
+            new ListCategoriesQuery(PageSize: 50), default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Items.Should().BeEmpty();
+        result.Value.TotalCount.Should().Be(0);
+        (await ctx.Categories.CountAsync(c => c.OwnerOid == owner)).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Search_FiltersByName_CaseInsensitive()
+    {
+        Guid owner = Guid.NewGuid();
+        await using AppDbContext ctx = fx.CreateContext();
+        var sut = new ListCategoriesQueryHandler(ctx, UserFor(owner), _clock);
+
+        await sut.Handle(new ListCategoriesQuery(PageSize: 50), default); // first call seeds
+
+        Result<PagedList<CategoryDto>> result = await sut.Handle(
+            new ListCategoriesQuery(Search: "email"), default);
+
+        result.Value.Items.Should().ContainSingle(c => c.Name == "Email");
+        result.Value.TotalCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Paging_ReturnsRequestedSlice_AndTotalCount()
+    {
+        Guid owner = Guid.NewGuid();
+        await using AppDbContext ctx = fx.CreateContext();
+        var sut = new ListCategoriesQueryHandler(ctx, UserFor(owner), _clock);
+
+        await sut.Handle(new ListCategoriesQuery(PageSize: 50), default); // seed 8
+
+        Result<PagedList<CategoryDto>> page2 = await sut.Handle(
+            new ListCategoriesQuery(Page: 2, PageSize: 3), default);
+
+        page2.Value.Items.Should().HaveCount(3);
+        page2.Value.Page.Should().Be(2);
+        page2.Value.PageSize.Should().Be(3);
+        page2.Value.TotalCount.Should().Be(8);
     }
 
     [Fact]
@@ -1174,14 +1365,15 @@ public sealed class ListCategoriesQueryHandlerTests(CategoryDbFixture fx)
 
         var sut = new ListCategoriesQueryHandler(ctx, UserFor(me), _clock);
 
-        Result<IReadOnlyList<CategoryDto>> result = await sut.Handle(new ListCategoriesQuery(), default);
+        Result<PagedList<CategoryDto>> result = await sut.Handle(
+            new ListCategoriesQuery(PageSize: 50), default);
 
-        result.Value.Should().NotContain(c => c.Name == "Private");
+        result.Value.Items.Should().NotContain(c => c.Name == "Private");
     }
 }
 ```
 
-- [ ] **Step 2: Implementation**
+- [ ] **Step 3: Implementation**
 
 ```csharp
 // src/Backend/AHKFlowApp.Application/Queries/Categories/ListCategoriesQuery.cs
@@ -1190,55 +1382,107 @@ using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Domain.Entities;
 using Ardalis.Result;
+using FluentValidation;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
 namespace AHKFlowApp.Application.Queries.Categories;
 
-public sealed record ListCategoriesQuery : IRequest<Result<IReadOnlyList<CategoryDto>>>;
+public sealed record ListCategoriesQuery(
+    string? Search = null,
+    int Page = 1,
+    int PageSize = 50) : IRequest<Result<PagedList<CategoryDto>>>;
+
+public sealed class ListCategoriesQueryValidator : AbstractValidator<ListCategoriesQuery>
+{
+    public ListCategoriesQueryValidator()
+    {
+        RuleFor(x => x.Search).MaximumLength(200);
+        RuleFor(x => x.Page).InclusiveBetween(1, 10_000);
+        RuleFor(x => x.PageSize).InclusiveBetween(1, 200);
+    }
+}
 
 internal sealed class ListCategoriesQueryHandler(
     IAppDbContext db,
     ICurrentUser currentUser,
     TimeProvider clock)
-    : IRequestHandler<ListCategoriesQuery, Result<IReadOnlyList<CategoryDto>>>
+    : IRequestHandler<ListCategoriesQuery, Result<PagedList<CategoryDto>>>
 {
-    // 8 starter categories the user can delete; never re-seeded once the user has any rows.
+    // Eight starter categories the user can delete. Re-seed is gated by the
+    // UserPreference.CategoriesSeededAt marker — never re-seeded once set.
     private static readonly string[] s_defaults =
     [
         "Autocorrect", "Communication", "DateTime", "Email",
         "Code", "Symbols", "Window Management", "App Launcher",
     ];
 
-    public async Task<Result<IReadOnlyList<CategoryDto>>> Handle(ListCategoriesQuery request, CancellationToken ct)
+    public async Task<Result<PagedList<CategoryDto>>> Handle(ListCategoriesQuery request, CancellationToken ct)
     {
         if (currentUser.Oid is not Guid ownerOid)
             return Result.Unauthorized();
 
-        bool any = await db.Categories.AnyAsync(c => c.OwnerOid == ownerOid, ct);
-        if (!any)
-        {
-            foreach (string name in s_defaults)
-                db.Categories.Add(Category.Create(ownerOid, name, clock));
+        await EnsureSeededOnceAsync(ownerOid, ct);
 
-            try
-            {
-                await db.SaveChangesAsync(ct);
-            }
-            catch (DbUpdateException ex) when (IsDuplicateKeyViolation(ex))
-            {
-                // Concurrent first-time list: another request already seeded. Continue to read.
-            }
+        IQueryable<Category> query = db.Categories
+            .AsNoTracking()
+            .Where(c => c.OwnerOid == ownerOid);
+
+        if (!string.IsNullOrWhiteSpace(request.Search))
+        {
+            string pattern = $"%{request.Search.Trim()}%";
+            query = query.Where(c => EF.Functions.Like(c.Name, pattern));
         }
 
-        List<CategoryDto> items = await db.Categories
-            .AsNoTracking()
-            .Where(c => c.OwnerOid == ownerOid)
+        int total = await query.CountAsync(ct);
+
+        List<CategoryDto> items = await query
             .OrderBy(c => c.Name)
+            .Skip((request.Page - 1) * request.PageSize)
+            .Take(request.PageSize)
             .Select(c => new CategoryDto(c.Id, c.Name, c.CreatedAt, c.UpdatedAt))
             .ToListAsync(ct);
 
-        return Result.Success<IReadOnlyList<CategoryDto>>(items);
+        return Result.Success(new PagedList<CategoryDto>(items, request.Page, request.PageSize, total));
+    }
+
+    private async Task EnsureSeededOnceAsync(Guid ownerOid, CancellationToken ct)
+    {
+        UserPreference? pref = await db.UserPreferences
+            .FirstOrDefaultAsync(p => p.OwnerOid == ownerOid, ct);
+
+        if (pref?.CategoriesSeededAt is not null)
+            return; // already seeded once for this user — never re-seed.
+
+        // Insert the eight defaults. Concurrent first-calls deduplicate via the
+        // unique index on (OwnerOid, Name); the loser swallows the duplicate-key
+        // violation and continues to the read.
+        foreach (string name in s_defaults)
+            db.Categories.Add(Category.Create(ownerOid, name, clock));
+
+        if (pref is null)
+        {
+            pref = UserPreference.CreateDefault(ownerOid, clock);
+            pref.MarkCategoriesSeeded(clock);
+            db.UserPreferences.Add(pref);
+        }
+        else
+        {
+            pref.MarkCategoriesSeeded(clock);
+        }
+
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (IsDuplicateKeyViolation(ex))
+        {
+            // Concurrent first-call: another request already inserted some/all
+            // defaults and/or the UserPreference row. Discard pending changes
+            // and proceed to the read.
+            foreach (var entry in db.ChangeTracker.Entries().Where(e => e.State != EntityState.Unchanged).ToArray())
+                entry.State = EntityState.Detached;
+        }
     }
 
     [ExcludeFromCodeCoverage]
@@ -1248,14 +1492,17 @@ internal sealed class ListCategoriesQueryHandler(
 }
 ```
 
-- [ ] **Step 3: Run tests — pass**
+> Note: `IAppDbContext` exposes `ChangeTracker` via the underlying `DbContext` — if the interface doesn't expose it, surface it through a small interface extension or use `db.Entry(...)` per-entity. The simplest path is to call `((DbContext)db).ChangeTracker` (cast valid because the only implementation is `AppDbContext`).
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 4: Run tests — pass**
+
+- [ ] **Step 5: Commit**
 
 ```bash
 git add src/Backend/AHKFlowApp.Application/Queries/Categories/ListCategoriesQuery.cs \
-        tests/AHKFlowApp.Application.Tests/Categories/ListCategoriesQueryHandlerTests.cs
-git commit -m "feat: add ListCategoriesQuery with lazy default seed"
+        tests/AHKFlowApp.Application.Tests/Categories/ListCategoriesQueryHandlerTests.cs \
+        tests/AHKFlowApp.Application.Tests/Categories/ListCategoriesQueryValidatorTests.cs
+git commit -m "feat: paginated ListCategoriesQuery with marker-based lazy seed"
 ```
 
 ---

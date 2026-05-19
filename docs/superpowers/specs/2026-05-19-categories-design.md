@@ -41,11 +41,19 @@ Seeded starter set (created lazily on the user's first `GET /categories` call wh
 **Read-with-side-effect semantics — explicit contract:**
 
 - The endpoint remains `GET` (not `POST`) to preserve consistency with the existing `Profile` default-creation pattern.
-- The first call for a user that owns zero categories inserts the seeded starter set inside the same request, then returns the list.
+- The first call for a user that has never been seeded inserts the eight starter categories inside the same request, then returns the list.
 - Subsequent calls are pure reads — no writes, no duplicates.
-- Concurrent first-time calls rely on the `(OwnerOid, lower(Name))` unique index to deduplicate; the handler swallows duplicate-key violations from this seeding path.
-- Response carries `Cache-Control: no-store` to avoid caching the seeding write at proxies. (Other authenticated endpoints in this app already emit `no-store` via the default response cache profile; verify and extend if needed.)
-- The user may delete any seeded category; once deleted, they will not be re-seeded — the "user owns zero categories" trigger is only meaningful for true first-time use. The seeded state is tracked implicitly by row presence, not a flag.
+- **Seed state is tracked by an explicit marker, not by row count.** `UserPreference` gains a nullable `CategoriesSeededAt: DateTimeOffset?` field. Null = never seeded. Non-null = already seeded once, never again. This means a user who deletes all eight defaults does **not** get them re-seeded on the next `GET /categories` — the marker remains set.
+- Concurrent first-time calls rely on `(OwnerOid)` PK on `UserPreference` plus `(OwnerOid, Name)` unique index on `Category`: the second write loses with a duplicate-key violation; the handler swallows it and proceeds to the read.
+- Response carries `Cache-Control: no-store` to avoid caching the seeding write at proxies.
+
+**List shape — paginated:**
+
+`GET /api/v1/categories` returns `PagedList<CategoryDto>` with the same shape as `ListHotstringsQuery`'s response:
+
+- Query params: `page` (1-based, default 1, max 10000), `pageSize` (default 50, max 200), `search` (max 200 chars, LIKE match against `Name`).
+- Validator mirrors `ListHotstringsQueryValidator`.
+- For the chip-filter use case on Hotstring/Hotkey pages (which needs every category), the frontend issues `GET /categories?pageSize=200`. Since the realistic category count per user is well below 200, this is sufficient. (If a user creates >200 categories, the chip set quietly truncates — acceptable trade-off.)
 
 ## API Surface
 
