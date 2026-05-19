@@ -169,7 +169,10 @@ jobs:
               throw "ahkflow.exe --help failed with exit code $LASTEXITCODE."
           }
 
-          $expectedVersion = $env:RELEASE_TAG.TrimStart("v")
+          # Strip any pre-release/build suffix from the tag so the comparison
+          # is symmetric with $actualVersion (which only carries the SemVer
+          # core MAJOR.MINOR.PATCH after the regex below).
+          $expectedVersion = ($env:RELEASE_TAG.TrimStart("v") -replace '[+-].*$', '')
 
           # Capture stdout only. The CLI configures Serilog to write to stderr,
           # so any future startup banner on stderr must not be allowed to push
