@@ -1517,8 +1517,12 @@ git commit -m "feat: paginated ListCategoriesQuery with marker-based lazy seed"
 
 The existing test pattern uses `ApiTestFactory` + `ICollectionFixture<MsSqlContainerFixture>`. Look at any sibling file under `tests/AHKFlowApp.API.Tests/Profiles/` for the exact bootstrap. Cover:
 
-- `GET /api/v1/categories` returns 200 with 8 seeded defaults on first call for a new user.
-- `GET /api/v1/categories` returns 200 with same count on second call (no re-seed).
+- `GET /api/v1/categories` returns 200 with `PagedList<CategoryDto>` shape: first call for a new user has `TotalCount == 8` and `Items.Length == 8` (defaults).
+- `GET /api/v1/categories?search=email` returns one item.
+- `GET /api/v1/categories?page=2&pageSize=3` returns 3 items with `Page == 2`, `PageSize == 3`, `TotalCount == 8`.
+- `GET /api/v1/categories?pageSize=300` returns 400 (validator caps `pageSize` at 200).
+- Second call to `GET /api/v1/categories` returns same `TotalCount` (no re-seed).
+- After the user deletes all eight defaults (via repeated `DELETE`), `GET /api/v1/categories` returns `TotalCount == 0` (marker prevents re-seed).
 - `POST /api/v1/categories` with `{ "name": "Work" }` returns 201, sets `Location` to `GetCategory` route, body is the new DTO.
 - `POST` with duplicate name → 409.
 - `POST` with empty name → 400 with `ProblemDetails`.
@@ -1551,11 +1555,17 @@ namespace AHKFlowApp.API.Controllers;
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 public sealed class CategoriesController(IMediator mediator) : ControllerBase
 {
-    /// <summary>List the current user's categories. Lazily seeds the 8 default categories on first call.</summary>
+    /// <summary>List the current user's categories. Lazily seeds the 8 default categories on the user's first call.</summary>
     [HttpGet]
-    [ProducesResponseType(typeof(IReadOnlyList<CategoryDto>), StatusCodes.Status200OK)]
-    public async Task<ActionResult<IReadOnlyList<CategoryDto>>> List(CancellationToken ct) =>
-        (await mediator.Send(new ListCategoriesQuery(), ct)).ToProblemActionResult(this);
+    [ProducesResponseType(typeof(PagedList<CategoryDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<PagedList<CategoryDto>>> List(
+        [FromQuery] string? search = null,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 50,
+        CancellationToken ct = default) =>
+        (await mediator.Send(new ListCategoriesQuery(search, page, pageSize), ct))
+            .ToProblemActionResult(this);
 
     /// <summary>Get a category by id.</summary>
     [HttpGet("{id:guid}", Name = "GetCategory")]
@@ -1743,22 +1753,132 @@ git commit -m "feat: thread CategoryIds through Hotstring create/update"
 
 ---
 
-## Task 16: Same for Hotkey (DTOs + Handlers)
+## Task 16: CategoryIds on Hotkey DTOs, Mapping, Handlers
 
-Mirror Tasks 14 and 15 for Hotkey.
+This is the Hotkey-side parallel of Tasks 14 + 15. Same shape, different entity. The full code is below so this task is executable in isolation.
 
 **Files:**
-- Modify: `src/Backend/AHKFlowApp.Application/DTOs/HotkeyDto.cs`, `CreateHotkeyDto.cs`, `UpdateHotkeyDto.cs`
-- Modify: `src/Backend/AHKFlowApp.Application/Mapping/HotkeyMapping.cs`
-- Modify: `src/Backend/AHKFlowApp.Application/Commands/Hotkeys/CreateHotkeyCommand.cs`, `UpdateHotkeyCommand.cs`
+- Modify: `src/Backend/AHKFlowApp.Application/DTOs/HotkeyDto.cs`
+- Modify: `src/Backend/AHKFlowApp.Application/Mapping/HotkeyMappings.cs`
+- Modify: `src/Backend/AHKFlowApp.Application/Commands/Hotkeys/CreateHotkeyCommand.cs`
+- Modify: `src/Backend/AHKFlowApp.Application/Commands/Hotkeys/UpdateHotkeyCommand.cs`
 - Create: `tests/AHKFlowApp.Application.Tests/Hotkeys/CreateHotkeyWithCategoriesTests.cs`
 - Create: `tests/AHKFlowApp.Application.Tests/Hotkeys/UpdateHotkeyWithCategoriesTests.cs`
 
-- [ ] **Step 1: DTOs + mapping** — same shape as Task 14. Commit.
+### Step 1: DTOs
 
-- [ ] **Step 2: Handlers + tests** — same shape as Task 15. Commit.
+- [ ] Add `CategoryIds` to all three Hotkey DTOs.
+
+Inspect `HotkeyDto.cs` and append the field at the **end** of each record. For `HotkeyDto` (output), use `Guid[] CategoryIds`. For `CreateHotkeyDto`, use `Guid[]? CategoryIds = null` (default for source compat). For `UpdateHotkeyDto`, use `Guid[]? CategoryIds` (no default to force callers to choose).
+
+The exact existing field list is in `src/Backend/AHKFlowApp.Application/DTOs/HotkeyDto.cs` — match its positional order and append.
+
+### Step 2: Mapping
+
+- [ ] Update `HotkeyMappings.ToDto`:
+
+```csharp
+public static HotkeyDto ToDto(this Hotkey h) => new(
+    h.Id,
+    h.Profiles.Select(p => p.ProfileId).ToArray(),
+    h.AppliesToAllProfiles,
+    h.Description,
+    h.Key,
+    h.Ctrl,
+    h.Alt,
+    h.Shift,
+    h.Win,
+    h.Action,
+    h.Parameters,
+    h.CreatedAt,
+    h.UpdatedAt,
+    h.Categories.Select(hc => hc.CategoryId).ToArray());
+```
+
+### Step 3: `CreateHotkeyCommandHandler`
+
+- [ ] After the existing `ProfileIds` validation block, add the same shape for categories:
+
+```csharp
+Guid[] distinctCategoryIds = input.CategoryIds?.Distinct().ToArray() ?? [];
+if (distinctCategoryIds.Length > 0)
+{
+    int validCount = await db.Categories
+        .CountAsync(c => c.OwnerOid == ownerOid && distinctCategoryIds.Contains(c.Id), ct);
+    if (validCount != distinctCategoryIds.Length)
+        return Result.Invalid(new ValidationError
+        {
+            Identifier = "Input.CategoryIds",
+            ErrorMessage = "One or more CategoryIds do not exist for this user.",
+        });
+}
+```
+
+- [ ] After `db.Hotkeys.Add(entity);`, insert junction rows:
+
+```csharp
+foreach (Guid cid in distinctCategoryIds)
+    db.HotkeyCategories.Add(HotkeyCategory.Create(entity.Id, cid));
+```
+
+- [ ] After the existing reload-profiles block (the one that hydrates `HotkeyProfile` rows after `SaveChangesAsync`), reload categories so the returned DTO includes them:
+
+```csharp
+List<HotkeyCategory> cats = await db.HotkeyCategories
+    .Where(c => c.HotkeyId == entity.Id)
+    .ToListAsync(ct);
+foreach (HotkeyCategory c in cats)
+    entity.Categories.Add(c);
+```
+
+### Step 4: `UpdateHotkeyCommandHandler`
+
+- [ ] Expand the existing `Include(h => h.Profiles)` line to also include categories:
+
+```csharp
+Hotkey? entity = await db.Hotkeys
+    .Include(h => h.Profiles)
+    .Include(h => h.Categories)
+    .FirstOrDefaultAsync(h => h.Id == request.Id && h.OwnerOid == ownerOid, ct);
+```
+
+- [ ] Add the same category-ownership validation block as Create (after the existing `ProfileIds` validation).
+
+- [ ] After the existing profile junction-replacement block (`db.HotkeyProfiles.RemoveRange(entity.Profiles); entity.Profiles.Clear(); foreach ...`), add the category equivalent:
+
+```csharp
+db.HotkeyCategories.RemoveRange(entity.Categories);
+entity.Categories.Clear();
+
+foreach (Guid cid in distinctCategoryIds)
+{
+    var junction = HotkeyCategory.Create(entity.Id, cid);
+    db.HotkeyCategories.Add(junction);
+    entity.Categories.Add(junction);
+}
+```
+
+### Step 5: Handler tests
+
+- [ ] Create `CreateHotkeyWithCategoriesTests.cs` and `UpdateHotkeyWithCategoriesTests.cs` mirroring the structure of their hotstring siblings. Test cases:
+
+1. Foreign `CategoryIds` rejected with `Result.Invalid` and `Identifier = "Input.CategoryIds"`.
+2. Valid `CategoryIds` accepted; junction rows inserted; returned DTO includes them.
+3. Duplicates in input are de-duped silently (assert `.Distinct().Count() == junction rows count`).
+4. Update replaces categories: from `[c1, c2]` to `[c3]` → only `c3` remains in junction; `c1`, `c2` rows deleted.
+5. Empty array on update clears all category links.
+
+Each test creates `Category` rows via `new CategoryBuilder().WithOwner(_ownerOid).Named("...").Build()` and a `Hotkey` via the existing builder, then invokes the handler.
+
+### Step 6: Run + commit
 
 ```bash
+dotnet test tests/AHKFlowApp.Application.Tests --filter "FullyQualifiedName~Hotkey"
+git add src/Backend/AHKFlowApp.Application/DTOs/HotkeyDto.cs \
+        src/Backend/AHKFlowApp.Application/Mapping/HotkeyMappings.cs \
+        src/Backend/AHKFlowApp.Application/Commands/Hotkeys/ \
+        tests/AHKFlowApp.Application.Tests/Hotkeys/CreateHotkeyWithCategoriesTests.cs \
+        tests/AHKFlowApp.Application.Tests/Hotkeys/UpdateHotkeyWithCategoriesTests.cs
 git commit -m "feat: thread CategoryIds through Hotkey create/update"
 ```
 
@@ -1849,40 +1969,25 @@ git commit -m "feat: add categoryIds list filter (OR semantics)"
 
 ---
 
-## Task 18: `CategoryBuilder` Test Utility
+## Task 18: `WithCategory(ies)` Extensions on Builders
+
+`CategoryBuilder` itself was added in Task 3a. This task adds the chaining methods on the existing `HotstringBuilder` and `HotkeyBuilder` now that the junction entities flow through handlers.
 
 **Files:**
-- Create: `tests/AHKFlowApp.TestUtilities/Builders/CategoryBuilder.cs`
-- Modify: `tests/AHKFlowApp.TestUtilities/Builders/HotstringBuilder.cs` — add `WithCategory(Guid)` / `WithCategories(params Guid[])`.
-- Modify: `tests/AHKFlowApp.TestUtilities/Builders/HotkeyBuilder.cs` — same.
+- Modify: `tests/AHKFlowApp.TestUtilities/Builders/HotstringBuilder.cs`
+- Modify: `tests/AHKFlowApp.TestUtilities/Builders/HotkeyBuilder.cs`
 
-- [ ] **Step 1: `CategoryBuilder`**
+- [ ] **Step 1: Extend `HotstringBuilder`**
+
+Add a private field next to `_profileIds`:
 
 ```csharp
-// tests/AHKFlowApp.TestUtilities/Builders/CategoryBuilder.cs
-using AHKFlowApp.Domain.Entities;
-
-namespace AHKFlowApp.TestUtilities.Builders;
-
-public sealed class CategoryBuilder
-{
-    private Guid _ownerOid = Guid.NewGuid();
-    private string _name = "Email";
-    private TimeProvider _clock = TimeProvider.System;
-
-    public CategoryBuilder WithOwner(Guid ownerOid) { _ownerOid = ownerOid; return this; }
-    public CategoryBuilder Named(string name) { _name = name; return this; }
-    public CategoryBuilder WithClock(TimeProvider clock) { _clock = clock; return this; }
-    public Category Build() => Category.Create(_ownerOid, _name, _clock);
-}
+private readonly List<Guid> _categoryIds = [];
 ```
 
-- [ ] **Step 2: Extend `HotstringBuilder`**
+Add the chaining methods (note: `WithCategory` accumulates, `WithCategories` replaces — matches the existing `InProfile`/`WithProfiles` semantics):
 
 ```csharp
-// add private field
-private readonly List<Guid> _categoryIds = [];
-
 public HotstringBuilder WithCategory(Guid categoryId)
 {
     _categoryIds.Add(categoryId);
@@ -1895,110 +2000,202 @@ public HotstringBuilder WithCategories(params Guid[] categoryIds)
     _categoryIds.AddRange(categoryIds);
     return this;
 }
+```
 
-// inside Build(), after the profile junction loop:
+Inside `Build()`, after the existing profile-junction loop, append:
+
+```csharp
 foreach (Guid cid in _categoryIds)
     entity.Categories.Add(HotstringCategory.Create(entity.Id, cid));
 ```
 
-- [ ] **Step 3: Extend `HotkeyBuilder`** (same pattern with `HotkeyCategory`).
+- [ ] **Step 2: Extend `HotkeyBuilder`**
+
+Same shape, swap `HotstringCategory` → `HotkeyCategory`:
+
+```csharp
+private readonly List<Guid> _categoryIds = [];
+
+public HotkeyBuilder WithCategory(Guid categoryId)
+{
+    _categoryIds.Add(categoryId);
+    return this;
+}
+
+public HotkeyBuilder WithCategories(params Guid[] categoryIds)
+{
+    _categoryIds.Clear();
+    _categoryIds.AddRange(categoryIds);
+    return this;
+}
+```
+
+In `Build()`, after the profile junctions:
+
+```csharp
+foreach (Guid cid in _categoryIds)
+    entity.Categories.Add(HotkeyCategory.Create(entity.Id, cid));
+```
+
+- [ ] **Step 3: Run all tests — pass**
+
+```bash
+dotnet test --no-build
+```
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add tests/AHKFlowApp.TestUtilities/Builders/
-git commit -m "test: add CategoryBuilder, WithCategory(ies) on existing builders"
+git add tests/AHKFlowApp.TestUtilities/Builders/HotstringBuilder.cs \
+        tests/AHKFlowApp.TestUtilities/Builders/HotkeyBuilder.cs
+git commit -m "test: WithCategory(ies) extensions on Hotstring/Hotkey builders"
 ```
 
 ---
 
 ## Task 19: Frontend DTOs and API Client
 
+The client follows the established `ApiClientBase` + `ApiResult<T>` contract (see `src/Frontend/AHKFlowApp.UI.Blazor/Services/ProfilesApiClient.cs:6` and `ApiClientBase.cs`). Returning raw DTOs would break the unified 4xx/5xx error-mapping path that pages rely on (e.g. snackbar on 409).
+
 **Files:**
 - Create: `src/Frontend/AHKFlowApp.UI.Blazor/DTOs/CategoryDto.cs`
 - Create: `src/Frontend/AHKFlowApp.UI.Blazor/DTOs/CreateCategoryDto.cs`
 - Create: `src/Frontend/AHKFlowApp.UI.Blazor/DTOs/UpdateCategoryDto.cs`
+- Create: `src/Frontend/AHKFlowApp.UI.Blazor/DTOs/CategoryListRequest.cs`
 - Create: `src/Frontend/AHKFlowApp.UI.Blazor/Services/ICategoriesApiClient.cs`
 - Create: `src/Frontend/AHKFlowApp.UI.Blazor/Services/CategoriesApiClient.cs`
+- Modify: `src/Frontend/AHKFlowApp.UI.Blazor/Program.cs` (DI in **both** auth branches)
 - Create: `tests/AHKFlowApp.UI.Blazor.Tests/Services/CategoriesApiClientTests.cs`
 
-- [ ] **Step 1: DTOs** — same shapes as backend records, in the frontend namespace.
+- [ ] **Step 1: DTOs**
 
-- [ ] **Step 2: Interface + implementation**
+```csharp
+// src/Frontend/AHKFlowApp.UI.Blazor/DTOs/CategoryDto.cs
+namespace AHKFlowApp.UI.Blazor.DTOs;
+
+public sealed record CategoryDto(
+    Guid Id,
+    string Name,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset UpdatedAt);
+
+// src/Frontend/AHKFlowApp.UI.Blazor/DTOs/CreateCategoryDto.cs
+namespace AHKFlowApp.UI.Blazor.DTOs;
+public sealed record CreateCategoryDto(string Name);
+
+// src/Frontend/AHKFlowApp.UI.Blazor/DTOs/UpdateCategoryDto.cs
+namespace AHKFlowApp.UI.Blazor.DTOs;
+public sealed record UpdateCategoryDto(string Name);
+
+// src/Frontend/AHKFlowApp.UI.Blazor/DTOs/CategoryListRequest.cs
+namespace AHKFlowApp.UI.Blazor.DTOs;
+
+public sealed record CategoryListRequest(string? Search = null, int Page = 1, int PageSize = 50);
+```
+
+- [ ] **Step 2: Interface**
 
 ```csharp
 // src/Frontend/AHKFlowApp.UI.Blazor/Services/ICategoriesApiClient.cs
+using AHKFlowApp.UI.Blazor.DTOs;
+
 namespace AHKFlowApp.UI.Blazor.Services;
 
 public interface ICategoriesApiClient
 {
-    Task<IReadOnlyList<CategoryDto>> ListAsync(CancellationToken ct = default);
-    Task<CategoryDto> GetAsync(Guid id, CancellationToken ct = default);
-    Task<CategoryDto> CreateAsync(CreateCategoryDto dto, CancellationToken ct = default);
-    Task<CategoryDto> UpdateAsync(Guid id, UpdateCategoryDto dto, CancellationToken ct = default);
-    Task DeleteAsync(Guid id, CancellationToken ct = default);
+    Task<ApiResult<PagedList<CategoryDto>>> ListAsync(CategoryListRequest request, CancellationToken ct = default);
+    Task<ApiResult<CategoryDto>> GetAsync(Guid id, CancellationToken ct = default);
+    Task<ApiResult<CategoryDto>> CreateAsync(CreateCategoryDto input, CancellationToken ct = default);
+    Task<ApiResult<CategoryDto>> UpdateAsync(Guid id, UpdateCategoryDto input, CancellationToken ct = default);
+    Task<ApiResult> DeleteAsync(Guid id, CancellationToken ct = default);
 }
 ```
+
+> If `PagedList<T>` doesn't already exist in `AHKFlowApp.UI.Blazor.DTOs`, copy the backend record's shape: `public sealed record PagedList<T>(IReadOnlyList<T> Items, int Page, int PageSize, int TotalCount);`. Check `src/Frontend/AHKFlowApp.UI.Blazor/DTOs/` first — it almost certainly exists from the hotstrings/hotkeys list work.
+
+- [ ] **Step 3: Implementation — mirrors `ProfilesApiClient`**
 
 ```csharp
 // src/Frontend/AHKFlowApp.UI.Blazor/Services/CategoriesApiClient.cs
 using System.Net.Http.Json;
+using AHKFlowApp.UI.Blazor.DTOs;
 
 namespace AHKFlowApp.UI.Blazor.Services;
 
-public sealed class CategoriesApiClient(HttpClient http) : ICategoriesApiClient
+public sealed class CategoriesApiClient(HttpClient httpClient) : ApiClientBase(httpClient), ICategoriesApiClient
 {
-    private const string Base = "api/v1/categories";
+    private const string BasePath = "api/v1/categories";
 
-    public async Task<IReadOnlyList<CategoryDto>> ListAsync(CancellationToken ct = default)
-        => (await http.GetFromJsonAsync<List<CategoryDto>>(Base, ct))!;
-
-    public Task<CategoryDto> GetAsync(Guid id, CancellationToken ct = default)
-        => http.GetFromJsonAsync<CategoryDto>($"{Base}/{id}", ct)!;
-
-    public async Task<CategoryDto> CreateAsync(CreateCategoryDto dto, CancellationToken ct = default)
+    public Task<ApiResult<PagedList<CategoryDto>>> ListAsync(CategoryListRequest request, CancellationToken ct = default)
     {
-        HttpResponseMessage resp = await http.PostAsJsonAsync(Base, dto, ct);
-        resp.EnsureSuccessStatusCode();
-        return (await resp.Content.ReadFromJsonAsync<CategoryDto>(ct))!;
+        StringBuilder qs = new("?");
+        qs.Append("page=").Append(request.Page);
+        qs.Append("&pageSize=").Append(request.PageSize);
+        if (!string.IsNullOrWhiteSpace(request.Search))
+            qs.Append("&search=").Append(Uri.EscapeDataString(request.Search));
+
+        return SendAsync<PagedList<CategoryDto>>(HttpMethod.Get, $"{BasePath}{qs}", content: null, ct);
     }
 
-    public async Task<CategoryDto> UpdateAsync(Guid id, UpdateCategoryDto dto, CancellationToken ct = default)
-    {
-        HttpResponseMessage resp = await http.PutAsJsonAsync($"{Base}/{id}", dto, ct);
-        resp.EnsureSuccessStatusCode();
-        return (await resp.Content.ReadFromJsonAsync<CategoryDto>(ct))!;
-    }
+    public Task<ApiResult<CategoryDto>> GetAsync(Guid id, CancellationToken ct = default) =>
+        SendAsync<CategoryDto>(HttpMethod.Get, $"{BasePath}/{id}", content: null, ct);
 
-    public async Task DeleteAsync(Guid id, CancellationToken ct = default)
-        => (await http.DeleteAsync($"{Base}/{id}", ct)).EnsureSuccessStatusCode();
+    public Task<ApiResult<CategoryDto>> CreateAsync(CreateCategoryDto input, CancellationToken ct = default) =>
+        SendAsync<CategoryDto>(HttpMethod.Post, BasePath, JsonContent.Create(input), ct);
+
+    public Task<ApiResult<CategoryDto>> UpdateAsync(Guid id, UpdateCategoryDto input, CancellationToken ct = default) =>
+        SendAsync<CategoryDto>(HttpMethod.Put, $"{BasePath}/{id}", JsonContent.Create(input), ct);
+
+    public Task<ApiResult> DeleteAsync(Guid id, CancellationToken ct = default) =>
+        SendNoContentAsync(HttpMethod.Delete, $"{BasePath}/{id}", ct);
 }
 ```
 
-- [ ] **Step 3: DI registration**
+> Add `using System.Text;` at the top of the file for `StringBuilder`.
 
-In `src/Frontend/AHKFlowApp.UI.Blazor/Program.cs`, alongside other typed clients:
+- [ ] **Step 4: DI registration in `Program.cs` — both auth branches**
+
+The existing helper `AddApiClient<TInterface, TImpl>(baseAddress, timeout, useAuth, configureResilience)` is defined at the top of `Program.cs`. Registrations live in **both** branches of the `if (useTestAuth) / else` block.
+
+In the `if (useTestAuth)` branch (after the existing `AddApiClient<IPreferencesApiClient, PreferencesApiClient>(...)` call):
 
 ```csharp
-builder.Services.AddHttpClient<ICategoriesApiClient, CategoriesApiClient>(http =>
-    http.BaseAddress = new Uri(apiBaseUrl)).AddStandardResilienceHandler();
+AddApiClient<ICategoriesApiClient, CategoriesApiClient>(
+    baseAddress, TimeSpan.FromSeconds(30), useAuth: false);
 ```
 
-(Match the existing client registration pattern. `AddStandardResilienceHandler` is a project convention per `AGENTS.md`.)
+In the `else` (MSAL) branch (same position):
 
-- [ ] **Step 4: Client tests** — mirror the existing pattern in `HotstringsApiClientTests`. Use a `MockHttpMessageHandler` and assert the URLs/bodies.
+```csharp
+AddApiClient<ICategoriesApiClient, CategoriesApiClient>(
+    baseAddress, TimeSpan.FromSeconds(30), useAuth: true);
+```
 
-- [ ] **Step 5: Commit**
+Both calls must exist — registering only one breaks the other auth mode at runtime.
+
+- [ ] **Step 5: Client tests**
+
+Mirror `tests/AHKFlowApp.UI.Blazor.Tests/Services/ProfilesApiClientTests.cs` (look it up for the exact `MockHttpMessageHandler` setup pattern). Cover:
+
+- `ListAsync(request)` builds the correct query string: `?page=2&pageSize=10&search=email`.
+- `GetAsync(id)` hits `api/v1/categories/{id}`.
+- `CreateAsync` sends POST JSON body, returns `ApiResult.Ok(CategoryDto)` on 201.
+- `CreateAsync` returns `ApiResult.Failure(Conflict, ...)` on 409, with the problem details populated.
+- `UpdateAsync` returns `ApiResult.Failure(NotFound, ...)` on 404.
+- `DeleteAsync` returns `ApiResult.Ok()` on 204, `Failure(NotFound)` on 404.
+
+- [ ] **Step 6: Commit**
 
 ```bash
 git add src/Frontend/AHKFlowApp.UI.Blazor/DTOs/CategoryDto.cs \
         src/Frontend/AHKFlowApp.UI.Blazor/DTOs/CreateCategoryDto.cs \
         src/Frontend/AHKFlowApp.UI.Blazor/DTOs/UpdateCategoryDto.cs \
+        src/Frontend/AHKFlowApp.UI.Blazor/DTOs/CategoryListRequest.cs \
         src/Frontend/AHKFlowApp.UI.Blazor/Services/ICategoriesApiClient.cs \
         src/Frontend/AHKFlowApp.UI.Blazor/Services/CategoriesApiClient.cs \
         src/Frontend/AHKFlowApp.UI.Blazor/Program.cs \
         tests/AHKFlowApp.UI.Blazor.Tests/Services/CategoriesApiClientTests.cs
-git commit -m "feat: frontend Categories API client"
+git commit -m "feat: frontend Categories API client (ApiClientBase/ApiResult)"
 ```
 
 ---
