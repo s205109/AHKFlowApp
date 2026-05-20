@@ -36,7 +36,8 @@ internal sealed class HotstringDtoExample : IExamplesProvider<HotstringDto>
         IsEndingCharacterRequired: true,
         IsTriggerInsideWord: true,
         CreatedAt: DateTimeOffset.Parse("2026-04-17T09:00:00Z"),
-        UpdatedAt: DateTimeOffset.Parse("2026-04-17T09:00:00Z"));
+        UpdatedAt: DateTimeOffset.Parse("2026-04-17T09:00:00Z"),
+        CategoryIds: []);
 }
 
 internal sealed class PagedHotstringsExample : IExamplesProvider<PagedList<HotstringDto>>
