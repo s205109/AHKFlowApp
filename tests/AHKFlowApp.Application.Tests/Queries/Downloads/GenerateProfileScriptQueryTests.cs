@@ -18,7 +18,14 @@ namespace AHKFlowApp.Application.Tests.Queries.Downloads;
 public sealed class GenerateProfileScriptQueryTests(ScriptGeneratorDbFixture fx)
 {
     private readonly Guid _ownerOid = Guid.NewGuid();
-    private readonly AhkScriptGenerator _generator = new();
+    private readonly AhkScriptGenerator _generator = CreateGenerator();
+
+    private static AhkScriptGenerator CreateGenerator()
+    {
+        IAppVersionProvider version = Substitute.For<IAppVersionProvider>();
+        version.GetVersion().Returns("0.0.0");
+        return new AhkScriptGenerator(new HeaderTokenRenderer(), TimeProvider.System, version);
+    }
 
     private GenerateProfileScriptQueryHandler CreateSut(AppDbContext ctx, Guid? oid = null)
     {

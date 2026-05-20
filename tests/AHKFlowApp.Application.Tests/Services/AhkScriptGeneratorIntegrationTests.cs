@@ -1,3 +1,4 @@
+using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.Services;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Domain.Enums;
@@ -5,6 +6,7 @@ using AHKFlowApp.Infrastructure.Persistence;
 using AHKFlowApp.TestUtilities.Builders;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using NSubstitute;
 using Xunit;
 
 namespace AHKFlowApp.Application.Tests.Services;
@@ -13,7 +15,14 @@ namespace AHKFlowApp.Application.Tests.Services;
 public sealed class AhkScriptGeneratorIntegrationTests(ScriptGeneratorDbFixture fx)
 {
     private readonly Guid _ownerOid = Guid.NewGuid();
-    private readonly AhkScriptGenerator _sut = new();
+    private readonly AhkScriptGenerator _sut = CreateSut();
+
+    private static AhkScriptGenerator CreateSut()
+    {
+        IAppVersionProvider version = Substitute.For<IAppVersionProvider>();
+        version.GetVersion().Returns("0.0.0");
+        return new AhkScriptGenerator(new HeaderTokenRenderer(), TimeProvider.System, version);
+    }
 
     [Fact]
     public async Task Generate_FromSeededDb_ProducesExactExpectedText()
