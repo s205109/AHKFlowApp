@@ -3,6 +3,12 @@ using System.Text;
 
 namespace AHKFlowApp.Application.Services;
 
+/// <summary>
+/// Substitutes recognized tokens in a header/footer template, then collapses
+/// doubled braces (<c>{{</c> / <c>}}</c>) to literal single braces.
+/// All formatting uses <see cref="CultureInfo.InvariantCulture"/> so generated
+/// scripts are culture-independent.
+/// </summary>
 public sealed class HeaderTokenRenderer
 {
     public readonly record struct Context(
