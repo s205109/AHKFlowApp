@@ -15,7 +15,8 @@ public sealed record HotkeyDto(
     HotkeyAction Action,
     string Parameters,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    Guid[] CategoryIds);
 
 public sealed record CreateHotkeyDto(
     string Description,
@@ -27,7 +28,8 @@ public sealed record CreateHotkeyDto(
     HotkeyAction Action = HotkeyAction.Send,
     string Parameters = "",
     Guid[]? ProfileIds = null,
-    bool AppliesToAllProfiles = false);
+    bool AppliesToAllProfiles = false,
+    Guid[]? CategoryIds = null);
 
 public sealed record UpdateHotkeyDto(
     string Description,
@@ -39,4 +41,5 @@ public sealed record UpdateHotkeyDto(
     HotkeyAction Action,
     string Parameters,
     Guid[]? ProfileIds,
-    bool AppliesToAllProfiles);
+    bool AppliesToAllProfiles,
+    Guid[]? CategoryIds = null);
