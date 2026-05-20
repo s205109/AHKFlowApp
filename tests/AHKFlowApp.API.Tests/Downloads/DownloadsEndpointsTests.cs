@@ -18,10 +18,11 @@ public sealed class DownloadsEndpointsTests(SqlContainerFixture sqlFixture) : ID
     private HttpClient CreateAuthed(Guid? oid = null) =>
         _factory.WithTestAuth(b => b.WithOid(oid ?? Guid.NewGuid())).CreateClient();
 
-    private static async Task<ProfileDto> CreateProfileAsync(HttpClient client, string name)
+    private static async Task<ProfileDto> CreateProfileAsync(HttpClient client, string name,
+        string? headerTemplate = null, string? footerTemplate = null)
     {
         HttpResponseMessage created = await client.PostAsJsonAsync(
-            "/api/v1/profiles", new CreateProfileDto(name));
+            "/api/v1/profiles", new CreateProfileDto(name, headerTemplate, footerTemplate));
         created.EnsureSuccessStatusCode();
         return (await created.Content.ReadFromJsonAsync<ProfileDto>())!;
     }
@@ -139,5 +140,26 @@ public sealed class DownloadsEndpointsTests(SqlContainerFixture sqlFixture) : ID
         HttpResponseMessage response = await anon.GetAsync("/api/v1/downloads/zip");
 
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task GET_per_profile_renders_header_tokens_end_to_end()
+    {
+        using HttpClient client = CreateAuthed();
+        ProfileDto profile = await CreateProfileAsync(client, "Renderer Test",
+            headerTemplate: """
+                ; {ProfileName} v{AppVersion} — {HotstringCount}h {HotkeyCount}k
+                ; Generated {GeneratedAt:yyyy-MM-dd}
+
+                """,
+            footerTemplate: "");
+
+        HttpResponseMessage response = await client.GetAsync($"/api/v1/downloads/{profile.Id}");
+        response.EnsureSuccessStatusCode();
+        string content = await response.Content.ReadAsStringAsync();
+
+        content.Should().StartWith("; Renderer Test v");
+        content.Should().Contain("0h 0k");
+        content.Should().MatchRegex(@"Generated \d{4}-\d{2}-\d{2}");
     }
 }
