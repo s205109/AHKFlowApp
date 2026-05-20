@@ -29,12 +29,8 @@
         <MudAlert Severity="Severity.Info" Class="mb-3">You are not signed in.</MudAlert>
     }
 
-    @if (_loadError is not null)
-    {
-        <MudAlert Severity="Severity.Error" Class="mb-3">@_loadError</MudAlert>
-    }
-
-    <MudTable T="CategoryDto" Items="_categories" Dense="true" Hover="true" Loading="_loading">
+    <MudTable @ref="_table" T="CategoryDto" ServerData="@ServerReloadAsync"
+              Dense="true" Hover="true" Loading="_loading">
         <HeaderContent>
             <MudTh>Name</MudTh>
             <MudTh Style="width:160px">Created</MudTh>
@@ -50,7 +46,7 @@
                     <MudTextField @bind-Value="edit.Name"
                                   Validation="@(new Func<string, string?>(ValidateName))"
                                   Error="@(nameError is not null)" ErrorText="@nameError"
-                                  Immediate="true" MaxLength="100"
+                                  Immediate="true" MaxLength="30"
                                   UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "category-name-input" })" />
                 </MudTd>
                 <MudTd>@(context.Id == Guid.Empty ? "—" : context.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm"))</MudTd>
@@ -75,7 +71,19 @@
                 </MudTd>
             }
         </RowTemplate>
-        <NoRecordsContent><MudText>No categories yet.</MudText></NoRecordsContent>
+        <NoRecordsContent>
+            @if (_loadError is not null)
+            {
+                <MudAlert Severity="Severity.Error">@_loadError</MudAlert>
+            }
+            else
+            {
+                <MudText>No categories yet.</MudText>
+            }
+        </NoRecordsContent>
+        <PagerContent>
+            <MudTablePager />
+        </PagerContent>
     </MudTable>
 </MudPaper>
 
@@ -85,7 +93,8 @@
     [Inject] private ISnackbar Snackbar { get; set; } = default!;
     [Inject] private IDialogService DialogService { get; set; } = default!;
 
-    private List<CategoryDto> _categories = [];
+    private MudTable<CategoryDto> _table = default!;
+    private CategoryDto? _draft;
     private readonly Dictionary<Guid, CategoryEditModel> _editing = [];
     private readonly HashSet<Guid> _commitAttempted = [];
     private bool _isAuthenticated;
@@ -100,42 +109,52 @@
             AuthenticationState state = await AuthState;
             _isAuthenticated = state.User.Identity?.IsAuthenticated ?? false;
         }
-
-        if (_isAuthenticated)
-            await LoadDataAsync();
     }
 
-    private async Task LoadDataAsync()
+    private async Task<TableData<CategoryDto>> ServerReloadAsync(TableState state, CancellationToken ct)
     {
+        if (!_isAuthenticated)
+            return new TableData<CategoryDto> { Items = [], TotalItems = 0 };
+
         _loading = true;
         _loadError = null;
 
-        ApiResult<PagedList<CategoryDto>> result = await Api.ListAsync(new CategoryListRequest(), _cts.Token);
+        var request = new CategoryListRequest(Page: state.Page + 1, PageSize: state.PageSize);
+        ApiResult<PagedList<CategoryDto>> result = await Api.ListAsync(request, ct);
 
         _loading = false;
 
         if (!result.IsSuccess)
         {
             _loadError = ApiErrorMessageFactory.Build(result.Status, result.Problem);
-            return;
+            return new TableData<CategoryDto> { Items = [], TotalItems = 0 };
         }
 
-        _categories = [.. result.Value!.Items];
+        List<CategoryDto> items = [.. result.Value!.Items];
+        int total = result.Value!.TotalCount;
+
+        if (_draft is not null)
+        {
+            items.Insert(0, _draft);
+            total++;
+        }
+
+        return new TableData<CategoryDto> { Items = items, TotalItems = total };
     }
 
     private async Task ReloadAsync()
     {
         _editing.Clear();
         _commitAttempted.Clear();
-        await LoadDataAsync();
+        _draft = null;
+        await _table.ReloadServerData();
     }
 
     private async Task StartAddAsync()
     {
-        var draft = new CategoryDto(Guid.Empty, "", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
-        _categories.Insert(0, draft);
+        _draft = new CategoryDto(Guid.Empty, "", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
         _editing[Guid.Empty] = new CategoryEditModel();
-        await Task.CompletedTask;
+        await _table.ReloadServerData();
     }
 
     private void StartEdit(CategoryDto dto)
@@ -144,19 +163,22 @@
         _commitAttempted.Remove(dto.Id);
     }
 
-    private void CancelEditAsync(Guid id)
+    private async Task CancelEditAsync(Guid id)
     {
         _editing.Remove(id);
         _commitAttempted.Remove(id);
 
         if (id == Guid.Empty)
-            _categories.RemoveAll(c => c.Id == Guid.Empty);
+        {
+            _draft = null;
+            await _table.ReloadServerData();
+        }
     }
 
     private static string? ValidateName(string? value)
     {
         if (string.IsNullOrWhiteSpace(value)) return "Name is required";
-        if (value.Length > 100) return "Name must be 100 characters or fewer";
+        if (value.Length > 30) return "Name must be 30 characters or fewer";
         return null;
     }
 
@@ -178,8 +200,9 @@
             if (result.IsSuccess)
             {
                 _editing.Remove(Guid.Empty);
+                _draft = null;
                 Snackbar.Add("Category created.", Severity.Success);
-                await LoadDataAsync();
+                await _table.ReloadServerData();
             }
             else Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
         }
@@ -190,7 +213,7 @@
             {
                 _editing.Remove(id);
                 Snackbar.Add("Category updated.", Severity.Success);
-                await LoadDataAsync();
+                await _table.ReloadServerData();
             }
             else Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
         }
@@ -208,7 +231,7 @@
         if (result.IsSuccess)
         {
             Snackbar.Add("Category deleted.", Severity.Success);
-            await LoadDataAsync();
+            await _table.ReloadServerData();
         }
         else Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
     }
