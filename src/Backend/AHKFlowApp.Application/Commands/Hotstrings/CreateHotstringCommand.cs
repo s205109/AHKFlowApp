@@ -105,12 +105,6 @@ internal sealed class CreateHotstringCommandHandler(
         foreach (HotstringProfile p in profiles)
             entity.Profiles.Add(p);
 
-        List<HotstringCategory> cats = await db.HotstringCategories
-            .Where(c => c.HotstringId == entity.Id)
-            .ToListAsync(ct);
-        foreach (HotstringCategory c in cats)
-            entity.Categories.Add(c);
-
         return Result.Success(entity.ToDto());
     }
 
