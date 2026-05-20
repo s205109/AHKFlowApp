@@ -18,5 +18,6 @@ internal static class HotkeyMappings
         h.Action,
         h.Parameters,
         h.CreatedAt,
-        h.UpdatedAt);
+        h.UpdatedAt,
+        h.Categories.Select(c => c.CategoryId).ToArray());
 }
