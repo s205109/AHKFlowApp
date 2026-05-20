@@ -1,9 +1,13 @@
+using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Domain.Enums;
 
 namespace AHKFlowApp.Application.Services;
 
-public sealed class AhkScriptGenerator
+public sealed class AhkScriptGenerator(
+    HeaderTokenRenderer renderer,
+    TimeProvider clock,
+    IAppVersionProvider versions)
 {
     private const string HotstringsSection = "; --- Hotstrings ---";
     private const string HotkeysSection = "; --- Hotkeys ---";
@@ -17,17 +21,27 @@ public sealed class AhkScriptGenerator
         ArgumentNullException.ThrowIfNull(hotstrings);
         ArgumentNullException.ThrowIfNull(hotkeys);
 
-        List<string> lines = [profile.HeaderTemplate, HotstringsSection];
+        var hsList = hotstrings.OrderBy(h => h.Trigger, StringComparer.Ordinal).ToList();
+        var hkList = hotkeys.OrderBy(h => h.Description, StringComparer.Ordinal).ToList();
 
-        foreach (Hotstring hs in hotstrings.OrderBy(h => h.Trigger, StringComparer.Ordinal))
+        HeaderTokenRenderer.Context ctx = new(
+            ProfileName: profile.Name,
+            AppVersion: versions.GetVersion(),
+            HotstringCount: hsList.Count,
+            HotkeyCount: hkList.Count,
+            GeneratedAt: clock.GetUtcNow());
+
+        List<string> lines = [renderer.Render(profile.HeaderTemplate, ctx), HotstringsSection];
+
+        foreach (Hotstring hs in hsList)
             lines.Add(FormatHotstring(hs));
 
         lines.Add(HotkeysSection);
 
-        foreach (Hotkey hk in hotkeys.OrderBy(h => h.Description, StringComparer.Ordinal))
+        foreach (Hotkey hk in hkList)
             lines.Add(FormatHotkey(hk));
 
-        lines.Add(profile.FooterTemplate);
+        lines.Add(renderer.Render(profile.FooterTemplate, ctx));
 
         return string.Join("\n", lines);
     }
