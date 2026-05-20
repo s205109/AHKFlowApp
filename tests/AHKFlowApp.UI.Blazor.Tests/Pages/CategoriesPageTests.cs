@@ -70,9 +70,7 @@ public sealed class CategoriesPageTests : BunitContext, IAsyncLifetime
         StubListFailure(ApiResultStatus.NetworkError);
 
         IRenderedComponent<Categories> cut = RenderPage();
-        cut.WaitForState(() => cut.Markup.Contains("Unable to reach"));
-
-        cut.Markup.Should().Contain("Unable to reach the API");
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("Unable to reach the API"));
     }
 
     [Fact]
