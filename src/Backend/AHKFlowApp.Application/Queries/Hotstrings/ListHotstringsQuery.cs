@@ -113,7 +113,8 @@ internal sealed class ListHotstringsQueryHandler(
                 h.IsEndingCharacterRequired,
                 h.IsTriggerInsideWord,
                 h.CreatedAt,
-                h.UpdatedAt))
+                h.UpdatedAt,
+                h.Categories.Select(hc => hc.CategoryId).ToArray()))
             .ToListAsync(ct);
 
         return Result.Success(new PagedList<HotstringDto>(items, request.Page, request.PageSize, total));
