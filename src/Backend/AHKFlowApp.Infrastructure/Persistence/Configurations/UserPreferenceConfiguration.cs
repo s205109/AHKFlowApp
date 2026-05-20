@@ -14,5 +14,6 @@ internal sealed class UserPreferenceConfiguration : IEntityTypeConfiguration<Use
         builder.Property(x => x.RowsPerPage).IsRequired();
         builder.Property(x => x.DarkMode).IsRequired();
         builder.Property(x => x.UpdatedAt).IsRequired();
+        builder.Property(x => x.CategoriesSeededAt).IsRequired(false);
     }
 }

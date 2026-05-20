@@ -13,6 +13,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<HotkeyProfile> HotkeyProfiles => Set<HotkeyProfile>();
     public DbSet<Profile> Profiles => Set<Profile>();
     public DbSet<UserPreference> UserPreferences => Set<UserPreference>();
+    public DbSet<Category> Categories => Set<Category>();
+    public DbSet<HotstringCategory> HotstringCategories => Set<HotstringCategory>();
+    public DbSet<HotkeyCategory> HotkeyCategories => Set<HotkeyCategory>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

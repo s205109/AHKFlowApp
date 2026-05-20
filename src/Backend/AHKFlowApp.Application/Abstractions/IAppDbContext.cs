@@ -11,6 +11,9 @@ public interface IAppDbContext
     DbSet<HotkeyProfile> HotkeyProfiles { get; }
     DbSet<Profile> Profiles { get; }
     DbSet<UserPreference> UserPreferences { get; }
+    DbSet<Category> Categories { get; }
+    DbSet<HotstringCategory> HotstringCategories { get; }
+    DbSet<HotkeyCategory> HotkeyCategories { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 
