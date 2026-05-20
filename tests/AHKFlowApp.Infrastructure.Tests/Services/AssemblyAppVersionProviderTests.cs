@@ -32,4 +32,20 @@ public sealed class AssemblyAppVersionProviderTests
 
         new AssemblyAppVersionProvider().GetVersion().Should().Be(expected);
     }
+
+    [Fact]
+    public void ResolveVersion_ReturnsFallback_WhenAssemblyIsNull()
+    {
+        string result = AssemblyAppVersionProvider.ResolveVersion(null);
+
+        result.Should().Be("0.0.0-dev");
+    }
+
+    [Fact]
+    public void ResolveVersion_NeverContainsPlusSuffix()
+    {
+        string result = AssemblyAppVersionProvider.ResolveVersion(Assembly.GetEntryAssembly());
+
+        result.Should().NotContain("+");
+    }
 }
