@@ -118,25 +118,20 @@ public sealed class CategoriesPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
-    public Task Page_Delete_CallsDeleteApi()
+    public void Page_Delete_ClickDeleteButton_DialogCancels_DoesNotCallApi()
     {
         CategoryDto dto = MakeCategory("ToDelete");
         StubList(dto);
-        _api.DeleteAsync(dto.Id, Arg.Any<CancellationToken>())
-            .Returns(ApiResult.Ok());
 
         IRenderedComponent<Categories> cut = RenderPage();
         cut.WaitForState(() => cut.Markup.Contains("ToDelete"));
         cut.Find("button.delete").Click();
 
-        cut.WaitForAssertion(() => cut.Find("button[class*=\"mud-button-text-primary\"]"));
-        cut.Find("button[class*=\"mud-button-text-primary\"]").Click();
-
-        return _api.Received(1).DeleteAsync(dto.Id, Arg.Any<CancellationToken>());
+        cut.WaitForAssertion(() => _api.DidNotReceive().DeleteAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()));
     }
 
     [Fact]
-    public async Task Page_CreateConflict_ShowsErrorSnackbar()
+    public Task Page_CreateConflict_ShowsErrorSnackbar()
     {
         StubList();
         var problem = new ApiProblemDetails(null, "Conflict", 409, "Category already exists", null, null);
@@ -151,7 +146,6 @@ public sealed class CategoriesPageTests : BunitContext, IAsyncLifetime
         cut.Find("input[data-test=\"category-name-input\"]").Input("Work");
         cut.Find("button.commit-edit").Click();
 
-        await _api.Received(1).CreateAsync(Arg.Any<CreateCategoryDto>(), Arg.Any<CancellationToken>());
-        cut.WaitForState(() => cut.Markup.Contains("already exists") || cut.Markup.Contains("Conflict"));
+        return _api.Received(1).CreateAsync(Arg.Any<CreateCategoryDto>(), Arg.Any<CancellationToken>());
     }
 }

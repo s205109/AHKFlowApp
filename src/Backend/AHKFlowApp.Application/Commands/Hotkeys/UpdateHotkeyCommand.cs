@@ -99,11 +99,7 @@ internal sealed class UpdateHotkeyCommandHandler(
         entity.Categories.Clear();
 
         foreach (Guid cid in distinctCategoryIds)
-        {
-            var junction = HotkeyCategory.Create(entity.Id, cid);
-            db.HotkeyCategories.Add(junction);
-            entity.Categories.Add(junction);
-        }
+            db.HotkeyCategories.Add(HotkeyCategory.Create(entity.Id, cid));
 
         try
         {
