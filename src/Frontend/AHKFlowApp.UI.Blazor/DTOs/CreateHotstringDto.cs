@@ -6,4 +6,5 @@ public sealed record CreateHotstringDto(
     Guid[]? ProfileIds = null,
     bool AppliesToAllProfiles = true,
     bool IsEndingCharacterRequired = true,
-    bool IsTriggerInsideWord = true);
+    bool IsTriggerInsideWord = true,
+    Guid[]? CategoryIds = null);
