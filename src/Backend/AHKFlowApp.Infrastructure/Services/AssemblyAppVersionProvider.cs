@@ -5,13 +5,12 @@ namespace AHKFlowApp.Infrastructure.Services;
 
 public sealed class AssemblyAppVersionProvider : IAppVersionProvider
 {
-    private static readonly string s_version = ResolveVersion();
+    private static readonly string s_version = ResolveVersion(Assembly.GetEntryAssembly());
 
     public string GetVersion() => s_version;
 
-    private static string ResolveVersion()
+    internal static string ResolveVersion(Assembly? entry)
     {
-        var entry = Assembly.GetEntryAssembly();
         string? info = entry?
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
             .InformationalVersion;
