@@ -4,9 +4,9 @@
 
 **Goal:** Close OpenAPI documentation gaps — annotate the three bare controllers, enable Application-project XML docs in Swagger, and add a CI-level schema test so future drift is caught.
 
-**Architecture:** Foundation already exists (`AddSwaggerGen`, Bearer scheme, XML inclusion of API.xml, `ExampleFilters`). Plan extends it: (a) annotate `WhoAmIController`, (b) add action `<summary>` to `VersionController`/`HealthController`, (c) emit `AHKFlowApp.Application.xml` and wire it into `IncludeXmlComments`, (d) document the public DTO contract surface only, (e) add a schema validation integration test using `Microsoft.OpenApi.Readers`. New controllers added by sibling 2026-05-19 plans (`CategoriesController`, dev `seed-all`, `DownloadsController.Preview`, bulk-delete) ship annotated from those plans — this plan does not touch them.
+**Architecture:** Foundation already exists (`AddSwaggerGen`, Bearer scheme, XML inclusion of API.xml, `ExampleFilters`). Plan extends it: (a) annotate `WhoAmIController`, (b) add action `<summary>` to `VersionController`/`HealthController`, (c) emit `AHKFlowApp.Application.xml` and wire it into `IncludeXmlComments`, (d) document the public DTO contract surface only, (e) add a reflection-based coverage gate plus a Swagger-doc wiring test. New controllers added by sibling 2026-05-19 plans (`CategoriesController`, dev `seed-all`, `DownloadsController.Preview`, bulk-delete) ship annotated from those plans — this plan does not touch them.
 
-**Tech Stack:** Swashbuckle.AspNetCore 10.x (already wired), Microsoft.OpenApi.Readers (new test-only package), xUnit + WebApplicationFactory.
+**Tech Stack:** Swashbuckle.AspNetCore 10.x + Microsoft.OpenApi 2.x (already wired), xUnit + WebApplicationFactory + `System.Text.Json`. No new packages.
 
 ---
 
@@ -25,9 +25,9 @@ These items are spec-required but owned by sibling plans — referenced for clar
 **Files:**
 - Modify: `src/Backend/AHKFlowApp.API/Controllers/WhoAmIController.cs`
 
-- [ ] **Step 1: Add class-level auth response types + action `<summary>` + 200 response type**
+- [ ] **Step 1: Add class-level auth response types + action `<summary>` + 200 response type, and document `WhoAmIResponse`**
 
-Replace the controller body (the existing record at the bottom stays unchanged):
+Replace the entire file contents:
 
 ```csharp
 using AHKFlowApp.Application.Abstractions;
@@ -52,8 +52,15 @@ public sealed class WhoAmIController(ICurrentUser currentUser) : ControllerBase
         Ok(new WhoAmIResponse(currentUser.Oid, currentUser.Email, currentUser.Name, currentUser.IsAuthenticated));
 }
 
+/// <summary>Identity details for the authenticated caller.</summary>
+/// <param name="Oid">Entra object id (stable per-user GUID), or null when unauthenticated.</param>
+/// <param name="Email">Caller email / preferred username, when present in the token.</param>
+/// <param name="Name">Caller display name, when present in the token.</param>
+/// <param name="IsAuthenticated">True when the request carried a valid token.</param>
 public sealed record WhoAmIResponse(Guid? Oid, string? Email, string? Name, bool IsAuthenticated);
 ```
+
+`WhoAmIResponse` lives in the API project, so its XML docs flow through the already-wired `AHKFlowApp.API.xml` — no extra wiring needed.
 
 The signature change (`IActionResult` → `ActionResult<WhoAmIResponse>`) lets Swashbuckle infer the body type even without the explicit attribute, and matches the convention used by every other typed action in this codebase.
 
@@ -492,120 +499,134 @@ git commit -m "docs(api): XML comments on Application DTOs"
 
 ---
 
-## Task 5: Schema Validation Integration Test
+## Task 5: OpenAPI Coverage Tests
 
-Catches future drift — a new endpoint shipped without `[ProducesResponseType]` or a DTO change that strips the XML wiring fails the test.
+Two tests, **no new package**. The real CI gate is a reflection test that inspects controller actions directly for explicit `[ProducesResponseType]` metadata. A second test parses the served `swagger.json` to confirm the Application XML docs are wired in.
+
+> **Why not the Swagger doc for the coverage gate?** Swashbuckle infers an implicit `200` for `ActionResult<T>` actions even when they carry no `[ProducesResponseType]`. So "the operation has a 2xx in `swagger.json`" passes for exactly the drift it claims to catch. Reflecting over the action attributes is the honest check.
+>
+> **Spec deviation (intentional):** the spec named `Microsoft.OpenApi.Readers`. That package's stable line is 1.6.x and targets the old `Microsoft.OpenApi.Models` / `OperationType` model, while this repo already runs Microsoft.OpenApi **2.x** via Swashbuckle 10 (`ApiExtensions.cs:46` uses `OpenApiSecuritySchemeReference` and the `AddSecurityRequirement(doc => ...)` overload — both 2.x-only). Mixing the 1.x reader with the 2.x model is fragile. The Swagger-doc test uses a `System.Text.Json` walk instead — zero version coupling, no new dependency.
 
 **Files:**
-- Modify: `Directory.Packages.props` (add `Microsoft.OpenApi.Readers`).
-- Modify: `tests/AHKFlowApp.API.Tests/AHKFlowApp.API.Tests.csproj` (reference it).
-- Create: `tests/AHKFlowApp.API.Tests/OpenApi/SwaggerSchemaTests.cs`.
+- Create: `tests/AHKFlowApp.API.Tests/OpenApi/ProducesResponseTypeCoverageTests.cs`
+- Create: `tests/AHKFlowApp.API.Tests/OpenApi/SwaggerDocTests.cs`
 
-- [ ] **Step 1: Resolve the latest stable `Microsoft.OpenApi.Readers` version**
+- [ ] **Step 1: Write the reflection coverage gate**
 
-Run: `dotnet add tests/AHKFlowApp.API.Tests package Microsoft.OpenApi.Readers --no-restore`
-This writes a `Version=` attribute into the csproj. Capture the version it picked (let's call it `<VER>`), then **remove the `Version=` attribute** from the csproj (CPM forbids it on consumers).
-
-- [ ] **Step 2: Add the resolved version to `Directory.Packages.props`**
-
-Insert next to the existing `Microsoft.OpenApi`-adjacent or near the `Swashbuckle.AspNetCore` entries (lines 48-49):
-
-```xml
-    <PackageVersion Include="Microsoft.OpenApi.Readers" Version="<VER>" />
-```
-
-- [ ] **Step 3: Verify the test csproj has a bare `<PackageReference>` only**
-
-After running `dotnet add` it should look like:
-
-```xml
-    <PackageReference Include="Microsoft.OpenApi.Readers" />
-```
-
-(no `Version=` attribute — CPM resolves it).
-
-- [ ] **Step 4: Write the test**
-
-Create `tests/AHKFlowApp.API.Tests/OpenApi/SwaggerSchemaTests.cs`:
+Create `tests/AHKFlowApp.API.Tests/OpenApi/ProducesResponseTypeCoverageTests.cs`:
 
 ```csharp
+using System.Reflection;
+using AHKFlowApp.API.Controllers;
+using FluentAssertions;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Routing;
+using Xunit;
+
+namespace AHKFlowApp.API.Tests.OpenApi;
+
+public sealed class ProducesResponseTypeCoverageTests
+{
+    [Fact]
+    public void EveryControllerAction_DeclaresExplicit2xxProducesResponseType()
+    {
+        Assembly apiAssembly = typeof(HotstringsController).Assembly;
+
+        List<string> offenders = apiAssembly.GetTypes()
+            .Where(t => typeof(ControllerBase).IsAssignableFrom(t) && !t.IsAbstract)
+            .SelectMany(t => t
+                .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+                .Where(m => m.GetCustomAttributes<HttpMethodAttribute>().Any())
+                .Select(m => new { Controller = t.Name, Action = m }))
+            .Where(x => !x.Action.GetCustomAttributes<ProducesResponseTypeAttribute>()
+                .Any(attr => attr.StatusCode is >= 200 and <= 299))
+            .Select(x => $"{x.Controller}.{x.Action.Name}")
+            .ToList();
+
+        offenders.Should().BeEmpty(
+            "every controller action must carry an explicit method-level [ProducesResponseType] " +
+            "with a 2xx status code — Swashbuckle's inferred 200 is not a substitute");
+    }
+}
+```
+
+Notes for the implementer:
+- Pure reflection — no `WebApplicationFactory`, no fixture, no `[Collection]`. It's fast.
+- `GetCustomAttributes<ProducesResponseTypeAttribute>()` also matches the generic `ProducesResponseTypeAttribute<T>` (it derives from the non-generic), so either annotation style passes.
+- Filtering by `HttpMethodAttribute` (base of `[HttpGet]`/`[HttpPost]`/`[HttpPut]`/`[HttpDelete]`) plus `DeclaredOnly` excludes inherited `ControllerBase` members.
+- This gate spans **all** controllers, including ones added by sibling plans — they must be annotated too (the spec already requires that).
+
+- [ ] **Step 2: Run the coverage gate**
+
+Run: `dotnet test tests/AHKFlowApp.API.Tests --filter "FullyQualifiedName~ProducesResponseTypeCoverage" --no-build`
+Expected: PASS — Tasks 1-2 annotated the previously-bare controllers, so every action now carries an explicit 2xx attribute.
+
+- [ ] **Step 3 (optional confidence check): prove the gate catches drift**
+
+Temporarily comment out the `[ProducesResponseType(typeof(WhoAmIResponse), StatusCodes.Status200OK)]` line in `WhoAmIController`, rebuild, and re-run the filter. Expected: FAIL, with the message listing `WhoAmIController.Get`. Restore the line and rebuild.
+
+- [ ] **Step 4: Write the Swagger XML-wiring test**
+
+Create `tests/AHKFlowApp.API.Tests/OpenApi/SwaggerDocTests.cs`:
+
+```csharp
+using System.Text.Json;
 using AHKFlowApp.TestUtilities.Fixtures;
 using FluentAssertions;
-using Microsoft.OpenApi.Models;
-using Microsoft.OpenApi.Readers;
 using Xunit;
 
 namespace AHKFlowApp.API.Tests.OpenApi;
 
 [Collection("WebApi")]
-public sealed class SwaggerSchemaTests(SqlContainerFixture sqlFixture) : IDisposable
+public sealed class SwaggerDocTests(SqlContainerFixture sqlFixture) : IDisposable
 {
     private readonly CustomWebApplicationFactory _factory = new(sqlFixture);
 
     [Fact]
-    public async Task SwaggerJson_EveryOperation_DeclaresAtLeastOne2xxResponse()
+    public async Task SwaggerJson_HotstringDtoSchema_SurfacesPropertyDescriptions()
     {
-        // Arrange
-        using HttpClient client = _factory.CreateClient();
-        await using Stream stream = await client.GetStreamAsync("/swagger/v1/swagger.json");
-        OpenApiDocument doc = new OpenApiStreamReader().Read(stream, out _);
-
-        // Act + Assert
-        foreach ((string path, OpenApiPathItem pathItem) in doc.Paths)
-        {
-            foreach ((OperationType verb, OpenApiOperation op) in pathItem.Operations)
-            {
-                bool has2xx = op.Responses.Keys.Any(code => code.StartsWith('2'));
-                has2xx.Should().BeTrue(
-                    $"operation {verb} {path} must declare at least one 2xx response via [ProducesResponseType]");
-            }
-        }
-    }
-
-    [Fact]
-    public async Task SwaggerJson_HotstringDto_PropertyDescriptionsAreSurfaced()
-    {
-        // Sanity-check that AHKFlowApp.Application.xml is wired into Swagger.
-        // If wiring breaks, schema property descriptions disappear.
+        // Confirms AHKFlowApp.Application.xml is wired into Swagger.
+        // If the wiring breaks, schema property descriptions disappear.
 
         // Arrange
         using HttpClient client = _factory.CreateClient();
-        await using Stream stream = await client.GetStreamAsync("/swagger/v1/swagger.json");
-        OpenApiDocument doc = new OpenApiStreamReader().Read(stream, out _);
 
         // Act
-        bool found = doc.Components.Schemas.TryGetValue("HotstringDto", out OpenApiSchema? schema);
+        await using Stream stream = await client.GetStreamAsync("/swagger/v1/swagger.json");
+        using JsonDocument doc = await JsonDocument.ParseAsync(stream);
 
         // Assert
-        found.Should().BeTrue("HotstringDto should be present in the generated schema");
-        schema!.Properties.Values
-            .Any(p => !string.IsNullOrWhiteSpace(p.Description))
-            .Should().BeTrue("at least one HotstringDto property should carry a description from XML docs");
+        JsonElement properties = doc.RootElement
+            .GetProperty("components")
+            .GetProperty("schemas")
+            .GetProperty("HotstringDto")
+            .GetProperty("properties");
+
+        bool anyDescribed = properties.EnumerateObject()
+            .Any(p => p.Value.TryGetProperty("description", out JsonElement description)
+                      && !string.IsNullOrWhiteSpace(description.GetString()));
+
+        anyDescribed.Should().BeTrue(
+            "HotstringDto property descriptions must be surfaced from AHKFlowApp.Application.xml");
     }
 
     public void Dispose() => _factory.Dispose();
 }
 ```
 
-- [ ] **Step 5: Restore + build the test project**
+The factory serves Swagger because `WebApplicationFactory<Program>` defaults to the `Development` environment, and `Program.cs:91,183` registers/maps Swagger only in Development. `ProgramTests.SwaggerEndpoint_Returns200` already relies on this.
 
-Run: `dotnet restore && dotnet build tests/AHKFlowApp.API.Tests --no-restore`
-Expected: PASS.
+- [ ] **Step 5: Build + run both tests**
 
-- [ ] **Step 6: Run the new tests**
+Run: `dotnet build tests/AHKFlowApp.API.Tests --no-restore`
+Run: `dotnet test tests/AHKFlowApp.API.Tests --filter "FullyQualifiedName~OpenApi" --no-build`
+Expected: all PASS (2 tests).
 
-Run: `dotnet test tests/AHKFlowApp.API.Tests --filter "FullyQualifiedName~SwaggerSchemaTests" --no-build`
-Expected: 2 tests PASS.
-
-If `EveryOperation_DeclaresAtLeastOne2xxResponse` fails, the failure message names the offending `VERB /api/...` — fix by adding `[ProducesResponseType]` to that action.
-
-- [ ] **Step 7: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add Directory.Packages.props \
-        tests/AHKFlowApp.API.Tests/AHKFlowApp.API.Tests.csproj \
-        tests/AHKFlowApp.API.Tests/OpenApi/SwaggerSchemaTests.cs
-git commit -m "test(api): OpenAPI schema gate"
+git add tests/AHKFlowApp.API.Tests/OpenApi/
+git commit -m "test(api): OpenAPI ProducesResponseType coverage gate"
 ```
 
 ---
@@ -650,15 +671,15 @@ gh pr create --title "OpenAPI polish" --body "..."
 ## Self-Review Checklist (Run Before Marking Done)
 
 - [ ] **Spec coverage:** Every spec section (Gaps 1-6, Scope 1-7) maps to a task above. Coordination items (Categories, Seed Expansion, UX Bundle) are explicitly out-of-scope-and-deferred, not silently dropped.
-- [ ] **Placeholders:** No `TBD`, `TODO`, "implement later", "appropriate error handling". `<VER>` in Task 5 is intentional and resolved at execution time via `dotnet add`.
-- [ ] **Type consistency:** `WhoAmIResponse` shape unchanged; `IncludeXmlComments` per-file flag is consistent; CPM rule (no `Version=` on consumer csproj) honored.
+- [ ] **Placeholders:** No `TBD`, `TODO`, "implement later", "appropriate error handling". No new package, so no version placeholder.
+- [ ] **Type consistency:** `WhoAmIResponse` shape unchanged (only XML docs added); `IncludeXmlComments` per-file flag is consistent across both XML files.
 - [ ] **YAGNI:** No `<param>` docs on command/query records, no OAuth2 wiring, no example bodies, no public docs on internal types — all explicitly out of scope per the spec.
 - [ ] **Commit granularity:** Wiring (Task 3) and DTO docs (Task 4) are separate commits per the spec's "two PRs" hint, while staying on the same branch.
+- [ ] **Spec deviation logged:** Task 5 drops `Microsoft.OpenApi.Readers` (version-incompatible with the repo's Microsoft.OpenApi 2.x) and replaces the weak "any 2xx in Swagger" check with a reflection gate — both deviations are documented inline in Task 5 with rationale.
 
 ---
 
 ## Unresolved Questions
 
 - OAuth2 auth-code flow in Swagger UI — when? *(default: defer until a first-time API user actually needs it; spec already votes defer)*
-- `Microsoft.OpenApi.Readers` exists separately from the `Microsoft.OpenApi` already pulled in by Swashbuckle. Reuse JSON-walk approach instead, drop the new package? *(default: keep — spec asked for it explicitly and the Reader API is cleaner)*
-- DTO docs on `WhoAmIResponse` — lives in the API project, not Application/DTOs. Annotate it in Task 1 alongside the attributes, or leave bare? *(default: leave bare for now — record is trivially named and the schema property names match the C# names; revisit if a reviewer asks)*
+- Reflection coverage gate spans all controllers, including sibling-plan ones. If this plan executes before Categories/Seed-Expansion land, those controllers don't exist yet and the gate only checks current controllers — acceptable, or block on ordering? *(default: acceptable — the gate re-runs in CI on every PR, so sibling controllers get caught when they land)*
