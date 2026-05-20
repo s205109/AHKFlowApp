@@ -42,10 +42,39 @@ public sealed class CreateCategoryCommandHandlerTests(CategoryDbFixture fx)
     }
 
     [Fact]
+    public async Task Create_ReturnsUnauthorized_WhenNoOid()
+    {
+        await using AppDbContext ctx = fx.CreateContext();
+        ICurrentUser user = Substitute.For<ICurrentUser>();
+        user.Oid.Returns((Guid?)null);
+        var sut = new CreateCategoryCommandHandler(ctx, user, _clock);
+
+        Result<CategoryDto> result = await sut.Handle(
+            new CreateCategoryCommand(new CreateCategoryDto("Email")), CancellationToken.None);
+
+        result.Status.Should().Be(ResultStatus.Unauthorized);
+    }
+
+    [Fact]
     public async Task Create_ReturnsConflict_WhenNameAlreadyExists()
     {
         await using AppDbContext ctx = fx.CreateContext();
         ctx.Categories.Add(new CategoryBuilder().WithOwner(_ownerOid).Named("Email").Build());
+        await ctx.SaveChangesAsync();
+
+        var sut = new CreateCategoryCommandHandler(ctx, CurrentUser(), _clock);
+
+        Result<CategoryDto> result = await sut.Handle(
+            new CreateCategoryCommand(new CreateCategoryDto("Email")), CancellationToken.None);
+
+        result.Status.Should().Be(ResultStatus.Conflict);
+    }
+
+    [Fact]
+    public async Task Create_ReturnsConflict_WhenNameDiffersOnlyByCase()
+    {
+        await using AppDbContext ctx = fx.CreateContext();
+        ctx.Categories.Add(new CategoryBuilder().WithOwner(_ownerOid).Named("email").Build());
         await ctx.SaveChangesAsync();
 
         var sut = new CreateCategoryCommandHandler(ctx, CurrentUser(), _clock);
@@ -66,5 +95,7 @@ public sealed class CreateCategoryCommandHandlerTests(CategoryDbFixture fx)
             new CreateCategoryCommand(new CreateCategoryDto("  Email  ")), CancellationToken.None);
 
         result.Value.Name.Should().Be("Email");
+        (await ctx.Categories.CountAsync(c => c.OwnerOid == _ownerOid && c.Name == "Email"))
+            .Should().Be(1);
     }
 }
