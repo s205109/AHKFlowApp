@@ -1,0 +1,217 @@
+@page "/categories"
+@using AHKFlowApp.UI.Blazor.DTOs
+@using AHKFlowApp.UI.Blazor.Services
+@using AHKFlowApp.UI.Blazor.Validation
+@using MudBlazor
+@using Microsoft.AspNetCore.Components.Authorization
+@implements IDisposable
+
+<PageTitle>Categories</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Categories</MudText>
+
+<MudPaper Class="pa-4">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Wrap="Wrap.Wrap" Class="mb-4">
+        <MudButton Class="add-category" Variant="Variant.Filled" Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.Add" OnClick="StartAddAsync"
+                   Disabled="@(!_isAuthenticated || _editing.ContainsKey(Guid.Empty))">
+            Add
+        </MudButton>
+        <MudButton Class="reload-categories" Variant="Variant.Filled" Color="Color.Secondary"
+                   StartIcon="@Icons.Material.Filled.Refresh" OnClick="ReloadAsync"
+                   Disabled="@(!_isAuthenticated || _loading)">
+            Reload
+        </MudButton>
+    </MudStack>
+
+    @if (!_isAuthenticated)
+    {
+        <MudAlert Severity="Severity.Info" Class="mb-3">You are not signed in.</MudAlert>
+    }
+
+    @if (_loadError is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-3">@_loadError</MudAlert>
+    }
+
+    <MudTable T="CategoryDto" Items="_categories" Dense="true" Hover="true" Loading="_loading">
+        <HeaderContent>
+            <MudTh>Name</MudTh>
+            <MudTh Style="width:160px">Created</MudTh>
+            <MudTh Style="width:160px">Updated</MudTh>
+            <MudTh Style="width:160px">Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            @if (_editing.TryGetValue(context.Id, out CategoryEditModel? edit))
+            {
+                bool showErrors = _commitAttempted.Contains(context.Id);
+                string? nameError = showErrors ? ValidateName(edit.Name) : null;
+                <MudTd>
+                    <MudTextField @bind-Value="edit.Name"
+                                  Validation="@(new Func<string, string?>(ValidateName))"
+                                  Error="@(nameError is not null)" ErrorText="@nameError"
+                                  Immediate="true" MaxLength="100"
+                                  UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "category-name-input" })" />
+                </MudTd>
+                <MudTd>@(context.Id == Guid.Empty ? "—" : context.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm"))</MudTd>
+                <MudTd>@(context.Id == Guid.Empty ? "—" : context.UpdatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm"))</MudTd>
+                <MudTd>
+                    <MudIconButton Class="commit-edit" Icon="@Icons.Material.Filled.Check"
+                                   Color="Color.Success" OnClick="() => CommitEditAsync(context.Id)" />
+                    <MudIconButton Class="cancel-edit" Icon="@Icons.Material.Filled.Close"
+                                   Color="Color.Default" OnClick="() => CancelEditAsync(context.Id)" />
+                </MudTd>
+            }
+            else
+            {
+                <MudTd>@context.Name</MudTd>
+                <MudTd>@context.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</MudTd>
+                <MudTd>@context.UpdatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</MudTd>
+                <MudTd>
+                    <MudIconButton Class="start-edit" Icon="@Icons.Material.Filled.Edit"
+                                   OnClick="() => StartEdit(context)" />
+                    <MudIconButton Class="delete" Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
+                                   OnClick="() => DeleteAsync(context)" />
+                </MudTd>
+            }
+        </RowTemplate>
+        <NoRecordsContent><MudText>No categories yet.</MudText></NoRecordsContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+    [Inject] private ICategoriesApiClient Api { get; set; } = default!;
+    [Inject] private ISnackbar Snackbar { get; set; } = default!;
+    [Inject] private IDialogService DialogService { get; set; } = default!;
+
+    private List<CategoryDto> _categories = [];
+    private readonly Dictionary<Guid, CategoryEditModel> _editing = [];
+    private readonly HashSet<Guid> _commitAttempted = [];
+    private bool _isAuthenticated;
+    private bool _loading;
+    private string? _loadError;
+    private readonly CancellationTokenSource _cts = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is not null)
+        {
+            AuthenticationState state = await AuthState;
+            _isAuthenticated = state.User.Identity?.IsAuthenticated ?? false;
+        }
+
+        if (_isAuthenticated)
+            await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        _loading = true;
+        _loadError = null;
+
+        ApiResult<PagedList<CategoryDto>> result = await Api.ListAsync(new CategoryListRequest(), _cts.Token);
+
+        _loading = false;
+
+        if (!result.IsSuccess)
+        {
+            _loadError = ApiErrorMessageFactory.Build(result.Status, result.Problem);
+            return;
+        }
+
+        _categories = [.. result.Value!.Items];
+    }
+
+    private async Task ReloadAsync()
+    {
+        _editing.Clear();
+        _commitAttempted.Clear();
+        await LoadDataAsync();
+    }
+
+    private async Task StartAddAsync()
+    {
+        var draft = new CategoryDto(Guid.Empty, "", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        _categories.Insert(0, draft);
+        _editing[Guid.Empty] = new CategoryEditModel();
+        await Task.CompletedTask;
+    }
+
+    private void StartEdit(CategoryDto dto)
+    {
+        _editing[dto.Id] = CategoryEditModel.FromDto(dto);
+        _commitAttempted.Remove(dto.Id);
+    }
+
+    private void CancelEditAsync(Guid id)
+    {
+        _editing.Remove(id);
+        _commitAttempted.Remove(id);
+
+        if (id == Guid.Empty)
+            _categories.RemoveAll(c => c.Id == Guid.Empty);
+    }
+
+    private static string? ValidateName(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return "Name is required";
+        if (value.Length > 100) return "Name must be 100 characters or fewer";
+        return null;
+    }
+
+    private async Task CommitEditAsync(Guid id)
+    {
+        _commitAttempted.Add(id);
+
+        if (!_editing.TryGetValue(id, out CategoryEditModel? edit))
+            return;
+
+        if (ValidateName(edit.Name) is not null)
+            return;
+
+        _commitAttempted.Remove(id);
+
+        if (id == Guid.Empty)
+        {
+            ApiResult<CategoryDto> result = await Api.CreateAsync(edit.ToCreateDto(), _cts.Token);
+            if (result.IsSuccess)
+            {
+                _editing.Remove(Guid.Empty);
+                Snackbar.Add("Category created.", Severity.Success);
+                await LoadDataAsync();
+            }
+            else Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
+        }
+        else
+        {
+            ApiResult<CategoryDto> result = await Api.UpdateAsync(id, edit.ToUpdateDto(), _cts.Token);
+            if (result.IsSuccess)
+            {
+                _editing.Remove(id);
+                Snackbar.Add("Category updated.", Severity.Success);
+                await LoadDataAsync();
+            }
+            else Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
+        }
+    }
+
+    private async Task DeleteAsync(CategoryDto dto)
+    {
+        bool? confirm = await DialogService.ShowMessageBoxAsync(
+            title: "Delete category?",
+            message: $"Delete \"{dto.Name}\"? This cannot be undone.",
+            yesText: "Delete", cancelText: "Cancel");
+        if (confirm != true) return;
+
+        ApiResult result = await Api.DeleteAsync(dto.Id, _cts.Token);
+        if (result.IsSuccess)
+        {
+            Snackbar.Add("Category deleted.", Severity.Success);
+            await LoadDataAsync();
+        }
+        else Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
+    }
+
+    public void Dispose() { _cts.Cancel(); _cts.Dispose(); }
+}
