@@ -725,21 +725,19 @@ git commit -m "chore: register HeaderTokenRenderer and IAppVersionProvider"
 - [ ] **Step 1: Add a test that hits the download endpoint and asserts the rendered header**
 
 ```csharp
+// added to tests/AHKFlowApp.API.Tests/Downloads/DownloadsEndpointsTests.cs
 [Fact]
-public async Task GetProfileScript_RendersHeaderTokens()
+public async Task GET_per_profile_renders_header_tokens()
 {
-    using AuthenticatedClient client = await fx.AuthenticateAsync();
+    using HttpClient client = CreateAuthed();
 
     // Create a profile with a header that uses every token.
-    var profile = await client.Profiles.CreateAsync(new CreateProfileDto(
-        Name: "Renderer Test",
-        IsDefault: false,
-        HeaderTemplate: """
+    ProfileDto profile = await CreateProfileAsync(client, "Renderer Test",
+        headerTemplate: """
             ; {ProfileName} v{AppVersion} — {HotstringCount}h {HotkeyCount}k
             ; Generated {GeneratedAt:yyyy-MM-dd}
 
-            """,
-        FooterTemplate: ""));
+            """);
 
     HttpResponseMessage resp = await client.GetAsync($"/api/v1/downloads/{profile.Id}");
     resp.EnsureSuccessStatusCode();
@@ -751,7 +749,7 @@ public async Task GetProfileScript_RendersHeaderTokens()
 }
 ```
 
-Adapt the bootstrap (`AuthenticatedClient`, `client.Profiles`) to whatever helpers the existing Downloads tests use. The point is: round-trip through HTTP → handler → generator → renderer.
+`CreateAuthed()` and `CreateProfileAsync(...)` are the existing private helpers in `DownloadsEndpointsTests` — `CreateAuthed` returns an `HttpClient` via `_factory.WithTestAuth(b => b.WithOid(...)).CreateClient()`, and `CreateProfileAsync` POSTs a `CreateProfileDto` and reads back the `ProfileDto`. The point is: round-trip through HTTP → handler → generator → renderer.
 
 - [ ] **Step 2: Run + commit**
 

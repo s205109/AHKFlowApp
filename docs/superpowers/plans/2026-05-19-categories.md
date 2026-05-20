@@ -1478,10 +1478,9 @@ internal sealed class ListCategoriesQueryHandler(
         catch (DbUpdateException ex) when (IsDuplicateKeyViolation(ex))
         {
             // Concurrent first-call: another request already inserted some/all
-            // defaults and/or the UserPreference row. Discard pending changes
-            // and proceed to the read.
-            foreach (var entry in db.ChangeTracker.Entries().Where(e => e.State != EntityState.Unchanged).ToArray())
-                entry.State = EntityState.Detached;
+            // defaults and/or the UserPreference row. Detach the pending
+            // UserPreference insert and proceed to the read.
+            db.Entry(pref).State = EntityState.Detached;
         }
     }
 
@@ -1492,7 +1491,7 @@ internal sealed class ListCategoriesQueryHandler(
 }
 ```
 
-> Note: `IAppDbContext` exposes `ChangeTracker` via the underlying `DbContext` — if the interface doesn't expose it, surface it through a small interface extension or use `db.Entry(...)` per-entity. The simplest path is to call `((DbContext)db).ChangeTracker` (cast valid because the only implementation is `AppDbContext`).
+> Note: `IAppDbContext` exposes only `Entry<TEntity>(entity)` (not `ChangeTracker`). `pref` is always non-null at the `catch` — it was either loaded or constructed above — so `db.Entry(pref).State = EntityState.Detached` is the interface-supported way to drop the losing insert. Any defaults added in the loop stay tracked as `Added` but are never re-saved, so they do not affect the subsequent read.
 
 - [ ] **Step 4: Run tests — pass**
 
@@ -1515,7 +1514,7 @@ git commit -m "feat: paginated ListCategoriesQuery with marker-based lazy seed"
 
 - [ ] **Step 1: Integration tests first**
 
-The existing test pattern uses `ApiTestFactory` + `ICollectionFixture<MsSqlContainerFixture>`. Look at any sibling file under `tests/AHKFlowApp.API.Tests/Profiles/` for the exact bootstrap. Cover:
+The existing test pattern uses `[Collection("WebApi")]`, a `SqlContainerFixture` injected via the primary constructor, a `CustomWebApplicationFactory` field (`new(sqlFixture)`), and authenticated clients via `_factory.WithTestAuth(b => b.WithOid(...)).CreateClient()`. Look at any sibling file under `tests/AHKFlowApp.API.Tests/Profiles/` for the exact bootstrap. Cover:
 
 - `GET /api/v1/categories` returns 200 with `PagedList<CategoryDto>` shape: first call for a new user has `TotalCount == 8` and `Items.Length == 8` (defaults).
 - `GET /api/v1/categories?search=email` returns one item.

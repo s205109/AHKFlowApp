@@ -570,11 +570,12 @@ public async Task SeedAll_RollsBack_OnInnerFailure_LeavesNoRows()
     ServiceProvider sp = services.BuildServiceProvider();
     IMediator mediator = sp.GetRequiredService<IMediator>();
 
-    // Act
-    Result<SeedAllResultDto> result = await mediator.Send(new SeedAllCommand(Reset: false));
+    // Act — the forced failure on the 2nd SaveChangesAsync propagates out of the
+    // handler. In the API it would surface as a 500 via GlobalExceptionMiddleware.
+    Func<Task> act = () => mediator.Send(new SeedAllCommand(Reset: false));
 
-    // Assert: handler returned an error AND nothing was persisted (transaction rolled back).
-    result.IsSuccess.Should().BeFalse();
+    // Assert: the exception surfaced AND nothing was persisted (transaction rolled back).
+    await act.Should().ThrowAsync<InvalidOperationException>();
 
     await using AppDbContext verify = fx.CreateContext();
     (await verify.Categories.CountAsync(c => c.OwnerOid == _ownerOid)).Should().Be(0);
@@ -636,31 +637,27 @@ internal sealed class SeedAllCommandHandler(
         if (!env.IsDevelopment)
             return Result.NotFound();
 
+        // `await using` rolls the transaction back if it is disposed without a
+        // commit — including when a child step throws. Unexpected exceptions are
+        // left to GlobalExceptionMiddleware (generic RFC 9457 response); the
+        // handler never swallows them or echoes their type/message.
         await using IDbContextTransaction tx = await db.BeginTransactionAsync(ct);
 
-        try
-        {
-            var catResult = await mediator.Send(new SeedCategoriesCommand(request.Reset), ct);
-            if (!catResult.IsSuccess) { await tx.RollbackAsync(ct); return Result.Error("seed-all: categories step failed"); }
+        var catResult = await mediator.Send(new SeedCategoriesCommand(request.Reset), ct);
+        if (!catResult.IsSuccess) { await tx.RollbackAsync(ct); return Result.Error("seed-all: categories step failed"); }
 
-            var hsResult = await mediator.Send(new SeedHotstringsCommand(request.Reset), ct);
-            if (!hsResult.IsSuccess) { await tx.RollbackAsync(ct); return Result.Error("seed-all: hotstrings step failed"); }
+        var hsResult = await mediator.Send(new SeedHotstringsCommand(request.Reset), ct);
+        if (!hsResult.IsSuccess) { await tx.RollbackAsync(ct); return Result.Error("seed-all: hotstrings step failed"); }
 
-            var hkResult = await mediator.Send(new SeedHotkeysCommand(request.Reset), ct);
-            if (!hkResult.IsSuccess) { await tx.RollbackAsync(ct); return Result.Error("seed-all: hotkeys step failed"); }
+        var hkResult = await mediator.Send(new SeedHotkeysCommand(request.Reset), ct);
+        if (!hkResult.IsSuccess) { await tx.RollbackAsync(ct); return Result.Error("seed-all: hotkeys step failed"); }
 
-            await tx.CommitAsync(ct);
+        await tx.CommitAsync(ct);
 
-            return Result.Success(new SeedAllResultDto(
-                CategoriesCount: catResult.Value.Count,
-                HotstringsCount: hsResult.Value.TotalCount,
-                HotkeysCount: hkResult.Value.TotalCount));
-        }
-        catch (Exception ex)
-        {
-            await tx.RollbackAsync(ct);
-            return Result.Error($"seed-all: rolled back due to {ex.GetType().Name}: {ex.Message}");
-        }
+        return Result.Success(new SeedAllResultDto(
+            CategoriesCount: catResult.Value.Count,
+            HotstringsCount: hsResult.Value.TotalCount,
+            HotkeysCount: hkResult.Value.TotalCount));
     }
 }
 ```
@@ -724,23 +721,41 @@ public async Task<ActionResult<SeedAllResultDto>> SeedAll(
 
 ```csharp
 // tests/AHKFlowApp.API.Tests/Dev/SeedAllEndpointTests.cs
-[Fact]
-public async Task SeedAll_ReturnsCountsAnd200_InDevelopment()
+using System.Net.Http.Json;
+using AHKFlowApp.Application.DTOs;
+using AHKFlowApp.TestUtilities.Fixtures;
+using FluentAssertions;
+using Xunit;
+
+namespace AHKFlowApp.API.Tests.Dev;
+
+[Collection("WebApi")]
+public sealed class SeedAllEndpointTests(SqlContainerFixture sqlFixture) : IDisposable
 {
-    HttpClient client = await fx.AuthenticatedClientAsync();
+    private readonly CustomWebApplicationFactory _factory = new(sqlFixture);
 
-    HttpResponseMessage resp = await client.PostAsync("/api/v1/dev/seed-all?reset=true", content: null);
+    [Fact]
+    public async Task SeedAll_ReturnsCountsAnd200_InDevelopment()
+    {
+        using HttpClient client = _factory
+            .WithTestAuth(b => b.WithOid(Guid.NewGuid()))
+            .CreateClient();
 
-    resp.IsSuccessStatusCode.Should().BeTrue();
-    SeedAllResultDto? result = await resp.Content.ReadFromJsonAsync<SeedAllResultDto>();
-    result.Should().NotBeNull();
-    result!.CategoriesCount.Should().Be(8);
-    result.HotstringsCount.Should().Be(12);
-    result.HotkeysCount.Should().Be(12);
+        HttpResponseMessage resp = await client.PostAsync("/api/v1/dev/seed-all?reset=true", content: null);
+
+        resp.IsSuccessStatusCode.Should().BeTrue();
+        SeedAllResultDto? result = await resp.Content.ReadFromJsonAsync<SeedAllResultDto>();
+        result.Should().NotBeNull();
+        result!.CategoriesCount.Should().Be(8);
+        result.HotstringsCount.Should().Be(12);
+        result.HotkeysCount.Should().Be(12);
+    }
+
+    public void Dispose() => _factory.Dispose();
 }
 ```
 
-(Mirror the existing `tests/AHKFlowApp.API.Tests/Dev/` style for bootstrapping `AuthenticatedClientAsync`. If the existing test fixtures don't expose an authenticated client helper, follow whichever pattern is used in the existing seed-hotstrings endpoint test.)
+(Mirrors `tests/AHKFlowApp.API.Tests/Dev/DevSeederEndpointTests.cs` — the existing seed-hotstrings endpoint test — for fixture bootstrap and authenticated-client setup.)
 
 - [ ] **Step 3: Run + commit**
 
