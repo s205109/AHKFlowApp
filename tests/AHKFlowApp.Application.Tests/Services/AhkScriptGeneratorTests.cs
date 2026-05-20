@@ -221,15 +221,21 @@ public sealed class AhkScriptGeneratorTests
         posUpper.Should().BeLessThan(posLower);  // 'A' (0x41) < 'a' (0x61) in Ordinal
     }
 
+    private static AhkScriptGenerator TokenSut(string version = "1.2.3")
+    {
+        IAppVersionProvider ver = Substitute.For<IAppVersionProvider>();
+        ver.GetVersion().Returns(version);
+        return new AhkScriptGenerator(
+            new HeaderTokenRenderer(),
+            new FakeTimeProvider(DateTimeOffset.Parse("2026-05-19T12:00:00Z",
+                System.Globalization.CultureInfo.InvariantCulture)),
+            ver);
+    }
+
     [Fact]
     public void Generate_SubstitutesHeaderTokens()
     {
-        HeaderTokenRenderer renderer = new();
-        FakeTimeProvider clock = new(DateTimeOffset.Parse("2026-05-19T12:00:00Z", System.Globalization.CultureInfo.InvariantCulture));
-        IAppVersionProvider version = Substitute.For<IAppVersionProvider>();
-        version.GetVersion().Returns("1.2.3");
-
-        AhkScriptGenerator sut = new(renderer, clock, version);
+        AhkScriptGenerator sut = TokenSut();
 
         Profile p = new ProfileBuilder()
             .WithOwner(Guid.NewGuid())
@@ -238,13 +244,12 @@ public sealed class AhkScriptGeneratorTests
             .WithFooter("")
             .Build();
 
-        Hotstring[] hs = new[]
-        {
+        Hotstring[] hs =
+        [
             new HotstringBuilder().WithOwner(p.OwnerOid).WithTrigger("btw").WithReplacement("by the way").Build(),
-        };
-        Hotkey[] hk = Array.Empty<Hotkey>();
+        ];
 
-        string output = sut.Generate(p, hs, hk);
+        string output = sut.Generate(p, hs, []);
 
         output.Should().StartWith("; Work v1.2.3 — 1h 0k @ 2026-05-19");
     }
@@ -252,12 +257,7 @@ public sealed class AhkScriptGeneratorTests
     [Fact]
     public void Generate_PreservesUnknownTokens_InHeader()
     {
-        HeaderTokenRenderer renderer = new();
-        FakeTimeProvider clock = new(DateTimeOffset.Parse("2026-05-19T12:00:00Z", System.Globalization.CultureInfo.InvariantCulture));
-        IAppVersionProvider version = Substitute.For<IAppVersionProvider>();
-        version.GetVersion().Returns("1.2.3");
-        AhkScriptGenerator sut = new(renderer, clock, version);
-
+        AhkScriptGenerator sut = TokenSut();
         Profile p = new ProfileBuilder().WithHeader("{Nope} hello\n").WithFooter("").Build();
 
         string output = sut.Generate(p, [], []);
@@ -268,12 +268,7 @@ public sealed class AhkScriptGeneratorTests
     [Fact]
     public void Generate_FooterIsAlsoRendered()
     {
-        HeaderTokenRenderer renderer = new();
-        FakeTimeProvider clock = new(DateTimeOffset.Parse("2026-05-19T12:00:00Z", System.Globalization.CultureInfo.InvariantCulture));
-        IAppVersionProvider version = Substitute.For<IAppVersionProvider>();
-        version.GetVersion().Returns("1.2.3");
-        AhkScriptGenerator sut = new(renderer, clock, version);
-
+        AhkScriptGenerator sut = TokenSut();
         Profile p = new ProfileBuilder().WithHeader("").WithFooter("; bye v{AppVersion}").Build();
 
         string output = sut.Generate(p, [], []);
