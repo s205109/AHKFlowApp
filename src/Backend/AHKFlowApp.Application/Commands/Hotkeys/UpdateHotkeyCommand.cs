@@ -40,6 +40,7 @@ internal sealed class UpdateHotkeyCommandHandler(
 
         Hotkey? entity = await db.Hotkeys
             .Include(h => h.Profiles)
+            .Include(h => h.Categories)
             .FirstOrDefaultAsync(h => h.Id == request.Id && h.OwnerOid == ownerOid, ct);
 
         if (entity is null)
@@ -53,6 +54,19 @@ internal sealed class UpdateHotkeyCommandHandler(
                 .CountAsync(p => p.OwnerOid == ownerOid && input.ProfileIds.Contains(p.Id), ct);
             if (validCount != input.ProfileIds.Length)
                 return Result.Invalid(new ValidationError("One or more ProfileIds do not exist for this user."));
+        }
+
+        Guid[] distinctCategoryIds = input.CategoryIds?.Distinct().ToArray() ?? [];
+        if (distinctCategoryIds.Length > 0)
+        {
+            int validCount = await db.Categories
+                .CountAsync(c => c.OwnerOid == ownerOid && distinctCategoryIds.Contains(c.Id), ct);
+            if (validCount != distinctCategoryIds.Length)
+                return Result.Invalid(new ValidationError
+                {
+                    Identifier = "Input.CategoryIds",
+                    ErrorMessage = "One or more CategoryIds do not exist for this user.",
+                });
         }
 
         entity.Update(
@@ -79,6 +93,16 @@ internal sealed class UpdateHotkeyCommandHandler(
                 db.HotkeyProfiles.Add(junction);
                 entity.Profiles.Add(junction);
             }
+        }
+
+        db.HotkeyCategories.RemoveRange(entity.Categories);
+        entity.Categories.Clear();
+
+        foreach (Guid cid in distinctCategoryIds)
+        {
+            var junction = HotkeyCategory.Create(entity.Id, cid);
+            db.HotkeyCategories.Add(junction);
+            entity.Categories.Add(junction);
         }
 
         try

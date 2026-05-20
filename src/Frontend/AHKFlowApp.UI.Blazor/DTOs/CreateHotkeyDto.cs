@@ -10,4 +10,5 @@ public sealed record CreateHotkeyDto(
     HotkeyAction Action = HotkeyAction.Send,
     string Parameters = "",
     Guid[]? ProfileIds = null,
-    bool AppliesToAllProfiles = false);
+    bool AppliesToAllProfiles = false,
+    Guid[]? CategoryIds = null);
