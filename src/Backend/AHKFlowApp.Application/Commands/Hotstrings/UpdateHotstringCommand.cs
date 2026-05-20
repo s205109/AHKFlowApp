@@ -98,11 +98,7 @@ internal sealed class UpdateHotstringCommandHandler(
         entity.Categories.Clear();
 
         foreach (Guid cid in distinctCategoryIds)
-        {
-            var junction = HotstringCategory.Create(entity.Id, cid);
-            db.HotstringCategories.Add(junction);
-            entity.Categories.Add(junction);
-        }
+            db.HotstringCategories.Add(HotstringCategory.Create(entity.Id, cid));
 
         try
         {
