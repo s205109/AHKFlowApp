@@ -137,7 +137,8 @@ internal sealed class ListHotkeysQueryHandler(
                 h.Action,
                 h.Parameters,
                 h.CreatedAt,
-                h.UpdatedAt))
+                h.UpdatedAt,
+                h.Categories.Select(c => c.CategoryId).ToArray()))
             .ToListAsync(ct);
 
         return Result.Success(new PagedList<HotkeyDto>(items, request.Page, request.PageSize, total));
