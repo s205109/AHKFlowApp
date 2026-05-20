@@ -26,6 +26,11 @@ public sealed class HotstringsApiClient(HttpClient httpClient) : ApiClientBase(h
             parts.Add($"isEndingCharacterRequired={request.IsEndingCharacterRequired.Value.ToString().ToLowerInvariant()}");
         if (request.IsTriggerInsideWord.HasValue)
             parts.Add($"isTriggerInsideWord={request.IsTriggerInsideWord.Value.ToString().ToLowerInvariant()}");
+        if (request.CategoryIds is { Count: > 0 })
+        {
+            foreach (Guid id in request.CategoryIds)
+                parts.Add($"categoryIds={id}");
+        }
         return SendAsync<PagedList<HotstringDto>>(HttpMethod.Get, $"{BasePath}?{string.Join("&", parts)}", content: null, ct);
     }
 

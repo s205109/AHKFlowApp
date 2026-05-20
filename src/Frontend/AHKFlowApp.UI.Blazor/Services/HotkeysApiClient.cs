@@ -33,6 +33,11 @@ public sealed class HotkeysApiClient(HttpClient httpClient) : ApiClientBase(http
             parts.Add($"shift={request.Shift.Value.ToString().ToLowerInvariant()}");
         if (request.Win.HasValue)
             parts.Add($"win={request.Win.Value.ToString().ToLowerInvariant()}");
+        if (request.CategoryIds is { Count: > 0 })
+        {
+            foreach (Guid id in request.CategoryIds)
+                parts.Add($"categoryIds={id}");
+        }
         return SendAsync<PagedList<HotkeyDto>>(HttpMethod.Get, $"{BasePath}?{string.Join("&", parts)}", content: null, ct);
     }
 
