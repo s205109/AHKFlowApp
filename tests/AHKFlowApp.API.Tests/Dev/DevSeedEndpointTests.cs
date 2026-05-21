@@ -8,9 +8,39 @@ using Xunit;
 namespace AHKFlowApp.API.Tests.Dev;
 
 [Collection("WebApi")]
-public sealed class SeedAllEndpointTests(SqlContainerFixture sqlFixture) : IDisposable
+public sealed class DevSeedEndpointTests(SqlContainerFixture sqlFixture) : IDisposable
 {
     private readonly CustomWebApplicationFactory _factory = new(sqlFixture);
+
+    [Fact]
+    public async Task SeedCategories_Returns200WithEightCategories()
+    {
+        using HttpClient client = _factory
+            .WithTestAuth(b => b.WithOid(Guid.NewGuid()))
+            .CreateClient();
+
+        HttpResponseMessage resp = await client.PostAsync("/api/v1/dev/categories/seed?reset=true", content: null);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        List<CategoryDto>? body = await resp.Content.ReadFromJsonAsync<List<CategoryDto>>();
+        body.Should().NotBeNull();
+        body!.Should().HaveCount(8);
+    }
+
+    [Fact]
+    public async Task SeedHotkeys_Returns200WithTwelveHotkeys()
+    {
+        using HttpClient client = _factory
+            .WithTestAuth(b => b.WithOid(Guid.NewGuid()))
+            .CreateClient();
+
+        HttpResponseMessage resp = await client.PostAsync("/api/v1/dev/hotkeys/seed?reset=true", content: null);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        PagedList<HotkeyDto>? body = await resp.Content.ReadFromJsonAsync<PagedList<HotkeyDto>>();
+        body.Should().NotBeNull();
+        body!.Items.Should().HaveCount(12);
+    }
 
     [Fact]
     public async Task SeedAll_ReturnsCountsAnd200_InDevelopment()
