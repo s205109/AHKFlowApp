@@ -20,6 +20,7 @@ public sealed class HotstringsApiClient(HttpClient httpClient) : ApiClientBase(h
         Add(parts, "sortField", request.SortField);
         Add(parts, "triggerFilter", request.TriggerFilter);
         Add(parts, "replacementFilter", request.ReplacementFilter);
+        Add(parts, "descriptionFilter", request.DescriptionFilter);
         if (request.AppliesToAllProfiles.HasValue)
             parts.Add($"appliesToAllProfiles={request.AppliesToAllProfiles.Value.ToString().ToLowerInvariant()}");
         if (request.IsEndingCharacterRequired.HasValue)

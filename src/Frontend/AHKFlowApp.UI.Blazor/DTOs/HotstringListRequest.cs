@@ -9,6 +9,7 @@ public sealed record HotstringListRequest(
     bool SortDescending = true,
     string? TriggerFilter = null,
     string? ReplacementFilter = null,
+    string? DescriptionFilter = null,
     bool? AppliesToAllProfiles = null,
     bool? IsEndingCharacterRequired = null,
     bool? IsTriggerInsideWord = null,
