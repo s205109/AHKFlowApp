@@ -78,7 +78,7 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
     [Fact]
     public void Page_OnLoad_ShowsRowsFromApi()
     {
-        var dto = new HotstringDto(Guid.NewGuid(), [], true, "btw", "by the way", true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        var dto = new HotstringDto(Guid.NewGuid(), [], true, "btw", "by the way", null, true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
         StubList(Page(dto));
 
         IRenderedComponent<Hotstrings> cut = RenderPage();
@@ -148,7 +148,7 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
     [Fact]
     public void Page_ReloadWhileEditingExistingRow_KeepsEditControls()
     {
-        var dto = new HotstringDto(Guid.NewGuid(), [], true, "btw", "by the way", true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        var dto = new HotstringDto(Guid.NewGuid(), [], true, "btw", "by the way", null, true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
         _api.ListAsync(Arg.Any<HotstringListRequest>(), Arg.Any<CancellationToken>())
             .Returns(
                 ApiResult<PagedList<HotstringDto>>.Ok(Page(dto)),
@@ -174,7 +174,7 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
     {
         StubList(Page());
         _api.CreateAsync(Arg.Any<CreateHotstringDto>(), Arg.Any<CancellationToken>())
-            .Returns(ApiResult<HotstringDto>.Ok(new HotstringDto(Guid.NewGuid(), [], true, "btw", "by the way", true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow)));
+            .Returns(ApiResult<HotstringDto>.Ok(new HotstringDto(Guid.NewGuid(), [], true, "btw", "by the way", null, true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow)));
 
         IRenderedComponent<Hotstrings> cut = RenderPage();
         StartDraftEdit(cut);
@@ -209,7 +209,7 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
     [Fact]
     public Task Page_EditExistingRow_CallsUpdate()
     {
-        var dto = new HotstringDto(Guid.NewGuid(), [], true, "btw", "by the way", true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        var dto = new HotstringDto(Guid.NewGuid(), [], true, "btw", "by the way", null, true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
         StubList(Page(dto));
         _api.UpdateAsync(dto.Id, Arg.Any<UpdateHotstringDto>(), Arg.Any<CancellationToken>())
             .Returns(ApiResult<HotstringDto>.Ok(dto with { Replacement = "by the way!" }));
@@ -233,7 +233,7 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
         StubProfiles(work);
         StubList(Page());
         _api.CreateAsync(Arg.Any<CreateHotstringDto>(), Arg.Any<CancellationToken>())
-            .Returns(ApiResult<HotstringDto>.Ok(new HotstringDto(Guid.NewGuid(), [], true, "btw", "by the way", true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow)));
+            .Returns(ApiResult<HotstringDto>.Ok(new HotstringDto(Guid.NewGuid(), [], true, "btw", "by the way", null, true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow)));
 
         IRenderedComponent<Hotstrings> cut = RenderPage();
         StartDraftEdit(cut);
@@ -255,6 +255,28 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
                 d.AppliesToAllProfiles &&
                 d.ProfileIds == null),
             Arg.Any<CancellationToken>()));
+    }
+
+    [Fact]
+    public Task Page_EditRow_DescriptionInput_PreFilledAndCommitsUpdate()
+    {
+        var dto = new HotstringDto(Guid.NewGuid(), [], true, "btw", "by the way", "polite filler", true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        StubList(Page(dto));
+        _api.UpdateAsync(dto.Id, Arg.Any<UpdateHotstringDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotstringDto>.Ok(dto with { Description = "updated filler" }));
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find("button.start-edit"));
+        cut.Find("button.start-edit").Click();
+        cut.WaitForAssertion(() =>
+            cut.Find("input[data-test=\"description-input\"]").GetAttribute("value").Should().Be("polite filler"));
+
+        cut.Find("input[data-test=\"description-input\"]").Input("updated filler");
+        cut.Find("button.commit-edit").Click();
+
+        cut.WaitForAssertion(() => _api.Received(1).UpdateAsync(dto.Id,
+            Arg.Is<UpdateHotstringDto>(d => d.Description == "updated filler"), Arg.Any<CancellationToken>()));
+        return Task.CompletedTask;
     }
 
     [Fact]
