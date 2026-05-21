@@ -28,14 +28,14 @@ public sealed class SeedAllCommandHandlerTests(DevDbFixture fx)
         return u;
     }
 
-    private ServiceProvider BuildProvider(IAppDbContext db)
+    private ServiceProvider BuildProvider(IAppDbContext db, ICurrentUser? user = null, AppEnvironment? appEnv = null)
     {
         ServiceCollection services = new();
         services.AddLogging();
         services.AddSingleton(db);
-        services.AddSingleton(User());
+        services.AddSingleton(user ?? User());
         services.AddSingleton<TimeProvider>(_clock);
-        services.AddSingleton(_devEnv);
+        services.AddSingleton(appEnv ?? _devEnv);
         services.AddMediatR(cfg => cfg.RegisterServicesFromAssemblyContaining<SeedAllCommand>());
         return services.BuildServiceProvider();
     }
@@ -102,18 +102,25 @@ public sealed class SeedAllCommandHandlerTests(DevDbFixture fx)
     public async Task SeedAll_ReturnsNotFound_When_NotInDevelopment()
     {
         await using AppDbContext ctx = fx.CreateContext();
-        ServiceCollection services = new();
-        services.AddLogging();
-        services.AddSingleton<IAppDbContext>(ctx);
-        services.AddSingleton(User());
-        services.AddSingleton<TimeProvider>(_clock);
-        services.AddSingleton(new AppEnvironment(IsDevelopment: false));
-        services.AddMediatR(cfg => cfg.RegisterServicesFromAssemblyContaining<SeedAllCommand>());
-        await using ServiceProvider sp = services.BuildServiceProvider();
+        await using ServiceProvider sp = BuildProvider(ctx, appEnv: new AppEnvironment(IsDevelopment: false));
 
         Result<SeedAllResultDto> result = await sp.GetRequiredService<IMediator>()
             .Send(new SeedAllCommand(Reset: false));
 
         result.Status.Should().Be(ResultStatus.NotFound);
+    }
+
+    [Fact]
+    public async Task SeedAll_PropagatesUnauthorized_WhenInnerStepReturnsUnauthorized()
+    {
+        await using AppDbContext ctx = fx.CreateContext();
+        ICurrentUser noUser = Substitute.For<ICurrentUser>();
+        noUser.Oid.Returns((Guid?)null);
+        await using ServiceProvider sp = BuildProvider(ctx, user: noUser);
+
+        Result<SeedAllResultDto> result = await sp.GetRequiredService<IMediator>()
+            .Send(new SeedAllCommand(Reset: false));
+
+        result.Status.Should().Be(ResultStatus.Unauthorized);
     }
 }

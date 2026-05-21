@@ -38,21 +38,21 @@ internal sealed class SeedAllCommandHandler(
             if (!catResult.IsSuccess)
             {
                 await tx.RollbackAsync(token);
-                return Result.Error("seed-all: categories step failed");
+                return PropagateStepFailure(catResult, "categories");
             }
 
             Result<PagedList<HotstringDto>> hsResult = await mediator.Send(new SeedHotstringsCommand(request.Reset), token);
             if (!hsResult.IsSuccess)
             {
                 await tx.RollbackAsync(token);
-                return Result.Error("seed-all: hotstrings step failed");
+                return PropagateStepFailure(hsResult, "hotstrings");
             }
 
             Result<PagedList<HotkeyDto>> hkResult = await mediator.Send(new SeedHotkeysCommand(request.Reset), token);
             if (!hkResult.IsSuccess)
             {
                 await tx.RollbackAsync(token);
-                return Result.Error("seed-all: hotkeys step failed");
+                return PropagateStepFailure(hkResult, "hotkeys");
             }
 
             await tx.CommitAsync(token);
@@ -62,5 +62,20 @@ internal sealed class SeedAllCommandHandler(
                 HotstringsCount: hsResult.Value.TotalCount,
                 HotkeysCount: hkResult.Value.TotalCount));
         }, ct);
+    }
+
+    private static Result<SeedAllResultDto> PropagateStepFailure<T>(Result<T> result, string stepName)
+    {
+        string detail = result.Errors.FirstOrDefault() ?? $"seed-all: {stepName} step failed";
+
+        return result.Status switch
+        {
+            ResultStatus.Unauthorized => Result.Unauthorized(),
+            ResultStatus.Forbidden => Result.Forbidden(),
+            ResultStatus.NotFound => Result.NotFound(detail),
+            ResultStatus.Conflict => Result.Conflict(detail),
+            ResultStatus.Invalid => Result.Invalid([.. result.ValidationErrors]),
+            _ => Result.Error(detail),
+        };
     }
 }

@@ -216,4 +216,32 @@ public sealed class SeedHotstringsCommandHandlerTests(HotstringDbFixture fx)
         int junctions = await verify.HotstringCategories.CountAsync(hc => hc.Hotstring.OwnerOid == owner);
         junctions.Should().Be(SampleCount);
     }
+
+    [Fact]
+    public async Task Handle_WithLowercaseCategories_MatchesSampleCategoryNamesCaseInsensitively()
+    {
+        var owner = Guid.NewGuid();
+        await SeedCategoriesAsync(owner);
+
+        await using (AppDbContext lowerCase = fx.CreateContext())
+        {
+            List<Category> categories = await lowerCase.Categories
+                .Where(c => c.OwnerOid == owner)
+                .ToListAsync();
+
+            foreach (Category category in categories)
+            {
+                category.Update(category.Name.ToLowerInvariant(), TimeProvider.System);
+            }
+
+            await lowerCase.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        var handler = new SeedHotstringsCommandHandler(db, CurrentUserHelper.For(owner), TimeProvider.System, DevEnv(true));
+        Result<PagedList<HotstringDto>> result = await handler.Handle(new SeedHotstringsCommand(Reset: false), default);
+
+        result.Value.Items.Should().HaveCount(SampleCount);
+        result.Value.Items.Sum(h => h.CategoryIds.Length).Should().Be(SampleCount);
+    }
 }
