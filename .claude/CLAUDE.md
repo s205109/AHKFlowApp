@@ -13,6 +13,8 @@ At the end of each plan, give me a list of unresolved questions to answer, if an
 ## Workflow Preferences
 
 - When asked to store instructions or rules, put them in CLAUDE.md (not memory files) unless explicitly told otherwise.
+- Browser/UI verification: use the `playwright-cli` skill for any task needing visual confirmation in a browser (frontend changes, UI smoke tests). Invoke it via the Skill tool.
+- Before claiming a tool or capability is unavailable, check `.claude/skills/` and available skills. Never assume browser automation is missing — `playwright-cli` is installed.
 
 ## Out of Scope
 
