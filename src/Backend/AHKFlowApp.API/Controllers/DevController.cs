@@ -22,4 +22,32 @@ public sealed class DevController(IMediator mediator) : ControllerBase
         [FromQuery] bool reset = false,
         CancellationToken ct = default) =>
         (await mediator.Send(new SeedHotstringsCommand(reset), ct)).ToProblemActionResult(this);
+
+    /// <summary>Seeds the eight default categories for the authenticated user. Development only.</summary>
+    [HttpPost("categories/seed")]
+    [ProducesResponseType(typeof(IReadOnlyList<CategoryDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<IReadOnlyList<CategoryDto>>> SeedCategories(
+        [FromQuery] bool reset = false,
+        CancellationToken ct = default) =>
+        (await mediator.Send(new SeedCategoriesCommand(reset), ct)).ToProblemActionResult(this);
+
+    /// <summary>Seeds 12 sample hotkeys for the authenticated user. Development only.</summary>
+    [HttpPost("hotkeys/seed")]
+    [ProducesResponseType(typeof(PagedList<HotkeyDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<PagedList<HotkeyDto>>> SeedHotkeys(
+        [FromQuery] bool reset = false,
+        CancellationToken ct = default) =>
+        (await mediator.Send(new SeedHotkeysCommand(reset), ct)).ToProblemActionResult(this);
+
+    /// <summary>Runs the full seed pipeline (categories + hotstrings + hotkeys) in a single transaction. Development only.</summary>
+    [HttpPost("seed-all")]
+    [ProducesResponseType(typeof(SeedAllResultDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status500InternalServerError)]
+    public async Task<ActionResult<SeedAllResultDto>> SeedAll(
+        [FromQuery] bool reset = false,
+        CancellationToken ct = default) =>
+        (await mediator.Send(new SeedAllCommand(reset), ct)).ToProblemActionResult(this);
 }
