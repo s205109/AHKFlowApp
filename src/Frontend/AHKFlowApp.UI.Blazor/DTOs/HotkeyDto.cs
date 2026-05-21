@@ -13,4 +13,5 @@ public sealed record HotkeyDto(
     HotkeyAction Action,
     string Parameters,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    Guid[]? CategoryIds = null);

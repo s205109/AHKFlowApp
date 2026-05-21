@@ -17,6 +17,7 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
 {
     private readonly IHotkeysApiClient _api = Substitute.For<IHotkeysApiClient>();
     private readonly IProfilesApiClient _profilesApi = Substitute.For<IProfilesApiClient>();
+    private readonly ICategoriesApiClient _categoriesApi = Substitute.For<ICategoriesApiClient>();
 
     private static readonly Task<AuthenticationState> AuthenticatedState =
         Task.FromResult(new AuthenticationState(
@@ -32,6 +33,9 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
 
         StubProfiles();
         Services.AddSingleton(_profilesApi);
+
+        StubCategories();
+        Services.AddSingleton(_categoriesApi);
 
         Services.AddMudServices();
         JSInterop.Mode = JSRuntimeMode.Loose;
@@ -68,6 +72,13 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
     private void StubProfiles(params ProfileDto[] profiles) =>
         _profilesApi.ListAsync(Arg.Any<CancellationToken>())
             .Returns(ApiResult<IReadOnlyList<ProfileDto>>.Ok(profiles));
+
+    private void StubCategories(params CategoryDto[] categories)
+    {
+        PagedList<CategoryDto> page = new(categories, 1, 200, categories.Length, 1, false, false);
+        _categoriesApi.ListAsync(Arg.Any<CategoryListRequest>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<PagedList<CategoryDto>>.Ok(page));
+    }
 
     private static void StartDraftEdit(IRenderedComponent<Hotkeys> cut)
     {
@@ -379,6 +390,42 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
         // Assert the API was called (proving the commit path ran and conflict was handled without crash).
         cut.WaitForAssertion(() => _api.Received(1).CreateAsync(
             Arg.Is<CreateHotkeyDto>(d => d.Description == "Open terminal"),
+            Arg.Any<CancellationToken>()));
+    }
+
+    [Fact]
+    public void Page_CategoryEditorShowsMultiSelect_WhenEditing()
+    {
+        CategoryDto work = new(Guid.NewGuid(), "Work", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        StubCategories(work);
+        HotkeyDto dto = MakeHotkey("Open terminal", "T");
+        StubList(Page(dto));
+
+        IRenderedComponent<Hotkeys> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find("button.start-edit"));
+        cut.Find("button.start-edit").Click();
+
+        cut.WaitForAssertion(() => cut.FindAll("[data-test=\"category-select\"]").Should().NotBeEmpty());
+    }
+
+    [Fact]
+    public async Task Page_ChipFilter_ReloadsDataWithCategoryIds()
+    {
+        CategoryDto work = new(Guid.NewGuid(), "Work", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        StubCategories(work);
+        StubList(Page());
+
+        IRenderedComponent<Hotkeys> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("Work"));
+
+        await cut.InvokeAsync(() =>
+            cut.FindComponent<MudChipSet<Guid>>().Instance.SelectedValuesChanged
+                .InvokeAsync(new HashSet<Guid> { work.Id }));
+
+        cut.WaitForAssertion(() => _api.Received().ListAsync(
+            Arg.Is<HotkeyListRequest>(r =>
+                r.CategoryIds != null &&
+                r.CategoryIds.Contains(work.Id)),
             Arg.Any<CancellationToken>()));
     }
 }

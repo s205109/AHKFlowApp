@@ -24,7 +24,8 @@ public sealed record ListHotkeysQuery(
     bool? Ctrl = null,
     bool? Alt = null,
     bool? Shift = null,
-    bool? Win = null) : IRequest<Result<PagedList<HotkeyDto>>>;
+    bool? Win = null,
+    IReadOnlyList<Guid>? CategoryIds = null) : IRequest<Result<PagedList<HotkeyDto>>>;
 
 public sealed class ListHotkeysQueryValidator : AbstractValidator<ListHotkeysQuery>
 {
@@ -119,6 +120,12 @@ internal sealed class ListHotkeysQueryHandler(
         if (request.Win.HasValue)
             query = query.Where(h => h.Win == request.Win.Value);
 
+        if (request.CategoryIds is { Count: > 0 })
+        {
+            Guid[] ids = request.CategoryIds.Distinct().ToArray();
+            query = query.Where(h => h.Categories.Any(hc => ids.Contains(hc.CategoryId)));
+        }
+
         int total = await query.CountAsync(ct);
 
         List<HotkeyDto> items = await ApplySorting(query, request.SortField, request.SortDescending)
@@ -137,7 +144,8 @@ internal sealed class ListHotkeysQueryHandler(
                 h.Action,
                 h.Parameters,
                 h.CreatedAt,
-                h.UpdatedAt))
+                h.UpdatedAt,
+                h.Categories.Select(c => c.CategoryId).ToArray()))
             .ToListAsync(ct);
 
         return Result.Success(new PagedList<HotkeyDto>(items, request.Page, request.PageSize, total));

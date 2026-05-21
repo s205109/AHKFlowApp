@@ -76,6 +76,8 @@ if (useTestAuth)
         baseAddress, TimeSpan.FromSeconds(60), useAuth: false);
     AddApiClient<IPreferencesApiClient, PreferencesApiClient>(
         baseAddress, TimeSpan.FromSeconds(10), useAuth: false);
+    AddApiClient<ICategoriesApiClient, CategoriesApiClient>(
+        baseAddress, TimeSpan.FromSeconds(30), useAuth: false);
 }
 else
 {
@@ -108,6 +110,8 @@ else
         baseAddress, TimeSpan.FromSeconds(60), useAuth: true);
     AddApiClient<IPreferencesApiClient, PreferencesApiClient>(
         baseAddress, TimeSpan.FromSeconds(10), useAuth: true);
+    AddApiClient<ICategoriesApiClient, CategoriesApiClient>(
+        baseAddress, TimeSpan.FromSeconds(30), useAuth: true);
 }
 
 await builder.Build().RunAsync();

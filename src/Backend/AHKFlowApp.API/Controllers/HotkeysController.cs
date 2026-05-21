@@ -39,13 +39,14 @@ public sealed class HotkeysController(IMediator mediator) : ControllerBase
         [FromQuery] bool? alt = null,
         [FromQuery] bool? shift = null,
         [FromQuery] bool? win = null,
+        [FromQuery] Guid[]? categoryIds = null,
         CancellationToken ct = default) =>
         (await mediator.Send(new ListHotkeysQuery(
             profileId, search, page, pageSize,
             sortField, sortDescending,
             descriptionFilter, keyFilter, parametersFilter,
             action, appliesToAllProfiles,
-            ctrl, alt, shift, win), ct)).ToProblemActionResult(this);
+            ctrl, alt, shift, win, categoryIds), ct)).ToProblemActionResult(this);
 
     /// <summary>Get a hotkey by id.</summary>
     [HttpGet("{id:guid}", Name = "GetHotkey")]

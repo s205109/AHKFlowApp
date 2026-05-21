@@ -19,7 +19,8 @@ public sealed record ListHotstringsQuery(
     string? ReplacementFilter = null,
     bool? AppliesToAllProfiles = null,
     bool? IsEndingCharacterRequired = null,
-    bool? IsTriggerInsideWord = null) : IRequest<Result<PagedList<HotstringDto>>>;
+    bool? IsTriggerInsideWord = null,
+    IReadOnlyList<Guid>? CategoryIds = null) : IRequest<Result<PagedList<HotstringDto>>>;
 
 public sealed class ListHotstringsQueryValidator : AbstractValidator<ListHotstringsQuery>
 {
@@ -99,6 +100,12 @@ internal sealed class ListHotstringsQueryHandler(
         if (request.IsTriggerInsideWord is { } isTriggerInsideWord)
             query = query.Where(h => h.IsTriggerInsideWord == isTriggerInsideWord);
 
+        if (request.CategoryIds is { Count: > 0 })
+        {
+            Guid[] ids = request.CategoryIds.Distinct().ToArray();
+            query = query.Where(h => h.Categories.Any(hc => ids.Contains(hc.CategoryId)));
+        }
+
         int total = await query.CountAsync(ct);
 
         List<HotstringDto> items = await ApplySorting(query, request.SortField, request.SortDescending)
@@ -113,7 +120,8 @@ internal sealed class ListHotstringsQueryHandler(
                 h.IsEndingCharacterRequired,
                 h.IsTriggerInsideWord,
                 h.CreatedAt,
-                h.UpdatedAt))
+                h.UpdatedAt,
+                h.Categories.Select(hc => hc.CategoryId).ToArray()))
             .ToListAsync(ct);
 
         return Result.Success(new PagedList<HotstringDto>(items, request.Page, request.PageSize, total));
