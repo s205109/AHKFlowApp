@@ -75,7 +75,8 @@ internal sealed class ListHotstringsQueryHandler(
             string pattern = $"%{request.Search.Trim()}%";
             query = query.Where(h =>
                 EF.Functions.Like(h.Trigger, pattern) ||
-                EF.Functions.Like(h.Replacement, pattern));
+                EF.Functions.Like(h.Replacement, pattern) ||
+                (h.Description != null && EF.Functions.Like(h.Description, pattern)));
         }
 
         if (!string.IsNullOrWhiteSpace(request.TriggerFilter))
@@ -110,6 +111,7 @@ internal sealed class ListHotstringsQueryHandler(
                 h.AppliesToAllProfiles,
                 h.Trigger,
                 h.Replacement,
+                h.Description,
                 h.IsEndingCharacterRequired,
                 h.IsTriggerInsideWord,
                 h.CreatedAt,
