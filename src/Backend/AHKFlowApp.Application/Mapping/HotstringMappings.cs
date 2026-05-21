@@ -11,6 +11,7 @@ internal static class HotstringMappings
         h.AppliesToAllProfiles,
         h.Trigger,
         h.Replacement,
+        h.Description,
         h.IsEndingCharacterRequired,
         h.IsTriggerInsideWord,
         h.CreatedAt,
