@@ -6,6 +6,7 @@ internal static class HotstringRules
 {
     public const int TriggerMaxLength = 50;
     public const int ReplacementMaxLength = 4000;
+    public const int DescriptionMaxLength = 200;
 
     public static IRuleBuilderOptions<T, string> ValidTrigger<T>(this IRuleBuilderInitial<T, string> rb) =>
         rb.Cascade(CascadeMode.Stop)
@@ -20,6 +21,10 @@ internal static class HotstringRules
         rb.Cascade(CascadeMode.Stop)
           .NotEmpty().WithMessage("Replacement is required.")
           .MaximumLength(ReplacementMaxLength).WithMessage($"Replacement must be {ReplacementMaxLength} characters or fewer.");
+
+    public static IRuleBuilderOptions<T, string?> ValidDescription<T>(this IRuleBuilder<T, string?> rb) =>
+        rb.MaximumLength(DescriptionMaxLength)
+          .WithMessage($"Description must be {DescriptionMaxLength} characters or fewer.");
 
     /// <summary>
     /// Adds profile-association validation rules to a validator.
