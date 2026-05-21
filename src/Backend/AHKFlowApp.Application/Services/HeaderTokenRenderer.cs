@@ -4,8 +4,8 @@ using System.Text;
 namespace AHKFlowApp.Application.Services;
 
 /// <summary>
-/// Substitutes recognized tokens in a header/footer template, then collapses
-/// doubled braces (<c>{{</c> / <c>}}</c>) to literal single braces.
+/// Substitutes recognized tokens in a header/footer template.
+/// Doubled braces (<c>{{</c> / <c>}}</c>) are literal single braces (escape syntax).
 /// All formatting uses <see cref="CultureInfo.InvariantCulture"/> so generated
 /// scripts are culture-independent.
 /// </summary>
@@ -28,16 +28,15 @@ public sealed class HeaderTokenRenderer
         while (i < template.Length)
         {
             char c = template[i];
-            // Skip past escapes — they're handled in pass 2.
             if (c == '{' && i + 1 < template.Length && template[i + 1] == '{')
             {
-                sb.Append('{').Append('{');
+                sb.Append('{');
                 i += 2;
                 continue;
             }
             if (c == '}' && i + 1 < template.Length && template[i + 1] == '}')
             {
-                sb.Append('}').Append('}');
+                sb.Append('}');
                 i += 2;
                 continue;
             }
@@ -70,14 +69,7 @@ public sealed class HeaderTokenRenderer
             i++;
         }
 
-        // Pass 2: collapse {{ → { and }} → }
-        string afterPass1 = sb.ToString();
-        if (!afterPass1.Contains("{{", StringComparison.Ordinal)
-            && !afterPass1.Contains("}}", StringComparison.Ordinal))
-            return afterPass1;
-
-        return afterPass1.Replace("{{", "{", StringComparison.Ordinal)
-                         .Replace("}}", "}", StringComparison.Ordinal);
+        return sb.ToString();
     }
 
     private static bool TryRender(string name, string? format, Context ctx, out string replacement)
