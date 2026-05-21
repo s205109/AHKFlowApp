@@ -17,6 +17,7 @@ public static class DependencyInjection
 
         services.AddValidatorsFromAssembly(typeof(DependencyInjection).Assembly);
 
+        services.AddSingleton<HeaderTokenRenderer>();
         services.AddSingleton<AhkScriptGenerator>();
 
         return services;

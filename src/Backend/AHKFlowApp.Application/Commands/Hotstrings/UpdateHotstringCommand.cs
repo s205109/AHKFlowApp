@@ -38,6 +38,7 @@ internal sealed class UpdateHotstringCommandHandler(
 
         Hotstring? entity = await db.Hotstrings
             .Include(h => h.Profiles)
+            .Include(h => h.Categories)
             .FirstOrDefaultAsync(h => h.Id == request.Id && h.OwnerOid == ownerOid, ct);
 
         if (entity is null)
@@ -55,6 +56,19 @@ internal sealed class UpdateHotstringCommandHandler(
                 {
                     Identifier = "Input.ProfileIds",
                     ErrorMessage = "One or more ProfileIds do not exist for this user.",
+                });
+        }
+
+        Guid[] distinctCategoryIds = input.CategoryIds?.Distinct().ToArray() ?? [];
+        if (distinctCategoryIds.Length > 0)
+        {
+            int validCount = await db.Categories
+                .CountAsync(c => c.OwnerOid == ownerOid && distinctCategoryIds.Contains(c.Id), ct);
+            if (validCount != distinctCategoryIds.Length)
+                return Result.Invalid(new ValidationError
+                {
+                    Identifier = "Input.CategoryIds",
+                    ErrorMessage = "One or more CategoryIds do not exist for this user.",
                 });
         }
 
@@ -79,6 +93,12 @@ internal sealed class UpdateHotstringCommandHandler(
                 entity.Profiles.Add(junction);
             }
         }
+
+        db.HotstringCategories.RemoveRange(entity.Categories);
+        entity.Categories.Clear();
+
+        foreach (Guid cid in distinctCategoryIds)
+            db.HotstringCategories.Add(HotstringCategory.Create(entity.Id, cid));
 
         try
         {

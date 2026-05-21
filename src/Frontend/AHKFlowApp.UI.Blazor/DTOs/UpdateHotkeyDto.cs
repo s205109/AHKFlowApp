@@ -10,4 +10,5 @@ public sealed record UpdateHotkeyDto(
     HotkeyAction Action,
     string Parameters,
     Guid[]? ProfileIds,
-    bool AppliesToAllProfiles);
+    bool AppliesToAllProfiles,
+    Guid[]? CategoryIds = null);

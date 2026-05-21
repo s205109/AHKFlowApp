@@ -19,6 +19,7 @@ public sealed class Hotstring
     public DateTimeOffset UpdatedAt { get; private set; }
 
     public ICollection<HotstringProfile> Profiles { get; private set; } = [];
+    public ICollection<HotstringCategory> Categories { get; private set; } = [];
 
     public static Hotstring Create(
         Guid ownerOid,

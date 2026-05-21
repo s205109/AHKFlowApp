@@ -9,7 +9,8 @@ public sealed record HotstringDto(
     bool IsEndingCharacterRequired,
     bool IsTriggerInsideWord,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    Guid[] CategoryIds);
 
 public sealed record CreateHotstringDto(
     string Trigger,
@@ -17,7 +18,8 @@ public sealed record CreateHotstringDto(
     Guid[]? ProfileIds = null,
     bool AppliesToAllProfiles = true,
     bool IsEndingCharacterRequired = true,
-    bool IsTriggerInsideWord = true);
+    bool IsTriggerInsideWord = true,
+    Guid[]? CategoryIds = null);
 
 public sealed record UpdateHotstringDto(
     string Trigger,
@@ -25,4 +27,5 @@ public sealed record UpdateHotstringDto(
     Guid[]? ProfileIds,
     bool AppliesToAllProfiles,
     bool IsEndingCharacterRequired,
-    bool IsTriggerInsideWord);
+    bool IsTriggerInsideWord,
+    Guid[]? CategoryIds = null);

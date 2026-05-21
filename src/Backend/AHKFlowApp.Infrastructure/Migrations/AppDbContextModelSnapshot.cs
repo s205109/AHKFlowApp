@@ -22,6 +22,37 @@ namespace AHKFlowApp.Infrastructure.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("AHKFlowApp.Domain.Entities.Category", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<Guid>("OwnerOid")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerOid");
+
+                    b.HasIndex("OwnerOid", "Name")
+                        .IsUnique()
+                        .HasDatabaseName("IX_Category_Owner_Name");
+
+                    b.ToTable("Categories");
+                });
+
             modelBuilder.Entity("AHKFlowApp.Domain.Entities.Hotkey", b =>
                 {
                     b.Property<Guid>("Id")
@@ -79,6 +110,21 @@ namespace AHKFlowApp.Infrastructure.Migrations
                         .HasDatabaseName("IX_Hotkey_Owner_Modifiers");
 
                     b.ToTable("Hotkeys");
+                });
+
+            modelBuilder.Entity("AHKFlowApp.Domain.Entities.HotkeyCategory", b =>
+                {
+                    b.Property<Guid>("HotkeyId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CategoryId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("HotkeyId", "CategoryId");
+
+                    b.HasIndex("CategoryId");
+
+                    b.ToTable("HotkeyCategories");
                 });
 
             modelBuilder.Entity("AHKFlowApp.Domain.Entities.HotkeyProfile", b =>
@@ -139,6 +185,21 @@ namespace AHKFlowApp.Infrastructure.Migrations
                         .HasDatabaseName("IX_Hotstring_Owner_Trigger");
 
                     b.ToTable("Hotstrings");
+                });
+
+            modelBuilder.Entity("AHKFlowApp.Domain.Entities.HotstringCategory", b =>
+                {
+                    b.Property<Guid>("HotstringId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CategoryId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("HotstringId", "CategoryId");
+
+                    b.HasIndex("CategoryId");
+
+                    b.ToTable("HotstringCategories");
                 });
 
             modelBuilder.Entity("AHKFlowApp.Domain.Entities.HotstringProfile", b =>
@@ -239,6 +300,9 @@ namespace AHKFlowApp.Infrastructure.Migrations
                     b.Property<Guid>("OwnerOid")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTimeOffset?>("CategoriesSeededAt")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<bool>("DarkMode")
                         .HasColumnType("bit");
 
@@ -251,6 +315,25 @@ namespace AHKFlowApp.Infrastructure.Migrations
                     b.HasKey("OwnerOid");
 
                     b.ToTable("UserPreferences");
+                });
+
+            modelBuilder.Entity("AHKFlowApp.Domain.Entities.HotkeyCategory", b =>
+                {
+                    b.HasOne("AHKFlowApp.Domain.Entities.Category", "Category")
+                        .WithMany("Hotkeys")
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("AHKFlowApp.Domain.Entities.Hotkey", "Hotkey")
+                        .WithMany("Categories")
+                        .HasForeignKey("HotkeyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Category");
+
+                    b.Navigation("Hotkey");
                 });
 
             modelBuilder.Entity("AHKFlowApp.Domain.Entities.HotkeyProfile", b =>
@@ -268,6 +351,25 @@ namespace AHKFlowApp.Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("AHKFlowApp.Domain.Entities.HotstringCategory", b =>
+                {
+                    b.HasOne("AHKFlowApp.Domain.Entities.Category", "Category")
+                        .WithMany("Hotstrings")
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("AHKFlowApp.Domain.Entities.Hotstring", "Hotstring")
+                        .WithMany("Categories")
+                        .HasForeignKey("HotstringId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Category");
+
+                    b.Navigation("Hotstring");
+                });
+
             modelBuilder.Entity("AHKFlowApp.Domain.Entities.HotstringProfile", b =>
                 {
                     b.HasOne("AHKFlowApp.Domain.Entities.Hotstring", null)
@@ -283,13 +385,24 @@ namespace AHKFlowApp.Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("AHKFlowApp.Domain.Entities.Category", b =>
+                {
+                    b.Navigation("Hotkeys");
+
+                    b.Navigation("Hotstrings");
+                });
+
             modelBuilder.Entity("AHKFlowApp.Domain.Entities.Hotkey", b =>
                 {
+                    b.Navigation("Categories");
+
                     b.Navigation("Profiles");
                 });
 
             modelBuilder.Entity("AHKFlowApp.Domain.Entities.Hotstring", b =>
                 {
+                    b.Navigation("Categories");
+
                     b.Navigation("Profiles");
                 });
 #pragma warning restore 612, 618

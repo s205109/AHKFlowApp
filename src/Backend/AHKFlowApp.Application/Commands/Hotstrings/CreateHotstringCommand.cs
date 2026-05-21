@@ -56,6 +56,19 @@ internal sealed class CreateHotstringCommandHandler(
                 });
         }
 
+        Guid[] distinctCategoryIds = input.CategoryIds?.Distinct().ToArray() ?? [];
+        if (distinctCategoryIds.Length > 0)
+        {
+            int validCount = await db.Categories
+                .CountAsync(c => c.OwnerOid == ownerOid && distinctCategoryIds.Contains(c.Id), ct);
+            if (validCount != distinctCategoryIds.Length)
+                return Result.Invalid(new ValidationError
+                {
+                    Identifier = "Input.CategoryIds",
+                    ErrorMessage = "One or more CategoryIds do not exist for this user.",
+                });
+        }
+
         var entity = Hotstring.Create(
             ownerOid,
             input.Trigger,
@@ -72,6 +85,9 @@ internal sealed class CreateHotstringCommandHandler(
             foreach (Guid pid in distinctProfileIds)
                 db.HotstringProfiles.Add(HotstringProfile.Create(entity.Id, pid));
         }
+
+        foreach (Guid cid in distinctCategoryIds)
+            db.HotstringCategories.Add(HotstringCategory.Create(entity.Id, cid));
 
         try
         {
