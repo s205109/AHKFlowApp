@@ -15,6 +15,9 @@ public sealed class HotstringEditModel
     [MaxLength(4000, ErrorMessage = "Replacement must be 4000 characters or fewer.")]
     public string Replacement { get; set; } = "";
 
+    [MaxLength(200, ErrorMessage = "Description must be 200 characters or fewer.")]
+    public string? Description { get; set; }
+
     public bool AppliesToAllProfiles { get; set; } = true;
     public List<Guid> ProfileIds { get; set; } = [];
     public bool IsEndingCharacterRequired { get; set; } = true;
@@ -26,6 +29,7 @@ public sealed class HotstringEditModel
         Id = dto.Id,
         Trigger = dto.Trigger,
         Replacement = dto.Replacement,
+        Description = dto.Description,
         AppliesToAllProfiles = dto.AppliesToAllProfiles,
         ProfileIds = [.. dto.ProfileIds],
         IsEndingCharacterRequired = dto.IsEndingCharacterRequired,
@@ -34,8 +38,8 @@ public sealed class HotstringEditModel
     };
 
     public CreateHotstringDto ToCreateDto() =>
-        new(Trigger, Replacement, AppliesToAllProfiles ? null : [.. ProfileIds], AppliesToAllProfiles, IsEndingCharacterRequired, IsTriggerInsideWord, [.. CategoryIds]);
+        new(Trigger, Replacement, AppliesToAllProfiles ? null : [.. ProfileIds], AppliesToAllProfiles, IsEndingCharacterRequired, IsTriggerInsideWord, Description, [.. CategoryIds]);
 
     public UpdateHotstringDto ToUpdateDto() =>
-        new(Trigger, Replacement, AppliesToAllProfiles ? null : [.. ProfileIds], AppliesToAllProfiles, IsEndingCharacterRequired, IsTriggerInsideWord, [.. CategoryIds]);
+        new(Trigger, Replacement, AppliesToAllProfiles ? null : [.. ProfileIds], AppliesToAllProfiles, IsEndingCharacterRequired, IsTriggerInsideWord, Description, [.. CategoryIds]);
 }

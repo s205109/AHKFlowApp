@@ -14,7 +14,7 @@ public sealed class HotstringTests
     {
         var owner = Guid.NewGuid();
 
-        var hs = Hotstring.Create(owner, "btw", "by the way", appliesToAllProfiles: true, true, false, _clock);
+        var hs = Hotstring.Create(owner, "btw", "by the way", description: null, appliesToAllProfiles: true, true, false, _clock);
 
         hs.Id.Should().NotBeEmpty();
         hs.OwnerOid.Should().Be(owner);
@@ -31,7 +31,7 @@ public sealed class HotstringTests
     [Fact]
     public void Create_WithAppliesToAllProfilesFalse_SetsProperty()
     {
-        var hs = Hotstring.Create(Guid.NewGuid(), "x", "y", appliesToAllProfiles: false, true, true, _clock);
+        var hs = Hotstring.Create(Guid.NewGuid(), "x", "y", description: null, appliesToAllProfiles: false, true, true, _clock);
 
         hs.AppliesToAllProfiles.Should().BeFalse();
     }
@@ -40,10 +40,10 @@ public sealed class HotstringTests
     public void Update_ChangesAllMutableFields()
     {
         FakeTimeProvider clock = new(DateTimeOffset.Parse("2026-01-01T00:00:00Z"));
-        var hs = Hotstring.Create(Guid.NewGuid(), "old", "old replacement", appliesToAllProfiles: true, true, false, clock);
+        var hs = Hotstring.Create(Guid.NewGuid(), "old", "old replacement", description: null, appliesToAllProfiles: true, true, false, clock);
 
         clock.Advance(TimeSpan.FromMinutes(1));
-        hs.Update("new", "new replacement", appliesToAllProfiles: false, false, true, clock);
+        hs.Update("new", "new replacement", description: null, appliesToAllProfiles: false, false, true, clock);
 
         hs.Trigger.Should().Be("new");
         hs.Replacement.Should().Be("new replacement");
@@ -57,10 +57,59 @@ public sealed class HotstringTests
     public void Update_WithAppliesToAllProfiles_SetsFlag()
     {
         TimeProvider clock = TimeProvider.System;
-        var hs = Hotstring.Create(Guid.NewGuid(), "x", "y", appliesToAllProfiles: false, true, true, clock);
+        var hs = Hotstring.Create(Guid.NewGuid(), "x", "y", description: null, appliesToAllProfiles: false, true, true, clock);
 
-        hs.Update("x", "y", appliesToAllProfiles: true, true, true, clock);
+        hs.Update("x", "y", description: null, appliesToAllProfiles: true, true, true, clock);
 
         hs.AppliesToAllProfiles.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Create_RoundTripsDescription()
+    {
+        FakeTimeProvider clock = new(DateTimeOffset.Parse("2026-05-19T12:00:00Z"));
+        var h = Hotstring.Create(
+            ownerOid: Guid.NewGuid(),
+            trigger: "btw",
+            replacement: "by the way",
+            description: "polite filler",
+            appliesToAllProfiles: true,
+            isEndingCharacterRequired: true,
+            isTriggerInsideWord: false,
+            clock);
+
+        h.Description.Should().Be("polite filler");
+    }
+
+    [Fact]
+    public void Create_AcceptsNullDescription()
+    {
+        FakeTimeProvider clock = new(DateTimeOffset.Parse("2026-05-19T12:00:00Z"));
+        var h = Hotstring.Create(
+            ownerOid: Guid.NewGuid(),
+            trigger: "btw",
+            replacement: "by the way",
+            description: null,
+            appliesToAllProfiles: true,
+            isEndingCharacterRequired: true,
+            isTriggerInsideWord: false,
+            clock);
+
+        h.Description.Should().BeNull();
+    }
+
+    [Fact]
+    public void Update_RoundTripsDescription()
+    {
+        FakeTimeProvider clock = new(DateTimeOffset.Parse("2026-05-19T12:00:00Z"));
+        var h = Hotstring.Create(
+            Guid.NewGuid(), "btw", "by the way", description: null,
+            appliesToAllProfiles: true, isEndingCharacterRequired: true, isTriggerInsideWord: false, clock);
+
+        clock.Advance(TimeSpan.FromHours(1));
+        h.Update("btw", "by the way!", description: "updated", true, true, false, clock);
+
+        h.Description.Should().Be("updated");
+        h.UpdatedAt.Should().Be(clock.GetUtcNow());
     }
 }

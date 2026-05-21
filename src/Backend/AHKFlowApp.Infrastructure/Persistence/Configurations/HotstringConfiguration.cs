@@ -21,6 +21,9 @@ internal sealed class HotstringConfiguration : IEntityTypeConfiguration<Hotstrin
             .IsRequired()
             .HasMaxLength(4000);
 
+        builder.Property(x => x.Description)
+            .HasMaxLength(200);
+
         builder.Property(x => x.AppliesToAllProfiles).IsRequired();
         builder.Property(x => x.IsEndingCharacterRequired).IsRequired();
         builder.Property(x => x.IsTriggerInsideWord).IsRequired();

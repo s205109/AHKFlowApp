@@ -19,6 +19,9 @@ public sealed class CreateHotstringCommandValidator : AbstractValidator<CreateHo
     {
         RuleFor(x => x.Input.Trigger).ValidTrigger();
         RuleFor(x => x.Input.Replacement).ValidReplacement();
+        RuleFor(x => x.Input.Description)
+            .MaximumLength(HotstringRules.DescriptionMaxLength)
+            .WithMessage($"Description must be {HotstringRules.DescriptionMaxLength} characters or fewer.");
         this.AddProfileAssociationRules(
             x => x.Input.AppliesToAllProfiles,
             x => x.Input.ProfileIds);
@@ -56,6 +59,8 @@ internal sealed class CreateHotstringCommandHandler(
                 });
         }
 
+        string? description = string.IsNullOrWhiteSpace(input.Description) ? null : input.Description.Trim();
+
         Guid[] distinctCategoryIds = input.CategoryIds?.Distinct().ToArray() ?? [];
         if (distinctCategoryIds.Length > 0)
         {
@@ -73,6 +78,7 @@ internal sealed class CreateHotstringCommandHandler(
             ownerOid,
             input.Trigger,
             input.Replacement,
+            description,
             input.AppliesToAllProfiles,
             input.IsEndingCharacterRequired,
             input.IsTriggerInsideWord,

@@ -6,6 +6,7 @@ internal static class HotstringRules
 {
     public const int TriggerMaxLength = 50;
     public const int ReplacementMaxLength = 4000;
+    public const int DescriptionMaxLength = 200;
 
     public static IRuleBuilderOptions<T, string> ValidTrigger<T>(this IRuleBuilderInitial<T, string> rb) =>
         rb.Cascade(CascadeMode.Stop)

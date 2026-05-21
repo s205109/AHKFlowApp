@@ -6,6 +6,7 @@ public sealed record HotstringDto(
     bool AppliesToAllProfiles,
     string Trigger,
     string Replacement,
+    string? Description,
     bool IsEndingCharacterRequired,
     bool IsTriggerInsideWord,
     DateTimeOffset CreatedAt,

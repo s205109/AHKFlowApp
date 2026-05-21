@@ -12,6 +12,7 @@ public sealed class Hotstring
     public Guid OwnerOid { get; private set; }
     public string Trigger { get; private set; }
     public string Replacement { get; private set; }
+    public string? Description { get; private set; }
     public bool AppliesToAllProfiles { get; private set; }
     public bool IsEndingCharacterRequired { get; private set; }
     public bool IsTriggerInsideWord { get; private set; }
@@ -25,6 +26,7 @@ public sealed class Hotstring
         Guid ownerOid,
         string trigger,
         string replacement,
+        string? description,
         bool appliesToAllProfiles,
         bool isEndingCharacterRequired,
         bool isTriggerInsideWord,
@@ -37,6 +39,7 @@ public sealed class Hotstring
             OwnerOid = ownerOid,
             Trigger = trigger,
             Replacement = replacement,
+            Description = description,
             AppliesToAllProfiles = appliesToAllProfiles,
             IsEndingCharacterRequired = isEndingCharacterRequired,
             IsTriggerInsideWord = isTriggerInsideWord,
@@ -48,6 +51,7 @@ public sealed class Hotstring
     public void Update(
         string trigger,
         string replacement,
+        string? description,
         bool appliesToAllProfiles,
         bool isEndingCharacterRequired,
         bool isTriggerInsideWord,
@@ -55,6 +59,7 @@ public sealed class Hotstring
     {
         Trigger = trigger;
         Replacement = replacement;
+        Description = description;
         AppliesToAllProfiles = appliesToAllProfiles;
         IsEndingCharacterRequired = isEndingCharacterRequired;
         IsTriggerInsideWord = isTriggerInsideWord;

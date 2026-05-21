@@ -50,7 +50,7 @@ internal sealed class SeedHotstringsCommandHandler(
             if (exists) continue;
 
             db.Hotstrings.Add(Hotstring.Create(
-                ownerOid, trigger, replacement, appliesToAllProfiles: true,
+                ownerOid, trigger, replacement, description: null, appliesToAllProfiles: true,
                 isEndingCharacterRequired: ending, isTriggerInsideWord: inside, clock));
         }
 
@@ -68,6 +68,7 @@ internal sealed class SeedHotstringsCommandHandler(
                 h.AppliesToAllProfiles,
                 h.Trigger,
                 h.Replacement,
+                h.Description,
                 h.IsEndingCharacterRequired,
                 h.IsTriggerInsideWord,
                 h.CreatedAt,

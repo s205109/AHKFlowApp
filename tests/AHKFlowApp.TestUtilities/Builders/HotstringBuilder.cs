@@ -10,6 +10,7 @@ public sealed class HotstringBuilder
     private readonly List<Guid> _categoryIds = [];
     private string _trigger = "btw";
     private string _replacement = "by the way";
+    private string? _description;
     private bool _isEndingCharacterRequired = true;
     private bool _isTriggerInsideWord = true;
     private TimeProvider _clock = TimeProvider.System;
@@ -52,6 +53,12 @@ public sealed class HotstringBuilder
         return this;
     }
 
+    public HotstringBuilder WithDescription(string? description)
+    {
+        _description = description;
+        return this;
+    }
+
     public HotstringBuilder WithEndingCharacterRequired(bool value)
     {
         _isEndingCharacterRequired = value;
@@ -86,7 +93,7 @@ public sealed class HotstringBuilder
     public Hotstring Build()
     {
         var entity = Hotstring.Create(
-            _ownerOid, _trigger, _replacement, _appliesToAllProfiles,
+            _ownerOid, _trigger, _replacement, _description, _appliesToAllProfiles,
             _isEndingCharacterRequired, _isTriggerInsideWord, _clock);
 
         foreach (Guid pid in _profileIds)
