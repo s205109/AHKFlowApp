@@ -22,10 +22,6 @@ internal static class HotstringRules
           .NotEmpty().WithMessage("Replacement is required.")
           .MaximumLength(ReplacementMaxLength).WithMessage($"Replacement must be {ReplacementMaxLength} characters or fewer.");
 
-    public static IRuleBuilderOptions<T, string?> ValidDescription<T>(this IRuleBuilder<T, string?> rb) =>
-        rb.MaximumLength(DescriptionMaxLength)
-          .WithMessage($"Description must be {DescriptionMaxLength} characters or fewer.");
-
     /// <summary>
     /// Adds profile-association validation rules to a validator.
     /// When <paramref name="appliesToAll"/> is true, <paramref name="profileIds"/> must be null/empty.

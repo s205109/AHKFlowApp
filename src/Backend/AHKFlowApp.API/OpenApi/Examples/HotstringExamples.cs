@@ -22,7 +22,8 @@ internal sealed class UpdateHotstringDtoExample : IExamplesProvider<UpdateHotstr
         ProfileIds: null,
         AppliesToAllProfiles: true,
         IsEndingCharacterRequired: true,
-        IsTriggerInsideWord: true);
+        IsTriggerInsideWord: true,
+        Description: "Common chat abbreviation");
 }
 
 internal sealed class HotstringDtoExample : IExamplesProvider<HotstringDto>
@@ -33,6 +34,7 @@ internal sealed class HotstringDtoExample : IExamplesProvider<HotstringDto>
         AppliesToAllProfiles: true,
         Trigger: "btw",
         Replacement: "by the way",
+        Description: "Common chat abbreviation",
         IsEndingCharacterRequired: true,
         IsTriggerInsideWord: true,
         CreatedAt: DateTimeOffset.Parse("2026-04-17T09:00:00Z"),

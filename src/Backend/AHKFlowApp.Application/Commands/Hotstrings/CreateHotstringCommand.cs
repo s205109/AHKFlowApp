@@ -19,7 +19,9 @@ public sealed class CreateHotstringCommandValidator : AbstractValidator<CreateHo
     {
         RuleFor(x => x.Input.Trigger).ValidTrigger();
         RuleFor(x => x.Input.Replacement).ValidReplacement();
-        RuleFor(x => x.Input.Description).ValidDescription();
+        RuleFor(x => x.Input.Description)
+            .MaximumLength(HotstringRules.DescriptionMaxLength)
+            .WithMessage($"Description must be {HotstringRules.DescriptionMaxLength} characters or fewer.");
         this.AddProfileAssociationRules(
             x => x.Input.AppliesToAllProfiles,
             x => x.Input.ProfileIds);
