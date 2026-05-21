@@ -2,6 +2,7 @@ using System.Security.Claims;
 using AHKFlowApp.UI.Blazor.DTOs;
 using AHKFlowApp.UI.Blazor.Pages;
 using AHKFlowApp.UI.Blazor.Services;
+using AHKFlowApp.UI.Blazor.Validation;
 using Bunit;
 using FluentAssertions;
 using Microsoft.AspNetCore.Components.Authorization;
@@ -161,6 +162,55 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
         IRenderedComponent<Hotkeys> cut = RenderPage();
 
         cut.WaitForAssertion(() => cut.Find(".search-hotkeys").Should().NotBeNull());
+    }
+
+    [Fact]
+    public void Page_NoSelection_HidesBulkDeleteButton()
+    {
+        StubList(Page());
+
+        IRenderedComponent<Hotkeys> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find("button.add-hotkey"));
+
+        cut.FindAll("button.bulk-delete-hotkeys").Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Page_BulkDelete_CallsApiAndReloads()
+    {
+        var aId = Guid.NewGuid();
+        var bId = Guid.NewGuid();
+        HotkeyDto a = MakeHotkey("desc-a", "F1") with { Id = aId };
+        HotkeyDto b = MakeHotkey("desc-b", "F2") with { Id = bId };
+        StubList(Page(a, b));
+        _api.BulkDeleteAsync(Arg.Any<IReadOnlyList<Guid>>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<BulkDeleteResultDto>.Ok(new BulkDeleteResultDto(2, [])));
+
+        IDialogService dialogService = Substitute.For<IDialogService>();
+        dialogService.ShowMessageBoxAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(),
+            Arg.Any<DialogOptions>())
+            .Returns(Task.FromResult<bool?>(true));
+        Services.AddSingleton(dialogService);
+
+        IRenderedComponent<Hotkeys> cut = RenderPage();
+        cut.WaitForState(() => cut.Markup.Contains("desc-a"));
+
+        await cut.InvokeAsync(() => cut.Instance.OnSelectedItemsChanged(
+            [HotkeyEditModel.FromDto(a), HotkeyEditModel.FromDto(b)]));
+
+        cut.WaitForAssertion(() => cut.Find("button.bulk-delete-hotkeys"));
+        cut.Find("button.bulk-delete-hotkeys").Click();
+
+        cut.WaitForAssertion(() => _api.Received(1).BulkDeleteAsync(
+            Arg.Is<IReadOnlyList<Guid>>(ids =>
+                ids.Count == 2 &&
+                ids.Contains(aId) &&
+                ids.Contains(bId)),
+            Arg.Any<CancellationToken>()));
+        cut.WaitForAssertion(() => _api.Received().ListAsync(
+            Arg.Any<HotkeyListRequest>(),
+            Arg.Any<CancellationToken>()));
     }
 
     [Fact]
