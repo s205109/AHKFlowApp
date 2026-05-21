@@ -44,9 +44,9 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
         {
             var profile = Profile.Create(owner, "Work", true, "", "", TimeProvider.System);
             seed.Profiles.Add(profile);
-            var scoped = Hotstring.Create(owner, "a", "x", false, true, true, TimeProvider.System);
-            var global = Hotstring.Create(owner, "b", "y", true, true, true, TimeProvider.System);
-            var other = Hotstring.Create(owner, "c", "z", false, true, true, TimeProvider.System);
+            Hotstring scoped = Hotstring.Create(owner, "a", "x", false, true, true, TimeProvider.System);
+            Hotstring global = Hotstring.Create(owner, "b", "y", true, true, true, TimeProvider.System);
+            Hotstring other = Hotstring.Create(owner, "c", "z", false, true, true, TimeProvider.System);
             seed.Hotstrings.AddRange(scoped, global, other);
             await seed.SaveChangesAsync();
             profileId = profile.Id;
@@ -144,6 +144,27 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
             new ListHotstringsQuery(Search: "needle"), default);
 
         result.Value.Items.Should().ContainSingle().Which.Trigger.Should().Be("a");
+    }
+
+    [Fact]
+    public async Task Handle_Search_MatchesDescription()
+    {
+        var owner = Guid.NewGuid();
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(Hotstring.Create(owner, "ka", "Klaus", "German greeting", true, true, true, TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, "x", "y", "unrelated note", true, true, true, TimeProvider.System));
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner));
+
+        Result<PagedList<HotstringDto>> result = await handler.Handle(
+            new ListHotstringsQuery(Search: "german"), default);
+
+        result.Value.Items.Should().ContainSingle().Which.Description.Should().Be("German greeting");
     }
 
     [Fact]
