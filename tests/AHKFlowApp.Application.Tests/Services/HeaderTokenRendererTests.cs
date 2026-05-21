@@ -116,4 +116,11 @@ public sealed class HeaderTokenRendererTests
     {
         NewSut().Render("plain content", Ctx()).Should().Be("plain content");
     }
+
+    [Fact]
+    public void SubstitutedValue_ContainingDoubleBraces_IsNotCollapsed()
+    {
+        // ProfileName contains {{ — pass-2-style post-processing would corrupt it.
+        NewSut().Render("{ProfileName}", Ctx(profileName: "A{{B}}C")).Should().Be("A{{B}}C");
+    }
 }

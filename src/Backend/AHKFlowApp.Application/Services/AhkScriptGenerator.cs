@@ -7,7 +7,7 @@ namespace AHKFlowApp.Application.Services;
 public sealed class AhkScriptGenerator(
     HeaderTokenRenderer renderer,
     TimeProvider clock,
-    IAppVersionProvider versions)
+    IAppVersionProvider appVersionProvider)
 {
     private const string HotstringsSection = "; --- Hotstrings ---";
     private const string HotkeysSection = "; --- Hotkeys ---";
@@ -26,7 +26,7 @@ public sealed class AhkScriptGenerator(
 
         HeaderTokenRenderer.Context ctx = new(
             ProfileName: profile.Name,
-            AppVersion: versions.GetVersion(),
+            AppVersion: appVersionProvider.GetVersion(),
             HotstringCount: hsList.Count,
             HotkeyCount: hkList.Count,
             GeneratedAt: clock.GetUtcNow());

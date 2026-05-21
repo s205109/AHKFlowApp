@@ -22,7 +22,7 @@ internal sealed class CategoryConfiguration : IEntityTypeConfiguration<Category>
 
         // Case-insensitive uniqueness per owner. The Name column uses the default
         // SQL Server collation which is case-insensitive; combined with a unique
-        // index this gives "btw" / "BTW" conflict at the DB level without LOWER().
+        // index this gives "Email" / "EMAIL" conflict at the DB level without LOWER().
         builder.HasIndex(x => new { x.OwnerOid, x.Name })
             .IsUnique()
             .HasDatabaseName("IX_Category_Owner_Name");
