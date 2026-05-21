@@ -19,6 +19,7 @@ public static class DependencyInjection
 
         services.AddSingleton<HeaderTokenRenderer>();
         services.AddSingleton<AhkScriptGenerator>();
+        services.AddScoped<ProfileScriptLoader>();
 
         return services;
     }
