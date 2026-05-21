@@ -31,7 +31,7 @@ public sealed class GenerateProfileScriptQueryTests(ScriptGeneratorDbFixture fx)
     {
         ICurrentUser cu = Substitute.For<ICurrentUser>();
         cu.Oid.Returns(oid ?? _ownerOid);
-        return new GenerateProfileScriptQueryHandler(ctx, cu, _generator);
+        return new GenerateProfileScriptQueryHandler(new ProfileScriptLoader(ctx), cu, _generator);
     }
 
     [Fact]
@@ -109,7 +109,7 @@ public sealed class GenerateProfileScriptQueryTests(ScriptGeneratorDbFixture fx)
         await using AppDbContext ctx = fx.CreateContext();
         ICurrentUser cu = Substitute.For<ICurrentUser>();
         cu.Oid.Returns((Guid?)null);
-        GenerateProfileScriptQueryHandler sut = new(ctx, cu, _generator);
+        GenerateProfileScriptQueryHandler sut = new(new ProfileScriptLoader(ctx), cu, _generator);
 
         Result<ProfileScript> result = await sut.Handle(
             new GenerateProfileScriptQuery(Guid.NewGuid()), CancellationToken.None);
