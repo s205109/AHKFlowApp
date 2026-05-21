@@ -21,4 +21,6 @@ public interface IAppDbContext
     Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry<TEntity> Entry<TEntity>(TEntity entity) where TEntity : class;
 
     Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default);
+
+    IExecutionStrategy CreateExecutionStrategy();
 }

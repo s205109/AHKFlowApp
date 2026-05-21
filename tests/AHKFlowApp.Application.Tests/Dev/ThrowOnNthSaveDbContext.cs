@@ -36,4 +36,7 @@ internal sealed class ThrowOnNthSaveDbContext(AppDbContext inner, int failOnCall
 
     public Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
         => inner.BeginTransactionAsync(cancellationToken);
+
+    public IExecutionStrategy CreateExecutionStrategy()
+        => inner.CreateExecutionStrategy();
 }
