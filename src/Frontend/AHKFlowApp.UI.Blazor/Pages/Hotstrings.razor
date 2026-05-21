@@ -78,6 +78,20 @@
                     }
                 </CellTemplate>
             </PropertyColumn>
+            <PropertyColumn Property="x => x.Description" Title="Description" Hideable="true">
+                <CellTemplate>
+                    @if (IsEditing(context.Item))
+                    {
+                        <MudTextField @bind-Value="context.Item.Description"
+                                      Immediate="true" MaxLength="200"
+                                      UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "description-input" })" />
+                    }
+                    else
+                    {
+                        @context.Item.Description
+                    }
+                </CellTemplate>
+            </PropertyColumn>
             <TemplateColumn Title="Profiles" Sortable="false" Filterable="false">
                 <CellTemplate>
                     @if (IsEditing(context.Item))
