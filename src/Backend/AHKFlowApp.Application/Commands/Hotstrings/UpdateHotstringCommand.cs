@@ -19,6 +19,7 @@ public sealed class UpdateHotstringCommandValidator : AbstractValidator<UpdateHo
     {
         RuleFor(x => x.Input.Trigger).ValidTrigger();
         RuleFor(x => x.Input.Replacement).ValidReplacement();
+        RuleFor(x => x.Input.Description).ValidDescription();
         this.AddProfileAssociationRules(
             x => x.Input.AppliesToAllProfiles,
             x => x.Input.ProfileIds);
@@ -58,9 +59,12 @@ internal sealed class UpdateHotstringCommandHandler(
                 });
         }
 
+        string? description = string.IsNullOrWhiteSpace(input.Description) ? null : input.Description.Trim();
+
         entity.Update(
             input.Trigger,
             input.Replacement,
+            description,
             input.AppliesToAllProfiles,
             input.IsEndingCharacterRequired,
             input.IsTriggerInsideWord,
