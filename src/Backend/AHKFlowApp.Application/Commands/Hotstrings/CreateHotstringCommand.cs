@@ -19,6 +19,7 @@ public sealed class CreateHotstringCommandValidator : AbstractValidator<CreateHo
     {
         RuleFor(x => x.Input.Trigger).ValidTrigger();
         RuleFor(x => x.Input.Replacement).ValidReplacement();
+        RuleFor(x => x.Input.Description).ValidDescription();
         this.AddProfileAssociationRules(
             x => x.Input.AppliesToAllProfiles,
             x => x.Input.ProfileIds);
@@ -56,10 +57,13 @@ internal sealed class CreateHotstringCommandHandler(
                 });
         }
 
+        string? description = string.IsNullOrWhiteSpace(input.Description) ? null : input.Description.Trim();
+
         var entity = Hotstring.Create(
             ownerOid,
             input.Trigger,
             input.Replacement,
+            description,
             input.AppliesToAllProfiles,
             input.IsEndingCharacterRequired,
             input.IsTriggerInsideWord,
