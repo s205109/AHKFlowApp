@@ -1,4 +1,5 @@
 using AHKFlowApp.Application;
+using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.Commands.Dev;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Domain.Entities;
@@ -13,10 +14,19 @@ namespace AHKFlowApp.Application.Tests.Hotstrings;
 [Collection("HotstringDb")]
 public sealed class SeedHotstringsCommandHandlerTests(HotstringDbFixture fx)
 {
+    private const int SampleCount = 12;
+
     private static AppEnvironment DevEnv(bool isDev) => new(isDev);
 
+    private async Task SeedCategoriesAsync(Guid owner)
+    {
+        await using AppDbContext db = fx.CreateContext();
+        var handler = new SeedCategoriesCommandHandler(db, CurrentUserHelper.For(owner), TimeProvider.System, DevEnv(true));
+        await handler.Handle(new SeedCategoriesCommand(Reset: false), default);
+    }
+
     [Fact]
-    public async Task Handle_InDevelopment_SeedsSamples()
+    public async Task Handle_InDevelopment_SeedsTwelveSamples()
     {
         var owner = Guid.NewGuid();
         await using AppDbContext db = fx.CreateContext();
@@ -25,7 +35,7 @@ public sealed class SeedHotstringsCommandHandlerTests(HotstringDbFixture fx)
         Result<PagedList<HotstringDto>> result = await handler.Handle(new SeedHotstringsCommand(Reset: false), default);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value.Items.Count.Should().BeGreaterThanOrEqualTo(3);
+        result.Value.Items.Should().HaveCount(SampleCount);
     }
 
     [Fact]
@@ -67,6 +77,7 @@ public sealed class SeedHotstringsCommandHandlerTests(HotstringDbFixture fx)
         Result<PagedList<HotstringDto>> result = await handler.Handle(new SeedHotstringsCommand(Reset: false), default);
 
         result.IsSuccess.Should().BeTrue();
+        result.Value.Items.Should().HaveCount(SampleCount);
         result.Value.Items.Should().Contain(h => h.Trigger == "btw" && h.Replacement == "existing");
         result.Value.Items.Should().Contain(h => h.Trigger == "fyi");
         result.Value.Items.Should().Contain(h => h.Trigger == "brb");
@@ -89,8 +100,148 @@ public sealed class SeedHotstringsCommandHandlerTests(HotstringDbFixture fx)
         Result<PagedList<HotstringDto>> result = await handler.Handle(new SeedHotstringsCommand(Reset: true), default);
 
         result.IsSuccess.Should().BeTrue();
+        result.Value.Items.Should().HaveCount(SampleCount);
         await using AppDbContext verify = fx.CreateContext();
         bool hasPreexisting = await verify.Hotstrings.AnyAsync(h => h.OwnerOid == owner && h.Trigger == "preexisting");
         hasPreexisting.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Handle_WithReset_AfterFullSeed_KeepsTwelveSamples()
+    {
+        var owner = Guid.NewGuid();
+        await SeedCategoriesAsync(owner);
+
+        await using (AppDbContext first = fx.CreateContext())
+        {
+            var h1 = new SeedHotstringsCommandHandler(first, CurrentUserHelper.For(owner), TimeProvider.System, DevEnv(true));
+            await h1.Handle(new SeedHotstringsCommand(Reset: false), default);
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        var handler = new SeedHotstringsCommandHandler(db, CurrentUserHelper.For(owner), TimeProvider.System, DevEnv(true));
+        Result<PagedList<HotstringDto>> result = await handler.Handle(new SeedHotstringsCommand(Reset: true), default);
+
+        result.Value.Items.Should().HaveCount(SampleCount);
+        result.Value.Items.Sum(h => h.CategoryIds.Length).Should().Be(SampleCount);
+    }
+
+    [Fact]
+    public async Task Handle_AfterCategoriesSeeded_AttachesCategoryLinks()
+    {
+        var owner = Guid.NewGuid();
+        await SeedCategoriesAsync(owner);
+
+        Dictionary<string, Guid> catByName;
+        await using (AppDbContext lookup = fx.CreateContext())
+        {
+            catByName = await lookup.Categories
+                .Where(c => c.OwnerOid == owner)
+                .ToDictionaryAsync(c => c.Name, c => c.Id);
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        var handler = new SeedHotstringsCommandHandler(db, CurrentUserHelper.For(owner), TimeProvider.System, DevEnv(true));
+
+        Result<PagedList<HotstringDto>> result = await handler.Handle(new SeedHotstringsCommand(Reset: false), default);
+
+        result.Value.Items.Sum(h => h.CategoryIds.Length).Should().Be(SampleCount);
+        result.Value.Items.Single(h => h.Trigger == "recieve").CategoryIds
+            .Should().ContainSingle().Which.Should().Be(catByName["Autocorrect"]);
+        result.Value.Items.Single(h => h.Trigger == "btw").CategoryIds
+            .Should().ContainSingle().Which.Should().Be(catByName["Communication"]);
+        result.Value.Items.Single(h => h.Trigger == ";arrow").CategoryIds
+            .Should().ContainSingle().Which.Should().Be(catByName["Symbols"]);
+        result.Value.Items.Single(h => h.Trigger == ";todo").CategoryIds
+            .Should().ContainSingle().Which.Should().Be(catByName["Code"]);
+    }
+
+    [Fact]
+    public async Task Handle_BeforeCategoriesSeeded_CreatesTwelveWithNoJunctions()
+    {
+        var owner = Guid.NewGuid();
+        await using AppDbContext db = fx.CreateContext();
+        var handler = new SeedHotstringsCommandHandler(db, CurrentUserHelper.For(owner), TimeProvider.System, DevEnv(true));
+
+        Result<PagedList<HotstringDto>> result = await handler.Handle(new SeedHotstringsCommand(Reset: false), default);
+
+        result.Value.Items.Should().HaveCount(SampleCount);
+        result.Value.Items.Should().OnlyContain(h => h.CategoryIds.Length == 0);
+
+        await using AppDbContext verify = fx.CreateContext();
+        int junctions = await verify.HotstringCategories.CountAsync(hc => hc.Hotstring.OwnerOid == owner);
+        junctions.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Handle_Backfill_AttachesMissingJunctions_OnRerun()
+    {
+        var owner = Guid.NewGuid();
+
+        await using (AppDbContext before = fx.CreateContext())
+        {
+            var h1 = new SeedHotstringsCommandHandler(before, CurrentUserHelper.For(owner), TimeProvider.System, DevEnv(true));
+            await h1.Handle(new SeedHotstringsCommand(Reset: false), default);
+        }
+
+        await SeedCategoriesAsync(owner);
+
+        await using AppDbContext db = fx.CreateContext();
+        var handler = new SeedHotstringsCommandHandler(db, CurrentUserHelper.For(owner), TimeProvider.System, DevEnv(true));
+        Result<PagedList<HotstringDto>> result = await handler.Handle(new SeedHotstringsCommand(Reset: false), default);
+
+        result.Value.Items.Should().HaveCount(SampleCount);
+        result.Value.Items.Sum(h => h.CategoryIds.Length).Should().Be(SampleCount);
+    }
+
+    [Fact]
+    public async Task Handle_Rerun_WithCategories_DoesNotDuplicateJunctions()
+    {
+        var owner = Guid.NewGuid();
+        await SeedCategoriesAsync(owner);
+
+        await using (AppDbContext first = fx.CreateContext())
+        {
+            var h1 = new SeedHotstringsCommandHandler(first, CurrentUserHelper.For(owner), TimeProvider.System, DevEnv(true));
+            await h1.Handle(new SeedHotstringsCommand(Reset: false), default);
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        var handler = new SeedHotstringsCommandHandler(db, CurrentUserHelper.For(owner), TimeProvider.System, DevEnv(true));
+        Result<PagedList<HotstringDto>> result = await handler.Handle(new SeedHotstringsCommand(Reset: false), default);
+
+        result.Value.Items.Should().HaveCount(SampleCount);
+
+        await using AppDbContext verify = fx.CreateContext();
+        int junctions = await verify.HotstringCategories.CountAsync(hc => hc.Hotstring.OwnerOid == owner);
+        junctions.Should().Be(SampleCount);
+    }
+
+    [Fact]
+    public async Task Handle_WithLowercaseCategories_MatchesSampleCategoryNamesCaseInsensitively()
+    {
+        var owner = Guid.NewGuid();
+        await SeedCategoriesAsync(owner);
+
+        await using (AppDbContext lowerCase = fx.CreateContext())
+        {
+            List<Category> categories = await lowerCase.Categories
+                .Where(c => c.OwnerOid == owner)
+                .ToListAsync();
+
+            foreach (Category category in categories)
+            {
+                category.Update(category.Name.ToLowerInvariant(), TimeProvider.System);
+            }
+
+            await lowerCase.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        var handler = new SeedHotstringsCommandHandler(db, CurrentUserHelper.For(owner), TimeProvider.System, DevEnv(true));
+        Result<PagedList<HotstringDto>> result = await handler.Handle(new SeedHotstringsCommand(Reset: false), default);
+
+        result.Value.Items.Should().HaveCount(SampleCount);
+        result.Value.Items.Sum(h => h.CategoryIds.Length).Should().Be(SampleCount);
     }
 }
