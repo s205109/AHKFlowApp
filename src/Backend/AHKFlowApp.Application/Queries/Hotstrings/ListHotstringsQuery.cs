@@ -17,6 +17,7 @@ public sealed record ListHotstringsQuery(
     bool SortDescending = true,
     string? TriggerFilter = null,
     string? ReplacementFilter = null,
+    string? DescriptionFilter = null,
     bool? AppliesToAllProfiles = null,
     bool? IsEndingCharacterRequired = null,
     bool? IsTriggerInsideWord = null,
@@ -30,6 +31,7 @@ public sealed class ListHotstringsQueryValidator : AbstractValidator<ListHotstri
         "updatedAt",
         "trigger",
         "replacement",
+        "description",
         "isEndingCharacterRequired",
         "isTriggerInsideWord",
     ];
@@ -39,6 +41,7 @@ public sealed class ListHotstringsQueryValidator : AbstractValidator<ListHotstri
         RuleFor(x => x.Search).MaximumLength(200);
         RuleFor(x => x.TriggerFilter).MaximumLength(200);
         RuleFor(x => x.ReplacementFilter).MaximumLength(200);
+        RuleFor(x => x.DescriptionFilter).MaximumLength(200);
         RuleFor(x => x.Page).InclusiveBetween(1, 10_000);
         RuleFor(x => x.PageSize).InclusiveBetween(1, 200);
         RuleFor(x => x.SortField)
@@ -76,7 +79,8 @@ internal sealed class ListHotstringsQueryHandler(
             string pattern = $"%{request.Search.Trim()}%";
             query = query.Where(h =>
                 EF.Functions.Like(h.Trigger, pattern) ||
-                EF.Functions.Like(h.Replacement, pattern));
+                EF.Functions.Like(h.Replacement, pattern) ||
+                (h.Description != null && EF.Functions.Like(h.Description, pattern)));
         }
 
         if (!string.IsNullOrWhiteSpace(request.TriggerFilter))
@@ -89,6 +93,12 @@ internal sealed class ListHotstringsQueryHandler(
         {
             string pattern = $"%{request.ReplacementFilter.Trim()}%";
             query = query.Where(h => EF.Functions.Like(h.Replacement, pattern));
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.DescriptionFilter))
+        {
+            string pattern = $"%{request.DescriptionFilter.Trim()}%";
+            query = query.Where(h => h.Description != null && EF.Functions.Like(h.Description, pattern));
         }
 
         if (request.AppliesToAllProfiles is { } appliesToAllProfiles)
@@ -117,6 +127,7 @@ internal sealed class ListHotstringsQueryHandler(
                 h.AppliesToAllProfiles,
                 h.Trigger,
                 h.Replacement,
+                h.Description,
                 h.IsEndingCharacterRequired,
                 h.IsTriggerInsideWord,
                 h.CreatedAt,
@@ -138,6 +149,7 @@ internal sealed class ListHotstringsQueryHandler(
         {
             "trigger" => descending ? query.OrderByDescending(h => h.Trigger) : query.OrderBy(h => h.Trigger),
             "replacement" => descending ? query.OrderByDescending(h => h.Replacement) : query.OrderBy(h => h.Replacement),
+            "description" => descending ? query.OrderByDescending(h => h.Description) : query.OrderBy(h => h.Description),
             "isendingcharacterrequired" => descending ? query.OrderByDescending(h => h.IsEndingCharacterRequired) : query.OrderBy(h => h.IsEndingCharacterRequired),
             "istriggerinsideword" => descending ? query.OrderByDescending(h => h.IsTriggerInsideWord) : query.OrderBy(h => h.IsTriggerInsideWord),
             "updatedat" => descending ? query.OrderByDescending(h => h.UpdatedAt) : query.OrderBy(h => h.UpdatedAt),

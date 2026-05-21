@@ -14,8 +14,9 @@ public sealed class CreateHotstringCommandValidatorTests
         string trigger = "btw",
         string replacement = "by the way",
         bool appliesToAllProfiles = true,
-        Guid[]? profileIds = null)
-        => new(new CreateHotstringDto(trigger, replacement, profileIds, appliesToAllProfiles));
+        Guid[]? profileIds = null,
+        string? description = null)
+        => new(new CreateHotstringDto(trigger, replacement, profileIds, appliesToAllProfiles, Description: description));
 
     [Fact]
     public void Validate_WithAppliesToAllProfiles_Succeeds()
@@ -143,6 +144,33 @@ public sealed class CreateHotstringCommandValidatorTests
         result.Errors.Should().Contain(e =>
             e.PropertyName == "Input.Replacement" &&
             e.ErrorMessage == "Replacement must be 4000 characters or fewer.");
+    }
+
+    [Fact]
+    public void Validate_WithNullDescription_Succeeds()
+    {
+        ValidationResult result = _sut.Validate(Cmd(description: null));
+
+        result.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Validate_WithDescriptionAt200Chars_Succeeds()
+    {
+        ValidationResult result = _sut.Validate(Cmd(description: new string('x', 200)));
+
+        result.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Validate_WithDescriptionAt201Chars_Fails()
+    {
+        ValidationResult result = _sut.Validate(Cmd(description: new string('x', 201)));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.Description" &&
+            e.ErrorMessage == "Description must be 200 characters or fewer.");
     }
 
     [Fact]

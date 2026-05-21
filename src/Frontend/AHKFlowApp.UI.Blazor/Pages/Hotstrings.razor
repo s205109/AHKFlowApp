@@ -91,6 +91,20 @@
                     }
                 </CellTemplate>
             </PropertyColumn>
+            <PropertyColumn Property="x => x.Description" Title="Description" Hideable="true">
+                <CellTemplate>
+                    @if (IsEditing(context.Item))
+                    {
+                        <MudTextField @bind-Value="context.Item.Description"
+                                      Immediate="true" MaxLength="200"
+                                      UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "description-input" })" />
+                    }
+                    else
+                    {
+                        @context.Item.Description
+                    }
+                </CellTemplate>
+            </PropertyColumn>
             <TemplateColumn Title="Profiles" Sortable="false" Filterable="false">
                 <CellTemplate>
                     @if (IsEditing(context.Item))
@@ -211,6 +225,7 @@
                 SortDescending: sortDescending,
                 TriggerFilter: StringFilter(state, "trigger"),
                 ReplacementFilter: StringFilter(state, "replacement"),
+                DescriptionFilter: StringFilter(state, "description"),
                 IsEndingCharacterRequired: BoolFilter(state, "isEndingCharacterRequired"),
                 IsTriggerInsideWord: BoolFilter(state, "isTriggerInsideWord"),
                 CategoryIds: _selectedCategoryIds.Count > 0 ? _selectedCategoryIds : null),
@@ -267,6 +282,7 @@
         {
             "trigger" or nameof(HotstringEditModel.Trigger) => "trigger",
             "replacement" or nameof(HotstringEditModel.Replacement) => "replacement",
+            "description" or nameof(HotstringEditModel.Description) => "description",
             "isEndingCharacterRequired" or nameof(HotstringEditModel.IsEndingCharacterRequired) => "isEndingCharacterRequired",
             "isTriggerInsideWord" or nameof(HotstringEditModel.IsTriggerInsideWord) => "isTriggerInsideWord",
             _ => null,

@@ -6,6 +6,7 @@ public sealed record HotstringDto(
     bool AppliesToAllProfiles,
     string Trigger,
     string Replacement,
+    string? Description,
     bool IsEndingCharacterRequired,
     bool IsTriggerInsideWord,
     DateTimeOffset CreatedAt,
@@ -19,6 +20,7 @@ public sealed record CreateHotstringDto(
     bool AppliesToAllProfiles = true,
     bool IsEndingCharacterRequired = true,
     bool IsTriggerInsideWord = true,
+    string? Description = null,
     Guid[]? CategoryIds = null);
 
 public sealed record UpdateHotstringDto(
@@ -28,4 +30,5 @@ public sealed record UpdateHotstringDto(
     bool AppliesToAllProfiles,
     bool IsEndingCharacterRequired,
     bool IsTriggerInsideWord,
+    string? Description,
     Guid[]? CategoryIds = null);
