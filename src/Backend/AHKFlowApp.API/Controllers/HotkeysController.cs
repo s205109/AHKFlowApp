@@ -69,6 +69,15 @@ public sealed class HotkeysController(IMediator mediator) : ControllerBase
             : result.ToProblemActionResult(this);
     }
 
+    /// <summary>Delete multiple hotkeys owned by the current user.</summary>
+    [HttpPost("bulk-delete")]
+    [ProducesResponseType(typeof(BulkDeleteResultDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<BulkDeleteResultDto>> BulkDelete(
+        [FromBody] BulkDeleteRequestDto dto,
+        CancellationToken ct) =>
+        (await mediator.Send(new BulkDeleteHotkeysCommand(dto), ct)).ToProblemActionResult(this);
+
     /// <summary>Update an existing hotkey. Returns the updated representation.</summary>
     [HttpPut("{id:guid}")]
     [ProducesResponseType(typeof(HotkeyDto), StatusCodes.Status200OK)]

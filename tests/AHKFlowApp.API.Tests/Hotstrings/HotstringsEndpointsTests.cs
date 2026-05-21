@@ -138,6 +138,51 @@ public sealed class HotstringsEndpointsTests(SqlContainerFixture sqlFixture) : I
     }
 
     [Fact]
+    public async Task BulkDelete_MixedOwnedForeignAndUnknown_ReturnsDeletedCountAndMissingIds()
+    {
+        var ownerA = Guid.NewGuid();
+        var ownerB = Guid.NewGuid();
+        using HttpClient a = CreateAuthed(ownerA);
+        using HttpClient b = CreateAuthed(ownerB);
+
+        HotstringDto owned1 = (await (await a.PostAsJsonAsync(
+            "/api/v1/hotstrings", new CreateHotstringDto("bulk-a", "x"))).Content
+            .ReadFromJsonAsync<HotstringDto>())!;
+        HotstringDto owned2 = (await (await a.PostAsJsonAsync(
+            "/api/v1/hotstrings", new CreateHotstringDto("bulk-b", "x"))).Content
+            .ReadFromJsonAsync<HotstringDto>())!;
+        HotstringDto foreign = (await (await b.PostAsJsonAsync(
+            "/api/v1/hotstrings", new CreateHotstringDto("bulk-foreign", "x"))).Content
+            .ReadFromJsonAsync<HotstringDto>())!;
+        var unknown = Guid.NewGuid();
+
+        HttpResponseMessage response = await a.PostAsJsonAsync(
+            "/api/v1/hotstrings/bulk-delete",
+            new BulkDeleteRequestDto([owned1.Id, foreign.Id, unknown, owned2.Id]));
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        BulkDeleteResultDto result = (await response.Content.ReadFromJsonAsync<BulkDeleteResultDto>())!;
+        result.DeletedCount.Should().Be(2);
+        result.MissingIds.Should().BeEquivalentTo([foreign.Id, unknown]);
+
+        (await a.GetAsync($"/api/v1/hotstrings/{owned1.Id}")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await a.GetAsync($"/api/v1/hotstrings/{owned2.Id}")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await b.GetAsync($"/api/v1/hotstrings/{foreign.Id}")).StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task BulkDelete_EmptyIds_Returns400()
+    {
+        using HttpClient client = CreateAuthed();
+
+        HttpResponseMessage response = await client.PostAsJsonAsync(
+            "/api/v1/hotstrings/bulk-delete",
+            new BulkDeleteRequestDto([]));
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
     public async Task List_FiltersByProfileId_IncludesGlobalAndScoped()
     {
         var owner = Guid.NewGuid();
