@@ -36,6 +36,27 @@ public sealed class HotstringDescriptionTests(HotstringDbFixture fx)
     }
 
     [Fact]
+    public async Task Create_TreatsWhitespaceAsNull()
+    {
+        var owner = Guid.NewGuid();
+
+        await using AppDbContext ctx = fx.CreateContext();
+        CreateHotstringCommandHandler sut = new(ctx, CurrentUserHelper.For(owner), TimeProvider.System);
+
+        Result<HotstringDto> r = await sut.Handle(new CreateHotstringCommand(new CreateHotstringDto(
+            Trigger: NewTrigger(),
+            Replacement: "x",
+            ProfileIds: null,
+            AppliesToAllProfiles: true,
+            IsEndingCharacterRequired: true,
+            IsTriggerInsideWord: false,
+            Description: "   ")), CancellationToken.None);
+
+        r.IsSuccess.Should().BeTrue();
+        r.Value.Description.Should().BeNull();
+    }
+
+    [Fact]
     public async Task Update_ChangesDescription()
     {
         var owner = Guid.NewGuid();
