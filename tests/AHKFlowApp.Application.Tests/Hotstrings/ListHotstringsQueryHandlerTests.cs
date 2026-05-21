@@ -253,4 +253,48 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
 
         result.Value.Items.Select(h => h.Trigger).Should().Equal("a", "b", "c");
     }
+
+    [Fact]
+    public async Task Handle_DescriptionFilter_MatchesDescription()
+    {
+        var owner = Guid.NewGuid();
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(Hotstring.Create(owner, "a", "x", "German greeting", true, true, true, TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, "b", "x", "unrelated note", true, true, true, TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, "c", "x", null, true, true, true, TimeProvider.System));
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner));
+
+        Result<PagedList<HotstringDto>> result = await handler.Handle(
+            new ListHotstringsQuery(DescriptionFilter: "greeting"), default);
+
+        result.Value.Items.Should().ContainSingle().Which.Trigger.Should().Be("a");
+    }
+
+    [Fact]
+    public async Task Handle_SortByDescriptionAscending_ReturnsStableOrder()
+    {
+        var owner = Guid.NewGuid();
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(Hotstring.Create(owner, "a", "x", "charlie", true, true, true, TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, "b", "x", "alpha", true, true, true, TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, "c", "x", "bravo", true, true, true, TimeProvider.System));
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner));
+
+        Result<PagedList<HotstringDto>> result = await handler.Handle(
+            new ListHotstringsQuery(SortField: "description", SortDescending: false), default);
+
+        result.Value.Items.Select(h => h.Description).Should().Equal("alpha", "bravo", "charlie");
+    }
 }
