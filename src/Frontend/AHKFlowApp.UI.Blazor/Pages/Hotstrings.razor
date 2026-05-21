@@ -38,6 +38,19 @@
         <MudAlert Severity="Severity.Error" Class="mb-3">@_loadError</MudAlert>
     }
 
+    @if (_categories.Count > 0)
+    {
+        <MudChipSet T="Guid" SelectionMode="SelectionMode.MultiSelection"
+                    SelectedValues="_selectedCategoryIds"
+                    SelectedValuesChanged="OnCategoryFilterChangedAsync"
+                    Class="mb-2">
+            @foreach (CategoryDto c in _categories)
+            {
+                <MudChip T="Guid" Value="@c.Id" Variant="Variant.Outlined">@c.Name</MudChip>
+            }
+        </MudChipSet>
+    }
+
     <MudDataGrid @ref="_grid" T="HotstringEditModel" ServerData="LoadServerData"
                  Dense="true" Hover="true" RowsPerPage="_rowsPerPage"
                  Filterable="true" FilterMode="DataGridFilterMode.ColumnFilterMenu"
@@ -128,6 +141,18 @@
                     }
                 </CellTemplate>
             </PropertyColumn>
+            <TemplateColumn Title="Categories" Sortable="false" Filterable="false">
+                <CellTemplate>
+                    @if (IsEditing(context.Item))
+                    {
+                        @RenderCategoryEditor(context.Item)
+                    }
+                    else
+                    {
+                        @RenderCategories(context.Item.CategoryIds)
+                    }
+                </CellTemplate>
+            </TemplateColumn>
             <TemplateColumn Title="Actions" Sortable="false" Filterable="false" HeaderStyle="width:160px">
                 <CellTemplate>@RenderActions(context.Item)</CellTemplate>
             </TemplateColumn>
@@ -143,6 +168,7 @@
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
     [Inject] private IHotstringsApiClient Api { get; set; } = default!;
     [Inject] private IProfilesApiClient ProfilesApi { get; set; } = default!;
+    [Inject] private ICategoriesApiClient CategoriesApi { get; set; } = default!;
     [Inject] private ISnackbar Snackbar { get; set; } = default!;
     [Inject] private IDialogService DialogService { get; set; } = default!;
     [Inject] private IUserPreferencesService Preferences { get; set; } = default!;
@@ -152,6 +178,8 @@
     private HotstringEditModel? _editingItem;
     private bool _commitAttempted;
     private IReadOnlyList<ProfileDto> _profiles = [];
+    private IReadOnlyList<CategoryDto> _categories = [];
+    private IReadOnlyList<Guid> _selectedCategoryIds = [];
     private bool _isAuthenticated;
     private bool _loading;
     private string? _loadError;
@@ -175,6 +203,9 @@
             ApiResult<IReadOnlyList<ProfileDto>> profilesResult = await ProfilesApi.ListAsync(_cts.Token);
             if (profilesResult.IsSuccess)
                 _profiles = profilesResult.Value ?? [];
+
+            ApiResult<PagedList<CategoryDto>> catResult = await CategoriesApi.ListAsync(new CategoryListRequest(PageSize: 200), _cts.Token);
+            if (catResult.IsSuccess) _categories = catResult.Value?.Items ?? [];
         }
     }
 
@@ -195,7 +226,8 @@
                 TriggerFilter: StringFilter(state, "trigger"),
                 ReplacementFilter: StringFilter(state, "replacement"),
                 IsEndingCharacterRequired: BoolFilter(state, "isEndingCharacterRequired"),
-                IsTriggerInsideWord: BoolFilter(state, "isTriggerInsideWord")),
+                IsTriggerInsideWord: BoolFilter(state, "isTriggerInsideWord"),
+                CategoryIds: _selectedCategoryIds.Count > 0 ? _selectedCategoryIds : null),
             ct);
 
         _loading = false;
@@ -449,6 +481,32 @@
 
         if (value)
             edit.ProfileIds.Clear();
+    }
+
+    private RenderFragment RenderCategoryEditor(HotstringEditModel edit) => @<MudSelect T="Guid" MultiSelection="true"
+        SelectedValues="edit.CategoryIds"
+        SelectedValuesChanged="@(ids => edit.CategoryIds = [.. ids])"
+        ToStringFunc="@(id => _categories.FirstOrDefault(c => c.Id == id)?.Name ?? id.ToString())"
+        Dense="true" Placeholder="Select categories"
+        UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "category-select" })">
+        @foreach (CategoryDto cat in _categories)
+        {
+            <MudSelectItem T="Guid" Value="@cat.Id">@cat.Name</MudSelectItem>
+        }
+    </MudSelect>;
+
+    private RenderFragment RenderCategories(IReadOnlyCollection<Guid> categoryIds) => @<text>
+        @foreach (Guid cid in categoryIds)
+        {
+            string name = _categories.FirstOrDefault(c => c.Id == cid)?.Name ?? cid.ToString()[..8];
+            <MudChip T="string" Size="Size.Small">@name</MudChip>
+        }
+    </text>;
+
+    private async Task OnCategoryFilterChangedAsync(IReadOnlyCollection<Guid> ids)
+    {
+        _selectedCategoryIds = [.. ids];
+        if (_grid is not null) await _grid.ReloadServerData();
     }
 
     private RenderFragment RenderActions(HotstringEditModel item) => @<text>

@@ -15,4 +15,5 @@ public sealed record HotkeyListRequest(
     bool? Ctrl = null,
     bool? Alt = null,
     bool? Shift = null,
-    bool? Win = null);
+    bool? Win = null,
+    IReadOnlyList<Guid>? CategoryIds = null);

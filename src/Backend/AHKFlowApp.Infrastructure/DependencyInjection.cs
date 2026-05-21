@@ -21,6 +21,7 @@ public static class DependencyInjection
         services.AddScoped<IAppDbContext>(sp => sp.GetRequiredService<AppDbContext>());
 
         services.AddSingleton<IVersionService, VersionService>();
+        services.AddSingleton<IAppVersionProvider, AssemblyAppVersionProvider>();
 
         return services;
     }

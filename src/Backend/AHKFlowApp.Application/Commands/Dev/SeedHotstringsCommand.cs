@@ -59,6 +59,7 @@ internal sealed class SeedHotstringsCommandHandler(
         List<HotstringDto> items = await db.Hotstrings
             .AsNoTracking()
             .Include(h => h.Profiles)
+            .Include(h => h.Categories)
             .Where(h => h.OwnerOid == ownerOid)
             .OrderByDescending(h => h.CreatedAt)
             .Select(h => new HotstringDto(
@@ -71,7 +72,8 @@ internal sealed class SeedHotstringsCommandHandler(
                 h.IsEndingCharacterRequired,
                 h.IsTriggerInsideWord,
                 h.CreatedAt,
-                h.UpdatedAt))
+                h.UpdatedAt,
+                h.Categories.Select(hc => hc.CategoryId).ToArray()))
             .ToListAsync(ct);
 
         return Result.Success(new PagedList<HotstringDto>(items, Page: 1, PageSize: items.Count, TotalCount: items.Count));

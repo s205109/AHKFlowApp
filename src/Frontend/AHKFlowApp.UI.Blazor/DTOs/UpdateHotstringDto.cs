@@ -7,4 +7,5 @@ public sealed record UpdateHotstringDto(
     bool AppliesToAllProfiles,
     bool IsEndingCharacterRequired,
     bool IsTriggerInsideWord,
-    string? Description);
+    string? Description,
+    Guid[]? CategoryIds = null);
