@@ -26,6 +26,7 @@ public sealed class HotkeyEditModel
 
     public bool AppliesToAllProfiles { get; set; } = true;
     public List<Guid> ProfileIds { get; set; } = [];
+    public List<Guid> CategoryIds { get; set; } = [];
 
     public static HotkeyEditModel FromDto(HotkeyDto dto) => new()
     {
@@ -40,13 +41,14 @@ public sealed class HotkeyEditModel
         Parameters = dto.Parameters,
         AppliesToAllProfiles = dto.AppliesToAllProfiles,
         ProfileIds = [.. dto.ProfileIds],
+        CategoryIds = [.. dto.CategoryIds ?? []],
     };
 
     public CreateHotkeyDto ToCreateDto() =>
         new(Description, Key, Ctrl, Alt, Shift, Win, Action, Parameters,
-            AppliesToAllProfiles ? null : [.. ProfileIds], AppliesToAllProfiles);
+            AppliesToAllProfiles ? null : [.. ProfileIds], AppliesToAllProfiles, [.. CategoryIds]);
 
     public UpdateHotkeyDto ToUpdateDto() =>
         new(Description, Key, Ctrl, Alt, Shift, Win, Action, Parameters,
-            AppliesToAllProfiles ? null : [.. ProfileIds], AppliesToAllProfiles);
+            AppliesToAllProfiles ? null : [.. ProfileIds], AppliesToAllProfiles, [.. CategoryIds]);
 }

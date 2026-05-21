@@ -22,6 +22,7 @@ public sealed class HotstringEditModel
     public List<Guid> ProfileIds { get; set; } = [];
     public bool IsEndingCharacterRequired { get; set; } = true;
     public bool IsTriggerInsideWord { get; set; } = true;
+    public List<Guid> CategoryIds { get; set; } = [];
 
     public static HotstringEditModel FromDto(HotstringDto dto) => new()
     {
@@ -33,11 +34,12 @@ public sealed class HotstringEditModel
         ProfileIds = [.. dto.ProfileIds],
         IsEndingCharacterRequired = dto.IsEndingCharacterRequired,
         IsTriggerInsideWord = dto.IsTriggerInsideWord,
+        CategoryIds = [.. dto.CategoryIds ?? []],
     };
 
     public CreateHotstringDto ToCreateDto() =>
-        new(Trigger, Replacement, AppliesToAllProfiles ? null : [.. ProfileIds], AppliesToAllProfiles, IsEndingCharacterRequired, IsTriggerInsideWord, Description);
+        new(Trigger, Replacement, AppliesToAllProfiles ? null : [.. ProfileIds], AppliesToAllProfiles, IsEndingCharacterRequired, IsTriggerInsideWord, Description, [.. CategoryIds]);
 
     public UpdateHotstringDto ToUpdateDto() =>
-        new(Trigger, Replacement, AppliesToAllProfiles ? null : [.. ProfileIds], AppliesToAllProfiles, IsEndingCharacterRequired, IsTriggerInsideWord, Description);
+        new(Trigger, Replacement, AppliesToAllProfiles ? null : [.. ProfileIds], AppliesToAllProfiles, IsEndingCharacterRequired, IsTriggerInsideWord, Description, [.. CategoryIds]);
 }

@@ -16,6 +16,7 @@ public sealed class HotkeyBuilder
     private string _parameters = "notepad.exe";
     private bool _appliesToAllProfiles = true;
     private Guid[] _profileIds = [];
+    private readonly List<Guid> _categoryIds = [];
     private TimeProvider _clock = TimeProvider.System;
 
     public HotkeyBuilder WithOwner(Guid ownerOid) { _ownerOid = ownerOid; return this; }
@@ -50,6 +51,19 @@ public sealed class HotkeyBuilder
         return this;
     }
 
+    public HotkeyBuilder WithCategory(Guid categoryId)
+    {
+        _categoryIds.Add(categoryId);
+        return this;
+    }
+
+    public HotkeyBuilder WithCategories(params Guid[] categoryIds)
+    {
+        _categoryIds.Clear();
+        _categoryIds.AddRange(categoryIds);
+        return this;
+    }
+
     public Hotkey Build()
     {
         var entity = Hotkey.Create(
@@ -58,6 +72,9 @@ public sealed class HotkeyBuilder
 
         foreach (Guid pid in _profileIds)
             entity.Profiles.Add(HotkeyProfile.Create(entity.Id, pid));
+
+        foreach (Guid cid in _categoryIds)
+            entity.Categories.Add(HotkeyCategory.Create(entity.Id, cid));
 
         return entity;
     }

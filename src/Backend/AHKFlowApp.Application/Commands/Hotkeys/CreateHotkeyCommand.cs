@@ -60,6 +60,19 @@ internal sealed class CreateHotkeyCommandHandler(
                 return Result.Invalid(new ValidationError("One or more ProfileIds do not exist for this user."));
         }
 
+        Guid[] distinctCategoryIds = input.CategoryIds?.Distinct().ToArray() ?? [];
+        if (distinctCategoryIds.Length > 0)
+        {
+            int validCount = await db.Categories
+                .CountAsync(c => c.OwnerOid == ownerOid && distinctCategoryIds.Contains(c.Id), ct);
+            if (validCount != distinctCategoryIds.Length)
+                return Result.Invalid(new ValidationError
+                {
+                    Identifier = "Input.CategoryIds",
+                    ErrorMessage = "One or more CategoryIds do not exist for this user.",
+                });
+        }
+
         var entity = Hotkey.Create(
             ownerOid,
             input.Description,
@@ -81,6 +94,9 @@ internal sealed class CreateHotkeyCommandHandler(
                 db.HotkeyProfiles.Add(HotkeyProfile.Create(entity.Id, pid));
         }
 
+        foreach (Guid cid in distinctCategoryIds)
+            db.HotkeyCategories.Add(HotkeyCategory.Create(entity.Id, cid));
+
         try
         {
             await db.SaveChangesAsync(ct);
@@ -91,6 +107,7 @@ internal sealed class CreateHotkeyCommandHandler(
         }
 
         await db.Entry(entity).Collection(h => h.Profiles).LoadAsync(ct);
+        await db.Entry(entity).Collection(h => h.Categories).LoadAsync(ct);
         return Result.Success(entity.ToDto());
     }
 

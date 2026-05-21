@@ -26,6 +26,7 @@ public sealed class Hotkey
     public DateTimeOffset UpdatedAt { get; private set; }
 
     public ICollection<HotkeyProfile> Profiles { get; private set; } = [];
+    public ICollection<HotkeyCategory> Categories { get; private set; } = [];
 
     public static Hotkey Create(
         Guid ownerOid,

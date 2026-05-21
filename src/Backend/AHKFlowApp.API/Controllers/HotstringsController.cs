@@ -34,6 +34,7 @@ public sealed class HotstringsController(IMediator mediator) : ControllerBase
         [FromQuery] bool? appliesToAllProfiles = null,
         [FromQuery] bool? isEndingCharacterRequired = null,
         [FromQuery] bool? isTriggerInsideWord = null,
+        [FromQuery] Guid[]? categoryIds = null,
         CancellationToken ct = default) =>
         (await mediator.Send(new ListHotstringsQuery(
             profileId,
@@ -46,7 +47,8 @@ public sealed class HotstringsController(IMediator mediator) : ControllerBase
             replacementFilter,
             appliesToAllProfiles,
             isEndingCharacterRequired,
-            isTriggerInsideWord), ct)).ToProblemActionResult(this);
+            isTriggerInsideWord,
+            categoryIds), ct)).ToProblemActionResult(this);
 
     /// <summary>Get a hotstring by id.</summary>
     [HttpGet("{id:guid}", Name = "GetHotstring")]

@@ -7,6 +7,7 @@ public sealed class HotstringBuilder
     private Guid _ownerOid = Guid.NewGuid();
     private bool _appliesToAllProfiles = true;
     private Guid[] _profileIds = [];
+    private readonly List<Guid> _categoryIds = [];
     private string _trigger = "btw";
     private string _replacement = "by the way";
     private string? _description;
@@ -70,6 +71,19 @@ public sealed class HotstringBuilder
         return this;
     }
 
+    public HotstringBuilder WithCategory(Guid categoryId)
+    {
+        _categoryIds.Add(categoryId);
+        return this;
+    }
+
+    public HotstringBuilder WithCategories(params Guid[] categoryIds)
+    {
+        _categoryIds.Clear();
+        _categoryIds.AddRange(categoryIds);
+        return this;
+    }
+
     public HotstringBuilder WithClock(TimeProvider clock)
     {
         _clock = clock;
@@ -84,6 +98,9 @@ public sealed class HotstringBuilder
 
         foreach (Guid pid in _profileIds)
             entity.Profiles.Add(HotstringProfile.Create(entity.Id, pid));
+
+        foreach (Guid cid in _categoryIds)
+            entity.Categories.Add(HotstringCategory.Create(entity.Id, cid));
 
         return entity;
     }

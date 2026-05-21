@@ -10,4 +10,5 @@ public sealed record HotstringDto(
     bool IsEndingCharacterRequired,
     bool IsTriggerInsideWord,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    Guid[]? CategoryIds = null);

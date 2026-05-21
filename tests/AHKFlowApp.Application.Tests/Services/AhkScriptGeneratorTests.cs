@@ -1,14 +1,22 @@
+using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.Services;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.TestUtilities.Builders;
 using FluentAssertions;
+using Microsoft.Extensions.Time.Testing;
+using NSubstitute;
 using Xunit;
 
 namespace AHKFlowApp.Application.Tests.Services;
 
 public sealed class AhkScriptGeneratorTests
 {
-    private readonly AhkScriptGenerator _sut = new();
+    private static AhkScriptGenerator DefaultSut()
+    {
+        IAppVersionProvider version = Substitute.For<IAppVersionProvider>();
+        version.GetVersion().Returns("0.0.0");
+        return new AhkScriptGenerator(new HeaderTokenRenderer(), TimeProvider.System, version);
+    }
 
     [Fact]
     public void Generate_EmptyProfile_EmitsHeaderSectionMarkersAndFooter()
@@ -18,7 +26,7 @@ public sealed class AhkScriptGeneratorTests
             .WithFooter("; end of file")
             .Build();
 
-        string output = _sut.Generate(profile, [], []);
+        string output = DefaultSut().Generate(profile, [], []);
 
         output.Should().Be(
             "#Requires AutoHotkey v2.0\n" +
@@ -32,7 +40,7 @@ public sealed class AhkScriptGeneratorTests
     {
         Profile profile = new ProfileBuilder().WithHeader("").WithFooter("").Build();
 
-        string output = _sut.Generate(profile, [], []);
+        string output = DefaultSut().Generate(profile, [], []);
 
         output.Should().Be(
             "\n" +
@@ -58,7 +66,7 @@ public sealed class AhkScriptGeneratorTests
             .WithTriggerInsideWord(isTriggerInsideWord)
             .Build();
 
-        string output = _sut.Generate(profile, [hs], []);
+        string output = DefaultSut().Generate(profile, [hs], []);
 
         output.Should().Be(
             "H\n" +
@@ -77,7 +85,7 @@ public sealed class AhkScriptGeneratorTests
         Hotstring hs2 = new HotstringBuilder().WithTrigger("b").WithReplacement("beta")
             .WithEndingCharacterRequired(true).WithTriggerInsideWord(false).Build();
 
-        string output = _sut.Generate(profile, [hs1, hs2], []);
+        string output = DefaultSut().Generate(profile, [hs1, hs2], []);
 
         output.Should().Be(
             "H\n" +
@@ -108,7 +116,7 @@ public sealed class AhkScriptGeneratorTests
             .WithParameters("hi")
             .Build();
 
-        string output = _sut.Generate(profile, [], [hk]);
+        string output = DefaultSut().Generate(profile, [], [hk]);
 
         output.Should().Be(
             "H\n" +
@@ -133,7 +141,7 @@ public sealed class AhkScriptGeneratorTests
             .WithParameters("notepad.exe")
             .Build();
 
-        string output = _sut.Generate(profile, [], [hk]);
+        string output = DefaultSut().Generate(profile, [], [hk]);
 
         output.Should().Contain($"F5::{expectedFn}(\"notepad.exe\")");
     }
@@ -150,7 +158,7 @@ public sealed class AhkScriptGeneratorTests
             .WithParameters("he said \"hi\"")
             .Build();
 
-        string output = _sut.Generate(profile, [], [hk]);
+        string output = DefaultSut().Generate(profile, [], [hk]);
 
         output.Should().Contain("^a::Send(\"he said \"hi\"\")");
     }
@@ -166,7 +174,7 @@ public sealed class AhkScriptGeneratorTests
         Hotstring b = new HotstringBuilder().WithTrigger("b").WithReplacement("b-rep")
             .WithEndingCharacterRequired(true).WithTriggerInsideWord(false).Build();
 
-        string output = _sut.Generate(profile, [c, a, b], []);
+        string output = DefaultSut().Generate(profile, [c, a, b], []);
 
         int posA = output.IndexOf("::a::a-rep", StringComparison.Ordinal);
         int posB = output.IndexOf("::b::b-rep", StringComparison.Ordinal);
@@ -186,7 +194,7 @@ public sealed class AhkScriptGeneratorTests
         Hotkey m = new HotkeyBuilder().WithDescription("Mike").WithKey("m")
             .WithAction(AHKFlowApp.Domain.Enums.HotkeyAction.Send).WithParameters("m").Build();
 
-        string output = _sut.Generate(profile, [], [z, a, m]);
+        string output = DefaultSut().Generate(profile, [], [z, a, m]);
 
         int posA = output.IndexOf("a::Send(\"a\")", StringComparison.Ordinal);
         int posM = output.IndexOf("m::Send(\"m\")", StringComparison.Ordinal);
@@ -206,10 +214,65 @@ public sealed class AhkScriptGeneratorTests
         Hotstring upper = new HotstringBuilder().WithTrigger("AA").WithReplacement("upper")
             .WithEndingCharacterRequired(true).WithTriggerInsideWord(false).Build();
 
-        string output = _sut.Generate(profile, [lower, upper], []);
+        string output = DefaultSut().Generate(profile, [lower, upper], []);
 
         int posUpper = output.IndexOf("::AA::upper", StringComparison.Ordinal);
         int posLower = output.IndexOf("::aa::lower", StringComparison.Ordinal);
         posUpper.Should().BeLessThan(posLower);  // 'A' (0x41) < 'a' (0x61) in Ordinal
+    }
+
+    private static AhkScriptGenerator TokenSut(string version = "1.2.3")
+    {
+        IAppVersionProvider ver = Substitute.For<IAppVersionProvider>();
+        ver.GetVersion().Returns(version);
+        return new AhkScriptGenerator(
+            new HeaderTokenRenderer(),
+            new FakeTimeProvider(DateTimeOffset.Parse("2026-05-19T12:00:00Z",
+                System.Globalization.CultureInfo.InvariantCulture)),
+            ver);
+    }
+
+    [Fact]
+    public void Generate_SubstitutesHeaderTokens()
+    {
+        AhkScriptGenerator sut = TokenSut();
+
+        Profile p = new ProfileBuilder()
+            .WithOwner(Guid.NewGuid())
+            .WithName("Work")
+            .WithHeader("; {ProfileName} v{AppVersion} — {HotstringCount}h {HotkeyCount}k @ {GeneratedAt:yyyy-MM-dd}\n")
+            .WithFooter("")
+            .Build();
+
+        Hotstring[] hs =
+        [
+            new HotstringBuilder().WithOwner(p.OwnerOid).WithTrigger("btw").WithReplacement("by the way").Build(),
+        ];
+
+        string output = sut.Generate(p, hs, []);
+
+        output.Should().StartWith("; Work v1.2.3 — 1h 0k @ 2026-05-19");
+    }
+
+    [Fact]
+    public void Generate_PreservesUnknownTokens_InHeader()
+    {
+        AhkScriptGenerator sut = TokenSut();
+        Profile p = new ProfileBuilder().WithHeader("{Nope} hello\n").WithFooter("").Build();
+
+        string output = sut.Generate(p, [], []);
+
+        output.Should().Contain("{Nope} hello");
+    }
+
+    [Fact]
+    public void Generate_FooterIsAlsoRendered()
+    {
+        AhkScriptGenerator sut = TokenSut();
+        Profile p = new ProfileBuilder().WithHeader("").WithFooter("; bye v{AppVersion}").Build();
+
+        string output = sut.Generate(p, [], []);
+
+        output.Should().EndWith("; bye v1.2.3");
     }
 }
