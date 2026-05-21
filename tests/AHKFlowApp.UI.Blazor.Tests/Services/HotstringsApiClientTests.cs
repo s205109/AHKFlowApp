@@ -84,6 +84,35 @@ public sealed class HotstringsApiClientTests
         result.Status.Should().Be(ApiResultStatus.NotFound);
     }
 
+    [Fact]
+    public async Task BulkDeleteAsync_OnSuccess_ReturnsParsedDto()
+    {
+        var missingId = Guid.NewGuid();
+        BulkDeleteResultDto dto = new(2, [missingId]);
+        var handler = StubHttpMessageHandler.JsonResponse(HttpStatusCode.OK, dto);
+
+        ApiResult<BulkDeleteResultDto> result =
+            await ClientWith(handler).BulkDeleteAsync([Guid.NewGuid(), Guid.NewGuid()]);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.DeletedCount.Should().Be(2);
+        result.Value.MissingIds.Should().ContainSingle().Which.Should().Be(missingId);
+        handler.LastRequest!.Method.Should().Be(HttpMethod.Post);
+        handler.LastRequest.RequestUri!.ToString().Should().Be("http://localhost/api/v1/hotstrings/bulk-delete");
+    }
+
+    [Fact]
+    public async Task BulkDeleteAsync_OnValidation_ReturnsValidationResult()
+    {
+        var problem = new ApiProblemDetails(null, "Validation failed", 400, "Validation errors occurred.", null, null);
+        var handler = StubHttpMessageHandler.JsonResponse(HttpStatusCode.BadRequest, problem);
+
+        ApiResult<BulkDeleteResultDto> result = await ClientWith(handler).BulkDeleteAsync([]);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Status.Should().Be(ApiResultStatus.Validation);
+    }
+
     private sealed class StubHttpMessageHandler : HttpMessageHandler
     {
         public HttpRequestMessage? LastRequest { get; private set; }

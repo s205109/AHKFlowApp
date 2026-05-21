@@ -12,6 +12,11 @@ public sealed class DownloadsApiClient(HttpClient httpClient) : IDownloadsApiCli
     public Task<ApiResult<FileDownload>> GetProfileScriptAsync(Guid profileId, CancellationToken ct = default) =>
         GetFileAsync($"{BasePath}/{profileId}", "ahkflow_profile.ahk", ct);
 
+    public Task<ApiResult<ProfileScriptPreviewDto>> GetProfileScriptPreviewAsync(
+        Guid profileId,
+        CancellationToken ct = default) =>
+        GetJsonAsync<ProfileScriptPreviewDto>($"{BasePath}/{profileId}/preview", ct);
+
     public Task<ApiResult<FileDownload>> GetAllProfileScriptsZipAsync(CancellationToken ct = default) =>
         GetFileAsync($"{BasePath}/zip", "ahkflow_scripts.zip", ct);
 
@@ -33,6 +38,26 @@ public sealed class DownloadsApiClient(HttpClient httpClient) : IDownloadsApiCli
             return ApiResult<FileDownload>.Ok(new FileDownload(bytes, fileName, contentType));
         }
         catch (HttpRequestException) { return ApiResult<FileDownload>.Failure(ApiResultStatus.NetworkError, null); }
+    }
+
+    private async Task<ApiResult<T>> GetJsonAsync<T>(string path, CancellationToken ct)
+    {
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get, path);
+            using HttpResponseMessage resp = await httpClient.SendAsync(req, ct);
+            if (resp.IsSuccessStatusCode)
+            {
+                T? value = await resp.Content.ReadFromJsonAsync<T>(ct);
+                return value is null
+                    ? ApiResult<T>.Failure(ApiResultStatus.ServerError, null)
+                    : ApiResult<T>.Ok(value);
+            }
+
+            ApiProblemDetails? problem = await TryReadProblem(resp, ct);
+            return ApiResult<T>.Failure(MapStatus(resp.StatusCode), problem);
+        }
+        catch (HttpRequestException) { return ApiResult<T>.Failure(ApiResultStatus.NetworkError, null); }
     }
 
     private static async Task<ApiProblemDetails?> TryReadProblem(HttpResponseMessage resp, CancellationToken ct)
