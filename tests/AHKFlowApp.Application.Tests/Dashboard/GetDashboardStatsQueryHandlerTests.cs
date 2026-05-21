@@ -137,7 +137,7 @@ public sealed class GetDashboardStatsQueryHandlerTests(DashboardDbFixture fx)
         ctx.Hotstrings.Add(hs);
         await ctx.SaveChangesAsync();
         FakeTimeProvider tUpdate = new(_clock.GetUtcNow().AddMinutes(-5));
-        hs.Update(hs.Trigger, hs.Replacement, hs.AppliesToAllProfiles, hs.IsEndingCharacterRequired, hs.IsTriggerInsideWord, tUpdate);
+        hs.Update(hs.Trigger, hs.Replacement, hs.Description, hs.AppliesToAllProfiles, hs.IsEndingCharacterRequired, hs.IsTriggerInsideWord, tUpdate);
         await ctx.SaveChangesAsync();
 
         Result<DashboardStatsDto> result = await CreateSut(ctx).Handle(new GetDashboardStatsQuery(), CancellationToken.None);

@@ -73,7 +73,7 @@ public sealed class HotstringsEndpointsTests(SqlContainerFixture sqlFixture) : I
     public async Task Put_UnknownId_Returns404_WithProblemDetails()
     {
         using HttpClient client = CreateAuthed();
-        UpdateHotstringDto dto = new("x", "y", null, true, true, true);
+        UpdateHotstringDto dto = new("x", "y", null, true, true, true, null);
 
         var unknownId = Guid.NewGuid();
         HttpResponseMessage response = await client.PutAsJsonAsync(
@@ -96,7 +96,7 @@ public sealed class HotstringsEndpointsTests(SqlContainerFixture sqlFixture) : I
         using HttpClient b = CreateAuthed(ownerB);
         HttpResponseMessage response = await b.PutAsJsonAsync(
             $"/api/v1/hotstrings/{body!.Id}",
-            new UpdateHotstringDto("tenant-a", "hijack", null, true, true, true));
+            new UpdateHotstringDto("tenant-a", "hijack", null, true, true, true, null));
 
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -113,7 +113,7 @@ public sealed class HotstringsEndpointsTests(SqlContainerFixture sqlFixture) : I
 
         HttpResponseMessage put = await client.PutAsJsonAsync(
             $"/api/v1/hotstrings/{before!.Id}",
-            new UpdateHotstringDto("upd", "after", null, true, false, false));
+            new UpdateHotstringDto("upd", "after", null, true, false, false, null));
 
         put.StatusCode.Should().Be(HttpStatusCode.OK);
         HotstringDto? after = await put.Content.ReadFromJsonAsync<HotstringDto>();

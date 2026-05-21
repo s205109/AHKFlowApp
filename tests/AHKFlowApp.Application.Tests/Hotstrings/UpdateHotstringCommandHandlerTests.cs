@@ -16,7 +16,7 @@ public sealed class UpdateHotstringCommandHandlerTests(HotstringDbFixture fx)
     {
         var owner = Guid.NewGuid();
         FixedClock clock = new(DateTimeOffset.Parse("2026-01-01T00:00:00Z"));
-        var entity = Hotstring.Create(owner, "btw", "old", true, true, true, clock);
+        var entity = Hotstring.Create(owner, "btw", "old", null, true, true, true, clock);
 
         await using (AppDbContext seed = fx.CreateContext())
         {
@@ -29,7 +29,7 @@ public sealed class UpdateHotstringCommandHandlerTests(HotstringDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         UpdateHotstringCommandHandler handler = new(db, CurrentUserHelper.For(owner), clock);
         UpdateHotstringCommand cmd = new(entity.Id,
-            new UpdateHotstringDto("btw", "by the way", null, true, false, false));
+            new UpdateHotstringDto("btw", "by the way", null, true, false, false, null));
 
         Result<HotstringDto> result = await handler.Handle(cmd, default);
 
@@ -44,7 +44,7 @@ public sealed class UpdateHotstringCommandHandlerTests(HotstringDbFixture fx)
     {
         var owner = Guid.NewGuid();
         var attacker = Guid.NewGuid();
-        var entity = Hotstring.Create(owner, "btw", "x", true, true, true, TimeProvider.System);
+        var entity = Hotstring.Create(owner, "btw", "x", null, true, true, true, TimeProvider.System);
 
         await using (AppDbContext seed = fx.CreateContext())
         {
@@ -55,7 +55,7 @@ public sealed class UpdateHotstringCommandHandlerTests(HotstringDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         UpdateHotstringCommandHandler handler = new(db, CurrentUserHelper.For(attacker), TimeProvider.System);
         UpdateHotstringCommand cmd = new(entity.Id,
-            new UpdateHotstringDto("btw", "y", null, true, true, true));
+            new UpdateHotstringDto("btw", "y", null, true, true, true, null));
 
         Result<HotstringDto> result = await handler.Handle(cmd, default);
 
@@ -68,7 +68,7 @@ public sealed class UpdateHotstringCommandHandlerTests(HotstringDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         UpdateHotstringCommandHandler handler = new(db, CurrentUserHelper.For(Guid.NewGuid()), TimeProvider.System);
         UpdateHotstringCommand cmd = new(Guid.NewGuid(),
-            new UpdateHotstringDto("btw", "x", null, true, true, true));
+            new UpdateHotstringDto("btw", "x", null, true, true, true, null));
 
         Result<HotstringDto> result = await handler.Handle(cmd, default);
 
@@ -79,8 +79,8 @@ public sealed class UpdateHotstringCommandHandlerTests(HotstringDbFixture fx)
     public async Task Handle_WhenDuplicateTrigger_ReturnsConflict()
     {
         var owner = Guid.NewGuid();
-        var first = Hotstring.Create(owner, "first", "a", true, true, true, TimeProvider.System);
-        var second = Hotstring.Create(owner, "second", "b", true, true, true, TimeProvider.System);
+        var first = Hotstring.Create(owner, "first", "a", null, true, true, true, TimeProvider.System);
+        var second = Hotstring.Create(owner, "second", "b", null, true, true, true, TimeProvider.System);
 
         await using (AppDbContext seed = fx.CreateContext())
         {
@@ -91,7 +91,7 @@ public sealed class UpdateHotstringCommandHandlerTests(HotstringDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         UpdateHotstringCommandHandler handler = new(db, CurrentUserHelper.For(owner), TimeProvider.System);
         UpdateHotstringCommand cmd = new(second.Id,
-            new UpdateHotstringDto("first", "b", null, true, true, true));
+            new UpdateHotstringDto("first", "b", null, true, true, true, null));
 
         Result<HotstringDto> result = await handler.Handle(cmd, default);
 

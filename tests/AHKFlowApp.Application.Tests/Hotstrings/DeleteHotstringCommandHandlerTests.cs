@@ -15,7 +15,7 @@ public sealed class DeleteHotstringCommandHandlerTests(HotstringDbFixture fx)
     public async Task Handle_WhenOwned_Deletes()
     {
         var owner = Guid.NewGuid();
-        var entity = Hotstring.Create(owner, "del", "x", true, true, true, TimeProvider.System);
+        var entity = Hotstring.Create(owner, "del", "x", null, true, true, true, TimeProvider.System);
         await using (AppDbContext seed = fx.CreateContext())
         {
             seed.Hotstrings.Add(entity);
@@ -38,7 +38,7 @@ public sealed class DeleteHotstringCommandHandlerTests(HotstringDbFixture fx)
     {
         var owner = Guid.NewGuid();
         var attacker = Guid.NewGuid();
-        var entity = Hotstring.Create(owner, "del", "x", true, true, true, TimeProvider.System);
+        var entity = Hotstring.Create(owner, "del", "x", null, true, true, true, TimeProvider.System);
         await using (AppDbContext seed = fx.CreateContext())
         {
             seed.Hotstrings.Add(entity);
