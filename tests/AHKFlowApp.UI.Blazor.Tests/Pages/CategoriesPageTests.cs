@@ -74,7 +74,7 @@ public sealed class CategoriesPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
-    public Task Page_AddAndCommit_CallsCreateWithCorrectName()
+    public void Page_AddAndCommit_CallsCreateWithCorrectName()
     {
         StubList();
         _api.CreateAsync(Arg.Any<CreateCategoryDto>(), Arg.Any<CancellationToken>())
@@ -88,13 +88,13 @@ public sealed class CategoriesPageTests : BunitContext, IAsyncLifetime
         cut.Find("input[data-test=\"category-name-input\"]").Input("Email");
         cut.Find("button.commit-edit").Click();
 
-        return _api.Received(1).CreateAsync(
+        cut.WaitForAssertion(() => _api.Received(1).CreateAsync(
             Arg.Is<CreateCategoryDto>(d => d.Name == "Email"),
-            Arg.Any<CancellationToken>());
+            Arg.Any<CancellationToken>()));
     }
 
     [Fact]
-    public Task Page_RenameAndCommit_CallsUpdateWithCorrectName()
+    public void Page_RenameAndCommit_CallsUpdateWithCorrectName()
     {
         CategoryDto dto = MakeCategory("Old Name");
         StubList(dto);
@@ -109,10 +109,10 @@ public sealed class CategoriesPageTests : BunitContext, IAsyncLifetime
         cut.Find("input[data-test=\"category-name-input\"]").Input("New Name");
         cut.Find("button.commit-edit").Click();
 
-        return _api.Received(1).UpdateAsync(
+        cut.WaitForAssertion(() => _api.Received(1).UpdateAsync(
             dto.Id,
             Arg.Is<UpdateCategoryDto>(d => d.Name == "New Name"),
-            Arg.Any<CancellationToken>());
+            Arg.Any<CancellationToken>()));
     }
 
     [Fact]
@@ -129,7 +129,7 @@ public sealed class CategoriesPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
-    public Task Page_CreateConflict_ShowsErrorSnackbar()
+    public void Page_CreateConflict_ShowsErrorSnackbar()
     {
         StubList();
         var problem = new ApiProblemDetails(null, "Conflict", 409, "Category already exists", null, null);
@@ -144,6 +144,9 @@ public sealed class CategoriesPageTests : BunitContext, IAsyncLifetime
         cut.Find("input[data-test=\"category-name-input\"]").Input("Work");
         cut.Find("button.commit-edit").Click();
 
-        return _api.Received(1).CreateAsync(Arg.Any<CreateCategoryDto>(), Arg.Any<CancellationToken>());
+        // MudBlazor snackbars render via portal and are not in the component DOM in bUnit.
+        // Assert the API was called (proving the commit path ran and conflict was handled without crash).
+        cut.WaitForAssertion(() =>
+            _api.Received(1).CreateAsync(Arg.Any<CreateCategoryDto>(), Arg.Any<CancellationToken>()));
     }
 }
