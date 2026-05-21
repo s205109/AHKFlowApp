@@ -32,7 +32,7 @@ internal sealed class SeedHotstringsCommandHandler(
         ("fyi",     "for your information", true,  false, ["Communication"]),
         ("/today",  "{{date:yyyy-MM-dd}}",  false, false, ["DateTime"]),
         ("/now",    "{{datetime:HH:mm}}",   false, false, ["DateTime"]),
-        ("@sig",    "Bart Segers\nbart@segocom.nl\nSegocom", false, false, ["Email"]),
+        ("@sig",    "Example User\nuser@example.com\nExample Company", false, false, ["Email"]),
         (";arrow",  "→",               false, false, ["Symbols"]),
         (";check",  "✓",               false, false, ["Symbols"]),
         (";shrug",  "¯\\_(ツ)_/¯", false, false, ["Symbols"]),
@@ -56,9 +56,11 @@ internal sealed class SeedHotstringsCommandHandler(
             db.Hotstrings.RemoveRange(existing);
         }
 
-        Dictionary<string, Guid> categoryByName = await db.Categories
-            .Where(c => c.OwnerOid == ownerOid)
-            .ToDictionaryAsync(c => c.Name, c => c.Id, ct);
+        var categoryByName = (await db.Categories
+                .Where(c => c.OwnerOid == ownerOid)
+                .Select(c => new { c.Name, c.Id })
+                .ToListAsync(ct))
+            .ToDictionary(c => c.Name, c => c.Id, StringComparer.OrdinalIgnoreCase);
 
         // On reset the prior hotstrings/junctions still exist in the DB until
         // SaveChanges (junctions cascade-delete with their hotstrings), so treat

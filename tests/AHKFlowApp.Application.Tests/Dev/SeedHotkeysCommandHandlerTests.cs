@@ -171,4 +171,30 @@ public sealed class SeedHotkeysCommandHandlerTests(DevDbFixture fx)
         int junctions = await verify.HotkeyCategories.CountAsync(hc => hc.Hotkey.OwnerOid == _ownerOid);
         junctions.Should().Be(SampleCount);
     }
+
+    [Fact]
+    public async Task Handle_WithLowercaseCategories_MatchesSampleCategoryNamesCaseInsensitively()
+    {
+        await SeedCategoriesAsync();
+
+        await using (AppDbContext lowerCase = fx.CreateContext())
+        {
+            List<Domain.Entities.Category> categories = await lowerCase.Categories
+                .Where(c => c.OwnerOid == _ownerOid)
+                .ToListAsync();
+
+            foreach (Domain.Entities.Category category in categories)
+            {
+                category.Update(category.Name.ToLowerInvariant(), TimeProvider.System);
+            }
+
+            await lowerCase.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        Result<PagedList<HotkeyDto>> result = await Sut(db).Handle(new SeedHotkeysCommand(Reset: false), default);
+
+        result.Value.Items.Should().HaveCount(SampleCount);
+        result.Value.Items.Sum(h => h.CategoryIds.Length).Should().Be(SampleCount);
+    }
 }

@@ -12,6 +12,8 @@ namespace AHKFlowApp.API.Controllers;
 [Route("api/v1/dev")]
 [Authorize]
 [RequiredScope("access_as_user")]
+[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
 public sealed class DevController(IMediator mediator) : ControllerBase
 {
     /// <summary>Seeds a curated set of sample hotstrings for the authenticated user. Development only.</summary>

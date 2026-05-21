@@ -58,9 +58,11 @@ internal sealed class SeedHotkeysCommandHandler(
             db.Hotkeys.RemoveRange(existing);
         }
 
-        Dictionary<string, Guid> catByName = await db.Categories
-            .Where(c => c.OwnerOid == ownerOid)
-            .ToDictionaryAsync(c => c.Name, c => c.Id, ct);
+        var catByName = (await db.Categories
+                .Where(c => c.OwnerOid == ownerOid)
+                .Select(c => new { c.Name, c.Id })
+                .ToListAsync(ct))
+            .ToDictionary(c => c.Name, c => c.Id, StringComparer.OrdinalIgnoreCase);
 
         // On reset the prior hotkeys/junctions still exist in the DB until
         // SaveChanges (junctions cascade-delete with their hotkeys), so treat the
