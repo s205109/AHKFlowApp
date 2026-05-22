@@ -1,6 +1,7 @@
 using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace AHKFlowApp.Infrastructure.Persistence;
 
@@ -16,6 +17,12 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<HotstringCategory> HotstringCategories => Set<HotstringCategory>();
     public DbSet<HotkeyCategory> HotkeyCategories => Set<HotkeyCategory>();
+
+    public Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
+        => Database.BeginTransactionAsync(cancellationToken);
+
+    public IExecutionStrategy CreateExecutionStrategy()
+        => Database.CreateExecutionStrategy();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
