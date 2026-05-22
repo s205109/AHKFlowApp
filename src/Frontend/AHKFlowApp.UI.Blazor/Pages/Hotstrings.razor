@@ -66,6 +66,7 @@
                  SortMode="SortMode.Single" ReadOnly="true"
                  RowClassFunc="@GetRowClass">
         <Columns>
+            <SelectColumn T="HotstringEditModel" />
             <PropertyColumn Property="x => x.Trigger" Title="Trigger">
                 <CellTemplate>
                     @if (IsEditing(context.Item))
