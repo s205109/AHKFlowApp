@@ -9,4 +9,5 @@ public interface IHotkeysApiClient
     Task<ApiResult<HotkeyDto>> CreateAsync(CreateHotkeyDto input, CancellationToken ct = default);
     Task<ApiResult<HotkeyDto>> UpdateAsync(Guid id, UpdateHotkeyDto input, CancellationToken ct = default);
     Task<ApiResult> DeleteAsync(Guid id, CancellationToken ct = default);
+    Task<ApiResult<BulkDeleteResultDto>> BulkDeleteAsync(IReadOnlyList<Guid> ids, CancellationToken ct = default);
 }

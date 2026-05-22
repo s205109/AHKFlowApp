@@ -38,6 +38,18 @@ public sealed class DownloadsController(IMediator mediator) : ControllerBase
         return File(bytes, AhkContentType, fileDownloadName: result.Value.FileName);
     }
 
+    /// <summary>Generated AHK v2 script preview for a single profile.</summary>
+    [HttpGet("{profileId:guid}/preview")]
+    [ProducesResponseType(typeof(ProfileScriptPreviewDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ProfileScriptPreviewDto>> PreviewProfile(Guid profileId, CancellationToken ct)
+    {
+        Result<ProfileScriptPreviewDto> result =
+            await mediator.Send(new GetProfileScriptPreviewQuery(profileId), ct);
+
+        return result.ToProblemActionResult(this);
+    }
+
     /// <summary>Zip containing one .ahk per profile owned by the current user.</summary>
     [HttpGet("zip")]
     [Produces(ZipContentType)]

@@ -2,6 +2,7 @@ using System.Security.Claims;
 using AHKFlowApp.UI.Blazor.DTOs;
 using AHKFlowApp.UI.Blazor.Pages;
 using AHKFlowApp.UI.Blazor.Services;
+using AHKFlowApp.UI.Blazor.Validation;
 using Bunit;
 using FluentAssertions;
 using Microsoft.AspNetCore.Components.Authorization;
@@ -154,6 +155,55 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
         IRenderedComponent<Hotstrings> cut = RenderPage();
 
         cut.WaitForAssertion(() => cut.Find(".search-hotstrings").Should().NotBeNull());
+    }
+
+    [Fact]
+    public void Page_NoSelection_HidesBulkDeleteButton()
+    {
+        StubList(Page());
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find("button.add-hotstring"));
+
+        cut.FindAll("button.bulk-delete-hotstrings").Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Page_BulkDelete_CallsApiAndReloads()
+    {
+        var aId = Guid.NewGuid();
+        var bId = Guid.NewGuid();
+        var a = new HotstringDto(aId, [], true, "a", "x", null, true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        var b = new HotstringDto(bId, [], true, "b", "x", null, true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        StubList(Page(a, b));
+        _api.BulkDeleteAsync(Arg.Any<IReadOnlyList<Guid>>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<BulkDeleteResultDto>.Ok(new BulkDeleteResultDto(2, [])));
+
+        IDialogService dialogService = Substitute.For<IDialogService>();
+        dialogService.ShowMessageBoxAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(),
+            Arg.Any<DialogOptions>())
+            .Returns(Task.FromResult<bool?>(true));
+        Services.AddSingleton(dialogService);
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+        cut.WaitForState(() => cut.Markup.Contains(">a<") || cut.Markup.Contains("a"));
+
+        await cut.InvokeAsync(() => cut.Instance.OnSelectedItemsChanged(
+            [HotstringEditModel.FromDto(a), HotstringEditModel.FromDto(b)]));
+
+        cut.WaitForAssertion(() => cut.Find("button.bulk-delete-hotstrings"));
+        cut.Find("button.bulk-delete-hotstrings").Click();
+
+        cut.WaitForAssertion(() => _api.Received(1).BulkDeleteAsync(
+            Arg.Is<IReadOnlyList<Guid>>(ids =>
+                ids.Count == 2 &&
+                ids.Contains(aId) &&
+                ids.Contains(bId)),
+            Arg.Any<CancellationToken>()));
+        cut.WaitForAssertion(() => _api.Received().ListAsync(
+            Arg.Any<HotstringListRequest>(),
+            Arg.Any<CancellationToken>()));
     }
 
     [Fact]

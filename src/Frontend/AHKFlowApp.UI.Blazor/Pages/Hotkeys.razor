@@ -22,6 +22,13 @@
                    Disabled="@(!_isAuthenticated || _loading)">
             Reload
         </MudButton>
+        @if (_selected.Count > 0)
+        {
+            <MudButton Class="bulk-delete-hotkeys" Variant="Variant.Filled" Color="Color.Error"
+                       StartIcon="@Icons.Material.Filled.DeleteSweep" OnClick="BulkDeleteAsync">
+                Delete @_selected.Count selected
+            </MudButton>
+        }
         <MudSpacer />
         <MudTextField T="string" @bind-Value="_search" @bind-Value:after="OnSearchChangedAsync"
                       DebounceInterval="300"
@@ -52,6 +59,8 @@
     }
 
     <MudDataGrid @ref="_grid" T="HotkeyEditModel" ServerData="LoadServerData"
+                 MultiSelection="true" SelectOnRowClick="false"
+                 SelectedItems="_selected" SelectedItemsChanged="OnSelectedItemsChanged"
                  Dense="true" Hover="true" RowsPerPage="_rowsPerPage"
                  Filterable="true" FilterMode="DataGridFilterMode.ColumnFilterMenu"
                  SortMode="SortMode.Single" ReadOnly="true"
@@ -219,6 +228,7 @@
     private MudDataGrid<HotkeyEditModel>? _grid;
     private HotkeyEditModel? _pendingCreate;
     private HotkeyEditModel? _editingItem;
+    private HashSet<HotkeyEditModel> _selected = [];
     private bool _commitAttempted;
     private IReadOnlyList<ProfileDto> _profiles = [];
     private IReadOnlyList<CategoryDto> _categories = [];
@@ -502,6 +512,45 @@
             if (_grid is not null) await _grid.ReloadServerData();
         }
         else Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
+    }
+
+    internal void OnSelectedItemsChanged(HashSet<HotkeyEditModel> selected)
+    {
+        _selected = selected;
+        StateHasChanged();
+    }
+
+    private async Task BulkDeleteAsync()
+    {
+        Guid[] ids = [.. _selected.Where(item => item.Id is not null).Select(item => item.Id!.Value)];
+        if (ids.Length == 0)
+            return;
+
+        bool? confirm = await DialogService.ShowMessageBoxAsync(
+            title: "Delete hotkeys?",
+            message: $"Delete {ids.Length} hotkey(s)? This cannot be undone.",
+            yesText: "Delete", cancelText: "Cancel");
+        if (confirm != true)
+            return;
+
+        ApiResult<BulkDeleteResultDto> result = await Api.BulkDeleteAsync(ids, _cts.Token);
+        if (result.IsSuccess)
+        {
+            int deleted = result.Value!.DeletedCount;
+            int missing = result.Value.MissingIds.Count;
+            string message = missing > 0
+                ? $"Deleted {deleted} hotkey(s); {missing} were already gone."
+                : $"Deleted {deleted} hotkey(s).";
+            Snackbar.Add(message, Severity.Success);
+            _selected = [];
+
+            if (_grid is not null)
+                await _grid.ReloadServerData();
+        }
+        else
+        {
+            Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
+        }
     }
 
     private RenderFragment RenderProfiles(bool appliesToAllProfiles, IReadOnlyCollection<Guid> profileIds) => @<text>

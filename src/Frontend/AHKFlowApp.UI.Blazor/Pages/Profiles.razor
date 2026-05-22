@@ -4,6 +4,7 @@
 @using AHKFlowApp.UI.Blazor.Validation
 @using MudBlazor
 @using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.JSInterop
 @implements IDisposable
 
 <PageTitle>Profiles</PageTitle>
@@ -113,6 +114,50 @@
                         {
                             <pre style="white-space: pre-wrap; font-family: monospace;">@context.FooterTemplate</pre>
                         }
+                        @if (edit is null)
+                        {
+                            ProfilePreviewState preview = GetPreviewState(context.Id);
+                            <MudExpansionPanels Class="mt-3">
+                                <MudExpansionPanel Class="profile-preview-pane" Text="Script preview">
+                                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Wrap="Wrap.Wrap" Class="mb-2">
+                                        <MudButton Class="profile-preview-refresh" Variant="Variant.Filled" Color="Color.Primary"
+                                                   StartIcon="@Icons.Material.Filled.Refresh"
+                                                   OnClick="() => RefreshPreviewAsync(context.Id)"
+                                                   Disabled="@preview.Loading">
+                                            Refresh
+                                        </MudButton>
+                                        <MudButton Class="profile-preview-copy" Variant="Variant.Outlined" Color="Color.Secondary"
+                                                   StartIcon="@Icons.Material.Filled.ContentCopy"
+                                                   OnClick="() => CopyPreviewAsync(context.Id)"
+                                                   Disabled="@(preview.Preview is null)">
+                                            Copy
+                                        </MudButton>
+                                        @if (preview.Preview is not null)
+                                        {
+                                            <MudText Typo="Typo.caption">
+                                                @preview.Preview.HotstringCount hotstring(s), @preview.Preview.HotkeyCount hotkey(s)
+                                            </MudText>
+                                        }
+                                    </MudStack>
+                                    @if (preview.Loading)
+                                    {
+                                        <MudSkeleton Height="120px" />
+                                    }
+                                    else if (preview.Error is not null)
+                                    {
+                                        <MudAlert Severity="Severity.Error">@preview.Error</MudAlert>
+                                    }
+                                    else if (preview.Preview is not null)
+                                    {
+                                        <pre class="profile-preview-script" style="white-space: pre-wrap; font-family: monospace;">@preview.Preview.Script</pre>
+                                    }
+                                    else
+                                    {
+                                        <MudText Typo="Typo.body2">Refresh to generate the current script preview.</MudText>
+                                    }
+                                </MudExpansionPanel>
+                            </MudExpansionPanels>
+                        }
                     </MudPaper>
                 </td>
             }
@@ -124,11 +169,14 @@
 @code {
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
     [Inject] private IProfilesApiClient Api { get; set; } = default!;
+    [Inject] private IDownloadsApiClient DownloadsApi { get; set; } = default!;
     [Inject] private ISnackbar Snackbar { get; set; } = default!;
     [Inject] private IDialogService DialogService { get; set; } = default!;
+    [Inject] private IJSRuntime JS { get; set; } = default!;
 
     private List<ProfileDto> _profiles = [];
     private readonly Dictionary<Guid, ProfileEditModel> _editing = new();
+    private readonly Dictionary<Guid, ProfilePreviewState> _previews = new();
     private readonly HashSet<Guid> _commitAttempted = [];
     private readonly HashSet<Guid> _expanded = [];
     private bool _isAuthenticated;
@@ -190,6 +238,52 @@
         if (!_expanded.Add(id)) _expanded.Remove(id);
     }
 
+    private ProfilePreviewState GetPreviewState(Guid id)
+    {
+        if (!_previews.TryGetValue(id, out ProfilePreviewState? state))
+        {
+            state = new ProfilePreviewState();
+            _previews[id] = state;
+        }
+
+        return state;
+    }
+
+    private async Task RefreshPreviewAsync(Guid id)
+    {
+        ProfilePreviewState state = GetPreviewState(id);
+        state.Loading = true;
+        state.Error = null;
+        ApiResult<ProfileScriptPreviewDto> result = await DownloadsApi.GetProfileScriptPreviewAsync(id, _cts.Token);
+        state.Loading = false;
+
+        if (result.IsSuccess)
+        {
+            state.Preview = result.Value;
+            return;
+        }
+
+        state.Preview = null;
+        state.Error = ApiErrorMessageFactory.Build(result.Status, result.Problem);
+    }
+
+    private async Task CopyPreviewAsync(Guid id)
+    {
+        ProfilePreviewState state = GetPreviewState(id);
+        if (state.Preview is null)
+            return;
+
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", state.Preview.Script);
+            Snackbar.Add("Script preview copied.", Severity.Success);
+        }
+        catch (JSException)
+        {
+            Snackbar.Add("Copy to clipboard failed.", Severity.Warning);
+        }
+    }
+
     private static string? ValidateName(string? value)
     {
         if (string.IsNullOrWhiteSpace(value)) return "Name is required";
@@ -247,4 +341,11 @@
     }
 
     public void Dispose() { _cts.Cancel(); _cts.Dispose(); }
+
+    private sealed class ProfilePreviewState
+    {
+        public bool Loading { get; set; }
+        public string? Error { get; set; }
+        public ProfileScriptPreviewDto? Preview { get; set; }
+    }
 }

@@ -47,6 +47,15 @@ public sealed class HotstringsApiClient(HttpClient httpClient) : ApiClientBase(h
     public Task<ApiResult> DeleteAsync(Guid id, CancellationToken ct = default) =>
         SendNoContentAsync(HttpMethod.Delete, $"{BasePath}/{id}", ct);
 
+    public Task<ApiResult<BulkDeleteResultDto>> BulkDeleteAsync(
+        IReadOnlyList<Guid> ids,
+        CancellationToken ct = default) =>
+        SendAsync<BulkDeleteResultDto>(
+            HttpMethod.Post,
+            $"{BasePath}/bulk-delete",
+            JsonContent.Create(new { ids }),
+            ct);
+
     private static void Add(List<string> parts, string key, string? value)
     {
         if (!string.IsNullOrWhiteSpace(value)) parts.Add($"{key}={Uri.EscapeDataString(value)}");

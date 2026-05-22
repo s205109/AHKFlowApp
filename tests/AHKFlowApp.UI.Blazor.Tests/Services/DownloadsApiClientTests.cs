@@ -59,6 +59,25 @@ public sealed class DownloadsApiClientTests
     }
 
     [Fact]
+    public async Task GetProfileScriptPreviewAsync_OnSuccess_ReturnsPreview()
+    {
+        DateTimeOffset generatedAt = DateTimeOffset.UtcNow;
+        ProfileScriptPreviewDto preview = new("script", 2, 1, generatedAt);
+        var handler = StubHttpMessageHandler.JsonResponse(HttpStatusCode.OK, preview);
+        var profileId = Guid.NewGuid();
+
+        ApiResult<ProfileScriptPreviewDto> result =
+            await ClientWith(handler).GetProfileScriptPreviewAsync(profileId);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.Script.Should().Be("script");
+        result.Value.HotstringCount.Should().Be(2);
+        result.Value.HotkeyCount.Should().Be(1);
+        result.Value.GeneratedAt.Should().Be(generatedAt);
+        handler.LastRequest!.RequestUri!.ToString().Should().Be($"http://localhost/api/v1/downloads/{profileId}/preview");
+    }
+
+    [Fact]
     public async Task GetProfileScriptAsync_NetworkError_ReturnsNetworkErrorResult()
     {
         var handler = StubHttpMessageHandler.ThrowingHandler();
