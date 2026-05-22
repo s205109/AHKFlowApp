@@ -48,9 +48,12 @@ internal static class ApiExtensions
                 }
             });
 
-            string xmlPath = Path.Combine(AppContext.BaseDirectory, "AHKFlowApp.API.xml");
-            if (File.Exists(xmlPath))
-                options.IncludeXmlComments(xmlPath, includeControllerXmlComments: true);
+            foreach (string assemblyName in new[] { "AHKFlowApp.API", "AHKFlowApp.Application" })
+            {
+                string xmlPath = Path.Combine(AppContext.BaseDirectory, $"{assemblyName}.xml");
+                if (File.Exists(xmlPath))
+                    options.IncludeXmlComments(xmlPath, includeControllerXmlComments: true);
+            }
 
             options.ExampleFilters();
         });

@@ -10,6 +10,7 @@ namespace AHKFlowApp.API.Controllers;
 [AllowAnonymous]
 public sealed class VersionController(IVersionService versionService) : ControllerBase
 {
+    /// <summary>Returns the deployed API version (MinVer / informational version).</summary>
     [HttpGet]
     [ProducesResponseType(typeof(VersionResponse), StatusCodes.Status200OK)]
     public async Task<ActionResult<VersionResponse>> GetVersionAsync(CancellationToken cancellationToken)

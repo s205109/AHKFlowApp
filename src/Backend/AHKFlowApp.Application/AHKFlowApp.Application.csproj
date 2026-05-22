@@ -1,5 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- We document only the public DTO contract surface. Suppress CS1591 on
+         everything else so the build doesn't drown in noise for handlers/validators/etc. -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\AHKFlowApp.Domain\AHKFlowApp.Domain.csproj" />
