@@ -1,11 +1,8 @@
-using System.Net;
-using System.Net.Http.Json;
-using System.Text.Json;
 using AHKFlowApp.UI.Blazor.DTOs;
 
 namespace AHKFlowApp.UI.Blazor.Services;
 
-public sealed class DownloadsApiClient(HttpClient httpClient) : IDownloadsApiClient
+public sealed class DownloadsApiClient(HttpClient httpClient) : ApiClientBase(httpClient), IDownloadsApiClient
 {
     private const string BasePath = "api/v1/downloads";
 
@@ -15,7 +12,7 @@ public sealed class DownloadsApiClient(HttpClient httpClient) : IDownloadsApiCli
     public Task<ApiResult<ProfileScriptPreviewDto>> GetProfileScriptPreviewAsync(
         Guid profileId,
         CancellationToken ct = default) =>
-        GetJsonAsync<ProfileScriptPreviewDto>($"{BasePath}/{profileId}/preview", ct);
+        SendAsync<ProfileScriptPreviewDto>(HttpMethod.Get, $"{BasePath}/{profileId}/preview", content: null, ct);
 
     public Task<ApiResult<FileDownload>> GetAllProfileScriptsZipAsync(CancellationToken ct = default) =>
         GetFileAsync($"{BasePath}/zip", "ahkflow_scripts.zip", ct);
@@ -25,7 +22,7 @@ public sealed class DownloadsApiClient(HttpClient httpClient) : IDownloadsApiCli
         try
         {
             using var req = new HttpRequestMessage(HttpMethod.Get, path);
-            using HttpResponseMessage resp = await httpClient.SendAsync(req, ct);
+            using HttpResponseMessage resp = await HttpClient.SendAsync(req, ct);
             if (!resp.IsSuccessStatusCode)
             {
                 ApiProblemDetails? problem = await TryReadProblem(resp, ct);
@@ -39,40 +36,4 @@ public sealed class DownloadsApiClient(HttpClient httpClient) : IDownloadsApiCli
         }
         catch (HttpRequestException) { return ApiResult<FileDownload>.Failure(ApiResultStatus.NetworkError, null); }
     }
-
-    private async Task<ApiResult<T>> GetJsonAsync<T>(string path, CancellationToken ct)
-    {
-        try
-        {
-            using var req = new HttpRequestMessage(HttpMethod.Get, path);
-            using HttpResponseMessage resp = await httpClient.SendAsync(req, ct);
-            if (resp.IsSuccessStatusCode)
-            {
-                T? value = await resp.Content.ReadFromJsonAsync<T>(ct);
-                return value is null
-                    ? ApiResult<T>.Failure(ApiResultStatus.ServerError, null)
-                    : ApiResult<T>.Ok(value);
-            }
-
-            ApiProblemDetails? problem = await TryReadProblem(resp, ct);
-            return ApiResult<T>.Failure(MapStatus(resp.StatusCode), problem);
-        }
-        catch (HttpRequestException) { return ApiResult<T>.Failure(ApiResultStatus.NetworkError, null); }
-    }
-
-    private static async Task<ApiProblemDetails?> TryReadProblem(HttpResponseMessage resp, CancellationToken ct)
-    {
-        try { return await resp.Content.ReadFromJsonAsync<ApiProblemDetails>(ct); }
-        catch (Exception ex) when (ex is JsonException or NotSupportedException or IOException) { return null; }
-    }
-
-    private static ApiResultStatus MapStatus(HttpStatusCode code) => code switch
-    {
-        HttpStatusCode.BadRequest or HttpStatusCode.UnprocessableEntity => ApiResultStatus.Validation,
-        HttpStatusCode.NotFound => ApiResultStatus.NotFound,
-        HttpStatusCode.Conflict => ApiResultStatus.Conflict,
-        HttpStatusCode.Unauthorized => ApiResultStatus.Unauthorized,
-        HttpStatusCode.Forbidden => ApiResultStatus.Forbidden,
-        _ => ApiResultStatus.ServerError,
-    };
 }

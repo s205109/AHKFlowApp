@@ -60,7 +60,7 @@
 
     <MudDataGrid @ref="_grid" T="HotstringEditModel" ServerData="LoadServerData"
                  MultiSelection="true" SelectOnRowClick="false"
-                 SelectedItemsChanged="OnSelectedItemsChanged"
+                 SelectedItems="_selected" SelectedItemsChanged="OnSelectedItemsChanged"
                  Dense="true" Hover="true" RowsPerPage="_rowsPerPage"
                  Filterable="true" FilterMode="DataGridFilterMode.ColumnFilterMenu"
                  SortMode="SortMode.Single" ReadOnly="true"
