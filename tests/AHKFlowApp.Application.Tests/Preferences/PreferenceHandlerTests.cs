@@ -12,29 +12,7 @@ using Xunit;
 
 namespace AHKFlowApp.Application.Tests.Preferences;
 
-public sealed class PreferenceDbFixture : IAsyncLifetime
-{
-    private readonly SqlContainerFixture _sql = new();
-
-    public string ConnectionString => _sql.ConnectionString;
-
-    public async Task InitializeAsync()
-    {
-        await _sql.InitializeAsync();
-        await using AppDbContext ctx = CreateContext();
-        await ctx.Database.MigrateAsync();
-    }
-
-    public Task DisposeAsync() => _sql.DisposeAsync();
-
-    public AppDbContext CreateContext()
-    {
-        DbContextOptions<AppDbContext> options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseSqlServer(ConnectionString)
-            .Options;
-        return new AppDbContext(options);
-    }
-}
+public sealed class PreferenceDbFixture : MigratedDbFixture;
 
 [CollectionDefinition("PreferenceDb")]
 public sealed class PreferenceDbCollection : ICollectionFixture<PreferenceDbFixture>;
