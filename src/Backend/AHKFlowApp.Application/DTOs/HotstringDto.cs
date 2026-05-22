@@ -1,5 +1,17 @@
 namespace AHKFlowApp.Application.DTOs;
 
+/// <summary>A hotstring (text trigger plus replacement) owned by the current user.</summary>
+/// <param name="Id">Server-generated identifier.</param>
+/// <param name="ProfileIds">Profiles the hotstring is attached to. Empty when <paramref name="AppliesToAllProfiles"/> is true.</param>
+/// <param name="AppliesToAllProfiles">When true, the hotstring is included in every profile the user owns.</param>
+/// <param name="Trigger">Abbreviation that activates the replacement, such as <c>btw</c>.</param>
+/// <param name="Replacement">Text that replaces the trigger, such as <c>by the way</c>.</param>
+/// <param name="Description">Optional human-readable note for the hotstring.</param>
+/// <param name="IsEndingCharacterRequired">When true, AutoHotkey requires a trailing whitespace or punctuation character to fire.</param>
+/// <param name="IsTriggerInsideWord">When true, the trigger matches even inside a larger word.</param>
+/// <param name="CreatedAt">UTC creation timestamp.</param>
+/// <param name="UpdatedAt">UTC last-update timestamp.</param>
+/// <param name="CategoryIds">Categories assigned to this hotstring.</param>
 public sealed record HotstringDto(
     Guid Id,
     Guid[] ProfileIds,
@@ -13,6 +25,15 @@ public sealed record HotstringDto(
     DateTimeOffset UpdatedAt,
     Guid[] CategoryIds);
 
+/// <summary>Payload to create a new hotstring.</summary>
+/// <param name="Trigger">Abbreviation that activates the replacement.</param>
+/// <param name="Replacement">Text inserted in place of the trigger.</param>
+/// <param name="ProfileIds">Profiles to attach the new hotstring to. Ignored when <paramref name="AppliesToAllProfiles"/> is true.</param>
+/// <param name="AppliesToAllProfiles">When true, the hotstring applies to every profile and <paramref name="ProfileIds"/> is ignored.</param>
+/// <param name="IsEndingCharacterRequired">Controls AutoHotkey's <c>*</c> option.</param>
+/// <param name="IsTriggerInsideWord">Controls AutoHotkey's <c>?</c> option.</param>
+/// <param name="Description">Optional human-readable note for the hotstring.</param>
+/// <param name="CategoryIds">Categories to assign to the new hotstring.</param>
 public sealed record CreateHotstringDto(
     string Trigger,
     string Replacement,
@@ -23,6 +44,15 @@ public sealed record CreateHotstringDto(
     string? Description = null,
     Guid[]? CategoryIds = null);
 
+/// <summary>Payload to replace the editable fields of an existing hotstring.</summary>
+/// <param name="Trigger">Abbreviation that activates the replacement.</param>
+/// <param name="Replacement">Text inserted in place of the trigger.</param>
+/// <param name="ProfileIds">Replacement profile-attachment set. Ignored when <paramref name="AppliesToAllProfiles"/> is true.</param>
+/// <param name="AppliesToAllProfiles">When true, the hotstring applies to every profile.</param>
+/// <param name="IsEndingCharacterRequired">Controls AutoHotkey's <c>*</c> option.</param>
+/// <param name="IsTriggerInsideWord">Controls AutoHotkey's <c>?</c> option.</param>
+/// <param name="Description">Optional human-readable note for the hotstring.</param>
+/// <param name="CategoryIds">Replacement category assignment set.</param>
 public sealed record UpdateHotstringDto(
     string Trigger,
     string Replacement,
