@@ -1,0 +1,20 @@
+{
+  "name": "ahkflowapp-local",
+  "interface": {
+    "displayName": "AHKFlowApp Local"
+  },
+  "plugins": [
+    {
+      "name": "ahkflowapp",
+      "source": {
+        "source": "local",
+        "path": "./.agents/plugins/plugins/ahkflowapp"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Engineering"
+    }
+  ]
+}
