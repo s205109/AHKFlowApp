@@ -18,6 +18,7 @@ public sealed class BulkDeleteHotstringsCommandValidator : AbstractValidator<Bul
     public BulkDeleteHotstringsCommandValidator()
     {
         RuleFor(x => x.Input.Ids)
+            .Cascade(CascadeMode.Stop)
             .NotEmpty()
             .WithMessage("At least one id is required.")
             .Must(ids => ids.Length <= MaxBulkDeleteIds)

@@ -183,6 +183,31 @@ public sealed class HotstringsEndpointsTests(SqlContainerFixture sqlFixture) : I
     }
 
     [Fact]
+    public async Task BulkDelete_OverCap_Returns400()
+    {
+        using HttpClient client = CreateAuthed();
+        Guid[] ids = [.. Enumerable.Range(0, 501).Select(_ => Guid.NewGuid())];
+
+        HttpResponseMessage response = await client.PostAsJsonAsync(
+            "/api/v1/hotstrings/bulk-delete",
+            new BulkDeleteRequestDto(ids));
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task BulkDelete_Unauthenticated_Returns401()
+    {
+        using HttpClient anon = _factory.CreateClient();
+
+        HttpResponseMessage response = await anon.PostAsJsonAsync(
+            "/api/v1/hotstrings/bulk-delete",
+            new BulkDeleteRequestDto([Guid.NewGuid()]));
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
     public async Task List_FiltersByProfileId_IncludesGlobalAndScoped()
     {
         var owner = Guid.NewGuid();

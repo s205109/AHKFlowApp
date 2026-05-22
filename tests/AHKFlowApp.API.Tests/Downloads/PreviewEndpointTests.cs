@@ -66,6 +66,18 @@ public sealed class PreviewEndpointTests(SqlContainerFixture sqlFixture) : IDisp
     }
 
     [Fact]
+    public async Task GET_preview_other_users_profile_returns_404()
+    {
+        using HttpClient owner = CreateAuthed();
+        ProfileDto profile = await CreateProfileAsync(owner, "Work");
+
+        using HttpClient other = CreateAuthed();
+        HttpResponseMessage response = await other.GetAsync($"/api/v1/downloads/{profile.Id}/preview");
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
     public async Task GET_preview_unauthenticated_returns_401()
     {
         using HttpClient anon = _factory.CreateClient();
