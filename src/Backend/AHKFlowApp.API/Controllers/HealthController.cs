@@ -17,6 +17,7 @@ public sealed class HealthController(
     IConfiguration configuration,
     ILogger<HealthController> logger) : ControllerBase
 {
+    /// <summary>Aggregates registered health checks. Returns 200 for Healthy or Degraded, 503 for Unhealthy.</summary>
     [HttpGet]
     [ProducesResponseType(typeof(HealthResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(HealthResponse), StatusCodes.Status503ServiceUnavailable)]
