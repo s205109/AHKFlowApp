@@ -9,4 +9,5 @@ public interface IHotstringsApiClient
     Task<ApiResult<HotstringDto>> CreateAsync(CreateHotstringDto input, CancellationToken ct = default);
     Task<ApiResult<HotstringDto>> UpdateAsync(Guid id, UpdateHotstringDto input, CancellationToken ct = default);
     Task<ApiResult> DeleteAsync(Guid id, CancellationToken ct = default);
+    Task<ApiResult<BulkDeleteResultDto>> BulkDeleteAsync(IReadOnlyList<Guid> ids, CancellationToken ct = default);
 }

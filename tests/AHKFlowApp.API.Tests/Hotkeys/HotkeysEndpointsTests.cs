@@ -153,6 +153,76 @@ public sealed class HotkeysEndpointsTests(SqlContainerFixture sqlFixture) : IDis
     }
 
     [Fact]
+    public async Task BulkDelete_MixedOwnedForeignAndUnknown_ReturnsDeletedCountAndMissingIds()
+    {
+        var ownerA = Guid.NewGuid();
+        var ownerB = Guid.NewGuid();
+        using HttpClient a = CreateAuthed(ownerA);
+        using HttpClient b = CreateAuthed(ownerB);
+
+        HotkeyDto owned1 = (await (await a.PostAsJsonAsync(
+            "/api/v1/hotkeys", new CreateHotkeyDto("Bulk A", "f5", Ctrl: true, AppliesToAllProfiles: true))).Content
+            .ReadFromJsonAsync<HotkeyDto>())!;
+        HotkeyDto owned2 = (await (await a.PostAsJsonAsync(
+            "/api/v1/hotkeys", new CreateHotkeyDto("Bulk B", "f6", Ctrl: true, AppliesToAllProfiles: true))).Content
+            .ReadFromJsonAsync<HotkeyDto>())!;
+        HotkeyDto foreign = (await (await b.PostAsJsonAsync(
+            "/api/v1/hotkeys", new CreateHotkeyDto("Bulk foreign", "f7", Ctrl: true, AppliesToAllProfiles: true))).Content
+            .ReadFromJsonAsync<HotkeyDto>())!;
+        var unknown = Guid.NewGuid();
+
+        HttpResponseMessage response = await a.PostAsJsonAsync(
+            "/api/v1/hotkeys/bulk-delete",
+            new BulkDeleteRequestDto([owned1.Id, foreign.Id, unknown, owned2.Id]));
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        BulkDeleteResultDto result = (await response.Content.ReadFromJsonAsync<BulkDeleteResultDto>())!;
+        result.DeletedCount.Should().Be(2);
+        result.MissingIds.Should().BeEquivalentTo([foreign.Id, unknown]);
+
+        (await a.GetAsync($"/api/v1/hotkeys/{owned1.Id}")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await a.GetAsync($"/api/v1/hotkeys/{owned2.Id}")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await b.GetAsync($"/api/v1/hotkeys/{foreign.Id}")).StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task BulkDelete_OverCap_Returns400()
+    {
+        using HttpClient client = CreateAuthed();
+        Guid[] ids = [.. Enumerable.Range(0, 501).Select(_ => Guid.NewGuid())];
+
+        HttpResponseMessage response = await client.PostAsJsonAsync(
+            "/api/v1/hotkeys/bulk-delete",
+            new BulkDeleteRequestDto(ids));
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task BulkDelete_Unauthenticated_Returns401()
+    {
+        using HttpClient anon = _factory.CreateClient();
+
+        HttpResponseMessage response = await anon.PostAsJsonAsync(
+            "/api/v1/hotkeys/bulk-delete",
+            new BulkDeleteRequestDto([Guid.NewGuid()]));
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task BulkDelete_EmptyIds_Returns400()
+    {
+        using HttpClient client = CreateAuthed();
+
+        HttpResponseMessage response = await client.PostAsJsonAsync(
+            "/api/v1/hotkeys/bulk-delete",
+            new BulkDeleteRequestDto([]));
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
     public async Task List_WithPagination_ReturnsSlice()
     {
         var owner = Guid.NewGuid();

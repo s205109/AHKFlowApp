@@ -16,6 +16,7 @@ namespace AHKFlowApp.UI.Blazor.Tests.Pages;
 public sealed class ProfilesPageTests : BunitContext, IAsyncLifetime
 {
     private readonly IProfilesApiClient _api = Substitute.For<IProfilesApiClient>();
+    private readonly IDownloadsApiClient _downloads = Substitute.For<IDownloadsApiClient>();
 
     private static readonly Task<AuthenticationState> AuthenticatedState =
         Task.FromResult(new AuthenticationState(
@@ -24,6 +25,7 @@ public sealed class ProfilesPageTests : BunitContext, IAsyncLifetime
     public ProfilesPageTests()
     {
         Services.AddSingleton(_api);
+        Services.AddSingleton(_downloads);
         Services.AddMudServices();
         JSInterop.Mode = JSRuntimeMode.Loose;
     }
@@ -176,6 +178,31 @@ public sealed class ProfilesPageTests : BunitContext, IAsyncLifetime
         cut.Find("button.toggle-expand").Click();
 
         cut.WaitForAssertion(() => cut.Markup.Should().Contain("header text"));
+    }
+
+    [Fact]
+    public void Page_PreviewRefresh_CallsDownloadsApiAndShowsScript()
+    {
+        ProfileDto dto = MakeProfile("Work");
+        StubList(dto);
+        _downloads.GetProfileScriptPreviewAsync(dto.Id, Arg.Any<CancellationToken>())
+            .Returns(ApiResult<ProfileScriptPreviewDto>.Ok(new ProfileScriptPreviewDto(
+                "#Requires AutoHotkey v2.0\n::btw::by the way",
+                1,
+                0,
+                DateTimeOffset.UtcNow)));
+
+        IRenderedComponent<Profiles> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find("button.toggle-expand"));
+        cut.Find("button.toggle-expand").Click();
+
+        cut.WaitForAssertion(() => cut.Find("button.profile-preview-refresh"));
+        cut.Find("button.profile-preview-refresh").Click();
+
+        cut.WaitForAssertion(() => _downloads.Received(1).GetProfileScriptPreviewAsync(
+            dto.Id,
+            Arg.Any<CancellationToken>()));
+        cut.Markup.Should().Contain("::btw::by the way");
     }
 
     [Fact]
