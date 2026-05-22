@@ -273,8 +273,15 @@
         if (state.Preview is null)
             return;
 
-        await JS.InvokeVoidAsync("navigator.clipboard.writeText", state.Preview.Script);
-        Snackbar.Add("Script preview copied.", Severity.Success);
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", state.Preview.Script);
+            Snackbar.Add("Script preview copied.", Severity.Success);
+        }
+        catch (JSException)
+        {
+            Snackbar.Add("Copy to clipboard failed.", Severity.Warning);
+        }
     }
 
     private static string? ValidateName(string? value)
