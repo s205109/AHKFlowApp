@@ -13,7 +13,7 @@
 **Option 1 — LocalDB:**
 
 ```bash
-# Apply migrations (after backlog item 007)
+# Apply migrations
 dotnet ef database update \
   --project src/Backend/AHKFlowApp.Infrastructure \
   --startup-project src/Backend/AHKFlowApp.API
@@ -53,11 +53,14 @@ If the Microsoft sign-in page shows `AADSTS500011`, rerun `pwsh scripts/setup-de
 | API OpenAPI | http://localhost:5600/swagger/v1/swagger.json |
 | SQL Server | localhost:1433 (sa / `Dev!LocalOnly_2026`) |
 
-To populate sample hotstrings:
+To populate sample data — 12 hotstrings, 12 hotkeys, and 8 categories in one transaction:
 
 ```bash
-curl -X POST http://localhost:5600/api/v1/dev/hotstrings/seed
+curl -X POST http://localhost:5600/api/v1/dev/seed-all
 ```
+
+Individual seed endpoints (`/dev/hotstrings/seed`, `/dev/hotkeys/seed`, `/dev/categories/seed`) and a
+`?reset=true` query parameter are also available. All `/dev` endpoints return 404 outside Development.
 
 **How the toggle works:**
 - API reads `Auth:UseTestProvider` from configuration (set to `true` via `Auth__UseTestProvider=true` in `docker-compose.yml`). When true, it registers a `TestAuthenticationHandler` that injects a fixed identity instead of validating Azure AD JWTs. Only allowed in `Development` environment.
