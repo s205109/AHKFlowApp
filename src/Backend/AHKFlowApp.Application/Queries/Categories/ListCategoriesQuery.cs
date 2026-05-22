@@ -1,6 +1,7 @@
-using System.Diagnostics.CodeAnalysis;
 using AHKFlowApp.Application.Abstractions;
+using AHKFlowApp.Application.Common;
 using AHKFlowApp.Application.DTOs;
+using AHKFlowApp.Domain.Constants;
 using AHKFlowApp.Domain.Entities;
 using Ardalis.Result;
 using FluentValidation;
@@ -30,12 +31,6 @@ internal sealed class ListCategoriesQueryHandler(
     TimeProvider clock)
     : IRequestHandler<ListCategoriesQuery, Result<PagedList<CategoryDto>>>
 {
-    private static readonly string[] s_defaults =
-    [
-        "Autocorrect", "Communication", "DateTime", "Email",
-        "Code", "Symbols", "Window Management", "App Launcher",
-    ];
-
     public async Task<Result<PagedList<CategoryDto>>> Handle(ListCategoriesQuery request, CancellationToken ct)
     {
         if (currentUser.Oid is not Guid ownerOid)
@@ -73,7 +68,7 @@ internal sealed class ListCategoriesQueryHandler(
         if (pref?.CategoriesSeededAt is not null)
             return;
 
-        foreach (string name in s_defaults)
+        foreach (string name in DefaultCategories.Names)
             db.Categories.Add(Category.Create(ownerOid, name, clock));
 
         if (pref is null)
@@ -91,7 +86,7 @@ internal sealed class ListCategoriesQueryHandler(
         {
             await db.SaveChangesAsync(ct);
         }
-        catch (DbUpdateException ex) when (IsDuplicateKeyViolation(ex))
+        catch (DbUpdateException ex) when (ex.IsDuplicateKeyViolation())
         {
             // Concurrent first-call race: another request already seeded.
             // Detach the pending entries so the subsequent read query works cleanly.
@@ -101,9 +96,4 @@ internal sealed class ListCategoriesQueryHandler(
                 db.Entry(pref).State = EntityState.Detached;
         }
     }
-
-    [ExcludeFromCodeCoverage]
-    private static bool IsDuplicateKeyViolation(DbUpdateException ex) =>
-        ex.InnerException?.GetType().GetProperty("Number")?.GetValue(ex.InnerException) is int n &&
-        n is 2601 or 2627;
 }
