@@ -1,16 +1,47 @@
 #!/usr/bin/env bash
 # setup-cross-agent-skills.sh
 #
-# Sets up repo-local Claude skill symlinks that point at .agents/.
-# .claude/skills/ becomes a real directory containing one symlink per skill
-# back to .agents/<skill>. Everything stays inside the repo — no user-folder changes.
+# Sets up repo-local cross-agent skill symlinks that point at active .agents/ skills.
+# .claude/skills/ and .github/skills/ become real directories containing one symlink
+# per immediate .agents/<skill>/ directory. The repo-local Codex plugin
+# skills folder uses hard-linked SKILL.md files because Codex plugin installation
+# ignores symlinks. Reference docs, disabled dirs, and plugin packaging are ignored.
 
 set -euo pipefail
+
+case "$(uname -s 2>/dev/null || echo unknown)" in
+    MINGW*|MSYS*|CYGWIN*)
+        echo "Error: setup-cross-agent-skills.sh is not supported on Windows Git Bash." >&2
+        echo "Run scripts/setup-cross-agent-skills.ps1 from PowerShell instead." >&2
+        exit 1
+        ;;
+esac
 
 REPO_ROOT=$(git rev-parse --show-toplevel)
 AGENTS_ROOT="$REPO_ROOT/.agents"
 CLAUDE_ROOT="$REPO_ROOT/.claude"
 CLAUDE_SKILLS="$REPO_ROOT/.claude/skills"
+GITHUB_SKILLS="$REPO_ROOT/.github/skills"
+CODEX_PLUGIN_SKILLS="$AGENTS_ROOT/plugins/plugins/ahkflowapp/skills"
+
+# --- Install committed git hooks via core.hooksPath ---
+if [ -d "$REPO_ROOT/.githooks" ]; then
+    current_hooks_path=$(git config core.hooksPath 2>/dev/null || true)
+    normalized_current=$(printf '%s' "$current_hooks_path" | tr '\\' '/' | sed 's:/*$::' | tr '[:upper:]' '[:lower:]')
+
+    case "$normalized_current" in
+        .githooks)
+            echo "[OK] core.hooksPath = .githooks"
+            ;;
+        ""|.git/hooks|*/.git/hooks)
+            git config core.hooksPath .githooks
+            echo "[FIX] Set core.hooksPath = .githooks (enables committed hooks)"
+            ;;
+        *)
+            echo "[WARN] core.hooksPath is '$current_hooks_path' — committed hooks at .githooks/ inactive. To enable: git config core.hooksPath .githooks"
+            ;;
+    esac
+fi
 
 # --- Ensure .agents/ exists ---
 if [ ! -d "$AGENTS_ROOT" ]; then
@@ -39,51 +70,186 @@ if [ -e "$AGENTS_SKILLS" ] || [ -L "$AGENTS_SKILLS" ]; then
     fi
 fi
 
-# --- Ensure .claude/skills/ is a real directory ---
-if [ -e "$CLAUDE_SKILLS" ] || [ -L "$CLAUDE_SKILLS" ]; then
-    if [ -L "$CLAUDE_SKILLS" ]; then
-        rm "$CLAUDE_SKILLS"
-        echo "[FIX] Removed old .claude/skills symlink."
-    elif [ -d "$CLAUDE_SKILLS" ]; then
-        echo "[OK] .claude/skills/ already exists."
-    else
-        echo "Error: .claude/skills exists but is not a directory. Remove it manually, then re-run." >&2
-        exit 1
-    fi
-fi
+is_active_skill() {
+    local name="$1"
+    case "$name" in
+        skills|plugins|skills.disabled|disabled|reference|references)
+            return 1
+            ;;
+    esac
 
-mkdir -p "$CLAUDE_ROOT"
-mkdir -p "$CLAUDE_SKILLS"
+    [ -f "$AGENTS_ROOT/$name/SKILL.md" ]
+}
 
+# --- Description budget guardrail ---
+max_desc_len=140
+bloated=""
 for skill_dir in "$AGENTS_ROOT"/*; do
     [ -d "$skill_dir" ] || continue
-
     skill_name=$(basename "$skill_dir")
-    if [ "$skill_name" = "skills" ]; then
-        continue
+    is_active_skill "$skill_name" || continue
+
+    desc=$(grep -m1 '^description:' "$skill_dir/SKILL.md" 2>/dev/null | sed -E 's/^description:[[:space:]]*//')
+    desc_len=${#desc}
+    if [ "$desc_len" -gt "$max_desc_len" ]; then
+        bloated="$bloated
+       $skill_name: $desc_len chars"
     fi
+done
+if [ -n "$bloated" ]; then
+    echo "[WARN] Skill descriptions over $max_desc_len chars (context budget):$bloated"
+fi
 
-    link_path="$CLAUDE_SKILLS/$skill_name"
-    if [ -e "$link_path" ] || [ -L "$link_path" ]; then
-        if [ -L "$link_path" ]; then
-            resolved=$(cd "$(dirname "$link_path")" && cd "$(readlink "$link_path")" && pwd)
-            if [ "$resolved" = "$skill_dir" ]; then
-                echo "[OK] .claude/skills/$skill_name already points to .agents/$skill_name."
-                continue
-            fi
+sync_skill_link_directory() {
+    local link_root="$1"
+    local display_name="$2"
+    local target_prefix="$3"
+    local replace_existing_dirs="$4"
 
-            rm "$link_path"
-            echo "[FIX] Replaced old symlink for $skill_name."
+    if [ -e "$link_root" ] || [ -L "$link_root" ]; then
+        if [ -L "$link_root" ]; then
+            rm "$link_root"
+            echo "[FIX] Removed old $display_name symlink."
+        elif [ -d "$link_root" ]; then
+            echo "[OK] $display_name already exists."
         else
-            echo "Error: .claude/skills/$skill_name exists but is not a symlink. Remove it manually, then re-run." >&2
+            echo "Error: $display_name exists but is not a directory. Remove it manually, then re-run." >&2
             exit 1
         fi
     fi
 
-    (
-        cd "$CLAUDE_SKILLS"
-        ln -s "../../.agents/$skill_name" "$skill_name"
-    )
-done
+    mkdir -p "$link_root"
 
-echo "[DONE] .claude/skills contains symlinks to .agents/*"
+    for existing_link in "$link_root"/*; do
+        [ -e "$existing_link" ] || [ -L "$existing_link" ] || continue
+
+        existing_name=$(basename "$existing_link")
+        if is_active_skill "$existing_name"; then
+            continue
+        fi
+
+        if [ -f "$existing_link" ] && [ ! -L "$existing_link" ] && [ "$existing_name" = "README.md" ]; then
+            continue
+        fi
+
+        if [ -L "$existing_link" ]; then
+            rm "$existing_link"
+            echo "[FIX] Removed stale $display_name/$existing_name link."
+        elif [ "$replace_existing_dirs" = "true" ] && [ -d "$existing_link" ]; then
+            rm -rf "$existing_link"
+            echo "[FIX] Replaced copied $display_name/$existing_name directory."
+        else
+            echo "Error: $display_name/$existing_name is not an active skill symlink. Remove it manually, then re-run." >&2
+            exit 1
+        fi
+    done
+
+    for skill_dir in "$AGENTS_ROOT"/*; do
+        [ -d "$skill_dir" ] || continue
+
+        skill_name=$(basename "$skill_dir")
+        if ! is_active_skill "$skill_name"; then
+            continue
+        fi
+
+        link_path="$link_root/$skill_name"
+        if [ -e "$link_path" ] || [ -L "$link_path" ]; then
+            if [ -L "$link_path" ]; then
+                target=$(readlink "$link_path" || true)
+                resolved=""
+                if [ -n "$target" ]; then
+                    resolved=$({ cd "$(dirname "$link_path")" && cd "$target" && pwd; } 2>/dev/null || true)
+                fi
+
+                if [ "$resolved" = "$skill_dir" ]; then
+                    echo "[OK] $display_name/$skill_name already points to .agents/$skill_name."
+                    continue
+                fi
+
+                rm "$link_path"
+                echo "[FIX] Replaced old symlink for $display_name/$skill_name."
+            elif [ "$replace_existing_dirs" = "true" ] && [ -d "$link_path" ]; then
+                rm -rf "$link_path"
+                echo "[FIX] Replaced copied $display_name/$skill_name directory."
+            else
+                echo "Error: $display_name/$skill_name exists but is not a symlink. Remove it manually, then re-run." >&2
+                exit 1
+            fi
+        fi
+
+        (
+            cd "$link_root"
+            ln -s "$target_prefix/$skill_name" "$skill_name"
+        )
+    done
+}
+
+sync_codex_plugin_skill_directory() {
+    local link_root="$1"
+    local display_name="$2"
+
+    if [ -e "$link_root" ] || [ -L "$link_root" ]; then
+        if [ -L "$link_root" ]; then
+            rm "$link_root"
+            echo "[FIX] Removed old $display_name symlink."
+        elif [ -d "$link_root" ]; then
+            echo "[OK] $display_name already exists."
+        else
+            echo "Error: $display_name exists but is not a directory. Remove it manually, then re-run." >&2
+            exit 1
+        fi
+    fi
+
+    mkdir -p "$link_root"
+
+    for existing_entry in "$link_root"/*; do
+        [ -e "$existing_entry" ] || [ -L "$existing_entry" ] || continue
+
+        existing_name=$(basename "$existing_entry")
+        if ! is_active_skill "$existing_name"; then
+            rm -rf "$existing_entry"
+            echo "[FIX] Removed stale $display_name/$existing_name."
+            continue
+        fi
+
+        if [ -L "$existing_entry" ]; then
+            rm "$existing_entry"
+            echo "[FIX] Replaced directory symlink $display_name/$existing_name."
+        fi
+    done
+
+    for skill_dir in "$AGENTS_ROOT"/*; do
+        [ -d "$skill_dir" ] || continue
+
+        skill_name=$(basename "$skill_dir")
+        if ! is_active_skill "$skill_name"; then
+            continue
+        fi
+
+        skill_link_dir="$link_root/$skill_name"
+        skill_link="$skill_link_dir/SKILL.md"
+        mkdir -p "$skill_link_dir"
+
+        if [ -e "$skill_link" ] || [ -L "$skill_link" ]; then
+            if [ -L "$skill_link" ]; then
+                rm "$skill_link"
+                echo "[FIX] Replaced symlink $display_name/$skill_name/SKILL.md with a hard link."
+            else
+                rm "$skill_link"
+                echo "[FIX] Refreshed hard link $display_name/$skill_name/SKILL.md."
+            fi
+        fi
+
+        (
+            ln "$skill_dir/SKILL.md" "$skill_link"
+        )
+    done
+}
+
+mkdir -p "$CLAUDE_ROOT"
+
+sync_skill_link_directory "$CLAUDE_SKILLS" ".claude/skills" "../../.agents" false
+sync_skill_link_directory "$GITHUB_SKILLS" ".github/skills" "../../.agents" false
+sync_codex_plugin_skill_directory "$CODEX_PLUGIN_SKILLS" ".agents/plugins/plugins/ahkflowapp/skills"
+
+echo "[DONE] .claude/skills and .github/skills symlink to active .agents/* skills; Codex plugin skills hard-link to the same SKILL.md files"

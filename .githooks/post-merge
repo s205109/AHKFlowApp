@@ -1,0 +1,30 @@
+#!/bin/sh
+# Re-sync cross-agent skill links when .agents or setup scripts changed.
+# Git pull can replace hard-linked SKILL.md files with new inodes, breaking
+# the Codex plugin cache. Re-running setup restores them.
+
+set -e
+
+repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+
+git rev-parse --verify ORIG_HEAD >/dev/null 2>&1 || exit 0
+
+if git diff --quiet ORIG_HEAD HEAD -- \
+    .agents/ \
+    scripts/setup-cross-agent-skills.ps1 \
+    scripts/setup-cross-agent-skills.sh \
+    2>/dev/null; then
+    exit 0
+fi
+
+echo "[post-merge] .agents/ or setup script changed — re-running setup-cross-agent-skills"
+
+case "$(uname -s 2>/dev/null)" in
+    MINGW*|MSYS*|CYGWIN*)
+        powershell.exe -NoProfile -ExecutionPolicy Bypass \
+            -File "$repo_root/scripts/setup-cross-agent-skills.ps1"
+        ;;
+    *)
+        bash "$repo_root/scripts/setup-cross-agent-skills.sh"
+        ;;
+esac
