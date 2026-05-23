@@ -172,4 +172,33 @@ public sealed class ListHotstringsLazySeedTests(HotstringDbFixture fx)
             .CountAsync(c => c.OwnerOid == owner && c.Name == "Communication");
         communicationCount.Should().Be(1);
     }
+
+    [Fact]
+    public async Task Handle_WhenHotstringsExistWithNullMarker_SetsMarkerWithoutDuplicating()
+    {
+        // Simulate a post-migration dev DB: hotstrings already present but marker is null
+        var owner = Guid.NewGuid();
+        await using (AppDbContext seedCtx = fx.CreateContext())
+        {
+            // Insert a trigger that overlaps with the lazy-seed sample set
+            seedCtx.Hotstrings.Add(Hotstring.Create(owner, "btw", "pre-existing", null, true, true, true, TimeProvider.System));
+            await seedCtx.SaveChangesAsync();
+        }
+
+        await using AppDbContext ctx = fx.CreateContext();
+        var sut = new ListHotstringsQueryHandler(ctx, CurrentUserHelper.For(owner), s_dev, _clock);
+        Result<PagedList<HotstringDto>> result = await sut.Handle(new ListHotstringsQuery(), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+
+        await using AppDbContext verify = fx.CreateContext();
+
+        // Marker must be persisted so the next GET does not retry
+        UserPreference? pref = await verify.UserPreferences.FirstOrDefaultAsync(p => p.OwnerOid == owner);
+        pref!.HotstringsSeededAt.Should().NotBeNull();
+
+        // No duplicate rows — "btw" still exists exactly once
+        int btwCount = await verify.Hotstrings.CountAsync(h => h.OwnerOid == owner && h.Trigger == "btw");
+        btwCount.Should().Be(1);
+    }
 }

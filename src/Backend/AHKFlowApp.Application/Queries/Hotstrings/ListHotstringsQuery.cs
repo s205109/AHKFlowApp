@@ -224,8 +224,9 @@ internal sealed class ListHotstringsQueryHandler(
         }
         catch (DbUpdateException ex) when (ex.IsDuplicateKeyViolation())
         {
-            // Concurrent first-call race — detach all pending entities so the
-            // read query below works cleanly against whatever was committed first.
+            // Concurrent first-call race or pre-existing data after migration (null
+            // markers but hotstrings already present) — detach pending entities and
+            // persist markers in a follow-up save so future GETs skip the seed path.
             foreach (Hotstring hs in db.Hotstrings.Local.ToList())
                 db.Entry(hs).State = EntityState.Detached;
             foreach (HotstringCategory hc in db.HotstringCategories.Local.ToList())
@@ -234,6 +235,17 @@ internal sealed class ListHotstringsQueryHandler(
                 db.Entry(cat).State = EntityState.Detached;
             if (pref is not null)
                 db.Entry(pref).State = EntityState.Detached;
+
+            // Reload pref (may have been inserted by the concurrent winner) and set markers.
+            pref = await db.UserPreferences.FirstOrDefaultAsync(p => p.OwnerOid == ownerOid, ct);
+            if (pref is null)
+            {
+                pref = UserPreference.CreateDefault(ownerOid, clock);
+                db.UserPreferences.Add(pref);
+            }
+            if (seedingCategories) pref.MarkCategoriesSeeded(clock);
+            pref.MarkHotstringsSeeded(clock);
+            await db.SaveChangesAsync(ct);
         }
     }
 
