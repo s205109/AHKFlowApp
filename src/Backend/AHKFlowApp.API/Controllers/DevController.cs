@@ -1,4 +1,5 @@
 using AHKFlowApp.API.Extensions;
+using AHKFlowApp.API.Filters;
 using AHKFlowApp.Application.Commands.Dev;
 using AHKFlowApp.Application.DTOs;
 using MediatR;
@@ -10,6 +11,7 @@ namespace AHKFlowApp.API.Controllers;
 
 [ApiController]
 [Route("api/v1/dev")]
+[DevelopmentOnly]
 [Authorize]
 [RequiredScope("access_as_user")]
 [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]

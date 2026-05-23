@@ -3,6 +3,8 @@ using System.Net.Http.Json;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.TestUtilities.Fixtures;
 using FluentAssertions;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
 using Xunit;
 
 namespace AHKFlowApp.API.Tests.Dev;
@@ -75,6 +77,31 @@ public sealed class DevSeedEndpointTests(SqlContainerFixture sqlFixture) : IDisp
         result!.CategoriesCount.Should().Be(8);
         result.HotstringsCount.Should().Be(12);
         result.HotkeysCount.Should().Be(12);
+    }
+
+    [Fact]
+    public async Task SeedAll_OutsideDevelopment_Anonymous_Returns404BeforeAuth()
+    {
+        using HttpClient client = _factory
+            .WithWebHostBuilder(builder => builder.UseEnvironment("Test"))
+            .CreateClient();
+
+        HttpResponseMessage resp = await client.PostAsync("/api/v1/dev/seed-all?reset=true", content: null);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task SeedAll_OutsideDevelopment_MissingScope_Returns404BeforeForbidden()
+    {
+        using WebApplicationFactory<global::Program> factory = _factory
+            .WithTestAuth(b => b.WithOid(Guid.NewGuid()).WithoutScope())
+            .WithWebHostBuilder(builder => builder.UseEnvironment("Test"));
+        using HttpClient client = factory.CreateClient();
+
+        HttpResponseMessage resp = await client.PostAsync("/api/v1/dev/seed-all?reset=true", content: null);
+
+        resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     public void Dispose() => _factory.Dispose();

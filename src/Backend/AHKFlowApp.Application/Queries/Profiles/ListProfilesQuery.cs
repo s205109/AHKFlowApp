@@ -1,5 +1,5 @@
-using System.Diagnostics.CodeAnalysis;
 using AHKFlowApp.Application.Abstractions;
+using AHKFlowApp.Application.Common;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Mapping;
 using AHKFlowApp.Domain.Constants;
@@ -38,7 +38,7 @@ internal sealed class ListProfilesQueryHandler(
             {
                 await db.SaveChangesAsync(ct);
             }
-            catch (DbUpdateException ex) when (IsDuplicateKeyViolation(ex))
+            catch (DbUpdateException ex) when (ex.IsDuplicateKeyViolation())
             {
                 // Concurrent first-time list: another request already seeded the default profile.
                 // Fall through to the read query below; no further SaveChanges occurs in this handler.
@@ -56,11 +56,4 @@ internal sealed class ListProfilesQueryHandler(
 
         return Result.Success<IReadOnlyList<ProfileDto>>(items);
     }
-
-    // Checks SQL Server unique-constraint error codes (2601/2627) without importing Microsoft.Data.SqlClient,
-    // which would couple the Application layer to an infrastructure concern.
-    [ExcludeFromCodeCoverage]
-    private static bool IsDuplicateKeyViolation(DbUpdateException ex) =>
-        ex.InnerException?.GetType().GetProperty("Number")?.GetValue(ex.InnerException) is int n &&
-        n is 2601 or 2627;
 }

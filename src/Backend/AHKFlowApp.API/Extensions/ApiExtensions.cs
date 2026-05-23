@@ -1,4 +1,5 @@
 using System.Reflection;
+using AHKFlowApp.API.Filters;
 using Microsoft.OpenApi;
 using Swashbuckle.AspNetCore.Filters;
 
@@ -87,6 +88,23 @@ internal static class ApiExtensions
             }
             await next(context);
         });
+        return app;
+    }
+
+    internal static WebApplication UseDevelopmentOnlyEndpointGate(this WebApplication app)
+    {
+        app.Use(async (context, next) =>
+        {
+            bool isDevelopmentOnly = context.GetEndpoint()?.Metadata.GetMetadata<DevelopmentOnlyAttribute>() is not null;
+            if (!app.Environment.IsDevelopment() && isDevelopmentOnly)
+            {
+                context.Response.StatusCode = StatusCodes.Status404NotFound;
+                return;
+            }
+
+            await next(context);
+        });
+
         return app;
     }
 }

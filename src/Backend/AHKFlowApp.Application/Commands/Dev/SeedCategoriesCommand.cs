@@ -1,5 +1,6 @@
 using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.DTOs;
+using AHKFlowApp.Domain.Constants;
 using AHKFlowApp.Domain.Entities;
 using Ardalis.Result;
 using MediatR;
@@ -19,12 +20,6 @@ internal sealed class SeedCategoriesCommandHandler(
     AppEnvironment env)
     : IRequestHandler<SeedCategoriesCommand, Result<IReadOnlyList<CategoryDto>>>
 {
-    public static readonly string[] DefaultNames =
-    [
-        "Autocorrect", "Communication", "DateTime", "Email",
-        "Code", "Symbols", "Window Management", "App Launcher",
-    ];
-
     public async Task<Result<IReadOnlyList<CategoryDto>>> Handle(SeedCategoriesCommand request, CancellationToken ct)
     {
         if (!env.IsDevelopment)
@@ -52,7 +47,7 @@ internal sealed class SeedCategoriesCommandHandler(
                     .ToListAsync(ct))
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        foreach (string name in DefaultNames)
+        foreach (string name in DefaultCategories.Names)
         {
             if (!existingNames.Add(name)) continue;
             db.Categories.Add(Category.Create(ownerOid, name, clock));

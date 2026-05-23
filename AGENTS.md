@@ -3,7 +3,7 @@
 ## Overview
 
 .NET 10 application for managing AutoHotkey hotstrings and hotkeys on Windows.
-Blazor WebAssembly PWA frontend + ASP.NET Core Web API backend. Early stage — foundation and CI/CD complete; domain features are future work.
+Blazor WebAssembly PWA frontend + ASP.NET Core Web API backend. Hotstring, hotkey, profile, and category management plus per-profile `.ahk` script generation and download are implemented across the API, UI, and CLI.
 
 ## Tech Stack
 
@@ -32,10 +32,12 @@ src/Frontend/
 
 tests/
   AHKFlowApp.API.Tests/           # API integration tests (WebApplicationFactory)
-  AHKFlowApp.Application.Tests/   # Validator + service unit tests
+  AHKFlowApp.Application.Tests/   # Validator + handler unit/integration tests
   AHKFlowApp.Domain.Tests/        # Domain logic unit tests
-  AHKFlowApp.Infrastructure.Tests/ # Repository integration tests
+  AHKFlowApp.Infrastructure.Tests/ # EF Core integration tests
   AHKFlowApp.UI.Blazor.Tests/     # Blazor component tests (bUnit)
+  AHKFlowApp.E2E.Tests/           # End-to-end browser tests (Playwright)
+  AHKFlowApp.TestUtilities/       # Shared builders and DB fixtures
 ```
 
 ## Commands
@@ -269,9 +271,10 @@ Primary way to interact with GitHub is the `gh` CLI.
 ## Domain Terms
 
 - **Hotstring** — text replacement trigger: type an abbreviation (e.g., `btw`), auto-expands to full text (`by the way`). Core domain entity.
-- **Hotkey** — keyboard shortcut binding: key combination triggers an action. Future feature.
-- **Profile** — named grouping of hotstrings and hotkeys (e.g., "Work", "Personal"). Future feature.
-- **Script** — generated `.ahk` file per profile, combining all definitions into executable AutoHotkey syntax. Future feature.
+- **Hotkey** — keyboard shortcut binding: key combination triggers an action.
+- **Profile** — named grouping of hotstrings and hotkeys (e.g., "Work", "Personal").
+- **Category** — user-defined tag for organizing and filtering hotstrings and hotkeys (many-to-many).
+- **Script** — generated `.ahk` file per profile, combining all definitions into executable AutoHotkey syntax.
 - **Trigger** — the abbreviation or key combination that activates a hotstring or hotkey.
 - **Replacement** — the expanded text that replaces a hotstring trigger.
 

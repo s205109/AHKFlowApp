@@ -20,6 +20,7 @@ AHKFlowApp is a .NET application for managing AutoHotkey hotstrings and hotkeys 
 
 - Centrally define hotstrings
 - Organize hotstrings and hotkeys by profile
+- Tag hotstrings and hotkeys with categories for organization and filtering
 - Generate valid `.ahk` scripts per profile
 - Access, manage, and download generated scripts via a Web UI and a CLI
 
@@ -49,6 +50,7 @@ The application is designed to be:
 - Hotstring management via UI and CLI
 - Hotkey management via UI
 - Profile creation and management
+- Category tagging and filtering for hotstrings and hotkeys
 - Define header templates for generated .ahk files
 - Generation of AutoHotkey `.ahk` files per profile
 - Script download via Web API and CLI
@@ -69,6 +71,7 @@ The application is designed to be:
 - CRUD for hotstrings (UI + CLI)
 - CRUD for hotkeys (UI)
 - Profile management (UI)
+- Category management and tagging (UI)
 - Script generation per profile
 - Script download via API and CLI
 
@@ -157,6 +160,7 @@ Capabilities:
 - Hotstring management endpoints
 - Hotkey management endpoints
 - Profile management endpoints
+- Category management endpoints
 - Script generation and download endpoints
 
 Cross-cutting:

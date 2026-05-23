@@ -66,6 +66,7 @@
                  SortMode="SortMode.Single" ReadOnly="true"
                  RowClassFunc="@GetRowClass">
         <Columns>
+            <SelectColumn T="HotkeyEditModel" />
             <PropertyColumn Property="x => x.Description" Title="Description">
                 <CellTemplate>
                     @if (IsEditing(context.Item))
