@@ -9,6 +9,14 @@
 
 set -euo pipefail
 
+case "$(uname -s 2>/dev/null || echo unknown)" in
+    MINGW*|MSYS*|CYGWIN*)
+        echo "Error: setup-cross-agent-skills.sh is not supported on Windows Git Bash." >&2
+        echo "Run scripts/setup-cross-agent-skills.ps1 from PowerShell instead." >&2
+        exit 1
+        ;;
+esac
+
 REPO_ROOT=$(git rev-parse --show-toplevel)
 AGENTS_ROOT="$REPO_ROOT/.agents"
 CLAUDE_ROOT="$REPO_ROOT/.claude"

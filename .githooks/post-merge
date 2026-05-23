@@ -7,13 +7,13 @@ set -e
 
 repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
 
-changed=$(git diff --name-only ORIG_HEAD HEAD -- \
+git rev-parse --verify ORIG_HEAD >/dev/null 2>&1 || exit 0
+
+if git diff --quiet ORIG_HEAD HEAD -- \
     .agents/ \
     scripts/setup-cross-agent-skills.ps1 \
     scripts/setup-cross-agent-skills.sh \
-    2>/dev/null || true)
-
-if [ -z "$changed" ]; then
+    2>/dev/null; then
     exit 0
 fi
 
@@ -25,6 +25,6 @@ case "$(uname -s 2>/dev/null)" in
             -File "$repo_root/scripts/setup-cross-agent-skills.ps1"
         ;;
     *)
-        "$repo_root/scripts/setup-cross-agent-skills.sh"
+        bash "$repo_root/scripts/setup-cross-agent-skills.sh"
         ;;
 esac
