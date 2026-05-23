@@ -3,7 +3,7 @@
 #
 # Sets up repo-local cross-agent skill symlinks that point at active .agents/ skills.
 # .claude/skills/ and .github/skills/ become real directories containing one symlink
-# per immediate .agents/<skill>/SKILL.md directory. The repo-local Codex plugin
+# per immediate .agents/<skill>/ directory. The repo-local Codex plugin
 # skills folder uses hard-linked SKILL.md files because Codex plugin installation
 # ignores symlinks. Reference docs, disabled dirs, and plugin packaging are ignored.
 
@@ -155,7 +155,12 @@ sync_skill_link_directory() {
         link_path="$link_root/$skill_name"
         if [ -e "$link_path" ] || [ -L "$link_path" ]; then
             if [ -L "$link_path" ]; then
-                resolved=$(cd "$(dirname "$link_path")" && cd "$(readlink "$link_path")" && pwd)
+                target=$(readlink "$link_path" || true)
+                resolved=""
+                if [ -n "$target" ]; then
+                    resolved=$({ cd "$(dirname "$link_path")" && cd "$target" && pwd; } 2>/dev/null || true)
+                fi
+
                 if [ "$resolved" = "$skill_dir" ]; then
                     echo "[OK] $display_name/$skill_name already points to .agents/$skill_name."
                     continue

@@ -3,7 +3,7 @@
 .SYNOPSIS
     Sets up repo-local cross-agent skill symlinks that point at .agents/.
 .DESCRIPTION
-    Active skills live as immediate .agents/<skill>/SKILL.md directories.
+    Active skills live as immediate .agents/<skill>/ directories with a SKILL.md file inside.
     .claude/skills/ and .github/skills/ become real directories containing one symlink per
     active skill back to .agents/<skill>. The repo-local Codex plugin skills folder uses
     one hard-linked SKILL.md per skill because Codex plugin installation ignores symlinks.

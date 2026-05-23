@@ -20,7 +20,7 @@ tests/
   AHKFlowApp.API.Tests/            # Integration tests — WebApplicationFactory + Testcontainers
   AHKFlowApp.Application.Tests/    # Validator unit tests + handler unit tests
   AHKFlowApp.Domain.Tests/         # Domain entity logic unit tests
-  AHKFlowApp.Infrastructure.Test/  # EF Core + migration tests with Testcontainers
+  AHKFlowApp.Infrastructure.Tests/ # EF Core + migration tests with Testcontainers
   AHKFlowApp.UI.Blazor.Tests/      # Blazor component tests (bUnit)
 ```
 
@@ -29,35 +29,25 @@ tests/
 ### WebApplicationFactory Fixture (SQL Server)
 
 ```csharp
-// tests/AHKFlowApp.API.Tests/Fixtures/ApiFixture.cs
-public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
-{
-    private readonly MsSqlContainer _mssql = new MsSqlBuilder()
-        .WithImage("mcr.microsoft.com/mssql/server:2022-latest")
-        .Build();
+// tests/AHKFlowApp.API.Tests/Collections.cs
+[CollectionDefinition("WebApi")]
+public sealed class WebApiCollection : ICollectionFixture<SqlContainerFixture>;
 
+// tests/AHKFlowApp.TestUtilities/Fixtures/CustomWebApplicationFactory.cs
+public sealed class CustomWebApplicationFactory(
+    SqlContainerFixture sqlFixture) : WebApplicationFactory<Program>
+{
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        builder.UseSetting("Auth:UseTestProvider", "false");
         builder.ConfigureServices(services =>
         {
             services.RemoveAll<DbContextOptions<AppDbContext>>();
+            services.RemoveAll<AppDbContext>();
             services.AddDbContext<AppDbContext>(options =>
-                options.UseSqlServer(_mssql.GetConnectionString()));
+                options.UseSqlServer(sqlFixture.ConnectionString,
+                    sql => sql.EnableRetryOnFailure()));
         });
-    }
-
-    public async Task InitializeAsync()
-    {
-        await _mssql.StartAsync();
-        using var scope = Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        await db.Database.MigrateAsync();
-    }
-
-    public new async Task DisposeAsync()
-    {
-        await _mssql.DisposeAsync();
-        await base.DisposeAsync();
     }
 }
 ```
@@ -65,19 +55,24 @@ public sealed class ApiFixture : WebApplicationFactory<Program>, IAsyncLifetime
 ### Integration Test (API Endpoint)
 
 ```csharp
-// tests/AHKFlowApp.API.Tests/Controllers/HotstringsControllerTests.cs
-public sealed class HotstringsControllerTests(ApiFixture fixture) : IClassFixture<ApiFixture>
+// tests/AHKFlowApp.API.Tests/Hotstrings/HotstringsEndpointsTests.cs
+[Collection("WebApi")]
+public sealed class HotstringsEndpointsTests(SqlContainerFixture sqlFixture) : IDisposable
 {
-    private readonly HttpClient _client = fixture.CreateClient();
+    private readonly CustomWebApplicationFactory _factory = new(sqlFixture);
+
+    private HttpClient CreateAuthed(Guid? oid = null) =>
+        _factory.WithTestAuth(b => b.WithOid(oid ?? Guid.NewGuid())).CreateClient();
 
     [Fact]
-    public async Task Create_ValidRequest_Returns201()
+    public async Task Post_CreatesAndReturns201WithLocation()
     {
         // Arrange
+        using HttpClient client = CreateAuthed();
         var dto = new CreateHotstringDto("btw", "by the way");
 
         // Act
-        var response = await _client.PostAsJsonAsync("/api/v1/hotstrings", dto);
+        var response = await client.PostAsJsonAsync("/api/v1/hotstrings", dto);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.Created);
@@ -87,13 +82,14 @@ public sealed class HotstringsControllerTests(ApiFixture fixture) : IClassFixtur
     }
 
     [Fact]
-    public async Task Create_EmptyTrigger_Returns400()
+    public async Task Post_InvalidBody_Returns400()
     {
         // Arrange
+        using HttpClient client = CreateAuthed();
         var dto = new CreateHotstringDto("", "by the way");
 
         // Act
-        var response = await _client.PostAsJsonAsync("/api/v1/hotstrings", dto);
+        var response = await client.PostAsJsonAsync("/api/v1/hotstrings", dto);
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
@@ -102,12 +98,17 @@ public sealed class HotstringsControllerTests(ApiFixture fixture) : IClassFixtur
     [Fact]
     public async Task GetById_NotFound_Returns404()
     {
+        // Arrange
+        using HttpClient client = CreateAuthed();
+
         // Act
-        var response = await _client.GetAsync("/api/v1/hotstrings/99999");
+        var response = await client.GetAsync("/api/v1/hotstrings/99999");
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
+
+    public void Dispose() => _factory.Dispose();
 }
 ```
 
@@ -237,10 +238,11 @@ result.Status.Should().Be(ResultStatus.Conflict);
 Use `IClassFixture<T>` when multiple test classes share the same database container.
 
 ```csharp
-[Collection("ApiTests")]
-public sealed class HotstringsControllerTests(ApiFixture fixture) : IClassFixture<ApiFixture>
+[Collection("WebApi")]
+public sealed class HotstringsEndpointsTests(SqlContainerFixture sqlFixture) : IDisposable
 {
-    // fixture is shared — container starts once per test class
+    // SqlContainerFixture is shared by the WebApi collection.
+    private readonly CustomWebApplicationFactory _factory = new(sqlFixture);
 }
 ```
 
