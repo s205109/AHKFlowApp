@@ -1,5 +1,7 @@
 using AHKFlowApp.Application.Abstractions;
+using AHKFlowApp.Application.Common;
 using AHKFlowApp.Application.DTOs;
+using AHKFlowApp.Domain.Constants;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Domain.Enums;
 using Ardalis.Result;
@@ -53,13 +55,36 @@ public sealed class ListHotkeysQueryValidator : AbstractValidator<ListHotkeysQue
 
 internal sealed class ListHotkeysQueryHandler(
     IAppDbContext db,
-    ICurrentUser currentUser)
+    ICurrentUser currentUser,
+    AppEnvironment env,
+    TimeProvider clock)
     : IRequestHandler<ListHotkeysQuery, Result<PagedList<HotkeyDto>>>
 {
+    // Mirrors SeedHotkeysCommand.s_samples — update both if seed set changes.
+    private static readonly (
+        string Description, bool Ctrl, bool Alt, bool Shift, bool Win,
+        string Key, HotkeyAction Action, string Parameters, string[] Categories)[] s_lazySeed =
+    [
+        ("Launch Windows Terminal", true,  true,  false, false, "T",     HotkeyAction.Run,  "wt.exe",       ["App Launcher"]),
+        ("Launch Notepad",          true,  true,  false, false, "N",     HotkeyAction.Run,  "notepad.exe",  ["App Launcher"]),
+        ("Launch File Explorer",    true,  true,  false, false, "E",     HotkeyAction.Run,  "explorer.exe", ["App Launcher"]),
+        ("Open default browser",    true,  true,  false, false, "B",     HotkeyAction.Run,  "https://",     ["App Launcher"]),
+        ("Maximize window",         false, true,  false, true,  "Up",    HotkeyAction.Send, "{Up}",         ["Window Management"]),
+        ("Minimize window",         false, true,  false, true,  "Down",  HotkeyAction.Send, "{Down}",       ["Window Management"]),
+        ("Snap window left",        false, true,  false, true,  "Left",  HotkeyAction.Send, "{Left}",       ["Window Management"]),
+        ("Snap window right",       false, true,  false, true,  "Right", HotkeyAction.Send, "{Right}",      ["Window Management"]),
+        ("Paste as plain text",     true,  false, true,  false, "V",     HotkeyAction.Send, "^v",           ["Code"]),
+        ("Insert today's date",     true,  true,  false, false, "D",     HotkeyAction.Send, "{{date:yyyy-MM-dd}}", ["DateTime"]),
+        ("Lock workstation",        true,  true,  false, false, "L",     HotkeyAction.Run,  "rundll32.exe user32.dll,LockWorkStation", ["App Launcher"]),
+        ("Reload AHK script",       true,  true,  false, false, "R",     HotkeyAction.Run,  "Reload",       ["App Launcher"]),
+    ];
+
     public async Task<Result<PagedList<HotkeyDto>>> Handle(ListHotkeysQuery request, CancellationToken ct)
     {
         if (currentUser.Oid is not Guid ownerOid)
             return Result.Unauthorized();
+
+        await EnsureHotkeysSeededAsync(ownerOid, ct);
 
         IQueryable<Hotkey> query = db.Hotkeys
             .AsNoTracking()
@@ -149,6 +174,83 @@ internal sealed class ListHotkeysQueryHandler(
             .ToListAsync(ct);
 
         return Result.Success(new PagedList<HotkeyDto>(items, request.Page, request.PageSize, total));
+    }
+
+    private async Task EnsureHotkeysSeededAsync(Guid ownerOid, CancellationToken ct)
+    {
+        if (!env.IsDevelopment) return;
+
+        UserPreference? pref = await db.UserPreferences
+            .FirstOrDefaultAsync(p => p.OwnerOid == ownerOid, ct);
+
+        if (pref?.HotkeysSeededAt is not null) return;
+
+        // Ensure categories exist; seed them inline if this is the user's first request
+        bool seedingCategories = pref?.CategoriesSeededAt is null;
+        Dictionary<string, Guid> catByName;
+
+        if (seedingCategories)
+        {
+            catByName = [];
+            foreach (string name in DefaultCategories.Names)
+            {
+                var cat = Category.Create(ownerOid, name, clock);
+                db.Categories.Add(cat);
+                catByName[name] = cat.Id;
+            }
+        }
+        else
+        {
+            catByName = (await db.Categories
+                    .Where(c => c.OwnerOid == ownerOid)
+                    .Select(c => new { c.Name, c.Id })
+                    .ToListAsync(ct))
+                .ToDictionary(c => c.Name, c => c.Id, StringComparer.OrdinalIgnoreCase);
+        }
+
+        foreach ((string descr, bool ctrl, bool alt, bool shift, bool win, string key,
+                  HotkeyAction action, string param, string[] cats) in s_lazySeed)
+        {
+            var hk = Hotkey.Create(ownerOid, descr, key, ctrl, alt, shift, win,
+                action, param, appliesToAllProfiles: true, clock);
+            db.Hotkeys.Add(hk);
+            foreach (string catName in cats)
+            {
+                if (catByName.TryGetValue(catName, out Guid catId))
+                    db.HotkeyCategories.Add(HotkeyCategory.Create(hk.Id, catId));
+            }
+        }
+
+        if (pref is null)
+        {
+            pref = UserPreference.CreateDefault(ownerOid, clock);
+            if (seedingCategories) pref.MarkCategoriesSeeded(clock);
+            pref.MarkHotkeysSeeded(clock);
+            db.UserPreferences.Add(pref);
+        }
+        else
+        {
+            if (seedingCategories) pref.MarkCategoriesSeeded(clock);
+            pref.MarkHotkeysSeeded(clock);
+        }
+
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (ex.IsDuplicateKeyViolation())
+        {
+            // Concurrent first-call race — detach all pending entities so the
+            // read query below works cleanly against whatever was committed first.
+            foreach (Hotkey hk in db.Hotkeys.Local.ToList())
+                db.Entry(hk).State = EntityState.Detached;
+            foreach (HotkeyCategory hc in db.HotkeyCategories.Local.ToList())
+                db.Entry(hc).State = EntityState.Detached;
+            foreach (Category cat in db.Categories.Local.ToList())
+                db.Entry(cat).State = EntityState.Detached;
+            if (pref is not null)
+                db.Entry(pref).State = EntityState.Detached;
+        }
     }
 
     private static IOrderedQueryable<Hotkey> ApplySorting(
