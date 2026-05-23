@@ -10,6 +10,8 @@ Be concise in all interactions. Optimize for readability when writing documentat
 
 At the end of each plan, give me a list of unresolved questions to answer, if any. Make the questions extremely concise. Sacrifice grammar for the sake of concision.
 
+Only commit plans/specs to `docs/superpowers/` when they relate to project improvements — code, features, infra, deployment, tests, repo tooling that affects contributors. Skip writing (or keep out-of-repo) plans for Claude Code optimization, personal workflow tuning, agent housekeeping, or one-off context/config cleanups.
+
 ## Workflow Preferences
 
 - When asked to store instructions or rules, put them in CLAUDE.md (not memory files) unless explicitly told otherwise.
