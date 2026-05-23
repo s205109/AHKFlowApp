@@ -47,6 +47,21 @@ public sealed class SeedHotkeysCommandHandlerTests(DevDbFixture fx)
     }
 
     [Fact]
+    public async Task Handle_InDevelopment_SetsHotkeysSeededAtMarker()
+    {
+        await using (AppDbContext db = fx.CreateContext())
+        {
+            await Sut(db).Handle(new SeedHotkeysCommand(Reset: false), default);
+        }
+
+        await using AppDbContext verify = fx.CreateContext();
+        Domain.Entities.UserPreference? pref = await verify.UserPreferences
+            .FirstOrDefaultAsync(p => p.OwnerOid == _ownerOid);
+        pref.Should().NotBeNull();
+        pref!.HotkeysSeededAt.Should().NotBeNull();
+    }
+
+    [Fact]
     public async Task Handle_NotInDevelopment_ReturnsNotFound()
     {
         await using AppDbContext db = fx.CreateContext();

@@ -1,5 +1,7 @@
 using AHKFlowApp.Application.Abstractions;
+using AHKFlowApp.Application.Common;
 using AHKFlowApp.Application.DTOs;
+using AHKFlowApp.Domain.Constants;
 using AHKFlowApp.Domain.Entities;
 using Ardalis.Result;
 using FluentValidation;
@@ -52,13 +54,34 @@ public sealed class ListHotstringsQueryValidator : AbstractValidator<ListHotstri
 
 internal sealed class ListHotstringsQueryHandler(
     IAppDbContext db,
-    ICurrentUser currentUser)
+    ICurrentUser currentUser,
+    AppEnvironment env,
+    TimeProvider clock)
     : IRequestHandler<ListHotstringsQuery, Result<PagedList<HotstringDto>>>
 {
+    // Mirrors SeedHotstringsCommand.s_samples — update both if seed set changes.
+    private static readonly (string Trigger, string Replacement, bool Ending, bool InsideWord, string[] Categories)[] s_lazySeed =
+    [
+        ("recieve", "receive",              true,  true,  ["Autocorrect"]),
+        ("btw",     "by the way",           true,  false, ["Communication"]),
+        ("brb",     "be right back",        true,  false, ["Communication"]),
+        ("fyi",     "for your information", true,  false, ["Communication"]),
+        ("/today",  "{{date:yyyy-MM-dd}}",  false, false, ["DateTime"]),
+        ("/now",    "{{datetime:HH:mm}}",   false, false, ["DateTime"]),
+        ("@sig",    "Example User\nuser@example.com\nExample Company", false, false, ["Email"]),
+        (";arrow",  "→",               false, false, ["Symbols"]),
+        (";check",  "✓",               false, false, ["Symbols"]),
+        (";shrug",  "¯\\_(ツ)_/¯", false, false, ["Symbols"]),
+        (";e:",     "ë",               false, false, ["Symbols"]),
+        (";todo",   "TODO(name): ",         false, false, ["Code"]),
+    ];
+
     public async Task<Result<PagedList<HotstringDto>>> Handle(ListHotstringsQuery request, CancellationToken ct)
     {
         if (currentUser.Oid is not Guid ownerOid)
             return Result.Unauthorized();
+
+        await EnsureHotstringsSeededAsync(ownerOid, ct);
 
         IQueryable<Hotstring> query = db.Hotstrings
             .AsNoTracking()
@@ -136,6 +159,94 @@ internal sealed class ListHotstringsQueryHandler(
             .ToListAsync(ct);
 
         return Result.Success(new PagedList<HotstringDto>(items, request.Page, request.PageSize, total));
+    }
+
+    private async Task EnsureHotstringsSeededAsync(Guid ownerOid, CancellationToken ct)
+    {
+        if (!env.IsDevelopment) return;
+
+        UserPreference? pref = await db.UserPreferences
+            .FirstOrDefaultAsync(p => p.OwnerOid == ownerOid, ct);
+
+        if (pref?.HotstringsSeededAt is not null) return;
+
+        // Ensure categories exist; seed them inline if this is the user's first request
+        bool seedingCategories = pref?.CategoriesSeededAt is null;
+        Dictionary<string, Guid> catByName;
+
+        if (seedingCategories)
+        {
+            catByName = [];
+            foreach (string name in DefaultCategories.Names)
+            {
+                var cat = Category.Create(ownerOid, name, clock);
+                db.Categories.Add(cat);
+                catByName[name] = cat.Id;
+            }
+        }
+        else
+        {
+            catByName = (await db.Categories
+                    .Where(c => c.OwnerOid == ownerOid)
+                    .Select(c => new { c.Name, c.Id })
+                    .ToListAsync(ct))
+                .ToDictionary(c => c.Name, c => c.Id, StringComparer.OrdinalIgnoreCase);
+        }
+
+        foreach ((string trigger, string replacement, bool ending, bool inside, string[] cats) in s_lazySeed)
+        {
+            var hs = Hotstring.Create(ownerOid, trigger, replacement, null,
+                appliesToAllProfiles: true, ending, inside, clock);
+            db.Hotstrings.Add(hs);
+            foreach (string catName in cats)
+            {
+                if (catByName.TryGetValue(catName, out Guid catId))
+                    db.HotstringCategories.Add(HotstringCategory.Create(hs.Id, catId));
+            }
+        }
+
+        if (pref is null)
+        {
+            pref = UserPreference.CreateDefault(ownerOid, clock);
+            if (seedingCategories) pref.MarkCategoriesSeeded(clock);
+            pref.MarkHotstringsSeeded(clock);
+            db.UserPreferences.Add(pref);
+        }
+        else
+        {
+            if (seedingCategories) pref.MarkCategoriesSeeded(clock);
+            pref.MarkHotstringsSeeded(clock);
+        }
+
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (ex.IsDuplicateKeyViolation())
+        {
+            // Concurrent first-call race or pre-existing data after migration (null
+            // markers but hotstrings already present) — detach pending entities and
+            // persist markers in a follow-up save so future GETs skip the seed path.
+            foreach (Hotstring hs in db.Hotstrings.Local.ToList())
+                db.Entry(hs).State = EntityState.Detached;
+            foreach (HotstringCategory hc in db.HotstringCategories.Local.ToList())
+                db.Entry(hc).State = EntityState.Detached;
+            foreach (Category cat in db.Categories.Local.ToList())
+                db.Entry(cat).State = EntityState.Detached;
+            if (pref is not null)
+                db.Entry(pref).State = EntityState.Detached;
+
+            // Reload pref (may have been inserted by the concurrent winner) and set markers.
+            pref = await db.UserPreferences.FirstOrDefaultAsync(p => p.OwnerOid == ownerOid, ct);
+            if (pref is null)
+            {
+                pref = UserPreference.CreateDefault(ownerOid, clock);
+                db.UserPreferences.Add(pref);
+            }
+            if (seedingCategories) pref.MarkCategoriesSeeded(clock);
+            pref.MarkHotstringsSeeded(clock);
+            await db.SaveChangesAsync(ct);
+        }
     }
 
     private static IOrderedQueryable<Hotstring> ApplySorting(

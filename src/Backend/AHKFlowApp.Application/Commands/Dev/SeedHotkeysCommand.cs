@@ -107,6 +107,22 @@ internal sealed class SeedHotkeysCommandHandler(
             }
         }
 
+        // Upsert the seed marker so a later GET /hotkeys does not also lazy-seed.
+        UserPreference? pref = await db.UserPreferences
+            .FirstOrDefaultAsync(p => p.OwnerOid == ownerOid, ct);
+        if (pref is null)
+        {
+            pref = UserPreference.CreateDefault(ownerOid, clock);
+            db.UserPreferences.Add(pref);
+        }
+        if (request.Reset)
+        {
+            // MarkHotkeysSeeded is a no-op when already set; clear it so reset
+            // refreshes the marker to the current clock tick.
+            db.Entry(pref).Property(p => p.HotkeysSeededAt).CurrentValue = null;
+        }
+        pref.MarkHotkeysSeeded(clock);
+
         await db.SaveChangesAsync(ct);
 
         List<HotkeyDto> items = await db.Hotkeys
