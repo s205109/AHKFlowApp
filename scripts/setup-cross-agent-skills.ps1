@@ -40,6 +40,25 @@ if ($symlinks -ne 'true') {
 }
 Write-Host "[OK] git core.symlinks = true" -ForegroundColor Green
 
+# --- Install committed git hooks via core.hooksPath ---
+$hooksDir = Join-Path $repoRoot '.githooks'
+if (Test-Path $hooksDir) {
+    $currentHooksPath = (git config core.hooksPath 2>$null)
+    $normalizedCurrent = if ($currentHooksPath) {
+        $currentHooksPath.TrimEnd('\','/').Replace('\','/').ToLowerInvariant()
+    } else { '' }
+    $pointsToDefault = $normalizedCurrent -match '(^\.git/hooks$|/\.git/hooks$)'
+
+    if ($normalizedCurrent -eq '.githooks') {
+        Write-Host "[OK] core.hooksPath = .githooks" -ForegroundColor Green
+    } elseif (-not $normalizedCurrent -or $pointsToDefault) {
+        git config core.hooksPath .githooks
+        Write-Host "[FIX] Set core.hooksPath = .githooks (enables committed hooks)" -ForegroundColor Yellow
+    } else {
+        Write-Host "[WARN] core.hooksPath is '$currentHooksPath' - committed hooks at .githooks/ inactive. To enable: git config core.hooksPath .githooks" -ForegroundColor Yellow
+    }
+}
+
 $agentsRoot = Join-Path $repoRoot '.agents'
 $claudeRoot = Join-Path $repoRoot '.claude'
 $claudeSkills = Join-Path $claudeRoot 'skills'
@@ -86,6 +105,26 @@ $skillDirs = Get-ChildItem -Force $agentsRoot -Directory |
     }
 $skillDirNames = @($skillDirs | ForEach-Object { $_.Name })
 
+# --- Description budget guardrail ---
+$maxDescLen = 140
+$bloated = @()
+foreach ($skillDir in $skillDirs) {
+    $skillFile = Join-Path $skillDir.FullName 'SKILL.md'
+    $descLine = Select-String -LiteralPath $skillFile -Pattern '^description:' -SimpleMatch:$false | Select-Object -First 1
+    if ($descLine) {
+        $desc = ($descLine.Line -replace '^description:\s*', '').Trim()
+        if ($desc.Length -gt $maxDescLen) {
+            $bloated += "$($skillDir.Name): $($desc.Length) chars"
+        }
+    }
+}
+if ($bloated.Count -gt 0) {
+    Write-Host "[WARN] Skill descriptions over $maxDescLen chars (context budget):" -ForegroundColor Yellow
+    foreach ($entry in $bloated) {
+        Write-Host "       $entry" -ForegroundColor Yellow
+    }
+}
+
 function Sync-SkillLinkDirectory {
     param(
         [string] $LinkRoot,
@@ -111,6 +150,10 @@ function Sync-SkillLinkDirectory {
 
     foreach ($existingLink in Get-ChildItem -Force $LinkRoot) {
         if ($skillDirNames -contains $existingLink.Name) {
+            continue
+        }
+
+        if (-not $existingLink.PSIsContainer -and $existingLink.Name -eq 'README.md') {
             continue
         }
 
