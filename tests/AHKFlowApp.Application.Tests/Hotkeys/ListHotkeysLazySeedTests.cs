@@ -131,4 +131,37 @@ public sealed class ListHotkeysLazySeedTests(HotkeyDbFixture fx)
             .CountAsync();
         linkedCount.Should().BeGreaterThan(0);
     }
+
+    [Fact]
+    public async Task Handle_WhenHotkeysExistWithNullMarker_SetsMarkerWithoutDuplicating()
+    {
+        // Simulate a post-migration dev DB: hotkeys already present but marker is null
+        var owner = Guid.NewGuid();
+        await using (AppDbContext seedCtx = fx.CreateContext())
+        {
+            // Insert a key combo that overlaps with the lazy-seed sample set (Ctrl+Alt+N)
+            seedCtx.Hotkeys.Add(Hotkey.Create(owner, "Launch Notepad", "N",
+                ctrl: true, alt: true, shift: false, win: false,
+                AHKFlowApp.Domain.Enums.HotkeyAction.Run, "notepad.exe",
+                appliesToAllProfiles: true, TimeProvider.System));
+            await seedCtx.SaveChangesAsync();
+        }
+
+        await using AppDbContext ctx = fx.CreateContext();
+        var sut = new ListHotkeysQueryHandler(ctx, CurrentUserHelper.For(owner), s_dev, _clock);
+        Result<PagedList<HotkeyDto>> result = await sut.Handle(new ListHotkeysQuery(), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+
+        await using AppDbContext verify = fx.CreateContext();
+
+        // Marker must be persisted so the next GET does not retry
+        UserPreference? pref = await verify.UserPreferences.FirstOrDefaultAsync(p => p.OwnerOid == owner);
+        pref!.HotkeysSeededAt.Should().NotBeNull();
+
+        // No duplicate rows — Ctrl+Alt+N still exists exactly once
+        int ctrlAltNCount = await verify.Hotkeys
+            .CountAsync(h => h.OwnerOid == owner && h.Key == "N" && h.Ctrl && h.Alt && !h.Shift && !h.Win);
+        ctrlAltNCount.Should().Be(1);
+    }
 }
