@@ -120,6 +120,33 @@ public sealed class ListHotstringsLazySeedTests(HotstringDbFixture fx)
     }
 
     [Fact]
+    public async Task Handle_AfterSeedHotstringsCommand_DoesNotReattemptSeed()
+    {
+        var owner = Guid.NewGuid();
+
+        // Step 1: run the dev seed command (mirrors POST /api/v1/dev/hotstrings/seed)
+        await using (AppDbContext seedCtx = fx.CreateContext())
+        {
+            var seedHandler = new AHKFlowApp.Application.Commands.Dev.SeedHotstringsCommandHandler(
+                seedCtx, CurrentUserHelper.For(owner), TimeProvider.System, s_dev);
+            await seedHandler.Handle(new AHKFlowApp.Application.Commands.Dev.SeedHotstringsCommand(Reset: false), CancellationToken.None);
+        }
+
+        // Step 2: lazy list — must not re-attempt seed (marker should already be set)
+        await using AppDbContext ctx = fx.CreateContext();
+        var sut = new ListHotstringsQueryHandler(ctx, CurrentUserHelper.For(owner), s_dev, _clock);
+        Result<PagedList<HotstringDto>> result = await sut.Handle(new ListHotstringsQuery(), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.TotalCount.Should().Be(12);
+
+        // Marker persisted (the bug: lazy-seed would have detached pref on duplicate-key)
+        await using AppDbContext verify = fx.CreateContext();
+        UserPreference? pref = await verify.UserPreferences.FirstOrDefaultAsync(p => p.OwnerOid == owner);
+        pref!.HotstringsSeededAt.Should().NotBeNull();
+    }
+
+    [Fact]
     public async Task Handle_FirstCallInDev_UsesExistingCategories_WhenAlreadySeeded()
     {
         var owner = Guid.NewGuid();

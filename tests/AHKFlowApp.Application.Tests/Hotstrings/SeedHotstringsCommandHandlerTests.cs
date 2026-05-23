@@ -39,6 +39,22 @@ public sealed class SeedHotstringsCommandHandlerTests(HotstringDbFixture fx)
     }
 
     [Fact]
+    public async Task Handle_InDevelopment_SetsHotstringsSeededAtMarker()
+    {
+        var owner = Guid.NewGuid();
+        await using (AppDbContext db = fx.CreateContext())
+        {
+            var handler = new SeedHotstringsCommandHandler(db, CurrentUserHelper.For(owner), TimeProvider.System, DevEnv(true));
+            await handler.Handle(new SeedHotstringsCommand(Reset: false), default);
+        }
+
+        await using AppDbContext verify = fx.CreateContext();
+        UserPreference? pref = await verify.UserPreferences.FirstOrDefaultAsync(p => p.OwnerOid == owner);
+        pref.Should().NotBeNull();
+        pref!.HotstringsSeededAt.Should().NotBeNull();
+    }
+
+    [Fact]
     public async Task Handle_NotInDevelopment_ReturnsNotFound()
     {
         await using AppDbContext db = fx.CreateContext();
