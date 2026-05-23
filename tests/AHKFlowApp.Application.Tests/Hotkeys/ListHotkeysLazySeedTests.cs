@@ -90,6 +90,33 @@ public sealed class ListHotkeysLazySeedTests(HotkeyDbFixture fx)
     }
 
     [Fact]
+    public async Task Handle_AfterSeedHotkeysCommand_DoesNotReattemptSeed()
+    {
+        var owner = Guid.NewGuid();
+
+        // Step 1: run the dev seed command (mirrors POST /api/v1/dev/hotkeys/seed)
+        await using (AppDbContext seedCtx = fx.CreateContext())
+        {
+            var seedHandler = new AHKFlowApp.Application.Commands.Dev.SeedHotkeysCommandHandler(
+                seedCtx, CurrentUserHelper.For(owner), TimeProvider.System, s_dev);
+            await seedHandler.Handle(new AHKFlowApp.Application.Commands.Dev.SeedHotkeysCommand(Reset: false), CancellationToken.None);
+        }
+
+        // Step 2: lazy list — must not re-attempt seed (marker should already be set)
+        await using AppDbContext ctx = fx.CreateContext();
+        var sut = new ListHotkeysQueryHandler(ctx, CurrentUserHelper.For(owner), s_dev, _clock);
+        Result<PagedList<HotkeyDto>> result = await sut.Handle(new ListHotkeysQuery(), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.TotalCount.Should().Be(12);
+
+        // Marker persisted (the bug: lazy-seed would have detached pref on duplicate-key)
+        await using AppDbContext verify = fx.CreateContext();
+        UserPreference? pref = await verify.UserPreferences.FirstOrDefaultAsync(p => p.OwnerOid == owner);
+        pref!.HotkeysSeededAt.Should().NotBeNull();
+    }
+
+    [Fact]
     public async Task Handle_FirstCallInDev_LinksHotkeysToCategories()
     {
         var owner = Guid.NewGuid();
