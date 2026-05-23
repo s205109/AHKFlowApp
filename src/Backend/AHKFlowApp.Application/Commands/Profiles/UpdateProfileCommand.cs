@@ -1,5 +1,5 @@
-using System.Diagnostics.CodeAnalysis;
 using AHKFlowApp.Application.Abstractions;
+using AHKFlowApp.Application.Common;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Mapping;
 using AHKFlowApp.Application.Validation;
@@ -68,16 +68,11 @@ internal sealed class UpdateProfileCommandHandler(
         {
             await db.SaveChangesAsync(ct);
         }
-        catch (DbUpdateException ex) when (IsDuplicateKeyViolation(ex))
+        catch (DbUpdateException ex) when (ex.IsDuplicateKeyViolation())
         {
             return Result.Conflict($"A profile named '{input.Name}' already exists.");
         }
 
         return Result.Success(profile.ToDto());
     }
-
-    [ExcludeFromCodeCoverage]
-    private static bool IsDuplicateKeyViolation(DbUpdateException ex) =>
-        ex.InnerException?.GetType().GetProperty("Number")?.GetValue(ex.InnerException) is int n &&
-        n is 2601 or 2627;
 }

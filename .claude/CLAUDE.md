@@ -18,11 +18,9 @@ At the end of each plan, give me a list of unresolved questions to answer, if an
 
 ## Out of Scope
 
-Do not implement these — they are planned for future phases or intentionally excluded:
-- Hotstring/Hotkey/Profile CRUD features — see `.claude/backlog/` items 013-026
-- Script generation and download
-- Runtime execution of AutoHotkey scripts — intentionally excluded
-- CLI authentication — see backlog item 029
+- Runtime execution of AutoHotkey scripts — intentionally excluded (the app generates `.ahk` files, never runs them)
+
+Pending features are tracked in `.claude/backlog/`.
 
 ## Project Configuration
 

@@ -9,7 +9,9 @@ Blazor WebAssembly PWA frontend for AHKFlowApp.
 - `_loading = true` before async calls, `false` after
 - `ISnackbar.Add()` for success/error feedback
 - `IDialogService.ShowAsync<T>` for create/edit forms with non-trivial layouts (multi-section, tabs, file upload, etc.)
-- Inline `MudTable` row editing is acceptable for simple tabular CRUD (≤6 short fields). Examples: hotstrings page.
+- Inline `MudTable` row editing is acceptable for simple tabular CRUD (≤6 short fields). Example: categories page.
+- `MudDataGrid` with server-side sort/filter for larger list pages. Examples: hotstrings, hotkeys pages.
+- Bulk-select + delete toolbar for multi-row deletion. Examples: hotstrings, hotkeys pages.
 - `IDialogService.ShowMessageBox(...)` for delete confirmations
 - No `StateHasChanged()` after standard event handlers — Blazor re-renders automatically
 
