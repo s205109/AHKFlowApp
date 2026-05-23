@@ -95,14 +95,6 @@ dotnet format
 
 ## Code Conventions
 
-### Naming
-- Controllers: plural (`HotstringsController`, `ProfilesController`)
-- DTOs: `{Entity}Dto`, `Create{Entity}Dto`, `Update{Entity}Dto` (records)
-- Commands: `Create{Entity}Command`, `Update{Entity}Command`
-- Queries: `Get{Entity}Query`, `List{Entities}Query`
-- Handlers: `{Command/Query}Handler`
-- Async methods: `*Async` suffix
-
 ### Patterns We Use
 - Primary constructors for DI (no `_field = field` ceremony)
 - Records for DTOs, commands, queries, and value objects
@@ -196,17 +188,6 @@ HTTP Request -> Controller (thin, maps Result to HTTP)
 - HTTPS everywhere — enforce via HSTS, redirect HTTP to HTTPS.
 - Data Protection API for encrypting user data at rest — never roll your own encryption.
 - CORS: explicit origins only, never `AllowAnyOrigin()` in production.
-
-### Testing
-
-- **Integration tests first** — WebApplicationFactory + Testcontainers catches serialization, middleware, DI, and query bugs.
-- **Never `UseInMemoryDatabase`** — different behavior from real providers. Always use Testcontainers (SQL Server).
-- **NSubstitute for third-party boundaries only** — don't mock what you own (no mocking DbContext, repositories, or internal services).
-- Test naming: `MethodName_Scenario_ExpectedResult`.
-- AAA pattern (Arrange/Act/Assert) with blank line separation; one assertion concept per test.
-- Assert on `Result.IsSuccess` / `Result.Status` in handler unit tests.
-- Shared fixtures: `IClassFixture<T>`, `ICollectionFixture<T>` for expensive setup (containers).
-- Frameworks: xUnit, FluentAssertions, NSubstitute, Testcontainers.
 
 ## CI/CD
 
