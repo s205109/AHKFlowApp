@@ -16,6 +16,25 @@ CLAUDE_SKILLS="$REPO_ROOT/.claude/skills"
 GITHUB_SKILLS="$REPO_ROOT/.github/skills"
 CODEX_PLUGIN_SKILLS="$AGENTS_ROOT/plugins/plugins/ahkflowapp/skills"
 
+# --- Install committed git hooks via core.hooksPath ---
+if [ -d "$REPO_ROOT/.githooks" ]; then
+    current_hooks_path=$(git config core.hooksPath 2>/dev/null || true)
+    normalized_current=$(printf '%s' "$current_hooks_path" | tr '\\' '/' | sed 's:/*$::' | tr '[:upper:]' '[:lower:]')
+
+    case "$normalized_current" in
+        .githooks)
+            echo "[OK] core.hooksPath = .githooks"
+            ;;
+        ""|.git/hooks|*/.git/hooks)
+            git config core.hooksPath .githooks
+            echo "[FIX] Set core.hooksPath = .githooks (enables committed hooks)"
+            ;;
+        *)
+            echo "[WARN] core.hooksPath is '$current_hooks_path' — committed hooks at .githooks/ inactive. To enable: git config core.hooksPath .githooks"
+            ;;
+    esac
+fi
+
 # --- Ensure .agents/ exists ---
 if [ ! -d "$AGENTS_ROOT" ]; then
     echo "Error: .agents does not exist in the repo." >&2
@@ -54,6 +73,25 @@ is_active_skill() {
     [ -f "$AGENTS_ROOT/$name/SKILL.md" ]
 }
 
+# --- Description budget guardrail ---
+max_desc_len=140
+bloated=""
+for skill_dir in "$AGENTS_ROOT"/*; do
+    [ -d "$skill_dir" ] || continue
+    skill_name=$(basename "$skill_dir")
+    is_active_skill "$skill_name" || continue
+
+    desc=$(grep -m1 '^description:' "$skill_dir/SKILL.md" 2>/dev/null | sed -E 's/^description:[[:space:]]*//')
+    desc_len=${#desc}
+    if [ "$desc_len" -gt "$max_desc_len" ]; then
+        bloated="$bloated
+       $skill_name: $desc_len chars"
+    fi
+done
+if [ -n "$bloated" ]; then
+    echo "[WARN] Skill descriptions over $max_desc_len chars (context budget):$bloated"
+fi
+
 sync_skill_link_directory() {
     local link_root="$1"
     local display_name="$2"
@@ -79,6 +117,10 @@ sync_skill_link_directory() {
 
         existing_name=$(basename "$existing_link")
         if is_active_skill "$existing_name"; then
+            continue
+        fi
+
+        if [ -f "$existing_link" ] && [ ! -L "$existing_link" ] && [ "$existing_name" = "README.md" ]; then
             continue
         fi
 
