@@ -183,12 +183,14 @@ try
         app.UseSwaggerDocs();
     }
     app.UseRootRedirect(devTarget: "/swagger", prodTarget: "/health");
+    app.UseRouting();
 
     if (allowedOrigins.Length > 0)
     {
         app.UseCors(corsPolicyName);
     }
 
+    app.UseDevelopmentOnlyEndpointGate();
     app.UseAuthentication();
     app.UseAuthorization();
     app.MapControllers();
