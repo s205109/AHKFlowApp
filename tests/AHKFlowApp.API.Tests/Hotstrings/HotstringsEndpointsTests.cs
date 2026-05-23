@@ -236,7 +236,7 @@ public sealed class HotstringsEndpointsTests(SqlContainerFixture sqlFixture) : I
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         PagedList<HotstringDto>? pagedBody = await response.Content.ReadFromJsonAsync<PagedList<HotstringDto>>();
-        pagedBody!.TotalCount.Should().Be(5);
+        pagedBody!.TotalCount.Should().Be(17);  // 5 created + 12 lazy-seeded in dev
         pagedBody.Items.Should().HaveCount(2);
         pagedBody.Page.Should().Be(2);
     }
@@ -257,14 +257,14 @@ public sealed class HotstringsEndpointsTests(SqlContainerFixture sqlFixture) : I
         var owner = Guid.NewGuid();
         using HttpClient client = CreateAuthed(owner);
 
-        await client.PostAsJsonAsync("/api/v1/hotstrings", new CreateHotstringDto("btw", "by the way"));
-        await client.PostAsJsonAsync("/api/v1/hotstrings", new CreateHotstringDto("fyi", "for your info"));
+        await client.PostAsJsonAsync("/api/v1/hotstrings", new CreateHotstringDto("mytest1", "custom test 1"));
+        await client.PostAsJsonAsync("/api/v1/hotstrings", new CreateHotstringDto("mytest2", "custom test 2"));
 
-        HttpResponseMessage response = await client.GetAsync("/api/v1/hotstrings?search=btw");
+        HttpResponseMessage response = await client.GetAsync("/api/v1/hotstrings?search=mytest1");
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         PagedList<HotstringDto>? pagedBody = await response.Content.ReadFromJsonAsync<PagedList<HotstringDto>>();
-        pagedBody!.Items.Should().ContainSingle().Which.Trigger.Should().Be("btw");
+        pagedBody!.Items.Should().ContainSingle().Which.Trigger.Should().Be("mytest1");
     }
 
     [Fact]

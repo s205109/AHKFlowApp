@@ -1,3 +1,4 @@
+using AHKFlowApp.Application;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Queries.Hotstrings;
 using AHKFlowApp.Domain.Entities;
@@ -25,7 +26,7 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
         }
 
         await using AppDbContext db = fx.CreateContext();
-        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner));
+        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
 
         Result<PagedList<HotstringDto>> result = await handler.Handle(new ListHotstringsQuery(), default);
 
@@ -55,7 +56,7 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
         }
 
         await using AppDbContext db = fx.CreateContext();
-        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner));
+        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
 
         Result<PagedList<HotstringDto>> result = await handler.Handle(
             new ListHotstringsQuery(ProfileId: profileId), default);
@@ -82,7 +83,7 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
         }
 
         await using AppDbContext db = fx.CreateContext();
-        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner));
+        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
 
         Result<PagedList<HotstringDto>> page2 = await handler.Handle(
             new ListHotstringsQuery(Page: 2, PageSize: 2), default);
@@ -97,7 +98,7 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
     public async Task Handle_WhenNoOid_ReturnsUnauthorized()
     {
         await using AppDbContext db = fx.CreateContext();
-        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(null));
+        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(null), new AppEnvironment(false), TimeProvider.System);
 
         Result<PagedList<HotstringDto>> result = await handler.Handle(new ListHotstringsQuery(), default);
 
@@ -117,7 +118,7 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
         }
 
         await using AppDbContext db = fx.CreateContext();
-        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner));
+        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
 
         Result<PagedList<HotstringDto>> result = await handler.Handle(
             new ListHotstringsQuery(Search: "btw"), default);
@@ -138,7 +139,7 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
         }
 
         await using AppDbContext db = fx.CreateContext();
-        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner));
+        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
 
         Result<PagedList<HotstringDto>> result = await handler.Handle(
             new ListHotstringsQuery(Search: "needle"), default);
@@ -159,7 +160,7 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
         }
 
         await using AppDbContext db = fx.CreateContext();
-        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner));
+        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
 
         Result<PagedList<HotstringDto>> result = await handler.Handle(
             new ListHotstringsQuery(Search: "german"), default);
@@ -180,7 +181,7 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
         }
 
         await using AppDbContext db = fx.CreateContext();
-        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner));
+        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
 
         Result<PagedList<HotstringDto>> result = await handler.Handle(
             new ListHotstringsQuery(Search: "foo"), default);
@@ -202,7 +203,7 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
         }
 
         await using AppDbContext db = fx.CreateContext();
-        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner));
+        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
 
         Result<PagedList<HotstringDto>> result = await handler.Handle(
             new ListHotstringsQuery(Search: "way", TriggerFilter: "btw"), default);
@@ -224,7 +225,7 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
         }
 
         await using AppDbContext db = fx.CreateContext();
-        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner));
+        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
 
         Result<PagedList<HotstringDto>> result = await handler.Handle(
             new ListHotstringsQuery(IsEndingCharacterRequired: true, IsTriggerInsideWord: false), default);
@@ -246,7 +247,7 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
         }
 
         await using AppDbContext db = fx.CreateContext();
-        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner));
+        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
 
         Result<PagedList<HotstringDto>> result = await handler.Handle(
             new ListHotstringsQuery(SortField: "trigger", SortDescending: false), default);
@@ -268,7 +269,7 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
         }
 
         await using AppDbContext db = fx.CreateContext();
-        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner));
+        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
 
         Result<PagedList<HotstringDto>> result = await handler.Handle(
             new ListHotstringsQuery(DescriptionFilter: "greeting"), default);
@@ -290,7 +291,7 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
         }
 
         await using AppDbContext db = fx.CreateContext();
-        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner));
+        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
 
         Result<PagedList<HotstringDto>> result = await handler.Handle(
             new ListHotstringsQuery(SortField: "description", SortDescending: false), default);

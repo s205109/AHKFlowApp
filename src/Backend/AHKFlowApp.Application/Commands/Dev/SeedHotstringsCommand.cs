@@ -103,6 +103,22 @@ internal sealed class SeedHotstringsCommandHandler(
             }
         }
 
+        // Upsert the seed marker so a later GET /hotstrings does not also lazy-seed.
+        UserPreference? pref = await db.UserPreferences
+            .FirstOrDefaultAsync(p => p.OwnerOid == ownerOid, ct);
+        if (pref is null)
+        {
+            pref = UserPreference.CreateDefault(ownerOid, clock);
+            db.UserPreferences.Add(pref);
+        }
+        if (request.Reset)
+        {
+            // MarkHotstringsSeeded is a no-op when already set; clear it so reset
+            // refreshes the marker to the current clock tick.
+            db.Entry(pref).Property(p => p.HotstringsSeededAt).CurrentValue = null;
+        }
+        pref.MarkHotstringsSeeded(clock);
+
         await db.SaveChangesAsync(ct);
 
         List<HotstringDto> items = await db.Hotstrings

@@ -39,7 +39,7 @@ public sealed class ListHotkeysFilterByCategoryTests(HotkeyDbFixture fx)
         }
 
         await using AppDbContext db = fx.CreateContext();
-        ListHotkeysQueryHandler handler = new(db, CurrentUserHelper.For(owner));
+        ListHotkeysQueryHandler handler = new(db, CurrentUserHelper.For(owner), new AHKFlowApp.Application.AppEnvironment(false), TimeProvider.System);
 
         Result<PagedList<HotkeyDto>> result = await handler.Handle(
             new ListHotkeysQuery(CategoryIds: [cat1.Id, cat2.Id]), default);
@@ -67,7 +67,7 @@ public sealed class ListHotkeysFilterByCategoryTests(HotkeyDbFixture fx)
         }
 
         await using AppDbContext db = fx.CreateContext();
-        ListHotkeysQueryHandler handler = new(db, CurrentUserHelper.For(owner));
+        ListHotkeysQueryHandler handler = new(db, CurrentUserHelper.For(owner), new AHKFlowApp.Application.AppEnvironment(false), TimeProvider.System);
 
         Result<PagedList<HotkeyDto>> result = await handler.Handle(
             new ListHotkeysQuery(CategoryIds: null), default);

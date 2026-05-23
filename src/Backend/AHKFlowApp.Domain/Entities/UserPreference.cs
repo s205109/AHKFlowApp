@@ -9,6 +9,8 @@ public sealed class UserPreference
     public bool DarkMode { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
     public DateTimeOffset? CategoriesSeededAt { get; private set; }
+    public DateTimeOffset? HotstringsSeededAt { get; private set; }
+    public DateTimeOffset? HotkeysSeededAt { get; private set; }
 
     public static UserPreference CreateDefault(Guid ownerOid, TimeProvider clock) => new()
     {
@@ -30,6 +32,22 @@ public sealed class UserPreference
         if (CategoriesSeededAt is not null) return; // idempotent
         DateTimeOffset now = clock.GetUtcNow();
         CategoriesSeededAt = now;
+        UpdatedAt = now;
+    }
+
+    public void MarkHotstringsSeeded(TimeProvider clock)
+    {
+        if (HotstringsSeededAt is not null) return; // idempotent
+        DateTimeOffset now = clock.GetUtcNow();
+        HotstringsSeededAt = now;
+        UpdatedAt = now;
+    }
+
+    public void MarkHotkeysSeeded(TimeProvider clock)
+    {
+        if (HotkeysSeededAt is not null) return; // idempotent
+        DateTimeOffset now = clock.GetUtcNow();
+        HotkeysSeededAt = now;
         UpdatedAt = now;
     }
 }
