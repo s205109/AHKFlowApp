@@ -220,6 +220,8 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
         _api.ListAsync(Arg.Any<HotkeyListRequest>(), Arg.Any<CancellationToken>())
             .Returns(
                 ApiResult<PagedList<HotkeyDto>>.Ok(Page(dto)),
+                ApiResult<PagedList<HotkeyDto>>.Ok(Page(dto)),
+                ApiResult<PagedList<HotkeyDto>>.Ok(Page(dto)),
                 ApiResult<PagedList<HotkeyDto>>.Ok(Page(dto)));
 
         IRenderedComponent<Hotkeys> cut = RenderPage();
@@ -229,7 +231,7 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
 
         cut.Find("button.reload-hotkeys").Click();
 
-        cut.WaitForAssertion(() => _api.Received(2).ListAsync(Arg.Any<HotkeyListRequest>(), Arg.Any<CancellationToken>()));
+        cut.WaitForAssertion(() => _api.Received(4).ListAsync(Arg.Any<HotkeyListRequest>(), Arg.Any<CancellationToken>()));
         cut.WaitForAssertion(() =>
         {
             cut.Find("button.commit-edit").Should().NotBeNull();
@@ -477,5 +479,21 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
                 r.CategoryIds != null &&
                 r.CategoryIds.Contains(work.Id)),
             Arg.Any<CancellationToken>()));
+    }
+
+    [Fact]
+    public void Page_RendersBothDesktopAndMobileBranches()
+    {
+        StubList(Page());
+
+        IRenderedComponent<Hotkeys> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find("button.add-hotkey"));
+
+        // Desktop branch wrapper
+        cut.FindAll(".desktop-branch").Should().NotBeEmpty();
+        // Mobile branch wrapper
+        cut.FindAll(".mobile-branch").Should().NotBeEmpty();
+        // FAB only in mobile branch
+        cut.FindAll("button.add-hotkey-fab").Should().NotBeEmpty();
     }
 }
