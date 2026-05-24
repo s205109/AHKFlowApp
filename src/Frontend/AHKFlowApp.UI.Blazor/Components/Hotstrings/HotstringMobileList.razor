@@ -1,0 +1,92 @@
+@using AHKFlowApp.UI.Blazor.DTOs
+@using AHKFlowApp.UI.Blazor.Validation
+@using MudBlazor
+
+<MudStack Spacing="0">
+    @if (Items.Count == 0)
+    {
+        <MudText Class="pa-4 text-center" Typo="Typo.body2">No hotstrings yet.</MudText>
+    }
+
+    <table class="mobile-list">
+        <thead>
+            <tr class="mobile-header">
+                <th>Trigger</th>
+                <th>Replacement</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (HotstringEditModel item in Items)
+            {
+                bool expanded = _expandedId == item.Id;
+                <tr class="mobile-row" @onclick="() => ToggleExpand(item)">
+                    <td class="trigger-cell"><code>@item.Trigger</code></td>
+                    <td class="replacement-cell">@item.Replacement</td>
+                    <td class="chevron-cell">@(expanded ? "▾" : "▸")</td>
+                </tr>
+                @if (expanded)
+                {
+                    <tr class="mobile-row-expanded">
+                        <td colspan="3">
+                            <MudStack Spacing="1" Class="pa-3">
+                                @if (!string.IsNullOrWhiteSpace(item.Description))
+                                {
+                                    <MudText Typo="Typo.body2"><strong>Description:</strong> @item.Description</MudText>
+                                }
+                                <MudText Typo="Typo.body2"><strong>Profiles:</strong>
+                                    @if (item.AppliesToAllProfiles)
+                                    {
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Info">Any</MudChip>
+                                    }
+                                    else
+                                    {
+                                        @foreach (Guid pid in item.ProfileIds)
+                                        {
+                                            string name = Profiles.FirstOrDefault(p => p.Id == pid)?.Name ?? pid.ToString()[..8];
+                                            <MudChip T="string" Size="Size.Small">@name</MudChip>
+                                        }
+                                    }
+                                </MudText>
+                                <MudText Typo="Typo.body2"><strong>Categories:</strong>
+                                    @foreach (Guid cid in item.CategoryIds)
+                                    {
+                                        string name = Categories.FirstOrDefault(c => c.Id == cid)?.Name ?? cid.ToString()[..8];
+                                        <MudChip T="string" Size="Size.Small">@name</MudChip>
+                                    }
+                                </MudText>
+                                <MudText Typo="Typo.body2">
+                                    <strong>End-char:</strong> @(item.IsEndingCharacterRequired ? "✓" : "✗") &nbsp;
+                                    <strong>In-word:</strong> @(item.IsTriggerInsideWord ? "✓" : "✗")
+                                </MudText>
+                                <MudStack Row="true" Spacing="2" Class="mt-2">
+                                    <MudButton Class="start-edit" Variant="Variant.Filled" Color="Color.Primary"
+                                               StartIcon="@Icons.Material.Filled.Edit"
+                                               OnClick="@(async () => await OnEdit.InvokeAsync(item))">Edit</MudButton>
+                                    <MudButton Class="delete" Variant="Variant.Filled" Color="Color.Error"
+                                               StartIcon="@Icons.Material.Filled.Delete"
+                                               OnClick="@(async () => await OnDelete.InvokeAsync(item))">Delete</MudButton>
+                                </MudStack>
+                            </MudStack>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+</MudStack>
+
+@code {
+    [Parameter] public IReadOnlyList<HotstringEditModel> Items { get; set; } = [];
+    [Parameter] public IReadOnlyList<ProfileDto> Profiles { get; set; } = [];
+    [Parameter] public IReadOnlyList<CategoryDto> Categories { get; set; } = [];
+    [Parameter] public EventCallback<HotstringEditModel> OnEdit { get; set; }
+    [Parameter] public EventCallback<HotstringEditModel> OnDelete { get; set; }
+
+    private Guid? _expandedId;
+
+    private void ToggleExpand(HotstringEditModel item)
+    {
+        _expandedId = _expandedId == item.Id ? null : item.Id;
+    }
+}
