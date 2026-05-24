@@ -47,3 +47,23 @@
 .mobile-list .mobile-row-expanded {
     background: var(--mud-palette-background-grey);
 }
+
+.mobile-list {
+    table-layout: fixed;
+}
+
+.mobile-list .checkbox-cell {
+    width: 36px;
+    text-align: center;
+}
+
+.select-action-bar {
+    position: sticky;
+    bottom: 0;
+    background: var(--mud-palette-surface);
+    border-top: 1px solid var(--mud-palette-divider);
+    padding: 8px 12px;
+    display: flex;
+    justify-content: space-between;
+    z-index: 10;
+}

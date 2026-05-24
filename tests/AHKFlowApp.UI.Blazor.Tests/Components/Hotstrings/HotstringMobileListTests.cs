@@ -75,4 +75,43 @@ public sealed class HotstringMobileListTests : BunitContext, IAsyncLifetime
 
         deleted.Should().Be(item);
     }
+
+    [Fact]
+    public async Task SelectModeToggle_RevealsCheckboxes()
+    {
+        IRenderedComponent<HotstringMobileList> cut = Render<HotstringMobileList>(p => p
+            .Add(c => c.Items, [Item()])
+            .Add(c => c.Profiles, (IReadOnlyList<ProfileDto>)[])
+            .Add(c => c.Categories, (IReadOnlyList<CategoryDto>)[]));
+
+        cut.FindAll("input.row-checkbox").Should().BeEmpty();
+
+        await cut.InvokeAsync(() => cut.Find("button.toggle-select-mode").Click());
+
+        cut.WaitForAssertion(() => cut.FindAll("input.row-checkbox").Should().NotBeEmpty());
+    }
+
+    [Fact]
+    public async Task BulkDelete_RaisesOnBulkDelete_WithSelectedIds()
+    {
+        HotstringEditModel a = Item("a", "x");
+        HotstringEditModel b = Item("b", "y");
+        IReadOnlyList<Guid>? deletedIds = null;
+
+        IRenderedComponent<HotstringMobileList> cut = Render<HotstringMobileList>(p => p
+            .Add(c => c.Items, [a, b])
+            .Add(c => c.Profiles, (IReadOnlyList<ProfileDto>)[])
+            .Add(c => c.Categories, (IReadOnlyList<CategoryDto>)[])
+            .Add(c => c.OnBulkDelete, EventCallback.Factory.Create<IReadOnlyList<Guid>>(this, ids => deletedIds = ids)));
+
+        await cut.InvokeAsync(() => cut.Find("button.toggle-select-mode").Click());
+
+        cut.WaitForAssertion(() => cut.FindAll("input.row-checkbox").Count.Should().Be(2));
+        cut.FindAll("input.row-checkbox")[0].Change(true);
+        cut.FindAll("input.row-checkbox")[1].Change(true);
+
+        await cut.InvokeAsync(() => cut.Find("button.bulk-delete-hotstrings").Click());
+
+        deletedIds.Should().BeEquivalentTo(new[] { a.Id!.Value, b.Id!.Value });
+    }
 }

@@ -3,6 +3,13 @@
 @using MudBlazor
 
 <MudStack Spacing="0">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="pa-2">
+        <MudIconButton Class="toggle-select-mode"
+                       Icon="@(_selectMode ? Icons.Material.Filled.Close : Icons.Material.Filled.CheckBox)"
+                       OnClick="ToggleSelectMode" />
+        <MudText Typo="Typo.subtitle2">@(_selectMode ? $"{_selectedIds.Count} selected" : "")</MudText>
+    </MudStack>
+
     @if (Items.Count == 0)
     {
         <MudText Class="pa-4 text-center" Typo="Typo.body2">No hotstrings yet.</MudText>
@@ -11,6 +18,10 @@
     <table class="mobile-list">
         <thead>
             <tr class="mobile-header">
+                @if (_selectMode)
+                {
+                    <th style="width:36px"></th>
+                }
                 <th>Trigger</th>
                 <th>Replacement</th>
                 <th></th>
@@ -19,8 +30,16 @@
         <tbody>
             @foreach (HotstringEditModel item in Items)
             {
-                bool expanded = _expandedId == item.Id;
-                <tr class="mobile-row" @onclick="() => ToggleExpand(item)">
+                bool expanded = !_selectMode && _expandedId == item.Id;
+                <tr class="mobile-row" @onclick="() => OnRowClick(item)">
+                    @if (_selectMode)
+                    {
+                        <td class="checkbox-cell" @onclick:stopPropagation="true">
+                            <input type="checkbox" class="row-checkbox"
+                                   checked="@(_selectedIds.Contains(item.Id!.Value))"
+                                   @onchange="e => OnRowCheckboxChanged(item, (bool)e.Value!)" />
+                        </td>
+                    }
                     <td class="trigger-cell"><code>@item.Trigger</code></td>
                     <td class="replacement-cell">@item.Replacement</td>
                     <td class="chevron-cell">@(expanded ? "▾" : "▸")</td>
@@ -74,6 +93,16 @@
             }
         </tbody>
     </table>
+
+    @if (_selectMode && _selectedIds.Count > 0)
+    {
+        <div class="select-action-bar">
+            <MudButton Variant="Variant.Text" OnClick="ToggleSelectMode">Cancel</MudButton>
+            <MudButton Class="bulk-delete-hotstrings" Variant="Variant.Filled" Color="Color.Error"
+                       StartIcon="@Icons.Material.Filled.DeleteSweep"
+                       OnClick="RaiseBulkDelete">Delete @_selectedIds.Count</MudButton>
+        </div>
+    }
 </MudStack>
 
 @code {
@@ -82,11 +111,48 @@
     [Parameter] public IReadOnlyList<CategoryDto> Categories { get; set; } = [];
     [Parameter] public EventCallback<HotstringEditModel> OnEdit { get; set; }
     [Parameter] public EventCallback<HotstringEditModel> OnDelete { get; set; }
+    [Parameter] public EventCallback<IReadOnlyList<Guid>> OnBulkDelete { get; set; }
 
     private Guid? _expandedId;
+    private bool _selectMode;
+    private readonly HashSet<Guid> _selectedIds = [];
 
-    private void ToggleExpand(HotstringEditModel item)
+    private void OnRowClick(HotstringEditModel item)
     {
-        _expandedId = _expandedId == item.Id ? null : item.Id;
+        if (_selectMode)
+        {
+            if (item.Id is { } id) ToggleSelected(id);
+        }
+        else
+        {
+            _expandedId = _expandedId == item.Id ? null : item.Id;
+        }
+    }
+
+    private void OnRowCheckboxChanged(HotstringEditModel item, bool isChecked)
+    {
+        if (item.Id is not { } id) return;
+        if (isChecked) _selectedIds.Add(id);
+        else _selectedIds.Remove(id);
+    }
+
+    private void ToggleSelected(Guid id)
+    {
+        if (!_selectedIds.Add(id)) _selectedIds.Remove(id);
+    }
+
+    private void ToggleSelectMode()
+    {
+        _selectMode = !_selectMode;
+        _selectedIds.Clear();
+        _expandedId = null;
+    }
+
+    private async Task RaiseBulkDelete()
+    {
+        IReadOnlyList<Guid> ids = [.. _selectedIds];
+        await OnBulkDelete.InvokeAsync(ids);
+        _selectMode = false;
+        _selectedIds.Clear();
     }
 }
