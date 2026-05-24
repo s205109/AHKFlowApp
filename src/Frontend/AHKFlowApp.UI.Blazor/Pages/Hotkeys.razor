@@ -61,6 +61,7 @@
     }
 
     <MudDataGrid @ref="_grid" T="HotkeyEditModel" ServerData="LoadServerData"
+                 Class="hotkeys-grid"
                  MultiSelection="true" SelectOnRowClick="false"
                  SelectedItems="_selected" SelectedItemsChanged="OnSelectedItemsChanged"
                  Dense="true" Hover="true" RowsPerPage="_rowsPerPage"

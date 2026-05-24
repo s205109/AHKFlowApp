@@ -4,6 +4,7 @@ using Xunit;
 
 namespace AHKFlowApp.E2E.Tests;
 
+[Collection(E2ETestCollection.Name)]
 public sealed class HotkeysMobileFlowTests(StackFixture fixture) : IClassFixture<StackFixture>
 {
     private static readonly BrowserNewContextOptions PhoneViewport = new()
