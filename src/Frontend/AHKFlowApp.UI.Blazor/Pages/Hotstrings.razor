@@ -277,6 +277,8 @@
 
             ApiResult<PagedList<CategoryDto>> catResult = await CategoriesApi.ListAsync(new CategoryListRequest(PageSize: 200), _cts.Token);
             if (catResult.IsSuccess) _categories = catResult.Value?.Items ?? [];
+
+            await LoadMobileAsync();
         }
 
     }
@@ -406,7 +408,7 @@
 
     private async Task ReloadAsync()
     {
-        if (_grid is not null) await _grid.ReloadServerData();
+        await ReloadAllAsync();
     }
 
     private async Task OnSearchChangedAsync()
@@ -574,13 +576,11 @@
             _loadError = ApiErrorMessageFactory.Build(result.Status, result.Problem);
             _mobileItems = [];
             _mobileTotalPages = 0;
-            await InvokeAsync(StateHasChanged);
             return;
         }
 
         _mobileItems = [.. result.Value!.Items.Select(HotstringEditModel.FromDto)];
         _mobileTotalPages = (int)Math.Ceiling((double)result.Value.TotalCount / _mobilePageSize);
-        await InvokeAsync(StateHasChanged);
     }
 
     private async Task OnMobilePageChangedAsync(int page)
