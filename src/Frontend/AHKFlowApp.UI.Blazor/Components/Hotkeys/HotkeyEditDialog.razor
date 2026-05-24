@@ -14,12 +14,14 @@
         </MudStack>
     </TitleContent>
     <DialogContent>
+        <MudForm @ref="_form">
         <MudStack Spacing="3" Class="pa-2">
             <MudTextField T="string" Label="Description" @bind-Value="Item.Description"
                           Required="true" RequiredError="Description is required" MaxLength="200"
                           UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "description-input" })" />
             <MudTextField T="string" Label="Key" @bind-Value="Item.Key"
                           Required="true" RequiredError="Key is required" MaxLength="20"
+                          Error="@(_keyError is not null)" ErrorText="@_keyError"
                           UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "key-input" })" />
             <MudStack Row="true" Spacing="2">
                 <MudCheckBox T="bool" @bind-Value="Item.Ctrl" Label="Ctrl"
@@ -72,6 +74,7 @@
                 <MudAlert Severity="Severity.Error">@_error</MudAlert>
             }
         </MudStack>
+        </MudForm>
     </DialogContent>
 </MudDialog>
 
@@ -84,7 +87,9 @@
     [Parameter] public IReadOnlyList<CategoryDto> Categories { get; set; } = [];
 
     private string? _error;
+    private string? _keyError;
     private bool _saving;
+    private MudForm _form = default!;
     private readonly CancellationTokenSource _cts = new();
 
     private void Cancel() => Dialog.Cancel();
@@ -94,13 +99,12 @@
         if (_saving) return;
         _saving = true;
         _error = null;
+        _keyError = null;
         try
         {
-            if (string.IsNullOrWhiteSpace(Item.Description) || string.IsNullOrWhiteSpace(Item.Key))
-            {
-                _error = "Description and Key are required.";
+            await _form.ValidateAsync();
+            if (!_form.IsValid)
                 return;
-            }
 
             ApiResult<HotkeyDto> result = Item.Id is null
                 ? await Api.CreateAsync(Item.ToCreateDto(), _cts.Token)
@@ -108,7 +112,12 @@
 
             if (!result.IsSuccess)
             {
-                _error = ApiErrorMessageFactory.Build(result.Status, result.Problem);
+                string message = ApiErrorMessageFactory.Build(result.Status, result.Problem);
+                if (result.Status == ApiResultStatus.Conflict)
+                    _keyError = message;
+                else
+                    _error = message;
+
                 return;
             }
 

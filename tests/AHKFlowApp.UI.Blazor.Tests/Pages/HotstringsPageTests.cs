@@ -45,6 +45,7 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
     private IRenderedComponent<Hotstrings> RenderPage()
     {
         Render<MudPopoverProvider>();
+        Render<MudDialogProvider>();
         return Render<Hotstrings>(p => p.AddCascadingValue(AuthenticatedState));
     }
 
@@ -207,7 +208,7 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
-    public void Page_ReloadWhileEditingExistingRow_KeepsEditControls()
+    public void Page_ReloadWhileExpanded_KeepsMobileRowControls()
     {
         var dto = new HotstringDto(Guid.NewGuid(), [], true, "btw", "by the way", null, true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
         _api.ListAsync(Arg.Any<HotstringListRequest>(), Arg.Any<CancellationToken>())
@@ -218,17 +219,17 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
                 ApiResult<PagedList<HotstringDto>>.Ok(Page(dto)));
 
         IRenderedComponent<Hotstrings> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find(".mobile-row"));
+        cut.Find(".mobile-row").Click();
         cut.WaitForAssertion(() => cut.Find("button.start-edit"));
-        cut.Find("button.start-edit").Click();
-        cut.WaitForAssertion(() => cut.Find("button.commit-edit"));
 
-        cut.Find("button.reload-hotstrings").Click();
+        cut.Find("button.reload-hotstrings-mobile").Click();
 
-        cut.WaitForAssertion(() => _api.Received(4).ListAsync(Arg.Any<HotstringListRequest>(), Arg.Any<CancellationToken>()));
+        cut.WaitForAssertion(() => _api.Received(2).ListAsync(Arg.Any<HotstringListRequest>(), Arg.Any<CancellationToken>()));
         cut.WaitForAssertion(() =>
         {
-            cut.Find("button.commit-edit").Should().NotBeNull();
-            cut.Find("input[data-test=\"trigger-input\"]").Should().NotBeNull();
+            cut.Find("button.start-edit").Should().NotBeNull();
+            cut.Markup.Should().Contain("by the way");
         });
     }
 
@@ -407,13 +408,8 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
         StubList(Page());
 
         IRenderedComponent<Hotstrings> cut = RenderPage();
-        cut.WaitForAssertion(() => cut.Find("button.add-hotstring"));
+        cut.WaitForAssertion(() => cut.Find("button.add-hotstring-fab"));
 
-        // Desktop branch wrapper
-        cut.FindAll(".desktop-branch").Should().NotBeEmpty();
-        // Mobile branch wrapper
-        cut.FindAll(".mobile-branch").Should().NotBeEmpty();
-        // FAB only in mobile branch
-        cut.FindAll("button.add-hotstring-fab").Should().NotBeEmpty();
+        cut.FindComponents<MudHidden>().Should().HaveCount(2);
     }
 }

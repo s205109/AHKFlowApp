@@ -13,9 +13,11 @@
         </MudStack>
     </TitleContent>
     <DialogContent>
+        <MudForm @ref="_form">
         <MudStack Spacing="3" Class="pa-2">
             <MudTextField T="string" Label="Trigger" @bind-Value="Item.Trigger"
                           Required="true" RequiredError="Trigger is required" MaxLength="50"
+                          Error="@(_triggerError is not null)" ErrorText="@_triggerError"
                           UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "trigger-input" })" />
             <MudTextField T="string" Label="Replacement" @bind-Value="Item.Replacement"
                           Lines="3" Required="true" RequiredError="Replacement is required" MaxLength="4000"
@@ -59,6 +61,7 @@
                 <MudAlert Severity="Severity.Error">@_error</MudAlert>
             }
         </MudStack>
+        </MudForm>
     </DialogContent>
 </MudDialog>
 
@@ -71,7 +74,9 @@
     [Parameter] public IReadOnlyList<CategoryDto> Categories { get; set; } = [];
 
     private string? _error;
+    private string? _triggerError;
     private bool _saving;
+    private MudForm _form = default!;
     private readonly CancellationTokenSource _cts = new();
 
     private void Cancel() => Dialog.Cancel();
@@ -83,11 +88,11 @@
         try
         {
             _error = null;
-            if (string.IsNullOrWhiteSpace(Item.Trigger) || string.IsNullOrWhiteSpace(Item.Replacement))
-            {
-                _error = "Trigger and Replacement are required.";
+            _triggerError = null;
+
+            await _form.ValidateAsync();
+            if (!_form.IsValid)
                 return;
-            }
 
             ApiResult<HotstringDto> result = Item.Id is null
                 ? await Api.CreateAsync(Item.ToCreateDto(), _cts.Token)
@@ -95,7 +100,12 @@
 
             if (!result.IsSuccess)
             {
-                _error = ApiErrorMessageFactory.Build(result.Status, result.Problem);
+                string message = ApiErrorMessageFactory.Build(result.Status, result.Problem);
+                if (result.Status == ApiResultStatus.Conflict)
+                    _triggerError = message;
+                else
+                    _error = message;
+
                 return;
             }
 

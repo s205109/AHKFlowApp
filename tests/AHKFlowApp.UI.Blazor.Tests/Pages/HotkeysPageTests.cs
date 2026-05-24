@@ -45,6 +45,7 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
     private IRenderedComponent<Hotkeys> RenderPage()
     {
         Render<MudPopoverProvider>();
+        Render<MudDialogProvider>();
         return Render<Hotkeys>(p => p.AddCascadingValue(AuthenticatedState));
     }
 
@@ -214,7 +215,7 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
-    public void Page_ReloadWhileEditingExistingRow_KeepsEditControls()
+    public void Page_ReloadWhileExpanded_KeepsMobileRowControls()
     {
         HotkeyDto dto = MakeHotkey("Open terminal", "T");
         _api.ListAsync(Arg.Any<HotkeyListRequest>(), Arg.Any<CancellationToken>())
@@ -225,17 +226,17 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
                 ApiResult<PagedList<HotkeyDto>>.Ok(Page(dto)));
 
         IRenderedComponent<Hotkeys> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find(".mobile-row"));
+        cut.Find(".mobile-row").Click();
         cut.WaitForAssertion(() => cut.Find("button.start-edit"));
-        cut.Find("button.start-edit").Click();
-        cut.WaitForAssertion(() => cut.Find("button.commit-edit"));
 
-        cut.Find("button.reload-hotkeys").Click();
+        cut.Find("button.reload-hotkeys-mobile").Click();
 
-        cut.WaitForAssertion(() => _api.Received(4).ListAsync(Arg.Any<HotkeyListRequest>(), Arg.Any<CancellationToken>()));
+        cut.WaitForAssertion(() => _api.Received(2).ListAsync(Arg.Any<HotkeyListRequest>(), Arg.Any<CancellationToken>()));
         cut.WaitForAssertion(() =>
         {
-            cut.Find("button.commit-edit").Should().NotBeNull();
-            cut.Find("input[data-test=\"key-input\"]").Should().NotBeNull();
+            cut.Find("button.start-edit").Should().NotBeNull();
+            cut.Markup.Should().Contain("Open terminal");
         });
     }
 
@@ -487,13 +488,8 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
         StubList(Page());
 
         IRenderedComponent<Hotkeys> cut = RenderPage();
-        cut.WaitForAssertion(() => cut.Find("button.add-hotkey"));
+        cut.WaitForAssertion(() => cut.Find("button.add-hotkey-fab"));
 
-        // Desktop branch wrapper
-        cut.FindAll(".desktop-branch").Should().NotBeEmpty();
-        // Mobile branch wrapper
-        cut.FindAll(".mobile-branch").Should().NotBeEmpty();
-        // FAB only in mobile branch
-        cut.FindAll("button.add-hotkey-fab").Should().NotBeEmpty();
+        cut.FindComponents<MudHidden>().Should().HaveCount(2);
     }
 }

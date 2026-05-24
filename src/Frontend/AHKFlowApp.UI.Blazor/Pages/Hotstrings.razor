@@ -11,7 +11,8 @@
 
 <MudText Typo="Typo.h4" GutterBottom="true">Hotstrings</MudText>
 
-<div class="desktop-branch">
+<MudHidden Breakpoint="Breakpoint.SmAndDown">
+    <div class="desktop-branch">
         <MudPaper Class="pa-4">
             <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Wrap="Wrap.Wrap" Class="mb-4">
                 <MudButton Class="add-hotstring" Variant="Variant.Filled" Color="Color.Primary"
@@ -177,8 +178,10 @@
             </MudDataGrid>
         </MudPaper>
 </div>
+</MudHidden>
 
-<div class="mobile-branch">
+<MudHidden Breakpoint="Breakpoint.SmAndDown" Invert="true">
+    <div class="mobile-branch">
         <MudPaper Class="pa-2" Style="position:relative;min-height:80vh;">
             <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="mb-2">
                 <MudIconButton Class="reload-hotstrings-mobile" Icon="@Icons.Material.Filled.Refresh"
@@ -229,6 +232,7 @@
                     OnClick="OpenCreateDialogAsync" />
         </MudPaper>
 </div>
+</MudHidden>
 
 @code {
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
@@ -258,6 +262,8 @@
     private int _mobilePage = 1;
     private readonly int _mobilePageSize = 10;
     private int _mobileTotalPages;
+    private HotstringListRequest? _cachedListRequest;
+    private PagedList<HotstringDto>? _cachedListPage;
 
     protected override async Task OnInitializedAsync()
     {
@@ -291,7 +297,7 @@
 
         (string? sortField, bool sortDescending) = GetSort(state);
 
-        ApiResult<PagedList<HotstringDto>> result = await Api.ListAsync(
+        ApiResult<PagedList<HotstringDto>> result = await ListAsync(
             new HotstringListRequest(
                 Page: state.Page + 1,
                 PageSize: state.PageSize,
@@ -477,6 +483,7 @@
                 _pendingCreate = null;
                 _editingItem = null;
                 Snackbar.Add("Hotstring created.", Severity.Success);
+                ClearListCache();
 
                 if (_grid is not null)
                     await _grid.ReloadServerData();
@@ -490,6 +497,7 @@
             {
                 _editingItem = null;
                 Snackbar.Add("Hotstring updated.", Severity.Success);
+                ClearListCache();
 
                 if (_grid is not null)
                     await _grid.ReloadServerData();
@@ -513,6 +521,7 @@
         if (result.IsSuccess)
         {
             Snackbar.Add("Hotstring deleted.", Severity.Success);
+            ClearListCache();
             await ReloadAllAsync();
         }
         else Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
@@ -547,6 +556,7 @@
                 : $"Deleted {deleted} hotstring(s).";
             Snackbar.Add(message, Severity.Success);
             _selected = [];
+            ClearListCache();
 
             if (_grid is not null)
                 await _grid.ReloadServerData();
@@ -562,7 +572,7 @@
         _loading = true;
         _loadError = null;
 
-        ApiResult<PagedList<HotstringDto>> result = await Api.ListAsync(
+        ApiResult<PagedList<HotstringDto>> result = await ListAsync(
             new HotstringListRequest(
                 Page: _mobilePage,
                 PageSize: _mobilePageSize,
@@ -657,6 +667,7 @@
         if (result.IsSuccess)
         {
             Snackbar.Add($"Deleted {result.Value!.DeletedCount} hotstring(s).", Severity.Success);
+            ClearListCache();
             await ReloadAllAsync();
         }
         else
@@ -667,8 +678,34 @@
 
     private async Task ReloadAllAsync()
     {
+        ClearListCache();
         if (_grid is not null) await _grid.ReloadServerData();
         await LoadMobileAsync();
+    }
+
+    private async Task<ApiResult<PagedList<HotstringDto>>> ListAsync(HotstringListRequest request, CancellationToken ct)
+    {
+        if (_cachedListRequest == request && _cachedListPage is not null)
+            return ApiResult<PagedList<HotstringDto>>.Ok(_cachedListPage);
+
+        ApiResult<PagedList<HotstringDto>> result = await Api.ListAsync(request, ct);
+        if (result.IsSuccess)
+        {
+            _cachedListRequest = request;
+            _cachedListPage = result.Value;
+        }
+        else
+        {
+            ClearListCache();
+        }
+
+        return result;
+    }
+
+    private void ClearListCache()
+    {
+        _cachedListRequest = null;
+        _cachedListPage = null;
     }
 
     private async Task OnCategoryFilterChangedAsync(IReadOnlyCollection<Guid> ids)
