@@ -213,6 +213,8 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
         _api.ListAsync(Arg.Any<HotstringListRequest>(), Arg.Any<CancellationToken>())
             .Returns(
                 ApiResult<PagedList<HotstringDto>>.Ok(Page(dto)),
+                ApiResult<PagedList<HotstringDto>>.Ok(Page(dto)),
+                ApiResult<PagedList<HotstringDto>>.Ok(Page(dto)),
                 ApiResult<PagedList<HotstringDto>>.Ok(Page(dto)));
 
         IRenderedComponent<Hotstrings> cut = RenderPage();
@@ -222,7 +224,7 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
 
         cut.Find("button.reload-hotstrings").Click();
 
-        cut.WaitForAssertion(() => _api.Received(2).ListAsync(Arg.Any<HotstringListRequest>(), Arg.Any<CancellationToken>()));
+        cut.WaitForAssertion(() => _api.Received(4).ListAsync(Arg.Any<HotstringListRequest>(), Arg.Any<CancellationToken>()));
         cut.WaitForAssertion(() =>
         {
             cut.Find("button.commit-edit").Should().NotBeNull();
