@@ -1,0 +1,19 @@
+/* Show desktop branch on medium+ screens, hide on small */
+.desktop-branch {
+    display: block;
+}
+
+.mobile-branch {
+    display: none;
+}
+
+/* MudBlazor sm breakpoint = 600px */
+@media (max-width: 959.95px) {
+    .desktop-branch {
+        display: none;
+    }
+
+    .mobile-branch {
+        display: block;
+    }
+}

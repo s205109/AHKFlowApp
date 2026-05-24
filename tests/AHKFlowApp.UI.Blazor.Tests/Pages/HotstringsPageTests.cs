@@ -398,4 +398,20 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
                 r.CategoryIds.Contains(work.Id)),
             Arg.Any<CancellationToken>()));
     }
+
+    [Fact]
+    public void Page_RendersBothDesktopAndMobileBranches()
+    {
+        StubList(Page());
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find("button.add-hotstring"));
+
+        // Desktop branch wrapper
+        cut.FindAll(".desktop-branch").Should().NotBeEmpty();
+        // Mobile branch wrapper
+        cut.FindAll(".mobile-branch").Should().NotBeEmpty();
+        // FAB only in mobile branch
+        cut.FindAll("button.add-hotstring-fab").Should().NotBeEmpty();
+    }
 }
