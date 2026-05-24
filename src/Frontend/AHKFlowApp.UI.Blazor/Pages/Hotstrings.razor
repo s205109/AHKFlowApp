@@ -61,6 +61,7 @@
             }
 
             <MudDataGrid @ref="_grid" T="HotstringEditModel" ServerData="LoadServerData"
+                         Class="hotstrings-grid"
                          MultiSelection="true" SelectOnRowClick="false"
                          SelectedItems="_selected" SelectedItemsChanged="OnSelectedItemsChanged"
                          Dense="true" Hover="true" RowsPerPage="_rowsPerPage"
