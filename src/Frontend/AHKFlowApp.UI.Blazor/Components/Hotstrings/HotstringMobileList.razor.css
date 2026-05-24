@@ -1,0 +1,49 @@
+.mobile-list {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+.mobile-list .mobile-header {
+    background: var(--mud-palette-background-grey);
+}
+
+.mobile-list .mobile-header th {
+    text-align: left;
+    padding: 6px 12px;
+    font-weight: 500;
+    font-size: 0.75rem;
+    color: var(--mud-palette-text-secondary);
+}
+
+.mobile-list .mobile-row {
+    border-top: 1px solid var(--mud-palette-divider);
+    cursor: pointer;
+}
+
+.mobile-list .mobile-row td {
+    padding: 10px 12px;
+    vertical-align: middle;
+}
+
+.mobile-list .trigger-cell {
+    width: 30%;
+    white-space: nowrap;
+}
+
+.mobile-list .replacement-cell {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 0;
+}
+
+.mobile-list .chevron-cell {
+    width: 24px;
+    text-align: right;
+    color: var(--mud-palette-text-secondary);
+}
+
+.mobile-list .mobile-row-expanded {
+    background: var(--mud-palette-background-grey);
+}
