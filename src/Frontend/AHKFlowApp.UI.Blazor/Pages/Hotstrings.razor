@@ -2,6 +2,7 @@
 @using AHKFlowApp.UI.Blazor.DTOs
 @using AHKFlowApp.UI.Blazor.Services
 @using AHKFlowApp.UI.Blazor.Validation
+@using AHKFlowApp.UI.Blazor.Components.Hotstrings
 @using MudBlazor
 @using Microsoft.AspNetCore.Components.Authorization
 @implements IDisposable
@@ -10,169 +11,223 @@
 
 <MudText Typo="Typo.h4" GutterBottom="true">Hotstrings</MudText>
 
-<MudPaper Class="pa-4">
-    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Wrap="Wrap.Wrap" Class="mb-4">
-        <MudButton Class="add-hotstring" Variant="Variant.Filled" Color="Color.Primary"
-                   StartIcon="@Icons.Material.Filled.Add" OnClick="StartAddAsync"
-                   Disabled="@(!_isAuthenticated || _pendingCreate is not null || _editingItem is not null)">
-            Add
-        </MudButton>
-        <MudButton Class="reload-hotstrings" Variant="Variant.Filled" Color="Color.Secondary"
-                   StartIcon="@Icons.Material.Filled.Refresh" OnClick="ReloadAsync"
-                   Disabled="@(!_isAuthenticated || _loading)">
-            Reload
-        </MudButton>
-        @if (_selected.Count > 0)
-        {
-            <MudButton Class="bulk-delete-hotstrings" Variant="Variant.Filled" Color="Color.Error"
-                       StartIcon="@Icons.Material.Filled.DeleteSweep" OnClick="BulkDeleteAsync">
-                Delete @_selected.Count selected
-            </MudButton>
-        }
-        <MudSpacer />
-        <MudTextField T="string" @bind-Value="_search" @bind-Value:after="OnSearchChangedAsync"
-                      DebounceInterval="300"
-                      Placeholder="Search For Hotstrings"
-                      Adornment="Adornment.Start"
-                      AdornmentIcon="@Icons.Material.Filled.Search"
-                      Class="search-hotstrings"
-                      Style="max-width: 360px;"
-                      Immediate="true" />
-    </MudStack>
+<div class="desktop-branch">
+        <MudPaper Class="pa-4">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Wrap="Wrap.Wrap" Class="mb-4">
+                <MudButton Class="add-hotstring" Variant="Variant.Filled" Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.Add" OnClick="StartAddAsync"
+                           Disabled="@(!_isAuthenticated || _pendingCreate is not null || _editingItem is not null)">
+                    Add
+                </MudButton>
+                <MudButton Class="reload-hotstrings" Variant="Variant.Filled" Color="Color.Secondary"
+                           StartIcon="@Icons.Material.Filled.Refresh" OnClick="ReloadAsync"
+                           Disabled="@(!_isAuthenticated || _loading)">
+                    Reload
+                </MudButton>
+                @if (_selected.Count > 0)
+                {
+                    <MudButton Class="bulk-delete-hotstrings" Variant="Variant.Filled" Color="Color.Error"
+                               StartIcon="@Icons.Material.Filled.DeleteSweep" OnClick="BulkDeleteAsync">
+                        Delete @_selected.Count selected
+                    </MudButton>
+                }
+                <MudSpacer />
+                <MudTextField T="string" @bind-Value="_search" @bind-Value:after="OnSearchChangedAsync"
+                              DebounceInterval="300"
+                              Placeholder="Search For Hotstrings"
+                              Adornment="Adornment.Start"
+                              AdornmentIcon="@Icons.Material.Filled.Search"
+                              Class="search-hotstrings"
+                              Style="max-width: 360px;"
+                              Immediate="true" />
+            </MudStack>
 
-    @if (_loadError is not null)
-    {
-        <MudAlert Severity="Severity.Error" Class="mb-3">@_loadError</MudAlert>
-    }
-
-    @if (_categories.Count > 0)
-    {
-        <MudChipSet T="Guid" SelectionMode="SelectionMode.MultiSelection"
-                    SelectedValues="_selectedCategoryIds"
-                    SelectedValuesChanged="OnCategoryFilterChangedAsync"
-                    Class="mb-2">
-            @foreach (CategoryDto c in _categories)
+            @if (_loadError is not null)
             {
-                <MudChip T="Guid" Value="@c.Id" Variant="Variant.Outlined">@c.Name</MudChip>
+                <MudAlert Severity="Severity.Error" Class="mb-3">@_loadError</MudAlert>
             }
-        </MudChipSet>
-    }
 
-    <MudDataGrid @ref="_grid" T="HotstringEditModel" ServerData="LoadServerData"
-                 MultiSelection="true" SelectOnRowClick="false"
-                 SelectedItems="_selected" SelectedItemsChanged="OnSelectedItemsChanged"
-                 Dense="true" Hover="true" RowsPerPage="_rowsPerPage"
-                 Filterable="true" FilterMode="DataGridFilterMode.ColumnFilterMenu"
-                 SortMode="SortMode.Single" ReadOnly="true"
-                 RowClassFunc="@GetRowClass">
-        <Columns>
-            <SelectColumn T="HotstringEditModel" />
-            <PropertyColumn Property="x => x.Trigger" Title="Trigger">
-                <CellTemplate>
-                    @if (IsEditing(context.Item))
+            @if (_categories.Count > 0)
+            {
+                <MudChipSet T="Guid" SelectionMode="SelectionMode.MultiSelection"
+                            SelectedValues="_selectedCategoryIds"
+                            SelectedValuesChanged="OnCategoryFilterChangedAsync"
+                            Class="mb-2">
+                    @foreach (CategoryDto c in _categories)
                     {
-                        <MudTextField @bind-Value="context.Item.Trigger"
-                                      Validation="@(new Func<string, string?>(ValidateTrigger))"
-                                      Error="@(_commitAttempted && ValidateTrigger(context.Item.Trigger) is not null)"
-                                      ErrorText="@(_commitAttempted ? ValidateTrigger(context.Item.Trigger) : null)"
-                                      Immediate="true" MaxLength="50"
-                                      UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "trigger-input" })" />
+                        <MudChip T="Guid" Value="@c.Id" Variant="Variant.Outlined">@c.Name</MudChip>
                     }
-                    else
-                    {
-                        @context.Item.Trigger
-                    }
-                </CellTemplate>
-            </PropertyColumn>
-            <PropertyColumn Property="x => x.Replacement" Title="Replacement">
-                <CellTemplate>
-                    @if (IsEditing(context.Item))
-                    {
-                        <MudTextField @bind-Value="context.Item.Replacement"
-                                      Validation="@(new Func<string, string?>(ValidateReplacement))"
-                                      Error="@(_commitAttempted && ValidateReplacement(context.Item.Replacement) is not null)"
-                                      ErrorText="@(_commitAttempted ? ValidateReplacement(context.Item.Replacement) : null)"
-                                      Immediate="true" MaxLength="4000"
-                                      UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "replacement-input" })" />
-                    }
-                    else
-                    {
-                        @context.Item.Replacement
-                    }
-                </CellTemplate>
-            </PropertyColumn>
-            <PropertyColumn Property="x => x.Description" Title="Description" Hideable="true">
-                <CellTemplate>
-                    @if (IsEditing(context.Item))
-                    {
-                        <MudTextField @bind-Value="context.Item.Description"
-                                      Immediate="true" MaxLength="200"
-                                      UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "description-input" })" />
-                    }
-                    else
-                    {
-                        @context.Item.Description
-                    }
-                </CellTemplate>
-            </PropertyColumn>
-            <TemplateColumn Title="Profiles" Sortable="false" Filterable="false">
-                <CellTemplate>
-                    @if (IsEditing(context.Item))
-                    {
-                        @RenderProfileEditor(context.Item)
-                    }
-                    else
-                    {
-                        @RenderProfiles(context.Item.AppliesToAllProfiles, context.Item.ProfileIds)
-                    }
-                </CellTemplate>
-            </TemplateColumn>
-            <PropertyColumn Property="x => x.IsEndingCharacterRequired" Title="Ending char required">
-                <CellTemplate>
-                    @if (IsEditing(context.Item))
-                    {
-                        <MudCheckBox T="bool" @bind-Value="context.Item.IsEndingCharacterRequired" />
-                    }
-                    else
-                    {
-                        <MudCheckBox T="bool" Value="@context.Item.IsEndingCharacterRequired" ReadOnly="true" />
-                    }
-                </CellTemplate>
-            </PropertyColumn>
-            <PropertyColumn Property="x => x.IsTriggerInsideWord" Title="Trigger inside word">
-                <CellTemplate>
-                    @if (IsEditing(context.Item))
-                    {
-                        <MudCheckBox T="bool" @bind-Value="context.Item.IsTriggerInsideWord" />
-                    }
-                    else
-                    {
-                        <MudCheckBox T="bool" Value="@context.Item.IsTriggerInsideWord" ReadOnly="true" />
-                    }
-                </CellTemplate>
-            </PropertyColumn>
-            <TemplateColumn Title="Categories" Sortable="false" Filterable="false">
-                <CellTemplate>
-                    @if (IsEditing(context.Item))
-                    {
-                        @RenderCategoryEditor(context.Item)
-                    }
-                    else
-                    {
-                        @RenderCategories(context.Item.CategoryIds)
-                    }
-                </CellTemplate>
-            </TemplateColumn>
-            <TemplateColumn Title="Actions" Sortable="false" Filterable="false" HeaderStyle="width:160px">
-                <CellTemplate>@RenderActions(context.Item)</CellTemplate>
-            </TemplateColumn>
-        </Columns>
-        <NoRecordsContent><MudText>No hotstrings yet.</MudText></NoRecordsContent>
-        <PagerContent>
-            <MudDataGridPager T="HotstringEditModel" PageSizeOptions="UserPreferences.AllowedRowsPerPage" />
-        </PagerContent>
-    </MudDataGrid>
-</MudPaper>
+                </MudChipSet>
+            }
+
+            <MudDataGrid @ref="_grid" T="HotstringEditModel" ServerData="LoadServerData"
+                         MultiSelection="true" SelectOnRowClick="false"
+                         SelectedItems="_selected" SelectedItemsChanged="OnSelectedItemsChanged"
+                         Dense="true" Hover="true" RowsPerPage="_rowsPerPage"
+                         Filterable="true" FilterMode="DataGridFilterMode.ColumnFilterMenu"
+                         SortMode="SortMode.Single" ReadOnly="true"
+                         RowClassFunc="@GetRowClass">
+                <Columns>
+                    <SelectColumn T="HotstringEditModel" />
+                    <PropertyColumn Property="x => x.Trigger" Title="Trigger">
+                        <CellTemplate>
+                            @if (IsEditing(context.Item))
+                            {
+                                <MudTextField @bind-Value="context.Item.Trigger"
+                                              Validation="@(new Func<string, string?>(ValidateTrigger))"
+                                              Error="@(_commitAttempted && ValidateTrigger(context.Item.Trigger) is not null)"
+                                              ErrorText="@(_commitAttempted ? ValidateTrigger(context.Item.Trigger) : null)"
+                                              Immediate="true" MaxLength="50"
+                                              UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "trigger-input" })" />
+                            }
+                            else
+                            {
+                                @context.Item.Trigger
+                            }
+                        </CellTemplate>
+                    </PropertyColumn>
+                    <PropertyColumn Property="x => x.Replacement" Title="Replacement">
+                        <CellTemplate>
+                            @if (IsEditing(context.Item))
+                            {
+                                <MudTextField @bind-Value="context.Item.Replacement"
+                                              Validation="@(new Func<string, string?>(ValidateReplacement))"
+                                              Error="@(_commitAttempted && ValidateReplacement(context.Item.Replacement) is not null)"
+                                              ErrorText="@(_commitAttempted ? ValidateReplacement(context.Item.Replacement) : null)"
+                                              Immediate="true" MaxLength="4000"
+                                              UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "replacement-input" })" />
+                            }
+                            else
+                            {
+                                @context.Item.Replacement
+                            }
+                        </CellTemplate>
+                    </PropertyColumn>
+                    <PropertyColumn Property="x => x.Description" Title="Description" Hideable="true">
+                        <CellTemplate>
+                            @if (IsEditing(context.Item))
+                            {
+                                <MudTextField @bind-Value="context.Item.Description"
+                                              Immediate="true" MaxLength="200"
+                                              UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "description-input" })" />
+                            }
+                            else
+                            {
+                                @context.Item.Description
+                            }
+                        </CellTemplate>
+                    </PropertyColumn>
+                    <TemplateColumn Title="Profiles" Sortable="false" Filterable="false">
+                        <CellTemplate>
+                            @if (IsEditing(context.Item))
+                            {
+                                @RenderProfileEditor(context.Item)
+                            }
+                            else
+                            {
+                                @RenderProfiles(context.Item.AppliesToAllProfiles, context.Item.ProfileIds)
+                            }
+                        </CellTemplate>
+                    </TemplateColumn>
+                    <PropertyColumn Property="x => x.IsEndingCharacterRequired" Title="Ending char required">
+                        <CellTemplate>
+                            @if (IsEditing(context.Item))
+                            {
+                                <MudCheckBox T="bool" @bind-Value="context.Item.IsEndingCharacterRequired" />
+                            }
+                            else
+                            {
+                                <MudCheckBox T="bool" Value="@context.Item.IsEndingCharacterRequired" ReadOnly="true" />
+                            }
+                        </CellTemplate>
+                    </PropertyColumn>
+                    <PropertyColumn Property="x => x.IsTriggerInsideWord" Title="Trigger inside word">
+                        <CellTemplate>
+                            @if (IsEditing(context.Item))
+                            {
+                                <MudCheckBox T="bool" @bind-Value="context.Item.IsTriggerInsideWord" />
+                            }
+                            else
+                            {
+                                <MudCheckBox T="bool" Value="@context.Item.IsTriggerInsideWord" ReadOnly="true" />
+                            }
+                        </CellTemplate>
+                    </PropertyColumn>
+                    <TemplateColumn Title="Categories" Sortable="false" Filterable="false">
+                        <CellTemplate>
+                            @if (IsEditing(context.Item))
+                            {
+                                @RenderCategoryEditor(context.Item)
+                            }
+                            else
+                            {
+                                @RenderCategories(context.Item.CategoryIds)
+                            }
+                        </CellTemplate>
+                    </TemplateColumn>
+                    <TemplateColumn Title="Actions" Sortable="false" Filterable="false" HeaderStyle="width:160px">
+                        <CellTemplate>@RenderActions(context.Item)</CellTemplate>
+                    </TemplateColumn>
+                </Columns>
+                <NoRecordsContent><MudText>No hotstrings yet.</MudText></NoRecordsContent>
+                <PagerContent>
+                    <MudDataGridPager T="HotstringEditModel" PageSizeOptions="UserPreferences.AllowedRowsPerPage" />
+                </PagerContent>
+            </MudDataGrid>
+        </MudPaper>
+</div>
+
+<div class="mobile-branch">
+        <MudPaper Class="pa-2" Style="position:relative;min-height:80vh;">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="mb-2">
+                <MudIconButton Class="reload-hotstrings-mobile" Icon="@Icons.Material.Filled.Refresh"
+                               OnClick="ReloadAsync" Disabled="@(!_isAuthenticated || _loading)" />
+                <MudSpacer />
+            </MudStack>
+
+            <MudTextField T="string" @bind-Value="_search" @bind-Value:after="OnSearchChangedAsync"
+                          DebounceInterval="300"
+                          Placeholder="Search hotstrings"
+                          Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Filled.Search"
+                          Class="search-hotstrings mb-2"
+                          FullWidth="true" Immediate="true" />
+
+            @if (_categories.Count > 0)
+            {
+                <div class="chip-strip mb-2" style="overflow-x:auto;white-space:nowrap;">
+                    <MudChipSet T="Guid" SelectionMode="SelectionMode.MultiSelection"
+                                SelectedValues="_selectedCategoryIds"
+                                SelectedValuesChanged="OnCategoryFilterChangedAsync">
+                        @foreach (CategoryDto c in _categories)
+                        {
+                            <MudChip T="Guid" Value="@c.Id" Variant="Variant.Outlined">@c.Name</MudChip>
+                        }
+                    </MudChipSet>
+                </div>
+            }
+
+            @if (_loadError is not null)
+            {
+                <MudAlert Severity="Severity.Error" Class="mb-3">@_loadError</MudAlert>
+            }
+
+            <HotstringMobileList Items="_mobileItems"
+                                 Profiles="_profiles"
+                                 Categories="_categories"
+                                 OnEdit="OpenEditDialogAsync"
+                                 OnDelete="DeleteAsync"
+                                 OnBulkDelete="MobileBulkDeleteAsync" />
+
+            <MudPagination Class="mt-2" Count="_mobileTotalPages" Selected="_mobilePage"
+                           SelectedChanged="OnMobilePageChangedAsync" />
+
+            <MudFab Class="add-hotstring-fab" Color="Color.Primary"
+                    StartIcon="@Icons.Material.Filled.Add"
+                    Style="position:fixed;right:16px;bottom:16px;z-index:100;"
+                    OnClick="OpenCreateDialogAsync" />
+        </MudPaper>
+</div>
 
 @code {
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
@@ -198,6 +253,11 @@
     private int _rowsPerPage = UserPreferences.Default.RowsPerPage;
     private readonly CancellationTokenSource _cts = new();
 
+    private IReadOnlyList<HotstringEditModel> _mobileItems = [];
+    private int _mobilePage = 1;
+    private readonly int _mobilePageSize = 10;
+    private int _mobileTotalPages;
+
     protected override async Task OnInitializedAsync()
     {
         if (AuthState is not null)
@@ -218,6 +278,7 @@
             ApiResult<PagedList<CategoryDto>> catResult = await CategoriesApi.ListAsync(new CategoryListRequest(PageSize: 200), _cts.Token);
             if (catResult.IsSuccess) _categories = catResult.Value?.Items ?? [];
         }
+
     }
 
     private async Task<GridData<HotstringEditModel>> LoadServerData(GridState<HotstringEditModel> state, CancellationToken ct)
@@ -351,6 +412,8 @@
     private async Task OnSearchChangedAsync()
     {
         if (_grid is not null) await _grid.ReloadServerData();
+        _mobilePage = 1;
+        await LoadMobileAsync();
     }
 
     private async Task StartAddAsync()
@@ -447,7 +510,7 @@
         if (result.IsSuccess)
         {
             Snackbar.Add("Hotstring deleted.", Severity.Success);
-            if (_grid is not null) await _grid.ReloadServerData();
+            await ReloadAllAsync();
         }
         else Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
     }
@@ -489,6 +552,130 @@
         {
             Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
         }
+    }
+
+    private async Task LoadMobileAsync()
+    {
+        _loading = true;
+        _loadError = null;
+
+        ApiResult<PagedList<HotstringDto>> result = await Api.ListAsync(
+            new HotstringListRequest(
+                Page: _mobilePage,
+                PageSize: _mobilePageSize,
+                Search: string.IsNullOrWhiteSpace(_search) ? null : _search,
+                CategoryIds: _selectedCategoryIds.Count > 0 ? _selectedCategoryIds : null),
+            _cts.Token);
+
+        _loading = false;
+
+        if (!result.IsSuccess)
+        {
+            _loadError = ApiErrorMessageFactory.Build(result.Status, result.Problem);
+            _mobileItems = [];
+            _mobileTotalPages = 0;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        _mobileItems = [.. result.Value!.Items.Select(HotstringEditModel.FromDto)];
+        _mobileTotalPages = (int)Math.Ceiling((double)result.Value.TotalCount / _mobilePageSize);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnMobilePageChangedAsync(int page)
+    {
+        _mobilePage = page;
+        await LoadMobileAsync();
+    }
+
+    private async Task OpenCreateDialogAsync()
+    {
+        DialogParameters parameters = new()
+        {
+            [nameof(HotstringEditDialog.Item)] = new HotstringEditModel(),
+            [nameof(HotstringEditDialog.Profiles)] = _profiles,
+            [nameof(HotstringEditDialog.Categories)] = _categories,
+        };
+
+        IDialogReference dialog = await DialogService.ShowAsync<HotstringEditDialog>(
+            "New hotstring", parameters,
+            new DialogOptions { FullScreen = true, CloseButton = false });
+
+        DialogResult? result = await dialog.Result;
+        if (result?.Canceled == false)
+        {
+            Snackbar.Add("Hotstring created.", Severity.Success);
+            await ReloadAllAsync();
+        }
+    }
+
+    private async Task OpenEditDialogAsync(HotstringEditModel item)
+    {
+        DialogParameters parameters = new()
+        {
+            [nameof(HotstringEditDialog.Item)] = HotstringEditModel.FromDto(new HotstringDto(
+                item.Id!.Value,
+                [.. item.ProfileIds],
+                item.AppliesToAllProfiles,
+                item.Trigger,
+                item.Replacement,
+                item.Description,
+                item.IsEndingCharacterRequired,
+                item.IsTriggerInsideWord,
+                DateTimeOffset.UtcNow,
+                DateTimeOffset.UtcNow,
+                [.. item.CategoryIds])),
+            [nameof(HotstringEditDialog.Profiles)] = _profiles,
+            [nameof(HotstringEditDialog.Categories)] = _categories,
+        };
+
+        IDialogReference dialog = await DialogService.ShowAsync<HotstringEditDialog>(
+            "Edit hotstring", parameters,
+            new DialogOptions { FullScreen = true, CloseButton = false });
+
+        DialogResult? result = await dialog.Result;
+        if (result?.Canceled == false)
+        {
+            Snackbar.Add("Hotstring updated.", Severity.Success);
+            await ReloadAllAsync();
+        }
+    }
+
+    private async Task MobileBulkDeleteAsync(IReadOnlyList<Guid> ids)
+    {
+        if (ids.Count == 0) return;
+
+        bool? confirm = await DialogService.ShowMessageBoxAsync(
+            title: "Delete hotstrings?",
+            message: $"Delete {ids.Count} hotstring(s)? This cannot be undone.",
+            yesText: "Delete", cancelText: "Cancel");
+        if (confirm != true) return;
+
+        ApiResult<BulkDeleteResultDto> result = await Api.BulkDeleteAsync(ids, _cts.Token);
+        if (result.IsSuccess)
+        {
+            Snackbar.Add($"Deleted {result.Value!.DeletedCount} hotstring(s).", Severity.Success);
+            await ReloadAllAsync();
+        }
+        else
+        {
+            Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
+        }
+    }
+
+    private async Task ReloadAllAsync()
+    {
+        if (_grid is not null) await _grid.ReloadServerData();
+        await LoadMobileAsync();
+    }
+
+    private async Task OnCategoryFilterChangedAsync(IReadOnlyCollection<Guid> ids)
+    {
+        _selectedCategoryIds = [.. ids];
+        if (_grid is not null) await _grid.ReloadServerData();
+        _mobilePage = 1;
+        await LoadMobileAsync();
     }
 
     private RenderFragment RenderProfiles(bool appliesToAllProfiles, IReadOnlyCollection<Guid> profileIds) => @<text>
@@ -554,12 +741,6 @@
             <MudChip T="string" Size="Size.Small">@name</MudChip>
         }
     </text>;
-
-    private async Task OnCategoryFilterChangedAsync(IReadOnlyCollection<Guid> ids)
-    {
-        _selectedCategoryIds = [.. ids];
-        if (_grid is not null) await _grid.ReloadServerData();
-    }
 
     private RenderFragment RenderActions(HotstringEditModel item) => @<text>
         @if (IsEditing(item))
