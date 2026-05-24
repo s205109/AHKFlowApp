@@ -155,4 +155,35 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
             Arg.Is<UpdateHotkeyDto>(d => d.Key == "P"),
             Arg.Any<CancellationToken>()));
     }
+
+    [Fact]
+    public async Task SaveConflict_ShowsKeyErrorInline()
+    {
+        _api.CreateAsync(Arg.Any<CreateHotkeyDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotkeyDto>.Failure(ApiResultStatus.Conflict,
+                new ApiProblemDetails(null, "Conflict", 409, "Hotkey already exists", null, null)));
+
+        Render<MudPopoverProvider>();
+        IRenderedComponent<MudDialogProvider> provider = Render<MudDialogProvider>();
+
+        await provider.InvokeAsync(async () =>
+        {
+            IDialogService dialogService = Services.GetRequiredService<IDialogService>();
+            await dialogService.ShowAsync<HotkeyEditDialog>("New",
+                new DialogParameters
+                {
+                    [nameof(HotkeyEditDialog.Profiles)] = (IReadOnlyList<ProfileDto>)[],
+                    [nameof(HotkeyEditDialog.Categories)] = (IReadOnlyList<CategoryDto>)[],
+                },
+                new DialogOptions { FullScreen = true, CloseButton = false });
+        });
+
+        provider.WaitForAssertion(() => provider.Find("input[data-test=\"description-input\"]"));
+        provider.Find("input[data-test=\"description-input\"]").Change("Open palette");
+        provider.Find("input[data-test=\"key-input\"]").Change("K");
+        provider.Find("button.commit-edit").Click();
+
+        provider.WaitForAssertion(() => provider.Markup.Should().Contain("Hotkey already exists"));
+        provider.FindAll(".mud-alert").Should().BeEmpty();
+    }
 }

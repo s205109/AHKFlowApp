@@ -913,13 +913,13 @@ Expected: FAIL — `.desktop-branch` / `.mobile-branch` / `add-hotstring-fab` no
 In `src/Frontend/AHKFlowApp.UI.Blazor/Pages/Hotstrings.razor`, after line 11 (`<MudText Typo="Typo.h4" ...>Hotstrings</MudText>`), wrap the existing `<MudPaper Class="pa-4">...</MudPaper>` (lines 13-175) in:
 
 ```razor
-<MudHidden Breakpoint="Breakpoint.SmAndDown" Invert="true">
+<MudHidden Breakpoint="Breakpoint.SmAndDown">
     <div class="desktop-branch">
         <!-- existing MudPaper + MudDataGrid block unchanged -->
     </div>
 </MudHidden>
 
-<MudHidden Breakpoint="Breakpoint.SmAndDown">
+<MudHidden Breakpoint="Breakpoint.SmAndDown" Invert="true">
     <div class="mobile-branch">
         <MudPaper Class="pa-2" Style="position:relative;min-height:80vh;">
             <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="mb-2">
@@ -1513,7 +1513,7 @@ For each viewport (375×812 phone, 768×1024 tablet portrait, 1280×800 desktop)
 Add to `src/Frontend/AHKFlowApp.UI.Blazor/CLAUDE.md` after the existing conventions list:
 
 ```markdown
-- For list pages that need mobile support: render both branches gated by `<MudHidden Breakpoint="Breakpoint.SmAndDown">`. Desktop branch uses `MudDataGrid` with inline editing; mobile branch uses a compact list component + full-screen `MudDialog` for edit/create + `MudFab` for add. See `Components/Hotstrings/` and `Components/Hotkeys/` for examples.
+- For list pages that need mobile support: render both branches gated by `<MudHidden Breakpoint="Breakpoint.SmAndDown">`; use the non-inverted branch for desktop `MudDataGrid` markup and the inverted branch for the mobile list. Mobile uses a compact list component + full-screen `MudDialog` for edit/create + `MudFab` for add. See `Components/Hotstrings/` and `Components/Hotkeys/` for examples.
 ```
 
 - [ ] **Step 2: Commit the note**

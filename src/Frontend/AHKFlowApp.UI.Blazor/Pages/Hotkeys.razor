@@ -11,6 +11,7 @@
 
 <MudText Typo="Typo.h4" GutterBottom="true">Hotkeys</MudText>
 
+<MudHidden Breakpoint="Breakpoint.SmAndDown">
 <div class="desktop-branch">
 <MudPaper Class="pa-4">
     <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Wrap="Wrap.Wrap" Class="mb-4">
@@ -220,7 +221,9 @@
     </MudDataGrid>
 </MudPaper>
 </div>
+</MudHidden>
 
+<MudHidden Breakpoint="Breakpoint.SmAndDown" Invert="true">
 <div class="mobile-branch">
     <MudPaper Class="pa-2" Style="position:relative;min-height:80vh;">
         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="mb-2">
@@ -272,6 +275,7 @@
                 OnClick="OpenCreateDialogAsync" />
     </MudPaper>
 </div>
+</MudHidden>
 
 @code {
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
@@ -301,6 +305,8 @@
     private int _mobilePage = 1;
     private readonly int _mobilePageSize = 10;
     private int _mobileTotalPages;
+    private HotkeyListRequest? _cachedListRequest;
+    private PagedList<HotkeyDto>? _cachedListPage;
 
     protected override async Task OnInitializedAsync()
     {
@@ -333,7 +339,7 @@
 
         (string? sortField, bool sortDescending) = GetSort(state);
 
-        ApiResult<PagedList<HotkeyDto>> result = await Api.ListAsync(
+        ApiResult<PagedList<HotkeyDto>> result = await ListAsync(
             new HotkeyListRequest(
                 Page: state.Page + 1,
                 PageSize: state.PageSize,
@@ -539,6 +545,7 @@
                 _pendingCreate = null;
                 _editingItem = null;
                 Snackbar.Add("Hotkey created.", Severity.Success);
+                ClearListCache();
 
                 if (_grid is not null)
                     await _grid.ReloadServerData();
@@ -552,6 +559,7 @@
             {
                 _editingItem = null;
                 Snackbar.Add("Hotkey updated.", Severity.Success);
+                ClearListCache();
 
                 if (_grid is not null)
                     await _grid.ReloadServerData();
@@ -575,6 +583,7 @@
         if (result.IsSuccess)
         {
             Snackbar.Add("Hotkey deleted.", Severity.Success);
+            ClearListCache();
             await ReloadAllAsync();
         }
         else Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
@@ -609,6 +618,7 @@
                 : $"Deleted {deleted} hotkey(s).";
             Snackbar.Add(message, Severity.Success);
             _selected = [];
+            ClearListCache();
 
             if (_grid is not null)
                 await _grid.ReloadServerData();
@@ -624,7 +634,7 @@
         _loading = true;
         _loadError = null;
 
-        ApiResult<PagedList<HotkeyDto>> result = await Api.ListAsync(
+        ApiResult<PagedList<HotkeyDto>> result = await ListAsync(
             new HotkeyListRequest(
                 Page: _mobilePage,
                 PageSize: _mobilePageSize,
@@ -722,6 +732,7 @@
         if (result.IsSuccess)
         {
             Snackbar.Add($"Deleted {result.Value!.DeletedCount} hotkey(s).", Severity.Success);
+            ClearListCache();
             await ReloadAllAsync();
         }
         else
@@ -732,8 +743,34 @@
 
     private async Task ReloadAllAsync()
     {
+        ClearListCache();
         if (_grid is not null) await _grid.ReloadServerData();
         await LoadMobileAsync();
+    }
+
+    private async Task<ApiResult<PagedList<HotkeyDto>>> ListAsync(HotkeyListRequest request, CancellationToken ct)
+    {
+        if (_cachedListRequest == request && _cachedListPage is not null)
+            return ApiResult<PagedList<HotkeyDto>>.Ok(_cachedListPage);
+
+        ApiResult<PagedList<HotkeyDto>> result = await Api.ListAsync(request, ct);
+        if (result.IsSuccess)
+        {
+            _cachedListRequest = request;
+            _cachedListPage = result.Value;
+        }
+        else
+        {
+            ClearListCache();
+        }
+
+        return result;
+    }
+
+    private void ClearListCache()
+    {
+        _cachedListRequest = null;
+        _cachedListPage = null;
     }
 
     private RenderFragment RenderProfiles(bool appliesToAllProfiles, IReadOnlyCollection<Guid> profileIds) => @<text>

@@ -24,8 +24,8 @@ Goal: ship a mobile-pattern view for both pages while leaving the desktop experi
 
 Each page renders **two view branches** gated by breakpoint using `MudHidden`:
 
-- `<MudHidden Breakpoint="Breakpoint.SmAndDown" Invert="true">` — wraps existing `MudDataGrid` markup. Unchanged behavior.
-- `<MudHidden Breakpoint="Breakpoint.SmAndDown">` — wraps new mobile view.
+- `<MudHidden Breakpoint="Breakpoint.SmAndDown">` — wraps existing `MudDataGrid` markup. Unchanged behavior.
+- `<MudHidden Breakpoint="Breakpoint.SmAndDown" Invert="true">` — wraps new mobile view.
 
 Both branches share the same backing state in the page codebehind: `_items`, search text, selected category ids, paging state, snackbar/error handling, and the `LoadServerData` callback. Only rendering differs.
 

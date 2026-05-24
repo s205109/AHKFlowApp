@@ -151,4 +151,35 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
             Arg.Is<UpdateHotstringDto>(d => d.Replacement == "by the way!"),
             Arg.Any<CancellationToken>()));
     }
+
+    [Fact]
+    public async Task SaveConflict_ShowsTriggerErrorInline()
+    {
+        _api.CreateAsync(Arg.Any<CreateHotstringDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotstringDto>.Failure(ApiResultStatus.Conflict,
+                new ApiProblemDetails(null, "Conflict", 409, "Trigger already exists", null, null)));
+
+        Render<MudPopoverProvider>();
+        IRenderedComponent<MudDialogProvider> provider = Render<MudDialogProvider>();
+
+        await provider.InvokeAsync(async () =>
+        {
+            IDialogService dialogService = Services.GetRequiredService<IDialogService>();
+            await dialogService.ShowAsync<HotstringEditDialog>("New",
+                new DialogParameters
+                {
+                    [nameof(HotstringEditDialog.Profiles)] = (IReadOnlyList<ProfileDto>)[],
+                    [nameof(HotstringEditDialog.Categories)] = (IReadOnlyList<CategoryDto>)[],
+                },
+                new DialogOptions { FullScreen = true, CloseButton = false });
+        });
+
+        provider.WaitForAssertion(() => provider.Find("input[data-test=\"trigger-input\"]"));
+        provider.Find("input[data-test=\"trigger-input\"]").Change("btw");
+        provider.Find("textarea[data-test=\"replacement-input\"]").Change("by the way");
+        provider.Find("button.commit-edit").Click();
+
+        provider.WaitForAssertion(() => provider.Markup.Should().Contain("Trigger already exists"));
+        provider.FindAll(".mud-alert").Should().BeEmpty();
+    }
 }
