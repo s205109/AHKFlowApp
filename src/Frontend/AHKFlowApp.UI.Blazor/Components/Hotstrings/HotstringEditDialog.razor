@@ -2,13 +2,14 @@
 @using AHKFlowApp.UI.Blazor.Services
 @using AHKFlowApp.UI.Blazor.Validation
 @using MudBlazor
+@implements IDisposable
 
 <MudDialog Class="hotstring-edit-dialog">
     <TitleContent>
         <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="flex-grow-1">
             <MudIconButton Class="cancel-edit" Icon="@Icons.Material.Filled.ArrowBack" OnClick="Cancel" />
             <MudText Typo="Typo.h6">@(Item.Id is null ? "New hotstring" : "Edit hotstring")</MudText>
-            <MudButton Class="commit-edit" Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync">Save</MudButton>
+            <MudButton Class="commit-edit" Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync" Disabled="@_saving">Save</MudButton>
         </MudStack>
     </TitleContent>
     <DialogContent>
@@ -70,28 +71,45 @@
     [Parameter] public IReadOnlyList<CategoryDto> Categories { get; set; } = [];
 
     private string? _error;
+    private bool _saving;
+    private readonly CancellationTokenSource _cts = new();
 
     private void Cancel() => Dialog.Cancel();
 
     private async Task SaveAsync()
     {
-        _error = null;
-        if (string.IsNullOrWhiteSpace(Item.Trigger) || string.IsNullOrWhiteSpace(Item.Replacement))
+        if (_saving) return;
+        _saving = true;
+        try
         {
-            _error = "Trigger and Replacement are required.";
-            return;
+            _error = null;
+            if (string.IsNullOrWhiteSpace(Item.Trigger) || string.IsNullOrWhiteSpace(Item.Replacement))
+            {
+                _error = "Trigger and Replacement are required.";
+                return;
+            }
+
+            ApiResult<HotstringDto> result = Item.Id is null
+                ? await Api.CreateAsync(Item.ToCreateDto(), _cts.Token)
+                : await Api.UpdateAsync(Item.Id.Value, Item.ToUpdateDto(), _cts.Token);
+
+            if (!result.IsSuccess)
+            {
+                _error = ApiErrorMessageFactory.Build(result.Status, result.Problem);
+                return;
+            }
+
+            Dialog.Close(DialogResult.Ok(result.Value));
         }
-
-        ApiResult<HotstringDto> result = Item.Id is null
-            ? await Api.CreateAsync(Item.ToCreateDto(), CancellationToken.None)
-            : await Api.UpdateAsync(Item.Id.Value, Item.ToUpdateDto(), CancellationToken.None);
-
-        if (!result.IsSuccess)
+        finally
         {
-            _error = ApiErrorMessageFactory.Build(result.Status, result.Problem);
-            return;
+            _saving = false;
         }
+    }
 
-        Dialog.Close(DialogResult.Ok(result.Value));
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
     }
 }
