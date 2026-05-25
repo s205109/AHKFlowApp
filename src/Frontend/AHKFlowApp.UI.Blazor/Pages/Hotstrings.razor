@@ -11,37 +11,36 @@
 
 <MudText Typo="Typo.h4" GutterBottom="true">Hotstrings</MudText>
 
-<MudHidden Breakpoint="Breakpoint.SmAndDown">
-    <div class="desktop-branch">
-        <MudPaper Class="pa-4">
-            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Wrap="Wrap.Wrap" Class="mb-4">
-                <MudButton Class="add-hotstring" Variant="Variant.Filled" Color="Color.Primary"
-                           StartIcon="@Icons.Material.Filled.Add" OnClick="StartAddAsync"
-                           Disabled="@(!_isAuthenticated || _pendingCreate is not null || _editingItem is not null)">
-                    Add
+<div class="desktop-branch">
+    <MudPaper Class="pa-4">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Wrap="Wrap.Wrap" Class="mb-4">
+            <MudButton Class="add-hotstring" Variant="Variant.Filled" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Add" OnClick="StartAddAsync"
+                       Disabled="@(!_isAuthenticated || _pendingCreate is not null || _editingItem is not null)">
+                Add
+            </MudButton>
+            <MudButton Class="reload-hotstrings" Variant="Variant.Filled" Color="Color.Secondary"
+                       StartIcon="@Icons.Material.Filled.Refresh" OnClick="ReloadAsync"
+                       Disabled="@(!_isAuthenticated || _loading)">
+                Reload
+            </MudButton>
+            @if (_selected.Count > 0)
+            {
+                <MudButton Class="bulk-delete-hotstrings" Variant="Variant.Filled" Color="Color.Error"
+                           StartIcon="@Icons.Material.Filled.DeleteSweep" OnClick="BulkDeleteAsync">
+                    Delete @_selected.Count selected
                 </MudButton>
-                <MudButton Class="reload-hotstrings" Variant="Variant.Filled" Color="Color.Secondary"
-                           StartIcon="@Icons.Material.Filled.Refresh" OnClick="ReloadAsync"
-                           Disabled="@(!_isAuthenticated || _loading)">
-                    Reload
-                </MudButton>
-                @if (_selected.Count > 0)
-                {
-                    <MudButton Class="bulk-delete-hotstrings" Variant="Variant.Filled" Color="Color.Error"
-                               StartIcon="@Icons.Material.Filled.DeleteSweep" OnClick="BulkDeleteAsync">
-                        Delete @_selected.Count selected
-                    </MudButton>
-                }
-                <MudSpacer />
-                <MudTextField T="string" @bind-Value="_search" @bind-Value:after="OnSearchChangedAsync"
-                              DebounceInterval="300"
-                              Placeholder="Search For Hotstrings"
-                              Adornment="Adornment.Start"
-                              AdornmentIcon="@Icons.Material.Filled.Search"
-                              Class="search-hotstrings"
-                              Style="max-width: 360px;"
-                              Immediate="true" />
-            </MudStack>
+            }
+            <MudSpacer />
+            <MudTextField T="string" @bind-Value="_search" @bind-Value:after="OnSearchChangedAsync"
+                          DebounceInterval="300"
+                          Placeholder="Search For Hotstrings"
+                          Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Filled.Search"
+                          Class="search-hotstrings"
+                          Style="max-width: 360px;"
+                          Immediate="true" />
+        </MudStack>
 
             @if (_loadError is not null)
             {
@@ -176,18 +175,16 @@
                     <MudDataGridPager T="HotstringEditModel" PageSizeOptions="UserPreferences.AllowedRowsPerPage" />
                 </PagerContent>
             </MudDataGrid>
-        </MudPaper>
+    </MudPaper>
 </div>
-</MudHidden>
 
-<MudHidden Breakpoint="Breakpoint.SmAndDown" Invert="true">
-    <div class="mobile-branch">
-        <MudPaper Class="pa-2" Style="position:relative;min-height:80vh;">
-            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="mb-2">
-                <MudIconButton Class="reload-hotstrings-mobile" Icon="@Icons.Material.Filled.Refresh"
-                               OnClick="ReloadAsync" Disabled="@(!_isAuthenticated || _loading)" />
-                <MudSpacer />
-            </MudStack>
+<div class="mobile-branch">
+    <MudPaper Class="pa-2" Style="position:relative;min-height:80vh;">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="mb-2">
+            <MudIconButton Class="reload-hotstrings-mobile" Icon="@Icons.Material.Filled.Refresh"
+                           OnClick="ReloadAsync" Disabled="@(!_isAuthenticated || _loading)" />
+            <MudSpacer />
+        </MudStack>
 
             <MudTextField T="string" @bind-Value="_search" @bind-Value:after="OnSearchChangedAsync"
                           DebounceInterval="300"
@@ -230,9 +227,8 @@
                     StartIcon="@Icons.Material.Filled.Add"
                     Style="position:fixed;right:16px;bottom:16px;z-index:100;"
                     OnClick="OpenCreateDialogAsync" />
-        </MudPaper>
+    </MudPaper>
 </div>
-</MudHidden>
 
 @code {
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }

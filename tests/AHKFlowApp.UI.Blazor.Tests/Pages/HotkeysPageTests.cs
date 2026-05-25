@@ -483,13 +483,16 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
-    public void Page_RendersBothDesktopAndMobileBranches()
+    public void Page_RendersCssGatedDesktopAndMobileBranches()
     {
         StubList(Page());
 
         IRenderedComponent<Hotkeys> cut = RenderPage();
-        cut.WaitForAssertion(() => cut.Find("button.add-hotkey-fab"));
 
-        cut.FindComponents<MudHidden>().Should().HaveCount(2);
+        cut.WaitForAssertion(() =>
+        {
+            cut.Find(".desktop-branch button.add-hotkey").Should().NotBeNull();
+            cut.Find(".mobile-branch button.add-hotkey-fab").Should().NotBeNull();
+        });
     }
 }

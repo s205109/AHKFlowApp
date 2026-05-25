@@ -1,13 +1,18 @@
-/* Show only the appropriate branch based on viewport */
+.desktop-branch {
+    display: block;
+}
+
+.mobile-branch {
+    display: none;
+}
+
 @media (max-width: 959.95px) {
     .desktop-branch {
         display: none;
     }
-}
 
-@media (min-width: 960px) {
     .mobile-branch {
-        display: none;
+        display: block;
     }
 }
 
