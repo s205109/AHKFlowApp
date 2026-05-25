@@ -26,30 +26,35 @@ internal static class Program
             shutdown.Cancel();
         };
 
-        foreach (ProjectLaunch launch in launches)
-        {
-            processes.Add(StartProject(rootDirectory, launch));
-        }
-
-        Console.WriteLine("AHKFlowApp is starting.");
-        Console.WriteLine($"API profile: {apiProfile}");
-        Console.WriteLine($"UI profile: {uiProfile}");
-        Console.WriteLine($"API: {LauncherPlan.ApiUrl}");
-        Console.WriteLine($"UI:  {LauncherPlan.FrontendUrl}");
-        Console.WriteLine("Opening the UI in the browser when it is ready.");
-        Console.WriteLine("Press Ctrl+C to stop both projects.");
-
-        Task browserLaunches = OpenBrowsersWhenReadyAsync(launches, shutdown.Token);
+        Task? browserLaunches = null;
 
         try
         {
+            foreach (ProjectLaunch launch in launches)
+            {
+                processes.Add(StartProject(rootDirectory, launch));
+            }
+
+            Console.WriteLine("AHKFlowApp is starting.");
+            Console.WriteLine($"API profile: {apiProfile}");
+            Console.WriteLine($"UI profile: {uiProfile}");
+            Console.WriteLine($"API: {LauncherPlan.ApiUrl}");
+            Console.WriteLine($"UI:  {LauncherPlan.FrontendUrl}");
+            Console.WriteLine("Opening the UI in the browser when it is ready.");
+            Console.WriteLine("Press Ctrl+C to stop both projects.");
+
+            browserLaunches = OpenBrowsersWhenReadyAsync(launches, shutdown.Token);
             int exitCode = await WaitForFirstExitAsync(processes, shutdown.Token);
-            shutdown.Cancel();
-            await IgnoreCancellationAsync(browserLaunches);
             return exitCode;
         }
         finally
         {
+            shutdown.Cancel();
+            if (browserLaunches is not null)
+            {
+                await IgnoreCancellationAsync(browserLaunches);
+            }
+
             foreach (Process process in processes)
             {
                 StopProcess(process);

@@ -15,7 +15,7 @@
 ```bash
 # Start API + frontend from the repository root
 dotnet run --launch-profile "API + LocalDB"
-# The API profile opens Swagger; the root launcher opens the Blazor UI
+# The root launcher starts both projects and opens the Blazor UI
 
 # Apply migrations
 dotnet ef database update \
