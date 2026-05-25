@@ -38,9 +38,18 @@ if ($LASTEXITCODE -ne 0) { throw "dotnet user-secrets set AzureAd:ClientId faile
 Write-Host "  Backend user-secrets set (AzureAd:TenantId, AzureAd:ClientId)"
 
 # Frontend: appsettings.Development.json (gitignored)
+# Preserve any existing ApiHttpClient:BaseAddress (set by start-local-stack.ps1).
 $feSettings = Join-Path $RepoRoot 'src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/appsettings.Development.json'
+$existingBaseAddress = 'http://localhost:5600'
+if (Test-Path $feSettings) {
+    $existing = Get-Content $feSettings -Raw | ConvertFrom-Json
+    if ($existing.ApiHttpClient -and $existing.ApiHttpClient.BaseAddress) {
+        $existingBaseAddress = $existing.ApiHttpClient.BaseAddress
+    }
+}
+
 $json = [ordered]@{
-    ApiHttpClient = [ordered]@{ BaseAddress = 'http://localhost:5600' }
+    ApiHttpClient = [ordered]@{ BaseAddress = $existingBaseAddress }
     AzureAd = [ordered]@{
         Authority         = "https://login.microsoftonline.com/$($entra.TenantId)"
         ClientId          = $entra.ClientId
@@ -49,7 +58,7 @@ $json = [ordered]@{
     }
 }
 $json | ConvertTo-Json -Depth 5 | Set-Content -Path $feSettings -Encoding UTF8
-Write-Host "  Frontend appsettings.Development.json written"
+Write-Host "  Frontend appsettings.Development.json written (ApiHttpClient.BaseAddress = $existingBaseAddress)"
 
 Write-Host ""
 Write-Host "Dev Entra setup complete." -ForegroundColor Green
