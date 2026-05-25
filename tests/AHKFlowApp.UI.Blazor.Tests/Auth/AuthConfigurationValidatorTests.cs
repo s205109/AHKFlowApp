@@ -95,4 +95,28 @@ public sealed class AuthConfigurationValidatorTests
         // Assert
         act.Should().NotThrow();
     }
+
+    [Theory]
+    [InlineData("http://localhost:5600")]
+    [InlineData("http://localhost:5604")]
+    [InlineData("http://localhost:5698")]
+    public void ValidateForMsal_AcceptsAnyLocalhostPort_ForApiBaseAddress(string baseAddress)
+    {
+        // Arrange
+        IConfiguration configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ApiHttpClient:BaseAddress"] = baseAddress,
+                ["AzureAd:Authority"] = "https://login.microsoftonline.com/tenant-id",
+                ["AzureAd:ClientId"] = "11111111-1111-1111-1111-111111111111",
+                ["AzureAd:DefaultScope"] = "api://11111111-1111-1111-1111-111111111111/access_as_user"
+            })
+            .Build();
+
+        // Act
+        Action act = () => AuthConfigurationValidator.ValidateForMsal(configuration);
+
+        // Assert
+        act.Should().NotThrow();
+    }
 }
