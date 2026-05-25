@@ -4,11 +4,13 @@
 
 **Goal:** Add a configure-only launcher that allocates unused localhost port pairs per worktree so multiple AHKFlowApp dev stacks (humans + AI agents) can run in parallel without colliding on 5600/5601.
 
-**Architecture:** A single PowerShell launcher (`scripts/start-local-stack.ps1`) acquires a machine-wide lock, scans for the lowest free port pair from 5600/5601 stepping +2/+2, patches the worktree's gitignored frontend `appsettings.Development.json`, writes a per-worktree manifest (`scripts/.env.local`), and prints `dotnet run` commands that keep the launch profile (so dev env vars and the Docker SQL connection string survive) while overriding `ASPNETCORE_URLS` and CORS. The launcher does not start processes. Entra registers a single port-less localhost SPA redirect for dev only; test/prod registrations are unchanged.
+**Architecture:** A single PowerShell launcher (`scripts/start-local-stack.ps1`) acquires a machine-wide lock, scans for the lowest free port pair from 5600/5601 stepping +2/+2, patches the worktree's gitignored frontend `appsettings.Development.json` and backend `appsettings.Development.json`, writes a per-worktree manifest (`scripts/.env.local`), and prints `dotnet run -- --urls ...` commands that keep the launch profile (so dev env vars and the Docker SQL connection string survive) while overriding the fixed profile ports via command-line configuration. The launcher does not start processes. Entra registers a single port-less localhost SPA redirect for dev only; test/prod registrations keep their existing redirect behavior.
 
-**Tech Stack:** PowerShell 5.1, .NET 10 (ASP.NET Core Kestrel URL overrides via `ASPNETCORE_URLS`), Blazor WebAssembly (`wwwroot/appsettings.Development.json`), xUnit + FluentAssertions for the one new C# test, Microsoft Entra ID (`az ad app` + Graph PATCH).
+**Tech Stack:** PowerShell 5.1, .NET 10 (ASP.NET Core Kestrel URL overrides via `dotnet run -- --urls`), Blazor WebAssembly (`wwwroot/appsettings.Development.json`), xUnit + FluentAssertions for the one new C# test, Microsoft Entra ID (`az ad app` + Graph PATCH).
 
 **Spec:** `docs/superpowers/specs/2026-05-25-local-dev-port-conflict-design.md`
+
+**Review adjustments:** This plan intentionally refines the spec's launcher command shape. Use `dotnet run -- --urls ...` instead of `ASPNETCORE_URLS` because the preserved launch profiles set fixed `applicationUrl` values, and use launcher-managed API `appsettings.Development.json` for CORS instead of array-index environment overrides so stale origins cannot survive.
 
 ---
 
@@ -22,13 +24,15 @@
 - `scripts/setup-entra-app.ps1` — dev branch registers a single port-less localhost redirect
 - `scripts/kill-dev-ports.ps1` — read manifest, verify process ownership before killing
 - `src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/appsettings.Development.json.example` — note that launcher overwrites the file
+- `src/Backend/AHKFlowApp.API/appsettings.Development.json.example` — note that launcher owns local CORS origins
+- `src/Frontend/AHKFlowApp.UI.Blazor/Pages/Health.razor` — remove fixed-port CORS troubleshooting guidance
 - `tests/AHKFlowApp.UI.Blazor.Tests/Auth/AuthConfigurationValidatorTests.cs` — add port-agnostic regression test
 - `README.md`, `docs/development/configuration-strategy.md`, `docs/development/playwright-setup.md`, `docs/development/docker-setup.md`, `docs/architecture/authentication.md` — reference launcher / manifest instead of 5600/5601
 
 **Explicitly NOT modified:**
-- `src/Backend/AHKFlowApp.API/Program.cs` — `ASPNETCORE_URLS` override works without code changes
+- `src/Backend/AHKFlowApp.API/Program.cs` — `dotnet run -- --urls` override works without code changes
 - `src/Frontend/AHKFlowApp.UI.Blazor/Auth/AuthConfigurationValidator.cs` — already port-agnostic (test added to lock that in)
-- `src/Backend/AHKFlowApp.API/Properties/launchSettings.json`, `src/Frontend/AHKFlowApp.UI.Blazor/Properties/launchSettings.json` — preserved so VS F5 still works
+- `src/Backend/AHKFlowApp.API/Properties/launchSettings.json`, `src/Frontend/AHKFlowApp.UI.Blazor/Properties/launchSettings.json` — preserved so VS F5 still works; launcher commands use `-- --urls` when dynamic ports are needed
 - `docker-compose.yml`, `scripts/deploy.ps1` — out of scope
 
 ---
@@ -95,12 +99,13 @@ git commit -m "test: pin AuthConfigurationValidator port-agnostic contract"
 
 ---
 
-### Task 2: Neutralize the frontend appsettings example
+### Task 2: Neutralize the appsettings examples
 
 **Files:**
 - Modify: `src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/appsettings.Development.json.example`
+- Modify: `src/Backend/AHKFlowApp.API/appsettings.Development.json.example`
 
-- [ ] **Step 1: Replace the example file**
+- [ ] **Step 1: Replace the frontend example file**
 
 Open `src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/appsettings.Development.json.example` and replace its contents with:
 
@@ -121,19 +126,54 @@ Open `src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/appsettings.Development.json.exa
 
 The `_note` key is ignored by `IConfiguration` (unknown keys are simply not bound) and serves as inline documentation. `5600` stays as the example default — it's what the first worktree's launcher run produces anyway.
 
-- [ ] **Step 2: Verify Blazor still binds the file correctly**
+- [ ] **Step 2: Replace the API example file**
+
+Open `src/Backend/AHKFlowApp.API/appsettings.Development.json.example` and replace its contents with:
+
+```json
+{
+  "_note": "Run scripts/start-local-stack.ps1 from the repo root — it overwrites Cors.AllowedOrigins with the UI port allocated for this worktree.",
+  "Serilog": {
+    "MinimumLevel": {
+      "Default": "Information",
+      "Override": {
+        "AHKFlowApp": "Debug",
+        "Microsoft.EntityFrameworkCore": "Information",
+        "Microsoft.Hosting.Lifetime": "Information",
+        "Microsoft": "Warning",
+        "Microsoft.AspNetCore": "Warning",
+        "System": "Warning"
+      }
+    }
+  },
+  "Cors": {
+    "AllowedOrigins": [
+      "http://localhost:5601"
+    ]
+  },
+  "AzureAd": {
+    "Instance": "https://login.microsoftonline.com/",
+    "TenantId": "",
+    "ClientId": ""
+  }
+}
+```
+
+The single CORS origin is only the first-worktree example. The launcher rewrites the gitignored real API `appsettings.Development.json` to exactly one origin for the selected UI port, preventing stale array entries from keeping an old worktree origin allowed.
+
+- [ ] **Step 3: Verify both example files are valid JSON**
+
+```powershell
+powershell -NoProfile -Command "Get-Content src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/appsettings.Development.json.example -Raw | ConvertFrom-Json | Out-Null; Get-Content src/Backend/AHKFlowApp.API/appsettings.Development.json.example -Raw | ConvertFrom-Json | Out-Null; Write-Host 'OK'"
+```
+
+Expected: `OK`.
+
+- [ ] **Step 4: Commit**
 
 ```
-dotnet build src/Frontend/AHKFlowApp.UI.Blazor --configuration Release
-```
-
-Expected: clean build (no JSON parse errors at build time would surface — the runtime smoke is in Task 8).
-
-- [ ] **Step 3: Commit**
-
-```
-git add src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/appsettings.Development.json.example
-git commit -m "docs: note launcher overwrites appsettings.Development.json"
+git add src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/appsettings.Development.json.example src/Backend/AHKFlowApp.API/appsettings.Development.json.example
+git commit -m "docs: note launcher owns local dev appsettings"
 ```
 
 ---
@@ -153,7 +193,7 @@ Create `scripts/start-local-stack.ps1` with this exact content:
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Allocates a free localhost port pair, patches frontend config, writes a per-worktree manifest, and prints the dotnet run commands needed to start the API + UI for this worktree.
+    Allocates a free localhost port pair, patches frontend/API dev config, writes a per-worktree manifest, and prints the dotnet run commands needed to start the API + UI for this worktree.
 
 .DESCRIPTION
     Configure-only — does not start dotnet processes. Run it once per worktree before you `dotnet run`. The first worktree on the machine lands on 5600/5601; subsequent worktrees step +2/+2 to the next free pair.
@@ -181,6 +221,7 @@ $ErrorActionPreference = 'Stop'
 
 $RepoRoot = Split-Path $PSScriptRoot -Parent
 $FrontendSettings = Join-Path $RepoRoot 'src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/appsettings.Development.json'
+$BackendSettings = Join-Path $RepoRoot 'src/Backend/AHKFlowApp.API/appsettings.Development.json'
 $ManifestPath = Join-Path $PSScriptRoot '.env.local'
 $LockPath = Join-Path $env:TEMP 'ahkflow-port-alloc.lock'
 
@@ -202,10 +243,12 @@ function Find-FreePair([int] $StartApi = 5600, [int] $EndApi = 5698) {
 function Update-FrontendBaseAddress([string] $Path, [string] $NewBaseAddress) {
     if (Test-Path $Path) {
         $json = Get-Content $Path -Raw | ConvertFrom-Json
-        if (-not $json.ApiHttpClient) {
+        if (-not $json.PSObject.Properties['ApiHttpClient']) {
             $json | Add-Member -NotePropertyName ApiHttpClient -NotePropertyValue ([pscustomobject]@{ BaseAddress = $NewBaseAddress })
+        } elseif (-not $json.ApiHttpClient) {
+            $json.ApiHttpClient = [pscustomobject]@{ BaseAddress = $NewBaseAddress }
         } else {
-            $json.ApiHttpClient.BaseAddress = $NewBaseAddress
+            $json.ApiHttpClient | Add-Member -NotePropertyName BaseAddress -NotePropertyValue $NewBaseAddress -Force
         }
     } else {
         Write-Warn "Frontend appsettings.Development.json not found — writing ApiHttpClient only."
@@ -214,6 +257,24 @@ function Update-FrontendBaseAddress([string] $Path, [string] $NewBaseAddress) {
             ApiHttpClient = [pscustomobject]@{ BaseAddress = $NewBaseAddress }
         }
     }
+    $json | ConvertTo-Json -Depth 10 | Set-Content -Path $Path -Encoding UTF8
+}
+
+function Update-BackendCorsAllowedOrigin([string] $Path, [string] $AllowedOrigin) {
+    if (Test-Path $Path) {
+        $json = Get-Content $Path -Raw | ConvertFrom-Json
+    } else {
+        Write-Warn "Backend appsettings.Development.json not found — writing Cors only."
+        $json = [pscustomobject]@{}
+    }
+
+    if (-not $json.PSObject.Properties['Cors']) {
+        $json | Add-Member -NotePropertyName Cors -NotePropertyValue ([pscustomobject]@{})
+    } elseif (-not $json.Cors) {
+        $json.Cors = [pscustomobject]@{}
+    }
+
+    $json.Cors | Add-Member -NotePropertyName AllowedOrigins -NotePropertyValue @($AllowedOrigin) -Force
     $json | ConvertTo-Json -Depth 10 | Set-Content -Path $Path -Encoding UTF8
 }
 
@@ -229,7 +290,7 @@ function Write-Manifest([string] $Path, [int] $ApiPort, [int] $UiPort, [string] 
     Set-Content -Path $Path -Value $content -Encoding UTF8
 }
 
-# Acquire machine-wide allocation lock. New-Item with -ErrorAction Stop fails atomically if the file already exists.
+# Acquire machine-wide allocation lock. FileMode.CreateNew fails atomically if the file already exists.
 $lockHandle = $null
 $attempt = 0
 while ($attempt -lt 50) {
@@ -263,6 +324,10 @@ try {
     Update-FrontendBaseAddress -Path $FrontendSettings -NewBaseAddress "http://localhost:$($pair.Api)"
     Write-Success $FrontendSettings
 
+    Write-Step 'Configuring API CORS'
+    Update-BackendCorsAllowedOrigin -Path $BackendSettings -AllowedOrigin "http://localhost:$($pair.Ui)"
+    Write-Success $BackendSettings
+
     Write-Step 'Writing manifest'
     Write-Manifest -Path $ManifestPath -ApiPort $pair.Api -UiPort $pair.Ui -WorktreePath $RepoRoot
     Write-Success $ManifestPath
@@ -277,12 +342,9 @@ try {
 Write-Host ""
 Write-Host "Run these in two terminals:" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "  `$env:ASPNETCORE_URLS=`"http://localhost:$($pair.Api)`""
-Write-Host "  `$env:Cors__AllowedOrigins__0=`"http://localhost:$($pair.Ui)`""
-Write-Host "  dotnet run --project src/Backend/AHKFlowApp.API --launch-profile `"Docker SQL (Recommended)`""
+Write-Host "  dotnet run --project src/Backend/AHKFlowApp.API --launch-profile `"Docker SQL (Recommended)`" -- --urls `"http://localhost:$($pair.Api)`""
 Write-Host ""
-Write-Host "  `$env:ASPNETCORE_URLS=`"http://localhost:$($pair.Ui)`""
-Write-Host "  dotnet run --project src/Frontend/AHKFlowApp.UI.Blazor --launch-profile `"http`""
+Write-Host "  dotnet run --project src/Frontend/AHKFlowApp.UI.Blazor --launch-profile `"http`" -- --urls `"http://localhost:$($pair.Ui)`""
 Write-Host ""
 Write-Host "API:  http://localhost:$($pair.Api)" -ForegroundColor Green
 Write-Host "UI:   http://localhost:$($pair.Ui)" -ForegroundColor Green
@@ -300,11 +362,13 @@ Expected output (assuming 5600/5601 are free):
   + 5600/5601 free
 ==> Configuring frontend
   + ...wwwroot/appsettings.Development.json
+==> Configuring API CORS
+  + ...AHKFlowApp.API/appsettings.Development.json
 ==> Writing manifest
   + ...scripts/.env.local
 
 Run these in two terminals:
-  $env:ASPNETCORE_URLS="http://localhost:5600"
+  dotnet run --project src/Backend/AHKFlowApp.API --launch-profile "Docker SQL (Recommended)" -- --urls "http://localhost:5600"
   ...
 API:  http://localhost:5600
 UI:   http://localhost:5601
@@ -314,15 +378,16 @@ Then verify the side effects:
 ```
 powershell -NoProfile -Command "Get-Content scripts/.env.local"
 powershell -NoProfile -Command "Get-Content src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/appsettings.Development.json | ConvertFrom-Json | Select-Object -ExpandProperty ApiHttpClient"
+powershell -NoProfile -Command "Get-Content src/Backend/AHKFlowApp.API/appsettings.Development.json | ConvertFrom-Json | Select-Object -ExpandProperty Cors | Select-Object -ExpandProperty AllowedOrigins"
 ```
 
-Expected: manifest contains `AHKFLOW_API_URL=http://localhost:5600`; frontend JSON shows `BaseAddress = http://localhost:5600`.
+Expected: manifest contains `AHKFLOW_API_URL=http://localhost:5600`; frontend JSON shows `BaseAddress = http://localhost:5600`; backend JSON prints exactly `http://localhost:5601`.
 
 - [ ] **Step 3: Smoke-test conflict avoidance**
 
 Manually occupy 5600 in another terminal:
 ```
-powershell -NoProfile -Command "$l = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 5600); $l.Start(); Read-Host 'Press Enter to release'"
+powershell -NoProfile -Command '$l = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 5600); $l.Start(); Read-Host "Press Enter to release"'
 ```
 
 Re-run the launcher in the original terminal:
@@ -340,7 +405,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\start-local-stack.ps
 
 Expected: prints `5610/5611 free (explicit)`.
 
-Then with the placeholder listener still on 5600:
+Start the placeholder listener again on 5600:
+```
+powershell -NoProfile -Command '$l = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 5600); $l.Start(); Read-Host "Press Enter to release"'
+```
+
+Then in the original terminal:
 ```
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\start-local-stack.ps1 -ApiPort 5600
 ```
@@ -420,7 +490,7 @@ git commit -m "fix: preserve existing ApiHttpClient.BaseAddress in setup-dev-ent
 **Files:**
 - Modify: `scripts/setup-entra-app.ps1`
 
-Touch only the dev branch of the redirect-URI block. Test/prod and SWA logic are unchanged so `deploy.ps1` does not regress.
+Change only the dev redirect behavior. Test/prod keep their existing fixed local troubleshooting redirect, and the SWA append logic stays unchanged so `deploy.ps1` does not regress.
 
 - [ ] **Step 1: Patch the redirect-URI block**
 
@@ -430,14 +500,16 @@ Open `scripts/setup-entra-app.ps1`. Replace lines 122-126 (the block starting wi
 # ---------------------------------------------------------------------------
 # Build redirect URI lists
 # ---------------------------------------------------------------------------
-# For dev: register a single port-less localhost redirect and rely on Entra's
-# localhost port-ignoring (https://learn.microsoft.com/entra/identity-platform/reply-url#localhost-exceptions).
-# Microsoft warns against enumerating multiple localhost URIs that differ only by port,
-# so per-worktree port-specific entries are deliberately avoided.
 if ($Environment -eq 'dev') {
+    # Register one port-less localhost redirect and rely on Entra's
+    # localhost port-ignoring (https://learn.microsoft.com/entra/identity-platform/reply-url#localhost-exceptions).
+    # Microsoft warns against enumerating multiple localhost URIs that differ only by port,
+    # so per-worktree port-specific entries are deliberately avoided.
     $redirectUris = @('http://localhost/authentication/login-callback')
 } else {
-    $redirectUris = @()
+    # Preserve existing test/prod behavior: a fixed local troubleshooting redirect plus
+    # the SWA hostname appended below when available.
+    $redirectUris = @('http://localhost:5601/authentication/login-callback')
 }
 ```
 
@@ -560,7 +632,7 @@ Expected: `OK`.
 
 In one terminal, occupy port 5600 with a non-ahkflow process:
 ```
-powershell -NoProfile -Command "$l = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 5600); $l.Start(); Read-Host 'Press Enter to release'"
+powershell -NoProfile -Command '$l = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 5600); $l.Start(); Read-Host "Press Enter to release"'
 ```
 
 In another terminal, delete any manifest then run the kill script:
@@ -590,6 +662,7 @@ git commit -m "feat: kill-dev-ports verifies process ownership via worktree path
 - Modify: `docs/development/playwright-setup.md`
 - Modify: `docs/development/docker-setup.md`
 - Modify: `docs/architecture/authentication.md`
+- Modify: `src/Frontend/AHKFlowApp.UI.Blazor/Pages/Health.razor`
 
 - [ ] **Step 1: README — replace the "run the dev stack" instructions**
 
@@ -603,7 +676,7 @@ In `README.md`, locate the section that documents running the API + UI locally (
 .\scripts\start-local-stack.ps1
 ```
 
-The launcher allocates a free localhost port pair (starting at 5600/5601, stepping +2/+2 for each additional concurrent worktree), patches `wwwroot/appsettings.Development.json`, and prints the two `dotnet run` commands to paste into separate terminals. Active URLs are also written to `scripts/.env.local`.
+The launcher allocates a free localhost port pair (starting at 5600/5601, stepping +2/+2 for each additional concurrent worktree), patches the frontend API base URL and backend CORS origin in gitignored `appsettings.Development.json` files, and prints the two `dotnet run` commands to paste into separate terminals. Active URLs are also written to `scripts/.env.local`.
 
 To free the ports later:
 
@@ -640,7 +713,7 @@ Open `docs/development/configuration-strategy.md`. After the section describing 
 ```markdown
 ### Local port allocation
 
-`scripts/start-local-stack.ps1` is the recommended way to start the dev stack. It scans for a free port pair (5600/5601, then 5602/5603, …), patches `wwwroot/appsettings.Development.json` so `ApiHttpClient.BaseAddress` matches, and writes the active URLs to `scripts/.env.local`.
+`scripts/start-local-stack.ps1` is the recommended way to start the dev stack. It scans for a free port pair (5600/5601, then 5602/5603, …), patches the frontend `wwwroot/appsettings.Development.json` so `ApiHttpClient.BaseAddress` matches, patches the API `appsettings.Development.json` so `Cors.AllowedOrigins` contains only the selected UI origin, and writes the active URLs to `scripts/.env.local`.
 
 `scripts/.env.local` is gitignored (matches the existing `scripts/.env.*` pattern). It is per-worktree — each worktree maintains its own copy.
 
@@ -664,13 +737,27 @@ In `docs/architecture/authentication.md`, find the section describing the Entra 
 
 For the dev app registration, `setup-entra-app.ps1` registers a single SPA redirect: `http://localhost/authentication/login-callback` (no port). Entra ignores the port for localhost redirects ([Microsoft Learn](https://learn.microsoft.com/entra/identity-platform/reply-url#localhost-exceptions)), so a UI running on any port reachable from `localhost` is accepted. This is what makes the per-worktree dynamic port allocation work without re-registering URIs.
 
-Test and prod registrations are unchanged — they register the SWA hostname via `setup-entra-app.ps1` as before.
+Test and prod registrations are unchanged — they keep the existing fixed local troubleshooting redirect and register the SWA hostname via `setup-entra-app.ps1` as before.
 ```
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Health.razor — remove fixed-port CORS advice**
+
+In `src/Frontend/AHKFlowApp.UI.Blazor/Pages/Health.razor`, replace the second bullet in the "Possible causes" list:
+
+```razor
+<li>CORS is misconfigured — copy <code>appsettings.Development.json.example</code> to <code>appsettings.Development.json</code> in the API project and ensure <code>http://localhost:5601</code> is in <code>Cors:AllowedOrigins</code>.</li>
+```
+
+with:
+
+```razor
+<li>CORS is misconfigured — run <code>scripts/start-local-stack.ps1</code> from the repo root to refresh the API's local <code>Cors:AllowedOrigins</code> setting for this worktree.</li>
+```
+
+- [ ] **Step 7: Commit**
 
 ```
-git add README.md docs/development/configuration-strategy.md docs/development/playwright-setup.md docs/development/docker-setup.md docs/architecture/authentication.md
+git add README.md docs/development/configuration-strategy.md docs/development/playwright-setup.md docs/development/docker-setup.md docs/architecture/authentication.md src/Frontend/AHKFlowApp.UI.Blazor/Pages/Health.razor
 git commit -m "docs: point local dev docs at start-local-stack launcher"
 ```
 
@@ -683,7 +770,8 @@ No code changes. This task runs the spec's manual verification matrix and record
 **Prerequisites:**
 - Two worktrees of this repo on the same machine (e.g., main + `.worktrees/feature/foo`).
 - Both have run `dotnet build --configuration Release` successfully.
-- Both have `wwwroot/appsettings.Development.json` populated (run `scripts/setup-dev-entra.ps1` once per worktree if needed).
+- Both have frontend `wwwroot/appsettings.Development.json` populated (run `scripts/setup-dev-entra.ps1` once per worktree if needed).
+- Both have run `scripts/start-local-stack.ps1` after any manual edits to API/frontend local config so frontend `ApiHttpClient.BaseAddress` and API `Cors.AllowedOrigins` match the allocated ports.
 - `setup-entra-app.ps1 -Environment dev` has been re-run since Task 5 so the Entra app has the new port-less redirect.
 
 - [ ] **Step 1: Legacy single-instance path (worktree A)**
@@ -766,7 +854,7 @@ In worktree A, hit:
 powershell -NoProfile -Command "(Invoke-WebRequest -Uri 'http://localhost:5600/swagger' -UseBasicParsing).StatusCode"
 ```
 
-Expected: `200`. (Swagger is only served when `ASPNETCORE_ENVIRONMENT=Development`, which the launch profile sets. Confirms launch-profile env vars survived the `ASPNETCORE_URLS` override.)
+Expected: `200`. (Swagger is only served when `ASPNETCORE_ENVIRONMENT=Development`, which the launch profile sets. Confirms launch-profile env vars survived the `-- --urls` override.)
 
 - [ ] **Step 7: TEST/PROD Entra unchanged**
 
@@ -775,7 +863,7 @@ Dry-run inspection (do not actually invoke `az ad app update` against the test t
 powershell -NoProfile -Command "Select-String -Path scripts/setup-entra-app.ps1 -Pattern 'SwaHostname'"
 ```
 
-Expected: the `if ($SwaHostname)` block and the `Resolve-SWA-hostname` block are still present and untouched. Eyeball lines around the original 117-128 region — confirm only the dev branch changed.
+Expected: the `if ($SwaHostname)` block and the `Resolve-SWA-hostname` block are still present and untouched. Eyeball lines around the original 117-128 region — confirm dev uses `http://localhost/authentication/login-callback`, while test/prod still initialize `http://localhost:5601/authentication/login-callback` before appending the SWA hostname.
 
 - [ ] **Step 8: Build + tests**
 
@@ -788,6 +876,14 @@ dotnet test --configuration Release --no-build
 Expected: green on both.
 
 - [ ] **Step 9: Docker Compose spot-check**
+
+Stop the local `dotnet run` terminals for worktree A and worktree B first. Then, from each worktree, run the kill script so the fixed Docker Compose ports are clear:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\kill-dev-ports.ps1
+```
+
+After both local stacks are stopped, run the compose spot-check from one worktree:
 
 ```
 docker compose up --build -d
@@ -810,7 +906,7 @@ Use `gh pr create`. Body must include a verification summary:
 - [x] Manifest read by Playwright without hardcoded port
 - [x] Kill-script refused to terminate foreign process on stale manifest
 - [x] Swagger reachable on 5600/swagger (launch-profile env preserved)
-- [x] setup-entra-app.ps1 test/prod branches inspected, unchanged
+- [x] setup-entra-app.ps1 test/prod redirects inspected, fixed localhost + SWA behavior unchanged
 - [x] dotnet build + dotnet test green in both worktrees
 - [x] docker compose up still serves /health on its fixed port
 ```
