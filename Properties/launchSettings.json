@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json.schemastore.org/launchsettings.json",
+  "profiles": {
+    "API + LocalDB": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "AHKFLOW_API_PROFILE": "LocalDB SQL",
+        "AHKFLOW_UI_PROFILE": "http"
+      }
+    },
+    "API + Docker SQL": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "AHKFLOW_API_PROFILE": "Docker SQL (Recommended)",
+        "AHKFLOW_UI_PROFILE": "http"
+      }
+    }
+  }
+}

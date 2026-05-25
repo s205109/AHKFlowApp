@@ -13,13 +13,17 @@
 **Option 1 — LocalDB:**
 
 ```bash
+# Start API + frontend from the repository root
+dotnet run --launch-profile "API + LocalDB"
+# The root launcher starts both projects and opens the Blazor UI
+
 # Apply migrations
 dotnet ef database update \
   --project src/Backend/AHKFlowApp.Infrastructure \
   --startup-project src/Backend/AHKFlowApp.API
 
 # Start API (http://localhost:5600, OpenAPI at /swagger/v1/swagger.json)
-dotnet run --project src/Backend/AHKFlowApp.API --launch-profile "Docker SQL (Recommended)"
+dotnet run --project src/Backend/AHKFlowApp.API --launch-profile "LocalDB SQL"
 
 # Start frontend in a separate terminal (http://localhost:5601)
 dotnet run --project src/Frontend/AHKFlowApp.UI.Blazor

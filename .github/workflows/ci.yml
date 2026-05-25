@@ -94,7 +94,7 @@ jobs:
         if: always() && steps.filter.outputs.code == 'true'
         run: python scripts/check-coverage-thresholds.py
       - if: steps.filter.outputs.code == 'true'
-        run: dotnet format --verify-no-changes
+        run: dotnet format AHKFlowApp.slnx --verify-no-changes
 
   bicep-lint:
     runs-on: ubuntu-latest
