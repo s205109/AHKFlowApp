@@ -4,7 +4,7 @@
 
 **Goal:** Ship a mobile-friendly view for `/hotstrings` and `/hotkeys` that triggers under 960px width, using a compact 2-column list with expandable rows + a full-screen `MudDialog` for create/edit + a FAB for add + a select-mode toggle for bulk delete. Desktop (md+) keeps the existing `MudDataGrid` inline-edit experience unchanged.
 
-**Architecture:** Each page renders two branches gated by `MudHidden Breakpoint="Breakpoint.SmAndDown"`. Existing data-loading logic (`LoadServerData`) is split into a thin grid callback + a reusable `LoadAsync` method that the mobile branch also calls. Two new components per page: a full-screen edit/create dialog (`*EditDialog.razor`) and a mobile list component (`*MobileList.razor`). No backend or API client changes.
+**Architecture:** Each page renders two plain branch containers, `.desktop-branch` and `.mobile-branch`, with visibility gated by the page's scoped `.razor.css` at `959.95px`. Existing data-loading logic (`LoadServerData`) is split into a thin grid callback + a reusable `LoadAsync` method that the mobile branch also calls. Two new components per page: a full-screen edit/create dialog (`*EditDialog.razor`) and a mobile list component (`*MobileList.razor`). No backend or API client changes.
 
 **Tech Stack:** Blazor WebAssembly (.NET 10), MudBlazor 9.3.0, FluentValidation via existing edit models, xUnit + bUnit + FluentAssertions + NSubstitute for unit tests, Playwright + WebApplicationFactory (`StackFixture`) for E2E.
 
@@ -886,25 +886,23 @@ Append to `HotstringsPageTests.cs`:
 
 ```csharp
 [Fact]
-public void Page_RendersBothDesktopAndMobileBranches()
+public void Page_RendersCssGatedDesktopAndMobileBranches()
 {
     StubList(Page());
 
     IRenderedComponent<Hotstrings> cut = RenderPage();
-    cut.WaitForAssertion(() => cut.Find("button.add-hotstring"));
 
-    // Desktop branch wrapper
-    cut.FindAll(".desktop-branch").Should().NotBeEmpty();
-    // Mobile branch wrapper
-    cut.FindAll(".mobile-branch").Should().NotBeEmpty();
-    // FAB only in mobile branch
-    cut.FindAll("button.add-hotstring-fab").Should().NotBeEmpty();
+    cut.WaitForAssertion(() =>
+    {
+        cut.Find(".desktop-branch button.add-hotstring").Should().NotBeNull();
+        cut.Find(".mobile-branch button.add-hotstring-fab").Should().NotBeNull();
+    });
 }
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `dotnet test tests/AHKFlowApp.UI.Blazor.Tests --filter "HotstringsPageTests.Page_RendersBothDesktopAndMobileBranches" --no-restore`
+Run: `dotnet test tests/AHKFlowApp.UI.Blazor.Tests --filter "HotstringsPageTests.Page_RendersCssGatedDesktopAndMobileBranches" --no-restore`
 
 Expected: FAIL — `.desktop-branch` / `.mobile-branch` / `add-hotstring-fab` not found.
 
@@ -913,20 +911,17 @@ Expected: FAIL — `.desktop-branch` / `.mobile-branch` / `add-hotstring-fab` no
 In `src/Frontend/AHKFlowApp.UI.Blazor/Pages/Hotstrings.razor`, after line 11 (`<MudText Typo="Typo.h4" ...>Hotstrings</MudText>`), wrap the existing `<MudPaper Class="pa-4">...</MudPaper>` (lines 13-175) in:
 
 ```razor
-<MudHidden Breakpoint="Breakpoint.SmAndDown">
-    <div class="desktop-branch">
-        <!-- existing MudPaper + MudDataGrid block unchanged -->
-    </div>
-</MudHidden>
+<div class="desktop-branch">
+    <!-- existing MudPaper + MudDataGrid block unchanged -->
+</div>
 
-<MudHidden Breakpoint="Breakpoint.SmAndDown" Invert="true">
-    <div class="mobile-branch">
-        <MudPaper Class="pa-2" Style="position:relative;min-height:80vh;">
-            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="mb-2">
-                <MudIconButton Class="reload-hotstrings" Icon="@Icons.Material.Filled.Refresh"
-                               OnClick="ReloadAsync" Disabled="@(!_isAuthenticated || _loading)" />
-                <MudSpacer />
-            </MudStack>
+<div class="mobile-branch">
+    <MudPaper Class="pa-2" Style="position:relative;min-height:80vh;">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="mb-2">
+            <MudIconButton Class="reload-hotstrings" Icon="@Icons.Material.Filled.Refresh"
+                           OnClick="ReloadAsync" Disabled="@(!_isAuthenticated || _loading)" />
+            <MudSpacer />
+        </MudStack>
 
             <MudTextField T="string" @bind-Value="_search" @bind-Value:after="OnSearchChangedAsync"
                           DebounceInterval="300"
@@ -969,9 +964,8 @@ In `src/Frontend/AHKFlowApp.UI.Blazor/Pages/Hotstrings.razor`, after line 11 (`<
                     StartIcon="@Icons.Material.Filled.Add"
                     Style="position:fixed;right:16px;bottom:16px;z-index:100;"
                     OnClick="OpenCreateDialogAsync" />
-        </MudPaper>
-    </div>
-</MudHidden>
+    </MudPaper>
+</div>
 ```
 
 Add to `@code { ... }` block (after existing fields):
@@ -1405,7 +1399,7 @@ git commit -m "feat: hotkey mobile list (collapsed + expand + select + bulk dele
 - Modify: `src/Frontend/AHKFlowApp.UI.Blazor/Pages/Hotkeys.razor`
 - Modify: `tests/AHKFlowApp.UI.Blazor.Tests/Pages/HotkeysPageTests.cs`
 
-Apply the same MudHidden split + mobile branch + new helper methods (`LoadMobileAsync`, `OpenCreateDialogAsync`, `OpenEditDialogAsync`, `MobileBulkDeleteAsync`, `ReloadAllAsync`) to `Hotkeys.razor`. Substitutions:
+Apply the same CSS-gated branch split + mobile branch + new helper methods (`LoadMobileAsync`, `OpenCreateDialogAsync`, `OpenEditDialogAsync`, `MobileBulkDeleteAsync`, `ReloadAllAsync`) to `Hotkeys.razor`. Substitutions:
 
 - `HotstringMobileList` → `HotkeyMobileList`
 - `HotstringEditDialog` → `HotkeyEditDialog`
@@ -1415,7 +1409,7 @@ Apply the same MudHidden split + mobile branch + new helper methods (`LoadMobile
 - `HotkeyEditModel.FromDto(new HotkeyDto(...))` — construct the DTO from `item` fields. Look at existing `MapItem` in `Hotkeys.razor:393` for the shape.
 
 - [ ] **Step 1: Add the failing test** — mirror Task 5 Step 1's test in `HotkeysPageTests.cs`. Selector: `button.add-hotkey-fab`.
-- [ ] **Step 2: Run — expect FAIL.** `dotnet test tests/AHKFlowApp.UI.Blazor.Tests --filter "HotkeysPageTests.Page_RendersBothDesktopAndMobileBranches" --no-restore`
+- [ ] **Step 2: Run — expect FAIL.** `dotnet test tests/AHKFlowApp.UI.Blazor.Tests --filter "HotkeysPageTests.Page_RendersCssGatedDesktopAndMobileBranches" --no-restore`
 - [ ] **Step 3: Modify `Hotkeys.razor`** with the same split treatment.
 - [ ] **Step 4: Run all UI tests + build.** `dotnet test tests/AHKFlowApp.UI.Blazor.Tests --no-restore && dotnet build --no-restore`
 - [ ] **Step 5: Commit.**
@@ -1513,7 +1507,7 @@ For each viewport (375×812 phone, 768×1024 tablet portrait, 1280×800 desktop)
 Add to `src/Frontend/AHKFlowApp.UI.Blazor/CLAUDE.md` after the existing conventions list:
 
 ```markdown
-- For list pages that need mobile support: render both branches gated by `<MudHidden Breakpoint="Breakpoint.SmAndDown">`; use the non-inverted branch for desktop `MudDataGrid` markup and the inverted branch for the mobile list. Mobile uses a compact list component + full-screen `MudDialog` for edit/create + `MudFab` for add. See `Components/Hotstrings/` and `Components/Hotkeys/` for examples.
+- For list pages that need mobile support: render both branches as plain `.desktop-branch` and `.mobile-branch` containers, then gate visibility in the page's scoped `.razor.css` at `959.95px`. Desktop uses `MudDataGrid`; mobile uses a compact list component, full-screen `MudDialog`, and `MudFab`. See `Components/Hotstrings/` and `Components/Hotkeys/` for examples.
 ```
 
 - [ ] **Step 2: Commit the note**

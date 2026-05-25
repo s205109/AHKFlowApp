@@ -403,13 +403,16 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
-    public void Page_RendersBothDesktopAndMobileBranches()
+    public void Page_RendersCssGatedDesktopAndMobileBranches()
     {
         StubList(Page());
 
         IRenderedComponent<Hotstrings> cut = RenderPage();
-        cut.WaitForAssertion(() => cut.Find("button.add-hotstring-fab"));
 
-        cut.FindComponents<MudHidden>().Should().HaveCount(2);
+        cut.WaitForAssertion(() =>
+        {
+            cut.Find(".desktop-branch button.add-hotstring").Should().NotBeNull();
+            cut.Find(".mobile-branch button.add-hotstring-fab").Should().NotBeNull();
+        });
     }
 }

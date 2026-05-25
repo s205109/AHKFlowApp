@@ -22,14 +22,14 @@ Goal: ship a mobile-pattern view for both pages while leaving the desktop experi
 
 ## Architecture
 
-Each page renders **two view branches** gated by breakpoint using `MudHidden`:
+Each page renders **two view branches** and gates visibility with page-scoped CSS:
 
-- `<MudHidden Breakpoint="Breakpoint.SmAndDown">` — wraps existing `MudDataGrid` markup. Unchanged behavior.
-- `<MudHidden Breakpoint="Breakpoint.SmAndDown" Invert="true">` — wraps new mobile view.
+- `<div class="desktop-branch">` — wraps existing `MudDataGrid` markup. Unchanged behavior.
+- `<div class="mobile-branch">` — wraps new mobile view.
 
 Both branches share the same backing state in the page codebehind: `_items`, search text, selected category ids, paging state, snackbar/error handling, and the `LoadServerData` callback. Only rendering differs.
 
-`MudHidden` duplicates DOM but is the cheapest correct approach with no JS interop or extra render cycle. The desktop branch's `MudDataGrid` won't render rows when display is `none`; data is still fetched once and shared.
+Scoped `.razor.css` files hide `.desktop-branch` under `960px` and hide `.mobile-branch` at `960px+`. Do not combine this with `MudHidden`; double gating can hide the `MudDataGrid` on mid-sized viewports.
 
 ## Critical files
 
