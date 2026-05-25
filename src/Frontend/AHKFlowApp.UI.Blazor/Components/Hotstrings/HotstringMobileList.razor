@@ -14,85 +14,87 @@
     {
         <MudText Class="pa-4 text-center" Typo="Typo.body2">No hotstrings yet.</MudText>
     }
-
-    <table class="mobile-list">
-        <thead>
-            <tr class="mobile-header">
-                @if (_selectMode)
-                {
-                    <th style="width:36px"></th>
-                }
-                <th>Trigger</th>
-                <th>Replacement</th>
-                <th></th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (HotstringEditModel item in Items)
-            {
-                bool expanded = !_selectMode && _expandedId == item.Id;
-                <tr class="mobile-row" @onclick="() => OnRowClick(item)">
+    else
+    {
+        <table class="mobile-list">
+            <thead>
+                <tr class="mobile-header">
                     @if (_selectMode)
                     {
-                        <td class="checkbox-cell" @onclick:stopPropagation="true">
-                            <input type="checkbox" class="row-checkbox"
-                                   checked="@(_selectedIds.Contains(item.Id!.Value))"
-                                   @onchange="e => OnRowCheckboxChanged(item, (bool)e.Value!)" />
-                        </td>
+                        <th class="checkbox-column"></th>
                     }
-                    <td class="trigger-cell"><code>@item.Trigger</code></td>
-                    <td class="replacement-cell">@item.Replacement</td>
-                    <td class="chevron-cell">@(expanded ? "▾" : "▸")</td>
+                    <th>Trigger</th>
+                    <th>Replacement</th>
+                    <th></th>
                 </tr>
-                @if (expanded)
+            </thead>
+            <tbody>
+                @foreach (HotstringEditModel item in Items)
                 {
-                    <tr class="mobile-row-expanded">
-                        <td colspan="3">
-                            <MudStack Spacing="1" Class="pa-3">
-                                @if (!string.IsNullOrWhiteSpace(item.Description))
-                                {
-                                    <MudText Typo="Typo.body2"><strong>Description:</strong> @item.Description</MudText>
-                                }
-                                <MudText Typo="Typo.body2"><strong>Profiles:</strong>
-                                    @if (item.AppliesToAllProfiles)
+                    bool expanded = item.Id is { } id && !_selectMode && _expandedId == id;
+                    <tr class="mobile-row" @onclick="() => OnRowClick(item)">
+                        @if (_selectMode)
+                        {
+                            <td class="checkbox-cell" @onclick:stopPropagation="true">
+                                <input type="checkbox" class="row-checkbox"
+                                       checked="@(item.Id is { } checkboxId && _selectedIds.Contains(checkboxId))"
+                                       @onchange="e => OnRowCheckboxChanged(item, IsChecked(e))" />
+                            </td>
+                        }
+                        <td class="trigger-cell"><code>@item.Trigger</code></td>
+                        <td class="replacement-cell">@item.Replacement</td>
+                        <td class="chevron-cell">@(expanded ? "▾" : "▸")</td>
+                    </tr>
+                    @if (expanded)
+                    {
+                        <tr class="mobile-row-expanded">
+                            <td colspan="3">
+                                <MudStack Spacing="1" Class="pa-3">
+                                    @if (!string.IsNullOrWhiteSpace(item.Description))
                                     {
-                                        <MudChip T="string" Size="Size.Small" Color="Color.Info">Any</MudChip>
+                                        <MudText Typo="Typo.body2"><strong>Description:</strong> @item.Description</MudText>
                                     }
-                                    else
-                                    {
-                                        @foreach (Guid pid in item.ProfileIds)
+                                    <MudText Typo="Typo.body2"><strong>Profiles:</strong>
+                                        @if (item.AppliesToAllProfiles)
                                         {
-                                            string name = Profiles.FirstOrDefault(p => p.Id == pid)?.Name ?? pid.ToString()[..8];
+                                            <MudChip T="string" Size="Size.Small" Color="Color.Info">Any</MudChip>
+                                        }
+                                        else
+                                        {
+                                            @foreach (Guid pid in item.ProfileIds)
+                                            {
+                                                string name = Profiles.FirstOrDefault(p => p.Id == pid)?.Name ?? pid.ToString()[..8];
+                                                <MudChip T="string" Size="Size.Small">@name</MudChip>
+                                            }
+                                        }
+                                    </MudText>
+                                    <MudText Typo="Typo.body2"><strong>Categories:</strong>
+                                        @foreach (Guid cid in item.CategoryIds)
+                                        {
+                                            string name = Categories.FirstOrDefault(c => c.Id == cid)?.Name ?? cid.ToString()[..8];
                                             <MudChip T="string" Size="Size.Small">@name</MudChip>
                                         }
-                                    }
-                                </MudText>
-                                <MudText Typo="Typo.body2"><strong>Categories:</strong>
-                                    @foreach (Guid cid in item.CategoryIds)
-                                    {
-                                        string name = Categories.FirstOrDefault(c => c.Id == cid)?.Name ?? cid.ToString()[..8];
-                                        <MudChip T="string" Size="Size.Small">@name</MudChip>
-                                    }
-                                </MudText>
-                                <MudText Typo="Typo.body2">
-                                    <strong>End-char:</strong> @(item.IsEndingCharacterRequired ? "✓" : "✗") &nbsp;
-                                    <strong>In-word:</strong> @(item.IsTriggerInsideWord ? "✓" : "✗")
-                                </MudText>
-                                <MudStack Row="true" Spacing="2" Class="mt-2">
-                                    <MudButton Class="start-edit" Variant="Variant.Filled" Color="Color.Primary"
-                                               StartIcon="@Icons.Material.Filled.Edit"
-                                               OnClick="@(async () => await OnEdit.InvokeAsync(item))">Edit</MudButton>
-                                    <MudButton Class="delete" Variant="Variant.Filled" Color="Color.Error"
-                                               StartIcon="@Icons.Material.Filled.Delete"
-                                               OnClick="@(async () => await OnDelete.InvokeAsync(item))">Delete</MudButton>
+                                    </MudText>
+                                    <MudText Typo="Typo.body2">
+                                        <strong>End-char:</strong> @(item.IsEndingCharacterRequired ? "✓" : "✗") &nbsp;
+                                        <strong>In-word:</strong> @(item.IsTriggerInsideWord ? "✓" : "✗")
+                                    </MudText>
+                                    <MudStack Row="true" Spacing="2" Class="mt-2">
+                                        <MudButton Class="start-edit" Variant="Variant.Filled" Color="Color.Primary"
+                                                   StartIcon="@Icons.Material.Filled.Edit"
+                                                   OnClick="@(async () => await OnEdit.InvokeAsync(item))">Edit</MudButton>
+                                        <MudButton Class="delete" Variant="Variant.Filled" Color="Color.Error"
+                                                   StartIcon="@Icons.Material.Filled.Delete"
+                                                   OnClick="@(async () => await OnDelete.InvokeAsync(item))">Delete</MudButton>
+                                    </MudStack>
                                 </MudStack>
-                            </MudStack>
-                        </td>
-                    </tr>
+                            </td>
+                        </tr>
+                    }
                 }
-            }
-        </tbody>
-    </table>
+            </tbody>
+        </table>
+    }
 
     @if (_selectMode && _selectedIds.Count > 0)
     {
@@ -123,9 +125,9 @@
         {
             if (item.Id is { } id) ToggleSelected(id);
         }
-        else
+        else if (item.Id is { } id)
         {
-            _expandedId = _expandedId == item.Id ? null : item.Id;
+            _expandedId = _expandedId == id ? null : id;
         }
     }
 
@@ -140,6 +142,14 @@
     {
         if (!_selectedIds.Add(id)) _selectedIds.Remove(id);
     }
+
+    private static bool IsChecked(ChangeEventArgs e) =>
+        e.Value switch
+        {
+            bool value => value,
+            string value when bool.TryParse(value, out bool parsed) => parsed,
+            _ => false,
+        };
 
     private void ToggleSelectMode()
     {
