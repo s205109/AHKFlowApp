@@ -1,4 +1,5 @@
 {
+  "_note": "Run scripts/start-local-stack.ps1 from the repo root - it overwrites ApiHttpClient.BaseAddress with the port allocated for this worktree.",
   "ApiHttpClient": {
     "BaseAddress": "http://localhost:5600"
   },
