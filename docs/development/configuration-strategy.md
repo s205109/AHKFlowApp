@@ -32,6 +32,14 @@ The active file is selected at runtime based on the `Blazor-Environment` HTTP he
 - Azure SWA (PROD): `deploy-frontend.yml` patches `staticwebapp.config.json` to `blazor-environment: Production` before publishing
 - Local dev: ASP.NET Core host sets `Blazor-Environment: Development` automatically
 
+### Local port allocation
+
+`scripts/start-local-stack.ps1` is the recommended way to start the dev stack. It scans for a free port pair (5600/5601, then 5602/5603, ...), patches the frontend `wwwroot/appsettings.Development.json` so `ApiHttpClient.BaseAddress` matches, patches the API `appsettings.Development.json` so `Cors.AllowedOrigins` contains only the selected UI origin, and writes the active URLs to `scripts/.env.local`.
+
+`scripts/.env.local` is gitignored (matches the existing `scripts/.env.*` pattern). It is per-worktree - each worktree maintains its own copy.
+
+Visual Studio's F5 still works against the fixed-port launch profiles for ad-hoc single-instance debugging.
+
 ### Why This Works
 
 Per [Microsoft documentation](https://learn.microsoft.com/aspnet/core/blazor/fundamentals/configuration?view=aspnetcore-10.0):
@@ -185,7 +193,7 @@ src/Backend/**/appsettings.Production.json
 
 ### Frontend
 
-`appsettings.json` points to `http://localhost:5600` by default. If you need a machine-specific override, copy `appsettings.Development.json.example` to `appsettings.Development.json` (ignored by git). The Blazor dev server sets `Blazor-Environment: Development` automatically.
+`appsettings.json` points to `http://localhost:5600` by default. For normal local development, run `scripts/start-local-stack.ps1`; it writes `appsettings.Development.json` (ignored by git) with the API port allocated for this worktree. The Blazor dev server sets `Blazor-Environment: Development` automatically.
 
 **Auth setup required:** The `AzureAd` block in `appsettings.Development.json` is intentionally empty. After running `scripts/setup-entra-app.ps1 -Environment dev`, fill it in:
 

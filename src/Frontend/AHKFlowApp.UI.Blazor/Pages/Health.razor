@@ -101,8 +101,8 @@
                 Possible causes:
             </MudText>
             <ul class="mt-1 ml-4">
-                <li>The API is not running — start it with the <em>LocalDB SQL</em> or <em>Docker SQL</em> launch profile.</li>
-                <li>CORS is misconfigured — copy <code>appsettings.Development.json.example</code> to <code>appsettings.Development.json</code> in the API project and ensure <code>http://localhost:5601</code> is in <code>Cors:AllowedOrigins</code>.</li>
+                <li>The API is not running — start it with the API command printed by <code>scripts/start-local-stack.ps1</code>.</li>
+                <li>CORS is misconfigured — run <code>scripts/start-local-stack.ps1</code> from the repo root to refresh the API's local <code>Cors:AllowedOrigins</code> setting for this worktree.</li>
             </ul>
         </MudAlert>
         <MudButton Variant="Variant.Outlined" Color="Color.Primary"

@@ -1,5 +1,7 @@
 # Docker Development Setup
 
+> For non-Docker local dev (the common path), use `scripts/start-local-stack.ps1` instead. Docker Compose is a separate workflow that runs on its own fixed ports and does not coordinate with the launcher.
+
 > Looking for the no-sign-in homelab path? See README's "Run locally without Azure" section — same `docker compose up`, with `Auth__UseTestProvider=true` already set in `docker-compose.yml`.
 
 > **Platform**: x64 / amd64 only. `mcr.microsoft.com/mssql/server:2022-latest` has no ARM64 image, so the bundled stack does not run on Apple Silicon (without emulation) or Raspberry Pi. Run the API/UI on x64 hardware, or substitute a different database backend.

@@ -10,23 +10,29 @@
 
 > **First-time setup (Options 1 and 2 only):** run `pwsh scripts/setup-dev-entra.ps1` once after cloning. It creates or repairs the dev Entra ID app registration, waits for the required redirect URI/scope/service-principal wiring to become visible, sets backend user-secrets, and writes `src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/appsettings.Development.json`. Skip for Option 3 (no Azure AD).
 
-**Option 1 — LocalDB:**
+**Option 1 — LocalDB / Docker SQL with dynamic ports:**
+
+### Local dev stack
+
+```powershell
+# From the repo root, in any worktree:
+.\scripts\start-local-stack.ps1
+```
+
+The launcher allocates a free localhost port pair (starting at 5600/5601, stepping +2/+2 for each additional concurrent worktree), patches the frontend API base URL and backend CORS origin in gitignored `appsettings.Development.json` files, and prints the two `dotnet run` commands to paste into separate terminals. Active URLs are also written to `scripts/.env.local`.
+
+To free the ports later:
+
+```powershell
+.\scripts\kill-dev-ports.ps1
+```
+
+Apply migrations when needed:
 
 ```bash
-# Start API + frontend from the repository root
-dotnet run --launch-profile "API + LocalDB"
-# The root launcher starts both projects and opens the Blazor UI
-
-# Apply migrations
 dotnet ef database update \
   --project src/Backend/AHKFlowApp.Infrastructure \
   --startup-project src/Backend/AHKFlowApp.API
-
-# Start API (http://localhost:5600, OpenAPI at /swagger/v1/swagger.json)
-dotnet run --project src/Backend/AHKFlowApp.API --launch-profile "LocalDB SQL"
-
-# Start frontend in a separate terminal (http://localhost:5601)
-dotnet run --project src/Frontend/AHKFlowApp.UI.Blazor
 ```
 
 **Option 2 — Docker Compose (recommended):**
@@ -74,11 +80,13 @@ Individual seed endpoints (`/dev/hotstrings/seed`, `/dev/hotkeys/seed`, `/dev/ca
 
 ### URLs
 
-| Service | URL |
-|---------|-----|
-| API | http://localhost:5600 |
-| OpenAPI JSON | http://localhost:5600/swagger/v1/swagger.json |
-| Frontend | http://localhost:5601 |
+For Option 1, read the active URLs from `scripts/.env.local`; the launcher may allocate different ports per worktree.
+
+```powershell
+Get-Content scripts\.env.local
+```
+
+Docker Compose and the no-Azure local stack remain fixed-port workflows; their URLs are listed in their sections above.
 
 ### Environments
 

@@ -28,18 +28,22 @@ Once installed, Claude Code can drive the browser during a session. Common uses 
 ```
 "Open the health page in headed mode so I can see it"
 "Take a screenshot of the home page"
-"Check if the UI is loading correctly on localhost:7601"
+"Check if the UI is loading correctly at the URL in scripts/.env.local"
 ```
 
-## Ports
+## URLs
 
-| Service | URL |
-|---------|-----|
-| Blazor UI | http://localhost:5601 |
-| API | http://localhost:5600 |
+Each worktree's active URLs live in `scripts/.env.local` (written by `start-local-stack.ps1`):
+
+```powershell
+# Read the active UI URL into a variable
+$ui = (Get-Content scripts\.env.local | Select-String '^AHKFLOW_UI_URL=' | ForEach-Object { ($_ -split '=', 2)[1] })
+```
+
+When prompting Playwright to navigate, reference the manifest instead of hardcoding `5601`. Example: *"Open the URL from `AHKFLOW_UI_URL` in `scripts/.env.local`."*
 
 ## Notes
 
 - The browser opens headless by default. Add `--headed` to see the browser window.
 - The Blazor app reads `ApiHttpClient:BaseAddress` directly from `appsettings.json` (single URL, no probing). If the API is not running, health checks will fail with `ERR_CONNECTION_REFUSED`.
-- Ensure the API is running before navigating to `/health`: `dotnet run --project src/Backend/AHKFlowApp.API`
+- Ensure the API is running before navigating to `/health`: run `scripts/start-local-stack.ps1`, then start the API with the printed command.

@@ -55,6 +55,12 @@ One Entra app registration per environment. The SPA is both the client (SPA redi
 - **Authority**: `https://login.microsoftonline.com/{tenantId}`
 - **Setup**: `scripts/setup-entra-app.ps1` — see `docs/deployment/entra-setup.md`
 
+### Dev redirect URI
+
+For the dev app registration, `setup-entra-app.ps1` registers a single SPA redirect: `http://localhost/authentication/login-callback` (no port). Entra ignores the port for localhost redirects ([Microsoft Learn](https://learn.microsoft.com/entra/identity-platform/reply-url#localhost-exceptions)), so a UI running on any port reachable from `localhost` is accepted. This is what makes the per-worktree dynamic port allocation work without re-registering URIs.
+
+Test and prod registrations are unchanged - they keep the existing fixed local troubleshooting redirect and register the SWA hostname via `setup-entra-app.ps1` as before.
+
 If Entra fails on its own hosted sign-in page before redirecting back to the SPA (for example `AADSTS500011`), that error stays on the Microsoft page. The app can only show friendly guidance for failures that actually return to `Authentication.razor`.
 
 ## Auth verification endpoint
