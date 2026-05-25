@@ -455,3 +455,6 @@ src/Backend/**/appsettings.Production.json
 coverage-report/
 CoverageReport/
 **/TestResults/
+
+# Superpowers brainstorming scratch (local-only)
+.superpowers/
