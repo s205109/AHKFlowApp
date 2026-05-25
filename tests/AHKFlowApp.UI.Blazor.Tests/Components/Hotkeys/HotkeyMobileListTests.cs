@@ -37,6 +37,18 @@ public sealed class HotkeyMobileListTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
+    public void EmptyState_DoesNotRenderTable()
+    {
+        IRenderedComponent<HotkeyMobileList> cut = Render<HotkeyMobileList>(p => p
+            .Add(c => c.Items, [])
+            .Add(c => c.Profiles, (IReadOnlyList<ProfileDto>)[])
+            .Add(c => c.Categories, (IReadOnlyList<CategoryDto>)[]));
+
+        cut.Markup.Should().Contain("No hotkeys yet.");
+        cut.FindAll("table.mobile-list").Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task EditButton_RaisesOnEdit()
     {
         HotkeyEditModel item = Item();

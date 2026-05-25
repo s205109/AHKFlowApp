@@ -16,6 +16,10 @@
     color: var(--mud-palette-text-secondary);
 }
 
+.mobile-list .checkbox-column {
+    width: 36px;
+}
+
 .mobile-list .mobile-row {
     border-top: 1px solid var(--mud-palette-divider);
     cursor: pointer;

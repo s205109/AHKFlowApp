@@ -6,6 +6,23 @@
     display: none;
 }
 
+.mobile-shell {
+    position: relative;
+    min-height: 80vh;
+}
+
+.chip-strip {
+    overflow-x: auto;
+    white-space: nowrap;
+}
+
+.add-hotstring-fab {
+    position: fixed;
+    right: 16px;
+    bottom: 16px;
+    z-index: 100;
+}
+
 @media (max-width: 959.95px) {
     .desktop-branch {
         display: none;

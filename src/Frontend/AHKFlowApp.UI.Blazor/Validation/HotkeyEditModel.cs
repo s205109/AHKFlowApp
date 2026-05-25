@@ -44,6 +44,22 @@ public sealed class HotkeyEditModel
         CategoryIds = [.. dto.CategoryIds ?? []],
     };
 
+    public HotkeyEditModel Clone() => new()
+    {
+        Id = Id,
+        Description = Description,
+        Key = Key,
+        Ctrl = Ctrl,
+        Alt = Alt,
+        Shift = Shift,
+        Win = Win,
+        Action = Action,
+        Parameters = Parameters,
+        AppliesToAllProfiles = AppliesToAllProfiles,
+        ProfileIds = [.. ProfileIds],
+        CategoryIds = [.. CategoryIds],
+    };
+
     public CreateHotkeyDto ToCreateDto() =>
         new(Description, Key, Ctrl, Alt, Shift, Win, Action, Parameters,
             AppliesToAllProfiles ? null : [.. ProfileIds], AppliesToAllProfiles, [.. CategoryIds]);

@@ -179,7 +179,7 @@
 </div>
 
 <div class="mobile-branch">
-    <MudPaper Class="pa-2" Style="position:relative;min-height:80vh;">
+    <MudPaper Class="pa-2 mobile-shell">
         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="mb-2">
             <MudIconButton Class="reload-hotstrings-mobile" Icon="@Icons.Material.Filled.Refresh"
                            OnClick="ReloadAsync" Disabled="@(!_isAuthenticated || _loading)" />
@@ -196,7 +196,7 @@
 
             @if (_categories.Count > 0)
             {
-                <div class="chip-strip mb-2" style="overflow-x:auto;white-space:nowrap;">
+                <div class="chip-strip mb-2">
                     <MudChipSet T="Guid" SelectionMode="SelectionMode.MultiSelection"
                                 SelectedValues="_selectedCategoryIds"
                                 SelectedValuesChanged="OnCategoryFilterChangedAsync">
@@ -220,12 +220,14 @@
                                  OnDelete="DeleteAsync"
                                  OnBulkDelete="MobileBulkDeleteAsync" />
 
-            <MudPagination Class="mt-2" Count="_mobileTotalPages" Selected="_mobilePage"
-                           SelectedChanged="OnMobilePageChangedAsync" />
+            @if (_mobileTotalPages > 1)
+            {
+                <MudPagination Class="mt-2" Count="_mobileTotalPages" Selected="_mobilePage"
+                               SelectedChanged="OnMobilePageChangedAsync" />
+            }
 
             <MudFab Class="add-hotstring-fab" Color="Color.Primary"
                     StartIcon="@Icons.Material.Filled.Add"
-                    Style="position:fixed;right:16px;bottom:16px;z-index:100;"
                     OnClick="OpenCreateDialogAsync" />
     </MudPaper>
 </div>
@@ -259,7 +261,9 @@
     private readonly int _mobilePageSize = 10;
     private int _mobileTotalPages;
     private HotstringListRequest? _cachedListRequest;
+    // Same-request cache only; every mutation path must call ClearListCache before reloading.
     private PagedList<HotstringDto>? _cachedListPage;
+    private bool _dialogOpen;
 
     protected override async Task OnInitializedAsync()
     {
@@ -283,7 +287,6 @@
 
             await LoadMobileAsync();
         }
-
     }
 
     private async Task<GridData<HotstringEditModel>> LoadServerData(GridState<HotstringEditModel> state, CancellationToken ct)
@@ -598,54 +601,65 @@
 
     private async Task OpenCreateDialogAsync()
     {
-        DialogParameters parameters = new()
-        {
-            [nameof(HotstringEditDialog.Item)] = new HotstringEditModel(),
-            [nameof(HotstringEditDialog.Profiles)] = _profiles,
-            [nameof(HotstringEditDialog.Categories)] = _categories,
-        };
+        if (_dialogOpen)
+            return;
 
-        IDialogReference dialog = await DialogService.ShowAsync<HotstringEditDialog>(
-            "New hotstring", parameters,
-            new DialogOptions { FullScreen = true, CloseButton = false });
-
-        DialogResult? result = await dialog.Result;
-        if (result?.Canceled == false)
+        _dialogOpen = true;
+        try
         {
-            Snackbar.Add("Hotstring created.", Severity.Success);
-            await ReloadAllAsync();
+            DialogParameters parameters = new()
+            {
+                [nameof(HotstringEditDialog.Item)] = new HotstringEditModel(),
+                [nameof(HotstringEditDialog.Profiles)] = _profiles,
+                [nameof(HotstringEditDialog.Categories)] = _categories,
+            };
+
+            IDialogReference dialog = await DialogService.ShowAsync<HotstringEditDialog>(
+                "New hotstring", parameters,
+                new DialogOptions { FullScreen = true, CloseButton = false });
+
+            DialogResult? result = await dialog.Result;
+            if (result?.Canceled == false)
+            {
+                Snackbar.Add("Hotstring created.", Severity.Success);
+                await ReloadAllAsync();
+            }
+        }
+        finally
+        {
+            _dialogOpen = false;
         }
     }
 
     private async Task OpenEditDialogAsync(HotstringEditModel item)
     {
-        DialogParameters parameters = new()
-        {
-            [nameof(HotstringEditDialog.Item)] = HotstringEditModel.FromDto(new HotstringDto(
-                item.Id!.Value,
-                [.. item.ProfileIds],
-                item.AppliesToAllProfiles,
-                item.Trigger,
-                item.Replacement,
-                item.Description,
-                item.IsEndingCharacterRequired,
-                item.IsTriggerInsideWord,
-                DateTimeOffset.UtcNow,
-                DateTimeOffset.UtcNow,
-                [.. item.CategoryIds])),
-            [nameof(HotstringEditDialog.Profiles)] = _profiles,
-            [nameof(HotstringEditDialog.Categories)] = _categories,
-        };
+        if (_dialogOpen || item.Id is null)
+            return;
 
-        IDialogReference dialog = await DialogService.ShowAsync<HotstringEditDialog>(
-            "Edit hotstring", parameters,
-            new DialogOptions { FullScreen = true, CloseButton = false });
-
-        DialogResult? result = await dialog.Result;
-        if (result?.Canceled == false)
+        _dialogOpen = true;
+        try
         {
-            Snackbar.Add("Hotstring updated.", Severity.Success);
-            await ReloadAllAsync();
+            DialogParameters parameters = new()
+            {
+                [nameof(HotstringEditDialog.Item)] = item.Clone(),
+                [nameof(HotstringEditDialog.Profiles)] = _profiles,
+                [nameof(HotstringEditDialog.Categories)] = _categories,
+            };
+
+            IDialogReference dialog = await DialogService.ShowAsync<HotstringEditDialog>(
+                "Edit hotstring", parameters,
+                new DialogOptions { FullScreen = true, CloseButton = false });
+
+            DialogResult? result = await dialog.Result;
+            if (result?.Canceled == false)
+            {
+                Snackbar.Add("Hotstring updated.", Severity.Success);
+                await ReloadAllAsync();
+            }
+        }
+        finally
+        {
+            _dialogOpen = false;
         }
     }
 

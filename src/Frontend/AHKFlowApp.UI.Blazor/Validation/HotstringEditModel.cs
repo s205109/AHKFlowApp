@@ -37,6 +37,19 @@ public sealed class HotstringEditModel
         CategoryIds = [.. dto.CategoryIds ?? []],
     };
 
+    public HotstringEditModel Clone() => new()
+    {
+        Id = Id,
+        Trigger = Trigger,
+        Replacement = Replacement,
+        Description = Description,
+        AppliesToAllProfiles = AppliesToAllProfiles,
+        ProfileIds = [.. ProfileIds],
+        IsEndingCharacterRequired = IsEndingCharacterRequired,
+        IsTriggerInsideWord = IsTriggerInsideWord,
+        CategoryIds = [.. CategoryIds],
+    };
+
     public CreateHotstringDto ToCreateDto() =>
         new(Trigger, Replacement, AppliesToAllProfiles ? null : [.. ProfileIds], AppliesToAllProfiles, IsEndingCharacterRequired, IsTriggerInsideWord, Description, [.. CategoryIds]);
 

@@ -41,6 +41,7 @@ public sealed class HotstringEditModelTests
     public void ToCreateDto_MapsAllFields()
     {
         var profileId = Guid.NewGuid();
+        var categoryId = Guid.NewGuid();
         var model = new HotstringEditModel
         {
             Trigger = "btw",
@@ -48,6 +49,7 @@ public sealed class HotstringEditModelTests
             Description = "polite filler",
             AppliesToAllProfiles = false,
             ProfileIds = [profileId],
+            CategoryIds = [categoryId],
             IsEndingCharacterRequired = true,
             IsTriggerInsideWord = false
         };
@@ -59,8 +61,34 @@ public sealed class HotstringEditModelTests
         dto.Description.Should().Be("polite filler");
         dto.AppliesToAllProfiles.Should().BeFalse();
         dto.ProfileIds.Should().HaveCount(1).And.Contain(profileId);
+        dto.CategoryIds.Should().HaveCount(1).And.Contain(categoryId);
         dto.IsEndingCharacterRequired.Should().BeTrue();
         dto.IsTriggerInsideWord.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Clone_CopiesEditableFields_WithoutSharingCollections()
+    {
+        var profileId = Guid.NewGuid();
+        var categoryId = Guid.NewGuid();
+        var model = new HotstringEditModel
+        {
+            Id = Guid.NewGuid(),
+            Trigger = "btw",
+            Replacement = "by the way",
+            Description = "polite filler",
+            AppliesToAllProfiles = false,
+            ProfileIds = [profileId],
+            CategoryIds = [categoryId],
+            IsEndingCharacterRequired = true,
+            IsTriggerInsideWord = false
+        };
+
+        HotstringEditModel clone = model.Clone();
+
+        clone.Should().BeEquivalentTo(model);
+        clone.ProfileIds.Should().NotBeSameAs(model.ProfileIds);
+        clone.CategoryIds.Should().NotBeSameAs(model.CategoryIds);
     }
 
     [Fact]

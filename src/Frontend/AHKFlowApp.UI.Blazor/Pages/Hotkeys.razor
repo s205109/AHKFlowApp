@@ -222,7 +222,7 @@
 </div>
 
 <div class="mobile-branch">
-    <MudPaper Class="pa-2" Style="position:relative;min-height:80vh;">
+    <MudPaper Class="pa-2 mobile-shell">
         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="mb-2">
             <MudIconButton Class="reload-hotkeys-mobile" Icon="@Icons.Material.Filled.Refresh"
                            OnClick="ReloadAsync" Disabled="@(!_isAuthenticated || _loading)" />
@@ -239,7 +239,7 @@
 
         @if (_categories.Count > 0)
         {
-            <div class="chip-strip mb-2" style="overflow-x:auto;white-space:nowrap;">
+            <div class="chip-strip mb-2">
                 <MudChipSet T="Guid" SelectionMode="SelectionMode.MultiSelection"
                             SelectedValues="_selectedCategoryIds"
                             SelectedValuesChanged="OnCategoryFilterChangedAsync">
@@ -263,12 +263,14 @@
                          OnDelete="DeleteAsync"
                          OnBulkDelete="MobileBulkDeleteAsync" />
 
-        <MudPagination Class="mt-2" Count="_mobileTotalPages" Selected="_mobilePage"
-                       SelectedChanged="OnMobilePageChangedAsync" />
+        @if (_mobileTotalPages > 1)
+        {
+            <MudPagination Class="mt-2" Count="_mobileTotalPages" Selected="_mobilePage"
+                           SelectedChanged="OnMobilePageChangedAsync" />
+        }
 
         <MudFab Class="add-hotkey-fab" Color="Color.Primary"
                 StartIcon="@Icons.Material.Filled.Add"
-                Style="position:fixed;right:16px;bottom:16px;z-index:100;"
                 OnClick="OpenCreateDialogAsync" />
     </MudPaper>
 </div>
@@ -302,7 +304,9 @@
     private readonly int _mobilePageSize = 10;
     private int _mobileTotalPages;
     private HotkeyListRequest? _cachedListRequest;
+    // Same-request cache only; every mutation path must call ClearListCache before reloading.
     private PagedList<HotkeyDto>? _cachedListPage;
+    private bool _dialogOpen;
 
     protected override async Task OnInitializedAsync()
     {
@@ -660,57 +664,65 @@
 
     private async Task OpenCreateDialogAsync()
     {
-        DialogParameters parameters = new()
-        {
-            [nameof(HotkeyEditDialog.Item)] = new HotkeyEditModel(),
-            [nameof(HotkeyEditDialog.Profiles)] = _profiles,
-            [nameof(HotkeyEditDialog.Categories)] = _categories,
-        };
+        if (_dialogOpen)
+            return;
 
-        IDialogReference dialog = await DialogService.ShowAsync<HotkeyEditDialog>(
-            "New hotkey", parameters,
-            new DialogOptions { FullScreen = true, CloseButton = false });
-
-        DialogResult? result = await dialog.Result;
-        if (result?.Canceled == false)
+        _dialogOpen = true;
+        try
         {
-            Snackbar.Add("Hotkey created.", Severity.Success);
-            await ReloadAllAsync();
+            DialogParameters parameters = new()
+            {
+                [nameof(HotkeyEditDialog.Item)] = new HotkeyEditModel(),
+                [nameof(HotkeyEditDialog.Profiles)] = _profiles,
+                [nameof(HotkeyEditDialog.Categories)] = _categories,
+            };
+
+            IDialogReference dialog = await DialogService.ShowAsync<HotkeyEditDialog>(
+                "New hotkey", parameters,
+                new DialogOptions { FullScreen = true, CloseButton = false });
+
+            DialogResult? result = await dialog.Result;
+            if (result?.Canceled == false)
+            {
+                Snackbar.Add("Hotkey created.", Severity.Success);
+                await ReloadAllAsync();
+            }
+        }
+        finally
+        {
+            _dialogOpen = false;
         }
     }
 
     private async Task OpenEditDialogAsync(HotkeyEditModel item)
     {
-        DialogParameters parameters = new()
-        {
-            [nameof(HotkeyEditDialog.Item)] = HotkeyEditModel.FromDto(new HotkeyDto(
-                item.Id!.Value,
-                [.. item.ProfileIds],
-                item.AppliesToAllProfiles,
-                item.Description,
-                item.Key,
-                item.Ctrl,
-                item.Alt,
-                item.Shift,
-                item.Win,
-                item.Action,
-                item.Parameters,
-                DateTimeOffset.UtcNow,
-                DateTimeOffset.UtcNow,
-                [.. item.CategoryIds])),
-            [nameof(HotkeyEditDialog.Profiles)] = _profiles,
-            [nameof(HotkeyEditDialog.Categories)] = _categories,
-        };
+        if (_dialogOpen || item.Id is null)
+            return;
 
-        IDialogReference dialog = await DialogService.ShowAsync<HotkeyEditDialog>(
-            "Edit hotkey", parameters,
-            new DialogOptions { FullScreen = true, CloseButton = false });
-
-        DialogResult? result = await dialog.Result;
-        if (result?.Canceled == false)
+        _dialogOpen = true;
+        try
         {
-            Snackbar.Add("Hotkey updated.", Severity.Success);
-            await ReloadAllAsync();
+            DialogParameters parameters = new()
+            {
+                [nameof(HotkeyEditDialog.Item)] = item.Clone(),
+                [nameof(HotkeyEditDialog.Profiles)] = _profiles,
+                [nameof(HotkeyEditDialog.Categories)] = _categories,
+            };
+
+            IDialogReference dialog = await DialogService.ShowAsync<HotkeyEditDialog>(
+                "Edit hotkey", parameters,
+                new DialogOptions { FullScreen = true, CloseButton = false });
+
+            DialogResult? result = await dialog.Result;
+            if (result?.Canceled == false)
+            {
+                Snackbar.Add("Hotkey updated.", Severity.Success);
+                await ReloadAllAsync();
+            }
+        }
+        finally
+        {
+            _dialogOpen = false;
         }
     }
 

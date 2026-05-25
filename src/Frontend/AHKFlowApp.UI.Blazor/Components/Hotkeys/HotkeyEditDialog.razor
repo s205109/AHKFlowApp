@@ -96,7 +96,9 @@
 
     private async Task SaveAsync()
     {
-        if (_saving) return;
+        if (_saving)
+            return;
+
         _saving = true;
         _error = null;
         _keyError = null;
@@ -123,7 +125,10 @@
 
             Dialog.Close(DialogResult.Ok(result.Value));
         }
-        finally { _saving = false; }
+        finally
+        {
+            _saving = false;
+        }
     }
 
     public void Dispose() { _cts.Cancel(); _cts.Dispose(); }

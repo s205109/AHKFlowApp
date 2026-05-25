@@ -38,6 +38,18 @@ public sealed class HotstringMobileListTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
+    public void EmptyState_DoesNotRenderTable()
+    {
+        IRenderedComponent<HotstringMobileList> cut = Render<HotstringMobileList>(p => p
+            .Add(c => c.Items, [])
+            .Add(c => c.Profiles, (IReadOnlyList<ProfileDto>)[])
+            .Add(c => c.Categories, (IReadOnlyList<CategoryDto>)[]));
+
+        cut.Markup.Should().Contain("No hotstrings yet.");
+        cut.FindAll("table.mobile-list").Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task EditButton_RaisesOnEdit()
     {
         HotstringEditModel item = Item();
