@@ -120,9 +120,16 @@ if (-not $SwaHostname -and $Environment -ne 'dev') {
 # ---------------------------------------------------------------------------
 # Build redirect URI lists
 # ---------------------------------------------------------------------------
-$redirectUris = @('http://localhost:5601/authentication/login-callback')
 if ($Environment -eq 'dev') {
-    $redirectUris += 'https://localhost:7601/authentication/login-callback'
+    # Register one port-less localhost redirect and rely on Entra's
+    # localhost port-ignoring (https://learn.microsoft.com/entra/identity-platform/reply-url#localhost-exceptions).
+    # Microsoft warns against enumerating multiple localhost URIs that differ only by port,
+    # so per-worktree port-specific entries are deliberately avoided.
+    $redirectUris = @('http://localhost/authentication/login-callback')
+} else {
+    # Preserve existing test/prod behavior: a fixed local troubleshooting redirect plus
+    # the SWA hostname appended below when available.
+    $redirectUris = @('http://localhost:5601/authentication/login-callback')
 }
 if ($SwaHostname) {
     $redirectUris += "https://$SwaHostname/authentication/login-callback"
@@ -284,7 +291,8 @@ if ($Environment -eq 'dev') {
     Write-Host "Run from the repo root:"
     Write-Host "  dotnet user-secrets set 'AzureAd:TenantId' '$tenantId' --project src/Backend/AHKFlowApp.API"
     Write-Host "  dotnet user-secrets set 'AzureAd:ClientId' '$appId' --project src/Backend/AHKFlowApp.API"
-    Write-Host "Then update wwwroot/appsettings.Development.json in AHKFlowApp.UI.Blazor:"
+    Write-Host "Then run scripts/start-local-stack.ps1 to allocate ports and patch frontend config."
+    Write-Host "If you need to populate AzureAd settings manually:"
     Write-Host "  Authority    = https://login.microsoftonline.com/$tenantId"
     Write-Host "  ClientId     = $appId"
     Write-Host "  DefaultScope = $defaultScope"
