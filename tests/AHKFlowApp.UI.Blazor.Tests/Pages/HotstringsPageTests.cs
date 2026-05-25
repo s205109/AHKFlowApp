@@ -45,6 +45,7 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
     private IRenderedComponent<Hotstrings> RenderPage()
     {
         Render<MudPopoverProvider>();
+        Render<MudDialogProvider>();
         return Render<Hotstrings>(p => p.AddCascadingValue(AuthenticatedState));
     }
 
@@ -207,26 +208,28 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
-    public void Page_ReloadWhileEditingExistingRow_KeepsEditControls()
+    public void Page_ReloadWhileExpanded_KeepsMobileRowControls()
     {
         var dto = new HotstringDto(Guid.NewGuid(), [], true, "btw", "by the way", null, true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
         _api.ListAsync(Arg.Any<HotstringListRequest>(), Arg.Any<CancellationToken>())
             .Returns(
                 ApiResult<PagedList<HotstringDto>>.Ok(Page(dto)),
+                ApiResult<PagedList<HotstringDto>>.Ok(Page(dto)),
+                ApiResult<PagedList<HotstringDto>>.Ok(Page(dto)),
                 ApiResult<PagedList<HotstringDto>>.Ok(Page(dto)));
 
         IRenderedComponent<Hotstrings> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find(".mobile-row"));
+        cut.Find(".mobile-row").Click();
         cut.WaitForAssertion(() => cut.Find("button.start-edit"));
-        cut.Find("button.start-edit").Click();
-        cut.WaitForAssertion(() => cut.Find("button.commit-edit"));
 
-        cut.Find("button.reload-hotstrings").Click();
+        cut.Find("button.reload-hotstrings-mobile").Click();
 
         cut.WaitForAssertion(() => _api.Received(2).ListAsync(Arg.Any<HotstringListRequest>(), Arg.Any<CancellationToken>()));
         cut.WaitForAssertion(() =>
         {
-            cut.Find("button.commit-edit").Should().NotBeNull();
-            cut.Find("input[data-test=\"trigger-input\"]").Should().NotBeNull();
+            cut.Find("button.start-edit").Should().NotBeNull();
+            cut.Markup.Should().Contain("by the way");
         });
     }
 
@@ -397,5 +400,19 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
                 r.CategoryIds != null &&
                 r.CategoryIds.Contains(work.Id)),
             Arg.Any<CancellationToken>()));
+    }
+
+    [Fact]
+    public void Page_RendersCssGatedDesktopAndMobileBranches()
+    {
+        StubList(Page());
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+
+        cut.WaitForAssertion(() =>
+        {
+            cut.Find(".desktop-branch button.add-hotstring").Should().NotBeNull();
+            cut.Find(".mobile-branch button.add-hotstring-fab").Should().NotBeNull();
+        });
     }
 }

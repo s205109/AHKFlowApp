@@ -1,0 +1,135 @@
+@using AHKFlowApp.UI.Blazor.DTOs
+@using AHKFlowApp.UI.Blazor.Services
+@using AHKFlowApp.UI.Blazor.Validation
+@using MudBlazor
+@implements IDisposable
+
+<MudDialog Class="hotkey-edit-dialog">
+    <TitleContent>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="flex-grow-1">
+            <MudIconButton Class="cancel-edit" Icon="@Icons.Material.Filled.ArrowBack" OnClick="Cancel" />
+            <MudText Typo="Typo.h6">@(Item.Id is null ? "New hotkey" : "Edit hotkey")</MudText>
+            <MudButton Class="commit-edit" Color="Color.Primary" Variant="Variant.Filled"
+                       OnClick="SaveAsync" Disabled="@_saving">Save</MudButton>
+        </MudStack>
+    </TitleContent>
+    <DialogContent>
+        <MudForm @ref="_form">
+        <MudStack Spacing="3" Class="pa-2">
+            <MudTextField T="string" Label="Description" @bind-Value="Item.Description"
+                          Required="true" RequiredError="Description is required" MaxLength="200"
+                          UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "description-input" })" />
+            <MudTextField T="string" Label="Key" @bind-Value="Item.Key"
+                          Required="true" RequiredError="Key is required" MaxLength="20"
+                          Error="@(_keyError is not null)" ErrorText="@_keyError"
+                          UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "key-input" })" />
+            <MudStack Row="true" Spacing="2">
+                <MudCheckBox T="bool" @bind-Value="Item.Ctrl" Label="Ctrl"
+                             UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "ctrl-checkbox" })" />
+                <MudCheckBox T="bool" @bind-Value="Item.Alt" Label="Alt"
+                             UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "alt-checkbox" })" />
+                <MudCheckBox T="bool" @bind-Value="Item.Shift" Label="Shift"
+                             UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "shift-checkbox" })" />
+                <MudCheckBox T="bool" @bind-Value="Item.Win" Label="Win"
+                             UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "win-checkbox" })" />
+            </MudStack>
+            <MudSelect T="HotkeyAction" @bind-Value="Item.Action" Label="Action"
+                       UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "action-select" })">
+                <MudSelectItem T="HotkeyAction" Value="HotkeyAction.Send">Send</MudSelectItem>
+                <MudSelectItem T="HotkeyAction" Value="HotkeyAction.Run">Run</MudSelectItem>
+            </MudSelect>
+            <MudTextField T="string" Label="Parameters" @bind-Value="Item.Parameters"
+                          Lines="3" MaxLength="4000"
+                          UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "parameters-input" })" />
+
+            <MudCheckBox T="bool" @bind-Value="Item.AppliesToAllProfiles" Label="Apply to all profiles"
+                         UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "applies-to-all-checkbox" })" />
+            @if (!Item.AppliesToAllProfiles)
+            {
+                <MudSelect T="Guid" MultiSelection="true" Label="Profiles"
+                           SelectedValues="Item.ProfileIds"
+                           SelectedValuesChanged="ids => Item.ProfileIds = [.. ids]"
+                           ToStringFunc="@(id => Profiles.FirstOrDefault(p => p.Id == id)?.Name ?? id.ToString())"
+                           UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "profile-select" })">
+                    @foreach (ProfileDto p in Profiles)
+                    {
+                        <MudSelectItem T="Guid" Value="@p.Id">@p.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            }
+
+            <MudSelect T="Guid" MultiSelection="true" Label="Categories"
+                       SelectedValues="Item.CategoryIds"
+                       SelectedValuesChanged="ids => Item.CategoryIds = [.. ids]"
+                       ToStringFunc="@(id => Categories.FirstOrDefault(c => c.Id == id)?.Name ?? id.ToString())"
+                       UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "category-select" })">
+                @foreach (CategoryDto c in Categories)
+                {
+                    <MudSelectItem T="Guid" Value="@c.Id">@c.Name</MudSelectItem>
+                }
+            </MudSelect>
+
+            @if (_error is not null)
+            {
+                <MudAlert Severity="Severity.Error">@_error</MudAlert>
+            }
+        </MudStack>
+        </MudForm>
+    </DialogContent>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = default!;
+    [Inject] private IHotkeysApiClient Api { get; set; } = default!;
+
+    [Parameter] public HotkeyEditModel Item { get; set; } = new();
+    [Parameter] public IReadOnlyList<ProfileDto> Profiles { get; set; } = [];
+    [Parameter] public IReadOnlyList<CategoryDto> Categories { get; set; } = [];
+
+    private string? _error;
+    private string? _keyError;
+    private bool _saving;
+    private MudForm _form = default!;
+    private readonly CancellationTokenSource _cts = new();
+
+    private void Cancel() => Dialog.Cancel();
+
+    private async Task SaveAsync()
+    {
+        if (_saving)
+            return;
+
+        _saving = true;
+        _error = null;
+        _keyError = null;
+        try
+        {
+            await _form.ValidateAsync();
+            if (!_form.IsValid)
+                return;
+
+            ApiResult<HotkeyDto> result = Item.Id is null
+                ? await Api.CreateAsync(Item.ToCreateDto(), _cts.Token)
+                : await Api.UpdateAsync(Item.Id.Value, Item.ToUpdateDto(), _cts.Token);
+
+            if (!result.IsSuccess)
+            {
+                string message = ApiErrorMessageFactory.Build(result.Status, result.Problem);
+                if (result.Status == ApiResultStatus.Conflict)
+                    _keyError = message;
+                else
+                    _error = message;
+
+                return;
+            }
+
+            Dialog.Close(DialogResult.Ok(result.Value));
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    public void Dispose() { _cts.Cancel(); _cts.Dispose(); }
+}

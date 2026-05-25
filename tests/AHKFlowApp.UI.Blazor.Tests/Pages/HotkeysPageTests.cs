@@ -45,6 +45,7 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
     private IRenderedComponent<Hotkeys> RenderPage()
     {
         Render<MudPopoverProvider>();
+        Render<MudDialogProvider>();
         return Render<Hotkeys>(p => p.AddCascadingValue(AuthenticatedState));
     }
 
@@ -214,26 +215,28 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
-    public void Page_ReloadWhileEditingExistingRow_KeepsEditControls()
+    public void Page_ReloadWhileExpanded_KeepsMobileRowControls()
     {
         HotkeyDto dto = MakeHotkey("Open terminal", "T");
         _api.ListAsync(Arg.Any<HotkeyListRequest>(), Arg.Any<CancellationToken>())
             .Returns(
                 ApiResult<PagedList<HotkeyDto>>.Ok(Page(dto)),
+                ApiResult<PagedList<HotkeyDto>>.Ok(Page(dto)),
+                ApiResult<PagedList<HotkeyDto>>.Ok(Page(dto)),
                 ApiResult<PagedList<HotkeyDto>>.Ok(Page(dto)));
 
         IRenderedComponent<Hotkeys> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find(".mobile-row"));
+        cut.Find(".mobile-row").Click();
         cut.WaitForAssertion(() => cut.Find("button.start-edit"));
-        cut.Find("button.start-edit").Click();
-        cut.WaitForAssertion(() => cut.Find("button.commit-edit"));
 
-        cut.Find("button.reload-hotkeys").Click();
+        cut.Find("button.reload-hotkeys-mobile").Click();
 
         cut.WaitForAssertion(() => _api.Received(2).ListAsync(Arg.Any<HotkeyListRequest>(), Arg.Any<CancellationToken>()));
         cut.WaitForAssertion(() =>
         {
-            cut.Find("button.commit-edit").Should().NotBeNull();
-            cut.Find("input[data-test=\"key-input\"]").Should().NotBeNull();
+            cut.Find("button.start-edit").Should().NotBeNull();
+            cut.Markup.Should().Contain("Open terminal");
         });
     }
 
@@ -477,5 +480,19 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
                 r.CategoryIds != null &&
                 r.CategoryIds.Contains(work.Id)),
             Arg.Any<CancellationToken>()));
+    }
+
+    [Fact]
+    public void Page_RendersCssGatedDesktopAndMobileBranches()
+    {
+        StubList(Page());
+
+        IRenderedComponent<Hotkeys> cut = RenderPage();
+
+        cut.WaitForAssertion(() =>
+        {
+            cut.Find(".desktop-branch button.add-hotkey").Should().NotBeNull();
+            cut.Find(".mobile-branch button.add-hotkey-fab").Should().NotBeNull();
+        });
     }
 }
