@@ -14,6 +14,7 @@ Blazor WebAssembly PWA frontend for AHKFlowApp.
 - Bulk-select + delete toolbar for multi-row deletion. Examples: hotstrings, hotkeys pages.
 - `IDialogService.ShowMessageBox(...)` for delete confirmations
 - No `StateHasChanged()` after standard event handlers — Blazor re-renders automatically
+- For list pages that need mobile support: render both branches as plain `.desktop-branch` and `.mobile-branch` containers, then gate visibility in the page's scoped `.razor.css` at `959.95px`. Desktop uses `MudDataGrid`; mobile uses a compact list component, full-screen `MudDialog`, and `MudFab`. See `Components/Hotstrings/` and `Components/Hotkeys/` for examples.
 
 ## Local Setup
 

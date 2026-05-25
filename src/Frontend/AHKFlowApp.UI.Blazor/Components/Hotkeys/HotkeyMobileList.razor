@@ -1,0 +1,176 @@
+@using AHKFlowApp.UI.Blazor.DTOs
+@using AHKFlowApp.UI.Blazor.Validation
+@using MudBlazor
+
+<MudStack Spacing="0">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Class="pa-2">
+        <MudIconButton Class="toggle-select-mode"
+                       Icon="@(_selectMode ? Icons.Material.Filled.Close : Icons.Material.Filled.CheckBox)"
+                       OnClick="ToggleSelectMode" />
+        <MudText Typo="Typo.subtitle2">@(_selectMode ? $"{_selectedIds.Count} selected" : "")</MudText>
+    </MudStack>
+
+    @if (Items.Count == 0)
+    {
+        <MudText Class="pa-4 text-center" Typo="Typo.body2">No hotkeys yet.</MudText>
+    }
+    else
+    {
+        <table class="mobile-list">
+            <thead>
+                <tr class="mobile-header">
+                    @if (_selectMode)
+                    {
+                        <th class="checkbox-column"></th>
+                    }
+                    <th>Combo</th>
+                    <th>Description</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (HotkeyEditModel item in Items)
+                {
+                    bool expanded = item.Id is { } id && !_selectMode && _expandedId == id;
+                    <tr class="mobile-row" @onclick="() => OnRowClick(item)">
+                        @if (_selectMode)
+                        {
+                            <td class="checkbox-cell" @onclick:stopPropagation="true">
+                                <input type="checkbox" class="row-checkbox"
+                                       checked="@(item.Id is { } checkboxId && _selectedIds.Contains(checkboxId))"
+                                       @onchange="e => OnRowCheckboxChanged(item, IsChecked(e))" />
+                            </td>
+                        }
+                        <td class="trigger-cell"><code>@FormatCombo(item)</code></td>
+                        <td class="replacement-cell">@item.Description</td>
+                        <td class="chevron-cell">@(expanded ? "▾" : "▸")</td>
+                    </tr>
+                    @if (expanded)
+                    {
+                        <tr class="mobile-row-expanded">
+                            <td colspan="3">
+                                <MudStack Spacing="1" Class="pa-3">
+                                    <MudText Typo="Typo.body2"><strong>Action:</strong> @item.Action</MudText>
+                                    @if (!string.IsNullOrWhiteSpace(item.Parameters))
+                                    {
+                                        <MudText Typo="Typo.body2"><strong>Parameters:</strong> @item.Parameters</MudText>
+                                    }
+                                    <MudText Typo="Typo.body2"><strong>Profiles:</strong>
+                                        @if (item.AppliesToAllProfiles)
+                                        {
+                                            <MudChip T="string" Size="Size.Small" Color="Color.Info">Any</MudChip>
+                                        }
+                                        else
+                                        {
+                                            @foreach (Guid pid in item.ProfileIds)
+                                            {
+                                                string name = Profiles.FirstOrDefault(p => p.Id == pid)?.Name ?? pid.ToString()[..8];
+                                                <MudChip T="string" Size="Size.Small">@name</MudChip>
+                                            }
+                                        }
+                                    </MudText>
+                                    <MudText Typo="Typo.body2"><strong>Categories:</strong>
+                                        @foreach (Guid cid in item.CategoryIds)
+                                        {
+                                            string name = Categories.FirstOrDefault(c => c.Id == cid)?.Name ?? cid.ToString()[..8];
+                                            <MudChip T="string" Size="Size.Small">@name</MudChip>
+                                        }
+                                    </MudText>
+                                    <MudStack Row="true" Spacing="2" Class="mt-2">
+                                        <MudButton Class="start-edit" Variant="Variant.Filled" Color="Color.Primary"
+                                                   StartIcon="@Icons.Material.Filled.Edit"
+                                                   OnClick="@(async () => await OnEdit.InvokeAsync(item))">Edit</MudButton>
+                                        <MudButton Class="delete" Variant="Variant.Filled" Color="Color.Error"
+                                                   StartIcon="@Icons.Material.Filled.Delete"
+                                                   OnClick="@(async () => await OnDelete.InvokeAsync(item))">Delete</MudButton>
+                                    </MudStack>
+                                </MudStack>
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    }
+
+    @if (_selectMode && _selectedIds.Count > 0)
+    {
+        <div class="select-action-bar">
+            <MudButton Variant="Variant.Text" OnClick="ToggleSelectMode">Cancel</MudButton>
+            <MudButton Class="bulk-delete-hotkeys" Variant="Variant.Filled" Color="Color.Error"
+                       StartIcon="@Icons.Material.Filled.DeleteSweep"
+                       OnClick="RaiseBulkDelete">Delete @_selectedIds.Count</MudButton>
+        </div>
+    }
+</MudStack>
+
+@code {
+    [Parameter] public IReadOnlyList<HotkeyEditModel> Items { get; set; } = [];
+    [Parameter] public IReadOnlyList<ProfileDto> Profiles { get; set; } = [];
+    [Parameter] public IReadOnlyList<CategoryDto> Categories { get; set; } = [];
+    [Parameter] public EventCallback<HotkeyEditModel> OnEdit { get; set; }
+    [Parameter] public EventCallback<HotkeyEditModel> OnDelete { get; set; }
+    [Parameter] public EventCallback<IReadOnlyList<Guid>> OnBulkDelete { get; set; }
+
+    private Guid? _expandedId;
+    private bool _selectMode;
+    private readonly HashSet<Guid> _selectedIds = [];
+
+    private void OnRowClick(HotkeyEditModel item)
+    {
+        if (_selectMode)
+        {
+            if (item.Id is { } id) ToggleSelected(id);
+        }
+        else if (item.Id is { } id)
+        {
+            _expandedId = _expandedId == id ? null : id;
+        }
+    }
+
+    private void OnRowCheckboxChanged(HotkeyEditModel item, bool isChecked)
+    {
+        if (item.Id is not { } id) return;
+        if (isChecked) _selectedIds.Add(id);
+        else _selectedIds.Remove(id);
+    }
+
+    private void ToggleSelected(Guid id)
+    {
+        if (!_selectedIds.Add(id)) _selectedIds.Remove(id);
+    }
+
+    private static bool IsChecked(ChangeEventArgs e) =>
+        e.Value switch
+        {
+            bool value => value,
+            string value when bool.TryParse(value, out bool parsed) => parsed,
+            _ => false,
+        };
+
+    private void ToggleSelectMode()
+    {
+        _selectMode = !_selectMode;
+        _selectedIds.Clear();
+        _expandedId = null;
+    }
+
+    private async Task RaiseBulkDelete()
+    {
+        IReadOnlyList<Guid> ids = [.. _selectedIds];
+        await OnBulkDelete.InvokeAsync(ids);
+        _selectMode = false;
+        _selectedIds.Clear();
+    }
+
+    private static string FormatCombo(HotkeyEditModel item)
+    {
+        List<string> parts = [];
+        if (item.Ctrl) parts.Add("Ctrl");
+        if (item.Alt) parts.Add("Alt");
+        if (item.Shift) parts.Add("Shift");
+        if (item.Win) parts.Add("Win");
+        parts.Add(item.Key);
+        return string.Join("+", parts);
+    }
+}

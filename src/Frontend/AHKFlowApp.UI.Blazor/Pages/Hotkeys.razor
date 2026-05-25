@@ -2,6 +2,7 @@
 @using AHKFlowApp.UI.Blazor.DTOs
 @using AHKFlowApp.UI.Blazor.Services
 @using AHKFlowApp.UI.Blazor.Validation
+@using AHKFlowApp.UI.Blazor.Components.Hotkeys
 @using MudBlazor
 @using Microsoft.AspNetCore.Components.Authorization
 @implements IDisposable
@@ -10,6 +11,7 @@
 
 <MudText Typo="Typo.h4" GutterBottom="true">Hotkeys</MudText>
 
+<div class="desktop-branch">
 <MudPaper Class="pa-4">
     <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Wrap="Wrap.Wrap" Class="mb-4">
         <MudButton Class="add-hotkey" Variant="Variant.Filled" Color="Color.Primary"
@@ -59,6 +61,7 @@
     }
 
     <MudDataGrid @ref="_grid" T="HotkeyEditModel" ServerData="LoadServerData"
+                 Class="hotkeys-grid"
                  MultiSelection="true" SelectOnRowClick="false"
                  SelectedItems="_selected" SelectedItemsChanged="OnSelectedItemsChanged"
                  Dense="true" Hover="true" RowsPerPage="_rowsPerPage"
@@ -216,6 +219,61 @@
         </PagerContent>
     </MudDataGrid>
 </MudPaper>
+</div>
+
+<div class="mobile-branch">
+    <MudPaper Class="pa-2 mobile-shell">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="mb-2">
+            <MudIconButton Class="reload-hotkeys-mobile" Icon="@Icons.Material.Filled.Refresh"
+                           OnClick="ReloadAsync" Disabled="@(!_isAuthenticated || _loading)" />
+            <MudSpacer />
+        </MudStack>
+
+        <MudTextField T="string" @bind-Value="_search" @bind-Value:after="OnSearchChangedAsync"
+                      DebounceInterval="300"
+                      Placeholder="Search hotkeys"
+                      Adornment="Adornment.Start"
+                      AdornmentIcon="@Icons.Material.Filled.Search"
+                      Class="search-hotkeys mb-2"
+                      FullWidth="true" Immediate="true" />
+
+        @if (_categories.Count > 0)
+        {
+            <div class="chip-strip mb-2">
+                <MudChipSet T="Guid" SelectionMode="SelectionMode.MultiSelection"
+                            SelectedValues="_selectedCategoryIds"
+                            SelectedValuesChanged="OnCategoryFilterChangedAsync">
+                    @foreach (CategoryDto c in _categories)
+                    {
+                        <MudChip T="Guid" Value="@c.Id" Variant="Variant.Outlined">@c.Name</MudChip>
+                    }
+                </MudChipSet>
+            </div>
+        }
+
+        @if (_loadError is not null)
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-3">@_loadError</MudAlert>
+        }
+
+        <HotkeyMobileList Items="_mobileItems"
+                         Profiles="_profiles"
+                         Categories="_categories"
+                         OnEdit="OpenEditDialogAsync"
+                         OnDelete="DeleteAsync"
+                         OnBulkDelete="MobileBulkDeleteAsync" />
+
+        @if (_mobileTotalPages > 1)
+        {
+            <MudPagination Class="mt-2" Count="_mobileTotalPages" Selected="_mobilePage"
+                           SelectedChanged="OnMobilePageChangedAsync" />
+        }
+
+        <MudFab Class="add-hotkey-fab" Color="Color.Primary"
+                StartIcon="@Icons.Material.Filled.Add"
+                OnClick="OpenCreateDialogAsync" />
+    </MudPaper>
+</div>
 
 @code {
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
@@ -241,6 +299,15 @@
     private int _rowsPerPage = UserPreferences.Default.RowsPerPage;
     private readonly CancellationTokenSource _cts = new();
 
+    private IReadOnlyList<HotkeyEditModel> _mobileItems = [];
+    private int _mobilePage = 1;
+    private readonly int _mobilePageSize = 10;
+    private int _mobileTotalPages;
+    private HotkeyListRequest? _cachedListRequest;
+    // Same-request cache only; every mutation path must call ClearListCache before reloading.
+    private PagedList<HotkeyDto>? _cachedListPage;
+    private bool _dialogOpen;
+
     protected override async Task OnInitializedAsync()
     {
         if (AuthState is not null)
@@ -260,6 +327,8 @@
 
             ApiResult<PagedList<CategoryDto>> catResult = await CategoriesApi.ListAsync(new CategoryListRequest(PageSize: 200), _cts.Token);
             if (catResult.IsSuccess) _categories = catResult.Value?.Items ?? [];
+
+            await LoadMobileAsync();
         }
     }
 
@@ -270,7 +339,7 @@
 
         (string? sortField, bool sortDescending) = GetSort(state);
 
-        ApiResult<PagedList<HotkeyDto>> result = await Api.ListAsync(
+        ApiResult<PagedList<HotkeyDto>> result = await ListAsync(
             new HotkeyListRequest(
                 Page: state.Page + 1,
                 PageSize: state.PageSize,
@@ -408,12 +477,14 @@
 
     private async Task ReloadAsync()
     {
-        if (_grid is not null) await _grid.ReloadServerData();
+        await ReloadAllAsync();
     }
 
     private async Task OnSearchChangedAsync()
     {
         if (_grid is not null) await _grid.ReloadServerData();
+        _mobilePage = 1;
+        await LoadMobileAsync();
     }
 
     private async Task StartAddAsync()
@@ -474,6 +545,7 @@
                 _pendingCreate = null;
                 _editingItem = null;
                 Snackbar.Add("Hotkey created.", Severity.Success);
+                ClearListCache();
 
                 if (_grid is not null)
                     await _grid.ReloadServerData();
@@ -487,6 +559,7 @@
             {
                 _editingItem = null;
                 Snackbar.Add("Hotkey updated.", Severity.Success);
+                ClearListCache();
 
                 if (_grid is not null)
                     await _grid.ReloadServerData();
@@ -510,7 +583,8 @@
         if (result.IsSuccess)
         {
             Snackbar.Add("Hotkey deleted.", Severity.Success);
-            if (_grid is not null) await _grid.ReloadServerData();
+            ClearListCache();
+            await ReloadAllAsync();
         }
         else Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
     }
@@ -544,6 +618,7 @@
                 : $"Deleted {deleted} hotkey(s).";
             Snackbar.Add(message, Severity.Success);
             _selected = [];
+            ClearListCache();
 
             if (_grid is not null)
                 await _grid.ReloadServerData();
@@ -552,6 +627,158 @@
         {
             Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
         }
+    }
+
+    private async Task LoadMobileAsync()
+    {
+        _loading = true;
+        _loadError = null;
+
+        ApiResult<PagedList<HotkeyDto>> result = await ListAsync(
+            new HotkeyListRequest(
+                Page: _mobilePage,
+                PageSize: _mobilePageSize,
+                Search: string.IsNullOrWhiteSpace(_search) ? null : _search,
+                CategoryIds: _selectedCategoryIds.Count > 0 ? _selectedCategoryIds : null),
+            _cts.Token);
+
+        _loading = false;
+
+        if (!result.IsSuccess)
+        {
+            _loadError = ApiErrorMessageFactory.Build(result.Status, result.Problem);
+            _mobileItems = [];
+            _mobileTotalPages = 0;
+            return;
+        }
+
+        _mobileItems = [.. result.Value!.Items.Select(HotkeyEditModel.FromDto)];
+        _mobileTotalPages = (int)Math.Ceiling((double)result.Value.TotalCount / _mobilePageSize);
+    }
+
+    private async Task OnMobilePageChangedAsync(int page)
+    {
+        _mobilePage = page;
+        await LoadMobileAsync();
+    }
+
+    private async Task OpenCreateDialogAsync()
+    {
+        if (_dialogOpen)
+            return;
+
+        _dialogOpen = true;
+        try
+        {
+            DialogParameters parameters = new()
+            {
+                [nameof(HotkeyEditDialog.Item)] = new HotkeyEditModel(),
+                [nameof(HotkeyEditDialog.Profiles)] = _profiles,
+                [nameof(HotkeyEditDialog.Categories)] = _categories,
+            };
+
+            IDialogReference dialog = await DialogService.ShowAsync<HotkeyEditDialog>(
+                "New hotkey", parameters,
+                new DialogOptions { FullScreen = true, CloseButton = false });
+
+            DialogResult? result = await dialog.Result;
+            if (result?.Canceled == false)
+            {
+                Snackbar.Add("Hotkey created.", Severity.Success);
+                await ReloadAllAsync();
+            }
+        }
+        finally
+        {
+            _dialogOpen = false;
+        }
+    }
+
+    private async Task OpenEditDialogAsync(HotkeyEditModel item)
+    {
+        if (_dialogOpen || item.Id is null)
+            return;
+
+        _dialogOpen = true;
+        try
+        {
+            DialogParameters parameters = new()
+            {
+                [nameof(HotkeyEditDialog.Item)] = item.Clone(),
+                [nameof(HotkeyEditDialog.Profiles)] = _profiles,
+                [nameof(HotkeyEditDialog.Categories)] = _categories,
+            };
+
+            IDialogReference dialog = await DialogService.ShowAsync<HotkeyEditDialog>(
+                "Edit hotkey", parameters,
+                new DialogOptions { FullScreen = true, CloseButton = false });
+
+            DialogResult? result = await dialog.Result;
+            if (result?.Canceled == false)
+            {
+                Snackbar.Add("Hotkey updated.", Severity.Success);
+                await ReloadAllAsync();
+            }
+        }
+        finally
+        {
+            _dialogOpen = false;
+        }
+    }
+
+    private async Task MobileBulkDeleteAsync(IReadOnlyList<Guid> ids)
+    {
+        if (ids.Count == 0) return;
+
+        bool? confirm = await DialogService.ShowMessageBoxAsync(
+            title: "Delete hotkeys?",
+            message: $"Delete {ids.Count} hotkey(s)? This cannot be undone.",
+            yesText: "Delete", cancelText: "Cancel");
+        if (confirm != true) return;
+
+        ApiResult<BulkDeleteResultDto> result = await Api.BulkDeleteAsync(ids, _cts.Token);
+        if (result.IsSuccess)
+        {
+            Snackbar.Add($"Deleted {result.Value!.DeletedCount} hotkey(s).", Severity.Success);
+            ClearListCache();
+            await ReloadAllAsync();
+        }
+        else
+        {
+            Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
+        }
+    }
+
+    private async Task ReloadAllAsync()
+    {
+        ClearListCache();
+        if (_grid is not null) await _grid.ReloadServerData();
+        await LoadMobileAsync();
+    }
+
+    private async Task<ApiResult<PagedList<HotkeyDto>>> ListAsync(HotkeyListRequest request, CancellationToken ct)
+    {
+        if (_cachedListRequest == request && _cachedListPage is not null)
+            return ApiResult<PagedList<HotkeyDto>>.Ok(_cachedListPage);
+
+        ApiResult<PagedList<HotkeyDto>> result = await Api.ListAsync(request, ct);
+        if (result.IsSuccess)
+        {
+            _cachedListRequest = request;
+            _cachedListPage = result.Value;
+        }
+        else
+        {
+            ClearListCache();
+        }
+
+        return result;
+    }
+
+    private void ClearListCache()
+    {
+        _cachedListRequest = null;
+        _cachedListPage = null;
     }
 
     private RenderFragment RenderProfiles(bool appliesToAllProfiles, IReadOnlyCollection<Guid> profileIds) => @<text>
@@ -622,6 +849,8 @@
     {
         _selectedCategoryIds = [.. ids];
         if (_grid is not null) await _grid.ReloadServerData();
+        _mobilePage = 1;
+        await LoadMobileAsync();
     }
 
     private RenderFragment RenderActions(HotkeyEditModel item) => @<text>

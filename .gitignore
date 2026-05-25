@@ -449,6 +449,7 @@ src/Backend/**/appsettings.Production.json
 .worktrees/
 .claude/worktrees/
 .playwright-cli/
+.superpowers/
 
 # Code coverage reports
 coverage-report/
