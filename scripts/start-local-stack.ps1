@@ -12,16 +12,24 @@
 .PARAMETER UiPort
     Force a specific UI port. If omitted but -ApiPort is given, UiPort defaults to ApiPort + 1.
 
+.PARAMETER ApiLaunchProfile
+    API launch profile to print in the backend run command. Defaults to Docker SQL (Recommended); pass "LocalDB SQL" for LocalDB.
+
 .EXAMPLE
     .\start-local-stack.ps1
 
 .EXAMPLE
     .\start-local-stack.ps1 -ApiPort 5610 -UiPort 5611
+
+.EXAMPLE
+    .\start-local-stack.ps1 -ApiLaunchProfile "LocalDB SQL"
 #>
 [CmdletBinding()]
 param(
     [int] $ApiPort,
-    [int] $UiPort
+    [int] $UiPort,
+    [ValidateSet('Docker SQL (Recommended)', 'LocalDB SQL')]
+    [string] $ApiLaunchProfile = 'Docker SQL (Recommended)'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -173,7 +181,7 @@ try {
 Write-Host ""
 Write-Host "Run these in two terminals:" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "  dotnet run --project src/Backend/AHKFlowApp.API --launch-profile `"Docker SQL (Recommended)`" -- --urls `"http://localhost:$($pair.Api)`""
+Write-Host "  dotnet run --project src/Backend/AHKFlowApp.API --launch-profile `"$ApiLaunchProfile`" -- --urls `"http://localhost:$($pair.Api)`""
 Write-Host ""
 Write-Host "  dotnet run --project src/Frontend/AHKFlowApp.UI.Blazor --launch-profile `"http`" -- --urls `"http://localhost:$($pair.Ui)`""
 Write-Host ""

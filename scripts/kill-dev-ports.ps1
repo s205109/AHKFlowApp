@@ -4,7 +4,7 @@
     Frees ports used by this worktree's AHKFlowApp dev stack.
 
 .DESCRIPTION
-    If scripts/.env.local exists (written by start-local-stack.ps1), kills processes on the manifest's ports - but only if the owning process's command line references this worktree's path. Otherwise falls back to 5600/5601 with the same ownership check.
+    If scripts/.env.local exists (written by start-local-stack.ps1), kills processes on the manifest's ports - but only if the owning process's command line references the current worktree's path. Otherwise falls back to 5600/5601 with the same ownership check.
     Refuses to kill processes whose command line does not reference this worktree.
 #>
 [CmdletBinding()]
@@ -20,6 +20,13 @@ function Read-ManifestValue([string] $Path, [string] $Key) {
         if ($line -match "^$escapedKey=(.*)$") { return $Matches[1].Trim() }
     }
     return $null
+}
+
+function Normalize-PathForComparison([string] $Path) {
+    if ([string]::IsNullOrWhiteSpace($Path)) { return $null }
+
+    $trimChars = [char[]]@([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+    return [System.IO.Path]::GetFullPath($Path).TrimEnd($trimChars)
 }
 
 function Get-ListeningProcessIdsByPort([int] $Port) {
@@ -40,14 +47,19 @@ function Get-ListeningProcessIdsByPort([int] $Port) {
 }
 
 $ports = @()
-$worktreePath = $RepoRoot
+$worktreePath = Normalize-PathForComparison -Path $RepoRoot
 if (Test-Path $ManifestPath) {
     $apiPort = Read-ManifestValue -Path $ManifestPath -Key 'AHKFLOW_API_PORT'
     $uiPort = Read-ManifestValue -Path $ManifestPath -Key 'AHKFLOW_UI_PORT'
     $manifestWorktree = Read-ManifestValue -Path $ManifestPath -Key 'AHKFLOW_WORKTREE_PATH'
     if ($apiPort) { $ports += [int]$apiPort }
     if ($uiPort) { $ports += [int]$uiPort }
-    if ($manifestWorktree) { $worktreePath = $manifestWorktree }
+    if ($manifestWorktree) {
+        $normalizedManifestWorktree = Normalize-PathForComparison -Path $manifestWorktree
+        if ($normalizedManifestWorktree -and ($normalizedManifestWorktree -ne $worktreePath)) {
+            Write-Warning "Manifest worktree path '$manifestWorktree' does not match current worktree '$worktreePath'. Using current worktree for ownership checks."
+        }
+    }
     Write-Host "Using manifest ports: $($ports -join ', ') (worktree: $worktreePath)"
 } else {
     $ports = @(5600, 5601)

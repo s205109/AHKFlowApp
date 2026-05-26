@@ -19,7 +19,7 @@
 .\scripts\start-local-stack.ps1
 ```
 
-The launcher allocates a free localhost port pair (starting at 5600/5601, stepping +2/+2 for each additional concurrent worktree), patches the frontend API base URL and backend CORS origin in gitignored `appsettings.Development.json` files, and prints the two `dotnet run` commands to paste into separate terminals. Active URLs are also written to `scripts/.env.local`.
+The launcher allocates a free localhost port pair (starting at 5600/5601, stepping +2/+2 for each additional concurrent worktree), patches the frontend API base URL and backend CORS origin in gitignored `appsettings.Development.json` files, and prints the two `dotnet run` commands to paste into separate terminals. The printed API command defaults to the `Docker SQL (Recommended)` launch profile; use `.\scripts\start-local-stack.ps1 -ApiLaunchProfile "LocalDB SQL"` for LocalDB. Active URLs are also written to `scripts/.env.local`.
 
 To free the ports later:
 
