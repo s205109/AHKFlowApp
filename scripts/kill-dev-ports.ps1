@@ -4,7 +4,8 @@
     Frees ports used by this worktree's AHKFlowApp dev stack.
 
 .DESCRIPTION
-    If scripts/.env.local exists (written by start-local-stack.ps1), kills processes on the manifest's ports - but only if the owning process's command line references the current worktree's path. Otherwise falls back to 5600/5601 with the same ownership check.
+    If scripts/.env.local exists (written by start-local-stack.ps1), kills processes on the manifest's ports - but only if the manifest belongs to this worktree and the owning process's command line references the current worktree's path. If the manifest is missing or belongs to another worktree, it is not trusted.
+    If scripts/.env.local is absent, falls back to 5600/5601 with the same ownership check.
     Refuses to kill processes whose command line does not reference this worktree.
 #>
 [CmdletBinding()]
@@ -49,18 +50,20 @@ function Get-ListeningProcessIdsByPort([int] $Port) {
 $ports = @()
 $worktreePath = Normalize-PathForComparison -Path $RepoRoot
 if (Test-Path $ManifestPath) {
-    $apiPort = Read-ManifestValue -Path $ManifestPath -Key 'AHKFLOW_API_PORT'
-    $uiPort = Read-ManifestValue -Path $ManifestPath -Key 'AHKFLOW_UI_PORT'
     $manifestWorktree = Read-ManifestValue -Path $ManifestPath -Key 'AHKFLOW_WORKTREE_PATH'
-    if ($apiPort) { $ports += [int]$apiPort }
-    if ($uiPort) { $ports += [int]$uiPort }
-    if ($manifestWorktree) {
-        $normalizedManifestWorktree = Normalize-PathForComparison -Path $manifestWorktree
-        if ($normalizedManifestWorktree -and ($normalizedManifestWorktree -ne $worktreePath)) {
-            Write-Warning "Manifest worktree path '$manifestWorktree' does not match current worktree '$worktreePath'. Using current worktree for ownership checks."
-        }
+    $normalizedManifestWorktree = Normalize-PathForComparison -Path $manifestWorktree
+    if (-not $normalizedManifestWorktree) {
+        Write-Warning "Manifest is missing AHKFLOW_WORKTREE_PATH. Refusing to use manifest ports; run scripts/start-local-stack.ps1 to regenerate it."
+    } elseif ($normalizedManifestWorktree -ne $worktreePath) {
+        Write-Warning "Manifest worktree path '$manifestWorktree' does not match current worktree '$worktreePath'."
+        Write-Warning "Refusing to use manifest ports; run scripts/start-local-stack.ps1 from this worktree to regenerate scripts/.env.local."
+    } else {
+        $apiPort = Read-ManifestValue -Path $ManifestPath -Key 'AHKFLOW_API_PORT'
+        $uiPort = Read-ManifestValue -Path $ManifestPath -Key 'AHKFLOW_UI_PORT'
+        if ($apiPort) { $ports += [int]$apiPort }
+        if ($uiPort) { $ports += [int]$uiPort }
+        Write-Host "Using manifest ports: $($ports -join ', ') (worktree: $worktreePath)"
     }
-    Write-Host "Using manifest ports: $($ports -join ', ') (worktree: $worktreePath)"
 } else {
     $ports = @(5600, 5601)
     Write-Host "No manifest found - falling back to fixed ports 5600, 5601 (worktree: $worktreePath)"
