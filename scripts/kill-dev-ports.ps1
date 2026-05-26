@@ -15,8 +15,9 @@ $RepoRoot = Split-Path $PSScriptRoot -Parent
 $ManifestPath = Join-Path $PSScriptRoot '.env.local'
 
 function Read-ManifestValue([string] $Path, [string] $Key) {
+    $escapedKey = [regex]::Escape($Key)
     foreach ($line in Get-Content $Path) {
-        if ($line -match "^$Key=(.*)$") { return $Matches[1].Trim() }
+        if ($line -match "^$escapedKey=(.*)$") { return $Matches[1].Trim() }
     }
     return $null
 }
@@ -61,6 +62,11 @@ foreach ($port in $ports) {
 
         $cim = Get-CimInstance Win32_Process -Filter "ProcessId=$procId" -ErrorAction SilentlyContinue
         $commandLine = if ($cim) { $cim.CommandLine } else { '' }
+
+        if ([string]::IsNullOrWhiteSpace($commandLine)) {
+            Write-Warning "Refusing to kill PID $procId on port $port - could not read command line to verify ownership for $worktreePath."
+            continue
+        }
 
         if ($commandLine -and $commandLine.IndexOf($worktreePath, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
             Write-Host "Killing $($proc.Name) (PID $procId) on port $port"

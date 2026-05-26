@@ -55,11 +55,10 @@ dotnet test tests/AHKFlowApp.API.Tests --configuration Release --verbosity norma
 # Run a single test by name
 dotnet test tests/AHKFlowApp.API.Tests --filter "FullyQualifiedName~HealthControllerTests"
 
-# Run API locally (recommended: Docker SQL on port 1433)
-dotnet run --project src/Backend/AHKFlowApp.API --launch-profile "Docker SQL (Recommended)"
-
-# Run Blazor frontend (separate terminal)
-dotnet run --project src/Frontend/AHKFlowApp.UI.Blazor
+# Allocate ports and print run commands for this worktree (run once first)
+.\scripts\start-local-stack.ps1
+# Then start API + frontend in separate terminals using the printed commands.
+# Active URLs are written to scripts/.env.local
 
 # Full stack via Docker Compose (SQL Server + API + Blazor UI)
 docker compose up --build

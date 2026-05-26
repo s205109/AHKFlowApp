@@ -92,6 +92,10 @@ function Update-BackendCorsAllowedOrigin([string] $Path, [string] $AllowedOrigin
         $json.Cors = [pscustomobject]@{}
     }
 
+    if ($json.Cors.PSObject.Properties['AllowedOrigins']) {
+        $existingOrigins = @($json.Cors.AllowedOrigins) -join ', '
+        Write-Warn "Replacing Cors.AllowedOrigins ($existingOrigins) with $AllowedOrigin."
+    }
     $json.Cors | Add-Member -NotePropertyName AllowedOrigins -NotePropertyValue @($AllowedOrigin) -Force
     $json | ConvertTo-Json -Depth 10 | Set-Content -Path $Path -Encoding UTF8
 }
@@ -109,6 +113,14 @@ function Write-Manifest([string] $Path, [int] $ApiPort, [int] $UiPort, [string] 
 }
 
 # Acquire machine-wide allocation lock. FileMode.CreateNew fails atomically if the file already exists.
+if (Test-Path $LockPath) {
+    $lockItem = Get-Item -LiteralPath $LockPath -ErrorAction SilentlyContinue
+    if ($lockItem -and $lockItem.LastWriteTimeUtc -lt (Get-Date).ToUniversalTime().AddSeconds(-30)) {
+        Write-Warn "Removing stale allocation lock at $LockPath."
+        Remove-Item -LiteralPath $LockPath -Force -ErrorAction SilentlyContinue
+    }
+}
+
 $lockHandle = $null
 $attempt = 0
 while ($attempt -lt 50) {
@@ -129,6 +141,7 @@ try {
 
     if ($ApiPort) {
         if (-not $UiPort) { $UiPort = $ApiPort + 1 }
+        if ($ApiPort -eq $UiPort) { throw "API and UI ports must be different." }
         if (-not (Test-PortFree -Port $ApiPort)) { throw "Requested API port $ApiPort is in use." }
         if (-not (Test-PortFree -Port $UiPort)) { throw "Requested UI port $UiPort is in use." }
         Write-Success "$ApiPort/$UiPort free (explicit)"
