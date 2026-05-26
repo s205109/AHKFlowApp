@@ -25,7 +25,7 @@ public sealed class SpaHost : IAsyncDisposable
         IHttpForwarder forwarder = app.Services.GetRequiredService<IHttpForwarder>();
 
         // In .NET 10, blazor.boot.json no longer exists — the boot config (including
-        // applicationEnvironment) is embedded inside the fingerprinted blazor.webassembly.*.js
+        // applicationEnvironment) is embedded inside blazor.webassembly.js during publish
         // and cannot be reliably overridden via the Blazor-Environment header at runtime.
         // Blazor WASM loads appsettings.json first, then appsettings.{Environment}.json on top —
         // we don't know which env Blazor will pick, so intercept ALL appsettings*.json requests
