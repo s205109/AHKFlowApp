@@ -82,14 +82,14 @@ Individual seed endpoints (`/dev/hotstrings/seed`, `/dev/hotkeys/seed`, `/dev/ca
 
 ### VS Code full-stack debugging
 
-The VS Code launch configuration intentionally uses a few non-obvious choices to keep the Blazor WebAssembly debug flow stable:
+These VS Code debug safeguards are intentional:
 
-- The Blazor UI launch profile uses `type: "blazorwasm"`, not `dotnet` or `coreclr`.
-- The Blazor UI launch profile sets `browserConfig.userDataDir` to a workspace-local Chrome profile so VS Code gets an isolated browser process instead of reusing your default Chrome profile, which caused cold-start UI crashes.
-- The full-stack launch profiles start the API first and then start the UI from `serverReadyAction` instead of using a parallel compound launch.
-- Localhost development skips service-worker registration and unregisters existing localhost workers because the service worker destabilized VS Code Blazor/MSAL login debugging.
+- The UI launch profile uses `type: "blazorwasm"`; `dotnet` and `coreclr` do not provide the correct Blazor WebAssembly debug flow.
+- The full-stack launch profiles start the UI from `serverReadyAction` after the API is listening instead of using a parallel compound launch.
+- The UI launch profile sets `browserConfig.userDataDir` to a workspace-local Chrome profile so VS Code gets an isolated browser process; reusing the default profile caused cold-start UI crashes.
+- Localhost development skips service-worker registration and unregisters existing localhost workers because persisted worker state destabilized VS Code Blazor/MSAL login debugging.
 
-These settings are intentional. If you revisit `.vscode/launch.json` or `src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/js/registerServiceWorker.js`, preserve this behavior unless you have re-verified the cold-start and login-debug flow in VS Code.
+If you revisit `.vscode/launch.json` or `src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/js/registerServiceWorker.js`, re-verify the cold-start and login-debug flow in VS Code before removing any of these safeguards.
 
 ### Environments
 
