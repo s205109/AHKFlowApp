@@ -80,6 +80,16 @@ Individual seed endpoints (`/dev/hotstrings/seed`, `/dev/hotkeys/seed`, `/dev/ca
 | OpenAPI JSON | http://localhost:5600/swagger/v1/swagger.json |
 | Frontend | http://localhost:5601 |
 
+### VS Code full-stack debugging
+
+The VS Code launch configuration intentionally uses a few non-obvious choices to keep the Blazor WebAssembly debug flow stable:
+
+- The Blazor UI launch profile uses `type: "blazorwasm"`, not `dotnet` or `coreclr`.
+- The full-stack launch profiles start the API first and then start the UI from `serverReadyAction` instead of using a parallel compound launch.
+- Localhost development skips service-worker registration and unregisters existing localhost workers because the service worker destabilized VS Code Blazor/MSAL login debugging.
+
+These settings are intentional. If you revisit `.vscode/launch.json` or `src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/js/registerServiceWorker.js`, preserve this behavior unless you have re-verified the cold-start and login-debug flow in VS Code.
+
 ### Environments
 
 The application supports three distinct environments:
