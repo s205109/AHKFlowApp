@@ -80,6 +80,17 @@ Individual seed endpoints (`/dev/hotstrings/seed`, `/dev/hotkeys/seed`, `/dev/ca
 | OpenAPI JSON | http://localhost:5600/swagger/v1/swagger.json |
 | Frontend | http://localhost:5601 |
 
+### VS Code full-stack debugging
+
+These VS Code debug safeguards are intentional:
+
+- The UI launch profile uses `type: "blazorwasm"`; `dotnet` and `coreclr` do not provide the correct Blazor WebAssembly debug flow.
+- The full-stack launch profiles start the UI from `serverReadyAction` after the API is listening instead of using a parallel compound launch.
+- The UI launch profile sets `browserConfig.userDataDir` to a workspace-local Chrome profile so VS Code gets an isolated browser process; reusing the default profile caused cold-start UI crashes.
+- Localhost development skips service-worker registration and unregisters existing localhost workers because persisted worker state destabilized VS Code Blazor/MSAL login debugging.
+
+If you revisit `.vscode/launch.json` or `src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/js/registerServiceWorker.js`, re-verify the cold-start and login-debug flow in VS Code before removing any of these safeguards.
+
 ### Environments
 
 The application supports three distinct environments:

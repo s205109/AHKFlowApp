@@ -2,6 +2,34 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "build: Full Stack",
+      "dependsOn": [
+        "build: AHKFlowApp.API",
+        "build: AHKFlowApp.UI.Blazor"
+      ],
+      "dependsOrder": "parallel",
+      "problemMatcher": []
+    },
+    {
+      "label": "build: AHKFlowApp.UI.Blazor",
+      "type": "process",
+      "command": "dotnet",
+      "args": [
+        "build",
+        "${workspaceFolder}/src/Frontend/AHKFlowApp.UI.Blazor/AHKFlowApp.UI.Blazor.csproj",
+        "--configuration",
+        "Debug",
+        "--verbosity",
+        "minimal"
+      ],
+      "group": "build",
+      "presentation": {
+        "reveal": "silent",
+        "panel": "shared"
+      },
+      "problemMatcher": "$msCompile"
+    },
+    {
       "label": "build: AHKFlowApp.API",
       "type": "process",
       "command": "dotnet",
