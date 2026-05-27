@@ -44,7 +44,7 @@
       // Keep the UI debugger on an isolated Chrome profile. Reusing the default profile
       // can hand startup off to an existing Chrome process and reintroduce cold-start crashes.
       "browserConfig": {
-        "userDataDir": "${workspaceFolder}\\.vscode\\chrome-debug-profile"
+        "userDataDir": "${workspaceFolder}/.vscode/chrome-debug-profile"
       }
     },
     {
@@ -61,7 +61,10 @@
         "action": "startDebugging",
         "pattern": "\\bNow listening on:",
         "name": "UI: http"
-      }
+      },
+      "cascadeTerminateToConfigurations": [
+        "UI: http"
+      ]
     },
     {
       "name": "Full Stack: LocalDB SQL",
@@ -77,7 +80,10 @@
         "action": "startDebugging",
         "pattern": "\\bNow listening on:",
         "name": "UI: http"
-      }
+      },
+      "cascadeTerminateToConfigurations": [
+        "UI: http"
+      ]
     }
   ]
 }

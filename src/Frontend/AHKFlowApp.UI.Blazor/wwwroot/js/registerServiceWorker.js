@@ -1,7 +1,9 @@
 const isLocalDevelopmentHost =
     window.location.hostname === 'localhost' ||
     window.location.hostname === '127.0.0.1' ||
+    window.location.hostname === '::1' ||
     window.location.hostname === '[::1]';
+const localServiceWorkerReloadKey = 'ahkflowapp-local-sw-cleanup-reload';
 
 if ('serviceWorker' in navigator) {
     if (isLocalDevelopmentHost) {
@@ -11,6 +13,15 @@ if ('serviceWorker' in navigator) {
                 return Promise.all(registrations.map(function (registration) {
                     return registration.unregister();
                 }));
+            })
+            .then(function () {
+                if (navigator.serviceWorker.controller && sessionStorage.getItem(localServiceWorkerReloadKey) !== 'true') {
+                    sessionStorage.setItem(localServiceWorkerReloadKey, 'true');
+                    window.location.reload();
+                    return;
+                }
+
+                sessionStorage.removeItem(localServiceWorkerReloadKey);
             })
             .catch(function (err) {
                 console.error('Service worker cleanup failed:', err);
