@@ -43,12 +43,7 @@
       "timeout": 60000,
       "trace": "verbose",
       "browserConfig": {
-        "outputCapture": "std",
-        "userDataDir": "${workspaceFolder}\\.vscode\\chrome-debug-profile",
-        "runtimeArgs": [
-          "--enable-logging=stderr",
-          "--v=1"
-        ]
+        "userDataDir": "${workspaceFolder}\\.vscode\\chrome-debug-profile"
       }
     },
     {
