@@ -10,7 +10,7 @@
       "cwd": "${workspaceFolder}/src/Backend/AHKFlowApp.API",
       "launchSettingsFilePath": "${workspaceFolder}/src/Backend/AHKFlowApp.API/Properties/launchSettings.json",
       "launchSettingsProfile": "Docker SQL (Recommended)",
-      "console": "externalTerminal",
+      "console": "internalConsole",
       "serverReadyAction": {
         "action": "openExternally",
         "pattern": "\\bNow listening on:",
@@ -26,7 +26,7 @@
       "cwd": "${workspaceFolder}/src/Backend/AHKFlowApp.API",
       "launchSettingsFilePath": "${workspaceFolder}/src/Backend/AHKFlowApp.API/Properties/launchSettings.json",
       "launchSettingsProfile": "LocalDB SQL",
-      "console": "externalTerminal",
+      "console": "internalConsole",
       "serverReadyAction": {
         "action": "openExternally",
         "pattern": "\\bNow listening on:",
@@ -35,27 +35,54 @@
     },
     {
       "name": "UI: http",
-      "type": "dotnet",
+      "type": "blazorwasm",
       "request": "launch",
-      "projectPath": "${workspaceFolder}/src/Frontend/AHKFlowApp.UI.Blazor/AHKFlowApp.UI.Blazor.csproj"
-    }
-  ],
-  "compounds": [
+      "cwd": "${workspaceFolder}/src/Frontend/AHKFlowApp.UI.Blazor",
+      "browser": "chrome",
+      "url": "http://localhost:5601",
+      "timeout": 60000,
+      "trace": "verbose",
+      "browserConfig": {
+        "outputCapture": "std",
+        "userDataDir": "${workspaceFolder}\\.vscode\\chrome-debug-profile",
+        "runtimeArgs": [
+          "--enable-logging=stderr",
+          "--v=1",
+          "--disable-extensions"
+        ]
+      }
+    },
     {
       "name": "Full Stack: Docker SQL (Recommended)",
-      "configurations": [
-        "API: Docker SQL (Recommended)",
-        "UI: http"
-      ],
-      "stopAll": true
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build: Full Stack",
+      "program": "${workspaceFolder}/src/Backend/AHKFlowApp.API/bin/Debug/net10.0/AHKFlowApp.API.dll",
+      "cwd": "${workspaceFolder}/src/Backend/AHKFlowApp.API",
+      "launchSettingsFilePath": "${workspaceFolder}/src/Backend/AHKFlowApp.API/Properties/launchSettings.json",
+      "launchSettingsProfile": "Docker SQL (Recommended)",
+      "console": "internalConsole",
+      "serverReadyAction": {
+        "action": "startDebugging",
+        "pattern": "\\bNow listening on:",
+        "name": "UI: http"
+      }
     },
     {
       "name": "Full Stack: LocalDB SQL",
-      "configurations": [
-        "API: LocalDB SQL",
-        "UI: http"
-      ],
-      "stopAll": true
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build: Full Stack",
+      "program": "${workspaceFolder}/src/Backend/AHKFlowApp.API/bin/Debug/net10.0/AHKFlowApp.API.dll",
+      "cwd": "${workspaceFolder}/src/Backend/AHKFlowApp.API",
+      "launchSettingsFilePath": "${workspaceFolder}/src/Backend/AHKFlowApp.API/Properties/launchSettings.json",
+      "launchSettingsProfile": "LocalDB SQL",
+      "console": "internalConsole",
+      "serverReadyAction": {
+        "action": "startDebugging",
+        "pattern": "\\bNow listening on:",
+        "name": "UI: http"
+      }
     }
   ]
 }
