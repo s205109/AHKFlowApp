@@ -21,7 +21,9 @@ if ('serviceWorker' in navigator) {
                     return;
                 }
 
-                sessionStorage.removeItem(localServiceWorkerReloadKey);
+                if (!navigator.serviceWorker.controller) {
+                    sessionStorage.removeItem(localServiceWorkerReloadKey);
+                }
             })
             .catch(function (err) {
                 console.error('Service worker cleanup failed:', err);
