@@ -5,6 +5,7 @@ const isLocalDevelopmentHost =
 
 if ('serviceWorker' in navigator) {
     if (isLocalDevelopmentHost) {
+        // Keep localhost free of service workers because they destabilize VS Code Blazor/MSAL login debugging.
         navigator.serviceWorker.getRegistrations()
             .then(function (registrations) {
                 return Promise.all(registrations.map(function (registration) {
