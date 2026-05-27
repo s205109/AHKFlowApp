@@ -41,7 +41,6 @@
       "browser": "chrome",
       "url": "http://localhost:5601",
       "timeout": 60000,
-      "trace": "verbose",
       // Keep the UI debugger on an isolated Chrome profile. Reusing the default profile
       // can hand startup off to an existing Chrome process and reintroduce cold-start crashes.
       "browserConfig": {
