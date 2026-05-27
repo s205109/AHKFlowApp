@@ -40,7 +40,16 @@
       "cwd": "${workspaceFolder}/src/Frontend/AHKFlowApp.UI.Blazor",
       "browser": "chrome",
       "url": "http://localhost:5601",
-      "timeout": 60000
+      "timeout": 60000,
+      "trace": "verbose",
+      "browserConfig": {
+        "outputCapture": "std",
+        "userDataDir": "${workspaceFolder}\\.vscode\\chrome-debug-profile",
+        "runtimeArgs": [
+          "--enable-logging=stderr",
+          "--v=1"
+        ]
+      }
     },
     {
       "name": "Full Stack: Docker SQL (Recommended)",
