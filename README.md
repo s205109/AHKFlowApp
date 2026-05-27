@@ -85,6 +85,7 @@ Individual seed endpoints (`/dev/hotstrings/seed`, `/dev/hotkeys/seed`, `/dev/ca
 The VS Code launch configuration intentionally uses a few non-obvious choices to keep the Blazor WebAssembly debug flow stable:
 
 - The Blazor UI launch profile uses `type: "blazorwasm"`, not `dotnet` or `coreclr`.
+- The Blazor UI launch profile sets `browserConfig.userDataDir` to a workspace-local Chrome profile so VS Code gets an isolated browser process instead of reusing your default Chrome profile, which caused cold-start UI crashes.
 - The full-stack launch profiles start the API first and then start the UI from `serverReadyAction` instead of using a parallel compound launch.
 - Localhost development skips service-worker registration and unregisters existing localhost workers because the service worker destabilized VS Code Blazor/MSAL login debugging.
 
