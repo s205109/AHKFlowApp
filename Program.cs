@@ -7,18 +7,34 @@ internal static class Program
 {
     private const string DefaultApiProfile = "LocalDB SQL";
     private const string DefaultUiProfile = "http";
+    private const string ApiProfileEnvironmentVariable = "AHKFLOW_API_PROFILE";
+    private const string UiProfileEnvironmentVariable = "AHKFLOW_UI_PROFILE";
+    private const string ApiUrlEnvironmentVariable = "AHKFLOW_API_URL";
+    private const string UiUrlEnvironmentVariable = "AHKFLOW_UI_URL";
+    private const string WorktreeManifestRelativePath = "scripts/.env.worktree";
+    private const string SolutionMarker = "AHKFlowApp.slnx";
     private const int ReadinessAttempts = 120;
-    private static readonly TimeSpan ReadinessDelay = TimeSpan.FromMilliseconds(500);
+    private static readonly TimeSpan s_readinessDelay = TimeSpan.FromMilliseconds(500);
 
     public static async Task<int> Main()
     {
         string rootDirectory = FindRepositoryRoot();
-        string apiProfile = Environment.GetEnvironmentVariable("AHKFLOW_API_PROFILE") ?? DefaultApiProfile;
-        string uiProfile = Environment.GetEnvironmentVariable("AHKFLOW_UI_PROFILE") ?? DefaultUiProfile;
-        IReadOnlyList<ProjectLaunch> launches = LauncherPlan.Create(apiProfile, uiProfile);
+        string apiProfile = Environment.GetEnvironmentVariable(ApiProfileEnvironmentVariable) ?? DefaultApiProfile;
+        string uiProfile = Environment.GetEnvironmentVariable(UiProfileEnvironmentVariable) ?? DefaultUiProfile;
+
+        string manifestPath = Path.Combine(rootDirectory, WorktreeManifestRelativePath);
+        WorktreeLocalDevManifest manifest = File.Exists(manifestPath)
+            ? WorktreeLocalDevManifest.Parse(await File.ReadAllTextAsync(manifestPath))
+            : WorktreeLocalDevManifest.Parse("");
+
+        string apiUrl = Environment.GetEnvironmentVariable(ApiUrlEnvironmentVariable) ?? manifest.ApiUrl;
+        string uiUrl = Environment.GetEnvironmentVariable(UiUrlEnvironmentVariable) ?? manifest.UiUrl;
+
+        IReadOnlyList<ProjectLaunch> launches = LauncherPlan.Create(apiProfile, uiProfile, apiUrl, uiUrl);
 
         using CancellationTokenSource shutdown = new();
         List<Process> processes = [];
+        Dictionary<string, int> pidsByName = [];
 
         Console.CancelKeyPress += (_, eventArgs) =>
         {
@@ -32,14 +48,18 @@ internal static class Program
         {
             foreach (ProjectLaunch launch in launches)
             {
-                processes.Add(StartProject(rootDirectory, launch));
+                Process process = StartProject(rootDirectory, launch);
+                processes.Add(process);
+                pidsByName[launch.Name] = process.Id;
             }
+
+            UpdateManifestWithPids(manifestPath, pidsByName);
 
             Console.WriteLine("AHKFlowApp is starting.");
             Console.WriteLine($"API profile: {apiProfile}");
             Console.WriteLine($"UI profile: {uiProfile}");
-            Console.WriteLine($"API: {LauncherPlan.ApiUrl}");
-            Console.WriteLine($"UI:  {LauncherPlan.FrontendUrl}");
+            Console.WriteLine($"API: {apiUrl}");
+            Console.WriteLine($"UI:  {uiUrl}");
             Console.WriteLine("Opening the UI in the browser when it is ready.");
             Console.WriteLine("Press Ctrl+C to stop both projects.");
 
@@ -72,7 +92,7 @@ internal static class Program
     private static string? SearchParents(string startDirectory)
     {
         string directory = startDirectory;
-        while (!File.Exists(Path.Combine(directory, "AHKFlowApp.slnx")))
+        while (!File.Exists(Path.Combine(directory, SolutionMarker)))
         {
             DirectoryInfo? parent = Directory.GetParent(directory);
             if (parent is null)
@@ -99,6 +119,9 @@ internal static class Program
         startInfo.ArgumentList.Add(launch.ProjectPath);
         startInfo.ArgumentList.Add("--launch-profile");
         startInfo.ArgumentList.Add(launch.LaunchProfile);
+        startInfo.ArgumentList.Add("--");
+        startInfo.ArgumentList.Add("--urls");
+        startInfo.ArgumentList.Add(launch.UrlOverride);
 
         Process process = Process.Start(startInfo)
             ?? throw new InvalidOperationException($"Failed to start {launch.Name} project.");
@@ -107,14 +130,40 @@ internal static class Program
         return process;
     }
 
+    private static void UpdateManifestWithPids(string manifestPath, IReadOnlyDictionary<string, int> pidsByName)
+    {
+        try
+        {
+            string existingContent = File.Exists(manifestPath) ? File.ReadAllText(manifestPath) : "";
+            List<string> lines = [.. existingContent.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)];
+
+            foreach (KeyValuePair<string, int> entry in pidsByName)
+            {
+                string pidKey = $"AHKFLOW_{entry.Key.ToUpperInvariant()}_PID=";
+                lines.RemoveAll(line => line.StartsWith(pidKey, StringComparison.OrdinalIgnoreCase));
+            }
+
+            foreach (KeyValuePair<string, int> entry in pidsByName)
+            {
+                string pidKey = $"AHKFLOW_{entry.Key.ToUpperInvariant()}_PID";
+                lines.Add($"{pidKey}={entry.Value}");
+            }
+
+            Directory.CreateDirectory(Path.GetDirectoryName(manifestPath)!);
+            File.WriteAllText(manifestPath, string.Join(Environment.NewLine, lines) + Environment.NewLine);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Console.WriteLine($"Warning: could not write PIDs to manifest: {ex.Message}");
+        }
+    }
+
     private static async Task OpenBrowsersWhenReadyAsync(
         IReadOnlyList<ProjectLaunch> launches,
         CancellationToken cancellationToken)
     {
         using HttpClient httpClient = new();
-        Task[] browserTasks = launches
-            .Select(launch => OpenBrowserWhenReadyAsync(httpClient, launch, cancellationToken))
-            .ToArray();
+        Task[] browserTasks = [.. launches.Select(launch => OpenBrowserWhenReadyAsync(httpClient, launch, cancellationToken))];
 
         await Task.WhenAll(browserTasks);
     }
@@ -160,7 +209,7 @@ internal static class Program
             {
             }
 
-            await Task.Delay(ReadinessDelay, cancellationToken);
+            await Task.Delay(s_readinessDelay, cancellationToken);
         }
 
         return false;
@@ -189,7 +238,7 @@ internal static class Program
         IReadOnlyList<Process> processes,
         CancellationToken cancellationToken)
     {
-        Task[] waitTasks = processes.Select(process => process.WaitForExitAsync(cancellationToken)).ToArray();
+        Task[] waitTasks = [.. processes.Select(process => process.WaitForExitAsync(cancellationToken))];
 
         try
         {
