@@ -36,12 +36,18 @@ internal static class LauncherPlan
         ];
 }
 
-internal sealed record WorktreeLocalDevManifest(int ApiPort, int UiPort, string ApiUrl, string UiUrl)
+internal sealed record WorktreeLocalDevManifest(int ApiPort, int UiPort, string ApiUrl, string UiUrl, string ComposeProject)
 {
     private const string ApiPortKey = "AHKFLOW_API_PORT";
     private const string UiPortKey = "AHKFLOW_UI_PORT";
     private const string ApiUrlKey = "AHKFLOW_API_URL";
     private const string UiUrlKey = "AHKFLOW_UI_URL";
+    private const string ComposeProjectKey = "AHKFLOW_COMPOSE_PROJECT";
+
+    // The main checkout has no manifest and uses the bare compose base, matching the
+    // COMPOSE_PROJECT_NAME set in the "Docker SQL (Recommended)" launch profile. Linked
+    // worktrees record their own per-worktree project in the manifest.
+    private const string DefaultComposeProject = "ahkflowapp";
 
     public static WorktreeLocalDevManifest Parse(string text)
     {
@@ -59,12 +65,17 @@ internal sealed record WorktreeLocalDevManifest(int ApiPort, int UiPort, string 
         string uiUrl = values.TryGetValue(UiUrlKey, out string? configuredUiUrl)
             ? configuredUiUrl
             : $"http://localhost:{uiPort}";
+        string composeProject = values.TryGetValue(ComposeProjectKey, out string? configuredComposeProject)
+            && !string.IsNullOrWhiteSpace(configuredComposeProject)
+            ? configuredComposeProject
+            : DefaultComposeProject;
 
         return new WorktreeLocalDevManifest(
             GetPortFromUrl(apiUrl, fallbackPort: apiPort),
             GetPortFromUrl(uiUrl, fallbackPort: uiPort),
             apiUrl,
-            uiUrl);
+            uiUrl,
+            composeProject);
     }
 
     private static int? TryGetPort(IReadOnlyDictionary<string, string> values, string key)
