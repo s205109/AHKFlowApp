@@ -46,22 +46,48 @@ internal static class Program
 
         try
         {
-            foreach (ProjectLaunch launch in launches)
-            {
-                Process process = StartProject(rootDirectory, launch);
-                processes.Add(process);
-                pidsByName[launch.Name] = process.Id;
-            }
-
-            UpdateManifestWithPids(manifestPath, pidsByName);
-
             Console.WriteLine("AHKFlowApp is starting.");
             Console.WriteLine($"API profile: {apiProfile}");
             Console.WriteLine($"UI profile: {uiProfile}");
             Console.WriteLine($"API: {apiUrl}");
             Console.WriteLine($"UI:  {uiUrl}");
-            Console.WriteLine("Opening the UI in the browser when it is ready.");
+            Console.WriteLine("Starting the API first; the UI launches once the API is ready.");
             Console.WriteLine("Press Ctrl+C to stop both projects.");
+
+            using HttpClient readinessClient = new();
+
+            // Sequential startup: start each project, then wait for it to respond before
+            // starting the next. This guarantees the UI only launches after the API is
+            // serving (which now includes the Docker SQL readiness wait + EF migration).
+            for (int index = 0; index < launches.Count; index++)
+            {
+                ProjectLaunch launch = launches[index];
+                Process process = StartProject(rootDirectory, launch);
+                processes.Add(process);
+                pidsByName[launch.Name] = process.Id;
+
+                bool hasNext = index < launches.Count - 1;
+                if (!hasNext)
+                {
+                    continue;
+                }
+
+                ProjectLaunch next = launches[index + 1];
+                Console.WriteLine($"Waiting for {launch.Name} to be ready before starting {next.Name}.");
+                bool ready = await WaitForProjectReadyAsync(readinessClient, process, launch.ReadyUrl, shutdown.Token);
+                if (shutdown.Token.IsCancellationRequested)
+                {
+                    break;
+                }
+
+                Console.WriteLine(ready
+                    ? $"{launch.Name} is ready. Starting {next.Name}."
+                    : $"{launch.Name} did not become ready in time. Starting {next.Name} anyway.");
+            }
+
+            UpdateManifestWithPids(manifestPath, pidsByName);
+
+            Console.WriteLine("Opening the UI in the browser when it is ready.");
 
             browserLaunches = OpenBrowsersWhenReadyAsync(launches, shutdown.Token);
             int exitCode = await WaitForFirstExitAsync(processes, shutdown.Token);
@@ -78,6 +104,16 @@ internal static class Program
             foreach (Process process in processes)
             {
                 StopProcess(process);
+            }
+
+            // The children are hard-killed above, so the API's own shutdown never runs.
+            // Stop the Docker SQL container here (keep the data volume) when a Docker SQL
+            // profile is active. ComposeProject is the per-worktree name from the manifest,
+            // or the bare base for the main checkout.
+            if (apiProfile.StartsWith("Docker SQL", StringComparison.OrdinalIgnoreCase))
+            {
+                Console.WriteLine($"Stopping Docker SQL container (compose project '{manifest.ComposeProject}').");
+                DockerSqlControl.Stop(rootDirectory, manifest.ComposeProject);
             }
         }
     }
@@ -188,6 +224,48 @@ internal static class Program
         {
             OpenBrowser(launch.BrowserUrl);
         }
+    }
+
+    private static async Task<bool> WaitForProjectReadyAsync(
+        HttpClient httpClient,
+        Process process,
+        string url,
+        CancellationToken cancellationToken)
+    {
+        for (int attempt = 0; attempt < ReadinessAttempts; attempt++)
+        {
+            if (cancellationToken.IsCancellationRequested || process.HasExited)
+            {
+                return false;
+            }
+
+            try
+            {
+                using HttpResponseMessage response = await httpClient.GetAsync(url, cancellationToken);
+                if ((int)response.StatusCode < 500)
+                {
+                    return true;
+                }
+            }
+            catch (HttpRequestException)
+            {
+            }
+            catch (OperationCanceledException)
+            {
+                return false;
+            }
+
+            try
+            {
+                await Task.Delay(s_readinessDelay, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                return false;
+            }
+        }
+
+        return false;
     }
 
     private static async Task<bool> WaitForUrlAsync(
