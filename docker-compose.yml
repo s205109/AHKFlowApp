@@ -1,13 +1,16 @@
 services:
   sqlserver:
     image: mcr.microsoft.com/mssql/server:2022-latest
-    container_name: ahkflowapp-sqlserver
+    # No fixed container_name: COMPOSE_PROJECT_NAME namespaces the container, volume, and
+    # network so concurrent worktrees each get their own SQL container. The host port is
+    # parameterized (AHKFLOW_SQL_PORT, allocated per worktree; defaults to 1433 for the main
+    # checkout) so two worktrees never collide on the same host port.
     environment:
       - ACCEPT_EULA=Y
       - SA_PASSWORD=Dev!LocalOnly_2026
       - MSSQL_PID=Developer
     ports:
-      - "1433:1433"
+      - "${AHKFLOW_SQL_PORT:-1433}:1433"
     volumes:
       - sqlserver-data:/var/opt/mssql
     healthcheck:
