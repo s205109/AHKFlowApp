@@ -13,7 +13,8 @@ docker compose up -d --build
 
 Access API at: http://localhost:5600/swagger
 
-SQL Server is available on: `localhost:1433`
+SQL Server is available on: `localhost:1433` (the default; a worktree can override the host
+port with the `AHKFLOW_SQL_PORT` environment variable so concurrent checkouts don't collide).
 
 ## Visual Studio Launch Profiles
 
@@ -39,6 +40,11 @@ All profiles bind **`http://localhost:5600`** — only one backend scenario can 
   - Command executed from solution root: `docker compose up sqlserver -d --wait`
 - Database server: `localhost,1433`
 - Connection string: overridden by environment variable in launch profile
+- Per-worktree isolation: the `sqlserver` service has no fixed `container_name`, so
+  `COMPOSE_PROJECT_NAME` namespaces its container, volume, and network; its host port comes
+  from `AHKFLOW_SQL_PORT` (default `1433`). A linked worktree that sets both runs its own SQL
+  container alongside the main checkout, and Ctrl+C on the launcher stops that container
+  (keeping its data volume).
 
 ### 3. `Docker Compose (No Debugging)`
 
