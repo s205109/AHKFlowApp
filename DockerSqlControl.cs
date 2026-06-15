@@ -14,13 +14,15 @@ namespace AHKFlowApp.Launcher;
 internal static class DockerSqlControl
 {
     // Separated for testing: the exact argument list passed to 'docker'. The -f keeps the
-    // compose context explicit.
+    // compose context explicit. The trailing "sqlserver" scopes the stop to only the SQL
+    // service so a full compose stack (api/ui) running under the same project is untouched.
     internal static IReadOnlyList<string> BuildStopArguments(string repoRoot, string composeProject) =>
         [
             "compose",
             "-f", Path.Combine(repoRoot, "docker-compose.yml"),
             "-p", composeProject,
-            "stop"
+            "stop",
+            "sqlserver"
         ];
 
     internal static void Stop(string repoRoot, string composeProject)
