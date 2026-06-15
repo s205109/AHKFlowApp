@@ -85,6 +85,21 @@ public sealed class LauncherPlanTests
 
         manifest.ApiUrl.Should().Be("http://localhost:5600");
         manifest.UiUrl.Should().Be("http://localhost:5601");
+        manifest.ComposeProject.Should().Be("ahkflowapp");
+    }
+
+    [Fact]
+    public void WorktreeLocalDevManifest_Parse_WhenComposeProjectRecorded_ReturnsIt()
+    {
+        const string text = """
+            AHKFLOW_API_PORT=5604
+            AHKFLOW_UI_PORT=5605
+            AHKFLOW_COMPOSE_PROJECT=ahkflowapp_my_feature_1a2b3c4d
+            """;
+
+        var manifest = WorktreeLocalDevManifest.Parse(text);
+
+        manifest.ComposeProject.Should().Be("ahkflowapp_my_feature_1a2b3c4d");
     }
 
     [Fact]

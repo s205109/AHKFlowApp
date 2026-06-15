@@ -12,7 +12,6 @@ using Microsoft.ApplicationInsights.Extensibility;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Identity.Web;
@@ -61,6 +60,16 @@ try
         string.Equals(Environment.GetEnvironmentVariable("AHKFLOW_START_DOCKER_SQL"), "true", StringComparison.OrdinalIgnoreCase))
     {
         DevDockerSqlServer.EnsureStarted(builder.Environment.ContentRootPath);
+
+        // The compose healthcheck only proves the server is up; a database restored from the
+        // persisted volume may still be recovering. Wait for it to come ONLINE and accept a
+        // connection so the migration below doesn't misread the transient state and issue a
+        // doomed CREATE DATABASE (error 1801) on restart.
+        string? dockerSqlConnectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+        if (dockerSqlConnectionString is not null)
+        {
+            await DevDatabaseReadiness.WaitForDatabaseOnlineAsync(dockerSqlConnectionString);
+        }
     }
 
     builder.Services.AddProblemDetails(options =>
@@ -140,14 +149,14 @@ try
         ILogger<Program> logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
         try
         {
+            // DevDatabaseReadiness above guarantees a database restored from the persisted
+            // Docker volume is ONLINE and accepting connections before this runs, so EF sees
+            // it exists and applies pending migrations normally — no more transient
+            // CREATE DATABASE / error 1801 to catch and swallow (which would have skipped
+            // applying pending migrations).
             logger.LogInformation("Applying database migrations...");
             await dbContext.Database.MigrateAsync();
             logger.LogInformation("Database migrations applied successfully.");
-        }
-        catch (SqlException ex) when (ex.Number == 1801)
-        {
-            // Database already exists (persisted Docker volume from a previous run) — migrations already applied
-            logger.LogInformation("Database already exists; skipping migration apply.");
         }
         catch (Exception ex)
         {

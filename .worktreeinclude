@@ -1,0 +1,4 @@
+# Optional extension point for ignored local files that are safe to duplicate.
+# scripts/new-worktree.ps1 copies each non-comment entry into the new worktree.
+# Leave this file empty when generated worktree config should be rebuilt.
+
