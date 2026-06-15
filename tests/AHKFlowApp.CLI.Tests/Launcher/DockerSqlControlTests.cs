@@ -7,7 +7,7 @@ namespace AHKFlowApp.CLI.Tests.Launcher;
 public sealed class DockerSqlControlTests
 {
     [Fact]
-    public void BuildStopArguments_ProducesComposeStopForProject()
+    public void BuildStopArguments_ProducesComposeStopForSqlServiceOnly()
     {
         IReadOnlyList<string> arguments = DockerSqlControl.BuildStopArguments(
             repoRoot: @"C:\repo",
@@ -17,6 +17,7 @@ public sealed class DockerSqlControlTests
             "compose",
             "-f", Path.Combine(@"C:\repo", "docker-compose.yml"),
             "-p", "ahkflowapp",
-            "stop");
+            "stop",
+            "sqlserver");
     }
 }
