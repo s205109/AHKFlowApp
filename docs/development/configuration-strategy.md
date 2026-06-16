@@ -191,13 +191,16 @@ src/Backend/**/appsettings.Production.json
 
 ```json
 "AzureAd": {
-  "Authority": "https://login.microsoftonline.com/<TenantId>",
+  "Instance": "https://login.microsoftonline.com/",
+  "TenantId": "<TenantId>",
   "ClientId": "<ClientId>",
-  "ValidateAuthority": true,
-  "DefaultScope": "api://<ClientId>/access_as_user"
+  "ValidateAuthority": true
 }
 ```
 
+The frontend shares this shape with the API. `Authority` and the access-token scope
+(`api://<ClientId>/access_as_user`) are derived from these values at startup; set an
+optional `AzureAd:Scopes` to override the scope for non-standard app registrations.
 These values are public — safe to commit if desired, but not required.
 
 ### Backend

@@ -23,6 +23,30 @@ internal static class ApiExtensions
             }));
     }
 
+    /// <summary>
+    /// Logs actionable warnings (non-fatal) when local dev config the frontend depends on is missing,
+    /// so a forgotten appsettings.Development.json surfaces a clear message instead of a CORS/blank page.
+    /// </summary>
+    internal static void WarnOnMissingDevConfig(this IConfiguration configuration, Serilog.ILogger logger)
+    {
+        if (string.IsNullOrWhiteSpace(configuration["AzureAd:TenantId"]) ||
+            string.IsNullOrWhiteSpace(configuration["AzureAd:ClientId"]))
+        {
+            logger.Warning(
+                "AzureAd:TenantId/ClientId is not configured. Set it via user-secrets or run " +
+                "scripts/setup-dev-entra.ps1 (see appsettings.Development.json.example). " +
+                "Token validation will reject all authenticated requests until this is set.");
+        }
+
+        string[] allowedOrigins = configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
+        if (allowedOrigins.Length == 0)
+        {
+            logger.Warning(
+                "Cors:AllowedOrigins is empty — the Blazor frontend (http://localhost:5601) will be blocked " +
+                "by CORS. Copy appsettings.Development.json.example to appsettings.Development.json and set it.");
+        }
+    }
+
     internal static IServiceCollection AddSwaggerDocs(this IServiceCollection services)
     {
         services.AddEndpointsApiExplorer();

@@ -135,6 +135,11 @@ try
             .AddMicrosoftIdentityWebApi(builder.Configuration.GetSection("AzureAd"));
     }
 
+    if (builder.Environment.IsDevelopment() && !useTestAuth)
+    {
+        builder.Configuration.WarnOnMissingDevConfig(Log.Logger);
+    }
+
     builder.Services.AddAuthorization();
     builder.Services.AddHttpContextAccessor();
     builder.Services.AddScoped<ICurrentUser, HttpContextCurrentUser>();

@@ -1,0 +1,10 @@
+@namespace AHKFlowApp.UI.Blazor.Startup
+
+@* Root component booted into #app when startup configuration is invalid. Reads the
+   reason from DI (set in Program.cs) and renders the friendly error page. *@
+
+<StartupError Reason="@ErrorState.Reason" />
+
+@code {
+    [Inject] private StartupErrorState ErrorState { get; set; } = default!;
+}

@@ -1,0 +1,68 @@
+@namespace AHKFlowApp.UI.Blazor.Startup
+@using System.Net.Http
+@using Microsoft.AspNetCore.Components.WebAssembly.Hosting
+
+@* In Development, confirms the API is reachable before rendering the app, turning the
+   blank-page-on-CORS failure into a friendly, actionable message. No-op in other
+   environments (prod keeps the /health page + graceful per-call degradation). *@
+
+@if (_state == ProbeState.Ok)
+{
+    @ChildContent
+}
+else if (_state == ProbeState.Failed)
+{
+    <StartupError Reason="StartupErrorReason.BackendUnreachable" OnRetry="ProbeAsync" />
+}
+else
+{
+    <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;
+                font-family:Inter,Roboto,sans-serif;color:#52606d;">
+        Connecting to the API…
+    </div>
+}
+
+@code {
+    public const string ProbeClientName = "HealthProbe";
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    [Inject] private IWebAssemblyHostEnvironment Env { get; set; } = default!;
+    [Inject] private IHttpClientFactory HttpClientFactory { get; set; } = default!;
+
+    private enum ProbeState { Probing, Ok, Failed }
+
+    private ProbeState _state = ProbeState.Probing;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Env.IsDevelopment())
+        {
+            _state = ProbeState.Ok;
+            return;
+        }
+
+        await ProbeAsync();
+    }
+
+    private async Task ProbeAsync()
+    {
+        _state = ProbeState.Probing;
+
+        try
+        {
+            using HttpClient client = HttpClientFactory.CreateClient(ProbeClientName);
+            using HttpResponseMessage response = await client.GetAsync("health");
+            _state = response.IsSuccessStatusCode ? ProbeState.Ok : ProbeState.Failed;
+        }
+        catch (HttpRequestException)
+        {
+            _state = ProbeState.Failed;
+        }
+        catch (TaskCanceledException)
+        {
+            // Timeout — treat as unreachable.
+            _state = ProbeState.Failed;
+        }
+    }
+}

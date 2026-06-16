@@ -70,6 +70,7 @@ Add `WarnOnMissingDevConfig(IConfiguration, ILogger)` to `Extensions/ApiExtensio
 
 ### F. Examples + docs + setup script
 - Frontend `wwwroot/appsettings.Development.json.example` + committed `wwwroot/appsettings.json` → consolidated shape (`Instance`/`TenantId`/`ClientId`, keep `ValidateAuthority`).
+- Frontend `wwwroot/appsettings.Test.json` + `appsettings.Production.json` → consolidated shape; the deploy-substituted scope (`#{AZURE_AD_DEFAULT_SCOPE}#`) feeds the optional `AzureAd:Scopes` override so the existing `deploy-frontend.yml` placeholders, `deploy.ps1`, and GitHub vars stay unchanged. (E2E/Local use `UseTestProvider:true` → skip validation, no change.)
 - API `appsettings.Development.json.example` already correct — align only if needed.
 - **`scripts/setup-dev-entra.ps1:42-49`** writes the frontend `appsettings.Development.json` in the **old** `Authority`/`DefaultScope` shape. Update the `AzureAd` block it emits to `Instance`/`TenantId`/`ClientId` (it already has `$entra.TenantId`/`$entra.ClientId`; drop the now-derived `Authority`/`DefaultScope`). Without this, a fresh `setup-dev-entra.ps1` run produces config `AzureAdSettings.Resolve` can't read. **Critical gap — surfaced by ultraplan refinement.**
 - **`docs/development/configuration-strategy.md:190-201`** documents the old frontend `AzureAd` shape — update to the consolidated shape.

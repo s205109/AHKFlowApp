@@ -1,5 +1,6 @@
 using AHKFlowApp.UI.Blazor.Auth;
 using AHKFlowApp.UI.Blazor.Services;
+using AHKFlowApp.UI.Blazor.Startup;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
@@ -9,12 +10,37 @@ using MudBlazor.Services;
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<HeadOutlet>("head::after");
 
+bool useTestAuth = builder.Configuration.GetValue<bool>("Auth:UseTestProvider");
+
+// Validate required config before wiring any auth-dependent services. On failure, boot a
+// friendly error page (with only the minimal services it needs) instead of crashing the app
+// into a blank screen.
+if (!useTestAuth)
+{
+    StartupErrorReason? startupConfigError = StartupConfigValidator.Check(builder.Configuration);
+    if (startupConfigError is not null)
+    {
+        builder.Services.AddSingleton(new StartupErrorState(startupConfigError.Value));
+        builder.RootComponents.Add<StartupErrorRoot>("#app");
+        await builder.Build().RunAsync();
+        return;
+    }
+}
+
+builder.RootComponents.Add<AHKFlowApp.UI.Blazor.App>("#app");
+
 builder.Services.AddMudServices();
 builder.Services.AddScoped<IFileSaver, JsFileSaver>();
 builder.Services.AddScoped<LocalStorageUserPreferencesService>();
 builder.Services.AddScoped<IUserPreferencesService, HybridUserPreferencesService>();
 
-builder.RootComponents.Add<AHKFlowApp.UI.Blazor.App>("#app");
+// Lightweight, auth-free, no-resilience client used by RequireApiConnectivity to probe /health.
+builder.Services.AddHttpClient(RequireApiConnectivity.ProbeClientName, client =>
+{
+    string probeBaseUrl = builder.Configuration["ApiHttpClient:BaseAddress"] ?? "/";
+    client.BaseAddress = new Uri(probeBaseUrl.EndsWith('/') ? probeBaseUrl : probeBaseUrl + "/");
+    client.Timeout = TimeSpan.FromSeconds(3);
+});
 
 void AddApiClient<TInterface, TImpl>(
     Uri baseAddress,
@@ -52,8 +78,6 @@ Action<HttpStandardResilienceOptions> mainClientResilience = options =>
     options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(60);
 };
 
-bool useTestAuth = builder.Configuration.GetValue<bool>("Auth:UseTestProvider");
-
 if (useTestAuth)
 {
     string apiBaseUrl = builder.Configuration["ApiHttpClient:BaseAddress"] ?? "/";
@@ -81,16 +105,16 @@ if (useTestAuth)
 }
 else
 {
-    AuthConfigurationValidator.ValidateForMsal(builder.Configuration);
-
+    var azureAd = AzureAdSettings.Resolve(builder.Configuration);
     string apiBaseUrl = builder.Configuration["ApiHttpClient:BaseAddress"]!;
-    string defaultScope = builder.Configuration["AzureAd:DefaultScope"]!;
     Uri baseAddress = new(apiBaseUrl);
 
     builder.Services.AddMsalAuthentication(options =>
     {
-        builder.Configuration.Bind("AzureAd", options.ProviderOptions.Authentication);
-        options.ProviderOptions.DefaultAccessTokenScopes.Add(defaultScope);
+        options.ProviderOptions.Authentication.Authority = azureAd.Authority;
+        options.ProviderOptions.Authentication.ClientId = azureAd.ClientId;
+        options.ProviderOptions.Authentication.ValidateAuthority = azureAd.ValidateAuthority;
+        options.ProviderOptions.DefaultAccessTokenScopes.Add(azureAd.Scope);
         options.ProviderOptions.LoginMode = "redirect";
     });
 
