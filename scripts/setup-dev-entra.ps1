@@ -42,10 +42,10 @@ $feSettings = Join-Path $RepoRoot 'src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/app
 $json = [ordered]@{
     ApiHttpClient = [ordered]@{ BaseAddress = 'http://localhost:5600' }
     AzureAd = [ordered]@{
-        Authority         = "https://login.microsoftonline.com/$($entra.TenantId)"
+        Instance          = 'https://login.microsoftonline.com/'
+        TenantId          = $entra.TenantId
         ClientId          = $entra.ClientId
         ValidateAuthority = $true
-        DefaultScope      = $entra.DefaultScope
     }
 }
 $json | ConvertTo-Json -Depth 5 | Set-Content -Path $feSettings -Encoding UTF8

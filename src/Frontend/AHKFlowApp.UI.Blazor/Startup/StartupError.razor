@@ -1,0 +1,108 @@
+@namespace AHKFlowApp.UI.Blazor.Startup
+
+@* Plain HTML + inline styles only: this renders in boot/error paths where MudBlazor's
+   theme provider may not be mounted, so it must not depend on any MudBlazor component. *@
+
+<div style="@ContainerStyle">
+    <div style="@CardStyle">
+        <div style="font-size:2.5rem;line-height:1;margin-bottom:1rem;">@Icon</div>
+        <h1 style="margin:0 0 .5rem;font-size:1.5rem;color:#1f2933;">@Title</h1>
+        <p style="margin:0 0 1.25rem;color:#52606d;">@Summary</p>
+
+        <div style="text-align:left;background:#f5faf3;border:1px solid #d9e6d4;border-radius:8px;padding:1rem 1.25rem;color:#3e4c59;">
+            <strong style="display:block;margin-bottom:.5rem;color:#1f2933;">How to fix it</strong>
+            @Remediation
+        </div>
+
+        <div style="margin-top:1.5rem;">
+            @if (OnRetry.HasDelegate)
+            {
+                <button type="button" @onclick="OnRetry" style="@ButtonStyle">Retry</button>
+            }
+            else
+            {
+                <a href="." style="@ButtonStyle;text-decoration:none;display:inline-block;">Reload</a>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public StartupErrorReason Reason { get; set; }
+
+    /// <summary>When set, a Retry button invokes this instead of reloading the page (used by the connectivity gate).</summary>
+    [Parameter] public EventCallback OnRetry { get; set; }
+
+    private const string ContainerStyle =
+        "min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1.5rem;" +
+        "font-family:Inter,Roboto,sans-serif;background:#eef3ec;";
+
+    private const string CardStyle =
+        "max-width:560px;width:100%;background:#fff;border-radius:12px;padding:2.5rem 2rem;" +
+        "box-shadow:0 10px 30px rgba(0,0,0,.08);text-align:center;";
+
+    private const string ButtonStyle =
+        "background:#6AA84F;color:#fff;border:none;border-radius:8px;padding:.6rem 1.5rem;" +
+        "font-size:1rem;font-weight:500;cursor:pointer;";
+
+    private string Icon => Reason switch
+    {
+        StartupErrorReason.BackendUnreachable => "🔌",
+        StartupErrorReason.Unexpected => "⚠️",
+        _ => "🔑"
+    };
+
+    private string Title => Reason switch
+    {
+        StartupErrorReason.MissingFrontendConfig => "Frontend configuration is missing",
+        StartupErrorReason.PlaceholderConfig => "Azure AD isn't configured yet",
+        StartupErrorReason.BackendUnreachable => "Can't reach the API",
+        StartupErrorReason.Unexpected => "Something went wrong",
+        _ => "Startup error"
+    };
+
+    private string Summary => Reason switch
+    {
+        StartupErrorReason.MissingFrontendConfig =>
+            "The app couldn't find its Azure AD settings, so it can't sign you in.",
+        StartupErrorReason.PlaceholderConfig =>
+            "Your appsettings.Development.json still contains placeholder values.",
+        StartupErrorReason.BackendUnreachable =>
+            "The frontend loaded, but the backend API isn't responding.",
+        StartupErrorReason.Unexpected =>
+            "An unexpected error occurred while loading the app.",
+        _ => string.Empty
+    };
+
+    private RenderFragment Remediation => Reason switch
+    {
+        StartupErrorReason.MissingFrontendConfig => @<text>
+            <p style="margin:0 0 .5rem;">Create your local config from the example, then fill in the values:</p>
+            <pre style="@PreStyle">cp src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/appsettings.Development.json.example \
+   src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/appsettings.Development.json</pre>
+            <p style="margin:.5rem 0 0;">Set <code>AzureAd:Instance</code>, <code>TenantId</code> and <code>ClientId</code>, or run
+            <code>pwsh scripts/setup-dev-entra.ps1</code> to create the dev Entra app registration and populate them automatically.</p>
+        </text>,
+        StartupErrorReason.PlaceholderConfig => @<text>
+            <p style="margin:0;">Run the setup script to create the dev Entra app registration and replace the placeholders:</p>
+            <pre style="@PreStyle">pwsh scripts/setup-dev-entra.ps1</pre>
+            <p style="margin:.5rem 0 0;">Or edit <code>wwwroot/appsettings.Development.json</code> and replace the
+            <code>&lt;...&gt;</code> values in the <code>AzureAd</code> block with your tenant and client IDs.</p>
+        </text>,
+        StartupErrorReason.BackendUnreachable => @<text>
+            <ul style="margin:0;padding-left:1.2rem;">
+                <li style="margin-bottom:.5rem;">The API isn't running — start it with the <em>Docker SQL (Recommended)</em> or <em>LocalDB SQL</em> launch profile.</li>
+                <li>CORS isn't configured — copy the API's <code>appsettings.Development.json.example</code> to
+                <code>appsettings.Development.json</code> and ensure <code>http://localhost:5601</code> is listed in
+                <code>Cors:AllowedOrigins</code>.</li>
+            </ul>
+        </text>,
+        _ => @<text>
+            <p style="margin:0;">Try reloading the page. If the problem persists, check the browser console for details.</p>
+        </text>
+    };
+
+    private const string PreStyle =
+        "background:#1f2933;color:#e4e7eb;border-radius:6px;padding:.75rem;overflow-x:auto;" +
+        "font-size:.8rem;white-space:pre-wrap;word-break:break-all;margin:0;";
+}
