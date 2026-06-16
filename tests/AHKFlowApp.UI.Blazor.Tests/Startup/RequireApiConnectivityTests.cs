@@ -25,8 +25,10 @@ public sealed class RequireApiConnectivityTests : BunitContext
 
     private void UseProbeHandler(Func<HttpRequestMessage, HttpResponseMessage> responder)
     {
-        var client = new HttpClient(new StubHandler(responder)) { BaseAddress = new Uri("http://localhost/") };
-        _httpClientFactory.CreateClient(RequireApiConnectivity.ProbeClientName).Returns(client);
+        // Fresh client per call, like the real IHttpClientFactory — the component disposes
+        // each client it creates, so retries must not reuse a disposed instance.
+        _httpClientFactory.CreateClient(RequireApiConnectivity.ProbeClientName)
+            .Returns(_ => new HttpClient(new StubHandler(responder)) { BaseAddress = new Uri("http://localhost/") });
     }
 
     [Fact]
@@ -42,16 +44,39 @@ public sealed class RequireApiConnectivityTests : BunitContext
     }
 
     [Fact]
-    public void InDevelopment_WhenHealthFails_RendersBackendUnreachable()
+    public void InDevelopment_WhenHealthFailsEveryAttempt_RendersBackendUnreachable()
     {
         _env.Environment.Returns("Development");
         UseProbeHandler(_ => throw new HttpRequestException("CORS / connection refused"));
 
         IRenderedComponent<RequireApiConnectivity> cut = Render<RequireApiConnectivity>(ps => ps
+            .Add(p => p.MaxAttempts, 3)
+            .Add(p => p.RetryDelay, TimeSpan.Zero)
             .AddChildContent(ChildMarkup));
 
         cut.WaitForAssertion(() => cut.Markup.Should().Contain("Can't reach the API"));
         cut.Markup.Should().NotContain("app-content");
+    }
+
+    [Fact]
+    public void InDevelopment_WhenHealthRecoversAfterRetries_RendersChildContent()
+    {
+        _env.Environment.Returns("Development");
+        int attempts = 0;
+        UseProbeHandler(_ =>
+        {
+            attempts++;
+            return attempts < 3
+                ? throw new HttpRequestException("API still starting")
+                : new HttpResponseMessage(HttpStatusCode.OK);
+        });
+
+        IRenderedComponent<RequireApiConnectivity> cut = Render<RequireApiConnectivity>(ps => ps
+            .Add(p => p.RetryDelay, TimeSpan.Zero)
+            .AddChildContent(ChildMarkup));
+
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("app-content"));
+        cut.Markup.Should().NotContain("Can't reach the API");
     }
 
     [Fact]

@@ -3,8 +3,11 @@
 @using Microsoft.AspNetCore.Components.WebAssembly.Hosting
 
 @* In Development, confirms the API is reachable before rendering the app, turning the
-   blank-page-on-CORS failure into a friendly, actionable message. No-op in other
-   environments (prod keeps the /health page + graceful per-call degradation). *@
+   blank-page-on-CORS failure into a friendly, actionable message. Retries a few times
+   first so a slower API cold-start (fresh SQL container + EF migrations) self-heals
+   instead of flashing the error — IDEs like Visual Studio launch the UI and API together
+   with no readiness gate. No-op in other environments (prod keeps the /health page +
+   graceful per-call degradation). *@
 
 @if (_state == ProbeState.Ok)
 {
@@ -24,6 +27,12 @@ else
 
 @code {
     public const string ProbeClientName = "HealthProbe";
+
+    // Retry before giving up: a cold-start (fresh SQL container + migrations) can keep the
+    // API unreachable for several seconds. ~10 attempts over ~14s covers it while still
+    // surfacing the guidance reasonably fast when the API is genuinely misconfigured.
+    [Parameter] public int MaxAttempts { get; set; } = 10;
+    [Parameter] public TimeSpan RetryDelay { get; set; } = TimeSpan.FromSeconds(1.5);
 
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
@@ -49,20 +58,39 @@ else
     {
         _state = ProbeState.Probing;
 
+        for (int attempt = 1; attempt <= MaxAttempts; attempt++)
+        {
+            if (await IsApiReachableAsync())
+            {
+                _state = ProbeState.Ok;
+                return;
+            }
+
+            if (attempt < MaxAttempts)
+            {
+                await Task.Delay(RetryDelay);
+            }
+        }
+
+        _state = ProbeState.Failed;
+    }
+
+    private async Task<bool> IsApiReachableAsync()
+    {
         try
         {
             using HttpClient client = HttpClientFactory.CreateClient(ProbeClientName);
             using HttpResponseMessage response = await client.GetAsync("health");
-            _state = response.IsSuccessStatusCode ? ProbeState.Ok : ProbeState.Failed;
+            return response.IsSuccessStatusCode;
         }
         catch (HttpRequestException)
         {
-            _state = ProbeState.Failed;
+            return false;
         }
         catch (TaskCanceledException)
         {
             // Timeout — treat as unreachable.
-            _state = ProbeState.Failed;
+            return false;
         }
     }
 }
