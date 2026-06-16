@@ -1,4 +1,5 @@
 @namespace AHKFlowApp.UI.Blazor.Startup
+@inject NavigationManager Nav
 
 @* Plain HTML + inline styles only: this renders in boot/error paths where MudBlazor's
    theme provider may not be mounted, so it must not depend on any MudBlazor component. *@
@@ -21,10 +22,9 @@
             }
             else
             {
-                @* Literal onclick (not @@onclick): forces a real browser reload so the WASM app
-                   re-boots and re-fetches appsettings. An <a href="."> would be caught by Blazor's
-                   anchor-click interception and routed client-side, never re-reading config. *@
-                <button type="button" onclick="location.reload()" style="@ButtonStyle">Reload</button>
+                @* forceLoad bypasses Blazor's client-side routing/anchor interception and does a true
+                   full-document reload, so the WASM app re-boots and re-fetches appsettings. *@
+                <button type="button" @onclick="Reload" style="@ButtonStyle">Reload</button>
             }
         </div>
     </div>
@@ -35,6 +35,8 @@
 
     /// <summary>When set, a Retry button invokes this instead of reloading the page (used by the connectivity gate).</summary>
     [Parameter] public EventCallback OnRetry { get; set; }
+
+    private void Reload() => Nav.NavigateTo(Nav.Uri, forceLoad: true);
 
     private const string ContainerStyle =
         "min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1.5rem;" +

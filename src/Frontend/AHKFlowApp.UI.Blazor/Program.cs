@@ -10,6 +10,29 @@ using MudBlazor.Services;
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<HeadOutlet>("head::after");
 
+// CreateDefault fetches appsettings*.json through the browser HTTP cache, which can serve a stale
+// response — notably a cached 404 for a previously-missing appsettings.Development.json. Re-read
+// them cache-busted in Development and overlay them so a freshly restored/edited file is picked up
+// on reload (this is what lets StartupErrorRoot's auto-recovery actually succeed). Later providers
+// win, so these override the cached copies for both validation and MSAL.
+if (builder.HostEnvironment.IsDevelopment())
+{
+    using HttpClient configHttp = new() { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) };
+    string[] configFiles = ["appsettings.json", "appsettings.Development.json"];
+    foreach (string file in configFiles)
+    {
+        try
+        {
+            byte[] json = await configHttp.GetByteArrayAsync($"{file}?reloadcheck={Guid.NewGuid():N}");
+            builder.Configuration.AddJsonStream(new MemoryStream(json));
+        }
+        catch (HttpRequestException)
+        {
+            // File may legitimately be absent (e.g. appsettings.Development.json not created yet) — skip.
+        }
+    }
+}
+
 bool useTestAuth = builder.Configuration.GetValue<bool>("Auth:UseTestProvider");
 
 // Validate required config before wiring any auth-dependent services. On failure, boot a
@@ -21,6 +44,9 @@ if (!useTestAuth)
     if (startupConfigError is not null)
     {
         builder.Services.AddSingleton(new StartupErrorState(startupConfigError.Value));
+        // Lightweight client so StartupErrorRoot can poll the config files and auto-recover once
+        // the user restores appsettings.Development.json (no auth/resilience needed).
+        builder.Services.AddScoped(_ => new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) });
         builder.RootComponents.Add<StartupErrorRoot>("#app");
         await builder.Build().RunAsync();
         return;

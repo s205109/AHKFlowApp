@@ -1,10 +1,106 @@
 @namespace AHKFlowApp.UI.Blazor.Startup
+@using System.IO
+@using System.Net.Http
+@using Microsoft.Extensions.Configuration
+@implements IDisposable
+@inject HttpClient Http
+@inject NavigationManager Nav
 
-@* Root component booted into #app when startup configuration is invalid. Reads the
-   reason from DI (set in Program.cs) and renders the friendly error page. *@
+@* Root component booted into #app when startup configuration is invalid. Shows the friendly
+   error page and, in the background, polls the config files so the app auto-recovers once the
+   user restores/fixes appsettings.Development.json — no manual reload needed. (WASM has no
+   filesystem, so this HTTP poll is the analog of server-side reloadOnChange.) *@
 
-<StartupError Reason="@ErrorState.Reason" />
+@if (_reloading)
+{
+    <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;
+                font-family:Inter,Roboto,sans-serif;color:#52606d;">
+        Configuration detected — reloading…
+    </div>
+}
+else
+{
+    <StartupError Reason="@ErrorState.Reason" />
+}
 
 @code {
+    // Poll every ~2s for up to ~2 min, then stop and leave the manual Reload button in place.
+    [Parameter] public TimeSpan PollInterval { get; set; } = TimeSpan.FromSeconds(2);
+    [Parameter] public int MaxAttempts { get; set; } = 60;
+    [Parameter] public TimeSpan ReloadDelay { get; set; } = TimeSpan.FromMilliseconds(400);
+
     [Inject] private StartupErrorState ErrorState { get; set; } = default!;
+
+    private readonly CancellationTokenSource _cts = new();
+    private bool _reloading;
+
+    protected override void OnInitialized() => _ = PollAsync(_cts.Token);
+
+    private async Task PollAsync(CancellationToken ct)
+    {
+        for (int attempt = 0; attempt < MaxAttempts; attempt++)
+        {
+            try
+            {
+                await Task.Delay(PollInterval, ct);
+            }
+            catch (TaskCanceledException)
+            {
+                return;
+            }
+
+            if (await IsConfigValidAsync(ct))
+            {
+                _reloading = true;
+                await InvokeAsync(StateHasChanged);
+                await Task.Delay(ReloadDelay, CancellationToken.None);
+                // Marshal to the renderer dispatcher — the poll runs off it.
+                await InvokeAsync(() => Nav.NavigateTo(Nav.Uri, forceLoad: true));
+                return;
+            }
+        }
+    }
+
+    private async Task<bool> IsConfigValidAsync(CancellationToken ct)
+    {
+        // appsettings.json ships with empty AzureAd values, so the validity check must merge it
+        // with appsettings.Development.json exactly as the host does at boot.
+        Stream? appsettings = await TryGetJsonAsync("appsettings.json", ct);
+        if (appsettings is null)
+        {
+            return false;
+        }
+
+        IConfigurationBuilder configBuilder = new ConfigurationBuilder().AddJsonStream(appsettings);
+
+        Stream? dev = await TryGetJsonAsync("appsettings.Development.json", ct);
+        if (dev is not null)
+        {
+            configBuilder.AddJsonStream(dev);
+        }
+
+        return StartupConfigValidator.Check(configBuilder.Build()) is null;
+    }
+
+    private async Task<Stream?> TryGetJsonAsync(string file, CancellationToken ct)
+    {
+        try
+        {
+            // Cache-bust so a previously missing/empty response can't be served from the HTTP cache.
+            using HttpResponseMessage response = await Http.GetAsync($"{file}?reloadcheck={Guid.NewGuid():N}", ct);
+            return response.IsSuccessStatusCode
+                ? new MemoryStream(await response.Content.ReadAsByteArrayAsync(ct))
+                : null;
+        }
+        catch (HttpRequestException)
+        {
+            return null;
+        }
+    }
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+    }
 }
