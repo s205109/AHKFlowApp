@@ -21,7 +21,10 @@
             }
             else
             {
-                <a href="." style="@ButtonStyle;text-decoration:none;display:inline-block;">Reload</a>
+                @* Literal onclick (not @@onclick): forces a real browser reload so the WASM app
+                   re-boots and re-fetches appsettings. An <a href="."> would be caught by Blazor's
+                   anchor-click interception and routed client-side, never re-reading config. *@
+                <button type="button" onclick="location.reload()" style="@ButtonStyle">Reload</button>
             }
         </div>
     </div>

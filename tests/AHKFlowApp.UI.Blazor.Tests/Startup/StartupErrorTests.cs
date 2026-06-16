@@ -1,4 +1,5 @@
 using AHKFlowApp.UI.Blazor.Startup;
+using AngleSharp.Dom;
 using Bunit;
 using FluentAssertions;
 using Xunit;
@@ -66,12 +67,16 @@ public sealed class StartupErrorTests : BunitContext
     }
 
     [Fact]
-    public void WhenNoOnRetry_RendersReloadLink()
+    public void WhenNoOnRetry_RendersReloadButtonThatForcesFullReload()
     {
         IRenderedComponent<StartupError> cut = Render<StartupError>(ps => ps
             .Add(p => p.Reason, StartupErrorReason.MissingFrontendConfig));
 
-        cut.Markup.Should().Contain("Reload");
-        cut.FindAll("button").Should().BeEmpty();
+        // A real <button> with location.reload() — not an <a href="."> that Blazor would
+        // intercept and route client-side without re-reading config.
+        cut.Markup.Should().NotContain("<a ");
+        IElement reload = cut.Find("button");
+        reload.TextContent.Should().Contain("Reload");
+        reload.GetAttribute("onclick").Should().Contain("location.reload()");
     }
 }
