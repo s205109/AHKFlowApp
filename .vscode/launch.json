@@ -46,44 +46,23 @@
       "browserConfig": {
         "userDataDir": "${workspaceFolder}/.vscode/chrome-debug-profile"
       }
-    },
+    }
+  ],
+  // Full Stack launches the API + UI together; stopAll terminates both when either stops.
+  // No readiness gate is needed: the UI's RequireApiConnectivity probe auto-retries /health,
+  // so it rides out the API cold-start (same behavior as VS2026, which has no launch gating).
+  "compounds": [
     {
       "name": "Full Stack: Docker SQL (Recommended)",
-      "type": "coreclr",
-      "request": "launch",
+      "configurations": ["API: Docker SQL (Recommended)", "UI: http"],
       "preLaunchTask": "build: Full Stack",
-      "program": "${workspaceFolder}/src/Backend/AHKFlowApp.API/bin/Debug/net10.0/AHKFlowApp.API.dll",
-      "cwd": "${workspaceFolder}/src/Backend/AHKFlowApp.API",
-      "launchSettingsFilePath": "${workspaceFolder}/src/Backend/AHKFlowApp.API/Properties/launchSettings.json",
-      "launchSettingsProfile": "Docker SQL (Recommended)",
-      "console": "internalConsole",
-      "serverReadyAction": {
-        "action": "startDebugging",
-        "pattern": "\\bNow listening on:",
-        "name": "UI: http"
-      },
-      "cascadeTerminateToConfigurations": [
-        "UI: http"
-      ]
+      "stopAll": true
     },
     {
       "name": "Full Stack: LocalDB SQL",
-      "type": "coreclr",
-      "request": "launch",
+      "configurations": ["API: LocalDB SQL", "UI: http"],
       "preLaunchTask": "build: Full Stack",
-      "program": "${workspaceFolder}/src/Backend/AHKFlowApp.API/bin/Debug/net10.0/AHKFlowApp.API.dll",
-      "cwd": "${workspaceFolder}/src/Backend/AHKFlowApp.API",
-      "launchSettingsFilePath": "${workspaceFolder}/src/Backend/AHKFlowApp.API/Properties/launchSettings.json",
-      "launchSettingsProfile": "LocalDB SQL",
-      "console": "internalConsole",
-      "serverReadyAction": {
-        "action": "startDebugging",
-        "pattern": "\\bNow listening on:",
-        "name": "UI: http"
-      },
-      "cascadeTerminateToConfigurations": [
-        "UI: http"
-      ]
+      "stopAll": true
     }
   ]
 }
