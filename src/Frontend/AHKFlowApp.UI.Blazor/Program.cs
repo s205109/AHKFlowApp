@@ -11,26 +11,14 @@ var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<HeadOutlet>("head::after");
 
 // CreateDefault fetches appsettings*.json through the browser HTTP cache, which can serve a stale
-// response — notably a cached 404 for a previously-missing appsettings.Development.json. Re-read
-// them cache-busted in Development and overlay them so a freshly restored/edited file is picked up
-// on reload (this is what lets StartupErrorRoot's auto-recovery actually succeed). Later providers
-// win, so these override the cached copies for both validation and MSAL.
+// response (notably a cached 404 for a previously-missing appsettings.Development.json). Re-read them
+// cache-busted in Development and overlay them so a freshly restored/edited file is picked up on
+// reload — this is what lets StartupErrorRoot's auto-recovery succeed. Later providers win, so these
+// override the cached copies for both validation and MSAL.
 if (builder.HostEnvironment.IsDevelopment())
 {
     using HttpClient configHttp = new() { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) };
-    string[] configFiles = ["appsettings.json", "appsettings.Development.json"];
-    foreach (string file in configFiles)
-    {
-        try
-        {
-            byte[] json = await configHttp.GetByteArrayAsync($"{file}?reloadcheck={Guid.NewGuid():N}");
-            builder.Configuration.AddJsonStream(new MemoryStream(json));
-        }
-        catch (HttpRequestException)
-        {
-            // File may legitimately be absent (e.g. appsettings.Development.json not created yet) — skip.
-        }
-    }
+    await builder.Configuration.AddCacheBustedDevConfigAsync(configHttp);
 }
 
 bool useTestAuth = builder.Configuration.GetValue<bool>("Auth:UseTestProvider");
