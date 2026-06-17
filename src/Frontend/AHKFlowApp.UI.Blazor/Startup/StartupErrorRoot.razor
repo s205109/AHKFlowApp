@@ -1,0 +1,76 @@
+@namespace AHKFlowApp.UI.Blazor.Startup
+@using System.Net.Http
+@using Microsoft.Extensions.Configuration
+@implements IDisposable
+@inject HttpClient Http
+@inject NavigationManager Nav
+
+@* Root component booted into #app when startup configuration is invalid. Shows the friendly
+   error page and, in the background, polls the config files so the app auto-recovers once the
+   user restores/fixes appsettings.Development.json — no manual reload needed. (WASM has no
+   filesystem, so this HTTP poll is the analog of server-side reloadOnChange.) *@
+
+@if (_reloading)
+{
+    <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;
+                font-family:Inter,Roboto,sans-serif;color:#52606d;">
+        Configuration detected — reloading…
+    </div>
+}
+else
+{
+    <StartupError Reason="@ErrorState.Reason" />
+}
+
+@code {
+    // Poll every ~2s for up to ~2 min, then stop and leave the manual Reload button in place.
+    [Parameter] public TimeSpan PollInterval { get; set; } = TimeSpan.FromSeconds(2);
+    [Parameter] public int MaxAttempts { get; set; } = 60;
+    [Parameter] public TimeSpan ReloadDelay { get; set; } = TimeSpan.FromMilliseconds(400);
+
+    [Inject] private StartupErrorState ErrorState { get; set; } = default!;
+
+    private readonly CancellationTokenSource _cts = new();
+    private bool _reloading;
+
+    protected override void OnInitialized() => _ = PollAsync(_cts.Token);
+
+    private async Task PollAsync(CancellationToken ct)
+    {
+        for (int attempt = 0; attempt < MaxAttempts; attempt++)
+        {
+            try
+            {
+                await Task.Delay(PollInterval, ct);
+            }
+            catch (TaskCanceledException)
+            {
+                return;
+            }
+
+            if (await IsConfigValidAsync(ct))
+            {
+                _reloading = true;
+                await InvokeAsync(StateHasChanged);
+                await Task.Delay(ReloadDelay, CancellationToken.None);
+                // Marshal to the renderer dispatcher — the poll runs off it.
+                await InvokeAsync(() => Nav.NavigateTo(Nav.Uri, forceLoad: true));
+                return;
+            }
+        }
+    }
+
+    private async Task<bool> IsConfigValidAsync(CancellationToken ct)
+    {
+        // Re-read the same files the host loads at boot, cache-busted, and validate the merged result.
+        ConfigurationBuilder configBuilder = new();
+        await configBuilder.AddCacheBustedDevConfigAsync(Http, ct);
+        return StartupConfigValidator.Check(configBuilder.Build()) is null;
+    }
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+    }
+}
