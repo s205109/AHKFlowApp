@@ -17,7 +17,14 @@ internal sealed record AzureAdSettings(string Authority, string ClientId, string
         string clientId = configuration["AzureAd:ClientId"]!;
 
         string authority = $"{instance}/{tenantId}";
-        string scope = configuration["AzureAd:Scopes"] ?? $"api://{clientId}/access_as_user";
+
+        // Blank Scopes (e.g. a deploy variable that resolved to empty) must NOT win over the
+        // derived default — an empty default-access-token scope would silently break MSAL.
+        string? configuredScope = configuration["AzureAd:Scopes"];
+        string scope = string.IsNullOrWhiteSpace(configuredScope)
+            ? $"api://{clientId}/access_as_user"
+            : configuredScope;
+
         bool validateAuthority = configuration.GetValue("AzureAd:ValidateAuthority", true);
 
         return new AzureAdSettings(authority, clientId, scope, validateAuthority);
