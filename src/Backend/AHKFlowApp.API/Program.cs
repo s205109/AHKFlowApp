@@ -109,8 +109,7 @@ try
             failureStatus: HealthStatus.Unhealthy);
 
     const string corsPolicyName = "AllowConfiguredOrigins";
-    string[] allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
-    builder.Services.AddConfiguredCors(allowedOrigins, corsPolicyName);
+    builder.Services.AddConfiguredCors(builder.Configuration, corsPolicyName);
 
     bool useTestAuth = builder.Configuration.GetValue<bool>("Auth:UseTestProvider");
 
@@ -199,10 +198,9 @@ try
     app.UseRootRedirect(devTarget: "/swagger", prodTarget: "/health");
     app.UseRouting();
 
-    if (allowedOrigins.Length > 0)
-    {
-        app.UseCors(corsPolicyName);
-    }
+    // Always register CORS; the policy decides per request from live config (see AddConfiguredCors),
+    // so a restored appsettings.Development.json takes effect without restarting the API.
+    app.UseCors(corsPolicyName);
 
     app.UseDevelopmentOnlyEndpointGate();
     app.UseAuthentication();

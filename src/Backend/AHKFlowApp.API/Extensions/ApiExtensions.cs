@@ -8,19 +8,19 @@ namespace AHKFlowApp.API.Extensions;
 internal static class ApiExtensions
 {
     internal static IServiceCollection AddConfiguredCors(
-        this IServiceCollection services, string[] allowedOrigins, string policyName)
+        this IServiceCollection services, IConfiguration configuration, string policyName)
     {
+        // SetIsOriginAllowed runs per request and reads Cors:AllowedOrigins live, so a restored/edited
+        // appsettings.Development.json is honored via reloadOnChange without restarting the API.
+        // Empty origins => predicate returns false => no CORS headers (request correctly blocked).
         return services.AddCors(options =>
             options.AddPolicy(policyName, policy =>
-            {
-                if (allowedOrigins is { Length: > 0 })
-                {
-                    policy.WithOrigins(allowedOrigins)
-                          .WithMethods("GET", "POST", "PUT", "DELETE")
-                          .WithHeaders("Content-Type", "Authorization")
-                          .AllowCredentials();
-                }
-            }));
+                policy.SetIsOriginAllowed(origin =>
+                          (configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [])
+                              .Contains(origin, StringComparer.OrdinalIgnoreCase))
+                      .WithMethods("GET", "POST", "PUT", "DELETE")
+                      .WithHeaders("Content-Type", "Authorization")
+                      .AllowCredentials()));
     }
 
     /// <summary>
