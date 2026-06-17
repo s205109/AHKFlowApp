@@ -10,11 +10,18 @@
       "cwd": "${workspaceFolder}/src/Backend/AHKFlowApp.API",
       "launchSettingsFilePath": "${workspaceFolder}/src/Backend/AHKFlowApp.API/Properties/launchSettings.json",
       "launchSettingsProfile": "Docker SQL (Recommended)",
-      "console": "externalTerminal",
+      // internalConsole is required for serverReadyAction: VS Code only scans the Debug
+      // Console for the pattern below (never an external/integrated terminal).
+      "console": "internalConsole",
+      // Suppress the API's own Process.Start swagger open (Program.cs); VS Code owns the
+      // window via serverReadyAction so it can close it on stop.
+      "env": {
+        "AHKFLOW_SUPPRESS_SWAGGER_BROWSER": "true"
+      },
       "serverReadyAction": {
-        "action": "openExternally",
+        "action": "startDebugging",
         "pattern": "\\bNow listening on:",
-        "uriFormat": "http://localhost:5600/swagger"
+        "name": "Open Swagger (Chrome)"
       }
     },
     {
@@ -26,11 +33,31 @@
       "cwd": "${workspaceFolder}/src/Backend/AHKFlowApp.API",
       "launchSettingsFilePath": "${workspaceFolder}/src/Backend/AHKFlowApp.API/Properties/launchSettings.json",
       "launchSettingsProfile": "LocalDB SQL",
-      "console": "externalTerminal",
+      // internalConsole is required for serverReadyAction: VS Code only scans the Debug
+      // Console for the pattern below (never an external/integrated terminal).
+      "console": "internalConsole",
+      // Suppress the API's own Process.Start swagger open (Program.cs); VS Code owns the
+      // window via serverReadyAction so it can close it on stop.
+      "env": {
+        "AHKFLOW_SUPPRESS_SWAGGER_BROWSER": "true"
+      },
       "serverReadyAction": {
-        "action": "openExternally",
+        "action": "startDebugging",
         "pattern": "\\bNow listening on:",
-        "uriFormat": "http://localhost:5600/swagger"
+        "name": "Open Swagger (Chrome)"
+      }
+    },
+    {
+      // Swagger browser owned by VS Code (triggered by the API configs' serverReadyAction),
+      // on an isolated profile so stopping the debug session closes the window. Hidden from
+      // the debug dropdown — it is not meant to be launched directly.
+      "name": "Open Swagger (Chrome)",
+      "type": "chrome",
+      "request": "launch",
+      "url": "http://localhost:5600/swagger",
+      "userDataDir": "${workspaceFolder}/.vscode/chrome-debug-profile-swagger",
+      "presentation": {
+        "hidden": true
       }
     },
     {
