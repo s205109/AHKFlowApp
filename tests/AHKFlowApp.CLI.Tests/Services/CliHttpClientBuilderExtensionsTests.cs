@@ -43,7 +43,7 @@ public sealed class CliHttpClientBuilderExtensionsTests
         using ServiceProvider provider = CreateServices(handler, retryStatusWriter);
         IHotstringsApiClient sut = provider.GetRequiredService<IHotstringsApiClient>();
 
-        Func<Task> act = () => sut.ListAsync(null, null, 1, 50, CancellationToken.None);
+        Func<Task> act = async () => await sut.ListAsync(null, null, 1, 50, CancellationToken.None);
 
         ApiException ex = (await act.Should().ThrowAsync<ApiException>()).Which;
         ex.StatusCode.Should().Be(403);

@@ -29,7 +29,7 @@ public sealed class MsalDeviceCodeTokenProviderTests : IDisposable
             TenantId = Guid.NewGuid().ToString(),
         });
 
-        Func<Task> act = () => sut.GetTokenAsync(CancellationToken.None);
+        Func<Task> act = async () => await sut.GetTokenAsync(CancellationToken.None);
 
         (await act.Should().ThrowAsync<AuthConfigurationException>())
             .WithMessage("ClientId is not configured.");
@@ -44,7 +44,7 @@ public sealed class MsalDeviceCodeTokenProviderTests : IDisposable
             TenantId = "00000000-0000-0000-0000-000000000000",
         });
 
-        Func<Task> act = () => sut.LoginAsync(CancellationToken.None);
+        Func<Task> act = async () => await sut.LoginAsync(CancellationToken.None);
 
         (await act.Should().ThrowAsync<AuthConfigurationException>())
             .WithMessage("TenantId is not configured.");
@@ -59,14 +59,14 @@ public sealed class MsalDeviceCodeTokenProviderTests : IDisposable
             TenantId = Guid.NewGuid().ToString(),
         });
 
-        Func<Task> act = () => sut.GetTokenAsync(CancellationToken.None);
+        Func<Task> act = async () => await sut.GetTokenAsync(CancellationToken.None);
 
         (await act.Should().ThrowAsync<NotAuthenticatedException>())
             .WithMessage(AuthMessages.LoginRequired);
     }
 
     [Fact]
-    public async Task LogoutAsync_NoCacheFile_DoesNotThrow()
+    public Task LogoutAsync_NoCacheFile_DoesNotThrow()
     {
         MsalDeviceCodeTokenProvider sut = CreateProvider(new CliOptions
         {
@@ -76,7 +76,7 @@ public sealed class MsalDeviceCodeTokenProviderTests : IDisposable
 
         Func<Task> act = () => sut.LogoutAsync(CancellationToken.None);
 
-        await act.Should().NotThrowAsync();
+        return act.Should().NotThrowAsync();
     }
 
     private MsalDeviceCodeTokenProvider CreateProvider(CliOptions options)
