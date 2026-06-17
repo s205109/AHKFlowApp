@@ -108,7 +108,7 @@ public sealed class DownloadsApiClientTests
                 Content = new StringContent("not your profile"),
             });
 
-        Func<Task> act = () => sut.GetProfileScriptAsync(Guid.NewGuid(), CancellationToken.None);
+        Func<Task> act = async () => await sut.GetProfileScriptAsync(Guid.NewGuid(), CancellationToken.None);
 
         ApiException ex = (await act.Should().ThrowAsync<ApiException>()).Which;
         ex.StatusCode.Should().Be(404);

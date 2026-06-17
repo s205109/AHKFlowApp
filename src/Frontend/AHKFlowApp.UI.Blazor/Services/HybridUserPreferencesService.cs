@@ -17,7 +17,7 @@ public sealed class HybridUserPreferencesService : IUserPreferencesService, IDis
         _authStateProvider = authStateProvider;
         _preferencesApi = preferencesApi;
         _localStorage = localStorage;
-        authStateProvider.AuthenticationStateChanged += OnAuthStateChangedAsync;
+        authStateProvider.AuthenticationStateChanged += OnAuthStateChanged;
     }
 
     public event Action<UserPreferences>? OnChange;
@@ -66,9 +66,12 @@ public sealed class HybridUserPreferencesService : IUserPreferencesService, IDis
     }
 
     public void Dispose() =>
-        _authStateProvider.AuthenticationStateChanged -= OnAuthStateChangedAsync;
+        _authStateProvider.AuthenticationStateChanged -= OnAuthStateChanged;
 
-    private async void OnAuthStateChangedAsync(Task<AuthenticationState> task)
+    private void OnAuthStateChanged(Task<AuthenticationState> task) =>
+        _ = HandleAuthStateChangedAsync(task);
+
+    private async Task HandleAuthStateChangedAsync(Task<AuthenticationState> task)
     {
         try
         {

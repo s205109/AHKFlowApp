@@ -68,7 +68,7 @@ public sealed class DownloadsController(IMediator mediator) : ControllerBase
                 foreach (ProfileScript script in result.Value)
                 {
                     ZipArchiveEntry entry = archive.CreateEntry(script.FileName, CompressionLevel.Optimal);
-                    using Stream entryStream = entry.Open();
+                    using Stream entryStream = await entry.OpenAsync();
                     using StreamWriter writer = new(entryStream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
                     await writer.WriteAsync(script.Content);
                 }

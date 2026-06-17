@@ -8,12 +8,12 @@ internal sealed class RequestCounter
 
 internal sealed class CountingHandler(RequestCounter counter) : DelegatingHandler
 {
-    protected override async Task<HttpResponseMessage> SendAsync(
+    protected override Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage request, CancellationToken cancellationToken)
     {
         Interlocked.Increment(ref counter.TotalRequests);
         if (request.RequestUri?.AbsolutePath.Contains("/profiles", StringComparison.OrdinalIgnoreCase) == true)
             Interlocked.Increment(ref counter.ProfilesRequests);
-        return await base.SendAsync(request, cancellationToken);
+        return base.SendAsync(request, cancellationToken);
     }
 }
