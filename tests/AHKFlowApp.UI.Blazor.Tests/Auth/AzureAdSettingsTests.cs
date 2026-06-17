@@ -59,6 +59,24 @@ public sealed class AzureAdSettingsTests
         settings.Scope.Should().Be("api://other/custom.scope");
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void Resolve_WhenScopesBlank_FallsBackToDerivedScope(string blankScope)
+    {
+        IConfiguration config = Config(new()
+        {
+            ["AzureAd:Instance"] = "https://login.microsoftonline.com/",
+            ["AzureAd:TenantId"] = "t",
+            ["AzureAd:ClientId"] = "c",
+            ["AzureAd:Scopes"] = blankScope
+        });
+
+        var settings = AzureAdSettings.Resolve(config);
+
+        settings.Scope.Should().Be("api://c/access_as_user");
+    }
+
     [Fact]
     public void Resolve_WhenValidateAuthorityFalse_RespectsConfig()
     {
