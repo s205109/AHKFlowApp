@@ -210,9 +210,15 @@ try
     // Plain-text infrastructure endpoint (for load balancers, k8s probes)
     app.MapHealthChecks("/health");
 
-    // Only when this assembly is the process entry point — skips WebApplicationFactory-hosted tests
+    // Only when this assembly is the process entry point — skips WebApplicationFactory-hosted tests.
+    // Suppressed whenever an IDE owns (and can close) the Swagger window itself: a debugger is
+    // attached (VS via launchBrowser, VS Code F5 via serverReadyAction), or VS Code's launch.json
+    // sets AHKFLOW_SUPPRESS_SWAGGER_BROWSER (covers its no-debug runs). Plain `dotnet run` leaves
+    // both unset and keeps this self-open.
     if (app.Environment.IsDevelopment() &&
-        Assembly.GetEntryAssembly()?.GetName().Name == "AHKFlowApp.API")
+        Assembly.GetEntryAssembly()?.GetName().Name == "AHKFlowApp.API" &&
+        !Debugger.IsAttached &&
+        !string.Equals(Environment.GetEnvironmentVariable("AHKFLOW_SUPPRESS_SWAGGER_BROWSER"), "true", StringComparison.OrdinalIgnoreCase))
     {
         IHostApplicationLifetime lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
         lifetime.ApplicationStarted.Register(() =>
