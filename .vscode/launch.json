@@ -10,11 +10,18 @@
       "cwd": "${workspaceFolder}/src/Backend/AHKFlowApp.API",
       "launchSettingsFilePath": "${workspaceFolder}/src/Backend/AHKFlowApp.API/Properties/launchSettings.json",
       "launchSettingsProfile": "Docker SQL (Recommended)",
-      "console": "externalTerminal",
+      // internalConsole is required for serverReadyAction: VS Code only scans the Debug
+      // Console for the pattern below (never an external/integrated terminal).
+      "console": "internalConsole",
+      // Suppress the API's own Process.Start swagger open (Program.cs); VS Code owns the
+      // window via serverReadyAction so it can close it on stop.
+      "env": {
+        "AHKFLOW_SUPPRESS_SWAGGER_BROWSER": "true"
+      },
       "serverReadyAction": {
-        "action": "openExternally",
+        "action": "startDebugging",
         "pattern": "\\bNow listening on:",
-        "uriFormat": "http://localhost:5600/swagger"
+        "name": "Open Swagger (Chrome)"
       }
     },
     {
@@ -26,11 +33,31 @@
       "cwd": "${workspaceFolder}/src/Backend/AHKFlowApp.API",
       "launchSettingsFilePath": "${workspaceFolder}/src/Backend/AHKFlowApp.API/Properties/launchSettings.json",
       "launchSettingsProfile": "LocalDB SQL",
-      "console": "externalTerminal",
+      // internalConsole is required for serverReadyAction: VS Code only scans the Debug
+      // Console for the pattern below (never an external/integrated terminal).
+      "console": "internalConsole",
+      // Suppress the API's own Process.Start swagger open (Program.cs); VS Code owns the
+      // window via serverReadyAction so it can close it on stop.
+      "env": {
+        "AHKFLOW_SUPPRESS_SWAGGER_BROWSER": "true"
+      },
       "serverReadyAction": {
-        "action": "openExternally",
+        "action": "startDebugging",
         "pattern": "\\bNow listening on:",
-        "uriFormat": "http://localhost:5600/swagger"
+        "name": "Open Swagger (Chrome)"
+      }
+    },
+    {
+      // Swagger browser owned by VS Code (triggered by the API configs' serverReadyAction),
+      // on an isolated profile so stopping the debug session closes the window. Hidden from
+      // the debug dropdown — it is not meant to be launched directly.
+      "name": "Open Swagger (Chrome)",
+      "type": "chrome",
+      "request": "launch",
+      "url": "http://localhost:5600/swagger",
+      "userDataDir": "${workspaceFolder}/.vscode/chrome-debug-profile-swagger",
+      "presentation": {
+        "hidden": true
       }
     },
     {
@@ -46,44 +73,23 @@
       "browserConfig": {
         "userDataDir": "${workspaceFolder}/.vscode/chrome-debug-profile"
       }
-    },
+    }
+  ],
+  // Full Stack launches the API + UI together; stopAll terminates both when either stops.
+  // No readiness gate is needed: the UI's RequireApiConnectivity probe auto-retries /health,
+  // so it rides out the API cold-start (same behavior as VS2026, which has no launch gating).
+  "compounds": [
     {
       "name": "Full Stack: Docker SQL (Recommended)",
-      "type": "coreclr",
-      "request": "launch",
+      "configurations": ["API: Docker SQL (Recommended)", "UI: http"],
       "preLaunchTask": "build: Full Stack",
-      "program": "${workspaceFolder}/src/Backend/AHKFlowApp.API/bin/Debug/net10.0/AHKFlowApp.API.dll",
-      "cwd": "${workspaceFolder}/src/Backend/AHKFlowApp.API",
-      "launchSettingsFilePath": "${workspaceFolder}/src/Backend/AHKFlowApp.API/Properties/launchSettings.json",
-      "launchSettingsProfile": "Docker SQL (Recommended)",
-      "console": "internalConsole",
-      "serverReadyAction": {
-        "action": "startDebugging",
-        "pattern": "\\bNow listening on:",
-        "name": "UI: http"
-      },
-      "cascadeTerminateToConfigurations": [
-        "UI: http"
-      ]
+      "stopAll": true
     },
     {
       "name": "Full Stack: LocalDB SQL",
-      "type": "coreclr",
-      "request": "launch",
+      "configurations": ["API: LocalDB SQL", "UI: http"],
       "preLaunchTask": "build: Full Stack",
-      "program": "${workspaceFolder}/src/Backend/AHKFlowApp.API/bin/Debug/net10.0/AHKFlowApp.API.dll",
-      "cwd": "${workspaceFolder}/src/Backend/AHKFlowApp.API",
-      "launchSettingsFilePath": "${workspaceFolder}/src/Backend/AHKFlowApp.API/Properties/launchSettings.json",
-      "launchSettingsProfile": "LocalDB SQL",
-      "console": "internalConsole",
-      "serverReadyAction": {
-        "action": "startDebugging",
-        "pattern": "\\bNow listening on:",
-        "name": "UI: http"
-      },
-      "cascadeTerminateToConfigurations": [
-        "UI: http"
-      ]
+      "stopAll": true
     }
   ]
 }

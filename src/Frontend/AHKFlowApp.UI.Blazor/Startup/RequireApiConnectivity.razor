@@ -1,0 +1,96 @@
+@namespace AHKFlowApp.UI.Blazor.Startup
+@using System.Net.Http
+@using Microsoft.AspNetCore.Components.WebAssembly.Hosting
+
+@* In Development, confirms the API is reachable before rendering the app, turning the
+   blank-page-on-CORS failure into a friendly, actionable message. Retries a few times
+   first so a slower API cold-start (fresh SQL container + EF migrations) self-heals
+   instead of flashing the error — IDEs like Visual Studio launch the UI and API together
+   with no readiness gate. No-op in other environments (prod keeps the /health page +
+   graceful per-call degradation). *@
+
+@if (_state == ProbeState.Ok)
+{
+    @ChildContent
+}
+else if (_state == ProbeState.Failed)
+{
+    <StartupError Reason="StartupErrorReason.BackendUnreachable" OnRetry="ProbeAsync" />
+}
+else
+{
+    <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;
+                font-family:Inter,Roboto,sans-serif;color:#52606d;">
+        Connecting to the API…
+    </div>
+}
+
+@code {
+    public const string ProbeClientName = "HealthProbe";
+
+    // Retry before giving up: a cold-start (fresh SQL container + migrations) can keep the
+    // API unreachable for several seconds. ~10 attempts over ~14s covers it while still
+    // surfacing the guidance reasonably fast when the API is genuinely misconfigured.
+    [Parameter] public int MaxAttempts { get; set; } = 10;
+    [Parameter] public TimeSpan RetryDelay { get; set; } = TimeSpan.FromSeconds(1.5);
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    [Inject] private IWebAssemblyHostEnvironment Env { get; set; } = default!;
+    [Inject] private IHttpClientFactory HttpClientFactory { get; set; } = default!;
+
+    private enum ProbeState { Probing, Ok, Failed }
+
+    private ProbeState _state = ProbeState.Probing;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Env.IsDevelopment())
+        {
+            _state = ProbeState.Ok;
+            return;
+        }
+
+        await ProbeAsync();
+    }
+
+    private async Task ProbeAsync()
+    {
+        _state = ProbeState.Probing;
+
+        for (int attempt = 1; attempt <= MaxAttempts; attempt++)
+        {
+            if (await IsApiReachableAsync())
+            {
+                _state = ProbeState.Ok;
+                return;
+            }
+
+            if (attempt < MaxAttempts)
+            {
+                await Task.Delay(RetryDelay);
+            }
+        }
+
+        _state = ProbeState.Failed;
+    }
+
+    private async Task<bool> IsApiReachableAsync()
+    {
+        try
+        {
+            using HttpClient client = HttpClientFactory.CreateClient(ProbeClientName);
+            using HttpResponseMessage response = await client.GetAsync("health");
+            return response.IsSuccessStatusCode;
+        }
+        catch (HttpRequestException)
+        {
+            return false;
+        }
+        catch (TaskCanceledException)
+        {
+            // Timeout — treat as unreachable.
+            return false;
+        }
+    }
+}

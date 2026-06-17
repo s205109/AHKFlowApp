@@ -8,19 +8,43 @@ namespace AHKFlowApp.API.Extensions;
 internal static class ApiExtensions
 {
     internal static IServiceCollection AddConfiguredCors(
-        this IServiceCollection services, string[] allowedOrigins, string policyName)
+        this IServiceCollection services, IConfiguration configuration, string policyName)
     {
+        // SetIsOriginAllowed runs per request and reads Cors:AllowedOrigins live, so a restored/edited
+        // appsettings.Development.json is honored via reloadOnChange without restarting the API.
+        // Empty origins => predicate returns false => no CORS headers (request correctly blocked).
         return services.AddCors(options =>
             options.AddPolicy(policyName, policy =>
-            {
-                if (allowedOrigins is { Length: > 0 })
-                {
-                    policy.WithOrigins(allowedOrigins)
-                          .WithMethods("GET", "POST", "PUT", "DELETE")
-                          .WithHeaders("Content-Type", "Authorization")
-                          .AllowCredentials();
-                }
-            }));
+                policy.SetIsOriginAllowed(origin =>
+                          (configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [])
+                              .Contains(origin, StringComparer.OrdinalIgnoreCase))
+                      .WithMethods("GET", "POST", "PUT", "DELETE")
+                      .WithHeaders("Content-Type", "Authorization")
+                      .AllowCredentials()));
+    }
+
+    /// <summary>
+    /// Logs actionable warnings (non-fatal) when local dev config the frontend depends on is missing,
+    /// so a forgotten appsettings.Development.json surfaces a clear message instead of a CORS/blank page.
+    /// </summary>
+    internal static void WarnOnMissingDevConfig(this IConfiguration configuration, Serilog.ILogger logger)
+    {
+        if (string.IsNullOrWhiteSpace(configuration["AzureAd:TenantId"]) ||
+            string.IsNullOrWhiteSpace(configuration["AzureAd:ClientId"]))
+        {
+            logger.Warning(
+                "AzureAd:TenantId/ClientId is not configured. Set it via user-secrets or run " +
+                "scripts/setup-dev-entra.ps1 (see appsettings.Development.json.example). " +
+                "Token validation will reject all authenticated requests until this is set.");
+        }
+
+        string[] allowedOrigins = configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
+        if (allowedOrigins.Length == 0)
+        {
+            logger.Warning(
+                "Cors:AllowedOrigins is empty — the Blazor frontend (http://localhost:5601) will be blocked " +
+                "by CORS. Copy appsettings.Development.json.example to appsettings.Development.json and set it.");
+        }
     }
 
     internal static IServiceCollection AddSwaggerDocs(this IServiceCollection services)

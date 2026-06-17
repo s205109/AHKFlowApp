@@ -240,7 +240,7 @@ public sealed class DownloadCliIntegrationTests(SqlContainerFixture sql) : IAsyn
         StringBuilder sb = new();
         foreach (ZipArchiveEntry entry in zip.Entries)
         {
-            await using Stream s = entry.Open();
+            await using Stream s = await entry.OpenAsync();
             using StreamReader reader = new(s, Encoding.UTF8);
             sb.AppendLine(await reader.ReadToEndAsync());
         }

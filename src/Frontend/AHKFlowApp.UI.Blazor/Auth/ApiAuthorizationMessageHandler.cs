@@ -12,7 +12,7 @@ internal sealed class ApiAuthorizationMessageHandler(
     IAccessTokenProvider tokenProvider,
     IConfiguration configuration) : DelegatingHandler
 {
-    private readonly string[] _scopes = [configuration["AzureAd:DefaultScope"]!];
+    private readonly string[] _scopes = [AzureAdSettings.Resolve(configuration).Scope];
 
     protected override async Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage request,

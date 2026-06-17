@@ -109,8 +109,7 @@ try
             failureStatus: HealthStatus.Unhealthy);
 
     const string corsPolicyName = "AllowConfiguredOrigins";
-    string[] allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
-    builder.Services.AddConfiguredCors(allowedOrigins, corsPolicyName);
+    builder.Services.AddConfiguredCors(builder.Configuration, corsPolicyName);
 
     bool useTestAuth = builder.Configuration.GetValue<bool>("Auth:UseTestProvider");
 
@@ -133,6 +132,11 @@ try
         builder.Services
             .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddMicrosoftIdentityWebApi(builder.Configuration.GetSection("AzureAd"));
+    }
+
+    if (builder.Environment.IsDevelopment() && !useTestAuth)
+    {
+        builder.Configuration.WarnOnMissingDevConfig(Log.Logger);
     }
 
     builder.Services.AddAuthorization();
@@ -194,10 +198,9 @@ try
     app.UseRootRedirect(devTarget: "/swagger", prodTarget: "/health");
     app.UseRouting();
 
-    if (allowedOrigins.Length > 0)
-    {
-        app.UseCors(corsPolicyName);
-    }
+    // Always register CORS; the policy decides per request from live config (see AddConfiguredCors),
+    // so a restored appsettings.Development.json takes effect without restarting the API.
+    app.UseCors(corsPolicyName);
 
     app.UseDevelopmentOnlyEndpointGate();
     app.UseAuthentication();
@@ -207,9 +210,15 @@ try
     // Plain-text infrastructure endpoint (for load balancers, k8s probes)
     app.MapHealthChecks("/health");
 
-    // Only when this assembly is the process entry point — skips WebApplicationFactory-hosted tests
+    // Only when this assembly is the process entry point — skips WebApplicationFactory-hosted tests.
+    // Suppressed whenever an IDE owns (and can close) the Swagger window itself: a debugger is
+    // attached (VS via launchBrowser, VS Code F5 via serverReadyAction), or VS Code's launch.json
+    // sets AHKFLOW_SUPPRESS_SWAGGER_BROWSER (covers its no-debug runs). Plain `dotnet run` leaves
+    // both unset and keeps this self-open.
     if (app.Environment.IsDevelopment() &&
-        Assembly.GetEntryAssembly()?.GetName().Name == "AHKFlowApp.API")
+        Assembly.GetEntryAssembly()?.GetName().Name == "AHKFlowApp.API" &&
+        !Debugger.IsAttached &&
+        !string.Equals(Environment.GetEnvironmentVariable("AHKFLOW_SUPPRESS_SWAGGER_BROWSER"), "true", StringComparison.OrdinalIgnoreCase))
     {
         IHostApplicationLifetime lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
         lifetime.ApplicationStarted.Register(() =>

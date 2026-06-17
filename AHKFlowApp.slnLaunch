@@ -4,7 +4,8 @@
     "Projects": [
       {
         "Path": "src\\Backend\\AHKFlowApp.API\\AHKFlowApp.API.csproj",
-        "Action": "Start"
+        "Action": "Start",
+        "DebugTarget": "Docker SQL (Recommended)"
       },
       {
         "Path": "src\\Frontend\\AHKFlowApp.UI.Blazor\\AHKFlowApp.UI.Blazor.csproj",
@@ -17,7 +18,8 @@
     "Projects": [
       {
         "Path": "src\\Backend\\AHKFlowApp.API\\AHKFlowApp.API.csproj",
-        "Action": "Start"
+        "Action": "Start",
+        "DebugTarget": "LocalDB SQL"
       },
       {
         "Path": "src\\Frontend\\AHKFlowApp.UI.Blazor\\AHKFlowApp.UI.Blazor.csproj",

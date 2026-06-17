@@ -22,7 +22,11 @@ param(
     [ValidateSet('dev', 'test', 'prod')]
     [string] $Environment,
 
-    [string] $SwaHostname
+    [string] $SwaHostname,
+
+    # Suppresses the manual "Next steps" guidance. setup-dev-entra.ps1 sets this
+    # because the wrapper already performs those steps automatically.
+    [switch] $SkipDevNextSteps
 )
 
 $ErrorActionPreference = 'Stop'
@@ -278,23 +282,26 @@ Write-Host "===== AHKFlowApp Entra App Registration ($Environment) =====" -Foreg
 Write-Host "Client ID  : $appId"
 Write-Host "Tenant ID  : $tenantId"
 Write-Host "Default scope: $defaultScope"
-Write-Host ""
-Write-Host "--- Next steps ---" -ForegroundColor Yellow
-if ($Environment -eq 'dev') {
-    Write-Host "Run from the repo root:"
-    Write-Host "  dotnet user-secrets set 'AzureAd:TenantId' '$tenantId' --project src/Backend/AHKFlowApp.API"
-    Write-Host "  dotnet user-secrets set 'AzureAd:ClientId' '$appId' --project src/Backend/AHKFlowApp.API"
-    Write-Host "Then update wwwroot/appsettings.Development.json in AHKFlowApp.UI.Blazor:"
-    Write-Host "  Authority    = https://login.microsoftonline.com/$tenantId"
-    Write-Host "  ClientId     = $appId"
-    Write-Host "  DefaultScope = $defaultScope"
-} else {
-    Write-Host "Values wired into GitHub Variables automatically when invoked from deploy.ps1."
-    Write-Host "To set manually:"
-    $envUpper = $Environment.ToUpper()
-    Write-Host "  gh variable set AZURE_AD_TENANT_ID_$envUpper --body '$tenantId'"
-    Write-Host "  gh variable set AZURE_AD_CLIENT_ID_$envUpper --body '$appId'"
-    Write-Host "  gh variable set AZURE_AD_DEFAULT_SCOPE_$envUpper --body '$defaultScope'"
+if (-not $SkipDevNextSteps) {
+    Write-Host ""
+    Write-Host "--- Next steps ---" -ForegroundColor Yellow
+    if ($Environment -eq 'dev') {
+        Write-Host "Run from the repo root:"
+        Write-Host "  dotnet user-secrets set 'AzureAd:TenantId' '$tenantId' --project src/Backend/AHKFlowApp.API"
+        Write-Host "  dotnet user-secrets set 'AzureAd:ClientId' '$appId' --project src/Backend/AHKFlowApp.API"
+        Write-Host "Then set the AzureAd block in wwwroot/appsettings.Development.json (AHKFlowApp.UI.Blazor):"
+        Write-Host "  Instance = https://login.microsoftonline.com/"
+        Write-Host "  TenantId = $tenantId"
+        Write-Host "  ClientId = $appId"
+        Write-Host "  (the API scope is derived automatically as $defaultScope)"
+    } else {
+        Write-Host "Values wired into GitHub Variables automatically when invoked from deploy.ps1."
+        Write-Host "To set manually:"
+        $envUpper = $Environment.ToUpper()
+        Write-Host "  gh variable set AZURE_AD_TENANT_ID_$envUpper --body '$tenantId'"
+        Write-Host "  gh variable set AZURE_AD_CLIENT_ID_$envUpper --body '$appId'"
+        Write-Host "  gh variable set AZURE_AD_DEFAULT_SCOPE_$envUpper --body '$defaultScope'"
+    }
 }
 
 # Emit result for programmatic callers (deploy.ps1, setup-dev-entra.ps1)
