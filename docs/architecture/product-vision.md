@@ -1,327 +1,211 @@
-# AHKFlowApp – Product Vision & Architecture Overview
+# AHKFlow - Product Vision & .NET Architecture Overview
 
-## 1. Introduction
+## 1. Purpose
 
-### 1.1 Purpose of this Document
+This document defines the product vision, functional scope, and high-level .NET architecture for AHKFlow.
 
-This document defines the **product vision**, **functional scope**, and **high-level architectural intent** of AHKFlowApp.
+It is the main product and architecture context document for the repository. Use it when you need to understand what AHKFlow is, how the .NET solution is structured, and which product capabilities are current or intentionally out of scope.
 
-It provides a shared understanding of:
+For a shorter design-only summary, see [Claude Design Brief](claude-design-brief.md).
 
-- What the product is
-- Why it exists
-- How it is conceptually structured
+## 2. Product Overview
 
-This document is intentionally **non-prescriptive** and evolves with the product.
+AHKFlow is an **AutoHotkey Hotstring Manager & CLI**: a .NET application for managing AutoHotkey hotstrings and hotkeys on Windows. It helps users define reusable automation snippets, organize them into profiles and categories, generate valid `.ahk` scripts, and download those scripts from a web UI or CLI.
 
-### 1.2 Product Overview
+The web UI and the `ahkflow` CLI are both first-class, shipped interfaces in the first version. Neither is an add-on: the CLI is core to the product for scripted and power-user workflows.
 
-AHKFlowApp is a .NET application for managing AutoHotkey hotstrings and hotkeys on Windows. It enables users to:
+The product-facing name is AHKFlow. The repository and .NET solution are named `AHKFlowApp`.
 
-- Centrally define hotstrings
-- Organize hotstrings and hotkeys by profile
-- Tag hotstrings and hotkeys with categories for organization and filtering
-- Generate valid `.ahk` scripts per profile
-- Access, manage, and download generated scripts via a Web UI and a CLI
-
----
-
-## 2. Vision & Principles
-
-### 2.1 Product Vision
+## 3. Product Vision
 
 Make creation, management, and distribution of AutoHotkey automation simple, structured, and maintainable.
 
-### 2.2 Design Principles
+AHKFlow should feel like a focused productivity tool: practical, predictable, easy to scan, and strong enough for users who maintain many automations across different contexts.
 
-The application is designed to be:
+## 4. Product Principles
 
-- Maintainable over time
-- Clearly structured and testable by default
-- Friendly to AI-assisted development
-- Extensible without breaking changes
+- Keep automation definitions centralized and easy to reason about.
+- Make hotstrings, hotkeys, profiles, and categories quick to search, filter, compare, and edit.
+- Treat generated scripts as transparent outputs of user-managed data.
+- Support both interactive users through the web UI and power users through the CLI.
+- Keep the architecture testable and friendly to AI-assisted development without turning product documents into implementation manuals.
 
----
+## 5. Current Scope
 
-## 3. Scope Definition
+- Hotstring management via web UI and CLI.
+- Hotkey management via web UI.
+- Profile creation and management.
+- Category tagging and filtering for hotstrings and hotkeys.
+- Header and footer templates for generated `.ahk` profile scripts.
+- Script preview and generation per profile.
+- Script download via web UI, Web API, and CLI.
+- Zip download of generated scripts.
+- Entra ID authentication for normal UI/API/CLI use.
+- Local no-Azure development mode for trusted development and homelab scenarios.
 
-### 3.1 In Scope (Current)
+## 6. Future / Out of Scope
 
-- Hotstring management via UI and CLI
-- Hotkey management via UI
-- Profile creation and management
-- Category tagging and filtering for hotstrings and hotkeys
-- Define header templates for generated .ahk files
-- Generation of AutoHotkey `.ahk` files per profile
-- Script download via Web API and CLI
+- CLI commands for managing hotkeys (the shipped CLI already covers hotstrings, downloads, and auth — only hotkey commands are pending).
+- Hotkey blacklisting, such as reserved Windows hotkeys.
+- Custom AHK script management beyond generated profile scripts.
+- Runtime execution of AutoHotkey scripts.
 
-### 3.2 Out of Scope (For Now)
+## 7. Domain Model
 
-- Hotkey management via CLI (planned for future)
-- Hotkey blacklisting (e.g. Windows hotkeys) — planned for future
-- Custom AHK script management (planned for future)
-- Runtime execution of AutoHotkey
+- **Hotstring** - A text replacement trigger, such as `btw` expanding to `by the way`.
+- **Hotkey** - A keyboard shortcut that triggers an action.
+- **Profile** - A named grouping of hotstrings and hotkeys used to generate one `.ahk` script.
+- **Category** - A user-defined tag for organizing and filtering hotstrings and hotkeys.
+- **Script** - A generated `.ahk` file derived from a profile and its assigned definitions.
+- **Trigger** - The abbreviation or key combination that activates a hotstring or hotkey.
+- **Replacement** - The expanded text used by a hotstring.
 
----
+## 8. Primary Interfaces
 
-## 4. Functional Overview
+### 8.1 Web UI
 
-### 4.1 Core Capabilities
+The web UI is the primary interactive experience. It is a Blazor WebAssembly PWA built with MudBlazor.
 
-- CRUD for hotstrings (UI + CLI)
-- CRUD for hotkeys (UI)
-- Profile management (UI)
-- Category management and tagging (UI)
-- Script generation per profile
-- Script download via API and CLI
+Current UI areas:
 
-### 4.2 Interfaces
+- Dashboard
+- Hotstrings
+- Hotkeys
+- Downloads
+- Profiles
+- Categories
+- Settings and health/supporting views
 
-- Web UI (Blazor WebAssembly, PWA)
-- REST API (ASP.NET Core)
-- CLI (Console app that consumes the API)
-- Shared DTO contracts (defined in the Application layer) consumed by API, UI and CLI to ensure parity, validation and versioning
+### 8.2 Web API
 
----
+The ASP.NET Core Web API is the source of truth for authorization, validation, persistence, and script generation.
 
-## 5. High-Level Architecture
+Current API capability areas:
 
-``` plaintext
-┌─────────────────────────────┐
-│ Blazor WASM PWA (MudBlazor) │
-└──────────────┬──────────────┘
-               │ HTTPS
-┌──────────────▼──────────────┐
-│ ASP.NET Core Web API        │
-│ - Auth / Validation         │
-│ - Command & Query Handling  │
-└──────────────┬──────────────┘
-               │
-┌──────────────▼──────────────┐
-│ Application / Core Layer    │
-│ - Business Rules            │
-│ - Commands & Queries        │
-└──────────────┬──────────────┘
-               │
-┌──────────────▼──────────────┐
-│ Infrastructure Layer        │
-│ - EF Core                   │
-│ - SQL Server provider       │
-└─────────────────────────────┘
+- Hotstring endpoints
+- Hotkey endpoints
+- Profile endpoints
+- Category endpoints
+- Dashboard and preference endpoints
+- Script preview and download endpoints
+- Health, version, and identity endpoints
 
-CLI ───────────────▶ API (same contracts as UI)
+### 8.3 CLI
+
+The CLI is a .NET console app for power users and automation workflows. It consumes the Web API rather than maintaining its own data store.
+
+Current CLI areas:
+
+- `ahkflow login`
+- `ahkflow logout`
+- `ahkflow hotstring new`
+- `ahkflow hotstring list`
+- `ahkflow download ahk`
+- `ahkflow download zip`
+
+## 9. .NET Solution Architecture
+
+```text
+Blazor WebAssembly PWA
+        |
+        | HTTPS
+        v
+ASP.NET Core Web API <--------- .NET CLI
+        |
+        v
+Application Layer
+  - MediatR commands and queries
+  - FluentValidation
+  - Ardalis.Result outcomes
+  - DTOs and explicit mappings
+  - Script generation logic
+        |
+        v
+Infrastructure Layer
+  - EF Core
+  - SQL Server provider
+  - Migrations
+        |
+        v
+SQL Server
 ```
 
-### 5.1 Architectural Principles
+### 9.1 Project Shape
 
-- Clear separation of concerns (thin controllers, service layers)
-- Dependency inversion and DI-friendly boundaries
-- API-first approach for UI and CLI parity
-- Single source of truth (profiles & definitions)
-- Infrastructure isolated from application logic for testability
-- API contracts expressed as explicit DTOs in the Application layer to protect boundaries, enable validation, and support versioning
+- `src/Backend/AHKFlowApp.Domain` contains domain entities and value concepts.
+- `src/Backend/AHKFlowApp.Application` contains DTOs, MediatR commands and queries, validation, mappings, and application services.
+- `src/Backend/AHKFlowApp.Infrastructure` contains EF Core persistence and migrations.
+- `src/Backend/AHKFlowApp.API` contains controllers, middleware, API composition, OpenAPI, authentication, and hosting.
+- `src/Frontend/AHKFlowApp.UI.Blazor` contains the Blazor WebAssembly PWA.
+- `src/Tools/AHKFlowApp.CLI` contains the command-line client.
 
----
+### 9.2 Request Flow
 
-## 6. Logical Architecture
-
-### 6.1 Frontend
-
-Technology:
-
-- Blazor WebAssembly (standalone)
-- PWA
-- MudBlazor component library
-
-Responsibilities:
-
-- Authentication & authorization UI
-- User interaction and profile selection
-- Orchestrate API calls and present results
-- Download generated `.ahk` files
-
-API Integration:
-
-- **Typed HttpClient pattern** via single `IApiClient` interface (documented in Frontend CLAUDE.md)
-- Configuration-driven base address
-- Registered via `AddHttpClient<IInterface, Implementation>().AddStandardResilienceHandler()` in Program.cs
-- Built-in resilience (retry, circuit breaker, timeout)
-
-### 6.2 Backend – Web API
-
-Characteristics:
-
-- Controller-based API with thin controllers
-- Command & Query separation (CQRS-style where appropriate)
-- Explicit input models (DTOs) and shared validation
-
-Capabilities:
-
-- Hotstring management endpoints
-- Hotkey management endpoints
-- Profile management endpoints
-- Category management endpoints
-- Script generation and download endpoints
-
-Cross-cutting:
-
-- Swagger / OpenAPI
-- Problem Details (RFC 9457) for errors
-- Structured logging (Serilog)
-
-### 6.3 Application / Core Layer
-
-Patterns:
-
-- Commands & queries
-- Single-responsibility services
-- Explicit models and well-defined service boundaries
-- DTOs live in this layer: input/output DTOs, mapping profiles, and shared validation rules (keeps API contract separate from domain and infrastructure)
-
-Validation:
-
-- FluentValidation shared between API and CLI
-
-### 6.4 Infrastructure
-
-- EF Core with SQL Server provider (code-first migrations)
-- No repository pattern — handlers inject `DbContext` directly
-- Integration tests use Testcontainers with real SQL Server (not in-memory database)
-
-### 6.5 Command Line Interface (CLI)
-
-Purpose:
-
-- Power-user access for hotstring management and downloads
-
-Characteristics:
-
-- .NET Console App
-- Uses the Web API (HTTPS) and the same contracts as UI
-- Authentication via same identity model (MSAL / tokens) or CLI-specific flow
-
-Examples:
-
-```sh
-# Create a new hotstring
-ahkflow hotstring new --trigger yw --replacement "you're welcome" --profile work
-
-# Search hotstrings
-ahkflow hotstring list --profile work --grep "typo"
-
-# Download a generated script
-ahkflow download ahk --profile work
+```text
+HTTP request
+  -> Controller
+  -> IMediator.Send(command/query)
+  -> FluentValidation pipeline behavior
+  -> Handler
+  -> EF Core persistence
+  -> Result mapped to HTTP response
 ```
 
-Notes:
+The UI and CLI use typed API clients. They should stay aligned with the API behavior, but the UI is not coupled to the Application project as a shared contract assembly.
 
-- The CLI is intended to be scriptable and returns structured output (JSON option available) for piping into other tools.
-- The CLI uses the same validation and contracts as the UI to keep behavior consistent.
+## 10. Technology Stack
 
----
+- .NET 10 across the solution.
+- Blazor WebAssembly PWA with MudBlazor for the frontend.
+- ASP.NET Core Web API with controller-based endpoints.
+- MediatR for commands and queries.
+- Ardalis.Result for handler outcomes.
+- FluentValidation through the MediatR pipeline.
+- EF Core with SQL Server for persistence.
+- System.CommandLine for the CLI.
+- MSAL and Microsoft Identity Web for authentication flows.
+- Serilog and optional Application Insights for diagnostics.
+- MinVer for semantic versioning from git tags.
 
-## 7. Security & Identity
+## 11. Security & Identity
 
-### 7.1 Authentication
+- Entra ID is the normal identity provider.
+- The Blazor UI uses MSAL browser authentication.
+- The CLI uses MSAL.NET device-code authentication.
+- The API validates bearer tokens and enforces authorization/data ownership.
+- Local no-Azure mode uses a fixed synthetic identity and is limited to trusted development scenarios.
 
-- Azure Active Directory (Entra ID)
-- MSAL for token acquisition in UI and CLI
+## 12. Quality & Testing
 
-### 7.2 Authorization
+The solution is designed to be testable across layers:
 
-- Shared identity model across UI and CLI
-- API-enforced access rules
+- Domain tests for entity behavior.
+- Application tests for validators, handlers, and script generation.
+- API integration tests for serialization, middleware, authorization, and endpoint behavior.
+- Infrastructure tests using real SQL Server behavior.
+- bUnit tests for Blazor components.
+- CLI tests for command parsing, output, and API-client behavior.
+- End-to-end tests for browser workflows.
 
----
+## 13. Local Development & Deployment
 
-## 8. Quality & Testing Strategy
+Local development supports:
 
-### 8.1 Approach
+- Repository-root `dotnet run` launcher for API plus UI.
+- LocalDB and Docker SQL Server workflows.
+- Docker Compose for SQL Server, API, and Blazor UI with local no-Azure auth.
 
-- Test-Driven Development (TDD) encouraged
-- Automated testing as a first-class concern
+Azure deployment uses:
 
-### 8.2 Test Types & Tools
+- Static Web Apps for the frontend.
+- .NET App Service package deployment for the API.
+- Azure SQL Database for persistence.
+- GitHub Actions for build, test, migration, and deployment workflows.
 
-- Unit tests: xUnit, FluentAssertions, NSubstitute (mocking)
-- Integration tests: Testcontainers
+## 14. Related Documents
 
----
-
-## 9. Observability & Diagnostics
-
-- Structured logging with Serilog
-- Optional Azure Application Insights
-
----
-
-## 10. Versioning & Code Quality
-
-- MinVer for versioning
-- EditorConfig for consistent coding standards
-- Enforce naming and project structure conventions
-
----
-
-## 11. DevOps & Deployment
-
-### 11.1 Hosting
-
-- Frontend: Azure Static Web Apps (PWA)
-- Backend: Dockerized ASP.NET Core API (Azure App Service / AKS as desired)
-
-### 11.2 CI/CD
-
-- GitHub Actions workflows for automated deployment
-- Automated pipeline: test → migrate database → deploy
-- Separate workflows for frontend and backend
-
-### 11.3 Configuration Management
-
-AHKFlowApp follows Microsoft best practices for configuration:
-
-**Frontend (Blazor WASM):**
-- `appsettings.json` committed to git with production values (public, client-side, no secrets)
-- Contains: Client ID, API URLs, public endpoints
-- Local development overridden by `appsettings.Development.json` (ignored by git)
-- Deployed automatically with Static Web Apps
-
-**Backend (API):**
-- `appsettings.Production.json` ignored by git (contains secrets)
-- Template: `appsettings.Production.json.example` (safe to commit)
-- Secrets managed via Azure App Service Configuration + Key Vault
-- CI/CD workflow sets environment variables in Azure
-
-**Rationale:**
-- Blazor WASM runs in browser → all config is visible to users → secrets impossible
-- OAuth Client ID is public by design (OAuth 2.0 specification)
-- Backend secrets stored securely in Azure (App Service Config + Key Vault)
-
-See: [Configuration Strategy](../development/configuration-strategy.md)
-
----
-
-## 12. Development Workflow
-
-### 12.1 Git Workflow
-
-- GitHub Flow: feature branches from `main`, PR required for all merges
-- Main branch as the single source of truth
-- Branch naming: `feature/NNN-short-description`, `fix/short-description`
-
-### 12.2 AI-Assisted Development
-
-- Clear naming and intent
-- Small, focused classes
-- Predictable patterns
-- This document is used as shared context for AI tooling
-
----
-
-## 13. Next Documents in the Chain
-
-This document feeds into:
-
-- Product Backlog (Epics & User Stories)
-- Functional Design (per feature)
-- Technical Design (where required)
+- [Claude Design Brief](claude-design-brief.md)
+- [Authentication Architecture](authentication.md)
+- [Search Semantics](search-semantics.md)
+- [Configuration Strategy](../development/configuration-strategy.md)
+- [Deployment Getting Started](../deployment/getting-started.md)
