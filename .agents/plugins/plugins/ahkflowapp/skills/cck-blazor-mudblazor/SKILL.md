@@ -12,6 +12,7 @@ description: Use when building AHKFlowApp Blazor WebAssembly UI with MudBlazor p
 3. **Dialogs for create/edit, snackbars for feedback** — `IDialogService.ShowAsync<T>` for forms, `ISnackbar.Add()` for success/error notifications.
 4. **Loading states everywhere** — Set `_loading = true` before async calls, `false` after. Use `MudTable.Loading` and `MudProgressLinear` for visual feedback.
 5. **CancellationToken propagation** — Pass tokens through all async paths to support cancellation.
+6. **Verify APIs against MudMCP + reuse shared components** — Before adding or changing MudBlazor markup, confirm parameters and enum values against the MudMCP server (`mcp__mudblazor__get_component_parameters`, `get_enum_values`) for the pinned version (9.3.0); it prevents hallucinated/deprecated params. For profile/category selection and chip display, reuse `Components/Common/` (`EntityMultiSelect`, `EntityChips`, `CategoryFilterChips`) instead of hand-rolling `MudSelect`/`MudChip` blocks. MudMCP is optional and configured locally.
 
 ## Patterns
 
