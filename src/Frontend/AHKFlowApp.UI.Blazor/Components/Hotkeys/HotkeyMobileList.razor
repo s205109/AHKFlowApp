@@ -56,25 +56,10 @@
                                         <MudText Typo="Typo.body2"><strong>Parameters:</strong> @item.Parameters</MudText>
                                     }
                                     <MudText Typo="Typo.body2"><strong>Profiles:</strong>
-                                        @if (item.AppliesToAllProfiles)
-                                        {
-                                            <MudChip T="string" Size="Size.Small" Color="Color.Info">Any</MudChip>
-                                        }
-                                        else
-                                        {
-                                            @foreach (Guid pid in item.ProfileIds)
-                                            {
-                                                string name = Profiles.FirstOrDefault(p => p.Id == pid)?.Name ?? pid.ToString()[..8];
-                                                <MudChip T="string" Size="Size.Small">@name</MudChip>
-                                            }
-                                        }
+                                        <EntityChips Ids="item.ProfileIds" Options="_profileOptions" Any="item.AppliesToAllProfiles" />
                                     </MudText>
                                     <MudText Typo="Typo.body2"><strong>Categories:</strong>
-                                        @foreach (Guid cid in item.CategoryIds)
-                                        {
-                                            string name = Categories.FirstOrDefault(c => c.Id == cid)?.Name ?? cid.ToString()[..8];
-                                            <MudChip T="string" Size="Size.Small">@name</MudChip>
-                                        }
+                                        <EntityChips Ids="item.CategoryIds" Options="_categoryOptions" />
                                     </MudText>
                                     <MudStack Row="true" Spacing="2" Class="mt-2">
                                         <MudButton Class="start-edit" Variant="Variant.Filled" Color="Color.Primary"
@@ -115,6 +100,14 @@
     private Guid? _expandedId;
     private bool _selectMode;
     private readonly HashSet<Guid> _selectedIds = [];
+    private IReadOnlyList<EntityOption> _profileOptions = [];
+    private IReadOnlyList<EntityOption> _categoryOptions = [];
+
+    protected override void OnParametersSet()
+    {
+        _profileOptions = [.. Profiles.Select(p => new EntityOption(p.Id, p.Name))];
+        _categoryOptions = [.. Categories.Select(c => new EntityOption(c.Id, c.Name))];
+    }
 
     private void OnRowClick(HotkeyEditModel item)
     {
