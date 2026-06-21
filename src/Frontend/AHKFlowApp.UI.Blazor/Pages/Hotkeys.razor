@@ -39,7 +39,7 @@
                       AdornmentIcon="@Icons.Material.Filled.Search"
                       Class="search-hotkeys"
                       Style="max-width: 360px;"
-                      Immediate="true" />
+                      Clearable="true" Immediate="true" />
     </MudStack>
 
     @if (_loadError is not null)
@@ -47,18 +47,10 @@
         <MudAlert Severity="Severity.Error" Class="mb-3">@_loadError</MudAlert>
     }
 
-    @if (_categories.Count > 0)
-    {
-        <MudChipSet T="Guid" SelectionMode="SelectionMode.MultiSelection"
-                    SelectedValues="_selectedCategoryIds"
-                    SelectedValuesChanged="OnCategoryFilterChangedAsync"
-                    Class="mb-2">
-            @foreach (CategoryDto c in _categories)
-            {
-                <MudChip T="Guid" Value="@c.Id" Variant="Variant.Outlined">@c.Name</MudChip>
-            }
-        </MudChipSet>
-    }
+    <CategoryFilterChips Categories="_categoryOptions"
+                         SelectedIds="_selectedCategoryIds"
+                         SelectedIdsChanged="OnCategoryFilterChangedAsync"
+                         Class="mb-2" />
 
     <MudDataGrid @ref="_grid" T="HotkeyEditModel" ServerData="LoadServerData"
                  Class="hotkeys-grid"
@@ -235,19 +227,14 @@
                       Adornment="Adornment.Start"
                       AdornmentIcon="@Icons.Material.Filled.Search"
                       Class="search-hotkeys mb-2"
-                      FullWidth="true" Immediate="true" />
+                      FullWidth="true" Clearable="true" Immediate="true" />
 
         @if (_categories.Count > 0)
         {
             <div class="chip-strip mb-2">
-                <MudChipSet T="Guid" SelectionMode="SelectionMode.MultiSelection"
-                            SelectedValues="_selectedCategoryIds"
-                            SelectedValuesChanged="OnCategoryFilterChangedAsync">
-                    @foreach (CategoryDto c in _categories)
-                    {
-                        <MudChip T="Guid" Value="@c.Id" Variant="Variant.Outlined">@c.Name</MudChip>
-                    }
-                </MudChipSet>
+                <CategoryFilterChips Categories="_categoryOptions"
+                                     SelectedIds="_selectedCategoryIds"
+                                     SelectedIdsChanged="OnCategoryFilterChangedAsync" />
             </div>
         }
 
@@ -291,6 +278,8 @@
     private bool _commitAttempted;
     private IReadOnlyList<ProfileDto> _profiles = [];
     private IReadOnlyList<CategoryDto> _categories = [];
+    private IReadOnlyList<EntityOption> _profileOptions = [];
+    private IReadOnlyList<EntityOption> _categoryOptions = [];
     private IReadOnlyList<Guid> _selectedCategoryIds = [];
     private bool _isAuthenticated;
     private bool _loading;
@@ -327,6 +316,9 @@
 
             ApiResult<PagedList<CategoryDto>> catResult = await CategoriesApi.ListAsync(new CategoryListRequest(PageSize: 200), _cts.Token);
             if (catResult.IsSuccess) _categories = catResult.Value?.Items ?? [];
+
+            _profileOptions = [.. _profiles.Select(p => new EntityOption(p.Id, p.Name))];
+            _categoryOptions = [.. _categories.Select(c => new EntityOption(c.Id, c.Name))];
 
             await LoadMobileAsync();
         }
@@ -781,20 +773,8 @@
         _cachedListPage = null;
     }
 
-    private RenderFragment RenderProfiles(bool appliesToAllProfiles, IReadOnlyCollection<Guid> profileIds) => @<text>
-        @if (appliesToAllProfiles)
-        {
-            <MudChip T="string" Size="Size.Small" Color="Color.Info">Any</MudChip>
-        }
-        else
-        {
-            @foreach (Guid pid in profileIds)
-            {
-                string name = _profiles.FirstOrDefault(p => p.Id == pid)?.Name ?? pid.ToString()[..8];
-                <MudChip T="string" Size="Size.Small">@name</MudChip>
-            }
-        }
-    </text>;
+    private RenderFragment RenderProfiles(bool appliesToAllProfiles, IReadOnlyCollection<Guid> profileIds) =>
+        @<EntityChips Ids="profileIds" Options="_profileOptions" Any="appliesToAllProfiles" />;
 
     private RenderFragment RenderProfileEditor(HotkeyEditModel edit) => @<MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
         <MudCheckBox T="bool" Value="edit.AppliesToAllProfiles"
@@ -803,17 +783,11 @@
                      UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "applies-to-all-checkbox" })" />
         @if (!edit.AppliesToAllProfiles)
         {
-            <MudSelect T="Guid" MultiSelection="true"
-                       SelectedValues="edit.ProfileIds"
-                       SelectedValuesChanged="@(ids => edit.ProfileIds = [.. ids])"
-                       ToStringFunc="@(id => _profiles.FirstOrDefault(p => p.Id == id)?.Name ?? id.ToString())"
-                       Dense="true" Placeholder="Select profiles"
-                       UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "profile-select" })">
-                @foreach (ProfileDto profile in _profiles)
-                {
-                    <MudSelectItem T="Guid" Value="@profile.Id">@profile.Name</MudSelectItem>
-                }
-            </MudSelect>
+            <EntityMultiSelect Options="_profileOptions"
+                               SelectedIds="edit.ProfileIds"
+                               SelectedIdsChanged="@(ids => edit.ProfileIds = [.. ids])"
+                               Dense="true" Placeholder="Select profiles"
+                               DataTest="profile-select" />
         }
     </MudStack>;
 
@@ -825,25 +799,15 @@
             edit.ProfileIds.Clear();
     }
 
-    private RenderFragment RenderCategoryEditor(HotkeyEditModel edit) => @<MudSelect T="Guid" MultiSelection="true"
-        SelectedValues="edit.CategoryIds"
-        SelectedValuesChanged="@(ids => edit.CategoryIds = [.. ids])"
-        ToStringFunc="@(id => _categories.FirstOrDefault(c => c.Id == id)?.Name ?? id.ToString())"
-        Dense="true" Placeholder="Select categories"
-        UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "category-select" })">
-        @foreach (CategoryDto cat in _categories)
-        {
-            <MudSelectItem T="Guid" Value="@cat.Id">@cat.Name</MudSelectItem>
-        }
-    </MudSelect>;
+    private RenderFragment RenderCategoryEditor(HotkeyEditModel edit) =>
+        @<EntityMultiSelect Options="_categoryOptions"
+                            SelectedIds="edit.CategoryIds"
+                            SelectedIdsChanged="@(ids => edit.CategoryIds = [.. ids])"
+                            Dense="true" Placeholder="Select categories"
+                            DataTest="category-select" />;
 
-    private RenderFragment RenderCategories(IReadOnlyCollection<Guid> categoryIds) => @<text>
-        @foreach (Guid cid in categoryIds)
-        {
-            string name = _categories.FirstOrDefault(c => c.Id == cid)?.Name ?? cid.ToString()[..8];
-            <MudChip T="string" Size="Size.Small">@name</MudChip>
-        }
-    </text>;
+    private RenderFragment RenderCategories(IReadOnlyCollection<Guid> categoryIds) =>
+        @<EntityChips Ids="categoryIds" Options="_categoryOptions" />;
 
     private async Task OnCategoryFilterChangedAsync(IReadOnlyCollection<Guid> ids)
     {

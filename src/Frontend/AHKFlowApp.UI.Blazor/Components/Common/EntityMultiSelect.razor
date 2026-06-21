@@ -1,0 +1,39 @@
+@namespace AHKFlowApp.UI.Blazor.Components.Common
+
+<MudSelect T="Guid" MultiSelection="true" Label="@Label"
+           SelectedValues="SelectedIds"
+           SelectedValuesChanged="OnSelectedValuesChanged"
+           ToStringFunc="NameFor"
+           Dense="Dense" Placeholder="@Placeholder"
+           Clearable="true" SelectAll="true"
+           UserAttributes="@_userAttributes">
+    @foreach (EntityOption option in Options)
+    {
+        <MudSelectItem T="Guid" Value="@option.Id">@option.Name</MudSelectItem>
+    }
+</MudSelect>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<EntityOption> Options { get; set; } = [];
+    [Parameter] public IReadOnlyCollection<Guid> SelectedIds { get; set; } = [];
+    [Parameter] public EventCallback<IReadOnlyList<Guid>> SelectedIdsChanged { get; set; }
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Placeholder { get; set; }
+    [Parameter] public bool Dense { get; set; }
+
+    /// <summary>Value for the <c>data-test</c> attribute (preserves E2E selectors).</summary>
+    [Parameter] public string? DataTest { get; set; }
+
+    private Dictionary<string, object?> _userAttributes = [];
+
+    protected override void OnParametersSet() =>
+        _userAttributes = DataTest is null
+            ? []
+            : new Dictionary<string, object?> { ["data-test"] = DataTest };
+
+    private string NameFor(Guid id) =>
+        Options.FirstOrDefault(o => o.Id == id)?.Name ?? id.ToString();
+
+    private Task OnSelectedValuesChanged(IReadOnlyCollection<Guid> values) =>
+        SelectedIdsChanged.InvokeAsync([.. values]);
+}

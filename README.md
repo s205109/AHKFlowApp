@@ -1,5 +1,9 @@
 # AHKFlowApp
 
+> **AutoHotkey Hotstring Manager & CLI** — define, organize, and generate `.ahk` scripts from a Blazor web UI or the `ahkflow` command-line client.
+
+AHKFlow ships two first-class interfaces over one Web API: an interactive Blazor WebAssembly PWA and the `ahkflow` CLI for scripted, power-user workflows. Install the CLI from [docs/cli/windows-install.md](docs/cli/windows-install.md).
+
 ## Local Development
 
 ### Prerequisites
