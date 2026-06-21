@@ -1,0 +1,24 @@
+@namespace AHKFlowApp.UI.Blazor.Components.Common
+
+@if (Categories.Count > 0)
+{
+    <MudChipSet T="Guid" SelectionMode="SelectionMode.MultiSelection"
+                SelectedValues="SelectedIds"
+                SelectedValuesChanged="OnSelectedValuesChanged"
+                Class="@Class">
+        @foreach (EntityOption category in Categories)
+        {
+            <MudChip T="Guid" Value="@category.Id" Variant="Variant.Outlined">@category.Name</MudChip>
+        }
+    </MudChipSet>
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<EntityOption> Categories { get; set; } = [];
+    [Parameter] public IReadOnlyCollection<Guid> SelectedIds { get; set; } = [];
+    [Parameter] public EventCallback<IReadOnlyList<Guid>> SelectedIdsChanged { get; set; }
+    [Parameter] public string? Class { get; set; }
+
+    private Task OnSelectedValuesChanged(IReadOnlyCollection<Guid> values) =>
+        SelectedIdsChanged.InvokeAsync([.. values]);
+}
