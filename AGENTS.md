@@ -2,8 +2,8 @@
 
 ## Overview
 
-.NET 10 application for managing AutoHotkey hotstrings and hotkeys on Windows.
-Blazor WebAssembly PWA frontend + ASP.NET Core Web API backend. Hotstring, hotkey, profile, and category management plus per-profile `.ahk` script generation and download are implemented across the API, UI, and CLI.
+**AutoHotkey Hotstring Manager & CLI.** .NET 10 application for managing AutoHotkey hotstrings and hotkeys on Windows.
+Blazor WebAssembly PWA frontend + ASP.NET Core Web API backend + `ahkflow` CLI client — the web UI and CLI are both first-class, shipped interfaces. Hotstring, hotkey, profile, and category management plus per-profile `.ahk` script generation and download are implemented across the API, UI, and CLI.
 
 ## Tech Stack
 

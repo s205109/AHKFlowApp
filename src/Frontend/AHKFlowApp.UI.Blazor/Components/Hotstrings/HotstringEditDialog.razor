@@ -30,31 +30,19 @@
                          UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "applies-to-all-checkbox" })" />
             @if (!Item.AppliesToAllProfiles)
             {
-                <MudSelect T="Guid" MultiSelection="true" Label="Profiles"
-                           SelectedValues="Item.ProfileIds"
-                           SelectedValuesChanged="ids => Item.ProfileIds = [.. ids]"
-                           ToStringFunc="@(id => Profiles.FirstOrDefault(p => p.Id == id)?.Name ?? id.ToString())"
-                           UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "profile-select" })">
-                    @foreach (ProfileDto p in Profiles)
-                    {
-                        <MudSelectItem T="Guid" Value="@p.Id">@p.Name</MudSelectItem>
-                    }
-                </MudSelect>
+                <EntityMultiSelect Options="_profileOptions" Label="Profiles"
+                                   SelectedIds="Item.ProfileIds"
+                                   SelectedIdsChanged="ids => Item.ProfileIds = [.. ids]"
+                                   DataTest="profile-select" />
             }
 
             <MudCheckBox T="bool" @bind-Value="Item.IsEndingCharacterRequired" Label="Ending character required" />
             <MudCheckBox T="bool" @bind-Value="Item.IsTriggerInsideWord" Label="Trigger inside word" />
 
-            <MudSelect T="Guid" MultiSelection="true" Label="Categories"
-                       SelectedValues="Item.CategoryIds"
-                       SelectedValuesChanged="ids => Item.CategoryIds = [.. ids]"
-                       ToStringFunc="@(id => Categories.FirstOrDefault(c => c.Id == id)?.Name ?? id.ToString())"
-                       UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "category-select" })">
-                @foreach (CategoryDto c in Categories)
-                {
-                    <MudSelectItem T="Guid" Value="@c.Id">@c.Name</MudSelectItem>
-                }
-            </MudSelect>
+            <EntityMultiSelect Options="_categoryOptions" Label="Categories"
+                               SelectedIds="Item.CategoryIds"
+                               SelectedIdsChanged="ids => Item.CategoryIds = [.. ids]"
+                               DataTest="category-select" />
 
             @if (_error is not null)
             {
@@ -78,6 +66,14 @@
     private bool _saving;
     private MudForm _form = default!;
     private readonly CancellationTokenSource _cts = new();
+    private IReadOnlyList<EntityOption> _profileOptions = [];
+    private IReadOnlyList<EntityOption> _categoryOptions = [];
+
+    protected override void OnParametersSet()
+    {
+        _profileOptions = [.. Profiles.Select(p => new EntityOption(p.Id, p.Name))];
+        _categoryOptions = [.. Categories.Select(c => new EntityOption(c.Id, c.Name))];
+    }
 
     private void Cancel() => Dialog.Cancel();
 

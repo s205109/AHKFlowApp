@@ -1,0 +1,24 @@
+@namespace AHKFlowApp.UI.Blazor.Components.Common
+
+@if (Any)
+{
+    <MudChip T="string" Size="Size.Small" Color="Color.Info">Any</MudChip>
+}
+else
+{
+    @foreach (Guid id in Ids)
+    {
+        <MudChip T="string" Size="Size.Small">@NameFor(id)</MudChip>
+    }
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyCollection<Guid> Ids { get; set; } = [];
+    [Parameter, EditorRequired] public IReadOnlyList<EntityOption> Options { get; set; } = [];
+
+    /// <summary>When true, renders a single "Any" chip instead of the id list (profiles case).</summary>
+    [Parameter] public bool Any { get; set; }
+
+    private string NameFor(Guid id) =>
+        Options.FirstOrDefault(o => o.Id == id)?.Name ?? id.ToString()[..8];
+}
