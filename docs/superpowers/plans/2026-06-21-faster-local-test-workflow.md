@@ -15,6 +15,7 @@
 - Keep the existing full coverage pre-push hook and PR coverage gate intact.
 - Add a fast, explicit inner-loop workflow so normal edits do not require SQL/Testcontainers/E2E unless the touched area needs them.
 - Current baseline: bUnit is not the main bottleneck. `UI.Blazor.Tests` ran 212 tests in 7.8s no-build; SQL/API-style tests are slower: Application 32.5s, API 35.6s, CLI 23s, Infrastructure 25.3s no-build.
+- 2026-06-22 measurement: `Application.Tests` showed eight SQL container starts totaling about 314s of fixture startup work and about 56s wall clock. The shared-container prototype reduced it to one SQL container start and about 26.3s wall clock, so shared SQL container reuse should land before broader trait/filter work.
 - Treat E2E as explicit unless frontend/browser behavior changed; its `PublishBlazorForE2E` MSBuild target already showed 72s before test execution in a no-build misfire.
 - Use the existing project split first: `Domain.Tests` and `UI.Blazor.Tests` are fast whole-project slices; `API.Tests`, `Infrastructure.Tests`, and `E2E.Tests` are slow whole-project slices. Only `Application.Tests` and `CLI.Tests` need mixed-project filtering.
 
