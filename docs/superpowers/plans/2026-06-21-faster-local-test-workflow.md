@@ -20,6 +20,7 @@
 - 2026-06-22 E2E follow-up: `PublishBlazorForE2E` was confirmed as the publish cost center and made incremental. A refresh run passed in 196.4s with publish; an unchanged rerun skipped `dotnet publish` and passed in 184.0s, so the cached path is equivalent but less valuable than the SQL-container work.
 - 2026-06-22 fresh baseline after the fast/integration split: `measure-tests.ps1` passed all projects; E2E remained the largest explicit slice at 125.7s wall / 42.6s unattributed setup, followed by API 49.4s, CLI 27.5s, Infrastructure 26.2s, Application 24.7s, UI 9.9s, and Domain 1.6s.
 - 2026-06-22 E2E stack reuse: the three E2E flow classes now share one `StackFixture` collection fixture and reset mutable DB rows per test. E2E-only measurement dropped to 102.3s wall with one named `StackFixture.InitializeAsync` entry at 16.4s and cheap per-test resets.
+- 2026-06-22 E2E pruning: removed the slower hotstrings mobile bulk-delete browser duplicate after confirming bUnit page/component coverage plus API endpoint coverage. The hotkeys mobile bulk-delete E2E remains as the representative browser select-mode smoke path. E2E-only measurement passed 9 tests at 91.8s wall / 70.2s summed test duration / 21.5s unattributed setup, and full coverage still passed.
 - Use the existing project split first: `Domain.Tests` and `UI.Blazor.Tests` are fast whole-project slices; `API.Tests`, `Infrastructure.Tests`, and `E2E.Tests` are slow whole-project slices. Only `Application.Tests` and `CLI.Tests` need mixed-project filtering.
 
 ## Key Changes
@@ -91,7 +92,7 @@
 
 - Verify `scripts/test-fast.ps1 -Mode Fast` runs expected non-integration tests and skips SQL/E2E.
 - Verify `scripts/test-fast.ps1 -Mode Integration` runs SQL/API-backed tests, including whole-project `Infrastructure.Tests`.
-- Verify `scripts/test-fast.ps1 -Mode E2E` runs the 10 Playwright tests.
+- Verify `scripts/test-fast.ps1 -Mode E2E` runs the 9 Playwright tests.
 - Verify the trait guard fails when an `Application.Tests` or `CLI.Tests` DB collection class lacks `Category=Integration`.
 - Verify `scripts/measure-tests.ps1` reports nonzero test counts, ranks slow tests, and reports SQL fixture/setup overhead separately from per-test durations.
 - After every pruning commit, run `pwsh .\scripts\run-coverage.ps1` before accepting the deletion.

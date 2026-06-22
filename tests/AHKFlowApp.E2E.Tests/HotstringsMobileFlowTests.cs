@@ -86,38 +86,6 @@ public sealed class HotstringsMobileFlowTests(StackFixture fixture) : IAsyncLife
     }
 
     [Fact]
-    public async Task BulkDelete_OnPhoneViewport_UsesSelectMode()
-    {
-        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(PhoneViewport);
-        IPage page = await ctx.NewPageAsync();
-
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/hotstrings");
-
-        // Create two rows via FAB
-        foreach (string trig in new[] { "bk1", "bk2" })
-        {
-            await page.ClickAsync("button.add-hotstring-fab");
-            await page.WaitForSelectorAsync(".hotstring-edit-dialog");
-            await page.FillAsync(".hotstring-edit-dialog input[data-test=\"trigger-input\"]", trig);
-            await page.FillAsync(".hotstring-edit-dialog textarea[data-test=\"replacement-input\"]", "x");
-            await page.ClickAsync(".hotstring-edit-dialog button.commit-edit");
-            await page.WaitForSelectorAsync($".mobile-row:has-text(\"{trig}\")");
-        }
-
-        // Enter select mode + select both
-        await page.ClickAsync("button.toggle-select-mode");
-        await page.WaitForSelectorAsync("input.row-checkbox");
-        foreach (string trig in new[] { "bk1", "bk2" })
-            await page.Locator($"xpath=//tr[contains(@class,'mobile-row')][.//code[normalize-space(.)='{trig}']]//input[contains(@class,'row-checkbox')]").CheckAsync();
-
-        await page.ClickAsync("button.bulk-delete-hotstrings");
-        await page.WaitForSelectorAsync("[role=\"dialog\"]");
-        await page.Locator("[role=\"dialog\"]").GetByRole(AriaRole.Button, new() { Name = "Delete" }).ClickAsync();
-
-        await page.WaitForSelectorAsync("text=Deleted 2 hotstring");
-    }
-
-    [Fact]
     public async Task DuplicateTrigger_OnPhoneViewport_ShowsInlineConflict()
     {
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(PhoneViewport);
