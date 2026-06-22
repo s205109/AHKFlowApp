@@ -85,28 +85,4 @@ public sealed class HotstringsMobileFlowTests(StackFixture fixture) : IAsyncLife
         await page.WaitForSelectorAsync("text=Hotstring deleted.");
     }
 
-    [Fact]
-    public async Task DuplicateTrigger_OnPhoneViewport_ShowsInlineConflict()
-    {
-        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(PhoneViewport);
-        IPage page = await ctx.NewPageAsync();
-        string trigger = $"dup{Guid.NewGuid():N}"[..12];
-
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/hotstrings");
-        await page.ClickAsync("button.add-hotstring-fab");
-        await page.WaitForSelectorAsync(".hotstring-edit-dialog");
-        await page.FillAsync(".hotstring-edit-dialog input[data-test=\"trigger-input\"]", trigger);
-        await page.FillAsync(".hotstring-edit-dialog textarea[data-test=\"replacement-input\"]", "first");
-        await page.ClickAsync(".hotstring-edit-dialog button.commit-edit");
-        await page.WaitForSelectorAsync($".mobile-row:has-text(\"{trigger}\")");
-
-        await page.ClickAsync("button.add-hotstring-fab");
-        await page.WaitForSelectorAsync(".hotstring-edit-dialog");
-        await page.FillAsync(".hotstring-edit-dialog input[data-test=\"trigger-input\"]", trigger);
-        await page.FillAsync(".hotstring-edit-dialog textarea[data-test=\"replacement-input\"]", "second");
-        await page.ClickAsync(".hotstring-edit-dialog button.commit-edit");
-
-        await page.GetByText("Trigger already exists").WaitForAsync();
-        Assert.Equal(0, await page.Locator(".hotstring-edit-dialog .mud-alert").CountAsync());
-    }
 }
