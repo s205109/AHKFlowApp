@@ -17,6 +17,7 @@ using Xunit;
 namespace AHKFlowApp.CLI.Tests.Integration;
 
 [Collection("CliWebApi")]
+[Trait("Category", "Integration")]
 public sealed class DownloadCliIntegrationTests(SqlContainerFixture sql) : IAsyncLifetime, IDisposable
 {
     private WebApplicationFactory<Program> _factory = null!;

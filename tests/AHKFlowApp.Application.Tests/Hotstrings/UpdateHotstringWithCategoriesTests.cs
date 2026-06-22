@@ -11,6 +11,7 @@ using Xunit;
 namespace AHKFlowApp.Application.Tests.Hotstrings;
 
 [Collection("HotstringDb")]
+[Trait("Category", "Integration")]
 public sealed class UpdateHotstringWithCategoriesTests(HotstringDbFixture fx)
 {
     private readonly TimeProvider _clock = TimeProvider.System;
