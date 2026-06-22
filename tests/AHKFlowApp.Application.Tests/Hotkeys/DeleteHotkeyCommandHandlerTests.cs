@@ -10,6 +10,7 @@ using Xunit;
 namespace AHKFlowApp.Application.Tests.Hotkeys;
 
 [Collection("HotkeyDb")]
+[Trait("Category", "Integration")]
 public sealed class DeleteHotkeyCommandHandlerTests(HotkeyDbFixture fx)
 {
     [Fact]

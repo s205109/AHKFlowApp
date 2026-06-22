@@ -16,6 +16,7 @@ using Xunit;
 namespace AHKFlowApp.CLI.Tests.Integration;
 
 [Collection("CliWebApi")]
+[Trait("Category", "Integration")]
 public sealed class HotstringCliIntegrationTests(SqlContainerFixture sql) : IAsyncLifetime
 {
     private WebApplicationFactory<Program> _factory = null!;

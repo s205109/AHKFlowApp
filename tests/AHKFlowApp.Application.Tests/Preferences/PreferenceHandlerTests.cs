@@ -18,6 +18,7 @@ public sealed class PreferenceDbFixture : MigratedDbFixture;
 public sealed class PreferenceDbCollection : ICollectionFixture<PreferenceDbFixture>;
 
 [Collection("PreferenceDb")]
+[Trait("Category", "Integration")]
 public sealed class PreferenceHandlerTests(PreferenceDbFixture fx)
 {
     private readonly TimeProvider _clock = TimeProvider.System;

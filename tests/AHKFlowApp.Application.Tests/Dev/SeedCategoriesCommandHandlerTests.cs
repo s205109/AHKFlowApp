@@ -14,6 +14,7 @@ using Xunit;
 namespace AHKFlowApp.Application.Tests.Dev;
 
 [Collection("DevDb")]
+[Trait("Category", "Integration")]
 public sealed class SeedCategoriesCommandHandlerTests(DevDbFixture fx)
 {
     private readonly Guid _ownerOid = Guid.NewGuid();
