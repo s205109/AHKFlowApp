@@ -5,8 +5,14 @@ using Xunit;
 namespace AHKFlowApp.E2E.Tests;
 
 [Collection(E2ETestCollection.Name)]
-public sealed class HotstringsCrudFlowTests(StackFixture fixture) : IClassFixture<StackFixture>
+public sealed class HotstringsCrudFlowTests(StackFixture fixture) : IAsyncLifetime
 {
+    public Task InitializeAsync() =>
+        fixture.ResetDataAsync();
+
+    public Task DisposeAsync() =>
+        Task.CompletedTask;
+
     [Fact]
     public async Task CreateEditDelete_DrivesBlazorSpaThroughBrowser()
     {

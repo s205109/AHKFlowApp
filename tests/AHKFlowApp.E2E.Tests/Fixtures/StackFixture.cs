@@ -1,3 +1,7 @@
+using AHKFlowApp.Infrastructure.Persistence;
+using AHKFlowApp.TestUtilities.Fixtures;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Playwright;
 using Xunit;
 
@@ -10,7 +14,35 @@ public sealed class StackFixture : IAsyncLifetime
     public IPlaywright Playwright { get; private set; } = default!;
     public IBrowser Browser { get; private set; } = default!;
 
-    public async Task InitializeAsync()
+    public Task ResetDataAsync() => TestTimingRecorder.RecordAsync(
+        nameof(StackFixture),
+        typeof(StackFixture).FullName ?? nameof(StackFixture),
+        nameof(ResetDataAsync),
+        ResetDataCoreAsync);
+
+    private async Task ResetDataCoreAsync()
+    {
+        await using AsyncServiceScope scope = Api.Services.CreateAsyncScope();
+        AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        await db.HotstringCategories.ExecuteDeleteAsync();
+        await db.HotkeyCategories.ExecuteDeleteAsync();
+        await db.HotstringProfiles.ExecuteDeleteAsync();
+        await db.HotkeyProfiles.ExecuteDeleteAsync();
+        await db.Hotstrings.ExecuteDeleteAsync();
+        await db.Hotkeys.ExecuteDeleteAsync();
+        await db.Profiles.ExecuteDeleteAsync();
+        await db.Categories.ExecuteDeleteAsync();
+        await db.UserPreferences.ExecuteDeleteAsync();
+    }
+
+    public Task InitializeAsync() => TestTimingRecorder.RecordAsync(
+        nameof(StackFixture),
+        typeof(StackFixture).FullName ?? nameof(StackFixture),
+        nameof(InitializeAsync),
+        InitializeCoreAsync);
+
+    private async Task InitializeCoreAsync()
     {
         await Api.StartAsync();
 
