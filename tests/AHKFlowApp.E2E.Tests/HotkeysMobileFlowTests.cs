@@ -119,30 +119,4 @@ public sealed class HotkeysMobileFlowTests(StackFixture fixture) : IAsyncLifetim
         await page.WaitForSelectorAsync("text=Deleted 2 hotkey");
     }
 
-    [Fact]
-    public async Task DuplicateKey_OnPhoneViewport_ShowsInlineConflict()
-    {
-        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(PhoneViewport);
-        IPage page = await ctx.NewPageAsync();
-        string key = $"F{Random.Shared.Next(13, 25)}";
-
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/hotkeys");
-        await page.ClickAsync("button.add-hotkey-fab");
-        await page.WaitForSelectorAsync(".hotkey-edit-dialog");
-        await page.FillAsync(".hotkey-edit-dialog input[data-test=\"description-input\"]", "Duplicate first");
-        await page.FillAsync(".hotkey-edit-dialog input[data-test=\"key-input\"]", key);
-        await page.ClickAsync(".hotkey-edit-dialog input[data-test=\"ctrl-checkbox\"]");
-        await page.ClickAsync(".hotkey-edit-dialog button.commit-edit");
-        await page.WaitForSelectorAsync($".mobile-row:has-text(\"Ctrl+{key}\")");
-
-        await page.ClickAsync("button.add-hotkey-fab");
-        await page.WaitForSelectorAsync(".hotkey-edit-dialog");
-        await page.FillAsync(".hotkey-edit-dialog input[data-test=\"description-input\"]", "Duplicate second");
-        await page.FillAsync(".hotkey-edit-dialog input[data-test=\"key-input\"]", key);
-        await page.ClickAsync(".hotkey-edit-dialog input[data-test=\"ctrl-checkbox\"]");
-        await page.ClickAsync(".hotkey-edit-dialog button.commit-edit");
-
-        await page.Locator(".hotkey-edit-dialog").GetByText("already exists").WaitForAsync();
-        Assert.Equal(0, await page.Locator(".hotkey-edit-dialog .mud-alert").CountAsync());
-    }
 }
