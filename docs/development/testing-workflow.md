@@ -42,6 +42,8 @@ pwsh .\scripts\test-fast.ps1 -Mode E2E
 
 E2E mode runs `AHKFlowApp.E2E.Tests`. Use it for browser flows, Playwright-covered UI behavior, mobile viewport behavior, service-worker/PWA behavior, and changes to the E2E fixture or published Blazor output.
 
+The first E2E run after frontend source changes publishes the Blazor app before Playwright starts. Unchanged reruns reuse the cached publish output through the E2E project target, so the publish step is skipped while the browser tests still run normally.
+
 ## Full coverage gate
 
 ```bash

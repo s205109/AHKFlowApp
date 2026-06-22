@@ -17,6 +17,7 @@
 - Current baseline: bUnit is not the main bottleneck. `UI.Blazor.Tests` ran 212 tests in 7.8s no-build; SQL/API-style tests are slower: Application 32.5s, API 35.6s, CLI 23s, Infrastructure 25.3s no-build.
 - 2026-06-22 measurement: `Application.Tests` showed eight SQL container starts totaling about 314s of fixture startup work and about 56s wall clock. The shared-container prototype reduced it to one SQL container start and about 26.3s wall clock, so shared SQL container reuse should land before broader trait/filter work.
 - Treat E2E as explicit unless frontend/browser behavior changed; its `PublishBlazorForE2E` MSBuild target already showed 72s before test execution in a no-build misfire.
+- 2026-06-22 E2E follow-up: `PublishBlazorForE2E` was confirmed as the publish cost center and made incremental. A refresh run passed in 196.4s with publish; an unchanged rerun skipped `dotnet publish` and passed in 184.0s, so the cached path is equivalent but less valuable than the SQL-container work.
 - Use the existing project split first: `Domain.Tests` and `UI.Blazor.Tests` are fast whole-project slices; `API.Tests`, `Infrastructure.Tests`, and `E2E.Tests` are slow whole-project slices. Only `Application.Tests` and `CLI.Tests` need mixed-project filtering.
 
 ## Key Changes
@@ -36,6 +37,10 @@
   - `-Mode E2E`: whole-project `E2E.Tests`; no `Category=Browser` trait required in v1.
   - `-Mode Coverage`: delegates to `scripts/run-coverage.ps1`.
   - Fail if a selected project reports zero discovered tests.
+- Make the E2E Blazor publish target incremental:
+  - Publish from the frontend build output with `--no-build --no-restore`.
+  - Track frontend source inputs and stamp the publish outputs after a successful publish.
+  - Keep full coverage/pre-push behavior unchanged while allowing unchanged local E2E reruns to skip publish.
 - Add `scripts/measure-tests.ps1`:
   - Runs each test project with TRX logging.
   - Produces project/class/test duration rankings and project wall-clock timings.
@@ -58,9 +63,9 @@
   - If Application test collection startup dominates, prototype one shared SQL Server container with separate per-collection databases and per-database migrations.
   - Keep isolation clear: do not merge unrelated API, CLI, or Infrastructure fixtures into the same container unless measurement shows the gain and the database names remain deterministic and disposable.
 - Investigate E2E publish cost separately:
-  - Confirm the cost belongs to `tests/AHKFlowApp.E2E.Tests/AHKFlowApp.E2E.Tests.csproj` target `PublishBlazorForE2E`.
-  - Measure whether cached publish output, `--no-build`, or a conditional publish target materially improves E2E time.
-  - Keep the full coverage/pre-push path unchanged unless a cached path is proven equivalent.
+  - Confirmed the cost belongs to `tests/AHKFlowApp.E2E.Tests/AHKFlowApp.E2E.Tests.csproj` target `PublishBlazorForE2E`.
+  - Cached publish output plus `--no-build --no-restore` skips publish on unchanged reruns and keeps the Playwright tests equivalent.
+  - The measured local gain was modest compared with SQL fixture reuse, so E2E remains an explicit slice rather than part of the fast inner loop.
 
 ## Public Interfaces
 
