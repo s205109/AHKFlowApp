@@ -5,6 +5,11 @@
     <IsTestProject>true</IsTestProject>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <BlazorE2EProject>../../src/Frontend/AHKFlowApp.UI.Blazor/AHKFlowApp.UI.Blazor.csproj</BlazorE2EProject>
+    <BlazorE2EProjectDir>../../src/Frontend/AHKFlowApp.UI.Blazor/</BlazorE2EProjectDir>
+    <BlazorE2EPublishDir>../../src/Frontend/AHKFlowApp.UI.Blazor/bin/$(Configuration)/$(TargetFramework)/publish</BlazorE2EPublishDir>
+    <BlazorE2EPublishStamp>$(BaseIntermediateOutputPath)e2e-blazor-publish.$(Configuration).stamp</BlazorE2EPublishStamp>
+    <BlazorE2EPublishIndex>$(BlazorE2EPublishDir)/wwwroot/index.html</BlazorE2EPublishIndex>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="coverlet.collector">
@@ -29,7 +34,15 @@
     <ProjectReference Include="..\..\src\Backend\AHKFlowApp.Infrastructure\AHKFlowApp.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Frontend\AHKFlowApp.UI.Blazor\AHKFlowApp.UI.Blazor.csproj" />
   </ItemGroup>
-  <Target Name="PublishBlazorForE2E" BeforeTargets="VSTest">
-    <Exec Command="dotnet publish ../../src/Frontend/AHKFlowApp.UI.Blazor -c Release --disable-build-servers -p:UseSharedCompilation=false -o ../../src/Frontend/AHKFlowApp.UI.Blazor/bin/Release/net10.0/publish" />
+  <ItemGroup>
+    <BlazorE2EPublishInput Include="$(BlazorE2EProjectDir)**/*" Exclude="$(BlazorE2EProjectDir)bin/**/*;$(BlazorE2EProjectDir)obj/**/*" />
+  </ItemGroup>
+  <Target
+    Name="PublishBlazorForE2E"
+    BeforeTargets="VSTest"
+    Inputs="@(BlazorE2EPublishInput)"
+    Outputs="$(BlazorE2EPublishStamp);$(BlazorE2EPublishIndex)">
+    <Exec Command="dotnet publish &quot;$(BlazorE2EProject)&quot; -c $(Configuration) --no-build --no-restore --disable-build-servers -p:UseSharedCompilation=false -o &quot;$(BlazorE2EPublishDir)&quot;" />
+    <Touch Files="$(BlazorE2EPublishStamp);$(BlazorE2EPublishIndex)" AlwaysCreate="true" />
   </Target>
 </Project>

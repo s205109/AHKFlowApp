@@ -14,12 +14,18 @@ public sealed class StackFixture : IAsyncLifetime
     {
         await Api.StartAsync();
 
+        var testOutputDirectory = new DirectoryInfo(AppContext.BaseDirectory);
+        string targetFramework = testOutputDirectory.Name;
+        string configuration = testOutputDirectory.Parent?.Name ?? "Release";
+
         string wwwroot = Path.GetFullPath(Path.Combine(
             AppContext.BaseDirectory, "..", "..", "..", "..", "..",
-            "src", "Frontend", "AHKFlowApp.UI.Blazor", "bin", "Release", "net10.0", "publish", "wwwroot"));
+            "src", "Frontend", "AHKFlowApp.UI.Blazor", "bin", configuration, targetFramework, "publish", "wwwroot"));
 
         if (!Directory.Exists(wwwroot))
-            throw new DirectoryNotFoundException($"Publish wwwroot not found at {wwwroot}. Run: dotnet publish src/Frontend/AHKFlowApp.UI.Blazor -c Release");
+        {
+            throw new DirectoryNotFoundException($"Publish wwwroot not found at {wwwroot}. Run: dotnet publish src/Frontend/AHKFlowApp.UI.Blazor -c {configuration}");
+        }
 
         HttpMessageInvoker apiClient = new(Api.Server.CreateHandler());
         Spa = await SpaHost.StartAsync(wwwroot, apiClient, Api.Server.BaseAddress.ToString());
