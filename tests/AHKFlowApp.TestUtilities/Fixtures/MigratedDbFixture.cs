@@ -17,8 +17,15 @@ public abstract class MigratedDbFixture : IAsyncLifetime
     public async Task InitializeAsync()
     {
         await _sql.InitializeAsync();
-        await using AppDbContext ctx = CreateContext();
-        await ctx.Database.MigrateAsync();
+        await TestTimingRecorder.RecordAsync(
+            nameof(MigratedDbFixture),
+            GetType().FullName ?? GetType().Name,
+            "MigrateAsync",
+            async () =>
+            {
+                await using AppDbContext ctx = CreateContext();
+                await ctx.Database.MigrateAsync();
+            });
     }
 
     public Task DisposeAsync() => _sql.DisposeAsync();

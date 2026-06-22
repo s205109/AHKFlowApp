@@ -10,7 +10,11 @@ public sealed class SqlContainerFixture : IAsyncLifetime
 
     public string ConnectionString => _container.GetConnectionString();
 
-    public Task InitializeAsync() => _container.StartAsync();
+    public Task InitializeAsync() => TestTimingRecorder.RecordAsync(
+        nameof(SqlContainerFixture),
+        typeof(SqlContainerFixture).FullName ?? nameof(SqlContainerFixture),
+        "StartAsync",
+        () => _container.StartAsync());
 
     public async Task DisposeAsync() => await _container.DisposeAsync();
 }
