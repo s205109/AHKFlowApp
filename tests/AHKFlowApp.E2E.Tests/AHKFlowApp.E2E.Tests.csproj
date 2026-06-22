@@ -33,6 +33,7 @@
     <ProjectReference Include="..\..\src\Backend\AHKFlowApp.API\AHKFlowApp.API.csproj" />
     <ProjectReference Include="..\..\src\Backend\AHKFlowApp.Infrastructure\AHKFlowApp.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Frontend\AHKFlowApp.UI.Blazor\AHKFlowApp.UI.Blazor.csproj" />
+    <ProjectReference Include="..\AHKFlowApp.TestUtilities\AHKFlowApp.TestUtilities.csproj" />
   </ItemGroup>
   <ItemGroup>
     <BlazorE2EPublishInput Include="$(BlazorE2EProjectDir)**/*" Exclude="$(BlazorE2EProjectDir)bin/**/*;$(BlazorE2EProjectDir)obj/**/*" />

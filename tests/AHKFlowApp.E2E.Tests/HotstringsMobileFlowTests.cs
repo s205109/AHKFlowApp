@@ -5,7 +5,7 @@ using Xunit;
 namespace AHKFlowApp.E2E.Tests;
 
 [Collection(E2ETestCollection.Name)]
-public sealed class HotstringsMobileFlowTests(StackFixture fixture) : IClassFixture<StackFixture>
+public sealed class HotstringsMobileFlowTests(StackFixture fixture) : IAsyncLifetime
 {
     private static readonly BrowserNewContextOptions PhoneViewport = new()
     {
@@ -23,6 +23,12 @@ public sealed class HotstringsMobileFlowTests(StackFixture fixture) : IClassFixt
 
         public int DocumentOverflow { get; init; }
     }
+
+    public Task InitializeAsync() =>
+        fixture.ResetDataAsync();
+
+    public Task DisposeAsync() =>
+        Task.CompletedTask;
 
     [Fact]
     public async Task TabletViewport_DoesNotCreatePageHorizontalOverflow()

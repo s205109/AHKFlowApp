@@ -18,6 +18,8 @@
 - 2026-06-22 measurement: `Application.Tests` showed eight SQL container starts totaling about 314s of fixture startup work and about 56s wall clock. The shared-container prototype reduced it to one SQL container start and about 26.3s wall clock, so shared SQL container reuse should land before broader trait/filter work.
 - Treat E2E as explicit unless frontend/browser behavior changed; its `PublishBlazorForE2E` MSBuild target already showed 72s before test execution in a no-build misfire.
 - 2026-06-22 E2E follow-up: `PublishBlazorForE2E` was confirmed as the publish cost center and made incremental. A refresh run passed in 196.4s with publish; an unchanged rerun skipped `dotnet publish` and passed in 184.0s, so the cached path is equivalent but less valuable than the SQL-container work.
+- 2026-06-22 fresh baseline after the fast/integration split: `measure-tests.ps1` passed all projects; E2E remained the largest explicit slice at 125.7s wall / 42.6s unattributed setup, followed by API 49.4s, CLI 27.5s, Infrastructure 26.2s, Application 24.7s, UI 9.9s, and Domain 1.6s.
+- 2026-06-22 E2E stack reuse: the three E2E flow classes now share one `StackFixture` collection fixture and reset mutable DB rows per test. E2E-only measurement dropped to 102.3s wall with one named `StackFixture.InitializeAsync` entry at 16.4s and cheap per-test resets.
 - Use the existing project split first: `Domain.Tests` and `UI.Blazor.Tests` are fast whole-project slices; `API.Tests`, `Infrastructure.Tests`, and `E2E.Tests` are slow whole-project slices. Only `Application.Tests` and `CLI.Tests` need mixed-project filtering.
 
 ## Key Changes
@@ -41,6 +43,10 @@
   - Publish from the frontend build output with `--no-build --no-restore`.
   - Track frontend source inputs and stamp the publish outputs after a successful publish.
   - Keep full coverage/pre-push behavior unchanged while allowing unchanged local E2E reruns to skip publish.
+- Share the E2E runtime stack:
+  - Use one xUnit collection fixture for the API factory, SPA host, Playwright, and browser across all E2E flow classes.
+  - Reset mutable hotstring/hotkey/profile/category/preference rows before each E2E test to preserve test isolation.
+  - Record `StackFixture` setup/reset timing when `AHKFLOW_TEST_TIMING=1`.
 - Add `scripts/measure-tests.ps1`:
   - Runs each test project with TRX logging.
   - Produces project/class/test duration rankings and project wall-clock timings.
@@ -66,6 +72,10 @@
   - Confirmed the cost belongs to `tests/AHKFlowApp.E2E.Tests/AHKFlowApp.E2E.Tests.csproj` target `PublishBlazorForE2E`.
   - Cached publish output plus `--no-build --no-restore` skips publish on unchanged reruns and keeps the Playwright tests equivalent.
   - The measured local gain was modest compared with SQL fixture reuse, so E2E remains an explicit slice rather than part of the fast inner loop.
+- Investigate E2E stack setup separately:
+  - Confirmed E2E classes were already serialized through one collection but still created a separate `StackFixture` per class.
+  - Moved `StackFixture` to the collection fixture and added per-test data reset, preserving isolation while starting the API/Spa/browser stack once.
+  - Keep E2E explicit; the remaining cost is mostly browser flow duration, especially mobile hotstring/hotkey flows.
 
 ## Public Interfaces
 
