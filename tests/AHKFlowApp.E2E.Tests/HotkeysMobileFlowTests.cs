@@ -1,4 +1,7 @@
 using AHKFlowApp.E2E.Tests.Fixtures;
+using AHKFlowApp.Infrastructure.Persistence;
+using AHKFlowApp.TestUtilities.Builders;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Playwright;
 using Xunit;
 
@@ -90,21 +93,14 @@ public sealed class HotkeysMobileFlowTests(StackFixture fixture) : IAsyncLifetim
     [Fact]
     public async Task BulkDelete_OnPhoneViewport_UsesSelectMode()
     {
+        await SeedHotkeysAsync(fixture, ("Macro A", "F1"), ("Macro B", "F2"));
+
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(PhoneViewport);
         IPage page = await ctx.NewPageAsync();
 
         await page.GotoAsync($"{fixture.Spa.BaseUrl}/hotkeys");
-
-        // Create two rows via FAB
-        foreach ((string desc, string key) in new[] { ("Macro A", "F1"), ("Macro B", "F2") })
-        {
-            await page.ClickAsync("button.add-hotkey-fab");
-            await page.WaitForSelectorAsync(".hotkey-edit-dialog");
-            await page.FillAsync(".hotkey-edit-dialog input[data-test=\"description-input\"]", desc);
-            await page.FillAsync(".hotkey-edit-dialog input[data-test=\"key-input\"]", key);
-            await page.ClickAsync(".hotkey-edit-dialog button.commit-edit");
-            await page.WaitForSelectorAsync($".mobile-row:has-text(\"{key}\")");
-        }
+        await page.WaitForSelectorAsync(".mobile-row:has-text(\"F1\")");
+        await page.WaitForSelectorAsync(".mobile-row:has-text(\"F2\")");
 
         // Enter select mode + select both
         await page.ClickAsync("button.toggle-select-mode");
@@ -119,4 +115,20 @@ public sealed class HotkeysMobileFlowTests(StackFixture fixture) : IAsyncLifetim
         await page.WaitForSelectorAsync("text=Deleted 2 hotkey");
     }
 
+    private static async Task SeedHotkeysAsync(StackFixture fixture, params (string Description, string Key)[] hotkeys)
+    {
+        await using AsyncServiceScope scope = fixture.Api.Services.CreateAsyncScope();
+        AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        foreach ((string description, string key) in hotkeys)
+        {
+            db.Hotkeys.Add(new HotkeyBuilder()
+                .WithOwner(TestAuthHandler.TestOwnerOid)
+                .WithDescription(description)
+                .WithKey(key)
+                .Build());
+        }
+
+        await db.SaveChangesAsync();
+    }
 }
