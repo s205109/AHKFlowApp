@@ -9,12 +9,12 @@ using Xunit;
 namespace AHKFlowApp.API.Tests.Hotstrings;
 
 [Collection("WebApi")]
-public sealed class HotstringsEndpointsTests(SqlContainerFixture sqlFixture) : IDisposable
+public sealed class HotstringsEndpointsTests(ApiTestFixture fixture)
 {
-    private readonly CustomWebApplicationFactory _factory = new(sqlFixture);
+    private readonly CustomWebApplicationFactory _factory = fixture.Factory;
 
     private HttpClient CreateAuthed(Guid? oid = null) =>
-        _factory.WithTestAuth(b => b.WithOid(oid ?? Guid.NewGuid())).CreateClient();
+        _factory.CreateAuthenticatedClient(b => b.WithOid(oid ?? Guid.NewGuid()));
 
     [Fact]
     public async Task Post_CreatesAndReturns201WithLocation()
@@ -291,8 +291,7 @@ public sealed class HotstringsEndpointsTests(SqlContainerFixture sqlFixture) : I
     [Fact]
     public async Task Get_WithoutScope_Returns403()
     {
-        using HttpClient client = _factory.WithTestAuth(b =>
-            b.WithOid(Guid.NewGuid()).WithoutScope()).CreateClient();
+        using HttpClient client = _factory.CreateAuthenticatedClient(b => b.WithOid(Guid.NewGuid()).WithoutScope());
 
         HttpResponseMessage response = await client.GetAsync("/api/v1/hotstrings");
 
@@ -348,6 +347,4 @@ public sealed class HotstringsEndpointsTests(SqlContainerFixture sqlFixture) : I
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
-
-    public void Dispose() => _factory.Dispose();
 }

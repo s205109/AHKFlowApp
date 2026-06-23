@@ -8,9 +8,9 @@ using Xunit;
 namespace AHKFlowApp.API.Tests.Program;
 
 [Collection("WebApi")]
-public sealed class ProgramTests(SqlContainerFixture sqlFixture) : IDisposable
+public sealed class ProgramTests(ApiTestFixture fixture)
 {
-    private readonly CustomWebApplicationFactory _factory = new(sqlFixture);
+    private readonly CustomWebApplicationFactory _factory = fixture.Factory;
 
     [Fact]
     public async Task Root_RedirectsToSwagger()
@@ -76,6 +76,4 @@ public sealed class ProgramTests(SqlContainerFixture sqlFixture) : IDisposable
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.OK);
     }
-
-    public void Dispose() => _factory.Dispose();
 }

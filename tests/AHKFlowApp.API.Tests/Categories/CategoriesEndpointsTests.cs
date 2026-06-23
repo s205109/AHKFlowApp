@@ -8,12 +8,12 @@ using Xunit;
 namespace AHKFlowApp.API.Tests.Categories;
 
 [Collection("WebApi")]
-public sealed class CategoriesEndpointsTests(SqlContainerFixture sqlFixture) : IDisposable
+public sealed class CategoriesEndpointsTests(ApiTestFixture fixture)
 {
-    private readonly CustomWebApplicationFactory _factory = new(sqlFixture);
+    private readonly CustomWebApplicationFactory _factory = fixture.Factory;
 
     private HttpClient CreateAuthed(Guid? oid = null) =>
-        _factory.WithTestAuth(b => b.WithOid(oid ?? Guid.NewGuid())).CreateClient();
+        _factory.CreateAuthenticatedClient(b => b.WithOid(oid ?? Guid.NewGuid()));
 
     [Fact]
     public async Task GET_list_seeds_eight_defaults_on_first_call()
@@ -220,13 +220,10 @@ public sealed class CategoriesEndpointsTests(SqlContainerFixture sqlFixture) : I
     [Fact]
     public async Task GET_list_without_scope_returns_403()
     {
-        using HttpClient client = _factory.WithTestAuth(b =>
-            b.WithOid(Guid.NewGuid()).WithoutScope()).CreateClient();
+        using HttpClient client = _factory.CreateAuthenticatedClient(b => b.WithOid(Guid.NewGuid()).WithoutScope());
 
         HttpResponseMessage response = await client.GetAsync("/api/v1/categories");
 
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
-
-    public void Dispose() => _factory.Dispose();
 }

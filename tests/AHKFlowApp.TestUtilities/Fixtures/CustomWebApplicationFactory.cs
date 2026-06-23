@@ -6,11 +6,13 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace AHKFlowApp.TestUtilities.Fixtures;
 
 public sealed class CustomWebApplicationFactory(
-    SqlContainerFixture sqlFixture) : WebApplicationFactory<Program>
+    SqlContainerFixture sqlFixture,
+    bool useHeaderTestAuth = true) : WebApplicationFactory<Program>
 {
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -38,20 +40,52 @@ public sealed class CustomWebApplicationFactory(
             services.AddDbContext<AppDbContext>(options =>
                 options.UseSqlServer(sqlFixture.ConnectionString,
                     sql => sql.EnableRetryOnFailure()));
+
+            if (useHeaderTestAuth)
+            {
+                services.AddSingleton(new TestUserBuilder());
+                services
+                    .AddAuthentication(defaultScheme: "Test")
+                    .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>("Test", _ => { });
+            }
         });
+    }
+
+    public HttpClient CreateAuthenticatedClient(Action<TestUserBuilder>? configure = null)
+    {
+        var testUser = new TestUserBuilder();
+        configure?.Invoke(testUser);
+
+        HttpClient client = CreateClient();
+        client.DefaultRequestHeaders.Add("X-Test-Auth", "true");
+        client.DefaultRequestHeaders.Add("X-Test-Oid", testUser.DefaultOid.ToString());
+        client.DefaultRequestHeaders.Add("X-Test-Email", testUser.DefaultEmail);
+        client.DefaultRequestHeaders.Add("X-Test-Name", testUser.DefaultName);
+
+        if (testUser.DefaultScope is null)
+            client.DefaultRequestHeaders.Add("X-Test-Without-Scope", "true");
+        else
+            client.DefaultRequestHeaders.Add("X-Test-Scope", testUser.DefaultScope);
+
+        return client;
     }
 
     public WebApplicationFactory<Program> WithTestAuth(Action<TestUserBuilder>? configure = null)
     {
-        var testUser = new TestUserBuilder();
+        TestUserBuilder testUser = new TestUserBuilder().AuthenticateByDefault();
         configure?.Invoke(testUser);
 
         return WithWebHostBuilder(builder =>
             builder.ConfigureServices(services =>
             {
+                services.RemoveAll<TestUserBuilder>();
                 services.AddSingleton(testUser);
-                services.AddAuthentication(defaultScheme: "Test")
-                        .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>("Test", _ => { });
+
+                if (!useHeaderTestAuth)
+                {
+                    services.AddAuthentication(defaultScheme: "Test")
+                            .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>("Test", _ => { });
+                }
             }));
     }
 }

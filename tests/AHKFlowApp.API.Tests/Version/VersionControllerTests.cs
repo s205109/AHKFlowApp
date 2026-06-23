@@ -8,9 +8,9 @@ using Xunit;
 namespace AHKFlowApp.API.Tests.Version;
 
 [Collection("WebApi")]
-public sealed class VersionControllerTests(SqlContainerFixture sqlFixture) : IDisposable
+public sealed class VersionControllerTests(ApiTestFixture fixture)
 {
-    private readonly CustomWebApplicationFactory _factory = new(sqlFixture);
+    private readonly CustomWebApplicationFactory _factory = fixture.Factory;
 
     [Fact]
     public async Task GetVersion_Returns200WithNonEmptyVersion()
@@ -27,6 +27,4 @@ public sealed class VersionControllerTests(SqlContainerFixture sqlFixture) : IDi
         body.Should().NotBeNull();
         body!.Version.Should().NotBeNullOrWhiteSpace();
     }
-
-    public void Dispose() => _factory.Dispose();
 }

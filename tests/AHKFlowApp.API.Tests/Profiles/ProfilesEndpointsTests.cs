@@ -8,12 +8,12 @@ using Xunit;
 namespace AHKFlowApp.API.Tests.Profiles;
 
 [Collection("WebApi")]
-public sealed class ProfilesEndpointsTests(SqlContainerFixture sqlFixture) : IDisposable
+public sealed class ProfilesEndpointsTests(ApiTestFixture fixture)
 {
-    private readonly CustomWebApplicationFactory _factory = new(sqlFixture);
+    private readonly CustomWebApplicationFactory _factory = fixture.Factory;
 
     private HttpClient CreateAuthed(Guid? oid = null) =>
-        _factory.WithTestAuth(b => b.WithOid(oid ?? Guid.NewGuid())).CreateClient();
+        _factory.CreateAuthenticatedClient(b => b.WithOid(oid ?? Guid.NewGuid()));
 
     [Fact]
     public async Task GET_list_seeds_default_on_first_call()
@@ -110,6 +110,4 @@ public sealed class ProfilesEndpointsTests(SqlContainerFixture sqlFixture) : IDi
         HttpResponseMessage response = await client.GetAsync("/api/v1/profiles");
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
-
-    public void Dispose() => _factory.Dispose();
 }
