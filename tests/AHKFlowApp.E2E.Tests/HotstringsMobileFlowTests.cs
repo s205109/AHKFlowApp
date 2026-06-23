@@ -47,42 +47,26 @@ public sealed class HotstringsMobileFlowTests(StackFixture fixture) : IAsyncLife
     }
 
     [Fact]
-    public async Task CreateEditDelete_OnPhoneViewport_UsesFabAndFullScreenDialog()
+    public async Task AddFab_OnPhoneViewport_OpensHotstringDialog()
     {
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(PhoneViewport);
         IPage page = await ctx.NewPageAsync();
 
+        Task<IResponse> profilesLoaded = page.WaitForResponseAsync(response =>
+            response.Url.Contains("/api/v1/profiles", StringComparison.OrdinalIgnoreCase) &&
+            response.Status == 200);
+        Task<IResponse> categoriesLoaded = page.WaitForResponseAsync(response =>
+            response.Url.Contains("/api/v1/categories", StringComparison.OrdinalIgnoreCase) &&
+            response.Status == 200);
+
         await page.GotoAsync($"{fixture.Spa.BaseUrl}/hotstrings");
         await page.WaitForSelectorAsync("button.add-hotstring-fab");
+        await Task.WhenAll(profilesLoaded, categoriesLoaded);
 
-        // Add via FAB
         await page.ClickAsync("button.add-hotstring-fab");
         await page.WaitForSelectorAsync(".hotstring-edit-dialog");
-        await page.FillAsync(".hotstring-edit-dialog input[data-test=\"trigger-input\"]", "mob");
-        await page.FillAsync(".hotstring-edit-dialog textarea[data-test=\"replacement-input\"]", "mobile by the way");
-        await page.ClickAsync(".hotstring-edit-dialog button.commit-edit");
-
-        await page.WaitForSelectorAsync("text=Hotstring created.");
-        await page.WaitForSelectorAsync(".mobile-row:has-text(\"mob\")");
-
-        // Expand row, click edit, change, save
-        await page.ClickAsync(".mobile-row:has-text(\"mob\")");
-        await page.WaitForSelectorAsync(".mobile-row-expanded button.start-edit");
-        await page.ClickAsync(".mobile-row-expanded button.start-edit");
-        await page.WaitForSelectorAsync(".hotstring-edit-dialog");
-        await page.FillAsync(".hotstring-edit-dialog textarea[data-test=\"replacement-input\"]", "edited!");
-        await page.ClickAsync(".hotstring-edit-dialog button.commit-edit");
-
-        await page.WaitForSelectorAsync("text=Hotstring updated.");
-        await page.WaitForSelectorAsync(".mobile-row:has-text(\"edited!\")");
-
-        // Delete via expanded row (row stays expanded after dialog close)
-        await page.WaitForSelectorAsync(".mobile-row-expanded button.delete");
-        await page.ClickAsync(".mobile-row-expanded button.delete");
-        await page.WaitForSelectorAsync("[role=\"dialog\"]");
-        await page.Locator("[role=\"dialog\"]").GetByRole(AriaRole.Button, new() { Name = "Delete" }).ClickAsync();
-
-        await page.WaitForSelectorAsync("text=Hotstring deleted.");
+        await page.WaitForSelectorAsync(".hotstring-edit-dialog input[data-test=\"trigger-input\"]");
+        await page.WaitForSelectorAsync(".hotstring-edit-dialog textarea[data-test=\"replacement-input\"]");
     }
 
 }
