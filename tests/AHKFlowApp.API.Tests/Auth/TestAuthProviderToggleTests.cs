@@ -7,14 +7,15 @@ using Xunit;
 namespace AHKFlowApp.API.Tests.Auth;
 
 [Collection("WebApi")]
-public sealed class TestAuthProviderToggleTests(SqlContainerFixture sqlFixture) : IDisposable
+public sealed class TestAuthProviderToggleTests(ApiTestFixture fixture)
 {
-    private readonly CustomWebApplicationFactory _base = new(sqlFixture);
+    private readonly ApiTestFixture _fixture = fixture;
 
     [Fact]
     public async Task WhoAmI_WithToggleOn_Returns200_WithSyntheticUser()
     {
-        using WebApplicationFactory<global::Program> factory = _base.WithWebHostBuilder(b =>
+        using CustomWebApplicationFactory baseFactory = new(_fixture.SqlFixture, useHeaderTestAuth: false);
+        using WebApplicationFactory<global::Program> factory = baseFactory.WithWebHostBuilder(b =>
         {
             b.UseSetting("Auth:UseTestProvider", "true");
         });
@@ -26,6 +27,4 @@ public sealed class TestAuthProviderToggleTests(SqlContainerFixture sqlFixture) 
         string body = await response.Content.ReadAsStringAsync();
         body.Should().Contain("local@homelab.invalid");
     }
-
-    public void Dispose() => _base.Dispose();
 }

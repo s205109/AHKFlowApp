@@ -7,14 +7,14 @@ using Xunit;
 namespace AHKFlowApp.API.Tests.Cors;
 
 [Collection("WebApi")]
-public sealed class CorsTests(SqlContainerFixture sqlFixture) : IDisposable
+public sealed class CorsTests(ApiTestFixture fixture)
 {
     // Sentinel origins that won't collide with anything in appsettings, so the assertions are
     // deterministic regardless of a local appsettings.Development.json.
     private const string AllowedOrigin = "http://cors-test.allowed";
     private const string DisallowedOrigin = "http://cors-test.denied";
 
-    private readonly CustomWebApplicationFactory _factory = new(sqlFixture);
+    private readonly CustomWebApplicationFactory _factory = fixture.Factory;
 
     [Fact]
     public async Task Request_FromAllowedOrigin_ReturnsAllowOriginHeader()
@@ -52,6 +52,4 @@ public sealed class CorsTests(SqlContainerFixture sqlFixture) : IDisposable
         request.Headers.Add("Origin", origin);
         return await client.SendAsync(request);
     }
-
-    public void Dispose() => _factory.Dispose();
 }

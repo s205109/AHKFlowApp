@@ -13,20 +13,41 @@ public sealed class TestAuthHandler(
     TestUserBuilder defaults)
     : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
 {
+    private const string ScopeClaimUri = "http://schemas.microsoft.com/identity/claims/scope";
+
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
+        bool authenticate = defaults.DefaultAuthenticate
+            || (Request.Headers.TryGetValue("X-Test-Auth", out Microsoft.Extensions.Primitives.StringValues authHeader)
+                && bool.TryParse(authHeader.FirstOrDefault(), out bool parsedAuthenticate)
+                && parsedAuthenticate);
+
+        if (!authenticate)
+        {
+            return Task.FromResult(AuthenticateResult.NoResult());
+        }
+
         string oid = Request.Headers["X-Test-Oid"].FirstOrDefault() ?? defaults.DefaultOid.ToString();
         string email = Request.Headers["X-Test-Email"].FirstOrDefault() ?? defaults.DefaultEmail;
+        string name = Request.Headers["X-Test-Name"].FirstOrDefault() ?? defaults.DefaultName;
+        bool withoutScope = bool.TryParse(Request.Headers["X-Test-Without-Scope"].FirstOrDefault(), out bool parsedWithoutScope)
+            && parsedWithoutScope;
+        string? scope = withoutScope
+            ? null
+            : Request.Headers["X-Test-Scope"].FirstOrDefault() ?? defaults.DefaultScope;
 
         List<Claim> claims =
         [
             new("oid", oid),
             new("preferred_username", email),
-            new(ClaimTypes.Name, defaults.DefaultName)
+            new(ClaimTypes.Name, name)
         ];
 
-        if (defaults.DefaultScope is not null)
-            claims.Add(new Claim("scp", defaults.DefaultScope));
+        if (!string.IsNullOrWhiteSpace(scope))
+        {
+            claims.Add(new Claim("scp", scope));
+            claims.Add(new Claim(ScopeClaimUri, scope));
+        }
 
         var identity = new ClaimsIdentity(claims, Scheme.Name);
         var principal = new ClaimsPrincipal(identity);

@@ -8,14 +8,12 @@ using Xunit;
 namespace AHKFlowApp.API.Tests.Downloads;
 
 [Collection("WebApi")]
-public sealed class PreviewEndpointTests(SqlContainerFixture sqlFixture) : IDisposable
+public sealed class PreviewEndpointTests(ApiTestFixture fixture)
 {
-    private readonly CustomWebApplicationFactory _factory = new(sqlFixture);
-
-    public void Dispose() => _factory.Dispose();
+    private readonly CustomWebApplicationFactory _factory = fixture.Factory;
 
     private HttpClient CreateAuthed(Guid? oid = null) =>
-        _factory.WithTestAuth(b => b.WithOid(oid ?? Guid.NewGuid())).CreateClient();
+        _factory.CreateAuthenticatedClient(b => b.WithOid(oid ?? Guid.NewGuid()));
 
     private static async Task<ProfileDto> CreateProfileAsync(HttpClient client, string name)
     {

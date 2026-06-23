@@ -6,6 +6,7 @@ public sealed class TestUserBuilder
     private string _email = "test@example.com";
     private string _name = "Test User";
     private string? _scope = "access_as_user";
+    private bool _authenticateByDefault;
 
     public TestUserBuilder WithOid(Guid oid)
     {
@@ -37,8 +38,15 @@ public sealed class TestUserBuilder
         return this;
     }
 
+    internal TestUserBuilder AuthenticateByDefault()
+    {
+        _authenticateByDefault = true;
+        return this;
+    }
+
     internal Guid DefaultOid => _oid;
     internal string DefaultEmail => _email;
     internal string DefaultName => _name;
     internal string? DefaultScope => _scope;
+    internal bool DefaultAuthenticate => _authenticateByDefault;
 }
