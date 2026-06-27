@@ -59,6 +59,22 @@ public sealed class SqlTestDatabaseTests
         builder.TrustServerCertificate.Should().BeTrue();
     }
 
+    [Fact]
+    public void CreateConnectionString_Discriminator_ReplacesInitialCatalog()
+    {
+        // Arrange
+        const string baseConnectionString = "Server=localhost,1433;Database=master;User Id=sa;Password=not-a-secret;TrustServerCertificate=True";
+        string expectedDatabaseName = SqlTestDatabase.CreateName("AHKFlowApp.API.Tests");
+
+        // Act
+        string connectionString = SqlTestDatabase.CreateConnectionString(baseConnectionString, "AHKFlowApp.API.Tests");
+
+        // Assert
+        var builder = new SqlConnectionStringBuilder(connectionString);
+        builder.InitialCatalog.Should().Be(expectedDatabaseName);
+        builder.InitialCatalog.Should().NotBe("master");
+    }
+
     private sealed class AlphaDbFixture : MigratedDbFixture;
 
     private sealed class BetaDbFixture : MigratedDbFixture;

@@ -10,11 +10,15 @@ public static class SqlTestDatabase
     private const int HashLength = 12;
     private const string Prefix = "AHKFlowTest_";
 
-    public static string CreateName(Type fixtureType)
+    public static string CreateName(Type fixtureType) =>
+        CreateName(fixtureType.FullName ?? fixtureType.Name);
+
+    public static string CreateName(string discriminator)
     {
-        string qualifiedName = fixtureType.FullName ?? fixtureType.Name;
-        string hash = CreateHash(qualifiedName);
-        string sanitizedName = Sanitize(qualifiedName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(discriminator);
+
+        string hash = CreateHash(discriminator);
+        string sanitizedName = Sanitize(discriminator);
         int maxSanitizedLength = MaxSqlIdentifierLength - Prefix.Length - 1 - HashLength;
         string trimmedName = sanitizedName.Length > maxSanitizedLength
             ? sanitizedName[..maxSanitizedLength]
@@ -23,11 +27,14 @@ public static class SqlTestDatabase
         return $"{Prefix}{trimmedName}_{hash}";
     }
 
-    public static string CreateConnectionString(string baseConnectionString, Type fixtureType)
+    public static string CreateConnectionString(string baseConnectionString, Type fixtureType) =>
+        CreateConnectionString(baseConnectionString, fixtureType.FullName ?? fixtureType.Name);
+
+    public static string CreateConnectionString(string baseConnectionString, string discriminator)
     {
         var builder = new SqlConnectionStringBuilder(baseConnectionString)
         {
-            InitialCatalog = CreateName(fixtureType),
+            InitialCatalog = CreateName(discriminator),
         };
 
         return builder.ConnectionString;

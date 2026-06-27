@@ -32,6 +32,8 @@ Integration mode runs:
 
 Use this for EF Core, migrations, MediatR handlers that touch `AppDbContext`, API behavior, CLI integration flows, SQL query behavior, and anything that changes persistence wiring.
 
+The script starts one disposable Docker SQL Server container for the selected SQL-backed projects, passes the server connection to the test processes, and removes the container when the run finishes. Direct `dotnet test` still falls back to the per-project Testcontainers fixture path.
+
 Only mixed projects use `Category=Integration` in v1. Whole-project SQL/API suites are selected by project instead of traits.
 
 ## Browser and PWA tests
@@ -50,7 +52,7 @@ The first E2E run after frontend source changes publishes the Blazor app before 
 pwsh .\scripts\test-fast.ps1 -Mode Coverage
 ```
 
-Coverage mode delegates to `scripts/run-coverage.ps1`. Run it before pushing or opening a PR; the pre-push hook and CI still use the full coverage path.
+Coverage mode delegates to `scripts/run-coverage.ps1`. Run it before pushing or opening a PR; the pre-push hook and CI still use the full coverage path. The local coverage script uses the same disposable shared SQL container behavior as Integration mode for the SQL-backed suites.
 
 ## Trait contract
 
