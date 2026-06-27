@@ -152,7 +152,7 @@ try {
         return
     }
 
-    if ($Mode -eq 'Integration') {
+    if ($Mode -eq 'Integration' -or $Mode -eq 'E2E') {
         Write-Host 'Starting shared SQL test container...' -ForegroundColor Cyan
         $sharedSqlContainer = Start-AhkFlowTestSqlContainer
         $env:AHKFLOW_TEST_SQL_CONNECTION_STRING = $sharedSqlContainer.ConnectionString

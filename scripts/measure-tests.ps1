@@ -28,6 +28,7 @@ $sharedSqlTestProjects = @(
     'AHKFlowApp.API.Tests',
     'AHKFlowApp.Application.Tests',
     'AHKFlowApp.CLI.Tests',
+    'AHKFlowApp.E2E.Tests',
     'AHKFlowApp.Infrastructure.Tests'
 )
 
