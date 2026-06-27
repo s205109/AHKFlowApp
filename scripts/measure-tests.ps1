@@ -21,6 +21,15 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $testRoot = Join-Path $repoRoot 'tests'
 $resultsRoot = Join-Path $repoRoot 'TestResults\measure-tests'
 $summaryPath = Join-Path $resultsRoot 'summary.json'
+$sharedSqlScript = Join-Path $PSScriptRoot 'test-sql-container.common.ps1'
+. $sharedSqlScript
+
+$sharedSqlTestProjects = @(
+    'AHKFlowApp.API.Tests',
+    'AHKFlowApp.Application.Tests',
+    'AHKFlowApp.CLI.Tests',
+    'AHKFlowApp.Infrastructure.Tests'
+)
 
 function Resolve-TestProjectPath {
     param(
@@ -54,6 +63,22 @@ function Get-DefaultTestProjects {
         Where-Object { $_.BaseName.EndsWith('.Tests', [System.StringComparison]::Ordinal) } |
         Sort-Object FullName |
         ForEach-Object { $_.FullName }
+}
+
+function Test-UsesSharedSqlFixture {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$ProjectPaths
+    )
+
+    foreach ($projectPath in $ProjectPaths) {
+        $projectName = [System.IO.Path]::GetFileNameWithoutExtension($projectPath)
+        if ($sharedSqlTestProjects -contains $projectName) {
+            return $true
+        }
+    }
+
+    return $false
 }
 
 function Get-BuildArtifact {
@@ -180,6 +205,10 @@ function Write-Ranking {
     $Rows | Select-Object -First $Top -Property $Property | Format-Table -AutoSize
 }
 
+$sharedSqlContainer = $null
+$sharedSqlTiming = $null
+$previousSharedSqlConnectionString = $env:AHKFLOW_TEST_SQL_CONNECTION_STRING
+
 Push-Location $repoRoot
 try {
     if ($Top -lt 1) {
@@ -207,6 +236,23 @@ try {
     $projectSummaries = @()
     $testResults = @()
     $fixtureTimings = @()
+
+    if (Test-UsesSharedSqlFixture -ProjectPaths $projectPaths) {
+        Write-Host 'Starting shared SQL test container...' -ForegroundColor Cyan
+        $sharedSqlContainer = Start-AhkFlowTestSqlContainer
+        $env:AHKFLOW_TEST_SQL_CONNECTION_STRING = $sharedSqlContainer.ConnectionString
+        $sharedSqlTiming = [pscustomobject]@{
+            Project = '(shared)'
+            TestAssembly = $null
+            Component = 'SharedSqlContainer'
+            Fixture = 'scripts/test-sql-container.common.ps1'
+            Operation = 'StartAsync'
+            ElapsedMilliseconds = $sharedSqlContainer.ElapsedMilliseconds
+            TimestampUtc = $sharedSqlContainer.StartedAtUtc
+        }
+        $fixtureTimings += $sharedSqlTiming
+        Write-Host ("Shared SQL test container ready in {0} ms." -f $sharedSqlContainer.ElapsedMilliseconds) -ForegroundColor Cyan
+    }
 
     foreach ($projectPath in $projectPaths) {
         $projectName = [System.IO.Path]::GetFileNameWithoutExtension($projectPath)
@@ -311,10 +357,16 @@ try {
     $slowTests = @($testResults | Sort-Object DurationMilliseconds -Descending)
     $slowFixtures = @($fixtureTimings | Sort-Object ElapsedMilliseconds -Descending)
 
+    $sharedSqlStartupMilliseconds = $null
+    if ($sharedSqlTiming) {
+        $sharedSqlStartupMilliseconds = $sharedSqlTiming.ElapsedMilliseconds
+    }
+
     $summary = [pscustomobject]@{
         GeneratedAtUtc = [DateTimeOffset]::UtcNow
         Configuration = $Configuration
         Filter = $Filter
+        SharedSqlStartupMilliseconds = $sharedSqlStartupMilliseconds
         Projects = $projectSummaries
         SlowClasses = $classRankings | Select-Object -First $Top
         SlowTests = $slowTests | Select-Object -First $Top
@@ -370,5 +422,10 @@ try {
     Write-Host "Summary written to $summaryPath" -ForegroundColor Cyan
 }
 finally {
+    $env:AHKFLOW_TEST_SQL_CONNECTION_STRING = $previousSharedSqlConnectionString
+    if ($sharedSqlContainer) {
+        Stop-AhkFlowTestSqlContainer -ContainerName $sharedSqlContainer.ContainerName
+    }
+
     Pop-Location
 }

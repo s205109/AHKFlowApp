@@ -19,6 +19,8 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $resultsRoot = Join-Path $repoRoot "TestResults\test-fast\$Mode"
+$sharedSqlScript = Join-Path $PSScriptRoot 'test-sql-container.common.ps1'
+. $sharedSqlScript
 
 function New-TestRun {
     param(
@@ -136,6 +138,9 @@ function Invoke-TestRun {
     }
 }
 
+$sharedSqlContainer = $null
+$previousSharedSqlConnectionString = $env:AHKFLOW_TEST_SQL_CONNECTION_STRING
+
 Push-Location $repoRoot
 try {
     if ($Mode -eq 'Coverage') {
@@ -145,6 +150,13 @@ try {
         }
 
         return
+    }
+
+    if ($Mode -eq 'Integration') {
+        Write-Host 'Starting shared SQL test container...' -ForegroundColor Cyan
+        $sharedSqlContainer = Start-AhkFlowTestSqlContainer
+        $env:AHKFLOW_TEST_SQL_CONNECTION_STRING = $sharedSqlContainer.ConnectionString
+        Write-Host ("Shared SQL test container ready in {0} ms." -f $sharedSqlContainer.ElapsedMilliseconds) -ForegroundColor Cyan
     }
 
     if (Test-Path -LiteralPath $resultsRoot) {
@@ -163,5 +175,10 @@ try {
     $summaries | Format-Table -AutoSize
 }
 finally {
+    $env:AHKFLOW_TEST_SQL_CONNECTION_STRING = $previousSharedSqlConnectionString
+    if ($sharedSqlContainer) {
+        Stop-AhkFlowTestSqlContainer -ContainerName $sharedSqlContainer.ContainerName
+    }
+
     Pop-Location
 }
