@@ -1,15 +1,14 @@
 using System.Net;
 using AHKFlowApp.TestUtilities.Fixtures;
 using FluentAssertions;
-using Microsoft.AspNetCore.Mvc.Testing;
 using Xunit;
 
 namespace AHKFlowApp.API.Tests.Auth;
 
 [Collection("WebApi")]
-public sealed class AuthenticationTests(SqlContainerFixture sqlFixture) : IDisposable
+public sealed class AuthenticationTests(ApiTestFixture fixture)
 {
-    private readonly CustomWebApplicationFactory _factory = new(sqlFixture);
+    private readonly CustomWebApplicationFactory _factory = fixture.Factory;
 
     [Fact]
     public async Task GetWhoAmI_WithoutToken_Returns401()
@@ -25,8 +24,7 @@ public sealed class AuthenticationTests(SqlContainerFixture sqlFixture) : IDispo
     public async Task GetWhoAmI_WithTestUser_Returns200AndClaims()
     {
         var oid = Guid.NewGuid();
-        using WebApplicationFactory<global::Program> authFactory = _factory.WithTestAuth(u => u.WithOid(oid).WithEmail("bart@example.com"));
-        using HttpClient client = authFactory.CreateClient();
+        using HttpClient client = _factory.CreateAuthenticatedClient(u => u.WithOid(oid).WithEmail("bart@example.com"));
 
         HttpResponseMessage response = await client.GetAsync("/api/v1/whoami");
 
@@ -39,8 +37,7 @@ public sealed class AuthenticationTests(SqlContainerFixture sqlFixture) : IDispo
     [Fact]
     public async Task GetWhoAmI_WithMissingScope_Returns403()
     {
-        using WebApplicationFactory<global::Program> authFactory = _factory.WithTestAuth(u => u.WithoutScope());
-        using HttpClient client = authFactory.CreateClient();
+        using HttpClient client = _factory.CreateAuthenticatedClient(u => u.WithoutScope());
 
         HttpResponseMessage response = await client.GetAsync("/api/v1/whoami");
 
@@ -56,6 +53,4 @@ public sealed class AuthenticationTests(SqlContainerFixture sqlFixture) : IDispo
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
     }
-
-    public void Dispose() => _factory.Dispose();
 }

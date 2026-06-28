@@ -12,6 +12,7 @@ using Xunit;
 namespace AHKFlowApp.Application.Tests.Hotkeys;
 
 [Collection("HotkeyDb")]
+[Trait("Category", "Integration")]
 public sealed class CreateHotkeyCommandHandlerTests(HotkeyDbFixture fx)
 {
     private readonly TimeProvider _clock = TimeProvider.System;

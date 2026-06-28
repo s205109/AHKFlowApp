@@ -11,6 +11,7 @@ using Xunit;
 namespace AHKFlowApp.Application.Tests.Dev;
 
 [Collection("DevDb")]
+[Trait("Category", "Integration")]
 public sealed class SeedHotkeysCommandHandlerTests(DevDbFixture fx)
 {
     private const int SampleCount = 12;

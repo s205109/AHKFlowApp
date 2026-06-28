@@ -12,6 +12,7 @@ using Xunit;
 namespace AHKFlowApp.Application.Tests.Hotkeys;
 
 [Collection("HotkeyDb")]
+[Trait("Category", "Integration")]
 public sealed class ListHotkeysLazySeedTests(HotkeyDbFixture fx)
 {
     private readonly FakeTimeProvider _clock = new(DateTimeOffset.Parse("2026-05-23T10:00:00Z"));

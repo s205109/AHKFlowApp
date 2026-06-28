@@ -13,9 +13,9 @@ using Xunit;
 namespace AHKFlowApp.API.Tests.Middleware;
 
 [Collection("WebApi")]
-public sealed class ValidationProblemDetailsTests(SqlContainerFixture sqlFixture) : IDisposable
+public sealed class ValidationProblemDetailsTests(ApiTestFixture fixture)
 {
-    private readonly CustomWebApplicationFactory _factory = new(sqlFixture);
+    private readonly CustomWebApplicationFactory _factory = fixture.Factory;
 
     [Fact]
     public async Task Post_WhenRequiredFieldMissing_Returns422WithValidationProblemDetails()
@@ -47,8 +47,6 @@ public sealed class ValidationProblemDetailsTests(SqlContainerFixture sqlFixture
         body.Extensions.Should().ContainKey("traceId");
         body.Extensions["traceId"].Should().NotBeNull();
     }
-
-    public void Dispose() => _factory.Dispose();
 }
 
 [ApiController]

@@ -12,6 +12,7 @@ using Xunit;
 namespace AHKFlowApp.Application.Tests.Services;
 
 [Collection("ScriptGeneratorDb")]
+[Trait("Category", "Integration")]
 public sealed class AhkScriptGeneratorIntegrationTests(ScriptGeneratorDbFixture fx)
 {
     private readonly Guid _ownerOid = Guid.NewGuid();

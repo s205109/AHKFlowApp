@@ -10,16 +10,14 @@ using Xunit;
 namespace AHKFlowApp.API.Tests.Dev;
 
 [Collection("WebApi")]
-public sealed class DevSeedEndpointTests(SqlContainerFixture sqlFixture) : IDisposable
+public sealed class DevSeedEndpointTests(ApiTestFixture fixture)
 {
-    private readonly CustomWebApplicationFactory _factory = new(sqlFixture);
+    private readonly CustomWebApplicationFactory _factory = fixture.Factory;
 
     [Fact]
     public async Task SeedCategories_Returns200WithEightCategories()
     {
-        using HttpClient client = _factory
-            .WithTestAuth(b => b.WithOid(Guid.NewGuid()))
-            .CreateClient();
+        using HttpClient client = _factory.CreateAuthenticatedClient(b => b.WithOid(Guid.NewGuid()));
 
         HttpResponseMessage resp = await client.PostAsync("/api/v1/dev/categories/seed?reset=true", content: null);
 
@@ -32,9 +30,7 @@ public sealed class DevSeedEndpointTests(SqlContainerFixture sqlFixture) : IDisp
     [Fact]
     public async Task SeedHotkeys_Returns200WithTwelveHotkeys()
     {
-        using HttpClient client = _factory
-            .WithTestAuth(b => b.WithOid(Guid.NewGuid()))
-            .CreateClient();
+        using HttpClient client = _factory.CreateAuthenticatedClient(b => b.WithOid(Guid.NewGuid()));
 
         HttpResponseMessage resp = await client.PostAsync("/api/v1/dev/hotkeys/seed?reset=true", content: null);
 
@@ -47,9 +43,7 @@ public sealed class DevSeedEndpointTests(SqlContainerFixture sqlFixture) : IDisp
     [Fact]
     public async Task SeedAll_ReturnsCountsAnd200_InDevelopment()
     {
-        using HttpClient client = _factory
-            .WithTestAuth(b => b.WithOid(Guid.NewGuid()))
-            .CreateClient();
+        using HttpClient client = _factory.CreateAuthenticatedClient(b => b.WithOid(Guid.NewGuid()));
 
         HttpResponseMessage resp = await client.PostAsync("/api/v1/dev/seed-all?reset=true", content: null);
 
@@ -64,9 +58,7 @@ public sealed class DevSeedEndpointTests(SqlContainerFixture sqlFixture) : IDisp
     [Fact]
     public async Task SeedAll_IsIdempotent_OnRepeatCall()
     {
-        using HttpClient client = _factory
-            .WithTestAuth(b => b.WithOid(Guid.NewGuid()))
-            .CreateClient();
+        using HttpClient client = _factory.CreateAuthenticatedClient(b => b.WithOid(Guid.NewGuid()));
 
         await client.PostAsync("/api/v1/dev/seed-all?reset=true", content: null);
         HttpResponseMessage resp = await client.PostAsync("/api/v1/dev/seed-all?reset=false", content: null);
@@ -95,14 +87,14 @@ public sealed class DevSeedEndpointTests(SqlContainerFixture sqlFixture) : IDisp
     public async Task SeedAll_OutsideDevelopment_MissingScope_Returns404BeforeForbidden()
     {
         using WebApplicationFactory<global::Program> factory = _factory
-            .WithTestAuth(b => b.WithOid(Guid.NewGuid()).WithoutScope())
             .WithWebHostBuilder(builder => builder.UseEnvironment("Test"));
         using HttpClient client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Test-Auth", "true");
+        client.DefaultRequestHeaders.Add("X-Test-Oid", Guid.NewGuid().ToString());
+        client.DefaultRequestHeaders.Add("X-Test-Without-Scope", "true");
 
         HttpResponseMessage resp = await client.PostAsync("/api/v1/dev/seed-all?reset=true", content: null);
 
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
-
-    public void Dispose() => _factory.Dispose();
 }

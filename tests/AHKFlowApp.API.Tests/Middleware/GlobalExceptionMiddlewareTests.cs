@@ -15,9 +15,9 @@ using Xunit;
 namespace AHKFlowApp.API.Tests.Middleware;
 
 [Collection("WebApi")]
-public sealed class GlobalExceptionMiddlewareTests(SqlContainerFixture sqlFixture) : IDisposable
+public sealed class GlobalExceptionMiddlewareTests(ApiTestFixture fixture)
 {
-    private readonly CustomWebApplicationFactory _factory = new(sqlFixture);
+    private readonly CustomWebApplicationFactory _factory = fixture.Factory;
 
     [Fact]
     public async Task Middleware_WhenValidationExceptionThrown_Returns400ProblemDetails()
@@ -111,6 +111,4 @@ public sealed class GlobalExceptionMiddlewareTests(SqlContainerFixture sqlFixtur
         problem!.Extensions.Should().ContainKey("traceId");
         problem.Extensions["traceId"].Should().NotBeNull();
     }
-
-    public void Dispose() => _factory.Dispose();
 }

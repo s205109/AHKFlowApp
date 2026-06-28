@@ -13,6 +13,7 @@ using Xunit;
 namespace AHKFlowApp.Application.Tests.Dashboard;
 
 [Collection("DashboardDb")]
+[Trait("Category", "Integration")]
 public sealed class GetDashboardStatsQueryHandlerTests(DashboardDbFixture fx)
 {
     private readonly Guid _ownerOid = Guid.NewGuid();

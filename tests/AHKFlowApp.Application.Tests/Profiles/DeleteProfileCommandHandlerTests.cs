@@ -12,6 +12,7 @@ using Xunit;
 namespace AHKFlowApp.Application.Tests.Profiles;
 
 [Collection("ProfileDb")]
+[Trait("Category", "Integration")]
 public sealed class DeleteProfileCommandHandlerTests(ProfileDbFixture fx)
 {
     private readonly Guid _ownerOid = Guid.NewGuid();
