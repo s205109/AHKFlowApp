@@ -10,6 +10,7 @@ using Xunit;
 namespace AHKFlowApp.Application.Tests.Hotkeys;
 
 [Collection("HotkeyDb")]
+[Trait("Category", "Integration")]
 public sealed class GetHotkeyQueryHandlerTests(HotkeyDbFixture fx)
 {
     [Fact]

@@ -6,9 +6,9 @@ using Xunit;
 namespace AHKFlowApp.API.Tests.OpenApi;
 
 [Collection("WebApi")]
-public sealed class SwaggerDocTests(SqlContainerFixture sqlFixture) : IDisposable
+public sealed class SwaggerDocTests(ApiTestFixture fixture)
 {
-    private readonly CustomWebApplicationFactory _factory = new(sqlFixture);
+    private readonly CustomWebApplicationFactory _factory = fixture.Factory;
 
     [Fact]
     public async Task SwaggerJson_HotstringDtoSchema_SurfacesPropertyDescriptions()
@@ -37,6 +37,4 @@ public sealed class SwaggerDocTests(SqlContainerFixture sqlFixture) : IDisposabl
         anyDescribed.Should().BeTrue(
             "HotstringDto property descriptions must be surfaced from AHKFlowApp.Application.xml");
     }
-
-    public void Dispose() => _factory.Dispose();
 }

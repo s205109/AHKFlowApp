@@ -17,9 +17,9 @@ namespace AHKFlowApp.API.Tests.Logging;
 /// so the capture sink receives all Serilog events including UseSerilogRequestLogging output.
 /// </summary>
 [Collection("WebApi")]
-public sealed class SerilogRequestLoggingTests(SqlContainerFixture sqlFixture) : IDisposable
+public sealed class SerilogRequestLoggingTests(ApiTestFixture fixture)
 {
-    private readonly CustomWebApplicationFactory _factory = new(sqlFixture);
+    private readonly CustomWebApplicationFactory _factory = fixture.Factory;
 
     [Fact]
     public async Task RequestLogging_WhenRequestReceived_LogsStructuredRequestProperties()
@@ -109,8 +109,6 @@ public sealed class SerilogRequestLoggingTests(SqlContainerFixture sqlFixture) :
             }
         }
     }
-
-    public void Dispose() => _factory.Dispose();
 
     private static async Task<string> WaitForLogFileAsync(string logDirectory)
     {

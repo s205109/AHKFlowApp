@@ -8,12 +8,12 @@ using Xunit;
 namespace AHKFlowApp.API.Tests.Dashboard;
 
 [Collection("WebApi")]
-public sealed class DashboardEndpointsTests(SqlContainerFixture sqlFixture) : IDisposable
+public sealed class DashboardEndpointsTests(ApiTestFixture fixture)
 {
-    private readonly CustomWebApplicationFactory _factory = new(sqlFixture);
+    private readonly CustomWebApplicationFactory _factory = fixture.Factory;
 
     private HttpClient CreateAuthed(Guid? oid = null) =>
-        _factory.WithTestAuth(b => b.WithOid(oid ?? Guid.NewGuid())).CreateClient();
+        _factory.CreateAuthenticatedClient(b => b.WithOid(oid ?? Guid.NewGuid()));
 
     [Fact]
     public async Task GET_stats_returns_200_with_dto_for_authenticated_user()
@@ -39,6 +39,4 @@ public sealed class DashboardEndpointsTests(SqlContainerFixture sqlFixture) : ID
 
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
-
-    public void Dispose() => _factory.Dispose();
 }

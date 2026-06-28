@@ -8,16 +8,14 @@ using Xunit;
 namespace AHKFlowApp.API.Tests.Dev;
 
 [Collection("WebApi")]
-public sealed class DevSeederEndpointTests(SqlContainerFixture sqlFixture) : IDisposable
+public sealed class DevSeederEndpointTests(ApiTestFixture fixture)
 {
-    private readonly CustomWebApplicationFactory _factory = new(sqlFixture);
+    private readonly CustomWebApplicationFactory _factory = fixture.Factory;
 
     [Fact]
     public async Task Seed_InDevelopment_Returns200WithSeededItems()
     {
-        using HttpClient client = _factory
-            .WithTestAuth(b => b.WithOid(Guid.NewGuid()))
-            .CreateClient();
+        using HttpClient client = _factory.CreateAuthenticatedClient(b => b.WithOid(Guid.NewGuid()));
 
         HttpResponseMessage response = await client.PostAsync("/api/v1/dev/hotstrings/seed?reset=true", content: null);
 
@@ -25,6 +23,4 @@ public sealed class DevSeederEndpointTests(SqlContainerFixture sqlFixture) : IDi
         PagedList<HotstringDto>? body = await response.Content.ReadFromJsonAsync<PagedList<HotstringDto>>();
         body!.Items.Count.Should().BeGreaterThanOrEqualTo(3);
     }
-
-    public void Dispose() => _factory.Dispose();
 }

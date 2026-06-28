@@ -13,6 +13,7 @@ using Xunit;
 namespace AHKFlowApp.Application.Tests.Categories;
 
 [Collection("CategoryDb")]
+[Trait("Category", "Integration")]
 public sealed class ListCategoriesQueryHandlerTests(CategoryDbFixture fx)
 {
     private static readonly string[] s_expectedDefaults =

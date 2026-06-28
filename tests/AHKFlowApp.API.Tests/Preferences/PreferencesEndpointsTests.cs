@@ -9,12 +9,12 @@ using Xunit;
 namespace AHKFlowApp.API.Tests.Preferences;
 
 [Collection("WebApi")]
-public sealed class PreferencesEndpointsTests(SqlContainerFixture sqlFixture) : IDisposable
+public sealed class PreferencesEndpointsTests(ApiTestFixture fixture)
 {
-    private readonly CustomWebApplicationFactory _factory = new(sqlFixture);
+    private readonly CustomWebApplicationFactory _factory = fixture.Factory;
 
     private HttpClient CreateAuthed(Guid? oid = null) =>
-        _factory.WithTestAuth(b => b.WithOid(oid ?? Guid.NewGuid())).CreateClient();
+        _factory.CreateAuthenticatedClient(b => b.WithOid(oid ?? Guid.NewGuid()));
 
     [Fact]
     public async Task Get_WithoutBearer_Returns401()
@@ -29,8 +29,7 @@ public sealed class PreferencesEndpointsTests(SqlContainerFixture sqlFixture) : 
     [Fact]
     public async Task Get_WithoutScope_Returns403()
     {
-        using HttpClient client = _factory.WithTestAuth(b =>
-            b.WithOid(Guid.NewGuid()).WithoutScope()).CreateClient();
+        using HttpClient client = _factory.CreateAuthenticatedClient(b => b.WithOid(Guid.NewGuid()).WithoutScope());
 
         HttpResponseMessage response = await client.GetAsync("/api/v1/preferences");
 
@@ -101,6 +100,4 @@ public sealed class PreferencesEndpointsTests(SqlContainerFixture sqlFixture) : 
         body!.RowsPerPage.Should().Be(100);
         body.DarkMode.Should().BeTrue();
     }
-
-    public void Dispose() => _factory.Dispose();
 }

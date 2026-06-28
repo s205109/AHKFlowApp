@@ -10,6 +10,7 @@ using Xunit;
 namespace AHKFlowApp.Application.Tests.Hotstrings;
 
 [Collection("HotstringDb")]
+[Trait("Category", "Integration")]
 public sealed class HotstringDescriptionTests(HotstringDbFixture fx)
 {
     private static string NewTrigger() => $"d{Guid.NewGuid():N}"[..8];

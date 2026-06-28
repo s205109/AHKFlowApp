@@ -16,6 +16,7 @@ using Xunit;
 namespace AHKFlowApp.Application.Tests.Queries.Downloads;
 
 [Collection("ScriptGeneratorDb")]
+[Trait("Category", "Integration")]
 public sealed class GetProfileScriptPreviewQueryTests(ScriptGeneratorDbFixture fx)
 {
     private readonly Guid _ownerOid = Guid.NewGuid();

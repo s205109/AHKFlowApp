@@ -12,6 +12,7 @@ using Xunit;
 namespace AHKFlowApp.Application.Tests.Hotstrings;
 
 [Collection("HotstringDb")]
+[Trait("Category", "Integration")]
 public sealed class ListHotstringsLazySeedTests(HotstringDbFixture fx)
 {
     private readonly FakeTimeProvider _clock = new(DateTimeOffset.Parse("2026-05-23T10:00:00Z"));

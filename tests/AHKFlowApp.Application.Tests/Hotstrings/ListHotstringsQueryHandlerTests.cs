@@ -10,6 +10,7 @@ using Xunit;
 namespace AHKFlowApp.Application.Tests.Hotstrings;
 
 [Collection("HotstringDb")]
+[Trait("Category", "Integration")]
 public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
 {
     [Fact]

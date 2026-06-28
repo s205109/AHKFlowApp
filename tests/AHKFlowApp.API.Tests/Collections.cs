@@ -4,4 +4,4 @@ using Xunit;
 namespace AHKFlowApp.API.Tests;
 
 [CollectionDefinition("WebApi")]
-public sealed class WebApiCollection : ICollectionFixture<SqlContainerFixture>;
+public sealed class WebApiCollection : ICollectionFixture<ApiTestFixture>;

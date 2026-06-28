@@ -10,9 +10,9 @@ using Xunit;
 namespace AHKFlowApp.API.Tests.Health;
 
 [Collection("WebApi")]
-public sealed class HealthControllerTests(SqlContainerFixture sqlFixture) : IDisposable
+public sealed class HealthControllerTests(ApiTestFixture fixture)
 {
-    private readonly CustomWebApplicationFactory _factory = new(sqlFixture);
+    private readonly CustomWebApplicationFactory _factory = fixture.Factory;
 
     [Fact]
     public async Task GetHealth_WhenDatabaseReachable_Returns200WithHealthyStatus()
@@ -96,6 +96,4 @@ public sealed class HealthControllerTests(SqlContainerFixture sqlFixture) : IDis
         HealthResponse? body = await response.Content.ReadFromJsonAsync<HealthResponse>();
         body!.Tier.Should().BeNull();
     }
-
-    public void Dispose() => _factory.Dispose();
 }

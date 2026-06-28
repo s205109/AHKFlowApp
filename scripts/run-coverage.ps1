@@ -25,6 +25,8 @@ $coverageReportDirectory = Join-Path $repoRoot 'CoverageReport'
 $summaryJsonPath = Join-Path $coverageReportDirectory 'Summary.json'
 $summaryGithubPath = Join-Path $coverageReportDirectory 'SummaryGithub.md'
 $thresholdScriptPath = Join-Path $repoRoot 'scripts' 'check-coverage-thresholds.py'
+$sharedSqlScript = Join-Path $PSScriptRoot 'test-sql-container.common.ps1'
+. $sharedSqlScript
 
 Push-Location $repoRoot
 try {
@@ -49,14 +51,29 @@ try {
         -p:UseSharedCompilation=false
     if ($LASTEXITCODE -ne 0) { throw "dotnet build failed" }
 
-    dotnet test --configuration $Configuration `
-        --disable-build-servers `
-        --no-build `
-        --no-restore `
-        --collect:"XPlat Code Coverage" `
-        --results-directory TestResults `
-        --settings coverlet.runsettings
-    if ($LASTEXITCODE -ne 0) { throw "dotnet test failed" }
+    Write-Host 'Starting shared SQL test container...' -ForegroundColor Cyan
+    $sharedSqlContainer = Start-AhkFlowTestSqlContainer
+    $previousSharedSqlConnectionString = $env:AHKFLOW_TEST_SQL_CONNECTION_STRING
+    $testExitCode = 0
+    try {
+        $env:AHKFLOW_TEST_SQL_CONNECTION_STRING = $sharedSqlContainer.ConnectionString
+        Write-Host ("Shared SQL test container ready in {0} ms." -f $sharedSqlContainer.ElapsedMilliseconds) -ForegroundColor Cyan
+
+        dotnet test --configuration $Configuration `
+            --disable-build-servers `
+            --no-build `
+            --no-restore `
+            --collect:"XPlat Code Coverage" `
+            --results-directory TestResults `
+            --settings coverlet.runsettings
+        $testExitCode = $LASTEXITCODE
+    }
+    finally {
+        $env:AHKFLOW_TEST_SQL_CONNECTION_STRING = $previousSharedSqlConnectionString
+        Stop-AhkFlowTestSqlContainer -ContainerName $sharedSqlContainer.ContainerName
+    }
+
+    if ($testExitCode -ne 0) { throw "dotnet test failed" }
 
     reportgenerator `
         -reports:"TestResults/**/coverage.cobertura.xml" `

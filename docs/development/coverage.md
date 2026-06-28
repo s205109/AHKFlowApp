@@ -2,6 +2,8 @@
 
 ## Canonical local verification
 
+For day-to-day development, prefer the targeted test slices in [Local testing workflow](testing-workflow.md). The coverage command below remains the full pre-push / pre-PR confidence gate.
+
 From the repo root, run:
 
 ```bash
