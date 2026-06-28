@@ -3,7 +3,7 @@ using FluentAssertions;
 using Microsoft.Data.SqlClient;
 using Xunit;
 
-namespace AHKFlowApp.Domain.Tests.Fixtures;
+namespace AHKFlowApp.TestUtilities.Tests.Fixtures;
 
 public sealed class SqlTestDatabaseTests
 {

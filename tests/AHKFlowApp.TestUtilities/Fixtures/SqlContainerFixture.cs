@@ -7,7 +7,7 @@ public sealed class SqlContainerFixture : IAsyncLifetime
 {
     public const string SharedSqlConnectionStringEnvironmentVariable = "AHKFLOW_TEST_SQL_CONNECTION_STRING";
 
-    private const string SqlServerImage = "mcr.microsoft.com/mssql/server:2022-CU14-ubuntu-22.04";
+    public const string SqlServerImage = "mcr.microsoft.com/mssql/server:2022-CU14-ubuntu-22.04";
 
     private readonly MsSqlContainer? _container;
     private string? _connectionString;

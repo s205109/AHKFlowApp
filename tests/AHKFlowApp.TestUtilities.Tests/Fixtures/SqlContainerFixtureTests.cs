@@ -3,8 +3,9 @@ using FluentAssertions;
 using Microsoft.Data.SqlClient;
 using Xunit;
 
-namespace AHKFlowApp.Domain.Tests.Fixtures;
+namespace AHKFlowApp.TestUtilities.Tests.Fixtures;
 
+[Collection(TestCollections.EnvironmentVariables)]
 public sealed class SqlContainerFixtureTests : IDisposable
 {
     private readonly string? _previousConnectionString = Environment.GetEnvironmentVariable(
@@ -30,7 +31,7 @@ public sealed class SqlContainerFixtureTests : IDisposable
         // Assert
         var builder = new SqlConnectionStringBuilder(fixture.ConnectionString);
         builder.DataSource.Should().Be("127.0.0.1,11433");
-        builder.InitialCatalog.Should().Be(SqlTestDatabase.CreateName("AHKFlowApp.Domain.Tests"));
+        builder.InitialCatalog.Should().Be(SqlTestDatabase.CreateName("AHKFlowApp.TestUtilities.Tests"));
         builder.UserID.Should().Be("sa");
         builder.TrustServerCertificate.Should().BeTrue();
         builder.MultipleActiveResultSets.Should().BeTrue();

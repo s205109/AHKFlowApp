@@ -31,6 +31,9 @@ $sharedSqlTestProjects = @(
     'AHKFlowApp.E2E.Tests',
     'AHKFlowApp.Infrastructure.Tests'
 )
+$e2eTestProjectName = 'AHKFlowApp.E2E.Tests'
+$e2eFrontendProjectName = 'AHKFlowApp.UI.Blazor'
+$e2eFrontendProjectPath = Join-Path $repoRoot 'src\Frontend\AHKFlowApp.UI.Blazor\AHKFlowApp.UI.Blazor.csproj'
 
 function Resolve-TestProjectPath {
     param(
@@ -266,6 +269,14 @@ try {
         if (-not $artifact) {
             $warnings += "Missing build artifact for $projectName. Run: dotnet build $projectPath --configuration $Configuration"
             continue
+        }
+
+        if ($projectName -eq $e2eTestProjectName) {
+            $frontendArtifact = Get-BuildArtifact -ProjectPath $e2eFrontendProjectPath -ProjectName $e2eFrontendProjectName
+            if (-not $frontendArtifact) {
+                $warnings += "Missing frontend build artifact required by $projectName. Its publish target runs with --no-build; run: dotnet build $e2eFrontendProjectPath --configuration $Configuration"
+                continue
+            }
         }
 
         Write-Host "Measuring $projectName..." -ForegroundColor Cyan

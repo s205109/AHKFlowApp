@@ -12,10 +12,9 @@ using Testcontainers.MsSql;
 
 namespace AHKFlowApp.E2E.Tests.Fixtures;
 
-public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncDisposable
+public sealed class ApiFactory : WebApplicationFactory<Program>
 {
     private const string E2ETestAssemblyName = "AHKFlowApp.E2E.Tests";
-    private const string SqlServerImage = "mcr.microsoft.com/mssql/server:2022-CU14-ubuntu-22.04";
 
     private readonly MsSqlContainer? _sql;
     private string? _connectionString;
@@ -26,7 +25,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncDisposabl
             SqlContainerFixture.SharedSqlConnectionStringEnvironmentVariable);
         if (string.IsNullOrWhiteSpace(sharedSqlConnectionString))
         {
-            _sql = new MsSqlBuilder(SqlServerImage).Build();
+            _sql = new MsSqlBuilder(SqlContainerFixture.SqlServerImage).Build();
             return;
         }
 
@@ -87,5 +86,4 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncDisposabl
     private static string CreateTestDatabaseConnectionString(string baseConnectionString) =>
         SqlTestDatabase.CreateConnectionString(baseConnectionString, E2ETestAssemblyName);
 
-    ValueTask IAsyncDisposable.DisposeAsync() => DisposeAsync();
 }
