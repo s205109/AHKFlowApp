@@ -427,6 +427,16 @@ function Write-VsCodeWorktreeLaunchConfig {
                 $configuration.url = $UiUrl
             }
 
+            # Rebase a standalone Chrome opener for the API (e.g. the Swagger browser launched
+            # via serverReadyAction startDebugging), whose url hardcodes the API host:port. The
+            # UI's blazorwasm config is handled above; only chrome configs point at the API here.
+            if ((($configuration.PSObject.Properties.Name) -contains 'type') -and
+                ($configuration.type -eq 'chrome') -and
+                (($configuration.PSObject.Properties.Name) -contains 'url') -and
+                ($configuration.url -match '^(https?://[^/]+)(.*)$')) {
+                $configuration.url = $ApiUrl + $matches[2]
+            }
+
             # Rebase a hardcoded API browser URL (e.g. http://localhost:5600/swagger). A
             # pattern-derived "%s/..." uriFormat is left untouched: it already follows the
             # API's actual bound port from its "Now listening on:" output.
