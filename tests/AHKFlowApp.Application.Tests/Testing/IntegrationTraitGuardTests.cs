@@ -6,6 +6,7 @@ namespace AHKFlowApp.Application.Tests.Testing;
 
 public sealed class IntegrationTraitGuardTests
 {
+    // Keep this v1 collection list in sync with docs/development/testing-workflow.md.
     private static readonly HashSet<string> IntegrationCollections =
     [
         "HotstringDb",

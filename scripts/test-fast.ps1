@@ -41,6 +41,7 @@ function Get-TestRuns {
         'Fast' {
             return @(
                 New-TestRun -Project 'tests\AHKFlowApp.Domain.Tests\AHKFlowApp.Domain.Tests.csproj'
+                New-TestRun -Project 'tests\AHKFlowApp.TestUtilities.Tests\AHKFlowApp.TestUtilities.Tests.csproj'
                 New-TestRun -Project 'tests\AHKFlowApp.UI.Blazor.Tests\AHKFlowApp.UI.Blazor.Tests.csproj'
                 New-TestRun -Project 'tests\AHKFlowApp.Application.Tests\AHKFlowApp.Application.Tests.csproj' -Filter 'Category!=Integration'
                 New-TestRun -Project 'tests\AHKFlowApp.CLI.Tests\AHKFlowApp.CLI.Tests.csproj' -Filter 'Category!=Integration'

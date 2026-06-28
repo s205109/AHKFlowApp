@@ -11,6 +11,7 @@ pwsh .\scripts\test-fast.ps1 -Mode Fast
 Fast mode runs:
 
 - `AHKFlowApp.Domain.Tests`
+- `AHKFlowApp.TestUtilities.Tests`
 - `AHKFlowApp.UI.Blazor.Tests`
 - `AHKFlowApp.Application.Tests` filtered to `Category!=Integration`
 - `AHKFlowApp.CLI.Tests` filtered to `Category!=Integration`

@@ -3,16 +3,22 @@ using AHKFlowApp.TestUtilities.Fixtures;
 using FluentAssertions;
 using Xunit;
 
-namespace AHKFlowApp.Domain.Tests.Fixtures;
+namespace AHKFlowApp.TestUtilities.Tests.Fixtures;
 
+[Collection(TestCollections.EnvironmentVariables)]
 public sealed class TestTimingRecorderTests : IDisposable
 {
+    private const string TimingEnabledEnvironmentVariable = "AHKFLOW_TEST_TIMING";
+    private const string TimingDirectoryEnvironmentVariable = "AHKFLOW_TEST_TIMING_DIR";
+
     private readonly string _timingDirectory = Path.Combine(Path.GetTempPath(), $"ahkflow-test-timing-{Guid.NewGuid():N}");
+    private readonly string? _previousTiming = Environment.GetEnvironmentVariable(TimingEnabledEnvironmentVariable);
+    private readonly string? _previousTimingDirectory = Environment.GetEnvironmentVariable(TimingDirectoryEnvironmentVariable);
 
     public void Dispose()
     {
-        Environment.SetEnvironmentVariable("AHKFLOW_TEST_TIMING", null);
-        Environment.SetEnvironmentVariable("AHKFLOW_TEST_TIMING_DIR", null);
+        Environment.SetEnvironmentVariable(TimingEnabledEnvironmentVariable, _previousTiming);
+        Environment.SetEnvironmentVariable(TimingDirectoryEnvironmentVariable, _previousTimingDirectory);
 
         if (Directory.Exists(_timingDirectory))
         {
@@ -24,8 +30,8 @@ public sealed class TestTimingRecorderTests : IDisposable
     public async Task RecordAsync_TimingEnabled_WritesMachineReadableEntry()
     {
         // Arrange
-        Environment.SetEnvironmentVariable("AHKFLOW_TEST_TIMING", "1");
-        Environment.SetEnvironmentVariable("AHKFLOW_TEST_TIMING_DIR", _timingDirectory);
+        Environment.SetEnvironmentVariable(TimingEnabledEnvironmentVariable, "1");
+        Environment.SetEnvironmentVariable(TimingDirectoryEnvironmentVariable, _timingDirectory);
 
         // Act
         await TestTimingRecorder.RecordAsync(
@@ -48,8 +54,8 @@ public sealed class TestTimingRecorderTests : IDisposable
     public async Task RecordAsync_TimingDisabled_DoesNotWriteEntry()
     {
         // Arrange
-        Environment.SetEnvironmentVariable("AHKFLOW_TEST_TIMING", null);
-        Environment.SetEnvironmentVariable("AHKFLOW_TEST_TIMING_DIR", _timingDirectory);
+        Environment.SetEnvironmentVariable(TimingEnabledEnvironmentVariable, null);
+        Environment.SetEnvironmentVariable(TimingDirectoryEnvironmentVariable, _timingDirectory);
 
         // Act
         await TestTimingRecorder.RecordAsync(
