@@ -69,7 +69,9 @@ New: `EntityHistory` (entity + `IEntityTypeConfiguration` + migration).
 | `CapturedAt` | `DateTimeOffset` | When the change occurred (`TimeProvider`) |
 | `SnapshotJson` | `nvarchar(max)` | Serialized aggregate (see below) |
 
-Index: `(OwnerOid, EntityType, EntityId, Version)`.
+Index: **unique** on `(OwnerOid, EntityType, EntityId, Version)` — guarantees
+`history/{version}` is unambiguous even under concurrent writes (see version
+allocation below).
 
 **Snapshot DTOs** (System.Text.Json, one record per entity type, versioned by
 `SchemaVersion`):
@@ -85,7 +87,12 @@ Index: `(OwnerOid, EntityType, EntityId, Version)`.
 
 **`EntityHistoryRecorder`** (Application service; abstraction in
 `Abstractions/`, used by handlers):
-- Computes next `Version` = current max for `(type, id)` + 1.
+- Computes next `Version` = current max for `(type, id)` + 1. The unique index makes
+  a concurrent duplicate a hard failure, not silent corruption: on a duplicate-key
+  `DbUpdateException` against the history index (reuse `IsDuplicateKeyViolation()`),
+  the handler retries the whole operation **once** (re-read max, re-save); if it
+  still collides, return `Result.Conflict`. Single-owner data makes contention
+  near-zero; one retry is enough.
 - Serializes the snapshot DTO, adds an `EntityHistory` row with
   `CapturedAt = clock.GetUtcNow()`.
 - Prunes: if an item exceeds 50 rows, remove the **oldest** (the newest — a `Delete`
@@ -93,21 +100,46 @@ Index: `(OwnerOid, EntityType, EntityId, Version)`.
 - Only **adds** to the tracked `IAppDbContext`; the calling handler owns
   `SaveChangesAsync`, so capture + mutation commit in one transaction.
 
-**Wire capture into existing handlers** (reuse the loaded aggregate — it already has
-`Profiles`/`Categories` in scope):
+**Wire capture into existing handlers:**
 `UpdateHotstringCommand`, `DeleteHotstringCommand`, `BulkDeleteHotstringsCommand`,
 `UpdateHotkeyCommand`, `DeleteHotkeyCommand`, `BulkDeleteHotkeysCommand`.
 
-**New commands/queries** (per entity, matching the codebase's explicit style):
+The update handlers already load `Profiles`/`Categories` via `Include` and can reuse
+the aggregate. The delete and bulk-delete handlers currently load **only the root
+entity** — they must add `.Include(x => x.Profiles).Include(x => x.Categories)`
+(both entities) so tombstone snapshots capture the junction links. Covered by an
+integration test asserting a delete tombstone contains the item's
+`ProfileIds`/`CategoryIds`.
+
+**New commands/queries** (per entity, matching the codebase's explicit style).
+Hotstring and Hotkey get the **full symmetric set** — for every command/query below,
+a `…Hotkey…` twin exists with identical semantics:
 - `GetHotstringHistoryQuery` / `GetHotkeyHistoryQuery` — list version metadata
   (owner-scoped; another user's item → `NotFound`).
-- `GetHotstringHistoryVersionQuery` — full snapshot for preview.
-- `RevertHotstringCommand(id, version)` — snapshot current as an `Edit`, then re-apply
-  the target snapshot via the entity's domain `Update` + rebuild junctions.
+- `GetHotstringHistoryVersionQuery` / `GetHotkeyHistoryVersionQuery` — full snapshot
+  for preview.
+- `RevertHotstringCommand(id, version)` / `RevertHotkeyCommand(id, version)` —
+  snapshot current as an `Edit`, then re-apply the target snapshot via the entity's
+  domain `Update` + rebuild junctions.
 - `ListDeletedHotstringsQuery` / `ListDeletedHotkeysQuery` — Recycle Bin source:
   latest `Delete` tombstone per `EntityId` where no live entity with that Id exists.
-- `RestoreHotstringCommand(id)` — re-create from the tombstone with the **original Id**
-  and links; `Result.Conflict` if a unique index (e.g. trigger) now collides.
+- `RestoreHotstringCommand(id)` / `RestoreHotkeyCommand(id)` — re-create from the
+  tombstone with the **original Id** and links; `Result.Conflict` if a unique index
+  (e.g. trigger) now collides.
+- `PurgeDeletedHotstringCommand(id)` / `PurgeDeletedHotkeyCommand(id)` — Recycle Bin
+  "Delete forever": removes **all** `EntityHistory` rows for `(type, id)`.
+  `NotFound` if no tombstone exists or a live entity with that Id still exists
+  (purge is only valid from the deleted state in v1).
+
+**Missing Profiles/Categories on restore & revert.** Junction FKs cascade, so a
+snapshot may reference Profile/Category Ids that no longer exist. Restore/revert
+must never fail because of them (safety-net first): filter the snapshot's
+`ProfileIds`/`CategoryIds` against the owner's live rows and **silently drop missing
+links**. Edge case: if `AppliesToAllProfiles = false` and *all* snapshot profiles
+are gone, restore/revert still succeeds with zero profile links — the item is inert
+(appears in no generated script) until the user edits it. This intentionally
+bypasses the command validator's "≥1 profile" rule; that rule guards user input, not
+recovery. Both behaviors get integration tests.
 
 **Domain additions:** `Hotstring.Restore(...)` / `Hotkey.Restore(...)` factories that
 accept the original `Id` and `CreatedAt` (current `Create` generates a new Guid). Set
@@ -123,7 +155,10 @@ GET  api/v1/hotstrings/{id}/history/{version}       -> full snapshot (preview)
 POST api/v1/hotstrings/{id}/history/{version}/revert -> revert; returns updated DTO
 GET  api/v1/hotstrings/deleted                      -> Recycle Bin list
 POST api/v1/hotstrings/{id}/restore                 -> restore; returns restored DTO
+DELETE api/v1/hotstrings/deleted/{id}               -> purge ("Delete forever"); 204
 ```
+
+Same six routes on `api/v1/hotkeys`.
 
 Thin actions: `mediator.Send(...)` → `ToProblemActionResult(this)`, as elsewhere.
 
@@ -134,7 +169,8 @@ Thin actions: `mediator.Send(...)` → `ToProblemActionResult(this)`, as elsewhe
   read-only preview + **"Revert to this version"** (confirm).
 - **Recycle Bin page** (`RecycleBin.razor`, new nav entry): combined list of deleted
   hotstrings and hotkeys with a type column; each row has **Restore** and
-  **Delete forever** (permanent purge). Restore surfaces conflict messages.
+  **Delete forever** (calls the purge endpoint after a confirm dialog). Restore
+  surfaces conflict messages.
 - **Soften delete copy:** replace *"This cannot be undone."* in the delete-confirm
   dialogs with *"You can restore this from the Recycle Bin."*
 - New API-client methods on the existing typed clients.
@@ -144,12 +180,16 @@ Thin actions: `mediator.Send(...)` → `ToProblemActionResult(this)`, as elsewhe
 - **Domain:** `Restore` factories set `Id`/`CreatedAt` correctly.
 - **Application/integration (Testcontainers):** update writes a correct before-image;
   revert restores prior fields **and** junction links and writes a new before-image;
-  delete writes a tombstone and removes the row; restore re-inserts with original Id +
-  links; duplicate trigger → `Conflict`; pruning caps at 50.
-- **API (WebApplicationFactory):** history/revert/restore endpoints; owner scoping
-  (another user's history → `NotFound`); auth.
+  delete/bulk-delete write tombstones that **include `ProfileIds`/`CategoryIds`** and
+  remove the rows; restore re-inserts with original Id + links; duplicate trigger →
+  `Conflict`; restore/revert with deleted Profile/Category Ids drops the missing
+  links (incl. the all-profiles-gone → zero-links case); purge removes all history
+  rows and returns `NotFound` for live or unknown items; pruning caps at 50; unique
+  version index rejects duplicate `(type, id, version)`.
+- **API (WebApplicationFactory):** history/revert/restore/purge endpoints; owner
+  scoping (another user's history → `NotFound`); auth.
 - **bUnit:** history dialog renders versions and calls revert; Recycle Bin renders and
-  calls restore.
+  calls restore + purge (with confirm).
 
 ## Migration
 
@@ -165,6 +205,8 @@ tables (no soft-delete columns, no query-filter changes). Low-risk, additive.
    with the same content; delete dialog now points to the Recycle Bin.
 4. Repeat for a hotkey (modifiers + action preserved through revert/restore).
 5. Restore into a colliding trigger → clear conflict message.
+6. Delete a hotstring, **Delete forever** in Recycle Bin → gone from the bin and no
+   history rows remain.
 
 ## Extensibility (explicitly deferred)
 
@@ -180,3 +222,6 @@ tables (no soft-delete columns, no query-filter changes). Low-risk, additive.
 - CLI history/restore verbs in v1, or defer? (Recommend: defer.)
 - Restore always uses the latest pre-delete state; older-version revert is live-items
   only — OK? (Recommend: yes.)
+- Silently dropping missing Profile/Category links on restore/revert — OK, or should
+  the restore response/UI mention how many links were dropped? (Recommend: silent in
+  v1; snackbar note is a cheap follow-up.)
