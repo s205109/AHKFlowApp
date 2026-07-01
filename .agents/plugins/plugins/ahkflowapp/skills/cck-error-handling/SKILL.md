@@ -8,7 +8,7 @@ description: Use when mapping AHKFlowApp errors, Ardalis.Result outcomes, valida
 ## Core Principles
 
 1. **Ardalis.Result for expected failures** — Handlers return `Result<T>`. Never throw exceptions for not-found, validation, or conflict. These are expected outcomes.
-2. **FluentValidation in MediatR pipeline** — `ValidationBehavior<TRequest, TResponse>` runs before every handler. Handlers never receive invalid requests.
+2. **FluentValidation in ValidatingUseCase** — `ValidatingUseCase<TRequest, TResult>` runs before every handler. Handlers never receive invalid requests.
 3. **Controllers map via `result.ToActionResult(this)`** — From `Ardalis.Result.AspNetCore`. No manual if/else status code mapping.
 4. **Every API error returns ProblemDetails** — RFC 9457. `GlobalExceptionMiddleware` handles unhandled exceptions.
 5. **Reserve exceptions for unexpected failures** — Infrastructure errors, null reference bugs, network timeouts. These propagate to the global handler.
@@ -22,9 +22,9 @@ Use typed factory methods: `Result.Success(value)`, `Result.NotFound()`, `Result
 ```csharp
 // Application/Queries/GetHotstringHandler.cs
 internal sealed class GetHotstringHandler(AppDbContext db)
-    : IRequestHandler<GetHotstringQuery, Result<HotstringDto>>
+    : IUseCaseHandler<GetHotstringQuery, Result<HotstringDto>>
 {
-    public async Task<Result<HotstringDto>> Handle(
+    public async Task<Result<HotstringDto>> ExecuteAsync(
         GetHotstringQuery request, CancellationToken ct)
     {
         var entity = await db.Hotstrings.FindAsync([request.Id], ct);
@@ -38,9 +38,9 @@ internal sealed class GetHotstringHandler(AppDbContext db)
 ```csharp
 // Application/Commands/CreateHotstringHandler.cs
 internal sealed class CreateHotstringHandler(AppDbContext db)
-    : IRequestHandler<CreateHotstringCommand, Result<HotstringDto>>
+    : IUseCaseHandler<CreateHotstringCommand, Result<HotstringDto>>
 {
-    public async Task<Result<HotstringDto>> Handle(
+    public async Task<Result<HotstringDto>> ExecuteAsync(
         CreateHotstringCommand request, CancellationToken ct)
     {
         var exists = await db.Hotstrings.AnyAsync(h => h.Trigger == request.Trigger, ct);
@@ -60,14 +60,16 @@ internal sealed class CreateHotstringHandler(AppDbContext db)
 // API/Controllers/HotstringsController.cs
 [ApiController]
 [Route("api/v1/[controller]")]
-public sealed class HotstringsController(IMediator mediator) : ControllerBase
+public sealed class HotstringsController(
+    IUseCase<GetHotstringQuery, Result<HotstringDto>> getHotstring)
+    : ControllerBase
 {
     [HttpGet("{id:int}")]
     [ProducesResponseType<HotstringDto>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(int id, CancellationToken ct)
     {
-        var result = await mediator.Send(new GetHotstringQuery(id), ct);
+        var result = await getHotstring.ExecuteAsync(new GetHotstringQuery(id), ct);
         return result.ToActionResult(this);  // maps Result status to HTTP automatically
     }
 }
@@ -80,22 +82,21 @@ public sealed class HotstringsController(IMediator mediator) : ControllerBase
 - `Result.Conflict()` → 409
 - `Result.Error()` → 500
 
-### MediatR ValidationBehavior Pipeline
+### ValidatingUseCase Pipeline
 
 ```csharp
-// Application/Behaviors/ValidationBehavior.cs
-public sealed class ValidationBehavior<TRequest, TResponse>(
-    IEnumerable<IValidator<TRequest>> validators)
-    : IPipelineBehavior<TRequest, TResponse>
-    where TRequest : IRequest<TResponse>
-    where TResponse : Ardalis.Result.IResult
+// Application/Behaviors/ValidatingUseCase.cs
+internal sealed class ValidatingUseCase<TRequest, TResult>(
+    IEnumerable<IValidator<TRequest>> validators,
+    IUseCaseHandler<TRequest, TResult> inner)
+    : IUseCase<TRequest, TResult>
+    where TRequest : notnull
 {
-    public async Task<TResponse> Handle(
+    public async Task<TResult> ExecuteAsync(
         TRequest request,
-        RequestHandlerDelegate<TResponse> next,
         CancellationToken ct)
     {
-        if (!validators.Any()) return await next();
+        if (!validators.Any()) return await inner.ExecuteAsync(request, ct);
 
         var context = new ValidationContext<TRequest>(request);
         var failures = (await Task.WhenAll(
@@ -105,13 +106,9 @@ public sealed class ValidationBehavior<TRequest, TResponse>(
             .ToList();
 
         if (failures.Count != 0)
-        {
-            var errors = failures.Select(f =>
-                new ValidationError(f.PropertyName, f.ErrorMessage, f.ErrorCode, ValidationSeverity.Error));
-            return (dynamic)Result.Invalid(errors.ToList());
-        }
+            throw new ValidationException(failures);
 
-        return await next();
+        return await inner.ExecuteAsync(request, ct);
     }
 }
 ```
@@ -119,12 +116,9 @@ public sealed class ValidationBehavior<TRequest, TResponse>(
 Register in DI:
 
 ```csharp
-// Program.cs or DI extension
-services.AddMediatR(cfg =>
-{
-    cfg.RegisterServicesFromAssembly(typeof(CreateHotstringCommand).Assembly);
-    cfg.AddBehavior(typeof(IPipelineBehavior<,>), typeof(ValidationBehavior<,>));
-});
+// Application DependencyInjection.cs
+services.AddScoped(typeof(IUseCase<,>), typeof(ValidatingUseCase<,>));
+services.AddUseCase<CreateHotstringCommand, Result<HotstringDto>, CreateHotstringCommandHandler>();
 services.AddValidatorsFromAssembly(typeof(CreateHotstringValidator).Assembly);
 ```
 
@@ -209,15 +203,15 @@ public class Result<T>
 group.MapPost("/", CreateHotstring)
     .AddEndpointFilter<ValidationFilter<CreateHotstringCommand>>();
 
-// GOOD — FluentValidation as MediatR IPipelineBehavior
-// ValidationBehavior<TRequest, TResponse> runs automatically for all commands/queries
+// GOOD — FluentValidation through ValidatingUseCase<TRequest, TResult>
+// ValidatingUseCase<TRequest, TResult> runs automatically for all registered commands/queries
 ```
 
 ### Don't Manually Map Result to HTTP
 
 ```csharp
 // BAD — manual if/else status code mapping
-var result = await mediator.Send(command, ct);
+var result = await createHotstring.ExecuteAsync(command, ct);
 if (result.IsSuccess) return Ok(result.Value);
 if (result.Status == ResultStatus.NotFound) return NotFound();
 return BadRequest();
@@ -269,9 +263,9 @@ catch (ExternalApiException ex)
 | Scenario | Approach |
 |---|---|
 | Entity not found | `Result.NotFound()` |
-| Input invalid | `Result.Invalid(errors)` — via ValidationBehavior pipeline |
+| Input invalid | `Result.Invalid(errors)` from handlers, or `ValidationException` through ValidatingUseCase |
 | Duplicate / conflict | `Result.Conflict()` |
 | External service failure | Catch specific exception, return `Result.Error()` |
 | Unhandled crash | `GlobalExceptionMiddleware` → ProblemDetails 500 |
 | Controller HTTP mapping | `result.ToActionResult(this)` — always |
-| Validation runs where | MediatR `IPipelineBehavior` — before handler, never in handler |
+| Validation runs where | `ValidatingUseCase<TRequest, TResult>` — before handler, never in handler |

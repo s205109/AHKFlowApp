@@ -7,7 +7,7 @@ description: Use when adding or fixing AHKFlowApp tests with xUnit, WebApplicati
 
 ## Core Principles
 
-1. **Integration tests are highest-value** — A single `WebApplicationFactory` test covers routing, binding, MediatR pipeline, FluentValidation, handler, and SQL Server persistence in one shot.
+1. **Integration tests are highest-value** — A single `WebApplicationFactory` test covers routing, binding, the validating use-case decorator, handler, and SQL Server persistence in one shot.
 2. **SQL Server Testcontainers — never in-memory** — Use `MsSqlContainer` from `Testcontainers.MsSql`. In-memory providers hide real SQL Server behavior (transactions, constraints, retry logic).
 3. **AAA pattern is mandatory** — Every test: Arrange, Act, Assert — separated by blank lines.
 4. **Test behavior, not implementation** — Assert on HTTP responses, database state, and `Result` status. Not which internal methods were called.
@@ -112,7 +112,7 @@ public sealed class HotstringsEndpointsTests(SqlContainerFixture sqlFixture) : I
 }
 ```
 
-### MediatR Handler Unit Test
+### Use-Case Handler Unit Test
 
 Test the handler directly with a real (Testcontainers) database. Assert on `Result` status.
 
@@ -147,7 +147,7 @@ public sealed class CreateHotstringHandlerTests : IAsyncLifetime
         var command = new CreateHotstringCommand("btw", "by the way");
 
         // Act
-        var result = await handler.Handle(command, CancellationToken.None);
+        var result = await handler.ExecuteAsync(command, CancellationToken.None);
 
         // Assert
         result.IsSuccess.Should().BeTrue();
@@ -161,10 +161,10 @@ public sealed class CreateHotstringHandlerTests : IAsyncLifetime
         // Arrange
         var handler = new CreateHotstringHandler(_db);
         var command = new CreateHotstringCommand("btw", "by the way");
-        await handler.Handle(command, CancellationToken.None);
+        await handler.ExecuteAsync(command, CancellationToken.None);
 
         // Act
-        var result = await handler.Handle(command, CancellationToken.None);
+        var result = await handler.ExecuteAsync(command, CancellationToken.None);
 
         // Assert
         result.IsSuccess.Should().BeFalse();
@@ -258,7 +258,7 @@ public async Task Handle_SetsCreatedAt()
     var command = new CreateHotstringCommand("btw", "by the way");
 
     // Act
-    var result = await handler.Handle(command, CancellationToken.None);
+    var result = await handler.ExecuteAsync(command, CancellationToken.None);
 
     // Assert
     result.IsSuccess.Should().BeTrue();
@@ -307,7 +307,8 @@ var db = new AppDbContext(options);
 
 ```csharp
 // BAD — verifying method calls
-mockMediator.Received(1).Send(Arg.Any<CreateHotstringCommand>(), Arg.Any<CancellationToken>());
+mockCreateHotstringUseCase.Received(1)
+    .ExecuteAsync(Arg.Any<CreateHotstringCommand>(), Arg.Any<CancellationToken>());
 
 // GOOD — assert on observable outcome
 response.StatusCode.Should().Be(HttpStatusCode.Created);

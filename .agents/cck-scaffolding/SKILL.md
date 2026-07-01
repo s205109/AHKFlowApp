@@ -7,7 +7,7 @@ description: Use when scaffolding an AHKFlowApp feature, endpoint, entity, DTO, 
 
 ## Core Principles
 
-1. **Architecture is fixed** — AHKFlowApp uses Clean Architecture with controller-based APIs, MediatR, Ardalis.Result, and layer folders. Never scaffold Minimal APIs, IEndpointGroup, feature folders, or repository pattern.
+1. **Architecture is fixed** — AHKFlowApp uses Clean Architecture with controller-based APIs, explicit use cases, Ardalis.Result, and layer folders. Never scaffold Minimal APIs, IEndpointGroup, feature folders, or repository pattern.
 2. **Complete feature slices** — A scaffold includes controller action, command/query + handler, validator, DTOs, EF configuration, and integration test as one unit.
 3. **Tests included by default** — Every scaffolded feature includes at least one integration test using `WebApplicationFactory` + Testcontainers (SQL Server). Skip only if explicitly told to.
 4. **Modern C# patterns** — Primary constructors, records for DTOs/commands/queries, `sealed` on handlers, file-scoped namespaces.
@@ -19,9 +19,9 @@ Every scaffolded feature MUST include ALL of the following. Do not skip any item
 - [ ] **Result pattern** — Handlers return `Result<T>` (Ardalis.Result). Controllers call `result.ToActionResult(this)`.
 - [ ] **CancellationToken** on every async method, passed to every async call
 - [ ] **FluentValidation** validator class with meaningful rules (ranges, required fields, max lengths)
-- [ ] **FluentValidation runs in MediatR pipeline** — NOT in controller, NOT as endpoint filter
+- [ ] **FluentValidation runs in ValidatingUseCase** — NOT in controller, NOT as endpoint filter
 - [ ] **[ProducesResponseType]** on every controller action
-- [ ] **Controller uses IMediator.Send()** and maps result via `result.ToActionResult(this)`
+- [ ] **Controller uses IUseCase<TRequest, TResult>.ExecuteAsync()** and maps result via `result.ToActionResult(this)`
 - [ ] **Global error handler** — Verify `GlobalExceptionMiddleware` exists in Program.cs; scaffold if missing
 - [ ] **Integration test** with proper DI replacement using `services.RemoveAll<DbContextOptions<T>>()`
 - [ ] **Layer folders** — Commands/ for commands + handlers, Queries/ for queries + handlers, DTOs/ for records
@@ -34,13 +34,13 @@ Every scaffolded feature MUST include ALL of the following. Do not skip any item
 src/Backend/
   AHKFlowApp.Application/
     Commands/
-      CreateHotstringCommand.cs      # record : IRequest<Result<HotstringDto>>
+      CreateHotstringCommand.cs      # request record
       CreateHotstringHandler.cs      # internal sealed class
       CreateHotstringValidator.cs    # AbstractValidator<CreateHotstringCommand>
     Queries/
-      GetHotstringQuery.cs           # record : IRequest<Result<HotstringDto>>
+      GetHotstringQuery.cs           # request record
       GetHotstringHandler.cs
-      ListHotstringQuery.cs
+      ListHotstringsQuery.cs
       ListHotstringHandler.cs
     DTOs/
       HotstringDto.cs                # sealed record
@@ -57,8 +57,7 @@ src/Backend/
 // Application/Commands/CreateHotstringCommand.cs
 namespace AHKFlowApp.Application.Commands;
 
-public sealed record CreateHotstringCommand(string Trigger, string Replacement)
-    : IRequest<Result<HotstringDto>>;
+public sealed record CreateHotstringCommand(string Trigger, string Replacement);
 ```
 
 ```csharp
@@ -66,9 +65,9 @@ public sealed record CreateHotstringCommand(string Trigger, string Replacement)
 namespace AHKFlowApp.Application.Commands;
 
 internal sealed class CreateHotstringHandler(AppDbContext db)
-    : IRequestHandler<CreateHotstringCommand, Result<HotstringDto>>
+    : IUseCaseHandler<CreateHotstringCommand, Result<HotstringDto>>
 {
-    public async Task<Result<HotstringDto>> Handle(
+    public async Task<Result<HotstringDto>> ExecuteAsync(
         CreateHotstringCommand request, CancellationToken ct)
     {
         var hotstring = new Hotstring { Trigger = request.Trigger, Replacement = request.Replacement };
@@ -101,7 +100,7 @@ public sealed class CreateHotstringValidator : AbstractValidator<CreateHotstring
 // Application/Queries/GetHotstringQuery.cs
 namespace AHKFlowApp.Application.Queries;
 
-public sealed record GetHotstringQuery(int Id) : IRequest<Result<HotstringDto>>;
+public sealed record GetHotstringQuery(int Id);
 ```
 
 ```csharp
@@ -109,9 +108,9 @@ public sealed record GetHotstringQuery(int Id) : IRequest<Result<HotstringDto>>;
 namespace AHKFlowApp.Application.Queries;
 
 internal sealed class GetHotstringHandler(AppDbContext db)
-    : IRequestHandler<GetHotstringQuery, Result<HotstringDto>>
+    : IUseCaseHandler<GetHotstringQuery, Result<HotstringDto>>
 {
-    public async Task<Result<HotstringDto>> Handle(
+    public async Task<Result<HotstringDto>> ExecuteAsync(
         GetHotstringQuery request, CancellationToken ct)
     {
         var entity = await db.Hotstrings.FindAsync([request.Id], ct);
@@ -130,14 +129,18 @@ namespace AHKFlowApp.API.Controllers;
 
 [ApiController]
 [Route("api/v1/[controller]")]
-public sealed class HotstringsController(IMediator mediator) : ControllerBase
+public sealed class HotstringsController(
+    IUseCase<CreateHotstringCommand, Result<HotstringDto>> createHotstring,
+    IUseCase<GetHotstringQuery, Result<HotstringDto>> getHotstring,
+    IUseCase<ListHotstringsQuery, Result<IReadOnlyList<HotstringDto>>> listHotstrings)
+    : ControllerBase
 {
     [HttpPost]
     [ProducesResponseType<HotstringDto>(StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Create(CreateHotstringDto dto, CancellationToken ct)
     {
-        var result = await mediator.Send(new CreateHotstringCommand(dto.Trigger, dto.Replacement), ct);
+        var result = await createHotstring.ExecuteAsync(new CreateHotstringCommand(dto.Trigger, dto.Replacement), ct);
         return result.ToActionResult(this);
     }
 
@@ -146,7 +149,7 @@ public sealed class HotstringsController(IMediator mediator) : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(int id, CancellationToken ct)
     {
-        var result = await mediator.Send(new GetHotstringQuery(id), ct);
+        var result = await getHotstring.ExecuteAsync(new GetHotstringQuery(id), ct);
         return result.ToActionResult(this);
     }
 
@@ -154,7 +157,7 @@ public sealed class HotstringsController(IMediator mediator) : ControllerBase
     [ProducesResponseType<IReadOnlyList<HotstringDto>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> List(CancellationToken ct)
     {
-        var result = await mediator.Send(new ListHotstringQuery(), ct);
+        var result = await listHotstrings.ExecuteAsync(new ListHotstringsQuery(), ct);
         return result.ToActionResult(this);
     }
 }
@@ -304,18 +307,20 @@ public sealed class HotstringEndpoints : IEndpointGroup
 // GOOD — controller with [ApiController]
 [ApiController]
 [Route("api/v1/[controller]")]
-public sealed class HotstringsController(IMediator mediator) : ControllerBase { }
+public sealed class HotstringsController(
+    IUseCase<ListHotstringsQuery, Result<PagedList<HotstringDto>>> listHotstrings)
+    : ControllerBase { }
 ```
 
-### No ValidationFilter — Use MediatR Pipeline
+### No ValidationFilter — Use ValidatingUseCase
 
 ```csharp
 // BAD — validation in endpoint filter
 group.MapPost("/", CreateHotstring)
     .AddEndpointFilter<ValidationFilter<CreateHotstringCommand>>();
 
-// GOOD — FluentValidation registered as MediatR IPipelineBehavior
-// ValidationBehavior<TRequest, TResponse> runs before every handler automatically
+// GOOD — FluentValidation registered through ValidatingUseCase<TRequest, TResult>
+// ValidatingUseCase<TRequest, TResult> runs before every handler automatically
 ```
 
 ### No Repository Pattern
@@ -325,7 +330,7 @@ group.MapPost("/", CreateHotstring)
 public interface IHotstringRepository { Task<Hotstring?> GetByIdAsync(int id); }
 
 // GOOD — handler injects DbContext directly
-internal sealed class GetHotstringHandler(AppDbContext db) : IRequestHandler<...>
+internal sealed class GetHotstringHandler(AppDbContext db) : IUseCaseHandler<...>
 ```
 
 ### No Feature Folders
@@ -355,7 +360,7 @@ internal sealed class HotstringConfiguration : IEntityTypeConfiguration<Hotstrin
 |---|---|
 | New CRUD endpoint | Controller action + Command/Query + Handler + Validator + DTO |
 | New entity | Entity class + `IEntityTypeConfiguration<T>` + migration |
-| Validation | AbstractValidator<TCommand>, registered as MediatR IPipelineBehavior |
+| Validation | AbstractValidator<TCommand>, registered through ValidatingUseCase<TRequest, TResult> |
 | Error result | `Result.NotFound()`, `Result.Invalid()`, `Result.Conflict()` — Ardalis.Result |
 | HTTP mapping | `result.ToActionResult(this)` in controller — never manual if/else |
 | Integration test | WebApplicationFactory + MsSqlContainer (Testcontainers) |

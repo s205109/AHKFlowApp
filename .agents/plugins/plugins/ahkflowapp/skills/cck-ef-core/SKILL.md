@@ -64,9 +64,9 @@ internal sealed class HotstringConfiguration : IEntityTypeConfiguration<Hotstrin
 ```csharp
 // Application/Queries/GetHotstringHandler.cs — DO inject DbContext directly
 internal sealed class GetHotstringHandler(AppDbContext db)
-    : IRequestHandler<GetHotstringQuery, Result<HotstringDto>>
+    : IUseCaseHandler<GetHotstringQuery, Result<HotstringDto>>
 {
-    public async Task<Result<HotstringDto>> Handle(
+    public async Task<Result<HotstringDto>> ExecuteAsync(
         GetHotstringQuery request, CancellationToken ct)
     {
         var entity = await db.Hotstrings.FindAsync([request.Id], ct);
