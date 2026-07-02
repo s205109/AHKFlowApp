@@ -55,6 +55,11 @@ builder.Services.AddHttpClient(RequireApiConnectivity.ProbeClientName, client =>
     client.BaseAddress = new Uri(probeBaseUrl.EndsWith('/') ? probeBaseUrl : probeBaseUrl + "/");
     client.Timeout = TimeSpan.FromSeconds(3);
 });
+builder.Services.AddHttpClient<IChangelogClient, ChangelogClient>(client =>
+{
+    client.BaseAddress = new Uri(builder.HostEnvironment.BaseAddress);
+    client.Timeout = TimeSpan.FromSeconds(10);
+}).AddStandardResilienceHandler();
 
 void AddApiClient<TInterface, TImpl>(
     Uri baseAddress,
