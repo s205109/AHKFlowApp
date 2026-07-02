@@ -567,7 +567,7 @@
 
         bool? confirm = await DialogService.ShowMessageBoxAsync(
             title: "Delete hotkey?",
-            message: $"Delete \"{item.Description}\"? This cannot be undone.",
+            message: $"Delete \"{item.Description}\"? You can restore it from the Recycle Bin.",
             yesText: "Delete", cancelText: "Cancel");
         if (confirm != true) return;
 
@@ -622,7 +622,7 @@
 
         bool? confirm = await DialogService.ShowMessageBoxAsync(
             title: "Delete hotkeys?",
-            message: $"Delete {ids.Length} hotkey(s)? This cannot be undone.",
+            message: $"Delete {ids.Length} hotkey(s)? You can restore them from the Recycle Bin.",
             yesText: "Delete", cancelText: "Cancel");
         if (confirm != true)
             return;
@@ -751,7 +751,7 @@
 
         bool? confirm = await DialogService.ShowMessageBoxAsync(
             title: "Delete hotkeys?",
-            message: $"Delete {ids.Count} hotkey(s)? This cannot be undone.",
+            message: $"Delete {ids.Count} hotkey(s)? You can restore them from the Recycle Bin.",
             yesText: "Delete", cancelText: "Cancel");
         if (confirm != true) return;
 
