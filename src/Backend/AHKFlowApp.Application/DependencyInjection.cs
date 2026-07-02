@@ -1,3 +1,4 @@
+using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.Behaviors;
 using AHKFlowApp.Application.Services;
 using FluentValidation;
@@ -20,6 +21,7 @@ public static class DependencyInjection
         services.AddSingleton<HeaderTokenRenderer>();
         services.AddSingleton<AhkScriptGenerator>();
         services.AddScoped<ProfileScriptLoader>();
+        services.AddScoped<IEntityHistoryRecorder, EntityHistoryRecorder>();
 
         return services;
     }
