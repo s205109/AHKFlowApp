@@ -4,6 +4,7 @@ using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Mapping;
 using AHKFlowApp.Application.Validation;
 using AHKFlowApp.Domain.Entities;
+using AHKFlowApp.Domain.Enums;
 using Ardalis.Result;
 using FluentValidation;
 using MediatR;
@@ -31,7 +32,8 @@ public sealed class UpdateHotstringCommandValidator : AbstractValidator<UpdateHo
 internal sealed class UpdateHotstringCommandHandler(
     IAppDbContext db,
     ICurrentUser currentUser,
-    TimeProvider clock)
+    TimeProvider clock,
+    IEntityHistoryRecorder recorder)
     : IRequestHandler<UpdateHotstringCommand, Result<HotstringDto>>
 {
     public async Task<Result<HotstringDto>> Handle(UpdateHotstringCommand request, CancellationToken ct)
@@ -77,6 +79,8 @@ internal sealed class UpdateHotstringCommandHandler(
                 });
         }
 
+        EntityHistory historyEntry = await recorder.RecordHotstringAsync(entity, HistoryChangeType.Edit, ct);
+
         entity.Update(
             input.Trigger,
             input.Replacement,
@@ -108,11 +112,13 @@ internal sealed class UpdateHotstringCommandHandler(
 
         try
         {
-            await db.SaveChangesAsync(ct);
+            await db.SaveWithHistoryRetryAsync(historyEntry, ct);
         }
         catch (DbUpdateException ex) when (ex.IsDuplicateKeyViolation())
         {
-            return Result.Conflict("A hotstring with this trigger already exists.");
+            return ex.IsHistoryVersionConflict()
+                ? Result.Conflict("The item was modified concurrently. Retry the operation.")
+                : Result.Conflict("A hotstring with this trigger already exists.");
         }
 
         return Result.Success(entity.ToDto());

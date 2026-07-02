@@ -56,6 +56,27 @@ public sealed class HotstringsApiClient(HttpClient httpClient) : ApiClientBase(h
             JsonContent.Create(new { ids }),
             ct);
 
+    public Task<ApiResult<HistoryEntryDto[]>> GetHistoryAsync(Guid id, CancellationToken ct = default) =>
+        SendAsync<HistoryEntryDto[]>(HttpMethod.Get, $"{BasePath}/{id}/history", content: null, ct);
+
+    public Task<ApiResult<HotstringHistoryVersionDto>> GetHistoryVersionAsync(
+        Guid id,
+        int version,
+        CancellationToken ct = default) =>
+        SendAsync<HotstringHistoryVersionDto>(HttpMethod.Get, $"{BasePath}/{id}/history/{version}", content: null, ct);
+
+    public Task<ApiResult<HotstringDto>> RevertAsync(Guid id, int version, CancellationToken ct = default) =>
+        SendAsync<HotstringDto>(HttpMethod.Post, $"{BasePath}/{id}/history/{version}/revert", content: null, ct);
+
+    public Task<ApiResult<DeletedHotstringDto[]>> ListDeletedAsync(CancellationToken ct = default) =>
+        SendAsync<DeletedHotstringDto[]>(HttpMethod.Get, $"{BasePath}/deleted", content: null, ct);
+
+    public Task<ApiResult<HotstringDto>> RestoreAsync(Guid id, CancellationToken ct = default) =>
+        SendAsync<HotstringDto>(HttpMethod.Post, $"{BasePath}/{id}/restore", content: null, ct);
+
+    public Task<ApiResult> PurgeDeletedAsync(Guid id, CancellationToken ct = default) =>
+        SendNoContentAsync(HttpMethod.Delete, $"{BasePath}/deleted/{id}", ct);
+
     private static void Add(List<string> parts, string key, string? value)
     {
         if (!string.IsNullOrWhiteSpace(value)) parts.Add($"{key}={Uri.EscapeDataString(value)}");

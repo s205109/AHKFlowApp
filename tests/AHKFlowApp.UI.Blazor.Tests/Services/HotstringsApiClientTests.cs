@@ -113,12 +113,76 @@ public sealed class HotstringsApiClientTests
         result.Status.Should().Be(ApiResultStatus.Validation);
     }
 
+    [Fact]
+    public async Task GetHistoryAsync_OnSuccess_ReturnsEntries()
+    {
+        HistoryEntryDto[] entries = [new(1, HistoryChangeType.Edit, DateTimeOffset.UtcNow)];
+        var handler = StubHttpMessageHandler.JsonResponse(HttpStatusCode.OK, entries);
+        var id = Guid.NewGuid();
+
+        ApiResult<HistoryEntryDto[]> result = await ClientWith(handler).GetHistoryAsync(id);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().ContainSingle();
+        handler.LastRequest!.RequestUri!.AbsolutePath.Should().Be($"/api/v1/hotstrings/{id}/history");
+    }
+
+    [Fact]
+    public async Task RevertAsync_PostsToRevertRoute()
+    {
+        HotstringDto dto = new(
+            Guid.NewGuid(),
+            [],
+            true,
+            "btw",
+            "by the way",
+            null,
+            true,
+            true,
+            DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow,
+            []);
+        var handler = StubHttpMessageHandler.JsonResponse(HttpStatusCode.OK, dto);
+
+        ApiResult<HotstringDto> result = await ClientWith(handler).RevertAsync(dto.Id, 2);
+
+        result.IsSuccess.Should().BeTrue();
+        handler.LastRequest!.Method.Should().Be(HttpMethod.Post);
+        handler.LastRequest.RequestUri!.AbsolutePath.Should().Be($"/api/v1/hotstrings/{dto.Id}/history/2/revert");
+    }
+
+    [Fact]
+    public async Task ListDeletedAsync_GetsDeletedRoute()
+    {
+        DeletedHotstringDto[] deleted = [new(Guid.NewGuid(), "btw", "by the way", null, DateTimeOffset.UtcNow)];
+        var handler = StubHttpMessageHandler.JsonResponse(HttpStatusCode.OK, deleted);
+
+        ApiResult<DeletedHotstringDto[]> result = await ClientWith(handler).ListDeletedAsync();
+
+        result.IsSuccess.Should().BeTrue();
+        handler.LastRequest!.RequestUri!.AbsolutePath.Should().Be("/api/v1/hotstrings/deleted");
+    }
+
+    [Fact]
+    public async Task PurgeDeletedAsync_SendsDeleteToDeletedRoute()
+    {
+        var handler = StubHttpMessageHandler.StatusResponse(HttpStatusCode.NoContent);
+        var id = Guid.NewGuid();
+
+        ApiResult result = await ClientWith(handler).PurgeDeletedAsync(id);
+
+        result.IsSuccess.Should().BeTrue();
+        handler.LastRequest!.Method.Should().Be(HttpMethod.Delete);
+        handler.LastRequest.RequestUri!.AbsolutePath.Should().Be($"/api/v1/hotstrings/deleted/{id}");
+    }
+
     private sealed class StubHttpMessageHandler : HttpMessageHandler
     {
         public HttpRequestMessage? LastRequest { get; private set; }
         private readonly HttpResponseMessage _response;
         private StubHttpMessageHandler(HttpResponseMessage response) => _response = response;
         public static StubHttpMessageHandler JsonResponse<T>(HttpStatusCode status, T body) => new(new HttpResponseMessage(status) { Content = JsonContent.Create(body) });
+        public static StubHttpMessageHandler StatusResponse(HttpStatusCode status) => new(new HttpResponseMessage(status));
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) { LastRequest = request; return Task.FromResult(_response); }
     }
 }

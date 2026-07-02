@@ -100,4 +100,53 @@ public sealed class HotstringsController(IMediator mediator) : ControllerBase
         Result result = await mediator.Send(new DeleteHotstringCommand(id), ct);
         return result.IsSuccess ? NoContent() : result.ToProblemActionResult(this);
     }
+
+    /// <summary>List saved versions of a hotstring, newest first.</summary>
+    [HttpGet("{id:guid}/history")]
+    [ProducesResponseType(typeof(HistoryEntryDto[]), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<HistoryEntryDto[]>> GetHistory(Guid id, CancellationToken ct) =>
+        (await mediator.Send(new GetHotstringHistoryQuery(id), ct)).ToProblemActionResult(this);
+
+    /// <summary>Get one saved version of a hotstring, including its snapshot.</summary>
+    [HttpGet("{id:guid}/history/{version:int}")]
+    [ProducesResponseType(typeof(HotstringHistoryVersionDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<HotstringHistoryVersionDto>> GetHistoryVersion(
+        Guid id,
+        int version,
+        CancellationToken ct) =>
+        (await mediator.Send(new GetHotstringHistoryVersionQuery(id, version), ct)).ToProblemActionResult(this);
+
+    /// <summary>Revert a hotstring to a saved version. Returns the updated representation.</summary>
+    [HttpPost("{id:guid}/history/{version:int}/revert")]
+    [ProducesResponseType(typeof(HotstringDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<HotstringDto>> Revert(Guid id, int version, CancellationToken ct) =>
+        (await mediator.Send(new RevertHotstringCommand(id, version), ct)).ToProblemActionResult(this);
+
+    /// <summary>List deleted hotstrings that can be restored from the Recycle Bin.</summary>
+    [HttpGet("deleted")]
+    [ProducesResponseType(typeof(DeletedHotstringDto[]), StatusCodes.Status200OK)]
+    public async Task<ActionResult<DeletedHotstringDto[]>> ListDeleted(CancellationToken ct) =>
+        (await mediator.Send(new ListDeletedHotstringsQuery(), ct)).ToProblemActionResult(this);
+
+    /// <summary>Restore a deleted hotstring with its original id and links.</summary>
+    [HttpPost("{id:guid}/restore")]
+    [ProducesResponseType(typeof(HotstringDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<HotstringDto>> Restore(Guid id, CancellationToken ct) =>
+        (await mediator.Send(new RestoreHotstringCommand(id), ct)).ToProblemActionResult(this);
+
+    /// <summary>Permanently remove a deleted hotstring's history.</summary>
+    [HttpDelete("deleted/{id:guid}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult> Purge(Guid id, CancellationToken ct)
+    {
+        Result result = await mediator.Send(new PurgeDeletedHotstringCommand(id), ct);
+        return result.IsSuccess ? NoContent() : result.ToProblemActionResult(this);
+    }
 }
