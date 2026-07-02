@@ -29,7 +29,7 @@ public sealed class DeleteProfileCommandHandlerTests(ProfileDbFixture fx)
         user.Oid.Returns(_ownerOid);
         var sut = new DeleteProfileCommandHandler(ctx, user);
 
-        Result result = await sut.Handle(new DeleteProfileCommand(p.Id), CancellationToken.None);
+        Result result = await sut.ExecuteAsync(new DeleteProfileCommand(p.Id), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
         (await ctx.Profiles.AnyAsync(x => x.Id == p.Id)).Should().BeFalse();
@@ -47,7 +47,7 @@ public sealed class DeleteProfileCommandHandlerTests(ProfileDbFixture fx)
         user.Oid.Returns(_ownerOid);
         var sut = new DeleteProfileCommandHandler(ctx, user);
 
-        Result result = await sut.Handle(new DeleteProfileCommand(p.Id), CancellationToken.None);
+        Result result = await sut.ExecuteAsync(new DeleteProfileCommand(p.Id), CancellationToken.None);
         result.Status.Should().Be(ResultStatus.NotFound);
     }
 
@@ -59,7 +59,7 @@ public sealed class DeleteProfileCommandHandlerTests(ProfileDbFixture fx)
         user.Oid.Returns(_ownerOid);
         var sut = new DeleteProfileCommandHandler(ctx, user);
 
-        Result result = await sut.Handle(new DeleteProfileCommand(Guid.NewGuid()), CancellationToken.None);
+        Result result = await sut.ExecuteAsync(new DeleteProfileCommand(Guid.NewGuid()), CancellationToken.None);
         result.Status.Should().Be(ResultStatus.NotFound);
     }
 
@@ -71,7 +71,7 @@ public sealed class DeleteProfileCommandHandlerTests(ProfileDbFixture fx)
         user.Oid.Returns((Guid?)null);
         var sut = new DeleteProfileCommandHandler(ctx, user);
 
-        Result result = await sut.Handle(new DeleteProfileCommand(Guid.NewGuid()), CancellationToken.None);
+        Result result = await sut.ExecuteAsync(new DeleteProfileCommand(Guid.NewGuid()), CancellationToken.None);
         result.Status.Should().Be(ResultStatus.Unauthorized);
     }
 }

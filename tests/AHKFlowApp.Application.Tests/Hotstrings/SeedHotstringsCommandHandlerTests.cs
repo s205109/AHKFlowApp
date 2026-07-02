@@ -23,7 +23,7 @@ public sealed class SeedHotstringsCommandHandlerTests(HotstringDbFixture fx)
     {
         await using AppDbContext db = fx.CreateContext();
         var handler = new SeedCategoriesCommandHandler(db, CurrentUserHelper.For(owner), TimeProvider.System, DevEnv(true));
-        await handler.Handle(new SeedCategoriesCommand(Reset: false), default);
+        await handler.ExecuteAsync(new SeedCategoriesCommand(Reset: false), default);
     }
 
     [Fact]
@@ -33,7 +33,7 @@ public sealed class SeedHotstringsCommandHandlerTests(HotstringDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         var handler = new SeedHotstringsCommandHandler(db, CurrentUserHelper.For(owner), TimeProvider.System, DevEnv(true));
 
-        Result<PagedList<HotstringDto>> result = await handler.Handle(new SeedHotstringsCommand(Reset: false), default);
+        Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(new SeedHotstringsCommand(Reset: false), default);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.Items.Should().HaveCount(SampleCount);
@@ -46,7 +46,7 @@ public sealed class SeedHotstringsCommandHandlerTests(HotstringDbFixture fx)
         await using (AppDbContext db = fx.CreateContext())
         {
             var handler = new SeedHotstringsCommandHandler(db, CurrentUserHelper.For(owner), TimeProvider.System, DevEnv(true));
-            await handler.Handle(new SeedHotstringsCommand(Reset: false), default);
+            await handler.ExecuteAsync(new SeedHotstringsCommand(Reset: false), default);
         }
 
         await using AppDbContext verify = fx.CreateContext();
@@ -61,7 +61,7 @@ public sealed class SeedHotstringsCommandHandlerTests(HotstringDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         var handler = new SeedHotstringsCommandHandler(db, CurrentUserHelper.For(Guid.NewGuid()), TimeProvider.System, DevEnv(false));
 
-        Result<PagedList<HotstringDto>> result = await handler.Handle(new SeedHotstringsCommand(false), default);
+        Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(new SeedHotstringsCommand(false), default);
 
         result.Status.Should().Be(ResultStatus.NotFound);
     }
@@ -72,7 +72,7 @@ public sealed class SeedHotstringsCommandHandlerTests(HotstringDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         var handler = new SeedHotstringsCommandHandler(db, CurrentUserHelper.For(null), TimeProvider.System, DevEnv(true));
 
-        Result<PagedList<HotstringDto>> result = await handler.Handle(new SeedHotstringsCommand(false), default);
+        Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(new SeedHotstringsCommand(false), default);
 
         result.Status.Should().Be(ResultStatus.Unauthorized);
     }
@@ -91,7 +91,7 @@ public sealed class SeedHotstringsCommandHandlerTests(HotstringDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         var handler = new SeedHotstringsCommandHandler(db, CurrentUserHelper.For(owner), TimeProvider.System, DevEnv(true));
 
-        Result<PagedList<HotstringDto>> result = await handler.Handle(new SeedHotstringsCommand(Reset: false), default);
+        Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(new SeedHotstringsCommand(Reset: false), default);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.Items.Should().HaveCount(SampleCount);
@@ -114,7 +114,7 @@ public sealed class SeedHotstringsCommandHandlerTests(HotstringDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         var handler = new SeedHotstringsCommandHandler(db, CurrentUserHelper.For(owner), TimeProvider.System, DevEnv(true));
 
-        Result<PagedList<HotstringDto>> result = await handler.Handle(new SeedHotstringsCommand(Reset: true), default);
+        Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(new SeedHotstringsCommand(Reset: true), default);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.Items.Should().HaveCount(SampleCount);
@@ -132,12 +132,12 @@ public sealed class SeedHotstringsCommandHandlerTests(HotstringDbFixture fx)
         await using (AppDbContext first = fx.CreateContext())
         {
             var h1 = new SeedHotstringsCommandHandler(first, CurrentUserHelper.For(owner), TimeProvider.System, DevEnv(true));
-            await h1.Handle(new SeedHotstringsCommand(Reset: false), default);
+            await h1.ExecuteAsync(new SeedHotstringsCommand(Reset: false), default);
         }
 
         await using AppDbContext db = fx.CreateContext();
         var handler = new SeedHotstringsCommandHandler(db, CurrentUserHelper.For(owner), TimeProvider.System, DevEnv(true));
-        Result<PagedList<HotstringDto>> result = await handler.Handle(new SeedHotstringsCommand(Reset: true), default);
+        Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(new SeedHotstringsCommand(Reset: true), default);
 
         result.Value.Items.Should().HaveCount(SampleCount);
         result.Value.Items.Sum(h => h.CategoryIds.Length).Should().Be(SampleCount);
@@ -160,7 +160,7 @@ public sealed class SeedHotstringsCommandHandlerTests(HotstringDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         var handler = new SeedHotstringsCommandHandler(db, CurrentUserHelper.For(owner), TimeProvider.System, DevEnv(true));
 
-        Result<PagedList<HotstringDto>> result = await handler.Handle(new SeedHotstringsCommand(Reset: false), default);
+        Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(new SeedHotstringsCommand(Reset: false), default);
 
         result.Value.Items.Sum(h => h.CategoryIds.Length).Should().Be(SampleCount);
         result.Value.Items.Single(h => h.Trigger == "recieve").CategoryIds
@@ -180,7 +180,7 @@ public sealed class SeedHotstringsCommandHandlerTests(HotstringDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         var handler = new SeedHotstringsCommandHandler(db, CurrentUserHelper.For(owner), TimeProvider.System, DevEnv(true));
 
-        Result<PagedList<HotstringDto>> result = await handler.Handle(new SeedHotstringsCommand(Reset: false), default);
+        Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(new SeedHotstringsCommand(Reset: false), default);
 
         result.Value.Items.Should().HaveCount(SampleCount);
         result.Value.Items.Should().OnlyContain(h => h.CategoryIds.Length == 0);
@@ -198,14 +198,14 @@ public sealed class SeedHotstringsCommandHandlerTests(HotstringDbFixture fx)
         await using (AppDbContext before = fx.CreateContext())
         {
             var h1 = new SeedHotstringsCommandHandler(before, CurrentUserHelper.For(owner), TimeProvider.System, DevEnv(true));
-            await h1.Handle(new SeedHotstringsCommand(Reset: false), default);
+            await h1.ExecuteAsync(new SeedHotstringsCommand(Reset: false), default);
         }
 
         await SeedCategoriesAsync(owner);
 
         await using AppDbContext db = fx.CreateContext();
         var handler = new SeedHotstringsCommandHandler(db, CurrentUserHelper.For(owner), TimeProvider.System, DevEnv(true));
-        Result<PagedList<HotstringDto>> result = await handler.Handle(new SeedHotstringsCommand(Reset: false), default);
+        Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(new SeedHotstringsCommand(Reset: false), default);
 
         result.Value.Items.Should().HaveCount(SampleCount);
         result.Value.Items.Sum(h => h.CategoryIds.Length).Should().Be(SampleCount);
@@ -220,12 +220,12 @@ public sealed class SeedHotstringsCommandHandlerTests(HotstringDbFixture fx)
         await using (AppDbContext first = fx.CreateContext())
         {
             var h1 = new SeedHotstringsCommandHandler(first, CurrentUserHelper.For(owner), TimeProvider.System, DevEnv(true));
-            await h1.Handle(new SeedHotstringsCommand(Reset: false), default);
+            await h1.ExecuteAsync(new SeedHotstringsCommand(Reset: false), default);
         }
 
         await using AppDbContext db = fx.CreateContext();
         var handler = new SeedHotstringsCommandHandler(db, CurrentUserHelper.For(owner), TimeProvider.System, DevEnv(true));
-        Result<PagedList<HotstringDto>> result = await handler.Handle(new SeedHotstringsCommand(Reset: false), default);
+        Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(new SeedHotstringsCommand(Reset: false), default);
 
         result.Value.Items.Should().HaveCount(SampleCount);
 
@@ -256,7 +256,7 @@ public sealed class SeedHotstringsCommandHandlerTests(HotstringDbFixture fx)
 
         await using AppDbContext db = fx.CreateContext();
         var handler = new SeedHotstringsCommandHandler(db, CurrentUserHelper.For(owner), TimeProvider.System, DevEnv(true));
-        Result<PagedList<HotstringDto>> result = await handler.Handle(new SeedHotstringsCommand(Reset: false), default);
+        Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(new SeedHotstringsCommand(Reset: false), default);
 
         result.Value.Items.Should().HaveCount(SampleCount);
         result.Value.Items.Sum(h => h.CategoryIds.Length).Should().Be(SampleCount);

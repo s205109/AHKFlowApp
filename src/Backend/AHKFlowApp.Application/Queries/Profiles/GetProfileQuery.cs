@@ -3,19 +3,18 @@ using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Mapping;
 using AHKFlowApp.Domain.Entities;
 using Ardalis.Result;
-using MediatR;
 using Microsoft.EntityFrameworkCore;
 
 namespace AHKFlowApp.Application.Queries.Profiles;
 
-public sealed record GetProfileQuery(Guid Id) : IRequest<Result<ProfileDto>>;
+public sealed record GetProfileQuery(Guid Id);
 
 internal sealed class GetProfileQueryHandler(
     IAppDbContext db,
     ICurrentUser currentUser)
-    : IRequestHandler<GetProfileQuery, Result<ProfileDto>>
+    : IUseCaseHandler<GetProfileQuery, Result<ProfileDto>>
 {
-    public async Task<Result<ProfileDto>> Handle(GetProfileQuery request, CancellationToken ct)
+    public async Task<Result<ProfileDto>> ExecuteAsync(GetProfileQuery request, CancellationToken ct)
     {
         if (currentUser.Oid is not Guid ownerOid)
             return Result.Unauthorized();

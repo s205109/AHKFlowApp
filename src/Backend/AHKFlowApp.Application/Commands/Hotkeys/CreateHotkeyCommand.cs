@@ -6,12 +6,11 @@ using AHKFlowApp.Application.Validation;
 using AHKFlowApp.Domain.Entities;
 using Ardalis.Result;
 using FluentValidation;
-using MediatR;
 using Microsoft.EntityFrameworkCore;
 
 namespace AHKFlowApp.Application.Commands.Hotkeys;
 
-public sealed record CreateHotkeyCommand(CreateHotkeyDto Input) : IRequest<Result<HotkeyDto>>;
+public sealed record CreateHotkeyCommand(CreateHotkeyDto Input);
 
 public sealed class CreateHotkeyCommandValidator : AbstractValidator<CreateHotkeyCommand>
 {
@@ -31,9 +30,9 @@ internal sealed class CreateHotkeyCommandHandler(
     IAppDbContext db,
     ICurrentUser currentUser,
     TimeProvider clock)
-    : IRequestHandler<CreateHotkeyCommand, Result<HotkeyDto>>
+    : IUseCaseHandler<CreateHotkeyCommand, Result<HotkeyDto>>
 {
-    public async Task<Result<HotkeyDto>> Handle(CreateHotkeyCommand request, CancellationToken ct)
+    public async Task<Result<HotkeyDto>> ExecuteAsync(CreateHotkeyCommand request, CancellationToken ct)
     {
         if (currentUser.Oid is not Guid ownerOid)
             return Result.Unauthorized();

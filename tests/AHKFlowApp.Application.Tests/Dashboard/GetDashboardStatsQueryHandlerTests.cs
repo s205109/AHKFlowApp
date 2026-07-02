@@ -35,7 +35,7 @@ public sealed class GetDashboardStatsQueryHandlerTests(DashboardDbFixture fx)
         user.Oid.Returns((Guid?)null);
         var sut = new GetDashboardStatsQueryHandler(ctx, user, _clock);
 
-        Result<DashboardStatsDto> result = await sut.Handle(new GetDashboardStatsQuery(), CancellationToken.None);
+        Result<DashboardStatsDto> result = await sut.ExecuteAsync(new GetDashboardStatsQuery(), CancellationToken.None);
 
         result.Status.Should().Be(ResultStatus.Unauthorized);
     }
@@ -54,7 +54,7 @@ public sealed class GetDashboardStatsQueryHandlerTests(DashboardDbFixture fx)
             new ProfileBuilder().WithOwner(_ownerOid).WithName("Work").AsDefault(false).WithClock(_clock).Build());
         await ctx.SaveChangesAsync();
 
-        Result<DashboardStatsDto> result = await CreateSut(ctx).Handle(new GetDashboardStatsQuery(), CancellationToken.None);
+        Result<DashboardStatsDto> result = await CreateSut(ctx).ExecuteAsync(new GetDashboardStatsQuery(), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.Hotstrings.Total.Should().Be(2);
@@ -79,7 +79,7 @@ public sealed class GetDashboardStatsQueryHandlerTests(DashboardDbFixture fx)
             new HotstringBuilder().WithOwner(_ownerOid).WithTrigger("w4").WithClock(outside2).Build());
         await ctx.SaveChangesAsync();
 
-        Result<DashboardStatsDto> result = await CreateSut(ctx).Handle(new GetDashboardStatsQuery(), CancellationToken.None);
+        Result<DashboardStatsDto> result = await CreateSut(ctx).ExecuteAsync(new GetDashboardStatsQuery(), CancellationToken.None);
 
         result.Value.Hotstrings.Total.Should().Be(4);
         result.Value.Hotstrings.CreatedThisWeek.Should().Be(2);
@@ -97,7 +97,7 @@ public sealed class GetDashboardStatsQueryHandlerTests(DashboardDbFixture fx)
         }
         await ctx.SaveChangesAsync();
 
-        Result<DashboardStatsDto> result = await CreateSut(ctx).Handle(new GetDashboardStatsQuery(), CancellationToken.None);
+        Result<DashboardStatsDto> result = await CreateSut(ctx).ExecuteAsync(new GetDashboardStatsQuery(), CancellationToken.None);
 
         result.Value.Hotkeys.DailyBuckets.Should().HaveCount(14);
         result.Value.Hotkeys.DailyBuckets.Should().AllSatisfy(c => c.Should().Be(1));
@@ -122,7 +122,7 @@ public sealed class GetDashboardStatsQueryHandlerTests(DashboardDbFixture fx)
         ctx.Hotstrings.Add(new HotstringBuilder().WithOwner(_ownerOid).WithTrigger("hs6").WithClock(t6).Build());
         await ctx.SaveChangesAsync();
 
-        Result<DashboardStatsDto> result = await CreateSut(ctx).Handle(new GetDashboardStatsQuery(), CancellationToken.None);
+        Result<DashboardStatsDto> result = await CreateSut(ctx).ExecuteAsync(new GetDashboardStatsQuery(), CancellationToken.None);
 
         result.Value.RecentActivity.Should().HaveCount(5);
         result.Value.RecentActivity[0].Label.Should().Be("hs6");
@@ -141,7 +141,7 @@ public sealed class GetDashboardStatsQueryHandlerTests(DashboardDbFixture fx)
         hs.Update(hs.Trigger, hs.Replacement, hs.Description, hs.AppliesToAllProfiles, hs.IsEndingCharacterRequired, hs.IsTriggerInsideWord, tUpdate);
         await ctx.SaveChangesAsync();
 
-        Result<DashboardStatsDto> result = await CreateSut(ctx).Handle(new GetDashboardStatsQuery(), CancellationToken.None);
+        Result<DashboardStatsDto> result = await CreateSut(ctx).ExecuteAsync(new GetDashboardStatsQuery(), CancellationToken.None);
 
         result.Value.RecentActivity[0].Action.Should().Be("updated");
         result.Value.RecentActivity[0].Kind.Should().Be("hotstring");
@@ -154,7 +154,7 @@ public sealed class GetDashboardStatsQueryHandlerTests(DashboardDbFixture fx)
         ctx.Hotstrings.Add(new HotstringBuilder().WithOwner(_otherOid).WithTrigger("theirs").WithClock(_clock).Build());
         await ctx.SaveChangesAsync();
 
-        Result<DashboardStatsDto> result = await CreateSut(ctx).Handle(new GetDashboardStatsQuery(), CancellationToken.None);
+        Result<DashboardStatsDto> result = await CreateSut(ctx).ExecuteAsync(new GetDashboardStatsQuery(), CancellationToken.None);
 
         result.Value.RecentActivity.Should().BeEmpty();
     }

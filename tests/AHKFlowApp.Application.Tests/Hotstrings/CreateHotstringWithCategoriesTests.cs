@@ -28,7 +28,7 @@ public sealed class CreateHotstringWithCategoriesTests(HotstringDbFixture fx)
             "btw", "by the way",
             CategoryIds: [foreignCategoryId]));
 
-        Result<HotstringDto> result = await handler.Handle(cmd, default);
+        Result<HotstringDto> result = await handler.ExecuteAsync(cmd, default);
 
         result.Status.Should().Be(ResultStatus.Invalid);
         result.ValidationErrors.Should().Contain(e => e.Identifier == "Input.CategoryIds");
@@ -53,7 +53,7 @@ public sealed class CreateHotstringWithCategoriesTests(HotstringDbFixture fx)
             "wfh", "working from home",
             CategoryIds: [cat1.Id, cat2.Id]));
 
-        Result<HotstringDto> result = await handler.Handle(cmd, default);
+        Result<HotstringDto> result = await handler.ExecuteAsync(cmd, default);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.CategoryIds.Should().BeEquivalentTo([cat1.Id, cat2.Id]);
@@ -82,7 +82,7 @@ public sealed class CreateHotstringWithCategoriesTests(HotstringDbFixture fx)
             "dup", "duplicate category test",
             CategoryIds: [cat.Id, cat.Id]));
 
-        Result<HotstringDto> result = await handler.Handle(cmd, default);
+        Result<HotstringDto> result = await handler.ExecuteAsync(cmd, default);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.CategoryIds.Should().HaveCount(1);
@@ -104,7 +104,7 @@ public sealed class CreateHotstringWithCategoriesTests(HotstringDbFixture fx)
             "nocats", "no categories",
             CategoryIds: null));
 
-        Result<HotstringDto> result = await handler.Handle(cmd, default);
+        Result<HotstringDto> result = await handler.ExecuteAsync(cmd, default);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.CategoryIds.Should().BeEmpty();

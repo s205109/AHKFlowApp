@@ -35,7 +35,7 @@ public sealed class UpdateHotstringWithCategoriesTests(HotstringDbFixture fx)
             new UpdateHotstringDto("btw", "new", null, true, true, true, Description: null,
                 CategoryIds: [foreignCategoryId]));
 
-        Result<HotstringDto> result = await handler.Handle(cmd, default);
+        Result<HotstringDto> result = await handler.ExecuteAsync(cmd, default);
 
         result.Status.Should().Be(ResultStatus.Invalid);
         result.ValidationErrors.Should().Contain(e => e.Identifier == "Input.CategoryIds");
@@ -68,7 +68,7 @@ public sealed class UpdateHotstringWithCategoriesTests(HotstringDbFixture fx)
             new UpdateHotstringDto("wfh", "work from home", null, true, true, true, Description: null,
                 CategoryIds: [cat3.Id]));
 
-        Result<HotstringDto> result = await handler.Handle(cmd, default);
+        Result<HotstringDto> result = await handler.ExecuteAsync(cmd, default);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.CategoryIds.Should().BeEquivalentTo([cat3.Id]);
@@ -101,7 +101,7 @@ public sealed class UpdateHotstringWithCategoriesTests(HotstringDbFixture fx)
             new UpdateHotstringDto("clr", "clear cats", null, true, true, true, Description: null,
                 CategoryIds: []));
 
-        Result<HotstringDto> result = await handler.Handle(cmd, default);
+        Result<HotstringDto> result = await handler.ExecuteAsync(cmd, default);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.CategoryIds.Should().BeEmpty();

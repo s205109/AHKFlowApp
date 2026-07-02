@@ -29,7 +29,7 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
 
-        Result<PagedList<HotstringDto>> result = await handler.Handle(new ListHotstringsQuery(), default);
+        Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(new ListHotstringsQuery(), default);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.TotalCount.Should().Be(1);
@@ -59,7 +59,7 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
 
-        Result<PagedList<HotstringDto>> result = await handler.Handle(
+        Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(
             new ListHotstringsQuery(ProfileId: profileId), default);
 
         result.Value.Items.Should().HaveCount(2);
@@ -86,7 +86,7 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
 
-        Result<PagedList<HotstringDto>> page2 = await handler.Handle(
+        Result<PagedList<HotstringDto>> page2 = await handler.ExecuteAsync(
             new ListHotstringsQuery(Page: 2, PageSize: 2), default);
 
         page2.Value.TotalCount.Should().Be(5);
@@ -101,7 +101,7 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(null), new AppEnvironment(false), TimeProvider.System);
 
-        Result<PagedList<HotstringDto>> result = await handler.Handle(new ListHotstringsQuery(), default);
+        Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(new ListHotstringsQuery(), default);
 
         result.Status.Should().Be(ResultStatus.Unauthorized);
     }
@@ -121,7 +121,7 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
 
-        Result<PagedList<HotstringDto>> result = await handler.Handle(
+        Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(
             new ListHotstringsQuery(Search: "btw"), default);
 
         result.Value.Items.Should().ContainSingle().Which.Trigger.Should().Be("btw");
@@ -142,7 +142,7 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
 
-        Result<PagedList<HotstringDto>> result = await handler.Handle(
+        Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(
             new ListHotstringsQuery(Search: "needle"), default);
 
         result.Value.Items.Should().ContainSingle().Which.Trigger.Should().Be("a");
@@ -163,7 +163,7 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
 
-        Result<PagedList<HotstringDto>> result = await handler.Handle(
+        Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(
             new ListHotstringsQuery(Search: "german"), default);
 
         result.Value.Items.Should().ContainSingle().Which.Description.Should().Be("German greeting");
@@ -184,7 +184,7 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
 
-        Result<PagedList<HotstringDto>> result = await handler.Handle(
+        Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(
             new ListHotstringsQuery(Search: "foo"), default);
 
         result.Value.Items.Should().HaveCount(2);
@@ -206,7 +206,7 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
 
-        Result<PagedList<HotstringDto>> result = await handler.Handle(
+        Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(
             new ListHotstringsQuery(Search: "way", TriggerFilter: "btw"), default);
 
         result.Value.Items.Should().HaveCount(1);
@@ -228,7 +228,7 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
 
-        Result<PagedList<HotstringDto>> result = await handler.Handle(
+        Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(
             new ListHotstringsQuery(IsEndingCharacterRequired: true, IsTriggerInsideWord: false), default);
 
         result.Value.Items.Should().ContainSingle().Which.Trigger.Should().Be("a");
@@ -250,7 +250,7 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
 
-        Result<PagedList<HotstringDto>> result = await handler.Handle(
+        Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(
             new ListHotstringsQuery(SortField: "trigger", SortDescending: false), default);
 
         result.Value.Items.Select(h => h.Trigger).Should().Equal("a", "b", "c");
@@ -272,7 +272,7 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
 
-        Result<PagedList<HotstringDto>> result = await handler.Handle(
+        Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(
             new ListHotstringsQuery(DescriptionFilter: "greeting"), default);
 
         result.Value.Items.Should().ContainSingle().Which.Trigger.Should().Be("a");
@@ -294,7 +294,7 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
 
-        Result<PagedList<HotstringDto>> result = await handler.Handle(
+        Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(
             new ListHotstringsQuery(SortField: "description", SortDescending: false), default);
 
         result.Value.Items.Select(h => h.Description).Should().Equal("alpha", "bravo", "charlie");

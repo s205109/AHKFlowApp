@@ -41,7 +41,7 @@ public sealed class ListHotstringsFilterByCategoryTests(HotstringDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner), new AHKFlowApp.Application.AppEnvironment(false), TimeProvider.System);
 
-        Result<PagedList<HotstringDto>> result = await handler.Handle(
+        Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(
             new ListHotstringsQuery(CategoryIds: [cat1.Id, cat2.Id]), default);
 
         result.IsSuccess.Should().BeTrue();
@@ -69,7 +69,7 @@ public sealed class ListHotstringsFilterByCategoryTests(HotstringDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner), new AHKFlowApp.Application.AppEnvironment(false), TimeProvider.System);
 
-        Result<PagedList<HotstringDto>> result = await handler.Handle(
+        Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(
             new ListHotstringsQuery(CategoryIds: null), default);
 
         result.IsSuccess.Should().BeTrue();

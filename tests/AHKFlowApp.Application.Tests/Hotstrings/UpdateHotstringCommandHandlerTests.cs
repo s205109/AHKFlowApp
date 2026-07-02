@@ -32,7 +32,7 @@ public sealed class UpdateHotstringCommandHandlerTests(HotstringDbFixture fx)
         UpdateHotstringCommand cmd = new(entity.Id,
             new UpdateHotstringDto("btw", "by the way", null, true, false, false, null));
 
-        Result<HotstringDto> result = await handler.Handle(cmd, default);
+        Result<HotstringDto> result = await handler.ExecuteAsync(cmd, default);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.Replacement.Should().Be("by the way");
@@ -58,7 +58,7 @@ public sealed class UpdateHotstringCommandHandlerTests(HotstringDbFixture fx)
         UpdateHotstringCommand cmd = new(entity.Id,
             new UpdateHotstringDto("btw", "y", null, true, true, true, null));
 
-        Result<HotstringDto> result = await handler.Handle(cmd, default);
+        Result<HotstringDto> result = await handler.ExecuteAsync(cmd, default);
 
         result.Status.Should().Be(ResultStatus.NotFound);
     }
@@ -71,7 +71,7 @@ public sealed class UpdateHotstringCommandHandlerTests(HotstringDbFixture fx)
         UpdateHotstringCommand cmd = new(Guid.NewGuid(),
             new UpdateHotstringDto("btw", "x", null, true, true, true, null));
 
-        Result<HotstringDto> result = await handler.Handle(cmd, default);
+        Result<HotstringDto> result = await handler.ExecuteAsync(cmd, default);
 
         result.Status.Should().Be(ResultStatus.NotFound);
     }
@@ -94,7 +94,7 @@ public sealed class UpdateHotstringCommandHandlerTests(HotstringDbFixture fx)
         UpdateHotstringCommand cmd = new(second.Id,
             new UpdateHotstringDto("first", "b", null, true, true, true, null));
 
-        Result<HotstringDto> result = await handler.Handle(cmd, default);
+        Result<HotstringDto> result = await handler.ExecuteAsync(cmd, default);
 
         result.Status.Should().Be(ResultStatus.Conflict);
     }

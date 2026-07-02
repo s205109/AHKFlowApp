@@ -3,13 +3,12 @@ using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Domain.Entities;
 using Ardalis.Result;
 using FluentValidation;
-using MediatR;
 using Microsoft.EntityFrameworkCore;
 
 namespace AHKFlowApp.Application.Commands.Hotstrings;
 
 public sealed record BulkDeleteHotstringsCommand(BulkDeleteRequestDto Input)
-    : IRequest<Result<BulkDeleteResultDto>>;
+   ;
 
 public sealed class BulkDeleteHotstringsCommandValidator : AbstractValidator<BulkDeleteHotstringsCommand>
 {
@@ -29,9 +28,9 @@ public sealed class BulkDeleteHotstringsCommandValidator : AbstractValidator<Bul
 internal sealed class BulkDeleteHotstringsCommandHandler(
     IAppDbContext db,
     ICurrentUser currentUser)
-    : IRequestHandler<BulkDeleteHotstringsCommand, Result<BulkDeleteResultDto>>
+    : IUseCaseHandler<BulkDeleteHotstringsCommand, Result<BulkDeleteResultDto>>
 {
-    public async Task<Result<BulkDeleteResultDto>> Handle(
+    public async Task<Result<BulkDeleteResultDto>> ExecuteAsync(
         BulkDeleteHotstringsCommand request,
         CancellationToken ct)
     {

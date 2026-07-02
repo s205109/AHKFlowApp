@@ -26,7 +26,7 @@ public sealed class ListHotkeysLazySeedTests(HotkeyDbFixture fx)
         await using AppDbContext ctx = fx.CreateContext();
         var sut = new ListHotkeysQueryHandler(ctx, CurrentUserHelper.For(owner), s_dev, _clock);
 
-        Result<PagedList<HotkeyDto>> result = await sut.Handle(new ListHotkeysQuery(), CancellationToken.None);
+        Result<PagedList<HotkeyDto>> result = await sut.ExecuteAsync(new ListHotkeysQuery(), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.TotalCount.Should().Be(12);
@@ -39,7 +39,7 @@ public sealed class ListHotkeysLazySeedTests(HotkeyDbFixture fx)
         await using AppDbContext ctx = fx.CreateContext();
         var sut = new ListHotkeysQueryHandler(ctx, CurrentUserHelper.For(owner), s_dev, _clock);
 
-        await sut.Handle(new ListHotkeysQuery(), CancellationToken.None);
+        await sut.ExecuteAsync(new ListHotkeysQuery(), CancellationToken.None);
 
         await using AppDbContext ctx2 = fx.CreateContext();
         UserPreference? pref = await ctx2.UserPreferences.FirstOrDefaultAsync(p => p.OwnerOid == owner);
@@ -53,11 +53,11 @@ public sealed class ListHotkeysLazySeedTests(HotkeyDbFixture fx)
         var owner = Guid.NewGuid();
         await using AppDbContext ctx = fx.CreateContext();
         var sut = new ListHotkeysQueryHandler(ctx, CurrentUserHelper.For(owner), s_dev, _clock);
-        await sut.Handle(new ListHotkeysQuery(), CancellationToken.None);
+        await sut.ExecuteAsync(new ListHotkeysQuery(), CancellationToken.None);
 
         await using AppDbContext ctx2 = fx.CreateContext();
         var sut2 = new ListHotkeysQueryHandler(ctx2, CurrentUserHelper.For(owner), s_dev, _clock);
-        Result<PagedList<HotkeyDto>> result = await sut2.Handle(new ListHotkeysQuery(), CancellationToken.None);
+        Result<PagedList<HotkeyDto>> result = await sut2.ExecuteAsync(new ListHotkeysQuery(), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.TotalCount.Should().Be(12);
@@ -70,7 +70,7 @@ public sealed class ListHotkeysLazySeedTests(HotkeyDbFixture fx)
         await using AppDbContext ctx = fx.CreateContext();
         var sut = new ListHotkeysQueryHandler(ctx, CurrentUserHelper.For(owner), s_prod, _clock);
 
-        Result<PagedList<HotkeyDto>> result = await sut.Handle(new ListHotkeysQuery(), CancellationToken.None);
+        Result<PagedList<HotkeyDto>> result = await sut.ExecuteAsync(new ListHotkeysQuery(), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.TotalCount.Should().Be(0);
@@ -83,7 +83,7 @@ public sealed class ListHotkeysLazySeedTests(HotkeyDbFixture fx)
         await using AppDbContext ctx = fx.CreateContext();
         var sut = new ListHotkeysQueryHandler(ctx, CurrentUserHelper.For(owner), s_dev, _clock);
 
-        await sut.Handle(new ListHotkeysQuery(), CancellationToken.None);
+        await sut.ExecuteAsync(new ListHotkeysQuery(), CancellationToken.None);
 
         await using AppDbContext ctx2 = fx.CreateContext();
         int categoryCount = await ctx2.Categories.CountAsync(c => c.OwnerOid == owner);
@@ -100,13 +100,13 @@ public sealed class ListHotkeysLazySeedTests(HotkeyDbFixture fx)
         {
             var seedHandler = new AHKFlowApp.Application.Commands.Dev.SeedHotkeysCommandHandler(
                 seedCtx, CurrentUserHelper.For(owner), TimeProvider.System, s_dev);
-            await seedHandler.Handle(new AHKFlowApp.Application.Commands.Dev.SeedHotkeysCommand(Reset: false), CancellationToken.None);
+            await seedHandler.ExecuteAsync(new AHKFlowApp.Application.Commands.Dev.SeedHotkeysCommand(Reset: false), CancellationToken.None);
         }
 
         // Step 2: lazy list — must not re-attempt seed (marker should already be set)
         await using AppDbContext ctx = fx.CreateContext();
         var sut = new ListHotkeysQueryHandler(ctx, CurrentUserHelper.For(owner), s_dev, _clock);
-        Result<PagedList<HotkeyDto>> result = await sut.Handle(new ListHotkeysQuery(), CancellationToken.None);
+        Result<PagedList<HotkeyDto>> result = await sut.ExecuteAsync(new ListHotkeysQuery(), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.TotalCount.Should().Be(12);
@@ -124,7 +124,7 @@ public sealed class ListHotkeysLazySeedTests(HotkeyDbFixture fx)
         await using AppDbContext ctx = fx.CreateContext();
         var sut = new ListHotkeysQueryHandler(ctx, CurrentUserHelper.For(owner), s_dev, _clock);
 
-        await sut.Handle(new ListHotkeysQuery(), CancellationToken.None);
+        await sut.ExecuteAsync(new ListHotkeysQuery(), CancellationToken.None);
 
         await using AppDbContext ctx2 = fx.CreateContext();
         int linkedCount = await ctx2.HotkeyCategories
@@ -150,7 +150,7 @@ public sealed class ListHotkeysLazySeedTests(HotkeyDbFixture fx)
 
         await using AppDbContext ctx = fx.CreateContext();
         var sut = new ListHotkeysQueryHandler(ctx, CurrentUserHelper.For(owner), s_dev, _clock);
-        Result<PagedList<HotkeyDto>> result = await sut.Handle(new ListHotkeysQuery(), CancellationToken.None);
+        Result<PagedList<HotkeyDto>> result = await sut.ExecuteAsync(new ListHotkeysQuery(), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
 

@@ -5,7 +5,6 @@ using AHKFlowApp.Domain.Constants;
 using AHKFlowApp.Domain.Entities;
 using Ardalis.Result;
 using FluentValidation;
-using MediatR;
 using Microsoft.EntityFrameworkCore;
 
 namespace AHKFlowApp.Application.Queries.Hotstrings;
@@ -23,7 +22,7 @@ public sealed record ListHotstringsQuery(
     bool? AppliesToAllProfiles = null,
     bool? IsEndingCharacterRequired = null,
     bool? IsTriggerInsideWord = null,
-    IReadOnlyList<Guid>? CategoryIds = null) : IRequest<Result<PagedList<HotstringDto>>>;
+    IReadOnlyList<Guid>? CategoryIds = null);
 
 public sealed class ListHotstringsQueryValidator : AbstractValidator<ListHotstringsQuery>
 {
@@ -57,7 +56,7 @@ internal sealed class ListHotstringsQueryHandler(
     ICurrentUser currentUser,
     AppEnvironment env,
     TimeProvider clock)
-    : IRequestHandler<ListHotstringsQuery, Result<PagedList<HotstringDto>>>
+    : IUseCaseHandler<ListHotstringsQuery, Result<PagedList<HotstringDto>>>
 {
     // Mirrors SeedHotstringsCommand.s_samples — update both if seed set changes.
     private static readonly (string Trigger, string Replacement, bool Ending, bool InsideWord, string[] Categories)[] s_lazySeed =
@@ -76,7 +75,7 @@ internal sealed class ListHotstringsQueryHandler(
         (";todo",   "TODO(name): ",         false, false, ["Code"]),
     ];
 
-    public async Task<Result<PagedList<HotstringDto>>> Handle(ListHotstringsQuery request, CancellationToken ct)
+    public async Task<Result<PagedList<HotstringDto>>> ExecuteAsync(ListHotstringsQuery request, CancellationToken ct)
     {
         if (currentUser.Oid is not Guid ownerOid)
             return Result.Unauthorized();

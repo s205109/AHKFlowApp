@@ -1,19 +1,18 @@
 using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Domain.Entities;
 using Ardalis.Result;
-using MediatR;
 using Microsoft.EntityFrameworkCore;
 
 namespace AHKFlowApp.Application.Commands.Categories;
 
-public sealed record DeleteCategoryCommand(Guid Id) : IRequest<Result>;
+public sealed record DeleteCategoryCommand(Guid Id);
 
 internal sealed class DeleteCategoryCommandHandler(
     IAppDbContext db,
     ICurrentUser currentUser)
-    : IRequestHandler<DeleteCategoryCommand, Result>
+    : IUseCaseHandler<DeleteCategoryCommand, Result>
 {
-    public async Task<Result> Handle(DeleteCategoryCommand request, CancellationToken ct)
+    public async Task<Result> ExecuteAsync(DeleteCategoryCommand request, CancellationToken ct)
     {
         if (currentUser.Oid is not Guid ownerOid)
             return Result.Unauthorized();

@@ -36,7 +36,7 @@ public sealed class UpdateHotkeyCommandHandlerTests(HotkeyDbFixture fx)
         var cmd = new UpdateHotkeyCommand(entity.Id,
             new UpdateHotkeyDto("Updated description", "n", true, false, false, false, HotkeyAction.Run, "notepad.exe", null, true));
 
-        Result<HotkeyDto> result = await handler.Handle(cmd, default);
+        Result<HotkeyDto> result = await handler.ExecuteAsync(cmd, default);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.Description.Should().Be("Updated description");
@@ -61,7 +61,7 @@ public sealed class UpdateHotkeyCommandHandlerTests(HotkeyDbFixture fx)
         var cmd = new UpdateHotkeyCommand(entity.Id,
             new UpdateHotkeyDto("Hijacked", "n", true, false, false, false, HotkeyAction.Run, "", null, true));
 
-        Result<HotkeyDto> result = await handler.Handle(cmd, default);
+        Result<HotkeyDto> result = await handler.ExecuteAsync(cmd, default);
 
         result.Status.Should().Be(ResultStatus.NotFound);
     }
@@ -74,7 +74,7 @@ public sealed class UpdateHotkeyCommandHandlerTests(HotkeyDbFixture fx)
         var cmd = new UpdateHotkeyCommand(Guid.NewGuid(),
             new UpdateHotkeyDto("x", "n", true, false, false, false, HotkeyAction.Run, "", null, true));
 
-        Result<HotkeyDto> result = await handler.Handle(cmd, default);
+        Result<HotkeyDto> result = await handler.ExecuteAsync(cmd, default);
 
         result.Status.Should().Be(ResultStatus.NotFound);
     }
@@ -87,7 +87,7 @@ public sealed class UpdateHotkeyCommandHandlerTests(HotkeyDbFixture fx)
         var cmd = new UpdateHotkeyCommand(Guid.NewGuid(),
             new UpdateHotkeyDto("x", "n", true, false, false, false, HotkeyAction.Run, "", null, true));
 
-        Result<HotkeyDto> result = await handler.Handle(cmd, default);
+        Result<HotkeyDto> result = await handler.ExecuteAsync(cmd, default);
 
         result.Status.Should().Be(ResultStatus.Unauthorized);
     }
@@ -111,7 +111,7 @@ public sealed class UpdateHotkeyCommandHandlerTests(HotkeyDbFixture fx)
         var cmd = new UpdateHotkeyCommand(second.Id,
             new UpdateHotkeyDto("Conflict", "f1", true, false, false, false, HotkeyAction.Run, "", null, true));
 
-        Result<HotkeyDto> result = await handler.Handle(cmd, default);
+        Result<HotkeyDto> result = await handler.ExecuteAsync(cmd, default);
 
         result.Status.Should().Be(ResultStatus.Conflict);
     }
