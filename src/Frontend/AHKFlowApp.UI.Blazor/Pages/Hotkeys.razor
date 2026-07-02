@@ -567,7 +567,7 @@
 
         bool? confirm = await DialogService.ShowMessageBoxAsync(
             title: "Delete hotkey?",
-            message: $"Delete \"{item.Description}\"? This cannot be undone.",
+            message: $"Delete \"{item.Description}\"? You can restore it from the Recycle Bin.",
             yesText: "Delete", cancelText: "Cancel");
         if (confirm != true) return;
 
@@ -579,6 +579,33 @@
             await ReloadAllAsync();
         }
         else Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
+    }
+
+    private async Task ShowHistoryAsync(HotkeyEditModel item)
+    {
+        if (_dialogOpen || item.Id is not { } id)
+            return;
+
+        _dialogOpen = true;
+        try
+        {
+            DialogParameters parameters = new()
+            {
+                [nameof(HotkeyHistoryDialog.HotkeyId)] = id,
+                [nameof(HotkeyHistoryDialog.Description)] = item.Description,
+            };
+
+            IDialogReference dialog = await DialogService.ShowAsync<HotkeyHistoryDialog>(
+                $"History - {item.Description}", parameters);
+
+            DialogResult? result = await dialog.Result;
+            if (result?.Canceled == false)
+                await ReloadAllAsync();
+        }
+        finally
+        {
+            _dialogOpen = false;
+        }
     }
 
     internal void OnSelectedItemsChanged(HashSet<HotkeyEditModel> selected)
@@ -595,7 +622,7 @@
 
         bool? confirm = await DialogService.ShowMessageBoxAsync(
             title: "Delete hotkeys?",
-            message: $"Delete {ids.Length} hotkey(s)? This cannot be undone.",
+            message: $"Delete {ids.Length} hotkey(s)? You can restore them from the Recycle Bin.",
             yesText: "Delete", cancelText: "Cancel");
         if (confirm != true)
             return;
@@ -724,7 +751,7 @@
 
         bool? confirm = await DialogService.ShowMessageBoxAsync(
             title: "Delete hotkeys?",
-            message: $"Delete {ids.Count} hotkey(s)? This cannot be undone.",
+            message: $"Delete {ids.Count} hotkey(s)? You can restore them from the Recycle Bin.",
             yesText: "Delete", cancelText: "Cancel");
         if (confirm != true) return;
 
@@ -827,6 +854,8 @@
         }
         else
         {
+            <MudIconButton Class="show-history" Icon="@Icons.Material.Filled.History"
+                           OnClick="() => ShowHistoryAsync(item)" />
             <MudIconButton Class="delete" Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
                            OnClick="() => DeleteAsync(item)" />
             <MudIconButton Class="start-edit" Icon="@Icons.Material.Filled.Edit"

@@ -504,7 +504,7 @@
 
         bool? confirm = await DialogService.ShowMessageBoxAsync(
             title: "Delete hotstring?",
-            message: $"Delete \"{item.Trigger}\"? This cannot be undone.",
+            message: $"Delete \"{item.Trigger}\"? You can restore it from the Recycle Bin.",
             yesText: "Delete", cancelText: "Cancel");
         if (confirm != true) return;
 
@@ -516,6 +516,33 @@
             await ReloadAllAsync();
         }
         else Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
+    }
+
+    private async Task ShowHistoryAsync(HotstringEditModel item)
+    {
+        if (_dialogOpen || item.Id is not { } id)
+            return;
+
+        _dialogOpen = true;
+        try
+        {
+            DialogParameters parameters = new()
+            {
+                [nameof(HotstringHistoryDialog.HotstringId)] = id,
+                [nameof(HotstringHistoryDialog.Trigger)] = item.Trigger,
+            };
+
+            IDialogReference dialog = await DialogService.ShowAsync<HotstringHistoryDialog>(
+                $"History - {item.Trigger}", parameters);
+
+            DialogResult? result = await dialog.Result;
+            if (result?.Canceled == false)
+                await ReloadAllAsync();
+        }
+        finally
+        {
+            _dialogOpen = false;
+        }
     }
 
     internal void OnSelectedItemsChanged(HashSet<HotstringEditModel> selected)
@@ -532,7 +559,7 @@
 
         bool? confirm = await DialogService.ShowMessageBoxAsync(
             title: "Delete hotstrings?",
-            message: $"Delete {ids.Length} hotstring(s)? This cannot be undone.",
+            message: $"Delete {ids.Length} hotstring(s)? You can restore them from the Recycle Bin.",
             yesText: "Delete", cancelText: "Cancel");
         if (confirm != true)
             return;
@@ -661,7 +688,7 @@
 
         bool? confirm = await DialogService.ShowMessageBoxAsync(
             title: "Delete hotstrings?",
-            message: $"Delete {ids.Count} hotstring(s)? This cannot be undone.",
+            message: $"Delete {ids.Count} hotstring(s)? You can restore them from the Recycle Bin.",
             yesText: "Delete", cancelText: "Cancel");
         if (confirm != true) return;
 
@@ -764,6 +791,8 @@
         }
         else
         {
+            <MudIconButton Class="show-history" Icon="@Icons.Material.Filled.History"
+                           OnClick="() => ShowHistoryAsync(item)" />
             <MudIconButton Class="delete" Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
                            OnClick="() => DeleteAsync(item)" />
             <MudIconButton Class="start-edit" Icon="@Icons.Material.Filled.Edit"

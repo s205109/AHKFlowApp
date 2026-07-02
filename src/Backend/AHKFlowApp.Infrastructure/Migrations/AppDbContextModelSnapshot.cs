@@ -53,6 +53,46 @@ namespace AHKFlowApp.Infrastructure.Migrations
                     b.ToTable("Categories");
                 });
 
+            modelBuilder.Entity("AHKFlowApp.Domain.Entities.EntityHistory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CapturedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("ChangeType")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("EntityId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("EntityType")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("OwnerOid")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("SchemaVersion")
+                        .HasColumnType("int");
+
+                    b.Property<string>("SnapshotJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerOid", "EntityType", "EntityId", "Version")
+                        .IsUnique()
+                        .HasDatabaseName("IX_EntityHistory_Owner_Type_Entity_Version");
+
+                    b.ToTable("EntityHistories");
+                });
+
             modelBuilder.Entity("AHKFlowApp.Domain.Entities.Hotkey", b =>
                 {
                     b.Property<Guid>("Id")

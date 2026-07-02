@@ -25,6 +25,7 @@ public sealed class StackFixture : IAsyncLifetime
         await using AsyncServiceScope scope = Api.Services.CreateAsyncScope();
         AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
+        await db.EntityHistories.ExecuteDeleteAsync();
         await db.HotstringCategories.ExecuteDeleteAsync();
         await db.HotkeyCategories.ExecuteDeleteAsync();
         await db.HotstringProfiles.ExecuteDeleteAsync();

@@ -1,0 +1,247 @@
+@page "/recycle-bin"
+@using AHKFlowApp.UI.Blazor.DTOs
+@using AHKFlowApp.UI.Blazor.Services
+@using Microsoft.AspNetCore.Components.Authorization
+@using MudBlazor
+@implements IDisposable
+
+<PageTitle>Recycle Bin</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Recycle Bin</MudText>
+
+<MudPaper Class="pa-4">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Wrap="Wrap.Wrap" Class="mb-4">
+        <MudButton Class="reload-recycle-bin" Variant="Variant.Filled" Color="Color.Secondary"
+                   StartIcon="@Icons.Material.Filled.Refresh" OnClick="LoadAsync"
+                   Disabled="@(!_isAuthenticated || _loading)">
+            Reload
+        </MudButton>
+    </MudStack>
+
+    @if (!_isAuthenticated)
+    {
+        <MudAlert Severity="Severity.Info" Class="mb-3">You are not signed in.</MudAlert>
+    }
+    else if (_loading)
+    {
+        <MudProgressCircular Indeterminate="true" />
+    }
+    else if (_loadError is not null)
+    {
+        <MudAlert Severity="Severity.Error">@_loadError</MudAlert>
+    }
+    else if (_rows.Count == 0)
+    {
+        <MudText>No deleted items.</MudText>
+    }
+    else
+    {
+        <MudTable Items="_rows" T="RecycleBinRow" Dense="true" Hover="true">
+            <HeaderContent>
+                <MudTh>Type</MudTh>
+                <MudTh>Name</MudTh>
+                <MudTh>Details</MudTh>
+                <MudTh Style="width:160px">Deleted</MudTh>
+                <MudTh Style="width:120px">Actions</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.Type</MudTd>
+                <MudTd>@context.Name</MudTd>
+                <MudTd>@context.Details</MudTd>
+                <MudTd>@context.DeletedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</MudTd>
+                <MudTd>
+                    <MudIconButton Class="restore-item" Icon="@Icons.Material.Filled.RestoreFromTrash"
+                                   Color="Color.Success" Disabled="@IsBusy(context)"
+                                   OnClick="() => RestoreAsync(context)" />
+                    <MudIconButton Class="purge-item" Icon="@Icons.Material.Filled.DeleteForever"
+                                   Color="Color.Error" Disabled="@IsBusy(context)"
+                                   OnClick="() => PurgeAsync(context)" />
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+</MudPaper>
+
+@code {
+    private const string HotstringType = "Hotstring";
+    private const string HotkeyType = "Hotkey";
+
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+    [Inject] private IHotstringsApiClient Hotstrings { get; set; } = default!;
+    [Inject] private IHotkeysApiClient Hotkeys { get; set; } = default!;
+    [Inject] private ISnackbar Snackbar { get; set; } = default!;
+    [Inject] private IDialogService DialogService { get; set; } = default!;
+
+    private readonly CancellationTokenSource _cts = new();
+    private readonly HashSet<string> _busy = [];
+    private List<RecycleBinRow> _rows = [];
+    private bool _isAuthenticated;
+    private bool _loading;
+    private string? _loadError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is not null)
+        {
+            AuthenticationState state = await AuthState;
+            _isAuthenticated = state.User.Identity?.IsAuthenticated ?? false;
+        }
+
+        if (_isAuthenticated)
+            await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _loadError = null;
+
+        try
+        {
+            Task<ApiResult<DeletedHotstringDto[]>> hotstringsTask = Hotstrings.ListDeletedAsync(_cts.Token);
+            Task<ApiResult<DeletedHotkeyDto[]>> hotkeysTask = Hotkeys.ListDeletedAsync(_cts.Token);
+            await Task.WhenAll(hotstringsTask, hotkeysTask);
+
+            ApiResult<DeletedHotstringDto[]> hotstrings = await hotstringsTask;
+            ApiResult<DeletedHotkeyDto[]> hotkeys = await hotkeysTask;
+
+            if (!hotstrings.IsSuccess)
+            {
+                _rows = [];
+                _loadError = ApiErrorMessageFactory.Build(hotstrings.Status, hotstrings.Problem);
+                return;
+            }
+
+            if (!hotkeys.IsSuccess)
+            {
+                _rows = [];
+                _loadError = ApiErrorMessageFactory.Build(hotkeys.Status, hotkeys.Problem);
+                return;
+            }
+
+            _rows =
+            [
+                .. hotstrings.Value!.Select(dto => new RecycleBinRow(
+                    dto.Id,
+                    HotstringType,
+                    dto.Trigger,
+                    dto.Replacement,
+                    dto.DeletedAt)),
+                .. hotkeys.Value!.Select(dto => new RecycleBinRow(
+                    dto.Id,
+                    HotkeyType,
+                    dto.Description,
+                    FormatCombo(dto),
+                    dto.DeletedAt)),
+            ];
+            _rows = [.. _rows.OrderByDescending(row => row.DeletedAt)];
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task RestoreAsync(RecycleBinRow row)
+    {
+        string key = BusyKey(row);
+        if (!_busy.Add(key))
+            return;
+
+        try
+        {
+            string? error = row.Type == HotstringType
+                ? await RestoreHotstringAsync(row.Id)
+                : await RestoreHotkeyAsync(row.Id);
+
+            if (error is not null)
+            {
+                Snackbar.Add(error, Severity.Error);
+                return;
+            }
+
+            Snackbar.Add($"{row.Type} restored.", Severity.Success);
+            await LoadAsync();
+        }
+        finally
+        {
+            _busy.Remove(key);
+        }
+    }
+
+    private async Task PurgeAsync(RecycleBinRow row)
+    {
+        bool? confirm = await DialogService.ShowMessageBoxAsync(
+            title: "Delete forever?",
+            message: $"Delete \"{row.Name}\" forever? This cannot be undone.",
+            yesText: "Delete forever",
+            cancelText: "Cancel");
+        if (confirm != true)
+            return;
+
+        string key = BusyKey(row);
+        if (!_busy.Add(key))
+            return;
+
+        try
+        {
+            ApiResult result = row.Type == HotstringType
+                ? await Hotstrings.PurgeDeletedAsync(row.Id, _cts.Token)
+                : await Hotkeys.PurgeDeletedAsync(row.Id, _cts.Token);
+
+            if (!result.IsSuccess)
+            {
+                Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
+                return;
+            }
+
+            Snackbar.Add($"{row.Type} deleted forever.", Severity.Success);
+            await LoadAsync();
+        }
+        finally
+        {
+            _busy.Remove(key);
+        }
+    }
+
+    private async Task<string?> RestoreHotstringAsync(Guid id)
+    {
+        ApiResult<HotstringDto> result = await Hotstrings.RestoreAsync(id, _cts.Token);
+        return result.IsSuccess ? null : ApiErrorMessageFactory.Build(result.Status, result.Problem);
+    }
+
+    private async Task<string?> RestoreHotkeyAsync(Guid id)
+    {
+        ApiResult<HotkeyDto> result = await Hotkeys.RestoreAsync(id, _cts.Token);
+        return result.IsSuccess ? null : ApiErrorMessageFactory.Build(result.Status, result.Problem);
+    }
+
+    private static string FormatCombo(DeletedHotkeyDto dto)
+    {
+        List<string> parts = [];
+        if (dto.Ctrl) parts.Add("Ctrl");
+        if (dto.Alt) parts.Add("Alt");
+        if (dto.Shift) parts.Add("Shift");
+        if (dto.Win) parts.Add("Win");
+        parts.Add(dto.Key);
+
+        return string.Join("+", parts);
+    }
+
+    private static string BusyKey(RecycleBinRow row) => $"{row.Type}:{row.Id}";
+
+    private bool IsBusy(RecycleBinRow row) => _busy.Contains(BusyKey(row));
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+    }
+
+    private sealed record RecycleBinRow(
+        Guid Id,
+        string Type,
+        string Name,
+        string Details,
+        DateTimeOffset DeletedAt);
+}
