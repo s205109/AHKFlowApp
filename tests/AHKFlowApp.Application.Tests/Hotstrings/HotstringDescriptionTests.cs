@@ -1,5 +1,6 @@
 using AHKFlowApp.Application.Commands.Hotstrings;
 using AHKFlowApp.Application.DTOs;
+using AHKFlowApp.Application.Services;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Infrastructure.Persistence;
 using AHKFlowApp.TestUtilities.Builders;
@@ -74,7 +75,8 @@ public sealed class HotstringDescriptionTests(HotstringDbFixture fx)
         }
 
         await using AppDbContext ctx = fx.CreateContext();
-        UpdateHotstringCommandHandler sut = new(ctx, CurrentUserHelper.For(owner), TimeProvider.System);
+        UpdateHotstringCommandHandler sut =
+            new(ctx, CurrentUserHelper.For(owner), TimeProvider.System, new EntityHistoryRecorder(ctx, TimeProvider.System));
         Result<HotstringDto> r = await sut.Handle(new UpdateHotstringCommand(entity.Id, new UpdateHotstringDto(
             Trigger: entity.Trigger,
             Replacement: entity.Replacement,
@@ -105,7 +107,8 @@ public sealed class HotstringDescriptionTests(HotstringDbFixture fx)
         }
 
         await using AppDbContext ctx = fx.CreateContext();
-        UpdateHotstringCommandHandler sut = new(ctx, CurrentUserHelper.For(owner), TimeProvider.System);
+        UpdateHotstringCommandHandler sut =
+            new(ctx, CurrentUserHelper.For(owner), TimeProvider.System, new EntityHistoryRecorder(ctx, TimeProvider.System));
         Result<HotstringDto> r = await sut.Handle(new UpdateHotstringCommand(entity.Id, new UpdateHotstringDto(
             Trigger: entity.Trigger,
             Replacement: entity.Replacement,
