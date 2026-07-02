@@ -57,7 +57,7 @@ src/Backend/
 // Application/Commands/CreateHotstringCommand.cs
 namespace AHKFlowApp.Application.Commands;
 
-public sealed record CreateHotstringCommand(string Trigger, string Replacement);
+public sealed record CreateHotstringCommand(CreateHotstringDto Input);
 ```
 
 ```csharp
@@ -70,7 +70,7 @@ internal sealed class CreateHotstringHandler(AppDbContext db)
     public async Task<Result<HotstringDto>> ExecuteAsync(
         CreateHotstringCommand request, CancellationToken ct)
     {
-        var hotstring = new Hotstring { Trigger = request.Trigger, Replacement = request.Replacement };
+        var hotstring = new Hotstring { Trigger = request.Input.Trigger, Replacement = request.Input.Replacement };
         db.Hotstrings.Add(hotstring);
         await db.SaveChangesAsync(ct);
         return Result.Success(new HotstringDto(hotstring.Id, hotstring.Trigger, hotstring.Replacement));
@@ -88,8 +88,8 @@ public sealed class CreateHotstringValidator : AbstractValidator<CreateHotstring
 {
     public CreateHotstringValidator()
     {
-        RuleFor(x => x.Trigger).NotEmpty().MaximumLength(50);
-        RuleFor(x => x.Replacement).NotEmpty().MaximumLength(500);
+        RuleFor(x => x.Input.Trigger).NotEmpty().MaximumLength(50);
+        RuleFor(x => x.Input.Replacement).NotEmpty().MaximumLength(500);
     }
 }
 ```
@@ -100,7 +100,7 @@ public sealed class CreateHotstringValidator : AbstractValidator<CreateHotstring
 // Application/Queries/GetHotstringQuery.cs
 namespace AHKFlowApp.Application.Queries;
 
-public sealed record GetHotstringQuery(int Id);
+public sealed record GetHotstringQuery(Guid Id);
 ```
 
 ```csharp
@@ -132,7 +132,7 @@ namespace AHKFlowApp.API.Controllers;
 public sealed class HotstringsController(
     IUseCase<CreateHotstringCommand, Result<HotstringDto>> createHotstring,
     IUseCase<GetHotstringQuery, Result<HotstringDto>> getHotstring,
-    IUseCase<ListHotstringsQuery, Result<IReadOnlyList<HotstringDto>>> listHotstrings)
+    IUseCase<ListHotstringsQuery, Result<PagedList<HotstringDto>>> listHotstrings)
     : ControllerBase
 {
     [HttpPost]
@@ -140,21 +140,21 @@ public sealed class HotstringsController(
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Create(CreateHotstringDto dto, CancellationToken ct)
     {
-        var result = await createHotstring.ExecuteAsync(new CreateHotstringCommand(dto.Trigger, dto.Replacement), ct);
+        var result = await createHotstring.ExecuteAsync(new CreateHotstringCommand(dto), ct);
         return result.ToActionResult(this);
     }
 
-    [HttpGet("{id:int}")]
+    [HttpGet("{id:guid}")]
     [ProducesResponseType<HotstringDto>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> GetById(int id, CancellationToken ct)
+    public async Task<IActionResult> GetById(Guid id, CancellationToken ct)
     {
         var result = await getHotstring.ExecuteAsync(new GetHotstringQuery(id), ct);
         return result.ToActionResult(this);
     }
 
     [HttpGet]
-    [ProducesResponseType<IReadOnlyList<HotstringDto>>(StatusCodes.Status200OK)]
+    [ProducesResponseType<PagedList<HotstringDto>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> List(CancellationToken ct)
     {
         var result = await listHotstrings.ExecuteAsync(new ListHotstringsQuery(), ct);
@@ -169,7 +169,7 @@ public sealed class HotstringsController(
 // Application/DTOs/HotstringDto.cs
 namespace AHKFlowApp.Application.DTOs;
 
-public sealed record HotstringDto(int Id, string Trigger, string Replacement);
+public sealed record HotstringDto(Guid Id, string Trigger, string Replacement);
 public sealed record CreateHotstringDto(string Trigger, string Replacement);
 public sealed record UpdateHotstringDto(string Trigger, string Replacement);
 ```
@@ -184,7 +184,7 @@ namespace AHKFlowApp.Domain.Entities;
 
 public sealed class Hotstring
 {
-    public int Id { get; set; }
+    public Guid Id { get; set; }
     public string Trigger { get; set; } = string.Empty;
     public string Replacement { get; set; } = string.Empty;
 }
@@ -285,7 +285,7 @@ public sealed class HotstringsControllerTests(ApiFixture fixture) : IClassFixtur
     public async Task GetById_NotFound_Returns404()
     {
         // Act
-        var response = await _client.GetAsync("/api/v1/hotstrings/99999");
+        var response = await _client.GetAsync($"/api/v1/hotstrings/{Guid.NewGuid()}");
 
         // Assert
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
