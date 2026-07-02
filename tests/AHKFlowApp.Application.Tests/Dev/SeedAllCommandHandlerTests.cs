@@ -1,10 +1,10 @@
+using AHKFlowApp.Application;
 using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.Commands.Dev;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Infrastructure.Persistence;
 using Ardalis.Result;
 using FluentAssertions;
-using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -37,7 +37,7 @@ public sealed class SeedAllCommandHandlerTests(DevDbFixture fx)
         services.AddSingleton(user ?? User());
         services.AddSingleton<TimeProvider>(_clock);
         services.AddSingleton(appEnv ?? _devEnv);
-        services.AddMediatR(cfg => cfg.RegisterServicesFromAssemblyContaining<SeedAllCommand>());
+        services.AddApplication();
         return services.BuildServiceProvider();
     }
 
@@ -47,8 +47,8 @@ public sealed class SeedAllCommandHandlerTests(DevDbFixture fx)
         await using AppDbContext ctx = fx.CreateContext();
         await using ServiceProvider sp = BuildProvider(ctx);
 
-        Result<SeedAllResultDto> result = await sp.GetRequiredService<IMediator>()
-            .Send(new SeedAllCommand(Reset: false));
+        Result<SeedAllResultDto> result = await sp.GetRequiredService<IUseCase<SeedAllCommand, Result<SeedAllResultDto>>>()
+            .ExecuteAsync(new SeedAllCommand(Reset: false), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.CategoriesCount.Should().Be(8);
@@ -66,14 +66,15 @@ public sealed class SeedAllCommandHandlerTests(DevDbFixture fx)
         await using (AppDbContext ctx1 = fx.CreateContext())
         await using (ServiceProvider sp1 = BuildProvider(ctx1))
         {
-            await sp1.GetRequiredService<IMediator>().Send(new SeedAllCommand(Reset: false));
+            await sp1.GetRequiredService<IUseCase<SeedAllCommand, Result<SeedAllResultDto>>>()
+                .ExecuteAsync(new SeedAllCommand(Reset: false), CancellationToken.None);
         }
 
         await using AppDbContext ctx2 = fx.CreateContext();
         await using ServiceProvider sp2 = BuildProvider(ctx2);
 
-        Result<SeedAllResultDto> result = await sp2.GetRequiredService<IMediator>()
-            .Send(new SeedAllCommand(Reset: true));
+        Result<SeedAllResultDto> result = await sp2.GetRequiredService<IUseCase<SeedAllCommand, Result<SeedAllResultDto>>>()
+            .ExecuteAsync(new SeedAllCommand(Reset: true), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.CategoriesCount.Should().Be(8);
@@ -87,9 +88,10 @@ public sealed class SeedAllCommandHandlerTests(DevDbFixture fx)
         await using AppDbContext realCtx = fx.CreateContext();
         IAppDbContext failingDb = new ThrowOnNthSaveDbContext(realCtx, failOnCall: 2);
         await using ServiceProvider sp = BuildProvider(failingDb);
-        IMediator mediator = sp.GetRequiredService<IMediator>();
+        IUseCase<SeedAllCommand, Result<SeedAllResultDto>> useCase =
+            sp.GetRequiredService<IUseCase<SeedAllCommand, Result<SeedAllResultDto>>>();
 
-        Func<Task> act = async () => await mediator.Send(new SeedAllCommand(Reset: false));
+        Func<Task> act = async () => await useCase.ExecuteAsync(new SeedAllCommand(Reset: false), CancellationToken.None);
 
         await act.Should().ThrowAsync<InvalidOperationException>();
 
@@ -105,8 +107,8 @@ public sealed class SeedAllCommandHandlerTests(DevDbFixture fx)
         await using AppDbContext ctx = fx.CreateContext();
         await using ServiceProvider sp = BuildProvider(ctx, appEnv: new AppEnvironment(IsDevelopment: false));
 
-        Result<SeedAllResultDto> result = await sp.GetRequiredService<IMediator>()
-            .Send(new SeedAllCommand(Reset: false));
+        Result<SeedAllResultDto> result = await sp.GetRequiredService<IUseCase<SeedAllCommand, Result<SeedAllResultDto>>>()
+            .ExecuteAsync(new SeedAllCommand(Reset: false), CancellationToken.None);
 
         result.Status.Should().Be(ResultStatus.NotFound);
     }
@@ -119,8 +121,8 @@ public sealed class SeedAllCommandHandlerTests(DevDbFixture fx)
         noUser.Oid.Returns((Guid?)null);
         await using ServiceProvider sp = BuildProvider(ctx, user: noUser);
 
-        Result<SeedAllResultDto> result = await sp.GetRequiredService<IMediator>()
-            .Send(new SeedAllCommand(Reset: false));
+        Result<SeedAllResultDto> result = await sp.GetRequiredService<IUseCase<SeedAllCommand, Result<SeedAllResultDto>>>()
+            .ExecuteAsync(new SeedAllCommand(Reset: false), CancellationToken.None);
 
         result.Status.Should().Be(ResultStatus.Unauthorized);
     }
