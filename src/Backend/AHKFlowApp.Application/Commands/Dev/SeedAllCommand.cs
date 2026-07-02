@@ -1,7 +1,6 @@
 using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.DTOs;
 using Ardalis.Result;
-using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 
@@ -13,7 +12,9 @@ public sealed record SeedAllCommand(bool Reset);
 
 internal sealed class SeedAllCommandHandler(
     IAppDbContext db,
-    IMediator mediator,
+    IUseCase<SeedCategoriesCommand, Result<IReadOnlyList<CategoryDto>>> seedCategories,
+    IUseCase<SeedHotstringsCommand, Result<PagedList<HotstringDto>>> seedHotstrings,
+    IUseCase<SeedHotkeysCommand, Result<PagedList<HotkeyDto>>> seedHotkeys,
     AppEnvironment env)
     : IUseCaseHandler<SeedAllCommand, Result<SeedAllResultDto>>
 {
@@ -34,21 +35,24 @@ internal sealed class SeedAllCommandHandler(
             // never swallows them.
             await using IDbContextTransaction tx = await db.BeginTransactionAsync(token);
 
-            var catResult = (Result<IReadOnlyList<CategoryDto>>)(await mediator.Send(new SeedCategoriesCommand(request.Reset), token))!;
+            Result<IReadOnlyList<CategoryDto>> catResult =
+                await seedCategories.ExecuteAsync(new SeedCategoriesCommand(request.Reset), token);
             if (!catResult.IsSuccess)
             {
                 await tx.RollbackAsync(token);
                 return PropagateStepFailure(catResult, "categories");
             }
 
-            var hsResult = (Result<PagedList<HotstringDto>>)(await mediator.Send(new SeedHotstringsCommand(request.Reset), token))!;
+            Result<PagedList<HotstringDto>> hsResult =
+                await seedHotstrings.ExecuteAsync(new SeedHotstringsCommand(request.Reset), token);
             if (!hsResult.IsSuccess)
             {
                 await tx.RollbackAsync(token);
                 return PropagateStepFailure(hsResult, "hotstrings");
             }
 
-            var hkResult = (Result<PagedList<HotkeyDto>>)(await mediator.Send(new SeedHotkeysCommand(request.Reset), token))!;
+            Result<PagedList<HotkeyDto>> hkResult =
+                await seedHotkeys.ExecuteAsync(new SeedHotkeysCommand(request.Reset), token);
             if (!hkResult.IsSuccess)
             {
                 await tx.RollbackAsync(token);
