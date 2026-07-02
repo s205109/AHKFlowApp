@@ -6,12 +6,11 @@ using AHKFlowApp.Application.Validation;
 using AHKFlowApp.Domain.Entities;
 using Ardalis.Result;
 using FluentValidation;
-using MediatR;
 using Microsoft.EntityFrameworkCore;
 
 namespace AHKFlowApp.Application.Commands.Categories;
 
-public sealed record CreateCategoryCommand(CreateCategoryDto Input) : IRequest<Result<CategoryDto>>;
+public sealed record CreateCategoryCommand(CreateCategoryDto Input);
 
 public sealed class CreateCategoryCommandValidator : AbstractValidator<CreateCategoryCommand>
 {
@@ -25,9 +24,9 @@ internal sealed class CreateCategoryCommandHandler(
     IAppDbContext db,
     ICurrentUser currentUser,
     TimeProvider clock)
-    : IRequestHandler<CreateCategoryCommand, Result<CategoryDto>>
+    : IUseCaseHandler<CreateCategoryCommand, Result<CategoryDto>>
 {
-    public async Task<Result<CategoryDto>> Handle(CreateCategoryCommand request, CancellationToken ct)
+    public async Task<Result<CategoryDto>> ExecuteAsync(CreateCategoryCommand request, CancellationToken ct)
     {
         if (currentUser.Oid is not Guid ownerOid)
             return Result.Unauthorized();

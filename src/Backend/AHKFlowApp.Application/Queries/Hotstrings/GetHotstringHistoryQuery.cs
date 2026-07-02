@@ -2,19 +2,18 @@ using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Domain.Enums;
 using Ardalis.Result;
-using MediatR;
 using Microsoft.EntityFrameworkCore;
 
 namespace AHKFlowApp.Application.Queries.Hotstrings;
 
-public sealed record GetHotstringHistoryQuery(Guid Id) : IRequest<Result<HistoryEntryDto[]>>;
+public sealed record GetHotstringHistoryQuery(Guid Id);
 
 internal sealed class GetHotstringHistoryQueryHandler(
     IAppDbContext db,
     ICurrentUser currentUser)
-    : IRequestHandler<GetHotstringHistoryQuery, Result<HistoryEntryDto[]>>
+    : IUseCaseHandler<GetHotstringHistoryQuery, Result<HistoryEntryDto[]>>
 {
-    public async Task<Result<HistoryEntryDto[]>> Handle(GetHotstringHistoryQuery request, CancellationToken ct)
+    public async Task<Result<HistoryEntryDto[]>> ExecuteAsync(GetHotstringHistoryQuery request, CancellationToken ct)
     {
         if (currentUser.Oid is not Guid ownerOid)
             return Result.Unauthorized();

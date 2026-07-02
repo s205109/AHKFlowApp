@@ -49,7 +49,7 @@ public sealed class DeleteCaptureTests(HistoryDbFixture fx)
         DeleteHotstringCommandHandler handler = new(
             db, CurrentUserHelper.For(owner), new EntityHistoryRecorder(db, TimeProvider.System));
 
-        Result result = await handler.Handle(new DeleteHotstringCommand(entity.Id), default);
+        Result result = await handler.ExecuteAsync(new DeleteHotstringCommand(entity.Id), default);
 
         result.IsSuccess.Should().BeTrue();
         (await db.Hotstrings.AnyAsync(h => h.Id == entity.Id)).Should().BeFalse();
@@ -79,7 +79,7 @@ public sealed class DeleteCaptureTests(HistoryDbFixture fx)
         BulkDeleteHotstringsCommandHandler handler = new(
             db, CurrentUserHelper.For(owner), new EntityHistoryRecorder(db, TimeProvider.System));
 
-        Result<BulkDeleteResultDto> result = await handler.Handle(
+        Result<BulkDeleteResultDto> result = await handler.ExecuteAsync(
             new BulkDeleteHotstringsCommand(new BulkDeleteRequestDto([first.Id, second.Id])), default);
 
         result.IsSuccess.Should().BeTrue();
@@ -107,7 +107,7 @@ public sealed class DeleteCaptureTests(HistoryDbFixture fx)
         DeleteHotkeyCommandHandler handler = new(
             db, CurrentUserHelper.For(owner), new EntityHistoryRecorder(db, TimeProvider.System));
 
-        Result result = await handler.Handle(new DeleteHotkeyCommand(entity.Id), default);
+        Result result = await handler.ExecuteAsync(new DeleteHotkeyCommand(entity.Id), default);
 
         result.IsSuccess.Should().BeTrue();
         EntityHistory tombstone = await db.EntityHistories
@@ -132,7 +132,7 @@ public sealed class DeleteCaptureTests(HistoryDbFixture fx)
         BulkDeleteHotkeysCommandHandler handler = new(
             db, CurrentUserHelper.For(owner), new EntityHistoryRecorder(db, TimeProvider.System));
 
-        Result<BulkDeleteResultDto> result = await handler.Handle(
+        Result<BulkDeleteResultDto> result = await handler.ExecuteAsync(
             new BulkDeleteHotkeysCommand(new BulkDeleteRequestDto([first.Id, second.Id])), default);
 
         result.IsSuccess.Should().BeTrue();

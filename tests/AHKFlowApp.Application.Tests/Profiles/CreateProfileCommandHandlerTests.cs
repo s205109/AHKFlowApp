@@ -29,7 +29,7 @@ public sealed class CreateProfileCommandHandlerTests(ProfileDbFixture fx)
 
         var sut = new CreateProfileCommandHandler(ctx, user, _clock);
 
-        Result<ProfileDto> result = await sut.Handle(
+        Result<ProfileDto> result = await sut.ExecuteAsync(
             new CreateProfileCommand(new CreateProfileDto("Work")), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
@@ -48,7 +48,7 @@ public sealed class CreateProfileCommandHandlerTests(ProfileDbFixture fx)
         user.Oid.Returns(_ownerOid);
         var sut = new CreateProfileCommandHandler(ctx, user, _clock);
 
-        Result<ProfileDto> result = await sut.Handle(
+        Result<ProfileDto> result = await sut.ExecuteAsync(
             new CreateProfileCommand(new CreateProfileDto("Work")), CancellationToken.None);
 
         result.Status.Should().Be(ResultStatus.Conflict);
@@ -62,7 +62,7 @@ public sealed class CreateProfileCommandHandlerTests(ProfileDbFixture fx)
         user.Oid.Returns((Guid?)null);
         var sut = new CreateProfileCommandHandler(ctx, user, _clock);
 
-        Result<ProfileDto> result = await sut.Handle(
+        Result<ProfileDto> result = await sut.ExecuteAsync(
             new CreateProfileCommand(new CreateProfileDto("Work")), CancellationToken.None);
 
         result.Status.Should().Be(ResultStatus.Unauthorized);
@@ -76,7 +76,7 @@ public sealed class CreateProfileCommandHandlerTests(ProfileDbFixture fx)
         user.Oid.Returns(_ownerOid);
         var sut = new CreateProfileCommandHandler(ctx, user, _clock);
 
-        Result<ProfileDto> result = await sut.Handle(
+        Result<ProfileDto> result = await sut.ExecuteAsync(
             new CreateProfileCommand(new CreateProfileDto("Work", HeaderTemplate: "#Include work.ahk", FooterTemplate: "return")),
             CancellationToken.None);
 
@@ -97,7 +97,7 @@ public sealed class CreateProfileCommandHandlerTests(ProfileDbFixture fx)
         user.Oid.Returns(_ownerOid);
         var sut = new CreateProfileCommandHandler(ctx, user, _clock);
 
-        Result<ProfileDto> result = await sut.Handle(
+        Result<ProfileDto> result = await sut.ExecuteAsync(
             new CreateProfileCommand(new CreateProfileDto("New", IsDefault: true)), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();

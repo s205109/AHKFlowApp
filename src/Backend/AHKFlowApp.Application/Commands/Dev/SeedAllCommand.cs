@@ -1,7 +1,6 @@
 using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.DTOs;
 using Ardalis.Result;
-using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 
@@ -9,15 +8,17 @@ namespace AHKFlowApp.Application.Commands.Dev;
 
 // Dev-only: runs the full seed pipeline (categories, hotstrings, hotkeys) inside
 // a single transaction. Any failure rolls the whole pipeline back.
-public sealed record SeedAllCommand(bool Reset) : IRequest<Result<SeedAllResultDto>>;
+public sealed record SeedAllCommand(bool Reset);
 
 internal sealed class SeedAllCommandHandler(
     IAppDbContext db,
-    IMediator mediator,
+    IUseCase<SeedCategoriesCommand, Result<IReadOnlyList<CategoryDto>>> seedCategories,
+    IUseCase<SeedHotstringsCommand, Result<PagedList<HotstringDto>>> seedHotstrings,
+    IUseCase<SeedHotkeysCommand, Result<PagedList<HotkeyDto>>> seedHotkeys,
     AppEnvironment env)
-    : IRequestHandler<SeedAllCommand, Result<SeedAllResultDto>>
+    : IUseCaseHandler<SeedAllCommand, Result<SeedAllResultDto>>
 {
-    public async Task<Result<SeedAllResultDto>> Handle(SeedAllCommand request, CancellationToken ct)
+    public async Task<Result<SeedAllResultDto>> ExecuteAsync(SeedAllCommand request, CancellationToken ct)
     {
         if (!env.IsDevelopment)
             return Result.NotFound();
@@ -34,21 +35,24 @@ internal sealed class SeedAllCommandHandler(
             // never swallows them.
             await using IDbContextTransaction tx = await db.BeginTransactionAsync(token);
 
-            Result<IReadOnlyList<CategoryDto>> catResult = await mediator.Send(new SeedCategoriesCommand(request.Reset), token);
+            Result<IReadOnlyList<CategoryDto>> catResult =
+                await seedCategories.ExecuteAsync(new SeedCategoriesCommand(request.Reset), token);
             if (!catResult.IsSuccess)
             {
                 await tx.RollbackAsync(token);
                 return PropagateStepFailure(catResult, "categories");
             }
 
-            Result<PagedList<HotstringDto>> hsResult = await mediator.Send(new SeedHotstringsCommand(request.Reset), token);
+            Result<PagedList<HotstringDto>> hsResult =
+                await seedHotstrings.ExecuteAsync(new SeedHotstringsCommand(request.Reset), token);
             if (!hsResult.IsSuccess)
             {
                 await tx.RollbackAsync(token);
                 return PropagateStepFailure(hsResult, "hotstrings");
             }
 
-            Result<PagedList<HotkeyDto>> hkResult = await mediator.Send(new SeedHotkeysCommand(request.Reset), token);
+            Result<PagedList<HotkeyDto>> hkResult =
+                await seedHotkeys.ExecuteAsync(new SeedHotkeysCommand(request.Reset), token);
             if (!hkResult.IsSuccess)
             {
                 await tx.RollbackAsync(token);

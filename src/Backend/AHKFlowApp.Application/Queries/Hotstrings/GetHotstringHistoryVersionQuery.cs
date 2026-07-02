@@ -4,20 +4,18 @@ using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Domain.Enums;
 using Ardalis.Result;
-using MediatR;
 using Microsoft.EntityFrameworkCore;
 
 namespace AHKFlowApp.Application.Queries.Hotstrings;
 
-public sealed record GetHotstringHistoryVersionQuery(Guid Id, int Version)
-    : IRequest<Result<HotstringHistoryVersionDto>>;
+public sealed record GetHotstringHistoryVersionQuery(Guid Id, int Version);
 
 internal sealed class GetHotstringHistoryVersionQueryHandler(
     IAppDbContext db,
     ICurrentUser currentUser)
-    : IRequestHandler<GetHotstringHistoryVersionQuery, Result<HotstringHistoryVersionDto>>
+    : IUseCaseHandler<GetHotstringHistoryVersionQuery, Result<HotstringHistoryVersionDto>>
 {
-    public async Task<Result<HotstringHistoryVersionDto>> Handle(
+    public async Task<Result<HotstringHistoryVersionDto>> ExecuteAsync(
         GetHotstringHistoryVersionQuery request,
         CancellationToken ct)
     {

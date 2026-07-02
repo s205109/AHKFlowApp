@@ -31,7 +31,7 @@ Integration mode runs:
 - `AHKFlowApp.API.Tests`
 - `AHKFlowApp.Infrastructure.Tests`
 
-Use this for EF Core, migrations, MediatR handlers that touch `AppDbContext`, API behavior, CLI integration flows, SQL query behavior, and anything that changes persistence wiring.
+Use this for EF Core, migrations, use case handlers that touch `AppDbContext`, API behavior, CLI integration flows, SQL query behavior, and anything that changes persistence wiring.
 
 The script starts one disposable Docker SQL Server container for the selected SQL-backed projects, passes the server connection to the test processes, and removes the container when the run finishes. Direct `dotnet test` still falls back to the per-project Testcontainers fixture path.
 

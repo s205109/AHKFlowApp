@@ -3,17 +3,16 @@ using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Mapping;
 using AHKFlowApp.Domain.Entities;
 using Ardalis.Result;
-using MediatR;
 using Microsoft.EntityFrameworkCore;
 
 namespace AHKFlowApp.Application.Queries.Categories;
 
-public sealed record GetCategoryQuery(Guid Id) : IRequest<Result<CategoryDto>>;
+public sealed record GetCategoryQuery(Guid Id);
 
 internal sealed class GetCategoryQueryHandler(IAppDbContext db, ICurrentUser currentUser)
-    : IRequestHandler<GetCategoryQuery, Result<CategoryDto>>
+    : IUseCaseHandler<GetCategoryQuery, Result<CategoryDto>>
 {
-    public async Task<Result<CategoryDto>> Handle(GetCategoryQuery request, CancellationToken ct)
+    public async Task<Result<CategoryDto>> ExecuteAsync(GetCategoryQuery request, CancellationToken ct)
     {
         if (currentUser.Oid is not Guid ownerOid)
             return Result.Unauthorized();

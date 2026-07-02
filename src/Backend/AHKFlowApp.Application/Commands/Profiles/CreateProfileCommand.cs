@@ -7,12 +7,11 @@ using AHKFlowApp.Domain.Constants;
 using AHKFlowApp.Domain.Entities;
 using Ardalis.Result;
 using FluentValidation;
-using MediatR;
 using Microsoft.EntityFrameworkCore;
 
 namespace AHKFlowApp.Application.Commands.Profiles;
 
-public sealed record CreateProfileCommand(CreateProfileDto Input) : IRequest<Result<ProfileDto>>;
+public sealed record CreateProfileCommand(CreateProfileDto Input);
 
 public sealed class CreateProfileCommandValidator : AbstractValidator<CreateProfileCommand>
 {
@@ -28,9 +27,9 @@ internal sealed class CreateProfileCommandHandler(
     IAppDbContext db,
     ICurrentUser currentUser,
     TimeProvider clock)
-    : IRequestHandler<CreateProfileCommand, Result<ProfileDto>>
+    : IUseCaseHandler<CreateProfileCommand, Result<ProfileDto>>
 {
-    public async Task<Result<ProfileDto>> Handle(CreateProfileCommand request, CancellationToken ct)
+    public async Task<Result<ProfileDto>> ExecuteAsync(CreateProfileCommand request, CancellationToken ct)
     {
         if (currentUser.Oid is not Guid ownerOid)
             return Result.Unauthorized();

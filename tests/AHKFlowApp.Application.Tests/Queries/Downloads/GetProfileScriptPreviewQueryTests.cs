@@ -46,7 +46,7 @@ public sealed class GetProfileScriptPreviewQueryTests(ScriptGeneratorDbFixture f
         GetProfileScriptPreviewQueryHandler sut = new(
             new ProfileScriptLoader(ctx), cu, CreateGenerator(_clock), _clock);
 
-        Result<ProfileScriptPreviewDto> result = await sut.Handle(
+        Result<ProfileScriptPreviewDto> result = await sut.ExecuteAsync(
             new GetProfileScriptPreviewQuery(Guid.NewGuid()), CancellationToken.None);
 
         result.IsSuccess.Should().BeFalse();
@@ -59,7 +59,7 @@ public sealed class GetProfileScriptPreviewQueryTests(ScriptGeneratorDbFixture f
         await using AppDbContext ctx = fx.CreateContext();
         GetProfileScriptPreviewQueryHandler sut = CreateSut(ctx);
 
-        Result<ProfileScriptPreviewDto> result = await sut.Handle(
+        Result<ProfileScriptPreviewDto> result = await sut.ExecuteAsync(
             new GetProfileScriptPreviewQuery(Guid.NewGuid()), CancellationToken.None);
 
         result.IsSuccess.Should().BeFalse();
@@ -89,7 +89,7 @@ public sealed class GetProfileScriptPreviewQueryTests(ScriptGeneratorDbFixture f
         await ctx.SaveChangesAsync();
 
         GetProfileScriptPreviewQueryHandler sut = CreateSut(ctx);
-        Result<ProfileScriptPreviewDto> result = await sut.Handle(
+        Result<ProfileScriptPreviewDto> result = await sut.ExecuteAsync(
             new GetProfileScriptPreviewQuery(work.Id), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();

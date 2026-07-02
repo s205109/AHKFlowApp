@@ -2,19 +2,18 @@ using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Services;
 using Ardalis.Result;
-using MediatR;
 
 namespace AHKFlowApp.Application.Queries.Downloads;
 
-public sealed record GenerateProfileScriptQuery(Guid ProfileId) : IRequest<Result<ProfileScript>>;
+public sealed record GenerateProfileScriptQuery(Guid ProfileId);
 
 internal sealed class GenerateProfileScriptQueryHandler(
     ProfileScriptLoader loader,
     ICurrentUser currentUser,
     AhkScriptGenerator generator)
-    : IRequestHandler<GenerateProfileScriptQuery, Result<ProfileScript>>
+    : IUseCaseHandler<GenerateProfileScriptQuery, Result<ProfileScript>>
 {
-    public async Task<Result<ProfileScript>> Handle(GenerateProfileScriptQuery request, CancellationToken ct)
+    public async Task<Result<ProfileScript>> ExecuteAsync(GenerateProfileScriptQuery request, CancellationToken ct)
     {
         if (currentUser.Oid is not Guid ownerOid)
             return Result.Unauthorized();

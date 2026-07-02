@@ -41,7 +41,7 @@ public sealed class GenerateProfileScriptQueryTests(ScriptGeneratorDbFixture fx)
         await using AppDbContext ctx = fx.CreateContext();
         GenerateProfileScriptQueryHandler sut = CreateSut(ctx);
 
-        Result<ProfileScript> result = await sut.Handle(
+        Result<ProfileScript> result = await sut.ExecuteAsync(
             new GenerateProfileScriptQuery(Guid.NewGuid()), CancellationToken.None);
 
         result.IsSuccess.Should().BeFalse();
@@ -58,7 +58,7 @@ public sealed class GenerateProfileScriptQueryTests(ScriptGeneratorDbFixture fx)
         await ctx.SaveChangesAsync();
 
         GenerateProfileScriptQueryHandler sut = CreateSut(ctx);
-        Result<ProfileScript> result = await sut.Handle(
+        Result<ProfileScript> result = await sut.ExecuteAsync(
             new GenerateProfileScriptQuery(theirs.Id), CancellationToken.None);
 
         result.IsSuccess.Should().BeFalse();
@@ -89,7 +89,7 @@ public sealed class GenerateProfileScriptQueryTests(ScriptGeneratorDbFixture fx)
         await ctx.SaveChangesAsync();
 
         GenerateProfileScriptQueryHandler sut = CreateSut(ctx);
-        Result<ProfileScript> result = await sut.Handle(
+        Result<ProfileScript> result = await sut.ExecuteAsync(
             new GenerateProfileScriptQuery(work.Id), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
@@ -112,7 +112,7 @@ public sealed class GenerateProfileScriptQueryTests(ScriptGeneratorDbFixture fx)
         cu.Oid.Returns((Guid?)null);
         GenerateProfileScriptQueryHandler sut = new(new ProfileScriptLoader(ctx), cu, _generator);
 
-        Result<ProfileScript> result = await sut.Handle(
+        Result<ProfileScript> result = await sut.ExecuteAsync(
             new GenerateProfileScriptQuery(Guid.NewGuid()), CancellationToken.None);
 
         result.IsSuccess.Should().BeFalse();

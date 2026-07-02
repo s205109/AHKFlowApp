@@ -30,7 +30,7 @@ public sealed class SeedHotkeysCommandHandlerTests(DevDbFixture fx)
     {
         await using AppDbContext db = fx.CreateContext();
         var handler = new SeedCategoriesCommandHandler(db, User(), TimeProvider.System, _devEnv);
-        await handler.Handle(new SeedCategoriesCommand(Reset: false), default);
+        await handler.ExecuteAsync(new SeedCategoriesCommand(Reset: false), default);
     }
 
     private SeedHotkeysCommandHandler Sut(AppDbContext db, ICurrentUser? user = null) =>
@@ -41,7 +41,7 @@ public sealed class SeedHotkeysCommandHandlerTests(DevDbFixture fx)
     {
         await using AppDbContext db = fx.CreateContext();
 
-        Result<PagedList<HotkeyDto>> result = await Sut(db).Handle(new SeedHotkeysCommand(Reset: false), default);
+        Result<PagedList<HotkeyDto>> result = await Sut(db).ExecuteAsync(new SeedHotkeysCommand(Reset: false), default);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.Items.Should().HaveCount(SampleCount);
@@ -52,7 +52,7 @@ public sealed class SeedHotkeysCommandHandlerTests(DevDbFixture fx)
     {
         await using (AppDbContext db = fx.CreateContext())
         {
-            await Sut(db).Handle(new SeedHotkeysCommand(Reset: false), default);
+            await Sut(db).ExecuteAsync(new SeedHotkeysCommand(Reset: false), default);
         }
 
         await using AppDbContext verify = fx.CreateContext();
@@ -68,7 +68,7 @@ public sealed class SeedHotkeysCommandHandlerTests(DevDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         var handler = new SeedHotkeysCommandHandler(db, User(), TimeProvider.System, new AppEnvironment(IsDevelopment: false));
 
-        Result<PagedList<HotkeyDto>> result = await handler.Handle(new SeedHotkeysCommand(false), default);
+        Result<PagedList<HotkeyDto>> result = await handler.ExecuteAsync(new SeedHotkeysCommand(false), default);
 
         result.Status.Should().Be(ResultStatus.NotFound);
     }
@@ -81,7 +81,7 @@ public sealed class SeedHotkeysCommandHandlerTests(DevDbFixture fx)
         noUser.Oid.Returns((Guid?)null);
         var handler = new SeedHotkeysCommandHandler(db, noUser, TimeProvider.System, _devEnv);
 
-        Result<PagedList<HotkeyDto>> result = await handler.Handle(new SeedHotkeysCommand(false), default);
+        Result<PagedList<HotkeyDto>> result = await handler.ExecuteAsync(new SeedHotkeysCommand(false), default);
 
         result.Status.Should().Be(ResultStatus.Unauthorized);
     }
@@ -90,10 +90,10 @@ public sealed class SeedHotkeysCommandHandlerTests(DevDbFixture fx)
     public async Task Handle_Rerun_DoesNotDuplicateRows()
     {
         await using (AppDbContext first = fx.CreateContext())
-            await Sut(first).Handle(new SeedHotkeysCommand(Reset: false), default);
+            await Sut(first).ExecuteAsync(new SeedHotkeysCommand(Reset: false), default);
 
         await using AppDbContext db = fx.CreateContext();
-        Result<PagedList<HotkeyDto>> result = await Sut(db).Handle(new SeedHotkeysCommand(Reset: false), default);
+        Result<PagedList<HotkeyDto>> result = await Sut(db).ExecuteAsync(new SeedHotkeysCommand(Reset: false), default);
 
         result.Value.Items.Should().HaveCount(SampleCount);
     }
@@ -104,10 +104,10 @@ public sealed class SeedHotkeysCommandHandlerTests(DevDbFixture fx)
         await SeedCategoriesAsync();
 
         await using (AppDbContext first = fx.CreateContext())
-            await Sut(first).Handle(new SeedHotkeysCommand(Reset: false), default);
+            await Sut(first).ExecuteAsync(new SeedHotkeysCommand(Reset: false), default);
 
         await using AppDbContext db = fx.CreateContext();
-        Result<PagedList<HotkeyDto>> result = await Sut(db).Handle(new SeedHotkeysCommand(Reset: true), default);
+        Result<PagedList<HotkeyDto>> result = await Sut(db).ExecuteAsync(new SeedHotkeysCommand(Reset: true), default);
 
         result.Value.Items.Should().HaveCount(SampleCount);
         result.Value.Items.Sum(h => h.CategoryIds.Length).Should().Be(SampleCount);
@@ -127,7 +127,7 @@ public sealed class SeedHotkeysCommandHandlerTests(DevDbFixture fx)
         }
 
         await using AppDbContext db = fx.CreateContext();
-        Result<PagedList<HotkeyDto>> result = await Sut(db).Handle(new SeedHotkeysCommand(Reset: false), default);
+        Result<PagedList<HotkeyDto>> result = await Sut(db).ExecuteAsync(new SeedHotkeysCommand(Reset: false), default);
 
         result.Value.Items.Sum(h => h.CategoryIds.Length).Should().Be(SampleCount);
         result.Value.Items.Single(h => h.Description == "Launch Notepad").CategoryIds
@@ -145,7 +145,7 @@ public sealed class SeedHotkeysCommandHandlerTests(DevDbFixture fx)
     {
         await using AppDbContext db = fx.CreateContext();
 
-        Result<PagedList<HotkeyDto>> result = await Sut(db).Handle(new SeedHotkeysCommand(Reset: false), default);
+        Result<PagedList<HotkeyDto>> result = await Sut(db).ExecuteAsync(new SeedHotkeysCommand(Reset: false), default);
 
         result.Value.Items.Should().HaveCount(SampleCount);
         result.Value.Items.Should().OnlyContain(h => h.CategoryIds.Length == 0);
@@ -159,12 +159,12 @@ public sealed class SeedHotkeysCommandHandlerTests(DevDbFixture fx)
     public async Task Handle_Backfill_AttachesMissingJunctions_OnRerun()
     {
         await using (AppDbContext before = fx.CreateContext())
-            await Sut(before).Handle(new SeedHotkeysCommand(Reset: false), default);
+            await Sut(before).ExecuteAsync(new SeedHotkeysCommand(Reset: false), default);
 
         await SeedCategoriesAsync();
 
         await using AppDbContext db = fx.CreateContext();
-        Result<PagedList<HotkeyDto>> result = await Sut(db).Handle(new SeedHotkeysCommand(Reset: false), default);
+        Result<PagedList<HotkeyDto>> result = await Sut(db).ExecuteAsync(new SeedHotkeysCommand(Reset: false), default);
 
         result.Value.Items.Should().HaveCount(SampleCount);
         result.Value.Items.Sum(h => h.CategoryIds.Length).Should().Be(SampleCount);
@@ -176,10 +176,10 @@ public sealed class SeedHotkeysCommandHandlerTests(DevDbFixture fx)
         await SeedCategoriesAsync();
 
         await using (AppDbContext first = fx.CreateContext())
-            await Sut(first).Handle(new SeedHotkeysCommand(Reset: false), default);
+            await Sut(first).ExecuteAsync(new SeedHotkeysCommand(Reset: false), default);
 
         await using AppDbContext db = fx.CreateContext();
-        Result<PagedList<HotkeyDto>> result = await Sut(db).Handle(new SeedHotkeysCommand(Reset: false), default);
+        Result<PagedList<HotkeyDto>> result = await Sut(db).ExecuteAsync(new SeedHotkeysCommand(Reset: false), default);
 
         result.Value.Items.Should().HaveCount(SampleCount);
 
@@ -208,7 +208,7 @@ public sealed class SeedHotkeysCommandHandlerTests(DevDbFixture fx)
         }
 
         await using AppDbContext db = fx.CreateContext();
-        Result<PagedList<HotkeyDto>> result = await Sut(db).Handle(new SeedHotkeysCommand(Reset: false), default);
+        Result<PagedList<HotkeyDto>> result = await Sut(db).ExecuteAsync(new SeedHotkeysCommand(Reset: false), default);
 
         result.Value.Items.Should().HaveCount(SampleCount);
         result.Value.Items.Sum(h => h.CategoryIds.Length).Should().Be(SampleCount);

@@ -30,7 +30,7 @@ public sealed class PurgeCommandTests(HistoryDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         DeleteHotstringCommandHandler handler = new(
             db, CurrentUserHelper.For(owner), new EntityHistoryRecorder(db, TimeProvider.System));
-        Result result = await handler.Handle(new DeleteHotstringCommand(entity.Id), default);
+        Result result = await handler.ExecuteAsync(new DeleteHotstringCommand(entity.Id), default);
         result.IsSuccess.Should().BeTrue();
 
         return entity;
@@ -50,7 +50,7 @@ public sealed class PurgeCommandTests(HistoryDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         DeleteHotkeyCommandHandler handler = new(
             db, CurrentUserHelper.For(owner), new EntityHistoryRecorder(db, TimeProvider.System));
-        Result result = await handler.Handle(new DeleteHotkeyCommand(entity.Id), default);
+        Result result = await handler.ExecuteAsync(new DeleteHotkeyCommand(entity.Id), default);
         result.IsSuccess.Should().BeTrue();
 
         return entity;
@@ -65,7 +65,7 @@ public sealed class PurgeCommandTests(HistoryDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         PurgeDeletedHotstringCommandHandler handler = new(db, CurrentUserHelper.For(owner));
 
-        Result result = await handler.Handle(new PurgeDeletedHotstringCommand(entity.Id), default);
+        Result result = await handler.ExecuteAsync(new PurgeDeletedHotstringCommand(entity.Id), default);
 
         result.IsSuccess.Should().BeTrue();
         (await db.EntityHistories.AnyAsync(h => h.EntityId == entity.Id)).Should().BeFalse();
@@ -85,7 +85,7 @@ public sealed class PurgeCommandTests(HistoryDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         PurgeDeletedHotstringCommandHandler handler = new(db, CurrentUserHelper.For(owner));
 
-        Result result = await handler.Handle(new PurgeDeletedHotstringCommand(live.Id), default);
+        Result result = await handler.ExecuteAsync(new PurgeDeletedHotstringCommand(live.Id), default);
 
         result.Status.Should().Be(ResultStatus.NotFound);
     }
@@ -96,7 +96,7 @@ public sealed class PurgeCommandTests(HistoryDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         PurgeDeletedHotstringCommandHandler handler = new(db, CurrentUserHelper.For(Guid.NewGuid()));
 
-        Result result = await handler.Handle(new PurgeDeletedHotstringCommand(Guid.NewGuid()), default);
+        Result result = await handler.ExecuteAsync(new PurgeDeletedHotstringCommand(Guid.NewGuid()), default);
 
         result.Status.Should().Be(ResultStatus.NotFound);
     }
@@ -110,7 +110,7 @@ public sealed class PurgeCommandTests(HistoryDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         PurgeDeletedHotkeyCommandHandler handler = new(db, CurrentUserHelper.For(owner));
 
-        Result result = await handler.Handle(new PurgeDeletedHotkeyCommand(entity.Id), default);
+        Result result = await handler.ExecuteAsync(new PurgeDeletedHotkeyCommand(entity.Id), default);
 
         result.IsSuccess.Should().BeTrue();
         (await db.EntityHistories.AnyAsync(h => h.EntityId == entity.Id)).Should().BeFalse();

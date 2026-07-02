@@ -32,7 +32,7 @@ public sealed class GetCategoryQueryHandlerTests(CategoryDbFixture fx)
         await using AppDbContext ctx = fx.CreateContext();
         var sut = new GetCategoryQueryHandler(ctx, CurrentUser());
 
-        Result<CategoryDto> result = await sut.Handle(
+        Result<CategoryDto> result = await sut.ExecuteAsync(
             new GetCategoryQuery(Guid.NewGuid()), CancellationToken.None);
 
         result.Status.Should().Be(ResultStatus.NotFound);
@@ -49,7 +49,7 @@ public sealed class GetCategoryQueryHandlerTests(CategoryDbFixture fx)
 
         var sut = new GetCategoryQueryHandler(ctx, CurrentUser());
 
-        Result<CategoryDto> result = await sut.Handle(
+        Result<CategoryDto> result = await sut.ExecuteAsync(
             new GetCategoryQuery(category.Id), CancellationToken.None);
 
         result.Status.Should().Be(ResultStatus.NotFound);
@@ -63,7 +63,7 @@ public sealed class GetCategoryQueryHandlerTests(CategoryDbFixture fx)
         user.Oid.Returns((Guid?)null);
         var sut = new GetCategoryQueryHandler(ctx, user);
 
-        Result<CategoryDto> result = await sut.Handle(
+        Result<CategoryDto> result = await sut.ExecuteAsync(
             new GetCategoryQuery(Guid.NewGuid()), CancellationToken.None);
 
         result.Status.Should().Be(ResultStatus.Unauthorized);
@@ -79,7 +79,7 @@ public sealed class GetCategoryQueryHandlerTests(CategoryDbFixture fx)
 
         var sut = new GetCategoryQueryHandler(ctx, CurrentUser());
 
-        Result<CategoryDto> result = await sut.Handle(
+        Result<CategoryDto> result = await sut.ExecuteAsync(
             new GetCategoryQuery(category.Id), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();

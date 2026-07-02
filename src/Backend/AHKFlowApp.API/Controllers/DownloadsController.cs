@@ -1,10 +1,10 @@
 using System.IO.Compression;
 using System.Text;
 using AHKFlowApp.API.Extensions;
+using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Queries.Downloads;
 using Ardalis.Result;
-using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Identity.Web.Resource;
@@ -17,7 +17,10 @@ namespace AHKFlowApp.API.Controllers;
 [RequiredScope("access_as_user")]
 [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
 [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
-public sealed class DownloadsController(IMediator mediator) : ControllerBase
+public sealed class DownloadsController(
+    IUseCase<GenerateProfileScriptQuery, Result<ProfileScript>> generateProfileScript,
+    IUseCase<GetProfileScriptPreviewQuery, Result<ProfileScriptPreviewDto>> getProfileScriptPreview,
+    IUseCase<GenerateAllProfileScriptsQuery, Result<IReadOnlyList<ProfileScript>>> generateAllProfileScripts) : ControllerBase
 {
     private const string AhkContentType = "text/plain; charset=utf-8";
     private const string ZipContentType = "application/zip";
@@ -30,7 +33,7 @@ public sealed class DownloadsController(IMediator mediator) : ControllerBase
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetProfile(Guid profileId, CancellationToken ct)
     {
-        Result<ProfileScript> result = await mediator.Send(new GenerateProfileScriptQuery(profileId), ct);
+        Result<ProfileScript> result = await generateProfileScript.ExecuteAsync(new GenerateProfileScriptQuery(profileId), ct);
         if (!result.IsSuccess)
             return result.ToProblemActionResult(this).Result!;
 
@@ -45,7 +48,7 @@ public sealed class DownloadsController(IMediator mediator) : ControllerBase
     public async Task<ActionResult<ProfileScriptPreviewDto>> PreviewProfile(Guid profileId, CancellationToken ct)
     {
         Result<ProfileScriptPreviewDto> result =
-            await mediator.Send(new GetProfileScriptPreviewQuery(profileId), ct);
+            await getProfileScriptPreview.ExecuteAsync(new GetProfileScriptPreviewQuery(profileId), ct);
 
         return result.ToProblemActionResult(this);
     }
@@ -56,7 +59,7 @@ public sealed class DownloadsController(IMediator mediator) : ControllerBase
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetAllZip(CancellationToken ct)
     {
-        Result<IReadOnlyList<ProfileScript>> result = await mediator.Send(new GenerateAllProfileScriptsQuery(), ct);
+        Result<IReadOnlyList<ProfileScript>> result = await generateAllProfileScripts.ExecuteAsync(new GenerateAllProfileScriptsQuery(), ct);
         if (!result.IsSuccess)
             return result.ToProblemActionResult(this).Result!;
 

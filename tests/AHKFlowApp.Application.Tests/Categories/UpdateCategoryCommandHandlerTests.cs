@@ -33,7 +33,7 @@ public sealed class UpdateCategoryCommandHandlerTests(CategoryDbFixture fx)
         await using AppDbContext ctx = fx.CreateContext();
         var sut = new UpdateCategoryCommandHandler(ctx, CurrentUser(), _clock);
 
-        Result<CategoryDto> result = await sut.Handle(
+        Result<CategoryDto> result = await sut.ExecuteAsync(
             new UpdateCategoryCommand(Guid.NewGuid(), new UpdateCategoryDto("Email")), CancellationToken.None);
 
         result.Status.Should().Be(ResultStatus.NotFound);
@@ -50,7 +50,7 @@ public sealed class UpdateCategoryCommandHandlerTests(CategoryDbFixture fx)
 
         var sut = new UpdateCategoryCommandHandler(ctx, CurrentUser(), _clock);
 
-        Result<CategoryDto> result = await sut.Handle(
+        Result<CategoryDto> result = await sut.ExecuteAsync(
             new UpdateCategoryCommand(other.Id, new UpdateCategoryDto("Renamed")), CancellationToken.None);
 
         result.Status.Should().Be(ResultStatus.NotFound);
@@ -67,7 +67,7 @@ public sealed class UpdateCategoryCommandHandlerTests(CategoryDbFixture fx)
 
         var sut = new UpdateCategoryCommandHandler(ctx, CurrentUser(), _clock);
 
-        Result<CategoryDto> result = await sut.Handle(
+        Result<CategoryDto> result = await sut.ExecuteAsync(
             new UpdateCategoryCommand(email.Id, new UpdateCategoryDto("Work")), CancellationToken.None);
 
         result.Status.Should().Be(ResultStatus.Conflict);
@@ -84,7 +84,7 @@ public sealed class UpdateCategoryCommandHandlerTests(CategoryDbFixture fx)
 
         var sut = new UpdateCategoryCommandHandler(ctx, CurrentUser(), _clock);
 
-        Result<CategoryDto> result = await sut.Handle(
+        Result<CategoryDto> result = await sut.ExecuteAsync(
             new UpdateCategoryCommand(email.Id, new UpdateCategoryDto("WORK")), CancellationToken.None);
 
         result.Status.Should().Be(ResultStatus.Conflict);
@@ -100,7 +100,7 @@ public sealed class UpdateCategoryCommandHandlerTests(CategoryDbFixture fx)
 
         var sut = new UpdateCategoryCommandHandler(ctx, CurrentUser(), _clock);
 
-        Result<CategoryDto> result = await sut.Handle(
+        Result<CategoryDto> result = await sut.ExecuteAsync(
             new UpdateCategoryCommand(entity.Id, new UpdateCategoryDto("Email")), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
@@ -117,7 +117,7 @@ public sealed class UpdateCategoryCommandHandlerTests(CategoryDbFixture fx)
 
         var sut = new UpdateCategoryCommandHandler(ctx, CurrentUser(), _clock);
 
-        Result<CategoryDto> result = await sut.Handle(
+        Result<CategoryDto> result = await sut.ExecuteAsync(
             new UpdateCategoryCommand(entity.Id, new UpdateCategoryDto("  Email  ")), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
@@ -134,7 +134,7 @@ public sealed class UpdateCategoryCommandHandlerTests(CategoryDbFixture fx)
         user.Oid.Returns((Guid?)null);
         var sut = new UpdateCategoryCommandHandler(ctx, user, _clock);
 
-        Result<CategoryDto> result = await sut.Handle(
+        Result<CategoryDto> result = await sut.ExecuteAsync(
             new UpdateCategoryCommand(Guid.NewGuid(), new UpdateCategoryDto("Email")), CancellationToken.None);
 
         result.Status.Should().Be(ResultStatus.Unauthorized);
@@ -154,7 +154,7 @@ public sealed class UpdateCategoryCommandHandlerTests(CategoryDbFixture fx)
 
         var sut = new UpdateCategoryCommandHandler(ctx, CurrentUser(), _clock);
 
-        Result<CategoryDto> result = await sut.Handle(
+        Result<CategoryDto> result = await sut.ExecuteAsync(
             new UpdateCategoryCommand(entity.Id, new UpdateCategoryDto("Personal")), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();

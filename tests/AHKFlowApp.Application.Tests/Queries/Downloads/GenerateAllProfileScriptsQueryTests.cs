@@ -43,7 +43,7 @@ public sealed class GenerateAllProfileScriptsQueryTests(ScriptGeneratorDbFixture
         cu.Oid.Returns((Guid?)null);
         GenerateAllProfileScriptsQueryHandler sut = new(ctx, cu, _generator);
 
-        Result<IReadOnlyList<ProfileScript>> result = await sut.Handle(
+        Result<IReadOnlyList<ProfileScript>> result = await sut.ExecuteAsync(
             new GenerateAllProfileScriptsQuery(), CancellationToken.None);
 
         result.IsSuccess.Should().BeFalse();
@@ -57,7 +57,7 @@ public sealed class GenerateAllProfileScriptsQueryTests(ScriptGeneratorDbFixture
         var lonelyUser = Guid.NewGuid();
         GenerateAllProfileScriptsQueryHandler sut = CreateSut(ctx, lonelyUser);
 
-        Result<IReadOnlyList<ProfileScript>> result = await sut.Handle(
+        Result<IReadOnlyList<ProfileScript>> result = await sut.ExecuteAsync(
             new GenerateAllProfileScriptsQuery(), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
@@ -90,7 +90,7 @@ public sealed class GenerateAllProfileScriptsQueryTests(ScriptGeneratorDbFixture
         await ctx.SaveChangesAsync();
 
         GenerateAllProfileScriptsQueryHandler sut = CreateSut(ctx);
-        Result<IReadOnlyList<ProfileScript>> result = await sut.Handle(
+        Result<IReadOnlyList<ProfileScript>> result = await sut.ExecuteAsync(
             new GenerateAllProfileScriptsQuery(), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
@@ -126,7 +126,7 @@ public sealed class GenerateAllProfileScriptsQueryTests(ScriptGeneratorDbFixture
         await ctx.SaveChangesAsync();
 
         GenerateAllProfileScriptsQueryHandler sut = CreateSut(ctx);
-        Result<IReadOnlyList<ProfileScript>> result = await sut.Handle(
+        Result<IReadOnlyList<ProfileScript>> result = await sut.ExecuteAsync(
             new GenerateAllProfileScriptsQuery(), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
@@ -146,7 +146,7 @@ public sealed class GenerateAllProfileScriptsQueryTests(ScriptGeneratorDbFixture
         await ctx.SaveChangesAsync();
 
         GenerateAllProfileScriptsQueryHandler sut = CreateSut(ctx, uniqueOwner);
-        Result<IReadOnlyList<ProfileScript>> result = await sut.Handle(
+        Result<IReadOnlyList<ProfileScript>> result = await sut.ExecuteAsync(
             new GenerateAllProfileScriptsQuery(), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();

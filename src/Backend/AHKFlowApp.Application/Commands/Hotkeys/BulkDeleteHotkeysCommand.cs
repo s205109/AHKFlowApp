@@ -5,13 +5,11 @@ using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Domain.Enums;
 using Ardalis.Result;
 using FluentValidation;
-using MediatR;
 using Microsoft.EntityFrameworkCore;
 
 namespace AHKFlowApp.Application.Commands.Hotkeys;
 
-public sealed record BulkDeleteHotkeysCommand(BulkDeleteRequestDto Input)
-    : IRequest<Result<BulkDeleteResultDto>>;
+public sealed record BulkDeleteHotkeysCommand(BulkDeleteRequestDto Input);
 
 public sealed class BulkDeleteHotkeysCommandValidator : AbstractValidator<BulkDeleteHotkeysCommand>
 {
@@ -32,9 +30,9 @@ internal sealed class BulkDeleteHotkeysCommandHandler(
     IAppDbContext db,
     ICurrentUser currentUser,
     IEntityHistoryRecorder recorder)
-    : IRequestHandler<BulkDeleteHotkeysCommand, Result<BulkDeleteResultDto>>
+    : IUseCaseHandler<BulkDeleteHotkeysCommand, Result<BulkDeleteResultDto>>
 {
-    public async Task<Result<BulkDeleteResultDto>> Handle(
+    public async Task<Result<BulkDeleteResultDto>> ExecuteAsync(
         BulkDeleteHotkeysCommand request,
         CancellationToken ct)
     {

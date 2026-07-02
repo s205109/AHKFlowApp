@@ -34,7 +34,7 @@ public sealed class DeleteCategoryCommandHandlerTests(CategoryDbFixture fx)
         await using AppDbContext ctx = fx.CreateContext();
         var sut = new DeleteCategoryCommandHandler(ctx, CurrentUser(), new EntityHistoryRecorder(ctx, TimeProvider.System));
 
-        Result result = await sut.Handle(
+        Result result = await sut.ExecuteAsync(
             new DeleteCategoryCommand(Guid.NewGuid()), CancellationToken.None);
 
         result.Status.Should().Be(ResultStatus.NotFound);
@@ -50,7 +50,7 @@ public sealed class DeleteCategoryCommandHandlerTests(CategoryDbFixture fx)
 
         var sut = new DeleteCategoryCommandHandler(ctx, CurrentUser(), new EntityHistoryRecorder(ctx, TimeProvider.System));
 
-        Result result = await sut.Handle(
+        Result result = await sut.ExecuteAsync(
             new DeleteCategoryCommand(category.Id), CancellationToken.None);
 
         result.Status.Should().Be(ResultStatus.NotFound);
@@ -64,7 +64,7 @@ public sealed class DeleteCategoryCommandHandlerTests(CategoryDbFixture fx)
         user.Oid.Returns((Guid?)null);
         var sut = new DeleteCategoryCommandHandler(ctx, user, new EntityHistoryRecorder(ctx, TimeProvider.System));
 
-        Result result = await sut.Handle(
+        Result result = await sut.ExecuteAsync(
             new DeleteCategoryCommand(Guid.NewGuid()), CancellationToken.None);
 
         result.Status.Should().Be(ResultStatus.Unauthorized);
@@ -80,7 +80,7 @@ public sealed class DeleteCategoryCommandHandlerTests(CategoryDbFixture fx)
 
         var sut = new DeleteCategoryCommandHandler(ctx, CurrentUser(), new EntityHistoryRecorder(ctx, TimeProvider.System));
 
-        Result result = await sut.Handle(
+        Result result = await sut.ExecuteAsync(
             new DeleteCategoryCommand(category.Id), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
@@ -110,7 +110,7 @@ public sealed class DeleteCategoryCommandHandlerTests(CategoryDbFixture fx)
 
         var sut = new DeleteCategoryCommandHandler(ctx, CurrentUser(), new EntityHistoryRecorder(ctx, TimeProvider.System));
 
-        Result result = await sut.Handle(
+        Result result = await sut.ExecuteAsync(
             new DeleteCategoryCommand(category.Id), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
@@ -146,7 +146,7 @@ public sealed class DeleteCategoryCommandHandlerTests(CategoryDbFixture fx)
             CurrentUser(),
             new EntityHistoryRecorder(ctx, TimeProvider.System));
 
-        Result result = await sut.Handle(
+        Result result = await sut.ExecuteAsync(
             new DeleteCategoryCommand(category.Id), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();

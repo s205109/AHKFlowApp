@@ -2,19 +2,18 @@ using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Domain.Enums;
 using Ardalis.Result;
-using MediatR;
 using Microsoft.EntityFrameworkCore;
 
 namespace AHKFlowApp.Application.Queries.Hotkeys;
 
-public sealed record GetHotkeyHistoryQuery(Guid Id) : IRequest<Result<HistoryEntryDto[]>>;
+public sealed record GetHotkeyHistoryQuery(Guid Id);
 
 internal sealed class GetHotkeyHistoryQueryHandler(
     IAppDbContext db,
     ICurrentUser currentUser)
-    : IRequestHandler<GetHotkeyHistoryQuery, Result<HistoryEntryDto[]>>
+    : IUseCaseHandler<GetHotkeyHistoryQuery, Result<HistoryEntryDto[]>>
 {
-    public async Task<Result<HistoryEntryDto[]>> Handle(GetHotkeyHistoryQuery request, CancellationToken ct)
+    public async Task<Result<HistoryEntryDto[]>> ExecuteAsync(GetHotkeyHistoryQuery request, CancellationToken ct)
     {
         if (currentUser.Oid is not Guid ownerOid)
             return Result.Unauthorized();

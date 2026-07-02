@@ -33,7 +33,7 @@ Use Grep to locate type definitions:
 ```bash
 # Find where a class or interface is defined
 grep -r "class CreateHotstringCommand" src/
-grep -r "interface IMediator" src/
+grep -r "interface IUseCase" src/
 
 # Find which namespace a type belongs to
 grep -r "namespace.*Application" src/Backend/AHKFlowApp.Application/
@@ -54,7 +54,6 @@ cat src/Backend/AHKFlowApp.Application/AHKFlowApp.Application.csproj
 # Add missing package (no version — gets latest stable)
 dotnet add src/Backend/AHKFlowApp.Application package Ardalis.Result
 dotnet add src/Backend/AHKFlowApp.API package Ardalis.Result.AspNetCore
-dotnet add src/Backend/AHKFlowApp.Application package MediatR
 dotnet add src/Backend/AHKFlowApp.Application package FluentValidation
 ```
 
@@ -72,13 +71,12 @@ namespace AHKFlowApp.Application.Commands;  // ← must match using in consuming
 using AHKFlowApp.Application.Commands;
 ```
 
-### Handler Not Registered with MediatR
+### Use Case Handler Not Registered
 
 ```csharp
-// Error: No handler registered for CreateHotstringCommand
-// Fix: ensure handler assembly is registered
-services.AddMediatR(cfg =>
-    cfg.RegisterServicesFromAssembly(typeof(CreateHotstringCommand).Assembly));
+// Error: Unable to resolve service for IUseCaseHandler<CreateHotstringCommand, Result<HotstringDto>>
+// Fix: register the command/query handler in Application DependencyInjection
+services.AddUseCase<CreateHotstringCommand, Result<HotstringDto>, CreateHotstringCommandHandler>();
 ```
 
 ### Wrong Return Type on Handler
@@ -91,7 +89,7 @@ services.AddMediatR(cfg =>
 public async ValueTask<Result<HotstringDto>> Handle(...) { }
 
 // GOOD
-public async Task<Result<HotstringDto>> Handle(...) { }
+public async Task<Result<HotstringDto>> ExecuteAsync(...) { }
 ```
 
 ### EF Core Migration Errors
@@ -171,10 +169,10 @@ Read the full error output. The line number and error code tell you exactly what
 
 ```bash
 # BAD — don't pin to old versions to avoid fixing the real issue
-dotnet add package MediatR --version 12.0.0
+dotnet add package FluentValidation --version 11.0.0
 
 # GOOD — use latest stable, fix the incompatibility properly
-dotnet add package MediatR
+dotnet add package FluentValidation
 ```
 
 ## Quick Reference

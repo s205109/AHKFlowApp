@@ -27,7 +27,7 @@ public sealed class GetHotkeyQueryHandlerTests(HotkeyDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         var handler = new GetHotkeyQueryHandler(db, CurrentUserHelper.For(owner));
 
-        Result<HotkeyDto> result = await handler.Handle(new GetHotkeyQuery(entity.Id), default);
+        Result<HotkeyDto> result = await handler.ExecuteAsync(new GetHotkeyQuery(entity.Id), default);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.Id.Should().Be(entity.Id);
@@ -48,7 +48,7 @@ public sealed class GetHotkeyQueryHandlerTests(HotkeyDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         var handler = new GetHotkeyQueryHandler(db, CurrentUserHelper.For(attacker));
 
-        Result<HotkeyDto> result = await handler.Handle(new GetHotkeyQuery(entity.Id), default);
+        Result<HotkeyDto> result = await handler.ExecuteAsync(new GetHotkeyQuery(entity.Id), default);
 
         result.Status.Should().Be(ResultStatus.NotFound);
     }
@@ -59,7 +59,7 @@ public sealed class GetHotkeyQueryHandlerTests(HotkeyDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         var handler = new GetHotkeyQueryHandler(db, CurrentUserHelper.For(null));
 
-        Result<HotkeyDto> result = await handler.Handle(new GetHotkeyQuery(Guid.NewGuid()), default);
+        Result<HotkeyDto> result = await handler.ExecuteAsync(new GetHotkeyQuery(Guid.NewGuid()), default);
 
         result.Status.Should().Be(ResultStatus.Unauthorized);
     }

@@ -114,7 +114,7 @@ ASP.NET Core Web API <--------- .NET CLI
         |
         v
 Application Layer
-  - MediatR commands and queries
+  - Explicit use cases (IUseCase/IUseCaseHandler) — commands and queries
   - FluentValidation
   - Ardalis.Result outcomes
   - DTOs and explicit mappings
@@ -133,7 +133,7 @@ SQL Server
 ### 9.1 Project Shape
 
 - `src/Backend/AHKFlowApp.Domain` contains domain entities and value concepts.
-- `src/Backend/AHKFlowApp.Application` contains DTOs, MediatR commands and queries, validation, mappings, and application services.
+- `src/Backend/AHKFlowApp.Application` contains DTOs, commands and queries with explicit use case handlers, validation, mappings, and application services.
 - `src/Backend/AHKFlowApp.Infrastructure` contains EF Core persistence and migrations.
 - `src/Backend/AHKFlowApp.API` contains controllers, middleware, API composition, OpenAPI, authentication, and hosting.
 - `src/Frontend/AHKFlowApp.UI.Blazor` contains the Blazor WebAssembly PWA.
@@ -144,9 +144,9 @@ SQL Server
 ```text
 HTTP request
   -> Controller
-  -> IMediator.Send(command/query)
-  -> FluentValidation pipeline behavior
-  -> Handler
+  -> IUseCase<TRequest,TResult>.ExecuteAsync(command/query)
+  -> ValidatingUseCase<TRequest,TResult> (FluentValidation)
+  -> IUseCaseHandler<TRequest,TResult>
   -> EF Core persistence
   -> Result mapped to HTTP response
 ```
@@ -158,9 +158,9 @@ The UI and CLI use typed API clients. They should stay aligned with the API beha
 - .NET 10 across the solution.
 - Blazor WebAssembly PWA with MudBlazor for the frontend.
 - ASP.NET Core Web API with controller-based endpoints.
-- MediatR for commands and queries.
+- Explicit use cases (IUseCase/IUseCaseHandler) for commands and queries.
 - Ardalis.Result for handler outcomes.
-- FluentValidation through the MediatR pipeline.
+- FluentValidation through the ValidatingUseCase<TRequest,TResult> decorator.
 - EF Core with SQL Server for persistence.
 - System.CommandLine for the CLI.
 - MSAL and Microsoft Identity Web for authentication flows.

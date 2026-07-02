@@ -22,7 +22,7 @@ public sealed class RevertCommandTests(HistoryDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         UpdateHotstringCommandHandler handler = new(
             db, CurrentUserHelper.For(owner), TimeProvider.System, new EntityHistoryRecorder(db, TimeProvider.System));
-        Result<HotstringDto> result = await handler.Handle(new UpdateHotstringCommand(id, dto), default);
+        Result<HotstringDto> result = await handler.ExecuteAsync(new UpdateHotstringCommand(id, dto), default);
         result.IsSuccess.Should().BeTrue();
     }
 
@@ -31,7 +31,7 @@ public sealed class RevertCommandTests(HistoryDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         UpdateHotkeyCommandHandler handler = new(
             db, CurrentUserHelper.For(owner), TimeProvider.System, new EntityHistoryRecorder(db, TimeProvider.System));
-        Result<HotkeyDto> result = await handler.Handle(new UpdateHotkeyCommand(id, dto), default);
+        Result<HotkeyDto> result = await handler.ExecuteAsync(new UpdateHotkeyCommand(id, dto), default);
         result.IsSuccess.Should().BeTrue();
     }
 
@@ -64,7 +64,7 @@ public sealed class RevertCommandTests(HistoryDbFixture fx)
         RevertHotstringCommandHandler handler = new(
             db, CurrentUserHelper.For(owner), TimeProvider.System, new EntityHistoryRecorder(db, TimeProvider.System));
 
-        Result<HotstringDto> result = await handler.Handle(new RevertHotstringCommand(entity.Id, 1), default);
+        Result<HotstringDto> result = await handler.ExecuteAsync(new RevertHotstringCommand(entity.Id, 1), default);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.Replacement.Should().Be("original");
@@ -107,7 +107,7 @@ public sealed class RevertCommandTests(HistoryDbFixture fx)
         RevertHotstringCommandHandler handler = new(
             db, CurrentUserHelper.For(owner), TimeProvider.System, new EntityHistoryRecorder(db, TimeProvider.System));
 
-        Result<HotstringDto> result = await handler.Handle(new RevertHotstringCommand(entity.Id, 1), default);
+        Result<HotstringDto> result = await handler.ExecuteAsync(new RevertHotstringCommand(entity.Id, 1), default);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.AppliesToAllProfiles.Should().BeFalse();
@@ -139,7 +139,7 @@ public sealed class RevertCommandTests(HistoryDbFixture fx)
         RevertHotstringCommandHandler handler = new(
             db, CurrentUserHelper.For(owner), TimeProvider.System, new EntityHistoryRecorder(db, TimeProvider.System));
 
-        Result<HotstringDto> result = await handler.Handle(new RevertHotstringCommand(victim.Id, 1), default);
+        Result<HotstringDto> result = await handler.ExecuteAsync(new RevertHotstringCommand(victim.Id, 1), default);
 
         result.Status.Should().Be(ResultStatus.Conflict);
     }
@@ -159,7 +159,7 @@ public sealed class RevertCommandTests(HistoryDbFixture fx)
         RevertHotstringCommandHandler handler = new(
             db, CurrentUserHelper.For(owner), TimeProvider.System, new EntityHistoryRecorder(db, TimeProvider.System));
 
-        Result<HotstringDto> result = await handler.Handle(new RevertHotstringCommand(entity.Id, 9), default);
+        Result<HotstringDto> result = await handler.ExecuteAsync(new RevertHotstringCommand(entity.Id, 9), default);
 
         result.Status.Should().Be(ResultStatus.NotFound);
     }
@@ -194,7 +194,7 @@ public sealed class RevertCommandTests(HistoryDbFixture fx)
         RevertHotkeyCommandHandler handler = new(
             db, CurrentUserHelper.For(owner), TimeProvider.System, new EntityHistoryRecorder(db, TimeProvider.System));
 
-        Result<HotkeyDto> result = await handler.Handle(new RevertHotkeyCommand(entity.Id, 1), default);
+        Result<HotkeyDto> result = await handler.ExecuteAsync(new RevertHotkeyCommand(entity.Id, 1), default);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.Description.Should().Be("original");
