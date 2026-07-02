@@ -11,7 +11,7 @@ applyTo: "**"
 - .NET 10, C#, PowerShell
 - Blazor WebAssembly PWA with MudBlazor 9.x
 - ASP.NET Core Web API (controller-based — no minimal APIs)
-- EF Core + SQL Server, MediatR, Ardalis.Result, FluentValidation, Serilog
+- EF Core + SQL Server, explicit use cases (IUseCase/IUseCaseHandler), Ardalis.Result, FluentValidation, Serilog
 
 ## Coding
 
