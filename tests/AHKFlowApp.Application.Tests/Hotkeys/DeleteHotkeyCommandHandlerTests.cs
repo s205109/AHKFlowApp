@@ -1,4 +1,5 @@
 using AHKFlowApp.Application.Commands.Hotkeys;
+using AHKFlowApp.Application.Services;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Infrastructure.Persistence;
 using AHKFlowApp.TestUtilities.Builders;
@@ -25,7 +26,8 @@ public sealed class DeleteHotkeyCommandHandlerTests(HotkeyDbFixture fx)
         }
 
         await using AppDbContext db = fx.CreateContext();
-        var handler = new DeleteHotkeyCommandHandler(db, CurrentUserHelper.For(owner));
+        var handler = new DeleteHotkeyCommandHandler(
+            db, CurrentUserHelper.For(owner), new EntityHistoryRecorder(db, TimeProvider.System));
 
         Result result = await handler.ExecuteAsync(new DeleteHotkeyCommand(entity.Id), default);
 
@@ -48,7 +50,8 @@ public sealed class DeleteHotkeyCommandHandlerTests(HotkeyDbFixture fx)
         }
 
         await using AppDbContext db = fx.CreateContext();
-        var handler = new DeleteHotkeyCommandHandler(db, CurrentUserHelper.For(attacker));
+        var handler = new DeleteHotkeyCommandHandler(
+            db, CurrentUserHelper.For(attacker), new EntityHistoryRecorder(db, TimeProvider.System));
 
         Result result = await handler.ExecuteAsync(new DeleteHotkeyCommand(entity.Id), default);
 
@@ -59,7 +62,8 @@ public sealed class DeleteHotkeyCommandHandlerTests(HotkeyDbFixture fx)
     public async Task Handle_WhenNoOid_ReturnsUnauthorized()
     {
         await using AppDbContext db = fx.CreateContext();
-        var handler = new DeleteHotkeyCommandHandler(db, CurrentUserHelper.For(null));
+        var handler = new DeleteHotkeyCommandHandler(
+            db, CurrentUserHelper.For(null), new EntityHistoryRecorder(db, TimeProvider.System));
 
         Result result = await handler.ExecuteAsync(new DeleteHotkeyCommand(Guid.NewGuid()), default);
 

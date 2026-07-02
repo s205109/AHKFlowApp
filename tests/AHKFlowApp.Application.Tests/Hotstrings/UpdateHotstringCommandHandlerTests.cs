@@ -1,5 +1,6 @@
 using AHKFlowApp.Application.Commands.Hotstrings;
 using AHKFlowApp.Application.DTOs;
+using AHKFlowApp.Application.Services;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Infrastructure.Persistence;
 using Ardalis.Result;
@@ -28,7 +29,8 @@ public sealed class UpdateHotstringCommandHandlerTests(HotstringDbFixture fx)
         clock.Advance(TimeSpan.FromMinutes(5));
 
         await using AppDbContext db = fx.CreateContext();
-        UpdateHotstringCommandHandler handler = new(db, CurrentUserHelper.For(owner), clock);
+        UpdateHotstringCommandHandler handler =
+            new(db, CurrentUserHelper.For(owner), clock, new EntityHistoryRecorder(db, clock));
         UpdateHotstringCommand cmd = new(entity.Id,
             new UpdateHotstringDto("btw", "by the way", null, true, false, false, null));
 
@@ -54,7 +56,8 @@ public sealed class UpdateHotstringCommandHandlerTests(HotstringDbFixture fx)
         }
 
         await using AppDbContext db = fx.CreateContext();
-        UpdateHotstringCommandHandler handler = new(db, CurrentUserHelper.For(attacker), TimeProvider.System);
+        UpdateHotstringCommandHandler handler = new(
+            db, CurrentUserHelper.For(attacker), TimeProvider.System, new EntityHistoryRecorder(db, TimeProvider.System));
         UpdateHotstringCommand cmd = new(entity.Id,
             new UpdateHotstringDto("btw", "y", null, true, true, true, null));
 
@@ -67,7 +70,8 @@ public sealed class UpdateHotstringCommandHandlerTests(HotstringDbFixture fx)
     public async Task Handle_WhenMissingId_ReturnsNotFound()
     {
         await using AppDbContext db = fx.CreateContext();
-        UpdateHotstringCommandHandler handler = new(db, CurrentUserHelper.For(Guid.NewGuid()), TimeProvider.System);
+        UpdateHotstringCommandHandler handler = new(
+            db, CurrentUserHelper.For(Guid.NewGuid()), TimeProvider.System, new EntityHistoryRecorder(db, TimeProvider.System));
         UpdateHotstringCommand cmd = new(Guid.NewGuid(),
             new UpdateHotstringDto("btw", "x", null, true, true, true, null));
 
@@ -90,7 +94,8 @@ public sealed class UpdateHotstringCommandHandlerTests(HotstringDbFixture fx)
         }
 
         await using AppDbContext db = fx.CreateContext();
-        UpdateHotstringCommandHandler handler = new(db, CurrentUserHelper.For(owner), TimeProvider.System);
+        UpdateHotstringCommandHandler handler = new(
+            db, CurrentUserHelper.For(owner), TimeProvider.System, new EntityHistoryRecorder(db, TimeProvider.System));
         UpdateHotstringCommand cmd = new(second.Id,
             new UpdateHotstringDto("first", "b", null, true, true, true, null));
 

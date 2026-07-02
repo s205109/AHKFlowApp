@@ -1,0 +1,99 @@
+@page "/changelog"
+@using AHKFlowApp.UI.Blazor.DTOs
+@using AHKFlowApp.UI.Blazor.Services
+@using Microsoft.AspNetCore.Authorization
+@attribute [AllowAnonymous]
+@implements IDisposable
+@inject IChangelogClient ChangelogClient
+
+<PageTitle>Changelog</PageTitle>
+
+<MudStack Spacing="4">
+    <MudText Typo="Typo.h4" GutterBottom="true">Changelog</MudText>
+
+    @if (_loading)
+    {
+        <MudPaper Class="pa-4">
+            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="160px" />
+        </MudPaper>
+    }
+    else if (_errorMessage is not null)
+    {
+        <MudAlert Severity="Severity.Error">@_errorMessage</MudAlert>
+    }
+    else if (_document is null || _document.Entries.Count == 0)
+    {
+        <MudAlert Severity="Severity.Info">No changelog entries are available.</MudAlert>
+    }
+    else
+    {
+        @foreach (ChangelogEntryDto entry in _document.Entries)
+        {
+            <MudPaper Class="pa-4">
+                <MudStack Spacing="3">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudText Typo="Typo.h5">@entry.Version</MudText>
+                        @if (entry.IsUnreleased)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="Color.Info">Unreleased</MudChip>
+                        }
+                        else if (!string.IsNullOrWhiteSpace(entry.Date))
+                        {
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">@entry.Date</MudText>
+                        }
+                    </MudStack>
+
+                    @foreach (ChangelogSectionDto section in entry.Sections)
+                    {
+                        <MudStack Spacing="1">
+                            <MudText Typo="Typo.h6">@section.Name</MudText>
+                            <MudList T="string" Dense="true" Gutters="false">
+                                @foreach (string item in section.Items)
+                                {
+                                    <MudListItem T="string">@item</MudListItem>
+                                }
+                            </MudList>
+                        </MudStack>
+                    }
+                </MudStack>
+            </MudPaper>
+        }
+    }
+</MudStack>
+
+@code {
+    private readonly CancellationTokenSource _cts = new();
+    private ChangelogDocumentDto? _document;
+    private bool _loading = true;
+    private string? _errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        ApiResult<ChangelogDocumentDto> result;
+        try
+        {
+            result = await ChangelogClient.GetAsync(_cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        if (result.IsSuccess)
+        {
+            _document = result.Value;
+        }
+        else
+        {
+            _errorMessage = "Unable to load the changelog.";
+        }
+
+        _loading = false;
+    }
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+    }
+}

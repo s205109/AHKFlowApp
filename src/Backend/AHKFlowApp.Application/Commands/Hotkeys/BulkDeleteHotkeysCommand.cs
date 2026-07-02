@@ -1,14 +1,15 @@
 using AHKFlowApp.Application.Abstractions;
+using AHKFlowApp.Application.Common;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Domain.Entities;
+using AHKFlowApp.Domain.Enums;
 using Ardalis.Result;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 
 namespace AHKFlowApp.Application.Commands.Hotkeys;
 
-public sealed record BulkDeleteHotkeysCommand(BulkDeleteRequestDto Input)
-   ;
+public sealed record BulkDeleteHotkeysCommand(BulkDeleteRequestDto Input);
 
 public sealed class BulkDeleteHotkeysCommandValidator : AbstractValidator<BulkDeleteHotkeysCommand>
 {
@@ -27,7 +28,8 @@ public sealed class BulkDeleteHotkeysCommandValidator : AbstractValidator<BulkDe
 
 internal sealed class BulkDeleteHotkeysCommandHandler(
     IAppDbContext db,
-    ICurrentUser currentUser)
+    ICurrentUser currentUser,
+    IEntityHistoryRecorder recorder)
     : IUseCaseHandler<BulkDeleteHotkeysCommand, Result<BulkDeleteResultDto>>
 {
     public async Task<Result<BulkDeleteResultDto>> ExecuteAsync(
@@ -39,6 +41,8 @@ internal sealed class BulkDeleteHotkeysCommandHandler(
 
         Guid[] requestedIds = [.. request.Input.Ids.Distinct()];
         List<Hotkey> ownedRows = await db.Hotkeys
+            .Include(h => h.Profiles)
+            .Include(h => h.Categories)
             .Where(h => h.OwnerOid == ownerOid && requestedIds.Contains(h.Id))
             .ToListAsync(ct);
 
@@ -47,8 +51,19 @@ internal sealed class BulkDeleteHotkeysCommandHandler(
 
         if (ownedRows.Count > 0)
         {
+            IReadOnlyList<EntityHistory> tombstones =
+                await recorder.RecordHotkeysAsync(ownedRows, HistoryChangeType.Delete, ct);
+
             db.Hotkeys.RemoveRange(ownedRows);
-            await db.SaveChangesAsync(ct);
+
+            try
+            {
+                await db.SaveWithHistoryRetryAsync(tombstones, ct);
+            }
+            catch (DbUpdateException ex) when (ex.IsHistoryVersionConflict())
+            {
+                return Result.Conflict("One or more items were modified concurrently. Retry the operation.");
+            }
         }
 
         return Result.Success(new BulkDeleteResultDto(ownedRows.Count, missingIds));

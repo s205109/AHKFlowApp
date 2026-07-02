@@ -22,6 +22,7 @@ internal sealed class ThrowOnNthSaveDbContext(AppDbContext inner, int failOnCall
     public DbSet<Category> Categories => inner.Categories;
     public DbSet<HotstringCategory> HotstringCategories => inner.HotstringCategories;
     public DbSet<HotkeyCategory> HotkeyCategories => inner.HotkeyCategories;
+    public DbSet<EntityHistory> EntityHistories => inner.EntityHistories;
 
     public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
