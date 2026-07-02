@@ -4,6 +4,7 @@ using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Mapping;
 using AHKFlowApp.Application.Validation;
 using AHKFlowApp.Domain.Entities;
+using AHKFlowApp.Domain.Enums;
 using Ardalis.Result;
 using FluentValidation;
 using MediatR;
@@ -30,7 +31,8 @@ public sealed class UpdateHotkeyCommandValidator : AbstractValidator<UpdateHotke
 internal sealed class UpdateHotkeyCommandHandler(
     IAppDbContext db,
     ICurrentUser currentUser,
-    TimeProvider clock)
+    TimeProvider clock,
+    IEntityHistoryRecorder recorder)
     : IRequestHandler<UpdateHotkeyCommand, Result<HotkeyDto>>
 {
     public async Task<Result<HotkeyDto>> Handle(UpdateHotkeyCommand request, CancellationToken ct)
@@ -69,6 +71,8 @@ internal sealed class UpdateHotkeyCommandHandler(
                 });
         }
 
+        EntityHistory historyEntry = await recorder.RecordHotkeyAsync(entity, HistoryChangeType.Edit, ct);
+
         entity.Update(
             input.Description,
             input.Key,
@@ -103,11 +107,13 @@ internal sealed class UpdateHotkeyCommandHandler(
 
         try
         {
-            await db.SaveChangesAsync(ct);
+            await db.SaveWithHistoryRetryAsync(historyEntry, ct);
         }
         catch (DbUpdateException ex) when (ex.IsDuplicateKeyViolation())
         {
-            return Result.Conflict("A hotkey with this key + modifier combination already exists.");
+            return ex.IsHistoryVersionConflict()
+                ? Result.Conflict("The item was modified concurrently. Retry the operation.")
+                : Result.Conflict("A hotkey with this key + modifier combination already exists.");
         }
 
         return Result.Success(entity.ToDto());

@@ -1,5 +1,6 @@
 using AHKFlowApp.Application.Commands.Hotkeys;
 using AHKFlowApp.Application.DTOs;
+using AHKFlowApp.Application.Services;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Domain.Enums;
 using AHKFlowApp.Infrastructure.Persistence;
@@ -32,7 +33,8 @@ public sealed class UpdateHotkeyWithCategoriesTests(HotkeyDbFixture fx)
         }
 
         await using AppDbContext db = fx.CreateContext();
-        var handler = new UpdateHotkeyCommandHandler(db, CurrentUserHelper.For(owner), _clock);
+        var handler = new UpdateHotkeyCommandHandler(
+            db, CurrentUserHelper.For(owner), _clock, new EntityHistoryRecorder(db, _clock));
         var cmd = new UpdateHotkeyCommand(entity.Id,
             new UpdateHotkeyDto("Open Notepad", "n", true, false, false, false,
                 HotkeyAction.Send, "", null, true,
@@ -65,7 +67,8 @@ public sealed class UpdateHotkeyWithCategoriesTests(HotkeyDbFixture fx)
         }
 
         await using AppDbContext db = fx.CreateContext();
-        var handler = new UpdateHotkeyCommandHandler(db, CurrentUserHelper.For(owner), _clock);
+        var handler = new UpdateHotkeyCommandHandler(
+            db, CurrentUserHelper.For(owner), _clock, new EntityHistoryRecorder(db, _clock));
         var cmd = new UpdateHotkeyCommand(entity.Id,
             new UpdateHotkeyDto("Launch Terminal", "t", true, false, false, false,
                 HotkeyAction.Send, "", null, true,
@@ -100,7 +103,8 @@ public sealed class UpdateHotkeyWithCategoriesTests(HotkeyDbFixture fx)
         }
 
         await using AppDbContext db = fx.CreateContext();
-        var handler = new UpdateHotkeyCommandHandler(db, CurrentUserHelper.For(owner), _clock);
+        var handler = new UpdateHotkeyCommandHandler(
+            db, CurrentUserHelper.For(owner), _clock, new EntityHistoryRecorder(db, _clock));
         var cmd = new UpdateHotkeyCommand(entity.Id,
             new UpdateHotkeyDto("Close Window", "w", true, false, false, false,
                 HotkeyAction.Send, "", null, true,
