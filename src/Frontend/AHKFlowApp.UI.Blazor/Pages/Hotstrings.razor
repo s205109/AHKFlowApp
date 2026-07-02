@@ -504,7 +504,7 @@
 
         bool? confirm = await DialogService.ShowMessageBoxAsync(
             title: "Delete hotstring?",
-            message: $"Delete \"{item.Trigger}\"? This cannot be undone.",
+            message: $"Delete \"{item.Trigger}\"? You can restore it from the Recycle Bin.",
             yesText: "Delete", cancelText: "Cancel");
         if (confirm != true) return;
 
@@ -559,7 +559,7 @@
 
         bool? confirm = await DialogService.ShowMessageBoxAsync(
             title: "Delete hotstrings?",
-            message: $"Delete {ids.Length} hotstring(s)? This cannot be undone.",
+            message: $"Delete {ids.Length} hotstring(s)? You can restore them from the Recycle Bin.",
             yesText: "Delete", cancelText: "Cancel");
         if (confirm != true)
             return;
@@ -688,7 +688,7 @@
 
         bool? confirm = await DialogService.ShowMessageBoxAsync(
             title: "Delete hotstrings?",
-            message: $"Delete {ids.Count} hotstring(s)? This cannot be undone.",
+            message: $"Delete {ids.Count} hotstring(s)? You can restore them from the Recycle Bin.",
             yesText: "Delete", cancelText: "Cancel");
         if (confirm != true) return;
 
