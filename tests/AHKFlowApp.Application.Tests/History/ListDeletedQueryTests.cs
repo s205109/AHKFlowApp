@@ -33,7 +33,7 @@ public sealed class ListDeletedQueryTests(HistoryDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         DeleteHotstringCommandHandler handler = new(
             db, CurrentUserHelper.For(owner), new EntityHistoryRecorder(db, TimeProvider.System));
-        Result result = await handler.Handle(new DeleteHotstringCommand(entity.Id), default);
+        Result result = await handler.ExecuteAsync(new DeleteHotstringCommand(entity.Id), default);
         result.IsSuccess.Should().BeTrue();
 
         return entity;
@@ -51,7 +51,7 @@ public sealed class ListDeletedQueryTests(HistoryDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         DeleteHotkeyCommandHandler handler = new(
             db, CurrentUserHelper.For(owner), new EntityHistoryRecorder(db, TimeProvider.System));
-        Result result = await handler.Handle(new DeleteHotkeyCommand(entity.Id), default);
+        Result result = await handler.ExecuteAsync(new DeleteHotkeyCommand(entity.Id), default);
         result.IsSuccess.Should().BeTrue();
 
         return entity;
@@ -135,7 +135,7 @@ public sealed class ListDeletedQueryTests(HistoryDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         ListDeletedHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner));
 
-        Result<DeletedHotstringDto[]> result = await handler.Handle(new ListDeletedHotstringsQuery(), default);
+        Result<DeletedHotstringDto[]> result = await handler.ExecuteAsync(new ListDeletedHotstringsQuery(), default);
 
         result.IsSuccess.Should().BeTrue();
         DeletedHotstringDto dto = result.Value.Should().ContainSingle().Subject;
@@ -160,7 +160,7 @@ public sealed class ListDeletedQueryTests(HistoryDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         ListDeletedHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner));
 
-        Result<DeletedHotstringDto[]> result = await handler.Handle(new ListDeletedHotstringsQuery(), default);
+        Result<DeletedHotstringDto[]> result = await handler.ExecuteAsync(new ListDeletedHotstringsQuery(), default);
 
         result.Value.Should().BeEmpty();
     }
@@ -174,7 +174,7 @@ public sealed class ListDeletedQueryTests(HistoryDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         ListDeletedHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(Guid.NewGuid()));
 
-        Result<DeletedHotstringDto[]> result = await handler.Handle(new ListDeletedHotstringsQuery(), default);
+        Result<DeletedHotstringDto[]> result = await handler.ExecuteAsync(new ListDeletedHotstringsQuery(), default);
 
         result.Value.Should().BeEmpty();
     }
@@ -188,7 +188,7 @@ public sealed class ListDeletedQueryTests(HistoryDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         ListDeletedHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner));
 
-        Result<DeletedHotstringDto[]> result = await handler.Handle(new ListDeletedHotstringsQuery(), default);
+        Result<DeletedHotstringDto[]> result = await handler.ExecuteAsync(new ListDeletedHotstringsQuery(), default);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.Should().HaveCount(DeletedListCap);
@@ -205,7 +205,7 @@ public sealed class ListDeletedQueryTests(HistoryDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         ListDeletedHotkeysQueryHandler handler = new(db, CurrentUserHelper.For(owner));
 
-        Result<DeletedHotkeyDto[]> result = await handler.Handle(new ListDeletedHotkeysQuery(), default);
+        Result<DeletedHotkeyDto[]> result = await handler.ExecuteAsync(new ListDeletedHotkeysQuery(), default);
 
         result.IsSuccess.Should().BeTrue();
         DeletedHotkeyDto dto = result.Value.Should().ContainSingle().Subject;
@@ -223,7 +223,7 @@ public sealed class ListDeletedQueryTests(HistoryDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         ListDeletedHotkeysQueryHandler handler = new(db, CurrentUserHelper.For(owner));
 
-        Result<DeletedHotkeyDto[]> result = await handler.Handle(new ListDeletedHotkeysQuery(), default);
+        Result<DeletedHotkeyDto[]> result = await handler.ExecuteAsync(new ListDeletedHotkeysQuery(), default);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.Should().HaveCount(DeletedListCap);

@@ -26,7 +26,7 @@ public sealed class CreateHotkeyCommandHandlerTests(HotkeyDbFixture fx)
         var cmd = new CreateHotkeyCommand(new CreateHotkeyDto(
             "Open Notepad", "n", Ctrl: true, AppliesToAllProfiles: true));
 
-        Result<HotkeyDto> result = await handler.Handle(cmd, default);
+        Result<HotkeyDto> result = await handler.ExecuteAsync(cmd, default);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.Key.Should().Be("n");
@@ -45,7 +45,7 @@ public sealed class CreateHotkeyCommandHandlerTests(HotkeyDbFixture fx)
         var handler = new CreateHotkeyCommandHandler(db, CurrentUserHelper.For(null), _clock);
         var cmd = new CreateHotkeyCommand(new CreateHotkeyDto("Open Notepad", "n", AppliesToAllProfiles: true));
 
-        Result<HotkeyDto> result = await handler.Handle(cmd, default);
+        Result<HotkeyDto> result = await handler.ExecuteAsync(cmd, default);
 
         result.Status.Should().Be(ResultStatus.Unauthorized);
     }
@@ -67,7 +67,7 @@ public sealed class CreateHotkeyCommandHandlerTests(HotkeyDbFixture fx)
         var cmd = new CreateHotkeyCommand(new CreateHotkeyDto(
             "Duplicate", "f1", Ctrl: true, AppliesToAllProfiles: true));
 
-        Result<HotkeyDto> result = await handler.Handle(cmd, default);
+        Result<HotkeyDto> result = await handler.ExecuteAsync(cmd, default);
 
         result.Status.Should().Be(ResultStatus.Conflict);
     }
@@ -89,7 +89,7 @@ public sealed class CreateHotkeyCommandHandlerTests(HotkeyDbFixture fx)
         var cmd = new CreateHotkeyCommand(new CreateHotkeyDto(
             "Same key different owner", "f1", Ctrl: true, AppliesToAllProfiles: true));
 
-        Result<HotkeyDto> result = await handler.Handle(cmd, default);
+        Result<HotkeyDto> result = await handler.ExecuteAsync(cmd, default);
 
         result.IsSuccess.Should().BeTrue();
     }
@@ -112,7 +112,7 @@ public sealed class CreateHotkeyCommandHandlerTests(HotkeyDbFixture fx)
         var cmd = new CreateHotkeyCommand(new CreateHotkeyDto(
             "Alt version", "f1", Alt: true, AppliesToAllProfiles: true));
 
-        Result<HotkeyDto> result = await handler.Handle(cmd, default);
+        Result<HotkeyDto> result = await handler.ExecuteAsync(cmd, default);
 
         result.IsSuccess.Should().BeTrue();
     }

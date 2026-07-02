@@ -33,7 +33,7 @@ public sealed class CreateCategoryCommandHandlerTests(CategoryDbFixture fx)
         await using AppDbContext ctx = fx.CreateContext();
         var sut = new CreateCategoryCommandHandler(ctx, CurrentUser(), _clock);
 
-        Result<CategoryDto> result = await sut.Handle(
+        Result<CategoryDto> result = await sut.ExecuteAsync(
             new CreateCategoryCommand(new CreateCategoryDto("Email")), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
@@ -50,7 +50,7 @@ public sealed class CreateCategoryCommandHandlerTests(CategoryDbFixture fx)
         user.Oid.Returns((Guid?)null);
         var sut = new CreateCategoryCommandHandler(ctx, user, _clock);
 
-        Result<CategoryDto> result = await sut.Handle(
+        Result<CategoryDto> result = await sut.ExecuteAsync(
             new CreateCategoryCommand(new CreateCategoryDto("Email")), CancellationToken.None);
 
         result.Status.Should().Be(ResultStatus.Unauthorized);
@@ -65,7 +65,7 @@ public sealed class CreateCategoryCommandHandlerTests(CategoryDbFixture fx)
 
         var sut = new CreateCategoryCommandHandler(ctx, CurrentUser(), _clock);
 
-        Result<CategoryDto> result = await sut.Handle(
+        Result<CategoryDto> result = await sut.ExecuteAsync(
             new CreateCategoryCommand(new CreateCategoryDto("Email")), CancellationToken.None);
 
         result.Status.Should().Be(ResultStatus.Conflict);
@@ -80,7 +80,7 @@ public sealed class CreateCategoryCommandHandlerTests(CategoryDbFixture fx)
 
         var sut = new CreateCategoryCommandHandler(ctx, CurrentUser(), _clock);
 
-        Result<CategoryDto> result = await sut.Handle(
+        Result<CategoryDto> result = await sut.ExecuteAsync(
             new CreateCategoryCommand(new CreateCategoryDto("Email")), CancellationToken.None);
 
         result.Status.Should().Be(ResultStatus.Conflict);
@@ -92,7 +92,7 @@ public sealed class CreateCategoryCommandHandlerTests(CategoryDbFixture fx)
         await using AppDbContext ctx = fx.CreateContext();
         var sut = new CreateCategoryCommandHandler(ctx, CurrentUser(), _clock);
 
-        Result<CategoryDto> result = await sut.Handle(
+        Result<CategoryDto> result = await sut.ExecuteAsync(
             new CreateCategoryCommand(new CreateCategoryDto("  Email  ")), CancellationToken.None);
 
         result.Value.Name.Should().Be("Email");

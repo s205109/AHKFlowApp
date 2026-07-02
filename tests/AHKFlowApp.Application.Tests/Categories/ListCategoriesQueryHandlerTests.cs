@@ -38,7 +38,7 @@ public sealed class ListCategoriesQueryHandlerTests(CategoryDbFixture fx)
         await using AppDbContext ctx = fx.CreateContext();
         var sut = new ListCategoriesQueryHandler(ctx, CurrentUser(owner), _clock);
 
-        Result<PagedList<CategoryDto>> result = await sut.Handle(new ListCategoriesQuery(), CancellationToken.None);
+        Result<PagedList<CategoryDto>> result = await sut.ExecuteAsync(new ListCategoriesQuery(), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.TotalCount.Should().Be(8);
@@ -56,11 +56,11 @@ public sealed class ListCategoriesQueryHandlerTests(CategoryDbFixture fx)
         await using AppDbContext ctx = fx.CreateContext();
         var sut = new ListCategoriesQueryHandler(ctx, CurrentUser(owner), _clock);
 
-        await sut.Handle(new ListCategoriesQuery(), CancellationToken.None);
+        await sut.ExecuteAsync(new ListCategoriesQuery(), CancellationToken.None);
 
         await using AppDbContext ctx2 = fx.CreateContext();
         var sut2 = new ListCategoriesQueryHandler(ctx2, CurrentUser(owner), _clock);
-        Result<PagedList<CategoryDto>> result = await sut2.Handle(new ListCategoriesQuery(), CancellationToken.None);
+        Result<PagedList<CategoryDto>> result = await sut2.ExecuteAsync(new ListCategoriesQuery(), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.TotalCount.Should().Be(8);
@@ -74,7 +74,7 @@ public sealed class ListCategoriesQueryHandlerTests(CategoryDbFixture fx)
         var sut = new ListCategoriesQueryHandler(ctx, CurrentUser(owner), _clock);
 
         // First call seeds defaults
-        await sut.Handle(new ListCategoriesQuery(), CancellationToken.None);
+        await sut.ExecuteAsync(new ListCategoriesQuery(), CancellationToken.None);
 
         // Delete all categories
         await using AppDbContext ctxDelete = fx.CreateContext();
@@ -83,7 +83,7 @@ public sealed class ListCategoriesQueryHandlerTests(CategoryDbFixture fx)
         // Second call should NOT reseed (marker is set)
         await using AppDbContext ctx2 = fx.CreateContext();
         var sut2 = new ListCategoriesQueryHandler(ctx2, CurrentUser(owner), _clock);
-        Result<PagedList<CategoryDto>> result = await sut2.Handle(new ListCategoriesQuery(), CancellationToken.None);
+        Result<PagedList<CategoryDto>> result = await sut2.ExecuteAsync(new ListCategoriesQuery(), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.TotalCount.Should().Be(0);
@@ -97,11 +97,11 @@ public sealed class ListCategoriesQueryHandlerTests(CategoryDbFixture fx)
         var sut = new ListCategoriesQueryHandler(ctx, CurrentUser(owner), _clock);
 
         // Seed defaults first
-        await sut.Handle(new ListCategoriesQuery(), CancellationToken.None);
+        await sut.ExecuteAsync(new ListCategoriesQuery(), CancellationToken.None);
 
         await using AppDbContext ctx2 = fx.CreateContext();
         var sut2 = new ListCategoriesQueryHandler(ctx2, CurrentUser(owner), _clock);
-        Result<PagedList<CategoryDto>> result = await sut2.Handle(
+        Result<PagedList<CategoryDto>> result = await sut2.ExecuteAsync(
             new ListCategoriesQuery(Search: "email"), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
@@ -117,12 +117,12 @@ public sealed class ListCategoriesQueryHandlerTests(CategoryDbFixture fx)
         var sut = new ListCategoriesQueryHandler(ctx, CurrentUser(owner), _clock);
 
         // Seed all 8 defaults
-        await sut.Handle(new ListCategoriesQuery(), CancellationToken.None);
+        await sut.ExecuteAsync(new ListCategoriesQuery(), CancellationToken.None);
 
         // Page 2 of page size 3 (sorted by name) — should return items 4-6
         await using AppDbContext ctx2 = fx.CreateContext();
         var sut2 = new ListCategoriesQueryHandler(ctx2, CurrentUser(owner), _clock);
-        Result<PagedList<CategoryDto>> result = await sut2.Handle(
+        Result<PagedList<CategoryDto>> result = await sut2.ExecuteAsync(
             new ListCategoriesQuery(Page: 2, PageSize: 3), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
@@ -141,12 +141,12 @@ public sealed class ListCategoriesQueryHandlerTests(CategoryDbFixture fx)
         // Seed defaults for other user
         await using AppDbContext ctxOther = fx.CreateContext();
         var sutOther = new ListCategoriesQueryHandler(ctxOther, CurrentUser(otherOwner), _clock);
-        await sutOther.Handle(new ListCategoriesQuery(), CancellationToken.None);
+        await sutOther.ExecuteAsync(new ListCategoriesQuery(), CancellationToken.None);
 
         // Query for owner (no categories yet)
         await using AppDbContext ctx = fx.CreateContext();
         var sut = new ListCategoriesQueryHandler(ctx, CurrentUser(owner), _clock);
-        Result<PagedList<CategoryDto>> result = await sut.Handle(new ListCategoriesQuery(), CancellationToken.None);
+        Result<PagedList<CategoryDto>> result = await sut.ExecuteAsync(new ListCategoriesQuery(), CancellationToken.None);
 
         // Owner gets their own seeded defaults, not other user's
         result.IsSuccess.Should().BeTrue();
@@ -163,7 +163,7 @@ public sealed class ListCategoriesQueryHandlerTests(CategoryDbFixture fx)
         user.Oid.Returns((Guid?)null);
         var sut = new ListCategoriesQueryHandler(ctx, user, _clock);
 
-        Result<PagedList<CategoryDto>> result = await sut.Handle(new ListCategoriesQuery(), CancellationToken.None);
+        Result<PagedList<CategoryDto>> result = await sut.ExecuteAsync(new ListCategoriesQuery(), CancellationToken.None);
 
         result.Status.Should().Be(ResultStatus.Unauthorized);
     }

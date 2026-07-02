@@ -37,7 +37,7 @@ public sealed class UpdateCaptureTests(HistoryDbFixture fx)
         UpdateHotstringCommand cmd = new(entity.Id,
             new UpdateHotstringDto("cap1", "changed", null, true, true, true, null));
 
-        Result<HotstringDto> result = await handler.Handle(cmd, default);
+        Result<HotstringDto> result = await handler.ExecuteAsync(cmd, default);
 
         result.IsSuccess.Should().BeTrue();
         EntityHistory entry = await db.EntityHistories
@@ -66,7 +66,7 @@ public sealed class UpdateCaptureTests(HistoryDbFixture fx)
             await using AppDbContext db = fx.CreateContext();
             UpdateHotstringCommandHandler handler = new(
                 db, CurrentUserHelper.For(owner), TimeProvider.System, new EntityHistoryRecorder(db, TimeProvider.System));
-            Result<HotstringDto> result = await handler.Handle(
+            Result<HotstringDto> result = await handler.ExecuteAsync(
                 new UpdateHotstringCommand(entity.Id,
                     new UpdateHotstringDto("cap2", replacement, null, true, true, true, null)), default);
             result.IsSuccess.Should().BeTrue();
@@ -99,7 +99,7 @@ public sealed class UpdateCaptureTests(HistoryDbFixture fx)
             new UpdateHotkeyDto("changed desc", "F9", false, false, false, false,
                 entity.Action, entity.Parameters, null, true, null));
 
-        Result<HotkeyDto> result = await handler.Handle(cmd, default);
+        Result<HotkeyDto> result = await handler.ExecuteAsync(cmd, default);
 
         result.IsSuccess.Should().BeTrue();
         EntityHistory entry = await db.EntityHistories

@@ -3,20 +3,19 @@ using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Services;
 using AHKFlowApp.Domain.Entities;
 using Ardalis.Result;
-using MediatR;
 using Microsoft.EntityFrameworkCore;
 
 namespace AHKFlowApp.Application.Queries.Downloads;
 
-public sealed record GenerateAllProfileScriptsQuery : IRequest<Result<IReadOnlyList<ProfileScript>>>;
+public sealed record GenerateAllProfileScriptsQuery;
 
 internal sealed class GenerateAllProfileScriptsQueryHandler(
     IAppDbContext db,
     ICurrentUser currentUser,
     AhkScriptGenerator generator)
-    : IRequestHandler<GenerateAllProfileScriptsQuery, Result<IReadOnlyList<ProfileScript>>>
+    : IUseCaseHandler<GenerateAllProfileScriptsQuery, Result<IReadOnlyList<ProfileScript>>>
 {
-    public async Task<Result<IReadOnlyList<ProfileScript>>> Handle(
+    public async Task<Result<IReadOnlyList<ProfileScript>>> ExecuteAsync(
         GenerateAllProfileScriptsQuery request, CancellationToken ct)
     {
         if (currentUser.Oid is not Guid ownerOid)

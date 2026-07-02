@@ -23,7 +23,7 @@ public sealed class CreateHotstringCommandHandlerTests(HotstringDbFixture fx)
         var handler = new CreateHotstringCommandHandler(db, CurrentUserHelper.For(owner), _clock);
         var cmd = new CreateHotstringCommand(new CreateHotstringDto("btw", "by the way"));
 
-        Result<HotstringDto> result = await handler.Handle(cmd, default);
+        Result<HotstringDto> result = await handler.ExecuteAsync(cmd, default);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.Trigger.Should().Be("btw");
@@ -39,7 +39,7 @@ public sealed class CreateHotstringCommandHandlerTests(HotstringDbFixture fx)
         var handler = new CreateHotstringCommandHandler(db, CurrentUserHelper.For(null), _clock);
         var cmd = new CreateHotstringCommand(new CreateHotstringDto("btw", "by the way"));
 
-        Result<HotstringDto> result = await handler.Handle(cmd, default);
+        Result<HotstringDto> result = await handler.ExecuteAsync(cmd, default);
 
         result.Status.Should().Be(ResultStatus.Unauthorized);
     }
@@ -58,7 +58,7 @@ public sealed class CreateHotstringCommandHandlerTests(HotstringDbFixture fx)
         var handler = new CreateHotstringCommandHandler(db, CurrentUserHelper.For(owner), _clock);
         var cmd = new CreateHotstringCommand(new CreateHotstringDto("dup", "second"));
 
-        Result<HotstringDto> result = await handler.Handle(cmd, default);
+        Result<HotstringDto> result = await handler.ExecuteAsync(cmd, default);
 
         result.Status.Should().Be(ResultStatus.Conflict);
     }
@@ -78,7 +78,7 @@ public sealed class CreateHotstringCommandHandlerTests(HotstringDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         var handler = new CreateHotstringCommandHandler(db, CurrentUserHelper.For(owner2), _clock);
 
-        Result<HotstringDto> result = await handler.Handle(
+        Result<HotstringDto> result = await handler.ExecuteAsync(
             new CreateHotstringCommand(new CreateHotstringDto("shared", "y")), default);
 
         result.IsSuccess.Should().BeTrue();

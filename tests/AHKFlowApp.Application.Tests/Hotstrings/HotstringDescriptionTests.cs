@@ -24,7 +24,7 @@ public sealed class HotstringDescriptionTests(HotstringDbFixture fx)
         await using AppDbContext ctx = fx.CreateContext();
         CreateHotstringCommandHandler sut = new(ctx, CurrentUserHelper.For(owner), TimeProvider.System);
 
-        Result<HotstringDto> r = await sut.Handle(new CreateHotstringCommand(new CreateHotstringDto(
+        Result<HotstringDto> r = await sut.ExecuteAsync(new CreateHotstringCommand(new CreateHotstringDto(
             Trigger: NewTrigger(),
             Replacement: "x",
             ProfileIds: null,
@@ -45,7 +45,7 @@ public sealed class HotstringDescriptionTests(HotstringDbFixture fx)
         await using AppDbContext ctx = fx.CreateContext();
         CreateHotstringCommandHandler sut = new(ctx, CurrentUserHelper.For(owner), TimeProvider.System);
 
-        Result<HotstringDto> r = await sut.Handle(new CreateHotstringCommand(new CreateHotstringDto(
+        Result<HotstringDto> r = await sut.ExecuteAsync(new CreateHotstringCommand(new CreateHotstringDto(
             Trigger: NewTrigger(),
             Replacement: "x",
             ProfileIds: null,
@@ -77,7 +77,7 @@ public sealed class HotstringDescriptionTests(HotstringDbFixture fx)
         await using AppDbContext ctx = fx.CreateContext();
         UpdateHotstringCommandHandler sut =
             new(ctx, CurrentUserHelper.For(owner), TimeProvider.System, new EntityHistoryRecorder(ctx, TimeProvider.System));
-        Result<HotstringDto> r = await sut.Handle(new UpdateHotstringCommand(entity.Id, new UpdateHotstringDto(
+        Result<HotstringDto> r = await sut.ExecuteAsync(new UpdateHotstringCommand(entity.Id, new UpdateHotstringDto(
             Trigger: entity.Trigger,
             Replacement: entity.Replacement,
             ProfileIds: null,
@@ -109,7 +109,7 @@ public sealed class HotstringDescriptionTests(HotstringDbFixture fx)
         await using AppDbContext ctx = fx.CreateContext();
         UpdateHotstringCommandHandler sut =
             new(ctx, CurrentUserHelper.For(owner), TimeProvider.System, new EntityHistoryRecorder(ctx, TimeProvider.System));
-        Result<HotstringDto> r = await sut.Handle(new UpdateHotstringCommand(entity.Id, new UpdateHotstringDto(
+        Result<HotstringDto> r = await sut.ExecuteAsync(new UpdateHotstringCommand(entity.Id, new UpdateHotstringDto(
             Trigger: entity.Trigger,
             Replacement: entity.Replacement,
             ProfileIds: null,

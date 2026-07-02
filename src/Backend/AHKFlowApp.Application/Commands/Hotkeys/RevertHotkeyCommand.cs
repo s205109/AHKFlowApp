@@ -6,21 +6,20 @@ using AHKFlowApp.Application.Mapping;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Domain.Enums;
 using Ardalis.Result;
-using MediatR;
 using Microsoft.EntityFrameworkCore;
 
 namespace AHKFlowApp.Application.Commands.Hotkeys;
 
-public sealed record RevertHotkeyCommand(Guid Id, int Version) : IRequest<Result<HotkeyDto>>;
+public sealed record RevertHotkeyCommand(Guid Id, int Version);
 
 internal sealed class RevertHotkeyCommandHandler(
     IAppDbContext db,
     ICurrentUser currentUser,
     TimeProvider clock,
     IEntityHistoryRecorder recorder)
-    : IRequestHandler<RevertHotkeyCommand, Result<HotkeyDto>>
+    : IUseCaseHandler<RevertHotkeyCommand, Result<HotkeyDto>>
 {
-    public async Task<Result<HotkeyDto>> Handle(RevertHotkeyCommand request, CancellationToken ct)
+    public async Task<Result<HotkeyDto>> ExecuteAsync(RevertHotkeyCommand request, CancellationToken ct)
     {
         if (currentUser.Oid is not Guid ownerOid)
             return Result.Unauthorized();

@@ -22,7 +22,7 @@ public sealed class RestoreCommandTests(HistoryDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         DeleteHotstringCommandHandler handler = new(
             db, CurrentUserHelper.For(owner), new EntityHistoryRecorder(db, TimeProvider.System));
-        Result result = await handler.Handle(new DeleteHotstringCommand(id), default);
+        Result result = await handler.ExecuteAsync(new DeleteHotstringCommand(id), default);
         result.IsSuccess.Should().BeTrue();
     }
 
@@ -31,7 +31,7 @@ public sealed class RestoreCommandTests(HistoryDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         DeleteHotkeyCommandHandler handler = new(
             db, CurrentUserHelper.For(owner), new EntityHistoryRecorder(db, TimeProvider.System));
-        Result result = await handler.Handle(new DeleteHotkeyCommand(id), default);
+        Result result = await handler.ExecuteAsync(new DeleteHotkeyCommand(id), default);
         result.IsSuccess.Should().BeTrue();
     }
 
@@ -62,7 +62,7 @@ public sealed class RestoreCommandTests(HistoryDbFixture fx)
         RestoreHotstringCommandHandler handler = new(
             db, CurrentUserHelper.For(owner), TimeProvider.System, new EntityHistoryRecorder(db, TimeProvider.System));
 
-        Result<HotstringDto> result = await handler.Handle(new RestoreHotstringCommand(entity.Id), default);
+        Result<HotstringDto> result = await handler.ExecuteAsync(new RestoreHotstringCommand(entity.Id), default);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.Id.Should().Be(entity.Id);
@@ -101,7 +101,7 @@ public sealed class RestoreCommandTests(HistoryDbFixture fx)
         RestoreHotstringCommandHandler handler = new(
             db, CurrentUserHelper.For(owner), TimeProvider.System, new EntityHistoryRecorder(db, TimeProvider.System));
 
-        Result<HotstringDto> result = await handler.Handle(new RestoreHotstringCommand(entity.Id), default);
+        Result<HotstringDto> result = await handler.ExecuteAsync(new RestoreHotstringCommand(entity.Id), default);
 
         result.Status.Should().Be(ResultStatus.Conflict);
     }
@@ -113,7 +113,7 @@ public sealed class RestoreCommandTests(HistoryDbFixture fx)
         RestoreHotstringCommandHandler handler =
             new(db, CurrentUserHelper.For(Guid.NewGuid()), TimeProvider.System, new EntityHistoryRecorder(db, TimeProvider.System));
 
-        Result<HotstringDto> result = await handler.Handle(new RestoreHotstringCommand(Guid.NewGuid()), default);
+        Result<HotstringDto> result = await handler.ExecuteAsync(new RestoreHotstringCommand(Guid.NewGuid()), default);
 
         result.Status.Should().Be(ResultStatus.NotFound);
     }
@@ -148,7 +148,7 @@ public sealed class RestoreCommandTests(HistoryDbFixture fx)
         RestoreHotstringCommandHandler handler = new(
             db, CurrentUserHelper.For(owner), TimeProvider.System, new EntityHistoryRecorder(db, TimeProvider.System));
 
-        Result<HotstringDto> result = await handler.Handle(new RestoreHotstringCommand(entity.Id), default);
+        Result<HotstringDto> result = await handler.ExecuteAsync(new RestoreHotstringCommand(entity.Id), default);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.AppliesToAllProfiles.Should().BeFalse();
@@ -182,7 +182,7 @@ public sealed class RestoreCommandTests(HistoryDbFixture fx)
         RestoreHotkeyCommandHandler handler = new(
             db, CurrentUserHelper.For(owner), TimeProvider.System, new EntityHistoryRecorder(db, TimeProvider.System));
 
-        Result<HotkeyDto> result = await handler.Handle(new RestoreHotkeyCommand(entity.Id), default);
+        Result<HotkeyDto> result = await handler.ExecuteAsync(new RestoreHotkeyCommand(entity.Id), default);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.Id.Should().Be(entity.Id);

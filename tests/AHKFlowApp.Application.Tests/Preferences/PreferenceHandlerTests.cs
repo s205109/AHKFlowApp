@@ -31,7 +31,7 @@ public sealed class PreferenceHandlerTests(PreferenceDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         var handler = new GetUserPreferenceQueryHandler(db, CurrentUserHelper.For(Guid.NewGuid()));
 
-        Result<UserPreferenceDto> result = await handler.Handle(new GetUserPreferenceQuery(), default);
+        Result<UserPreferenceDto> result = await handler.ExecuteAsync(new GetUserPreferenceQuery(), default);
 
         result.Status.Should().Be(ResultStatus.NotFound);
     }
@@ -51,7 +51,7 @@ public sealed class PreferenceHandlerTests(PreferenceDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         var handler = new GetUserPreferenceQueryHandler(db, CurrentUserHelper.For(owner));
 
-        Result<UserPreferenceDto> result = await handler.Handle(new GetUserPreferenceQuery(), default);
+        Result<UserPreferenceDto> result = await handler.ExecuteAsync(new GetUserPreferenceQuery(), default);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.RowsPerPage.Should().Be(50);
@@ -64,7 +64,7 @@ public sealed class PreferenceHandlerTests(PreferenceDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         var handler = new GetUserPreferenceQueryHandler(db, CurrentUserHelper.For(null));
 
-        Result<UserPreferenceDto> result = await handler.Handle(new GetUserPreferenceQuery(), default);
+        Result<UserPreferenceDto> result = await handler.ExecuteAsync(new GetUserPreferenceQuery(), default);
 
         result.Status.Should().Be(ResultStatus.Unauthorized);
     }
@@ -79,7 +79,7 @@ public sealed class PreferenceHandlerTests(PreferenceDbFixture fx)
         var handler = new UpdateUserPreferenceCommandHandler(db, CurrentUserHelper.For(owner), _clock);
         var cmd = new UpdateUserPreferenceCommand(new UpdateUserPreferenceDto(25, true));
 
-        Result<UserPreferenceDto> result = await handler.Handle(cmd, default);
+        Result<UserPreferenceDto> result = await handler.ExecuteAsync(cmd, default);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.RowsPerPage.Should().Be(25);
@@ -105,7 +105,7 @@ public sealed class PreferenceHandlerTests(PreferenceDbFixture fx)
         var handler = new UpdateUserPreferenceCommandHandler(db, CurrentUserHelper.For(owner), _clock);
         var cmd = new UpdateUserPreferenceCommand(new UpdateUserPreferenceDto(100, true));
 
-        Result<UserPreferenceDto> result = await handler.Handle(cmd, default);
+        Result<UserPreferenceDto> result = await handler.ExecuteAsync(cmd, default);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.RowsPerPage.Should().Be(100);
@@ -123,7 +123,7 @@ public sealed class PreferenceHandlerTests(PreferenceDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         var handler = new UpdateUserPreferenceCommandHandler(db, CurrentUserHelper.For(null), _clock);
 
-        Result<UserPreferenceDto> result = await handler.Handle(
+        Result<UserPreferenceDto> result = await handler.ExecuteAsync(
             new UpdateUserPreferenceCommand(new UpdateUserPreferenceDto(25, false)), default);
 
         result.Status.Should().Be(ResultStatus.Unauthorized);

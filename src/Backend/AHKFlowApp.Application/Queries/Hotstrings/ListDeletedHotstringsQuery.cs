@@ -4,21 +4,20 @@ using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Domain.Enums;
 using Ardalis.Result;
-using MediatR;
 using Microsoft.EntityFrameworkCore;
 
 namespace AHKFlowApp.Application.Queries.Hotstrings;
 
-public sealed record ListDeletedHotstringsQuery() : IRequest<Result<DeletedHotstringDto[]>>;
+public sealed record ListDeletedHotstringsQuery();
 
 internal sealed class ListDeletedHotstringsQueryHandler(
     IAppDbContext db,
     ICurrentUser currentUser)
-    : IRequestHandler<ListDeletedHotstringsQuery, Result<DeletedHotstringDto[]>>
+    : IUseCaseHandler<ListDeletedHotstringsQuery, Result<DeletedHotstringDto[]>>
 {
     internal const int MaxDeletedItems = 500;
 
-    public async Task<Result<DeletedHotstringDto[]>> Handle(
+    public async Task<Result<DeletedHotstringDto[]>> ExecuteAsync(
         ListDeletedHotstringsQuery request,
         CancellationToken ct)
     {

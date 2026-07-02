@@ -1,9 +1,9 @@
 using AHKFlowApp.API.Extensions;
+using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.Commands.Categories;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Queries.Categories;
 using Ardalis.Result;
-using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Identity.Web.Resource;
@@ -17,7 +17,12 @@ namespace AHKFlowApp.API.Controllers;
 [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
 [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
-public sealed class CategoriesController(IMediator mediator) : ControllerBase
+public sealed class CategoriesController(
+    IUseCase<ListCategoriesQuery, Result<PagedList<CategoryDto>>> listCategories,
+    IUseCase<GetCategoryQuery, Result<CategoryDto>> getCategory,
+    IUseCase<CreateCategoryCommand, Result<CategoryDto>> createCategory,
+    IUseCase<UpdateCategoryCommand, Result<CategoryDto>> updateCategory,
+    IUseCase<DeleteCategoryCommand, Result> deleteCategory) : ControllerBase
 {
     /// <summary>List the current user's categories. Lazily seeds defaults on first call.</summary>
     [HttpGet]
@@ -28,7 +33,7 @@ public sealed class CategoriesController(IMediator mediator) : ControllerBase
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 50,
         CancellationToken ct = default) =>
-        (await mediator.Send(new ListCategoriesQuery(search, page, pageSize), ct))
+        (await listCategories.ExecuteAsync(new ListCategoriesQuery(search, page, pageSize), ct))
             .ToProblemActionResult(this);
 
     /// <summary>Get a category by id.</summary>
@@ -36,7 +41,7 @@ public sealed class CategoriesController(IMediator mediator) : ControllerBase
     [ProducesResponseType(typeof(CategoryDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     public async Task<ActionResult<CategoryDto>> Get(Guid id, CancellationToken ct) =>
-        (await mediator.Send(new GetCategoryQuery(id), ct)).ToProblemActionResult(this);
+        (await getCategory.ExecuteAsync(new GetCategoryQuery(id), ct)).ToProblemActionResult(this);
 
     /// <summary>Create a new category for the current user.</summary>
     [HttpPost]
@@ -45,7 +50,7 @@ public sealed class CategoriesController(IMediator mediator) : ControllerBase
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
     public async Task<ActionResult<CategoryDto>> Create([FromBody] CreateCategoryDto dto, CancellationToken ct)
     {
-        Result<CategoryDto> result = await mediator.Send(new CreateCategoryCommand(dto), ct);
+        Result<CategoryDto> result = await createCategory.ExecuteAsync(new CreateCategoryCommand(dto), ct);
         return result.IsSuccess
             ? CreatedAtRoute("GetCategory", new { id = result.Value.Id }, result.Value)
             : result.ToProblemActionResult(this);
@@ -58,7 +63,7 @@ public sealed class CategoriesController(IMediator mediator) : ControllerBase
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
     public async Task<ActionResult<CategoryDto>> Update(Guid id, [FromBody] UpdateCategoryDto dto, CancellationToken ct) =>
-        (await mediator.Send(new UpdateCategoryCommand(id, dto), ct)).ToProblemActionResult(this);
+        (await updateCategory.ExecuteAsync(new UpdateCategoryCommand(id, dto), ct)).ToProblemActionResult(this);
 
     /// <summary>Delete a category.</summary>
     [HttpDelete("{id:guid}")]
@@ -66,7 +71,7 @@ public sealed class CategoriesController(IMediator mediator) : ControllerBase
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     public async Task<ActionResult> Delete(Guid id, CancellationToken ct)
     {
-        Result result = await mediator.Send(new DeleteCategoryCommand(id), ct);
+        Result result = await deleteCategory.ExecuteAsync(new DeleteCategoryCommand(id), ct);
         return result.IsSuccess ? NoContent() : result.ToProblemActionResult(this);
     }
 }

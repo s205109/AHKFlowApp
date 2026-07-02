@@ -3,7 +3,6 @@ using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Domain.Constants;
 using AHKFlowApp.Domain.Entities;
 using Ardalis.Result;
-using MediatR;
 using Microsoft.EntityFrameworkCore;
 
 namespace AHKFlowApp.Application.Commands.Dev;
@@ -11,16 +10,16 @@ namespace AHKFlowApp.Application.Commands.Dev;
 // Dev-only: seeds the eight starter categories for the current user.
 // Idempotent on (OwnerOid, Name). Also sets UserPreference.CategoriesSeededAt
 // so a subsequent GET /categories does not lazy-seed again.
-public sealed record SeedCategoriesCommand(bool Reset) : IRequest<Result<IReadOnlyList<CategoryDto>>>;
+public sealed record SeedCategoriesCommand(bool Reset);
 
 internal sealed class SeedCategoriesCommandHandler(
     IAppDbContext db,
     ICurrentUser currentUser,
     TimeProvider clock,
     AppEnvironment env)
-    : IRequestHandler<SeedCategoriesCommand, Result<IReadOnlyList<CategoryDto>>>
+    : IUseCaseHandler<SeedCategoriesCommand, Result<IReadOnlyList<CategoryDto>>>
 {
-    public async Task<Result<IReadOnlyList<CategoryDto>>> Handle(SeedCategoriesCommand request, CancellationToken ct)
+    public async Task<Result<IReadOnlyList<CategoryDto>>> ExecuteAsync(SeedCategoriesCommand request, CancellationToken ct)
     {
         if (!env.IsDevelopment)
             return Result.NotFound();

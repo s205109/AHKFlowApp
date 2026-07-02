@@ -26,7 +26,7 @@ public sealed class ListHotstringsLazySeedTests(HotstringDbFixture fx)
         await using AppDbContext ctx = fx.CreateContext();
         var sut = new ListHotstringsQueryHandler(ctx, CurrentUserHelper.For(owner), s_dev, _clock);
 
-        Result<PagedList<HotstringDto>> result = await sut.Handle(new ListHotstringsQuery(), CancellationToken.None);
+        Result<PagedList<HotstringDto>> result = await sut.ExecuteAsync(new ListHotstringsQuery(), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.TotalCount.Should().Be(12);
@@ -39,7 +39,7 @@ public sealed class ListHotstringsLazySeedTests(HotstringDbFixture fx)
         await using AppDbContext ctx = fx.CreateContext();
         var sut = new ListHotstringsQueryHandler(ctx, CurrentUserHelper.For(owner), s_dev, _clock);
 
-        await sut.Handle(new ListHotstringsQuery(), CancellationToken.None);
+        await sut.ExecuteAsync(new ListHotstringsQuery(), CancellationToken.None);
 
         await using AppDbContext ctx2 = fx.CreateContext();
         UserPreference? pref = await ctx2.UserPreferences.FirstOrDefaultAsync(p => p.OwnerOid == owner);
@@ -53,11 +53,11 @@ public sealed class ListHotstringsLazySeedTests(HotstringDbFixture fx)
         var owner = Guid.NewGuid();
         await using AppDbContext ctx = fx.CreateContext();
         var sut = new ListHotstringsQueryHandler(ctx, CurrentUserHelper.For(owner), s_dev, _clock);
-        await sut.Handle(new ListHotstringsQuery(), CancellationToken.None);
+        await sut.ExecuteAsync(new ListHotstringsQuery(), CancellationToken.None);
 
         await using AppDbContext ctx2 = fx.CreateContext();
         var sut2 = new ListHotstringsQueryHandler(ctx2, CurrentUserHelper.For(owner), s_dev, _clock);
-        Result<PagedList<HotstringDto>> result = await sut2.Handle(new ListHotstringsQuery(), CancellationToken.None);
+        Result<PagedList<HotstringDto>> result = await sut2.ExecuteAsync(new ListHotstringsQuery(), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.TotalCount.Should().Be(12);
@@ -70,7 +70,7 @@ public sealed class ListHotstringsLazySeedTests(HotstringDbFixture fx)
         await using AppDbContext ctx = fx.CreateContext();
         var sut = new ListHotstringsQueryHandler(ctx, CurrentUserHelper.For(owner), s_prod, _clock);
 
-        Result<PagedList<HotstringDto>> result = await sut.Handle(new ListHotstringsQuery(), CancellationToken.None);
+        Result<PagedList<HotstringDto>> result = await sut.ExecuteAsync(new ListHotstringsQuery(), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.TotalCount.Should().Be(0);
@@ -83,7 +83,7 @@ public sealed class ListHotstringsLazySeedTests(HotstringDbFixture fx)
         await using AppDbContext ctx = fx.CreateContext();
         var sut = new ListHotstringsQueryHandler(ctx, CurrentUserHelper.For(owner), s_dev, _clock);
 
-        await sut.Handle(new ListHotstringsQuery(), CancellationToken.None);
+        await sut.ExecuteAsync(new ListHotstringsQuery(), CancellationToken.None);
 
         await using AppDbContext ctx2 = fx.CreateContext();
         int categoryCount = await ctx2.Categories.CountAsync(c => c.OwnerOid == owner);
@@ -97,7 +97,7 @@ public sealed class ListHotstringsLazySeedTests(HotstringDbFixture fx)
         await using AppDbContext ctx = fx.CreateContext();
         var sut = new ListHotstringsQueryHandler(ctx, CurrentUserHelper.For(owner), s_dev, _clock);
 
-        await sut.Handle(new ListHotstringsQuery(), CancellationToken.None);
+        await sut.ExecuteAsync(new ListHotstringsQuery(), CancellationToken.None);
 
         await using AppDbContext ctx2 = fx.CreateContext();
         UserPreference? pref = await ctx2.UserPreferences.FirstOrDefaultAsync(p => p.OwnerOid == owner);
@@ -111,7 +111,7 @@ public sealed class ListHotstringsLazySeedTests(HotstringDbFixture fx)
         await using AppDbContext ctx = fx.CreateContext();
         var sut = new ListHotstringsQueryHandler(ctx, CurrentUserHelper.For(owner), s_dev, _clock);
 
-        await sut.Handle(new ListHotstringsQuery(), CancellationToken.None);
+        await sut.ExecuteAsync(new ListHotstringsQuery(), CancellationToken.None);
 
         await using AppDbContext ctx2 = fx.CreateContext();
         int linkedCount = await ctx2.HotstringCategories
@@ -130,13 +130,13 @@ public sealed class ListHotstringsLazySeedTests(HotstringDbFixture fx)
         {
             var seedHandler = new AHKFlowApp.Application.Commands.Dev.SeedHotstringsCommandHandler(
                 seedCtx, CurrentUserHelper.For(owner), TimeProvider.System, s_dev);
-            await seedHandler.Handle(new AHKFlowApp.Application.Commands.Dev.SeedHotstringsCommand(Reset: false), CancellationToken.None);
+            await seedHandler.ExecuteAsync(new AHKFlowApp.Application.Commands.Dev.SeedHotstringsCommand(Reset: false), CancellationToken.None);
         }
 
         // Step 2: lazy list — must not re-attempt seed (marker should already be set)
         await using AppDbContext ctx = fx.CreateContext();
         var sut = new ListHotstringsQueryHandler(ctx, CurrentUserHelper.For(owner), s_dev, _clock);
-        Result<PagedList<HotstringDto>> result = await sut.Handle(new ListHotstringsQuery(), CancellationToken.None);
+        Result<PagedList<HotstringDto>> result = await sut.ExecuteAsync(new ListHotstringsQuery(), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.TotalCount.Should().Be(12);
@@ -165,7 +165,7 @@ public sealed class ListHotstringsLazySeedTests(HotstringDbFixture fx)
 
         await using AppDbContext ctx = fx.CreateContext();
         var sut = new ListHotstringsQueryHandler(ctx, CurrentUserHelper.For(owner), s_dev, _clock);
-        await sut.Handle(new ListHotstringsQuery(), CancellationToken.None);
+        await sut.ExecuteAsync(new ListHotstringsQuery(), CancellationToken.None);
 
         // Should not have created duplicate categories
         await using AppDbContext ctx2 = fx.CreateContext();
@@ -188,7 +188,7 @@ public sealed class ListHotstringsLazySeedTests(HotstringDbFixture fx)
 
         await using AppDbContext ctx = fx.CreateContext();
         var sut = new ListHotstringsQueryHandler(ctx, CurrentUserHelper.For(owner), s_dev, _clock);
-        Result<PagedList<HotstringDto>> result = await sut.Handle(new ListHotstringsQuery(), CancellationToken.None);
+        Result<PagedList<HotstringDto>> result = await sut.ExecuteAsync(new ListHotstringsQuery(), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
 

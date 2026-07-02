@@ -10,9 +10,9 @@ Blazor WebAssembly PWA frontend + ASP.NET Core Web API backend + `ahkflow` CLI c
 - **.NET 10.0** — all projects target `net10.0`; Microsoft.* packages use 10.x versions
 - **EF Core** + SQL Server (LocalDB/Docker Compose/Azure SQL) with `EnableRetryOnFailure()`
 - **Blazor WebAssembly** PWA with MudBlazor 9.x and Azure AD (MSAL) authentication
-- **MediatR** (Jimmy Bogard) for CQRS — commands, queries, pipeline behaviors
+- **Explicit use cases** (`IUseCase`/`IUseCaseHandler`) for CQRS — commands, queries, validation decoration
 - **Ardalis.Result** for typed operation outcomes (handlers only)
-- **FluentValidation** via MediatR pipeline behavior (auto-validates before handler)
+- **FluentValidation** via `ValidatingUseCase<TRequest,TResult>` decorator (auto-validates before handler)
 - `.AddStandardResilienceHandler()` on all HttpClient registrations
 - **Serilog** for structured logging (console, file, Application Insights sinks)
 - **MinVer** for automatic semantic versioning from git tags
@@ -23,7 +23,7 @@ Blazor WebAssembly PWA frontend + ASP.NET Core Web API backend + `ahkflow` CLI c
 ```
 src/Backend/
   AHKFlowApp.Domain/              # Entities, value objects — zero external dependencies
-  AHKFlowApp.Application/         # DTOs, MediatR commands/queries, validators
+  AHKFlowApp.Application/         # DTOs, commands/queries, use case handlers, validators
   AHKFlowApp.Infrastructure/      # EF Core DbContext, repositories, migrations
   AHKFlowApp.API/                 # Controllers, middleware, DI registration
 
@@ -80,11 +80,11 @@ dotnet format
 
 - **Clean Architecture:** API -> Infrastructure -> Application -> Domain (strict inward dependency)
 - Domain and Application have **no references** to EF Core or infrastructure concerns
-- **No repository pattern** — MediatR handlers inject AppDbContext directly (DbSet is already a repository)
-- **MediatR** for all commands/queries — Controller -> IMediator.Send() -> Handler -> DbContext
+- **No repository pattern** — IUseCaseHandler implementations inject AppDbContext directly (DbSet is already a repository)
+- **Explicit use cases** for all commands/queries — Controller -> IUseCase<TRequest,TResult>.ExecuteAsync() -> IUseCaseHandler -> DbContext
 - **Ardalis.Result** — handlers return Result<T>, controllers map via `result.ToActionResult(this)`
-- **FluentValidation** runs in MediatR IPipelineBehavior — handlers never see invalid requests
-- **Thin controllers** — accept requests, send via MediatR, map Result to HTTP response
+- **FluentValidation** runs through the `ValidatingUseCase<TRequest,TResult>` decorator — handlers never see invalid requests
+- **Thin controllers** — accept requests, call the matching IUseCase<TRequest,TResult>, map Result to HTTP response
 - **GlobalExceptionMiddleware** returns RFC 9457 ProblemDetails for unhandled errors
 - **Explicit mapping** — no mapper libraries (no Mapster, no AutoMapper)
 - **Layer folders** — organize by layer (Controllers/, Commands/, Queries/), not by feature
@@ -123,9 +123,9 @@ dotnet format
 
 ```
 HTTP Request -> Controller (thin, maps Result to HTTP)
-  -> IMediator.Send(Command/Query)
-    -> IPipelineBehavior (FluentValidation)
-      -> Handler (business logic, returns Result<T>)
+  -> IUseCase<TRequest,TResult>.ExecuteAsync()
+    -> ValidatingUseCase<TRequest,TResult> (FluentValidation)
+      -> IUseCaseHandler<TRequest,TResult> (business logic, returns Result<T>)
         -> AppDbContext (EF Core, direct injection)
 ```
 
@@ -161,7 +161,6 @@ HTTP Request -> Controller (thin, maps Result to HTTP)
 
 - Never hardcode package versions from memory — training data contains outdated versions.
 - Run `dotnet add package <name>` without `--version` to get latest stable automatically.
-- `MediatR.Extensions.Microsoft.DependencyInjection` was merged into `MediatR` — only `MediatR` is needed.
 - Microsoft.* packages targeting .NET 10 use 10.x versions (EF Core, Extensions, AspNetCore).
 - When writing `<PackageReference>`, use `dotnet add package` first to resolve the correct version.
 - With `Directory.Packages.props` (CPM), individual .csproj files must NOT specify `Version=`.

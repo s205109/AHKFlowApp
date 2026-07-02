@@ -52,7 +52,7 @@ public sealed class HistoryQueryTests(HistoryDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         GetHotstringHistoryQueryHandler handler = new(db, CurrentUserHelper.For(owner));
 
-        Result<HistoryEntryDto[]> result = await handler.Handle(new GetHotstringHistoryQuery(entity.Id), default);
+        Result<HistoryEntryDto[]> result = await handler.ExecuteAsync(new GetHotstringHistoryQuery(entity.Id), default);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.Should().ContainSingle();
@@ -74,7 +74,7 @@ public sealed class HistoryQueryTests(HistoryDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         GetHotstringHistoryQueryHandler handler = new(db, CurrentUserHelper.For(owner));
 
-        Result<HistoryEntryDto[]> result = await handler.Handle(new GetHotstringHistoryQuery(entity.Id), default);
+        Result<HistoryEntryDto[]> result = await handler.ExecuteAsync(new GetHotstringHistoryQuery(entity.Id), default);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.Should().BeEmpty();
@@ -88,7 +88,7 @@ public sealed class HistoryQueryTests(HistoryDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         GetHotstringHistoryQueryHandler handler = new(db, CurrentUserHelper.For(Guid.NewGuid()));
 
-        Result<HistoryEntryDto[]> result = await handler.Handle(new GetHotstringHistoryQuery(entity.Id), default);
+        Result<HistoryEntryDto[]> result = await handler.ExecuteAsync(new GetHotstringHistoryQuery(entity.Id), default);
 
         result.Status.Should().Be(ResultStatus.NotFound);
     }
@@ -102,7 +102,7 @@ public sealed class HistoryQueryTests(HistoryDbFixture fx)
         GetHotstringHistoryVersionQueryHandler handler = new(db, CurrentUserHelper.For(owner));
 
         Result<HotstringHistoryVersionDto> result =
-            await handler.Handle(new GetHotstringHistoryVersionQuery(entity.Id, 1), default);
+            await handler.ExecuteAsync(new GetHotstringHistoryVersionQuery(entity.Id, 1), default);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.Snapshot.Trigger.Should().Be("hq4");
@@ -117,7 +117,7 @@ public sealed class HistoryQueryTests(HistoryDbFixture fx)
         GetHotstringHistoryVersionQueryHandler handler = new(db, CurrentUserHelper.For(owner));
 
         Result<HotstringHistoryVersionDto> result =
-            await handler.Handle(new GetHotstringHistoryVersionQuery(entity.Id, 99), default);
+            await handler.ExecuteAsync(new GetHotstringHistoryVersionQuery(entity.Id, 99), default);
 
         result.Status.Should().Be(ResultStatus.NotFound);
     }
@@ -130,7 +130,7 @@ public sealed class HistoryQueryTests(HistoryDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         GetHotkeyHistoryQueryHandler handler = new(db, CurrentUserHelper.For(owner));
 
-        Result<HistoryEntryDto[]> result = await handler.Handle(new GetHotkeyHistoryQuery(entity.Id), default);
+        Result<HistoryEntryDto[]> result = await handler.ExecuteAsync(new GetHotkeyHistoryQuery(entity.Id), default);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.Should().ContainSingle();
@@ -146,7 +146,7 @@ public sealed class HistoryQueryTests(HistoryDbFixture fx)
         GetHotkeyHistoryVersionQueryHandler handler = new(db, CurrentUserHelper.For(owner));
 
         Result<HotkeyHistoryVersionDto> result =
-            await handler.Handle(new GetHotkeyHistoryVersionQuery(entity.Id, 1), default);
+            await handler.ExecuteAsync(new GetHotkeyHistoryVersionQuery(entity.Id, 1), default);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.Snapshot.Key.Should().Be("f11");

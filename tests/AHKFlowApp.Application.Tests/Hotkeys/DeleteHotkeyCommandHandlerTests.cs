@@ -29,7 +29,7 @@ public sealed class DeleteHotkeyCommandHandlerTests(HotkeyDbFixture fx)
         var handler = new DeleteHotkeyCommandHandler(
             db, CurrentUserHelper.For(owner), new EntityHistoryRecorder(db, TimeProvider.System));
 
-        Result result = await handler.Handle(new DeleteHotkeyCommand(entity.Id), default);
+        Result result = await handler.ExecuteAsync(new DeleteHotkeyCommand(entity.Id), default);
 
         result.IsSuccess.Should().BeTrue();
 
@@ -53,7 +53,7 @@ public sealed class DeleteHotkeyCommandHandlerTests(HotkeyDbFixture fx)
         var handler = new DeleteHotkeyCommandHandler(
             db, CurrentUserHelper.For(attacker), new EntityHistoryRecorder(db, TimeProvider.System));
 
-        Result result = await handler.Handle(new DeleteHotkeyCommand(entity.Id), default);
+        Result result = await handler.ExecuteAsync(new DeleteHotkeyCommand(entity.Id), default);
 
         result.Status.Should().Be(ResultStatus.NotFound);
     }
@@ -65,7 +65,7 @@ public sealed class DeleteHotkeyCommandHandlerTests(HotkeyDbFixture fx)
         var handler = new DeleteHotkeyCommandHandler(
             db, CurrentUserHelper.For(null), new EntityHistoryRecorder(db, TimeProvider.System));
 
-        Result result = await handler.Handle(new DeleteHotkeyCommand(Guid.NewGuid()), default);
+        Result result = await handler.ExecuteAsync(new DeleteHotkeyCommand(Guid.NewGuid()), default);
 
         result.Status.Should().Be(ResultStatus.Unauthorized);
     }

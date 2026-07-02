@@ -6,7 +6,6 @@ using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Domain.Enums;
 using Ardalis.Result;
 using FluentValidation;
-using MediatR;
 using Microsoft.EntityFrameworkCore;
 
 namespace AHKFlowApp.Application.Queries.Hotkeys;
@@ -27,7 +26,7 @@ public sealed record ListHotkeysQuery(
     bool? Alt = null,
     bool? Shift = null,
     bool? Win = null,
-    IReadOnlyList<Guid>? CategoryIds = null) : IRequest<Result<PagedList<HotkeyDto>>>;
+    IReadOnlyList<Guid>? CategoryIds = null);
 
 public sealed class ListHotkeysQueryValidator : AbstractValidator<ListHotkeysQuery>
 {
@@ -58,7 +57,7 @@ internal sealed class ListHotkeysQueryHandler(
     ICurrentUser currentUser,
     AppEnvironment env,
     TimeProvider clock)
-    : IRequestHandler<ListHotkeysQuery, Result<PagedList<HotkeyDto>>>
+    : IUseCaseHandler<ListHotkeysQuery, Result<PagedList<HotkeyDto>>>
 {
     // Mirrors SeedHotkeysCommand.s_samples — update both if seed set changes.
     private static readonly (
@@ -79,7 +78,7 @@ internal sealed class ListHotkeysQueryHandler(
         ("Reload AHK script",       true,  true,  false, false, "R",     HotkeyAction.Run,  "Reload",       ["App Launcher"]),
     ];
 
-    public async Task<Result<PagedList<HotkeyDto>>> Handle(ListHotkeysQuery request, CancellationToken ct)
+    public async Task<Result<PagedList<HotkeyDto>>> ExecuteAsync(ListHotkeysQuery request, CancellationToken ct)
     {
         if (currentUser.Oid is not Guid ownerOid)
             return Result.Unauthorized();

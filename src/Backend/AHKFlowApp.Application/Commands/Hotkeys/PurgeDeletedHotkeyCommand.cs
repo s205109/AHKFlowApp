@@ -2,19 +2,18 @@ using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Domain.Enums;
 using Ardalis.Result;
-using MediatR;
 using Microsoft.EntityFrameworkCore;
 
 namespace AHKFlowApp.Application.Commands.Hotkeys;
 
-public sealed record PurgeDeletedHotkeyCommand(Guid Id) : IRequest<Result>;
+public sealed record PurgeDeletedHotkeyCommand(Guid Id);
 
 internal sealed class PurgeDeletedHotkeyCommandHandler(
     IAppDbContext db,
     ICurrentUser currentUser)
-    : IRequestHandler<PurgeDeletedHotkeyCommand, Result>
+    : IUseCaseHandler<PurgeDeletedHotkeyCommand, Result>
 {
-    public async Task<Result> Handle(PurgeDeletedHotkeyCommand request, CancellationToken ct)
+    public async Task<Result> ExecuteAsync(PurgeDeletedHotkeyCommand request, CancellationToken ct)
     {
         if (currentUser.Oid is not Guid ownerOid)
             return Result.Unauthorized();

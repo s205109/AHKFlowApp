@@ -26,7 +26,7 @@ public sealed class GetHotstringQueryHandlerTests(HotstringDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         GetHotstringQueryHandler handler = new(db, CurrentUserHelper.For(owner));
 
-        Result<HotstringDto> result = await handler.Handle(new GetHotstringQuery(entity.Id), default);
+        Result<HotstringDto> result = await handler.ExecuteAsync(new GetHotstringQuery(entity.Id), default);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.Id.Should().Be(entity.Id);
@@ -49,7 +49,7 @@ public sealed class GetHotstringQueryHandlerTests(HotstringDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         GetHotstringQueryHandler handler = new(db, CurrentUserHelper.For(attacker));
 
-        Result<HotstringDto> result = await handler.Handle(new GetHotstringQuery(entity.Id), default);
+        Result<HotstringDto> result = await handler.ExecuteAsync(new GetHotstringQuery(entity.Id), default);
 
         result.Status.Should().Be(ResultStatus.NotFound);
     }
@@ -60,7 +60,7 @@ public sealed class GetHotstringQueryHandlerTests(HotstringDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         GetHotstringQueryHandler handler = new(db, CurrentUserHelper.For(null));
 
-        Result<HotstringDto> result = await handler.Handle(new GetHotstringQuery(Guid.NewGuid()), default);
+        Result<HotstringDto> result = await handler.ExecuteAsync(new GetHotstringQuery(Guid.NewGuid()), default);
 
         result.Status.Should().Be(ResultStatus.Unauthorized);
     }

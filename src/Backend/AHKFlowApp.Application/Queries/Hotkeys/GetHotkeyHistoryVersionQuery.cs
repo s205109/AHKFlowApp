@@ -4,20 +4,18 @@ using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Domain.Enums;
 using Ardalis.Result;
-using MediatR;
 using Microsoft.EntityFrameworkCore;
 
 namespace AHKFlowApp.Application.Queries.Hotkeys;
 
-public sealed record GetHotkeyHistoryVersionQuery(Guid Id, int Version)
-    : IRequest<Result<HotkeyHistoryVersionDto>>;
+public sealed record GetHotkeyHistoryVersionQuery(Guid Id, int Version);
 
 internal sealed class GetHotkeyHistoryVersionQueryHandler(
     IAppDbContext db,
     ICurrentUser currentUser)
-    : IRequestHandler<GetHotkeyHistoryVersionQuery, Result<HotkeyHistoryVersionDto>>
+    : IUseCaseHandler<GetHotkeyHistoryVersionQuery, Result<HotkeyHistoryVersionDto>>
 {
-    public async Task<Result<HotkeyHistoryVersionDto>> Handle(
+    public async Task<Result<HotkeyHistoryVersionDto>> ExecuteAsync(
         GetHotkeyHistoryVersionQuery request,
         CancellationToken ct)
     {

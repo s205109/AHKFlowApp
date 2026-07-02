@@ -53,7 +53,11 @@ Every action must declare all possible response types.
 ```csharp
 [ApiController]
 [Route("api/v1/[controller]")]
-public sealed class HotstringsController(IMediator mediator) : ControllerBase
+public sealed class HotstringsController(
+    IUseCase<CreateHotstringCommand, Result<HotstringDto>> createHotstring,
+    IUseCase<GetHotstringQuery, Result<HotstringDto>> getHotstring,
+    IUseCase<ListHotstringsQuery, Result<IReadOnlyList<HotstringDto>>> listHotstrings)
+    : ControllerBase
 {
     /// <summary>Creates a new hotstring.</summary>
     /// <param name="dto">Trigger and replacement text.</param>
@@ -66,7 +70,7 @@ public sealed class HotstringsController(IMediator mediator) : ControllerBase
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> Create(CreateHotstringDto dto, CancellationToken ct)
     {
-        var result = await mediator.Send(new CreateHotstringCommand(dto.Trigger, dto.Replacement), ct);
+        var result = await createHotstring.ExecuteAsync(new CreateHotstringCommand(dto.Trigger, dto.Replacement), ct);
         return result.ToActionResult(this);
     }
 
@@ -79,7 +83,7 @@ public sealed class HotstringsController(IMediator mediator) : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(int id, CancellationToken ct)
     {
-        var result = await mediator.Send(new GetHotstringQuery(id), ct);
+        var result = await getHotstring.ExecuteAsync(new GetHotstringQuery(id), ct);
         return result.ToActionResult(this);
     }
 
@@ -89,7 +93,7 @@ public sealed class HotstringsController(IMediator mediator) : ControllerBase
     [ProducesResponseType<IReadOnlyList<HotstringDto>>(StatusCodes.Status200OK)]
     public async Task<IActionResult> List(CancellationToken ct)
     {
-        var result = await mediator.Send(new ListHotstringQuery(), ct);
+        var result = await listHotstrings.ExecuteAsync(new ListHotstringsQuery(), ct);
         return result.ToActionResult(this);
     }
 }

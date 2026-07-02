@@ -4,21 +4,20 @@ using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Domain.Enums;
 using Ardalis.Result;
-using MediatR;
 using Microsoft.EntityFrameworkCore;
 
 namespace AHKFlowApp.Application.Queries.Hotkeys;
 
-public sealed record ListDeletedHotkeysQuery() : IRequest<Result<DeletedHotkeyDto[]>>;
+public sealed record ListDeletedHotkeysQuery();
 
 internal sealed class ListDeletedHotkeysQueryHandler(
     IAppDbContext db,
     ICurrentUser currentUser)
-    : IRequestHandler<ListDeletedHotkeysQuery, Result<DeletedHotkeyDto[]>>
+    : IUseCaseHandler<ListDeletedHotkeysQuery, Result<DeletedHotkeyDto[]>>
 {
     internal const int MaxDeletedItems = 500;
 
-    public async Task<Result<DeletedHotkeyDto[]>> Handle(ListDeletedHotkeysQuery request, CancellationToken ct)
+    public async Task<Result<DeletedHotkeyDto[]>> ExecuteAsync(ListDeletedHotkeysQuery request, CancellationToken ct)
     {
         if (currentUser.Oid is not Guid ownerOid)
             return Result.Unauthorized();

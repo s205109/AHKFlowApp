@@ -1,18 +1,17 @@
 using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.DTOs;
 using Ardalis.Result;
-using MediatR;
 using Microsoft.EntityFrameworkCore;
 
 namespace AHKFlowApp.Application.Queries.Dashboard;
 
-public sealed record GetDashboardStatsQuery : IRequest<Result<DashboardStatsDto>>;
+public sealed record GetDashboardStatsQuery;
 
 internal sealed class GetDashboardStatsQueryHandler(
     IAppDbContext db,
     ICurrentUser currentUser,
     TimeProvider clock)
-    : IRequestHandler<GetDashboardStatsQuery, Result<DashboardStatsDto>>
+    : IUseCaseHandler<GetDashboardStatsQuery, Result<DashboardStatsDto>>
 {
     private const int BucketDays = 14;
     private const int RecentActivityCount = 5;
@@ -23,7 +22,7 @@ internal sealed class GetDashboardStatsQueryHandler(
     private const string ActionCreated = "created";
     private const string ActionUpdated = "updated";
 
-    public async Task<Result<DashboardStatsDto>> Handle(GetDashboardStatsQuery request, CancellationToken ct)
+    public async Task<Result<DashboardStatsDto>> ExecuteAsync(GetDashboardStatsQuery request, CancellationToken ct)
     {
         if (currentUser.Oid is not Guid ownerOid)
             return Result.Unauthorized();

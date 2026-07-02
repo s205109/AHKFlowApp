@@ -6,21 +6,20 @@ using AHKFlowApp.Application.Mapping;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Domain.Enums;
 using Ardalis.Result;
-using MediatR;
 using Microsoft.EntityFrameworkCore;
 
 namespace AHKFlowApp.Application.Commands.Hotstrings;
 
-public sealed record RestoreHotstringCommand(Guid Id) : IRequest<Result<HotstringDto>>;
+public sealed record RestoreHotstringCommand(Guid Id);
 
 internal sealed class RestoreHotstringCommandHandler(
     IAppDbContext db,
     ICurrentUser currentUser,
     TimeProvider clock,
     IEntityHistoryRecorder recorder)
-    : IRequestHandler<RestoreHotstringCommand, Result<HotstringDto>>
+    : IUseCaseHandler<RestoreHotstringCommand, Result<HotstringDto>>
 {
-    public async Task<Result<HotstringDto>> Handle(RestoreHotstringCommand request, CancellationToken ct)
+    public async Task<Result<HotstringDto>> ExecuteAsync(RestoreHotstringCommand request, CancellationToken ct)
     {
         if (currentUser.Oid is not Guid ownerOid)
             return Result.Unauthorized();
