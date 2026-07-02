@@ -23,6 +23,17 @@ That's it! MinVer automatically calculates and injects the version.
 
 Use this process after the release commit has been merged to `main`.
 
+### 0. Update the changelog
+
+Before tagging a release, update `CHANGELOG.md` with the user-facing changes for the release and regenerate the Blazor app asset:
+
+```powershell
+pwsh ./scripts/generate-changelog-json.ps1
+pwsh ./scripts/generate-changelog-json.ps1 -Check
+```
+
+Commit both `CHANGELOG.md` and `src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/changelog.json` before creating the tag. The PR gate runs the same `-Check` command so the Markdown and app-rendered changelog cannot drift.
+
 ### 1. Choose the version
 
 Use SemVer and the repository tag prefix `v`:
