@@ -164,9 +164,10 @@ Expected result at this stage: build may still fail in controllers and DI becaus
 - [ ] Replace `services.AddMediatR(...)` with:
 
 ```csharp
-services.AddValidatorsFromAssembly(typeof(DependencyInjection).Assembly);
 services.AddScoped(typeof(IUseCase<,>), typeof(ValidatingUseCase<,>));
 ```
+
+`services.AddValidatorsFromAssembly(typeof(DependencyInjection).Assembly)` already exists a few lines below — do not add a second call, or every validator runs twice per request and duplicate failure messages appear in 400 responses.
 
 - [ ] Add this private helper inside `DependencyInjection`:
 
