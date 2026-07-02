@@ -1,10 +1,10 @@
 using AHKFlowApp.API.Extensions;
+using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.Commands.Hotkeys;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Queries.Hotkeys;
 using AHKFlowApp.Domain.Enums;
 using Ardalis.Result;
-using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Identity.Web.Resource;
@@ -17,7 +17,13 @@ namespace AHKFlowApp.API.Controllers;
 [RequiredScope("access_as_user")]
 [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
 [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
-public sealed class HotkeysController(IMediator mediator) : ControllerBase
+public sealed class HotkeysController(
+    IUseCase<ListHotkeysQuery, Result<PagedList<HotkeyDto>>> listHotkeys,
+    IUseCase<GetHotkeyQuery, Result<HotkeyDto>> getHotkey,
+    IUseCase<CreateHotkeyCommand, Result<HotkeyDto>> createHotkey,
+    IUseCase<BulkDeleteHotkeysCommand, Result<BulkDeleteResultDto>> bulkDeleteHotkeys,
+    IUseCase<UpdateHotkeyCommand, Result<HotkeyDto>> updateHotkey,
+    IUseCase<DeleteHotkeyCommand, Result> deleteHotkey) : ControllerBase
 {
     /// <summary>List hotkeys for the current user, optionally filtered by profile. Paginated.</summary>
     [HttpGet]
@@ -41,7 +47,7 @@ public sealed class HotkeysController(IMediator mediator) : ControllerBase
         [FromQuery] bool? win = null,
         [FromQuery] Guid[]? categoryIds = null,
         CancellationToken ct = default) =>
-        (await mediator.Send(new ListHotkeysQuery(
+        (await listHotkeys.ExecuteAsync(new ListHotkeysQuery(
             profileId, search, page, pageSize,
             sortField, sortDescending,
             descriptionFilter, keyFilter, parametersFilter,
@@ -53,7 +59,7 @@ public sealed class HotkeysController(IMediator mediator) : ControllerBase
     [ProducesResponseType(typeof(HotkeyDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     public async Task<ActionResult<HotkeyDto>> Get(Guid id, CancellationToken ct) =>
-        (await mediator.Send(new GetHotkeyQuery(id), ct)).ToProblemActionResult(this);
+        (await getHotkey.ExecuteAsync(new GetHotkeyQuery(id), ct)).ToProblemActionResult(this);
 
     /// <summary>Create a new hotkey for the current user.</summary>
     [HttpPost]
@@ -62,7 +68,7 @@ public sealed class HotkeysController(IMediator mediator) : ControllerBase
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
     public async Task<ActionResult<HotkeyDto>> Create([FromBody] CreateHotkeyDto dto, CancellationToken ct)
     {
-        Result<HotkeyDto> result = await mediator.Send(new CreateHotkeyCommand(dto), ct);
+        Result<HotkeyDto> result = await createHotkey.ExecuteAsync(new CreateHotkeyCommand(dto), ct);
 
         return result.IsSuccess
             ? CreatedAtRoute("GetHotkey", new { id = result.Value.Id }, result.Value)
@@ -76,7 +82,7 @@ public sealed class HotkeysController(IMediator mediator) : ControllerBase
     public async Task<ActionResult<BulkDeleteResultDto>> BulkDelete(
         [FromBody] BulkDeleteRequestDto dto,
         CancellationToken ct) =>
-        (await mediator.Send(new BulkDeleteHotkeysCommand(dto), ct)).ToProblemActionResult(this);
+        (await bulkDeleteHotkeys.ExecuteAsync(new BulkDeleteHotkeysCommand(dto), ct)).ToProblemActionResult(this);
 
     /// <summary>Update an existing hotkey. Returns the updated representation.</summary>
     [HttpPut("{id:guid}")]
@@ -85,7 +91,7 @@ public sealed class HotkeysController(IMediator mediator) : ControllerBase
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
     public async Task<ActionResult<HotkeyDto>> Update(Guid id, [FromBody] UpdateHotkeyDto dto, CancellationToken ct) =>
-        (await mediator.Send(new UpdateHotkeyCommand(id, dto), ct)).ToProblemActionResult(this);
+        (await updateHotkey.ExecuteAsync(new UpdateHotkeyCommand(id, dto), ct)).ToProblemActionResult(this);
 
     /// <summary>Delete a hotkey.</summary>
     [HttpDelete("{id:guid}")]
@@ -93,7 +99,7 @@ public sealed class HotkeysController(IMediator mediator) : ControllerBase
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     public async Task<ActionResult> Delete(Guid id, CancellationToken ct)
     {
-        Result result = await mediator.Send(new DeleteHotkeyCommand(id), ct);
+        Result result = await deleteHotkey.ExecuteAsync(new DeleteHotkeyCommand(id), ct);
         return result.IsSuccess ? NoContent() : result.ToProblemActionResult(this);
     }
 }

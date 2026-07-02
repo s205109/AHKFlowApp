@@ -1,8 +1,9 @@
 using AHKFlowApp.API.Extensions;
 using AHKFlowApp.API.Filters;
+using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.Commands.Dev;
 using AHKFlowApp.Application.DTOs;
-using MediatR;
+using Ardalis.Result;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Identity.Web.Resource;
@@ -16,7 +17,11 @@ namespace AHKFlowApp.API.Controllers;
 [RequiredScope("access_as_user")]
 [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
 [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
-public sealed class DevController(IMediator mediator) : ControllerBase
+public sealed class DevController(
+    IUseCase<SeedHotstringsCommand, Result<PagedList<HotstringDto>>> seedHotstrings,
+    IUseCase<SeedCategoriesCommand, Result<IReadOnlyList<CategoryDto>>> seedCategories,
+    IUseCase<SeedHotkeysCommand, Result<PagedList<HotkeyDto>>> seedHotkeys,
+    IUseCase<SeedAllCommand, Result<SeedAllResultDto>> seedAll) : ControllerBase
 {
     /// <summary>Seeds a curated set of sample hotstrings for the authenticated user. Development only.</summary>
     [HttpPost("hotstrings/seed")]
@@ -25,7 +30,7 @@ public sealed class DevController(IMediator mediator) : ControllerBase
     public async Task<ActionResult<PagedList<HotstringDto>>> SeedHotstrings(
         [FromQuery] bool reset = false,
         CancellationToken ct = default) =>
-        (await mediator.Send(new SeedHotstringsCommand(reset), ct)).ToProblemActionResult(this);
+        (await seedHotstrings.ExecuteAsync(new SeedHotstringsCommand(reset), ct)).ToProblemActionResult(this);
 
     /// <summary>Seeds the eight default categories for the authenticated user. Development only.</summary>
     [HttpPost("categories/seed")]
@@ -34,7 +39,7 @@ public sealed class DevController(IMediator mediator) : ControllerBase
     public async Task<ActionResult<IReadOnlyList<CategoryDto>>> SeedCategories(
         [FromQuery] bool reset = false,
         CancellationToken ct = default) =>
-        (await mediator.Send(new SeedCategoriesCommand(reset), ct)).ToProblemActionResult(this);
+        (await seedCategories.ExecuteAsync(new SeedCategoriesCommand(reset), ct)).ToProblemActionResult(this);
 
     /// <summary>Seeds 12 sample hotkeys for the authenticated user. Development only.</summary>
     [HttpPost("hotkeys/seed")]
@@ -43,7 +48,7 @@ public sealed class DevController(IMediator mediator) : ControllerBase
     public async Task<ActionResult<PagedList<HotkeyDto>>> SeedHotkeys(
         [FromQuery] bool reset = false,
         CancellationToken ct = default) =>
-        (await mediator.Send(new SeedHotkeysCommand(reset), ct)).ToProblemActionResult(this);
+        (await seedHotkeys.ExecuteAsync(new SeedHotkeysCommand(reset), ct)).ToProblemActionResult(this);
 
     /// <summary>Runs the full seed pipeline (categories + hotstrings + hotkeys) in a single transaction. Development only.</summary>
     [HttpPost("seed-all")]
@@ -53,5 +58,5 @@ public sealed class DevController(IMediator mediator) : ControllerBase
     public async Task<ActionResult<SeedAllResultDto>> SeedAll(
         [FromQuery] bool reset = false,
         CancellationToken ct = default) =>
-        (await mediator.Send(new SeedAllCommand(reset), ct)).ToProblemActionResult(this);
+        (await seedAll.ExecuteAsync(new SeedAllCommand(reset), ct)).ToProblemActionResult(this);
 }
