@@ -16,7 +16,5 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="AHKFlowApp.Application.Tests" />
-    <!-- NSubstitute/Castle.DynamicProxy needs this to proxy internal types like IUseCaseHandler -->
-    <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
   </ItemGroup>
 </Project>
