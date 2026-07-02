@@ -26,8 +26,4 @@
     <ProjectReference Include="..\..\src\Backend\AHKFlowApp.Application\AHKFlowApp.Application.csproj" />
     <ProjectReference Include="..\AHKFlowApp.TestUtilities\AHKFlowApp.TestUtilities.csproj" />
   </ItemGroup>
-  <ItemGroup>
-    <!-- NSubstitute/Castle.DynamicProxy needs this to proxy interfaces referencing internal test types -->
-    <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
-  </ItemGroup>
 </Project>

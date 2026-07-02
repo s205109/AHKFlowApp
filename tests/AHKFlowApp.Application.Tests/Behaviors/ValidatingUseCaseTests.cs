@@ -14,14 +14,29 @@ internal sealed record TestRequest(string Name);
 
 public sealed class ValidatingUseCaseTests
 {
+    // Hand-rolled fake instead of NSubstitute — IUseCaseHandler is owned by this project.
+    private sealed class FakeHandler : IUseCaseHandler<TestRequest, string>
+    {
+        public int CallCount { get; private set; }
+
+        public TestRequest? LastRequest { get; private set; }
+
+        public string Result { get; init; } = "result";
+
+        public Task<string> ExecuteAsync(TestRequest request, CancellationToken cancellationToken)
+        {
+            CallCount++;
+            LastRequest = request;
+            return Task.FromResult(Result);
+        }
+    }
+
     [Fact]
     public async Task ExecuteAsync_WhenNoValidators_CallsInner()
     {
         // Arrange
         IEnumerable<IValidator<TestRequest>> validators = [];
-        IUseCaseHandler<TestRequest, string> inner = Substitute.For<IUseCaseHandler<TestRequest, string>>();
-        inner.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult("result"));
+        var inner = new FakeHandler();
         var useCase = new ValidatingUseCase<TestRequest, string>(validators, inner);
         var request = new TestRequest("test");
 
@@ -30,7 +45,8 @@ public sealed class ValidatingUseCaseTests
 
         // Assert
         result.Should().Be("result");
-        await inner.Received(1).ExecuteAsync(request, Arg.Any<CancellationToken>());
+        inner.CallCount.Should().Be(1);
+        inner.LastRequest.Should().Be(request);
     }
 
     [Fact]
@@ -41,9 +57,7 @@ public sealed class ValidatingUseCaseTests
         validator.ValidateAsync(Arg.Any<ValidationContext<TestRequest>>(), Arg.Any<CancellationToken>())
             .Returns(new ValidationResult());
 
-        IUseCaseHandler<TestRequest, string> inner = Substitute.For<IUseCaseHandler<TestRequest, string>>();
-        inner.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult("result"));
+        var inner = new FakeHandler();
         var useCase = new ValidatingUseCase<TestRequest, string>([validator], inner);
         var request = new TestRequest("valid");
 
@@ -52,7 +66,8 @@ public sealed class ValidatingUseCaseTests
 
         // Assert
         result.Should().Be("result");
-        await inner.Received(1).ExecuteAsync(request, Arg.Any<CancellationToken>());
+        inner.CallCount.Should().Be(1);
+        inner.LastRequest.Should().Be(request);
     }
 
     [Fact]
@@ -67,9 +82,7 @@ public sealed class ValidatingUseCaseTests
         validator.ValidateAsync(Arg.Any<ValidationContext<TestRequest>>(), Arg.Any<CancellationToken>())
             .Returns(new ValidationResult(failures));
 
-        IUseCaseHandler<TestRequest, string> inner = Substitute.For<IUseCaseHandler<TestRequest, string>>();
-        inner.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult("result"));
+        var inner = new FakeHandler();
         var useCase = new ValidatingUseCase<TestRequest, string>([validator], inner);
         var request = new TestRequest("");
 
@@ -79,7 +92,7 @@ public sealed class ValidatingUseCaseTests
         // Assert
         await act.Should().ThrowAsync<ValidationException>()
             .Where(ex => ex.Errors.Any(e => e.ErrorMessage == "Name is required"));
-        await inner.DidNotReceive().ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>());
+        inner.CallCount.Should().Be(0);
     }
 
     [Fact]
@@ -94,9 +107,7 @@ public sealed class ValidatingUseCaseTests
         validator2.ValidateAsync(Arg.Any<ValidationContext<TestRequest>>(), Arg.Any<CancellationToken>())
             .Returns(new ValidationResult([new ValidationFailure("Name", "Invalid chars")]));
 
-        IUseCaseHandler<TestRequest, string> inner = Substitute.For<IUseCaseHandler<TestRequest, string>>();
-        inner.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult("result"));
+        var inner = new FakeHandler();
         var useCase = new ValidatingUseCase<TestRequest, string>([validator1, validator2], inner);
 
         // Act
