@@ -397,6 +397,7 @@ git commit -m "feat: add EntityHistory entity + Restore factories"
 **Files:**
 - Modify: `src/Backend/AHKFlowApp.Application/Abstractions/IAppDbContext.cs`
 - Modify: `src/Backend/AHKFlowApp.Infrastructure/Persistence/AppDbContext.cs`
+- Modify: `tests/AHKFlowApp.Application.Tests/Dev/ThrowOnNthSaveDbContext.cs` (test decorator also implements `IAppDbContext`)
 - Create: `src/Backend/AHKFlowApp.Infrastructure/Persistence/Configurations/EntityHistoryConfiguration.cs`
 - Create (generated): `src/Backend/AHKFlowApp.Infrastructure/Migrations/<timestamp>_AddEntityHistory.cs`
 
@@ -418,6 +419,12 @@ In `AppDbContext.cs`, after the `HotkeyCategories` property:
 
 ```csharp
     public DbSet<EntityHistory> EntityHistories => Set<EntityHistory>();
+```
+
+In `tests/AHKFlowApp.Application.Tests/Dev/ThrowOnNthSaveDbContext.cs` (decorator implements `IAppDbContext` explicitly — the build breaks without this), after the `HotkeyCategories` forwarding property:
+
+```csharp
+    public DbSet<EntityHistory> EntityHistories => inner.EntityHistories;
 ```
 
 - [ ] **Step 2: Write the configuration**
@@ -494,6 +501,8 @@ git commit -m "feat: add EntityHistories table + unique version index"
 - Test: `tests/AHKFlowApp.Application.Tests/History/FixedClock.cs` (copy of the Hotstrings one, new namespace)
 - Test: `tests/AHKFlowApp.Application.Tests/History/EntityHistoryRecorderTests.cs`
 - Test: `tests/AHKFlowApp.Application.Tests/History/HistorySaveRetryTests.cs`
+- Modify: `tests/AHKFlowApp.Application.Tests/Testing/IntegrationTraitGuardTests.cs` (register the new collection)
+- Modify: `docs/development/testing-workflow.md` (trait-contract list)
 
 **Interfaces:**
 - Consumes: `EntityHistory`, enums (Task 1), `EntityHistories` DbSet (Task 2), existing `IsDuplicateKeyViolation()`.
@@ -520,6 +529,11 @@ public sealed class HistoryDbFixture : MigratedDbFixture;
 [CollectionDefinition("HistoryDb")]
 public sealed class HistoryDbCollection : ICollectionFixture<HistoryDbFixture>;
 ```
+
+Register the collection so the integration-trait guard protects future `HistoryDb` tests:
+
+- `tests/AHKFlowApp.Application.Tests/Testing/IntegrationTraitGuardTests.cs` — add `"HistoryDb",` after `"ScriptGeneratorDb",` in the `IntegrationCollections` set.
+- `docs/development/testing-workflow.md` — add `- \`HistoryDb\`` to the trait-contract collection list (the guard's comment requires the two lists to stay in sync).
 
 `tests/AHKFlowApp.Application.Tests/History/CurrentUserHelper.cs` — same body as `tests/AHKFlowApp.Application.Tests/Hotstrings/CurrentUserHelper.cs` with namespace `AHKFlowApp.Application.Tests.History`:
 
@@ -1386,14 +1400,22 @@ internal sealed class DeleteHotstringCommandHandler(
 
         EntityHistory tombstone = await recorder.RecordHotstringAsync(entity, HistoryChangeType.Delete, ct);
         db.Hotstrings.Remove(entity);
-        await db.SaveWithHistoryRetryAsync(tombstone, ct);
+
+        try
+        {
+            await db.SaveWithHistoryRetryAsync(tombstone, ct);
+        }
+        catch (DbUpdateException ex) when (ex.IsHistoryVersionConflict())
+        {
+            return Result.Conflict("The item was modified concurrently. Retry the operation.");
+        }
 
         return Result.Success();
     }
 }
 ```
 
-Add usings: `AHKFlowApp.Application.Common`, `AHKFlowApp.Domain.Enums`.
+Add usings: `AHKFlowApp.Application.Common`, `AHKFlowApp.Domain.Enums`. The try/catch is required: the helper retries once, and a **second** collision propagates — without the catch it would surface as a 500 instead of a 409.
 
 - [ ] **Step 4: Implement — BulkDeleteHotstringsCommand.cs**
 
@@ -1407,13 +1429,21 @@ Add `IEntityHistoryRecorder recorder` as 3rd constructor parameter; add `.Includ
                 tombstones.Add(await recorder.RecordHotstringAsync(row, HistoryChangeType.Delete, ct));
 
             db.Hotstrings.RemoveRange(ownedRows);
-            await db.SaveWithHistoryRetryAsync(tombstones, ct);
+
+            try
+            {
+                await db.SaveWithHistoryRetryAsync(tombstones, ct);
+            }
+            catch (DbUpdateException ex) when (ex.IsHistoryVersionConflict())
+            {
+                return Result.Conflict("One or more items were modified concurrently. Retry the operation.");
+            }
         }
 ```
 
 - [ ] **Step 5: Implement the hotkey twins**
 
-`DeleteHotkeyCommand.cs` and `BulkDeleteHotkeysCommand.cs`: identical shape — add `IEntityHistoryRecorder recorder` parameter, add the two `Include`s to the entity query, call `recorder.RecordHotkeyAsync(entity, HistoryChangeType.Delete, ct)` before `Remove`/`RemoveRange`, save via `SaveWithHistoryRetryAsync`.
+`DeleteHotkeyCommand.cs` and `BulkDeleteHotkeysCommand.cs`: identical shape — add `IEntityHistoryRecorder recorder` parameter, add the two `Include`s to the entity query, call `recorder.RecordHotkeyAsync(entity, HistoryChangeType.Delete, ct)` before `Remove`/`RemoveRange`, save via `SaveWithHistoryRetryAsync` wrapped in the same `catch (DbUpdateException ex) when (ex.IsHistoryVersionConflict())` → `Result.Conflict(...)` blocks as the hotstring handlers above.
 
 - [ ] **Step 6: Run new + existing delete tests**
 
@@ -3609,18 +3639,31 @@ Expected: compile error — page doesn't exist.
 
     private async Task RestoreAsync(RecycleBinRow row)
     {
-        ApiResult result = row.Type == "Hotstring"
-            ? await HotstringsApi.RestoreAsync(row.Id)
-            : await HotkeysApi.RestoreAsync(row.Id);
+        // ApiResult<T> does not derive from ApiResult, and the two restores return
+        // different T — branch explicitly and lift the shared fields.
+        bool isSuccess;
+        ApiResultStatus status;
+        ApiProblemDetails? problem;
 
-        if (result.IsSuccess)
+        if (row.Type == "Hotstring")
+        {
+            ApiResult<HotstringDto> result = await HotstringsApi.RestoreAsync(row.Id);
+            (isSuccess, status, problem) = (result.IsSuccess, result.Status, result.Problem);
+        }
+        else
+        {
+            ApiResult<HotkeyDto> result = await HotkeysApi.RestoreAsync(row.Id);
+            (isSuccess, status, problem) = (result.IsSuccess, result.Status, result.Problem);
+        }
+
+        if (isSuccess)
         {
             Snackbar.Add($"{row.Type} \"{row.Name}\" restored.", Severity.Success);
             await LoadAsync();
         }
         else
         {
-            Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
+            Snackbar.Add(ApiErrorMessageFactory.Build(status, problem), Severity.Error);
         }
     }
 
@@ -3650,7 +3693,7 @@ Expected: compile error — page doesn't exist.
 }
 ```
 
-Note: `ApiResult<T>` must be assignable to a common shape for the ternaries — if `ApiResult<T>` doesn't derive from `ApiResult`, split the branches into `if/else` storing `IsSuccess`/`Status`/`Problem` instead (check `Services/ApiResult.cs` first).
+Note: the `PurgeAsync` ternary is valid — `PurgeDeletedAsync` returns non-generic `ApiResult` on both clients. Only the restore path needs the explicit branching above.
 
 - [ ] **Step 4: Nav entry + delete copy**
 
