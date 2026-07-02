@@ -17,6 +17,7 @@ public sealed class IntegrationTraitGuardTests
         "DevDb",
         "PreferenceDb",
         "ScriptGeneratorDb",
+        "HistoryDb",
     ];
 
     [Fact]
