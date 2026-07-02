@@ -96,4 +96,53 @@ public sealed class HotkeysController(IMediator mediator) : ControllerBase
         Result result = await mediator.Send(new DeleteHotkeyCommand(id), ct);
         return result.IsSuccess ? NoContent() : result.ToProblemActionResult(this);
     }
+
+    /// <summary>List saved versions of a hotkey, newest first.</summary>
+    [HttpGet("{id:guid}/history")]
+    [ProducesResponseType(typeof(HistoryEntryDto[]), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<HistoryEntryDto[]>> GetHistory(Guid id, CancellationToken ct) =>
+        (await mediator.Send(new GetHotkeyHistoryQuery(id), ct)).ToProblemActionResult(this);
+
+    /// <summary>Get one saved version of a hotkey, including its snapshot.</summary>
+    [HttpGet("{id:guid}/history/{version:int}")]
+    [ProducesResponseType(typeof(HotkeyHistoryVersionDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<HotkeyHistoryVersionDto>> GetHistoryVersion(
+        Guid id,
+        int version,
+        CancellationToken ct) =>
+        (await mediator.Send(new GetHotkeyHistoryVersionQuery(id, version), ct)).ToProblemActionResult(this);
+
+    /// <summary>Revert a hotkey to a saved version. Returns the updated representation.</summary>
+    [HttpPost("{id:guid}/history/{version:int}/revert")]
+    [ProducesResponseType(typeof(HotkeyDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<HotkeyDto>> Revert(Guid id, int version, CancellationToken ct) =>
+        (await mediator.Send(new RevertHotkeyCommand(id, version), ct)).ToProblemActionResult(this);
+
+    /// <summary>List deleted hotkeys that can be restored from the Recycle Bin.</summary>
+    [HttpGet("deleted")]
+    [ProducesResponseType(typeof(DeletedHotkeyDto[]), StatusCodes.Status200OK)]
+    public async Task<ActionResult<DeletedHotkeyDto[]>> ListDeleted(CancellationToken ct) =>
+        (await mediator.Send(new ListDeletedHotkeysQuery(), ct)).ToProblemActionResult(this);
+
+    /// <summary>Restore a deleted hotkey with its original id and links.</summary>
+    [HttpPost("{id:guid}/restore")]
+    [ProducesResponseType(typeof(HotkeyDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<HotkeyDto>> Restore(Guid id, CancellationToken ct) =>
+        (await mediator.Send(new RestoreHotkeyCommand(id), ct)).ToProblemActionResult(this);
+
+    /// <summary>Permanently remove a deleted hotkey's history.</summary>
+    [HttpDelete("deleted/{id:guid}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult> Purge(Guid id, CancellationToken ct)
+    {
+        Result result = await mediator.Send(new PurgeDeletedHotkeyCommand(id), ct);
+        return result.IsSuccess ? NoContent() : result.ToProblemActionResult(this);
+    }
 }
