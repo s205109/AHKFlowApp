@@ -6,12 +6,11 @@ using AHKFlowApp.Application.Validation;
 using AHKFlowApp.Domain.Entities;
 using Ardalis.Result;
 using FluentValidation;
-using MediatR;
 using Microsoft.EntityFrameworkCore;
 
 namespace AHKFlowApp.Application.Commands.Hotstrings;
 
-public sealed record UpdateHotstringCommand(Guid Id, UpdateHotstringDto Input) : IRequest<Result<HotstringDto>>;
+public sealed record UpdateHotstringCommand(Guid Id, UpdateHotstringDto Input);
 
 public sealed class UpdateHotstringCommandValidator : AbstractValidator<UpdateHotstringCommand>
 {
@@ -32,9 +31,9 @@ internal sealed class UpdateHotstringCommandHandler(
     IAppDbContext db,
     ICurrentUser currentUser,
     TimeProvider clock)
-    : IRequestHandler<UpdateHotstringCommand, Result<HotstringDto>>
+    : IUseCaseHandler<UpdateHotstringCommand, Result<HotstringDto>>
 {
-    public async Task<Result<HotstringDto>> Handle(UpdateHotstringCommand request, CancellationToken ct)
+    public async Task<Result<HotstringDto>> ExecuteAsync(UpdateHotstringCommand request, CancellationToken ct)
     {
         if (currentUser.Oid is not Guid ownerOid)
             return Result.Unauthorized();

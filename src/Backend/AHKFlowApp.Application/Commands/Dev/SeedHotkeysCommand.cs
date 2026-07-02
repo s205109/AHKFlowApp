@@ -3,7 +3,6 @@ using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Domain.Enums;
 using Ardalis.Result;
-using MediatR;
 using Microsoft.EntityFrameworkCore;
 
 namespace AHKFlowApp.Application.Commands.Dev;
@@ -11,14 +10,14 @@ namespace AHKFlowApp.Application.Commands.Dev;
 // Dev-only: seeds curated sample hotkeys for the current user, each linked to
 // one or more categories. Idempotent on (OwnerOid, Key, Ctrl, Alt, Shift, Win);
 // a non-reset re-run backfills missing category links onto pre-existing rows.
-public sealed record SeedHotkeysCommand(bool Reset) : IRequest<Result<PagedList<HotkeyDto>>>;
+public sealed record SeedHotkeysCommand(bool Reset);
 
 internal sealed class SeedHotkeysCommandHandler(
     IAppDbContext db,
     ICurrentUser currentUser,
     TimeProvider clock,
     AppEnvironment env)
-    : IRequestHandler<SeedHotkeysCommand, Result<PagedList<HotkeyDto>>>
+    : IUseCaseHandler<SeedHotkeysCommand, Result<PagedList<HotkeyDto>>>
 {
     private static readonly (
         string Description,
@@ -42,7 +41,7 @@ internal sealed class SeedHotkeysCommandHandler(
         ("Reload AHK script",       true,  true,  false, false, "R",     HotkeyAction.Run,  "Reload",       ["App Launcher"]),
     ];
 
-    public async Task<Result<PagedList<HotkeyDto>>> Handle(SeedHotkeysCommand request, CancellationToken ct)
+    public async Task<Result<PagedList<HotkeyDto>>> ExecuteAsync(SeedHotkeysCommand request, CancellationToken ct)
     {
         if (!env.IsDevelopment)
             return Result.NotFound();

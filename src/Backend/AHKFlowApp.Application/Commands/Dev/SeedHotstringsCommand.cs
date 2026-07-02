@@ -2,7 +2,6 @@ using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Domain.Entities;
 using Ardalis.Result;
-using MediatR;
 using Microsoft.EntityFrameworkCore;
 
 namespace AHKFlowApp.Application.Commands.Dev;
@@ -10,14 +9,14 @@ namespace AHKFlowApp.Application.Commands.Dev;
 // Dev-only: seeds curated sample hotstrings for the current user, each linked
 // to one or more categories. Idempotent on (OwnerOid, Trigger); a non-reset
 // re-run backfills missing category links onto pre-existing seed rows.
-public sealed record SeedHotstringsCommand(bool Reset) : IRequest<Result<PagedList<HotstringDto>>>;
+public sealed record SeedHotstringsCommand(bool Reset);
 
 internal sealed class SeedHotstringsCommandHandler(
     IAppDbContext db,
     ICurrentUser currentUser,
     TimeProvider clock,
     AppEnvironment env)
-    : IRequestHandler<SeedHotstringsCommand, Result<PagedList<HotstringDto>>>
+    : IUseCaseHandler<SeedHotstringsCommand, Result<PagedList<HotstringDto>>>
 {
     private static readonly (
         string Trigger,
@@ -40,7 +39,7 @@ internal sealed class SeedHotstringsCommandHandler(
         (";todo",   "TODO(name): ",         false, false, ["Code"]),
     ];
 
-    public async Task<Result<PagedList<HotstringDto>>> Handle(SeedHotstringsCommand request, CancellationToken ct)
+    public async Task<Result<PagedList<HotstringDto>>> ExecuteAsync(SeedHotstringsCommand request, CancellationToken ct)
     {
         if (!env.IsDevelopment)
             return Result.NotFound();

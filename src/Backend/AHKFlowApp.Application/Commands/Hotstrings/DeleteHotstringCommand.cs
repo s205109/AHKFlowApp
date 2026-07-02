@@ -1,19 +1,18 @@
 using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Domain.Entities;
 using Ardalis.Result;
-using MediatR;
 using Microsoft.EntityFrameworkCore;
 
 namespace AHKFlowApp.Application.Commands.Hotstrings;
 
-public sealed record DeleteHotstringCommand(Guid Id) : IRequest<Result>;
+public sealed record DeleteHotstringCommand(Guid Id);
 
 internal sealed class DeleteHotstringCommandHandler(
     IAppDbContext db,
     ICurrentUser currentUser)
-    : IRequestHandler<DeleteHotstringCommand, Result>
+    : IUseCaseHandler<DeleteHotstringCommand, Result>
 {
-    public async Task<Result> Handle(DeleteHotstringCommand request, CancellationToken ct)
+    public async Task<Result> ExecuteAsync(DeleteHotstringCommand request, CancellationToken ct)
     {
         if (currentUser.Oid is not Guid ownerOid)
             return Result.Unauthorized();

@@ -2,20 +2,19 @@ using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Services;
 using Ardalis.Result;
-using MediatR;
 
 namespace AHKFlowApp.Application.Queries.Downloads;
 
-public sealed record GetProfileScriptPreviewQuery(Guid ProfileId) : IRequest<Result<ProfileScriptPreviewDto>>;
+public sealed record GetProfileScriptPreviewQuery(Guid ProfileId);
 
 internal sealed class GetProfileScriptPreviewQueryHandler(
     ProfileScriptLoader loader,
     ICurrentUser currentUser,
     AhkScriptGenerator generator,
     TimeProvider clock)
-    : IRequestHandler<GetProfileScriptPreviewQuery, Result<ProfileScriptPreviewDto>>
+    : IUseCaseHandler<GetProfileScriptPreviewQuery, Result<ProfileScriptPreviewDto>>
 {
-    public async Task<Result<ProfileScriptPreviewDto>> Handle(
+    public async Task<Result<ProfileScriptPreviewDto>> ExecuteAsync(
         GetProfileScriptPreviewQuery request,
         CancellationToken ct)
     {

@@ -5,7 +5,6 @@ using AHKFlowApp.Domain.Constants;
 using AHKFlowApp.Domain.Entities;
 using Ardalis.Result;
 using FluentValidation;
-using MediatR;
 using Microsoft.EntityFrameworkCore;
 
 namespace AHKFlowApp.Application.Queries.Categories;
@@ -13,7 +12,7 @@ namespace AHKFlowApp.Application.Queries.Categories;
 public sealed record ListCategoriesQuery(
     string? Search = null,
     int Page = 1,
-    int PageSize = 50) : IRequest<Result<PagedList<CategoryDto>>>;
+    int PageSize = 50);
 
 public sealed class ListCategoriesQueryValidator : AbstractValidator<ListCategoriesQuery>
 {
@@ -29,9 +28,9 @@ internal sealed class ListCategoriesQueryHandler(
     IAppDbContext db,
     ICurrentUser currentUser,
     TimeProvider clock)
-    : IRequestHandler<ListCategoriesQuery, Result<PagedList<CategoryDto>>>
+    : IUseCaseHandler<ListCategoriesQuery, Result<PagedList<CategoryDto>>>
 {
-    public async Task<Result<PagedList<CategoryDto>>> Handle(ListCategoriesQuery request, CancellationToken ct)
+    public async Task<Result<PagedList<CategoryDto>>> ExecuteAsync(ListCategoriesQuery request, CancellationToken ct)
     {
         if (currentUser.Oid is not Guid ownerOid)
             return Result.Unauthorized();

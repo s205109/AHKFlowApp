@@ -6,12 +6,11 @@ using AHKFlowApp.Application.Validation;
 using AHKFlowApp.Domain.Entities;
 using Ardalis.Result;
 using FluentValidation;
-using MediatR;
 using Microsoft.EntityFrameworkCore;
 
 namespace AHKFlowApp.Application.Commands.Profiles;
 
-public sealed record UpdateProfileCommand(Guid Id, UpdateProfileDto Input) : IRequest<Result<ProfileDto>>;
+public sealed record UpdateProfileCommand(Guid Id, UpdateProfileDto Input);
 
 public sealed class UpdateProfileCommandValidator : AbstractValidator<UpdateProfileCommand>
 {
@@ -27,9 +26,9 @@ internal sealed class UpdateProfileCommandHandler(
     IAppDbContext db,
     ICurrentUser currentUser,
     TimeProvider clock)
-    : IRequestHandler<UpdateProfileCommand, Result<ProfileDto>>
+    : IUseCaseHandler<UpdateProfileCommand, Result<ProfileDto>>
 {
-    public async Task<Result<ProfileDto>> Handle(UpdateProfileCommand request, CancellationToken ct)
+    public async Task<Result<ProfileDto>> ExecuteAsync(UpdateProfileCommand request, CancellationToken ct)
     {
         if (currentUser.Oid is not Guid ownerOid)
             return Result.Unauthorized();

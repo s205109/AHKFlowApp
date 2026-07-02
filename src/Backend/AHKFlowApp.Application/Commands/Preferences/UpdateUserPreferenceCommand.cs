@@ -4,12 +4,11 @@ using AHKFlowApp.Application.Mapping;
 using AHKFlowApp.Domain.Entities;
 using Ardalis.Result;
 using FluentValidation;
-using MediatR;
 using Microsoft.EntityFrameworkCore;
 
 namespace AHKFlowApp.Application.Commands.Preferences;
 
-public sealed record UpdateUserPreferenceCommand(UpdateUserPreferenceDto Dto) : IRequest<Result<UserPreferenceDto>>;
+public sealed record UpdateUserPreferenceCommand(UpdateUserPreferenceDto Dto);
 
 public sealed class UpdateUserPreferenceCommandValidator : AbstractValidator<UpdateUserPreferenceCommand>
 {
@@ -27,9 +26,9 @@ internal sealed class UpdateUserPreferenceCommandHandler(
     IAppDbContext db,
     ICurrentUser currentUser,
     TimeProvider clock)
-    : IRequestHandler<UpdateUserPreferenceCommand, Result<UserPreferenceDto>>
+    : IUseCaseHandler<UpdateUserPreferenceCommand, Result<UserPreferenceDto>>
 {
-    public async Task<Result<UserPreferenceDto>> Handle(UpdateUserPreferenceCommand request, CancellationToken ct)
+    public async Task<Result<UserPreferenceDto>> ExecuteAsync(UpdateUserPreferenceCommand request, CancellationToken ct)
     {
         if (currentUser.Oid is not Guid ownerOid)
             return Result.Unauthorized();

@@ -29,7 +29,7 @@ public sealed class GetProfileQueryHandlerTests(ProfileDbFixture fx)
         user.Oid.Returns(_ownerOid);
         var sut = new GetProfileQueryHandler(ctx, user);
 
-        Result<ProfileDto> result = await sut.Handle(new GetProfileQuery(p.Id), CancellationToken.None);
+        Result<ProfileDto> result = await sut.ExecuteAsync(new GetProfileQuery(p.Id), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.Id.Should().Be(p.Id);
@@ -47,7 +47,7 @@ public sealed class GetProfileQueryHandlerTests(ProfileDbFixture fx)
         user.Oid.Returns(_ownerOid);
         var sut = new GetProfileQueryHandler(ctx, user);
 
-        Result<ProfileDto> result = await sut.Handle(new GetProfileQuery(p.Id), CancellationToken.None);
+        Result<ProfileDto> result = await sut.ExecuteAsync(new GetProfileQuery(p.Id), CancellationToken.None);
         result.Status.Should().Be(ResultStatus.NotFound);
     }
 
@@ -59,7 +59,7 @@ public sealed class GetProfileQueryHandlerTests(ProfileDbFixture fx)
         user.Oid.Returns((Guid?)null);
         var sut = new GetProfileQueryHandler(ctx, user);
 
-        Result<ProfileDto> result = await sut.Handle(new GetProfileQuery(Guid.NewGuid()), CancellationToken.None);
+        Result<ProfileDto> result = await sut.ExecuteAsync(new GetProfileQuery(Guid.NewGuid()), CancellationToken.None);
         result.Status.Should().Be(ResultStatus.Unauthorized);
     }
 }

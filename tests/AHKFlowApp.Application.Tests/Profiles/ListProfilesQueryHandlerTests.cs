@@ -34,7 +34,7 @@ public sealed class ListProfilesQueryHandlerTests(ProfileDbFixture fx)
         await using AppDbContext ctx = fx.CreateContext();
         ListProfilesQueryHandler sut = CreateSut(ctx);
 
-        Result<IReadOnlyList<ProfileDto>> result = await sut.Handle(new ListProfilesQuery(), CancellationToken.None);
+        Result<IReadOnlyList<ProfileDto>> result = await sut.ExecuteAsync(new ListProfilesQuery(), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.Should().ContainSingle();
@@ -54,7 +54,7 @@ public sealed class ListProfilesQueryHandlerTests(ProfileDbFixture fx)
         user.Oid.Returns((Guid?)null);
         var sut = new ListProfilesQueryHandler(ctx, user, _clock);
 
-        Result<IReadOnlyList<ProfileDto>> result = await sut.Handle(new ListProfilesQuery(), CancellationToken.None);
+        Result<IReadOnlyList<ProfileDto>> result = await sut.ExecuteAsync(new ListProfilesQuery(), CancellationToken.None);
 
         result.Status.Should().Be(ResultStatus.Unauthorized);
     }
@@ -71,7 +71,7 @@ public sealed class ListProfilesQueryHandlerTests(ProfileDbFixture fx)
         await ctx.SaveChangesAsync();
 
         ListProfilesQueryHandler sut = CreateSut(ctx);
-        Result<IReadOnlyList<ProfileDto>> result = await sut.Handle(new ListProfilesQuery(), CancellationToken.None);
+        Result<IReadOnlyList<ProfileDto>> result = await sut.ExecuteAsync(new ListProfilesQuery(), CancellationToken.None);
 
         result.Value.Select(p => p.Name).Should().Equal("Mid", "Alpha", "Zeta");
     }

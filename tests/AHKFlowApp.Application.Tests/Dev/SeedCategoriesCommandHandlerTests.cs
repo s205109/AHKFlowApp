@@ -34,7 +34,7 @@ public sealed class SeedCategoriesCommandHandlerTests(DevDbFixture fx)
         await using AppDbContext ctx = fx.CreateContext();
         var sut = new SeedCategoriesCommandHandler(ctx, User(), _clock, _devEnv);
 
-        Result<IReadOnlyList<CategoryDto>> result = await sut.Handle(new SeedCategoriesCommand(Reset: false), default);
+        Result<IReadOnlyList<CategoryDto>> result = await sut.ExecuteAsync(new SeedCategoriesCommand(Reset: false), default);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.Should().HaveCount(8);
@@ -54,7 +54,7 @@ public sealed class SeedCategoriesCommandHandlerTests(DevDbFixture fx)
 
         var sut = new SeedCategoriesCommandHandler(ctx, User(), _clock, _devEnv);
 
-        await sut.Handle(new SeedCategoriesCommand(Reset: false), default);
+        await sut.ExecuteAsync(new SeedCategoriesCommand(Reset: false), default);
 
         (await ctx.Categories.CountAsync(c => c.OwnerOid == _ownerOid)).Should().Be(8);
     }
@@ -72,7 +72,7 @@ public sealed class SeedCategoriesCommandHandlerTests(DevDbFixture fx)
 
         _clock.Advance(TimeSpan.FromMinutes(5));
         var sut = new SeedCategoriesCommandHandler(ctx, User(), _clock, _devEnv);
-        await sut.Handle(new SeedCategoriesCommand(Reset: true), default);
+        await sut.ExecuteAsync(new SeedCategoriesCommand(Reset: true), default);
 
         List<string> names = await ctx.Categories.Where(c => c.OwnerOid == _ownerOid).Select(c => c.Name).ToListAsync();
         names.Should().HaveCount(8);
@@ -87,11 +87,11 @@ public sealed class SeedCategoriesCommandHandlerTests(DevDbFixture fx)
     {
         await using AppDbContext ctx = fx.CreateContext();
         var sut = new SeedCategoriesCommandHandler(ctx, User(), _clock, _devEnv);
-        await sut.Handle(new SeedCategoriesCommand(Reset: false), default);
+        await sut.ExecuteAsync(new SeedCategoriesCommand(Reset: false), default);
 
         await using AppDbContext ctx2 = fx.CreateContext();
         var sut2 = new SeedCategoriesCommandHandler(ctx2, User(), _clock, _devEnv);
-        await sut2.Handle(new SeedCategoriesCommand(Reset: true), default);
+        await sut2.ExecuteAsync(new SeedCategoriesCommand(Reset: true), default);
 
         (await ctx2.Categories.CountAsync(c => c.OwnerOid == _ownerOid)).Should().Be(8);
     }
@@ -103,7 +103,7 @@ public sealed class SeedCategoriesCommandHandlerTests(DevDbFixture fx)
         AppEnvironment prodEnv = new(IsDevelopment: false);
         var sut = new SeedCategoriesCommandHandler(ctx, User(), _clock, prodEnv);
 
-        Result<IReadOnlyList<CategoryDto>> result = await sut.Handle(new SeedCategoriesCommand(Reset: false), default);
+        Result<IReadOnlyList<CategoryDto>> result = await sut.ExecuteAsync(new SeedCategoriesCommand(Reset: false), default);
 
         result.Status.Should().Be(ResultStatus.NotFound);
     }

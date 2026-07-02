@@ -38,7 +38,7 @@ public sealed class UpdateHotkeyWithCategoriesTests(HotkeyDbFixture fx)
                 HotkeyAction.Send, "", null, true,
                 CategoryIds: [foreignCategoryId]));
 
-        Result<HotkeyDto> result = await handler.Handle(cmd, default);
+        Result<HotkeyDto> result = await handler.ExecuteAsync(cmd, default);
 
         result.Status.Should().Be(ResultStatus.Invalid);
         result.ValidationErrors.Should().Contain(e => e.Identifier == "Input.CategoryIds");
@@ -71,7 +71,7 @@ public sealed class UpdateHotkeyWithCategoriesTests(HotkeyDbFixture fx)
                 HotkeyAction.Send, "", null, true,
                 CategoryIds: [cat3.Id]));
 
-        Result<HotkeyDto> result = await handler.Handle(cmd, default);
+        Result<HotkeyDto> result = await handler.ExecuteAsync(cmd, default);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.CategoryIds.Should().BeEquivalentTo([cat3.Id]);
@@ -106,7 +106,7 @@ public sealed class UpdateHotkeyWithCategoriesTests(HotkeyDbFixture fx)
                 HotkeyAction.Send, "", null, true,
                 CategoryIds: []));
 
-        Result<HotkeyDto> result = await handler.Handle(cmd, default);
+        Result<HotkeyDto> result = await handler.ExecuteAsync(cmd, default);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.CategoryIds.Should().BeEmpty();

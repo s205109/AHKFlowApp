@@ -36,7 +36,7 @@ public sealed class UpdateProfileCommandHandlerTests(ProfileDbFixture fx)
         await ctx.SaveChangesAsync();
 
         UpdateProfileCommandHandler sut = CreateSut(ctx);
-        Result<ProfileDto> result = await sut.Handle(
+        Result<ProfileDto> result = await sut.ExecuteAsync(
             new UpdateProfileCommand(p.Id, new UpdateProfileDto("Work2", "h", "f", true)),
             CancellationToken.None);
 
@@ -50,7 +50,7 @@ public sealed class UpdateProfileCommandHandlerTests(ProfileDbFixture fx)
     {
         await using AppDbContext ctx = fx.CreateContext();
         UpdateProfileCommandHandler sut = CreateSut(ctx);
-        Result<ProfileDto> result = await sut.Handle(
+        Result<ProfileDto> result = await sut.ExecuteAsync(
             new UpdateProfileCommand(Guid.NewGuid(), new UpdateProfileDto("x", "", "", false)),
             CancellationToken.None);
         result.Status.Should().Be(ResultStatus.NotFound);
@@ -65,7 +65,7 @@ public sealed class UpdateProfileCommandHandlerTests(ProfileDbFixture fx)
         await ctx.SaveChangesAsync();
 
         UpdateProfileCommandHandler sut = CreateSut(ctx);
-        Result<ProfileDto> result = await sut.Handle(
+        Result<ProfileDto> result = await sut.ExecuteAsync(
             new UpdateProfileCommand(p.Id, new UpdateProfileDto("x", "", "", false)),
             CancellationToken.None);
         result.Status.Should().Be(ResultStatus.NotFound);
@@ -81,7 +81,7 @@ public sealed class UpdateProfileCommandHandlerTests(ProfileDbFixture fx)
         await ctx.SaveChangesAsync();
 
         UpdateProfileCommandHandler sut = CreateSut(ctx);
-        Result<ProfileDto> result = await sut.Handle(
+        Result<ProfileDto> result = await sut.ExecuteAsync(
             new UpdateProfileCommand(p.Id, new UpdateProfileDto("A", "", "", false)),
             CancellationToken.None);
         result.Status.Should().Be(ResultStatus.Conflict);
@@ -95,7 +95,7 @@ public sealed class UpdateProfileCommandHandlerTests(ProfileDbFixture fx)
         user.Oid.Returns((Guid?)null);
         var sut = new UpdateProfileCommandHandler(ctx, user, _clock);
 
-        Result<ProfileDto> result = await sut.Handle(
+        Result<ProfileDto> result = await sut.ExecuteAsync(
             new UpdateProfileCommand(Guid.NewGuid(), new UpdateProfileDto("x", "", "", false)),
             CancellationToken.None);
 
@@ -112,7 +112,7 @@ public sealed class UpdateProfileCommandHandlerTests(ProfileDbFixture fx)
         await ctx.SaveChangesAsync();
 
         UpdateProfileCommandHandler sut = CreateSut(ctx);
-        await sut.Handle(
+        await sut.ExecuteAsync(
             new UpdateProfileCommand(b.Id, new UpdateProfileDto("B", "", "", true)),
             CancellationToken.None);
 

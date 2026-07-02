@@ -1,19 +1,18 @@
 using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Domain.Entities;
 using Ardalis.Result;
-using MediatR;
 using Microsoft.EntityFrameworkCore;
 
 namespace AHKFlowApp.Application.Commands.Profiles;
 
-public sealed record DeleteProfileCommand(Guid Id) : IRequest<Result>;
+public sealed record DeleteProfileCommand(Guid Id);
 
 internal sealed class DeleteProfileCommandHandler(
     IAppDbContext db,
     ICurrentUser currentUser)
-    : IRequestHandler<DeleteProfileCommand, Result>
+    : IUseCaseHandler<DeleteProfileCommand, Result>
 {
-    public async Task<Result> Handle(DeleteProfileCommand request, CancellationToken ct)
+    public async Task<Result> ExecuteAsync(DeleteProfileCommand request, CancellationToken ct)
     {
         if (currentUser.Oid is not Guid ownerOid)
             return Result.Unauthorized();

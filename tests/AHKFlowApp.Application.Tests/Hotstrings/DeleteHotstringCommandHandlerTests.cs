@@ -26,7 +26,7 @@ public sealed class DeleteHotstringCommandHandlerTests(HotstringDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         DeleteHotstringCommandHandler handler = new(db, CurrentUserHelper.For(owner));
 
-        Result result = await handler.Handle(new DeleteHotstringCommand(entity.Id), default);
+        Result result = await handler.ExecuteAsync(new DeleteHotstringCommand(entity.Id), default);
 
         result.IsSuccess.Should().BeTrue();
 
@@ -49,7 +49,7 @@ public sealed class DeleteHotstringCommandHandlerTests(HotstringDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         DeleteHotstringCommandHandler handler = new(db, CurrentUserHelper.For(attacker));
 
-        Result result = await handler.Handle(new DeleteHotstringCommand(entity.Id), default);
+        Result result = await handler.ExecuteAsync(new DeleteHotstringCommand(entity.Id), default);
 
         result.Status.Should().Be(ResultStatus.NotFound);
     }
@@ -60,7 +60,7 @@ public sealed class DeleteHotstringCommandHandlerTests(HotstringDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         DeleteHotstringCommandHandler handler = new(db, CurrentUserHelper.For(null));
 
-        Result result = await handler.Handle(new DeleteHotstringCommand(Guid.NewGuid()), default);
+        Result result = await handler.ExecuteAsync(new DeleteHotstringCommand(Guid.NewGuid()), default);
 
         result.Status.Should().Be(ResultStatus.Unauthorized);
     }

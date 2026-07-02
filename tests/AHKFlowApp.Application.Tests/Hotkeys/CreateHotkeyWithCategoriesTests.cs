@@ -29,7 +29,7 @@ public sealed class CreateHotkeyWithCategoriesTests(HotkeyDbFixture fx)
             "Open Notepad", "n", Ctrl: true, AppliesToAllProfiles: true,
             CategoryIds: [foreignCategoryId]));
 
-        Result<HotkeyDto> result = await handler.Handle(cmd, default);
+        Result<HotkeyDto> result = await handler.ExecuteAsync(cmd, default);
 
         result.Status.Should().Be(ResultStatus.Invalid);
         result.ValidationErrors.Should().Contain(e => e.Identifier == "Input.CategoryIds");
@@ -54,7 +54,7 @@ public sealed class CreateHotkeyWithCategoriesTests(HotkeyDbFixture fx)
             "Open Notepad", "n", Ctrl: true, AppliesToAllProfiles: true,
             CategoryIds: [cat1.Id, cat2.Id]));
 
-        Result<HotkeyDto> result = await handler.Handle(cmd, default);
+        Result<HotkeyDto> result = await handler.ExecuteAsync(cmd, default);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.CategoryIds.Should().BeEquivalentTo([cat1.Id, cat2.Id]);
@@ -76,7 +76,7 @@ public sealed class CreateHotkeyWithCategoriesTests(HotkeyDbFixture fx)
             "Open Notepad", "n", Ctrl: true, AppliesToAllProfiles: true,
             CategoryIds: null));
 
-        Result<HotkeyDto> result = await handler.Handle(cmd, default);
+        Result<HotkeyDto> result = await handler.ExecuteAsync(cmd, default);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.CategoryIds.Should().BeEmpty();

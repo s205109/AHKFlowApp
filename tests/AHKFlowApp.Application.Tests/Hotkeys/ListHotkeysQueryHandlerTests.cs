@@ -30,7 +30,7 @@ public sealed class ListHotkeysQueryHandlerTests(HotkeyDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         var handler = new ListHotkeysQueryHandler(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
 
-        Result<PagedList<HotkeyDto>> result = await handler.Handle(new ListHotkeysQuery(), default);
+        Result<PagedList<HotkeyDto>> result = await handler.ExecuteAsync(new ListHotkeysQuery(), default);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.TotalCount.Should().Be(1);
@@ -65,7 +65,7 @@ public sealed class ListHotkeysQueryHandlerTests(HotkeyDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         var handler = new ListHotkeysQueryHandler(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
 
-        Result<PagedList<HotkeyDto>> result = await handler.Handle(
+        Result<PagedList<HotkeyDto>> result = await handler.ExecuteAsync(
             new ListHotkeysQuery(ProfileId: profileId), default);
 
         // Both "global" (appliesToAllProfiles=true) and "profiled" (has profile in junction) match
@@ -93,7 +93,7 @@ public sealed class ListHotkeysQueryHandlerTests(HotkeyDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         var handler = new ListHotkeysQueryHandler(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
 
-        Result<PagedList<HotkeyDto>> page2 = await handler.Handle(
+        Result<PagedList<HotkeyDto>> page2 = await handler.ExecuteAsync(
             new ListHotkeysQuery(Page: 2, PageSize: 2), default);
 
         page2.Value.TotalCount.Should().Be(5);
@@ -108,7 +108,7 @@ public sealed class ListHotkeysQueryHandlerTests(HotkeyDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         var handler = new ListHotkeysQueryHandler(db, CurrentUserHelper.For(null), new AppEnvironment(false), TimeProvider.System);
 
-        Result<PagedList<HotkeyDto>> result = await handler.Handle(new ListHotkeysQuery(), default);
+        Result<PagedList<HotkeyDto>> result = await handler.ExecuteAsync(new ListHotkeysQuery(), default);
 
         result.Status.Should().Be(ResultStatus.Unauthorized);
     }
@@ -128,7 +128,7 @@ public sealed class ListHotkeysQueryHandlerTests(HotkeyDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         var handler = new ListHotkeysQueryHandler(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
 
-        Result<PagedList<HotkeyDto>> result = await handler.Handle(
+        Result<PagedList<HotkeyDto>> result = await handler.ExecuteAsync(
             new ListHotkeysQuery(Search: "f1"), default);
 
         result.Value.Items.Should().ContainSingle().Which.Key.Should().Be("f1");
@@ -149,7 +149,7 @@ public sealed class ListHotkeysQueryHandlerTests(HotkeyDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         var handler = new ListHotkeysQueryHandler(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
 
-        Result<PagedList<HotkeyDto>> result = await handler.Handle(
+        Result<PagedList<HotkeyDto>> result = await handler.ExecuteAsync(
             new ListHotkeysQuery(Search: "browser"), default);
 
         result.Value.Items.Should().ContainSingle().Which.Description.Should().Be("Open browser");
@@ -170,7 +170,7 @@ public sealed class ListHotkeysQueryHandlerTests(HotkeyDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         var handler = new ListHotkeysQueryHandler(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
 
-        Result<PagedList<HotkeyDto>> result = await handler.Handle(
+        Result<PagedList<HotkeyDto>> result = await handler.ExecuteAsync(
             new ListHotkeysQuery(Search: "notepad"), default);
 
         result.Value.Items.Should().ContainSingle().Which.Key.Should().Be("f1");
@@ -192,7 +192,7 @@ public sealed class ListHotkeysQueryHandlerTests(HotkeyDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         var handler = new ListHotkeysQueryHandler(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
 
-        Result<PagedList<HotkeyDto>> result = await handler.Handle(
+        Result<PagedList<HotkeyDto>> result = await handler.ExecuteAsync(
             new ListHotkeysQuery(DescriptionFilter: "Open"), default);
 
         result.IsSuccess.Should().BeTrue();
@@ -215,7 +215,7 @@ public sealed class ListHotkeysQueryHandlerTests(HotkeyDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         var handler = new ListHotkeysQueryHandler(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
 
-        Result<PagedList<HotkeyDto>> result = await handler.Handle(
+        Result<PagedList<HotkeyDto>> result = await handler.ExecuteAsync(
             new ListHotkeysQuery(Ctrl: true), default);
 
         result.IsSuccess.Should().BeTrue();
@@ -239,7 +239,7 @@ public sealed class ListHotkeysQueryHandlerTests(HotkeyDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         var handler = new ListHotkeysQueryHandler(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
 
-        Result<PagedList<HotkeyDto>> result = await handler.Handle(
+        Result<PagedList<HotkeyDto>> result = await handler.ExecuteAsync(
             new ListHotkeysQuery(SortField: "key", SortDescending: false), default);
 
         result.IsSuccess.Should().BeTrue();

@@ -5,20 +5,19 @@ using AHKFlowApp.Application.Mapping;
 using AHKFlowApp.Domain.Constants;
 using AHKFlowApp.Domain.Entities;
 using Ardalis.Result;
-using MediatR;
 using Microsoft.EntityFrameworkCore;
 
 namespace AHKFlowApp.Application.Queries.Profiles;
 
-public sealed record ListProfilesQuery : IRequest<Result<IReadOnlyList<ProfileDto>>>;
+public sealed record ListProfilesQuery;
 
 internal sealed class ListProfilesQueryHandler(
     IAppDbContext db,
     ICurrentUser currentUser,
     TimeProvider clock)
-    : IRequestHandler<ListProfilesQuery, Result<IReadOnlyList<ProfileDto>>>
+    : IUseCaseHandler<ListProfilesQuery, Result<IReadOnlyList<ProfileDto>>>
 {
-    public async Task<Result<IReadOnlyList<ProfileDto>>> Handle(ListProfilesQuery request, CancellationToken ct)
+    public async Task<Result<IReadOnlyList<ProfileDto>>> ExecuteAsync(ListProfilesQuery request, CancellationToken ct)
     {
         if (currentUser.Oid is not Guid ownerOid)
             return Result.Unauthorized();
