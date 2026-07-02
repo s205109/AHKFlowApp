@@ -1,5 +1,7 @@
 using AHKFlowApp.Application.Abstractions;
+using AHKFlowApp.Application.Common;
 using AHKFlowApp.Domain.Entities;
+using AHKFlowApp.Domain.Enums;
 using Ardalis.Result;
 using Microsoft.EntityFrameworkCore;
 
@@ -9,7 +11,8 @@ public sealed record DeleteProfileCommand(Guid Id);
 
 internal sealed class DeleteProfileCommandHandler(
     IAppDbContext db,
-    ICurrentUser currentUser)
+    ICurrentUser currentUser,
+    IEntityHistoryRecorder recorder)
     : IUseCaseHandler<DeleteProfileCommand, Result>
 {
     public async Task<Result> ExecuteAsync(DeleteProfileCommand request, CancellationToken ct)
@@ -22,8 +25,33 @@ internal sealed class DeleteProfileCommandHandler(
         if (profile is null)
             return Result.NotFound();
 
+        List<Hotstring> linkedHotstrings = await db.Hotstrings
+            .Include(h => h.Profiles)
+            .Include(h => h.Categories)
+            .Where(h => h.OwnerOid == ownerOid && h.Profiles.Any(p => p.ProfileId == profile.Id))
+            .ToListAsync(ct);
+        List<Hotkey> linkedHotkeys = await db.Hotkeys
+            .Include(h => h.Profiles)
+            .Include(h => h.Categories)
+            .Where(h => h.OwnerOid == ownerOid && h.Profiles.Any(p => p.ProfileId == profile.Id))
+            .ToListAsync(ct);
+        IReadOnlyList<EntityHistory> hotstringHistory =
+            await recorder.RecordHotstringsAsync(linkedHotstrings, HistoryChangeType.Edit, ct);
+        IReadOnlyList<EntityHistory> hotkeyHistory =
+            await recorder.RecordHotkeysAsync(linkedHotkeys, HistoryChangeType.Edit, ct);
+        List<EntityHistory> historyEntries = [.. hotstringHistory, .. hotkeyHistory];
+
         db.Profiles.Remove(profile);
-        await db.SaveChangesAsync(ct);
+
+        try
+        {
+            await db.SaveWithHistoryRetryAsync(historyEntries, ct);
+        }
+        catch (DbUpdateException ex) when (ex.IsHistoryVersionConflict())
+        {
+            return Result.Conflict("One or more linked items were modified concurrently. Retry the operation.");
+        }
+
         return Result.Success();
     }
 }

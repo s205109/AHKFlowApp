@@ -23,7 +23,13 @@ public sealed class HotkeysController(
     IUseCase<CreateHotkeyCommand, Result<HotkeyDto>> createHotkey,
     IUseCase<BulkDeleteHotkeysCommand, Result<BulkDeleteResultDto>> bulkDeleteHotkeys,
     IUseCase<UpdateHotkeyCommand, Result<HotkeyDto>> updateHotkey,
-    IUseCase<DeleteHotkeyCommand, Result> deleteHotkey) : ControllerBase
+    IUseCase<DeleteHotkeyCommand, Result> deleteHotkey,
+    IUseCase<GetHotkeyHistoryQuery, Result<HistoryEntryDto[]>> getHotkeyHistory,
+    IUseCase<GetHotkeyHistoryVersionQuery, Result<HotkeyHistoryVersionDto>> getHotkeyHistoryVersion,
+    IUseCase<RevertHotkeyCommand, Result<HotkeyDto>> revertHotkey,
+    IUseCase<ListDeletedHotkeysQuery, Result<DeletedHotkeyDto[]>> listDeletedHotkeys,
+    IUseCase<RestoreHotkeyCommand, Result<HotkeyDto>> restoreHotkey,
+    IUseCase<PurgeDeletedHotkeyCommand, Result> purgeDeletedHotkey) : ControllerBase
 {
     /// <summary>List hotkeys for the current user, optionally filtered by profile. Paginated.</summary>
     [HttpGet]
@@ -100,6 +106,57 @@ public sealed class HotkeysController(
     public async Task<ActionResult> Delete(Guid id, CancellationToken ct)
     {
         Result result = await deleteHotkey.ExecuteAsync(new DeleteHotkeyCommand(id), ct);
+        return result.IsSuccess ? NoContent() : result.ToProblemActionResult(this);
+    }
+
+    /// <summary>List saved versions of a hotkey, newest first.</summary>
+    [HttpGet("{id:guid}/history")]
+    [ProducesResponseType(typeof(HistoryEntryDto[]), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<HistoryEntryDto[]>> GetHistory(Guid id, CancellationToken ct) =>
+        (await getHotkeyHistory.ExecuteAsync(new GetHotkeyHistoryQuery(id), ct)).ToProblemActionResult(this);
+
+    /// <summary>Get one saved version of a hotkey, including its snapshot.</summary>
+    [HttpGet("{id:guid}/history/{version:int}")]
+    [ProducesResponseType(typeof(HotkeyHistoryVersionDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<HotkeyHistoryVersionDto>> GetHistoryVersion(
+        Guid id,
+        int version,
+        CancellationToken ct) =>
+        (await getHotkeyHistoryVersion.ExecuteAsync(
+            new GetHotkeyHistoryVersionQuery(id, version),
+            ct)).ToProblemActionResult(this);
+
+    /// <summary>Revert a hotkey to a saved version. Returns the updated representation.</summary>
+    [HttpPost("{id:guid}/history/{version:int}/revert")]
+    [ProducesResponseType(typeof(HotkeyDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<HotkeyDto>> Revert(Guid id, int version, CancellationToken ct) =>
+        (await revertHotkey.ExecuteAsync(new RevertHotkeyCommand(id, version), ct)).ToProblemActionResult(this);
+
+    /// <summary>List deleted hotkeys that can be restored from the Recycle Bin.</summary>
+    [HttpGet("deleted")]
+    [ProducesResponseType(typeof(DeletedHotkeyDto[]), StatusCodes.Status200OK)]
+    public async Task<ActionResult<DeletedHotkeyDto[]>> ListDeleted(CancellationToken ct) =>
+        (await listDeletedHotkeys.ExecuteAsync(new ListDeletedHotkeysQuery(), ct)).ToProblemActionResult(this);
+
+    /// <summary>Restore a deleted hotkey with its original id and links.</summary>
+    [HttpPost("{id:guid}/restore")]
+    [ProducesResponseType(typeof(HotkeyDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<HotkeyDto>> Restore(Guid id, CancellationToken ct) =>
+        (await restoreHotkey.ExecuteAsync(new RestoreHotkeyCommand(id), ct)).ToProblemActionResult(this);
+
+    /// <summary>Permanently remove a deleted hotkey's history.</summary>
+    [HttpDelete("deleted/{id:guid}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult> Purge(Guid id, CancellationToken ct)
+    {
+        Result result = await purgeDeletedHotkey.ExecuteAsync(new PurgeDeletedHotkeyCommand(id), ct);
         return result.IsSuccess ? NoContent() : result.ToProblemActionResult(this);
     }
 }

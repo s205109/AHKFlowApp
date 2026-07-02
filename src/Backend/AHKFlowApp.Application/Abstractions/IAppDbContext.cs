@@ -15,6 +15,7 @@ public interface IAppDbContext
     DbSet<Category> Categories { get; }
     DbSet<HotstringCategory> HotstringCategories { get; }
     DbSet<HotkeyCategory> HotkeyCategories { get; }
+    DbSet<EntityHistory> EntityHistories { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 

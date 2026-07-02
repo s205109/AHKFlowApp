@@ -67,6 +67,7 @@ Coverage mode delegates to `scripts/run-coverage.ps1`. Run it before pushing or 
 - `DevDb`
 - `PreferenceDb`
 - `ScriptGeneratorDb`
+- `HistoryDb`
 
 `CLI.Tests` classes using `CliWebApi` must also have `[Trait("Category", "Integration")]`.
 

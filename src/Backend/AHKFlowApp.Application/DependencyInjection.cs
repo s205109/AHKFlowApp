@@ -40,6 +40,12 @@ public static class DependencyInjection
             .AddUseCase<UpdateHotstringCommand, Result<HotstringDto>, UpdateHotstringCommandHandler>()
             .AddUseCase<DeleteHotstringCommand, Result, DeleteHotstringCommandHandler>()
             .AddUseCase<BulkDeleteHotstringsCommand, Result<BulkDeleteResultDto>, BulkDeleteHotstringsCommandHandler>()
+            .AddUseCase<GetHotstringHistoryQuery, Result<HistoryEntryDto[]>, GetHotstringHistoryQueryHandler>()
+            .AddUseCase<GetHotstringHistoryVersionQuery, Result<HotstringHistoryVersionDto>, GetHotstringHistoryVersionQueryHandler>()
+            .AddUseCase<RevertHotstringCommand, Result<HotstringDto>, RevertHotstringCommandHandler>()
+            .AddUseCase<ListDeletedHotstringsQuery, Result<DeletedHotstringDto[]>, ListDeletedHotstringsQueryHandler>()
+            .AddUseCase<RestoreHotstringCommand, Result<HotstringDto>, RestoreHotstringCommandHandler>()
+            .AddUseCase<PurgeDeletedHotstringCommand, Result, PurgeDeletedHotstringCommandHandler>()
             .AddUseCase<ListHotstringsQuery, Result<PagedList<HotstringDto>>, ListHotstringsQueryHandler>()
             .AddUseCase<GetHotstringQuery, Result<HotstringDto>, GetHotstringQueryHandler>()
             .AddUseCase<SeedHotstringsCommand, Result<PagedList<HotstringDto>>, SeedHotstringsCommandHandler>()
@@ -47,6 +53,12 @@ public static class DependencyInjection
             .AddUseCase<UpdateHotkeyCommand, Result<HotkeyDto>, UpdateHotkeyCommandHandler>()
             .AddUseCase<DeleteHotkeyCommand, Result, DeleteHotkeyCommandHandler>()
             .AddUseCase<BulkDeleteHotkeysCommand, Result<BulkDeleteResultDto>, BulkDeleteHotkeysCommandHandler>()
+            .AddUseCase<GetHotkeyHistoryQuery, Result<HistoryEntryDto[]>, GetHotkeyHistoryQueryHandler>()
+            .AddUseCase<GetHotkeyHistoryVersionQuery, Result<HotkeyHistoryVersionDto>, GetHotkeyHistoryVersionQueryHandler>()
+            .AddUseCase<RevertHotkeyCommand, Result<HotkeyDto>, RevertHotkeyCommandHandler>()
+            .AddUseCase<ListDeletedHotkeysQuery, Result<DeletedHotkeyDto[]>, ListDeletedHotkeysQueryHandler>()
+            .AddUseCase<RestoreHotkeyCommand, Result<HotkeyDto>, RestoreHotkeyCommandHandler>()
+            .AddUseCase<PurgeDeletedHotkeyCommand, Result, PurgeDeletedHotkeyCommandHandler>()
             .AddUseCase<ListHotkeysQuery, Result<PagedList<HotkeyDto>>, ListHotkeysQueryHandler>()
             .AddUseCase<GetHotkeyQuery, Result<HotkeyDto>, GetHotkeyQueryHandler>()
             .AddUseCase<SeedHotkeysCommand, Result<PagedList<HotkeyDto>>, SeedHotkeysCommandHandler>()
@@ -66,6 +78,7 @@ public static class DependencyInjection
         services.AddSingleton<HeaderTokenRenderer>();
         services.AddSingleton<AhkScriptGenerator>();
         services.AddScoped<ProfileScriptLoader>();
+        services.AddScoped<IEntityHistoryRecorder, EntityHistoryRecorder>();
 
         return services;
     }

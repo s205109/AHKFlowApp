@@ -22,7 +22,13 @@ public sealed class HotstringsController(
     IUseCase<CreateHotstringCommand, Result<HotstringDto>> createHotstring,
     IUseCase<BulkDeleteHotstringsCommand, Result<BulkDeleteResultDto>> bulkDeleteHotstrings,
     IUseCase<UpdateHotstringCommand, Result<HotstringDto>> updateHotstring,
-    IUseCase<DeleteHotstringCommand, Result> deleteHotstring) : ControllerBase
+    IUseCase<DeleteHotstringCommand, Result> deleteHotstring,
+    IUseCase<GetHotstringHistoryQuery, Result<HistoryEntryDto[]>> getHotstringHistory,
+    IUseCase<GetHotstringHistoryVersionQuery, Result<HotstringHistoryVersionDto>> getHotstringHistoryVersion,
+    IUseCase<RevertHotstringCommand, Result<HotstringDto>> revertHotstring,
+    IUseCase<ListDeletedHotstringsQuery, Result<DeletedHotstringDto[]>> listDeletedHotstrings,
+    IUseCase<RestoreHotstringCommand, Result<HotstringDto>> restoreHotstring,
+    IUseCase<PurgeDeletedHotstringCommand, Result> purgeDeletedHotstring) : ControllerBase
 {
     /// <summary>List hotstrings for the current user, optionally filtered by profile. Paginated.</summary>
     [HttpGet]
@@ -104,6 +110,57 @@ public sealed class HotstringsController(
     public async Task<ActionResult> Delete(Guid id, CancellationToken ct)
     {
         Result result = await deleteHotstring.ExecuteAsync(new DeleteHotstringCommand(id), ct);
+        return result.IsSuccess ? NoContent() : result.ToProblemActionResult(this);
+    }
+
+    /// <summary>List saved versions of a hotstring, newest first.</summary>
+    [HttpGet("{id:guid}/history")]
+    [ProducesResponseType(typeof(HistoryEntryDto[]), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<HistoryEntryDto[]>> GetHistory(Guid id, CancellationToken ct) =>
+        (await getHotstringHistory.ExecuteAsync(new GetHotstringHistoryQuery(id), ct)).ToProblemActionResult(this);
+
+    /// <summary>Get one saved version of a hotstring, including its snapshot.</summary>
+    [HttpGet("{id:guid}/history/{version:int}")]
+    [ProducesResponseType(typeof(HotstringHistoryVersionDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<HotstringHistoryVersionDto>> GetHistoryVersion(
+        Guid id,
+        int version,
+        CancellationToken ct) =>
+        (await getHotstringHistoryVersion.ExecuteAsync(
+            new GetHotstringHistoryVersionQuery(id, version),
+            ct)).ToProblemActionResult(this);
+
+    /// <summary>Revert a hotstring to a saved version. Returns the updated representation.</summary>
+    [HttpPost("{id:guid}/history/{version:int}/revert")]
+    [ProducesResponseType(typeof(HotstringDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<HotstringDto>> Revert(Guid id, int version, CancellationToken ct) =>
+        (await revertHotstring.ExecuteAsync(new RevertHotstringCommand(id, version), ct)).ToProblemActionResult(this);
+
+    /// <summary>List deleted hotstrings that can be restored from the Recycle Bin.</summary>
+    [HttpGet("deleted")]
+    [ProducesResponseType(typeof(DeletedHotstringDto[]), StatusCodes.Status200OK)]
+    public async Task<ActionResult<DeletedHotstringDto[]>> ListDeleted(CancellationToken ct) =>
+        (await listDeletedHotstrings.ExecuteAsync(new ListDeletedHotstringsQuery(), ct)).ToProblemActionResult(this);
+
+    /// <summary>Restore a deleted hotstring with its original id and links.</summary>
+    [HttpPost("{id:guid}/restore")]
+    [ProducesResponseType(typeof(HotstringDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<HotstringDto>> Restore(Guid id, CancellationToken ct) =>
+        (await restoreHotstring.ExecuteAsync(new RestoreHotstringCommand(id), ct)).ToProblemActionResult(this);
+
+    /// <summary>Permanently remove a deleted hotstring's history.</summary>
+    [HttpDelete("deleted/{id:guid}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult> Purge(Guid id, CancellationToken ct)
+    {
+        Result result = await purgeDeletedHotstring.ExecuteAsync(new PurgeDeletedHotstringCommand(id), ct);
         return result.IsSuccess ? NoContent() : result.ToProblemActionResult(this);
     }
 }

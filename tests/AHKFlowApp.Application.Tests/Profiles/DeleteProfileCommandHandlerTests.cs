@@ -1,6 +1,10 @@
+using System.Text.Json;
 using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.Commands.Profiles;
+using AHKFlowApp.Application.DTOs;
+using AHKFlowApp.Application.Services;
 using AHKFlowApp.Domain.Entities;
+using AHKFlowApp.Domain.Enums;
 using AHKFlowApp.Infrastructure.Persistence;
 using AHKFlowApp.TestUtilities.Builders;
 using Ardalis.Result;
@@ -27,7 +31,7 @@ public sealed class DeleteProfileCommandHandlerTests(ProfileDbFixture fx)
 
         ICurrentUser user = Substitute.For<ICurrentUser>();
         user.Oid.Returns(_ownerOid);
-        var sut = new DeleteProfileCommandHandler(ctx, user);
+        var sut = new DeleteProfileCommandHandler(ctx, user, new EntityHistoryRecorder(ctx, TimeProvider.System));
 
         Result result = await sut.ExecuteAsync(new DeleteProfileCommand(p.Id), CancellationToken.None);
 
@@ -45,7 +49,7 @@ public sealed class DeleteProfileCommandHandlerTests(ProfileDbFixture fx)
 
         ICurrentUser user = Substitute.For<ICurrentUser>();
         user.Oid.Returns(_ownerOid);
-        var sut = new DeleteProfileCommandHandler(ctx, user);
+        var sut = new DeleteProfileCommandHandler(ctx, user, new EntityHistoryRecorder(ctx, TimeProvider.System));
 
         Result result = await sut.ExecuteAsync(new DeleteProfileCommand(p.Id), CancellationToken.None);
         result.Status.Should().Be(ResultStatus.NotFound);
@@ -57,7 +61,7 @@ public sealed class DeleteProfileCommandHandlerTests(ProfileDbFixture fx)
         await using AppDbContext ctx = fx.CreateContext();
         ICurrentUser user = Substitute.For<ICurrentUser>();
         user.Oid.Returns(_ownerOid);
-        var sut = new DeleteProfileCommandHandler(ctx, user);
+        var sut = new DeleteProfileCommandHandler(ctx, user, new EntityHistoryRecorder(ctx, TimeProvider.System));
 
         Result result = await sut.ExecuteAsync(new DeleteProfileCommand(Guid.NewGuid()), CancellationToken.None);
         result.Status.Should().Be(ResultStatus.NotFound);
@@ -69,9 +73,54 @@ public sealed class DeleteProfileCommandHandlerTests(ProfileDbFixture fx)
         await using AppDbContext ctx = fx.CreateContext();
         ICurrentUser user = Substitute.For<ICurrentUser>();
         user.Oid.Returns((Guid?)null);
-        var sut = new DeleteProfileCommandHandler(ctx, user);
+        var sut = new DeleteProfileCommandHandler(ctx, user, new EntityHistoryRecorder(ctx, TimeProvider.System));
 
         Result result = await sut.ExecuteAsync(new DeleteProfileCommand(Guid.NewGuid()), CancellationToken.None);
         result.Status.Should().Be(ResultStatus.Unauthorized);
+    }
+
+    [Fact]
+    public async Task Delete_WritesHistoryForLinkedHotstringAndHotkey()
+    {
+        await using AppDbContext ctx = fx.CreateContext();
+        Profile profile = new ProfileBuilder().WithOwner(_ownerOid).Build();
+        Hotstring hotstring = new HotstringBuilder()
+            .WithOwner(_ownerOid)
+            .WithTrigger("profile-history")
+            .WithProfiles(profile.Id)
+            .Build();
+        Hotkey hotkey = new HotkeyBuilder()
+            .WithOwner(_ownerOid)
+            .WithKey("f19")
+            .WithProfiles(profile.Id)
+            .Build();
+        ctx.Profiles.Add(profile);
+        ctx.Hotstrings.Add(hotstring);
+        ctx.Hotkeys.Add(hotkey);
+        await ctx.SaveChangesAsync();
+
+        ICurrentUser user = Substitute.For<ICurrentUser>();
+        user.Oid.Returns(_ownerOid);
+        var sut = new DeleteProfileCommandHandler(ctx, user, new EntityHistoryRecorder(ctx, TimeProvider.System));
+
+        Result result = await sut.ExecuteAsync(new DeleteProfileCommand(profile.Id), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        List<EntityHistory> histories = await ctx.EntityHistories
+            .Where(h => h.OwnerOid == _ownerOid)
+            .OrderBy(h => h.EntityType)
+            .ToListAsync();
+        histories.Should().HaveCount(2);
+        histories.Should().OnlyContain(h => h.ChangeType == HistoryChangeType.Edit);
+
+        EntityHistory hotstringHistory = histories.Single(h => h.EntityType == TrackedEntityType.Hotstring);
+        HotstringSnapshot? hotstringSnapshot =
+            JsonSerializer.Deserialize<HotstringSnapshot>(hotstringHistory.SnapshotJson);
+        hotstringSnapshot!.ProfileIds.Should().ContainSingle().Which.Should().Be(profile.Id);
+
+        EntityHistory hotkeyHistory = histories.Single(h => h.EntityType == TrackedEntityType.Hotkey);
+        HotkeySnapshot? hotkeySnapshot =
+            JsonSerializer.Deserialize<HotkeySnapshot>(hotkeyHistory.SnapshotJson);
+        hotkeySnapshot!.ProfileIds.Should().ContainSingle().Which.Should().Be(profile.Id);
     }
 }

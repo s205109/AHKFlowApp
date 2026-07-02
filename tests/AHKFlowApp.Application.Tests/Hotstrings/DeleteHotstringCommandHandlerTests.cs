@@ -1,4 +1,5 @@
 using AHKFlowApp.Application.Commands.Hotstrings;
+using AHKFlowApp.Application.Services;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Infrastructure.Persistence;
 using Ardalis.Result;
@@ -24,7 +25,8 @@ public sealed class DeleteHotstringCommandHandlerTests(HotstringDbFixture fx)
         }
 
         await using AppDbContext db = fx.CreateContext();
-        DeleteHotstringCommandHandler handler = new(db, CurrentUserHelper.For(owner));
+        DeleteHotstringCommandHandler handler =
+            new(db, CurrentUserHelper.For(owner), new EntityHistoryRecorder(db, TimeProvider.System));
 
         Result result = await handler.ExecuteAsync(new DeleteHotstringCommand(entity.Id), default);
 
@@ -47,7 +49,8 @@ public sealed class DeleteHotstringCommandHandlerTests(HotstringDbFixture fx)
         }
 
         await using AppDbContext db = fx.CreateContext();
-        DeleteHotstringCommandHandler handler = new(db, CurrentUserHelper.For(attacker));
+        DeleteHotstringCommandHandler handler =
+            new(db, CurrentUserHelper.For(attacker), new EntityHistoryRecorder(db, TimeProvider.System));
 
         Result result = await handler.ExecuteAsync(new DeleteHotstringCommand(entity.Id), default);
 
@@ -58,7 +61,8 @@ public sealed class DeleteHotstringCommandHandlerTests(HotstringDbFixture fx)
     public async Task Handle_WhenNoOid_ReturnsUnauthorized()
     {
         await using AppDbContext db = fx.CreateContext();
-        DeleteHotstringCommandHandler handler = new(db, CurrentUserHelper.For(null));
+        DeleteHotstringCommandHandler handler =
+            new(db, CurrentUserHelper.For(null), new EntityHistoryRecorder(db, TimeProvider.System));
 
         Result result = await handler.ExecuteAsync(new DeleteHotstringCommand(Guid.NewGuid()), default);
 

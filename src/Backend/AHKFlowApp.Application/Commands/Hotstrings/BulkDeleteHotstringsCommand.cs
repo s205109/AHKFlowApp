@@ -1,14 +1,15 @@
 using AHKFlowApp.Application.Abstractions;
+using AHKFlowApp.Application.Common;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Domain.Entities;
+using AHKFlowApp.Domain.Enums;
 using Ardalis.Result;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 
 namespace AHKFlowApp.Application.Commands.Hotstrings;
 
-public sealed record BulkDeleteHotstringsCommand(BulkDeleteRequestDto Input)
-   ;
+public sealed record BulkDeleteHotstringsCommand(BulkDeleteRequestDto Input);
 
 public sealed class BulkDeleteHotstringsCommandValidator : AbstractValidator<BulkDeleteHotstringsCommand>
 {
@@ -27,7 +28,8 @@ public sealed class BulkDeleteHotstringsCommandValidator : AbstractValidator<Bul
 
 internal sealed class BulkDeleteHotstringsCommandHandler(
     IAppDbContext db,
-    ICurrentUser currentUser)
+    ICurrentUser currentUser,
+    IEntityHistoryRecorder recorder)
     : IUseCaseHandler<BulkDeleteHotstringsCommand, Result<BulkDeleteResultDto>>
 {
     public async Task<Result<BulkDeleteResultDto>> ExecuteAsync(
@@ -39,6 +41,8 @@ internal sealed class BulkDeleteHotstringsCommandHandler(
 
         Guid[] requestedIds = [.. request.Input.Ids.Distinct()];
         List<Hotstring> ownedRows = await db.Hotstrings
+            .Include(h => h.Profiles)
+            .Include(h => h.Categories)
             .Where(h => h.OwnerOid == ownerOid && requestedIds.Contains(h.Id))
             .ToListAsync(ct);
 
@@ -47,8 +51,19 @@ internal sealed class BulkDeleteHotstringsCommandHandler(
 
         if (ownedRows.Count > 0)
         {
+            IReadOnlyList<EntityHistory> tombstones =
+                await recorder.RecordHotstringsAsync(ownedRows, HistoryChangeType.Delete, ct);
+
             db.Hotstrings.RemoveRange(ownedRows);
-            await db.SaveChangesAsync(ct);
+
+            try
+            {
+                await db.SaveWithHistoryRetryAsync(tombstones, ct);
+            }
+            catch (DbUpdateException ex) when (ex.IsHistoryVersionConflict())
+            {
+                return Result.Conflict("One or more items were modified concurrently. Retry the operation.");
+            }
         }
 
         return Result.Success(new BulkDeleteResultDto(ownedRows.Count, missingIds));

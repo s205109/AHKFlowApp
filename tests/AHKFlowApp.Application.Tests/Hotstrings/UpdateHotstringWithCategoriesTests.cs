@@ -1,5 +1,6 @@
 using AHKFlowApp.Application.Commands.Hotstrings;
 using AHKFlowApp.Application.DTOs;
+using AHKFlowApp.Application.Services;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Infrastructure.Persistence;
 using AHKFlowApp.TestUtilities.Builders;
@@ -30,7 +31,8 @@ public sealed class UpdateHotstringWithCategoriesTests(HotstringDbFixture fx)
         }
 
         await using AppDbContext db = fx.CreateContext();
-        var handler = new UpdateHotstringCommandHandler(db, CurrentUserHelper.For(owner), _clock);
+        var handler = new UpdateHotstringCommandHandler(
+            db, CurrentUserHelper.For(owner), _clock, new EntityHistoryRecorder(db, _clock));
         var cmd = new UpdateHotstringCommand(entity.Id,
             new UpdateHotstringDto("btw", "new", null, true, true, true, Description: null,
                 CategoryIds: [foreignCategoryId]));
@@ -62,7 +64,8 @@ public sealed class UpdateHotstringWithCategoriesTests(HotstringDbFixture fx)
         }
 
         await using AppDbContext db = fx.CreateContext();
-        var handler = new UpdateHotstringCommandHandler(db, CurrentUserHelper.For(owner), _clock);
+        var handler = new UpdateHotstringCommandHandler(
+            db, CurrentUserHelper.For(owner), _clock, new EntityHistoryRecorder(db, _clock));
         // Update to only cat3
         var cmd = new UpdateHotstringCommand(entity.Id,
             new UpdateHotstringDto("wfh", "work from home", null, true, true, true, Description: null,
@@ -96,7 +99,8 @@ public sealed class UpdateHotstringWithCategoriesTests(HotstringDbFixture fx)
         }
 
         await using AppDbContext db = fx.CreateContext();
-        var handler = new UpdateHotstringCommandHandler(db, CurrentUserHelper.For(owner), _clock);
+        var handler = new UpdateHotstringCommandHandler(
+            db, CurrentUserHelper.For(owner), _clock, new EntityHistoryRecorder(db, _clock));
         var cmd = new UpdateHotstringCommand(entity.Id,
             new UpdateHotstringDto("clr", "clear cats", null, true, true, true, Description: null,
                 CategoryIds: []));

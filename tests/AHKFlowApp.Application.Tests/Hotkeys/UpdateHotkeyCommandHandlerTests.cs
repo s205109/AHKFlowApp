@@ -1,5 +1,6 @@
 using AHKFlowApp.Application.Commands.Hotkeys;
 using AHKFlowApp.Application.DTOs;
+using AHKFlowApp.Application.Services;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Domain.Enums;
 using AHKFlowApp.Infrastructure.Persistence;
@@ -32,7 +33,8 @@ public sealed class UpdateHotkeyCommandHandlerTests(HotkeyDbFixture fx)
         clock.Advance(TimeSpan.FromMinutes(5));
 
         await using AppDbContext db = fx.CreateContext();
-        var handler = new UpdateHotkeyCommandHandler(db, CurrentUserHelper.For(owner), clock);
+        var handler = new UpdateHotkeyCommandHandler(
+            db, CurrentUserHelper.For(owner), clock, new EntityHistoryRecorder(db, clock));
         var cmd = new UpdateHotkeyCommand(entity.Id,
             new UpdateHotkeyDto("Updated description", "n", true, false, false, false, HotkeyAction.Run, "notepad.exe", null, true));
 
@@ -57,7 +59,8 @@ public sealed class UpdateHotkeyCommandHandlerTests(HotkeyDbFixture fx)
         }
 
         await using AppDbContext db = fx.CreateContext();
-        var handler = new UpdateHotkeyCommandHandler(db, CurrentUserHelper.For(attacker), TimeProvider.System);
+        var handler = new UpdateHotkeyCommandHandler(
+            db, CurrentUserHelper.For(attacker), TimeProvider.System, new EntityHistoryRecorder(db, TimeProvider.System));
         var cmd = new UpdateHotkeyCommand(entity.Id,
             new UpdateHotkeyDto("Hijacked", "n", true, false, false, false, HotkeyAction.Run, "", null, true));
 
@@ -70,7 +73,8 @@ public sealed class UpdateHotkeyCommandHandlerTests(HotkeyDbFixture fx)
     public async Task Handle_WhenMissingId_ReturnsNotFound()
     {
         await using AppDbContext db = fx.CreateContext();
-        var handler = new UpdateHotkeyCommandHandler(db, CurrentUserHelper.For(Guid.NewGuid()), TimeProvider.System);
+        var handler = new UpdateHotkeyCommandHandler(
+            db, CurrentUserHelper.For(Guid.NewGuid()), TimeProvider.System, new EntityHistoryRecorder(db, TimeProvider.System));
         var cmd = new UpdateHotkeyCommand(Guid.NewGuid(),
             new UpdateHotkeyDto("x", "n", true, false, false, false, HotkeyAction.Run, "", null, true));
 
@@ -83,7 +87,8 @@ public sealed class UpdateHotkeyCommandHandlerTests(HotkeyDbFixture fx)
     public async Task Handle_WhenNoOid_ReturnsUnauthorized()
     {
         await using AppDbContext db = fx.CreateContext();
-        var handler = new UpdateHotkeyCommandHandler(db, CurrentUserHelper.For(null), TimeProvider.System);
+        var handler = new UpdateHotkeyCommandHandler(
+            db, CurrentUserHelper.For(null), TimeProvider.System, new EntityHistoryRecorder(db, TimeProvider.System));
         var cmd = new UpdateHotkeyCommand(Guid.NewGuid(),
             new UpdateHotkeyDto("x", "n", true, false, false, false, HotkeyAction.Run, "", null, true));
 
@@ -106,7 +111,8 @@ public sealed class UpdateHotkeyCommandHandlerTests(HotkeyDbFixture fx)
         }
 
         await using AppDbContext db = fx.CreateContext();
-        var handler = new UpdateHotkeyCommandHandler(db, CurrentUserHelper.For(owner), TimeProvider.System);
+        var handler = new UpdateHotkeyCommandHandler(
+            db, CurrentUserHelper.For(owner), TimeProvider.System, new EntityHistoryRecorder(db, TimeProvider.System));
         // Try to change second to have same key+modifiers as first
         var cmd = new UpdateHotkeyCommand(second.Id,
             new UpdateHotkeyDto("Conflict", "f1", true, false, false, false, HotkeyAction.Run, "", null, true));

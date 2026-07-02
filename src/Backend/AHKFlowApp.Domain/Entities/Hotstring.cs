@@ -48,6 +48,31 @@ public sealed class Hotstring
         };
     }
 
+    public static Hotstring Restore(
+        Guid id,
+        Guid ownerOid,
+        string trigger,
+        string replacement,
+        string? description,
+        bool appliesToAllProfiles,
+        bool isEndingCharacterRequired,
+        bool isTriggerInsideWord,
+        DateTimeOffset createdAt,
+        TimeProvider clock)
+        => new()
+        {
+            Id = id,
+            OwnerOid = ownerOid,
+            Trigger = trigger,
+            Replacement = replacement,
+            Description = description,
+            AppliesToAllProfiles = appliesToAllProfiles,
+            IsEndingCharacterRequired = isEndingCharacterRequired,
+            IsTriggerInsideWord = isTriggerInsideWord,
+            CreatedAt = createdAt,
+            UpdatedAt = clock.GetUtcNow(),
+        };
+
     public void Update(
         string trigger,
         string replacement,
