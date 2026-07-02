@@ -98,8 +98,12 @@
 
         try
         {
-            ApiResult<DeletedHotstringDto[]> hotstrings = await Hotstrings.ListDeletedAsync(_cts.Token);
-            ApiResult<DeletedHotkeyDto[]> hotkeys = await Hotkeys.ListDeletedAsync(_cts.Token);
+            Task<ApiResult<DeletedHotstringDto[]>> hotstringsTask = Hotstrings.ListDeletedAsync(_cts.Token);
+            Task<ApiResult<DeletedHotkeyDto[]>> hotkeysTask = Hotkeys.ListDeletedAsync(_cts.Token);
+            await Task.WhenAll(hotstringsTask, hotkeysTask);
+
+            ApiResult<DeletedHotstringDto[]> hotstrings = await hotstringsTask;
+            ApiResult<DeletedHotkeyDto[]> hotkeys = await hotkeysTask;
 
             if (!hotstrings.IsSuccess)
             {

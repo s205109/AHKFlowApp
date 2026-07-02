@@ -4,13 +4,13 @@ namespace AHKFlowApp.Application.DTOs;
 
 /// <summary>One saved version of a tracked item.</summary>
 /// <param name="Version">Monotonic 1-based version number.</param>
-/// <param name="ChangeType">Whether this before-image was captured by an edit or a delete.</param>
+/// <param name="ChangeType">The mutation that produced this version.</param>
 /// <param name="CapturedAt">UTC timestamp of the change that produced this version.</param>
 public sealed record HistoryEntryDto(int Version, HistoryChangeType ChangeType, DateTimeOffset CapturedAt);
 
 /// <summary>Full saved version of a hotstring, including its snapshot for preview.</summary>
 /// <param name="Version">Monotonic 1-based version number.</param>
-/// <param name="ChangeType">Whether this before-image was captured by an edit or a delete.</param>
+/// <param name="ChangeType">The mutation that produced this version.</param>
 /// <param name="CapturedAt">UTC timestamp of the change that produced this version.</param>
 /// <param name="Snapshot">The hotstring state at capture time.</param>
 public sealed record HotstringHistoryVersionDto(
@@ -21,7 +21,7 @@ public sealed record HotstringHistoryVersionDto(
 
 /// <summary>Full saved version of a hotkey, including its snapshot for preview.</summary>
 /// <param name="Version">Monotonic 1-based version number.</param>
-/// <param name="ChangeType">Whether this before-image was captured by an edit or a delete.</param>
+/// <param name="ChangeType">The mutation that produced this version.</param>
 /// <param name="CapturedAt">UTC timestamp of the change that produced this version.</param>
 /// <param name="Snapshot">The hotkey state at capture time.</param>
 public sealed record HotkeyHistoryVersionDto(

@@ -75,6 +75,29 @@ public sealed class RecycleBinPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
+    public void Page_OnLoad_StartsDeletedApiCallsInParallel()
+    {
+        TaskCompletionSource<ApiResult<DeletedHotstringDto[]>> hotstringsResult = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        bool hotkeysStarted = false;
+        _hotstrings.ListDeletedAsync(Arg.Any<CancellationToken>())
+            .Returns(_ => hotstringsResult.Task);
+        _hotkeys.ListDeletedAsync(Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                hotkeysStarted = true;
+                return Task.FromResult(ApiResult<DeletedHotkeyDto[]>.Ok([]));
+            });
+
+        IRenderedComponent<RecycleBin> cut = RenderPage();
+        bool startedInParallel = SpinWait.SpinUntil(() => hotkeysStarted, TimeSpan.FromMilliseconds(250));
+        hotstringsResult.SetResult(ApiResult<DeletedHotstringDto[]>.Ok([]));
+
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("No deleted items."));
+        startedInParallel.Should().BeTrue();
+    }
+
+    [Fact]
     public void Page_RestoreHotstring_CallsRestoreApiAndReloads()
     {
         DeletedHotstringDto deleted = new(Guid.NewGuid(), "brb", "be right back", null, DateTimeOffset.UtcNow);

@@ -1,3 +1,4 @@
+using AHKFlowApp.Application.Common;
 using AHKFlowApp.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
@@ -21,6 +22,6 @@ internal sealed class EntityHistoryConfiguration : IEntityTypeConfiguration<Enti
 
         builder.HasIndex(x => new { x.OwnerOid, x.EntityType, x.EntityId, x.Version })
             .IsUnique()
-            .HasDatabaseName("IX_EntityHistory_Owner_Type_Entity_Version");
+            .HasDatabaseName(EntityHistoryIndexNames.OwnerTypeEntityVersion);
     }
 }

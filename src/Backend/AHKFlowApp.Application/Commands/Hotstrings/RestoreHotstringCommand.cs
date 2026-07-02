@@ -16,7 +16,8 @@ public sealed record RestoreHotstringCommand(Guid Id) : IRequest<Result<Hotstrin
 internal sealed class RestoreHotstringCommandHandler(
     IAppDbContext db,
     ICurrentUser currentUser,
-    TimeProvider clock)
+    TimeProvider clock,
+    IEntityHistoryRecorder recorder)
     : IRequestHandler<RestoreHotstringCommand, Result<HotstringDto>>
 {
     public async Task<Result<HotstringDto>> Handle(RestoreHotstringCommand request, CancellationToken ct)
@@ -77,13 +78,17 @@ internal sealed class RestoreHotstringCommandHandler(
         foreach (Guid cid in liveCategoryIds)
             db.HotstringCategories.Add(HotstringCategory.Create(entity.Id, cid));
 
+        EntityHistory historyEntry = await recorder.RecordHotstringAsync(entity, HistoryChangeType.Restore, ct);
+
         try
         {
-            await db.SaveChangesAsync(ct);
+            await db.SaveWithHistoryRetryAsync(historyEntry, ct);
         }
         catch (DbUpdateException ex) when (ex.IsDuplicateKeyViolation())
         {
-            return Result.Conflict("A hotstring with this trigger already exists.");
+            return ex.IsHistoryVersionConflict()
+                ? Result.Conflict("The item was modified concurrently. Retry the operation.")
+                : Result.Conflict("A hotstring with this trigger already exists.");
         }
 
         return Result.Success(entity.ToDto());

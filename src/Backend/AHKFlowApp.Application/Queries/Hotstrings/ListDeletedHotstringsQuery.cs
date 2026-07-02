@@ -16,6 +16,8 @@ internal sealed class ListDeletedHotstringsQueryHandler(
     ICurrentUser currentUser)
     : IRequestHandler<ListDeletedHotstringsQuery, Result<DeletedHotstringDto[]>>
 {
+    internal const int MaxDeletedItems = 500;
+
     public async Task<Result<DeletedHotstringDto[]>> Handle(
         ListDeletedHotstringsQuery request,
         CancellationToken ct)
@@ -34,6 +36,7 @@ internal sealed class ListDeletedHotstringsQueryHandler(
                     && newer.EntityId == h.EntityId
                     && newer.Version > h.Version))
             .OrderByDescending(h => h.CapturedAt)
+            .Take(MaxDeletedItems)
             .ToListAsync(ct);
 
         DeletedHotstringDto[] items =

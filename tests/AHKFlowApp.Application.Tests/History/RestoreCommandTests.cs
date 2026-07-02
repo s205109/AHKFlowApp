@@ -3,6 +3,7 @@ using AHKFlowApp.Application.Commands.Hotstrings;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Services;
 using AHKFlowApp.Domain.Entities;
+using AHKFlowApp.Domain.Enums;
 using AHKFlowApp.Infrastructure.Persistence;
 using AHKFlowApp.TestUtilities.Builders;
 using Ardalis.Result;
@@ -58,7 +59,8 @@ public sealed class RestoreCommandTests(HistoryDbFixture fx)
         await DeleteHotstringViaHandlerAsync(owner, entity.Id);
 
         await using AppDbContext db = fx.CreateContext();
-        RestoreHotstringCommandHandler handler = new(db, CurrentUserHelper.For(owner), TimeProvider.System);
+        RestoreHotstringCommandHandler handler = new(
+            db, CurrentUserHelper.For(owner), TimeProvider.System, new EntityHistoryRecorder(db, TimeProvider.System));
 
         Result<HotstringDto> result = await handler.Handle(new RestoreHotstringCommand(entity.Id), default);
 
@@ -68,7 +70,12 @@ public sealed class RestoreCommandTests(HistoryDbFixture fx)
         result.Value.ProfileIds.Should().ContainSingle().Which.Should().Be(profile.Id);
         result.Value.CategoryIds.Should().ContainSingle().Which.Should().Be(category.Id);
         (await db.Hotstrings.AnyAsync(h => h.Id == entity.Id)).Should().BeTrue();
-        (await db.EntityHistories.CountAsync(h => h.EntityId == entity.Id)).Should().Be(1);
+        List<HistoryChangeType> changes = await db.EntityHistories
+            .Where(h => h.EntityId == entity.Id)
+            .OrderBy(h => h.Version)
+            .Select(h => h.ChangeType)
+            .ToListAsync();
+        changes.Should().Equal(HistoryChangeType.Delete, HistoryChangeType.Restore);
     }
 
     [Fact]
@@ -91,7 +98,8 @@ public sealed class RestoreCommandTests(HistoryDbFixture fx)
         }
 
         await using AppDbContext db = fx.CreateContext();
-        RestoreHotstringCommandHandler handler = new(db, CurrentUserHelper.For(owner), TimeProvider.System);
+        RestoreHotstringCommandHandler handler = new(
+            db, CurrentUserHelper.For(owner), TimeProvider.System, new EntityHistoryRecorder(db, TimeProvider.System));
 
         Result<HotstringDto> result = await handler.Handle(new RestoreHotstringCommand(entity.Id), default);
 
@@ -103,7 +111,7 @@ public sealed class RestoreCommandTests(HistoryDbFixture fx)
     {
         await using AppDbContext db = fx.CreateContext();
         RestoreHotstringCommandHandler handler =
-            new(db, CurrentUserHelper.For(Guid.NewGuid()), TimeProvider.System);
+            new(db, CurrentUserHelper.For(Guid.NewGuid()), TimeProvider.System, new EntityHistoryRecorder(db, TimeProvider.System));
 
         Result<HotstringDto> result = await handler.Handle(new RestoreHotstringCommand(Guid.NewGuid()), default);
 
@@ -137,7 +145,8 @@ public sealed class RestoreCommandTests(HistoryDbFixture fx)
         }
 
         await using AppDbContext db = fx.CreateContext();
-        RestoreHotstringCommandHandler handler = new(db, CurrentUserHelper.For(owner), TimeProvider.System);
+        RestoreHotstringCommandHandler handler = new(
+            db, CurrentUserHelper.For(owner), TimeProvider.System, new EntityHistoryRecorder(db, TimeProvider.System));
 
         Result<HotstringDto> result = await handler.Handle(new RestoreHotstringCommand(entity.Id), default);
 
@@ -170,7 +179,8 @@ public sealed class RestoreCommandTests(HistoryDbFixture fx)
         await DeleteHotkeyViaHandlerAsync(owner, entity.Id);
 
         await using AppDbContext db = fx.CreateContext();
-        RestoreHotkeyCommandHandler handler = new(db, CurrentUserHelper.For(owner), TimeProvider.System);
+        RestoreHotkeyCommandHandler handler = new(
+            db, CurrentUserHelper.For(owner), TimeProvider.System, new EntityHistoryRecorder(db, TimeProvider.System));
 
         Result<HotkeyDto> result = await handler.Handle(new RestoreHotkeyCommand(entity.Id), default);
 
@@ -179,5 +189,11 @@ public sealed class RestoreCommandTests(HistoryDbFixture fx)
         result.Value.CreatedAt.Should().Be(entity.CreatedAt);
         result.Value.ProfileIds.Should().ContainSingle().Which.Should().Be(profile.Id);
         result.Value.CategoryIds.Should().ContainSingle().Which.Should().Be(category.Id);
+        List<HistoryChangeType> changes = await db.EntityHistories
+            .Where(h => h.EntityId == entity.Id)
+            .OrderBy(h => h.Version)
+            .Select(h => h.ChangeType)
+            .ToListAsync();
+        changes.Should().Equal(HistoryChangeType.Delete, HistoryChangeType.Restore);
     }
 }

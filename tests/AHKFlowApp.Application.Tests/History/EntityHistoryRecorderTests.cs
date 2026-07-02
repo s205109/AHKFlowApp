@@ -71,6 +71,31 @@ public sealed class EntityHistoryRecorderTests(HistoryDbFixture fx)
     }
 
     [Fact]
+    public async Task RecordHotstringAsync_SameEntityIdForDifferentOwner_StartsAtVersion1()
+    {
+        var owner = Guid.NewGuid();
+        var otherOwner = Guid.NewGuid();
+        Hotstring entity = new HotstringBuilder().WithOwner(owner).WithTrigger("rec2-owner").Build();
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(entity);
+            seed.EntityHistories.Add(EntityHistory.Create(
+                otherOwner, TrackedEntityType.Hotstring, entity.Id, 7,
+                HistoryChangeType.Edit, 1, "{}", TimeProvider.System));
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        Hotstring reloaded = await db.Hotstrings.SingleAsync(h => h.Id == entity.Id);
+        EntityHistoryRecorder recorder = new(db, TimeProvider.System);
+
+        EntityHistory entry = await recorder.RecordHotstringAsync(reloaded, HistoryChangeType.Edit, default);
+
+        entry.Version.Should().Be(1);
+    }
+
+    [Fact]
     public async Task RecordHotstringAsync_At50Rows_PrunesOldestSoCapHolds()
     {
         var owner = Guid.NewGuid();

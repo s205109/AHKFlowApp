@@ -4,6 +4,7 @@ public enum HistoryChangeType
 {
     Edit = 1,
     Delete = 2,
+    Restore = 3,
 }
 
 public sealed record HistoryEntryDto(int Version, HistoryChangeType ChangeType, DateTimeOffset CapturedAt);

@@ -53,9 +53,8 @@ internal sealed class BulkDeleteHotkeysCommandHandler(
 
         if (ownedRows.Count > 0)
         {
-            List<EntityHistory> tombstones = [];
-            foreach (Hotkey row in ownedRows)
-                tombstones.Add(await recorder.RecordHotkeyAsync(row, HistoryChangeType.Delete, ct));
+            IReadOnlyList<EntityHistory> tombstones =
+                await recorder.RecordHotkeysAsync(ownedRows, HistoryChangeType.Delete, ct);
 
             db.Hotkeys.RemoveRange(ownedRows);
 

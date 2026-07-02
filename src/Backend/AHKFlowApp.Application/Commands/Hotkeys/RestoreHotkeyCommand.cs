@@ -16,7 +16,8 @@ public sealed record RestoreHotkeyCommand(Guid Id) : IRequest<Result<HotkeyDto>>
 internal sealed class RestoreHotkeyCommandHandler(
     IAppDbContext db,
     ICurrentUser currentUser,
-    TimeProvider clock)
+    TimeProvider clock,
+    IEntityHistoryRecorder recorder)
     : IRequestHandler<RestoreHotkeyCommand, Result<HotkeyDto>>
 {
     public async Task<Result<HotkeyDto>> Handle(RestoreHotkeyCommand request, CancellationToken ct)
@@ -80,13 +81,17 @@ internal sealed class RestoreHotkeyCommandHandler(
         foreach (Guid cid in liveCategoryIds)
             db.HotkeyCategories.Add(HotkeyCategory.Create(entity.Id, cid));
 
+        EntityHistory historyEntry = await recorder.RecordHotkeyAsync(entity, HistoryChangeType.Restore, ct);
+
         try
         {
-            await db.SaveChangesAsync(ct);
+            await db.SaveWithHistoryRetryAsync(historyEntry, ct);
         }
         catch (DbUpdateException ex) when (ex.IsDuplicateKeyViolation())
         {
-            return Result.Conflict("A hotkey with this key + modifier combination already exists.");
+            return ex.IsHistoryVersionConflict()
+                ? Result.Conflict("The item was modified concurrently. Retry the operation.")
+                : Result.Conflict("A hotkey with this key + modifier combination already exists.");
         }
 
         return Result.Success(entity.ToDto());
