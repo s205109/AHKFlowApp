@@ -10,4 +10,13 @@ public interface IHotkeysApiClient
     Task<ApiResult<HotkeyDto>> UpdateAsync(Guid id, UpdateHotkeyDto input, CancellationToken ct = default);
     Task<ApiResult> DeleteAsync(Guid id, CancellationToken ct = default);
     Task<ApiResult<BulkDeleteResultDto>> BulkDeleteAsync(IReadOnlyList<Guid> ids, CancellationToken ct = default);
+    Task<ApiResult<HistoryEntryDto[]>> GetHistoryAsync(Guid id, CancellationToken ct = default);
+    Task<ApiResult<HotkeyHistoryVersionDto>> GetHistoryVersionAsync(
+        Guid id,
+        int version,
+        CancellationToken ct = default);
+    Task<ApiResult<HotkeyDto>> RevertAsync(Guid id, int version, CancellationToken ct = default);
+    Task<ApiResult<DeletedHotkeyDto[]>> ListDeletedAsync(CancellationToken ct = default);
+    Task<ApiResult<HotkeyDto>> RestoreAsync(Guid id, CancellationToken ct = default);
+    Task<ApiResult> PurgeDeletedAsync(Guid id, CancellationToken ct = default);
 }

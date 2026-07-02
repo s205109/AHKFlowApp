@@ -10,4 +10,13 @@ public interface IHotstringsApiClient
     Task<ApiResult<HotstringDto>> UpdateAsync(Guid id, UpdateHotstringDto input, CancellationToken ct = default);
     Task<ApiResult> DeleteAsync(Guid id, CancellationToken ct = default);
     Task<ApiResult<BulkDeleteResultDto>> BulkDeleteAsync(IReadOnlyList<Guid> ids, CancellationToken ct = default);
+    Task<ApiResult<HistoryEntryDto[]>> GetHistoryAsync(Guid id, CancellationToken ct = default);
+    Task<ApiResult<HotstringHistoryVersionDto>> GetHistoryVersionAsync(
+        Guid id,
+        int version,
+        CancellationToken ct = default);
+    Task<ApiResult<HotstringDto>> RevertAsync(Guid id, int version, CancellationToken ct = default);
+    Task<ApiResult<DeletedHotstringDto[]>> ListDeletedAsync(CancellationToken ct = default);
+    Task<ApiResult<HotstringDto>> RestoreAsync(Guid id, CancellationToken ct = default);
+    Task<ApiResult> PurgeDeletedAsync(Guid id, CancellationToken ct = default);
 }
