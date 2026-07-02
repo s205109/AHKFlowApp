@@ -60,6 +60,37 @@ public sealed class Hotkey
         };
     }
 
+    public static Hotkey Restore(
+        Guid id,
+        Guid ownerOid,
+        string description,
+        string key,
+        bool ctrl,
+        bool alt,
+        bool shift,
+        bool win,
+        HotkeyAction action,
+        string parameters,
+        bool appliesToAllProfiles,
+        DateTimeOffset createdAt,
+        TimeProvider clock)
+        => new()
+        {
+            Id = id,
+            OwnerOid = ownerOid,
+            Description = description,
+            Key = key,
+            Ctrl = ctrl,
+            Alt = alt,
+            Shift = shift,
+            Win = win,
+            Action = action,
+            Parameters = parameters,
+            AppliesToAllProfiles = appliesToAllProfiles,
+            CreatedAt = createdAt,
+            UpdatedAt = clock.GetUtcNow(),
+        };
+
     public void Update(
         string description,
         string key,
