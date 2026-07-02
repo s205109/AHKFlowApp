@@ -53,9 +53,8 @@ internal sealed class BulkDeleteHotstringsCommandHandler(
 
         if (ownedRows.Count > 0)
         {
-            List<EntityHistory> tombstones = [];
-            foreach (Hotstring row in ownedRows)
-                tombstones.Add(await recorder.RecordHotstringAsync(row, HistoryChangeType.Delete, ct));
+            IReadOnlyList<EntityHistory> tombstones =
+                await recorder.RecordHotstringsAsync(ownedRows, HistoryChangeType.Delete, ct);
 
             db.Hotstrings.RemoveRange(ownedRows);
 

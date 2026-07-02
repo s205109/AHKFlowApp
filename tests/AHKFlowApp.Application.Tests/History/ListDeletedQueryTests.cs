@@ -1,3 +1,4 @@
+using System.Text.Json;
 using AHKFlowApp.Application.Commands.Hotkeys;
 using AHKFlowApp.Application.Commands.Hotstrings;
 using AHKFlowApp.Application.DTOs;
@@ -18,6 +19,8 @@ namespace AHKFlowApp.Application.Tests.History;
 [Trait("Category", "Integration")]
 public sealed class ListDeletedQueryTests(HistoryDbFixture fx)
 {
+    private const int DeletedListCap = 500;
+
     private async Task<Hotstring> SeedAndDeleteHotstringAsync(Guid owner, string trigger)
     {
         Hotstring entity = new HotstringBuilder().WithOwner(owner).WithTrigger(trigger).Build();
@@ -52,6 +55,75 @@ public sealed class ListDeletedQueryTests(HistoryDbFixture fx)
         result.IsSuccess.Should().BeTrue();
 
         return entity;
+    }
+
+    private async Task SeedDeletedHotstringRowsAsync(Guid owner, int count)
+    {
+        await using AppDbContext db = fx.CreateContext();
+        var clock = new FixedClock(new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero));
+
+        for (int i = 0; i < count; i++)
+        {
+            HotstringSnapshot snapshot = new(
+                $"deleted{i}",
+                "replacement",
+                null,
+                true,
+                true,
+                true,
+                [],
+                [],
+                clock.GetUtcNow(),
+                clock.GetUtcNow());
+            db.EntityHistories.Add(EntityHistory.Create(
+                owner,
+                TrackedEntityType.Hotstring,
+                Guid.NewGuid(),
+                1,
+                HistoryChangeType.Delete,
+                1,
+                JsonSerializer.Serialize(snapshot),
+                clock));
+            clock.Advance(TimeSpan.FromSeconds(1));
+        }
+
+        await db.SaveChangesAsync();
+    }
+
+    private async Task SeedDeletedHotkeyRowsAsync(Guid owner, int count)
+    {
+        await using AppDbContext db = fx.CreateContext();
+        var clock = new FixedClock(new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero));
+
+        for (int i = 0; i < count; i++)
+        {
+            HotkeySnapshot snapshot = new(
+                $"Deleted key {i}",
+                $"f{i}",
+                true,
+                false,
+                false,
+                false,
+                HotkeyAction.Run,
+                "",
+                true,
+                [],
+                [],
+                clock.GetUtcNow(),
+                clock.GetUtcNow());
+            db.EntityHistories.Add(EntityHistory.Create(
+                owner,
+                TrackedEntityType.Hotkey,
+                Guid.NewGuid(),
+                1,
+                HistoryChangeType.Delete,
+                1,
+                JsonSerializer.Serialize(snapshot),
+                clock));
+            clock.Advance(TimeSpan.FromSeconds(1));
+        }
+
+        await db.SaveChangesAsync();
     }
 
     [Fact]
@@ -108,6 +180,23 @@ public sealed class ListDeletedQueryTests(HistoryDbFixture fx)
     }
 
     [Fact]
+    public async Task ListDeletedHotstrings_WhenMoreThanCap_ReturnsMostRecentCap()
+    {
+        var owner = Guid.NewGuid();
+        await SeedDeletedHotstringRowsAsync(owner, DeletedListCap + 1);
+
+        await using AppDbContext db = fx.CreateContext();
+        ListDeletedHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner));
+
+        Result<DeletedHotstringDto[]> result = await handler.Handle(new ListDeletedHotstringsQuery(), default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().HaveCount(DeletedListCap);
+        result.Value.Should().Contain(x => x.Trigger == $"deleted{DeletedListCap}");
+        result.Value.Should().NotContain(x => x.Trigger == "deleted0");
+    }
+
+    [Fact]
     public async Task ListDeletedHotkeys_ReturnsTombstonedItemWithSnapshotFields()
     {
         var owner = Guid.NewGuid();
@@ -123,5 +212,22 @@ public sealed class ListDeletedQueryTests(HistoryDbFixture fx)
         dto.Id.Should().Be(deleted.Id);
         dto.Key.Should().Be("f13");
         dto.Description.Should().Be(deleted.Description);
+    }
+
+    [Fact]
+    public async Task ListDeletedHotkeys_WhenMoreThanCap_ReturnsMostRecentCap()
+    {
+        var owner = Guid.NewGuid();
+        await SeedDeletedHotkeyRowsAsync(owner, DeletedListCap + 1);
+
+        await using AppDbContext db = fx.CreateContext();
+        ListDeletedHotkeysQueryHandler handler = new(db, CurrentUserHelper.For(owner));
+
+        Result<DeletedHotkeyDto[]> result = await handler.Handle(new ListDeletedHotkeysQuery(), default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().HaveCount(DeletedListCap);
+        result.Value.Should().Contain(x => x.Description == $"Deleted key {DeletedListCap}");
+        result.Value.Should().NotContain(x => x.Description == "Deleted key 0");
     }
 }

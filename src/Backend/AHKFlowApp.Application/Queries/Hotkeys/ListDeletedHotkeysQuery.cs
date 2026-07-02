@@ -16,6 +16,8 @@ internal sealed class ListDeletedHotkeysQueryHandler(
     ICurrentUser currentUser)
     : IRequestHandler<ListDeletedHotkeysQuery, Result<DeletedHotkeyDto[]>>
 {
+    internal const int MaxDeletedItems = 500;
+
     public async Task<Result<DeletedHotkeyDto[]>> Handle(ListDeletedHotkeysQuery request, CancellationToken ct)
     {
         if (currentUser.Oid is not Guid ownerOid)
@@ -32,6 +34,7 @@ internal sealed class ListDeletedHotkeysQueryHandler(
                     && newer.EntityId == h.EntityId
                     && newer.Version > h.Version))
             .OrderByDescending(h => h.CapturedAt)
+            .Take(MaxDeletedItems)
             .ToListAsync(ct);
 
         DeletedHotkeyDto[] items =
