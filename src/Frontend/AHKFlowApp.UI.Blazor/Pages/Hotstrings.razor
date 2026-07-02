@@ -518,6 +518,33 @@
         else Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
     }
 
+    private async Task ShowHistoryAsync(HotstringEditModel item)
+    {
+        if (_dialogOpen || item.Id is not { } id)
+            return;
+
+        _dialogOpen = true;
+        try
+        {
+            DialogParameters parameters = new()
+            {
+                [nameof(HotstringHistoryDialog.HotstringId)] = id,
+                [nameof(HotstringHistoryDialog.Trigger)] = item.Trigger,
+            };
+
+            IDialogReference dialog = await DialogService.ShowAsync<HotstringHistoryDialog>(
+                $"History - {item.Trigger}", parameters);
+
+            DialogResult? result = await dialog.Result;
+            if (result?.Canceled == false)
+                await ReloadAllAsync();
+        }
+        finally
+        {
+            _dialogOpen = false;
+        }
+    }
+
     internal void OnSelectedItemsChanged(HashSet<HotstringEditModel> selected)
     {
         _selected = selected;
@@ -764,6 +791,8 @@
         }
         else
         {
+            <MudIconButton Class="show-history" Icon="@Icons.Material.Filled.History"
+                           OnClick="() => ShowHistoryAsync(item)" />
             <MudIconButton Class="delete" Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
                            OnClick="() => DeleteAsync(item)" />
             <MudIconButton Class="start-edit" Icon="@Icons.Material.Filled.Edit"

@@ -1,0 +1,151 @@
+@using AHKFlowApp.UI.Blazor.DTOs
+@using AHKFlowApp.UI.Blazor.Services
+@using MudBlazor
+@implements IDisposable
+
+<MudDialog Class="hotkey-history-dialog">
+    <TitleContent>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="flex-grow-1">
+            <MudIconButton Class="close-history" Icon="@Icons.Material.Filled.ArrowBack" OnClick="Close" />
+            <MudText Typo="Typo.h6">History</MudText>
+            <MudSpacer />
+        </MudStack>
+    </TitleContent>
+    <DialogContent>
+        @if (_loading)
+        {
+            <MudProgressCircular Indeterminate="true" />
+        }
+        else if (_error is not null)
+        {
+            <MudAlert Severity="Severity.Error">@_error</MudAlert>
+        }
+        else if (_entries.Length == 0)
+        {
+            <MudText>No history yet.</MudText>
+        }
+        else
+        {
+            <MudStack Row="true" Spacing="4" Class="pa-2" AlignItems="AlignItems.Start">
+                <MudStack Spacing="1" Style="min-width: 160px;">
+                    @foreach (HistoryEntryDto entry in _entries)
+                    {
+                        <MudButton Class="history-version" Variant="Variant.Outlined"
+                                   OnClick="@(() => SelectAsync(entry))">
+                            v@(entry.Version) @entry.ChangeType
+                        </MudButton>
+                    }
+                </MudStack>
+
+                @if (_preview is not null)
+                {
+                    <MudPaper Class="pa-3" Style="min-width: 280px;">
+                        <MudText Typo="Typo.subtitle2">Description</MudText>
+                        <MudText Class="mb-2">@_preview.Snapshot.Description</MudText>
+                        <MudText Typo="Typo.subtitle2">Key</MudText>
+                        <MudText Class="mb-2">@FormatCombo(_preview.Snapshot)</MudText>
+                        <MudText Typo="Typo.subtitle2">Action</MudText>
+                        <MudText Class="mb-2">@_preview.Snapshot.Action</MudText>
+                        @if (_preview.Snapshot.Parameters is { Length: > 0 } parameters)
+                        {
+                            <MudText Typo="Typo.subtitle2">Parameters</MudText>
+                            <MudText Class="mb-2">@parameters</MudText>
+                        }
+                        <MudText Typo="Typo.caption">
+                            @ProfileText(_preview.Snapshot) · @_preview.Snapshot.CategoryIds.Length category(s)
+                        </MudText>
+                        <MudButton Class="revert-version mt-3" Color="Color.Primary" Variant="Variant.Filled"
+                                   StartIcon="@Icons.Material.Filled.Restore" Disabled="@_busy" OnClick="RevertAsync">
+                            Revert
+                        </MudButton>
+                    </MudPaper>
+                }
+            </MudStack>
+        }
+    </DialogContent>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = default!;
+    [Inject] private IHotkeysApiClient Api { get; set; } = default!;
+    [Inject] private ISnackbar Snackbar { get; set; } = default!;
+
+    [Parameter] public Guid HotkeyId { get; set; }
+    [Parameter] public string Description { get; set; } = string.Empty;
+
+    private readonly CancellationTokenSource _cts = new();
+    private HistoryEntryDto[] _entries = [];
+    private HotkeyHistoryVersionDto? _preview;
+    private bool _loading = true;
+    private bool _busy;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        ApiResult<HistoryEntryDto[]> result = await Api.GetHistoryAsync(HotkeyId, _cts.Token);
+        if (result.IsSuccess)
+            _entries = result.Value ?? [];
+        else
+            _error = ApiErrorMessageFactory.Build(result.Status, result.Problem);
+
+        _loading = false;
+    }
+
+    private async Task SelectAsync(HistoryEntryDto entry)
+    {
+        ApiResult<HotkeyHistoryVersionDto> result =
+            await Api.GetHistoryVersionAsync(HotkeyId, entry.Version, _cts.Token);
+        if (result.IsSuccess)
+            _preview = result.Value;
+        else
+            Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
+    }
+
+    private async Task RevertAsync()
+    {
+        if (_preview is null || _busy)
+            return;
+
+        _busy = true;
+        try
+        {
+            ApiResult<HotkeyDto> result = await Api.RevertAsync(HotkeyId, _preview.Version, _cts.Token);
+            if (result.IsSuccess)
+            {
+                Snackbar.Add($"Reverted \"{Description}\" to version {_preview.Version}.", Severity.Success);
+                Dialog.Close(DialogResult.Ok(true));
+            }
+            else
+            {
+                Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
+            }
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private static string FormatCombo(HotkeySnapshot snapshot)
+    {
+        List<string> parts = [];
+        if (snapshot.Ctrl) parts.Add("Ctrl");
+        if (snapshot.Alt) parts.Add("Alt");
+        if (snapshot.Shift) parts.Add("Shift");
+        if (snapshot.Win) parts.Add("Win");
+        parts.Add(snapshot.Key);
+
+        return string.Join("+", parts);
+    }
+
+    private static string ProfileText(HotkeySnapshot snapshot) =>
+        snapshot.AppliesToAllProfiles ? "All profiles" : $"{snapshot.ProfileIds.Length} profile(s)";
+
+    private void Close() => Dialog.Cancel();
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+    }
+}
