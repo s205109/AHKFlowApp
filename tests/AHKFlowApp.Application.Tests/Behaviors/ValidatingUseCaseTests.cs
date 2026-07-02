@@ -1,69 +1,62 @@
+using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.Behaviors;
 using FluentAssertions;
 using FluentAssertions.Specialized;
 using FluentValidation;
 using FluentValidation.Results;
-using MediatR;
 using NSubstitute;
 using Xunit;
 
 namespace AHKFlowApp.Application.Tests.Behaviors;
 
 // Must be internal (not nested) so NSubstitute/Castle.DynamicProxy can proxy IValidator<TestRequest>
-internal record TestRequest(string Name) : IRequest<string>;
+internal sealed record TestRequest(string Name);
 
-public sealed class ValidationBehaviorTests
+public sealed class ValidatingUseCaseTests
 {
-
     [Fact]
-    public async Task Handle_WhenNoValidators_CallsNext()
+    public async Task ExecuteAsync_WhenNoValidators_CallsInner()
     {
         // Arrange
         IEnumerable<IValidator<TestRequest>> validators = [];
-        var behavior = new ValidationBehavior<TestRequest, string>(validators);
+        IUseCaseHandler<TestRequest, string> inner = Substitute.For<IUseCaseHandler<TestRequest, string>>();
+        inner.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult("result"));
+        var useCase = new ValidatingUseCase<TestRequest, string>(validators, inner);
         var request = new TestRequest("test");
-        bool nextCalled = false;
-        Task<string> next(CancellationToken ct)
-        {
-            nextCalled = true;
-            return Task.FromResult("result");
-        }
 
         // Act
-        string result = await behavior.Handle(request, next, CancellationToken.None);
+        string result = await useCase.ExecuteAsync(request, CancellationToken.None);
 
         // Assert
         result.Should().Be("result");
-        nextCalled.Should().BeTrue();
+        await inner.Received(1).ExecuteAsync(request, Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public async Task Handle_WhenValidationPasses_CallsNext()
+    public async Task ExecuteAsync_WhenValidationPasses_CallsInner()
     {
         // Arrange
         IValidator<TestRequest> validator = Substitute.For<IValidator<TestRequest>>();
         validator.ValidateAsync(Arg.Any<ValidationContext<TestRequest>>(), Arg.Any<CancellationToken>())
             .Returns(new ValidationResult());
 
-        var behavior = new ValidationBehavior<TestRequest, string>([validator]);
+        IUseCaseHandler<TestRequest, string> inner = Substitute.For<IUseCaseHandler<TestRequest, string>>();
+        inner.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult("result"));
+        var useCase = new ValidatingUseCase<TestRequest, string>([validator], inner);
         var request = new TestRequest("valid");
-        bool nextCalled = false;
-        Task<string> next(CancellationToken ct)
-        {
-            nextCalled = true;
-            return Task.FromResult("result");
-        }
 
         // Act
-        string result = await behavior.Handle(request, next, CancellationToken.None);
+        string result = await useCase.ExecuteAsync(request, CancellationToken.None);
 
         // Assert
         result.Should().Be("result");
-        nextCalled.Should().BeTrue();
+        await inner.Received(1).ExecuteAsync(request, Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public async Task Handle_WhenValidationFails_ThrowsValidationException()
+    public async Task ExecuteAsync_WhenValidationFails_ThrowsValidationException()
     {
         // Arrange
         var failures = new List<ValidationFailure>
@@ -74,26 +67,23 @@ public sealed class ValidationBehaviorTests
         validator.ValidateAsync(Arg.Any<ValidationContext<TestRequest>>(), Arg.Any<CancellationToken>())
             .Returns(new ValidationResult(failures));
 
-        var behavior = new ValidationBehavior<TestRequest, string>([validator]);
+        IUseCaseHandler<TestRequest, string> inner = Substitute.For<IUseCaseHandler<TestRequest, string>>();
+        inner.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult("result"));
+        var useCase = new ValidatingUseCase<TestRequest, string>([validator], inner);
         var request = new TestRequest("");
-        bool nextCalled = false;
-        Task<string> next(CancellationToken ct)
-        {
-            nextCalled = true;
-            return Task.FromResult("result");
-        }
 
         // Act
-        Func<Task> act = async () => await behavior.Handle(request, next, CancellationToken.None);
+        Func<Task> act = async () => await useCase.ExecuteAsync(request, CancellationToken.None);
 
         // Assert
         await act.Should().ThrowAsync<ValidationException>()
             .Where(ex => ex.Errors.Any(e => e.ErrorMessage == "Name is required"));
-        nextCalled.Should().BeFalse();
+        await inner.DidNotReceive().ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public async Task Handle_WhenMultipleValidatorsFail_CombinesAllErrors()
+    public async Task ExecuteAsync_WhenMultipleValidatorsFail_CombinesAllErrors()
     {
         // Arrange
         IValidator<TestRequest> validator1 = Substitute.For<IValidator<TestRequest>>();
@@ -104,14 +94,13 @@ public sealed class ValidationBehaviorTests
         validator2.ValidateAsync(Arg.Any<ValidationContext<TestRequest>>(), Arg.Any<CancellationToken>())
             .Returns(new ValidationResult([new ValidationFailure("Name", "Invalid chars")]));
 
-        var behavior = new ValidationBehavior<TestRequest, string>([validator1, validator2]);
-        static Task<string> next(CancellationToken ct)
-        {
-            return Task.FromResult("result");
-        }
+        IUseCaseHandler<TestRequest, string> inner = Substitute.For<IUseCaseHandler<TestRequest, string>>();
+        inner.ExecuteAsync(Arg.Any<TestRequest>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult("result"));
+        var useCase = new ValidatingUseCase<TestRequest, string>([validator1, validator2], inner);
 
         // Act
-        Func<Task> act = async () => await behavior.Handle(new TestRequest("x"), next, CancellationToken.None);
+        Func<Task> act = async () => await useCase.ExecuteAsync(new TestRequest("x"), CancellationToken.None);
 
         // Assert
         ExceptionAssertions<ValidationException> ex = await act.Should().ThrowAsync<ValidationException>();
