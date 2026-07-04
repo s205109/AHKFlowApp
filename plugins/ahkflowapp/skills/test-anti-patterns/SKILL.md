@@ -1,21 +1,6 @@
 ---
 name: test-anti-patterns
-description: >
-  Audits an existing test file or suite in any language for anti-patterns
-  and quality issues — produces a severity-ranked report
-  (Critical/Warning/Info). INVOKE whenever asked to audit or review tests,
-  find what's wrong with a suite, judge whether tests are any good, or
-  check for: tests that pass but verify nothing, missing assertions,
-  swallowed exceptions, self-comparing / tautological assertions,
-  coverage-touching tests, broad exceptions, flaky or order-dependent tests
-  (Thread.Sleep, DateTime.Now, shared state), duplicated tests, or magic
-  values — in .NET, Python/pytest, TS/Jest, Java, Go, Ruby or C++. DO NOT
-  USE FOR: writing new tests (use code-testing-agent, or writing-mstest-tests
-  for MSTest); running tests (use
-  run-tests); migration; assertion-diversity metrics (use assertion-quality);
-  coverage/CRAP metrics (use coverage-analysis); the testsmells.org academic
-  catalog (use test-smell-detection); fixing or modernizing MSTest tests,
-  assertions, attributes, or lifecycle (use writing-mstest-tests).
+description: Use to audit an existing test file or suite for anti-patterns and quality issues, producing a severity-ranked report.
 license: MIT
 ---
 
