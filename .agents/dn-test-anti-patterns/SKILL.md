@@ -1,5 +1,5 @@
 ---
-name: test-anti-patterns
+name: dn-test-anti-patterns
 description: Use to audit an existing test file or suite for anti-patterns and quality issues, producing a severity-ranked report.
 license: MIT
 ---

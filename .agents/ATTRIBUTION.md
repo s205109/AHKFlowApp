@@ -5,9 +5,9 @@ Portions of the skills in this directory are adapted from `codewithmukesh/dotnet
 The following skills are vendored from `dotnet/skills` (© Microsoft, MIT), lightly unchanged
 except where noted:
 
-- `test-gap-analysis`, `test-anti-patterns`, `assertion-quality` (from the `dotnet-test` plugin)
-- `analyzing-dotnet-performance` (from the `dotnet-diag` plugin)
-- `use-js-interop` (from the `dotnet-blazor` plugin)
+- `dn-test-gap-analysis`, `dn-test-anti-patterns`, `dn-assertion-quality` (from the `dotnet-test` plugin)
+- `dn-analyzing-dotnet-performance` (from the `dotnet-diag` plugin)
+- `dn-use-js-interop` (from the `dotnet-blazor` plugin)
 
 Guidance from `dotnet/skills` `optimizing-ef-core-queries` (from the `dotnet-data` plugin) was
 merged into `dck-ef-core` rather than vendored as a separate skill.
