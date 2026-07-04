@@ -224,6 +224,67 @@ services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(_mssql.GetConnectionString()));
 ```
 
+### Query Performance
+
+#### Diagnosing Slow Queries
+
+See the actual SQL before optimizing — never guess. Turn on command logging.
+
+```json
+// appsettings.Development.json
+{
+  "Logging": {
+    "LogLevel": { "Microsoft.EntityFrameworkCore.Database.Command": "Information" }
+  }
+}
+```
+
+`EnableSensitiveDataLogging()` also prints parameter values — Development only, never Test/Prod.
+
+#### Tracking Modes
+
+Read-only queries don't need change tracking. Disabling it cuts allocations and CPU.
+
+```csharp
+// Per-query — for handler reads that never call SaveChanges
+var hotstrings = await db.Hotstrings
+    .AsNoTracking()
+    .Where(h => h.ProfileId == request.ProfileId)
+    .ToListAsync(ct);
+```
+
+Projecting into a DTO with `.Select()` (the default in this project) is already effectively no-tracking. Reach for `AsNoTrackingWithIdentityResolution()` only when a query can return the same row more than once (e.g. a join that repeats a `Profile`) and you want one shared instance instead of duplicates.
+
+#### Split Queries (avoid cartesian explosion)
+
+A single query with multiple or large `Include`s multiplies rows (cartesian product). Split it into one round-trip per collection.
+
+```csharp
+var profiles = await db.Profiles
+    .Include(p => p.Hotstrings)
+    .Include(p => p.Hotkeys)
+    .AsSplitQuery()          // one SELECT per Include instead of one giant JOIN
+    .ToListAsync(ct);
+```
+
+| Scenario | Use |
+|---|---|
+| Single `Include`, small child set | Single query (default) |
+| Multiple `Include`s (cartesian risk) | `AsSplitQuery()` |
+| `Include` with large child collections | `AsSplitQuery()` |
+| Need one consistent snapshot in a transaction | Single query |
+
+Prefer a projection (`.Select` into a DTO) over `Include` whenever you don't need the tracked entity — it fetches only the columns you use and sidesteps split-vs-single entirely.
+
+#### Common Query Traps
+
+| Trap | Problem | Fix |
+|---|---|---|
+| `.Count() > 0` for existence | Counts every matching row | `.AnyAsync(ct)` |
+| `.Select()` after `.Include()` | The `Include` is silently ignored | Project the related data inside the `Select` |
+| `.Contains()` that won't translate | Falls back to client evaluation | `EF.Functions.Like(h.Trigger, $"%{x}%")` |
+| `.ToListAsync()` then `.Where()` in C# | Loads the whole table | Filter in the query first (see anti-patterns) |
+
 ## Anti-patterns
 
 ### Don't Wrap DbContext in a Repository
@@ -265,6 +326,16 @@ var active = all.Where(h => h.IsActive);
 var active = await db.Hotstrings.Where(h => h.IsActive).ToListAsync(ct);
 ```
 
+### Don't Use Count() to Test Existence
+
+```csharp
+// BAD — counts every matching row just to compare against zero
+if (await db.Hotstrings.Where(h => h.Trigger == trigger).CountAsync(ct) > 0) { }
+
+// GOOD — stops at the first match
+if (await db.Hotstrings.AnyAsync(h => h.Trigger == trigger, ct)) { }
+```
+
 ### Don't Use Npgsql or PostgreSQL
 
 ```csharp
@@ -282,6 +353,10 @@ options.UseSqlServer(connectionString, sql => sql.EnableRetryOnFailure(...));
 | Standard CRUD | AppDbContext with projections in handler |
 | Bulk updates (100+ rows) | `ExecuteUpdateAsync` / `ExecuteDeleteAsync` |
 | Hot-path read query | Compiled query |
+| Read-only query | `AsNoTracking()`, or project to a DTO |
+| Multiple / large `Include`s | `AsSplitQuery()` |
+| Existence check | `AnyAsync`, never `CountAsync > 0` |
+| Diagnosing a slow query | Log `Microsoft.EntityFrameworkCore.Database.Command` |
 | Audit trails | `SaveChangesInterceptor` |
 | Soft deletes | Global query filter + interceptor |
 | Strongly-typed IDs | Value converter |
