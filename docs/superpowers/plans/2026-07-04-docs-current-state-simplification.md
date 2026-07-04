@@ -76,7 +76,7 @@
 ### Task 6: Archive historical material + backlog cleanup
 
 **Files:**
-- Move: `docs/development/github-setup.md` → `docs/superpowers/plans/2026-04-xx-github-setup-runbook.md` (keep original date if the file states one; add a one-line header: "Historical one-time setup runbook — archived 2026-07-04, content not maintained")
+- Move: `docs/development/github-setup.md` → `docs/superpowers/plans/<original-date>-github-setup-runbook.md` — take the date from `git log --follow --format=%ad --date=short -- docs/development/github-setup.md | tail -1`; add a one-line header: "Historical one-time setup runbook — archived 2026-07-04, content not maintained"
 - Move: `docs/copilot/plans/*.md` (2 files) → `docs/superpowers/plans/` (same header treatment); remove the empty `docs/copilot/` tree
 - Move: completed `.claude/backlog/` items (all except any with genuinely open work) → `.claude/backlog/done/`
 - Modify: `.claude/backlog/015-…` and `017-…` — re-check the deferral boxes that are actually satisfied (015's CLI validation display → shipped with CLI; 017's HttpClient registration + `--profile` → shipped with backlog 028); add a parenthetical "(satisfied by 028/029)" per box
