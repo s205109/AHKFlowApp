@@ -61,6 +61,34 @@ if (Test-Path -LiteralPath $worktreeLogHelperPath) {
     . $worktreeLogHelperPath
 }
 
+$powerShellHelperPath = Join-Path $PSScriptRoot 'worktree-powershell.common.ps1'
+if (Test-Path -LiteralPath $powerShellHelperPath) {
+    . $powerShellHelperPath
+}
+
+if (-not (Get-Command Resolve-PowerShellExecutable -ErrorAction SilentlyContinue)) {
+    function Resolve-PowerShellExecutable {
+        $currentProcessPath = [System.Diagnostics.Process]::GetCurrentProcess().Path
+        if ($currentProcessPath -and (Test-Path -LiteralPath $currentProcessPath)) {
+            return $currentProcessPath
+        }
+
+        foreach ($name in @('pwsh.exe', 'powershell.exe')) {
+            $psHomeCandidate = Join-Path $PSHOME $name
+            if (Test-Path -LiteralPath $psHomeCandidate) {
+                return $psHomeCandidate
+            }
+
+            $command = Get-Command $name -ErrorAction SilentlyContinue
+            if ($command -and $command.Source -and (Test-Path -LiteralPath $command.Source)) {
+                return $command.Source
+            }
+        }
+
+        throw 'Could not resolve a PowerShell executable. Expected current host, pwsh.exe, or powershell.exe to be available.'
+    }
+}
+
 if (-not (Get-Command Write-WorktreeLog -ErrorAction SilentlyContinue)) {
     function Write-WorktreeLog {
         param(
@@ -548,7 +576,7 @@ function Invoke-HookMode {
     }
 
     # --- spawn the detached watcher OUTSIDE claude's job object (WMI) --------
-    $psExe = Join-Path $PSHOME 'powershell.exe'
+    $psExe = Resolve-PowerShellExecutable
     $watcherCmd = '"{0}" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{1}" -Mode Watcher -ParamFile "{2}"' -f $psExe, $watcherScript, $paramFile
 
     $spawned = $false
