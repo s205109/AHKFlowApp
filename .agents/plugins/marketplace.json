@@ -8,7 +8,7 @@
       "name": "ahkflowapp",
       "source": {
         "source": "local",
-        "path": "./.agents/plugins/plugins/ahkflowapp"
+        "path": "./plugins/ahkflowapp"
       },
       "policy": {
         "installation": "AVAILABLE",
