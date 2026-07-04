@@ -548,7 +548,15 @@ function Invoke-HookMode {
     }
 
     # --- spawn the detached watcher OUTSIDE claude's job object (WMI) --------
-    $psExe = Join-Path $PSHOME 'powershell.exe'
+    # $PSHOME\powershell.exe only exists for Windows PowerShell 5.1. PowerShell
+    # 7+ ships pwsh.exe instead, so resolve the actual running host's exe.
+    $psExe = [System.Diagnostics.Process]::GetCurrentProcess().Path
+    if (-not $psExe -or -not (Test-Path -LiteralPath $psExe)) {
+        $psExe = Join-Path $PSHOME 'pwsh.exe'
+    }
+    if (-not (Test-Path -LiteralPath $psExe)) {
+        $psExe = Join-Path $PSHOME 'powershell.exe'
+    }
     $watcherCmd = '"{0}" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{1}" -Mode Watcher -ParamFile "{2}"' -f $psExe, $watcherScript, $paramFile
 
     $spawned = $false
