@@ -169,7 +169,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${CLAUDE_PROJECT_DIR}\\scripts\\new-worktree.ps1\""
+            "command": "pwsh -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"${CLAUDE_PROJECT_DIR}\\scripts\\new-worktree.ps1\""
           }
         ]
       }
@@ -179,7 +179,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${CLAUDE_PROJECT_DIR}\\scripts\\remove-worktree-local-dev.ps1\" -TimeoutSeconds 300"
+            "command": "pwsh -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"${CLAUDE_PROJECT_DIR}\\scripts\\remove-worktree-local-dev.ps1\" -TimeoutSeconds 300"
           }
         ]
       }
