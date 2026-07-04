@@ -18,11 +18,11 @@ internal sealed class EntityHistoryRecorder(IAppDbContext db, TimeProvider clock
         CancellationToken ct)
         => (await RecordHotstringsAsync([entity], changeType, ct))[0];
 
-    public async Task<IReadOnlyList<EntityHistory>> RecordHotstringsAsync(
+    public Task<IReadOnlyList<EntityHistory>> RecordHotstringsAsync(
         IReadOnlyCollection<Hotstring> entities,
         HistoryChangeType changeType,
         CancellationToken ct)
-        => await RecordAsync(
+        => RecordAsync(
             TrackedEntityType.Hotstring,
             [
                 .. entities.Select(entity =>
@@ -54,11 +54,11 @@ internal sealed class EntityHistoryRecorder(IAppDbContext db, TimeProvider clock
         CancellationToken ct)
         => (await RecordHotkeysAsync([entity], changeType, ct))[0];
 
-    public async Task<IReadOnlyList<EntityHistory>> RecordHotkeysAsync(
+    public Task<IReadOnlyList<EntityHistory>> RecordHotkeysAsync(
         IReadOnlyCollection<Hotkey> entities,
         HistoryChangeType changeType,
         CancellationToken ct)
-        => await RecordAsync(
+        => RecordAsync(
             TrackedEntityType.Hotkey,
             [
                 .. entities.Select(entity =>
