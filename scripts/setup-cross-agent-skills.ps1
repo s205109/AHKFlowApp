@@ -64,7 +64,10 @@ $claudeRoot = Join-Path $repoRoot '.claude'
 $claudeSkills = Join-Path $claudeRoot 'skills'
 $githubRoot = Join-Path $repoRoot '.github'
 $githubSkills = Join-Path $githubRoot 'skills'
-$codexPluginSkills = Join-Path $agentsRoot 'plugins\plugins\ahkflowapp\skills'
+# Codex marketplace convention (matches Codex's bundled openai-primary-runtime marketplace):
+# manifest lives at .agents/plugins/marketplace.json, payloads at <repo-root>/plugins/<name>/,
+# and manifest "path" entries resolve relative to the marketplace root. Do not co-locate them.
+$codexPluginSkills = Join-Path $repoRoot 'plugins\ahkflowapp\skills'
 
 # --- Ensure .agents/ exists ---
 if (-not (Test-Path $agentsRoot)) {
@@ -284,6 +287,6 @@ function Sync-CodexPluginSkillDirectory {
 
 Sync-SkillLinkDirectory $claudeSkills '.claude/skills' '..\..\.agents' $false
 Sync-SkillLinkDirectory $githubSkills '.github/skills' '..\..\.agents' $false
-Sync-CodexPluginSkillDirectory $codexPluginSkills '.agents/plugins/plugins/ahkflowapp/skills'
+Sync-CodexPluginSkillDirectory $codexPluginSkills 'plugins/ahkflowapp/skills'
 
 Write-Host "[DONE] .claude/skills and .github/skills symlink to active .agents/* skills; Codex plugin skills hard-link to the same SKILL.md files" -ForegroundColor Green
