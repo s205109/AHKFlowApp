@@ -36,31 +36,39 @@ Three research passes fed this plan: (1) a full read of all 12 active skills + t
 - **`dck-serilog`** — comprehensive Serilog setup guide; project already mandates Serilog but has no dedicated skill for it.
 - **`dck-configuration`** — despite sitting in `_updates`, no existing skill covers this topic. Rewrite the Key Vault example: this project currently uses **App Service Configuration** for prod secrets (Key Vault is documented as planned-but-not-provisioned) — describe the real current story (user-secrets locally → App Service Config in Azure), note Key Vault only as a future option.
 - **`dck-de-sloppify`** — 7-step cleanup pipeline (format, unused usings, analyzer warnings, dead code, TODOs, seal classes, propagate `CancellationToken`). Keep MCP calls (`find_dead_code`, `detect_antipatterns`, `get_type_hierarchy`), strip the "refactor-cleaner agent" reference.
-- **`dck-workflow-mastery`** — git worktrees, plan mode, verification loops, token/context discipline. Strip references to nonexistent companion skills (`instinct-system`, `architecture-advisor`, `convention-learner`) and specialist agents. Cross-reference this project's actual worktree hooks (`WorktreeCreate`/`WorktreeRemove` in `.claude/settings.json`) instead of assuming generic worktree setup.
+- **`dck-workflow-mastery`** — git worktrees, plan mode, verification loops, token/context discipline. Strip references to nonexistent companion skills (`instinct-system`, `architecture-advisor`, `convention-learner`) and specialist agents. Cross-reference this project's actual worktree hooks (`WorktreeCreate`/`WorktreeRemove` in `.claude/settings.json`) instead of assuming generic worktree setup. **Also fix a false claim**: the staged file (`.agents/_adapt/workflow-mastery/SKILL.md` ~line 206) says `.claude/rules/agents.md` mandates "MCP-first" code navigation. The live rule (`.claude/rules/agents.md:17`) actually says to use the csharp-lsp plugin or Grep for type lookups and `dotnet build`/`test` for regression checks — no MCP mandate exists. Rewrite that paragraph to describe the real rule, optionally noting the newly-installed Roslyn MCP tools as an available option, not a requirement.
 
 ### Discard entirely (remaining staged files)
 `_candidates/ddd`, `_candidates/api-versioning`, `_candidates/openapi`, `_updates/ef-core`, `_updates/error-handling`, `_updates/security-scan`, `_updates/testing` — either architecturally incompatible or add no real value over what's already correct.
 
 ## Housekeeping
 
-1. **Install Roslyn Navigator MCP**: `dotnet tool install -g CWM.RoslynNavigator` (v0.7.1, needs .NET 10 SDK — already in use). Create root `.mcp.json` (doesn't exist yet):
-   ```json
-   {
-     "mcpServers": {
-       "cwm-roslyn-navigator": { "command": "cwm-roslyn-navigator" }
+1. **Install Roslyn Navigator MCP**: `dotnet tool install -g CWM.RoslynNavigator` (installs latest stable — don't pin a version per this project's "never hardcode versions from memory" convention; confirm what actually landed afterward with `cwm-roslyn-navigator --version`). Register it in **both** places — they're independent and neither reads the other:
+   - Root `.mcp.json` (Claude Code only, file doesn't exist yet):
+     ```json
+     {
+       "mcpServers": {
+         "cwm-roslyn-navigator": { "command": "cwm-roslyn-navigator" }
+       }
      }
-   }
-   ```
-2. **Attribution**: add `.agents/ATTRIBUTION.md` crediting `codewithmukesh/dotnet-claude-kit` (MIT, Mukesh Murugan) — satisfies MIT's notice-retention requirement since content was copied near-verbatim.
+     ```
+   - Codex CLI (does **not** read `.mcp.json`): `codex mcp add cwm-roslyn-navigator -- cwm-roslyn-navigator`, confirm with `codex mcp list`.
+2. **Attribution**: create `.agents/ATTRIBUTION.md` containing the **full upstream MIT copyright notice and license text** for `codewithmukesh/dotnet-claude-kit` (not just a one-line credit) — MIT's notice-retention clause requires the actual notice+permission text to travel with copied substantial portions, not a description of it.
 3. **Delete staging folders**: `.agents/_adapt/`, `.agents/_updates/`, `.agents/_candidates/` once their content is merged/adapted — they were an explicitly temporary "temp skills" commit.
-4. **Repair the hard-link mirror**: 7 of 12 `.agents/plugins/plugins/ahkflowapp/skills/*` entries have silently degraded from hard links to plain copies (still content-identical today, but won't self-heal on the next direct edit). Re-run `scripts/setup-cross-agent-skills.ps1` after all content edits *and* again after the rename to regenerate `.claude/skills/`, `.github/skills/` symlinks and the plugin hard links correctly under the final `dck-` names.
-5. **Rename (last step, per request)**: for all `cck-*` skills plus the 6 newly-added skills, rename the `.agents/<name>` directory and update the SKILL.md front-matter `name:` field to match (`mp-handoff`/`playwright-cli` excluded — never part of this kit). Re-run the setup script once more afterward.
+4. **Repair the hard-link mirror**: 7 of 12 `.agents/plugins/plugins/ahkflowapp/skills/*` entries have silently degraded from hard links to plain copies (still content-identical today, but won't self-heal on the next direct edit). Re-run `scripts/setup-cross-agent-skills.ps1` after all content edits *and* again after the rename to regenerate `.claude/skills/`, `.github/skills/` symlinks and the plugin hard links correctly under the final `dck-` names. Verify with `fsutil hardlink list ".agents\<name>\SKILL.md"` — it should list both the canonical path and the plugin-mirror path.
+5. **Refresh the Codex plugin cache (separate from step 4 — confirmed live, not theoretical)**: Codex's `ahkflowapp@ahkflowapp-local` plugin is installed from `.agents/plugins/plugins/ahkflowapp`, but Codex copies it once into a frozen, versioned cache at `C:\Users\btase\.codex\plugins\cache\ahkflowapp-local\ahkflowapp\<version>\skills\` at `codex plugin add` time — it does **not** track repo changes afterward (confirmed: the cache still shows `cck-*` names and is already missing `mp-handoff`, which was added after the last install). After the repo-side rename lands, explicitly refresh it:
+   ```
+   codex plugin remove ahkflowapp --marketplace ahkflowapp-local
+   codex plugin add ahkflowapp --marketplace ahkflowapp-local
+   ```
+   Then confirm via `codex plugin list` (shows reinstalled) and by checking the new cache folder contains `dck-*` skill names.
+6. **Rename (last step, per request)**: for all `cck-*` skills plus the 6 newly-added skills, rename the `.agents/<name>` directory and update the SKILL.md front-matter `name:` field to match (`mp-handoff`/`playwright-cli` excluded — never part of this kit). Re-run the setup script (step 4) and the Codex plugin refresh (step 5) once more afterward.
 
 ## Verification
 
-- Doc-only changes (no application code touched) — verify by grepping the whole `.agents/` tree for banned leftovers after edits: `MediatR|IRequestHandler|IMediator|Npgsql|ValidationFilter|dotnet-architect|refactor-cleaner|security-auditor|instinct-system|architecture-advisor|convention-learner` should return zero matches.
-- After installing the MCP tool: confirm `cwm-roslyn-navigator` runs and, after a Claude Code restart, its tools are discoverable via `ToolSearch`.
-- After the final rename + setup-script re-run: confirm `.claude/skills/dck-*` and `.github/skills/dck-*` resolve as symlinks, and `.agents/plugins/plugins/ahkflowapp/skills/dck-*/SKILL.md` are true hard links matching `.agents/dck-*/SKILL.md` content.
+- Doc-only changes (no application code touched) — grep for banned leftovers, but scope it correctly: `cck-ef-core` and `cck-error-handling` **intentionally** mention `Npgsql`/`ValidationFilter` inside their anti-pattern ("Don't...") sections — those must stay and will show up as matches. Run `MediatR|IRequestHandler|IMediator|Npgsql|ValidationFilter|dotnet-architect|refactor-cleaner|security-auditor|instinct-system|architecture-advisor|convention-learner` only against files actually touched in each PR (migration-workflow rewrite, the new/updated skills, workflow-mastery), and for any hit in an untouched skill, manually confirm it sits inside a "Don't" comparison rather than prescriptive guidance.
+- After installing the MCP tool: confirm Claude Code discovers it (ToolSearch, after restart) **and** Codex discovers it (`codex mcp list` shows `cwm-roslyn-navigator` enabled).
+- After the final rename + setup-script re-run: confirm `.claude/skills/dck-*` and `.github/skills/dck-*` resolve as symlinks, `.agents/plugins/plugins/ahkflowapp/skills/dck-*/SKILL.md` are true hard links matching `.agents/dck-*/SKILL.md` content (`fsutil hardlink list`), and the Codex plugin cache (after refresh) shows `dck-*` skill folders.
 - `git status` should show the three staging folders gone and no leftover `.agents/cck-*` directories.
 
 ## Suggested sequencing (stacked PRs, per AGENTS.md git workflow)
