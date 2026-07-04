@@ -30,7 +30,14 @@ function Get-HookInput {
         return $null
     }
 
-    $stdin = [Console]::In.ReadToEnd()
+    # A redirected-but-open stdin (background/piped launch that never sends EOF) makes a
+    # blocking ReadToEnd hang forever. Bound the read so a direct invocation can't stall.
+    $readTask = [Console]::In.ReadToEndAsync()
+    if (-not $readTask.Wait(2000)) {
+        Write-Stderr 'No hook stdin within timeout; continuing without hook input.'
+        return $null
+    }
+    $stdin = $readTask.Result
     if ([string]::IsNullOrWhiteSpace($stdin)) {
         return $null
     }
@@ -192,7 +199,8 @@ function Assert-SetupScriptCommitted {
 
 $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 Assert-MainCheckout $repoRoot
-$hookInput = Get-HookInput
+# A direct call supplies -Name and never needs hook stdin; only read it for hook invocations.
+$hookInput = if ($Name) { $null } else { Get-HookInput }
 
 if (-not $Name -and $hookInput -and $hookInput.PSObject.Properties.Name -contains 'name') {
     $Name = [string] $hookInput.name
