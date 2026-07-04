@@ -20,14 +20,11 @@ Quick, pragmatic analysis of test code in any supported language for anti-patter
 
 ## When Not to Use
 
-- User wants to write new tests from scratch (use `code-testing-agent` for any language, or `writing-mstest-tests` for MSTest specifically)
+- User wants to write new tests from scratch (use `dck-testing`)
 - User wants direct implementation fixes rather than a diagnostic review (use the relevant write/edit skill)
-- User asks to fix swapped `Assert.AreEqual` argument order in MSTest (use `writing-mstest-tests`)
-- User asks to convert MSTest `DynamicData` from `IEnumerable<object[]>` to `ValueTuple` (use `writing-mstest-tests`)
-- User wants to run or execute tests (use `run-tests` for .NET)
-- User wants to migrate between test frameworks or versions (use migration skills)
+- User wants to run or execute tests (use `dck-verify`)
+- User wants to migrate between test frameworks or versions (use `dck-migration-workflow`)
 - User wants to measure code coverage (out of scope)
-- User wants a deep formal test smell audit with academic taxonomy and extended catalog (use `test-smell-detection`)
 
 ## Inputs
 
