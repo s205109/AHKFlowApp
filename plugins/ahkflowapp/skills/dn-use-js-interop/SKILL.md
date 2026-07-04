@@ -1,6 +1,6 @@
 ---
 license: MIT
-name: use-js-interop
+name: dn-use-js-interop
 description: Use when adding, reviewing, or fixing Blazor JavaScript interop — IJSRuntime, IJSObjectReference lifecycle, modules, disposal.
 ---
 

@@ -1,5 +1,5 @@
 ---
-name: test-gap-analysis
+name: dn-test-gap-analysis
 description: Use to find weak or shallow tests and untested edge cases via pseudo-mutation reasoning — would your tests catch a subtle bug?
 license: MIT
 ---
@@ -37,8 +37,8 @@ This skill performs **static pseudo-mutation** — reasoning about mutations wit
 ## When Not to Use
 
 - User wants to write new tests from scratch (use `dck-testing`)
-- User wants to detect test anti-patterns like flakiness or poor naming (use `test-anti-patterns`)
-- User wants to measure assertion variety (use `assertion-quality`)
+- User wants to detect test anti-patterns like flakiness or poor naming (use `dn-test-anti-patterns`)
+- User wants to measure assertion variety (use `dn-assertion-quality`)
 - User wants to run an actual mutation testing framework (Stryker for .NET/JS/TS, mutmut for Python, PIT for Java, go-mutesting for Go, cargo-mutants for Rust, mutant for Ruby) — help them directly with the tool
 - User only wants code coverage numbers (out of scope)
 
@@ -215,6 +215,6 @@ Present the analysis in this structure:
 | Recommending a new test for every survived mutation | Multiple survived mutations in the same method often share a single missing test — recommend one test that kills several |
 | Ignoring production context | A survived mutation in `ToString()` / `__repr__` / `toString()` formatting is less important than one in `CalculateTotal()` — prioritize by business risk |
 | Claiming 100% kill rate is required | Some mutations in low-risk code are acceptable to leave — acknowledge this in the report |
-| Not considering integration with other skills | If gaps are found, mention that `dck-testing` can help write the missing tests, and `test-anti-patterns` can audit existing test quality |
+| Not considering integration with other skills | If gaps are found, mention that `dck-testing` can help write the missing tests, and `dn-test-anti-patterns` can audit existing test quality |
 | Forgetting Go's error idiom | Removing `if err != nil { return err }` is a valid mutation target only when the function actually does something else with `err` (e.g., wrap, log, branch). Bare passthroughs in idiomatic Go are not meaningful gaps. |
 | Forgetting Rust's `?` operator | `?` propagates `Err`/`None` short-circuits. Mutating `expr?` → `expr.unwrap()` panics instead of returning — flag as Exception/Panic mutation when tests should observe the propagated error. |

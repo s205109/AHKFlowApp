@@ -1,5 +1,5 @@
 ---
-name: analyzing-dotnet-performance
+name: dn-analyzing-dotnet-performance
 description: Use to scan .NET code for performance anti-patterns across async, memory, strings, collections, LINQ, regex, and I/O.
 license: MIT
 ---
