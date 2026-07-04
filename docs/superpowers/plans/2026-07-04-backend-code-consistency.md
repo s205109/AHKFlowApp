@@ -160,9 +160,9 @@ Review the generated migration: it must contain only `DropTable` for the TestMes
 - [ ] **Step 3: Apply locally** (`dotnet ef database update …` same projects) against Docker SQL; run full test suite (Testcontainers apply migrations from scratch — proves the chain) → PASS; verification trio.
 - [ ] **Step 4: Commit** `chore: remove TestMessage entity + DropTable migration`
 
-### Task 8 (OPTIONAL — open question #4 in roadmap; skip unless user approved): Rename Behaviors/ → Decorators/
+### Task 8: ~~Rename Behaviors/ → Decorators/~~ — SKIPPED
 
-- [ ] Move `src/Backend/AHKFlowApp.Application/Behaviors/ValidatingUseCase.cs` to `Decorators/`, update namespace + usings (`grep -r "Application.Behaviors" src tests`). Verification trio. Commit `refactor: rename Behaviors folder to Decorators`.
+User decision 2026-07-04 (roadmap decision #4): not worth the churn. Do not implement.
 
 ---
 

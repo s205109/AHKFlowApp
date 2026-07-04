@@ -50,7 +50,7 @@ In scope (from the 2026-07-04 backend audit):
 - Move `DownloadsController` zip assembly into a use case.
 - Remove `TestMessage` scaffolding (entity, EF config + seed, DbSet, DropTable migration).
 
-Out of scope: CLI work, renames beyond the validator helper (folder rename `Behaviors/`→`Decorators/` is an optional task), new patterns, frontend.
+Out of scope: CLI work, renames beyond the validator helper (`Behaviors/`→`Decorators/` rename skipped per decision #4), new patterns, frontend.
 
 Verified-clean areas the audit says NOT to spend time on: naming/Result/validator uniformity, controller thinness + explicit auth, TimeProvider usage, CancellationToken propagation, warning suppressions.
 
@@ -58,7 +58,7 @@ Verified-clean areas the audit says NOT to spend time on: naming/Result/validato
 
 In scope:
 - Partial subfolders: `scripts/ci/` (check-coverage-thresholds.py, generate-changelog-json.ps1) and `scripts/agents/` (setup-copilot-symlinks, check-symlinks, setup-cross-agent-skills.ps1/.sh); update every reference.
-- Retire `create-github-issues.ps1` (one-time backlog seeding, long done).
+- Move `create-github-issues.ps1` (one-time backlog seeding, long done) to `scripts/agents/`.
 - `scripts/README.md` index grouping user-facing / test / CI / agents / worktree-internal.
 - Consistent, friendly status output on user-facing manual scripts via the existing `Common.ps1` helpers — no logic changes.
 
@@ -104,15 +104,11 @@ Ranked value/effort ideation: CLI vertical completion (hotkeys/categories/profil
 | Docs plan edits paths that plan B then changes | C depends on A and B; runs last |
 | Create/Update handler fixes change API responses clients rely on | Changes covered by integration tests asserting DTO contents before/after |
 
-## Carried forward, not a cleanup plan
+## Decisions (2026-07-04, user)
 
-- **Winget community-feed submission** (backlog 031 unchecked items: manifests, `winget validate`, PR to microsoft/winget-pkgs). Manual external release task; listed in plan D for prioritization.
-
-## Open questions
-
-1. CLI v1 scope: finish hotkey/category/profile commands vs document hotstring-focused CLI? (drives shortlist rank #1)
-2. Winget community submission: first-release blocker or post-release?
-3. `create-github-issues.ps1`: delete (recommended) or move to `scripts/agents/`?
-4. `Behaviors/`→`Decorators/` rename: include in plan A or skip churn?
-5. `measure-tests.ps1` (443 lines, dev tool): keep as-is, or trim during plan B's friendly-output pass?
-6. Archive home OK as `docs/superpowers/plans/` for github-setup.md + docs/copilot/*, or prefer a new `docs/history/`?
+1. **CLI scope:** build full command parity and make the CLI production-ready — a separate first-class initiative, not a cleanup plan. See [CLI Production Readiness — Design](2026-07-04-cli-production-readiness-design.md).
+2. **Winget community submission:** dropped — no release planned. Existing packaging stays correct via related code/docs only; backlog 031's community-feed items stay unchecked.
+3. **`create-github-issues.ps1`:** move to `scripts/agents/` (not deleted).
+4. **`Behaviors/`→`Decorators/` rename:** skipped — not worth the churn.
+5. **`measure-tests.ps1`:** left as-is (excluded from plan B's friendly-output pass).
+6. **Archive home:** `docs/superpowers/plans/` (no new `docs/history/`).

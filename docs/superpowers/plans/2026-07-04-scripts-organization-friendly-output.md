@@ -59,12 +59,12 @@ Check especially: `.github/workflows/*.yml`, `run-coverage.ps1`, `docs/developme
 - [ ] **Step 2:** Run `scripts/agents/check-symlinks.ps1` and `scripts/agents/setup-copilot-symlinks.ps1` — both must succeed from the new location.
 - [ ] **Step 3: Commit** `chore: move agent-config scripts to scripts/agents`
 
-### Task 4: Retire create-github-issues.ps1
+### Task 4: Move create-github-issues.ps1 to scripts/agents/
 
-**Context:** One-time backlog-seeding script (backlog 001); GitHub issues long created; `gh issue list` returns none open. Roadmap open question #3 proposes delete — confirm with user if not already answered; default to delete (git history preserves it).
+**Context:** One-time backlog-seeding script (backlog 001); GitHub issues long created. User decision (roadmap decision #3): move, don't delete.
 
-- [ ] **Step 1:** `git rm scripts/create-github-issues.ps1`; remove any references (Task-1 inventory).
-- [ ] **Step 2: Commit** `chore: retire one-time create-github-issues script`
+- [ ] **Step 1:** `git mv scripts/create-github-issues.ps1 scripts/agents/`; update any references (Task-1 inventory); fix internal `$PSScriptRoot`-relative paths if present.
+- [ ] **Step 2: Commit** `chore: move create-github-issues script to scripts/agents`
 
 ### Task 5: scripts/README.md index
 
@@ -75,10 +75,10 @@ Check especially: `.github/workflows/*.yml`, `run-coverage.ps1`, `docs/developme
   - **User-facing — deployment:** deploy.ps1, teardown.ps1, update.ps1, setup-entra-app.ps1, setup-dev-entra.ps1, open-test-in-browser.ps1, open-prod-in-browser.ps1
   - **User-facing — local dev & test:** test-fast.ps1, run-coverage.ps1, measure-tests.ps1, kill-dev-ports.ps1, publish-cli.ps1, new-worktree.ps1
   - **CI-internal (`ci/`):** check-coverage-thresholds.py, generate-changelog-json.ps1 (PS 7)
-  - **Agent tooling (`agents/`):** the four moved scripts
+  - **Agent tooling (`agents/`):** the four moved scripts + create-github-issues.ps1 (historical one-time seeding, kept per decision)
   - **Worktree internals — contract, do not reorganize:** setup-/remove-worktree-local-dev.ps1, prune-worktree-*.ps1, worktree-*.common.ps1, plus `.env.worktree`/`.env.local`/`.worktreeinclude` semantics in one sentence
   - **Shared helpers:** Common.ps1, _open-env.ps1, test-sql-container.common.ps1
-  Derive each description from the script's own synopsis/header — do not invent behavior. Note retired create-github-issues.ps1 under a one-line History section.
+  Derive each description from the script's own synopsis/header — do not invent behavior.
 - [ ] **Step 2:** Link the index from the repo README's contributor section (one line).
 - [ ] **Step 3: Commit** `docs: add scripts/README.md index`
 
@@ -86,7 +86,7 @@ Check especially: `.github/workflows/*.yml`, `run-coverage.ps1`, `docs/developme
 
 **Files:**
 - Inspect first: `scripts/Common.ps1` (existing Write-* helpers and their styles; deploy.ps1 already uses them — treat deploy.ps1's output as the reference style)
-- Modify (output lines only): `teardown.ps1`, `update.ps1`, `setup-entra-app.ps1`, `setup-dev-entra.ps1`, `publish-cli.ps1`, `kill-dev-ports.ps1`, `test-fast.ps1`, `run-coverage.ps1`, `measure-tests.ps1` (skip if roadmap open question #5 answered "leave"), `open-test/prod-in-browser.ps1` (likely nothing to do — 2 lines each)
+- Modify (output lines only): `teardown.ps1`, `update.ps1`, `setup-entra-app.ps1`, `setup-dev-entra.ps1`, `publish-cli.ps1`, `kill-dev-ports.ps1`, `test-fast.ps1`, `run-coverage.ps1`, `open-test/prod-in-browser.ps1` (likely nothing to do — 2 lines each). `measure-tests.ps1` is EXCLUDED (roadmap decision #5: left as-is).
 
 - [ ] **Step 1:** For each script: dot-source Common.ps1 if not already; replace ad-hoc `Write-Host` status lines with the Common.ps1 helper equivalents (section headers, success ✓ / warn / error styles as defined there); ensure every script ends with a clear one-line success or failure summary and a non-zero exit code on failure (verify the exit-code behavior already exists — do not add new failure handling logic, only surface what's there).
 - [ ] **Step 2:** Parse check all scripts:

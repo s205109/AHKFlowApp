@@ -10,14 +10,14 @@ Ranked candidates for what (if anything) ships as a feature alongside the first 
 
 ## Ranked shortlist
 
-| # | Candidate | Value | Effort | Type |
-|---|---|---|---|---|
-| 1 | Finish winget community-feed submission | High — completes the shipped distribution story | S-M | Release task |
-| 2 | Import existing `.ahk` hotstrings | High — killer onboarding for existing AHK users | M-L | Feature |
-| 3 | CLI scope decision: complete verticals OR document hotstring-focus | Medium-High — product-story coherence | S (decide) / L (build) | Decision + feature |
-| 4 | Data export/backup (JSON) | Medium — trust + migration safety | S-M | Feature |
-| 5 | Hotkey blacklist (reserved Windows combos) | Medium — prevents footguns | M | Feature |
-| 6 | First-run onboarding hints | Medium — first-five-minutes success | S-M | Feature |
+| # | Candidate | Value | Effort | Type | Status |
+|---|---|---|---|---|---|
+| 1 | Finish winget community-feed submission | High — completes the shipped distribution story | S-M | Release task | **Dropped 2026-07-04** — no release planned; packaging stays correct via related code/docs only |
+| 2 | Import existing `.ahk` hotstrings | High — killer onboarding for existing AHK users | M-L | Feature | Awaiting prioritization |
+| 3 | CLI scope decision: complete verticals OR document hotstring-focus | Medium-High — product-story coherence | S (decide) / L (build) | Decision + feature | **Decided 2026-07-04: build.** See [CLI Production Readiness — Design](2026-07-04-cli-production-readiness-design.md) |
+| 4 | Data export/backup (JSON) | Medium — trust + migration safety | S-M | Feature | Awaiting prioritization |
+| 5 | Hotkey blacklist (reserved Windows combos) | Medium — prevents footguns | M | Feature | Awaiting prioritization |
+| 6 | First-run onboarding hints | Medium — first-five-minutes success | S-M | Feature | Awaiting prioritization |
 
 ## Details
 
@@ -54,4 +54,4 @@ Empty-state guidance on Hotstrings/Profiles/Downloads pages (e.g. "Create your f
 
 ## Next step
 
-User picks: which items (if any) are in the first release, and answers roadmap open questions #1/#2. Each approved item then gets its own brainstorm → spec → plan.
+Roadmap questions #1/#2 are answered (CLI: build, own initiative; winget: dropped). Remaining: user picks whether items #2/#4/#5/#6 ship, and when. Each approved item then gets its own brainstorm → spec → plan.

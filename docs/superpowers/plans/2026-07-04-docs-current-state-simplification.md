@@ -13,7 +13,7 @@
 - Feature branch (`feature/docs-simplification`), PR to `main`.
 - **Prerequisite:** plans A and B merged. If not, stop.
 - Optimize for readability. English. Do not rewrite architecture docs; fix and trim only.
-- Historical material is ARCHIVED, not deleted (user decision). Archive home: `docs/superpowers/plans/` unless roadmap open question #6 chose `docs/history/`.
+- Historical material is ARCHIVED, not deleted (user decision). Archive home: `docs/superpowers/plans/` (roadmap decision #6).
 - `docs/superpowers/**` content is historical — never "fix" old specs/plans to match current reality.
 - Every command quoted in the README quickstart must be spot-run before commit.
 
