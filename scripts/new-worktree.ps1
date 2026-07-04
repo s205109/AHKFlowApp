@@ -18,6 +18,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 . (Join-Path $PSScriptRoot 'worktree-git.common.ps1')
+. (Join-Path $PSScriptRoot 'worktree-powershell.common.ps1')
 
 function Write-Stderr {
     param([string] $Message)
@@ -140,7 +141,8 @@ function Invoke-OrphanDockerPrune {
     }
 
     try {
-        $pruneOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $pruneScript -Quiet 2>&1
+        $psExe = Resolve-PowerShellExecutable
+        $pruneOutput = & $psExe -NoProfile -ExecutionPolicy Bypass -File $pruneScript -Quiet 2>&1
         foreach ($line in $pruneOutput) {
             if ($line) {
                 Write-Stderr ([string] $line)
@@ -236,7 +238,8 @@ if (-not (Test-Path -LiteralPath $setupScript)) {
     throw "Setup script was not found in the new worktree: $setupScript"
 }
 
-$setupOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File $setupScript -RepoRoot $worktreePath -Quiet
+$psExe = Resolve-PowerShellExecutable
+$setupOutput = & $psExe -NoProfile -ExecutionPolicy Bypass -File $setupScript -RepoRoot $worktreePath -Quiet
 $setupExitCode = $LASTEXITCODE
 foreach ($line in $setupOutput) {
     if ($line) {
