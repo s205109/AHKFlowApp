@@ -147,16 +147,16 @@ internal static class OwnedIdsValidation
 - Delete: `src/Backend/AHKFlowApp.Infrastructure/Persistence/Configurations/TestMessageConfiguration.cs`
 - Modify: `src/Backend/AHKFlowApp.Infrastructure/Persistence/AppDbContext.cs:10` (drop DbSet) + `IAppDbContext` if it exposes the set
 - Create: migration `RemoveTestMessage`
-- Inspect first: `grep -ri "TestMessage" src tests docs` — remove every reference (tests seeding it, health checks querying it, seed compositions).
+- Inspect first: `grep -ri "TestMessage" src tests docs` — remove every ACTIVE reference (entity, EF config, DbSet on `AppDbContext`/`IAppDbContext`, tests seeding it, health checks querying it, seed compositions). **Historical migrations under `src/Backend/AHKFlowApp.Infrastructure/Migrations/` legitimately contain TestMessages (e.g. `20260407204315_Initial.cs`) — never edit them.**
 
-- [ ] **Step 1: Remove all code references** found by the grep; build must succeed before the migration step.
+- [ ] **Step 1: Remove all active code references** (everything the grep finds outside `Infrastructure/Migrations/`); build must succeed before the migration step.
 - [ ] **Step 2: Add migration:**
 
 ```bash
 dotnet ef migrations add RemoveTestMessage --project src/Backend/AHKFlowApp.Infrastructure --startup-project src/Backend/AHKFlowApp.API
 ```
 
-Review the generated migration: it must contain only `DropTable` for the TestMessage table (name per snapshot) — nothing else.
+Review the generated migration: it must contain only `DropTable` for the TestMessage table (name per snapshot) — nothing else. Confirm the regenerated `AppDbContextModelSnapshot.cs` no longer models TestMessage.
 - [ ] **Step 3: Apply locally** (`dotnet ef database update …` same projects) against Docker SQL; run full test suite (Testcontainers apply migrations from scratch — proves the chain) → PASS; verification trio.
 - [ ] **Step 4: Commit** `chore: remove TestMessage entity + DropTable migration`
 
@@ -171,5 +171,6 @@ Review the generated migration: it must contain only `DropTable` for the TestMes
 - [ ] `dotnet build AHKFlowApp.slnx` — 0 warnings introduced
 - [ ] `dotnet test --configuration Release` (full suite, incl. Testcontainers) — green
 - [ ] `dotnet format AHKFlowApp.slnx --verify-no-changes` — clean
-- [ ] `grep -ri "TestMessage" src tests` — no hits
+- [ ] `grep -ril "TestMessage" src tests | grep -v "Infrastructure/Migrations/"` — no hits (no active entity/config/DbSet/test references)
+- [ ] `grep -i "TestMessage" src/Backend/AHKFlowApp.Infrastructure/Migrations/AppDbContextModelSnapshot.cs` — no hits (current model dropped it); historical migrations + the new `RemoveTestMessage` migration (with its `DropTable("TestMessages")`) are the only remaining mentions, and that is correct
 - [ ] PR to main, single concern: "backend code consistency"
