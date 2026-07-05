@@ -16,6 +16,31 @@ namespace AHKFlowApp.Application.Tests.Hotkeys;
 public sealed class UpdateHotkeyCommandHandlerTests(HotkeyDbFixture fx)
 {
     [Fact]
+    public async Task Handle_WhenForeignProfileId_ReturnsInvalidWithIdentifier()
+    {
+        var owner = Guid.NewGuid();
+        Hotkey entity = new HotkeyBuilder()
+            .WithOwner(owner).WithKey("n").WithCtrl().AppliesToAll().Build();
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotkeys.Add(entity);
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        var handler = new UpdateHotkeyCommandHandler(
+            db, CurrentUserHelper.For(owner), TimeProvider.System, new EntityHistoryRecorder(db, TimeProvider.System));
+        var cmd = new UpdateHotkeyCommand(entity.Id,
+            new UpdateHotkeyDto("x", "n", true, false, false, false, HotkeyAction.Run, "", [Guid.NewGuid()], false));
+
+        Result<HotkeyDto> result = await handler.ExecuteAsync(cmd, default);
+
+        result.Status.Should().Be(ResultStatus.Invalid);
+        result.ValidationErrors.Single().Identifier.Should().Be("Input.ProfileIds");
+    }
+
+    [Fact]
     public async Task Handle_WhenValid_UpdatesAndReturnsUpdatedDto()
     {
         var owner = Guid.NewGuid();

@@ -47,6 +47,45 @@ public sealed class UpdateHotkeyWithCategoriesTests(HotkeyDbFixture fx)
     }
 
     [Fact]
+    public async Task Handle_WhenReplacingProfiles_ReturnsDtoWithExactProfileIds()
+    {
+        var owner = Guid.NewGuid();
+        var entity = Hotkey.Create(owner, "Profile swap", "p", true, false, false, false,
+            HotkeyAction.Send, "", false, _clock);
+        Profile prof1 = new ProfileBuilder().WithOwner(owner).WithName("Old").Build();
+        Profile prof2 = new ProfileBuilder().WithOwner(owner).WithName("New1").AsDefault(false).Build();
+        Profile prof3 = new ProfileBuilder().WithOwner(owner).WithName("New2").AsDefault(false).Build();
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotkeys.Add(entity);
+            seed.Profiles.AddRange(prof1, prof2, prof3);
+            await seed.SaveChangesAsync();
+            seed.HotkeyProfiles.Add(HotkeyProfile.Create(entity.Id, prof1.Id));
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        var handler = new UpdateHotkeyCommandHandler(
+            db, CurrentUserHelper.For(owner), _clock, new EntityHistoryRecorder(db, _clock));
+        var cmd = new UpdateHotkeyCommand(entity.Id,
+            new UpdateHotkeyDto("Profile swap", "p", true, false, false, false,
+                HotkeyAction.Send, "", [prof2.Id, prof3.Id], false));
+
+        Result<HotkeyDto> result = await handler.ExecuteAsync(cmd, default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.ProfileIds.Should().BeEquivalentTo([prof2.Id, prof3.Id]);
+
+        await using AppDbContext verify = fx.CreateContext();
+        List<Guid> dbProfileIds = await verify.HotkeyProfiles
+            .Where(hp => hp.HotkeyId == entity.Id)
+            .Select(hp => hp.ProfileId)
+            .ToListAsync();
+        dbProfileIds.Should().BeEquivalentTo([prof2.Id, prof3.Id]);
+    }
+
+    [Fact]
     public async Task Handle_WhenValidCategoryIds_ReplacesJunctionRows()
     {
         var owner = Guid.NewGuid();
