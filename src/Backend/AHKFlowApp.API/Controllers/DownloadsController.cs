@@ -1,4 +1,3 @@
-using System.IO.Compression;
 using System.Text;
 using AHKFlowApp.API.Extensions;
 using AHKFlowApp.Application.Abstractions;
@@ -20,11 +19,10 @@ namespace AHKFlowApp.API.Controllers;
 public sealed class DownloadsController(
     IUseCase<GenerateProfileScriptQuery, Result<ProfileScript>> generateProfileScript,
     IUseCase<GetProfileScriptPreviewQuery, Result<ProfileScriptPreviewDto>> getProfileScriptPreview,
-    IUseCase<GenerateAllProfileScriptsQuery, Result<IReadOnlyList<ProfileScript>>> generateAllProfileScripts) : ControllerBase
+    IUseCase<GenerateAllProfileScriptsZipQuery, Result<ProfileScriptZip>> generateAllProfileScriptsZip) : ControllerBase
 {
     private const string AhkContentType = "text/plain; charset=utf-8";
     private const string ZipContentType = "application/zip";
-    private const string ZipFileName = "ahkflow_scripts.zip";
 
     /// <summary>Generated AHK v2 script for a single profile.</summary>
     [HttpGet("{profileId:guid}")]
@@ -59,26 +57,10 @@ public sealed class DownloadsController(
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetAllZip(CancellationToken ct)
     {
-        Result<IReadOnlyList<ProfileScript>> result = await generateAllProfileScripts.ExecuteAsync(new GenerateAllProfileScriptsQuery(), ct);
+        Result<ProfileScriptZip> result = await generateAllProfileScriptsZip.ExecuteAsync(new GenerateAllProfileScriptsZipQuery(), ct);
         if (!result.IsSuccess)
             return result.ToProblemActionResult(this).Result!;
 
-        byte[] zipBytes;
-        using (MemoryStream ms = new())
-        {
-            using (ZipArchive archive = new(ms, ZipArchiveMode.Create, leaveOpen: true))
-            {
-                foreach (ProfileScript script in result.Value)
-                {
-                    ZipArchiveEntry entry = archive.CreateEntry(script.FileName, CompressionLevel.Optimal);
-                    using Stream entryStream = await entry.OpenAsync();
-                    using StreamWriter writer = new(entryStream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-                    await writer.WriteAsync(script.Content);
-                }
-            }
-            zipBytes = ms.ToArray();
-        }
-
-        return File(zipBytes, ZipContentType, fileDownloadName: ZipFileName);
+        return File(result.Value.Content, ZipContentType, fileDownloadName: result.Value.FileName);
     }
 }
