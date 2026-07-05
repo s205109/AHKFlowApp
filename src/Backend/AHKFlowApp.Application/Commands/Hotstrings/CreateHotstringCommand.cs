@@ -103,13 +103,8 @@ internal sealed class CreateHotstringCommandHandler(
             return Result.Conflict("A hotstring with this trigger already exists.");
         }
 
-        // Reload profiles so ToDto() has the junction rows that were just inserted
-        List<HotstringProfile> profiles = await db.HotstringProfiles
-            .Where(p => p.HotstringId == entity.Id)
-            .ToListAsync(ct);
-        foreach (HotstringProfile p in profiles)
-            entity.Profiles.Add(p);
-
+        await db.Entry(entity).Collection(h => h.Profiles).LoadAsync(ct);
+        await db.Entry(entity).Collection(h => h.Categories).LoadAsync(ct);
         return Result.Success(entity.ToDto());
     }
 }
