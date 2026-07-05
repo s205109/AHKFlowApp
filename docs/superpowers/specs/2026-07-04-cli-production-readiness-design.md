@@ -89,8 +89,21 @@ Plans 1-4 are independent of each other (parallelizable); each lands as its own 
 | Update commands need read-modify-write semantics (API `PUT` takes full DTO) | Each update command fetches current state, applies only provided flags, sends full DTO — decided here, uniform everywhere |
 | Scope creep into history/recycle-bin | Explicit non-goal; listed as open question for a later decision |
 
-## Open questions
+## Decisions (2026-07-05, user delegated to recommendations)
 
-1. History/recycle-bin/bulk-delete CLI commands: wanted later? (out of v1 parity)
-2. `get/update/delete` addressing: id-only, or name-with-ambiguity-error too? (proposed: both where names are unique; per-vertical plans confirm)
-3. Should plan 5 introduce a global `--quiet`/`--no-color` convention while normalizing output? (only if trivial)
+1. **History/recycle-bin/bulk-delete commands:** deferred post-v1; revisit by demand. Stays a non-goal.
+2. **`get/update/delete` addressing:** accept an id OR the vertical's unique natural key — profile and category by name, hotstring by trigger, hotkey by id only (no single unique field). If the argument parses as a Guid it is treated as an id; name/trigger matching is case-insensitive, mirroring the existing `--profile` resolution.
+3. **`--quiet`/`--no-color`:** no. The CLI already writes plain uncolored text with data on stdout and diagnostics on stderr; the flags would be no-ops.
+
+## Implementation plans
+
+| # | Plan file |
+|---|---|
+| 1 | [2026-07-05-cli-hotstring-completion.md](../plans/2026-07-05-cli-hotstring-completion.md) |
+| 2 | [2026-07-05-cli-hotkey-vertical.md](../plans/2026-07-05-cli-hotkey-vertical.md) |
+| 3 | [2026-07-05-cli-category-vertical.md](../plans/2026-07-05-cli-category-vertical.md) |
+| 4 | [2026-07-05-cli-profile-vertical.md](../plans/2026-07-05-cli-profile-vertical.md) |
+| 5 | [2026-07-05-cli-ux-consistency-pass.md](../plans/2026-07-05-cli-ux-consistency-pass.md) |
+| 6 | [2026-07-05-cli-docs.md](../plans/2026-07-05-cli-docs.md) |
+
+Sequencing refinement discovered while grounding the plans: plan 1 extracts a shared command error-handler (`CliErrors.RunAsync`) from the currently copy-pasted per-command catch chain; plans 2-4 use it when present (and fall back to copying the hotstring chain if executed before plan 1 lands — plan 5 consolidates either way). Category-association flags (`--category` on hotstring/hotkey `new`/`update`) land in plan 5, since they need plan 3's categories client.
