@@ -264,4 +264,4 @@ Primary way to interact with GitHub is the `gh` CLI.
 - **`git config core.symlinks true`** must be set per-repo (default is `false` on Windows)
 - **Roslyn Navigator MCP** (`CWM.RoslynNavigator`) powers the code-navigation calls in the `dck-verify`, `dck-build-fix`, and `dck-de-sloppify` skills — install with `dotnet tool install -g CWM.RoslynNavigator` (registered in the repo's `.mcp.json`). Without it, those skills fall back to Grep/csharp-lsp instead of the richer diagnostics.
 
-Run `scripts/setup-copilot-symlinks.ps1` after cloning to configure symlinks for GitHub Copilot CLI skill discovery.
+Run `scripts/agents/setup-copilot-symlinks.ps1` after cloning to configure symlinks for GitHub Copilot CLI skill discovery.

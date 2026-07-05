@@ -51,7 +51,7 @@ git diff --check
 For skill changes, also run:
 
 ```bash
-pwsh -NoProfile -File scripts/setup-cross-agent-skills.ps1
+pwsh -NoProfile -File scripts/agents/setup-cross-agent-skills.ps1
 ```
 
 ## Code Navigation

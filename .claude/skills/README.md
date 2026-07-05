@@ -1,7 +1,7 @@
 # .claude/skills/
 
 **Generated directory.** Entries are symlinks to `.agents/<skill>/`, created by
-`scripts/setup-cross-agent-skills.ps1` (Windows) or `.sh` (POSIX).
+`scripts/agents/setup-cross-agent-skills.ps1` (Windows) or `.sh` (POSIX).
 
 ## Editing skills
 
@@ -13,7 +13,7 @@ allowlisted entries are removed.
 ## Adding or removing a skill
 
 1. Add or remove `.agents/<skill>/SKILL.md`.
-2. Re-run `scripts/setup-cross-agent-skills.ps1` (or `.sh`).
+2. Re-run `scripts/agents/setup-cross-agent-skills.ps1` (or `.sh`).
 
 A `post-merge` git hook re-runs the setup automatically when `.agents/` or the
 setup scripts change in a pull/merge.
