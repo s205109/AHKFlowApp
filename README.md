@@ -115,7 +115,7 @@ See `docs/deployment/getting-started.md` for provisioning instructions.
 
 ### Releases
 
-Versioning and GitHub Release creation use MinVer tags. Release prep also updates `CHANGELOG.md` and regenerates the in-app changelog asset with `pwsh ./scripts/generate-changelog-json.ps1`. See [docs/development/versioning.md](docs/development/versioning.md) for the release process, including CLI package publishing.
+Versioning and GitHub Release creation use MinVer tags. Release prep also updates `CHANGELOG.md` and regenerates the in-app changelog asset with `pwsh ./scripts/ci/generate-changelog-json.ps1`. See [docs/development/versioning.md](docs/development/versioning.md) for the release process, including CLI package publishing.
 
 ```bash
 dotnet restore AHKFlowApp.slnx

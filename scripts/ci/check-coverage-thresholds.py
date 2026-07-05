@@ -10,10 +10,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 SCRIPT_PATH = Path(__file__).resolve()
-REPO_ROOT = SCRIPT_PATH.parent.parent
+REPO_ROOT = SCRIPT_PATH.parent.parent.parent
 DEFAULT_COBERTURA_PATH = REPO_ROOT / "CoverageReport" / "Cobertura.xml"
 LOCAL_REPRO_COMMAND = r"pwsh .\scripts\run-coverage.ps1"
-THRESHOLD_ONLY_COMMAND = r"python .\scripts\check-coverage-thresholds.py"
+THRESHOLD_ONLY_COMMAND = r"python .\scripts\ci\check-coverage-thresholds.py"
 COVERAGE_GUIDE_PATH = r"docs\development\coverage.md"
 
 

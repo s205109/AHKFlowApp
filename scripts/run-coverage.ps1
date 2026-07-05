@@ -24,7 +24,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $coverageReportDirectory = Join-Path $repoRoot 'CoverageReport'
 $summaryJsonPath = Join-Path $coverageReportDirectory 'Summary.json'
 $summaryGithubPath = Join-Path $coverageReportDirectory 'SummaryGithub.md'
-$thresholdScriptPath = Join-Path $repoRoot 'scripts' 'check-coverage-thresholds.py'
+$thresholdScriptPath = Join-Path $repoRoot 'scripts' 'ci' 'check-coverage-thresholds.py'
 $sharedSqlScript = Join-Path $PSScriptRoot 'test-sql-container.common.ps1'
 . $sharedSqlScript
 
