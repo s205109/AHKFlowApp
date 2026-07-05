@@ -18,6 +18,10 @@ param()
 $ErrorActionPreference = 'Stop'
 $RepoRoot = Split-Path $PSScriptRoot -Parent
 
+. "$PSScriptRoot\Common.ps1"
+
+Write-Step "Configuring local dev Entra ID app registration"
+
 $EntraScript = Join-Path $PSScriptRoot 'setup-entra-app.ps1'
 $entraOutput = @(& $EntraScript -Environment dev -SkipDevNextSteps)
 $entra = $entraOutput | Where-Object {
@@ -41,13 +45,13 @@ foreach ($line in @(dotnet user-secrets list --project $apiProject 2>$null)) {
 
 function Set-UserSecretIdempotent([string] $Key, [string] $Value) {
     if ($currentSecrets[$Key] -eq $Value) {
-        Write-Host "  $Key already set"
+        Write-Success "$Key already set"
         return
     }
     $action = if ($currentSecrets.ContainsKey($Key)) { 'updated' } else { 'set' }
     dotnet user-secrets set $Key $Value --project $apiProject | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "dotnet user-secrets set $Key failed (exit $LASTEXITCODE)" }
-    Write-Host "  $Key $action"
+    Write-Success "$Key $action"
 }
 
 Set-UserSecretIdempotent 'AzureAd:TenantId' $entra.TenantId
@@ -80,12 +84,11 @@ if (Test-Path $feSettings) {
 }
 
 if ($feUpToDate) {
-    Write-Host "  Frontend appsettings.Development.json already up to date"
+    Write-Success "Frontend appsettings.Development.json already up to date"
 } else {
     $action = if (Test-Path $feSettings) { 'updated' } else { 'written' }
     $json | ConvertTo-Json -Depth 5 | Set-Content -Path $feSettings -Encoding UTF8
-    Write-Host "  Frontend appsettings.Development.json $action"
+    Write-Success "Frontend appsettings.Development.json $action"
 }
 
-Write-Host ""
-Write-Host "Dev Entra setup complete — backend secrets and frontend config are in place. No manual steps needed." -ForegroundColor Green
+Write-Success "Dev Entra setup complete — backend secrets and frontend config are in place. No manual steps needed."

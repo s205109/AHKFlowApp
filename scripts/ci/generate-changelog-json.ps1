@@ -9,7 +9,7 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-$repoRoot = Split-Path -Parent $PSScriptRoot
+$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 if ([string]::IsNullOrWhiteSpace($InputPath)) {
     $InputPath = Join-Path $repoRoot 'CHANGELOG.md'
 }
@@ -139,7 +139,7 @@ if ($Check) {
 
     $existing = [System.IO.File]::ReadAllText($OutputPath) -replace "`r`n", "`n"
     if ($existing -ne $normalizedJson) {
-        throw "Generated changelog asset is out of date. Run: pwsh ./scripts/generate-changelog-json.ps1"
+        throw "Generated changelog asset is out of date. Run: pwsh ./scripts/ci/generate-changelog-json.ps1"
     }
 
     Write-Host 'Generated changelog asset is current.'
