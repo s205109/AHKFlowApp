@@ -23,6 +23,6 @@ It creates the branch, places the worktree under `.claude/worktrees/<name>/`, co
 
 ## Removing
 
-`pwsh -NoProfile -File scripts/remove-worktree-local-dev.ps1 -WorktreePath .claude\worktrees\<name>` tears down isolation cleanly (drops the DB, removes the Docker Compose project, deletes the branch). Without `-WorktreePath` it is a no-op.
+`pwsh -NoProfile -File scripts/remove-worktree-local-dev.ps1 -WorktreePath .claude\worktrees\<name>` removes the worktree and deletes the branch (`git branch -d`), then drops the DB and removes the Docker Compose project — but only if that branch delete succeeds. If the branch has unmerged commits, `git branch -d` fails and DB/Docker cleanup is skipped; the next `new-worktree.ps1` run's orphan prune, or `scripts\prune-worktree-databases.ps1` / `scripts\prune-worktree-docker.ps1`, reclaim them later. Without `-WorktreePath` it is a no-op.
 
 Worktrees deleted with plain git skip the `WorktreeRemove` hook; the next `new-worktree.ps1` run sweeps orphaned Docker projects as a safety net.
