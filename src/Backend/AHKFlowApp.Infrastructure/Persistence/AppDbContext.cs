@@ -7,7 +7,6 @@ namespace AHKFlowApp.Infrastructure.Persistence;
 
 public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options), IAppDbContext
 {
-    public DbSet<TestMessage> TestMessages => Set<TestMessage>();
     public DbSet<Hotstring> Hotstrings => Set<Hotstring>();
     public DbSet<HotstringProfile> HotstringProfiles => Set<HotstringProfile>();
     public DbSet<Hotkey> Hotkeys => Set<Hotkey>();
