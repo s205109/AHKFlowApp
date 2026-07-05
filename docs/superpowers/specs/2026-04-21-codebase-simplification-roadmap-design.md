@@ -1,7 +1,7 @@
 # Codebase Simplification Roadmap — Design
 
 **Date:** 2026-04-21
-**Status:** Draft (awaiting user review)
+**Status:** Executed — superseded by [2026-07-04 First-Release Cleanup Roadmap](2026-07-04-first-release-cleanup-roadmap-design.md)
 
 ## Goal
 
