@@ -4,6 +4,20 @@
 
 AHKFlow ships two first-class interfaces over one Web API: an interactive Blazor WebAssembly PWA and the `ahkflow` CLI for scripted, power-user workflows. Install the CLI from [docs/cli/windows-install.md](docs/cli/windows-install.md).
 
+## What is AHKFlow?
+
+AHKFlow lets you define reusable AutoHotkey **hotstrings** (type `btw` → get `by the way`) and **hotkeys**, organize them into **profiles** and **categories**, and generate a valid `.ahk` script per profile. Manage everything from the web UI or the `ahkflow` CLI. AHKFlow generates scripts — it never runs them; you run the downloaded `.ahk` with AutoHotkey v2.
+
+### Getting started (users)
+
+1. Sign in to the web UI.
+2. Create a hotstring (a trigger and its replacement).
+3. Assign it to a profile.
+4. Open **Downloads** and download that profile's `.ahk` script.
+5. With [AutoHotkey v2](https://www.autohotkey.com/) installed, run the `.ahk` file.
+
+Prefer the terminal? Install the CLI (`winget install AHKFlow.CLI`, see [docs/cli/windows-install.md](docs/cli/windows-install.md)) and use `ahkflow login`, `ahkflow hotstring new`, and `ahkflow download ahk`.
+
 ## Local Development
 
 ### Prerequisites
