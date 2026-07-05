@@ -121,3 +121,7 @@ Versioning and GitHub Release creation use MinVer tags. Release prep also update
 dotnet restore AHKFlowApp.slnx
 dotnet build AHKFlowApp.slnx --configuration Release --no-restore
 ```
+
+### Scripts
+
+Repository automation lives in `scripts/` — see [scripts/README.md](scripts/README.md) for the full index.
