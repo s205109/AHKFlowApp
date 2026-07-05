@@ -51,32 +51,23 @@ internal sealed class UpdateHotstringCommandHandler(
         UpdateHotstringDto input = request.Input;
 
         Guid[] distinctProfileIds = input.ProfileIds?.Distinct().ToArray() ?? [];
-        if (!input.AppliesToAllProfiles && distinctProfileIds.Length > 0)
+        if (!input.AppliesToAllProfiles)
         {
-            int validCount = await db.Profiles
-                .CountAsync(p => p.OwnerOid == ownerOid && distinctProfileIds.Contains(p.Id), ct);
-            if (validCount != distinctProfileIds.Length)
-                return Result.Invalid(new ValidationError
-                {
-                    Identifier = "Input.ProfileIds",
-                    ErrorMessage = "One or more ProfileIds do not exist for this user.",
-                });
+            ValidationError? profileError = await OwnedIdsValidation.CheckOwnedIdsAsync(
+                db.Profiles, p => p.OwnerOid == ownerOid && distinctProfileIds.Contains(p.Id),
+                distinctProfileIds, "ProfileIds", ct);
+            if (profileError is not null)
+                return Result.Invalid(profileError);
         }
 
         string? description = string.IsNullOrWhiteSpace(input.Description) ? null : input.Description.Trim();
 
         Guid[] distinctCategoryIds = input.CategoryIds?.Distinct().ToArray() ?? [];
-        if (distinctCategoryIds.Length > 0)
-        {
-            int validCount = await db.Categories
-                .CountAsync(c => c.OwnerOid == ownerOid && distinctCategoryIds.Contains(c.Id), ct);
-            if (validCount != distinctCategoryIds.Length)
-                return Result.Invalid(new ValidationError
-                {
-                    Identifier = "Input.CategoryIds",
-                    ErrorMessage = "One or more CategoryIds do not exist for this user.",
-                });
-        }
+        ValidationError? categoryError = await OwnedIdsValidation.CheckOwnedIdsAsync(
+            db.Categories, c => c.OwnerOid == ownerOid && distinctCategoryIds.Contains(c.Id),
+            distinctCategoryIds, "CategoryIds", ct);
+        if (categoryError is not null)
+            return Result.Invalid(categoryError);
 
         EntityHistory historyEntry = await recorder.RecordHotstringAsync(entity, HistoryChangeType.Edit, ct);
 
@@ -89,25 +80,22 @@ internal sealed class UpdateHotstringCommandHandler(
             input.IsTriggerInsideWord,
             clock);
 
-        // Replace junction rows
+        // Replace junction rows via the navigation collections only; adding to the
+        // DbSet as well would double-add through EF navigation fixup
         db.HotstringProfiles.RemoveRange(entity.Profiles);
         entity.Profiles.Clear();
 
         if (!input.AppliesToAllProfiles && distinctProfileIds.Length > 0)
         {
             foreach (Guid pid in distinctProfileIds)
-            {
-                var junction = HotstringProfile.Create(entity.Id, pid);
-                db.HotstringProfiles.Add(junction);
-                entity.Profiles.Add(junction);
-            }
+                entity.Profiles.Add(HotstringProfile.Create(entity.Id, pid));
         }
 
         db.HotstringCategories.RemoveRange(entity.Categories);
         entity.Categories.Clear();
 
         foreach (Guid cid in distinctCategoryIds)
-            db.HotstringCategories.Add(HotstringCategory.Create(entity.Id, cid));
+            entity.Categories.Add(HotstringCategory.Create(entity.Id, cid));
 
         try
         {

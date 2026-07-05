@@ -25,7 +25,7 @@ internal static class HotstringRules
     /// <summary>
     /// Adds profile-association validation rules to a validator.
     /// When <paramref name="appliesToAll"/> is true, <paramref name="profileIds"/> must be null/empty.
-    /// When false, at least one non-empty GUID must be provided.
+    /// When false, at least one non-empty, non-duplicated GUID must be provided.
     /// Failures key off the <paramref name="profileIds"/> expression so PropertyName matches the DTO path (e.g. "Input.ProfileIds").
     /// </summary>
     public static void AddProfileAssociationRules<T>(
@@ -52,5 +52,11 @@ internal static class HotstringRules
             .Must(ids => ids is null || ids.All(id => id != Guid.Empty))
             .When(x => !appliesToAllFn(x))
             .WithMessage("ProfileIds must not contain empty GUIDs.");
+
+        // No duplicate GUIDs in the array
+        validator.RuleFor(profileIds)
+            .Must(ids => ids is null || ids.Length == ids.Distinct().Count())
+            .When(x => !appliesToAllFn(x))
+            .WithMessage("ProfileIds must not contain duplicates.");
     }
 }
