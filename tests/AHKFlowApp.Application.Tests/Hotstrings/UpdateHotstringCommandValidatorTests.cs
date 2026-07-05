@@ -65,6 +65,18 @@ public sealed class UpdateHotstringCommandValidatorTests
     }
 
     [Fact]
+    public void Validate_ProfileScoped_DuplicateProfileIds_Fails()
+    {
+        var id = Guid.NewGuid();
+
+        ValidationResult result = _sut.Validate(Cmd(appliesToAllProfiles: false, profileIds: [id, id]));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e =>
+            e.ErrorMessage == "ProfileIds must not contain duplicates.");
+    }
+
+    [Fact]
     public void Validate_WithEmptyTrigger_Fails()
     {
         ValidationResult result = _sut.Validate(Cmd(trigger: ""));
