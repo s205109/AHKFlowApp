@@ -26,7 +26,7 @@ Prefer the terminal? Install the CLI (`winget install AHKFlow.CLI`, see [docs/cl
 
 ### Running Locally
 
-> **First-time setup (Options 1 and 2 only):** run `pwsh scripts/setup-dev-entra.ps1` once after cloning. It creates or repairs the dev Entra ID app registration, waits for the required redirect URI/scope/service-principal wiring to become visible, sets backend user-secrets, and writes `src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/appsettings.Development.json`. Skip for Option 3 (no Azure AD).
+> **First-time setup (Option 1 only):** run `pwsh scripts/setup-dev-entra.ps1` once after cloning. It creates or repairs the dev Entra ID app registration, waits for the required redirect URI/scope/service-principal wiring to become visible, sets backend user-secrets, and writes `src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/appsettings.Development.json`. Skip for Option 2 (Docker Compose uses synthetic auth — no Azure AD).
 
 **Option 1 — Root launcher (recommended):**
 
@@ -42,13 +42,13 @@ dotnet run --launch-profile "API + LocalDB"
 
 API on http://localhost:5600 (OpenAPI at `/swagger/v1/swagger.json`), UI on http://localhost:5601. To run the API and UI in separate terminals, see [docs/development/docker-setup.md](docs/development/docker-setup.md).
 
-**Option 2 — Docker Compose:**
+If the Microsoft sign-in page shows `AADSTS500011`, rerun `pwsh scripts/setup-dev-entra.ps1` from the repo root and try again. That page is hosted by Microsoft, so the Blazor app cannot replace it before the redirect returns.
 
-See `docs/development/docker-setup.md`. **x64 / amd64 only** — the SQL Server image has no ARM64 build, so this stack does not run on Apple Silicon or Raspberry Pi without changing the database backend.
+**Option 2 — Docker Compose (no Azure AD, homelab / trusted-LAN):**
 
-**Option 3 — Run locally without Azure (homelab / trusted-LAN):**
+Runs the full stack — SQL Server, API, and Blazor frontend — in containers with no Azure AD sign-in. Authentication is bypassed via a synthetic `Local User` identity on every request (`Auth__UseTestProvider=true` in `docker-compose.yml`). nginx in the UI container reverse-proxies `/api/` to the API service, so the browser only ever talks to a single origin. See `docs/development/docker-setup.md` for details.
 
-Runs the full stack — SQL Server, API, and Blazor frontend — with no Azure AD sign-in. Authentication is bypassed via a synthetic `Local User` identity on every request. nginx in the UI container reverse-proxies `/api/` to the API service, so the browser only ever talks to a single origin.
+**x64 / amd64 only** — the SQL Server image has no ARM64 build, so this stack does not run on Apple Silicon or Raspberry Pi without changing the database backend.
 
 > **Trust model.** The synthetic auth provider authenticates *every* request as the same fixed user. This is acceptable for **single-user homelab use on a trusted LAN only**. Do not expose this configuration to the public internet. The API throws on startup if `Auth:UseTestProvider=true` is set in any environment other than `Development`.
 
@@ -59,8 +59,6 @@ docker compose up --build
 ```
 
 Open http://localhost:5601 in a browser. The app loads as `Local User` with no sign-in prompt. The "Log out" button is disabled (real sign-out requires Entra ID).
-
-If the Microsoft sign-in page shows `AADSTS500011`, rerun `pwsh scripts/setup-dev-entra.ps1` from the repo root and try again. That page is hosted by Microsoft, so the Blazor app cannot replace it before the redirect returns.
 
 | Service | URL |
 |---|---|
