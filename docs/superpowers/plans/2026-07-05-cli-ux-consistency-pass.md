@@ -63,7 +63,7 @@
 - Modify: `Commands/Hotstrings/NewHotstringCommand.cs`, `UpdateHotstringCommand.cs`, `Commands/Hotkeys/NewHotkeyCommand.cs`, `UpdateHotkeyCommand.cs` (+ their tests)
 - Consumes: `ICategoriesApiClient` (plan 3), `CategoryResolver` matching pattern
 
-Flag: `--category/-c` (repeatable, category NAME, resolved to ids via `ICategoriesApiClient.ListAsync` exact `OrdinalIgnoreCase` match; unknown name → stderr listing available names, exit 2 — mirroring `--profile` resolution). On `update`, `--category` replaces the set; omitting it preserves the current set (read-modify-write already does).
+Flag: `--category/-c` (repeatable, category NAME, resolved to ids via plan 3's paging `CategoryResolver.ResolveAsync` — NOT a single `ListAsync` page, since the API caps `pageSize` at 200; unknown name → stderr `Category '<name>' not found. Run 'ahkflow category list' to see available categories.` exit 2). On `update`, `--category` replaces the set; omitting it preserves the current set (read-modify-write already does).
 
 - [ ] **Step 1:** Unit tests: create with 2 categories (assert `CategoryIds` in POST body), unknown category → 2, update replaces set, omit preserves. **Step 2:** implement on all four commands. **Step 3:** integration: extend hotstring + hotkey integration flows with a category association step. **Step 4:** trio + full solution tests. **Commit** `feat(cli): --category association on hotstring/hotkey new+update`
 

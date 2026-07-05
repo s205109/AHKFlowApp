@@ -79,11 +79,14 @@ return Result.Invalid(new ValidationError
 **Files:**
 - Modify: `src/Backend/AHKFlowApp.Application/Validation/HotkeyRules.cs:34` (`ValidProfileAssociation<T>` → `AddProfileAssociationRules<T>`)
 - Modify: call sites — `Commands/Hotkeys/CreateHotkeyCommand.cs:23`, `Commands/Hotkeys/UpdateHotkeyCommand.cs` (find with `grep -r "ValidProfileAssociation" src tests`)
-- Inspect first: `src/Backend/AHKFlowApp.Application/Validation/HotstringRules.cs:31` (the kept name) — confirm both helpers' rule sets are semantically identical; if one has a rule the other lacks, align the rules too and note it in the commit body.
+- Inspect first: `src/Backend/AHKFlowApp.Application/Validation/HotstringRules.cs:31` (the kept name).
 
-- [ ] **Step 1: Rename** method + update all call sites (mechanical; csharp-lsp rename or find/replace).
-- [ ] **Step 2: Run** verification trio (behavior unchanged → full test suite green).
-- [ ] **Step 3: Commit** `refactor: unify profile-association validator helper name`
+**Known rule-set difference (verified):** the Hotkey helper (`HotkeyRules.cs:56-59`) has a fourth rule rejecting duplicate ProfileIds; the Hotstring helper has only three — the hotstring create handler silently dedupes instead (`CreateHotstringCommand.cs:48` `Distinct()`). Unifying on the 4-rule set is a DELIBERATE BEHAVIOR CHANGE: hotstring create/update with duplicate ProfileIds moves from silently-deduped 2xx to 400 validation error. This is the consistent, stricter choice — apply it.
+
+- [ ] **Step 1: Write failing tests** (both hotstring create and update): duplicate ProfileIds in the request → `Result.Invalid` with message "ProfileIds must not contain duplicates." Run → FAIL (currently deduped and accepted).
+- [ ] **Step 2: Unify** — single 4-rule helper named `AddProfileAssociationRules<T>`; update all call sites in both verticals (`grep -r "ValidProfileAssociation\|AddProfileAssociationRules" src tests`). Keep the handler `Distinct()` calls as defense-in-depth (they're now unreachable for duplicates but harmless).
+- [ ] **Step 3: Run** verification trio + the new tests → PASS. Check the frontend/CLI never send duplicates (`grep -rn "ProfileIds" src/Frontend src/Tools` — set-based UI selection makes duplicates unlikely; note findings in the commit body).
+- [ ] **Step 4: Commit** `refactor: unify profile-association rules; reject duplicate ProfileIds for hotstrings` (body: notes the intentional 2xx→400 change for duplicate ids).
 
 ### Task 4: Fix update-handler category-junction asymmetry (both verticals)
 

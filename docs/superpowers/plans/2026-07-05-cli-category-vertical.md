@@ -53,10 +53,10 @@ public sealed record UpdateCategoryDto(string Name);
 
 **Files:**
 - Create: `Output/CategoryTableFormatter.cs` (columns: Name, Created, Updated), `Output/CategoryJsonFormatter.cs` (page + single-object writers, casing per Hotstring JSON formatter)
-- Create: `Commands/Categories/CategoryResolver.cs` — `static Task<CategoryDto?> ResolveAsync(ICategoriesApiClient client, string target, CancellationToken ct)`: Guid → `GetAsync` (404 → null); else `ListAsync(search: target, page:1, pageSize:200)` + exact `OrdinalIgnoreCase` name match
+- Create: `Commands/Categories/CategoryResolver.cs` — `static Task<CategoryDto?> ResolveAsync(ICategoriesApiClient client, string target, CancellationToken ct)`: Guid → `GetAsync` (404 → null); else resolve by name **paging until found or exhausted** (API caps `pageSize` at 200; `search` is a substring match applied before paging, so the exact name can sit beyond page 1): loop `ListAsync(search: target, page: n, pageSize: 200)` for n = 1, 2, … while no exact `OrdinalIgnoreCase` name match and `result.HasNextPage`; return null when exhausted
 - Test: `Output/CategoryTableFormatterTests.cs`, `Output/CategoryJsonFormatterTests.cs`, `Commands/Categories/CategoryResolverTests.cs`
 
-- [ ] **Step 1:** Tests first (id path, name path, miss → null). **Step 2:** implement. **Step 3:** verification trio. **Commit** `feat(cli): category formatters + resolver`
+- [ ] **Step 1:** Tests first (id path, name path, **name match on page 2** — stub returns a full 200-item page 1 without the target, then page 2 containing it — miss after all pages → null). **Step 2:** implement. **Step 3:** verification trio. **Commit** `feat(cli): category formatters + resolver`
 
 ### Task 3: Commands (new/list/get/update/delete) + group wiring
 

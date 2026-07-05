@@ -102,9 +102,9 @@ plus a CLI mirror `UpdateHotstringDto(string Trigger, string Replacement, Guid[]
 - Create: `Output/HotstringDetailFormatter.cs` (key-value lines: Id, Trigger, Replacement, Description, Profiles (names), Options, Created, Updated) — JSON path reuses `HotstringJsonFormatter` conventions for a single object
 - Test: `Commands/Hotstrings/GetHotstringCommandTests.cs`, `Output/HotstringDetailFormatterTests.cs`
 
-**Resolution rule (spec decision #2, reuse in T5/T6):** argument `target`; if `Guid.TryParse(target, out var id)` → `GetAsync(id)`. Else resolve by trigger: `ListAsync(profileId: null, search: target, page: 1, pageSize: 200)` then exact `OrdinalIgnoreCase` match on `Trigger`; no match → stderr `Hotstring '<target>' not found.` exit 2. Extract this as `private static` helper `ResolveAsync` in a new `Commands/Hotstrings/HotstringResolver.cs` so update/delete share it.
+**Resolution rule (spec decision #2, reuse in T5/T6):** argument `target`; if `Guid.TryParse(target, out var id)` → `GetAsync(id)`. Else resolve by trigger, **paging until found or exhausted** — the API caps `pageSize` at 200 and `search` is a substring match applied before paging, so the exact trigger can sit beyond page 1: loop `ListAsync(profileId: null, search: target, page: n, pageSize: 200)` for n = 1, 2, … while no exact `OrdinalIgnoreCase` match on `Trigger` and `result.HasNextPage`. No match after the last page → stderr `Hotstring '<target>' not found.` exit 2. Extract this as `private static` helper `ResolveAsync` in a new `Commands/Hotstrings/HotstringResolver.cs` so update/delete share it.
 
-- [ ] **Step 1:** Unit tests: id path, trigger path, not-found → 2, `--json` emits single-object JSON. **Step 2:** implement (body wrapped in `CliErrors.RunAsync`). **Step 3:** verification trio. **Step 4: Commit** `feat(cli): hotstring get`
+- [ ] **Step 1:** Unit tests: id path, trigger path, **trigger match on page 2** (stub returns a full 200-item page 1 without the target, then page 2 containing it), not-found → 2, `--json` emits single-object JSON. **Step 2:** implement (body wrapped in `CliErrors.RunAsync`). **Step 3:** verification trio. **Step 4: Commit** `feat(cli): hotstring get`
 
 ### Task 5: `ahkflow hotstring update <id|trigger>`
 

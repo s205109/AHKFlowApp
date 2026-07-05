@@ -44,10 +44,15 @@ Check especially: `.github/workflows/*.yml`, `run-coverage.ps1`, `docs/developme
 - Modify: every Task-1 hit — expected at minimum: `.github/workflows/ci.yml` (two python invocations: summary footer + threshold enforcement), any workflow invoking generate-changelog-json.ps1, `scripts/run-coverage.ps1` (if it calls the python gate), `docs/development/coverage.md`, `docs/development/versioning.md`.
 
 - [ ] **Step 1:** `git mv` both files; update all references.
-- [ ] **Step 2:** Add a header comment to `generate-changelog-json.ps1`'s invocation site (workflow) noting it requires PS 7 (`#Requires -Version 7.0`) and runs in CI where pwsh is available.
-- [ ] **Step 3:** Local checks: `python scripts/ci/check-coverage-thresholds.py --help` (or a no-arg dry run against an existing CoverageReport if available); `scripts/run-coverage.ps1` end-to-end.
-- [ ] **Step 4: Commit** `chore: move CI-internal scripts to scripts/ci`
-- [ ] **Step 5:** Push branch; confirm the CI run is green (coverage steps find the new path) before continuing.
+- [ ] **Step 2:** Fix repo-root derivation inside BOTH moved scripts — they currently assume they sit one level below repo root, which becomes false in `scripts/ci/`:
+  - `check-coverage-thresholds.py:13`: `REPO_ROOT = SCRIPT_PATH.parent.parent` → `SCRIPT_PATH.parent.parent.parent`; also update the self-referencing message strings `LOCAL_REPRO_COMMAND`/`THRESHOLD_ONLY_COMMAND` (lines ~15-16) to the new `scripts\ci\` path.
+  - `generate-changelog-json.ps1:12`: `$repoRoot = Split-Path -Parent $PSScriptRoot` → `Split-Path -Parent (Split-Path -Parent $PSScriptRoot)`.
+- [ ] **Step 3:** Add a header comment to `generate-changelog-json.ps1`'s invocation site (workflow) noting it requires PS 7 (`#Requires -Version 7.0`) and runs in CI where pwsh is available.
+- [ ] **Step 4:** Verify DEFAULT-path execution from the new location (not `--help`):
+  - `scripts/run-coverage.ps1` end-to-end, then `python scripts/ci/check-coverage-thresholds.py` with no args — must find `<repo>/CoverageReport/Cobertura.xml`.
+  - `pwsh scripts/ci/generate-changelog-json.ps1` with no args — must read `<repo>/CHANGELOG.md` and write `<repo>/src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/changelog.json` (confirm with `git status`, then discard the regenerated file if unchanged content is expected).
+- [ ] **Step 5: Commit** `chore: move CI-internal scripts to scripts/ci`
+- [ ] **Step 6:** Push branch; confirm the CI run is green (coverage steps find the new path) before continuing.
 
 ### Task 3: Move agent-config scripts to scripts/agents/
 
