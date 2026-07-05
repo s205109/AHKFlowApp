@@ -23,10 +23,11 @@ already merged into `main`, removing the finished ones.
 
 - No `git fetch` before the merge check — local `main` is used as-is.
 - No remote/GitHub (`gh`) merge detection — local `git branch --merged` only.
-- No per-worktree removal grain — interactive removal is a single batch confirmation.
-- Cleanup is never the default: removal requires an explicit opt-in — either an
-  interactive confirmation, or the `-Cleanup` flag. There is no mode that removes
-  worktrees on plain creation without one of those.
+- No per-worktree removal grain — the interactive opt-in is a single y/n question
+  covering all eligible worktrees at once.
+- Cleanup is never the default: removal requires an explicit opt-in — either
+  answering the single interactive question, or passing `-Cleanup`. There is no
+  mode that removes worktrees on plain creation without one of those.
 
 ## Behavior
 
@@ -60,17 +61,19 @@ Two independent signals, resolved in this order:
 | Context | `-Cleanup` | Behavior |
 | --- | --- | --- |
 | Hook (`WorktreeCreate`) | n/a | Never prompt, never remove. Detection runs; eligible worktrees are logged to stderr for visibility only. |
-| Direct, interactive console | no | Ask one gate question: `Clean up merged worktrees? (y/n)`. Yes → list + batch-confirm `Remove these N worktrees? (y/n)`. No → skip. |
-| Direct, interactive console | yes | Skip the gate. List + batch-confirm directly. |
+| Direct, interactive console | no | List the eligible worktrees, then ask one question: `Clean up merged worktrees? (y/n)`. Yes → remove all listed. No → skip. |
+| Direct, interactive console | yes | Remove all eligible worktrees without asking; list each removal. |
 | Direct, non-interactive (redirected stdin) | no | Skip cleanup. No opt-in given and we cannot prompt, so nothing is removed. |
-| Direct, non-interactive (redirected stdin) | yes | `-Cleanup` **is** the opt-in and the confirmation. Remove all eligible worktrees without prompting; log each removal. |
+| Direct, non-interactive (redirected stdin) | yes | Remove all eligible worktrees without asking; log each removal. |
 
 Notes:
 
-- The gate question is asked **only** on a direct interactive run without `-Cleanup`.
-- `-Cleanup` means "the user has decided to clean up." Interactively it still shows
-  the eligible list and one batch confirm (a last look); non-interactively there is
-  no one to confirm, so the flag itself authorizes removal.
+- There is exactly **one** interactive prompt, and only on a direct interactive run
+  without `-Cleanup`: the single `Clean up merged worktrees? (y/n)` question, shown
+  after the eligible list. There is no second per-worktree or batch confirmation.
+- `-Cleanup` means "the user has already decided to clean up" — it always removes
+  every eligible worktree with no prompt, interactive or not (the eligible list is
+  still printed for the record).
 - Without `-Cleanup` and without a console, cleanup is skipped entirely — removal
   never happens without an explicit opt-in.
 - If detection finds nothing eligible, no question is asked and nothing is printed
@@ -98,17 +101,15 @@ eligible, even if its branch is merged — this protects in-progress edits.
 
 ### Removal
 
-After the user confirms, each eligible worktree is removed by shelling out to the
-existing `scripts/remove-worktree-local-dev.ps1 -WorktreePath <path>`. That path
-already handles:
+Once cleanup is authorized (the single `y` answer, or `-Cleanup`), each eligible
+worktree is removed by shelling out to the existing
+`scripts/remove-worktree-local-dev.ps1 -WorktreePath <path>`. That path already
+handles:
 
 - `git branch -d` (refuses unmerged branches as a second safety net),
 - per-worktree database drop and Docker Compose project teardown,
 - the Windows lock-safe detached-watcher removal (a worktree still open in another
   session/editor is removed once its lock releases).
-
-Batch confirmation wording: `Remove these N worktrees? (y/n)`, after listing the
-eligible worktree names/paths.
 
 ## Architecture
 
@@ -120,11 +121,13 @@ Responsibilities:
   checkout.
 - Determine eligibility (merged + clean) per worktree, using the `--format`
   branch query from Detection.
-- Own the gate question, the eligible-list display, and the batch confirmation.
+- Own the eligible-list display and the single `Clean up merged worktrees? (y/n)`
+  question (asked only on a direct interactive run without `-Cleanup`).
 - Invoke `remove-worktree-local-dev.ps1` per removed worktree.
 - Accept the caller's `$isHook` and `-Cleanup` state and drive the decision matrix:
-  hook → detect + stderr report only (no prompt, no removal); direct interactive →
-  gate/confirm; direct non-interactive → remove-if-`-Cleanup`, else skip.
+  hook → detect + stderr report only (no prompt, no removal); direct interactive
+  without `-Cleanup` → single question; `-Cleanup` (any console) → remove without
+  asking; direct non-interactive without `-Cleanup` → skip.
 
 `new-worktree.ps1` dot-sources / calls this near the top of its flow, before it
 creates the new worktree, passing through:
@@ -190,8 +193,8 @@ cover:
 - `scripts/README.md` — add `cleanup-merged-worktrees.ps1` to the
   "Worktree internals — contract" table (the files documented as one set).
 - `.agents/worktrees/SKILL.md` (and its plugin + `.claude`/`.github` symlink copies)
-  — document the `-Cleanup`/`-c` flag and the `Clean up merged worktrees? (y/n)`
-  gate question under Creating.
+  — document the `-Cleanup`/`-c` flag (removes without asking) and the single
+  `Clean up merged worktrees? (y/n)` question shown on a plain interactive create.
 
 ## Open questions
 
