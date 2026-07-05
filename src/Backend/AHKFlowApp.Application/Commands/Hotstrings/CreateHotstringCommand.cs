@@ -46,32 +46,23 @@ internal sealed class CreateHotstringCommandHandler(
             return Result.Conflict("A hotstring with this trigger already exists.");
 
         Guid[] distinctProfileIds = input.ProfileIds?.Distinct().ToArray() ?? [];
-        if (!input.AppliesToAllProfiles && distinctProfileIds.Length > 0)
+        if (!input.AppliesToAllProfiles)
         {
-            int validCount = await db.Profiles
-                .CountAsync(p => p.OwnerOid == ownerOid && distinctProfileIds.Contains(p.Id), ct);
-            if (validCount != distinctProfileIds.Length)
-                return Result.Invalid(new ValidationError
-                {
-                    Identifier = "Input.ProfileIds",
-                    ErrorMessage = "One or more ProfileIds do not exist for this user.",
-                });
+            ValidationError? profileError = await OwnedIdsValidation.CheckOwnedIdsAsync(
+                db.Profiles, p => p.OwnerOid == ownerOid && distinctProfileIds.Contains(p.Id),
+                distinctProfileIds, "ProfileIds", ct);
+            if (profileError is not null)
+                return Result.Invalid(profileError);
         }
 
         string? description = string.IsNullOrWhiteSpace(input.Description) ? null : input.Description.Trim();
 
         Guid[] distinctCategoryIds = input.CategoryIds?.Distinct().ToArray() ?? [];
-        if (distinctCategoryIds.Length > 0)
-        {
-            int validCount = await db.Categories
-                .CountAsync(c => c.OwnerOid == ownerOid && distinctCategoryIds.Contains(c.Id), ct);
-            if (validCount != distinctCategoryIds.Length)
-                return Result.Invalid(new ValidationError
-                {
-                    Identifier = "Input.CategoryIds",
-                    ErrorMessage = "One or more CategoryIds do not exist for this user.",
-                });
-        }
+        ValidationError? categoryError = await OwnedIdsValidation.CheckOwnedIdsAsync(
+            db.Categories, c => c.OwnerOid == ownerOid && distinctCategoryIds.Contains(c.Id),
+            distinctCategoryIds, "CategoryIds", ct);
+        if (categoryError is not null)
+            return Result.Invalid(categoryError);
 
         var entity = Hotstring.Create(
             ownerOid,
