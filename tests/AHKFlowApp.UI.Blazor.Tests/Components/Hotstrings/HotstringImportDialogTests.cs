@@ -3,6 +3,7 @@ using AHKFlowApp.UI.Blazor.DTOs;
 using AHKFlowApp.UI.Blazor.Services;
 using Bunit;
 using FluentAssertions;
+using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.Extensions.DependencyInjection;
 using MudBlazor;
 using MudBlazor.Services;
@@ -97,5 +98,43 @@ public sealed class HotstringImportDialogTests : BunitContext, IAsyncLifetime
 
         provider.WaitForAssertion(() =>
             provider.Find("button.confirm-import").HasAttribute("disabled").Should().BeTrue());
+    }
+
+    [Fact]
+    public async Task SelectingOversizedFile_ShowsErrorWithoutCrashing()
+    {
+        IRenderedComponent<MudDialogProvider> provider = await OpenDialogAsync();
+
+        IRenderedComponent<MudFileUpload<IBrowserFile>> fileUpload =
+            provider.FindComponent<MudFileUpload<IBrowserFile>>();
+
+        OversizedBrowserFile oversizedFile = new();
+
+        await provider.InvokeAsync(() => fileUpload.Instance.FilesChanged.InvokeAsync(oversizedFile));
+
+        provider.WaitForAssertion(() =>
+        {
+            provider.Markup.Should().Contain("File exceeds the 1 MB limit.");
+            provider.Find("button.confirm-import").HasAttribute("disabled").Should().BeTrue();
+        });
+
+        // The stubbed stream throws if the guard fails to short-circuit before OpenReadStream.
+        oversizedFile.StreamOpened.Should().BeFalse();
+    }
+
+    private sealed class OversizedBrowserFile : IBrowserFile
+    {
+        public bool StreamOpened { get; private set; }
+
+        public string Name => "oversized.ahk";
+        public DateTimeOffset LastModified => DateTimeOffset.UtcNow;
+        public long Size => 1_048_577;
+        public string ContentType => "text/plain";
+
+        public Stream OpenReadStream(long maxAllowedSize = 512000, CancellationToken cancellationToken = default)
+        {
+            StreamOpened = true;
+            throw new IOException("Should not be called — the size guard must short-circuit first.");
+        }
     }
 }
