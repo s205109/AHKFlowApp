@@ -196,6 +196,7 @@ GitHub Actions workflows in `.github/workflows/`:
 - `deploy-frontend.yml` — build and deploy Blazor to Azure Static Web Apps (TEST on push to main, PROD on manual trigger)
 - `migrate-db.yml` — manual database migration workflow with environment selection
 - `provision.yml` — manual Bicep-only provisioning (advanced path; initial setup always requires `deploy.ps1`)
+- `release-cli.yml` — on `v*` tags: build, test, package `ahkflow-win-x64.zip`, and publish it as a GitHub Release asset (CLI releases / winget source)
 
 **Environments:**
 - **DEV:** Local development environment (`ASPNETCORE_ENVIRONMENT=Development`)

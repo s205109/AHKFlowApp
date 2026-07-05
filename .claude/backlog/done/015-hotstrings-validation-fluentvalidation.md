@@ -18,7 +18,7 @@ As a developer, I want shared validation so that API and CLI behavior is consist
 
 - [x] Hotstring create/update DTOs are validated with FluentValidation.
 - [x] Validation is enforced by the API.
-- [ ] CLI surfaces validation failures in a user-friendly way. _(Deferred to backlog 029 — CLI not yet scaffolded; see AGENTS.md "Out of Scope".)_
+- [x] CLI surfaces validation failures in a user-friendly way. _(Satisfied by backlog 029 — shipped with the CLI.)_
 - [x] Unit tests cover all validator rules and edge cases.
 - [x] Integration tests verify validation errors surface as Problem Details from the API.
 

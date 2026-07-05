@@ -1,5 +1,7 @@
 # Free-tier Azure migration plan
 
+> Historical plan — archived 2026-07-04, content not maintained.
+
 ## Problem
 
 The current Azure deployment model is built around a Linux custom-container API on App Service Basic (B1) and an Azure SQL Basic database. That design hardcodes paid SKUs and also depends on runtime capabilities that are not available on App Service Free (F1), especially custom containers, Always On, and the current managed-identity runtime pattern.

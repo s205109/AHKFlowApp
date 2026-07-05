@@ -1,5 +1,7 @@
 # GitHub Open Source Setup Guide for AHKFlowApp
 
+> Historical one-time setup runbook — archived 2026-07-04, content not maintained.
+
 Quick setup guide for GitHub Issues, Projects, labels, and branch protection.
 
 ---
