@@ -176,13 +176,49 @@ public sealed class HotstringsApiClientTests
         handler.LastRequest.RequestUri!.AbsolutePath.Should().Be($"/api/v1/hotstrings/deleted/{id}");
     }
 
+    [Fact]
+    public async Task PreviewImportAsync_PostsScriptToPreviewRoute()
+    {
+        HotstringImportPreviewDto dto = new([], 0, 0, 0, 0);
+        var handler = StubHttpMessageHandler.JsonResponse(HttpStatusCode.OK, dto);
+
+        ApiResult<HotstringImportPreviewDto> result =
+            await ClientWith(handler).PreviewImportAsync("::btw::by the way");
+
+        result.IsSuccess.Should().BeTrue();
+        handler.LastRequest!.Method.Should().Be(HttpMethod.Post);
+        handler.LastRequest.RequestUri!.ToString().Should().Be("http://localhost/api/v1/hotstrings/import/preview");
+        handler.LastRequestBody.Should().Contain("::btw::by the way");
+    }
+
+    [Fact]
+    public async Task ImportAsync_PostsRequestToImportRoute()
+    {
+        HotstringImportResultDto dto = new(1, 0, []);
+        var handler = StubHttpMessageHandler.JsonResponse(HttpStatusCode.OK, dto);
+
+        ApiResult<HotstringImportResultDto> result = await ClientWith(handler)
+            .ImportAsync(new ImportHotstringsRequestDto("::btw::x", AppliesToAllProfiles: false, ProfileIds: [Guid.NewGuid()]));
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.ImportedCount.Should().Be(1);
+        handler.LastRequest!.Method.Should().Be(HttpMethod.Post);
+        handler.LastRequest.RequestUri!.ToString().Should().Be("http://localhost/api/v1/hotstrings/import");
+    }
+
     private sealed class StubHttpMessageHandler : HttpMessageHandler
     {
         public HttpRequestMessage? LastRequest { get; private set; }
+        public string? LastRequestBody { get; private set; }
         private readonly HttpResponseMessage _response;
         private StubHttpMessageHandler(HttpResponseMessage response) => _response = response;
         public static StubHttpMessageHandler JsonResponse<T>(HttpStatusCode status, T body) => new(new HttpResponseMessage(status) { Content = JsonContent.Create(body) });
         public static StubHttpMessageHandler StatusResponse(HttpStatusCode status) => new(new HttpResponseMessage(status));
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) { LastRequest = request; return Task.FromResult(_response); }
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            LastRequest = request;
+            LastRequestBody = request.Content is null ? null : await request.Content.ReadAsStringAsync(ct);
+            return _response;
+        }
     }
 }
