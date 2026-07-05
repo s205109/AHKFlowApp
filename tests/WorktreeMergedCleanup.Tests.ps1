@@ -1,0 +1,147 @@
+#Requires -Version 5.1
+
+[CmdletBinding()]
+param()
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+$suiteRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
+$scriptsDir = Join-Path $suiteRoot 'scripts'
+
+function Assert-True {
+    param([bool] $Condition, [string] $Message)
+    if (-not $Condition) { throw $Message }
+}
+
+function Assert-Equal {
+    param($Expected, $Actual, [string] $Message)
+    if (-not [string]::Equals([string] $Expected, [string] $Actual, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "$Message (expected '$Expected', got '$Actual')"
+    }
+}
+
+function ConvertTo-Key {
+    param([string] $Value)
+    return ([System.IO.Path]::GetFullPath($Value)).TrimEnd('\', '/').ToLowerInvariant()
+}
+
+function Invoke-TestGit {
+    param([string] $RepoDir, [string[]] $GitArgs)
+    $out = & git -C $RepoDir @GitArgs 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "git $($GitArgs -join ' ') failed: $out"
+    }
+    return $out
+}
+
+# Fresh main-checkout repo under a throwaway root. Returns the repo path; its parent
+# is the root to delete (worktrees are created as siblings of the repo).
+function New-TempGitRepo {
+    $root = Join-Path ([System.IO.Path]::GetTempPath()) ('wtclean-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    $repo = Join-Path $root 'repo'
+    New-Item -ItemType Directory -Path $repo -Force | Out-Null
+
+    & git -C $repo init *> $null
+    # Force the initial branch to 'main' independent of the host's init.defaultBranch.
+    & git -C $repo symbolic-ref HEAD refs/heads/main *> $null
+    & git -C $repo config user.email 'test@example.com' *> $null
+    & git -C $repo config user.name 'Cleanup Test' *> $null
+
+    Set-Content -LiteralPath (Join-Path $repo 'README.md') -Value 'seed' -Encoding utf8
+    Invoke-TestGit $repo @('add', '-A') | Out-Null
+    Invoke-TestGit $repo @('commit', '-m', 'seed') | Out-Null
+
+    return (Resolve-Path -LiteralPath $repo).Path
+}
+
+# Adds a linked worktree on a new branch off main (merged + clean by default).
+# -Unmerged adds a commit not in main; -Dirty leaves an uncommitted change.
+function Add-TestWorktree {
+    param(
+        [string] $RepoDir,
+        [string] $BranchName,
+        [switch] $Unmerged,
+        [switch] $Dirty
+    )
+
+    $wtPath = Join-Path (Split-Path -Parent $RepoDir) ('wt-' + $BranchName)
+    Invoke-TestGit $RepoDir @('worktree', 'add', '-b', $BranchName, $wtPath, 'main') | Out-Null
+
+    if ($Unmerged) {
+        Set-Content -LiteralPath (Join-Path $wtPath 'extra.txt') -Value 'unmerged' -Encoding utf8
+        Invoke-TestGit $wtPath @('add', '-A') | Out-Null
+        Invoke-TestGit $wtPath @('commit', '-m', "work on $BranchName") | Out-Null
+    }
+    if ($Dirty) {
+        Set-Content -LiteralPath (Join-Path $wtPath 'dirty.txt') -Value 'uncommitted' -Encoding utf8
+    }
+
+    return (Resolve-Path -LiteralPath $wtPath).Path
+}
+
+function Remove-TempTree {
+    param([string] $RepoDir)
+    $root = Split-Path -Parent $RepoDir
+    Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# Import the cleanup functions (guard keeps the standalone entrypoint from running).
+. (Join-Path $scriptsDir 'cleanup-merged-worktrees.ps1')
+
+# --- Test: eligibility matrix -------------------------------------------------
+$repo = New-TempGitRepo
+try {
+    $cleanPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-clean'
+    Add-TestWorktree -RepoDir $repo -BranchName 'feat-dirty' -Dirty | Out-Null
+    Add-TestWorktree -RepoDir $repo -BranchName 'feat-unmerged' -Unmerged | Out-Null
+
+    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
+    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
+
+    Assert-Equal 1 $eligible.Count 'Only the merged+clean worktree should be eligible.'
+    Assert-True ($keys -contains (ConvertTo-Key $cleanPath)) 'The merged+clean worktree must be eligible.'
+    Assert-Equal 'feat-clean' $eligible[0].Branch 'Eligible branch short name should be feat-clean.'
+    $mainKey = ConvertTo-Key $repo
+    Assert-True (-not ($keys -contains $mainKey)) 'The main checkout must never be eligible.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: ExcludePath protects the worktree this run is about to create/reuse ---
+$repo = New-TempGitRepo
+try {
+    $targetPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-target'
+
+    # Without exclusion the target itself would be eligible (merged + clean)...
+    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
+    Assert-True ((@($eligible | ForEach-Object { ConvertTo-Key $_.Path })) -contains (ConvertTo-Key $targetPath)) 'Sanity check: the target worktree must be eligible before exclusion is applied.'
+
+    # ...but passing -ExcludePath must remove it from the eligible set, so a run that is
+    # about to create/reuse this exact path can never race its own async removal.
+    $excluded = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main' -ExcludePath $targetPath
+    $excludedKeys = @($excluded | ForEach-Object { ConvertTo-Key $_.Path })
+    Assert-True (-not ($excludedKeys -contains (ConvertTo-Key $targetPath))) '-ExcludePath must exclude the target worktree even though it is merged+clean.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: --format branch parsing (regression guard for the '+ ' marker) ------
+$repo = New-TempGitRepo
+try {
+    $mergedPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-plusprefix'
+
+    # A branch checked out in another worktree is prefixed with '+ ' by plain
+    # `git branch --merged`; a naive parse would drop it. Prove the marker is there...
+    $plain = (Invoke-TestGit $repo @('branch', '--merged', 'main')) -join "`n"
+    Assert-True ($plain -match '(?m)^\+\s+feat-plusprefix$') 'Expected the plain --merged output to prefix the worktree branch with "+ ".'
+
+    # ...then prove detection (which uses --format) still finds it.
+    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
+    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
+    Assert-True ($keys -contains (ConvertTo-Key $mergedPath)) 'A merged branch checked out in a worktree must be detected despite the "+ " marker.'
+} finally {
+    Remove-TempTree $repo
+}
+
+Write-Host 'Worktree merged-cleanup tests passed.'
