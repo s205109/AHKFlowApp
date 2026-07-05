@@ -14,26 +14,21 @@ AHKFlow ships two first-class interfaces over one Web API: an interactive Blazor
 
 > **First-time setup (Options 1 and 2 only):** run `pwsh scripts/setup-dev-entra.ps1` once after cloning. It creates or repairs the dev Entra ID app registration, waits for the required redirect URI/scope/service-principal wiring to become visible, sets backend user-secrets, and writes `src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/appsettings.Development.json`. Skip for Option 3 (no Azure AD).
 
-**Option 1 — LocalDB:**
+**Option 1 — Root launcher (recommended):**
+
+Starts the API and Blazor UI together and opens the browser. The API applies database migrations at startup in Development, so there is no manual migration step.
 
 ```bash
-# Start API + frontend from the repository root
+# Docker SQL (recommended) — starts a SQL Server container automatically
+dotnet run --launch-profile "API + Docker SQL"
+
+# Or LocalDB (Windows, no Docker)
 dotnet run --launch-profile "API + LocalDB"
-# The root launcher starts both projects and opens the Blazor UI
-
-# Apply migrations
-dotnet ef database update \
-  --project src/Backend/AHKFlowApp.Infrastructure \
-  --startup-project src/Backend/AHKFlowApp.API
-
-# Start API (http://localhost:5600, OpenAPI at /swagger/v1/swagger.json)
-dotnet run --project src/Backend/AHKFlowApp.API --launch-profile "LocalDB SQL"
-
-# Start frontend in a separate terminal (http://localhost:5601)
-dotnet run --project src/Frontend/AHKFlowApp.UI.Blazor
 ```
 
-**Option 2 — Docker Compose (recommended):**
+API on http://localhost:5600 (OpenAPI at `/swagger/v1/swagger.json`), UI on http://localhost:5601. To run the API and UI in separate terminals, see [docs/development/docker-setup.md](docs/development/docker-setup.md).
+
+**Option 2 — Docker Compose:**
 
 See `docs/development/docker-setup.md`. **x64 / amd64 only** — the SQL Server image has no ARM64 build, so this stack does not run on Apple Silicon or Raspberry Pi without changing the database backend.
 
