@@ -26,3 +26,14 @@ public sealed record HotstringImportRowDto(
     string[] IgnoredFlags,
     HotstringImportRowStatus Status,
     string? Reason);
+
+/// <summary>Read-only preview of a parsed script, with per-status counts.</summary>
+public sealed record HotstringImportPreviewDto(
+    HotstringImportRowDto[] Rows,
+    int ReadyCount,
+    int WarningCount,
+    int DuplicateCount,
+    int InvalidCount);
+
+/// <summary>Request body for the preview endpoint.</summary>
+public sealed record PreviewHotstringImportRequestDto(string Script);
