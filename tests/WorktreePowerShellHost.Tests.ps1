@@ -44,6 +44,13 @@ $removeWorktreeContent = Get-Content -LiteralPath $removeWorktreePath -Raw
 Assert-DoesNotMatch $removeWorktreeContent 'Join-Path\s+\$PSHOME\s+''powershell\.exe''' 'remove-worktree-local-dev.ps1 must not assume powershell.exe lives under $PSHOME.'
 Assert-True ($removeWorktreeContent -match 'Resolve-PowerShellExecutable') 'remove-worktree-local-dev.ps1 should use the shared PowerShell host resolver.'
 
+$cleanupPath = Join-Path $repoRoot 'scripts\cleanup-merged-worktrees.ps1'
+Assert-True (Test-Path -LiteralPath $cleanupPath) 'Expected cleanup-merged-worktrees.ps1 to exist.'
+$cleanupContent = Get-Content -LiteralPath $cleanupPath -Raw
+Assert-DoesNotMatch $cleanupContent '(?m)&\s+powershell(\.exe)?\s+-NoProfile' 'cleanup-merged-worktrees.ps1 must not launch remove-worktree-local-dev.ps1 through bare powershell.'
+Assert-True ($cleanupContent -match [regex]::Escape('worktree-powershell.common.ps1')) 'cleanup-merged-worktrees.ps1 should use the shared PowerShell host resolver.'
+Assert-True ($cleanupContent -match 'Resolve-PowerShellExecutable') 'cleanup-merged-worktrees.ps1 should resolve the PowerShell host via the shared resolver.'
+
 $claudeSettingsPath = Join-Path $repoRoot '.claude\settings.json'
 $claudeSettingsContent = Get-Content -LiteralPath $claudeSettingsPath -Raw
 Assert-DoesNotMatch $claudeSettingsContent '"command":\s*"powershell\s+-NoProfile\s+-ExecutionPolicy\s+Bypass\s+-File\s+\\"?\$\{CLAUDE_PROJECT_DIR\}\\scripts\\(?:new-worktree|remove-worktree-local-dev)\.ps1' 'Claude Worktree hooks should not hard-code Windows PowerShell.'
