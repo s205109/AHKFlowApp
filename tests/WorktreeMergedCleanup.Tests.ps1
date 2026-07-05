@@ -158,4 +158,66 @@ try {
     Remove-TempTree $repo
 }
 
+# --- Test: hook path keeps stdout to exactly the new worktree path -------------
+function New-WorktreeToolingRepo {
+    param([string] $ScriptsSource)
+
+    $repo = New-TempGitRepo
+
+    $repoScripts = Join-Path $repo 'scripts'
+    New-Item -ItemType Directory -Path $repoScripts -Force | Out-Null
+    # Top-level *.ps1 only: the worktree contract files, without ci/ or a stray .env.worktree.
+    Copy-Item -Path (Join-Path $ScriptsSource '*.ps1') -Destination $repoScripts -Force
+
+    $appSettingsDir = Join-Path $repo 'src\Backend\AHKFlowApp.API'
+    New-Item -ItemType Directory -Path $appSettingsDir -Force | Out-Null
+    $appSettings = '{ "ConnectionStrings": { "DefaultConnection": "Server=localhost;Database=AHKFlowApp;Trusted_Connection=True;" }, "Cors": { "AllowedOrigins": [] } }'
+    Set-Content -LiteralPath (Join-Path $appSettingsDir 'appsettings.json') -Value $appSettings -Encoding utf8
+
+    Set-Content -LiteralPath (Join-Path $repo 'AHKFlowApp.slnx') -Value '<Solution />' -Encoding utf8
+
+    Invoke-TestGit $repo @('add', '-A') | Out-Null
+    Invoke-TestGit $repo @('commit', '-m', 'worktree tooling') | Out-Null
+
+    return $repo
+}
+
+$repo = New-WorktreeToolingRepo -ScriptsSource $scriptsDir
+try {
+    # An eligible (merged + clean) worktree so cleanup has something to report during the run.
+    Add-TestWorktree -RepoDir $repo -BranchName 'feat-eligible' | Out-Null
+
+    $stdinFile = Join-Path (Split-Path -Parent $repo) 'hook-stdin.json'
+    $stdoutFile = Join-Path (Split-Path -Parent $repo) 'hook-stdout.txt'
+    $stderrFile = Join-Path (Split-Path -Parent $repo) 'hook-stderr.txt'
+    Set-Content -LiteralPath $stdinFile -Value '{"name":"brandnew"}' -Encoding utf8
+
+    $psExe = [System.Diagnostics.Process]::GetCurrentProcess().Path
+    $newWorktreeScript = Join-Path $repo 'scripts\new-worktree.ps1'
+    $proc = Start-Process -FilePath $psExe `
+        -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $newWorktreeScript) `
+        -WorkingDirectory $repo `
+        -RedirectStandardInput $stdinFile `
+        -RedirectStandardOutput $stdoutFile `
+        -RedirectStandardError $stderrFile `
+        -NoNewWindow -PassThru -Wait
+
+    Assert-Equal 0 $proc.ExitCode "new-worktree.ps1 hook path should exit 0. Stderr: $(Get-Content -Raw -LiteralPath $stderrFile)"
+
+    $stdout = (Get-Content -Raw -LiteralPath $stdoutFile)
+    $stdoutLines = @(($stdout -split "`r?`n") | Where-Object { $_.Trim() })
+    $expected = ([System.IO.Path]::GetFullPath((Join-Path $repo '.claude\worktrees\brandnew'))).TrimEnd('\', '/')
+
+    Assert-Equal 1 $stdoutLines.Count "Hook stdout must be exactly one line. Got: $stdout"
+    Assert-Equal $expected ($stdoutLines[0].Trim().TrimEnd('\', '/')) 'Hook stdout must be exactly the new worktree path.'
+
+    # Proves cleanup actually ran as part of this hook invocation, not just that stdout
+    # happened to stay clean (which the pre-existing script would already satisfy).
+    $stderrText = Get-Content -Raw -LiteralPath $stderrFile
+    Assert-True ($stderrText -match 'cleanup: eligible merged worktree') "Expected cleanup detection output on stderr proving cleanup ran. Stderr: $stderrText"
+    Assert-True ($stderrText -match 'cleanup: hook context is report-only; nothing removed\.') "Expected the hook-context report-only line on stderr. Stderr: $stderrText"
+} finally {
+    Remove-TempTree $repo
+}
+
 Write-Host 'Worktree merged-cleanup tests passed.'
