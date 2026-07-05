@@ -51,30 +51,22 @@ internal sealed class CreateHotkeyCommandHandler(
         if (duplicate)
             return Result.Conflict("A hotkey with this key + modifier combination already exists.");
 
-        if (!input.AppliesToAllProfiles && input.ProfileIds is { Length: > 0 })
+        Guid[] distinctProfileIds = input.ProfileIds?.Distinct().ToArray() ?? [];
+        if (!input.AppliesToAllProfiles)
         {
-            int validCount = await db.Profiles
-                .CountAsync(p => p.OwnerOid == ownerOid && input.ProfileIds.Contains(p.Id), ct);
-            if (validCount != input.ProfileIds.Length)
-                return Result.Invalid(new ValidationError
-                {
-                    Identifier = "Input.ProfileIds",
-                    ErrorMessage = "One or more ProfileIds do not exist for this user.",
-                });
+            ValidationError? profileError = await OwnedIdsValidation.CheckOwnedIdsAsync(
+                db.Profiles, p => p.OwnerOid == ownerOid && distinctProfileIds.Contains(p.Id),
+                distinctProfileIds, "ProfileIds", ct);
+            if (profileError is not null)
+                return Result.Invalid(profileError);
         }
 
         Guid[] distinctCategoryIds = input.CategoryIds?.Distinct().ToArray() ?? [];
-        if (distinctCategoryIds.Length > 0)
-        {
-            int validCount = await db.Categories
-                .CountAsync(c => c.OwnerOid == ownerOid && distinctCategoryIds.Contains(c.Id), ct);
-            if (validCount != distinctCategoryIds.Length)
-                return Result.Invalid(new ValidationError
-                {
-                    Identifier = "Input.CategoryIds",
-                    ErrorMessage = "One or more CategoryIds do not exist for this user.",
-                });
-        }
+        ValidationError? categoryError = await OwnedIdsValidation.CheckOwnedIdsAsync(
+            db.Categories, c => c.OwnerOid == ownerOid && distinctCategoryIds.Contains(c.Id),
+            distinctCategoryIds, "CategoryIds", ct);
+        if (categoryError is not null)
+            return Result.Invalid(categoryError);
 
         var entity = Hotkey.Create(
             ownerOid,
@@ -91,9 +83,9 @@ internal sealed class CreateHotkeyCommandHandler(
 
         db.Hotkeys.Add(entity);
 
-        if (!input.AppliesToAllProfiles && input.ProfileIds is { Length: > 0 })
+        if (!input.AppliesToAllProfiles && distinctProfileIds.Length > 0)
         {
-            foreach (Guid pid in input.ProfileIds)
+            foreach (Guid pid in distinctProfileIds)
                 db.HotkeyProfiles.Add(HotkeyProfile.Create(entity.Id, pid));
         }
 
