@@ -48,12 +48,19 @@ text. Output: list of parsed rows. Per line:
   `IgnoredFlags`, row status **Warning**, still importable.
 - Comment lines (`;`), blank lines, hotkeys, directives, plain code → silently ignored
   (not hotstrings; not reported).
-- Trigger/replacement checked against `HotstringRules` constants (trigger ≤ 50 chars, no
+- Leading/trailing whitespace on the parsed **trigger** is trimmed before validation — a stray
+  space shouldn't turn an otherwise-valid line Invalid (import is a lenient bulk path, unlike the
+  interactive create form where `ValidTrigger` rejects padded triggers). The **replacement** is
+  kept verbatim (whitespace can be significant in AHK).
+- Trigger/replacement then checked against `HotstringRules` constants (trigger ≤ 50 chars, no
   linebreaks/tabs; replacement non-empty, ≤ 4000) → failures become **Invalid** rows with reason.
 - Multi-line continuation sections (`(` … `)`) → **Invalid**, "multi-line replacements not
   supported". The continuation block's inner lines are consumed so they don't misparse.
 
-**Row status:** `Ready` | `Warning` (both import) · `Duplicate` | `Invalid` (both skipped).
+**Row status:** `Ready` | `Warning` (both import) · `Duplicate` | `Invalid` (both skipped). The
+parser only ever emits `Ready` / `Warning` / `Invalid` — it is **syntax-only** and has no
+knowledge of duplicates. The `Duplicate` status is assigned exclusively by the preview/import
+handlers, which own both existing-trigger and in-file-repeat detection.
 
 **`Commands/Hotstrings/PreviewHotstringImportCommand(string Script)`**
 → `Result<HotstringImportPreviewDto>`. Read-only. Parses, then marks rows **Duplicate** when the
@@ -66,9 +73,13 @@ collation behind `IX_Hotstring_Owner_Trigger`.
 Ready + Warning rows in one `SaveChanges`, attaching the batch profile target
 (`AppliesToAllProfiles` or `HotstringProfile` junction rows, validated with the existing
 `OwnedIdsValidation` + `AddProfileAssociationRules` patterns). Handles the race where a trigger
-was created between preview and import: catch duplicate-key `DbUpdateException` → retry once with
-fresh duplicate filtering (or pre-check inside the same handler execution). Returns imported
-count + skipped rows.
+was created between preview and import: catch duplicate-key `DbUpdateException`, then **detach the
+pending entities** (`db.Hotstrings.Local` + `db.HotstringProfiles.Local`, following the detach
+pattern in `ListHotstringsQuery` around line 229), re-query the owner's existing triggers, rebuild
+the batch without the now-colliding rows, and `SaveChanges` once more so the remaining rows still
+import. A failed `SaveChanges` leaves the whole attempted batch tracked, so the detach is required
+before the retry — a bare retry would re-submit the conflicting insert. Returns per-row final
+statuses (below).
 
 **Validation (FluentValidation, via existing decorator):**
 - Script non-empty, max length 1 MB (sanity bound on payload).
@@ -79,7 +90,11 @@ count + skipped rows.
 - `HotstringImportRowDto(int LineNumber, string Trigger, string Replacement, bool IsEndingCharacterRequired, bool IsTriggerInsideWord, string[] IgnoredFlags, HotstringImportRowStatus Status, string? Reason)`
 - `HotstringImportPreviewDto(HotstringImportRowDto[] Rows, int ReadyCount, int WarningCount, int DuplicateCount, int InvalidCount)`
 - `ImportHotstringsRequestDto(string Script, bool AppliesToAllProfiles, Guid[]? ProfileIds)`
-- `HotstringImportResultDto(int ImportedCount, HotstringImportRowDto[] SkippedRows)`
+- `HotstringImportResultDto(int ImportedCount, int WarningCount, HotstringImportRowDto[] Rows)`
+  — `Rows` carries **every** processed line with its final status (Ready/Warning = imported,
+  Duplicate/Invalid = skipped), so a caller that imports without a prior preview (future CLI, or
+  a direct API client) still receives the warning rows and sees which unsupported flags were
+  dropped. Skipped rows are the `Duplicate`/`Invalid` subset; no separate list needed.
 
 ### API
 
@@ -88,14 +103,18 @@ Two endpoints on the existing `HotstringsController` (same auth/scope attributes
 - `POST api/v1/hotstrings/import/preview` → 200 `HotstringImportPreviewDto`, 400 on validation.
 - `POST api/v1/hotstrings/import` → 200 `HotstringImportResultDto`, 400 on validation.
 
-A fully-duplicate file is a **200 with `ImportedCount = 0`** and the skip list — not an error.
+A fully-duplicate file is a **200 with `ImportedCount = 0`** and the per-row results — not an error.
 Per-line problems never fail the request; they surface as row statuses.
 
 ### Frontend (Blazor)
 
-**Import button** on `Pages/Hotstrings.razor` toolbar opening
-`Components/Hotstrings/HotstringImportDialog.razor` (convention: sibling of
-`HotstringEditDialog.razor`). A single dialog with conditional content (not a MudStepper) —
+**Import entry points** on `Pages/Hotstrings.razor` — the page has separate `.desktop-branch`
+and `.mobile-branch` containers gated in `Hotstrings.razor.css` at 959.95px. Add **both**: an
+Import `MudButton` in the desktop toolbar (next to Add) and an Import affordance in the mobile
+branch (a secondary `MudFab`, or a menu item on the existing FAB, consistent with how mobile Add
+is surfaced). Both open the same `Components/Hotstrings/HotstringImportDialog.razor`
+(convention: sibling of `HotstringEditDialog.razor`), shown full-screen on mobile per the
+project's mobile-dialog convention. A single dialog with conditional content (not a MudStepper) —
 the input stays editable while the preview shows below, so the user can tweak and re-preview
 without losing state. Dialog flow:
 
@@ -123,15 +142,18 @@ project change needed).
 
 - **Parser unit tests (TDD, the core):** plain hotstring, `*`, `?`, `*?`, unknown flag →
   Warning + IgnoredFlags, comment/blank/hotkey/directive ignored, trigger too long,
-  empty replacement, tab/linebreak in trigger, in-file duplicate, multi-line continuation
-  rejected + inner lines consumed, `::` inside replacement text, whitespace trimming.
+  empty replacement, tab/linebreak in trigger, multi-line continuation rejected + inner lines
+  consumed, `::` inside replacement text, leading/trailing trigger whitespace trimmed. No
+  duplicate cases here — the parser never classifies duplicates.
 - **Handler integration (Testcontainers):** preview marks existing-trigger collisions
-  (case-insensitive); import skips duplicates and inserts the rest; profile target applied
-  (all-profiles and specific); 1000-row cap; empty script invalid; concurrent-create race
-  returns success with the row skipped.
+  (case-insensitive) **and in-file repeats** (first occurrence wins); import skips both duplicate
+  kinds and inserts the rest; profile target applied (all-profiles and specific); imported result
+  reports warning rows; 1000-row cap; empty script invalid; concurrent-create race detaches,
+  re-filters, and still imports the non-colliding rows.
 - **API integration (WebApplicationFactory):** both endpoints wired, `[Authorize]` enforced,
   400 ProblemDetails on invalid payload.
-- **bUnit:** dialog input → preview → confirm flow, disabled confirm at N = 0.
+- **bUnit:** dialog input → preview → confirm flow, disabled confirm at N = 0; both desktop and
+  mobile entry points open the dialog.
 
 ## Out of scope
 
