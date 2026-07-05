@@ -1,5 +1,7 @@
 # Coverage robustness plan
 
+> Historical plan — archived 2026-07-05, content not maintained.
+
 ## Problem
 
 The current CI gate enforces per-assembly line and branch thresholds from a merged Cobertura report via `scripts/check-coverage-thresholds.py`. That works, but recent PR failures showed the workflow is still brittle from a contributor perspective: the exact gate is easy to miss locally, some failures are caused by coverage-model details rather than meaningful behavior regressions, and the coverage documentation is partly out of sync with the live CI behavior.
