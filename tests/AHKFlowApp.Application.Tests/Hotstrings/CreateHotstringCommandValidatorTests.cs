@@ -208,4 +208,18 @@ public sealed class CreateHotstringCommandValidatorTests
         result.Errors.Should().Contain(e =>
             e.ErrorMessage == "ProfileIds must not contain empty GUIDs.");
     }
+
+    [Fact]
+    public void Validate_ProfileIdsContainsDuplicates_Fails()
+    {
+        var id = Guid.NewGuid();
+
+        ValidationResult result = _sut.Validate(Cmd(
+            appliesToAllProfiles: false,
+            profileIds: [id, id]));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e =>
+            e.ErrorMessage == "ProfileIds must not contain duplicates.");
+    }
 }

@@ -73,6 +73,7 @@ public static class DependencyInjection
             .AddUseCase<GenerateProfileScriptQuery, Result<ProfileScript>, GenerateProfileScriptQueryHandler>()
             .AddUseCase<GetProfileScriptPreviewQuery, Result<ProfileScriptPreviewDto>, GetProfileScriptPreviewQueryHandler>()
             .AddUseCase<GenerateAllProfileScriptsQuery, Result<IReadOnlyList<ProfileScript>>, GenerateAllProfileScriptsQueryHandler>()
+            .AddUseCase<GenerateAllProfileScriptsZipQuery, Result<ProfileScriptZip>, GenerateAllProfileScriptsZipQueryHandler>()
             .AddUseCase<SeedAllCommand, Result<SeedAllResultDto>, SeedAllCommandHandler>();
 
         services.AddSingleton<HeaderTokenRenderer>();

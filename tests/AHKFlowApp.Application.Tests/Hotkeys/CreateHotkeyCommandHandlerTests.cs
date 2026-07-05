@@ -39,6 +39,22 @@ public sealed class CreateHotkeyCommandHandlerTests(HotkeyDbFixture fx)
     }
 
     [Fact]
+    public async Task Handle_WhenForeignProfileId_ReturnsInvalidWithIdentifier()
+    {
+        await using AppDbContext db = fx.CreateContext();
+        var owner = Guid.NewGuid();
+        var handler = new CreateHotkeyCommandHandler(db, CurrentUserHelper.For(owner), _clock);
+        var cmd = new CreateHotkeyCommand(new CreateHotkeyDto(
+            "Open Notepad", "n", Ctrl: true,
+            ProfileIds: [Guid.NewGuid()], AppliesToAllProfiles: false));
+
+        Result<HotkeyDto> result = await handler.ExecuteAsync(cmd, default);
+
+        result.Status.Should().Be(ResultStatus.Invalid);
+        result.ValidationErrors.Single().Identifier.Should().Be("Input.ProfileIds");
+    }
+
+    [Fact]
     public async Task Handle_WhenNoOid_ReturnsUnauthorized()
     {
         await using AppDbContext db = fx.CreateContext();

@@ -1,4 +1,3 @@
-using System.Linq.Expressions;
 using AHKFlowApp.Domain.Enums;
 using FluentValidation;
 
@@ -30,32 +29,4 @@ internal static class HotkeyRules
 
     public static IRuleBuilderOptions<T, HotkeyAction> ValidAction<T>(this IRuleBuilderInitial<T, HotkeyAction> rb) =>
         rb.IsInEnum().WithMessage("Action must be a valid HotkeyAction value.");
-
-    public static void ValidProfileAssociation<T>(
-        this AbstractValidator<T> validator,
-        Expression<Func<T, bool>> appliesToAll,
-        Expression<Func<T, Guid[]?>> profileIds)
-    {
-        Func<T, bool> appliesToAllFn = appliesToAll.Compile();
-
-        validator.RuleFor(profileIds)
-            .Must(ids => ids is null || ids.Length == 0)
-            .When(x => appliesToAllFn(x))
-            .WithMessage("ProfileIds must be empty when AppliesToAllProfiles is true.");
-
-        validator.RuleFor(profileIds)
-            .Must(ids => ids is { Length: > 0 })
-            .When(x => !appliesToAllFn(x))
-            .WithMessage("At least one profile must be specified when AppliesToAllProfiles is false.");
-
-        validator.RuleFor(profileIds)
-            .Must(ids => ids is null || ids.All(id => id != Guid.Empty))
-            .When(x => !appliesToAllFn(x))
-            .WithMessage("ProfileIds must not contain empty GUIDs.");
-
-        validator.RuleFor(profileIds)
-            .Must(ids => ids is null || ids.Length == ids.Distinct().Count())
-            .When(x => !appliesToAllFn(x))
-            .WithMessage("ProfileIds must not contain duplicates.");
-    }
 }
