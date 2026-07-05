@@ -31,4 +31,4 @@ As a product owner, I want the backlog represented in GitHub so that work can be
 
 ## Notes / dependencies
 
-- Use `scripts/create-github-issues.ps1` to batch-create issues from backlog files via `gh` CLI.
+- Use `scripts/agents/create-github-issues.ps1` to batch-create issues from backlog files via `gh` CLI.
