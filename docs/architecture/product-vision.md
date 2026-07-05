@@ -40,6 +40,9 @@ AHKFlow should feel like a focused productivity tool: practical, predictable, ea
 - Script preview and generation per profile.
 - Script download via web UI, Web API, and CLI.
 - Zip download of generated scripts.
+- Entity version history with revert for hotstrings, hotkeys, profiles, and categories.
+- Recycle bin for soft-deleted entities (restore or permanent purge).
+- In-app changelog.
 - Entra ID authentication for normal UI/API/CLI use.
 - Local no-Azure development mode for trusted development and homelab scenarios.
 
