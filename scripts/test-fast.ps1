@@ -21,6 +21,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $resultsRoot = Join-Path $repoRoot "TestResults\test-fast\$Mode"
 $sharedSqlScript = Join-Path $PSScriptRoot 'test-sql-container.common.ps1'
 . $sharedSqlScript
+. "$PSScriptRoot\Common.ps1"
 
 function New-TestRun {
     param(
@@ -111,7 +112,7 @@ function Invoke-TestRun {
     }
 
     $filterText = if ([string]::IsNullOrWhiteSpace($TestRun.Filter)) { 'all tests' } else { $TestRun.Filter }
-    Write-Host "Running $projectName ($filterText)..." -ForegroundColor Cyan
+    Write-Step "Running $projectName ($filterText)"
     & dotnet @arguments 2>&1 | ForEach-Object { Write-Host $_ }
     $exitCode = $LASTEXITCODE
     if ($exitCode -ne 0) {
@@ -154,10 +155,10 @@ try {
     }
 
     if ($Mode -eq 'Integration' -or $Mode -eq 'E2E') {
-        Write-Host 'Starting shared SQL test container...' -ForegroundColor Cyan
+        Write-Step 'Starting shared SQL test container'
         $sharedSqlContainer = Start-AhkFlowTestSqlContainer
         $env:AHKFLOW_TEST_SQL_CONNECTION_STRING = $sharedSqlContainer.ConnectionString
-        Write-Host ("Shared SQL test container ready in {0} ms." -f $sharedSqlContainer.ElapsedMilliseconds) -ForegroundColor Cyan
+        Write-Success ("Shared SQL test container ready in {0} ms." -f $sharedSqlContainer.ElapsedMilliseconds)
     }
 
     if (Test-Path -LiteralPath $resultsRoot) {
@@ -171,8 +172,7 @@ try {
         $summaries += Invoke-TestRun -TestRun $testRun
     }
 
-    Write-Host ''
-    Write-Host "$Mode test slice completed." -ForegroundColor Cyan
+    Write-Success "$Mode test slice completed."
     $summaries | Format-Table -AutoSize
 }
 finally {

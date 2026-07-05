@@ -36,7 +36,7 @@ if (-not $Environment) {
 $EnvFile = Join-Path $PSScriptRoot ".env.$Environment"
 if (-not (Test-Path $EnvFile)) {
     Write-Fail "Config file not found: $EnvFile"
-    Write-Host "  Nothing to tear down — deploy.ps1 was never run for this environment." -ForegroundColor Yellow
+    Write-Warn "Nothing to tear down — deploy.ps1 was never run for this environment."
     exit 0
 }
 
@@ -65,7 +65,7 @@ Write-Host ""
 
 $confirm = Read-Host "  Type the resource group name to confirm deletion"
 if ($confirm -ne $ResourceGroup) {
-    Write-Host "  Mismatch — aborted." -ForegroundColor Yellow
+    Write-Warn "Mismatch — aborted."
     exit 0
 }
 
@@ -142,8 +142,7 @@ foreach ($variable in $variablesToDelete) {
 Remove-Item $EnvFile -ErrorAction SilentlyContinue
 Write-Success "Removed local config: .env.$Environment"
 
-Write-Host ""
-Write-Host "  Teardown complete." -ForegroundColor Green
+Write-Success "Teardown complete."
 Write-Host "  Note: Azure resource group deletion runs asynchronously."
 Write-Host "  Verify with: az group show --name $ResourceGroup"
 Write-Host ""

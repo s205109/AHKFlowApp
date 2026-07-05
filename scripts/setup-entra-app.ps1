@@ -32,6 +32,8 @@ param(
 $ErrorActionPreference = 'Stop'
 $displayName = "AHKFlowApp-$Environment"
 
+. "$PSScriptRoot\Common.ps1"
+
 # Safe wrapper around ConvertFrom-Json: az commands return empty stdout on
 # missing-resource / transient failures, and ConvertFrom-Json on empty/non-JSON
 # input throws under $ErrorActionPreference = 'Stop' — defeating retry loops.
@@ -60,14 +62,14 @@ function Wait-ForCondition([string] $Description, [scriptblock] $Condition, [int
     for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
         if (& $Condition) {
             if ($attempt -gt 1) {
-                Write-Host "$Description verified"
+                Write-Success "$Description verified"
             }
 
             return
         }
 
         if ($attempt -lt $MaxAttempts) {
-            Write-Host "Waiting for $Description ..."
+            Write-Step "Waiting for $Description"
             Start-Sleep -Seconds $DelaySeconds
         }
     }
@@ -80,15 +82,15 @@ function Wait-ForCondition([string] $Description, [scriptblock] $Condition, [int
 # ---------------------------------------------------------------------------
 $existing = az ad app list --display-name $displayName --query '[0]' -o json | ConvertFrom-Json
 if ($existing) {
-    Write-Host "Found existing app: $displayName ($($existing.appId))"
+    Write-Success "Found existing app: $displayName ($($existing.appId))"
     $appId = $existing.appId
     $objectId = $existing.id
 } else {
-    Write-Host "Creating app registration: $displayName"
+    Write-Step "Creating app registration: $displayName"
     $app = az ad app create --display-name $displayName --query '{appId:appId,id:id}' -o json | ConvertFrom-Json
     $appId = $app.appId
     $objectId = $app.id
-    Write-Host "Created: $appId"
+    Write-Success "Created: $appId"
 }
 
 $tenantId = az account show --query tenantId -o tsv
@@ -99,12 +101,12 @@ $tenantId = az account show --query tenantId -o tsv
 # ---------------------------------------------------------------------------
 $existingSp = ConvertFrom-JsonSafe (az ad sp show --id $appId -o json 2>$null)
 if (-not $existingSp) {
-    Write-Host "Creating service principal for $appId ..."
+    Write-Step "Creating service principal for $appId"
     az ad sp create --id $appId | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "az ad sp create failed (exit $LASTEXITCODE)" }
-    Write-Host "Service principal created"
+    Write-Success "Service principal created"
 } else {
-    Write-Host "Service principal already exists"
+    Write-Success "Service principal already exists"
 }
 
 Wait-ForCondition -Description "service principal" -MaxAttempts 18 -Condition {
@@ -117,7 +119,7 @@ Wait-ForCondition -Description "service principal" -MaxAttempts 18 -Condition {
 # ---------------------------------------------------------------------------
 if (-not $SwaHostname -and $Environment -ne 'dev') {
     $swaName = "ahkflowapp-swa-$Environment"
-    Write-Host "Resolving SWA hostname for $swaName ..."
+    Write-Step "Resolving SWA hostname for $swaName"
     $SwaHostname = az staticwebapp show --name $swaName --query defaultHostname -o tsv 2>$null
 }
 
@@ -160,7 +162,7 @@ Wait-ForCondition -Description "SPA redirect URIs" -Condition {
     return $true
 }
 
-Write-Host "Redirect URIs set: $($redirectUris -join ', ')"
+Write-Success "Redirect URIs set: $($redirectUris -join ', ')"
 
 # ---------------------------------------------------------------------------
 # Enable public-client device-code flow for the CLI
@@ -180,9 +182,9 @@ if ($publicClientRedirectUri -notin $publicClientUris) {
         $configuredUris = ConvertFrom-JsonSafe (az ad app show --id $objectId --query 'publicClient.redirectUris' -o json 2>$null)
         return $publicClientRedirectUri -in $configuredUris
     }
-    Write-Host "Added public client redirect URI: $publicClientRedirectUri"
+    Write-Success "Added public client redirect URI: $publicClientRedirectUri"
 } else {
-    Write-Host "Public client redirect URI already exists: $publicClientRedirectUri"
+    Write-Success "Public client redirect URI already exists: $publicClientRedirectUri"
 }
 
 $isFallbackPublicClient = az ad app show --id $objectId --query 'isFallbackPublicClient' -o tsv 2>$null
@@ -195,9 +197,9 @@ if ($isFallbackPublicClient -ne 'true') {
         $value = az ad app show --id $objectId --query 'isFallbackPublicClient' -o tsv 2>$null
         return $value -eq 'true'
     }
-    Write-Host "Enabled fallback public client flow"
+    Write-Success "Enabled fallback public client flow"
 } else {
-    Write-Host "Fallback public client flow already enabled"
+    Write-Success "Fallback public client flow already enabled"
 }
 
 # ---------------------------------------------------------------------------
@@ -233,9 +235,9 @@ if ('access_as_user' -notin $currentScopes) {
         $scopes = ConvertFrom-JsonSafe (az ad app show --id $objectId --query 'api.oauth2PermissionScopes[].value' -o json 2>$null)
         return 'access_as_user' -in $scopes
     }
-    Write-Host "Added oauth2PermissionScope: access_as_user"
+    Write-Success "Added oauth2PermissionScope: access_as_user"
 } else {
-    Write-Host "Scope access_as_user already exists"
+    Write-Success "Scope access_as_user already exists"
     $scopeId = az ad app show --id $objectId --query 'api.oauth2PermissionScopes[?value==`access_as_user`].id | [0]' -o tsv
 }
 
@@ -270,7 +272,7 @@ Wait-ForCondition -Description "pre-authorized SPA scope" -Condition {
     return $false
 }
 
-Write-Host "Pre-authorized SPA ($appId) for scope $scopeId"
+Write-Success "Pre-authorized SPA ($appId) for scope $scopeId"
 
 # ---------------------------------------------------------------------------
 # Output
