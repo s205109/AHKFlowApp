@@ -21,6 +21,30 @@ It creates the branch, places the worktree under `.claude/worktrees/<name>/`, co
 
 **Do NOT** run bare `git worktree add` — it checks out files but skips isolation setup, leaving a broken worktree.
 
+### Cleanup of merged worktrees on create
+
+Creating a worktree first checks the other worktrees whose branch is already merged
+into `main`. Nothing is removed without an explicit opt-in:
+
+- **Interactive create (a real console, no flag):** it lists the merged, clean
+  worktrees and asks once — `Clean up merged worktrees? (y/n)`. `y` removes them all;
+  `n` skips.
+- **`-Cleanup` / `-c`:** removes every merged, clean worktree with no prompt (use in
+  scripts, or when you have already decided):
+
+  ```bash
+  pwsh -NoProfile -File scripts/new-worktree.ps1 -Name <name> -Cleanup
+  ```
+
+- **WorktreeCreate hook, or non-interactive without the flag:** detection is logged to
+  stderr only; nothing is removed.
+
+A worktree with uncommitted changes is never removed, even if its branch is merged.
+The worktree currently being created or reused is always excluded from the sweep, so a
+same-named recreate can never race its own removal. Removal reuses
+`remove-worktree-local-dev.ps1` (`git branch -d`, DB drop, Docker teardown, lock-safe
+folder delete).
+
 ## Removing
 
 `pwsh -NoProfile -File scripts/remove-worktree-local-dev.ps1 -WorktreePath .claude\worktrees\<name>` removes the worktree and deletes the branch (`git branch -d`), then drops the DB and removes the Docker Compose project — but only if that branch delete succeeds. If the branch has unmerged commits, `git branch -d` fails and DB/Docker cleanup is skipped; the next `new-worktree.ps1` run's orphan prune, or `scripts\prune-worktree-databases.ps1` / `scripts\prune-worktree-docker.ps1`, reclaim them later. Without `-WorktreePath` it is a no-op.
