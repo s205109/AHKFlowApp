@@ -10,6 +10,11 @@
         <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="flex-grow-1">
             <MudIconButton Class="cancel-import" Icon="@Icons.Material.Filled.ArrowBack" OnClick="Cancel" />
             <MudText Typo="Typo.h6">Import hotstrings</MudText>
+            <MudButton Class="confirm-import" Color="Color.Primary" Variant="Variant.Filled"
+                       Disabled="@(_preview is null || _importableCount == 0 || _busy)"
+                       OnClick="ConfirmAsync">
+                Import @_importableCount
+            </MudButton>
         </MudStack>
     </TitleContent>
     <DialogContent>
@@ -76,12 +81,6 @@
                     </RowTemplate>
                 </MudTable>
             }
-
-            <MudButton Class="confirm-import" Color="Color.Primary" Variant="Variant.Filled"
-                       Disabled="@(_preview is null || _importableCount == 0 || _busy)"
-                       OnClick="ConfirmAsync">
-                Import @_importableCount
-            </MudButton>
         </MudStack>
     </DialogContent>
 </MudDialog>
@@ -92,6 +91,8 @@
     [Inject] private ISnackbar Snackbar { get; set; } = default!;
 
     [Parameter] public IReadOnlyList<ProfileDto> Profiles { get; set; } = [];
+
+    private const long MaxFileSizeBytes = 1_048_576;
 
     private string _script = "";
     private bool _appliesToAllProfiles = true;
@@ -110,18 +111,42 @@
     private void Cancel() => Dialog.Cancel();
 
     // Any script change invalidates the preview — confirm stays disabled until re-previewed,
-    // so the "Import N" count can never refer to stale content.
-    private void OnScriptChanged() => _preview = null;
+    // so the "Import N" count can never refer to stale content. The confirm button lives in
+    // TitleContent (rendered by the ancestor MudDialogInstance, not this component's own
+    // subtree), so ask the dialog instance to re-render too.
+    private void OnScriptChanged()
+    {
+        _preview = null;
+        Dialog.StateHasChanged();
+    }
 
     private async Task OnFileSelectedAsync(IBrowserFile? file)
     {
         if (file is null)
             return;
 
-        // 1 MB payload cap mirrors the server bound.
-        using StreamReader reader = new(file.OpenReadStream(maxAllowedSize: 1_048_576));
-        _script = await reader.ReadToEndAsync(_cts.Token);
-        OnScriptChanged();
+        // 1 MB payload cap mirrors the server bound. Guard BEFORE opening the stream —
+        // OpenReadStream throws IOException past maxAllowedSize, which would otherwise
+        // bubble up uncaught and trip the app-wide ErrorBoundary.
+        if (file.Size > MaxFileSizeBytes)
+        {
+            _error = "File exceeds the 1 MB limit.";
+            OnScriptChanged();
+            return;
+        }
+
+        try
+        {
+            using StreamReader reader = new(file.OpenReadStream(maxAllowedSize: MaxFileSizeBytes));
+            _script = await reader.ReadToEndAsync(_cts.Token);
+            OnScriptChanged();
+        }
+        catch (IOException)
+        {
+            // Backstop in case the reported Size didn't match the actual stream length.
+            _error = "File exceeds the 1 MB limit.";
+            OnScriptChanged();
+        }
     }
 
     private async Task PreviewAsync()
@@ -139,6 +164,11 @@
         finally
         {
             _busy = false;
+            // The Confirm button lives in TitleContent, which MudDialog forwards to the
+            // ANCESTOR MudDialogInstance for rendering — this component's own StateHasChanged()
+            // only re-renders its own subtree (DialogContent), not that ancestor. Ask the
+            // dialog instance itself to re-render so the header picks up the new state.
+            Dialog.StateHasChanged();
         }
     }
 
@@ -172,6 +202,7 @@
         finally
         {
             _busy = false;
+            Dialog.StateHasChanged();
         }
     }
 
