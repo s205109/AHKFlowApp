@@ -19,7 +19,7 @@ Different application layers require different configuration strategies:
 
 **Files:** `src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/appsettings.*.json`
 
-**Status:** ✅ Public defaults committed; optional local Development override is gitignored
+**Status:** Public defaults committed; optional local Development override is gitignored
 
 **Configuration pattern:**
 - `appsettings.json` → Local development default (`http://localhost:5600`)
@@ -40,21 +40,21 @@ Per [Microsoft documentation](https://learn.microsoft.com/aspnet/core/blazor/fun
 >
 > **"Configuration and settings files in the web root (`wwwroot` folder) are visible to users on the client, and users can tamper with the data. Don't store app secrets, credentials, or any other sensitive data in any web root file."**
 
-**Key Points:**
-- ✅ Blazor WASM runs entirely in the browser (client-side)
-- ✅ All files are downloaded and visible in browser DevTools
-- ✅ OAuth Client ID is **public by design** (OAuth 2.0 specification)
-- ✅ API Base Address is **public** (visible in Network tab)
-- ❌ Cannot contain secrets (browser code is always inspectable)
+**Key points:**
+- Blazor WASM runs entirely in the browser (client-side)
+- All files are downloaded and visible in browser DevTools
+- OAuth Client ID is **public by design** (OAuth 2.0 specification)
+- API Base Address is **public** (visible in Network tab)
+- Cannot contain secrets (browser code is always inspectable)
 
 ### Configuration Files
 
 ```
 src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/
-├── appsettings.json                     ✅ Committed (localhost default)
-├── appsettings.Development.json.example ✅ Committed (optional local override template)
-├── appsettings.Test.json                ✅ Committed (TEST Azure API URL)
-└── appsettings.Production.json          ✅ Committed (PROD Azure API URL)
+├── appsettings.json                     Committed (localhost default)
+├── appsettings.Development.json.example Committed (optional local override template)
+├── appsettings.Test.json                Committed (TEST Azure API URL)
+└── appsettings.Production.json          Committed (PROD Azure API URL)
 ```
 
 ### What's in Frontend Config
@@ -63,21 +63,21 @@ src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/
 // appsettings.Test.json
 {
   "ApiHttpClient": {
-    "BaseAddress": "https://ahkflowapp-api-test.azurewebsites.net"  // ✅ PUBLIC
+    "BaseAddress": "https://ahkflowapp-api-test.azurewebsites.net"  // PUBLIC
   }
 }
 
 // appsettings.Production.json
 {
   "ApiHttpClient": {
-    "BaseAddress": "https://ahkflowapp-api-prod.azurewebsites.net"  // ✅ PUBLIC
+    "BaseAddress": "https://ahkflowapp-api-prod.azurewebsites.net"  // PUBLIC
   }
 }
 
 // appsettings.json
 {
   "ApiHttpClient": {
-    "BaseAddress": "http://localhost:5600"  // ✅ PUBLIC
+    "BaseAddress": "http://localhost:5600"  // PUBLIC
   }
 }
 ```
@@ -90,14 +90,14 @@ src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/
 
 **Template File:** `src/Backend/AHKFlowApp.API/appsettings.Production.json.example`
 
-**Actual File:** `src/Backend/AHKFlowApp.API/appsettings.Production.json` → ❌ **IGNORED by git**
+**Actual File:** `src/Backend/AHKFlowApp.API/appsettings.Production.json` — **ignored by git**
 
 ### Why This Must Be Secret
 
 The backend configuration contains:
-- ❌ SQL Connection Strings (with passwords)
-- ❌ Database credentials
-- ❌ Service-to-service secrets
+- SQL Connection Strings (with passwords)
+- Database credentials
+- Service-to-service secrets
 
 These **must never be committed** to git.
 
@@ -119,7 +119,7 @@ Azure App Service loads configuration in this order (later overrides earlier):
 
 1. `appsettings.json` (base config)
 2. `appsettings.Production.json` (if exists - ignored in our case)
-3. **Azure App Service Configuration** ← ✅ **Our secrets live here**
+3. **Azure App Service Configuration** — our secrets live here
 4. Environment variables
 
 **Result:** Secrets never touch git, managed securely in Azure.
@@ -128,22 +128,22 @@ Azure App Service loads configuration in this order (later overrides earlier):
 
 ## Summary: Best Practice Implementation
 
-### ✅ Frontend (Blazor WASM)
+### Frontend (Blazor WASM)
 
 | Aspect | Implementation |
 |--------|---------------|
 | **Files** | `appsettings.json`, `appsettings.Test.json`, `appsettings.Production.json`, optional local `appsettings.Development.json` |
-| **Storage** | ✅ Defaults committed; `appsettings.Development.json` is gitignored |
+| **Storage** | Defaults committed; `appsettings.Development.json` is gitignored |
 | **Contains** | Public config only (API URL) |
 | **Environment selection** | `Blazor-Environment` header from SWA (`staticwebapp.config.json`) |
 | **Why** | Client-side code is always visible to users |
 
-### ✅ Backend (API)
+### Backend (API)
 
 | Aspect | Implementation |
 |--------|---------------|
 | **File** | `appsettings.Production.json.example` (template) |
-| **Storage** | ❌ NOT committed (in `.gitignore`) |
+| **Storage** | Not committed (in `.gitignore`) |
 | **Contains** | Secrets (ConnectionStrings, credentials) |
 | **Why** | Server-side secrets must never be public |
 | **Production** | Azure App Service Configuration |
@@ -154,17 +154,17 @@ Azure App Service loads configuration in this order (later overrides earlier):
 
 ```
 src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/
-├── appsettings.json                     ✅ Committed (local development default)
-├── appsettings.Development.json         ❌ Ignored (optional local override)
-├── appsettings.Development.json.example ✅ Template (safe)
-├── appsettings.Test.json                ✅ Committed (TEST Azure API URL)
-└── appsettings.Production.json          ✅ Committed (PROD Azure API URL)
+├── appsettings.json                     Committed (local development default)
+├── appsettings.Development.json         Ignored (optional local override)
+├── appsettings.Development.json.example Template (safe)
+├── appsettings.Test.json                Committed (TEST Azure API URL)
+└── appsettings.Production.json          Committed (PROD Azure API URL)
 
 src/Backend/AHKFlowApp.API/
-├── appsettings.json                     ✅ Base config
-├── appsettings.Development.json         ❌ Ignored (local only)
-├── appsettings.Production.json          ❌ Ignored (has secrets)
-└── appsettings.Production.json.example  ✅ Template (safe)
+├── appsettings.json                     Base config
+├── appsettings.Development.json         Ignored (local only)
+├── appsettings.Production.json          Ignored (has secrets)
+└── appsettings.Production.json.example  Template (safe)
 ```
 
 ### `.gitignore` Rules
@@ -223,6 +223,16 @@ dotnet user-secrets set "AzureAd:ClientId" "<ClientId>" --project src/Backend/AH
 
 Run `scripts/setup-entra-app.ps1 -Environment dev` to get the values. See [entra-setup.md](../deployment/entra-setup.md).
 
+### Local no-Azure mode (homelab / trusted LAN)
+
+To run the full stack with no Entra ID sign-in, the API sets `Auth:UseTestProvider=true`
+(via `Auth__UseTestProvider=true` in `docker-compose.yml`), which registers a synthetic
+identity for every request. The Blazor UI image bakes `appsettings.Local.json` into
+`appsettings.json` at build time. `UseTestProvider` is only honored in the `Development`
+environment; the API throws on startup if it is set anywhere else. See the
+["Run locally without Azure" section of the README](../../README.md) and
+[docs/environments.md](../environments.md) for the config load order.
+
 ---
 
-**Last Updated:** Based on Microsoft Blazor documentation for ASP.NET Core 10.0
+**Last Updated:** 2026-07-05
