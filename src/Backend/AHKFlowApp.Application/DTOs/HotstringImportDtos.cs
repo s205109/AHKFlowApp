@@ -37,3 +37,15 @@ public sealed record HotstringImportPreviewDto(
 
 /// <summary>Request body for the preview endpoint.</summary>
 public sealed record PreviewHotstringImportRequestDto(string Script);
+
+/// <summary>Request body for the commit endpoint: raw script + one profile target for the batch.</summary>
+public sealed record ImportHotstringsRequestDto(
+    string Script,
+    bool AppliesToAllProfiles = true,
+    Guid[]? ProfileIds = null);
+
+/// <summary>Commit outcome. Rows carries every processed line with its final status.</summary>
+public sealed record HotstringImportResultDto(
+    int ImportedCount,
+    int WarningCount,
+    HotstringImportRowDto[] Rows);
