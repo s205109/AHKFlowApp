@@ -1,6 +1,6 @@
 # Free-tier Azure migration plan
 
-> Historical plan — archived 2026-07-05, content not maintained.
+> Historical plan — archived 2026-07-04, content not maintained.
 
 ## Problem
 
