@@ -56,7 +56,11 @@ internal sealed class CreateHotkeyCommandHandler(
             int validCount = await db.Profiles
                 .CountAsync(p => p.OwnerOid == ownerOid && input.ProfileIds.Contains(p.Id), ct);
             if (validCount != input.ProfileIds.Length)
-                return Result.Invalid(new ValidationError("One or more ProfileIds do not exist for this user."));
+                return Result.Invalid(new ValidationError
+                {
+                    Identifier = "Input.ProfileIds",
+                    ErrorMessage = "One or more ProfileIds do not exist for this user.",
+                });
         }
 
         Guid[] distinctCategoryIds = input.CategoryIds?.Distinct().ToArray() ?? [];
