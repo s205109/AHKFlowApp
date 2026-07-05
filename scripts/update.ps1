@@ -34,7 +34,7 @@ if (-not $Environment) {
 $EnvFile = Join-Path $PSScriptRoot ".env.$Environment"
 if (-not (Test-Path $EnvFile)) {
     Write-Fail "Config file not found: $EnvFile"
-    Write-Host "  Run .\deploy.ps1 -Environment $Environment first." -ForegroundColor Yellow
+    Write-Warn "Run .\deploy.ps1 -Environment $Environment first."
     exit 1
 }
 
@@ -72,7 +72,7 @@ try {
 
     Push-Location $RepoRoot
 
-    Write-Host "  Publishing API package..."
+    Write-Step "Publishing API package"
     dotnet publish .\src\Backend\AHKFlowApp.API --configuration Release --output $publishDir
     if ($LASTEXITCODE -ne 0) {
         Write-Fail "dotnet publish failed"
@@ -82,7 +82,7 @@ try {
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     [System.IO.Compression.ZipFile]::CreateFromDirectory($publishDir, $packagePath)
 
-    Write-Host "  Deploying package to App Service..."
+    Write-Step "Deploying package to App Service"
     az webapp deploy `
         --name $AppServiceName `
         --resource-group $ResourceGroup `
@@ -97,7 +97,7 @@ try {
     Write-Success "App Service restarted"
 
     $HealthUrl = "https://${AppHostname}/health"
-    Write-Host "  Health-checking: $HealthUrl"
+    Write-Step "Health-checking $HealthUrl"
     $attempts = 20
     $healthOk = $false
     for ($i = 1; $i -le $attempts; $i++) {
@@ -107,19 +107,18 @@ try {
             $healthOk = $true
             break
         } catch {
-            Write-Host "  Attempt $i/$attempts failed, retrying in 15s..."
+            Write-Warn "Attempt $i/$attempts failed, retrying in 15s..."
             Start-Sleep -Seconds 15
         }
     }
 
     if (-not $healthOk) {
         Write-Fail "Health check failed after $attempts attempts."
-        Write-Host "  App Service Free can cold-start slowly. Check logs: az webapp log tail --name $AppServiceName --resource-group $ResourceGroup" -ForegroundColor Yellow
+        Write-Warn "App Service Free can cold-start slowly. Check logs: az webapp log tail --name $AppServiceName --resource-group $ResourceGroup"
         exit 1
     }
 
-    Write-Host ""
-    Write-Host "  Update complete! API: https://$AppHostname" -ForegroundColor Green
+    Write-Success "Update complete! API: https://$AppHostname"
 } finally {
     Pop-Location -ErrorAction SilentlyContinue
     Remove-Item $tempRoot -Recurse -Force -ErrorAction SilentlyContinue

@@ -21,6 +21,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+. "$PSScriptRoot\Common.ps1"
+
 function Assert-NoPlaceholder
 {
     param(
@@ -104,6 +106,8 @@ Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Path $publishDirectory | Out-Null
 New-Item -ItemType Directory -Path $packageDirectory | Out-Null
 New-Item -ItemType Directory -Path $resolvedOutputDirectory -Force | Out-Null
+
+Write-Step "Publishing ahkflow CLI ($Runtime, $Configuration)"
 
 dotnet publish $projectPath `
     --configuration $Configuration `
@@ -199,4 +203,4 @@ finally
     $zipStream.Dispose()
 }
 
-Write-Host "Created $zipPath"
+Write-Success "Created $zipPath"

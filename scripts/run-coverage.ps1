@@ -27,6 +27,7 @@ $summaryGithubPath = Join-Path $coverageReportDirectory 'SummaryGithub.md'
 $thresholdScriptPath = Join-Path $repoRoot 'scripts' 'ci' 'check-coverage-thresholds.py'
 $sharedSqlScript = Join-Path $PSScriptRoot 'test-sql-container.common.ps1'
 . $sharedSqlScript
+. "$PSScriptRoot\Common.ps1"
 
 Push-Location $repoRoot
 try {
@@ -51,13 +52,13 @@ try {
         -p:UseSharedCompilation=false
     if ($LASTEXITCODE -ne 0) { throw "dotnet build failed" }
 
-    Write-Host 'Starting shared SQL test container...' -ForegroundColor Cyan
+    Write-Step 'Starting shared SQL test container'
     $sharedSqlContainer = Start-AhkFlowTestSqlContainer
     $previousSharedSqlConnectionString = $env:AHKFLOW_TEST_SQL_CONNECTION_STRING
     $testExitCode = 0
     try {
         $env:AHKFLOW_TEST_SQL_CONNECTION_STRING = $sharedSqlContainer.ConnectionString
-        Write-Host ("Shared SQL test container ready in {0} ms." -f $sharedSqlContainer.ElapsedMilliseconds) -ForegroundColor Cyan
+        Write-Success ("Shared SQL test container ready in {0} ms." -f $sharedSqlContainer.ElapsedMilliseconds)
 
         dotnet test --configuration $Configuration `
             --disable-build-servers `
@@ -100,6 +101,8 @@ try {
     Write-Host "Report          : $(Resolve-Path (Join-Path $coverageReportDirectory 'index.html'))" -ForegroundColor Cyan
     Write-Host "Cobertura       : $(Resolve-Path (Join-Path $coverageReportDirectory 'Cobertura.xml'))" -ForegroundColor Cyan
     Write-Host "Summary         : $(Resolve-Path $summaryGithubPath)" -ForegroundColor Cyan
+
+    Write-Success 'Coverage run complete.'
 }
 finally {
     Pop-Location
