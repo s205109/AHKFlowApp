@@ -114,3 +114,90 @@ function Get-EligibleMergedWorktrees {
 
     return , $eligible
 }
+
+# Spawns remove-worktree-local-dev.ps1 (Hook mode) for one worktree. Empty stdin is
+# piped in: that script's hook path does an unbounded [Console]::In.ReadToEnd(), which
+# would hang if THIS run's own stdin is redirected (agent/CI) and left open.
+function Invoke-WorktreeRemoval {
+    param(
+        [Parameter(Mandatory)][string] $RepoRoot,
+        [Parameter(Mandatory)][string] $WorktreePath
+    )
+
+    $removeScript = Join-Path $RepoRoot 'scripts\remove-worktree-local-dev.ps1'
+    if (-not (Test-Path -LiteralPath $removeScript)) {
+        Write-Stderr "cleanup: remove-worktree-local-dev.ps1 not found; cannot remove '$WorktreePath'."
+        return
+    }
+
+    try {
+        $psExe = Resolve-PowerShellExecutable
+        $output = '' | & $psExe -NoProfile -ExecutionPolicy Bypass -File $removeScript -WorktreePath $WorktreePath 2>&1
+        foreach ($line in $output) {
+            if ($line) { Write-Stderr ([string] $line) }
+        }
+    } catch {
+        Write-Stderr "cleanup: removal of '$WorktreePath' failed: $($_.Exception.Message)"
+    }
+}
+
+# Drives the decision matrix. Detection/removal failures are logged to stderr and
+# skipped so worktree creation is never blocked. Emits nothing on the success stream.
+function Invoke-MergedWorktreeCleanup {
+    param(
+        [Parameter(Mandatory)][string] $RepoRoot,
+        [switch] $Cleanup,
+        [switch] $IsHook,
+        [string] $MainRef = 'main',
+        [string] $ExcludePath
+    )
+
+    $eligible = @(Get-EligibleMergedWorktrees -RepoRoot $RepoRoot -MainRef $MainRef -ExcludePath $ExcludePath)
+    if ($eligible.Count -eq 0) {
+        Write-Stderr 'cleanup: no merged worktrees eligible for cleanup.'
+        return
+    }
+
+    foreach ($wt in $eligible) {
+        Write-Stderr "cleanup: eligible merged worktree: $($wt.Path) [$($wt.Branch)]"
+    }
+
+    if ($IsHook) {
+        Write-Stderr 'cleanup: hook context is report-only; nothing removed.'
+        return
+    }
+
+    $authorized = $false
+    if ($Cleanup) {
+        $authorized = $true
+    } elseif (-not [Console]::IsInputRedirected) {
+        $answer = Read-Host 'Clean up merged worktrees? (y/n)'
+        $authorized = ($answer -match '^\s*(y|yes)\s*$')
+    } else {
+        Write-Stderr 'cleanup: non-interactive and no -Cleanup; skipping (removal needs an explicit opt-in).'
+        return
+    }
+
+    if (-not $authorized) {
+        Write-Stderr 'cleanup: declined; nothing removed.'
+        return
+    }
+
+    $removalLog = Join-Path $RepoRoot '.claude\worktrees\worktree-removal.log'
+    foreach ($wt in $eligible) {
+        Write-Stderr "cleanup: removing merged worktree: $($wt.Path) [$($wt.Branch)]"
+        try {
+            Write-WorktreeLog -LogPath $removalLog -Worktree (Split-Path -Leaf $wt.Path) -Message "Merged-cleanup requested removal (branch $($wt.Branch))."
+        } catch { }
+        Invoke-WorktreeRemoval -RepoRoot $RepoRoot -WorktreePath $wt.Path
+    }
+}
+
+# Run the sweep only when executed directly. When dot-sourced (e.g. by tests) to import
+# the functions, $MyInvocation.InvocationName is '.', so the entrypoint is skipped.
+if ($MyInvocation.InvocationName -ne '.') {
+    if (-not $RepoRoot) {
+        $RepoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
+    }
+    Invoke-MergedWorktreeCleanup -RepoRoot $RepoRoot -Cleanup:$Cleanup -IsHook:$IsHook -MainRef $MainRef -ExcludePath $ExcludePath | Out-Null
+}

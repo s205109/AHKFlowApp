@@ -144,4 +144,18 @@ try {
     Remove-TempTree $repo
 }
 
+# --- Test: hook context is report-only (detects, never removes/prompts) --------
+$repo = New-TempGitRepo
+try {
+    $hookPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-hook'
+
+    Invoke-MergedWorktreeCleanup -RepoRoot $repo -IsHook -MainRef 'main'
+
+    Assert-True (Test-Path -LiteralPath $hookPath) 'Hook context must not remove the eligible worktree folder.'
+    $branches = (Invoke-TestGit $repo @('branch', '--list', 'feat-hook')) -join "`n"
+    Assert-True ($branches -match 'feat-hook') 'Hook context must not delete the eligible branch.'
+} finally {
+    Remove-TempTree $repo
+}
+
 Write-Host 'Worktree merged-cleanup tests passed.'
