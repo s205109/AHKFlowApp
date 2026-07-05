@@ -28,7 +28,7 @@ Pending features are tracked in `.claude/backlog/`.
 
 - Rules (always loaded): `.claude/rules/`
 - Skills (on demand): `.claude/skills/`
-- Backlog: `.claude/backlog/` — ordered work items (implement in backlog order)
+- Backlog: `.claude/backlog/` — open items; completed items live in `done/`
 - Frontend instructions: `src/Frontend/AHKFlowApp.UI.Blazor/CLAUDE.md`
 - Private/local config: `.claude/CLAUDE.local.md` (gitignored)
 - Documentation: `docs/` — architecture, azure, development guides

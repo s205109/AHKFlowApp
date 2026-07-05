@@ -4,6 +4,20 @@
 
 AHKFlow ships two first-class interfaces over one Web API: an interactive Blazor WebAssembly PWA and the `ahkflow` CLI for scripted, power-user workflows. Install the CLI from [docs/cli/windows-install.md](docs/cli/windows-install.md).
 
+## What is AHKFlow?
+
+AHKFlow lets you define reusable AutoHotkey **hotstrings** (type `btw` → get `by the way`) and **hotkeys**, organize them into **profiles** and **categories**, and generate a valid `.ahk` script per profile. Manage everything from the web UI or the `ahkflow` CLI. AHKFlow generates scripts — it never runs them; you run the downloaded `.ahk` with AutoHotkey v2.
+
+### Getting started (users)
+
+1. Sign in to the web UI.
+2. Create a hotstring (a trigger and its replacement).
+3. Assign it to a profile.
+4. Open **Downloads** and download that profile's `.ahk` script.
+5. With [AutoHotkey v2](https://www.autohotkey.com/) installed, run the `.ahk` file.
+
+Prefer the terminal? Install the CLI (`winget install AHKFlow.CLI`, see [docs/cli/windows-install.md](docs/cli/windows-install.md)) and use `ahkflow login`, `ahkflow hotstring new`, and `ahkflow download ahk`.
+
 ## Local Development
 
 ### Prerequisites
@@ -12,34 +26,29 @@ AHKFlow ships two first-class interfaces over one Web API: an interactive Blazor
 
 ### Running Locally
 
-> **First-time setup (Options 1 and 2 only):** run `pwsh scripts/setup-dev-entra.ps1` once after cloning. It creates or repairs the dev Entra ID app registration, waits for the required redirect URI/scope/service-principal wiring to become visible, sets backend user-secrets, and writes `src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/appsettings.Development.json`. Skip for Option 3 (no Azure AD).
+> **First-time setup (Option 1 only):** run `pwsh scripts/setup-dev-entra.ps1` once after cloning. It creates or repairs the dev Entra ID app registration, waits for the required redirect URI/scope/service-principal wiring to become visible, sets backend user-secrets, and writes `src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/appsettings.Development.json`. Skip for Option 2 (Docker Compose uses synthetic auth — no Azure AD).
 
-**Option 1 — LocalDB:**
+**Option 1 — Root launcher (recommended):**
+
+Starts the API and Blazor UI together and opens the browser. The API applies database migrations at startup in Development, so there is no manual migration step.
 
 ```bash
-# Start API + frontend from the repository root
+# Docker SQL (recommended) — starts a SQL Server container automatically
+dotnet run --launch-profile "API + Docker SQL"
+
+# Or LocalDB (Windows, no Docker)
 dotnet run --launch-profile "API + LocalDB"
-# The root launcher starts both projects and opens the Blazor UI
-
-# Apply migrations
-dotnet ef database update \
-  --project src/Backend/AHKFlowApp.Infrastructure \
-  --startup-project src/Backend/AHKFlowApp.API
-
-# Start API (http://localhost:5600, OpenAPI at /swagger/v1/swagger.json)
-dotnet run --project src/Backend/AHKFlowApp.API --launch-profile "LocalDB SQL"
-
-# Start frontend in a separate terminal (http://localhost:5601)
-dotnet run --project src/Frontend/AHKFlowApp.UI.Blazor
 ```
 
-**Option 2 — Docker Compose (recommended):**
+API on http://localhost:5600 (OpenAPI at `/swagger/v1/swagger.json`), UI on http://localhost:5601. To run the API and UI in separate terminals, see [docs/development/docker-setup.md](docs/development/docker-setup.md).
 
-See `docs/development/docker-setup.md`. **x64 / amd64 only** — the SQL Server image has no ARM64 build, so this stack does not run on Apple Silicon or Raspberry Pi without changing the database backend.
+If the Microsoft sign-in page shows `AADSTS500011`, rerun `pwsh scripts/setup-dev-entra.ps1` from the repo root and try again. That page is hosted by Microsoft, so the Blazor app cannot replace it before the redirect returns.
 
-**Option 3 — Run locally without Azure (homelab / trusted-LAN):**
+**Option 2 — Docker Compose (no Azure AD, homelab / trusted-LAN):**
 
-Runs the full stack — SQL Server, API, and Blazor frontend — with no Azure AD sign-in. Authentication is bypassed via a synthetic `Local User` identity on every request. nginx in the UI container reverse-proxies `/api/` to the API service, so the browser only ever talks to a single origin.
+Runs the full stack — SQL Server, API, and Blazor frontend — in containers with no Azure AD sign-in. Authentication is bypassed via a synthetic `Local User` identity on every request (`Auth__UseTestProvider=true` in `docker-compose.yml`). nginx in the UI container reverse-proxies `/api/` to the API service, so the browser only ever talks to a single origin. See `docs/development/docker-setup.md` for details.
+
+**x64 / amd64 only** — the SQL Server image has no ARM64 build, so this stack does not run on Apple Silicon or Raspberry Pi without changing the database backend.
 
 > **Trust model.** The synthetic auth provider authenticates *every* request as the same fixed user. This is acceptable for **single-user homelab use on a trusted LAN only**. Do not expose this configuration to the public internet. The API throws on startup if `Auth:UseTestProvider=true` is set in any environment other than `Development`.
 
@@ -50,8 +59,6 @@ docker compose up --build
 ```
 
 Open http://localhost:5601 in a browser. The app loads as `Local User` with no sign-in prompt. The "Log out" button is disabled (real sign-out requires Entra ID).
-
-If the Microsoft sign-in page shows `AADSTS500011`, rerun `pwsh scripts/setup-dev-entra.ps1` from the repo root and try again. That page is hosted by Microsoft, so the Blazor app cannot replace it before the redirect returns.
 
 | Service | URL |
 |---|---|
