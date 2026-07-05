@@ -29,7 +29,7 @@ It creates the branch, places the worktree under `.claude/worktrees/<name>/`, co
 
 **Do NOT** run bare `git worktree add` — it checks out files but skips isolation setup, leaving a broken worktree.
 
-Removal: `pwsh -NoProfile -File scripts/remove-worktree-local-dev.ps1` tears down isolation cleanly. Worktrees deleted with plain git skip the `WorktreeRemove` hook; the next `new-worktree.ps1` run sweeps orphaned Docker projects as a safety net.
+Removal: `pwsh -NoProfile -File scripts/remove-worktree-local-dev.ps1 -WorktreePath .claude\worktrees\<name>` tears down isolation cleanly (drops the DB, removes the Docker Compose project, deletes the branch). Without `-WorktreePath` it is a no-op. Worktrees deleted with plain git skip the `WorktreeRemove` hook; the next `new-worktree.ps1` run sweeps orphaned Docker projects as a safety net.
 
 ## Planning Strategy
 
