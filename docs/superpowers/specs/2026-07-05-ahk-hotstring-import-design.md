@@ -71,7 +71,7 @@ fresh duplicate filtering (or pre-check inside the same handler execution). Retu
 count + skipped rows.
 
 **Validation (FluentValidation, via existing decorator):**
-- Script non-empty, max length 512 KB (sanity bound on payload).
+- Script non-empty, max length 1 MB (sanity bound on payload).
 - More than 1000 parsed hotstring rows → `Result.Invalid` with message.
 - Profile association rules identical to `CreateHotstringCommand`.
 
@@ -95,7 +95,9 @@ Per-line problems never fail the request; they surface as row statuses.
 
 **Import button** on `Pages/Hotstrings.razor` toolbar opening
 `Components/Hotstrings/HotstringImportDialog.razor` (convention: sibling of
-`HotstringEditDialog.razor`). Dialog flow:
+`HotstringEditDialog.razor`). A single dialog with conditional content (not a MudStepper) —
+the input stays editable while the preview shows below, so the user can tweak and re-preview
+without losing state. Dialog flow:
 
 1. **Input step:** paste textarea + `MudFileUpload` (.ahk/.txt, read as text) + profile target
    (all-profiles switch / `EntityMultiSelect` for specific profiles, mirroring the edit dialog).
