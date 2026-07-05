@@ -8,22 +8,14 @@ description: Use when optimizing AHKFlowApp agent workflow, worktrees, planning,
 ## Core Principles
 
 1. **Plan non-trivial work** - For tasks touching several files or architecture, save or review a concrete plan before editing.
-2. **Use isolated branches/worktrees** - Never start implementation on `main`; use repo worktree hooks or Git worktrees for parallel work.
+2. **Use isolated branches/worktrees** - Never start implementation on `main`; see the `worktrees` skill for creating/removing them, never bare `git worktree add`.
 3. **Verify with commands** - `dotnet build`, `dotnet test`, `dotnet format`, setup scripts, and targeted greps are the proof.
 4. **Spend context deliberately** - Read files you will edit; use search, Roslyn MCP, and concise summaries for broad exploration.
 5. **Project rules win** - `AGENTS.md` and `.claude/rules/*` define AHKFlowApp conventions.
 
 ## Worktrees
 
-AHKFlowApp has worktree setup hooks in `.claude/settings.json` (`WorktreeCreate` and `WorktreeRemove`) and repo scripts for local dev isolation. Prefer those project mechanisms when available.
-
-Manual fallback:
-
-```bash
-git worktree add .claude/worktrees/<branch-name> -b <branch-name>
-```
-
-Before creating project-local worktrees, verify the directory is ignored.
+See the `worktrees` skill for creating, removing, and troubleshooting AHKFlowApp git worktrees (Claude Code, Codex, and Copilot).
 
 ## Planning Strategy
 
