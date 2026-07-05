@@ -88,25 +88,22 @@ internal sealed class UpdateHotkeyCommandHandler(
             input.AppliesToAllProfiles,
             clock);
 
-        // Replace junction rows
+        // Replace junction rows via the navigation collections only; adding to the
+        // DbSet as well would double-add through EF navigation fixup
         db.HotkeyProfiles.RemoveRange(entity.Profiles);
         entity.Profiles.Clear();
 
         if (!input.AppliesToAllProfiles && input.ProfileIds is { Length: > 0 })
         {
             foreach (Guid pid in input.ProfileIds)
-            {
-                var junction = HotkeyProfile.Create(entity.Id, pid);
-                db.HotkeyProfiles.Add(junction);
-                entity.Profiles.Add(junction);
-            }
+                entity.Profiles.Add(HotkeyProfile.Create(entity.Id, pid));
         }
 
         db.HotkeyCategories.RemoveRange(entity.Categories);
         entity.Categories.Clear();
 
         foreach (Guid cid in distinctCategoryIds)
-            db.HotkeyCategories.Add(HotkeyCategory.Create(entity.Id, cid));
+            entity.Categories.Add(HotkeyCategory.Create(entity.Id, cid));
 
         try
         {

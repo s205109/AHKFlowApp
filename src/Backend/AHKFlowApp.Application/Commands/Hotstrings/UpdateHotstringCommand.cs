@@ -89,25 +89,22 @@ internal sealed class UpdateHotstringCommandHandler(
             input.IsTriggerInsideWord,
             clock);
 
-        // Replace junction rows
+        // Replace junction rows via the navigation collections only; adding to the
+        // DbSet as well would double-add through EF navigation fixup
         db.HotstringProfiles.RemoveRange(entity.Profiles);
         entity.Profiles.Clear();
 
         if (!input.AppliesToAllProfiles && distinctProfileIds.Length > 0)
         {
             foreach (Guid pid in distinctProfileIds)
-            {
-                var junction = HotstringProfile.Create(entity.Id, pid);
-                db.HotstringProfiles.Add(junction);
-                entity.Profiles.Add(junction);
-            }
+                entity.Profiles.Add(HotstringProfile.Create(entity.Id, pid));
         }
 
         db.HotstringCategories.RemoveRange(entity.Categories);
         entity.Categories.Clear();
 
         foreach (Guid cid in distinctCategoryIds)
-            db.HotstringCategories.Add(HotstringCategory.Create(entity.Id, cid));
+            entity.Categories.Add(HotstringCategory.Create(entity.Id, cid));
 
         try
         {

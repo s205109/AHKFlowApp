@@ -83,6 +83,43 @@ public sealed class UpdateHotstringWithCategoriesTests(HotstringDbFixture fx)
     }
 
     [Fact]
+    public async Task Handle_WhenReplacingProfiles_ReturnsDtoWithExactProfileIds()
+    {
+        var owner = Guid.NewGuid();
+        var entity = Hotstring.Create(owner, "prf", "profile swap", null, false, true, true, _clock);
+        Profile prof1 = new ProfileBuilder().WithOwner(owner).WithName("Old").Build();
+        Profile prof2 = new ProfileBuilder().WithOwner(owner).WithName("New1").AsDefault(false).Build();
+        Profile prof3 = new ProfileBuilder().WithOwner(owner).WithName("New2").AsDefault(false).Build();
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(entity);
+            seed.Profiles.AddRange(prof1, prof2, prof3);
+            await seed.SaveChangesAsync();
+            seed.HotstringProfiles.Add(HotstringProfile.Create(entity.Id, prof1.Id));
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        var handler = new UpdateHotstringCommandHandler(
+            db, CurrentUserHelper.For(owner), _clock, new EntityHistoryRecorder(db, _clock));
+        var cmd = new UpdateHotstringCommand(entity.Id,
+            new UpdateHotstringDto("prf", "profile swap", [prof2.Id, prof3.Id], false, true, true, Description: null));
+
+        Result<HotstringDto> result = await handler.ExecuteAsync(cmd, default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.ProfileIds.Should().BeEquivalentTo([prof2.Id, prof3.Id]);
+
+        await using AppDbContext verify = fx.CreateContext();
+        List<Guid> dbProfileIds = await verify.HotstringProfiles
+            .Where(hp => hp.HotstringId == entity.Id)
+            .Select(hp => hp.ProfileId)
+            .ToListAsync();
+        dbProfileIds.Should().BeEquivalentTo([prof2.Id, prof3.Id]);
+    }
+
+    [Fact]
     public async Task Handle_WhenEmptyCategoryIds_ClearsAllCategoryLinks()
     {
         var owner = Guid.NewGuid();
