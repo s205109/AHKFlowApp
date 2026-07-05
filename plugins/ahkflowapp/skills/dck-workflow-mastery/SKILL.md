@@ -8,28 +8,14 @@ description: Use when optimizing AHKFlowApp agent workflow, worktrees, planning,
 ## Core Principles
 
 1. **Plan non-trivial work** - For tasks touching several files or architecture, save or review a concrete plan before editing.
-2. **Use isolated branches/worktrees** - Never start implementation on `main`; create worktrees with `scripts/new-worktree.ps1` (see Worktrees below), never bare `git worktree add`.
+2. **Use isolated branches/worktrees** - Never start implementation on `main`; see the `worktrees` skill for creating/removing them, never bare `git worktree add`.
 3. **Verify with commands** - `dotnet build`, `dotnet test`, `dotnet format`, setup scripts, and targeted greps are the proof.
 4. **Spend context deliberately** - Read files you will edit; use search, Roslyn MCP, and concise summaries for broad exploration.
 5. **Project rules win** - `AGENTS.md` and `.claude/rules/*` define AHKFlowApp conventions.
 
 ## Worktrees
 
-AHKFlowApp worktrees carry local-dev isolation — per-worktree ports, database, and Docker Compose project — set up by `scripts/new-worktree.ps1`. Skipping that script leaves a worktree that collides with the main checkout on ports, DB, and containers. Always create worktrees through it.
-
-**Claude Code:** use the native worktree feature. It fires the `WorktreeCreate` hook (`.claude/settings.json`) which runs `new-worktree.ps1` for you.
-
-**Codex, Copilot, plain git, or any non-hook path:** run the script directly from the main checkout:
-
-```bash
-pwsh -NoProfile -File scripts/new-worktree.ps1 -Name <name>
-```
-
-It creates the branch, places the worktree under `.claude/worktrees/<name>/`, copies `.worktreeinclude` entries, runs local-dev isolation setup, and prints the worktree path on success.
-
-**Do NOT** run bare `git worktree add` — it checks out files but skips isolation setup, leaving a broken worktree.
-
-Removal: `pwsh -NoProfile -File scripts/remove-worktree-local-dev.ps1 -WorktreePath .claude\worktrees\<name>` tears down isolation cleanly (drops the DB, removes the Docker Compose project, deletes the branch). Without `-WorktreePath` it is a no-op. Worktrees deleted with plain git skip the `WorktreeRemove` hook; the next `new-worktree.ps1` run sweeps orphaned Docker projects as a safety net.
+See the `worktrees` skill for creating, removing, and troubleshooting AHKFlowApp git worktrees (Claude Code, Codex, and Copilot).
 
 ## Planning Strategy
 
