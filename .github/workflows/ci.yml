@@ -19,7 +19,8 @@ jobs:
         with:
           fetch-depth: 0  # MinVer needs full history for version derivation
       - name: Verify changelog asset
-        run: pwsh ./scripts/generate-changelog-json.ps1 -Check
+        # Requires PowerShell 7 (pwsh); available on GitHub-hosted runners
+        run: pwsh ./scripts/ci/generate-changelog-json.ps1 -Check
       - name: Detect non-docs changes
         id: filter
         uses: dorny/paths-filter@v4.0.1
@@ -68,7 +69,7 @@ jobs:
         if: always() && steps.filter.outputs.code == 'true'
         run: |
           mkdir -p CoverageReport
-          python scripts/check-coverage-thresholds.py --github-summary-footer >> CoverageReport/SummaryGithub.md
+          python scripts/ci/check-coverage-thresholds.py --github-summary-footer >> CoverageReport/SummaryGithub.md
       - name: Append coverage summary to job summary
         if: always() && steps.filter.outputs.code == 'true'
         run: cat CoverageReport/SummaryGithub.md >> "$GITHUB_STEP_SUMMARY"
@@ -94,7 +95,7 @@ jobs:
           retention-days: 14
       - name: Enforce per-assembly coverage thresholds
         if: always() && steps.filter.outputs.code == 'true'
-        run: python scripts/check-coverage-thresholds.py
+        run: python scripts/ci/check-coverage-thresholds.py
       - if: steps.filter.outputs.code == 'true'
         run: dotnet format AHKFlowApp.slnx --verify-no-changes
 

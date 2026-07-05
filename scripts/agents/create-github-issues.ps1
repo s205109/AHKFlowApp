@@ -1,12 +1,12 @@
 #Requires -Version 5.1
 # Create GitHub Issues from Backlog
 # Usage:
-#   .\scripts\create-github-issues.ps1 -BacklogPath "<path>"           # Dry run (default)
-#   .\scripts\create-github-issues.ps1 -BacklogPath "<path>" -Execute  # Create issues
+#   .\scripts\agents\create-github-issues.ps1 -BacklogPath "<path>"           # Dry run (default)
+#   .\scripts\agents\create-github-issues.ps1 -BacklogPath "<path>" -Execute  # Create issues
 #
 # Example:
-#   .\create-github-issues.ps1 -BacklogPath "..\..\.claude\backlog"
-#   .\create-github-issues.ps1 -BacklogPath "..\..\.claude\backlog" -Execute
+#   .\create-github-issues.ps1 -BacklogPath "..\..\..\.claude\backlog"
+#   .\create-github-issues.ps1 -BacklogPath "..\..\..\.claude\backlog" -Execute
 
 param(
     [switch]$Execute,

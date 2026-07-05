@@ -143,14 +143,14 @@ GitHub Projects v2 has limited built-in automation. Manage workflow manually:
 
 ### Batch Script
 
-See [`scripts/create-github-issues.ps1`](../../scripts/create-github-issues.ps1) — reads backlog files from `.claude/backlog/`, detects type/epic/interface labels, and creates GitHub Issues via `gh` CLI. Supports dry-run (default) and `-Execute` flag.
+See [`scripts/agents/create-github-issues.ps1`](../../scripts/agents/create-github-issues.ps1) — reads backlog files from `.claude/backlog/`, detects type/epic/interface labels, and creates GitHub Issues via `gh` CLI. Supports dry-run (default) and `-Execute` flag.
 
 ### Run
 
 ```powershell
 gh auth status          # Verify authenticated
-.\scripts\create-github-issues.ps1 -BacklogPath .claude\backlog           # Dry run (default)
-.\scripts\create-github-issues.ps1 -BacklogPath .claude\backlog -Execute  # Create issues for real
+.\scripts\agents\create-github-issues.ps1 -BacklogPath .claude\backlog           # Dry run (default)
+.\scripts\agents\create-github-issues.ps1 -BacklogPath .claude\backlog -Execute  # Create issues for real
 ```
 
 ### Add Issues to Project

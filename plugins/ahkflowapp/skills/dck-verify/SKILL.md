@@ -106,7 +106,7 @@ Inspect the diff for accidental files, debug leftovers, secrets, stale reference
 When `.agents/*` skills change:
 
 ```bash
-pwsh -NoProfile -File scripts/setup-cross-agent-skills.ps1
+pwsh -NoProfile -File scripts/agents/setup-cross-agent-skills.ps1
 ```
 
 Then verify:

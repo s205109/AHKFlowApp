@@ -20,7 +20,7 @@ That command is the recommended pre-push / pre-PR coverage check. It:
 If `CoverageReport` already exists and you only want to rerun the gate:
 
 ```bash
-python .\scripts\check-coverage-thresholds.py
+python .\scripts\ci\check-coverage-thresholds.py
 ```
 
 If you only want the local HTML report without enforcing thresholds:
@@ -59,7 +59,7 @@ Prefer `SKIP_COVERAGE_HOOK=1` so future pre-push hooks (lint, secret scan, etc.)
 
 ## CI gate
 
-CI and the local verification path both use `scripts/check-coverage-thresholds.py` to enforce per-assembly line and branch thresholds from the merged Cobertura report.
+CI and the local verification path both use `scripts/ci/check-coverage-thresholds.py` to enforce per-assembly line and branch thresholds from the merged Cobertura report.
 
 The exact threshold values live in that script and are appended to the Actions job summary and PR sticky comment by the same script, so contributors read the same rules that CI enforces.
 

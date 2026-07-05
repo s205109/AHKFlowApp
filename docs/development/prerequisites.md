@@ -18,7 +18,7 @@ The repo uses symlinks so a single set of AI-tool config files is reachable from
 After cloning, run the symlink setup once:
 
 ```powershell
-.\scripts\setup-copilot-symlinks.ps1
+.\scripts\agents\setup-copilot-symlinks.ps1
 ```
 
 ## Optional
