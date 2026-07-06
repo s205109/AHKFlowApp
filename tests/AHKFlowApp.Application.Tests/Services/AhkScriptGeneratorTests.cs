@@ -105,6 +105,29 @@ public sealed class AhkScriptGeneratorTests
             "F");
     }
 
+    [Theory]
+    [InlineData("a ;b", "::a `;b::x")]
+    [InlineData("back`tick", "::back``tick::x")]
+    public void Generate_TriggerWithSpecialChars_EscapesTriggerToo(string trigger, string expectedLine)
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotstring hs = new HotstringBuilder()
+            .WithTrigger(trigger)
+            .WithReplacement("x")
+            .WithEndingCharacterRequired(true)
+            .WithTriggerInsideWord(false)
+            .Build();
+
+        string output = DefaultSut().Generate(profile, [hs], []);
+
+        output.Should().Be(
+            "H\n" +
+            "; --- Hotstrings ---\n" +
+            expectedLine + "\n" +
+            "; --- Hotkeys ---\n" +
+            "F");
+    }
+
     [Fact]
     public void Generate_MultipleHotstrings_AllAppearUnderHotstringsSection()
     {

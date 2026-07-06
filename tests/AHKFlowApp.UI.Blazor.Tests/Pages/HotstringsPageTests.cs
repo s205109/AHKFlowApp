@@ -85,7 +85,7 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
     private static void FillRequiredFields(IRenderedComponent<Hotstrings> cut, string trigger = "btw", string replacement = "by the way")
     {
         cut.Find("input[data-test=\"trigger-input\"]").Input(trigger);
-        cut.Find("input[data-test=\"replacement-input\"]").Input(replacement);
+        cut.Find("textarea[data-test=\"replacement-input\"]").Input(replacement);
     }
 
     [Fact]
@@ -281,8 +281,8 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
         IRenderedComponent<Hotstrings> cut = RenderPage();
         cut.WaitForAssertion(() => cut.Find("button.start-edit"));
         cut.Find("button.start-edit").Click();
-        cut.WaitForAssertion(() => cut.Find("input[data-test=\"replacement-input\"]"));
-        cut.Find("input[data-test=\"replacement-input\"]").Input("by the way!");
+        cut.WaitForAssertion(() => cut.Find("textarea[data-test=\"replacement-input\"]"));
+        cut.Find("textarea[data-test=\"replacement-input\"]").Input("by the way!");
         cut.Find("button.commit-edit").Click();
 
         cut.WaitForAssertion(() => _api.Received(1).UpdateAsync(dto.Id,
@@ -356,7 +356,7 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
         cut.Find("button.add-hotstring").Click();
         cut.WaitForAssertion(() => cut.Find("input[data-test=\"trigger-input\"]"));
         cut.Find("input[data-test=\"trigger-input\"]").Input("btw");
-        cut.Find("input[data-test=\"replacement-input\"]").Input("by the way");
+        cut.Find("textarea[data-test=\"replacement-input\"]").Input("by the way");
         cut.Find("button.commit-edit").Click();
 
         // MudBlazor snackbars render via portal and are not in the component DOM in bUnit.

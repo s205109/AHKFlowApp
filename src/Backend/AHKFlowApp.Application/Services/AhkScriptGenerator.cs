@@ -51,13 +51,14 @@ public sealed class AhkScriptGenerator(
         string options = "";
         if (!hs.IsEndingCharacterRequired) options += "*";
         if (hs.IsTriggerInsideWord) options += "?";
-        return $":{options}:{hs.Trigger}::{EscapeReplacement(hs.Replacement)}";
+        return $":{options}:{Escape(hs.Trigger)}::{Escape(hs.Replacement)}";
     }
 
-    // Keep every hotstring on one physical line. Backtick must be escaped first so
-    // later escapes are not double-escaped.
-    private static string EscapeReplacement(string replacement) =>
-        replacement
+    // Keep every hotstring on one physical line and its trigger free of characters
+    // AHK v2 would otherwise reinterpret (backtick, a whitespace-preceded ';'). Backtick
+    // must be escaped first so later escapes are not double-escaped.
+    private static string Escape(string value) =>
+        value
             .Replace("`", "``")
             .Replace("\n", "`n")
             .Replace("\r", "`r")
