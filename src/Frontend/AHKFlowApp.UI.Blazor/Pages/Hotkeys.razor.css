@@ -16,12 +16,9 @@
     white-space: nowrap;
 }
 
-.add-hotkey-fab {
-    position: fixed;
-    right: 16px;
-    bottom: 16px;
-    z-index: 100;
-}
+/* FAB fixed-position rules live in the global wwwroot/css/app.css — MudFab renders its
+   own root <button>, which never receives this page's CSS-isolation scope attribute, so
+   scoped selectors here would silently fail to match. See backlog 032 (done). */
 
 @media (max-width: 959.95px) {
     .desktop-branch {

@@ -129,7 +129,7 @@ public sealed class VersionHistoryFlowTests(StackFixture fixture) : IAsyncLifeti
         await page.ClickAsync("button.add-hotstring");
         await page.WaitForSelectorAsync("tr.draft-row");
         await page.FillAsync("tr.draft-row input[data-test=\"trigger-input\"]", trigger);
-        await page.FillAsync("tr.draft-row input[data-test=\"replacement-input\"]", replacement);
+        await page.FillAsync("tr.draft-row textarea[data-test=\"replacement-input\"]", replacement);
         await page.ClickAsync("tr.draft-row button.commit-edit");
         await page.WaitForSelectorAsync("text=Hotstring created.");
         await page.WaitForSelectorAsync($"tbody tr:has-text(\"{trigger}\")");
@@ -141,7 +141,7 @@ public sealed class VersionHistoryFlowTests(StackFixture fixture) : IAsyncLifeti
             .Locator("button.start-edit")
             .ClickAsync();
         await page.WaitForSelectorAsync("tr.edit-row");
-        await page.FillAsync("tr.edit-row input[data-test=\"replacement-input\"]", replacement);
+        await page.FillAsync("tr.edit-row textarea[data-test=\"replacement-input\"]", replacement);
         await page.ClickAsync("tr.edit-row button.commit-edit");
         await page.WaitForSelectorAsync("text=Hotstring updated.");
         await page.WaitForSelectorAsync($"tbody tr:has-text(\"{replacement}\")");

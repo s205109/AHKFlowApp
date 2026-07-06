@@ -16,12 +16,9 @@
     white-space: nowrap;
 }
 
-.add-hotstring-fab {
-    position: fixed;
-    right: 16px;
-    bottom: 16px;
-    z-index: 100;
-}
+/* FAB fixed-position rules live in the global wwwroot/css/app.css — MudFab renders its
+   own root <button>, which never receives this page's CSS-isolation scope attribute, so
+   scoped selectors here would silently fail to match. See backlog 032 (done). */
 
 @media (max-width: 959.95px) {
     .desktop-branch {
@@ -62,6 +59,13 @@
 ::deep .hotstrings-grid th:nth-child(3),
 ::deep .hotstrings-grid td:nth-child(3) {
     width: 24%;
+}
+
+/* Replacement column: multi-line imports (continuation sections, converted Send
+   bodies) can contain real line breaks — wrap instead of collapsing them. */
+::deep .hotstrings-grid td:nth-child(3) {
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
 }
 
 ::deep .hotstrings-grid th:nth-child(4),

@@ -43,7 +43,7 @@
                         <MudText Typo="Typo.subtitle2">Trigger</MudText>
                         <MudText Class="mb-2">@_preview.Snapshot.Trigger</MudText>
                         <MudText Typo="Typo.subtitle2">Replacement</MudText>
-                        <MudText Class="mb-2">@_preview.Snapshot.Replacement</MudText>
+                        <MudText Class="mb-2" Style="white-space: pre-wrap">@_preview.Snapshot.Replacement</MudText>
                         @if (_preview.Snapshot.Description is { Length: > 0 } description)
                         {
                             <MudText Typo="Typo.subtitle2">Description</MudText>

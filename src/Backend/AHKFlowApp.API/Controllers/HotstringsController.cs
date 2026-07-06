@@ -28,7 +28,9 @@ public sealed class HotstringsController(
     IUseCase<RevertHotstringCommand, Result<HotstringDto>> revertHotstring,
     IUseCase<ListDeletedHotstringsQuery, Result<DeletedHotstringDto[]>> listDeletedHotstrings,
     IUseCase<RestoreHotstringCommand, Result<HotstringDto>> restoreHotstring,
-    IUseCase<PurgeDeletedHotstringCommand, Result> purgeDeletedHotstring) : ControllerBase
+    IUseCase<PurgeDeletedHotstringCommand, Result> purgeDeletedHotstring,
+    IUseCase<PreviewHotstringImportCommand, Result<HotstringImportPreviewDto>> previewImport,
+    IUseCase<ImportHotstringsCommand, Result<HotstringImportResultDto>> importHotstrings) : ControllerBase
 {
     /// <summary>List hotstrings for the current user, optionally filtered by profile. Paginated.</summary>
     [HttpGet]
@@ -163,4 +165,24 @@ public sealed class HotstringsController(
         Result result = await purgeDeletedHotstring.ExecuteAsync(new PurgeDeletedHotstringCommand(id), ct);
         return result.IsSuccess ? NoContent() : result.ToProblemActionResult(this);
     }
+
+    /// <summary>Preview which hotstring lines a pasted/uploaded script would import.</summary>
+    [HttpPost("import/preview")]
+    [ProducesResponseType(typeof(HotstringImportPreviewDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<HotstringImportPreviewDto>> ImportPreview(
+        [FromBody] PreviewHotstringImportRequestDto dto,
+        CancellationToken ct) =>
+        (await previewImport.ExecuteAsync(new PreviewHotstringImportCommand(dto.Script), ct))
+            .ToProblemActionResult(this);
+
+    /// <summary>Bulk-create the recognized hotstrings from a script into a profile target.</summary>
+    [HttpPost("import")]
+    [ProducesResponseType(typeof(HotstringImportResultDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<HotstringImportResultDto>> Import(
+        [FromBody] ImportHotstringsRequestDto dto,
+        CancellationToken ct) =>
+        (await importHotstrings.ExecuteAsync(new ImportHotstringsCommand(dto), ct))
+            .ToProblemActionResult(this);
 }
