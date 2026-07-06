@@ -30,7 +30,7 @@ rejections honest and auto-converts *static text* bodies into multi-line replace
 | Decision | Choice |
 |---|---|
 | Outcome | **Honest reject + convert static text** — logic bodies rejected with accurate reason; static-text bodies imported |
-| Converter aggressiveness | **Conservative send-only** — convert only if every body line is a Send-family command sending literal text; reject `%variables%`, other commands, modifier keystrokes |
+| Converter aggressiveness | **Conservative send-only** — convert only if every body line is a Send-family command sending literal text; reject any `%` character (not just paired `%var%` dereferences), other commands, modifier keystrokes |
 | Continuation-section form | **Convert** the canonical `::trigger::` + `( ... )` block (was rejected) into a multi-line replacement |
 | Generator encoding | **Single-line backtick escaping** (`` `n ``) — keeps one-line-per-hotstring layout |
 
@@ -58,12 +58,13 @@ Replacement text (may contain \n)
 
 ### Part 1 — Generator escapes replacements
 `Services/AhkScriptGenerator.FormatHotstring`. Escape the replacement so each hotstring stays on one
-physical line. The generator emits **exactly four** escape sequences, applied in this order (backtick
-first so it isn't double-escaped): `` ` ``→``` `` ```, newline→`` `n ``, CR→`` `r ``, tab→`` `t ``.
-Every other character is written literally. In an AHK auto-replace hotstring the replacement text is
-literal — `;` is **not** a comment there — so `;`, spaces, `%`, `{`, `}`, `!`, `^`, `+`, `#` need no
-escaping (verify the `;` claim against AHK v2 docs during impl; if wrong, add `` `; `` to the set on
-both sides).
+physical line. The generator emits **five** escape sequences, applied in this order (backtick first
+so it isn't double-escaped): `` ` ``→``` `` ```, newline→`` `n ``, CR→`` `r ``, tab→`` `t ``,
+`;`→`` `; ``. The `;` escape is required because AHK v2 treats a whitespace-preceded `;` as an
+end-of-line comment even on a hotstring's replacement side (`https://www.autohotkey.com/docs/v2/misc/EscapeChar.htm`);
+escaping every `;` unconditionally is lossless since the decoder normalises `` `; `` back to `;`.
+Every other character (spaces, `%`, `{`, `}`, `!`, `^`, `+`, `#`) is written literally — none of
+those are special on the replacement side.
 
 ### Escape grammar & decoding contract (Part 1 ↔ Part 2)
 
@@ -135,11 +136,16 @@ Same file. When `::trigger::` has an empty replacement and is **not** followed b
        `;` preceded by whitespace/tab (v1 comment start), reject with reason "Inline comment in Send
        — not imported." Only `` `; `` (escaped) is a literal semicolon.
      - Reject if the arg is itself a continuation opener (a lone `(` as the argument).
-   - Reject any arg containing `%...%` (v1 variable deref → dynamic).
+   - **Reject any arg containing a bare `%` character.** This is intentionally broader than
+     detecting a paired `%identifier%` dereference: a v1 script has no reliable way to distinguish a
+     literal percent sign (`Send, 100% done`) from a variable dereference (`Send, %CurrentDateTime%`)
+     without a full v1 expression parser, which this converter deliberately does not implement.
+     Conservative-reject wins over silently importing wrong text — a literal-percent hotstring is
+     rejected with an honest reason and can be re-entered manually.
    - Interpreting sends (`Send/SendInput/SendEvent/SendPlay`): reject bare `^ ! + #` (modifier
      keystrokes) and any `{...}` token other than `{Enter}`/`{Return}`→`\n` and `{Tab}`→`\t`.
    - Literal sends (`SendText/SendRaw`): all chars literal (braces/modifiers included); still reject
-     `%...%`.
+     any `%` for the same reason.
    - Success: concatenate each send's literal text **in order with no separator between sends**
      (only `{Enter}`/`{Return}` introduce newlines) → replacement, status Ready.
    - Failure: Invalid with an honest reason naming the blocker, e.g.
@@ -191,9 +197,8 @@ entries — resolved by the *hard boundaries* in Part 3 step 2.
 ## Resolved open items (2026-07-06)
 - **Continuation-section defaults:** mirror AHK v2 defaults — LF join, per-line leading-whitespace
   trim. Verify against docs during impl with an indented-block test.
-- **`;` in replacements:** treated as literal (not a comment) in auto-replace hotstrings; verify
-  against AHK v2 docs during impl. If wrong, add `` `; `` to the generator escape set (decoder
-  already accepts it).
+- **`;` in replacements:** confirmed NOT literal-safe — AHK v2 treats a whitespace-preceded `;` as
+  a comment, so the generator escapes it (`` `; ``) as its fifth escape sequence (see Part 1 above).
 - **Preview display:** include `white-space: pre-wrap` on the replacement cell in
   `HotstringImportDialog.razor` now — one-line CSS; converted multi-line rows must read as such.
 - **Reject reasons:** granular — name the offending construct (e.g. "found: FormatTime", "Inline

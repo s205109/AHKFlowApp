@@ -22,7 +22,7 @@
   5. `;` → `` `; `` (added per the spec's resolved item: AHK v2 treats a space/tab-preceded `;` as an end-of-line comment even on hotstring lines — see `https://www.autohotkey.com/docs/v2/misc/EscapeChar.htm`; escaping every `;` is safe because the decoder normalises `` `; `` back to `;`)
 - **Decode algorithm** (single left-to-right pass over the single-line replacement captured after `::`, applied AFTER the regex splits trigger/replacement): non-backtick chars emit verbatim; on backtick look at next char x — `` ` ``→`` ` `` (doubled, consume both), `n`→LF, `r`→CR, `t`→TAB, `s`→space, `;`→`;`, any other char → emit x verbatim; a trailing lone backtick is dropped. `` ``n `` decodes to literal backtick + `n`, never a newline. Continuation-section lines are NOT escape-decoded.
 - **Send-family regex:** `^\s*(SendInput|SendText|SendRaw|SendEvent|SendPlay|Send)\b\s*,?\s*(.*)$`, case-insensitive (longest alternatives first so `Send` cannot shadow `SendInput`).
-- **v1 Send arg rules:** strip one optional leading `,` plus leading whitespace (the regex does this); keep internal and trailing spaces; unescaped `;` preceded by whitespace/tab (or at arg start) → reject whole body `"Inline comment in Send — not imported."`; only `` `; `` is a literal semicolon; reject `%...%` in ALL send families; interpreting sends (`Send`/`SendInput`/`SendEvent`/`SendPlay`) reject bare `^ ! + #` and any `{...}` token except `{Enter}`/`{Return}`→`\n` and `{Tab}`→`\t`; literal sends (`SendText`/`SendRaw`) keep braces/modifiers literal; concatenate converted sends in order with NO separator.
+- **v1 Send arg rules:** strip one optional leading `,` plus leading whitespace (the regex does this); keep internal and trailing spaces; unescaped `;` preceded by whitespace/tab (or at arg start) → reject whole body `"Inline comment in Send — not imported."`; only `` `; `` is a literal semicolon; reject ANY bare `%` character in ALL send families — intentionally broader than a paired `%identifier%` dereference, since distinguishing a literal percent sign (`Send, 100% done`) from a variable deref (`Send, %CurrentDateTime%`) needs a full v1 expression parser this converter deliberately doesn't implement; interpreting sends (`Send`/`SendInput`/`SendEvent`/`SendPlay`) reject bare `^ ! + #` and any `{...}` token except `{Enter}`/`{Return}`→`\n` and `{Tab}`→`\t`; literal sends (`SendText`/`SendRaw`) keep braces/modifiers literal; concatenate converted sends in order with NO separator.
 - **Code-body scan hard boundaries** (priority order): (1) a line matching the hotstring pattern before any `return` → Invalid `"Unterminated code body (no `return` before next hotstring)."` and DO NOT consume that line; (2) a lone `(` opens a nested continuation block — ignore `return`/`)`-lookalikes/hotstring-looking lines until the matching lone `)`; (3) a trimmed `return` (case-insensitive) outside a nested block → consume it, body is terminated; (4) EOF before `return` → Invalid `"Unterminated code body (no `return`)."`. Blank and `;`-comment lines inside the body are skipped, never terminators.
 - **Exact reject/error strings:**
   - `"Unterminated continuation section."`
@@ -559,6 +559,42 @@ git commit -m "feat: import continuation-section hotstrings as multi-line" -m "C
     }
 
     [Fact]
+    public void Parse_CommentLineBetweenTriggerAndBody_IsStillTreatedAsCodeBody()
+    {
+        string script = string.Join('\n',
+            "::note::",
+            "; a leading comment before the real body",
+            "MsgBox hi",
+            "return");
+
+        IReadOnlyList<HotstringImportRowDto> rows = AhkHotstringParser.Parse(script);
+
+        rows.Should().ContainSingle();
+        rows[0].Status.Should().Be(HotstringImportRowStatus.Invalid);
+        rows[0].Reason.Should().NotBe("Replacement is required.");
+    }
+
+    [Fact]
+    public void Parse_EmptyHotstringWithOnlyTrailingComment_IsReplacementRequiredNotUnterminated()
+    {
+        // The peek in HasCodeBody must skip past a trailing comment to see that the
+        // NEXT real line is another hotstring — otherwise this misclassifies as a
+        // code body and reports "Unterminated code body" instead of the correct
+        // "genuinely empty hotstring" outcome.
+        string script = string.Join('\n',
+            "::x::",
+            "; just a trailing comment, no real body here",
+            "::btw::by the way");
+
+        IReadOnlyList<HotstringImportRowDto> rows = AhkHotstringParser.Parse(script);
+
+        rows.Should().HaveCount(2);
+        rows[0].Reason.Should().Be("Replacement is required.");
+        rows[1].Trigger.Should().Be("btw");
+        rows[1].Status.Should().Be(HotstringImportRowStatus.Ready);
+    }
+
+    [Fact]
     public void Parse_NestedContinuationBlockInBody_IgnoresReturnAndHotstringLines()
     {
         string script = string.Join('\n',
@@ -879,7 +915,25 @@ git commit -m "feat: scan v1 code bodies with hard boundaries on import" -m "Co-
         HotstringImportRowDto row = AhkHotstringParser.Parse(script)[0];
 
         row.Status.Should().Be(HotstringImportRowStatus.Invalid);
-        row.Reason.Should().Be("Code-body hotstrings that run logic aren't supported (found: %variable%).");
+        row.Reason.Should().Be("Code-body hotstrings that run logic aren't supported (found: % character).");
+    }
+
+    [Fact]
+    public void Parse_SendWithLiteralPercentSign_IsAlsoRejected()
+    {
+        // Documented behavior: ANY bare '%' rejects, not just a paired %identifier%
+        // dereference — this converter has no v1 expression parser to distinguish a
+        // literal percent sign from a variable dereference, so it conservatively
+        // rejects both rather than risk silently importing the wrong text.
+        string script = string.Join('\n',
+            "::x::",
+            "Send, 100% done",
+            "return");
+
+        HotstringImportRowDto row = AhkHotstringParser.Parse(script)[0];
+
+        row.Status.Should().Be(HotstringImportRowStatus.Invalid);
+        row.Reason.Should().Be("Code-body hotstrings that run logic aren't supported (found: % character).");
     }
 
     [Fact]
@@ -949,7 +1003,7 @@ git commit -m "feat: scan v1 code bodies with hard boundaries on import" -m "Co-
         HotstringImportRowDto row = AhkHotstringParser.Parse(script)[0];
 
         row.Status.Should().Be(HotstringImportRowStatus.Invalid);
-        row.Reason.Should().Be("Code-body hotstrings that run logic aren't supported (found: %variable%).");
+        row.Reason.Should().Be("Code-body hotstrings that run logic aren't supported (found: % character).");
     }
 
     [Fact]
@@ -1062,7 +1116,11 @@ git commit -m "feat: scan v1 code bodies with hard boundaries on import" -m "Co-
 
             if (c == '%')
             {
-                reason = "Code-body hotstrings that run logic aren't supported (found: %variable%).";
+                // Any bare '%' rejects, not just a paired %identifier% deref: distinguishing a
+                // literal percent sign ("100% done") from a v1 variable dereference
+                // ("%CurrentDateTime%") needs a full v1 expression parser this converter
+                // deliberately doesn't implement. Conservative-reject over silently-wrong text.
+                reason = "Code-body hotstrings that run logic aren't supported (found: % character).";
                 return false;
             }
 
