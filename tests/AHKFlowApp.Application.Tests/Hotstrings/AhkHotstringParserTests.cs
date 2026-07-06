@@ -136,6 +136,45 @@ public sealed class AhkHotstringParserTests
         rows[1].Status.Should().Be(HotstringImportRowStatus.Ready);
     }
 
+    [Theory]
+    [InlineData("::sig::line one`nline two", "line one\nline two")]
+    [InlineData("::sig::a`rb", "a\rb")]
+    [InlineData("::sig::a`tb", "a\tb")]
+    [InlineData("::sig::back``tick", "back`tick")]
+    [InlineData("::sig::a`sb", "a b")]
+    [InlineData("::sig::a`;b", "a;b")]
+    public void Parse_EscapedReplacement_DecodesEscapeSequences(string line, string expected)
+    {
+        HotstringImportRowDto row = AhkHotstringParser.Parse(line)[0];
+
+        row.Replacement.Should().Be(expected);
+        row.Status.Should().Be(HotstringImportRowStatus.Ready);
+    }
+
+    [Fact]
+    public void Parse_DoubledBacktickBeforeN_KeepsLiteralBacktickAndN()
+    {
+        HotstringImportRowDto row = AhkHotstringParser.Parse("::sig::keep ``n literal")[0];
+
+        row.Replacement.Should().Be("keep `n literal");
+    }
+
+    [Fact]
+    public void Parse_UnknownEscape_EmitsEscapedCharVerbatim()
+    {
+        HotstringImportRowDto row = AhkHotstringParser.Parse("::sig::a`qb")[0];
+
+        row.Replacement.Should().Be("aqb");
+    }
+
+    [Fact]
+    public void Parse_TrailingLoneBacktick_IsDropped()
+    {
+        HotstringImportRowDto row = AhkHotstringParser.Parse("::sig::abc`")[0];
+
+        row.Replacement.Should().Be("abc");
+    }
+
     [Fact]
     public void Parse_DoubleColonInsideReplacement_KeepsRemainderVerbatim()
     {
