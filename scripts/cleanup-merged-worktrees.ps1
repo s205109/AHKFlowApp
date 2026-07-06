@@ -152,7 +152,7 @@ function Invoke-MergedWorktreeCleanup {
         [string] $ExcludePath
     )
 
-    $eligible = @(Get-EligibleMergedWorktrees -RepoRoot $RepoRoot -MainRef $MainRef -ExcludePath $ExcludePath)
+    $eligible = Get-EligibleMergedWorktrees -RepoRoot $RepoRoot -MainRef $MainRef -ExcludePath $ExcludePath
     if ($eligible.Count -eq 0) {
         Write-Stderr 'cleanup: no merged worktrees eligible for cleanup.'
         return
