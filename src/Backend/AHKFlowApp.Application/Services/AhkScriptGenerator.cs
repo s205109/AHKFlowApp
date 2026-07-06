@@ -51,8 +51,18 @@ public sealed class AhkScriptGenerator(
         string options = "";
         if (!hs.IsEndingCharacterRequired) options += "*";
         if (hs.IsTriggerInsideWord) options += "?";
-        return $":{options}:{hs.Trigger}::{hs.Replacement}";
+        return $":{options}:{hs.Trigger}::{EscapeReplacement(hs.Replacement)}";
     }
+
+    // Keep every hotstring on one physical line. Backtick must be escaped first so
+    // later escapes are not double-escaped.
+    private static string EscapeReplacement(string replacement) =>
+        replacement
+            .Replace("`", "``")
+            .Replace("\n", "`n")
+            .Replace("\r", "`r")
+            .Replace("\t", "`t")
+            .Replace(";", "`;");
 
     private static string FormatHotkey(Hotkey hk)
     {
