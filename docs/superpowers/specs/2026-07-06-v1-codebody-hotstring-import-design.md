@@ -188,11 +188,13 @@ explicit arg-parsing rules and rejecting inline comments; (2) underspecified esc
 resolved by the *Escape grammar & decoding contract* section; (3) `return`-scan swallowing later
 entries — resolved by the *hard boundaries* in Part 3 step 2.
 
-## Open items
-- Mirror AHK v2 continuation-section defaults exactly (newline join + per-line leading-whitespace
-  trim) — verify against docs; affects fidelity, not the examples here.
-- Confirm `;` is literal (not a comment) in an AHK v2 auto-replace hotstring replacement; if not, add
-  `` `; `` to the generator escape set on both sides.
-- Optional display polish: import/preview dialog cells collapse `\n`; add `white-space: pre-wrap`
-  on the replacement cell, or defer to backlog.
-- Reject-reason granularity: name the offending construct vs. one generic "runs logic" message.
+## Resolved open items (2026-07-06)
+- **Continuation-section defaults:** mirror AHK v2 defaults — LF join, per-line leading-whitespace
+  trim. Verify against docs during impl with an indented-block test.
+- **`;` in replacements:** treated as literal (not a comment) in auto-replace hotstrings; verify
+  against AHK v2 docs during impl. If wrong, add `` `; `` to the generator escape set (decoder
+  already accepts it).
+- **Preview display:** include `white-space: pre-wrap` on the replacement cell in
+  `HotstringImportDialog.razor` now — one-line CSS; converted multi-line rows must read as such.
+- **Reject reasons:** granular — name the offending construct (e.g. "found: FormatTime", "Inline
+  comment in Send"); generic fallback only when nothing specific is known.
