@@ -76,6 +76,35 @@ public sealed class AhkScriptGeneratorTests
             "F");
     }
 
+    [Theory]
+    [InlineData("line one\nline two", "::sig::line one`nline two")]
+    [InlineData("a\rb", "::sig::a`rb")]
+    [InlineData("a\tb", "::sig::a`tb")]
+    [InlineData("a\r\nb", "::sig::a`r`nb")]
+    [InlineData("back`tick", "::sig::back``tick")]
+    [InlineData("literal `n stays\n", "::sig::literal ``n stays`n")]
+    [InlineData("a ; b", "::sig::a `; b")]
+    public void Generate_HotstringWithSpecialChars_EscapesOntoSinglePhysicalLine(
+        string replacement, string expectedLine)
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotstring hs = new HotstringBuilder()
+            .WithTrigger("sig")
+            .WithReplacement(replacement)
+            .WithEndingCharacterRequired(true)
+            .WithTriggerInsideWord(false)
+            .Build();
+
+        string output = DefaultSut().Generate(profile, [hs], []);
+
+        output.Should().Be(
+            "H\n" +
+            "; --- Hotstrings ---\n" +
+            expectedLine + "\n" +
+            "; --- Hotkeys ---\n" +
+            "F");
+    }
+
     [Fact]
     public void Generate_MultipleHotstrings_AllAppearUnderHotstringsSection()
     {
