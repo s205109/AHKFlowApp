@@ -315,6 +315,222 @@ public sealed class AhkHotstringParserTests
         rows[1].Status.Should().Be(HotstringImportRowStatus.Ready);
     }
 
+    [Fact]
+    public void Parse_MvgpSendBody_ConvertsToTwoLineReplacement()
+    {
+        string script = string.Join('\n',
+            "::mvgp::",
+            "send Met vriendelijke Groet,{Return}",
+            "send Bart Segers",
+            "return");
+
+        HotstringImportRowDto row = AhkHotstringParser.Parse(script)[0];
+
+        row.Replacement.Should().Be("Met vriendelijke Groet,\nBart Segers");
+        row.Status.Should().Be(HotstringImportRowStatus.Ready);
+    }
+
+    [Fact]
+    public void Parse_DbgSendBody_ConvertsToLiteralText()
+    {
+        string script = string.Join('\n',
+            "::dbg::",
+            "send mocha --debug-brk",
+            "return");
+
+        HotstringImportRowDto row = AhkHotstringParser.Parse(script)[0];
+
+        row.Replacement.Should().Be("mocha --debug-brk");
+        row.Status.Should().Be(HotstringImportRowStatus.Ready);
+    }
+
+    [Fact]
+    public void Parse_DTimeBody_IsRejectedNamingFormatTime()
+    {
+        string script = string.Join('\n',
+            "::d-time::",
+            "FormatTime, CurrentDateTime,, dd/MM/yyyy HH:mm",
+            "SendInput %CurrentDateTime%",
+            "return");
+
+        HotstringImportRowDto row = AhkHotstringParser.Parse(script)[0];
+
+        row.Status.Should().Be(HotstringImportRowStatus.Invalid);
+        row.Reason.Should().Be("Code-body hotstrings that run logic aren't supported (found: FormatTime).");
+    }
+
+    [Fact]
+    public void Parse_LiClipboardBody_IsRejectedNamingFirstConstruct()
+    {
+        string script = string.Join('\n',
+            "::li::",
+            "clipsaved := ClipboardAll",
+            "clipboard := \"[li]\"",
+            "Send ^v",
+            "clipboard := clipsaved",
+            "return");
+
+        HotstringImportRowDto row = AhkHotstringParser.Parse(script)[0];
+
+        row.Status.Should().Be(HotstringImportRowStatus.Invalid);
+        row.Reason.Should().Be("Code-body hotstrings that run logic aren't supported (found: clipsaved).");
+    }
+
+    [Fact]
+    public void Parse_SendWithInlineComment_RejectsWholeBody()
+    {
+        string script = string.Join('\n',
+            "::x::",
+            "Send, hello ; note",
+            "return");
+
+        HotstringImportRowDto row = AhkHotstringParser.Parse(script)[0];
+
+        row.Status.Should().Be(HotstringImportRowStatus.Invalid);
+        row.Reason.Should().Be("Inline comment in Send — not imported.");
+    }
+
+    [Fact]
+    public void Parse_SendWithEscapedSemicolon_KeepsLiteralSemicolon()
+    {
+        string script = string.Join('\n',
+            "::x::",
+            "Send, a`;b",
+            "return");
+
+        HotstringImportRowDto row = AhkHotstringParser.Parse(script)[0];
+
+        row.Replacement.Should().Be("a;b");
+        row.Status.Should().Be(HotstringImportRowStatus.Ready);
+    }
+
+    [Fact]
+    public void Parse_SendCommaArg_TrimsLeadingWhitespaceKeepsTrailing()
+    {
+        string script = string.Join('\n',
+            "::x::",
+            "Send,   hello world ",
+            "return");
+
+        HotstringImportRowDto row = AhkHotstringParser.Parse(script)[0];
+
+        row.Replacement.Should().Be("hello world ");
+        row.Status.Should().Be(HotstringImportRowStatus.Ready);
+    }
+
+    [Fact]
+    public void Parse_SendWithPercentVariable_IsRejected()
+    {
+        string script = string.Join('\n',
+            "::x::",
+            "SendInput %CurrentDateTime%",
+            "return");
+
+        HotstringImportRowDto row = AhkHotstringParser.Parse(script)[0];
+
+        row.Status.Should().Be(HotstringImportRowStatus.Invalid);
+        row.Reason.Should().Be("Code-body hotstrings that run logic aren't supported (found: % character).");
+    }
+
+    [Fact]
+    public void Parse_SendWithLiteralPercentSign_IsAlsoRejected()
+    {
+        string script = string.Join('\n',
+            "::x::",
+            "Send, 100% done",
+            "return");
+
+        HotstringImportRowDto row = AhkHotstringParser.Parse(script)[0];
+
+        row.Status.Should().Be(HotstringImportRowStatus.Invalid);
+        row.Reason.Should().Be("Code-body hotstrings that run logic aren't supported (found: % character).");
+    }
+
+    [Fact]
+    public void Parse_SendWithModifierKeystroke_IsRejected()
+    {
+        string script = string.Join('\n',
+            "::x::",
+            "Send ^v",
+            "return");
+
+        HotstringImportRowDto row = AhkHotstringParser.Parse(script)[0];
+
+        row.Status.Should().Be(HotstringImportRowStatus.Invalid);
+        row.Reason.Should().Be("Code-body hotstrings that run logic aren't supported (found: modifier ^).");
+    }
+
+    [Fact]
+    public void Parse_SendWithUnsupportedBraceToken_IsRejected()
+    {
+        string script = string.Join('\n',
+            "::x::",
+            "Send {F5}",
+            "return");
+
+        HotstringImportRowDto row = AhkHotstringParser.Parse(script)[0];
+
+        row.Status.Should().Be(HotstringImportRowStatus.Invalid);
+        row.Reason.Should().Be("Code-body hotstrings that run logic aren't supported (found: {F5}).");
+    }
+
+    [Fact]
+    public void Parse_SendEnterAndTabTokens_ConvertToNewlineAndTab()
+    {
+        string script = string.Join('\n',
+            "::x::",
+            "Send a{Enter}b{Tab}c",
+            "return");
+
+        HotstringImportRowDto row = AhkHotstringParser.Parse(script)[0];
+
+        row.Replacement.Should().Be("a\nb\tc");
+        row.Status.Should().Be(HotstringImportRowStatus.Ready);
+    }
+
+    [Fact]
+    public void Parse_SendRawBody_KeepsBracesAndModifiersLiteral()
+    {
+        string script = string.Join('\n',
+            "::x::",
+            "SendRaw {Home}^+!",
+            "return");
+
+        HotstringImportRowDto row = AhkHotstringParser.Parse(script)[0];
+
+        row.Replacement.Should().Be("{Home}^+!");
+        row.Status.Should().Be(HotstringImportRowStatus.Ready);
+    }
+
+    [Fact]
+    public void Parse_SendTextWithPercentVariable_IsRejected()
+    {
+        string script = string.Join('\n',
+            "::x::",
+            "SendText %x%",
+            "return");
+
+        HotstringImportRowDto row = AhkHotstringParser.Parse(script)[0];
+
+        row.Status.Should().Be(HotstringImportRowStatus.Invalid);
+        row.Reason.Should().Be("Code-body hotstrings that run logic aren't supported (found: % character).");
+    }
+
+    [Fact]
+    public void Parse_MultipleSends_ConcatenateWithNoSeparator()
+    {
+        string script = string.Join('\n',
+            "::x::",
+            "Send abc",
+            "Send def",
+            "return");
+
+        HotstringImportRowDto row = AhkHotstringParser.Parse(script)[0];
+
+        row.Replacement.Should().Be("abcdef");
+        row.Status.Should().Be(HotstringImportRowStatus.Ready);
+    }
+
     [Theory]
     [InlineData("::sig::line one`nline two", "line one\nline two")]
     [InlineData("::sig::a`rb", "a\rb")]
