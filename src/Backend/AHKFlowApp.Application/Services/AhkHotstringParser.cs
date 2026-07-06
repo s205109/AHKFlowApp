@@ -22,6 +22,11 @@ internal static partial class AhkHotstringParser
     [GeneratedRegex(@"^\s*(SendInput|SendText|SendRaw|SendEvent|SendPlay|Send)\b\s*,?\s*(.*)$", RegexOptions.IgnoreCase)]
     private static partial Regex SendCommand();
 
+    // A bare "return" that terminates a v1 code body may carry a trailing comment
+    // (e.g. "return ; end hotstring") — still a valid terminator, not body content.
+    [GeneratedRegex(@"^return(?:[ \t]+;.*)?$", RegexOptions.IgnoreCase)]
+    private static partial Regex ReturnStatement();
+
     public static IReadOnlyList<HotstringImportRowDto> Parse(string script)
     {
         ArgumentNullException.ThrowIfNull(script);
@@ -46,7 +51,7 @@ internal static partial class AhkHotstringParser
             int lineNumber = i + 1;
             string trigger = DecodeEscapes(match.Groups[2].Value).Trim();
             string rawReplacement = match.Groups[3].Value;
-            string replacement = DecodeEscapes(rawReplacement);
+            string replacement = DecodeEscapes(StripInlineComment(rawReplacement));
             (bool endingRequired, bool insideWord, string[] ignoredFlags) = ParseOptions(match.Groups[1].Value);
 
             // Route on the RAW (pre-decode) replacement text — deciding on the decoded value
@@ -170,7 +175,7 @@ internal static partial class AhkHotstringParser
                 if (IsBlankOrComment(trimmed))
                     continue;
 
-                if (string.Equals(trimmed, "return", StringComparison.OrdinalIgnoreCase))
+                if (ReturnStatement().IsMatch(trimmed))
                 {
                     terminated = true;
                     break;
@@ -344,6 +349,27 @@ internal static partial class AhkHotstringParser
         string trimmed = line.Trim();
         int end = trimmed.IndexOfAny([' ', '\t', ',']);
         return end < 0 ? trimmed : trimmed[..end];
+    }
+
+    // Mirrors AhkScriptGenerator's Escape(): a ';' preceded by whitespace starts a real
+    // AHK comment unless it was backtick-escaped, so the importer must stop decoding
+    // there instead of treating the comment text as part of the replacement.
+    private static string StripInlineComment(string raw)
+    {
+        for (int i = 0; i < raw.Length; i++)
+        {
+            char c = raw[i];
+            if (c == '`')
+            {
+                i++;
+                continue;
+            }
+
+            if (c == ';' && i > 0 && raw[i - 1] is ' ' or '\t')
+                return raw[..i].TrimEnd(' ', '\t');
+        }
+
+        return raw;
     }
 
     private static string DecodeEscapes(string value)
