@@ -584,7 +584,7 @@ try {
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `pwsh -NoProfile -File tests/WorktreeMergedCleanup.Tests.ps1`
-Expected: FAIL — the current `new-worktree.ps1` has no `-Cleanup` switch and does not invoke cleanup, but more importantly the copied script errors on the missing invocation wiring; the run does not yet emit a single clean path line (the assertion on `$stdoutLines.Count` / path fails, or the process exits non-zero because `cleanup-merged-worktrees.ps1` is referenced but not yet called). Confirm the failure is in this new test block.
+Expected: FAIL — before Step 3, the copied `new-worktree.ps1` still creates the worktree but does not invoke cleanup, so the stderr-proof assertion fails because no `cleanup: eligible merged worktree` line is emitted. Confirm the failure is in this new test block.
 
 > Note: this test copies the **current** `scripts/*.ps1`. Before Step 3, `new-worktree.ps1` does not call cleanup, so the assertion that drives the integrated behavior fails. After Step 3 the copied script includes the wiring.
 
@@ -768,6 +768,7 @@ git commit -m "docs: document merged-worktree cleanup on create"
 - Architecture (standalone script, shared helpers reused) → Task 1/2.
 - Error handling (non-fatal detection/removal; hook output to stderr) → Task 1 (skip-and-continue), Task 2 (try/catch), Task 3 (`try` + `| Out-Null`).
 - Testing: host-resolution → Task 2 Step 5; eligibility matrix + `-ExcludePath` → Task 1; `--format` regression → Task 1; hook report-only → Task 2 Step 1; stdout-clean e2e (with stderr proof cleanup ran) → Task 3 Step 1.
+- Test limitation: the authorized removal path (`-Cleanup` or interactive `y`) is intentionally not driven end-to-end because `remove-worktree-local-dev.ps1` spawns a detached watcher and performs real branch/DB/Docker cleanup; the plan covers the decision matrix and shell-out shape but not watcher completion.
 - Documentation: README contract table → Task 4 Step 1; SKILL.md flag + question → Task 4 Step 2 (single source edit), Step 3 (re-sync), Step 4 (hash-check).
 
 **Placeholder scan:** No TBD/TODO; every code step shows complete content; no "similar to Task N" cross-refs left unfilled.
@@ -780,6 +781,7 @@ None. (Spec Open Questions were empty.)
 
 Implementation notes surfaced during planning, already handled above:
 - **Race safety:** `Get-EligibleMergedWorktrees` and `Invoke-MergedWorktreeCleanup` take `-ExcludePath`; `new-worktree.ps1` resolves `$worktreePath` before invoking cleanup and passes it as `-ExcludePath` (Task 3, Steps 3b/3c), so a same-named create/reuse can never race the async removal `remove-worktree-local-dev.ps1`'s detached-watcher hook mode kicks off for that same path.
+- **Interactive UX:** direct real-console creates intentionally stop once to ask `Clean up merged worktrees? (y/n)` when eligible merged, clean worktrees exist. Hook and redirected/non-interactive paths do not prompt.
 - `plugins/ahkflowapp/skills/worktrees/SKILL.md` is a **hard link** to `.agents/worktrees/SKILL.md` (confirmed same inode), not an independent copy — Task 4 edits the source once and re-syncs via `scripts/agents/setup-copilot-symlinks.ps1` rather than hand-editing both, then verifies byte-equality.
 - `Invoke-WorktreeRemoval` pipes empty stdin into `remove-worktree-local-dev.ps1` to avoid its unbounded `[Console]::In.ReadToEnd()` hanging when the cleanup run's own stdin is redirected.
 - `new-worktree.ps1`'s cleanup call is `| Out-Null`-guarded so cleanup output can never leak into the hook's stdout.
