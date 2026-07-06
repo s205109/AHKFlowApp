@@ -117,16 +117,19 @@ code {
 /* Mobile floating action buttons.
    These MUST stay global (unscoped): MudFab renders its own root <button>, which never
    receives a page's Blazor CSS-isolation scope attribute, so the equivalent rules in a
-   .razor.css never match and the FABs fall back to position: relative. See backlog 032. */
-.add-hotstring-fab,
-.add-hotkey-fab {
+   .razor.css never match. The `button.` prefix is required too: MudFab's own `.mud-ripple`
+   class sets `position: relative` at the same specificity, and _content/MudBlazor/*.css
+   loads after this file in index.html, so an equal-specificity `.add-hotstring-fab` rule
+   loses the cascade by source order alone. See backlog 032. */
+button.add-hotstring-fab,
+button.add-hotkey-fab {
     position: fixed;
     right: 16px;
     bottom: 16px;
     z-index: 100;
 }
 
-.import-hotstring-fab {
+button.import-hotstring-fab {
     position: fixed;
     right: 16px;
     bottom: 84px;
