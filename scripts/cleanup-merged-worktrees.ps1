@@ -163,7 +163,7 @@ function Invoke-MergedWorktreeCleanup {
     }
 
     if ($IsHook) {
-        Write-Stderr 'cleanup: hook context is report-only; nothing removed.'
+        Write-Stderr 'cleanup: hook context is report-only; nothing removed. (opt in with AHKFLOW_WORKTREE_CLEANUP=1, or run scripts/new-worktree.ps1 -Cleanup)'
         return
     }
 
