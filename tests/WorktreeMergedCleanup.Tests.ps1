@@ -158,6 +158,42 @@ try {
     Remove-TempTree $repo
 }
 
+# --- Test: redirected non-interactive runs skip removal without prompting -------
+$repo = New-TempGitRepo
+try {
+    $skipPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-noninteractive'
+
+    $stdinFile = Join-Path (Split-Path -Parent $repo) 'cleanup-stdin.txt'
+    $stdoutFile = Join-Path (Split-Path -Parent $repo) 'cleanup-stdout.txt'
+    $stderrFile = Join-Path (Split-Path -Parent $repo) 'cleanup-stderr.txt'
+    Set-Content -LiteralPath $stdinFile -Value '' -Encoding utf8
+
+    $psExe = [System.Diagnostics.Process]::GetCurrentProcess().Path
+    $cleanupScript = Join-Path $scriptsDir 'cleanup-merged-worktrees.ps1'
+    $proc = Start-Process -FilePath $psExe `
+        -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $cleanupScript, '-RepoRoot', $repo, '-MainRef', 'main') `
+        -WorkingDirectory $suiteRoot `
+        -RedirectStandardInput $stdinFile `
+        -RedirectStandardOutput $stdoutFile `
+        -RedirectStandardError $stderrFile `
+        -NoNewWindow -PassThru -Wait
+
+    Assert-Equal 0 $proc.ExitCode "cleanup-merged-worktrees.ps1 non-interactive path should exit 0. Stderr: $(Get-Content -Raw -LiteralPath $stderrFile)"
+
+    $stdout = Get-Content -Raw -LiteralPath $stdoutFile
+    Assert-True ([string]::IsNullOrWhiteSpace($stdout)) "Non-interactive cleanup must not write to stdout. Got: $stdout"
+
+    $stderrText = Get-Content -Raw -LiteralPath $stderrFile
+    Assert-True ($stderrText -match 'cleanup: eligible merged worktree') "Expected cleanup detection output on stderr. Stderr: $stderrText"
+    Assert-True ($stderrText -match 'cleanup: non-interactive and no -Cleanup; skipping') "Expected non-interactive skip output on stderr. Stderr: $stderrText"
+
+    Assert-True (Test-Path -LiteralPath $skipPath) 'Non-interactive cleanup without -Cleanup must not remove the eligible worktree folder.'
+    $branches = (Invoke-TestGit $repo @('branch', '--list', 'feat-noninteractive')) -join "`n"
+    Assert-True ($branches -match 'feat-noninteractive') 'Non-interactive cleanup without -Cleanup must not delete the eligible branch.'
+} finally {
+    Remove-TempTree $repo
+}
+
 # --- Test: hook path keeps stdout to exactly the new worktree path -------------
 function New-WorktreeToolingRepo {
     param([string] $ScriptsSource)
