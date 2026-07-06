@@ -53,6 +53,7 @@ These form one contract: change them together or not at all. They stay flat in
 | --- | --- |
 | `setup-worktree-local-dev.ps1` | Assigns deterministic localhost ports and writes worktree-local config. |
 | `remove-worktree-local-dev.ps1` | WorktreeRemove hook: deletes the worktree + branch when a worktree is removed. |
+| `cleanup-merged-worktrees.ps1` | Detects worktrees merged into `main` and removes the clean ones on opt-in (`-Cleanup`, or the interactive prompt); invoked by `new-worktree.ps1` before it creates a worktree. |
 | `prune-worktree-databases.ps1` | Drops orphaned per-worktree databases with no live git worktree. |
 | `prune-worktree-docker.ps1` | Removes orphaned per-worktree Docker compose projects with no live git worktree. |
 | `worktree-{database,docker,git,json,log,powershell}.common.ps1` | Shared helpers dot-sourced by the worktree scripts. |
