@@ -1,7 +1,7 @@
 # Import v1 Code-Body & Multi-Line Hotstrings — Design
 
 **Date:** 2026-07-06
-**Status:** Designed — awaiting implementation plan
+**Status:** Designed — Codex-reviewed 2026-07-06 — awaiting implementation plan
 **Parent:** [Import Existing `.ahk` Hotstrings](2026-07-05-ahk-hotstring-import-design.md)
 
 ## Purpose
@@ -57,37 +57,92 @@ Replacement text (may contain \n)
 ```
 
 ### Part 1 — Generator escapes replacements
-`Services/AhkScriptGenerator.FormatHotstring`. Escape in order: `` ` ``→``` `` ```, newline→`` `n ``,
-CR→`` `r ``, tab→`` `t ``. Output stays a single physical line.
+`Services/AhkScriptGenerator.FormatHotstring`. Escape the replacement so each hotstring stays on one
+physical line. The generator emits **exactly four** escape sequences, applied in this order (backtick
+first so it isn't double-escaped): `` ` ``→``` `` ```, newline→`` `n ``, CR→`` `r ``, tab→`` `t ``.
+Every other character is written literally. In an AHK auto-replace hotstring the replacement text is
+literal — `;` is **not** a comment there — so `;`, spaces, `%`, `{`, `}`, `!`, `^`, `+`, `#` need no
+escaping (verify the `;` claim against AHK v2 docs during impl; if wrong, add `` `; `` to the set on
+both sides).
+
+### Escape grammar & decoding contract (Part 1 ↔ Part 2)
+
+This is the exact grammar the parser MUST implement so export→import→export is lossless. Decoding
+follows AHK v2 semantics: the backtick is the escape character and escapes the **single** next
+character.
+
+**Decode algorithm** — one left-to-right pass over the replacement text captured after `::`:
+
+```
+for each position:
+  if char != '`' -> emit char verbatim
+  else (backtick), look at next char x:
+      x == '`' -> emit '`'        (doubled backtick, consume both)
+      x == 'n' -> emit LF
+      x == 'r' -> emit CR
+      x == 't' -> emit TAB
+      x == 's' -> emit SPACE
+      x == ';' -> emit ';'
+      x is any other char -> emit x verbatim   (AHK: backtick escapes next char)
+      trailing lone '`' at end of string -> drop it
+```
+
+Handling doubled backtick inline in the same pass removes the "literal backtick before n/r/t" hazard:
+`` ``n `` decodes to a literal backtick then `n`, never a newline. Because no backtick ever survives
+decoding, re-generation is deterministic. The set the *generator* re-escapes (backtick/LF/CR/TAB) is a
+subset of what the *decoder* accepts, so text that arrives with `` `s ``/`` `; `` normalises to a
+literal space/semicolon and still round-trips to the same final text. **Known limitation:** exotic AHK
+escapes with no text meaning (`` `a `` bell, `` `b `` backspace, `` `f ``, `` `v ``) decode to the
+literal letter, not the control char — acceptable for a text-replacement tool; documented, not a bug.
 
 ### Part 2 — Parser decodes escapes + converts continuation sections
 `Services/AhkHotstringParser`.
 
-- **Decode** the matched single-line replacement (inverse of Part 1) so a literal backtick and
-  embedded newlines round-trip through export→import.
+- **Decode** the matched single-line replacement per the grammar above, applied *after* the regex
+  splits trigger/replacement.
 - **Continuation section:** the existing branch detecting `::trigger::` (empty replacement)
   immediately followed by a lone `(` currently emits Invalid. Change to collect lines until the
-  closing lone `)`, join with `\n`, run normal trigger/replacement validation → Ready.
+  closing lone `)`, join with `\n`, run normal trigger/replacement validation → Ready. A continuation
+  section is **not** escape-decoded line-by-line (its lines are already literal text); only the
+  single-line `::trigger::replacement` form is decoded. If EOF is reached before a lone `)`, mark
+  Invalid "Unterminated continuation section." and do not consume beyond EOF.
 
 ### Part 3 — Parser detects & converts code bodies
 Same file. When `::trigger::` has an empty replacement and is **not** followed by a lone `(`:
 
 1. Peek next non-blank line. If none, or it is another hotstring (`^:...::`) → keep current
    behavior: Invalid "Replacement is required." (a genuinely empty hotstring).
-2. Otherwise it is a **code body**. Scan forward, collecting body lines until (and consuming) the
-   first line whose trimmed value equals `return`/`Return` (case-insensitive), tracking `( )`
-   nesting so a `return` inside a block doesn't falsely terminate; stop at EOF if no `return`.
-3. Classify via `TryConvertSendBody(bodyLines, out replacement, out reason)`:
-   - Every non-blank body line must match
-     `^\s*(Send|SendInput|SendText|SendRaw|SendEvent|SendPlay)\s*,?\s*(.*)$` (case-insensitive).
+2. Otherwise it is a **code body**. Scan forward collecting body lines with these **hard
+   boundaries** (in priority order), so a malformed body never swallows the next entry:
+   - A line matching the hotstring pattern (`^:...::`) **before** any `return` → stop, mark the
+     current entry Invalid "Unterminated code body (no `return` before next hotstring).", and **do
+     not consume** that line — the loop re-processes it as its own row.
+   - A lone `(` line opens a nested continuation block; ignore `return`/`)`/hotstring-looking lines
+     until the matching lone `)`. (Only lone-`(`…lone-`)` lines are tracked; parentheses inside code
+     expressions are not balanced — they never appear as a lone line.)
+   - The first line whose trimmed value equals `return`/`Return` (case-insensitive) outside a nested
+     block → consume it and stop; this is the terminated body.
+   - EOF before a `return` → mark Invalid "Unterminated code body (no `return`)." Consume to EOF.
+     Blank lines and comment lines (`;`) inside the body are skipped, not terminators.
+3. Classify a **terminated** body via `TryConvertSendBody(bodyLines, out replacement, out reason)`:
+   - Every non-blank, non-comment body line must be a Send-family command:
+     `^\s*(Send|SendInput|SendText|SendRaw|SendEvent|SendPlay)\b\s*,?\s*(.*)$` (case-insensitive).
      Any other line (`FormatTime`, `Clipboard :=`, `sleep`, assignments, bare expressions) → reject.
-   - Reject any send arg containing `%...%` (v1 variable deref → dynamic).
+   - **v1 argument parsing** for the captured arg region:
+     - Strip a single optional leading `,` and the leading whitespace after the command (v1 trims
+       leading whitespace of the first parameter). Internal and trailing literal spaces are kept.
+     - **Inline comments are ambiguous → reject the whole body.** If the arg contains an unescaped
+       `;` preceded by whitespace/tab (v1 comment start), reject with reason "Inline comment in Send
+       — not imported." Only `` `; `` (escaped) is a literal semicolon.
+     - Reject if the arg is itself a continuation opener (a lone `(` as the argument).
+   - Reject any arg containing `%...%` (v1 variable deref → dynamic).
    - Interpreting sends (`Send/SendInput/SendEvent/SendPlay`): reject bare `^ ! + #` (modifier
      keystrokes) and any `{...}` token other than `{Enter}`/`{Return}`→`\n` and `{Tab}`→`\t`.
-   - Literal sends (`SendText/SendRaw`): all chars literal; still reject `%...%`.
+   - Literal sends (`SendText/SendRaw`): all chars literal (braces/modifiers included); still reject
+     `%...%`.
    - Success: concatenate each send's literal text **in order with no separator between sends**
      (only `{Enter}`/`{Return}` introduce newlines) → replacement, status Ready.
-   - Failure: Invalid with an honest reason, e.g.
+   - Failure: Invalid with an honest reason naming the blocker, e.g.
      `"Code-body hotstrings that run logic aren't supported (found: FormatTime)."`; generic
      fallback `"Code-body hotstrings that run logic aren't supported."`
 
@@ -106,16 +161,38 @@ with a status; nothing throws.
 ## Testing
 - `AhkScriptGeneratorTests` — newline/backtick/tab/CR escaping produce single-line output.
 - `AhkHotstringParserTests` — **update** `Parse_MultiLineContinuation_IsInvalidAndConsumesInnerLines`
-  (now Ready, converted); add send-body convert (mvgp, dbg), reject (d-time, li) cases; escape
-  decode.
-- Generator↔parser **round-trip** test: a multi-line replacement survives export→import unchanged.
+  (now Ready, converted); add send-body convert (mvgp, dbg) and reject (d-time, li) cases.
+- **Negative / adversarial tests** (from Codex review — must reject or preserve, never silently
+  change text):
+  - Escape decode: doubled backtick → single backtick; `` ``n `` (literal backtick + n) stays two
+    chars, not a newline; unknown `` `q `` → literal `q`; trailing lone backtick dropped;
+    `` `s ``→space, `` `; ``→`;`.
+  - Round-trip ordering: replacement containing backtick + newline + tab survives
+    generate→parse→generate unchanged.
+  - Send arg: `Send, hello ; note` → inline comment rejected (not imported as "hello ; note");
+    `` Send, a`;b `` → literal `a;b` kept; leading whitespace after comma trimmed.
+  - Scan boundary: code body with no `return` followed by another `::trigger::` → first row Invalid
+    "Unterminated…", second hotstring still parsed as its own row; nested lone-`(`…`)` block
+    containing a `return`/`)` doesn't falsely terminate; comment/blank lines inside body skipped.
+- Generator↔parser **round-trip** integration test: a multi-line replacement survives export→import
+  unchanged.
 - End-to-end (`playwright-cli`): paste the four-hotstring script into the import dialog; confirm
   mvgp Ready (2-line), dbg Ready + Duplicate, d-time/li Invalid with clear reasons; import; download
   script; re-import cleanly.
 
+## Review
+
+Codex adversarial review (2026-07-06) on the first draft returned *needs-attention* with three
+findings, all now folded in above: (1) v1 Send argument/inline-comment parsing — resolved by
+explicit arg-parsing rules and rejecting inline comments; (2) underspecified escape/decode contract —
+resolved by the *Escape grammar & decoding contract* section; (3) `return`-scan swallowing later
+entries — resolved by the *hard boundaries* in Part 3 step 2.
+
 ## Open items
 - Mirror AHK v2 continuation-section defaults exactly (newline join + per-line leading-whitespace
   trim) — verify against docs; affects fidelity, not the examples here.
+- Confirm `;` is literal (not a comment) in an AHK v2 auto-replace hotstring replacement; if not, add
+  `` `; `` to the generator escape set on both sides.
 - Optional display polish: import/preview dialog cells collapse `\n`; add `white-space: pre-wrap`
   on the replacement cell, or defer to backlog.
 - Reject-reason granularity: name the offending construct vs. one generic "runs logic" message.
