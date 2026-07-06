@@ -99,6 +99,16 @@ jobs:
       - if: steps.filter.outputs.code == 'true'
         run: dotnet format AHKFlowApp.slnx --verify-no-changes
 
+  worktree-powershell-tests:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run worktree PowerShell tests
+        shell: pwsh
+        run: |
+          ./tests/WorktreePowerShellHost.Tests.ps1
+          ./tests/WorktreeMergedCleanup.Tests.ps1
+
   bicep-lint:
     runs-on: ubuntu-latest
     steps:

@@ -11,7 +11,10 @@
 param(
     [string] $Name,
     [string] $BranchName,
-    [string] $Path
+    [string] $Path,
+
+    [Alias('c')]
+    [switch] $Cleanup
 )
 
 Set-StrictMode -Version Latest
@@ -202,6 +205,10 @@ Assert-MainCheckout $repoRoot
 # A direct call supplies -Name and never needs hook stdin; only read it for hook invocations.
 $hookInput = if ($Name) { $null } else { Get-HookInput }
 
+# Hook-driven iff -Name absent AND hook JSON was read. Do NOT derive hook-ness from
+# [Console]::IsInputRedirected: that is also true for a redirected direct/agent call.
+$isHook = (-not $Name) -and ($null -ne $hookInput)
+
 if (-not $Name -and $hookInput -and $hookInput.PSObject.Properties.Name -contains 'name') {
     $Name = [string] $hookInput.name
 }
@@ -222,6 +229,16 @@ if (-not $Path) {
 $worktreePath = [System.IO.Path]::GetFullPath($Path)
 Assert-WorktreeLocation -RepoRoot $repoRoot -WorktreePath $worktreePath
 $worktreeExists = Test-Path -LiteralPath (Join-Path $worktreePath '.git')
+
+# Sweep other worktrees whose branch is already merged into main before creating/reusing
+# this one. -ExcludePath protects $worktreePath itself now that it is known: without it,
+# a same-named create/reuse could race the async removal. Best-effort: never block
+# creation, and pipe to Out-Null so cleanup output can never reach hook stdout.
+try {
+    & (Join-Path $PSScriptRoot 'cleanup-merged-worktrees.ps1') -RepoRoot $repoRoot -Cleanup:$Cleanup -IsHook:$isHook -ExcludePath $worktreePath | Out-Null
+} catch {
+    Write-Stderr "Merged-worktree cleanup skipped: $($_.Exception.Message)"
+}
 
 Invoke-OrphanDockerPrune $repoRoot
 
