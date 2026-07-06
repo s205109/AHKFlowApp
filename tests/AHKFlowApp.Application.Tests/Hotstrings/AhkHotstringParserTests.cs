@@ -505,6 +505,23 @@ public sealed class AhkHotstringParserTests
     }
 
     [Fact]
+    public void Parse_CodeBodyTerminatedByCommentedReturn_IsTerminated()
+    {
+        string script = string.Join('\n',
+            "::x::",
+            "Send, hello",
+            "return ; end hotstring",
+            "::btw::by the way");
+
+        IReadOnlyList<HotstringImportRowDto> rows = AhkHotstringParser.Parse(script);
+
+        rows.Should().HaveCount(2);
+        rows[0].Replacement.Should().Be("hello");
+        rows[0].Status.Should().Be(HotstringImportRowStatus.Ready);
+        rows[1].Trigger.Should().Be("btw");
+    }
+
+    [Fact]
     public void Parse_SendCommaArg_TrimsLeadingWhitespaceKeepsTrailing()
     {
         string script = string.Join('\n',
@@ -668,6 +685,33 @@ public sealed class AhkHotstringParserTests
         HotstringImportRowDto row = AhkHotstringParser.Parse("::sig::abc`")[0];
 
         row.Replacement.Should().Be("abc");
+    }
+
+    [Fact]
+    public void Parse_ReplacementWithTrailingInlineComment_StripsComment()
+    {
+        HotstringImportRowDto row = AhkHotstringParser.Parse("::brb::be right back ; chat shortcut")[0];
+
+        row.Replacement.Should().Be("be right back");
+        row.Status.Should().Be(HotstringImportRowStatus.Ready);
+    }
+
+    [Fact]
+    public void Parse_ReplacementWithEscapedSemicolon_KeepsLiteralSemicolonNoComment()
+    {
+        HotstringImportRowDto row = AhkHotstringParser.Parse("::sig::a`;b ; real comment")[0];
+
+        row.Replacement.Should().Be("a;b");
+    }
+
+    [Fact]
+    public void Parse_ReplacementWithUnspacedSemicolon_IsKeptLiteral()
+    {
+        // No whitespace before ';' — AHK's comment rule requires a preceding space/tab
+        // (or start-of-line), so this semicolon is literal replacement text, not a comment.
+        HotstringImportRowDto row = AhkHotstringParser.Parse("::sig::a;b")[0];
+
+        row.Replacement.Should().Be("a;b");
     }
 
     [Fact]
