@@ -72,7 +72,7 @@
                     <RowTemplate>
                         <MudTd>@context.LineNumber</MudTd>
                         <MudTd><code>@context.Trigger</code></MudTd>
-                        <MudTd>@context.Replacement</MudTd>
+                        <MudTd Style="white-space: pre-wrap">@context.Replacement</MudTd>
                         <MudTd>
                             <MudChip T="string" Size="Size.Small" Color="@StatusColor(context.Status)">
                                 @StatusLabel(context)
