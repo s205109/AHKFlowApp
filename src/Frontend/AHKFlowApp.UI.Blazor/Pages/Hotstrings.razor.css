@@ -23,6 +23,13 @@
     z-index: 100;
 }
 
+.import-hotstring-fab {
+    position: fixed;
+    right: 16px;
+    bottom: 84px;
+    z-index: 100;
+}
+
 @media (max-width: 959.95px) {
     .desktop-branch {
         display: none;
