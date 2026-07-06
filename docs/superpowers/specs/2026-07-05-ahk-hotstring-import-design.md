@@ -1,7 +1,7 @@
 # Import Existing `.ahk` Hotstrings — Design
 
 **Date:** 2026-07-05
-**Status:** Approved for planning
+**Status:** Implemented 2026-07-05 — see [plan](../plans/2026-07-05-ahk-hotstring-import.md)
 **Parent:** [First-Release Feature Shortlist](2026-07-04-first-release-feature-shortlist.md) — item #2
 
 ## Purpose

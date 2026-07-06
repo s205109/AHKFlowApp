@@ -13,7 +13,7 @@ Ranked candidates for what (if anything) ships as a feature alongside the first 
 | # | Candidate | Value | Effort | Type | Status |
 |---|---|---|---|---|---|
 | 1 | Finish winget community-feed submission | High — completes the shipped distribution story | S-M | Release task | **Dropped 2026-07-04** — no release planned; packaging stays correct via related code/docs only |
-| 2 | Import existing `.ahk` hotstrings | High — killer onboarding for existing AHK users | M-L | Feature | Awaiting prioritization |
+| 2 | Import existing `.ahk` hotstrings | High — killer onboarding for existing AHK users | M-L | Feature | **Built 2026-07-05** — [design](2026-07-05-ahk-hotstring-import-design.md) + [plan](../plans/2026-07-05-ahk-hotstring-import.md) |
 | 3 | CLI scope decision: complete verticals OR document hotstring-focus | Medium-High — product-story coherence | S (decide) / L (build) | Decision + feature | **Decided 2026-07-04: build.** See [CLI Production Readiness — Design](2026-07-04-cli-production-readiness-design.md) |
 | 4 | Data export/backup (JSON) | Medium — trust + migration safety | S-M | Feature | Awaiting prioritization |
 | 5 | Hotkey blacklist (reserved Windows combos) | Medium — prevents footguns | M | Feature | Awaiting prioritization |
