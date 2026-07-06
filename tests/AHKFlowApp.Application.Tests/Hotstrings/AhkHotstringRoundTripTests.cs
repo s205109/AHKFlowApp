@@ -46,4 +46,31 @@ public sealed class AhkHotstringRoundTripTests
         row.Replacement.Should().Be(replacement);
         secondScript.Should().Be(firstScript);
     }
+
+    [Fact]
+    public void GenerateParseGenerate_TriggerWithBacktickAndSemicolon_IsUnchanged()
+    {
+        string trigger = "a `b ;c";
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotstring original = new HotstringBuilder()
+            .WithTrigger(trigger)
+            .WithReplacement("x")
+            .WithEndingCharacterRequired(true)
+            .WithTriggerInsideWord(false)
+            .Build();
+
+        string firstScript = Generator().Generate(profile, [original], []);
+        HotstringImportRowDto row = AhkHotstringParser.Parse(firstScript).Single();
+        Hotstring reimported = new HotstringBuilder()
+            .WithTrigger(row.Trigger)
+            .WithReplacement(row.Replacement)
+            .WithEndingCharacterRequired(row.IsEndingCharacterRequired)
+            .WithTriggerInsideWord(row.IsTriggerInsideWord)
+            .Build();
+        string secondScript = Generator().Generate(profile, [reimported], []);
+
+        row.Status.Should().Be(HotstringImportRowStatus.Ready);
+        row.Trigger.Should().Be(trigger);
+        secondScript.Should().Be(firstScript);
+    }
 }

@@ -92,12 +92,13 @@
                                               Validation="@(new Func<string, string?>(ValidateReplacement))"
                                               Error="@(_commitAttempted && ValidateReplacement(context.Item.Replacement) is not null)"
                                               ErrorText="@(_commitAttempted ? ValidateReplacement(context.Item.Replacement) : null)"
+                                              Lines="3"
                                               Immediate="true" MaxLength="4000"
                                               UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "replacement-input" })" />
                             }
                             else
                             {
-                                @context.Item.Replacement
+                                <span style="white-space: pre-wrap">@context.Item.Replacement</span>
                             }
                         </CellTemplate>
                     </PropertyColumn>

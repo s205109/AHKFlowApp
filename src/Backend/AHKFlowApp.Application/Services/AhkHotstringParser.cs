@@ -14,7 +14,9 @@ internal static partial class AhkHotstringParser
 {
     // :options:trigger::replacement — options and trigger contain no ':'; the trigger is
     // non-greedy so the FIRST '::' delimits, leaving any later '::' inside the replacement.
-    [GeneratedRegex(@"^:([^:\r\n]*):(.*?)::(.*)$")]
+    // Leading whitespace is tolerated so indented hotstring definitions still match, both
+    // at the top level and as the hard boundary inside a scanned code body.
+    [GeneratedRegex(@"^\s*:([^:\r\n]*):(.*?)::(.*)$")]
     private static partial Regex HotstringLine();
 
     [GeneratedRegex(@"^\s*(SendInput|SendText|SendRaw|SendEvent|SendPlay|Send)\b\s*,?\s*(.*)$", RegexOptions.IgnoreCase)]
@@ -24,7 +26,9 @@ internal static partial class AhkHotstringParser
     {
         ArgumentNullException.ThrowIfNull(script);
 
-        string[] lines = script.Replace("\r\n", "\n").Split('\n');
+        // Normalize every line ending variant (CRLF, lone CR, LF) to LF before splitting —
+        // a lone-CR script would otherwise collapse into a single unparseable line.
+        string[] lines = script.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
         List<HotstringImportRowDto> rows = [];
 
         for (int i = 0; i < lines.Length; i++)
@@ -32,7 +36,7 @@ internal static partial class AhkHotstringParser
             string line = lines[i];
             string trimmed = line.Trim();
 
-            if (trimmed.Length == 0 || trimmed.StartsWith(';'))
+            if (IsBlankOrComment(trimmed))
                 continue;
 
             Match match = HotstringLine().Match(line);
@@ -40,12 +44,16 @@ internal static partial class AhkHotstringParser
                 continue; // hotkey, directive, or plain code — not a hotstring candidate
 
             int lineNumber = i + 1;
-            string trigger = match.Groups[2].Value.Trim();
-            string replacement = DecodeEscapes(match.Groups[3].Value);
+            string trigger = DecodeEscapes(match.Groups[2].Value).Trim();
+            string rawReplacement = match.Groups[3].Value;
+            string replacement = DecodeEscapes(rawReplacement);
             (bool endingRequired, bool insideWord, string[] ignoredFlags) = ParseOptions(match.Groups[1].Value);
 
-            // "::trigger::" immediately followed by a lone "(" opens a continuation section.
-            if (replacement.Length == 0 && i + 1 < lines.Length && lines[i + 1].Trim() == "(")
+            // Route on the RAW (pre-decode) replacement text — deciding on the decoded value
+            // would misroute a raw replacement that decodes to empty (e.g. a lone trailing
+            // backtick) into the continuation/code-body scanners below.
+            // "::trigger::" immediately followed by a "(" opens a continuation section.
+            if (rawReplacement.Length == 0 && i + 1 < lines.Length && lines[i + 1].Trim().StartsWith('('))
             {
                 rows.Add(ParseContinuationSection(
                     lines, ref i, lineNumber, trigger, endingRequired, insideWord, ignoredFlags));
@@ -53,7 +61,7 @@ internal static partial class AhkHotstringParser
             }
 
             // "::trigger::" followed by non-hotstring code is a v1 code-body hotstring.
-            if (replacement.Length == 0 && HasCodeBody(lines, i))
+            if (rawReplacement.Length == 0 && HasCodeBody(lines, i))
             {
                 rows.Add(ParseCodeBody(
                     lines, ref i, lineNumber, trigger, endingRequired, insideWord, ignoredFlags));
@@ -65,6 +73,9 @@ internal static partial class AhkHotstringParser
 
         return rows;
     }
+
+    private static bool IsBlankOrComment(string trimmed) =>
+        trimmed.Length == 0 || trimmed.StartsWith(';');
 
     private static HotstringImportRowDto BuildRow(
         int lineNumber,
@@ -100,7 +111,9 @@ internal static partial class AhkHotstringParser
         while (i + 1 < lines.Length)
         {
             i++;
-            if (lines[i].Trim() == ")")
+            // AHK closes a continuation section on any line whose first non-whitespace
+            // character is ')' — trailing content (e.g. "') ; comment") is legal.
+            if (lines[i].Trim().StartsWith(')'))
                 return BuildRow(
                     lineNumber, trigger, string.Join('\n', inner),
                     endingRequired, insideWord, ignoredFlags);
@@ -108,9 +121,9 @@ internal static partial class AhkHotstringParser
             inner.Add(lines[i].TrimStart());
         }
 
-        return new HotstringImportRowDto(
-            lineNumber, trigger, "", endingRequired, insideWord, ignoredFlags,
-            HotstringImportRowStatus.Invalid, "Unterminated continuation section.");
+        return InvalidRow(
+            lineNumber, trigger, endingRequired, insideWord, ignoredFlags,
+            "Unterminated continuation section.");
     }
 
     private static bool HasCodeBody(string[] lines, int index)
@@ -118,7 +131,7 @@ internal static partial class AhkHotstringParser
         for (int j = index + 1; j < lines.Length; j++)
         {
             string trimmed = lines[j].Trim();
-            if (trimmed.Length == 0 || trimmed.StartsWith(';'))
+            if (IsBlankOrComment(trimmed))
                 continue;
 
             return !HotstringLine().IsMatch(lines[j]);
@@ -148,14 +161,13 @@ internal static partial class AhkHotstringParser
             if (nestedDepth == 0)
             {
                 if (HotstringLine().IsMatch(next))
-                    return new HotstringImportRowDto(
-                        lineNumber, trigger, "", endingRequired, insideWord, ignoredFlags,
-                        HotstringImportRowStatus.Invalid,
+                    return InvalidRow(
+                        lineNumber, trigger, endingRequired, insideWord, ignoredFlags,
                         "Unterminated code body (no `return` before next hotstring).");
 
                 i++;
 
-                if (trimmed.Length == 0 || trimmed.StartsWith(';'))
+                if (IsBlankOrComment(trimmed))
                     continue;
 
                 if (string.Equals(trimmed, "return", StringComparison.OrdinalIgnoreCase))
@@ -164,7 +176,9 @@ internal static partial class AhkHotstringParser
                     break;
                 }
 
-                if (trimmed == "(")
+                // A continuation opener may carry options ("( LTrim", "( Join`n") — any line
+                // starting with '(' opens a nested block.
+                if (trimmed.StartsWith('('))
                     nestedDepth++;
 
                 body.Add(next);
@@ -172,9 +186,9 @@ internal static partial class AhkHotstringParser
             else
             {
                 i++;
-                if (trimmed == "(")
+                if (trimmed.StartsWith('('))
                     nestedDepth++;
-                else if (trimmed == ")")
+                else if (trimmed.StartsWith(')'))
                     nestedDepth--;
 
                 body.Add(next);
@@ -182,16 +196,24 @@ internal static partial class AhkHotstringParser
         }
 
         if (!terminated)
-            return new HotstringImportRowDto(
-                lineNumber, trigger, "", endingRequired, insideWord, ignoredFlags,
-                HotstringImportRowStatus.Invalid, "Unterminated code body (no `return`).");
+            return InvalidRow(
+                lineNumber, trigger, endingRequired, insideWord, ignoredFlags,
+                "Unterminated code body (no `return`).");
 
         return TryConvertSendBody(body, out string converted, out string reason)
             ? BuildRow(lineNumber, trigger, converted, endingRequired, insideWord, ignoredFlags)
-            : new HotstringImportRowDto(
-                lineNumber, trigger, "", endingRequired, insideWord, ignoredFlags,
-                HotstringImportRowStatus.Invalid, reason);
+            : InvalidRow(lineNumber, trigger, endingRequired, insideWord, ignoredFlags, reason);
     }
+
+    private static HotstringImportRowDto InvalidRow(
+        int lineNumber,
+        string trigger,
+        bool endingRequired,
+        bool insideWord,
+        string[] ignoredFlags,
+        string reason) =>
+        new(lineNumber, trigger, "", endingRequired, insideWord, ignoredFlags,
+            HotstringImportRowStatus.Invalid, reason);
 
     private static bool TryConvertSendBody(
         IReadOnlyList<string> bodyLines,
@@ -253,17 +275,7 @@ internal static partial class AhkHotstringParser
                 if (i + 1 >= arg.Length)
                     break;
 
-                char next = arg[++i];
-                sb.Append(next switch
-                {
-                    '`' => '`',
-                    'n' => '\n',
-                    'r' => '\r',
-                    't' => '\t',
-                    's' => ' ',
-                    ';' => ';',
-                    _ => next,
-                });
+                sb.Append(DecodeEscapeChar(arg[++i]));
                 continue;
             }
 
@@ -352,21 +364,25 @@ internal static partial class AhkHotstringParser
             if (i + 1 >= value.Length)
                 break;
 
-            char next = value[++i];
-            sb.Append(next switch
-            {
-                '`' => '`',
-                'n' => '\n',
-                'r' => '\r',
-                't' => '\t',
-                's' => ' ',
-                ';' => ';',
-                _ => next,
-            });
+            sb.Append(DecodeEscapeChar(value[++i]));
         }
 
         return sb.ToString();
     }
+
+    // Shared by DecodeEscapes (single-line replacements) and TryConvertSendArg (v1 Send
+    // bodies) so the two decoding paths cannot silently diverge.
+    private static char DecodeEscapeChar(char next) =>
+        next switch
+        {
+            '`' => '`',
+            'n' => '\n',
+            'r' => '\r',
+            't' => '\t',
+            's' => ' ',
+            ';' => ';',
+            _ => next,
+        };
 
     private static (bool EndingRequired, bool InsideWord, string[] Ignored) ParseOptions(string options)
     {

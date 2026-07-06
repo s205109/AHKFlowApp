@@ -61,6 +61,13 @@
     width: 24%;
 }
 
+/* Replacement column: multi-line imports (continuation sections, converted Send
+   bodies) can contain real line breaks — wrap instead of collapsing them. */
+::deep .hotstrings-grid td:nth-child(3) {
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+}
+
 ::deep .hotstrings-grid th:nth-child(4),
 ::deep .hotstrings-grid td:nth-child(4) {
     width: 14%;
