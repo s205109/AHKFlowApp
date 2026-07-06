@@ -17,6 +17,9 @@ internal static partial class AhkHotstringParser
     [GeneratedRegex(@"^:([^:\r\n]*):(.*?)::(.*)$")]
     private static partial Regex HotstringLine();
 
+    [GeneratedRegex(@"^\s*(SendInput|SendText|SendRaw|SendEvent|SendPlay|Send)\b\s*,?\s*(.*)$", RegexOptions.IgnoreCase)]
+    private static partial Regex SendCommand();
+
     public static IReadOnlyList<HotstringImportRowDto> Parse(string script)
     {
         ArgumentNullException.ThrowIfNull(script);
@@ -197,7 +200,138 @@ internal static partial class AhkHotstringParser
     {
         replacement = "";
         reason = "Code-body hotstrings that run logic aren't supported.";
-        return false;
+
+        StringBuilder text = new();
+        foreach (string line in bodyLines)
+        {
+            Match match = SendCommand().Match(line);
+            if (!match.Success)
+            {
+                string token = FirstToken(line);
+                if (token.Length > 0)
+                    reason = $"Code-body hotstrings that run logic aren't supported (found: {token}).";
+
+                return false;
+            }
+
+            string command = match.Groups[1].Value;
+            bool literalMode = command.Equals("SendText", StringComparison.OrdinalIgnoreCase)
+                || command.Equals("SendRaw", StringComparison.OrdinalIgnoreCase);
+
+            if (!TryConvertSendArg(match.Groups[2].Value, literalMode, out string converted, out reason))
+                return false;
+
+            text.Append(converted);
+        }
+
+        replacement = text.ToString();
+        return true;
+    }
+
+    private static bool TryConvertSendArg(
+        string arg,
+        bool literalMode,
+        out string converted,
+        out string reason)
+    {
+        converted = "";
+        reason = "";
+
+        if (arg.Trim() == "(")
+        {
+            reason = "Code-body hotstrings that run logic aren't supported (found: continuation section in Send).";
+            return false;
+        }
+
+        StringBuilder sb = new(arg.Length);
+        for (int i = 0; i < arg.Length; i++)
+        {
+            char c = arg[i];
+
+            if (c == '`')
+            {
+                if (i + 1 >= arg.Length)
+                    break;
+
+                char next = arg[++i];
+                sb.Append(next switch
+                {
+                    '`' => '`',
+                    'n' => '\n',
+                    'r' => '\r',
+                    't' => '\t',
+                    's' => ' ',
+                    ';' => ';',
+                    _ => next,
+                });
+                continue;
+            }
+
+            if (c == ';' && (i == 0 || arg[i - 1] is ' ' or '\t'))
+            {
+                reason = "Inline comment in Send — not imported.";
+                return false;
+            }
+
+            if (c == '%')
+            {
+                reason = "Code-body hotstrings that run logic aren't supported (found: % character).";
+                return false;
+            }
+
+            if (!literalMode && c is '^' or '!' or '+' or '#')
+            {
+                reason = $"Code-body hotstrings that run logic aren't supported (found: modifier {c}).";
+                return false;
+            }
+
+            if (!literalMode && c == '{')
+            {
+                int close = arg.IndexOf('}', i + 1);
+                if (close < 0)
+                {
+                    reason = "Code-body hotstrings that run logic aren't supported (found: unclosed { token).";
+                    return false;
+                }
+
+                string token = arg[(i + 1)..close];
+                if (token.Equals("Enter", StringComparison.OrdinalIgnoreCase)
+                    || token.Equals("Return", StringComparison.OrdinalIgnoreCase))
+                {
+                    sb.Append('\n');
+                }
+                else if (token.Equals("Tab", StringComparison.OrdinalIgnoreCase))
+                {
+                    sb.Append('\t');
+                }
+                else
+                {
+                    reason = $"Code-body hotstrings that run logic aren't supported (found: {{{token}}}).";
+                    return false;
+                }
+
+                i = close;
+                continue;
+            }
+
+            if (!literalMode && c == '}')
+            {
+                reason = "Code-body hotstrings that run logic aren't supported (found: stray }).";
+                return false;
+            }
+
+            sb.Append(c);
+        }
+
+        converted = sb.ToString();
+        return true;
+    }
+
+    private static string FirstToken(string line)
+    {
+        string trimmed = line.Trim();
+        int end = trimmed.IndexOfAny([' ', '\t', ',']);
+        return end < 0 ? trimmed : trimmed[..end];
     }
 
     private static string DecodeEscapes(string value)
