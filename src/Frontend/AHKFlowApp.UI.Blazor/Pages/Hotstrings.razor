@@ -24,6 +24,11 @@
                        Disabled="@(!_isAuthenticated || _loading)">
                 Reload
             </MudButton>
+            <MudButton Class="import-hotstrings" Variant="Variant.Filled" Color="Color.Tertiary"
+                       StartIcon="@Icons.Material.Filled.UploadFile" OnClick="OpenImportDialogAsync"
+                       Disabled="@(!_isAuthenticated || _dialogOpen)">
+                Import
+            </MudButton>
             @if (_selected.Count > 0)
             {
                 <MudButton Class="bulk-delete-hotstrings" Variant="Variant.Filled" Color="Color.Error"
@@ -212,6 +217,10 @@
                 <MudPagination Class="mt-2" Count="_mobileTotalPages" Selected="_mobilePage"
                                SelectedChanged="OnMobilePageChangedAsync" />
             }
+
+            <MudFab Class="import-hotstring-fab" Color="Color.Tertiary"
+                    StartIcon="@Icons.Material.Filled.UploadFile"
+                    OnClick="OpenImportDialogAsync" />
 
             <MudFab Class="add-hotstring-fab" Color="Color.Primary"
                     StartIcon="@Icons.Material.Filled.Add"
@@ -643,6 +652,33 @@
                 Snackbar.Add("Hotstring created.", Severity.Success);
                 await ReloadAllAsync();
             }
+        }
+        finally
+        {
+            _dialogOpen = false;
+        }
+    }
+
+    private async Task OpenImportDialogAsync()
+    {
+        if (_dialogOpen)
+            return;
+
+        _dialogOpen = true;
+        try
+        {
+            DialogParameters parameters = new()
+            {
+                [nameof(HotstringImportDialog.Profiles)] = _profiles,
+            };
+
+            IDialogReference dialog = await DialogService.ShowAsync<HotstringImportDialog>(
+                "Import hotstrings", parameters,
+                new DialogOptions { FullScreen = true, CloseButton = false });
+
+            DialogResult? result = await dialog.Result;
+            if (result?.Canceled == false)
+                await ReloadAllAsync();
         }
         finally
         {
