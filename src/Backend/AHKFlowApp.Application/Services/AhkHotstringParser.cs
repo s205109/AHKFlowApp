@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.RegularExpressions;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Validation;
@@ -37,7 +38,7 @@ internal static partial class AhkHotstringParser
 
             int lineNumber = i + 1;
             string trigger = match.Groups[2].Value.Trim();
-            string replacement = match.Groups[3].Value;
+            string replacement = DecodeEscapes(match.Groups[3].Value);
             (bool endingRequired, bool insideWord, string[] ignoredFlags) = ParseOptions(match.Groups[1].Value);
 
             // "::trigger::" immediately followed by a "(" opens a continuation section.
@@ -67,6 +68,40 @@ internal static partial class AhkHotstringParser
         }
 
         return rows;
+    }
+
+    private static string DecodeEscapes(string value)
+    {
+        if (!value.Contains('`'))
+            return value;
+
+        StringBuilder sb = new(value.Length);
+        for (int i = 0; i < value.Length; i++)
+        {
+            char c = value[i];
+            if (c != '`')
+            {
+                sb.Append(c);
+                continue;
+            }
+
+            if (i + 1 >= value.Length)
+                break;
+
+            char next = value[++i];
+            sb.Append(next switch
+            {
+                '`' => '`',
+                'n' => '\n',
+                'r' => '\r',
+                't' => '\t',
+                's' => ' ',
+                ';' => ';',
+                _ => next,
+            });
+        }
+
+        return sb.ToString();
     }
 
     private static (bool EndingRequired, bool InsideWord, string[] Ignored) ParseOptions(string options)
