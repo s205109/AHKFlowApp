@@ -50,6 +50,9 @@
                         <tr class="mobile-row-expanded">
                             <td colspan="3">
                                 <MudStack Spacing="1" Class="pa-3">
+                                    <MudText Typo="Typo.body2" Style="white-space: pre-wrap">
+                                        <strong>Replacement:</strong> @item.Replacement
+                                    </MudText>
                                     @if (!string.IsNullOrWhiteSpace(item.Description))
                                     {
                                         <MudText Typo="Typo.body2"><strong>Description:</strong> @item.Description</MudText>

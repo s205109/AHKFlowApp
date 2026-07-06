@@ -25,7 +25,7 @@ public sealed class HotstringsCrudFlowTests(StackFixture fixture) : IAsyncLifeti
         await page.ClickAsync("button.add-hotstring");
         await page.WaitForSelectorAsync("tr.draft-row");
         await page.FillAsync("input[data-test=\"trigger-input\"]", "btw");
-        await page.FillAsync("input[data-test=\"replacement-input\"]", "by the way");
+        await page.FillAsync("textarea[data-test=\"replacement-input\"]", "by the way");
         await page.ClickAsync("button.commit-edit");
 
         await page.WaitForSelectorAsync("text=Hotstring created.");
@@ -35,7 +35,7 @@ public sealed class HotstringsCrudFlowTests(StackFixture fixture) : IAsyncLifeti
 
         await page.ClickAsync("button.start-edit");
         await page.WaitForSelectorAsync("tr.edit-row");
-        await page.FillAsync("input[data-test=\"replacement-input\"]", "by the way!");
+        await page.FillAsync("textarea[data-test=\"replacement-input\"]", "by the way!");
         await page.ClickAsync("button.commit-edit");
 
         await page.WaitForSelectorAsync("text=Hotstring updated.");

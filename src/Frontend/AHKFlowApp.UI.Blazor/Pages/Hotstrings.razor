@@ -24,6 +24,11 @@
                        Disabled="@(!_isAuthenticated || _loading)">
                 Reload
             </MudButton>
+            <MudButton Class="import-hotstrings" Variant="Variant.Filled" Color="Color.Tertiary"
+                       StartIcon="@Icons.Material.Filled.UploadFile" OnClick="OpenImportDialogAsync"
+                       Disabled="@(!_isAuthenticated || _dialogOpen)">
+                Import
+            </MudButton>
             @if (_selected.Count > 0)
             {
                 <MudButton Class="bulk-delete-hotstrings" Variant="Variant.Filled" Color="Color.Error"
@@ -87,12 +92,13 @@
                                               Validation="@(new Func<string, string?>(ValidateReplacement))"
                                               Error="@(_commitAttempted && ValidateReplacement(context.Item.Replacement) is not null)"
                                               ErrorText="@(_commitAttempted ? ValidateReplacement(context.Item.Replacement) : null)"
+                                              Lines="3"
                                               Immediate="true" MaxLength="4000"
                                               UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "replacement-input" })" />
                             }
                             else
                             {
-                                @context.Item.Replacement
+                                <span style="white-space: pre-wrap">@context.Item.Replacement</span>
                             }
                         </CellTemplate>
                     </PropertyColumn>
@@ -213,9 +219,15 @@
                                SelectedChanged="OnMobilePageChangedAsync" />
             }
 
+            <MudFab Class="import-hotstring-fab" Color="Color.Tertiary"
+                    StartIcon="@Icons.Material.Filled.UploadFile"
+                    OnClick="OpenImportDialogAsync"
+                    Disabled="@(!_isAuthenticated || _dialogOpen)" />
+
             <MudFab Class="add-hotstring-fab" Color="Color.Primary"
                     StartIcon="@Icons.Material.Filled.Add"
-                    OnClick="OpenCreateDialogAsync" />
+                    OnClick="OpenCreateDialogAsync"
+                    Disabled="@(!_isAuthenticated || _dialogOpen)" />
     </MudPaper>
 </div>
 
@@ -643,6 +655,33 @@
                 Snackbar.Add("Hotstring created.", Severity.Success);
                 await ReloadAllAsync();
             }
+        }
+        finally
+        {
+            _dialogOpen = false;
+        }
+    }
+
+    private async Task OpenImportDialogAsync()
+    {
+        if (_dialogOpen)
+            return;
+
+        _dialogOpen = true;
+        try
+        {
+            DialogParameters parameters = new()
+            {
+                [nameof(HotstringImportDialog.Profiles)] = _profiles,
+            };
+
+            IDialogReference dialog = await DialogService.ShowAsync<HotstringImportDialog>(
+                "Import hotstrings", parameters,
+                new DialogOptions { FullScreen = true, CloseButton = false });
+
+            DialogResult? result = await dialog.Result;
+            if (result?.Canceled == false)
+                await ReloadAllAsync();
         }
         finally
         {

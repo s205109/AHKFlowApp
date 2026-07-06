@@ -1,0 +1,226 @@
+@using AHKFlowApp.UI.Blazor.DTOs
+@using AHKFlowApp.UI.Blazor.Services
+@using AHKFlowApp.UI.Blazor.Validation
+@using Microsoft.AspNetCore.Components.Forms
+@using MudBlazor
+@implements IDisposable
+
+<MudDialog Class="hotstring-import-dialog">
+    <TitleContent>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="flex-grow-1">
+            <MudIconButton Class="cancel-import" Icon="@Icons.Material.Filled.ArrowBack" OnClick="Cancel" />
+            <MudText Typo="Typo.h6">Import hotstrings</MudText>
+            <MudButton Class="confirm-import" Color="Color.Primary" Variant="Variant.Filled"
+                       Disabled="@(_preview is null || _importableCount == 0 || _busy)"
+                       OnClick="ConfirmAsync">
+                Import @_importableCount
+            </MudButton>
+        </MudStack>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="3" Class="pa-2">
+            <MudTextField T="string" @bind-Value="_script" @bind-Value:after="OnScriptChanged"
+                          Label="Paste your .ahk script" Lines="8"
+                          Variant="Variant.Outlined" Immediate="true"
+                          UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "import-script" })" />
+
+            <MudFileUpload T="IBrowserFile" Accept=".ahk,.txt" FilesChanged="OnFileSelectedAsync">
+                <CustomContent>
+                    <MudButton Class="import-upload" Variant="Variant.Outlined"
+                               StartIcon="@Icons.Material.Filled.UploadFile"
+                               OnClick="@context.OpenFilePickerAsync">
+                        Upload .ahk / .txt
+                    </MudButton>
+                </CustomContent>
+            </MudFileUpload>
+
+            <MudCheckBox T="bool" @bind-Value="_appliesToAllProfiles" Label="Apply to all profiles" />
+            @if (!_appliesToAllProfiles)
+            {
+                <EntityMultiSelect Options="_profileOptions" Label="Profiles"
+                                   SelectedIds="_profileIds"
+                                   SelectedIdsChanged="ids => _profileIds = [.. ids]"
+                                   DataTest="import-profile-select" />
+            }
+
+            <MudButton Class="preview-import" Variant="Variant.Filled" Color="Color.Secondary"
+                       StartIcon="@Icons.Material.Filled.Visibility"
+                       Disabled="@(string.IsNullOrWhiteSpace(_script) || _busy)"
+                       OnClick="PreviewAsync">
+                Preview
+            </MudButton>
+
+            @if (_error is not null)
+            {
+                <MudAlert Severity="Severity.Error">@_error</MudAlert>
+            }
+
+            @if (_preview is not null)
+            {
+                <MudText Typo="Typo.body2" Class="import-summary">
+                    @_preview.ReadyCount ready, @_preview.WarningCount with warnings,
+                    @_preview.DuplicateCount duplicates skipped, @_preview.InvalidCount invalid
+                </MudText>
+
+                <MudTable Items="_preview.Rows" Dense="true" Hover="true" Class="import-preview-table">
+                    <HeaderContent>
+                        <MudTh>Line</MudTh>
+                        <MudTh>Trigger</MudTh>
+                        <MudTh>Replacement</MudTh>
+                        <MudTh>Status</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.LineNumber</MudTd>
+                        <MudTd><code>@context.Trigger</code></MudTd>
+                        <MudTd Style="white-space: pre-wrap">@context.Replacement</MudTd>
+                        <MudTd>
+                            <MudChip T="string" Size="Size.Small" Color="@StatusColor(context.Status)">
+                                @StatusLabel(context)
+                            </MudChip>
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            }
+        </MudStack>
+    </DialogContent>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = default!;
+    [Inject] private IHotstringsApiClient Api { get; set; } = default!;
+    [Inject] private ISnackbar Snackbar { get; set; } = default!;
+
+    [Parameter] public IReadOnlyList<ProfileDto> Profiles { get; set; } = [];
+
+    private const long MaxFileSizeBytes = 1_048_576;
+
+    private string _script = "";
+    private bool _appliesToAllProfiles = true;
+    private List<Guid> _profileIds = [];
+    private HotstringImportPreviewDto? _preview;
+    private string? _error;
+    private bool _busy;
+    private IReadOnlyList<EntityOption> _profileOptions = [];
+    private readonly CancellationTokenSource _cts = new();
+
+    private int _importableCount => _preview is null ? 0 : _preview.ReadyCount + _preview.WarningCount;
+
+    protected override void OnParametersSet() =>
+        _profileOptions = [.. Profiles.Select(p => new EntityOption(p.Id, p.Name))];
+
+    private void Cancel() => Dialog.Cancel();
+
+    // Any script change invalidates the preview — confirm stays disabled until re-previewed,
+    // so the "Import N" count can never refer to stale content. The confirm button lives in
+    // TitleContent (rendered by the ancestor MudDialogInstance, not this component's own
+    // subtree), so ask the dialog instance to re-render too.
+    private void OnScriptChanged()
+    {
+        _preview = null;
+        Dialog.StateHasChanged();
+    }
+
+    private async Task OnFileSelectedAsync(IBrowserFile? file)
+    {
+        if (file is null)
+            return;
+
+        // 1 MB payload cap mirrors the server bound. Guard BEFORE opening the stream —
+        // OpenReadStream throws IOException past maxAllowedSize, which would otherwise
+        // bubble up uncaught and trip the app-wide ErrorBoundary.
+        if (file.Size > MaxFileSizeBytes)
+        {
+            _error = "File exceeds the 1 MB limit.";
+            OnScriptChanged();
+            return;
+        }
+
+        try
+        {
+            using StreamReader reader = new(file.OpenReadStream(maxAllowedSize: MaxFileSizeBytes));
+            _script = await reader.ReadToEndAsync(_cts.Token);
+            OnScriptChanged();
+        }
+        catch (IOException)
+        {
+            // Backstop in case the reported Size didn't match the actual stream length.
+            _error = "File exceeds the 1 MB limit.";
+            OnScriptChanged();
+        }
+    }
+
+    private async Task PreviewAsync()
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            ApiResult<HotstringImportPreviewDto> result = await Api.PreviewImportAsync(_script, _cts.Token);
+            if (result.IsSuccess)
+                _preview = result.Value;
+            else
+                _error = ApiErrorMessageFactory.Build(result.Status, result.Problem);
+        }
+        finally
+        {
+            _busy = false;
+            // The Confirm button lives in TitleContent, which MudDialog forwards to the
+            // ANCESTOR MudDialogInstance for rendering — this component's own StateHasChanged()
+            // only re-renders its own subtree (DialogContent), not that ancestor. Ask the
+            // dialog instance itself to re-render so the header picks up the new state.
+            Dialog.StateHasChanged();
+        }
+    }
+
+    private async Task ConfirmAsync()
+    {
+        if (_importableCount == 0)
+            return;
+
+        _busy = true;
+        _error = null;
+        try
+        {
+            ImportHotstringsRequestDto request = new(
+                _script, _appliesToAllProfiles, _appliesToAllProfiles ? null : [.. _profileIds]);
+
+            ApiResult<HotstringImportResultDto> result = await Api.ImportAsync(request, _cts.Token);
+            if (!result.IsSuccess)
+            {
+                _error = ApiErrorMessageFactory.Build(result.Status, result.Problem);
+                return;
+            }
+
+            int imported = result.Value!.ImportedCount;
+            int duplicates = result.Value.Rows.Count(r => r.Status == HotstringImportRowStatus.Duplicate);
+            int invalid = result.Value.Rows.Count(r => r.Status == HotstringImportRowStatus.Invalid);
+            Snackbar.Add(
+                $"Imported {imported} hotstring(s); skipped {duplicates} duplicate(s), {invalid} invalid.",
+                Severity.Success);
+            Dialog.Close(DialogResult.Ok(imported));
+        }
+        finally
+        {
+            _busy = false;
+            Dialog.StateHasChanged();
+        }
+    }
+
+    private static Color StatusColor(HotstringImportRowStatus status) => status switch
+    {
+        HotstringImportRowStatus.Ready => Color.Success,
+        HotstringImportRowStatus.Warning => Color.Warning,
+        HotstringImportRowStatus.Duplicate => Color.Default,
+        _ => Color.Error,
+    };
+
+    private static string StatusLabel(HotstringImportRowDto row) => row.Status switch
+    {
+        HotstringImportRowStatus.Ready => "Ready",
+        HotstringImportRowStatus.Warning => $"Warning: dropped {string.Join(", ", row.IgnoredFlags)}",
+        HotstringImportRowStatus.Duplicate => "Duplicate",
+        _ => $"Invalid: {row.Reason}",
+    };
+
+    public void Dispose() { _cts.Cancel(); _cts.Dispose(); }
+}
