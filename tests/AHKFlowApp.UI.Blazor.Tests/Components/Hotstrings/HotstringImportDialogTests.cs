@@ -101,6 +101,23 @@ public sealed class HotstringImportDialogTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
+    public async Task Preview_ReplacementCell_UsesPreWrapWhitespace()
+    {
+        _api.PreviewImportAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotstringImportPreviewDto>.Ok(new HotstringImportPreviewDto(
+                [new HotstringImportRowDto(1, "sig", "line one\nline two", true, false, [], HotstringImportRowStatus.Ready, null)],
+                ReadyCount: 1, WarningCount: 0, DuplicateCount: 0, InvalidCount: 0)));
+
+        IRenderedComponent<MudDialogProvider> provider = await OpenDialogAsync();
+
+        provider.Find("textarea[data-test=\"import-script\"]").Input("::sig::line one`nline two");
+        await provider.InvokeAsync(() => provider.Find("button.preview-import").Click());
+
+        provider.WaitForAssertion(() =>
+            provider.FindAll("td[style*='white-space: pre-wrap']").Should().NotBeEmpty());
+    }
+
+    [Fact]
     public async Task SelectingOversizedFile_ShowsErrorWithoutCrashing()
     {
         IRenderedComponent<MudDialogProvider> provider = await OpenDialogAsync();
