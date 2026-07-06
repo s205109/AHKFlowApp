@@ -31,10 +31,10 @@
 
 **Context (2026-07-04 docs audit):** Option 1 mixes the root launcher with a separate API+frontend recipe and a manual `dotnet ef database update` step that contradicts auto-migrate-at-startup in Development. README, AGENTS.md, and docker-setup.md each label a different path "recommended".
 
-- [ ] **Step 1:** Rewrite Option 1 as ONE recipe: root launcher (`dotnet run` with the chosen profile), no manual migration step (state "the API migrates and seeds its database at startup in Development"). Keep the alternative (separate API/frontend terminals) as a clearly separate "advanced" variant or drop it if docker-setup.md already covers it.
-- [ ] **Step 2:** Pick the single recommended path — Docker SQL (matches AGENTS.md and docker-setup.md) — and align the "recommended" wording in all three files. README's Docker-Compose option stays but loses the "(recommended)" label.
-- [ ] **Step 3:** Spot-run each quoted command on a clean-ish checkout (at minimum: the root launcher command starts API+UI; URLs respond on 5600/5601).
-- [ ] **Step 4: Commit** `docs: coherent README quickstart, single recommended path`
+- [x] **Step 1:** Rewrite Option 1 as ONE recipe: root launcher (`dotnet run` with the chosen profile), no manual migration step (state "the API migrates and seeds its database at startup in Development"). Keep the alternative (separate API/frontend terminals) as a clearly separate "advanced" variant or drop it if docker-setup.md already covers it.
+- [x] **Step 2:** Pick the single recommended path — Docker SQL (matches AGENTS.md and docker-setup.md) — and align the "recommended" wording in all three files. README's Docker-Compose option stays but loses the "(recommended)" label.
+- [x] **Step 3:** Spot-run each quoted command on a clean-ish checkout (at minimum: the root launcher command starts API+UI; URLs respond on 5600/5601).
+- [x] **Step 4: Commit** `docs: coherent README quickstart, single recommended path`
 
 ### Task 2: End-user Getting Started front door
 
@@ -42,8 +42,8 @@
 - Modify: `README.md` (top, after the intro line)
 - Inspect first: `docs/architecture/product-vision.md` §2/§5 (source of truth for what to say), `docs/cli/windows-install.md`
 
-- [ ] **Step 1:** Add a short "What is AHKFlow?" + "Getting started (users)" section: 2-3 sentences on the product; the first-five-minutes path (sign in → create a hotstring → assign to a profile → Downloads → run the `.ahk` file with AutoHotkey v2 installed); link CLI install (`winget install AHKFlow.CLI` per docs/cli/windows-install.md) and note the app never runs scripts itself (AGENTS.md Out of Scope). Keep it under ~30 lines; contributor content moves below it.
-- [ ] **Step 2: Commit** `docs: add end-user getting-started front door to README`
+- [x] **Step 1:** Add a short "What is AHKFlow?" + "Getting started (users)" section: 2-3 sentences on the product; the first-five-minutes path (sign in → create a hotstring → assign to a profile → Downloads → run the `.ahk` file with AutoHotkey v2 installed); link CLI install (`winget install AHKFlow.CLI` per docs/cli/windows-install.md) and note the app never runs scripts itself (AGENTS.md Out of Scope). Keep it under ~30 lines; contributor content moves below it.
+- [x] **Step 2: Commit** `docs: add end-user getting-started front door to README`
 
 ### Task 3: Staleness fixes (batch)
 
@@ -52,8 +52,8 @@
 - Modify: `docs/architecture/product-vision.md` §5 Current Scope — add: entity version history with revert, recycle bin (restore/purge), in-app changelog
 - Modify: `AGENTS.md` CI/CD workflows list — add `release-cli.yml` with a one-line role (packages `ahkflow-win-x64.zip` for CLI releases/winget); verify the exact behavior by reading `.github/workflows/release-cli.yml` first
 
-- [ ] **Step 1:** Apply the three fixes.
-- [ ] **Step 2: Commit** `docs: fix stale port, scope list, workflow inventory`
+- [x] **Step 1:** Apply the three fixes.
+- [x] **Step 2: Commit** `docs: fix stale port, scope list, workflow inventory`
 
 ### Task 4: configuration-strategy.md trim
 
@@ -61,8 +61,8 @@
 - Modify: `docs/development/configuration-strategy.md`
 - Inspect first: `docs/environments.md` (already covers the homelab/UseTestProvider path — link, don't duplicate), README Option 3
 
-- [ ] **Step 1:** Trim emoji-checklist styling to plain prose/tables; replace "Last Updated: Based on Microsoft Blazor documentation" with a real date; add a short section (or link to environments.md) for `Auth:UseTestProvider` / `appsettings.Local.json` local no-Azure config. Content that is correct stays — this is a trim, not a rewrite.
-- [ ] **Step 2: Commit** `docs: trim + date configuration strategy, add local no-Azure config`
+- [x] **Step 1:** Trim emoji-checklist styling to plain prose/tables; replace "Last Updated: Based on Microsoft Blazor documentation" with a real date; add a short section (or link to environments.md) for `Auth:UseTestProvider` / `appsettings.Local.json` local no-Azure config. Content that is correct stays — this is a trim, not a rewrite.
+- [x] **Step 2: Commit** `docs: trim + date configuration strategy, add local no-Azure config`
 
 ### Task 5: Merge worktree manual-testing docs
 
@@ -70,8 +70,8 @@
 - Merge: `docs/development/worktree-docker-isolation-manual-testing.md` + `docs/development/worktree-port-isolation-manual-testing.md` → `docs/development/worktree-isolation-manual-testing.md`
 - Inspect first: both docs (shared setup/teardown/Ctrl+C guidance; docker doc already links the port doc); `grep -rn "worktree-.*-manual-testing" . --include="*.md"` for inbound links
 
-- [ ] **Step 1:** Create the merged doc: one shared setup/teardown frame, two scenario sections (port isolation, docker isolation). `git rm` the two originals; update inbound links.
-- [ ] **Step 2: Commit** `docs: merge worktree manual-testing guides`
+- [x] **Step 1:** Create the merged doc: one shared setup/teardown frame, two scenario sections (port isolation, docker isolation). `git rm` the two originals; update inbound links.
+- [x] **Step 2: Commit** `docs: merge worktree manual-testing guides`
 
 ### Task 6: Archive historical material + backlog cleanup
 
@@ -84,29 +84,29 @@
 - Modify: `.claude/CLAUDE.md` backlog line → "Backlog: `.claude/backlog/` — open items; completed items live in `done/`"
 - Inspect first: `grep -rn "github-setup\|docs/copilot" . --include="*.md" | grep -v superpowers` for inbound links to fix
 
-- [ ] **Step 1:** Execute the moves + edits; fix inbound links.
-- [ ] **Step 2: Commit** `docs: archive historical runbooks, move done backlog items`
+- [x] **Step 1:** Execute the moves + edits; fix inbound links.
+- [x] **Step 2: Commit** `docs: archive historical runbooks, move done backlog items`
 
 ### Task 7: Post-A/B reference sweep (LAST)
 
-- [ ] **Step 1:** `grep -rn "scripts/check-coverage-thresholds\|scripts/generate-changelog\|scripts/setup-copilot-symlinks\|scripts/check-symlinks\|scripts/setup-cross-agent-skills\|create-github-issues" --include="*.md" . | grep -v superpowers` — update any active-doc path missed by plan B.
-- [ ] **Step 2:** Verify no active doc references removed code from plan A: `grep -rn "TestMessage" docs README.md AGENTS.md .claude --include="*.md"` → no hits outside superpowers.
-- [ ] **Step 3:** Link check over active docs — for each `](relative/path)` target in README.md, AGENTS.md, docs/** (excluding superpowers), confirm the file exists:
+- [x] **Step 1:** `grep -rn "scripts/check-coverage-thresholds\|scripts/generate-changelog\|scripts/setup-copilot-symlinks\|scripts/check-symlinks\|scripts/setup-cross-agent-skills\|create-github-issues" --include="*.md" . | grep -v superpowers` — update any active-doc path missed by plan B. (Only 2 hits, both already `scripts/agents/create-github-issues.ps1` — correct path, no fix needed.)
+- [x] **Step 2:** Verify no active doc references removed code from plan A: `grep -rn "TestMessage" docs README.md AGENTS.md .claude --include="*.md"` → no hits outside superpowers.
+- [x] **Step 3:** Link check over active docs — for each `](relative/path)` target in README.md, AGENTS.md, docs/** (excluding superpowers), confirm the file exists:
 
 ```bash
 grep -rhoE "\]\((\.{0,2}/)?[A-Za-z0-9_./-]+\.(md|json|ps1|py|yml)\)" README.md AGENTS.md docs --include="*.md" \
   | sort -u   # then resolve each relative to its containing file
 ```
 
-(or use a link-checker one-liner; broken links = task failure).
-- [ ] **Step 4: Commit** `docs: post-cleanup reference sweep`
+(or use a link-checker one-liner; broken links = task failure). All active-doc link targets resolve. One dangling reference to `scripts/create-github-issues.ps1` (pre-move path) exists only in `docs/superpowers/plans/` historical material — out of scope per Global Constraints.
+- [x] **Step 4: Commit** `docs: post-cleanup reference sweep`
 
 ---
 
 ## Final verification
 
-- [ ] Link check (T7 S3) — zero broken relative links in active docs
-- [ ] Every command quoted in README quickstart spot-run OK
-- [ ] `grep -rn "MediatR\|7601\|TestMessage" README.md AGENTS.md docs .claude --include="*.md" | grep -v superpowers | grep -v "never\|don't\|Reintroducing"` → no stale hits
-- [ ] `docs/copilot/` gone; `.claude/backlog/` contains only open items + `done/`
+- [x] Link check (T7 S3) — zero broken relative links in active docs
+- [x] Every command quoted in README quickstart spot-run OK
+- [x] `grep -rn "MediatR\|7601\|TestMessage" README.md AGENTS.md docs .claude --include="*.md" | grep -v superpowers | grep -v "never\|don't\|Reintroducing"` → no stale hits
+- [x] `docs/copilot/` gone; `.claude/backlog/` contains only open items + `done/`
 - [ ] PR to main, single concern: docs simplification
