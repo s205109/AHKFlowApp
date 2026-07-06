@@ -117,7 +117,7 @@ public sealed class AhkHotstringParserTests
     }
 
     [Fact]
-    public void Parse_MultiLineContinuation_IsInvalidAndConsumesInnerLines()
+    public void Parse_MultiLineContinuation_ConvertsToMultiLineReplacement()
     {
         string script = string.Join('\n',
             "::sig::",
@@ -130,10 +130,56 @@ public sealed class AhkHotstringParserTests
         IReadOnlyList<HotstringImportRowDto> rows = AhkHotstringParser.Parse(script);
 
         rows.Should().HaveCount(2);
-        rows[0].Status.Should().Be(HotstringImportRowStatus.Invalid);
-        rows[0].Reason.Should().Contain("Multi-line");
+        rows[0].Trigger.Should().Be("sig");
+        rows[0].Replacement.Should().Be("line one\nline two");
+        rows[0].Status.Should().Be(HotstringImportRowStatus.Ready);
         rows[1].Trigger.Should().Be("btw");
         rows[1].Status.Should().Be(HotstringImportRowStatus.Ready);
+    }
+
+    [Fact]
+    public void Parse_IndentedContinuationLines_TrimLeadingWhitespacePerLine()
+    {
+        string script = string.Join('\n',
+            "::sig::",
+            "(",
+            "    indented one",
+            "\tindented two",
+            ")");
+
+        HotstringImportRowDto row = AhkHotstringParser.Parse(script)[0];
+
+        row.Replacement.Should().Be("indented one\nindented two");
+        row.Status.Should().Be(HotstringImportRowStatus.Ready);
+    }
+
+    [Fact]
+    public void Parse_ContinuationLines_AreNotEscapeDecoded()
+    {
+        string script = string.Join('\n',
+            "::sig::",
+            "(",
+            "literal `n stays",
+            ")");
+
+        HotstringImportRowDto row = AhkHotstringParser.Parse(script)[0];
+
+        row.Replacement.Should().Be("literal `n stays");
+    }
+
+    [Fact]
+    public void Parse_UnterminatedContinuation_IsInvalid()
+    {
+        string script = string.Join('\n',
+            "::sig::",
+            "(",
+            "line one");
+
+        IReadOnlyList<HotstringImportRowDto> rows = AhkHotstringParser.Parse(script);
+
+        rows.Should().ContainSingle();
+        rows[0].Status.Should().Be(HotstringImportRowStatus.Invalid);
+        rows[0].Reason.Should().Be("Unterminated continuation section.");
     }
 
     [Theory]

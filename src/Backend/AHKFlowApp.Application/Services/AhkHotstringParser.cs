@@ -41,33 +41,65 @@ internal static partial class AhkHotstringParser
             string replacement = DecodeEscapes(match.Groups[3].Value);
             (bool endingRequired, bool insideWord, string[] ignoredFlags) = ParseOptions(match.Groups[1].Value);
 
-            // "::trigger::" immediately followed by a "(" opens a continuation section.
+            // "::trigger::" immediately followed by a lone "(" opens a continuation section.
             if (replacement.Length == 0 && i + 1 < lines.Length && lines[i + 1].Trim() == "(")
             {
-                rows.Add(new HotstringImportRowDto(
-                    lineNumber, trigger, replacement, endingRequired, insideWord, ignoredFlags,
-                    HotstringImportRowStatus.Invalid, "Multi-line replacements are not supported."));
-
-                i++; // consume "("
-                while (i + 1 < lines.Length && lines[i + 1].Trim() != ")")
-                    i++;
-                if (i + 1 < lines.Length)
-                    i++; // consume ")"
+                rows.Add(ParseContinuationSection(
+                    lines, ref i, lineNumber, trigger, endingRequired, insideWord, ignoredFlags));
                 continue;
             }
 
-            string? reason = ValidateTrigger(trigger) ?? ValidateReplacement(replacement);
-            HotstringImportRowStatus status = reason is not null
-                ? HotstringImportRowStatus.Invalid
-                : ignoredFlags.Length > 0
-                    ? HotstringImportRowStatus.Warning
-                    : HotstringImportRowStatus.Ready;
-
-            rows.Add(new HotstringImportRowDto(
-                lineNumber, trigger, replacement, endingRequired, insideWord, ignoredFlags, status, reason));
+            rows.Add(BuildRow(lineNumber, trigger, replacement, endingRequired, insideWord, ignoredFlags));
         }
 
         return rows;
+    }
+
+    private static HotstringImportRowDto BuildRow(
+        int lineNumber,
+        string trigger,
+        string replacement,
+        bool endingRequired,
+        bool insideWord,
+        string[] ignoredFlags)
+    {
+        string? reason = ValidateTrigger(trigger) ?? ValidateReplacement(replacement);
+        HotstringImportRowStatus status = reason is not null
+            ? HotstringImportRowStatus.Invalid
+            : ignoredFlags.Length > 0
+                ? HotstringImportRowStatus.Warning
+                : HotstringImportRowStatus.Ready;
+
+        return new HotstringImportRowDto(
+            lineNumber, trigger, replacement, endingRequired, insideWord, ignoredFlags, status, reason);
+    }
+
+    private static HotstringImportRowDto ParseContinuationSection(
+        string[] lines,
+        ref int i,
+        int lineNumber,
+        string trigger,
+        bool endingRequired,
+        bool insideWord,
+        string[] ignoredFlags)
+    {
+        i++; // consume "("
+        List<string> inner = [];
+
+        while (i + 1 < lines.Length)
+        {
+            i++;
+            if (lines[i].Trim() == ")")
+                return BuildRow(
+                    lineNumber, trigger, string.Join('\n', inner),
+                    endingRequired, insideWord, ignoredFlags);
+
+            inner.Add(lines[i].TrimStart());
+        }
+
+        return new HotstringImportRowDto(
+            lineNumber, trigger, "", endingRequired, insideWord, ignoredFlags,
+            HotstringImportRowStatus.Invalid, "Unterminated continuation section.");
     }
 
     private static string DecodeEscapes(string value)
