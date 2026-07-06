@@ -182,6 +182,139 @@ public sealed class AhkHotstringParserTests
         rows[0].Reason.Should().Be("Unterminated continuation section.");
     }
 
+    [Fact]
+    public void Parse_CodeBodyWithoutReturnBeforeNextHotstring_IsInvalidAndNextRowParses()
+    {
+        string script = string.Join('\n',
+            "::bad::",
+            "Send hello",
+            "::btw::by the way");
+
+        IReadOnlyList<HotstringImportRowDto> rows = AhkHotstringParser.Parse(script);
+
+        rows.Should().HaveCount(2);
+        rows[0].Status.Should().Be(HotstringImportRowStatus.Invalid);
+        rows[0].Reason.Should().Be("Unterminated code body (no `return` before next hotstring).");
+        rows[1].Trigger.Should().Be("btw");
+        rows[1].Status.Should().Be(HotstringImportRowStatus.Ready);
+    }
+
+    [Fact]
+    public void Parse_CodeBodyWithoutReturnAtEof_IsInvalid()
+    {
+        string script = string.Join('\n',
+            "::bad::",
+            "MsgBox hi");
+
+        IReadOnlyList<HotstringImportRowDto> rows = AhkHotstringParser.Parse(script);
+
+        rows.Should().ContainSingle();
+        rows[0].Status.Should().Be(HotstringImportRowStatus.Invalid);
+        rows[0].Reason.Should().Be("Unterminated code body (no `return`).");
+    }
+
+    [Fact]
+    public void Parse_TerminatedLogicBody_IsInvalidWithHonestReason()
+    {
+        string script = string.Join('\n',
+            "::d::",
+            "FormatTime, X,, yyyy",
+            "return",
+            "::btw::by the way");
+
+        IReadOnlyList<HotstringImportRowDto> rows = AhkHotstringParser.Parse(script);
+
+        rows.Should().HaveCount(2);
+        rows[0].Status.Should().Be(HotstringImportRowStatus.Invalid);
+        rows[0].Reason.Should().Contain("aren't supported");
+        rows[1].Trigger.Should().Be("btw");
+        rows[1].Status.Should().Be(HotstringImportRowStatus.Ready);
+    }
+
+    [Fact]
+    public void Parse_CodeBodyBlankAndCommentLines_AreSkippedNotTerminators()
+    {
+        string script = string.Join('\n',
+            "::bad::",
+            "MsgBox hi",
+            "",
+            "; a comment",
+            "return");
+
+        IReadOnlyList<HotstringImportRowDto> rows = AhkHotstringParser.Parse(script);
+
+        rows.Should().ContainSingle();
+        rows[0].Status.Should().Be(HotstringImportRowStatus.Invalid);
+        rows[0].Reason.Should().Contain("aren't supported");
+    }
+
+    [Fact]
+    public void Parse_CommentLineBetweenTriggerAndBody_IsStillTreatedAsCodeBody()
+    {
+        string script = string.Join('\n',
+            "::note::",
+            "; a leading comment before the real body",
+            "MsgBox hi",
+            "return");
+
+        IReadOnlyList<HotstringImportRowDto> rows = AhkHotstringParser.Parse(script);
+
+        rows.Should().ContainSingle();
+        rows[0].Status.Should().Be(HotstringImportRowStatus.Invalid);
+        rows[0].Reason.Should().NotBe("Replacement is required.");
+    }
+
+    [Fact]
+    public void Parse_EmptyHotstringWithOnlyTrailingComment_IsReplacementRequiredNotUnterminated()
+    {
+        string script = string.Join('\n',
+            "::x::",
+            "; just a trailing comment, no real body here",
+            "::btw::by the way");
+
+        IReadOnlyList<HotstringImportRowDto> rows = AhkHotstringParser.Parse(script);
+
+        rows.Should().HaveCount(2);
+        rows[0].Reason.Should().Be("Replacement is required.");
+        rows[1].Trigger.Should().Be("btw");
+        rows[1].Status.Should().Be(HotstringImportRowStatus.Ready);
+    }
+
+    [Fact]
+    public void Parse_NestedContinuationBlockInBody_IgnoresReturnAndHotstringLines()
+    {
+        string script = string.Join('\n',
+            "::bad::",
+            "x := 1",
+            "(",
+            "return",
+            "::fake::not a new row",
+            ")",
+            "return",
+            "::btw::by the way");
+
+        IReadOnlyList<HotstringImportRowDto> rows = AhkHotstringParser.Parse(script);
+
+        rows.Should().HaveCount(2);
+        rows[0].Status.Should().Be(HotstringImportRowStatus.Invalid);
+        rows[0].Reason.Should().Contain("aren't supported");
+        rows[1].Trigger.Should().Be("btw");
+    }
+
+    [Fact]
+    public void Parse_EmptyHotstringFollowedByHotstring_IsReplacementRequired()
+    {
+        string script = string.Join('\n',
+            "::x::",
+            "::btw::by the way");
+
+        IReadOnlyList<HotstringImportRowDto> rows = AhkHotstringParser.Parse(script);
+
+        rows.Should().HaveCount(2);
+        rows[0].Reason.Should().Be("Replacement is required.");
+        rows[1].Status.Should().Be(HotstringImportRowStatus.Ready);
+    }
+
     [Theory]
     [InlineData("::sig::line one`nline two", "line one\nline two")]
     [InlineData("::sig::a`rb", "a\rb")]

@@ -49,6 +49,14 @@ internal static partial class AhkHotstringParser
                 continue;
             }
 
+            // "::trigger::" followed by non-hotstring code is a v1 code-body hotstring.
+            if (replacement.Length == 0 && HasCodeBody(lines, i))
+            {
+                rows.Add(ParseCodeBody(
+                    lines, ref i, lineNumber, trigger, endingRequired, insideWord, ignoredFlags));
+                continue;
+            }
+
             rows.Add(BuildRow(lineNumber, trigger, replacement, endingRequired, insideWord, ignoredFlags));
         }
 
@@ -100,6 +108,96 @@ internal static partial class AhkHotstringParser
         return new HotstringImportRowDto(
             lineNumber, trigger, "", endingRequired, insideWord, ignoredFlags,
             HotstringImportRowStatus.Invalid, "Unterminated continuation section.");
+    }
+
+    private static bool HasCodeBody(string[] lines, int index)
+    {
+        for (int j = index + 1; j < lines.Length; j++)
+        {
+            string trimmed = lines[j].Trim();
+            if (trimmed.Length == 0 || trimmed.StartsWith(';'))
+                continue;
+
+            return !HotstringLine().IsMatch(lines[j]);
+        }
+
+        return false;
+    }
+
+    private static HotstringImportRowDto ParseCodeBody(
+        string[] lines,
+        ref int i,
+        int lineNumber,
+        string trigger,
+        bool endingRequired,
+        bool insideWord,
+        string[] ignoredFlags)
+    {
+        List<string> body = [];
+        int nestedDepth = 0;
+        bool terminated = false;
+
+        while (i + 1 < lines.Length)
+        {
+            string next = lines[i + 1];
+            string trimmed = next.Trim();
+
+            if (nestedDepth == 0)
+            {
+                if (HotstringLine().IsMatch(next))
+                    return new HotstringImportRowDto(
+                        lineNumber, trigger, "", endingRequired, insideWord, ignoredFlags,
+                        HotstringImportRowStatus.Invalid,
+                        "Unterminated code body (no `return` before next hotstring).");
+
+                i++;
+
+                if (trimmed.Length == 0 || trimmed.StartsWith(';'))
+                    continue;
+
+                if (string.Equals(trimmed, "return", StringComparison.OrdinalIgnoreCase))
+                {
+                    terminated = true;
+                    break;
+                }
+
+                if (trimmed == "(")
+                    nestedDepth++;
+
+                body.Add(next);
+            }
+            else
+            {
+                i++;
+                if (trimmed == "(")
+                    nestedDepth++;
+                else if (trimmed == ")")
+                    nestedDepth--;
+
+                body.Add(next);
+            }
+        }
+
+        if (!terminated)
+            return new HotstringImportRowDto(
+                lineNumber, trigger, "", endingRequired, insideWord, ignoredFlags,
+                HotstringImportRowStatus.Invalid, "Unterminated code body (no `return`).");
+
+        return TryConvertSendBody(body, out string converted, out string reason)
+            ? BuildRow(lineNumber, trigger, converted, endingRequired, insideWord, ignoredFlags)
+            : new HotstringImportRowDto(
+                lineNumber, trigger, "", endingRequired, insideWord, ignoredFlags,
+                HotstringImportRowStatus.Invalid, reason);
+    }
+
+    private static bool TryConvertSendBody(
+        IReadOnlyList<string> bodyLines,
+        out string replacement,
+        out string reason)
+    {
+        replacement = "";
+        reason = "Code-body hotstrings that run logic aren't supported.";
+        return false;
     }
 
     private static string DecodeEscapes(string value)
