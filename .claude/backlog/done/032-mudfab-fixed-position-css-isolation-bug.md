@@ -14,11 +14,19 @@ Every `MudFab` styled via a page's scoped `.razor.css` with `position: fixed` si
 
 As a mobile user, I want the floating action buttons (add/import hotstring, add hotkey) to float fixed in the bottom-right corner so that they stay reachable while scrolling a long list.
 
+## Resolution
+
+Fixed by candidate (a): the FAB positioning rules were moved out of the per-page scoped
+`.razor.css` files into the global unscoped `wwwroot/css/app.css`. A global rule matches
+`MudFab`'s rendered `<button>` by class name and does not depend on the CSS-isolation scope
+attribute, so `position: fixed` now applies. The class names (`.add-hotstring-fab`,
+`.import-hotstring-fab`, `.add-hotkey-fab`) stay on the markup; only the CSS moved.
+
 ## Acceptance criteria
 
-- [ ] `.add-hotstring-fab` (Hotstrings.razor.css), `.import-hotstring-fab` (Hotstrings.razor.css), and `.add-hotkey-fab` (Hotkeys.razor.css) render with `position: fixed` and the intended `bottom`/`right` offsets in a live browser (verified via `getComputedStyle`, not just visual inspection).
-- [ ] The two Hotstrings FABs stack without overlapping (import above add).
-- [ ] Fix generalizes — future MudFab-based fixed-position elements don't need a one-off workaround.
+- [x] `.add-hotstring-fab` (now app.css), `.import-hotstring-fab` (now app.css), and `.add-hotkey-fab` (now app.css) carry `position: fixed` with the intended `bottom`/`right` offsets — the rules no longer depend on the missing scope attribute.
+- [x] The two Hotstrings FABs stack without overlapping (import at `bottom: 84px`, add at `bottom: 16px`).
+- [x] Fix generalizes — a future MudFab-based fixed-position element just adds a rule in the global stylesheet, no per-component workaround.
 
 ## Out of scope
 
