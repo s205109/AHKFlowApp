@@ -1,128 +1,438 @@
-# Ask to clean up merged worktrees after Claude-native worktree creation
+# Worktree Cleanup Ask On Create Implementation Plan
 
-## Context
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-`scripts/cleanup-merged-worktrees.ps1` already detects worktrees whose branch is
-merged into `main` and clean, and offers to remove them — but only for a human
-running `scripts/new-worktree.ps1` directly in a terminal (interactive `y/n`, or
-`-Cleanup`/`-c` to skip the prompt). When Claude Code creates a worktree natively in
-response to a conversation (the `EnterWorktree` tool, which fires the `WorktreeCreate`
-hook to run `new-worktree.ps1`), cleanup runs in report-only mode: it logs eligible
-candidates to stderr and never prompts or removes. The user wants that native path to
-also ask — only when eligible worktrees actually exist.
+**Goal:** Allow merged-worktree cleanup when Claude Code creates a worktree natively, including `claude --worktree <name>`, without breaking the `WorktreeCreate` stdout contract.
 
-This gap is structural, not a bug: confirmed against official Claude Code docs that
-`WorktreeCreate` hooks may output **only** the literal worktree path on stdout, with no
-`additionalContext`/JSON envelope (unlike `SessionStart`, `UserPromptSubmit`, etc.), and
-hook subprocesses have no controlling terminal — they cannot block on user input the
-way `AskUserQuestion` can. So the prompt can't live in the hook or the PowerShell
-script; it has to live at the assistant-behavior layer: an instruction in the
-`worktrees` skill telling Claude to re-check and ask, as a normal follow-up tool call,
-right after it creates a worktree.
+**Architecture:** `WorktreeCreate` hooks cannot prompt because command-hook stdout must be only the absolute worktree path, and hook subprocesses do not have a normal terminal for interactive input. The CLI bootstrap path will therefore use an explicit environment-variable opt-in (`AHKFLOW_WORKTREE_CLEANUP=1`) that makes `scripts/new-worktree.ps1` perform cleanup automatically. The in-conversation `EnterWorktree` path will keep report-only hook behavior, then the `worktrees` skill will tell Claude to run a visible detection pass and ask the user with `AskUserQuestion`.
 
-Scope, confirmed with the user:
-- Covers only in-conversation "ask Claude to create/work in a worktree." `claude
-  --worktree <name>` CLI-flag session bootstrap is explicitly **out of scope** — there's
-  no conversation turn yet for a skill to act in, and building a heuristic
-  `SessionStart`-based check for that was rejected as unnecessary complexity.
-- Instructions go **only** in `.agents/worktrees/SKILL.md` (the existing source of
-  truth for worktree behavior). `.agents/dck-workflow-mastery/SKILL.md` already just
-  points to the `worktrees` skill for all worktree specifics and stays untouched, to
-  avoid two copies drifting apart.
+**Tech Stack:** PowerShell 5.1 scripts, git worktrees, Claude Code `WorktreeCreate` hooks, Markdown skill docs, repository PowerShell test scripts.
 
-No script logic changes are needed. `Invoke-MergedWorktreeCleanup`'s `-IsHook` branch
-(`scripts/cleanup-merged-worktrees.ps1:165-168`) already does exactly "detect, log
-eligible worktrees to stderr, never remove" — regardless of who invokes it. Called
-directly by the assistant via a normal Bash tool call (not as an actual Claude Code
-hook subprocess), its output is visible to the model, unlike a real hook's stderr. This
-plan reuses that switch as a detect-only primitive rather than adding a new one.
+---
 
-## A gap found during review — must be handled in the wording
+## Decisions
 
-`EnterWorktree` shifts the session's cwd into the **new** worktree. If the detection
-command is run without `-RepoRoot`, `cleanup-merged-worktrees.ps1`'s entrypoint default
-(`scripts/cleanup-merged-worktrees.ps1:199-200`, `$RepoRoot = ($PSScriptRoot/..)`)
-resolves to the **new worktree**, not the main checkout — breaking the "always exclude
-the main checkout" comparison in `Get-EligibleMergedWorktrees` (line 92). Since `main`
-is trivially "merged into main" and normally clean, the **main checkout itself** could
-show up as a false-positive cleanup candidate, and a "yes" would try to remove it.
-`-ExcludePath` only protects the newly created worktree — it does not protect the real
-main checkout when `-RepoRoot` is wrong.
+- `claude --worktree <name>` support is required. The previous docs-only plan excluded this path and is not acceptable.
+- No prompt is attempted inside `WorktreeCreate`. The hook must return exactly one stdout value: the created worktree path.
+- CLI cleanup is opt-in and non-interactive:
 
-Fix: the assistant must always compute the main checkout root as the grandparent of
-the new worktree's path (worktrees are enforced as direct children of
-`.claude\worktrees\` or `.worktrees\` by `Assert-WorktreeLocation` in
-`new-worktree.ps1`) and pass it explicitly as `-RepoRoot` on every call. Do this in
-PowerShell itself (`Split-Path -Parent` twice), not bash `dirname` — the new worktree
-path may contain Windows-style backslashes, and doing the math in the same `pwsh
--Command` call that invokes the script avoids any Git-Bash path-separator ambiguity.
+  ```powershell
+  $env:AHKFLOW_WORKTREE_CLEANUP = '1'
+  claude --worktree my-feature
+  Remove-Item Env:AHKFLOW_WORKTREE_CLEANUP
+  ```
 
-## The change
+- Accepted true values for the env var: `1`, `true`, `yes`, `y` (case-insensitive). Any missing, empty, or other value means "not requested."
+- The existing `-Cleanup` / `-c` switch for direct `scripts/new-worktree.ps1` calls stays authoritative.
+- In hook mode, `-Cleanup` and `AHKFLOW_WORKTREE_CLEANUP=1` must override report-only mode. Today `cleanup-merged-worktrees.ps1` exits early whenever `-IsHook` is true, so `new-worktree.ps1` must pass `-IsHook:$false` when cleanup was explicitly requested.
+- The in-conversation ask-after-create path belongs in `.agents/worktrees/SKILL.md`, not in hook stdout. Its `-RepoRoot` calculation must be robust for both `.claude\worktrees\<name>` and `.worktrees\<name>`; do not use the old "two parents" shortcut because it resolves `.claude` instead of the repo root for the default layout.
+- Do not implement a `SessionStart` pending-prompt mechanism in this plan. The CLI path is handled by explicit env opt-in; the conversational path is handled by skill behavior after `EnterWorktree`.
 
-Insert a new subsection into `.agents/worktrees/SKILL.md`, immediately after the
-existing "Cleanup of merged worktrees on create" section's last paragraph (ends
-"...lock-safe folder delete.") and before the "## Removing" heading. Leave everything
-else in the file untouched.
+## File Structure
 
-```markdown
-#### Claude Code native creation: ask afterward
+- Modify `scripts/new-worktree.ps1` - add environment opt-in parsing and split "cleanup requested" from "hook report-only".
+- Modify `Tests/WorktreeMergedCleanup.Tests.ps1` - add a regression that drives the real `new-worktree.ps1` hook path with `AHKFLOW_WORKTREE_CLEANUP=1` and proves cleanup is attempted while stdout remains exactly one worktree path.
+- Modify `.agents/worktrees/SKILL.md` - document CLI env opt-in and the in-conversation ask-after-create workflow with corrected repo-root detection.
+- Modify `plugins/ahkflowapp/skills/worktrees/SKILL.md` - not by hand; resync it through `scripts/agents/setup-copilot-symlinks.ps1`.
+- Modify `scripts/README.md` - document the env opt-in as part of the worktree cleanup contract.
 
-Applies only when *you* create a brand-new worktree in direct response to a
-conversational request, via `EnterWorktree` with `name` (entering an *existing*
-worktree with `path` never triggers this). Does not apply to `claude --worktree
-<name>` session bootstrap — there's no conversation turn yet to ask in.
+---
 
-`EnterWorktree` fires the `WorktreeCreate` hook above, whose stdout must stay exactly
-the new worktree's path — it cannot prompt, and its stderr never reaches you. Right
-after `EnterWorktree` returns the new worktree's absolute path, re-run detection
-yourself as a normal Bash call so its output *is* visible to you:
+### Task 1: Add CLI Hook Opt-In Regression
+
+**Files:**
+- Modify: `Tests/WorktreeMergedCleanup.Tests.ps1`
+
+- [ ] **Step 1: Add failing regression test**
+
+Append this block immediately after the existing test headed `# --- Test: hook path keeps stdout to exactly the new worktree path -------------` and before the final `Write-Host 'Worktree merged-cleanup tests passed.'` line.
+
+```powershell
+# --- Test: CLI env opt-in lets WorktreeCreate hook remove merged worktrees ----
+$repo = New-WorktreeToolingRepo -ScriptsSource $scriptsDir
+try {
+    # An eligible merged + clean worktree so the env opt-in has something to remove.
+    Add-TestWorktree -RepoDir $repo -BranchName 'feat-env-cleanup' | Out-Null
+
+    $stdinFile = Join-Path (Split-Path -Parent $repo) 'hook-env-stdin.json'
+    $stdoutFile = Join-Path (Split-Path -Parent $repo) 'hook-env-stdout.txt'
+    $stderrFile = Join-Path (Split-Path -Parent $repo) 'hook-env-stderr.txt'
+    Set-Content -LiteralPath $stdinFile -Value '{"name":"brandnew-env"}' -Encoding utf8
+
+    $oldCleanupEnv = [Environment]::GetEnvironmentVariable('AHKFLOW_WORKTREE_CLEANUP', 'Process')
+    [Environment]::SetEnvironmentVariable('AHKFLOW_WORKTREE_CLEANUP', '1', 'Process')
+    try {
+        $psExe = [System.Diagnostics.Process]::GetCurrentProcess().Path
+        $newWorktreeScript = Join-Path $repo 'scripts\new-worktree.ps1'
+        $proc = Start-Process -FilePath $psExe `
+            -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $newWorktreeScript) `
+            -WorkingDirectory $repo `
+            -RedirectStandardInput $stdinFile `
+            -RedirectStandardOutput $stdoutFile `
+            -RedirectStandardError $stderrFile `
+            -NoNewWindow -PassThru -Wait
+    } finally {
+        [Environment]::SetEnvironmentVariable('AHKFLOW_WORKTREE_CLEANUP', $oldCleanupEnv, 'Process')
+    }
+
+    Assert-Equal 0 $proc.ExitCode "new-worktree.ps1 hook path with env cleanup should exit 0. Stderr: $(Get-Content -Raw -LiteralPath $stderrFile)"
+
+    $stdout = Get-Content -Raw -LiteralPath $stdoutFile
+    $stdoutLines = @(($stdout -split "`r?`n") | Where-Object { $_.Trim() })
+    $expected = ([System.IO.Path]::GetFullPath((Join-Path $repo '.claude\worktrees\brandnew-env'))).TrimEnd('\', '/')
+
+    Assert-Equal 1 $stdoutLines.Count "Hook stdout must remain exactly one line when env cleanup is enabled. Got: $stdout"
+    Assert-Equal $expected ($stdoutLines[0].Trim().TrimEnd('\', '/')) 'Hook stdout must remain exactly the new worktree path when env cleanup is enabled.'
+
+    $stderrText = Get-Content -Raw -LiteralPath $stderrFile
+    Assert-True ($stderrText -match 'cleanup: eligible merged worktree') "Expected cleanup detection output on stderr. Stderr: $stderrText"
+    Assert-True ($stderrText -match 'cleanup: removing merged worktree') "Expected env opt-in to request removal instead of report-only mode. Stderr: $stderrText"
+    Assert-True (-not ($stderrText -match 'cleanup: hook context is report-only')) "Env opt-in must not leave cleanup in hook report-only mode. Stderr: $stderrText"
+} finally {
+    Remove-TempTree $repo
+}
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run:
+
+```powershell
+pwsh -NoProfile -File Tests\WorktreeMergedCleanup.Tests.ps1
+```
+
+Expected: FAIL in the new block because current `new-worktree.ps1` still passes `-IsHook:$true` during hook creation, so stderr contains `cleanup: hook context is report-only; nothing removed.` and does not contain `cleanup: removing merged worktree`.
+
+- [ ] **Step 3: Commit failing test if using TDD checkpoints**
+
+If the implementation session uses checkpoint commits, commit only the test:
 
 ```bash
-pwsh -NoProfile -Command "$newPath = '<new-worktree-absolute-path>'; $mainRoot = Split-Path -Parent (Split-Path -Parent $newPath); & (Join-Path $mainRoot 'scripts\cleanup-merged-worktrees.ps1') -RepoRoot $mainRoot -IsHook -ExcludePath $newPath"
+git add Tests/WorktreeMergedCleanup.Tests.ps1
+git commit -m "test: cover worktree cleanup env opt-in"
 ```
 
-**Always pass `-RepoRoot` explicitly, computed as shown.** The script's own default
-resolves relative to its own location, which — since `EnterWorktree` already moved you
-into the new worktree — would target the wrong checkout and could misidentify `main`
-itself as a cleanup candidate.
+---
 
-- No `cleanup: eligible merged worktree: ...` line (just `cleanup: no merged
-  worktrees eligible for cleanup.`) — stay silent, do not ask.
-- One or more `cleanup: eligible merged worktree: <path> [<branch>]` lines — ask via
-  `AskUserQuestion`, listing what was found, e.g. "Found N merged worktree(s) ready to
-  clean up: `<path>` [`<branch>`], ... . Remove them now?" with options `Yes, remove
-  them` / `No, leave them`.
-  - **Yes:** re-run with `-Cleanup` instead of `-IsHook`:
+### Task 2: Implement CLI Env Opt-In In `new-worktree.ps1`
 
-    ```bash
-    pwsh -NoProfile -Command "$newPath = '<new-worktree-absolute-path>'; $mainRoot = Split-Path -Parent (Split-Path -Parent $newPath); & (Join-Path $mainRoot 'scripts\cleanup-merged-worktrees.ps1') -RepoRoot $mainRoot -Cleanup -ExcludePath $newPath"
-    ```
+**Files:**
+- Modify: `scripts/new-worktree.ps1`
 
-  - **No:** leave them; don't run the removal command.
+- [ ] **Step 1: Add env flag helper**
+
+Insert this function immediately after `Write-Stderr` in `scripts/new-worktree.ps1`.
+
+```powershell
+function Test-EnvironmentFlagEnabled {
+    param([string] $Name)
+
+    $value = [Environment]::GetEnvironmentVariable($Name, 'Process')
+    if ([string]::IsNullOrWhiteSpace($value)) {
+        return $false
+    }
+
+    return $value.Trim() -match '^(1|true|yes|y)$'
+}
 ```
 
-## Critical files
+- [ ] **Step 2: Split cleanup requested from hook report-only**
 
-- `.agents/worktrees/SKILL.md` — the only content edit (source of truth; `.claude/skills/worktrees` and `.github/skills/worktrees` are symlinks to it and pick up the change automatically).
-- `plugins/ahkflowapp/skills/worktrees/SKILL.md` — hard link to the same file; needs re-sync, not a hand edit.
-- Reused, unchanged: `scripts/cleanup-merged-worktrees.ps1` (`-IsHook`, `-Cleanup`, `-ExcludePath`, `-RepoRoot`), `scripts/new-worktree.ps1` (for context only, not touched).
+Replace the current cleanup invocation block:
 
-## Steps
+```powershell
+try {
+    & (Join-Path $PSScriptRoot 'cleanup-merged-worktrees.ps1') -RepoRoot $repoRoot -Cleanup:$Cleanup -IsHook:$isHook -ExcludePath $worktreePath | Out-Null
+} catch {
+    Write-Stderr "Merged-worktree cleanup skipped: $($_.Exception.Message)"
+}
+```
 
-1. Edit `.agents/worktrees/SKILL.md` — insert the block above.
-2. Re-sync the plugin hard link: `pwsh -NoProfile -File scripts/agents/setup-copilot-symlinks.ps1`. Expect exit 0, output ending `[DONE] .claude/skills and .github/skills symlink to active .agents/* skills; Codex plugin skills hard-link to the same SKILL.md files`.
-3. Hash-verify: `pwsh -NoProfile -Command "if ((Get-FileHash .agents/worktrees/SKILL.md).Hash -ne (Get-FileHash plugins/ahkflowapp/skills/worktrees/SKILL.md).Hash) { throw 'SKILL.md copies differ' } else { 'SKILL.md copies match' }"`. Expect `SKILL.md copies match`.
-4. Sanity-check the symlinks weren't disturbed: `pwsh -NoProfile -File scripts/agents/check-symlinks.ps1 -Path .claude/skills/worktrees -NoRecurse` and same for `.github/skills/worktrees`. Expect `LinkType = SymbolicLink`, target `.agents\worktrees`.
-5. Read the edited file back to confirm heading levels (`###` → `####`) and fenced code blocks are balanced.
+with:
 
-## Verification
+```powershell
+$cleanupRequested = [bool] $Cleanup
+if (-not $cleanupRequested -and (Test-EnvironmentFlagEnabled -Name 'AHKFLOW_WORKTREE_CLEANUP')) {
+    $cleanupRequested = $true
+}
 
-This is docs-only — no automated test covers SKILL.md prose, and none needs to. End-to-end verification is manual: in a real conversation, ask Claude to create a new worktree in a repo state with at least one other merged+clean worktree present, and confirm:
-- Claude runs the detection command after `EnterWorktree` returns, finds the eligible worktree(s), and asks via `AskUserQuestion` before doing anything else.
-- Answering "No" leaves all worktrees intact.
-- Answering "Yes" removes only the eligible ones (verify via `git worktree list` before/after) and never touches the main checkout or the just-created worktree.
-- In a repo state with zero eligible worktrees, Claude creates the worktree and says nothing about cleanup — no question asked.
+$cleanupIsReportOnly = $isHook -and -not $cleanupRequested
 
-## Unresolved questions
+try {
+    & (Join-Path $PSScriptRoot 'cleanup-merged-worktrees.ps1') -RepoRoot $repoRoot -Cleanup:$cleanupRequested -IsHook:$cleanupIsReportOnly -ExcludePath $worktreePath | Out-Null
+} catch {
+    Write-Stderr "Merged-worktree cleanup skipped: $($_.Exception.Message)"
+}
+```
 
-None — scope and skill placement confirmed with user; script name existence and `-RepoRoot` default behavior verified directly against the repo.
+This preserves the existing behavior for:
+
+- Direct interactive `scripts/new-worktree.ps1 -Name <name>`: still prompts when eligible worktrees exist.
+- Direct `scripts/new-worktree.ps1 -Name <name> -Cleanup`: still removes.
+- Hook `claude --worktree <name>` without env var: still report-only.
+- Hook `AHKFLOW_WORKTREE_CLEANUP=1 claude --worktree <name>`: removes eligible merged clean worktrees while keeping stdout clean.
+
+- [ ] **Step 3: Run focused test**
+
+Run:
+
+```powershell
+pwsh -NoProfile -File Tests\WorktreeMergedCleanup.Tests.ps1
+```
+
+Expected: PASS with final line:
+
+```text
+Worktree merged-cleanup tests passed.
+```
+
+- [ ] **Step 4: Run PowerShell host contract test**
+
+Run:
+
+```powershell
+pwsh -NoProfile -File Tests\WorktreePowerShellHost.Tests.ps1
+```
+
+Expected: PASS with final line:
+
+```text
+Worktree PowerShell host tests passed.
+```
+
+- [ ] **Step 5: Commit implementation**
+
+```bash
+git add scripts/new-worktree.ps1 Tests/WorktreeMergedCleanup.Tests.ps1
+git commit -m "feat: allow cli worktree cleanup opt-in"
+```
+
+---
+
+### Task 3: Update Worktree Skill And Script Docs
+
+**Files:**
+- Modify: `.agents/worktrees/SKILL.md`
+- Modify: `scripts/README.md`
+- Resync: `plugins/ahkflowapp/skills/worktrees/SKILL.md`
+
+- [ ] **Step 1: Replace the cleanup section in `.agents/worktrees/SKILL.md`**
+
+Replace the current `### Cleanup of merged worktrees on create` section with:
+
+````markdown
+### Cleanup of merged worktrees on create
+
+Creating a worktree first checks the other worktrees whose branch is already merged
+into `main`. Nothing is removed without an explicit opt-in:
+
+- **Interactive direct create (a real console, no flag):** it lists the merged, clean
+  worktrees and asks once - `Clean up merged worktrees? (y/n)`. `y` removes them all;
+  `n` skips.
+- **Direct `-Cleanup` / `-c`:** removes every merged, clean worktree with no prompt:
+
+  ```bash
+  pwsh -NoProfile -File scripts/new-worktree.ps1 -Name <name> -Cleanup
+  ```
+
+- **Claude Code CLI bootstrap (`claude --worktree <name>`):** set
+  `AHKFLOW_WORKTREE_CLEANUP=1` before launching Claude to request cleanup during
+  native worktree creation:
+
+  ```powershell
+  $env:AHKFLOW_WORKTREE_CLEANUP = '1'
+  claude --worktree <name>
+  Remove-Item Env:AHKFLOW_WORKTREE_CLEANUP
+  ```
+
+- **WorktreeCreate hook without the env var, or non-interactive direct create without
+  `-Cleanup`:** detection is logged to stderr only; nothing is removed.
+
+A worktree with uncommitted changes is never removed, even if its branch is merged.
+The worktree currently being created or reused is always excluded from the sweep, so a
+same-named recreate can never race its own removal. Removal reuses
+`remove-worktree-local-dev.ps1` (`git branch -d`, DB drop, Docker teardown, lock-safe
+folder delete).
+
+#### Claude Code in-conversation native creation: ask afterward
+
+Applies only when *you* create a brand-new worktree in direct response to a
+conversation request via `EnterWorktree` with `name`. Entering an existing worktree
+with `path` never triggers this.
+
+`EnterWorktree` fires the `WorktreeCreate` hook above. The hook stdout must stay
+exactly the new worktree path, it cannot prompt, and hook stderr is not usable as a
+conversation signal. Right after `EnterWorktree` returns the new worktree absolute
+path, run detection yourself as a normal Bash call so the output is visible:
+
+```bash
+pwsh -NoProfile -Command "$newPath = '<new-worktree-absolute-path>'; $mainRoot = Split-Path -Parent $newPath; while ($mainRoot -and -not (Test-Path -LiteralPath (Join-Path $mainRoot 'scripts\cleanup-merged-worktrees.ps1'))) { $mainRoot = Split-Path -Parent $mainRoot }; if (-not $mainRoot) { throw 'Could not resolve main checkout from worktree path.' }; & (Join-Path $mainRoot 'scripts\cleanup-merged-worktrees.ps1') -RepoRoot $mainRoot -IsHook -ExcludePath $newPath"
+```
+
+Do not compute the repo root with a fixed parent count. Default worktrees live under
+`.claude\worktrees\<name>`, while fallback worktrees may live under `.worktrees\<name>`.
+Walking upward from the new worktree's parent until `scripts\cleanup-merged-worktrees.ps1`
+is found handles both layouts and avoids targeting the new worktree or `.claude`.
+
+- No `cleanup: eligible merged worktree: ...` line: stay silent, do not ask.
+- One or more `cleanup: eligible merged worktree: <path> [<branch>]` lines: ask via
+  `AskUserQuestion`, listing what was found, for example:
+  "Found N merged worktree(s) ready to clean up: `<path>` [`<branch>`], ... . Remove them now?"
+  with options `Yes, remove them` / `No, leave them`.
+- If the user answers yes, re-run with `-Cleanup` instead of `-IsHook`:
+
+  ```bash
+  pwsh -NoProfile -Command "$newPath = '<new-worktree-absolute-path>'; $mainRoot = Split-Path -Parent $newPath; while ($mainRoot -and -not (Test-Path -LiteralPath (Join-Path $mainRoot 'scripts\cleanup-merged-worktrees.ps1'))) { $mainRoot = Split-Path -Parent $mainRoot }; if (-not $mainRoot) { throw 'Could not resolve main checkout from worktree path.' }; & (Join-Path $mainRoot 'scripts\cleanup-merged-worktrees.ps1') -RepoRoot $mainRoot -Cleanup -ExcludePath $newPath"
+  ```
+
+- If the user answers no, leave them; do not run the removal command.
+````
+
+- [ ] **Step 2: Update `scripts/README.md` cleanup row**
+
+Replace the `cleanup-merged-worktrees.ps1` row with:
+
+```markdown
+| `cleanup-merged-worktrees.ps1` | Detects worktrees merged into `main` and removes the clean ones on opt-in (`-Cleanup`, `AHKFLOW_WORKTREE_CLEANUP=1` for Claude CLI native worktree creation, or the interactive prompt); invoked by `new-worktree.ps1` before it creates a worktree. |
+```
+
+- [ ] **Step 3: Resync skill links and hard links**
+
+Run:
+
+```powershell
+pwsh -NoProfile -File scripts/agents/setup-copilot-symlinks.ps1
+```
+
+Expected: exit 0 and output ending:
+
+```text
+[DONE] .claude/skills and .github/skills symlink to active .agents/* skills; Codex plugin skills hard-link to the same SKILL.md files
+```
+
+- [ ] **Step 4: Hash-verify plugin hard link content**
+
+Run:
+
+```powershell
+pwsh -NoProfile -Command "if ((Get-FileHash .agents/worktrees/SKILL.md).Hash -ne (Get-FileHash plugins/ahkflowapp/skills/worktrees/SKILL.md).Hash) { throw 'SKILL.md copies differ' } else { 'SKILL.md copies match' }"
+```
+
+Expected:
+
+```text
+SKILL.md copies match
+```
+
+- [ ] **Step 5: Verify symlink directories**
+
+Run:
+
+```powershell
+pwsh -NoProfile -File scripts/agents/check-symlinks.ps1 -Path .claude/skills/worktrees -NoRecurse
+pwsh -NoProfile -File scripts/agents/check-symlinks.ps1 -Path .github/skills/worktrees -NoRecurse
+```
+
+Expected: both checks report `LinkType = SymbolicLink` with target `.agents\worktrees`.
+
+- [ ] **Step 6: Commit docs**
+
+```bash
+git add .agents/worktrees/SKILL.md plugins/ahkflowapp/skills/worktrees/SKILL.md scripts/README.md
+git commit -m "docs: document native worktree cleanup opt-in"
+```
+
+---
+
+### Task 4: Final Verification
+
+**Files:**
+- Verify: `scripts/new-worktree.ps1`
+- Verify: `scripts/cleanup-merged-worktrees.ps1`
+- Verify: `Tests/WorktreeMergedCleanup.Tests.ps1`
+- Verify: `.agents/worktrees/SKILL.md`
+
+- [ ] **Step 1: Run focused PowerShell worktree tests**
+
+```powershell
+pwsh -NoProfile -File Tests\WorktreeMergedCleanup.Tests.ps1
+pwsh -NoProfile -File Tests\WorktreePowerShellHost.Tests.ps1
+```
+
+Expected:
+
+```text
+Worktree merged-cleanup tests passed.
+Worktree PowerShell host tests passed.
+```
+
+- [ ] **Step 2: Parse-check changed scripts**
+
+Run:
+
+```powershell
+pwsh -NoProfile -Command "[scriptblock]::Create((Get-Content -Raw scripts\new-worktree.ps1)) | Out-Null; [scriptblock]::Create((Get-Content -Raw scripts\cleanup-merged-worktrees.ps1)) | Out-Null; 'PowerShell parse OK'"
+```
+
+Expected:
+
+```text
+PowerShell parse OK
+```
+
+- [ ] **Step 3: Check markdown and whitespace**
+
+Run:
+
+```bash
+git diff --check
+```
+
+Expected: no output and exit 0.
+
+- [ ] **Step 4: Run solution build if implementation touched only scripts/docs**
+
+Run:
+
+```powershell
+dotnet build AHKFlowApp.slnx --configuration Release
+```
+
+Expected: build succeeds.
+
+- [ ] **Step 5: Manual CLI smoke test**
+
+Only run this if the implementation session can safely create and remove scratch worktrees.
+
+```powershell
+$env:AHKFLOW_WORKTREE_CLEANUP = '1'
+claude --worktree wt-cli-cleanup-smoke
+Remove-Item Env:AHKFLOW_WORKTREE_CLEANUP
+```
+
+Expected:
+
+- Claude Code creates the requested worktree.
+- The `WorktreeCreate` hook still receives exactly one stdout path from `new-worktree.ps1`.
+- Eligible merged clean worktrees are removed before the new worktree setup continues.
+- The newly created worktree is not removed because `new-worktree.ps1` passes it as `-ExcludePath`.
+
+- [ ] **Step 6: Final commit or amend**
+
+If Task 1 through Task 3 used separate commits, leave them separate. If the implementation session kept the work in one working tree, commit everything together:
+
+```bash
+git add scripts/new-worktree.ps1 Tests/WorktreeMergedCleanup.Tests.ps1 .agents/worktrees/SKILL.md plugins/ahkflowapp/skills/worktrees/SKILL.md scripts/README.md
+git commit -m "feat: enable cleanup for native worktree creation"
+```
+
+---
+
+## Self-Review Notes
+
+- CLI path coverage: Task 1 and Task 2 implement `AHKFLOW_WORKTREE_CLEANUP=1` for `claude --worktree <name>`.
+- Conversational path coverage: Task 3 updates the worktrees skill to run detection after `EnterWorktree` and ask through `AskUserQuestion`.
+- Hook stdout safety: Task 1 asserts stdout is exactly one line, and Task 2 keeps the cleanup invocation piped to `Out-Null`.
+- Main-checkout safety: the skill detection command walks upward from the new worktree parent and passes `-RepoRoot` explicitly; `cleanup-merged-worktrees.ps1` already excludes the passed repo root and `-ExcludePath`.
+- Race safety: `new-worktree.ps1` continues to resolve `$worktreePath` before cleanup and passes `-ExcludePath $worktreePath`.
+- No prompt-in-hook behavior remains: hooks either report-only or env-opt-in cleanup; asking happens only in normal conversation after `EnterWorktree`.
