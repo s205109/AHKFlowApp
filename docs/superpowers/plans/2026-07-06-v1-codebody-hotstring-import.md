@@ -1334,9 +1334,17 @@ return
 | Error handling (total, never throws) | 4, 5 (all paths return a row) |
 | Unchanged: DTOs, duplicate detection, domain/validation, edit form | — (no task touches them) |
 
-## Unresolved Questions
+## Resolved Decisions
 
-- `;` escaped unconditionally in generator (spec allowed leaving it literal pending doc check; AHK v2 docs indicate space-preceded `;` comments apply) — OK?
-- Playwright E2E left as optional manual step in Task 8, not an automated `AHKFlowApp.E2E.Tests` case — OK?
-- Code-body peek skips comment lines as well as blank lines (spec said "next non-blank") — OK?
-- Send arg starting with `;` (e.g. `Send, ;x`) rejected as inline comment — conservative — OK?
+- **`;` escaped unconditionally in the generator.** AHK v2 treats a space/tab-preceded `;` as an
+  end-of-line comment even on hotstring lines; escaping every `;` is lossless because the decoder
+  normalizes `` `; `` back to `;`. Accepted as-is.
+- **Playwright E2E left as an optional manual step in Task 8**, not an automated
+  `AHKFlowApp.E2E.Tests` case. Behavior is fully covered by unit + round-trip tests; an automated
+  E2E would be the plan's most brittle piece for marginal extra coverage. Accepted as-is — revisit
+  only if import regressions surface later.
+- **Code-body peek skips comment lines as well as blank lines** (spec said "next non-blank"). A
+  comment line between the trigger and the body shouldn't flip classification; this is the spirit
+  of the spec. Accepted as-is.
+- **Send arg starting with `;` (e.g. `Send, ;x`) rejected as inline comment.** Genuinely ambiguous
+  v1 syntax; matches the spec's principle of reject-rather-than-silently-alter. Accepted as-is.
