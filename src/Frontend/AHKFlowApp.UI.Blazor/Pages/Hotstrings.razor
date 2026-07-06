@@ -220,11 +220,13 @@
 
             <MudFab Class="import-hotstring-fab" Color="Color.Tertiary"
                     StartIcon="@Icons.Material.Filled.UploadFile"
-                    OnClick="OpenImportDialogAsync" />
+                    OnClick="OpenImportDialogAsync"
+                    Disabled="@(!_isAuthenticated || _dialogOpen)" />
 
             <MudFab Class="add-hotstring-fab" Color="Color.Primary"
                     StartIcon="@Icons.Material.Filled.Add"
-                    OnClick="OpenCreateDialogAsync" />
+                    OnClick="OpenCreateDialogAsync"
+                    Disabled="@(!_isAuthenticated || _dialogOpen)" />
     </MudPaper>
 </div>
 
