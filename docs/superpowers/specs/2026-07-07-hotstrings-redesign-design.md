@@ -10,12 +10,12 @@ AHKFlow's Hotstrings page today supports only basic `trigger → replacement` wi
 
 | Priority | Kind | What it covers | Generated AHK |
 |---|---|---|---|
-| P0 | **Text** (default) | Basic + long + multiline replacements | `::trig::text` (existing; `` `n `` for newlines) |
+| P0 | **Text** (default) | Basic + long + multiline replacements | `:T:trig::text` (always Text mode → WYSIWYG, braces/carets literal; `` `n `` for newlines) |
 | P1 | **Date & time** | Current date/time, preset formats, date math (±N days/hours/…) | `:X*:trig::SendText(FormatTime(A_Now, "yyyy-MM-dd"))`, offset via `DateAdd(A_Now, 7, "Days")` |
 | P2 | **Macro** | Text with special keys (Enter, Tab) + one cursor-position marker | Brace-body: `SendText "…"` / `Send "{Enter}"` / trailing `Send "{Left N}"` |
 | P3 | **Script** | Raw AHK v2 body for power users | Brace-body, verbatim, badged/warned |
 
-**Option toggles** (all kinds, exposed as checkboxes, not syntax): case-sensitive (`C`), expand immediately (`*`, existing inverted as "ending character required"), trigger inside word (`?`, existing), omit ending character (`O`). Niche flags NOT exposed or stored: `B0`, `K`, `P`, `Z`, `SP/SE`, `C1`. `SendRaw`/`T` pending open question Q1.
+**Option toggles** (all kinds, exposed as checkboxes, not syntax): case-sensitive (`C`), expand immediately (`*`, existing inverted as "ending character required"), trigger inside word (`?`, existing), omit ending character (`O`). Niche flags NOT exposed or stored: `B0`, `K`, `P`, `Z`, `SP/SE`, `C1`. No `SendRaw` toggle: v2 default mode interprets `{Enter}`/`^c` in replacements (verified in docs), so Text kind **always emits `T`** for WYSIWYG — users wanting key presses use the Macro kind.
 
 **Context sensitivity** (orthogonal to kind): optional per-hotstring window criterion — match by executable / window class / title contains + value. Generator groups into `#HotIf WinActive(...)` blocks.
 
@@ -39,11 +39,11 @@ AHKFlow's Hotstrings page today supports only basic `trigger → replacement` wi
 ## 4. Advanced editor flow (dialog)
 
 Extend `Components/Hotstrings/HotstringEditDialog.razor`:
-1. **Kind selector** — `MudToggleGroup`: Text / Date & time / Macro / Script (warning icon). Switching preserves Trigger/Description/options; confirm before discarding kind-specific content.
+1. **Kind selector** — `MudToggleGroup`: Text / Date & time / Macro / Script (warning icon). Hidden in Phase 1 (Text-only); appears in Phase 2. Switching preserves Trigger/Description/options; confirm before discarding kind-specific content.
 2. **Basics** — Trigger, Description.
 3. **Content panel** by kind:
    - Text: `MudTextField Lines=5 AutoGrow`.
-   - Date & time: curated format picker (`MudSelect`, each option shows live example), optional "Adjust date" switch → amount + unit (`Days/Hours/Minutes/Seconds`), live preview line.
+   - Date & time: curated format picker (`MudSelect`, ~12 presets, each option shows live example) + **"Custom…" option** revealing a free-text format field (same server whitelist validates both paths); optional "Adjust date" switch → amount + unit (`Days/Hours/Minutes/Seconds`); live preview line via .NET `ToString()` (accurate for all whitelisted tokens).
    - Macro: multiline editor + **insert-placeholder toolbar** (Cursor / Enter / Tab buttons; caret insertion via small JS interop module).
    - Script: monospace editor under persistent `MudAlert` warning.
 4. **Trigger options** panel — 4 checkboxes.
@@ -75,22 +75,22 @@ Extend `Components/Hotstrings/HotstringEditDialog.razor`:
 
 | # | Example | Fields | Generated AHK |
 |---|---|---|---|
-| 1 | Basic | Kind=Text, `btw` → `by the way` | `::btw::by the way` |
-| 2 | Multiline | Kind=Text, `addr` → 3-line address | ``::addr::123 Main St`nSpringfield`n12345`` |
+| 1 | Basic | Kind=Text, `btw` → `by the way` | `:T:btw::by the way` |
+| 2 | Multiline | Kind=Text, `addr` → 3-line address | ``:T:addr::123 Main St`nSpringfield`n12345`` |
 | 3 | Current date | Kind=DateTime, `dd`, format `yyyy-MM-dd`, immediate | `:X*:dd::SendText(FormatTime(A_Now, "yyyy-MM-dd"))` |
 | 4 | Custom format + math | Kind=DateTime, `nextweek`, format `dddd d MMMM yyyy`, offset +7 Days | `:X*:nextweek::SendText(FormatTime(DateAdd(A_Now, 7, "Days"), "dddd d MMMM yyyy"))` |
-| 5 | App-specific | Kind=Text, `sig` → work signature, context Executable=`outlook.exe` | `#HotIf WinActive("ahk_exe outlook.exe")` … `::sig::…` … `#HotIf` |
+| 5 | App-specific | Kind=Text, `sig` → work signature, context Executable=`outlook.exe` | `#HotIf WinActive("ahk_exe outlook.exe")` … `:T:sig::…` … `#HotIf` (context blocks precede the global group) |
 | 6 | Safe macro | Kind=Macro, `htag` → `<b>{{cursor}}</b>`, immediate | `:*:htag::` brace-body: `SendText "<b></b>"` + `Send "{Left 4}"` |
 | 7 | Raw script | Kind=Script, `~ver`, body `MsgBox A_AhkVersion` | `:*:~ver::` + `{ MsgBox A_AhkVersion }` — warning-badged |
 
 ## 8. Data model & backend design (validated against codebase)
 
 - **Enums** (Domain/Enums, stored as int like `HotkeyAction`): `HotstringKind {Text=0, DateTime, Macro, Script}`, `DateOffsetUnit {Seconds, Minutes, Hours, Days}`, `WindowMatchType {Executable, WindowClass, TitleContains}`. Mirror in `UI.Blazor/DTOs/`.
-- **New flat columns on Hotstrings** (additive, defaults keep all existing rows valid Text): `Kind int=0`, `IsCaseSensitive bit=0`, `OmitEndingCharacter bit=0`, (`SendRaw bit=0` pending Q1), `DateTimeFormat nvarchar(50) null`, `DateOffsetAmount int null`, `DateOffsetUnit int null`, `ContextMatchType int null`, `ContextValue nvarchar(200) null`. No new tables (reusable ContextRule entity rejected — deferrable losslessly).
+- **New flat columns on Hotstrings** (additive, defaults keep all existing rows valid Text): `Kind int=0`, `IsCaseSensitive bit=0`, `OmitEndingCharacter bit=0`, `DateTimeFormat nvarchar(50) null`, `DateOffsetAmount int null`, `DateOffsetUnit int null`, `ContextMatchType int null`, `ContextValue nvarchar(200) null`. No `SendRaw` column (Text kind always emits `T`; resolved decision D1). No new tables (reusable ContextRule entity rejected — deferrable losslessly).
 - **`HotstringDefinition` parameter record** (Domain) to keep `Create/Update/Restore` signatures sane; kind-conditional invariants in factory.
 - **Unique index**: keep `IX_Hotstring_Owner_Trigger` until Phase 4, then swap to `(OwnerOid, Trigger, ContextMatchType, ContextValue)` — SQL Server allows one null-context row per trigger + one per distinct context. Update dup pre-checks + conflict message ("…already exists in the same context").
-- **Emitter**: extract `HotstringEmitter` from `AhkScriptGenerator.FormatHotstring`; deterministic option order `X * ? C O T`; `O` suppressed when `*`. Macro literals use AHK string-literal escaping into `SendText "…"` (different from existing line `Escape()`). Cursor N = literal char count after marker (`\n` counts 1; validation forbids key tokens after cursor).
-- **`#HotIf` grouping** in `Generate()`: null-context group first (unchanged output → zero diff for existing users), then groups ordered by (matchType, value), each closed with bare `#HotIf`; hotkeys after all blocks.
+- **Emitter**: extract `HotstringEmitter` from `AhkScriptGenerator.FormatHotstring`; deterministic option order `X * ? C O T`; `O` suppressed when `*`; `T` always present for Text kind (WYSIWYG — v2 default mode interprets `{Enter}`/`^c`, verified in docs), never combined with `X` kinds. Macro literals use AHK string-literal escaping into `SendText "…"` (different from existing line `Escape()`). Cursor N = literal char count after marker (`\n` counts 1 — exact in mainstream editors; document caveat for auto-indent/autocomplete apps; validation forbids key tokens after cursor).
+- **`#HotIf` grouping** in `Generate()`: **context groups first, global (null-context) group last.** AHK hotstring variant precedence is "closest to the top of the script wins" and the global-lowest-precedence exception *does not apply to hotstrings* (per `#HotIf` docs) — global-first would shadow every context-specific override. Context groups ordered by (matchType, value ordinal), each closed with bare `#HotIf`; hotkeys after all blocks. Users without contexts still get byte-identical output (single global group).
 - **Validation** (`HotstringRules.cs`, shared extension): Replacement required for Text/Macro/Script, must be empty for DateTime; DateTimeFormat required+whitelist regex for DateTime kind, null otherwise; offset both-or-neither, amount ±3650; macro tokens must parse, ≤1 cursor, no keys after cursor; script ≤4000 + brace balance + no `#`-directive lines; context both-or-neither, value ≤200 no quotes/backticks/control chars.
 - **DTOs**: extend `HotstringDto`/`Create`/`Update` records with defaulted members → API/wire stays backward-compatible (unknown JSON ignored). `ListHotstringsQuery`: add `Kind` filter + sort; keep old bool params for API compat.
 - **CLI (first-class, must not silently degrade)**: the CLI carries its **own** reduced DTOs (`src/Tools/AHKFlowApp.CLI/Services/IHotstringsApiClient.cs`) and table output (`HotstringTableFormatter.cs`) — it will keep deserializing (STJ ignores the new JSON fields) but won't *show* Kind/date-format/macro/script/context, and DateTime rows (empty `Replacement`) render blank. Per-kind CLI handling: in each backend phase, extend the CLI DTO with that phase's fields and render a per-kind Replacement summary (DateTime → format+offset, Macro → tokens, Script → first line) plus a Kind column/badge, mirroring the grid. Until a field's CLI phase lands, treat the CLI as **read-only/degraded** for that kind and say so in `--help`/docs. Add CLI output tests per phase.
@@ -104,10 +104,10 @@ Each phase shippable; `dck-verify` at end of each; tests per project conventions
 
 Every phase that adds a persisted field also, in the same phase: updates the snapshot + both revert/restore handlers to round-trip it (see §8 History), and extends the CLI DTO + output for that field (see §8 CLI).
 
-- **Phase 1 — Foundation + option toggles.** Enums, `HotstringDefinition`, migration #1 (Kind + 2-3 flag columns), EF config, DTOs/snapshot/mappings/handlers, snapshot + revert/restore round-trip for new flags, `HotstringEmitter` extraction + options-order goldens, grid Type/Options badge column (replaces checkbox columns), dialog Options panel + kind selector (Text only enabled), CLI DTO + Kind column. Resolve Q1 first.
-- **Phase 2 — Date & time kind.** Migration #2 (3 date columns), kind-conditional validation + format whitelist, `:X:` emission, dialog DateTime panel (curated picker + live preview), grid DateTime rendering, Kind filter/sort in list query.
+- **Phase 1 — Foundation + option toggles.** Enums, `HotstringDefinition`, migration #1 (Kind + `IsCaseSensitive` + `OmitEndingCharacter`), EF config, DTOs/snapshot/mappings/handlers, snapshot + revert/restore round-trip for new flags, `HotstringEmitter` extraction (incl. always-`T` for Text) + options-order goldens, grid Type/Options badge column (replaces checkbox columns), dialog Options panel (kind selector hidden until Phase 2), CLI DTO + Kind column.
+- **Phase 2 — Date & time kind.** Migration #2 (3 date columns), kind-conditional validation + format whitelist, `:X:` emission, dialog kind selector + DateTime panel (curated picker + Custom field + live preview), grid DateTime rendering, Kind filter/sort in list query.
 - **Phase 3 — Macro kind + preview endpoint.** `MacroTokenParser`, brace-body emitter + cursor math + escaping goldens, macro validators, dialog Macro panel + insert-toolbar JS interop, `POST /preview` + preview panel.
-- **Phase 4 — Window context.** Migration #3 (2 columns + unique index swap), dup-check/conflict updates, `#HotIf` grouping + ordering goldens, dialog Context panel, grid context indicator, `IsInlineEditable` excludes contexted rows.
+- **Phase 4 — Window context.** Migration #3 (2 columns + unique index swap), dup-check/conflict updates, `#HotIf` grouping (contexts first, global last) + ordering goldens, dialog Context panel, grid context indicator, `IsInlineEditable` excludes contexted rows.
 - **Phase 5 — Script kind.** Enable in selector, script validators, verbatim emitter, warning UI, docs note.
 
 **Non-goals:** import persistence of new fields (follow-up: parser already tokenizes C/O/T/X into `IgnoredFlags` — map to new columns then), fill-in forms, clipboard/Run macros, regex triggers, reusable context-rule library.
@@ -133,10 +133,13 @@ Every phase that adds a persisted field also, in the same phase: updates the sna
 - End-to-end: run API + Blazor locally, create one hotstring of each kind via UI, download profile script, inspect generated `.ahk` matches §7 examples; verify grid inline edit still works for plain Text rows; verify history revert of a pre-migration snapshot yields a valid Text hotstring.
 - UI smoke via `playwright-cli` skill for grid badge column + dialog panels.
 
-## Unresolved questions
+## Resolved decisions (design review, 2026-07-07)
 
-1. **Q1 — `SendRaw`/`T` toggle**: v2 auto-replace hotstrings may already send raw by default → toggle could be a no-op. Verify against v2 docs before Phase 1; drop column if so.
-2. **Q2 — Same trigger with different case-sensitivity**: allow duplicate triggers differing only by `C` flag? Recommend no in v1.
-3. **Q3 — DateTime format list**: curated preset list only, or also free-text custom format (server-validated)? Recommend curated-only v1, custom later via preview endpoint.
-4. **Q4 — Kind selector visibility in Phase 1**: show disabled "coming soon" kinds or hide selector until Phase 2? Recommend hide.
-5. **Q5 — Cursor `{Left N}` and multiline**: `\n` counted as 1 — acceptable approximation, or forbid cursor marker in multiline macros v1?
+1. **D1 — Text kind always emits `T`** (v2 default mode interprets `{Enter}`/`^c` per docs — verified, not a no-op). No `SendRaw` column/toggle; key presses are the Macro kind's job. Fixes the latent WYSIWYG surprise in current output.
+2. **D2 — No case-variant duplicate triggers in v1**: uniqueness ignores the `C` flag; revisit on demand.
+3. **D3 — Date formats: curated presets + "Custom…" free-text field, both Phase 2**, one shared server-side whitelist validator (required regardless of UI), client-side .NET preview.
+4. **D4 — Kind selector hidden in Phase 1**, appears in Phase 2.
+5. **D5 — Cursor marker allowed in multiline macros**; `\n` counts as 1 `{Left}` (exact in mainstream editors); documented caveat for auto-indent/autocomplete apps.
+6. **D6 — CLI is display-only for advanced kinds** (per-phase read DTO + per-kind output); advanced create flags are a follow-up alongside import.
+7. **D7 — `#HotIf` context groups emitted before the global group** — hotstring variant precedence is topmost-wins with no global exception (per docs); global-first would shadow context overrides.
+8. **D8 — Script guardrails are hard validation errors**: ≤4000 chars, no `#`-directive lines, brace-balance check; plus persistent editor warning. No AHK syntax validation (not a script IDE).
