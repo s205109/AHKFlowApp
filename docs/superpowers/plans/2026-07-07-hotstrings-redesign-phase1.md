@@ -1250,6 +1250,31 @@ Thread `Kind`, `IsCaseSensitive`, `OmitEndingCharacter` through all four existin
 </MudText>
 ```
 
+- [ ] **Step 7a: Mobile expanded-row test** — append to `tests/AHKFlowApp.UI.Blazor.Tests/Components/Hotstrings/HotstringMobileListTests.cs` (same expand pattern as `EditButton_RaisesOnEdit`):
+
+```csharp
+[Fact]
+public async Task ExpandedRow_ShowsCaseAndOmitEndingCharacterFlags()
+{
+    HotstringEditModel item = Item();
+    item.IsCaseSensitive = true;
+    item.OmitEndingCharacter = true;
+
+    IRenderedComponent<HotstringMobileList> cut = Render<HotstringMobileList>(p => p
+        .Add(c => c.Items, [item])
+        .Add(c => c.Profiles, (IReadOnlyList<ProfileDto>)[])
+        .Add(c => c.Categories, (IReadOnlyList<CategoryDto>)[]));
+
+    await cut.InvokeAsync(() => cut.Find("tr.mobile-row").Click());
+
+    cut.WaitForAssertion(() =>
+    {
+        cut.Markup.Should().Contain("Case:");
+        cut.Markup.Should().Contain("Omit end-char:");
+    });
+}
+```
+
 - [ ] **Step 8: Write dialog bUnit test** — append to `HotstringEditDialogTests.cs` (same arrange as the file's `SaveInCreateMode_CallsCreateAsync`):
 
 ```csharp
@@ -1332,18 +1357,43 @@ public Task Page_RendersTypeBadgeWithOptionGlyphs()
 }
 
 [Fact]
+public Task Page_OmitEndingCharacter_SuppressedWhenExpandImmediately()
+{
+    // OmitEndingCharacter can be true alongside IsEndingCharacterRequired=false (the dialog only
+    // disables the checkbox, it doesn't clear the value) — the badge must hide "O" here exactly
+    // like the emitter suppresses the O option under *.
+    var dto = new HotstringDto(Guid.NewGuid(), [], true, "btw", "by the way", null,
+        false, false, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null,
+        HotstringKind.Text, IsCaseSensitive: false, OmitEndingCharacter: true);
+    StubList(Page(dto));
+
+    IRenderedComponent<Hotstrings> cut = RenderPage();
+
+    cut.WaitForAssertion(() =>
+        cut.Find(".option-glyphs").TextContent.Should().Be("*"));
+    return Task.CompletedTask;
+}
+
+[Fact]
 public Task Page_EditDetails_OpensDialogWithItem()
 {
+    // MudDialogProvider renders dialog content into its own root, not into the component that
+    // called ShowAsync — so the dialog markup must be queried on `provider`, not on `cut`
+    // (RenderPage() discards its MudDialogProvider reference; render it manually here instead,
+    // matching the pattern in HotstringEditDialogTests.cs).
     var dto = new HotstringDto(Guid.NewGuid(), [], true, "btw", "by the way", null,
         true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
     StubList(Page(dto));
 
-    IRenderedComponent<Hotstrings> cut = RenderPage();
+    Render<MudPopoverProvider>();
+    IRenderedComponent<MudDialogProvider> provider = Render<MudDialogProvider>();
+    IRenderedComponent<Hotstrings> cut = Render<Hotstrings>(p => p.AddCascadingValue(AuthenticatedState));
+
     cut.WaitForAssertion(() => cut.Find("button.edit-details"));
     cut.Find("button.edit-details").Click();
 
-    cut.WaitForAssertion(() =>
-        cut.Find("input[data-test=\"trigger-input\"]").GetAttribute("value").Should().Be("btw"));
+    provider.WaitForAssertion(() =>
+        provider.Find("input[data-test=\"trigger-input\"]").GetAttribute("value").Should().Be("btw"));
     return Task.CompletedTask;
 }
 ```
@@ -1385,7 +1435,7 @@ private static string OptionGlyphs(HotstringEditModel item)
     if (!item.IsEndingCharacterRequired) glyphs += "*";
     if (item.IsTriggerInsideWord) glyphs += "?";
     if (item.IsCaseSensitive) glyphs += "C";
-    if (item.OmitEndingCharacter) glyphs += "O";
+    if (item.OmitEndingCharacter && item.IsEndingCharacterRequired) glyphs += "O"; // O is meaningless (and suppressed by the emitter) under *
     return glyphs;
 }
 
@@ -1395,10 +1445,12 @@ private static string OptionsTooltip(HotstringEditModel item)
     if (!item.IsEndingCharacterRequired) parts.Add("Expands immediately (no ending character)");
     if (item.IsTriggerInsideWord) parts.Add("Triggers inside words");
     if (item.IsCaseSensitive) parts.Add("Case sensitive");
-    if (item.OmitEndingCharacter) parts.Add("Omits ending character");
+    if (item.OmitEndingCharacter && item.IsEndingCharacterRequired) parts.Add("Omits ending character");
     return string.Join(" · ", parts);
 }
 ```
+
+> The dialog disables the "Omit ending character" checkbox while "Expand immediately" is on (Task 7 Step 6), but a user can still reach `OmitEndingCharacter=true, IsEndingCharacterRequired=false` by checking Omit first, then Expand immediately — the checkbox just becomes disabled, its bound value doesn't reset. So this state is real and both helpers above must gate on it, matching the emitter's own `O` suppression (Task 3 Step 3).
 
 - [ ] **Step 4: "Edit details" action + desktop dialog options.** In `RenderActions` (line 823), add as the **first** button of the non-editing branch:
 
