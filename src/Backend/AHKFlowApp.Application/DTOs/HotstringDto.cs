@@ -45,6 +45,9 @@ public sealed record HotstringDto(
 /// <param name="Kind">Hotstring kind. Phase 1 only supports <see cref="HotstringKind.Text"/>.</param>
 /// <param name="IsCaseSensitive">Controls AutoHotkey's <c>C</c> option.</param>
 /// <param name="OmitEndingCharacter">Controls AutoHotkey's <c>O</c> option.</param>
+/// <param name="DateTimeFormat">Required when <paramref name="Kind"/> is <see cref="HotstringKind.DateTime"/>; a whitelisted AHK/.NET date/time token pattern.</param>
+/// <param name="DateOffsetAmount">Optional signed offset applied to the current date/time; requires <paramref name="DateOffsetUnit"/>.</param>
+/// <param name="DateOffsetUnit">Unit for <paramref name="DateOffsetAmount"/>; requires <paramref name="DateOffsetAmount"/>.</param>
 public sealed record CreateHotstringDto(
     string Trigger,
     string Replacement,
@@ -56,7 +59,10 @@ public sealed record CreateHotstringDto(
     Guid[]? CategoryIds = null,
     HotstringKind Kind = HotstringKind.Text,
     bool IsCaseSensitive = false,
-    bool OmitEndingCharacter = false);
+    bool OmitEndingCharacter = false,
+    string? DateTimeFormat = null,
+    int? DateOffsetAmount = null,
+    DateOffsetUnit? DateOffsetUnit = null);
 
 /// <summary>Payload to replace the editable fields of an existing hotstring.</summary>
 /// <param name="Trigger">Abbreviation that activates the replacement.</param>
@@ -70,6 +76,9 @@ public sealed record CreateHotstringDto(
 /// <param name="Kind">Hotstring kind. Phase 1 only supports <see cref="HotstringKind.Text"/>.</param>
 /// <param name="IsCaseSensitive">Controls AutoHotkey's <c>C</c> option.</param>
 /// <param name="OmitEndingCharacter">Controls AutoHotkey's <c>O</c> option.</param>
+/// <param name="DateTimeFormat">Required when <paramref name="Kind"/> is <see cref="HotstringKind.DateTime"/>; a whitelisted AHK/.NET date/time token pattern.</param>
+/// <param name="DateOffsetAmount">Optional signed offset applied to the current date/time; requires <paramref name="DateOffsetUnit"/>.</param>
+/// <param name="DateOffsetUnit">Unit for <paramref name="DateOffsetAmount"/>; requires <paramref name="DateOffsetAmount"/>.</param>
 public sealed record UpdateHotstringDto(
     string Trigger,
     string Replacement,
@@ -81,4 +90,7 @@ public sealed record UpdateHotstringDto(
     Guid[]? CategoryIds = null,
     HotstringKind Kind = HotstringKind.Text,
     bool IsCaseSensitive = false,
-    bool OmitEndingCharacter = false);
+    bool OmitEndingCharacter = false,
+    string? DateTimeFormat = null,
+    int? DateOffsetAmount = null,
+    DateOffsetUnit? DateOffsetUnit = null);
