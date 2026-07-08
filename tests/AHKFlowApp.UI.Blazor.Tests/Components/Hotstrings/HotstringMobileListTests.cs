@@ -126,4 +126,25 @@ public sealed class HotstringMobileListTests : BunitContext, IAsyncLifetime
 
         deletedIds.Should().BeEquivalentTo(new[] { a.Id!.Value, b.Id!.Value });
     }
+
+    [Fact]
+    public async Task ExpandedRow_ShowsCaseAndOmitEndingCharacterFlags()
+    {
+        HotstringEditModel item = Item();
+        item.IsCaseSensitive = true;
+        item.OmitEndingCharacter = true;
+
+        IRenderedComponent<HotstringMobileList> cut = Render<HotstringMobileList>(p => p
+            .Add(c => c.Items, [item])
+            .Add(c => c.Profiles, (IReadOnlyList<ProfileDto>)[])
+            .Add(c => c.Categories, (IReadOnlyList<CategoryDto>)[]));
+
+        await cut.InvokeAsync(() => cut.Find("tr.mobile-row").Click());
+
+        cut.WaitForAssertion(() =>
+        {
+            cut.Markup.Should().Contain("Case:");
+            cut.Markup.Should().Contain("Omit end-char:");
+        });
+    }
 }

@@ -65,7 +65,9 @@
                                     </MudText>
                                     <MudText Typo="Typo.body2">
                                         <strong>End-char:</strong> @(item.IsEndingCharacterRequired ? "✓" : "✗") &nbsp;
-                                        <strong>In-word:</strong> @(item.IsTriggerInsideWord ? "✓" : "✗")
+                                        <strong>In-word:</strong> @(item.IsTriggerInsideWord ? "✓" : "✗") &nbsp;
+                                        <strong>Case:</strong> @(item.IsCaseSensitive ? "✓" : "✗") &nbsp;
+                                        <strong>Omit end-char:</strong> @(item.OmitEndingCharacter ? "✓" : "✗")
                                     </MudText>
                                     <MudStack Row="true" Spacing="2" Class="mt-2">
                                         <MudButton Class="start-edit" Variant="Variant.Filled" Color="Color.Primary"
