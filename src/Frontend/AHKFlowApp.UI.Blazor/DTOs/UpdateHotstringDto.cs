@@ -8,4 +8,7 @@ public sealed record UpdateHotstringDto(
     bool IsEndingCharacterRequired,
     bool IsTriggerInsideWord,
     string? Description,
-    Guid[]? CategoryIds = null);
+    Guid[]? CategoryIds = null,
+    HotstringKind Kind = HotstringKind.Text,
+    bool IsCaseSensitive = false,
+    bool OmitEndingCharacter = false);

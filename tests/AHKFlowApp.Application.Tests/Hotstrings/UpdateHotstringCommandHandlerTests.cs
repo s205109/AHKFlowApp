@@ -18,7 +18,7 @@ public sealed class UpdateHotstringCommandHandlerTests(HotstringDbFixture fx)
     {
         var owner = Guid.NewGuid();
         FixedClock clock = new(DateTimeOffset.Parse("2026-01-01T00:00:00Z"));
-        var entity = Hotstring.Create(owner, "btw", "old", null, true, true, true, clock);
+        var entity = Hotstring.Create(owner, new HotstringDefinition("btw", "old", null, true, true, true), clock);
 
         await using (AppDbContext seed = fx.CreateContext())
         {
@@ -47,7 +47,7 @@ public sealed class UpdateHotstringCommandHandlerTests(HotstringDbFixture fx)
     {
         var owner = Guid.NewGuid();
         var attacker = Guid.NewGuid();
-        var entity = Hotstring.Create(owner, "btw", "x", null, true, true, true, TimeProvider.System);
+        var entity = Hotstring.Create(owner, new HotstringDefinition("btw", "x", null, true, true, true), TimeProvider.System);
 
         await using (AppDbContext seed = fx.CreateContext())
         {
@@ -84,8 +84,8 @@ public sealed class UpdateHotstringCommandHandlerTests(HotstringDbFixture fx)
     public async Task Handle_WhenDuplicateTrigger_ReturnsConflict()
     {
         var owner = Guid.NewGuid();
-        var first = Hotstring.Create(owner, "first", "a", null, true, true, true, TimeProvider.System);
-        var second = Hotstring.Create(owner, "second", "b", null, true, true, true, TimeProvider.System);
+        var first = Hotstring.Create(owner, new HotstringDefinition("first", "a", null, true, true, true), TimeProvider.System);
+        var second = Hotstring.Create(owner, new HotstringDefinition("second", "b", null, true, true, true), TimeProvider.System);
 
         await using (AppDbContext seed = fx.CreateContext())
         {

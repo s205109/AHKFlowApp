@@ -16,5 +16,8 @@ internal static class HotstringMappings
         h.IsTriggerInsideWord,
         h.CreatedAt,
         h.UpdatedAt,
-        h.Categories.Select(hc => hc.CategoryId).ToArray());
+        h.Categories.Select(hc => hc.CategoryId).ToArray(),
+        h.Kind,
+        h.IsCaseSensitive,
+        h.OmitEndingCharacter);
 }

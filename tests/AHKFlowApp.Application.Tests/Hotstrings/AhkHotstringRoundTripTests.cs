@@ -41,7 +41,7 @@ public sealed class AhkHotstringRoundTripTests
             .Build();
         string secondScript = Generator().Generate(profile, [reimported], []);
 
-        firstScript.Should().Contain("::sig::a ``b `; c`n`td`r`ne");
+        firstScript.Should().Contain(":T:sig::a ``b `; c`n`td`r`ne");
         row.Status.Should().Be(HotstringImportRowStatus.Ready);
         row.Replacement.Should().Be(replacement);
         secondScript.Should().Be(firstScript);

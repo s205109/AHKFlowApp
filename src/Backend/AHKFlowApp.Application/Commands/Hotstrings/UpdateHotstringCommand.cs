@@ -22,6 +22,9 @@ public sealed class UpdateHotstringCommandValidator : AbstractValidator<UpdateHo
         RuleFor(x => x.Input.Description)
             .MaximumLength(HotstringRules.DescriptionMaxLength)
             .WithMessage($"Description must be {HotstringRules.DescriptionMaxLength} characters or fewer.");
+        RuleFor(x => x.Input.Kind)
+            .Must(k => k == HotstringKind.Text)
+            .WithMessage("Only Text hotstrings are supported.");
         this.AddProfileAssociationRules(
             x => x.Input.AppliesToAllProfiles,
             x => x.Input.ProfileIds);
@@ -72,12 +75,16 @@ internal sealed class UpdateHotstringCommandHandler(
         EntityHistory historyEntry = await recorder.RecordHotstringAsync(entity, HistoryChangeType.Edit, ct);
 
         entity.Update(
-            input.Trigger,
-            input.Replacement,
-            description,
-            input.AppliesToAllProfiles,
-            input.IsEndingCharacterRequired,
-            input.IsTriggerInsideWord,
+            new HotstringDefinition(
+                input.Trigger,
+                input.Replacement,
+                description,
+                input.AppliesToAllProfiles,
+                input.IsEndingCharacterRequired,
+                input.IsTriggerInsideWord,
+                input.Kind,
+                input.IsCaseSensitive,
+                input.OmitEndingCharacter),
             clock);
 
         // Replace junction rows via the navigation collections only; adding to the

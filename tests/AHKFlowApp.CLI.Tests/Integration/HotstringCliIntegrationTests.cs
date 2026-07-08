@@ -95,6 +95,7 @@ public sealed class HotstringCliIntegrationTests(SqlContainerFixture sql) : IAsy
         exit.Should().Be(0);
         stdout.Should().Contain("aaa");
         stdout.Should().Contain("bbb");
+        stdout.Should().Contain("Kind");
     }
 
     [Fact]

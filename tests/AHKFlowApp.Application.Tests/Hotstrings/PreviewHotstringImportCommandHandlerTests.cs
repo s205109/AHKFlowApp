@@ -23,7 +23,8 @@ public sealed class PreviewHotstringImportCommandHandlerTests(HotstringDbFixture
         var owner = Guid.NewGuid();
         await using (AppDbContext seed = fx.CreateContext())
         {
-            seed.Hotstrings.Add(Hotstring.Create(owner, "BTW", "existing", null, true, true, false, _clock));
+            seed.Hotstrings.Add(Hotstring.Create(
+                owner, new HotstringDefinition("BTW", "existing", null, true, true, false), _clock));
             await seed.SaveChangesAsync();
         }
 

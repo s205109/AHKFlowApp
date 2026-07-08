@@ -1,3 +1,5 @@
+using AHKFlowApp.Domain.Enums;
+
 namespace AHKFlowApp.Domain.Entities;
 
 public sealed class Hotstring
@@ -16,78 +18,63 @@ public sealed class Hotstring
     public bool AppliesToAllProfiles { get; private set; }
     public bool IsEndingCharacterRequired { get; private set; }
     public bool IsTriggerInsideWord { get; private set; }
+    public HotstringKind Kind { get; private set; }
+    public bool IsCaseSensitive { get; private set; }
+    public bool OmitEndingCharacter { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
 
     public ICollection<HotstringProfile> Profiles { get; private set; } = [];
     public ICollection<HotstringCategory> Categories { get; private set; } = [];
 
-    public static Hotstring Create(
-        Guid ownerOid,
-        string trigger,
-        string replacement,
-        string? description,
-        bool appliesToAllProfiles,
-        bool isEndingCharacterRequired,
-        bool isTriggerInsideWord,
-        TimeProvider clock)
+    public static Hotstring Create(Guid ownerOid, HotstringDefinition definition, TimeProvider clock)
     {
         DateTimeOffset now = clock.GetUtcNow();
-        return new Hotstring
+        Hotstring hs = new()
         {
             Id = Guid.NewGuid(),
             OwnerOid = ownerOid,
-            Trigger = trigger,
-            Replacement = replacement,
-            Description = description,
-            AppliesToAllProfiles = appliesToAllProfiles,
-            IsEndingCharacterRequired = isEndingCharacterRequired,
-            IsTriggerInsideWord = isTriggerInsideWord,
             CreatedAt = now,
-            UpdatedAt = now
+            UpdatedAt = now,
         };
+        hs.Apply(definition);
+        return hs;
     }
 
     public static Hotstring Restore(
         Guid id,
         Guid ownerOid,
-        string trigger,
-        string replacement,
-        string? description,
-        bool appliesToAllProfiles,
-        bool isEndingCharacterRequired,
-        bool isTriggerInsideWord,
+        HotstringDefinition definition,
         DateTimeOffset createdAt,
         TimeProvider clock)
-        => new()
+    {
+        Hotstring hs = new()
         {
             Id = id,
             OwnerOid = ownerOid,
-            Trigger = trigger,
-            Replacement = replacement,
-            Description = description,
-            AppliesToAllProfiles = appliesToAllProfiles,
-            IsEndingCharacterRequired = isEndingCharacterRequired,
-            IsTriggerInsideWord = isTriggerInsideWord,
             CreatedAt = createdAt,
             UpdatedAt = clock.GetUtcNow(),
         };
+        hs.Apply(definition);
+        return hs;
+    }
 
-    public void Update(
-        string trigger,
-        string replacement,
-        string? description,
-        bool appliesToAllProfiles,
-        bool isEndingCharacterRequired,
-        bool isTriggerInsideWord,
-        TimeProvider clock)
+    public void Update(HotstringDefinition definition, TimeProvider clock)
     {
-        Trigger = trigger;
-        Replacement = replacement;
-        Description = description;
-        AppliesToAllProfiles = appliesToAllProfiles;
-        IsEndingCharacterRequired = isEndingCharacterRequired;
-        IsTriggerInsideWord = isTriggerInsideWord;
+        Apply(definition);
         UpdatedAt = clock.GetUtcNow();
+    }
+
+    private void Apply(HotstringDefinition definition)
+    {
+        Trigger = definition.Trigger;
+        Replacement = definition.Replacement;
+        Description = definition.Description;
+        AppliesToAllProfiles = definition.AppliesToAllProfiles;
+        IsEndingCharacterRequired = definition.IsEndingCharacterRequired;
+        IsTriggerInsideWord = definition.IsTriggerInsideWord;
+        Kind = definition.Kind;
+        IsCaseSensitive = definition.IsCaseSensitive;
+        OmitEndingCharacter = definition.OmitEndingCharacter;
     }
 }

@@ -154,7 +154,10 @@ internal sealed class ListHotstringsQueryHandler(
                 h.IsTriggerInsideWord,
                 h.CreatedAt,
                 h.UpdatedAt,
-                h.Categories.Select(hc => hc.CategoryId).ToArray()))
+                h.Categories.Select(hc => hc.CategoryId).ToArray(),
+                h.Kind,
+                h.IsCaseSensitive,
+                h.OmitEndingCharacter))
             .ToListAsync(ct);
 
         return Result.Success(new PagedList<HotstringDto>(items, request.Page, request.PageSize, total));
@@ -194,8 +197,12 @@ internal sealed class ListHotstringsQueryHandler(
 
         foreach ((string trigger, string replacement, bool ending, bool inside, string[] cats) in s_lazySeed)
         {
-            var hs = Hotstring.Create(ownerOid, trigger, replacement, null,
-                appliesToAllProfiles: true, ending, inside, clock);
+            var hs = Hotstring.Create(
+                ownerOid,
+                new HotstringDefinition(
+                    trigger, replacement, Description: null,
+                    AppliesToAllProfiles: true, ending, inside),
+                clock);
             db.Hotstrings.Add(hs);
             foreach (string catName in cats)
             {

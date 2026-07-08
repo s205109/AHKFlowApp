@@ -36,8 +36,16 @@
                                    DataTest="profile-select" />
             }
 
-            <MudCheckBox T="bool" @bind-Value="Item.IsEndingCharacterRequired" Label="Ending character required" />
-            <MudCheckBox T="bool" @bind-Value="Item.IsTriggerInsideWord" Label="Trigger inside word" />
+            <MudText Typo="Typo.subtitle2" Class="mt-1">Trigger options</MudText>
+            <MudCheckBox T="bool" @bind-Value="Item.IsCaseSensitive" Label="Case sensitive"
+                         UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "case-sensitive-checkbox" })" />
+            <MudCheckBox T="bool" @bind-Value="Item.ExpandImmediately" Label="Expand immediately (no ending character)"
+                         UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "expand-immediately-checkbox" })" />
+            <MudCheckBox T="bool" @bind-Value="Item.IsTriggerInsideWord" Label="Trigger inside words"
+                         UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "inside-words-checkbox" })" />
+            <MudCheckBox T="bool" @bind-Value="Item.OmitEndingCharacter" Label="Omit ending character"
+                         Disabled="@Item.ExpandImmediately"
+                         UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "omit-ending-checkbox" })" />
 
             <EntityMultiSelect Options="_categoryOptions" Label="Categories"
                                SelectedIds="Item.CategoryIds"
