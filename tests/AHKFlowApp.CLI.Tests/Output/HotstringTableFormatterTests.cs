@@ -142,4 +142,16 @@ public sealed class HotstringTableFormatterTests
         string expected = FixedTime.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss");
         sw.ToString().Should().Contain(expected);
     }
+
+    [Fact]
+    public void Write_RendersKindColumn()
+    {
+        StringWriter sw = new();
+        PagedList<HotstringDto> page = new([Hotstring()], 1, 50, 1);
+
+        HotstringTableFormatter.Write(sw, page, new Dictionary<Guid, string>());
+
+        sw.ToString().Should().Contain("Kind");
+        sw.ToString().Should().Contain("Text");
+    }
 }

@@ -12,6 +12,14 @@ public interface IHotstringsApiClient
         CancellationToken ct);
 }
 
+public enum HotstringKind
+{
+    Text = 0,
+    DateTime = 1,
+    Macro = 2,
+    Script = 3,
+}
+
 public sealed record HotstringDto(
     Guid Id,
     Guid[] ProfileIds,
@@ -21,7 +29,10 @@ public sealed record HotstringDto(
     bool IsEndingCharacterRequired,
     bool IsTriggerInsideWord,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    HotstringKind Kind = HotstringKind.Text,
+    bool IsCaseSensitive = false,
+    bool OmitEndingCharacter = false);
 
 public sealed record CreateHotstringDto(
     string Trigger,
