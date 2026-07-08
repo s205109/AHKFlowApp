@@ -154,7 +154,10 @@ internal sealed class ListHotstringsQueryHandler(
                 h.IsTriggerInsideWord,
                 h.CreatedAt,
                 h.UpdatedAt,
-                h.Categories.Select(hc => hc.CategoryId).ToArray()))
+                h.Categories.Select(hc => hc.CategoryId).ToArray(),
+                h.Kind,
+                h.IsCaseSensitive,
+                h.OmitEndingCharacter))
             .ToListAsync(ct);
 
         return Result.Success(new PagedList<HotstringDto>(items, request.Page, request.PageSize, total));

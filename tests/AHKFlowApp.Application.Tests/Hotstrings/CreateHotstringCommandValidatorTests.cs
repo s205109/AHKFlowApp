@@ -1,5 +1,6 @@
 using AHKFlowApp.Application.Commands.Hotstrings;
 using AHKFlowApp.Application.DTOs;
+using AHKFlowApp.Domain.Enums;
 using FluentAssertions;
 using FluentValidation.Results;
 using Xunit;
@@ -221,5 +222,27 @@ public sealed class CreateHotstringCommandValidatorTests
         result.IsValid.Should().BeFalse();
         result.Errors.Should().Contain(e =>
             e.ErrorMessage == "ProfileIds must not contain duplicates.");
+    }
+
+    [Fact]
+    public void Kind_Text_Passes()
+    {
+        CreateHotstringCommand cmd = new(new CreateHotstringDto("btw", "by the way", Kind: HotstringKind.Text));
+
+        ValidationResult result = _sut.Validate(cmd);
+
+        result.Errors.Should().NotContain(e => e.PropertyName == "Input.Kind");
+    }
+
+    [Fact]
+    public void Kind_NonText_Fails()
+    {
+        CreateHotstringCommand cmd = new(new CreateHotstringDto("btw", "by the way", Kind: HotstringKind.Script));
+
+        ValidationResult result = _sut.Validate(cmd);
+
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.Kind" &&
+            e.ErrorMessage == "Only Text hotstrings are supported.");
     }
 }
