@@ -215,6 +215,19 @@ function Read-RawStdin {
     try { return [Console]::In.ReadToEnd() } catch { return $null }
 }
 
+# Copied verbatim from scripts/new-worktree.ps1 (Test-EnvironmentFlagEnabled) so both
+# scripts recognize the same truthy values for their respective opt-in env vars.
+function Test-EnvironmentFlagEnabled {
+    param([string] $Name)
+
+    $value = [Environment]::GetEnvironmentVariable($Name, 'Process')
+    if ([string]::IsNullOrWhiteSpace($value)) {
+        return $false
+    }
+
+    return $value.Trim() -match '^(1|true|yes|y)$'
+}
+
 # Runs git and returns merged output + exit code.
 function Invoke-GitCapture {
     param([string[]] $GitArgs)
@@ -295,6 +308,60 @@ function Write-TimeoutGuidance {
             Write-Log ('  ' + (Format-GitCommand $null @('branch', '-d', '--', $BranchName)))
         }
     }
+    Write-Log "Details were logged to: $script:LogPath"
+}
+
+# Removability probe: merged = HEAD is an ancestor of main; clean = no working-tree
+# changes. Mirrors the conservatism of Get-EligibleMergedWorktrees in
+# cleanup-merged-worktrees.ps1 (branch-less worktrees skipped; clean tree required).
+function Test-WorktreeMergedIntoMain {
+    param([string] $WorktreeFull)
+
+    $result = Invoke-GitCapture @('-C', $WorktreeFull, 'merge-base', '--is-ancestor', 'HEAD', 'main')
+    Write-GitResult 'merge-base --is-ancestor HEAD main' $result
+    return ($result.ExitCode -eq 0)
+}
+
+function Test-WorktreeClean {
+    param([string] $WorktreeFull)
+
+    $result = Invoke-GitCapture @('-C', $WorktreeFull, 'status', '--porcelain')
+    Write-GitResult 'status --porcelain' $result
+    if ($result.ExitCode -ne 0) {
+        return $false
+    }
+    foreach ($line in $result.Lines) {
+        if ($line -and $line.Trim()) {
+            return $false
+        }
+    }
+    return $true
+}
+
+function Write-UnmergedPreserveGuidance {
+    param(
+        [string] $WorktreeFull,
+        [string] $MainCheckout,
+        [string] $BranchName,
+        [string] $Reason
+    )
+
+    Write-Log "Worktree was preserved (not removed): $Reason"
+    Write-Log 'To remove it manually once ready, run:'
+    if ($MainCheckout) {
+        Write-Log ('  ' + (Format-GitCommand $MainCheckout @('worktree', 'remove', $WorktreeFull)))
+        Write-Log ('  ' + (Format-GitCommand $MainCheckout @('worktree', 'prune')))
+        if ($BranchName) {
+            Write-Log ('  ' + (Format-GitCommand $MainCheckout @('branch', '-d', '--', $BranchName)))
+        }
+    } else {
+        Write-Log '  git worktree remove <worktree-path>'
+        Write-Log '  git worktree prune'
+        if ($BranchName) {
+            Write-Log ('  ' + (Format-GitCommand $null @('branch', '-d', '--', $BranchName)))
+        }
+    }
+    Write-Log 'To bypass this gate and remove now regardless of merge/clean status, set AHKFLOW_WORKTREE_FORCE_REMOVE=1 before exiting Claude Code.'
     Write-Log "Details were logged to: $script:LogPath"
 }
 
@@ -542,6 +609,27 @@ function Invoke-HookMode {
     if (-not $registration.IsRegistered) {
         Write-UnregisteredWorktreeRefusal $worktreeFull $mainCheckoutFromGit $registration
         return
+    }
+
+    # --- gate: only remove when merged into main AND clean, unless forced ---
+    $forceRemove = Test-EnvironmentFlagEnabled -Name 'AHKFLOW_WORKTREE_FORCE_REMOVE'
+    if ($forceRemove) {
+        Write-Log 'force override: AHKFLOW_WORKTREE_FORCE_REMOVE set; bypassing merge/clean gate.'
+    } else {
+        if (-not $branchName) {
+            Write-UnmergedPreserveGuidance -WorktreeFull $worktreeFull -MainCheckout $mainCheckoutFromGit -BranchName $branchName -Reason 'detached HEAD (no branch) is not eligible for automatic removal'
+            return
+        }
+
+        if (-not (Test-WorktreeMergedIntoMain -WorktreeFull $worktreeFull)) {
+            Write-UnmergedPreserveGuidance -WorktreeFull $worktreeFull -MainCheckout $mainCheckoutFromGit -BranchName $branchName -Reason "branch '$branchName' is not merged into main"
+            return
+        }
+
+        if (-not (Test-WorktreeClean -WorktreeFull $worktreeFull)) {
+            Write-UnmergedPreserveGuidance -WorktreeFull $worktreeFull -MainCheckout $mainCheckoutFromGit -BranchName $branchName -Reason 'worktree has uncommitted changes'
+            return
+        }
     }
 
     # --- snapshot watcher script + sidecar params outside the worktree ------

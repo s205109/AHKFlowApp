@@ -103,6 +103,28 @@ stop; do not ask the cleanup question on the basis of a failed detection run.
 
 ## Removing
 
-`pwsh -NoProfile -File scripts/remove-worktree-local-dev.ps1 -WorktreePath .claude\worktrees\<name>` removes the worktree and deletes the branch (`git branch -d`), then drops the DB and removes the Docker Compose project — but only if that branch delete succeeds. If the branch has unmerged commits, `git branch -d` fails and DB/Docker cleanup is skipped; the next `new-worktree.ps1` run's orphan prune, or `scripts\prune-worktree-databases.ps1` / `scripts\prune-worktree-docker.ps1`, reclaim them later. Without `-WorktreePath` it is a no-op.
+Claude Code's native `/exit` → "remove worktree" fires the `WorktreeRemove` hook
+(`scripts/remove-worktree-local-dev.ps1`). It only auto-removes when the worktree's
+branch is **merged into `main` AND** the working tree is **clean**; otherwise the
+worktree folder and branch are preserved and the log names the reason (unmerged /
+uncommitted changes / detached HEAD) plus manual `git worktree remove` + `prune` +
+`branch -d` commands. A detached-HEAD worktree is never auto-removed, even if it is
+clean and its commit is already in `main` — this matches the conservatism of the
+create-time cleanup (`cleanup-merged-worktrees.ps1`).
+
+To force removal of an unmerged or dirty worktree (folder deleted; branch still only
+removed via safe `git branch -d`, so an unmerged branch survives), set
+`AHKFLOW_WORKTREE_FORCE_REMOVE=1` before exiting:
+
+```powershell
+$env:AHKFLOW_WORKTREE_FORCE_REMOVE = '1'
+```
+
+When eligible (or forced), the script removes the worktree and deletes the branch
+(`git branch -d`), then drops the DB and removes the Docker Compose project — but only
+if that branch delete succeeds. If the branch has unmerged commits, `git branch -d`
+fails and DB/Docker cleanup is skipped; the next `new-worktree.ps1` run's orphan prune,
+or `scripts\prune-worktree-databases.ps1` / `scripts\prune-worktree-docker.ps1`, reclaim
+them later. Without `-WorktreePath` it is a no-op.
 
 Worktrees deleted with plain git skip the `WorktreeRemove` hook; the next `new-worktree.ps1` run sweeps orphaned Docker projects as a safety net.
