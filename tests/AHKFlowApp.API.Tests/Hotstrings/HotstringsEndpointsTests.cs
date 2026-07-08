@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using AHKFlowApp.Application.DTOs;
+using AHKFlowApp.Domain.Enums;
 using AHKFlowApp.TestUtilities.Fixtures;
 using FluentAssertions;
 using Xunit;
@@ -344,6 +345,37 @@ public sealed class HotstringsEndpointsTests(ApiTestFixture fixture)
         using HttpClient client = CreateAuthed();
 
         HttpResponseMessage response = await client.GetAsync("/api/v1/hotstrings?sortField=ownerOid");
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Post_WithNewOptionFlags_RoundTripsKindAndFlags()
+    {
+        using HttpClient client = CreateAuthed();
+        CreateHotstringDto dto = new("csflags", "x", IsCaseSensitive: true, OmitEndingCharacter: true);
+
+        HttpResponseMessage response = await client.PostAsJsonAsync("/api/v1/hotstrings", dto);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        HotstringDto? body = await response.Content.ReadFromJsonAsync<HotstringDto>();
+        body!.Kind.Should().Be(HotstringKind.Text);
+        body.IsCaseSensitive.Should().BeTrue();
+        body.OmitEndingCharacter.Should().BeTrue();
+
+        HttpResponseMessage get = await client.GetAsync(response.Headers.Location);
+        HotstringDto? fetched = await get.Content.ReadFromJsonAsync<HotstringDto>();
+        fetched!.IsCaseSensitive.Should().BeTrue();
+        fetched.OmitEndingCharacter.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Post_NonTextKind_Returns400()
+    {
+        using HttpClient client = CreateAuthed();
+        CreateHotstringDto dto = new("scr", "x", Kind: HotstringKind.Script);
+
+        HttpResponseMessage response = await client.PostAsJsonAsync("/api/v1/hotstrings", dto);
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }

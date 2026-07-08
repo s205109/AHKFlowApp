@@ -1,3 +1,5 @@
+using AHKFlowApp.Domain.Enums;
+
 namespace AHKFlowApp.Application.DTOs;
 
 /// <summary>A hotstring (text trigger plus replacement) owned by the current user.</summary>
@@ -12,6 +14,9 @@ namespace AHKFlowApp.Application.DTOs;
 /// <param name="CreatedAt">UTC creation timestamp.</param>
 /// <param name="UpdatedAt">UTC last-update timestamp.</param>
 /// <param name="CategoryIds">Categories assigned to this hotstring.</param>
+/// <param name="Kind">Hotstring kind. Phase 1 only supports <see cref="HotstringKind.Text"/>.</param>
+/// <param name="IsCaseSensitive">Controls AutoHotkey's <c>C</c> option.</param>
+/// <param name="OmitEndingCharacter">Controls AutoHotkey's <c>O</c> option.</param>
 public sealed record HotstringDto(
     Guid Id,
     Guid[] ProfileIds,
@@ -23,7 +28,10 @@ public sealed record HotstringDto(
     bool IsTriggerInsideWord,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
-    Guid[] CategoryIds);
+    Guid[] CategoryIds,
+    HotstringKind Kind = HotstringKind.Text,
+    bool IsCaseSensitive = false,
+    bool OmitEndingCharacter = false);
 
 /// <summary>Payload to create a new hotstring.</summary>
 /// <param name="Trigger">Abbreviation that activates the replacement.</param>
@@ -34,6 +42,9 @@ public sealed record HotstringDto(
 /// <param name="IsTriggerInsideWord">Controls AutoHotkey's <c>?</c> option.</param>
 /// <param name="Description">Optional human-readable note for the hotstring.</param>
 /// <param name="CategoryIds">Categories to assign to the new hotstring.</param>
+/// <param name="Kind">Hotstring kind. Phase 1 only supports <see cref="HotstringKind.Text"/>.</param>
+/// <param name="IsCaseSensitive">Controls AutoHotkey's <c>C</c> option.</param>
+/// <param name="OmitEndingCharacter">Controls AutoHotkey's <c>O</c> option.</param>
 public sealed record CreateHotstringDto(
     string Trigger,
     string Replacement,
@@ -42,7 +53,10 @@ public sealed record CreateHotstringDto(
     bool IsEndingCharacterRequired = true,
     bool IsTriggerInsideWord = true,
     string? Description = null,
-    Guid[]? CategoryIds = null);
+    Guid[]? CategoryIds = null,
+    HotstringKind Kind = HotstringKind.Text,
+    bool IsCaseSensitive = false,
+    bool OmitEndingCharacter = false);
 
 /// <summary>Payload to replace the editable fields of an existing hotstring.</summary>
 /// <param name="Trigger">Abbreviation that activates the replacement.</param>
@@ -53,6 +67,9 @@ public sealed record CreateHotstringDto(
 /// <param name="IsTriggerInsideWord">Controls AutoHotkey's <c>?</c> option.</param>
 /// <param name="Description">Optional human-readable note for the hotstring.</param>
 /// <param name="CategoryIds">Replacement category assignment set.</param>
+/// <param name="Kind">Hotstring kind. Phase 1 only supports <see cref="HotstringKind.Text"/>.</param>
+/// <param name="IsCaseSensitive">Controls AutoHotkey's <c>C</c> option.</param>
+/// <param name="OmitEndingCharacter">Controls AutoHotkey's <c>O</c> option.</param>
 public sealed record UpdateHotstringDto(
     string Trigger,
     string Replacement,
@@ -61,4 +78,7 @@ public sealed record UpdateHotstringDto(
     bool IsEndingCharacterRequired,
     bool IsTriggerInsideWord,
     string? Description,
-    Guid[]? CategoryIds = null);
+    Guid[]? CategoryIds = null,
+    HotstringKind Kind = HotstringKind.Text,
+    bool IsCaseSensitive = false,
+    bool OmitEndingCharacter = false);

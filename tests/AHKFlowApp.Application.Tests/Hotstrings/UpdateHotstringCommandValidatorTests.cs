@@ -1,5 +1,6 @@
 using AHKFlowApp.Application.Commands.Hotstrings;
 using AHKFlowApp.Application.DTOs;
+using AHKFlowApp.Domain.Enums;
 using FluentAssertions;
 using FluentValidation.Results;
 using Xunit;
@@ -207,5 +208,18 @@ public sealed class UpdateHotstringCommandValidatorTests
         result.Errors.Should().Contain(e =>
             e.PropertyName == "Input.Description" &&
             e.ErrorMessage == "Description must be 200 characters or fewer.");
+    }
+
+    [Fact]
+    public void Kind_NonText_Fails()
+    {
+        UpdateHotstringCommand cmd = new(Guid.NewGuid(),
+            new UpdateHotstringDto("btw", "x", null, true, true, true, null, null, HotstringKind.DateTime));
+
+        ValidationResult result = _sut.Validate(cmd);
+
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.Kind" &&
+            e.ErrorMessage == "Only Text hotstrings are supported.");
     }
 }
