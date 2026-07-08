@@ -13,6 +13,9 @@ namespace AHKFlowApp.Application.DTOs;
 /// <param name="CategoryIds">Category links at capture time.</param>
 /// <param name="CreatedAt">Original creation timestamp.</param>
 /// <param name="UpdatedAt">Last-update timestamp at capture time.</param>
+/// <param name="Kind">Hotstring kind at capture time. Defaults to <see cref="HotstringKind.Text"/> for pre-Phase-1 snapshots.</param>
+/// <param name="IsCaseSensitive">AutoHotkey's <c>C</c> option at capture time. Defaults to false for pre-Phase-1 snapshots.</param>
+/// <param name="OmitEndingCharacter">AutoHotkey's <c>O</c> option at capture time. Defaults to false for pre-Phase-1 snapshots.</param>
 public sealed record HotstringSnapshot(
     string Trigger,
     string Replacement,
@@ -23,7 +26,10 @@ public sealed record HotstringSnapshot(
     Guid[] ProfileIds,
     Guid[] CategoryIds,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    HotstringKind Kind = HotstringKind.Text,
+    bool IsCaseSensitive = false,
+    bool OmitEndingCharacter = false);
 
 /// <summary>Point-in-time snapshot of a hotkey aggregate, stored as history JSON.</summary>
 /// <param name="Description">Human-readable label.</param>

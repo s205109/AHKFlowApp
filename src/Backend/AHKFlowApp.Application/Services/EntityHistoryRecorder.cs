@@ -37,7 +37,10 @@ internal sealed class EntityHistoryRecorder(IAppDbContext db, TimeProvider clock
                         [.. entity.Profiles.Select(p => p.ProfileId)],
                         [.. entity.Categories.Select(c => c.CategoryId)],
                         entity.CreatedAt,
-                        entity.UpdatedAt);
+                        entity.UpdatedAt,
+                        entity.Kind,
+                        entity.IsCaseSensitive,
+                        entity.OmitEndingCharacter);
 
                     return new HistorySnapshot(
                         entity.OwnerOid,

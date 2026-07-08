@@ -63,7 +63,10 @@ internal sealed class RestoreHotstringCommandHandler(
                 snapshot.Description,
                 snapshot.AppliesToAllProfiles,
                 snapshot.IsEndingCharacterRequired,
-                snapshot.IsTriggerInsideWord),
+                snapshot.IsTriggerInsideWord,
+                snapshot.Kind,
+                snapshot.IsCaseSensitive,
+                snapshot.OmitEndingCharacter),
             snapshot.CreatedAt,
             clock);
 
