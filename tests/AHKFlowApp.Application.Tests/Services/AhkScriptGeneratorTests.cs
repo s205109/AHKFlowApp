@@ -1,6 +1,7 @@
 using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.Services;
 using AHKFlowApp.Domain.Entities;
+using AHKFlowApp.Domain.Enums;
 using AHKFlowApp.TestUtilities.Builders;
 using FluentAssertions;
 using Microsoft.Extensions.Time.Testing;
@@ -278,6 +279,129 @@ public sealed class AhkScriptGeneratorTests
         int posUpper = output.IndexOf(":T:AA::upper", StringComparison.Ordinal);
         int posLower = output.IndexOf(":T:aa::lower", StringComparison.Ordinal);
         posUpper.Should().BeLessThan(posLower);  // 'A' (0x41) < 'a' (0x61) in Ordinal
+    }
+
+    [Theory]
+    [InlineData(true, false, false, false, ":X:dd::")]     // defaults
+    [InlineData(false, false, false, false, ":X*:dd::")]   // expand immediately
+    [InlineData(true, true, false, false, ":X?:dd::")]     // trigger inside word
+    [InlineData(true, false, true, false, ":XC:dd::")]     // case sensitive
+    [InlineData(true, false, false, true, ":XO:dd::")]     // omit ending character
+    [InlineData(false, false, false, true, ":X*:dd::")]    // O suppressed when *
+    [InlineData(false, true, true, true, ":X*?C:dd::")]    // deterministic order X * ? C O
+    public void Generate_DateTimeHotstring_FormatsOptionsCorrectly_XPrefix(
+        bool isEndingCharacterRequired,
+        bool isTriggerInsideWord,
+        bool isCaseSensitive,
+        bool omitEndingCharacter,
+        string expectedPrefix)
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotstring hs = new HotstringBuilder()
+            .WithTrigger("dd")
+            .WithKind(HotstringKind.DateTime)
+            .WithDateTimeFormat("yyyy-MM-dd")
+            .WithEndingCharacterRequired(isEndingCharacterRequired)
+            .WithTriggerInsideWord(isTriggerInsideWord)
+            .WithCaseSensitive(isCaseSensitive)
+            .WithOmitEndingCharacter(omitEndingCharacter)
+            .Build();
+
+        string output = DefaultSut().Generate(profile, [hs], []);
+
+        output.Should().Contain(expectedPrefix + "SendText(FormatTime(A_Now, \"yyyy-MM-dd\"))");
+    }
+
+    [Fact]
+    public void Generate_DateTimeHotstring_NoOffset_MatchesSpecExample3()
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotstring hs = new HotstringBuilder()
+            .WithTrigger("dd")
+            .WithKind(HotstringKind.DateTime)
+            .WithDateTimeFormat("yyyy-MM-dd")
+            .WithEndingCharacterRequired(false)
+            .WithTriggerInsideWord(false)
+            .Build();
+
+        string output = DefaultSut().Generate(profile, [hs], []);
+
+        output.Should().Contain(":X*:dd::SendText(FormatTime(A_Now, \"yyyy-MM-dd\"))");
+    }
+
+    [Fact]
+    public void Generate_DateTimeHotstring_WithOffset_MatchesSpecExample4()
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotstring hs = new HotstringBuilder()
+            .WithTrigger("nextweek")
+            .WithKind(HotstringKind.DateTime)
+            .WithDateTimeFormat("dddd d MMMM yyyy")
+            .WithDateOffset(7, DateOffsetUnit.Days)
+            .WithEndingCharacterRequired(false)
+            .WithTriggerInsideWord(false)
+            .Build();
+
+        string output = DefaultSut().Generate(profile, [hs], []);
+
+        output.Should().Contain(
+            ":X*:nextweek::SendText(FormatTime(DateAdd(A_Now, 7, \"Days\"), \"dddd d MMMM yyyy\"))");
+    }
+
+    [Theory]
+    [InlineData(DateOffsetUnit.Seconds, "Seconds")]
+    [InlineData(DateOffsetUnit.Minutes, "Minutes")]
+    [InlineData(DateOffsetUnit.Hours, "Hours")]
+    [InlineData(DateOffsetUnit.Days, "Days")]
+    public void Generate_DateTimeHotstring_WithOffset_EmitsCorrectUnitString(
+        DateOffsetUnit unit, string expectedUnitString)
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotstring hs = new HotstringBuilder()
+            .WithTrigger("t")
+            .WithKind(HotstringKind.DateTime)
+            .WithDateTimeFormat("yyyy")
+            .WithDateOffset(3, unit)
+            .Build();
+
+        string output = DefaultSut().Generate(profile, [hs], []);
+
+        output.Should().Contain($"DateAdd(A_Now, 3, \"{expectedUnitString}\")");
+    }
+
+    [Fact]
+    public void Generate_DateTimeHotstring_WithNegativeOffset_EmitsNegativeAmountUnchanged()
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotstring hs = new HotstringBuilder()
+            .WithTrigger("lastweek")
+            .WithKind(HotstringKind.DateTime)
+            .WithDateTimeFormat("yyyy-MM-dd")
+            .WithDateOffset(-7, DateOffsetUnit.Days)
+            .Build();
+
+        string output = DefaultSut().Generate(profile, [hs], []);
+
+        output.Should().Contain("DateAdd(A_Now, -7, \"Days\")");
+    }
+
+    [Theory]
+    [InlineData("back`tick", ":X:back``tick::SendText(FormatTime(A_Now, \"yyyy\"))")]
+    [InlineData("a ;b", ":X:a `;b::SendText(FormatTime(A_Now, \"yyyy\"))")]
+    public void Generate_DateTimeHotstring_TriggerWithSpecialChars_EscapesTriggerToo(
+        string trigger, string expectedLine)
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotstring hs = new HotstringBuilder()
+            .WithTrigger(trigger)
+            .WithKind(HotstringKind.DateTime)
+            .WithDateTimeFormat("yyyy")
+            .WithTriggerInsideWord(false)
+            .Build();
+
+        string output = DefaultSut().Generate(profile, [hs], []);
+
+        output.Should().Contain(expectedLine);
     }
 
     private static AhkScriptGenerator TokenSut(string version = "1.2.3")
