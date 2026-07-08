@@ -21,6 +21,9 @@ public sealed class Hotstring
     public HotstringKind Kind { get; private set; }
     public bool IsCaseSensitive { get; private set; }
     public bool OmitEndingCharacter { get; private set; }
+    public string? DateTimeFormat { get; private set; }
+    public int? DateOffsetAmount { get; private set; }
+    public DateOffsetUnit? DateOffsetUnit { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
 
@@ -76,5 +79,8 @@ public sealed class Hotstring
         Kind = definition.Kind;
         IsCaseSensitive = definition.IsCaseSensitive;
         OmitEndingCharacter = definition.OmitEndingCharacter;
+        DateTimeFormat = definition.DateTimeFormat;
+        DateOffsetAmount = definition.DateOffsetAmount;
+        DateOffsetUnit = definition.DateOffsetUnit;
     }
 }

@@ -175,4 +175,65 @@ public sealed class HotstringTests
         hs.IsCaseSensitive.Should().BeTrue();
         hs.OmitEndingCharacter.Should().BeTrue();
     }
+
+    [Fact]
+    public void Create_RoundTripsDateTimeFields()
+    {
+        var hs = Hotstring.Create(
+            Guid.NewGuid(),
+            new HotstringDefinition("btw", "by the way", null, true, true, false,
+                HotstringKind.DateTime, DateTimeFormat: "yyyy-MM-dd",
+                DateOffsetAmount: 3, DateOffsetUnit: DateOffsetUnit.Days),
+            _clock);
+
+        hs.DateTimeFormat.Should().Be("yyyy-MM-dd");
+        hs.DateOffsetAmount.Should().Be(3);
+        hs.DateOffsetUnit.Should().Be(DateOffsetUnit.Days);
+    }
+
+    [Fact]
+    public void Create_DefaultDefinition_HasNullDateTimeFields()
+    {
+        var hs = Hotstring.Create(
+            Guid.NewGuid(),
+            new HotstringDefinition("btw", "by the way", null, true, true, false),
+            _clock);
+
+        hs.DateTimeFormat.Should().BeNull();
+        hs.DateOffsetAmount.Should().BeNull();
+        hs.DateOffsetUnit.Should().BeNull();
+    }
+
+    [Fact]
+    public void Update_RoundTripsDateTimeFields()
+    {
+        var hs = Hotstring.Create(
+            Guid.NewGuid(), new HotstringDefinition("x", "y", null, true, true, false), _clock);
+
+        hs.Update(new HotstringDefinition("x", "y", null, true, true, false,
+            HotstringKind.DateTime, DateTimeFormat: "HH:mm:ss",
+            DateOffsetAmount: -1, DateOffsetUnit: DateOffsetUnit.Hours), _clock);
+
+        hs.DateTimeFormat.Should().Be("HH:mm:ss");
+        hs.DateOffsetAmount.Should().Be(-1);
+        hs.DateOffsetUnit.Should().Be(DateOffsetUnit.Hours);
+    }
+
+    [Fact]
+    public void Restore_RoundTripsDateTimeFields()
+    {
+        DateTimeOffset createdAt = DateTimeOffset.UtcNow.AddDays(-2);
+
+        var hs = Hotstring.Restore(
+            Guid.NewGuid(), Guid.NewGuid(),
+            new HotstringDefinition("x", "y", null, true, true, false,
+                HotstringKind.DateTime, DateTimeFormat: "MMMM d",
+                DateOffsetAmount: 30, DateOffsetUnit: DateOffsetUnit.Minutes),
+            createdAt, _clock);
+
+        hs.CreatedAt.Should().Be(createdAt);
+        hs.DateTimeFormat.Should().Be("MMMM d");
+        hs.DateOffsetAmount.Should().Be(30);
+        hs.DateOffsetUnit.Should().Be(DateOffsetUnit.Minutes);
+    }
 }

@@ -17,6 +17,9 @@ public sealed class HotstringBuilder
     private HotstringKind _kind = HotstringKind.Text;
     private bool _isCaseSensitive;
     private bool _omitEndingCharacter;
+    private string? _dateTimeFormat;
+    private int? _dateOffsetAmount;
+    private DateOffsetUnit? _dateOffsetUnit;
     private TimeProvider _clock = TimeProvider.System;
 
     public HotstringBuilder WithOwner(Guid ownerOid)
@@ -93,6 +96,19 @@ public sealed class HotstringBuilder
         return this;
     }
 
+    public HotstringBuilder WithDateTimeFormat(string format)
+    {
+        _dateTimeFormat = format;
+        return this;
+    }
+
+    public HotstringBuilder WithDateOffset(int amount, DateOffsetUnit unit)
+    {
+        _dateOffsetAmount = amount;
+        _dateOffsetUnit = unit;
+        return this;
+    }
+
     public HotstringBuilder WithCategory(Guid categoryId)
     {
         _categoryIds.Add(categoryId);
@@ -119,7 +135,8 @@ public sealed class HotstringBuilder
             new HotstringDefinition(
                 _trigger, _replacement, _description, _appliesToAllProfiles,
                 _isEndingCharacterRequired, _isTriggerInsideWord,
-                _kind, _isCaseSensitive, _omitEndingCharacter),
+                _kind, _isCaseSensitive, _omitEndingCharacter,
+                _dateTimeFormat, _dateOffsetAmount, _dateOffsetUnit),
             _clock);
 
         foreach (Guid pid in _profileIds)
