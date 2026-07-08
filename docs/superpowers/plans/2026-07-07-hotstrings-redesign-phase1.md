@@ -477,7 +477,9 @@ git add -A
 git commit -m "feat: persist hotstring kind + option flags (migration)"
 ```
 
----### Task 3: `HotstringEmitter` extraction — always-`T`, `C`/`O` emission, parser bare-`T`
+---
+
+### Task 3: `HotstringEmitter` extraction — always-`T`, `C`/`O` emission, parser bare-`T`
 
 **Files:**
 - Create: `src/Backend/AHKFlowApp.Application/Services/HotstringEmitter.cs`
