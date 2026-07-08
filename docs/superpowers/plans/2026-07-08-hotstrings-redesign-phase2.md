@@ -4,7 +4,7 @@
 
 Phase 1 of the hotstrings redesign (spec: `docs/superpowers/specs/2026-07-07-hotstrings-redesign-design.md`) merged in PR #173: `HotstringKind` enum, `IsCaseSensitive`/`OmitEndingCharacter` flags, `HotstringDefinition` record, `HotstringEmitter`, grid badge column, dialog option toggles, CLI Kind column. This phase implements **Phase 2 (spec §9)**: the DateTime hotstring kind — users pick a date/time format (curated presets + custom, D3) and optional date offset; the generated script emits `:X:trig::SendText(FormatTime(A_Now, "fmt"))` (with `DateAdd` for offsets). The dialog kind selector appears this phase (D4). Per spec §8, the phase also round-trips the new fields through history snapshots and extends the CLI display.
 
-Branch: `feature/hotstrings-datetime-kind` (worktree, clean at `b009dd8`).
+Branch: `feature/hotstrings-datetime-kind` (worktree, clean at `9324162`).
 
 **User-confirmed decisions:** convert `/today` + `/now` seeds to real DateTime rows; Kind filter = clearable toolbar `MudSelect` next to search. Offset amount `0` is allowed (harmless `DateAdd(A_Now, 0, "Days")`).
 
@@ -50,10 +50,13 @@ Option order `X * ? C O` (never `T` with `X`, per D1; `O` still suppressed when 
 - offset → body `SendText(FormatTime(DateAdd(A_Now, 7, "Days"), "dddd d MMMM yyyy"))`; negative amounts pass through (`-7`).
 Trigger still `Escape()`d; format embedded raw (whitelist guarantees safety — comment). `Replacement` validated empty (stored `""`, column stays non-null).
 
+### Search/filter/sort
+`Replacement` stores `""` for DateTime rows, so raw `h.Replacement` is useless for search/filter/sort on those rows. One EF-translatable expression, reused at all three call sites in `ListHotstringsQuery.cs`: `h.Kind == HotstringKind.DateTime ? (h.DateTimeFormat ?? "") : h.Replacement`. Scope is the raw format string only (not the humanized offset text CLI/grid render) — keeps the query minimal.
+
 ## Tasks (one conventional commit each; TDD for validators + emitter goldens)
 
-### Task 0 — Commit this plan
-Save to `docs/superpowers/plans/2026-07-08-hotstrings-redesign-phase2.md` (project convention). Commit: `docs: phase 2 plan (date/time kind)`.
+### Task 0 — Commit this plan (done: `9324162`)
+Plan already saved and committed as `docs: phase 2 plan (date/time kind)`.
 
 ### Task 1 — Domain
 - New `src/Backend/AHKFlowApp.Domain/Enums/DateOffsetUnit.cs`
@@ -84,15 +87,16 @@ Commit: `feat: kind-conditional hotstring validation + date format whitelist`
 - `Application/DTOs/HotstringDto.cs`: 3 fields on all three records
 - **Both** mapping sites: `Application/Mapping/HotstringMappings.cs` `ToDto` AND inline projection in `ListHotstringsQueryHandler.ExecuteAsync` (known duplication)
 - Create/Update handlers: thread fields into `HotstringDefinition`
-- `Application/Queries/Hotstrings/ListHotstringsQuery.cs`: `HotstringKind? Kind = null` as last param; `"kind"` in `AllowedSortFields` + `ApplySorting` case; `Where(h => h.Kind == kind)` filter
+- `Application/Queries/Hotstrings/ListHotstringsQuery.cs`: `HotstringKind? Kind = null` as last param; `"kind"` in `AllowedSortFields` + `ApplySorting` case; `Where(h => h.Kind == kind)` filter; apply the Search/filter/sort expression (design section above) to global `Search`'s replacement clause, `ReplacementFilter`, and the `"replacement"` `ApplySorting` case, so DateTime rows are searchable/filterable/sortable by `DateTimeFormat`
 - `API/Controllers/HotstringsController.cs` `List`: `[FromQuery] HotstringKind? kind = null`, threaded positionally
-- Tests: API `Post_DateTimeKind_ReturnsCreatedWithDateFields`, Script-still-400 (update existing `Post_NonTextKind_Returns400`), list `?kind=` filter + `sortField=kind`; handler filter/sort tests; validator sort-field test.
+- Tests: API `Post_DateTimeKind_ReturnsCreatedWithDateFields`, Script-still-400 (update existing `Post_NonTextKind_Returns400`), list `?kind=` filter + `sortField=kind`; handler filter/sort tests; validator sort-field test; list search/`ReplacementFilter` by `DateTimeFormat` substring finds DateTime rows; sort by `replacement` orders DateTime rows by format.
 Commit: `feat: date/time DTO fields + kind filter/sort in list query`
 
 ### Task 6 — History round-trip
 - `HistorySnapshots.cs` `HotstringSnapshot`: 3 defaulted members (legacy JSON → nulls)
 - `EntityHistoryRecorder.RecordHotstringsAsync` snapshot construction; `RestoreHotstringCommand.cs` + `RevertHotstringCommand.cs` → thread into `HotstringDefinition`
 - Tests (templates exist): `History/HotstringNewFieldHistoryTests.cs` — revert restores date fields, restore-after-delete rehydrates; `HotstringSnapshotCompatibilityTests.cs` — legacy JSON → nulls, Kind=Text.
+- Backend-only — frontend history DTO/dialog updates are Task 12 (depends on the summary helper Task 9 introduces).
 Commit: `feat: round-trip date/time fields through history snapshots`
 
 ### Task 7 — Seed conversion (confirmed)
@@ -127,10 +131,16 @@ Commit: `feat: dialog kind selector + date/time panel`
 - bUnit page tests: summary rendering, pencil hidden, filter reload with Kind, mobile summary.
 Commit: `feat: grid/mobile date-time rendering, kind filter/sort, inline-edit gating`
 
-### Task 12 — Verify + changelog
+### Task 12 — Frontend history: date/time fields + dialog rendering
+- `UI.Blazor/DTOs/HistoryDtos.cs`: add `Kind = HotstringKind.Text`, `DateTimeFormat`, `DateOffsetAmount`, `DateOffsetUnit` (defaulted/nullable) to `HotstringSnapshot`, mirroring the backend record (`Application/DTOs/HistorySnapshots.cs`)
+- `HotstringHistoryDialog.razor`: when `_preview.Snapshot.Kind == HotstringKind.DateTime`, render the summary (reuse `HotstringEditModel.DateTimeSummary`/`SafePreview` from Task 9) instead of the raw (empty) Replacement line; Text-kind rows unchanged
+- bUnit test: history preview for a DateTime snapshot shows the format summary, not a blank Replacement line
+Commit: `feat: date/time fields in frontend history snapshot + dialog`
+
+### Task 13 — Verify + changelog
 - `dck-verify` skill (build, all tests incl. Testcontainers + bUnit, format, diagnostics)
 - Changelog entry + regenerate changelog.json (repo convention)
-- E2E smoke (spec §11): run API + Blazor, create DateTime hotstring via dialog, download script, confirm `:X*:dd::SendText(FormatTime(A_Now, "yyyy-MM-dd"))`; `playwright-cli` smoke of DateTime panel; verify inline edit still works for Text rows.
+- E2E smoke (spec §11): run API + Blazor, create DateTime hotstring via dialog, download script, confirm `:X*:dd::SendText(FormatTime(A_Now, "yyyy-MM-dd"))`; `playwright-cli` smoke of DateTime panel; verify inline edit still works for Text rows; verify history dialog renders the date/time summary for a DateTime hotstring.
 Commit: `docs: changelog for date/time hotstring kind`
 
 Then PR to `main` via `gh`.
