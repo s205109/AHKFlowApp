@@ -20,10 +20,10 @@ public sealed class ListHotstringsFilterByCategoryTests(HotstringDbFixture fx)
         Category cat1 = new CategoryBuilder().WithOwner(owner).Named("Work").Build();
         Category cat2 = new CategoryBuilder().WithOwner(owner).Named("Home").Build();
 
-        var hsA = Hotstring.Create(owner, "aaa", "alpha", null, true, true, true, TimeProvider.System);
-        var hsB = Hotstring.Create(owner, "bbb", "beta", null, true, true, true, TimeProvider.System);
-        var hsC = Hotstring.Create(owner, "ccc", "gamma", null, true, true, true, TimeProvider.System);
-        var hsD = Hotstring.Create(owner, "ddd", "delta", null, true, true, true, TimeProvider.System);
+        var hsA = Hotstring.Create(owner, new HotstringDefinition("aaa", "alpha", null, true, true, true), TimeProvider.System);
+        var hsB = Hotstring.Create(owner, new HotstringDefinition("bbb", "beta", null, true, true, true), TimeProvider.System);
+        var hsC = Hotstring.Create(owner, new HotstringDefinition("ccc", "gamma", null, true, true, true), TimeProvider.System);
+        var hsD = Hotstring.Create(owner, new HotstringDefinition("ddd", "delta", null, true, true, true), TimeProvider.System);
 
         await using (AppDbContext seed = fx.CreateContext())
         {
@@ -54,8 +54,8 @@ public sealed class ListHotstringsFilterByCategoryTests(HotstringDbFixture fx)
     {
         var owner = Guid.NewGuid();
         Category cat = new CategoryBuilder().WithOwner(owner).Named("Work").Build();
-        var hsA = Hotstring.Create(owner, "xxx", "alpha", null, true, true, true, TimeProvider.System);
-        var hsB = Hotstring.Create(owner, "yyy", "beta", null, true, true, true, TimeProvider.System);
+        var hsA = Hotstring.Create(owner, new HotstringDefinition("xxx", "alpha", null, true, true, true), TimeProvider.System);
+        var hsB = Hotstring.Create(owner, new HotstringDefinition("yyy", "beta", null, true, true, true), TimeProvider.System);
 
         await using (AppDbContext seed = fx.CreateContext())
         {

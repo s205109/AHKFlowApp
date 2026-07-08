@@ -66,12 +66,13 @@ internal sealed class CreateHotstringCommandHandler(
 
         var entity = Hotstring.Create(
             ownerOid,
-            input.Trigger,
-            input.Replacement,
-            description,
-            input.AppliesToAllProfiles,
-            input.IsEndingCharacterRequired,
-            input.IsTriggerInsideWord,
+            new HotstringDefinition(
+                input.Trigger,
+                input.Replacement,
+                description,
+                input.AppliesToAllProfiles,
+                input.IsEndingCharacterRequired,
+                input.IsTriggerInsideWord),
             clock);
 
         db.Hotstrings.Add(entity);

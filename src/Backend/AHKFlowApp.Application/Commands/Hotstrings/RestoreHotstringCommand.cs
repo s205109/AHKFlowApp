@@ -57,12 +57,13 @@ internal sealed class RestoreHotstringCommandHandler(
         var entity = Hotstring.Restore(
             request.Id,
             ownerOid,
-            snapshot.Trigger,
-            snapshot.Replacement,
-            snapshot.Description,
-            snapshot.AppliesToAllProfiles,
-            snapshot.IsEndingCharacterRequired,
-            snapshot.IsTriggerInsideWord,
+            new HotstringDefinition(
+                snapshot.Trigger,
+                snapshot.Replacement,
+                snapshot.Description,
+                snapshot.AppliesToAllProfiles,
+                snapshot.IsEndingCharacterRequired,
+                snapshot.IsTriggerInsideWord),
             snapshot.CreatedAt,
             clock);
 

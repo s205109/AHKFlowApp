@@ -1,4 +1,5 @@
 using AHKFlowApp.Domain.Entities;
+using AHKFlowApp.Domain.Enums;
 using FluentAssertions;
 using Microsoft.Extensions.Time.Testing;
 using Xunit;
@@ -14,7 +15,8 @@ public sealed class HotstringTests
     {
         var owner = Guid.NewGuid();
 
-        var hs = Hotstring.Create(owner, "btw", "by the way", description: null, appliesToAllProfiles: true, true, false, _clock);
+        var hs = Hotstring.Create(
+            owner, new HotstringDefinition("btw", "by the way", null, true, true, false), _clock);
 
         hs.Id.Should().NotBeEmpty();
         hs.OwnerOid.Should().Be(owner);
@@ -31,7 +33,8 @@ public sealed class HotstringTests
     [Fact]
     public void Create_WithAppliesToAllProfilesFalse_SetsProperty()
     {
-        var hs = Hotstring.Create(Guid.NewGuid(), "x", "y", description: null, appliesToAllProfiles: false, true, true, _clock);
+        var hs = Hotstring.Create(
+            Guid.NewGuid(), new HotstringDefinition("x", "y", null, false, true, true), _clock);
 
         hs.AppliesToAllProfiles.Should().BeFalse();
     }
@@ -40,10 +43,11 @@ public sealed class HotstringTests
     public void Update_ChangesAllMutableFields()
     {
         FakeTimeProvider clock = new(DateTimeOffset.Parse("2026-01-01T00:00:00Z"));
-        var hs = Hotstring.Create(Guid.NewGuid(), "old", "old replacement", description: null, appliesToAllProfiles: true, true, false, clock);
+        var hs = Hotstring.Create(
+            Guid.NewGuid(), new HotstringDefinition("old", "old replacement", null, true, true, false), clock);
 
         clock.Advance(TimeSpan.FromMinutes(1));
-        hs.Update("new", "new replacement", description: null, appliesToAllProfiles: false, false, true, clock);
+        hs.Update(new HotstringDefinition("new", "new replacement", null, false, false, true), clock);
 
         hs.Trigger.Should().Be("new");
         hs.Replacement.Should().Be("new replacement");
@@ -57,9 +61,10 @@ public sealed class HotstringTests
     public void Update_WithAppliesToAllProfiles_SetsFlag()
     {
         TimeProvider clock = TimeProvider.System;
-        var hs = Hotstring.Create(Guid.NewGuid(), "x", "y", description: null, appliesToAllProfiles: false, true, true, clock);
+        var hs = Hotstring.Create(
+            Guid.NewGuid(), new HotstringDefinition("x", "y", null, false, true, true), clock);
 
-        hs.Update("x", "y", description: null, appliesToAllProfiles: true, true, true, clock);
+        hs.Update(new HotstringDefinition("x", "y", null, true, true, true), clock);
 
         hs.AppliesToAllProfiles.Should().BeTrue();
     }
@@ -69,13 +74,14 @@ public sealed class HotstringTests
     {
         FakeTimeProvider clock = new(DateTimeOffset.Parse("2026-05-19T12:00:00Z"));
         var h = Hotstring.Create(
-            ownerOid: Guid.NewGuid(),
-            trigger: "btw",
-            replacement: "by the way",
-            description: "polite filler",
-            appliesToAllProfiles: true,
-            isEndingCharacterRequired: true,
-            isTriggerInsideWord: false,
+            Guid.NewGuid(),
+            new HotstringDefinition(
+                Trigger: "btw",
+                Replacement: "by the way",
+                Description: "polite filler",
+                AppliesToAllProfiles: true,
+                IsEndingCharacterRequired: true,
+                IsTriggerInsideWord: false),
             clock);
 
         h.Description.Should().Be("polite filler");
@@ -86,13 +92,14 @@ public sealed class HotstringTests
     {
         FakeTimeProvider clock = new(DateTimeOffset.Parse("2026-05-19T12:00:00Z"));
         var h = Hotstring.Create(
-            ownerOid: Guid.NewGuid(),
-            trigger: "btw",
-            replacement: "by the way",
-            description: null,
-            appliesToAllProfiles: true,
-            isEndingCharacterRequired: true,
-            isTriggerInsideWord: false,
+            Guid.NewGuid(),
+            new HotstringDefinition(
+                Trigger: "btw",
+                Replacement: "by the way",
+                Description: null,
+                AppliesToAllProfiles: true,
+                IsEndingCharacterRequired: true,
+                IsTriggerInsideWord: false),
             clock);
 
         h.Description.Should().BeNull();
@@ -103,13 +110,69 @@ public sealed class HotstringTests
     {
         FakeTimeProvider clock = new(DateTimeOffset.Parse("2026-05-19T12:00:00Z"));
         var h = Hotstring.Create(
-            Guid.NewGuid(), "btw", "by the way", description: null,
-            appliesToAllProfiles: true, isEndingCharacterRequired: true, isTriggerInsideWord: false, clock);
+            Guid.NewGuid(),
+            new HotstringDefinition("btw", "by the way", null, true, true, false),
+            clock);
 
         clock.Advance(TimeSpan.FromHours(1));
-        h.Update("btw", "by the way!", description: "updated", true, true, false, clock);
+        h.Update(new HotstringDefinition("btw", "by the way!", "updated", true, true, false), clock);
 
         h.Description.Should().Be("updated");
         h.UpdatedAt.Should().Be(clock.GetUtcNow());
+    }
+
+    [Fact]
+    public void Create_DefaultDefinition_IsTextKindWithNewFlagsOff()
+    {
+        var hs = Hotstring.Create(
+            Guid.NewGuid(),
+            new HotstringDefinition("btw", "by the way", null, true, true, false),
+            _clock);
+
+        hs.Kind.Should().Be(HotstringKind.Text);
+        hs.IsCaseSensitive.Should().BeFalse();
+        hs.OmitEndingCharacter.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Create_WithNewOptions_SetsKindAndFlags()
+    {
+        var hs = Hotstring.Create(
+            Guid.NewGuid(),
+            new HotstringDefinition("btw", "by the way", null, true, true, false,
+                HotstringKind.Text, IsCaseSensitive: true, OmitEndingCharacter: true),
+            _clock);
+
+        hs.IsCaseSensitive.Should().BeTrue();
+        hs.OmitEndingCharacter.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Update_WithNewOptions_OverwritesFlags()
+    {
+        var hs = Hotstring.Create(
+            Guid.NewGuid(), new HotstringDefinition("x", "y", null, true, true, false), _clock);
+
+        hs.Update(new HotstringDefinition("x", "y", null, true, true, false,
+            HotstringKind.Text, IsCaseSensitive: true, OmitEndingCharacter: true), _clock);
+
+        hs.IsCaseSensitive.Should().BeTrue();
+        hs.OmitEndingCharacter.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Restore_WithNewOptions_RehydratesFlags()
+    {
+        DateTimeOffset createdAt = DateTimeOffset.UtcNow.AddDays(-1);
+
+        var hs = Hotstring.Restore(
+            Guid.NewGuid(), Guid.NewGuid(),
+            new HotstringDefinition("x", "y", null, true, true, false,
+                HotstringKind.Text, IsCaseSensitive: true, OmitEndingCharacter: true),
+            createdAt, _clock);
+
+        hs.CreatedAt.Should().Be(createdAt);
+        hs.IsCaseSensitive.Should().BeTrue();
+        hs.OmitEndingCharacter.Should().BeTrue();
     }
 }

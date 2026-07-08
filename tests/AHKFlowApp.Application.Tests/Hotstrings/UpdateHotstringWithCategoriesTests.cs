@@ -21,7 +21,7 @@ public sealed class UpdateHotstringWithCategoriesTests(HotstringDbFixture fx)
     public async Task Handle_WhenForeignCategoryId_ReturnsInvalid()
     {
         var owner = Guid.NewGuid();
-        var entity = Hotstring.Create(owner, "btw", "old", null, true, true, true, _clock);
+        var entity = Hotstring.Create(owner, new HotstringDefinition("btw", "old", null, true, true, true), _clock);
         var foreignCategoryId = Guid.NewGuid();
 
         await using (AppDbContext seed = fx.CreateContext())
@@ -47,7 +47,7 @@ public sealed class UpdateHotstringWithCategoriesTests(HotstringDbFixture fx)
     public async Task Handle_WhenValidCategoryIds_ReplacesJunctionRows()
     {
         var owner = Guid.NewGuid();
-        var entity = Hotstring.Create(owner, "wfh", "work from home", null, true, true, true, _clock);
+        var entity = Hotstring.Create(owner, new HotstringDefinition("wfh", "work from home", null, true, true, true), _clock);
         Category cat1 = new CategoryBuilder().WithOwner(owner).Named("Work").Build();
         Category cat2 = new CategoryBuilder().WithOwner(owner).Named("Home").Build();
         Category cat3 = new CategoryBuilder().WithOwner(owner).Named("Other").Build();
@@ -86,7 +86,7 @@ public sealed class UpdateHotstringWithCategoriesTests(HotstringDbFixture fx)
     public async Task Handle_WhenReplacingProfiles_ReturnsDtoWithExactProfileIds()
     {
         var owner = Guid.NewGuid();
-        var entity = Hotstring.Create(owner, "prf", "profile swap", null, false, true, true, _clock);
+        var entity = Hotstring.Create(owner, new HotstringDefinition("prf", "profile swap", null, false, true, true), _clock);
         Profile prof1 = new ProfileBuilder().WithOwner(owner).WithName("Old").Build();
         Profile prof2 = new ProfileBuilder().WithOwner(owner).WithName("New1").AsDefault(false).Build();
         Profile prof3 = new ProfileBuilder().WithOwner(owner).WithName("New2").AsDefault(false).Build();
@@ -123,7 +123,7 @@ public sealed class UpdateHotstringWithCategoriesTests(HotstringDbFixture fx)
     public async Task Handle_WhenEmptyCategoryIds_ClearsAllCategoryLinks()
     {
         var owner = Guid.NewGuid();
-        var entity = Hotstring.Create(owner, "clr", "clear cats", null, true, true, true, _clock);
+        var entity = Hotstring.Create(owner, new HotstringDefinition("clr", "clear cats", null, true, true, true), _clock);
         Category cat = new CategoryBuilder().WithOwner(owner).Named("Work").Build();
 
         await using (AppDbContext seed = fx.CreateContext())

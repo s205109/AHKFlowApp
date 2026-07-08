@@ -21,9 +21,12 @@ public sealed class RestoreFactoryTests
         var now = DateTimeOffset.Parse("2026-07-01T10:00:00Z");
 
         var entity = Hotstring.Restore(
-            id, ownerOid, "btw", "by the way", "desc",
-            appliesToAllProfiles: false, isEndingCharacterRequired: true,
-            isTriggerInsideWord: false, createdAt, new FixedClock(now));
+            id, ownerOid,
+            new HotstringDefinition(
+                "btw", "by the way", "desc",
+                AppliesToAllProfiles: false, IsEndingCharacterRequired: true,
+                IsTriggerInsideWord: false),
+            createdAt, new FixedClock(now));
 
         entity.Id.Should().Be(id);
         entity.OwnerOid.Should().Be(ownerOid);
