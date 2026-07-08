@@ -122,8 +122,11 @@ internal sealed class ImportHotstringsCommandHandler(
             foreach ((int _, HotstringImportRowDto row) in items)
             {
                 var entity = Hotstring.Create(
-                    ownerOid, row.Trigger, row.Replacement, description: null,
-                    input.AppliesToAllProfiles, row.IsEndingCharacterRequired, row.IsTriggerInsideWord, clock);
+                    ownerOid,
+                    new HotstringDefinition(
+                        row.Trigger, row.Replacement, Description: null,
+                        input.AppliesToAllProfiles, row.IsEndingCharacterRequired, row.IsTriggerInsideWord),
+                    clock);
                 db.Hotstrings.Add(entity);
                 created.Add(entity);
 

@@ -58,12 +58,13 @@ internal sealed class RevertHotstringCommandHandler(
             .ToArrayAsync(ct);
 
         entity.Update(
-            snapshot.Trigger,
-            snapshot.Replacement,
-            snapshot.Description,
-            snapshot.AppliesToAllProfiles,
-            snapshot.IsEndingCharacterRequired,
-            snapshot.IsTriggerInsideWord,
+            new HotstringDefinition(
+                snapshot.Trigger,
+                snapshot.Replacement,
+                snapshot.Description,
+                snapshot.AppliesToAllProfiles,
+                snapshot.IsEndingCharacterRequired,
+                snapshot.IsTriggerInsideWord),
             clock);
 
         db.HotstringProfiles.RemoveRange(entity.Profiles);

@@ -84,7 +84,8 @@ public sealed class SeedHotstringsCommandHandlerTests(HotstringDbFixture fx)
 
         await using (AppDbContext seed = fx.CreateContext())
         {
-            seed.Hotstrings.Add(Hotstring.Create(owner, "btw", "existing", null, true, true, true, TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(
+                owner, new HotstringDefinition("btw", "existing", null, true, true, true), TimeProvider.System));
             await seed.SaveChangesAsync();
         }
 
@@ -107,7 +108,8 @@ public sealed class SeedHotstringsCommandHandlerTests(HotstringDbFixture fx)
 
         await using (AppDbContext seed = fx.CreateContext())
         {
-            seed.Hotstrings.Add(Hotstring.Create(owner, "preexisting", "x", null, true, true, true, TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(
+                owner, new HotstringDefinition("preexisting", "x", null, true, true, true), TimeProvider.System));
             await seed.SaveChangesAsync();
         }
 

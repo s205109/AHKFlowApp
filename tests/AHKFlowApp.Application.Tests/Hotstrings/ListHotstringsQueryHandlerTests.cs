@@ -21,8 +21,8 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
 
         await using (AppDbContext seed = fx.CreateContext())
         {
-            seed.Hotstrings.Add(Hotstring.Create(owner, "mine", "x", null, true, true, true, TimeProvider.System));
-            seed.Hotstrings.Add(Hotstring.Create(other, "theirs", "y", null, true, true, true, TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, new HotstringDefinition("mine", "x", null, true, true, true), TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(other, new HotstringDefinition("theirs", "y", null, true, true, true), TimeProvider.System));
             await seed.SaveChangesAsync();
         }
 
@@ -46,9 +46,9 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
         {
             var profile = Profile.Create(owner, "Work", true, "", "", TimeProvider.System);
             seed.Profiles.Add(profile);
-            var scoped = Hotstring.Create(owner, "a", "x", null, false, true, true, TimeProvider.System);
-            var global = Hotstring.Create(owner, "b", "y", null, true, true, true, TimeProvider.System);
-            var other = Hotstring.Create(owner, "c", "z", null, false, true, true, TimeProvider.System);
+            var scoped = Hotstring.Create(owner, new HotstringDefinition("a", "x", null, false, true, true), TimeProvider.System);
+            var global = Hotstring.Create(owner, new HotstringDefinition("b", "y", null, true, true, true), TimeProvider.System);
+            var other = Hotstring.Create(owner, new HotstringDefinition("c", "z", null, false, true, true), TimeProvider.System);
             seed.Hotstrings.AddRange(scoped, global, other);
             await seed.SaveChangesAsync();
             profileId = profile.Id;
@@ -77,7 +77,8 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
         {
             for (int i = 0; i < 5; i++)
             {
-                seed.Hotstrings.Add(Hotstring.Create(owner, $"t{i}", "x", null, true, true, true, clock));
+                seed.Hotstrings.Add(Hotstring.Create(
+                    owner, new HotstringDefinition($"t{i}", "x", null, true, true, true), clock));
                 clock.Advance(TimeSpan.FromSeconds(1));
             }
             await seed.SaveChangesAsync();
@@ -113,8 +114,8 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
 
         await using (AppDbContext seed = fx.CreateContext())
         {
-            seed.Hotstrings.Add(Hotstring.Create(owner, "btw", "by the way", null, true, true, true, TimeProvider.System));
-            seed.Hotstrings.Add(Hotstring.Create(owner, "fyi", "for your info", null, true, true, true, TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, new HotstringDefinition("btw", "by the way", null, true, true, true), TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, new HotstringDefinition("fyi", "for your info", null, true, true, true), TimeProvider.System));
             await seed.SaveChangesAsync();
         }
 
@@ -134,8 +135,8 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
 
         await using (AppDbContext seed = fx.CreateContext())
         {
-            seed.Hotstrings.Add(Hotstring.Create(owner, "a", "needle in a haystack", null, true, true, true, TimeProvider.System));
-            seed.Hotstrings.Add(Hotstring.Create(owner, "b", "nothing relevant", null, true, true, true, TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, new HotstringDefinition("a", "needle in a haystack", null, true, true, true), TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, new HotstringDefinition("b", "nothing relevant", null, true, true, true), TimeProvider.System));
             await seed.SaveChangesAsync();
         }
 
@@ -155,8 +156,8 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
 
         await using (AppDbContext seed = fx.CreateContext())
         {
-            seed.Hotstrings.Add(Hotstring.Create(owner, "ka", "Klaus", "German greeting", true, true, true, TimeProvider.System));
-            seed.Hotstrings.Add(Hotstring.Create(owner, "x", "y", "unrelated note", true, true, true, TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, new HotstringDefinition("ka", "Klaus", "German greeting", true, true, true), TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, new HotstringDefinition("x", "y", "unrelated note", true, true, true), TimeProvider.System));
             await seed.SaveChangesAsync();
         }
 
@@ -176,8 +177,8 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
 
         await using (AppDbContext seed = fx.CreateContext())
         {
-            seed.Hotstrings.Add(Hotstring.Create(owner, "a", "FOO bar", null, true, true, true, TimeProvider.System));
-            seed.Hotstrings.Add(Hotstring.Create(owner, "b", "baz foo", null, true, true, true, TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, new HotstringDefinition("a", "FOO bar", null, true, true, true), TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, new HotstringDefinition("b", "baz foo", null, true, true, true), TimeProvider.System));
             await seed.SaveChangesAsync();
         }
 
@@ -197,9 +198,9 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
 
         await using (AppDbContext seed = fx.CreateContext())
         {
-            seed.Hotstrings.Add(Hotstring.Create(owner, "btw", "by the way", null, true, true, true, TimeProvider.System));
-            seed.Hotstrings.Add(Hotstring.Create(owner, "btw2", "other text", null, true, true, true, TimeProvider.System));
-            seed.Hotstrings.Add(Hotstring.Create(owner, "fyi", "by the way", null, true, true, true, TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, new HotstringDefinition("btw", "by the way", null, true, true, true), TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, new HotstringDefinition("btw2", "other text", null, true, true, true), TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, new HotstringDefinition("fyi", "by the way", null, true, true, true), TimeProvider.System));
             await seed.SaveChangesAsync();
         }
 
@@ -220,8 +221,8 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
 
         await using (AppDbContext seed = fx.CreateContext())
         {
-            seed.Hotstrings.Add(Hotstring.Create(owner, "a", "x", null, true, true, false, TimeProvider.System));
-            seed.Hotstrings.Add(Hotstring.Create(owner, "b", "x", null, true, false, true, TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, new HotstringDefinition("a", "x", null, true, true, false), TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, new HotstringDefinition("b", "x", null, true, false, true), TimeProvider.System));
             await seed.SaveChangesAsync();
         }
 
@@ -241,9 +242,9 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
 
         await using (AppDbContext seed = fx.CreateContext())
         {
-            seed.Hotstrings.Add(Hotstring.Create(owner, "c", "x", null, true, true, true, TimeProvider.System));
-            seed.Hotstrings.Add(Hotstring.Create(owner, "a", "x", null, true, true, true, TimeProvider.System));
-            seed.Hotstrings.Add(Hotstring.Create(owner, "b", "x", null, true, true, true, TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, new HotstringDefinition("c", "x", null, true, true, true), TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, new HotstringDefinition("a", "x", null, true, true, true), TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, new HotstringDefinition("b", "x", null, true, true, true), TimeProvider.System));
             await seed.SaveChangesAsync();
         }
 
@@ -263,9 +264,9 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
 
         await using (AppDbContext seed = fx.CreateContext())
         {
-            seed.Hotstrings.Add(Hotstring.Create(owner, "a", "x", "German greeting", true, true, true, TimeProvider.System));
-            seed.Hotstrings.Add(Hotstring.Create(owner, "b", "x", "unrelated note", true, true, true, TimeProvider.System));
-            seed.Hotstrings.Add(Hotstring.Create(owner, "c", "x", null, true, true, true, TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, new HotstringDefinition("a", "x", "German greeting", true, true, true), TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, new HotstringDefinition("b", "x", "unrelated note", true, true, true), TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, new HotstringDefinition("c", "x", null, true, true, true), TimeProvider.System));
             await seed.SaveChangesAsync();
         }
 
@@ -285,9 +286,9 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
 
         await using (AppDbContext seed = fx.CreateContext())
         {
-            seed.Hotstrings.Add(Hotstring.Create(owner, "a", "x", "charlie", true, true, true, TimeProvider.System));
-            seed.Hotstrings.Add(Hotstring.Create(owner, "b", "x", "alpha", true, true, true, TimeProvider.System));
-            seed.Hotstrings.Add(Hotstring.Create(owner, "c", "x", "bravo", true, true, true, TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, new HotstringDefinition("a", "x", "charlie", true, true, true), TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, new HotstringDefinition("b", "x", "alpha", true, true, true), TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, new HotstringDefinition("c", "x", "bravo", true, true, true), TimeProvider.System));
             await seed.SaveChangesAsync();
         }
 

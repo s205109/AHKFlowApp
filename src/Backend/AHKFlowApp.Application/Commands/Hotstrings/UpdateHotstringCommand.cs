@@ -72,12 +72,13 @@ internal sealed class UpdateHotstringCommandHandler(
         EntityHistory historyEntry = await recorder.RecordHotstringAsync(entity, HistoryChangeType.Edit, ct);
 
         entity.Update(
-            input.Trigger,
-            input.Replacement,
-            description,
-            input.AppliesToAllProfiles,
-            input.IsEndingCharacterRequired,
-            input.IsTriggerInsideWord,
+            new HotstringDefinition(
+                input.Trigger,
+                input.Replacement,
+                description,
+                input.AppliesToAllProfiles,
+                input.IsEndingCharacterRequired,
+                input.IsTriggerInsideWord),
             clock);
 
         // Replace junction rows via the navigation collections only; adding to the
