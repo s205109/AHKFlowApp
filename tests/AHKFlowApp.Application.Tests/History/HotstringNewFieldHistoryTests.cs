@@ -1,0 +1,93 @@
+using AHKFlowApp.Application.Commands.Hotstrings;
+using AHKFlowApp.Application.DTOs;
+using AHKFlowApp.Application.Services;
+using AHKFlowApp.Domain.Entities;
+using AHKFlowApp.Domain.Enums;
+using AHKFlowApp.Infrastructure.Persistence;
+using AHKFlowApp.TestUtilities.Builders;
+using Ardalis.Result;
+using FluentAssertions;
+using Xunit;
+
+namespace AHKFlowApp.Application.Tests.History;
+
+[Collection("HistoryDb")]
+[Trait("Category", "Integration")]
+public sealed class HotstringNewFieldHistoryTests(HistoryDbFixture fx)
+{
+    [Fact]
+    public async Task RevertHotstring_RestoresCaseSensitiveAndOmitFlags()
+    {
+        var owner = Guid.NewGuid();
+        Hotstring entity = new HotstringBuilder()
+            .WithOwner(owner).WithTrigger("flags1").WithReplacement("x")
+            .WithCaseSensitive(true).WithOmitEndingCharacter(true).Build();
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(entity);
+            await seed.SaveChangesAsync();
+        }
+
+        // Update turns both flags off — the before-image snapshot must carry them.
+        await using (AppDbContext db = fx.CreateContext())
+        {
+            UpdateHotstringCommandHandler update = new(
+                db, CurrentUserHelper.For(owner), TimeProvider.System,
+                new EntityHistoryRecorder(db, TimeProvider.System));
+            Result<HotstringDto> updated = await update.ExecuteAsync(
+                new UpdateHotstringCommand(entity.Id,
+                    new UpdateHotstringDto("flags1", "x", null, true, true, true, null)), default);
+            updated.IsSuccess.Should().BeTrue();
+            updated.Value.IsCaseSensitive.Should().BeFalse();
+        }
+
+        await using AppDbContext revertDb = fx.CreateContext();
+        RevertHotstringCommandHandler revert = new(
+            revertDb, CurrentUserHelper.For(owner), TimeProvider.System,
+            new EntityHistoryRecorder(revertDb, TimeProvider.System));
+        Result<HotstringDto> result = await revert.ExecuteAsync(
+            new RevertHotstringCommand(entity.Id, 1), default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Kind.Should().Be(HotstringKind.Text);
+        result.Value.IsCaseSensitive.Should().BeTrue();
+        result.Value.OmitEndingCharacter.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task RestoreHotstring_AfterDelete_RehydratesNewFlags()
+    {
+        var owner = Guid.NewGuid();
+        Hotstring entity = new HotstringBuilder()
+            .WithOwner(owner).WithTrigger("flags2").WithReplacement("x")
+            .WithCaseSensitive(true).WithOmitEndingCharacter(true).Build();
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(entity);
+            await seed.SaveChangesAsync();
+        }
+
+        // Delete via the real handler so the tombstone snapshot is written the production way.
+        // (Copy handler construction from DeleteHotstringCommandHandlerTests.cs if the ctor differs.)
+        await using (AppDbContext db = fx.CreateContext())
+        {
+            DeleteHotstringCommandHandler delete = new(
+                db, CurrentUserHelper.For(owner), new EntityHistoryRecorder(db, TimeProvider.System));
+            (await delete.ExecuteAsync(new DeleteHotstringCommand(entity.Id), default))
+                .IsSuccess.Should().BeTrue();
+        }
+
+        await using AppDbContext restoreDb = fx.CreateContext();
+        RestoreHotstringCommandHandler restore = new(
+            restoreDb, CurrentUserHelper.For(owner), TimeProvider.System,
+            new EntityHistoryRecorder(restoreDb, TimeProvider.System));
+        Result<HotstringDto> result = await restore.ExecuteAsync(
+            new RestoreHotstringCommand(entity.Id), default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.IsCaseSensitive.Should().BeTrue();
+        result.Value.OmitEndingCharacter.Should().BeTrue();
+    }
+}
