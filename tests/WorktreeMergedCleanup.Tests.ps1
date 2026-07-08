@@ -108,6 +108,39 @@ try {
     Remove-TempTree $repo
 }
 
+# --- Test: main-ref worktree is excluded even when $RepoRoot points elsewhere ---
+# Regression guard: a standalone run from inside a linked worktree (no new-worktree.ps1
+# Assert-MainCheckout gate) resolves $RepoRoot to that linked worktree, not the real main
+# checkout. Since `git branch --merged main` always includes `main` itself, the path-based
+# exclusion alone previously let the main checkout slip into the eligible set.
+$repo = New-TempGitRepo
+try {
+    $otherPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-other'
+
+    $eligible = Get-EligibleMergedWorktrees -RepoRoot $otherPath -MainRef 'main'
+    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
+
+    Assert-True (-not ($keys -contains (ConvertTo-Key $repo))) 'The main-ref worktree must never be eligible, even when $RepoRoot is a different (linked) worktree.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: main-ref exclusion matches a fully-qualified -MainRef too ------------
+# Regression guard: -MainRef 'refs/heads/main' must exclude the main checkout the same
+# way -MainRef 'main' does. $wt.Branch is always a short name, so a naive string compare
+# against an unresolved 'refs/heads/main' never matches.
+$repo = New-TempGitRepo
+try {
+    Add-TestWorktree -RepoDir $repo -BranchName 'feat-other' | Out-Null
+
+    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'refs/heads/main'
+    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
+
+    Assert-True (-not ($keys -contains (ConvertTo-Key $repo))) 'The main-ref worktree must never be eligible when -MainRef is the fully-qualified refs/heads/main form.'
+} finally {
+    Remove-TempTree $repo
+}
+
 # --- Test: ExcludePath protects the worktree this run is about to create/reuse ---
 $repo = New-TempGitRepo
 try {

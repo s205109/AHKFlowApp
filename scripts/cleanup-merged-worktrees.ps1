@@ -65,6 +65,16 @@ function Get-EligibleMergedWorktrees {
     $repoRootFull = ([System.IO.Path]::GetFullPath($RepoRoot)).TrimEnd('\', '/')
     $excludeFull = if ($ExcludePath) { ([System.IO.Path]::GetFullPath($ExcludePath)).TrimEnd('\', '/') } else { $null }
 
+    # Resolve $MainRef to the local branch short name it denotes, so the main-ref exclusion
+    # below matches regardless of the ref form the caller passed ('main' vs 'refs/heads/main').
+    # Falls back to the raw value when $MainRef isn't a local branch (e.g. 'origin/main') --
+    # then only the repoRootFull path check above can exclude the main checkout.
+    $mainBranchShortName = $MainRef
+    $mainSymbolicRef = & git -C $RepoRoot rev-parse --symbolic-full-name $MainRef 2>$null
+    if ($LASTEXITCODE -eq 0 -and $mainSymbolicRef -like 'refs/heads/*') {
+        $mainBranchShortName = $mainSymbolicRef.Substring('refs/heads/'.Length)
+    }
+
     # Bare, marker-free short names. Plain `git branch --merged` prefixes '* '/'+ ',
     # so --format is required or a naive compare skips every eligible worktree.
     $mergedNames = & git -C $RepoRoot branch --format='%(refname:short)' --merged $MainRef 2>$null
@@ -100,6 +110,12 @@ function Get-EligibleMergedWorktrees {
             continue
         }
         if (-not $wt.Branch) { continue }
+        # Belt-and-suspenders: a branch is always "merged" into itself, so the main-ref
+        # worktree would otherwise pass the merged check below. The repoRootFull compare
+        # above only excludes it when $RepoRoot happens to resolve to that exact worktree
+        # (guaranteed via new-worktree.ps1's Assert-MainCheckout, NOT guaranteed for a
+        # standalone run from inside a linked worktree) so this check must not depend on it.
+        if ([string]::Equals($wt.Branch, $mainBranchShortName, [System.StringComparison]::OrdinalIgnoreCase)) { continue }
         if (-not $mergedSet.ContainsKey($wt.Branch)) { continue }
 
         $status = & git -C $wtFull status --porcelain 2>$null
