@@ -52,7 +52,7 @@ These form one contract: change them together or not at all. They stay flat in
 | File | Purpose |
 | --- | --- |
 | `setup-worktree-local-dev.ps1` | Assigns deterministic localhost ports and writes worktree-local config. |
-| `remove-worktree-local-dev.ps1` | WorktreeRemove hook: deletes the worktree + branch when a worktree is removed. |
+| `remove-worktree-local-dev.ps1` | WorktreeRemove hook: removes the worktree + branch only when the branch is merged into `main` AND the tree is clean (detached HEAD is never eligible); otherwise preserves it and logs manual-cleanup guidance. `AHKFLOW_WORKTREE_FORCE_REMOVE=1` bypasses the gate. |
 | `cleanup-merged-worktrees.ps1` | Detects worktrees merged into `main` and removes the clean ones on opt-in (`-Cleanup`, `AHKFLOW_WORKTREE_CLEANUP=1` for Claude CLI native worktree creation, or the interactive prompt); invoked by `new-worktree.ps1` before it creates a worktree. |
 | `prune-worktree-databases.ps1` | Drops orphaned per-worktree databases with no live git worktree. |
 | `prune-worktree-docker.ps1` | Removes orphaned per-worktree Docker compose projects with no live git worktree. |

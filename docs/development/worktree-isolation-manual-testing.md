@@ -132,8 +132,14 @@ free it first:
   delete.
 
 Then remove the worktree. In a Claude Code session inside the worktree, type `/exit` and
-choose **remove worktree**. Plain git / Codex / Copilot users instead run, from the main
-checkout, `git worktree remove .claude\worktrees\wt-iso-1`, then `git worktree prune` and
+choose **remove worktree**. This only auto-deletes the worktree when its branch is
+**merged into `main` AND** the tree is **clean** — an unmerged, dirty, or detached-HEAD
+worktree is instead preserved, with the removal log naming the reason and printing
+manual-removal commands. If `wt-iso-1` isn't merged yet, either merge it first or set
+`AHKFLOW_WORKTREE_FORCE_REMOVE=1` before `/exit` to bypass the gate (the folder is
+deleted; an unmerged branch still survives via the safe `git branch -d`). Plain git /
+Codex / Copilot users instead run, from the main checkout,
+`git worktree remove .claude\worktrees\wt-iso-1`, then `git worktree prune` and
 `git branch -d wt-iso-1`. Docker teardown (`docker compose -p <project> down -v`) runs only
 after the folder and branch are gone.
 
