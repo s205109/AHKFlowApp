@@ -100,6 +100,12 @@ function Get-EligibleMergedWorktrees {
             continue
         }
         if (-not $wt.Branch) { continue }
+        # Belt-and-suspenders: a branch is always "merged" into itself, so the main-ref
+        # worktree would otherwise pass the merged check below. The repoRootFull compare
+        # above only excludes it when $RepoRoot happens to resolve to that exact worktree
+        # (guaranteed via new-worktree.ps1's Assert-MainCheckout, NOT guaranteed for a
+        # standalone run from inside a linked worktree) so this check must not depend on it.
+        if ([string]::Equals($wt.Branch, $MainRef, [System.StringComparison]::OrdinalIgnoreCase)) { continue }
         if (-not $mergedSet.ContainsKey($wt.Branch)) { continue }
 
         $status = & git -C $wtFull status --porcelain 2>$null
