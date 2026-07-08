@@ -99,7 +99,7 @@ public sealed class GetProfileScriptPreviewQueryTests(ScriptGeneratorDbFixture f
         result.Value.Script.Should().Be(
             "#Requires AutoHotkey v2.0\n" +
             "; --- Hotstrings ---\n" +
-            "::btw::by the way\n" +
+            ":T:btw::by the way\n" +
             "; --- Hotkeys ---\n" +
             "^n::Run(\"notepad.exe\")\n" +
             "; end");

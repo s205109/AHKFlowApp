@@ -100,8 +100,8 @@ public sealed class GenerateAllProfileScriptsQueryTests(ScriptGeneratorDbFixture
         workScript.Content.Should().Be(
             "HW\n" +
             "; --- Hotstrings ---\n" +
-            "::addr::123 Main St\n" +
-            "::btw::by the way\n" +
+            ":T:addr::123 Main St\n" +
+            ":T:btw::by the way\n" +
             "; --- Hotkeys ---\n" +
             "FW");
 
@@ -109,7 +109,7 @@ public sealed class GenerateAllProfileScriptsQueryTests(ScriptGeneratorDbFixture
         personalScript.Content.Should().Be(
             "HP\n" +
             "; --- Hotstrings ---\n" +
-            "::btw::by the way\n" +
+            ":T:btw::by the way\n" +
             "; --- Hotkeys ---\n" +
             "^n::Run(\"notepad.exe\")\n" +
             "FP");

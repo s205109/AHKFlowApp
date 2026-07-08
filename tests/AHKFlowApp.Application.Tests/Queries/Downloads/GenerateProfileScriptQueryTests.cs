@@ -97,8 +97,8 @@ public sealed class GenerateProfileScriptQueryTests(ScriptGeneratorDbFixture fx)
         result.Value.Content.Should().Be(
             "#Requires AutoHotkey v2.0\n" +
             "; --- Hotstrings ---\n" +
-            "::addr::123 Main St\n" +
-            ":*?:btw::by the way\n" +
+            ":T:addr::123 Main St\n" +
+            ":*?T:btw::by the way\n" +
             "; --- Hotkeys ---\n" +
             "^!n::Run(\"notepad.exe\")\n" +
             "; end");
