@@ -115,4 +115,46 @@ public sealed class HotstringEditModelTests
         dto.IsEndingCharacterRequired.Should().BeFalse();
         dto.IsTriggerInsideWord.Should().BeTrue();
     }
+
+    [Fact]
+    public void ExpandImmediately_InvertsEndingCharacterRequired()
+    {
+        HotstringEditModel model = new() { IsEndingCharacterRequired = true };
+
+        model.ExpandImmediately.Should().BeFalse();
+
+        model.ExpandImmediately = true;
+        model.IsEndingCharacterRequired.Should().BeFalse();
+    }
+
+    [Fact]
+    public void ToCreateDto_ThreadsKindAndNewFlags()
+    {
+        HotstringEditModel model = new()
+        {
+            Trigger = "btw",
+            Replacement = "x",
+            IsCaseSensitive = true,
+            OmitEndingCharacter = true,
+        };
+
+        CreateHotstringDto dto = model.ToCreateDto();
+
+        dto.Kind.Should().Be(HotstringKind.Text);
+        dto.IsCaseSensitive.Should().BeTrue();
+        dto.OmitEndingCharacter.Should().BeTrue();
+    }
+
+    [Fact]
+    public void FromDto_AndClone_PreserveNewFields()
+    {
+        HotstringDto dto = new(Guid.NewGuid(), [], true, "btw", "x", null, true, false,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null,
+            HotstringKind.Text, IsCaseSensitive: true, OmitEndingCharacter: true);
+
+        HotstringEditModel clone = HotstringEditModel.FromDto(dto).Clone();
+
+        clone.IsCaseSensitive.Should().BeTrue();
+        clone.OmitEndingCharacter.Should().BeTrue();
+    }
 }
