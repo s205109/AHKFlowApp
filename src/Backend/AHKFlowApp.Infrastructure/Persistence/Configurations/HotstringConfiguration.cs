@@ -28,6 +28,14 @@ internal sealed class HotstringConfiguration : IEntityTypeConfiguration<Hotstrin
         builder.Property(x => x.IsEndingCharacterRequired).IsRequired();
         builder.Property(x => x.IsTriggerInsideWord).IsRequired();
 
+        // Persist enum as int (default for EF, made explicit here for clarity).
+        builder.Property(x => x.Kind)
+            .IsRequired()
+            .HasConversion<int>();
+
+        builder.Property(x => x.IsCaseSensitive).IsRequired();
+        builder.Property(x => x.OmitEndingCharacter).IsRequired();
+
         builder.Property(x => x.CreatedAt).IsRequired();
         builder.Property(x => x.UpdatedAt).IsRequired();
 
