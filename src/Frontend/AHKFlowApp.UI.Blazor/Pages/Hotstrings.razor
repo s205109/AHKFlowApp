@@ -296,8 +296,6 @@
                 TriggerFilter: StringFilter(state, "trigger"),
                 ReplacementFilter: StringFilter(state, "replacement"),
                 DescriptionFilter: StringFilter(state, "description"),
-                IsEndingCharacterRequired: BoolFilter(state, "isEndingCharacterRequired"),
-                IsTriggerInsideWord: BoolFilter(state, "isTriggerInsideWord"),
                 CategoryIds: _selectedCategoryIds.Count > 0 ? _selectedCategoryIds : null),
             ct);
 
@@ -364,20 +362,6 @@
             .FirstOrDefault(filter => ColumnKey(filter) == NormalizeColumnKey(identifier))?
             .Value?
             .ToString();
-
-    private static bool? BoolFilter(GridState<HotstringEditModel> state, string identifier)
-    {
-        object? value = state.FilterDefinitions
-            .FirstOrDefault(filter => ColumnKey(filter) == NormalizeColumnKey(identifier))?
-            .Value;
-
-        return value switch
-        {
-            bool typed => typed,
-            string text when bool.TryParse(text, out bool parsed) => parsed,
-            _ => null,
-        };
-    }
 
     private static string? ColumnKey(IFilterDefinition<HotstringEditModel> filter) =>
         (filter.Column?.Identifier ?? filter.Column?.PropertyName)?.ToLowerInvariant();
