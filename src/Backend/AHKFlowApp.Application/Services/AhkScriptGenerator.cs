@@ -34,7 +34,7 @@ public sealed class AhkScriptGenerator(
         List<string> lines = [renderer.Render(profile.HeaderTemplate, ctx), HotstringsSection];
 
         foreach (Hotstring hs in hsList)
-            lines.Add(FormatHotstring(hs));
+            lines.Add(HotstringEmitter.Emit(hs));
 
         lines.Add(HotkeysSection);
 
@@ -45,25 +45,6 @@ public sealed class AhkScriptGenerator(
 
         return string.Join("\n", lines);
     }
-
-    private static string FormatHotstring(Hotstring hs)
-    {
-        string options = "";
-        if (!hs.IsEndingCharacterRequired) options += "*";
-        if (hs.IsTriggerInsideWord) options += "?";
-        return $":{options}:{Escape(hs.Trigger)}::{Escape(hs.Replacement)}";
-    }
-
-    // Keep every hotstring on one physical line and its trigger free of characters
-    // AHK v2 would otherwise reinterpret (backtick, a whitespace-preceded ';'). Backtick
-    // must be escaped first so later escapes are not double-escaped.
-    private static string Escape(string value) =>
-        value
-            .Replace("`", "``")
-            .Replace("\n", "`n")
-            .Replace("\r", "`r")
-            .Replace("\t", "`t")
-            .Replace(";", "`;");
 
     private static string FormatHotkey(Hotkey hk)
     {

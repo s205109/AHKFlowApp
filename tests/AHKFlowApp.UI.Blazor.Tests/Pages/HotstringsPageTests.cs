@@ -415,4 +415,63 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
             cut.Find(".mobile-branch button.add-hotstring-fab").Should().NotBeNull();
         });
     }
+
+    [Fact]
+    public Task Page_RendersTypeBadgeWithOptionGlyphs()
+    {
+        var dto = new HotstringDto(Guid.NewGuid(), [], true, "btw", "by the way", null,
+            false, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null,
+            HotstringKind.Text, IsCaseSensitive: true, OmitEndingCharacter: false);
+        StubList(Page(dto));
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+
+        cut.WaitForAssertion(() =>
+        {
+            cut.Find(".type-badge").TextContent.Should().Contain("Text");
+            cut.Find(".option-glyphs").TextContent.Should().Be("*?C");
+        });
+        return Task.CompletedTask;
+    }
+
+    [Fact]
+    public Task Page_OmitEndingCharacter_SuppressedWhenExpandImmediately()
+    {
+        // OmitEndingCharacter can be true alongside IsEndingCharacterRequired=false (the dialog only
+        // disables the checkbox, it doesn't clear the value) — the badge must hide "O" here exactly
+        // like the emitter suppresses the O option under *.
+        var dto = new HotstringDto(Guid.NewGuid(), [], true, "btw", "by the way", null,
+            false, false, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null,
+            HotstringKind.Text, IsCaseSensitive: false, OmitEndingCharacter: true);
+        StubList(Page(dto));
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+
+        cut.WaitForAssertion(() =>
+            cut.Find(".option-glyphs").TextContent.Should().Be("*"));
+        return Task.CompletedTask;
+    }
+
+    [Fact]
+    public Task Page_EditDetails_OpensDialogWithItem()
+    {
+        // MudDialogProvider renders dialog content into its own root, not into the component that
+        // called ShowAsync — so the dialog markup must be queried on `provider`, not on `cut`
+        // (RenderPage() discards its MudDialogProvider reference; render it manually here instead,
+        // matching the pattern in HotstringEditDialogTests.cs).
+        var dto = new HotstringDto(Guid.NewGuid(), [], true, "btw", "by the way", null,
+            true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        StubList(Page(dto));
+
+        Render<MudPopoverProvider>();
+        IRenderedComponent<MudDialogProvider> provider = Render<MudDialogProvider>();
+        IRenderedComponent<Hotstrings> cut = Render<Hotstrings>(p => p.AddCascadingValue(AuthenticatedState));
+
+        cut.WaitForAssertion(() => cut.Find("button.edit-details"));
+        cut.Find("button.edit-details").Click();
+
+        provider.WaitForAssertion(() =>
+            provider.Find("input[data-test=\"trigger-input\"]").GetAttribute("value").Should().Be("btw"));
+        return Task.CompletedTask;
+    }
 }

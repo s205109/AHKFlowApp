@@ -1,4 +1,5 @@
 using AHKFlowApp.Domain.Entities;
+using AHKFlowApp.Domain.Enums;
 
 namespace AHKFlowApp.TestUtilities.Builders;
 
@@ -13,6 +14,9 @@ public sealed class HotstringBuilder
     private string? _description;
     private bool _isEndingCharacterRequired = true;
     private bool _isTriggerInsideWord = true;
+    private HotstringKind _kind = HotstringKind.Text;
+    private bool _isCaseSensitive;
+    private bool _omitEndingCharacter;
     private TimeProvider _clock = TimeProvider.System;
 
     public HotstringBuilder WithOwner(Guid ownerOid)
@@ -71,6 +75,24 @@ public sealed class HotstringBuilder
         return this;
     }
 
+    public HotstringBuilder WithKind(HotstringKind kind)
+    {
+        _kind = kind;
+        return this;
+    }
+
+    public HotstringBuilder WithCaseSensitive(bool value)
+    {
+        _isCaseSensitive = value;
+        return this;
+    }
+
+    public HotstringBuilder WithOmitEndingCharacter(bool value)
+    {
+        _omitEndingCharacter = value;
+        return this;
+    }
+
     public HotstringBuilder WithCategory(Guid categoryId)
     {
         _categoryIds.Add(categoryId);
@@ -93,8 +115,12 @@ public sealed class HotstringBuilder
     public Hotstring Build()
     {
         var entity = Hotstring.Create(
-            _ownerOid, _trigger, _replacement, _description, _appliesToAllProfiles,
-            _isEndingCharacterRequired, _isTriggerInsideWord, _clock);
+            _ownerOid,
+            new HotstringDefinition(
+                _trigger, _replacement, _description, _appliesToAllProfiles,
+                _isEndingCharacterRequired, _isTriggerInsideWord,
+                _kind, _isCaseSensitive, _omitEndingCharacter),
+            _clock);
 
         foreach (Guid pid in _profileIds)
             entity.Profiles.Add(HotstringProfile.Create(entity.Id, pid));

@@ -23,6 +23,16 @@ public sealed class HotstringEditModel
     public bool IsEndingCharacterRequired { get; set; } = true;
     public bool IsTriggerInsideWord { get; set; } = true;
     public List<Guid> CategoryIds { get; set; } = [];
+    public HotstringKind Kind { get; set; } = HotstringKind.Text;
+    public bool IsCaseSensitive { get; set; }
+    public bool OmitEndingCharacter { get; set; }
+
+    /// <summary>UI-facing inverse of <see cref="IsEndingCharacterRequired"/> (spec label "Expand immediately").</summary>
+    public bool ExpandImmediately
+    {
+        get => !IsEndingCharacterRequired;
+        set => IsEndingCharacterRequired = !value;
+    }
 
     public static HotstringEditModel FromDto(HotstringDto dto) => new()
     {
@@ -35,6 +45,9 @@ public sealed class HotstringEditModel
         IsEndingCharacterRequired = dto.IsEndingCharacterRequired,
         IsTriggerInsideWord = dto.IsTriggerInsideWord,
         CategoryIds = [.. dto.CategoryIds ?? []],
+        Kind = dto.Kind,
+        IsCaseSensitive = dto.IsCaseSensitive,
+        OmitEndingCharacter = dto.OmitEndingCharacter,
     };
 
     public HotstringEditModel Clone() => new()
@@ -48,11 +61,14 @@ public sealed class HotstringEditModel
         IsEndingCharacterRequired = IsEndingCharacterRequired,
         IsTriggerInsideWord = IsTriggerInsideWord,
         CategoryIds = [.. CategoryIds],
+        Kind = Kind,
+        IsCaseSensitive = IsCaseSensitive,
+        OmitEndingCharacter = OmitEndingCharacter,
     };
 
     public CreateHotstringDto ToCreateDto() =>
-        new(Trigger, Replacement, AppliesToAllProfiles ? null : [.. ProfileIds], AppliesToAllProfiles, IsEndingCharacterRequired, IsTriggerInsideWord, Description, [.. CategoryIds]);
+        new(Trigger, Replacement, AppliesToAllProfiles ? null : [.. ProfileIds], AppliesToAllProfiles, IsEndingCharacterRequired, IsTriggerInsideWord, Description, [.. CategoryIds], Kind, IsCaseSensitive, OmitEndingCharacter);
 
     public UpdateHotstringDto ToUpdateDto() =>
-        new(Trigger, Replacement, AppliesToAllProfiles ? null : [.. ProfileIds], AppliesToAllProfiles, IsEndingCharacterRequired, IsTriggerInsideWord, Description, [.. CategoryIds]);
+        new(Trigger, Replacement, AppliesToAllProfiles ? null : [.. ProfileIds], AppliesToAllProfiles, IsEndingCharacterRequired, IsTriggerInsideWord, Description, [.. CategoryIds], Kind, IsCaseSensitive, OmitEndingCharacter);
 }

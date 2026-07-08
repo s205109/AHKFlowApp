@@ -128,30 +128,16 @@
                             }
                         </CellTemplate>
                     </TemplateColumn>
-                    <PropertyColumn Property="x => x.IsEndingCharacterRequired" Title="Ending char required">
+                    <TemplateColumn Title="Type" Sortable="false" Filterable="false">
                         <CellTemplate>
-                            @if (IsEditing(context.Item))
-                            {
-                                <MudCheckBox T="bool" @bind-Value="context.Item.IsEndingCharacterRequired" />
-                            }
-                            else
-                            {
-                                <MudCheckBox T="bool" Value="@context.Item.IsEndingCharacterRequired" ReadOnly="true" />
-                            }
+                            <MudTooltip Text="@OptionsTooltip(context.Item)">
+                                <span class="type-badge">
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Default">@KindLabel(context.Item.Kind)</MudChip>
+                                    <span class="option-glyphs">@OptionGlyphs(context.Item)</span>
+                                </span>
+                            </MudTooltip>
                         </CellTemplate>
-                    </PropertyColumn>
-                    <PropertyColumn Property="x => x.IsTriggerInsideWord" Title="Trigger inside word">
-                        <CellTemplate>
-                            @if (IsEditing(context.Item))
-                            {
-                                <MudCheckBox T="bool" @bind-Value="context.Item.IsTriggerInsideWord" />
-                            }
-                            else
-                            {
-                                <MudCheckBox T="bool" Value="@context.Item.IsTriggerInsideWord" ReadOnly="true" />
-                            }
-                        </CellTemplate>
-                    </PropertyColumn>
+                    </TemplateColumn>
                     <TemplateColumn Title="Categories" Sortable="false" Filterable="false">
                         <CellTemplate>
                             @if (IsEditing(context.Item))
@@ -310,8 +296,6 @@
                 TriggerFilter: StringFilter(state, "trigger"),
                 ReplacementFilter: StringFilter(state, "replacement"),
                 DescriptionFilter: StringFilter(state, "description"),
-                IsEndingCharacterRequired: BoolFilter(state, "isEndingCharacterRequired"),
-                IsTriggerInsideWord: BoolFilter(state, "isTriggerInsideWord"),
                 CategoryIds: _selectedCategoryIds.Count > 0 ? _selectedCategoryIds : null),
             ct);
 
@@ -367,8 +351,6 @@
             "trigger" or nameof(HotstringEditModel.Trigger) => "trigger",
             "replacement" or nameof(HotstringEditModel.Replacement) => "replacement",
             "description" or nameof(HotstringEditModel.Description) => "description",
-            "isEndingCharacterRequired" or nameof(HotstringEditModel.IsEndingCharacterRequired) => "isEndingCharacterRequired",
-            "isTriggerInsideWord" or nameof(HotstringEditModel.IsTriggerInsideWord) => "isTriggerInsideWord",
             _ => null,
         };
 
@@ -380,20 +362,6 @@
             .FirstOrDefault(filter => ColumnKey(filter) == NormalizeColumnKey(identifier))?
             .Value?
             .ToString();
-
-    private static bool? BoolFilter(GridState<HotstringEditModel> state, string identifier)
-    {
-        object? value = state.FilterDefinitions
-            .FirstOrDefault(filter => ColumnKey(filter) == NormalizeColumnKey(identifier))?
-            .Value;
-
-        return value switch
-        {
-            bool typed => typed,
-            string text when bool.TryParse(text, out bool parsed) => parsed,
-            _ => null,
-        };
-    }
 
     private static string? ColumnKey(IFilterDefinition<HotstringEditModel> filter) =>
         (filter.Column?.Identifier ?? filter.Column?.PropertyName)?.ToLowerInvariant();
@@ -689,7 +657,13 @@
         }
     }
 
-    private async Task OpenEditDialogAsync(HotstringEditModel item)
+    private Task OpenEditDialogAsync(HotstringEditModel item) =>
+        OpenEditDialogCoreAsync(item, new DialogOptions { FullScreen = true, CloseButton = false });
+
+    private Task OpenEditDetailsDialogAsync(HotstringEditModel item) =>
+        OpenEditDialogCoreAsync(item, new DialogOptions { FullScreen = false, MaxWidth = MaxWidth.Medium, CloseButton = false });
+
+    private async Task OpenEditDialogCoreAsync(HotstringEditModel item, DialogOptions options)
     {
         if (_dialogOpen || item.Id is null)
             return;
@@ -705,8 +679,7 @@
             };
 
             IDialogReference dialog = await DialogService.ShowAsync<HotstringEditDialog>(
-                "Edit hotstring", parameters,
-                new DialogOptions { FullScreen = true, CloseButton = false });
+                "Edit hotstring", parameters, options);
 
             DialogResult? result = await dialog.Result;
             if (result?.Canceled == false)
@@ -820,6 +793,35 @@
     private RenderFragment RenderCategories(IReadOnlyCollection<Guid> categoryIds) =>
         @<EntityChips Ids="categoryIds" Options="_categoryOptions" />;
 
+    private static string KindLabel(HotstringKind kind) => kind switch
+    {
+        HotstringKind.Text => "Text",
+        HotstringKind.DateTime => "Date & time",
+        HotstringKind.Macro => "Macro",
+        HotstringKind.Script => "Script",
+        _ => kind.ToString(),
+    };
+
+    private static string OptionGlyphs(HotstringEditModel item)
+    {
+        string glyphs = "";
+        if (!item.IsEndingCharacterRequired) glyphs += "*";
+        if (item.IsTriggerInsideWord) glyphs += "?";
+        if (item.IsCaseSensitive) glyphs += "C";
+        if (item.OmitEndingCharacter && item.IsEndingCharacterRequired) glyphs += "O"; // O is meaningless (and suppressed by the emitter) under *
+        return glyphs;
+    }
+
+    private static string OptionsTooltip(HotstringEditModel item)
+    {
+        List<string> parts = [KindLabel(item.Kind)];
+        if (!item.IsEndingCharacterRequired) parts.Add("Expands immediately (no ending character)");
+        if (item.IsTriggerInsideWord) parts.Add("Triggers inside words");
+        if (item.IsCaseSensitive) parts.Add("Case sensitive");
+        if (item.OmitEndingCharacter && item.IsEndingCharacterRequired) parts.Add("Omits ending character");
+        return string.Join(" · ", parts);
+    }
+
     private RenderFragment RenderActions(HotstringEditModel item) => @<text>
         @if (IsEditing(item))
         {
@@ -830,6 +832,8 @@
         }
         else
         {
+            <MudIconButton Class="edit-details" Icon="@Icons.Material.Filled.EditNote"
+                           OnClick="() => OpenEditDetailsDialogAsync(item)" />
             <MudIconButton Class="show-history" Icon="@Icons.Material.Filled.History"
                            OnClick="() => ShowHistoryAsync(item)" />
             <MudIconButton Class="delete" Icon="@Icons.Material.Filled.Delete" Color="Color.Error"

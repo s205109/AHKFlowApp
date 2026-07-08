@@ -5,6 +5,7 @@ namespace AHKFlowApp.CLI.Output;
 public static class HotstringTableFormatter
 {
     private const int TriggerWidth = 20;
+    private const int KindWidth = 8;
     private const int ReplacementWidth = 40;
     private const int ProfilesWidth = 24;
     private const int UpdatedWidth = 19;
@@ -22,11 +23,13 @@ public static class HotstringTableFormatter
 
         writer.WriteLine(string.Join("  ",
             Pad("Trigger", TriggerWidth),
+            Pad("Kind", KindWidth),
             Pad("Replacement", ReplacementWidth),
             Pad("Profiles", ProfilesWidth),
             Pad("Updated", UpdatedWidth)));
         writer.WriteLine(string.Join("  ",
             new string('-', TriggerWidth),
+            new string('-', KindWidth),
             new string('-', ReplacementWidth),
             new string('-', ProfilesWidth),
             new string('-', UpdatedWidth)));
@@ -36,6 +39,7 @@ public static class HotstringTableFormatter
             string updated = dto.UpdatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss");
             writer.WriteLine(string.Join("  ",
                 Pad(Truncate(dto.Trigger, TriggerWidth), TriggerWidth),
+                Pad(KindLabel(dto.Kind), KindWidth),
                 Pad(Truncate(dto.Replacement, ReplacementWidth), ReplacementWidth),
                 Pad(Truncate(FormatProfiles(dto, profileNamesById), ProfilesWidth), ProfilesWidth),
                 updated));
@@ -68,6 +72,15 @@ public static class HotstringTableFormatter
         int more = Math.Max(0, resolved.Count - 3) + unresolved;
         return more > 0 ? $"{head} +{more} more" : head;
     }
+
+    private static string KindLabel(HotstringKind kind) => kind switch
+    {
+        HotstringKind.Text => "Text",
+        HotstringKind.DateTime => "DateTime",
+        HotstringKind.Macro => "Macro",
+        HotstringKind.Script => "Script",
+        _ => kind.ToString(),
+    };
 
     private static string Truncate(string s, int max) =>
         s.Length <= max ? s : string.Concat(s.AsSpan(0, max - 1), "…");

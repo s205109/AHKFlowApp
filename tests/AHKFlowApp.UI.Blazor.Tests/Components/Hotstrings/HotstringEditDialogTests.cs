@@ -182,4 +182,39 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
         provider.WaitForAssertion(() => provider.Markup.Should().Contain("Trigger already exists"));
         provider.FindAll(".mud-alert").Should().BeEmpty();
     }
+
+    [Fact]
+    public async Task SaveInCreateMode_WithCaseSensitiveChecked_SendsNewFlags()
+    {
+        HotstringDto created = new(Guid.NewGuid(), [], true, "btw", "by the way", null, true, true,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        _api.CreateAsync(Arg.Any<CreateHotstringDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotstringDto>.Ok(created));
+
+        Render<MudPopoverProvider>();
+        IRenderedComponent<MudDialogProvider> provider = Render<MudDialogProvider>();
+
+        await provider.InvokeAsync(async () =>
+        {
+            IDialogService dialogService = Services.GetRequiredService<IDialogService>();
+            await dialogService.ShowAsync<HotstringEditDialog>("New",
+                new DialogParameters
+                {
+                    [nameof(HotstringEditDialog.Profiles)] = (IReadOnlyList<ProfileDto>)[],
+                    [nameof(HotstringEditDialog.Categories)] = (IReadOnlyList<CategoryDto>)[],
+                },
+                new DialogOptions { FullScreen = true, CloseButton = false });
+        });
+
+        provider.WaitForAssertion(() => provider.Find("input[data-test=\"trigger-input\"]"));
+        provider.Find("input[data-test=\"trigger-input\"]").Change("btw");
+        provider.Find("textarea[data-test=\"replacement-input\"]").Change("by the way");
+        provider.Find("input[data-test=\"case-sensitive-checkbox\"]").Change(true);
+        provider.Find("input[data-test=\"omit-ending-checkbox\"]").Change(true);
+        provider.Find("button.commit-edit").Click();
+
+        provider.WaitForAssertion(() => _api.Received(1).CreateAsync(
+            Arg.Is<CreateHotstringDto>(d => d.IsCaseSensitive && d.OmitEndingCharacter),
+            Arg.Any<CancellationToken>()));
+    }
 }

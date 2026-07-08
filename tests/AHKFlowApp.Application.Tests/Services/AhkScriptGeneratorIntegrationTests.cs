@@ -91,8 +91,8 @@ public sealed class AhkScriptGeneratorIntegrationTests(ScriptGeneratorDbFixture 
             "#Requires AutoHotkey v2.0\n" +
             "#SingleInstance Force\n" +
             "; --- Hotstrings ---\n" +
-            "::addr::123 Main St\n" +        // Ordinal: 'a' < 'b' so addr before btw
-            ":*?:btw::by the way\n" +
+            ":T:addr::123 Main St\n" +       // Ordinal: 'a' < 'b' so addr before btw
+            ":*?T:btw::by the way\n" +
             "; --- Hotkeys ---\n" +
             "^!n::Run(\"notepad.exe\")\n" +  // 'O' < 'R' so Open Notepad before Reload
             "^F5::Send(\"{F5}\")\n" +

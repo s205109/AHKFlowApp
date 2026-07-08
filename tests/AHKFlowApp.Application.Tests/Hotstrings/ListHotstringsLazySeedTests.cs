@@ -182,7 +182,8 @@ public sealed class ListHotstringsLazySeedTests(HotstringDbFixture fx)
         await using (AppDbContext seedCtx = fx.CreateContext())
         {
             // Insert a trigger that overlaps with the lazy-seed sample set
-            seedCtx.Hotstrings.Add(Hotstring.Create(owner, "btw", "pre-existing", null, true, true, true, TimeProvider.System));
+            seedCtx.Hotstrings.Add(Hotstring.Create(
+                owner, new HotstringDefinition("btw", "pre-existing", null, true, true, true), TimeProvider.System));
             await seedCtx.SaveChangesAsync();
         }
 

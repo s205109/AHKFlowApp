@@ -88,8 +88,11 @@ internal sealed class SeedHotstringsCommandHandler(
             else
             {
                 var entity = Hotstring.Create(
-                    ownerOid, trigger, replacement, description: null, appliesToAllProfiles: true,
-                    isEndingCharacterRequired: ending, isTriggerInsideWord: inside, clock);
+                    ownerOid,
+                    new HotstringDefinition(
+                        trigger, replacement, Description: null, AppliesToAllProfiles: true,
+                        IsEndingCharacterRequired: ending, IsTriggerInsideWord: inside),
+                    clock);
                 db.Hotstrings.Add(entity);
                 hotstringId = entity.Id;
             }

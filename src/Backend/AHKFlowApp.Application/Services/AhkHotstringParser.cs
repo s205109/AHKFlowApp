@@ -429,6 +429,10 @@ internal static partial class AhkHotstringParser
                     break;
                 case ' ' or '\t':
                     break;
+                case 'T' or 't' when i + 1 >= options.Length || !char.IsDigit(options[i + 1]):
+                    // Bare T (literal text mode) is the canonical Text-kind emission — a parse no-op.
+                    // Digit variants (T0/T1) still fall through to the ignored-flags branch below.
+                    break;
                 case 'S' or 's' when i + 1 < options.Length && options[i + 1] is 'I' or 'P' or 'E' or 'i' or 'p' or 'e':
                     // Send-mode flags (SI/SP/SE) are two-letter tokens.
                     ignored.Add(options.Substring(i, 2));

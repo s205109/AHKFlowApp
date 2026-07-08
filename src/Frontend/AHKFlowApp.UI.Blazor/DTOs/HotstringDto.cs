@@ -11,4 +11,7 @@ public sealed record HotstringDto(
     bool IsTriggerInsideWord,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
-    Guid[]? CategoryIds = null);
+    Guid[]? CategoryIds = null,
+    HotstringKind Kind = HotstringKind.Text,
+    bool IsCaseSensitive = false,
+    bool OmitEndingCharacter = false);

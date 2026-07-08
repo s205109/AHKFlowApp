@@ -49,13 +49,18 @@ public sealed class AhkScriptGeneratorTests
     }
 
     [Theory]
-    [InlineData(true, false, "::btw::by the way")]                  // default — no options
-    [InlineData(false, false, ":*:btw::by the way")]                // ending char NOT required
-    [InlineData(true, true, ":?:btw::by the way")]                  // trigger inside word
-    [InlineData(false, true, ":*?:btw::by the way")]                // both options
+    [InlineData(true, false, false, false, ":T:btw::by the way")]    // defaults — Text always emits T (WYSIWYG, D1)
+    [InlineData(false, false, false, false, ":*T:btw::by the way")]  // expand immediately
+    [InlineData(true, true, false, false, ":?T:btw::by the way")]    // trigger inside word
+    [InlineData(true, false, true, false, ":CT:btw::by the way")]    // case sensitive
+    [InlineData(true, false, false, true, ":OT:btw::by the way")]    // omit ending character
+    [InlineData(false, false, false, true, ":*T:btw::by the way")]   // O suppressed when *
+    [InlineData(false, true, true, true, ":*?CT:btw::by the way")]   // deterministic order * ? C O T
     public void Generate_Hotstring_FormatsOptionsCorrectly(
         bool isEndingCharacterRequired,
         bool isTriggerInsideWord,
+        bool isCaseSensitive,
+        bool omitEndingCharacter,
         string expectedLine)
     {
         Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
@@ -64,6 +69,8 @@ public sealed class AhkScriptGeneratorTests
             .WithReplacement("by the way")
             .WithEndingCharacterRequired(isEndingCharacterRequired)
             .WithTriggerInsideWord(isTriggerInsideWord)
+            .WithCaseSensitive(isCaseSensitive)
+            .WithOmitEndingCharacter(omitEndingCharacter)
             .Build();
 
         string output = DefaultSut().Generate(profile, [hs], []);
@@ -77,13 +84,13 @@ public sealed class AhkScriptGeneratorTests
     }
 
     [Theory]
-    [InlineData("line one\nline two", "::sig::line one`nline two")]
-    [InlineData("a\rb", "::sig::a`rb")]
-    [InlineData("a\tb", "::sig::a`tb")]
-    [InlineData("a\r\nb", "::sig::a`r`nb")]
-    [InlineData("back`tick", "::sig::back``tick")]
-    [InlineData("literal `n stays\n", "::sig::literal ``n stays`n")]
-    [InlineData("a ; b", "::sig::a `; b")]
+    [InlineData("line one\nline two", ":T:sig::line one`nline two")]
+    [InlineData("a\rb", ":T:sig::a`rb")]
+    [InlineData("a\tb", ":T:sig::a`tb")]
+    [InlineData("a\r\nb", ":T:sig::a`r`nb")]
+    [InlineData("back`tick", ":T:sig::back``tick")]
+    [InlineData("literal `n stays\n", ":T:sig::literal ``n stays`n")]
+    [InlineData("a ; b", ":T:sig::a `; b")]
     public void Generate_HotstringWithSpecialChars_EscapesOntoSinglePhysicalLine(
         string replacement, string expectedLine)
     {
@@ -106,8 +113,8 @@ public sealed class AhkScriptGeneratorTests
     }
 
     [Theory]
-    [InlineData("a ;b", "::a `;b::x")]
-    [InlineData("back`tick", "::back``tick::x")]
+    [InlineData("a ;b", ":T:a `;b::x")]
+    [InlineData("back`tick", ":T:back``tick::x")]
     public void Generate_TriggerWithSpecialChars_EscapesTriggerToo(string trigger, string expectedLine)
     {
         Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
@@ -142,8 +149,8 @@ public sealed class AhkScriptGeneratorTests
         output.Should().Be(
             "H\n" +
             "; --- Hotstrings ---\n" +
-            "::a::alpha\n" +
-            "::b::beta\n" +
+            ":T:a::alpha\n" +
+            ":T:b::beta\n" +
             "; --- Hotkeys ---\n" +
             "F");
     }
@@ -228,9 +235,9 @@ public sealed class AhkScriptGeneratorTests
 
         string output = DefaultSut().Generate(profile, [c, a, b], []);
 
-        int posA = output.IndexOf("::a::a-rep", StringComparison.Ordinal);
-        int posB = output.IndexOf("::b::b-rep", StringComparison.Ordinal);
-        int posC = output.IndexOf("::c::c-rep", StringComparison.Ordinal);
+        int posA = output.IndexOf(":T:a::a-rep", StringComparison.Ordinal);
+        int posB = output.IndexOf(":T:b::b-rep", StringComparison.Ordinal);
+        int posC = output.IndexOf(":T:c::c-rep", StringComparison.Ordinal);
         posA.Should().BeLessThan(posB);
         posB.Should().BeLessThan(posC);
     }
@@ -268,8 +275,8 @@ public sealed class AhkScriptGeneratorTests
 
         string output = DefaultSut().Generate(profile, [lower, upper], []);
 
-        int posUpper = output.IndexOf("::AA::upper", StringComparison.Ordinal);
-        int posLower = output.IndexOf("::aa::lower", StringComparison.Ordinal);
+        int posUpper = output.IndexOf(":T:AA::upper", StringComparison.Ordinal);
+        int posLower = output.IndexOf(":T:aa::lower", StringComparison.Ordinal);
         posUpper.Should().BeLessThan(posLower);  // 'A' (0x41) < 'a' (0x61) in Ordinal
     }
 

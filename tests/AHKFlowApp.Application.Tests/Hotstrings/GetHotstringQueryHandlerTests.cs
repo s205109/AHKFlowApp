@@ -16,7 +16,8 @@ public sealed class GetHotstringQueryHandlerTests(HotstringDbFixture fx)
     public async Task Handle_WhenOwned_ReturnsDto()
     {
         var owner = Guid.NewGuid();
-        var entity = Hotstring.Create(owner, "g", "x", null, true, true, true, TimeProvider.System);
+        var entity = Hotstring.Create(
+            owner, new HotstringDefinition("g", "x", null, true, true, true), TimeProvider.System);
         await using (AppDbContext seed = fx.CreateContext())
         {
             seed.Hotstrings.Add(entity);
@@ -39,7 +40,8 @@ public sealed class GetHotstringQueryHandlerTests(HotstringDbFixture fx)
     {
         var owner = Guid.NewGuid();
         var attacker = Guid.NewGuid();
-        var entity = Hotstring.Create(owner, "g", "x", null, true, true, true, TimeProvider.System);
+        var entity = Hotstring.Create(
+            owner, new HotstringDefinition("g", "x", null, true, true, true), TimeProvider.System);
         await using (AppDbContext seed = fx.CreateContext())
         {
             seed.Hotstrings.Add(entity);
