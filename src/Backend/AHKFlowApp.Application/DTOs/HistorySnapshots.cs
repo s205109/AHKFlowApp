@@ -16,6 +16,9 @@ namespace AHKFlowApp.Application.DTOs;
 /// <param name="Kind">Hotstring kind at capture time. Defaults to <see cref="HotstringKind.Text"/> for pre-Phase-1 snapshots.</param>
 /// <param name="IsCaseSensitive">AutoHotkey's <c>C</c> option at capture time. Defaults to false for pre-Phase-1 snapshots.</param>
 /// <param name="OmitEndingCharacter">AutoHotkey's <c>O</c> option at capture time. Defaults to false for pre-Phase-1 snapshots.</param>
+/// <param name="DateTimeFormat">Date/time format token pattern at capture time. Defaults to null for pre-Phase-2 snapshots.</param>
+/// <param name="DateOffsetAmount">Signed offset applied to the current date/time at capture time. Defaults to null for pre-Phase-2 snapshots.</param>
+/// <param name="DateOffsetUnit">Unit for <paramref name="DateOffsetAmount"/> at capture time. Defaults to null for pre-Phase-2 snapshots.</param>
 public sealed record HotstringSnapshot(
     string Trigger,
     string Replacement,
@@ -29,7 +32,10 @@ public sealed record HotstringSnapshot(
     DateTimeOffset UpdatedAt,
     HotstringKind Kind = HotstringKind.Text,
     bool IsCaseSensitive = false,
-    bool OmitEndingCharacter = false);
+    bool OmitEndingCharacter = false,
+    string? DateTimeFormat = null,
+    int? DateOffsetAmount = null,
+    DateOffsetUnit? DateOffsetUnit = null);
 
 /// <summary>Point-in-time snapshot of a hotkey aggregate, stored as history JSON.</summary>
 /// <param name="Description">Human-readable label.</param>
