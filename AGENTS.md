@@ -246,6 +246,7 @@ running `deploy.ps1`.
 
 GitHub Flow — feature branches from `main`, PR required for all merges.
 Branch naming: `feature/NNN-short-description`, `fix/short-description`, `hotfix/issueid-short-description`
+Branches created in agent git worktrees insert `wt-` after the type prefix: `fix/wt-<topic>`, `feature/wt-NNN-<topic>` — marks worktree-born branches for grepping/cleanup.
 Conventional commits: `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:` — body explains "why", not "what".
 Atomic commits: one logical change per commit; feature + its tests = one commit. Don't bundle unrelated changes.
 Never force-push to main/master. Run `dotnet build` + `dotnet test` before creating a PR.

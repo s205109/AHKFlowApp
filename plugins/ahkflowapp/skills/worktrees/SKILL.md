@@ -19,6 +19,8 @@ pwsh -NoProfile -File scripts/new-worktree.ps1 -Name <name>
 
 It creates the branch, places the worktree under `.claude/worktrees/<name>/`, copies `.worktreeinclude` entries, runs local-dev isolation setup, and prints the worktree path on success.
 
+**Branch naming:** worktree branches insert `wt-` after the type prefix — `fix/wt-<topic>`, `feature/wt-NNN-<topic>` (see AGENTS.md Git Workflow). Pass it explicitly (`-BranchName fix/wt-<topic>`) or name the worktree so the derived branch matches.
+
 **Do NOT** run bare `git worktree add` — it checks out files but skips isolation setup, leaving a broken worktree.
 
 ### Cleanup of merged worktrees on create
