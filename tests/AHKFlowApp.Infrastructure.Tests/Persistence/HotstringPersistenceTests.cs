@@ -44,4 +44,45 @@ public sealed class HotstringPersistenceTests(SqlContainerFixture sqlFixture)
         reloaded.IsCaseSensitive.Should().BeTrue();
         reloaded.OmitEndingCharacter.Should().BeTrue();
     }
+
+    [Fact]
+    public async Task SaveAndReload_DateTimeFields_RoundTrip()
+    {
+        var csb = new SqlConnectionStringBuilder(sqlFixture.ConnectionString)
+        {
+            InitialCatalog = "HotstringPersistenceTests",
+        };
+        DbContextOptions<AppDbContext> options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseSqlServer(csb.ConnectionString, sql => sql.EnableRetryOnFailure())
+            .Options;
+
+        Hotstring entityWithDateTime = new HotstringBuilder()
+            .WithKind(HotstringKind.DateTime)
+            .WithDateTimeFormat("yyyy-MM-dd")
+            .WithDateOffset(3, DateOffsetUnit.Days)
+            .Build();
+
+        Hotstring entityWithoutDateTime = new HotstringBuilder()
+            .WithKind(HotstringKind.Text)
+            .Build();
+
+        await using (AppDbContext write = new(options))
+        {
+            await write.Database.MigrateAsync();
+            write.Hotstrings.AddRange(entityWithDateTime, entityWithoutDateTime);
+            await write.SaveChangesAsync();
+        }
+
+        await using AppDbContext read = new(options);
+        Hotstring reloadedWithDateTime = await read.Hotstrings.SingleAsync(h => h.Id == entityWithDateTime.Id);
+        Hotstring reloadedWithoutDateTime = await read.Hotstrings.SingleAsync(h => h.Id == entityWithoutDateTime.Id);
+
+        reloadedWithDateTime.DateTimeFormat.Should().Be("yyyy-MM-dd");
+        reloadedWithDateTime.DateOffsetAmount.Should().Be(3);
+        reloadedWithDateTime.DateOffsetUnit.Should().Be(DateOffsetUnit.Days);
+
+        reloadedWithoutDateTime.DateTimeFormat.Should().BeNull();
+        reloadedWithoutDateTime.DateOffsetAmount.Should().BeNull();
+        reloadedWithoutDateTime.DateOffsetUnit.Should().BeNull();
+    }
 }

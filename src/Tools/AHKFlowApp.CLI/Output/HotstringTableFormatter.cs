@@ -40,7 +40,7 @@ public static class HotstringTableFormatter
             writer.WriteLine(string.Join("  ",
                 Pad(Truncate(dto.Trigger, TriggerWidth), TriggerWidth),
                 Pad(KindLabel(dto.Kind), KindWidth),
-                Pad(Truncate(dto.Replacement, ReplacementWidth), ReplacementWidth),
+                Pad(FormatReplacementColumn(dto), ReplacementWidth),
                 Pad(Truncate(FormatProfiles(dto, profileNamesById), ProfilesWidth), ProfilesWidth),
                 updated));
         }
@@ -71,6 +71,30 @@ public static class HotstringTableFormatter
         string head = string.Join(", ", resolved.Take(3));
         int more = Math.Max(0, resolved.Count - 3) + unresolved;
         return more > 0 ? $"{head} +{more} more" : head;
+    }
+
+    private static string FormatReplacementColumn(HotstringDto dto)
+    {
+        if (dto.Kind != HotstringKind.DateTime)
+            return Truncate(dto.Replacement, ReplacementWidth);
+
+        if (dto.DateTimeFormat is null)
+            return Truncate("—", ReplacementWidth);
+
+        if (dto.DateOffsetAmount is null || dto.DateOffsetUnit is null)
+            return Truncate(dto.DateTimeFormat, ReplacementWidth);
+
+        int amount = dto.DateOffsetAmount.Value;
+        string sign = amount < 0 ? "-" : "+";
+        string unitName = FormatUnitName(dto.DateOffsetUnit.Value, amount);
+        string summary = $"{dto.DateTimeFormat} ({sign}{Math.Abs(amount)} {unitName})";
+        return Truncate(summary, ReplacementWidth);
+    }
+
+    private static string FormatUnitName(DateOffsetUnit unit, int amount)
+    {
+        string name = unit.ToString().ToLowerInvariant();
+        return Math.Abs(amount) == 1 ? name[..^1] : name;
     }
 
     private static string KindLabel(HotstringKind kind) => kind switch

@@ -15,13 +15,60 @@
     <DialogContent>
         <MudForm @ref="_form">
         <MudStack Spacing="3" Class="pa-2">
+            <MudToggleGroup T="HotstringKind" Value="Item.Kind" ValueChanged="OnKindChangedAsync"
+                             UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "kind-selector" })">
+                <MudToggleItem Value="HotstringKind.Text" Text="Text" />
+                <MudToggleItem Value="HotstringKind.DateTime" Text="Date & time" />
+            </MudToggleGroup>
+
             <MudTextField T="string" Label="Trigger" @bind-Value="Item.Trigger"
                           Required="true" RequiredError="Trigger is required" MaxLength="50"
                           Error="@(_triggerError is not null)" ErrorText="@_triggerError"
                           UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "trigger-input" })" />
-            <MudTextField T="string" Label="Replacement" @bind-Value="Item.Replacement"
-                          Lines="3" Required="true" RequiredError="Replacement is required" MaxLength="4000"
-                          UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "replacement-input" })" />
+            @if (Item.Kind != HotstringKind.DateTime)
+            {
+                <MudTextField T="string" Label="Replacement" @bind-Value="Item.Replacement"
+                              Lines="3" Required="@(Item.Kind != HotstringKind.DateTime)" RequiredError="Replacement is required" MaxLength="4000"
+                              UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "replacement-input" })" />
+            }
+            @if (Item.Kind == HotstringKind.DateTime)
+            {
+                <MudText Typo="Typo.subtitle2" Class="mt-1">Date &amp; time</MudText>
+                <MudSelect T="string" Value="_selectedFormatOption" ValueChanged="OnFormatOptionChanged" Label="Format"
+                           UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "datetime-format-select" })">
+                    @foreach ((string label, string format) in DateTimeFormatPresets)
+                    {
+                        <MudSelectItem T="string" Value="@format">@($"{label} — {HotstringEditModel.SafePreview(format)}")</MudSelectItem>
+                    }
+                    <MudSelectItem T="string" Value="@CustomFormatSentinel">Custom…</MudSelectItem>
+                </MudSelect>
+                @if (_selectedFormatOption == CustomFormatSentinel)
+                {
+                    <MudTextField T="string" Label="Custom format" @bind-Value="Item.DateTimeFormat" MaxLength="50"
+                                  UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "datetime-format-custom" })" />
+                }
+
+                <MudSwitch T="bool" Value="@(Item.DateOffsetAmount is not null)" ValueChanged="OnOffsetSwitchChanged" Label="Adjust date"
+                           UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "date-offset-switch" })" />
+                @if (Item.DateOffsetAmount is not null)
+                {
+                    <MudStack Row="true" Spacing="2">
+                        <MudNumericField T="int?" Label="Amount" @bind-Value="Item.DateOffsetAmount" Min="-3650" Max="3650"
+                                         UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "date-offset-amount" })" />
+                        <MudSelect T="DateOffsetUnit?" @bind-Value="Item.DateOffsetUnit" Label="Unit"
+                                   UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "date-offset-unit" })">
+                            <MudSelectItem T="DateOffsetUnit?" Value="DateOffsetUnit.Seconds">Seconds</MudSelectItem>
+                            <MudSelectItem T="DateOffsetUnit?" Value="DateOffsetUnit.Minutes">Minutes</MudSelectItem>
+                            <MudSelectItem T="DateOffsetUnit?" Value="DateOffsetUnit.Hours">Hours</MudSelectItem>
+                            <MudSelectItem T="DateOffsetUnit?" Value="DateOffsetUnit.Days">Days</MudSelectItem>
+                        </MudSelect>
+                    </MudStack>
+                }
+
+                <MudText Typo="Typo.body2" UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "datetime-preview" })">
+                    @PreviewWithOffset()
+                </MudText>
+            }
             <MudTextField T="string" Label="Description" @bind-Value="Item.Description"
                           MaxLength="200"
                           UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "description-input" })" />
@@ -62,8 +109,27 @@
 </MudDialog>
 
 @code {
+    private const string CustomFormatSentinel = "__custom__";
+
+    private static readonly (string Label, string Format)[] DateTimeFormatPresets =
+    [
+        ("ISO date", "yyyy-MM-dd"),
+        ("European date", "dd-MM-yyyy"),
+        ("US date", "MM/dd/yyyy"),
+        ("Long date", "dddd d MMMM yyyy"),
+        ("Short day + date", "ddd d MMM yyyy"),
+        ("Month + year", "MMMM yyyy"),
+        ("Time (24h)", "HH:mm"),
+        ("Time (24h, seconds)", "HH:mm:ss"),
+        ("Time (12h)", "h:mm tt"),
+        ("Date + time", "yyyy-MM-dd HH:mm"),
+        ("Timestamp", "yyyy-MM-dd HH:mm:ss"),
+        ("Compact stamp", "yyyyMMdd-HHmmss"),
+    ];
+
     [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = default!;
     [Inject] private IHotstringsApiClient Api { get; set; } = default!;
+    [Inject] private IDialogService DialogService { get; set; } = default!;
 
     [Parameter] public HotstringEditModel Item { get; set; } = new();
     [Parameter] public IReadOnlyList<ProfileDto> Profiles { get; set; } = [];
@@ -76,14 +142,115 @@
     private readonly CancellationTokenSource _cts = new();
     private IReadOnlyList<EntityOption> _profileOptions = [];
     private IReadOnlyList<EntityOption> _categoryOptions = [];
+    private HotstringEditModel? _lastItem;
+    private string _selectedFormatOption = CustomFormatSentinel;
 
     protected override void OnParametersSet()
     {
         _profileOptions = [.. Profiles.Select(p => new EntityOption(p.Id, p.Name))];
         _categoryOptions = [.. Categories.Select(c => new EntityOption(c.Id, c.Name))];
+
+        if (!ReferenceEquals(_lastItem, Item))
+        {
+            _lastItem = Item;
+            _selectedFormatOption = Item.DateTimeFormat is not null
+                && DateTimeFormatPresets.Any(preset => preset.Format == Item.DateTimeFormat)
+                ? Item.DateTimeFormat
+                : CustomFormatSentinel;
+        }
     }
 
     private void Cancel() => Dialog.Cancel();
+
+    private async Task OnKindChangedAsync(HotstringKind newKind)
+    {
+        if (newKind == Item.Kind)
+            return;
+
+        if (newKind == HotstringKind.DateTime)
+        {
+            if (!string.IsNullOrEmpty(Item.Replacement))
+            {
+                bool? confirm = await DialogService.ShowMessageBoxAsync(
+                    title: "Switch to Date & time?",
+                    message: "Switching to Date & time will clear the current replacement text. Continue?",
+                    yesText: "Switch", cancelText: "Cancel");
+                if (confirm != true) return;
+            }
+
+            Item.Replacement = "";
+            Item.Kind = HotstringKind.DateTime;
+        }
+        else if (newKind == HotstringKind.Text)
+        {
+            if (Item.DateTimeFormat is not null)
+            {
+                bool? confirm = await DialogService.ShowMessageBoxAsync(
+                    title: "Switch to Text?",
+                    message: "Switching to Text will clear the date/time format and offset. Continue?",
+                    yesText: "Switch", cancelText: "Cancel");
+                if (confirm != true) return;
+            }
+
+            Item.DateTimeFormat = null;
+            Item.DateOffsetAmount = null;
+            Item.DateOffsetUnit = null;
+            Item.Kind = HotstringKind.Text;
+        }
+    }
+
+    private void OnFormatOptionChanged(string option)
+    {
+        _selectedFormatOption = option;
+        if (_selectedFormatOption != CustomFormatSentinel)
+            Item.DateTimeFormat = _selectedFormatOption;
+    }
+
+    private void OnOffsetSwitchChanged(bool isOn)
+    {
+        if (isOn)
+        {
+            if (Item.DateOffsetAmount is null && Item.DateOffsetUnit is null)
+            {
+                Item.DateOffsetAmount = 1;
+                Item.DateOffsetUnit = DateOffsetUnit.Days;
+            }
+        }
+        else
+        {
+            Item.DateOffsetAmount = null;
+            Item.DateOffsetUnit = null;
+        }
+    }
+
+    private string PreviewWithOffset()
+    {
+        if (string.IsNullOrEmpty(Item.DateTimeFormat))
+            return "";
+
+        DateTime moment = DateTime.Now;
+        if (Item.DateOffsetAmount is { } amount && Item.DateOffsetUnit is { } unit)
+        {
+            moment = unit switch
+            {
+                DateOffsetUnit.Seconds => moment.AddSeconds(amount),
+                DateOffsetUnit.Minutes => moment.AddMinutes(amount),
+                DateOffsetUnit.Hours => moment.AddHours(amount),
+                DateOffsetUnit.Days => moment.AddDays(amount),
+                _ => moment,
+            };
+        }
+
+        try
+        {
+            string actualFormat = Item.DateTimeFormat.Length == 1 ? "%" + Item.DateTimeFormat : Item.DateTimeFormat;
+            return moment.ToString(actualFormat);
+        }
+        catch (FormatException)
+        {
+            return "Invalid format";
+        }
+    }
 
     private async Task SaveAsync()
     {

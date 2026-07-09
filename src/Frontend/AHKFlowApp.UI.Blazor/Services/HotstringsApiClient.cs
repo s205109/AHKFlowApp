@@ -32,6 +32,8 @@ public sealed class HotstringsApiClient(HttpClient httpClient) : ApiClientBase(h
             foreach (Guid id in request.CategoryIds)
                 parts.Add($"categoryIds={id}");
         }
+        if (request.Kind.HasValue)
+            parts.Add($"kind={request.Kind.Value}");
         return SendAsync<PagedList<HotstringDto>>(HttpMethod.Get, $"{BasePath}?{string.Join("&", parts)}", content: null, ct);
     }
 

@@ -3,6 +3,7 @@ using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.Commands.Hotstrings;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Queries.Hotstrings;
+using AHKFlowApp.Domain.Enums;
 using Ardalis.Result;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -50,6 +51,7 @@ public sealed class HotstringsController(
         [FromQuery] bool? isEndingCharacterRequired = null,
         [FromQuery] bool? isTriggerInsideWord = null,
         [FromQuery] Guid[]? categoryIds = null,
+        [FromQuery] HotstringKind? kind = null,
         CancellationToken ct = default) =>
         (await listHotstrings.ExecuteAsync(new ListHotstringsQuery(
             profileId,
@@ -64,7 +66,8 @@ public sealed class HotstringsController(
             appliesToAllProfiles,
             isEndingCharacterRequired,
             isTriggerInsideWord,
-            categoryIds), ct)).ToProblemActionResult(this);
+            categoryIds,
+            kind), ct)).ToProblemActionResult(this);
 
     /// <summary>Get a hotstring by id.</summary>
     [HttpGet("{id:guid}", Name = "GetHotstring")]

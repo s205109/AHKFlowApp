@@ -1,25 +1,40 @@
 using AHKFlowApp.Domain.Entities;
+using AHKFlowApp.Domain.Enums;
 
 namespace AHKFlowApp.Application.Services;
 
 /// <summary>
 /// Single emission point for hotstring lines. Deterministic option order: X * ? C O T
-/// (X arrives with non-Text kinds in later phases).
+/// — X leads for DateTime kind (T is never emitted for it); T trails for Text kind.
 /// </summary>
 internal static class HotstringEmitter
 {
     public static string Emit(Hotstring hs) =>
-        $":{BuildOptions(hs)}:{Escape(hs.Trigger)}::{Escape(hs.Replacement)}";
+        $":{BuildOptions(hs)}:{Escape(hs.Trigger)}::{BuildBody(hs)}";
 
     private static string BuildOptions(Hotstring hs)
     {
-        string options = "";
+        bool isDateTime = hs.Kind == HotstringKind.DateTime;
+        string options = isDateTime ? "X" : "";
         if (!hs.IsEndingCharacterRequired) options += "*";
         if (hs.IsTriggerInsideWord) options += "?";
         if (hs.IsCaseSensitive) options += "C";
         if (hs.OmitEndingCharacter && hs.IsEndingCharacterRequired) options += "O"; // O is meaningless with *
-        options += "T"; // Text kind always emits literally (WYSIWYG) — resolved decision D1
+        if (!isDateTime) options += "T"; // Text kind always emits literally (WYSIWYG) — resolved decision D1
         return options;
+    }
+
+    private static string BuildBody(Hotstring hs) =>
+        hs.Kind == HotstringKind.DateTime ? BuildDateTimeBody(hs) : Escape(hs.Replacement);
+
+    private static string BuildDateTimeBody(Hotstring hs)
+    {
+        // DateTimeFormat is embedded raw (no escaping) because it has already passed a
+        // server-side whitelist regex before reaching the emitter — validation lives elsewhere.
+        string nowExpression = hs.DateOffsetAmount is int amount && hs.DateOffsetUnit is DateOffsetUnit unit
+            ? $"DateAdd(A_Now, {amount}, \"{unit}\")"
+            : "A_Now";
+        return $"SendText(FormatTime({nowExpression}, \"{hs.DateTimeFormat}\"))";
     }
 
     // Keep every hotstring on one physical line and its trigger free of characters

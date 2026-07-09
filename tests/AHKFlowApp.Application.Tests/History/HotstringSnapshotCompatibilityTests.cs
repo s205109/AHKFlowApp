@@ -23,5 +23,8 @@ public sealed class HotstringSnapshotCompatibilityTests
         snapshot!.Kind.Should().Be(HotstringKind.Text);
         snapshot.IsCaseSensitive.Should().BeFalse();
         snapshot.OmitEndingCharacter.Should().BeFalse();
+        snapshot.DateTimeFormat.Should().BeNull();
+        snapshot.DateOffsetAmount.Should().BeNull();
+        snapshot.DateOffsetUnit.Should().BeNull();
     }
 }

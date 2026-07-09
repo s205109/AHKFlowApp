@@ -117,4 +117,36 @@ public sealed class HotstringHistoryDialogTests : BunitContext, IAsyncLifetime
         provider.WaitForAssertion(() =>
             _api.Received(1).RevertAsync(_id, 1, Arg.Any<CancellationToken>()));
     }
+
+    [Fact]
+    public async Task Dialog_SelectDateTimeVersion_RendersFormatSummaryNotBlankReplacement()
+    {
+        HotstringSnapshot snapshot = new(
+            "todaydate",
+            "",
+            null,
+            true,
+            true,
+            true,
+            [],
+            [],
+            DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow,
+            HotstringKind.DateTime,
+            "yyyy-MM-dd",
+            1,
+            DateOffsetUnit.Days);
+        _api.GetHistoryAsync(_id, Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HistoryEntryDto[]>.Ok([new(1, HistoryChangeType.Edit, DateTimeOffset.UtcNow)]));
+        _api.GetHistoryVersionAsync(_id, 1, Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotstringHistoryVersionDto>.Ok(
+                new HotstringHistoryVersionDto(1, HistoryChangeType.Edit, DateTimeOffset.UtcNow, snapshot)));
+
+        IRenderedComponent<MudDialogProvider> provider = await OpenDialogAsync();
+        provider.WaitForAssertion(() => provider.Markup.Should().Contain("v1"));
+
+        await provider.InvokeAsync(() => provider.Find("button.history-version").Click());
+
+        provider.WaitForAssertion(() => provider.Markup.Should().Contain("yyyy-MM-dd (+1 day)"));
+    }
 }

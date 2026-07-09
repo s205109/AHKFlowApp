@@ -1,5 +1,6 @@
 @using AHKFlowApp.UI.Blazor.DTOs
 @using AHKFlowApp.UI.Blazor.Services
+@using AHKFlowApp.UI.Blazor.Validation
 @using MudBlazor
 @implements IDisposable
 
@@ -42,8 +43,16 @@
                     <MudPaper Class="pa-3" Style="min-width: 280px;">
                         <MudText Typo="Typo.subtitle2">Trigger</MudText>
                         <MudText Class="mb-2">@_preview.Snapshot.Trigger</MudText>
-                        <MudText Typo="Typo.subtitle2">Replacement</MudText>
-                        <MudText Class="mb-2" Style="white-space: pre-wrap">@_preview.Snapshot.Replacement</MudText>
+                        @if (_preview.Snapshot.Kind == HotstringKind.DateTime)
+                        {
+                            <MudText Typo="Typo.subtitle2">Format</MudText>
+                            <MudText Class="mb-2" Style="white-space: pre-wrap">@DateTimeSummary(_preview.Snapshot)</MudText>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.subtitle2">Replacement</MudText>
+                            <MudText Class="mb-2" Style="white-space: pre-wrap">@_preview.Snapshot.Replacement</MudText>
+                        }
                         @if (_preview.Snapshot.Description is { Length: > 0 } description)
                         {
                             <MudText Typo="Typo.subtitle2">Description</MudText>
@@ -123,6 +132,14 @@
             _busy = false;
         }
     }
+
+    private static string? DateTimeSummary(HotstringSnapshot snapshot) => new HotstringEditModel
+    {
+        Kind = snapshot.Kind,
+        DateTimeFormat = snapshot.DateTimeFormat,
+        DateOffsetAmount = snapshot.DateOffsetAmount,
+        DateOffsetUnit = snapshot.DateOffsetUnit,
+    }.DateTimeSummary;
 
     private static string ProfileText(HotstringSnapshot snapshot) =>
         snapshot.AppliesToAllProfiles ? "All profiles" : $"{snapshot.ProfileIds.Length} profile(s)";

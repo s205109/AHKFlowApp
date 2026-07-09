@@ -42,7 +42,7 @@
                             </td>
                         }
                         <td class="trigger-cell"><code>@item.Trigger</code></td>
-                        <td class="replacement-cell">@item.Replacement</td>
+                        <td class="replacement-cell">@(item.Kind == HotstringKind.DateTime ? item.DateTimeSummary : item.Replacement)</td>
                         <td class="chevron-cell">@(expanded ? "▾" : "▸")</td>
                     </tr>
                     @if (expanded)
@@ -50,9 +50,18 @@
                         <tr class="mobile-row-expanded">
                             <td colspan="3">
                                 <MudStack Spacing="1" Class="pa-3">
-                                    <MudText Typo="Typo.body2" Style="white-space: pre-wrap">
-                                        <strong>Replacement:</strong> @item.Replacement
-                                    </MudText>
+                                    @if (item.Kind == HotstringKind.DateTime)
+                                    {
+                                        <MudText Typo="Typo.body2" Style="white-space: pre-wrap">
+                                            <strong>Format:</strong> @item.DateTimeSummary
+                                        </MudText>
+                                    }
+                                    else
+                                    {
+                                        <MudText Typo="Typo.body2" Style="white-space: pre-wrap">
+                                            <strong>Replacement:</strong> @item.Replacement
+                                        </MudText>
+                                    }
                                     @if (!string.IsNullOrWhiteSpace(item.Description))
                                     {
                                         <MudText Typo="Typo.body2"><strong>Description:</strong> @item.Description</MudText>

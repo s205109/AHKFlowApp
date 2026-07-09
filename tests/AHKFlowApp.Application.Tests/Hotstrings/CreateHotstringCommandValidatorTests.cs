@@ -16,8 +16,21 @@ public sealed class CreateHotstringCommandValidatorTests
         string replacement = "by the way",
         bool appliesToAllProfiles = true,
         Guid[]? profileIds = null,
-        string? description = null)
-        => new(new CreateHotstringDto(trigger, replacement, profileIds, appliesToAllProfiles, Description: description));
+        string? description = null,
+        HotstringKind kind = HotstringKind.Text,
+        string? dateTimeFormat = null,
+        int? dateOffsetAmount = null,
+        DateOffsetUnit? dateOffsetUnit = null)
+        => new(new CreateHotstringDto(
+            trigger,
+            replacement,
+            profileIds,
+            appliesToAllProfiles,
+            Description: description,
+            Kind: kind,
+            DateTimeFormat: dateTimeFormat,
+            DateOffsetAmount: dateOffsetAmount,
+            DateOffsetUnit: dateOffsetUnit));
 
     [Fact]
     public void Validate_WithAppliesToAllProfiles_Succeeds()
@@ -227,22 +240,213 @@ public sealed class CreateHotstringCommandValidatorTests
     [Fact]
     public void Kind_Text_Passes()
     {
-        CreateHotstringCommand cmd = new(new CreateHotstringDto("btw", "by the way", Kind: HotstringKind.Text));
-
-        ValidationResult result = _sut.Validate(cmd);
+        ValidationResult result = _sut.Validate(Cmd(kind: HotstringKind.Text));
 
         result.Errors.Should().NotContain(e => e.PropertyName == "Input.Kind");
     }
 
     [Fact]
-    public void Kind_NonText_Fails()
+    public void Kind_DateTime_Passes()
     {
-        CreateHotstringCommand cmd = new(new CreateHotstringDto("btw", "by the way", Kind: HotstringKind.Script));
+        ValidationResult result = _sut.Validate(Cmd(
+            kind: HotstringKind.DateTime,
+            replacement: "",
+            dateTimeFormat: "yyyy-MM-dd"));
 
-        ValidationResult result = _sut.Validate(cmd);
+        result.Errors.Should().NotContain(e => e.PropertyName == "Input.Kind");
+        result.Errors.Should().NotContain(e => e.PropertyName == "Input.Replacement");
+    }
+
+    [Theory]
+    [InlineData(HotstringKind.Macro)]
+    [InlineData(HotstringKind.Script)]
+    public void Kind_MacroOrScript_Fails(HotstringKind kind)
+    {
+        ValidationResult result = _sut.Validate(Cmd(kind: kind));
 
         result.Errors.Should().Contain(e =>
             e.PropertyName == "Input.Kind" &&
-            e.ErrorMessage == "Only Text hotstrings are supported.");
+            e.ErrorMessage == "Only Text and Date & time hotstrings are supported.");
+    }
+
+    [Fact]
+    public void DateTimeKind_WithNonEmptyReplacement_Fails()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            kind: HotstringKind.DateTime,
+            replacement: "not empty",
+            dateTimeFormat: "yyyy-MM-dd"));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.PropertyName == "Input.Replacement");
+    }
+
+    [Fact]
+    public void DateTimeKind_WithNullDateTimeFormat_Fails()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            kind: HotstringKind.DateTime,
+            replacement: "",
+            dateTimeFormat: null));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.PropertyName == "Input.DateTimeFormat");
+    }
+
+    [Fact]
+    public void TextKind_WithNonNullDateTimeFormat_Fails()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            kind: HotstringKind.Text,
+            dateTimeFormat: "yyyy-MM-dd"));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.PropertyName == "Input.DateTimeFormat");
+    }
+
+    [Fact]
+    public void TextKind_WithNonNullDateOffsetAmountOrUnit_Fails()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            kind: HotstringKind.Text,
+            dateOffsetAmount: 1,
+            dateOffsetUnit: DateOffsetUnit.Days));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.PropertyName == "Input.DateOffsetAmount");
+        result.Errors.Should().Contain(e => e.PropertyName == "Input.DateOffsetUnit");
+    }
+
+    [Fact]
+    public void DateTimeKind_OffsetAmountZero_Succeeds()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            kind: HotstringKind.DateTime,
+            replacement: "",
+            dateTimeFormat: "yyyy-MM-dd",
+            dateOffsetAmount: 0,
+            dateOffsetUnit: DateOffsetUnit.Days));
+
+        result.Errors.Should().NotContain(e =>
+            e.PropertyName == "Input.DateOffsetAmount" || e.PropertyName == "Input.DateOffsetUnit");
+    }
+
+    [Fact]
+    public void DateTimeKind_OffsetAmountWithoutUnit_Fails()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            kind: HotstringKind.DateTime,
+            replacement: "",
+            dateTimeFormat: "yyyy-MM-dd",
+            dateOffsetAmount: 1,
+            dateOffsetUnit: null));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.DateOffsetAmount" &&
+            e.ErrorMessage == "DateOffsetAmount and DateOffsetUnit must both be set or both be null.");
+    }
+
+    [Theory]
+    [InlineData(-3650)]
+    [InlineData(3650)]
+    public void DateTimeKind_OffsetAmountAtBounds_Succeeds(int amount)
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            kind: HotstringKind.DateTime,
+            replacement: "",
+            dateTimeFormat: "yyyy-MM-dd",
+            dateOffsetAmount: amount,
+            dateOffsetUnit: DateOffsetUnit.Days));
+
+        result.Errors.Should().NotContain(e => e.PropertyName == "Input.DateOffsetAmount");
+    }
+
+    [Theory]
+    [InlineData(-3651)]
+    [InlineData(3651)]
+    public void DateTimeKind_OffsetAmountBeyondBounds_Fails(int amount)
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            kind: HotstringKind.DateTime,
+            replacement: "",
+            dateTimeFormat: "yyyy-MM-dd",
+            dateOffsetAmount: amount,
+            dateOffsetUnit: DateOffsetUnit.Days));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.PropertyName == "Input.DateOffsetAmount");
+    }
+
+    [Theory]
+    [InlineData("yyyy-MM-dd")]
+    [InlineData("dd-MM-yyyy")]
+    [InlineData("MM/dd/yyyy")]
+    [InlineData("dddd d MMMM yyyy")]
+    [InlineData("ddd d MMM yyyy")]
+    [InlineData("MMMM yyyy")]
+    [InlineData("HH:mm")]
+    [InlineData("HH:mm:ss")]
+    [InlineData("h:mm tt")]
+    [InlineData("yyyy-MM-dd HH:mm")]
+    [InlineData("yyyy-MM-dd HH:mm:ss")]
+    [InlineData("yyyyMMdd-HHmmss")]
+    public void DateTimeFormat_CuratedPresets_Pass(string format)
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            kind: HotstringKind.DateTime,
+            replacement: "",
+            dateTimeFormat: format));
+
+        result.Errors.Should().NotContain(e => e.PropertyName == "Input.DateTimeFormat");
+    }
+
+    [Theory]
+    [InlineData("\"yyyy\"")]
+    [InlineData("`yyyy`")]
+    [InlineData("'yyyy'")]
+    [InlineData("yyyy\\MM")]
+    [InlineData("yyyy%MM")]
+    [InlineData("yyyy;MM")]
+    [InlineData("yyyy{0}")]
+    [InlineData("yyyy\nMM")]
+    [InlineData("yyyy fMM")]
+    [InlineData("yyyy zMM")]
+    [InlineData("yyyy KMM")]
+    [InlineData("yyyy nMM")]
+    [InlineData("")]
+    [InlineData("---")]
+    public void DateTimeFormat_InvalidValues_Fail(string format)
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            kind: HotstringKind.DateTime,
+            replacement: "",
+            dateTimeFormat: format));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.PropertyName == "Input.DateTimeFormat");
+    }
+
+    [Fact]
+    public void DateTimeFormat_At51Chars_Fails()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            kind: HotstringKind.DateTime,
+            replacement: "",
+            dateTimeFormat: new string('y', 51)));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.PropertyName == "Input.DateTimeFormat");
+    }
+
+    [Fact]
+    public void DateTimeFormat_At50Chars_Succeeds()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            kind: HotstringKind.DateTime,
+            replacement: "",
+            dateTimeFormat: new string('y', 50)));
+
+        result.Errors.Should().NotContain(e => e.PropertyName == "Input.DateTimeFormat");
     }
 }

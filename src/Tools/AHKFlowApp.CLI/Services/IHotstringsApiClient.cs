@@ -20,6 +20,14 @@ public enum HotstringKind
     Script = 3,
 }
 
+public enum DateOffsetUnit
+{
+    Seconds = 0,
+    Minutes = 1,
+    Hours = 2,
+    Days = 3,
+}
+
 public sealed record HotstringDto(
     Guid Id,
     Guid[] ProfileIds,
@@ -32,7 +40,10 @@ public sealed record HotstringDto(
     DateTimeOffset UpdatedAt,
     HotstringKind Kind = HotstringKind.Text,
     bool IsCaseSensitive = false,
-    bool OmitEndingCharacter = false);
+    bool OmitEndingCharacter = false,
+    string? DateTimeFormat = null,
+    int? DateOffsetAmount = null,
+    DateOffsetUnit? DateOffsetUnit = null);
 
 public sealed record CreateHotstringDto(
     string Trigger,

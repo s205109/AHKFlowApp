@@ -2,6 +2,7 @@ using AHKFlowApp.Application;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Queries.Hotstrings;
 using AHKFlowApp.Domain.Entities;
+using AHKFlowApp.Domain.Enums;
 using AHKFlowApp.Infrastructure.Persistence;
 using Ardalis.Result;
 using FluentAssertions;
@@ -299,5 +300,135 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
             new ListHotstringsQuery(SortField: "description", SortDescending: false), default);
 
         result.Value.Items.Select(h => h.Description).Should().Equal("alpha", "bravo", "charlie");
+    }
+
+    [Fact]
+    public async Task Handle_KindFilter_ReturnsOnlyMatchingKind()
+    {
+        var owner = Guid.NewGuid();
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(Hotstring.Create(owner, new HotstringDefinition("txt", "x", null, true, true, true), TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(
+                owner,
+                new HotstringDefinition(
+                    "dt", "", null, true, true, true,
+                    HotstringKind.DateTime, false, false, "yyyy-MM-dd", null, null),
+                TimeProvider.System));
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
+
+        Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(
+            new ListHotstringsQuery(Kind: HotstringKind.DateTime), default);
+
+        result.Value.Items.Should().ContainSingle().Which.Trigger.Should().Be("dt");
+    }
+
+    [Fact]
+    public async Task Handle_SortByKindAscending_ReturnsStableOrder()
+    {
+        var owner = Guid.NewGuid();
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(Hotstring.Create(
+                owner,
+                new HotstringDefinition(
+                    "dt", "", null, true, true, true,
+                    HotstringKind.DateTime, false, false, "yyyy-MM-dd", null, null),
+                TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, new HotstringDefinition("txt", "x", null, true, true, true), TimeProvider.System));
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
+
+        Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(
+            new ListHotstringsQuery(SortField: "kind", SortDescending: false), default);
+
+        result.Value.Items.Select(h => h.Kind).Should().Equal(HotstringKind.Text, HotstringKind.DateTime);
+    }
+
+    [Fact]
+    public async Task Handle_ReplacementFilter_MatchesDateTimeFormatForDateTimeRows()
+    {
+        var owner = Guid.NewGuid();
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(Hotstring.Create(
+                owner,
+                new HotstringDefinition(
+                    "dt", "", null, true, true, true,
+                    HotstringKind.DateTime, false, false, "yyyy-MM-dd", null, null),
+                TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, new HotstringDefinition("txt", "no match here", null, true, true, true), TimeProvider.System));
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
+
+        Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(
+            new ListHotstringsQuery(ReplacementFilter: "yyyy"), default);
+
+        result.Value.Items.Should().ContainSingle().Which.Trigger.Should().Be("dt");
+    }
+
+    [Fact]
+    public async Task Handle_Search_MatchesDateTimeFormatForDateTimeRows()
+    {
+        var owner = Guid.NewGuid();
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(Hotstring.Create(
+                owner,
+                new HotstringDefinition(
+                    "dt", "", null, true, true, true,
+                    HotstringKind.DateTime, false, false, "yyyy-MM-dd", null, null),
+                TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, new HotstringDefinition("txt", "no match here", null, true, true, true), TimeProvider.System));
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
+
+        Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(
+            new ListHotstringsQuery(Search: "yyyy"), default);
+
+        result.Value.Items.Should().ContainSingle().Which.Trigger.Should().Be("dt");
+    }
+
+    [Fact]
+    public async Task Handle_SortByReplacementAscending_OrdersDateTimeRowsByFormat()
+    {
+        var owner = Guid.NewGuid();
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(Hotstring.Create(
+                owner,
+                new HotstringDefinition(
+                    "dt", "", null, true, true, true,
+                    HotstringKind.DateTime, false, false, "ttt", null, null),
+                TimeProvider.System));
+            seed.Hotstrings.Add(Hotstring.Create(owner, new HotstringDefinition("txt", "aaa", null, true, true, true), TimeProvider.System));
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
+
+        Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(
+            new ListHotstringsQuery(SortField: "replacement", SortDescending: false), default);
+
+        result.Value.Items.Select(h => h.Trigger).Should().Equal("txt", "dt");
     }
 }
