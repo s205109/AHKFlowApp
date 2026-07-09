@@ -513,8 +513,28 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
         IRenderedComponent<Hotstrings> cut = RenderPage();
         cut.WaitForAssertion(() => cut.Find("[data-test=\"kind-filter\"]"));
 
-        await cut.InvokeAsync(() =>
-            cut.FindComponent<MudSelect<HotstringKind?>>().Instance.ValueChanged.InvokeAsync(HotstringKind.DateTime));
+        IRenderedComponent<MudSelect<HotstringKind?>> desktopKindFilter = cut
+            .FindComponents<MudSelect<HotstringKind?>>()
+            .Single(c => c.Markup.Contains("data-test=\"kind-filter\""));
+        await cut.InvokeAsync(() => desktopKindFilter.Instance.ValueChanged.InvokeAsync(HotstringKind.DateTime));
+
+        cut.WaitForAssertion(() => _api.Received().ListAsync(
+            Arg.Is<HotstringListRequest>(r => r.Kind == HotstringKind.DateTime),
+            Arg.Any<CancellationToken>()));
+    }
+
+    [Fact]
+    public async Task Page_MobileKindFilter_ReloadsDataWithSelectedKind()
+    {
+        StubList(Page());
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find("[data-test=\"kind-filter-mobile\"]"));
+
+        IRenderedComponent<MudSelect<HotstringKind?>> mobileKindFilter = cut
+            .FindComponents<MudSelect<HotstringKind?>>()
+            .Single(c => c.Markup.Contains("data-test=\"kind-filter-mobile\""));
+        await cut.InvokeAsync(() => mobileKindFilter.Instance.ValueChanged.InvokeAsync(HotstringKind.DateTime));
 
         cut.WaitForAssertion(() => _api.Received().ListAsync(
             Arg.Is<HotstringListRequest>(r => r.Kind == HotstringKind.DateTime),
