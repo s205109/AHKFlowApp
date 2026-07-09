@@ -64,20 +64,27 @@ internal sealed class ListHotstringsQueryHandler(
     : IUseCaseHandler<ListHotstringsQuery, Result<PagedList<HotstringDto>>>
 {
     // Mirrors SeedHotstringsCommand.s_samples — update both if seed set changes.
-    private static readonly (string Trigger, string Replacement, bool Ending, bool InsideWord, string[] Categories)[] s_lazySeed =
+    private static readonly (
+        string Trigger,
+        string Replacement,
+        bool Ending,
+        bool InsideWord,
+        string[] Categories,
+        HotstringKind Kind,
+        string? DateTimeFormat)[] s_lazySeed =
     [
-        ("recieve", "receive",              true,  true,  ["Autocorrect"]),
-        ("btw",     "by the way",           true,  false, ["Communication"]),
-        ("brb",     "be right back",        true,  false, ["Communication"]),
-        ("fyi",     "for your information", true,  false, ["Communication"]),
-        ("/today",  "{{date:yyyy-MM-dd}}",  false, false, ["DateTime"]),
-        ("/now",    "{{datetime:HH:mm}}",   false, false, ["DateTime"]),
-        ("@sig",    "Example User\nuser@example.com\nExample Company", false, false, ["Email"]),
-        (";arrow",  "→",               false, false, ["Symbols"]),
-        (";check",  "✓",               false, false, ["Symbols"]),
-        (";shrug",  "¯\\_(ツ)_/¯", false, false, ["Symbols"]),
-        (";e:",     "ë",               false, false, ["Symbols"]),
-        (";todo",   "TODO(name): ",         false, false, ["Code"]),
+        ("recieve", "receive",              true,  true,  ["Autocorrect"],  HotstringKind.Text,     null),
+        ("btw",     "by the way",           true,  false, ["Communication"], HotstringKind.Text,    null),
+        ("brb",     "be right back",        true,  false, ["Communication"], HotstringKind.Text,    null),
+        ("fyi",     "for your information", true,  false, ["Communication"], HotstringKind.Text,    null),
+        ("/today",  "",                     false, false, ["DateTime"],     HotstringKind.DateTime, "yyyy-MM-dd"),
+        ("/now",    "",                     false, false, ["DateTime"],     HotstringKind.DateTime, "HH:mm"),
+        ("@sig",    "Example User\nuser@example.com\nExample Company", false, false, ["Email"], HotstringKind.Text, null),
+        (";arrow",  "→",               false, false, ["Symbols"], HotstringKind.Text, null),
+        (";check",  "✓",               false, false, ["Symbols"], HotstringKind.Text, null),
+        (";shrug",  "¯\\_(ツ)_/¯", false, false, ["Symbols"], HotstringKind.Text, null),
+        (";e:",     "ë",               false, false, ["Symbols"], HotstringKind.Text, null),
+        (";todo",   "TODO(name): ",         false, false, ["Code"], HotstringKind.Text, null),
     ];
 
     // Shared, EF-translatable "searchable replacement" selector: DateTime-kind hotstrings store
@@ -245,13 +252,14 @@ internal sealed class ListHotstringsQueryHandler(
                 .ToDictionary(c => c.Name, c => c.Id, StringComparer.OrdinalIgnoreCase);
         }
 
-        foreach ((string trigger, string replacement, bool ending, bool inside, string[] cats) in s_lazySeed)
+        foreach ((string trigger, string replacement, bool ending, bool inside, string[] cats, HotstringKind kind, string? dateTimeFormat) in s_lazySeed)
         {
             var hs = Hotstring.Create(
                 ownerOid,
                 new HotstringDefinition(
                     trigger, replacement, Description: null,
-                    AppliesToAllProfiles: true, ending, inside),
+                    AppliesToAllProfiles: true, ending, inside,
+                    Kind: kind, DateTimeFormat: dateTimeFormat),
                 clock);
             db.Hotstrings.Add(hs);
             foreach (string catName in cats)
