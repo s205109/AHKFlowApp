@@ -67,7 +67,10 @@ internal sealed class RevertHotstringCommandHandler(
                 snapshot.IsTriggerInsideWord,
                 snapshot.Kind,
                 snapshot.IsCaseSensitive,
-                snapshot.OmitEndingCharacter),
+                snapshot.OmitEndingCharacter,
+                snapshot.DateTimeFormat,
+                snapshot.DateOffsetAmount,
+                snapshot.DateOffsetUnit),
             clock);
 
         db.HotstringProfiles.RemoveRange(entity.Profiles);
