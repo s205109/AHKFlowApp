@@ -24,6 +24,9 @@ public sealed class HotstringMobileListTests : BunitContext, IAsyncLifetime
     private static HotstringEditModel Item(string trigger = "btw", string replacement = "by the way") =>
         new() { Id = Guid.NewGuid(), Trigger = trigger, Replacement = replacement };
 
+    private static HotstringEditModel DateTimeItem(string trigger = "now", string format = "yyyy-MM-dd") =>
+        new() { Id = Guid.NewGuid(), Trigger = trigger, Replacement = "", Kind = HotstringKind.DateTime, DateTimeFormat = format };
+
     [Fact]
     public void Renders_TriggerAndReplacement_PerRow()
     {
@@ -145,6 +148,34 @@ public sealed class HotstringMobileListTests : BunitContext, IAsyncLifetime
         {
             cut.Markup.Should().Contain("Case:");
             cut.Markup.Should().Contain("Omit end-char:");
+        });
+    }
+
+    [Fact]
+    public void DateTimeRow_ShowsSummaryInReplacementCell()
+    {
+        IRenderedComponent<HotstringMobileList> cut = Render<HotstringMobileList>(p => p
+            .Add(c => c.Items, [DateTimeItem()])
+            .Add(c => c.Profiles, (IReadOnlyList<ProfileDto>)[])
+            .Add(c => c.Categories, (IReadOnlyList<CategoryDto>)[]));
+
+        cut.Find("td.replacement-cell").TextContent.Should().Be("yyyy-MM-dd");
+    }
+
+    [Fact]
+    public async Task DateTimeRow_Expanded_ShowsFormatLine_NotReplacementLine()
+    {
+        IRenderedComponent<HotstringMobileList> cut = Render<HotstringMobileList>(p => p
+            .Add(c => c.Items, [DateTimeItem()])
+            .Add(c => c.Profiles, (IReadOnlyList<ProfileDto>)[])
+            .Add(c => c.Categories, (IReadOnlyList<CategoryDto>)[]));
+
+        await cut.InvokeAsync(() => cut.Find("tr.mobile-row").Click());
+
+        cut.WaitForAssertion(() =>
+        {
+            cut.Markup.Should().Contain("Format:");
+            cut.Markup.Should().NotContain("Replacement:");
         });
     }
 }

@@ -474,4 +474,50 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
             provider.Find("input[data-test=\"trigger-input\"]").GetAttribute("value").Should().Be("btw"));
         return Task.CompletedTask;
     }
+
+    [Fact]
+    public Task Page_DateTimeRow_ShowsDateTimeSummaryInReplacementColumn()
+    {
+        var dto = new HotstringDto(Guid.NewGuid(), [], true, "now", "", null, true, true,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, HotstringKind.DateTime,
+            DateTimeFormat: "yyyy-MM-dd");
+        StubList(Page(dto));
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+
+        cut.WaitForAssertion(() => cut.Markup.Should().Contain("yyyy-MM-dd"));
+        return Task.CompletedTask;
+    }
+
+    [Fact]
+    public Task Page_DateTimeRow_HidesStartEditPencil_TextRowKeepsIt()
+    {
+        var dateTimeDto = new HotstringDto(Guid.NewGuid(), [], true, "now", "", null, true, true,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, HotstringKind.DateTime,
+            DateTimeFormat: "yyyy-MM-dd");
+        var textDto = new HotstringDto(Guid.NewGuid(), [], true, "btw", "by the way", null, true, true,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, HotstringKind.Text);
+        StubList(Page(dateTimeDto, textDto));
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+
+        cut.WaitForAssertion(() => cut.FindAll("button.start-edit").Count.Should().Be(1));
+        return Task.CompletedTask;
+    }
+
+    [Fact]
+    public async Task Page_KindFilter_ReloadsDataWithSelectedKind()
+    {
+        StubList(Page());
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find("[data-test=\"kind-filter\"]"));
+
+        await cut.InvokeAsync(() =>
+            cut.FindComponent<MudSelect<HotstringKind?>>().Instance.ValueChanged.InvokeAsync(HotstringKind.DateTime));
+
+        cut.WaitForAssertion(() => _api.Received().ListAsync(
+            Arg.Is<HotstringListRequest>(r => r.Kind == HotstringKind.DateTime),
+            Arg.Any<CancellationToken>()));
+    }
 }
