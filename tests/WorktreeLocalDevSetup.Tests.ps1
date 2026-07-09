@@ -54,6 +54,50 @@ function New-TempMainCheckout {
     } | ConvertTo-Json -Depth 8
     Set-Content -LiteralPath (Join-Path $backendDir 'appsettings.json') -Value $appsettings -Encoding utf8
 
+    # Mirror the real backend launchSettings: two Docker SQL profiles (marker
+    # AHKFLOW_START_DOCKER_SQL=true) that must both get per-worktree SQL isolation, and a
+    # LocalDB profile that must stay untouched.
+    $launchSettingsDir = Join-Path $backendDir 'Properties'
+    New-Item -ItemType Directory -Path $launchSettingsDir -Force | Out-Null
+    $connection = 'Server=localhost,1433;Database=AHKFlowAppDb;User Id=sa;Password=Dev!LocalOnly_2026;TrustServerCertificate=True;MultipleActiveResultSets=true'
+    $launchSettings = @{
+        profiles = @{
+            'Docker SQL (Recommended)' = @{
+                commandName = 'Project'
+                environmentVariables = @{
+                    ASPNETCORE_ENVIRONMENT = 'Development'
+                    AHKFLOW_START_DOCKER_SQL = 'true'
+                    COMPOSE_PROJECT_NAME = 'ahkflowapp'
+                    ConnectionStrings__DefaultConnection = $connection
+                }
+                applicationUrl = 'http://localhost:5600'
+            }
+            'Docker SQL (No Auth)' = @{
+                commandName = 'Project'
+                environmentVariables = @{
+                    ASPNETCORE_ENVIRONMENT = 'Development'
+                    AHKFLOW_START_DOCKER_SQL = 'true'
+                    COMPOSE_PROJECT_NAME = 'ahkflowapp'
+                    ConnectionStrings__DefaultConnection = $connection
+                    Auth__UseTestProvider = 'true'
+                }
+                applicationUrl = 'http://localhost:5600'
+            }
+            'LocalDB SQL' = @{
+                commandName = 'Project'
+                environmentVariables = @{
+                    ASPNETCORE_ENVIRONMENT = 'Development'
+                    AHKFLOW_START_DOCKER_SQL = 'false'
+                }
+                applicationUrl = 'http://localhost:5600'
+            }
+        }
+    } | ConvertTo-Json -Depth 8
+    Set-Content -LiteralPath (Join-Path $launchSettingsDir 'launchSettings.json') -Value $launchSettings -Encoding utf8
+
+    # Compose file marks the repo as a Docker SQL adopter so profile patching is expected.
+    Set-Content -LiteralPath (Join-Path $repo 'docker-compose.yml') -Value "services: {}" -Encoding utf8
+
     Invoke-TestGit $repo @('add', '-A') | Out-Null
     Invoke-TestGit $repo @('commit', '-m', 'seed') | Out-Null
 
@@ -107,6 +151,24 @@ try {
 
     $apiPort = Get-ManifestPort (Join-Path $wtPath 'scripts\.env.worktree') 'AHKFLOW_API_PORT'
     Assert-Equal "http://localhost:$apiPort" $frontend.ApiHttpClient.BaseAddress 'Frontend BaseAddress must match the allocated API port.'
+
+    # Regression guard: every Docker SQL profile (marker AHKFLOW_START_DOCKER_SQL=true) must get
+    # per-worktree SQL isolation — originally only "Docker SQL (Recommended)" was patched, so
+    # "Docker SQL (No Auth)" kept pointing at the main checkout's SQL container on 1433.
+    $sqlPort = Get-ManifestPort (Join-Path $wtPath 'scripts\.env.worktree') 'AHKFLOW_SQL_PORT'
+    $composeProject = Get-ManifestPort (Join-Path $wtPath 'scripts\.env.worktree') 'AHKFLOW_COMPOSE_PROJECT'
+    $launchSettingsPath = Join-Path $wtPath 'src\Backend\AHKFlowApp.API\Properties\launchSettings.json'
+    $launch = Get-Content -Raw -LiteralPath $launchSettingsPath | ConvertFrom-Json
+
+    foreach ($profileName in @('Docker SQL (Recommended)', 'Docker SQL (No Auth)')) {
+        $profileEnv = $launch.profiles.$profileName.environmentVariables
+        Assert-Equal $composeProject $profileEnv.COMPOSE_PROJECT_NAME "'$profileName' must use the worktree compose project."
+        Assert-Equal $sqlPort $profileEnv.AHKFLOW_SQL_PORT "'$profileName' must use the worktree SQL port."
+        Assert-True ($profileEnv.ConnectionStrings__DefaultConnection -match [regex]::Escape("localhost,$sqlPort")) "'$profileName' connection string must target the worktree SQL port."
+    }
+
+    $localDbEnv = $launch.profiles.'LocalDB SQL'.environmentVariables
+    Assert-True (($localDbEnv.PSObject.Properties.Name) -notcontains 'COMPOSE_PROJECT_NAME') 'Non-Docker profile must not be patched with a compose project.'
 } finally {
     Remove-TempTree $repo
 }

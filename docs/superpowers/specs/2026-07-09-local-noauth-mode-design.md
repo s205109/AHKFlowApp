@@ -34,11 +34,16 @@ MSAL JWT validation → 401s.
    `Docker SQL (No Auth)` (clone of the recommended profile + `Auth__UseTestProvider=true`, still
    `ASPNETCORE_ENVIRONMENT=Development`). The default (first) profiles are unchanged → plain
    `dotnet run` stays MSAL.
-3. **Protection:**
+3. **Worktree SQL isolation for all Docker SQL profiles:** the setup script patches compose project,
+   SQL port, and connection string on every launch profile marked `AHKFLOW_START_DOCKER_SQL=true`
+   (not just the recommended one), so running `Docker SQL (No Auth)` inside a worktree can't hit
+   the main checkout's SQL container on 1433.
+4. **Protection:**
    - E2E `LocalAuthModeFlowTests` — app boots as "Test User", Log out disabled, create-hotstring works.
    - Pester `WorktreeLocalDevSetup.Tests.ps1` — runs the setup script against a temp worktree fixture;
      asserts both dev configs exist, both have `Auth.UseTestProvider=true`, frontend `BaseAddress`
-     matches the allocated API port, and no `AzureAd` section leaks in. Registered in `ci.yml`.
+     matches the allocated API port, both Docker SQL launch profiles get the worktree SQL port/compose
+     project, and no `AzureAd` section leaks in. Registered in `ci.yml`.
 
 ## Decisions
 
