@@ -37,6 +37,13 @@
                 </MudButton>
             }
             <MudSpacer />
+            <MudSelect T="HotstringKind?" @bind-Value="_selectedKind" @bind-Value:after="OnKindFilterChangedAsync"
+                       Label="Type" Placeholder="All" Clearable="true"
+                       Class="kind-filter" Style="max-width: 200px;"
+                       UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "kind-filter" })">
+                <MudSelectItem T="HotstringKind?" Value="HotstringKind.Text">Text</MudSelectItem>
+                <MudSelectItem T="HotstringKind?" Value="HotstringKind.DateTime">Date &amp; time</MudSelectItem>
+            </MudSelect>
             <MudTextField T="string" @bind-Value="_search" @bind-Value:after="OnSearchChangedAsync"
                           DebounceInterval="300"
                           Placeholder="Search For Hotstrings"
@@ -98,7 +105,7 @@
                             }
                             else
                             {
-                                <span style="white-space: pre-wrap">@context.Item.Replacement</span>
+                                <span style="white-space: pre-wrap">@(context.Item.Kind == HotstringKind.DateTime ? context.Item.DateTimeSummary : context.Item.Replacement)</span>
                             }
                         </CellTemplate>
                     </PropertyColumn>
@@ -128,7 +135,7 @@
                             }
                         </CellTemplate>
                     </TemplateColumn>
-                    <TemplateColumn Title="Type" Sortable="false" Filterable="false">
+                    <TemplateColumn Title="Type" Sortable="true" SortBy="x => x.Kind" Filterable="false">
                         <CellTemplate>
                             <MudTooltip Text="@OptionsTooltip(context.Item)">
                                 <span class="type-badge">
@@ -177,6 +184,14 @@
                           AdornmentIcon="@Icons.Material.Filled.Search"
                           Class="search-hotstrings mb-2"
                           FullWidth="true" Clearable="true" Immediate="true" />
+
+            <MudSelect T="HotstringKind?" @bind-Value="_selectedKind" @bind-Value:after="OnKindFilterChangedAsync"
+                       Label="Type" Placeholder="All" Clearable="true"
+                       Class="kind-filter-mobile mb-2" FullWidth="true"
+                       UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "kind-filter-mobile" })">
+                <MudSelectItem T="HotstringKind?" Value="HotstringKind.Text">Text</MudSelectItem>
+                <MudSelectItem T="HotstringKind?" Value="HotstringKind.DateTime">Date &amp; time</MudSelectItem>
+            </MudSelect>
 
             @if (_categories.Count > 0)
             {
@@ -236,6 +251,7 @@
     private IReadOnlyList<EntityOption> _profileOptions = [];
     private IReadOnlyList<EntityOption> _categoryOptions = [];
     private IReadOnlyList<Guid> _selectedCategoryIds = [];
+    private HotstringKind? _selectedKind;
     private bool _isAuthenticated;
     private bool _loading;
     private string? _loadError;
@@ -296,7 +312,8 @@
                 TriggerFilter: StringFilter(state, "trigger"),
                 ReplacementFilter: StringFilter(state, "replacement"),
                 DescriptionFilter: StringFilter(state, "description"),
-                CategoryIds: _selectedCategoryIds.Count > 0 ? _selectedCategoryIds : null),
+                CategoryIds: _selectedCategoryIds.Count > 0 ? _selectedCategoryIds : null,
+                Kind: _selectedKind),
             ct);
 
         _loading = false;
@@ -351,7 +368,12 @@
             "trigger" or nameof(HotstringEditModel.Trigger) => "trigger",
             "replacement" or nameof(HotstringEditModel.Replacement) => "replacement",
             "description" or nameof(HotstringEditModel.Description) => "description",
-            _ => null,
+            // The Type column is a TemplateColumn: MudBlazor 9.3.0 auto-generates its PropertyName
+            // as a random GUID (TemplateColumn<T>.PropertyName has no settable parameter), so it
+            // can't be matched by literal string. It's the only other sortable column in this grid
+            // (SortMode.Single), so any value that isn't one of the known property names is
+            // attributed to it by elimination.
+            _ => "kind",
         };
 
         return (sortField, sort.Descending);
@@ -575,7 +597,8 @@
                 Page: _mobilePage,
                 PageSize: _mobilePageSize,
                 Search: string.IsNullOrWhiteSpace(_search) ? null : _search,
-                CategoryIds: _selectedCategoryIds.Count > 0 ? _selectedCategoryIds : null),
+                CategoryIds: _selectedCategoryIds.Count > 0 ? _selectedCategoryIds : null,
+                Kind: _selectedKind),
             _cts.Token);
 
         _loading = false;
@@ -757,6 +780,13 @@
         await LoadMobileAsync();
     }
 
+    private async Task OnKindFilterChangedAsync()
+    {
+        if (_grid is not null) await _grid.ReloadServerData();
+        _mobilePage = 1;
+        await LoadMobileAsync();
+    }
+
     private RenderFragment RenderProfiles(bool appliesToAllProfiles, IReadOnlyCollection<Guid> profileIds) =>
         @<EntityChips Ids="profileIds" Options="_profileOptions" Any="appliesToAllProfiles" />;
 
@@ -838,8 +868,11 @@
                            OnClick="() => ShowHistoryAsync(item)" />
             <MudIconButton Class="delete" Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
                            OnClick="() => DeleteAsync(item)" />
-            <MudIconButton Class="start-edit" Icon="@Icons.Material.Filled.Edit"
-                           OnClick="() => StartEditAsync(item)" />
+            @if (item.IsInlineEditable)
+            {
+                <MudIconButton Class="start-edit" Icon="@Icons.Material.Filled.Edit"
+                               OnClick="() => StartEditAsync(item)" />
+            }
         }
     </text>;
 

@@ -15,4 +15,7 @@ public sealed record HotstringDefinition(
     bool IsTriggerInsideWord,
     HotstringKind Kind = HotstringKind.Text,
     bool IsCaseSensitive = false,
-    bool OmitEndingCharacter = false);
+    bool OmitEndingCharacter = false,
+    string? DateTimeFormat = null,
+    int? DateOffsetAmount = null,
+    DateOffsetUnit? DateOffsetUnit = null);

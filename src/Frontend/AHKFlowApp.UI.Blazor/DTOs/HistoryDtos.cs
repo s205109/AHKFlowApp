@@ -19,7 +19,11 @@ public sealed record HotstringSnapshot(
     Guid[] ProfileIds,
     Guid[] CategoryIds,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    HotstringKind Kind = HotstringKind.Text,
+    string? DateTimeFormat = null,
+    int? DateOffsetAmount = null,
+    DateOffsetUnit? DateOffsetUnit = null);
 
 public sealed record HotkeySnapshot(
     string Description,

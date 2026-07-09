@@ -90,6 +90,14 @@ public sealed class ListHotstringsQueryValidatorTests
     }
 
     [Fact]
+    public void Validate_WithKindSortField_Succeeds()
+    {
+        ValidationResult result = _sut.Validate(new ListHotstringsQuery(SortField: "kind"));
+
+        result.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
     public void Validate_WithTriggerFilterTooLong_Fails()
     {
         string filter = new('x', 201);

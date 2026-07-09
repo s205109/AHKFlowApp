@@ -1,12 +1,17 @@
+using System.Linq.Expressions;
+using System.Text.RegularExpressions;
+using AHKFlowApp.Domain.Enums;
 using FluentValidation;
 
 namespace AHKFlowApp.Application.Validation;
 
-internal static class HotstringRules
+internal static partial class HotstringRules
 {
     public const int TriggerMaxLength = 50;
     public const int ReplacementMaxLength = 4000;
     public const int DescriptionMaxLength = 200;
+    public const int DateTimeFormatMaxLength = 50;
+    public const int DateOffsetAmountMax = 3650;
 
     public static IRuleBuilderOptions<T, string> ValidTrigger<T>(this IRuleBuilderInitial<T, string> rb) =>
         rb.Cascade(CascadeMode.Stop)
@@ -23,6 +28,18 @@ internal static class HotstringRules
           .MaximumLength(ReplacementMaxLength).WithMessage($"Replacement must be {ReplacementMaxLength} characters or fewer.");
 
     /// <summary>
+    /// Adds validation for a nullable date/time format string: required, max length, and a
+    /// whitelist of AHK/.NET-shared date/time tokens plus a small set of separator characters.
+    /// </summary>
+    public static IRuleBuilderOptions<T, string?> ValidDateTimeFormat<T>(this IRuleBuilderInitial<T, string?> rb) =>
+        rb.Cascade(CascadeMode.Stop)
+          .NotEmpty().WithMessage("DateTimeFormat is required.")
+          .MaximumLength(DateTimeFormatMaxLength)
+              .WithMessage($"DateTimeFormat must be {DateTimeFormatMaxLength} characters or fewer.")
+          .Must(f => f is not null && DateTimeFormatWhitelistRegex().IsMatch(f))
+              .WithMessage("DateTimeFormat contains unsupported characters or tokens.");
+
+    /// <summary>
     /// Adds profile-association validation rules to a validator.
     /// When <paramref name="appliesToAll"/> is true, <paramref name="profileIds"/> must be null/empty.
     /// When false, at least one non-empty, non-duplicated GUID must be provided.
@@ -30,8 +47,8 @@ internal static class HotstringRules
     /// </summary>
     public static void AddProfileAssociationRules<T>(
         this AbstractValidator<T> validator,
-        System.Linq.Expressions.Expression<Func<T, bool>> appliesToAll,
-        System.Linq.Expressions.Expression<Func<T, Guid[]?>> profileIds)
+        Expression<Func<T, bool>> appliesToAll,
+        Expression<Func<T, Guid[]?>> profileIds)
     {
         Func<T, bool> appliesToAllFn = appliesToAll.Compile();
 
@@ -59,4 +76,78 @@ internal static class HotstringRules
             .When(x => !appliesToAllFn(x))
             .WithMessage("ProfileIds must not contain duplicates.");
     }
+
+    /// <summary>
+    /// Adds kind-conditional rules for Date &amp; time hotstrings.
+    /// When <paramref name="kind"/> is <see cref="HotstringKind.DateTime"/>: <paramref name="replacement"/> must be
+    /// empty, <paramref name="dateTimeFormat"/> is required and whitelisted, and <paramref name="dateOffsetAmount"/> /
+    /// <paramref name="dateOffsetUnit"/> must be both-set-or-both-null (amount bound to +/-<see cref="DateOffsetAmountMax"/>,
+    /// 0 explicitly allowed).
+    /// Otherwise: <paramref name="replacement"/> follows the normal <see cref="ValidReplacement{T}"/> rule, and the
+    /// three Date &amp; time-only fields must all be null.
+    /// </summary>
+    public static void AddDateTimeKindRules<T>(
+        this AbstractValidator<T> validator,
+        Expression<Func<T, HotstringKind>> kind,
+        Expression<Func<T, string>> replacement,
+        Expression<Func<T, string?>> dateTimeFormat,
+        Expression<Func<T, int?>> dateOffsetAmount,
+        Expression<Func<T, DateOffsetUnit?>> dateOffsetUnit)
+    {
+        Func<T, HotstringKind> kindFn = kind.Compile();
+        Func<T, int?> amountFn = dateOffsetAmount.Compile();
+        Func<T, DateOffsetUnit?> unitFn = dateOffsetUnit.Compile();
+
+        bool IsDateTime(T x) => kindFn(x) == HotstringKind.DateTime;
+        bool BothOffsetsSet(T x) => amountFn(x) is not null && unitFn(x) is not null;
+
+        // Replacement: normal rules for non-DateTime kinds, must be empty for DateTime
+        validator.RuleFor(replacement)
+            .ValidReplacement()
+            .When(x => !IsDateTime(x));
+
+        validator.RuleFor(replacement)
+            .Must(r => r == string.Empty)
+            .When(IsDateTime)
+            .WithMessage("Replacement must be empty when Kind is Date & time.");
+
+        // DateTimeFormat: required + whitelisted for DateTime, must be null otherwise
+        validator.RuleFor(dateTimeFormat)
+            .ValidDateTimeFormat()
+            .When(IsDateTime);
+
+        validator.RuleFor(dateTimeFormat)
+            .Must(f => f is null)
+            .When(x => !IsDateTime(x))
+            .WithMessage("DateTimeFormat must be null unless Kind is Date & time.");
+
+        // DateOffsetAmount / DateOffsetUnit: must be null unless DateTime
+        validator.RuleFor(dateOffsetAmount)
+            .Must(a => a is null)
+            .When(x => !IsDateTime(x))
+            .WithMessage("DateOffsetAmount must be null unless Kind is Date & time.");
+
+        validator.RuleFor(dateOffsetUnit)
+            .Must(u => u is null)
+            .When(x => !IsDateTime(x))
+            .WithMessage("DateOffsetUnit must be null unless Kind is Date & time.");
+
+        // For DateTime: both-or-neither, range + enum checks when both are set (0 is a valid amount)
+        validator.RuleFor(dateOffsetAmount)
+            .Must((x, a) => (a is null) == (unitFn(x) is null))
+            .When(IsDateTime)
+            .WithMessage("DateOffsetAmount and DateOffsetUnit must both be set or both be null.");
+
+        validator.RuleFor(dateOffsetAmount)
+            .InclusiveBetween(-DateOffsetAmountMax, DateOffsetAmountMax)
+            .When(x => IsDateTime(x) && BothOffsetsSet(x))
+            .WithMessage($"DateOffsetAmount must be between -{DateOffsetAmountMax} and {DateOffsetAmountMax}.");
+
+        validator.RuleFor(dateOffsetUnit)
+            .IsInEnum()
+            .When(x => IsDateTime(x) && BothOffsetsSet(x));
+    }
+
+    [GeneratedRegex(@"^(?=.*[yMdHhmst])[yMdHhmst0-9 \-./:,()]+$")]
+    private static partial Regex DateTimeFormatWhitelistRegex();
 }

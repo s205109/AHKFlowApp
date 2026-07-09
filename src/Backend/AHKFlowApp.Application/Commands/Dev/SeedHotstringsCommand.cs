@@ -1,6 +1,7 @@
 using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Domain.Entities;
+using AHKFlowApp.Domain.Enums;
 using Ardalis.Result;
 using Microsoft.EntityFrameworkCore;
 
@@ -23,20 +24,22 @@ internal sealed class SeedHotstringsCommandHandler(
         string Replacement,
         bool Ending,
         bool InsideWord,
-        string[] Categories)[] s_samples =
+        string[] Categories,
+        HotstringKind Kind,
+        string? DateTimeFormat)[] s_samples =
     [
-        ("recieve", "receive",              true,  true,  ["Autocorrect"]),
-        ("btw",     "by the way",           true,  false, ["Communication"]),
-        ("brb",     "be right back",        true,  false, ["Communication"]),
-        ("fyi",     "for your information", true,  false, ["Communication"]),
-        ("/today",  "{{date:yyyy-MM-dd}}",  false, false, ["DateTime"]),
-        ("/now",    "{{datetime:HH:mm}}",   false, false, ["DateTime"]),
-        ("@sig",    "Example User\nuser@example.com\nExample Company", false, false, ["Email"]),
-        (";arrow",  "→",               false, false, ["Symbols"]),
-        (";check",  "✓",               false, false, ["Symbols"]),
-        (";shrug",  "¯\\_(ツ)_/¯", false, false, ["Symbols"]),
-        (";e:",     "ë",               false, false, ["Symbols"]),
-        (";todo",   "TODO(name): ",         false, false, ["Code"]),
+        ("recieve", "receive",              true,  true,  ["Autocorrect"],  HotstringKind.Text,     null),
+        ("btw",     "by the way",           true,  false, ["Communication"], HotstringKind.Text,    null),
+        ("brb",     "be right back",        true,  false, ["Communication"], HotstringKind.Text,    null),
+        ("fyi",     "for your information", true,  false, ["Communication"], HotstringKind.Text,    null),
+        ("/today",  "",                     false, false, ["DateTime"],     HotstringKind.DateTime, "yyyy-MM-dd"),
+        ("/now",    "",                     false, false, ["DateTime"],     HotstringKind.DateTime, "HH:mm"),
+        ("@sig",    "Example User\nuser@example.com\nExample Company", false, false, ["Email"], HotstringKind.Text, null),
+        (";arrow",  "→",               false, false, ["Symbols"], HotstringKind.Text, null),
+        (";check",  "✓",               false, false, ["Symbols"], HotstringKind.Text, null),
+        (";shrug",  "¯\\_(ツ)_/¯", false, false, ["Symbols"], HotstringKind.Text, null),
+        (";e:",     "ë",               false, false, ["Symbols"], HotstringKind.Text, null),
+        (";todo",   "TODO(name): ",         false, false, ["Code"], HotstringKind.Text, null),
     ];
 
     public async Task<Result<PagedList<HotstringDto>>> ExecuteAsync(SeedHotstringsCommand request, CancellationToken ct)
@@ -73,7 +76,7 @@ internal sealed class SeedHotstringsCommandHandler(
                 .Select(x => (x.HotstringId, x.CategoryId))
                 .ToHashSet();
 
-        foreach ((string trigger, string replacement, bool ending, bool inside, string[] cats) in s_samples)
+        foreach ((string trigger, string replacement, bool ending, bool inside, string[] cats, HotstringKind kind, string? dateTimeFormat) in s_samples)
         {
             Hotstring? existing = request.Reset
                 ? null
@@ -91,7 +94,8 @@ internal sealed class SeedHotstringsCommandHandler(
                     ownerOid,
                     new HotstringDefinition(
                         trigger, replacement, Description: null, AppliesToAllProfiles: true,
-                        IsEndingCharacterRequired: ending, IsTriggerInsideWord: inside),
+                        IsEndingCharacterRequired: ending, IsTriggerInsideWord: inside,
+                        Kind: kind, DateTimeFormat: dateTimeFormat),
                     clock);
                 db.Hotstrings.Add(entity);
                 hotstringId = entity.Id;

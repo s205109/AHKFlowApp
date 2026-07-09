@@ -18,16 +18,21 @@ public sealed class UpdateHotstringCommandValidator : AbstractValidator<UpdateHo
     public UpdateHotstringCommandValidator()
     {
         RuleFor(x => x.Input.Trigger).ValidTrigger();
-        RuleFor(x => x.Input.Replacement).ValidReplacement();
         RuleFor(x => x.Input.Description)
             .MaximumLength(HotstringRules.DescriptionMaxLength)
             .WithMessage($"Description must be {HotstringRules.DescriptionMaxLength} characters or fewer.");
         RuleFor(x => x.Input.Kind)
-            .Must(k => k == HotstringKind.Text)
-            .WithMessage("Only Text hotstrings are supported.");
+            .Must(k => k is HotstringKind.Text or HotstringKind.DateTime)
+            .WithMessage("Only Text and Date & time hotstrings are supported.");
         this.AddProfileAssociationRules(
             x => x.Input.AppliesToAllProfiles,
             x => x.Input.ProfileIds);
+        this.AddDateTimeKindRules(
+            x => x.Input.Kind,
+            x => x.Input.Replacement,
+            x => x.Input.DateTimeFormat,
+            x => x.Input.DateOffsetAmount,
+            x => x.Input.DateOffsetUnit);
     }
 }
 
@@ -84,7 +89,10 @@ internal sealed class UpdateHotstringCommandHandler(
                 input.IsTriggerInsideWord,
                 input.Kind,
                 input.IsCaseSensitive,
-                input.OmitEndingCharacter),
+                input.OmitEndingCharacter,
+                input.DateTimeFormat,
+                input.DateOffsetAmount,
+                input.DateOffsetUnit),
             clock);
 
         // Replace junction rows via the navigation collections only; adding to the

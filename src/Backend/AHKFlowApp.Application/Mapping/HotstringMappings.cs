@@ -19,5 +19,8 @@ internal static class HotstringMappings
         h.Categories.Select(hc => hc.CategoryId).ToArray(),
         h.Kind,
         h.IsCaseSensitive,
-        h.OmitEndingCharacter);
+        h.OmitEndingCharacter,
+        h.DateTimeFormat,
+        h.DateOffsetAmount,
+        h.DateOffsetUnit);
 }
