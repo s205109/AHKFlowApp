@@ -35,12 +35,15 @@ Design decisions (grilled & confirmed):
 
 ### 3. E2E smoke test — `tests/AHKFlowApp.E2E.Tests/LocalAuthModeFlowTests.cs`
 Reuse `SpaHost`/`ApiFactory` fixtures (pattern: `HotkeysMobileFlowTests.cs`):
-1. Assert top bar shows "Test User" and Log out is disabled (local-install-mode signature, `Shared/LoginDisplay.razor`).
+1. Assert the local-install-mode signature: a **disabled Log out button** (`Shared/LoginDisplay.razor`, only rendered in the Authorized + test-auth branch). Note: `Identity.Name` is null for the synthetic user — no `nameType` on the `TestAuthenticationProvider` claims — so "Test User" does **not** render as text; assert the disabled button, not the name.
 2. Hotstrings page: Add button enabled → create a hotstring → appears in the grid.
 
-### 4. Pester test — `tests/WorktreeLocalDevSetup.Tests.ps1` (or extend an existing Worktree test file if a better fit)
+**Scope:** this E2E only proves UI CRUD under synthetic auth — `SpaHost` injects `Auth:UseTestProvider=true` for every appsettings request and `ApiFactory` registers its own test auth handler, so it does **not** exercise the generated backend/frontend dev configs or the No Auth launch profiles. The real guard for that wiring is the script test in step 4 (asserts the setup script writes both dev configs with `Auth:UseTestProvider=true`); the profiles are covered by the manual check in Verification step 4.
+
+### 4. Script regression test — `tests/WorktreeLocalDevSetup.Tests.ps1`
+Follow the repo convention: a self-running assert-style `.ps1` with local `Assert-*` helpers that CI runs directly (like the existing `Worktree*.Tests.ps1`) — **not** Pester / `Invoke-Pester`.
 - After running the setup script against a temp worktree fixture: both `appsettings.Development.json` files exist, both have `Auth.UseTestProvider = true`, frontend `BaseAddress` matches the allocated API port.
-- Register the file in the `ci.yml` Pester step alongside the existing three.
+- Register the file in the `ci.yml` worktree-PowerShell test step alongside the existing three.
 
 ### 5. Docs
 - `AGENTS.md`: short note — worktrees run no-auth (test provider) by default; main checkout uses MSAL; "No Auth" launch profiles for opt-in.
@@ -49,12 +52,12 @@ Reuse `SpaHost`/`ApiFactory` fixtures (pattern: `HotkeysMobileFlowTests.cs`):
 - Spec doc per user prefs: `docs/superpowers/specs/2026-07-09-local-noauth-mode-design.md` (this design, condensed).
 
 ### 6. Unbreak this worktree immediately
-Run the updated `setup-worktree-local-dev.ps1` (or write the two dev config files directly) so `dotnet run` works here today with ports from `scripts/.env.worktree` (API 5606 / UI 5607).
+Run the updated `setup-worktree-local-dev.ps1` (or write the two dev config files directly) so `dotnet run` works here today. If writing directly, read the current ports from `scripts/.env.worktree` (`AHKFLOW_API_PORT` / `AHKFLOW_UI_PORT`) — don't hard-code them, they vary per worktree.
 
 ## Verification
 
 1. `dotnet build` + `dotnet test` (includes new E2E test; E2E uses Testcontainers SQL).
-2. Run the new Pester test locally: `pwsh -NoProfile -File tests/WorktreeLocalDevSetup.Tests.ps1` (Invoke-Pester).
+2. Run the new script regression test locally: `pwsh -NoProfile -File tests/WorktreeLocalDevSetup.Tests.ps1` (self-running assert-style, no Pester).
 3. End-to-end in this worktree: `dotnet run` API + UI, then `playwright-cli` skill — verify signed in as "Test User", add a hotstring without login, no 401s in network log.
 4. Main checkout sanity: plain `dotnet run` still boots the MSAL branch (no behavior change); `dotnet run --launch-profile "http (No Auth)"` + backend "Docker SQL (No Auth)" gives full no-login CRUD.
 
