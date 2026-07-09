@@ -89,7 +89,10 @@ internal sealed class UpdateHotstringCommandHandler(
                 input.IsTriggerInsideWord,
                 input.Kind,
                 input.IsCaseSensitive,
-                input.OmitEndingCharacter),
+                input.OmitEndingCharacter,
+                input.DateTimeFormat,
+                input.DateOffsetAmount,
+                input.DateOffsetUnit),
             clock);
 
         // Replace junction rows via the navigation collections only; adding to the

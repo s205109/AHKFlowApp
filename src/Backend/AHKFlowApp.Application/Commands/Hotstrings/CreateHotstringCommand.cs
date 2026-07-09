@@ -84,7 +84,10 @@ internal sealed class CreateHotstringCommandHandler(
                 input.IsTriggerInsideWord,
                 input.Kind,
                 input.IsCaseSensitive,
-                input.OmitEndingCharacter),
+                input.OmitEndingCharacter,
+                input.DateTimeFormat,
+                input.DateOffsetAmount,
+                input.DateOffsetUnit),
             clock);
 
         db.Hotstrings.Add(entity);

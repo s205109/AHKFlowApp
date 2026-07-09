@@ -379,4 +379,101 @@ public sealed class HotstringsEndpointsTests(ApiTestFixture fixture)
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
+
+    [Fact]
+    public async Task Post_DateTimeKind_ReturnsCreatedWithDateFields()
+    {
+        using HttpClient client = CreateAuthed();
+        CreateHotstringDto dto = new(
+            "dtstamp",
+            "",
+            Kind: HotstringKind.DateTime,
+            DateTimeFormat: "yyyy-MM-dd",
+            DateOffsetAmount: 7,
+            DateOffsetUnit: DateOffsetUnit.Days);
+
+        HttpResponseMessage response = await client.PostAsJsonAsync("/api/v1/hotstrings", dto);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        HotstringDto? body = await response.Content.ReadFromJsonAsync<HotstringDto>();
+        body!.Kind.Should().Be(HotstringKind.DateTime);
+        body.DateTimeFormat.Should().Be("yyyy-MM-dd");
+        body.DateOffsetAmount.Should().Be(7);
+        body.DateOffsetUnit.Should().Be(DateOffsetUnit.Days);
+    }
+
+    [Fact]
+    public async Task List_FiltersByKind_ReturnsOnlyMatchingKind()
+    {
+        var owner = Guid.NewGuid();
+        using HttpClient client = CreateAuthed(owner);
+
+        await client.PostAsJsonAsync("/api/v1/hotstrings", new CreateHotstringDto("kindtext", "x"));
+        await client.PostAsJsonAsync(
+            "/api/v1/hotstrings",
+            new CreateHotstringDto("kinddt", "", Kind: HotstringKind.DateTime, DateTimeFormat: "yyyy"));
+
+        HttpResponseMessage response = await client.GetAsync($"/api/v1/hotstrings?kind={HotstringKind.DateTime}");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        PagedList<HotstringDto>? body = await response.Content.ReadFromJsonAsync<PagedList<HotstringDto>>();
+        body!.Items.Should().OnlyContain(h => h.Kind == HotstringKind.DateTime);
+        body.Items.Should().Contain(h => h.Trigger == "kinddt");
+    }
+
+    [Fact]
+    public async Task List_SortByKind_OrdersRows()
+    {
+        var owner = Guid.NewGuid();
+        using HttpClient client = CreateAuthed(owner);
+
+        await client.PostAsJsonAsync("/api/v1/hotstrings", new CreateHotstringDto("sktext", "x"));
+        await client.PostAsJsonAsync(
+            "/api/v1/hotstrings",
+            new CreateHotstringDto("skdt", "", Kind: HotstringKind.DateTime, DateTimeFormat: "yyyy"));
+
+        HttpResponseMessage response = await client.GetAsync(
+            "/api/v1/hotstrings?search=sk&sortField=kind&sortDescending=false");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        PagedList<HotstringDto>? body = await response.Content.ReadFromJsonAsync<PagedList<HotstringDto>>();
+        body!.Items.Select(h => h.Kind).Should().BeInAscendingOrder();
+    }
+
+    [Fact]
+    public async Task List_ReplacementFilter_MatchesDateTimeFormatForDateTimeRows()
+    {
+        var owner = Guid.NewGuid();
+        using HttpClient client = CreateAuthed(owner);
+
+        await client.PostAsJsonAsync(
+            "/api/v1/hotstrings",
+            new CreateHotstringDto("rfdt", "", Kind: HotstringKind.DateTime, DateTimeFormat: "ss"));
+        await client.PostAsJsonAsync("/api/v1/hotstrings", new CreateHotstringDto("rftext", "no match here"));
+
+        HttpResponseMessage response = await client.GetAsync("/api/v1/hotstrings?replacementFilter=ss");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        PagedList<HotstringDto>? body = await response.Content.ReadFromJsonAsync<PagedList<HotstringDto>>();
+        body!.Items.Should().ContainSingle().Which.Trigger.Should().Be("rfdt");
+    }
+
+    [Fact]
+    public async Task List_SortByReplacement_OrdersDateTimeRowsByFormat()
+    {
+        var owner = Guid.NewGuid();
+        using HttpClient client = CreateAuthed(owner);
+
+        await client.PostAsJsonAsync(
+            "/api/v1/hotstrings",
+            new CreateHotstringDto("srb", "", Kind: HotstringKind.DateTime, DateTimeFormat: "ttt"));
+        await client.PostAsJsonAsync("/api/v1/hotstrings", new CreateHotstringDto("sra", "aaa"));
+
+        HttpResponseMessage response = await client.GetAsync(
+            "/api/v1/hotstrings?search=sr&sortField=replacement&sortDescending=false");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        PagedList<HotstringDto>? body = await response.Content.ReadFromJsonAsync<PagedList<HotstringDto>>();
+        body!.Items.Select(h => h.Trigger).Should().Equal("sra", "srb");
+    }
 }
