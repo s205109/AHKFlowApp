@@ -25,6 +25,25 @@ public sealed class HotstringTableFormatterTests
             FixedTime,
             FixedTime);
 
+    private static HotstringDto DateTimeHotstring(
+        string? dateTimeFormat = "yyyy-MM-dd",
+        int? dateOffsetAmount = null,
+        DateOffsetUnit? dateOffsetUnit = null,
+        string trigger = "ddate") =>
+        new(Guid.NewGuid(),
+            [],
+            true,
+            trigger,
+            string.Empty,
+            true,
+            true,
+            FixedTime,
+            FixedTime,
+            HotstringKind.DateTime,
+            DateTimeFormat: dateTimeFormat,
+            DateOffsetAmount: dateOffsetAmount,
+            DateOffsetUnit: dateOffsetUnit);
+
     [Fact]
     public void Write_EmptyPage_WritesPlaceholderOnly()
     {
@@ -153,5 +172,113 @@ public sealed class HotstringTableFormatterTests
 
         sw.ToString().Should().Contain("Kind");
         sw.ToString().Should().Contain("Text");
+    }
+
+    [Fact]
+    public void Write_DateTimeRow_NoOffset_RendersRawFormat()
+    {
+        StringWriter sw = new();
+        PagedList<HotstringDto> page = new([DateTimeHotstring(dateTimeFormat: "yyyy-MM-dd")], 1, 50, 1);
+
+        HotstringTableFormatter.Write(sw, page, EmptyNames);
+
+        sw.ToString().Should().Contain("yyyy-MM-dd");
+    }
+
+    [Fact]
+    public void Write_DateTimeRow_PositiveOffset_RendersPluralWithSign()
+    {
+        StringWriter sw = new();
+        PagedList<HotstringDto> page = new(
+            [DateTimeHotstring(dateTimeFormat: "yyyy-MM-dd", dateOffsetAmount: 7, dateOffsetUnit: DateOffsetUnit.Days)],
+            1, 50, 1);
+
+        HotstringTableFormatter.Write(sw, page, EmptyNames);
+
+        sw.ToString().Should().Contain("yyyy-MM-dd (+7 days)");
+    }
+
+    [Fact]
+    public void Write_DateTimeRow_NegativeOffset_RendersPluralWithSign()
+    {
+        StringWriter sw = new();
+        PagedList<HotstringDto> page = new(
+            [DateTimeHotstring(dateTimeFormat: "dddd d MMMM yyyy", dateOffsetAmount: -2, dateOffsetUnit: DateOffsetUnit.Hours)],
+            1, 50, 1);
+
+        HotstringTableFormatter.Write(sw, page, EmptyNames);
+
+        sw.ToString().Should().Contain("dddd d MMMM yyyy (-2 hours)");
+    }
+
+    [Theory]
+    [InlineData(1, "day")]
+    [InlineData(-1, "hour")]
+    public void Write_DateTimeRow_SingularOffset_RendersSingularUnit(int amount, string expectedUnit)
+    {
+        DateOffsetUnit unit = expectedUnit.Contains("day")
+            ? DateOffsetUnit.Days
+            : DateOffsetUnit.Hours;
+        StringWriter sw = new();
+        PagedList<HotstringDto> page = new(
+            [DateTimeHotstring(dateTimeFormat: "yyyy-MM-dd", dateOffsetAmount: amount, dateOffsetUnit: unit)],
+            1, 50, 1);
+
+        HotstringTableFormatter.Write(sw, page, EmptyNames);
+
+        string sign = amount < 0 ? "-" : "+";
+        sw.ToString().Should().Contain($"({sign}{Math.Abs(amount)} {expectedUnit})");
+    }
+
+    [Fact]
+    public void Write_DateTimeRow_ZeroOffset_RendersPluralNotSingular()
+    {
+        StringWriter sw = new();
+        PagedList<HotstringDto> page = new(
+            [DateTimeHotstring(dateTimeFormat: "yyyy-MM-dd", dateOffsetAmount: 0, dateOffsetUnit: DateOffsetUnit.Days)],
+            1, 50, 1);
+
+        HotstringTableFormatter.Write(sw, page, EmptyNames);
+
+        sw.ToString().Should().Contain("(+0 days)");
+    }
+
+    [Fact]
+    public void Write_DateTimeRow_NullFormat_RendersEmDash()
+    {
+        StringWriter sw = new();
+        PagedList<HotstringDto> page = new([DateTimeHotstring(dateTimeFormat: null)], 1, 50, 1);
+
+        HotstringTableFormatter.Write(sw, page, EmptyNames);
+
+        sw.ToString().Should().Contain("—");
+    }
+
+    [Fact]
+    public void Write_TextRow_UnchangedReplacementRendering()
+    {
+        StringWriter sw = new();
+        PagedList<HotstringDto> page = new([Hotstring(replacement: "by the way")], 1, 50, 1);
+
+        HotstringTableFormatter.Write(sw, page, EmptyNames);
+
+        sw.ToString().Should().Contain("by the way");
+    }
+
+    [Theory]
+    [InlineData(DateOffsetUnit.Seconds, "seconds")]
+    [InlineData(DateOffsetUnit.Minutes, "minutes")]
+    [InlineData(DateOffsetUnit.Hours, "hours")]
+    [InlineData(DateOffsetUnit.Days, "days")]
+    public void Write_DateTimeRow_AllUnits_RenderLowercaseName(DateOffsetUnit unit, string expected)
+    {
+        StringWriter sw = new();
+        PagedList<HotstringDto> page = new(
+            [DateTimeHotstring(dateTimeFormat: "yyyy-MM-dd", dateOffsetAmount: 3, dateOffsetUnit: unit)],
+            1, 50, 1);
+
+        HotstringTableFormatter.Write(sw, page, EmptyNames);
+
+        sw.ToString().Should().Contain($"3 {expected}");
     }
 }
