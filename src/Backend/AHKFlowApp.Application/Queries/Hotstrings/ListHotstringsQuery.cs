@@ -1,8 +1,11 @@
+using System.Linq.Expressions;
+using System.Reflection;
 using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.Common;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Domain.Constants;
 using AHKFlowApp.Domain.Entities;
+using AHKFlowApp.Domain.Enums;
 using Ardalis.Result;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
@@ -22,7 +25,8 @@ public sealed record ListHotstringsQuery(
     bool? AppliesToAllProfiles = null,
     bool? IsEndingCharacterRequired = null,
     bool? IsTriggerInsideWord = null,
-    IReadOnlyList<Guid>? CategoryIds = null);
+    IReadOnlyList<Guid>? CategoryIds = null,
+    HotstringKind? Kind = null);
 
 public sealed class ListHotstringsQueryValidator : AbstractValidator<ListHotstringsQuery>
 {
@@ -35,6 +39,7 @@ public sealed class ListHotstringsQueryValidator : AbstractValidator<ListHotstri
         "description",
         "isEndingCharacterRequired",
         "isTriggerInsideWord",
+        "kind",
     ];
 
     public ListHotstringsQueryValidator()
@@ -75,6 +80,45 @@ internal sealed class ListHotstringsQueryHandler(
         (";todo",   "TODO(name): ",         false, false, ["Code"]),
     ];
 
+    // Shared, EF-translatable "searchable replacement" selector: DateTime-kind hotstrings store
+    // Replacement = "" and carry their format string in DateTimeFormat instead. Search/filter/sort
+    // on the replacement column must fall back to DateTimeFormat for those rows. Defined once here
+    // and reused for the global Search clause, ReplacementFilter, and the "replacement" sort case.
+    private static readonly Expression<Func<Hotstring, string>> SearchableReplacementSelector =
+        h => h.Kind == HotstringKind.DateTime ? (h.DateTimeFormat ?? "") : h.Replacement;
+
+    private static readonly MethodInfo LikeMethod = typeof(DbFunctionsExtensions).GetMethod(
+        nameof(DbFunctionsExtensions.Like),
+        [typeof(DbFunctions), typeof(string), typeof(string)])!;
+
+    /// <summary>Builds <c>h => EF.Functions.Like(SearchableReplacementSelector-body, pattern)</c>,
+    /// reusing <see cref="SearchableReplacementSelector"/>'s body and parameter directly.</summary>
+    private static Expression<Func<Hotstring, bool>> SearchableReplacementLike(string pattern)
+    {
+        MethodCallExpression call = Expression.Call(
+            LikeMethod,
+            Expression.Property(null, typeof(EF), nameof(EF.Functions)),
+            SearchableReplacementSelector.Body,
+            Expression.Constant(pattern));
+
+        return Expression.Lambda<Func<Hotstring, bool>>(call, SearchableReplacementSelector.Parameters[0]);
+    }
+
+    /// <summary>Combines two <see cref="Hotstring"/> predicates with OR, rebinding <paramref name="right"/>
+    /// onto <paramref name="left"/>'s parameter so the result is a single valid expression tree.</summary>
+    private static Expression<Func<Hotstring, bool>> Or(
+        Expression<Func<Hotstring, bool>> left,
+        Expression<Func<Hotstring, bool>> right)
+    {
+        Expression rightBody = new ParameterRebinder(right.Parameters[0], left.Parameters[0]).Visit(right.Body)!;
+        return Expression.Lambda<Func<Hotstring, bool>>(Expression.OrElse(left.Body, rightBody), left.Parameters[0]);
+    }
+
+    private sealed class ParameterRebinder(ParameterExpression from, ParameterExpression to) : ExpressionVisitor
+    {
+        protected override Expression VisitParameter(ParameterExpression node) => node == from ? to : base.VisitParameter(node);
+    }
+
     public async Task<Result<PagedList<HotstringDto>>> ExecuteAsync(ListHotstringsQuery request, CancellationToken ct)
     {
         if (currentUser.Oid is not Guid ownerOid)
@@ -99,10 +143,10 @@ internal sealed class ListHotstringsQueryHandler(
         if (!string.IsNullOrWhiteSpace(request.Search))
         {
             string pattern = $"%{request.Search.Trim()}%";
-            query = query.Where(h =>
-                EF.Functions.Like(h.Trigger, pattern) ||
-                EF.Functions.Like(h.Replacement, pattern) ||
-                (h.Description != null && EF.Functions.Like(h.Description, pattern)));
+            Expression<Func<Hotstring, bool>> triggerLike = h => EF.Functions.Like(h.Trigger, pattern);
+            Expression<Func<Hotstring, bool>> replacementLike = SearchableReplacementLike(pattern);
+            Expression<Func<Hotstring, bool>> descriptionLike = h => h.Description != null && EF.Functions.Like(h.Description, pattern);
+            query = query.Where(Or(Or(triggerLike, replacementLike), descriptionLike));
         }
 
         if (!string.IsNullOrWhiteSpace(request.TriggerFilter))
@@ -114,7 +158,7 @@ internal sealed class ListHotstringsQueryHandler(
         if (!string.IsNullOrWhiteSpace(request.ReplacementFilter))
         {
             string pattern = $"%{request.ReplacementFilter.Trim()}%";
-            query = query.Where(h => EF.Functions.Like(h.Replacement, pattern));
+            query = query.Where(SearchableReplacementLike(pattern));
         }
 
         if (!string.IsNullOrWhiteSpace(request.DescriptionFilter))
@@ -131,6 +175,9 @@ internal sealed class ListHotstringsQueryHandler(
 
         if (request.IsTriggerInsideWord is { } isTriggerInsideWord)
             query = query.Where(h => h.IsTriggerInsideWord == isTriggerInsideWord);
+
+        if (request.Kind.HasValue)
+            query = query.Where(h => h.Kind == request.Kind.Value);
 
         if (request.CategoryIds is { Count: > 0 })
         {
@@ -157,7 +204,10 @@ internal sealed class ListHotstringsQueryHandler(
                 h.Categories.Select(hc => hc.CategoryId).ToArray(),
                 h.Kind,
                 h.IsCaseSensitive,
-                h.OmitEndingCharacter))
+                h.OmitEndingCharacter,
+                h.DateTimeFormat,
+                h.DateOffsetAmount,
+                h.DateOffsetUnit))
             .ToListAsync(ct);
 
         return Result.Success(new PagedList<HotstringDto>(items, request.Page, request.PageSize, total));
@@ -265,11 +315,12 @@ internal sealed class ListHotstringsQueryHandler(
         IOrderedQueryable<Hotstring> ordered = normalized switch
         {
             "trigger" => descending ? query.OrderByDescending(h => h.Trigger) : query.OrderBy(h => h.Trigger),
-            "replacement" => descending ? query.OrderByDescending(h => h.Replacement) : query.OrderBy(h => h.Replacement),
+            "replacement" => descending ? query.OrderByDescending(SearchableReplacementSelector) : query.OrderBy(SearchableReplacementSelector),
             "description" => descending ? query.OrderByDescending(h => h.Description) : query.OrderBy(h => h.Description),
             "isendingcharacterrequired" => descending ? query.OrderByDescending(h => h.IsEndingCharacterRequired) : query.OrderBy(h => h.IsEndingCharacterRequired),
             "istriggerinsideword" => descending ? query.OrderByDescending(h => h.IsTriggerInsideWord) : query.OrderBy(h => h.IsTriggerInsideWord),
             "updatedat" => descending ? query.OrderByDescending(h => h.UpdatedAt) : query.OrderBy(h => h.UpdatedAt),
+            "kind" => descending ? query.OrderByDescending(h => h.Kind) : query.OrderBy(h => h.Kind),
             _ => descending ? query.OrderByDescending(h => h.CreatedAt) : query.OrderBy(h => h.CreatedAt),
         };
 
