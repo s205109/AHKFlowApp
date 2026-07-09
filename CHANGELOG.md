@@ -13,6 +13,7 @@ This changelog starts forward-only. Existing releases before this file was intro
 - Type/Options badge column in the hotstrings grid (replaces the two option checkbox columns).
 - "Edit details" dialog for hotstrings on desktop.
 - `ahkflow hotstring list` shows a Kind column.
+- DateTime hotstring kind: curated date/time format presets with optional date offset, emitted as `SendText(FormatTime(...))`. Supported in the edit dialog, grid, mobile list, history, and CLI.
 
 ### Changed
 
