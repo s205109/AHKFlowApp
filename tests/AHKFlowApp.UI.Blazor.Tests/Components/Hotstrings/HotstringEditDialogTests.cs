@@ -362,6 +362,25 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
         item.DateTimeFormat.Should().Be("yyyy-MM-dd");
     }
 
+    [Fact]
+    public async Task SwitchToDateTime_WithNonEmptyReplacement_PromptsConfirmation()
+    {
+        // Mirrors SwitchAwayFromDateTime_WithFormatSet_PromptsConfirmation for the opposite
+        // direction: Text -> DateTime with a non-empty Replacement should prompt for
+        // confirmation and leave the model untouched until it resolves.
+        HotstringEditModel item = new() { Trigger = "btw", Kind = HotstringKind.Text, Replacement = "by the way" };
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"kind-selector\"]"));
+
+        provider.FindAll(".mud-toggle-item").First(e => e.TextContent.Contains("Date & time")).Click();
+
+        // A confirmation MudMessageBox should now be present in the DOM (rendered by the same
+        // MudDialogProvider), and the underlying model must remain untouched until it resolves.
+        provider.WaitForAssertion(() => provider.Markup.Should().Contain("Switching to Date &amp; time"));
+        item.Kind.Should().Be(HotstringKind.Text);
+        item.Replacement.Should().Be("by the way");
+    }
+
     private async Task<IRenderedComponent<MudDialogProvider>> RenderDialogAsync(HotstringEditModel? item = null)
     {
         Render<MudPopoverProvider>();
