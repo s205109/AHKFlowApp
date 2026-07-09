@@ -185,6 +185,14 @@
                           Class="search-hotstrings mb-2"
                           FullWidth="true" Clearable="true" Immediate="true" />
 
+            <MudSelect T="HotstringKind?" @bind-Value="_selectedKind" @bind-Value:after="OnKindFilterChangedAsync"
+                       Label="Type" Placeholder="All" Clearable="true"
+                       Class="kind-filter-mobile mb-2" FullWidth="true"
+                       UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "kind-filter-mobile" })">
+                <MudSelectItem T="HotstringKind?" Value="HotstringKind.Text">Text</MudSelectItem>
+                <MudSelectItem T="HotstringKind?" Value="HotstringKind.DateTime">Date &amp; time</MudSelectItem>
+            </MudSelect>
+
             @if (_categories.Count > 0)
             {
                 <div class="chip-strip mb-2">
