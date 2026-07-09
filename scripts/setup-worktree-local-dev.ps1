@@ -33,9 +33,10 @@ $SqlPortRangeEnd = 14399
 $ReservedSqlPort = 1433
 $SqlPortKey = "${EnvVarPrefix}SQL_PORT"
 $ComposeProjectKey = "${EnvVarPrefix}COMPOSE_PROJECT"
-# The launch profile whose Docker SQL env vars (compose project + SQL port) are patched per
-# worktree. The exporter rebases this literal to the adopting repo's profile name.
-$DockerSqlProfileName = 'Docker SQL (Recommended)'
+# Marker env var identifying launch profiles that boot Docker SQL; every profile carrying it
+# with value 'true' gets its Docker SQL env vars (compose project + SQL port) patched per
+# worktree, so variants like "Docker SQL (No Auth)" stay isolated too.
+$DockerSqlStartFlag = 'AHKFLOW_START_DOCKER_SQL'
 $RootKey = "${EnvVarPrefix}ROOT"
 $BackendAppSettingsRelativePath = 'src/Backend/AHKFlowApp.API/appsettings.json'
 $FrontendAppSettingsRelativePath = 'src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/appsettings.json'
@@ -625,26 +626,33 @@ function Write-BackendWorktreeDockerProfile {
         param([object] $LaunchSettings)
 
         $profiles = $LaunchSettings.profiles
-        if (($profiles.PSObject.Properties.Name) -notcontains $DockerSqlProfileName) {
-            if ($composeIntended) {
-                Write-Host "WARNING: found docker-compose.yml but no '$DockerSqlProfileName' launch profile; Docker SQL per-worktree isolation was not applied. Add that profile, or set DockerSqlProfileName when exporting the isolation kit."
+        $patched = 0
+
+        foreach ($profileName in $profiles.PSObject.Properties.Name) {
+            $launchProfile = $profiles.$profileName
+            if (($launchProfile.PSObject.Properties.Name) -notcontains 'environmentVariables') {
+                continue
             }
-            return
+
+            $env = $launchProfile.environmentVariables
+            if (($env.PSObject.Properties.Name) -notcontains $DockerSqlStartFlag -or
+                [string] $env.$DockerSqlStartFlag -ne 'true') {
+                continue
+            }
+
+            Set-NoteProperty $env 'COMPOSE_PROJECT_NAME' $ComposeProject
+            Set-NoteProperty $env 'AHKFLOW_SQL_PORT' ([string] $SqlPort)
+
+            if (($env.PSObject.Properties.Name) -contains 'ConnectionStrings__DefaultConnection') {
+                $builder = New-Object System.Data.SqlClient.SqlConnectionStringBuilder([string] $env.'ConnectionStrings__DefaultConnection')
+                $builder['Data Source'] = "localhost,$SqlPort"
+                $env.'ConnectionStrings__DefaultConnection' = $builder.ConnectionString
+            }
+            $patched++
         }
 
-        $env = $profiles.$DockerSqlProfileName.environmentVariables
-        if (-not $env) {
-            Write-Host "WARNING: launch profile '$DockerSqlProfileName' has no environmentVariables block; Docker SQL per-worktree isolation (compose project + SQL port) was not applied."
-            return
-        }
-
-        Set-NoteProperty $env 'COMPOSE_PROJECT_NAME' $ComposeProject
-        Set-NoteProperty $env 'AHKFLOW_SQL_PORT' ([string] $SqlPort)
-
-        if (($env.PSObject.Properties.Name) -contains 'ConnectionStrings__DefaultConnection') {
-            $builder = New-Object System.Data.SqlClient.SqlConnectionStringBuilder([string] $env.'ConnectionStrings__DefaultConnection')
-            $builder['Data Source'] = "localhost,$SqlPort"
-            $env.'ConnectionStrings__DefaultConnection' = $builder.ConnectionString
+        if ($patched -eq 0 -and $composeIntended) {
+            Write-Host "WARNING: found docker-compose.yml but no launch profile with $DockerSqlStartFlag=true; Docker SQL per-worktree isolation (compose project + SQL port) was not applied."
         }
     }
 }
