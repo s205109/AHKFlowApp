@@ -13,4 +13,5 @@ public sealed record HotstringListRequest(
     bool? AppliesToAllProfiles = null,
     bool? IsEndingCharacterRequired = null,
     bool? IsTriggerInsideWord = null,
-    IReadOnlyList<Guid>? CategoryIds = null);
+    IReadOnlyList<Guid>? CategoryIds = null,
+    HotstringKind? Kind = null);

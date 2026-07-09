@@ -14,4 +14,7 @@ public sealed record HotstringDto(
     Guid[]? CategoryIds = null,
     HotstringKind Kind = HotstringKind.Text,
     bool IsCaseSensitive = false,
-    bool OmitEndingCharacter = false);
+    bool OmitEndingCharacter = false,
+    string? DateTimeFormat = null,
+    int? DateOffsetAmount = null,
+    DateOffsetUnit? DateOffsetUnit = null);
