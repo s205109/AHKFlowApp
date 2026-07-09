@@ -222,6 +222,12 @@ Azure resources are provisioned per-environment using `.\scripts\deploy.ps1`. Ea
 - API: `http://localhost:5600` (single port for all backend scenarios: VS, docker-compose, Docker-only)
 - Frontend: `http://localhost:5601`
 
+**Local auth:** the main checkout runs real MSAL (Azure AD) by default. Agent git worktrees run
+**no-auth** (test provider, always signed in as "Test User") automatically — `setup-worktree-local-dev.ps1`
+writes both `appsettings.Development.json` files with `Auth:UseTestProvider=true`, so Playwright/E2E get
+full CRUD with no login. Humans in the main checkout opt into no-auth via the `http (No Auth)` frontend
+and `Docker SQL (No Auth)` backend launch profiles.
+
 App Service and SQL Server names include a short deterministic suffix (e.g. `ahkflowapp-api-test-ab12cd`)
 to avoid Azure's global-name collisions. Exact names/URLs are saved to `scripts/.env.<env>` after
 running `deploy.ps1`.

@@ -14,6 +14,20 @@
       "dotnetRunMessages": true,
       "applicationUrl": "http://localhost:5600"
     },
+    "Docker SQL (No Auth)": {
+      "commandName": "Project",
+      "launchBrowser": true,
+      "launchUrl": "swagger",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "AHKFLOW_START_DOCKER_SQL": "true",
+        "COMPOSE_PROJECT_NAME": "ahkflowapp",
+        "ConnectionStrings__DefaultConnection": "Server=localhost,1433;Database=AHKFlowAppDb;User Id=sa;Password=Dev!LocalOnly_2026;TrustServerCertificate=True;MultipleActiveResultSets=true",
+        "Auth__UseTestProvider": "true"
+      },
+      "dotnetRunMessages": true,
+      "applicationUrl": "http://localhost:5600"
+    },
     "LocalDB SQL": {
       "commandName": "Project",
       "launchBrowser": true,

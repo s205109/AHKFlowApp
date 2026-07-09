@@ -109,6 +109,7 @@ jobs:
           ./tests/WorktreePowerShellHost.Tests.ps1
           ./tests/WorktreeMergedCleanup.Tests.ps1
           ./tests/WorktreeRemoveHook.Tests.ps1
+          ./tests/WorktreeLocalDevSetup.Tests.ps1
 
   bicep-lint:
     runs-on: ubuntu-latest

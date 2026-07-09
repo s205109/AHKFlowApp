@@ -27,11 +27,18 @@ params. The server is optional and configured locally (per-developer MCP setup).
 
 ## Local Setup
 
-`wwwroot/appsettings.Development.json` is gitignored. Copy the example and fill in your Azure AD values:
+`wwwroot/appsettings.Development.json` is gitignored. Two paths:
+
+**MSAL (real Azure AD):** copy the example and fill in your Azure AD values:
 
 ```bash
 cp wwwroot/appsettings.Development.json.example wwwroot/appsettings.Development.json
 ```
+
+**No-auth (test provider, always signed in):** run with the `http (No Auth)` launch profile
+(`ASPNETCORE_ENVIRONMENT=NoAuth` → loads committed `wwwroot/appsettings.NoAuth.json` with
+`Auth:UseTestProvider=true`), paired with the API's `Docker SQL (No Auth)` profile. Git worktrees
+get this automatically via `setup-worktree-local-dev.ps1` (no example copy needed).
 
 ## Adding a Page
 

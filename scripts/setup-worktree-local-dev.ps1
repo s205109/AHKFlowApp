@@ -40,6 +40,7 @@ $RootKey = "${EnvVarPrefix}ROOT"
 $BackendAppSettingsRelativePath = 'src/Backend/AHKFlowApp.API/appsettings.json'
 $FrontendAppSettingsRelativePath = 'src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/appsettings.json'
 $FrontendDevelopmentConfigRelativePath = 'src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/appsettings.Development.json'
+$BackendDevelopmentConfigRelativePath = 'src/Backend/AHKFlowApp.API/appsettings.Development.json'
 $BackendLaunchSettingsRelativePath = 'src/Backend/AHKFlowApp.API/Properties/launchSettings.json'
 $VsCodeLaunchSettingsRelativePath = '.vscode/launch.json'
 $FrontendLaunchSettingsRelativePath = 'src/Frontend/AHKFlowApp.UI.Blazor/Properties/launchSettings.json'
@@ -517,14 +518,13 @@ function Write-FrontendWorktreeAppSettings {
     }
 }
 
-# The frontend's gitignored appsettings.Development.json (local dev config such as auth) is
-# not checked out into a fresh worktree. Copy the main checkout's copy so the worktree app
-# starts, then point its API base address at the worktree. In Development this file is loaded
-# after appsettings.json, so its BaseAddress wins -- which is why the rebase here is required.
+# The frontend's gitignored appsettings.Development.json (local dev config such as auth) is not
+# checked out into a fresh worktree. Write a deterministic no-auth config so agent worktrees get
+# full CRUD via the test auth provider without ever inheriting the main checkout's real Azure AD
+# IDs. In Development this file loads after appsettings.json, so its BaseAddress/Auth win.
 function Write-FrontendWorktreeDevelopmentConfig {
     param(
         [string] $Root,
-        [string] $ConfigRoot,
         [string] $ApiUrl
     )
 
@@ -532,23 +532,30 @@ function Write-FrontendWorktreeDevelopmentConfig {
         return
     }
 
+    # The file is gitignored, so it is written directly (no skip-worktree bookkeeping needed).
     $worktreePath = Join-Path $Root ($FrontendDevelopmentConfigRelativePath -replace '/', '\')
-    $mainPath = Join-Path $ConfigRoot ($FrontendDevelopmentConfigRelativePath -replace '/', '\')
+    Write-JsonFile $worktreePath ([pscustomobject]@{
+        Auth = [pscustomobject]@{ UseTestProvider = $true }
+        ApiHttpClient = [pscustomobject]@{ BaseAddress = $ApiUrl }
+    })
+}
 
-    if (-not (Test-Path -LiteralPath $worktreePath) -and (Test-Path -LiteralPath $mainPath)) {
-        New-Item -ItemType Directory -Path (Split-Path -Parent $worktreePath) -Force | Out-Null
-        Copy-Item -LiteralPath $mainPath -Destination $worktreePath -Force
-    }
+# The backend's gitignored appsettings.Development.json is likewise absent in a fresh worktree, so
+# without this the worktree API runs real MSAL JWT validation and rejects the frontend's test-auth
+# calls (401). Write the no-auth toggle; CORS + connection string stay in Write-BackendWorktreeAppSettings.
+function Write-BackendWorktreeDevelopmentConfig {
+    param(
+        [string] $Root
+    )
 
-    if (-not (Test-Path -LiteralPath $worktreePath)) {
+    if (-not (Test-LinkedWorktree $Root)) {
         return
     }
 
-    # The file is gitignored, so it is written directly (no skip-worktree bookkeeping needed).
-    $config = ConvertFrom-Jsonc (Get-Content -LiteralPath $worktreePath -Raw)
-    Set-JsonSectionValue $config 'ApiHttpClient' 'BaseAddress' $ApiUrl
-    $json = Format-Json ($config | ConvertTo-Json -Depth 16)
-    [System.IO.File]::WriteAllText($worktreePath, $json + [Environment]::NewLine, [System.Text.Encoding]::UTF8)
+    $worktreePath = Join-Path $Root ($BackendDevelopmentConfigRelativePath -replace '/', '\')
+    Write-JsonFile $worktreePath ([pscustomobject]@{
+        Auth = [pscustomobject]@{ UseTestProvider = $true }
+    })
 }
 
 . (Join-Path $PSScriptRoot 'worktree-database.common.ps1')
@@ -662,8 +669,9 @@ function Write-WorktreeConfig {
     # binds and talks to its own ports/DB without any Program.cs wiring in the target.
     Write-BackendWorktreeLaunchSettings $Root $apiUrl
     Write-BackendWorktreeAppSettings $Root $uiUrl $connectionString
+    Write-BackendWorktreeDevelopmentConfig $Root
     Write-FrontendWorktreeAppSettings $Root $apiUrl
-    Write-FrontendWorktreeDevelopmentConfig $Root $ConfigRoot $apiUrl
+    Write-FrontendWorktreeDevelopmentConfig $Root $apiUrl
     Write-FrontendWorktreeLaunchSettings $Root $uiUrl
     Write-VsCodeWorktreeLaunchConfig $Root $apiUrl $uiUrl
     Write-BackendWorktreeDockerProfile $Root $SqlPort $ComposeProject
