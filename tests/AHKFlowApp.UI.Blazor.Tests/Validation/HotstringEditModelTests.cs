@@ -157,4 +157,165 @@ public sealed class HotstringEditModelTests
         clone.IsCaseSensitive.Should().BeTrue();
         clone.OmitEndingCharacter.Should().BeTrue();
     }
+
+    [Fact]
+    public void FromDto_AndClone_PreserveDateTimeFields()
+    {
+        HotstringDto dto = new(Guid.NewGuid(), [], true, "now", "", null, true, false,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null,
+            HotstringKind.DateTime, DateTimeFormat: "yyyy-MM-dd", DateOffsetAmount: 3, DateOffsetUnit: DateOffsetUnit.Days);
+
+        HotstringEditModel clone = HotstringEditModel.FromDto(dto).Clone();
+
+        clone.Kind.Should().Be(HotstringKind.DateTime);
+        clone.DateTimeFormat.Should().Be("yyyy-MM-dd");
+        clone.DateOffsetAmount.Should().Be(3);
+        clone.DateOffsetUnit.Should().Be(DateOffsetUnit.Days);
+    }
+
+    [Fact]
+    public void ToCreateDto_And_ToUpdateDto_ThreadDateTimeFields()
+    {
+        HotstringEditModel model = new()
+        {
+            Trigger = "now",
+            Kind = HotstringKind.DateTime,
+            DateTimeFormat = "HH:mm",
+            DateOffsetAmount = -1,
+            DateOffsetUnit = DateOffsetUnit.Hours,
+        };
+
+        CreateHotstringDto createDto = model.ToCreateDto();
+        UpdateHotstringDto updateDto = model.ToUpdateDto();
+
+        createDto.DateTimeFormat.Should().Be("HH:mm");
+        createDto.DateOffsetAmount.Should().Be(-1);
+        createDto.DateOffsetUnit.Should().Be(DateOffsetUnit.Hours);
+        updateDto.DateTimeFormat.Should().Be("HH:mm");
+        updateDto.DateOffsetAmount.Should().Be(-1);
+        updateDto.DateOffsetUnit.Should().Be(DateOffsetUnit.Hours);
+    }
+
+    [Fact]
+    public void ToCreateDto_And_ToUpdateDto_ForceEmptyReplacement_ForDateTimeKind_EvenWithStaleText()
+    {
+        HotstringEditModel model = new()
+        {
+            Trigger = "now",
+            Replacement = "stale leftover text",
+            Kind = HotstringKind.DateTime,
+            DateTimeFormat = "yyyy",
+        };
+
+        CreateHotstringDto createDto = model.ToCreateDto();
+        UpdateHotstringDto updateDto = model.ToUpdateDto();
+
+        createDto.Replacement.Should().BeEmpty();
+        updateDto.Replacement.Should().BeEmpty();
+        // The model's own Replacement is untouched — ToCreateDto/ToUpdateDto must not mutate it.
+        model.Replacement.Should().Be("stale leftover text");
+    }
+
+    [Fact]
+    public void ToCreateDto_DoesNotForceEmptyReplacement_ForTextKind()
+    {
+        HotstringEditModel model = new()
+        {
+            Trigger = "btw",
+            Replacement = "by the way",
+            Kind = HotstringKind.Text,
+        };
+
+        CreateHotstringDto dto = model.ToCreateDto();
+
+        dto.Replacement.Should().Be("by the way");
+    }
+
+    [Theory]
+    [InlineData(HotstringKind.Text, true)]
+    [InlineData(HotstringKind.DateTime, false)]
+    [InlineData(HotstringKind.Macro, false)]
+    [InlineData(HotstringKind.Script, false)]
+    public void IsInlineEditable_OnlyTrueForTextKind(HotstringKind kind, bool expected)
+    {
+        HotstringEditModel model = new() { Kind = kind };
+
+        model.IsInlineEditable.Should().Be(expected);
+    }
+
+    [Fact]
+    public void DateTimeSummary_IsNull_ForNonDateTimeKind()
+    {
+        HotstringEditModel model = new() { Kind = HotstringKind.Text, DateTimeFormat = "yyyy" };
+
+        model.DateTimeSummary.Should().BeNull();
+    }
+
+    [Fact]
+    public void DateTimeSummary_IsEmDash_WhenFormatIsNull()
+    {
+        HotstringEditModel model = new() { Kind = HotstringKind.DateTime, DateTimeFormat = null };
+
+        model.DateTimeSummary.Should().Be("—");
+    }
+
+    [Fact]
+    public void DateTimeSummary_IsRawFormat_WhenNoOffset()
+    {
+        HotstringEditModel model = new() { Kind = HotstringKind.DateTime, DateTimeFormat = "yyyy-MM-dd" };
+
+        model.DateTimeSummary.Should().Be("yyyy-MM-dd");
+    }
+
+    [Theory]
+    [InlineData(1, DateOffsetUnit.Days, "yyyy-MM-dd (+1 day)")]
+    [InlineData(-1, DateOffsetUnit.Days, "yyyy-MM-dd (-1 day)")]
+    [InlineData(3, DateOffsetUnit.Days, "yyyy-MM-dd (+3 days)")]
+    [InlineData(-3, DateOffsetUnit.Hours, "yyyy-MM-dd (-3 hours)")]
+    [InlineData(0, DateOffsetUnit.Minutes, "yyyy-MM-dd (+0 minutes)")]
+    public void DateTimeSummary_FormatsOffset_MatchingCliConvention(int amount, DateOffsetUnit unit, string expected)
+    {
+        HotstringEditModel model = new()
+        {
+            Kind = HotstringKind.DateTime,
+            DateTimeFormat = "yyyy-MM-dd",
+            DateOffsetAmount = amount,
+            DateOffsetUnit = unit,
+        };
+
+        model.DateTimeSummary.Should().Be(expected);
+    }
+
+    [Fact]
+    public void SafePreview_ReturnsEmpty_ForNullOrEmptyFormat()
+    {
+        HotstringEditModel.SafePreview(null).Should().BeEmpty();
+        HotstringEditModel.SafePreview("").Should().BeEmpty();
+    }
+
+    [Fact]
+    public void SafePreview_MultiCharFormat_ProducesNonEmptyResult()
+    {
+        string preview = HotstringEditModel.SafePreview("yyyy-MM-dd");
+
+        preview.Should().NotBeNullOrEmpty();
+        preview.Should().NotBe("Invalid format");
+    }
+
+    [Fact]
+    public void SafePreview_SingleCharFormat_UsesCustomSpecifier_NotStandardSpecifier()
+    {
+        string preview = HotstringEditModel.SafePreview("d");
+
+        preview.Should().Be(DateTime.Now.ToString("%d"));
+        preview.Should().NotContain("/");
+    }
+
+    [Fact]
+    public void SafePreview_InvalidFormat_ReturnsInvalidMessage()
+    {
+        string preview = HotstringEditModel.SafePreview("yyyy-QQQQQQ-XY\\");
+
+        preview.Should().Be("Invalid format");
+    }
 }
