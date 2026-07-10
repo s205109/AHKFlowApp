@@ -22,8 +22,8 @@ public sealed class UpdateHotstringCommandValidator : AbstractValidator<UpdateHo
             .MaximumLength(HotstringRules.DescriptionMaxLength)
             .WithMessage($"Description must be {HotstringRules.DescriptionMaxLength} characters or fewer.");
         RuleFor(x => x.Input.Kind)
-            .Must(k => k is HotstringKind.Text or HotstringKind.DateTime)
-            .WithMessage("Only Text and Date & time hotstrings are supported.");
+            .Must(k => k is HotstringKind.Text or HotstringKind.DateTime or HotstringKind.Macro)
+            .WithMessage("Only Text, Date & time and Macro hotstrings are supported.");
         this.AddProfileAssociationRules(
             x => x.Input.AppliesToAllProfiles,
             x => x.Input.ProfileIds);
@@ -33,6 +33,9 @@ public sealed class UpdateHotstringCommandValidator : AbstractValidator<UpdateHo
             x => x.Input.DateTimeFormat,
             x => x.Input.DateOffsetAmount,
             x => x.Input.DateOffsetUnit);
+        this.AddMacroKindRules(
+            x => x.Input.Kind,
+            x => x.Input.Replacement);
     }
 }
 
