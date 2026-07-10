@@ -125,6 +125,19 @@
             {
                 <MudAlert Severity="Severity.Error">@_error</MudAlert>
             }
+
+            <MudExpansionPanels UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "ahk-preview" })">
+                <MudExpansionPanel Text="Generated AutoHotkey code" Expanded="_previewExpanded" ExpandedChanged="OnPreviewExpandedChangedAsync">
+                    @if (_previewError is not null)
+                    {
+                        <MudText Color="Color.Error">@_previewError</MudText>
+                    }
+                    else
+                    {
+                        <pre>@_previewSnippet</pre>
+                    }
+                </MudExpansionPanel>
+            </MudExpansionPanels>
         </MudStack>
         </MudForm>
     </DialogContent>
@@ -168,6 +181,12 @@
     private string _selectedFormatOption = CustomFormatSentinel;
     private MudTextField<string> _replacementField = default!;
     private bool _macroSuggestionDismissed;
+    private bool _previewExpanded;
+    private string? _previewSnippet;
+    private string? _previewError;
+    private PreviewSnapshot? _lastPreviewSnapshot;
+    private CancellationTokenSource? _previewCts;
+    private int _previewGeneration;
 
     protected override void OnParametersSet()
     {
@@ -182,6 +201,21 @@
                 ? Item.DateTimeFormat
                 : CustomFormatSentinel;
         }
+    }
+
+    protected override Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_previewExpanded)
+        {
+            PreviewSnapshot current = PreviewSnapshot.From(Item);
+            if (_lastPreviewSnapshot is null || _lastPreviewSnapshot != current)
+            {
+                _lastPreviewSnapshot = current;
+                SchedulePreview(debounce: true);
+            }
+        }
+
+        return Task.CompletedTask;
     }
 
     private void Cancel() => Dialog.Cancel();
@@ -317,5 +351,97 @@
         }
     }
 
-    public void Dispose() { _cts.Cancel(); _cts.Dispose(); }
+    private Task OnPreviewExpandedChangedAsync(bool expanded)
+    {
+        _previewExpanded = expanded;
+        if (expanded)
+        {
+            _lastPreviewSnapshot = PreviewSnapshot.From(Item);
+            SchedulePreview(debounce: false);
+        }
+        else
+        {
+            CancelPendingPreview();
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private void SchedulePreview(bool debounce)
+    {
+        CancelPendingPreview();
+        CancellationTokenSource cts = new();
+        _previewCts = cts;
+        int generation = ++_previewGeneration;
+        _ = RunPreviewAsync(cts.Token, generation, debounce);
+    }
+
+    private void CancelPendingPreview()
+    {
+        _previewCts?.Cancel();
+        _previewCts?.Dispose();
+        _previewCts = null;
+    }
+
+    private async Task RunPreviewAsync(CancellationToken ct, int generation, bool debounce)
+    {
+        try
+        {
+            if (debounce)
+                await Task.Delay(400, ct);
+
+            HotstringPreviewRequestDto request = new(Item.Kind, Item.Trigger, Item.Replacement, Item.IsCaseSensitive,
+                Item.OmitEndingCharacter, Item.IsEndingCharacterRequired, Item.IsTriggerInsideWord,
+                Item.DateTimeFormat, Item.DateOffsetAmount, Item.DateOffsetUnit);
+
+            ApiResult<HotstringPreviewDto> result = await Api.PreviewAsync(request, ct);
+
+            if (generation != _previewGeneration)
+                return;
+
+            if (result.IsSuccess)
+            {
+                _previewSnippet = result.Value!.Snippet;
+                _previewError = null;
+            }
+            else
+            {
+                _previewError = ApiErrorMessageFactory.Build(result.Status, result.Problem);
+                _previewSnippet = null;
+            }
+
+            StateHasChanged();
+        }
+        catch (OperationCanceledException)
+        {
+            // A cancelled preview (superseded input, panel collapsed, dialog disposed) is
+            // silently ignored — never surfaced as an error.
+        }
+    }
+
+    public void Dispose()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+        CancelPendingPreview();
+    }
+
+    /// <summary>Emission-relevant fields that affect the generated AutoHotkey snippet.</summary>
+    private sealed record PreviewSnapshot(
+        HotstringKind Kind,
+        string Trigger,
+        string Replacement,
+        bool IsCaseSensitive,
+        bool OmitEndingCharacter,
+        bool IsEndingCharacterRequired,
+        bool IsTriggerInsideWord,
+        string? DateTimeFormat,
+        int? DateOffsetAmount,
+        DateOffsetUnit? DateOffsetUnit)
+    {
+        public static PreviewSnapshot From(HotstringEditModel item) => new(
+            item.Kind, item.Trigger, item.Replacement, item.IsCaseSensitive, item.OmitEndingCharacter,
+            item.IsEndingCharacterRequired, item.IsTriggerInsideWord, item.DateTimeFormat,
+            item.DateOffsetAmount, item.DateOffsetUnit);
+    }
 }
