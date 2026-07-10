@@ -524,6 +524,163 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
         item.Replacement.Should().Be("plain text");
     }
 
+    [Fact]
+    public async Task PreviewPanel_Expand_TriggersExactlyOnePreviewCall()
+    {
+        _api.PreviewAsync(Arg.Any<HotstringPreviewRequestDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotstringPreviewDto>.Ok(new HotstringPreviewDto("::btw::by the way")));
+
+        HotstringEditModel item = new() { Trigger = "btw", Replacement = "by the way" };
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"ahk-preview\"]"));
+
+        provider.Find("[data-test=\"ahk-preview\"] .mud-expand-panel-header").Click();
+
+        provider.WaitForAssertion(() => provider.Markup.Should().Contain("::btw::by the way"));
+        _ = _api.Received(1).PreviewAsync(Arg.Any<HotstringPreviewRequestDto>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task PreviewPanel_Collapsed_NeverCallsPreviewEvenAfterFieldChanges()
+    {
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync();
+        provider.WaitForAssertion(() => provider.Find("input[data-test=\"trigger-input\"]"));
+
+        provider.Find("input[data-test=\"trigger-input\"]").Change("btw");
+        provider.Find("textarea[data-test=\"replacement-input\"]").Change("by the way");
+
+        await Task.Delay(600);
+        provider.Render();
+
+        _ = _api.DidNotReceive().PreviewAsync(Arg.Any<HotstringPreviewRequestDto>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task PreviewPanel_FieldChangeWhileExpanded_RecallsAfterDebounceWithUpdatedValues()
+    {
+        _api.PreviewAsync(Arg.Any<HotstringPreviewRequestDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotstringPreviewDto>.Ok(new HotstringPreviewDto("snippet")));
+
+        HotstringEditModel item = new() { Trigger = "btw", Replacement = "by the way" };
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"ahk-preview\"]"));
+        provider.Find("[data-test=\"ahk-preview\"] .mud-expand-panel-header").Click();
+
+        provider.WaitForAssertion(() => _api.Received(1).PreviewAsync(
+            Arg.Is<HotstringPreviewRequestDto>(r => r.Replacement == "by the way"), Arg.Any<CancellationToken>()));
+
+        provider.Find("textarea[data-test=\"replacement-input\"]").Change("by the way!");
+
+        provider.WaitForAssertion(() => _api.Received(1).PreviewAsync(
+            Arg.Is<HotstringPreviewRequestDto>(r => r.Replacement == "by the way!"), Arg.Any<CancellationToken>()),
+            timeout: TimeSpan.FromSeconds(2));
+    }
+
+    [Fact]
+    public async Task PreviewPanel_ValidationFailure_ShowsErrorMessageInsteadOfSnippet()
+    {
+        _api.PreviewAsync(Arg.Any<HotstringPreviewRequestDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotstringPreviewDto>.Failure(ApiResultStatus.Validation,
+                new ApiProblemDetails(null, "Bad Request", 400, null, null,
+                    new Dictionary<string, string[]> { ["Replacement"] = ["Replacement is required."] })));
+
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync();
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"ahk-preview\"]"));
+
+        provider.Find("[data-test=\"ahk-preview\"] .mud-expand-panel-header").Click();
+
+        provider.WaitForAssertion(() => provider.Markup.Should().Contain("Replacement is required."));
+    }
+
+    [Fact]
+    public async Task PreviewPanel_OutOfOrderResponses_LaterGenerationWins()
+    {
+        TaskCompletionSource<ApiResult<HotstringPreviewDto>> tcs1 = new();
+        TaskCompletionSource<ApiResult<HotstringPreviewDto>> tcs2 = new();
+
+        _api.PreviewAsync(Arg.Is<HotstringPreviewRequestDto>(r => r.Trigger == "one"), Arg.Any<CancellationToken>())
+            .Returns(tcs1.Task);
+        _api.PreviewAsync(Arg.Is<HotstringPreviewRequestDto>(r => r.Trigger == "two"), Arg.Any<CancellationToken>())
+            .Returns(tcs2.Task);
+
+        HotstringEditModel item = new() { Trigger = "one", Replacement = "text" };
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"ahk-preview\"]"));
+        provider.Find("[data-test=\"ahk-preview\"] .mud-expand-panel-header").Click();
+
+        provider.WaitForAssertion(() => _api.Received(1).PreviewAsync(
+            Arg.Is<HotstringPreviewRequestDto>(r => r.Trigger == "one"), Arg.Any<CancellationToken>()));
+
+        provider.Find("input[data-test=\"trigger-input\"]").Change("two");
+
+        // The debounced call to the mock doesn't trigger a re-render (it's still awaiting the
+        // pending tcs2 task), so WaitForAssertion has no render event to re-poll on — wait out
+        // the real 400ms debounce window directly instead.
+        await Task.Delay(600);
+        _ = _api.Received(1).PreviewAsync(
+            Arg.Is<HotstringPreviewRequestDto>(r => r.Trigger == "two"), Arg.Any<CancellationToken>());
+
+        // Resolve the newer (generation 2) response first, then the stale (generation 1) response.
+        // The stale response must never overwrite the newer result.
+        tcs2.SetResult(ApiResult<HotstringPreviewDto>.Ok(new HotstringPreviewDto("snippet-two")));
+        provider.WaitForAssertion(() => provider.Markup.Should().Contain("snippet-two"));
+
+        tcs1.SetResult(ApiResult<HotstringPreviewDto>.Ok(new HotstringPreviewDto("snippet-one")));
+        await Task.Delay(150);
+        provider.Render();
+
+        provider.Markup.Should().Contain("snippet-two");
+        provider.Markup.Should().NotContain("snippet-one");
+    }
+
+    [Fact]
+    public async Task PreviewPanel_CollapseCancelsPendingPreview_NoErrorSurfaced()
+    {
+        TaskCompletionSource<ApiResult<HotstringPreviewDto>> tcs = new();
+        _api.PreviewAsync(Arg.Any<HotstringPreviewRequestDto>(), Arg.Any<CancellationToken>())
+            .Returns(tcs.Task);
+
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync();
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"ahk-preview\"]"));
+        provider.Find("[data-test=\"ahk-preview\"] .mud-expand-panel-header").Click();
+
+        provider.WaitForAssertion(() => _api.Received(1).PreviewAsync(Arg.Any<HotstringPreviewRequestDto>(), Arg.Any<CancellationToken>()));
+
+        // Collapse while the preview call is still pending.
+        provider.Find("[data-test=\"ahk-preview\"] .mud-expand-panel-header").Click();
+
+        tcs.SetException(new OperationCanceledException());
+
+        await Task.Delay(150);
+        provider.Render();
+
+        provider.FindAll(".mud-alert").Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task PreviewPanel_DisposeCancelsPendingPreview_NoUnhandledException()
+    {
+        TaskCompletionSource<ApiResult<HotstringPreviewDto>> tcs = new();
+        _api.PreviewAsync(Arg.Any<HotstringPreviewRequestDto>(), Arg.Any<CancellationToken>())
+            .Returns(tcs.Task);
+
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync();
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"ahk-preview\"]"));
+        provider.Find("[data-test=\"ahk-preview\"] .mud-expand-panel-header").Click();
+
+        provider.WaitForAssertion(() => _api.Received(1).PreviewAsync(Arg.Any<HotstringPreviewRequestDto>(), Arg.Any<CancellationToken>()));
+
+        await DisposeAsync();
+
+        Func<Task> act = async () =>
+        {
+            tcs.SetException(new OperationCanceledException());
+            await Task.Delay(150);
+        };
+
+        await act.Should().NotThrowAsync();
+    }
+
     private async Task<IRenderedComponent<MudDialogProvider>> RenderDialogAsync(HotstringEditModel? item = null)
     {
         Render<MudPopoverProvider>();
