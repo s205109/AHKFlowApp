@@ -577,6 +577,30 @@ public sealed class AhkScriptGeneratorTests
     }
 
     [Fact]
+    public void Generate_MacroHotstring_EscapedLiteralAfterCursor_CountsEmittedLengthInLeft()
+    {
+        // {{{{first_name}}}} unescapes to the 14-char literal "{{first_name}}" — Left must
+        // count that emitted length, not the raw pre-unescape token text.
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotstring hs = new HotstringBuilder()
+            .WithTrigger("m")
+            .WithKind(HotstringKind.Macro)
+            .WithReplacement("{{cursor}}{{{{first_name}}}}")
+            .WithEndingCharacterRequired(false)
+            .WithTriggerInsideWord(false)
+            .Build();
+
+        string output = DefaultSut().Generate(profile, [hs], []);
+
+        output.Should().Contain(
+            ":*:m::\n" +
+            "{\n" +
+            "\tSendText \"{{first_name}}\"\n" +
+            "\tSend \"{Left 14}\"\n" +
+            "}");
+    }
+
+    [Fact]
     public void Generate_TextHotstring_StillEmitsTOption_NoRegression()
     {
         Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
