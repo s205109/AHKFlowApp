@@ -14,6 +14,8 @@ This changelog starts forward-only. Existing releases before this file was intro
 - "Edit details" dialog for hotstrings on desktop.
 - `ahkflow hotstring list` shows a Kind column.
 - DateTime hotstring kind: curated date/time format presets with optional date offset, emitted as `SendText(FormatTime(...))`. Supported in the edit dialog, grid, mobile list, history, and CLI.
+- Macro hotstring kind: replacements can place the cursor and insert key presses (Enter, Tab), emitted as a scripted AutoHotkey sequence. Supported in the edit dialog (insert toolbar, live AutoHotkey preview, and Text-to-Macro suggestion), grid, mobile list, and CLI.
+- "Generated AutoHotkey code" preview panel in the hotstring edit dialog: shows the exact script snippet a hotstring will produce, for every kind.
 
 ### Changed
 
