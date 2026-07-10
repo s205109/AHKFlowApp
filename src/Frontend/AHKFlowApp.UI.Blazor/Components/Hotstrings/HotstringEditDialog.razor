@@ -187,6 +187,7 @@
     private PreviewSnapshot? _lastPreviewSnapshot;
     private CancellationTokenSource? _previewCts;
     private int _previewGeneration;
+    private bool _disposed;
 
     protected override void OnParametersSet()
     {
@@ -396,7 +397,7 @@
 
             ApiResult<HotstringPreviewDto> result = await Api.PreviewAsync(request, ct);
 
-            if (generation != _previewGeneration)
+            if (generation != _previewGeneration || _disposed)
                 return;
 
             if (result.IsSuccess)
@@ -421,6 +422,7 @@
 
     public void Dispose()
     {
+        _disposed = true;
         _cts.Cancel();
         _cts.Dispose();
         CancelPendingPreview();
