@@ -116,20 +116,33 @@ public sealed class HotstringEditModel
     }
 
     /// <summary>
-    /// Previews what <paramref name="format"/> would produce for the current moment, without
-    /// throwing on invalid or partial input while the user is typing. Offset-free — a raw format
-    /// preview only (Task 10 owns any offset preview on top of this).
+    /// Previews what <paramref name="format"/> would produce for the current moment (optionally
+    /// offset by <paramref name="offsetAmount"/>/<paramref name="offsetUnit"/>), without throwing
+    /// on invalid or partial input while the user is typing.
     /// </summary>
-    public static string SafePreview(string? format)
+    public static string SafePreview(string? format, int? offsetAmount = null, DateOffsetUnit? offsetUnit = null, TimeProvider? clock = null)
     {
         if (string.IsNullOrEmpty(format)) return "";
+
+        DateTime moment = (clock ?? TimeProvider.System).GetLocalNow().DateTime;
+        if (offsetAmount is { } amount && offsetUnit is { } unit)
+        {
+            moment = unit switch
+            {
+                DTOs.DateOffsetUnit.Seconds => moment.AddSeconds(amount),
+                DTOs.DateOffsetUnit.Minutes => moment.AddMinutes(amount),
+                DTOs.DateOffsetUnit.Hours => moment.AddHours(amount),
+                DTOs.DateOffsetUnit.Days => moment.AddDays(amount),
+                _ => moment,
+            };
+        }
 
         try
         {
             // A single-character custom format specifier (e.g. "d") is ambiguous with .NET's
             // standard format specifiers. Prefixing with '%' forces custom-specifier interpretation.
             string actualFormat = format.Length == 1 ? "%" + format : format;
-            return DateTime.Now.ToString(actualFormat);
+            return moment.ToString(actualFormat);
         }
         catch (FormatException)
         {
