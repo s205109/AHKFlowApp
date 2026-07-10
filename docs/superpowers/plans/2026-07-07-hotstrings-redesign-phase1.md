@@ -1,5 +1,7 @@
 # Hotstrings Redesign — Phase 1 (Foundation + Option Toggles) Implementation Plan
 
+> **Status: completed — merged to `main` (PR #173).** Checkboxes below were not ticked during execution; kept as historical reference.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add the `HotstringKind` foundation plus two new option toggles (case-sensitive `C`, omit-ending-character `O`) end-to-end — domain, DB, emitter (always-`T` for Text), API, history, CLI, and UI (badge column + dialog options panel + desktop "Edit details").

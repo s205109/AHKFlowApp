@@ -13,7 +13,7 @@ Branch: `feature/wt-hotstrings-macro-kind` (worktree, clean).
 2. **Strict parser**: any `{{...}}` that isn't exactly a known token → validation error naming the bad token. Single/unmatched braces stay literal. Literal `{{cursor}}` output → use Text kind (document).
 3. **Grouped-runs emission**: consecutive text → one `SendText "..."`; consecutive same keys merged → `Send "{Enter 2}"`; cursor → trailing `Send "{Left N}"` (omitted when N=0). Allman braces, tab-indented.
 4. Preview endpoint: **dedicated request DTO, full validation** via `ValidatingUseCase` → invalid input = 400 ProblemDetails; panel shows first error.
-5. JS interop: **ES module + `IJSObjectReference`** (lazy import; must work in Blazor WASM — `IJSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/macro-editor.js")` is WASM-supported).
+5. JS interop: ES module + `IJSObjectReference` — **superseded during plan review**: MudTextField 9.3.0 has a built-in caret-insertion API, so no custom JS is built (see Dialog design).
 6. CLI shows the **raw replacement as-is** for Macro rows (formatter needs no Macro arm; add a pinning test).
 7. Token lexing: **case-insensitive names, no interior whitespace** (`{{ cursor }}` = error); toolbar inserts canonical lowercase.
 8. Degenerate cursor-only macro **allowed** → empty brace body (valid AHK no-op; user sees it in preview).
@@ -24,7 +24,7 @@ Branch: `feature/wt-hotstrings-macro-kind` (worktree, clean).
 
 ### Token grammar (single source of truth: `MacroTokenParser`)
 - Tokens: `{{cursor}}`, `{{key:Enter}}`, `{{key:Tab}}` — names case-insensitive, no whitespace inside `{{...}}`.
-- New `src/Backend/AHKFlowApp.Application/Services/MacroTokenParser.cs` (internal static). Scans `Replacement`, candidate spans = `\{\{.*?\}\}` (non-greedy); each candidate must match a known token or is reported as an error with its raw text. Everything else = literal text runs.
+- New `src/Backend/AHKFlowApp.Application/Services/MacroTokenParser.cs` (internal static). **Small linear scanner, not a regex** (a non-`Singleline` `\{\{.*?\}\}` silently skips candidates spanning newlines): scan for `{{`; if no closing `}}` follows, the `{{` is literal text; if one does, the span is a token candidate — inner content must match a known token (case-insensitive, no whitespace/newlines) or is reported as an error with its raw text. Everything else = literal text runs.
 - Result model: `MacroParseResult(IReadOnlyList<MacroToken> Tokens, IReadOnlyList<string> Errors)`; `MacroToken` = discriminated by kind (TextRun(string), Key(name canonical "Enter"/"Tab"), Cursor).
 - Used by: validator (parse errors, ≤1 cursor, no keys after cursor), emitter (token stream → statements), preview (indirectly).
 
@@ -34,12 +34,12 @@ Branch: `feature/wt-hotstrings-macro-kind` (worktree, clean).
   ```
   :*:htag::
   {
-  	SendText "<b></b>"
-  	Send "{Enter 2}"
-  	Send "{Left 4}"
+      SendText "<b></b>"
+      Send "{Enter 2}"
+      Send "{Left 4}"
   }
   ```
-  (tab-indented; spec §7 ex. 6 golden). Text runs merge into minimal `SendText` statements (cursor splits a run but emits no text); consecutive identical keys merge to `{Enter N}`; distinct keys = separate `Send` lines.
+  (example shown with spaces; the emitter indents with a tab — spec §7 ex. 6 golden). Text runs merge into minimal `SendText` statements (cursor splits a run but emits no text); consecutive identical keys merge to `{Enter N}`; distinct keys = separate `Send` lines.
 - **Cursor math**: `N` = total character count of text runs *after* the cursor token (`\n` counts 1, per D5); keys after cursor are impossible (validation). `N=0` → no `Send "{Left ...}"` line.
 - **New string-literal escape helper** (distinct from line-level `Escape()`): for AHK v2 double-quoted strings — `` ` `` → ```` `` ````, `"` → `` `" ``, `\n` → `` `n ``, `\r` → `` `r ``, `\t` → `` `t ``. No `;`/brace escaping needed inside quotes.
 - `AhkScriptGenerator` keeps calling `HotstringEmitter.Emit(hs)`; the returned string is now multi-line for macros (verify join/newline style in goldens).
@@ -60,9 +60,10 @@ Branch: `feature/wt-hotstrings-macro-kind` (worktree, clean).
 ### Dialog (`HotstringEditDialog.razor`)
 - Add **Macro** `MudToggleItem` to the kind selector. Kind-switch confirmation (existing `OnKindChangedAsync` message-box pattern): switching away from Macro with tokens present → confirm; Macro→Text keeps Replacement verbatim (tokens become literal text — the confirm text says so).
 - **Macro panel** (`@if Kind == Macro`): keep the multiline Replacement editor, add an **insert toolbar** above it — `Insert: Cursor · Enter · Tab` buttons (`data-test="macro-toolbar"`).
-- **Caret insertion JS**: new `wwwroot/js/macro-editor.js` **ES module**: `insertAtCaret(elementId, text)` — finds the textarea, splices text at selection, restores caret, dispatches `input` event so the Mud binding updates. Small `MacroEditorJs` service (`Services/`) lazily imports via `IJSObjectReference`, implements `IAsyncDisposable`, follows the `dn-use-js-interop` skill. Give the Replacement `MudTextField` a stable input id for lookup.
+- **Caret insertion — no custom JS needed**: MudBlazor 9.3.0 `MudTextField` ships `InsertTextAtCurrentCaretPositionAsync(string)` and `GetCurrentCaretPositionAsync()` (verified via MudMCP). Capture the Replacement field with `@ref="_replacementField"` and call `InsertTextAtCurrentCaretPositionAsync(token)` from the toolbar buttons. Supersedes the earlier `macro-editor.js` ES module + `MacroEditorJs` service + DI registration — none of that is built.
 - **"Use Macro?" suggestion**: when `Kind == Text` and Replacement contains a well-formed known token → dismissible `MudAlert` with a "Switch to Macro" action (`data-test="macro-suggestion"`). Detection via the frontend token helper (below). Dismissal is per-dialog-instance.
 - **Preview panel**: collapsed `MudExpansionPanel` "Generated AutoHotkey code" (`data-test="ahk-preview"`), last panel. While expanded: debounced (400 ms) `PreviewAsync` on any emission-relevant field change + once on expand; renders snippet in a monospace `<pre>`; 400 → show the first validation message instead. No calls while collapsed.
+- **Cancellation + stale-response protection** (ApiClientBase catches only `HttpRequestException` — `OperationCanceledException` propagates to the caller): per-preview `CancellationTokenSource` cancelled and replaced on each new debounced call, on collapse, and in `Dispose`; a monotonically increasing generation id captured per request — responses whose generation isn't current are discarded (out-of-order protection); `OperationCanceledException` swallowed (cancelled previews render nothing, never an error).
 
 ### Frontend plumbing
 - `IHotstringsApiClient`/`HotstringsApiClient`: `PreviewAsync(HotstringPreviewRequestDto, ct)`; mirror request/response DTOs in `UI.Blazor/DTOs/`.
@@ -85,7 +86,7 @@ Branch: `feature/wt-hotstrings-macro-kind` (worktree, clean).
 Commit: `docs: phase 3 plan (macro kind + preview endpoint)`
 
 ### Task 1 — MacroTokenParser (TDD)
-- Tests first: `tests/AHKFlowApp.Application.Tests/Services/MacroTokenParserTests.cs` — plain text (no tokens), each token, case-insensitivity, `{{ cursor }}`/`{{oops}}`/`{{key:Escape}}`/`{{field:name}}` → named errors, unmatched `{{`/single braces literal, adjacent tokens, multiline text runs, token positions for cursor-math.
+- Tests first: `tests/AHKFlowApp.Application.Tests/Services/MacroTokenParserTests.cs` — plain text (no tokens), each token, case-insensitivity, `{{ cursor }}`/`{{oops}}`/`{{key:Escape}}`/`{{field:name}}` → named errors, token candidate spanning a newline (`{{key:\nEnter}}`) → named error, unmatched `{{`/single braces literal, adjacent tokens, multiline text runs, token positions for cursor-math.
 - `src/Backend/AHKFlowApp.Application/Services/MacroTokenParser.cs` + result/token types.
 Commit: `feat: macro token parser ({{cursor}}, {{key:Enter|Tab}})`
 
@@ -97,6 +98,7 @@ Commit: `feat: emit macro hotstrings as AHK brace bodies`
 ### Task 3 — Validation (TDD)
 - Validator tests: widen `Kind_MacroOrScript_Fails` → Script-only; Macro acceptance; parse-error, 2-cursor, key-after-cursor rejections; Macro + date fields → 400 (existing rule, pin it); cursor-only macro passes.
 - `HotstringRules.AddMacroKindRules<T>()`; wire into Create/Update validators; widen kind rule.
+- Update the `Kind` XML comments on `HotstringDto`/`Create`/`Update` (`Application/DTOs/HotstringDto.cs:17`) — Macro becomes API-supported here; only Script stays domain-only.
 Commit: `feat: macro kind validation (strict tokens, cursor rules)`
 
 ### Task 4 — Preview endpoint
@@ -109,15 +111,14 @@ Commit: `feat: stateless hotstring preview endpoint`
 - `tests/AHKFlowApp.UI.Blazor.Tests/Services/HotstringsApiClientTests.cs`: `PreviewAsync` route (`api/v1/hotstrings/preview`) + request payload + 400 ProblemDetails mapping, per existing client test pattern.
 Commit: `feat: preview API client + frontend macro token helper`
 
-### Task 6 — Dialog: Macro panel + toolbar + JS + suggestion
-- `wwwroot/js/macro-editor.js` ES module + `MacroEditorJs` service (lazy import, `IAsyncDisposable`), registered scoped in `Program.cs` (mirror `JsFileSaver` at line 47 — Blazor services are not auto-discovered).
-- Dialog: Macro toggle item, toolbar buttons (insert canonical tokens at caret), kind-switch confirm arms, "Use Macro?" alert with switch action.
-- bUnit tests (JS mocked via bUnit's `JSInterop`): toggle renders, toolbar visible only for Macro, insert calls module with canonical token, suggestion appears for Text+token / dismisses / switches kind, switch-away confirm.
+### Task 6 — Dialog: Macro panel + toolbar + suggestion
+- Dialog: Macro toggle item; toolbar buttons call `_replacementField.InsertTextAtCurrentCaretPositionAsync(token)` on the `@ref`-captured `MudTextField` (no custom JS, no new service/DI — MudBlazor built-in, verified v9.3.0); kind-switch confirm arms; "Use Macro?" alert with switch action.
+- bUnit tests (Mud's internal caret JS mocked via bUnit `JSInterop` loose mode): toggle renders, toolbar visible only for Macro, toolbar click inserts the canonical token into the bound Replacement, suggestion appears for Text+token / dismisses / switches kind, switch-away confirm.
 Commit: `feat: dialog macro panel with insert toolbar and kind suggestion`
 
 ### Task 7 — Dialog preview panel
-- Collapsed expansion panel + 400 ms debounce (only while expanded) + snippet/error rendering.
-- bUnit: expand triggers call, field change while expanded re-calls (debounce advanced via test timer or immediate-flush hook), 400 renders message, collapsed = no calls.
+- Collapsed expansion panel + 400 ms debounce (only while expanded) + snippet/error rendering + per-preview `CancellationTokenSource` + generation-id stale-response guard (design above).
+- bUnit: expand triggers call, field change while expanded re-calls (debounce advanced via test timer or immediate-flush hook), 400 renders message, collapsed = no calls, out-of-order responses ignored (slow gen-1 completing after gen-2 doesn't overwrite), cancellation on collapse/dispose surfaces no error.
 Commit: `feat: generated AHK preview panel in hotstring dialog`
 
 ### Task 8 — Grid + mobile token chips
@@ -131,13 +132,13 @@ Commit: `test: pin macro CLI output and history round-trip`
 ### Task 10 — Verify + changelog
 - `dck-verify` (build, all tests incl. Testcontainers + bUnit, format, diagnostics).
 - Changelog entry + regenerate changelog.json (repo convention).
-- E2E smoke (spec §11): run API + Blazor, create `htag` macro via dialog (toolbar-inserted cursor), expand preview panel and confirm snippet, save, download script, diff against spec §7 ex. 6; verify Text inline edit untouched; `playwright-cli` smoke of Macro panel + preview panel.
+- E2E smoke (spec §11): run API + Blazor, create `htag` macro via dialog (toolbar-inserted cursor), expand preview panel and confirm snippet, save, download script, diff against spec §7 ex. 6; verify Text inline edit untouched; `playwright-cli` smoke of Macro panel + preview panel, including a caret-insertion check (type text, place caret mid-text, click Insert Cursor, assert the token lands at the caret in the bound value — proves the Mud built-in end-to-end, not just a bUnit invocation).
 Commit: `docs: changelog for macro hotstring kind`
 
 Then PR to `main` via `gh`.
 
 ## Edge cases covered
-Strict unknown/malformed token errors; case-insensitive tokens; whitespace-in-token rejected; 2 cursors rejected; key after cursor rejected; cursor-only macro → empty body allowed; cursor at end → no `{Left}`; merged repeated keys; multiline text runs (`` `n ``, counts 1); quote/backtick in macro text; `T` regression (Text keeps it, Macro never); Macro + date fields rejected; preview 400 surface identical to Save; preview panel silent while collapsed; Macro rows excluded from inline edit (existing gate); CLI renders raw tokens; legacy/new snapshots round-trip unchanged.
+Strict unknown/malformed token errors; token spanning newline rejected (scanner, not regex); case-insensitive tokens; whitespace-in-token rejected; stale/out-of-order preview responses discarded; cancelled previews silent; 2 cursors rejected; key after cursor rejected; cursor-only macro → empty body allowed; cursor at end → no `{Left}`; merged repeated keys; multiline text runs (`` `n ``, counts 1); quote/backtick in macro text; `T` regression (Text keeps it, Macro never); Macro + date fields rejected; preview 400 surface identical to Save; preview panel silent while collapsed; Macro rows excluded from inline edit (existing gate); CLI renders raw tokens; legacy/new snapshots round-trip unchanged.
 
 ## Verification
 Per-task: `dotnet build` + targeted `dotnet test` project. End: full `dck-verify` + E2E smoke above.

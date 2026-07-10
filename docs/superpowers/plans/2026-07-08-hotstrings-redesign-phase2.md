@@ -1,5 +1,7 @@
 # Hotstrings Redesign — Phase 2: Date & Time Kind
 
+> **Status: completed — merged to `main`.** The worktree branch named below no longer exists; kept as historical reference.
+
 ## Context
 
 Phase 1 of the hotstrings redesign (spec: `docs/superpowers/specs/2026-07-07-hotstrings-redesign-design.md`) merged in PR #173: `HotstringKind` enum, `IsCaseSensitive`/`OmitEndingCharacter` flags, `HotstringDefinition` record, `HotstringEmitter`, grid badge column, dialog option toggles, CLI Kind column. This phase implements **Phase 2 (spec §9)**: the DateTime hotstring kind — users pick a date/time format (curated presets + custom, D3) and optional date offset; the generated script emits `:X:trig::SendText(FormatTime(A_Now, "fmt"))` (with `DateAdd` for offsets). The dialog kind selector appears this phase (D4). Per spec §8, the phase also round-trips the new fields through history snapshots and extends the CLI display.
