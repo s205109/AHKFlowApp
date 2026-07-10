@@ -83,7 +83,15 @@ function Add-TestWorktree {
 function Remove-TempTree {
     param([string] $RepoDir)
     $root = Split-Path -Parent $RepoDir
-    Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        try {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction Stop
+            return
+        } catch {
+            if ($attempt -eq 3) { return }
+            Start-Sleep -Milliseconds 200
+        }
+    }
 }
 
 # Import the cleanup functions (guard keeps the standalone entrypoint from running).
