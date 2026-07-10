@@ -404,6 +404,211 @@ public sealed class AhkScriptGeneratorTests
         output.Should().Contain(expectedLine);
     }
 
+    [Fact]
+    public void Generate_MacroHotstring_MergesTextAcrossCursorAndConsecutiveEnterKeys_MatchesSpecExample6()
+    {
+        // Reconstructed input: spec §7 ex. 6 (`<b>{{cursor}}</b>`) extended with two Enter
+        // key tokens so this single golden also proves consecutive-same-key merging.
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotstring hs = new HotstringBuilder()
+            .WithTrigger("htag")
+            .WithKind(HotstringKind.Macro)
+            .WithReplacement("<b>{{cursor}}</b>{{key:Enter}}{{key:Enter}}")
+            .WithEndingCharacterRequired(false)
+            .WithTriggerInsideWord(false)
+            .Build();
+
+        string output = DefaultSut().Generate(profile, [hs], []);
+
+        output.Should().Contain(
+            ":*:htag::\n" +
+            "{\n" +
+            "\tSendText \"<b></b>\"\n" +
+            "\tSend \"{Enter 2}\"\n" +
+            "\tSend \"{Left 4}\"\n" +
+            "}");
+    }
+
+    [Fact]
+    public void Generate_MacroHotstring_MergesConsecutiveIdenticalTabKeys()
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotstring hs = new HotstringBuilder()
+            .WithTrigger("m")
+            .WithKind(HotstringKind.Macro)
+            .WithReplacement("{{key:Tab}}{{key:Tab}}{{key:Tab}}")
+            .WithEndingCharacterRequired(false)
+            .WithTriggerInsideWord(false)
+            .Build();
+
+        string output = DefaultSut().Generate(profile, [hs], []);
+
+        output.Should().Contain(
+            ":*:m::\n" +
+            "{\n" +
+            "\tSend \"{Tab 3}\"\n" +
+            "}");
+    }
+
+    [Fact]
+    public void Generate_MacroHotstring_MixedEnterThenTab_EmitsTwoSeparateSendLinesInOrder()
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotstring hs = new HotstringBuilder()
+            .WithTrigger("m")
+            .WithKind(HotstringKind.Macro)
+            .WithReplacement("{{key:Enter}}{{key:Tab}}")
+            .WithEndingCharacterRequired(false)
+            .WithTriggerInsideWord(false)
+            .Build();
+
+        string output = DefaultSut().Generate(profile, [hs], []);
+
+        output.Should().Contain(
+            ":*:m::\n" +
+            "{\n" +
+            "\tSend \"{Enter}\"\n" +
+            "\tSend \"{Tab}\"\n" +
+            "}");
+    }
+
+    [Fact]
+    public void Generate_MacroHotstring_CursorAtEnd_OmitsTrailingLeftLine()
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotstring hs = new HotstringBuilder()
+            .WithTrigger("m")
+            .WithKind(HotstringKind.Macro)
+            .WithReplacement("abc{{cursor}}")
+            .WithEndingCharacterRequired(false)
+            .WithTriggerInsideWord(false)
+            .Build();
+
+        string output = DefaultSut().Generate(profile, [hs], []);
+
+        output.Should().Contain(
+            ":*:m::\n" +
+            "{\n" +
+            "\tSendText \"abc\"\n" +
+            "}");
+        output.Should().NotContain("Left");
+    }
+
+    [Fact]
+    public void Generate_MacroHotstring_CursorOnly_EmitsEmptyBraceBody()
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotstring hs = new HotstringBuilder()
+            .WithTrigger("m")
+            .WithKind(HotstringKind.Macro)
+            .WithReplacement("{{cursor}}")
+            .WithEndingCharacterRequired(false)
+            .WithTriggerInsideWord(false)
+            .Build();
+
+        string output = DefaultSut().Generate(profile, [hs], []);
+
+        output.Should().Contain(":*:m::\n{\n}");
+    }
+
+    [Fact]
+    public void Generate_MacroHotstring_MultilineTextRunAfterCursor_EscapesNewlineAndCountsAsOneCharInLeft()
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotstring hs = new HotstringBuilder()
+            .WithTrigger("m")
+            .WithKind(HotstringKind.Macro)
+            .WithReplacement("{{cursor}}line1\nline2")
+            .WithEndingCharacterRequired(false)
+            .WithTriggerInsideWord(false)
+            .Build();
+
+        string output = DefaultSut().Generate(profile, [hs], []);
+
+        output.Should().Contain(
+            ":*:m::\n" +
+            "{\n" +
+            "\tSendText \"line1`nline2\"\n" +
+            "\tSend \"{Left 11}\"\n" +
+            "}");
+    }
+
+    [Fact]
+    public void Generate_MacroHotstring_EscapesBacktickBeforeQuote_InSendTextString()
+    {
+        // Escaping quote first would produce a stray "`\"" that a later backtick-escape
+        // pass would then double — locking backtick-first ordering in this golden.
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotstring hs = new HotstringBuilder()
+            .WithTrigger("m")
+            .WithKind(HotstringKind.Macro)
+            .WithReplacement("a`b\"c")
+            .WithEndingCharacterRequired(false)
+            .WithTriggerInsideWord(false)
+            .Build();
+
+        string output = DefaultSut().Generate(profile, [hs], []);
+
+        output.Should().Contain("SendText \"a``b`\"c\"");
+    }
+
+    [Fact]
+    public void Generate_MacroHotstring_Decision11EscapedLiteralExample_MatchesGolden()
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotstring hs = new HotstringBuilder()
+            .WithTrigger("m")
+            .WithKind(HotstringKind.Macro)
+            .WithReplacement("Dear {{{{first_name}}}},{{key:Enter}}{{cursor}}Alex")
+            .WithEndingCharacterRequired(false)
+            .WithTriggerInsideWord(false)
+            .Build();
+
+        string output = DefaultSut().Generate(profile, [hs], []);
+
+        output.Should().Contain(
+            ":*:m::\n" +
+            "{\n" +
+            "\tSendText \"Dear {{first_name}},\"\n" +
+            "\tSend \"{Enter}\"\n" +
+            "\tSendText \"Alex\"\n" +
+            "\tSend \"{Left 4}\"\n" +
+            "}");
+    }
+
+    [Fact]
+    public void Generate_TextHotstring_StillEmitsTOption_NoRegression()
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotstring hs = new HotstringBuilder()
+            .WithTrigger("btw")
+            .WithKind(HotstringKind.Text)
+            .WithReplacement("by the way")
+            .WithTriggerInsideWord(false)
+            .Build();
+
+        string output = DefaultSut().Generate(profile, [hs], []);
+
+        output.Should().Contain(":T:btw::by the way");
+    }
+
+    [Fact]
+    public void Generate_MacroHotstring_NeverEmitsTOption()
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotstring hs = new HotstringBuilder()
+            .WithTrigger("m")
+            .WithKind(HotstringKind.Macro)
+            .WithReplacement("{{cursor}}")
+            .Build();
+
+        string output = DefaultSut().Generate(profile, [hs], []);
+
+        int lineEnd = output.IndexOf("::", StringComparison.Ordinal);
+        string optionsSegment = output[..lineEnd];
+        optionsSegment.Should().NotContain("T");
+    }
+
     private static AhkScriptGenerator TokenSut(string version = "1.2.3")
     {
         IAppVersionProvider ver = Substitute.For<IAppVersionProvider>();
