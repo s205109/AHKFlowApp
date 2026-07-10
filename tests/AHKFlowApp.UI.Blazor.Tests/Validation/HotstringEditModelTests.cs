@@ -1,6 +1,7 @@
 using AHKFlowApp.UI.Blazor.DTOs;
 using AHKFlowApp.UI.Blazor.Validation;
 using FluentAssertions;
+using Microsoft.Extensions.Time.Testing;
 using Xunit;
 
 namespace AHKFlowApp.UI.Blazor.Tests.Validation;
@@ -317,5 +318,24 @@ public sealed class HotstringEditModelTests
         string preview = HotstringEditModel.SafePreview("yyyy-QQQQQQ-XY\\");
 
         preview.Should().Be("Invalid format");
+    }
+
+    [Fact]
+    public void SafePreview_WithClock_IsDeterministic()
+    {
+        FakeTimeProvider clock = new(DateTimeOffset.Parse("2026-07-10T08:30:00Z"));
+        clock.SetLocalTimeZone(TimeZoneInfo.Utc);
+
+        HotstringEditModel.SafePreview("yyyy-MM-dd HH:mm", clock: clock).Should().Be("2026-07-10 08:30");
+    }
+
+    [Fact]
+    public void SafePreview_WithOffset_AppliesOffsetToClock()
+    {
+        FakeTimeProvider clock = new(DateTimeOffset.Parse("2026-07-10T08:30:00Z"));
+        clock.SetLocalTimeZone(TimeZoneInfo.Utc);
+
+        HotstringEditModel.SafePreview("yyyy-MM-dd", 7, DateOffsetUnit.Days, clock).Should().Be("2026-07-17");
+        HotstringEditModel.SafePreview("HH:mm", -2, DateOffsetUnit.Hours, clock).Should().Be("06:30");
     }
 }

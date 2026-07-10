@@ -223,34 +223,8 @@
         }
     }
 
-    private string PreviewWithOffset()
-    {
-        if (string.IsNullOrEmpty(Item.DateTimeFormat))
-            return "";
-
-        DateTime moment = DateTime.Now;
-        if (Item.DateOffsetAmount is { } amount && Item.DateOffsetUnit is { } unit)
-        {
-            moment = unit switch
-            {
-                DateOffsetUnit.Seconds => moment.AddSeconds(amount),
-                DateOffsetUnit.Minutes => moment.AddMinutes(amount),
-                DateOffsetUnit.Hours => moment.AddHours(amount),
-                DateOffsetUnit.Days => moment.AddDays(amount),
-                _ => moment,
-            };
-        }
-
-        try
-        {
-            string actualFormat = Item.DateTimeFormat.Length == 1 ? "%" + Item.DateTimeFormat : Item.DateTimeFormat;
-            return moment.ToString(actualFormat);
-        }
-        catch (FormatException)
-        {
-            return "Invalid format";
-        }
-    }
+    private string PreviewWithOffset() =>
+        HotstringEditModel.SafePreview(Item.DateTimeFormat, Item.DateOffsetAmount, Item.DateOffsetUnit);
 
     private async Task SaveAsync()
     {
