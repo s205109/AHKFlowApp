@@ -490,6 +490,61 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
+    public Task Page_MacroRow_RendersTokenChipsNotRawSyntax()
+    {
+        var dto = new HotstringDto(Guid.NewGuid(), [], true, "greet", "Dear {{{{first_name}}}},{{key:Enter}}{{cursor}}Alex",
+            null, true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, HotstringKind.Macro);
+        StubList(Page(dto));
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+
+        cut.WaitForAssertion(() =>
+        {
+            cut.Markup.Should().NotContain("{{key:Enter}}");
+            cut.Markup.Should().NotContain("{{cursor}}");
+            cut.Markup.Should().Contain("{{first_name}}");
+            cut.Markup.Should().Contain("Enter");
+            cut.Markup.Should().Contain("⌖ cursor");
+            cut.FindAll(".hotstrings-grid .macro-token-chip").Count.Should().Be(2);
+        });
+        return Task.CompletedTask;
+    }
+
+    [Fact]
+    public Task Page_MacroRow_EscapedLiteralOnly_RendersPlainTextNoChip()
+    {
+        var dto = new HotstringDto(Guid.NewGuid(), [], true, "esc", "{{{{first_name}}}}",
+            null, true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, HotstringKind.Macro);
+        StubList(Page(dto));
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+
+        cut.WaitForAssertion(() =>
+        {
+            cut.Markup.Should().Contain("{{first_name}}");
+            cut.FindAll(".hotstrings-grid .macro-token-chip").Should().BeEmpty();
+        });
+        return Task.CompletedTask;
+    }
+
+    [Fact]
+    public Task Page_TextRow_ReplacementCell_HasNoMacroChips()
+    {
+        var dto = new HotstringDto(Guid.NewGuid(), [], true, "btw", "by the way",
+            null, true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, HotstringKind.Text);
+        StubList(Page(dto));
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+
+        cut.WaitForAssertion(() =>
+        {
+            cut.Markup.Should().Contain("by the way");
+            cut.FindAll(".hotstrings-grid .macro-token-chip").Should().BeEmpty();
+        });
+        return Task.CompletedTask;
+    }
+
+    [Fact]
     public Task Page_DateTimeRow_HidesStartEditPencil_TextRowKeepsIt()
     {
         var dateTimeDto = new HotstringDto(Guid.NewGuid(), [], true, "now", "", null, true, true,
