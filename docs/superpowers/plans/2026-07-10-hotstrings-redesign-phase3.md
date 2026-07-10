@@ -106,10 +106,11 @@ Commit: `feat: stateless hotstring preview endpoint`
 
 ### Task 5 — Frontend plumbing
 - Mirror preview DTOs; `HotstringsApiClient.PreviewAsync`; frontend token helper (`MacroTokens`) + unit tests (detection + splitting).
+- `tests/AHKFlowApp.UI.Blazor.Tests/Services/HotstringsApiClientTests.cs`: `PreviewAsync` route (`api/v1/hotstrings/preview`) + request payload + 400 ProblemDetails mapping, per existing client test pattern.
 Commit: `feat: preview API client + frontend macro token helper`
 
 ### Task 6 — Dialog: Macro panel + toolbar + JS + suggestion
-- `wwwroot/js/macro-editor.js` ES module + `MacroEditorJs` service (lazy import, `IAsyncDisposable`).
+- `wwwroot/js/macro-editor.js` ES module + `MacroEditorJs` service (lazy import, `IAsyncDisposable`), registered scoped in `Program.cs` (mirror `JsFileSaver` at line 47 — Blazor services are not auto-discovered).
 - Dialog: Macro toggle item, toolbar buttons (insert canonical tokens at caret), kind-switch confirm arms, "Use Macro?" alert with switch action.
 - bUnit tests (JS mocked via bUnit's `JSInterop`): toggle renders, toolbar visible only for Macro, insert calls module with canonical token, suggestion appears for Text+token / dismisses / switches kind, switch-away confirm.
 Commit: `feat: dialog macro panel with insert toolbar and kind suggestion`
