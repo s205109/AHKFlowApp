@@ -19,6 +19,7 @@ public interface IHotstringsApiClient
     Task<ApiResult<DeletedHotstringDto[]>> ListDeletedAsync(CancellationToken ct = default);
     Task<ApiResult<HotstringDto>> RestoreAsync(Guid id, CancellationToken ct = default);
     Task<ApiResult> PurgeDeletedAsync(Guid id, CancellationToken ct = default);
+    Task<ApiResult<HotstringPreviewDto>> PreviewAsync(HotstringPreviewRequestDto request, CancellationToken ct = default);
     Task<ApiResult<HotstringImportPreviewDto>> PreviewImportAsync(string script, CancellationToken ct = default);
     Task<ApiResult<HotstringImportResultDto>> ImportAsync(ImportHotstringsRequestDto request, CancellationToken ct = default);
 }

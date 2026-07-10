@@ -206,6 +206,52 @@ public sealed class HotstringsApiClientTests
         handler.LastRequest.RequestUri!.ToString().Should().Be("http://localhost/api/v1/hotstrings/import");
     }
 
+    [Fact]
+    public async Task PreviewAsync_PostsRequestToPreviewRoute()
+    {
+        HotstringPreviewDto dto = new("::btw::by the way");
+        var handler = StubHttpMessageHandler.JsonResponse(HttpStatusCode.OK, dto);
+        var request = new HotstringPreviewRequestDto(
+            HotstringKind.Macro,
+            "btw",
+            "Dear {{cursor}}",
+            IsCaseSensitive: false,
+            OmitEndingCharacter: false,
+            IsEndingCharacterRequired: true,
+            IsTriggerInsideWord: true);
+
+        ApiResult<HotstringPreviewDto> result = await ClientWith(handler).PreviewAsync(request);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.Snippet.Should().Be("::btw::by the way");
+        handler.LastRequest!.Method.Should().Be(HttpMethod.Post);
+        handler.LastRequest.RequestUri!.ToString().Should().Be("http://localhost/api/v1/hotstrings/preview");
+        handler.LastRequestBody.Should().Contain("\"trigger\":\"btw\"");
+        handler.LastRequestBody.Should().Contain("\"replacement\":\"Dear {{cursor}}\"");
+        handler.LastRequestBody.Should().Contain("\"kind\":2");
+    }
+
+    [Fact]
+    public async Task PreviewAsync_OnValidationError_ReturnsValidationResultWithProblemDetails()
+    {
+        var problem = new ApiProblemDetails(null, "Validation failed", 400, "Trigger is required.", "/api/v1/hotstrings/preview", null);
+        var handler = StubHttpMessageHandler.JsonResponse(HttpStatusCode.BadRequest, problem);
+        var request = new HotstringPreviewRequestDto(
+            HotstringKind.Text,
+            string.Empty,
+            "by the way",
+            IsCaseSensitive: false,
+            OmitEndingCharacter: false,
+            IsEndingCharacterRequired: true,
+            IsTriggerInsideWord: true);
+
+        ApiResult<HotstringPreviewDto> result = await ClientWith(handler).PreviewAsync(request);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Status.Should().Be(ApiResultStatus.Validation);
+        result.Problem!.Detail.Should().Contain("Trigger is required");
+    }
+
     private sealed class StubHttpMessageHandler : HttpMessageHandler
     {
         public HttpRequestMessage? LastRequest { get; private set; }

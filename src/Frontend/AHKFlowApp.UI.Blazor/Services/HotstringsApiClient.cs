@@ -79,6 +79,9 @@ public sealed class HotstringsApiClient(HttpClient httpClient) : ApiClientBase(h
     public Task<ApiResult> PurgeDeletedAsync(Guid id, CancellationToken ct = default) =>
         SendNoContentAsync(HttpMethod.Delete, $"{BasePath}/deleted/{id}", ct);
 
+    public Task<ApiResult<HotstringPreviewDto>> PreviewAsync(HotstringPreviewRequestDto request, CancellationToken ct = default) =>
+        SendAsync<HotstringPreviewDto>(HttpMethod.Post, $"{BasePath}/preview", JsonContent.Create(request), ct);
+
     public Task<ApiResult<HotstringImportPreviewDto>> PreviewImportAsync(string script, CancellationToken ct = default) =>
         SendAsync<HotstringImportPreviewDto>(
             HttpMethod.Post,
