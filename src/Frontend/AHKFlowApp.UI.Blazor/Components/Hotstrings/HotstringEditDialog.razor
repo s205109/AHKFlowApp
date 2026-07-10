@@ -1,4 +1,5 @@
 @using AHKFlowApp.UI.Blazor.DTOs
+@using AHKFlowApp.UI.Blazor.Helpers
 @using AHKFlowApp.UI.Blazor.Services
 @using AHKFlowApp.UI.Blazor.Validation
 @using MudBlazor
@@ -19,17 +20,38 @@
                              UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "kind-selector" })">
                 <MudToggleItem Value="HotstringKind.Text" Text="Text" />
                 <MudToggleItem Value="HotstringKind.DateTime" Text="Date & time" />
+                <MudToggleItem Value="HotstringKind.Macro" Text="Macro" />
             </MudToggleGroup>
 
             <MudTextField T="string" Label="Trigger" @bind-Value="Item.Trigger"
                           Required="true" RequiredError="Trigger is required" MaxLength="50"
                           Error="@(_triggerError is not null)" ErrorText="@_triggerError"
                           UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "trigger-input" })" />
+            @if (Item.Kind == HotstringKind.Text && !_macroSuggestionDismissed && MacroTokens.ContainsKnownToken(Item.Replacement))
+            {
+                <MudAlert Severity="Severity.Info" UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "macro-suggestion" })">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="flex-grow-1">
+                        <MudText Typo="Typo.body2">This replacement looks like it contains macro tokens.</MudText>
+                        <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                            <MudButton Size="Size.Small" OnClick="SwitchToMacroFromSuggestion">Switch to Macro</MudButton>
+                            <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="@(() => _macroSuggestionDismissed = true)" />
+                        </MudStack>
+                    </MudStack>
+                </MudAlert>
+            }
             @if (Item.Kind != HotstringKind.DateTime)
             {
-                <MudTextField T="string" Label="Replacement" @bind-Value="Item.Replacement"
+                <MudTextField T="string" Label="Replacement" @bind-Value="Item.Replacement" @ref="_replacementField"
                               Lines="3" Required="@(Item.Kind != HotstringKind.DateTime)" RequiredError="Replacement is required" MaxLength="4000"
                               UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "replacement-input" })" />
+            }
+            @if (Item.Kind == HotstringKind.Macro)
+            {
+                <MudStack Row="true" Spacing="1" UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "macro-toolbar" })">
+                    <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="@(() => InsertTokenAsync("{{cursor}}"))">Cursor</MudButton>
+                    <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="@(() => InsertTokenAsync("{{key:Enter}}"))">Enter</MudButton>
+                    <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="@(() => InsertTokenAsync("{{key:Tab}}"))">Tab</MudButton>
+                </MudStack>
             }
             @if (Item.Kind == HotstringKind.DateTime)
             {
@@ -144,6 +166,8 @@
     private IReadOnlyList<EntityOption> _categoryOptions = [];
     private HotstringEditModel? _lastItem;
     private string _selectedFormatOption = CustomFormatSentinel;
+    private MudTextField<string> _replacementField = default!;
+    private bool _macroSuggestionDismissed;
 
     protected override void OnParametersSet()
     {
@@ -191,13 +215,42 @@
                     yesText: "Switch", cancelText: "Cancel");
                 if (confirm != true) return;
             }
+            else if (Item.Kind == HotstringKind.Macro && MacroTokens.ContainsKnownToken(Item.Replacement))
+            {
+                bool? confirm = await DialogService.ShowMessageBoxAsync(
+                    title: "Switch to Text?",
+                    message: "Switching to Text will treat any {{...}} tokens in the replacement as literal text instead of macro commands. Continue?",
+                    yesText: "Switch", cancelText: "Cancel");
+                if (confirm != true) return;
+            }
 
             Item.DateTimeFormat = null;
             Item.DateOffsetAmount = null;
             Item.DateOffsetUnit = null;
             Item.Kind = HotstringKind.Text;
         }
+        else if (newKind == HotstringKind.Macro)
+        {
+            if (Item.DateTimeFormat is not null)
+            {
+                bool? confirm = await DialogService.ShowMessageBoxAsync(
+                    title: "Switch to Macro?",
+                    message: "Switching to Macro will clear the date/time format and offset. Continue?",
+                    yesText: "Switch", cancelText: "Cancel");
+                if (confirm != true) return;
+            }
+
+            Item.DateTimeFormat = null;
+            Item.DateOffsetAmount = null;
+            Item.DateOffsetUnit = null;
+            Item.Kind = HotstringKind.Macro;
+        }
     }
+
+    private async Task InsertTokenAsync(string token) =>
+        await _replacementField.InsertTextAtCurrentCaretPositionAsync(token);
+
+    private Task SwitchToMacroFromSuggestion() => OnKindChangedAsync(HotstringKind.Macro);
 
     private void OnFormatOptionChanged(string option)
     {
