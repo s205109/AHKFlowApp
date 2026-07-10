@@ -10,7 +10,7 @@ Branch: `feature/wt-hotstrings-macro-kind` (worktree, clean).
 
 **User-confirmed decisions (grilling, 2026-07-10):**
 1. Key whitelist = **Enter + Tab only** (matches toolbar; extensible later).
-2. **Strict parser**: any `{{...}}` that isn't exactly a known token → validation error naming the bad token. Single/unmatched braces stay literal. Literal `{{cursor}}` output → use Text kind (document).
+2. **Strict parser**: any `{{...}}` that isn't exactly a known token → validation error naming the bad token. Single/unmatched braces stay literal. *(Amended by decision 11 — escaped literals now cover mixed content; plain-literal-only replacements still belong in Text kind.)*
 3. **Grouped-runs emission**: consecutive text → one `SendText "..."`; consecutive same keys merged → `Send "{Enter 2}"`; cursor → trailing `Send "{Left N}"` (omitted when N=0). Allman braces, tab-indented.
 4. Preview endpoint: **dedicated request DTO, full validation** via `ValidatingUseCase` → invalid input = 400 ProblemDetails; panel shows first error.
 5. JS interop: ES module + `IJSObjectReference` — **superseded during plan review**: MudTextField 9.3.0 has a built-in caret-insertion API, so no custom JS is built (see Dialog design).
@@ -19,12 +19,14 @@ Branch: `feature/wt-hotstrings-macro-kind` (worktree, clean).
 8. Degenerate cursor-only macro **allowed** → empty brace body (valid AHK no-op; user sees it in preview).
 9. Preview panel: **calls only while expanded**, 400 ms debounce.
 10. Kind auto-suggestion: **"Use Macro?" alert ships this phase** (detection reuses the token grammar); "Use Script?" waits for Phase 5.
+11. **Escaped literal brace tokens** (plan review, 2026-07-10 — amends decision 2): `{{{{...}}}}` emits literal `{{...}}`, so a mixed macro can contain Jinja/Mustache-style literals alongside real tokens — e.g. `Dear {{{{first_name}}}},{{key:Enter}}{{cursor}}Alex` types `Dear {{first_name}},` + Enter + caret before `Alex`. Real tokens keep their meaning; malformed real tokens (`{{key:Entr}}`) still fail strictly.
 
 ## Design
 
 ### Token grammar (single source of truth: `MacroTokenParser`)
 - Tokens: `{{cursor}}`, `{{key:Enter}}`, `{{key:Tab}}` — names case-insensitive, no whitespace inside `{{...}}`.
-- New `src/Backend/AHKFlowApp.Application/Services/MacroTokenParser.cs` (internal static). **Small linear scanner, not a regex** (a non-`Singleline` `\{\{.*?\}\}` silently skips candidates spanning newlines): scan for `{{`; if no closing `}}` follows, the `{{` is literal text; if one does, the span is a token candidate — inner content must match a known token (case-insensitive, no whitespace/newlines) or is reported as an error with its raw text. Everything else = literal text runs.
+- **Escaped literals** (decision 11): `{{{{...}}}}` is an escape producing the literal text `{{...}}` in the emitted output (any inner content, including whitespace/Mustache names; terminated by the first `}}}}`). Lets one macro mix template literals with real tokens.
+- New `src/Backend/AHKFlowApp.Application/Services/MacroTokenParser.cs` (internal static). **Small linear scanner, not a regex** (a non-`Singleline` `\{\{.*?\}\}` silently skips candidates spanning newlines): scan for `{{`. If it's `{{{{`, seek the first `}}}}` → literal-text token `{{inner}}`; with no `}}}}` closer, the leading `{{` is literal and scanning resumes (an inner `{{oops}}` then still errors strictly). Otherwise, if no closing `}}` follows, the `{{` is literal text; if one does, the span is a token candidate — inner content must match a known token (case-insensitive, no whitespace/newlines) or is reported as an error with its raw text (error message mentions the `{{{{...}}}}` escape for literals). Everything else = literal text runs.
 - Result model: `MacroParseResult(IReadOnlyList<MacroToken> Tokens, IReadOnlyList<string> Errors)`; `MacroToken` = discriminated by kind (TextRun(string), Key(name canonical "Enter"/"Tab"), Cursor).
 - Used by: validator (parse errors, ≤1 cursor, no keys after cursor), emitter (token stream → statements), preview (indirectly).
 
@@ -39,8 +41,8 @@ Branch: `feature/wt-hotstrings-macro-kind` (worktree, clean).
       Send "{Left 4}"
   }
   ```
-  (example shown with spaces; the emitter indents with a tab — spec §7 ex. 6 golden). Text runs merge into minimal `SendText` statements (cursor splits a run but emits no text); consecutive identical keys merge to `{Enter N}`; distinct keys = separate `Send` lines.
-- **Cursor math**: `N` = total character count of text runs *after* the cursor token (`\n` counts 1, per D5); keys after cursor are impossible (validation). `N=0` → no `Send "{Left ...}"` line.
+  (example shown with spaces; the emitter indents with a tab — spec §7 ex. 6 golden). Text runs merge into minimal `SendText` statements (cursor splits a run but emits no text); escaped literals unescape to `{{...}}` and fold into the adjacent text run (`SendText "Dear {{first_name}},"` — safe, `SendText` sends braces literally); consecutive identical keys merge to `{Enter N}`; distinct keys = separate `Send` lines.
+- **Cursor math**: `N` = total character count of text runs *after* the cursor token (`\n` counts 1, per D5); escaped literals count their **emitted** length (`{{{{first_name}}}}` after the cursor counts 14 for `{{first_name}}`); keys after cursor are impossible (validation). `N=0` → no `Send "{Left ...}"` line.
 - **New string-literal escape helper** (distinct from line-level `Escape()`): for AHK v2 double-quoted strings — `` ` `` → ```` `` ````, `"` → `` `" ``, `\n` → `` `n ``, `\r` → `` `r ``, `\t` → `` `t ``. No `;`/brace escaping needed inside quotes.
 - `AhkScriptGenerator` keeps calling `HotstringEmitter.Emit(hs)`; the returned string is now multi-line for macros (verify join/newline style in goldens).
 
@@ -86,28 +88,28 @@ Branch: `feature/wt-hotstrings-macro-kind` (worktree, clean).
 Commit: `docs: phase 3 plan (macro kind + preview endpoint)`
 
 ### Task 1 — MacroTokenParser (TDD)
-- Tests first: `tests/AHKFlowApp.Application.Tests/Services/MacroTokenParserTests.cs` — plain text (no tokens), each token, case-insensitivity, `{{ cursor }}`/`{{oops}}`/`{{key:Escape}}`/`{{field:name}}` → named errors, token candidate spanning a newline (`{{key:\nEnter}}`) → named error, unmatched `{{`/single braces literal, adjacent tokens, multiline text runs, token positions for cursor-math.
+- Tests first: `tests/AHKFlowApp.Application.Tests/Services/MacroTokenParserTests.cs` — plain text (no tokens), each token, case-insensitivity, `{{ cursor }}`/`{{oops}}`/`{{key:Escape}}`/`{{field:name}}` → named errors, token candidate spanning a newline (`{{key:\nEnter}}`) → named error, unmatched `{{`/single braces literal, adjacent tokens, multiline text runs, token positions for cursor-math; escaped literals: `{{{{first_name}}}}` → literal `{{first_name}}`, escape adjacent to real tokens (decision 11 example string), whitespace/newline allowed inside escape, `{{{{` without `}}}}` → leading `{{` literal + inner tokens still scanned, `{{key:Entr}}` still a named error.
 - `src/Backend/AHKFlowApp.Application/Services/MacroTokenParser.cs` + result/token types.
 Commit: `feat: macro token parser ({{cursor}}, {{key:Enter|Tab}})`
 
 ### Task 2 — Emitter macro brace body (goldens first)
-- Goldens in `AhkScriptGeneratorTests.cs`: spec §7 ex. 6 exact (`:*:htag::` + brace body + `{Left 4}`); merged `{Enter 2}`; mixed Enter/Tab; cursor at end → no `{Left}`; cursor-only → empty body; multiline text (`` `n `` inside `SendText`, counts 1 for Left); quote/backtick escaping in `SendText`; **`T` no longer emitted for Macro** (and still emitted for Text — regression golden).
+- Goldens in `AhkScriptGeneratorTests.cs`: spec §7 ex. 6 exact (`:*:htag::` + brace body + `{Left 4}`); merged `{Enter 2}`; mixed Enter/Tab; cursor at end → no `{Left}`; cursor-only → empty body; multiline text (`` `n `` inside `SendText`, counts 1 for Left); quote/backtick escaping in `SendText`; decision 11 example golden (`Dear {{{{first_name}}}},{{key:Enter}}{{cursor}}Alex` → `SendText "Dear {{first_name}},"` + `Send "{Enter}"` + `SendText "Alex"` + `Send "{Left 4}"`); escaped literal after cursor counts emitted length in `{Left N}`; **`T` no longer emitted for Macro** (and still emitted for Text — regression golden).
 - `HotstringEmitter`: `BuildOptions` `T` restricted to `Kind == Text`; `BuildBody` switch + `BuildMacroBody` (grouped runs, merged keys, cursor math) + `EscapeStringLiteral` helper.
 Commit: `feat: emit macro hotstrings as AHK brace bodies`
 
 ### Task 3 — Validation (TDD)
-- Validator tests: widen `Kind_MacroOrScript_Fails` → Script-only; Macro acceptance; parse-error, 2-cursor, key-after-cursor rejections; Macro + date fields → 400 (existing rule, pin it); cursor-only macro passes.
+- Validator tests: widen `Kind_MacroOrScript_Fails` → Script-only; Macro acceptance; parse-error, 2-cursor, key-after-cursor rejections; Macro + date fields → 400 (existing rule, pin it); cursor-only macro passes; escaped-literal macro passes while `{{key:Entr}}` beside it still fails.
 - `HotstringRules.AddMacroKindRules<T>()`; wire into Create/Update validators; widen kind rule.
 - Update the `Kind` XML comments on `HotstringDto`/`Create`/`Update` (`Application/DTOs/HotstringDto.cs:17`) — Macro becomes API-supported here; only Script stays domain-only.
 Commit: `feat: macro kind validation (strict tokens, cursor rules)`
 
 ### Task 4 — Preview endpoint
 - `Application/DTOs/HotstringDto.cs` (or new file): `HotstringPreviewRequestDto`, `HotstringPreviewDto`; `Application/Queries/Hotstrings/GetHotstringPreviewQuery.cs` + validator + handler (transient `Hotstring.Create`, no DbContext); DI registration; controller action `[HttpPost("preview")]` + `ProducesResponseType` annotations.
-- API integration tests (`AHKFlowApp.API.Tests`): Text/DateTime/Macro previews return exact snippets; invalid macro → 400 ProblemDetails with parser message; anonymous → 401 (matches controller auth).
+- API integration tests (`AHKFlowApp.API.Tests`): Text/DateTime/Macro previews return exact snippets (macro case includes an escaped literal); invalid macro → 400 ProblemDetails with parser message; anonymous → 401 (matches controller auth).
 Commit: `feat: stateless hotstring preview endpoint`
 
 ### Task 5 — Frontend plumbing
-- Mirror preview DTOs; `HotstringsApiClient.PreviewAsync`; frontend token helper (`MacroTokens`) + unit tests (detection + splitting).
+- Mirror preview DTOs; `HotstringsApiClient.PreviewAsync`; frontend token helper (`MacroTokens`) + unit tests (detection + splitting, incl. escaped literals: split as literal text `{{...}}`, never a chip, and never trigger the "Use Macro?" suggestion — only real known tokens do).
 - `tests/AHKFlowApp.UI.Blazor.Tests/Services/HotstringsApiClientTests.cs`: `PreviewAsync` route (`api/v1/hotstrings/preview`) + request payload + 400 ProblemDetails mapping, per existing client test pattern.
 Commit: `feat: preview API client + frontend macro token helper`
 
@@ -122,7 +124,7 @@ Commit: `feat: dialog macro panel with insert toolbar and kind suggestion`
 Commit: `feat: generated AHK preview panel in hotstring dialog`
 
 ### Task 8 — Grid + mobile token chips
-- `Hotstrings.razor` + `HotstringMobileList.razor` Macro replacement rendering with chips; bUnit tests.
+- `Hotstrings.razor` + `HotstringMobileList.razor` Macro replacement rendering with chips; bUnit tests (incl. escaped literal shown as plain `{{...}}` text between chips).
 Commit: `feat: macro token chips in grid and mobile list`
 
 ### Task 9 — CLI + history pinning tests
@@ -138,7 +140,7 @@ Commit: `docs: changelog for macro hotstring kind`
 Then PR to `main` via `gh`.
 
 ## Edge cases covered
-Strict unknown/malformed token errors; token spanning newline rejected (scanner, not regex); case-insensitive tokens; whitespace-in-token rejected; stale/out-of-order preview responses discarded; cancelled previews silent; 2 cursors rejected; key after cursor rejected; cursor-only macro → empty body allowed; cursor at end → no `{Left}`; merged repeated keys; multiline text runs (`` `n ``, counts 1); quote/backtick in macro text; `T` regression (Text keeps it, Macro never); Macro + date fields rejected; preview 400 surface identical to Save; preview panel silent while collapsed; Macro rows excluded from inline edit (existing gate); CLI renders raw tokens; legacy/new snapshots round-trip unchanged.
+Strict unknown/malformed token errors; token spanning newline rejected (scanner, not regex); case-insensitive tokens; whitespace-in-token rejected; escaped literals `{{{{...}}}}` pass through (parser, emitter, cursor math, preview, chips) while malformed real tokens beside them still fail; stale/out-of-order preview responses discarded; cancelled previews silent; 2 cursors rejected; key after cursor rejected; cursor-only macro → empty body allowed; cursor at end → no `{Left}`; merged repeated keys; multiline text runs (`` `n ``, counts 1); quote/backtick in macro text; `T` regression (Text keeps it, Macro never); Macro + date fields rejected; preview 400 surface identical to Save; preview panel silent while collapsed; Macro rows excluded from inline edit (existing gate); CLI renders raw tokens; legacy/new snapshots round-trip unchanged.
 
 ## Verification
 Per-task: `dotnet build` + targeted `dotnet test` project. End: full `dck-verify` + E2E smoke above.
