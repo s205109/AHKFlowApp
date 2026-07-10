@@ -6,13 +6,15 @@ This brief gives Claude Design product context without requiring the full .NET a
 
 Use this document for UI design direction, screen composition, visual hierarchy, and product experience decisions. For the engineering overview, see [Product Vision & .NET Architecture Overview](product-vision.md).
 
+The canonical design authority is the AHKFlow design system repo (`C:\Dev\claude-design-projects\2026-06-22 AHKFlow Design System`): `PRODUCT.md` for strategy, personality, and anti-references; `DESIGN.md` for tokens, components, patterns, and all voice/microcopy rules. Where this brief and those files disagree, they win.
+
 ## Product Promise
 
-**AutoHotkey Hotstring Manager & CLI.** AHKFlow helps Windows users manage AutoHotkey hotstrings and hotkeys in one structured place, organize them by profile and category, preview the resulting scripts, and download valid `.ahk` files. It ships with two first-class interfaces: the Blazor web UI and the `ahkflow` CLI.
+**AutoHotkey V2 hotstring manager & CLI.** AHKFlow helps Windows users manage AutoHotkey hotstrings and hotkeys in one structured place, organize them by profile and category, preview the resulting scripts, and download valid `.ahk` files. It ships with two first-class interfaces: the Blazor web UI and the `ahkflow` CLI.
 
 ## Target Experience
 
-AHKFlow should feel like a focused productivity tool:
+AHKFlow should feel like a focused productivity tool. Brand personality: **Calm · Precise · Transparent** (defined in the design system's `PRODUCT.md`).
 
 - Dense enough for repeated operational use.
 - Clear enough for users with many automations.
@@ -28,12 +30,13 @@ AHKFlow should feel like a focused productivity tool:
 
 ## Core Screens
 
-- **Dashboard** - Compact overview of totals, recent activity, and entry points.
+- **Home** - Compact dashboard overview of totals, recent activity, and entry points.
 - **Hotstrings** - Searchable/editable table and mobile list for text replacement definitions.
 - **Hotkeys** - Searchable/editable table and mobile list for keyboard shortcut definitions.
 - **Profiles** - Profile management, default selection, header/footer templates, and script preview.
 - **Categories** - Tag management for organizing hotstrings and hotkeys.
 - **Downloads** - Per-profile `.ahk` downloads and all-profile zip download.
+- **System views** - Settings, Health, and the in-app Changelog.
 
 ## Core Data Concepts
 

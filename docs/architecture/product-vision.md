@@ -6,11 +6,11 @@ This document defines the product vision, functional scope, and high-level .NET 
 
 It is the main product and architecture context document for the repository. Use it when you need to understand what AHKFlow is, how the .NET solution is structured, and which product capabilities are current or intentionally out of scope.
 
-For a shorter design-only summary, see [Claude Design Brief](claude-design-brief.md).
+For a shorter design-only summary, see [Claude Design Brief](claude-design-brief.md). Design decisions (visuals, voice, microcopy, screen naming) are authoritative in the AHKFlow design system repo (`C:\Dev\claude-design-projects\2026-06-22 AHKFlow Design System`): `PRODUCT.md` for product strategy and brand personality, `DESIGN.md` for the full design specification. This document remains authoritative for product facts: scope, features, and domain model.
 
 ## 2. Product Overview
 
-AHKFlow is an **AutoHotkey Hotstring Manager & CLI**: a .NET application for managing AutoHotkey hotstrings and hotkeys on Windows. It helps users define reusable automation snippets, organize them into profiles and categories, generate valid `.ahk` scripts, and download those scripts from a web UI or CLI.
+AHKFlow is an **AutoHotkey V2 hotstring manager & CLI**: a .NET application for managing AutoHotkey hotstrings and hotkeys on Windows. It helps users define reusable automation snippets, organize them into profiles and categories, generate valid `.ahk` scripts, and download those scripts from a web UI or CLI.
 
 The web UI and the `ahkflow` CLI are both first-class, shipped interfaces in the first version. Neither is an add-on: the CLI is core to the product for scripted and power-user workflows.
 
@@ -71,13 +71,13 @@ The web UI is the primary interactive experience. It is a Blazor WebAssembly PWA
 
 Current UI areas:
 
-- Dashboard
+- Home (dashboard overview; the API keeps Dashboard-named endpoints)
 - Hotstrings
 - Hotkeys
 - Downloads
 - Profiles
 - Categories
-- Settings and health/supporting views
+- Settings, Health, and Changelog (System views)
 
 ### 8.2 Web API
 
@@ -208,6 +208,7 @@ Azure deployment uses:
 ## 14. Related Documents
 
 - [Claude Design Brief](claude-design-brief.md)
+- AHKFlow Design System — `PRODUCT.md` and `DESIGN.md` in `C:\Dev\claude-design-projects\2026-06-22 AHKFlow Design System` (canonical for design decisions, voice, and microcopy)
 - [Authentication Architecture](authentication.md)
 - [Search Semantics](search-semantics.md)
 - [Configuration Strategy](../development/configuration-strategy.md)
