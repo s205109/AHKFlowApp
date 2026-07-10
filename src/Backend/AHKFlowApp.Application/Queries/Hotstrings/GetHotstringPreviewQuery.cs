@@ -1,0 +1,67 @@
+using AHKFlowApp.Application.Abstractions;
+using AHKFlowApp.Application.DTOs;
+using AHKFlowApp.Application.Services;
+using AHKFlowApp.Application.Validation;
+using AHKFlowApp.Domain.Entities;
+using AHKFlowApp.Domain.Enums;
+using Ardalis.Result;
+using FluentValidation;
+
+namespace AHKFlowApp.Application.Queries.Hotstrings;
+
+public sealed record GetHotstringPreviewQuery(HotstringPreviewRequestDto Input);
+
+public sealed class GetHotstringPreviewQueryValidator : AbstractValidator<GetHotstringPreviewQuery>
+{
+    public GetHotstringPreviewQueryValidator()
+    {
+        RuleFor(x => x.Input.Trigger).ValidTrigger();
+        RuleFor(x => x.Input.Kind)
+            .Must(k => k is HotstringKind.Text or HotstringKind.DateTime or HotstringKind.Macro)
+            .WithMessage("Only Text, Date & time and Macro hotstrings are supported.");
+        this.AddDateTimeKindRules(
+            x => x.Input.Kind,
+            x => x.Input.Replacement,
+            x => x.Input.DateTimeFormat,
+            x => x.Input.DateOffsetAmount,
+            x => x.Input.DateOffsetUnit);
+        this.AddMacroKindRules(
+            x => x.Input.Kind,
+            x => x.Input.Replacement);
+    }
+}
+
+/// <summary>
+/// Computes the exact AutoHotkey snippet a hotstring definition would generate, without
+/// persisting anything. Builds a transient (never-saved) <see cref="Hotstring"/> via
+/// <see cref="Hotstring.Create"/> purely to reuse <see cref="HotstringEmitter"/> — no
+/// <c>IAppDbContext</c> dependency, no side effects.
+/// </summary>
+internal sealed class GetHotstringPreviewQueryHandler(TimeProvider clock)
+    : IUseCaseHandler<GetHotstringPreviewQuery, Result<HotstringPreviewDto>>
+{
+    public Task<Result<HotstringPreviewDto>> ExecuteAsync(GetHotstringPreviewQuery request, CancellationToken ct)
+    {
+        HotstringPreviewRequestDto input = request.Input;
+
+        var hs = Hotstring.Create(
+            Guid.Empty,
+            new HotstringDefinition(
+                input.Trigger,
+                input.Replacement,
+                Description: null,
+                AppliesToAllProfiles: true,
+                input.IsEndingCharacterRequired,
+                input.IsTriggerInsideWord,
+                input.Kind,
+                input.IsCaseSensitive,
+                input.OmitEndingCharacter,
+                input.DateTimeFormat,
+                input.DateOffsetAmount,
+                input.DateOffsetUnit),
+            clock);
+
+        string snippet = HotstringEmitter.Emit(hs);
+        return Task.FromResult(Result.Success(new HotstringPreviewDto(snippet)));
+    }
+}
