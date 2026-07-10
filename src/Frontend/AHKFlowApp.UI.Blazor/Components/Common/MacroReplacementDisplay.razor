@@ -1,0 +1,28 @@
+@namespace AHKFlowApp.UI.Blazor.Components.Common
+@using AHKFlowApp.UI.Blazor.Helpers
+
+@foreach (MacroTextPiece piece in Pieces)
+{
+    if (piece is MacroTextPiece.Text text)
+    {
+        @text.Value
+    }
+    else if (piece is MacroTextPiece.Token token)
+    {
+        <MudChip T="string" Size="Size.Small" Class="macro-token-chip">@LabelFor(token.Kind)</MudChip>
+    }
+}
+
+@code {
+    [Parameter, EditorRequired] public string Replacement { get; set; } = "";
+
+    private IReadOnlyList<MacroTextPiece> Pieces => MacroTokens.Split(Replacement);
+
+    private static string LabelFor(MacroTokenKind kind) => kind switch
+    {
+        MacroTokenKind.Cursor => "⌖ cursor",
+        MacroTokenKind.Enter => "Enter",
+        MacroTokenKind.Tab => "Tab",
+        _ => kind.ToString(),
+    };
+}
