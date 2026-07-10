@@ -174,4 +174,46 @@ public sealed class HotstringNewFieldHistoryTests(HistoryDbFixture fx)
         result.Value.DateOffsetAmount.Should().Be(-2);
         result.Value.DateOffsetUnit.Should().Be(DateOffsetUnit.Hours);
     }
+
+    [Fact]
+    public async Task RevertHotstring_RestoresMacroKindAndTokenReplacement()
+    {
+        var owner = Guid.NewGuid();
+        const string macroReplacement = "Dear {{cursor}}Alex";
+        Hotstring entity = new HotstringBuilder()
+            .WithOwner(owner).WithTrigger("macro1").WithReplacement(macroReplacement)
+            .WithKind(HotstringKind.Macro)
+            .Build();
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(entity);
+            await seed.SaveChangesAsync();
+        }
+
+        // Update switches the hotstring to Text kind with a plain replacement — the before-image
+        // snapshot must carry the original Macro kind and token-bearing replacement intact.
+        await using (AppDbContext db = fx.CreateContext())
+        {
+            UpdateHotstringCommandHandler update = new(
+                db, CurrentUserHelper.For(owner), TimeProvider.System,
+                new EntityHistoryRecorder(db, TimeProvider.System));
+            Result<HotstringDto> updated = await update.ExecuteAsync(
+                new UpdateHotstringCommand(entity.Id,
+                    new UpdateHotstringDto("macro1", "plain text", null, true, true, true, null)), default);
+            updated.IsSuccess.Should().BeTrue();
+            updated.Value.Kind.Should().Be(HotstringKind.Text);
+        }
+
+        await using AppDbContext revertDb = fx.CreateContext();
+        RevertHotstringCommandHandler revert = new(
+            revertDb, CurrentUserHelper.For(owner), TimeProvider.System,
+            new EntityHistoryRecorder(revertDb, TimeProvider.System));
+        Result<HotstringDto> result = await revert.ExecuteAsync(
+            new RevertHotstringCommand(entity.Id, 1), default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Kind.Should().Be(HotstringKind.Macro);
+        result.Value.Replacement.Should().Be(macroReplacement);
+    }
 }
