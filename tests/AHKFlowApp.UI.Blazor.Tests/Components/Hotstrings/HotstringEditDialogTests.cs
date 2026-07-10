@@ -381,6 +381,149 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
         item.Replacement.Should().Be("by the way");
     }
 
+    [Fact]
+    public async Task KindSelector_HasThreeItemsIncludingMacro()
+    {
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync();
+
+        provider.WaitForAssertion(() =>
+        {
+            IReadOnlyList<AngleSharp.Dom.IElement> items = provider.FindAll(".mud-toggle-item");
+            items.Should().HaveCount(3);
+            items.Select(e => e.TextContent.Trim()).Should().Contain("Macro");
+        });
+    }
+
+    [Fact]
+    public async Task MacroToolbar_HiddenForTextAndDateTime_VisibleForMacro()
+    {
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync();
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"kind-selector\"]"));
+
+        provider.FindAll("[data-test=\"macro-toolbar\"]").Should().BeEmpty();
+
+        provider.FindAll(".mud-toggle-item").First(e => e.TextContent.Contains("Date & time")).Click();
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"datetime-format-select\"]"));
+        provider.FindAll("[data-test=\"macro-toolbar\"]").Should().BeEmpty();
+
+        provider.FindAll(".mud-toggle-item").First(e => e.TextContent.Trim() == "Macro").Click();
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"macro-toolbar\"]").Should().NotBeNull());
+    }
+
+    [Theory]
+    [InlineData("Cursor", "{{cursor}}")]
+    [InlineData("Enter", "{{key:Enter}}")]
+    [InlineData("Tab", "{{key:Tab}}")]
+    public async Task MacroToolbar_ClickInsertButton_InvokesCaretInsertionWithCanonicalToken(string buttonLabel, string expectedToken)
+    {
+        // MudTextField.InsertTextAtCurrentCaretPositionAsync mutates the real DOM element via JS interop
+        // and relies on a browser "oninput" event to flow the change back into @bind-Value. bUnit's
+        // JSInterop.Mode = Loose accepts the call but never mutates the DOM or raises that event, so
+        // Item.Replacement can never observably change in this test environment. Instead, verify the
+        // toolbar button triggers the caret-insertion JS interop call with the correct token.
+        HotstringEditModel item = new() { Trigger = "sig", Kind = HotstringKind.Macro, Replacement = "" };
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"macro-toolbar\"]"));
+
+        provider.FindAll("[data-test=\"macro-toolbar\"] button").First(b => b.TextContent.Contains(buttonLabel)).Click();
+
+        provider.WaitForAssertion(() =>
+        {
+            Bunit.JSRuntimeInvocation invocation = JSInterop.VerifyInvoke("mudInput.insertAtCurrentCaretPosition");
+            invocation.Arguments.Should().Contain(expectedToken);
+        });
+    }
+
+    [Fact]
+    public async Task MacroSuggestion_AppearsForTextWithToken_DismissesAndSwitches()
+    {
+        HotstringEditModel item = new() { Trigger = "sig", Kind = HotstringKind.Text, Replacement = "Hi {{cursor}} bye" };
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"macro-suggestion\"]").Should().NotBeNull());
+
+        // Switching to Macro directly via the suggestion button (no confirm expected)
+        provider.Find("[data-test=\"macro-suggestion\"] button").Click();
+
+        provider.WaitForAssertion(() => item.Kind.Should().Be(HotstringKind.Macro));
+    }
+
+    [Fact]
+    public async Task MacroSuggestion_DoesNotAppearWithoutToken()
+    {
+        HotstringEditModel item = new() { Trigger = "sig", Kind = HotstringKind.Text, Replacement = "plain text" };
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"kind-selector\"]"));
+
+        provider.FindAll("[data-test=\"macro-suggestion\"]").Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task MacroSuggestion_DismissButton_HidesAlert()
+    {
+        HotstringEditModel item = new() { Trigger = "sig", Kind = HotstringKind.Text, Replacement = "Hi {{cursor}} bye" };
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"macro-suggestion\"]"));
+
+        provider.Find("[data-test=\"macro-suggestion\"] button.mud-icon-button").Click();
+
+        provider.WaitForAssertion(() => provider.FindAll("[data-test=\"macro-suggestion\"]").Should().BeEmpty());
+    }
+
+    [Fact]
+    public async Task SwitchFromMacroWithToken_ToText_PromptsConfirmation()
+    {
+        HotstringEditModel item = new() { Trigger = "sig", Kind = HotstringKind.Macro, Replacement = "Hi {{cursor}} bye" };
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"kind-selector\"]"));
+
+        provider.FindAll(".mud-toggle-item").First(e => e.TextContent.Trim() == "Text").Click();
+
+        provider.WaitForAssertion(() => provider.Markup.Should().Contain("Switch to Text"));
+        item.Kind.Should().Be(HotstringKind.Macro);
+        item.Replacement.Should().Be("Hi {{cursor}} bye");
+    }
+
+    [Fact]
+    public async Task SwitchFromMacroWithoutToken_ToText_NoConfirmationNeeded()
+    {
+        HotstringEditModel item = new() { Trigger = "sig", Kind = HotstringKind.Macro, Replacement = "plain text" };
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"kind-selector\"]"));
+
+        provider.FindAll(".mud-toggle-item").First(e => e.TextContent.Trim() == "Text").Click();
+
+        provider.WaitForAssertion(() => item.Kind.Should().Be(HotstringKind.Text));
+        item.Replacement.Should().Be("plain text");
+    }
+
+    [Fact]
+    public async Task SwitchFromDateTime_ToMacro_WithFormatSet_PromptsConfirmation()
+    {
+        HotstringEditModel item = new() { Trigger = "date", Kind = HotstringKind.DateTime, DateTimeFormat = "yyyy-MM-dd" };
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"kind-selector\"]"));
+
+        provider.FindAll(".mud-toggle-item").First(e => e.TextContent.Trim() == "Macro").Click();
+
+        provider.WaitForAssertion(() => provider.Markup.Should().Contain("Switch to Macro"));
+        item.Kind.Should().Be(HotstringKind.DateTime);
+        item.DateTimeFormat.Should().Be("yyyy-MM-dd");
+    }
+
+    [Fact]
+    public async Task SwitchFromText_ToMacro_NoConfirmationNeeded()
+    {
+        HotstringEditModel item = new() { Trigger = "sig", Kind = HotstringKind.Text, Replacement = "plain text" };
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"kind-selector\"]"));
+
+        provider.FindAll(".mud-toggle-item").First(e => e.TextContent.Trim() == "Macro").Click();
+
+        provider.WaitForAssertion(() => item.Kind.Should().Be(HotstringKind.Macro));
+        item.Replacement.Should().Be("plain text");
+    }
+
     private async Task<IRenderedComponent<MudDialogProvider>> RenderDialogAsync(HotstringEditModel? item = null)
     {
         Render<MudPopoverProvider>();
