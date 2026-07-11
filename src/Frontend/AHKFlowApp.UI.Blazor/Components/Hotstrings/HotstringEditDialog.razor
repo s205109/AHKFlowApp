@@ -24,6 +24,13 @@
                 <MudToggleItem Value="HotstringKind.Text" Text="Text" />
                 <MudToggleItem Value="HotstringKind.DateTime" Text="Date & time" />
                 <MudToggleItem Value="HotstringKind.Macro" Text="Macro" />
+                <MudToggleItem Value="HotstringKind.Script">
+                    <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                        <MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Warning" Size="Size.Small"
+                                 title="Runs arbitrary AutoHotkey code" />
+                        <MudText>Script</MudText>
+                    </MudStack>
+                </MudToggleItem>
             </MudToggleGroup>
 
             <MudTextField T="string" Label="Trigger" @bind-Value="Item.Trigger" Immediate="true"
@@ -51,11 +58,11 @@
             @if (Item.Kind != HotstringKind.DateTime)
             {
                 <MudTextField T="string" Label="Replacement" @bind-Value="Item.Replacement" @ref="_replacementField"
-                              Immediate="true"
-                              Lines="3" Required="true" RequiredError="Replacement is required" MaxLength="4000"
+                              Immediate="true" Class="@(Item.Kind == HotstringKind.Script ? "ahk-mono" : null)"
+                              Lines="@(Item.Kind == HotstringKind.Script ? 8 : 3)" Required="true" RequiredError="Replacement is required" MaxLength="4000"
                               Error="@(_previewReplacementError is not null)" ErrorText="@_previewReplacementError"
                               HelperText="@(Item.Kind == HotstringKind.Macro ? MacroHelperText : null)"
-                              UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "replacement-input" })" />
+                              UserAttributes="@GetReplacementUserAttributes()" />
             }
             @if (Item.Kind == HotstringKind.Text && !_macroSuggestionDismissed && MacroTokens.ContainsKnownToken(Item.Replacement))
             {
@@ -69,6 +76,26 @@
                                            UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = "Dismiss macro suggestion" })" />
                         </MudStack>
                     </MudStack>
+                </MudAlert>
+            }
+            @if (Item.Kind == HotstringKind.Text && !_scriptSuggestionDismissed && LooksLikeAhkCode(Item.Replacement))
+            {
+                <MudAlert Severity="Severity.Info" UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "script-suggestion" })">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="flex-grow-1">
+                        <MudText Typo="Typo.body2">This looks like AutoHotkey code — switch to Script?</MudText>
+                        <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                            <MudButton Size="Size.Small" OnClick="SwitchToScriptFromSuggestion">Switch to Script</MudButton>
+                            <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small"
+                                           OnClick="@(() => _scriptSuggestionDismissed = true)"
+                                           UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = "Dismiss script suggestion" })" />
+                        </MudStack>
+                    </MudStack>
+                </MudAlert>
+            }
+            @if (Item.Kind == HotstringKind.Script)
+            {
+                <MudAlert Severity="Severity.Warning" UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "script-warning" })">
+                    Runs arbitrary AutoHotkey code in the generated script. A syntax error here can break the whole profile script.
                 </MudAlert>
             }
             @if (Item.Kind == HotstringKind.DateTime)
@@ -247,6 +274,7 @@
     private string _selectedFormatOption = CustomFormatSentinel;
     private MudTextField<string> _replacementField = default!;
     private bool _macroSuggestionDismissed;
+    private bool _scriptSuggestionDismissed;
     private string? _macroInsertHint;
     private bool _previewExpanded;
     private bool _previewPending;
@@ -333,6 +361,14 @@
                     yesText: "Switch", cancelText: "Cancel");
                 if (confirm != true) return;
             }
+            else if (Item.Kind == HotstringKind.Script && !string.IsNullOrEmpty(Item.Replacement))
+            {
+                bool? confirm = await DialogService.ShowMessageBoxAsync(
+                    title: "Switch to Text?",
+                    message: "Switching to Text will treat your code as literal text instead of running it. Continue?",
+                    yesText: "Switch", cancelText: "Cancel");
+                if (confirm != true) return;
+            }
 
             Item.DateTimeFormat = null;
             Item.DateOffsetAmount = null;
@@ -354,6 +390,30 @@
             Item.DateOffsetAmount = null;
             Item.DateOffsetUnit = null;
             Item.Kind = HotstringKind.Macro;
+        }
+        else if (newKind == HotstringKind.Script)
+        {
+            if (Item.DateTimeFormat is not null)
+            {
+                bool? confirm = await DialogService.ShowMessageBoxAsync(
+                    title: "Switch to Script?",
+                    message: "Switching to Script will clear the date/time format and offset. Continue?",
+                    yesText: "Switch", cancelText: "Cancel");
+                if (confirm != true) return;
+            }
+            else if (Item.Kind is HotstringKind.Text or HotstringKind.Macro && !string.IsNullOrEmpty(Item.Replacement))
+            {
+                bool? confirm = await DialogService.ShowMessageBoxAsync(
+                    title: "Switch to Script?",
+                    message: "Switching to Script will run your text as AutoHotkey code instead of literal text. Continue?",
+                    yesText: "Switch", cancelText: "Cancel");
+                if (confirm != true) return;
+            }
+
+            Item.DateTimeFormat = null;
+            Item.DateOffsetAmount = null;
+            Item.DateOffsetUnit = null;
+            Item.Kind = HotstringKind.Script;
         }
     }
 
@@ -386,6 +446,38 @@
     }
 
     private Task SwitchToMacroFromSuggestion() => OnKindChangedAsync(HotstringKind.Macro);
+
+    private Task SwitchToScriptFromSuggestion() => OnKindChangedAsync(HotstringKind.Script);
+
+    /// <summary>
+    /// Heuristic "looks like AHK code" detector for the Text-kind "Use Script?" suggestion
+    /// (spec §54, deferred from Phase 3): a line starting with <c>Send</c>, <c>::</c>, or
+    /// <c>#</c>, or any brace character, mirrors the guidance text verbatim. Intentionally
+    /// loose — false positives just show a dismissible suggestion, never a hard gate.
+    /// </summary>
+    private static bool LooksLikeAhkCode(string replacement)
+    {
+        if (string.IsNullOrEmpty(replacement)) return false;
+        if (replacement.Contains('{') || replacement.Contains('}')) return true;
+
+        foreach (string rawLine in replacement.Split('\n'))
+        {
+            string line = rawLine.TrimStart();
+            if (line.StartsWith("Send", StringComparison.Ordinal)
+                || line.StartsWith("::", StringComparison.Ordinal)
+                || line.StartsWith('#'))
+                return true;
+        }
+        return false;
+    }
+
+    private Dictionary<string, object?> GetReplacementUserAttributes()
+    {
+        Dictionary<string, object?> attributes = new() { ["data-test"] = "replacement-input" };
+        if (Item.Kind == HotstringKind.Script)
+            attributes["spellcheck"] = "false";
+        return attributes;
+    }
 
     private void OnFormatOptionChanged(string option)
     {
@@ -448,6 +540,9 @@
         {
             _error = null;
             _triggerError = null;
+            _previewTriggerError = null;
+            _previewReplacementError = null;
+            _previewContextValueError = null;
 
             await _form.ValidateAsync();
             if (!_form.IsValid)
@@ -459,11 +554,21 @@
 
             if (!result.IsSuccess)
             {
-                string message = ApiErrorMessageFactory.Build(result.Status, result.Problem);
                 if (result.Status == ApiResultStatus.Conflict)
-                    _triggerError = message;
+                {
+                    _triggerError = ApiErrorMessageFactory.Build(result.Status, result.Problem);
+                }
+                else if (result.Status == ApiResultStatus.Validation && result.Problem?.Errors is { Count: > 0 } errors)
+                {
+                    // Route validation failures through the same field-error mapper the preview
+                    // panel uses (e.g. a save-time brace-imbalance lands inline on Replacement,
+                    // not the generic bottom-of-dialog alert).
+                    (_previewTriggerError, _previewReplacementError, _previewContextValueError, _error) = MapFieldErrors(errors);
+                }
                 else
-                    _error = message;
+                {
+                    _error = ApiErrorMessageFactory.Build(result.Status, result.Problem);
+                }
 
                 return;
             }
@@ -606,31 +711,49 @@
             // Errors mapped onto Trigger/Replacement show inline only; the panel is
             // reserved for anything that isn't shown next to a field, so the same message
             // never appears twice.
-            List<string> unmapped = [];
-            foreach ((string key, string[] messages) in errors)
-            {
-                if (messages.FirstOrDefault() is not { } message)
-                    continue;
-
-                // Property paths arrive as e.g. "Input.Replacement" — the last dotted part
-                // is the field name.
-                string field = key[(key.LastIndexOf('.') + 1)..];
-                if (field.Equals(nameof(Item.Trigger), StringComparison.OrdinalIgnoreCase))
-                    _previewTriggerError ??= message;
-                else if (field.Equals(nameof(Item.Replacement), StringComparison.OrdinalIgnoreCase))
-                    _previewReplacementError ??= message;
-                else if (field.Equals(nameof(Item.ContextValue), StringComparison.OrdinalIgnoreCase))
-                    _previewContextValueError ??= message;
-                else
-                    unmapped.Add(message);
-            }
-
-            _previewError = unmapped.FirstOrDefault();
+            (_previewTriggerError, _previewReplacementError, _previewContextValueError, _previewError) = MapFieldErrors(errors);
         }
         else
         {
             _previewError = ApiErrorMessageFactory.Build(result.Status, result.Problem);
         }
+    }
+
+    /// <summary>
+    /// Maps FluentValidation-shaped field errors (dotted property paths, e.g. "Input.Replacement")
+    /// onto the Trigger/Replacement/ContextValue fields they belong next to, plus a catch-all
+    /// "unmapped" message for anything that isn't shown inline next to a field. Shared by the
+    /// preview panel (<see cref="ApplyPreviewResult"/>) and Save's failure branch so a save-time
+    /// validation failure (e.g. a Script brace imbalance) lands inline on the same field a
+    /// preview failure would, instead of only in the generic bottom-of-dialog alert.
+    /// </summary>
+    private (string? Trigger, string? Replacement, string? ContextValue, string? Unmapped) MapFieldErrors(
+        IReadOnlyDictionary<string, string[]> errors)
+    {
+        string? triggerError = null;
+        string? replacementError = null;
+        string? contextValueError = null;
+        List<string> unmapped = [];
+
+        foreach ((string key, string[] messages) in errors)
+        {
+            if (messages.FirstOrDefault() is not { } message)
+                continue;
+
+            // Property paths arrive as e.g. "Input.Replacement" — the last dotted part
+            // is the field name.
+            string field = key[(key.LastIndexOf('.') + 1)..];
+            if (field.Equals(nameof(Item.Trigger), StringComparison.OrdinalIgnoreCase))
+                triggerError ??= message;
+            else if (field.Equals(nameof(Item.Replacement), StringComparison.OrdinalIgnoreCase))
+                replacementError ??= message;
+            else if (field.Equals(nameof(Item.ContextValue), StringComparison.OrdinalIgnoreCase))
+                contextValueError ??= message;
+            else
+                unmapped.Add(message);
+        }
+
+        return (triggerError, replacementError, contextValueError, unmapped.FirstOrDefault());
     }
 
     public void Dispose()
