@@ -20,6 +20,27 @@ function Write-Log($message, [switch]$Err) {
     Add-Content -Path $logFile -Value $line -Encoding UTF8
 }
 
+# --- Read the incoming command from stdin (Claude Code passes JSON tool input) ---
+$toolCommand = $null
+try {
+    if ([Console]::IsInputRedirected) {
+        $rawInput = [Console]::In.ReadToEnd()
+        if ($rawInput) {
+            $parsed = $rawInput | ConvertFrom-Json -ErrorAction SilentlyContinue
+            $toolCommand = $parsed.tool_input.command
+        }
+    }
+} catch { }
+
+# Fast-exit if hook-invoked with a non-commit command; no stdin = manual run, proceed
+if ($toolCommand -and $toolCommand -notmatch 'git\s+commit') {
+    exit 0
+}
+
+# Anchor to the repo root: git diff paths are repo-root-relative, and the hook's
+# cwd is wherever Claude Code currently runs.
+Set-Location (Join-Path $PSScriptRoot "..\..")
+
 # --- Get staged AND unstaged modified .cs files ---
 # PreToolUse hook fires before the command runs, so "git add X && git commit"
 # means X is not staged yet — check both to catch antipatterns either way.
