@@ -613,6 +613,10 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
             AngleSharp.Dom.IElement badge = cut.Find(".type-badge .mud-chip");
             badge.TextContent.Should().Contain("Script");
             badge.ClassList.Should().Contain(c => c.Contains("warning", StringComparison.OrdinalIgnoreCase));
+            // Warning must be conveyed semantically, not just via color — screen readers read the
+            // aria-label, not the CSS warning color.
+            badge.GetAttribute("aria-label").Should()
+                .Contain("Script").And.Contain("Runs arbitrary AutoHotkey code");
         });
         return Task.CompletedTask;
     }

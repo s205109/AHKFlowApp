@@ -61,7 +61,7 @@
                               Immediate="true" Class="@(Item.Kind == HotstringKind.Script ? "ahk-mono" : null)"
                               Lines="@(Item.Kind == HotstringKind.Script ? 8 : 3)" Required="true" RequiredError="Replacement is required" MaxLength="4000"
                               Error="@(_previewReplacementError is not null)" ErrorText="@_previewReplacementError"
-                              HelperText="@(Item.Kind == HotstringKind.Macro ? MacroHelperText : null)"
+                              HelperText="@ReplacementHelperText"
                               UserAttributes="@GetReplacementUserAttributes()" />
             }
             @if (Item.Kind == HotstringKind.Text && !_macroSuggestionDismissed && MacroTokens.ContainsKnownToken(Item.Replacement))
@@ -78,7 +78,8 @@
                     </MudStack>
                 </MudAlert>
             }
-            @if (Item.Kind == HotstringKind.Text && !_scriptSuggestionDismissed && LooksLikeAhkCode(Item.Replacement))
+            @if (Item.Kind == HotstringKind.Text && !_scriptSuggestionDismissed
+                 && !MacroTokens.ContainsKnownToken(Item.Replacement) && LooksLikeAhkCode(Item.Replacement))
             {
                 <MudAlert Severity="Severity.Info" UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "script-suggestion" })">
                     <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="flex-grow-1">
@@ -232,6 +233,16 @@
     private const string CursorToken = "{{cursor}}";
     private const string MacroHelperText =
         "One {{cursor}} token allowed; Enter/Tab must come before it. Write {{{{...}}}} for literal {{...}} text.";
+    private const string ScriptHelperText =
+        "Raw AutoHotkey v2. No lines starting with '#'. Braces are counted literally (no string/comment awareness), " +
+        "so valid code like SendText \"{\" is rejected — split it or wrap the brace differently.";
+
+    private string? ReplacementHelperText => Item.Kind switch
+    {
+        HotstringKind.Macro => MacroHelperText,
+        HotstringKind.Script => ScriptHelperText,
+        _ => null,
+    };
 
     private static readonly (string Label, string Format)[] DateTimeFormatPresets =
     [
@@ -331,14 +342,10 @@
 
         if (newKind == HotstringKind.DateTime)
         {
-            if (!string.IsNullOrEmpty(Item.Replacement))
-            {
-                bool? confirm = await DialogService.ShowMessageBoxAsync(
-                    title: "Switch to Date & time?",
-                    message: "Switching to Date & time will clear the current replacement text. Continue?",
-                    yesText: "Switch", cancelText: "Cancel");
-                if (confirm != true) return;
-            }
+            if (!string.IsNullOrEmpty(Item.Replacement)
+                && !await ConfirmSwitchAsync("Switch to Date & time?",
+                    "Switching to Date & time will clear the current replacement text. Continue?"))
+                return;
 
             Item.Replacement = "";
             Item.Kind = HotstringKind.DateTime;
@@ -347,74 +354,68 @@
         {
             if (Item.DateTimeFormat is not null)
             {
-                bool? confirm = await DialogService.ShowMessageBoxAsync(
-                    title: "Switch to Text?",
-                    message: "Switching to Text will clear the date/time format and offset. Continue?",
-                    yesText: "Switch", cancelText: "Cancel");
-                if (confirm != true) return;
+                if (!await ConfirmSwitchAsync("Switch to Text?",
+                        "Switching to Text will clear the date/time format and offset. Continue?"))
+                    return;
             }
             else if (Item.Kind == HotstringKind.Macro && MacroTokens.ContainsKnownToken(Item.Replacement))
             {
-                bool? confirm = await DialogService.ShowMessageBoxAsync(
-                    title: "Switch to Text?",
-                    message: "Switching to Text will treat any {{...}} tokens in the replacement as literal text instead of macro commands. Continue?",
-                    yesText: "Switch", cancelText: "Cancel");
-                if (confirm != true) return;
+                if (!await ConfirmSwitchAsync("Switch to Text?",
+                        "Switching to Text will treat any {{...}} tokens in the replacement as literal text instead of macro commands. Continue?"))
+                    return;
             }
             else if (Item.Kind == HotstringKind.Script && !string.IsNullOrEmpty(Item.Replacement))
             {
-                bool? confirm = await DialogService.ShowMessageBoxAsync(
-                    title: "Switch to Text?",
-                    message: "Switching to Text will treat your code as literal text instead of running it. Continue?",
-                    yesText: "Switch", cancelText: "Cancel");
-                if (confirm != true) return;
+                if (!await ConfirmSwitchAsync("Switch to Text?",
+                        "Switching to Text will treat your code as literal text instead of running it. Continue?"))
+                    return;
             }
 
-            Item.DateTimeFormat = null;
-            Item.DateOffsetAmount = null;
-            Item.DateOffsetUnit = null;
+            ClearDateTimeFields();
             Item.Kind = HotstringKind.Text;
         }
         else if (newKind == HotstringKind.Macro)
         {
-            if (Item.DateTimeFormat is not null)
-            {
-                bool? confirm = await DialogService.ShowMessageBoxAsync(
-                    title: "Switch to Macro?",
-                    message: "Switching to Macro will clear the date/time format and offset. Continue?",
-                    yesText: "Switch", cancelText: "Cancel");
-                if (confirm != true) return;
-            }
+            if (Item.DateTimeFormat is not null
+                && !await ConfirmSwitchAsync("Switch to Macro?",
+                    "Switching to Macro will clear the date/time format and offset. Continue?"))
+                return;
 
-            Item.DateTimeFormat = null;
-            Item.DateOffsetAmount = null;
-            Item.DateOffsetUnit = null;
+            ClearDateTimeFields();
             Item.Kind = HotstringKind.Macro;
         }
         else if (newKind == HotstringKind.Script)
         {
             if (Item.DateTimeFormat is not null)
             {
-                bool? confirm = await DialogService.ShowMessageBoxAsync(
-                    title: "Switch to Script?",
-                    message: "Switching to Script will clear the date/time format and offset. Continue?",
-                    yesText: "Switch", cancelText: "Cancel");
-                if (confirm != true) return;
+                if (!await ConfirmSwitchAsync("Switch to Script?",
+                        "Switching to Script will clear the date/time format and offset. Continue?"))
+                    return;
             }
             else if (Item.Kind is HotstringKind.Text or HotstringKind.Macro && !string.IsNullOrEmpty(Item.Replacement))
             {
-                bool? confirm = await DialogService.ShowMessageBoxAsync(
-                    title: "Switch to Script?",
-                    message: "Switching to Script will run your text as AutoHotkey code instead of literal text. Continue?",
-                    yesText: "Switch", cancelText: "Cancel");
-                if (confirm != true) return;
+                if (!await ConfirmSwitchAsync("Switch to Script?",
+                        "Switching to Script will run your text as AutoHotkey code instead of literal text. Continue?"))
+                    return;
             }
 
-            Item.DateTimeFormat = null;
-            Item.DateOffsetAmount = null;
-            Item.DateOffsetUnit = null;
+            ClearDateTimeFields();
             Item.Kind = HotstringKind.Script;
         }
+    }
+
+    private async Task<bool> ConfirmSwitchAsync(string title, string message)
+    {
+        bool? confirm = await DialogService.ShowMessageBoxAsync(
+            title: title, message: message, yesText: "Switch", cancelText: "Cancel");
+        return confirm == true;
+    }
+
+    private void ClearDateTimeFields()
+    {
+        Item.DateTimeFormat = null;
+        Item.DateOffsetAmount = null;
+        Item.DateOffsetUnit = null;
     }
 
     private async Task InsertTokenAsync(string token)

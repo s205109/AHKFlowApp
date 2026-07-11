@@ -40,6 +40,14 @@ actual CLI surface and how each hotstring kind renders in `list` output.
   multi-line script shows just its opening line so the table stays one row per hotstring; use
   the web UI to see (or edit) the full body.
 
+## Script validation limitations
+
+Script bodies are validated (in the web UI, where they are created) by two naive rules: no
+line may start with `#` (directive lines corrupt the generated `#HotIf` grouping), and braces
+must balance. Brace counting is **string- and comment-unaware** — a `{` inside a quoted string
+(e.g. `SendText "{"`) counts toward the balance and is falsely rejected. This is a deliberate
+limitation, not a bug; work around it by splitting the line or wrapping the brace differently.
+
 ## Example
 
 ```

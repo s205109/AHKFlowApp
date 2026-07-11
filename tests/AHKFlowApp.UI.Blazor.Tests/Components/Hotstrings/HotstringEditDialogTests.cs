@@ -1208,6 +1208,18 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
+    public async Task Suggestions_ReplacementHasMacroToken_ShowsMacroSuggestionOnly()
+    {
+        // A recognized macro token contains braces, so LooksLikeAhkCode alone would also flag it
+        // as Script-like. Macro tokens must take precedence: only the Macro suggestion shows.
+        HotstringEditModel item = new() { Trigger = "hi", Kind = HotstringKind.Text, Replacement = "Hi {{cursor}}" };
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"macro-suggestion\"]").Should().NotBeNull());
+        provider.FindAll("[data-test=\"script-suggestion\"]").Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task Save_ScriptKind_SendsReplacementVerbatimInCreateDto()
     {
         HotstringDto created = new(Guid.NewGuid(), [], true, "~ver", "MsgBox A_AhkVersion", null, true, true,

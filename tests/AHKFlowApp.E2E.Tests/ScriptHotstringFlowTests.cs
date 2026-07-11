@@ -98,16 +98,22 @@ public sealed class ScriptHotstringFlowTests(StackFixture fixture) : IAsyncLifet
         await Assertions.Expect(
             page.Locator("tr.mobile-row:has-text(\"~ver\") [data-test=\"script-badge-collapsed\"]")).ToBeVisibleAsync();
 
-        // Byte-match the downloaded profile script against the golden — same generator used by
-        // the real .ahk download, so this is the exact snippet the profile script would contain.
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/profiles");
-        await page.WaitForSelectorAsync("text=Phase5");
-        await page.ClickAsync("button.toggle-expand");
-        await page.ClickAsync(".profile-preview-pane .mud-expand-panel-header");
-        await page.ClickAsync("button.profile-preview-refresh");
-        await page.WaitForSelectorAsync(".profile-preview-script");
+        // Byte-match the downloaded profile script against the golden. Reading the actual
+        // downloaded bytes (not the rendered preview) exercises the real download path and
+        // avoids the DOM whitespace normalization ToContainTextAsync would apply. The header
+        // carries a non-deterministic {GeneratedAt}/{AppVersion}, so match the exact Script
+        // block rather than the whole file.
+        await page.GotoAsync($"{fixture.Spa.BaseUrl}/downloads");
+        await page.WaitForSelectorAsync("button.download-profile");
 
-        await Assertions.Expect(page.Locator(".profile-preview-script"))
-            .ToContainTextAsync(":*:~ver::\n{\nMsgBox A_AhkVersion\n}");
+        IDownload download = await page.RunAndWaitForDownloadAsync(() =>
+            page.ClickAsync("button.download-profile"));
+
+        string path = await download.PathAsync()
+            ?? throw new InvalidOperationException("Download produced no file path.");
+        byte[] bytes = await File.ReadAllBytesAsync(path);
+        string content = System.Text.Encoding.UTF8.GetString(bytes);
+
+        Assert.Contains(":*:~ver::\n{\nMsgBox A_AhkVersion\n}", content, StringComparison.Ordinal);
     }
 }
