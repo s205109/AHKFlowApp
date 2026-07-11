@@ -53,4 +53,30 @@ public sealed class GetHotstringPreviewQueryValidatorTests
         result.Errors.Should().NotContain(e =>
             e.PropertyName == "Input.ContextMatchType" || e.PropertyName == "Input.ContextValue");
     }
+
+    [Fact]
+    public void Validate_ContextValueEmpty_Fails()
+    {
+        ValidationResult result = _sut.Validate(Query(
+            contextMatchType: WindowMatchType.Executable,
+            contextValue: ""));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.ContextValue" &&
+            e.ErrorMessage == "ContextValue must not be blank or whitespace.");
+    }
+
+    [Fact]
+    public void Validate_ContextValueWhitespaceOnly_Fails()
+    {
+        ValidationResult result = _sut.Validate(Query(
+            contextMatchType: WindowMatchType.Executable,
+            contextValue: "   "));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.ContextValue" &&
+            e.ErrorMessage == "ContextValue must not be blank or whitespace.");
+    }
 }

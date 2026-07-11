@@ -209,10 +209,11 @@ internal static partial class HotstringRules
     /// Adds validation for a hotstring's optional window-context match, kind-agnostic (applies
     /// regardless of <see cref="HotstringKind"/>): <paramref name="contextMatchType"/> and
     /// <paramref name="contextValue"/> must both be null or both be set, the match type must be a
-    /// valid <see cref="WindowMatchType"/>, and the value is capped at
-    /// <see cref="ContextValueMaxLength"/> characters and must not contain a double-quote,
-    /// backtick, or any control character &#8212; it is embedded raw into a generated
-    /// <c>WinActive(...)</c> AHK expression, so these characters would break or escape that syntax.
+    /// valid <see cref="WindowMatchType"/>, and the value must not be blank/whitespace-only, is
+    /// capped at <see cref="ContextValueMaxLength"/> characters, and must not contain a
+    /// double-quote, backtick, or any control character &#8212; it is embedded raw into a
+    /// generated <c>WinActive(...)</c> AHK expression, so these characters would break or escape
+    /// that syntax.
     /// </summary>
     public static void AddWindowContextRules<T>(
         this AbstractValidator<T> validator,
@@ -230,6 +231,8 @@ internal static partial class HotstringRules
             .IsInEnum();
 
         validator.RuleFor(contextValue)
+            .Must(v => v is null || !string.IsNullOrWhiteSpace(v))
+                .WithMessage("ContextValue must not be blank or whitespace.")
             .MaximumLength(ContextValueMaxLength)
                 .WithMessage($"ContextValue must be {ContextValueMaxLength} characters or fewer.")
             .Must(v => v is null || !v.Contains('"'))
