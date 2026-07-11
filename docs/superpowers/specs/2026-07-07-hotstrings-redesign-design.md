@@ -143,3 +143,5 @@ Every phase that adds a persisted field also, in the same phase: updates the sna
 6. **D6 — CLI is display-only for advanced kinds** (per-phase read DTO + per-kind output); advanced create flags are a follow-up alongside import.
 7. **D7 — `#HotIf` context groups emitted before the global group** — hotstring variant precedence is topmost-wins with no global exception (per docs); global-first would shadow context overrides.
 8. **D8 — Script guardrails are hard validation errors**: ≤4000 chars, no `#`-directive lines, brace-balance check; plus persistent editor warning. No AHK syntax validation (not a script IDE).
+9. **D9 — Dialog AHK preview wraps the snippet in `#HotIf WinActive(...)` … `#HotIf`** when a window context is set (Phase 4), matching the generator's own wrapping.
+10. **D10 — CLI table gains a `Context` column** (`exe:notepad.exe` / `class:X` / `title:X`, blank = global) (Phase 4).
