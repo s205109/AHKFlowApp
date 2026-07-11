@@ -48,8 +48,12 @@ $changelogPath = [System.IO.Path]::GetFullPath((Join-Path $repoRoot "CHANGELOG.m
 if ($file -ne $changelogPath) { Write-Log "Not CHANGELOG.md ($file), skipping."; exit 0 }
 
 $generatorScript = Join-Path $repoRoot "scripts\ci\generate-changelog-json.ps1"
-if (-not (Test-Path $generatorScript)) { Write-Log "Generator script not found ($generatorScript), skipping." -Err; exit 0 }
+if (-not (Test-Path $generatorScript)) { Write-Log "Generator script not found ($generatorScript), cannot sync changelog.json." -Err; exit 2 }
 
 Write-Log "CHANGELOG.md edited, regenerating changelog.json..."
 pwsh -NoProfile -File $generatorScript 2>&1 | ForEach-Object { Write-Log $_ }
-Write-Log "Regeneration complete. (exit $LASTEXITCODE)"
+if ($LASTEXITCODE -ne 0) {
+    Write-Log "Changelog regeneration failed (exit $LASTEXITCODE) — changelog.json is stale. Fix CHANGELOG.md syntax and rerun: pwsh ./scripts/ci/generate-changelog-json.ps1" -Err
+    exit 2
+}
+Write-Log "Regeneration complete. (exit 0)"
