@@ -500,11 +500,14 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
 
         cut.WaitForAssertion(() =>
         {
-            cut.Markup.Should().NotContain("{{key:Enter}}");
-            cut.Markup.Should().NotContain("{{cursor}}");
-            cut.Markup.Should().Contain("{{first_name}}");
-            cut.Markup.Should().Contain("Enter");
-            cut.Markup.Should().Contain("⌖ cursor");
+            // Scoped to the desktop grid: the mobile branch is also in the DOM (hidden by
+            // CSS) and intentionally renders the raw macro text in its collapsed rows.
+            string grid = cut.Find(".hotstrings-grid").TextContent;
+            grid.Should().NotContain("{{key:Enter}}");
+            grid.Should().NotContain("{{cursor}}");
+            grid.Should().Contain("{{first_name}}");
+            grid.Should().Contain("Enter");
+            grid.Should().Contain("⌖ cursor");
             cut.FindAll(".hotstrings-grid .macro-token-chip").Count.Should().Be(2);
         });
         return Task.CompletedTask;
