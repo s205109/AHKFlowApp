@@ -149,6 +149,10 @@
                                 <span class="type-badge">
                                     <MudChip T="string" Size="Size.Small" Color="Color.Default">@KindLabel(context.Item.Kind)</MudChip>
                                     <span class="option-glyphs">@OptionGlyphs(context.Item)</span>
+                                    @if (context.Item.ContextMatchType is not null)
+                                    {
+                                        <MudIcon Icon="@Icons.Material.Filled.DesktopWindows" Size="Size.Small" Class="context-icon" />
+                                    }
                                 </span>
                             </MudTooltip>
                         </CellTemplate>
@@ -857,6 +861,7 @@
         if (item.IsTriggerInsideWord) parts.Add("Triggers inside words");
         if (item.IsCaseSensitive) parts.Add("Case sensitive");
         if (item.OmitEndingCharacter && item.IsEndingCharacterRequired) parts.Add("Omits ending character");
+        if (item.ContextMatchType is not null) parts.Add($"Only in {item.ContextSummary}");
         return string.Join(" · ", parts);
     }
 
