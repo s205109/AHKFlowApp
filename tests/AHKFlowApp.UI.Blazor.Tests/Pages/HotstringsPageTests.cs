@@ -582,6 +582,59 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
+    public Task Page_ScriptRow_ShowsFirstLineMonospaceEllipsis()
+    {
+        var dto = new HotstringDto(Guid.NewGuid(), [], true, "~ver", "MsgBox A_AhkVersion\nMsgBox 2",
+            null, true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, HotstringKind.Script);
+        StubList(Page(dto));
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+
+        cut.WaitForAssertion(() =>
+        {
+            AngleSharp.Dom.IElement summary = cut.Find(".hotstrings-grid .script-summary");
+            summary.TextContent.Should().Be("MsgBox A_AhkVersion");
+            summary.TextContent.Should().NotContain("MsgBox 2");
+        });
+        return Task.CompletedTask;
+    }
+
+    [Fact]
+    public Task Page_ScriptRow_ShowsWarningColoredBadgeWithAccessibleText()
+    {
+        var dto = new HotstringDto(Guid.NewGuid(), [], true, "~ver", "MsgBox A_AhkVersion",
+            null, true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, HotstringKind.Script);
+        StubList(Page(dto));
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+
+        cut.WaitForAssertion(() =>
+        {
+            AngleSharp.Dom.IElement badge = cut.Find(".type-badge .mud-chip");
+            badge.TextContent.Should().Contain("Script");
+            badge.ClassList.Should().Contain(c => c.Contains("warning", StringComparison.OrdinalIgnoreCase));
+        });
+        return Task.CompletedTask;
+    }
+
+    [Fact]
+    public void Page_KindFilter_ListsAllFourKinds()
+    {
+        StubList(Page());
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find("[data-test=\"kind-filter\"]"));
+
+        // Desktop + mobile selects each render all HotstringKind items — 4 kinds x 2 selects.
+        IReadOnlyList<HotstringKind?> allValues = [.. cut.FindComponents<MudSelectItem<HotstringKind?>>()
+            .Select(c => c.Instance.Value)];
+
+        allValues.Should().HaveCount(8);
+        allValues.Distinct().Should().BeEquivalentTo(
+            [HotstringKind.Text, HotstringKind.DateTime, HotstringKind.Macro, HotstringKind.Script]);
+    }
+
+    [Fact]
     public async Task Page_MobileKindFilter_ReloadsDataWithSelectedKind()
     {
         StubList(Page());

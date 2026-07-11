@@ -61,6 +61,17 @@
     text-align: center;
 }
 
+.mobile-list .script-badge {
+    vertical-align: middle;
+    margin-right: 4px;
+}
+
+.script-body {
+    font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
+    overflow-wrap: break-word;
+    max-width: 100%;
+}
+
 .select-action-bar {
     position: sticky;
     bottom: 0;
