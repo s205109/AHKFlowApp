@@ -28,7 +28,7 @@ function Write-Stderr {
     [Console]::Error.WriteLine($Message)
 }
 
-function Test-EnvironmentFlagEnabled {
+function Test-EnvironmentFlagDisabled {
     param([string] $Name)
 
     $value = [Environment]::GetEnvironmentVariable($Name, 'Process')
@@ -36,7 +36,7 @@ function Test-EnvironmentFlagEnabled {
         return $false
     }
 
-    return $value.Trim() -match '^(1|true|yes|y)$'
+    return $value.Trim() -match '^(0|false|no|n)$'
 }
 
 function Get-HookInput {
@@ -246,10 +246,11 @@ $worktreeExists = Test-Path -LiteralPath (Join-Path $worktreePath '.git')
 # a same-named create/reuse could race the async removal. Best-effort: never block
 # creation, and pipe to Out-Null so cleanup output can never reach hook stdout.
 $cleanupRequested = [bool] $Cleanup
-# The env var is a hook-only opt-in: it must never change direct-call behavior, where
-# -Cleanup / -c and the interactive prompt already govern removal. Gating on $isHook stops
-# a leftover AHKFLOW_WORKTREE_CLEANUP=1 from silently deleting on future direct creates.
-if (-not $cleanupRequested -and $isHook -and (Test-EnvironmentFlagEnabled -Name 'AHKFLOW_WORKTREE_CLEANUP')) {
+# Hook context defaults to cleanup-on; AHKFLOW_WORKTREE_CLEANUP=0 (or false/no/n) opts out.
+# The env var is hook-only: it must never change direct-call behavior, where -Cleanup / -c
+# and the interactive prompt already govern removal. Gating on $isHook stops a leftover
+# AHKFLOW_WORKTREE_CLEANUP=0 from silently blocking cleanup on future direct creates.
+if (-not $cleanupRequested -and $isHook -and -not (Test-EnvironmentFlagDisabled -Name 'AHKFLOW_WORKTREE_CLEANUP')) {
     $cleanupRequested = $true
 }
 

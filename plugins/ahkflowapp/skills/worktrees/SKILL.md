@@ -26,7 +26,7 @@ It creates the branch, places the worktree under `.claude/worktrees/<name>/`, co
 ### Cleanup of merged worktrees on create
 
 Creating a worktree first checks the other worktrees whose branch is already merged
-into `main`. Nothing is removed without an explicit opt-in:
+into `main`:
 
 - **Interactive direct create (a real console, no flag):** it lists the merged, clean
   worktrees and asks once - `Clean up merged worktrees? (y/n)`. `y` removes them all;
@@ -37,22 +37,23 @@ into `main`. Nothing is removed without an explicit opt-in:
   pwsh -NoProfile -File scripts/new-worktree.ps1 -Name <name> -Cleanup
   ```
 
-- **Claude Code CLI bootstrap (`claude --worktree <name>`):** set
-  `AHKFLOW_WORKTREE_CLEANUP=1` before launching Claude to request cleanup during
-  native worktree creation:
+- **Claude Code CLI bootstrap (`claude --worktree <name>`):** cleanup runs by default —
+  merged, clean worktrees are removed silently as part of native worktree creation. Set
+  `AHKFLOW_WORKTREE_CLEANUP=0` before launching Claude to opt out for that run:
 
   ```powershell
-  $env:AHKFLOW_WORKTREE_CLEANUP = '1'
+  $env:AHKFLOW_WORKTREE_CLEANUP = '0'
   claude --worktree <name>
   Remove-Item Env:AHKFLOW_WORKTREE_CLEANUP
   ```
 
-  Or on one self-clearing line: `$env:AHKFLOW_WORKTREE_CLEANUP='1'; claude --worktree <name>; Remove-Item Env:AHKFLOW_WORKTREE_CLEANUP`.
+  Or on one self-clearing line: `$env:AHKFLOW_WORKTREE_CLEANUP='0'; claude --worktree <name>; Remove-Item Env:AHKFLOW_WORKTREE_CLEANUP`.
   The env var only takes effect for the `WorktreeCreate` hook; it does not change a
-  direct `scripts/new-worktree.ps1` call, which still uses `-Cleanup` or its prompt.
+  direct `scripts/new-worktree.ps1` call, which still uses `-Cleanup` or its prompt (and
+  defaults to leaving merged worktrees alone unless you opt in there).
 
-- **WorktreeCreate hook without the env var, or non-interactive direct create without
-  `-Cleanup`:** detection is logged to stderr only; nothing is removed.
+- **Non-interactive direct create without `-Cleanup`:** detection is logged to stderr
+  only; nothing is removed (no console to prompt, and no opt-in was given).
 
 A worktree with uncommitted changes is never removed, even if its branch is merged.
 The worktree currently being created or reused is always excluded from the sweep, so a
@@ -60,18 +61,27 @@ same-named recreate can never race its own removal. Removal reuses
 `remove-worktree-local-dev.ps1` (`git branch -d`, DB drop, Docker teardown, lock-safe
 folder delete).
 
-#### Claude Code in-conversation native creation: ask afterward
+#### Claude Code in-conversation native creation: cleanup runs automatically
 
-Applies only when *you* create a brand-new worktree in direct response to a
-conversation request via `EnterWorktree` with `name`. Entering an existing worktree
-with `path` never triggers this.
+Applies when *you* create a brand-new worktree in direct response to a conversation
+request via `EnterWorktree` with `name`. Entering an existing worktree with `path`
+never triggers this.
 
-`EnterWorktree` fires the `WorktreeCreate` hook above. The hook stdout must stay
-exactly the new worktree path, it cannot prompt, and hook stderr is not usable as a
-conversation signal. Right after `EnterWorktree` returns the new worktree absolute
-path, run detection yourself as a normal Bash call so the output is visible.
+`EnterWorktree` fires the same `WorktreeCreate` hook as the CLI bootstrap above, so it
+gets the same default: merged, clean worktrees are removed automatically, silently, no
+confirmation. Hook stdout stays exactly the new worktree path and hook stderr is not
+usable as a conversation signal, so nothing is reported back mid-conversation — if you
+need to see what an auto-cleanup removed, check
+`.claude\worktrees\worktree-removal.log` in the main checkout.
 
-First work out the two absolute paths, then substitute them literally into the command
+To suppress auto-cleanup for the whole session (e.g. you want to inspect merged
+worktrees before anything is removed), set `AHKFLOW_WORKTREE_CLEANUP=0` in the shell
+*before launching Claude Code* — the hook inherits that process environment, and there
+is no reliable way to toggle it for a single `EnterWorktree` call from mid-conversation.
+With it set, detection still runs (and can be surfaced on request via the manual
+commands below) but nothing is removed until you explicitly ask.
+
+First work out the two absolute paths, then substitute them literally into the commands
 below - do not paste PowerShell `$variables` into a Bash-tool command line, because the
 Bash tool (Git Bash) expands `$newPath`/`$mainRoot` to empty strings before `pwsh` ever
 runs, silently breaking the call.
