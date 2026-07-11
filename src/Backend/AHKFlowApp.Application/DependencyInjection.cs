@@ -51,6 +51,7 @@ public static class DependencyInjection
             .AddUseCase<SeedHotstringsCommand, Result<PagedList<HotstringDto>>, SeedHotstringsCommandHandler>()
             .AddUseCase<PreviewHotstringImportCommand, Result<HotstringImportPreviewDto>, PreviewHotstringImportCommandHandler>()
             .AddUseCase<ImportHotstringsCommand, Result<HotstringImportResultDto>, ImportHotstringsCommandHandler>()
+            .AddUseCase<GetHotstringPreviewQuery, Result<HotstringPreviewDto>, GetHotstringPreviewQueryHandler>()
             .AddUseCase<CreateHotkeyCommand, Result<HotkeyDto>, CreateHotkeyCommandHandler>()
             .AddUseCase<UpdateHotkeyCommand, Result<HotkeyDto>, UpdateHotkeyCommandHandler>()
             .AddUseCase<DeleteHotkeyCommand, Result, DeleteHotkeyCommandHandler>()

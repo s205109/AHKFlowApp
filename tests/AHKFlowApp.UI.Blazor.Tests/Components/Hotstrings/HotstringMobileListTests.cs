@@ -27,6 +27,9 @@ public sealed class HotstringMobileListTests : BunitContext, IAsyncLifetime
     private static HotstringEditModel DateTimeItem(string trigger = "now", string format = "yyyy-MM-dd") =>
         new() { Id = Guid.NewGuid(), Trigger = trigger, Replacement = "", Kind = HotstringKind.DateTime, DateTimeFormat = format };
 
+    private static HotstringEditModel MacroItem(string trigger = "greet", string replacement = "Dear {{{{first_name}}}},{{key:Enter}}{{cursor}}Alex") =>
+        new() { Id = Guid.NewGuid(), Trigger = trigger, Replacement = replacement, Kind = HotstringKind.Macro };
+
     [Fact]
     public void Renders_TriggerAndReplacement_PerRow()
     {
@@ -177,5 +180,70 @@ public sealed class HotstringMobileListTests : BunitContext, IAsyncLifetime
             cut.Markup.Should().Contain("Format:");
             cut.Markup.Should().NotContain("Replacement:");
         });
+    }
+
+    [Fact]
+    public void MacroRow_CollapsedCell_RendersRawReplacementWithoutChips()
+    {
+        // Collapsed rows stay a single ellipsized text line for list density; the
+        // token-chip rendering is reserved for the expanded details.
+        IRenderedComponent<HotstringMobileList> cut = Render<HotstringMobileList>(p => p
+            .Add(c => c.Items, [MacroItem()])
+            .Add(c => c.Profiles, (IReadOnlyList<ProfileDto>)[])
+            .Add(c => c.Categories, (IReadOnlyList<CategoryDto>)[]));
+
+        cut.Find("td.replacement-cell").TextContent
+            .Should().Be("Dear {{{{first_name}}}},{{key:Enter}}{{cursor}}Alex");
+        cut.FindAll("td.replacement-cell .macro-token-chip").Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task MacroRow_Expanded_ShowsChipsInReplacementLine()
+    {
+        IRenderedComponent<HotstringMobileList> cut = Render<HotstringMobileList>(p => p
+            .Add(c => c.Items, [MacroItem()])
+            .Add(c => c.Profiles, (IReadOnlyList<ProfileDto>)[])
+            .Add(c => c.Categories, (IReadOnlyList<CategoryDto>)[]));
+
+        await cut.InvokeAsync(() => cut.Find("tr.mobile-row").Click());
+
+        cut.WaitForAssertion(() =>
+        {
+            string expanded = cut.Find("tr.mobile-row-expanded").TextContent;
+            expanded.Should().Contain("Replacement:");
+            expanded.Should().NotContain("{{key:Enter}}");
+            expanded.Should().NotContain("{{cursor}}");
+            expanded.Should().Contain("{{first_name}}");
+            cut.FindAll("tr.mobile-row-expanded .macro-token-chip").Count.Should().Be(2);
+        });
+    }
+
+    [Fact]
+    public async Task EscapedLiteralOnlyMacro_Expanded_RendersUnescapedTextNoChip()
+    {
+        IRenderedComponent<HotstringMobileList> cut = Render<HotstringMobileList>(p => p
+            .Add(c => c.Items, [MacroItem("esc", "{{{{first_name}}}}")])
+            .Add(c => c.Profiles, (IReadOnlyList<ProfileDto>)[])
+            .Add(c => c.Categories, (IReadOnlyList<CategoryDto>)[]));
+
+        await cut.InvokeAsync(() => cut.Find("tr.mobile-row").Click());
+
+        cut.WaitForAssertion(() =>
+        {
+            cut.Find("tr.mobile-row-expanded").TextContent.Should().Contain("{{first_name}}");
+            cut.FindAll("tr.mobile-row-expanded .macro-token-chip").Should().BeEmpty();
+        });
+    }
+
+    [Fact]
+    public void TextRow_CollapsedCell_HasNoMacroChips()
+    {
+        IRenderedComponent<HotstringMobileList> cut = Render<HotstringMobileList>(p => p
+            .Add(c => c.Items, [Item("btw", "by the way")])
+            .Add(c => c.Profiles, (IReadOnlyList<ProfileDto>)[])
+            .Add(c => c.Categories, (IReadOnlyList<CategoryDto>)[]));
+
+        cut.Find("td.replacement-cell").TextContent.Should().Be("by the way");
+        cut.FindAll("td.replacement-cell .macro-token-chip").Should().BeEmpty();
     }
 }

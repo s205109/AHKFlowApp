@@ -257,16 +257,111 @@ public sealed class CreateHotstringCommandValidatorTests
         result.Errors.Should().NotContain(e => e.PropertyName == "Input.Replacement");
     }
 
-    [Theory]
-    [InlineData(HotstringKind.Macro)]
-    [InlineData(HotstringKind.Script)]
-    public void Kind_MacroOrScript_Fails(HotstringKind kind)
+    [Fact]
+    public void Kind_Script_Fails()
     {
-        ValidationResult result = _sut.Validate(Cmd(kind: kind));
+        ValidationResult result = _sut.Validate(Cmd(kind: HotstringKind.Script));
 
         result.Errors.Should().Contain(e =>
             e.PropertyName == "Input.Kind" &&
-            e.ErrorMessage == "Only Text and Date & time hotstrings are supported.");
+            e.ErrorMessage == "Only Text, Date & time and Macro hotstrings are supported.");
+    }
+
+    [Fact]
+    public void Kind_Macro_Passes()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            kind: HotstringKind.Macro,
+            replacement: "Dear {{cursor}},"));
+
+        result.Errors.Should().NotContain(e => e.PropertyName == "Input.Kind");
+        result.Errors.Should().NotContain(e => e.PropertyName == "Input.Replacement");
+    }
+
+    [Fact]
+    public void MacroKind_MalformedToken_Fails()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            kind: HotstringKind.Macro,
+            replacement: "{{key:Escape}}"));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.Replacement" &&
+            e.ErrorMessage == "Unknown token '{{key:Escape}}'. Allowed: {{cursor}}, {{key:Enter}}, {{key:Tab}}.");
+    }
+
+    [Fact]
+    public void MacroKind_TwoCursors_Fails()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            kind: HotstringKind.Macro,
+            replacement: "{{cursor}}{{cursor}}"));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.Replacement" &&
+            e.ErrorMessage == "Macro replacement must contain at most one {{cursor}} token.");
+    }
+
+    [Fact]
+    public void MacroKind_KeyAfterCursor_Fails()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            kind: HotstringKind.Macro,
+            replacement: "{{cursor}}{{key:Enter}}"));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.Replacement" &&
+            e.ErrorMessage == "Macro replacement must not contain {{key:...}} tokens after {{cursor}}.");
+    }
+
+    [Fact]
+    public void MacroKind_WithNonNullDateTimeFormat_Fails()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            kind: HotstringKind.Macro,
+            replacement: "Dear {{cursor}},",
+            dateTimeFormat: "yyyy-MM-dd"));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.DateTimeFormat" &&
+            e.ErrorMessage == "DateTimeFormat must be null unless Kind is Date & time.");
+    }
+
+    [Fact]
+    public void MacroKind_CursorOnly_Passes()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            kind: HotstringKind.Macro,
+            replacement: "{{cursor}}"));
+
+        result.Errors.Should().NotContain(e => e.PropertyName == "Input.Replacement");
+    }
+
+    [Fact]
+    public void MacroKind_EscapedLiteralOnly_Passes()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            kind: HotstringKind.Macro,
+            replacement: "{{{{first_name}}}}"));
+
+        result.Errors.Should().NotContain(e => e.PropertyName == "Input.Replacement");
+    }
+
+    [Fact]
+    public void MacroKind_EscapedLiteralWithMalformedToken_Fails()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            kind: HotstringKind.Macro,
+            replacement: "{{{{first_name}}}} {{key:Entr}}"));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.Replacement" &&
+            e.ErrorMessage == "Unknown token '{{key:Entr}}'. Allowed: {{cursor}}, {{key:Enter}}, {{key:Tab}}.");
     }
 
     [Fact]

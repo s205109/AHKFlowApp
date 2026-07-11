@@ -1,5 +1,6 @@
 using System.Linq.Expressions;
 using System.Text.RegularExpressions;
+using AHKFlowApp.Application.Services;
 using AHKFlowApp.Domain.Enums;
 using FluentValidation;
 
@@ -146,6 +147,60 @@ internal static partial class HotstringRules
         validator.RuleFor(dateOffsetUnit)
             .IsInEnum()
             .When(x => IsDateTime(x) && BothOffsetsSet(x));
+    }
+
+    /// <summary>
+    /// Adds kind-conditional validation for Macro hotstrings.
+    /// When <paramref name="kind"/> is <see cref="HotstringKind.Macro"/>, <paramref name="replacement"/> must:
+    /// (1) parse cleanly via <see cref="MacroTokenParser"/> — the first parser error is surfaced verbatim,
+    /// (2) contain at most one <c>{{cursor}}</c> token, and (3) contain no <c>{{key:...}}</c> tokens after the
+    /// cursor. Rules 2 and 3 only run when the replacement parsed without errors — a malformed replacement's
+    /// token stream isn't meaningful to evaluate further.
+    /// The Replacement-required and date-field-null rules for Macro are already covered by
+    /// <see cref="AddDateTimeKindRules{T}"/> (Macro is not DateTime, so it falls into that method's "otherwise"
+    /// branches) and are not duplicated here.
+    /// </summary>
+    public static void AddMacroKindRules<T>(
+        this AbstractValidator<T> validator,
+        Expression<Func<T, HotstringKind>> kind,
+        Expression<Func<T, string>> replacement)
+    {
+        Func<T, HotstringKind> kindFn = kind.Compile();
+
+        bool IsMacro(T x) => kindFn(x) == HotstringKind.Macro;
+
+        validator.RuleFor(replacement)
+            .Custom((value, context) =>
+            {
+                MacroParseResult parsed = MacroTokenParser.Parse(value);
+
+                if (parsed.Errors.Count > 0)
+                {
+                    context.AddFailure(parsed.Errors[0]);
+                    return;
+                }
+
+                int cursorCount = 0;
+                bool keyAfterCursor = false;
+
+                foreach (MacroToken token in parsed.Tokens)
+                {
+                    if (token is MacroToken.Cursor)
+                        cursorCount++;
+                    else if (token is MacroToken.Key && cursorCount > 0)
+                        keyAfterCursor = true;
+                }
+
+                if (cursorCount > 1)
+                {
+                    context.AddFailure("Macro replacement must contain at most one {{cursor}} token.");
+                    return;
+                }
+
+                if (keyAfterCursor)
+                    context.AddFailure("Macro replacement must not contain {{key:...}} tokens after {{cursor}}.");
+            })
+            .When(IsMacro);
     }
 
     [GeneratedRegex(@"^(?=.*[yMdHhmst])[yMdHhmst0-9 \-./:,()]+$")]

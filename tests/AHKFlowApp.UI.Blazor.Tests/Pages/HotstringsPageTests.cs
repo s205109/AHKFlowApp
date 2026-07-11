@@ -490,6 +490,64 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
+    public Task Page_MacroRow_RendersTokenChipsNotRawSyntax()
+    {
+        var dto = new HotstringDto(Guid.NewGuid(), [], true, "greet", "Dear {{{{first_name}}}},{{key:Enter}}{{cursor}}Alex",
+            null, true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, HotstringKind.Macro);
+        StubList(Page(dto));
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+
+        cut.WaitForAssertion(() =>
+        {
+            // Scoped to the desktop grid: the mobile branch is also in the DOM (hidden by
+            // CSS) and intentionally renders the raw macro text in its collapsed rows.
+            string grid = cut.Find(".hotstrings-grid").TextContent;
+            grid.Should().NotContain("{{key:Enter}}");
+            grid.Should().NotContain("{{cursor}}");
+            grid.Should().Contain("{{first_name}}");
+            grid.Should().Contain("Enter");
+            grid.Should().Contain("⌖ cursor");
+            cut.FindAll(".hotstrings-grid .macro-token-chip").Count.Should().Be(2);
+        });
+        return Task.CompletedTask;
+    }
+
+    [Fact]
+    public Task Page_MacroRow_EscapedLiteralOnly_RendersPlainTextNoChip()
+    {
+        var dto = new HotstringDto(Guid.NewGuid(), [], true, "esc", "{{{{first_name}}}}",
+            null, true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, HotstringKind.Macro);
+        StubList(Page(dto));
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+
+        cut.WaitForAssertion(() =>
+        {
+            cut.Markup.Should().Contain("{{first_name}}");
+            cut.FindAll(".hotstrings-grid .macro-token-chip").Should().BeEmpty();
+        });
+        return Task.CompletedTask;
+    }
+
+    [Fact]
+    public Task Page_TextRow_ReplacementCell_HasNoMacroChips()
+    {
+        var dto = new HotstringDto(Guid.NewGuid(), [], true, "btw", "by the way",
+            null, true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, HotstringKind.Text);
+        StubList(Page(dto));
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+
+        cut.WaitForAssertion(() =>
+        {
+            cut.Markup.Should().Contain("by the way");
+            cut.FindAll(".hotstrings-grid .macro-token-chip").Should().BeEmpty();
+        });
+        return Task.CompletedTask;
+    }
+
+    [Fact]
     public Task Page_DateTimeRow_HidesStartEditPencil_TextRowKeepsIt()
     {
         var dateTimeDto = new HotstringDto(Guid.NewGuid(), [], true, "now", "", null, true, true,

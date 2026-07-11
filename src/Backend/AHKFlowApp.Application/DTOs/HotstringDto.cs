@@ -14,7 +14,7 @@ namespace AHKFlowApp.Application.DTOs;
 /// <param name="CreatedAt">UTC creation timestamp.</param>
 /// <param name="UpdatedAt">UTC last-update timestamp.</param>
 /// <param name="CategoryIds">Categories assigned to this hotstring.</param>
-/// <param name="Kind">Hotstring kind. <see cref="HotstringKind.Text"/> and <see cref="HotstringKind.DateTime"/> are supported via the API; Macro/Script are domain-only.</param>
+/// <param name="Kind">Hotstring kind. <see cref="HotstringKind.Text"/>, <see cref="HotstringKind.DateTime"/>, and <see cref="HotstringKind.Macro"/> are supported via the API; Script is domain-only.</param>
 /// <param name="IsCaseSensitive">Controls AutoHotkey's <c>C</c> option.</param>
 /// <param name="OmitEndingCharacter">Controls AutoHotkey's <c>O</c> option.</param>
 /// <param name="DateTimeFormat">Set when <paramref name="Kind"/> is <see cref="HotstringKind.DateTime"/>; a whitelisted AHK/.NET date/time token pattern.</param>
@@ -48,7 +48,7 @@ public sealed record HotstringDto(
 /// <param name="IsTriggerInsideWord">Controls AutoHotkey's <c>?</c> option.</param>
 /// <param name="Description">Optional human-readable note for the hotstring.</param>
 /// <param name="CategoryIds">Categories to assign to the new hotstring.</param>
-/// <param name="Kind">Hotstring kind. <see cref="HotstringKind.Text"/> and <see cref="HotstringKind.DateTime"/> are supported via the API; Macro/Script are domain-only.</param>
+/// <param name="Kind">Hotstring kind. <see cref="HotstringKind.Text"/>, <see cref="HotstringKind.DateTime"/>, and <see cref="HotstringKind.Macro"/> are supported via the API; Script is domain-only.</param>
 /// <param name="IsCaseSensitive">Controls AutoHotkey's <c>C</c> option.</param>
 /// <param name="OmitEndingCharacter">Controls AutoHotkey's <c>O</c> option.</param>
 /// <param name="DateTimeFormat">Required when <paramref name="Kind"/> is <see cref="HotstringKind.DateTime"/>; a whitelisted AHK/.NET date/time token pattern.</param>
@@ -79,7 +79,7 @@ public sealed record CreateHotstringDto(
 /// <param name="IsTriggerInsideWord">Controls AutoHotkey's <c>?</c> option.</param>
 /// <param name="Description">Optional human-readable note for the hotstring.</param>
 /// <param name="CategoryIds">Replacement category assignment set.</param>
-/// <param name="Kind">Hotstring kind. <see cref="HotstringKind.Text"/> and <see cref="HotstringKind.DateTime"/> are supported via the API; Macro/Script are domain-only.</param>
+/// <param name="Kind">Hotstring kind. <see cref="HotstringKind.Text"/>, <see cref="HotstringKind.DateTime"/>, and <see cref="HotstringKind.Macro"/> are supported via the API; Script is domain-only.</param>
 /// <param name="IsCaseSensitive">Controls AutoHotkey's <c>C</c> option.</param>
 /// <param name="OmitEndingCharacter">Controls AutoHotkey's <c>O</c> option.</param>
 /// <param name="DateTimeFormat">Required when <paramref name="Kind"/> is <see cref="HotstringKind.DateTime"/>; a whitelisted AHK/.NET date/time token pattern.</param>
@@ -100,3 +100,30 @@ public sealed record UpdateHotstringDto(
     string? DateTimeFormat = null,
     int? DateOffsetAmount = null,
     DateOffsetUnit? DateOffsetUnit = null);
+
+/// <summary>Emission-relevant fields for previewing the AutoHotkey snippet a hotstring definition would generate, without saving it.</summary>
+/// <param name="Kind">Hotstring kind. <see cref="HotstringKind.Text"/>, <see cref="HotstringKind.DateTime"/>, and <see cref="HotstringKind.Macro"/> are supported.</param>
+/// <param name="Trigger">Abbreviation that activates the replacement.</param>
+/// <param name="Replacement">Text inserted in place of the trigger.</param>
+/// <param name="IsCaseSensitive">Controls AutoHotkey's <c>C</c> option.</param>
+/// <param name="OmitEndingCharacter">Controls AutoHotkey's <c>O</c> option.</param>
+/// <param name="IsEndingCharacterRequired">Controls AutoHotkey's <c>*</c> option.</param>
+/// <param name="IsTriggerInsideWord">Controls AutoHotkey's <c>?</c> option.</param>
+/// <param name="DateTimeFormat">Required when <paramref name="Kind"/> is <see cref="HotstringKind.DateTime"/>; a whitelisted AHK/.NET date/time token pattern.</param>
+/// <param name="DateOffsetAmount">Optional signed offset applied to the current date/time; requires <paramref name="DateOffsetUnit"/>.</param>
+/// <param name="DateOffsetUnit">Unit for <paramref name="DateOffsetAmount"/>; requires <paramref name="DateOffsetAmount"/>.</param>
+public sealed record HotstringPreviewRequestDto(
+    HotstringKind Kind,
+    string Trigger,
+    string Replacement,
+    bool IsCaseSensitive,
+    bool OmitEndingCharacter,
+    bool IsEndingCharacterRequired,
+    bool IsTriggerInsideWord,
+    string? DateTimeFormat = null,
+    int? DateOffsetAmount = null,
+    DateOffsetUnit? DateOffsetUnit = null);
+
+/// <summary>The AutoHotkey snippet a hotstring definition would generate.</summary>
+/// <param name="Snippet">The exact <c>.ahk</c> line(s) <c>HotstringEmitter.Emit</c> would produce for the given definition.</param>
+public sealed record HotstringPreviewDto(string Snippet);

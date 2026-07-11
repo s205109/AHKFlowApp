@@ -42,7 +42,7 @@
                             </td>
                         }
                         <td class="trigger-cell"><code>@item.Trigger</code></td>
-                        <td class="replacement-cell">@(item.Kind == HotstringKind.DateTime ? item.DateTimeSummary : item.Replacement)</td>
+                        <td class="replacement-cell">@RenderReplacementCell(item)</td>
                         <td class="chevron-cell">@(expanded ? "▾" : "▸")</td>
                     </tr>
                     @if (expanded)
@@ -54,6 +54,12 @@
                                     {
                                         <MudText Typo="Typo.body2" Style="white-space: pre-wrap">
                                             <strong>Format:</strong> @item.DateTimeSummary
+                                        </MudText>
+                                    }
+                                    else if (item.Kind == HotstringKind.Macro)
+                                    {
+                                        <MudText Typo="Typo.body2" Style="white-space: pre-wrap">
+                                            <strong>Replacement:</strong> <MacroReplacementDisplay Replacement="@item.Replacement" />
                                         </MudText>
                                     }
                                     else
@@ -125,6 +131,14 @@
         _profileOptions = [.. Profiles.Select(p => new EntityOption(p.Id, p.Name))];
         _categoryOptions = [.. Categories.Select(c => new EntityOption(c.Id, c.Name))];
     }
+
+    // Collapsed rows keep a single ellipsized line for list density — Macro rows show the
+    // raw replacement text here; the token-chip rendering lives in the expanded details.
+    private RenderFragment RenderReplacementCell(HotstringEditModel item) => item.Kind switch
+    {
+        HotstringKind.DateTime => @<text>@item.DateTimeSummary</text>,
+        _ => @<text>@item.Replacement</text>,
+    };
 
     private void OnRowClick(HotstringEditModel item)
     {
