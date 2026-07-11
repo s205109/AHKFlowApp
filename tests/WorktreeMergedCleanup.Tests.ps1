@@ -261,7 +261,7 @@ function New-WorktreeToolingRepo {
 
 $repo = New-WorktreeToolingRepo -ScriptsSource $scriptsDir
 try {
-    # An eligible (merged + clean) worktree so cleanup has something to report during the run.
+    # An eligible (merged + clean) worktree so cleanup has something to remove during the run.
     Add-TestWorktree -RepoDir $repo -BranchName 'feat-eligible' | Out-Null
 
     $stdinFile = Join-Path (Split-Path -Parent $repo) 'hook-stdin.json'
@@ -288,20 +288,20 @@ try {
     Assert-Equal 1 $stdoutLines.Count "Hook stdout must be exactly one line. Got: $stdout"
     Assert-Equal $expected ($stdoutLines[0].Trim().TrimEnd('\', '/')) 'Hook stdout must be exactly the new worktree path.'
 
-    # Proves cleanup actually ran as part of this hook invocation, not just that stdout
-    # happened to stay clean (which the pre-existing script would already satisfy).
+    # Proves cleanup runs by default in hook context (no env var set), not just report-only.
     $stderrText = Get-Content -Raw -LiteralPath $stderrFile
     Assert-True ($stderrText -match 'cleanup: eligible merged worktree') "Expected cleanup detection output on stderr proving cleanup ran. Stderr: $stderrText"
-    Assert-True ($stderrText -match 'cleanup: hook context is report-only; nothing removed\.') "Expected the hook-context report-only line on stderr. Stderr: $stderrText"
+    Assert-True ($stderrText -match 'cleanup: removing merged worktree') "Expected cleanup to remove by default (no env var set). Stderr: $stderrText"
+    Assert-True (-not ($stderrText -match 'cleanup: hook context is report-only')) "Default hook cleanup must not stay in report-only mode. Stderr: $stderrText"
 } finally {
     Remove-TempTree $repo
 }
 
-# --- Test: CLI env opt-in lets WorktreeCreate hook remove merged worktrees ----
+# --- Test: CLI env opt-out (0) keeps WorktreeCreate hook report-only -----------
 $repo = New-WorktreeToolingRepo -ScriptsSource $scriptsDir
 try {
-    # An eligible merged + clean worktree so the env opt-in has something to remove.
-    Add-TestWorktree -RepoDir $repo -BranchName 'feat-env-cleanup' | Out-Null
+    # An eligible merged + clean worktree that the opt-out must leave alone.
+    Add-TestWorktree -RepoDir $repo -BranchName 'feat-env-noclean' | Out-Null
 
     $stdinFile = Join-Path (Split-Path -Parent $repo) 'hook-env-stdin.json'
     $stdoutFile = Join-Path (Split-Path -Parent $repo) 'hook-env-stdout.txt'
@@ -309,7 +309,7 @@ try {
     Set-Content -LiteralPath $stdinFile -Value '{"name":"brandnew-env"}' -Encoding utf8
 
     $oldCleanupEnv = [Environment]::GetEnvironmentVariable('AHKFLOW_WORKTREE_CLEANUP', 'Process')
-    [Environment]::SetEnvironmentVariable('AHKFLOW_WORKTREE_CLEANUP', '1', 'Process')
+    [Environment]::SetEnvironmentVariable('AHKFLOW_WORKTREE_CLEANUP', '0', 'Process')
     try {
         $psExe = [System.Diagnostics.Process]::GetCurrentProcess().Path
         $newWorktreeScript = Join-Path $repo 'scripts\new-worktree.ps1'
@@ -324,19 +324,19 @@ try {
         [Environment]::SetEnvironmentVariable('AHKFLOW_WORKTREE_CLEANUP', $oldCleanupEnv, 'Process')
     }
 
-    Assert-Equal 0 $proc.ExitCode "new-worktree.ps1 hook path with env cleanup should exit 0. Stderr: $(Get-Content -Raw -LiteralPath $stderrFile)"
+    Assert-Equal 0 $proc.ExitCode "new-worktree.ps1 hook path with env opt-out should exit 0. Stderr: $(Get-Content -Raw -LiteralPath $stderrFile)"
 
     $stdout = Get-Content -Raw -LiteralPath $stdoutFile
     $stdoutLines = @(($stdout -split "`r?`n") | Where-Object { $_.Trim() })
     $expected = ([System.IO.Path]::GetFullPath((Join-Path $repo '.claude\worktrees\brandnew-env'))).TrimEnd('\', '/')
 
-    Assert-Equal 1 $stdoutLines.Count "Hook stdout must remain exactly one line when env cleanup is enabled. Got: $stdout"
-    Assert-Equal $expected ($stdoutLines[0].Trim().TrimEnd('\', '/')) 'Hook stdout must remain exactly the new worktree path when env cleanup is enabled.'
+    Assert-Equal 1 $stdoutLines.Count "Hook stdout must remain exactly one line when env cleanup is disabled. Got: $stdout"
+    Assert-Equal $expected ($stdoutLines[0].Trim().TrimEnd('\', '/')) 'Hook stdout must remain exactly the new worktree path when env cleanup is disabled.'
 
     $stderrText = Get-Content -Raw -LiteralPath $stderrFile
     Assert-True ($stderrText -match 'cleanup: eligible merged worktree') "Expected cleanup detection output on stderr. Stderr: $stderrText"
-    Assert-True ($stderrText -match 'cleanup: removing merged worktree') "Expected env opt-in to request removal instead of report-only mode. Stderr: $stderrText"
-    Assert-True (-not ($stderrText -match 'cleanup: hook context is report-only')) "Env opt-in must not leave cleanup in hook report-only mode. Stderr: $stderrText"
+    Assert-True ($stderrText -match 'cleanup: hook context is report-only') "Expected env opt-out to keep cleanup in report-only mode. Stderr: $stderrText"
+    Assert-True (-not ($stderrText -match 'cleanup: removing merged worktree')) "Env opt-out must not remove anything. Stderr: $stderrText"
 } finally {
     Remove-TempTree $repo
 }
