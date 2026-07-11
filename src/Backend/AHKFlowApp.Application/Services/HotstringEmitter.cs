@@ -10,8 +10,27 @@ namespace AHKFlowApp.Application.Services;
 /// </summary>
 internal static class HotstringEmitter
 {
+    // Bare "#HotIf" (no expression) clears any preceding #HotIf's context, restoring
+    // global scope for everything emitted after it. Single source shared with the
+    // preview handler so both code paths use the identical close string.
+    public const string HotIfClose = "#HotIf";
+
     public static string Emit(Hotstring hs) =>
         $":{BuildOptions(hs)}:{Escape(hs.Trigger)}::{BuildBody(hs)}";
+
+    // ContextValue has already passed validation guaranteeing no double-quote, backtick, or
+    // control characters (see HotstringRules.AddWindowContextRules) — safe to embed raw here.
+    public static string EmitHotIfOpen(WindowMatchType matchType, string value)
+    {
+        string criterion = matchType switch
+        {
+            WindowMatchType.Executable => $"ahk_exe {value}",
+            WindowMatchType.WindowClass => $"ahk_class {value}",
+            WindowMatchType.TitleContains => value,
+            _ => throw new InvalidOperationException($"Unsupported WindowMatchType: {matchType}"),
+        };
+        return $"#HotIf WinActive(\"{criterion}\")";
+    }
 
     private static string BuildOptions(Hotstring hs)
     {
