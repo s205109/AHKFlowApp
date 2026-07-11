@@ -70,7 +70,9 @@ internal sealed class RevertHotstringCommandHandler(
                 snapshot.OmitEndingCharacter,
                 snapshot.DateTimeFormat,
                 snapshot.DateOffsetAmount,
-                snapshot.DateOffsetUnit),
+                snapshot.DateOffsetUnit,
+                snapshot.ContextMatchType,
+                snapshot.ContextValue),
             clock);
 
         db.HotstringProfiles.RemoveRange(entity.Profiles);
@@ -100,7 +102,7 @@ internal sealed class RevertHotstringCommandHandler(
         {
             return ex.IsHistoryVersionConflict()
                 ? Result.Conflict("The item was modified concurrently. Retry the operation.")
-                : Result.Conflict("A hotstring with this trigger already exists.");
+                : Result.Conflict(HotstringConflictMessages.DuplicateTrigger);
         }
 
         return Result.Success(entity.ToDto());

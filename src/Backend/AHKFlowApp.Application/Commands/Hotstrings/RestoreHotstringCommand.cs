@@ -69,7 +69,9 @@ internal sealed class RestoreHotstringCommandHandler(
                 snapshot.OmitEndingCharacter,
                 snapshot.DateTimeFormat,
                 snapshot.DateOffsetAmount,
-                snapshot.DateOffsetUnit),
+                snapshot.DateOffsetUnit,
+                snapshot.ContextMatchType,
+                snapshot.ContextValue),
             snapshot.CreatedAt,
             clock);
 
@@ -94,7 +96,7 @@ internal sealed class RestoreHotstringCommandHandler(
         {
             return ex.IsHistoryVersionConflict()
                 ? Result.Conflict("The item was modified concurrently. Retry the operation.")
-                : Result.Conflict("A hotstring with this trigger already exists.");
+                : Result.Conflict(HotstringConflictMessages.DuplicateTrigger);
         }
 
         return Result.Success(entity.ToDto());

@@ -20,6 +20,8 @@ namespace AHKFlowApp.Application.DTOs;
 /// <param name="DateTimeFormat">Set when <paramref name="Kind"/> is <see cref="HotstringKind.DateTime"/>; a whitelisted AHK/.NET date/time token pattern.</param>
 /// <param name="DateOffsetAmount">Optional signed offset applied to the current date/time; requires <paramref name="DateOffsetUnit"/>.</param>
 /// <param name="DateOffsetUnit">Unit for <paramref name="DateOffsetAmount"/>; requires <paramref name="DateOffsetAmount"/>.</param>
+/// <param name="ContextMatchType">How <paramref name="ContextValue"/> is matched against the active window; requires <paramref name="ContextValue"/>. Kind-agnostic.</param>
+/// <param name="ContextValue">Value matched against the active window (executable name, window class, or title substring, per <paramref name="ContextMatchType"/>); requires <paramref name="ContextMatchType"/>.</param>
 public sealed record HotstringDto(
     Guid Id,
     Guid[] ProfileIds,
@@ -37,7 +39,9 @@ public sealed record HotstringDto(
     bool OmitEndingCharacter = false,
     string? DateTimeFormat = null,
     int? DateOffsetAmount = null,
-    DateOffsetUnit? DateOffsetUnit = null);
+    DateOffsetUnit? DateOffsetUnit = null,
+    WindowMatchType? ContextMatchType = null,
+    string? ContextValue = null);
 
 /// <summary>Payload to create a new hotstring.</summary>
 /// <param name="Trigger">Abbreviation that activates the replacement.</param>
@@ -54,6 +58,8 @@ public sealed record HotstringDto(
 /// <param name="DateTimeFormat">Required when <paramref name="Kind"/> is <see cref="HotstringKind.DateTime"/>; a whitelisted AHK/.NET date/time token pattern.</param>
 /// <param name="DateOffsetAmount">Optional signed offset applied to the current date/time; requires <paramref name="DateOffsetUnit"/>.</param>
 /// <param name="DateOffsetUnit">Unit for <paramref name="DateOffsetAmount"/>; requires <paramref name="DateOffsetAmount"/>.</param>
+/// <param name="ContextMatchType">How <paramref name="ContextValue"/> is matched against the active window; requires <paramref name="ContextValue"/>. Kind-agnostic.</param>
+/// <param name="ContextValue">Value matched against the active window (executable name, window class, or title substring, per <paramref name="ContextMatchType"/>); requires <paramref name="ContextMatchType"/>.</param>
 public sealed record CreateHotstringDto(
     string Trigger,
     string Replacement,
@@ -68,7 +74,9 @@ public sealed record CreateHotstringDto(
     bool OmitEndingCharacter = false,
     string? DateTimeFormat = null,
     int? DateOffsetAmount = null,
-    DateOffsetUnit? DateOffsetUnit = null);
+    DateOffsetUnit? DateOffsetUnit = null,
+    WindowMatchType? ContextMatchType = null,
+    string? ContextValue = null);
 
 /// <summary>Payload to replace the editable fields of an existing hotstring.</summary>
 /// <param name="Trigger">Abbreviation that activates the replacement.</param>
@@ -85,6 +93,8 @@ public sealed record CreateHotstringDto(
 /// <param name="DateTimeFormat">Required when <paramref name="Kind"/> is <see cref="HotstringKind.DateTime"/>; a whitelisted AHK/.NET date/time token pattern.</param>
 /// <param name="DateOffsetAmount">Optional signed offset applied to the current date/time; requires <paramref name="DateOffsetUnit"/>.</param>
 /// <param name="DateOffsetUnit">Unit for <paramref name="DateOffsetAmount"/>; requires <paramref name="DateOffsetAmount"/>.</param>
+/// <param name="ContextMatchType">How <paramref name="ContextValue"/> is matched against the active window; requires <paramref name="ContextValue"/>. Kind-agnostic.</param>
+/// <param name="ContextValue">Value matched against the active window (executable name, window class, or title substring, per <paramref name="ContextMatchType"/>); requires <paramref name="ContextMatchType"/>.</param>
 public sealed record UpdateHotstringDto(
     string Trigger,
     string Replacement,
@@ -99,7 +109,9 @@ public sealed record UpdateHotstringDto(
     bool OmitEndingCharacter = false,
     string? DateTimeFormat = null,
     int? DateOffsetAmount = null,
-    DateOffsetUnit? DateOffsetUnit = null);
+    DateOffsetUnit? DateOffsetUnit = null,
+    WindowMatchType? ContextMatchType = null,
+    string? ContextValue = null);
 
 /// <summary>Emission-relevant fields for previewing the AutoHotkey snippet a hotstring definition would generate, without saving it.</summary>
 /// <param name="Kind">Hotstring kind. <see cref="HotstringKind.Text"/>, <see cref="HotstringKind.DateTime"/>, and <see cref="HotstringKind.Macro"/> are supported.</param>
@@ -112,6 +124,8 @@ public sealed record UpdateHotstringDto(
 /// <param name="DateTimeFormat">Required when <paramref name="Kind"/> is <see cref="HotstringKind.DateTime"/>; a whitelisted AHK/.NET date/time token pattern.</param>
 /// <param name="DateOffsetAmount">Optional signed offset applied to the current date/time; requires <paramref name="DateOffsetUnit"/>.</param>
 /// <param name="DateOffsetUnit">Unit for <paramref name="DateOffsetAmount"/>; requires <paramref name="DateOffsetAmount"/>.</param>
+/// <param name="ContextMatchType">How <paramref name="ContextValue"/> is matched against the active window; requires <paramref name="ContextValue"/>. Kind-agnostic.</param>
+/// <param name="ContextValue">Value matched against the active window (executable name, window class, or title substring, per <paramref name="ContextMatchType"/>); requires <paramref name="ContextMatchType"/>.</param>
 public sealed record HotstringPreviewRequestDto(
     HotstringKind Kind,
     string Trigger,
@@ -122,7 +136,9 @@ public sealed record HotstringPreviewRequestDto(
     bool IsTriggerInsideWord,
     string? DateTimeFormat = null,
     int? DateOffsetAmount = null,
-    DateOffsetUnit? DateOffsetUnit = null);
+    DateOffsetUnit? DateOffsetUnit = null,
+    WindowMatchType? ContextMatchType = null,
+    string? ContextValue = null);
 
 /// <summary>The AutoHotkey snippet a hotstring definition would generate.</summary>
 /// <param name="Snippet">The exact <c>.ahk</c> line(s) <c>HotstringEmitter.Emit</c> would produce for the given definition.</param>

@@ -30,6 +30,10 @@ public sealed class HotstringEditModel
     public string? DateTimeFormat { get; set; }
     public int? DateOffsetAmount { get; set; }
     public DateOffsetUnit? DateOffsetUnit { get; set; }
+    public WindowMatchType? ContextMatchType { get; set; }
+
+    [MaxLength(200, ErrorMessage = "Context value must be 200 characters or fewer.")]
+    public string? ContextValue { get; set; }
 
     /// <summary>UI-facing inverse of <see cref="IsEndingCharacterRequired"/> (spec label "Expand immediately").</summary>
     public bool ExpandImmediately
@@ -38,8 +42,24 @@ public sealed class HotstringEditModel
         set => IsEndingCharacterRequired = !value;
     }
 
-    /// <summary>Grid rows can only offer inline edit for Text-kind hotstrings (Task 11).</summary>
-    public bool IsInlineEditable => Kind == HotstringKind.Text;
+    /// <summary>
+    /// Grid rows can only offer inline edit for Text-kind hotstrings (Task 11) that have no
+    /// window context — a contexted hotstring must go through the dialog so the context fields
+    /// stay visible and validated.
+    /// </summary>
+    public bool IsInlineEditable => Kind == HotstringKind.Text && ContextMatchType is null;
+
+    /// <summary>
+    /// Humanized window-context summary (e.g. "exe:notepad.exe") for the grid tooltip and
+    /// mobile detail row. Blank when the hotstring has no context.
+    /// </summary>
+    public string ContextSummary => ContextMatchType switch
+    {
+        WindowMatchType.Executable => $"exe:{ContextValue}",
+        WindowMatchType.WindowClass => $"class:{ContextValue}",
+        WindowMatchType.TitleContains => $"title:{ContextValue}",
+        _ => "",
+    };
 
     /// <summary>
     /// Humanized date/time summary for grid/mobile display. Null unless <see cref="Kind"/> is
@@ -78,6 +98,8 @@ public sealed class HotstringEditModel
         DateTimeFormat = dto.DateTimeFormat,
         DateOffsetAmount = dto.DateOffsetAmount,
         DateOffsetUnit = dto.DateOffsetUnit,
+        ContextMatchType = dto.ContextMatchType,
+        ContextValue = dto.ContextValue,
     };
 
     public HotstringEditModel Clone() => new()
@@ -97,6 +119,8 @@ public sealed class HotstringEditModel
         DateTimeFormat = DateTimeFormat,
         DateOffsetAmount = DateOffsetAmount,
         DateOffsetUnit = DateOffsetUnit,
+        ContextMatchType = ContextMatchType,
+        ContextValue = ContextValue,
     };
 
     public CreateHotstringDto ToCreateDto()
@@ -104,7 +128,7 @@ public sealed class HotstringEditModel
         string replacement = Kind == HotstringKind.DateTime ? "" : Replacement;
         return new(Trigger, replacement, AppliesToAllProfiles ? null : [.. ProfileIds], AppliesToAllProfiles,
             IsEndingCharacterRequired, IsTriggerInsideWord, Description, [.. CategoryIds], Kind, IsCaseSensitive,
-            OmitEndingCharacter, DateTimeFormat, DateOffsetAmount, DateOffsetUnit);
+            OmitEndingCharacter, DateTimeFormat, DateOffsetAmount, DateOffsetUnit, ContextMatchType, ContextValue);
     }
 
     public UpdateHotstringDto ToUpdateDto()
@@ -112,7 +136,7 @@ public sealed class HotstringEditModel
         string replacement = Kind == HotstringKind.DateTime ? "" : Replacement;
         return new(Trigger, replacement, AppliesToAllProfiles ? null : [.. ProfileIds], AppliesToAllProfiles,
             IsEndingCharacterRequired, IsTriggerInsideWord, Description, [.. CategoryIds], Kind, IsCaseSensitive,
-            OmitEndingCharacter, DateTimeFormat, DateOffsetAmount, DateOffsetUnit);
+            OmitEndingCharacter, DateTimeFormat, DateOffsetAmount, DateOffsetUnit, ContextMatchType, ContextValue);
     }
 
     /// <summary>

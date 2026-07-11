@@ -10,6 +10,8 @@ public sealed record HotstringPreviewRequestDto(
     bool IsTriggerInsideWord,
     string? DateTimeFormat = null,
     int? DateOffsetAmount = null,
-    DateOffsetUnit? DateOffsetUnit = null);
+    DateOffsetUnit? DateOffsetUnit = null,
+    WindowMatchType? ContextMatchType = null,
+    string? ContextValue = null);
 
 public sealed record HotstringPreviewDto(string Snippet);

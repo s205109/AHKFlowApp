@@ -431,4 +431,30 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
 
         result.Value.Items.Select(h => h.Trigger).Should().Equal("txt", "dt");
     }
+
+    [Fact]
+    public async Task ExecuteAsync_ContextedHotstring_ProjectsContextFields()
+    {
+        var owner = Guid.NewGuid();
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(Hotstring.Create(
+                owner,
+                new HotstringDefinition(
+                    "ctx", "x", null, true, true, true,
+                    ContextMatchType: WindowMatchType.Executable, ContextValue: "notepad.exe"),
+                TimeProvider.System));
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
+
+        Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(new ListHotstringsQuery(), default);
+
+        HotstringDto dto = result.Value.Items.Should().ContainSingle().Which;
+        dto.ContextMatchType.Should().Be(WindowMatchType.Executable);
+        dto.ContextValue.Should().Be("notepad.exe");
+    }
 }

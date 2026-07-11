@@ -72,6 +72,12 @@
                                     {
                                         <MudText Typo="Typo.body2"><strong>Description:</strong> @item.Description</MudText>
                                     }
+                                    @if (item.ContextMatchType is not null)
+                                    {
+                                        <MudText Typo="Typo.body2" UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "context-row" })">
+                                            <strong>Context:</strong> @item.ContextSummary
+                                        </MudText>
+                                    }
                                     <MudText Typo="Typo.body2"><strong>Profiles:</strong>
                                         <EntityChips Ids="item.ProfileIds" Options="_profileOptions" Any="item.AppliesToAllProfiles" />
                                     </MudText>

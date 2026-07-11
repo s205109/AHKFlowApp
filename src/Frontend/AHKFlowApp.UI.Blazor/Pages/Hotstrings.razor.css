@@ -99,3 +99,9 @@
     font-family: monospace;
     margin-left: 4px;
 }
+
+::deep .hotstrings-grid .context-icon {
+    opacity: 0.6;
+    margin-left: 4px;
+    vertical-align: middle;
+}

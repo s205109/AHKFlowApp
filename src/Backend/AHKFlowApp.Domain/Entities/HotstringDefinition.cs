@@ -18,4 +18,6 @@ public sealed record HotstringDefinition(
     bool OmitEndingCharacter = false,
     string? DateTimeFormat = null,
     int? DateOffsetAmount = null,
-    DateOffsetUnit? DateOffsetUnit = null);
+    DateOffsetUnit? DateOffsetUnit = null,
+    WindowMatchType? ContextMatchType = null,
+    string? ContextValue = null);

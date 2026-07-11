@@ -42,8 +42,11 @@ internal sealed class PreviewHotstringImportCommandHandler(
                 ErrorMessage = $"Import supports at most {HotstringImportRules.MaxRows} hotstrings per file.",
             });
 
+        // Imported rows are always global (no context), so they only ever collide with existing
+        // global rows under the composite unique index — a contexted "btw" must never block
+        // importing a global "btw".
         List<string> existing = await db.Hotstrings
-            .Where(h => h.OwnerOid == ownerOid)
+            .Where(h => h.OwnerOid == ownerOid && h.ContextMatchType == null && h.ContextValue == null)
             .Select(h => h.Trigger)
             .ToListAsync(ct);
         HashSet<string> existingSet = new(existing, StringComparer.OrdinalIgnoreCase);

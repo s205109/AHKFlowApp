@@ -1,6 +1,7 @@
 using AHKFlowApp.Application.Commands.Hotstrings;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Domain.Entities;
+using AHKFlowApp.Domain.Enums;
 using AHKFlowApp.Infrastructure.Persistence;
 using Ardalis.Result;
 using FluentAssertions;
@@ -82,6 +83,30 @@ public sealed class PreviewHotstringImportCommandHandlerTests(HotstringDbFixture
             new PreviewHotstringImportCommand(script), default);
 
         result.Status.Should().Be(ResultStatus.Invalid);
+    }
+
+    [Fact]
+    public async Task Preview_TriggerExistsOnlyAsContexted_MarksGlobalRowReady()
+    {
+        var owner = Guid.NewGuid();
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(Hotstring.Create(
+                owner,
+                new HotstringDefinition(
+                    "btw", "existing contexted", null, true, true, false,
+                    ContextMatchType: WindowMatchType.Executable, ContextValue: "notepad.exe"),
+                _clock));
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        Result<HotstringImportPreviewDto> result = await Handler(db, owner).ExecuteAsync(
+            new PreviewHotstringImportCommand("::btw::by the way"), default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.ReadyCount.Should().Be(1);
+        result.Value.Rows[0].Status.Should().Be(HotstringImportRowStatus.Ready);
     }
 
     [Fact]

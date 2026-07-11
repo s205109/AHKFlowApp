@@ -136,6 +136,35 @@ public sealed class AhkScriptGeneratorTests
             "F");
     }
 
+    // Captured BEFORE any Phase-4 window-context changes to AhkScriptGenerator/HotstringEmitter —
+    // this is the regression baseline proving no-context output is byte-identical pre/post change.
+    [Fact]
+    public void Generate_NoContextHotstrings_OutputByteIdenticalToFlatEmission()
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotstring hs1 = new HotstringBuilder().WithTrigger("b").WithReplacement("beta")
+            .WithEndingCharacterRequired(true).WithTriggerInsideWord(false).Build();
+        Hotstring hs2 = new HotstringBuilder().WithTrigger("a").WithReplacement("alpha")
+            .WithEndingCharacterRequired(true).WithTriggerInsideWord(false).Build();
+        Hotkey hk = new HotkeyBuilder()
+            .WithDescription("d")
+            .WithKey("n")
+            .WithAction(AHKFlowApp.Domain.Enums.HotkeyAction.Send)
+            .WithParameters("hi")
+            .Build();
+
+        string output = DefaultSut().Generate(profile, [hs1, hs2], [hk]);
+
+        output.Should().Be(
+            "H\n" +
+            "; --- Hotstrings ---\n" +
+            ":T:a::alpha\n" +
+            ":T:b::beta\n" +
+            "; --- Hotkeys ---\n" +
+            "n::Send(\"hi\")\n" +
+            "F");
+    }
+
     [Fact]
     public void Generate_MultipleHotstrings_AllAppearUnderHotstringsSection()
     {
@@ -631,6 +660,192 @@ public sealed class AhkScriptGeneratorTests
         int lineEnd = output.IndexOf("::", StringComparison.Ordinal);
         string optionsSegment = output[..lineEnd];
         optionsSegment.Should().NotContain("T");
+    }
+
+    [Fact]
+    public void Generate_ExecutableContext_WrapsInHotIfWinActiveAhkExe()
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotstring hs = new HotstringBuilder()
+            .WithTrigger("btw")
+            .WithReplacement("by the way")
+            .WithEndingCharacterRequired(true)
+            .WithTriggerInsideWord(false)
+            .WithContext(WindowMatchType.Executable, "notepad.exe")
+            .Build();
+
+        string output = DefaultSut().Generate(profile, [hs], []);
+
+        output.Should().Be(
+            "H\n" +
+            "; --- Hotstrings ---\n" +
+            "#HotIf WinActive(\"ahk_exe notepad.exe\")\n" +
+            ":T:btw::by the way\n" +
+            "#HotIf\n" +
+            "; --- Hotkeys ---\n" +
+            "F");
+    }
+
+    [Fact]
+    public void Generate_WindowClassContext_WrapsInHotIfWinActiveAhkClass()
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotstring hs = new HotstringBuilder()
+            .WithTrigger("btw")
+            .WithReplacement("by the way")
+            .WithEndingCharacterRequired(true)
+            .WithTriggerInsideWord(false)
+            .WithContext(WindowMatchType.WindowClass, "Notepad")
+            .Build();
+
+        string output = DefaultSut().Generate(profile, [hs], []);
+
+        output.Should().Be(
+            "H\n" +
+            "; --- Hotstrings ---\n" +
+            "#HotIf WinActive(\"ahk_class Notepad\")\n" +
+            ":T:btw::by the way\n" +
+            "#HotIf\n" +
+            "; --- Hotkeys ---\n" +
+            "F");
+    }
+
+    [Fact]
+    public void Generate_TitleContainsContext_WrapsInHotIfWinActiveBareValue()
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotstring hs = new HotstringBuilder()
+            .WithTrigger("btw")
+            .WithReplacement("by the way")
+            .WithEndingCharacterRequired(true)
+            .WithTriggerInsideWord(false)
+            .WithContext(WindowMatchType.TitleContains, "Untitled - Notepad")
+            .Build();
+
+        string output = DefaultSut().Generate(profile, [hs], []);
+
+        output.Should().Be(
+            "H\n" +
+            "; --- Hotstrings ---\n" +
+            "#HotIf WinActive(\"Untitled - Notepad\")\n" +
+            ":T:btw::by the way\n" +
+            "#HotIf\n" +
+            "; --- Hotkeys ---\n" +
+            "F");
+    }
+
+    [Fact]
+    public void Generate_MixedContextAndGlobal_EmitsContextGroupsBeforeGlobalGroup()
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        // Trigger-ordinal ("c" < "g") would put the global hotstring first if group
+        // ordering didn't take precedence — this test locks in that group order wins.
+        Hotstring global = new HotstringBuilder().WithTrigger("g").WithReplacement("global-rep")
+            .WithEndingCharacterRequired(true).WithTriggerInsideWord(false).Build();
+        Hotstring ctx = new HotstringBuilder().WithTrigger("c").WithReplacement("ctx-rep")
+            .WithEndingCharacterRequired(true).WithTriggerInsideWord(false)
+            .WithContext(WindowMatchType.Executable, "app.exe").Build();
+
+        string output = DefaultSut().Generate(profile, [global, ctx], []);
+
+        output.Should().Be(
+            "H\n" +
+            "; --- Hotstrings ---\n" +
+            "#HotIf WinActive(\"ahk_exe app.exe\")\n" +
+            ":T:c::ctx-rep\n" +
+            "#HotIf\n" +
+            ":T:g::global-rep\n" +
+            "; --- Hotkeys ---\n" +
+            "F");
+    }
+
+    [Fact]
+    public void Generate_MultipleContexts_OrdersGroupsByMatchTypeThenValueOrdinal()
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotstring exeB = new HotstringBuilder().WithTrigger("t1").WithReplacement("r1")
+            .WithEndingCharacterRequired(true).WithTriggerInsideWord(false)
+            .WithContext(WindowMatchType.Executable, "b.exe").Build();
+        Hotstring exeA = new HotstringBuilder().WithTrigger("t2").WithReplacement("r2")
+            .WithEndingCharacterRequired(true).WithTriggerInsideWord(false)
+            .WithContext(WindowMatchType.Executable, "a.exe").Build();
+        Hotstring cls = new HotstringBuilder().WithTrigger("t3").WithReplacement("r3")
+            .WithEndingCharacterRequired(true).WithTriggerInsideWord(false)
+            .WithContext(WindowMatchType.WindowClass, "SomeClass").Build();
+        Hotstring title = new HotstringBuilder().WithTrigger("t4").WithReplacement("r4")
+            .WithEndingCharacterRequired(true).WithTriggerInsideWord(false)
+            .WithContext(WindowMatchType.TitleContains, "Zeta").Build();
+
+        string output = DefaultSut().Generate(profile, [exeB, exeA, cls, title], []);
+
+        output.Should().Be(
+            "H\n" +
+            "; --- Hotstrings ---\n" +
+            "#HotIf WinActive(\"ahk_exe a.exe\")\n" +
+            ":T:t2::r2\n" +
+            "#HotIf\n" +
+            "#HotIf WinActive(\"ahk_exe b.exe\")\n" +
+            ":T:t1::r1\n" +
+            "#HotIf\n" +
+            "#HotIf WinActive(\"ahk_class SomeClass\")\n" +
+            ":T:t3::r3\n" +
+            "#HotIf\n" +
+            "#HotIf WinActive(\"Zeta\")\n" +
+            ":T:t4::r4\n" +
+            "#HotIf\n" +
+            "; --- Hotkeys ---\n" +
+            "F");
+    }
+
+    [Fact]
+    public void Generate_SameContextTwoHotstrings_SharesOneHotIfBlock()
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotstring hs1 = new HotstringBuilder().WithTrigger("z").WithReplacement("z-rep")
+            .WithEndingCharacterRequired(true).WithTriggerInsideWord(false)
+            .WithContext(WindowMatchType.Executable, "app.exe").Build();
+        Hotstring hs2 = new HotstringBuilder().WithTrigger("a").WithReplacement("a-rep")
+            .WithEndingCharacterRequired(true).WithTriggerInsideWord(false)
+            .WithContext(WindowMatchType.Executable, "app.exe").Build();
+
+        string output = DefaultSut().Generate(profile, [hs1, hs2], []);
+
+        output.Should().Be(
+            "H\n" +
+            "; --- Hotstrings ---\n" +
+            "#HotIf WinActive(\"ahk_exe app.exe\")\n" +
+            ":T:a::a-rep\n" +
+            ":T:z::z-rep\n" +
+            "#HotIf\n" +
+            "; --- Hotkeys ---\n" +
+            "F");
+    }
+
+    [Fact]
+    public void Generate_OnlyContextHotstrings_ClosesLastGroupBeforeHotkeysSection()
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotstring hs = new HotstringBuilder().WithTrigger("t").WithReplacement("r")
+            .WithEndingCharacterRequired(true).WithTriggerInsideWord(false)
+            .WithContext(WindowMatchType.Executable, "app.exe").Build();
+        Hotkey hk = new HotkeyBuilder()
+            .WithDescription("d")
+            .WithKey("n")
+            .WithAction(AHKFlowApp.Domain.Enums.HotkeyAction.Send)
+            .WithParameters("hi")
+            .Build();
+
+        string output = DefaultSut().Generate(profile, [hs], [hk]);
+
+        output.Should().Be(
+            "H\n" +
+            "; --- Hotstrings ---\n" +
+            "#HotIf WinActive(\"ahk_exe app.exe\")\n" +
+            ":T:t::r\n" +
+            "#HotIf\n" +
+            "; --- Hotkeys ---\n" +
+            "n::Send(\"hi\")\n" +
+            "F");
     }
 
     private static AhkScriptGenerator TokenSut(string version = "1.2.3")
