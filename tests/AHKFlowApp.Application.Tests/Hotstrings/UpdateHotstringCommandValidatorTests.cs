@@ -20,7 +20,9 @@ public sealed class UpdateHotstringCommandValidatorTests
         HotstringKind kind = HotstringKind.Text,
         string? dateTimeFormat = null,
         int? dateOffsetAmount = null,
-        DateOffsetUnit? dateOffsetUnit = null)
+        DateOffsetUnit? dateOffsetUnit = null,
+        WindowMatchType? contextMatchType = null,
+        string? contextValue = null)
         => new(Guid.NewGuid(), new UpdateHotstringDto(
             trigger,
             replacement,
@@ -32,7 +34,9 @@ public sealed class UpdateHotstringCommandValidatorTests
             Kind: kind,
             DateTimeFormat: dateTimeFormat,
             DateOffsetAmount: dateOffsetAmount,
-            DateOffsetUnit: dateOffsetUnit));
+            DateOffsetUnit: dateOffsetUnit,
+            ContextMatchType: contextMatchType,
+            ContextValue: contextValue));
 
     [Fact]
     public void Validate_AppliesToAll_NoProfiles_Succeeds()
@@ -531,5 +535,29 @@ public sealed class UpdateHotstringCommandValidatorTests
             dateTimeFormat: new string('y', 50)));
 
         result.Errors.Should().NotContain(e => e.PropertyName == "Input.DateTimeFormat");
+    }
+
+    [Fact]
+    public void Validate_ContextMatchTypeWithoutValue_Fails()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            contextMatchType: WindowMatchType.Executable,
+            contextValue: null));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.ContextMatchType" &&
+            e.ErrorMessage == "ContextMatchType and ContextValue must both be set or both be null.");
+    }
+
+    [Fact]
+    public void Validate_ContextBothSet_Passes()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            contextMatchType: WindowMatchType.Executable,
+            contextValue: "notepad.exe"));
+
+        result.Errors.Should().NotContain(e =>
+            e.PropertyName == "Input.ContextMatchType" || e.PropertyName == "Input.ContextValue");
     }
 }

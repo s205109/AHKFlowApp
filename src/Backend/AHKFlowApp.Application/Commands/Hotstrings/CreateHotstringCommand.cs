@@ -36,6 +36,9 @@ public sealed class CreateHotstringCommandValidator : AbstractValidator<CreateHo
         this.AddMacroKindRules(
             x => x.Input.Kind,
             x => x.Input.Replacement);
+        this.AddWindowContextRules(
+            x => x.Input.ContextMatchType,
+            x => x.Input.ContextValue);
     }
 }
 
