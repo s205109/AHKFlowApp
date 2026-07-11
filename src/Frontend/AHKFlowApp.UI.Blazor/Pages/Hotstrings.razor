@@ -880,10 +880,10 @@
         return string.Join(" · ", parts);
     }
 
-    private static Dictionary<string, object?>? KindChipAttributes(HotstringKind kind) =>
+    private static Dictionary<string, object?> KindChipAttributes(HotstringKind kind) =>
         kind == HotstringKind.Script
             ? new Dictionary<string, object?> { ["aria-label"] = $"{KindLabel(kind)}. {ScriptWarningText}" }
-            : null;
+            : [];
 
     private RenderFragment RenderActions(HotstringEditModel item) => @<text>
         @if (IsEditing(item))
