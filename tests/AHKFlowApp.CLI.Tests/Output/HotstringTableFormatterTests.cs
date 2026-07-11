@@ -25,6 +25,16 @@ public sealed class HotstringTableFormatterTests
             FixedTime,
             FixedTime);
 
+    private static HotstringDto ContextedHotstring(
+        WindowMatchType matchType,
+        string contextValue,
+        string trigger = "btw") =>
+        Hotstring(trigger: trigger) with
+        {
+            ContextMatchType = matchType,
+            ContextValue = contextValue,
+        };
+
     private static HotstringDto DateTimeHotstring(
         string? dateTimeFormat = "yyyy-MM-dd",
         int? dateOffsetAmount = null,
@@ -301,5 +311,57 @@ public sealed class HotstringTableFormatterTests
         output.Should().Contain("Macro");
         output.Should().Contain(expectedTruncated);
         output.Should().NotContain(macroReplacement);
+    }
+
+    [Fact]
+    public void Write_ContextedHotstring_ShowsExePrefixedContextColumn()
+    {
+        StringWriter sw = new();
+        PagedList<HotstringDto> page = new(
+            [ContextedHotstring(WindowMatchType.Executable, "notepad.exe")], 1, 50, 1);
+
+        HotstringTableFormatter.Write(sw, page, EmptyNames);
+
+        sw.ToString().Should().Contain("exe:notepad.exe");
+    }
+
+    [Fact]
+    public void Write_WindowClassContext_ShowsClassPrefix()
+    {
+        StringWriter sw = new();
+        PagedList<HotstringDto> page = new(
+            [ContextedHotstring(WindowMatchType.WindowClass, "Notepad")], 1, 50, 1);
+
+        HotstringTableFormatter.Write(sw, page, EmptyNames);
+
+        sw.ToString().Should().Contain("class:Notepad");
+    }
+
+    [Fact]
+    public void Write_TitleContext_ShowsTitlePrefix()
+    {
+        StringWriter sw = new();
+        PagedList<HotstringDto> page = new(
+            [ContextedHotstring(WindowMatchType.TitleContains, "- Visual Studio")], 1, 50, 1);
+
+        HotstringTableFormatter.Write(sw, page, EmptyNames);
+
+        sw.ToString().Should().Contain("title:- Visual Studio");
+    }
+
+    [Fact]
+    public void Write_GlobalHotstring_ContextColumnBlank()
+    {
+        StringWriter sw = new();
+        PagedList<HotstringDto> page = new([Hotstring()], 1, 50, 1);
+
+        HotstringTableFormatter.Write(sw, page, EmptyNames);
+
+        string[] lines = sw.ToString().Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
+        string row = lines[2];
+        row.Should().NotContain("exe:");
+        row.Should().NotContain("class:");
+        row.Should().NotContain("title:");
+        row.Should().NotContain("null");
     }
 }

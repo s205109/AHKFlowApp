@@ -28,6 +28,13 @@ public enum DateOffsetUnit
     Days = 3,
 }
 
+public enum WindowMatchType
+{
+    Executable = 0,
+    WindowClass = 1,
+    TitleContains = 2,
+}
+
 public sealed record HotstringDto(
     Guid Id,
     Guid[] ProfileIds,
@@ -43,7 +50,9 @@ public sealed record HotstringDto(
     bool OmitEndingCharacter = false,
     string? DateTimeFormat = null,
     int? DateOffsetAmount = null,
-    DateOffsetUnit? DateOffsetUnit = null);
+    DateOffsetUnit? DateOffsetUnit = null,
+    WindowMatchType? ContextMatchType = null,
+    string? ContextValue = null);
 
 public sealed record CreateHotstringDto(
     string Trigger,

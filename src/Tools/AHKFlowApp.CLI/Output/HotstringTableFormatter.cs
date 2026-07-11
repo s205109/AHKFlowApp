@@ -8,6 +8,7 @@ public static class HotstringTableFormatter
     private const int KindWidth = 8;
     private const int ReplacementWidth = 40;
     private const int ProfilesWidth = 24;
+    private const int ContextWidth = 22;
     private const int UpdatedWidth = 19;
 
     public static void Write(
@@ -26,12 +27,14 @@ public static class HotstringTableFormatter
             Pad("Kind", KindWidth),
             Pad("Replacement", ReplacementWidth),
             Pad("Profiles", ProfilesWidth),
+            Pad("Context", ContextWidth),
             Pad("Updated", UpdatedWidth)));
         writer.WriteLine(string.Join("  ",
             new string('-', TriggerWidth),
             new string('-', KindWidth),
             new string('-', ReplacementWidth),
             new string('-', ProfilesWidth),
+            new string('-', ContextWidth),
             new string('-', UpdatedWidth)));
 
         foreach (HotstringDto dto in page.Items)
@@ -42,6 +45,7 @@ public static class HotstringTableFormatter
                 Pad(KindLabel(dto.Kind), KindWidth),
                 Pad(FormatReplacementColumn(dto), ReplacementWidth),
                 Pad(Truncate(FormatProfiles(dto, profileNamesById), ProfilesWidth), ProfilesWidth),
+                Pad(Truncate(FormatContext(dto), ContextWidth), ContextWidth),
                 updated));
         }
 
@@ -72,6 +76,14 @@ public static class HotstringTableFormatter
         int more = Math.Max(0, resolved.Count - 3) + unresolved;
         return more > 0 ? $"{head} +{more} more" : head;
     }
+
+    private static string FormatContext(HotstringDto dto) => dto.ContextMatchType switch
+    {
+        WindowMatchType.Executable => $"exe:{dto.ContextValue}",
+        WindowMatchType.WindowClass => $"class:{dto.ContextValue}",
+        WindowMatchType.TitleContains => $"title:{dto.ContextValue}",
+        _ => string.Empty,
+    };
 
     private static string FormatReplacementColumn(HotstringDto dto)
     {
