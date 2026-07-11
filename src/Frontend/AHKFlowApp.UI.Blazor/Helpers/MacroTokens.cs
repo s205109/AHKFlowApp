@@ -42,16 +42,19 @@ public abstract record MacroTextPiece
 /// <c>{{...}}</c> text).
 ///
 /// Unlike the backend parser, this helper never validates or rejects malformed input —
-/// it exists only to drive UI hints (the "Use Macro?" suggestion) and chip rendering.
-/// An unrecognized <c>{{...}}</c> candidate is treated as plain text rather than reported
-/// as an error; the backend remains the sole source of truth for Macro validation.
+/// it exists only to drive UI hints (the "Use Macro?" suggestion, toolbar insertion guards)
+/// and chip rendering. An unrecognized <c>{{...}}</c> candidate is treated as plain text
+/// rather than reported as an error; the backend remains the sole source of truth for
+/// Macro validation.
 ///
-/// Deliberately a small linear character scan, not regex-based, matching the backend's
-/// rationale: a non-Singleline <c>\{\{.*?\}\}</c> would silently skip token candidates that
-/// span a newline. Since this helper's worst-case failure is a missed suggestion or a chip
-/// falling back to plain text (not a data-integrity issue), a regex-based rewrite would be
-/// an acceptable simplification later if needed — this scan just keeps behavior aligned
-/// with the backend today.
+/// Deliberately a small linear character scan, not regex-based. A regex rewrite was
+/// evaluated (2026-07-10) and rejected: an alternation such as
+/// <c>\{\{\{\{.*?\}\}\}\}|\{\{.*?\}\}</c> cannot reproduce the scanner's
+/// resume-after-orphan-escape rule — e.g. <c>{{{{cursor}}</c> (escape opener with no
+/// <c>}}}}</c> closer) must yield literal <c>{{</c> followed by a real cursor token, while
+/// the regex consumes <c>{{{{cursor}}</c> as one unknown candidate and misses the token.
+/// Patching that with lookaheads ends up longer and less clear than the scan, and any
+/// divergence here desynchronizes the "Use Macro?" hint from backend validation.
 /// </summary>
 public static class MacroTokens
 {
@@ -61,8 +64,11 @@ public static class MacroTokens
     /// content looks like a token name (e.g. <c>{{{{cursor}}}}</c> unescapes to the literal
     /// text <c>{{cursor}}</c>, which is not a real token).
     /// </summary>
-    public static bool ContainsKnownToken(string text) =>
-        Split(text).Any(piece => piece is MacroTextPiece.Token);
+    public static bool ContainsKnownToken(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        return Scan(text).Any(segment => segment.Token is not null);
+    }
 
     /// <summary>
     /// Splits <paramref name="text"/> into an ordered sequence of plain-text and token
@@ -75,13 +81,54 @@ public static class MacroTokens
 
         List<MacroTextPiece> pieces = [];
         StringBuilder plain = new();
+
+        foreach (Segment segment in Scan(text))
+        {
+            if (segment.Token is { } kind)
+            {
+                FlushText(plain, pieces);
+                pieces.Add(new MacroTextPiece.Token(kind));
+            }
+            else
+            {
+                plain.Append(segment.Text);
+            }
+        }
+
+        FlushText(plain, pieces);
+        return pieces;
+    }
+
+    /// <summary>
+    /// Raw character index of the first real <c>{{cursor}}</c> token, or null when the text
+    /// has none. Escaped literals never match. Drives the dialog toolbar guards (block a
+    /// second cursor, block Enter/Tab insertion behind the cursor).
+    /// </summary>
+    public static int? CursorTokenStart(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+
+        foreach (Segment segment in Scan(text))
+        {
+            if (segment.Token == MacroTokenKind.Cursor)
+                return segment.Start;
+        }
+
+        return null;
+    }
+
+    /// <summary>One scanned stretch of the raw text: a token (Text empty) or literal text.</summary>
+    private readonly record struct Segment(int Start, string Text, MacroTokenKind? Token);
+
+    private static IEnumerable<Segment> Scan(string text)
+    {
         int i = 0;
+        int runStart = 0;
 
         while (i < text.Length)
         {
             if (!IsDoubleOpenBrace(text, i))
             {
-                plain.Append(text[i]);
                 i++;
                 continue;
             }
@@ -91,15 +138,18 @@ public static class MacroTokens
                 int closeAt = text.IndexOf("}}}}", i + 4, StringComparison.Ordinal);
                 if (closeAt >= 0)
                 {
-                    plain.Append("{{").Append(text, i + 4, closeAt - (i + 4)).Append("}}");
+                    if (i > runStart)
+                        yield return new Segment(runStart, text[runStart..i], null);
+
+                    yield return new Segment(i, $"{{{{{text[(i + 4)..closeAt]}}}}}", null);
                     i = closeAt + 4;
+                    runStart = i;
                     continue;
                 }
 
                 // No "}}}}" closer anywhere ahead — only the leading "{{" is literal text;
                 // resume right after it so a following "{{...}}" is still evaluated as a
                 // token candidate.
-                plain.Append("{{");
                 i += 2;
                 continue;
             }
@@ -107,32 +157,28 @@ public static class MacroTokens
             int close = text.IndexOf("}}", i + 2, StringComparison.Ordinal);
             if (close < 0)
             {
-                // No closing "}}" anywhere ahead — treat the "{{" as literal text.
-                plain.Append("{{");
+                // No closing "}}" anywhere ahead — the "{{" stays literal text.
                 i += 2;
                 continue;
             }
 
-            string candidate = text[(i + 2)..close];
-            MacroTokenKind? kind = ResolveToken(candidate);
-
+            MacroTokenKind? kind = ResolveToken(text[(i + 2)..close]);
             if (kind is { } resolvedKind)
             {
-                FlushText(plain, pieces);
-                pieces.Add(new MacroTextPiece.Token(resolvedKind));
+                if (i > runStart)
+                    yield return new Segment(runStart, text[runStart..i], null);
+
+                yield return new Segment(i, "", resolvedKind);
+                runStart = close + 2;
             }
-            else
-            {
-                // Unrecognized "{{...}}" candidate — not the backend's job here, keep it
-                // as plain text rather than reporting an error.
-                plain.Append(text, i, close + 2 - i);
-            }
+            // Unrecognized "{{...}}" candidate — not the backend's job here, it stays part
+            // of the surrounding literal run.
 
             i = close + 2;
         }
 
-        FlushText(plain, pieces);
-        return pieces;
+        if (text.Length > runStart)
+            yield return new Segment(runStart, text[runStart..], null);
     }
 
     private static bool IsDoubleOpenBrace(string s, int i) =>
