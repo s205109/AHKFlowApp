@@ -370,14 +370,29 @@ public sealed class HotstringsEndpointsTests(ApiTestFixture fixture)
     }
 
     [Fact]
-    public async Task Post_NonTextKind_Returns400()
+    public async Task Post_UnsupportedKind_Returns400()
     {
         using HttpClient client = CreateAuthed();
-        CreateHotstringDto dto = new("scr", "x", Kind: HotstringKind.Script);
+        CreateHotstringDto dto = new("scr", "x", Kind: (HotstringKind)99);
 
         HttpResponseMessage response = await client.PostAsJsonAsync("/api/v1/hotstrings", dto);
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Post_ScriptKind_ReturnsCreatedWithReplacement()
+    {
+        using HttpClient client = CreateAuthed();
+        CreateHotstringDto dto = new("~ver", "MsgBox A_AhkVersion", Kind: HotstringKind.Script);
+
+        HttpResponseMessage response = await client.PostAsJsonAsync("/api/v1/hotstrings", dto);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        HotstringDto? body = await response.Content.ReadFromJsonAsync<HotstringDto>();
+        body.Should().NotBeNull();
+        body!.Kind.Should().Be(HotstringKind.Script);
+        body.Replacement.Should().Be("MsgBox A_AhkVersion");
     }
 
     [Fact]
