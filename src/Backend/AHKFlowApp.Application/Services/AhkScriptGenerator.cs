@@ -33,8 +33,32 @@ public sealed class AhkScriptGenerator(
 
         List<string> lines = [renderer.Render(profile.HeaderTemplate, ctx), HotstringsSection];
 
-        foreach (Hotstring hs in hsList)
-            lines.Add(HotstringEmitter.Emit(hs));
+        // Group by window context (both-null = global). GroupBy is stable, so the
+        // trigger-ordinal pre-sort above survives within each group. Context groups are
+        // wrapped in #HotIf WinActive(...) / #HotIf and emitted first, ordered by match
+        // type then value; the global group is emitted last, unwrapped.
+        List<IGrouping<(WindowMatchType? MatchType, string? Value), Hotstring>> groups =
+            [.. hsList.GroupBy(h => (h.ContextMatchType, h.ContextValue))];
+
+        IEnumerable<IGrouping<(WindowMatchType? MatchType, string? Value), Hotstring>> contextGroups = groups
+            .Where(g => g.Key.MatchType is not null)
+            .OrderBy(g => (int)g.Key.MatchType!.Value)
+            .ThenBy(g => g.Key.Value, StringComparer.Ordinal);
+
+        foreach (IGrouping<(WindowMatchType? MatchType, string? Value), Hotstring> group in contextGroups)
+        {
+            lines.Add(HotstringEmitter.EmitHotIfOpen(group.Key.MatchType!.Value, group.Key.Value!));
+            foreach (Hotstring hs in group)
+                lines.Add(HotstringEmitter.Emit(hs));
+            lines.Add(HotstringEmitter.HotIfClose);
+        }
+
+        IGrouping<(WindowMatchType? MatchType, string? Value), Hotstring>? globalGroup =
+            groups.FirstOrDefault(g => g.Key.MatchType is null);
+
+        if (globalGroup is not null)
+            foreach (Hotstring hs in globalGroup)
+                lines.Add(HotstringEmitter.Emit(hs));
 
         lines.Add(HotkeysSection);
 
