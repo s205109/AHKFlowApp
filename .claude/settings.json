@@ -139,6 +139,11 @@
             "type": "command",
             "command": "pwsh -NonInteractive -File .claude/hooks/pre-commit-antipattern.ps1",
             "statusMessage": "Checking for anti-patterns..."
+          },
+          {
+            "type": "command",
+            "command": "pwsh -NonInteractive -File .claude/hooks/pre-commit-changelog.ps1",
+            "statusMessage": "Checking changelog asset..."
           }
         ]
       },
@@ -161,6 +166,11 @@
             "type": "command",
             "command": "pwsh -NonInteractive -File .claude/hooks/post-edit-format.ps1",
             "statusMessage": "Auto-formatting .cs file..."
+          },
+          {
+            "type": "command",
+            "command": "pwsh -NonInteractive -File .claude/hooks/post-edit-changelog.ps1",
+            "statusMessage": "Syncing changelog asset..."
           }
         ]
       }
