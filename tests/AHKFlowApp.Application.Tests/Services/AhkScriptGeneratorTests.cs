@@ -663,6 +663,144 @@ public sealed class AhkScriptGeneratorTests
     }
 
     [Fact]
+    public void Emit_ScriptKind_WrapsBodyVerbatimInBraces()
+    {
+        // Spec §7 ex. 7: Kind=Script, trigger `~ver`, body `MsgBox A_AhkVersion`.
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotstring hs = new HotstringBuilder()
+            .WithTrigger("~ver")
+            .WithKind(HotstringKind.Script)
+            .WithReplacement("MsgBox A_AhkVersion")
+            .WithEndingCharacterRequired(false)
+            .WithTriggerInsideWord(false)
+            .Build();
+
+        string output = DefaultSut().Generate(profile, [hs], []);
+
+        output.Should().Contain(
+            ":*:~ver::\n" +
+            "{\n" +
+            "MsgBox A_AhkVersion\n" +
+            "}");
+    }
+
+    [Fact]
+    public void Emit_ScriptKindMultilineBody_PreservesLinesVerbatim()
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotstring hs = new HotstringBuilder()
+            .WithTrigger("m")
+            .WithKind(HotstringKind.Script)
+            .WithReplacement("line1\nline2\nline3")
+            .WithEndingCharacterRequired(false)
+            .WithTriggerInsideWord(false)
+            .Build();
+
+        string output = DefaultSut().Generate(profile, [hs], []);
+
+        output.Should().Contain(
+            ":*:m::\n" +
+            "{\n" +
+            "line1\n" +
+            "line2\n" +
+            "line3\n" +
+            "}");
+    }
+
+    [Fact]
+    public void Emit_ScriptKindBody_PreservesLeadingIndentation()
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotstring hs = new HotstringBuilder()
+            .WithTrigger("m")
+            .WithKind(HotstringKind.Script)
+            .WithReplacement("if (true) {\n    MsgBox \"hi\"\n}")
+            .WithEndingCharacterRequired(false)
+            .WithTriggerInsideWord(false)
+            .Build();
+
+        string output = DefaultSut().Generate(profile, [hs], []);
+
+        output.Should().Contain(
+            ":*:m::\n" +
+            "{\n" +
+            "if (true) {\n" +
+            "    MsgBox \"hi\"\n" +
+            "}\n" +
+            "}");
+    }
+
+    [Fact]
+    public void Emit_ScriptKindBody_PreservesLeadingAndTrailingBlankLines()
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotstring hs = new HotstringBuilder()
+            .WithTrigger("m")
+            .WithKind(HotstringKind.Script)
+            .WithReplacement("\n\nMsgBox 1\n\n")
+            .WithEndingCharacterRequired(false)
+            .WithTriggerInsideWord(false)
+            .Build();
+
+        string output = DefaultSut().Generate(profile, [hs], []);
+
+        output.Should().Contain(
+            ":*:m::\n" +
+            "{\n" +
+            "\n" +
+            "\n" +
+            "MsgBox 1\n" +
+            "\n" +
+            "\n" +
+            "}");
+    }
+
+    [Fact]
+    public void Emit_ScriptKind_NeverEmitsTOption()
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotstring hs = new HotstringBuilder()
+            .WithTrigger("m")
+            .WithKind(HotstringKind.Script)
+            .WithReplacement("MsgBox 1")
+            .Build();
+
+        string output = DefaultSut().Generate(profile, [hs], []);
+
+        int lineEnd = output.IndexOf("::", StringComparison.Ordinal);
+        string optionsSegment = output[..lineEnd];
+        optionsSegment.Should().NotContain("T");
+    }
+
+    [Fact]
+    public void Emit_ScriptKindWithContext_WrapsInHotIfAroundBraceBody()
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotstring hs = new HotstringBuilder()
+            .WithTrigger("~ver")
+            .WithKind(HotstringKind.Script)
+            .WithReplacement("MsgBox A_AhkVersion")
+            .WithEndingCharacterRequired(false)
+            .WithTriggerInsideWord(false)
+            .WithContext(WindowMatchType.Executable, "notepad.exe")
+            .Build();
+
+        string output = DefaultSut().Generate(profile, [hs], []);
+
+        output.Should().Be(
+            "H\n" +
+            "; --- Hotstrings ---\n" +
+            "#HotIf WinActive(\"ahk_exe notepad.exe\")\n" +
+            ":*:~ver::\n" +
+            "{\n" +
+            "MsgBox A_AhkVersion\n" +
+            "}\n" +
+            "#HotIf\n" +
+            "; --- Hotkeys ---\n" +
+            "F");
+    }
+
+    [Fact]
     public void Generate_ExecutableContext_WrapsInHotIfWinActiveAhkExe()
     {
         Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
