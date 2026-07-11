@@ -91,8 +91,14 @@ internal sealed class ImportHotstringsCommandHandler(
             created.Clear();
             createdLinks.Clear();
 
+            // Imported rows are always global (no context) — match the preview query's global-only
+            // filter so a survivor whose trigger only exists as a contexted row elsewhere isn't
+            // dropped as a false-positive duplicate.
             HashSet<string> existing = new(
-                await db.Hotstrings.Where(h => h.OwnerOid == ownerOid).Select(h => h.Trigger).ToListAsync(ct),
+                await db.Hotstrings
+                    .Where(h => h.OwnerOid == ownerOid && h.ContextMatchType == null && h.ContextValue == null)
+                    .Select(h => h.Trigger)
+                    .ToListAsync(ct),
                 StringComparer.OrdinalIgnoreCase);
 
             List<(int Index, HotstringImportRowDto Row)> survivors = [];
