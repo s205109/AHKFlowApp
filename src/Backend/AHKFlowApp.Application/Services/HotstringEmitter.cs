@@ -49,6 +49,7 @@ internal static class HotstringEmitter
         {
             HotstringKind.DateTime => BuildDateTimeBody(hs),
             HotstringKind.Macro => BuildMacroBody(hs),
+            HotstringKind.Script => BuildScriptBody(hs),
             _ => Escape(hs.Replacement),
         };
 
@@ -128,6 +129,16 @@ internal static class HotstringEmitter
         string body = string.Concat(lines.Select(line => $"\n\t{line}"));
         return $"\n{{{body}\n}}";
     }
+
+    // Assumes hs.Replacement has already passed Script validation (balanced braces, no
+    // '#'-directive lines) — that invariant is enforced elsewhere (Task 1), not re-checked here.
+    // Wraps the raw body in the same outer brace shape BuildMacroBody uses (opening "{" alone on
+    // its own line, closing "}" alone on its own line) but performs no tokenization, no character
+    // escaping, and no per-line re-indentation — the content between the braces is an exact,
+    // verbatim copy of hs.Replacement (line endings, leading/trailing blank lines, and per-line
+    // indentation all preserved as authored).
+    private static string BuildScriptBody(Hotstring hs) =>
+        $"\n{{\n{hs.Replacement}\n}}";
 
     // Keep every hotstring on one physical line and its trigger free of characters
     // AHK v2 would otherwise reinterpret (backtick, a whitespace-preceded ';'). Backtick

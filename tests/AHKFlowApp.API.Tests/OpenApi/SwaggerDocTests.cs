@@ -37,4 +37,25 @@ public sealed class SwaggerDocTests(ApiTestFixture fixture)
         anyDescribed.Should().BeTrue(
             "HotstringDto property descriptions must be surfaced from AHKFlowApp.Application.xml");
     }
+
+    [Fact]
+    public async Task SwaggerJson_HotstringExamples_SurfacesBothBtwAndScriptExamples()
+    {
+        // Swashbuckle.AspNetCore.Filters resolves one IExamplesProvider<T> per T — a second
+        // provider targeting an already-covered type (HotstringDto/CreateHotstringDto/
+        // UpdateHotstringDto/HotstringPreviewRequestDto/HotstringPreviewDto) would silently
+        // replace its example everywhere. This guards against that: the Script example
+        // (targeting HotstringHistoryVersionDto, previously uncovered) must not have knocked out
+        // the pre-existing "btw" example.
+
+        // Arrange
+        using HttpClient client = _factory.CreateClient();
+
+        // Act
+        string json = await client.GetStringAsync("/swagger/v1/swagger.json");
+
+        // Assert
+        json.Should().Contain("by the way", "the original 'btw' example must still be present");
+        json.Should().Contain("MsgBox A_AhkVersion", "the new Script example must be present");
+    }
 }

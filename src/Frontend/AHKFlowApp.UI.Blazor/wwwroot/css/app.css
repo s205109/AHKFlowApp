@@ -136,6 +136,21 @@ button.import-hotstring-fab {
     z-index: 100;
 }
 
+/* Script-kind monospace editor (HotstringEditDialog's Replacement field). MUST stay global
+   (unscoped): the class is applied via MudTextField's Class parameter, which lands on a
+   wrapper <div> rendered entirely inside MudTextField's own component tree — never an
+   element written directly in HotstringEditDialog.razor — so it never receives that
+   component's Blazor CSS-isolation scope attribute and a scoped .razor.css rule never
+   matches. Same root cause as the MudFab case above (backlog 032). !important is required
+   too: MudBlazor.min.css sets the textarea's font-family directly and loads after this file
+   in index.html, so an equal-or-higher-specificity rule here still loses on source order. */
+.ahk-mono textarea {
+    font-family: ui-monospace, "Cascadia Code", "Consolas", monospace !important;
+    font-size: 0.85rem;
+    max-width: 100%;
+    overflow-wrap: break-word;
+}
+
 /* Home page — CLI quickstart code block */
 .cli-block {
     background: #1e1e1e;

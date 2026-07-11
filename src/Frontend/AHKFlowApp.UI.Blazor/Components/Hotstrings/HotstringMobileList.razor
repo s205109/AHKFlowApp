@@ -42,7 +42,15 @@
                             </td>
                         }
                         <td class="trigger-cell"><code>@item.Trigger</code></td>
-                        <td class="replacement-cell">@RenderReplacementCell(item)</td>
+                        <td class="replacement-cell">
+                            @if (item.Kind == HotstringKind.Script)
+                            {
+                                <MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Warning" Size="Size.Small" Class="script-badge"
+                                         title="Script — runs arbitrary AutoHotkey code"
+                                         UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "script-badge-collapsed" })" />
+                            }
+                            @RenderReplacementCell(item)
+                        </td>
                         <td class="chevron-cell">@(expanded ? "▾" : "▸")</td>
                     </tr>
                     @if (expanded)
@@ -61,6 +69,14 @@
                                         <MudText Typo="Typo.body2" Style="white-space: pre-wrap">
                                             <strong>Replacement:</strong> <MacroReplacementDisplay Replacement="@item.Replacement" />
                                         </MudText>
+                                    }
+                                    else if (item.Kind == HotstringKind.Script)
+                                    {
+                                        <MudAlert Severity="Severity.Warning" Dense="true"
+                                                  UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "script-warning-expanded" })">
+                                            Runs arbitrary AutoHotkey code in the generated script. A syntax error here can break the whole profile script.
+                                        </MudAlert>
+                                        <MudText Typo="Typo.body2" Class="script-body" Style="white-space: pre-wrap">@item.Replacement</MudText>
                                     }
                                     else
                                     {
@@ -143,6 +159,7 @@
     private RenderFragment RenderReplacementCell(HotstringEditModel item) => item.Kind switch
     {
         HotstringKind.DateTime => @<text>@item.DateTimeSummary</text>,
+        HotstringKind.Script => @<text>@item.ScriptSummary</text>,
         _ => @<text>@item.Replacement</text>,
     };
 

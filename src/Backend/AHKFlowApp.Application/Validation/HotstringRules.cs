@@ -206,6 +206,54 @@ internal static partial class HotstringRules
     }
 
     /// <summary>
+    /// Adds kind-conditional validation for Script hotstrings.
+    /// When <paramref name="kind"/> is <see cref="HotstringKind.Script"/>, <paramref name="replacement"/> must:
+    /// (1) not contain any line starting with <c>#</c> after trimming (directive lines would corrupt the
+    /// generated <c>#HotIf</c> grouping), and (2) have balanced braces. Brace balance is checked via naive
+    /// <c>{</c>/<c>}</c> character counting with no string-literal or comment awareness (D12) — a <c>{</c>
+    /// inside a quoted string (e.g. <c>SendText "{"</c>) counts toward the balance and can false-positive
+    /// reject an otherwise valid script. This is a deliberate limitation, not a bug: a string/comment-aware
+    /// scanner would cross the "not a script IDE" boundary (D8) and introduces its own edge cases.
+    /// The Replacement-required, max-length, and date-field-null rules for Script are already covered by
+    /// <see cref="AddDateTimeKindRules{T}"/> (Script is not DateTime, so it falls into that method's
+    /// "otherwise" branches) and are not duplicated here.
+    /// </summary>
+    public static void AddScriptKindRules<T>(
+        this AbstractValidator<T> validator,
+        Expression<Func<T, HotstringKind>> kind,
+        Expression<Func<T, string>> replacement)
+    {
+        Func<T, HotstringKind> kindFn = kind.Compile();
+
+        bool IsScript(T x) => kindFn(x) == HotstringKind.Script;
+
+        validator.RuleFor(replacement)
+            .Must(r => r.Split('\n').All(line => !line.TrimStart().StartsWith('#')))
+            .When(IsScript)
+            .WithMessage("Script replacement must not contain directive lines starting with '#'.");
+
+        validator.RuleFor(replacement)
+            .Must(r =>
+            {
+                int depth = 0;
+                foreach (char c in r)
+                {
+                    if (c == '{')
+                        depth++;
+                    else if (c == '}')
+                    {
+                        depth--;
+                        if (depth < 0)
+                            return false;
+                    }
+                }
+                return depth == 0;
+            })
+            .When(IsScript)
+            .WithMessage("Script replacement must have balanced braces.");
+    }
+
+    /// <summary>
     /// Adds validation for a hotstring's optional window-context match, kind-agnostic (applies
     /// regardless of <see cref="HotstringKind"/>): <paramref name="contextMatchType"/> and
     /// <paramref name="contextValue"/> must both be null or both be set, the match type must be a

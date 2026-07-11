@@ -79,4 +79,15 @@ public sealed class GetHotstringPreviewQueryValidatorTests
             e.PropertyName == "Input.ContextValue" &&
             e.ErrorMessage == "ContextValue must not be blank or whitespace.");
     }
+
+    [Fact]
+    public void GetHotstringPreviewQueryValidator_ScriptKind_Accepted()
+    {
+        ValidationResult result = _sut.Validate(Query(
+            kind: HotstringKind.Script,
+            replacement: "MsgBox A_AhkVersion"));
+
+        result.Errors.Should().NotContain(e => e.PropertyName == "Input.Kind");
+        result.Errors.Should().NotContain(e => e.PropertyName == "Input.Replacement");
+    }
 }

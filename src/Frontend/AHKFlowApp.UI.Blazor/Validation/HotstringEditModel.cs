@@ -81,6 +81,23 @@ public sealed class HotstringEditModel
         }
     }
 
+    /// <summary>
+    /// First line of <see cref="Replacement"/>, trimmed, for grid/mobile display of Script-kind
+    /// rows. Null unless <see cref="Kind"/> is <see cref="HotstringKind.Script"/> — callers fall
+    /// back to plain Replacement text otherwise. Mirrors
+    /// AHKFlowApp.CLI.Output.HotstringTableFormatter's FormatReplacementColumn logic.
+    /// </summary>
+    public string? ScriptSummary
+    {
+        get
+        {
+            if (Kind != HotstringKind.Script) return null;
+            int newlineIndex = Replacement.IndexOf('\n');
+            string firstLine = newlineIndex < 0 ? Replacement : Replacement[..newlineIndex];
+            return firstLine.Trim();
+        }
+    }
+
     public static HotstringEditModel FromDto(HotstringDto dto) => new()
     {
         Id = dto.Id,
