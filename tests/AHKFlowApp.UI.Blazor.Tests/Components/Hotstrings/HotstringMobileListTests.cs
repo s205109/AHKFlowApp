@@ -246,4 +246,40 @@ public sealed class HotstringMobileListTests : BunitContext, IAsyncLifetime
         cut.Find("td.replacement-cell").TextContent.Should().Be("by the way");
         cut.FindAll("td.replacement-cell .macro-token-chip").Should().BeEmpty();
     }
+
+    [Fact]
+    public async Task ExpandedDetail_ContextedHotstring_ShowsContextRow()
+    {
+        HotstringEditModel item = Item();
+        item.ContextMatchType = WindowMatchType.Executable;
+        item.ContextValue = "notepad.exe";
+
+        IRenderedComponent<HotstringMobileList> cut = Render<HotstringMobileList>(p => p
+            .Add(c => c.Items, [item])
+            .Add(c => c.Profiles, (IReadOnlyList<ProfileDto>)[])
+            .Add(c => c.Categories, (IReadOnlyList<CategoryDto>)[]));
+
+        await cut.InvokeAsync(() => cut.Find("tr.mobile-row").Click());
+
+        cut.WaitForAssertion(() =>
+        {
+            cut.Find("[data-test=\"context-row\"]").TextContent.Should().Contain("exe:notepad.exe");
+        });
+    }
+
+    [Fact]
+    public async Task ExpandedDetail_GlobalHotstring_HidesContextRow()
+    {
+        HotstringEditModel item = Item();
+
+        IRenderedComponent<HotstringMobileList> cut = Render<HotstringMobileList>(p => p
+            .Add(c => c.Items, [item])
+            .Add(c => c.Profiles, (IReadOnlyList<ProfileDto>)[])
+            .Add(c => c.Categories, (IReadOnlyList<CategoryDto>)[]));
+
+        await cut.InvokeAsync(() => cut.Find("tr.mobile-row").Click());
+
+        cut.WaitForAssertion(() => cut.Find("tr.mobile-row-expanded"));
+        cut.FindAll("[data-test=\"context-row\"]").Should().BeEmpty();
+    }
 }
