@@ -166,6 +166,26 @@
                          Disabled="@Item.ExpandImmediately"
                          UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "omit-ending-checkbox" })" />
 
+            <MudText Typo="Typo.subtitle2" Class="mt-1">Window context</MudText>
+            <MudSwitch T="bool" Value="@(Item.ContextMatchType is not null)" ValueChanged="OnContextSwitchChanged"
+                       Label="Only in specific windows"
+                       UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "context-switch" })" />
+            @if (Item.ContextMatchType is not null)
+            {
+                <MudSelect T="WindowMatchType" Value="Item.ContextMatchType.Value" ValueChanged="OnContextMatchTypeChanged"
+                           Label="Match by"
+                           UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "context-match-type-select" })">
+                    <MudSelectItem T="WindowMatchType" Value="WindowMatchType.Executable">Program</MudSelectItem>
+                    <MudSelectItem T="WindowMatchType" Value="WindowMatchType.WindowClass">Window class</MudSelectItem>
+                    <MudSelectItem T="WindowMatchType" Value="WindowMatchType.TitleContains">Title contains</MudSelectItem>
+                </MudSelect>
+                <MudTextField T="string" Label="Value" @bind-Value="Item.ContextValue" Immediate="true"
+                              Required="true" RequiredError="Value is required" MaxLength="200"
+                              Placeholder="@ContextValuePlaceholder"
+                              Error="@(_previewContextValueError is not null)" ErrorText="@_previewContextValueError"
+                              UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "context-value-input" })" />
+            }
+
             <EntityMultiSelect Options="_categoryOptions" Label="Categories"
                                SelectedIds="Item.CategoryIds"
                                SelectedIdsChanged="ids => Item.CategoryIds = [.. ids]"
@@ -234,6 +254,7 @@
     private string? _previewError;
     private string? _previewTriggerError;
     private string? _previewReplacementError;
+    private string? _previewContextValueError;
     private HotstringPreviewRequestDto? _lastPreviewRequest;
     private CancellationTokenSource? _previewCts;
     private int _previewGeneration;
@@ -393,6 +414,30 @@
     private string PreviewWithOffset() =>
         HotstringEditModel.SafePreview(Item.DateTimeFormat, Item.DateOffsetAmount, Item.DateOffsetUnit);
 
+    private void OnContextSwitchChanged(bool isOn)
+    {
+        if (isOn)
+        {
+            Item.ContextMatchType = WindowMatchType.Executable;
+            Item.ContextValue = "";
+        }
+        else
+        {
+            Item.ContextMatchType = null;
+            Item.ContextValue = null;
+        }
+    }
+
+    private void OnContextMatchTypeChanged(WindowMatchType matchType) => Item.ContextMatchType = matchType;
+
+    private string ContextValuePlaceholder => Item.ContextMatchType switch
+    {
+        WindowMatchType.Executable => "notepad.exe",
+        WindowMatchType.WindowClass => "Chrome_WidgetWin_1",
+        WindowMatchType.TitleContains => "- Visual Studio",
+        _ => "",
+    };
+
     private async Task SaveAsync()
     {
         if (_saving)
@@ -461,6 +506,7 @@
             CancelPendingPreview();
             _previewTriggerError = null;
             _previewReplacementError = null;
+            _previewContextValueError = null;
         }
 
         return Task.CompletedTask;
@@ -469,7 +515,8 @@
     private HotstringPreviewRequestDto BuildPreviewRequest() => new(
         Item.Kind, Item.Trigger, Item.Replacement, Item.IsCaseSensitive,
         Item.OmitEndingCharacter, Item.IsEndingCharacterRequired, Item.IsTriggerInsideWord,
-        Item.DateTimeFormat, Item.DateOffsetAmount, Item.DateOffsetUnit);
+        Item.DateTimeFormat, Item.DateOffsetAmount, Item.DateOffsetUnit,
+        Item.ContextMatchType, Item.ContextValue);
 
     private void SchedulePreview(HotstringPreviewRequestDto request, bool debounce)
     {
@@ -480,6 +527,7 @@
         _previewPending = true;
         _previewTriggerError = null;
         _previewReplacementError = null;
+        _previewContextValueError = null;
 
         // Fire-and-forget: RunPreviewAsync handles every exception it can raise (including
         // unexpected ones), so the task never faults.
@@ -542,6 +590,7 @@
     {
         _previewTriggerError = null;
         _previewReplacementError = null;
+        _previewContextValueError = null;
 
         if (result.IsSuccess)
         {
@@ -570,6 +619,8 @@
                     _previewTriggerError ??= message;
                 else if (field.Equals(nameof(Item.Replacement), StringComparison.OrdinalIgnoreCase))
                     _previewReplacementError ??= message;
+                else if (field.Equals(nameof(Item.ContextValue), StringComparison.OrdinalIgnoreCase))
+                    _previewContextValueError ??= message;
                 else
                     unmapped.Add(message);
             }
