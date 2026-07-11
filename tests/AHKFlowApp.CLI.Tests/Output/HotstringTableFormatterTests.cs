@@ -281,4 +281,25 @@ public sealed class HotstringTableFormatterTests
 
         sw.ToString().Should().Contain($"3 {expected}");
     }
+
+    [Fact]
+    public void Write_MacroRow_RendersKindLabelAndRawTruncatedTokenReplacement()
+    {
+        // Pinning test: Macro kind has no special formatter handling — it falls through to the
+        // same raw Truncate(...) path as Text (FormatReplacementColumn only special-cases DateTime).
+        // The 41-char input exceeds ReplacementWidth (40), so Truncate cuts to 39 chars + "…".
+        const string macroReplacement = "<b>{{cursor}}</b>{{key:Enter}}{{key:Tab}}";
+        const string expectedTruncated = "<b>{{cursor}}</b>{{key:Enter}}{{key:Tab…";
+        StringWriter sw = new();
+        PagedList<HotstringDto> page = new(
+            [Hotstring(trigger: "htag", replacement: macroReplacement) with { Kind = HotstringKind.Macro }],
+            1, 50, 1);
+
+        HotstringTableFormatter.Write(sw, page, EmptyNames);
+
+        string output = sw.ToString();
+        output.Should().Contain("Macro");
+        output.Should().Contain(expectedTruncated);
+        output.Should().NotContain(macroReplacement);
+    }
 }

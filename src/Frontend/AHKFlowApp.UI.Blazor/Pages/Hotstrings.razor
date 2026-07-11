@@ -103,9 +103,17 @@
                                               Immediate="true" MaxLength="4000"
                                               UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "replacement-input" })" />
                             }
+                            else if (context.Item.Kind == HotstringKind.DateTime)
+                            {
+                                <span style="white-space: pre-wrap">@context.Item.DateTimeSummary</span>
+                            }
+                            else if (context.Item.Kind == HotstringKind.Macro)
+                            {
+                                <span style="white-space: pre-wrap"><MacroReplacementDisplay Replacement="@context.Item.Replacement" /></span>
+                            }
                             else
                             {
-                                <span style="white-space: pre-wrap">@(context.Item.Kind == HotstringKind.DateTime ? context.Item.DateTimeSummary : context.Item.Replacement)</span>
+                                <span style="white-space: pre-wrap">@context.Item.Replacement</span>
                             }
                         </CellTemplate>
                     </PropertyColumn>

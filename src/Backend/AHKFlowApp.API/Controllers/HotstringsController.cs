@@ -31,7 +31,8 @@ public sealed class HotstringsController(
     IUseCase<RestoreHotstringCommand, Result<HotstringDto>> restoreHotstring,
     IUseCase<PurgeDeletedHotstringCommand, Result> purgeDeletedHotstring,
     IUseCase<PreviewHotstringImportCommand, Result<HotstringImportPreviewDto>> previewImport,
-    IUseCase<ImportHotstringsCommand, Result<HotstringImportResultDto>> importHotstrings) : ControllerBase
+    IUseCase<ImportHotstringsCommand, Result<HotstringImportResultDto>> importHotstrings,
+    IUseCase<GetHotstringPreviewQuery, Result<HotstringPreviewDto>> previewHotstring) : ControllerBase
 {
     /// <summary>List hotstrings for the current user, optionally filtered by profile. Paginated.</summary>
     [HttpGet]
@@ -188,4 +189,13 @@ public sealed class HotstringsController(
         CancellationToken ct) =>
         (await importHotstrings.ExecuteAsync(new ImportHotstringsCommand(dto), ct))
             .ToProblemActionResult(this);
+
+    /// <summary>Preview the AutoHotkey snippet a hotstring definition would generate, without saving it.</summary>
+    [HttpPost("preview")]
+    [ProducesResponseType(typeof(HotstringPreviewDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<HotstringPreviewDto>> Preview(
+        [FromBody] HotstringPreviewRequestDto dto,
+        CancellationToken ct) =>
+        (await previewHotstring.ExecuteAsync(new GetHotstringPreviewQuery(dto), ct)).ToProblemActionResult(this);
 }
