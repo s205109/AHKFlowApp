@@ -132,10 +132,11 @@
         _categoryOptions = [.. Categories.Select(c => new EntityOption(c.Id, c.Name))];
     }
 
+    // Collapsed rows keep a single ellipsized line for list density — Macro rows show the
+    // raw replacement text here; the token-chip rendering lives in the expanded details.
     private RenderFragment RenderReplacementCell(HotstringEditModel item) => item.Kind switch
     {
         HotstringKind.DateTime => @<text>@item.DateTimeSummary</text>,
-        HotstringKind.Macro => @<MacroReplacementDisplay Replacement="@item.Replacement" />,
         _ => @<text>@item.Replacement</text>,
     };
 
