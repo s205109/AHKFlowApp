@@ -78,3 +78,31 @@ internal sealed class HotstringPreviewDtoExample : IExamplesProvider<HotstringPr
     public HotstringPreviewDto GetExamples() => new(
         Snippet: "#HotIf WinActive(\"ahk_exe outlook.exe\")\n:T:sig::Best regards,`nJohn Doe`nSales Team\n#HotIf");
 }
+
+// Script kind (spec §7 ex. 7): `~ver` / `MsgBox A_AhkVersion`. Targets HotstringHistoryVersionDto
+// — the actual response type on HotstringsController's history-version endpoint — rather than
+// HotstringSnapshot (nested inside it; Swashbuckle.AspNetCore.Filters only annotates examples on
+// operation-level request/response types, not nested property types, so an example on the
+// nested type alone never surfaces in swagger.json) or HotstringDto/CreateHotstringDto/
+// UpdateHotstringDto/HotstringPreviewRequestDto/HotstringPreviewDto (all already covered above,
+// per the same one-provider-per-type trap documented there). HotstringHistoryVersionDto had no
+// example yet, making it a clean, unused vehicle for this scenario.
+internal sealed class HotstringHistoryVersionDtoExample : IExamplesProvider<HotstringHistoryVersionDto>
+{
+    public HotstringHistoryVersionDto GetExamples() => new(
+        Version: 1,
+        ChangeType: HistoryChangeType.Edit,
+        CapturedAt: DateTimeOffset.Parse("2026-07-11T09:00:00Z"),
+        Snapshot: new HotstringSnapshot(
+            Trigger: "~ver",
+            Replacement: "MsgBox A_AhkVersion",
+            Description: "Show the running AutoHotkey version",
+            AppliesToAllProfiles: true,
+            IsEndingCharacterRequired: false,
+            IsTriggerInsideWord: false,
+            ProfileIds: [],
+            CategoryIds: [],
+            CreatedAt: DateTimeOffset.Parse("2026-07-11T09:00:00Z"),
+            UpdatedAt: DateTimeOffset.Parse("2026-07-11T09:00:00Z"),
+            Kind: HotstringKind.Script));
+}
