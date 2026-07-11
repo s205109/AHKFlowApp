@@ -105,3 +105,13 @@
     margin-left: 4px;
     vertical-align: middle;
 }
+
+::deep .hotstrings-grid .script-summary {
+    font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
+    display: inline-block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+}

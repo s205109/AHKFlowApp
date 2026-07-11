@@ -43,6 +43,8 @@
                        UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "kind-filter" })">
                 <MudSelectItem T="HotstringKind?" Value="HotstringKind.Text">Text</MudSelectItem>
                 <MudSelectItem T="HotstringKind?" Value="HotstringKind.DateTime">Date &amp; time</MudSelectItem>
+                <MudSelectItem T="HotstringKind?" Value="HotstringKind.Macro">Macro</MudSelectItem>
+                <MudSelectItem T="HotstringKind?" Value="HotstringKind.Script">Script</MudSelectItem>
             </MudSelect>
             <MudTextField T="string" @bind-Value="_search" @bind-Value:after="OnSearchChangedAsync"
                           DebounceInterval="300"
@@ -111,6 +113,10 @@
                             {
                                 <span style="white-space: pre-wrap"><MacroReplacementDisplay Replacement="@context.Item.Replacement" /></span>
                             }
+                            else if (context.Item.Kind == HotstringKind.Script)
+                            {
+                                <span class="script-summary">@context.Item.ScriptSummary</span>
+                            }
                             else
                             {
                                 <span style="white-space: pre-wrap">@context.Item.Replacement</span>
@@ -147,7 +153,9 @@
                         <CellTemplate>
                             <MudTooltip Text="@OptionsTooltip(context.Item)">
                                 <span class="type-badge">
-                                    <MudChip T="string" Size="Size.Small" Color="Color.Default">@KindLabel(context.Item.Kind)</MudChip>
+                                    <MudChip T="string" Size="Size.Small" Color="@(context.Item.Kind == HotstringKind.Script ? Color.Warning : Color.Default)"
+                                             Icon="@(context.Item.Kind == HotstringKind.Script ? Icons.Material.Filled.Warning : null)"
+                                             UserAttributes="@KindChipAttributes(context.Item.Kind)">@KindLabel(context.Item.Kind)</MudChip>
                                     <span class="option-glyphs">@OptionGlyphs(context.Item)</span>
                                     @if (context.Item.ContextMatchType is not null)
                                     {
@@ -203,6 +211,8 @@
                        UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "kind-filter-mobile" })">
                 <MudSelectItem T="HotstringKind?" Value="HotstringKind.Text">Text</MudSelectItem>
                 <MudSelectItem T="HotstringKind?" Value="HotstringKind.DateTime">Date &amp; time</MudSelectItem>
+                <MudSelectItem T="HotstringKind?" Value="HotstringKind.Macro">Macro</MudSelectItem>
+                <MudSelectItem T="HotstringKind?" Value="HotstringKind.Script">Script</MudSelectItem>
             </MudSelect>
 
             @if (_categories.Count > 0)
@@ -854,9 +864,14 @@
         return glyphs;
     }
 
+    // Warning conveyed to assistive tech and sighted users alike — the chip's warning color and
+    // icon alone are not exposed to screen readers.
+    private const string ScriptWarningText = "Runs arbitrary AutoHotkey code — review before running.";
+
     private static string OptionsTooltip(HotstringEditModel item)
     {
         List<string> parts = [KindLabel(item.Kind)];
+        if (item.Kind == HotstringKind.Script) parts.Add(ScriptWarningText);
         if (!item.IsEndingCharacterRequired) parts.Add("Expands immediately (no ending character)");
         if (item.IsTriggerInsideWord) parts.Add("Triggers inside words");
         if (item.IsCaseSensitive) parts.Add("Case sensitive");
@@ -864,6 +879,11 @@
         if (item.ContextMatchType is not null) parts.Add($"Only in {item.ContextSummary}");
         return string.Join(" · ", parts);
     }
+
+    private static Dictionary<string, object?> KindChipAttributes(HotstringKind kind) =>
+        kind == HotstringKind.Script
+            ? new Dictionary<string, object?> { ["aria-label"] = $"{KindLabel(kind)}. {ScriptWarningText}" }
+            : [];
 
     private RenderFragment RenderActions(HotstringEditModel item) => @<text>
         @if (IsEditing(item))

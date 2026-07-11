@@ -1,4 +1,6 @@
-# Pre-commit hook: detect anti-patterns in staged and modified C# files
+# Pre-commit hook: detect anti-patterns in lines ADDED by staged and unstaged changes to
+# modified C# files (diff-scoped — pre-existing lines in a touched file are never flagged,
+# only what this commit actually introduces).
 # Checks for common issues: DateTime.Now, new HttpClient(), async void, sync-over-async.
 # For full anti-pattern detection, use the Roslyn MCP detect_antipatterns tool.
 #
@@ -53,10 +55,44 @@ if (-not $filesToCheck) {
     exit 0
 }
 
-Write-Log "Checking modified C# files for common issues..."
+Write-Log "Checking lines added by staged/unstaged changes for common issues..."
 
-function Test-AntiPattern($filePath, $fileContent, $pattern, $message) {
-    $hits = $fileContent | Select-String -Pattern $pattern -AllMatches
+# Parses `git diff -U0` output into a list of { LineNumber, Text } for lines the diff ADDS
+# in the new-file version. Deleted/context lines are skipped; hunk headers drive the running
+# new-file line counter (with -U0 there should be no context lines, but unmatched lines are
+# still ignored defensively rather than mis-tracking the counter).
+function Get-AddedLines($file) {
+    $added = @()
+    $currentLine = 0
+
+    $diffOutputs = @(
+        (git diff --cached -U0 -- $file 2>$null),
+        (git diff -U0 -- $file 2>$null)
+    )
+
+    foreach ($diffOutput in $diffOutputs) {
+        foreach ($line in $diffOutput) {
+            if ($line -match '^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@') {
+                $currentLine = [int]$Matches[1]
+                continue
+            }
+            if ($line.StartsWith('+++') -or $line.StartsWith('---')) {
+                continue
+            }
+            if ($line.StartsWith('+')) {
+                $added += [PSCustomObject]@{ LineNumber = $currentLine; Text = $line.Substring(1) }
+                $currentLine++
+            }
+            # Lines starting with '-' are deletions: they don't exist in the new file, so the
+            # new-file line counter does not advance for them.
+        }
+    }
+
+    return $added
+}
+
+function Test-AntiPattern($filePath, $addedLines, $pattern, $message) {
+    $hits = $addedLines | Where-Object { $_.Text -match $pattern }
     if ($hits) {
         $lines = ($hits | ForEach-Object { $_.LineNumber }) -join ', '
         Write-Log "  ${filePath}:$lines — $message"
@@ -68,18 +104,19 @@ function Test-AntiPattern($filePath, $fileContent, $pattern, $message) {
 $errors = 0
 
 foreach ($file in $filesToCheck) {
-    $fileContent = Get-Content $file
+    $addedLines = Get-AddedLines $file
+    if (-not $addedLines) { continue }
 
-    if (Test-AntiPattern $file $fileContent 'DateTime\.(Now|UtcNow)'                    'Use TimeProvider instead of DateTime.Now/UtcNow')                   { $errors++ }
-    if (Test-AntiPattern $file $fileContent 'new HttpClient\(\)'                         'Use IHttpClientFactory instead of new HttpClient()')                { $errors++ }
-    if (Test-AntiPattern $file ($fileContent | Where-Object { $_ -notmatch 'EventArgs' }) 'async void' 'async void is dangerous, use async Task instead')     { $errors++ }
-    if (Test-AntiPattern $file $fileContent '\.Result\b|\.GetAwaiter\(\)\.GetResult\(\)' 'Avoid sync-over-async (.Result / .GetAwaiter().GetResult())')       { $errors++ }
+    if (Test-AntiPattern $file $addedLines 'DateTime\.(Now|UtcNow)'                                    'Use TimeProvider instead of DateTime.Now/UtcNow')                   { $errors++ }
+    if (Test-AntiPattern $file $addedLines 'new HttpClient\(\)'                                        'Use IHttpClientFactory instead of new HttpClient()')                { $errors++ }
+    if (Test-AntiPattern $file ($addedLines | Where-Object { $_.Text -notmatch 'EventArgs' }) 'async void' 'async void is dangerous, use async Task instead')                { $errors++ }
+    if (Test-AntiPattern $file $addedLines '\.Result\b|\.GetAwaiter\(\)\.GetResult\(\)'                'Avoid sync-over-async (.Result / .GetAwaiter().GetResult())')       { $errors++ }
 }
 
 if ($errors -gt 0) {
-    Write-Log "Found $errors anti-pattern issue(s) in modified files." -Err
+    Write-Log "Found $errors anti-pattern issue(s) in added lines." -Err
     exit 2
 }
 
-Write-Log "No anti-patterns detected in modified files. (exit 0)"
+Write-Log "No anti-patterns detected in added lines. (exit 0)"
 exit 0

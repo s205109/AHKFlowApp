@@ -250,13 +250,14 @@ public sealed class UpdateHotstringCommandValidatorTests
     }
 
     [Fact]
-    public void Kind_Script_Fails()
+    public void UpdateHotstringCommandValidator_ScriptKind_Accepted()
     {
-        ValidationResult result = _sut.Validate(Cmd(kind: HotstringKind.Script));
+        ValidationResult result = _sut.Validate(Cmd(
+            kind: HotstringKind.Script,
+            replacement: "MsgBox A_AhkVersion"));
 
-        result.Errors.Should().Contain(e =>
-            e.PropertyName == "Input.Kind" &&
-            e.ErrorMessage == "Only Text, Date & time and Macro hotstrings are supported.");
+        result.Errors.Should().NotContain(e => e.PropertyName == "Input.Kind");
+        result.Errors.Should().NotContain(e => e.PropertyName == "Input.Replacement");
     }
 
     [Fact]

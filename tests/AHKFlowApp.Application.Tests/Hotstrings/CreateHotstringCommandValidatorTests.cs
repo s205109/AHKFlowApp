@@ -262,13 +262,76 @@ public sealed class CreateHotstringCommandValidatorTests
     }
 
     [Fact]
-    public void Kind_Script_Fails()
+    public void CreateHotstringCommandValidator_ScriptKind_Accepted()
     {
-        ValidationResult result = _sut.Validate(Cmd(kind: HotstringKind.Script));
+        ValidationResult result = _sut.Validate(Cmd(
+            kind: HotstringKind.Script,
+            replacement: "MsgBox A_AhkVersion"));
 
+        result.Errors.Should().NotContain(e => e.PropertyName == "Input.Kind");
+        result.Errors.Should().NotContain(e => e.PropertyName == "Input.Replacement");
+    }
+
+    [Fact]
+    public void Validate_ScriptWithUnbalancedBraces_Fails()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            kind: HotstringKind.Script,
+            replacement: "if (true) {\nMsgBox \"hi\""));
+
+        result.IsValid.Should().BeFalse();
         result.Errors.Should().Contain(e =>
-            e.PropertyName == "Input.Kind" &&
-            e.ErrorMessage == "Only Text, Date & time and Macro hotstrings are supported.");
+            e.PropertyName == "Input.Replacement" &&
+            e.ErrorMessage == "Script replacement must have balanced braces.");
+    }
+
+    [Fact]
+    public void Validate_ScriptWithDirectiveLine_Fails()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            kind: HotstringKind.Script,
+            replacement: "#Requires AutoHotkey v2.0\nMsgBox A_AhkVersion"));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.Replacement" &&
+            e.ErrorMessage == "Script replacement must not contain directive lines starting with '#'.");
+    }
+
+    [Fact]
+    public void Validate_ScriptWellFormedMultiline_Passes()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            kind: HotstringKind.Script,
+            replacement: "if (WinActive(\"ahk_exe notepad.exe\")) {\n    MsgBox \"hi\"\n}"));
+
+        result.Errors.Should().NotContain(e => e.PropertyName == "Input.Replacement");
+    }
+
+    [Fact]
+    public void Validate_ScriptOver4000Chars_Fails()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            kind: HotstringKind.Script,
+            replacement: new string('x', 4001)));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.Replacement" &&
+            e.ErrorMessage == "Replacement must be 4000 characters or fewer.");
+    }
+
+    [Fact]
+    public void Validate_ScriptEmptyReplacement_Fails()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            kind: HotstringKind.Script,
+            replacement: ""));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.Replacement" &&
+            e.ErrorMessage == "Replacement is required.");
     }
 
     [Fact]
