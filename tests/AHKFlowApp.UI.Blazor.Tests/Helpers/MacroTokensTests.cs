@@ -75,4 +75,31 @@ public sealed class MacroTokensTests
         pieces[2].Should().BeOfType<MacroTextPiece.Token>().Which.Kind.Should().Be(MacroTokenKind.Cursor);
         pieces[3].Should().BeOfType<MacroTextPiece.Text>().Which.Value.Should().Be("Alex");
     }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("Dear customer")]
+    [InlineData("{{key:Enter}}")]
+    [InlineData("{{key:Tab}}")]
+    [InlineData("{{oops}}")]
+    [InlineData("{{ cursor }}")]
+    public void CursorTokenStart_no_real_cursor_token_returns_null(string text) =>
+        MacroTokens.CursorTokenStart(text).Should().BeNull();
+
+    [Theory]
+    [InlineData("{{cursor}}", 0)]
+    [InlineData("{{CURSOR}}", 0)]
+    [InlineData("{{Cursor}}", 0)]
+    [InlineData("abc{{cursor}}", 3)]
+    [InlineData("Dear {{cursor}} name", 5)]
+    public void CursorTokenStart_real_cursor_token_returns_start_index(string text, int expectedStart) =>
+        MacroTokens.CursorTokenStart(text).Should().Be(expectedStart);
+
+    [Fact]
+    public void CursorTokenStart_escaped_cursor_literal_returns_null() =>
+        MacroTokens.CursorTokenStart("{{{{cursor}}}}").Should().BeNull();
+
+    [Fact]
+    public void CursorTokenStart_orphan_escape_without_closer_returns_nested_cursor_position() =>
+        MacroTokens.CursorTokenStart("{{{{cursor}}").Should().Be(2);
 }

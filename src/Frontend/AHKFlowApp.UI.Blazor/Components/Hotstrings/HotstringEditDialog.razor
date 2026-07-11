@@ -478,14 +478,12 @@
         _previewCts = cts;
         int generation = ++_previewGeneration;
         _previewPending = true;
+        _previewTriggerError = null;
+        _previewReplacementError = null;
 
-        // Fire-and-forget with the fault path observed: cancellations are handled inside
-        // RunPreviewAsync; anything else is a bug that must be logged, not lost as an
-        // unobserved task exception.
-        Task previewTask = RunPreviewAsync(request, cts.Token, generation, debounce);
-        _ = previewTask.ContinueWith(
-            t => Logger.LogError(t.Exception, "Hotstring preview failed unexpectedly."),
-            CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Current);
+        // Fire-and-forget: RunPreviewAsync handles every exception it can raise (including
+        // unexpected ones), so the task never faults.
+        _ = RunPreviewAsync(request, cts.Token, generation, debounce);
 
         StateHasChanged();
     }
@@ -522,6 +520,22 @@
             // A cancelled preview (superseded input, panel collapsed, dialog disposed) is
             // silently ignored — never surfaced as an error.
         }
+        catch (Exception ex)
+        {
+            // Boundary for a fire-and-forget background task: successful-response
+            // deserialization (or anything else) can throw after ApiClientBase's
+            // HttpRequestException handling. Log it and surface a friendly message instead
+            // of leaving the "Updating preview…" spinner stuck forever.
+            Logger.LogError(ex, "Hotstring preview failed unexpectedly.");
+
+            if (generation != _previewGeneration || _disposed)
+                return;
+
+            _previewPending = false;
+            _previewSnippet = null;
+            _previewError = "Something went wrong generating the preview. Try again.";
+            StateHasChanged();
+        }
     }
 
     private void ApplyPreviewResult(ApiResult<HotstringPreviewDto> result)
@@ -540,6 +554,10 @@
 
         if (result.Status == ApiResultStatus.Validation && result.Problem?.Errors is { Count: > 0 } errors)
         {
+            // Errors mapped onto Trigger/Replacement show inline only; the panel is
+            // reserved for anything that isn't shown next to a field, so the same message
+            // never appears twice.
+            List<string> unmapped = [];
             foreach ((string key, string[] messages) in errors)
             {
                 if (messages.FirstOrDefault() is not { } message)
@@ -552,9 +570,11 @@
                     _previewTriggerError ??= message;
                 else if (field.Equals(nameof(Item.Replacement), StringComparison.OrdinalIgnoreCase))
                     _previewReplacementError ??= message;
+                else
+                    unmapped.Add(message);
             }
 
-            _previewError = errors.SelectMany(kv => kv.Value).FirstOrDefault() ?? "The request was invalid.";
+            _previewError = unmapped.FirstOrDefault();
         }
         else
         {
