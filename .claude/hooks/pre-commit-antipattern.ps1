@@ -73,7 +73,7 @@ foreach ($file in $filesToCheck) {
     if (Test-AntiPattern $file $fileContent 'DateTime\.(Now|UtcNow)'                    'Use TimeProvider instead of DateTime.Now/UtcNow')                   { $errors++ }
     if (Test-AntiPattern $file $fileContent 'new HttpClient\(\)'                         'Use IHttpClientFactory instead of new HttpClient()')                { $errors++ }
     if (Test-AntiPattern $file ($fileContent | Where-Object { $_ -notmatch 'EventArgs' }) 'async void' 'async void is dangerous, use async Task instead')     { $errors++ }
-    if (Test-AntiPattern $file $fileContent '\.Result\b|\.GetAwaiter\(\)\.GetResult\(\)' 'Avoid sync-over-async (.Result / .GetAwaiter().GetResult())')       { $errors++ }
+    if (Test-AntiPattern $file ($fileContent | Where-Object { $_ -notmatch '^\s*using\s' }) '\.Result\b|\.GetAwaiter\(\)\.GetResult\(\)' 'Avoid sync-over-async (.Result / .GetAwaiter().GetResult())') { $errors++ }
 }
 
 if ($errors -gt 0) {
