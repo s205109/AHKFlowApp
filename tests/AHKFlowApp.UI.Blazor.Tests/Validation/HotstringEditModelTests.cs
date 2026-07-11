@@ -288,6 +288,42 @@ public sealed class HotstringEditModelTests
     }
 
     [Fact]
+    public void ScriptSummary_IsNull_ForNonScriptKind()
+    {
+        HotstringEditModel model = new() { Kind = HotstringKind.Text, Replacement = "MsgBox 1" };
+
+        model.ScriptSummary.Should().BeNull();
+    }
+
+    [Fact]
+    public void ScriptSummary_SingleLine_ReturnsAsIs()
+    {
+        HotstringEditModel model = new() { Kind = HotstringKind.Script, Replacement = "MsgBox A_AhkVersion" };
+
+        model.ScriptSummary.Should().Be("MsgBox A_AhkVersion");
+    }
+
+    [Fact]
+    public void ScriptSummary_MultilineBody_ReturnsFirstLineOnly()
+    {
+        HotstringEditModel model = new()
+        {
+            Kind = HotstringKind.Script,
+            Replacement = "MsgBox 1\nMsgBox 2\nMsgBox 3",
+        };
+
+        model.ScriptSummary.Should().Be("MsgBox 1");
+    }
+
+    [Fact]
+    public void ScriptSummary_LeadingWhitespaceOnFirstLine_IsTrimmed()
+    {
+        HotstringEditModel model = new() { Kind = HotstringKind.Script, Replacement = "  MsgBox 1  \nrest" };
+
+        model.ScriptSummary.Should().Be("MsgBox 1");
+    }
+
+    [Fact]
     public void SafePreview_ReturnsEmpty_ForNullOrEmptyFormat()
     {
         HotstringEditModel.SafePreview(null).Should().BeEmpty();
