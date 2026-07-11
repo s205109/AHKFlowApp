@@ -1,4 +1,5 @@
 using AHKFlowApp.Application.DTOs;
+using AHKFlowApp.Domain.Enums;
 using Swashbuckle.AspNetCore.Filters;
 
 namespace AHKFlowApp.API.OpenApi.Examples;
@@ -49,4 +50,31 @@ internal sealed class PagedHotstringsExample : IExamplesProvider<PagedList<Hotst
         Page: 1,
         PageSize: 50,
         TotalCount: 1);
+}
+
+// App-specific (window context) example, targeting the preview endpoint's DTOs rather than
+// HotstringDto/CreateHotstringDto/UpdateHotstringDto — Swashbuckle.AspNetCore.Filters resolves
+// one IExamplesProvider<T> per T, so a second example on an already-covered type would silently
+// replace the "btw" example everywhere it's used. HotstringPreviewRequestDto/HotstringPreviewDto
+// had no example yet, making them a clean place to show the context scenario end-to-end.
+internal sealed class HotstringPreviewRequestDtoExample : IExamplesProvider<HotstringPreviewRequestDto>
+{
+    public HotstringPreviewRequestDto GetExamples() => new(
+        Kind: HotstringKind.Text,
+        Trigger: "sig",
+        Replacement: "Best regards,\nJohn Doe\nSales Team",
+        IsCaseSensitive: false,
+        OmitEndingCharacter: false,
+        IsEndingCharacterRequired: true,
+        IsTriggerInsideWord: false,
+        ContextMatchType: WindowMatchType.Executable,
+        ContextValue: "outlook.exe");
+}
+
+internal sealed class HotstringPreviewDtoExample : IExamplesProvider<HotstringPreviewDto>
+{
+    // Matches HotstringEmitter.Emit + GetHotstringPreviewQueryHandler's #HotIf wrapping exactly:
+    // context groups are wrapped in `#HotIf WinActive(...)` ... bare `#HotIf` (D9).
+    public HotstringPreviewDto GetExamples() => new(
+        Snippet: "#HotIf WinActive(\"ahk_exe outlook.exe\")\n:T:sig::Best regards,`nJohn Doe`nSales Team\n#HotIf");
 }
