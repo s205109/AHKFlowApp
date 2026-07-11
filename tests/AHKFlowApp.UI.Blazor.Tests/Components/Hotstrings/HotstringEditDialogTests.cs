@@ -546,12 +546,11 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
     public async Task PreviewPanel_Collapsed_NeverCallsPreviewEvenAfterFieldChanges()
     {
         IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync();
+        DisablePreviewDebounce(provider);
         provider.WaitForAssertion(() => provider.Find("input[data-test=\"trigger-input\"]"));
 
         provider.Find("input[data-test=\"trigger-input\"]").Input("btw");
         provider.Find("textarea[data-test=\"replacement-input\"]").Input("by the way");
-
-        await Task.Delay(600);
         provider.Render();
 
         _ = _api.DidNotReceive().PreviewAsync(Arg.Any<HotstringPreviewRequestDto>(), Arg.Any<CancellationToken>());
@@ -607,6 +606,7 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
 
         HotstringEditModel item = new() { Trigger = "one", Replacement = "text" };
         IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+        DisablePreviewDebounce(provider);
         provider.WaitForAssertion(() => provider.Find("[data-test=\"ahk-preview\"]"));
         provider.Find("[data-test=\"ahk-preview\"] .mud-expand-panel-header").Click();
 
@@ -615,12 +615,8 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
 
         provider.Find("input[data-test=\"trigger-input\"]").Input("two");
 
-        // The debounced call to the mock doesn't trigger a re-render (it's still awaiting the
-        // pending tcs2 task), so WaitForAssertion has no render event to re-poll on — wait out
-        // the real 400ms debounce window directly instead.
-        await Task.Delay(600);
-        _ = _api.Received(1).PreviewAsync(
-            Arg.Is<HotstringPreviewRequestDto>(r => r.Trigger == "two"), Arg.Any<CancellationToken>());
+        provider.WaitForAssertion(() => _api.Received(1).PreviewAsync(
+            Arg.Is<HotstringPreviewRequestDto>(r => r.Trigger == "two"), Arg.Any<CancellationToken>()));
 
         // Resolve the newer (generation 2) response first, then the stale (generation 1) response.
         // The stale response must never overwrite the newer result.
@@ -764,6 +760,24 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
+    public async Task PreviewPanel_UnexpectedFault_ClearsPendingAndShowsFriendlyError()
+    {
+        _api.PreviewAsync(Arg.Any<HotstringPreviewRequestDto>(), Arg.Any<CancellationToken>())
+            .Returns<ApiResult<HotstringPreviewDto>>(_ => throw new InvalidOperationException("boom - e.g. a deserialization failure"));
+
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync();
+        DisablePreviewDebounce(provider);
+        provider.Find("[data-test=\"ahk-preview\"] .mud-expand-panel-header").Click();
+
+        provider.WaitForAssertion(() =>
+        {
+            provider.FindAll("[data-test=\"preview-pending\"]").Should().BeEmpty(
+                "an unexpected fault must not leave the spinner stuck forever");
+            provider.Find("[data-test=\"preview-error\"]").TextContent.Should().NotBeNullOrWhiteSpace();
+        });
+    }
+
+    [Fact]
     public async Task PreviewPanel_WhileRefreshing_KeepsPreviousSnippetVisiblyDimmed()
     {
         TaskCompletionSource<ApiResult<HotstringPreviewDto>> tcs2 = new();
@@ -832,7 +846,7 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
-    public async Task PreviewPanel_ValidationError_ShowsFriendlyMessageWithoutPropertyPath_AndMapsToReplacementField()
+    public async Task PreviewPanel_ValidationError_MapsToReplacementFieldOnly_NoPanelDuplicate()
     {
         const string parserMessage = "Unknown token '{{key:Escape}}'. Allowed: {{cursor}}, {{key:Enter}}, {{key:Tab}}.";
         _api.PreviewAsync(Arg.Any<HotstringPreviewRequestDto>(), Arg.Any<CancellationToken>())
@@ -847,13 +861,41 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
 
         provider.WaitForAssertion(() =>
         {
-            string panelError = provider.Find("[data-test=\"preview-error\"]").TextContent.Trim();
-            panelError.Should().Be(parserMessage, "the DTO property-path prefix must be stripped");
-
             MudTextField<string> replacementField = provider.FindComponents<MudTextField<string>>()
                 .Single(f => f.Instance.Label == "Replacement").Instance;
-            replacementField.GetState(x => x.ErrorText).Should().Be(parserMessage);
+            replacementField.GetState(x => x.ErrorText).Should().Be(parserMessage, "the DTO property-path prefix must be stripped");
+
+            provider.FindAll("[data-test=\"preview-error\"]").Should().BeEmpty(
+                "a field-mapped error shows inline only, never duplicated in the panel");
         });
+    }
+
+    [Fact]
+    public async Task PreviewPanel_FieldError_ClearsImmediatelyWhenSchedulingNextPreview()
+    {
+        _api.PreviewAsync(Arg.Any<HotstringPreviewRequestDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotstringPreviewDto>.Failure(ApiResultStatus.Validation,
+                new ApiProblemDetails(null, "Bad Request", 400, null, null,
+                    new Dictionary<string, string[]> { ["Replacement"] = ["Replacement is required."] })));
+
+        HotstringEditModel item = new() { Trigger = "btw", Replacement = "" };
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+        DisablePreviewDebounce(provider);
+        provider.Find("[data-test=\"ahk-preview\"] .mud-expand-panel-header").Click();
+
+        provider.WaitForAssertion(() =>
+            provider.FindComponents<MudTextField<string>>().Single(f => f.Instance.Label == "Replacement")
+                .Instance.GetState(x => x.ErrorText).Should().Be("Replacement is required."));
+
+        TaskCompletionSource<ApiResult<HotstringPreviewDto>> pending = new();
+        _api.PreviewAsync(Arg.Any<HotstringPreviewRequestDto>(), Arg.Any<CancellationToken>()).Returns(pending.Task);
+
+        provider.Find("textarea[data-test=\"replacement-input\"]").Input("fixed");
+
+        provider.WaitForAssertion(() =>
+            provider.FindComponents<MudTextField<string>>().Single(f => f.Instance.Label == "Replacement")
+                .Instance.GetState(x => x.ErrorText).Should().BeNullOrEmpty(
+                    "the stale field error must not linger while a corrected value awaits its next preview"));
     }
 
     [Fact]
