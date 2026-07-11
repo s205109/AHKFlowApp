@@ -98,7 +98,9 @@ internal sealed class UpdateHotstringCommandHandler(
                 input.OmitEndingCharacter,
                 input.DateTimeFormat,
                 input.DateOffsetAmount,
-                input.DateOffsetUnit),
+                input.DateOffsetUnit,
+                input.ContextMatchType,
+                input.ContextValue),
             clock);
 
         // Replace junction rows via the navigation collections only; adding to the
@@ -126,7 +128,7 @@ internal sealed class UpdateHotstringCommandHandler(
         {
             return ex.IsHistoryVersionConflict()
                 ? Result.Conflict("The item was modified concurrently. Retry the operation.")
-                : Result.Conflict("A hotstring with this trigger already exists.");
+                : Result.Conflict(HotstringConflictMessages.DuplicateTrigger);
         }
 
         return Result.Success(entity.ToDto());

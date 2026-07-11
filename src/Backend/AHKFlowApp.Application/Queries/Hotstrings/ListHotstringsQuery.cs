@@ -214,7 +214,9 @@ internal sealed class ListHotstringsQueryHandler(
                 h.OmitEndingCharacter,
                 h.DateTimeFormat,
                 h.DateOffsetAmount,
-                h.DateOffsetUnit))
+                h.DateOffsetUnit,
+                h.ContextMatchType,
+                h.ContextValue))
             .ToListAsync(ct);
 
         return Result.Success(new PagedList<HotstringDto>(items, request.Page, request.PageSize, total));
