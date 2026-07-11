@@ -140,6 +140,77 @@ public sealed class HotstringPreviewEndpointsTests(ApiTestFixture fixture)
     }
 
     [Fact]
+    public async Task Preview_WithExecutableContext_WrapsSnippetInHotIfLines()
+    {
+        using HttpClient client = CreateAuthed();
+        var dto = new HotstringPreviewRequestDto(
+            HotstringKind.Text,
+            "btw",
+            "by the way",
+            IsCaseSensitive: false,
+            OmitEndingCharacter: false,
+            IsEndingCharacterRequired: true,
+            IsTriggerInsideWord: false,
+            ContextMatchType: WindowMatchType.Executable,
+            ContextValue: "notepad.exe");
+
+        HttpResponseMessage response = await client.PostAsJsonAsync("/api/v1/hotstrings/preview", dto);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        HotstringPreviewDto? body = await response.Content.ReadFromJsonAsync<HotstringPreviewDto>();
+        body!.Snippet.Should().Be(
+            "#HotIf WinActive(\"ahk_exe notepad.exe\")\n:T:btw::by the way\n#HotIf");
+    }
+
+    [Fact]
+    public async Task Preview_WithoutContext_SnippetUnwrapped()
+    {
+        using HttpClient client = CreateAuthed();
+        var dto = new HotstringPreviewRequestDto(
+            HotstringKind.Text,
+            "btw",
+            "by the way",
+            IsCaseSensitive: false,
+            OmitEndingCharacter: false,
+            IsEndingCharacterRequired: true,
+            IsTriggerInsideWord: false);
+
+        HttpResponseMessage response = await client.PostAsJsonAsync("/api/v1/hotstrings/preview", dto);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        HotstringPreviewDto? body = await response.Content.ReadFromJsonAsync<HotstringPreviewDto>();
+        body!.Snippet.Should().Be(":T:btw::by the way");
+    }
+
+    [Fact]
+    public async Task Preview_ContextValueWithoutMatchType_ReturnsValidationProblem()
+    {
+        using HttpClient client = CreateAuthed();
+        var dto = new HotstringPreviewRequestDto(
+            HotstringKind.Text,
+            "btw",
+            "by the way",
+            IsCaseSensitive: false,
+            OmitEndingCharacter: false,
+            IsEndingCharacterRequired: true,
+            IsTriggerInsideWord: false,
+            ContextMatchType: null,
+            ContextValue: "notepad.exe");
+
+        HttpResponseMessage response = await client.PostAsJsonAsync("/api/v1/hotstrings/preview", dto);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        JsonElement root = doc.RootElement;
+        root.GetProperty("title").GetString().Should().Be("Validation failed");
+        JsonElement errors = root.GetProperty("errors");
+        errors.TryGetProperty("Input.ContextMatchType", out JsonElement contextErrors).Should().BeTrue();
+        contextErrors.EnumerateArray().Select(e => e.GetString()).Should().Contain(
+            "ContextMatchType and ContextValue must both be set or both be null.");
+    }
+
+    [Fact]
     public async Task Preview_Unauthenticated_Returns401()
     {
         using HttpClient client = _factory.CreateClient();

@@ -61,10 +61,18 @@ internal sealed class GetHotstringPreviewQueryHandler(TimeProvider clock)
                 input.OmitEndingCharacter,
                 input.DateTimeFormat,
                 input.DateOffsetAmount,
-                input.DateOffsetUnit),
+                input.DateOffsetUnit,
+                input.ContextMatchType,
+                input.ContextValue),
             clock);
 
         string snippet = HotstringEmitter.Emit(hs);
+
+        // Mirrors AhkScriptGenerator's context-group wrapping (D9) so the live preview matches
+        // exactly what the downloaded script would contain for this hotstring.
+        if (hs.ContextMatchType is WindowMatchType matchType)
+            snippet = $"{HotstringEmitter.EmitHotIfOpen(matchType, hs.ContextValue!)}\n{snippet}\n{HotstringEmitter.HotIfClose}";
+
         return Task.FromResult(Result.Success(new HotstringPreviewDto(snippet)));
     }
 }
