@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Linq.Expressions;
 using System.Text.RegularExpressions;
 using AHKFlowApp.Application.Services;
@@ -13,6 +14,7 @@ internal static partial class HotstringRules
     public const int DescriptionMaxLength = 200;
     public const int DateTimeFormatMaxLength = 50;
     public const int DateOffsetAmountMax = 3650;
+    public const int ContextValueMaxLength = 200;
 
     public static IRuleBuilderOptions<T, string> ValidTrigger<T>(this IRuleBuilderInitial<T, string> rb) =>
         rb.Cascade(CascadeMode.Stop)
@@ -201,6 +203,44 @@ internal static partial class HotstringRules
                     context.AddFailure("Macro replacement must not contain {{key:...}} tokens after {{cursor}}.");
             })
             .When(IsMacro);
+    }
+
+    /// <summary>
+    /// Adds validation for a hotstring's optional window-context match, kind-agnostic (applies
+    /// regardless of <see cref="HotstringKind"/>): <paramref name="contextMatchType"/> and
+    /// <paramref name="contextValue"/> must both be null or both be set, the match type must be a
+    /// valid <see cref="WindowMatchType"/>, and the value must not be blank/whitespace-only, is
+    /// capped at <see cref="ContextValueMaxLength"/> characters, and must not contain a
+    /// double-quote, backtick, or any control character &#8212; it is embedded raw into a
+    /// generated <c>WinActive(...)</c> AHK expression, so these characters would break or escape
+    /// that syntax.
+    /// </summary>
+    public static void AddWindowContextRules<T>(
+        this AbstractValidator<T> validator,
+        Expression<Func<T, WindowMatchType?>> contextMatchType,
+        Expression<Func<T, string?>> contextValue)
+    {
+        Func<T, string?> valueFn = contextValue.Compile();
+
+        // Both-or-neither
+        validator.RuleFor(contextMatchType)
+            .Must((x, matchType) => (matchType is null) == (valueFn(x) is null))
+            .WithMessage("ContextMatchType and ContextValue must both be set or both be null.");
+
+        validator.RuleFor(contextMatchType)
+            .IsInEnum();
+
+        validator.RuleFor(contextValue)
+            .Must(v => v is null || !string.IsNullOrWhiteSpace(v))
+                .WithMessage("ContextValue must not be blank or whitespace.")
+            .MaximumLength(ContextValueMaxLength)
+                .WithMessage($"ContextValue must be {ContextValueMaxLength} characters or fewer.")
+            .Must(v => v is null || !v.Contains('"'))
+                .WithMessage("ContextValue must not contain double-quote characters.")
+            .Must(v => v is null || !v.Contains('`'))
+                .WithMessage("ContextValue must not contain backtick characters.")
+            .Must(v => v is null || !v.Any(char.IsControl))
+                .WithMessage("ContextValue must not contain control characters.");
     }
 
     [GeneratedRegex(@"^(?=.*[yMdHhmst])[yMdHhmst0-9 \-./:,()]+$")]

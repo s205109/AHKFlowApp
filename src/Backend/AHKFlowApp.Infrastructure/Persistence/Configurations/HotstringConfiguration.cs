@@ -43,12 +43,25 @@ internal sealed class HotstringConfiguration : IEntityTypeConfiguration<Hotstrin
         builder.Property(x => x.DateOffsetUnit)
             .HasConversion<int>();
 
+        // Persist enum as int (default for EF, made explicit here for clarity).
+        builder.Property(x => x.ContextMatchType)
+            .HasConversion<int>();
+
+        builder.Property(x => x.ContextValue)
+            .HasMaxLength(200);
+
         builder.Property(x => x.CreatedAt).IsRequired();
         builder.Property(x => x.UpdatedAt).IsRequired();
 
-        // One trigger per owner globally — profiles are tracked in the junction table.
-        builder.HasIndex(x => new { x.OwnerOid, x.Trigger })
+        // One trigger per owner per context — a trigger may have one global (null context) row
+        // plus one row per distinct window-context value. Profiles are tracked in the junction table.
+        // HasFilter(null) overrides EF's default SQL Server convention of adding an "IS NOT NULL"
+        // filter to unique indexes with nullable columns: we want SQL Server's native unique-index
+        // semantics, where two rows with NULL in every indexed nullable column are treated as
+        // duplicates, so only one global (null-context) row per (OwnerOid, Trigger) is allowed.
+        builder.HasIndex(x => new { x.OwnerOid, x.Trigger, x.ContextMatchType, x.ContextValue })
             .IsUnique()
-            .HasDatabaseName("IX_Hotstring_Owner_Trigger");
+            .HasFilter(null)
+            .HasDatabaseName("IX_Hotstring_Owner_Trigger_Context");
     }
 }

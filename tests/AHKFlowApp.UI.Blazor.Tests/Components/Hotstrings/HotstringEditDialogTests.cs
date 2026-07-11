@@ -981,6 +981,157 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
         provider.FindAll("[data-test=\"macro-insert-hint\"]").Should().BeEmpty();
     }
 
+    [Fact]
+    public async Task ContextSwitch_TurnedOn_ShowsMatchTypeAndValueFields()
+    {
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync();
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"context-switch\"]"));
+
+        provider.FindAll("[data-test=\"context-match-type-select\"]").Should().BeEmpty();
+        provider.FindAll("[data-test=\"context-value-input\"]").Should().BeEmpty();
+
+        provider.Find("input[data-test=\"context-switch\"]").Change(true);
+
+        provider.WaitForAssertion(() =>
+        {
+            provider.Find("[data-test=\"context-match-type-select\"]").Should().NotBeNull();
+            provider.Find("[data-test=\"context-value-input\"]").Should().NotBeNull();
+        });
+    }
+
+    [Fact]
+    public async Task ContextSwitch_TurnedOff_ClearsContextFields()
+    {
+        HotstringEditModel item = new() { Trigger = "btw", Replacement = "by the way" };
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"context-switch\"]"));
+
+        provider.Find("input[data-test=\"context-switch\"]").Change(true);
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"context-value-input\"]"));
+        provider.Find("input[data-test=\"context-value-input\"]").Input("notepad.exe");
+
+        provider.WaitForAssertion(() => item.ContextValue.Should().Be("notepad.exe"));
+
+        provider.Find("input[data-test=\"context-switch\"]").Change(false);
+
+        provider.WaitForAssertion(() =>
+        {
+            item.ContextMatchType.Should().BeNull();
+            item.ContextValue.Should().BeNull();
+            provider.FindAll("[data-test=\"context-value-input\"]").Should().BeEmpty();
+        });
+    }
+
+    [Fact]
+    public async Task ContextValueField_ExecutableSelected_ShowsExePlaceholder()
+    {
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync();
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"context-switch\"]"));
+
+        provider.Find("input[data-test=\"context-switch\"]").Change(true);
+
+        provider.WaitForAssertion(() =>
+            provider.Find("input[data-test=\"context-value-input\"]").GetAttribute("placeholder").Should().Be("notepad.exe"));
+    }
+
+    [Fact]
+    public async Task Save_WithContext_SendsContextInCreateDto()
+    {
+        HotstringDto created = new(Guid.NewGuid(), [], true, "btw", "by the way", null, true, true,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        _api.CreateAsync(Arg.Any<CreateHotstringDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotstringDto>.Ok(created));
+
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync();
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"context-switch\"]"));
+
+        provider.Find("input[data-test=\"trigger-input\"]").Input("btw");
+        provider.Find("textarea[data-test=\"replacement-input\"]").Input("by the way");
+        provider.Find("input[data-test=\"context-switch\"]").Change(true);
+        provider.WaitForAssertion(() => provider.Find("input[data-test=\"context-value-input\"]"));
+        provider.Find("input[data-test=\"context-value-input\"]").Input("notepad.exe");
+        provider.Find("button.commit-edit").Click();
+
+        provider.WaitForAssertion(() => _api.Received(1).CreateAsync(
+            Arg.Is<CreateHotstringDto>(d => d.ContextMatchType == WindowMatchType.Executable && d.ContextValue == "notepad.exe"),
+            Arg.Any<CancellationToken>()));
+    }
+
+    [Fact]
+    public async Task Save_ContextOnEmptyValue_BlockedByValidation()
+    {
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync();
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"context-switch\"]"));
+
+        provider.Find("input[data-test=\"trigger-input\"]").Input("btw");
+        provider.Find("textarea[data-test=\"replacement-input\"]").Input("by the way");
+        provider.Find("input[data-test=\"context-switch\"]").Change(true);
+        provider.WaitForAssertion(() => provider.Find("input[data-test=\"context-value-input\"]"));
+        // Value field left empty while context is on.
+        provider.Find("button.commit-edit").Click();
+
+        await Task.Delay(150);
+        provider.Render();
+
+        _ = _api.DidNotReceive().CreateAsync(Arg.Any<CreateHotstringDto>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task PreviewRequest_ContextChanged_TriggersNewPreview()
+    {
+        _api.PreviewAsync(Arg.Any<HotstringPreviewRequestDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotstringPreviewDto>.Ok(new HotstringPreviewDto("snippet")));
+
+        HotstringEditModel item = new() { Trigger = "btw", Replacement = "by the way" };
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+        DisablePreviewDebounce(provider);
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"ahk-preview\"]"));
+        provider.Find("[data-test=\"ahk-preview\"] .mud-expand-panel-header").Click();
+
+        provider.WaitForAssertion(() => _api.Received(1).PreviewAsync(
+            Arg.Is<HotstringPreviewRequestDto>(r => r.ContextMatchType == null), Arg.Any<CancellationToken>()));
+
+        provider.Find("input[data-test=\"context-switch\"]").Change(true);
+        provider.WaitForAssertion(() => provider.Find("input[data-test=\"context-value-input\"]"));
+        provider.Find("input[data-test=\"context-value-input\"]").Input("notepad.exe");
+
+        provider.WaitForAssertion(() => _api.Received(1).PreviewAsync(
+            Arg.Is<HotstringPreviewRequestDto>(r => r.ContextMatchType == WindowMatchType.Executable && r.ContextValue == "notepad.exe"),
+            Arg.Any<CancellationToken>()));
+    }
+
+    [Fact]
+    public async Task ApplyPreviewResult_ContextValueError_ShownInlineNotInPanel()
+    {
+        const string contextMessage = "ContextValue must not contain double-quote characters.";
+        _api.PreviewAsync(Arg.Any<HotstringPreviewRequestDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotstringPreviewDto>.Failure(ApiResultStatus.Validation,
+                new ApiProblemDetails(null, "Bad Request", 400, null, null,
+                    new Dictionary<string, string[]> { ["Input.ContextValue"] = [contextMessage] })));
+
+        HotstringEditModel item = new()
+        {
+            Trigger = "btw",
+            Replacement = "by the way",
+            ContextMatchType = WindowMatchType.Executable,
+            ContextValue = "note\"pad.exe",
+        };
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+        DisablePreviewDebounce(provider);
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"ahk-preview\"]"));
+        provider.Find("[data-test=\"ahk-preview\"] .mud-expand-panel-header").Click();
+
+        provider.WaitForAssertion(() =>
+        {
+            MudTextField<string> valueField = provider.FindComponents<MudTextField<string>>()
+                .Single(f => f.Instance.Label == "Value").Instance;
+            valueField.GetState(x => x.ErrorText).Should().Be(contextMessage);
+
+            provider.FindAll("[data-test=\"preview-error\"]").Should().BeEmpty(
+                "a field-mapped context error shows inline only, never duplicated in the panel");
+        });
+    }
+
     private static void DisablePreviewDebounce(IRenderedComponent<MudDialogProvider> provider) =>
         provider.FindComponent<HotstringEditDialog>().Instance.PreviewDebounce = TimeSpan.Zero;
 

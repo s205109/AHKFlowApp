@@ -1,3 +1,4 @@
+using System.Text.Json;
 using AHKFlowApp.Application.Commands.Hotstrings;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Services;
@@ -215,5 +216,105 @@ public sealed class HotstringNewFieldHistoryTests(HistoryDbFixture fx)
         result.IsSuccess.Should().BeTrue();
         result.Value.Kind.Should().Be(HotstringKind.Macro);
         result.Value.Replacement.Should().Be(macroReplacement);
+    }
+
+    [Fact]
+    public async Task RecordHotstringAsync_ContextFields_CapturedInSnapshot()
+    {
+        var owner = Guid.NewGuid();
+        Hotstring entity = new HotstringBuilder()
+            .WithOwner(owner).WithTrigger("ctxhist").WithReplacement("x")
+            .WithContext(WindowMatchType.TitleContains, "- Visual Studio")
+            .Build();
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(entity);
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        EntityHistoryRecorder recorder = new(db, TimeProvider.System);
+        EntityHistory entry = await recorder.RecordHotstringAsync(entity, HistoryChangeType.Edit, default);
+
+        HotstringSnapshot? snapshot = JsonSerializer.Deserialize<HotstringSnapshot>(entry.SnapshotJson);
+        snapshot!.ContextMatchType.Should().Be(WindowMatchType.TitleContains);
+        snapshot.ContextValue.Should().Be("- Visual Studio");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_RevertToContextedVersion_RestoresContextFields()
+    {
+        var owner = Guid.NewGuid();
+        Hotstring entity = new HotstringBuilder()
+            .WithOwner(owner).WithTrigger("ctxrevert").WithReplacement("x")
+            .WithContext(WindowMatchType.Executable, "notepad.exe")
+            .Build();
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(entity);
+            await seed.SaveChangesAsync();
+        }
+
+        // Update clears the context — the before-image snapshot must carry it.
+        await using (AppDbContext db = fx.CreateContext())
+        {
+            UpdateHotstringCommandHandler update = new(
+                db, CurrentUserHelper.For(owner), TimeProvider.System,
+                new EntityHistoryRecorder(db, TimeProvider.System));
+            Result<HotstringDto> updated = await update.ExecuteAsync(
+                new UpdateHotstringCommand(entity.Id,
+                    new UpdateHotstringDto("ctxrevert", "x", null, true, true, true, null)), default);
+            updated.IsSuccess.Should().BeTrue();
+            updated.Value.ContextMatchType.Should().BeNull();
+        }
+
+        await using AppDbContext revertDb = fx.CreateContext();
+        RevertHotstringCommandHandler revert = new(
+            revertDb, CurrentUserHelper.For(owner), TimeProvider.System,
+            new EntityHistoryRecorder(revertDb, TimeProvider.System));
+        Result<HotstringDto> result = await revert.ExecuteAsync(
+            new RevertHotstringCommand(entity.Id, 1), default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.ContextMatchType.Should().Be(WindowMatchType.Executable);
+        result.Value.ContextValue.Should().Be("notepad.exe");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_RestoreContextedHotstring_RestoresContextFields()
+    {
+        var owner = Guid.NewGuid();
+        Hotstring entity = new HotstringBuilder()
+            .WithOwner(owner).WithTrigger("ctxrestore").WithReplacement("x")
+            .WithContext(WindowMatchType.WindowClass, "Notepad")
+            .Build();
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(entity);
+            await seed.SaveChangesAsync();
+        }
+
+        // Delete via the real handler so the tombstone snapshot is written the production way.
+        await using (AppDbContext db = fx.CreateContext())
+        {
+            DeleteHotstringCommandHandler delete = new(
+                db, CurrentUserHelper.For(owner), new EntityHistoryRecorder(db, TimeProvider.System));
+            (await delete.ExecuteAsync(new DeleteHotstringCommand(entity.Id), default))
+                .IsSuccess.Should().BeTrue();
+        }
+
+        await using AppDbContext restoreDb = fx.CreateContext();
+        RestoreHotstringCommandHandler restore = new(
+            restoreDb, CurrentUserHelper.For(owner), TimeProvider.System,
+            new EntityHistoryRecorder(restoreDb, TimeProvider.System));
+        Result<HotstringDto> result = await restore.ExecuteAsync(
+            new RestoreHotstringCommand(entity.Id), default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.ContextMatchType.Should().Be(WindowMatchType.WindowClass);
+        result.Value.ContextValue.Should().Be("Notepad");
     }
 }

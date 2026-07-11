@@ -1,6 +1,7 @@
 using AHKFlowApp.Application.Commands.Hotstrings;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Domain.Entities;
+using AHKFlowApp.Domain.Enums;
 using AHKFlowApp.Infrastructure.Persistence;
 using AHKFlowApp.TestUtilities.Builders;
 using Ardalis.Result;
@@ -136,6 +137,70 @@ public sealed class ImportHotstringsCommandHandlerTests(HotstringDbFixture fx)
 
         result.IsSuccess.Should().BeTrue();
         result.Value.ImportedCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Import_TriggerExistsOnlyAsContexted_ImportsGlobalRow()
+    {
+        var owner = Guid.NewGuid();
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(Hotstring.Create(
+                owner,
+                new HotstringDefinition(
+                    "btw", "contexted", null, true, true, false,
+                    ContextMatchType: WindowMatchType.Executable, ContextValue: "notepad.exe"),
+                _clock));
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        Result<HotstringImportResultDto> result = await Handler(db, owner).ExecuteAsync(
+            new ImportHotstringsCommand(new ImportHotstringsRequestDto("::btw::global")), default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.ImportedCount.Should().Be(1);
+        result.Value.Rows.Single().Status.Should().Be(HotstringImportRowStatus.Ready);
+
+        await using AppDbContext verify = fx.CreateContext();
+        (await verify.Hotstrings.CountAsync(h => h.OwnerOid == owner && h.Trigger == "btw")).Should().Be(2);
+    }
+
+    // Reproduces the false-positive-drop bug: a genuine global collision on one trigger forces the
+    // detach/retry path, and the retry re-query must apply the same global-only filter as the
+    // initial pass so a different row whose trigger only exists as a contexted row survives.
+    [Fact]
+    public async Task Import_RetryWithGlobalCollision_KeepsContextOnlySurvivors()
+    {
+        var owner = Guid.NewGuid();
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            // Genuine global collision target — forces the DbUpdateException retry path.
+            seed.Hotstrings.Add(Hotstring.Create(
+                owner, new HotstringDefinition("dup", "pre-existing", null, true, true, false), _clock));
+            // "ctxonly" exists ONLY as a contexted row — must not be dropped as a false-positive
+            // duplicate when the retry re-query runs.
+            seed.Hotstrings.Add(Hotstring.Create(
+                owner,
+                new HotstringDefinition(
+                    "ctxonly", "contexted", null, true, true, false,
+                    ContextMatchType: WindowMatchType.Executable, ContextValue: "notepad.exe"),
+                _clock));
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        Result<HotstringImportResultDto> result = await Handler(db, owner).ExecuteAsync(
+            new ImportHotstringsCommand(new ImportHotstringsRequestDto("::dup::x\n::ctxonly::y")), default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.ImportedCount.Should().Be(1);
+        result.Value.Rows.Single(r => r.Trigger == "dup").Status.Should().Be(HotstringImportRowStatus.Duplicate);
+        result.Value.Rows.Single(r => r.Trigger == "ctxonly").Status.Should().Be(HotstringImportRowStatus.Ready);
+
+        await using AppDbContext verify = fx.CreateContext();
+        (await verify.Hotstrings.CountAsync(
+            h => h.OwnerOid == owner && h.Trigger == "ctxonly" && h.ContextMatchType == null)).Should().Be(1);
     }
 
     [Fact]

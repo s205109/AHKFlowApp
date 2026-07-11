@@ -36,6 +36,9 @@ public sealed class CreateHotstringCommandValidator : AbstractValidator<CreateHo
         this.AddMacroKindRules(
             x => x.Input.Kind,
             x => x.Input.Replacement);
+        this.AddWindowContextRules(
+            x => x.Input.ContextMatchType,
+            x => x.Input.ContextValue);
     }
 }
 
@@ -53,9 +56,12 @@ internal sealed class CreateHotstringCommandHandler(
         CreateHotstringDto input = request.Input;
 
         bool duplicate = await db.Hotstrings.AnyAsync(
-            h => h.OwnerOid == ownerOid && h.Trigger == input.Trigger, ct);
+            h => h.OwnerOid == ownerOid
+                && h.Trigger == input.Trigger
+                && h.ContextMatchType == input.ContextMatchType
+                && h.ContextValue == input.ContextValue, ct);
         if (duplicate)
-            return Result.Conflict("A hotstring with this trigger already exists.");
+            return Result.Conflict(HotstringConflictMessages.DuplicateTrigger);
 
         Guid[] distinctProfileIds = input.ProfileIds?.Distinct().ToArray() ?? [];
         if (!input.AppliesToAllProfiles)
@@ -90,7 +96,9 @@ internal sealed class CreateHotstringCommandHandler(
                 input.OmitEndingCharacter,
                 input.DateTimeFormat,
                 input.DateOffsetAmount,
-                input.DateOffsetUnit),
+                input.DateOffsetUnit,
+                input.ContextMatchType,
+                input.ContextValue),
             clock);
 
         db.Hotstrings.Add(entity);
@@ -110,7 +118,7 @@ internal sealed class CreateHotstringCommandHandler(
         }
         catch (DbUpdateException ex) when (ex.IsDuplicateKeyViolation())
         {
-            return Result.Conflict("A hotstring with this trigger already exists.");
+            return Result.Conflict(HotstringConflictMessages.DuplicateTrigger);
         }
 
         await db.Entry(entity).Collection(h => h.Profiles).LoadAsync(ct);

@@ -20,7 +20,9 @@ public sealed class CreateHotstringCommandValidatorTests
         HotstringKind kind = HotstringKind.Text,
         string? dateTimeFormat = null,
         int? dateOffsetAmount = null,
-        DateOffsetUnit? dateOffsetUnit = null)
+        DateOffsetUnit? dateOffsetUnit = null,
+        WindowMatchType? contextMatchType = null,
+        string? contextValue = null)
         => new(new CreateHotstringDto(
             trigger,
             replacement,
@@ -30,7 +32,9 @@ public sealed class CreateHotstringCommandValidatorTests
             Kind: kind,
             DateTimeFormat: dateTimeFormat,
             DateOffsetAmount: dateOffsetAmount,
-            DateOffsetUnit: dateOffsetUnit));
+            DateOffsetUnit: dateOffsetUnit,
+            ContextMatchType: contextMatchType,
+            ContextValue: contextValue));
 
     [Fact]
     public void Validate_WithAppliesToAllProfiles_Succeeds()
@@ -543,5 +547,139 @@ public sealed class CreateHotstringCommandValidatorTests
             dateTimeFormat: new string('y', 50)));
 
         result.Errors.Should().NotContain(e => e.PropertyName == "Input.DateTimeFormat");
+    }
+
+    [Fact]
+    public void Validate_ContextMatchTypeWithoutValue_Fails()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            contextMatchType: WindowMatchType.Executable,
+            contextValue: null));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.ContextMatchType" &&
+            e.ErrorMessage == "ContextMatchType and ContextValue must both be set or both be null.");
+    }
+
+    [Fact]
+    public void Validate_ContextValueWithoutMatchType_Fails()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            contextMatchType: null,
+            contextValue: "notepad.exe"));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.ContextMatchType" &&
+            e.ErrorMessage == "ContextMatchType and ContextValue must both be set or both be null.");
+    }
+
+    [Fact]
+    public void Validate_ContextBothNull_Passes()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            contextMatchType: null,
+            contextValue: null));
+
+        result.Errors.Should().NotContain(e =>
+            e.PropertyName == "Input.ContextMatchType" || e.PropertyName == "Input.ContextValue");
+    }
+
+    [Fact]
+    public void Validate_ContextValueEmpty_Fails()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            contextMatchType: WindowMatchType.Executable,
+            contextValue: ""));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.ContextValue" &&
+            e.ErrorMessage == "ContextValue must not be blank or whitespace.");
+    }
+
+    [Fact]
+    public void Validate_ContextValueWhitespaceOnly_Fails()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            contextMatchType: WindowMatchType.Executable,
+            contextValue: "   "));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.ContextValue" &&
+            e.ErrorMessage == "ContextValue must not be blank or whitespace.");
+    }
+
+    [Fact]
+    public void Validate_ContextMatchTypeOutOfRange_Fails()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            contextMatchType: (WindowMatchType)99,
+            contextValue: "notepad.exe"));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.PropertyName == "Input.ContextMatchType");
+    }
+
+    [Fact]
+    public void Validate_ContextValueOver200Chars_Fails()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            contextMatchType: WindowMatchType.TitleContains,
+            contextValue: new string('x', 201)));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.ContextValue" &&
+            e.ErrorMessage == "ContextValue must be 200 characters or fewer.");
+    }
+
+    [Fact]
+    public void Validate_ContextValueWithDoubleQuote_Fails()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            contextMatchType: WindowMatchType.TitleContains,
+            contextValue: "some \"title\""));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.PropertyName == "Input.ContextValue");
+    }
+
+    [Fact]
+    public void Validate_ContextValueWithBacktick_Fails()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            contextMatchType: WindowMatchType.TitleContains,
+            contextValue: "some `title`"));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.PropertyName == "Input.ContextValue");
+    }
+
+    [Fact]
+    public void Validate_ContextValueWithControlChar_Fails()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            contextMatchType: WindowMatchType.TitleContains,
+            contextValue: "sometitle"));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.PropertyName == "Input.ContextValue");
+    }
+
+    [Fact]
+    public void Validate_ContextOnDateTimeKind_Passes()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            kind: HotstringKind.DateTime,
+            replacement: "",
+            dateTimeFormat: "yyyy-MM-dd",
+            contextMatchType: WindowMatchType.WindowClass,
+            contextValue: "Notepad"));
+
+        result.Errors.Should().NotContain(e =>
+            e.PropertyName == "Input.ContextMatchType" || e.PropertyName == "Input.ContextValue");
     }
 }
