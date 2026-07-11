@@ -22,10 +22,3 @@
 .preview-stale {
     opacity: 0.5;
 }
-
-::deep .ahk-mono textarea {
-    font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
-    font-size: 0.85rem;
-    max-width: 100%;
-    overflow-wrap: break-word;
-}
