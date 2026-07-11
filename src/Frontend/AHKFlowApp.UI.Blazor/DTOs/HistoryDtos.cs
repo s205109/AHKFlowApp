@@ -23,7 +23,9 @@ public sealed record HotstringSnapshot(
     HotstringKind Kind = HotstringKind.Text,
     string? DateTimeFormat = null,
     int? DateOffsetAmount = null,
-    DateOffsetUnit? DateOffsetUnit = null);
+    DateOffsetUnit? DateOffsetUnit = null,
+    WindowMatchType? ContextMatchType = null,
+    string? ContextValue = null);
 
 public sealed record HotkeySnapshot(
     string Description,

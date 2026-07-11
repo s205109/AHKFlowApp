@@ -17,4 +17,6 @@ public sealed record HotstringDto(
     bool OmitEndingCharacter = false,
     string? DateTimeFormat = null,
     int? DateOffsetAmount = null,
-    DateOffsetUnit? DateOffsetUnit = null);
+    DateOffsetUnit? DateOffsetUnit = null,
+    WindowMatchType? ContextMatchType = null,
+    string? ContextValue = null);
