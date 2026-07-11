@@ -338,4 +338,85 @@ public sealed class HotstringEditModelTests
         HotstringEditModel.SafePreview("yyyy-MM-dd", 7, DateOffsetUnit.Days, clock).Should().Be("2026-07-17");
         HotstringEditModel.SafePreview("HH:mm", -2, DateOffsetUnit.Hours, clock).Should().Be("06:30");
     }
+
+    [Fact]
+    public void IsInlineEditable_TextKindWithContext_ReturnsFalse()
+    {
+        HotstringEditModel model = new() { Kind = HotstringKind.Text, ContextMatchType = WindowMatchType.Executable, ContextValue = "notepad.exe" };
+
+        model.IsInlineEditable.Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsInlineEditable_TextKindNoContext_ReturnsTrue()
+    {
+        HotstringEditModel model = new() { Kind = HotstringKind.Text, ContextMatchType = null };
+
+        model.IsInlineEditable.Should().BeTrue();
+    }
+
+    [Fact]
+    public void ToCreateDto_WithContext_MapsContextFields()
+    {
+        HotstringEditModel model = new()
+        {
+            Trigger = "btw",
+            Replacement = "by the way",
+            ContextMatchType = WindowMatchType.WindowClass,
+            ContextValue = "Chrome_WidgetWin_1",
+        };
+
+        CreateHotstringDto dto = model.ToCreateDto();
+
+        dto.ContextMatchType.Should().Be(WindowMatchType.WindowClass);
+        dto.ContextValue.Should().Be("Chrome_WidgetWin_1");
+    }
+
+    [Fact]
+    public void FromDto_WithContext_PopulatesContextFields()
+    {
+        HotstringDto dto = new(Guid.NewGuid(), [], true, "btw", "by the way", null, true, false,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, HotstringKind.Text,
+            ContextMatchType: WindowMatchType.TitleContains, ContextValue: "- Visual Studio");
+
+        var model = HotstringEditModel.FromDto(dto);
+
+        model.ContextMatchType.Should().Be(WindowMatchType.TitleContains);
+        model.ContextValue.Should().Be("- Visual Studio");
+    }
+
+    [Fact]
+    public void Clone_WithContext_CopiesContextFields()
+    {
+        HotstringEditModel model = new()
+        {
+            Trigger = "btw",
+            ContextMatchType = WindowMatchType.Executable,
+            ContextValue = "notepad.exe",
+        };
+
+        HotstringEditModel clone = model.Clone();
+
+        clone.ContextMatchType.Should().Be(WindowMatchType.Executable);
+        clone.ContextValue.Should().Be("notepad.exe");
+    }
+
+    [Theory]
+    [InlineData(WindowMatchType.Executable, "notepad.exe", "exe:notepad.exe")]
+    [InlineData(WindowMatchType.WindowClass, "Chrome_WidgetWin_1", "class:Chrome_WidgetWin_1")]
+    [InlineData(WindowMatchType.TitleContains, "- Visual Studio", "title:- Visual Studio")]
+    public void ContextSummary_WithContext_FormatsByMatchType(WindowMatchType matchType, string value, string expected)
+    {
+        HotstringEditModel model = new() { ContextMatchType = matchType, ContextValue = value };
+
+        model.ContextSummary.Should().Be(expected);
+    }
+
+    [Fact]
+    public void ContextSummary_NoContext_IsBlank()
+    {
+        HotstringEditModel model = new() { ContextMatchType = null };
+
+        model.ContextSummary.Should().BeEmpty();
+    }
 }
