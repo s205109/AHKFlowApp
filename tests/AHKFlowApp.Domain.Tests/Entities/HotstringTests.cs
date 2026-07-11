@@ -236,4 +236,58 @@ public sealed class HotstringTests
         hs.DateOffsetAmount.Should().Be(30);
         hs.DateOffsetUnit.Should().Be(DateOffsetUnit.Minutes);
     }
+
+    [Fact]
+    public void Create_RoundTripsContextFields()
+    {
+        var hs = Hotstring.Create(
+            Guid.NewGuid(),
+            new HotstringDefinition("btw", "by the way", null, true, true, false,
+                ContextMatchType: WindowMatchType.Executable, ContextValue: "notepad.exe"),
+            _clock);
+
+        hs.ContextMatchType.Should().Be(WindowMatchType.Executable);
+        hs.ContextValue.Should().Be("notepad.exe");
+    }
+
+    [Fact]
+    public void Create_DefaultDefinition_HasNullContextFields()
+    {
+        var hs = Hotstring.Create(
+            Guid.NewGuid(),
+            new HotstringDefinition("btw", "by the way", null, true, true, false),
+            _clock);
+
+        hs.ContextMatchType.Should().BeNull();
+        hs.ContextValue.Should().BeNull();
+    }
+
+    [Fact]
+    public void Update_RoundTripsContextFields()
+    {
+        var hs = Hotstring.Create(
+            Guid.NewGuid(), new HotstringDefinition("x", "y", null, true, true, false), _clock);
+
+        hs.Update(new HotstringDefinition("x", "y", null, true, true, false,
+            ContextMatchType: WindowMatchType.TitleContains, ContextValue: "- Visual Studio"), _clock);
+
+        hs.ContextMatchType.Should().Be(WindowMatchType.TitleContains);
+        hs.ContextValue.Should().Be("- Visual Studio");
+    }
+
+    [Fact]
+    public void Restore_RoundTripsContextFields()
+    {
+        DateTimeOffset createdAt = DateTimeOffset.UtcNow.AddDays(-3);
+
+        var hs = Hotstring.Restore(
+            Guid.NewGuid(), Guid.NewGuid(),
+            new HotstringDefinition("x", "y", null, true, true, false,
+                ContextMatchType: WindowMatchType.WindowClass, ContextValue: "Chrome_WidgetWin_1"),
+            createdAt, _clock);
+
+        hs.CreatedAt.Should().Be(createdAt);
+        hs.ContextMatchType.Should().Be(WindowMatchType.WindowClass);
+        hs.ContextValue.Should().Be("Chrome_WidgetWin_1");
+    }
 }
