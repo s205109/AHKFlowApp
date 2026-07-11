@@ -2,13 +2,16 @@
 @using AHKFlowApp.UI.Blazor.Helpers
 @using AHKFlowApp.UI.Blazor.Services
 @using AHKFlowApp.UI.Blazor.Validation
+@using Microsoft.Extensions.Logging
+@using Microsoft.JSInterop
 @using MudBlazor
 @implements IDisposable
 
 <MudDialog Class="hotstring-edit-dialog">
     <TitleContent>
         <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="flex-grow-1">
-            <MudIconButton Class="cancel-edit" Icon="@Icons.Material.Filled.ArrowBack" OnClick="Cancel" />
+            <MudIconButton Class="cancel-edit" Icon="@Icons.Material.Filled.ArrowBack" OnClick="Cancel"
+                           UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = "Close without saving" })" />
             <MudText Typo="Typo.h6">@(Item.Id is null ? "New hotstring" : "Edit hotstring")</MudText>
             <MudButton Class="commit-edit" Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync" Disabled="@_saving">Save</MudButton>
         </MudStack>
@@ -23,10 +26,37 @@
                 <MudToggleItem Value="HotstringKind.Macro" Text="Macro" />
             </MudToggleGroup>
 
-            <MudTextField T="string" Label="Trigger" @bind-Value="Item.Trigger"
+            <MudTextField T="string" Label="Trigger" @bind-Value="Item.Trigger" Immediate="true"
                           Required="true" RequiredError="Trigger is required" MaxLength="50"
-                          Error="@(_triggerError is not null)" ErrorText="@_triggerError"
+                          Error="@(TriggerErrorText is not null)" ErrorText="@TriggerErrorText"
                           UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "trigger-input" })" />
+            @if (Item.Kind == HotstringKind.Macro)
+            {
+                <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap"
+                          UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "macro-toolbar" })">
+                    <MudText Typo="Typo.body2">Insert:</MudText>
+                    <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="@HasCursorToken"
+                               OnClick="@(() => InsertTokenAsync(CursorToken))">Cursor</MudButton>
+                    <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="@(() => InsertTokenAsync("{{key:Enter}}"))">Enter</MudButton>
+                    <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="@(() => InsertTokenAsync("{{key:Tab}}"))">Tab</MudButton>
+                </MudStack>
+                @if (_macroInsertHint is not null)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Warning"
+                             UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "macro-insert-hint", ["role"] = "status" })">
+                        @_macroInsertHint
+                    </MudText>
+                }
+            }
+            @if (Item.Kind != HotstringKind.DateTime)
+            {
+                <MudTextField T="string" Label="Replacement" @bind-Value="Item.Replacement" @ref="_replacementField"
+                              Immediate="true"
+                              Lines="3" Required="true" RequiredError="Replacement is required" MaxLength="4000"
+                              Error="@(_previewReplacementError is not null)" ErrorText="@_previewReplacementError"
+                              HelperText="@(Item.Kind == HotstringKind.Macro ? MacroHelperText : null)"
+                              UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "replacement-input" })" />
+            }
             @if (Item.Kind == HotstringKind.Text && !_macroSuggestionDismissed && MacroTokens.ContainsKnownToken(Item.Replacement))
             {
                 <MudAlert Severity="Severity.Info" UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "macro-suggestion" })">
@@ -34,24 +64,12 @@
                         <MudText Typo="Typo.body2">This replacement looks like it contains macro tokens.</MudText>
                         <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
                             <MudButton Size="Size.Small" OnClick="SwitchToMacroFromSuggestion">Switch to Macro</MudButton>
-                            <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="@(() => _macroSuggestionDismissed = true)" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small"
+                                           OnClick="@(() => _macroSuggestionDismissed = true)"
+                                           UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = "Dismiss macro suggestion" })" />
                         </MudStack>
                     </MudStack>
                 </MudAlert>
-            }
-            @if (Item.Kind != HotstringKind.DateTime)
-            {
-                <MudTextField T="string" Label="Replacement" @bind-Value="Item.Replacement" @ref="_replacementField"
-                              Lines="3" Required="@(Item.Kind != HotstringKind.DateTime)" RequiredError="Replacement is required" MaxLength="4000"
-                              UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "replacement-input" })" />
-            }
-            @if (Item.Kind == HotstringKind.Macro)
-            {
-                <MudStack Row="true" Spacing="1" UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "macro-toolbar" })">
-                    <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="@(() => InsertTokenAsync("{{cursor}}"))">Cursor</MudButton>
-                    <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="@(() => InsertTokenAsync("{{key:Enter}}"))">Enter</MudButton>
-                    <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="@(() => InsertTokenAsync("{{key:Tab}}"))">Tab</MudButton>
-                </MudStack>
             }
             @if (Item.Kind == HotstringKind.DateTime)
             {
@@ -66,7 +84,7 @@
                 </MudSelect>
                 @if (_selectedFormatOption == CustomFormatSentinel)
                 {
-                    <MudTextField T="string" Label="Custom format" @bind-Value="Item.DateTimeFormat" MaxLength="50"
+                    <MudTextField T="string" Label="Custom format" @bind-Value="Item.DateTimeFormat" MaxLength="50" Immediate="true"
                                   UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "datetime-format-custom" })" />
                 }
 
@@ -91,6 +109,38 @@
                     @PreviewWithOffset()
                 </MudText>
             }
+
+            <MudExpansionPanels UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "ahk-preview" })">
+                <MudExpansionPanel Text="Generated AutoHotkey code" Expanded="_previewExpanded" ExpandedChanged="OnPreviewExpandedChangedAsync">
+                    @if (_previewPending)
+                    {
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-1"
+                                  UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "preview-pending" })">
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                            <MudText Typo="Typo.caption">Updating preview…</MudText>
+                        </MudStack>
+                    }
+                    @if (_previewError is not null)
+                    {
+                        <MudText Color="Color.Error" Class="@(_previewPending ? "preview-stale" : null)"
+                                 UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "preview-error" })">
+                            @_previewError
+                        </MudText>
+                    }
+                    else if (_previewSnippet is not null)
+                    {
+                        <div class="preview-snippet-container">
+                            <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small"
+                                           Class="preview-copy" Disabled="@_previewPending"
+                                           OnClick="CopyPreviewAsync"
+                                           UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = "Copy generated AutoHotkey code", ["data-test"] = "preview-copy" })" />
+                            <pre class="@($"preview-snippet{(_previewPending ? " preview-stale" : "")}")"
+                                 data-test="preview-snippet">@_previewSnippet</pre>
+                        </div>
+                    }
+                </MudExpansionPanel>
+            </MudExpansionPanels>
+
             <MudTextField T="string" Label="Description" @bind-Value="Item.Description"
                           MaxLength="200"
                           UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "description-input" })" />
@@ -125,19 +175,6 @@
             {
                 <MudAlert Severity="Severity.Error">@_error</MudAlert>
             }
-
-            <MudExpansionPanels UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "ahk-preview" })">
-                <MudExpansionPanel Text="Generated AutoHotkey code" Expanded="_previewExpanded" ExpandedChanged="OnPreviewExpandedChangedAsync">
-                    @if (_previewError is not null)
-                    {
-                        <MudText Color="Color.Error">@_previewError</MudText>
-                    }
-                    else
-                    {
-                        <pre>@_previewSnippet</pre>
-                    }
-                </MudExpansionPanel>
-            </MudExpansionPanels>
         </MudStack>
         </MudForm>
     </DialogContent>
@@ -145,6 +182,9 @@
 
 @code {
     private const string CustomFormatSentinel = "__custom__";
+    private const string CursorToken = "{{cursor}}";
+    private const string MacroHelperText =
+        "One {{cursor}} token allowed; Enter/Tab must come before it. Write {{{{...}}}} for literal {{...}} text.";
 
     private static readonly (string Label, string Format)[] DateTimeFormatPresets =
     [
@@ -165,10 +205,16 @@
     [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = default!;
     [Inject] private IHotstringsApiClient Api { get; set; } = default!;
     [Inject] private IDialogService DialogService { get; set; } = default!;
+    [Inject] private ISnackbar Snackbar { get; set; } = default!;
+    [Inject] private IJSRuntime JS { get; set; } = default!;
+    [Inject] private ILogger<HotstringEditDialog> Logger { get; set; } = default!;
 
     [Parameter] public HotstringEditModel Item { get; set; } = new();
     [Parameter] public IReadOnlyList<ProfileDto> Profiles { get; set; } = [];
     [Parameter] public IReadOnlyList<CategoryDto> Categories { get; set; } = [];
+
+    /// <summary>Debounce applied to preview refreshes after a field change. Test seam.</summary>
+    internal TimeSpan PreviewDebounce { get; set; } = TimeSpan.FromMilliseconds(400);
 
     private string? _error;
     private string? _triggerError;
@@ -181,13 +227,21 @@
     private string _selectedFormatOption = CustomFormatSentinel;
     private MudTextField<string> _replacementField = default!;
     private bool _macroSuggestionDismissed;
+    private string? _macroInsertHint;
     private bool _previewExpanded;
+    private bool _previewPending;
     private string? _previewSnippet;
     private string? _previewError;
-    private PreviewSnapshot? _lastPreviewSnapshot;
+    private string? _previewTriggerError;
+    private string? _previewReplacementError;
+    private HotstringPreviewRequestDto? _lastPreviewRequest;
     private CancellationTokenSource? _previewCts;
     private int _previewGeneration;
     private bool _disposed;
+
+    private string? TriggerErrorText => _triggerError ?? _previewTriggerError;
+
+    private bool HasCursorToken => MacroTokens.CursorTokenStart(Item.Replacement) is not null;
 
     protected override void OnParametersSet()
     {
@@ -208,11 +262,11 @@
     {
         if (_previewExpanded)
         {
-            PreviewSnapshot current = PreviewSnapshot.From(Item);
-            if (_lastPreviewSnapshot is null || _lastPreviewSnapshot != current)
+            HotstringPreviewRequestDto current = BuildPreviewRequest();
+            if (_lastPreviewRequest != current)
             {
-                _lastPreviewSnapshot = current;
-                SchedulePreview(debounce: true);
+                _lastPreviewRequest = current;
+                SchedulePreview(current, debounce: true);
             }
         }
 
@@ -282,8 +336,33 @@
         }
     }
 
-    private async Task InsertTokenAsync(string token) =>
+    private async Task InsertTokenAsync(string token)
+    {
+        _macroInsertHint = null;
+
+        int? cursorStart = MacroTokens.CursorTokenStart(Item.Replacement);
+        if (token == CursorToken)
+        {
+            // The button is disabled once a cursor token exists; this guard covers paths
+            // where the bound value is newer than the last render.
+            if (cursorStart is not null)
+            {
+                _macroInsertHint = "Only one {{cursor}} token is allowed.";
+                return;
+            }
+        }
+        else if (cursorStart is { } start)
+        {
+            int caret = await _replacementField.GetCurrentCaretPositionAsync();
+            if (caret > start)
+            {
+                _macroInsertHint = "Enter and Tab can only be inserted before the {{cursor}} token.";
+                return;
+            }
+        }
+
         await _replacementField.InsertTextAtCurrentCaretPositionAsync(token);
+    }
 
     private Task SwitchToMacroFromSuggestion() => OnKindChangedAsync(HotstringKind.Macro);
 
@@ -352,65 +431,90 @@
         }
     }
 
+    private async Task CopyPreviewAsync()
+    {
+        if (_previewSnippet is null)
+            return;
+
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", _previewSnippet);
+            Snackbar.Add("Generated code copied.", Severity.Success);
+        }
+        catch (JSException)
+        {
+            Snackbar.Add("Copy to clipboard failed.", Severity.Warning);
+        }
+    }
+
     private Task OnPreviewExpandedChangedAsync(bool expanded)
     {
         _previewExpanded = expanded;
         if (expanded)
         {
-            _lastPreviewSnapshot = PreviewSnapshot.From(Item);
-            SchedulePreview(debounce: false);
+            HotstringPreviewRequestDto request = BuildPreviewRequest();
+            _lastPreviewRequest = request;
+            SchedulePreview(request, debounce: false);
         }
         else
         {
             CancelPendingPreview();
+            _previewTriggerError = null;
+            _previewReplacementError = null;
         }
 
         return Task.CompletedTask;
     }
 
-    private void SchedulePreview(bool debounce)
+    private HotstringPreviewRequestDto BuildPreviewRequest() => new(
+        Item.Kind, Item.Trigger, Item.Replacement, Item.IsCaseSensitive,
+        Item.OmitEndingCharacter, Item.IsEndingCharacterRequired, Item.IsTriggerInsideWord,
+        Item.DateTimeFormat, Item.DateOffsetAmount, Item.DateOffsetUnit);
+
+    private void SchedulePreview(HotstringPreviewRequestDto request, bool debounce)
     {
         CancelPendingPreview();
         CancellationTokenSource cts = new();
         _previewCts = cts;
         int generation = ++_previewGeneration;
-        _ = RunPreviewAsync(cts.Token, generation, debounce);
+        _previewPending = true;
+
+        // Fire-and-forget with the fault path observed: cancellations are handled inside
+        // RunPreviewAsync; anything else is a bug that must be logged, not lost as an
+        // unobserved task exception.
+        Task previewTask = RunPreviewAsync(request, cts.Token, generation, debounce);
+        _ = previewTask.ContinueWith(
+            t => Logger.LogError(t.Exception, "Hotstring preview failed unexpectedly."),
+            CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Current);
+
+        StateHasChanged();
     }
 
     private void CancelPendingPreview()
     {
+        // Bumping the generation (not just cancelling) also discards in-flight responses
+        // whose transport ignores cancellation and completes successfully afterwards.
+        _previewGeneration++;
+        _previewPending = false;
         _previewCts?.Cancel();
         _previewCts?.Dispose();
         _previewCts = null;
     }
 
-    private async Task RunPreviewAsync(CancellationToken ct, int generation, bool debounce)
+    private async Task RunPreviewAsync(HotstringPreviewRequestDto request, CancellationToken ct, int generation, bool debounce)
     {
         try
         {
-            if (debounce)
-                await Task.Delay(400, ct);
-
-            HotstringPreviewRequestDto request = new(Item.Kind, Item.Trigger, Item.Replacement, Item.IsCaseSensitive,
-                Item.OmitEndingCharacter, Item.IsEndingCharacterRequired, Item.IsTriggerInsideWord,
-                Item.DateTimeFormat, Item.DateOffsetAmount, Item.DateOffsetUnit);
+            if (debounce && PreviewDebounce > TimeSpan.Zero)
+                await Task.Delay(PreviewDebounce, ct);
 
             ApiResult<HotstringPreviewDto> result = await Api.PreviewAsync(request, ct);
 
             if (generation != _previewGeneration || _disposed)
                 return;
 
-            if (result.IsSuccess)
-            {
-                _previewSnippet = result.Value!.Snippet;
-                _previewError = null;
-            }
-            else
-            {
-                _previewError = ApiErrorMessageFactory.Build(result.Status, result.Problem);
-                _previewSnippet = null;
-            }
-
+            _previewPending = false;
+            ApplyPreviewResult(result);
             StateHasChanged();
         }
         catch (OperationCanceledException)
@@ -420,30 +524,49 @@
         }
     }
 
+    private void ApplyPreviewResult(ApiResult<HotstringPreviewDto> result)
+    {
+        _previewTriggerError = null;
+        _previewReplacementError = null;
+
+        if (result.IsSuccess)
+        {
+            _previewSnippet = result.Value!.Snippet;
+            _previewError = null;
+            return;
+        }
+
+        _previewSnippet = null;
+
+        if (result.Status == ApiResultStatus.Validation && result.Problem?.Errors is { Count: > 0 } errors)
+        {
+            foreach ((string key, string[] messages) in errors)
+            {
+                if (messages.FirstOrDefault() is not { } message)
+                    continue;
+
+                // Property paths arrive as e.g. "Input.Replacement" — the last dotted part
+                // is the field name.
+                string field = key[(key.LastIndexOf('.') + 1)..];
+                if (field.Equals(nameof(Item.Trigger), StringComparison.OrdinalIgnoreCase))
+                    _previewTriggerError ??= message;
+                else if (field.Equals(nameof(Item.Replacement), StringComparison.OrdinalIgnoreCase))
+                    _previewReplacementError ??= message;
+            }
+
+            _previewError = errors.SelectMany(kv => kv.Value).FirstOrDefault() ?? "The request was invalid.";
+        }
+        else
+        {
+            _previewError = ApiErrorMessageFactory.Build(result.Status, result.Problem);
+        }
+    }
+
     public void Dispose()
     {
         _disposed = true;
         _cts.Cancel();
         _cts.Dispose();
         CancelPendingPreview();
-    }
-
-    /// <summary>Emission-relevant fields that affect the generated AutoHotkey snippet.</summary>
-    private sealed record PreviewSnapshot(
-        HotstringKind Kind,
-        string Trigger,
-        string Replacement,
-        bool IsCaseSensitive,
-        bool OmitEndingCharacter,
-        bool IsEndingCharacterRequired,
-        bool IsTriggerInsideWord,
-        string? DateTimeFormat,
-        int? DateOffsetAmount,
-        DateOffsetUnit? DateOffsetUnit)
-    {
-        public static PreviewSnapshot From(HotstringEditModel item) => new(
-            item.Kind, item.Trigger, item.Replacement, item.IsCaseSensitive, item.OmitEndingCharacter,
-            item.IsEndingCharacterRequired, item.IsTriggerInsideWord, item.DateTimeFormat,
-            item.DateOffsetAmount, item.DateOffsetUnit);
     }
 }

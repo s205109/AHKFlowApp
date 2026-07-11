@@ -6,6 +6,7 @@ using Bunit;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using MudBlazor;
+using MudBlazor.Extensions;
 using MudBlazor.Services;
 using NSubstitute;
 using Xunit;
@@ -15,11 +16,12 @@ namespace AHKFlowApp.UI.Blazor.Tests.Components.Hotstrings;
 public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
 {
     private readonly IHotstringsApiClient _api = Substitute.For<IHotstringsApiClient>();
+    private readonly ISnackbar _snackbar = Substitute.For<ISnackbar>();
 
     public HotstringEditDialogTests()
     {
         Services.AddSingleton(_api);
-        Services.AddSingleton(Substitute.For<ISnackbar>());
+        Services.AddSingleton(_snackbar);
         Services.AddMudServices();
         JSInterop.Mode = JSRuntimeMode.Loose;
     }
@@ -104,8 +106,8 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
         });
 
         provider.WaitForAssertion(() => provider.Find("input[data-test=\"trigger-input\"]"));
-        provider.Find("input[data-test=\"trigger-input\"]").Change("btw");
-        provider.Find("textarea[data-test=\"replacement-input\"]").Change("by the way");
+        provider.Find("input[data-test=\"trigger-input\"]").Input("btw");
+        provider.Find("textarea[data-test=\"replacement-input\"]").Input("by the way");
         provider.Find("button.commit-edit").Click();
 
         provider.WaitForAssertion(() => _api.Received(1).CreateAsync(
@@ -143,7 +145,7 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
         });
 
         provider.WaitForAssertion(() => provider.Find("textarea[data-test=\"replacement-input\"]"));
-        provider.Find("textarea[data-test=\"replacement-input\"]").Change("by the way!");
+        provider.Find("textarea[data-test=\"replacement-input\"]").Input("by the way!");
         provider.Find("button.commit-edit").Click();
 
         provider.WaitForAssertion(() => _api.Received(1).UpdateAsync(
@@ -175,8 +177,8 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
         });
 
         provider.WaitForAssertion(() => provider.Find("input[data-test=\"trigger-input\"]"));
-        provider.Find("input[data-test=\"trigger-input\"]").Change("btw");
-        provider.Find("textarea[data-test=\"replacement-input\"]").Change("by the way");
+        provider.Find("input[data-test=\"trigger-input\"]").Input("btw");
+        provider.Find("textarea[data-test=\"replacement-input\"]").Input("by the way");
         provider.Find("button.commit-edit").Click();
 
         provider.WaitForAssertion(() => provider.Markup.Should().Contain("Trigger already exists"));
@@ -207,8 +209,8 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
         });
 
         provider.WaitForAssertion(() => provider.Find("input[data-test=\"trigger-input\"]"));
-        provider.Find("input[data-test=\"trigger-input\"]").Change("btw");
-        provider.Find("textarea[data-test=\"replacement-input\"]").Change("by the way");
+        provider.Find("input[data-test=\"trigger-input\"]").Input("btw");
+        provider.Find("textarea[data-test=\"replacement-input\"]").Input("by the way");
         provider.Find("input[data-test=\"case-sensitive-checkbox\"]").Change(true);
         provider.Find("input[data-test=\"omit-ending-checkbox\"]").Change(true);
         provider.Find("button.commit-edit").Click();
@@ -257,7 +259,7 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
 
         await SelectFormatAsync(provider, "yyyy-MM-dd");
 
-        provider.Find("input[data-test=\"trigger-input\"]").Change("date");
+        provider.Find("input[data-test=\"trigger-input\"]").Input("date");
         provider.Find("button.commit-edit").Click();
 
         provider.WaitForAssertion(() => _api.Received(1).CreateAsync(
@@ -334,7 +336,7 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
         provider.WaitForAssertion(() => provider.Find("[data-test=\"datetime-format-select\"]"));
         await SelectFormatAsync(provider, "yyyy-MM-dd");
 
-        provider.Find("input[data-test=\"trigger-input\"]").Change("date");
+        provider.Find("input[data-test=\"trigger-input\"]").Input("date");
         provider.Find("button.commit-edit").Click();
 
         provider.WaitForAssertion(() => _api.Received(1).CreateAsync(
@@ -546,8 +548,8 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
         IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync();
         provider.WaitForAssertion(() => provider.Find("input[data-test=\"trigger-input\"]"));
 
-        provider.Find("input[data-test=\"trigger-input\"]").Change("btw");
-        provider.Find("textarea[data-test=\"replacement-input\"]").Change("by the way");
+        provider.Find("input[data-test=\"trigger-input\"]").Input("btw");
+        provider.Find("textarea[data-test=\"replacement-input\"]").Input("by the way");
 
         await Task.Delay(600);
         provider.Render();
@@ -569,7 +571,7 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
         provider.WaitForAssertion(() => _api.Received(1).PreviewAsync(
             Arg.Is<HotstringPreviewRequestDto>(r => r.Replacement == "by the way"), Arg.Any<CancellationToken>()));
 
-        provider.Find("textarea[data-test=\"replacement-input\"]").Change("by the way!");
+        provider.Find("textarea[data-test=\"replacement-input\"]").Input("by the way!");
 
         provider.WaitForAssertion(() => _api.Received(1).PreviewAsync(
             Arg.Is<HotstringPreviewRequestDto>(r => r.Replacement == "by the way!"), Arg.Any<CancellationToken>()),
@@ -611,7 +613,7 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
         provider.WaitForAssertion(() => _api.Received(1).PreviewAsync(
             Arg.Is<HotstringPreviewRequestDto>(r => r.Trigger == "one"), Arg.Any<CancellationToken>()));
 
-        provider.Find("input[data-test=\"trigger-input\"]").Change("two");
+        provider.Find("input[data-test=\"trigger-input\"]").Input("two");
 
         // The debounced call to the mock doesn't trigger a re-render (it's still awaiting the
         // pending tcs2 task), so WaitForAssertion has no render event to re-poll on — wait out
@@ -680,6 +682,265 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
 
         await act.Should().NotThrowAsync();
     }
+
+    [Fact]
+    public async Task PreviewPanel_TypingWithoutBlur_SendsUpdatedValueToPreview()
+    {
+        _api.PreviewAsync(Arg.Any<HotstringPreviewRequestDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotstringPreviewDto>.Ok(new HotstringPreviewDto("snippet")));
+
+        HotstringEditModel item = new() { Trigger = "btw", Replacement = "by the way" };
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+        DisablePreviewDebounce(provider);
+        provider.Find("[data-test=\"ahk-preview\"] .mud-expand-panel-header").Click();
+
+        provider.WaitForAssertion(() => _api.Received(1).PreviewAsync(
+            Arg.Is<HotstringPreviewRequestDto>(r => r.Replacement == "by the way"), Arg.Any<CancellationToken>()));
+
+        // Raise input events only — the field never blurs, so a change-on-blur binding
+        // would keep sending the stale value.
+        provider.Find("textarea[data-test=\"replacement-input\"]").Input("by the way!!");
+
+        provider.WaitForAssertion(() => _api.Received(1).PreviewAsync(
+            Arg.Is<HotstringPreviewRequestDto>(r => r.Replacement == "by the way!!"), Arg.Any<CancellationToken>()));
+
+        provider.Find("input[data-test=\"trigger-input\"]").Input("btw2");
+
+        provider.WaitForAssertion(() => _api.Received(1).PreviewAsync(
+            Arg.Is<HotstringPreviewRequestDto>(r => r.Trigger == "btw2"), Arg.Any<CancellationToken>()));
+    }
+
+    [Fact]
+    public async Task PreviewPanel_LateResponseIgnoringCancellation_NeverSurfacesEvenAfterReopen()
+    {
+        TaskCompletionSource<ApiResult<HotstringPreviewDto>> tcs1 = new();
+        TaskCompletionSource<ApiResult<HotstringPreviewDto>> tcs2 = new();
+        _api.PreviewAsync(Arg.Any<HotstringPreviewRequestDto>(), Arg.Any<CancellationToken>())
+            .Returns(tcs1.Task, tcs2.Task);
+
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync();
+        DisablePreviewDebounce(provider);
+        provider.Find("[data-test=\"ahk-preview\"] .mud-expand-panel-header").Click();
+
+        provider.WaitForAssertion(() => _api.Received(1).PreviewAsync(Arg.Any<HotstringPreviewRequestDto>(), Arg.Any<CancellationToken>()));
+
+        // Collapse, then let the first transport "ignore" cancellation and complete successfully.
+        provider.Find("[data-test=\"ahk-preview\"] .mud-expand-panel-header").Click();
+        tcs1.SetResult(ApiResult<HotstringPreviewDto>.Ok(new HotstringPreviewDto("sneaky-snippet")));
+
+        await Task.Delay(100);
+        provider.Render();
+        provider.Markup.Should().NotContain("sneaky-snippet");
+
+        // Reopen: a fresh preview call starts (tcs2, still pending) — the stale response
+        // must not have been stashed in hidden state.
+        provider.Find("[data-test=\"ahk-preview\"] .mud-expand-panel-header").Click();
+        provider.WaitForAssertion(() => _api.Received(2).PreviewAsync(Arg.Any<HotstringPreviewRequestDto>(), Arg.Any<CancellationToken>()));
+
+        provider.Markup.Should().NotContain("sneaky-snippet");
+    }
+
+    [Fact]
+    public async Task PreviewPanel_WhilePending_ShowsUpdatingIndicator_ThenSnippet()
+    {
+        TaskCompletionSource<ApiResult<HotstringPreviewDto>> tcs = new();
+        _api.PreviewAsync(Arg.Any<HotstringPreviewRequestDto>(), Arg.Any<CancellationToken>())
+            .Returns(tcs.Task);
+
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync();
+        DisablePreviewDebounce(provider);
+        provider.Find("[data-test=\"ahk-preview\"] .mud-expand-panel-header").Click();
+
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"preview-pending\"]").TextContent.Should().Contain("Updating preview"));
+
+        tcs.SetResult(ApiResult<HotstringPreviewDto>.Ok(new HotstringPreviewDto("snippet-x")));
+
+        provider.WaitForAssertion(() =>
+        {
+            provider.FindAll("[data-test=\"preview-pending\"]").Should().BeEmpty();
+            provider.Find("[data-test=\"preview-snippet\"]").TextContent.Should().Contain("snippet-x");
+            provider.Find("[data-test=\"preview-snippet\"]").ClassList.Should().NotContain("preview-stale");
+        });
+    }
+
+    [Fact]
+    public async Task PreviewPanel_WhileRefreshing_KeepsPreviousSnippetVisiblyDimmed()
+    {
+        TaskCompletionSource<ApiResult<HotstringPreviewDto>> tcs2 = new();
+        _api.PreviewAsync(Arg.Any<HotstringPreviewRequestDto>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(ApiResult<HotstringPreviewDto>.Ok(new HotstringPreviewDto("snippet-one"))), tcs2.Task);
+
+        HotstringEditModel item = new() { Trigger = "btw", Replacement = "one" };
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+        DisablePreviewDebounce(provider);
+        provider.Find("[data-test=\"ahk-preview\"] .mud-expand-panel-header").Click();
+
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"preview-snippet\"]").TextContent.Should().Contain("snippet-one"));
+
+        provider.Find("textarea[data-test=\"replacement-input\"]").Input("two");
+
+        // The previous snippet stays visible but is explicitly marked stale while the
+        // refresh is in flight — never presented as current.
+        provider.WaitForAssertion(() =>
+        {
+            provider.Find("[data-test=\"preview-pending\"]").TextContent.Should().Contain("Updating preview");
+            provider.Find("[data-test=\"preview-snippet\"]").ClassList.Should().Contain("preview-stale");
+            provider.Find("[data-test=\"preview-snippet\"]").TextContent.Should().Contain("snippet-one");
+            provider.Find("[data-test=\"preview-copy\"]").HasAttribute("disabled").Should().BeTrue();
+        });
+    }
+
+    [Fact]
+    public async Task PreviewPanel_CopyButton_CopiesSnippetAndShowsSnackbar()
+    {
+        _api.PreviewAsync(Arg.Any<HotstringPreviewRequestDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotstringPreviewDto>.Ok(new HotstringPreviewDto("::btw::by the way")));
+
+        HotstringEditModel item = new() { Trigger = "btw", Replacement = "by the way" };
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+        DisablePreviewDebounce(provider);
+        provider.Find("[data-test=\"ahk-preview\"] .mud-expand-panel-header").Click();
+
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"preview-copy\"]"));
+        provider.Find("[data-test=\"preview-copy\"]").GetAttribute("aria-label").Should().NotBeNullOrEmpty();
+        provider.Find("[data-test=\"preview-copy\"]").Click();
+
+        provider.WaitForAssertion(() =>
+        {
+            Bunit.JSRuntimeInvocation invocation = JSInterop.VerifyInvoke("navigator.clipboard.writeText");
+            invocation.Arguments.Should().Contain("::btw::by the way");
+            _snackbar.Received(1).Add("Generated code copied.", Severity.Success, Arg.Any<Action<SnackbarOptions>>(), Arg.Any<string>());
+        });
+    }
+
+    [Fact]
+    public async Task PreviewPanel_RendersDirectlyAfterEditor_BeforeDescription()
+    {
+        HotstringEditModel item = new() { Trigger = "sig", Kind = HotstringKind.Macro, Replacement = "x" };
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"ahk-preview\"]"));
+
+        string markup = provider.Markup;
+        int toolbar = markup.IndexOf("data-test=\"macro-toolbar\"", StringComparison.Ordinal);
+        int replacement = markup.IndexOf("data-test=\"replacement-input\"", StringComparison.Ordinal);
+        int preview = markup.IndexOf("data-test=\"ahk-preview\"", StringComparison.Ordinal);
+        int description = markup.IndexOf("data-test=\"description-input\"", StringComparison.Ordinal);
+
+        toolbar.Should().BePositive().And.BeLessThan(replacement, "the insert toolbar sits above the Replacement editor");
+        replacement.Should().BeLessThan(preview, "the preview panel sits directly below the editor");
+        preview.Should().BeLessThan(description, "the preview panel comes before Description");
+    }
+
+    [Fact]
+    public async Task PreviewPanel_ValidationError_ShowsFriendlyMessageWithoutPropertyPath_AndMapsToReplacementField()
+    {
+        const string parserMessage = "Unknown token '{{key:Escape}}'. Allowed: {{cursor}}, {{key:Enter}}, {{key:Tab}}.";
+        _api.PreviewAsync(Arg.Any<HotstringPreviewRequestDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotstringPreviewDto>.Failure(ApiResultStatus.Validation,
+                new ApiProblemDetails(null, "Bad Request", 400, null, null,
+                    new Dictionary<string, string[]> { ["Input.Replacement"] = [parserMessage] })));
+
+        HotstringEditModel item = new() { Trigger = "sig", Kind = HotstringKind.Macro, Replacement = "{{key:Escape}}" };
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+        DisablePreviewDebounce(provider);
+        provider.Find("[data-test=\"ahk-preview\"] .mud-expand-panel-header").Click();
+
+        provider.WaitForAssertion(() =>
+        {
+            string panelError = provider.Find("[data-test=\"preview-error\"]").TextContent.Trim();
+            panelError.Should().Be(parserMessage, "the DTO property-path prefix must be stripped");
+
+            MudTextField<string> replacementField = provider.FindComponents<MudTextField<string>>()
+                .Single(f => f.Instance.Label == "Replacement").Instance;
+            replacementField.GetState(x => x.ErrorText).Should().Be(parserMessage);
+        });
+    }
+
+    [Fact]
+    public async Task PreviewPanel_TriggerValidationError_MapsToTriggerField()
+    {
+        const string triggerMessage = "Trigger is required.";
+        _api.PreviewAsync(Arg.Any<HotstringPreviewRequestDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotstringPreviewDto>.Failure(ApiResultStatus.Validation,
+                new ApiProblemDetails(null, "Bad Request", 400, null, null,
+                    new Dictionary<string, string[]> { ["Input.Trigger"] = [triggerMessage] })));
+
+        HotstringEditModel item = new() { Trigger = "", Replacement = "by the way" };
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+        DisablePreviewDebounce(provider);
+        provider.Find("[data-test=\"ahk-preview\"] .mud-expand-panel-header").Click();
+
+        provider.WaitForAssertion(() =>
+        {
+            MudTextField<string> triggerField = provider.FindComponents<MudTextField<string>>()
+                .Single(f => f.Instance.Label == "Trigger").Instance;
+            triggerField.GetState(x => x.ErrorText).Should().Be(triggerMessage);
+        });
+    }
+
+    [Fact]
+    public async Task MacroToolbar_ShowsInsertLabelAndHelperText()
+    {
+        HotstringEditModel item = new() { Trigger = "sig", Kind = HotstringKind.Macro, Replacement = "" };
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+
+        provider.WaitForAssertion(() =>
+        {
+            provider.Find("[data-test=\"macro-toolbar\"]").TextContent.Should().Contain("Insert:");
+            provider.Markup.Should().Contain("Enter/Tab must come before it");
+        });
+    }
+
+    [Fact]
+    public async Task MacroToolbar_CursorButton_DisabledWhenCursorTokenPresent()
+    {
+        HotstringEditModel item = new() { Trigger = "sig", Kind = HotstringKind.Macro, Replacement = "Hi {{cursor}}" };
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"macro-toolbar\"]"));
+
+        AngleSharp.Dom.IElement cursorButton = provider.FindAll("[data-test=\"macro-toolbar\"] button")
+            .First(b => b.TextContent.Contains("Cursor"));
+
+        cursorButton.HasAttribute("disabled").Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task MacroToolbar_EnterAfterCursor_BlockedWithInlineHint()
+    {
+        JSInterop.Setup<int>("mudInput.getCaretPosition", _ => true).SetResult(12);
+
+        HotstringEditModel item = new() { Trigger = "sig", Kind = HotstringKind.Macro, Replacement = "{{cursor}}tail" };
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"macro-toolbar\"]"));
+
+        provider.FindAll("[data-test=\"macro-toolbar\"] button").First(b => b.TextContent.Contains("Enter")).Click();
+
+        provider.WaitForAssertion(() =>
+            provider.Find("[data-test=\"macro-insert-hint\"]").TextContent.Should().Contain("before the {{cursor}} token"));
+        JSInterop.Invocations.Should().NotContain(i => i.Identifier == "mudInput.insertAtCurrentCaretPosition");
+    }
+
+    [Fact]
+    public async Task MacroToolbar_EnterBeforeCursor_InsertsToken()
+    {
+        JSInterop.Setup<int>("mudInput.getCaretPosition", _ => true).SetResult(0);
+
+        HotstringEditModel item = new() { Trigger = "sig", Kind = HotstringKind.Macro, Replacement = "abc{{cursor}}" };
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"macro-toolbar\"]"));
+
+        provider.FindAll("[data-test=\"macro-toolbar\"] button").First(b => b.TextContent.Contains("Enter")).Click();
+
+        provider.WaitForAssertion(() =>
+        {
+            Bunit.JSRuntimeInvocation invocation = JSInterop.VerifyInvoke("mudInput.insertAtCurrentCaretPosition");
+            invocation.Arguments.Should().Contain("{{key:Enter}}");
+        });
+        provider.FindAll("[data-test=\"macro-insert-hint\"]").Should().BeEmpty();
+    }
+
+    private static void DisablePreviewDebounce(IRenderedComponent<MudDialogProvider> provider) =>
+        provider.FindComponent<HotstringEditDialog>().Instance.PreviewDebounce = TimeSpan.Zero;
 
     private async Task<IRenderedComponent<MudDialogProvider>> RenderDialogAsync(HotstringEditModel? item = null)
     {
