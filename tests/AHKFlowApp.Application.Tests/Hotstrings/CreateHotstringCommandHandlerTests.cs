@@ -1,6 +1,7 @@
 using AHKFlowApp.Application.Commands.Hotstrings;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Domain.Entities;
+using AHKFlowApp.Domain.Enums;
 using AHKFlowApp.Infrastructure.Persistence;
 using AHKFlowApp.TestUtilities.Builders;
 using Ardalis.Result;
@@ -116,5 +117,102 @@ public sealed class CreateHotstringCommandHandlerTests(HotstringDbFixture fx)
             new CreateHotstringCommand(new CreateHotstringDto("shared", "y")), default);
 
         result.IsSuccess.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_DuplicateTriggerSameContext_ReturnsConflict()
+    {
+        var owner = Guid.NewGuid();
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(new HotstringBuilder()
+                .WithOwner(owner).WithTrigger("ctx").WithReplacement("first")
+                .WithContext(WindowMatchType.Executable, "notepad.exe")
+                .Build());
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        var handler = new CreateHotstringCommandHandler(db, CurrentUserHelper.For(owner), _clock);
+        var cmd = new CreateHotstringCommand(new CreateHotstringDto(
+            "ctx", "second",
+            ContextMatchType: WindowMatchType.Executable, ContextValue: "notepad.exe"));
+
+        Result<HotstringDto> result = await handler.ExecuteAsync(cmd, default);
+
+        result.Status.Should().Be(ResultStatus.Conflict);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_DuplicateTriggerDifferentContext_Succeeds()
+    {
+        var owner = Guid.NewGuid();
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(new HotstringBuilder()
+                .WithOwner(owner).WithTrigger("ctx2").WithReplacement("first")
+                .WithContext(WindowMatchType.Executable, "notepad.exe")
+                .Build());
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        var handler = new CreateHotstringCommandHandler(db, CurrentUserHelper.For(owner), _clock);
+        var cmd = new CreateHotstringCommand(new CreateHotstringDto(
+            "ctx2", "second",
+            ContextMatchType: WindowMatchType.WindowClass, ContextValue: "Notepad"));
+
+        Result<HotstringDto> result = await handler.ExecuteAsync(cmd, default);
+
+        result.IsSuccess.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_DuplicateTriggerGlobalVsContexted_Succeeds()
+    {
+        var owner = Guid.NewGuid();
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            // Existing GLOBAL row (no context).
+            seed.Hotstrings.Add(new HotstringBuilder()
+                .WithOwner(owner).WithTrigger("ctx3").WithReplacement("global")
+                .Build());
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        var handler = new CreateHotstringCommandHandler(db, CurrentUserHelper.For(owner), _clock);
+        var cmd = new CreateHotstringCommand(new CreateHotstringDto(
+            "ctx3", "contexted",
+            ContextMatchType: WindowMatchType.Executable, ContextValue: "notepad.exe"));
+
+        Result<HotstringDto> result = await handler.ExecuteAsync(cmd, default);
+
+        result.IsSuccess.Should().BeTrue();
+
+        await using AppDbContext verify = fx.CreateContext();
+        (await verify.Hotstrings.CountAsync(h => h.OwnerOid == owner && h.Trigger == "ctx3")).Should().Be(2);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_Conflict_MessageMentionsContext()
+    {
+        var owner = Guid.NewGuid();
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(new HotstringBuilder()
+                .WithOwner(owner).WithTrigger("ctx4").WithReplacement("first")
+                .Build());
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        var handler = new CreateHotstringCommandHandler(db, CurrentUserHelper.For(owner), _clock);
+        var cmd = new CreateHotstringCommand(new CreateHotstringDto("ctx4", "second"));
+
+        Result<HotstringDto> result = await handler.ExecuteAsync(cmd, default);
+
+        result.Status.Should().Be(ResultStatus.Conflict);
+        result.Errors.Should().Contain(e => e.Contains("context", StringComparison.OrdinalIgnoreCase));
     }
 }

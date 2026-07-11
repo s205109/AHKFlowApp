@@ -22,5 +22,7 @@ internal static class HotstringMappings
         h.OmitEndingCharacter,
         h.DateTimeFormat,
         h.DateOffsetAmount,
-        h.DateOffsetUnit);
+        h.DateOffsetUnit,
+        h.ContextMatchType,
+        h.ContextValue);
 }
