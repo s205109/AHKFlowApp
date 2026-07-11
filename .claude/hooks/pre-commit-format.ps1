@@ -41,7 +41,10 @@ if ($toolCommand -and $toolCommand -notmatch 'git\s+commit') {
 
 Write-Log "Checking code formatting..."
 
-dotnet format --verify-no-changes --verbosity quiet 2>$null
+# Explicit workspace: bare `dotnet format` fails with "both a MSBuild project file and
+# solution file found" at the repo root; anchor to the repo so hook cwd doesn't matter.
+$slnx = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\..\AHKFlowApp.slnx"))
+dotnet format $slnx --verify-no-changes --verbosity quiet 2>$null
 if ($LASTEXITCODE -eq 0) {
     Write-Log "Format check passed. (exit 0)"
 } else {
