@@ -45,8 +45,8 @@ public sealed class SwaggerDocTests(ApiTestFixture fixture)
         // provider targeting an already-covered type (HotstringDto/CreateHotstringDto/
         // UpdateHotstringDto/HotstringPreviewRequestDto/HotstringPreviewDto) would silently
         // replace its example everywhere. This guards against that: the Script example
-        // (targeting HotstringSnapshot, previously uncovered) must not have knocked out the
-        // pre-existing "btw" example.
+        // (targeting HotstringHistoryVersionDto, previously uncovered) must not have knocked out
+        // the pre-existing "btw" example.
 
         // Arrange
         using HttpClient client = _factory.CreateClient();

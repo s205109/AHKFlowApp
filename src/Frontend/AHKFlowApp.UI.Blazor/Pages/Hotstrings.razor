@@ -154,7 +154,8 @@
                             <MudTooltip Text="@OptionsTooltip(context.Item)">
                                 <span class="type-badge">
                                     <MudChip T="string" Size="Size.Small" Color="@(context.Item.Kind == HotstringKind.Script ? Color.Warning : Color.Default)"
-                                             Icon="@(context.Item.Kind == HotstringKind.Script ? Icons.Material.Filled.Warning : null)">@KindLabel(context.Item.Kind)</MudChip>
+                                             Icon="@(context.Item.Kind == HotstringKind.Script ? Icons.Material.Filled.Warning : null)"
+                                             UserAttributes="@KindChipAttributes(context.Item.Kind)">@KindLabel(context.Item.Kind)</MudChip>
                                     <span class="option-glyphs">@OptionGlyphs(context.Item)</span>
                                     @if (context.Item.ContextMatchType is not null)
                                     {
@@ -863,9 +864,14 @@
         return glyphs;
     }
 
+    // Warning conveyed to assistive tech and sighted users alike — the chip's warning color and
+    // icon alone are not exposed to screen readers.
+    private const string ScriptWarningText = "Runs arbitrary AutoHotkey code — review before running.";
+
     private static string OptionsTooltip(HotstringEditModel item)
     {
         List<string> parts = [KindLabel(item.Kind)];
+        if (item.Kind == HotstringKind.Script) parts.Add(ScriptWarningText);
         if (!item.IsEndingCharacterRequired) parts.Add("Expands immediately (no ending character)");
         if (item.IsTriggerInsideWord) parts.Add("Triggers inside words");
         if (item.IsCaseSensitive) parts.Add("Case sensitive");
@@ -873,6 +879,11 @@
         if (item.ContextMatchType is not null) parts.Add($"Only in {item.ContextSummary}");
         return string.Join(" · ", parts);
     }
+
+    private static Dictionary<string, object?>? KindChipAttributes(HotstringKind kind) =>
+        kind == HotstringKind.Script
+            ? new Dictionary<string, object?> { ["aria-label"] = $"{KindLabel(kind)}. {ScriptWarningText}" }
+            : null;
 
     private RenderFragment RenderActions(HotstringEditModel item) => @<text>
         @if (IsEditing(item))
