@@ -26,92 +26,127 @@ It creates the branch, places the worktree under `.claude/worktrees/<name>/`, co
 ### Cleanup of merged worktrees on create
 
 Creating a worktree first checks the other worktrees whose branch is already merged
-into `main`:
+into `main`. What happens next is governed by one persistent per-repo setting plus
+per-run overrides.
 
-- **Interactive direct create (a real console, no flag):** it lists the merged, clean
-  worktrees and asks once - `Clean up merged worktrees? (y/n)`. `y` removes them all;
-  `n` skips.
-- **Direct `-Cleanup` / `-c`:** removes every merged, clean worktree with no prompt:
+**The recommended switch — set it once:**
 
-  ```bash
-  pwsh -NoProfile -File scripts/new-worktree.ps1 -Name <name> -Cleanup
-  ```
+```bash
+git config --local ahkflow.worktreeCleanup true    # always remove merged, clean worktrees
+git config --local ahkflow.worktreeCleanup false   # never remove, never ask
+git config --local --unset ahkflow.worktreeCleanup # back to ask-once
+```
 
-- **Claude Code CLI bootstrap (`claude --worktree <name>`):** cleanup runs by default —
-  merged, clean worktrees are removed silently as part of native worktree creation. Set
-  `AHKFLOW_WORKTREE_CLEANUP=0` before launching Claude to opt out for that run:
+It lives in `.git/config` (never committed), is read at `--local` scope only (a global
+value can't enable it here), and governs every context. An invalid or duplicated value
+fails closed to report-only with a repair hint.
 
-  ```powershell
-  $env:AHKFLOW_WORKTREE_CLEANUP = '0'
-  claude --worktree <name>
-  Remove-Item Env:AHKFLOW_WORKTREE_CLEANUP
-  ```
+Precedence, highest first:
 
-  Or on one self-clearing line: `$env:AHKFLOW_WORKTREE_CLEANUP='0'; claude --worktree <name>; Remove-Item Env:AHKFLOW_WORKTREE_CLEANUP`.
-  The env var only takes effect for the `WorktreeCreate` hook; it does not change a
-  direct `scripts/new-worktree.ps1` call, which still uses `-Cleanup` or its prompt (and
-  defaults to leaving merged worktrees alone unless you opt in there).
+1. **`-Cleanup` / `-c` flag** (direct calls) — removes every merged, clean worktree, no prompt.
+2. **`AHKFLOW_WORKTREE_CLEANUP`** — hook context only: `1|true|yes|y` enables, `0|false|no|n`
+   disables, other values ignored. Per-run; never affects a direct call.
+3. **`ahkflow.worktreeCleanup`** config — `true` removes, `false` skips. All contexts.
+4. **Unset + interactive console** — asks once: *"Found N merged, clean worktrees. Remove
+   them now and enable automatic cleanup for this repository? [y/N]"*. `y` removes now and
+   persists `true`; anything else persists `false`. The answer is remembered, so it never
+   asks again.
+5. **Unset + hook / non-interactive** — report-only; the hook prints the one-liner to enable.
 
-- **Non-interactive direct create without `-Cleanup`:** detection is logged to stderr
-  only; nothing is removed (no console to prompt, and no opt-in was given).
+```bash
+pwsh -NoProfile -File scripts/new-worktree.ps1 -Name <name>            # ask-once if unset
+pwsh -NoProfile -File scripts/new-worktree.ps1 -Name <name> -Cleanup   # force removal this run
+```
 
-A worktree with uncommitted changes is never removed, even if its branch is merged.
-The worktree currently being created or reused is always excluded from the sweep, so a
-same-named recreate can never race its own removal. Removal reuses
-`remove-worktree-local-dev.ps1` (`git branch -d`, DB drop, Docker teardown, lock-safe
-folder delete).
+A worktree with uncommitted changes is never removed, even if its branch is merged. The
+worktree currently being created or reused is always excluded from the sweep. Removal
+reuses `remove-worktree-local-dev.ps1` (`git branch -d`, DB drop, Docker teardown,
+lock-safe folder delete) and is logged to `.claude\worktrees\worktree-removal.log`.
 
-#### Claude Code in-conversation native creation: cleanup runs automatically
+#### Claude Code in-conversation native creation: ask once, then remember
 
 Applies when *you* create a brand-new worktree in direct response to a conversation
-request via `EnterWorktree` with `name`. Entering an existing worktree with `path`
-never triggers this.
+request via `EnterWorktree` with `name`. Entering an existing worktree with `path` never
+triggers this.
 
-`EnterWorktree` fires the same `WorktreeCreate` hook as the CLI bootstrap above, so it
-gets the same default: merged, clean worktrees are removed automatically, silently, no
-confirmation. Hook stdout stays exactly the new worktree path and hook stderr is not
-usable as a conversation signal, so nothing is reported back mid-conversation — if you
-need to see what an auto-cleanup removed, check
-`.claude\worktrees\worktree-removal.log` in the main checkout.
-
-To suppress auto-cleanup for the whole session (e.g. you want to inspect merged
-worktrees before anything is removed), set `AHKFLOW_WORKTREE_CLEANUP=0` in the shell
-*before launching Claude Code* — the hook inherits that process environment, and there
-is no reliable way to toggle it for a single `EnterWorktree` call from mid-conversation.
-With it set, detection still runs (and can be surfaced on request via the manual
-commands below) but nothing is removed until you explicitly ask.
+`EnterWorktree` fires the `WorktreeCreate` hook, which runs the resolver above: with a
+recognized `AHKFLOW_WORKTREE_CLEANUP` env value or the config set (`true`/`false`) it acts
+silently and there is nothing to do. Only when neither governs — no env override **and** the
+config is **unset** — mirror the console ask-once in the conversation.
 
 First work out the two absolute paths, then substitute them literally into the commands
-below - do not paste PowerShell `$variables` into a Bash-tool command line, because the
+below — do not paste PowerShell `$variables` into a Bash-tool command line, because the
 Bash tool (Git Bash) expands `$newPath`/`$mainRoot` to empty strings before `pwsh` ever
 runs, silently breaking the call.
 
 - `<new-worktree-absolute-path>`: the exact path `EnterWorktree` returned.
-- `<main-root>`: that path with the trailing worktree segment removed - drop
+- `<main-root>`: that path with the trailing worktree segment removed — drop
   `\.claude\worktrees\<name>` (default layout) or `\.worktrees\<name>` (fallback layout).
   Do not use a fixed parent count; the two layouts have different depths. Before running,
-  confirm `<main-root>\scripts\cleanup-merged-worktrees.ps1` exists - if it does not, you
+  confirm `<main-root>\scripts\cleanup-merged-worktrees.ps1` exists — if it does not, you
   removed the wrong number of segments.
 
-```bash
-pwsh -NoProfile -Command "& '<main-root>\scripts\cleanup-merged-worktrees.ps1' -RepoRoot '<main-root>' -IsHook -ExcludePath '<new-worktree-absolute-path>'"
-```
+1. Honor a session-wide env override first. If `AHKFLOW_WORKTREE_CLEANUP` holds a recognized
+   value, the environment already governs this session (the `WorktreeCreate` hook applied it),
+   so do nothing here — do not detect, do not ask, do not write config. Stop.
 
-If that command errors (non-zero exit or an exception), report the error to the user and
-stop; do not ask the cleanup question on the basis of a failed detection run.
+   ```bash
+   printf '%s' "${AHKFLOW_WORKTREE_CLEANUP:-}"
+   ```
 
-- No `cleanup: eligible merged worktree: ...` line: stay silent, do not ask.
-- One or more `cleanup: eligible merged worktree: <path> [<branch>]` lines: ask via
-  `AskUserQuestion`, listing what was found, for example:
-  "Found N merged worktree(s) ready to clean up: `<path>` [`<branch>`], ... . Remove them now?"
-  with options `Yes, remove them` / `No, leave them`.
-- If the user answers yes, re-run the same command with `-Cleanup` instead of `-IsHook`:
+   `1`/`true`/`yes`/`y` (enable) or `0`/`false`/`no`/`n` (disable), case-insensitive and
+   trimmed → env owns the session; stop. Empty or any other value → continue. (This is why
+   `AHKFLOW_WORKTREE_CLEANUP=0` set before launching Claude Code suppresses the whole flow.)
 
-  ```bash
-  pwsh -NoProfile -Command "& '<main-root>\scripts\cleanup-merged-worktrees.ps1' -RepoRoot '<main-root>' -Cleanup -ExcludePath '<new-worktree-absolute-path>'"
-  ```
+2. Check the config with the SAME four-state read the script uses — `--get-all` (not `--get`,
+   which silently returns only the last value when the key is duplicated):
 
-- If the user answers no, leave them; do not run the removal command.
+   ```bash
+   git -C '<main-root>' config --local --bool --get-all ahkflow.worktreeCleanup
+   ```
+
+   - Exit 1, no output → **unset** → continue to step 3.
+   - Exit 0 with exactly one `true`/`false` line → **set** → act silently, stop.
+   - Anything else — exit 128 (bad boolean) or exit 0 with more than one line (duplicated) →
+     **invalid** → report-only. Tell the user the value is invalid/duplicated and to repair it
+     with `git config --local --unset-all ahkflow.worktreeCleanup`; do NOT ask and do NOT
+     overwrite it. Stop.
+
+3. Detect eligible merged worktrees. This is report-only here: step 1 ruled out any env
+   override and step 2 guaranteed the config is unset, so `-IsHook` only lists — it removes
+   nothing.
+
+   ```bash
+   pwsh -NoProfile -Command "& '<main-root>\scripts\cleanup-merged-worktrees.ps1' -RepoRoot '<main-root>' -IsHook -ExcludePath '<new-worktree-absolute-path>'"
+   ```
+
+   If that command errors (non-zero exit or an exception), report the error to the user and
+   stop; do not ask on the basis of a failed detection run.
+
+   - No `cleanup: eligible merged worktree: ...` line → stay silent, do not ask, do not write config.
+   - One or more `cleanup: eligible merged worktree: <path> [<branch>]` lines → ask once via
+     `AskUserQuestion`: "Found N merged worktree(s) ready to clean up: `<path>` [`<branch>`], … .
+     Clean them up automatically from now on? I'll remember either way." with options
+     `Yes, remove them` / `No, leave them`.
+
+4. Persist the answer (mirrors the console ask-once exactly):
+
+   - **Yes** → enable and remove now:
+
+     ```bash
+     git -C '<main-root>' config --local ahkflow.worktreeCleanup true
+     pwsh -NoProfile -Command "& '<main-root>\scripts\cleanup-merged-worktrees.ps1' -RepoRoot '<main-root>' -Cleanup -ExcludePath '<new-worktree-absolute-path>'"
+     ```
+
+   - **No** → remember the choice, remove nothing:
+
+     ```bash
+     git -C '<main-root>' config --local ahkflow.worktreeCleanup false
+     ```
+
+To suppress this whole flow for a session regardless of config, set
+`AHKFLOW_WORKTREE_CLEANUP=0` in the shell *before launching Claude Code*; step 1 stops before
+any detection or ask.
 
 ## Removing
 
