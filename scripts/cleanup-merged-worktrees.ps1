@@ -27,11 +27,6 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'worktree-log.common.ps1')
 . (Join-Path $PSScriptRoot 'worktree-powershell.common.ps1')
 
-function Write-Stderr {
-    param([string] $Message)
-    [Console]::Error.WriteLine($Message)
-}
-
 # Parses `git worktree list --porcelain` into { Path; Branch } records. Branch is the
 # short name for a normal worktree, and $null for a detached-HEAD or bare entry.
 function ConvertFrom-WorktreePorcelain {
