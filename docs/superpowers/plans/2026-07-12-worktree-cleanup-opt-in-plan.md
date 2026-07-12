@@ -1,5 +1,7 @@
 # Worktree Cleanup Opt-In Implementation Plan
 
+> **Status: Implemented** on `fix/worktree-cleanup-default-on`. All tasks below are complete; the unchecked boxes are the original execution record, not outstanding work.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Return merged-worktree cleanup to opt-in, driven by a persistent per-repo git config (`ahkflow.worktreeCleanup`) with an ask-once console/conversation prompt that remembers the answer.

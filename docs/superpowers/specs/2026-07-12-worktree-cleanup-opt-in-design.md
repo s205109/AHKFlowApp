@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-12
 **Branch:** `fix/worktree-cleanup-default-on`
-**Status:** Approved design, pending implementation plan
+**Status:** Implemented on `fix/worktree-cleanup-default-on` (plan: `docs/superpowers/plans/2026-07-12-worktree-cleanup-opt-in-plan.md`)
 
 ## Problem
 
@@ -30,8 +30,9 @@ git config --local --unset ahkflow.worktreeCleanup  # back to ask-once default
 
 - Per-repo, lives in `.git/config` (never committed), one command to set or change.
 - **Scope is `--local` on every read, write, and unset.** Reads use
-  `git -C $RepoRoot config --local --bool --get ahkflow.worktreeCleanup` so a global or
-  system-level value can never enable cleanup for this repo, and `--bool` normalizes
+  `git -C $RepoRoot config --local --bool --get-all ahkflow.worktreeCleanup` so a global or
+  system-level value can never enable cleanup for this repo (`--get-all` so a duplicated key
+  surfaces as multiple lines and fails closed), and `--bool` normalizes
   `true/false/1/0/yes/no`. **Fail closed:** an invalid, duplicated, or unreadable value
   is treated as report-only, with a stderr warning that includes the repair command
   (`git config --local --unset-all ahkflow.worktreeCleanup`).
