@@ -23,17 +23,6 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'worktree-git.common.ps1')
 . (Join-Path $PSScriptRoot 'worktree-powershell.common.ps1')
 
-function Test-EnvironmentFlagDisabled {
-    param([string] $Name)
-
-    $value = [Environment]::GetEnvironmentVariable($Name, 'Process')
-    if ([string]::IsNullOrWhiteSpace($value)) {
-        return $false
-    }
-
-    return $value.Trim() -match '^(0|false|no|n)$'
-}
-
 function Get-HookInput {
     if (-not [Console]::IsInputRedirected) {
         return $null
@@ -237,22 +226,12 @@ Assert-WorktreeLocation -RepoRoot $repoRoot -WorktreePath $worktreePath
 $worktreeExists = Test-Path -LiteralPath (Join-Path $worktreePath '.git')
 
 # Sweep other worktrees whose branch is already merged into main before creating/reusing
-# this one. -ExcludePath protects $worktreePath itself now that it is known: without it,
-# a same-named create/reuse could race the async removal. Best-effort: never block
-# creation, and pipe to Out-Null so cleanup output can never reach hook stdout.
-$cleanupRequested = [bool] $Cleanup
-# Hook context defaults to cleanup-on; AHKFLOW_WORKTREE_CLEANUP=0 (or false/no/n) opts out.
-# The env var is hook-only: it must never change direct-call behavior, where -Cleanup / -c
-# and the interactive prompt already govern removal. Gating on $isHook stops a leftover
-# AHKFLOW_WORKTREE_CLEANUP=0 from silently blocking cleanup on future direct creates.
-if (-not $cleanupRequested -and $isHook -and -not (Test-EnvironmentFlagDisabled -Name 'AHKFLOW_WORKTREE_CLEANUP')) {
-    $cleanupRequested = $true
-}
-
-$cleanupIsReportOnly = $isHook -and -not $cleanupRequested
-
+# this one. -ExcludePath protects $worktreePath itself: without it a same-named create/reuse
+# could race the async removal. -IsHook passes the RAW hook context; the cleanup script's
+# resolver owns the full decision (hook-only env var, git config, ask-once). Best-effort:
+# never block creation, and pipe to Out-Null so cleanup output can never reach hook stdout.
 try {
-    & (Join-Path $PSScriptRoot 'cleanup-merged-worktrees.ps1') -RepoRoot $repoRoot -Cleanup:$cleanupRequested -IsHook:$cleanupIsReportOnly -ExcludePath $worktreePath | Out-Null
+    & (Join-Path $PSScriptRoot 'cleanup-merged-worktrees.ps1') -RepoRoot $repoRoot -Cleanup:$Cleanup -IsHook:$isHook -ExcludePath $worktreePath | Out-Null
 } catch {
     Write-Stderr "Merged-worktree cleanup skipped: $($_.Exception.Message)"
 }
