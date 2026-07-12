@@ -239,13 +239,14 @@ git commit -m "feat: add fail-closed worktreeCleanup config read/write helpers"
 Add the pure precedence resolver and the two small pure/IO helpers around it. Still not wired into `Invoke-MergedWorktreeCleanup` (that is Task 4), so behavior is unchanged and the suite stays green.
 
 **Files:**
-- Modify: `scripts/cleanup-merged-worktrees.ps1` (add `Get-EnvCleanupOverride`, `ConvertFrom-CleanupAnswer`, `Resolve-CleanupDecision`)
+- Modify: `scripts/cleanup-merged-worktrees.ps1` (add `Get-EnvCleanupOverride`, `ConvertFrom-CleanupAnswer`, `Resolve-CleanupDecision`, `Set-CleanupAnswer`)
 - Test: `tests/WorktreeMergedCleanup.Tests.ps1`
 
 **Interfaces:**
 - Produces: `Get-EnvCleanupOverride` → reads `AHKFLOW_WORKTREE_CLEANUP` from the process env; returns `'enable'`, `'disable'`, or `'none'`.
 - Produces: `ConvertFrom-CleanupAnswer -Answer <string>` → `[pscustomobject]@{ Clean=<bool>; Enabled=<bool> }`. `y`/`yes` (case-insensitive, whitespace-trimmed) → both `$true`; anything else (including empty) → both `$false`.
 - Produces: `Resolve-CleanupDecision -Cleanup <switch> -IsHook <switch> -ConfigState <'true'|'false'|'unset'|'invalid'> -EnvOverride <'enable'|'disable'|'none'> -Interactive <bool>` → `[pscustomobject]@{ Action=<'Clean'|'ReportOnly'|'Skip'|'Prompt'>; ShowHint=<bool> }`.
+- Produces: `Set-CleanupAnswer -RepoRoot <string> -Answer <string>` → maps the answer, persists the preference via `Set-WorktreeCleanupConfig`, warns on stderr when the write failed, and returns `[pscustomobject]@{ Clean=<bool>; Persisted=<bool> }`. Extracts the `Prompt`-branch persistence path so it is unit-testable without a live `Read-Host`/TTY.
 
 - [ ] **Step 1: Write the failing unit tests**
 
@@ -314,6 +315,39 @@ try {
 } finally {
     [Environment]::SetEnvironmentVariable('AHKFLOW_WORKTREE_CLEANUP', $oldEnv, 'Process')
 }
+
+# --- Test: Set-CleanupAnswer persists the answer and warns on write failure -----
+# Covers the exact seam the Prompt branch calls, so removing the persistence call or the
+# warning is caught here (the child-process integration tests can't reach the Prompt branch
+# because they redirect stdin).
+$repo = New-TempGitRepo
+try {
+    $yes = Set-CleanupAnswer -RepoRoot $repo -Answer 'y'
+    Assert-True ($yes.Clean -and $yes.Persisted) 'Yes must clean and report persisted.'
+    Assert-Equal 'true' (Get-WorktreeCleanupConfig -RepoRoot $repo) 'Yes must persist true.'
+
+    $no = Set-CleanupAnswer -RepoRoot $repo -Answer 'n'
+    Assert-True ((-not $no.Clean) -and $no.Persisted) 'No must skip but still report persisted.'
+    Assert-Equal 'false' (Get-WorktreeCleanupConfig -RepoRoot $repo) 'No must persist false.'
+
+    # Failed write (non-repo dir): must honor the answer for the run, report not-persisted,
+    # and warn on stderr. Capture stderr in-process to assert the warning is emitted.
+    $notARepo = Join-Path ([System.IO.Path]::GetTempPath()) ('notrepo-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    New-Item -ItemType Directory -Path $notARepo -Force | Out-Null
+    $sw = New-Object System.IO.StringWriter
+    $origErr = [Console]::Error
+    [Console]::SetError($sw)
+    try {
+        $failed = Set-CleanupAnswer -RepoRoot $notARepo -Answer 'y'
+    } finally {
+        [Console]::SetError($origErr)
+        Remove-Item -LiteralPath $notARepo -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    Assert-True ($failed.Clean -and (-not $failed.Persisted)) 'Failed write must honor the answer but report not persisted.'
+    Assert-True ($sw.ToString() -match 'could not persist') 'Failed write must warn on stderr.'
+} finally {
+    Remove-TempTree $repo
+}
 ```
 
 - [ ] **Step 2: Run to verify failure**
@@ -321,7 +355,7 @@ try {
 Run: `pwsh -NoProfile -File tests/WorktreeMergedCleanup.Tests.ps1`
 Expected: FAIL — `The term 'ConvertFrom-CleanupAnswer' is not recognized`.
 
-- [ ] **Step 3: Implement the three functions**
+- [ ] **Step 3: Implement the four functions**
 
 Insert into `scripts/cleanup-merged-worktrees.ps1` after `Set-WorktreeCleanupConfig` (from Task 2):
 
@@ -378,6 +412,24 @@ function Resolve-CleanupDecision {
     if ($Interactive) { return [pscustomobject]@{ Action = 'Prompt'; ShowHint = $false } }
     return [pscustomobject]@{ Action = 'ReportOnly'; ShowHint = $false }
 }
+
+# Applies the ask-once answer: persists the preference and reports whether removal should
+# proceed. Warns on stderr when the write failed but still honors the answer for this run.
+# Extracted from the Prompt branch so the persist+warn path is unit-testable without a live
+# Read-Host/TTY. Returns [pscustomobject]@{ Clean=<bool>; Persisted=<bool> }.
+function Set-CleanupAnswer {
+    param(
+        [Parameter(Mandatory)][string] $RepoRoot,
+        [string] $Answer
+    )
+
+    $mapped = ConvertFrom-CleanupAnswer $Answer
+    $persisted = Set-WorktreeCleanupConfig -RepoRoot $RepoRoot -Enabled $mapped.Enabled
+    if (-not $persisted) {
+        Write-Stderr 'cleanup: could not persist your choice to git config; honoring it for this run only.'
+    }
+    return [pscustomobject]@{ Clean = $mapped.Clean; Persisted = $persisted }
+}
 ```
 
 - [ ] **Step 4: Run to verify pass**
@@ -405,7 +457,7 @@ The atomic behavior change. `Invoke-MergedWorktreeCleanup` now drives the resolv
 - Test: `tests/WorktreeMergedCleanup.Tests.ps1` (flip default-on assertions; add matrix cases)
 
 **Interfaces:**
-- Consumes: `Get-EligibleMergedWorktrees`, `Get-WorktreeCleanupConfig`, `Set-WorktreeCleanupConfig`, `Get-EnvCleanupOverride`, `ConvertFrom-CleanupAnswer`, `Resolve-CleanupDecision`, `Invoke-WorktreeRemoval`, `Write-WorktreeLog`, `Write-Stderr` (all defined earlier / in commons).
+- Consumes: `Get-EligibleMergedWorktrees`, `Get-WorktreeCleanupConfig`, `Get-EnvCleanupOverride`, `Resolve-CleanupDecision`, `Set-CleanupAnswer`, `Invoke-WorktreeRemoval`, `Write-WorktreeLog`, `Write-Stderr` (all defined earlier / in commons). The `Prompt` branch persists via `Set-CleanupAnswer` (which wraps `ConvertFrom-CleanupAnswer` + `Set-WorktreeCleanupConfig`).
 - Produces: `Invoke-MergedWorktreeCleanup -RepoRoot <string> [-Cleanup] [-IsHook] [-MainRef <string>] [-ExcludePath <string>]` — same signature; `-IsHook` now means literal hook context (not "report-only").
 
 - [ ] **Step 1: Update the hook-default integration test to expect report-only**
@@ -439,16 +491,17 @@ Add this helper in `tests/WorktreeMergedCleanup.Tests.ps1` near the other helper
 
 ```powershell
 # Removal is delegated to a detached watcher (remove-worktree-local-dev.ps1), so "cleaned"
-# is only observable after the fact. Per the spec, a "cleans" case is satisfied when EITHER
-# the worktree is actually gone (deregistered by `git worktree prune` AND folder deleted) OR
-# the watcher ran to completion and logged its outcome (removed or preserved-with-reason) to
-# .claude\worktrees\worktree-removal.log under the main checkout. The watcher writes a
-# "Watcher done (...)" line tagged with the worktree leaf name; the cleanup script's own
-# pre-removal "requested removal" line is NOT matched, so this only passes once the async
-# watcher has finished. (Confirmed by reading remove-worktree-local-dev.ps1: Hook mode with
-# -WorktreePath resolves the main checkout from the worktree's git-common-dir, passes the
-# merged+clean gate for these test worktrees, skips DB/Docker when no .env.worktree manifest
-# exists, and the watcher creates the log dir if missing.)
+# is only observable after the fact. Per the spec, "cleans means removed": success requires
+# the worktree to actually be GONE -- dropped from `git worktree list` (deregistered) AND its
+# folder deleted. A watcher log line is NOT proof of success: the watcher writes
+# "Watcher done (worktree preserved)." when it KEPT the worktree (e.g. a locked folder), which
+# must fail this poll, not pass it. The log is therefore consulted only to fail fast when the
+# watcher explicitly preserved this worktree -- there is no point waiting out the timeout for a
+# removal that will never happen. (Confirmed by reading remove-worktree-local-dev.ps1: Hook
+# mode with -WorktreePath resolves the main checkout from the worktree's git-common-dir, passes
+# the merged+clean gate for these test worktrees, skips DB/Docker when no .env.worktree
+# manifest exists, prunes git and deletes the folder on success, and creates the log dir if
+# missing. Each log line is "<stamp>  <leaf>  <message>", so the leaf tags the "preserved" line.)
 function Wait-ForWorktreeCleaned {
     param([string] $RepoDir, [string] $WorktreePath, [int] $TimeoutMs = 30000)
 
@@ -460,11 +513,14 @@ function Wait-ForWorktreeCleaned {
         $listed = @(& git -C $RepoDir worktree list --porcelain 2>$null) |
             Where-Object { $_ -like 'worktree *' } |
             ForEach-Object { ConvertTo-Key ($_.Substring('worktree '.Length)) }
+        # Actually gone: deregistered AND folder deleted. This is the ONLY success signal.
         if (($listed -notcontains $key) -and -not (Test-Path -LiteralPath $WorktreePath)) { return $true }
 
+        # Fail fast: the watcher explicitly preserved this worktree, so it will never be
+        # removed. A "preserved" outcome must NOT count as cleaned.
         if (Test-Path -LiteralPath $logPath) {
             foreach ($line in (Get-Content -LiteralPath $logPath)) {
-                if ($line -match [regex]::Escape($leaf) -and $line -match 'Watcher done') { return $true }
+                if ($line -match [regex]::Escape($leaf) -and $line -match 'Watcher done \(worktree preserved\)') { return $false }
             }
         }
         Start-Sleep -Milliseconds 250
@@ -589,7 +645,7 @@ foreach ($mode in @(@{ Args = @('-IsHook'); Label = 'hook' }, @{ Args = @(); Lab
         $res = Invoke-CleanupChild -RepoDir $repo -ExtraArgs $mode.Args
         Assert-Equal 0 $res.ExitCode "config true ($($mode.Label)) should exit 0. Stderr: $($res.Stderr)"
         Assert-True ($res.Stderr -match 'cleanup: removing merged worktree') "config true ($($mode.Label)) must request removal. Stderr: $($res.Stderr)"
-        Assert-True (Wait-ForWorktreeCleaned -RepoDir $repo -WorktreePath $target) "config true ($($mode.Label)) worktree must be removed (or watcher-logged). Stderr: $($res.Stderr)"
+        Assert-True (Wait-ForWorktreeCleaned -RepoDir $repo -WorktreePath $target) "config true ($($mode.Label)) worktree must actually be removed (deregistered + folder gone). Stderr: $($res.Stderr)"
     } finally {
         Remove-TempTree $repo
     }
@@ -676,11 +732,8 @@ function Invoke-MergedWorktreeCleanup {
     switch ($decision.Action) {
         'Prompt' {
             $answer = Read-Host "Found $($eligible.Count) merged, clean worktree(s). Remove them now and enable automatic cleanup for this repository? [y/N]"
-            $mapped = ConvertFrom-CleanupAnswer $answer
-            if (-not (Set-WorktreeCleanupConfig -RepoRoot $RepoRoot -Enabled $mapped.Enabled)) {
-                Write-Stderr 'cleanup: could not persist your choice to git config; honoring it for this run only.'
-            }
-            if (-not $mapped.Clean) {
+            $applied = Set-CleanupAnswer -RepoRoot $RepoRoot -Answer $answer
+            if (-not $applied.Clean) {
                 Write-Stderr 'cleanup: declined; nothing removed.'
                 return
             }
@@ -910,9 +963,10 @@ Applies when *you* create a brand-new worktree in direct response to a conversat
 request via `EnterWorktree` with `name`. Entering an existing worktree with `path` never
 triggers this.
 
-`EnterWorktree` fires the `WorktreeCreate` hook, which runs the resolver above: with the
-config set (`true`/`false`) it acts silently and there is nothing to do. When the config
-is **unset**, mirror the console ask-once in the conversation.
+`EnterWorktree` fires the `WorktreeCreate` hook, which runs the resolver above: with a
+recognized `AHKFLOW_WORKTREE_CLEANUP` env value or the config set (`true`/`false`) it acts
+silently and there is nothing to do. Only when neither governs — no env override **and** the
+config is **unset** — mirror the console ask-once in the conversation.
 
 First work out the two absolute paths, then substitute them literally into the commands
 below — do not paste PowerShell `$variables` into a Bash-tool command line, because the
@@ -926,15 +980,35 @@ runs, silently breaking the call.
   confirm `<main-root>\scripts\cleanup-merged-worktrees.ps1` exists — if it does not, you
   removed the wrong number of segments.
 
-1. Check the config. If it is already set, do nothing further:
+1. Honor a session-wide env override first. If `AHKFLOW_WORKTREE_CLEANUP` holds a recognized
+   value, the environment already governs this session (the `WorktreeCreate` hook applied it),
+   so do nothing here — do not detect, do not ask, do not write config. Stop.
 
    ```bash
-   git -C '<main-root>' config --local --bool --get ahkflow.worktreeCleanup
+   printf '%s' "${AHKFLOW_WORKTREE_CLEANUP:-}"
    ```
 
-   Prints `true`/`false` (exit 0) → set, act silently, stop. Non-zero exit → unset, continue.
+   `1`/`true`/`yes`/`y` (enable) or `0`/`false`/`no`/`n` (disable), case-insensitive and
+   trimmed → env owns the session; stop. Empty or any other value → continue. (This is why
+   `AHKFLOW_WORKTREE_CLEANUP=0` set before launching Claude Code suppresses the whole flow.)
 
-2. Detect eligible merged worktrees (report-only):
+2. Check the config with the SAME four-state read the script uses — `--get-all` (not `--get`,
+   which silently returns only the last value when the key is duplicated):
+
+   ```bash
+   git -C '<main-root>' config --local --bool --get-all ahkflow.worktreeCleanup
+   ```
+
+   - Exit 1, no output → **unset** → continue to step 3.
+   - Exit 0 with exactly one `true`/`false` line → **set** → act silently, stop.
+   - Anything else — exit 128 (bad boolean) or exit 0 with more than one line (duplicated) →
+     **invalid** → report-only. Tell the user the value is invalid/duplicated and to repair it
+     with `git config --local --unset-all ahkflow.worktreeCleanup`; do NOT ask and do NOT
+     overwrite it. Stop.
+
+3. Detect eligible merged worktrees. This is report-only here: step 1 ruled out any env
+   override and step 2 guaranteed the config is unset, so `-IsHook` only lists — it removes
+   nothing.
 
    ```bash
    pwsh -NoProfile -Command "& '<main-root>\scripts\cleanup-merged-worktrees.ps1' -RepoRoot '<main-root>' -IsHook -ExcludePath '<new-worktree-absolute-path>'"
@@ -949,7 +1023,7 @@ runs, silently breaking the call.
      Clean them up automatically from now on? I'll remember either way." with options
      `Yes, remove them` / `No, leave them`.
 
-3. Persist the answer (mirrors the console ask-once exactly):
+4. Persist the answer (mirrors the console ask-once exactly):
 
    - **Yes** → enable and remove now:
 
@@ -964,8 +1038,9 @@ runs, silently breaking the call.
      git -C '<main-root>' config --local ahkflow.worktreeCleanup false
      ```
 
-To suppress detection for a whole session regardless of config, set
-`AHKFLOW_WORKTREE_CLEANUP=0` in the shell *before launching Claude Code*.
+To suppress this whole flow for a session regardless of config, set
+`AHKFLOW_WORKTREE_CLEANUP=0` in the shell *before launching Claude Code*; step 1 stops before
+any detection or ask.
 ````
 
 - [ ] **Step 4: Restore the hard link and regenerate the plugin copy**
@@ -1008,9 +1083,9 @@ git commit -m "docs: rewrite worktree cleanup skill for tri-state config; add pa
 **Spec coverage:**
 - Mechanism (tri-state `--local` config, `--bool`, fail-closed) → Task 2 (`Get-WorktreeCleanupConfig`) + Global Constraints.
 - Decision precedence (5 rules) + behavior matrix (all cells) → Task 3 (`Resolve-CleanupDecision`, unit-tested per cell) + Task 4 wiring.
-- Ask-once prompt + persist + write-failure warning → Task 3 (`ConvertFrom-CleanupAnswer`), Task 4 (`Prompt` branch); write-failure covered in Task 2 (`Set-WorktreeCleanupConfig` bogus-repo test).
+- Ask-once prompt + persist + write-failure warning → Task 3 (`Set-CleanupAnswer` seam wrapping `ConvertFrom-CleanupAnswer` + `Set-WorktreeCleanupConfig`, unit-tested for yes/no/failed-write incl. the stderr warning via `[Console]::SetError`), Task 4 (`Prompt` branch calls `Set-CleanupAnswer`). The child-process integration tests redirect stdin so they can't reach `Prompt`; the seam test is what guards the persistence call + warning.
 - Refactor 1 (honest `-IsHook`) → Task 4 Step 7. Refactor 2 (centralize matrix) → Tasks 3–4. Refactor 3 (dedupe `Write-Stderr`) → Task 1.
-- Encouragement (console prompt, in-conversation ask-once, docs) → Task 5 SKILL.md rewrite + Task 4 README row.
+- Encouragement (console prompt, in-conversation ask-once, docs) → Task 5 SKILL.md rewrite + Task 4 README row. The in-conversation flow mirrors the script exactly: env override checked first (so `AHKFLOW_WORKTREE_CLEANUP` genuinely suppresses/governs the session), then the four-state `--get-all` config read (unset→ask, set→silent, invalid/duplicated→report-only+repair-hint), then report-only detection, then persist.
 - Skill-file sync (restore hard link + byte-parity guard in harness style) → Task 5.
 - Tests ("cleans means removed" polling, full matrix, invalid config, no-eligible, ask-once persistence, parity guard) → Tasks 2–5.
 - Docs (SKILL.md, README, script synopses) → Task 4 (synopses + README) + Task 5 (SKILL.md).
