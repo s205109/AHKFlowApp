@@ -94,6 +94,88 @@ function Remove-TempTree {
     }
 }
 
+# Removal is delegated to a detached watcher (remove-worktree-local-dev.ps1), so "cleaned"
+# is only observable after the fact. Per the spec, "cleans means removed": success requires
+# the worktree to actually be GONE -- dropped from `git worktree list` (deregistered) AND its
+# folder deleted. A watcher log line is NOT proof of success: the watcher writes
+# "Watcher done (worktree preserved)." when it KEPT the worktree (e.g. a locked folder), which
+# must fail this poll, not pass it. The log is therefore consulted only to fail fast when the
+# watcher explicitly preserved this worktree -- there is no point waiting out the timeout for a
+# removal that will never happen. (Confirmed by reading remove-worktree-local-dev.ps1: Hook
+# mode with -WorktreePath resolves the main checkout from the worktree's git-common-dir, passes
+# the merged+clean gate for these test worktrees, skips DB/Docker when no .env.worktree
+# manifest exists, prunes git and deletes the folder on success, and creates the log dir if
+# missing. Each log line is "<stamp>  <leaf>  <message>", so the leaf tags the "preserved" line.)
+function Wait-ForWorktreeCleaned {
+    param([string] $RepoDir, [string] $WorktreePath, [int] $TimeoutMs = 30000)
+
+    $key = ConvertTo-Key $WorktreePath
+    $leaf = Split-Path -Leaf $WorktreePath
+    $logPath = Join-Path $RepoDir '.claude\worktrees\worktree-removal.log'
+    $deadline = [DateTime]::UtcNow.AddMilliseconds($TimeoutMs)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        $listed = @(& git -C $RepoDir worktree list --porcelain 2>$null) |
+            Where-Object { $_ -like 'worktree *' } |
+            ForEach-Object { ConvertTo-Key ($_.Substring('worktree '.Length)) }
+        # Actually gone: deregistered AND folder deleted. This is the ONLY success signal.
+        if (($listed -notcontains $key) -and -not (Test-Path -LiteralPath $WorktreePath)) { return $true }
+
+        # Fail fast: the watcher explicitly preserved this worktree, so it will never be
+        # removed. A "preserved" outcome must NOT count as cleaned.
+        if (Test-Path -LiteralPath $logPath) {
+            foreach ($line in (Get-Content -LiteralPath $logPath)) {
+                if ($line -match [regex]::Escape($leaf) -and $line -match 'Watcher done \(worktree preserved\)') { return $false }
+            }
+        }
+        Start-Sleep -Milliseconds 250
+    }
+    return $false
+}
+
+# Runs the REAL cleanup script as a child process against $RepoDir, with optional extra args,
+# a process-scoped env override (restored after), and redirected stdin/stdout/stderr.
+function Invoke-CleanupChild {
+    param(
+        [string] $RepoDir,
+        [string[]] $ExtraArgs = @(),
+        [hashtable] $EnvVars = @{},
+        [string] $Stdin = ''
+    )
+
+    $parent = Split-Path -Parent $RepoDir
+    $suffix = [guid]::NewGuid().ToString('N').Substring(0, 6)
+    $stdinFile = Join-Path $parent "cin-$suffix.txt"
+    $stdoutFile = Join-Path $parent "cout-$suffix.txt"
+    $stderrFile = Join-Path $parent "cerr-$suffix.txt"
+    Set-Content -LiteralPath $stdinFile -Value $Stdin -Encoding utf8
+
+    $cleanupScript = Join-Path $scriptsDir 'cleanup-merged-worktrees.ps1'
+    $psExe = [System.Diagnostics.Process]::GetCurrentProcess().Path
+    $argList = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $cleanupScript, '-RepoRoot', $RepoDir, '-MainRef', 'main') + $ExtraArgs
+
+    $restore = @{}
+    foreach ($k in $EnvVars.Keys) {
+        $restore[$k] = [Environment]::GetEnvironmentVariable($k, 'Process')
+        [Environment]::SetEnvironmentVariable($k, $EnvVars[$k], 'Process')
+    }
+    try {
+        $proc = Start-Process -FilePath $psExe -ArgumentList $argList `
+            -WorkingDirectory $suiteRoot `
+            -RedirectStandardInput $stdinFile `
+            -RedirectStandardOutput $stdoutFile `
+            -RedirectStandardError $stderrFile `
+            -NoNewWindow -PassThru -Wait
+    } finally {
+        foreach ($k in $EnvVars.Keys) { [Environment]::SetEnvironmentVariable($k, $restore[$k], 'Process') }
+    }
+
+    return [pscustomobject]@{
+        ExitCode = $proc.ExitCode
+        Stdout   = (Get-Content -Raw -LiteralPath $stdoutFile)
+        Stderr   = (Get-Content -Raw -LiteralPath $stderrFile)
+    }
+}
+
 # Import the cleanup functions (guard keeps the standalone entrypoint from running).
 . (Join-Path $scriptsDir 'cleanup-merged-worktrees.ps1')
 
@@ -366,7 +448,7 @@ try {
 
     $stderrText = Get-Content -Raw -LiteralPath $stderrFile
     Assert-True ($stderrText -match 'cleanup: eligible merged worktree') "Expected cleanup detection output on stderr. Stderr: $stderrText"
-    Assert-True ($stderrText -match 'cleanup: non-interactive and no -Cleanup; skipping') "Expected non-interactive skip output on stderr. Stderr: $stderrText"
+    Assert-True ($stderrText -match 'cleanup: report-only; nothing removed\.') "Expected non-interactive report-only output on stderr. Stderr: $stderrText"
 
     Assert-True (Test-Path -LiteralPath $skipPath) 'Non-interactive cleanup without -Cleanup must not remove the eligible worktree folder.'
     $branches = (Invoke-TestGit $repo @('branch', '--list', 'feat-noninteractive')) -join "`n"
@@ -428,16 +510,19 @@ try {
     Assert-Equal 1 $stdoutLines.Count "Hook stdout must be exactly one line. Got: $stdout"
     Assert-Equal $expected ($stdoutLines[0].Trim().TrimEnd('\', '/')) 'Hook stdout must be exactly the new worktree path.'
 
-    # Proves cleanup runs by default in hook context (no env var set), not just report-only.
+    # Default hook context (no env, no config) is now opt-in: report-only with the config hint,
+    # nothing removed. Stdout stays exactly the new worktree path (asserted above).
     $stderrText = Get-Content -Raw -LiteralPath $stderrFile
-    Assert-True ($stderrText -match 'cleanup: eligible merged worktree') "Expected cleanup detection output on stderr proving cleanup ran. Stderr: $stderrText"
-    Assert-True ($stderrText -match 'cleanup: removing merged worktree') "Expected cleanup to remove by default (no env var set). Stderr: $stderrText"
-    Assert-True (-not ($stderrText -match 'cleanup: hook context is report-only')) "Default hook cleanup must not stay in report-only mode. Stderr: $stderrText"
+    Assert-True ($stderrText -match 'cleanup: eligible merged worktree') "Expected detection output on stderr. Stderr: $stderrText"
+    Assert-True (-not ($stderrText -match 'cleanup: removing merged worktree')) "Default hook cleanup must not remove anything (opt-in). Stderr: $stderrText"
+    Assert-True ($stderrText -match 'git config --local ahkflow\.worktreeCleanup true') "Default hook report-only must print the config hint. Stderr: $stderrText"
+    Assert-True (Test-Path -LiteralPath (Join-Path $repo '.claude\worktrees')) 'Worktree tooling dir should still exist.'
 } finally {
     Remove-TempTree $repo
 }
 
 # --- Test: CLI env opt-out (0) keeps WorktreeCreate hook report-only -----------
+# With opt-in as the default, env '0' is a redundant-but-honored disable in hook context.
 $repo = New-WorktreeToolingRepo -ScriptsSource $scriptsDir
 try {
     # An eligible merged + clean worktree that the opt-out must leave alone.
@@ -475,8 +560,118 @@ try {
 
     $stderrText = Get-Content -Raw -LiteralPath $stderrFile
     Assert-True ($stderrText -match 'cleanup: eligible merged worktree') "Expected cleanup detection output on stderr. Stderr: $stderrText"
-    Assert-True ($stderrText -match 'cleanup: hook context is report-only') "Expected env opt-out to keep cleanup in report-only mode. Stderr: $stderrText"
+    Assert-True ($stderrText -match 'cleanup: report-only') "Expected env opt-out to keep cleanup in report-only mode. Stderr: $stderrText"
     Assert-True (-not ($stderrText -match 'cleanup: removing merged worktree')) "Env opt-out must not remove anything. Stderr: $stderrText"
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: config false -> hook report-only (no hint), direct skip -------------
+$repo = New-TempGitRepo
+try {
+    $kept = Add-TestWorktree -RepoDir $repo -BranchName 'feat-cfgfalse'
+    Invoke-TestGit $repo @('config', '--local', 'ahkflow.worktreeCleanup', 'false') | Out-Null
+
+    $hook = Invoke-CleanupChild -RepoDir $repo -ExtraArgs @('-IsHook')
+    Assert-Equal 0 $hook.ExitCode "Hook + config false should exit 0. Stderr: $($hook.Stderr)"
+    Assert-True ($hook.Stderr -match 'cleanup: eligible merged worktree') 'Config-false hook must still detect.'
+    Assert-True (-not ($hook.Stderr -match 'ahkflow\.worktreeCleanup true')) 'Config-false hook must NOT print the enable hint.'
+    Assert-True (-not ($hook.Stderr -match 'cleanup: removing')) 'Config-false hook must not remove.'
+    Assert-True (Test-Path -LiteralPath $kept) 'Config-false must leave the worktree folder.'
+
+    $direct = Invoke-CleanupChild -RepoDir $repo
+    Assert-True (-not ($direct.Stderr -match 'cleanup: removing')) 'Config-false direct call must skip.'
+    Assert-True (Test-Path -LiteralPath $kept) 'Config-false direct call must leave the worktree folder.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: invalid config fails closed to report-only with a warning -----------
+$repo = New-TempGitRepo
+try {
+    $kept = Add-TestWorktree -RepoDir $repo -BranchName 'feat-invalidcfg'
+    Invoke-TestGit $repo @('config', '--local', 'ahkflow.worktreeCleanup', 'banana') | Out-Null
+
+    $res = Invoke-CleanupChild -RepoDir $repo -ExtraArgs @('-IsHook')
+    Assert-Equal 0 $res.ExitCode "Invalid config should not crash. Stderr: $($res.Stderr)"
+    Assert-True ($res.Stderr -match 'invalid or duplicated') 'Invalid config must warn.'
+    Assert-True ($res.Stderr -match 'git config --local --unset-all ahkflow\.worktreeCleanup') 'Warning must include the repair command.'
+    Assert-True (-not ($res.Stderr -match 'cleanup: removing')) 'Invalid config must not remove (fail closed).'
+    Assert-True (Test-Path -LiteralPath $kept) 'Invalid config must leave the worktree folder.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: direct call ignores the env var entirely ----------------------------
+$repo = New-TempGitRepo
+try {
+    $kept = Add-TestWorktree -RepoDir $repo -BranchName 'feat-envdirect'
+    # Env '1' set, no config, non-interactive direct (no -IsHook) -> must NOT clean.
+    $res = Invoke-CleanupChild -RepoDir $repo -EnvVars @{ 'AHKFLOW_WORKTREE_CLEANUP' = '1' }
+    Assert-True (-not ($res.Stderr -match 'cleanup: removing')) 'Direct call must ignore AHKFLOW_WORKTREE_CLEANUP.'
+    Assert-True (Test-Path -LiteralPath $kept) 'Env var must not trigger removal on a direct call.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: no eligible worktrees -> no prompt, nothing persisted ---------------
+$repo = New-TempGitRepo
+try {
+    Add-TestWorktree -RepoDir $repo -BranchName 'feat-dirty-only' -Dirty | Out-Null
+    $res = Invoke-CleanupChild -RepoDir $repo
+    Assert-True ($res.Stderr -match 'no merged worktrees eligible') 'With no eligible worktrees, cleanup must report none.'
+    Assert-Equal 'unset' (Get-WorktreeCleanupConfig -RepoRoot $repo) 'No eligible worktrees must not persist any preference.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: config true cleans (hook and non-interactive direct) ----------------
+foreach ($mode in @(@{ Args = @('-IsHook'); Label = 'hook' }, @{ Args = @(); Label = 'direct' })) {
+    $repo = New-WorktreeToolingRepo -ScriptsSource $scriptsDir
+    try {
+        $target = Add-TestWorktree -RepoDir $repo -BranchName "feat-cfgtrue-$($mode.Label)"
+        Invoke-TestGit $repo @('config', '--local', 'ahkflow.worktreeCleanup', 'true') | Out-Null
+
+        $res = Invoke-CleanupChild -RepoDir $repo -ExtraArgs $mode.Args
+        Assert-Equal 0 $res.ExitCode "config true ($($mode.Label)) should exit 0. Stderr: $($res.Stderr)"
+        Assert-True ($res.Stderr -match 'cleanup: removing merged worktree') "config true ($($mode.Label)) must request removal. Stderr: $($res.Stderr)"
+        Assert-True (Wait-ForWorktreeCleaned -RepoDir $repo -WorktreePath $target) "config true ($($mode.Label)) worktree must actually be removed (deregistered + folder gone). Stderr: $($res.Stderr)"
+    } finally {
+        Remove-TempTree $repo
+    }
+}
+
+# --- Test: env overrides config in hook context (hook-only) --------------------
+# env '1' + config false -> cleans.
+$repo = New-WorktreeToolingRepo -ScriptsSource $scriptsDir
+try {
+    $target = Add-TestWorktree -RepoDir $repo -BranchName 'feat-env1-cfgfalse'
+    Invoke-TestGit $repo @('config', '--local', 'ahkflow.worktreeCleanup', 'false') | Out-Null
+    $res = Invoke-CleanupChild -RepoDir $repo -ExtraArgs @('-IsHook') -EnvVars @{ 'AHKFLOW_WORKTREE_CLEANUP' = '1' }
+    Assert-True (Wait-ForWorktreeCleaned -RepoDir $repo -WorktreePath $target) "env '1' must override config false in hook context. Stderr: $($res.Stderr)"
+} finally {
+    Remove-TempTree $repo
+}
+
+# env '0' + config true -> report-only (nothing removed).
+$repo = New-TempGitRepo
+try {
+    $kept = Add-TestWorktree -RepoDir $repo -BranchName 'feat-env0-cfgtrue'
+    Invoke-TestGit $repo @('config', '--local', 'ahkflow.worktreeCleanup', 'true') | Out-Null
+    $res = Invoke-CleanupChild -RepoDir $repo -ExtraArgs @('-IsHook') -EnvVars @{ 'AHKFLOW_WORKTREE_CLEANUP' = '0' }
+    Assert-True (-not ($res.Stderr -match 'cleanup: removing')) "env '0' must override config true in hook context. Stderr: $($res.Stderr)"
+    Assert-True (Test-Path -LiteralPath $kept) "env '0' must leave the worktree folder even with config true."
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: -Cleanup overrides config false (cleans, no prompt) ------------------
+$repo = New-WorktreeToolingRepo -ScriptsSource $scriptsDir
+try {
+    $target = Add-TestWorktree -RepoDir $repo -BranchName 'feat-flag-over-false'
+    Invoke-TestGit $repo @('config', '--local', 'ahkflow.worktreeCleanup', 'false') | Out-Null
+    $res = Invoke-CleanupChild -RepoDir $repo -ExtraArgs @('-Cleanup')
+    Assert-True (Wait-ForWorktreeCleaned -RepoDir $repo -WorktreePath $target) "-Cleanup must override config false. Stderr: $($res.Stderr)"
 } finally {
     Remove-TempTree $repo
 }

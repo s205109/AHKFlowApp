@@ -1,14 +1,15 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Detects worktrees whose branch is already merged into main and, on an explicit
-    opt-in, removes the finished (clean) ones via remove-worktree-local-dev.ps1.
+    Detects worktrees whose branch is already merged into main and removes the finished
+    (clean) ones when the per-repo preference or an explicit opt-in says so.
 .DESCRIPTION
-    Invoked by new-worktree.ps1 before it creates a new worktree, and runnable on its
-    own. Removal never happens without an explicit opt-in: the single interactive
-    question on a real console, or the -Cleanup switch. In a WorktreeCreate hook
-    context (-IsHook) detection runs but nothing is prompted or removed, and all
-    output stays on stderr so the hook's stdout contract is preserved.
+    Invoked by new-worktree.ps1 before it creates a new worktree, and runnable on its own.
+    Precedence: -Cleanup flag > AHKFLOW_WORKTREE_CLEANUP env var (hook context only) >
+    git config --local ahkflow.worktreeCleanup (true/false) > ask-once on an interactive
+    console (unset) > report-only. Invalid/duplicated config fails closed to report-only.
+    In hook context (-IsHook) all output stays on stderr so the hook's stdout contract is
+    preserved; when config is unset it prints the one-liner to enable cleanup.
 #>
 
 [CmdletBinding()]
@@ -260,8 +261,9 @@ function Invoke-WorktreeRemoval {
     }
 }
 
-# Drives the decision matrix. Detection/removal failures are logged to stderr and
-# skipped so worktree creation is never blocked. Emits nothing on the success stream.
+# Drives the decision matrix through Resolve-CleanupDecision. Detection/removal failures
+# are logged to stderr and skipped so worktree creation is never blocked. Emits nothing on
+# the success stream.
 function Invoke-MergedWorktreeCleanup {
     param(
         [Parameter(Mandatory)][string] $RepoRoot,
@@ -281,27 +283,42 @@ function Invoke-MergedWorktreeCleanup {
         Write-Stderr "cleanup: eligible merged worktree: $($wt.Path) [$($wt.Branch)]"
     }
 
-    if ($IsHook) {
-        Write-Stderr 'cleanup: hook context is report-only; nothing removed. (cleanup runs by default in hook mode; opt out with AHKFLOW_WORKTREE_CLEANUP=0)'
-        return
+    $configState = Get-WorktreeCleanupConfig -RepoRoot $RepoRoot
+    if ($configState -eq 'invalid') {
+        Write-Stderr 'cleanup: ahkflow.worktreeCleanup has an invalid or duplicated value; treating as report-only. Repair with: git config --local --unset-all ahkflow.worktreeCleanup'
     }
 
-    $authorized = $false
-    if ($Cleanup) {
-        $authorized = $true
-    } elseif (-not [Console]::IsInputRedirected) {
-        $answer = Read-Host 'Clean up merged worktrees? (y/n)'
-        $authorized = ($answer -match '^\s*(y|yes)\s*$')
-    } else {
-        Write-Stderr 'cleanup: non-interactive and no -Cleanup; skipping (removal needs an explicit opt-in).'
-        return
+    $envOverride = if ($IsHook) { Get-EnvCleanupOverride } else { 'none' }
+    $interactive = -not [Console]::IsInputRedirected
+
+    $decision = Resolve-CleanupDecision -Cleanup:$Cleanup -IsHook:$IsHook -ConfigState $configState -EnvOverride $envOverride -Interactive $interactive
+
+    switch ($decision.Action) {
+        'Prompt' {
+            $answer = Read-Host "Found $($eligible.Count) merged, clean worktree(s). Remove them now and enable automatic cleanup for this repository? [y/N]"
+            $applied = Set-CleanupAnswer -RepoRoot $RepoRoot -Answer $answer
+            if (-not $applied.Clean) {
+                Write-Stderr 'cleanup: declined; nothing removed.'
+                return
+            }
+        }
+        'Clean' { }
+        'Skip' {
+            Write-Stderr 'cleanup: ahkflow.worktreeCleanup=false; skipping.'
+            return
+        }
+        default {
+            # ReportOnly
+            if ($decision.ShowHint) {
+                Write-Stderr 'cleanup: report-only. Enable automatic cleanup for this repository with: git config --local ahkflow.worktreeCleanup true'
+            } else {
+                Write-Stderr 'cleanup: report-only; nothing removed.'
+            }
+            return
+        }
     }
 
-    if (-not $authorized) {
-        Write-Stderr 'cleanup: declined; nothing removed.'
-        return
-    }
-
+    # Reached only for Clean or an accepted Prompt.
     $removalLog = Join-Path $RepoRoot '.claude\worktrees\worktree-removal.log'
     foreach ($wt in $eligible) {
         Write-Stderr "cleanup: removing merged worktree: $($wt.Path) [$($wt.Branch)]"
