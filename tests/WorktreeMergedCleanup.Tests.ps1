@@ -141,6 +141,102 @@ try {
     Remove-TempTree $repo
 }
 
+# --- Test: ConvertFrom-CleanupAnswer maps the ask-once answer --------------------
+foreach ($yes in @('y', 'Y', 'yes', 'YES', '  y  ')) {
+    $m = ConvertFrom-CleanupAnswer $yes
+    Assert-True ($m.Clean -and $m.Enabled) "Answer '$yes' must map to clean+enable."
+}
+foreach ($no in @('', 'n', 'no', 'nope', 'x')) {
+    $m = ConvertFrom-CleanupAnswer $no
+    Assert-True ((-not $m.Clean) -and (-not $m.Enabled)) "Answer '$no' must map to skip+disable."
+}
+
+# --- Test: Resolve-CleanupDecision precedence matrix -----------------------------
+# Each row: Cleanup, IsHook, ConfigState, EnvOverride, Interactive => Action, ShowHint
+$cases = @(
+    # -Cleanup wins everywhere.
+    @{ C=$true;  H=$false; Cfg='false';  Env='none';    I=$false; A='Clean';      Hint=$false }
+    @{ C=$true;  H=$true;  Cfg='false';  Env='disable'; I=$false; A='Clean';      Hint=$false }
+    # Hook + env override (hook-only), overrides config.
+    @{ C=$false; H=$true;  Cfg='false';  Env='enable';  I=$false; A='Clean';      Hint=$false }
+    @{ C=$false; H=$true;  Cfg='true';   Env='disable'; I=$false; A='ReportOnly'; Hint=$false }
+    # Hook + config (no env).
+    @{ C=$false; H=$true;  Cfg='true';   Env='none';    I=$false; A='Clean';      Hint=$false }
+    @{ C=$false; H=$true;  Cfg='false';  Env='none';    I=$false; A='ReportOnly'; Hint=$false }
+    @{ C=$false; H=$true;  Cfg='invalid';Env='none';    I=$false; A='ReportOnly'; Hint=$false }
+    @{ C=$false; H=$true;  Cfg='unset';  Env='none';    I=$false; A='ReportOnly'; Hint=$true  }
+    # Hook + env disable + config unset: hint still fires (env is transient, config is the nudge).
+    @{ C=$false; H=$true;  Cfg='unset';  Env='disable'; I=$false; A='ReportOnly'; Hint=$true  }
+    # Direct calls ignore env entirely (EnvOverride is only read when hook; resolver still must
+    # not act on it when IsHook is false, so pass 'enable' here to prove it is inert).
+    @{ C=$false; H=$false; Cfg='unset';  Env='enable';  I=$false; A='ReportOnly'; Hint=$false }
+    @{ C=$false; H=$false; Cfg='unset';  Env='enable';  I=$true;  A='Prompt';     Hint=$false }
+    # Direct + config.
+    @{ C=$false; H=$false; Cfg='true';   Env='none';    I=$true;  A='Clean';      Hint=$false }
+    @{ C=$false; H=$false; Cfg='false';  Env='none';    I=$true;  A='Skip';       Hint=$false }
+    @{ C=$false; H=$false; Cfg='invalid';Env='none';    I=$true;  A='ReportOnly'; Hint=$false }
+    # Direct + unset, non-interactive -> report-only (no console to prompt).
+    @{ C=$false; H=$false; Cfg='unset';  Env='none';    I=$false; A='ReportOnly'; Hint=$false }
+)
+foreach ($c in $cases) {
+    $d = Resolve-CleanupDecision -Cleanup:$c.C -IsHook:$c.H -ConfigState $c.Cfg -EnvOverride $c.Env -Interactive $c.I
+    $label = "C=$($c.C) H=$($c.H) Cfg=$($c.Cfg) Env=$($c.Env) I=$($c.I)"
+    Assert-Equal $c.A $d.Action "Action mismatch for [$label]."
+    Assert-Equal $c.Hint $d.ShowHint "ShowHint mismatch for [$label]."
+}
+
+# --- Test: Get-EnvCleanupOverride classifies the env var ------------------------
+$oldEnv = [Environment]::GetEnvironmentVariable('AHKFLOW_WORKTREE_CLEANUP', 'Process')
+try {
+    foreach ($v in @('1', 'true', 'YES', ' y ')) {
+        [Environment]::SetEnvironmentVariable('AHKFLOW_WORKTREE_CLEANUP', $v, 'Process')
+        Assert-Equal 'enable' (Get-EnvCleanupOverride) "Env '$v' must classify as enable."
+    }
+    foreach ($v in @('0', 'false', 'NO', ' n ')) {
+        [Environment]::SetEnvironmentVariable('AHKFLOW_WORKTREE_CLEANUP', $v, 'Process')
+        Assert-Equal 'disable' (Get-EnvCleanupOverride) "Env '$v' must classify as disable."
+    }
+    foreach ($v in @('', 'maybe', '2')) {
+        [Environment]::SetEnvironmentVariable('AHKFLOW_WORKTREE_CLEANUP', $v, 'Process')
+        Assert-Equal 'none' (Get-EnvCleanupOverride) "Env '$v' must classify as none."
+    }
+} finally {
+    [Environment]::SetEnvironmentVariable('AHKFLOW_WORKTREE_CLEANUP', $oldEnv, 'Process')
+}
+
+# --- Test: Set-CleanupAnswer persists the answer and warns on write failure -----
+# Covers the exact seam the Prompt branch calls, so removing the persistence call or the
+# warning is caught here (the child-process integration tests can't reach the Prompt branch
+# because they redirect stdin).
+$repo = New-TempGitRepo
+try {
+    $yes = Set-CleanupAnswer -RepoRoot $repo -Answer 'y'
+    Assert-True ($yes.Clean -and $yes.Persisted) 'Yes must clean and report persisted.'
+    Assert-Equal 'true' (Get-WorktreeCleanupConfig -RepoRoot $repo) 'Yes must persist true.'
+
+    $no = Set-CleanupAnswer -RepoRoot $repo -Answer 'n'
+    Assert-True ((-not $no.Clean) -and $no.Persisted) 'No must skip but still report persisted.'
+    Assert-Equal 'false' (Get-WorktreeCleanupConfig -RepoRoot $repo) 'No must persist false.'
+
+    # Failed write (non-repo dir): must honor the answer for the run, report not-persisted,
+    # and warn on stderr. Capture stderr in-process to assert the warning is emitted.
+    $notARepo = Join-Path ([System.IO.Path]::GetTempPath()) ('notrepo-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    New-Item -ItemType Directory -Path $notARepo -Force | Out-Null
+    $sw = New-Object System.IO.StringWriter
+    $origErr = [Console]::Error
+    [Console]::SetError($sw)
+    try {
+        $failed = Set-CleanupAnswer -RepoRoot $notARepo -Answer 'y'
+    } finally {
+        [Console]::SetError($origErr)
+        Remove-Item -LiteralPath $notARepo -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    Assert-True ($failed.Clean -and (-not $failed.Persisted)) 'Failed write must honor the answer but report not persisted.'
+    Assert-True ($sw.ToString() -match 'could not persist') 'Failed write must warn on stderr.'
+} finally {
+    Remove-TempTree $repo
+}
+
 # --- Test: eligibility matrix -------------------------------------------------
 $repo = New-TempGitRepo
 try {
