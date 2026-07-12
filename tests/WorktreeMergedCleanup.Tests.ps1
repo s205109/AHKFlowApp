@@ -602,6 +602,26 @@ try {
     Remove-TempTree $repo
 }
 
+# --- Test: explicit override cleans over invalid config, without a misleading warning ---
+# The invalid-config warning must fire only when the resolved action is report-only. An
+# explicit -Cleanup (or hook env enable) that legitimately cleans must NOT claim report-only.
+foreach ($override in @(
+        @{ Args = @('-Cleanup'); Env = @{}; Label = '-Cleanup' }
+        @{ Args = @('-IsHook'); Env = @{ 'AHKFLOW_WORKTREE_CLEANUP' = '1' }; Label = 'hook env enable' }
+    )) {
+    $repo = New-WorktreeToolingRepo -ScriptsSource $scriptsDir
+    try {
+        $target = Add-TestWorktree -RepoDir $repo -BranchName "feat-invalid-$([guid]::NewGuid().ToString('N').Substring(0,6))"
+        Invoke-TestGit $repo @('config', '--local', 'ahkflow.worktreeCleanup', 'banana') | Out-Null
+
+        $res = Invoke-CleanupChild -RepoDir $repo -ExtraArgs $override.Args -EnvVars $override.Env
+        Assert-True (-not ($res.Stderr -match 'treating as report-only')) "$($override.Label) over invalid config must not print a report-only warning. Stderr: $($res.Stderr)"
+        Assert-True (Wait-ForWorktreeCleaned -RepoDir $repo -WorktreePath $target) "$($override.Label) must clean over invalid config. Stderr: $($res.Stderr)"
+    } finally {
+        Remove-TempTree $repo
+    }
+}
+
 # --- Test: direct call ignores the env var entirely ----------------------------
 $repo = New-TempGitRepo
 try {

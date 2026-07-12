@@ -284,10 +284,6 @@ function Invoke-MergedWorktreeCleanup {
     }
 
     $configState = Get-WorktreeCleanupConfig -RepoRoot $RepoRoot
-    if ($configState -eq 'invalid') {
-        Write-Stderr 'cleanup: ahkflow.worktreeCleanup has an invalid or duplicated value; treating as report-only. Repair with: git config --local --unset-all ahkflow.worktreeCleanup'
-    }
-
     $envOverride = if ($IsHook) { Get-EnvCleanupOverride } else { 'none' }
     $interactive = -not [Console]::IsInputRedirected
 
@@ -308,8 +304,12 @@ function Invoke-MergedWorktreeCleanup {
             return
         }
         default {
-            # ReportOnly
-            if ($decision.ShowHint) {
+            # ReportOnly. The invalid-config warning is emitted here, not before the decision,
+            # so an explicit override (-Cleanup / hook env enable) that legitimately cleans over
+            # invalid config never gets a misleading "treating as report-only" line.
+            if ($configState -eq 'invalid') {
+                Write-Stderr 'cleanup: ahkflow.worktreeCleanup has an invalid or duplicated value; treating as report-only. Repair with: git config --local --unset-all ahkflow.worktreeCleanup'
+            } elseif ($decision.ShowHint) {
                 Write-Stderr 'cleanup: report-only. Enable automatic cleanup for this repository with: git config --local ahkflow.worktreeCleanup true'
             } else {
                 Write-Stderr 'cleanup: report-only; nothing removed.'

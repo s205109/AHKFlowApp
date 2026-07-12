@@ -10,13 +10,35 @@ $suiteRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $pluginSkills = Join-Path $suiteRoot 'plugins\ahkflowapp\skills'
 $agentsRoot = Join-Path $suiteRoot '.agents'
 
+# Names of every skill that has a SKILL.md directly under a root's skill dir.
+function Get-SkillNames {
+    param([string] $Root)
+
+    $names = @()
+    foreach ($dir in (Get-ChildItem -LiteralPath $Root -Directory)) {
+        if (Test-Path -LiteralPath (Join-Path $dir.FullName 'SKILL.md')) { $names += $dir.Name }
+    }
+    return , $names
+}
+
 $failures = @()
+
+# Set comparison first: a deleted plugin skill (or a canonical with no plugin copy) would
+# otherwise slip through the byte loop below, which only iterates existing plugin copies.
+$pluginNames = Get-SkillNames $pluginSkills
+$canonicalNames = Get-SkillNames $agentsRoot
+foreach ($name in ($canonicalNames | Where-Object { $pluginNames -notcontains $_ })) {
+    $failures += "Canonical .agents/$name/SKILL.md has no plugin copy. Re-run scripts/agents/setup-cross-agent-skills.ps1."
+}
+foreach ($name in ($pluginNames | Where-Object { $canonicalNames -notcontains $_ })) {
+    $failures += "Plugin skill '$name' has no canonical .agents/$name/SKILL.md. Edit skills only under .agents."
+}
+
 foreach ($skillFile in (Get-ChildItem -LiteralPath $pluginSkills -Recurse -Filter 'SKILL.md' -File)) {
     $skillName = Split-Path -Leaf (Split-Path -Parent $skillFile.FullName)
     $canonical = Join-Path $agentsRoot (Join-Path $skillName 'SKILL.md')
 
     if (-not (Test-Path -LiteralPath $canonical)) {
-        $failures += "No canonical .agents/$skillName/SKILL.md for plugin copy $($skillFile.FullName)."
         continue
     }
 

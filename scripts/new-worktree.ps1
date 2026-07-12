@@ -5,6 +5,10 @@
 .DESCRIPTION
     This script can be called directly, or by Claude Code's WorktreeCreate hook.
     For hook use, stdout must contain only the absolute worktree path on success.
+    Before creating the worktree it runs cleanup-merged-worktrees.ps1 (best-effort, all
+    output on stderr) to sweep worktrees whose branch is already merged into main. That
+    sweep is opt-in via `git config --local ahkflow.worktreeCleanup true`; -Cleanup forces
+    it for this run. See cleanup-merged-worktrees.ps1 for the full precedence.
 #>
 
 [CmdletBinding()]
