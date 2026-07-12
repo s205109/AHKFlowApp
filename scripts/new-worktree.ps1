@@ -23,11 +23,6 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'worktree-git.common.ps1')
 . (Join-Path $PSScriptRoot 'worktree-powershell.common.ps1')
 
-function Write-Stderr {
-    param([string] $Message)
-    [Console]::Error.WriteLine($Message)
-}
-
 function Test-EnvironmentFlagDisabled {
     param([string] $Name)
 
