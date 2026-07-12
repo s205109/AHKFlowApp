@@ -163,6 +163,77 @@ function Set-WorktreeCleanupConfig {
     return ($LASTEXITCODE -eq 0)
 }
 
+# Reads the hook-only env override. 'enable'/'disable'/'none'. Callers must only consult
+# this in hook context; a leftover value in a shell must never affect a direct call.
+function Get-EnvCleanupOverride {
+    $value = [Environment]::GetEnvironmentVariable('AHKFLOW_WORKTREE_CLEANUP', 'Process')
+    if ([string]::IsNullOrWhiteSpace($value)) { return 'none' }
+
+    $v = $value.Trim()
+    if ($v -match '^(1|true|yes|y)$') { return 'enable' }
+    if ($v -match '^(0|false|no|n)$') { return 'disable' }
+    return 'none'
+}
+
+# Maps the ask-once console answer to an action. 'y'/'yes' -> clean now and enable;
+# anything else (including the empty default) -> skip and disable. Pure; testable
+# without Read-Host.
+function ConvertFrom-CleanupAnswer {
+    param([string] $Answer)
+
+    $yes = ($Answer -match '^\s*(y|yes)\s*$')
+    return [pscustomobject]@{ Clean = $yes; Enabled = $yes }
+}
+
+# The single source of precedence. Pure: no git, env, or console access -- callers gather
+# those and pass them in. Precedence: -Cleanup > hook-only env > config > ask-once/report.
+# ShowHint is true only in hook context while config is unset (the hint nudges toward
+# setting the config; env is a transient per-run override, so it does not suppress it).
+function Resolve-CleanupDecision {
+    param(
+        [switch] $Cleanup,
+        [switch] $IsHook,
+        [Parameter(Mandatory)][ValidateSet('true', 'false', 'unset', 'invalid')][string] $ConfigState,
+        [ValidateSet('enable', 'disable', 'none')][string] $EnvOverride = 'none',
+        [bool] $Interactive
+    )
+
+    if ($Cleanup) { return [pscustomobject]@{ Action = 'Clean'; ShowHint = $false } }
+
+    if ($IsHook -and $EnvOverride -eq 'enable') { return [pscustomobject]@{ Action = 'Clean'; ShowHint = $false } }
+    $envDisable = ($IsHook -and $EnvOverride -eq 'disable')
+
+    if (-not $envDisable -and $ConfigState -eq 'true') { return [pscustomobject]@{ Action = 'Clean'; ShowHint = $false } }
+    if ($ConfigState -eq 'false') {
+        $action = if ($IsHook) { 'ReportOnly' } else { 'Skip' }
+        return [pscustomobject]@{ Action = $action; ShowHint = $false }
+    }
+    if ($ConfigState -eq 'invalid') { return [pscustomobject]@{ Action = 'ReportOnly'; ShowHint = $false } }
+
+    # config unset (or env-disabled over a would-be-true/unset config)
+    if ($IsHook) { return [pscustomobject]@{ Action = 'ReportOnly'; ShowHint = ($ConfigState -eq 'unset') } }
+    if ($Interactive) { return [pscustomobject]@{ Action = 'Prompt'; ShowHint = $false } }
+    return [pscustomobject]@{ Action = 'ReportOnly'; ShowHint = $false }
+}
+
+# Applies the ask-once answer: persists the preference and reports whether removal should
+# proceed. Warns on stderr when the write failed but still honors the answer for this run.
+# Extracted from the Prompt branch so the persist+warn path is unit-testable without a live
+# Read-Host/TTY. Returns [pscustomobject]@{ Clean=<bool>; Persisted=<bool> }.
+function Set-CleanupAnswer {
+    param(
+        [Parameter(Mandatory)][string] $RepoRoot,
+        [string] $Answer
+    )
+
+    $mapped = ConvertFrom-CleanupAnswer $Answer
+    $persisted = Set-WorktreeCleanupConfig -RepoRoot $RepoRoot -Enabled $mapped.Enabled
+    if (-not $persisted) {
+        Write-Stderr 'cleanup: could not persist your choice to git config; honoring it for this run only.'
+    }
+    return [pscustomobject]@{ Clean = $mapped.Clean; Persisted = $persisted }
+}
+
 # Spawns remove-worktree-local-dev.ps1 (Hook mode) for one worktree. Empty stdin is
 # piped in: that script's hook path does an unbounded [Console]::In.ReadToEnd(), which
 # would hang if THIS run's own stdin is redirected (agent/CI) and left open.
