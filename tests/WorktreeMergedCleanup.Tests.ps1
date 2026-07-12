@@ -97,6 +97,50 @@ function Remove-TempTree {
 # Import the cleanup functions (guard keeps the standalone entrypoint from running).
 . (Join-Path $scriptsDir 'cleanup-merged-worktrees.ps1')
 
+# --- Test: Get-WorktreeCleanupConfig fail-closed state machine ------------------
+$repo = New-TempGitRepo
+try {
+    Assert-Equal 'unset' (Get-WorktreeCleanupConfig -RepoRoot $repo) 'No config value must read as unset.'
+
+    Invoke-TestGit $repo @('config', '--local', 'ahkflow.worktreeCleanup', 'true') | Out-Null
+    Assert-Equal 'true' (Get-WorktreeCleanupConfig -RepoRoot $repo) 'A true value must read as true.'
+
+    Invoke-TestGit $repo @('config', '--local', 'ahkflow.worktreeCleanup', 'no') | Out-Null
+    Assert-Equal 'false' (Get-WorktreeCleanupConfig -RepoRoot $repo) '--bool must normalize no to false.'
+
+    # Duplicated key: exit 0 with two lines -> invalid (fail closed).
+    Invoke-TestGit $repo @('config', '--local', '--add', 'ahkflow.worktreeCleanup', 'true') | Out-Null
+    Assert-Equal 'invalid' (Get-WorktreeCleanupConfig -RepoRoot $repo) 'A duplicated value must read as invalid.'
+
+    # Garbage value: git exits 128 (bad boolean) -> invalid.
+    Invoke-TestGit $repo @('config', '--local', '--unset-all', 'ahkflow.worktreeCleanup') | Out-Null
+    Invoke-TestGit $repo @('config', '--local', 'ahkflow.worktreeCleanup', 'banana') | Out-Null
+    Assert-Equal 'invalid' (Get-WorktreeCleanupConfig -RepoRoot $repo) 'A non-boolean value must read as invalid.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: Set-WorktreeCleanupConfig persists and reports success/failure -------
+$repo = New-TempGitRepo
+try {
+    Assert-True (Set-WorktreeCleanupConfig -RepoRoot $repo -Enabled $true) 'Setting true must report success.'
+    Assert-Equal 'true' (Get-WorktreeCleanupConfig -RepoRoot $repo) 'Set true must be readable as true.'
+
+    Assert-True (Set-WorktreeCleanupConfig -RepoRoot $repo -Enabled $false) 'Setting false must report success.'
+    Assert-Equal 'false' (Get-WorktreeCleanupConfig -RepoRoot $repo) 'Set false must be readable as false.'
+
+    # Write-failure path: a non-repo directory makes `git config --local` fail.
+    $notARepo = Join-Path ([System.IO.Path]::GetTempPath()) ('notrepo-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    New-Item -ItemType Directory -Path $notARepo -Force | Out-Null
+    try {
+        Assert-True (-not (Set-WorktreeCleanupConfig -RepoRoot $notARepo -Enabled $true)) 'A failed write must return $false.'
+    } finally {
+        Remove-Item -LiteralPath $notARepo -Recurse -Force -ErrorAction SilentlyContinue
+    }
+} finally {
+    Remove-TempTree $repo
+}
+
 # --- Test: eligibility matrix -------------------------------------------------
 $repo = New-TempGitRepo
 try {

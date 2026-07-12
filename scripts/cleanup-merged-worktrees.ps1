@@ -126,6 +126,43 @@ function Get-EligibleMergedWorktrees {
     return , $eligible
 }
 
+# Reads the per-repo cleanup preference at --local scope only, so a global/system value
+# can never enable cleanup here. --bool normalizes true/false/1/0/yes/no. Fail closed:
+# a duplicated (multi-line) or non-boolean (git exit 128) value reads as 'invalid'.
+# Confirmed git behavior: unset -> exit 1/no output; valid -> exit 0/one line;
+# duplicated -> exit 0/multiple lines; bad boolean -> exit 128.
+function Get-WorktreeCleanupConfig {
+    param([Parameter(Mandatory)][string] $RepoRoot)
+
+    $values = & git -C $RepoRoot config --local --bool --get-all ahkflow.worktreeCleanup 2>$null
+    $exit = $LASTEXITCODE
+    if ($exit -eq 1) { return 'unset' }
+    if ($exit -ne 0) { return 'invalid' }
+
+    $lines = @($values | Where-Object { $null -ne $_ -and ([string] $_).Trim() -ne '' })
+    if ($lines.Count -ne 1) { return 'invalid' }
+
+    switch (([string] $lines[0]).Trim()) {
+        'true'  { return 'true' }
+        'false' { return 'false' }
+        default { return 'invalid' }
+    }
+}
+
+# Persists the preference at --local scope. Returns $true if git accepted the write,
+# $false otherwise (e.g. $RepoRoot is not a git repo). Callers honor the current answer
+# for the run even when the write fails; they just warn it was not remembered.
+function Set-WorktreeCleanupConfig {
+    param(
+        [Parameter(Mandatory)][string] $RepoRoot,
+        [Parameter(Mandatory)][bool] $Enabled
+    )
+
+    $value = if ($Enabled) { 'true' } else { 'false' }
+    & git -C $RepoRoot config --local ahkflow.worktreeCleanup $value 2>$null
+    return ($LASTEXITCODE -eq 0)
+}
+
 # Spawns remove-worktree-local-dev.ps1 (Hook mode) for one worktree. Empty stdin is
 # piped in: that script's hook path does an unbounded [Console]::In.ReadToEnd(), which
 # would hang if THIS run's own stdin is redirected (agent/CI) and left open.
