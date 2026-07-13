@@ -5,6 +5,10 @@
 .DESCRIPTION
     This script can be called directly, or by Claude Code's WorktreeCreate hook.
     For hook use, stdout must contain only the absolute worktree path on success.
+    Before creating the worktree it runs cleanup-merged-worktrees.ps1 (best-effort, all
+    output on stderr) to sweep worktrees whose branch is already merged into main. That
+    sweep is opt-in via `git config --local ahkflow.worktreeCleanup true`; -Cleanup forces
+    it for this run. See cleanup-merged-worktrees.ps1 for the full precedence.
 #>
 
 [CmdletBinding()]
@@ -22,22 +26,6 @@ $ErrorActionPreference = 'Stop'
 
 . (Join-Path $PSScriptRoot 'worktree-git.common.ps1')
 . (Join-Path $PSScriptRoot 'worktree-powershell.common.ps1')
-
-function Write-Stderr {
-    param([string] $Message)
-    [Console]::Error.WriteLine($Message)
-}
-
-function Test-EnvironmentFlagEnabled {
-    param([string] $Name)
-
-    $value = [Environment]::GetEnvironmentVariable($Name, 'Process')
-    if ([string]::IsNullOrWhiteSpace($value)) {
-        return $false
-    }
-
-    return $value.Trim() -match '^(1|true|yes|y)$'
-}
 
 function Get-HookInput {
     if (-not [Console]::IsInputRedirected) {
@@ -242,21 +230,12 @@ Assert-WorktreeLocation -RepoRoot $repoRoot -WorktreePath $worktreePath
 $worktreeExists = Test-Path -LiteralPath (Join-Path $worktreePath '.git')
 
 # Sweep other worktrees whose branch is already merged into main before creating/reusing
-# this one. -ExcludePath protects $worktreePath itself now that it is known: without it,
-# a same-named create/reuse could race the async removal. Best-effort: never block
-# creation, and pipe to Out-Null so cleanup output can never reach hook stdout.
-$cleanupRequested = [bool] $Cleanup
-# The env var is a hook-only opt-in: it must never change direct-call behavior, where
-# -Cleanup / -c and the interactive prompt already govern removal. Gating on $isHook stops
-# a leftover AHKFLOW_WORKTREE_CLEANUP=1 from silently deleting on future direct creates.
-if (-not $cleanupRequested -and $isHook -and (Test-EnvironmentFlagEnabled -Name 'AHKFLOW_WORKTREE_CLEANUP')) {
-    $cleanupRequested = $true
-}
-
-$cleanupIsReportOnly = $isHook -and -not $cleanupRequested
-
+# this one. -ExcludePath protects $worktreePath itself: without it a same-named create/reuse
+# could race the async removal. -IsHook passes the RAW hook context; the cleanup script's
+# resolver owns the full decision (hook-only env var, git config, ask-once). Best-effort:
+# never block creation, and pipe to Out-Null so cleanup output can never reach hook stdout.
 try {
-    & (Join-Path $PSScriptRoot 'cleanup-merged-worktrees.ps1') -RepoRoot $repoRoot -Cleanup:$cleanupRequested -IsHook:$cleanupIsReportOnly -ExcludePath $worktreePath | Out-Null
+    & (Join-Path $PSScriptRoot 'cleanup-merged-worktrees.ps1') -RepoRoot $repoRoot -Cleanup:$Cleanup -IsHook:$isHook -ExcludePath $worktreePath | Out-Null
 } catch {
     Write-Stderr "Merged-worktree cleanup skipped: $($_.Exception.Message)"
 }

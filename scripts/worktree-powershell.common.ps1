@@ -21,3 +21,8 @@ function Resolve-PowerShellExecutable {
 
     throw 'Could not resolve a PowerShell executable. Expected current host, pwsh.exe, or powershell.exe to be available.'
 }
+
+function Write-Stderr {
+    param([string] $Message)
+    [Console]::Error.WriteLine($Message)
+}
