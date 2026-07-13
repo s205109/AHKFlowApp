@@ -79,11 +79,12 @@ public static HotstringDelivery ResolveEffectiveDelivery(Hotstring hs) =>
 
 ### P4 — Backend DTOs / handlers / preview
 - DTO records (`HotstringDto`, `Create…`, `Update…`, `HotstringPreviewRequestDto`): append `Delivery = Auto`. `HotstringPreviewDto` gains `EffectiveDelivery` (never Auto in responses).
-- Mappings, Create/Update handlers, preview handler returns `ResolveEffectiveDelivery`. Handler + preview tests.
+- Mappings, Create/Update handlers, preview handler returns `ResolveEffectiveDelivery` and, when that is `ClipboardPaste`, prepends the `AhkFlow_PasteReplacement` helper block to the snippet so the copyable "Generated AutoHotkey code" preview is self-contained. Handler + preview tests (incl. clipboard preview contains the helper; typed preview unchanged).
 
 ### P5 — EF config + migration
 - `HotstringConfiguration.cs`: `Property(x => x.Delivery).IsRequired().HasConversion<int>()`.
 - `dotnet ef migrations add AddHotstringDelivery` — additive int, `defaultValue: 0`.
+- **Behavior change (intentional, per Decision #2):** every existing row defaults to `Auto=0`, so existing Text replacements ≥200 chars flip from typed to clipboard delivery on next script generation — including loss of auto-replace case-conforming. Keep `Auto` as the default (do not backfill to `Type`), but: (a) add a migration/emit regression test asserting a pre-existing 200+ char Text row resolves to clipboard, and (b) surface a one-time release note + UI hint that long existing hotstrings now paste. Alternative if the silent flip is unacceptable: backfill existing rows to `Type` and keep `Auto` only for newly created rows — revisit with product.
 
 ### P6 — History snapshots
 - `HotstringSnapshot`: append `Delivery = Auto` (legacy JSON degrades to Auto). Recorder + Restore/Revert pass-through. Round-trip + legacy-JSON tests.
@@ -93,7 +94,9 @@ public static HotstringDelivery ResolveEffectiveDelivery(Hotstring hs) =>
 
 ### P8 — Blazor UI
 - Enum copy in `UI.Blazor\DTOs\`; mirror DTO changes.
-- `HotstringEditModel.cs`: `Delivery` through FromDto/Clone/ToCreate/ToUpdate; replace `[MaxLength(4000)]` with conditional validation (4000 when Text+Type, 100k otherwise).
+- `HotstringEditModel.cs`: `Delivery` through FromDto/Clone/ToCreate/ToUpdate; replace `[MaxLength(4000)]` with conditional validation mirroring the **full server matrix**: Text+Type 4000; Text+Auto/Clipboard 100 000; Macro 4000; Raw 4200; DateTime empty. (Not "4000 when Text+Type, 100k otherwise" — that would wrongly allow Macro/Raw/DateTime up to 100k on the client.)
+- **All three client length gates** must move off the hardcoded 4000, not just the model: `HotstringEditDialog.razor` `MaxLength="4000"` (line 62), the desktop inline editor's `MaxLength="4000"` input (Hotstrings.razor:105), and its separate `ValidateReplacement` commit guard (Hotstrings.razor:481). Drive all three from the same per-kind/delivery limit. bUnit tests: enter and save a 4001-char Text+Auto/Clipboard value through both the dialog and the inline editor.
+- **List payload/render guard:** a 200-row page (`PageSize` max, ListHotstringsQuery.cs:52) of 100 000-char rows is ~20 MB, rendered in full (Hotstrings.razor:122). Truncate Text-replacement list rendering to a preview length; preferably ship a truncated replacement from `ListHotstringsQuery` (a summary/list DTO) and fetch full content only when editing.
 - `HotstringEditDialog.razor`: delivery selector (Auto/Typed/Clipboard) for Text only, reset on kind switch; hint "Auto types short replacements and pastes 200+ characters via the clipboard"; preview carries Delivery; effective-delivery chip (`data-test="preview-delivery"`).
 - Lists: minimal "Clipboard" chip for Text rows with explicit delivery. bUnit tests.
 
@@ -102,6 +105,7 @@ public static HotstringDelivery ResolveEffectiveDelivery(Hotstring hs) =>
 
 ### P10 — Docs, E2E, verify
 - `docs\cli\hotstrings.md`: `--delivery` + clipboard-delivery paragraph.
+- Release/changelog note: existing Text hotstrings ≥200 chars now paste via clipboard after this migration (see P5).
 - E2E: 250-char Text hotstring → downloaded script contains helper exactly once + `AhkFlow_PasteReplacement(`.
 - `dotnet build`, full `dotnet test`, `dotnet format`, dck-verify.
 
@@ -115,5 +119,5 @@ Menu-based multi-replacement output, SendPlay/SendEvent modes, import recognitio
 
 ## Unresolved questions
 1. End-char behavior for X hotstrings — verify empirically (5-line .ahk, manual) that AHK consumes the ending char before finalizing P2; if it survives, drop the `A_EndChar` arg.
-2. Preview: delivery chip + hint only, or include helper block in preview snippet? (Plan: chip + hint.)
+2. **Resolved:** clipboard previews must be copy-safe. The "Generated AutoHotkey code" block is copyable, so a bare `:X:sig::AhkFlow_PasteReplacement(...)` line would reference an undefined helper. The preview handler prepends the `AhkFlow_PasteReplacement` helper block when effective delivery is clipboard (see P4), so a copied snippet is self-contained. Chip + hint stay; typed previews unchanged.
 3. UI hint threshold (200) hardcoded vs served by API? (Plan: duplicated constant, like existing limits.)
