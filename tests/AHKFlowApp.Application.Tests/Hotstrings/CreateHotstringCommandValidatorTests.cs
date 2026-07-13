@@ -262,76 +262,129 @@ public sealed class CreateHotstringCommandValidatorTests
     }
 
     [Fact]
-    public void CreateHotstringCommandValidator_ScriptKind_Accepted()
+    public void RawKind_InlineDefinition_Accepted()
     {
         ValidationResult result = _sut.Validate(Cmd(
-            kind: HotstringKind.Script,
-            replacement: "MsgBox A_AhkVersion"));
+            trigger: "",
+            kind: HotstringKind.Raw,
+            replacement: ":K1000 SE*:ftw::for the win"));
 
-        result.Errors.Should().NotContain(e => e.PropertyName == "Input.Kind");
-        result.Errors.Should().NotContain(e => e.PropertyName == "Input.Replacement");
+        result.IsValid.Should().BeTrue();
     }
 
     [Fact]
-    public void Validate_ScriptWithUnbalancedBraces_Fails()
+    public void RawKind_BraceBodyDefinition_Accepted()
     {
         ValidationResult result = _sut.Validate(Cmd(
-            kind: HotstringKind.Script,
-            replacement: "if (true) {\nMsgBox \"hi\""));
+            trigger: "",
+            kind: HotstringKind.Raw,
+            replacement: ":*:rng::\n{\nSend String(Random(1, 100))\n}"));
 
-        result.IsValid.Should().BeFalse();
+        result.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public void RawKind_Rule1_NotAHotstring_Fails()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            kind: HotstringKind.Raw, replacement: "just some text"));
+
         result.Errors.Should().Contain(e =>
-            e.PropertyName == "Input.Replacement" &&
-            e.ErrorMessage == "Script replacement must have balanced braces.");
+            e.ErrorMessage == "Not a valid hotstring definition — expected `:options:trigger::replacement`.");
     }
 
     [Fact]
-    public void Validate_ScriptWithDirectiveLine_Fails()
+    public void RawKind_Rule2_MultipleDefinitions_Fails()
     {
         ValidationResult result = _sut.Validate(Cmd(
-            kind: HotstringKind.Script,
-            replacement: "#Requires AutoHotkey v2.0\nMsgBox A_AhkVersion"));
+            kind: HotstringKind.Raw, replacement: "::a::1\n::b::2"));
 
-        result.IsValid.Should().BeFalse();
         result.Errors.Should().Contain(e =>
-            e.PropertyName == "Input.Replacement" &&
-            e.ErrorMessage == "Script replacement must not contain directive lines starting with '#'.");
+            e.ErrorMessage == "Multiple hotstrings detected — paste one definition at a time.");
     }
 
     [Fact]
-    public void Validate_ScriptWellFormedMultiline_Passes()
+    public void RawKind_Rule3_TriggerOver40Chars_Fails()
     {
         ValidationResult result = _sut.Validate(Cmd(
-            kind: HotstringKind.Script,
-            replacement: "if (WinActive(\"ahk_exe notepad.exe\")) {\n    MsgBox \"hi\"\n}"));
+            kind: HotstringKind.Raw, replacement: $"::{new string('a', 41)}::x"));
 
-        result.Errors.Should().NotContain(e => e.PropertyName == "Input.Replacement");
+        result.Errors.Should().Contain(e => e.ErrorMessage == "Trigger must be 40 characters or fewer.");
     }
 
     [Fact]
-    public void Validate_ScriptOver4000Chars_Fails()
+    public void RawKind_Rule3_EscapedNewlineTrigger_Fails()
     {
         ValidationResult result = _sut.Validate(Cmd(
-            kind: HotstringKind.Script,
-            replacement: new string('x', 4001)));
+            kind: HotstringKind.Raw, replacement: "::a`nb::x"));
 
-        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.ErrorMessage == "Trigger must not contain line breaks or tabs.");
+    }
+
+    [Fact]
+    public void RawKind_Rule4_UnknownOption_X0_Fails()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            kind: HotstringKind.Raw, replacement: ":X0:t::x"));
+
+        result.Errors.Should().Contain(e => e.ErrorMessage == "Unknown hotstring option 'X0'.");
+    }
+
+    [Fact]
+    public void RawKind_Rule5_DirectiveLine_Fails()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            kind: HotstringKind.Raw, replacement: ":*:t::\n{\n#Requires AutoHotkey v2.0\n}"));
+
         result.Errors.Should().Contain(e =>
-            e.PropertyName == "Input.Replacement" &&
-            e.ErrorMessage == "Replacement must be 4000 characters or fewer.");
+            e.ErrorMessage == "Raw definition must not contain directive lines starting with '#'.");
     }
 
     [Fact]
-    public void Validate_ScriptEmptyReplacement_Fails()
+    public void RawKind_Rule6_UnbalancedBraces_Fails()
     {
         ValidationResult result = _sut.Validate(Cmd(
-            kind: HotstringKind.Script,
-            replacement: ""));
+            kind: HotstringKind.Raw, replacement: ":*:t::\n{\nSend foo\n"));
 
-        result.IsValid.Should().BeFalse();
-        result.Errors.Should().Contain(e =>
-            e.PropertyName == "Input.Replacement" &&
-            e.ErrorMessage == "Replacement is required.");
+        result.Errors.Should().Contain(e => e.ErrorMessage == "Raw definition must have balanced braces.");
+    }
+
+    [Fact]
+    public void RawKind_Rule7_OtbBrace_Fails()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            kind: HotstringKind.Raw, replacement: "::btw:: {\nSend foo\n}"));
+
+        result.Errors.Should().Contain(e => e.ErrorMessage == "Put `{` on its own line below the trigger.");
+    }
+
+    [Fact]
+    public void RawKind_Rule7_ContinuationSection_Fails()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            kind: HotstringKind.Raw, replacement: ":*:long::\n(\nline1\n)"));
+
+        result.Errors.Should().Contain(e => e.ErrorMessage == "Put `{` on its own line below the trigger.");
+    }
+
+    [Fact]
+    public void RawKind_Rule8_OverMaxLength_Fails()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            kind: HotstringKind.Raw, replacement: ":*:t::" + new string('x', 4201)));
+
+        result.Errors.Should().Contain(e => e.ErrorMessage == "Raw definition must be 4200 characters or fewer.");
+    }
+
+    [Fact]
+    public void RawKind_EmptyClientTrigger_PassesTriggerGate()
+    {
+        // The client-sent Trigger is ignored for Raw; an empty one must not raise "Trigger is required."
+        ValidationResult result = _sut.Validate(Cmd(
+            trigger: "", kind: HotstringKind.Raw, replacement: "::btw::by the way"));
+
+        result.Errors.Should().NotContain(e => e.PropertyName == "Input.Trigger");
+        result.IsValid.Should().BeTrue();
     }
 
     [Fact]

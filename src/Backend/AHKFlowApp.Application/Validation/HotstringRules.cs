@@ -16,6 +16,13 @@ internal static partial class HotstringRules
     public const int DateOffsetAmountMax = 3650;
     public const int ContextValueMaxLength = 200;
 
+    // Raw-specific limits. RawDefinitionMaxLength = 4000 body + trigger/options/brace
+    // overhead, so migrated near-limit Script rows stay editable. RawTriggerMaxLength is
+    // AHK's own documented abbreviation limit ("no more than 40 characters"), so Raw never
+    // accepts a definition AHK itself would reject. Structured kinds keep TriggerMaxLength (50).
+    public const int RawDefinitionMaxLength = 4200;
+    public const int RawTriggerMaxLength = 40;
+
     public static IRuleBuilderOptions<T, string> ValidTrigger<T>(this IRuleBuilderInitial<T, string> rb) =>
         rb.Cascade(CascadeMode.Stop)
           .Must(t => !string.IsNullOrEmpty(t)).WithMessage("Trigger is required.")
@@ -218,39 +225,81 @@ internal static partial class HotstringRules
     /// <see cref="AddDateTimeKindRules{T}"/> (Script is not DateTime, so it falls into that method's
     /// "otherwise" branches) and are not duplicated here.
     /// </summary>
-    public static void AddScriptKindRules<T>(
+    public static void AddRawKindRules<T>(
         this AbstractValidator<T> validator,
         Expression<Func<T, HotstringKind>> kind,
         Expression<Func<T, string>> replacement)
     {
         Func<T, HotstringKind> kindFn = kind.Compile();
 
-        bool IsScript(T x) => kindFn(x) == HotstringKind.Script;
+        bool IsRaw(T x) => kindFn(x) == HotstringKind.Raw;
 
         validator.RuleFor(replacement)
-            .Must(r => r.Split('\n').All(line => !line.TrimStart().StartsWith('#')))
-            .When(IsScript)
-            .WithMessage("Script replacement must not contain directive lines starting with '#'.");
-
-        validator.RuleFor(replacement)
-            .Must(r =>
+            .Custom((value, context) =>
             {
-                int depth = 0;
-                foreach (char c in r)
+                value ??= string.Empty;
+
+                // Rule 8 — length (bound before parsing).
+                if (value.Length > RawDefinitionMaxLength)
                 {
-                    if (c == '{')
-                        depth++;
-                    else if (c == '}')
-                    {
-                        depth--;
-                        if (depth < 0)
-                            return false;
-                    }
+                    context.AddFailure($"Raw definition must be {RawDefinitionMaxLength} characters or fewer.");
+                    return;
                 }
-                return depth == 0;
+
+                RawParseResult parsed = RawHotstringDefinitionParser.Parse(value);
+
+                // Rule 1 — first line must be a valid hotstring definition.
+                if (!parsed.FirstLineValid)
+                {
+                    context.AddFailure(parsed.Error);
+                    return;
+                }
+
+                // Rule 2 — exactly one definition.
+                if (parsed.DefinitionCount > 1)
+                {
+                    context.AddFailure("Multiple hotstrings detected — paste one definition at a time.");
+                    return;
+                }
+
+                // Rule 3 — derived trigger (Raw-specific 40-char limit; AHK's own abbreviation cap).
+                if (parsed.Trigger.Length == 0)
+                {
+                    context.AddFailure("Trigger is required.");
+                    return;
+                }
+
+                if (parsed.Trigger.Length > RawTriggerMaxLength)
+                {
+                    context.AddFailure($"Trigger must be {RawTriggerMaxLength} characters or fewer.");
+                    return;
+                }
+
+                if (parsed.Trigger.IndexOfAny(['\n', '\r', '\t']) >= 0)
+                {
+                    context.AddFailure("Trigger must not contain line breaks or tabs.");
+                    return;
+                }
+
+                // Rule 4 — every option flag in the known AHK v2 set.
+                if (parsed.UnknownOptionTokens.Length > 0)
+                {
+                    context.AddFailure($"Unknown hotstring option '{parsed.UnknownOptionTokens[0]}'.");
+                    return;
+                }
+
+                // Rule 5 — no directive lines (would corrupt #HotIf grouping).
+                if (value.Split('\n').Any(line => line.TrimStart().StartsWith('#')))
+                {
+                    context.AddFailure("Raw definition must not contain directive lines starting with '#'.");
+                    return;
+                }
+
+                // Rules 6 & 7 — structural body completeness (balanced brace body / inline shape).
+                if (!parsed.IsValid)
+                    context.AddFailure(parsed.Error);
             })
-            .When(IsScript)
-            .WithMessage("Script replacement must have balanced braces.");
+            .When(IsRaw);
     }
 
     /// <summary>

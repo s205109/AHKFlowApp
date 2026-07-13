@@ -15,8 +15,15 @@ internal static class HotstringEmitter
     // preview handler so both code paths use the identical close string.
     public const string HotIfClose = "#HotIf";
 
+    // Raw is emitted verbatim: its Replacement already holds the entire ":opts:trigger::"
+    // definition (plus any brace body), so the ":{options}:{trigger}::{body}" template is
+    // bypassed entirely — re-prefixing would double the definition. AhkScriptGenerator adds
+    // each Emit result to a line list joined with "\n", so a multi-line definition slots in
+    // as multiple physical lines.
     public static string Emit(Hotstring hs) =>
-        $":{BuildOptions(hs)}:{Escape(hs.Trigger)}::{BuildBody(hs)}";
+        hs.Kind == HotstringKind.Raw
+            ? hs.Replacement
+            : $":{BuildOptions(hs)}:{Escape(hs.Trigger)}::{BuildBody(hs)}";
 
     // ContextValue has already passed validation guaranteeing no double-quote, backtick, or
     // control characters (see HotstringRules.AddWindowContextRules) — safe to embed raw here.
@@ -49,7 +56,6 @@ internal static class HotstringEmitter
         {
             HotstringKind.DateTime => BuildDateTimeBody(hs),
             HotstringKind.Macro => BuildMacroBody(hs),
-            HotstringKind.Script => BuildScriptBody(hs),
             _ => Escape(hs.Replacement),
         };
 
@@ -129,16 +135,6 @@ internal static class HotstringEmitter
         string body = string.Concat(lines.Select(line => $"\n\t{line}"));
         return $"\n{{{body}\n}}";
     }
-
-    // Assumes hs.Replacement has already passed Script validation (balanced braces, no
-    // '#'-directive lines) — that invariant is enforced elsewhere (Task 1), not re-checked here.
-    // Wraps the raw body in the same outer brace shape BuildMacroBody uses (opening "{" alone on
-    // its own line, closing "}" alone on its own line) but performs no tokenization, no character
-    // escaping, and no per-line re-indentation — the content between the braces is an exact,
-    // verbatim copy of hs.Replacement (line endings, leading/trailing blank lines, and per-line
-    // indentation all preserved as authored).
-    private static string BuildScriptBody(Hotstring hs) =>
-        $"\n{{\n{hs.Replacement}\n}}";
 
     // Keep every hotstring on one physical line and its trigger free of characters
     // AHK v2 would otherwise reinterpret (backtick, a whitespace-preceded ';'). Backtick

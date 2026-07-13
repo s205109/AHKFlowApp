@@ -81,13 +81,24 @@ public sealed class GetHotstringPreviewQueryValidatorTests
     }
 
     [Fact]
-    public void GetHotstringPreviewQueryValidator_ScriptKind_Accepted()
+    public void GetHotstringPreviewQueryValidator_RawKind_Accepted()
     {
         ValidationResult result = _sut.Validate(Query(
-            kind: HotstringKind.Script,
-            replacement: "MsgBox A_AhkVersion"));
+            kind: HotstringKind.Raw,
+            replacement: ":K1000 SE*:ftw::for the win"));
 
         result.Errors.Should().NotContain(e => e.PropertyName == "Input.Kind");
         result.Errors.Should().NotContain(e => e.PropertyName == "Input.Replacement");
+    }
+
+    [Fact]
+    public void GetHotstringPreviewQueryValidator_RawKind_EmptyClientTrigger_PassesTriggerGate()
+    {
+        ValidationResult result = _sut.Validate(Query(
+            trigger: "",
+            kind: HotstringKind.Raw,
+            replacement: "::btw::by the way"));
+
+        result.Errors.Should().NotContain(e => e.PropertyName == "Input.Trigger");
     }
 }

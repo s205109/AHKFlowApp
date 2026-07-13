@@ -15,10 +15,12 @@ public sealed class GetHotstringPreviewQueryValidator : AbstractValidator<GetHot
 {
     public GetHotstringPreviewQueryValidator()
     {
-        RuleFor(x => x.Input.Trigger).ValidTrigger();
+        // Raw derives its trigger server-side; the client-trigger rules are gated off for Raw.
+        RuleFor(x => x.Input.Trigger).ValidTrigger()
+            .When(x => x.Input.Kind != HotstringKind.Raw);
         RuleFor(x => x.Input.Kind)
-            .Must(k => k is HotstringKind.Text or HotstringKind.DateTime or HotstringKind.Macro or HotstringKind.Script)
-            .WithMessage("Only Text, Date & time, Macro and Script hotstrings are supported.");
+            .Must(k => k is HotstringKind.Text or HotstringKind.DateTime or HotstringKind.Macro or HotstringKind.Raw)
+            .WithMessage("Only Text, Date & time, Macro and Raw hotstrings are supported.");
         this.AddDateTimeKindRules(
             x => x.Input.Kind,
             x => x.Input.Replacement,
@@ -28,7 +30,7 @@ public sealed class GetHotstringPreviewQueryValidator : AbstractValidator<GetHot
         this.AddMacroKindRules(
             x => x.Input.Kind,
             x => x.Input.Replacement);
-        this.AddScriptKindRules(
+        this.AddRawKindRules(
             x => x.Input.Kind,
             x => x.Input.Replacement);
         this.AddWindowContextRules(
@@ -50,11 +52,24 @@ internal sealed class GetHotstringPreviewQueryHandler(TimeProvider clock)
     {
         HotstringPreviewRequestDto input = request.Input;
 
+        // Raw derives its trigger + option summary server-side from the verbatim definition.
+        // Normalize first so the preview matches exactly what a save would persist and emit.
+        string trigger = input.Trigger;
+        string replacement = input.Replacement;
+        RawSummaryDto? rawSummary = null;
+        if (input.Kind == HotstringKind.Raw)
+        {
+            replacement = RawHotstringDefinitionParser.Normalize(input.Replacement);
+            RawParseResult parsed = RawHotstringDefinitionParser.Parse(replacement);
+            trigger = parsed.Trigger;
+            rawSummary = new RawSummaryDto(parsed.Trigger, parsed.OptionTokens);
+        }
+
         var hs = Hotstring.Create(
             Guid.Empty,
             new HotstringDefinition(
-                input.Trigger,
-                input.Replacement,
+                trigger,
+                replacement,
                 Description: null,
                 AppliesToAllProfiles: true,
                 input.IsEndingCharacterRequired,
@@ -76,6 +91,6 @@ internal sealed class GetHotstringPreviewQueryHandler(TimeProvider clock)
         if (hs.ContextMatchType is WindowMatchType matchType)
             snippet = $"{HotstringEmitter.EmitHotIfOpen(matchType, hs.ContextValue!)}\n{snippet}\n{HotstringEmitter.HotIfClose}";
 
-        return Task.FromResult(Result.Success(new HotstringPreviewDto(snippet)));
+        return Task.FromResult(Result.Success(new HotstringPreviewDto(snippet, rawSummary)));
     }
 }

@@ -663,16 +663,15 @@ public sealed class AhkScriptGeneratorTests
     }
 
     [Fact]
-    public void Emit_ScriptKind_WrapsBodyVerbatimInBraces()
+    public void Emit_RawKind_EmitsDefinitionVerbatim()
     {
-        // Spec §7 ex. 7: Kind=Script, trigger `~ver`, body `MsgBox A_AhkVersion`.
+        // Raw's Replacement holds the entire ":opts:trigger::" definition; the emitter returns it
+        // verbatim with no option building, escaping, or wrapping.
         Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
         Hotstring hs = new HotstringBuilder()
             .WithTrigger("~ver")
-            .WithKind(HotstringKind.Script)
-            .WithReplacement("MsgBox A_AhkVersion")
-            .WithEndingCharacterRequired(false)
-            .WithTriggerInsideWord(false)
+            .WithKind(HotstringKind.Raw)
+            .WithReplacement(":*:~ver::\n{\nMsgBox A_AhkVersion\n}")
             .Build();
 
         string output = DefaultSut().Generate(profile, [hs], []);
@@ -685,15 +684,13 @@ public sealed class AhkScriptGeneratorTests
     }
 
     [Fact]
-    public void Emit_ScriptKindMultilineBody_PreservesLinesVerbatim()
+    public void Emit_RawKindMultilineBody_PreservesLinesVerbatim()
     {
         Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
         Hotstring hs = new HotstringBuilder()
             .WithTrigger("m")
-            .WithKind(HotstringKind.Script)
-            .WithReplacement("line1\nline2\nline3")
-            .WithEndingCharacterRequired(false)
-            .WithTriggerInsideWord(false)
+            .WithKind(HotstringKind.Raw)
+            .WithReplacement(":*:m::\n{\nline1\nline2\nline3\n}")
             .Build();
 
         string output = DefaultSut().Generate(profile, [hs], []);
@@ -708,15 +705,13 @@ public sealed class AhkScriptGeneratorTests
     }
 
     [Fact]
-    public void Emit_ScriptKindBody_PreservesLeadingIndentation()
+    public void Emit_RawKindBody_PreservesInteriorIndentation()
     {
         Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
         Hotstring hs = new HotstringBuilder()
             .WithTrigger("m")
-            .WithKind(HotstringKind.Script)
-            .WithReplacement("if (true) {\n    MsgBox \"hi\"\n}")
-            .WithEndingCharacterRequired(false)
-            .WithTriggerInsideWord(false)
+            .WithKind(HotstringKind.Raw)
+            .WithReplacement(":*:m::\n{\nif (true) {\n    MsgBox \"hi\"\n}\n}")
             .Build();
 
         string output = DefaultSut().Generate(profile, [hs], []);
@@ -731,38 +726,29 @@ public sealed class AhkScriptGeneratorTests
     }
 
     [Fact]
-    public void Emit_ScriptKindBody_PreservesLeadingAndTrailingBlankLines()
+    public void Emit_RawKindInlineReplacement_EmittedVerbatim()
     {
         Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
         Hotstring hs = new HotstringBuilder()
-            .WithTrigger("m")
-            .WithKind(HotstringKind.Script)
-            .WithReplacement("\n\nMsgBox 1\n\n")
-            .WithEndingCharacterRequired(false)
-            .WithTriggerInsideWord(false)
+            .WithTrigger("ftw")
+            .WithKind(HotstringKind.Raw)
+            .WithReplacement(":K1000 SE*:ftw::for the win")
             .Build();
 
         string output = DefaultSut().Generate(profile, [hs], []);
 
-        output.Should().Contain(
-            ":*:m::\n" +
-            "{\n" +
-            "\n" +
-            "\n" +
-            "MsgBox 1\n" +
-            "\n" +
-            "\n" +
-            "}");
+        output.Should().Contain(":K1000 SE*:ftw::for the win");
     }
 
     [Fact]
-    public void Emit_ScriptKind_NeverEmitsTOption()
+    public void Emit_RawKind_AddsNoSynthesizedOptions()
     {
+        // The emitter never rebuilds an options block for Raw — no T (or any flag) is injected.
         Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
         Hotstring hs = new HotstringBuilder()
             .WithTrigger("m")
-            .WithKind(HotstringKind.Script)
-            .WithReplacement("MsgBox 1")
+            .WithKind(HotstringKind.Raw)
+            .WithReplacement("::m::\n{\nMsgBox 1\n}")
             .Build();
 
         string output = DefaultSut().Generate(profile, [hs], []);
@@ -773,15 +759,13 @@ public sealed class AhkScriptGeneratorTests
     }
 
     [Fact]
-    public void Emit_ScriptKindWithContext_WrapsInHotIfAroundBraceBody()
+    public void Emit_RawKindWithContext_WrapsInHotIfAroundDefinition()
     {
         Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
         Hotstring hs = new HotstringBuilder()
             .WithTrigger("~ver")
-            .WithKind(HotstringKind.Script)
-            .WithReplacement("MsgBox A_AhkVersion")
-            .WithEndingCharacterRequired(false)
-            .WithTriggerInsideWord(false)
+            .WithKind(HotstringKind.Raw)
+            .WithReplacement(":*:~ver::\n{\nMsgBox A_AhkVersion\n}")
             .WithContext(WindowMatchType.Executable, "notepad.exe")
             .Build();
 

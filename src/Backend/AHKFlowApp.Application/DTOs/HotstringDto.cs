@@ -142,4 +142,10 @@ public sealed record HotstringPreviewRequestDto(
 
 /// <summary>The AutoHotkey snippet a hotstring definition would generate.</summary>
 /// <param name="Snippet">The exact <c>.ahk</c> line(s) <c>HotstringEmitter.Emit</c> would produce for the given definition.</param>
-public sealed record HotstringPreviewDto(string Snippet);
+/// <param name="RawSummary">Server-derived trigger and option tokens for a Raw definition; null for other kinds.</param>
+public sealed record HotstringPreviewDto(string Snippet, RawSummaryDto? RawSummary = null);
+
+/// <summary>Parsed summary of a Raw hotstring definition, shown below the editor's raw textarea.</summary>
+/// <param name="Trigger">Trigger derived from the definition's first line.</param>
+/// <param name="OptionTokens">Option flags parsed from the definition, in first-line order.</param>
+public sealed record RawSummaryDto(string Trigger, string[] OptionTokens);

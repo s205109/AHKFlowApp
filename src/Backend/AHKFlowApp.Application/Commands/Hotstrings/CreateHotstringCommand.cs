@@ -2,6 +2,7 @@ using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.Common;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Mapping;
+using AHKFlowApp.Application.Services;
 using AHKFlowApp.Application.Validation;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Domain.Enums;
@@ -17,13 +18,16 @@ public sealed class CreateHotstringCommandValidator : AbstractValidator<CreateHo
 {
     public CreateHotstringCommandValidator()
     {
-        RuleFor(x => x.Input.Trigger).ValidTrigger();
+        // Raw derives its trigger server-side (the client field is hidden), so the client-trigger
+        // rules are gated off for Raw — the parsed trigger is validated by AddRawKindRules instead.
+        RuleFor(x => x.Input.Trigger).ValidTrigger()
+            .When(x => x.Input.Kind != HotstringKind.Raw);
         RuleFor(x => x.Input.Description)
             .MaximumLength(HotstringRules.DescriptionMaxLength)
             .WithMessage($"Description must be {HotstringRules.DescriptionMaxLength} characters or fewer.");
         RuleFor(x => x.Input.Kind)
-            .Must(k => k is HotstringKind.Text or HotstringKind.DateTime or HotstringKind.Macro or HotstringKind.Script)
-            .WithMessage("Only Text, Date & time, Macro and Script hotstrings are supported.");
+            .Must(k => k is HotstringKind.Text or HotstringKind.DateTime or HotstringKind.Macro or HotstringKind.Raw)
+            .WithMessage("Only Text, Date & time, Macro and Raw hotstrings are supported.");
         this.AddProfileAssociationRules(
             x => x.Input.AppliesToAllProfiles,
             x => x.Input.ProfileIds);
@@ -36,7 +40,7 @@ public sealed class CreateHotstringCommandValidator : AbstractValidator<CreateHo
         this.AddMacroKindRules(
             x => x.Input.Kind,
             x => x.Input.Replacement);
-        this.AddScriptKindRules(
+        this.AddRawKindRules(
             x => x.Input.Kind,
             x => x.Input.Replacement);
         this.AddWindowContextRules(
@@ -58,9 +62,20 @@ internal sealed class CreateHotstringCommandHandler(
 
         CreateHotstringDto input = request.Input;
 
+        // Raw stores the verbatim definition and derives its trigger server-side; the client-sent
+        // Trigger is ignored. Normalize first, then parse — the parsed trigger drives the duplicate
+        // check and entity construction. Validation (ValidatingUseCase) already guaranteed a valid Raw.
+        string trigger = input.Trigger;
+        string replacement = input.Replacement;
+        if (input.Kind == HotstringKind.Raw)
+        {
+            replacement = RawHotstringDefinitionParser.Normalize(input.Replacement);
+            trigger = RawHotstringDefinitionParser.Parse(replacement).Trigger;
+        }
+
         bool duplicate = await db.Hotstrings.AnyAsync(
             h => h.OwnerOid == ownerOid
-                && h.Trigger == input.Trigger
+                && h.Trigger == trigger
                 && h.ContextMatchType == input.ContextMatchType
                 && h.ContextValue == input.ContextValue, ct);
         if (duplicate)
@@ -88,8 +103,8 @@ internal sealed class CreateHotstringCommandHandler(
         var entity = Hotstring.Create(
             ownerOid,
             new HotstringDefinition(
-                input.Trigger,
-                input.Replacement,
+                trigger,
+                replacement,
                 description,
                 input.AppliesToAllProfiles,
                 input.IsEndingCharacterRequired,
