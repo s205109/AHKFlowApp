@@ -43,6 +43,48 @@ public sealed class NewHotstringCommandTests
     }
 
     [Fact]
+    public async Task Raw_SendsKindRawWithDefinitionAsReplacement()
+    {
+        (IHotstringsApiClient? hs, IProfilesApiClient? profiles) = Fakes();
+
+        (int exit, string _, string _) = await Run(
+            ["hotstring", "new", "--raw", ":K1000 SE*:ftw::for the win"], hs, profiles);
+
+        exit.Should().Be(0);
+        await hs.Received(1).CreateAsync(
+            Arg.Is<CreateHotstringDto>(d =>
+                d.Kind == HotstringKind.Raw
+                && d.Replacement == ":K1000 SE*:ftw::for the win"
+                && d.Trigger == string.Empty),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Raw_WithTrigger_Exit2_MutuallyExclusive()
+    {
+        (IHotstringsApiClient? hs, IProfilesApiClient? profiles) = Fakes();
+
+        (int exit, string _, string? stderr) = await Run(
+            ["hotstring", "new", "--raw", "::a::b", "-t", "a"], hs, profiles);
+
+        exit.Should().Be(2);
+        stderr.Should().Contain("--raw cannot be combined with --trigger or --replacement.");
+        await hs.DidNotReceive().CreateAsync(Arg.Any<CreateHotstringDto>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task NeitherRawNorTriggerReplacement_Exit2()
+    {
+        (IHotstringsApiClient? hs, IProfilesApiClient? profiles) = Fakes();
+
+        (int exit, string _, string? stderr) = await Run(["hotstring", "new", "-t", "onlytrigger"], hs, profiles);
+
+        exit.Should().Be(2);
+        stderr.Should().Contain("Specify either --raw, or both --trigger and --replacement.");
+        await hs.DidNotReceive().CreateAsync(Arg.Any<CreateHotstringDto>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task NoProfile_SendsAppliesToAllTrue_NullProfileIds()
     {
         (IHotstringsApiClient? hs, IProfilesApiClient? profiles) = Fakes();

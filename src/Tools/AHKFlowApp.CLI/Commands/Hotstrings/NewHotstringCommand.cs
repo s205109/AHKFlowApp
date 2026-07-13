@@ -11,8 +11,12 @@ public static class NewHotstringCommand
 {
     public static Command Build(IServiceProvider services)
     {
-        Option<string> trigger = new("--trigger", "-t") { Description = "Abbreviation to expand.", Required = true };
-        Option<string> replacement = new("--replacement", "-r") { Description = "Replacement text.", Required = true };
+        Option<string> trigger = new("--trigger", "-t") { Description = "Abbreviation to expand." };
+        Option<string> replacement = new("--replacement", "-r") { Description = "Replacement text." };
+        Option<string> raw = new("--raw")
+        {
+            Description = "Create a Raw hotstring from a full AHK v2 definition, e.g. \":K1000 SE*:ftw::for the win\" (mutually exclusive with --trigger/--replacement).",
+        };
         Option<string[]> profile = new("--profile", "-p") { Description = "Profile name (repeatable)." };
         Option<bool> noEndingChar = new("--no-ending-char") { Description = "Don't require an ending character (default: required)." };
         Option<bool> noInsideWord = new("--no-inside-word") { Description = "Don't trigger inside words (default: triggers inside words)." };
@@ -20,7 +24,7 @@ public static class NewHotstringCommand
 
         Command cmd = new("new", "Create a new hotstring.")
         {
-            trigger, replacement, profile, noEndingChar, noInsideWord, json,
+            trigger, replacement, raw, profile, noEndingChar, noInsideWord, json,
         };
 
         cmd.SetAction(async (ParseResult parse, CancellationToken ct) =>
@@ -32,6 +36,26 @@ public static class NewHotstringCommand
 
             try
             {
+                string? rawDefinition = parse.GetValue(raw);
+                string? triggerValue = parse.GetValue(trigger);
+                string? replacementValue = parse.GetValue(replacement);
+
+                // Validate the two mutually-exclusive input modes up front. The server does all
+                // Raw parsing/validation; the CLI only relays the definition and ProblemDetails.
+                if (rawDefinition is not null)
+                {
+                    if (triggerValue is not null || replacementValue is not null)
+                    {
+                        await stderr.WriteLineAsync("--raw cannot be combined with --trigger or --replacement.");
+                        return 2;
+                    }
+                }
+                else if (triggerValue is null || replacementValue is null)
+                {
+                    await stderr.WriteLineAsync("Specify either --raw, or both --trigger and --replacement.");
+                    return 2;
+                }
+
                 Guid[]? resolvedIds = null;
                 bool appliesToAll = true;
                 string[]? names = parse.GetValue(profile);
@@ -55,13 +79,20 @@ public static class NewHotstringCommand
                     appliesToAll = false;
                 }
 
-                CreateHotstringDto input = new(
-                    Trigger: parse.GetValue(trigger)!,
-                    Replacement: parse.GetValue(replacement)!,
-                    ProfileIds: resolvedIds,
-                    AppliesToAllProfiles: appliesToAll,
-                    IsEndingCharacterRequired: !parse.GetValue(noEndingChar),
-                    IsTriggerInsideWord: !parse.GetValue(noInsideWord));
+                CreateHotstringDto input = rawDefinition is not null
+                    ? new CreateHotstringDto(
+                        Trigger: string.Empty,
+                        Replacement: rawDefinition,
+                        ProfileIds: resolvedIds,
+                        AppliesToAllProfiles: appliesToAll,
+                        Kind: HotstringKind.Raw)
+                    : new CreateHotstringDto(
+                        Trigger: triggerValue!,
+                        Replacement: replacementValue!,
+                        ProfileIds: resolvedIds,
+                        AppliesToAllProfiles: appliesToAll,
+                        IsEndingCharacterRequired: !parse.GetValue(noEndingChar),
+                        IsTriggerInsideWord: !parse.GetValue(noInsideWord));
 
                 HotstringDto created = await hotstrings.CreateAsync(input, ct);
 
