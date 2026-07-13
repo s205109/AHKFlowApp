@@ -250,14 +250,24 @@ public sealed class UpdateHotstringCommandValidatorTests
     }
 
     [Fact]
-    public void UpdateHotstringCommandValidator_ScriptKind_Accepted()
+    public void UpdateHotstringCommandValidator_RawKind_Accepted()
     {
         ValidationResult result = _sut.Validate(Cmd(
-            kind: HotstringKind.Script,
-            replacement: "MsgBox A_AhkVersion"));
+            kind: HotstringKind.Raw,
+            replacement: ":K1000 SE*:ftw::for the win"));
 
         result.Errors.Should().NotContain(e => e.PropertyName == "Input.Kind");
         result.Errors.Should().NotContain(e => e.PropertyName == "Input.Replacement");
+    }
+
+    [Fact]
+    public void UpdateHotstringCommandValidator_RawKind_UnknownOption_Fails()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            kind: HotstringKind.Raw,
+            replacement: ":X0:t::x"));
+
+        result.Errors.Should().Contain(e => e.ErrorMessage == "Unknown hotstring option 'X0'.");
     }
 
     [Fact]

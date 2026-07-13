@@ -79,11 +79,11 @@ internal sealed class HotstringPreviewDtoExample : IExamplesProvider<HotstringPr
         Snippet: "#HotIf WinActive(\"ahk_exe outlook.exe\")\n:T:sig::Best regards,`nJohn Doe`nSales Team\n#HotIf");
 }
 
-// Script kind (spec §7 ex. 7): `~ver` / `MsgBox A_AhkVersion`. Targets HotstringHistoryVersionDto
-// — the actual response type on HotstringsController's history-version endpoint — rather than
-// HotstringSnapshot (nested inside it; Swashbuckle.AspNetCore.Filters only annotates examples on
-// operation-level request/response types, not nested property types, so an example on the
-// nested type alone never surfaces in swagger.json) or HotstringDto/CreateHotstringDto/
+// Raw kind: `~ver` with a brace body, stored verbatim in Replacement. Targets
+// HotstringHistoryVersionDto — the actual response type on HotstringsController's history-version
+// endpoint — rather than HotstringSnapshot (nested inside it; Swashbuckle.AspNetCore.Filters only
+// annotates examples on operation-level request/response types, not nested property types, so an
+// example on the nested type alone never surfaces in swagger.json) or HotstringDto/CreateHotstringDto/
 // UpdateHotstringDto/HotstringPreviewRequestDto/HotstringPreviewDto (all already covered above,
 // per the same one-provider-per-type trap documented there). HotstringHistoryVersionDto had no
 // example yet, making it a clean, unused vehicle for this scenario.
@@ -95,7 +95,7 @@ internal sealed class HotstringHistoryVersionDtoExample : IExamplesProvider<Hots
         CapturedAt: DateTimeOffset.Parse("2026-07-11T09:00:00Z"),
         Snapshot: new HotstringSnapshot(
             Trigger: "~ver",
-            Replacement: "MsgBox A_AhkVersion",
+            Replacement: ":*:~ver::\n{\nMsgBox A_AhkVersion\n}",
             Description: "Show the running AutoHotkey version",
             AppliesToAllProfiles: true,
             IsEndingCharacterRequired: false,
@@ -104,5 +104,5 @@ internal sealed class HotstringHistoryVersionDtoExample : IExamplesProvider<Hots
             CategoryIds: [],
             CreatedAt: DateTimeOffset.Parse("2026-07-11T09:00:00Z"),
             UpdatedAt: DateTimeOffset.Parse("2026-07-11T09:00:00Z"),
-            Kind: HotstringKind.Script));
+            Kind: HotstringKind.Raw));
 }
