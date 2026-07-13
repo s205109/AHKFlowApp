@@ -291,6 +291,65 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
+    public Task Page_PromoteExistingRow_OpensEditDialogWithKindToggle()
+    {
+        var dto = new HotstringDto(Guid.NewGuid(), [], true, "btw", "by the way", null, true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        StubList(Page(dto));
+
+        Render<MudPopoverProvider>();
+        IRenderedComponent<MudDialogProvider> provider = Render<MudDialogProvider>();
+        IRenderedComponent<Hotstrings> cut = Render<Hotstrings>(p => p.AddCascadingValue(AuthenticatedState));
+
+        cut.WaitForAssertion(() => cut.Find("button.start-edit"));
+        cut.Find("button.start-edit").Click();
+
+        // Carry a typed edit into the promotion.
+        cut.WaitForAssertion(() => cut.Find("textarea[data-test=\"replacement-input\"]"));
+        cut.Find("textarea[data-test=\"replacement-input\"]").Input("by the way!");
+        cut.Find("button.promote-edit").Click();
+
+        // The dialog renders into the provider's tree, carrying the typed value.
+        provider.WaitForAssertion(() =>
+        {
+            provider.Find(".hotstring-edit-dialog");
+            provider.Find("[data-test=\"kind-selector\"]");
+            provider.FindComponent<global::AHKFlowApp.UI.Blazor.Components.Hotstrings.HotstringEditDialog>()
+                .Instance.Item.Replacement.Should().Be("by the way!");
+        });
+        return Task.CompletedTask;
+    }
+
+    [Fact]
+    public Task Page_PromoteDraftThenCancel_RestoresInlineDraft()
+    {
+        StubList(Page());
+
+        Render<MudPopoverProvider>();
+        IRenderedComponent<MudDialogProvider> provider = Render<MudDialogProvider>();
+        IRenderedComponent<Hotstrings> cut = Render<Hotstrings>(p => p.AddCascadingValue(AuthenticatedState));
+
+        cut.WaitForAssertion(() => cut.Find("button.add-hotstring"));
+        cut.Find("button.add-hotstring").Click();
+
+        cut.WaitForAssertion(() => cut.Find("input[data-test=\"trigger-input\"]"));
+        cut.Find("input[data-test=\"trigger-input\"]").Input("btw");
+        cut.Find("button.promote-edit").Click();
+
+        // Dialog opens in the provider tree; cancel it via the title back button.
+        provider.WaitForAssertion(() => provider.Find(".hotstring-edit-dialog button.cancel-edit"));
+        provider.Find(".hotstring-edit-dialog button.cancel-edit").Click();
+
+        // The dialog closes and the inline draft edit is restored (its commit control reappears).
+        provider.WaitForAssertion(() => provider.FindAll(".hotstring-edit-dialog").Should().BeEmpty());
+        cut.WaitForAssertion(() =>
+        {
+            cut.Find("input[data-test=\"trigger-input\"]");
+            cut.Find("button.commit-edit").Should().NotBeNull();
+        });
+        return Task.CompletedTask;
+    }
+
+    [Fact]
     public async Task Page_WhenAnyToggleIsReenabled_ClearsSpecificProfilesBeforeCreate()
     {
         ProfileDto work = new(Guid.NewGuid(), "Work", false, "header text", "footer text", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);

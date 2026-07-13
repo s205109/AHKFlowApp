@@ -702,6 +702,70 @@
         }
     }
 
+    /// <summary>
+    /// Promotes an inline-editing row (draft or existing) to the full <see cref="HotstringEditDialog"/>,
+    /// carrying over everything typed inline. The dialog is seeded with a clone so the inline model is
+    /// untouched until save. On cancel the inline edit state is restored with its values; on save the
+    /// dialog's normal create/update path runs and the grid reloads.
+    /// </summary>
+    private async Task PromoteInlineRowAsync(HotstringEditModel item)
+    {
+        if (_dialogOpen)
+            return;
+
+        bool isDraft = ReferenceEquals(item, _pendingCreate);
+        HotstringEditModel seed = item.Clone();
+
+        // Leave the inline edit while the dialog is open so the row renders read-only underneath.
+        _editingItem = null;
+        if (isDraft)
+            _pendingCreate = null;
+        if (_grid is not null)
+            await _grid.ReloadServerData();
+
+        _dialogOpen = true;
+        try
+        {
+            DialogParameters parameters = new()
+            {
+                [nameof(HotstringEditDialog.Item)] = seed,
+                [nameof(HotstringEditDialog.Profiles)] = _profiles,
+                [nameof(HotstringEditDialog.Categories)] = _categories,
+            };
+
+            IDialogReference dialog = await DialogService.ShowAsync<HotstringEditDialog>(
+                isDraft ? "New hotstring" : "Edit hotstring", parameters,
+                new DialogOptions { FullScreen = true, CloseButton = false });
+
+            DialogResult? result = await dialog.Result;
+            if (result?.Canceled == false)
+            {
+                Snackbar.Add(isDraft ? "Hotstring created." : "Hotstring updated.", Severity.Success);
+                await ReloadAllAsync();
+            }
+            else
+            {
+                // Cancel restores the inline edit with the values it carried before promotion.
+                if (isDraft)
+                {
+                    _pendingCreate = item;
+                    _editingItem = _pendingCreate;
+                }
+                else
+                {
+                    _editingItem = item;
+                }
+                _commitAttempted = false;
+                if (_grid is not null)
+                    await _grid.ReloadServerData();
+            }
+        }
+        finally
+        {
+            _dialogOpen = false;
+        }
+    }
+
     private Task OpenEditDialogAsync(HotstringEditModel item) =>
         OpenEditDialogCoreAsync(item, new DialogOptions { FullScreen = true, CloseButton = false });
 
@@ -892,6 +956,9 @@
                            Color="Color.Success" OnClick="() => CommitEditAsync(item)" />
             <MudIconButton Class="cancel-edit" Icon="@Icons.Material.Filled.Close"
                            Color="Color.Default" OnClick="CancelEditAsync" />
+            <MudIconButton Class="promote-edit" Icon="@Icons.Material.Filled.Tune"
+                           OnClick="() => PromoteInlineRowAsync(item)"
+                           UserAttributes="@(new Dictionary<string, object?> { ["title"] = "More options / change type", ["aria-label"] = "More options / change type" })" />
         }
         else
         {
