@@ -3,6 +3,7 @@ using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.Common;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Mapping;
+using AHKFlowApp.Application.Services;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Domain.Enums;
 using Ardalis.Result;
@@ -57,23 +58,9 @@ internal sealed class RevertHotstringCommandHandler(
             .Select(c => c.Id)
             .ToArrayAsync(ct);
 
-        entity.Update(
-            new HotstringDefinition(
-                snapshot.Trigger,
-                snapshot.Replacement,
-                snapshot.Description,
-                snapshot.AppliesToAllProfiles,
-                snapshot.IsEndingCharacterRequired,
-                snapshot.IsTriggerInsideWord,
-                snapshot.Kind,
-                snapshot.IsCaseSensitive,
-                snapshot.OmitEndingCharacter,
-                snapshot.DateTimeFormat,
-                snapshot.DateOffsetAmount,
-                snapshot.DateOffsetUnit,
-                snapshot.ContextMatchType,
-                snapshot.ContextValue),
-            clock);
+        // A legacy Kind=Script snapshot is composed into an equivalent Raw definition; other
+        // kinds apply as-is. Revert bypasses validation, so this is where the conversion runs.
+        entity.Update(ScriptToRawComposer.ToDefinition(snapshot), clock);
 
         db.HotstringProfiles.RemoveRange(entity.Profiles);
         entity.Profiles.Clear();
