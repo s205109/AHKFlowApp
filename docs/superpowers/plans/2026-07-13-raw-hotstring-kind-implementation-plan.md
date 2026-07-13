@@ -43,7 +43,7 @@ P5/P9 ─ P13 docs/OpenAPI ─ P14 E2E + verify
 - **Test first:** extend `CreateHotstringCommandValidatorTests`, `UpdateHotstringCommandValidatorTests`, `GetHotstringPreviewQueryValidatorTests` — all 8 rules; `X0` rejected; OTB + continuation-section rejection; 41-char trigger rejected; empty client trigger passes for Raw.
 - **Impl:** `Validation/HotstringRules.cs`
   - add `AddRawKindRules<T>(kind, replacement)` (rules 1-8 from spec §Validation), XML-doc the restricted-subset limits.
-  - **remove** `AddScriptKindRules` from active use (keep method or delete — no live caller after P5).
+  - **Delete `AddScriptKindRules` outright** — no `[Obsolete]`; its only callers are the three validators, all swapped to `AddRawKindRules` in P5.
   - **Gate `ValidTrigger()`**: in the three validators wrap `RuleFor(x => x.Input.Trigger).ValidTrigger()` in `.When(x => x.Input.Kind != HotstringKind.Raw)`.
   - Update the `Kind` allow-list `Must(...)` to `Text/DateTime/Macro/Raw` (drop `Script`), message reworded.
 
@@ -53,13 +53,20 @@ The Script→Raw transform lives in **one** place, reused by migration SQL parit
 
 - **Fixtures:** `tests/AHKFlowApp.TestUtilities/` — shared golden set: option matrix × triggers with backtick/`;`, CRLF bodies, blank-edged bodies, 4,000-char body.
 - **Test first:** `ScriptToRawComposerTests` asserting each fixture → expected verbatim definition (byte-identical to today's emitter output).
-- **Impl:** `Application/Services/ScriptToRawComposer.cs` — compose `:opts:trigger::\n{\n<body>\n}` mirroring `HotstringEmitter.BuildOptions` (X/*/?/C/O) + `HotstringEmitter.Escape` on trigger. Pure, static.
+- **Impl:** `Application/Services/ScriptToRawComposer.cs` — compose `:opts:trigger::\n{\n<body>\n}` mirroring `HotstringEmitter.BuildOptions` (X/*/?/C/O) + `HotstringEmitter.Escape` on trigger. Pure, static. Lives in `Application` (not `TestUtilities`) so P7 restore/revert and P9 dialog can call it directly. The migration SQL (P6) is a **separate hand-written T-SQL copy** — SQL can't call C#; the P6 parity test is what enforces they agree.
 
 ## P4 — Emitter Raw branch + save normalization
 
 - `Application/Services/HotstringEmitter.cs`
-  - `BuildBody` switch: `HotstringKind.Raw => hs.Replacement` (verbatim; no options, no escape, no wrap). Note the whole `Emit` for Raw returns `hs.Replacement` — confirm `Emit` shape returns raw string, not `:opts:trigger::body` re-wrap. (Raw already carries the full definition; emit must **not** re-prefix.)
-  - Keep `Script` branch for legacy-snapshot emission path? No — snapshots convert at restore/revert (P7); emitter never sees `Kind=Script`. Remove `BuildScriptBody`.
+  - **`Emit()` top-level guard** (not a `BuildBody` change): Raw returns `hs.Replacement` verbatim, bypassing the `:{options}:{trigger}::{body}` template entirely — Raw's `Replacement` already contains the full `:opts:trigger::` definition, so re-prefixing would double it. `BuildOptions`/`Escape`/`BuildBody` are never reached for Raw.
+    ```csharp
+    public static string Emit(Hotstring hs) =>
+        hs.Kind == HotstringKind.Raw
+            ? hs.Replacement
+            : $":{BuildOptions(hs)}:{Escape(hs.Trigger)}::{BuildBody(hs)}";
+    ```
+    (Safe: `AhkScriptGenerator` adds each `Emit` result to a line list joined with `\n`, so a multi-line verbatim definition slots in as multiple physical lines.)
+  - Emitter never sees `Kind=Script` (snapshots convert at restore/revert, P7). **Delete `BuildScriptBody`** and its `Script` switch arm outright — no `[Obsolete]`.
 - Save-time normalization (CRLF→LF, trim leading/trailing blank lines + per-line trailing WS): apply in create/update handlers (P5) before persisting Raw `Replacement`.
 - **Test:** `AhkScriptGeneratorTests` — verbatim emission + `#HotIf` wrap; round-trip paste→save→generate byte-identical.
 
@@ -137,8 +144,8 @@ The Script→Raw transform lives in **one** place, reused by migration SQL parit
 - Shared composer single-sourced across P3/P6/P7/P9.
 - No live caller of `AddScriptKindRules` / `BuildScriptBody` after P4/P5.
 
-## Open questions
+## Resolved decisions (grilling, 2026-07-13)
 
-1. Delete `AddScriptKindRules`/`BuildScriptBody` outright, or keep `[Obsolete]` for a release?
-2. Composer home: `Application/Services` (shared w/ migration test) vs `TestUtilities` — SQL migration itself can't call C#; confirm parity is test-enforced only.
-3. `Emit(Raw)` — confirm it returns `hs.Replacement` with **no** `:opts:trigger::` re-wrap (definition already complete).
+1. **Delete `AddScriptKindRules` + `BuildScriptBody` outright** — no `[Obsolete]`. Internal-only, zero live callers after P4/P5; git history preserves them.
+2. **Composer in `Application/Services`**, called by P7/P9. Migration SQL is a separate T-SQL copy; P6 Testcontainers parity test enforces agreement (raw-SQL path, not a C#-driven data migration).
+3. **`Emit()` top-level guard returns `hs.Replacement` verbatim for Raw** — no `:opts:trigger::` re-wrap. Template pieces never reached for Raw.
