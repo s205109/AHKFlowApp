@@ -314,32 +314,32 @@ public sealed class HotstringTableFormatterTests
     }
 
     [Fact]
-    public void Write_ScriptRow_ShowsFirstLineOnlySummary()
+    public void Write_RawRow_ShowsFirstLineOnlySummary()
     {
         StringWriter sw = new();
         PagedList<HotstringDto> page = new(
-            [Hotstring(trigger: "~ver", replacement: "MsgBox A_AhkVersion") with { Kind = HotstringKind.Script }],
+            [Hotstring(trigger: "ftw", replacement: ":K1000 SE*:ftw::for the win") with { Kind = HotstringKind.Raw }],
             1, 50, 1);
 
         HotstringTableFormatter.Write(sw, page, EmptyNames);
 
         string output = sw.ToString();
-        output.Should().Contain("Script");
-        output.Should().Contain("MsgBox A_AhkVersion");
+        output.Should().Contain("Raw");
+        output.Should().Contain(":K1000 SE*:ftw::for the win");
     }
 
     [Fact]
-    public void Write_ScriptRowMultilineBody_TruncatesToFirstLine()
+    public void Write_RawRowMultilineBody_TruncatesToFirstLine()
     {
         StringWriter sw = new();
         PagedList<HotstringDto> page = new(
-            [Hotstring(trigger: "m", replacement: "MsgBox 1\nMsgBox 2\nMsgBox 3") with { Kind = HotstringKind.Script }],
+            [Hotstring(trigger: "m", replacement: ":*:m::\n{\nMsgBox 2\nMsgBox 3\n}") with { Kind = HotstringKind.Raw }],
             1, 50, 1);
 
         HotstringTableFormatter.Write(sw, page, EmptyNames);
 
         string output = sw.ToString();
-        output.Should().Contain("MsgBox 1");
+        output.Should().Contain(":*:m::");
         output.Should().NotContain("MsgBox 2");
         output.Should().NotContain("MsgBox 3");
     }

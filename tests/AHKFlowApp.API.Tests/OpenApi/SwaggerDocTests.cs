@@ -39,12 +39,12 @@ public sealed class SwaggerDocTests(ApiTestFixture fixture)
     }
 
     [Fact]
-    public async Task SwaggerJson_HotstringExamples_SurfacesBothBtwAndScriptExamples()
+    public async Task SwaggerJson_HotstringExamples_SurfacesBothBtwAndRawExamples()
     {
         // Swashbuckle.AspNetCore.Filters resolves one IExamplesProvider<T> per T — a second
         // provider targeting an already-covered type (HotstringDto/CreateHotstringDto/
         // UpdateHotstringDto/HotstringPreviewRequestDto/HotstringPreviewDto) would silently
-        // replace its example everywhere. This guards against that: the Script example
+        // replace its example everywhere. This guards against that: the Raw example
         // (targeting HotstringHistoryVersionDto, previously uncovered) must not have knocked out
         // the pre-existing "btw" example.
 
@@ -56,6 +56,6 @@ public sealed class SwaggerDocTests(ApiTestFixture fixture)
 
         // Assert
         json.Should().Contain("by the way", "the original 'btw' example must still be present");
-        json.Should().Contain("MsgBox A_AhkVersion", "the new Script example must be present");
+        json.Should().Contain("MsgBox A_AhkVersion", "the new Raw example must be present");
     }
 }

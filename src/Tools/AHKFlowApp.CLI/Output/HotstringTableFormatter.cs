@@ -87,10 +87,10 @@ public static class HotstringTableFormatter
 
     private static string FormatReplacementColumn(HotstringDto dto)
     {
-        // Script rows show only the first line (D13) — Macro rows fall through to the
-        // raw-replacement branch below unchanged, per the Phase 3 decision to keep Macro
+        // Raw rows show only the first line of the verbatim definition — Macro rows fall through
+        // to the raw-replacement branch below unchanged, per the Phase 3 decision to keep Macro
         // display raw rather than adding a CLI-side token summary.
-        if (dto.Kind == HotstringKind.Script)
+        if (dto.Kind == HotstringKind.Raw)
             return Truncate(FirstLine(dto.Replacement), ReplacementWidth);
 
         if (dto.Kind != HotstringKind.DateTime)
@@ -120,7 +120,7 @@ public static class HotstringTableFormatter
         HotstringKind.Text => "Text",
         HotstringKind.DateTime => "DateTime",
         HotstringKind.Macro => "Macro",
-        HotstringKind.Script => "Script",
+        HotstringKind.Raw => "Raw",
         _ => kind.ToString(),
     };
 
