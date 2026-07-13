@@ -384,7 +384,7 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
-    public async Task KindSelector_HasFourItemsIncludingMacroAndScript()
+    public async Task KindSelector_HasFourItemsIncludingMacroAndRaw()
     {
         IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync();
 
@@ -393,7 +393,7 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
             IReadOnlyList<AngleSharp.Dom.IElement> items = provider.FindAll(".mud-toggle-item");
             items.Should().HaveCount(4);
             items.Select(e => e.TextContent.Trim()).Should().Contain("Macro");
-            items.Should().Contain(e => e.TextContent.Contains("Script"));
+            items.Should().Contain(e => e.TextContent.Contains("Raw"));
         });
     }
 
@@ -1134,64 +1134,68 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
-    public async Task KindToggle_SelectScript_ShowsPersistentWarningAlert()
+    public async Task KindToggle_SelectRaw_ShowsPersistentWarningAlert()
     {
         IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync();
         provider.WaitForAssertion(() => provider.Find("[data-test=\"kind-selector\"]"));
 
-        provider.FindAll(".mud-toggle-item").First(e => e.TextContent.Contains("Script")).Click();
+        provider.FindAll(".mud-toggle-item").First(e => e.TextContent.Contains("Raw")).Click();
 
         provider.WaitForAssertion(() =>
         {
             provider.Find("[data-test=\"script-warning\"]").TextContent
-                .Should().Contain("Runs arbitrary AutoHotkey code in the generated script.");
+                .Should().Contain("verbatim AutoHotkey definition");
             provider.FindAll("[data-test=\"script-warning\"] button").Should().BeEmpty(
-                "the script warning is persistent and must not offer a dismiss control");
+                "the raw warning is persistent and must not offer a dismiss control");
         });
     }
 
     [Fact]
-    public async Task KindToggle_SelectScript_AppliesMonospaceClass()
+    public async Task KindToggle_SelectRaw_AppliesMonospaceClass()
     {
         IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync();
         provider.WaitForAssertion(() => provider.Find("[data-test=\"kind-selector\"]"));
 
         provider.Markup.Should().NotContain("ahk-mono");
 
-        provider.FindAll(".mud-toggle-item").First(e => e.TextContent.Contains("Script")).Click();
+        provider.FindAll(".mud-toggle-item").First(e => e.TextContent.Contains("Raw")).Click();
 
         provider.WaitForAssertion(() => provider.Markup.Should().Contain("ahk-mono"));
     }
 
     [Fact]
-    public async Task KindToggle_TextToScript_PreservesReplacement()
+    public async Task KindToggle_TextToRaw_PromptsConfirmationAndKeepsFieldsUntilConfirmed()
     {
-        // Text -> Script with non-empty Replacement prompts a confirmation (the interpretation
-        // of the same text changes from literal to executable code) — the shared Replacement
-        // content must never be cleared ahead of that confirmation resolving.
+        // Text -> Raw with non-empty Replacement prompts a confirmation before wrapping the text
+        // into a full definition — nothing must change ahead of that confirmation resolving.
         HotstringEditModel item = new() { Trigger = "ver", Kind = HotstringKind.Text, Replacement = "MsgBox 1" };
         IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
         provider.WaitForAssertion(() => provider.Find("[data-test=\"kind-selector\"]"));
 
-        provider.FindAll(".mud-toggle-item").First(e => e.TextContent.Contains("Script")).Click();
+        provider.FindAll(".mud-toggle-item").First(e => e.TextContent.Contains("Raw")).Click();
 
-        provider.WaitForAssertion(() => provider.Markup.Should().Contain("Switch to Script"));
+        provider.WaitForAssertion(() => provider.Markup.Should().Contain("Switch to Raw"));
         item.Kind.Should().Be(HotstringKind.Text);
         item.Replacement.Should().Be("MsgBox 1");
     }
 
     [Fact]
-    public async Task KindToggle_ScriptToText_PreservesReplacement()
+    public async Task KindToggle_RawToText_DecomposesDefinitionIntoFields()
     {
-        HotstringEditModel item = new() { Trigger = "ver", Kind = HotstringKind.Script, Replacement = "MsgBox 1" };
+        // A plain Raw definition (no options the structured fields can't express) decomposes
+        // straight into Trigger + body with no confirmation.
+        HotstringEditModel item = new() { Trigger = "ver", Kind = HotstringKind.Raw, Replacement = "::ver::\n{\nMsgBox 1\n}" };
         IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
         provider.WaitForAssertion(() => provider.Find("[data-test=\"kind-selector\"]"));
 
         provider.FindAll(".mud-toggle-item").First(e => e.TextContent.Trim() == "Text").Click();
 
-        provider.WaitForAssertion(() => provider.Markup.Should().Contain("Switch to Text"));
-        item.Kind.Should().Be(HotstringKind.Script);
-        item.Replacement.Should().Be("MsgBox 1");
+        provider.WaitForAssertion(() =>
+        {
+            item.Kind.Should().Be(HotstringKind.Text);
+            item.Trigger.Should().Be("ver");
+            item.Replacement.Should().Be("MsgBox 1");
+        });
     }
 
     [Fact]
@@ -1220,34 +1224,34 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
-    public async Task Save_ScriptKind_SendsReplacementVerbatimInCreateDto()
+    public async Task Save_RawKind_SendsDefinitionVerbatimInCreateDto()
     {
-        HotstringDto created = new(Guid.NewGuid(), [], true, "~ver", "MsgBox A_AhkVersion", null, true, true,
-            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, [], HotstringKind.Script);
+        HotstringDto created = new(Guid.NewGuid(), [], true, "ftw", ":K1000 SE*:ftw::for the win", null, true, true,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, [], HotstringKind.Raw);
         _api.CreateAsync(Arg.Any<CreateHotstringDto>(), Arg.Any<CancellationToken>())
             .Returns(ApiResult<HotstringDto>.Ok(created));
 
-        HotstringEditModel item = new() { Trigger = "~ver", Kind = HotstringKind.Script, Replacement = "MsgBox A_AhkVersion" };
+        HotstringEditModel item = new() { Kind = HotstringKind.Raw, Replacement = ":K1000 SE*:ftw::for the win" };
         IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
         provider.WaitForAssertion(() => provider.Find("button.commit-edit"));
 
         provider.Find("button.commit-edit").Click();
 
         provider.WaitForAssertion(() => _api.Received(1).CreateAsync(
-            Arg.Is<CreateHotstringDto>(d => d.Kind == HotstringKind.Script && d.Replacement == "MsgBox A_AhkVersion"),
+            Arg.Is<CreateHotstringDto>(d => d.Kind == HotstringKind.Raw && d.Replacement == ":K1000 SE*:ftw::for the win"),
             Arg.Any<CancellationToken>()));
     }
 
     [Fact]
-    public async Task PreviewError_ScriptBraceImbalance_ShownInlineOnReplacementField()
+    public async Task PreviewError_RawBraceImbalance_ShownInlineOnRawDefinitionField()
     {
-        const string braceMessage = "Script replacement must have balanced braces.";
+        const string braceMessage = "Raw definition must have balanced braces.";
         _api.PreviewAsync(Arg.Any<HotstringPreviewRequestDto>(), Arg.Any<CancellationToken>())
             .Returns(ApiResult<HotstringPreviewDto>.Failure(ApiResultStatus.Validation,
                 new ApiProblemDetails(null, "Bad Request", 400, null, null,
                     new Dictionary<string, string[]> { ["Input.Replacement"] = [braceMessage] })));
 
-        HotstringEditModel item = new() { Trigger = "m", Kind = HotstringKind.Script, Replacement = "if (true) {" };
+        HotstringEditModel item = new() { Kind = HotstringKind.Raw, Replacement = ":*:m::\n{\nSend foo" };
         IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
         DisablePreviewDebounce(provider);
         provider.WaitForAssertion(() => provider.Find("[data-test=\"ahk-preview\"]"));
@@ -1256,21 +1260,21 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
         provider.WaitForAssertion(() =>
         {
             MudTextField<string> replacementField = provider.FindComponents<MudTextField<string>>()
-                .Single(f => f.Instance.Label == "Replacement").Instance;
+                .Single(f => f.Instance.Label == "Raw definition").Instance;
             replacementField.GetState(x => x.ErrorText).Should().Be(braceMessage);
         });
     }
 
     [Fact]
-    public async Task Save_ScriptBraceImbalance_WithPreviewCollapsed_ShowsInlineReplacementError()
+    public async Task Save_RawBraceImbalance_WithPreviewCollapsed_ShowsInlineRawDefinitionError()
     {
-        const string braceMessage = "Script replacement must have balanced braces.";
+        const string braceMessage = "Raw definition must have balanced braces.";
         _api.CreateAsync(Arg.Any<CreateHotstringDto>(), Arg.Any<CancellationToken>())
             .Returns(ApiResult<HotstringDto>.Failure(ApiResultStatus.Validation,
                 new ApiProblemDetails(null, "Bad Request", 400, null, null,
                     new Dictionary<string, string[]> { ["Input.Replacement"] = [braceMessage] })));
 
-        HotstringEditModel item = new() { Trigger = "m", Kind = HotstringKind.Script, Replacement = "if (true) {" };
+        HotstringEditModel item = new() { Kind = HotstringKind.Raw, Replacement = ":*:m::\n{\nSend foo" };
         IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
         provider.WaitForAssertion(() => provider.Find("button.commit-edit"));
 
@@ -1281,7 +1285,7 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
         provider.WaitForAssertion(() =>
         {
             MudTextField<string> replacementField = provider.FindComponents<MudTextField<string>>()
-                .Single(f => f.Instance.Label == "Replacement").Instance;
+                .Single(f => f.Instance.Label == "Raw definition").Instance;
             replacementField.GetState(x => x.ErrorText).Should().Be(braceMessage);
 
             provider.FindAll(".mud-alert").Should().NotContain(e => e.TextContent.Contains(braceMessage),

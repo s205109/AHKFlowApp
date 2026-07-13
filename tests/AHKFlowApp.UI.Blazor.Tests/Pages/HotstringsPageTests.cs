@@ -582,10 +582,10 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
-    public Task Page_ScriptRow_ShowsFirstLineMonospaceEllipsis()
+    public Task Page_RawRow_ShowsFirstLineMonospaceEllipsis()
     {
-        var dto = new HotstringDto(Guid.NewGuid(), [], true, "~ver", "MsgBox A_AhkVersion\nMsgBox 2",
-            null, true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, HotstringKind.Script);
+        var dto = new HotstringDto(Guid.NewGuid(), [], true, "~ver", ":*:~ver::\n{\nMsgBox A_AhkVersion\n}",
+            null, true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, HotstringKind.Raw);
         StubList(Page(dto));
 
         IRenderedComponent<Hotstrings> cut = RenderPage();
@@ -593,17 +593,17 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
         cut.WaitForAssertion(() =>
         {
             AngleSharp.Dom.IElement summary = cut.Find(".hotstrings-grid .script-summary");
-            summary.TextContent.Should().Be("MsgBox A_AhkVersion");
-            summary.TextContent.Should().NotContain("MsgBox 2");
+            summary.TextContent.Should().Be(":*:~ver::");
+            summary.TextContent.Should().NotContain("MsgBox A_AhkVersion");
         });
         return Task.CompletedTask;
     }
 
     [Fact]
-    public Task Page_ScriptRow_ShowsWarningColoredBadgeWithAccessibleText()
+    public Task Page_RawRow_ShowsWarningColoredBadgeWithAccessibleText()
     {
-        var dto = new HotstringDto(Guid.NewGuid(), [], true, "~ver", "MsgBox A_AhkVersion",
-            null, true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, HotstringKind.Script);
+        var dto = new HotstringDto(Guid.NewGuid(), [], true, "~ver", ":*:~ver::\n{\nMsgBox A_AhkVersion\n}",
+            null, true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, HotstringKind.Raw);
         StubList(Page(dto));
 
         IRenderedComponent<Hotstrings> cut = RenderPage();
@@ -611,12 +611,12 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
         cut.WaitForAssertion(() =>
         {
             AngleSharp.Dom.IElement badge = cut.Find(".type-badge .mud-chip");
-            badge.TextContent.Should().Contain("Script");
+            badge.TextContent.Should().Contain("Raw");
             badge.ClassList.Should().Contain(c => c.Contains("warning", StringComparison.OrdinalIgnoreCase));
             // Warning must be conveyed semantically, not just via color — screen readers read the
             // aria-label, not the CSS warning color.
             badge.GetAttribute("aria-label").Should()
-                .Contain("Script").And.Contain("Runs arbitrary AutoHotkey code");
+                .Contain("Raw").And.Contain("Verbatim AutoHotkey definition");
         });
         return Task.CompletedTask;
     }
@@ -635,7 +635,7 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
 
         allValues.Should().HaveCount(8);
         allValues.Distinct().Should().BeEquivalentTo(
-            [HotstringKind.Text, HotstringKind.DateTime, HotstringKind.Macro, HotstringKind.Script]);
+            [HotstringKind.Text, HotstringKind.DateTime, HotstringKind.Macro, HotstringKind.Raw]);
     }
 
     [Fact]

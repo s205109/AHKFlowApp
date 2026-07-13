@@ -43,10 +43,10 @@
                         }
                         <td class="trigger-cell"><code>@item.Trigger</code></td>
                         <td class="replacement-cell">
-                            @if (item.Kind == HotstringKind.Script)
+                            @if (item.Kind == HotstringKind.Raw)
                             {
                                 <MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Warning" Size="Size.Small" Class="script-badge"
-                                         title="Script — runs arbitrary AutoHotkey code"
+                                         title="Raw — verbatim AutoHotkey definition"
                                          UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "script-badge-collapsed" })" />
                             }
                             @RenderReplacementCell(item)
@@ -70,7 +70,7 @@
                                             <strong>Replacement:</strong> <MacroReplacementDisplay Replacement="@item.Replacement" />
                                         </MudText>
                                     }
-                                    else if (item.Kind == HotstringKind.Script)
+                                    else if (item.Kind == HotstringKind.Raw)
                                     {
                                         <MudAlert Severity="Severity.Warning" Dense="true"
                                                   UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "script-warning-expanded" })">
@@ -100,12 +100,17 @@
                                     <MudText Typo="Typo.body2"><strong>Categories:</strong>
                                         <EntityChips Ids="item.CategoryIds" Options="_categoryOptions" />
                                     </MudText>
-                                    <MudText Typo="Typo.body2">
-                                        <strong>End-char:</strong> @(item.IsEndingCharacterRequired ? "✓" : "✗") &nbsp;
-                                        <strong>In-word:</strong> @(item.IsTriggerInsideWord ? "✓" : "✗") &nbsp;
-                                        <strong>Case:</strong> @(item.IsCaseSensitive ? "✓" : "✗") &nbsp;
-                                        <strong>Omit end-char:</strong> @(item.OmitEndingCharacter ? "✓" : "✗")
-                                    </MudText>
+                                    @if (item.Kind != HotstringKind.Raw)
+                                    {
+                                        // Raw rows carry the options inside the verbatim definition; the
+                                        // four flag columns are left at defaults and meaningless to show.
+                                        <MudText Typo="Typo.body2">
+                                            <strong>End-char:</strong> @(item.IsEndingCharacterRequired ? "✓" : "✗") &nbsp;
+                                            <strong>In-word:</strong> @(item.IsTriggerInsideWord ? "✓" : "✗") &nbsp;
+                                            <strong>Case:</strong> @(item.IsCaseSensitive ? "✓" : "✗") &nbsp;
+                                            <strong>Omit end-char:</strong> @(item.OmitEndingCharacter ? "✓" : "✗")
+                                        </MudText>
+                                    }
                                     <MudStack Row="true" Spacing="2" Class="mt-2">
                                         <MudButton Class="start-edit" Variant="Variant.Filled" Color="Color.Primary"
                                                    StartIcon="@Icons.Material.Filled.Edit"
@@ -159,7 +164,7 @@
     private RenderFragment RenderReplacementCell(HotstringEditModel item) => item.Kind switch
     {
         HotstringKind.DateTime => @<text>@item.DateTimeSummary</text>,
-        HotstringKind.Script => @<text>@item.ScriptSummary</text>,
+        HotstringKind.Raw => @<text>@item.RawSummary</text>,
         _ => @<text>@item.Replacement</text>,
     };
 

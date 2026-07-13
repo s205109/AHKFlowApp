@@ -236,7 +236,7 @@ public sealed class HotstringEditModelTests
     [InlineData(HotstringKind.Text, true)]
     [InlineData(HotstringKind.DateTime, false)]
     [InlineData(HotstringKind.Macro, false)]
-    [InlineData(HotstringKind.Script, false)]
+    [InlineData(HotstringKind.Raw, false)]
     public void IsInlineEditable_OnlyTrueForTextKind(HotstringKind kind, bool expected)
     {
         HotstringEditModel model = new() { Kind = kind };
@@ -288,39 +288,39 @@ public sealed class HotstringEditModelTests
     }
 
     [Fact]
-    public void ScriptSummary_IsNull_ForNonScriptKind()
+    public void RawSummary_IsNull_ForNonRawKind()
     {
         HotstringEditModel model = new() { Kind = HotstringKind.Text, Replacement = "MsgBox 1" };
 
-        model.ScriptSummary.Should().BeNull();
+        model.RawSummary.Should().BeNull();
     }
 
     [Fact]
-    public void ScriptSummary_SingleLine_ReturnsAsIs()
+    public void RawSummary_SingleLine_ReturnsAsIs()
     {
-        HotstringEditModel model = new() { Kind = HotstringKind.Script, Replacement = "MsgBox A_AhkVersion" };
+        HotstringEditModel model = new() { Kind = HotstringKind.Raw, Replacement = ":K1000 SE*:ftw::for the win" };
 
-        model.ScriptSummary.Should().Be("MsgBox A_AhkVersion");
+        model.RawSummary.Should().Be(":K1000 SE*:ftw::for the win");
     }
 
     [Fact]
-    public void ScriptSummary_MultilineBody_ReturnsFirstLineOnly()
+    public void RawSummary_MultilineBody_ReturnsFirstLineOnly()
     {
         HotstringEditModel model = new()
         {
-            Kind = HotstringKind.Script,
-            Replacement = "MsgBox 1\nMsgBox 2\nMsgBox 3",
+            Kind = HotstringKind.Raw,
+            Replacement = ":*:rng::\n{\nSend foo\n}",
         };
 
-        model.ScriptSummary.Should().Be("MsgBox 1");
+        model.RawSummary.Should().Be(":*:rng::");
     }
 
     [Fact]
-    public void ScriptSummary_LeadingWhitespaceOnFirstLine_IsTrimmed()
+    public void RawSummary_LeadingWhitespaceOnFirstLine_IsTrimmed()
     {
-        HotstringEditModel model = new() { Kind = HotstringKind.Script, Replacement = "  MsgBox 1  \nrest" };
+        HotstringEditModel model = new() { Kind = HotstringKind.Raw, Replacement = "  ::btw::hi  \nrest" };
 
-        model.ScriptSummary.Should().Be("MsgBox 1");
+        model.RawSummary.Should().Be("::btw::hi");
     }
 
     [Fact]

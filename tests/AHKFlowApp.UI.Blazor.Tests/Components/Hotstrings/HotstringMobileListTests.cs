@@ -30,8 +30,8 @@ public sealed class HotstringMobileListTests : BunitContext, IAsyncLifetime
     private static HotstringEditModel MacroItem(string trigger = "greet", string replacement = "Dear {{{{first_name}}}},{{key:Enter}}{{cursor}}Alex") =>
         new() { Id = Guid.NewGuid(), Trigger = trigger, Replacement = replacement, Kind = HotstringKind.Macro };
 
-    private static HotstringEditModel ScriptItem(string trigger = "~ver", string replacement = "MsgBox A_AhkVersion") =>
-        new() { Id = Guid.NewGuid(), Trigger = trigger, Replacement = replacement, Kind = HotstringKind.Script };
+    private static HotstringEditModel RawItem(string trigger = "~ver", string replacement = ":*:~ver::\n{\nMsgBox A_AhkVersion\n}") =>
+        new() { Id = Guid.NewGuid(), Trigger = trigger, Replacement = replacement, Kind = HotstringKind.Raw };
 
     [Fact]
     public void Renders_TriggerAndReplacement_PerRow()
@@ -287,24 +287,24 @@ public sealed class HotstringMobileListTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
-    public void MobileList_ScriptRow_ShowsFirstLineInCollapsedView()
+    public void MobileList_RawRow_ShowsFirstLineInCollapsedView()
     {
-        HotstringEditModel item = ScriptItem(replacement: "MsgBox A_AhkVersion\nMsgBox 2");
+        HotstringEditModel item = RawItem(replacement: ":*:~ver::\n{\nMsgBox A_AhkVersion\n}");
 
         IRenderedComponent<HotstringMobileList> cut = Render<HotstringMobileList>(p => p
             .Add(c => c.Items, [item])
             .Add(c => c.Profiles, (IReadOnlyList<ProfileDto>)[])
             .Add(c => c.Categories, (IReadOnlyList<CategoryDto>)[]));
 
-        cut.Find("td.replacement-cell").TextContent.Should().Contain("MsgBox A_AhkVersion");
-        cut.Find("td.replacement-cell").TextContent.Should().NotContain("MsgBox 2");
+        cut.Find("td.replacement-cell").TextContent.Should().Contain(":*:~ver::");
+        cut.Find("td.replacement-cell").TextContent.Should().NotContain("MsgBox A_AhkVersion");
     }
 
     [Fact]
-    public void MobileList_ScriptRow_ShowsWarningBadgeCollapsed()
+    public void MobileList_RawRow_ShowsWarningBadgeCollapsed()
     {
         IRenderedComponent<HotstringMobileList> cut = Render<HotstringMobileList>(p => p
-            .Add(c => c.Items, [ScriptItem(), Item()])
+            .Add(c => c.Items, [RawItem(), Item()])
             .Add(c => c.Profiles, (IReadOnlyList<ProfileDto>)[])
             .Add(c => c.Categories, (IReadOnlyList<CategoryDto>)[]));
 
@@ -312,9 +312,9 @@ public sealed class HotstringMobileListTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
-    public async Task MobileList_ScriptExpanded_ShowsFullBodyAndWarningText()
+    public async Task MobileList_RawExpanded_ShowsFullDefinitionAndWarningText()
     {
-        HotstringEditModel item = ScriptItem(replacement: "MsgBox A_AhkVersion\nMsgBox 2");
+        HotstringEditModel item = RawItem(replacement: ":*:~ver::\n{\nMsgBox A_AhkVersion\n}");
 
         IRenderedComponent<HotstringMobileList> cut = Render<HotstringMobileList>(p => p
             .Add(c => c.Items, [item])
@@ -327,7 +327,7 @@ public sealed class HotstringMobileListTests : BunitContext, IAsyncLifetime
         {
             cut.Find("[data-test=\"script-warning-expanded\"]").TextContent
                 .Should().Contain("Runs arbitrary AutoHotkey code in the generated script.");
-            cut.Find(".script-body").TextContent.Should().Be("MsgBox A_AhkVersion\nMsgBox 2");
+            cut.Find(".script-body").TextContent.Should().Be(":*:~ver::\n{\nMsgBox A_AhkVersion\n}");
         });
     }
 }
