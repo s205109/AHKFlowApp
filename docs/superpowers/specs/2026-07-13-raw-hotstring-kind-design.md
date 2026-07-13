@@ -74,10 +74,18 @@ Send String(Random(1, 100))
 }
 ```
 
-Implemented as raw SQL mirroring `HotstringEmitter.BuildOptions` (X/*/?/C/O logic; no
-`T` for brace-body kinds) so generated scripts are **byte-identical** before and after
-migration. Down-migration unsupported (documented in the migration). Migration test
-must include a row with a 4,000-character body (the old max) to prove no truncation.
+Implemented as raw SQL mirroring **both** `HotstringEmitter.BuildOptions` (X/*/?/C/O
+logic; no `T` for brace-body kinds) **and** `HotstringEmitter.Escape` on the trigger
+(backtick first, then `` `n ``/`` `r ``/`` `t ``/`` `; ``) so generated scripts are
+**byte-identical** before and after migration. Down-migration unsupported (documented
+in the migration).
+
+This Script→Raw transform exists **three times** — the SQL migration, the history
+legacy-snapshot composer, and the dialog's kind-switch compose (see UI — edit dialog).
+One **shared golden-fixture set** guards all three against drift: the option-flag
+matrix crossed with triggers containing backticks and semicolons, CRLF bodies,
+leading/trailing blank body lines, and a 4,000-character body (the old column max,
+proving no truncation).
 
 ## Parsing
 
@@ -107,7 +115,7 @@ All rules `When(Kind == Raw)`:
 |---|---|---|
 | 1 | First non-blank line matches `:options:trigger::` | "Not a valid hotstring definition — expected `:options:trigger::replacement`." |
 | 2 | Exactly one definition in the paste | "Multiple hotstrings detected — paste one definition at a time." |
-| 3 | Parsed trigger non-empty, ≤ `TriggerMaxLength`, no line breaks/tabs | existing trigger messages |
+| 3 | Parsed trigger non-empty, ≤ 40 chars, no line breaks/tabs | existing trigger messages (40-char variant) |
 | 4 | Every option token in the known AHK v2 set | "Unknown hotstring option '{token}'." |
 | 5 | No line starting with `#` | carried over from Script rules |
 | 6 | Brace body (when present) has balanced braces — **not** applied to inline replacements | "Raw definition must have balanced braces." |
@@ -118,12 +126,20 @@ Rule 8 uses a Raw-specific constant (4,200 = 4,000 body + trigger, options, and 
 overhead) so migrated near-limit Script rows remain editable; other kinds keep
 `ReplacementMaxLength` (4000).
 
+Rule 3 uses a Raw-specific `RawTriggerMaxLength = 40` — AHK's own documented
+abbreviation limit ("no more than 40 characters"), so Raw never accepts a definition
+AHK itself rejects. Structured kinds keep `TriggerMaxLength` (50), an app-level limit
+that predates Raw; tightening them is out of scope.
+
 **Known AHK v2 option set (rule 4):** `*`/`*0`, `?`/`?0`, `B`/`B0`, `C`/`C0`/`C1`,
 `K<n>` (incl. `K-1`), `O`/`O0`, `P<n>`, `R`/`R0`, `S`/`S0`, `SI`/`SP`/`SE`, `T`/`T0`,
-`X`/`X0`, `Z`/`Z0`. Case-insensitive; whitespace between tokens allowed. `S`/`S0`
-(suspend-exempt) are confirmed valid per the official v2 docs. Re-verify the final set
-against <https://www.autohotkey.com/docs/v2/Hotstrings.htm> during implementation and
-cite the URL in a code comment.
+`X`, `Z`/`Z0`. Case-insensitive; whitespace between tokens allowed. `S`/`S0`
+(suspend-exempt) are confirmed valid per the official v2 docs; `X`, `K<n>`, `P<n>`,
+and `SI`/`SP`/`SE` have **no documented `0` off-form** — `X0` is rejected as unknown
+(verified against the official v2 docs). Tokenization is longest-match first (`SE`
+before `S` and `*`, `S0` before `S`); parser grammar goldens must cover `SE*`, `S0`,
+`SI`, `SP`. Cite <https://www.autohotkey.com/docs/v2/Hotstrings.htm> in a code
+comment.
 
 **Validation limits — Raw supports a restricted subset of AHK v2 (deliberate):**
 
@@ -135,6 +151,13 @@ cite the URL in a code comment.
 - Triggers containing escaped tab/newline (`` `t ``/`` `n ``, valid per the AHK docs)
   are rejected by rule 3 — the `Trigger` column and duplicate detection assume
   single-line triggers.
+- OTB brace placement (`::btw:: {` — opening brace on the definition line, valid v2
+  per the docs) is **rejected** by rule 7 with an actionable message ("Put `{` on its
+  own line below the trigger.").
+- Continuation sections (`(`…`)` blocks, valid v2 for long replacements) are
+  **rejected** — a bare-`::` first line requires a `{` brace body (rule 7). Both
+  rejections get dedicated tests; supporting them is a possible follow-up, not in
+  scope.
 - These limits are documented in the code (`AddRawKindRules` XML docs) and in the edit
   dialog's help text; lifting them (a real lexer for strings/comments/continuation
   sections) is explicitly out of scope.
@@ -145,7 +168,10 @@ cite the URL in a code comment.
   — no option building, no escaping, no wrapping. `AhkScriptGenerator` joins entries
   with `\n`, so multi-line definitions drop in unchanged.
 - Save-time normalization (the only mutation): CRLF→LF, trim leading/trailing blank
-  lines and trailing whitespace. Interior lines and indentation preserved exactly.
+  lines and per-line trailing whitespace. Interior lines and indentation preserved
+  exactly. The trim is behavior-neutral: AHK ignores literal trailing spaces/tabs on
+  script lines — the docs require the `` `s ``/`` `t `` escapes for a meaningful
+  trailing space in a replacement, and those survive the trim untouched.
 - `#HotIf` context grouping in `AhkScriptGenerator` unchanged — Raw rows group by
   `(ContextMatchType, ContextValue)` like every kind. Trigger-ordinal sorting works via
   the derived `Trigger`.
@@ -207,6 +233,19 @@ Desktop grid only (mobile FAB already opens the full dialog):
     and validation, CLI just relays ProblemDetails errors. Keeps the first-class CLI
     at feature parity for create; richer Raw UX (edit, summary) stays out of scope.
 
+## Docs & API contract
+
+- `docs/cli/hotstrings.md`: the `new` command section gains `--raw`; the Kind column
+  and per-kind Replacement summary replace `Script` with `Raw` (summary: first line of
+  the definition, truncated to 40 chars); the "Script validation limitations" section
+  is rewritten for the Raw restricted subset (Validation limits above).
+- OpenAPI examples: `HotstringHistoryVersionDtoExample` (currently a Script snapshot)
+  becomes a Raw example (`HotstringExamples.cs`).
+- `HotstringKind` XML docs mark `Script = 3` as rejected legacy — accepted only when
+  deserializing stored history snapshots, never in new payloads — so the OpenAPI
+  schema explains why the value exists. Regression tests cover the CLI docs example
+  output and the updated examples.
+
 ## Error handling
 
 - Raw validation runs server-side via the existing `ValidatingUseCase` decorator →
@@ -233,14 +272,18 @@ Desktop grid only (mobile FAB already opens the full dialog):
 ## Testing
 
 - **TDD first:** `RawHotstringDefinitionParser` unit tests (structure, flag
-  tokenization incl. `K1000 SE*`, multi-definition detection, brace bodies, escaped
-  triggers); `AddRawKindRules` validator tests (all 8 rules; flag edge cases `K-1`,
-  `P9`, case-insensitivity, `*0`).
+  tokenization incl. `K1000 SE*`, longest-match goldens `SE*`/`S0`/`SI`/`SP`,
+  multi-definition detection, brace bodies, escaped triggers); `AddRawKindRules`
+  validator tests (all 8 rules; flag edge cases `K-1`, `P9`, case-insensitivity,
+  `*0`, `X0` rejected; OTB brace and continuation-section rejections; 41-char
+  trigger rejected).
 - **Emitter:** verbatim emission + context wrapping in `AhkScriptGeneratorTests`;
   round-trip test — paste → save → generate → byte-identical line.
-- **Migration:** Testcontainers integration test asserting a seeded Script row's
-  generated script is byte-identical before/after migration — including a row with a
-  4,000-character body (old column max) proving no truncation after the widen.
+- **Migration:** Testcontainers integration test asserting seeded Script rows'
+  generated scripts are byte-identical before/after migration, driven by the shared
+  golden-fixture set (option matrix, backtick/semicolon triggers, CRLF bodies,
+  blank-edged bodies, 4,000-character body — see Migration). The same fixtures run
+  against the history composer and the dialog compose logic.
 - **History:** restore/revert of a legacy `Kind=3` snapshot converts to a valid Raw
   row (composed definition, derived trigger); post-change snapshots round-trip as-is.
 - **API integration:** create/update/preview with Raw payloads (valid,
