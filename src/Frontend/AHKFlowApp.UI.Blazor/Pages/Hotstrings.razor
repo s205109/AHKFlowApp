@@ -457,14 +457,17 @@
 
     private async Task StartEditAsync(HotstringEditModel item)
     {
-        HotstringEditModel? editable = await LoadEditableItemAsync(item);
+        bool requiresGridReload = item.ReplacementIsTruncated;
+        HotstringEditModel? editable = requiresGridReload
+            ? await LoadEditableItemAsync(item)
+            : item;
         if (editable is null)
             return;
 
         _editingItem = editable;
         _commitAttempted = false;
 
-        if (_grid is not null)
+        if (requiresGridReload && _grid is not null)
             await _grid.ReloadServerData();
     }
 
