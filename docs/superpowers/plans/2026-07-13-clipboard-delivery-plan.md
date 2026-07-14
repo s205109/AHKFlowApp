@@ -1,5 +1,7 @@
 # Clipboard Delivery for Text Hotstrings — Plan
 
+**Status:** Implemented 2026-07-14 on `feature/wt-clipboard-delivery`. Build, full automated tests, formatting, browser E2E, and AutoHotkey v2 static validation are green; the real-application clipboard acceptance checklist remains a pre-merge manual step.
+
 ## Context
 
 AutoHotkey delivers hotstring replacements two ways:

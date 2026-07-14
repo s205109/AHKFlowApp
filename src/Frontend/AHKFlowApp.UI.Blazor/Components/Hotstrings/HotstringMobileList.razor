@@ -49,6 +49,11 @@
                                          title="Raw — verbatim AutoHotkey definition"
                                          UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "script-badge-collapsed" })" />
                             }
+                            @if (item.Kind == HotstringKind.Text && item.Delivery == HotstringDelivery.ClipboardPaste)
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Info" Class="clipboard-delivery"
+                                         UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "clipboard-delivery" })">Clipboard</MudChip>
+                            }
                             @RenderReplacementCell(item)
                         </td>
                         <td class="chevron-cell">@(expanded ? "▾" : "▸")</td>
@@ -81,7 +86,7 @@
                                     else
                                     {
                                         <MudText Typo="Typo.body2" Style="white-space: pre-wrap">
-                                            <strong>Replacement:</strong> @item.Replacement
+                                            <strong>Replacement:</strong> @item.ReplacementPreview
                                         </MudText>
                                     }
                                     @if (!string.IsNullOrWhiteSpace(item.Description))
@@ -165,7 +170,7 @@
     {
         HotstringKind.DateTime => @<text>@item.DateTimeSummary</text>,
         HotstringKind.Raw => @<text>@item.RawSummary</text>,
-        _ => @<text>@item.Replacement</text>,
+        _ => @<text>@item.ReplacementPreview</text>,
     };
 
     private void OnRowClick(HotstringEditModel item)

@@ -144,7 +144,16 @@ internal sealed class SeedHotstringsCommandHandler(
                 h.IsTriggerInsideWord,
                 h.CreatedAt,
                 h.UpdatedAt,
-                h.Categories.Select(hc => hc.CategoryId).ToArray()))
+                h.Categories.Select(hc => hc.CategoryId).ToArray(),
+                h.Kind,
+                h.IsCaseSensitive,
+                h.OmitEndingCharacter,
+                h.DateTimeFormat,
+                h.DateOffsetAmount,
+                h.DateOffsetUnit,
+                h.ContextMatchType,
+                h.ContextValue,
+                h.Delivery))
             .ToListAsync(ct);
 
         return Result.Success(new PagedList<HotstringDto>(items, Page: 1, PageSize: items.Count, TotalCount: items.Count));

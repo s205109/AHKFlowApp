@@ -53,6 +53,10 @@ internal sealed class HotstringConfiguration : IEntityTypeConfiguration<Hotstrin
         builder.Property(x => x.ContextValue)
             .HasMaxLength(200);
 
+        builder.Property(x => x.Delivery)
+            .IsRequired()
+            .HasConversion<int>();
+
         builder.Property(x => x.CreatedAt).IsRequired();
         builder.Property(x => x.UpdatedAt).IsRequired();
 

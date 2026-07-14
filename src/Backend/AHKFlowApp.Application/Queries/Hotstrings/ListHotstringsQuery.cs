@@ -63,6 +63,8 @@ internal sealed class ListHotstringsQueryHandler(
     TimeProvider clock)
     : IUseCaseHandler<ListHotstringsQuery, Result<PagedList<HotstringDto>>>
 {
+    internal const int ListReplacementPreviewLength = 200;
+
     // Mirrors SeedHotstringsCommand.s_samples — update both if seed set changes.
     private static readonly (
         string Trigger,
@@ -202,7 +204,9 @@ internal sealed class ListHotstringsQueryHandler(
                 h.Profiles.Select(p => p.ProfileId).ToArray(),
                 h.AppliesToAllProfiles,
                 h.Trigger,
-                h.Replacement,
+                h.Kind == HotstringKind.Text && h.Replacement.Length > ListReplacementPreviewLength
+                    ? h.Replacement.Substring(0, ListReplacementPreviewLength)
+                    : h.Replacement,
                 h.Description,
                 h.IsEndingCharacterRequired,
                 h.IsTriggerInsideWord,
@@ -216,7 +220,9 @@ internal sealed class ListHotstringsQueryHandler(
                 h.DateOffsetAmount,
                 h.DateOffsetUnit,
                 h.ContextMatchType,
-                h.ContextValue))
+                h.ContextValue,
+                h.Delivery,
+                h.Kind == HotstringKind.Text && h.Replacement.Length > ListReplacementPreviewLength))
             .ToListAsync(ct);
 
         return Result.Success(new PagedList<HotstringDto>(items, request.Page, request.PageSize, total));

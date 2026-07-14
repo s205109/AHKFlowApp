@@ -457,4 +457,40 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
         dto.ContextMatchType.Should().Be(WindowMatchType.Executable);
         dto.ContextValue.Should().Be("notepad.exe");
     }
+
+    [Fact]
+    public async Task ExecuteAsync_LongTextReplacement_ReturnsBoundedPreviewAndFullDetail()
+    {
+        var owner = Guid.NewGuid();
+        string replacement = new('x', 100_000);
+        var entity = Hotstring.Create(
+            owner,
+            new HotstringDefinition(
+                "long", replacement, null, true, true, true,
+                Delivery: HotstringDelivery.ClipboardPaste),
+            TimeProvider.System);
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(entity);
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        ListHotstringsQueryHandler listHandler = new(
+            db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
+        GetHotstringQueryHandler getHandler = new(db, CurrentUserHelper.For(owner));
+
+        Result<PagedList<HotstringDto>> list = await listHandler.ExecuteAsync(
+            new ListHotstringsQuery(), default);
+        Result<HotstringDto> detail = await getHandler.ExecuteAsync(
+            new GetHotstringQuery(entity.Id), default);
+
+        HotstringDto summary = list.Value.Items.Should().ContainSingle().Which;
+        summary.Replacement.Should().HaveLength(ListHotstringsQueryHandler.ListReplacementPreviewLength);
+        summary.ReplacementIsTruncated.Should().BeTrue();
+        summary.Delivery.Should().Be(HotstringDelivery.ClipboardPaste);
+        detail.Value.Replacement.Should().Be(replacement);
+        detail.Value.ReplacementIsTruncated.Should().BeFalse();
+    }
 }

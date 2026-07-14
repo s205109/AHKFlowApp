@@ -22,7 +22,8 @@ public sealed class CreateHotstringCommandValidatorTests
         int? dateOffsetAmount = null,
         DateOffsetUnit? dateOffsetUnit = null,
         WindowMatchType? contextMatchType = null,
-        string? contextValue = null)
+        string? contextValue = null,
+        HotstringDelivery delivery = HotstringDelivery.Auto)
         => new(new CreateHotstringDto(
             trigger,
             replacement,
@@ -34,7 +35,8 @@ public sealed class CreateHotstringCommandValidatorTests
             DateOffsetAmount: dateOffsetAmount,
             DateOffsetUnit: dateOffsetUnit,
             ContextMatchType: contextMatchType,
-            ContextValue: contextValue));
+            ContextValue: contextValue,
+            Delivery: delivery));
 
     [Fact]
     public void Validate_WithAppliesToAllProfiles_Succeeds()
@@ -154,14 +156,92 @@ public sealed class CreateHotstringCommandValidatorTests
     }
 
     [Fact]
-    public void Validate_WithReplacementAt4001Chars_Fails()
+    public void Validate_WithTypedReplacementAt4001Chars_Fails()
     {
-        ValidationResult result = _sut.Validate(Cmd(replacement: new string('x', 4001)));
+        ValidationResult result = _sut.Validate(Cmd(
+            replacement: new string('x', 4001),
+            delivery: HotstringDelivery.Type));
 
         result.IsValid.Should().BeFalse();
         result.Errors.Should().Contain(e =>
             e.PropertyName == "Input.Replacement" &&
             e.ErrorMessage == "Replacement must be 4000 characters or fewer.");
+    }
+
+    [Fact]
+    public void Validate_TextAutoWithReplacementAt4001Chars_Succeeds()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            replacement: new string('x', 4001),
+            delivery: HotstringDelivery.Auto));
+
+        result.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Validate_TextTypeWithReplacementAt4001Chars_Fails()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            replacement: new string('x', 4001),
+            delivery: HotstringDelivery.Type));
+
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.Replacement" &&
+            e.ErrorMessage == "Replacement must be 4000 characters or fewer.");
+    }
+
+    [Fact]
+    public void Validate_TextClipboardWithReplacementAt100000Chars_Succeeds()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            replacement: new string('x', 100_000),
+            delivery: HotstringDelivery.ClipboardPaste));
+
+        result.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Validate_TextClipboardWithReplacementAt100001Chars_Fails()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            replacement: new string('x', 100_001),
+            delivery: HotstringDelivery.ClipboardPaste));
+
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.Replacement" &&
+            e.ErrorMessage == "Replacement must be 100000 characters or fewer.");
+    }
+
+    [Fact]
+    public void Validate_MacroWithReplacementAt4001Chars_Fails()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            kind: HotstringKind.Macro,
+            replacement: new string('x', 4001)));
+
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.Replacement" &&
+            e.ErrorMessage == "Replacement must be 4000 characters or fewer.");
+    }
+
+    [Fact]
+    public void Validate_NonTextWithExplicitDelivery_Fails()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            kind: HotstringKind.Macro,
+            delivery: HotstringDelivery.ClipboardPaste));
+
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.Delivery" &&
+            e.ErrorMessage == "Delivery must be Auto unless Kind is Text.");
+    }
+
+    [Fact]
+    public void Validate_InvalidDelivery_Fails()
+    {
+        ValidationResult result = _sut.Validate(Cmd(delivery: (HotstringDelivery)99));
+
+        result.Errors.Should().Contain(e => e.PropertyName == "Input.Delivery");
     }
 
     [Fact]

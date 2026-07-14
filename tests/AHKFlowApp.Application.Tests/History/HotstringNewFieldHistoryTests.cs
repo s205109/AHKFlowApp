@@ -17,6 +17,79 @@ namespace AHKFlowApp.Application.Tests.History;
 public sealed class HotstringNewFieldHistoryTests(HistoryDbFixture fx)
 {
     [Fact]
+    public async Task RevertHotstring_RestoresDelivery()
+    {
+        var owner = Guid.NewGuid();
+        Hotstring entity = new HotstringBuilder()
+            .WithOwner(owner).WithTrigger("delivery-revert").WithReplacement("x")
+            .WithDelivery(HotstringDelivery.ClipboardPaste)
+            .Build();
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(entity);
+            await seed.SaveChangesAsync();
+        }
+
+        await using (AppDbContext db = fx.CreateContext())
+        {
+            UpdateHotstringCommandHandler update = new(
+                db, CurrentUserHelper.For(owner), TimeProvider.System,
+                new EntityHistoryRecorder(db, TimeProvider.System));
+            Result<HotstringDto> updated = await update.ExecuteAsync(
+                new UpdateHotstringCommand(entity.Id,
+                    new UpdateHotstringDto(
+                        "delivery-revert", "x", null, true, true, true, null,
+                        Delivery: HotstringDelivery.Type)), default);
+            updated.Value.Delivery.Should().Be(HotstringDelivery.Type);
+        }
+
+        await using AppDbContext revertDb = fx.CreateContext();
+        RevertHotstringCommandHandler revert = new(
+            revertDb, CurrentUserHelper.For(owner), TimeProvider.System,
+            new EntityHistoryRecorder(revertDb, TimeProvider.System));
+        Result<HotstringDto> result = await revert.ExecuteAsync(
+            new RevertHotstringCommand(entity.Id, 1), default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Delivery.Should().Be(HotstringDelivery.ClipboardPaste);
+    }
+
+    [Fact]
+    public async Task RestoreHotstring_RestoresDelivery()
+    {
+        var owner = Guid.NewGuid();
+        Hotstring entity = new HotstringBuilder()
+            .WithOwner(owner).WithTrigger("delivery-restore").WithReplacement("x")
+            .WithDelivery(HotstringDelivery.ClipboardPaste)
+            .Build();
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(entity);
+            await seed.SaveChangesAsync();
+        }
+
+        await using (AppDbContext db = fx.CreateContext())
+        {
+            DeleteHotstringCommandHandler delete = new(
+                db, CurrentUserHelper.For(owner), new EntityHistoryRecorder(db, TimeProvider.System));
+            (await delete.ExecuteAsync(new DeleteHotstringCommand(entity.Id), default))
+                .IsSuccess.Should().BeTrue();
+        }
+
+        await using AppDbContext restoreDb = fx.CreateContext();
+        RestoreHotstringCommandHandler restore = new(
+            restoreDb, CurrentUserHelper.For(owner), TimeProvider.System,
+            new EntityHistoryRecorder(restoreDb, TimeProvider.System));
+        Result<HotstringDto> result = await restore.ExecuteAsync(
+            new RestoreHotstringCommand(entity.Id), default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Delivery.Should().Be(HotstringDelivery.ClipboardPaste);
+    }
+
+    [Fact]
     public async Task RevertHotstring_RestoresCaseSensitiveAndOmitFlags()
     {
         var owner = Guid.NewGuid();

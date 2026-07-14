@@ -26,6 +26,7 @@ public sealed class Hotstring
     public DateOffsetUnit? DateOffsetUnit { get; private set; }
     public WindowMatchType? ContextMatchType { get; private set; }
     public string? ContextValue { get; private set; }
+    public HotstringDelivery Delivery { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
 
@@ -86,5 +87,6 @@ public sealed class Hotstring
         DateOffsetUnit = definition.DateOffsetUnit;
         ContextMatchType = definition.ContextMatchType;
         ContextValue = definition.ContextValue;
+        Delivery = definition.Delivery;
     }
 }

@@ -20,6 +20,13 @@ public enum HotstringKind
     Raw = 4,
 }
 
+public enum HotstringDelivery
+{
+    Auto = 0,
+    Type = 1,
+    ClipboardPaste = 2,
+}
+
 public enum DateOffsetUnit
 {
     Seconds = 0,
@@ -52,7 +59,8 @@ public sealed record HotstringDto(
     int? DateOffsetAmount = null,
     DateOffsetUnit? DateOffsetUnit = null,
     WindowMatchType? ContextMatchType = null,
-    string? ContextValue = null);
+    string? ContextValue = null,
+    HotstringDelivery Delivery = HotstringDelivery.Auto);
 
 public sealed record CreateHotstringDto(
     string Trigger,
@@ -61,7 +69,8 @@ public sealed record CreateHotstringDto(
     bool AppliesToAllProfiles = true,
     bool IsEndingCharacterRequired = true,
     bool IsTriggerInsideWord = true,
-    HotstringKind Kind = HotstringKind.Text);
+    HotstringKind Kind = HotstringKind.Text,
+    HotstringDelivery Delivery = HotstringDelivery.Auto);
 
 public sealed record PagedList<T>(
     IReadOnlyList<T> Items,

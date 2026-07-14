@@ -24,5 +24,6 @@ internal static class HotstringMappings
         h.DateOffsetAmount,
         h.DateOffsetUnit,
         h.ContextMatchType,
-        h.ContextValue);
+        h.ContextValue,
+        h.Delivery);
 }

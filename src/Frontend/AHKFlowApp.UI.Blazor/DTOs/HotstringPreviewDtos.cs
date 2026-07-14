@@ -13,9 +13,13 @@ public sealed record HotstringPreviewRequestDto(
     DateOffsetUnit? DateOffsetUnit = null,
     WindowMatchType? ContextMatchType = null,
     string? ContextValue = null,
-    string? Description = null);
+    string? Description = null,
+    HotstringDelivery Delivery = HotstringDelivery.Auto);
 
-public sealed record HotstringPreviewDto(string Snippet, RawSummaryDto? RawSummary = null);
+public sealed record HotstringPreviewDto(
+    string Snippet,
+    RawSummaryDto? RawSummary = null,
+    HotstringDelivery EffectiveDelivery = HotstringDelivery.Type);
 
 /// <summary>Body shape of a Raw hotstring definition (mirror of the backend enum).</summary>
 public enum RawBodyKind

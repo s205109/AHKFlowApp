@@ -46,6 +46,34 @@ public sealed class HotstringPersistenceTests(SqlContainerFixture sqlFixture)
     }
 
     [Fact]
+    public async Task SaveAndReload_Delivery_RoundTrips()
+    {
+        var csb = new SqlConnectionStringBuilder(sqlFixture.ConnectionString)
+        {
+            InitialCatalog = "HotstringPersistenceTests",
+        };
+        DbContextOptions<AppDbContext> options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseSqlServer(csb.ConnectionString, sql => sql.EnableRetryOnFailure())
+            .Options;
+        Hotstring entity = new HotstringBuilder()
+            .WithTrigger($"delivery-{Guid.NewGuid():N}")
+            .WithDelivery(HotstringDelivery.ClipboardPaste)
+            .Build();
+
+        await using (AppDbContext write = new(options))
+        {
+            await write.Database.MigrateAsync();
+            write.Hotstrings.Add(entity);
+            await write.SaveChangesAsync();
+        }
+
+        await using AppDbContext read = new(options);
+        Hotstring reloaded = await read.Hotstrings.SingleAsync(h => h.Id == entity.Id);
+
+        reloaded.Delivery.Should().Be(HotstringDelivery.ClipboardPaste);
+    }
+
+    [Fact]
     public async Task SaveAndReload_DateTimeFields_RoundTrip()
     {
         var csb = new SqlConnectionStringBuilder(sqlFixture.ConnectionString)
