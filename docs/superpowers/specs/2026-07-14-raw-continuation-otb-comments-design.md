@@ -20,8 +20,8 @@ generator ignores.
 ## Scope
 
 In: continuation-section bodies, OTB acceptance (normalized), Description-as-comment
-emission for hotstrings and hotkeys, comment-line lifting on Raw paste, example chips
-in the Raw editor, error-copy update.
+emission for hotstrings and hotkeys, comment-line lifting on Raw paste, example
+templates in the Raw editor, error-copy update.
 
 Out (still rejected by design): multiple definitions per paste, `#Hotstring` directives,
 `Hotstring()` calls, interpreting continuation options, any schema change.
@@ -110,19 +110,20 @@ Rule-6 message becomes:
 > Add a replacement after `::`, or put `{` (code) or `(` (multi-line text) on its own
 > line below the trigger.
 
-## 5. UX: example chips
+## 5. UX: example templates
 
-Row of four chips above the Raw textarea in `HotstringEditDialog`:
+Collapsible "Examples" panel below the Raw textarea in `HotstringEditDialog`, one row
+per template (label + monospace preview):
 
-| Chip | Inserts |
-|---|---|
-| Inline | `:*:btw::by the way` |
-| Multi-line text ( ) | `:*:col::` + `(` + sample lines + `)` |
-| Code block { } | `:X:run::` + `{` + `Run "notepad.exe"` + `}` |
-| With options | `:K1000 SE*:ftw::for the win` |
+| Example | Preview | Inserts |
+|---|---|---|
+| Inline | `:*:btw::by the way` | `:*:btw::by the way` |
+| Multi-line text ( ) | `:*:col::  ( red / green / blue )` | `:*:col::` + `(` + sample lines + `)` |
+| Code block { } | `:X:run::  { Run "notepad.exe" }` | `:X:run::` + `{` + `Run "notepad.exe"` + `}` |
+| With options | `:K1000 SE*:ftw::for the win` | `:K1000 SE*:ftw::for the win` |
 
-Clicking a chip fills the textarea; if it already holds non-template content, confirm
-before overwriting. Chips are bUnit-tested.
+Clicking a row fills the textarea; if it already holds non-template content, confirm
+before overwriting. bUnit-tested.
 
 ## 6. Validation & limits (unchanged)
 
@@ -146,6 +147,6 @@ definition).
   descriptions (regression).
 - **Round-trip:** paste `:*:col::` + `( … )` → save → generate → script contains the
   section byte-identical.
-- **bUnit:** chips insert templates, overwrite confirm, summary shows
-  "multi-line text (N lines)" and comment-lift notice.
+- **bUnit:** example rows insert templates, overwrite confirm, preview text renders,
+  summary shows "multi-line text (N lines)" and comment-lift notice.
 - **E2E:** paste the colors continuation hotstring, save, download, assert exact lines.

@@ -139,14 +139,15 @@ validator/E2E assertions on "Put `{` on its own line").
 (`:47`) still lists OTB and continuation sections as rejected; they are now accepted, so
 that page contradicts behavior. Rewrite those bullets to describe the new acceptance.
 
-## Task 6 — UI: example chips + summary
+## Task 6 — UI: example templates + summary
 
-In `HotstringEditDialog.razor` (Raw kind only), a `MudChipSet`/chip row above the
-textarea with the four spec templates (Inline / Multi-line text `( )` / Code block `{ }` /
-With options). Clicking fills `Item.Replacement`; if the field holds non-template,
-non-empty content, confirm via the existing `ConfirmSwitchAsync`-style dialog before
-overwriting. Summary row renders "code block" / "multi-line text (N lines)" from
-`BodyKind`/`BodyLineCount` and the "comment moved to Description" notice from
+In `HotstringEditDialog.razor` (Raw kind only), a collapsible "Examples"
+`MudExpansionPanel` below the textarea listing the four spec templates (Inline /
+Multi-line text `( )` / Code block `{ }` / With options), one row each with a label +
+monospace preview. Clicking a row fills `Item.Replacement`; if the field holds
+non-template, non-empty content, confirm via the existing `ConfirmSwitchAsync`-style
+dialog before overwriting. Summary row renders "code block" / "multi-line text (N lines)"
+from `BodyKind`/`BodyLineCount` and the "comment moved to Description" notice from
 `LiftedComment`.
 
 **Raw→structured switch (`RawDefinition.Decompose`, `Helpers/RawDefinition.cs:46`):**
@@ -161,8 +162,8 @@ Also update `RawHelperText` (`HotstringEditDialog.razor:256`) — it currently e
 "OTB braces and continuation sections are not supported"; reword to reflect that both
 are now accepted (OTB normalized, `( )` for multi-line text).
 
-**bUnit tests:** each chip inserts its template, overwrite-confirm path, summary shows
-body-kind text + N lines + comment-lift notice.
+**bUnit tests:** each example row inserts its template, preview text renders,
+overwrite-confirm path, summary shows body-kind text + N lines + comment-lift notice.
 
 ## Task 7 — Round-trip + E2E
 
@@ -192,5 +193,5 @@ Commit per task (feature + its tests together).
    discarding when continuation options or significant whitespace are present (Task 6).
 2. Rule 8 (4200): measure **definition-minus-lifted-comments** — spec §6 already decides
    this (lifted comment lines leave the definition, so they don't count).
-3. Chip overwrite confirm: reuse the existing **MessageBox** pattern (`ConfirmSwitchAsync`),
+3. Example overwrite confirm: reuse the existing **MessageBox** pattern (`ConfirmSwitchAsync`),
    consistent with kind-switch confirmation and existing bUnit infrastructure.
