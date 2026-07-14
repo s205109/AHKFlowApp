@@ -113,17 +113,18 @@ Rule-6 message becomes:
 ## 5. UX: example templates
 
 Collapsible "Examples" panel below the Raw textarea in `HotstringEditDialog`, one row
-per template (label + monospace preview):
+per template (label + monospace preview + copy icon):
 
-| Example | Preview | Inserts |
+| Example | Preview | Copies |
 |---|---|---|
 | Inline | `:*:btw::by the way` | `:*:btw::by the way` |
 | Multi-line text ( ) | `:*:col::  ( red / green / blue )` | `:*:col::` + `(` + sample lines + `)` |
 | Code block { } | `:X:run::  { Run "notepad.exe" }` | `:X:run::` + `{` + `Run "notepad.exe"` + `}` |
 | With options | `:K1000 SE*:ftw::for the win` | `:K1000 SE*:ftw::for the win` |
 
-Clicking a row fills the textarea; if it already holds non-template content, confirm
-before overwriting. bUnit-tested.
+The copy icon writes the full template to the clipboard (snackbar confirms) so the user
+pastes it in themselves — the examples are reference-only and never overwrite the field.
+bUnit-tested.
 
 ## 6. Validation & limits (unchanged)
 
@@ -147,6 +148,7 @@ definition).
   descriptions (regression).
 - **Round-trip:** paste `:*:col::` + `( … )` → save → generate → script contains the
   section byte-identical.
-- **bUnit:** example rows insert templates, overwrite confirm, preview text renders,
-  summary shows "multi-line text (N lines)" and comment-lift notice.
+- **bUnit:** copy icon writes the template to the clipboard (leaving the field
+  untouched), preview text renders, summary shows "multi-line text (N lines)" and
+  comment-lift notice.
 - **E2E:** paste the colors continuation hotstring, save, download, assert exact lines.

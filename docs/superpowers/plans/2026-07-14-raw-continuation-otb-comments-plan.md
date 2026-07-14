@@ -144,9 +144,9 @@ that page contradicts behavior. Rewrite those bullets to describe the new accept
 In `HotstringEditDialog.razor` (Raw kind only), a collapsible "Examples"
 `MudExpansionPanel` below the textarea listing the four spec templates (Inline /
 Multi-line text `( )` / Code block `{ }` / With options), one row each with a label +
-monospace preview. Clicking a row fills `Item.Replacement`; if the field holds
-non-template, non-empty content, confirm via the existing `ConfirmSwitchAsync`-style
-dialog before overwriting. Summary row renders "code block" / "multi-line text (N lines)"
+monospace preview + a copy icon. The copy icon writes the full template to the clipboard
+(snackbar confirms) so the user pastes it in themselves — examples never overwrite
+`Item.Replacement`. Summary row renders "code block" / "multi-line text (N lines)"
 from `BodyKind`/`BodyLineCount` and the "comment moved to Description" notice from
 `LiftedComment`.
 
@@ -162,8 +162,8 @@ Also update `RawHelperText` (`HotstringEditDialog.razor:256`) — it currently e
 "OTB braces and continuation sections are not supported"; reword to reflect that both
 are now accepted (OTB normalized, `( )` for multi-line text).
 
-**bUnit tests:** each example row inserts its template, preview text renders,
-overwrite-confirm path, summary shows body-kind text + N lines + comment-lift notice.
+**bUnit tests:** copy icon writes the template to the clipboard (field untouched),
+preview text renders, summary shows body-kind text + N lines + comment-lift notice.
 
 ## Task 7 — Round-trip + E2E
 
@@ -193,5 +193,5 @@ Commit per task (feature + its tests together).
    discarding when continuation options or significant whitespace are present (Task 6).
 2. Rule 8 (4200): measure **definition-minus-lifted-comments** — spec §6 already decides
    this (lifted comment lines leave the definition, so they don't count).
-3. Example overwrite confirm: reuse the existing **MessageBox** pattern (`ConfirmSwitchAsync`),
-   consistent with kind-switch confirmation and existing bUnit infrastructure.
+3. Examples are copy-to-clipboard (reference-only), not click-to-insert — so no overwrite
+   confirm is needed; the user pastes into the field themselves.

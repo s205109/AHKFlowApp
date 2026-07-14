@@ -1330,49 +1330,38 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
-    public async Task RawExample_InsertsTemplateIntoEmptyDefinition()
-    {
-        HotstringEditModel item = new() { Kind = HotstringKind.Raw, Replacement = "" };
-        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
-        provider.WaitForAssertion(() => provider.Find("[data-test=\"raw-template-inline\"]"));
-
-        provider.Find("[data-test=\"raw-template-inline\"]").Click();
-
-        provider.WaitForAssertion(() => item.Replacement.Should().Be(":*:btw::by the way"));
-    }
-
-    [Fact]
-    public async Task RawExample_WithExistingContent_PromptsBeforeOverwrite()
+    public async Task RawExample_CopyButton_CopiesTemplateAndLeavesDefinitionUntouched()
     {
         HotstringEditModel item = new() { Kind = HotstringKind.Raw, Replacement = ":*:custom::my own text" };
         IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
-        provider.WaitForAssertion(() => provider.Find("[data-test=\"raw-template-braces\"]"));
-
-        provider.Find("[data-test=\"raw-template-braces\"]").Click();
-
-        // A confirmation MudMessageBox appears and the definition stays untouched until it resolves.
-        provider.WaitForAssertion(() => provider.Markup.Should().Contain("This replaces the current Raw definition"));
-        item.Replacement.Should().Be(":*:custom::my own text");
-    }
-
-    [Fact]
-    public async Task RawExample_AfterSwitchingEmptyItemToRaw_ReplacesScaffoldWithoutPrompt()
-    {
-        HotstringEditModel item = new() { Trigger = "", Kind = HotstringKind.Text, Replacement = "" };
-        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
-        provider.WaitForAssertion(() => provider.Find("[data-test=\"kind-selector\"]"));
-
-        provider.FindAll(".mud-toggle-item").First(e => e.TextContent.Contains("Raw")).Click();
-        provider.WaitForAssertion(() => item.Kind.Should().Be(HotstringKind.Raw));
-
-        // The generated blank scaffold is disposable — a chip replaces it with no confirmation.
         provider.WaitForAssertion(() => provider.Find("[data-test=\"raw-template-inline\"]"));
+
         provider.Find("[data-test=\"raw-template-inline\"]").Click();
 
         provider.WaitForAssertion(() =>
         {
-            provider.Markup.Should().NotContain("This replaces the current Raw definition");
-            item.Replacement.Should().Be(":*:btw::by the way");
+            Bunit.JSRuntimeInvocation invocation = JSInterop.VerifyInvoke("navigator.clipboard.writeText");
+            invocation.Arguments.Should().Contain(":*:btw::by the way");
+            _snackbar.Received(1).Add("Example copied — paste it into the definition.", Severity.Success,
+                Arg.Any<Action<SnackbarOptions>>(), Arg.Any<string>());
+        });
+        // Copy is a reference action — the user's own definition is never overwritten.
+        item.Replacement.Should().Be(":*:custom::my own text");
+    }
+
+    [Fact]
+    public async Task RawExample_CopyButton_CopiesMultiLineTemplateVerbatim()
+    {
+        HotstringEditModel item = new() { Kind = HotstringKind.Raw, Replacement = "" };
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"raw-template-continuation\"]"));
+
+        provider.Find("[data-test=\"raw-template-continuation\"]").Click();
+
+        provider.WaitForAssertion(() =>
+        {
+            Bunit.JSRuntimeInvocation invocation = JSInterop.VerifyInvoke("navigator.clipboard.writeText");
+            invocation.Arguments.Should().Contain(":*:col::\n(\nred\ngreen\nblue\n)");
         });
     }
 

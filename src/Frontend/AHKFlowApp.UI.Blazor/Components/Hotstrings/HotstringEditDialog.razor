@@ -78,11 +78,16 @@
                         <MudList T="string" Dense="true">
                             @foreach ((string label, string template, string preview, string dataTest) in RawExampleTemplates)
                             {
-                                <MudListItem T="string" OnClick="@(() => ApplyRawTemplateAsync(template))"
-                                             UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = dataTest })">
-                                    <MudStack Row="true" Spacing="3" AlignItems="AlignItems.Baseline" Wrap="Wrap.Wrap">
-                                        <MudText Typo="Typo.body2" Style="min-width: 130px"><b>@label</b></MudText>
-                                        <MudText Typo="Typo.caption" Class="ahk-mono">@preview</MudText>
+                                <MudListItem T="string" Ripple="false" Gutters="true">
+                                    <MudStack Row="true" Spacing="3" AlignItems="AlignItems.Center"
+                                              Justify="Justify.SpaceBetween">
+                                        <MudStack Row="true" Spacing="3" AlignItems="AlignItems.Baseline" Wrap="Wrap.Wrap">
+                                            <MudText Typo="Typo.body2" Style="min-width: 130px"><b>@label</b></MudText>
+                                            <MudText Typo="Typo.caption" Class="ahk-mono">@preview</MudText>
+                                        </MudStack>
+                                        <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small"
+                                                       OnClick="@(() => CopyTemplateAsync(template))"
+                                                       UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = $"Copy {label} example", ["data-test"] = dataTest })" />
                                     </MudStack>
                                 </MudListItem>
                             }
@@ -349,9 +354,6 @@
     private bool _scriptSuggestionDismissed;
     private RawSummaryDto? _rawSummary;
     private bool _rawExamplesExpanded;
-    // The blank definition scaffold generated when an empty item switches to Raw — disposable, so
-    // an example template may overwrite it without a confirmation prompt. Null once real content exists.
-    private string? _rawScaffold;
     private string? _macroInsertHint;
     private bool _previewExpanded;
     private bool _previewPending;
@@ -414,7 +416,6 @@
         // Field-level preview errors and the Raw summary belong to the outgoing kind — drop them so
         // a stale message (e.g. a Raw brace error) can't linger on the incoming kind's fields.
         _rawSummary = null;
-        _rawScaffold = null;
         _previewTriggerError = null;
         _previewReplacementError = null;
         _previewContextValueError = null;
@@ -501,35 +502,29 @@
             }
 
             // Compose a starting definition from the current structured fields (same shape as the
-            // server's Script→Raw transform). An empty replacement yields just the trigger scaffold,
-            // which is disposable — an example template overwrites it without a confirmation prompt.
-            bool blankScaffold = string.IsNullOrEmpty(Item.Replacement);
+            // server's Script→Raw transform). An empty replacement yields just the trigger scaffold.
             Item.Replacement = RawDefinition.Compose(
                 Item.Trigger, Item.Replacement,
                 Item.IsEndingCharacterRequired, Item.IsTriggerInsideWord,
                 Item.IsCaseSensitive, Item.OmitEndingCharacter);
-            _rawScaffold = blankScaffold ? Item.Replacement : null;
             ClearDateTimeFields();
             Item.Kind = HotstringKind.Raw;
         }
     }
 
-    // Applies a Raw example template to the definition field. When the field already holds real
-    // content — non-empty, not another template, and not the disposable blank scaffold — confirm
-    // first (same MessageBox pattern as kind switching) before replacing it.
-    private async Task ApplyRawTemplateAsync(string template)
+    // Copies a Raw example definition to the clipboard so the user can paste it into the field
+    // themselves — the examples are a reference, never an overwrite of what they've typed.
+    private async Task CopyTemplateAsync(string template)
     {
-        bool disposable = string.IsNullOrWhiteSpace(Item.Replacement)
-            || Item.Replacement == _rawScaffold
-            || RawExampleTemplates.Any(t => t.Template == Item.Replacement);
-        if (!disposable
-            && !await ConfirmSwitchAsync("Replace definition?",
-                "This replaces the current Raw definition with the example. Continue?",
-                yesText: "Replace"))
-            return;
-
-        Item.Replacement = template;
-        _rawScaffold = null;
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", template);
+            Snackbar.Add("Example copied — paste it into the definition.", Severity.Success);
+        }
+        catch (JSException)
+        {
+            Snackbar.Add("Copy to clipboard failed.", Severity.Warning);
+        }
     }
 
     private static string? RawBodyKindLabel(RawSummaryDto summary) => summary.BodyKind switch
