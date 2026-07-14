@@ -70,7 +70,7 @@ public static HotstringDelivery ResolveEffectiveDelivery(Hotstring hs) =>
 - `HotstringRules.cs`: `ClipboardReplacementMaxLength = 100_000`; new `AddDeliveryRules(kind, delivery, replacement)`.
 - Length-ownership refactor: shared `ValidReplacement()` becomes NotEmpty-only; length moves per-kind (Text → AddDeliveryRules, Macro → AddMacroKindRules, Raw owns its own). Wire into all three validators.
 
-### P2 — Emitter (TDD, golden lines) — ⚠ after Open Q1 verified
+### P2 — Emitter (TDD, golden lines) — ⚠ after Verification checklist item 1 (end-char behavior) is confirmed
 - Golden tests in `AhkScriptGeneratorTests`: default → `..., A_EndChar)`; `OmitEndingCharacter`/`*` → no endChar arg; `*?C` order, no T; escaping golden; Auto boundary 199→typed / 200→clipboard; non-Text kinds unaffected.
 - `HotstringEmitter.cs`: `ResolveEffectiveDelivery`, `PasteHelperName`/`PasteHelperFunction` consts, clipboard branch in `Emit` after Raw guard, `BuildClipboardOptions` (extract shared `*?C` helper), `BuildClipboardBody`.
 
@@ -97,11 +97,12 @@ public static HotstringDelivery ResolveEffectiveDelivery(Hotstring hs) =>
 - `HotstringEditModel.cs`: `Delivery` through FromDto/Clone/ToCreate/ToUpdate; replace `[MaxLength(4000)]` with conditional validation mirroring the **full server matrix**: Text+Type 4000; Text+Auto/Clipboard 100 000; Macro 4000; Raw 4200; DateTime empty. (Not "4000 when Text+Type, 100k otherwise" — that would wrongly allow Macro/Raw/DateTime up to 100k on the client.)
 - **All three client length gates** must move off the hardcoded 4000, not just the model: `HotstringEditDialog.razor` `MaxLength="4000"` (line 62), the desktop inline editor's `MaxLength="4000"` input (Hotstrings.razor:105), and its separate `ValidateReplacement` commit guard (Hotstrings.razor:481). Drive all three from the same per-kind/delivery limit. bUnit tests: enter and save a 4001-char Text+Auto/Clipboard value through both the dialog and the inline editor.
 - **List payload/render guard:** a 200-row page (`PageSize` max, ListHotstringsQuery.cs:52) of 100 000-char rows is ~20 MB, rendered in full (Hotstrings.razor:122). Truncate Text-replacement list rendering to a preview length; preferably ship a truncated replacement from `ListHotstringsQuery` (a summary/list DTO) and fetch full content only when editing.
-- `HotstringEditDialog.razor`: delivery selector (Auto/Typed/Clipboard) for Text only, reset on kind switch; hint "Auto types short replacements and pastes 200+ characters via the clipboard"; preview carries Delivery; effective-delivery chip (`data-test="preview-delivery"`).
+- `HotstringEditDialog.razor`: delivery selector (Auto/Typed/Clipboard) for Text only, reset on kind switch; hint "Auto types short replacements and pastes 200+ characters via the clipboard. Pasted text is not case-conforming (typed replacements adapt to how you capitalized the trigger; pasted ones don't)."; preview carries Delivery; effective-delivery chip (`data-test="preview-delivery"`).
 - Lists: minimal "Clipboard" chip for Text rows with explicit delivery. bUnit tests.
 
 ### P9 — CLI
 - Enum copy + `Delivery` on DTOs in `IHotstringsApiClient.cs`. `NewHotstringCommand.cs`: `--delivery auto|type|clipboard` (case-insensitive; invalid → stderr + exit 2). Tests.
+- **`--replacement-file <path>`:** `--replacement` is a process argument, capped well below the 100 000-char clipboard limit by the OS command-line length (~32 767 chars, ~8 191 under `cmd.exe`; [Microsoft docs](https://learn.microsoft.com/en-us/troubleshoot/windows-client/shell-experience/command-line-string-limitation)). Add `--replacement-file` reading UTF-8 file content as the replacement body; mutually exclusive with `--replacement` (both → stderr + exit 2), exactly one of the two required alongside `--trigger` (same rule as today). Tests: file path resolves content correctly; both/neither supplied → exit 2.
 
 ### P10 — Docs, E2E, verify
 - `docs\cli\hotstrings.md`: `--delivery` + clipboard-delivery paragraph.
@@ -111,13 +112,21 @@ public static HotstringDelivery ResolveEffectiveDelivery(Hotstring hs) =>
 
 ## Verification
 - TDD gates: P1 validator, P2/P3 golden tests red→green.
-- Manual: profile with 1 short + 1 long Text hotstring; inspect .ahk (helper once, typed short line, clipboard long line with `A_EndChar`).
+- Static: `AutoHotkey.exe /Validate` (or `/ErrorStdOut`) against the full generated script for a profile mixing short/typed and long/clipboard hotstrings — catches syntax errors the golden tests can't (this is static parse validation, not running the script; still within the project's no-runtime-execution rule).
+- Manual acceptance checklist (real AHK v2 install, one pass before merge — no automated AHK execution, per project scope):
+  1. **End-char behavior (was Q1):** trigger a 5-line X hotstring manually; confirm whether AHK consumes the ending char before the paste fires or whether it survives into the target app. Drop the `A_EndChar` arg from `AhkFlow_PasteReplacement` calls if it survives (finalize before P2 golden tests lock the signature).
+  2. 199-char and 200-char Text replacements — confirm the boundary: 199 types, 200 pastes.
+  3. `O` (OmitEndingCharacter) and `*` (no ending char) variants — confirm no stray ending-char paste.
+  4. Ending character is preserved/consumed consistently with step 1's finding, across both variants.
+  5. 100 000-char replacement — paste completes and target app receives full text.
+  6. Clipboard is restored to its pre-paste contents after each paste.
 - E2E download assertion; full suite green before PR.
 
 ## Out of scope
 Menu-based multi-replacement output, SendPlay/SendEvent modes, import recognition of the helper call (re-import classifies as unsupported — follow-up), configurable Sleep/ClipWait, case-conforming for pasted text (documented in hint).
 
 ## Unresolved questions
-1. End-char behavior for X hotstrings — verify empirically (5-line .ahk, manual) that AHK consumes the ending char before finalizing P2; if it survives, drop the `A_EndChar` arg.
-2. **Resolved:** clipboard previews must be copy-safe. The "Generated AutoHotkey code" block is copyable, so a bare `:X:sig::AhkFlow_PasteReplacement(...)` line would reference an undefined helper. The preview handler prepends the `AhkFlow_PasteReplacement` helper block when effective delivery is clipboard (see P4), so a copied snippet is self-contained. Chip + hint stay; typed previews unchanged.
-3. UI hint threshold (200) hardcoded vs served by API? (Plan: duplicated constant, like existing limits.)
+1. **Resolved:** clipboard previews must be copy-safe. The "Generated AutoHotkey code" block is copyable, so a bare `:X:sig::AhkFlow_PasteReplacement(...)` line would reference an undefined helper. The preview handler prepends the `AhkFlow_PasteReplacement` helper block when effective delivery is clipboard (see P4), so a copied snippet is self-contained. Chip + hint stay; typed previews unchanged.
+2. UI hint threshold (200) hardcoded vs served by API? (Plan: duplicated constant, like existing limits.)
+
+(End-char behavior for X hotstrings — formerly Q1 — moved to the Verification section as acceptance-checklist item 1; it's a manual empirical check gating P2, not an open design question.)
