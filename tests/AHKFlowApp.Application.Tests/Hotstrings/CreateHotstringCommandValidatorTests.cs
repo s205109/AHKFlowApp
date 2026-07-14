@@ -377,6 +377,52 @@ public sealed class CreateHotstringCommandValidatorTests
     }
 
     [Fact]
+    public void RawKind_ExactlyMaxLength_Passes()
+    {
+        // 6-char prefix + 4194 = 4200 total. The generic 4000 replacement cap must not shadow this.
+        ValidationResult result = _sut.Validate(Cmd(
+            kind: HotstringKind.Raw, replacement: ":*:t::" + new string('x', 4194)));
+
+        result.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public void RawKind_BetweenOldAndNewLimit_Passes()
+    {
+        // 4100 chars: over the old 4000 replacement cap, under Raw's 4200 limit. Regression guard for
+        // ValidReplacement shadowing the Raw-specific limit.
+        ValidationResult result = _sut.Validate(Cmd(
+            kind: HotstringKind.Raw, replacement: ":*:t::" + new string('x', 4094)));
+
+        result.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public void RawKind_WhitespaceOnlyInlineReplacement_NormalizesToBareTrigger_Fails()
+    {
+        // "::t::    " validates as a non-empty inline replacement pre-normalization, but the handler
+        // persists the normalized "::t::" (trailing spaces stripped). Validation must judge the
+        // normalized form so it can't accept what save then persists as an invalid bare trigger.
+        ValidationResult result = _sut.Validate(Cmd(
+            trigger: "", kind: HotstringKind.Raw, replacement: "::t::    "));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.ErrorMessage == "Put `{` on its own line below the trigger.");
+    }
+
+    [Fact]
+    public void RawKind_LoneCrDirectiveLine_Fails()
+    {
+        // Directive line separated by lone CRs — undetected when the rule split on '\n' only.
+        ValidationResult result = _sut.Validate(Cmd(
+            trigger: "", kind: HotstringKind.Raw, replacement: ":*:t::\r{\r#foo\r}"));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e =>
+            e.ErrorMessage == "Raw definition must not contain directive lines starting with '#'.");
+    }
+
+    [Fact]
     public void RawKind_EmptyClientTrigger_PassesTriggerGate()
     {
         // The client-sent Trigger is ignored for Raw; an empty one must not raise "Trigger is required."

@@ -176,6 +176,16 @@ public sealed class RawHotstringDefinitionParserTests
         r.Trigger.Should().Be("a\nb");
     }
 
+    [Theory]
+    [InlineData(":*: foo::bar", " foo")]   // leading space
+    [InlineData(":C:bar ::x", "bar ")]     // trailing space
+    public void Trigger_PreservesLiteralWhitespace(string input, string expected)
+    {
+        // Spaces/tabs are literal within an AHK abbreviation and the raw text is emitted verbatim,
+        // so the derived trigger must not be trimmed (else dedup/DB/UI disagree with the script).
+        RawHotstringDefinitionParser.Parse(input).Trigger.Should().Be(expected);
+    }
+
     // --- Option tokenization: longest-match & known set ----------------------------------
 
     [Theory]

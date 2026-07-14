@@ -1293,6 +1293,27 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
         });
     }
 
+    [Fact]
+    public async Task RawKind_PreviewCollapsed_AutoRequestsPreviewAndShowsParsedSummary()
+    {
+        // Raw's parsed trigger/options summary must appear below the textarea by default — the
+        // preview runs even while the "Generated AutoHotkey code" panel stays collapsed.
+        _api.PreviewAsync(Arg.Any<HotstringPreviewRequestDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotstringPreviewDto>.Ok(new HotstringPreviewDto(
+                ":K1000 SE*:ftw::for the win", new RawSummaryDto("ftw", ["K1000", "SE", "*"]))));
+
+        HotstringEditModel item = new() { Kind = HotstringKind.Raw, Replacement = ":K1000 SE*:ftw::for the win" };
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+        DisablePreviewDebounce(provider);
+
+        provider.WaitForAssertion(() =>
+        {
+            _ = _api.Received().PreviewAsync(Arg.Any<HotstringPreviewRequestDto>(), Arg.Any<CancellationToken>());
+            provider.Find("[data-test=\"raw-summary\"]").TextContent.Should().Contain("ftw");
+            provider.Find("[data-test=\"raw-summary\"]").TextContent.Should().Contain("K1000");
+        });
+    }
+
     private static void DisablePreviewDebounce(IRenderedComponent<MudDialogProvider> provider) =>
         provider.FindComponent<HotstringEditDialog>().Instance.PreviewDebounce = TimeSpan.Zero;
 

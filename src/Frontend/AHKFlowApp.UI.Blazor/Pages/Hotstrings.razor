@@ -920,6 +920,10 @@
 
     private static string OptionGlyphs(HotstringEditModel item)
     {
+        // Raw carries its options inside the verbatim definition; the structured flags are left at
+        // defaults (e.g. CLI-created rows default IsTriggerInsideWord=true) and are meaningless here.
+        if (item.Kind == HotstringKind.Raw) return "";
+
         string glyphs = "";
         if (!item.IsEndingCharacterRequired) glyphs += "*";
         if (item.IsTriggerInsideWord) glyphs += "?";
@@ -935,11 +939,18 @@
     private static string OptionsTooltip(HotstringEditModel item)
     {
         List<string> parts = [KindLabel(item.Kind)];
-        if (item.Kind == HotstringKind.Raw) parts.Add(ScriptWarningText);
-        if (!item.IsEndingCharacterRequired) parts.Add("Expands immediately (no ending character)");
-        if (item.IsTriggerInsideWord) parts.Add("Triggers inside words");
-        if (item.IsCaseSensitive) parts.Add("Case sensitive");
-        if (item.OmitEndingCharacter && item.IsEndingCharacterRequired) parts.Add("Omits ending character");
+        if (item.Kind == HotstringKind.Raw)
+        {
+            // Raw's structured flags are meaningless (options live in the verbatim text) — skip them.
+            parts.Add(ScriptWarningText);
+        }
+        else
+        {
+            if (!item.IsEndingCharacterRequired) parts.Add("Expands immediately (no ending character)");
+            if (item.IsTriggerInsideWord) parts.Add("Triggers inside words");
+            if (item.IsCaseSensitive) parts.Add("Case sensitive");
+            if (item.OmitEndingCharacter && item.IsEndingCharacterRequired) parts.Add("Omits ending character");
+        }
         if (item.ContextMatchType is not null) parts.Add($"Only in {item.ContextSummary}");
         return string.Join(" · ", parts);
     }

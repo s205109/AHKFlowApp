@@ -86,7 +86,8 @@ public static class RawDefinition
         }
 
         List<string> unexpressible = [.. TokenizeOptions(optionsBlock).Where(t => !ExpressibleOptions.Contains(t))];
-        return new RawDecomposition(DecodeEscapes(triggerRaw).Trim(), body, unexpressible);
+        // No trimming: mirror the server parser — the abbreviation's whitespace is literal.
+        return new RawDecomposition(DecodeEscapes(triggerRaw), body, unexpressible);
     }
 
     // Longest-match tokenizer (SE/SP/SI before S; each flag absorbs its sign/digits), mirroring the

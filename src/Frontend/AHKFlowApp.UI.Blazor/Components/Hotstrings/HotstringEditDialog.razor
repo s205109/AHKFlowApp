@@ -325,6 +325,11 @@
 
     private bool HasCursorToken => MacroTokens.CursorTokenStart(Item.Replacement) is not null;
 
+    // Raw previews run whether or not the panel is expanded: the parsed trigger/options summary and
+    // inline validation render below the textarea, so they must stay live by default. The panel's
+    // expand state only controls whether the generated snippet is shown.
+    private bool ShouldAutoPreview => _previewExpanded || Item.Kind == HotstringKind.Raw;
+
     protected override void OnParametersSet()
     {
         _profileOptions = [.. Profiles.Select(p => new EntityOption(p.Id, p.Name))];
@@ -342,7 +347,7 @@
 
     protected override Task OnAfterRenderAsync(bool firstRender)
     {
-        if (_previewExpanded)
+        if (ShouldAutoPreview)
         {
             HotstringPreviewRequestDto current = BuildPreviewRequest();
             if (_lastPreviewRequest != current)
@@ -361,6 +366,13 @@
     {
         if (newKind == Item.Kind)
             return;
+
+        // Field-level preview errors and the Raw summary belong to the outgoing kind — drop them so
+        // a stale message (e.g. a Raw brace error) can't linger on the incoming kind's fields.
+        _rawSummary = null;
+        _previewTriggerError = null;
+        _previewReplacementError = null;
+        _previewContextValueError = null;
 
         // Leaving Raw for a structured kind: decompose the definition, warning first when it
         // carries option flags the structured fields can't express (they would be discarded).
@@ -659,8 +671,10 @@
             _lastPreviewRequest = request;
             SchedulePreview(request, debounce: false);
         }
-        else
+        else if (!ShouldAutoPreview)
         {
+            // Nothing left to preview (non-Raw collapsed): stop and clear inline errors. Raw keeps
+            // auto-previewing while collapsed so its summary + inline validation stay live.
             CancelPendingPreview();
             _previewTriggerError = null;
             _previewReplacementError = null;
