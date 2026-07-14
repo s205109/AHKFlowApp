@@ -524,6 +524,35 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
     }
 
     [Fact]
+    public async Task ExecuteAsync_AutoDeliveryReplacementWithTrailingSpaces_ProjectsClipboardParityWithEmitter()
+    {
+        // 199 non-space chars + 1 trailing space = 200 chars by .NET Length (what HotstringEmitter
+        // uses), but SQL Server's LEN() strips trailing spaces and would see only 199 — this
+        // regression-tests that the SQL projection uses DATALENGTH instead, so list/emit agree.
+        var owner = Guid.NewGuid();
+        string replacement = new string('x', 199) + " ";
+        var entity = Hotstring.Create(
+            owner,
+            new HotstringDefinition(
+                "trailing", replacement, null, true, true, true,
+                Delivery: HotstringDelivery.Auto),
+            TimeProvider.System);
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(entity);
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
+
+        Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(new ListHotstringsQuery(), default);
+
+        result.Value.Items.Should().ContainSingle().Which.EffectiveDelivery.Should().Be(HotstringDelivery.ClipboardPaste);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_MacroHotstring_ProjectsEffectiveDeliveryAsType()
     {
         var owner = Guid.NewGuid();

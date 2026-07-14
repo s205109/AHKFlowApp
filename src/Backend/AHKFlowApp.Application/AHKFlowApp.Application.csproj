@@ -12,6 +12,9 @@
     <PackageReference Include="Ardalis.Result" />
     <PackageReference Include="FluentValidation.DependencyInjectionExtensions" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <!-- SQL Server-only app (see collation assumption in ListHotstringsQuery.cs); needed for
+         EF.Functions.DataLength, which the base package doesn't expose. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="AHKFlowApp.Application.Tests" />

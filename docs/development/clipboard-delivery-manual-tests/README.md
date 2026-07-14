@@ -20,7 +20,7 @@ a `.ahk` file, run with AutoHotkey v2, test in Notepad.
 | # | Trigger | Replacement | Delivery | Checkboxes | Verify |
 |---|---|---|---|---|---|
 | End-char | `sig1` | `5-line-endchar.txt` | Clipboard | — | `sig1`+Space → exactly one space after "five" |
-| Boundary 199 | `b199` | `199-a.txt` | Auto | Expand immediately | Preview chip = **Typed**; types visibly |
+| Boundary 199 | `b199` | `199-a.txt` | Auto | Expand immediately | Preview chip = **Hotstring**; types visibly |
 | Boundary 200 | `b200` | `200-b.txt` | Auto | Expand immediately | Preview chip = **Clipboard**; pastes instantly |
 | Omit off | `om1` | `200-b.txt` | Clipboard | — | `om1`+Space → one space after text |
 | `O` option | `om2` | `200-b.txt` | Clipboard | Omit ending character | `om2`+Space → no space after text |
