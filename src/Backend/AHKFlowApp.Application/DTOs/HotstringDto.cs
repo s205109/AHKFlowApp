@@ -126,6 +126,7 @@ public sealed record UpdateHotstringDto(
 /// <param name="DateOffsetUnit">Unit for <paramref name="DateOffsetAmount"/>; requires <paramref name="DateOffsetAmount"/>.</param>
 /// <param name="ContextMatchType">How <paramref name="ContextValue"/> is matched against the active window; requires <paramref name="ContextValue"/>. Kind-agnostic.</param>
 /// <param name="ContextValue">Value matched against the active window (executable name, window class, or title substring, per <paramref name="ContextMatchType"/>); requires <paramref name="ContextMatchType"/>.</param>
+/// <param name="Description">Optional note previewed as <c>; </c> comment lines above the definition; for Raw, merged with any lifted comment.</param>
 public sealed record HotstringPreviewRequestDto(
     HotstringKind Kind,
     string Trigger,
@@ -138,14 +139,39 @@ public sealed record HotstringPreviewRequestDto(
     int? DateOffsetAmount = null,
     DateOffsetUnit? DateOffsetUnit = null,
     WindowMatchType? ContextMatchType = null,
-    string? ContextValue = null);
+    string? ContextValue = null,
+    string? Description = null);
 
 /// <summary>The AutoHotkey snippet a hotstring definition would generate.</summary>
-/// <param name="Snippet">The exact <c>.ahk</c> line(s) <c>HotstringEmitter.Emit</c> would produce for the given definition.</param>
-/// <param name="RawSummary">Server-derived trigger and option tokens for a Raw definition; null for other kinds.</param>
+/// <param name="Snippet">The exact <c>.ahk</c> line(s) a save would produce for the given definition, including any <c>; </c> Description comment lines.</param>
+/// <param name="RawSummary">Server-derived summary for a Raw definition; null for other kinds.</param>
 public sealed record HotstringPreviewDto(string Snippet, RawSummaryDto? RawSummary = null);
+
+/// <summary>Body shape of a Raw hotstring definition, surfaced in the preview summary.</summary>
+public enum RawBodyKind
+{
+    /// <summary>No recognizable body (structurally invalid).</summary>
+    None,
+
+    /// <summary>Inline replacement on the definition line.</summary>
+    Inline,
+
+    /// <summary>AutoHotkey code block <c>{ … }</c>.</summary>
+    Braces,
+
+    /// <summary>Literal multi-line text continuation section <c>( … )</c>.</summary>
+    Continuation,
+}
 
 /// <summary>Parsed summary of a Raw hotstring definition, shown below the editor's raw textarea.</summary>
 /// <param name="Trigger">Trigger derived from the definition's first line.</param>
 /// <param name="OptionTokens">Option flags parsed from the definition, in first-line order.</param>
-public sealed record RawSummaryDto(string Trigger, string[] OptionTokens);
+/// <param name="BodyKind">Classified body shape (code block vs multi-line text vs inline).</param>
+/// <param name="BodyLineCount">Literal line count for a continuation body; 0 for other shapes.</param>
+/// <param name="LiftedComment">Leading comment text a save would move into Description; null when none.</param>
+public sealed record RawSummaryDto(
+    string Trigger,
+    string[] OptionTokens,
+    RawBodyKind BodyKind,
+    int BodyLineCount,
+    string? LiftedComment);

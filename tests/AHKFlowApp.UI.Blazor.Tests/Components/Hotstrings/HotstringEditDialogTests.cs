@@ -1300,7 +1300,8 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
         // preview runs even while the "Generated AutoHotkey code" panel stays collapsed.
         _api.PreviewAsync(Arg.Any<HotstringPreviewRequestDto>(), Arg.Any<CancellationToken>())
             .Returns(ApiResult<HotstringPreviewDto>.Ok(new HotstringPreviewDto(
-                ":K1000 SE*:ftw::for the win", new RawSummaryDto("ftw", ["K1000", "SE", "*"]))));
+                ":K1000 SE*:ftw::for the win",
+                new RawSummaryDto("ftw", ["K1000", "SE", "*"], RawBodyKind.Inline, 0, null))));
 
         HotstringEditModel item = new() { Kind = HotstringKind.Raw, Replacement = ":K1000 SE*:ftw::for the win" };
         IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);

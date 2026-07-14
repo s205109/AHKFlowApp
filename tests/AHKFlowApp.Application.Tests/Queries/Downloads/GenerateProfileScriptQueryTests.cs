@@ -100,6 +100,7 @@ public sealed class GenerateProfileScriptQueryTests(ScriptGeneratorDbFixture fx)
             ":T:addr::123 Main St\n" +
             ":*?T:btw::by the way\n" +
             "; --- Hotkeys ---\n" +
+            "; Open Notepad\n" +
             "^!n::Run(\"notepad.exe\")\n" +
             "; end");
     }

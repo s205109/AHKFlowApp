@@ -25,6 +25,18 @@ internal static class HotstringEmitter
             ? hs.Replacement
             : $":{BuildOptions(hs)}:{Escape(hs.Trigger)}::{BuildBody(hs)}";
 
+    // Single source of truth for Description-as-comment emission, shared by AhkScriptGenerator
+    // (script lines above each entity) and the preview handler (snippet). Each Description line
+    // becomes a "; " comment line; an empty/whitespace Description yields nothing.
+    public static IEnumerable<string> DescriptionCommentLines(string? description)
+    {
+        if (string.IsNullOrWhiteSpace(description))
+            yield break;
+
+        foreach (string line in description.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n'))
+            yield return line.Length == 0 ? ";" : $"; {line}";
+    }
+
     // ContextValue has already passed validation guaranteeing no double-quote, backtick, or
     // control characters (see HotstringRules.AddWindowContextRules) — safe to embed raw here.
     public static string EmitHotIfOpen(WindowMatchType matchType, string value)

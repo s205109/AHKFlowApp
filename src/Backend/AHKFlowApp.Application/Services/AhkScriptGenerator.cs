@@ -49,7 +49,10 @@ public sealed class AhkScriptGenerator(
         {
             lines.Add(HotstringEmitter.EmitHotIfOpen(group.Key.MatchType!.Value, group.Key.Value!));
             foreach (Hotstring hs in group)
+            {
+                lines.AddRange(HotstringEmitter.DescriptionCommentLines(hs.Description));
                 lines.Add(HotstringEmitter.Emit(hs));
+            }
             lines.Add(HotstringEmitter.HotIfClose);
         }
 
@@ -58,12 +61,18 @@ public sealed class AhkScriptGenerator(
 
         if (globalGroup is not null)
             foreach (Hotstring hs in globalGroup)
+            {
+                lines.AddRange(HotstringEmitter.DescriptionCommentLines(hs.Description));
                 lines.Add(HotstringEmitter.Emit(hs));
+            }
 
         lines.Add(HotkeysSection);
 
         foreach (Hotkey hk in hkList)
+        {
+            lines.AddRange(HotstringEmitter.DescriptionCommentLines(hk.Description));
             lines.Add(FormatHotkey(hk));
+        }
 
         lines.Add(renderer.Render(profile.FooterTemplate, ctx));
 
