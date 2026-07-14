@@ -58,21 +58,6 @@
                     </MudText>
                 }
             }
-            @if (Item.Kind == HotstringKind.Raw)
-            {
-                <MudStack Row="true" Spacing="1" Class="raw-templates" Wrap="Wrap.Wrap" AlignItems="AlignItems.Center"
-                          UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "raw-templates" })">
-                    <MudText Typo="Typo.caption">Start with:</MudText>
-                    @foreach ((string label, string template, string dataTest) in RawChipTemplates)
-                    {
-                        <MudChip T="string" Variant="Variant.Outlined" Size="Size.Small" Color="Color.Primary"
-                                 OnClick="@(() => ApplyRawTemplateAsync(template))"
-                                 UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = dataTest })">
-                            @label
-                        </MudChip>
-                    }
-                </MudStack>
-            }
             @if (Item.Kind != HotstringKind.DateTime)
             {
                 <MudTextField T="string" Label="@(Item.Kind == HotstringKind.Raw ? "Raw definition" : "Replacement")"
@@ -83,6 +68,27 @@
                               Error="@(_previewReplacementError is not null)" ErrorText="@_previewReplacementError"
                               HelperText="@ReplacementHelperText"
                               UserAttributes="@GetReplacementUserAttributes()" />
+            }
+            @if (Item.Kind == HotstringKind.Raw)
+            {
+                <MudExpansionPanels Elevation="0" Class="raw-templates"
+                                    UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "raw-templates" })">
+                    <MudExpansionPanel Text="Examples" Dense="true" Expanded="_rawExamplesExpanded"
+                                       ExpandedChanged="@(e => _rawExamplesExpanded = e)">
+                        <MudList T="string" Dense="true">
+                            @foreach ((string label, string template, string preview, string dataTest) in RawExampleTemplates)
+                            {
+                                <MudListItem T="string" OnClick="@(() => ApplyRawTemplateAsync(template))"
+                                             UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = dataTest })">
+                                    <MudStack Row="true" Spacing="3" AlignItems="AlignItems.Baseline" Wrap="Wrap.Wrap">
+                                        <MudText Typo="Typo.body2" Style="min-width: 130px"><b>@label</b></MudText>
+                                        <MudText Typo="Typo.caption" Class="ahk-mono">@preview</MudText>
+                                    </MudStack>
+                                </MudListItem>
+                            }
+                        </MudList>
+                    </MudExpansionPanel>
+                </MudExpansionPanels>
             }
             @if (Item.Kind == HotstringKind.Raw && _rawSummary is not null)
             {
@@ -284,12 +290,12 @@
         "parsed from the first line. Below a bare '::' put { code } or ( multi-line text ) on their own lines; " +
         "OTB braces are normalized. Leading ';' comment lines move into the Description.";
 
-    private static readonly (string Label, string Template, string DataTest)[] RawChipTemplates =
+    private static readonly (string Label, string Template, string Preview, string DataTest)[] RawExampleTemplates =
     [
-        ("Inline", ":*:btw::by the way", "raw-template-inline"),
-        ("Multi-line text ( )", ":*:col::\n(\nred\ngreen\nblue\n)", "raw-template-continuation"),
-        ("Code block { }", ":X:run::\n{\nRun \"notepad.exe\"\n}", "raw-template-braces"),
-        ("With options", ":K1000 SE*:ftw::for the win", "raw-template-options"),
+        ("Inline", ":*:btw::by the way", ":*:btw::by the way", "raw-template-inline"),
+        ("Multi-line text ( )", ":*:col::\n(\nred\ngreen\nblue\n)", ":*:col::  ( red / green / blue )", "raw-template-continuation"),
+        ("Code block { }", ":X:run::\n{\nRun \"notepad.exe\"\n}", ":X:run::  { Run \"notepad.exe\" }", "raw-template-braces"),
+        ("With options", ":K1000 SE*:ftw::for the win", ":K1000 SE*:ftw::for the win", "raw-template-options"),
     ];
 
     private string? ReplacementHelperText => Item.Kind switch
@@ -342,8 +348,9 @@
     private bool _macroSuggestionDismissed;
     private bool _scriptSuggestionDismissed;
     private RawSummaryDto? _rawSummary;
+    private bool _rawExamplesExpanded;
     // The blank definition scaffold generated when an empty item switches to Raw — disposable, so
-    // an example chip may overwrite it without a confirmation prompt. Null once real content exists.
+    // an example template may overwrite it without a confirmation prompt. Null once real content exists.
     private string? _rawScaffold;
     private string? _macroInsertHint;
     private bool _previewExpanded;
@@ -495,7 +502,7 @@
 
             // Compose a starting definition from the current structured fields (same shape as the
             // server's Script→Raw transform). An empty replacement yields just the trigger scaffold,
-            // which is disposable — the example chips overwrite it without a confirmation prompt.
+            // which is disposable — an example template overwrites it without a confirmation prompt.
             bool blankScaffold = string.IsNullOrEmpty(Item.Replacement);
             Item.Replacement = RawDefinition.Compose(
                 Item.Trigger, Item.Replacement,
@@ -514,7 +521,7 @@
     {
         bool disposable = string.IsNullOrWhiteSpace(Item.Replacement)
             || Item.Replacement == _rawScaffold
-            || RawChipTemplates.Any(t => t.Template == Item.Replacement);
+            || RawExampleTemplates.Any(t => t.Template == Item.Replacement);
         if (!disposable
             && !await ConfirmSwitchAsync("Replace definition?",
                 "This replaces the current Raw definition with the example. Continue?",

@@ -1316,7 +1316,21 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
-    public async Task RawTemplateChip_InsertsTemplateIntoEmptyDefinition()
+    public async Task RawExamples_RenderPreviewTextBelowDefinition()
+    {
+        HotstringEditModel item = new() { Kind = HotstringKind.Raw, Replacement = "" };
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+
+        provider.WaitForAssertion(() =>
+        {
+            AngleSharp.Dom.IElement examples = provider.Find("[data-test=\"raw-templates\"]");
+            examples.TextContent.Should().Contain("Examples");
+            examples.TextContent.Should().Contain(":*:col::  ( red / green / blue )");
+        });
+    }
+
+    [Fact]
+    public async Task RawExample_InsertsTemplateIntoEmptyDefinition()
     {
         HotstringEditModel item = new() { Kind = HotstringKind.Raw, Replacement = "" };
         IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
@@ -1328,7 +1342,7 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
-    public async Task RawTemplateChip_WithExistingContent_PromptsBeforeOverwrite()
+    public async Task RawExample_WithExistingContent_PromptsBeforeOverwrite()
     {
         HotstringEditModel item = new() { Kind = HotstringKind.Raw, Replacement = ":*:custom::my own text" };
         IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
@@ -1342,7 +1356,7 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
-    public async Task RawTemplateChip_AfterSwitchingEmptyItemToRaw_ReplacesScaffoldWithoutPrompt()
+    public async Task RawExample_AfterSwitchingEmptyItemToRaw_ReplacesScaffoldWithoutPrompt()
     {
         HotstringEditModel item = new() { Trigger = "", Kind = HotstringKind.Text, Replacement = "" };
         IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
