@@ -215,17 +215,19 @@ internal static partial class HotstringRules
     }
 
     /// <summary>
-    /// Adds kind-conditional validation for Script hotstrings.
-    /// When <paramref name="kind"/> is <see cref="HotstringKind.Script"/>, <paramref name="replacement"/> must:
-    /// (1) not contain any line starting with <c>#</c> after trimming (directive lines would corrupt the
-    /// generated <c>#HotIf</c> grouping), and (2) have balanced braces. Brace balance is checked via naive
-    /// <c>{</c>/<c>}</c> character counting with no string-literal or comment awareness (D12) — a <c>{</c>
-    /// inside a quoted string (e.g. <c>SendText "{"</c>) counts toward the balance and can false-positive
-    /// reject an otherwise valid script. This is a deliberate limitation, not a bug: a string/comment-aware
-    /// scanner would cross the "not a script IDE" boundary (D8) and introduces its own edge cases.
-    /// The Replacement-required, max-length, and date-field-null rules for Script are already covered by
-    /// <see cref="AddDateTimeKindRules{T}"/> (Script is not DateTime, so it falls into that method's
-    /// "otherwise" branches) and are not duplicated here.
+    /// Adds kind-conditional validation for Raw hotstrings.
+    /// When <paramref name="kind"/> is <see cref="HotstringKind.Raw"/>, <paramref name="replacement"/> (the
+    /// verbatim AHK v2 definition) is run through <see cref="RawHotstringDefinitionParser.Prepare"/> — one
+    /// authoritative pass that lifts leading <c>;</c> comments, body-aware-normalizes, and parses — and the
+    /// resulting structural facts are mapped to per-rule failures: length (rule 8), first-line shape (1),
+    /// single definition (2), derived trigger (3), known option flags (4), no directive lines outside a
+    /// literal continuation body (5), and structural body completeness (6/7). Brace balance is checked via
+    /// naive <c>{</c>/<c>}</c> counting with no string-literal or comment awareness (D12) — a <c>{</c> inside
+    /// a quoted string (e.g. <c>SendText "{"</c>) counts toward the balance and can false-positive reject an
+    /// otherwise valid definition. This is a deliberate limitation, not a bug: a string/comment-aware scanner
+    /// would cross the "not a script IDE" boundary (D8). When a comment is lifted, its merge into
+    /// <paramref name="description"/> (via <see cref="RawCommentLift.Merge"/>) is length-checked here; the
+    /// base Description length rule for the typed value lives on the Create/Update/preview validators.
     /// </summary>
     public static void AddRawKindRules<T>(
         this AbstractValidator<T> validator,

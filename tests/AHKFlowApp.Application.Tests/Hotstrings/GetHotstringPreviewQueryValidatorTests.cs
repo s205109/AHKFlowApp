@@ -17,7 +17,8 @@ public sealed class GetHotstringPreviewQueryValidatorTests
         HotstringKind kind = HotstringKind.Text,
         string? dateTimeFormat = null,
         WindowMatchType? contextMatchType = null,
-        string? contextValue = null)
+        string? contextValue = null,
+        string? description = null)
         => new(new HotstringPreviewRequestDto(
             kind,
             trigger,
@@ -28,7 +29,8 @@ public sealed class GetHotstringPreviewQueryValidatorTests
             IsTriggerInsideWord: true,
             DateTimeFormat: dateTimeFormat,
             ContextMatchType: contextMatchType,
-            ContextValue: contextValue));
+            ContextValue: contextValue,
+            Description: description));
 
     [Fact]
     public void Validate_ContextMatchTypeWithoutValue_Fails()
@@ -78,6 +80,22 @@ public sealed class GetHotstringPreviewQueryValidatorTests
         result.Errors.Should().Contain(e =>
             e.PropertyName == "Input.ContextValue" &&
             e.ErrorMessage == "ContextValue must not be blank or whitespace.");
+    }
+
+    [Fact]
+    public void GetHotstringPreviewQueryValidator_RawKind_OverlongDescription_Fails()
+    {
+        // The base 200-char Description rule applies to every kind (matching save), so an over-long
+        // typed Description on a Raw item fails preview instead of previewing then failing save.
+        ValidationResult result = _sut.Validate(Query(
+            kind: HotstringKind.Raw,
+            replacement: "::btw::by the way",
+            description: new string('x', 201)));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.Description" &&
+            e.ErrorMessage == "Description must be 200 characters or fewer.");
     }
 
     [Fact]

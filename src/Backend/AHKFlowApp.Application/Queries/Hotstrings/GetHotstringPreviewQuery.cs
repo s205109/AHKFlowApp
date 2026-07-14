@@ -21,12 +21,12 @@ public sealed class GetHotstringPreviewQueryValidator : AbstractValidator<GetHot
         RuleFor(x => x.Input.Kind)
             .Must(k => k is HotstringKind.Text or HotstringKind.DateTime or HotstringKind.Macro or HotstringKind.Raw)
             .WithMessage("Only Text, Date & time, Macro and Raw hotstrings are supported.");
-        // Non-Raw Description length (Raw's merged-comment length is checked in AddRawKindRules), so
-        // an over-long Description fails preview the same way it fails save.
+        // Base Description length applies to every kind (matching the Create/Update save rule), so an
+        // over-long typed Description fails preview the same way it fails save. Raw additionally checks
+        // the base+lifted-comment merged length in AddRawKindRules.
         RuleFor(x => x.Input.Description)
             .MaximumLength(HotstringRules.DescriptionMaxLength)
-            .WithMessage($"Description must be {HotstringRules.DescriptionMaxLength} characters or fewer.")
-            .When(x => x.Input.Kind != HotstringKind.Raw);
+            .WithMessage($"Description must be {HotstringRules.DescriptionMaxLength} characters or fewer.");
         this.AddDateTimeKindRules(
             x => x.Input.Kind,
             x => x.Input.Replacement,
@@ -72,9 +72,9 @@ internal sealed class GetHotstringPreviewQueryHandler(TimeProvider clock)
             RawParseResult parsed = prepared.Parsed;
             replacement = prepared.NormalizedDefinition;
             trigger = parsed.Trigger;
-            description = RawCommentLift.Merge(input.Description, parsed.LiftedComment);
+            description = RawCommentLift.Merge(input.Description, prepared.LiftedComment);
             rawSummary = new RawSummaryDto(
-                parsed.Trigger, parsed.OptionTokens, parsed.BodyKind, parsed.BodyLineCount, parsed.LiftedComment);
+                parsed.Trigger, parsed.OptionTokens, parsed.BodyKind, parsed.BodyLineCount, prepared.LiftedComment);
         }
 
         var hs = Hotstring.Create(

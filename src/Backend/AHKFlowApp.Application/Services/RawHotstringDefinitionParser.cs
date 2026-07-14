@@ -18,7 +18,6 @@ namespace AHKFlowApp.Application.Services;
 /// <param name="BodyKind">Classified body shape (feeds the preview summary).</param>
 /// <param name="BodyLineCount">Literal line count for a continuation body (0 for other shapes).</param>
 /// <param name="HasDirectiveOutsideLiteralBody">A <c>#</c> directive line exists outside a literal continuation body (rule 5).</param>
-/// <param name="LiftedComment">Leading comment text lifted into Description on save (null when none; set by <c>Prepare</c>).</param>
 /// <param name="Error">Structural error message (rule 1 / 6 / 7); null when <see cref="IsValid"/>.</param>
 internal sealed record RawParseResult(
     bool IsValid,
@@ -30,7 +29,6 @@ internal sealed record RawParseResult(
     RawBodyKind BodyKind,
     int BodyLineCount,
     bool HasDirectiveOutsideLiteralBody,
-    string? LiftedComment,
     string? Error);
 
 /// <summary>
@@ -40,7 +38,7 @@ internal sealed record RawParseResult(
 /// </summary>
 /// <param name="NormalizedDefinition">Body-aware normalized text with lifted comment lines removed — the exact text handlers persist.</param>
 /// <param name="LiftedComment">Leading <c>;</c> comment lines joined with <c>\n</c> (marker stripped), moved into Description; null when none.</param>
-/// <param name="Parsed">Structural parse of <see cref="NormalizedDefinition"/>, with <see cref="RawParseResult.LiftedComment"/> mirrored on it.</param>
+/// <param name="Parsed">Structural parse of <see cref="NormalizedDefinition"/>.</param>
 internal sealed record RawPrepared(string NormalizedDefinition, string? LiftedComment, RawParseResult Parsed);
 
 /// <summary>
@@ -65,7 +63,7 @@ internal static partial class RawHotstringDefinitionParser
     private const string UnbalancedError = "Raw definition must have balanced braces.";
     private const string ContentAfterBraceError = "Raw definition has content after the closing brace.";
     private const string ContentAfterInlineError = "Raw definition has content after the inline replacement.";
-    private const string OpenerWithParenError = "A continuation section opener must not contain `)` — put the closing `)` on its own line.";
+    private const string OpenerIsExpressionError = "A continuation section opener must contain only options after `(` — an extra `(` or `)` (outside the Join parameter) makes AutoHotkey read the line as an expression; put the closing `)` on its own line.";
     private const string UnclosedContinuationError = "Raw definition has an unclosed continuation section — add a closing `)` on its own line.";
     private const string ContentAfterCloseError = "Raw definition has content after the closing `)`.";
 
@@ -109,7 +107,7 @@ internal static partial class RawHotstringDefinitionParser
 
         string definitionText = string.Join('\n', rawLines[defStartIdx..]);
         string normalized = NormalizeCore(definitionText);
-        RawParseResult parsed = Parse(normalized) with { LiftedComment = lifted };
+        RawParseResult parsed = Parse(normalized);
 
         return new RawPrepared(normalized, lifted, parsed);
     }
@@ -204,7 +202,6 @@ internal static partial class RawHotstringDefinitionParser
             BodyKind: body.Kind,
             BodyLineCount: body.BodyLineCount,
             HasDirectiveOutsideLiteralBody: directiveOutside,
-            LiftedComment: null,
             Error: body.Error);
     }
 
@@ -231,7 +228,7 @@ internal static partial class RawHotstringDefinitionParser
     private static RawParseResult Invalid(string error) =>
         new(IsValid: false, FirstLineValid: false, Trigger: "", OptionTokens: [],
             UnknownOptionTokens: [], DefinitionCount: 0, BodyKind: RawBodyKind.None,
-            BodyLineCount: 0, HasDirectiveOutsideLiteralBody: false, LiftedComment: null, Error: error);
+            BodyLineCount: 0, HasDirectiveOutsideLiteralBody: false, Error: error);
 
     /// <summary>
     /// Classification of a definition's body, including the absolute line range it spans so the
@@ -291,11 +288,12 @@ internal static partial class RawHotstringDefinitionParser
 
     // Continuation section: verbatim literal text between an opener line starting with '(' and a
     // closing line that is exactly ')'. The opener remainder (Join/LTrim/RTrim0/…) is unvalidated
-    // pass-through, except a ')' on the opener line makes AHK read it as an expression, not an opener.
+    // pass-through, except an extra '(' or ')' to the right of the initial '(' (outside the Join
+    // option's parameter) makes AHK read the line as an expression, not an opener (Scripts.htm).
     private static BodyClassification ClassifyContinuation(string[] lines, int openerIdx)
     {
-        if (lines[openerIdx].Contains(')'))
-            return new(false, OpenerWithParenError, RawBodyKind.None, 0, -1, -1);
+        if (OpenerIsExpression(lines[openerIdx]))
+            return new(false, OpenerIsExpressionError, RawBodyKind.None, 0, -1, -1);
 
         int closeIdx = -1;
         for (int i = openerIdx + 1; i < lines.Length; i++)
@@ -307,14 +305,36 @@ internal static partial class RawHotstringDefinitionParser
             }
         }
 
+        // Unclosed: still treat opener→EOF as the intended literal body so the whole-paste scan
+        // skips it — otherwise interior "::x::y" or "#…" lines would trip the multiple-definition
+        // or directive rules before this (more accurate) unclosed-section error surfaces.
         if (closeIdx < 0)
-            return new(false, UnclosedContinuationError, RawBodyKind.None, 0, -1, -1);
+            return new(false, UnclosedContinuationError, RawBodyKind.Continuation,
+                lines.Length - openerIdx - 1, openerIdx, lines.Length - 1);
 
         int bodyLineCount = closeIdx - openerIdx - 1;
 
         return HasNonBlank(lines, closeIdx + 1)
             ? new(false, ContentAfterCloseError, RawBodyKind.Continuation, bodyLineCount, openerIdx, closeIdx)
             : new(true, null, RawBodyKind.Continuation, bodyLineCount, openerIdx, closeIdx);
+    }
+
+    // AHK v2 (Scripts.htm): a line whose first non-blank char is '(' opens a continuation section
+    // unless an extra '(' or ')' appears to its right — then it is reinterpreted as an expression.
+    // Parentheses inside the Join option's parameter are exempt (e.g. `(Join)` joins lines with ')').
+    // Options are whitespace-delimited; the Join parameter is the non-blank run right after "Join".
+    private static bool OpenerIsExpression(string openerLine)
+    {
+        string rest = openerLine.TrimStart()[1..]; // drop the initial '('
+        foreach (string token in rest.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (token.StartsWith("Join", StringComparison.OrdinalIgnoreCase))
+                continue; // Join's parameter may legitimately carry '(' or ')'
+            if (token.IndexOfAny(['(', ')']) >= 0)
+                return true;
+        }
+
+        return false;
     }
 
     private static BodyClassification ClassifyBraces(string[] lines, int openerIdx)

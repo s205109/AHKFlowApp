@@ -14,11 +14,17 @@ namespace AHKFlowApp.UI.Blazor.Helpers;
 /// continuation section's options (<c>Join</c>, <c>RTrim0</c>) or significant trailing whitespace.
 /// Empty when the conversion is clean; surfaced in the confirmation alongside discarded options.
 /// </param>
+/// <param name="LiftedComment">
+/// Leading <c>;</c> comment lines above the definition, joined with <c>\n</c> (marker stripped) —
+/// mirrors the server lift so the dialog can fold them into Description instead of dropping them.
+/// Null when there is no leading comment.
+/// </param>
 public sealed record RawDecomposition(
     string Trigger,
     string Body,
     IReadOnlyList<string> UnexpressibleOptions,
-    IReadOnlyList<string> LossyReasons);
+    IReadOnlyList<string> LossyReasons,
+    string? LiftedComment = null);
 
 /// <summary>
 /// Client-side Raw definition compose/decompose for the edit dialog's kind switching. <see cref="Compose"/>
@@ -55,34 +61,53 @@ public static class RawDefinition
     public static RawDecomposition Decompose(string rawDefinition)
     {
         string[] lines = (rawDefinition ?? "").Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
-        int firstIdx = Array.FindIndex(lines, l => l.Trim().Length > 0);
+
+        // Lift leading ';' comment lines the same way the server does, so a commented definition
+        // still parses (and the comment folds into Description rather than being treated as body).
+        (string? lifted, int defStart) = LiftLeadingComments(lines);
+        string remainder = string.Join('\n', lines[defStart..]);
+
+        int firstIdx = Array.FindIndex(lines, defStart, l => l.Trim().Length > 0);
         if (firstIdx < 0)
-            return new RawDecomposition("", "", [], []);
+            return new RawDecomposition("", "", [], [], lifted);
 
         string first = lines[firstIdx].TrimStart();
         // :options:trigger::rest — options/trigger contain no ':'; first '::' delimits.
         int firstColon = first.IndexOf(':');
         if (firstColon != 0)
-            return new RawDecomposition("", rawDefinition ?? "", [], []);
+            return new RawDecomposition("", remainder, [], [], lifted);
 
         int secondColon = first.IndexOf(':', 1);
         if (secondColon < 0)
-            return new RawDecomposition("", rawDefinition ?? "", [], []);
+            return new RawDecomposition("", remainder, [], [], lifted);
 
         string optionsBlock = first[1..secondColon];
         int doubleColon = first.IndexOf("::", secondColon + 1, StringComparison.Ordinal);
         if (doubleColon < 0)
-            return new RawDecomposition("", rawDefinition ?? "", [], []);
+            return new RawDecomposition("", remainder, [], [], lifted);
 
         string triggerRaw = first[(secondColon + 1)..doubleColon];
         string inlineRest = first[(doubleColon + 2)..];
+        string[] optionTokens = [.. TokenizeOptions(optionsBlock)];
 
         string body;
         List<string> lossy = [];
         string inlineTrim = inlineRest.Trim();
-        if (inlineTrim.Length > 0 && inlineTrim != "{")
+        bool textOrRawMode = TextOrRawModeActive(optionTokens);
+
+        if (inlineTrim.Length > 0 && (inlineTrim != "{" || textOrRawMode))
         {
+            // Real inline replacement. With text/raw send-mode active a lone trailing "{" is a
+            // literal replacement (it types "{"), not an OTB brace-body opener.
             body = inlineRest;
+        }
+        else if (inlineTrim == "{")
+        {
+            // OTB: the "{" opens the brace body on the trigger line, so the body is the following
+            // lines up to the last "}" (there is no separate "{" opener line to skip).
+            string[] rest = lines[(firstIdx + 1)..];
+            int close = Array.FindLastIndex(rest, l => l.Trim() == "}");
+            body = close >= 0 ? string.Join('\n', rest[..close]) : string.Join('\n', rest).Trim();
         }
         else
         {
@@ -114,9 +139,50 @@ public static class RawDefinition
             }
         }
 
-        List<string> unexpressible = [.. TokenizeOptions(optionsBlock).Where(t => !ExpressibleOptions.Contains(t))];
+        List<string> unexpressible = [.. optionTokens.Where(t => !ExpressibleOptions.Contains(t))];
         // No trimming: mirror the server parser — the abbreviation's whitespace is literal.
-        return new RawDecomposition(DecodeEscapes(triggerRaw), body, unexpressible, lossy);
+        return new RawDecomposition(DecodeEscapes(triggerRaw), body, unexpressible, lossy, lifted);
+    }
+
+    // Consume leading blank/comment lines above the definition (mirrors the server's lift): comment
+    // lines (first non-blank char ';') join with '\n' with the ';' + one following space stripped.
+    // Returns the joined comment (null when none) and the index of the first non-comment line.
+    private static (string? Lifted, int DefStart) LiftLeadingComments(string[] lines)
+    {
+        List<string> comments = [];
+        int i = 0;
+        for (; i < lines.Length; i++)
+        {
+            string trimmed = lines[i].TrimStart();
+            if (trimmed.Length == 0)
+                continue;
+            if (trimmed.StartsWith(';'))
+            {
+                string rest = trimmed[1..];
+                comments.Add((rest.StartsWith(' ') ? rest[1..] : rest).TrimEnd());
+                continue;
+            }
+
+            break;
+        }
+
+        return comments.Count == 0 ? (null, 0) : (string.Join('\n', comments), i);
+    }
+
+    // Text/raw send-mode is active when the LAST of the mutually-exclusive T/R/T0/R0 option tokens
+    // turns it on (T/R enable, T0/R0 cancel) — mirrors the server's TextOrRawModeActive.
+    private static bool TextOrRawModeActive(IReadOnlyList<string> optionTokens)
+    {
+        bool active = false;
+        foreach (string token in optionTokens)
+        {
+            if (token.Equals("T", StringComparison.OrdinalIgnoreCase) || token.Equals("R", StringComparison.OrdinalIgnoreCase))
+                active = true;
+            else if (token.Equals("T0", StringComparison.OrdinalIgnoreCase) || token.Equals("R0", StringComparison.OrdinalIgnoreCase))
+                active = false;
+        }
+
+        return active;
     }
 
     // Longest-match tokenizer (SE/SP/SI before S; each flag absorbs its sign/digits), mirroring the
