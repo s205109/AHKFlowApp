@@ -359,12 +359,12 @@ public sealed class CreateHotstringCommandValidatorTests
     }
 
     [Fact]
-    public void RawKind_Rule7_ContinuationSection_Fails()
+    public void RawKind_ContinuationSection_Passes()
     {
         ValidationResult result = _sut.Validate(Cmd(
-            kind: HotstringKind.Raw, replacement: ":*:long::\n(\nline1\n)"));
+            kind: HotstringKind.Raw, replacement: ":*:long::\n(\nline1\nline2\n)"));
 
-        result.Errors.Should().Contain(e => e.ErrorMessage == "Put `{` on its own line below the trigger.");
+        result.IsValid.Should().BeTrue();
     }
 
     [Fact]
