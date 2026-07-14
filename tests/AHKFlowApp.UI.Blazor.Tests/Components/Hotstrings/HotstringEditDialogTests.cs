@@ -1315,6 +1315,51 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
         });
     }
 
+    [Fact]
+    public async Task RawTemplateChip_InsertsTemplateIntoEmptyDefinition()
+    {
+        HotstringEditModel item = new() { Kind = HotstringKind.Raw, Replacement = "" };
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"raw-template-inline\"]"));
+
+        provider.Find("[data-test=\"raw-template-inline\"]").Click();
+
+        provider.WaitForAssertion(() => item.Replacement.Should().Be(":*:btw::by the way"));
+    }
+
+    [Fact]
+    public async Task RawTemplateChip_WithExistingContent_PromptsBeforeOverwrite()
+    {
+        HotstringEditModel item = new() { Kind = HotstringKind.Raw, Replacement = ":*:custom::my own text" };
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"raw-template-braces\"]"));
+
+        provider.Find("[data-test=\"raw-template-braces\"]").Click();
+
+        // A confirmation MudMessageBox appears and the definition stays untouched until it resolves.
+        provider.WaitForAssertion(() => provider.Markup.Should().Contain("This replaces the current Raw definition"));
+        item.Replacement.Should().Be(":*:custom::my own text");
+    }
+
+    [Fact]
+    public async Task RawSummary_ShowsBodyKindAndCommentLiftNotice()
+    {
+        _api.PreviewAsync(Arg.Any<HotstringPreviewRequestDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotstringPreviewDto>.Ok(new HotstringPreviewDto(
+                "; note\n:*:col::\n(\nred\ngreen\nblue\n)",
+                new RawSummaryDto("col", ["*"], RawBodyKind.Continuation, 3, "note"))));
+
+        HotstringEditModel item = new() { Kind = HotstringKind.Raw, Replacement = "; note\n:*:col::\n(\nred\ngreen\nblue\n)" };
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+        DisablePreviewDebounce(provider);
+
+        provider.WaitForAssertion(() =>
+        {
+            provider.Find("[data-test=\"raw-summary\"]").TextContent.Should().Contain("multi-line text (3 lines)");
+            provider.Find("[data-test=\"raw-comment-lift\"]").TextContent.Should().Contain("Comment moved to Description");
+        });
+    }
+
     private static void DisablePreviewDebounce(IRenderedComponent<MudDialogProvider> provider) =>
         provider.FindComponent<HotstringEditDialog>().Instance.PreviewDebounce = TimeSpan.Zero;
 
