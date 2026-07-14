@@ -130,13 +130,132 @@ public sealed class RawHotstringDefinitionParserTests
         r.Error.Should().Be("Put `{` on its own line below the trigger.");
     }
 
+    // --- Continuation sections -----------------------------------------------------------
+
     [Fact]
-    public void ContinuationSection_Rejected()
+    public void ContinuationSection_HappyPath_IsValid()
     {
         RawParseResult r = RawHotstringDefinitionParser.Parse(":*:long::\n(\nline1\nline2\n)");
 
+        r.IsValid.Should().BeTrue();
+        r.Trigger.Should().Be("long");
+        r.BodyKind.Should().Be(RawBodyKind.Continuation);
+        r.BodyLineCount.Should().Be(2);
+        r.DefinitionCount.Should().Be(1);
+        r.Error.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData(":*:x::\n(Join`n\nline1\nline2\n)")]
+    [InlineData(":*:x::\n(LTrim\nline1\nline2\n)")]
+    public void ContinuationSection_OpenerOptions_ArePassThrough(string input)
+    {
+        RawParseResult r = RawHotstringDefinitionParser.Parse(input);
+
+        r.IsValid.Should().BeTrue();
+        r.BodyKind.Should().Be(RawBodyKind.Continuation);
+    }
+
+    [Fact]
+    public void ContinuationSection_OpenerWithParen_Rejected()
+    {
+        RawParseResult r = RawHotstringDefinitionParser.Parse(":*:x::\n(Join)\nline1\n)");
+
         r.IsValid.Should().BeFalse();
-        r.Error.Should().Be("Put `{` on its own line below the trigger.");
+        r.Error.Should().Be("A continuation section opener must not contain `)` — put the closing `)` on its own line.");
+    }
+
+    [Fact]
+    public void ContinuationSection_Unclosed_Rejected()
+    {
+        RawParseResult r = RawHotstringDefinitionParser.Parse(":*:x::\n(\nline1\nline2");
+
+        r.IsValid.Should().BeFalse();
+        r.Error.Should().Be("Raw definition has an unclosed continuation section — add a closing `)` on its own line.");
+    }
+
+    [Fact]
+    public void ContinuationSection_ContentAfterClose_Rejected()
+    {
+        RawParseResult r = RawHotstringDefinitionParser.Parse(":*:x::\n(\nline1\n)\ntrailing");
+
+        r.IsValid.Should().BeFalse();
+        r.Error.Should().Be("Raw definition has content after the closing `)`.");
+    }
+
+    [Fact]
+    public void ContinuationSection_InteriorBlankLines_Preserved()
+    {
+        RawParseResult r = RawHotstringDefinitionParser.Parse(":*:x::\n(\nline1\n\nline3\n)");
+
+        r.IsValid.Should().BeTrue();
+        r.BodyLineCount.Should().Be(3);
+    }
+
+    [Fact]
+    public void ContinuationSection_LiteralDefinitionLine_NotCountedAsDefinition()
+    {
+        RawParseResult r = RawHotstringDefinitionParser.Parse(":*:x::\n(\n::example::text\nmore\n)");
+
+        r.IsValid.Should().BeTrue();
+        r.DefinitionCount.Should().Be(1);
+    }
+
+    [Fact]
+    public void ContinuationSection_LiteralDirectiveLine_NotADirective()
+    {
+        RawParseResult r = RawHotstringDefinitionParser.Parse(":*:x::\n(\n# Heading\nbody\n)");
+
+        r.IsValid.Should().BeTrue();
+        r.HasDirectiveOutsideLiteralBody.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(":*:x::\n{\n#HotIf WinActive(\"X\")\nSend foo\n}")]
+    [InlineData(":*:x::\n{\n#Requires AutoHotkey v2.0\n}")]
+    public void BraceBody_DirectiveInside_StillFlagged(string input)
+    {
+        RawParseResult r = RawHotstringDefinitionParser.Parse(input);
+
+        r.HasDirectiveOutsideLiteralBody.Should().BeTrue();
+    }
+
+    // --- BodyKind / BodyLineCount classification -----------------------------------------
+
+    [Fact]
+    public void BodyKind_Inline()
+    {
+        RawParseResult r = RawHotstringDefinitionParser.Parse("::btw::by the way");
+
+        r.BodyKind.Should().Be(RawBodyKind.Inline);
+        r.BodyLineCount.Should().Be(0);
+    }
+
+    [Fact]
+    public void BodyKind_Braces()
+    {
+        RawParseResult r = RawHotstringDefinitionParser.Parse(":*:rng::\n{\nSend foo\n}");
+
+        r.BodyKind.Should().Be(RawBodyKind.Braces);
+        r.BodyLineCount.Should().Be(0);
+    }
+
+    [Fact]
+    public void BodyKind_Continuation()
+    {
+        RawParseResult r = RawHotstringDefinitionParser.Parse(":*:x::\n(\nline1\nline2\nline3\n)");
+
+        r.BodyKind.Should().Be(RawBodyKind.Continuation);
+        r.BodyLineCount.Should().Be(3);
+    }
+
+    [Fact]
+    public void BodyKind_None_WhenNoBody()
+    {
+        RawParseResult r = RawHotstringDefinitionParser.Parse(":*:rng::");
+
+        r.BodyKind.Should().Be(RawBodyKind.None);
+        r.BodyLineCount.Should().Be(0);
     }
 
     // --- Multi-definition detection ------------------------------------------------------

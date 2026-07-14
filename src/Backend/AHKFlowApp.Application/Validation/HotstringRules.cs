@@ -294,8 +294,9 @@ internal static partial class HotstringRules
                     return;
                 }
 
-                // Rule 5 — no directive lines (would corrupt #HotIf grouping).
-                if (normalized.Split('\n').Any(line => line.TrimStart().StartsWith('#')))
+                // Rule 5 — no directive lines outside a literal continuation body (would corrupt
+                // #HotIf grouping). Body-awareness lives in the parser; the validator keeps the message.
+                if (parsed.HasDirectiveOutsideLiteralBody)
                 {
                     context.AddFailure("Raw definition must not contain directive lines starting with '#'.");
                     return;
