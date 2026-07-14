@@ -84,4 +84,32 @@ public sealed class RawDefinitionTests
 
         result.LossyReasons.Should().Contain("significant trailing whitespace");
     }
+
+    [Fact]
+    public void Decompose_LeadingComment_LiftedAndDefinitionParsed()
+    {
+        RawDecomposition result = RawDefinition.Decompose("; my note\n::btw::by the way");
+
+        result.Trigger.Should().Be("btw");
+        result.Body.Should().Be("by the way");
+        result.LiftedComment.Should().Be("my note");
+    }
+
+    [Fact]
+    public void Decompose_OtbBraceWithBody_ExcludesClosingBrace()
+    {
+        RawDecomposition result = RawDefinition.Decompose(":X:run::{\nRun \"notepad\"\n}");
+
+        result.Trigger.Should().Be("run");
+        result.Body.Should().Be("Run \"notepad\"");
+    }
+
+    [Fact]
+    public void Decompose_TextModeLiteralBrace_IsInlineReplacement()
+    {
+        RawDecomposition result = RawDefinition.Decompose(":T:x::{");
+
+        result.Trigger.Should().Be("x");
+        result.Body.Should().Be("{");
+    }
 }

@@ -1342,6 +1342,27 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
+    public async Task RawTemplateChip_AfterSwitchingEmptyItemToRaw_ReplacesScaffoldWithoutPrompt()
+    {
+        HotstringEditModel item = new() { Trigger = "", Kind = HotstringKind.Text, Replacement = "" };
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"kind-selector\"]"));
+
+        provider.FindAll(".mud-toggle-item").First(e => e.TextContent.Contains("Raw")).Click();
+        provider.WaitForAssertion(() => item.Kind.Should().Be(HotstringKind.Raw));
+
+        // The generated blank scaffold is disposable — a chip replaces it with no confirmation.
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"raw-template-inline\"]"));
+        provider.Find("[data-test=\"raw-template-inline\"]").Click();
+
+        provider.WaitForAssertion(() =>
+        {
+            provider.Markup.Should().NotContain("This replaces the current Raw definition");
+            item.Replacement.Should().Be(":*:btw::by the way");
+        });
+    }
+
+    [Fact]
     public async Task RawSummary_ShowsBodyKindAndCommentLiftNotice()
     {
         _api.PreviewAsync(Arg.Any<HotstringPreviewRequestDto>(), Arg.Any<CancellationToken>())
@@ -1356,7 +1377,7 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
         provider.WaitForAssertion(() =>
         {
             provider.Find("[data-test=\"raw-summary\"]").TextContent.Should().Contain("multi-line text (3 lines)");
-            provider.Find("[data-test=\"raw-comment-lift\"]").TextContent.Should().Contain("Comment moved to Description");
+            provider.Find("[data-test=\"raw-comment-lift\"]").TextContent.Should().Contain("Comment will be added to Description: note");
         });
     }
 

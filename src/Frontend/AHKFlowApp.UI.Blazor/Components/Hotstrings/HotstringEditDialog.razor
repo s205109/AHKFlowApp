@@ -60,8 +60,9 @@
             }
             @if (Item.Kind == HotstringKind.Raw)
             {
-                <MudStack Row="true" Spacing="1" Class="raw-templates"
+                <MudStack Row="true" Spacing="1" Class="raw-templates" Wrap="Wrap.Wrap" AlignItems="AlignItems.Center"
                           UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "raw-templates" })">
+                    <MudText Typo="Typo.caption">Start with:</MudText>
                     @foreach ((string label, string template, string dataTest) in RawChipTemplates)
                     {
                         <MudChip T="string" Variant="Variant.Outlined" Size="Size.Small" Color="Color.Primary"
@@ -85,7 +86,7 @@
             }
             @if (Item.Kind == HotstringKind.Raw && _rawSummary is not null)
             {
-                <MudStack Row="true" Spacing="4" Class="raw-summary"
+                <MudStack Row="true" Spacing="4" Class="raw-summary" Wrap="Wrap.Wrap"
                           UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "raw-summary" })">
                     <MudText Typo="Typo.caption"><b>Trigger:</b> @(_rawSummary.Trigger)</MudText>
                     @if (_rawSummary.OptionTokens.Length > 0)
@@ -100,7 +101,7 @@
                     {
                         <MudText Typo="Typo.caption" Color="Color.Info"
                                  UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "raw-comment-lift" })">
-                            Comment moved to Description
+                            Comment will be added to Description: @MergedDescriptionPreview()
                         </MudText>
                     }
                 </MudStack>
@@ -212,7 +213,7 @@
             </MudExpansionPanels>
 
             <MudTextField T="string" Label="Description" @bind-Value="Item.Description"
-                          MaxLength="200"
+                          MaxLength="200" HelperText="Emitted as ; comment lines in the generated script."
                           UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "description-input" })" />
 
             <MudCheckBox T="bool" @bind-Value="Item.AppliesToAllProfiles" Label="Apply to all profiles"
@@ -341,6 +342,9 @@
     private bool _macroSuggestionDismissed;
     private bool _scriptSuggestionDismissed;
     private RawSummaryDto? _rawSummary;
+    // The blank definition scaffold generated when an empty item switches to Raw — disposable, so
+    // an example chip may overwrite it without a confirmation prompt. Null once real content exists.
+    private string? _rawScaffold;
     private string? _macroInsertHint;
     private bool _previewExpanded;
     private bool _previewPending;
@@ -403,6 +407,7 @@
         // Field-level preview errors and the Raw summary belong to the outgoing kind — drop them so
         // a stale message (e.g. a Raw brace error) can't linger on the incoming kind's fields.
         _rawSummary = null;
+        _rawScaffold = null;
         _previewTriggerError = null;
         _previewReplacementError = null;
         _previewContextValueError = null;
@@ -423,6 +428,9 @@
 
             Item.Trigger = decomposed.Trigger;
             Item.Replacement = newKind == HotstringKind.DateTime ? "" : decomposed.Body;
+            // Fold a lifted leading comment into Description (mirrors the server) so switching away
+            // from Raw doesn't silently drop it.
+            Item.Description = MergeDescription(Item.Description, decomposed.LiftedComment);
             Item.IsCaseSensitive = false;
             Item.OmitEndingCharacter = false;
             Item.IsEndingCharacterRequired = true;
@@ -486,28 +494,35 @@
             }
 
             // Compose a starting definition from the current structured fields (same shape as the
-            // server's Script→Raw transform). An empty replacement yields just the trigger scaffold.
+            // server's Script→Raw transform). An empty replacement yields just the trigger scaffold,
+            // which is disposable — the example chips overwrite it without a confirmation prompt.
+            bool blankScaffold = string.IsNullOrEmpty(Item.Replacement);
             Item.Replacement = RawDefinition.Compose(
                 Item.Trigger, Item.Replacement,
                 Item.IsEndingCharacterRequired, Item.IsTriggerInsideWord,
                 Item.IsCaseSensitive, Item.OmitEndingCharacter);
+            _rawScaffold = blankScaffold ? Item.Replacement : null;
             ClearDateTimeFields();
             Item.Kind = HotstringKind.Raw;
         }
     }
 
-    // Applies a Raw example template to the definition field. When the field already holds non-empty,
-    // non-template content, confirm first (same MessageBox pattern as kind switching) before overwriting.
+    // Applies a Raw example template to the definition field. When the field already holds real
+    // content — non-empty, not another template, and not the disposable blank scaffold — confirm
+    // first (same MessageBox pattern as kind switching) before replacing it.
     private async Task ApplyRawTemplateAsync(string template)
     {
-        bool nonTemplateContent = !string.IsNullOrWhiteSpace(Item.Replacement)
-            && !RawChipTemplates.Any(t => t.Template == Item.Replacement);
-        if (nonTemplateContent
+        bool disposable = string.IsNullOrWhiteSpace(Item.Replacement)
+            || Item.Replacement == _rawScaffold
+            || RawChipTemplates.Any(t => t.Template == Item.Replacement);
+        if (!disposable
             && !await ConfirmSwitchAsync("Replace definition?",
-                "This replaces the current Raw definition with the example. Continue?"))
+                "This replaces the current Raw definition with the example. Continue?",
+                yesText: "Replace"))
             return;
 
         Item.Replacement = template;
+        _rawScaffold = null;
     }
 
     private static string? RawBodyKindLabel(RawSummaryDto summary) => summary.BodyKind switch
@@ -526,12 +541,32 @@
         _ => kind.ToString(),
     };
 
-    private async Task<bool> ConfirmSwitchAsync(string title, string message)
+    private async Task<bool> ConfirmSwitchAsync(string title, string message, string yesText = "Switch")
     {
         bool? confirm = await DialogService.ShowMessageBoxAsync(
-            title: title, message: message, yesText: "Switch", cancelText: "Cancel");
+            title: title, message: message, yesText: yesText, cancelText: "Cancel");
         return confirm == true;
     }
+
+    // Description merge policy mirroring the server's RawCommentLift.Merge: empty Description → the
+    // lifted comment; equal → unchanged; otherwise the comment appended on a new line.
+    private static string? MergeDescription(string? description, string? lifted)
+    {
+        string? desc = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
+        string? lift = string.IsNullOrWhiteSpace(lifted) ? null : lifted;
+
+        if (lift is null)
+            return desc;
+        if (desc is null)
+            return lift;
+
+        return string.Equals(desc, lift, StringComparison.Ordinal) ? desc : $"{desc}\n{lift}";
+    }
+
+    // The Description as it will be persisted once the lifted comment is merged in — shown in the
+    // summary so the user sees the resulting text before saving.
+    private string MergedDescriptionPreview() =>
+        MergeDescription(Item.Description, _rawSummary?.LiftedComment) ?? "";
 
     private void ClearDateTimeFields()
     {

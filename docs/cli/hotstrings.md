@@ -44,6 +44,13 @@ actual CLI surface and how each hotstring kind renders in `list` output.
   truncated to 40 chars. A multi-line brace-body definition shows just its opening line so the
   table stays one row per hotstring; use the web UI to see (or edit) the full definition.
 
+## Descriptions in generated scripts
+
+A hotstring's (or hotkey's) **Description** — for **every** kind, not just Raw — is emitted as one
+`; <line>` comment line per line directly above its definition in the generated `.ahk` script. An
+empty Description emits nothing. For Raw, a lifted leading comment is merged into the Description
+first (see below), so it round-trips back out as a comment.
+
 ## Raw validation limitations
 
 A Raw definition is the entire verbatim AHK v2 hotstring, validated (server-side) against a

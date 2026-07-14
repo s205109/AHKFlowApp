@@ -214,13 +214,38 @@ public sealed class RawHotstringDefinitionParserTests
         r.BodyKind.Should().Be(RawBodyKind.Continuation);
     }
 
-    [Fact]
-    public void ContinuationSection_OpenerWithParen_Rejected()
+    [Theory]
+    [InlineData(":*:x::\n((\nline1\n)")]        // second '(' → expression, not a section opener
+    [InlineData(":*:x::\n(LTrim)\nline1\n)")]   // stray ')' outside a Join parameter
+    public void ContinuationSection_OpenerIsExpression_Rejected(string input)
     {
-        RawParseResult r = RawHotstringDefinitionParser.Parse(":*:x::\n(Join)\nline1\n)");
+        RawParseResult r = RawHotstringDefinitionParser.Parse(input);
 
         r.IsValid.Should().BeFalse();
-        r.Error.Should().Be("A continuation section opener must not contain `)` — put the closing `)` on its own line.");
+        r.Error.Should().Contain("makes AutoHotkey read the line as an expression");
+    }
+
+    [Fact]
+    public void ContinuationSection_JoinParameterWithParen_Accepted()
+    {
+        // ')' as the Join parameter is exempt from the expression rule (AHK v2 Scripts.htm).
+        RawParseResult r = RawHotstringDefinitionParser.Parse(":*:x::\n(Join)\nline1\nline2\n)");
+
+        r.IsValid.Should().BeTrue();
+        r.BodyKind.Should().Be(RawBodyKind.Continuation);
+    }
+
+    [Fact]
+    public void ContinuationSection_Unclosed_WithLiteralDefinitionLine_ReportsUnclosed()
+    {
+        // The opener→EOF body is skipped by the structural scan, so an interior "::x::y" doesn't
+        // trip the multiple-definition rule before the (more accurate) unclosed error.
+        RawParseResult r = RawHotstringDefinitionParser.Parse(":*:x::\n(\n::example::text\nmore");
+
+        r.IsValid.Should().BeFalse();
+        r.DefinitionCount.Should().Be(1);
+        r.HasDirectiveOutsideLiteralBody.Should().BeFalse();
+        r.Error.Should().Be("Raw definition has an unclosed continuation section — add a closing `)` on its own line.");
     }
 
     [Fact]
@@ -397,7 +422,6 @@ public sealed class RawHotstringDefinitionParserTests
 
         p.LiftedComment.Should().Be("my note");
         p.NormalizedDefinition.Should().Be("::btw::by the way");
-        p.Parsed.LiftedComment.Should().Be("my note");
         p.Parsed.IsValid.Should().BeTrue();
     }
 
