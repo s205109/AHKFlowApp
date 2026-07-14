@@ -12,9 +12,24 @@ public sealed record HotstringPreviewRequestDto(
     int? DateOffsetAmount = null,
     DateOffsetUnit? DateOffsetUnit = null,
     WindowMatchType? ContextMatchType = null,
-    string? ContextValue = null);
+    string? ContextValue = null,
+    string? Description = null);
 
 public sealed record HotstringPreviewDto(string Snippet, RawSummaryDto? RawSummary = null);
 
-/// <summary>Server-derived trigger and option tokens for a Raw definition; null for other kinds.</summary>
-public sealed record RawSummaryDto(string Trigger, string[] OptionTokens);
+/// <summary>Body shape of a Raw hotstring definition (mirror of the backend enum).</summary>
+public enum RawBodyKind
+{
+    None,
+    Inline,
+    Braces,
+    Continuation,
+}
+
+/// <summary>Server-derived summary of a Raw definition; null for other kinds.</summary>
+public sealed record RawSummaryDto(
+    string Trigger,
+    string[] OptionTokens,
+    RawBodyKind BodyKind,
+    int BodyLineCount,
+    string? LiftedComment);

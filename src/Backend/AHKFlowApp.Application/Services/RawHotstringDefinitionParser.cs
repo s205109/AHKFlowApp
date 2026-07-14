@@ -1,22 +1,8 @@
 using System.Text;
 using System.Text.RegularExpressions;
+using AHKFlowApp.Application.DTOs;
 
 namespace AHKFlowApp.Application.Services;
-
-/// <summary>
-/// Body shape of a Raw definition as classified by <see cref="RawHotstringDefinitionParser"/>.
-/// <see cref="Continuation"/> is a literal multi-line text section <c>( … )</c>;
-/// <see cref="Braces"/> is an AHK code block <c>{ … }</c>; <see cref="Inline"/> is a replacement
-/// on the definition line; <see cref="None"/> means no recognizable body (structurally invalid).
-/// Maps to the public preview summary's body-kind (<c>RawSummaryDto.BodyKind</c>).
-/// </summary>
-internal enum RawBodyKind
-{
-    None,
-    Inline,
-    Braces,
-    Continuation,
-}
 
 /// <summary>
 /// Outcome of <see cref="RawHotstringDefinitionParser.Parse"/>. Structural facts the Raw
