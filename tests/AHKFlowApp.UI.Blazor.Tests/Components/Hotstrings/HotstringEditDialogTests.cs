@@ -1461,6 +1461,35 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
         });
     }
 
+    [Theory]
+    [InlineData(HotstringKind.Macro)]
+    [InlineData(HotstringKind.DateTime)]
+    [InlineData(HotstringKind.Raw)]
+    public async Task PreviewPanel_NonTextKind_HidesDeliveryChip(HotstringKind kind)
+    {
+        _api.PreviewAsync(Arg.Any<HotstringPreviewRequestDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotstringPreviewDto>.Ok(
+                new HotstringPreviewDto("snippet", EffectiveDelivery: HotstringDelivery.Type)));
+        HotstringEditModel item = kind switch
+        {
+            HotstringKind.Macro => new() { Kind = kind, Trigger = "macro", Replacement = "value" },
+            HotstringKind.DateTime => new() { Kind = kind, Trigger = "date", DateTimeFormat = "yyyy-MM-dd" },
+            HotstringKind.Raw => new() { Kind = kind, Replacement = "::raw::value" },
+            _ => throw new ArgumentOutOfRangeException(nameof(kind)),
+        };
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+        DisablePreviewDebounce(provider);
+
+        provider.Find("[data-test=\"ahk-preview\"] .mud-expand-panel-header").Click();
+
+        provider.WaitForAssertion(() =>
+        {
+            _ = _api.Received().PreviewAsync(
+                Arg.Is<HotstringPreviewRequestDto>(request => request.Kind == kind),
+                Arg.Any<CancellationToken>());
+            provider.FindAll("[data-test=\"preview-delivery\"]").Should().BeEmpty();
+        });
+    }
 
     private static void DisablePreviewDebounce(IRenderedComponent<MudDialogProvider> provider) =>
         provider.FindComponent<HotstringEditDialog>().Instance.PreviewDebounce = TimeSpan.Zero;

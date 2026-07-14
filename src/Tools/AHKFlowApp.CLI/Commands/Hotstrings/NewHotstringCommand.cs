@@ -84,7 +84,28 @@ public static class NewHotstringCommand
                 }
 
                 if (replacementFilePath is not null)
-                    replacementValue = await File.ReadAllTextAsync(replacementFilePath, System.Text.Encoding.UTF8, ct);
+                {
+                    try
+                    {
+                        replacementValue = await File.ReadAllTextAsync(
+                            replacementFilePath, System.Text.Encoding.UTF8, ct);
+                    }
+                    catch (IOException ex)
+                    {
+                        await stderr.WriteLineAsync($"Could not read replacement file: {ex.Message}");
+                        return 2;
+                    }
+                    catch (UnauthorizedAccessException ex)
+                    {
+                        await stderr.WriteLineAsync($"Could not read replacement file: {ex.Message}");
+                        return 2;
+                    }
+                    catch (ArgumentException ex)
+                    {
+                        await stderr.WriteLineAsync($"Could not read replacement file: {ex.Message}");
+                        return 2;
+                    }
+                }
 
                 Guid[]? resolvedIds = null;
                 bool appliesToAll = true;
@@ -170,25 +191,15 @@ public static class NewHotstringCommand
                 await stderr.WriteLineAsync(ex.Message);
                 return 1;
             }
+            catch (HttpIOException ex)
+            {
+                await stderr.WriteLineAsync(ex.Message);
+                return 1;
+            }
             catch (TimeoutRejectedException)
             {
                 await stderr.WriteLineAsync(ApiMessages.RequestTimedOut);
                 return 1;
-            }
-            catch (IOException ex)
-            {
-                await stderr.WriteLineAsync($"Could not read replacement file: {ex.Message}");
-                return 2;
-            }
-            catch (UnauthorizedAccessException ex)
-            {
-                await stderr.WriteLineAsync($"Could not read replacement file: {ex.Message}");
-                return 2;
-            }
-            catch (ArgumentException ex)
-            {
-                await stderr.WriteLineAsync($"Could not read replacement file: {ex.Message}");
-                return 2;
             }
         });
 

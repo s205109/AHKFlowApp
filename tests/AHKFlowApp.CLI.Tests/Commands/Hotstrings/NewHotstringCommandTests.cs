@@ -139,6 +139,20 @@ public sealed class NewHotstringCommandTests
     }
 
     [Fact]
+    public async Task ReplacementFile_Missing_Exit2AndDoesNotCallApi()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"ahkflow-missing-{Guid.NewGuid():N}.txt");
+        (IHotstringsApiClient? hs, IProfilesApiClient? profiles) = Fakes();
+
+        (int exit, string _, string stderr) = await Run(
+            ["hotstring", "new", "-t", "long", "--replacement-file", path], hs, profiles);
+
+        exit.Should().Be(2);
+        stderr.Should().Contain("Could not read replacement file");
+        await hs.DidNotReceive().CreateAsync(Arg.Any<CreateHotstringDto>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task ReplacementAndReplacementFile_Exit2_MutuallyExclusive()
     {
         (IHotstringsApiClient? hs, IProfilesApiClient? profiles) = Fakes();
@@ -365,6 +379,20 @@ public sealed class NewHotstringCommandTests
 
         exit.Should().Be(1);
         stderr.Should().Contain("network down");
+    }
+
+    [Fact]
+    public async Task HttpIOExceptionFromApi_Exit1_NotReportedAsReplacementFileError()
+    {
+        (IHotstringsApiClient? hs, IProfilesApiClient? profiles) = Fakes();
+        hs.CreateAsync(Arg.Any<CreateHotstringDto>(), Arg.Any<CancellationToken>())
+            .Throws(new HttpIOException(HttpRequestError.ConnectionError, "connection dropped"));
+
+        (int exit, string _, string? stderr) = await Run(["hotstring", "new", "-t", "x", "-r", "y"], hs, profiles);
+
+        exit.Should().Be(1);
+        stderr.Should().Contain("connection dropped");
+        stderr.Should().NotContain("Could not read replacement file");
     }
 
     [Fact]

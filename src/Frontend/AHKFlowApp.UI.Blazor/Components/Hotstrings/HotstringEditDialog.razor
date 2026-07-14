@@ -225,7 +225,7 @@
                     }
                     else if (_previewSnippet is not null)
                     {
-                        @if (_effectiveDelivery is { } effectiveDelivery)
+                        @if (Item.Kind == HotstringKind.Text && _effectiveDelivery is { } effectiveDelivery)
                         {
                             <MudChip T="string" Size="Size.Small"
                                      Color="@(effectiveDelivery == HotstringDelivery.ClipboardPaste ? Color.Info : Color.Default)"

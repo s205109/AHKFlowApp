@@ -359,6 +359,38 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
+    public Task Page_NonTruncatedRow_StartsInlineEditWithoutListRoundTrip()
+    {
+        HotstringDto dto = new(Guid.NewGuid(), [], true, "short", "replacement", null, true, true,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        StubList(Page(dto));
+        IUserPreferencesService preferences = Services.GetRequiredService<IUserPreferencesService>();
+        preferences.GetAsync(Arg.Any<CancellationToken>()).Returns(new UserPreferences(25, false));
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find("button.start-edit"));
+        _api.ClearReceivedCalls();
+        cut.Find("button.reload-hotstrings-mobile").Click();
+        cut.WaitForAssertion(() =>
+        {
+            _ = _api.Received(1).ListAsync(
+                Arg.Is<HotstringListRequest>(request => request.PageSize == 25),
+                Arg.Any<CancellationToken>());
+            _ = _api.Received(1).ListAsync(
+                Arg.Is<HotstringListRequest>(request => request.PageSize == 10),
+                Arg.Any<CancellationToken>());
+        });
+        _api.ClearReceivedCalls();
+
+        cut.Find("button.start-edit").Click();
+
+        cut.WaitForAssertion(() => cut.Find("textarea[data-test=\"replacement-input\"]"));
+        _ = _api.DidNotReceive().ListAsync(
+            Arg.Any<HotstringListRequest>(), Arg.Any<CancellationToken>());
+        return Task.CompletedTask;
+    }
+
+    [Fact]
     public Task Page_PromoteExistingRow_OpensEditDialogWithKindToggle()
     {
         var dto = new HotstringDto(Guid.NewGuid(), [], true, "btw", "by the way", null, true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
