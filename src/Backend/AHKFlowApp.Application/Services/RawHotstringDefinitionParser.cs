@@ -94,54 +94,61 @@ internal static partial class RawHotstringDefinitionParser
 
     /// <summary>
     /// Save-time normalization for a Raw definition — the only mutation applied before persisting.
-    /// CRLF/lone-CR → LF, trims leading/trailing blank lines and per-line trailing whitespace.
-    /// Interior lines and indentation are preserved exactly. Behavior-neutral: AHK ignores literal
-    /// trailing whitespace on script lines (a meaningful trailing space needs the <c>`s</c>/<c>`t</c>
-    /// escapes, which survive the trim untouched).
+    /// CRLF/lone-CR → LF, trims leading/trailing blank lines and per-line trailing whitespace, and
+    /// rewrites a genuine OTB brace (<c>:X:t::{</c>) to <c>{</c> on its own line below the trigger.
+    /// Body-aware: lines <em>between</em> a continuation section's <c>(</c> and <c>)</c> are
+    /// preserved byte-for-byte (trailing spaces/tabs are significant under <c>RTrim0</c>);
+    /// everywhere else, AHK ignores literal trailing whitespace on script lines (a meaningful
+    /// trailing space needs the <c>`s</c>/<c>`t</c> escapes, which survive the trim untouched).
     /// </summary>
     public static string Normalize(string rawDefinition)
     {
         ArgumentNullException.ThrowIfNull(rawDefinition);
 
-        var lines = rawDefinition
-            .Replace("\r\n", "\n")
-            .Replace('\r', '\n')
-            .Split('\n')
-            .Select(l => l.TrimEnd())
-            .ToList();
+        (string[] lines, int firstIdx, Match? match, BodyClassification? body) = Analyze(rawDefinition);
+
+        List<string> outLines = new(lines.Length + 1);
+        for (int i = 0; i < lines.Length; i++)
+        {
+            // Expand a genuine OTB brace onto its own line below the trigger.
+            if (body is { IsOtb: true } && i == firstIdx)
+            {
+                string defLine = lines[i];
+                outLines.Add(defLine[..^match!.Groups[3].Value.Length].TrimEnd());
+                outLines.Add("{");
+                continue;
+            }
+
+            // Preserve continuation-body lines (strictly between "(" and ")") byte-for-byte.
+            bool preserve = body is { Kind: RawBodyKind.Continuation }
+                && i > body.BodyLineStart && i < body.BodyLineEnd;
+
+            outLines.Add(preserve ? lines[i] : lines[i].TrimEnd());
+        }
 
         int start = 0;
-        while (start < lines.Count && lines[start].Length == 0)
+        while (start < outLines.Count && outLines[start].Length == 0)
             start++;
 
-        int end = lines.Count - 1;
-        while (end >= start && lines[end].Length == 0)
+        int end = outLines.Count - 1;
+        while (end >= start && outLines[end].Length == 0)
             end--;
 
-        return start > end ? string.Empty : string.Join('\n', lines.GetRange(start, end - start + 1));
+        return start > end ? string.Empty : string.Join('\n', outLines.GetRange(start, end - start + 1));
     }
 
     public static RawParseResult Parse(string rawDefinition)
     {
         ArgumentNullException.ThrowIfNull(rawDefinition);
 
-        string[] lines = rawDefinition.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
-
-        int firstIdx = Array.FindIndex(lines, l => l.Trim().Length > 0);
-        if (firstIdx < 0)
-            return Invalid(FirstLineError);
-
-        Match match = HotstringLine().Match(lines[firstIdx]);
-        if (!match.Success)
+        (string[] lines, _, Match? match, BodyClassification? body) = Analyze(rawDefinition);
+        if (match is null || body is null)
             return Invalid(FirstLineError);
 
         // No trimming: spaces/tabs are literal within an AHK abbreviation, and the raw text is
         // emitted verbatim, so the derived trigger must match it exactly (dedup, DB, UI display).
         string trigger = DecodeEscapes(match.Groups[2].Value);
         (string[] optionTokens, string[] unknownTokens) = TokenizeOptions(match.Groups[1].Value);
-        string inlineRest = match.Groups[3].Value;
-
-        BodyClassification body = ClassifyBody(optionTokens, inlineRest, lines, firstIdx);
 
         // Body-aware structural facts across the whole paste (rules 2 and 5).
         (int definitionCount, bool directiveOutside) = ScanStructure(lines, body);
@@ -160,6 +167,26 @@ internal static partial class RawHotstringDefinitionParser
             Error: body.Error);
     }
 
+    // Shared structural pass used by both Parse and Normalize: LF-normalize, find the first
+    // non-blank line, match it as a definition, and classify its body. Match/Body are null when
+    // the first line is missing or not a valid definition.
+    private static (string[] Lines, int FirstIdx, Match? Match, BodyClassification? Body) Analyze(string rawDefinition)
+    {
+        string[] lines = rawDefinition.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+
+        int firstIdx = FirstNonBlank(lines, 0);
+        if (firstIdx < 0)
+            return (lines, -1, null, null);
+
+        Match match = HotstringLine().Match(lines[firstIdx]);
+        if (!match.Success)
+            return (lines, firstIdx, null, null);
+
+        (string[] optionTokens, _) = TokenizeOptions(match.Groups[1].Value);
+        BodyClassification body = ClassifyBody(optionTokens, match.Groups[3].Value, lines, firstIdx);
+        return (lines, firstIdx, match, body);
+    }
+
     private static RawParseResult Invalid(string error) =>
         new(IsValid: false, FirstLineValid: false, Trigger: "", OptionTokens: [],
             UnknownOptionTokens: [], DefinitionCount: 0, BodyKind: RawBodyKind.None,
@@ -176,17 +203,27 @@ internal static partial class RawHotstringDefinitionParser
         RawBodyKind Kind,
         int BodyLineCount,
         int BodyLineStart,
-        int BodyLineEnd);
+        int BodyLineEnd,
+        bool IsOtb = false);
 
     // Structural rules 6 and 7. An inline replacement forbids further lines and is not
     // brace-balance checked; a bare "::" first line requires a brace body or continuation section.
     private static BodyClassification ClassifyBody(string[] optionTokens, string inlineRest, string[] lines, int firstIdx)
     {
-        if (inlineRest.Length > 0)
+        // A whitespace-only inline rest is a bare trigger — normalization strips it, so classify
+        // the following lines as the body (Normalize analyzes pre-normalization text).
+        if (inlineRest.Trim().Length > 0)
         {
-            // OTB: "{" placed on the definition line — rejected here (accepted + normalized in Task 2).
-            if (inlineRest.Trim() == "{")
-                return new(false, BraceRequiredError, RawBodyKind.None, 0, -1, -1);
+            // A lone trailing "{" is either an OTB brace-body opener or, when text/raw send-mode
+            // is active, an inline literal replacement that types "{" (per the AHK brace rule).
+            if (inlineRest.Trim() == "{" && !TextOrRawModeActive(optionTokens))
+            {
+                // OTB: validate the brace body from this "{" (depth 1) plus the trailing lines.
+                string region = string.Join('\n', lines[(firstIdx + 1)..].Prepend("{"));
+                (bool otbValid, string? otbError) = ScanBraceBody(region);
+                int otbCloseIdx = FindBraceCloseLine(lines, firstIdx + 1, 1);
+                return new(otbValid, otbError, RawBodyKind.Braces, 0, firstIdx + 1, otbCloseIdx, IsOtb: true);
+            }
 
             // Real inline replacement — no further non-blank lines allowed.
             return HasNonBlank(lines, firstIdx + 1)
@@ -242,15 +279,32 @@ internal static partial class RawHotstringDefinitionParser
     private static BodyClassification ClassifyBraces(string[] lines, int openerIdx)
     {
         (bool valid, string? error) = ScanBraceBody(string.Join('\n', lines[openerIdx..]));
-        int closeIdx = FindBraceCloseLine(lines, openerIdx);
+        int closeIdx = FindBraceCloseLine(lines, openerIdx, 0);
         return new(valid, error, RawBodyKind.Braces, 0, openerIdx, closeIdx);
     }
 
-    // Line index where naive brace depth returns to zero (the closing-brace line). Falls back to
-    // the last line when unbalanced; the validity error is reported separately by ScanBraceBody.
-    private static int FindBraceCloseLine(string[] lines, int startIdx)
+    // Text/raw send-mode is active when the LAST of the mutually-exclusive T/R/T0/R0 option tokens
+    // turns it on. T/R enable it, T0/R0 cancel it; last-wins (do not test "tokens contain T/R").
+    private static bool TextOrRawModeActive(string[] optionTokens)
     {
-        int depth = 0;
+        bool active = false;
+        foreach (string token in optionTokens)
+        {
+            if (token.Equals("T", StringComparison.OrdinalIgnoreCase) || token.Equals("R", StringComparison.OrdinalIgnoreCase))
+                active = true;
+            else if (token.Equals("T0", StringComparison.OrdinalIgnoreCase) || token.Equals("R0", StringComparison.OrdinalIgnoreCase))
+                active = false;
+        }
+
+        return active;
+    }
+
+    // Line index where naive brace depth returns to zero (the closing-brace line), starting from
+    // <paramref name="initialDepth"/> (1 for an OTB "{" already consumed on the definition line).
+    // Falls back to the last line when unbalanced; ScanBraceBody reports the validity error.
+    private static int FindBraceCloseLine(string[] lines, int startIdx, int initialDepth)
+    {
+        int depth = initialDepth;
         for (int i = startIdx; i < lines.Length; i++)
         {
             foreach (char c in lines[i])

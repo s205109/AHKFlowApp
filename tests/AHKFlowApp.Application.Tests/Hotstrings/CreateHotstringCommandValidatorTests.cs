@@ -350,12 +350,12 @@ public sealed class CreateHotstringCommandValidatorTests
     }
 
     [Fact]
-    public void RawKind_Rule7_OtbBrace_Fails()
+    public void RawKind_OtbBrace_Passes()
     {
         ValidationResult result = _sut.Validate(Cmd(
-            kind: HotstringKind.Raw, replacement: "::btw:: {\nSend foo\n}"));
+            kind: HotstringKind.Raw, replacement: "::btw::{\nSend foo\n}"));
 
-        result.Errors.Should().Contain(e => e.ErrorMessage == "Put `{` on its own line below the trigger.");
+        result.IsValid.Should().BeTrue();
     }
 
     [Fact]
