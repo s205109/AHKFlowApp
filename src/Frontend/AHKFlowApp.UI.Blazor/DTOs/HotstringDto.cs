@@ -21,4 +21,5 @@ public sealed record HotstringDto(
     WindowMatchType? ContextMatchType = null,
     string? ContextValue = null,
     HotstringDelivery Delivery = HotstringDelivery.Auto,
-    bool ReplacementIsTruncated = false);
+    bool ReplacementIsTruncated = false,
+    HotstringDelivery EffectiveDelivery = HotstringDelivery.Type);

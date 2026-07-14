@@ -1,5 +1,6 @@
 @page "/hotstrings"
 @using AHKFlowApp.UI.Blazor.DTOs
+@using AHKFlowApp.UI.Blazor.Helpers
 @using AHKFlowApp.UI.Blazor.Services
 @using AHKFlowApp.UI.Blazor.Validation
 @using AHKFlowApp.UI.Blazor.Components.Hotstrings
@@ -153,14 +154,7 @@
                         <CellTemplate>
                             <MudTooltip Text="@OptionsTooltip(context.Item)">
                                 <span class="type-badge">
-                                    <MudChip T="string" Size="Size.Small" Color="@(context.Item.Kind == HotstringKind.Raw ? Color.Warning : Color.Default)"
-                                             Icon="@(context.Item.Kind == HotstringKind.Raw ? Icons.Material.Filled.Warning : null)"
-                                             UserAttributes="@KindChipAttributes(context.Item.Kind)">@KindLabel(context.Item.Kind)</MudChip>
-                                    @if (context.Item.Kind == HotstringKind.Text && context.Item.Delivery == HotstringDelivery.ClipboardPaste)
-                                    {
-                                        <MudChip T="string" Size="Size.Small" Color="Color.Info" Class="clipboard-delivery"
-                                                 UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "clipboard-delivery" })">Clipboard</MudChip>
-                                    }
+                                    @RenderTypeChip(context.Item)
                                     <span class="option-glyphs">@OptionGlyphs(context.Item)</span>
                                     @if (context.Item.ContextMatchType is not null)
                                     {
@@ -943,6 +937,20 @@
         _ => kind.ToString(),
     };
 
+    // Text rows show the resolved delivery chip (Hotstring/Clipboard) instead of a "Text" kind
+    // chip — the delivery is the more useful signal once Auto resolves per-row. Non-Text kinds
+    // keep their existing kind chip.
+    private RenderFragment RenderTypeChip(HotstringEditModel item) => item.Kind == HotstringKind.Text
+        ? @<MudChip T="string" Size="Size.Small"
+                    Color="@(DeliveryDisplay.IsClipboard(item.EffectiveDelivery) ? Color.Info : Color.Default)"
+                    UserAttributes="@DeliveryChipAttributes(item.EffectiveDelivery)">@DeliveryDisplay.Label(item.EffectiveDelivery)</MudChip>
+        : @<MudChip T="string" Size="Size.Small" Color="@(item.Kind == HotstringKind.Raw ? Color.Warning : Color.Default)"
+                    Icon="@(item.Kind == HotstringKind.Raw ? Icons.Material.Filled.Warning : null)"
+                    UserAttributes="@KindChipAttributes(item.Kind)">@KindLabel(item.Kind)</MudChip>;
+
+    private static Dictionary<string, object?> DeliveryChipAttributes(HotstringDelivery effectiveDelivery) =>
+        new() { ["data-test"] = DeliveryDisplay.DataTest(effectiveDelivery) };
+
     private static string OptionGlyphs(HotstringEditModel item)
     {
         // Raw carries its options inside the verbatim definition; the structured flags are left at
@@ -963,7 +971,7 @@
 
     private static string OptionsTooltip(HotstringEditModel item)
     {
-        List<string> parts = [KindLabel(item.Kind)];
+        List<string> parts = [item.Kind == HotstringKind.Text ? DeliveryDisplay.Label(item.EffectiveDelivery) : KindLabel(item.Kind)];
         if (item.Kind == HotstringKind.Raw)
         {
             // Raw's structured flags are meaningless (options live in the verbatim text) — skip them.

@@ -580,33 +580,57 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
     {
         var dto = new HotstringDto(Guid.NewGuid(), [], true, "btw", "by the way", null,
             false, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null,
-            HotstringKind.Text, IsCaseSensitive: true, OmitEndingCharacter: false);
+            HotstringKind.Text, IsCaseSensitive: true, OmitEndingCharacter: false,
+            EffectiveDelivery: HotstringDelivery.Type);
         StubList(Page(dto));
 
         IRenderedComponent<Hotstrings> cut = RenderPage();
 
         cut.WaitForAssertion(() =>
         {
-            cut.Find(".type-badge").TextContent.Should().Contain("Text");
+            cut.Find(".desktop-branch .type-badge").TextContent.Should().Contain("Hotstring");
+            cut.Find(".desktop-branch [data-test=\"hotstring-delivery\"]").Should().NotBeNull();
+            cut.FindAll(".desktop-branch [data-test=\"clipboard-delivery\"]").Should().BeEmpty();
             cut.Find(".option-glyphs").TextContent.Should().Be("*?C");
         });
         return Task.CompletedTask;
     }
 
     [Fact]
-    public Task Page_ExplicitClipboardDelivery_ShowsClipboardChip()
+    public Task Page_ExplicitClipboardDelivery_ShowsSingleClipboardChip()
     {
         HotstringDto dto = new(Guid.NewGuid(), [], true, "long", "replacement", null,
             true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow,
-            Delivery: HotstringDelivery.ClipboardPaste);
+            Delivery: HotstringDelivery.ClipboardPaste, EffectiveDelivery: HotstringDelivery.ClipboardPaste);
         StubList(Page(dto));
 
         IRenderedComponent<Hotstrings> cut = RenderPage();
 
         cut.WaitForAssertion(() =>
         {
-            cut.FindAll("[data-test=\"clipboard-delivery\"]").Should().NotBeEmpty();
+            cut.FindAll(".desktop-branch [data-test=\"clipboard-delivery\"]").Should().HaveCount(1);
+            cut.FindAll(".desktop-branch [data-test=\"hotstring-delivery\"]").Should().BeEmpty();
             cut.Find(".desktop-branch [data-test=\"clipboard-delivery\"]").TextContent.Should().Contain("Clipboard");
+        });
+        return Task.CompletedTask;
+    }
+
+    [Fact]
+    public Task Page_AutoDeliveryLongReplacement_ShowsClipboardChipFromEffectiveDelivery()
+    {
+        // The list reads the server-resolved EffectiveDelivery, not the raw stored Delivery=Auto —
+        // this is what makes a long Auto row legible as clipboard in the UI.
+        HotstringDto dto = new(Guid.NewGuid(), [], true, "long", "replacement", null,
+            true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow,
+            Delivery: HotstringDelivery.Auto, EffectiveDelivery: HotstringDelivery.ClipboardPaste);
+        StubList(Page(dto));
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+
+        cut.WaitForAssertion(() =>
+        {
+            cut.FindAll(".desktop-branch [data-test=\"clipboard-delivery\"]").Should().HaveCount(1);
+            cut.FindAll(".desktop-branch [data-test=\"hotstring-delivery\"]").Should().BeEmpty();
         });
         return Task.CompletedTask;
     }

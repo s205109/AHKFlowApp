@@ -493,4 +493,56 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
         detail.Value.Replacement.Should().Be(replacement);
         detail.Value.ReplacementIsTruncated.Should().BeFalse();
     }
+
+    [Theory]
+    [InlineData(200, HotstringDelivery.Auto, HotstringDelivery.ClipboardPaste)] // Auto at threshold resolves to clipboard.
+    [InlineData(199, HotstringDelivery.Auto, HotstringDelivery.Type)] // Auto just under threshold resolves to typed.
+    [InlineData(10, HotstringDelivery.ClipboardPaste, HotstringDelivery.ClipboardPaste)] // Explicit clipboard resolves regardless of length.
+    public async Task ExecuteAsync_TextHotstring_ProjectsEffectiveDelivery(
+        int replacementLength, HotstringDelivery delivery, HotstringDelivery expected)
+    {
+        var owner = Guid.NewGuid();
+        var entity = Hotstring.Create(
+            owner,
+            new HotstringDefinition(
+                "trg", new string('x', replacementLength), null, true, true, true,
+                Delivery: delivery),
+            TimeProvider.System);
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(entity);
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
+
+        Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(new ListHotstringsQuery(), default);
+
+        result.Value.Items.Should().ContainSingle().Which.EffectiveDelivery.Should().Be(expected);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_MacroHotstring_ProjectsEffectiveDeliveryAsType()
+    {
+        var owner = Guid.NewGuid();
+        var entity = Hotstring.Create(
+            owner,
+            new HotstringDefinition("mac", "hello{Enter}", null, true, true, true, Kind: HotstringKind.Macro),
+            TimeProvider.System);
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(entity);
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
+
+        Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(new ListHotstringsQuery(), default);
+
+        result.Value.Items.Should().ContainSingle().Which.EffectiveDelivery.Should().Be(HotstringDelivery.Type);
+    }
 }
