@@ -1,12 +1,13 @@
 using System.Text;
+using AHKFlowApp.Domain.Constants;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Domain.Enums;
 
 namespace AHKFlowApp.Application.Services;
 
 /// <summary>
-/// Single emission point for hotstring lines. Deterministic option order: X * ? C O T
-/// — X leads for DateTime kind (T is never emitted for it); T trails for Text kind.
+/// Single emission point for hotstring lines. Deterministic option order: X * ? C O T.
+/// Clipboard delivery emits X * ? C, while typed Text retains * ? C O T.
 /// </summary>
 internal static class HotstringEmitter
 {
@@ -14,16 +15,47 @@ internal static class HotstringEmitter
     // global scope for everything emitted after it. Single source shared with the
     // preview handler so both code paths use the identical close string.
     public const string HotIfClose = "#HotIf";
+    public const string PasteHelperName = "AhkFlow_PasteReplacement";
+    public const string PasteHelperFunction =
+        """
+        AhkFlow_PasteReplacement(text, endChar := "") {
+            saved := ClipboardAll()
+            A_Clipboard := text
+            if !ClipWait(1) {
+                A_Clipboard := saved
+                return
+            }
+            Send "^v"
+            Sleep 150
+            A_Clipboard := saved
+            saved := ""
+            if (endChar != "")
+                SendText endChar
+        }
+        """;
 
     // Raw is emitted verbatim: its Replacement already holds the entire ":opts:trigger::"
     // definition (plus any brace body), so the ":{options}:{trigger}::{body}" template is
     // bypassed entirely — re-prefixing would double the definition. AhkScriptGenerator adds
     // each Emit result to a line list joined with "\n", so a multi-line definition slots in
     // as multiple physical lines.
-    public static string Emit(Hotstring hs) =>
-        hs.Kind == HotstringKind.Raw
-            ? hs.Replacement
+    public static string Emit(Hotstring hs)
+    {
+        if (hs.Kind == HotstringKind.Raw)
+            return hs.Replacement;
+
+        return ResolveEffectiveDelivery(hs) == HotstringDelivery.ClipboardPaste
+            ? $":{BuildClipboardOptions(hs)}:{Escape(hs.Trigger)}::{BuildClipboardBody(hs)}"
             : $":{BuildOptions(hs)}:{Escape(hs.Trigger)}::{BuildBody(hs)}";
+    }
+
+    public static HotstringDelivery ResolveEffectiveDelivery(Hotstring hs) =>
+        hs.Kind == HotstringKind.Text
+            && (hs.Delivery == HotstringDelivery.ClipboardPaste
+                || (hs.Delivery == HotstringDelivery.Auto
+                    && hs.Replacement.Length >= HotstringDeliveryDefaults.AutoClipboardThresholdChars))
+            ? HotstringDelivery.ClipboardPaste
+            : HotstringDelivery.Type;
 
     // Single source of truth for Description-as-comment emission, shared by AhkScriptGenerator
     // (script lines above each entity) and the preview handler (snippet). Each Description line
@@ -54,13 +86,30 @@ internal static class HotstringEmitter
     private static string BuildOptions(Hotstring hs)
     {
         bool isDateTime = hs.Kind == HotstringKind.DateTime;
-        string options = isDateTime ? "X" : "";
+        string options = (isDateTime ? "X" : "") + BuildTriggerOptions(hs);
+        if (hs.OmitEndingCharacter && hs.IsEndingCharacterRequired) options += "O"; // O is meaningless with *
+        if (hs.Kind == HotstringKind.Text) options += "T"; // Text always emits literally (WYSIWYG) — D1. Brace-body kinds (DateTime/Macro/Raw) have no auto-replace text and must never emit T.
+        return options;
+    }
+
+    private static string BuildClipboardOptions(Hotstring hs) =>
+        $"X{BuildTriggerOptions(hs)}";
+
+    private static string BuildTriggerOptions(Hotstring hs)
+    {
+        string options = "";
         if (!hs.IsEndingCharacterRequired) options += "*";
         if (hs.IsTriggerInsideWord) options += "?";
         if (hs.IsCaseSensitive) options += "C";
-        if (hs.OmitEndingCharacter && hs.IsEndingCharacterRequired) options += "O"; // O is meaningless with *
-        if (hs.Kind == HotstringKind.Text) options += "T"; // Text always emits literally (WYSIWYG) — D1. Brace-body kinds (DateTime/Macro/Script) have no auto-replace text and must never emit T.
         return options;
+    }
+
+    private static string BuildClipboardBody(Hotstring hs)
+    {
+        string endCharArgument = hs.IsEndingCharacterRequired && !hs.OmitEndingCharacter
+            ? ", A_EndChar"
+            : "";
+        return $"{PasteHelperName}(\"{EscapeStringLiteral(hs.Replacement)}\"{endCharArgument})";
     }
 
     private static string BuildBody(Hotstring hs) =>

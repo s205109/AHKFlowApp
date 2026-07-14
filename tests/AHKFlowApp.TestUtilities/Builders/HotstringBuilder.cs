@@ -22,6 +22,7 @@ public sealed class HotstringBuilder
     private DateOffsetUnit? _dateOffsetUnit;
     private WindowMatchType? _contextMatchType;
     private string? _contextValue;
+    private HotstringDelivery _delivery = HotstringDelivery.Auto;
     private TimeProvider _clock = TimeProvider.System;
 
     public HotstringBuilder WithOwner(Guid ownerOid)
@@ -118,6 +119,12 @@ public sealed class HotstringBuilder
         return this;
     }
 
+    public HotstringBuilder WithDelivery(HotstringDelivery delivery)
+    {
+        _delivery = delivery;
+        return this;
+    }
+
     public HotstringBuilder WithCategory(Guid categoryId)
     {
         _categoryIds.Add(categoryId);
@@ -146,7 +153,7 @@ public sealed class HotstringBuilder
                 _isEndingCharacterRequired, _isTriggerInsideWord,
                 _kind, _isCaseSensitive, _omitEndingCharacter,
                 _dateTimeFormat, _dateOffsetAmount, _dateOffsetUnit,
-                _contextMatchType, _contextValue),
+                _contextMatchType, _contextValue, _delivery),
             _clock);
 
         foreach (Guid pid in _profileIds)

@@ -12,7 +12,8 @@ internal sealed class CreateHotstringDtoExample : IExamplesProvider<CreateHotstr
         ProfileIds: null,
         AppliesToAllProfiles: true,
         IsEndingCharacterRequired: true,
-        IsTriggerInsideWord: true);
+        IsTriggerInsideWord: true,
+        Delivery: HotstringDelivery.Auto);
 }
 
 internal sealed class UpdateHotstringDtoExample : IExamplesProvider<UpdateHotstringDto>
@@ -68,7 +69,8 @@ internal sealed class HotstringPreviewRequestDtoExample : IExamplesProvider<Hots
         IsEndingCharacterRequired: true,
         IsTriggerInsideWord: false,
         ContextMatchType: WindowMatchType.Executable,
-        ContextValue: "outlook.exe");
+        ContextValue: "outlook.exe",
+        Delivery: HotstringDelivery.Auto);
 }
 
 internal sealed class HotstringPreviewDtoExample : IExamplesProvider<HotstringPreviewDto>
@@ -76,7 +78,8 @@ internal sealed class HotstringPreviewDtoExample : IExamplesProvider<HotstringPr
     // Matches HotstringEmitter.Emit + GetHotstringPreviewQueryHandler's #HotIf wrapping exactly:
     // context groups are wrapped in `#HotIf WinActive(...)` ... bare `#HotIf` (D9).
     public HotstringPreviewDto GetExamples() => new(
-        Snippet: "#HotIf WinActive(\"ahk_exe outlook.exe\")\n:T:sig::Best regards,`nJohn Doe`nSales Team\n#HotIf");
+        Snippet: "#HotIf WinActive(\"ahk_exe outlook.exe\")\n:T:sig::Best regards,`nJohn Doe`nSales Team\n#HotIf",
+        EffectiveDelivery: HotstringDelivery.Type);
 }
 
 // Raw kind: `~ver` with a brace body, stored verbatim in Replacement. Targets

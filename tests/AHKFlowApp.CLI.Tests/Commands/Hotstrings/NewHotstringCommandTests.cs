@@ -68,7 +68,7 @@ public sealed class NewHotstringCommandTests
             ["hotstring", "new", "--raw", "::a::b", "-t", "a"], hs, profiles);
 
         exit.Should().Be(2);
-        stderr.Should().Contain("--raw cannot be combined with --trigger or --replacement.");
+        stderr.Should().Contain("--raw cannot be combined with --trigger, --replacement, or --replacement-file.");
         await hs.DidNotReceive().CreateAsync(Arg.Any<CreateHotstringDto>(), Arg.Any<CancellationToken>());
     }
 
@@ -80,7 +80,88 @@ public sealed class NewHotstringCommandTests
         (int exit, string _, string? stderr) = await Run(["hotstring", "new", "-t", "onlytrigger"], hs, profiles);
 
         exit.Should().Be(2);
-        stderr.Should().Contain("Specify either --raw, or both --trigger and --replacement.");
+        stderr.Should().Contain("--trigger with exactly one of --replacement or --replacement-file");
+        await hs.DidNotReceive().CreateAsync(Arg.Any<CreateHotstringDto>(), Arg.Any<CancellationToken>());
+    }
+
+    [Theory]
+    [InlineData("auto", HotstringDelivery.Auto)]
+    [InlineData("TYPE", HotstringDelivery.Type)]
+    [InlineData("Clipboard", HotstringDelivery.ClipboardPaste)]
+    public async Task Delivery_IsCaseInsensitive_AndMapsToDto(string value, HotstringDelivery expected)
+    {
+        (IHotstringsApiClient? hs, IProfilesApiClient? profiles) = Fakes();
+
+        (int exit, string _, string _) = await Run(
+            ["hotstring", "new", "-t", "long", "-r", "replacement", "--delivery", value], hs, profiles);
+
+        exit.Should().Be(0);
+        await hs.Received(1).CreateAsync(
+            Arg.Is<CreateHotstringDto>(dto => dto.Delivery == expected),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task InvalidDelivery_Exit2_AndDoesNotCallApi()
+    {
+        (IHotstringsApiClient? hs, IProfilesApiClient? profiles) = Fakes();
+
+        (int exit, string _, string stderr) = await Run(
+            ["hotstring", "new", "-t", "long", "-r", "replacement", "--delivery", "fast"], hs, profiles);
+
+        exit.Should().Be(2);
+        stderr.Should().Contain("auto, type, clipboard");
+        await hs.DidNotReceive().CreateAsync(Arg.Any<CreateHotstringDto>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ReplacementFile_ReadsUtf8ContentAsReplacement()
+    {
+        const string content = "Grüße 👋\nsecond line";
+        string path = Path.Combine(Path.GetTempPath(), $"ahkflow-{Guid.NewGuid():N}.txt");
+        await File.WriteAllTextAsync(path, content, new System.Text.UTF8Encoding(false));
+        try
+        {
+            (IHotstringsApiClient? hs, IProfilesApiClient? profiles) = Fakes();
+
+            (int exit, string _, string _) = await Run(
+                ["hotstring", "new", "-t", "long", "--replacement-file", path], hs, profiles);
+
+            exit.Should().Be(0);
+            await hs.Received(1).CreateAsync(
+                Arg.Is<CreateHotstringDto>(dto => dto.Replacement == content),
+                Arg.Any<CancellationToken>());
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public async Task ReplacementAndReplacementFile_Exit2_MutuallyExclusive()
+    {
+        (IHotstringsApiClient? hs, IProfilesApiClient? profiles) = Fakes();
+
+        (int exit, string _, string stderr) = await Run(
+            ["hotstring", "new", "-t", "long", "-r", "replacement", "--replacement-file", "unused.txt"],
+            hs, profiles);
+
+        exit.Should().Be(2);
+        stderr.Should().Contain("mutually exclusive");
+        await hs.DidNotReceive().CreateAsync(Arg.Any<CreateHotstringDto>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task MissingReplacementAndReplacementFile_Exit2()
+    {
+        (IHotstringsApiClient? hs, IProfilesApiClient? profiles) = Fakes();
+
+        (int exit, string _, string stderr) = await Run(
+            ["hotstring", "new", "-t", "long"], hs, profiles);
+
+        exit.Should().Be(2);
+        stderr.Should().Contain("exactly one of --replacement or --replacement-file");
         await hs.DidNotReceive().CreateAsync(Arg.Any<CreateHotstringDto>(), Arg.Any<CancellationToken>());
     }
 

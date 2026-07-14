@@ -37,6 +37,10 @@ public sealed class UpdateHotstringCommandValidator : AbstractValidator<UpdateHo
             x => x.Input.DateTimeFormat,
             x => x.Input.DateOffsetAmount,
             x => x.Input.DateOffsetUnit);
+        this.AddDeliveryRules(
+            x => x.Input.Kind,
+            x => x.Input.Delivery,
+            x => x.Input.Replacement);
         this.AddMacroKindRules(
             x => x.Input.Kind,
             x => x.Input.Replacement);
@@ -124,7 +128,8 @@ internal sealed class UpdateHotstringCommandHandler(
                 input.DateOffsetAmount,
                 input.DateOffsetUnit,
                 input.ContextMatchType,
-                input.ContextValue),
+                input.ContextValue,
+                input.Delivery),
             clock);
 
         // Replace junction rows via the navigation collections only; adding to the

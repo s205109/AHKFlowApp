@@ -13,9 +13,17 @@ public static class NewHotstringCommand
     {
         Option<string> trigger = new("--trigger", "-t") { Description = "Abbreviation to expand." };
         Option<string> replacement = new("--replacement", "-r") { Description = "Replacement text." };
+        Option<string> replacementFile = new("--replacement-file")
+        {
+            Description = "Read replacement text from a UTF-8 file.",
+        };
+        Option<string> delivery = new("--delivery")
+        {
+            Description = "Text delivery mode: auto, type, or clipboard (default: auto).",
+        };
         Option<string> raw = new("--raw")
         {
-            Description = "Create a Raw hotstring from a full AHK v2 definition, e.g. \":K1000 SE*:ftw::for the win\" (mutually exclusive with --trigger/--replacement).",
+            Description = "Create a Raw hotstring from a full AHK v2 definition, e.g. \":K1000 SE*:ftw::for the win\" (mutually exclusive with Text input and delivery options).",
         };
         Option<string[]> profile = new("--profile", "-p") { Description = "Profile name (repeatable)." };
         Option<bool> noEndingChar = new("--no-ending-char") { Description = "Don't require an ending character (default: required)." };
@@ -24,7 +32,7 @@ public static class NewHotstringCommand
 
         Command cmd = new("new", "Create a new hotstring.")
         {
-            trigger, replacement, raw, profile, noEndingChar, noInsideWord, json,
+            trigger, replacement, replacementFile, delivery, raw, profile, noEndingChar, noInsideWord, json,
         };
 
         cmd.SetAction(async (ParseResult parse, CancellationToken ct) =>
@@ -39,22 +47,44 @@ public static class NewHotstringCommand
                 string? rawDefinition = parse.GetValue(raw);
                 string? triggerValue = parse.GetValue(trigger);
                 string? replacementValue = parse.GetValue(replacement);
+                string? replacementFilePath = parse.GetValue(replacementFile);
+                string? deliveryValue = parse.GetValue(delivery);
+
+                if (!TryParseDelivery(deliveryValue, out HotstringDelivery parsedDelivery))
+                {
+                    await stderr.WriteLineAsync("--delivery must be one of: auto, type, clipboard.");
+                    return 2;
+                }
 
                 // Validate the two mutually-exclusive input modes up front. The server does all
                 // Raw parsing/validation; the CLI only relays the definition and ProblemDetails.
                 if (rawDefinition is not null)
                 {
-                    if (triggerValue is not null || replacementValue is not null)
+                    if (triggerValue is not null || replacementValue is not null || replacementFilePath is not null)
                     {
-                        await stderr.WriteLineAsync("--raw cannot be combined with --trigger or --replacement.");
+                        await stderr.WriteLineAsync("--raw cannot be combined with --trigger, --replacement, or --replacement-file.");
+                        return 2;
+                    }
+                    if (deliveryValue is not null)
+                    {
+                        await stderr.WriteLineAsync("--delivery cannot be combined with --raw.");
                         return 2;
                     }
                 }
-                else if (triggerValue is null || replacementValue is null)
+                else if (replacementValue is not null && replacementFilePath is not null)
                 {
-                    await stderr.WriteLineAsync("Specify either --raw, or both --trigger and --replacement.");
+                    await stderr.WriteLineAsync("--replacement and --replacement-file are mutually exclusive.");
                     return 2;
                 }
+                else if (triggerValue is null || (replacementValue is null) == (replacementFilePath is null))
+                {
+                    await stderr.WriteLineAsync(
+                        "Specify either --raw, or --trigger with exactly one of --replacement or --replacement-file.");
+                    return 2;
+                }
+
+                if (replacementFilePath is not null)
+                    replacementValue = await File.ReadAllTextAsync(replacementFilePath, System.Text.Encoding.UTF8, ct);
 
                 Guid[]? resolvedIds = null;
                 bool appliesToAll = true;
@@ -85,14 +115,16 @@ public static class NewHotstringCommand
                         Replacement: rawDefinition,
                         ProfileIds: resolvedIds,
                         AppliesToAllProfiles: appliesToAll,
-                        Kind: HotstringKind.Raw)
+                        Kind: HotstringKind.Raw,
+                        Delivery: HotstringDelivery.Auto)
                     : new CreateHotstringDto(
                         Trigger: triggerValue!,
                         Replacement: replacementValue!,
                         ProfileIds: resolvedIds,
                         AppliesToAllProfiles: appliesToAll,
                         IsEndingCharacterRequired: !parse.GetValue(noEndingChar),
-                        IsTriggerInsideWord: !parse.GetValue(noInsideWord));
+                        IsTriggerInsideWord: !parse.GetValue(noInsideWord),
+                        Delivery: parsedDelivery);
 
                 HotstringDto created = await hotstrings.CreateAsync(input, ct);
 
@@ -143,8 +175,35 @@ public static class NewHotstringCommand
                 await stderr.WriteLineAsync(ApiMessages.RequestTimedOut);
                 return 1;
             }
+            catch (IOException ex)
+            {
+                await stderr.WriteLineAsync($"Could not read replacement file: {ex.Message}");
+                return 2;
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                await stderr.WriteLineAsync($"Could not read replacement file: {ex.Message}");
+                return 2;
+            }
+            catch (ArgumentException ex)
+            {
+                await stderr.WriteLineAsync($"Could not read replacement file: {ex.Message}");
+                return 2;
+            }
         });
 
         return cmd;
+    }
+
+    private static bool TryParseDelivery(string? value, out HotstringDelivery delivery)
+    {
+        delivery = value?.ToLowerInvariant() switch
+        {
+            null or "auto" => HotstringDelivery.Auto,
+            "type" => HotstringDelivery.Type,
+            "clipboard" => HotstringDelivery.ClipboardPaste,
+            _ => (HotstringDelivery)(-1),
+        };
+        return delivery != (HotstringDelivery)(-1);
     }
 }

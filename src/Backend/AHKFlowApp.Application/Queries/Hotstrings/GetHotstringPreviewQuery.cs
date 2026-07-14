@@ -33,6 +33,10 @@ public sealed class GetHotstringPreviewQueryValidator : AbstractValidator<GetHot
             x => x.Input.DateTimeFormat,
             x => x.Input.DateOffsetAmount,
             x => x.Input.DateOffsetUnit);
+        this.AddDeliveryRules(
+            x => x.Input.Kind,
+            x => x.Input.Delivery,
+            x => x.Input.Replacement);
         this.AddMacroKindRules(
             x => x.Input.Kind,
             x => x.Input.Replacement);
@@ -93,8 +97,11 @@ internal sealed class GetHotstringPreviewQueryHandler(TimeProvider clock)
                 input.DateOffsetAmount,
                 input.DateOffsetUnit,
                 input.ContextMatchType,
-                input.ContextValue),
+                input.ContextValue,
+                input.Delivery),
             clock);
+
+        HotstringDelivery effectiveDelivery = HotstringEmitter.ResolveEffectiveDelivery(hs);
 
         // Prepend the Description comment lines above the definition, via the same shared formatter
         // AhkScriptGenerator uses, so the live preview matches the downloaded script byte-for-byte.
@@ -108,6 +115,10 @@ internal sealed class GetHotstringPreviewQueryHandler(TimeProvider clock)
         if (hs.ContextMatchType is WindowMatchType matchType)
             snippet = $"{HotstringEmitter.EmitHotIfOpen(matchType, hs.ContextValue!)}\n{snippet}\n{HotstringEmitter.HotIfClose}";
 
-        return Task.FromResult(Result.Success(new HotstringPreviewDto(snippet, rawSummary)));
+        if (effectiveDelivery == HotstringDelivery.ClipboardPaste)
+            snippet = $"{HotstringEmitter.PasteHelperFunction}\n{snippet}";
+
+        return Task.FromResult(Result.Success(
+            new HotstringPreviewDto(snippet, rawSummary, effectiveDelivery)));
     }
 }

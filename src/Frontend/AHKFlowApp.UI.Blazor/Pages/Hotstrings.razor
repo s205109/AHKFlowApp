@@ -98,11 +98,11 @@
                             @if (IsEditing(context.Item))
                             {
                                 <MudTextField @bind-Value="context.Item.Replacement"
-                                              Validation="@(new Func<string, string?>(ValidateReplacement))"
-                                              Error="@(_commitAttempted && ValidateReplacement(context.Item.Replacement) is not null)"
-                                              ErrorText="@(_commitAttempted ? ValidateReplacement(context.Item.Replacement) : null)"
+                                              Validation="@(new Func<string, string?>(context.Item.ValidateReplacement))"
+                                              Error="@(_commitAttempted && context.Item.ValidateReplacement(context.Item.Replacement) is not null)"
+                                              ErrorText="@(_commitAttempted ? context.Item.ValidateReplacement(context.Item.Replacement) : null)"
                                               Lines="3"
-                                              Immediate="true" MaxLength="4000"
+                                              Immediate="true" MaxLength="@context.Item.ReplacementMaxLength"
                                               UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "replacement-input" })" />
                             }
                             else if (context.Item.Kind == HotstringKind.DateTime)
@@ -119,7 +119,7 @@
                             }
                             else
                             {
-                                <span style="white-space: pre-wrap">@context.Item.Replacement</span>
+                                <span style="white-space: pre-wrap">@context.Item.ReplacementPreview</span>
                             }
                         </CellTemplate>
                     </PropertyColumn>
@@ -156,6 +156,11 @@
                                     <MudChip T="string" Size="Size.Small" Color="@(context.Item.Kind == HotstringKind.Raw ? Color.Warning : Color.Default)"
                                              Icon="@(context.Item.Kind == HotstringKind.Raw ? Icons.Material.Filled.Warning : null)"
                                              UserAttributes="@KindChipAttributes(context.Item.Kind)">@KindLabel(context.Item.Kind)</MudChip>
+                                    @if (context.Item.Kind == HotstringKind.Text && context.Item.Delivery == HotstringDelivery.ClipboardPaste)
+                                    {
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Info" Class="clipboard-delivery"
+                                                 UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "clipboard-delivery" })">Clipboard</MudChip>
+                                    }
                                     <span class="option-glyphs">@OptionGlyphs(context.Item)</span>
                                     @if (context.Item.ContextMatchType is not null)
                                     {
@@ -450,10 +455,17 @@
             await _grid.ReloadServerData();
     }
 
-    private void StartEditAsync(HotstringEditModel item)
+    private async Task StartEditAsync(HotstringEditModel item)
     {
-        _editingItem = item;
+        HotstringEditModel? editable = await LoadEditableItemAsync(item);
+        if (editable is null)
+            return;
+
+        _editingItem = editable;
         _commitAttempted = false;
+
+        if (_grid is not null)
+            await _grid.ReloadServerData();
     }
 
     private async Task CancelEditAsync()
@@ -475,17 +487,10 @@
         return null;
     }
 
-    private static string? ValidateReplacement(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value)) return "Replacement is required";
-        if (value.Length > 4000) return "Replacement must be 4000 characters or fewer";
-        return null;
-    }
-
     private async Task CommitEditAsync(HotstringEditModel item)
     {
         _commitAttempted = true;
-        if (ValidateTrigger(item.Trigger) is not null || ValidateReplacement(item.Replacement) is not null)
+        if (ValidateTrigger(item.Trigger) is not null || item.ValidateReplacement(item.Replacement) is not null)
             return;
 
         _commitAttempted = false;
@@ -780,9 +785,13 @@
         _dialogOpen = true;
         try
         {
+            HotstringEditModel? editable = await LoadEditableItemAsync(item);
+            if (editable is null)
+                return;
+
             DialogParameters parameters = new()
             {
-                [nameof(HotstringEditDialog.Item)] = item.Clone(),
+                [nameof(HotstringEditDialog.Item)] = editable,
                 [nameof(HotstringEditDialog.Profiles)] = _profiles,
                 [nameof(HotstringEditDialog.Categories)] = _categories,
             };
@@ -801,6 +810,19 @@
         {
             _dialogOpen = false;
         }
+    }
+
+    private async Task<HotstringEditModel?> LoadEditableItemAsync(HotstringEditModel item)
+    {
+        if (!item.ReplacementIsTruncated || item.Id is not { } id)
+            return item.Clone();
+
+        ApiResult<HotstringDto> result = await Api.GetAsync(id, _cts.Token);
+        if (result.IsSuccess)
+            return HotstringEditModel.FromDto(result.Value!);
+
+        Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
+        return null;
     }
 
     private async Task MobileBulkDeleteAsync(IReadOnlyList<Guid> ids)

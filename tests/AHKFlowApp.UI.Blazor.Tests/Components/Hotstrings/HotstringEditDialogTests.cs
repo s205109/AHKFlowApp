@@ -1329,6 +1329,57 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
         });
     }
 
+    [Theory]
+    [InlineData(HotstringDelivery.Auto)]
+    [InlineData(HotstringDelivery.ClipboardPaste)]
+    public async Task Save_LongTextReplacement_AllowsAutoAndClipboardDelivery(HotstringDelivery delivery)
+    {
+        string replacement = new('x', 4_001);
+        HotstringEditModel item = new()
+        {
+            Trigger = "long",
+            Replacement = "initial",
+            Delivery = delivery,
+        };
+        _api.CreateAsync(Arg.Any<CreateHotstringDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotstringDto>.Ok(
+                new HotstringDto(Guid.NewGuid(), [], true, "long", replacement, null, true, true,
+                    DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, Delivery: delivery)));
+
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+        provider.WaitForAssertion(() => provider.Find("textarea[data-test=\"replacement-input\"]"));
+        provider.Find("textarea[data-test=\"replacement-input\"]").Input(replacement);
+        provider.Find("button.commit-edit").Click();
+
+        provider.WaitForAssertion(() => _api.Received(1).CreateAsync(
+            Arg.Is<CreateHotstringDto>(dto => dto.Replacement.Length == 4_001 && dto.Delivery == delivery),
+            Arg.Any<CancellationToken>()));
+    }
+
+    [Fact]
+    public async Task DeliverySelector_TextOnly_ShowsHintAndResetsWhenKindChanges()
+    {
+        HotstringEditModel item = new()
+        {
+            Trigger = "long",
+            Replacement = "",
+            Delivery = HotstringDelivery.ClipboardPaste,
+        };
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"delivery-select\"]"));
+        provider.Markup.Should().Contain("Auto types short replacements and pastes 200+ characters via the clipboard");
+
+        IRenderedComponent<MudToggleGroup<HotstringKind>> kindSelector = provider.FindComponent<MudToggleGroup<HotstringKind>>();
+        await provider.InvokeAsync(() => kindSelector.Instance.ValueChanged.InvokeAsync(HotstringKind.Macro));
+
+        provider.WaitForAssertion(() =>
+        {
+            item.Delivery.Should().Be(HotstringDelivery.Auto);
+            provider.FindAll("[data-test=\"delivery-select\"]").Should().BeEmpty();
+        });
+    }
+
     [Fact]
     public async Task RawExample_CopyButton_CopiesTemplateAndLeavesDefinitionUntouched()
     {
@@ -1383,6 +1434,33 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
             provider.Find("[data-test=\"raw-comment-lift\"]").TextContent.Should().Contain("Comment will be added to Description: note");
         });
     }
+
+    [Fact]
+    public async Task PreviewPanel_ShowsEffectiveClipboardDelivery_AndSendsSelectedDelivery()
+    {
+        _api.PreviewAsync(Arg.Any<HotstringPreviewRequestDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotstringPreviewDto>.Ok(
+                new HotstringPreviewDto("snippet", EffectiveDelivery: HotstringDelivery.ClipboardPaste)));
+        HotstringEditModel item = new()
+        {
+            Trigger = "long",
+            Replacement = new string('x', 200),
+            Delivery = HotstringDelivery.Auto,
+        };
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+        DisablePreviewDebounce(provider);
+
+        provider.Find("[data-test=\"ahk-preview\"] .mud-expand-panel-header").Click();
+
+        provider.WaitForAssertion(() =>
+        {
+            provider.Find("[data-test=\"preview-delivery\"]").TextContent.Should().Contain("Clipboard");
+            _ = _api.Received().PreviewAsync(
+                Arg.Is<HotstringPreviewRequestDto>(request => request.Delivery == HotstringDelivery.Auto),
+                Arg.Any<CancellationToken>());
+        });
+    }
+
 
     private static void DisablePreviewDebounce(IRenderedComponent<MudDialogProvider> provider) =>
         provider.FindComponent<HotstringEditDialog>().Instance.PreviewDebounce = TimeSpan.Zero;

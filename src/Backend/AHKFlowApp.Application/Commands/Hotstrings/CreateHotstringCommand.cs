@@ -37,6 +37,10 @@ public sealed class CreateHotstringCommandValidator : AbstractValidator<CreateHo
             x => x.Input.DateTimeFormat,
             x => x.Input.DateOffsetAmount,
             x => x.Input.DateOffsetUnit);
+        this.AddDeliveryRules(
+            x => x.Input.Kind,
+            x => x.Input.Delivery,
+            x => x.Input.Replacement);
         this.AddMacroKindRules(
             x => x.Input.Kind,
             x => x.Input.Replacement);
@@ -122,7 +126,8 @@ internal sealed class CreateHotstringCommandHandler(
                 input.DateOffsetAmount,
                 input.DateOffsetUnit,
                 input.ContextMatchType,
-                input.ContextValue),
+                input.ContextValue,
+                input.Delivery),
             clock);
 
         db.Hotstrings.Add(entity);

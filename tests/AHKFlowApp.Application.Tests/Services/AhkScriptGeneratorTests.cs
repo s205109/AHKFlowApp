@@ -136,6 +136,148 @@ public sealed class AhkScriptGeneratorTests
             "F");
     }
 
+    [Fact]
+    public void Generate_ClipboardDelivery_DefaultEndingCharacter_EmitsExecuteCallWithEndChar()
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotstring hs = new HotstringBuilder()
+            .WithTrigger("sig")
+            .WithReplacement("Kind regards,\nBart")
+            .WithDelivery(HotstringDelivery.ClipboardPaste)
+            .WithEndingCharacterRequired(true)
+            .WithTriggerInsideWord(false)
+            .Build();
+
+        string output = DefaultSut().Generate(profile, [hs], []);
+
+        output.Should().Contain(
+            ":X:sig::AhkFlow_PasteReplacement(\"Kind regards,`nBart\", A_EndChar)");
+    }
+
+    [Theory]
+    [InlineData(true, false, false, ":X:sig::AhkFlow_PasteReplacement(\"text\")")]
+    [InlineData(false, false, false, ":X*:sig::AhkFlow_PasteReplacement(\"text\")")]
+    [InlineData(false, true, true, ":X*?C:sig::AhkFlow_PasteReplacement(\"text\")")]
+    public void Generate_ClipboardDelivery_OmitOrWildcard_OmitsEndCharAndKeepsOptionOrder(
+        bool endingRequired,
+        bool triggerInsideWord,
+        bool caseSensitive,
+        string expectedLine)
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotstring hs = new HotstringBuilder()
+            .WithTrigger("sig")
+            .WithReplacement("text")
+            .WithDelivery(HotstringDelivery.ClipboardPaste)
+            .WithEndingCharacterRequired(endingRequired)
+            .WithTriggerInsideWord(triggerInsideWord)
+            .WithCaseSensitive(caseSensitive)
+            .WithOmitEndingCharacter(endingRequired)
+            .Build();
+
+        string output = DefaultSut().Generate(profile, [hs], []);
+
+        output.Should().Contain(expectedLine);
+        expectedLine.Split("::", StringSplitOptions.None)[0].Should().NotContain("T");
+        expectedLine.Split("::", StringSplitOptions.None)[0].Should().NotContain("O");
+    }
+
+    [Fact]
+    public void Generate_ClipboardDelivery_EscapesAhkStringLiteral()
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotstring hs = new HotstringBuilder()
+            .WithTrigger("sig")
+            .WithReplacement("quote \" back`tick\nline\tend")
+            .WithDelivery(HotstringDelivery.ClipboardPaste)
+            .WithEndingCharacterRequired(false)
+            .WithTriggerInsideWord(false)
+            .Build();
+
+        string output = DefaultSut().Generate(profile, [hs], []);
+
+        output.Should().Contain(
+            ":X*:sig::AhkFlow_PasteReplacement(\"quote `\" back``tick`nline`tend\")");
+    }
+
+    [Fact]
+    public void Generate_AutoDelivery_UsesTypedAt199AndClipboardAt200()
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotstring typed = new HotstringBuilder()
+            .WithTrigger("a199")
+            .WithReplacement(new string('a', 199))
+            .WithDelivery(HotstringDelivery.Auto)
+            .WithTriggerInsideWord(false)
+            .Build();
+        Hotstring clipboard = new HotstringBuilder()
+            .WithTrigger("b200")
+            .WithReplacement(new string('b', 200))
+            .WithDelivery(HotstringDelivery.Auto)
+            .WithTriggerInsideWord(false)
+            .Build();
+
+        string output = DefaultSut().Generate(profile, [typed, clipboard], []);
+
+        output.Should().Contain($":T:a199::{new string('a', 199)}");
+        output.Should().Contain(
+            $":X:b200::AhkFlow_PasteReplacement(\"{new string('b', 200)}\", A_EndChar)");
+    }
+
+    [Fact]
+    public void Generate_NonTextWithClipboardIntent_RemainsNonClipboard()
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotstring macro = new HotstringBuilder()
+            .WithTrigger("m")
+            .WithKind(HotstringKind.Macro)
+            .WithReplacement("{{cursor}}")
+            .WithDelivery(HotstringDelivery.ClipboardPaste)
+            .Build();
+
+        string output = DefaultSut().Generate(profile, [macro], []);
+
+        output.Should().NotContain("AhkFlow_PasteReplacement");
+        output.Should().Contain(":?:m::");
+    }
+
+    [Fact]
+    public void Generate_ClipboardDelivery_EmitsHelperExactlyOnceAcrossContextGroups()
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotstring global = new HotstringBuilder()
+            .WithTrigger("global")
+            .WithReplacement(new string('g', 200))
+            .WithTriggerInsideWord(false)
+            .Build();
+        Hotstring contextual = new HotstringBuilder()
+            .WithTrigger("context")
+            .WithReplacement(new string('c', 200))
+            .WithTriggerInsideWord(false)
+            .WithContext(WindowMatchType.Executable, "notepad.exe")
+            .Build();
+
+        string output = DefaultSut().Generate(profile, [global, contextual], []);
+
+        output.Split("AhkFlow_PasteReplacement(text", StringSplitOptions.None)
+            .Should().HaveCount(2);
+        output.Should().StartWith("H\nAhkFlow_PasteReplacement(text");
+    }
+
+    [Fact]
+    public void Generate_NoClipboardDelivery_OmitsHelper()
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotstring typed = new HotstringBuilder()
+            .WithTrigger("short")
+            .WithReplacement("short text")
+            .Build();
+
+        string output = DefaultSut().Generate(profile, [typed], []);
+
+        output.Should().NotContain("AhkFlow_PasteReplacement");
+    }
+
     // Captured BEFORE any Phase-4 window-context changes to AhkScriptGenerator/HotstringEmitter —
     // this is the regression baseline proving no-context output is byte-identical pre/post change.
     [Fact]

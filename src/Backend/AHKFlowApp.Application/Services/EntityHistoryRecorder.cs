@@ -45,7 +45,8 @@ internal sealed class EntityHistoryRecorder(IAppDbContext db, TimeProvider clock
                         entity.DateOffsetAmount,
                         entity.DateOffsetUnit,
                         entity.ContextMatchType,
-                        entity.ContextValue);
+                        entity.ContextValue,
+                        entity.Delivery);
 
                     return new HistorySnapshot(
                         entity.OwnerOid,

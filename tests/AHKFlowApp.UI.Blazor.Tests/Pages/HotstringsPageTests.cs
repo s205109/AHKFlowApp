@@ -291,6 +291,74 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
+    public Task Page_InlineCreate_Allows4001CharacterAutoReplacement()
+    {
+        string replacement = new('x', 4_001);
+        StubList(Page());
+        _api.CreateAsync(Arg.Any<CreateHotstringDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotstringDto>.Ok(
+                new HotstringDto(Guid.NewGuid(), [], true, "long", replacement, null, true, true,
+                    DateTimeOffset.UtcNow, DateTimeOffset.UtcNow)));
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+        StartDraftEdit(cut);
+        FillRequiredFields(cut, "long", replacement);
+        cut.Find("button.commit-edit").Click();
+
+        cut.WaitForAssertion(() => _api.Received(1).CreateAsync(
+            Arg.Is<CreateHotstringDto>(dto => dto.Replacement.Length == 4_001
+                && dto.Delivery == HotstringDelivery.Auto),
+            Arg.Any<CancellationToken>()));
+        return Task.CompletedTask;
+    }
+
+    [Fact]
+    public Task Page_InlineEdit_Allows4001CharacterClipboardReplacement()
+    {
+        string replacement = new('x', 4_001);
+        HotstringDto dto = new(Guid.NewGuid(), [], true, "long", "initial", null, true, true,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, Delivery: HotstringDelivery.ClipboardPaste);
+        StubList(Page(dto));
+        _api.UpdateAsync(dto.Id, Arg.Any<UpdateHotstringDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotstringDto>.Ok(dto with { Replacement = replacement }));
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find("button.start-edit"));
+        cut.Find("button.start-edit").Click();
+        cut.WaitForAssertion(() => cut.Find("textarea[data-test=\"replacement-input\"]"));
+        cut.Find("textarea[data-test=\"replacement-input\"]").Input(replacement);
+        cut.Find("button.commit-edit").Click();
+
+        cut.WaitForAssertion(() => _api.Received(1).UpdateAsync(dto.Id,
+            Arg.Is<UpdateHotstringDto>(update => update.Replacement.Length == 4_001
+                && update.Delivery == HotstringDelivery.ClipboardPaste),
+            Arg.Any<CancellationToken>()));
+        return Task.CompletedTask;
+    }
+
+    [Fact]
+    public Task Page_TruncatedRow_FetchesFullReplacementBeforeInlineEdit()
+    {
+        string fullReplacement = new('x', 1_000);
+        HotstringDto summary = new(Guid.NewGuid(), [], true, "long", new string('x', 200), null, true, true,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, ReplacementIsTruncated: true);
+        HotstringDto detail = summary with { Replacement = fullReplacement, ReplacementIsTruncated = false };
+        StubList(Page(summary));
+        _api.GetAsync(summary.Id, Arg.Any<CancellationToken>()).Returns(ApiResult<HotstringDto>.Ok(detail));
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find("button.start-edit"));
+        cut.Find("button.start-edit").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            _ = _api.Received(1).GetAsync(summary.Id, Arg.Any<CancellationToken>());
+            cut.Find("textarea[data-test=\"replacement-input\"]").TextContent.Should().Be(fullReplacement);
+        });
+        return Task.CompletedTask;
+    }
+
+    [Fact]
     public Task Page_PromoteExistingRow_OpensEditDialogWithKindToggle()
     {
         var dto = new HotstringDto(Guid.NewGuid(), [], true, "btw", "by the way", null, true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
@@ -489,6 +557,24 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
         {
             cut.Find(".type-badge").TextContent.Should().Contain("Text");
             cut.Find(".option-glyphs").TextContent.Should().Be("*?C");
+        });
+        return Task.CompletedTask;
+    }
+
+    [Fact]
+    public Task Page_ExplicitClipboardDelivery_ShowsClipboardChip()
+    {
+        HotstringDto dto = new(Guid.NewGuid(), [], true, "long", "replacement", null,
+            true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow,
+            Delivery: HotstringDelivery.ClipboardPaste);
+        StubList(Page(dto));
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+
+        cut.WaitForAssertion(() =>
+        {
+            cut.FindAll("[data-test=\"clipboard-delivery\"]").Should().NotBeEmpty();
+            cut.Find(".desktop-branch [data-test=\"clipboard-delivery\"]").TextContent.Should().Contain("Clipboard");
         });
         return Task.CompletedTask;
     }
