@@ -57,4 +57,31 @@ public sealed class RawDefinitionTests
         // '*' is expressible via a checkbox; K1000 and SE are not.
         result.UnexpressibleOptions.Should().BeEquivalentTo("K1000", "SE");
     }
+
+    [Fact]
+    public void Decompose_CleanContinuationSection_ExtractsBodyWithoutLoss()
+    {
+        RawDecomposition result = RawDefinition.Decompose(":*:col::\n(\nred\ngreen\nblue\n)");
+
+        result.Trigger.Should().Be("col");
+        result.Body.Should().Be("red\ngreen\nblue");
+        result.LossyReasons.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Decompose_ContinuationWithOptions_IsLossy()
+    {
+        RawDecomposition result = RawDefinition.Decompose(":*:col::\n(Join`n RTrim0\nred\nblue\n)");
+
+        result.Body.Should().Be("red\nblue");
+        result.LossyReasons.Should().Contain(r => r.Contains("continuation options"));
+    }
+
+    [Fact]
+    public void Decompose_ContinuationWithTrailingWhitespace_IsLossy()
+    {
+        RawDecomposition result = RawDefinition.Decompose(":*:col::\n(\nred   \nblue\n)");
+
+        result.LossyReasons.Should().Contain("significant trailing whitespace");
+    }
 }

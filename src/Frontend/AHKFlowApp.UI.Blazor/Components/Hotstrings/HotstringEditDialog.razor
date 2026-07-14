@@ -58,6 +58,20 @@
                     </MudText>
                 }
             }
+            @if (Item.Kind == HotstringKind.Raw)
+            {
+                <MudStack Row="true" Spacing="1" Class="raw-templates"
+                          UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "raw-templates" })">
+                    @foreach ((string label, string template, string dataTest) in RawChipTemplates)
+                    {
+                        <MudChip T="string" Variant="Variant.Outlined" Size="Size.Small" Color="Color.Primary"
+                                 OnClick="@(() => ApplyRawTemplateAsync(template))"
+                                 UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = dataTest })">
+                            @label
+                        </MudChip>
+                    }
+                </MudStack>
+            }
             @if (Item.Kind != HotstringKind.DateTime)
             {
                 <MudTextField T="string" Label="@(Item.Kind == HotstringKind.Raw ? "Raw definition" : "Replacement")"
@@ -77,6 +91,17 @@
                     @if (_rawSummary.OptionTokens.Length > 0)
                     {
                         <MudText Typo="Typo.caption"><b>Options:</b> @string.Join(" ", _rawSummary.OptionTokens)</MudText>
+                    }
+                    @if (RawBodyKindLabel(_rawSummary) is string bodyLabel)
+                    {
+                        <MudText Typo="Typo.caption"><b>Body:</b> @bodyLabel</MudText>
+                    }
+                    @if (_rawSummary.LiftedComment is not null)
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Info"
+                                 UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "raw-comment-lift" })">
+                            Comment moved to Description
+                        </MudText>
                     }
                 </MudStack>
             }
@@ -255,8 +280,16 @@
         "One {{cursor}} token allowed; Enter/Tab must come before it. Write {{{{...}}}} for literal {{...}} text.";
     private const string RawHelperText =
         "Paste one entire AHK v2 definition (e.g. :K1000 SE*:ftw::for the win). The trigger and options are " +
-        "parsed from the first line. No lines starting with '#'; a bare '::' needs a { brace body below; braces are " +
-        "counted literally (no string/comment awareness); OTB braces and continuation sections are not supported.";
+        "parsed from the first line. Below a bare '::' put { code } or ( multi-line text ) on their own lines; " +
+        "OTB braces are normalized. Leading ';' comment lines move into the Description.";
+
+    private static readonly (string Label, string Template, string DataTest)[] RawChipTemplates =
+    [
+        ("Inline", ":*:btw::by the way", "raw-template-inline"),
+        ("Multi-line text ( )", ":*:col::\n(\nred\ngreen\nblue\n)", "raw-template-continuation"),
+        ("Code block { }", ":X:run::\n{\nRun \"notepad.exe\"\n}", "raw-template-braces"),
+        ("With options", ":K1000 SE*:ftw::for the win", "raw-template-options"),
+    ];
 
     private string? ReplacementHelperText => Item.Kind switch
     {
@@ -379,9 +412,13 @@
         if (Item.Kind == HotstringKind.Raw && newKind != HotstringKind.Raw)
         {
             RawDecomposition decomposed = RawDefinition.Decompose(Item.Replacement);
-            if (decomposed.UnexpressibleOptions.Count > 0
+            List<string> losses = [];
+            if (decomposed.UnexpressibleOptions.Count > 0)
+                losses.Add($"options `{string.Join(" ", decomposed.UnexpressibleOptions)}`");
+            losses.AddRange(decomposed.LossyReasons);
+            if (losses.Count > 0
                 && !await ConfirmSwitchAsync($"Switch to {KindLabel(newKind)}?",
-                    $"Options `{string.Join(" ", decomposed.UnexpressibleOptions)}` will be discarded — continue?"))
+                    $"Converting to {KindLabel(newKind)} will discard {string.Join(" and ", losses)} — continue?"))
                 return;
 
             Item.Trigger = decomposed.Trigger;
@@ -458,6 +495,27 @@
             Item.Kind = HotstringKind.Raw;
         }
     }
+
+    // Applies a Raw example template to the definition field. When the field already holds non-empty,
+    // non-template content, confirm first (same MessageBox pattern as kind switching) before overwriting.
+    private async Task ApplyRawTemplateAsync(string template)
+    {
+        bool nonTemplateContent = !string.IsNullOrWhiteSpace(Item.Replacement)
+            && !RawChipTemplates.Any(t => t.Template == Item.Replacement);
+        if (nonTemplateContent
+            && !await ConfirmSwitchAsync("Replace definition?",
+                "This replaces the current Raw definition with the example. Continue?"))
+            return;
+
+        Item.Replacement = template;
+    }
+
+    private static string? RawBodyKindLabel(RawSummaryDto summary) => summary.BodyKind switch
+    {
+        RawBodyKind.Braces => "code block",
+        RawBodyKind.Continuation => $"multi-line text ({summary.BodyLineCount} lines)",
+        _ => null,
+    };
 
     private static string KindLabel(HotstringKind kind) => kind switch
     {

@@ -4,12 +4,21 @@ namespace AHKFlowApp.UI.Blazor.Helpers;
 
 /// <summary>Result of decomposing a Raw definition back into structured fields.</summary>
 /// <param name="Trigger">Decoded trigger from the first line.</param>
-/// <param name="Body">Inline replacement, or the brace-body content when the definition uses one.</param>
+/// <param name="Body">Inline replacement, or the brace/continuation-body content when the definition uses one.</param>
 /// <param name="UnexpressibleOptions">
 /// Option tokens the four structured checkboxes (<c>*</c>/<c>?</c>/<c>C</c>/<c>O</c>) can't
 /// represent (e.g. <c>K1000</c>, <c>SE</c>) — surfaced in the "discard options?" confirmation.
 /// </param>
-public sealed record RawDecomposition(string Trigger, string Body, IReadOnlyList<string> UnexpressibleOptions);
+/// <param name="LossyReasons">
+/// Human-readable reasons the conversion loses information a structured kind can't hold — e.g. a
+/// continuation section's options (<c>Join</c>, <c>RTrim0</c>) or significant trailing whitespace.
+/// Empty when the conversion is clean; surfaced in the confirmation alongside discarded options.
+/// </param>
+public sealed record RawDecomposition(
+    string Trigger,
+    string Body,
+    IReadOnlyList<string> UnexpressibleOptions,
+    IReadOnlyList<string> LossyReasons);
 
 /// <summary>
 /// Client-side Raw definition compose/decompose for the edit dialog's kind switching. <see cref="Compose"/>
@@ -48,46 +57,66 @@ public static class RawDefinition
         string[] lines = (rawDefinition ?? "").Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
         int firstIdx = Array.FindIndex(lines, l => l.Trim().Length > 0);
         if (firstIdx < 0)
-            return new RawDecomposition("", "", []);
+            return new RawDecomposition("", "", [], []);
 
         string first = lines[firstIdx].TrimStart();
         // :options:trigger::rest — options/trigger contain no ':'; first '::' delimits.
         int firstColon = first.IndexOf(':');
         if (firstColon != 0)
-            return new RawDecomposition("", rawDefinition ?? "", []);
+            return new RawDecomposition("", rawDefinition ?? "", [], []);
 
         int secondColon = first.IndexOf(':', 1);
         if (secondColon < 0)
-            return new RawDecomposition("", rawDefinition ?? "", []);
+            return new RawDecomposition("", rawDefinition ?? "", [], []);
 
         string optionsBlock = first[1..secondColon];
         int doubleColon = first.IndexOf("::", secondColon + 1, StringComparison.Ordinal);
         if (doubleColon < 0)
-            return new RawDecomposition("", rawDefinition ?? "", []);
+            return new RawDecomposition("", rawDefinition ?? "", [], []);
 
         string triggerRaw = first[(secondColon + 1)..doubleColon];
         string inlineRest = first[(doubleColon + 2)..];
 
         string body;
+        List<string> lossy = [];
         string inlineTrim = inlineRest.Trim();
-        if (inlineRest.Length > 0 && inlineTrim != "{")
+        if (inlineTrim.Length > 0 && inlineTrim != "{")
         {
             body = inlineRest;
         }
         else
         {
-            // Brace body: content strictly between the "{" line and the last "}" line.
             string[] rest = lines[(firstIdx + 1)..];
-            int open = Array.FindIndex(rest, l => l.Trim() == "{");
-            int close = Array.FindLastIndex(rest, l => l.Trim() == "}");
-            body = open >= 0 && close > open
-                ? string.Join('\n', rest[(open + 1)..close])
-                : string.Join('\n', rest).Trim();
+            int bodyIdx = Array.FindIndex(rest, l => l.Trim().Length > 0);
+
+            if (bodyIdx >= 0 && rest[bodyIdx].TrimStart().StartsWith('('))
+            {
+                // Continuation section: literal text strictly between the "(" and ")" lines.
+                int close = Array.FindIndex(rest, bodyIdx + 1, l => l.Trim() == ")");
+                string[] bodyLines = close > bodyIdx ? rest[(bodyIdx + 1)..close] : rest[(bodyIdx + 1)..];
+                body = string.Join('\n', bodyLines);
+
+                // Structured Text can't hold continuation options or significant trailing whitespace.
+                string openerOptions = rest[bodyIdx].TrimStart()[1..].Trim();
+                if (openerOptions.Length > 0)
+                    lossy.Add($"continuation options `{openerOptions}`");
+                if (bodyLines.Any(l => l.Length != l.TrimEnd().Length))
+                    lossy.Add("significant trailing whitespace");
+            }
+            else
+            {
+                // Brace body: content strictly between the "{" line and the last "}" line.
+                int open = Array.FindIndex(rest, l => l.Trim() == "{");
+                int close = Array.FindLastIndex(rest, l => l.Trim() == "}");
+                body = open >= 0 && close > open
+                    ? string.Join('\n', rest[(open + 1)..close])
+                    : string.Join('\n', rest).Trim();
+            }
         }
 
         List<string> unexpressible = [.. TokenizeOptions(optionsBlock).Where(t => !ExpressibleOptions.Contains(t))];
         // No trimming: mirror the server parser — the abbreviation's whitespace is literal.
-        return new RawDecomposition(DecodeEscapes(triggerRaw), body, unexpressible);
+        return new RawDecomposition(DecodeEscapes(triggerRaw), body, unexpressible, lossy);
     }
 
     // Longest-match tokenizer (SE/SP/SI before S; each flag absorbs its sign/digits), mirroring the
