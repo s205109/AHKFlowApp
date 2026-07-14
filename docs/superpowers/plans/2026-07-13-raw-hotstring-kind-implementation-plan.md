@@ -3,7 +3,7 @@
 **Date:** 2026-07-13
 **Spec:** [2026-07-13-raw-hotstring-kind-design.md](../specs/2026-07-13-raw-hotstring-kind-design.md)
 **Tracker:** [2026-07-13-raw-hotstring-kind-plan.md](2026-07-13-raw-hotstring-kind-plan.md)
-**Status:** Ready to implement; awaiting user go-ahead on pacing
+**Status:** Implemented on `worktree-feature-wt-raw-hotstring-kind` (P0–P14, commits `02f363f`…`d2be1d3`); review findings fixed in follow-up (`2c33830`). Build/tests/format green.
 
 File-level, dependency-ordered tasks. TDD where the spec marks it (parser,
 validators, composer). Each phase is a candidate atomic commit (feature + its tests).

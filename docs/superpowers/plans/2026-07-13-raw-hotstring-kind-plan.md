@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-13
 **Spec:** [2026-07-13-raw-hotstring-kind-design.md](../specs/2026-07-13-raw-hotstring-kind-design.md)
-**Status:** Spec written; awaiting user review, then detailed implementation plan (superpowers:writing-plans)
+**Status:** Implemented. Spec finalized → [implementation plan](2026-07-13-raw-hotstring-kind-implementation-plan.md) executed (P0–P14) on `worktree-feature-wt-raw-hotstring-kind`; review findings fixed in follow-up (`2c33830`).
 
 ## Context
 
@@ -18,10 +18,10 @@ can't express. Full design in the spec above.
    `worktree-feature-wt-raw-hotstring-kind` (PR branch per `feature/wt-` convention at
    PR time)
 3. ~~Commit spec + this plan~~ — done (`5f4da7b`, review fixes in follow-up commits)
-4. User reviews spec (review gate)
-5. Invoke superpowers:writing-plans for the detailed implementation plan (file-level
-   tasks, dependency order — this document is the spec-finalization tracker, not that
-   plan)
+4. ~~User reviews spec (review gate)~~ — done
+5. ~~Invoke superpowers:writing-plans for the detailed implementation plan~~ — done
+   ([implementation plan](2026-07-13-raw-hotstring-kind-implementation-plan.md)), then
+   executed P0–P14
 
 ## Approved decision checklist (spec must keep capturing these)
 

@@ -14,6 +14,11 @@ public sealed class RawHotstringFlowTests(StackFixture fixture) : IAsyncLifetime
         ViewportSize = new ViewportSize { Width = 375, Height = 812 },
     };
 
+    private static readonly BrowserNewContextOptions DesktopViewport = new()
+    {
+        ViewportSize = new ViewportSize { Width = 1280, Height = 900 },
+    };
+
     private sealed class OverflowMetrics
     {
         public int BodyOverflow { get; init; }
@@ -113,5 +118,45 @@ public sealed class RawHotstringFlowTests(StackFixture fixture) : IAsyncLifetime
         string content = System.Text.Encoding.UTF8.GetString(bytes);
 
         Assert.Contains(Definition, content, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task PromoteInlineDraftToRawViaDialog_CreatesRawHotstring()
+    {
+        // Desktop-only flow (P14): start an inline Text draft, promote it to the full dialog via the
+        // Tune action, switch the promoted draft to Raw, and save. Covers the promote path the mobile
+        // create test can't reach.
+        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(DesktopViewport);
+        IPage page = await ctx.NewPageAsync();
+
+        await page.GotoAsync($"{fixture.Spa.BaseUrl}/hotstrings");
+        await page.WaitForSelectorAsync("button.add-hotstring");
+
+        // Inline Text draft — carry a typed trigger into the promotion.
+        await page.ClickAsync("button.add-hotstring");
+        await page.WaitForSelectorAsync("input[data-test=\"trigger-input\"]");
+        await page.FillAsync("input[data-test=\"trigger-input\"]", "seed");
+
+        // Promote to the full dialog (Tune action).
+        await page.ClickAsync("button.promote-edit");
+        await page.WaitForSelectorAsync(".hotstring-edit-dialog");
+
+        // Switch the promoted draft to Raw (empty replacement, so no discard confirmation) and paste a
+        // full verbatim definition — the trigger is now derived from the text, not the seeded "seed".
+        await page.ClickAsync(".hotstring-edit-dialog .mud-toggle-item:has-text('Raw')");
+        await page.WaitForSelectorAsync("[data-test=\"script-warning\"]");
+
+        ILocator definition = page.Locator(".hotstring-edit-dialog textarea[data-test=\"replacement-input\"]");
+        await definition.FillAsync(Definition);
+
+        // Parsed summary reflects the derived trigger without expanding the preview panel.
+        await Assertions.Expect(page.Locator("[data-test=\"raw-summary\"]")).ToContainTextAsync("ftw");
+
+        await page.ClickAsync(".hotstring-edit-dialog button.commit-edit");
+        await page.WaitForSelectorAsync("text=Hotstring created.");
+
+        // The new Raw row's Trigger column shows the derived trigger.
+        await Assertions.Expect(
+            page.Locator(".desktop-branch .hotstrings-grid td[data-label=\"Trigger\"]")).ToContainTextAsync("ftw");
     }
 }
