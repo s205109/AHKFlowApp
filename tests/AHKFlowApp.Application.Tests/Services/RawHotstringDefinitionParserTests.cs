@@ -119,15 +119,72 @@ public sealed class RawHotstringDefinitionParserTests
         r.Error.Should().Be("Raw definition has content after the inline replacement.");
     }
 
-    // --- OTB brace / continuation rejection ----------------------------------------------
+    // --- OTB braces (option-sensitive) ---------------------------------------------------
 
     [Fact]
-    public void OpeningBraceOnDefinitionLine_Rejected()
+    public void Otb_BraceOnDefinitionLine_Accepted()
     {
-        RawParseResult r = RawHotstringDefinitionParser.Parse("::btw:: {\nSend foo\n}");
+        RawParseResult r = RawHotstringDefinitionParser.Parse(":X:run::{\nRun \"notepad.exe\"\n}");
 
-        r.IsValid.Should().BeFalse();
-        r.Error.Should().Be("Put `{` on its own line below the trigger.");
+        r.IsValid.Should().BeTrue();
+        r.BodyKind.Should().Be(RawBodyKind.Braces);
+        r.Trigger.Should().Be("run");
+    }
+
+    [Fact]
+    public void Otb_NoOptions_Accepted()
+    {
+        RawParseResult r = RawHotstringDefinitionParser.Parse("::btw::{\nSend foo\n}");
+
+        r.IsValid.Should().BeTrue();
+        r.BodyKind.Should().Be(RawBodyKind.Braces);
+    }
+
+    [Theory]
+    [InlineData(":T:brace::{")]   // text mode: "{" is an inline literal replacement
+    [InlineData(":R:brace::{")]   // raw mode: same
+    [InlineData(":T0T:brace::{")] // last T wins → mode active → inline literal
+    [InlineData(":T0R:brace::{")]
+    public void Otb_TextOrRawModeActive_IsInlineLiteral_NotOtb(string input)
+    {
+        RawParseResult r = RawHotstringDefinitionParser.Parse(input);
+
+        r.IsValid.Should().BeTrue();
+        r.BodyKind.Should().Be(RawBodyKind.Inline);
+    }
+
+    [Theory]
+    [InlineData(":*:x::{\n}")]     // no send-mode → OTB
+    [InlineData(":T0:x::{\n}")]    // T0 cancels text mode → OTB
+    [InlineData(":R0:x::{\n}")]    // R0 cancels raw mode → OTB
+    [InlineData(":TT0:x::{\n}")]   // last T0 wins → mode off → OTB
+    [InlineData(":RT0:x::{\n}")]
+    public void Otb_ModeOff_IsBraceBody(string input)
+    {
+        RawParseResult r = RawHotstringDefinitionParser.Parse(input);
+
+        r.IsValid.Should().BeTrue();
+        r.BodyKind.Should().Be(RawBodyKind.Braces);
+    }
+
+    [Fact]
+    public void Normalize_Otb_RewritesBraceToOwnLine()
+    {
+        string normalized = RawHotstringDefinitionParser.Normalize(":X:run::{\nRun \"notepad.exe\"\n}");
+
+        normalized.Should().Be(":X:run::\n{\nRun \"notepad.exe\"\n}");
+    }
+
+    [Fact]
+    public void Normalize_ContinuationBody_PreservesTrailingWhitespaceByteForByte()
+    {
+        // Trailing spaces/tabs inside ( … ) are significant under RTrim0 and must survive; the
+        // def/opener/closer lines outside the body are still trimmed.
+        string input = ":*:col::   \n(\nred   \n\tblue\t\n)";
+
+        string normalized = RawHotstringDefinitionParser.Normalize(input);
+
+        normalized.Should().Be(":*:col::\n(\nred   \n\tblue\t\n)");
     }
 
     // --- Continuation sections -----------------------------------------------------------
