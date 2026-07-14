@@ -1,4 +1,5 @@
 using AHKFlowApp.Application.DTOs;
+using AHKFlowApp.Application.Services;
 using AHKFlowApp.Domain.Entities;
 
 namespace AHKFlowApp.Application.Mapping;
@@ -25,5 +26,6 @@ internal static class HotstringMappings
         h.DateOffsetUnit,
         h.ContextMatchType,
         h.ContextValue,
-        h.Delivery);
+        h.Delivery,
+        EffectiveDelivery: HotstringEmitter.ResolveEffectiveDelivery(h));
 }

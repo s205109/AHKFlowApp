@@ -228,10 +228,10 @@
                         @if (Item.Kind == HotstringKind.Text && _effectiveDelivery is { } effectiveDelivery)
                         {
                             <MudChip T="string" Size="Size.Small"
-                                     Color="@(effectiveDelivery == HotstringDelivery.ClipboardPaste ? Color.Info : Color.Default)"
+                                     Color="@(DeliveryDisplay.IsClipboard(effectiveDelivery) ? Color.Info : Color.Default)"
                                      Class="mb-2"
                                      UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "preview-delivery" })">
-                                @(effectiveDelivery == HotstringDelivery.ClipboardPaste ? "Clipboard" : "Typed")
+                                @DeliveryDisplay.Label(effectiveDelivery)
                             </MudChip>
                         }
                         <div class="preview-snippet-container">

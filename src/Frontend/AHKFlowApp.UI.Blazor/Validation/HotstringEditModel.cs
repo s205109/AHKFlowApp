@@ -38,6 +38,7 @@ public sealed class HotstringEditModel
     public WindowMatchType? ContextMatchType { get; set; }
     public HotstringDelivery Delivery { get; set; } = HotstringDelivery.Auto;
     public bool ReplacementIsTruncated { get; set; }
+    public HotstringDelivery EffectiveDelivery { get; set; } = HotstringDelivery.Type;
 
     [MaxLength(200, ErrorMessage = "Context value must be 200 characters or fewer.")]
     public string? ContextValue { get; set; }
@@ -149,6 +150,7 @@ public sealed class HotstringEditModel
         ContextValue = dto.ContextValue,
         Delivery = dto.Delivery,
         ReplacementIsTruncated = dto.ReplacementIsTruncated,
+        EffectiveDelivery = dto.EffectiveDelivery,
     };
 
     public HotstringEditModel Clone() => new()
@@ -172,6 +174,7 @@ public sealed class HotstringEditModel
         ContextValue = ContextValue,
         Delivery = Delivery,
         ReplacementIsTruncated = ReplacementIsTruncated,
+        EffectiveDelivery = EffectiveDelivery,
     };
 
     public CreateHotstringDto ToCreateDto()

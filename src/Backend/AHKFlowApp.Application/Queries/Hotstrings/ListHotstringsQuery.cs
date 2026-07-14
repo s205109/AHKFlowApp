@@ -222,7 +222,15 @@ internal sealed class ListHotstringsQueryHandler(
                 h.ContextMatchType,
                 h.ContextValue,
                 h.Delivery,
-                h.Kind == HotstringKind.Text && h.Replacement.Length > ListReplacementPreviewLength))
+                h.Kind == HotstringKind.Text && h.Replacement.Length > ListReplacementPreviewLength,
+                // Mirrors HotstringEmitter.ResolveEffectiveDelivery — keep in sync; that resolver
+                // can't translate to SQL, so the equivalent expression is inlined here.
+                h.Kind == HotstringKind.Text
+                    && (h.Delivery == HotstringDelivery.ClipboardPaste
+                        || (h.Delivery == HotstringDelivery.Auto
+                            && h.Replacement.Length >= HotstringDeliveryDefaults.AutoClipboardThresholdChars))
+                    ? HotstringDelivery.ClipboardPaste
+                    : HotstringDelivery.Type))
             .ToListAsync(ct);
 
         return Result.Success(new PagedList<HotstringDto>(items, request.Page, request.PageSize, total));

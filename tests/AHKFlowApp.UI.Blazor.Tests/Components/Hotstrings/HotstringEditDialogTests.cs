@@ -1461,6 +1461,24 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
         });
     }
 
+    [Fact]
+    public async Task PreviewPanel_ShowsEffectiveTypedDeliveryAsHotstring()
+    {
+        _api.PreviewAsync(Arg.Any<HotstringPreviewRequestDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotstringPreviewDto>.Ok(
+                new HotstringPreviewDto("snippet", EffectiveDelivery: HotstringDelivery.Type)));
+        HotstringEditModel item = new() { Trigger = "btw", Replacement = "by the way" };
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+        DisablePreviewDebounce(provider);
+
+        provider.Find("[data-test=\"ahk-preview\"] .mud-expand-panel-header").Click();
+
+        provider.WaitForAssertion(() =>
+        {
+            provider.Find("[data-test=\"preview-delivery\"]").TextContent.Should().Contain("Hotstring");
+        });
+    }
+
     [Theory]
     [InlineData(HotstringKind.Macro)]
     [InlineData(HotstringKind.DateTime)]
