@@ -111,10 +111,12 @@ internal static partial class HotstringRules
         bool IsDateTime(T x) => kindFn(x) == HotstringKind.DateTime;
         bool BothOffsetsSet(T x) => amountFn(x) is not null && unitFn(x) is not null;
 
-        // Replacement: normal rules for non-DateTime kinds, must be empty for DateTime
+        // Replacement: normal rules for structured non-DateTime kinds, must be empty for DateTime.
+        // Raw is excluded — its own length limit (RawDefinitionMaxLength, 4200) and structural
+        // rules live in AddRawKindRules; ValidReplacement's 4000 cap would otherwise shadow it.
         validator.RuleFor(replacement)
             .ValidReplacement()
-            .When(x => !IsDateTime(x));
+            .When(x => !IsDateTime(x) && kindFn(x) != HotstringKind.Raw);
 
         validator.RuleFor(replacement)
             .Must(r => r == string.Empty)
@@ -239,14 +241,18 @@ internal static partial class HotstringRules
             {
                 value ??= string.Empty;
 
-                // Rule 8 — length (bound before parsing).
+                // Rule 8 — length (bound on raw input before any processing).
                 if (value.Length > RawDefinitionMaxLength)
                 {
                     context.AddFailure($"Raw definition must be {RawDefinitionMaxLength} characters or fewer.");
                     return;
                 }
 
-                RawParseResult parsed = RawHotstringDefinitionParser.Parse(value);
+                // Validate the normalized form — the exact text the handler persists — so validation
+                // and save can never disagree (e.g. a whitespace-only inline replacement that
+                // normalization strips to a bare trigger, or lone-CR-separated directive lines).
+                string normalized = RawHotstringDefinitionParser.Normalize(value);
+                RawParseResult parsed = RawHotstringDefinitionParser.Parse(normalized);
 
                 // Rule 1 — first line must be a valid hotstring definition.
                 if (!parsed.FirstLineValid)
@@ -289,7 +295,7 @@ internal static partial class HotstringRules
                 }
 
                 // Rule 5 — no directive lines (would corrupt #HotIf grouping).
-                if (value.Split('\n').Any(line => line.TrimStart().StartsWith('#')))
+                if (normalized.Split('\n').Any(line => line.TrimStart().StartsWith('#')))
                 {
                     context.AddFailure("Raw definition must not contain directive lines starting with '#'.");
                     return;

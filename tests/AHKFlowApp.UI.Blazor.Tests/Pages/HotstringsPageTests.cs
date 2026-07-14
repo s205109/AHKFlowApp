@@ -681,6 +681,25 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
+    public Task Page_RawRow_SuppressesOptionGlyphsAndTooltipFlags()
+    {
+        // IsTriggerInsideWord=true is the CLI/default for a Raw row, but its options live in the
+        // verbatim text — the structured flag glyphs ("?") and tooltip flag phrases must not show.
+        var dto = new HotstringDto(Guid.NewGuid(), [], true, "~ver", ":*:~ver::\n{\nMsgBox A_AhkVersion\n}",
+            null, true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, HotstringKind.Raw);
+        StubList(Page(dto));
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+
+        cut.WaitForAssertion(() =>
+        {
+            cut.Find(".hotstrings-grid .option-glyphs").TextContent.Should().BeEmpty();
+            cut.Find(".hotstrings-grid .type-badge").TextContent.Should().Contain("Raw");
+        });
+        return Task.CompletedTask;
+    }
+
+    [Fact]
     public void Page_KindFilter_ListsAllFourKinds()
     {
         StubList(Page());

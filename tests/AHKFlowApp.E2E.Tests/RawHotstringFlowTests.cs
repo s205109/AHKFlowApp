@@ -76,15 +76,16 @@ public sealed class RawHotstringFlowTests(StackFixture fixture) : IAsyncLifetime
 
         await definition.FillAsync(Definition);
 
+        // Server-derived parsed summary (trigger + option tokens) appears below the textarea by
+        // default — the preview panel need not be expanded first.
+        await Assertions.Expect(page.Locator("[data-test=\"raw-summary\"]")).ToContainTextAsync("ftw");
+        await Assertions.Expect(page.Locator("[data-test=\"raw-summary\"]")).ToContainTextAsync("K1000");
+
         await page.ClickAsync("[data-test=\"ahk-preview\"] .mud-expand-panel-header");
         await page.WaitForSelectorAsync("[data-test=\"preview-snippet\"]");
 
         // Verbatim passthrough — the definition is emitted exactly as typed.
         await Assertions.Expect(page.Locator("[data-test=\"preview-snippet\"]")).ToContainTextAsync(Definition);
-
-        // Server-derived parsed summary (trigger + option tokens).
-        await Assertions.Expect(page.Locator("[data-test=\"raw-summary\"]")).ToContainTextAsync("ftw");
-        await Assertions.Expect(page.Locator("[data-test=\"raw-summary\"]")).ToContainTextAsync("K1000");
 
         OverflowMetrics metrics = await page.EvaluateAsync<OverflowMetrics>(
             "() => ({ BodyOverflow: document.body.scrollWidth - window.innerWidth, DocumentOverflow: document.documentElement.scrollWidth - window.innerWidth })");

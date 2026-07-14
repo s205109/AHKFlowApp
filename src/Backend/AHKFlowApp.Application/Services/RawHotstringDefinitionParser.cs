@@ -107,7 +107,9 @@ internal static partial class RawHotstringDefinitionParser
         if (!match.Success)
             return Invalid(FirstLineError, definitionCount);
 
-        string trigger = DecodeEscapes(match.Groups[2].Value).Trim();
+        // No trimming: spaces/tabs are literal within an AHK abbreviation, and the raw text is
+        // emitted verbatim, so the derived trigger must match it exactly (dedup, DB, UI display).
+        string trigger = DecodeEscapes(match.Groups[2].Value);
         (string[] optionTokens, string[] unknownTokens) = TokenizeOptions(match.Groups[1].Value);
         string inlineRest = match.Groups[3].Value;
         string[] trailing = lines[(firstIdx + 1)..];
