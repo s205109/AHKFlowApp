@@ -44,7 +44,7 @@
                 <MudSelectItem T="HotstringKind?" Value="HotstringKind.Text">Text</MudSelectItem>
                 <MudSelectItem T="HotstringKind?" Value="HotstringKind.DateTime">Date &amp; time</MudSelectItem>
                 <MudSelectItem T="HotstringKind?" Value="HotstringKind.Macro">Macro</MudSelectItem>
-                <MudSelectItem T="HotstringKind?" Value="HotstringKind.Script">Script</MudSelectItem>
+                <MudSelectItem T="HotstringKind?" Value="HotstringKind.Raw">Raw</MudSelectItem>
             </MudSelect>
             <MudTextField T="string" @bind-Value="_search" @bind-Value:after="OnSearchChangedAsync"
                           DebounceInterval="300"
@@ -113,9 +113,9 @@
                             {
                                 <span style="white-space: pre-wrap"><MacroReplacementDisplay Replacement="@context.Item.Replacement" /></span>
                             }
-                            else if (context.Item.Kind == HotstringKind.Script)
+                            else if (context.Item.Kind == HotstringKind.Raw)
                             {
-                                <span class="script-summary">@context.Item.ScriptSummary</span>
+                                <span class="script-summary">@context.Item.RawSummary</span>
                             }
                             else
                             {
@@ -153,8 +153,8 @@
                         <CellTemplate>
                             <MudTooltip Text="@OptionsTooltip(context.Item)">
                                 <span class="type-badge">
-                                    <MudChip T="string" Size="Size.Small" Color="@(context.Item.Kind == HotstringKind.Script ? Color.Warning : Color.Default)"
-                                             Icon="@(context.Item.Kind == HotstringKind.Script ? Icons.Material.Filled.Warning : null)"
+                                    <MudChip T="string" Size="Size.Small" Color="@(context.Item.Kind == HotstringKind.Raw ? Color.Warning : Color.Default)"
+                                             Icon="@(context.Item.Kind == HotstringKind.Raw ? Icons.Material.Filled.Warning : null)"
                                              UserAttributes="@KindChipAttributes(context.Item.Kind)">@KindLabel(context.Item.Kind)</MudChip>
                                     <span class="option-glyphs">@OptionGlyphs(context.Item)</span>
                                     @if (context.Item.ContextMatchType is not null)
@@ -212,7 +212,7 @@
                 <MudSelectItem T="HotstringKind?" Value="HotstringKind.Text">Text</MudSelectItem>
                 <MudSelectItem T="HotstringKind?" Value="HotstringKind.DateTime">Date &amp; time</MudSelectItem>
                 <MudSelectItem T="HotstringKind?" Value="HotstringKind.Macro">Macro</MudSelectItem>
-                <MudSelectItem T="HotstringKind?" Value="HotstringKind.Script">Script</MudSelectItem>
+                <MudSelectItem T="HotstringKind?" Value="HotstringKind.Raw">Raw</MudSelectItem>
             </MudSelect>
 
             @if (_categories.Count > 0)
@@ -702,6 +702,70 @@
         }
     }
 
+    /// <summary>
+    /// Promotes an inline-editing row (draft or existing) to the full <see cref="HotstringEditDialog"/>,
+    /// carrying over everything typed inline. The dialog is seeded with a clone so the inline model is
+    /// untouched until save. On cancel the inline edit state is restored with its values; on save the
+    /// dialog's normal create/update path runs and the grid reloads.
+    /// </summary>
+    private async Task PromoteInlineRowAsync(HotstringEditModel item)
+    {
+        if (_dialogOpen)
+            return;
+
+        bool isDraft = ReferenceEquals(item, _pendingCreate);
+        HotstringEditModel seed = item.Clone();
+
+        // Leave the inline edit while the dialog is open so the row renders read-only underneath.
+        _editingItem = null;
+        if (isDraft)
+            _pendingCreate = null;
+        if (_grid is not null)
+            await _grid.ReloadServerData();
+
+        _dialogOpen = true;
+        try
+        {
+            DialogParameters parameters = new()
+            {
+                [nameof(HotstringEditDialog.Item)] = seed,
+                [nameof(HotstringEditDialog.Profiles)] = _profiles,
+                [nameof(HotstringEditDialog.Categories)] = _categories,
+            };
+
+            IDialogReference dialog = await DialogService.ShowAsync<HotstringEditDialog>(
+                isDraft ? "New hotstring" : "Edit hotstring", parameters,
+                new DialogOptions { FullScreen = true, CloseButton = false });
+
+            DialogResult? result = await dialog.Result;
+            if (result?.Canceled == false)
+            {
+                Snackbar.Add(isDraft ? "Hotstring created." : "Hotstring updated.", Severity.Success);
+                await ReloadAllAsync();
+            }
+            else
+            {
+                // Cancel restores the inline edit with the values it carried before promotion.
+                if (isDraft)
+                {
+                    _pendingCreate = item;
+                    _editingItem = _pendingCreate;
+                }
+                else
+                {
+                    _editingItem = item;
+                }
+                _commitAttempted = false;
+                if (_grid is not null)
+                    await _grid.ReloadServerData();
+            }
+        }
+        finally
+        {
+            _dialogOpen = false;
+        }
+    }
+
     private Task OpenEditDialogAsync(HotstringEditModel item) =>
         OpenEditDialogCoreAsync(item, new DialogOptions { FullScreen = true, CloseButton = false });
 
@@ -850,12 +914,16 @@
         HotstringKind.Text => "Text",
         HotstringKind.DateTime => "Date & time",
         HotstringKind.Macro => "Macro",
-        HotstringKind.Script => "Script",
+        HotstringKind.Raw => "Raw",
         _ => kind.ToString(),
     };
 
     private static string OptionGlyphs(HotstringEditModel item)
     {
+        // Raw carries its options inside the verbatim definition; the structured flags are left at
+        // defaults (e.g. CLI-created rows default IsTriggerInsideWord=true) and are meaningless here.
+        if (item.Kind == HotstringKind.Raw) return "";
+
         string glyphs = "";
         if (!item.IsEndingCharacterRequired) glyphs += "*";
         if (item.IsTriggerInsideWord) glyphs += "?";
@@ -866,22 +934,29 @@
 
     // Warning conveyed to assistive tech and sighted users alike — the chip's warning color and
     // icon alone are not exposed to screen readers.
-    private const string ScriptWarningText = "Runs arbitrary AutoHotkey code — review before running.";
+    private const string ScriptWarningText = "Verbatim AutoHotkey definition — review before running.";
 
     private static string OptionsTooltip(HotstringEditModel item)
     {
         List<string> parts = [KindLabel(item.Kind)];
-        if (item.Kind == HotstringKind.Script) parts.Add(ScriptWarningText);
-        if (!item.IsEndingCharacterRequired) parts.Add("Expands immediately (no ending character)");
-        if (item.IsTriggerInsideWord) parts.Add("Triggers inside words");
-        if (item.IsCaseSensitive) parts.Add("Case sensitive");
-        if (item.OmitEndingCharacter && item.IsEndingCharacterRequired) parts.Add("Omits ending character");
+        if (item.Kind == HotstringKind.Raw)
+        {
+            // Raw's structured flags are meaningless (options live in the verbatim text) — skip them.
+            parts.Add(ScriptWarningText);
+        }
+        else
+        {
+            if (!item.IsEndingCharacterRequired) parts.Add("Expands immediately (no ending character)");
+            if (item.IsTriggerInsideWord) parts.Add("Triggers inside words");
+            if (item.IsCaseSensitive) parts.Add("Case sensitive");
+            if (item.OmitEndingCharacter && item.IsEndingCharacterRequired) parts.Add("Omits ending character");
+        }
         if (item.ContextMatchType is not null) parts.Add($"Only in {item.ContextSummary}");
         return string.Join(" · ", parts);
     }
 
     private static Dictionary<string, object?> KindChipAttributes(HotstringKind kind) =>
-        kind == HotstringKind.Script
+        kind == HotstringKind.Raw
             ? new Dictionary<string, object?> { ["aria-label"] = $"{KindLabel(kind)}. {ScriptWarningText}" }
             : [];
 
@@ -892,6 +967,9 @@
                            Color="Color.Success" OnClick="() => CommitEditAsync(item)" />
             <MudIconButton Class="cancel-edit" Icon="@Icons.Material.Filled.Close"
                            Color="Color.Default" OnClick="CancelEditAsync" />
+            <MudIconButton Class="promote-edit" Icon="@Icons.Material.Filled.Tune"
+                           OnClick="() => PromoteInlineRowAsync(item)"
+                           UserAttributes="@(new Dictionary<string, object?> { ["title"] = "More options / change type", ["aria-label"] = "More options / change type" })" />
         }
         else
         {

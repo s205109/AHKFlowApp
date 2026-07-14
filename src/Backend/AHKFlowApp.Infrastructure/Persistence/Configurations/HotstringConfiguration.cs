@@ -17,9 +17,12 @@ internal sealed class HotstringConfiguration : IEntityTypeConfiguration<Hotstrin
             .IsRequired()
             .HasMaxLength(50);
 
+        // nvarchar(max): a Raw definition embeds the trigger line and brace wrapper around a body
+        // that could already be near the old 4,000 limit, so the column must not hard-truncate.
+        // Validation (RawDefinitionMaxLength) keeps user input bounded; this only removes the cap.
         builder.Property(x => x.Replacement)
             .IsRequired()
-            .HasMaxLength(4000);
+            .HasColumnType("nvarchar(max)");
 
         builder.Property(x => x.Description)
             .HasMaxLength(200);

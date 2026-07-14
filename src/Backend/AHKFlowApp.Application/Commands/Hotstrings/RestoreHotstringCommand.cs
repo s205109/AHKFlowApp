@@ -3,6 +3,7 @@ using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.Common;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Mapping;
+using AHKFlowApp.Application.Services;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Domain.Enums;
 using Ardalis.Result;
@@ -54,24 +55,12 @@ internal sealed class RestoreHotstringCommandHandler(
             .Select(c => c.Id)
             .ToArrayAsync(ct);
 
+        // A legacy Kind=Script snapshot is composed into an equivalent Raw definition; other
+        // kinds apply as-is. Restore/revert bypass validation, so this is where the conversion runs.
         var entity = Hotstring.Restore(
             request.Id,
             ownerOid,
-            new HotstringDefinition(
-                snapshot.Trigger,
-                snapshot.Replacement,
-                snapshot.Description,
-                snapshot.AppliesToAllProfiles,
-                snapshot.IsEndingCharacterRequired,
-                snapshot.IsTriggerInsideWord,
-                snapshot.Kind,
-                snapshot.IsCaseSensitive,
-                snapshot.OmitEndingCharacter,
-                snapshot.DateTimeFormat,
-                snapshot.DateOffsetAmount,
-                snapshot.DateOffsetUnit,
-                snapshot.ContextMatchType,
-                snapshot.ContextValue),
+            ScriptToRawComposer.ToDefinition(snapshot),
             snapshot.CreatedAt,
             clock);
 

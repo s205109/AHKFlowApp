@@ -291,6 +291,65 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
+    public Task Page_PromoteExistingRow_OpensEditDialogWithKindToggle()
+    {
+        var dto = new HotstringDto(Guid.NewGuid(), [], true, "btw", "by the way", null, true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        StubList(Page(dto));
+
+        Render<MudPopoverProvider>();
+        IRenderedComponent<MudDialogProvider> provider = Render<MudDialogProvider>();
+        IRenderedComponent<Hotstrings> cut = Render<Hotstrings>(p => p.AddCascadingValue(AuthenticatedState));
+
+        cut.WaitForAssertion(() => cut.Find("button.start-edit"));
+        cut.Find("button.start-edit").Click();
+
+        // Carry a typed edit into the promotion.
+        cut.WaitForAssertion(() => cut.Find("textarea[data-test=\"replacement-input\"]"));
+        cut.Find("textarea[data-test=\"replacement-input\"]").Input("by the way!");
+        cut.Find("button.promote-edit").Click();
+
+        // The dialog renders into the provider's tree, carrying the typed value.
+        provider.WaitForAssertion(() =>
+        {
+            provider.Find(".hotstring-edit-dialog");
+            provider.Find("[data-test=\"kind-selector\"]");
+            provider.FindComponent<global::AHKFlowApp.UI.Blazor.Components.Hotstrings.HotstringEditDialog>()
+                .Instance.Item.Replacement.Should().Be("by the way!");
+        });
+        return Task.CompletedTask;
+    }
+
+    [Fact]
+    public Task Page_PromoteDraftThenCancel_RestoresInlineDraft()
+    {
+        StubList(Page());
+
+        Render<MudPopoverProvider>();
+        IRenderedComponent<MudDialogProvider> provider = Render<MudDialogProvider>();
+        IRenderedComponent<Hotstrings> cut = Render<Hotstrings>(p => p.AddCascadingValue(AuthenticatedState));
+
+        cut.WaitForAssertion(() => cut.Find("button.add-hotstring"));
+        cut.Find("button.add-hotstring").Click();
+
+        cut.WaitForAssertion(() => cut.Find("input[data-test=\"trigger-input\"]"));
+        cut.Find("input[data-test=\"trigger-input\"]").Input("btw");
+        cut.Find("button.promote-edit").Click();
+
+        // Dialog opens in the provider tree; cancel it via the title back button.
+        provider.WaitForAssertion(() => provider.Find(".hotstring-edit-dialog button.cancel-edit"));
+        provider.Find(".hotstring-edit-dialog button.cancel-edit").Click();
+
+        // The dialog closes and the inline draft edit is restored (its commit control reappears).
+        provider.WaitForAssertion(() => provider.FindAll(".hotstring-edit-dialog").Should().BeEmpty());
+        cut.WaitForAssertion(() =>
+        {
+            cut.Find("input[data-test=\"trigger-input\"]");
+            cut.Find("button.commit-edit").Should().NotBeNull();
+        });
+        return Task.CompletedTask;
+    }
+
+    [Fact]
     public async Task Page_WhenAnyToggleIsReenabled_ClearsSpecificProfilesBeforeCreate()
     {
         ProfileDto work = new(Guid.NewGuid(), "Work", false, "header text", "footer text", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
@@ -582,10 +641,10 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
-    public Task Page_ScriptRow_ShowsFirstLineMonospaceEllipsis()
+    public Task Page_RawRow_ShowsFirstLineMonospaceEllipsis()
     {
-        var dto = new HotstringDto(Guid.NewGuid(), [], true, "~ver", "MsgBox A_AhkVersion\nMsgBox 2",
-            null, true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, HotstringKind.Script);
+        var dto = new HotstringDto(Guid.NewGuid(), [], true, "~ver", ":*:~ver::\n{\nMsgBox A_AhkVersion\n}",
+            null, true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, HotstringKind.Raw);
         StubList(Page(dto));
 
         IRenderedComponent<Hotstrings> cut = RenderPage();
@@ -593,17 +652,17 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
         cut.WaitForAssertion(() =>
         {
             AngleSharp.Dom.IElement summary = cut.Find(".hotstrings-grid .script-summary");
-            summary.TextContent.Should().Be("MsgBox A_AhkVersion");
-            summary.TextContent.Should().NotContain("MsgBox 2");
+            summary.TextContent.Should().Be(":*:~ver::");
+            summary.TextContent.Should().NotContain("MsgBox A_AhkVersion");
         });
         return Task.CompletedTask;
     }
 
     [Fact]
-    public Task Page_ScriptRow_ShowsWarningColoredBadgeWithAccessibleText()
+    public Task Page_RawRow_ShowsWarningColoredBadgeWithAccessibleText()
     {
-        var dto = new HotstringDto(Guid.NewGuid(), [], true, "~ver", "MsgBox A_AhkVersion",
-            null, true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, HotstringKind.Script);
+        var dto = new HotstringDto(Guid.NewGuid(), [], true, "~ver", ":*:~ver::\n{\nMsgBox A_AhkVersion\n}",
+            null, true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, HotstringKind.Raw);
         StubList(Page(dto));
 
         IRenderedComponent<Hotstrings> cut = RenderPage();
@@ -611,12 +670,31 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
         cut.WaitForAssertion(() =>
         {
             AngleSharp.Dom.IElement badge = cut.Find(".type-badge .mud-chip");
-            badge.TextContent.Should().Contain("Script");
+            badge.TextContent.Should().Contain("Raw");
             badge.ClassList.Should().Contain(c => c.Contains("warning", StringComparison.OrdinalIgnoreCase));
             // Warning must be conveyed semantically, not just via color — screen readers read the
             // aria-label, not the CSS warning color.
             badge.GetAttribute("aria-label").Should()
-                .Contain("Script").And.Contain("Runs arbitrary AutoHotkey code");
+                .Contain("Raw").And.Contain("Verbatim AutoHotkey definition");
+        });
+        return Task.CompletedTask;
+    }
+
+    [Fact]
+    public Task Page_RawRow_SuppressesOptionGlyphsAndTooltipFlags()
+    {
+        // IsTriggerInsideWord=true is the CLI/default for a Raw row, but its options live in the
+        // verbatim text — the structured flag glyphs ("?") and tooltip flag phrases must not show.
+        var dto = new HotstringDto(Guid.NewGuid(), [], true, "~ver", ":*:~ver::\n{\nMsgBox A_AhkVersion\n}",
+            null, true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, HotstringKind.Raw);
+        StubList(Page(dto));
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+
+        cut.WaitForAssertion(() =>
+        {
+            cut.Find(".hotstrings-grid .option-glyphs").TextContent.Should().BeEmpty();
+            cut.Find(".hotstrings-grid .type-badge").TextContent.Should().Contain("Raw");
         });
         return Task.CompletedTask;
     }
@@ -635,7 +713,7 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
 
         allValues.Should().HaveCount(8);
         allValues.Distinct().Should().BeEquivalentTo(
-            [HotstringKind.Text, HotstringKind.DateTime, HotstringKind.Macro, HotstringKind.Script]);
+            [HotstringKind.Text, HotstringKind.DateTime, HotstringKind.Macro, HotstringKind.Raw]);
     }
 
     [Fact]

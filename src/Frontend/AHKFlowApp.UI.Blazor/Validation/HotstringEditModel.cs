@@ -7,7 +7,9 @@ public sealed class HotstringEditModel
 {
     public Guid? Id { get; set; }
 
-    [Required(ErrorMessage = "Trigger is required.")]
+    // Trigger requiredness is conditional on Kind: Raw derives the trigger server-side from the
+    // definition, so the field is hidden and left empty. Enforced by the dialog's field-level
+    // Required param (gated off for Raw) and by server-side validation, not a DataAnnotation here.
     [MaxLength(50, ErrorMessage = "Trigger must be 50 characters or fewer.")]
     public string Trigger { get; set; } = "";
 
@@ -82,16 +84,16 @@ public sealed class HotstringEditModel
     }
 
     /// <summary>
-    /// First line of <see cref="Replacement"/>, trimmed, for grid/mobile display of Script-kind
-    /// rows. Null unless <see cref="Kind"/> is <see cref="HotstringKind.Script"/> — callers fall
-    /// back to plain Replacement text otherwise. Mirrors
-    /// AHKFlowApp.CLI.Output.HotstringTableFormatter's FormatReplacementColumn logic.
+    /// First line of <see cref="Replacement"/> (the <c>:options:trigger::</c> line), trimmed, for
+    /// grid/mobile display of Raw-kind rows. Null unless <see cref="Kind"/> is
+    /// <see cref="HotstringKind.Raw"/> — callers fall back to plain Replacement text otherwise.
+    /// Mirrors AHKFlowApp.CLI.Output.HotstringTableFormatter's FormatReplacementColumn logic.
     /// </summary>
-    public string? ScriptSummary
+    public string? RawSummary
     {
         get
         {
-            if (Kind != HotstringKind.Script) return null;
+            if (Kind != HotstringKind.Raw) return null;
             int newlineIndex = Replacement.IndexOf('\n');
             string firstLine = newlineIndex < 0 ? Replacement : Replacement[..newlineIndex];
             return firstLine.Trim();

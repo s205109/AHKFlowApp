@@ -14,4 +14,7 @@ public sealed record HotstringPreviewRequestDto(
     WindowMatchType? ContextMatchType = null,
     string? ContextValue = null);
 
-public sealed record HotstringPreviewDto(string Snippet);
+public sealed record HotstringPreviewDto(string Snippet, RawSummaryDto? RawSummary = null);
+
+/// <summary>Server-derived trigger and option tokens for a Raw definition; null for other kinds.</summary>
+public sealed record RawSummaryDto(string Trigger, string[] OptionTokens);
