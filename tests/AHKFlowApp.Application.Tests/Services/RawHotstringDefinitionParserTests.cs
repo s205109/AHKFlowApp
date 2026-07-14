@@ -387,6 +387,55 @@ public sealed class RawHotstringDefinitionParserTests
         RawHotstringDefinitionParser.Parse(input).UnknownOptionTokens.Should().BeEmpty();
     }
 
+    // --- Comment lifting (Prepare) -------------------------------------------------------
+
+    [Fact]
+    public void Prepare_LeadingComment_LiftedAndStripped()
+    {
+        RawPrepared p = RawHotstringDefinitionParser.Prepare("; my note\n::btw::by the way");
+
+        p.LiftedComment.Should().Be("my note");
+        p.NormalizedDefinition.Should().Be("::btw::by the way");
+        p.Parsed.LiftedComment.Should().Be("my note");
+        p.Parsed.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Prepare_MultipleLeadingComments_JoinedWithNewline()
+    {
+        RawPrepared p = RawHotstringDefinitionParser.Prepare("; line one\n;line two\n::btw::x");
+
+        p.LiftedComment.Should().Be("line one\nline two");
+        p.NormalizedDefinition.Should().Be("::btw::x");
+    }
+
+    [Fact]
+    public void Prepare_NoComment_PassesThrough()
+    {
+        RawPrepared p = RawHotstringDefinitionParser.Prepare("::btw::by the way");
+
+        p.LiftedComment.Should().BeNull();
+        p.NormalizedDefinition.Should().Be("::btw::by the way");
+    }
+
+    [Fact]
+    public void Prepare_CommentInsideContinuationBody_NotLifted()
+    {
+        RawPrepared p = RawHotstringDefinitionParser.Prepare(":*:x::\n(\n; not a comment, literal text\nbody\n)");
+
+        p.LiftedComment.Should().BeNull();
+        p.NormalizedDefinition.Should().Be(":*:x::\n(\n; not a comment, literal text\nbody\n)");
+    }
+
+    [Fact]
+    public void Prepare_CommentInsideBraceBody_NotLifted()
+    {
+        RawPrepared p = RawHotstringDefinitionParser.Prepare(":*:x::\n{\n; inside code\nSend foo\n}");
+
+        p.LiftedComment.Should().BeNull();
+        p.NormalizedDefinition.Should().Be(":*:x::\n{\n; inside code\nSend foo\n}");
+    }
+
     [Fact]
     public void X0_IsRejectedAsUnknown()
     {

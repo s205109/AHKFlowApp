@@ -32,7 +32,8 @@ public sealed class GetHotstringPreviewQueryValidator : AbstractValidator<GetHot
             x => x.Input.Replacement);
         this.AddRawKindRules(
             x => x.Input.Kind,
-            x => x.Input.Replacement);
+            x => x.Input.Replacement,
+            x => null); // Preview carries no Description in Task 3; wired in Task 4.
         this.AddWindowContextRules(
             x => x.Input.ContextMatchType,
             x => x.Input.ContextValue);

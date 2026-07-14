@@ -66,6 +66,24 @@ public sealed class CreateHotstringCommandHandlerTests(HotstringDbFixture fx)
     }
 
     [Fact]
+    public async Task Handle_RawWithLeadingComment_StripsDefinitionAndMergesDescription()
+    {
+        await using AppDbContext db = fx.CreateContext();
+        var owner = Guid.NewGuid();
+        var handler = new CreateHotstringCommandHandler(db, CurrentUserHelper.For(owner), _clock);
+        var cmd = new CreateHotstringCommand(new CreateHotstringDto(
+            "ignored", "; pasted note\n::btw::by the way",
+            Kind: HotstringKind.Raw, Description: "existing"));
+
+        Result<HotstringDto> result = await handler.ExecuteAsync(cmd, default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Trigger.Should().Be("btw");
+        result.Value.Replacement.Should().Be("::btw::by the way");
+        result.Value.Description.Should().Be("existing\npasted note");
+    }
+
+    [Fact]
     public async Task Handle_WhenNoOid_ReturnsUnauthorized()
     {
         await using AppDbContext db = fx.CreateContext();

@@ -2,6 +2,7 @@ using AHKFlowApp.Application.Commands.Hotstrings;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Services;
 using AHKFlowApp.Domain.Entities;
+using AHKFlowApp.Domain.Enums;
 using AHKFlowApp.Infrastructure.Persistence;
 using Ardalis.Result;
 using FluentAssertions;
@@ -40,6 +41,34 @@ public sealed class UpdateHotstringCommandHandlerTests(HotstringDbFixture fx)
         result.Value.Replacement.Should().Be("by the way");
         result.Value.IsEndingCharacterRequired.Should().BeFalse();
         result.Value.UpdatedAt.Should().BeAfter(result.Value.CreatedAt);
+    }
+
+    [Fact]
+    public async Task Handle_RawWithLeadingComment_StripsDefinitionAndMergesDescription()
+    {
+        var owner = Guid.NewGuid();
+        FixedClock clock = new(DateTimeOffset.Parse("2026-01-01T00:00:00Z"));
+        var entity = Hotstring.Create(owner, new HotstringDefinition("old", "old", null, true, true, true), clock);
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(entity);
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        UpdateHotstringCommandHandler handler =
+            new(db, CurrentUserHelper.For(owner), clock, new EntityHistoryRecorder(db, clock));
+        UpdateHotstringCommand cmd = new(entity.Id, new UpdateHotstringDto(
+            "ignored", "; moved note\n::btw::by the way", null, true, false, false, null,
+            Kind: HotstringKind.Raw));
+
+        Result<HotstringDto> result = await handler.ExecuteAsync(cmd, default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Trigger.Should().Be("btw");
+        result.Value.Replacement.Should().Be("::btw::by the way");
+        result.Value.Description.Should().Be("moved note");
     }
 
     [Fact]

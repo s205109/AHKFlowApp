@@ -230,9 +230,11 @@ internal static partial class HotstringRules
     public static void AddRawKindRules<T>(
         this AbstractValidator<T> validator,
         Expression<Func<T, HotstringKind>> kind,
-        Expression<Func<T, string>> replacement)
+        Expression<Func<T, string>> replacement,
+        Expression<Func<T, string?>> description)
     {
         Func<T, HotstringKind> kindFn = kind.Compile();
+        Func<T, string?> descriptionFn = description.Compile();
 
         bool IsRaw(T x) => kindFn(x) == HotstringKind.Raw;
 
@@ -241,18 +243,18 @@ internal static partial class HotstringRules
             {
                 value ??= string.Empty;
 
-                // Rule 8 — length (bound on raw input before any processing).
-                if (value.Length > RawDefinitionMaxLength)
+                // One authoritative preparation: lift leading comments, normalize, parse. Validating
+                // the persisted form (normalized, comment-stripped) keeps validation and save in
+                // lockstep (e.g. a whitespace-only inline replacement normalized to a bare trigger).
+                RawPrepared prepared = RawHotstringDefinitionParser.Prepare(value);
+                RawParseResult parsed = prepared.Parsed;
+
+                // Rule 8 — length. Lifted comment lines leave the definition, so they don't count.
+                if (prepared.NormalizedDefinition.Length > RawDefinitionMaxLength)
                 {
                     context.AddFailure($"Raw definition must be {RawDefinitionMaxLength} characters or fewer.");
                     return;
                 }
-
-                // Validate the normalized form — the exact text the handler persists — so validation
-                // and save can never disagree (e.g. a whitespace-only inline replacement that
-                // normalization strips to a bare trigger, or lone-CR-separated directive lines).
-                string normalized = RawHotstringDefinitionParser.Normalize(value);
-                RawParseResult parsed = RawHotstringDefinitionParser.Parse(normalized);
 
                 // Rule 1 — first line must be a valid hotstring definition.
                 if (!parsed.FirstLineValid)
@@ -304,7 +306,19 @@ internal static partial class HotstringRules
 
                 // Rules 6 & 7 — structural body completeness (balanced brace body / inline shape).
                 if (!parsed.IsValid)
+                {
                     context.AddFailure(parsed.Error);
+                    return;
+                }
+
+                // A lifted comment merges into Description — reject when it no longer fits. Only the
+                // lifted case is checked here; the standalone Description rule covers the rest.
+                if (prepared.LiftedComment is not null)
+                {
+                    string? merged = RawCommentLift.Merge(descriptionFn(context.InstanceToValidate), prepared.LiftedComment);
+                    if (merged is not null && merged.Length > DescriptionMaxLength)
+                        context.AddFailure("Pasted comment does not fit in Description (200-char max) — shorten it or remove the comment lines.");
+                }
             })
             .When(IsRaw);
     }

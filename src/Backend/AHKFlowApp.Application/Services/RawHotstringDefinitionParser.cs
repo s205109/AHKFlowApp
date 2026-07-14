@@ -48,6 +48,16 @@ internal sealed record RawParseResult(
     string? Error);
 
 /// <summary>
+/// Result of <see cref="RawHotstringDefinitionParser.Prepare"/> — the single authoritative
+/// preparation of a pasted Raw definition that every caller (validator, Create/Update handlers,
+/// preview) consumes.
+/// </summary>
+/// <param name="NormalizedDefinition">Body-aware normalized text with lifted comment lines removed — the exact text handlers persist.</param>
+/// <param name="LiftedComment">Leading <c>;</c> comment lines joined with <c>\n</c> (marker stripped), moved into Description; null when none.</param>
+/// <param name="Parsed">Structural parse of <see cref="NormalizedDefinition"/>, with <see cref="RawParseResult.LiftedComment"/> mirrored on it.</param>
+internal sealed record RawPrepared(string NormalizedDefinition, string? LiftedComment, RawParseResult Parsed);
+
+/// <summary>
 /// Parses an entire verbatim AHK v2 hotstring definition (first line
 /// <c>:options:trigger::</c>, optional inline replacement, brace <c>{ … }</c> code body, or
 /// literal <c>( … )</c> continuation section) into the structural facts the Raw validator and
@@ -93,19 +103,64 @@ internal static partial class RawHotstringDefinitionParser
     private static partial Regex POption();
 
     /// <summary>
-    /// Save-time normalization for a Raw definition — the only mutation applied before persisting.
-    /// CRLF/lone-CR → LF, trims leading/trailing blank lines and per-line trailing whitespace, and
-    /// rewrites a genuine OTB brace (<c>:X:t::{</c>) to <c>{</c> on its own line below the trigger.
-    /// Body-aware: lines <em>between</em> a continuation section's <c>(</c> and <c>)</c> are
-    /// preserved byte-for-byte (trailing spaces/tabs are significant under <c>RTrim0</c>);
-    /// everywhere else, AHK ignores literal trailing whitespace on script lines (a meaningful
-    /// trailing space needs the <c>`s</c>/<c>`t</c> escapes, which survive the trim untouched).
+    /// Save-time normalization for a Raw definition — delegates to <see cref="Prepare"/> and
+    /// returns just the persisted text. Callers that also need the lifted comment or parse facts
+    /// should call <see cref="Prepare"/> directly (a single pass) rather than re-parsing.
     /// </summary>
-    public static string Normalize(string rawDefinition)
+    public static string Normalize(string rawDefinition) => Prepare(rawDefinition).NormalizedDefinition;
+
+    /// <summary>
+    /// One authoritative preparation pass for a pasted Raw definition: lift leading <c>;</c>
+    /// comment lines into <see cref="RawPrepared.LiftedComment"/>, body-aware normalize the
+    /// remainder, and parse it — so validation, save, and preview never disagree.
+    /// </summary>
+    public static RawPrepared Prepare(string rawDefinition)
     {
         ArgumentNullException.ThrowIfNull(rawDefinition);
 
-        (string[] lines, int firstIdx, Match? match, BodyClassification? body) = Analyze(rawDefinition);
+        string[] rawLines = rawDefinition.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+        (string? lifted, int defStartIdx) = LiftLeadingComments(rawLines);
+
+        string definitionText = string.Join('\n', rawLines[defStartIdx..]);
+        string normalized = NormalizeCore(definitionText);
+        RawParseResult parsed = Parse(normalized) with { LiftedComment = lifted };
+
+        return new RawPrepared(normalized, lifted, parsed);
+    }
+
+    // Consume leading blank/comment lines above the first definition line. Comment lines (first
+    // non-blank char ';') are joined with '\n' with the ';' + one following space stripped;
+    // returns the joined comment (null when none) and the index of the first non-comment line.
+    private static (string? Lifted, int DefStartIdx) LiftLeadingComments(string[] lines)
+    {
+        List<string> comments = [];
+        int i = 0;
+        for (; i < lines.Length; i++)
+        {
+            string trimmed = lines[i].TrimStart();
+            if (trimmed.Length == 0)
+                continue;
+            if (trimmed.StartsWith(';'))
+            {
+                string rest = trimmed[1..];
+                comments.Add((rest.StartsWith(' ') ? rest[1..] : rest).TrimEnd());
+                continue;
+            }
+
+            break;
+        }
+
+        return comments.Count == 0 ? (null, 0) : (string.Join('\n', comments), i);
+    }
+
+    // Body-aware normalization: CRLF/lone-CR → LF, trims leading/trailing blank lines and per-line
+    // trailing whitespace, and rewrites a genuine OTB brace (:X:t::{) to { on its own line below
+    // the trigger. Lines between a continuation section's ( and ) are preserved byte-for-byte
+    // (trailing spaces/tabs are significant under RTrim0); elsewhere AHK ignores literal trailing
+    // whitespace on script lines (a meaningful trailing space needs the `s/`t escapes, untouched).
+    private static string NormalizeCore(string definitionText)
+    {
+        (string[] lines, int firstIdx, Match? match, BodyClassification? body) = Analyze(definitionText);
 
         List<string> outLines = new(lines.Length + 1);
         for (int i = 0; i < lines.Length; i++)
