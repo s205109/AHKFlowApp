@@ -224,11 +224,14 @@ internal sealed class ListHotstringsQueryHandler(
                 h.Delivery,
                 h.Kind == HotstringKind.Text && h.Replacement.Length > ListReplacementPreviewLength,
                 // Mirrors HotstringEmitter.ResolveEffectiveDelivery — keep in sync; that resolver
-                // can't translate to SQL, so the equivalent expression is inlined here.
+                // can't translate to SQL, so the equivalent expression is inlined here. Replacement
+                // is nvarchar(max); string.Length here translates to SQL Server LEN(), which strips
+                // trailing spaces and would undercount them against the resolver's .NET Length. Use
+                // DATALENGTH (byte count) / 2 (UTF-16 chars) instead, which preserves them.
                 h.Kind == HotstringKind.Text
                     && (h.Delivery == HotstringDelivery.ClipboardPaste
                         || (h.Delivery == HotstringDelivery.Auto
-                            && h.Replacement.Length >= HotstringDeliveryDefaults.AutoClipboardThresholdChars))
+                            && (EF.Functions.DataLength(h.Replacement) ?? 0) / 2 >= HotstringDeliveryDefaults.AutoClipboardThresholdChars))
                     ? HotstringDelivery.ClipboardPaste
                     : HotstringDelivery.Type))
             .ToListAsync(ct);
