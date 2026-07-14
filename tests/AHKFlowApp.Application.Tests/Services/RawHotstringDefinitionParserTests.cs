@@ -88,7 +88,7 @@ public sealed class RawHotstringDefinitionParserTests
         RawParseResult r = RawHotstringDefinitionParser.Parse(":*:rng::");
 
         r.IsValid.Should().BeFalse();
-        r.Error.Should().Be("Put `{` on its own line below the trigger.");
+        r.Error.Should().Be("Add a replacement after `::`, or put `{` (code) or `(` (multi-line text) on its own line below the trigger.");
     }
 
     [Fact]

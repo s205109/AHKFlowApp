@@ -442,7 +442,7 @@ public sealed class CreateHotstringCommandValidatorTests
             trigger: "", kind: HotstringKind.Raw, replacement: "::t::    "));
 
         result.IsValid.Should().BeFalse();
-        result.Errors.Should().Contain(e => e.ErrorMessage == "Put `{` on its own line below the trigger.");
+        result.Errors.Should().Contain(e => e.ErrorMessage == "Add a replacement after `::`, or put `{` (code) or `(` (multi-line text) on its own line below the trigger.");
     }
 
     [Fact]

@@ -61,7 +61,7 @@ internal sealed record RawPrepared(string NormalizedDefinition, string? LiftedCo
 internal static partial class RawHotstringDefinitionParser
 {
     private const string FirstLineError = "Not a valid hotstring definition — expected `:options:trigger::replacement`.";
-    private const string BraceRequiredError = "Put `{` on its own line below the trigger.";
+    private const string BraceRequiredError = "Add a replacement after `::`, or put `{` (code) or `(` (multi-line text) on its own line below the trigger.";
     private const string UnbalancedError = "Raw definition must have balanced braces.";
     private const string ContentAfterBraceError = "Raw definition has content after the closing brace.";
     private const string ContentAfterInlineError = "Raw definition has content after the inline replacement.";

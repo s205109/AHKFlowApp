@@ -54,14 +54,21 @@ deliberately **restricted subset** of AHK v2:
 - The derived trigger must be non-empty, ≤ 40 characters (AHK's own abbreviation limit), and free
   of line breaks/tabs — so a trigger using escaped tab/newline (`` `t ``/`` `n ``) is rejected.
 - Every option flag must be a known AHK v2 flag; `X0` and other undocumented off-forms are rejected.
-- No line may start with `#` (directive lines corrupt the generated `#HotIf` grouping).
-- A bare `::` first line requires a `{` brace body on its own line, with balanced braces and no
-  content after the closing `}`. Brace counting is **string- and comment-unaware** — a `{` inside a
-  quoted string (e.g. `SendText "{"`) counts toward the balance and is falsely rejected. Inline
-  replacements are exempt from the brace check.
-- **OTB** brace placement (`::btw:: {`) and **continuation sections** (`(` … `)`) are rejected with
-  actionable messages. These are deliberate limitations, not bugs; supporting them is a possible
-  follow-up.
+- No line may start with `#` **outside a continuation section** (directive lines corrupt the
+  generated `#HotIf` grouping). A `#` line *inside* a `(` … `)` body is literal text and is kept.
+- A bare `::` first line must be followed by a body on its own line below the trigger — either a
+  `{` brace **code** body (balanced braces, no content after the closing `}`) or a `(` … `)`
+  **continuation section** holding verbatim multi-line **text** (closed by `)` on its own line).
+  Brace counting is **string- and comment-unaware** — a `{` inside a quoted string (e.g.
+  `SendText "{"`) counts toward the balance and is falsely rejected. Inline replacements are exempt
+  from the brace check.
+- **OTB** brace placement (`:X:run::{`) is **accepted** and normalized to `{` on its own line —
+  except with text/raw send-mode (`T`/`R`) active, where a trailing `{` is an inline literal.
+- **Continuation sections** (`(` … `)`) are **accepted** as literal multi-line text; trailing
+  whitespace inside the body is preserved byte-for-byte (significant under `RTrim0`).
+- Leading `;` comment lines above the definition are **lifted into the hotstring's Description**
+  (and emitted back as `; ` comment lines in the generated script); they don't count toward the
+  length limit. If the merged Description would exceed 200 characters, the paste is rejected.
 
 ## Example
 
