@@ -94,7 +94,9 @@ public sealed class AhkScriptGeneratorIntegrationTests(ScriptGeneratorDbFixture 
             ":T:addr::123 Main St\n" +       // Ordinal: 'a' < 'b' so addr before btw
             ":*?T:btw::by the way\n" +
             "; --- Hotkeys ---\n" +
+            "; Open Notepad\n" +             // Description emitted as a comment above the hotkey
             "^!n::Run(\"notepad.exe\")\n" +  // 'O' < 'R' so Open Notepad before Reload
+            "; Reload\n" +
             "^F5::Send(\"{F5}\")\n" +
             "; end");
     }

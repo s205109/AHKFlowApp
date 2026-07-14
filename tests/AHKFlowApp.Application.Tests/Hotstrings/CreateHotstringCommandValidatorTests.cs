@@ -350,21 +350,56 @@ public sealed class CreateHotstringCommandValidatorTests
     }
 
     [Fact]
-    public void RawKind_Rule7_OtbBrace_Fails()
+    public void RawKind_OtbBrace_Passes()
     {
         ValidationResult result = _sut.Validate(Cmd(
-            kind: HotstringKind.Raw, replacement: "::btw:: {\nSend foo\n}"));
+            kind: HotstringKind.Raw, replacement: "::btw::{\nSend foo\n}"));
 
-        result.Errors.Should().Contain(e => e.ErrorMessage == "Put `{` on its own line below the trigger.");
+        result.IsValid.Should().BeTrue();
     }
 
     [Fact]
-    public void RawKind_Rule7_ContinuationSection_Fails()
+    public void RawKind_ContinuationSection_Passes()
     {
         ValidationResult result = _sut.Validate(Cmd(
-            kind: HotstringKind.Raw, replacement: ":*:long::\n(\nline1\n)"));
+            kind: HotstringKind.Raw, replacement: ":*:long::\n(\nline1\nline2\n)"));
 
-        result.Errors.Should().Contain(e => e.ErrorMessage == "Put `{` on its own line below the trigger.");
+        result.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public void RawKind_LeadingComment_Passes()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            kind: HotstringKind.Raw, replacement: "; a note\n::btw::by the way"));
+
+        result.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public void RawKind_LiftedCommentOverflowsDescription_Fails()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            kind: HotstringKind.Raw,
+            description: new string('d', 195),
+            replacement: "; " + new string('c', 50) + "\n::btw::by the way"));
+
+        result.Errors.Should().Contain(e =>
+            e.ErrorMessage == "Pasted comment does not fit in Description (200-char max) — shorten it or remove the comment lines.");
+    }
+
+    [Fact]
+    public void RawKind_LiftedCommentExcludedFrom4200_Passes()
+    {
+        // Definition body is exactly at the limit; a leading comment pushes the raw paste over 4200
+        // but comment lines leave the definition, so length is measured without them.
+        string comment = "; note\n";
+        string definition = ":*:t::" + new string('x', 4194); // 6 + 4194 = 4200
+
+        ValidationResult result = _sut.Validate(Cmd(
+            kind: HotstringKind.Raw, replacement: comment + definition));
+
+        result.IsValid.Should().BeTrue();
     }
 
     [Fact]
@@ -407,7 +442,7 @@ public sealed class CreateHotstringCommandValidatorTests
             trigger: "", kind: HotstringKind.Raw, replacement: "::t::    "));
 
         result.IsValid.Should().BeFalse();
-        result.Errors.Should().Contain(e => e.ErrorMessage == "Put `{` on its own line below the trigger.");
+        result.Errors.Should().Contain(e => e.ErrorMessage == "Add a replacement after `::`, or put `{` (code) or `(` (multi-line text) on its own line below the trigger.");
     }
 
     [Fact]

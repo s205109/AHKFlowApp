@@ -18,6 +18,7 @@
         <MudStack Spacing="3" Class="pa-2">
             <MudTextField T="string" Label="Description" @bind-Value="Item.Description"
                           Required="true" RequiredError="Description is required" MaxLength="200"
+                          HelperText="Emitted as ; comment lines in the generated script."
                           UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "description-input" })" />
             <MudTextField T="string" Label="Key" @bind-Value="Item.Key"
                           Required="true" RequiredError="Key is required" MaxLength="20"

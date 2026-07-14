@@ -161,7 +161,47 @@ public sealed class AhkScriptGeneratorTests
             ":T:a::alpha\n" +
             ":T:b::beta\n" +
             "; --- Hotkeys ---\n" +
+            "; d\n" +
             "n::Send(\"hi\")\n" +
+            "F");
+    }
+
+    [Fact]
+    public void Generate_HotstringWithDescription_EmitsCommentAbove()
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotstring hs = new HotstringBuilder().WithTrigger("btw").WithReplacement("by the way")
+            .WithEndingCharacterRequired(true).WithTriggerInsideWord(false)
+            .WithDescription("a friendly note").Build();
+
+        string output = DefaultSut().Generate(profile, [hs], []);
+
+        output.Should().Be(
+            "H\n" +
+            "; --- Hotstrings ---\n" +
+            "; a friendly note\n" +
+            ":T:btw::by the way\n" +
+            "; --- Hotkeys ---\n" +
+            "F");
+    }
+
+    [Fact]
+    public void Generate_HotstringWithMultilineDescription_EmitsOneCommentPerLine()
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotstring hs = new HotstringBuilder().WithTrigger("btw").WithReplacement("by the way")
+            .WithEndingCharacterRequired(true).WithTriggerInsideWord(false)
+            .WithDescription("line one\nline two").Build();
+
+        string output = DefaultSut().Generate(profile, [hs], []);
+
+        output.Should().Be(
+            "H\n" +
+            "; --- Hotstrings ---\n" +
+            "; line one\n" +
+            "; line two\n" +
+            ":T:btw::by the way\n" +
+            "; --- Hotkeys ---\n" +
             "F");
     }
 
@@ -211,6 +251,7 @@ public sealed class AhkScriptGeneratorTests
             "H\n" +
             "; --- Hotstrings ---\n" +
             "; --- Hotkeys ---\n" +
+            "; d\n" +
             $"{expectedLhs}::Send(\"hi\")\n" +
             "F");
     }
@@ -966,6 +1007,7 @@ public sealed class AhkScriptGeneratorTests
             ":T:t::r\n" +
             "#HotIf\n" +
             "; --- Hotkeys ---\n" +
+            "; d\n" +
             "n::Send(\"hi\")\n" +
             "F");
     }
