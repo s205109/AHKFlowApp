@@ -17,7 +17,7 @@ public enum HotstringKind
     Text = 0,
     DateTime = 1,
     Macro = 2,
-    Script = 3,
+    Raw = 4,
 }
 
 public enum DateOffsetUnit
@@ -60,7 +60,8 @@ public sealed record CreateHotstringDto(
     Guid[]? ProfileIds = null,
     bool AppliesToAllProfiles = true,
     bool IsEndingCharacterRequired = true,
-    bool IsTriggerInsideWord = true);
+    bool IsTriggerInsideWord = true,
+    HotstringKind Kind = HotstringKind.Text);
 
 public sealed record PagedList<T>(
     IReadOnlyList<T> Items,

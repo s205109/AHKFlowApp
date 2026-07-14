@@ -381,18 +381,20 @@ public sealed class HotstringsEndpointsTests(ApiTestFixture fixture)
     }
 
     [Fact]
-    public async Task Post_ScriptKind_ReturnsCreatedWithReplacement()
+    public async Task Post_RawKind_ReturnsCreatedWithVerbatimReplacement_AndServerDerivedTrigger()
     {
         using HttpClient client = CreateAuthed();
-        CreateHotstringDto dto = new("~ver", "MsgBox A_AhkVersion", Kind: HotstringKind.Script);
+        // Empty client trigger — the server derives it from the raw definition's first line.
+        CreateHotstringDto dto = new("", ":K1000 SE*:ftw::for the win", Kind: HotstringKind.Raw);
 
         HttpResponseMessage response = await client.PostAsJsonAsync("/api/v1/hotstrings", dto);
 
         response.StatusCode.Should().Be(HttpStatusCode.Created);
         HotstringDto? body = await response.Content.ReadFromJsonAsync<HotstringDto>();
         body.Should().NotBeNull();
-        body!.Kind.Should().Be(HotstringKind.Script);
-        body.Replacement.Should().Be("MsgBox A_AhkVersion");
+        body!.Kind.Should().Be(HotstringKind.Raw);
+        body.Trigger.Should().Be("ftw");
+        body.Replacement.Should().Be(":K1000 SE*:ftw::for the win");
     }
 
     [Fact]

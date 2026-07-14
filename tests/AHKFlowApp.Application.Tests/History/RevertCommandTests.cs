@@ -77,6 +77,43 @@ public sealed class RevertCommandTests(HistoryDbFixture fx)
     }
 
     [Fact]
+    public async Task RevertHotstring_LegacyScriptSnapshot_ConvertsToRaw()
+    {
+        var owner = Guid.NewGuid();
+        Hotstring entity = new HotstringBuilder()
+            .WithOwner(owner).WithTrigger("~ver").WithReplacement("current").Build();
+
+        // A version-1 history row carrying a legacy Kind=Script snapshot to revert back to.
+#pragma warning disable CS0618 // Simulating a stored legacy snapshot.
+        HotstringSnapshot legacy = new(
+            Trigger: "~ver", Replacement: "MsgBox A_AhkVersion", Description: null,
+            AppliesToAllProfiles: true, IsEndingCharacterRequired: false, IsTriggerInsideWord: false,
+            ProfileIds: [], CategoryIds: [],
+            CreatedAt: DateTimeOffset.UnixEpoch, UpdatedAt: DateTimeOffset.UnixEpoch,
+            Kind: HotstringKind.Script);
+#pragma warning restore CS0618
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(entity);
+            seed.EntityHistories.Add(EntityHistory.Create(
+                owner, TrackedEntityType.Hotstring, entity.Id, version: 1, HistoryChangeType.Edit,
+                schemaVersion: 1, System.Text.Json.JsonSerializer.Serialize(legacy), TimeProvider.System));
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        RevertHotstringCommandHandler handler = new(
+            db, CurrentUserHelper.For(owner), TimeProvider.System, new EntityHistoryRecorder(db, TimeProvider.System));
+
+        Result<HotstringDto> result = await handler.ExecuteAsync(new RevertHotstringCommand(entity.Id, 1), default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Kind.Should().Be(HotstringKind.Raw);
+        result.Value.Replacement.Should().Be(":*:~ver::\n{\nMsgBox A_AhkVersion\n}");
+    }
+
+    [Fact]
     public async Task RevertHotstring_SnapshotProfileDeleted_DropsMissingLinkSilently()
     {
         var owner = Guid.NewGuid();

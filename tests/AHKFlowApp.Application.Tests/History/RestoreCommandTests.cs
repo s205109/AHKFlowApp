@@ -79,6 +79,42 @@ public sealed class RestoreCommandTests(HistoryDbFixture fx)
     }
 
     [Fact]
+    public async Task RestoreHotstring_LegacyScriptSnapshot_ConvertsToRaw()
+    {
+        var owner = Guid.NewGuid();
+        var id = Guid.NewGuid();
+
+        // Hand-craft a pre-Raw Delete tombstone carrying a legacy Kind=Script snapshot.
+#pragma warning disable CS0618 // Simulating a stored legacy snapshot.
+        HotstringSnapshot legacy = new(
+            Trigger: "~ver", Replacement: "MsgBox A_AhkVersion", Description: null,
+            AppliesToAllProfiles: true, IsEndingCharacterRequired: false, IsTriggerInsideWord: false,
+            ProfileIds: [], CategoryIds: [],
+            CreatedAt: DateTimeOffset.UnixEpoch, UpdatedAt: DateTimeOffset.UnixEpoch,
+            Kind: HotstringKind.Script);
+#pragma warning restore CS0618
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.EntityHistories.Add(EntityHistory.Create(
+                owner, TrackedEntityType.Hotstring, id, version: 1, HistoryChangeType.Delete,
+                schemaVersion: 1, System.Text.Json.JsonSerializer.Serialize(legacy), TimeProvider.System));
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        RestoreHotstringCommandHandler handler = new(
+            db, CurrentUserHelper.For(owner), TimeProvider.System, new EntityHistoryRecorder(db, TimeProvider.System));
+
+        Result<HotstringDto> result = await handler.ExecuteAsync(new RestoreHotstringCommand(id), default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Kind.Should().Be(HotstringKind.Raw);
+        result.Value.Trigger.Should().Be("~ver");
+        result.Value.Replacement.Should().Be(":*:~ver::\n{\nMsgBox A_AhkVersion\n}");
+    }
+
+    [Fact]
     public async Task RestoreHotstring_TriggerNowTaken_ReturnsConflict()
     {
         var owner = Guid.NewGuid();
