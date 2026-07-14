@@ -31,15 +31,23 @@ Out (still rejected by design): multiple definitions per paste, `#Hotstring` dir
 `RawHotstringDefinitionParser` accepts, after a bare `:opts:trigger::` first line, a
 **continuation section** as an alternative to the existing brace body:
 
-- Opens with a line whose first non-blank character is `(`. Anything after the `(`
-  (continuation options such as `Join`, `LTrim`, `%`, `` ` ``, `C`) is accepted
-  **verbatim and not interpreted**.
-- Body lines are literal text, stored verbatim.
+- Opens with a line whose first non-blank character is `(`. The remainder of the
+  opener line (continuation options such as `Join`, `LTrim`, `RTrim0`, `C`, `` ` ``)
+  is **unvalidated pass-through** — stored verbatim, not interpreted — with one
+  exception: an opener line containing `)` is rejected (AHK itself treats such a
+  line as an expression, not a continuation opener).
+- Body lines are literal text, stored verbatim — including trailing whitespace and
+  interior blank lines (significant under `RTrim0`).
 - Closes at the first line that is exactly `)` (after trim). No nesting.
 - Unclosed section → error. Non-blank content after the closing `)` → same
   "content after close" rule as braces.
-- `RawParseResult` gains `BodyKind` enum: `None | Inline | Braces | Continuation`,
-  so the preview summary can distinguish "code block" from "multi-line text (N lines)".
+- **Existing checks become body-aware:** `DefinitionCount` (rule 2) and the
+  directive rejection (rule 5, `HotstringRules.cs`) skip lines inside a
+  continuation-section body — literal text like `::example::text` or `# Heading`
+  must not be misread as another definition or a directive.
+- `RawParseResult` gains `BodyKind` enum (`None | Inline | Braces | Continuation`)
+  and `BodyLineCount`, so the preview summary can distinguish "code block" from
+  "multi-line text (N lines)".
 
 Docs: continuation sections per <https://www.autohotkey.com/docs/v2/Scripts.htm#continuation-section>.
 
@@ -47,9 +55,17 @@ Docs: continuation sections per <https://www.autohotkey.com/docs/v2/Scripts.htm#
 
 - `:X:trigger::{` (line ends with `{`, nothing after it) is accepted as a brace-body
   opener. Any other trailing content stays rejected.
-- `Normalize()` rewrites OTB to the canonical form — `{` on its own line below the
-  trigger — so stored/emitted definitions have one shape (consistent with existing
-  CRLF/whitespace normalization). Preview shows the normalized result.
+- **Option-sensitive:** a trailing lone `{` is an OTB opener only when neither `T`
+  nor `R` (text/raw mode) is in effect on the definition line (`T0`/`R0` cancel the
+  mode, so they do not suppress OTB). With `T` or `R` active, `:T:brace::{` is an
+  **inline literal replacement** that types `{` — per the official hotstring brace
+  rule. `ClassifyBody` therefore receives the parsed option tokens.
+- `Normalize()` rewrites genuine OTB to the canonical form — `{` on its own line
+  below the trigger — so stored/emitted definitions have one shape (consistent with
+  existing CRLF/whitespace normalization). Preview shows the normalized result.
+- **Normalization is body-aware:** per-line trailing-whitespace trimming and blank-line
+  trimming apply only *outside* a continuation-section body; lines between `(` and `)`
+  are preserved byte-for-byte (trailing spaces/tabs are significant under `RTrim0`).
 
 ## 3. Comments = Description
 
@@ -59,11 +75,33 @@ No new field. `Description` becomes the script comment:
   hotstring **and hotkey** whose Description is non-empty. Multi-line description →
   one `; ` line per line. Applies to all kinds (Text/DateTime/Macro/Raw) and hotkeys.
 - **Paste lifting (Raw only):** leading `; …` comment lines above the pasted definition
-  are stripped from the stored definition and lifted into the Description field —
-  only when Description is currently empty (never clobber an existing value; when
-  non-empty the comment lines are still stripped). Parsed summary notes
-  "comment moved to Description".
+  are stripped from the stored definition and lifted into Description with an explicit
+  merge policy — no silent data loss:
+  - Description empty → lifted comment becomes the Description.
+  - Description equals the lifted comment → dropped as a duplicate.
+  - Description differs → lifted comment is **appended** on a new line.
+  - If the merged Description would exceed `DescriptionMaxLength` (200), validation
+    fails with an explicit error ("Pasted comment does not fit in Description
+    (200-char max) — shorten it or remove the comment lines") and nothing is saved.
+  The parsed summary notes "comment moved to Description".
 - Comment lines *inside* a `( … )` or `{ … }` body are body content and stay verbatim.
+
+### Preview contract
+
+The existing preview endpoint carries the new facts end-to-end (backend DTO +
+mirrored Blazor DTO):
+
+- `RawSummary` grows from `(Trigger, OptionTokens)` to
+  `(Trigger, OptionTokens, BodyKind, BodyLineCount, LiftedComment)` —
+  `LiftedComment` is the comment text the save would move into Description
+  (null when none), letting the dialog render the "comment moved to Description"
+  notice and the merge outcome before saving.
+- The preview request gains `Description`, and `GetHotstringPreviewQuery`'s handler
+  passes it into the transient hotstring (today it hardcodes `Description: null`),
+  so the preview script shows the emitted `; comment` lines exactly as the download
+  will.
+- One shared comment formatter (Description → `; ` lines) is used by both
+  `AhkScriptGenerator` and the preview path — single source of truth.
 
 ## 4. Error copy
 
@@ -95,9 +133,14 @@ definition).
 
 ## 7. Testing
 
-- **Parser (TDD):** continuation happy path incl. `(Join` and `(LTrim`, unclosed `)`,
-  content after `)`, blank lines inside body preserved, OTB accept + Normalize goldens,
-  comment-lift (empty vs non-empty Description), `BodyKind` classification.
+- **Parser (TDD):** continuation happy path incl. `(Join` and `(LTrim`, opener line
+  containing `)` rejected, unclosed `)`, content after `)`, blank lines inside body
+  preserved, `RTrim0` regression with significant trailing spaces/tabs surviving
+  Normalize byte-for-byte, body lines like `::example::text` / `# Heading` not
+  counted as definitions or directives, OTB accept + Normalize goldens,
+  `:T:brace::{` and `:R:brace::{` classified as inline literal (not OTB) while
+  `:*:x::{` is OTB, comment-lift merge matrix (empty / equal / differing Description)
+  + 200-char overflow error, `BodyKind` + `BodyLineCount` classification.
 - **Generator:** comment emission for hotstring + hotkey + multi-line description;
   none emitted when Description empty; byte-identical output for rows without
   descriptions (regression).
