@@ -57,4 +57,59 @@ public sealed class RawDefinitionTests
         // '*' is expressible via a checkbox; K1000 and SE are not.
         result.UnexpressibleOptions.Should().BeEquivalentTo("K1000", "SE");
     }
+
+    [Fact]
+    public void Decompose_CleanContinuationSection_ExtractsBodyWithoutLoss()
+    {
+        RawDecomposition result = RawDefinition.Decompose(":*:col::\n(\nred\ngreen\nblue\n)");
+
+        result.Trigger.Should().Be("col");
+        result.Body.Should().Be("red\ngreen\nblue");
+        result.LossyReasons.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Decompose_ContinuationWithOptions_IsLossy()
+    {
+        RawDecomposition result = RawDefinition.Decompose(":*:col::\n(Join`n RTrim0\nred\nblue\n)");
+
+        result.Body.Should().Be("red\nblue");
+        result.LossyReasons.Should().Contain(r => r.Contains("continuation options"));
+    }
+
+    [Fact]
+    public void Decompose_ContinuationWithTrailingWhitespace_IsLossy()
+    {
+        RawDecomposition result = RawDefinition.Decompose(":*:col::\n(\nred   \nblue\n)");
+
+        result.LossyReasons.Should().Contain("significant trailing whitespace");
+    }
+
+    [Fact]
+    public void Decompose_LeadingComment_LiftedAndDefinitionParsed()
+    {
+        RawDecomposition result = RawDefinition.Decompose("; my note\n::btw::by the way");
+
+        result.Trigger.Should().Be("btw");
+        result.Body.Should().Be("by the way");
+        result.LiftedComment.Should().Be("my note");
+    }
+
+    [Fact]
+    public void Decompose_OtbBraceWithBody_ExcludesClosingBrace()
+    {
+        RawDecomposition result = RawDefinition.Decompose(":X:run::{\nRun \"notepad\"\n}");
+
+        result.Trigger.Should().Be("run");
+        result.Body.Should().Be("Run \"notepad\"");
+    }
+
+    [Fact]
+    public void Decompose_TextModeLiteralBrace_IsInlineReplacement()
+    {
+        RawDecomposition result = RawDefinition.Decompose(":T:x::{");
+
+        result.Trigger.Should().Be("x");
+        result.Body.Should().Be("{");
+    }
 }

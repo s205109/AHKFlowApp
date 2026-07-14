@@ -1300,7 +1300,8 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
         // preview runs even while the "Generated AutoHotkey code" panel stays collapsed.
         _api.PreviewAsync(Arg.Any<HotstringPreviewRequestDto>(), Arg.Any<CancellationToken>())
             .Returns(ApiResult<HotstringPreviewDto>.Ok(new HotstringPreviewDto(
-                ":K1000 SE*:ftw::for the win", new RawSummaryDto("ftw", ["K1000", "SE", "*"]))));
+                ":K1000 SE*:ftw::for the win",
+                new RawSummaryDto("ftw", ["K1000", "SE", "*"], RawBodyKind.Inline, 0, null))));
 
         HotstringEditModel item = new() { Kind = HotstringKind.Raw, Replacement = ":K1000 SE*:ftw::for the win" };
         IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
@@ -1311,6 +1312,75 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
             _ = _api.Received().PreviewAsync(Arg.Any<HotstringPreviewRequestDto>(), Arg.Any<CancellationToken>());
             provider.Find("[data-test=\"raw-summary\"]").TextContent.Should().Contain("ftw");
             provider.Find("[data-test=\"raw-summary\"]").TextContent.Should().Contain("K1000");
+        });
+    }
+
+    [Fact]
+    public async Task RawExamples_RenderPreviewTextBelowDefinition()
+    {
+        HotstringEditModel item = new() { Kind = HotstringKind.Raw, Replacement = "" };
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+
+        provider.WaitForAssertion(() =>
+        {
+            AngleSharp.Dom.IElement examples = provider.Find("[data-test=\"raw-templates\"]");
+            examples.TextContent.Should().Contain("Examples");
+            examples.TextContent.Should().Contain(":*:col::  ( red / green / blue )");
+        });
+    }
+
+    [Fact]
+    public async Task RawExample_CopyButton_CopiesTemplateAndLeavesDefinitionUntouched()
+    {
+        HotstringEditModel item = new() { Kind = HotstringKind.Raw, Replacement = ":*:custom::my own text" };
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"raw-template-inline\"]"));
+
+        provider.Find("[data-test=\"raw-template-inline\"]").Click();
+
+        provider.WaitForAssertion(() =>
+        {
+            Bunit.JSRuntimeInvocation invocation = JSInterop.VerifyInvoke("navigator.clipboard.writeText");
+            invocation.Arguments.Should().Contain(":*:btw::by the way");
+            _snackbar.Received(1).Add("Example copied — paste it into the definition.", Severity.Success,
+                Arg.Any<Action<SnackbarOptions>>(), Arg.Any<string>());
+        });
+        // Copy is a reference action — the user's own definition is never overwritten.
+        item.Replacement.Should().Be(":*:custom::my own text");
+    }
+
+    [Fact]
+    public async Task RawExample_CopyButton_CopiesMultiLineTemplateVerbatim()
+    {
+        HotstringEditModel item = new() { Kind = HotstringKind.Raw, Replacement = "" };
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"raw-template-continuation\"]"));
+
+        provider.Find("[data-test=\"raw-template-continuation\"]").Click();
+
+        provider.WaitForAssertion(() =>
+        {
+            Bunit.JSRuntimeInvocation invocation = JSInterop.VerifyInvoke("navigator.clipboard.writeText");
+            invocation.Arguments.Should().Contain(":*:col::\n(\nred\ngreen\nblue\n)");
+        });
+    }
+
+    [Fact]
+    public async Task RawSummary_ShowsBodyKindAndCommentLiftNotice()
+    {
+        _api.PreviewAsync(Arg.Any<HotstringPreviewRequestDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotstringPreviewDto>.Ok(new HotstringPreviewDto(
+                "; note\n:*:col::\n(\nred\ngreen\nblue\n)",
+                new RawSummaryDto("col", ["*"], RawBodyKind.Continuation, 3, "note"))));
+
+        HotstringEditModel item = new() { Kind = HotstringKind.Raw, Replacement = "; note\n:*:col::\n(\nred\ngreen\nblue\n)" };
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+        DisablePreviewDebounce(provider);
+
+        provider.WaitForAssertion(() =>
+        {
+            provider.Find("[data-test=\"raw-summary\"]").TextContent.Should().Contain("multi-line text (3 lines)");
+            provider.Find("[data-test=\"raw-comment-lift\"]").TextContent.Should().Contain("Comment will be added to Description: note");
         });
     }
 

@@ -21,6 +21,12 @@ public sealed class GetHotstringPreviewQueryValidator : AbstractValidator<GetHot
         RuleFor(x => x.Input.Kind)
             .Must(k => k is HotstringKind.Text or HotstringKind.DateTime or HotstringKind.Macro or HotstringKind.Raw)
             .WithMessage("Only Text, Date & time, Macro and Raw hotstrings are supported.");
+        // Base Description length applies to every kind (matching the Create/Update save rule), so an
+        // over-long typed Description fails preview the same way it fails save. Raw additionally checks
+        // the base+lifted-comment merged length in AddRawKindRules.
+        RuleFor(x => x.Input.Description)
+            .MaximumLength(HotstringRules.DescriptionMaxLength)
+            .WithMessage($"Description must be {HotstringRules.DescriptionMaxLength} characters or fewer.");
         this.AddDateTimeKindRules(
             x => x.Input.Kind,
             x => x.Input.Replacement,
@@ -32,7 +38,8 @@ public sealed class GetHotstringPreviewQueryValidator : AbstractValidator<GetHot
             x => x.Input.Replacement);
         this.AddRawKindRules(
             x => x.Input.Kind,
-            x => x.Input.Replacement);
+            x => x.Input.Replacement,
+            x => x.Input.Description);
         this.AddWindowContextRules(
             x => x.Input.ContextMatchType,
             x => x.Input.ContextValue);
@@ -52,17 +59,22 @@ internal sealed class GetHotstringPreviewQueryHandler(TimeProvider clock)
     {
         HotstringPreviewRequestDto input = request.Input;
 
-        // Raw derives its trigger + option summary server-side from the verbatim definition.
-        // Normalize first so the preview matches exactly what a save would persist and emit.
+        // Raw derives its trigger + option summary server-side from the verbatim definition. One
+        // Prepare pass (lift comments, normalize, parse) so the preview matches exactly what a save
+        // would persist and emit — including the Description merged from any lifted comment.
         string trigger = input.Trigger;
         string replacement = input.Replacement;
+        string? description = string.IsNullOrWhiteSpace(input.Description) ? null : input.Description.Trim();
         RawSummaryDto? rawSummary = null;
         if (input.Kind == HotstringKind.Raw)
         {
-            replacement = RawHotstringDefinitionParser.Normalize(input.Replacement);
-            RawParseResult parsed = RawHotstringDefinitionParser.Parse(replacement);
+            RawPrepared prepared = RawHotstringDefinitionParser.Prepare(input.Replacement);
+            RawParseResult parsed = prepared.Parsed;
+            replacement = prepared.NormalizedDefinition;
             trigger = parsed.Trigger;
-            rawSummary = new RawSummaryDto(parsed.Trigger, parsed.OptionTokens);
+            description = RawCommentLift.Merge(input.Description, prepared.LiftedComment);
+            rawSummary = new RawSummaryDto(
+                parsed.Trigger, parsed.OptionTokens, parsed.BodyKind, parsed.BodyLineCount, prepared.LiftedComment);
         }
 
         var hs = Hotstring.Create(
@@ -70,7 +82,7 @@ internal sealed class GetHotstringPreviewQueryHandler(TimeProvider clock)
             new HotstringDefinition(
                 trigger,
                 replacement,
-                Description: null,
+                description,
                 AppliesToAllProfiles: true,
                 input.IsEndingCharacterRequired,
                 input.IsTriggerInsideWord,
@@ -84,7 +96,12 @@ internal sealed class GetHotstringPreviewQueryHandler(TimeProvider clock)
                 input.ContextValue),
             clock);
 
+        // Prepend the Description comment lines above the definition, via the same shared formatter
+        // AhkScriptGenerator uses, so the live preview matches the downloaded script byte-for-byte.
         string snippet = HotstringEmitter.Emit(hs);
+        string commentBlock = string.Join('\n', HotstringEmitter.DescriptionCommentLines(hs.Description));
+        if (commentBlock.Length > 0)
+            snippet = $"{commentBlock}\n{snippet}";
 
         // Mirrors AhkScriptGenerator's context-group wrapping (D9) so the live preview matches
         // exactly what the downloaded script would contain for this hotstring.

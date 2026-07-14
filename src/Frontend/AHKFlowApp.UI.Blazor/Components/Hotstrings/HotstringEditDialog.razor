@@ -69,14 +69,51 @@
                               HelperText="@ReplacementHelperText"
                               UserAttributes="@GetReplacementUserAttributes()" />
             }
+            @if (Item.Kind == HotstringKind.Raw)
+            {
+                <MudExpansionPanels Elevation="0" Class="raw-templates"
+                                    UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "raw-templates" })">
+                    <MudExpansionPanel Text="Examples" Dense="true" Expanded="_rawExamplesExpanded"
+                                       ExpandedChanged="@(e => _rawExamplesExpanded = e)">
+                        <MudList T="string" Dense="true">
+                            @foreach ((string label, string template, string preview, string dataTest) in RawExampleTemplates)
+                            {
+                                <MudListItem T="string" Ripple="false" Gutters="true">
+                                    <MudStack Row="true" Spacing="3" AlignItems="AlignItems.Center"
+                                              Justify="Justify.SpaceBetween">
+                                        <MudStack Row="true" Spacing="3" AlignItems="AlignItems.Baseline" Wrap="Wrap.Wrap">
+                                            <MudText Typo="Typo.body2" Style="min-width: 130px"><b>@label</b></MudText>
+                                            <MudText Typo="Typo.caption" Class="ahk-mono">@preview</MudText>
+                                        </MudStack>
+                                        <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small"
+                                                       OnClick="@(() => CopyTemplateAsync(template))"
+                                                       UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = $"Copy {label} example", ["data-test"] = dataTest })" />
+                                    </MudStack>
+                                </MudListItem>
+                            }
+                        </MudList>
+                    </MudExpansionPanel>
+                </MudExpansionPanels>
+            }
             @if (Item.Kind == HotstringKind.Raw && _rawSummary is not null)
             {
-                <MudStack Row="true" Spacing="4" Class="raw-summary"
+                <MudStack Row="true" Spacing="4" Class="raw-summary" Wrap="Wrap.Wrap"
                           UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "raw-summary" })">
                     <MudText Typo="Typo.caption"><b>Trigger:</b> @(_rawSummary.Trigger)</MudText>
                     @if (_rawSummary.OptionTokens.Length > 0)
                     {
                         <MudText Typo="Typo.caption"><b>Options:</b> @string.Join(" ", _rawSummary.OptionTokens)</MudText>
+                    }
+                    @if (RawBodyKindLabel(_rawSummary) is string bodyLabel)
+                    {
+                        <MudText Typo="Typo.caption"><b>Body:</b> @bodyLabel</MudText>
+                    }
+                    @if (_rawSummary.LiftedComment is not null)
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Info"
+                                 UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "raw-comment-lift" })">
+                            Comment will be added to Description: @MergedDescriptionPreview()
+                        </MudText>
                     }
                 </MudStack>
             }
@@ -187,7 +224,7 @@
             </MudExpansionPanels>
 
             <MudTextField T="string" Label="Description" @bind-Value="Item.Description"
-                          MaxLength="200"
+                          MaxLength="200" HelperText="Emitted as ; comment lines in the generated script."
                           UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "description-input" })" />
 
             <MudCheckBox T="bool" @bind-Value="Item.AppliesToAllProfiles" Label="Apply to all profiles"
@@ -255,8 +292,16 @@
         "One {{cursor}} token allowed; Enter/Tab must come before it. Write {{{{...}}}} for literal {{...}} text.";
     private const string RawHelperText =
         "Paste one entire AHK v2 definition (e.g. :K1000 SE*:ftw::for the win). The trigger and options are " +
-        "parsed from the first line. No lines starting with '#'; a bare '::' needs a { brace body below; braces are " +
-        "counted literally (no string/comment awareness); OTB braces and continuation sections are not supported.";
+        "parsed from the first line. Below a bare '::' put { code } or ( multi-line text ) on their own lines; " +
+        "OTB braces are normalized. Leading ';' comment lines move into the Description.";
+
+    private static readonly (string Label, string Template, string Preview, string DataTest)[] RawExampleTemplates =
+    [
+        ("Inline", ":*:btw::by the way", ":*:btw::by the way", "raw-template-inline"),
+        ("Multi-line text ( )", ":*:col::\n(\nred\ngreen\nblue\n)", ":*:col::  ( red / green / blue )", "raw-template-continuation"),
+        ("Code block { }", ":X:run::\n{\nRun \"notepad.exe\"\n}", ":X:run::  { Run \"notepad.exe\" }", "raw-template-braces"),
+        ("With options", ":K1000 SE*:ftw::for the win", ":K1000 SE*:ftw::for the win", "raw-template-options"),
+    ];
 
     private string? ReplacementHelperText => Item.Kind switch
     {
@@ -308,6 +353,7 @@
     private bool _macroSuggestionDismissed;
     private bool _scriptSuggestionDismissed;
     private RawSummaryDto? _rawSummary;
+    private bool _rawExamplesExpanded;
     private string? _macroInsertHint;
     private bool _previewExpanded;
     private bool _previewPending;
@@ -379,13 +425,20 @@
         if (Item.Kind == HotstringKind.Raw && newKind != HotstringKind.Raw)
         {
             RawDecomposition decomposed = RawDefinition.Decompose(Item.Replacement);
-            if (decomposed.UnexpressibleOptions.Count > 0
+            List<string> losses = [];
+            if (decomposed.UnexpressibleOptions.Count > 0)
+                losses.Add($"options `{string.Join(" ", decomposed.UnexpressibleOptions)}`");
+            losses.AddRange(decomposed.LossyReasons);
+            if (losses.Count > 0
                 && !await ConfirmSwitchAsync($"Switch to {KindLabel(newKind)}?",
-                    $"Options `{string.Join(" ", decomposed.UnexpressibleOptions)}` will be discarded — continue?"))
+                    $"Converting to {KindLabel(newKind)} will discard {string.Join(" and ", losses)} — continue?"))
                 return;
 
             Item.Trigger = decomposed.Trigger;
             Item.Replacement = newKind == HotstringKind.DateTime ? "" : decomposed.Body;
+            // Fold a lifted leading comment into Description (mirrors the server) so switching away
+            // from Raw doesn't silently drop it.
+            Item.Description = MergeDescription(Item.Description, decomposed.LiftedComment);
             Item.IsCaseSensitive = false;
             Item.OmitEndingCharacter = false;
             Item.IsEndingCharacterRequired = true;
@@ -459,6 +512,28 @@
         }
     }
 
+    // Copies a Raw example definition to the clipboard so the user can paste it into the field
+    // themselves — the examples are a reference, never an overwrite of what they've typed.
+    private async Task CopyTemplateAsync(string template)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", template);
+            Snackbar.Add("Example copied — paste it into the definition.", Severity.Success);
+        }
+        catch (JSException)
+        {
+            Snackbar.Add("Copy to clipboard failed.", Severity.Warning);
+        }
+    }
+
+    private static string? RawBodyKindLabel(RawSummaryDto summary) => summary.BodyKind switch
+    {
+        RawBodyKind.Braces => "code block",
+        RawBodyKind.Continuation => $"multi-line text ({summary.BodyLineCount} lines)",
+        _ => null,
+    };
+
     private static string KindLabel(HotstringKind kind) => kind switch
     {
         HotstringKind.Text => "Text",
@@ -468,12 +543,32 @@
         _ => kind.ToString(),
     };
 
-    private async Task<bool> ConfirmSwitchAsync(string title, string message)
+    private async Task<bool> ConfirmSwitchAsync(string title, string message, string yesText = "Switch")
     {
         bool? confirm = await DialogService.ShowMessageBoxAsync(
-            title: title, message: message, yesText: "Switch", cancelText: "Cancel");
+            title: title, message: message, yesText: yesText, cancelText: "Cancel");
         return confirm == true;
     }
+
+    // Description merge policy mirroring the server's RawCommentLift.Merge: empty Description → the
+    // lifted comment; equal → unchanged; otherwise the comment appended on a new line.
+    private static string? MergeDescription(string? description, string? lifted)
+    {
+        string? desc = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
+        string? lift = string.IsNullOrWhiteSpace(lifted) ? null : lifted;
+
+        if (lift is null)
+            return desc;
+        if (desc is null)
+            return lift;
+
+        return string.Equals(desc, lift, StringComparison.Ordinal) ? desc : $"{desc}\n{lift}";
+    }
+
+    // The Description as it will be persisted once the lifted comment is merged in — shown in the
+    // summary so the user sees the resulting text before saving.
+    private string MergedDescriptionPreview() =>
+        MergeDescription(Item.Description, _rawSummary?.LiftedComment) ?? "";
 
     private void ClearDateTimeFields()
     {
@@ -688,7 +783,7 @@
         Item.Kind, Item.Trigger, Item.Replacement, Item.IsCaseSensitive,
         Item.OmitEndingCharacter, Item.IsEndingCharacterRequired, Item.IsTriggerInsideWord,
         Item.DateTimeFormat, Item.DateOffsetAmount, Item.DateOffsetUnit,
-        Item.ContextMatchType, Item.ContextValue);
+        Item.ContextMatchType, Item.ContextValue, Item.Description);
 
     private void SchedulePreview(HotstringPreviewRequestDto request, bool debounce)
     {

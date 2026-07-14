@@ -42,7 +42,8 @@ public sealed class UpdateHotstringCommandValidator : AbstractValidator<UpdateHo
             x => x.Input.Replacement);
         this.AddRawKindRules(
             x => x.Input.Kind,
-            x => x.Input.Replacement);
+            x => x.Input.Replacement,
+            x => x.Input.Description);
         this.AddWindowContextRules(
             x => x.Input.ContextMatchType,
             x => x.Input.ContextValue);
@@ -72,13 +73,17 @@ internal sealed class UpdateHotstringCommandHandler(
         UpdateHotstringDto input = request.Input;
 
         // Raw stores the verbatim definition and derives its trigger server-side; the client-sent
-        // Trigger is ignored. Normalize first, then parse. Validation already guaranteed a valid Raw.
+        // Trigger is ignored. One Prepare pass lifts leading comments, normalizes, and parses.
+        // Validation already guaranteed a valid Raw.
         string trigger = input.Trigger;
         string replacement = input.Replacement;
+        string? liftedComment = null;
         if (input.Kind == HotstringKind.Raw)
         {
-            replacement = RawHotstringDefinitionParser.Normalize(input.Replacement);
-            trigger = RawHotstringDefinitionParser.Parse(replacement).Trigger;
+            RawPrepared prepared = RawHotstringDefinitionParser.Prepare(input.Replacement);
+            replacement = prepared.NormalizedDefinition;
+            trigger = prepared.Parsed.Trigger;
+            liftedComment = prepared.LiftedComment;
         }
 
         Guid[] distinctProfileIds = input.ProfileIds?.Distinct().ToArray() ?? [];
@@ -91,7 +96,9 @@ internal sealed class UpdateHotstringCommandHandler(
                 return Result.Invalid(profileError);
         }
 
-        string? description = string.IsNullOrWhiteSpace(input.Description) ? null : input.Description.Trim();
+        string? description = input.Kind == HotstringKind.Raw
+            ? RawCommentLift.Merge(input.Description, liftedComment)
+            : string.IsNullOrWhiteSpace(input.Description) ? null : input.Description.Trim();
 
         Guid[] distinctCategoryIds = input.CategoryIds?.Distinct().ToArray() ?? [];
         ValidationError? categoryError = await OwnedIdsValidation.CheckOwnedIdsAsync(
