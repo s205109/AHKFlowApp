@@ -14,7 +14,8 @@ Goal: every Text row shows **one** chip in the Type column reflecting its **effe
 1. **Keep `Auto` stored; resolve only for display.** `Delivery=Auto` stays dynamic in the DB and in script generation — no migration, no emitter change. The list just displays the resolved delivery.
 2. **Delivery chip replaces the `Text` kind chip.** Text rows show a single chip: `Hotstring` (typed) or `Clipboard`. DateTime / Macro / Raw rows keep their existing kind chip unchanged.
 3. **Wording:** typed = `Hotstring`, clipboard = `Clipboard` (a "clipboard hotstring"). Tooltip may spell out "Clipboard hotstring".
-4. **Align edit-dialog preview chip** to the same wording (`Typed` → `Hotstring`). The Delivery **selector** (Auto / Typed / Clipboard) stays unchanged — those are user intents, not the resolved type.
+4. **Align edit-dialog preview chip** to the same wording (`Typed` → `Hotstring`).
+5. **Selector wording follows the chip** (revised 2026-07-15, supersedes the original "selector stays unchanged"): the Delivery selector reads **Auto / Hotstring / Clipboard**. The original split — selector `Typed` (user intent) vs chip `Hotstring` (resolved type) — made the same mode read under two names in one dialog. One name everywhere wins over the intent/result distinction. The CLI's `--delivery auto|type|clipboard` values are unchanged (see Out of scope).
 
 ## Approach
 
@@ -42,7 +43,8 @@ Compute effective delivery **server-side** and surface it as a new `EffectiveDel
 - **Desktop Type column (`Pages/Hotstrings.razor:152-172`)** — for `Kind == Text`, render **one** chip from `EffectiveDelivery`: `Clipboard` (Color.Info, `clipboard-delivery` class) or `Hotstring` (default color). Non-Text rows render the existing kind chip (Raw warning styling preserved). Keep option glyphs + context icon. `data-test` = `clipboard-delivery` / `hotstring-delivery`.
 - **Mobile list (`Components/Hotstrings/HotstringMobileList.razor:54-55`)** — same single-chip logic via the shared helper.
 - **Tooltip/aria parts (`Hotstrings.razor:966`)** — for Text rows, use the delivery label instead of `KindLabel` so screen-reader text matches the chip.
-- **Edit dialog preview chip (`HotstringEditDialog.razor:197`)** — align wording `Typed` → `Hotstring` (Decision #4). Selector unchanged.
+- **Edit dialog preview chip (`HotstringEditDialog.razor:197`)** — align wording `Typed` → `Hotstring` (Decision #4).
+- **Edit dialog Delivery selector (`HotstringEditDialog.razor:66`)** — option label `Typed` → `Hotstring` so selector and chip name the mode identically (Decision #5). Enum value (`HotstringDelivery.Type`) unchanged.
 
 ### Tests
 
@@ -60,4 +62,4 @@ Compute effective delivery **server-side** and surface it as a new `EffectiveDel
 1. `dotnet build` + `dotnet test` (Application + UI.Blazor test projects) green.
 2. `dotnet format`.
 3. Run the app (no-auth worktree profile) and open Hotstrings: confirm `200b`/`10000c`/`199a` show a single Type chip — `Clipboard` for the two ≥200 rows, `Hotstring` for `199a` and `aaa`; the explicit-Clipboard row shows one `Clipboard` chip (no `Text` chip). Verify with the `playwright-cli` skill / screenshot.
-4. Toggle a Text row's Delivery to Typed/Clipboard/Auto in the edit dialog and confirm the list chip updates on save.
+4. Toggle a Text row's Delivery to Hotstring/Clipboard/Auto in the edit dialog and confirm the list chip updates on save.
