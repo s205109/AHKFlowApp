@@ -24,12 +24,12 @@ Compute effective delivery **server-side** and surface it as a new `EffectiveDel
 
 - **`HotstringDto` (Application, `DTOs/HotstringDto.cs`)** — append `HotstringDelivery EffectiveDelivery = HotstringDelivery.Type` (last positional param, defaulted). XML doc: "Resolved delivery for display; never `Auto`."
 - **Shared mapper `HotstringMappings.ToDto` (`Mapping/HotstringMappings.cs:8`)** — set `EffectiveDelivery = HotstringEmitter.ResolveEffectiveDelivery(h)`. Covers GET-by-id, create, update, restore, revert responses.
-- **List projection (`Queries/Hotstrings/ListHotstringsQuery.cs:202`)** — `ResolveEffectiveDelivery` can't translate to SQL, so inline the equivalent expression (mirrors the resolver, EF-translatable via `LEN()`):
+- **List projection (`Queries/Hotstrings/ListHotstringsQuery.cs:202`)** — `ResolveEffectiveDelivery` can't translate to SQL, so inline the equivalent expression. Use `EF.Functions.DataLength(...) / 2` rather than `h.Replacement.Length`: the latter translates to SQL Server `LEN()`, which strips trailing spaces and would undercount them against the resolver's .NET `Length`. The list-truncation predicate must use the same char count so the two derived columns agree:
   ```csharp
   EffectiveDelivery = h.Kind == HotstringKind.Text
       && (h.Delivery == HotstringDelivery.ClipboardPaste
           || (h.Delivery == HotstringDelivery.Auto
-              && h.Replacement.Length >= HotstringDeliveryDefaults.AutoClipboardThresholdChars))
+              && (EF.Functions.DataLength(h.Replacement) ?? 0) / 2 >= HotstringDeliveryDefaults.AutoClipboardThresholdChars))
       ? HotstringDelivery.ClipboardPaste
       : HotstringDelivery.Type
   ```

@@ -204,7 +204,11 @@ internal sealed class ListHotstringsQueryHandler(
                 h.Profiles.Select(p => p.ProfileId).ToArray(),
                 h.AppliesToAllProfiles,
                 h.Trigger,
-                h.Kind == HotstringKind.Text && h.Replacement.Length > ListReplacementPreviewLength
+                // Trailing spaces matter here: string.Length translates to SQL Server LEN(), which
+                // strips them, so it would disagree with the DATALENGTH-based EffectiveDelivery
+                // below on space-padded replacements. Use the same DATALENGTH/2 char count for both.
+                h.Kind == HotstringKind.Text
+                    && (EF.Functions.DataLength(h.Replacement) ?? 0) / 2 > ListReplacementPreviewLength
                     ? h.Replacement.Substring(0, ListReplacementPreviewLength)
                     : h.Replacement,
                 h.Description,
@@ -222,7 +226,10 @@ internal sealed class ListHotstringsQueryHandler(
                 h.ContextMatchType,
                 h.ContextValue,
                 h.Delivery,
-                h.Kind == HotstringKind.Text && h.Replacement.Length > ListReplacementPreviewLength,
+                // Same DATALENGTH/2 char count as the Replacement projection above — the flag must
+                // report exactly when that projection truncated.
+                h.Kind == HotstringKind.Text
+                    && (EF.Functions.DataLength(h.Replacement) ?? 0) / 2 > ListReplacementPreviewLength,
                 // Mirrors HotstringEmitter.ResolveEffectiveDelivery — keep in sync; that resolver
                 // can't translate to SQL, so the equivalent expression is inlined here. Replacement
                 // is nvarchar(max); string.Length here translates to SQL Server LEN(), which strips

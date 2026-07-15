@@ -50,7 +50,7 @@ public static class NewHotstringCommand
                 string? replacementFilePath = parse.GetValue(replacementFile);
                 string? deliveryValue = parse.GetValue(delivery);
 
-                if (!TryParseDelivery(deliveryValue, out HotstringDelivery parsedDelivery))
+                if (ParseDelivery(deliveryValue) is not HotstringDelivery parsedDelivery)
                 {
                     await stderr.WriteLineAsync("--delivery must be one of: auto, type, clipboard.");
                     return 2;
@@ -90,17 +90,7 @@ public static class NewHotstringCommand
                         replacementValue = await File.ReadAllTextAsync(
                             replacementFilePath, System.Text.Encoding.UTF8, ct);
                     }
-                    catch (IOException ex)
-                    {
-                        await stderr.WriteLineAsync($"Could not read replacement file: {ex.Message}");
-                        return 2;
-                    }
-                    catch (UnauthorizedAccessException ex)
-                    {
-                        await stderr.WriteLineAsync($"Could not read replacement file: {ex.Message}");
-                        return 2;
-                    }
-                    catch (ArgumentException ex)
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
                     {
                         await stderr.WriteLineAsync($"Could not read replacement file: {ex.Message}");
                         return 2;
@@ -206,15 +196,12 @@ public static class NewHotstringCommand
         return cmd;
     }
 
-    private static bool TryParseDelivery(string? value, out HotstringDelivery delivery)
-    {
-        delivery = value?.ToLowerInvariant() switch
+    private static HotstringDelivery? ParseDelivery(string? value) =>
+        value?.ToLowerInvariant() switch
         {
             null or "auto" => HotstringDelivery.Auto,
             "type" => HotstringDelivery.Type,
             "clipboard" => HotstringDelivery.ClipboardPaste,
-            _ => (HotstringDelivery)(-1),
+            _ => null,
         };
-        return delivery != (HotstringDelivery)(-1);
-    }
 }

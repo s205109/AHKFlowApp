@@ -26,6 +26,9 @@ actual CLI surface and how each hotstring kind renders in `list` output.
 - `ahkflow hotstring list` — lists hotstrings of **all** kinds. Supports `--profile`/`-p`,
   `--search`/`-s`/`-g`, `--page`, `--page-size`, and `--json`. There is **no** `--kind` filter
   and **no** `hotstring update` command in the CLI today.
+  - `list` returns a **preview** of each Text replacement, shortened to the first 200 characters.
+    When that happens the row's `replacementIsTruncated` is `true` in `--json` output. `list` is
+    therefore not a backup mechanism — fetch a hotstring individually for its full replacement.
 
 ## `list` table columns
 

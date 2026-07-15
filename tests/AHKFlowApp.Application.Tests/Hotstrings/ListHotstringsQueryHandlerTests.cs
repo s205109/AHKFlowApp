@@ -553,6 +553,39 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
     }
 
     [Fact]
+    public async Task ExecuteAsync_ReplacementLongOnlyByTrailingSpaces_TruncationFlagAgreesWithEffectiveDelivery()
+    {
+        // 150 visible chars + 100 trailing spaces = 250 chars by .NET Length, but SQL Server's
+        // LEN() reports 150. When the truncation predicate used LEN() and EffectiveDelivery used
+        // DATALENGTH, the two disagreed on this row. Both must now see the same 250.
+        var owner = Guid.NewGuid();
+        string replacement = new string('x', 150) + new string(' ', 100);
+        var entity = Hotstring.Create(
+            owner,
+            new HotstringDefinition(
+                "pad", replacement, null, true, true, true,
+                Delivery: HotstringDelivery.Auto),
+            TimeProvider.System);
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(entity);
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        ListHotstringsQueryHandler handler = new(
+            db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
+
+        Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(new ListHotstringsQuery(), default);
+
+        HotstringDto summary = result.Value.Items.Should().ContainSingle().Which;
+        summary.EffectiveDelivery.Should().Be(HotstringDelivery.ClipboardPaste);
+        summary.ReplacementIsTruncated.Should().BeTrue();
+        summary.Replacement.Should().HaveLength(ListHotstringsQueryHandler.ListReplacementPreviewLength);
+    }
+
+    [Fact]
     public async Task ExecuteAsync_MacroHotstring_ProjectsEffectiveDeliveryAsType()
     {
         var owner = Guid.NewGuid();

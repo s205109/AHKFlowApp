@@ -60,7 +60,11 @@ public sealed record HotstringDto(
     DateOffsetUnit? DateOffsetUnit = null,
     WindowMatchType? ContextMatchType = null,
     string? ContextValue = null,
-    HotstringDelivery Delivery = HotstringDelivery.Auto);
+    HotstringDelivery Delivery = HotstringDelivery.Auto,
+    // Set by the list endpoint when it shortened a long Text replacement; detail responses
+    // (create) always carry the full text. Surfaced so `--json` consumers can tell a preview
+    // from a complete replacement rather than silently reading truncated text as the real value.
+    bool ReplacementIsTruncated = false);
 
 public sealed record CreateHotstringDto(
     string Trigger,
