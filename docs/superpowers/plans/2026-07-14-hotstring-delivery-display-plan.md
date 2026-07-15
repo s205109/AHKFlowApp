@@ -15,7 +15,7 @@ Goal: every Text row shows **one** chip in the Type column reflecting its **effe
 2. **Delivery chip replaces the `Text` kind chip.** Text rows show a single chip: `Hotstring` (typed) or `Clipboard`. DateTime / Macro / Raw rows keep their existing kind chip unchanged.
 3. **Wording:** typed = `Hotstring`, clipboard = `Clipboard` (a "clipboard hotstring"). Tooltip may spell out "Clipboard hotstring".
 4. **Align edit-dialog preview chip** to the same wording (`Typed` → `Hotstring`).
-5. **Selector wording follows the chip** (revised 2026-07-15, supersedes the original "selector stays unchanged"): the Delivery selector reads **Auto / Hotstring / Clipboard**. The original split — selector `Typed` (user intent) vs chip `Hotstring` (resolved type) — made the same mode read under two names in one dialog. One name everywhere wins over the intent/result distinction. The CLI's `--delivery auto|type|clipboard` values are unchanged (see Out of scope).
+5. **Selector wording follows the chip** (revised 2026-07-15, supersedes the original "selector stays unchanged"): the Delivery selector reads **Auto / Hotstring / Clipboard**. The original split — selector `Typed` (user intent) vs chip `Hotstring` (resolved type) — made the same mode read under two names in one dialog. One name everywhere wins over the intent/result distinction. The CLI gained `--delivery hotstring` to match, keeping `type` as an alias so existing scripts keep working.
 
 ## Approach
 

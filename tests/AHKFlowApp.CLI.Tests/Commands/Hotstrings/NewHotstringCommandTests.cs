@@ -87,6 +87,8 @@ public sealed class NewHotstringCommandTests
     [Theory]
     [InlineData("auto", HotstringDelivery.Auto)]
     [InlineData("TYPE", HotstringDelivery.Type)]
+    [InlineData("hotstring", HotstringDelivery.Type)] // UI-matching alias for "type".
+    [InlineData("HotString", HotstringDelivery.Type)]
     [InlineData("Clipboard", HotstringDelivery.ClipboardPaste)]
     public async Task Delivery_IsCaseInsensitive_AndMapsToDto(string value, HotstringDelivery expected)
     {
@@ -110,7 +112,7 @@ public sealed class NewHotstringCommandTests
             ["hotstring", "new", "-t", "long", "-r", "replacement", "--delivery", "fast"], hs, profiles);
 
         exit.Should().Be(2);
-        stderr.Should().Contain("auto, type, clipboard");
+        stderr.Should().Contain("auto, hotstring (alias: type), clipboard");
         await hs.DidNotReceive().CreateAsync(Arg.Any<CreateHotstringDto>(), Arg.Any<CancellationToken>());
     }
 

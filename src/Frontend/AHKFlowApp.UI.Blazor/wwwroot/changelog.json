@@ -20,7 +20,7 @@
             "Macro insert toolbar guards: the Cursor button disables once a cursor token exists, and Enter/Tab insertion behind the cursor is blocked with an inline hint.",
             "Window context for hotstrings: restrict a hotstring to a specific app, window class, or window title so the same trigger can expand differently (or not at all) elsewhere. Shown in the edit dialog, live preview, grid, mobile list, history, and `ahkflow hotstring list`.",
             "Script hotstring kind: write a raw AutoHotkey v2 body for power users, emitted verbatim inside a brace block. Guarded by brace-balance and no-directive-line validation, and a persistent warning in the edit dialog, grid, and mobile list — AHKFlow never runs generated scripts, so review them before running: invalid syntax breaks the profile script, and valid code runs with the user's AutoHotkey privileges. Supported in the edit dialog (monospace editor, \"Use Script?\" suggestion for Text replacements that look like code), grid, mobile list, and `ahkflow hotstring list`.",
-            "Clipboard delivery for Text hotstrings, with Auto, Hotstring, and Clipboard choices in the web UI and `--delivery auto|type|clipboard` plus UTF-8 `--replacement-file` support in the CLI."
+            "Clipboard delivery for Text hotstrings, with Auto, Hotstring, and Clipboard choices in the web UI and `--delivery auto|hotstring|clipboard` (`type` accepted as an alias for `hotstring`) plus UTF-8 `--replacement-file` support in the CLI."
           ]
         },
         {

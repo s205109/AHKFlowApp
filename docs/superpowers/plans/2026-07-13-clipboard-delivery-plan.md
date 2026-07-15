@@ -103,7 +103,7 @@ public static HotstringDelivery ResolveEffectiveDelivery(Hotstring hs) =>
 - Lists: minimal "Clipboard" chip for Text rows with explicit delivery. bUnit tests.
 
 ### P9 — CLI
-- Enum copy + `Delivery` on DTOs in `IHotstringsApiClient.cs`. `NewHotstringCommand.cs`: `--delivery auto|type|clipboard` (case-insensitive; invalid → stderr + exit 2). Tests.
+- Enum copy + `Delivery` on DTOs in `IHotstringsApiClient.cs`. `NewHotstringCommand.cs`: `--delivery auto|hotstring|clipboard` (case-insensitive; invalid → stderr + exit 2; `type` kept as an alias for `hotstring` so pre-existing scripts keep working — added 2026-07-15 alongside the UI selector rename). Tests.
 - **`--replacement-file <path>`:** `--replacement` is a process argument, capped well below the 100 000-char clipboard limit by the OS command-line length (~32 767 chars, ~8 191 under `cmd.exe`; [Microsoft docs](https://learn.microsoft.com/en-us/troubleshoot/windows-client/shell-experience/command-line-string-limitation)). Add `--replacement-file` reading UTF-8 file content as the replacement body; mutually exclusive with `--replacement` (both → stderr + exit 2), exactly one of the two required alongside `--trigger` (same rule as today). Tests: file path resolves content correctly; both/neither supplied → exit 2.
 
 ### P10 — Docs, E2E, verify
