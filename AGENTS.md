@@ -145,6 +145,26 @@ HTTP Request -> Controller (thin, maps Result to HTTP)
 - Test behavior (HTTP response, DB state, Result status), not implementation details
 - Frameworks: xUnit, FluentAssertions, NSubstitute, Testcontainers (SQL Server)
 
+## Plans
+
+At the end of each plan, give me a list of unresolved questions to answer, if any. Make the questions extremely concise. Sacrifice grammar for the sake of concision.
+
+When finalizing a plan or spec (right before presenting the final plan for approval), save it in the repo as `docs/superpowers/plans/YYYY-MM-DD-<topic>-plan.md` or `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` — never only in a local plans folder outside the repo.
+
+Only commit plans/specs to `docs/superpowers/` when they relate to project improvements — code, features, infra, deployment, tests, repo tooling that affects contributors. Skip writing (or keep out-of-repo) plans for agent optimization, personal workflow tuning, agent housekeeping, or one-off context/config cleanups.
+
+## Manual Testing Requests
+
+Prefer verifying yourself with browser automation (Playwright preferred; Claude in Chrome as fallback) over asking the user to test manually. Asking is fine when automation can't cover it (e.g. real Azure AD login, visual judgment calls) or when asking is clearly easier or faster.
+
+When asking the user to manually test or verify anything (UI flows, commands, acceptance checks), always provide:
+
+- **Preconditions first** — what must be running, exact URL, login/profile, starting state
+- **Numbered steps, one action each** — never combine actions in one step
+- **Verbatim input in code blocks** — anything typed or pasted is given literally, never described
+- **Expected result per step** — so pass/fail is clear immediately, not only at the end
+- **Feedback labeled per step** — state exactly what to paste or screenshot back, mapped to step numbers (e.g. "reply with: step 3 screenshot, step 5 pasted output")
+
 ## Rules
 
 ### Naming
