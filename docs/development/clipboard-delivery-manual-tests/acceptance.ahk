@@ -19,6 +19,6 @@ AhkFlow_PasteReplacement(text, endChar := "") {
 :T:acc199::aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 :X:acc200::AhkFlow_PasteReplacement("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", A_EndChar)
 :X:accClip::AhkFlow_PasteReplacement("CLIPBOARD-PROBE-PAYLOAD", A_EndChar)
-:X:accO::AhkFlow_PasteReplacement("omit-ending-char-variant")
-:X*:accStar::AhkFlow_PasteReplacement("no-ending-char-required-variant")
+:X:accomit::AhkFlow_PasteReplacement("omit-ending-char-variant")
+:X*:accstar::AhkFlow_PasteReplacement("no-ending-char-required-variant")
 ; --- Hotkeys ---
