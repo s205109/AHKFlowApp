@@ -243,6 +243,19 @@ internal sealed class ListHotstringsQueryHandler(
                     : HotstringDelivery.Type))
             .ToListAsync(ct);
 
+        // SQL SUBSTRING cuts at a UTF-16 code-unit boundary, so a preview ending exactly on the
+        // high surrogate of a supplementary character (emoji, etc.) keeps a lone surrogate that
+        // renders as a broken glyph. Not expressible in the projection above; drop it here.
+        for (int i = 0; i < items.Count; i++)
+        {
+            HotstringDto item = items[i];
+            if (item is { ReplacementIsTruncated: true, Replacement.Length: > 0 }
+                && char.IsHighSurrogate(item.Replacement[^1]))
+            {
+                items[i] = item with { Replacement = item.Replacement[..^1] };
+            }
+        }
+
         return Result.Success(new PagedList<HotstringDto>(items, request.Page, request.PageSize, total));
     }
 

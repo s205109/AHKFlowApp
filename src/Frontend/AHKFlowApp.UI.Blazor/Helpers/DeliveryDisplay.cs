@@ -3,7 +3,7 @@ using AHKFlowApp.UI.Blazor.DTOs;
 namespace AHKFlowApp.UI.Blazor.Helpers;
 
 /// <summary>Single-sourced label/data-test for a Text hotstring's resolved delivery chip.</summary>
-public static class DeliveryDisplay
+internal static class DeliveryDisplay
 {
     public const string ClipboardDataTest = "clipboard-delivery";
     public const string HotstringDataTest = "hotstring-delivery";

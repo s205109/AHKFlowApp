@@ -494,6 +494,37 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
         detail.Value.ReplacementIsTruncated.Should().BeFalse();
     }
 
+    [Fact]
+    public async Task ExecuteAsync_PreviewBoundarySplitsSurrogatePair_DropsLoneSurrogate()
+    {
+        // The 200th UTF-16 code unit is the high surrogate of an emoji, so SQL SUBSTRING(1, 200)
+        // bisects the pair. The preview must not end on a lone surrogate (a broken glyph).
+        var owner = Guid.NewGuid();
+        string replacement = new string('x', 199) + "😀" + new string('y', 50);
+        var entity = Hotstring.Create(
+            owner,
+            new HotstringDefinition(
+                "emoji", replacement, null, true, true, true,
+                Delivery: HotstringDelivery.Auto),
+            TimeProvider.System);
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(entity);
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        ListHotstringsQueryHandler handler = new(
+            db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
+
+        Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(new ListHotstringsQuery(), default);
+
+        HotstringDto summary = result.Value.Items.Should().ContainSingle().Which;
+        summary.ReplacementIsTruncated.Should().BeTrue();
+        summary.Replacement.Should().Be(new string('x', 199));
+    }
+
     [Theory]
     [InlineData(200, HotstringDelivery.Auto, HotstringDelivery.ClipboardPaste)] // Auto at threshold resolves to clipboard.
     [InlineData(199, HotstringDelivery.Auto, HotstringDelivery.Type)] // Auto just under threshold resolves to typed.
