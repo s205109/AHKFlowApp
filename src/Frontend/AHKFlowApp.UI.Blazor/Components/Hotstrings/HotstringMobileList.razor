@@ -1,4 +1,5 @@
 @using AHKFlowApp.UI.Blazor.DTOs
+@using AHKFlowApp.UI.Blazor.Helpers
 @using AHKFlowApp.UI.Blazor.Validation
 @using MudBlazor
 
@@ -49,6 +50,12 @@
                                          title="Raw — verbatim AutoHotkey definition"
                                          UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "script-badge-collapsed" })" />
                             }
+                            @if (item.Kind == HotstringKind.Text)
+                            {
+                                <MudChip T="string" Size="Size.Small"
+                                         Color="@(DeliveryDisplay.IsClipboard(item.EffectiveDelivery) ? Color.Info : Color.Default)"
+                                         UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = DeliveryDisplay.DataTest(item.EffectiveDelivery) })">@DeliveryDisplay.Label(item.EffectiveDelivery)</MudChip>
+                            }
                             @RenderReplacementCell(item)
                         </td>
                         <td class="chevron-cell">@(expanded ? "▾" : "▸")</td>
@@ -81,7 +88,7 @@
                                     else
                                     {
                                         <MudText Typo="Typo.body2" Style="white-space: pre-wrap">
-                                            <strong>Replacement:</strong> @item.Replacement
+                                            <strong>Replacement:</strong> @item.ReplacementPreview
                                         </MudText>
                                     }
                                     @if (!string.IsNullOrWhiteSpace(item.Description))
@@ -165,7 +172,7 @@
     {
         HotstringKind.DateTime => @<text>@item.DateTimeSummary</text>,
         HotstringKind.Raw => @<text>@item.RawSummary</text>,
-        _ => @<text>@item.Replacement</text>,
+        _ => @<text>@item.ReplacementPreview</text>,
     };
 
     private void OnRowClick(HotstringEditModel item)

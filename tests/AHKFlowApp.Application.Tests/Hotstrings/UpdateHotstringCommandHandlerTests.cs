@@ -6,6 +6,7 @@ using AHKFlowApp.Domain.Enums;
 using AHKFlowApp.Infrastructure.Persistence;
 using Ardalis.Result;
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
 using Xunit;
 
 namespace AHKFlowApp.Application.Tests.Hotstrings;
@@ -69,6 +70,37 @@ public sealed class UpdateHotstringCommandHandlerTests(HotstringDbFixture fx)
         result.Value.Trigger.Should().Be("btw");
         result.Value.Replacement.Should().Be("::btw::by the way");
         result.Value.Description.Should().Be("moved note");
+    }
+
+    [Fact]
+    public async Task Handle_WithClipboardDelivery_PersistsAndReturnsDelivery()
+    {
+        var owner = Guid.NewGuid();
+        var entity = Hotstring.Create(
+            owner, new HotstringDefinition("sig", "old", null, true, true, true), TimeProvider.System);
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(entity);
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        UpdateHotstringCommandHandler handler = new(
+            db, CurrentUserHelper.For(owner), TimeProvider.System,
+            new EntityHistoryRecorder(db, TimeProvider.System));
+        UpdateHotstringCommand cmd = new(entity.Id,
+            new UpdateHotstringDto(
+                "sig", "new", null, true, true, true, null,
+                Delivery: HotstringDelivery.ClipboardPaste));
+
+        Result<HotstringDto> result = await handler.ExecuteAsync(cmd, default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Delivery.Should().Be(HotstringDelivery.ClipboardPaste);
+        await using AppDbContext verify = fx.CreateContext();
+        Hotstring persisted = await verify.Hotstrings.SingleAsync(h => h.Id == entity.Id);
+        persisted.Delivery.Should().Be(HotstringDelivery.ClipboardPaste);
     }
 
     [Fact]

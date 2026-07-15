@@ -35,6 +35,31 @@ public sealed class HotstringPreviewEndpointsTests(ApiTestFixture fixture)
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         HotstringPreviewDto? body = await response.Content.ReadFromJsonAsync<HotstringPreviewDto>();
         body!.Snippet.Should().Be(":T:btw::by the way");
+        body.EffectiveDelivery.Should().Be(HotstringDelivery.Type);
+    }
+
+    [Fact]
+    public async Task Preview_ClipboardDelivery_ReturnsSelfContainedSnippetAndEffectiveDelivery()
+    {
+        using HttpClient client = CreateAuthed();
+        var dto = new HotstringPreviewRequestDto(
+            HotstringKind.Text,
+            "sig",
+            "Kind regards,\nBart",
+            IsCaseSensitive: false,
+            OmitEndingCharacter: false,
+            IsEndingCharacterRequired: true,
+            IsTriggerInsideWord: false,
+            Delivery: HotstringDelivery.ClipboardPaste);
+
+        HttpResponseMessage response = await client.PostAsJsonAsync("/api/v1/hotstrings/preview", dto);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        HotstringPreviewDto? body = await response.Content.ReadFromJsonAsync<HotstringPreviewDto>();
+        body!.EffectiveDelivery.Should().Be(HotstringDelivery.ClipboardPaste);
+        body.Snippet.Should().StartWith("AhkFlow_PasteReplacement(text");
+        body.Snippet.Should().Contain(
+            ":X:sig::AhkFlow_PasteReplacement(\"Kind regards,`nBart\", A_EndChar)");
     }
 
     [Fact]

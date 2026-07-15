@@ -24,6 +24,7 @@ public sealed class EntityHistoryRecorderTests(HistoryDbFixture fx)
         Hotstring entity = new HotstringBuilder()
             .WithOwner(owner).WithTrigger("rec1").WithReplacement("body")
             .WithProfiles(profileId).WithCategory(categoryId)
+            .WithDelivery(HotstringDelivery.ClipboardPaste)
             .Build();
 
         await using AppDbContext db = fx.CreateContext();
@@ -45,6 +46,7 @@ public sealed class EntityHistoryRecorderTests(HistoryDbFixture fx)
         snapshot.AppliesToAllProfiles.Should().BeFalse();
         snapshot.ProfileIds.Should().ContainSingle().Which.Should().Be(profileId);
         snapshot.CategoryIds.Should().ContainSingle().Which.Should().Be(categoryId);
+        snapshot.Delivery.Should().Be(HotstringDelivery.ClipboardPaste);
     }
 
     [Fact]

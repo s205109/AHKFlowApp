@@ -63,6 +63,8 @@ internal sealed class ListHotstringsQueryHandler(
     TimeProvider clock)
     : IUseCaseHandler<ListHotstringsQuery, Result<PagedList<HotstringDto>>>
 {
+    internal const int ListReplacementPreviewLength = 200;
+
     // Mirrors SeedHotstringsCommand.s_samples — update both if seed set changes.
     private static readonly (
         string Trigger,
@@ -202,7 +204,13 @@ internal sealed class ListHotstringsQueryHandler(
                 h.Profiles.Select(p => p.ProfileId).ToArray(),
                 h.AppliesToAllProfiles,
                 h.Trigger,
-                h.Replacement,
+                // Trailing spaces matter here: string.Length translates to SQL Server LEN(), which
+                // strips them, so it would disagree with the DATALENGTH-based EffectiveDelivery
+                // below on space-padded replacements. Use the same DATALENGTH/2 char count for both.
+                h.Kind == HotstringKind.Text
+                    && (EF.Functions.DataLength(h.Replacement) ?? 0) / 2 > ListReplacementPreviewLength
+                    ? h.Replacement.Substring(0, ListReplacementPreviewLength)
+                    : h.Replacement,
                 h.Description,
                 h.IsEndingCharacterRequired,
                 h.IsTriggerInsideWord,
@@ -216,8 +224,37 @@ internal sealed class ListHotstringsQueryHandler(
                 h.DateOffsetAmount,
                 h.DateOffsetUnit,
                 h.ContextMatchType,
-                h.ContextValue))
+                h.ContextValue,
+                h.Delivery,
+                // Same DATALENGTH/2 char count as the Replacement projection above — the flag must
+                // report exactly when that projection truncated.
+                h.Kind == HotstringKind.Text
+                    && (EF.Functions.DataLength(h.Replacement) ?? 0) / 2 > ListReplacementPreviewLength,
+                // Mirrors HotstringEmitter.ResolveEffectiveDelivery — keep in sync; that resolver
+                // can't translate to SQL, so the equivalent expression is inlined here. Replacement
+                // is nvarchar(max); string.Length here translates to SQL Server LEN(), which strips
+                // trailing spaces and would undercount them against the resolver's .NET Length. Use
+                // DATALENGTH (byte count) / 2 (UTF-16 chars) instead, which preserves them.
+                h.Kind == HotstringKind.Text
+                    && (h.Delivery == HotstringDelivery.ClipboardPaste
+                        || (h.Delivery == HotstringDelivery.Auto
+                            && (EF.Functions.DataLength(h.Replacement) ?? 0) / 2 >= HotstringDeliveryDefaults.AutoClipboardThresholdChars))
+                    ? HotstringDelivery.ClipboardPaste
+                    : HotstringDelivery.Type))
             .ToListAsync(ct);
+
+        // SQL SUBSTRING cuts at a UTF-16 code-unit boundary, so a preview ending exactly on the
+        // high surrogate of a supplementary character (emoji, etc.) keeps a lone surrogate that
+        // renders as a broken glyph. Not expressible in the projection above; drop it here.
+        for (int i = 0; i < items.Count; i++)
+        {
+            HotstringDto item = items[i];
+            if (item is { ReplacementIsTruncated: true, Replacement.Length: > 0 }
+                && char.IsHighSurrogate(item.Replacement[^1]))
+            {
+                items[i] = item with { Replacement = item.Replacement[..^1] };
+            }
+        }
 
         return Result.Success(new PagedList<HotstringDto>(items, request.Page, request.PageSize, total));
     }

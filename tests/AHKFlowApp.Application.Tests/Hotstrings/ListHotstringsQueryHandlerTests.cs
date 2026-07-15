@@ -457,4 +457,185 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
         dto.ContextMatchType.Should().Be(WindowMatchType.Executable);
         dto.ContextValue.Should().Be("notepad.exe");
     }
+
+    [Fact]
+    public async Task ExecuteAsync_LongTextReplacement_ReturnsBoundedPreviewAndFullDetail()
+    {
+        var owner = Guid.NewGuid();
+        string replacement = new('x', 100_000);
+        var entity = Hotstring.Create(
+            owner,
+            new HotstringDefinition(
+                "long", replacement, null, true, true, true,
+                Delivery: HotstringDelivery.ClipboardPaste),
+            TimeProvider.System);
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(entity);
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        ListHotstringsQueryHandler listHandler = new(
+            db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
+        GetHotstringQueryHandler getHandler = new(db, CurrentUserHelper.For(owner));
+
+        Result<PagedList<HotstringDto>> list = await listHandler.ExecuteAsync(
+            new ListHotstringsQuery(), default);
+        Result<HotstringDto> detail = await getHandler.ExecuteAsync(
+            new GetHotstringQuery(entity.Id), default);
+
+        HotstringDto summary = list.Value.Items.Should().ContainSingle().Which;
+        summary.Replacement.Should().HaveLength(ListHotstringsQueryHandler.ListReplacementPreviewLength);
+        summary.ReplacementIsTruncated.Should().BeTrue();
+        summary.Delivery.Should().Be(HotstringDelivery.ClipboardPaste);
+        detail.Value.Replacement.Should().Be(replacement);
+        detail.Value.ReplacementIsTruncated.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_PreviewBoundarySplitsSurrogatePair_DropsLoneSurrogate()
+    {
+        // The 200th UTF-16 code unit is the high surrogate of an emoji, so SQL SUBSTRING(1, 200)
+        // bisects the pair. The preview must not end on a lone surrogate (a broken glyph).
+        var owner = Guid.NewGuid();
+        string replacement = new string('x', 199) + "😀" + new string('y', 50);
+        var entity = Hotstring.Create(
+            owner,
+            new HotstringDefinition(
+                "emoji", replacement, null, true, true, true,
+                Delivery: HotstringDelivery.Auto),
+            TimeProvider.System);
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(entity);
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        ListHotstringsQueryHandler handler = new(
+            db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
+
+        Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(new ListHotstringsQuery(), default);
+
+        HotstringDto summary = result.Value.Items.Should().ContainSingle().Which;
+        summary.ReplacementIsTruncated.Should().BeTrue();
+        summary.Replacement.Should().Be(new string('x', 199));
+    }
+
+    [Theory]
+    [InlineData(200, HotstringDelivery.Auto, HotstringDelivery.ClipboardPaste)] // Auto at threshold resolves to clipboard.
+    [InlineData(199, HotstringDelivery.Auto, HotstringDelivery.Type)] // Auto just under threshold resolves to typed.
+    [InlineData(10, HotstringDelivery.ClipboardPaste, HotstringDelivery.ClipboardPaste)] // Explicit clipboard resolves regardless of length.
+    public async Task ExecuteAsync_TextHotstring_ProjectsEffectiveDelivery(
+        int replacementLength, HotstringDelivery delivery, HotstringDelivery expected)
+    {
+        var owner = Guid.NewGuid();
+        var entity = Hotstring.Create(
+            owner,
+            new HotstringDefinition(
+                "trg", new string('x', replacementLength), null, true, true, true,
+                Delivery: delivery),
+            TimeProvider.System);
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(entity);
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
+
+        Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(new ListHotstringsQuery(), default);
+
+        result.Value.Items.Should().ContainSingle().Which.EffectiveDelivery.Should().Be(expected);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_AutoDeliveryReplacementWithTrailingSpaces_ProjectsClipboardParityWithEmitter()
+    {
+        // 199 non-space chars + 1 trailing space = 200 chars by .NET Length (what HotstringEmitter
+        // uses), but SQL Server's LEN() strips trailing spaces and would see only 199 — this
+        // regression-tests that the SQL projection uses DATALENGTH instead, so list/emit agree.
+        var owner = Guid.NewGuid();
+        string replacement = new string('x', 199) + " ";
+        var entity = Hotstring.Create(
+            owner,
+            new HotstringDefinition(
+                "trailing", replacement, null, true, true, true,
+                Delivery: HotstringDelivery.Auto),
+            TimeProvider.System);
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(entity);
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
+
+        Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(new ListHotstringsQuery(), default);
+
+        result.Value.Items.Should().ContainSingle().Which.EffectiveDelivery.Should().Be(HotstringDelivery.ClipboardPaste);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ReplacementLongOnlyByTrailingSpaces_TruncationFlagAgreesWithEffectiveDelivery()
+    {
+        // 150 visible chars + 100 trailing spaces = 250 chars by .NET Length, but SQL Server's
+        // LEN() reports 150. When the truncation predicate used LEN() and EffectiveDelivery used
+        // DATALENGTH, the two disagreed on this row. Both must now see the same 250.
+        var owner = Guid.NewGuid();
+        string replacement = new string('x', 150) + new string(' ', 100);
+        var entity = Hotstring.Create(
+            owner,
+            new HotstringDefinition(
+                "pad", replacement, null, true, true, true,
+                Delivery: HotstringDelivery.Auto),
+            TimeProvider.System);
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(entity);
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        ListHotstringsQueryHandler handler = new(
+            db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
+
+        Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(new ListHotstringsQuery(), default);
+
+        HotstringDto summary = result.Value.Items.Should().ContainSingle().Which;
+        summary.EffectiveDelivery.Should().Be(HotstringDelivery.ClipboardPaste);
+        summary.ReplacementIsTruncated.Should().BeTrue();
+        summary.Replacement.Should().HaveLength(ListHotstringsQueryHandler.ListReplacementPreviewLength);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_MacroHotstring_ProjectsEffectiveDeliveryAsType()
+    {
+        var owner = Guid.NewGuid();
+        var entity = Hotstring.Create(
+            owner,
+            new HotstringDefinition("mac", "hello{Enter}", null, true, true, true, Kind: HotstringKind.Macro),
+            TimeProvider.System);
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(entity);
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
+
+        Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(new ListHotstringsQuery(), default);
+
+        result.Value.Items.Should().ContainSingle().Which.EffectiveDelivery.Should().Be(HotstringDelivery.Type);
+    }
 }

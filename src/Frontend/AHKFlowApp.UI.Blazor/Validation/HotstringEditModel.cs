@@ -5,6 +5,10 @@ namespace AHKFlowApp.UI.Blazor.Validation;
 
 public sealed class HotstringEditModel
 {
+    public const int TypedReplacementMaxLength = 4_000;
+    public const int ClipboardReplacementMaxLength = 100_000;
+    public const int RawReplacementMaxLength = 4_200;
+
     public Guid? Id { get; set; }
 
     // Trigger requiredness is conditional on Kind: Raw derives the trigger server-side from the
@@ -13,9 +17,8 @@ public sealed class HotstringEditModel
     [MaxLength(50, ErrorMessage = "Trigger must be 50 characters or fewer.")]
     public string Trigger { get; set; } = "";
 
-    // Requiredness is conditional on Kind (not required for DateTime) — enforced by the
-    // dialog's field-level Required param (Task 10) and by server-side validation.
-    [MaxLength(4000, ErrorMessage = "Replacement must be 4000 characters or fewer.")]
+    // Requiredness and length are conditional on Kind and Delivery. Both editors call
+    // ValidateReplacement so their field and commit validation use this single matrix.
     public string Replacement { get; set; } = "";
 
     [MaxLength(200, ErrorMessage = "Description must be 200 characters or fewer.")]
@@ -33,6 +36,9 @@ public sealed class HotstringEditModel
     public int? DateOffsetAmount { get; set; }
     public DateOffsetUnit? DateOffsetUnit { get; set; }
     public WindowMatchType? ContextMatchType { get; set; }
+    public HotstringDelivery Delivery { get; set; } = HotstringDelivery.Auto;
+    public bool ReplacementIsTruncated { get; set; }
+    public HotstringDelivery EffectiveDelivery { get; set; } = HotstringDelivery.Type;
 
     [MaxLength(200, ErrorMessage = "Context value must be 200 characters or fewer.")]
     public string? ContextValue { get; set; }
@@ -50,6 +56,29 @@ public sealed class HotstringEditModel
     /// stay visible and validated.
     /// </summary>
     public bool IsInlineEditable => Kind == HotstringKind.Text && ContextMatchType is null;
+
+    public int ReplacementMaxLength => Kind switch
+    {
+        HotstringKind.Text when Delivery == HotstringDelivery.Type => TypedReplacementMaxLength,
+        HotstringKind.Text => ClipboardReplacementMaxLength,
+        HotstringKind.Macro => TypedReplacementMaxLength,
+        HotstringKind.Raw => RawReplacementMaxLength,
+        HotstringKind.DateTime => 0,
+        _ => TypedReplacementMaxLength,
+    };
+
+    public string ReplacementPreview => ReplacementIsTruncated ? $"{Replacement}…" : Replacement;
+
+    public string? ValidateReplacement(string? value)
+    {
+        if (Kind == HotstringKind.DateTime)
+            return null;
+        if (string.IsNullOrWhiteSpace(value))
+            return "Replacement is required";
+        if (value.Length > ReplacementMaxLength)
+            return $"Replacement must be {ReplacementMaxLength} characters or fewer";
+        return null;
+    }
 
     /// <summary>
     /// Humanized window-context summary (e.g. "exe:notepad.exe") for the grid tooltip and
@@ -119,6 +148,9 @@ public sealed class HotstringEditModel
         DateOffsetUnit = dto.DateOffsetUnit,
         ContextMatchType = dto.ContextMatchType,
         ContextValue = dto.ContextValue,
+        Delivery = dto.Delivery,
+        ReplacementIsTruncated = dto.ReplacementIsTruncated,
+        EffectiveDelivery = dto.EffectiveDelivery,
     };
 
     public HotstringEditModel Clone() => new()
@@ -140,6 +172,9 @@ public sealed class HotstringEditModel
         DateOffsetUnit = DateOffsetUnit,
         ContextMatchType = ContextMatchType,
         ContextValue = ContextValue,
+        Delivery = Delivery,
+        ReplacementIsTruncated = ReplacementIsTruncated,
+        EffectiveDelivery = EffectiveDelivery,
     };
 
     public CreateHotstringDto ToCreateDto()
@@ -147,7 +182,8 @@ public sealed class HotstringEditModel
         string replacement = Kind == HotstringKind.DateTime ? "" : Replacement;
         return new(Trigger, replacement, AppliesToAllProfiles ? null : [.. ProfileIds], AppliesToAllProfiles,
             IsEndingCharacterRequired, IsTriggerInsideWord, Description, [.. CategoryIds], Kind, IsCaseSensitive,
-            OmitEndingCharacter, DateTimeFormat, DateOffsetAmount, DateOffsetUnit, ContextMatchType, ContextValue);
+            OmitEndingCharacter, DateTimeFormat, DateOffsetAmount, DateOffsetUnit, ContextMatchType, ContextValue,
+            Delivery);
     }
 
     public UpdateHotstringDto ToUpdateDto()
@@ -155,7 +191,8 @@ public sealed class HotstringEditModel
         string replacement = Kind == HotstringKind.DateTime ? "" : Replacement;
         return new(Trigger, replacement, AppliesToAllProfiles ? null : [.. ProfileIds], AppliesToAllProfiles,
             IsEndingCharacterRequired, IsTriggerInsideWord, Description, [.. CategoryIds], Kind, IsCaseSensitive,
-            OmitEndingCharacter, DateTimeFormat, DateOffsetAmount, DateOffsetUnit, ContextMatchType, ContextValue);
+            OmitEndingCharacter, DateTimeFormat, DateOffsetAmount, DateOffsetUnit, ContextMatchType, ContextValue,
+            Delivery);
     }
 
     /// <summary>

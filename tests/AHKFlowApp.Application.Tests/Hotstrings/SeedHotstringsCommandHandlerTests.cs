@@ -3,6 +3,7 @@ using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.Commands.Dev;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Domain.Entities;
+using AHKFlowApp.Domain.Enums;
 using AHKFlowApp.Infrastructure.Persistence;
 using Ardalis.Result;
 using FluentAssertions;
@@ -234,6 +235,31 @@ public sealed class SeedHotstringsCommandHandlerTests(HotstringDbFixture fx)
         await using AppDbContext verify = fx.CreateContext();
         int junctions = await verify.HotstringCategories.CountAsync(hc => hc.Hotstring.OwnerOid == owner);
         junctions.Should().Be(SampleCount);
+    }
+
+    [Fact]
+    public async Task Handle_WhenSampleExists_PreservesEffectiveDeliveryOfPreExistingClipboardRow()
+    {
+        var owner = Guid.NewGuid();
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(Hotstring.Create(
+                owner,
+                new HotstringDefinition(
+                    "btw", "existing", null, true, true, true,
+                    Delivery: HotstringDelivery.ClipboardPaste),
+                TimeProvider.System));
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        var handler = new SeedHotstringsCommandHandler(db, CurrentUserHelper.For(owner), TimeProvider.System, DevEnv(true));
+
+        Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(new SeedHotstringsCommand(Reset: false), default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Items.Should().Contain(h => h.Trigger == "btw" && h.EffectiveDelivery == HotstringDelivery.ClipboardPaste);
     }
 
     [Fact]

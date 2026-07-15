@@ -18,7 +18,8 @@ public sealed class GetHotstringPreviewQueryValidatorTests
         string? dateTimeFormat = null,
         WindowMatchType? contextMatchType = null,
         string? contextValue = null,
-        string? description = null)
+        string? description = null,
+        HotstringDelivery delivery = HotstringDelivery.Auto)
         => new(new HotstringPreviewRequestDto(
             kind,
             trigger,
@@ -30,7 +31,84 @@ public sealed class GetHotstringPreviewQueryValidatorTests
             DateTimeFormat: dateTimeFormat,
             ContextMatchType: contextMatchType,
             ContextValue: contextValue,
-            Description: description));
+            Description: description,
+            Delivery: delivery));
+
+    [Fact]
+    public void Validate_TextAutoAt4001Chars_Succeeds()
+    {
+        ValidationResult result = _sut.Validate(Query(
+            replacement: new string('x', 4001),
+            delivery: HotstringDelivery.Auto));
+
+        result.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Validate_TextTypeAt4001Chars_Fails()
+    {
+        ValidationResult result = _sut.Validate(Query(
+            replacement: new string('x', 4001),
+            delivery: HotstringDelivery.Type));
+
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.Replacement" &&
+            e.ErrorMessage == "Replacement must be 4000 characters or fewer.");
+    }
+
+    [Fact]
+    public void Validate_TextClipboardAt100000Chars_Succeeds()
+    {
+        ValidationResult result = _sut.Validate(Query(
+            replacement: new string('x', 100_000),
+            delivery: HotstringDelivery.ClipboardPaste));
+
+        result.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Validate_TextClipboardAt100001Chars_Fails()
+    {
+        ValidationResult result = _sut.Validate(Query(
+            replacement: new string('x', 100_001),
+            delivery: HotstringDelivery.ClipboardPaste));
+
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.Replacement" &&
+            e.ErrorMessage == "Replacement must be 100000 characters or fewer.");
+    }
+
+    [Fact]
+    public void Validate_MacroAt4001Chars_Fails()
+    {
+        ValidationResult result = _sut.Validate(Query(
+            kind: HotstringKind.Macro,
+            replacement: new string('x', 4001)));
+
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.Replacement" &&
+            e.ErrorMessage == "Replacement must be 4000 characters or fewer.");
+    }
+
+    [Fact]
+    public void Validate_NonTextWithExplicitDelivery_Fails()
+    {
+        ValidationResult result = _sut.Validate(Query(
+            kind: HotstringKind.Macro,
+            delivery: HotstringDelivery.ClipboardPaste));
+
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.Delivery" &&
+            e.ErrorMessage == "Delivery must be Auto unless Kind is Text.");
+    }
+
+    [Fact]
+    public void Validate_InvalidDelivery_Fails()
+    {
+        ValidationResult result = _sut.Validate(Query(delivery: (HotstringDelivery)99));
+
+        result.Errors.Should().Contain(e => e.PropertyName == "Input.Delivery");
+    }
 
     [Fact]
     public void Validate_ContextMatchTypeWithoutValue_Fails()

@@ -1,5 +1,6 @@
 @page "/hotstrings"
 @using AHKFlowApp.UI.Blazor.DTOs
+@using AHKFlowApp.UI.Blazor.Helpers
 @using AHKFlowApp.UI.Blazor.Services
 @using AHKFlowApp.UI.Blazor.Validation
 @using AHKFlowApp.UI.Blazor.Components.Hotstrings
@@ -98,11 +99,11 @@
                             @if (IsEditing(context.Item))
                             {
                                 <MudTextField @bind-Value="context.Item.Replacement"
-                                              Validation="@(new Func<string, string?>(ValidateReplacement))"
-                                              Error="@(_commitAttempted && ValidateReplacement(context.Item.Replacement) is not null)"
-                                              ErrorText="@(_commitAttempted ? ValidateReplacement(context.Item.Replacement) : null)"
+                                              Validation="@(new Func<string, string?>(context.Item.ValidateReplacement))"
+                                              Error="@(_commitAttempted && context.Item.ValidateReplacement(context.Item.Replacement) is not null)"
+                                              ErrorText="@(_commitAttempted ? context.Item.ValidateReplacement(context.Item.Replacement) : null)"
                                               Lines="3"
-                                              Immediate="true" MaxLength="4000"
+                                              Immediate="true" MaxLength="@context.Item.ReplacementMaxLength"
                                               UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "replacement-input" })" />
                             }
                             else if (context.Item.Kind == HotstringKind.DateTime)
@@ -119,7 +120,7 @@
                             }
                             else
                             {
-                                <span style="white-space: pre-wrap">@context.Item.Replacement</span>
+                                <span style="white-space: pre-wrap">@context.Item.ReplacementPreview</span>
                             }
                         </CellTemplate>
                     </PropertyColumn>
@@ -153,9 +154,7 @@
                         <CellTemplate>
                             <MudTooltip Text="@OptionsTooltip(context.Item)">
                                 <span class="type-badge">
-                                    <MudChip T="string" Size="Size.Small" Color="@(context.Item.Kind == HotstringKind.Raw ? Color.Warning : Color.Default)"
-                                             Icon="@(context.Item.Kind == HotstringKind.Raw ? Icons.Material.Filled.Warning : null)"
-                                             UserAttributes="@KindChipAttributes(context.Item.Kind)">@KindLabel(context.Item.Kind)</MudChip>
+                                    @RenderTypeChip(context.Item)
                                     <span class="option-glyphs">@OptionGlyphs(context.Item)</span>
                                     @if (context.Item.ContextMatchType is not null)
                                     {
@@ -450,10 +449,20 @@
             await _grid.ReloadServerData();
     }
 
-    private void StartEditAsync(HotstringEditModel item)
+    private async Task StartEditAsync(HotstringEditModel item)
     {
-        _editingItem = item;
+        bool requiresGridReload = item.ReplacementIsTruncated;
+        HotstringEditModel? editable = requiresGridReload
+            ? await LoadEditableItemAsync(item)
+            : item;
+        if (editable is null)
+            return;
+
+        _editingItem = editable;
         _commitAttempted = false;
+
+        if (requiresGridReload && _grid is not null)
+            await _grid.ReloadServerData();
     }
 
     private async Task CancelEditAsync()
@@ -475,17 +484,10 @@
         return null;
     }
 
-    private static string? ValidateReplacement(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value)) return "Replacement is required";
-        if (value.Length > 4000) return "Replacement must be 4000 characters or fewer";
-        return null;
-    }
-
     private async Task CommitEditAsync(HotstringEditModel item)
     {
         _commitAttempted = true;
-        if (ValidateTrigger(item.Trigger) is not null || ValidateReplacement(item.Replacement) is not null)
+        if (ValidateTrigger(item.Trigger) is not null || item.ValidateReplacement(item.Replacement) is not null)
             return;
 
         _commitAttempted = false;
@@ -780,9 +782,13 @@
         _dialogOpen = true;
         try
         {
+            HotstringEditModel? editable = await LoadEditableItemAsync(item);
+            if (editable is null)
+                return;
+
             DialogParameters parameters = new()
             {
-                [nameof(HotstringEditDialog.Item)] = item.Clone(),
+                [nameof(HotstringEditDialog.Item)] = editable,
                 [nameof(HotstringEditDialog.Profiles)] = _profiles,
                 [nameof(HotstringEditDialog.Categories)] = _categories,
             };
@@ -801,6 +807,19 @@
         {
             _dialogOpen = false;
         }
+    }
+
+    private async Task<HotstringEditModel?> LoadEditableItemAsync(HotstringEditModel item)
+    {
+        if (!item.ReplacementIsTruncated || item.Id is not { } id)
+            return item.Clone();
+
+        ApiResult<HotstringDto> result = await Api.GetAsync(id, _cts.Token);
+        if (result.IsSuccess)
+            return HotstringEditModel.FromDto(result.Value!);
+
+        Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
+        return null;
     }
 
     private async Task MobileBulkDeleteAsync(IReadOnlyList<Guid> ids)
@@ -918,6 +937,20 @@
         _ => kind.ToString(),
     };
 
+    // Text rows show the resolved delivery chip (Hotstring/Clipboard) instead of a "Text" kind
+    // chip — the delivery is the more useful signal once Auto resolves per-row. Non-Text kinds
+    // keep their existing kind chip.
+    private RenderFragment RenderTypeChip(HotstringEditModel item) => item.Kind == HotstringKind.Text
+        ? @<MudChip T="string" Size="Size.Small"
+                    Color="@(DeliveryDisplay.IsClipboard(item.EffectiveDelivery) ? Color.Info : Color.Default)"
+                    UserAttributes="@DeliveryChipAttributes(item.EffectiveDelivery)">@DeliveryDisplay.Label(item.EffectiveDelivery)</MudChip>
+        : @<MudChip T="string" Size="Size.Small" Color="@(item.Kind == HotstringKind.Raw ? Color.Warning : Color.Default)"
+                    Icon="@(item.Kind == HotstringKind.Raw ? Icons.Material.Filled.Warning : null)"
+                    UserAttributes="@KindChipAttributes(item.Kind)">@KindLabel(item.Kind)</MudChip>;
+
+    private static Dictionary<string, object?> DeliveryChipAttributes(HotstringDelivery effectiveDelivery) =>
+        new() { ["data-test"] = DeliveryDisplay.DataTest(effectiveDelivery) };
+
     private static string OptionGlyphs(HotstringEditModel item)
     {
         // Raw carries its options inside the verbatim definition; the structured flags are left at
@@ -938,7 +971,7 @@
 
     private static string OptionsTooltip(HotstringEditModel item)
     {
-        List<string> parts = [KindLabel(item.Kind)];
+        List<string> parts = [item.Kind == HotstringKind.Text ? DeliveryDisplay.Label(item.EffectiveDelivery) : KindLabel(item.Kind)];
         if (item.Kind == HotstringKind.Raw)
         {
             // Raw's structured flags are meaningless (options live in the verbatim text) — skip them.
