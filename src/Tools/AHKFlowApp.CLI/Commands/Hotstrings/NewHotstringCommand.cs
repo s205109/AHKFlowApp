@@ -19,7 +19,7 @@ public static class NewHotstringCommand
         };
         Option<string> delivery = new("--delivery")
         {
-            Description = "Text delivery mode: auto, type, or clipboard (default: auto).",
+            Description = "Text delivery mode: auto, hotstring (alias: type), or clipboard (default: auto).",
         };
         Option<string> raw = new("--raw")
         {
@@ -52,7 +52,7 @@ public static class NewHotstringCommand
 
                 if (ParseDelivery(deliveryValue) is not HotstringDelivery parsedDelivery)
                 {
-                    await stderr.WriteLineAsync("--delivery must be one of: auto, type, clipboard.");
+                    await stderr.WriteLineAsync("--delivery must be one of: auto, hotstring (alias: type), clipboard.");
                     return 2;
                 }
 
@@ -196,11 +196,13 @@ public static class NewHotstringCommand
         return cmd;
     }
 
+    // "hotstring" matches the web UI's Delivery selector and list chip wording; "type" is the
+    // original value and stays accepted so existing scripts keep working. Both mean Type.
     private static HotstringDelivery? ParseDelivery(string? value) =>
         value?.ToLowerInvariant() switch
         {
             null or "auto" => HotstringDelivery.Auto,
-            "type" => HotstringDelivery.Type,
+            "type" or "hotstring" => HotstringDelivery.Type,
             "clipboard" => HotstringDelivery.ClipboardPaste,
             _ => null,
         };
