@@ -4,6 +4,43 @@ Manual acceptance checklist from
 [`docs/superpowers/plans/2026-07-13-clipboard-delivery-plan.md`](../../superpowers/plans/2026-07-13-clipboard-delivery-plan.md#verification).
 Run once against a real AutoHotkey v2 install before merging `feature/wt-clipboard-delivery`.
 
+## Fast path — `acceptance.ahk`
+
+`acceptance.ahk` covers every runtime item in one file. It was produced by the real
+`AhkScriptGenerator`, so it is byte-identical to what a download would emit — no API, UI,
+or database needed. Run it with AutoHotkey v2 and type the triggers into Notepad.
+
+**Run this first — it decides whether the implementation is correct.** The emitter assumes
+AHK *consumes* the ending character for `X` (execute) hotstrings and re-sends it via
+`A_EndChar`. If that assumption is wrong, two triggers below fail together, and the fix is
+to drop the `A_EndChar` argument in `HotstringEmitter.BuildClipboardBody` and update the
+golden tests in `AhkScriptGeneratorTests.cs`.
+
+| Type this | Assumption holds (ship it) | Assumption wrong (fix emitter) |
+|---|---|---|
+| `acc1` + Space | Five lines, then **exactly one** space | **Two** spaces — end char both survived and was re-sent |
+| `accO` + Space | **No** trailing space (omit honored) | **One** space — omit silently ignored |
+
+Both probe the same unknown from opposite directions, so they agree. If they disagree,
+stop and report it — that means something subtler than the plan's binary.
+
+Remaining triggers, all in the same file:
+
+| Type this | Expect |
+|---|---|
+| `acc199` + Space | 199 `a` characters typed visibly, character by character |
+| `acc200` + Space | 200 `b` characters appear instantly (pasted) |
+| `accStar` | Fires with no ending char; no stray char after the text |
+| `acc100k` + Space | All 100,000 `x` characters arrive, no truncation or corruption |
+| `accClip` + Space | Copy a marker string first; after the paste, `Ctrl+V` elsewhere returns **the marker**, not the replacement |
+
+The 199-vs-200 boundary is already proven statically: the generated script emits `:T:acc199::`
+(typed) and `:X:acc200::` (paste). Typing them only confirms the runtime behavior matches.
+
+## Full path (UI-driven)
+
+Use this if you also want to exercise the Create/Preview path and the preview chip.
+
 ## Before you start
 
 - AutoHotkey v2 installed; Notepad (or similar) open as the paste target.
