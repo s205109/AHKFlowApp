@@ -243,16 +243,17 @@ internal static partial class HotstringRules
             .When(x => !IsText(x) && Enum.IsDefined(deliveryFn(x)))
             .WithMessage("Delivery must be Auto unless Kind is Text.");
 
-        validator.RuleFor(replacement)
-            .MaximumLength(ReplacementMaxLength)
-            .When(x => IsText(x) && deliveryFn(x) == HotstringDelivery.Type)
-            .WithMessage($"Replacement must be {ReplacementMaxLength} characters or fewer.");
+        // One rule with a computed limit rather than a MaximumLength block per delivery mode:
+        // paired When predicates would have to stay jointly exhaustive over the enum by hand, so a
+        // future delivery mode matching neither would silently get an unbounded replacement.
+        int LimitFor(T x) => deliveryFn(x) == HotstringDelivery.Type
+            ? ReplacementMaxLength
+            : ClipboardReplacementMaxLength;
 
         validator.RuleFor(replacement)
-            .MaximumLength(ClipboardReplacementMaxLength)
-            .When(x => IsText(x)
-                && deliveryFn(x) is HotstringDelivery.Auto or HotstringDelivery.ClipboardPaste)
-            .WithMessage($"Replacement must be {ClipboardReplacementMaxLength} characters or fewer.");
+            .Must((x, value) => value is null || value.Length <= LimitFor(x))
+            .When(IsText)
+            .WithMessage(x => $"Replacement must be {LimitFor(x)} characters or fewer.");
     }
 
     /// <summary>
