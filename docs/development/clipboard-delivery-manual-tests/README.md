@@ -48,8 +48,10 @@ The 199-vs-200 boundary is also proven statically: the generated script emits `:
 | `type199` | **Pass** — 199 `a` chars, typed |
 | `paste200` | **Pass** — 200 `b` chars, pasted |
 | `starend` | **Pass** — fires with no ending char |
-| `big100k` | Pending |
-| `clipmark` | Pending — paste confirmed, clipboard *restoration* not yet verified |
+| `big100k` | **Pass** — 100,000 chars pasted, no truncation or corruption; `ClipWait(1)` is sufficient |
+| `clipmark` | **Pass** — clipboard restored to its pre-paste contents after the paste |
+
+All items pass. The plan's pre-merge manual acceptance gate is satisfied.
 
 ## Full path (UI-driven)
 
