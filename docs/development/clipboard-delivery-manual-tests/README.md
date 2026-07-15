@@ -10,39 +10,46 @@ Run once against a real AutoHotkey v2 install before merging `feature/wt-clipboa
 `AhkScriptGenerator`, so it is byte-identical to what a download would emit — no API, UI,
 or database needed. Run it with AutoHotkey v2 and type the triggers into Notepad.
 
-**Run `acc1` first — it decides whether the implementation is correct.** The emitter assumes
-AHK *consumes* the ending character for `X` (execute) hotstrings and re-sends it via
-`A_EndChar`. If that assumption is wrong, two triggers below fail together, and the fix is
-to drop the `A_EndChar` argument in `HotstringEmitter.BuildClipboardBody` and update the
-golden tests in `AhkScriptGeneratorTests.cs`.
+**Close your other AutoHotkey scripts first.** A personal hotstring script running in the
+background can swallow these triggers — during the 2026-07-15 pass, triggers silently
+failed to fire on Space until an unrelated script was closed.
+
+**`endchar` decides whether the implementation is correct.** The emitter assumes AHK
+*consumes* the ending character for `X` (execute) hotstrings and re-sends it via
+`A_EndChar`. If that assumption is wrong, two triggers fail together, and the fix is to drop
+the `A_EndChar` argument in `HotstringEmitter.BuildClipboardBody` and update the golden
+tests in `AhkScriptGeneratorTests.cs`.
 
 | Type this | Assumption holds (ship it) | Assumption wrong (fix emitter) |
 |---|---|---|
-| `acc1` + Space | Five lines, then **exactly one** space | **Two** spaces — end char both survived and was re-sent |
-| `accomit` + Space | **No** trailing space (omit honored) | **One** space — omit silently ignored |
+| `endchar` + Space | Five lines, then **exactly one** space | **Two** spaces — end char both survived and was re-sent |
+| `omitend` + Space | **No** trailing space (omit honored) | **One** space — omit silently ignored |
 
 Both probe the same unknown from opposite directions, so they agree. If they disagree,
 stop and report it — that means something subtler than the plan's binary.
 
-**Verified 2026-07-15 (AHK v2.0.19):** `acc1` produced exactly one space — AHK consumes the
-ending character and the `A_EndChar` re-send is correct.
-
-Remaining triggers, all in the same file:
-
 | Type this | Expect |
 |---|---|
-| `acc199` + Space | 199 `a` characters typed visibly, character by character |
-| `acc200` + Space | 200 `b` characters appear instantly (pasted) |
-| `accstar` | Fires with no ending char; no stray char after the text |
-| `acc100k` + Space | All 100,000 `x` characters arrive, no truncation or corruption |
-| `accClip` + Space | Copy a marker string first; after the paste, `Ctrl+V` elsewhere returns **the marker**, not the replacement |
+| `type199` + Space | 199 `a` characters typed visibly, character by character |
+| `paste200` + Space | 200 `b` characters appear instantly (pasted) |
+| `starend` | Fires with no ending char; no stray char after the text |
+| `big100k` + Space | All 100,000 `x` characters arrive, no truncation or corruption |
+| `clipmark` + Space | Copy a marker string first; after the paste, `Ctrl+V` elsewhere returns **the marker**, not the replacement |
 
-Triggers are deliberately lowercase and digit-free where ambiguity would bite (`accomit`,
-not `accO` — capital O reads as zero). Hotstrings are case-insensitive here, so type them
-however you like.
+The 199-vs-200 boundary is also proven statically: the generated script emits `:T:type199::`
+(typed) and `:X:paste200::` (paste). Typing them only confirms the runtime behavior matches.
 
-The 199-vs-200 boundary is already proven statically: the generated script emits `:T:acc199::`
-(typed) and `:X:acc200::` (paste). Typing them only confirms the runtime behavior matches.
+### Results — 2026-07-15, AHK v2.0.19
+
+| Item | Result |
+|---|---|
+| `endchar` | **Pass** — exactly one space; AHK consumes the end char, so the `A_EndChar` re-send is correct |
+| `omitend` | **Pass** — no trailing space; omit honored |
+| `type199` | **Pass** — 199 `a` chars, typed |
+| `paste200` | **Pass** — 200 `b` chars, pasted |
+| `starend` | **Pass** — fires with no ending char |
+| `big100k` | Pending |
+| `clipmark` | Pending — paste confirmed, clipboard *restoration* not yet verified |
 
 ## Full path (UI-driven)
 
