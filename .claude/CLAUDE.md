@@ -6,14 +6,6 @@ Be concise in all interactions. Optimize for readability when writing documentat
 
 > Sections below are specific to Claude Code. Shared instructions are in AGENTS.md.
 
-## Plans
-
-At the end of each plan, give me a list of unresolved questions to answer, if any. Make the questions extremely concise. Sacrifice grammar for the sake of concision.
-
-When finalizing a plan or spec (in plan mode: right before calling ExitPlanMode), save it in the repo as `docs/superpowers/plans/YYYY-MM-DD-<topic>-plan.md` or `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` — never only in a local plans folder outside the repo.
-
-Only commit plans/specs to `docs/superpowers/` when they relate to project improvements — code, features, infra, deployment, tests, repo tooling that affects contributors. Skip writing (or keep out-of-repo) plans for Claude Code optimization, personal workflow tuning, agent housekeeping, or one-off context/config cleanups.
-
 ## Workflow Preferences
 
 - When asked to store instructions or rules, put them in CLAUDE.md (not memory files) unless explicitly told otherwise.
