@@ -114,14 +114,17 @@ public static HotstringDelivery ResolveEffectiveDelivery(Hotstring hs) =>
 
 ## Verification
 - TDD gates: P1 validator, P2/P3 golden tests red→green.
-- Static: `AutoHotkey.exe /Validate` (or `/ErrorStdOut`) against the full generated script for a profile mixing short/typed and long/clipboard hotstrings — catches syntax errors the golden tests can't (this is static parse validation, not running the script; still within the project's no-runtime-execution rule).
-- Manual acceptance checklist (real AHK v2 install, one pass before merge — no automated AHK execution, per project scope):
-  1. **End-char behavior (was Q1):** trigger a 5-line X hotstring manually; confirm whether AHK consumes the ending char before the paste fires or whether it survives into the target app. Drop the `A_EndChar` arg from `AhkFlow_PasteReplacement` calls if it survives (finalize before P2 golden tests lock the signature).
-  2. 199-char and 200-char Text replacements — confirm the boundary: 199 types, 200 pastes.
-  3. `O` (OmitEndingCharacter) and `*` (no ending char) variants — confirm no stray ending-char paste.
-  4. Ending character is preserved/consumed consistently with step 1's finding, across both variants.
-  5. 100 000-char replacement — paste completes and target app receives full text.
-  6. Clipboard is restored to its pre-paste contents after each paste.
+- ~~Static: `AutoHotkey.exe /Validate`~~ — **not available.** `/Validate` does not exist in AHK v2.0.19 (it is a v2.1+ feature); invoking it there runs the script instead of parsing it, which the no-runtime-execution rule forbids. Dropped: the manual pass below covers the same syntax risk, since a syntax error would stop the script from loading at all.
+- **Manual acceptance checklist — COMPLETE, 2026-07-15, AHK v2.0.19. All items pass.**
+  Run via [`docs/development/clipboard-delivery-manual-tests/`](../../development/clipboard-delivery-manual-tests/README.md)
+  (`acceptance.ahk` — one generated file covering every item).
+  1. **End-char behavior (was Q1): RESOLVED — AHK consumes the ending char.** A 5-line X hotstring plus Space produced exactly one space, so the `A_EndChar` re-send in `HotstringEmitter.BuildClipboardBody` is correct and the P2 golden tests encode the right expectation. No change needed.
+  2. 199/200 boundary: **pass** — 199 types (`:T:`), 200 pastes (`:X:`).
+  3. `O` and `*` variants: **pass** — no stray ending char. `O` confirms item 1 from the opposite direction: the emitter drops the `O` flag for clipboard delivery and controls the ending char solely by whether it passes `A_EndChar`, which only works because AHK consumes it.
+  4. Ending char consistent across both variants: **pass**.
+  5. 100 000-char replacement: **pass** — full text delivered, no truncation; `ClipWait(1)` is sufficient.
+  6. Clipboard restored to pre-paste contents: **pass**.
+- **Gotcha for re-runs:** a background AHK script with its own hotstrings can swallow the triggers — they silently fail to fire. Close other AHK scripts before testing.
 - E2E download assertion; full suite green before PR.
 
 ## Out of scope
