@@ -10,7 +10,7 @@ Run once against a real AutoHotkey v2 install before merging `feature/wt-clipboa
 `AhkScriptGenerator`, so it is byte-identical to what a download would emit — no API, UI,
 or database needed. Run it with AutoHotkey v2 and type the triggers into Notepad.
 
-**Run this first — it decides whether the implementation is correct.** The emitter assumes
+**Run `acc1` first — it decides whether the implementation is correct.** The emitter assumes
 AHK *consumes* the ending character for `X` (execute) hotstrings and re-sends it via
 `A_EndChar`. If that assumption is wrong, two triggers below fail together, and the fix is
 to drop the `A_EndChar` argument in `HotstringEmitter.BuildClipboardBody` and update the
@@ -19,10 +19,13 @@ golden tests in `AhkScriptGeneratorTests.cs`.
 | Type this | Assumption holds (ship it) | Assumption wrong (fix emitter) |
 |---|---|---|
 | `acc1` + Space | Five lines, then **exactly one** space | **Two** spaces — end char both survived and was re-sent |
-| `accO` + Space | **No** trailing space (omit honored) | **One** space — omit silently ignored |
+| `accomit` + Space | **No** trailing space (omit honored) | **One** space — omit silently ignored |
 
 Both probe the same unknown from opposite directions, so they agree. If they disagree,
 stop and report it — that means something subtler than the plan's binary.
+
+**Verified 2026-07-15 (AHK v2.0.19):** `acc1` produced exactly one space — AHK consumes the
+ending character and the `A_EndChar` re-send is correct.
 
 Remaining triggers, all in the same file:
 
@@ -30,9 +33,13 @@ Remaining triggers, all in the same file:
 |---|---|
 | `acc199` + Space | 199 `a` characters typed visibly, character by character |
 | `acc200` + Space | 200 `b` characters appear instantly (pasted) |
-| `accStar` | Fires with no ending char; no stray char after the text |
+| `accstar` | Fires with no ending char; no stray char after the text |
 | `acc100k` + Space | All 100,000 `x` characters arrive, no truncation or corruption |
 | `accClip` + Space | Copy a marker string first; after the paste, `Ctrl+V` elsewhere returns **the marker**, not the replacement |
+
+Triggers are deliberately lowercase and digit-free where ambiguity would bite (`accomit`,
+not `accO` — capital O reads as zero). Hotstrings are case-insensitive here, so type them
+however you like.
 
 The 199-vs-200 boundary is already proven statically: the generated script emits `:T:acc199::`
 (typed) and `:X:acc200::` (paste). Typing them only confirms the runtime behavior matches.
