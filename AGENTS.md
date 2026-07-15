@@ -79,7 +79,8 @@ dotnet format
 ## Architecture Rules
 
 - **Clean Architecture:** API -> Infrastructure -> Application -> Domain (strict inward dependency)
-- Domain and Application have **no references** to EF Core or infrastructure concerns
+- **Domain** has **no references** to EF Core or infrastructure concerns — zero external dependencies
+- **Application** references EF Core by design (it injects `AppDbContext` per the no-repository rule below), including the SQL Server provider for `EF.Functions` translations. It must not reference the API or Infrastructure projects.
 - **No repository pattern** — IUseCaseHandler implementations inject AppDbContext directly (DbSet is already a repository)
 - **Explicit use cases** for all commands/queries — Controller -> IUseCase<TRequest,TResult>.ExecuteAsync() -> IUseCaseHandler -> DbContext
 - **Ardalis.Result** — handlers return Result<T>, controllers map via `result.ToActionResult(this)`
