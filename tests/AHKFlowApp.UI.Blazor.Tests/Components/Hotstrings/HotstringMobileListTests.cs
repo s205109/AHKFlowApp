@@ -246,8 +246,35 @@ public sealed class HotstringMobileListTests : BunitContext, IAsyncLifetime
             .Add(c => c.Profiles, (IReadOnlyList<ProfileDto>)[])
             .Add(c => c.Categories, (IReadOnlyList<CategoryDto>)[]));
 
-        cut.Find("td.replacement-cell").TextContent.Should().Be("by the way");
+        cut.Find("td.replacement-cell").TextContent.Should().Contain("by the way");
         cut.FindAll("td.replacement-cell .macro-token-chip").Should().BeEmpty();
+    }
+
+    [Fact]
+    public void TextRow_CollapsedCell_ShowsHotstringChipByDefault()
+    {
+        IRenderedComponent<HotstringMobileList> cut = Render<HotstringMobileList>(p => p
+            .Add(c => c.Items, [Item("btw", "by the way")])
+            .Add(c => c.Profiles, (IReadOnlyList<ProfileDto>)[])
+            .Add(c => c.Categories, (IReadOnlyList<CategoryDto>)[]));
+
+        cut.Find("[data-test=\"hotstring-delivery\"]").TextContent.Should().Contain("Hotstring");
+        cut.FindAll("[data-test=\"clipboard-delivery\"]").Should().BeEmpty();
+    }
+
+    [Fact]
+    public void TextRow_CollapsedCell_ShowsClipboardChipFromEffectiveDelivery()
+    {
+        HotstringEditModel item = Item("long", "replacement text");
+        item.EffectiveDelivery = HotstringDelivery.ClipboardPaste;
+
+        IRenderedComponent<HotstringMobileList> cut = Render<HotstringMobileList>(p => p
+            .Add(c => c.Items, [item])
+            .Add(c => c.Profiles, (IReadOnlyList<ProfileDto>)[])
+            .Add(c => c.Categories, (IReadOnlyList<CategoryDto>)[]));
+
+        cut.Find("[data-test=\"clipboard-delivery\"]").TextContent.Should().Contain("Clipboard");
+        cut.FindAll("[data-test=\"hotstring-delivery\"]").Should().BeEmpty();
     }
 
     [Fact]

@@ -455,4 +455,58 @@ public sealed class HotstringEditModelTests
 
         model.ContextSummary.Should().BeEmpty();
     }
+
+    [Theory]
+    [InlineData(HotstringKind.Text, HotstringDelivery.Type, 4_000)]
+    [InlineData(HotstringKind.Text, HotstringDelivery.Auto, 100_000)]
+    [InlineData(HotstringKind.Text, HotstringDelivery.ClipboardPaste, 100_000)]
+    [InlineData(HotstringKind.Macro, HotstringDelivery.Auto, 4_000)]
+    [InlineData(HotstringKind.Raw, HotstringDelivery.Auto, 4_200)]
+    [InlineData(HotstringKind.DateTime, HotstringDelivery.Auto, 0)]
+    public void ReplacementMaxLength_UsesKindAndDeliveryMatrix(
+        HotstringKind kind,
+        HotstringDelivery delivery,
+        int expected)
+    {
+        HotstringEditModel model = new() { Kind = kind, Delivery = delivery };
+
+        model.ReplacementMaxLength.Should().Be(expected);
+    }
+
+    [Theory]
+    [InlineData(HotstringKind.Text, HotstringDelivery.Type, 4_001, false)]
+    [InlineData(HotstringKind.Text, HotstringDelivery.Auto, 4_001, true)]
+    [InlineData(HotstringKind.Text, HotstringDelivery.ClipboardPaste, 100_000, true)]
+    [InlineData(HotstringKind.Text, HotstringDelivery.ClipboardPaste, 100_001, false)]
+    [InlineData(HotstringKind.Macro, HotstringDelivery.Auto, 4_001, false)]
+    [InlineData(HotstringKind.Raw, HotstringDelivery.Auto, 4_201, false)]
+    public void ValidateReplacement_UsesKindAndDeliveryMatrix(
+        HotstringKind kind,
+        HotstringDelivery delivery,
+        int length,
+        bool expectedValid)
+    {
+        HotstringEditModel model = new() { Kind = kind, Delivery = delivery };
+
+        string? error = model.ValidateReplacement(new string('x', length));
+
+        (error is null).Should().Be(expectedValid);
+    }
+
+    [Fact]
+    public void Delivery_RoundTripsThroughDtoAndClone()
+    {
+        HotstringDto dto = MakeDto() with
+        {
+            Delivery = HotstringDelivery.ClipboardPaste,
+            ReplacementIsTruncated = true,
+        };
+
+        HotstringEditModel model = HotstringEditModel.FromDto(dto).Clone();
+
+        model.Delivery.Should().Be(HotstringDelivery.ClipboardPaste);
+        model.ReplacementIsTruncated.Should().BeTrue();
+        model.ToCreateDto().Delivery.Should().Be(HotstringDelivery.ClipboardPaste);
+        model.ToUpdateDto().Delivery.Should().Be(HotstringDelivery.ClipboardPaste);
+    }
 }

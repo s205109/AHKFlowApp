@@ -19,4 +19,7 @@ public sealed record HotstringDto(
     int? DateOffsetAmount = null,
     DateOffsetUnit? DateOffsetUnit = null,
     WindowMatchType? ContextMatchType = null,
-    string? ContextValue = null);
+    string? ContextValue = null,
+    HotstringDelivery Delivery = HotstringDelivery.Auto,
+    bool ReplacementIsTruncated = false,
+    HotstringDelivery EffectiveDelivery = HotstringDelivery.Type);

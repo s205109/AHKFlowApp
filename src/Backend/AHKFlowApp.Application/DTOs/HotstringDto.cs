@@ -22,6 +22,9 @@ namespace AHKFlowApp.Application.DTOs;
 /// <param name="DateOffsetUnit">Unit for <paramref name="DateOffsetAmount"/>; requires <paramref name="DateOffsetAmount"/>.</param>
 /// <param name="ContextMatchType">How <paramref name="ContextValue"/> is matched against the active window; requires <paramref name="ContextValue"/>. Kind-agnostic.</param>
 /// <param name="ContextValue">Value matched against the active window (executable name, window class, or title substring, per <paramref name="ContextMatchType"/>); requires <paramref name="ContextMatchType"/>.</param>
+/// <param name="Delivery">Requested delivery mode for Text hotstrings; non-Text kinds require <see cref="HotstringDelivery.Auto"/>.</param>
+/// <param name="ReplacementIsTruncated">True only for list projections when a long Text replacement was shortened; detail responses always contain the full replacement.</param>
+/// <param name="EffectiveDelivery">Resolved delivery for display; never <see cref="HotstringDelivery.Auto"/>.</param>
 public sealed record HotstringDto(
     Guid Id,
     Guid[] ProfileIds,
@@ -41,7 +44,10 @@ public sealed record HotstringDto(
     int? DateOffsetAmount = null,
     DateOffsetUnit? DateOffsetUnit = null,
     WindowMatchType? ContextMatchType = null,
-    string? ContextValue = null);
+    string? ContextValue = null,
+    HotstringDelivery Delivery = HotstringDelivery.Auto,
+    bool ReplacementIsTruncated = false,
+    HotstringDelivery EffectiveDelivery = HotstringDelivery.Type);
 
 /// <summary>Payload to create a new hotstring.</summary>
 /// <param name="Trigger">Abbreviation that activates the replacement.</param>
@@ -60,6 +66,7 @@ public sealed record HotstringDto(
 /// <param name="DateOffsetUnit">Unit for <paramref name="DateOffsetAmount"/>; requires <paramref name="DateOffsetAmount"/>.</param>
 /// <param name="ContextMatchType">How <paramref name="ContextValue"/> is matched against the active window; requires <paramref name="ContextValue"/>. Kind-agnostic.</param>
 /// <param name="ContextValue">Value matched against the active window (executable name, window class, or title substring, per <paramref name="ContextMatchType"/>); requires <paramref name="ContextMatchType"/>.</param>
+/// <param name="Delivery">Requested delivery mode for Text hotstrings; non-Text kinds require <see cref="HotstringDelivery.Auto"/>.</param>
 public sealed record CreateHotstringDto(
     string Trigger,
     string Replacement,
@@ -76,7 +83,8 @@ public sealed record CreateHotstringDto(
     int? DateOffsetAmount = null,
     DateOffsetUnit? DateOffsetUnit = null,
     WindowMatchType? ContextMatchType = null,
-    string? ContextValue = null);
+    string? ContextValue = null,
+    HotstringDelivery Delivery = HotstringDelivery.Auto);
 
 /// <summary>Payload to replace the editable fields of an existing hotstring.</summary>
 /// <param name="Trigger">Abbreviation that activates the replacement.</param>
@@ -95,6 +103,7 @@ public sealed record CreateHotstringDto(
 /// <param name="DateOffsetUnit">Unit for <paramref name="DateOffsetAmount"/>; requires <paramref name="DateOffsetAmount"/>.</param>
 /// <param name="ContextMatchType">How <paramref name="ContextValue"/> is matched against the active window; requires <paramref name="ContextValue"/>. Kind-agnostic.</param>
 /// <param name="ContextValue">Value matched against the active window (executable name, window class, or title substring, per <paramref name="ContextMatchType"/>); requires <paramref name="ContextMatchType"/>.</param>
+/// <param name="Delivery">Requested delivery mode for Text hotstrings; non-Text kinds require <see cref="HotstringDelivery.Auto"/>.</param>
 public sealed record UpdateHotstringDto(
     string Trigger,
     string Replacement,
@@ -111,7 +120,8 @@ public sealed record UpdateHotstringDto(
     int? DateOffsetAmount = null,
     DateOffsetUnit? DateOffsetUnit = null,
     WindowMatchType? ContextMatchType = null,
-    string? ContextValue = null);
+    string? ContextValue = null,
+    HotstringDelivery Delivery = HotstringDelivery.Auto);
 
 /// <summary>Emission-relevant fields for previewing the AutoHotkey snippet a hotstring definition would generate, without saving it.</summary>
 /// <param name="Kind">Hotstring kind. <see cref="HotstringKind.Text"/>, <see cref="HotstringKind.DateTime"/>, <see cref="HotstringKind.Macro"/>, and <see cref="HotstringKind.Raw"/> are all supported.</param>
@@ -127,6 +137,7 @@ public sealed record UpdateHotstringDto(
 /// <param name="ContextMatchType">How <paramref name="ContextValue"/> is matched against the active window; requires <paramref name="ContextValue"/>. Kind-agnostic.</param>
 /// <param name="ContextValue">Value matched against the active window (executable name, window class, or title substring, per <paramref name="ContextMatchType"/>); requires <paramref name="ContextMatchType"/>.</param>
 /// <param name="Description">Optional note previewed as <c>; </c> comment lines above the definition; for Raw, merged with any lifted comment.</param>
+/// <param name="Delivery">Requested delivery mode for Text hotstrings; non-Text kinds require <see cref="HotstringDelivery.Auto"/>.</param>
 public sealed record HotstringPreviewRequestDto(
     HotstringKind Kind,
     string Trigger,
@@ -140,12 +151,17 @@ public sealed record HotstringPreviewRequestDto(
     DateOffsetUnit? DateOffsetUnit = null,
     WindowMatchType? ContextMatchType = null,
     string? ContextValue = null,
-    string? Description = null);
+    string? Description = null,
+    HotstringDelivery Delivery = HotstringDelivery.Auto);
 
 /// <summary>The AutoHotkey snippet a hotstring definition would generate.</summary>
 /// <param name="Snippet">The exact <c>.ahk</c> line(s) a save would produce for the given definition, including any <c>; </c> Description comment lines.</param>
 /// <param name="RawSummary">Server-derived summary for a Raw definition; null for other kinds.</param>
-public sealed record HotstringPreviewDto(string Snippet, RawSummaryDto? RawSummary = null);
+/// <param name="EffectiveDelivery">Resolved delivery mode used by the emitted snippet; never <see cref="HotstringDelivery.Auto"/>.</param>
+public sealed record HotstringPreviewDto(
+    string Snippet,
+    RawSummaryDto? RawSummary = null,
+    HotstringDelivery EffectiveDelivery = HotstringDelivery.Type);
 
 /// <summary>Body shape of a Raw hotstring definition, surfaced in the preview summary.</summary>
 public enum RawBodyKind

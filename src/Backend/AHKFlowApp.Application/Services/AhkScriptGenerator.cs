@@ -31,7 +31,10 @@ public sealed class AhkScriptGenerator(
             HotkeyCount: hkList.Count,
             GeneratedAt: clock.GetUtcNow());
 
-        List<string> lines = [renderer.Render(profile.HeaderTemplate, ctx), HotstringsSection];
+        List<string> lines = [renderer.Render(profile.HeaderTemplate, ctx)];
+        if (hsList.Any(h => HotstringEmitter.ResolveEffectiveDelivery(h) == HotstringDelivery.ClipboardPaste))
+            lines.Add(HotstringEmitter.PasteHelperFunction);
+        lines.Add(HotstringsSection);
 
         // Group by window context (both-null = global). GroupBy is stable, so the
         // trigger-ordinal pre-sort above survives within each group. Context groups are

@@ -25,7 +25,8 @@ public sealed record HotstringSnapshot(
     int? DateOffsetAmount = null,
     DateOffsetUnit? DateOffsetUnit = null,
     WindowMatchType? ContextMatchType = null,
-    string? ContextValue = null);
+    string? ContextValue = null,
+    HotstringDelivery Delivery = HotstringDelivery.Auto);
 
 public sealed record HotkeySnapshot(
     string Description,

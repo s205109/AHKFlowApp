@@ -132,6 +132,7 @@ public sealed class HotstringTests
         hs.Kind.Should().Be(HotstringKind.Text);
         hs.IsCaseSensitive.Should().BeFalse();
         hs.OmitEndingCharacter.Should().BeFalse();
+        hs.Delivery.Should().Be(HotstringDelivery.Auto);
     }
 
     [Fact]
@@ -174,6 +175,28 @@ public sealed class HotstringTests
         hs.CreatedAt.Should().Be(createdAt);
         hs.IsCaseSensitive.Should().BeTrue();
         hs.OmitEndingCharacter.Should().BeTrue();
+    }
+
+    [Fact]
+    public void CreateUpdateAndRestore_RoundTripDelivery()
+    {
+        DateTimeOffset createdAt = DateTimeOffset.UtcNow.AddDays(-1);
+        var created = Hotstring.Create(
+            Guid.NewGuid(),
+            new HotstringDefinition("x", "y", null, true, true, false,
+                Delivery: HotstringDelivery.ClipboardPaste),
+            _clock);
+
+        created.Update(new HotstringDefinition("x", "y", null, true, true, false,
+            Delivery: HotstringDelivery.Type), _clock);
+        var restored = Hotstring.Restore(
+            Guid.NewGuid(), Guid.NewGuid(),
+            new HotstringDefinition("x", "y", null, true, true, false,
+                Delivery: HotstringDelivery.ClipboardPaste),
+            createdAt, _clock);
+
+        created.Delivery.Should().Be(HotstringDelivery.Type);
+        restored.Delivery.Should().Be(HotstringDelivery.ClipboardPaste);
     }
 
     [Fact]

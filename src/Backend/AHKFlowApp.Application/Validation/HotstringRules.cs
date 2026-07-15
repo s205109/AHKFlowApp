@@ -11,6 +11,7 @@ internal static partial class HotstringRules
 {
     public const int TriggerMaxLength = 50;
     public const int ReplacementMaxLength = 4000;
+    public const int ClipboardReplacementMaxLength = 100_000;
     public const int DescriptionMaxLength = 200;
     public const int DateTimeFormatMaxLength = 50;
     public const int DateOffsetAmountMax = 3650;
@@ -34,8 +35,7 @@ internal static partial class HotstringRules
 
     public static IRuleBuilderOptions<T, string> ValidReplacement<T>(this IRuleBuilderInitial<T, string> rb) =>
         rb.Cascade(CascadeMode.Stop)
-          .NotEmpty().WithMessage("Replacement is required.")
-          .MaximumLength(ReplacementMaxLength).WithMessage($"Replacement must be {ReplacementMaxLength} characters or fewer.");
+          .NotEmpty().WithMessage("Replacement is required.");
 
     /// <summary>
     /// Adds validation for a nullable date/time format string: required, max length, and a
@@ -111,9 +111,9 @@ internal static partial class HotstringRules
         bool IsDateTime(T x) => kindFn(x) == HotstringKind.DateTime;
         bool BothOffsetsSet(T x) => amountFn(x) is not null && unitFn(x) is not null;
 
-        // Replacement: normal rules for structured non-DateTime kinds, must be empty for DateTime.
-        // Raw is excluded — its own length limit (RawDefinitionMaxLength, 4200) and structural
-        // rules live in AddRawKindRules; ValidReplacement's 4000 cap would otherwise shadow it.
+        // Replacement: required for structured non-DateTime kinds, empty for DateTime.
+        // Per-kind length ownership lives in AddDeliveryRules, AddMacroKindRules, and
+        // AddRawKindRules so one generic cap cannot shadow a kind-specific limit.
         validator.RuleFor(replacement)
             .ValidReplacement()
             .When(x => !IsDateTime(x) && kindFn(x) != HotstringKind.Raw);
@@ -181,6 +181,11 @@ internal static partial class HotstringRules
         bool IsMacro(T x) => kindFn(x) == HotstringKind.Macro;
 
         validator.RuleFor(replacement)
+            .MaximumLength(ReplacementMaxLength)
+            .When(IsMacro)
+            .WithMessage($"Replacement must be {ReplacementMaxLength} characters or fewer.");
+
+        validator.RuleFor(replacement)
             .Custom((value, context) =>
             {
                 MacroParseResult parsed = MacroTokenParser.Parse(value);
@@ -212,6 +217,43 @@ internal static partial class HotstringRules
                     context.AddFailure("Macro replacement must not contain {{key:...}} tokens after {{cursor}}.");
             })
             .When(IsMacro);
+    }
+
+    /// <summary>
+    /// Adds Text-delivery validation and owns Text replacement length limits.
+    /// Explicit typing retains the legacy 4000-character cap; Auto and ClipboardPaste
+    /// accept up to 100000 characters. Non-Text kinds must retain Auto.
+    /// </summary>
+    public static void AddDeliveryRules<T>(
+        this AbstractValidator<T> validator,
+        Expression<Func<T, HotstringKind>> kind,
+        Expression<Func<T, HotstringDelivery>> delivery,
+        Expression<Func<T, string>> replacement)
+    {
+        Func<T, HotstringKind> kindFn = kind.Compile();
+        Func<T, HotstringDelivery> deliveryFn = delivery.Compile();
+
+        bool IsText(T x) => kindFn(x) == HotstringKind.Text;
+
+        validator.RuleFor(delivery)
+            .IsInEnum();
+
+        validator.RuleFor(delivery)
+            .Must(d => d == HotstringDelivery.Auto)
+            .When(x => !IsText(x) && Enum.IsDefined(deliveryFn(x)))
+            .WithMessage("Delivery must be Auto unless Kind is Text.");
+
+        // One rule with a computed limit rather than a MaximumLength block per delivery mode:
+        // paired When predicates would have to stay jointly exhaustive over the enum by hand, so a
+        // future delivery mode matching neither would silently get an unbounded replacement.
+        int LimitFor(T x) => deliveryFn(x) == HotstringDelivery.Type
+            ? ReplacementMaxLength
+            : ClipboardReplacementMaxLength;
+
+        validator.RuleFor(replacement)
+            .Must((x, value) => value is null || value.Length <= LimitFor(x))
+            .When(IsText)
+            .WithMessage(x => $"Replacement must be {LimitFor(x)} characters or fewer.");
     }
 
     /// <summary>

@@ -21,6 +21,7 @@ namespace AHKFlowApp.Application.DTOs;
 /// <param name="DateOffsetUnit">Unit for <paramref name="DateOffsetAmount"/> at capture time. Defaults to null for pre-Phase-2 snapshots.</param>
 /// <param name="ContextMatchType">Window-context match type at capture time. Defaults to null (global) for pre-Phase-4 snapshots.</param>
 /// <param name="ContextValue">Window-context match value at capture time. Defaults to null (global) for pre-Phase-4 snapshots.</param>
+/// <param name="Delivery">Requested delivery mode at capture time. Defaults to <see cref="HotstringDelivery.Auto"/> for legacy snapshots.</param>
 public sealed record HotstringSnapshot(
     string Trigger,
     string Replacement,
@@ -39,7 +40,8 @@ public sealed record HotstringSnapshot(
     int? DateOffsetAmount = null,
     DateOffsetUnit? DateOffsetUnit = null,
     WindowMatchType? ContextMatchType = null,
-    string? ContextValue = null);
+    string? ContextValue = null,
+    HotstringDelivery Delivery = HotstringDelivery.Auto);
 
 /// <summary>Point-in-time snapshot of a hotkey aggregate, stored as history JSON.</summary>
 /// <param name="Description">Human-readable label.</param>

@@ -59,7 +59,7 @@ internal static class ScriptToRawComposer
                 s.IsEndingCharacterRequired, s.IsTriggerInsideWord,
                 HotstringKind.Raw, s.IsCaseSensitive, s.OmitEndingCharacter,
                 s.DateTimeFormat, s.DateOffsetAmount, s.DateOffsetUnit,
-                s.ContextMatchType, s.ContextValue);
+                s.ContextMatchType, s.ContextValue, s.Delivery);
         }
 
         return new HotstringDefinition(
@@ -67,7 +67,7 @@ internal static class ScriptToRawComposer
             s.IsEndingCharacterRequired, s.IsTriggerInsideWord,
             s.Kind, s.IsCaseSensitive, s.OmitEndingCharacter,
             s.DateTimeFormat, s.DateOffsetAmount, s.DateOffsetUnit,
-            s.ContextMatchType, s.ContextValue);
+            s.ContextMatchType, s.ContextValue, s.Delivery);
     }
 
     // Mirrors HotstringEmitter.Escape: backtick first so later escapes are not double-escaped.

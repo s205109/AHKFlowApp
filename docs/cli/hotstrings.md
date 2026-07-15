@@ -6,17 +6,31 @@ actual CLI surface and how each hotstring kind renders in `list` output.
 ## Commands
 
 - `ahkflow hotstring new` — creates a **Text** hotstring, or a **Raw** hotstring with `--raw`.
-  - **Text:** `--trigger`/`-t` and `--replacement`/`-r`; `--profile`/`-p` is repeatable;
-    `--no-ending-char` and `--no-inside-word` flip the two boolean options (both default to their
-    "on" behavior).
+  - **Text:** `--trigger`/`-t` and exactly one of `--replacement`/`-r` or
+    `--replacement-file <path>`; `--profile`/`-p` is repeatable; `--no-ending-char` and
+    `--no-inside-word` flip the two boolean options (both default to their "on" behavior).
+    `--replacement-file` reads the complete file as UTF-8, which is the recommended way to send a
+    long or multiline replacement without running into the Windows command-line length limit.
+  - **Delivery:** `--delivery auto|hotstring|clipboard` controls Text hotstring output and is
+    case-insensitive. `auto` is the default: replacements shorter than 200 characters are typed,
+    while replacements of 200 characters or more are pasted through the clipboard. `hotstring`
+    always types and has a 4,000-character limit; `clipboard` always pastes and supports up to
+    100,000 characters. Clipboard delivery restores the previous clipboard contents after pasting.
+    Pasted replacements do not adapt their capitalization to the way the trigger was typed.
+    `type` is accepted as an alias for `hotstring`; `hotstring` matches the web UI's Delivery
+    selector and list chip.
   - **Raw:** `--raw "<definition>"` sends the entire verbatim AHK v2 definition (e.g.
     `:K1000 SE*:ftw::for the win`); the server derives the trigger and validates it. `--raw` is
-    **mutually exclusive** with `--trigger`/`--replacement`. `--profile` still applies.
+    **mutually exclusive** with `--trigger`, `--replacement`, `--replacement-file`, and
+    `--delivery`. `--profile` still applies.
   - Date & time and Macro kinds cannot be created via the CLI yet — create them in the web UI,
     then they show up (display-only) in `ahkflow hotstring list`.
 - `ahkflow hotstring list` — lists hotstrings of **all** kinds. Supports `--profile`/`-p`,
   `--search`/`-s`/`-g`, `--page`, `--page-size`, and `--json`. There is **no** `--kind` filter
   and **no** `hotstring update` command in the CLI today.
+  - `list` returns a **preview** of each Text replacement, shortened to the first 200 characters.
+    When that happens the row's `replacementIsTruncated` is `true` in `--json` output. `list` is
+    therefore not a backup mechanism — fetch a hotstring individually for its full replacement.
 
 ## `list` table columns
 
@@ -78,6 +92,14 @@ deliberately **restricted subset** of AHK v2:
   length limit. If the merged Description would exceed 200 characters, the paste is rejected.
 
 ## Example
+
+Create a long clipboard-delivered replacement from a UTF-8 file:
+
+```powershell
+ahkflow hotstring new --trigger sig --replacement-file .\signature.txt --delivery clipboard
+```
+
+List output:
 
 ```
 Trigger               Kind      Replacement                               Profiles                  Context                 Updated

@@ -1,5 +1,6 @@
 using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.DTOs;
+using AHKFlowApp.Application.Mapping;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Domain.Enums;
 using Ardalis.Result;
@@ -127,25 +128,17 @@ internal sealed class SeedHotstringsCommandHandler(
 
         await db.SaveChangesAsync(ct);
 
-        List<HotstringDto> items = await db.Hotstrings
+        List<Hotstring> seeded = await db.Hotstrings
             .AsNoTracking()
             .Include(h => h.Profiles)
             .Include(h => h.Categories)
             .Where(h => h.OwnerOid == ownerOid)
             .OrderByDescending(h => h.CreatedAt)
-            .Select(h => new HotstringDto(
-                h.Id,
-                h.Profiles.Select(p => p.ProfileId).ToArray(),
-                h.AppliesToAllProfiles,
-                h.Trigger,
-                h.Replacement,
-                h.Description,
-                h.IsEndingCharacterRequired,
-                h.IsTriggerInsideWord,
-                h.CreatedAt,
-                h.UpdatedAt,
-                h.Categories.Select(hc => hc.CategoryId).ToArray()))
             .ToListAsync(ct);
+
+        // Materialize then map via the canonical HotstringMappings.ToDto() so EffectiveDelivery
+        // resolves through HotstringEmitter.ResolveEffectiveDelivery instead of defaulting to Type.
+        var items = seeded.Select(h => h.ToDto()).ToList();
 
         return Result.Success(new PagedList<HotstringDto>(items, Page: 1, PageSize: items.Count, TotalCount: items.Count));
     }

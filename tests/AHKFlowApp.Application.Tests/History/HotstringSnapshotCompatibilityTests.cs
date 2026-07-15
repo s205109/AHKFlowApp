@@ -26,6 +26,7 @@ public sealed class HotstringSnapshotCompatibilityTests
         snapshot.DateTimeFormat.Should().BeNull();
         snapshot.DateOffsetAmount.Should().BeNull();
         snapshot.DateOffsetUnit.Should().BeNull();
+        snapshot.Delivery.Should().Be(HotstringDelivery.Auto);
     }
 
     [Fact]
@@ -42,5 +43,6 @@ public sealed class HotstringSnapshotCompatibilityTests
 
         snapshot!.ContextMatchType.Should().BeNull();
         snapshot.ContextValue.Should().BeNull();
+        snapshot.Delivery.Should().Be(HotstringDelivery.Auto);
     }
 }

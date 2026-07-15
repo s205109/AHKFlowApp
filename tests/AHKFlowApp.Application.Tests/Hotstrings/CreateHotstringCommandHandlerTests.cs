@@ -35,6 +35,24 @@ public sealed class CreateHotstringCommandHandlerTests(HotstringDbFixture fx)
     }
 
     [Fact]
+    public async Task Handle_WithClipboardDelivery_PersistsAndReturnsDelivery()
+    {
+        await using AppDbContext db = fx.CreateContext();
+        var owner = Guid.NewGuid();
+        var handler = new CreateHotstringCommandHandler(db, CurrentUserHelper.For(owner), _clock);
+        var cmd = new CreateHotstringCommand(new CreateHotstringDto(
+            "sig", "Kind regards", Delivery: HotstringDelivery.ClipboardPaste));
+
+        Result<HotstringDto> result = await handler.ExecuteAsync(cmd, default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Delivery.Should().Be(HotstringDelivery.ClipboardPaste);
+        await using AppDbContext verify = fx.CreateContext();
+        Hotstring persisted = await verify.Hotstrings.SingleAsync(h => h.Id == result.Value.Id);
+        persisted.Delivery.Should().Be(HotstringDelivery.ClipboardPaste);
+    }
+
+    [Fact]
     public async Task Handle_WhenProfilesAndCategories_ReturnsDtoWithBothIdSets()
     {
         var owner = Guid.NewGuid();

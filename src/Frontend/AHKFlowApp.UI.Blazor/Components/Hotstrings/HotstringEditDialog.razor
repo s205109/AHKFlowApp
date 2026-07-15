@@ -17,7 +17,7 @@
         </MudStack>
     </TitleContent>
     <DialogContent>
-        <MudForm @ref="_form">
+        <MudForm @ref="_form" Model="@Item">
         <MudStack Spacing="3" Class="pa-2">
             <MudToggleGroup T="HotstringKind" Value="Item.Kind" ValueChanged="OnKindChangedAsync"
                              UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "kind-selector" })">
@@ -58,12 +58,26 @@
                     </MudText>
                 }
             }
+            @if (Item.Kind == HotstringKind.Text)
+            {
+                <MudSelect T="HotstringDelivery" @bind-Value="Item.Delivery" Label="Delivery"
+                           UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "delivery-select" })">
+                    <MudSelectItem T="HotstringDelivery" Value="HotstringDelivery.Auto">Auto</MudSelectItem>
+                    <MudSelectItem T="HotstringDelivery" Value="HotstringDelivery.Type">Hotstring</MudSelectItem>
+                    <MudSelectItem T="HotstringDelivery" Value="HotstringDelivery.ClipboardPaste">Clipboard</MudSelectItem>
+                </MudSelect>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    Auto types short replacements and pastes 200+ characters via the clipboard. Pasted text is not case-conforming (typed replacements adapt to how you capitalized the trigger; pasted ones don't).
+                </MudText>
+            }
             @if (Item.Kind != HotstringKind.DateTime)
             {
                 <MudTextField T="string" Label="@(Item.Kind == HotstringKind.Raw ? "Raw definition" : "Replacement")"
                               @bind-Value="Item.Replacement" @ref="_replacementField"
                               Immediate="true" Class="@(Item.Kind == HotstringKind.Raw ? "ahk-mono" : null)"
-                              Lines="@(Item.Kind == HotstringKind.Raw ? 8 : 3)" Required="true" RequiredError="Replacement is required" MaxLength="@(Item.Kind == HotstringKind.Raw ? 4200 : 4000)"
+                              Lines="@(Item.Kind == HotstringKind.Raw ? 8 : 3)" Required="true" RequiredError="Replacement is required"
+                              MaxLength="@Item.ReplacementMaxLength"
+                              Validation="@(new Func<string, string?>(Item.ValidateReplacement))"
                               Placeholder="@(Item.Kind == HotstringKind.Raw ? ":K1000 SE*:ftw::for the win" : null)"
                               Error="@(_previewReplacementError is not null)" ErrorText="@_previewReplacementError"
                               HelperText="@ReplacementHelperText"
@@ -211,6 +225,15 @@
                     }
                     else if (_previewSnippet is not null)
                     {
+                        @if (Item.Kind == HotstringKind.Text && _effectiveDelivery is { } effectiveDelivery)
+                        {
+                            <MudChip T="string" Size="Size.Small"
+                                     Color="@(DeliveryDisplay.IsClipboard(effectiveDelivery) ? Color.Info : Color.Default)"
+                                     Class="mb-2"
+                                     UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "preview-delivery" })">
+                                @DeliveryDisplay.Label(effectiveDelivery)
+                            </MudChip>
+                        }
                         <div class="preview-snippet-container">
                             <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small"
                                            Class="preview-copy" Disabled="@_previewPending"
@@ -362,6 +385,7 @@
     private string? _previewTriggerError;
     private string? _previewReplacementError;
     private string? _previewContextValueError;
+    private HotstringDelivery? _effectiveDelivery;
     private HotstringPreviewRequestDto? _lastPreviewRequest;
     private CancellationTokenSource? _previewCts;
     private int _previewGeneration;
@@ -445,6 +469,7 @@
             Item.IsTriggerInsideWord = true;
             ClearDateTimeFields();
             Item.Kind = newKind;
+            ResetDeliveryForNonText();
             return;
         }
 
@@ -510,6 +535,14 @@
             ClearDateTimeFields();
             Item.Kind = HotstringKind.Raw;
         }
+
+        ResetDeliveryForNonText();
+    }
+
+    private void ResetDeliveryForNonText()
+    {
+        if (Item.Kind != HotstringKind.Text)
+            Item.Delivery = HotstringDelivery.Auto;
     }
 
     // Copies a Raw example definition to the clipboard so the user can paste it into the field
@@ -783,7 +816,7 @@
         Item.Kind, Item.Trigger, Item.Replacement, Item.IsCaseSensitive,
         Item.OmitEndingCharacter, Item.IsEndingCharacterRequired, Item.IsTriggerInsideWord,
         Item.DateTimeFormat, Item.DateOffsetAmount, Item.DateOffsetUnit,
-        Item.ContextMatchType, Item.ContextValue, Item.Description);
+        Item.ContextMatchType, Item.ContextValue, Item.Description, Item.Delivery);
 
     private void SchedulePreview(HotstringPreviewRequestDto request, bool debounce)
     {
@@ -848,6 +881,7 @@
 
             _previewPending = false;
             _previewSnippet = null;
+            _effectiveDelivery = null;
             _previewError = "Something went wrong generating the preview. Try again.";
             StateHasChanged();
         }
@@ -863,12 +897,14 @@
         {
             _previewSnippet = result.Value!.Snippet;
             _rawSummary = result.Value.RawSummary;
+            _effectiveDelivery = result.Value.EffectiveDelivery;
             _previewError = null;
             return;
         }
 
         _previewSnippet = null;
         _rawSummary = null;
+        _effectiveDelivery = null;
 
         if (result.Status == ApiResultStatus.Validation && result.Problem?.Errors is { Count: > 0 } errors)
         {
