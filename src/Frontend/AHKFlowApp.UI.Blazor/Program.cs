@@ -80,14 +80,14 @@ void AddApiClient<TInterface, TImpl>(
         clientBuilder.AddHttpMessageHandler<ApiAuthorizationMessageHandler>();
     }
 
-    if (configureResilience is not null)
+    clientBuilder.AddStandardResilienceHandler(options =>
     {
-        clientBuilder.AddStandardResilienceHandler(configureResilience);
-    }
-    else
-    {
-        clientBuilder.AddStandardResilienceHandler();
-    }
+        configureResilience?.Invoke(options);
+
+        // Must run last: DisableFor wraps the ShouldHandle captured at call time, so any
+        // caller that replaces ShouldHandle afterwards would drop the method check.
+        options.Retry.DisableForUnsafeHttpMethods();
+    });
 }
 
 Action<HttpStandardResilienceOptions> mainClientResilience = options =>
