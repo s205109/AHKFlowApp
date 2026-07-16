@@ -300,13 +300,7 @@ Single-context — `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents
 
 ## Domain Terms
 
-- **Hotstring** — text replacement trigger: type an abbreviation (e.g., `btw`), auto-expands to full text (`by the way`). Core domain entity.
-- **Hotkey** — keyboard shortcut binding: key combination triggers an action.
-- **Profile** — named grouping of hotstrings and hotkeys (e.g., "Work", "Personal").
-- **Category** — user-defined tag for organizing and filtering hotstrings and hotkeys (many-to-many).
-- **Script** — generated `.ahk` file per profile, combining all definitions into executable AutoHotkey syntax.
-- **Trigger** — the abbreviation or key combination that activates a hotstring or hotkey.
-- **Replacement** — the expanded text that replaces a hotstring trigger.
+Defined in [`CONTEXT.md`](CONTEXT.md) at the repo root — use its vocabulary; decisions behind the model live in [`docs/adr/`](docs/adr/).
 
 ## Prerequisites
 
