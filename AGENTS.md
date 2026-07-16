@@ -296,11 +296,7 @@ Five canonical roles, each label string equal to its name. See `docs/agents/tria
 
 ### Domain docs
 
-Single-context — `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
-
-## Domain Terms
-
-Defined in [`CONTEXT.md`](CONTEXT.md) at the repo root — use its vocabulary; decisions behind the model live in [`docs/adr/`](docs/adr/).
+Single-context — [`CONTEXT.md`](CONTEXT.md) (domain-term glossary; use its vocabulary) + [`docs/adr/`](docs/adr/) at the repo root. See `docs/agents/domain.md`.
 
 ## Prerequisites
 
