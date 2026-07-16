@@ -304,7 +304,7 @@ Single-context — `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents
 - **Hotkey** — keyboard shortcut binding: key combination triggers an action.
 - **Profile** — named grouping of hotstrings and hotkeys (e.g., "Work", "Personal").
 - **Category** — user-defined tag for organizing and filtering hotstrings and hotkeys (many-to-many).
-- **Script** — generated `.ahk` file per profile, combining all definitions into executable AutoHotkey syntax.
+- **Script** — generated `.ahk` file per profile, combining all definitions into executable AutoHotkey syntax. The AHK v2 syntax we emit — option flags, escaping, `#HotIf`, bodies per kind — is documented in `docs/development/ahk-v2-syntax.md`; read it before changing an emitter.
 - **Trigger** — the abbreviation or key combination that activates a hotstring or hotkey.
 - **Replacement** — the expanded text that replaces a hotstring trigger.
 
