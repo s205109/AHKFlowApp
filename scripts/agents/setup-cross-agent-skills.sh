@@ -24,7 +24,7 @@ AGENTS_ROOT="$REPO_ROOT/.agents"
 CLAUDE_ROOT="$REPO_ROOT/.claude"
 CLAUDE_SKILLS="$REPO_ROOT/.claude/skills"
 GITHUB_SKILLS="$REPO_ROOT/.github/skills"
-CODEX_PLUGIN_SKILLS="$AGENTS_ROOT/plugins/plugins/ahkflowapp/skills"
+CODEX_PLUGIN_SKILLS="$REPO_ROOT/plugins/ahkflowapp/skills"
 
 # --- Install committed git hooks via core.hooksPath ---
 if [ -d "$REPO_ROOT/.githooks" ]; then
@@ -246,6 +246,6 @@ mkdir -p "$CLAUDE_ROOT"
 
 sync_skill_link_directory "$CLAUDE_SKILLS" ".claude/skills" "../../.agents" false
 sync_skill_link_directory "$GITHUB_SKILLS" ".github/skills" "../../.agents" false
-sync_codex_plugin_skill_directory "$CODEX_PLUGIN_SKILLS" ".agents/plugins/plugins/ahkflowapp/skills"
+sync_codex_plugin_skill_directory "$CODEX_PLUGIN_SKILLS" "plugins/ahkflowapp/skills"
 
 echo "[DONE] .claude/skills and .github/skills symlink to active .agents/* skills; Codex plugin skills mirror the same skill directories with hard-linked files"
