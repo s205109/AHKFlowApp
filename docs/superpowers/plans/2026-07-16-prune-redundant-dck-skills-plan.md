@@ -21,8 +21,14 @@ kept the skills, so they duplicate content that is already in context.
 
 Outcome: retire the ambient skills whose content AGENTS.md already covers. Each one costs
 ~33 tok/session of description that never pays off, and is a second source of truth that
-can drift from AGENTS.md. Total saving is modest (~230 tok/session); the real win is
+can drift from AGENTS.md. Total saving is modest (~200 tok/session); the real win is
 removing the drift risk and the misleading "never used" noise.
+
+Evidence caveat: `/plugin` usage counts are Claude-only — no equivalent stats exist for
+Copilot or Codex. The retirement rationale therefore rests on the redundancy argument,
+which is cross-agent by construction (AGENTS.md is always-loaded for all three), not on
+the usage counts, which merely corroborate. A skill only qualifies for deactivation if
+its content is ported to or already present in AGENTS.md.
 
 ## Mechanism
 
@@ -35,23 +41,21 @@ Per skill: `git mv .agents/<skill>/SKILL.md .agents/<skill>/REFERENCE.md`, then 
 setup script once at the end to drop the projections in `.claude/skills/`, `.github/skills/`,
 and `plugins/ahkflowapp/skills/`.
 
-## Deactivate (7)
+## Deactivate (6)
 
-Each is ambient-triggered AND covered by an AGENTS.md section:
+Each is ambient-triggered AND covered by an AGENTS.md section. The content diff against
+AGENTS.md has been done; the "Port to AGENTS.md first" column is the migration decision
+(resolved: port, never drop — a skill deactivates only after its unique rules land in
+AGENTS.md):
 
-| Skill | Lines | Covered by AGENTS.md section |
-|---|---|---|
-| `dck-modern-csharp` | 81 | Code Conventions / Patterns We DON'T Use |
-| `dck-error-handling` | 271 | Architecture Rules (Ardalis.Result, ProblemDetails) |
-| `dck-testing` | 341 | Testing |
-| `dck-httpclient-factory` | 143 | Tech Stack + Performance (IHttpClientFactory, resilience) |
-| `dck-serilog` | 85 | Tech Stack (Serilog sinks) |
-| `dck-configuration` | 89 | Security + CI/CD (user-secrets, App Service config) |
-| `dck-workflow-mastery` | 88 | Meta-guidance about agent workflow; pure overhead |
-
-Before deactivating each, diff its content against the named AGENTS.md section. If a skill
-carries a concrete rule AGENTS.md lacks, port that one line into AGENTS.md first — do not
-lose it. Expect this to be rare; the skills are mostly code examples of rules already stated.
+| Skill | Lines | Covered by AGENTS.md section | Port to AGENTS.md first |
+|---|---|---|---|
+| `dck-modern-csharp` | 81 | Code Conventions / Patterns We DON'T Use | Nothing — fully covered |
+| `dck-error-handling` | 271 | Architecture Rules (Ardalis.Result, ProblemDetails) | Nothing — fully covered |
+| `dck-testing` | 341 | Testing | One line: `FakeTimeProvider` (from `Microsoft.Extensions.TimeProvider.Testing`) for time-dependent tests |
+| `dck-httpclient-factory` | 143 | Tech Stack + Performance (IHttpClientFactory, resilience) | One line: disable retries for unsafe HTTP methods (`options.Retry.DisableForUnsafeHttpMethods()`) when the client performs non-idempotent calls |
+| `dck-serilog` | 85 | Tech Stack (Serilog sinks) | Two lines: keep `CreateBootstrapLogger()` before host build and `Log.CloseAndFlushAsync()` on exit; `UseSerilogRequestLogging` after exception middleware; structured `{Property}` templates over interpolation; never log secrets/tokens |
+| `dck-configuration` | 89 | Security + CI/CD (user-secrets, App Service config) | Two lines: options classes use `.BindConfiguration().ValidateDataAnnotations().ValidateOnStart()`; Blazor WASM `wwwroot/appsettings*.json` is public (downloadable) — never treat as secret |
 
 ## Keep
 
@@ -60,24 +64,45 @@ lose it. Expect this to be rare; the skills are mostly code examples of rules al
 - **Unique content, not redundant:** `dck-ef-core` (ATTRIBUTION.md notes dotnet/skills
   `optimizing-ef-core-queries` guidance was merged in — AGENTS.md has none of it),
   `dck-openapi`, `dck-blazor-mudblazor`.
+- **`dck-workflow-mastery`** — originally slated for deactivation, moved to Keep. It
+  demonstrably fires (it matched and loaded during the review of this very plan), and its
+  skill-change verification guidance (setup script + mirror/cache checks, plan-vs-live-checkout
+  review) has no AGENTS.md counterpart — not redundant.
 - **All `dn-*`:** discrete audit triggers ("audit this test file"). Never used because the
   audit was never requested — not redundant. Leave alone.
 
 ## Files touched
 
-- `.agents/<skill>/SKILL.md` → `REFERENCE.md` for the 7 above (source of truth)
-- `AGENTS.md` — only if porting a rule; line 294 names verify/build-fix/de-sloppify, all kept
-- `.agents/ATTRIBUTION.md` — no edit needed; none of the 7 are `dotnet/skills` vendored
+- `.agents/<skill>/SKILL.md` → `REFERENCE.md` for the 6 above (source of truth)
+- `AGENTS.md` — the ported lines from the migration table (Testing, Performance/Tech Stack,
+  Security sections); line 294 names verify/build-fix/de-sloppify, all kept
+- `.agents/ATTRIBUTION.md` — no edit needed; none of the 6 are `dotnet/skills` vendored
+- `scripts/agents/setup-cross-agent-skills.sh` line 25 — fix stale
+  `$AGENTS_ROOT/plugins/plugins/ahkflowapp/skills` to `<repo-root>/plugins/ahkflowapp/skills`
+  (the path the `.ps1` actually maintains); otherwise POSIX regeneration writes the wrong tree
+- `.claude/skills/README.md` — fix the same stale path in the "Why three locations?" table
+- `plugins/ahkflowapp/.codex-plugin/plugin.json` — bump `version` so the Codex reinstall
+  below picks up the pruned skill set
 - Regenerated, not hand-edited: `.claude/skills/`, `.github/skills/`, `plugins/ahkflowapp/skills/`
 
 ## Verification
 
 1. `pwsh scripts/agents/setup-cross-agent-skills.ps1`
-2. `pwsh scripts/agents/check-symlinks.ps1` — no broken links
-3. Confirm the 7 are gone from all three surfaces and the keepers survive:
+2. `pwsh tests/SkillParity.Tests.ps1` — canonical/plugin skill sets match, byte-identical
+   (`check-symlinks.ps1` only lists entries; it validates nothing)
+3. Confirm the 6 are gone from all three surfaces, the keepers survive, and remaining
+   `.claude/skills/`/`.github/skills/` entries are symlinks resolving into `.agents/`:
    `ls .claude/skills/ .github/skills/ plugins/ahkflowapp/skills/`
-4. `/plugin` in a fresh session — the 7 no longer listed; `dck-verify` et al. still `✓ on`
-5. `git status` — only the intended renames
+4. `/plugin` in a fresh session — the 6 no longer listed; `dck-verify` et al. still `✓ on`
+   (verifies Claude only)
+5. Refresh the installed Codex plugin — repo regeneration does not touch Codex's install
+   cache (see 2026-07-04 plan):
+   `codex plugin remove ahkflowapp --marketplace ahkflowapp-local`
+   `codex plugin add ahkflowapp --marketplace ahkflowapp-local`
+   Then `codex plugin list` and inspect the installed cache folder: the 6 absent, keepers present.
+6. `git status` — expect: 6 `.agents/` renames (SKILL.md → REFERENCE.md), 18 projection
+   deletions (6 skills × 3 surfaces), plus edits to `AGENTS.md`,
+   `setup-cross-agent-skills.sh`, `.claude/skills/README.md`, and `plugin.json`
 
 ## Out of scope
 
@@ -87,6 +112,6 @@ If the keepers still under-fire after this, adding named routing lines is the ne
 
 ## Unresolved
 
-1. Port-or-drop if a skill has a rule AGENTS.md lacks — port into AGENTS.md, or drop it?
-2. `dck-ef-core`/`dck-openapi`/`dck-blazor-mudblazor` kept, but ambient — leave, or deactivate too?
-3. Branch name: `chore/prune-redundant-dck-skills`?
+1. `dck-ef-core`/`dck-openapi`/`dck-blazor-mudblazor` kept, but ambient — leave, or deactivate too?
+2. Branch name: `chore/prune-redundant-dck-skills`?
+3. Ported Serilog/config lines grow AGENTS.md by ~6 lines — OK, or trim further?
