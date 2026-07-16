@@ -33,7 +33,7 @@ to three tool-specific locations:
 | ------------- | ------------------------------------------ | ----------- |
 | Claude Code   | `.claude/skills/<skill>`                   | symlink     |
 | GitHub Copilot| `.github/skills/<skill>`                   | symlink     |
-| Codex plugin  | `.agents/plugins/plugins/ahkflowapp/skills/<skill>/SKILL.md` | hard link |
+| Codex plugin  | `plugins/ahkflowapp/skills/<skill>/`        | hard link   |
 
 Codex uses hard links because its plugin installer dereferences symlinks
 incorrectly. The post-merge hook exists primarily to repair hard links broken
