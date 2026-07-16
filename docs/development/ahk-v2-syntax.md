@@ -4,6 +4,8 @@ The subset of AutoHotkey v2 that AHKFlowApp generates and parses. This is a work
 changing the emitters — not a general AHK tutorial. For anything outside this surface, the
 authoritative source is [the official v2 docs](https://www.autohotkey.com/docs/v2/)
 (the [Hotstrings page](https://www.autohotkey.com/docs/v2/Hotstrings.htm) covers most of what's here).
+The site 403s automated fetchers; the same content is fetchable from the
+[AutoHotkeyDocs source repo](https://github.com/AutoHotkey/AutoHotkeyDocs/blob/v2/docs/Hotstrings.htm).
 
 We generate `.ahk` files; we never run them. Nothing below is validated by executing AutoHotkey, so
 the emitters are the only thing standing between a user's input and a broken script on their machine.
@@ -77,8 +79,9 @@ a blank Description emits nothing.
 ### Option flags we emit
 
 `HotstringEmitter` emits flags in a fixed order — **`X * ? C O T`**. The order is deterministic so
-that regenerating an unchanged profile produces a byte-identical file; diffs then mean something.
-Preserve it if you add a flag.
+that regenerating an unchanged profile produces byte-identical hotstring lines; diffs then mean
+something. (The complete file is *not* byte-identical under the default header — `{GeneratedAt}`
+changes every run.) Preserve the order if you add a flag.
 
 | Flag | Meaning | We emit it when |
 |---|---|---|
@@ -98,9 +101,10 @@ Two of those conditions look redundant and are not:
   brace-body kinds (DateTime, Macro, Raw) — they have no auto-replace text at all. `T` and `X` are
   contradictory by construction; never emit both.
 
-`T` on all Text hotstrings is a deliberate WYSIWYG guarantee: what the user typed into the form is
-exactly what gets sent. Without it, a replacement containing `{` or `^` would be reinterpreted as
-keystrokes.
+`T` on all Text hotstrings is a deliberate literal-characters guarantee: a replacement containing
+`{` or `^` is sent as those characters, not reinterpreted as keystrokes. It is *not* full WYSIWYG:
+case-insensitive hotstrings still case-conform by default (type the trigger in ALL CAPS and AHK
+uppercases the replacement) — suppressing that would take `C1`, which we don't emit.
 
 ### Option flags we accept (Raw only)
 
@@ -129,8 +133,8 @@ paste helper.
 `DateAdd`:
 
 ```ahk
-:X:today::SendText(FormatTime(A_Now, "yyyy-MM-dd"))
-:X:tmrw::SendText(FormatTime(DateAdd(A_Now, 1, "Days"), "yyyy-MM-dd"))
+:X:ddate::SendText(FormatTime(A_Now, "yyyy-MM-dd"))
+:X*:nextweek::SendText(FormatTime(DateAdd(A_Now, 7, "Days"), "dddd d MMMM yyyy"))
 ```
 
 `DateTimeFormat` is embedded **without escaping** — it's already passed a whitelist regex
@@ -144,19 +148,30 @@ collapse into one `Send "{Name N}"`, and a `{{cursor}}` becomes a trailing `Send
 the characters after it.
 
 ```ahk
-:*:sig::
+:*:htag::
 {
-	SendText "Regards,"
+	SendText "<b></b>"
 	Send "{Enter 2}"
-	SendText "Bart"
+	Send "{Left 4}"
 }
 ```
+
+(The emission of `<b>{{cursor}}</b>{{key:Enter}}{{key:Enter}}`, pinned in `AhkScriptGeneratorTests`.
+`{Left 4}` counts the four text characters after the cursor token — `</b>`. That golden feeds the
+emitter directly; API input with keys after `{{cursor}}` is rejected by validation.)
 
 Validation guarantees at most one `{{cursor}}` and no keys after it — that's what lets the emitter
 compute a single `{Left N}` at the end instead of tracking caret movement through the token stream.
 
-**Raw** — emitted **verbatim**. `Replacement` already holds the entire `:opts:trigger::` line plus
-any body, so the emitter returns it untouched; re-applying the template would double the definition.
+**Raw** — emitted **verbatim from storage**. `Replacement` already holds the entire
+`:opts:trigger::` line plus any body, so the emitter returns it untouched; re-applying the template
+would double the definition. But what's stored is not the user's paste: create/update run it through
+`RawHotstringDefinitionParser.Prepare` and persist the `NormalizedDefinition`
+(`CreateHotstringCommand.cs`), which lifts leading `;` comments into Description, converts
+CRLF/lone-CR to LF, trims blank lines and per-line trailing whitespace (except inside continuation
+sections, where trailing whitespace is significant under `RTrim0`), and expands an OTB brace
+(`:X:t::{`) onto its own line. Three body shapes are accepted: inline replacement, a `{ … }` brace
+body, and a `( … )` continuation section kept as verbatim literal text.
 
 **Clipboard delivery** — for long Text replacements, typing is slow and error-prone, so we paste
 instead. Delivery resolves to clipboard when Kind is Text and either the user chose `ClipboardPaste`
@@ -258,10 +273,12 @@ Emitted in the fixed order `^ ! + #` (`AhkScriptGenerator.FormatHotkey`). Action
 ^!t::Run("notepad.exe")
 ```
 
-Note that hotkey `Parameters` is interpolated into the quoted argument **without** passing through
-either escape routine — a `"` in that field emits a broken line (`^a::Send("he said "hi"")`). This is
-current pinned behaviour, not an accident of reading: `Generate_Hotkey_EmitsParametersVerbatim_NoEscaping`
-asserts it. Hotstrings escape, hotkeys don't; if you touch this, that test is the thing to change first.
+Note that both hotkey `Key` and `Parameters` are interpolated **without** passing through either
+escape routine — a `"` in `Parameters` emits a broken line (`^a::Send("he said "hi"")`), and
+quotes, backticks, or newlines in either field can break the generated script. This is current
+pinned behaviour, not an accident of reading: `Generate_Hotkey_EmitsParametersVerbatim_NoEscaping`
+asserts it (as characterization, not endorsement). Hotstrings escape, hotkeys don't; if you touch
+this, that test is the thing to change first.
 
 ## Input limits
 
@@ -283,7 +300,9 @@ From `HotstringRules`:
 ## Known limitations
 
 Raw brace-balance checking counts `{` and `}` naively, with no awareness of string literals or
-comments (decision D12). A definition like `SendText "{"` counts the brace inside the quotes and can
-be rejected despite being valid AHK. This is deliberate: a string-aware scanner would drift toward
-being a script IDE (D8). If a user hits it, the workaround is to restructure the definition, not to
+comments (decision D12). The heuristic errs in both directions: `SendText "{"` counts the brace
+inside the quotes and can be rejected despite being valid AHK, and a comment line ending in `}`
+counts toward the balance and can mask a genuinely missing closing brace — an invalid definition
+accepted. This is deliberate: a string/comment-aware scanner would drift toward being a script IDE
+(D8). If a user hits the false rejection, the workaround is to restructure the definition, not to
 loosen the check.
