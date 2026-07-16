@@ -107,6 +107,7 @@ dotnet format
 - Collection expressions (`[1, 2, 3]`) over constructor calls (`new List<int> { 1, 2, 3 }`)
 - Pattern matching / switch expressions over if-else chains
 - Member ordering: constants, fields, constructors, properties, public methods, private methods
+- Domain state: private setters plus factory/domain methods — never public setters on domain entities
 - English for all code comments and documentation
 - PowerShell for script files, bash for manual scripts in .md files
 
@@ -140,6 +141,7 @@ HTTP Request -> Controller (thin, maps Result to HTTP)
 - Test naming: `MethodName_Scenario_ExpectedResult`
 - AAA pattern (Arrange/Act/Assert) with blank line separation; one assertion concept per test
 - Assert on `Result.IsSuccess` / `Result.Status` in handler unit tests
+- FluentAssertions over raw `Assert` — better failure messages
 - Shared fixtures: `IClassFixture<T>`, `ICollectionFixture<T>` for expensive setup (containers)
 - NSubstitute for third-party boundaries only — don't mock what you own
 - Test behavior (HTTP response, DB state, Result status), not implementation details
@@ -196,6 +198,7 @@ When asking the user to manually test or verify anything (UI flows, commands, ac
 - `TimeProvider` over `DateTime.Now` / `DateTime.UtcNow` — injectable and testable.
 - `IHttpClientFactory` over `new HttpClient()` — prevents socket exhaustion.
 - Disable retries for unsafe HTTP methods (`options.Retry.DisableForUnsafeHttpMethods()`) when a client makes non-idempotent calls.
+- Cross-cutting HTTP concerns (auth, correlation IDs, logging) belong in `DelegatingHandler`s, not call sites.
 - `ArrayPool<T>` / `MemoryPool<T>` for buffer-heavy operations.
 - Compiled queries (`EF.CompileAsyncQuery`) for hot-path EF Core queries.
 - `ValueTask<T>` over `Task<T>` for high-throughput paths that often complete synchronously.

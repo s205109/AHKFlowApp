@@ -28,7 +28,14 @@ Evidence caveat: `/plugin` usage counts are Claude-only — no equivalent stats 
 Copilot or Codex. The retirement rationale therefore rests on the redundancy argument,
 which is cross-agent by construction (AGENTS.md is always-loaded for all three), not on
 the usage counts, which merely corroborate. A skill only qualifies for deactivation if
-its content is ported to or already present in AGENTS.md.
+its **normative project rules** are ported to or already present in AGENTS.md.
+
+"Normative project rules" means prescriptions specific to this codebase (what to do or
+never do here). It excludes general .NET/C# reference material that any competent agent
+already knows (e.g. which `IOptions<T>` flavor suits which lifetime), teaching prose and
+worked examples, and judgment guidance too soft to state as a rule ("modern syntax is a
+tool, not a goal"). That material is what REFERENCE.md retains — porting it wholesale
+would move ~1000 lines into always-loaded context and defeat the purpose of the prune.
 
 ## Mechanism
 
@@ -50,10 +57,10 @@ AGENTS.md):
 
 | Skill | Lines | Covered by AGENTS.md section | Port to AGENTS.md first |
 |---|---|---|---|
-| `dck-modern-csharp` | 81 | Code Conventions / Patterns We DON'T Use | Nothing — fully covered |
+| `dck-modern-csharp` | 81 | Code Conventions / Patterns We DON'T Use | One line: domain state uses private setters plus factory/domain methods — never public setters |
 | `dck-error-handling` | 271 | Architecture Rules (Ardalis.Result, ProblemDetails) | Nothing — fully covered |
-| `dck-testing` | 341 | Testing | One line: `FakeTimeProvider` (from `Microsoft.Extensions.TimeProvider.Testing`) for time-dependent tests |
-| `dck-httpclient-factory` | 143 | Tech Stack + Performance (IHttpClientFactory, resilience) | One line: disable retries for unsafe HTTP methods (`options.Retry.DisableForUnsafeHttpMethods()`) when the client performs non-idempotent calls |
+| `dck-testing` | 341 | Testing | Two lines: `FakeTimeProvider` (from `Microsoft.Extensions.TimeProvider.Testing`) for time-dependent tests; FluentAssertions over raw `Assert` |
+| `dck-httpclient-factory` | 143 | Tech Stack + Performance (IHttpClientFactory, resilience) | Two lines: disable retries for unsafe HTTP methods (`options.Retry.DisableForUnsafeHttpMethods()`) when the client performs non-idempotent calls; cross-cutting concerns (auth, correlation IDs, logging) go in `DelegatingHandler`s |
 | `dck-serilog` | 85 | Tech Stack (Serilog sinks) | Two lines: keep `CreateBootstrapLogger()` before host build and `Log.CloseAndFlushAsync()` on exit; `UseSerilogRequestLogging` after exception middleware; structured `{Property}` templates over interpolation; never log secrets/tokens |
 | `dck-configuration` | 89 | Security + CI/CD (user-secrets, App Service config) | Two lines: options classes use `.BindConfiguration().ValidateDataAnnotations().ValidateOnStart()`; Blazor WASM `wwwroot/appsettings*.json` is public (downloadable) — never treat as secret |
 
@@ -77,9 +84,10 @@ AGENTS.md):
 - `AGENTS.md` — the ported lines from the migration table (Testing, Performance/Tech Stack,
   Security sections); line 294 names verify/build-fix/de-sloppify, all kept
 - `.agents/ATTRIBUTION.md` — no edit needed; none of the 6 are `dotnet/skills` vendored
-- `scripts/agents/setup-cross-agent-skills.sh` line 25 — fix stale
-  `$AGENTS_ROOT/plugins/plugins/ahkflowapp/skills` to `<repo-root>/plugins/ahkflowapp/skills`
-  (the path the `.ps1` actually maintains); otherwise POSIX regeneration writes the wrong tree
+- ~~`scripts/agents/setup-cross-agent-skills.sh` line 25 — fix stale plugin path~~ **No edit
+  needed.** Discovered during implementation: line 25 already reads
+  `$REPO_ROOT/plugins/ahkflowapp/skills`, matching the `.ps1`. The stale path survives only
+  in `.claude/skills/README.md` (next item)
 - `.claude/skills/README.md` — fix the same stale path in the "Why three locations?" table
 - `plugins/ahkflowapp/.codex-plugin/plugin.json` — bump `version` so the Codex reinstall
   below picks up the pruned skill set
@@ -95,14 +103,16 @@ AGENTS.md):
    `ls .claude/skills/ .github/skills/ plugins/ahkflowapp/skills/`
 4. `/plugin` in a fresh session — the 6 no longer listed; `dck-verify` et al. still `✓ on`
    (verifies Claude only)
-5. Refresh the installed Codex plugin — repo regeneration does not touch Codex's install
-   cache (see 2026-07-04 plan):
+5. **Post-merge only.** Refresh the installed Codex plugin — repo regeneration does not touch
+   Codex's install cache (see 2026-07-04 plan). The installed plugin resolves to the **main
+   checkout**, not the worktree, so reinstalling before merge re-reads a main that lacks these
+   changes and verifies nothing:
    `codex plugin remove ahkflowapp --marketplace ahkflowapp-local`
    `codex plugin add ahkflowapp --marketplace ahkflowapp-local`
    Then `codex plugin list` and inspect the installed cache folder: the 6 absent, keepers present.
 6. `git status` — expect: 6 `.agents/` renames (SKILL.md → REFERENCE.md), 18 projection
-   deletions (6 skills × 3 surfaces), plus edits to `AGENTS.md`,
-   `setup-cross-agent-skills.sh`, `.claude/skills/README.md`, and `plugin.json`
+   deletions (6 skills × 3 surfaces), plus edits to `AGENTS.md`, `.claude/skills/README.md`,
+   and `plugin.json` (not `setup-cross-agent-skills.sh` — see Files touched)
 
 ## Out of scope
 
