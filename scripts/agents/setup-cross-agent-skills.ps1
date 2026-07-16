@@ -5,8 +5,9 @@
 .DESCRIPTION
     Active skills live as immediate .agents/<skill>/ directories with a SKILL.md file inside.
     .claude/skills/ and .github/skills/ become real directories containing one symlink per
-    active skill back to .agents/<skill>. The repo-local Codex plugin skills folder uses
-    one hard-linked SKILL.md per skill because Codex plugin installation ignores symlinks.
+    active skill back to .agents/<skill>. The repo-local Codex plugin skills folder mirrors
+    each skill directory with hard-linked files (SKILL.md plus companion files such as
+    templates and agents/openai.yaml) because Codex plugin installation ignores symlinks.
     Reference docs, disabled dirs, and plugin packaging are ignored.
     Everything stays inside the repo — no user-folder changes.
     Requires Windows Developer Mode and git core.symlinks=true.
@@ -267,21 +268,16 @@ function Sync-CodexPluginSkillDirectory {
 
     foreach ($skillDir in $skillDirs) {
         $skillLinkDir = Join-Path $LinkRoot $skillDir.Name
-        New-Item -ItemType Directory -Path $skillLinkDir -Force | Out-Null
-
-        $skillLink = Join-Path $skillLinkDir 'SKILL.md'
-        if (Test-Path $skillLink) {
-            $existing = Get-Item $skillLink -Force
-            if ($existing.LinkType -eq 'SymbolicLink') {
-                Remove-Item -LiteralPath $skillLink -Force
-                Write-Host "[FIX] Replaced symlink $DisplayName/$($skillDir.Name)/SKILL.md with a hard link." -ForegroundColor Yellow
-            } else {
-                Remove-Item -LiteralPath $skillLink -Force
-                Write-Host "[FIX] Refreshed hard link $DisplayName/$($skillDir.Name)/SKILL.md." -ForegroundColor Yellow
-            }
+        if (Test-Path $skillLinkDir) {
+            Remove-Item -LiteralPath $skillLinkDir -Recurse -Force
         }
 
-        New-Item -ItemType HardLink -Path $skillLink -Target (Join-Path $skillDir.FullName 'SKILL.md') | Out-Null
+        foreach ($sourceFile in Get-ChildItem -LiteralPath $skillDir.FullName -Recurse -File -Force) {
+            $relative = $sourceFile.FullName.Substring($skillDir.FullName.Length).TrimStart('\')
+            $linkPath = Join-Path $skillLinkDir $relative
+            New-Item -ItemType Directory -Path (Split-Path -Parent $linkPath) -Force | Out-Null
+            New-Item -ItemType HardLink -Path $linkPath -Target $sourceFile.FullName | Out-Null
+        }
     }
 }
 
@@ -289,4 +285,4 @@ Sync-SkillLinkDirectory $claudeSkills '.claude/skills' '..\..\.agents' $false
 Sync-SkillLinkDirectory $githubSkills '.github/skills' '..\..\.agents' $false
 Sync-CodexPluginSkillDirectory $codexPluginSkills 'plugins/ahkflowapp/skills'
 
-Write-Host "[DONE] .claude/skills and .github/skills symlink to active .agents/* skills; Codex plugin skills hard-link to the same SKILL.md files" -ForegroundColor Green
+Write-Host "[DONE] .claude/skills and .github/skills symlink to active .agents/* skills; Codex plugin skills mirror the same skill directories with hard-linked files" -ForegroundColor Green
