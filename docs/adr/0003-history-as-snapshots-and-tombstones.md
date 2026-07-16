@@ -1,7 +1,7 @@
-# History as before-image snapshots, with hard deletes and tombstones
+# History as snapshots and tombstones, with hard deletes
 
-Editing or deleting a hotstring or hotkey records a Snapshot of its previous state in a separate history table. Deletes remove the live row for real and leave a `Delete` tombstone Snapshot behind, so a deleted item's timeline ends at the tombstone and the Recycle Bin reads from there.
+Editing or deleting a hotstring or hotkey records a Snapshot of its previous state in a separate history table; restoring a deleted one records the restored state, so a timeline holds both before-images and Restore after-images. Deletes remove the live row for real and leave a `Delete` Tombstone behind — the Recycle Bin reads from Tombstones, and Purge erases every remaining Snapshot for the item.
 
 ## Considered Options
 
-Soft-delete columns and SQL Server temporal tables were both rejected. Hotstrings and hotkeys carry per-owner unique indexes (a soft-deleted row would still occupy its trigger, blocking a replacement), and neither entity has a global query filter — adding one would mean touching every existing query. Snapshots also capture an item's category and profile links as a single aggregate, which suits how those links are replaced wholesale on edit.
+Soft-delete columns and SQL Server temporal tables were both rejected. Soft delete would need either a global query filter (plus `IgnoreQueryFilters` wherever deleted rows must surface, like the Recycle Bin) or an explicit `IsDeleted` predicate in every query, and filtered versions of the per-owner unique indexes so a deleted row stops occupying its trigger. Snapshots leave the live tables and their semantics untouched — the migration was purely additive — and capture an item's category and profile links as one aggregate, matching how those links are replaced wholesale on edit.
