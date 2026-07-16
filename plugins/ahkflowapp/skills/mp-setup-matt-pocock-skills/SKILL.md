@@ -9,6 +9,9 @@ AHKFlow adaptation of mattpocock/skills (MIT), pinned at commit 9603c1cc8118d08b
 Update policy: manual-selective-merge — do not bulk-sync with upstream.
 AHKFlow adaptation: triage-installed detection below targets the `mp-triage` skill name (this repo's
 fork prefix), not upstream's literal `triage`.
+AHKFlow adaptation: the domain.md seed template drops upstream's `/improve-codebase-architecture`
+pointer — that skill is deferred and not vendored here, leaving `/mp-grill-with-docs` as the sole
+route to `/mp-domain-modeling`. Restore the pointer if that skill is ever adopted.
 -->
 
 # Setup Matt Pocock's Skills
