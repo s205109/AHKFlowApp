@@ -277,6 +277,20 @@ Keep PRs focused on a single concern; split large changes into stacked PRs.
 
 Primary way to interact with GitHub is the `gh` CLI.
 
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues for `s205109/AHKFlowApp`, managed via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Five canonical roles, each label string equal to its name. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context — `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
 ## Domain Terms
 
 - **Hotstring** — text replacement trigger: type an abbreviation (e.g., `btw`), auto-expands to full text (`by the way`). Core domain entity.
