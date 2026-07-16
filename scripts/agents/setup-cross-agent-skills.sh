@@ -4,8 +4,10 @@
 # Sets up repo-local cross-agent skill symlinks that point at active .agents/ skills.
 # .claude/skills/ and .github/skills/ become real directories containing one symlink
 # per immediate .agents/<skill>/ directory. The repo-local Codex plugin
-# skills folder uses hard-linked SKILL.md files because Codex plugin installation
-# ignores symlinks. Reference docs, disabled dirs, and plugin packaging are ignored.
+# skills folder mirrors each skill directory with hard-linked files (SKILL.md plus
+# companion files such as templates and agents/openai.yaml) because Codex plugin
+# installation ignores symlinks. Reference docs, disabled dirs, and plugin packaging
+# are ignored.
 
 set -euo pipefail
 
@@ -227,21 +229,15 @@ sync_codex_plugin_skill_directory() {
         fi
 
         skill_link_dir="$link_root/$skill_name"
-        skill_link="$skill_link_dir/SKILL.md"
-        mkdir -p "$skill_link_dir"
-
-        if [ -e "$skill_link" ] || [ -L "$skill_link" ]; then
-            if [ -L "$skill_link" ]; then
-                rm "$skill_link"
-                echo "[FIX] Replaced symlink $display_name/$skill_name/SKILL.md with a hard link."
-            else
-                rm "$skill_link"
-                echo "[FIX] Refreshed hard link $display_name/$skill_name/SKILL.md."
-            fi
-        fi
+        rm -rf "$skill_link_dir"
 
         (
-            ln "$skill_dir/SKILL.md" "$skill_link"
+            cd "$skill_dir"
+            find . -type f -print | while IFS= read -r rel; do
+                rel="${rel#./}"
+                mkdir -p "$skill_link_dir/$(dirname "$rel")"
+                ln "$skill_dir/$rel" "$skill_link_dir/$rel"
+            done
         )
     done
 }
@@ -252,4 +248,4 @@ sync_skill_link_directory "$CLAUDE_SKILLS" ".claude/skills" "../../.agents" fals
 sync_skill_link_directory "$GITHUB_SKILLS" ".github/skills" "../../.agents" false
 sync_codex_plugin_skill_directory "$CODEX_PLUGIN_SKILLS" ".agents/plugins/plugins/ahkflowapp/skills"
 
-echo "[DONE] .claude/skills and .github/skills symlink to active .agents/* skills; Codex plugin skills hard-link to the same SKILL.md files"
+echo "[DONE] .claude/skills and .github/skills symlink to active .agents/* skills; Codex plugin skills mirror the same skill directories with hard-linked files"
