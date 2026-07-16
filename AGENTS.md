@@ -14,7 +14,7 @@ Blazor WebAssembly PWA frontend + ASP.NET Core Web API backend + `ahkflow` CLI c
 - **Ardalis.Result** for typed operation outcomes (handlers only)
 - **FluentValidation** via `ValidatingUseCase<TRequest,TResult>` decorator (auto-validates before handler)
 - `.AddStandardResilienceHandler()` on all HttpClient registrations
-- **Serilog** for structured logging (console, file, Application Insights sinks)
+- **Serilog** for structured logging (console, file, Application Insights sinks) — keep `CreateBootstrapLogger()` before host build and `Log.CloseAndFlushAsync()` on exit; `UseSerilogRequestLogging` after exception middleware; structured `{Property}` templates over interpolation; never log secrets or tokens
 - **MinVer** for automatic semantic versioning from git tags
 - **Testing:** xUnit + FluentAssertions + NSubstitute; Testcontainers (SQL Server) for integration tests
 
@@ -107,6 +107,7 @@ dotnet format
 - Collection expressions (`[1, 2, 3]`) over constructor calls (`new List<int> { 1, 2, 3 }`)
 - Pattern matching / switch expressions over if-else chains
 - Member ordering: constants, fields, constructors, properties, public methods, private methods
+- Domain state: private setters plus factory/domain methods — never public setters on domain entities
 - English for all code comments and documentation
 - PowerShell for script files, bash for manual scripts in .md files
 
@@ -140,9 +141,11 @@ HTTP Request -> Controller (thin, maps Result to HTTP)
 - Test naming: `MethodName_Scenario_ExpectedResult`
 - AAA pattern (Arrange/Act/Assert) with blank line separation; one assertion concept per test
 - Assert on `Result.IsSuccess` / `Result.Status` in handler unit tests
+- FluentAssertions over raw `Assert` — better failure messages
 - Shared fixtures: `IClassFixture<T>`, `ICollectionFixture<T>` for expensive setup (containers)
 - NSubstitute for third-party boundaries only — don't mock what you own
 - Test behavior (HTTP response, DB state, Result status), not implementation details
+- `FakeTimeProvider` (from `Microsoft.Extensions.TimeProvider.Testing`) for time-dependent tests
 - Frameworks: xUnit, FluentAssertions, NSubstitute, Testcontainers (SQL Server)
 
 ## Plans
@@ -194,6 +197,8 @@ When asking the user to manually test or verify anything (UI flows, commands, ac
 - Async all the way — no `.Result` or `.Wait()`. Only exception: `Program.cs` top-level statements.
 - `TimeProvider` over `DateTime.Now` / `DateTime.UtcNow` — injectable and testable.
 - `IHttpClientFactory` over `new HttpClient()` — prevents socket exhaustion.
+- Disable retries for unsafe HTTP methods (`options.Retry.DisableForUnsafeHttpMethods()`) when a client makes non-idempotent calls.
+- Cross-cutting HTTP concerns (auth, correlation IDs, logging) belong in `DelegatingHandler`s, not call sites.
 - `ArrayPool<T>` / `MemoryPool<T>` for buffer-heavy operations.
 - Compiled queries (`EF.CompileAsyncQuery`) for hot-path EF Core queries.
 - `ValueTask<T>` over `Task<T>` for high-throughput paths that often complete synchronously.
@@ -202,6 +207,8 @@ When asking the user to manually test or verify anything (UI flows, commands, ac
 
 - Never hardcode secrets. Use `dotnet user-secrets` locally and Azure App Service Configuration in deployed environments.
 - Never commit `.env` files, `appsettings.Development.json` with real credentials, or `credentials.json`.
+- Blazor WASM `wwwroot/appsettings*.json` is public (downloadable by any user) — never treat it as secret.
+- Options classes bind via `.BindConfiguration().ValidateDataAnnotations().ValidateOnStart()` — fail fast at startup.
 - Validate all external input at system boundaries (FluentValidation / validation attributes).
 - Parameterized queries only — never string concatenation for SQL. EF Core `$""` interpolation is safe; `ExecuteSqlRaw` with concatenation is not.
 - Always add `[Authorize]` or `[AllowAnonymous]` explicitly on every controller/endpoint.
