@@ -110,6 +110,7 @@ public sealed class CreateHotkeyCommandValidatorTests
     [InlineData("n\r")]
     [InlineData("n\n")]
     [InlineData("n\t")]
+    [InlineData("n\u0001")]
     public void Validate_WithKeyContainingControlChars_Fails(string key)
     {
         ValidationResult result = _sut.Validate(Cmd(key: key));
@@ -117,7 +118,29 @@ public sealed class CreateHotkeyCommandValidatorTests
         result.IsValid.Should().BeFalse();
         result.Errors.Should().Contain(e =>
             e.PropertyName == "Input.Key" &&
-            e.ErrorMessage == "Key must not contain line breaks or tabs.");
+            e.ErrorMessage == "Key must not contain control characters.");
+    }
+
+    [Theory]
+    [InlineData("a\"", "Key must not contain double-quote characters.")]
+    [InlineData("a`", "Key must not contain backtick characters.")]
+    [InlineData("a:", "Key must not contain colon characters.")]
+    public void Validate_WithKeyContainingForbiddenChars_Fails(string key, string expectedMessage)
+    {
+        ValidationResult result = _sut.Validate(Cmd(key: key));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.Key" &&
+            e.ErrorMessage == expectedMessage);
+    }
+
+    [Fact]
+    public void Validate_WithSemicolonKey_Succeeds()
+    {
+        ValidationResult result = _sut.Validate(Cmd(key: ";"));
+
+        result.IsValid.Should().BeTrue();
     }
 
     [Fact]
@@ -137,6 +160,29 @@ public sealed class CreateHotkeyCommandValidatorTests
         result.Errors.Should().Contain(e =>
             e.PropertyName == "Input.Parameters" &&
             e.ErrorMessage == "Parameters must be 4000 characters or fewer.");
+    }
+
+    [Theory]
+    [InlineData("he said \"hi\"", "Parameters must not contain double-quote characters.")]
+    [InlineData("x`n", "Parameters must not contain backtick characters.")]
+    [InlineData("x\n", "Parameters must not contain control characters.")]
+    [InlineData("x\t", "Parameters must not contain control characters.")]
+    public void Validate_WithParametersContainingForbiddenChars_Fails(string parameters, string expectedMessage)
+    {
+        ValidationResult result = _sut.Validate(Cmd(parameters: parameters));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.Parameters" &&
+            e.ErrorMessage == expectedMessage);
+    }
+
+    [Fact]
+    public void Validate_WithParametersContainingColonsAndPath_Succeeds()
+    {
+        ValidationResult result = _sut.Validate(Cmd(parameters: @"C:\tools\app.exe --flag"));
+
+        result.IsValid.Should().BeTrue();
     }
 
     [Fact]
