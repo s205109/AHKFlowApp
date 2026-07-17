@@ -48,13 +48,13 @@ pwsh -NoProfile -File scripts/agents/setup-cross-agent-skills.ps1
 
 ## Code Navigation
 
-The live `.claude/rules/agents.md` says to use the csharp-lsp plugin or Grep for type lookups, and `dotnet build`/`dotnet test` for regression checks. Roslyn Navigator MCP is now available as an additional option, not a mandate.
+The live `.claude/rules/agents.md` says to use the Roslyn LSP (from the `dotnet` plugin) or Grep for type lookups, and `dotnet build`/`dotnet test` for regression checks. Roslyn Navigator MCP is now available as an additional option, not a mandate.
 
 Use the cheapest reliable lookup:
 
 | Need | Tool |
 |---|---|
-| Find symbol/type | Roslyn MCP, csharp-lsp, or `rg` |
+| Find symbol/type | Roslyn MCP, Roslyn LSP, or `rg` |
 | Find references | Roslyn MCP or `rg` |
 | Confirm compiler state | `dotnet build` |
 | Confirm behavior | `dotnet test` |

@@ -20,7 +20,7 @@ Quick, pragmatic analysis of test code in any supported language for anti-patter
 
 ## When Not to Use
 
-- User wants to write new tests from scratch (use `dck-testing`)
+- User wants to write new tests from scratch (use `dck-scaffolding`)
 - User wants direct implementation fixes rather than a diagnostic review (use the relevant write/edit skill)
 - User wants to run or execute tests (use `dck-verify`)
 - User wants to migrate between test frameworks or versions (use `dck-migration-workflow`)

@@ -14,8 +14,8 @@ description: >
 
 | Need | Tool / Approach |
 |---|---|
-| Find type definition | csharp-lsp plugin or Grep |
-| Check public API surface | csharp-lsp plugin |
+| Find type definition | Roslyn LSP (dotnet plugin) or Grep |
+| Check public API surface | Roslyn LSP (dotnet plugin) |
 | Verify no regressions | `dotnet build` + `dotnet test` |
 | Parallel research | Subagent |
 | Architecture decision | Opus |
