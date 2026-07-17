@@ -15,10 +15,11 @@ internal static class HotkeyRules
           .MaximumLength(DescriptionMaxLength).WithMessage($"Description must be {DescriptionMaxLength} characters or fewer.");
 
     // Key and Parameters are embedded raw by AhkScriptGenerator.FormatHotkey; the character
-    // rejections below keep the generated line valid AHK v2 (same trust model as ContextValue
-    // in HotstringRules.AddWindowContextRules). Colon is rejected only in Key: "a:" would emit
-    // "a:::...", which AHK parses as hotstring syntax. Interim until escaping lands (see the
-    // follow-up to issue #193).
+    // rejections below keep known-unsafe characters out of the generated line (same trust
+    // model as ContextValue in HotstringRules.AddWindowContextRules) — they do not guarantee
+    // Key is a valid AHK key name. Colon is rejected only in Key: "a:" would emit "a:::...",
+    // which AHK parses as hotstring syntax. Interim until escaping and a Key whitelist land
+    // (see the follow-up to issue #193).
     public static IRuleBuilderOptions<T, string> ValidKey<T>(this IRuleBuilderInitial<T, string> rb) =>
         rb.Cascade(CascadeMode.Stop)
           .Must(k => !string.IsNullOrEmpty(k)).WithMessage("Key is required.")
