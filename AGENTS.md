@@ -298,6 +298,8 @@ Five canonical roles, each label string equal to its name. See `docs/agents/tria
 
 Single-context — [`CONTEXT.md`](CONTEXT.md) (domain-term glossary; use its vocabulary) + [`docs/adr/`](docs/adr/) at the repo root. See `docs/agents/domain.md`.
 
+The AHK v2 syntax we emit — option flags, escaping, `#HotIf`, bodies per kind — is documented in [`docs/development/ahk-v2-syntax.md`](docs/development/ahk-v2-syntax.md); read it before changing an emitter.
+
 ## Prerequisites
 
 - **Windows Developer Mode** must be enabled (required for symlinks without admin privileges)
