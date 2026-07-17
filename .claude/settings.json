@@ -206,11 +206,5 @@
     "security-guidance@claude-plugins-official": false,
     "code-review@claude-plugins-official": true,
     "pr-review-toolkit@claude-plugins-official": true
-  },
-  "mcpServers": {
-    "github": {
-      "type": "http",
-      "url": "https://api.githubcopilot.com/mcp/"
-    }
   }
 }
