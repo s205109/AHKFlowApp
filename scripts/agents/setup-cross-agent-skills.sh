@@ -19,6 +19,43 @@ case "$(uname -s 2>/dev/null || echo unknown)" in
         ;;
 esac
 
+compute_codex_skills_hash() {
+    # Deterministic content hash of the Codex skills payload. Hashes git blob OIDs
+    # (git hash-object applies clean filters) so line-ending differences between
+    # platforms/checkouts don't change the version. Must stay in sync with
+    # Get-CodexSkillsHash in setup-cross-agent-skills.ps1: ordinal-sorted forward-slash
+    # skills-root-relative paths, SHA-256 over "<blob-oid>  <path>\n" lines.
+    # Args: [skills_dir] [git_prefix] — default to the real Codex payload; the
+    # regression test passes a temp payload so it can hash spaced filenames.
+    local skills_dir="${1:-$CODEX_PLUGIN_SKILLS}"
+    local git_prefix="${2:-plugins/ahkflowapp/skills/}"
+    (
+        cd "$skills_dir"
+        local paths_file
+        paths_file=$(mktemp)
+        find . -type f | sed 's|^\./||' | LC_ALL=C sort > "$paths_file"
+        # git hash-object --stdin-paths resolves paths relative to the repo root,
+        # so prefix the skills-root-relative names when feeding git.
+        # paste joins each blob OID to its path with a single space; convert that
+        # first delimiter to two spaces without tokenizing the path — a blob OID
+        # never contains a space, so the first space is always the delimiter, and
+        # paths containing spaces are preserved in full (must match the PowerShell
+        # "<blob-oid>  <path>" format).
+        paste -d' ' \
+            <(sed "s|^|$git_prefix|" "$paths_file" | git hash-object --stdin-paths) \
+            "$paths_file" |
+            sed 's/ /  /'
+        rm -f "$paths_file"
+    ) | sha256sum | cut -c1-12
+}
+
+# Side-effect-free entry point for the regression test: print the hash of an
+# arbitrary payload and exit before any repo mutation (hooks, symlinks, etc.).
+if [ "${1:-}" = "--print-codex-hash" ]; then
+    compute_codex_skills_hash "${2:-}" "${3:-}"
+    exit 0
+fi
+
 REPO_ROOT=$(git rev-parse --show-toplevel)
 AGENTS_ROOT="$REPO_ROOT/.agents"
 CLAUDE_ROOT="$REPO_ROOT/.claude"
@@ -242,10 +279,52 @@ sync_codex_plugin_skill_directory() {
     done
 }
 
+update_codex_plugin_version() {
+    local plugin_json="$REPO_ROOT/plugins/ahkflowapp/.codex-plugin/plugin.json"
+    if [ ! -f "$plugin_json" ]; then
+        echo "[WARN] $plugin_json not found — skipping Codex plugin version bump."
+        return
+    fi
+
+    local hash current base new_version
+    hash=$(compute_codex_skills_hash)
+    current=$(sed -nE 's/.*"version":[[:space:]]*"([^"]+)".*/\1/p' "$plugin_json" | head -1)
+    if [ -z "$current" ]; then
+        echo "[WARN] No version field in plugin.json — skipping Codex plugin version bump."
+        return
+    fi
+
+    base=${current%%+*}
+    new_version="$base+codex.$hash"
+    if [ "$new_version" = "$current" ]; then
+        echo "[OK] Codex plugin version $current matches skills content."
+        return
+    fi
+
+    sed -i -E "s|(\"version\":[[:space:]]*\")[^\"]+(\")|\1$new_version\2|" "$plugin_json"
+    echo "[FIX] Codex plugin version bumped to $new_version — commit plugin.json."
+}
+
+update_codex_installed_plugin() {
+    if ! command -v codex >/dev/null 2>&1; then
+        echo "[OK] Codex CLI not on PATH — skipping installed plugin refresh."
+        return
+    fi
+
+    echo "[..] Refreshing installed Codex plugin cache (codex plugin add ahkflowapp@ahkflowapp-local)..."
+    if codex plugin add 'ahkflowapp@ahkflowapp-local' --json >/dev/null 2>&1; then
+        echo "[OK] Codex plugin cache refreshed. Start a new Codex session to pick up skill changes."
+    else
+        echo "[WARN] 'codex plugin add ahkflowapp@ahkflowapp-local' failed (is the ahkflowapp-local marketplace registered?). Run it manually to refresh the Codex plugin cache."
+    fi
+}
+
 mkdir -p "$CLAUDE_ROOT"
 
 sync_skill_link_directory "$CLAUDE_SKILLS" ".claude/skills" "../../.agents" false
 sync_skill_link_directory "$GITHUB_SKILLS" ".github/skills" "../../.agents" false
 sync_codex_plugin_skill_directory "$CODEX_PLUGIN_SKILLS" "plugins/ahkflowapp/skills"
+update_codex_plugin_version
+update_codex_installed_plugin
 
 echo "[DONE] .claude/skills and .github/skills symlink to active .agents/* skills; Codex plugin skills mirror the same skill directories with hard-linked files"
