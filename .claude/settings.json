@@ -199,7 +199,7 @@
     "claude-code-setup@claude-plugins-official": false,
     "commit-commands@claude-plugins-official": true,
     "playwright@claude-plugins-official": true,
-    "csharp-lsp@claude-plugins-official": true,
+    "csharp-lsp@claude-plugins-official": false,
     "claude-md-management@claude-plugins-official": true,
     "feature-dev@claude-plugins-official": true,
     "frontend-design@claude-plugins-official": false,
