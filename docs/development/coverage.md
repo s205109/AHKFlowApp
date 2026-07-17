@@ -2,7 +2,7 @@
 
 ## Canonical local verification
 
-For day-to-day development, prefer the targeted test slices in [Local testing workflow](testing-workflow.md). The coverage command below remains the full pre-push / pre-PR confidence gate.
+For day-to-day development, prefer the targeted test slices in [Local testing workflow](testing-workflow.md). The coverage command below remains the full pre-PR confidence gate; CI runs it on every PR. The pre-push hook itself only runs quick checks (see below), not full coverage.
 
 From the repo root, run:
 
@@ -38,16 +38,16 @@ git config core.hooksPath .githooks
 
 The canonical gate also requires `python` on `PATH`.
 
-That `core.hooksPath` setting enables the repo-managed `.githooks/pre-push` hook, which runs `pwsh .\scripts\run-coverage.ps1` automatically before each push.
+That `core.hooksPath` setting enables the repo-managed `.githooks/pre-push` hook, which runs `pwsh .\scripts\pre-push-quick-checks.ps1` automatically before each push — an incremental build plus the container-free fast test slice, not full coverage. CI runs the full coverage + format gate on every PR, so the hook is a quick local sanity check rather than the authoritative gate. Run `pwsh .\scripts\run-coverage.ps1` yourself before opening a PR if you want the full local confidence check.
 
-The hook adds a few minutes per push. Skip it for WIP pushes with either:
+The hook adds well under two minutes per push. Skip it for WIP pushes with either:
 
 ```bash
-SKIP_COVERAGE_HOOK=1 git push   # honored by the repo hook only
+SKIP_PUSH_HOOK=1 git push       # honored by the repo hook only (SKIP_COVERAGE_HOOK also still works)
 git push --no-verify            # bypasses every pre-push hook
 ```
 
-Prefer `SKIP_COVERAGE_HOOK=1` so future pre-push hooks (lint, secret scan, etc.) still run.
+Prefer `SKIP_PUSH_HOOK=1` — it skips only this repo's pre-push hook, while `--no-verify` bypasses every pre-push hook on your machine.
 
 ## Outputs
 
