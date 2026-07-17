@@ -29,9 +29,11 @@ function Get-CodexSkillsHash {
     # platforms/checkouts don't change the version. Must stay in sync with the
     # equivalent computation in setup-cross-agent-skills.sh: ordinal-sorted
     # forward-slash skills-root-relative paths, SHA-256 over "<blob-oid>  <path>\n" lines.
-    $rootFull = (Resolve-Path -LiteralPath $SkillsRoot).Path.TrimEnd('\')
+    # Trim both separators so the function works under pwsh on Linux (CI parity test)
+    # as well as Windows — FullName uses '/' on Linux, '\' on Windows.
+    $rootFull = (Resolve-Path -LiteralPath $SkillsRoot).Path.TrimEnd('\', '/')
     $relatives = Get-ChildItem -LiteralPath $rootFull -Recurse -File -Force |
-        ForEach-Object { $_.FullName.Substring($rootFull.Length).TrimStart('\').Replace('\', '/') }
+        ForEach-Object { $_.FullName.Substring($rootFull.Length).TrimStart('\', '/').Replace('\', '/') }
     $sorted = [System.Collections.Generic.List[string]]::new()
     foreach ($rel in $relatives) { $sorted.Add($rel) }
     $sorted.Sort([System.StringComparer]::Ordinal)
