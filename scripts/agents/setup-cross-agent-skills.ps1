@@ -11,10 +11,62 @@
     Reference docs, disabled dirs, and plugin packaging are ignored.
     Everything stays inside the repo — no user-folder changes.
     Requires Windows Developer Mode and git core.symlinks=true.
+.PARAMETER PrintCodexHash
+    Side-effect-free entry point for the regression test: print the Codex skills
+    hash of the given payload directory and exit before any repo mutation.
 #>
+
+param([string] $PrintCodexHash)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+function Get-CodexSkillsHash {
+    param([string] $SkillsRoot)
+
+    # Deterministic content hash of the Codex skills payload. Hashes git blob OIDs
+    # (git hash-object applies clean filters) so line-ending differences between
+    # platforms/checkouts don't change the version. Must stay in sync with the
+    # equivalent computation in setup-cross-agent-skills.sh: ordinal-sorted
+    # forward-slash skills-root-relative paths, SHA-256 over "<blob-oid>  <path>\n" lines.
+    $rootFull = (Resolve-Path -LiteralPath $SkillsRoot).Path.TrimEnd('\')
+    $relatives = Get-ChildItem -LiteralPath $rootFull -Recurse -File -Force |
+        ForEach-Object { $_.FullName.Substring($rootFull.Length).TrimStart('\').Replace('\', '/') }
+    $sorted = [System.Collections.Generic.List[string]]::new()
+    foreach ($rel in $relatives) { $sorted.Add($rel) }
+    $sorted.Sort([System.StringComparer]::Ordinal)
+
+    Push-Location $rootFull
+    try {
+        # Paths passed as arguments: piping to native stdin appends CR on Windows PowerShell,
+        # which git would treat as part of the path.
+        $blobs = @(& git hash-object -- @($sorted))
+        if ($LASTEXITCODE -ne 0 -or $blobs.Count -ne $sorted.Count) {
+            Write-Error "git hash-object failed while hashing Codex skills payload."
+            exit 1
+        }
+    } finally {
+        Pop-Location
+    }
+
+    $builder = [System.Text.StringBuilder]::new()
+    for ($i = 0; $i -lt $sorted.Count; $i++) {
+        [void]$builder.Append("$($blobs[$i])  $($sorted[$i])`n")
+    }
+
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $digest = $sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($builder.ToString()))
+        return ([System.BitConverter]::ToString($digest) -replace '-', '').Substring(0, 12).ToLowerInvariant()
+    } finally {
+        $sha.Dispose()
+    }
+}
+
+if ($PrintCodexHash) {
+    Get-CodexSkillsHash $PrintCodexHash
+    exit 0
+}
 
 # --- Repo root ---
 $repoRoot = (git rev-parse --show-toplevel 2>$null).Trim()
@@ -278,48 +330,6 @@ function Sync-CodexPluginSkillDirectory {
             New-Item -ItemType Directory -Path (Split-Path -Parent $linkPath) -Force | Out-Null
             New-Item -ItemType HardLink -Path $linkPath -Target $sourceFile.FullName | Out-Null
         }
-    }
-}
-
-function Get-CodexSkillsHash {
-    param([string] $SkillsRoot)
-
-    # Deterministic content hash of the Codex skills payload. Hashes git blob OIDs
-    # (git hash-object applies clean filters) so line-ending differences between
-    # platforms/checkouts don't change the version. Must stay in sync with the
-    # equivalent computation in setup-cross-agent-skills.sh: ordinal-sorted
-    # forward-slash skills-root-relative paths, SHA-256 over "<blob-oid>  <path>\n" lines.
-    $rootFull = (Resolve-Path -LiteralPath $SkillsRoot).Path.TrimEnd('\')
-    $relatives = Get-ChildItem -LiteralPath $rootFull -Recurse -File -Force |
-        ForEach-Object { $_.FullName.Substring($rootFull.Length).TrimStart('\').Replace('\', '/') }
-    $sorted = [System.Collections.Generic.List[string]]::new()
-    foreach ($rel in $relatives) { $sorted.Add($rel) }
-    $sorted.Sort([System.StringComparer]::Ordinal)
-
-    Push-Location $rootFull
-    try {
-        # Paths passed as arguments: piping to native stdin appends CR on Windows PowerShell,
-        # which git would treat as part of the path.
-        $blobs = @(& git hash-object -- @($sorted))
-        if ($LASTEXITCODE -ne 0 -or $blobs.Count -ne $sorted.Count) {
-            Write-Error "git hash-object failed while hashing Codex skills payload."
-            exit 1
-        }
-    } finally {
-        Pop-Location
-    }
-
-    $builder = [System.Text.StringBuilder]::new()
-    for ($i = 0; $i -lt $sorted.Count; $i++) {
-        [void]$builder.Append("$($blobs[$i])  $($sorted[$i])`n")
-    }
-
-    $sha = [System.Security.Cryptography.SHA256]::Create()
-    try {
-        $digest = $sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($builder.ToString()))
-        return ([System.BitConverter]::ToString($digest) -replace '-', '').Substring(0, 12).ToLowerInvariant()
-    } finally {
-        $sha.Dispose()
     }
 }
 
