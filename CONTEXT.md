@@ -42,6 +42,18 @@ _Avoid_: send mode, paste mode, method, Hotstring (the current UI label for type
 The restriction that limits a Hotstring to windows matching a given executable, window class, or title substring. A Hotstring without one fires in every window.
 _Avoid_: scope, filter, condition
 
+**Options**:
+The settings that shape how a Hotstring fires: case sensitivity, triggering inside words, and Ending character behavior. Structured Kinds expose them as individual toggles; a Raw definition carries them as flag letters inside the definition text, from which they are derived.
+_Avoid_: flags (for the toggles), settings, modifiers
+
+**Ending character**:
+The character — a space, period, enter, or similar — typed after a Trigger to fire its Hotstring. A Hotstring can waive it (firing the moment the Trigger completes) or omit it from what the Replacement produces; omitting is meaningful only when one is required.
+_Avoid_: terminator, delimiter, end char
+
+**Description**:
+A user's note on a hotstring or hotkey, carried into its Profile script as a comment above the definition. For a Raw Hotstring it is lifted from the leading comments of the pasted definition.
+_Avoid_: comment, note, label
+
 ### Organizing
 
 **Profile**:
@@ -63,6 +75,10 @@ _Avoid_: user, account, tenant
 **Profile script**:
 The complete AutoHotkey file generated for one Profile — header, footer, and every definition that applies — which the user downloads and runs themselves.
 _Avoid_: script (unqualified), file, output, ahk
+
+**Header/Footer template**:
+The user-editable text a Profile places before and after the definitions in its Profile script. Tokens such as the profile's name or the generation time are substituted when the script is generated; unknown tokens are left as typed.
+_Avoid_: preamble, banner, boilerplate, prologue/epilogue
 
 ### History
 

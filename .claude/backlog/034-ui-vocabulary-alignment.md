@@ -16,6 +16,7 @@ The glossary (`CONTEXT.md`, PR #192) declares canonical terms whose avoided syno
 - [ ] Inline grid checkbox label `Any` → matches "Apply to all profiles" (`Pages/Hotstrings.razor:901`)
 - [ ] `EntityChips` `Any` chip → glossary-conformant label (`Components/Common/EntityChips.razor:5`)
 - [ ] Delivery option label `Hotstring` → non-overloading term, e.g. `Typed` (`Components/Hotstrings/HotstringEditDialog.razor:65`)
+- [ ] Ending-character labels (`Expand immediately (no ending character)`, `Omit ending character`) conform to the glossary's "Ending character" entry — verify wording, no rename forced (`HotstringEditDialog.razor:268,272`, `Hotstrings.razor:982,985`)
 - [ ] Sweep remaining pages/dialogs (incl. Hotkeys mirror components) for `Type`/`Any` labels
 - [ ] Affected bUnit/E2E assertions and `data-test` docs updated
 
