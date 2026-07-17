@@ -47,7 +47,7 @@ SKIP_PUSH_HOOK=1 git push       # honored by the repo hook only (SKIP_COVERAGE_H
 git push --no-verify            # bypasses every pre-push hook
 ```
 
-Prefer `SKIP_PUSH_HOOK=1` so future pre-push hooks (lint, secret scan, etc.) still run.
+Prefer `SKIP_PUSH_HOOK=1` — it skips only this repo's pre-push hook, while `--no-verify` bypasses every pre-push hook on your machine.
 
 ## Outputs
 

@@ -28,8 +28,13 @@ try {
     Write-Success 'Build succeeded.'
 
     Write-Step 'Running fast test slice'
-    & (Join-Path $PSScriptRoot 'test-fast.ps1') -Mode Fast -Configuration $Configuration -NoBuild
-    if ($LASTEXITCODE -ne 0) {
+    try {
+        & (Join-Path $PSScriptRoot 'test-fast.ps1') -Mode Fast -Configuration $Configuration -NoBuild
+        if ($LASTEXITCODE -ne 0) {
+            throw "Fast test slice failed."
+        }
+    }
+    catch {
         throw "Fast test slice failed. $skipHint"
     }
     Write-Success 'Fast test slice passed.'
