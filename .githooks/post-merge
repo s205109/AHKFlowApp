@@ -11,6 +11,7 @@ git rev-parse --verify ORIG_HEAD >/dev/null 2>&1 || exit 0
 
 if git diff --quiet ORIG_HEAD HEAD -- \
     .agents/ \
+    plugins/ahkflowapp/ \
     scripts/agents/setup-cross-agent-skills.ps1 \
     scripts/agents/setup-cross-agent-skills.sh \
     2>/dev/null; then
