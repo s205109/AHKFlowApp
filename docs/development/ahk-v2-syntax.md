@@ -273,12 +273,14 @@ Emitted in the fixed order `^ ! + #` (`AhkScriptGenerator.FormatHotkey`). Action
 ^!t::Run("notepad.exe")
 ```
 
-Note that both hotkey `Key` and `Parameters` are interpolated **without** passing through either
-escape routine — a `"` in `Parameters` emits a broken line (`^a::Send("he said "hi"")`), and
-quotes, backticks, or newlines in either field can break the generated script. This is current
-pinned behaviour, not an accident of reading: `Generate_Hotkey_EmitsParametersVerbatim_NoEscaping`
-asserts it (as characterization, not endorsement). Hotstrings escape, hotkeys don't; if you touch
-this, that test is the thing to change first.
+Both hotkey `Key` and `Parameters` are interpolated **without** passing through either escape
+routine. What keeps that safe is boundary validation, not the emitter: `HotkeyRules` rejects `"`,
+backticks, and control characters in both fields, plus `:` in `Key` (a colon there would emit
+`a:::...`, which AHK parses as hotstring syntax) — the same trust model as `ContextValue` for
+`#HotIf`. `Generate_Hotkey_EmitsParametersVerbatim_NoEscaping` pins the emitter's raw embedding.
+This is the interim resolution of issue #193; proper escaping of `Parameters` (and a `Key`
+whitelist, relaxing these rejections) is deferred to its follow-up issue. Rows created before the
+validation landed are not retroactively checked.
 
 ## Input limits
 
