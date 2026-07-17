@@ -195,7 +195,6 @@
     "superpowers@claude-plugins-official": true,
     "context7@claude-plugins-official": true,
     "github@claude-plugins-official": false,
-    "skill-creator@claude-plugins-official": false,
     "code-simplifier@claude-plugins-official": true,
     "claude-code-setup@claude-plugins-official": false,
     "commit-commands@claude-plugins-official": true,
@@ -206,7 +205,7 @@
     "frontend-design@claude-plugins-official": false,
     "security-guidance@claude-plugins-official": false,
     "code-review@claude-plugins-official": true,
-    "pr-review-toolkit@claude-plugins-official": false
+    "pr-review-toolkit@claude-plugins-official": true
   },
   "mcpServers": {
     "github": {
