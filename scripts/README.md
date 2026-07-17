@@ -22,6 +22,7 @@ and must be changed as one set (see below).
 | --- | --- |
 | `test-fast.ps1` | Runs explicit local test slices (fast, integration, E2E, coverage). |
 | `run-coverage.ps1` | Runs tests with coverage, builds the merged report, enforces the CI coverage gate. |
+| `pre-push-quick-checks.ps1` | Incremental build + container-free fast test slice; runs automatically via the pre-push hook. |
 | `measure-tests.ps1` | Measures test project, class, test, and SQL fixture setup timings. |
 | `kill-dev-ports.ps1` | Frees the dev-server ports so `dotnet run` doesn't fail with "address already in use". |
 | `publish-cli.ps1` | Publishes the `ahkflow` CLI as a native single-file executable with baked-in API/auth config. |

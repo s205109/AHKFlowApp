@@ -7,8 +7,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-if ($env:SKIP_COVERAGE_HOOK) {
-    Write-Host "[pre-push] SKIP_COVERAGE_HOOK is set - skipping coverage verification." -ForegroundColor Yellow
+if ($env:SKIP_PUSH_HOOK -or $env:SKIP_COVERAGE_HOOK) {
+    Write-Host "[pre-push] SKIP_PUSH_HOOK is set - skipping quick checks." -ForegroundColor Yellow
     exit 0
 }
 
@@ -22,27 +22,27 @@ if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($repoRoot)) {
 }
 
 $repoRoot = $repoRoot.Trim()
-$coverageScriptPath = Join-Path $repoRoot 'scripts' 'run-coverage.ps1'
-if (-not (Test-Path -LiteralPath $coverageScriptPath)) {
-    throw "[pre-push] Coverage script not found at '$coverageScriptPath'."
+$quickChecksScriptPath = Join-Path $repoRoot 'scripts' 'pre-push-quick-checks.ps1'
+if (-not (Test-Path -LiteralPath $quickChecksScriptPath)) {
+    throw "[pre-push] Quick checks script not found at '$quickChecksScriptPath'."
 }
 
-Write-Host "[pre-push] Running coverage verification before push..." -ForegroundColor Cyan
+Write-Host "[pre-push] Running quick checks before push..." -ForegroundColor Cyan
 Write-Host "[pre-push] Verifying: $repoRoot" -ForegroundColor DarkGray
-Write-Host "[pre-push] Skip with: SKIP_COVERAGE_HOOK=1 git push  (or: git push --no-verify)" -ForegroundColor DarkGray
+Write-Host "[pre-push] Skip with: SKIP_PUSH_HOOK=1 git push  (or: git push --no-verify)" -ForegroundColor DarkGray
 if ($RemoteName) {
     Write-Host "[pre-push] Remote: $RemoteName $RemoteLocation" -ForegroundColor DarkGray
 }
 
 Push-Location $repoRoot
 try {
-    & $coverageScriptPath
+    & $quickChecksScriptPath
     if ($LASTEXITCODE -ne 0) {
-        throw "Coverage verification failed."
+        throw "Quick checks failed."
     }
 }
 finally {
     Pop-Location
 }
 
-Write-Host "[pre-push] Coverage verification passed." -ForegroundColor Green
+Write-Host "[pre-push] Quick checks passed." -ForegroundColor Green

@@ -1,6 +1,6 @@
 # Local testing workflow
 
-Use the fastest test slice that still covers the code you changed, then run the full coverage gate before pushing or opening a PR.
+Use the fastest test slice that still covers the code you changed. The pre-push hook runs an incremental build plus the fast slice automatically; run the full coverage gate yourself before opening a PR (CI enforces it on every PR regardless).
 
 ## Fast inner loop
 
@@ -53,7 +53,7 @@ The first E2E run after frontend source changes publishes the Blazor app before 
 pwsh .\scripts\test-fast.ps1 -Mode Coverage
 ```
 
-Coverage mode delegates to `scripts/run-coverage.ps1`. Run it before pushing or opening a PR; the pre-push hook and CI still use the full coverage path. The local coverage script uses the same disposable shared SQL container behavior as Integration mode for the SQL-backed suites.
+Coverage mode delegates to `scripts/run-coverage.ps1`. Run it before opening a PR; CI enforces the same coverage + threshold gate on every PR. The pre-push hook itself only runs quick checks (incremental build + fast slice, see `scripts/pre-push-quick-checks.ps1`), not this full coverage path. The local coverage script uses the same disposable shared SQL container behavior as Integration mode for the SQL-backed suites.
 
 ## Trait contract
 
