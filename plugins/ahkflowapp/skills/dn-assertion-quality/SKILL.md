@@ -34,7 +34,7 @@ Low assertion diversity signals shallow testing. Tests may pass while bugs hide 
 
 ## When Not to Use
 
-- User wants to write new tests (use `dck-testing`)
+- User wants to write new tests (use `dck-scaffolding`)
 - User wants to detect anti-patterns beyond assertions (use `dn-test-anti-patterns`)
 - User wants to fix or rewrite assertions (help them directly)
 - User asks about code coverage percentages (out of scope — this analyzes assertion quality, not line coverage)
