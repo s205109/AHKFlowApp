@@ -11,10 +11,64 @@
     Reference docs, disabled dirs, and plugin packaging are ignored.
     Everything stays inside the repo — no user-folder changes.
     Requires Windows Developer Mode and git core.symlinks=true.
+.PARAMETER PrintCodexHash
+    Side-effect-free entry point for the regression test: print the Codex skills
+    hash of the given payload directory and exit before any repo mutation.
 #>
+
+param([string] $PrintCodexHash)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+function Get-CodexSkillsHash {
+    param([string] $SkillsRoot)
+
+    # Deterministic content hash of the Codex skills payload. Hashes git blob OIDs
+    # (git hash-object applies clean filters) so line-ending differences between
+    # platforms/checkouts don't change the version. Must stay in sync with the
+    # equivalent computation in setup-cross-agent-skills.sh: ordinal-sorted
+    # forward-slash skills-root-relative paths, SHA-256 over "<blob-oid>  <path>\n" lines.
+    # Trim both separators so the function works under pwsh on Linux (CI parity test)
+    # as well as Windows — FullName uses '/' on Linux, '\' on Windows.
+    $rootFull = (Resolve-Path -LiteralPath $SkillsRoot).Path.TrimEnd('\', '/')
+    $relatives = Get-ChildItem -LiteralPath $rootFull -Recurse -File -Force |
+        ForEach-Object { $_.FullName.Substring($rootFull.Length).TrimStart('\', '/').Replace('\', '/') }
+    $sorted = [System.Collections.Generic.List[string]]::new()
+    foreach ($rel in $relatives) { $sorted.Add($rel) }
+    $sorted.Sort([System.StringComparer]::Ordinal)
+
+    Push-Location $rootFull
+    try {
+        # Paths passed as arguments: piping to native stdin appends CR on Windows PowerShell,
+        # which git would treat as part of the path.
+        $blobs = @(& git hash-object -- @($sorted))
+        if ($LASTEXITCODE -ne 0 -or $blobs.Count -ne $sorted.Count) {
+            Write-Error "git hash-object failed while hashing Codex skills payload."
+            exit 1
+        }
+    } finally {
+        Pop-Location
+    }
+
+    $builder = [System.Text.StringBuilder]::new()
+    for ($i = 0; $i -lt $sorted.Count; $i++) {
+        [void]$builder.Append("$($blobs[$i])  $($sorted[$i])`n")
+    }
+
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $digest = $sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($builder.ToString()))
+        return ([System.BitConverter]::ToString($digest) -replace '-', '').Substring(0, 12).ToLowerInvariant()
+    } finally {
+        $sha.Dispose()
+    }
+}
+
+if ($PrintCodexHash) {
+    Get-CodexSkillsHash $PrintCodexHash
+    exit 0
+}
 
 # --- Repo root ---
 $repoRoot = (git rev-parse --show-toplevel 2>$null).Trim()
@@ -281,8 +335,63 @@ function Sync-CodexPluginSkillDirectory {
     }
 }
 
+function Update-CodexPluginVersion {
+    param(
+        [string] $PluginJsonPath,
+        [string] $SkillsRoot
+    )
+
+    if (-not (Test-Path -LiteralPath $PluginJsonPath)) {
+        Write-Host "[WARN] $PluginJsonPath not found - skipping Codex plugin version bump." -ForegroundColor Yellow
+        return
+    }
+
+    $hash = Get-CodexSkillsHash $SkillsRoot
+    $content = [System.IO.File]::ReadAllText($PluginJsonPath)
+    if ($content -notmatch '"version":\s*"([^"]+)"') {
+        Write-Host "[WARN] No version field in plugin.json - skipping Codex plugin version bump." -ForegroundColor Yellow
+        return
+    }
+
+    $current = $Matches[1]
+    $base = $current.Split('+')[0]
+    $newVersion = "$base+codex.$hash"
+    if ($newVersion -eq $current) {
+        Write-Host "[OK] Codex plugin version $current matches skills content." -ForegroundColor Green
+        return
+    }
+
+    $updated = $content -replace '("version":\s*")[^"]+(")', "`${1}$newVersion`${2}"
+    [System.IO.File]::WriteAllText($PluginJsonPath, $updated, [System.Text.UTF8Encoding]::new($false))
+    Write-Host "[FIX] Codex plugin version bumped to $newVersion - commit plugin.json." -ForegroundColor Yellow
+}
+
+function Update-CodexInstalledPlugin {
+    if (-not (Get-Command codex -ErrorAction SilentlyContinue)) {
+        Write-Host "[OK] Codex CLI not on PATH - skipping installed plugin refresh." -ForegroundColor Green
+        return
+    }
+
+    Write-Host "[..] Refreshing installed Codex plugin cache (codex plugin add ahkflowapp@ahkflowapp-local)..."
+    # EAP=Continue: under Stop, stderr output from a native command redirected via 2>&1 becomes terminating.
+    $previousEap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        codex plugin add 'ahkflowapp@ahkflowapp-local' --json 2>&1 | Out-Null
+    } finally {
+        $ErrorActionPreference = $previousEap
+    }
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "[OK] Codex plugin cache refreshed. Start a new Codex session to pick up skill changes." -ForegroundColor Green
+    } else {
+        Write-Host "[WARN] 'codex plugin add ahkflowapp@ahkflowapp-local' failed (is the ahkflowapp-local marketplace registered?). Run it manually to refresh the Codex plugin cache." -ForegroundColor Yellow
+    }
+}
+
 Sync-SkillLinkDirectory $claudeSkills '.claude/skills' '..\..\.agents' $false
 Sync-SkillLinkDirectory $githubSkills '.github/skills' '..\..\.agents' $false
 Sync-CodexPluginSkillDirectory $codexPluginSkills 'plugins/ahkflowapp/skills'
+Update-CodexPluginVersion (Join-Path $repoRoot 'plugins\ahkflowapp\.codex-plugin\plugin.json') $codexPluginSkills
+Update-CodexInstalledPlugin
 
 Write-Host "[DONE] .claude/skills and .github/skills symlink to active .agents/* skills; Codex plugin skills mirror the same skill directories with hard-linked files" -ForegroundColor Green

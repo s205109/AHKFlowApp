@@ -307,3 +307,5 @@ The AHK v2 syntax we emit — option flags, escaping, `#HotIf`, bodies per kind 
 - **Roslyn Navigator MCP** (`CWM.RoslynNavigator`) powers the code-navigation calls in the `dck-verify`, `dck-build-fix`, and `dck-de-sloppify` skills — install with `dotnet tool install -g CWM.RoslynNavigator` (registered in the repo's `.mcp.json`). Without it, those skills fall back to Grep/Roslyn LSP instead of the richer diagnostics.
 
 Run `scripts/agents/setup-copilot-symlinks.ps1` after cloning to configure symlinks for GitHub Copilot CLI skill discovery.
+
+`scripts/agents/setup-cross-agent-skills.ps1` (re-run automatically by the `post-merge` hook when skills change) also bumps the Codex plugin version in `plugins/ahkflowapp/.codex-plugin/plugin.json` from a content hash and refreshes the installed Codex plugin cache via `codex plugin add ahkflowapp@ahkflowapp-local`. Codex captures available skills at session start — start a new Codex session after skill changes.

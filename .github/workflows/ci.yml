@@ -113,6 +113,17 @@ jobs:
           ./tests/SkillParity.Tests.ps1
           ./tests/PrePushHook.Tests.ps1
 
+  codex-skills-hash-parity:
+    # Runs on Linux: the bash setup script refuses under Windows Git Bash, and this
+    # asserts the bash and PowerShell Codex hash implementations agree (both preinstalled
+    # on ubuntu runners).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Codex skills hash parity test
+        shell: pwsh
+        run: ./tests/CodexSkillsHashParity.Tests.ps1
+
   bicep-lint:
     runs-on: ubuntu-latest
     steps:
