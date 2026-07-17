@@ -12,7 +12,9 @@ param(
     [ValidateSet('Fast', 'Integration', 'E2E', 'Coverage')]
     [string]$Mode = 'Fast',
 
-    [string]$Configuration = 'Release'
+    [string]$Configuration = 'Release',
+
+    [switch]$NoBuild
 )
 
 $ErrorActionPreference = 'Stop'
@@ -109,6 +111,10 @@ function Invoke-TestRun {
 
     if (-not [string]::IsNullOrWhiteSpace($TestRun.Filter)) {
         $arguments += @('--filter', $TestRun.Filter)
+    }
+
+    if ($NoBuild) {
+        $arguments += '--no-build'
     }
 
     $filterText = if ([string]::IsNullOrWhiteSpace($TestRun.Filter)) { 'all tests' } else { $TestRun.Filter }
