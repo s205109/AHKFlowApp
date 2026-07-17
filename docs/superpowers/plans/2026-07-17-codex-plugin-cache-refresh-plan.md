@@ -18,7 +18,7 @@ Both fixes go into `scripts/agents/setup-cross-agent-skills.ps1` (and its `.sh` 
 
 After `Sync-CodexPluginSkillDirectory` runs:
 
-- Compute a stable hash of the Codex skills payload: sort all files under `plugins/ahkflowapp/skills/` by relative path, hash `relativePath + file content` (SHA-256, take first 12 hex chars).
+- Compute a stable hash of the Codex skills payload: sort all files under `plugins/ahkflowapp/skills/` by relative path (ordinal), get each file's git blob OID via `git hash-object` (applies clean filters, so line-ending differences between platforms/checkouts don't change the result), SHA-256 over the `<oid>  <path>` lines, take first 12 hex chars.
 - Rewrite `plugins/ahkflowapp/.codex-plugin/plugin.json` `version` to `0.1.0+codex.<hash12>` **only if it differs** — no churn when nothing changed, and the same content always produces the same version on every machine (so a puller's hook never dirties the tree if the committer ran sync).
 - Print `[FIX] plugin.json version bumped — commit this change` when it rewrites.
 
