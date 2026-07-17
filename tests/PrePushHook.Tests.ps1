@@ -83,10 +83,13 @@ function Remove-TempTree {
 
 # Invokes the real .githooks/pre-push.ps1 (by path, from the real repo) with the working
 # directory set to $RepoDir, exactly as git does when core.hooksPath points elsewhere.
+# $HostExe selects the PowerShell host (pwsh or Windows PowerShell 5.1) the hook runs under,
+# so the suite can prove the hook works on both - the sh shim falls back to 5.1 when pwsh is absent.
 function Invoke-PrePushHook {
     param(
         [string] $RepoDir,
-        [hashtable] $EnvOverrides
+        [hashtable] $EnvOverrides,
+        [string] $HostExe
     )
 
     $stdoutFile = [System.IO.Path]::GetTempFileName()
@@ -101,7 +104,7 @@ function Invoke-PrePushHook {
         }
 
         try {
-            $psExe = [System.Diagnostics.Process]::GetCurrentProcess().Path
+            $psExe = if ($HostExe) { $HostExe } else { [System.Diagnostics.Process]::GetCurrentProcess().Path }
             $proc = Start-Process -FilePath $psExe `
                 -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $realHookScript) `
                 -WorkingDirectory $RepoDir `
@@ -124,71 +127,126 @@ function Invoke-PrePushHook {
     }
 }
 
-# --- Test: SKIP_PUSH_HOOK=1 short-circuits, stub never invoked -----------------
-$repo = New-TempGitRepo
-try {
-    $marker = Join-Path $repo 'quick-checks-invoked.txt'
-    $coverageMarker = Join-Path $repo 'run-coverage-invoked.txt'
-    Write-StubQuickChecksScript -RepoDir $repo -MarkerPath $marker
-    Write-StubRunCoverageScript -RepoDir $repo -MarkerPath $coverageMarker
+# All scenarios run against each available PowerShell host so we prove the hook works under both
+# pwsh (PowerShell 7+) and Windows PowerShell 5.1 - the sh shim uses whichever is present, and a
+# 3-argument Join-Path (PS 6+ only) previously broke the hook under 5.1.
+function Invoke-AllScenarios {
+    param([string] $HostExe, [string] $HostLabel)
 
-    $result = Invoke-PrePushHook -RepoDir $repo -EnvOverrides @{ SKIP_PUSH_HOOK = '1' }
-    Assert-Equal 0 $result.ExitCode "SKIP_PUSH_HOOK should short-circuit with exit 0. Stderr: $($result.Stderr)"
-    Assert-True (-not (Test-Path -LiteralPath $marker)) 'Quick-checks stub must not run when SKIP_PUSH_HOOK is set.'
-    Assert-True (-not (Test-Path -LiteralPath $coverageMarker)) 'run-coverage.ps1 must never be invoked.'
-} finally {
-    Remove-TempTree $repo
+    # --- Test: SKIP_PUSH_HOOK=1 short-circuits, stub never invoked -----------------
+    $repo = New-TempGitRepo
+    try {
+        $marker = Join-Path $repo 'quick-checks-invoked.txt'
+        $coverageMarker = Join-Path $repo 'run-coverage-invoked.txt'
+        Write-StubQuickChecksScript -RepoDir $repo -MarkerPath $marker
+        Write-StubRunCoverageScript -RepoDir $repo -MarkerPath $coverageMarker
+
+        $result = Invoke-PrePushHook -RepoDir $repo -HostExe $HostExe -EnvOverrides @{ SKIP_PUSH_HOOK = '1' }
+        Assert-Equal 0 $result.ExitCode "[$HostLabel] SKIP_PUSH_HOOK should short-circuit with exit 0. Stderr: $($result.Stderr)"
+        Assert-True (-not (Test-Path -LiteralPath $marker)) "[$HostLabel] Quick-checks stub must not run when SKIP_PUSH_HOOK is set."
+        Assert-True (-not (Test-Path -LiteralPath $coverageMarker)) "[$HostLabel] run-coverage.ps1 must not be invoked when the quick-checks helper is present."
+    } finally {
+        Remove-TempTree $repo
+    }
+
+    # --- Test: legacy SKIP_COVERAGE_HOOK=1 still short-circuits --------------------
+    $repo = New-TempGitRepo
+    try {
+        $marker = Join-Path $repo 'quick-checks-invoked.txt'
+        $coverageMarker = Join-Path $repo 'run-coverage-invoked.txt'
+        Write-StubQuickChecksScript -RepoDir $repo -MarkerPath $marker
+        Write-StubRunCoverageScript -RepoDir $repo -MarkerPath $coverageMarker
+
+        $result = Invoke-PrePushHook -RepoDir $repo -HostExe $HostExe -EnvOverrides @{ SKIP_COVERAGE_HOOK = '1' }
+        Assert-Equal 0 $result.ExitCode "[$HostLabel] Legacy SKIP_COVERAGE_HOOK should still short-circuit with exit 0. Stderr: $($result.Stderr)"
+        Assert-True (-not (Test-Path -LiteralPath $marker)) "[$HostLabel] Quick-checks stub must not run when SKIP_COVERAGE_HOOK is set."
+        Assert-True (-not (Test-Path -LiteralPath $coverageMarker)) "[$HostLabel] run-coverage.ps1 must not be invoked when the quick-checks helper is present."
+    } finally {
+        Remove-TempTree $repo
+    }
+
+    # --- Test: repo root resolved from the working tree being pushed ---------------
+    $repo = New-TempGitRepo
+    try {
+        $marker = Join-Path $repo 'quick-checks-invoked.txt'
+        $coverageMarker = Join-Path $repo 'run-coverage-invoked.txt'
+        Write-StubQuickChecksScript -RepoDir $repo -MarkerPath $marker -ExitCode 0
+        Write-StubRunCoverageScript -RepoDir $repo -MarkerPath $coverageMarker
+
+        $result = Invoke-PrePushHook -RepoDir $repo -HostExe $HostExe
+        Assert-Equal 0 $result.ExitCode "[$HostLabel] Hook should succeed when the stub exits 0. Stderr: $($result.Stderr)"
+        Assert-True (Test-Path -LiteralPath $marker) "[$HostLabel] Expected the temp repo's stub to run (proves root resolution follows the working tree, not the hook's own location). Stdout: $($result.Stdout)"
+
+        $recordedRoot = (Get-Content -Raw -LiteralPath $marker).Trim()
+        Assert-Equal $repo $recordedRoot "[$HostLabel] The quick-checks script should have been invoked with the temp repo as its working directory."
+        Assert-True (-not (Test-Path -LiteralPath $coverageMarker)) "[$HostLabel] run-coverage.ps1 must not be invoked when the quick-checks helper is present."
+    } finally {
+        Remove-TempTree $repo
+    }
+
+    # --- Test: nonzero stub exit code propagates as hook failure -------------------
+    $repo = New-TempGitRepo
+    try {
+        $marker = Join-Path $repo 'quick-checks-invoked.txt'
+        $coverageMarker = Join-Path $repo 'run-coverage-invoked.txt'
+        Write-StubQuickChecksScript -RepoDir $repo -MarkerPath $marker -ExitCode 1
+        Write-StubRunCoverageScript -RepoDir $repo -MarkerPath $coverageMarker
+
+        $result = Invoke-PrePushHook -RepoDir $repo -HostExe $HostExe
+        Assert-True ($result.ExitCode -ne 0) "[$HostLabel] Hook should fail when the quick-checks stub exits nonzero. Stdout: $($result.Stdout)"
+        Assert-True (Test-Path -LiteralPath $marker) "[$HostLabel] Stub should still have run before failing."
+        Assert-True (-not (Test-Path -LiteralPath $coverageMarker)) "[$HostLabel] run-coverage.ps1 must not be invoked when the quick-checks helper is present."
+    } finally {
+        Remove-TempTree $repo
+    }
+
+    # --- Test: version skew - missing quick-checks helper falls back to run-coverage ---
+    # Simulates a branch created before pre-push-quick-checks.ps1 existed being pushed under the
+    # new hook (core.hooksPath points at the main checkout). The push must not be hard-blocked.
+    $repo = New-TempGitRepo
+    try {
+        $marker = Join-Path $repo 'quick-checks-invoked.txt'
+        $coverageMarker = Join-Path $repo 'run-coverage-invoked.txt'
+        # Deliberately do NOT write the quick-checks stub - only the legacy run-coverage.ps1 exists.
+        Write-StubRunCoverageScript -RepoDir $repo -MarkerPath $coverageMarker
+
+        $result = Invoke-PrePushHook -RepoDir $repo -HostExe $HostExe
+        Assert-Equal 0 $result.ExitCode "[$HostLabel] Hook should fall back to run-coverage.ps1 when the quick-checks helper is absent. Stderr: $($result.Stderr)"
+        Assert-True (Test-Path -LiteralPath $coverageMarker) "[$HostLabel] run-coverage.ps1 must be invoked as the version-skew fallback. Stdout: $($result.Stdout)"
+        Assert-True (-not (Test-Path -LiteralPath $marker)) "[$HostLabel] Quick-checks stub is absent, so its marker must not exist."
+    } finally {
+        Remove-TempTree $repo
+    }
+
+    # --- Test: neither check script present -> hook fails clearly ------------------
+    $repo = New-TempGitRepo
+    try {
+        # No quick-checks stub, no run-coverage stub - the scripts/ dir is empty.
+        $result = Invoke-PrePushHook -RepoDir $repo -HostExe $HostExe
+        Assert-True ($result.ExitCode -ne 0) "[$HostLabel] Hook should fail when no check script is found. Stdout: $($result.Stdout)"
+    } finally {
+        Remove-TempTree $repo
+    }
 }
 
-# --- Test: legacy SKIP_COVERAGE_HOOK=1 still short-circuits --------------------
-$repo = New-TempGitRepo
-try {
-    $marker = Join-Path $repo 'quick-checks-invoked.txt'
-    $coverageMarker = Join-Path $repo 'run-coverage-invoked.txt'
-    Write-StubQuickChecksScript -RepoDir $repo -MarkerPath $marker
-    Write-StubRunCoverageScript -RepoDir $repo -MarkerPath $coverageMarker
-
-    $result = Invoke-PrePushHook -RepoDir $repo -EnvOverrides @{ SKIP_COVERAGE_HOOK = '1' }
-    Assert-Equal 0 $result.ExitCode "Legacy SKIP_COVERAGE_HOOK should still short-circuit with exit 0. Stderr: $($result.Stderr)"
-    Assert-True (-not (Test-Path -LiteralPath $marker)) 'Quick-checks stub must not run when SKIP_COVERAGE_HOOK is set.'
-    Assert-True (-not (Test-Path -LiteralPath $coverageMarker)) 'run-coverage.ps1 must never be invoked.'
-} finally {
-    Remove-TempTree $repo
+# Discover every PowerShell host on this machine, de-duplicated case-insensitively, so CI (which
+# has both pwsh and Windows PowerShell) exercises the hook under each.
+$hostExes = [System.Collections.Generic.List[string]]::new()
+$seen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+foreach ($candidate in @(
+    [System.Diagnostics.Process]::GetCurrentProcess().Path,
+    (Get-Command 'pwsh' -ErrorAction SilentlyContinue).Source,
+    (Get-Command 'powershell.exe' -ErrorAction SilentlyContinue).Source
+)) {
+    if (-not [string]::IsNullOrWhiteSpace($candidate) -and $seen.Add($candidate)) {
+        $hostExes.Add($candidate)
+    }
 }
 
-# --- Test: repo root resolved from the working tree being pushed ---------------
-$repo = New-TempGitRepo
-try {
-    $marker = Join-Path $repo 'quick-checks-invoked.txt'
-    $coverageMarker = Join-Path $repo 'run-coverage-invoked.txt'
-    Write-StubQuickChecksScript -RepoDir $repo -MarkerPath $marker -ExitCode 0
-    Write-StubRunCoverageScript -RepoDir $repo -MarkerPath $coverageMarker
-
-    $result = Invoke-PrePushHook -RepoDir $repo
-    Assert-Equal 0 $result.ExitCode "Hook should succeed when the stub exits 0. Stderr: $($result.Stderr)"
-    Assert-True (Test-Path -LiteralPath $marker) "Expected the temp repo's stub to run (proves root resolution follows the working tree, not the hook's own location). Stdout: $($result.Stdout)"
-
-    $recordedRoot = (Get-Content -Raw -LiteralPath $marker).Trim()
-    Assert-Equal $repo $recordedRoot 'The quick-checks script should have been invoked with the temp repo as its working directory.'
-    Assert-True (-not (Test-Path -LiteralPath $coverageMarker)) 'run-coverage.ps1 must never be invoked.'
-} finally {
-    Remove-TempTree $repo
-}
-
-# --- Test: nonzero stub exit code propagates as hook failure -------------------
-$repo = New-TempGitRepo
-try {
-    $marker = Join-Path $repo 'quick-checks-invoked.txt'
-    $coverageMarker = Join-Path $repo 'run-coverage-invoked.txt'
-    Write-StubQuickChecksScript -RepoDir $repo -MarkerPath $marker -ExitCode 1
-    Write-StubRunCoverageScript -RepoDir $repo -MarkerPath $coverageMarker
-
-    $result = Invoke-PrePushHook -RepoDir $repo
-    Assert-True ($result.ExitCode -ne 0) "Hook should fail when the quick-checks stub exits nonzero. Stdout: $($result.Stdout)"
-    Assert-True (Test-Path -LiteralPath $marker) 'Stub should still have run before failing.'
-    Assert-True (-not (Test-Path -LiteralPath $coverageMarker)) 'run-coverage.ps1 must never be invoked.'
-} finally {
-    Remove-TempTree $repo
+foreach ($hostExe in $hostExes) {
+    $hostLabel = Split-Path -Leaf $hostExe
+    Write-Host "Running pre-push hook scenarios under $hostLabel ($hostExe)..."
+    Invoke-AllScenarios -HostExe $hostExe -HostLabel $hostLabel
 }
 
 Write-Host 'Pre-push hook tests passed.'

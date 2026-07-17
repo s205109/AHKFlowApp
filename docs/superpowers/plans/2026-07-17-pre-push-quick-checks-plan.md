@@ -61,6 +61,27 @@ Update the agent memory note about background pushes and the ~4-min hook — obs
 - Verify the new behavior by invoking `scripts/pre-push-quick-checks.ps1` and `.githooks/pre-push.ps1` directly from the worktree
 - When pushing this branch, use `SKIP_COVERAGE_HOOK=1 git push` (legitimate: CI gates the PR)
 
+Merging the PR **remotely** (GitHub) does not update the installed hook: `core.hooksPath` reads
+`.githooks/pre-push.ps1` from the local main checkout's working tree, so the hook-owning checkout
+must `git pull` the merge commit before the new hook takes effect for any worktree.
+
+## Version skew: old branches lack the quick-checks helper
+
+Because one shared `core.hooksPath` serves every worktree, the moment the main checkout pulls this
+change its new hook runs for pushes from *all* branches - including ones created before
+`scripts/pre-push-quick-checks.ps1` existed. Those branches don't carry the helper. Rather than
+hard-block their pushes, the hook falls back to the `run-coverage.ps1` they do carry (the old
+behavior). Branches rebased/merged onto the new main pick up the fast quick-checks path
+automatically. `PrePushHook.Tests.ps1` covers the missing-helper fallback and the
+neither-script-present failure, and runs every scenario under both pwsh and Windows PowerShell 5.1.
+
+## Gotcha: Windows PowerShell 5.1 support
+
+The hook declares `#Requires -Version 5.1` and the sh shim falls back to `powershell` (5.1) when
+`pwsh` is absent, so the script must stay 5.1-compatible. In particular, build paths with **nested**
+`Join-Path` calls - the 3-argument form (`-AdditionalChildPath`) is PowerShell 6+ only and throws
+under 5.1.
+
 ## Verification
 
 1. Run `scripts/pre-push-quick-checks.ps1` twice; record cold and warm times — warm must be ≤90s (expected ~50–70s with `-NoBuild` dedup)
