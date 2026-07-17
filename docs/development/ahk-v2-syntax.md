@@ -274,13 +274,16 @@ Emitted in the fixed order `^ ! + #` (`AhkScriptGenerator.FormatHotkey`). Action
 ```
 
 Both hotkey `Key` and `Parameters` are interpolated **without** passing through either escape
-routine. What keeps that safe is boundary validation, not the emitter: `HotkeyRules` rejects `"`,
-backticks, and control characters in both fields, plus `:` in `Key` (a colon there would emit
-`a:::...`, which AHK parses as hotstring syntax) — the same trust model as `ContextValue` for
-`#HotIf`. `Generate_Hotkey_EmitsParametersVerbatim_NoEscaping` pins the emitter's raw embedding.
-This is the interim resolution of issue #193; proper escaping of `Parameters` (and a `Key`
-whitelist, relaxing these rejections) is deferred to its follow-up issue. Rows created before the
-validation landed are not retroactively checked.
+routine. Boundary validation rejects the known-unsafe characters — `"`, backticks, and control
+characters in both fields, plus `:` in `Key` (a colon there would emit `a:::...`, which AHK
+parses as hotstring syntax) — the same trust model as `ContextValue` for `#HotIf`. This blocks
+the syntax breaks from issue #193, but is **not** a guarantee the line is valid AHK: `Key` is not
+whitelisted against real key names, so e.g. an invalid `vk`/`sc` spec still fails at load.
+`Generate_Hotkey_EmitsParametersVerbatim_NoEscaping` pins the emitter's raw embedding. Proper
+escaping of `Parameters` and a `Key` whitelist (relaxing these rejections) are deferred to the
+follow-up issue. Rows and history snapshots written before the validation landed are not
+retroactively checked — restore/revert rehydrate snapshots without validation (by design, see
+`RevertHotstringCommand`), so pre-validation values can return until edited.
 
 ## Input limits
 
