@@ -452,6 +452,10 @@ src/Backend/**/appsettings.Production.json
 .playwright-cli/
 .superpowers/
 
+# Foreign skill installers dump here; this repo uses flat .agents/<skill>/ (see
+# scripts/agents/setup-cross-agent-skills.ps1). Committing it breaks post-merge setup.
+.agents/skills/
+
 # Code coverage reports
 coverage-report/
 CoverageReport/
