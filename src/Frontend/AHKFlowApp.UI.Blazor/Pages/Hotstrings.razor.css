@@ -73,11 +73,12 @@
     width: 13%;
 }
 
-/* Profiles renders one short chip ("Any" for most rows) and never needed 10%. The reclaimed
-   width goes to Categories, which has to host the inline multi-select editor. */
+/* Profiles renders one short chip ("Any" for most rows), so it can give a little width to
+   Categories — but not much: at high zoom the fixed layout squeezes percentage columns hard,
+   and below ~9% the "Any" chip clips. */
 ::deep .hotstrings-grid th:nth-child(5),
 ::deep .hotstrings-grid td:nth-child(5) {
-    width: 7%;
+    width: 9%;
 }
 
 ::deep .hotstrings-grid th:nth-child(6),
@@ -86,9 +87,11 @@
     text-align: center;
 }
 
+/* Wider than the original 10% so the inline editor is comfortable, but it no longer needs to fit
+   joined category names — MultiSelectionTextFunc collapses multi-selection to "N selected". */
 ::deep .hotstrings-grid th:nth-child(7),
 ::deep .hotstrings-grid td:nth-child(7) {
-    width: 14%;
+    width: 12%;
 }
 
 /* Actions column holds icon buttons, not text — the shared ellipsis rule above would clip
@@ -99,8 +102,10 @@
     overflow: visible;
 }
 
+/* 12% read as barely-there against the dark surface; 18% stays subtle in light while being
+   unambiguous in dark. */
 ::deep .hotstrings-grid .selected-row {
-    background-color: color-mix(in srgb, var(--mud-palette-primary) 12%, transparent);
+    background-color: color-mix(in srgb, var(--mud-palette-primary) 18%, transparent);
 }
 
 /* Inline editors must not inherit the read-only cell clipping above — that rule is what
