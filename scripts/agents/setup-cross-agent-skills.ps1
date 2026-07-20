@@ -96,21 +96,31 @@ if ($symlinks -ne 'true') {
 Write-Host "[OK] git core.symlinks = true" -ForegroundColor Green
 
 # --- Install committed git hooks via core.hooksPath ---
-$hooksDir = Join-Path $repoRoot '.githooks'
+# core.hooksPath is shared by every linked worktree, so it must be the main checkout's absolute
+# .githooks directory. A relative '.githooks' resolves inside whichever worktree is running the
+# hook, which would leave old worktrees executing their own stale copy of the agent guard instead
+# of main's current policy.
+$mainCheckout = Split-Path -Parent (
+    (git rev-parse --path-format=absolute --git-common-dir 2>$null).Trim())
+$hooksDir = Join-Path $mainCheckout '.githooks'
 if (Test-Path $hooksDir) {
+    $hooksDir = (Resolve-Path -LiteralPath $hooksDir).Path
     $currentHooksPath = (git config core.hooksPath 2>$null)
     $normalizedCurrent = if ($currentHooksPath) {
         $currentHooksPath.TrimEnd('\','/').Replace('\','/').ToLowerInvariant()
     } else { '' }
+    $normalizedTarget = $hooksDir.TrimEnd('\','/').Replace('\','/').ToLowerInvariant()
     $pointsToDefault = $normalizedCurrent -match '(^\.git/hooks$|/\.git/hooks$)'
+    # A relative '.githooks' is the historical value this script itself used to install.
+    $isRelativeGitHooks = $normalizedCurrent -eq '.githooks'
 
-    if ($normalizedCurrent -eq '.githooks') {
-        Write-Host "[OK] core.hooksPath = .githooks" -ForegroundColor Green
-    } elseif (-not $normalizedCurrent -or $pointsToDefault) {
-        git config core.hooksPath .githooks
-        Write-Host "[FIX] Set core.hooksPath = .githooks (enables committed hooks)" -ForegroundColor Yellow
+    if ($normalizedCurrent -eq $normalizedTarget) {
+        Write-Host "[OK] core.hooksPath = $hooksDir" -ForegroundColor Green
+    } elseif (-not $normalizedCurrent -or $pointsToDefault -or $isRelativeGitHooks) {
+        git config core.hooksPath $hooksDir
+        Write-Host "[FIX] Set core.hooksPath = $hooksDir (main-owned committed hooks)" -ForegroundColor Yellow
     } else {
-        Write-Host "[WARN] core.hooksPath is '$currentHooksPath' - committed hooks at .githooks/ inactive. To enable: git config core.hooksPath .githooks" -ForegroundColor Yellow
+        Write-Host "[WARN] core.hooksPath is '$currentHooksPath' - committed hooks at $hooksDir inactive. To enable: git config core.hooksPath '$hooksDir'" -ForegroundColor Yellow
     }
 }
 
