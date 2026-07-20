@@ -237,7 +237,7 @@ public sealed class HotstringsEndpointsTests(ApiTestFixture fixture)
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         PagedList<HotstringDto>? pagedBody = await response.Content.ReadFromJsonAsync<PagedList<HotstringDto>>();
-        pagedBody!.TotalCount.Should().Be(17);  // 5 created + 12 lazy-seeded in dev
+        pagedBody!.TotalCount.Should().Be(21);  // 5 created + 16 lazy-seeded in dev
         pagedBody.Items.Should().HaveCount(2);
         pagedBody.Page.Should().Be(2);
     }
