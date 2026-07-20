@@ -179,88 +179,105 @@ internal sealed class ListHotkeysQueryHandler(
     {
         if (!env.IsDevelopment) return;
 
-        UserPreference? pref = await db.UserPreferences
-            .FirstOrDefaultAsync(p => p.OwnerOid == ownerOid, ct);
+        const int maxAttempts = 2;
 
-        if (pref?.HotkeysSeededAt is not null) return;
-
-        // Ensure categories exist; seed them inline if this is the user's first request
-        bool seedingCategories = pref?.CategoriesSeededAt is null;
-        Dictionary<string, Guid> catByName;
-
-        if (seedingCategories)
+        for (int attempt = 1; attempt <= maxAttempts; attempt++)
         {
-            catByName = [];
-            foreach (string name in DefaultCategories.Names)
+            UserPreference? pref = await db.UserPreferences
+                .FirstOrDefaultAsync(p => p.OwnerOid == ownerOid, ct);
+
+            if (pref?.HotkeysSeededAt is not null) return;
+
+            // Ensure categories exist; seed them inline if this is the user's first request
+            bool seedingCategories = pref?.CategoriesSeededAt is null;
+            Dictionary<string, Guid> catByName;
+
+            if (seedingCategories)
             {
-                var cat = Category.Create(ownerOid, name, clock);
-                db.Categories.Add(cat);
-                catByName[name] = cat.Id;
+                catByName = [];
+                foreach (string name in DefaultCategories.Names)
+                {
+                    var cat = Category.Create(ownerOid, name, clock);
+                    db.Categories.Add(cat);
+                    catByName[name] = cat.Id;
+                }
             }
-        }
-        else
-        {
-            catByName = (await db.Categories
-                    .Where(c => c.OwnerOid == ownerOid)
-                    .Select(c => new { c.Name, c.Id })
-                    .ToListAsync(ct))
-                .ToDictionary(c => c.Name, c => c.Id, StringComparer.OrdinalIgnoreCase);
-        }
-
-        foreach ((string descr, bool ctrl, bool alt, bool shift, bool win, string key,
-                  HotkeyAction action, string param, string[] cats) in s_lazySeed)
-        {
-            var hk = Hotkey.Create(ownerOid, descr, key, ctrl, alt, shift, win,
-                action, param, appliesToAllProfiles: true, clock);
-            db.Hotkeys.Add(hk);
-            foreach (string catName in cats)
+            else
             {
-                if (catByName.TryGetValue(catName, out Guid catId))
-                    db.HotkeyCategories.Add(HotkeyCategory.Create(hk.Id, catId));
+                catByName = (await db.Categories
+                        .Where(c => c.OwnerOid == ownerOid)
+                        .Select(c => new { c.Name, c.Id })
+                        .ToListAsync(ct))
+                    .ToDictionary(c => c.Name, c => c.Id, StringComparer.OrdinalIgnoreCase);
             }
-        }
 
-        if (pref is null)
-        {
-            pref = UserPreference.CreateDefault(ownerOid, clock);
-            if (seedingCategories) pref.MarkCategoriesSeeded(clock);
-            pref.MarkHotkeysSeeded(clock);
-            db.UserPreferences.Add(pref);
-        }
-        else
-        {
-            if (seedingCategories) pref.MarkCategoriesSeeded(clock);
-            pref.MarkHotkeysSeeded(clock);
-        }
+            foreach ((string descr, bool ctrl, bool alt, bool shift, bool win, string key,
+                      HotkeyAction action, string param, string[] cats) in s_lazySeed)
+            {
+                var hk = Hotkey.Create(ownerOid, descr, key, ctrl, alt, shift, win,
+                    action, param, appliesToAllProfiles: true, clock);
+                db.Hotkeys.Add(hk);
+                foreach (string catName in cats)
+                {
+                    if (catByName.TryGetValue(catName, out Guid catId))
+                        db.HotkeyCategories.Add(HotkeyCategory.Create(hk.Id, catId));
+                }
+            }
 
-        try
-        {
-            await db.SaveChangesAsync(ct);
-        }
-        catch (DbUpdateException ex) when (ex.IsDuplicateKeyViolation())
-        {
-            // Concurrent first-call race or pre-existing data after migration (null
-            // markers but hotkeys already present) — detach pending entities and
-            // persist markers in a follow-up save so future GETs skip the seed path.
-            foreach (Hotkey hk in db.Hotkeys.Local.ToList())
-                db.Entry(hk).State = EntityState.Detached;
-            foreach (HotkeyCategory hc in db.HotkeyCategories.Local.ToList())
-                db.Entry(hc).State = EntityState.Detached;
-            foreach (Category cat in db.Categories.Local.ToList())
-                db.Entry(cat).State = EntityState.Detached;
-            if (pref is not null)
-                db.Entry(pref).State = EntityState.Detached;
-
-            // Reload pref (may have been inserted by the concurrent winner) and set markers.
-            pref = await db.UserPreferences.FirstOrDefaultAsync(p => p.OwnerOid == ownerOid, ct);
             if (pref is null)
             {
                 pref = UserPreference.CreateDefault(ownerOid, clock);
+                if (seedingCategories) pref.MarkCategoriesSeeded(clock);
+                pref.MarkHotkeysSeeded(clock);
                 db.UserPreferences.Add(pref);
             }
-            if (seedingCategories) pref.MarkCategoriesSeeded(clock);
-            pref.MarkHotkeysSeeded(clock);
-            await db.SaveChangesAsync(ct);
+            else
+            {
+                if (seedingCategories) pref.MarkCategoriesSeeded(clock);
+                pref.MarkHotkeysSeeded(clock);
+            }
+
+            try
+            {
+                await db.SaveChangesAsync(ct);
+                return;
+            }
+            catch (DbUpdateException ex) when (ex.IsDuplicateKeyViolation())
+            {
+                // Concurrent first-call race or pre-existing data after migration (null
+                // markers but hotkeys already present) — detach pending entities, then
+                // persist only markers backed by rows that actually committed.
+                foreach (Hotkey hk in db.Hotkeys.Local.ToList())
+                    db.Entry(hk).State = EntityState.Detached;
+                foreach (HotkeyCategory hc in db.HotkeyCategories.Local.ToList())
+                    db.Entry(hc).State = EntityState.Detached;
+                foreach (Category cat in db.Categories.Local.ToList())
+                    db.Entry(cat).State = EntityState.Detached;
+                if (pref is not null)
+                    db.Entry(pref).State = EntityState.Detached;
+
+                // The winner may be ListCategoriesQuery, which inserts categories and the pref
+                // row but no hotkeys. In that case, persist the truthful category marker and
+                // retry once so this request can insert the hotkeys against those categories.
+                pref = await db.UserPreferences.FirstOrDefaultAsync(p => p.OwnerOid == ownerOid, ct);
+                if (pref is null)
+                {
+                    pref = UserPreference.CreateDefault(ownerOid, clock);
+                    db.UserPreferences.Add(pref);
+                }
+
+                bool categoriesExist = await db.Categories.AnyAsync(c => c.OwnerOid == ownerOid, ct);
+                bool hotkeysExist = await db.Hotkeys.AnyAsync(h => h.OwnerOid == ownerOid, ct);
+
+                if (pref.CategoriesSeededAt is null && categoriesExist)
+                    pref.MarkCategoriesSeeded(clock);
+                if (pref.HotkeysSeededAt is null && hotkeysExist)
+                    pref.MarkHotkeysSeeded(clock);
+                await db.SaveChangesAsync(ct);
+
+                if (hotkeysExist || attempt == maxAttempts)
+                    return;
+            }
         }
     }
 
