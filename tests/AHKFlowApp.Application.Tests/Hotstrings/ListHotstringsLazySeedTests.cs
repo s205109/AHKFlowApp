@@ -1,6 +1,8 @@
 using AHKFlowApp.Application;
 using AHKFlowApp.Application.DTOs;
+using AHKFlowApp.Application.Queries.Categories;
 using AHKFlowApp.Application.Queries.Hotstrings;
+using AHKFlowApp.Application.Tests.Dev;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Infrastructure.Persistence;
 using Ardalis.Result;
@@ -202,5 +204,57 @@ public sealed class ListHotstringsLazySeedTests(HotstringDbFixture fx)
         // No duplicate rows — "btw" still exists exactly once
         int btwCount = await verify.Hotstrings.CountAsync(h => h.OwnerOid == owner && h.Trigger == "btw");
         btwCount.Should().Be(1);
+    }
+
+    // Regression: the hotstrings page loads categories and hotstrings concurrently, so the
+    // categories seeder can commit the shared UserPreference row and the 8 default categories
+    // between this handler's read and its save. The resulting duplicate-key violation must not
+    // be mistaken for "someone else already seeded the hotstrings".
+    [Fact]
+    public async Task Handle_WhenCategoriesSeederWinsRace_DoesNotMarkHotstringsSeeded()
+    {
+        var owner = Guid.NewGuid();
+        await using AppDbContext ctx = fx.CreateContext();
+        var racing = new RunBeforeNthSaveDbContext(ctx, 1, async () =>
+        {
+            await using AppDbContext other = fx.CreateContext();
+            var categories = new ListCategoriesQueryHandler(other, CurrentUserHelper.For(owner), _clock);
+            await categories.ExecuteAsync(new ListCategoriesQuery(), CancellationToken.None);
+        });
+        var sut = new ListHotstringsQueryHandler(racing, CurrentUserHelper.For(owner), s_dev, _clock);
+
+        await sut.ExecuteAsync(new ListHotstringsQuery(), CancellationToken.None);
+
+        await using AppDbContext verify = fx.CreateContext();
+        UserPreference? pref = await verify.UserPreferences.FirstOrDefaultAsync(p => p.OwnerOid == owner);
+
+        // Categories really landed, so that marker is correct; hotstrings did not, so leaving
+        // its marker null is what lets a later request retry.
+        pref!.CategoriesSeededAt.Should().NotBeNull();
+        pref.HotstringsSeededAt.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Handle_AfterCategoriesSeederWonRace_NextCallSeedsHotstrings()
+    {
+        var owner = Guid.NewGuid();
+        await using (AppDbContext raceCtx = fx.CreateContext())
+        {
+            var racing = new RunBeforeNthSaveDbContext(raceCtx, 1, async () =>
+            {
+                await using AppDbContext other = fx.CreateContext();
+                var categories = new ListCategoriesQueryHandler(other, CurrentUserHelper.For(owner), _clock);
+                await categories.ExecuteAsync(new ListCategoriesQuery(), CancellationToken.None);
+            });
+            var raced = new ListHotstringsQueryHandler(racing, CurrentUserHelper.For(owner), s_dev, _clock);
+            await raced.ExecuteAsync(new ListHotstringsQuery(), CancellationToken.None);
+        }
+
+        await using AppDbContext ctx = fx.CreateContext();
+        var sut = new ListHotstringsQueryHandler(ctx, CurrentUserHelper.For(owner), s_dev, _clock);
+        Result<PagedList<HotstringDto>> result = await sut.ExecuteAsync(new ListHotstringsQuery(), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.TotalCount.Should().Be(12);
     }
 }

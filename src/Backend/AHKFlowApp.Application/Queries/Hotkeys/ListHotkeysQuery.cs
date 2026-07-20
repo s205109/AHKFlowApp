@@ -251,15 +251,21 @@ internal sealed class ListHotkeysQueryHandler(
             if (pref is not null)
                 db.Entry(pref).State = EntityState.Detached;
 
-            // Reload pref (may have been inserted by the concurrent winner) and set markers.
+            // Reload pref (may have been inserted by the concurrent winner) and mark only the
+            // sets that actually landed. The winner may be the categories seeder
+            // (ListCategoriesQuery), which inserts categories and the pref row but never any
+            // hotkeys; marking hotkeys seeded here would strand the owner on an empty set that
+            // the guard above stops any later request from retrying.
             pref = await db.UserPreferences.FirstOrDefaultAsync(p => p.OwnerOid == ownerOid, ct);
             if (pref is null)
             {
                 pref = UserPreference.CreateDefault(ownerOid, clock);
                 db.UserPreferences.Add(pref);
             }
-            if (seedingCategories) pref.MarkCategoriesSeeded(clock);
-            pref.MarkHotkeysSeeded(clock);
+            if (pref.CategoriesSeededAt is null && await db.Categories.AnyAsync(c => c.OwnerOid == ownerOid, ct))
+                pref.MarkCategoriesSeeded(clock);
+            if (pref.HotkeysSeededAt is null && await db.Hotkeys.AnyAsync(h => h.OwnerOid == ownerOid, ct))
+                pref.MarkHotkeysSeeded(clock);
             await db.SaveChangesAsync(ct);
         }
     }

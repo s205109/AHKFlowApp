@@ -1,6 +1,8 @@
 using AHKFlowApp.Application;
 using AHKFlowApp.Application.DTOs;
+using AHKFlowApp.Application.Queries.Categories;
 using AHKFlowApp.Application.Queries.Hotkeys;
+using AHKFlowApp.Application.Tests.Dev;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Infrastructure.Persistence;
 using Ardalis.Result;
@@ -164,5 +166,57 @@ public sealed class ListHotkeysLazySeedTests(HotkeyDbFixture fx)
         int ctrlAltNCount = await verify.Hotkeys
             .CountAsync(h => h.OwnerOid == owner && h.Key == "N" && h.Ctrl && h.Alt && !h.Shift && !h.Win);
         ctrlAltNCount.Should().Be(1);
+    }
+
+    // Regression: the hotkeys page loads categories and hotkeys concurrently, so the categories
+    // seeder can commit the shared UserPreference row and the 8 default categories between this
+    // handler's read and its save. The resulting duplicate-key violation must not be mistaken
+    // for "someone else already seeded the hotkeys".
+    [Fact]
+    public async Task Handle_WhenCategoriesSeederWinsRace_DoesNotMarkHotkeysSeeded()
+    {
+        var owner = Guid.NewGuid();
+        await using AppDbContext ctx = fx.CreateContext();
+        var racing = new RunBeforeNthSaveDbContext(ctx, 1, async () =>
+        {
+            await using AppDbContext other = fx.CreateContext();
+            var categories = new ListCategoriesQueryHandler(other, CurrentUserHelper.For(owner), _clock);
+            await categories.ExecuteAsync(new ListCategoriesQuery(), CancellationToken.None);
+        });
+        var sut = new ListHotkeysQueryHandler(racing, CurrentUserHelper.For(owner), s_dev, _clock);
+
+        await sut.ExecuteAsync(new ListHotkeysQuery(), CancellationToken.None);
+
+        await using AppDbContext verify = fx.CreateContext();
+        UserPreference? pref = await verify.UserPreferences.FirstOrDefaultAsync(p => p.OwnerOid == owner);
+
+        // Categories really landed, so that marker is correct; hotkeys did not, so leaving its
+        // marker null is what lets a later request retry.
+        pref!.CategoriesSeededAt.Should().NotBeNull();
+        pref.HotkeysSeededAt.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Handle_AfterCategoriesSeederWonRace_NextCallSeedsHotkeys()
+    {
+        var owner = Guid.NewGuid();
+        await using (AppDbContext raceCtx = fx.CreateContext())
+        {
+            var racing = new RunBeforeNthSaveDbContext(raceCtx, 1, async () =>
+            {
+                await using AppDbContext other = fx.CreateContext();
+                var categories = new ListCategoriesQueryHandler(other, CurrentUserHelper.For(owner), _clock);
+                await categories.ExecuteAsync(new ListCategoriesQuery(), CancellationToken.None);
+            });
+            var raced = new ListHotkeysQueryHandler(racing, CurrentUserHelper.For(owner), s_dev, _clock);
+            await raced.ExecuteAsync(new ListHotkeysQuery(), CancellationToken.None);
+        }
+
+        await using AppDbContext ctx = fx.CreateContext();
+        var sut = new ListHotkeysQueryHandler(ctx, CurrentUserHelper.For(owner), s_dev, _clock);
+        Result<PagedList<HotkeyDto>> result = await sut.ExecuteAsync(new ListHotkeysQuery(), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.TotalCount.Should().Be(12);
     }
 }
