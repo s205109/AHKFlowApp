@@ -52,11 +52,12 @@ public sealed class SeedAllCommandHandlerTests(DevDbFixture fx)
 
         result.IsSuccess.Should().BeTrue();
         result.Value.CategoriesCount.Should().Be(8);
-        result.Value.HotstringsCount.Should().Be(12);
+        result.Value.HotstringsCount.Should().Be(HotstringSeedSamples.All.Length);
         result.Value.HotkeysCount.Should().Be(12);
 
         await using AppDbContext verify = fx.CreateContext();
-        (await verify.HotstringCategories.CountAsync(hc => hc.Hotstring.OwnerOid == _ownerOid)).Should().Be(12);
+        // Every sample carries exactly one category, so the junction count tracks the sample count.
+        (await verify.HotstringCategories.CountAsync(hc => hc.Hotstring.OwnerOid == _ownerOid)).Should().Be(HotstringSeedSamples.All.Length);
         (await verify.HotkeyCategories.CountAsync(hc => hc.Hotkey.OwnerOid == _ownerOid)).Should().Be(12);
     }
 
@@ -78,7 +79,7 @@ public sealed class SeedAllCommandHandlerTests(DevDbFixture fx)
 
         result.IsSuccess.Should().BeTrue();
         result.Value.CategoriesCount.Should().Be(8);
-        result.Value.HotstringsCount.Should().Be(12);
+        result.Value.HotstringsCount.Should().Be(HotstringSeedSamples.All.Length);
         result.Value.HotkeysCount.Should().Be(12);
     }
 
