@@ -502,12 +502,19 @@ $script:AgentGuardMutatingSubcommands = @(
     'sparse-checkout', 'switch', 'update-index', 'update-ref'
 )
 
+# The override line is deliberately explicit about *where* the variable has to be set. This hook
+# runs in its own process and inspects the command as text, so an inline `AHKFLOW_ALLOW_MAIN=1 git
+# ...` prefix only ever reaches the child git process - never this evaluator. An agent therefore
+# cannot self-apply the override, which is the point: the location rule is the human's to relax.
+# (The pre-commit backstop is different - git spawns it, so it does inherit an inline prefix.)
 $script:AgentGuardDenialMessage = @'
 BLOCKED: agent Git mutations are allowed only in a managed linked worktree.
 Current target: {0}
 Create one with scripts/new-worktree.ps1 or the agent WorktreeCreate tool.
 Read-only Git and ordinary edit/build/test commands are unaffected.
-Override the location check with AHKFLOW_ALLOW_MAIN=1.
+To override, a human must set AHKFLOW_ALLOW_MAIN=1 in the shell environment before starting the
+agent session. An inline "AHKFLOW_ALLOW_MAIN=1 git ..." prefix does not work: this guard runs in
+its own process and never sees it.
 '@
 
 # Global options that consume the following token, so the subcommand scan skips their argument.

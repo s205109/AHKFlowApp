@@ -511,6 +511,16 @@ try {
         Assert-Match 'BLOCKED: agent Git mutations' $decision.Message 'Message'
     }
 
+    # The old wording just said "Override with AHKFLOW_ALLOW_MAIN=1", which reads as actionable to
+    # the agent seeing it - but an inline prefix never reaches this evaluator's own process.
+    Invoke-TestCase 'The denial message says where the override must be set' {
+        $decision = Invoke-AgentGuardPolicy -Command 'git commit -m test' `
+            -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
+        # Fragments must not span the here-string's line wraps.
+        Assert-Match 'in the shell environment before starting the' $decision.Message 'Message'
+        Assert-Match 'prefix does not work' $decision.Message 'Message'
+    }
+
     Invoke-TestCase 'Mutating git in a managed linked worktree is allowed' {
         $decision = Invoke-AgentGuardPolicy -Command 'git commit -m test' `
             -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
