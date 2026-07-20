@@ -1,10 +1,13 @@
 <Project>
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
   </PropertyGroup>
   <ItemGroup>
   </ItemGroup>
   <ItemGroup>
+    <!-- Transitive pin: bunit 2.7.2 floors AngleSharp at 1.4.0 (NU1902 moderate vuln, GHSA-pgww-w46g-26qg); 1.5.0+ has the fix -->
+    <PackageVersion Include="AngleSharp" Version="1.5.2" />
     <PackageVersion Include="Ardalis.Result" Version="10.1.0" />
     <PackageVersion Include="AsyncFixer" Version="2.1.0" />
     <PackageVersion Include="bunit" Version="2.7.2" />
