@@ -1,0 +1,140 @@
+# Cross-Agent Git Guardrails
+
+Local Claude Code, Codex, and GitHub Copilot agent sessions must not mutate Git state in the
+human-owned main checkout of this repository. Agents may still **read, edit, build, test, and
+format** in main — this is a Git-mutation guard, not a filesystem sandbox.
+
+## What "managed" means
+
+A Git mutation is allowed only from a **managed linked worktree**, which is all three of:
+
+1. a **linked** worktree (its `--git-dir` differs from the repository's `--git-common-dir`);
+2. located as a **direct child** of `<main>/.claude/worktrees` or `<main>/.worktrees`;
+3. carrying a **valid** `scripts/.env.worktree` manifest — every required key present exactly
+   once, the three ports numeric, the API/UI URLs carrying the manifest ports, DB/compose values
+   non-empty, and `AHKFLOW_ROOT` resolving back to the worktree root.
+
+The supported way to create one is `scripts/new-worktree.ps1` or the agent `WorktreeCreate` tool.
+
+## How enforcement works
+
+| Layer | Where | Scope |
+| --- | --- | --- |
+| `PreToolUse` command guard | `.claude/hooks/pre-bash-guard.sh` → `scripts/agents/invoke-agent-worktree-guard.ps1` | Primary. Every agent Bash/shell tool call. |
+| `pre-commit` backstop | `.githooks/pre-commit` → `.githooks/pre-commit.ps1` | Narrow. Agent-marked commits only, after merge. |
+
+The Bash hook is a fast candidate-token filter: a command that cannot contain `git`, `rm`, or
+`dotnet` exits without starting PowerShell. Candidates go to the shared policy core in
+`scripts/agents/agent-worktree-guard.common.ps1`, which normalizes the native payload, runs the
+ported destructive-command rules, then classifies the effective Git target's location.
+
+### Adapter contract
+
+```
+Adapter input:
+  Native PreToolUse JSON on stdin.
+
+Normalized input:
+  { ToolName, Command, Cwd }
+
+Policy input:
+  Command + Cwd + ProtectedRepoRoot + AHKFLOW_ALLOW_MAIN.
+
+Policy output:
+  { Action = Allow|Warn|Deny, Rule, Message }
+
+Adapter output:
+  The agent's native allow/warn/deny response.
+
+Rule:
+  AHKFLOW_GUARD_DISABLE short-circuits before this contract.
+  Adapters normalize payloads and responses only.
+  Path classification, mutation detection, bypass precedence, and messages live
+  in scripts/agents/agent-worktree-guard.common.ps1.
+```
+
+- **Claude / Copilot** register the bare `.claude/hooks/pre-bash-guard.sh`. Copilot is inferred
+  from a top-level `toolArgs` key in the native payload — `.github/hooks/hooks.json` stays
+  byte-identical to its proven form.
+- **Codex** registers `.codex/hooks.json` with a Bash matcher only. On Windows the `commandWindows`
+  variant runs one explicit PowerShell process and resolves the repository root inside it. Codex
+  reviews project hooks when a repository becomes trusted.
+
+## Setup and trust
+
+- Claude picks up `.claude/settings.json` automatically.
+- Copilot loads `.github/hooks/hooks.json` automatically.
+- Codex loads `.codex/hooks.json` once the repository is **trusted** (`/hooks` shows and confirms
+  the hook hash).
+- `jq` is an optional Claude/Copilot fast-path dependency. If it is missing, the shim forwards the
+  payload with `Adapter=Auto` and the PowerShell entrypoint performs the same inference — behavior
+  is identical, only slightly slower.
+
+## Bypasses
+
+| Switch | Effect |
+| --- | --- |
+| `AHKFLOW_ALLOW_MAIN=1` | Overrides the **location** rule only (turns a location Deny into a warned Allow). Force-push, destructive-Git, and dangerous-file rules still apply. |
+| `AHKFLOW_GUARD_DISABLE=1` | Emergency kill switch. Short-circuits the **entire** command guard before strict mode, module loading, stdin parsing, or Git probes, and warns loudly. Never set it persistently. |
+
+## Accepted limitations
+
+- Project hooks can be untrusted, disabled, or time out. These are accidental-misuse guards, not OS
+  controls.
+- `reference-transaction` is intentionally **not** used: it fires for fetch, reset, and every human
+  ref write, and is too blunt for this guardrail.
+- No general shell-command allowlist. Unknown non-Git commands and unknown Git subcommands are
+  allowed; mutation detection is a denylist, not an allowlist.
+- `git commit --no-verify`, a replaced `core.hooksPath`, shell aliases, and wrappers such as
+  `pwsh -File custom.ps1` (whose child Git calls the outer payload never exposes) remain bypasses.
+  This is also why calling `new-worktree.ps1` / `remove-worktree-local-dev.ps1` does not self-lock.
+- Adapter parse errors and unexpected location-policy errors **fail open** with a warning; only an
+  explicit safety-rule match (or a safety-rule evaluation fault) **fails closed**.
+- Main-tree edits, builds, tests, and formatters are allowed and can dirty the working tree. The
+  guard prevents Git mutation, not a dirty tree.
+- The command tokenizer is not a full Bash/PowerShell parser. Representative chains, redirects,
+  quoting, and `git -C` are covered; hostile obfuscation is out of scope.
+- `commit --no-verify` and `--git-dir`/`--work-tree` targeting cannot be safely inferred, so a
+  mutating invocation using `--git-dir`/`--work-tree` is denied outright (unless `AHKFLOW_ALLOW_MAIN=1`).
+
+## Version-skew and authoritative main
+
+`core.hooksPath` is the absolute main-checkout `.githooks` directory, so after merge **every**
+worktree — including an older branch — runs main's current policy copy. Feature-branch commits
+before merge are protected only by the `PreToolUse` layer; the `pre-commit` backstop begins after
+merge. Both phases are covered by the temporary-repository tests and the post-merge smoke gate.
+
+## Running the tests
+
+```powershell
+pwsh -NoProfile -File tests/AgentWorktreeGuard.Tests.ps1
+pwsh -NoProfile -File tests/AgentPreCommitHook.Tests.ps1
+```
+
+Both also run under Windows PowerShell 5.1 and in the `worktree-powershell-tests` CI job.
+
+## Diagnosing a denial without disabling hooks globally
+
+The stderr diagnostic names the resolved adapter and rule, e.g.
+`[agent-guard:Claude] deny [agent-main-git-mutation]`. To act on it:
+
+1. If the command genuinely belongs in a worktree, create one with `scripts/new-worktree.ps1` and
+   re-run it there.
+2. For a one-off intentional main mutation, prefix with `AHKFLOW_ALLOW_MAIN=1` (a warning is
+   printed; destructive rules still apply).
+3. Only for a broken hook, use the emergency recovery procedure below.
+
+### Emergency recovery
+
+```text
+1. In a human-owned PowerShell terminal, set:
+   $env:AHKFLOW_GUARD_DISABLE = '1'
+2. Start a new agent session from that terminal and repair the hook.
+3. If a shell-script syntax error prevents the kill switch from running, edit
+   .claude/settings.json by hand outside the agent and temporarily remove the
+   pre-bash-guard.sh PreToolUse object.
+4. For the equivalent Copilot or Codex failure, edit .github/hooks/hooks.json
+   or .codex/hooks.json by hand.
+5. Re-enable the hook only after both guard suites pass, then remove the
+   AHKFLOW_GUARD_DISABLE environment variable.
+```
