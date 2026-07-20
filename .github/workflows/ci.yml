@@ -106,6 +106,8 @@ jobs:
       - name: Run worktree PowerShell tests
         shell: pwsh
         run: |
+          ./tests/AgentWorktreeGuard.Tests.ps1
+          ./tests/AgentPreCommitHook.Tests.ps1
           ./tests/WorktreePowerShellHost.Tests.ps1
           ./tests/WorktreeMergedCleanup.Tests.ps1
           ./tests/WorktreeRemoveHook.Tests.ps1
