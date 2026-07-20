@@ -211,7 +211,7 @@ public sealed class ListHotstringsLazySeedTests(HotstringDbFixture fx)
     // between this handler's read and its save. The resulting duplicate-key violation must not
     // be mistaken for "someone else already seeded the hotstrings".
     [Fact]
-    public async Task Handle_WhenCategoriesSeederWinsRace_DoesNotMarkHotstringsSeeded()
+    public async Task Handle_WhenCategoriesSeederWinsRace_RetriesAndReturnsHotstrings()
     {
         var owner = Guid.NewGuid();
         await using AppDbContext ctx = fx.CreateContext();
@@ -223,19 +223,22 @@ public sealed class ListHotstringsLazySeedTests(HotstringDbFixture fx)
         });
         var sut = new ListHotstringsQueryHandler(racing, CurrentUserHelper.For(owner), s_dev, _clock);
 
-        await sut.ExecuteAsync(new ListHotstringsQuery(), CancellationToken.None);
+        Result<PagedList<HotstringDto>> result = await sut.ExecuteAsync(
+            new ListHotstringsQuery(), CancellationToken.None);
 
         await using AppDbContext verify = fx.CreateContext();
         UserPreference? pref = await verify.UserPreferences.FirstOrDefaultAsync(p => p.OwnerOid == owner);
+        int hotstringCount = await verify.Hotstrings.CountAsync(h => h.OwnerOid == owner);
 
-        // Categories really landed, so that marker is correct; hotstrings did not, so leaving
-        // its marker null is what lets a later request retry.
+        result.IsSuccess.Should().BeTrue();
+        result.Value.TotalCount.Should().Be(12);
         pref!.CategoriesSeededAt.Should().NotBeNull();
-        pref.HotstringsSeededAt.Should().BeNull();
+        pref.HotstringsSeededAt.Should().NotBeNull();
+        hotstringCount.Should().Be(12);
     }
 
     [Fact]
-    public async Task Handle_AfterCategoriesSeederWonRace_NextCallSeedsHotstrings()
+    public async Task Handle_AfterCategoriesSeederRace_SecondCallDoesNotDuplicateHotstrings()
     {
         var owner = Guid.NewGuid();
         await using (AppDbContext raceCtx = fx.CreateContext())
@@ -254,7 +257,11 @@ public sealed class ListHotstringsLazySeedTests(HotstringDbFixture fx)
         var sut = new ListHotstringsQueryHandler(ctx, CurrentUserHelper.For(owner), s_dev, _clock);
         Result<PagedList<HotstringDto>> result = await sut.ExecuteAsync(new ListHotstringsQuery(), CancellationToken.None);
 
+        await using AppDbContext verify = fx.CreateContext();
+        int hotstringCount = await verify.Hotstrings.CountAsync(h => h.OwnerOid == owner);
+
         result.IsSuccess.Should().BeTrue();
         result.Value.TotalCount.Should().Be(12);
+        hotstringCount.Should().Be(12);
     }
 }

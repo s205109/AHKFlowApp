@@ -173,7 +173,7 @@ public sealed class ListHotkeysLazySeedTests(HotkeyDbFixture fx)
     // handler's read and its save. The resulting duplicate-key violation must not be mistaken
     // for "someone else already seeded the hotkeys".
     [Fact]
-    public async Task Handle_WhenCategoriesSeederWinsRace_DoesNotMarkHotkeysSeeded()
+    public async Task Handle_WhenCategoriesSeederWinsRace_RetriesAndReturnsHotkeys()
     {
         var owner = Guid.NewGuid();
         await using AppDbContext ctx = fx.CreateContext();
@@ -185,19 +185,22 @@ public sealed class ListHotkeysLazySeedTests(HotkeyDbFixture fx)
         });
         var sut = new ListHotkeysQueryHandler(racing, CurrentUserHelper.For(owner), s_dev, _clock);
 
-        await sut.ExecuteAsync(new ListHotkeysQuery(), CancellationToken.None);
+        Result<PagedList<HotkeyDto>> result = await sut.ExecuteAsync(
+            new ListHotkeysQuery(), CancellationToken.None);
 
         await using AppDbContext verify = fx.CreateContext();
         UserPreference? pref = await verify.UserPreferences.FirstOrDefaultAsync(p => p.OwnerOid == owner);
+        int hotkeyCount = await verify.Hotkeys.CountAsync(h => h.OwnerOid == owner);
 
-        // Categories really landed, so that marker is correct; hotkeys did not, so leaving its
-        // marker null is what lets a later request retry.
+        result.IsSuccess.Should().BeTrue();
+        result.Value.TotalCount.Should().Be(12);
         pref!.CategoriesSeededAt.Should().NotBeNull();
-        pref.HotkeysSeededAt.Should().BeNull();
+        pref.HotkeysSeededAt.Should().NotBeNull();
+        hotkeyCount.Should().Be(12);
     }
 
     [Fact]
-    public async Task Handle_AfterCategoriesSeederWonRace_NextCallSeedsHotkeys()
+    public async Task Handle_AfterCategoriesSeederRace_SecondCallDoesNotDuplicateHotkeys()
     {
         var owner = Guid.NewGuid();
         await using (AppDbContext raceCtx = fx.CreateContext())
@@ -216,7 +219,11 @@ public sealed class ListHotkeysLazySeedTests(HotkeyDbFixture fx)
         var sut = new ListHotkeysQueryHandler(ctx, CurrentUserHelper.For(owner), s_dev, _clock);
         Result<PagedList<HotkeyDto>> result = await sut.ExecuteAsync(new ListHotkeysQuery(), CancellationToken.None);
 
+        await using AppDbContext verify = fx.CreateContext();
+        int hotkeyCount = await verify.Hotkeys.CountAsync(h => h.OwnerOid == owner);
+
         result.IsSuccess.Should().BeTrue();
         result.Value.TotalCount.Should().Be(12);
+        hotkeyCount.Should().Be(12);
     }
 }

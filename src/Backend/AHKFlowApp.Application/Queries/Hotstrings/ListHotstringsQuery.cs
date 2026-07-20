@@ -263,98 +263,109 @@ internal sealed class ListHotstringsQueryHandler(
     {
         if (!env.IsDevelopment) return;
 
-        UserPreference? pref = await db.UserPreferences
-            .FirstOrDefaultAsync(p => p.OwnerOid == ownerOid, ct);
+        const int maxAttempts = 2;
 
-        if (pref?.HotstringsSeededAt is not null) return;
-
-        // Ensure categories exist; seed them inline if this is the user's first request
-        bool seedingCategories = pref?.CategoriesSeededAt is null;
-        Dictionary<string, Guid> catByName;
-
-        if (seedingCategories)
+        for (int attempt = 1; attempt <= maxAttempts; attempt++)
         {
-            catByName = [];
-            foreach (string name in DefaultCategories.Names)
+            UserPreference? pref = await db.UserPreferences
+                .FirstOrDefaultAsync(p => p.OwnerOid == ownerOid, ct);
+
+            if (pref?.HotstringsSeededAt is not null) return;
+
+            // Ensure categories exist; seed them inline if this is the user's first request
+            bool seedingCategories = pref?.CategoriesSeededAt is null;
+            Dictionary<string, Guid> catByName;
+
+            if (seedingCategories)
             {
-                var cat = Category.Create(ownerOid, name, clock);
-                db.Categories.Add(cat);
-                catByName[name] = cat.Id;
+                catByName = [];
+                foreach (string name in DefaultCategories.Names)
+                {
+                    var cat = Category.Create(ownerOid, name, clock);
+                    db.Categories.Add(cat);
+                    catByName[name] = cat.Id;
+                }
             }
-        }
-        else
-        {
-            catByName = (await db.Categories
-                    .Where(c => c.OwnerOid == ownerOid)
-                    .Select(c => new { c.Name, c.Id })
-                    .ToListAsync(ct))
-                .ToDictionary(c => c.Name, c => c.Id, StringComparer.OrdinalIgnoreCase);
-        }
-
-        foreach ((string trigger, string replacement, bool ending, bool inside, string[] cats, HotstringKind kind, string? dateTimeFormat) in s_lazySeed)
-        {
-            var hs = Hotstring.Create(
-                ownerOid,
-                new HotstringDefinition(
-                    trigger, replacement, Description: null,
-                    AppliesToAllProfiles: true, ending, inside,
-                    Kind: kind, DateTimeFormat: dateTimeFormat),
-                clock);
-            db.Hotstrings.Add(hs);
-            foreach (string catName in cats)
+            else
             {
-                if (catByName.TryGetValue(catName, out Guid catId))
-                    db.HotstringCategories.Add(HotstringCategory.Create(hs.Id, catId));
+                catByName = (await db.Categories
+                        .Where(c => c.OwnerOid == ownerOid)
+                        .Select(c => new { c.Name, c.Id })
+                        .ToListAsync(ct))
+                    .ToDictionary(c => c.Name, c => c.Id, StringComparer.OrdinalIgnoreCase);
             }
-        }
 
-        if (pref is null)
-        {
-            pref = UserPreference.CreateDefault(ownerOid, clock);
-            if (seedingCategories) pref.MarkCategoriesSeeded(clock);
-            pref.MarkHotstringsSeeded(clock);
-            db.UserPreferences.Add(pref);
-        }
-        else
-        {
-            if (seedingCategories) pref.MarkCategoriesSeeded(clock);
-            pref.MarkHotstringsSeeded(clock);
-        }
+            foreach ((string trigger, string replacement, bool ending, bool inside, string[] cats, HotstringKind kind, string? dateTimeFormat) in s_lazySeed)
+            {
+                var hs = Hotstring.Create(
+                    ownerOid,
+                    new HotstringDefinition(
+                        trigger, replacement, Description: null,
+                        AppliesToAllProfiles: true, ending, inside,
+                        Kind: kind, DateTimeFormat: dateTimeFormat),
+                    clock);
+                db.Hotstrings.Add(hs);
+                foreach (string catName in cats)
+                {
+                    if (catByName.TryGetValue(catName, out Guid catId))
+                        db.HotstringCategories.Add(HotstringCategory.Create(hs.Id, catId));
+                }
+            }
 
-        try
-        {
-            await db.SaveChangesAsync(ct);
-        }
-        catch (DbUpdateException ex) when (ex.IsDuplicateKeyViolation())
-        {
-            // Concurrent first-call race or pre-existing data after migration (null
-            // markers but hotstrings already present) — detach pending entities and
-            // persist markers in a follow-up save so future GETs skip the seed path.
-            foreach (Hotstring hs in db.Hotstrings.Local.ToList())
-                db.Entry(hs).State = EntityState.Detached;
-            foreach (HotstringCategory hc in db.HotstringCategories.Local.ToList())
-                db.Entry(hc).State = EntityState.Detached;
-            foreach (Category cat in db.Categories.Local.ToList())
-                db.Entry(cat).State = EntityState.Detached;
-            if (pref is not null)
-                db.Entry(pref).State = EntityState.Detached;
-
-            // Reload pref (may have been inserted by the concurrent winner) and mark only the
-            // sets that actually landed. The winner may be the categories seeder
-            // (ListCategoriesQuery), which inserts categories and the pref row but never any
-            // hotstrings; marking hotstrings seeded here would strand the owner on an empty
-            // set that the guard above stops any later request from retrying.
-            pref = await db.UserPreferences.FirstOrDefaultAsync(p => p.OwnerOid == ownerOid, ct);
             if (pref is null)
             {
                 pref = UserPreference.CreateDefault(ownerOid, clock);
+                if (seedingCategories) pref.MarkCategoriesSeeded(clock);
+                pref.MarkHotstringsSeeded(clock);
                 db.UserPreferences.Add(pref);
             }
-            if (pref.CategoriesSeededAt is null && await db.Categories.AnyAsync(c => c.OwnerOid == ownerOid, ct))
-                pref.MarkCategoriesSeeded(clock);
-            if (pref.HotstringsSeededAt is null && await db.Hotstrings.AnyAsync(h => h.OwnerOid == ownerOid, ct))
+            else
+            {
+                if (seedingCategories) pref.MarkCategoriesSeeded(clock);
                 pref.MarkHotstringsSeeded(clock);
-            await db.SaveChangesAsync(ct);
+            }
+
+            try
+            {
+                await db.SaveChangesAsync(ct);
+                return;
+            }
+            catch (DbUpdateException ex) when (ex.IsDuplicateKeyViolation())
+            {
+                // Concurrent first-call race or pre-existing data after migration (null
+                // markers but hotstrings already present) — detach pending entities, then
+                // persist only markers backed by rows that actually committed.
+                foreach (Hotstring hs in db.Hotstrings.Local.ToList())
+                    db.Entry(hs).State = EntityState.Detached;
+                foreach (HotstringCategory hc in db.HotstringCategories.Local.ToList())
+                    db.Entry(hc).State = EntityState.Detached;
+                foreach (Category cat in db.Categories.Local.ToList())
+                    db.Entry(cat).State = EntityState.Detached;
+                if (pref is not null)
+                    db.Entry(pref).State = EntityState.Detached;
+
+                // The winner may be ListCategoriesQuery, which inserts categories and the pref
+                // row but no hotstrings. In that case, persist the truthful category marker and
+                // retry once so this request can insert the hotstrings against those categories.
+                pref = await db.UserPreferences.FirstOrDefaultAsync(p => p.OwnerOid == ownerOid, ct);
+                if (pref is null)
+                {
+                    pref = UserPreference.CreateDefault(ownerOid, clock);
+                    db.UserPreferences.Add(pref);
+                }
+
+                bool categoriesExist = await db.Categories.AnyAsync(c => c.OwnerOid == ownerOid, ct);
+                bool hotstringsExist = await db.Hotstrings.AnyAsync(h => h.OwnerOid == ownerOid, ct);
+
+                if (pref.CategoriesSeededAt is null && categoriesExist)
+                    pref.MarkCategoriesSeeded(clock);
+                if (pref.HotstringsSeededAt is null && hotstringsExist)
+                    pref.MarkHotstringsSeeded(clock);
+                await db.SaveChangesAsync(ct);
+
+                if (hotstringsExist || attempt == maxAttempts)
+                    return;
+            }
         }
     }
 
