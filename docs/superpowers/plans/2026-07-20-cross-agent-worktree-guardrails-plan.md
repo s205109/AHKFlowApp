@@ -67,6 +67,8 @@ Official adapter references:
 - The live `core.hooksPath` is the absolute main-checkout `.githooks` directory. Existing `pre-push.ps1` already documents that hooks therefore execute from main for every worktree and must resolve the active worktree separately.
 - In this checkout, invoking unqualified `bash -c` from a linked-worktree subdirectory resolves to a shell that cannot interpret the Windows worktree `.git` path. Codex `commandWindows` must use PowerShell explicitly.
 - `scripts/agents/setup-cross-agent-skills.ps1` installs `.githooks` through `core.hooksPath`. Implementation must validate behavior, not require one literal config string.
+- `jq --version` reports `jq-1.8.1`, and `Get-Command jq` resolves to `~/AppData/Local/Microsoft/WinGet/Links/jq.exe`; the Bash fast path is available in the verified Windows environment. The missing-`jq` fallback remains required for other installations.
+- The planned fast-path expression routes `git commit`, an indented `git commit`, `cd f&&git commit`, and uppercase `GIT commit` to PowerShell under Git Bash. `[[:space:]]` already covers leading whitespace; only the backtick-wrapped form needs the delimiter-class correction in Task 1.
 
 ## File Structure
 
@@ -83,11 +85,14 @@ Official adapter references:
 
 ### Modify
 
-- `.claude/hooks/pre-bash-guard.sh` — parse stdin, honor the emergency kill switch, exit quickly for noncandidate commands, and forward candidate payloads plus the adapter name to PowerShell.
-- `.github/hooks/hooks.json` — keep the shared Bash guard and pass `Copilot` as its adapter argument; preserve the other Copilot hooks.
+- `.claude/hooks/pre-bash-guard.sh` — parse stdin, infer Copilot from the native `toolArgs` payload shape, honor the emergency kill switch, exit quickly for noncandidate commands, and forward candidate payloads plus an optional explicit adapter to PowerShell.
 - `.github/workflows/ci.yml` — add both new lowercase `tests/*.Tests.ps1` suites to the existing Windows PowerShell job.
 - `AGENTS.md` — add the human-main/agent-worktree Git rule and scoped bypass wording.
 - `.agents/worktrees/SKILL.md` — teach all synchronized agent surfaces how the guard classifies a managed worktree and how to recover from a denial.
+
+### Retain unchanged
+
+- `.github/hooks/hooks.json` — keep Copilot's proven bare `.claude/hooks/pre-bash-guard.sh` command byte-identical; adapter selection comes from the payload instead of unverified command-string argument parsing.
 
 ### Generated/synchronized outputs
 
@@ -103,11 +108,11 @@ Official adapter references:
 - Create: `scripts/agents/invoke-agent-worktree-guard.ps1`
 - Create: `tests/AgentWorktreeGuard.Tests.ps1`
 - Modify: `.claude/hooks/pre-bash-guard.sh`
-- Modify: `.github/hooks/hooks.json`
+- Verify unchanged: `.github/hooks/hooks.json`
 
-- [ ] **Step 1: Capture the existing hook latency before changing its registration**
+- [ ] **Step 1: Capture the existing hook latency before changing its implementation**
 
-Run 5 warmups and 20 measurements for a noncandidate command and a Git candidate. Compute the median explicitly; `Measure-Object -Average` is not p50.
+Run 5 warmups and 20 measurements for a noncandidate command and a Git candidate. Compute the median explicitly; `Measure-Object -Average` is not p50. The current hook does not read stdin, so force an equivalent `cat >/dev/null` drain before sourcing it; otherwise the baseline omits work that the replacement must perform.
 
 ```powershell
 function Get-Median {
@@ -137,14 +142,16 @@ $payloads = @{
     } | ConvertTo-Json -Compress -Depth 4
 }
 
+$baselineCommand = 'cat >/dev/null; source .claude/hooks/pre-bash-guard.sh'
+
 foreach ($name in $payloads.Keys) {
     1..5 | ForEach-Object {
-        $payloads[$name] | bash .claude/hooks/pre-bash-guard.sh | Out-Null
+        $payloads[$name] | bash -c $baselineCommand | Out-Null
     }
 
     $samples = 1..20 | ForEach-Object {
         (Measure-Command {
-            $payloads[$name] | bash .claude/hooks/pre-bash-guard.sh | Out-Null
+            $payloads[$name] | bash -c $baselineCommand | Out-Null
         }).TotalMilliseconds
     }
 
@@ -212,7 +219,8 @@ Also assert:
 - completely malformed JSON warns and allows;
 - a thrown location-classification exception warns and allows;
 - an explicit safety match denies, and a thrown safety-rule evaluation fails closed;
-- the optional `CLAUDE_TOOL_INPUT` fallback is used only when Claude stdin is empty and has its own regression test.
+- the optional `CLAUDE_TOOL_INPUT` fallback is used only when Claude stdin is empty and has its own regression test;
+- piping a native Copilot payload through the bare `.claude/hooks/pre-bash-guard.sh` path selects the Copilot output contract without an adapter argument, including when the PowerShell entrypoint receives `Adapter=Auto` because `jq` is unavailable.
 
 Run:
 
@@ -277,8 +285,8 @@ The first executable statement after the parameter block must be the emergency s
 ```powershell
 [CmdletBinding()]
 param(
-    [ValidateSet('Claude', 'Codex', 'Copilot')]
-    [string]$Adapter = 'Claude'
+    [ValidateSet('Auto', 'Claude', 'Codex', 'Copilot')]
+    [string]$Adapter = 'Auto'
 )
 
 if ($env:AHKFLOW_GUARD_DISABLE -eq '1') {
@@ -295,11 +303,12 @@ $ErrorActionPreference = 'Stop'
 Then:
 
 1. read all stdin once with `[Console]::In.ReadToEnd()`;
-2. normalize only the native payload;
-3. evaluate explicit safety rules in a fail-closed `try/catch`;
-4. evaluate repository identity and location in a separate fail-open `try/catch`;
-5. map the result to the agent's native response;
-6. write diagnostics to stderr without echoing the entire payload or stack trace.
+2. when `Adapter=Auto`, select `Copilot` if the parsed top-level object has `toolArgs`; otherwise select `Claude`. Codex always supplies its explicit override;
+3. normalize only the native payload;
+4. evaluate explicit safety rules in a fail-closed `try/catch`;
+5. evaluate repository identity and location in a separate fail-open `try/catch`;
+6. map the result to the resolved agent's native response;
+7. write diagnostics to stderr without echoing the entire payload or stack trace.
 
 Output mapping:
 
@@ -313,7 +322,7 @@ Do not place policy regexes or path decisions in the adapter switch.
 
 - [ ] **Step 6: Turn the existing Bash hook into the fast, recoverable shim**
 
-Retain `.claude/hooks/pre-bash-guard.sh` and its existing Claude registration. The shim defaults to the `Claude` adapter, parses the command with `jq` when available, and starts PowerShell only for candidate tokens. If `jq` is missing, input is empty, or parsing fails, forward to PowerShell so correctness does not depend on `jq`.
+Retain `.claude/hooks/pre-bash-guard.sh` and its existing Claude and Copilot registrations. The optional first argument remains an explicit override for Codex. Without an argument, the shim extracts either `toolArgs` or `tool_input`, infers Copilot from a top-level `toolArgs` key for candidate commands, and otherwise uses Claude. If `jq` is missing, input is empty, or parsing fails, forward with `Adapter=Auto` so the PowerShell entrypoint performs the same payload-shape inference and correctness does not depend on `jq`.
 
 ```bash
 #!/usr/bin/env bash
@@ -323,24 +332,34 @@ if [[ "${AHKFLOW_GUARD_DISABLE:-}" == "1" ]]; then
   exit 0
 fi
 
-ADAPTER="${1:-Claude}"
+ADAPTER="${1:-Auto}"
 INPUT=$(cat)
 COMMAND=""
 PARSED=0
 
 if command -v jq >/dev/null 2>&1; then
-  if [[ "$ADAPTER" == "Copilot" ]]; then
-    COMMAND=$(printf '%s' "$INPUT" | jq -er '.toolArgs | fromjson | .command // empty' 2>/dev/null)
-  else
-    COMMAND=$(printf '%s' "$INPUT" | jq -er '.tool_input.command // empty' 2>/dev/null)
-  fi
+  COMMAND=$(printf '%s' "$INPUT" | jq -er '
+    if has("toolArgs") then
+      (.toolArgs | fromjson | .command // empty)
+    else
+      (.tool_input.command // empty)
+    end
+  ' 2>/dev/null)
   [[ $? -eq 0 ]] && PARSED=1
 fi
 
 if [[ $PARSED -eq 1 ]]; then
   shopt -s nocasematch
-  if [[ ! "$COMMAND" =~ (^|[[:space:]\;\&\|\(\)])(git(\.exe)?|rm|dotnet)([[:space:]]|$) ]]; then
+  if [[ ! "$COMMAND" =~ (^|[[:space:]\;\&\|\(\)\`])(git(\.exe)?|rm|dotnet)([[:space:]]|$) ]]; then
     exit 0
+  fi
+
+  if [[ "$ADAPTER" == "Auto" ]]; then
+    if printf '%s' "$INPUT" | jq -e 'has("toolArgs")' >/dev/null 2>&1; then
+      ADAPTER="Copilot"
+    else
+      ADAPTER="Claude"
+    fi
   fi
 fi
 
@@ -360,17 +379,19 @@ printf '%s' "$INPUT" |
     -Adapter "$ADAPTER"
 ```
 
-Add regression cases proving the raw payload's `cwd` containing `segocom-github` does not force the PowerShell path when the extracted command is noncandidate, the Windows PowerShell fallback works, and a missing host warns and allows.
+Add regression cases proving the raw payload's `cwd` containing `segocom-github` does not force the PowerShell path when the extracted command is noncandidate, the Windows PowerShell fallback works, and a missing host warns and allows. Probe `git commit`, an indented `git commit`, `cd f&&git commit`, uppercase `GIT commit`, and a backtick-wrapped `` `git commit` ``; every case must reach PowerShell. Also prove a Copilot `toolArgs` payload selects Copilot through the bare hook path with no positional argument.
 
-In `.github/hooks/hooks.json`, keep the Bash integration and pass the native adapter explicitly:
+Keep `.github/hooks/hooks.json` byte-identical. Its existing native registration remains:
 
 ```json
 {
   "type": "command",
-  "bash": ".claude/hooks/pre-bash-guard.sh Copilot",
-  "comment": "Guard destructive commands and main-tree Git mutations"
+  "bash": ".claude/hooks/pre-bash-guard.sh",
+  "comment": "Block destructive bash commands"
 }
 ```
+
+Run `git diff --exit-code -- .github/hooks/hooks.json`; expected: exit 0 with no output. This avoids assuming that Copilot shell-interprets a command-plus-argument string.
 
 Do not edit Claude's Git permission allowlist. The existing hook remains the single source of truth.
 
@@ -385,7 +406,7 @@ Expected: both exit 0.
 
 - [ ] **Step 8: Measure the replacement hook**
 
-Repeat Step 1 against the retained shim. Acceptance budgets:
+Repeat the same warmup and sample counts against the retained shim's direct stdin invocation. The replacement drains stdin itself; compare it with Step 1's forced-drain baseline. Acceptance budgets:
 
 - noncandidate warm p50: no more than 40 ms above baseline and no more than 100 ms absolute when `jq` is available;
 - Git-candidate warm p50: no more than 650 ms absolute;
@@ -399,7 +420,6 @@ If a budget fails, the task is not complete: keep the Bash fast path, remove avo
 git add scripts/agents/agent-worktree-guard.common.ps1 `
   scripts/agents/invoke-agent-worktree-guard.ps1 `
   tests/AgentWorktreeGuard.Tests.ps1 `
-  .github/hooks/hooks.json `
   .claude/hooks/pre-bash-guard.sh
 git commit -m "fix: read agent hook payloads from stdin"
 ```
@@ -449,7 +469,7 @@ Use this regex only to locate a direct Git invocation and its tail start. Leadin
 (?im)(?:^\s*|[;&|()]\s*)(?:&\s*)?git(?:\.exe)?\s+
 ```
 
-From the regex match end, scan one character at a time with `None`, `SingleQuoted`, and `DoubleQuoted` states. Stop at newline, `;`, `&`, or `|` only in `None` state; preserve separators inside quotes. Treat an unbalanced quote as an explicit `ambiguous-git-command` safety denial, not as an internal location error. Then tokenize the complete tail so `-C "path with spaces;and separators"` stays one argument. This is intentionally not a complete shell parser.
+From the regex match end, scan one character at a time with `None`, `SingleQuoted`, `DoubleQuoted`, and `Escaped` states; `Escaped` stores whether to return to `None` or `DoubleQuoted`. A backslash enters `Escaped` only from those two states, the next character is literal, and a backslash inside `SingleQuoted` remains literal. Stop at newline, `;`, `&`, or `|` only in `None` state; preserve separators inside quotes or escapes. Apply the same escape rules while tokenizing so the standard shell idiom `'O'\''Brien'` remains balanced. Treat a genuinely unbalanced quote as an explicit `ambiguous-git-command` safety denial, not as an internal location error. Then tokenize the complete tail so `-C "path with spaces;and separators"` stays one argument. This is intentionally not a complete shell parser.
 
 Assert these commands contain a mutation:
 
@@ -475,7 +495,6 @@ git status; git commit -m test
 git status && git branch fix/wt-test
 git -C "<main>" commit -m test
 git -C "C:\some;path" commit -m test
-git -C "C:\unbalanced;path commit -m test
 git stash push
 git notes add -m note HEAD
 git bisect start
@@ -503,6 +522,7 @@ git notes list
 git notes show HEAD
 git bisect log
 git apply --check patch.diff
+git log --author='O'\''Brien'
 rg -n "Backend|Frontend" README.md
 Get-Content README.md
 dotnet build
@@ -511,6 +531,14 @@ dotnet format
 git status > status.txt
 pwsh -NoProfile -File scripts/new-worktree.ps1 -Name test
 pwsh -NoProfile -File scripts/remove-worktree-local-dev.ps1 -WorktreePath test
+```
+
+Assert the malformed command below is denied by the quote-safety rule rather than reported as a parsed mutation:
+
+```text
+git -C "C:\unbalanced;path commit -m test
+Action = Deny
+Rule   = ambiguous-git-command
 ```
 
 Unknown non-Git commands and unknown Git subcommands remain allowed. Record that limitation instead of replacing mutation detection with an allowlist.
@@ -562,6 +590,16 @@ ManagedWorktree
 UnmanagedWorktree
 InvalidManifest
 ```
+
+Apply this state-to-action mapping only after detecting a Git mutation and after explicit safety rules:
+
+| State | Base action |
+| --- | --- |
+| `NotRepository`, `OutsideProtectedRepository` | Allow |
+| `ManagedWorktree` | Allow |
+| `MainCheckout`, `UnmanagedWorktree`, `InvalidManifest` | Deny |
+
+`AHKFLOW_ALLOW_MAIN=1` changes a location-based `Deny` to `Warn` as defined in Step 6; it never overrides an earlier safety denial. In particular, `git init` in an unrelated empty temporary directory returns `NotRepository` and is allowed, while `git init .` beneath the protected checkout resolves to `MainCheckout` and is denied.
 
 Classification order:
 
@@ -998,7 +1036,7 @@ Expected:
 
 - all JSON parses;
 - exactly one project guard registration exists per agent;
-- Claude and Copilot both reference the retained `pre-bash-guard.sh` fast shim, and Copilot passes the `Copilot` adapter argument;
+- Claude and Copilot both reference the retained bare `pre-bash-guard.sh` fast shim, `.github/hooks/hooks.json` is unchanged, and the bare-path Copilot payload test proves `toolArgs` selects the Copilot contract;
 - Codex's matcher is Bash only;
 - Codex `commandWindows` invokes one explicit PowerShell process and does not contain a literal `-File "$(git ...)"` path;
 - the focused test has exercised native Claude, Codex, and Copilot payloads.
@@ -1068,8 +1106,9 @@ Expected:
 Run this after the feature is merged into main and before deleting the old plan branch or worktree. It verifies the real absolute `core.hooksPath` rather than the test-local hook path:
 
 ```powershell
-$mainCheckout = (git rev-parse --show-toplevel).Trim()
-$hooksPath = (git config --path core.hooksPath).Trim()
+$commonDir = (git rev-parse --path-format=absolute --git-common-dir).Trim()
+$mainCheckout = Split-Path -Parent $commonDir
+$hooksPath = (git -C $mainCheckout config --path core.hooksPath).Trim()
 if (-not [System.IO.Path]::IsPathRooted($hooksPath)) {
     $hooksPath = Join-Path $mainCheckout $hooksPath
 }
@@ -1146,4 +1185,4 @@ Expected: exit 0. This confirms that the main-owned hook classifies the active w
 
 ## Unresolved Questions
 
-None. Recovery, latency budgets, Codex Windows execution, CI coverage, repository scope, and post-merge Git-hook authority are settled above.
+None. Recovery, latency budgets, Codex Windows execution, Copilot payload-shape selection, CI coverage, repository scope, and post-merge Git-hook authority are settled above.
