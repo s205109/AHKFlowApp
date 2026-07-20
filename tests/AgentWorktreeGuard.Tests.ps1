@@ -228,6 +228,10 @@ function New-GuardFixture {
     $main = Join-Path $testRoot 'repo'
     $managed = Join-Path $main '.claude\worktrees\valid'
     $badManifest = Join-Path $main '.claude\worktrees\badmanifest'
+    # One level deeper than the approved parent: an approved grandparent must not qualify.
+    $nested = Join-Path $main '.claude\worktrees\group\nested'
+    # 'worktrees-evil' shares a prefix with the approved 'worktrees' parent but is not it.
+    $siblingPrefix = Join-Path $main '.claude\worktrees-evil\lookalike'
     $unmanaged = Join-Path $testRoot 'unmanaged'
     $unrelated = Join-Path $testRoot 'unrelated'
 
@@ -242,6 +246,8 @@ function New-GuardFixture {
     Invoke-Git -C $main commit -m 'test: seed temporary repository'
     Invoke-Git -C $main worktree add -b feature/wt-valid $managed
     Invoke-Git -C $main worktree add -b feature/wt-badmanifest $badManifest
+    Invoke-Git -C $main worktree add -b feature/wt-nested $nested
+    Invoke-Git -C $main worktree add -b feature/wt-sibling $siblingPrefix
     Invoke-Git -C $main worktree add -b feature/wt-unmanaged $unmanaged
 
     $managedRoot = (Resolve-Path -LiteralPath $managed).Path
@@ -273,13 +279,33 @@ function New-GuardFixture {
     ) -join "`n"
     Set-Content -LiteralPath (Join-Path $badRoot 'scripts\.env.worktree') -Value $broken -Encoding utf8
 
+    # Both of these get a *valid* manifest on purpose: their rejection must come from the
+    # approved-direct-child location rule, not from a manifest that happens to be missing.
+    $nestedRoot = (Resolve-Path -LiteralPath $nested).Path
+    $siblingRoot = (Resolve-Path -LiteralPath $siblingPrefix).Path
+    foreach ($root in @($nestedRoot, $siblingRoot)) {
+        New-Item -ItemType Directory -Path (Join-Path $root 'scripts') -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $root 'scripts\.env.worktree') -Encoding utf8 -Value (@(
+                'AHKFLOW_API_PORT=5602',
+                'AHKFLOW_UI_PORT=5603',
+                'AHKFLOW_API_URL=http://localhost:5602',
+                'AHKFLOW_UI_URL=http://localhost:5603',
+                'AHKFLOW_DB_NAME=AHKFlowApp_x',
+                'AHKFLOW_SQL_PORT=14332',
+                'AHKFLOW_COMPOSE_PROJECT=ahkflow-x',
+                "AHKFLOW_ROOT=$root"
+            ) -join "`n")
+    }
+
     return [pscustomobject]@{
-        TestRoot    = (Resolve-Path -LiteralPath $testRoot).Path
-        Main        = (Resolve-Path -LiteralPath $main).Path
-        Managed     = $managedRoot
-        BadManifest = $badRoot
-        Unmanaged   = (Resolve-Path -LiteralPath $unmanaged).Path
-        Unrelated   = (Resolve-Path -LiteralPath $unrelated).Path
+        TestRoot      = (Resolve-Path -LiteralPath $testRoot).Path
+        Main          = (Resolve-Path -LiteralPath $main).Path
+        Managed       = $managedRoot
+        BadManifest   = $badRoot
+        Nested        = $nestedRoot
+        SiblingPrefix = $siblingRoot
+        Unmanaged     = (Resolve-Path -LiteralPath $unmanaged).Path
+        Unrelated     = (Resolve-Path -LiteralPath $unrelated).Path
     }
 }
 
@@ -294,9 +320,11 @@ function Remove-GuardFixture {
         throw "Refusing to delete a fixture outside the temp directory: $target"
     }
 
-    Invoke-Git -C $Fixture.Main worktree remove --force $Fixture.Managed
-    Invoke-Git -C $Fixture.Main worktree remove --force $Fixture.BadManifest
-    Invoke-Git -C $Fixture.Main worktree remove --force $Fixture.Unmanaged
+    foreach ($worktree in @(
+            $Fixture.Managed, $Fixture.BadManifest, $Fixture.Nested,
+            $Fixture.SiblingPrefix, $Fixture.Unmanaged)) {
+        Invoke-Git -C $Fixture.Main worktree remove --force $worktree
+    }
     Remove-Item -LiteralPath $target -Recurse -Force -ErrorAction SilentlyContinue
 }
 
@@ -414,6 +442,34 @@ try {
         }
     }
 
+    # Regression: these were all classified with regexes over the raw command, so anything between
+    # `git` and the subcommand (-C, .exe, a global option) silently skipped the destructive rule -
+    # and AHKFLOW_ALLOW_MAIN=1 then downgraded the location denial to a warning.
+    $indirectSafetyCases = @(
+        @{ Command = 'git -C . reset --hard'; Rule = 'git-reset-hard' },
+        @{ Command = 'git.exe reset --hard'; Rule = 'git-reset-hard' },
+        @{ Command = 'git --no-pager checkout .'; Rule = 'git-checkout-dot' },
+        @{ Command = 'git -C . clean -fd'; Rule = 'git-clean-force' },
+        @{ Command = 'git -C . push origin -f'; Rule = 'force-push' },
+        @{ Command = 'git -c core.pager=cat reset --hard HEAD~1'; Rule = 'git-reset-hard' },
+        @{ Command = 'git status && git.exe push --force origin main'; Rule = 'force-push' }
+    )
+
+    foreach ($case in $indirectSafetyCases) {
+        Invoke-TestCase "Safety rule survives indirection: $($case.Command)" {
+            $decision = Get-AgentCommandSafetyDecision -Command $case.Command
+            Assert-Equal 'Deny' $decision.Action 'Action'
+            Assert-Equal $case.Rule $decision.Rule 'Rule'
+        }
+
+        Invoke-TestCase "AHKFLOW_ALLOW_MAIN=1 cannot downgrade: $($case.Command)" {
+            $decision = Invoke-AgentGuardPolicy -Command $case.Command `
+                -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $true
+            Assert-Equal 'Deny' $decision.Action 'Action'
+            Assert-Equal $case.Rule $decision.Rule 'Rule'
+        }
+    }
+
     Write-Host 'Precedence and fault handling' -ForegroundColor Cyan
 
     Invoke-TestCase 'AHKFLOW_ALLOW_MAIN=1 downgrades a location denial to Warn' {
@@ -496,7 +552,9 @@ try {
         'git update-ref refs/heads/test HEAD', 'git status; git commit -m test',
         'git status && git branch fix/wt-test', 'git stash push', 'git notes add -m note HEAD',
         'git bisect start', 'git apply patch.diff', 'git init .', 'git submodule update',
-        'git remote add origin url', 'git reflog delete', 'git config user.name bob'
+        'git remote add origin url', 'git reflog delete', 'git config user.name bob',
+        'git config set user.name bob', 'git config unset user.name', 'git.exe commit -m test',
+        'git -C somewhere commit -m test', 'FOO=1 git commit -m test', 'git branch -f main HEAD'
     )
     foreach ($command in $mutatingCommands) {
         Invoke-TestCase "Mutation detected: $command" {
@@ -514,7 +572,12 @@ try {
         "git log --author='O'\''Brien'", 'rg -n "Backend" README.md', 'Get-Content README.md',
         'dotnet build', 'dotnet test', 'dotnet format', 'git status > status.txt',
         'git config --get-regexp branch', 'git remote show origin', 'git submodule status',
-        'git tag --contains HEAD'
+        'git tag --contains HEAD',
+        # Ordinary inspection that a positional-argument-means-mutation rule wrongly denied.
+        "git branch --list 'feature/*'", 'git branch --contains HEAD', 'git branch --merged main',
+        'git branch --points-at HEAD', 'git tag -v v1.0.0', 'git tag --verify v1.0.0',
+        'git tag --points-at HEAD', 'git config get core.hooksPath', 'git config list',
+        'git -C somewhere status', 'git.exe status'
     )
     foreach ($command in $readOnlyCommands) {
         Invoke-TestCase "No mutation: $command" {
@@ -531,6 +594,8 @@ try {
         @{ Name = 'main checkout'; Cwd = { $fixture.Main }; State = 'MainCheckout' },
         @{ Name = 'managed worktree'; Cwd = { $fixture.Managed }; State = 'ManagedWorktree' },
         @{ Name = 'unmanaged linked worktree'; Cwd = { $fixture.Unmanaged }; State = 'UnmanagedWorktree' },
+        @{ Name = 'nested below an approved parent'; Cwd = { $fixture.Nested }; State = 'UnmanagedWorktree' },
+        @{ Name = 'sibling-prefix parent (.claude/worktrees-evil)'; Cwd = { $fixture.SiblingPrefix }; State = 'UnmanagedWorktree' },
         @{ Name = 'approved location, invalid manifest'; Cwd = { $fixture.BadManifest }; State = 'InvalidManifest' },
         @{ Name = 'unrelated repository'; Cwd = { $fixture.Unrelated }; State = 'OutsideProtectedRepository' },
         @{ Name = 'non-repository temp dir'; Cwd = { $fixture.TestRoot }; State = 'NotRepository' }
@@ -551,6 +616,44 @@ try {
         }
         finally {
             Set-Content -LiteralPath $missing -Value $original -Encoding utf8 -NoNewline
+        }
+    }
+
+    Invoke-TestCase 'Manifest whose AHKFLOW_ROOT points at another directory is invalid' {
+        $path = Join-Path $fixture.Managed 'scripts\.env.worktree'
+        $original = Get-Content -LiteralPath $path -Raw
+        try {
+            Set-Content -LiteralPath $path -Encoding utf8 -Value (
+                $original -replace 'AHKFLOW_ROOT=.*', "AHKFLOW_ROOT=$($fixture.Main)")
+            Assert-Equal 'InvalidManifest' (Get-ManagedWorktreeState -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main) 'State'
+        }
+        finally {
+            Set-Content -LiteralPath $path -Value $original -Encoding utf8 -NoNewline
+        }
+    }
+
+    Invoke-TestCase 'Manifest with a nonnumeric port is invalid' {
+        $path = Join-Path $fixture.Managed 'scripts\.env.worktree'
+        $original = Get-Content -LiteralPath $path -Raw
+        try {
+            Set-Content -LiteralPath $path -Encoding utf8 -Value (
+                $original -replace 'AHKFLOW_SQL_PORT=.*', 'AHKFLOW_SQL_PORT=not-a-port')
+            Assert-Equal 'InvalidManifest' (Get-ManagedWorktreeState -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main) 'State'
+        }
+        finally {
+            Set-Content -LiteralPath $path -Value $original -Encoding utf8 -NoNewline
+        }
+    }
+
+    Invoke-TestCase 'Missing manifest is invalid' {
+        $path = Join-Path $fixture.Managed 'scripts\.env.worktree'
+        $original = Get-Content -LiteralPath $path -Raw
+        try {
+            Remove-Item -LiteralPath $path -Force
+            Assert-Equal 'InvalidManifest' (Get-ManagedWorktreeState -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main) 'State'
+        }
+        finally {
+            Set-Content -LiteralPath $path -Value $original -Encoding utf8 -NoNewline
         }
     }
 
@@ -584,6 +687,56 @@ try {
         $command = "git -C `"$($fixture.Unrelated)`" commit -m test"
         $decision = Invoke-AgentGuardPolicy -Command $command -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
         Assert-Equal 'Allow' $decision.Action 'Action'
+    }
+
+    # Regression: the guard classified the payload's own cwd, so a chained directory change moved
+    # the real target into main while the decision was still being made about the worktree.
+    Invoke-TestCase 'cd into main before a git mutation is denied' {
+        $command = "cd `"$($fixture.Main)`" && git commit -m test"
+        $decision = Invoke-AgentGuardPolicy -Command $command -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Deny' $decision.Action 'Action'
+        Assert-Equal 'agent-main-git-mutation' $decision.Rule 'Rule'
+    }
+
+    Invoke-TestCase 'Set-Location into main before a git mutation is denied' {
+        $command = "Set-Location -LiteralPath `"$($fixture.Main)`"; git branch review-bypass"
+        $decision = Invoke-AgentGuardPolicy -Command $command -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Deny' $decision.Action 'Action'
+        Assert-Equal 'agent-main-git-mutation' $decision.Rule 'Rule'
+    }
+
+    Invoke-TestCase 'A relative cd into main before a git mutation is denied' {
+        $decision = Invoke-AgentGuardPolicy -Command 'cd ..\..\.. && git commit -m test' `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Deny' $decision.Action 'Action'
+        Assert-Equal 'agent-main-git-mutation' $decision.Rule 'Rule'
+    }
+
+    Invoke-TestCase 'cd within the managed worktree keeps a git mutation allowed' {
+        $decision = Invoke-AgentGuardPolicy -Command 'cd scripts && git commit -m test' `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Allow' $decision.Action 'Action'
+    }
+
+    Invoke-TestCase 'A cd target the guard cannot expand denies a following mutation' {
+        $decision = Invoke-AgentGuardPolicy -Command 'cd $HOME && git commit -m test' `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Deny' $decision.Action 'Action'
+        Assert-Equal 'agent-unresolved-git-target' $decision.Rule 'Rule'
+    }
+
+    Invoke-TestCase 'An unexpandable cd does not block read-only git' {
+        $decision = Invoke-AgentGuardPolicy -Command 'cd $HOME && git status' `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Allow' $decision.Action 'Action'
+    }
+
+    # Regression: an environment-assignment prefix hid the git token from the invocation scan.
+    Invoke-TestCase 'An environment-prefixed git mutation in main is denied' {
+        $decision = Invoke-AgentGuardPolicy -Command 'FOO=1 git commit -m test' `
+            -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Deny' $decision.Action 'Action'
+        Assert-Equal 'agent-main-git-mutation' $decision.Rule 'Rule'
     }
 
     Invoke-TestCase 'A mutating invocation with --git-dir is denied' {
@@ -727,9 +880,48 @@ try {
         Assert-Match '\[agent-guard:Copilot\]' $result.StdErr 'diagnostic names Copilot'
     }
 
-    Invoke-TestCase 'Repository .github/hooks/hooks.json is byte-identical' {
-        Invoke-Git -C $suiteRoot diff --exit-code -- .github/hooks/hooks.json
-        Assert-Equal 0 $script:LastGitExitCode 'git diff --exit-code'
+    Invoke-TestCase 'Bash shim falls back to powershell.exe when pwsh is unavailable' {
+        # Drop only the pwsh directories: powershell.exe lives in System32 and must stay reachable,
+        # otherwise this would silently exercise the missing-host branch instead.
+        $pathWithoutPwsh = (
+            $env:PATH -split ';' |
+                Where-Object { $_ -and -not (Test-Path -LiteralPath (Join-Path $_ 'pwsh.exe')) }
+        ) -join ';'
+
+        $result = Invoke-BashShim -StdIn (New-ClaudePayload 'git commit -m test' $script:RealMainCheckout) `
+            -ShimArguments @('Claude') -EnvironmentOverrides @{ PATH = $pathWithoutPwsh }
+        Assert-Equal 2 $result.ExitCode 'ExitCode'
+        Assert-Match 'BLOCKED: agent Git mutations' $result.StdErr 'StdErr'
+    }
+
+    Invoke-TestCase 'Bash shim warns and allows when no PowerShell host exists' {
+        $pathWithoutAnyHost = (
+            $env:PATH -split ';' |
+                Where-Object {
+                    $_ -and -not (Test-Path -LiteralPath (Join-Path $_ 'pwsh.exe')) -and
+                    -not (Test-Path -LiteralPath (Join-Path $_ 'powershell.exe'))
+                }
+        ) -join ';'
+
+        $result = Invoke-BashShim -StdIn (New-ClaudePayload 'git commit -m test' $script:RealMainCheckout) `
+            -ShimArguments @('Claude') -EnvironmentOverrides @{ PATH = $pathWithoutAnyHost }
+        Assert-Equal 0 $result.ExitCode 'ExitCode'
+        Assert-Match 'could not find PowerShell' $result.StdErr 'StdErr'
+    }
+
+    Invoke-TestCase 'Copilot hook registration covers both platforms' {
+        $hooks = Get-Content -LiteralPath (Join-Path $suiteRoot '.github\hooks\hooks.json') -Raw | ConvertFrom-Json
+        $guards = @($hooks.hooks.preToolUse | Where-Object {
+                ($_.PSObject.Properties['bash'] -and $_.bash -match 'pre-bash-guard') -or
+                ($_.PSObject.Properties['powershell'] -and $_.powershell -match 'invoke-agent-worktree-guard')
+            })
+
+        Assert-Equal 1 $guards.Count 'exactly one Copilot guard registration'
+        # Copilot picks 'bash' on Unix and 'powershell' on Windows; a bash-only entry is skipped
+        # entirely on Windows, which is where this repository is developed.
+        Assert-Match 'pre-bash-guard\.sh' $guards[0].bash 'bash command'
+        Assert-Match 'invoke-agent-worktree-guard\.ps1' $guards[0].powershell 'powershell command'
+        Assert-Match '-Adapter Copilot' $guards[0].powershell 'powershell adapter'
     }
 }
 finally {

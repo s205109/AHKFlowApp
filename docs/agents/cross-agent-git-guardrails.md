@@ -53,12 +53,31 @@ Rule:
   in scripts/agents/agent-worktree-guard.common.ps1.
 ```
 
-- **Claude / Copilot** register the bare `.claude/hooks/pre-bash-guard.sh`. Copilot is inferred
-  from a top-level `toolArgs` key in the native payload — `.github/hooks/hooks.json` stays
-  byte-identical to its proven form.
+- **Claude** registers the bare `.claude/hooks/pre-bash-guard.sh`.
+- **Copilot** registers the same shim in `.github/hooks/hooks.json` under `bash`, plus a
+  `powershell` entry that calls the PowerShell entrypoint directly with `-Adapter Copilot`.
+  Copilot selects `bash` on Unix and `powershell` on Windows, so a `bash`-only entry would leave
+  the guard inactive on Windows entirely. On the `bash` path the adapter is still *inferred* from
+  a top-level `toolArgs` key rather than a command argument.
 - **Codex** registers `.codex/hooks.json` with a Bash matcher only. On Windows the `commandWindows`
   variant runs one explicit PowerShell process and resolves the repository root inside it. Codex
   reviews project hooks when a repository becomes trusted.
+
+### Measured latency
+
+Warm p50 over 20 runs after 5 warmups, Windows 11 / PowerShell 7:
+
+| Path | p50 |
+| --- | --- |
+| Shim, noncandidate command (exits in Bash) | ~54 ms |
+| Shim, read-only Git candidate | ~725 ms |
+| Shim, mutating Git candidate | ~975 ms |
+| Codex direct PowerShell, mutating Git candidate | ~630 ms |
+
+The floor is process startup: ~260 ms for `pwsh` itself, plus ~200–340 ms more when Git Bash is
+the one spawning it. Only *candidate* commands pay this. Making the Git paths faster would mean
+either duplicating policy into Bash (rejected — it would drift from the PowerShell core) or
+starting PowerShell for every command (rejected — it would cost the ~54 ms common case ~500 ms).
 
 ## Setup and trust
 
@@ -93,7 +112,11 @@ Rule:
 - Main-tree edits, builds, tests, and formatters are allowed and can dirty the working tree. The
   guard prevents Git mutation, not a dirty tree.
 - The command tokenizer is not a full Bash/PowerShell parser. Representative chains, redirects,
-  quoting, and `git -C` are covered; hostile obfuscation is out of scope.
+  quoting, `git -C`, leading `NAME=value` prefixes, and directory changes (`cd`, `chdir`, `pushd`,
+  `Set-Location`) are covered; hostile obfuscation is out of scope.
+- A directory change the guard cannot expand literally (`cd $HOME`, `cd -`, bare `cd`) makes a
+  following mutation untargetable, so it is denied with `agent-unresolved-git-target`. Read-only
+  Git after such a `cd` is unaffected. Pass an explicit `git -C <path>` to be classified normally.
 - `commit --no-verify` and `--git-dir`/`--work-tree` targeting cannot be safely inferred, so a
   mutating invocation using `--git-dir`/`--work-tree` is denied outright (unless `AHKFLOW_ALLOW_MAIN=1`).
 

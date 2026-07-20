@@ -8,16 +8,27 @@
 # This file is dot-sourced, so it deliberately does not set strict mode or
 # $ErrorActionPreference - those belong to the calling entrypoint.
 
-# Reuse the repository's single definition of "a linked worktree" instead of introducing
-# competing linkage logic here.
-. (Join-Path (Split-Path -Parent $PSScriptRoot) 'worktree-git.common.ps1')
+# scripts/worktree-git.common.ps1 stays the single definition of "a linked worktree" for the
+# worktree scripts, but it is deliberately not dot-sourced here: Resolve-GitPath and
+# Test-LinkedWorktree each spawn their own `git rev-parse`, and this file runs on every candidate
+# command. Get-ManagedWorktreeState makes the identical git-dir/common-dir comparison from one
+# batched rev-parse instead. Keep the two in step if that definition ever changes.
 
 $script:AgentGuardShellToolNames = @('bash', 'shell', 'shell_command', 'sh', 'powershell', 'pwsh')
 
-# Locates a direct `git` invocation and the index its argument tail starts at. Leading
-# whitespace is part of the start alternative so an indented command still matches. The
-# backtick is a delimiter too: `git commit` must not read as a bare word.
-$script:AgentGuardGitInvocationPattern = '(?im)(?:^\s*|[;&|()`]\s*)(?:&\s*)?git(?:\.exe)?\s+'
+$script:AgentGuardProtectedCommonDirCache = @{}
+
+# Characters a backslash may escape inside double quotes (POSIX), and outside quotes. Compared
+# with IndexOf, not -contains: -contains on a string tests the whole string, never a character.
+$script:AgentGuardDoubleQuoteEscapables = '$`"\'
+$script:AgentGuardUnquotedEscapables = '$`"\;&|()' + "'"
+
+# Commands that move the shell's working directory, so a later `git` in the same chain does not
+# run where the hook payload said it would.
+$script:AgentGuardChangeDirectoryCommands = @('cd', 'chdir', 'pushd', 'set-location')
+
+# A leading NAME=value assignment is a prefix, not the command being run.
+$script:AgentGuardEnvAssignmentPattern = '^[A-Za-z_][A-Za-z0-9_]*='
 
 function New-AgentGuardDecision {
     [CmdletBinding()]
@@ -160,7 +171,12 @@ function ConvertFrom-AgentHookInput {
 Ports the original pre-bash-guard.sh destructive-command rules without broadening them.
 
 .DESCRIPTION
-These run before any location logic and are never relaxed by AHKFLOW_ALLOW_MAIN.
+These run before any location logic and are never relaxed by AHKFLOW_ALLOW_MAIN, so they are
+classified from the parsed git subcommand and its arguments rather than from regexes over the
+raw string. Regexes over the unnormalized command missed every ordinary variant that puts
+something between `git` and the subcommand - `git -C . reset --hard`, `git.exe reset --hard`,
+`git --no-pager checkout .` - which let AHKFLOW_ALLOW_MAIN=1 downgrade a destructive command to
+a warning. The non-git rules (rm, dotnet) keep their original raw-string matching.
 #>
 function Get-AgentCommandSafetyDecision {
     [CmdletBinding()]
@@ -170,25 +186,8 @@ function Get-AgentCommandSafetyDecision {
         return New-AgentGuardDecision -Action Allow
     }
 
-    if ($Command -match 'git\s+push\s+.*--force' -or $Command -match 'git\s+push\s+-f\b') {
-        return New-AgentGuardDecision -Action Deny -Rule 'force-push' -Message `
-            'BLOCKED: Force push detected. Use regular push or discuss with the user first.'
-    }
-
-    if ($Command -match 'git\s+reset\s+--hard') {
-        return New-AgentGuardDecision -Action Deny -Rule 'git-reset-hard' -Message `
-            'BLOCKED: git reset --hard will discard all uncommitted changes. Discuss with the user first.'
-    }
-
-    if ($Command -match 'git\s+clean\s+-[a-zA-Z]*f') {
-        return New-AgentGuardDecision -Action Deny -Rule 'git-clean-force' -Message `
-            'BLOCKED: git clean -f will permanently delete untracked files. Discuss with the user first.'
-    }
-
-    if ($Command -match 'git\s+checkout\s+\.') {
-        return New-AgentGuardDecision -Action Deny -Rule 'git-checkout-dot' -Message `
-            'BLOCKED: git checkout . will discard all unstaged changes. Discuss with the user first.'
-    }
+    $gitDecision = Get-AgentGitSafetyDecision -Command $Command
+    if ($gitDecision.Action -ne 'Allow') { return $gitDecision }
 
     if ($Command -match 'rm\s+-[a-zA-Z]*r[a-zA-Z]*f' -or $Command -match 'rm\s+-[a-zA-Z]*f[a-zA-Z]*r') {
         if ($Command -notmatch 'rm\s+-rf\s+(node_modules|bin|obj|TestResults|\.vs|/tmp)') {
@@ -207,30 +206,87 @@ function Get-AgentCommandSafetyDecision {
 
 <#
 .SYNOPSIS
-Tokenizes one git invocation tail using a deliberately small shell-quoting model.
+Applies the destructive git rules to every parsed git invocation in a command.
 
 .DESCRIPTION
-Walks the tail one character at a time through None/SingleQuoted/DoubleQuoted/Escaped states
-so that separators inside quotes stay part of a single argument. Double-quote escaping follows
-POSIX (a backslash is literal unless it precedes $, `, ", \, or newline), which keeps quoted
-Windows paths such as "C:\some;path" intact. This is intentionally not a complete shell parser.
-Returns $null when the tail ends inside an unterminated quote or escape.
+An unparseable command yields Allow here; Get-AgentWorktreeGuardDecision denies it separately
+with the ambiguous-git-command rule, so nothing slips through by returning Allow.
 #>
-function Read-AgentCommandTail {
+function Get-AgentGitSafetyDecision {
     [CmdletBinding()]
-    param(
-        [string] $Text,
-        [int] $StartIndex
-    )
+    param([string] $Command)
 
+    $parsed = Get-AgentGitInvocation -Command $Command
+    if ($parsed.Ambiguous) { return New-AgentGuardDecision -Action Allow }
+
+    foreach ($tokens in $parsed.Invocations) {
+        $parts = Get-AgentGitParts -Tokens $tokens
+        $subcommand = ([string] $parts.Subcommand).ToLowerInvariant()
+        $arguments = $parts.Args
+
+        switch ($subcommand) {
+            'push' {
+                if ((Test-AgentGitArgsContainAny -Arguments $arguments -Options @('-f', '--force')) -or
+                    @($arguments | Where-Object { $_ -ilike '--force-*' }).Count -gt 0) {
+                    return New-AgentGuardDecision -Action Deny -Rule 'force-push' -Message `
+                        'BLOCKED: Force push detected. Use regular push or discuss with the user first.'
+                }
+            }
+            'reset' {
+                if (Test-AgentGitArgsContainAny -Arguments $arguments -Options @('--hard')) {
+                    return New-AgentGuardDecision -Action Deny -Rule 'git-reset-hard' -Message `
+                        'BLOCKED: git reset --hard will discard all uncommitted changes. Discuss with the user first.'
+                }
+            }
+            'clean' {
+                # -f may be bundled into a short cluster such as -xdf.
+                if (@($arguments | Where-Object { $_ -ieq '--force' -or $_ -cmatch '^-[a-zA-Z]*f' }).Count -gt 0) {
+                    return New-AgentGuardDecision -Action Deny -Rule 'git-clean-force' -Message `
+                        'BLOCKED: git clean -f will permanently delete untracked files. Discuss with the user first.'
+                }
+            }
+            'checkout' {
+                if (@(Get-AgentGitPositionals -Arguments $arguments) -contains '.') {
+                    return New-AgentGuardDecision -Action Deny -Rule 'git-checkout-dot' -Message `
+                        'BLOCKED: git checkout . will discard all unstaged changes. Discuss with the user first.'
+                }
+            }
+        }
+    }
+
+    return New-AgentGuardDecision -Action Allow
+}
+
+<#
+.SYNOPSIS
+Splits a command string into tokenized top-level segments using a small shell-quoting model.
+
+.DESCRIPTION
+Walks the string one character at a time through None/SingleQuoted/DoubleQuoted/Escaped states,
+so a separator inside quotes stays part of a single argument. A segment ends at an unquoted
+newline, ';', '&', '|', '`', '(' or ')'; that is what makes `cd X && git commit` two segments
+rather than one opaque string. Double-quote escaping follows POSIX (a backslash is literal
+unless it precedes $, `, ", \, or newline), which keeps quoted Windows paths such as
+"C:\some;path" intact. Outside quotes a backslash only escapes a metacharacter or whitespace,
+so an unquoted C:\Dev\repo survives too.
+
+Returns { Segments = @(string[]); Ambiguous = bool }. Ambiguous means the string ended inside an
+unterminated quote or escape, which makes every segment boundary in it untrustworthy.
+This is intentionally not a complete shell parser.
+#>
+function Split-AgentCommandSegment {
+    [CmdletBinding()]
+    param([string] $Command)
+
+    $segments = New-Object System.Collections.Generic.List[object]
     $tokens = New-Object System.Collections.Generic.List[string]
     $current = New-Object System.Text.StringBuilder
     $hasCurrent = $false
     $state = 'None'
     $returnState = 'None'
 
-    for ($i = $StartIndex; $i -lt $Text.Length; $i++) {
-        $ch = $Text[$i]
+    for ($i = 0; $i -lt $Command.Length; $i++) {
+        $ch = $Command[$i]
 
         if ($state -eq 'Escaped') {
             [void] $current.Append($ch)
@@ -246,7 +302,8 @@ function Read-AgentCommandTail {
         }
 
         if ($state -eq 'DoubleQuoted') {
-            if ($ch -eq '\' -and ($i + 1) -lt $Text.Length -and '$`"\' -contains $Text[$i + 1]) {
+            if ($ch -eq '\' -and ($i + 1) -lt $Command.Length -and
+                $script:AgentGuardDoubleQuoteEscapables.IndexOf($Command[$i + 1]) -ge 0) {
                 $returnState = 'DoubleQuoted'
                 $state = 'Escaped'
             }
@@ -255,13 +312,23 @@ function Read-AgentCommandTail {
             continue
         }
 
-        # None state.
-        if ($ch -eq '\') { $returnState = 'None'; $state = 'Escaped'; continue }
+        # None state. A backslash only escapes a metacharacter or whitespace here; treating it as
+        # a universal escape would shred every unquoted Windows path the guard has to classify.
+        if ($ch -eq '\' -and ($i + 1) -lt $Command.Length -and
+            ($script:AgentGuardUnquotedEscapables.IndexOf($Command[$i + 1]) -ge 0 -or
+            [char]::IsWhiteSpace($Command[$i + 1]))) {
+            $returnState = 'None'
+            $state = 'Escaped'
+            continue
+        }
         if ($ch -eq "'") { $state = 'SingleQuoted'; $hasCurrent = $true; continue }
         if ($ch -eq '"') { $state = 'DoubleQuoted'; $hasCurrent = $true; continue }
 
-        if ($ch -eq "`n" -or $ch -eq "`r" -or $ch -eq ';' -or $ch -eq '&' -or $ch -eq '|' -or $ch -eq '`') {
-            break
+        if ($ch -eq "`n" -or $ch -eq "`r" -or $ch -eq ';' -or $ch -eq '&' -or $ch -eq '|' -or
+            $ch -eq '`' -or $ch -eq '(' -or $ch -eq ')') {
+            if ($hasCurrent) { [void] $tokens.Add($current.ToString()); [void] $current.Clear(); $hasCurrent = $false }
+            if ($tokens.Count -gt 0) { [void] $segments.Add($tokens.ToArray()); $tokens.Clear() }
+            continue
         }
 
         if ([char]::IsWhiteSpace($ch)) {
@@ -273,10 +340,94 @@ function Read-AgentCommandTail {
         $hasCurrent = $true
     }
 
-    if ($state -ne 'None') { return $null }
-    if ($hasCurrent) { [void] $tokens.Add($current.ToString()) }
+    if ($state -ne 'None') {
+        return [pscustomobject]@{ Segments = @(); Ambiguous = $true }
+    }
 
-    return , $tokens.ToArray()
+    if ($hasCurrent) { [void] $tokens.Add($current.ToString()) }
+    if ($tokens.Count -gt 0) { [void] $segments.Add($tokens.ToArray()) }
+
+    return [pscustomobject]@{
+        Segments  = $segments.ToArray()
+        Ambiguous = $false
+    }
+}
+
+<#
+.SYNOPSIS
+Classifies each top-level segment as a git invocation, a directory change, or something else.
+
+.DESCRIPTION
+Returns { Segments = @(objects); Ambiguous = bool }. Each segment carries Kind
+(Git | ChangeDirectory | Other), Tokens (leading NAME=value assignments removed), and - for
+ChangeDirectory - Directory plus Unresolved. Unresolved marks a target the guard cannot expand
+literally (`cd -`, `cd $HOME`, bare `cd`), so a following mutation is treated as untargetable
+rather than silently classified against a stale directory.
+#>
+function Get-AgentCommandSegment {
+    [CmdletBinding()]
+    param([string] $Command)
+
+    if ([string]::IsNullOrWhiteSpace($Command)) {
+        return [pscustomobject]@{ Segments = @(); Ambiguous = $false }
+    }
+
+    $split = Split-AgentCommandSegment -Command $Command
+    if ($split.Ambiguous) {
+        return [pscustomobject]@{ Segments = @(); Ambiguous = $true }
+    }
+
+    $classified = New-Object System.Collections.Generic.List[object]
+
+    foreach ($tokens in $split.Segments) {
+        # Drop NAME=value prefixes so `AHKFLOW_ALLOW_MAIN=1 git commit` still reads as git.
+        $start = 0
+        while ($start -lt $tokens.Count -and $tokens[$start] -match $script:AgentGuardEnvAssignmentPattern) { $start++ }
+        if ($start -ge $tokens.Count) { continue }
+
+        $effective = @($tokens[$start..($tokens.Count - 1)])
+        $name = ([string] $effective[0]).ToLowerInvariant()
+        $leaf = ($name -split '[\\/]')[-1]
+
+        if ($leaf -eq 'git' -or $leaf -eq 'git.exe') {
+            # @() around the slice: a bare `git` has no tail, and 1..0 counts backwards.
+            $tail = if ($effective.Count -gt 1) { @($effective[1..($effective.Count - 1)]) } else { @() }
+            [void] $classified.Add([pscustomobject]@{
+                    Kind       = 'Git'
+                    Tokens     = $tail
+                    Directory  = ''
+                    Unresolved = $false
+                })
+            continue
+        }
+
+        if ($script:AgentGuardChangeDirectoryCommands -contains $name) {
+            # First non-option token is the target; that also skips Set-Location -LiteralPath.
+            $target = @($effective | Select-Object -Skip 1 | Where-Object { $_ -notlike '-*' } | Select-Object -First 1)
+            $directory = if ($target.Count -gt 0) { [string] $target[0] } else { '' }
+            $unresolved = [string]::IsNullOrWhiteSpace($directory) -or $directory -match '[\$%]'
+
+            [void] $classified.Add([pscustomobject]@{
+                    Kind       = 'ChangeDirectory'
+                    Tokens     = $effective
+                    Directory  = $directory
+                    Unresolved = $unresolved
+                })
+            continue
+        }
+
+        [void] $classified.Add([pscustomobject]@{
+                Kind       = 'Other'
+                Tokens     = $effective
+                Directory  = ''
+                Unresolved = $false
+            })
+    }
+
+    return [pscustomobject]@{
+        Segments  = $classified.ToArray()
+        Ambiguous = $false
+    }
 }
 
 <#
@@ -284,29 +435,28 @@ function Read-AgentCommandTail {
 Extracts every direct git invocation in a command string.
 
 .DESCRIPTION
-Returns { Invocations = @(string[]); Ambiguous = bool }. Ambiguous means an unbalanced quote
-made the argument tail impossible to tokenize safely.
+Returns { Invocations = @(string[]); Ambiguous = bool }, where each invocation is the token list
+after the `git` word itself. Ambiguous means an unbalanced quote made the string impossible to
+tokenize safely.
 #>
 function Get-AgentGitInvocation {
     [CmdletBinding()]
     param([string] $Command)
 
-    $invocations = New-Object System.Collections.Generic.List[object]
-    $ambiguous = $false
-
-    if ([string]::IsNullOrWhiteSpace($Command)) {
-        return [pscustomobject]@{ Invocations = @(); Ambiguous = $false }
+    $parsed = Get-AgentCommandSegment -Command $Command
+    if ($parsed.Ambiguous) {
+        return [pscustomobject]@{ Invocations = @(); Ambiguous = $true }
     }
 
-    foreach ($match in [regex]::Matches($Command, $script:AgentGuardGitInvocationPattern)) {
-        $tokens = Read-AgentCommandTail -Text $Command -StartIndex ($match.Index + $match.Length)
-        if ($null -eq $tokens) { $ambiguous = $true; continue }
-        [void] $invocations.Add($tokens)
-    }
+    $invocations = @(
+        $parsed.Segments |
+            Where-Object { $_.Kind -eq 'Git' } |
+            ForEach-Object { , $_.Tokens }
+    )
 
     return [pscustomobject]@{
-        Invocations = $invocations.ToArray()
-        Ambiguous   = $ambiguous
+        Invocations = $invocations
+        Ambiguous   = $false
     }
 }
 
@@ -327,7 +477,7 @@ function Get-AgentWorktreeGuardDecision {
         [bool] $AllowMain = $false
     )
 
-    $parsed = Get-AgentGitInvocation -Command $Command
+    $parsed = Get-AgentCommandSegment -Command $Command
 
     if ($parsed.Ambiguous) {
         return New-AgentGuardDecision -Action Deny -Rule 'ambiguous-git-command' -Message `
@@ -335,11 +485,11 @@ function Get-AgentWorktreeGuardDecision {
             'Rewrite it with balanced quoting.')
     }
 
-    if ($parsed.Invocations.Count -eq 0) {
+    if (@($parsed.Segments | Where-Object { $_.Kind -eq 'Git' }).Count -eq 0) {
         return New-AgentGuardDecision -Action Allow
     }
 
-    return Get-AgentGitLocationDecision -Invocations $parsed.Invocations -Cwd $Cwd `
+    return Get-AgentGitLocationDecision -Segments $parsed.Segments -Cwd $Cwd `
         -ProtectedRepoRoot $ProtectedRepoRoot -AllowMain $AllowMain
 }
 
@@ -467,20 +617,36 @@ function Test-AgentGitMutation {
                     '--set-upstream-to', '-u', '--unset-upstream', '--edit-description', '-f', '--force')) {
                 return $true
             }
+            # A query option makes the positional a filter pattern or a commit-ish, not a new
+            # branch name: `git branch --list 'feature/*'` and `--contains HEAD` only read.
+            if (Test-AgentGitArgsContainAny -Arguments $argTokens -Options @(
+                    '-l', '--list', '--show-current', '--contains', '--no-contains', '--merged',
+                    '--no-merged', '--points-at', '--format', '--sort')) {
+                return $false
+            }
             return $positionals.Count -gt 0
         }
         'tag' {
             if (Test-AgentGitArgsContainAny -Arguments $argTokens -Options @('-d', '--delete')) { return $true }
-            if (Test-AgentGitArgsContainAny -Arguments $argTokens -Options @('-l', '--list', '--contains', '--no-contains', '--points-at', '--merged', '--no-merged')) {
+            # -v/--verify and -n only print; they take a tag name positionally.
+            if (Test-AgentGitArgsContainAny -Arguments $argTokens -Options @(
+                    '-l', '--list', '-v', '--verify', '-n', '--contains', '--no-contains',
+                    '--points-at', '--merged', '--no-merged', '--format', '--sort')) {
                 return $false
             }
-            # A positional tagname without --list creates a tag.
+            # A positional tagname without a query option creates a tag.
             return $positionals.Count -gt 0
         }
         'worktree' {
             return $first -in @('add', 'move', 'remove', 'repair', 'prune', 'lock', 'unlock')
         }
         'config' {
+            # Git 2.46+ subcommand form: `git config get|list` reads, `set|unset|...` writes.
+            if ($first -in @('get', 'list')) { return $false }
+            if ($first -in @('set', 'unset', 'add', 'replace-all', 'rename-section', 'remove-section', 'edit')) {
+                return $true
+            }
+
             if (Test-AgentGitArgsContainAny -Arguments $argTokens -Options @(
                     '--get', '--get-all', '--get-regexp', '--get-urlmatch', '--get-color', '--get-colorbool',
                     '-l', '--list', '--show-origin', '--show-scope', '--name-only')) {
@@ -579,13 +745,21 @@ function Get-ManagedWorktreeState {
     $targetGitDir = ConvertTo-AgentGuardNormalizedPath $lines[1]
     $targetRoot = ConvertTo-AgentGuardNormalizedPath $lines[2]
 
-    $protectedCommonDir = Invoke-AgentGuardGitProbe @(
-        '-C', $ProtectedRepoRoot, 'rev-parse', '--path-format=absolute', '--git-common-dir')
-    if ([string]::IsNullOrWhiteSpace($protectedCommonDir)) {
-        throw "Could not resolve the protected repository's common git directory from '$ProtectedRepoRoot'."
+    # The protected repository never changes within one hook process, but a chained command can
+    # classify several targets. Cache it so only the target probe costs a git process per link.
+    if ($script:AgentGuardProtectedCommonDirCache.ContainsKey($ProtectedRepoRoot)) {
+        $protectedCommonDir = $script:AgentGuardProtectedCommonDirCache[$ProtectedRepoRoot]
     }
+    else {
+        $protectedCommonDir = Invoke-AgentGuardGitProbe @(
+            '-C', $ProtectedRepoRoot, 'rev-parse', '--path-format=absolute', '--git-common-dir')
+        if ([string]::IsNullOrWhiteSpace($protectedCommonDir)) {
+            throw "Could not resolve the protected repository's common git directory from '$ProtectedRepoRoot'."
+        }
 
-    $protectedCommonDir = ConvertTo-AgentGuardNormalizedPath $protectedCommonDir
+        $protectedCommonDir = ConvertTo-AgentGuardNormalizedPath $protectedCommonDir
+        $script:AgentGuardProtectedCommonDirCache[$ProtectedRepoRoot] = $protectedCommonDir
+    }
 
     if ($targetCommonDir -ine $protectedCommonDir) {
         return 'OutsideProtectedRepository'
@@ -709,27 +883,52 @@ function Resolve-AgentGitTargetDirectory {
 
 <#
 .SYNOPSIS
-Maps every detected git invocation to a single Allow/Warn/Deny decision.
+Maps every classified command segment to a single Allow/Warn/Deny decision.
 
 .DESCRIPTION
-Denies when any mutating invocation targets a non-managed location. A mutating invocation that
-carries --git-dir/--work-tree is denied outright (unless AHKFLOW_ALLOW_MAIN=1) because the
-simple tokenizer cannot safely infer where it would write.
+Walks the segments in order so a `cd` earlier in the chain moves the directory a later `git`
+mutation is classified against; `cd <main> && git commit` is otherwise indistinguishable from a
+commit in the payload's own worktree. Denies when any mutating invocation targets a non-managed
+location. A mutating invocation that carries --git-dir/--work-tree, or that follows a directory
+change the guard could not expand literally, is denied outright (unless AHKFLOW_ALLOW_MAIN=1)
+because the simple tokenizer cannot safely infer where it would write.
 #>
 function Get-AgentGitLocationDecision {
     [CmdletBinding()]
     param(
-        [object[]] $Invocations,
+        [object[]] $Segments,
         [string] $Cwd,
         [string] $ProtectedRepoRoot,
         [bool] $AllowMain = $false
     )
 
     $effectiveCwd = $Cwd
+    $unresolvedDirectory = $false
     $blockingState = ''
     $blockingTarget = ''
 
-    foreach ($tokens in $Invocations) {
+    foreach ($segment in $Segments) {
+        if ($segment.Kind -eq 'ChangeDirectory') {
+            if ($segment.Unresolved) {
+                $unresolvedDirectory = $true
+            }
+            elseif ([System.IO.Path]::IsPathRooted($segment.Directory)) {
+                $effectiveCwd = $segment.Directory
+                $unresolvedDirectory = $false
+            }
+            elseif (-not [string]::IsNullOrWhiteSpace($effectiveCwd)) {
+                $effectiveCwd = Join-Path $effectiveCwd $segment.Directory
+                $unresolvedDirectory = $false
+            }
+            else {
+                $unresolvedDirectory = $true
+            }
+            continue
+        }
+
+        if ($segment.Kind -ne 'Git') { continue }
+
+        $tokens = $segment.Tokens
         $parts = Get-AgentGitParts -Tokens $tokens
 
         if (-not (Test-AgentGitMutation -Tokens $tokens)) {
@@ -738,6 +937,13 @@ function Get-AgentGitLocationDecision {
 
         if ($parts.UsesGitDirOrWorkTree) {
             $blockingState = 'ExplicitGitDir'
+            $blockingTarget = $Cwd
+            break
+        }
+
+        # An explicit `git -C <path>` re-anchors the target, so it survives an untrackable cd.
+        if ($unresolvedDirectory -and $parts.DashC.Count -eq 0) {
+            $blockingState = 'UnresolvedDirectoryChange'
             $blockingTarget = $Cwd
             break
         }
@@ -764,6 +970,17 @@ function Get-AgentGitLocationDecision {
         return New-AgentGuardDecision -Action Deny -Rule 'agent-git-dir-mutation' -Message `
         ('BLOCKED: agent Git mutations with --git-dir or --work-tree are not allowed; the ' +
             'target cannot be verified. Run the command from inside a managed linked worktree instead.')
+    }
+
+    if ($blockingState -eq 'UnresolvedDirectoryChange') {
+        if ($AllowMain) {
+            return New-AgentGuardDecision -Action Warn -Rule 'agent-unresolved-cd-overridden' -Message `
+            ("WARNING: AHKFLOW_ALLOW_MAIN=1 overrode an unverifiable directory change before a git mutation.")
+        }
+        return New-AgentGuardDecision -Action Deny -Rule 'agent-unresolved-git-target' -Message `
+        ('BLOCKED: this command changes directory to a target the guard cannot expand, so the ' +
+            'git mutation cannot be verified. Run git from a managed linked worktree, or pass an ' +
+            'explicit `git -C <path>`.')
     }
 
     if ($AllowMain) {

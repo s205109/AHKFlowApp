@@ -39,7 +39,7 @@
 | How can a broken hook be recovered? | `AHKFLOW_GUARD_DISABLE=1` exits before all guard code. | This prevents strict-mode, parser, regex, or Git-probe defects from bricking every Bash call. Documentation also gives a manual config-edit recovery path. |
 | Replace Bash with PowerShell on every call? | No for Claude/Copilot; accept one PowerShell process for Codex on Windows. | Claude/Copilot noncandidate commands exit through the existing Bash shim. Codex avoids a second wrapper process and has a recorded 650 ms warm-p50 budget. |
 | How is the Codex Windows hook path expanded? | Run `pwsh -Command` and resolve the Git root inside that process; verify a real trusted-session denial from a subdirectory. | This avoids relying on Codex to expand `$(...)` or on whichever `bash` happens to be first on Windows `PATH`. |
-| How is Copilot's adapter selected? | Infer it from a top-level `toolArgs` key and keep `.github/hooks/hooks.json` byte-identical; verify with a real-session denial. | Appending an argument to the `bash` field would assume Copilot shell-interprets it. Inference carries the same evidence burden as the Codex path, so it gets the same real-session probe rather than synthetic fixtures alone. |
+| How is Copilot's adapter selected? | Infer it from a top-level `toolArgs` key on the `bash` path; add an explicit `powershell` field for Windows; verify with a real-session denial. | Appending an argument to the `bash` field would assume Copilot shell-interprets it, so the `bash` path infers. But Copilot picks `bash` on Unix and `powershell` on Windows and skips an entry with neither, so a `bash`-only registration is dead on Windows — the `powershell` sibling is required, not optional. (Revised during review; the original decision was "keep byte-identical".) |
 | Which policy copy does `pre-commit` use? | The absolute main-owned `core.hooksPath` and main policy copy are authoritative after merge. | This follows the existing `pre-push` model. Feature-branch commits are protected only by `PreToolUse`; old worktrees intentionally receive the current main policy. |
 | Change Claude's Git permission allowlist? | No. | The hook remains the single policy source; duplicating mutation rules in `permissions.deny` would create drift. |
 
@@ -88,12 +88,13 @@ Official adapter references:
 
 - `.claude/hooks/pre-bash-guard.sh` — parse stdin, infer Copilot from the native `toolArgs` payload shape, honor the emergency kill switch, exit quickly for noncandidate commands, and forward candidate payloads plus an optional explicit adapter to PowerShell.
 - `.github/workflows/ci.yml` — add both new lowercase `tests/*.Tests.ps1` suites to the existing Windows PowerShell job.
+- `scripts/agents/setup-cross-agent-skills.ps1` — install `core.hooksPath` as the **main checkout's absolute** `.githooks` directory (added during review). It previously set the relative string `.githooks`, which Git resolves inside whichever linked worktree runs the hook; the current machine only happens to hold an absolute path from an earlier manual setup, so a fresh clone or a repair run would have regressed old worktrees onto their own stale policy copy. The script also upgrades an existing relative `.githooks` value in place.
 - `AGENTS.md` — add the human-main/agent-worktree Git rule and scoped bypass wording.
 - `.agents/worktrees/SKILL.md` — teach all synchronized agent surfaces how the guard classifies a managed worktree and how to recover from a denial.
 
-### Retain unchanged
+### Modify (revised during review)
 
-- `.github/hooks/hooks.json` — keep Copilot's proven bare `.claude/hooks/pre-bash-guard.sh` command byte-identical; adapter selection comes from the payload instead of unverified command-string argument parsing.
+- `.github/hooks/hooks.json` — keep Copilot's proven bare `.claude/hooks/pre-bash-guard.sh` command unchanged in the `bash` field, and **add** a sibling `powershell` field. Per the [Copilot hooks reference](https://docs.github.com/en/copilot/reference/hooks-reference), Copilot selects `bash` on Unix and `powershell` on Windows and skips an entry with neither, so the original byte-identical constraint would have left the guard inactive on Windows — the platform this repository is developed on. Adapter selection on the `bash` path still comes from the payload, not from command-string argument parsing.
 
 ### Generated/synchronized outputs
 
@@ -256,6 +257,8 @@ Keep adapter-specific JSON and exit-code behavior out of policy functions.
 
 - [ ] **Step 4: Port and regression-test every existing safety rule**
 
+**Revised during review:** classify the Git rules from the parsed subcommand and arguments, not from regexes over the raw command. Regexes assumed the subcommand followed `git` directly, so `git -C . reset --hard`, `git.exe reset --hard`, `git --no-pager checkout .`, `git -C . clean -fd`, and `git -C . push origin -f` all escaped the destructive rules — and `AHKFLOW_ALLOW_MAIN=1` then downgraded the location denial to a warning, defeating the constraint that the override is location-only. The `rm` and `dotnet` rules keep their raw-string matching; they are not Git.
+
 Port the current behavior without broadening it:
 
 | Command | Expected |
@@ -382,17 +385,18 @@ printf '%s' "$INPUT" |
 
 Add regression cases proving the raw payload's `cwd` containing `segocom-github` does not force the PowerShell path when the extracted command is noncandidate, the Windows PowerShell fallback works, and a missing host warns and allows. Probe `git commit`, an indented `git commit`, `cd f&&git commit`, uppercase `GIT commit`, and a backtick-wrapped `` `git commit` ``; every case must reach PowerShell. Also prove a Copilot `toolArgs` payload selects Copilot through the bare hook path with no positional argument.
 
-Keep `.github/hooks/hooks.json` byte-identical. Its existing native registration remains:
+Keep the `bash` field of `.github/hooks/hooks.json` unchanged and add a `powershell` sibling (revised during review — a `bash`-only entry never runs on Windows):
 
 ```json
 {
   "type": "command",
   "bash": ".claude/hooks/pre-bash-guard.sh",
-  "comment": "Block destructive bash commands"
+  "powershell": "pwsh -NoProfile -NonInteractive -Command \"& (Join-Path ((git rev-parse --show-toplevel).Trim()) 'scripts/agents/invoke-agent-worktree-guard.ps1') -Adapter Copilot\"",
+  "comment": "Block destructive bash commands and agent git mutations outside a managed worktree"
 }
 ```
 
-Run `git diff --exit-code -- .github/hooks/hooks.json`; expected: exit 0 with no output. This avoids assuming that Copilot shell-interprets a command-plus-argument string.
+Assert the shape of that entry rather than byte-equality: exactly one guard registration, `bash` naming the shim, `powershell` naming the entrypoint with `-Adapter Copilot`. This still avoids assuming that Copilot shell-interprets a command-plus-argument string — the `bash` path keeps inferring the adapter from the payload.
 
 Do not edit Claude's Git permission allowlist. The existing hook remains the single source of truth.
 
@@ -410,8 +414,11 @@ Expected: both exit 0.
 Repeat the same warmup and sample counts against the retained shim's direct stdin invocation. The replacement drains stdin itself; compare it with Step 1's forced-drain baseline. Acceptance budgets:
 
 - noncandidate warm p50: no more than 40 ms above baseline and no more than 100 ms absolute when `jq` is available;
-- Git-candidate warm p50: no more than 650 ms absolute;
+- Git-candidate warm p50 through the **Codex direct-PowerShell** path: no more than 650 ms absolute;
+- Git-candidate warm p50 through the **Bash shim** (Claude/Copilot): no more than 1000 ms absolute;
 - exactly one Claude project guard registration remains.
+
+**Budget revised during review.** A single 650 ms figure was originally applied to both paths; measurement showed it is only reachable on the direct-PowerShell path. Measured warm p50 (Windows 11, PowerShell 7): noncandidate 54 ms, shim read-only Git 725 ms, shim mutating Git 975 ms, Codex direct mutating Git 630 ms. The floor is ~260 ms of `pwsh` startup plus ~200–340 ms more when Git Bash spawns it. Closing that gap would require either duplicating policy into Bash (rejected — it would drift from the PowerShell core) or starting PowerShell on every command (rejected below, and it would cost the common 54 ms case ~500 ms).
 
 If a budget fails, the task is not complete: keep the Bash fast path, remove avoidable subprocesses, and repeat the measurement. Do not replace this with a PowerShell-on-every-call design.
 
@@ -558,10 +565,10 @@ Handle conditional commands as follows:
 
 | Command | Read-only forms | Mutating forms |
 | --- | --- | --- |
-| `branch` | no args, `--show-current`, `--list` and display filters | create/delete/move/copy/rename or any positional branch target |
-| `tag` | no args, `--list` and query filters | create/delete/sign/force or a positional tag without `--list` |
+| `branch` | no args, `--show-current`, `--list` and display filters (`--contains`, `--merged`, `--points-at`, `--format`, `--sort`) | create/delete/move/copy/rename or a positional branch target with no query filter |
+| `tag` | no args, `--list`, `-v`/`--verify`, `-n`, and query filters | create/delete/sign/force or a positional tag with no query filter |
 | `worktree` | `list` | add/move/remove/repair/prune/lock/unlock |
-| `config` | `--get*`, `--list`, `--show-*`, `--get-regexp` | set/add/unset/rename/remove/replace or name plus value |
+| `config` | `--get*`, `--list`, `--show-*`, `--get-regexp`, and the Git 2.46+ `get`/`list` subcommands | set/add/unset/rename/remove/replace, the `set`/`unset`/… subcommands, or name plus value |
 | `remote` | no args, `-v`, `show`, `get-url` | add/remove/rename/set-url/set-head/prune/update |
 | `submodule` | `status`, `summary` | add/deinit/update/set-branch/set-url/sync/absorbgitdirs |
 | `reflog` | `show`, default display | delete/expire |
@@ -637,9 +644,11 @@ Add negative tests for missing manifest, missing key, duplicate key, nonnumeric 
 
 - [ ] **Step 5: Resolve the effective Git target before classification**
 
+**Revised during review:** segment the whole command and walk the segments in order, rather than scanning only for `git` tokens against the payload's `cwd`. A chained directory change moves the real target: from a managed worktree, both `cd "<main>" && git commit -m test` and `Set-Location -LiteralPath "<main>"; git branch x` were classified against the worktree and allowed. Strip leading `NAME=value` prefixes too — they hid the `git` token entirely (`FOO=1 git commit`). A directory change the tokenizer cannot expand literally (`cd $HOME`, `cd -`, bare `cd`) denies a following mutation with `agent-unresolved-git-target` unless the invocation carries its own `git -C`; read-only Git is unaffected.
+
 For every detected invocation:
 
-- start from the hook payload's `cwd`;
+- start from the hook payload's `cwd`, updated by each preceding directory change in the chain;
 - derive `ProtectedRepoRoot` from the checked-in entrypoint location, never from the command target;
 - apply each literal `git -C <path>` in order;
 - resolve relative `-C` paths against the preceding effective directory;
@@ -1066,7 +1075,7 @@ Expected:
 
 - all JSON parses;
 - exactly one project guard registration exists per agent;
-- Claude and Copilot both reference the retained bare `pre-bash-guard.sh` fast shim, `.github/hooks/hooks.json` is unchanged, and the Task 2 real-session probe proves `toolArgs` selects the Copilot contract;
+- Claude and Copilot both reference the retained bare `pre-bash-guard.sh` fast shim, Copilot's entry also carries a `powershell` field naming the entrypoint with `-Adapter Copilot`, and the Task 2 real-session probe proves `toolArgs` selects the Copilot contract on the `bash` path;
 - Codex's matcher is Bash only;
 - Codex `commandWindows` invokes one explicit PowerShell process and does not contain a literal `-File "$(git ...)"` path;
 - the focused test has exercised native Claude, Codex, and Copilot payloads.
