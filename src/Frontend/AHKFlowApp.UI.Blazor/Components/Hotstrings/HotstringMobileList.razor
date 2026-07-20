@@ -13,7 +13,18 @@
 
     @if (Items.Count == 0)
     {
-        <MudText Class="pa-4 text-center" Typo="Typo.body2">No hotstrings yet.</MudText>
+        @if (HasActiveFilters)
+        {
+            <MudStack AlignItems="AlignItems.Center" Spacing="2" Class="pa-4">
+                <MudText Typo="Typo.body2">No hotstrings match these filters.</MudText>
+                <MudButton Variant="Variant.Text" Color="Color.Primary" Class="clear-filters"
+                           OnClick="OnClearFilters">Clear filters</MudButton>
+            </MudStack>
+        }
+        else
+        {
+            <MudText Class="pa-4 text-center" Typo="Typo.body2">No hotstrings yet.</MudText>
+        }
     }
     else
     {
@@ -105,7 +116,7 @@
                                         <EntityChips Ids="item.ProfileIds" Options="_profileOptions" Any="item.AppliesToAllProfiles" />
                                     </MudText>
                                     <MudText Typo="Typo.body2"><strong>Categories:</strong>
-                                        <EntityChips Ids="item.CategoryIds" Options="_categoryOptions" Variant="Variant.Outlined" />
+                                        <EntityChips Ids="item.CategoryIds" Options="_categoryOptions" Variant="Variant.Outlined" Color="Color.Primary" />
                                     </MudText>
                                     @if (item.Kind != HotstringKind.Raw)
                                     {
@@ -153,6 +164,10 @@
     [Parameter] public EventCallback<HotstringEditModel> OnEdit { get; set; }
     [Parameter] public EventCallback<HotstringEditModel> OnDelete { get; set; }
     [Parameter] public EventCallback<IReadOnlyList<Guid>> OnBulkDelete { get; set; }
+
+    /// <summary>Drives the empty state: filtered-empty offers a way out, true-empty does not.</summary>
+    [Parameter] public bool HasActiveFilters { get; set; }
+    [Parameter] public EventCallback OnClearFilters { get; set; }
 
     private Guid? _expandedId;
     private bool _selectMode;

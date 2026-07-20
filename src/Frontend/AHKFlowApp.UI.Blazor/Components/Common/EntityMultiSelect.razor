@@ -4,6 +4,7 @@
            SelectedValues="SelectedIds"
            SelectedValuesChanged="OnSelectedValuesChanged"
            ToStringFunc="NameFor"
+           MultiSelectionTextFunc="SelectionText"
            Dense="Dense" Placeholder="@Placeholder"
            Clearable="true" SelectAll="true"
            UserAttributes="@_userAttributes">
@@ -30,6 +31,16 @@
         _userAttributes = DataTest is null
             ? []
             : new Dictionary<string, object?> { ["data-test"] = DataTest };
+
+    // Joined names cannot fit the narrow grid cell this renders in — that is what clipped the
+    // category editor to "C...". One selection shows its name; more collapse to a count, which
+    // can never overflow. The open dropdown still shows exactly what is checked.
+    private static string SelectionText(IReadOnlyList<string?>? selected) => selected switch
+    {
+        null or { Count: 0 } => "",
+        { Count: 1 } => selected[0] ?? "",
+        _ => $"{selected.Count} selected",
+    };
 
     private string NameFor(Guid id) =>
         Options.FirstOrDefault(o => o.Id == id)?.Name ?? id.ToString();

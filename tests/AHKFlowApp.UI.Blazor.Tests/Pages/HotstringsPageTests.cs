@@ -588,8 +588,10 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
 
         cut.WaitForAssertion(() =>
         {
-            cut.Find(".desktop-branch .type-badge").TextContent.Should().Contain("Hotstring");
-            cut.Find(".desktop-branch [data-test=\"hotstring-delivery\"]").Should().NotBeNull();
+            // The Type column reports the kind. Keystroke delivery is the unremarkable default and
+            // is deliberately left unmarked — only clipboard delivery, which overwrites the user's
+            // clipboard, earns an icon.
+            cut.Find(".desktop-branch .type-badge").TextContent.Should().Contain("Text");
             cut.FindAll(".desktop-branch [data-test=\"clipboard-delivery\"]").Should().BeEmpty();
             cut.Find(".option-glyphs").TextContent.Should().Be("*?C");
         });
@@ -597,7 +599,7 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
-    public Task Page_ExplicitClipboardDelivery_ShowsSingleClipboardChip()
+    public Task Page_ExplicitClipboardDelivery_ShowsClipboardIcon()
     {
         HotstringDto dto = new(Guid.NewGuid(), [], true, "long", "replacement", null,
             true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow,
@@ -608,9 +610,9 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
 
         cut.WaitForAssertion(() =>
         {
+            // Kind chip plus a clipboard icon beside it; the icon carries the marker, not text.
+            cut.Find(".desktop-branch .type-badge .mud-chip").TextContent.Should().Contain("Text");
             cut.FindAll(".desktop-branch [data-test=\"clipboard-delivery\"]").Should().HaveCount(1);
-            cut.FindAll(".desktop-branch [data-test=\"hotstring-delivery\"]").Should().BeEmpty();
-            cut.Find(".desktop-branch [data-test=\"clipboard-delivery\"]").TextContent.Should().Contain("Clipboard");
         });
         return Task.CompletedTask;
     }
@@ -816,7 +818,7 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
         {
             AngleSharp.Dom.IElement badge = cut.Find(".type-badge .mud-chip");
             badge.TextContent.Should().Contain("Raw");
-            badge.ClassList.Should().Contain(c => c.Contains("warning", StringComparison.OrdinalIgnoreCase));
+            badge.ClassList.Should().Contain("kind-chip--raw");
             // Warning must be conveyed semantically, not just via color — screen readers read the
             // aria-label, not the CSS warning color.
             badge.GetAttribute("aria-label").Should()
@@ -839,7 +841,7 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
         {
             AngleSharp.Dom.IElement badge = cut.Find(".type-badge .mud-chip");
             badge.TextContent.Should().Contain("Date");
-            badge.ClassList.Should().Contain(c => c.Contains("info", StringComparison.OrdinalIgnoreCase));
+            badge.ClassList.Should().Contain("kind-chip--datetime");
         });
         return Task.CompletedTask;
     }
@@ -857,13 +859,13 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
         {
             AngleSharp.Dom.IElement badge = cut.Find(".type-badge .mud-chip");
             badge.TextContent.Should().Contain("Macro");
-            badge.ClassList.Should().Contain(c => c.Contains("success", StringComparison.OrdinalIgnoreCase));
+            badge.ClassList.Should().Contain("kind-chip--macro");
         });
         return Task.CompletedTask;
     }
 
     [Fact]
-    public Task Page_Categories_RenderOutlinedChips()
+    public Task Page_Categories_RenderOutlinedAccentChips()
     {
         var categoryId = Guid.NewGuid();
         StubCategories(new CategoryDto(categoryId, "Work", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow));
@@ -879,6 +881,10 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
                 .Where(chip => chip.TextContent.Contains("Work"))];
             categoryChips.Should().NotBeEmpty();
             categoryChips.Should().OnlyContain(chip => chip.ClassList.Contains("mud-chip-outlined"));
+            // Categories carry the brand accent, not MudBlazor's default grey. Outlined + accent is
+            // a deliberately separate channel from the tinted, filled kind chips in the Type column.
+            categoryChips.Should().OnlyContain(chip =>
+                chip.ClassList.Any(c => c.Contains("primary", StringComparison.OrdinalIgnoreCase)));
         });
         return Task.CompletedTask;
     }

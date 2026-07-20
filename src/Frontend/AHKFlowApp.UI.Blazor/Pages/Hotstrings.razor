@@ -74,6 +74,7 @@
                          Dense="true" Hover="true" RowsPerPage="_rowsPerPage"
                          Filterable="true" FilterMode="DataGridFilterMode.ColumnFilterMenu"
                          SortMode="SortMode.Single" ReadOnly="true"
+                         Loading="_loading"
                          RowClassFunc="@GetRowClass">
                 <Columns>
                     @* SelectColumn defaults to an inline width:0% (sized to content under the
@@ -158,10 +159,10 @@
                         <HeaderTemplate>
                             <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="0">
                                 <MudText>Type</MudText>
-                                <MudTooltip Text="* = expands immediately · ? = triggers inside words · C = case sensitive">
+                                <MudTooltip Text="* = expands immediately · ? = triggers inside words · C = case sensitive · O = omits ending character · window icon = only in a specific app · clipboard icon = pasted via clipboard">
                                     <MudIconButton Icon="@Icons.Material.Filled.HelpOutline" Size="Size.Small"
                                                    Class="type-legend-help"
-                                                   UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = "Glyph legend: * expands immediately, ? triggers inside words, C case sensitive" })" />
+                                                   UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = "Glyph legend: * expands immediately, ? triggers inside words, C case sensitive, O omits ending character, window icon only in a specific app, clipboard icon pasted via clipboard" })" />
                                 </MudTooltip>
                             </MudStack>
                         </HeaderTemplate>
@@ -194,7 +195,20 @@
                         <CellTemplate>@RenderActions(context.Item)</CellTemplate>
                     </TemplateColumn>
                 </Columns>
-                <NoRecordsContent><MudText>No hotstrings yet.</MudText></NoRecordsContent>
+                <NoRecordsContent>
+                    @if (HasActiveFilters)
+                    {
+                        <MudStack AlignItems="AlignItems.Center" Spacing="2" Class="pa-4">
+                            <MudText>No hotstrings match these filters.</MudText>
+                            <MudButton Variant="Variant.Text" Color="Color.Primary" Class="clear-filters"
+                                       OnClick="ClearFiltersAsync">Clear filters</MudButton>
+                        </MudStack>
+                    }
+                    else
+                    {
+                        <MudText>No hotstrings yet.</MudText>
+                    }
+                </NoRecordsContent>
                 <PagerContent>
                     <MudDataGridPager T="HotstringEditModel" PageSizeOptions="UserPreferences.AllowedRowsPerPage" />
                 </PagerContent>
@@ -242,9 +256,16 @@
                 <MudAlert Severity="Severity.Error" Class="mb-3">@_loadError</MudAlert>
             }
 
+            @if (_loading)
+            {
+                <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mb-2" />
+            }
+
             <HotstringMobileList Items="_mobileItems"
                                  Profiles="_profiles"
                                  Categories="_categories"
+                                 HasActiveFilters="HasActiveFilters"
+                                 OnClearFilters="ClearFiltersAsync"
                                  OnEdit="OpenEditDialogAsync"
                                  OnDelete="DeleteAsync"
                                  OnBulkDelete="MobileBulkDeleteAsync" />
@@ -908,6 +929,21 @@
         await LoadMobileAsync();
     }
 
+    // Separates "you have no hotstrings" from "your filters matched nothing" — the two empty
+    // states need different copy, and only the second one can offer a way out.
+    private bool HasActiveFilters =>
+        !string.IsNullOrWhiteSpace(_search) || _selectedKind is not null || _selectedCategoryIds.Count > 0;
+
+    private async Task ClearFiltersAsync()
+    {
+        _search = "";
+        _selectedKind = null;
+        _selectedCategoryIds = [];
+        if (_grid is not null) await _grid.ReloadServerData();
+        _mobilePage = 1;
+        await LoadMobileAsync();
+    }
+
     private RenderFragment RenderProfiles(bool appliesToAllProfiles, IReadOnlyCollection<Guid> profileIds) =>
         @<EntityChips Ids="profileIds" Options="_profileOptions" Any="appliesToAllProfiles" />;
 
@@ -942,7 +978,7 @@
                             DataTest="category-select" />;
 
     private RenderFragment RenderCategories(IReadOnlyCollection<Guid> categoryIds) =>
-        @<EntityChips Ids="categoryIds" Options="_categoryOptions" Variant="Variant.Outlined" />;
+        @<EntityChips Ids="categoryIds" Options="_categoryOptions" Variant="Variant.Outlined" Color="Color.Primary" />;
 
     private static string KindLabel(HotstringKind kind) => kind switch
     {
@@ -953,23 +989,28 @@
         _ => kind.ToString(),
     };
 
-    // Text rows show the resolved delivery chip (Hotstring/Clipboard) instead of a "Text" kind
-    // chip — the delivery is the more useful signal once Auto resolves per-row. Non-Text kinds
-    // keep their existing kind chip.
-    private RenderFragment RenderTypeChip(HotstringEditModel item) => item.Kind == HotstringKind.Text
-        ? @<MudChip T="string" Size="Size.Small"
-                    Color="@(DeliveryDisplay.IsClipboard(item.EffectiveDelivery) ? Color.Info : Color.Default)"
-                    UserAttributes="@DeliveryChipAttributes(item.EffectiveDelivery)">@DeliveryDisplay.Label(item.EffectiveDelivery)</MudChip>
-        : @<MudChip T="string" Size="Size.Small" Color="@KindColor(item.Kind)"
-                    Icon="@(item.Kind == HotstringKind.Raw ? Icons.Material.Filled.Warning : null)"
-                    UserAttributes="@KindChipAttributes(item.Kind)">@KindLabel(item.Kind)</MudChip>;
+    // Every row shows its own kind, so a column titled "Type" actually reports the type. Delivery
+    // is surfaced only for the clipboard exception — clipboard delivery has a real side effect (it
+    // overwrites the user's clipboard), whereas keystroke delivery is the unremarkable default and
+    // labelling it on every row was noise. Tints live in Hotstrings.razor.css.
+    private RenderFragment RenderTypeChip(HotstringEditModel item) => @<text>
+        <MudChip T="string" Size="Size.Small" Variant="Variant.Text"
+                 Class="@KindChipClass(item.Kind)"
+                 Icon="@(item.Kind == HotstringKind.Raw ? Icons.Material.Filled.Warning : null)"
+                 UserAttributes="@KindChipAttributes(item.Kind)">@KindLabel(item.Kind)</MudChip>
+        @if (item.Kind == HotstringKind.Text && DeliveryDisplay.IsClipboard(item.EffectiveDelivery))
+        {
+            <MudIcon Icon="@Icons.Material.Filled.ContentPaste" Size="Size.Small" Class="delivery-icon"
+                     UserAttributes="@DeliveryChipAttributes(item.EffectiveDelivery)" />
+        }
+    </text>;
 
-    private static Color KindColor(HotstringKind kind) => kind switch
+    private static string KindChipClass(HotstringKind kind) => kind switch
     {
-        HotstringKind.DateTime => Color.Info,
-        HotstringKind.Macro => Color.Success,
-        HotstringKind.Raw => Color.Warning,
-        _ => Color.Default,
+        HotstringKind.DateTime => "kind-chip--datetime",
+        HotstringKind.Macro => "kind-chip--macro",
+        HotstringKind.Raw => "kind-chip--raw",
+        _ => "kind-chip--text",
     };
 
     private static Dictionary<string, object?> DeliveryChipAttributes(HotstringDelivery effectiveDelivery) =>
