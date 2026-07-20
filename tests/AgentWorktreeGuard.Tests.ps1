@@ -227,6 +227,7 @@ function New-GuardFixture {
         'ahkflow-agent-guard-' + [guid]::NewGuid().ToString('N'))
     $main = Join-Path $testRoot 'repo'
     $managed = Join-Path $main '.claude\worktrees\valid'
+    $badManifest = Join-Path $main '.claude\worktrees\badmanifest'
     $unmanaged = Join-Path $testRoot 'unmanaged'
     $unrelated = Join-Path $testRoot 'unrelated'
 
@@ -240,14 +241,45 @@ function New-GuardFixture {
     Invoke-Git -C $main add seed.txt
     Invoke-Git -C $main commit -m 'test: seed temporary repository'
     Invoke-Git -C $main worktree add -b feature/wt-valid $managed
+    Invoke-Git -C $main worktree add -b feature/wt-badmanifest $badManifest
     Invoke-Git -C $main worktree add -b feature/wt-unmanaged $unmanaged
 
+    $managedRoot = (Resolve-Path -LiteralPath $managed).Path
+    New-Item -ItemType Directory -Path (Join-Path $managedRoot 'scripts') -Force | Out-Null
+    $manifest = @(
+        'AHKFLOW_API_PORT=5602',
+        'AHKFLOW_UI_PORT=5603',
+        'AHKFLOW_API_URL=http://localhost:5602',
+        'AHKFLOW_UI_URL=http://localhost:5603',
+        'AHKFLOW_DB_NAME=AHKFlowApp_valid',
+        'AHKFLOW_SQL_PORT=14330',
+        'AHKFLOW_COMPOSE_PROJECT=ahkflow-valid',
+        "AHKFLOW_ROOT=$managedRoot"
+    ) -join "`n"
+    Set-Content -LiteralPath (Join-Path $managedRoot 'scripts\.env.worktree') -Value $manifest -Encoding utf8
+
+    # badManifest sits in an approved parent but its manifest port disagrees with its URL.
+    $badRoot = (Resolve-Path -LiteralPath $badManifest).Path
+    New-Item -ItemType Directory -Path (Join-Path $badRoot 'scripts') -Force | Out-Null
+    $broken = @(
+        'AHKFLOW_API_PORT=5602',
+        'AHKFLOW_UI_PORT=5603',
+        'AHKFLOW_API_URL=http://localhost:9999',
+        'AHKFLOW_UI_URL=http://localhost:5603',
+        'AHKFLOW_DB_NAME=AHKFlowApp_bad',
+        'AHKFLOW_SQL_PORT=14331',
+        'AHKFLOW_COMPOSE_PROJECT=ahkflow-bad',
+        "AHKFLOW_ROOT=$badRoot"
+    ) -join "`n"
+    Set-Content -LiteralPath (Join-Path $badRoot 'scripts\.env.worktree') -Value $broken -Encoding utf8
+
     return [pscustomobject]@{
-        TestRoot  = (Resolve-Path -LiteralPath $testRoot).Path
-        Main      = (Resolve-Path -LiteralPath $main).Path
-        Managed   = (Resolve-Path -LiteralPath $managed).Path
-        Unmanaged = (Resolve-Path -LiteralPath $unmanaged).Path
-        Unrelated = (Resolve-Path -LiteralPath $unrelated).Path
+        TestRoot    = (Resolve-Path -LiteralPath $testRoot).Path
+        Main        = (Resolve-Path -LiteralPath $main).Path
+        Managed     = $managedRoot
+        BadManifest = $badRoot
+        Unmanaged   = (Resolve-Path -LiteralPath $unmanaged).Path
+        Unrelated   = (Resolve-Path -LiteralPath $unrelated).Path
     }
 }
 
@@ -263,6 +295,7 @@ function Remove-GuardFixture {
     }
 
     Invoke-Git -C $Fixture.Main worktree remove --force $Fixture.Managed
+    Invoke-Git -C $Fixture.Main worktree remove --force $Fixture.BadManifest
     Invoke-Git -C $Fixture.Main worktree remove --force $Fixture.Unmanaged
     Remove-Item -LiteralPath $target -Recurse -Force -ErrorAction SilentlyContinue
 }
@@ -451,6 +484,131 @@ try {
             -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
         Assert-Equal 'Deny' $decision.Action 'Action'
         Assert-Equal 'ambiguous-git-command' $decision.Rule 'Rule'
+    }
+
+    Write-Host 'Mutation detection' -ForegroundColor Cyan
+
+    $mutatingCommands = @(
+        'git add .', 'git commit -m test', '  git commit -m indented', 'git switch -c fix/wt-test',
+        'git checkout -b fix/wt-test', 'git branch fix/wt-test', 'git merge topic', 'git rebase main',
+        'git push', 'git reset HEAD^', 'git restore file.txt', 'git clean -fd', 'git stash',
+        'git tag v1.0.0', 'git worktree add somewhere', 'git config core.hooksPath disabled',
+        'git update-ref refs/heads/test HEAD', 'git status; git commit -m test',
+        'git status && git branch fix/wt-test', 'git stash push', 'git notes add -m note HEAD',
+        'git bisect start', 'git apply patch.diff', 'git init .', 'git submodule update',
+        'git remote add origin url', 'git reflog delete', 'git config user.name bob'
+    )
+    foreach ($command in $mutatingCommands) {
+        Invoke-TestCase "Mutation detected: $command" {
+            $parsed = Get-AgentGitInvocation -Command $command
+            $anyMutation = @($parsed.Invocations | Where-Object { Test-AgentGitMutation -Tokens $_ }).Count -gt 0
+            Assert-True $anyMutation 'expected a mutation'
+        }
+    }
+
+    $readOnlyCommands = @(
+        'git status', 'git log -1', 'git diff', 'git show HEAD', 'git branch --show-current',
+        'git branch --list', 'git tag --list', 'git worktree list', 'git config --get core.hooksPath',
+        'git remote -v', 'git fetch', 'git stash list', 'git stash show', 'git notes list',
+        'git notes show HEAD', 'git bisect log', 'git apply --check patch.diff',
+        "git log --author='O'\''Brien'", 'rg -n "Backend" README.md', 'Get-Content README.md',
+        'dotnet build', 'dotnet test', 'dotnet format', 'git status > status.txt',
+        'git config --get-regexp branch', 'git remote show origin', 'git submodule status',
+        'git tag --contains HEAD'
+    )
+    foreach ($command in $readOnlyCommands) {
+        Invoke-TestCase "No mutation: $command" {
+            $parsed = Get-AgentGitInvocation -Command $command
+            if ($parsed.Ambiguous) { throw 'unexpected ambiguous parse' }
+            $anyMutation = @($parsed.Invocations | Where-Object { Test-AgentGitMutation -Tokens $_ }).Count -gt 0
+            Assert-True (-not $anyMutation) 'expected no mutation'
+        }
+    }
+
+    Write-Host 'Managed-worktree classification' -ForegroundColor Cyan
+
+    $stateCases = @(
+        @{ Name = 'main checkout'; Cwd = { $fixture.Main }; State = 'MainCheckout' },
+        @{ Name = 'managed worktree'; Cwd = { $fixture.Managed }; State = 'ManagedWorktree' },
+        @{ Name = 'unmanaged linked worktree'; Cwd = { $fixture.Unmanaged }; State = 'UnmanagedWorktree' },
+        @{ Name = 'approved location, invalid manifest'; Cwd = { $fixture.BadManifest }; State = 'InvalidManifest' },
+        @{ Name = 'unrelated repository'; Cwd = { $fixture.Unrelated }; State = 'OutsideProtectedRepository' },
+        @{ Name = 'non-repository temp dir'; Cwd = { $fixture.TestRoot }; State = 'NotRepository' }
+    )
+    foreach ($case in $stateCases) {
+        Invoke-TestCase "State: $($case.Name)" {
+            $state = Get-ManagedWorktreeState -Cwd (& $case.Cwd) -ProtectedRepoRoot $fixture.Main
+            Assert-Equal $case.State $state 'State'
+        }
+    }
+
+    Invoke-TestCase 'Manifest with a missing key is invalid' {
+        $missing = Join-Path $fixture.Managed 'scripts\.env.worktree'
+        $original = Get-Content -LiteralPath $missing -Raw
+        try {
+            Set-Content -LiteralPath $missing -Value ($original -replace 'AHKFLOW_DB_NAME=.*\r?\n', '') -Encoding utf8
+            Assert-Equal 'InvalidManifest' (Get-ManagedWorktreeState -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main) 'State'
+        }
+        finally {
+            Set-Content -LiteralPath $missing -Value $original -Encoding utf8 -NoNewline
+        }
+    }
+
+    Invoke-TestCase 'Manifest with a duplicate key is invalid' {
+        $path = Join-Path $fixture.Managed 'scripts\.env.worktree'
+        $original = Get-Content -LiteralPath $path -Raw
+        try {
+            Set-Content -LiteralPath $path -Value ($original + "`nAHKFLOW_DB_NAME=second") -Encoding utf8
+            Assert-Equal 'InvalidManifest' (Get-ManagedWorktreeState -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main) 'State'
+        }
+        finally {
+            Set-Content -LiteralPath $path -Value $original -Encoding utf8 -NoNewline
+        }
+    }
+
+    Write-Host 'Effective git -C target resolution' -ForegroundColor Cyan
+
+    Invoke-TestCase 'Managed worktree targeting main through git -C is denied' {
+        $command = "git -C `"$($fixture.Main)`" commit -m test"
+        $decision = Invoke-AgentGuardPolicy -Command $command -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Deny' $decision.Action 'Action'
+    }
+
+    Invoke-TestCase 'Main targeting a managed worktree through git -C is allowed' {
+        $command = "git -C `"$($fixture.Managed)`" commit -m test"
+        $decision = Invoke-AgentGuardPolicy -Command $command -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Allow' $decision.Action 'Action'
+    }
+
+    Invoke-TestCase 'Main targeting an unrelated repository through git -C is allowed' {
+        $command = "git -C `"$($fixture.Unrelated)`" commit -m test"
+        $decision = Invoke-AgentGuardPolicy -Command $command -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Allow' $decision.Action 'Action'
+    }
+
+    Invoke-TestCase 'A mutating invocation with --git-dir is denied' {
+        $decision = Invoke-AgentGuardPolicy -Command 'git --git-dir=/somewhere/.git commit -m test' `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Deny' $decision.Action 'Action'
+        Assert-Equal 'agent-git-dir-mutation' $decision.Rule 'Rule'
+    }
+
+    Invoke-TestCase 'A chained command denies when any mutation targets main' {
+        $command = "git -C `"$($fixture.Managed)`" status && git -C `"$($fixture.Main)`" commit -m test"
+        $decision = Invoke-AgentGuardPolicy -Command $command -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Deny' $decision.Action 'Action'
+    }
+
+    Invoke-TestCase 'git init inside the protected checkout is denied' {
+        $decision = Invoke-AgentGuardPolicy -Command 'git init .' -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Deny' $decision.Action 'Action'
+    }
+
+    Invoke-TestCase 'git init in an unrelated empty temp directory is allowed' {
+        $empty = Join-Path $fixture.TestRoot 'fresh-init-target'
+        New-Item -ItemType Directory -Path $empty -Force | Out-Null
+        $decision = Invoke-AgentGuardPolicy -Command 'git init .' -Cwd $empty -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Allow' $decision.Action 'Action'
     }
 
     Write-Host 'Adapter output contracts' -ForegroundColor Cyan

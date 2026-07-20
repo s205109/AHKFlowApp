@@ -360,37 +360,177 @@ Read-only Git and ordinary edit/build/test commands are unaffected.
 Override the location check with AHKFLOW_ALLOW_MAIN=1.
 '@
 
+# Global options that consume the following token, so the subcommand scan skips their argument.
+$script:AgentGuardValueGlobalOptions = @('-C', '-c', '--git-dir', '--work-tree', '--namespace', '--exec-path')
+
 <#
 .SYNOPSIS
-Returns the git subcommand of a tokenized invocation, skipping leading global options.
+Splits a tokenized git invocation into its global options, subcommand, and post-subcommand args.
+
+.DESCRIPTION
+Returns { Subcommand; Args; DashC = @(paths in order); UsesGitDirOrWorkTree }. Args keeps
+options and positionals in order so conditional subcommands can inspect them.
 #>
-function Get-AgentGitSubcommand {
+function Get-AgentGitParts {
     [CmdletBinding()]
     param([string[]] $Tokens)
 
+    $subcommand = ''
+    $tail = New-Object System.Collections.Generic.List[string]
+    $dashC = New-Object System.Collections.Generic.List[string]
+    $usesGitDirOrWorkTree = $false
+
     for ($i = 0; $i -lt $Tokens.Count; $i++) {
         $token = $Tokens[$i]
-        if ($token -notlike '-*') { return $token }
 
-        # Global options that consume the following argument.
-        if ($token -in @('-C', '-c', '--git-dir', '--work-tree', '--namespace', '--exec-path')) { $i++ }
+        if ($subcommand -eq '') {
+            if ($token -ieq '-C') {
+                if (($i + 1) -lt $Tokens.Count) { [void] $dashC.Add($Tokens[++$i]) }
+                continue
+            }
+            if ($token -ieq '--git-dir' -or $token -ieq '--work-tree') {
+                $usesGitDirOrWorkTree = $true
+                if (($i + 1) -lt $Tokens.Count) { $i++ }
+                continue
+            }
+            if ($token -like '--git-dir=*' -or $token -like '--work-tree=*') {
+                $usesGitDirOrWorkTree = $true
+                continue
+            }
+            if ($token -in $script:AgentGuardValueGlobalOptions) {
+                if (($i + 1) -lt $Tokens.Count) { $i++ }
+                continue
+            }
+            if ($token -like '-*') { continue }
+
+            $subcommand = $token
+            continue
+        }
+
+        [void] $tail.Add($token)
     }
 
-    return ''
+    return [pscustomobject]@{
+        Subcommand           = $subcommand
+        Args                 = $tail.ToArray()
+        DashC                = $dashC.ToArray()
+        UsesGitDirOrWorkTree = $usesGitDirOrWorkTree
+    }
+}
+
+function Get-AgentGitPositionals {
+    param([string[]] $Arguments)
+    return @($Arguments | Where-Object { $_ -notlike '-*' })
+}
+
+function Test-AgentGitArgsContainAny {
+    param([string[]] $Arguments, [string[]] $Options)
+    foreach ($arg in $Arguments) {
+        foreach ($option in $Options) {
+            if ($arg -ieq $option -or $arg -ilike "$option=*") { return $true }
+        }
+    }
+    return $false
 }
 
 <#
 .SYNOPSIS
 True when the tokenized git invocation mutates repository state.
+
+.DESCRIPTION
+Always-mutating subcommands short-circuit. Conditional subcommands (branch, tag, worktree,
+config, remote, submodule, reflog, stash, notes, bisect, apply, init) inspect their arguments.
+Unknown subcommands are treated as non-mutating; that gap is recorded rather than papered over
+with an allowlist.
 #>
 function Test-AgentGitMutation {
     [CmdletBinding()]
     param([string[]] $Tokens)
 
-    $subcommand = Get-AgentGitSubcommand -Tokens $Tokens
+    $parts = Get-AgentGitParts -Tokens $Tokens
+    $subcommand = $parts.Subcommand
     if ([string]::IsNullOrWhiteSpace($subcommand)) { return $false }
+    $subcommand = $subcommand.ToLowerInvariant()
 
-    return $script:AgentGuardMutatingSubcommands -contains $subcommand.ToLowerInvariant()
+    if ($script:AgentGuardMutatingSubcommands -contains $subcommand) { return $true }
+
+    $argTokens = $parts.Args
+    # @(...) so a single positional stays an array; otherwise [0] would index into a string.
+    $positionals = @(Get-AgentGitPositionals -Arguments $argTokens)
+    $first = if ($positionals.Count -gt 0) { ([string] $positionals[0]).ToLowerInvariant() } else { '' }
+
+    switch ($subcommand) {
+        'branch' {
+            # Create/delete/move/copy flags, an upstream change, or any positional branch target.
+            if (Test-AgentGitArgsContainAny -Arguments $argTokens -Options @(
+                    '-d', '-D', '--delete', '-m', '-M', '--move', '-c', '-C', '--copy',
+                    '--set-upstream-to', '-u', '--unset-upstream', '--edit-description', '-f', '--force')) {
+                return $true
+            }
+            return $positionals.Count -gt 0
+        }
+        'tag' {
+            if (Test-AgentGitArgsContainAny -Arguments $argTokens -Options @('-d', '--delete')) { return $true }
+            if (Test-AgentGitArgsContainAny -Arguments $argTokens -Options @('-l', '--list', '--contains', '--no-contains', '--points-at', '--merged', '--no-merged')) {
+                return $false
+            }
+            # A positional tagname without --list creates a tag.
+            return $positionals.Count -gt 0
+        }
+        'worktree' {
+            return $first -in @('add', 'move', 'remove', 'repair', 'prune', 'lock', 'unlock')
+        }
+        'config' {
+            if (Test-AgentGitArgsContainAny -Arguments $argTokens -Options @(
+                    '--get', '--get-all', '--get-regexp', '--get-urlmatch', '--get-color', '--get-colorbool',
+                    '-l', '--list', '--show-origin', '--show-scope', '--name-only')) {
+                return $false
+            }
+            if (Test-AgentGitArgsContainAny -Arguments $argTokens -Options @(
+                    '--unset', '--unset-all', '--add', '--replace-all', '--rename-section',
+                    '--remove-section', '-e', '--edit')) {
+                return $true
+            }
+            # A bare "name value" pair sets a value; a lone name is a (deprecated) read.
+            return $positionals.Count -ge 2
+        }
+        'remote' {
+            if ($positionals.Count -eq 0) { return $false }
+            return $first -in @('add', 'remove', 'rm', 'rename', 'set-url', 'set-head', 'set-branches', 'prune', 'update')
+        }
+        'submodule' {
+            if ($positionals.Count -eq 0) { return $false }
+            return $first -in @('add', 'deinit', 'update', 'set-branch', 'set-url', 'sync', 'absorbgitdirs', 'init')
+        }
+        'reflog' {
+            return $first -in @('delete', 'expire')
+        }
+        'stash' {
+            if ($positionals.Count -eq 0) { return $true }
+            return $first -notin @('list', 'show')
+        }
+        'notes' {
+            if ($positionals.Count -eq 0) { return $false }
+            return $first -notin @('list', 'show', 'get-ref')
+        }
+        'bisect' {
+            return $first -in @('start', 'good', 'bad', 'new', 'old', 'reset', 'skip', 'run', 'replay')
+        }
+        'apply' {
+            if (Test-AgentGitArgsContainAny -Arguments $argTokens -Options @('--apply')) { return $true }
+            if (Test-AgentGitArgsContainAny -Arguments $argTokens -Options @('--check', '--stat', '--numstat', '--summary')) {
+                return $false
+            }
+            return $true
+        }
+        'init' {
+            # init always mutates; its effective target decides whether the location allows it.
+            return $true
+        }
+        default {
+            return $false
+        }
+    }
 }
 
 <#
@@ -408,14 +548,26 @@ function Get-ManagedWorktreeState {
         [string] $ProtectedRepoRoot
     )
 
-    if ([string]::IsNullOrWhiteSpace($Cwd) -or -not (Test-Path -LiteralPath $Cwd)) {
+    if ([string]::IsNullOrWhiteSpace($Cwd)) {
+        return 'NotRepository'
+    }
+
+    # A target that does not exist yet (e.g. `git init newsub`) is classified by its nearest
+    # existing ancestor: git would walk up to that enclosing repository too.
+    $probeDir = $Cwd
+    while (-not [string]::IsNullOrWhiteSpace($probeDir) -and -not (Test-Path -LiteralPath $probeDir)) {
+        $parent = Split-Path -Parent $probeDir
+        if ($parent -eq $probeDir) { break }
+        $probeDir = $parent
+    }
+    if ([string]::IsNullOrWhiteSpace($probeDir) -or -not (Test-Path -LiteralPath $probeDir)) {
         return 'NotRepository'
     }
 
     # One rev-parse for all three target facts. This runs on every candidate command, so each
     # extra git process is a measurable share of the hook's latency budget.
     $probe = Invoke-AgentGuardGitProbe @(
-        '-C', $Cwd, 'rev-parse', '--path-format=absolute',
+        '-C', $probeDir, 'rev-parse', '--path-format=absolute',
         '--git-common-dir', '--git-dir', '--show-toplevel')
 
     $lines = @($probe -split "`r?`n" | Where-Object { $_ })
@@ -458,12 +610,111 @@ function Get-ManagedWorktreeState {
         return 'UnmanagedWorktree'
     }
 
+    if (-not (Test-AgentWorktreeManifest -WorktreeRoot $targetRoot)) {
+        return 'InvalidManifest'
+    }
+
     return 'ManagedWorktree'
+}
+
+# Every key setup-worktree-local-dev.ps1 writes into scripts/.env.worktree. A managed worktree
+# must carry exactly one value for each.
+$script:AgentGuardManifestKeys = @(
+    'AHKFLOW_API_PORT', 'AHKFLOW_UI_PORT', 'AHKFLOW_API_URL', 'AHKFLOW_UI_URL',
+    'AHKFLOW_DB_NAME', 'AHKFLOW_SQL_PORT', 'AHKFLOW_COMPOSE_PROJECT', 'AHKFLOW_ROOT'
+)
+
+<#
+.SYNOPSIS
+Validates a managed worktree's scripts/.env.worktree manifest.
+
+.DESCRIPTION
+Returns $true only when the manifest exists, defines each required key exactly once, the three
+ports parse as integers, the API/UI URLs carry the manifest ports, DB/compose values are
+non-empty, and AHKFLOW_ROOT resolves back to this worktree root. A forged or partial manifest is
+what separates an approved-location worktree from a genuinely managed one.
+#>
+function Test-AgentWorktreeManifest {
+    [CmdletBinding()]
+    param([string] $WorktreeRoot)
+
+    $manifestPath = Join-Path $WorktreeRoot 'scripts\.env.worktree'
+    if (-not (Test-Path -LiteralPath $manifestPath)) { return $false }
+
+    $values = @{}
+    foreach ($line in Get-Content -LiteralPath $manifestPath) {
+        $trimmed = $line.Trim()
+        if ($trimmed -eq '' -or $trimmed.StartsWith('#')) { continue }
+
+        $separator = $trimmed.IndexOf('=')
+        if ($separator -lt 1) { continue }
+
+        $key = $trimmed.Substring(0, $separator).Trim()
+        $value = $trimmed.Substring($separator + 1).Trim()
+
+        if ($script:AgentGuardManifestKeys -notcontains $key) { continue }
+        if ($values.ContainsKey($key)) { return $false }  # duplicate key
+        $values[$key] = $value
+    }
+
+    foreach ($key in $script:AgentGuardManifestKeys) {
+        if (-not $values.ContainsKey($key) -or [string]::IsNullOrWhiteSpace($values[$key])) { return $false }
+    }
+
+    $apiPort = 0; $uiPort = 0; $sqlPort = 0
+    if (-not [int]::TryParse($values['AHKFLOW_API_PORT'], [ref] $apiPort)) { return $false }
+    if (-not [int]::TryParse($values['AHKFLOW_UI_PORT'], [ref] $uiPort)) { return $false }
+    if (-not [int]::TryParse($values['AHKFLOW_SQL_PORT'], [ref] $sqlPort)) { return $false }
+
+    $apiUri = $null; $uiUri = $null
+    if (-not [System.Uri]::TryCreate($values['AHKFLOW_API_URL'], [System.UriKind]::Absolute, [ref] $apiUri)) { return $false }
+    if (-not [System.Uri]::TryCreate($values['AHKFLOW_UI_URL'], [System.UriKind]::Absolute, [ref] $uiUri)) { return $false }
+    if ($apiUri.Port -ne $apiPort) { return $false }
+    if ($uiUri.Port -ne $uiPort) { return $false }
+
+    $manifestRoot = ConvertTo-AgentGuardNormalizedPath $values['AHKFLOW_ROOT']
+    if ($manifestRoot -ine (ConvertTo-AgentGuardNormalizedPath $WorktreeRoot)) { return $false }
+
+    return $true
+}
+
+$script:AgentGuardAllowedStates = @('NotRepository', 'OutsideProtectedRepository', 'ManagedWorktree')
+
+<#
+.SYNOPSIS
+Resolves the effective directory a git invocation targets, honoring `git -C` and init's path.
+#>
+function Resolve-AgentGitTargetDirectory {
+    [CmdletBinding()]
+    param([object] $Parts, [string] $BaseCwd)
+
+    $dir = $BaseCwd
+    foreach ($cPath in $Parts.DashC) {
+        if ([System.IO.Path]::IsPathRooted($cPath)) { $dir = $cPath }
+        else { $dir = Join-Path $dir $cPath }
+    }
+
+    # `git init <path>` targets the positional path, not the invocation's working directory.
+    if ($Parts.Subcommand -ieq 'init') {
+        $positionals = @(Get-AgentGitPositionals -Arguments $Parts.Args)
+        if ($positionals.Count -gt 0) {
+            $initPath = $positionals[0]
+            if ([System.IO.Path]::IsPathRooted($initPath)) { $dir = $initPath }
+            else { $dir = Join-Path $dir $initPath }
+        }
+    }
+
+    return $dir
 }
 
 <#
 .SYNOPSIS
-Maps detected git invocations plus a location state to an Allow/Warn/Deny decision.
+Maps every detected git invocation to a single Allow/Warn/Deny decision.
+
+.DESCRIPTION
+Denies when any mutating invocation targets a non-managed location. A mutating invocation that
+carries --git-dir/--work-tree is denied outright (unless AHKFLOW_ALLOW_MAIN=1) because the
+simple tokenizer cannot safely infer where it would write.
 #>
 function Get-AgentGitLocationDecision {
     [CmdletBinding()]
@@ -474,24 +725,54 @@ function Get-AgentGitLocationDecision {
         [bool] $AllowMain = $false
     )
 
-    $mutating = @($Invocations | Where-Object { Test-AgentGitMutation -Tokens $_ })
-    if ($mutating.Count -eq 0) {
+    $effectiveCwd = $Cwd
+    $blockingState = ''
+    $blockingTarget = ''
+
+    foreach ($tokens in $Invocations) {
+        $parts = Get-AgentGitParts -Tokens $tokens
+
+        if (-not (Test-AgentGitMutation -Tokens $tokens)) {
+            continue
+        }
+
+        if ($parts.UsesGitDirOrWorkTree) {
+            $blockingState = 'ExplicitGitDir'
+            $blockingTarget = $Cwd
+            break
+        }
+
+        $targetDir = Resolve-AgentGitTargetDirectory -Parts $parts -BaseCwd $effectiveCwd
+        $state = Get-ManagedWorktreeState -Cwd $targetDir -ProtectedRepoRoot $ProtectedRepoRoot
+
+        if ($state -inotin $script:AgentGuardAllowedStates) {
+            $blockingState = $state
+            $blockingTarget = $targetDir
+            break
+        }
+    }
+
+    if ($blockingState -eq '') {
         return New-AgentGuardDecision -Action Allow
     }
 
-    $state = Get-ManagedWorktreeState -Cwd $Cwd -ProtectedRepoRoot $ProtectedRepoRoot
-    if ($state -in @('NotRepository', 'OutsideProtectedRepository', 'ManagedWorktree')) {
-        return New-AgentGuardDecision -Action Allow
+    if ($blockingState -eq 'ExplicitGitDir') {
+        if ($AllowMain) {
+            return New-AgentGuardDecision -Action Warn -Rule 'agent-git-dir-override-overridden' -Message `
+            ("WARNING: AHKFLOW_ALLOW_MAIN=1 overrode the --git-dir/--work-tree restriction for: $blockingTarget")
+        }
+        return New-AgentGuardDecision -Action Deny -Rule 'agent-git-dir-mutation' -Message `
+        ('BLOCKED: agent Git mutations with --git-dir or --work-tree are not allowed; the ' +
+            'target cannot be verified. Run the command from inside a managed linked worktree instead.')
     }
-
-    $message = [string]::Format($script:AgentGuardDenialMessage, $Cwd)
 
     if ($AllowMain) {
         return New-AgentGuardDecision -Action Warn -Rule 'agent-main-git-mutation-overridden' -Message `
         ("WARNING: AHKFLOW_ALLOW_MAIN=1 overrode the managed-worktree location rule " +
-            "($state) for: $Cwd")
+            "($blockingState) for: $blockingTarget")
     }
 
+    $message = [string]::Format($script:AgentGuardDenialMessage, $blockingTarget)
     return New-AgentGuardDecision -Action Deny -Rule 'agent-main-git-mutation' -Message $message
 }
 
