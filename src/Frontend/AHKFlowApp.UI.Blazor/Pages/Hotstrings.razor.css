@@ -70,12 +70,14 @@
 
 ::deep .hotstrings-grid th:nth-child(4),
 ::deep .hotstrings-grid td:nth-child(4) {
-    width: 14%;
+    width: 13%;
 }
 
+/* Profiles renders one short chip ("Any" for most rows) and never needed 10%. The reclaimed
+   width goes to Categories, which has to host the inline multi-select editor. */
 ::deep .hotstrings-grid th:nth-child(5),
 ::deep .hotstrings-grid td:nth-child(5) {
-    width: 10%;
+    width: 7%;
 }
 
 ::deep .hotstrings-grid th:nth-child(6),
@@ -86,7 +88,7 @@
 
 ::deep .hotstrings-grid th:nth-child(7),
 ::deep .hotstrings-grid td:nth-child(7) {
-    width: 10%;
+    width: 14%;
 }
 
 /* Actions column holds icon buttons, not text — the shared ellipsis rule above would clip
@@ -99,6 +101,45 @@
 
 ::deep .hotstrings-grid .selected-row {
     background-color: color-mix(in srgb, var(--mud-palette-primary) 12%, transparent);
+}
+
+/* Inline editors must not inherit the read-only cell clipping above — that rule is what
+   truncated the category MudSelect to "C...". The edit-row/draft-row classes come from
+   GetRowClass, so this only relaxes the row currently being edited. */
+::deep .hotstrings-grid .edit-row .mud-table-cell,
+::deep .hotstrings-grid .draft-row .mud-table-cell {
+    overflow: visible;
+    white-space: normal;
+}
+
+/* Type chips read as data, not actions. The toolbar already owns saturated fill in the brand
+   triad (Primary green #6AA84F, Secondary blue #3B8FC2, Tertiary brick #8C3A3A), so these hues
+   are picked off that triad and kept as soft tints. Mixing against theme variables tracks
+   light/dark without needing a dark-mode selector. */
+::deep .hotstrings-grid .mud-chip.kind-chip--text {
+    background-color: color-mix(in oklch, var(--mud-palette-surface) 84%, oklch(0.62 0.19 300));
+    color: color-mix(in oklch, var(--mud-palette-text-primary) 35%, oklch(0.52 0.19 300));
+}
+
+::deep .hotstrings-grid .mud-chip.kind-chip--datetime {
+    background-color: color-mix(in oklch, var(--mud-palette-surface) 84%, oklch(0.65 0.13 200));
+    color: color-mix(in oklch, var(--mud-palette-text-primary) 35%, oklch(0.52 0.13 200));
+}
+
+::deep .hotstrings-grid .mud-chip.kind-chip--macro {
+    background-color: color-mix(in oklch, var(--mud-palette-surface) 84%, oklch(0.63 0.20 350));
+    color: color-mix(in oklch, var(--mud-palette-text-primary) 35%, oklch(0.52 0.20 350));
+}
+
+::deep .hotstrings-grid .mud-chip.kind-chip--raw {
+    background-color: color-mix(in oklch, var(--mud-palette-surface) 84%, oklch(0.70 0.15 70));
+    color: color-mix(in oklch, var(--mud-palette-text-primary) 35%, oklch(0.50 0.15 70));
+}
+
+::deep .hotstrings-grid .delivery-icon {
+    opacity: 0.6;
+    margin-left: 4px;
+    vertical-align: middle;
 }
 
 ::deep .hotstrings-grid .option-glyphs {
