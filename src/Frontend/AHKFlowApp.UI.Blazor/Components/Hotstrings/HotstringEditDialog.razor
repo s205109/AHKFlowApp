@@ -22,8 +22,18 @@
             <MudToggleGroup T="HotstringKind" Value="Item.Kind" ValueChanged="OnKindChangedAsync"
                              UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "kind-selector" })">
                 <MudToggleItem Value="HotstringKind.Text" Text="Text" />
-                <MudToggleItem Value="HotstringKind.DateTime" Text="Date & time" />
-                <MudToggleItem Value="HotstringKind.Macro" Text="Macro" />
+                <MudToggleItem Value="HotstringKind.DateTime">
+                    <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                        <MudIcon Icon="@Icons.Material.Filled.Schedule" Color="Color.Info" Size="Size.Small" />
+                        <MudText>Date & time</MudText>
+                    </MudStack>
+                </MudToggleItem>
+                <MudToggleItem Value="HotstringKind.Macro">
+                    <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                        <MudIcon Icon="@Icons.Material.Filled.Bolt" Color="Color.Success" Size="Size.Small" />
+                        <MudText>Macro</MudText>
+                    </MudStack>
+                </MudToggleItem>
                 <MudToggleItem Value="HotstringKind.Raw">
                     <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
                         <MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Warning" Size="Size.Small"

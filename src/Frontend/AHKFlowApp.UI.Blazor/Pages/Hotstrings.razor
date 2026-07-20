@@ -150,7 +150,17 @@
                             }
                         </CellTemplate>
                     </TemplateColumn>
-                    <TemplateColumn Title="Type" Sortable="true" SortBy="x => x.Kind" Filterable="false">
+                    <TemplateColumn Sortable="true" SortBy="x => x.Kind" Filterable="false">
+                        <HeaderTemplate>
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="0">
+                                <MudText>Type</MudText>
+                                <MudTooltip Text="* = expands immediately · ? = triggers inside words · C = case sensitive">
+                                    <MudIconButton Icon="@Icons.Material.Filled.HelpOutline" Size="Size.Small"
+                                                   Class="type-legend-help"
+                                                   UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = "Glyph legend: * expands immediately, ? triggers inside words, C case sensitive" })" />
+                                </MudTooltip>
+                            </MudStack>
+                        </HeaderTemplate>
                         <CellTemplate>
                             <MudTooltip Text="@OptionsTooltip(context.Item)">
                                 <span class="type-badge">
@@ -425,7 +435,14 @@
         };
 
     private string GetRowClass(HotstringEditModel item, int _)
-        => IsEditing(item) ? (ReferenceEquals(item, _pendingCreate) ? "draft-row" : "edit-row") : string.Empty;
+    {
+        List<string> classes = [];
+        if (IsEditing(item))
+            classes.Add(ReferenceEquals(item, _pendingCreate) ? "draft-row" : "edit-row");
+        if (_selected.Contains(item))
+            classes.Add("selected-row");
+        return string.Join(" ", classes);
+    }
 
     private async Task ReloadAsync()
     {
@@ -768,14 +785,9 @@
         }
     }
 
-    private Task OpenEditDialogAsync(HotstringEditModel item) =>
-        OpenEditDialogCoreAsync(item, new DialogOptions { FullScreen = true, CloseButton = false });
-
-    private Task OpenEditDetailsDialogAsync(HotstringEditModel item) =>
-        OpenEditDialogCoreAsync(item, new DialogOptions { FullScreen = false, MaxWidth = MaxWidth.Medium, CloseButton = false });
-
-    private async Task OpenEditDialogCoreAsync(HotstringEditModel item, DialogOptions options)
+    private async Task OpenEditDialogAsync(HotstringEditModel item)
     {
+        DialogOptions options = new() { FullScreen = true, CloseButton = false };
         if (_dialogOpen || item.Id is null)
             return;
 
@@ -926,7 +938,7 @@
                             DataTest="category-select" />;
 
     private RenderFragment RenderCategories(IReadOnlyCollection<Guid> categoryIds) =>
-        @<EntityChips Ids="categoryIds" Options="_categoryOptions" />;
+        @<EntityChips Ids="categoryIds" Options="_categoryOptions" Variant="Variant.Outlined" />;
 
     private static string KindLabel(HotstringKind kind) => kind switch
     {
@@ -944,9 +956,17 @@
         ? @<MudChip T="string" Size="Size.Small"
                     Color="@(DeliveryDisplay.IsClipboard(item.EffectiveDelivery) ? Color.Info : Color.Default)"
                     UserAttributes="@DeliveryChipAttributes(item.EffectiveDelivery)">@DeliveryDisplay.Label(item.EffectiveDelivery)</MudChip>
-        : @<MudChip T="string" Size="Size.Small" Color="@(item.Kind == HotstringKind.Raw ? Color.Warning : Color.Default)"
+        : @<MudChip T="string" Size="Size.Small" Color="@KindColor(item.Kind)"
                     Icon="@(item.Kind == HotstringKind.Raw ? Icons.Material.Filled.Warning : null)"
                     UserAttributes="@KindChipAttributes(item.Kind)">@KindLabel(item.Kind)</MudChip>;
+
+    private static Color KindColor(HotstringKind kind) => kind switch
+    {
+        HotstringKind.DateTime => Color.Info,
+        HotstringKind.Macro => Color.Success,
+        HotstringKind.Raw => Color.Warning,
+        _ => Color.Default,
+    };
 
     private static Dictionary<string, object?> DeliveryChipAttributes(HotstringDelivery effectiveDelivery) =>
         new() { ["data-test"] = DeliveryDisplay.DataTest(effectiveDelivery) };
@@ -1006,17 +1026,12 @@
         }
         else
         {
-            <MudIconButton Class="edit-details" Icon="@Icons.Material.Filled.EditNote"
-                           OnClick="() => OpenEditDetailsDialogAsync(item)" />
+            <MudIconButton Class="edit" Icon="@Icons.Material.Filled.Edit"
+                           OnClick="() => (item.IsInlineEditable ? StartEditAsync(item) : OpenEditDialogAsync(item))" />
             <MudIconButton Class="show-history" Icon="@Icons.Material.Filled.History"
                            OnClick="() => ShowHistoryAsync(item)" />
             <MudIconButton Class="delete" Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
                            OnClick="() => DeleteAsync(item)" />
-            @if (item.IsInlineEditable)
-            {
-                <MudIconButton Class="start-edit" Icon="@Icons.Material.Filled.Edit"
-                               OnClick="() => StartEditAsync(item)" />
-            }
         }
     </text>;
 

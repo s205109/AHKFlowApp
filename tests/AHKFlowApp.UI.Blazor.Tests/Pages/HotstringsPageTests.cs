@@ -221,14 +221,14 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
         IRenderedComponent<Hotstrings> cut = RenderPage();
         cut.WaitForAssertion(() => cut.Find(".mobile-row"));
         cut.Find(".mobile-row").Click();
-        cut.WaitForAssertion(() => cut.Find("button.start-edit"));
+        cut.WaitForAssertion(() => cut.Find("button.edit"));
 
         cut.Find("button.reload-hotstrings-mobile").Click();
 
         cut.WaitForAssertion(() => _api.Received(2).ListAsync(Arg.Any<HotstringListRequest>(), Arg.Any<CancellationToken>()));
         cut.WaitForAssertion(() =>
         {
-            cut.Find("button.start-edit").Should().NotBeNull();
+            cut.Find("button.edit").Should().NotBeNull();
             cut.Markup.Should().Contain("by the way");
         });
     }
@@ -279,8 +279,8 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
             .Returns(ApiResult<HotstringDto>.Ok(dto with { Replacement = "by the way!" }));
 
         IRenderedComponent<Hotstrings> cut = RenderPage();
-        cut.WaitForAssertion(() => cut.Find("button.start-edit"));
-        cut.Find("button.start-edit").Click();
+        cut.WaitForAssertion(() => cut.Find("button.edit"));
+        cut.Find("button.edit").Click();
         cut.WaitForAssertion(() => cut.Find("textarea[data-test=\"replacement-input\"]"));
         cut.Find("textarea[data-test=\"replacement-input\"]").Input("by the way!");
         cut.Find("button.commit-edit").Click();
@@ -323,8 +323,8 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
             .Returns(ApiResult<HotstringDto>.Ok(dto with { Replacement = replacement }));
 
         IRenderedComponent<Hotstrings> cut = RenderPage();
-        cut.WaitForAssertion(() => cut.Find("button.start-edit"));
-        cut.Find("button.start-edit").Click();
+        cut.WaitForAssertion(() => cut.Find("button.edit"));
+        cut.Find("button.edit").Click();
         cut.WaitForAssertion(() => cut.Find("textarea[data-test=\"replacement-input\"]"));
         cut.Find("textarea[data-test=\"replacement-input\"]").Input(replacement);
         cut.Find("button.commit-edit").Click();
@@ -347,8 +347,8 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
         _api.GetAsync(summary.Id, Arg.Any<CancellationToken>()).Returns(ApiResult<HotstringDto>.Ok(detail));
 
         IRenderedComponent<Hotstrings> cut = RenderPage();
-        cut.WaitForAssertion(() => cut.Find("button.start-edit"));
-        cut.Find("button.start-edit").Click();
+        cut.WaitForAssertion(() => cut.Find("button.edit"));
+        cut.Find("button.edit").Click();
 
         cut.WaitForAssertion(() =>
         {
@@ -368,7 +368,7 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
         preferences.GetAsync(Arg.Any<CancellationToken>()).Returns(new UserPreferences(25, false));
 
         IRenderedComponent<Hotstrings> cut = RenderPage();
-        cut.WaitForAssertion(() => cut.Find("button.start-edit"));
+        cut.WaitForAssertion(() => cut.Find("button.edit"));
         _api.ClearReceivedCalls();
         cut.Find("button.reload-hotstrings-mobile").Click();
         cut.WaitForAssertion(() =>
@@ -382,7 +382,7 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
         });
         _api.ClearReceivedCalls();
 
-        cut.Find("button.start-edit").Click();
+        cut.Find("button.edit").Click();
 
         cut.WaitForAssertion(() => cut.Find("textarea[data-test=\"replacement-input\"]"));
         _ = _api.DidNotReceive().ListAsync(
@@ -400,8 +400,8 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
         IRenderedComponent<MudDialogProvider> provider = Render<MudDialogProvider>();
         IRenderedComponent<Hotstrings> cut = Render<Hotstrings>(p => p.AddCascadingValue(AuthenticatedState));
 
-        cut.WaitForAssertion(() => cut.Find("button.start-edit"));
-        cut.Find("button.start-edit").Click();
+        cut.WaitForAssertion(() => cut.Find("button.edit"));
+        cut.Find("button.edit").Click();
 
         // Carry a typed edit into the promotion.
         cut.WaitForAssertion(() => cut.Find("textarea[data-test=\"replacement-input\"]"));
@@ -489,8 +489,8 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
             .Returns(ApiResult<HotstringDto>.Ok(dto with { Description = "updated filler" }));
 
         IRenderedComponent<Hotstrings> cut = RenderPage();
-        cut.WaitForAssertion(() => cut.Find("button.start-edit"));
-        cut.Find("button.start-edit").Click();
+        cut.WaitForAssertion(() => cut.Find("button.edit"));
+        cut.Find("button.edit").Click();
         cut.WaitForAssertion(() =>
             cut.Find("input[data-test=\"description-input\"]").GetAttribute("value").Should().Be("polite filler"));
 
@@ -534,8 +534,8 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
         StubList(Page(dto));
 
         IRenderedComponent<Hotstrings> cut = RenderPage();
-        cut.WaitForAssertion(() => cut.Find("button.start-edit"));
-        cut.Find("button.start-edit").Click();
+        cut.WaitForAssertion(() => cut.Find("button.edit"));
+        cut.Find("button.edit").Click();
 
         cut.WaitForAssertion(() => cut.FindAll("[data-test=\"category-select\"]").Should().NotBeEmpty());
     }
@@ -654,25 +654,26 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
-    public Task Page_EditDetails_OpensDialogWithItem()
+    public Task Page_Edit_NonInlineEditableRow_OpensDialogWithItem()
     {
         // MudDialogProvider renders dialog content into its own root, not into the component that
         // called ShowAsync — so the dialog markup must be queried on `provider`, not on `cut`
         // (RenderPage() discards its MudDialogProvider reference; render it manually here instead,
         // matching the pattern in HotstringEditDialogTests.cs).
-        var dto = new HotstringDto(Guid.NewGuid(), [], true, "btw", "by the way", null,
-            true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        // Raw is not inline-editable, so the single Edit button must route to the dialog.
+        var dto = new HotstringDto(Guid.NewGuid(), [], true, "btw", ":*:btw::by the way", null,
+            true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, Kind: HotstringKind.Raw);
         StubList(Page(dto));
 
         Render<MudPopoverProvider>();
         IRenderedComponent<MudDialogProvider> provider = Render<MudDialogProvider>();
         IRenderedComponent<Hotstrings> cut = Render<Hotstrings>(p => p.AddCascadingValue(AuthenticatedState));
 
-        cut.WaitForAssertion(() => cut.Find("button.edit-details"));
-        cut.Find("button.edit-details").Click();
+        cut.WaitForAssertion(() => cut.Find("button.edit"));
+        cut.Find("button.edit").Click();
 
         provider.WaitForAssertion(() =>
-            provider.Find("input[data-test=\"trigger-input\"]").GetAttribute("value").Should().Be("btw"));
+            provider.Find("textarea[data-test=\"replacement-input\"]").TextContent.Should().Contain("by the way"));
         return Task.CompletedTask;
     }
 
@@ -749,8 +750,10 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
-    public Task Page_DateTimeRow_HidesStartEditPencil_TextRowKeepsIt()
+    public Task Page_EveryKind_RendersExactlyOneEditButtonPerRow()
     {
+        // Every row gets exactly one Edit button regardless of kind — its behavior branches
+        // internally (inline for Text with no context, dialog otherwise), it's not two buttons.
         var dateTimeDto = new HotstringDto(Guid.NewGuid(), [], true, "now", "", null, true, true,
             DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, HotstringKind.DateTime,
             DateTimeFormat: "yyyy-MM-dd");
@@ -760,7 +763,7 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
 
         IRenderedComponent<Hotstrings> cut = RenderPage();
 
-        cut.WaitForAssertion(() => cut.FindAll("button.start-edit").Count.Should().Be(1));
+        cut.WaitForAssertion(() => cut.FindAll("button.edit").Count.Should().Be(2));
         return Task.CompletedTask;
     }
 
@@ -820,6 +823,89 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
                 .Contain("Raw").And.Contain("Verbatim AutoHotkey definition");
         });
         return Task.CompletedTask;
+    }
+
+    [Fact]
+    public Task Page_DateTimeRow_ShowsInfoColoredBadge()
+    {
+        var dto = new HotstringDto(Guid.NewGuid(), [], true, "now", "", null, true, true,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, HotstringKind.DateTime,
+            DateTimeFormat: "yyyy-MM-dd");
+        StubList(Page(dto));
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+
+        cut.WaitForAssertion(() =>
+        {
+            AngleSharp.Dom.IElement badge = cut.Find(".type-badge .mud-chip");
+            badge.TextContent.Should().Contain("Date");
+            badge.ClassList.Should().Contain(c => c.Contains("info", StringComparison.OrdinalIgnoreCase));
+        });
+        return Task.CompletedTask;
+    }
+
+    [Fact]
+    public Task Page_MacroRow_ShowsSuccessColoredBadge()
+    {
+        var dto = new HotstringDto(Guid.NewGuid(), [], true, "greet", "hello", null, true, true,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, HotstringKind.Macro);
+        StubList(Page(dto));
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+
+        cut.WaitForAssertion(() =>
+        {
+            AngleSharp.Dom.IElement badge = cut.Find(".type-badge .mud-chip");
+            badge.TextContent.Should().Contain("Macro");
+            badge.ClassList.Should().Contain(c => c.Contains("success", StringComparison.OrdinalIgnoreCase));
+        });
+        return Task.CompletedTask;
+    }
+
+    [Fact]
+    public Task Page_Categories_RenderOutlinedChips()
+    {
+        var categoryId = Guid.NewGuid();
+        StubCategories(new CategoryDto(categoryId, "Work", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow));
+        var dto = new HotstringDto(Guid.NewGuid(), [], true, "btw", "by the way", null, true, true,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, CategoryIds: [categoryId]);
+        StubList(Page(dto));
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+
+        cut.WaitForAssertion(() =>
+        {
+            IReadOnlyList<AngleSharp.Dom.IElement> categoryChips = [.. cut.FindAll(".mud-table-cell .mud-chip")
+                .Where(chip => chip.TextContent.Contains("Work"))];
+            categoryChips.Should().NotBeEmpty();
+            categoryChips.Should().OnlyContain(chip => chip.ClassList.Contains("mud-chip-outlined"));
+        });
+        return Task.CompletedTask;
+    }
+
+    [Fact]
+    public void Page_TypeColumnHeader_ShowsGlyphLegendHelpIcon()
+    {
+        StubList(Page());
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+
+        cut.WaitForAssertion(() => cut.Find(".type-legend-help").Should().NotBeNull());
+    }
+
+    [Fact]
+    public async Task Page_SelectedRow_GetsSelectedRowClass()
+    {
+        var dto = new HotstringDto(Guid.NewGuid(), [], true, "btw", "by the way", null, true, true,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        StubList(Page(dto));
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find("tbody tr"));
+
+        await cut.InvokeAsync(() => cut.Find("tbody tr input[type=\"checkbox\"]").Change(true));
+
+        cut.WaitForAssertion(() => cut.Find("tbody tr.selected-row").Should().NotBeNull());
     }
 
     [Fact]

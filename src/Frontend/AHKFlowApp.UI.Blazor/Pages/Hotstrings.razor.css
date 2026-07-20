@@ -91,7 +91,17 @@
 
 ::deep .hotstrings-grid th:nth-child(8),
 ::deep .hotstrings-grid td:nth-child(8) {
-    width: 132px;
+    width: 108px;
+}
+
+/* Actions column holds icon buttons, not text — the shared ellipsis rule above would clip
+   them behind a fake "..." once the fixed-width column can't fit all icons at higher zoom. */
+::deep .hotstrings-grid td:nth-child(8) {
+    overflow: visible;
+}
+
+::deep .hotstrings-grid .selected-row {
+    background-color: color-mix(in srgb, var(--mud-palette-primary) 12%, transparent);
 }
 
 ::deep .hotstrings-grid .option-glyphs {

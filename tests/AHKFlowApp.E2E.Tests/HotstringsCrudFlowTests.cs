@@ -33,7 +33,7 @@ public sealed class HotstringsCrudFlowTests(StackFixture fixture) : IAsyncLifeti
 
         Assert.True(await page.IsVisibleAsync("text=by the way"));
 
-        await page.ClickAsync("button.start-edit");
+        await page.ClickAsync("button.edit");
         await page.WaitForSelectorAsync("tr.edit-row");
         await page.FillAsync("textarea[data-test=\"replacement-input\"]", "by the way!");
         await page.ClickAsync("button.commit-edit");
