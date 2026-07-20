@@ -39,6 +39,7 @@
 | How can a broken hook be recovered? | `AHKFLOW_GUARD_DISABLE=1` exits before all guard code. | This prevents strict-mode, parser, regex, or Git-probe defects from bricking every Bash call. Documentation also gives a manual config-edit recovery path. |
 | Replace Bash with PowerShell on every call? | No for Claude/Copilot; accept one PowerShell process for Codex on Windows. | Claude/Copilot noncandidate commands exit through the existing Bash shim. Codex avoids a second wrapper process and has a recorded 650 ms warm-p50 budget. |
 | How is the Codex Windows hook path expanded? | Run `pwsh -Command` and resolve the Git root inside that process; verify a real trusted-session denial from a subdirectory. | This avoids relying on Codex to expand `$(...)` or on whichever `bash` happens to be first on Windows `PATH`. |
+| How is Copilot's adapter selected? | Infer it from a top-level `toolArgs` key and keep `.github/hooks/hooks.json` byte-identical; verify with a real-session denial. | Appending an argument to the `bash` field would assume Copilot shell-interprets it. Inference carries the same evidence burden as the Codex path, so it gets the same real-session probe rather than synthetic fixtures alone. |
 | Which policy copy does `pre-commit` use? | The absolute main-owned `core.hooksPath` and main policy copy are authoritative after merge. | This follows the existing `pre-push` model. Feature-branch commits are protected only by `PreToolUse`; old worktrees intentionally receive the current main policy. |
 | Change Claude's Git permission allowlist? | No. | The hook remains the single policy source; duplicating mutation rules in `permissions.deny` would create drift. |
 
@@ -308,7 +309,7 @@ Then:
 4. evaluate explicit safety rules in a fail-closed `try/catch`;
 5. evaluate repository identity and location in a separate fail-open `try/catch`;
 6. map the result to the resolved agent's native response;
-7. write diagnostics to stderr without echoing the entire payload or stack trace.
+7. write diagnostics to stderr naming the resolved adapter, without echoing the entire payload or stack trace.
 
 Output mapping:
 
@@ -749,7 +750,36 @@ Expected: the tool call is denied with the shared `BLOCKED: agent Git mutations.
 
 Also measure 5 warmups plus 20 direct synthetic invocations of the decoded `commandWindows` value. Warm p50 must be at most 650 ms. This is the accepted Windows Codex startup budget; do not add an extra Bash wrapper around PowerShell.
 
-- [ ] **Step 10: Commit the primary guard**
+- [ ] **Step 10: Prove Copilot adapter inference and denial in a real session**
+
+Copilot loads `.github/hooks/hooks.json` with no positional adapter argument, so this is the only check that exercises the `toolArgs` payload-shape inference against a native payload instead of a synthetic fixture.
+
+From the managed worktree, derive the main checkout and launch Copilot from the `docs` subdirectory:
+
+```powershell
+$commonDir = (git rev-parse --path-format=absolute --git-common-dir).Trim()
+$mainCheckout = Split-Path -Parent $commonDir
+$mainCheckout
+Push-Location (Join-Path $mainCheckout 'docs')
+copilot
+```
+
+Inside that session, ask Copilot to run this nonmutating probe, replacing `<main-checkout>` with the printed path:
+
+```text
+Run exactly this shell command and report the hook result:
+git -C "<main-checkout>" add --dry-run .
+```
+
+Expected:
+
+- the tool call is denied with the shared `BLOCKED: agent Git mutations...` message;
+- the stderr diagnostic names `Copilot`, proving the top-level `toolArgs` key selected the native contract rather than falling back to `Claude`;
+- a normal Git dry-run result is a failure, and so is a denial whose diagnostic names `Claude`.
+
+If the diagnostic names `Claude`, Copilot's payload does not expose top-level `toolArgs`. Record the observed top-level keys, then add an explicit adapter path for Copilot before continuing. Do not weaken the location rule to compensate.
+
+- [ ] **Step 11: Commit the primary guard**
 
 ```powershell
 git add scripts/agents/agent-worktree-guard.common.ps1 `
@@ -1036,12 +1066,12 @@ Expected:
 
 - all JSON parses;
 - exactly one project guard registration exists per agent;
-- Claude and Copilot both reference the retained bare `pre-bash-guard.sh` fast shim, `.github/hooks/hooks.json` is unchanged, and the bare-path Copilot payload test proves `toolArgs` selects the Copilot contract;
+- Claude and Copilot both reference the retained bare `pre-bash-guard.sh` fast shim, `.github/hooks/hooks.json` is unchanged, and the Task 2 real-session probe proves `toolArgs` selects the Copilot contract;
 - Codex's matcher is Bash only;
 - Codex `commandWindows` invokes one explicit PowerShell process and does not contain a literal `-File "$(git ...)"` path;
 - the focused test has exercised native Claude, Codex, and Copilot payloads.
 
-Retain the trusted-session deny evidence from Task 2; `codex features list` or `/hooks` registration alone is insufficient.
+Retain the real-session deny evidence from Task 2 for both Codex and Copilot; `codex features list`, `/hooks` registration, or synthetic payload fixtures alone are insufficient.
 
 - [ ] **Step 4: Run cross-agent setup and parity checks**
 
