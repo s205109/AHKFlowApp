@@ -94,6 +94,26 @@ starting PowerShell for every command (rejected — it would cost the ~54 ms com
 | Switch | Effect |
 | --- | --- |
 | `AHKFLOW_ALLOW_MAIN=1` | Overrides the **location** rule only (turns a location Deny into a warned Allow). Force-push, destructive-Git, and dangerous-file rules still apply. |
+
+### Where `AHKFLOW_ALLOW_MAIN=1` has to be set
+
+For the `PreToolUse` guard it must be in the **environment the agent session inherits**, set before
+the session starts:
+
+```powershell
+$env:AHKFLOW_ALLOW_MAIN = '1'   # then launch the agent from this terminal
+```
+
+An inline `AHKFLOW_ALLOW_MAIN=1 git ...` prefix **does not work**. The guard runs in its own
+process and inspects the command as text; the prefix only ever reaches the child `git` process.
+An agent cannot self-apply the override — by design, relaxing the location rule is the human's
+call.
+
+The `pre-commit` backstop behaves differently: git spawns it and passes its own environment down,
+so there an inline `AHKFLOW_ALLOW_MAIN=1 git commit ...` does take effect.
+
+A human's own shell is never subject to the `PreToolUse` guard at all — it is an agent hook. Main
+checkout maintenance (`git worktree remove`, `git branch -D`) is simply run directly.
 | `AHKFLOW_GUARD_DISABLE=1` | Emergency kill switch. Short-circuits the **entire** command guard before strict mode, module loading, stdin parsing, or Git probes, and warns loudly. Never set it persistently. |
 
 ## Accepted limitations
