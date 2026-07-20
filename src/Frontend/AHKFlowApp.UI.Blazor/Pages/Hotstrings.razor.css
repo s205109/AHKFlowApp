@@ -89,13 +89,10 @@
     width: 10%;
 }
 
-::deep .hotstrings-grid th:nth-child(8),
-::deep .hotstrings-grid td:nth-child(8) {
-    width: 108px;
-}
-
 /* Actions column holds icon buttons, not text — the shared ellipsis rule above would clip
-   them behind a fake "..." once the fixed-width column can't fit all icons at higher zoom. */
+   them behind a fake "..." once the fixed-width column can't fit all icons at higher zoom.
+   Its width comes from the column's HeaderStyle in Hotstrings.razor: under table-layout:fixed
+   the header row sizes the column, so an inline header width beats any rule set here. */
 ::deep .hotstrings-grid td:nth-child(8) {
     overflow: visible;
 }

@@ -76,7 +76,11 @@
                          SortMode="SortMode.Single" ReadOnly="true"
                          RowClassFunc="@GetRowClass">
                 <Columns>
-                    <SelectColumn T="HotstringEditModel" />
+                    @* SelectColumn defaults to an inline width:0% (sized to content under the
+                       default auto table layout). The grid uses table-layout:fixed, where 0% is
+                       taken literally — the column collapses and the Trigger cell covers the
+                       checkbox, making row selection unclickable. Pin an explicit width. *@
+                    <SelectColumn T="HotstringEditModel" HeaderStyle="width:56px" />
                     <PropertyColumn Property="x => x.Trigger" Title="Trigger">
                         <CellTemplate>
                             @if (IsEditing(context.Item))
