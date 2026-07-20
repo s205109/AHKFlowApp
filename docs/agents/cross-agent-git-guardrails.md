@@ -132,8 +132,13 @@ checkout maintenance (`git worktree remove`, `git branch -D`) is simply run dire
 - Main-tree edits, builds, tests, and formatters are allowed and can dirty the working tree. The
   guard prevents Git mutation, not a dirty tree.
 - The command tokenizer is not a full Bash/PowerShell parser. Representative chains, redirects,
-  quoting, `git -C`, leading `NAME=value` prefixes, and directory changes (`cd`, `chdir`, `pushd`,
-  `Set-Location`) are covered; hostile obfuscation is out of scope.
+  quoting, `git -C`, leading `NAME=value` prefixes, quoted and path-qualified executables
+  (`"git"`, `/usr/bin/git`, `"C:\Program Files\Git\cmd\git.exe"`), and directory changes (`cd`,
+  `chdir`, `pushd`/`popd`, `Set-Location`) are covered; hostile obfuscation is out of scope.
+- Directory tracking models the shell: a `cd` to a path that does not exist **fails**, so the
+  guard leaves the effective directory unchanged rather than believing the move happened, and
+  `pushd`/`popd` are tracked as a stack. Both matter because a mutation after a failed `cd` still
+  executes wherever the shell actually is.
 - A directory change the guard cannot expand literally (`cd $HOME`, `cd -`, bare `cd`) makes a
   following mutation untargetable, so it is denied with `agent-unresolved-git-target`. Read-only
   Git after such a `cd` is unaffected. Pass an explicit `git -C <path>` to be classified normally.

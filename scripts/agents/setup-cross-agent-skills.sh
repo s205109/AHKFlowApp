@@ -64,22 +64,31 @@ GITHUB_SKILLS="$REPO_ROOT/.github/skills"
 CODEX_PLUGIN_SKILLS="$REPO_ROOT/plugins/ahkflowapp/skills"
 
 # --- Install committed git hooks via core.hooksPath ---
-if [ -d "$REPO_ROOT/.githooks" ]; then
+# core.hooksPath is shared by every linked worktree, so it must be the main checkout's absolute
+# .githooks directory. A relative '.githooks' resolves inside whichever worktree is running the
+# hook, which would leave old worktrees executing their own stale copy of the agent guard instead
+# of main's current policy. Keep this in step with setup-cross-agent-skills.ps1.
+MAIN_CHECKOUT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)")
+HOOKS_DIR="$MAIN_CHECKOUT/.githooks"
+if [ -d "$HOOKS_DIR" ]; then
     current_hooks_path=$(git config core.hooksPath 2>/dev/null || true)
     normalized_current=$(printf '%s' "$current_hooks_path" | tr '\\' '/' | sed 's:/*$::' | tr '[:upper:]' '[:lower:]')
+    normalized_target=$(printf '%s' "$HOOKS_DIR" | tr '\\' '/' | sed 's:/*$::' | tr '[:upper:]' '[:lower:]')
 
-    case "$normalized_current" in
-        .githooks)
-            echo "[OK] core.hooksPath = .githooks"
-            ;;
-        ""|.git/hooks|*/.git/hooks)
-            git config core.hooksPath .githooks
-            echo "[FIX] Set core.hooksPath = .githooks (enables committed hooks)"
-            ;;
-        *)
-            echo "[WARN] core.hooksPath is '$current_hooks_path' — committed hooks at .githooks/ inactive. To enable: git config core.hooksPath .githooks"
-            ;;
-    esac
+    if [ "$normalized_current" = "$normalized_target" ]; then
+        echo "[OK] core.hooksPath = $HOOKS_DIR"
+    else
+        case "$normalized_current" in
+            # '.githooks' is the historical relative value this script itself used to install.
+            ""|.githooks|.git/hooks|*/.git/hooks)
+                git config core.hooksPath "$HOOKS_DIR"
+                echo "[FIX] Set core.hooksPath = $HOOKS_DIR (main-owned committed hooks)"
+                ;;
+            *)
+                echo "[WARN] core.hooksPath is '$current_hooks_path' — committed hooks at $HOOKS_DIR inactive. To enable: git config core.hooksPath '$HOOKS_DIR'"
+                ;;
+        esac
+    fi
 fi
 
 # --- Ensure .agents/ exists ---

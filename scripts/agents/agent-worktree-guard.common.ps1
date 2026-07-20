@@ -24,8 +24,12 @@ $script:AgentGuardDoubleQuoteEscapables = '$`"\'
 $script:AgentGuardUnquotedEscapables = '$`"\;&|()' + "'"
 
 # Commands that move the shell's working directory, so a later `git` in the same chain does not
-# run where the hook payload said it would.
-$script:AgentGuardChangeDirectoryCommands = @('cd', 'chdir', 'pushd', 'set-location')
+# run where the hook payload said it would. pushd/popd are tracked separately because they form a
+# stack: treating popd as an unrecognized command left the guard believing the shell was still in
+# whatever pushd last selected.
+$script:AgentGuardChangeDirectoryCommands = @('cd', 'chdir', 'set-location')
+$script:AgentGuardPushDirectoryCommands = @('pushd', 'push-location')
+$script:AgentGuardPopDirectoryCommands = @('popd', 'pop-location')
 
 # A leading NAME=value assignment is a prefix, not the command being run.
 $script:AgentGuardEnvAssignmentPattern = '^[A-Za-z_][A-Za-z0-9_]*='
@@ -226,8 +230,16 @@ function Get-AgentGitSafetyDecision {
 
         switch ($subcommand) {
             'push' {
-                if ((Test-AgentGitArgsContainAny -Arguments $arguments -Options @('-f', '--force')) -or
-                    @($arguments | Where-Object { $_ -ilike '--force-*' }).Count -gt 0) {
+                # -f may be bundled (-fu, -uf), and a leading '+' on a refspec forces that ref
+                # without any flag at all. Matching only exact -f/--force left both spellings at
+                # safety Allow, so AHKFLOW_ALLOW_MAIN=1 could downgrade them to a location warning.
+                $forced =
+                (Test-AgentGitArgsContainAny -Arguments $arguments -Options @('-f', '--force')) -or
+                @($arguments | Where-Object { $_ -ilike '--force-*' }).Count -gt 0 -or
+                @($arguments | Where-Object { $_ -cmatch '^-[a-zA-Z]*f' }).Count -gt 0 -or
+                @(Get-AgentGitPositionals -Arguments $arguments | Where-Object { $_ -like '+*' }).Count -gt 0
+
+                if ($forced) {
                     return New-AgentGuardDecision -Action Deny -Rule 'force-push' -Message `
                         'BLOCKED: Force push detected. Use regular push or discuss with the user first.'
                 }
@@ -401,14 +413,27 @@ function Get-AgentCommandSegment {
             continue
         }
 
-        if ($script:AgentGuardChangeDirectoryCommands -contains $name) {
+        if ($script:AgentGuardPopDirectoryCommands -contains $name) {
+            [void] $classified.Add([pscustomobject]@{
+                    Kind       = 'PopDirectory'
+                    Tokens     = $effective
+                    Directory  = ''
+                    Unresolved = $false
+                })
+            continue
+        }
+
+        $isPush = $script:AgentGuardPushDirectoryCommands -contains $name
+        if ($isPush -or $script:AgentGuardChangeDirectoryCommands -contains $name) {
             # First non-option token is the target; that also skips Set-Location -LiteralPath.
             $target = @($effective | Select-Object -Skip 1 | Where-Object { $_ -notlike '-*' } | Select-Object -First 1)
             $directory = if ($target.Count -gt 0) { [string] $target[0] } else { '' }
+            # A bare `pushd` swaps the top two stack entries rather than moving somewhere named,
+            # so it is untrackable in the same way an unexpandable target is.
             $unresolved = [string]::IsNullOrWhiteSpace($directory) -or $directory -match '[\$%]'
 
             [void] $classified.Add([pscustomobject]@{
-                    Kind       = 'ChangeDirectory'
+                    Kind       = if ($isPush) { 'PushDirectory' } else { 'ChangeDirectory' }
                     Tokens     = $effective
                     Directory  = $directory
                     Unresolved = $unresolved
@@ -911,25 +936,53 @@ function Get-AgentGitLocationDecision {
 
     $effectiveCwd = $Cwd
     $unresolvedDirectory = $false
+    $directoryStack = New-Object System.Collections.Generic.List[string]
     $blockingState = ''
     $blockingTarget = ''
 
     foreach ($segment in $Segments) {
-        if ($segment.Kind -eq 'ChangeDirectory') {
+        if ($segment.Kind -eq 'PopDirectory') {
+            # An empty stack makes popd fail and leaves the shell where it is.
+            if ($directoryStack.Count -gt 0) {
+                $effectiveCwd = $directoryStack[$directoryStack.Count - 1]
+                $directoryStack.RemoveAt($directoryStack.Count - 1)
+                $unresolvedDirectory = $false
+            }
+            continue
+        }
+
+        if ($segment.Kind -eq 'ChangeDirectory' -or $segment.Kind -eq 'PushDirectory') {
             if ($segment.Unresolved) {
                 $unresolvedDirectory = $true
+                continue
             }
-            elseif ([System.IO.Path]::IsPathRooted($segment.Directory)) {
-                $effectiveCwd = $segment.Directory
-                $unresolvedDirectory = $false
+
+            $candidate = if ([System.IO.Path]::IsPathRooted($segment.Directory)) {
+                $segment.Directory
             }
             elseif (-not [string]::IsNullOrWhiteSpace($effectiveCwd)) {
-                $effectiveCwd = Join-Path $effectiveCwd $segment.Directory
-                $unresolvedDirectory = $false
+                Join-Path $effectiveCwd $segment.Directory
             }
             else {
-                $unresolvedDirectory = $true
+                ''
             }
+
+            if ([string]::IsNullOrWhiteSpace($candidate)) {
+                $unresolvedDirectory = $true
+                continue
+            }
+
+            # A cd to a path that does not exist FAILS, leaving the shell where it already was -
+            # so the following git runs there, not at the named target. Treating the move as
+            # successful classified `cd C:\missing; git commit` against a harmless outside path
+            # and allowed a commit that actually landed in main.
+            if (-not (Test-Path -LiteralPath $candidate -PathType Container)) {
+                continue
+            }
+
+            if ($segment.Kind -eq 'PushDirectory') { [void] $directoryStack.Add($effectiveCwd) }
+            $effectiveCwd = $candidate
+            $unresolvedDirectory = $false
             continue
         }
 

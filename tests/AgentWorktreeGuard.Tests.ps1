@@ -452,7 +452,15 @@ try {
         @{ Command = 'git -C . clean -fd'; Rule = 'git-clean-force' },
         @{ Command = 'git -C . push origin -f'; Rule = 'force-push' },
         @{ Command = 'git -c core.pager=cat reset --hard HEAD~1'; Rule = 'git-reset-hard' },
-        @{ Command = 'git status && git.exe push --force origin main'; Rule = 'force-push' }
+        @{ Command = 'git status && git.exe push --force origin main'; Rule = 'force-push' },
+        # Clustered short flags and a '+' refspec force a push without an exact -f/--force token.
+        @{ Command = 'git push -fu origin main'; Rule = 'force-push' },
+        @{ Command = 'git push -uf origin main'; Rule = 'force-push' },
+        @{ Command = 'git push origin +main:main'; Rule = 'force-push' },
+        @{ Command = 'git push origin +refs/heads/topic'; Rule = 'force-push' },
+        # Quoted and path-qualified executables must reach the same rules.
+        @{ Command = '"git" reset --hard'; Rule = 'git-reset-hard' },
+        @{ Command = '"C:\Program Files\Git\cmd\git.exe" reset --hard'; Rule = 'git-reset-hard' }
     )
 
     foreach ($case in $indirectSafetyCases) {
@@ -735,6 +743,37 @@ try {
         Assert-Equal 'agent-unresolved-git-target' $decision.Rule 'Rule'
     }
 
+    # Regression: a cd to a nonexistent path FAILS and leaves the shell where it was, so the
+    # mutation runs there. Treating the move as successful classified it against the harmless
+    # outside path and allowed a commit that actually landed in main.
+    Invoke-TestCase 'A cd to a nonexistent path leaves the mutation in main and is denied' {
+        $missing = Join-Path $fixture.TestRoot 'no-such-directory'
+        $decision = Invoke-AgentGuardPolicy -Command "cd `"$missing`"; git commit -m test" `
+            -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Deny' $decision.Action 'Action'
+        Assert-Equal 'agent-main-git-mutation' $decision.Rule 'Rule'
+    }
+
+    Invoke-TestCase 'popd unwinds to main and denies the following mutation' {
+        $command = "pushd `"$($fixture.Main)`"; pushd `"$($fixture.Managed)`"; popd; git commit -m test"
+        $decision = Invoke-AgentGuardPolicy -Command $command -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Deny' $decision.Action 'Action'
+        Assert-Equal 'agent-main-git-mutation' $decision.Rule 'Rule'
+    }
+
+    Invoke-TestCase 'popd back into the managed worktree keeps the mutation allowed' {
+        $command = "pushd `"$($fixture.Main)`"; popd; git commit -m test"
+        $decision = Invoke-AgentGuardPolicy -Command $command -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Allow' $decision.Action 'Action'
+    }
+
+    Invoke-TestCase 'popd on an empty stack leaves the directory unchanged' {
+        $decision = Invoke-AgentGuardPolicy -Command 'popd; git commit -m test' `
+            -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Deny' $decision.Action 'Action'
+        Assert-Equal 'agent-main-git-mutation' $decision.Rule 'Rule'
+    }
+
     Invoke-TestCase 'An unexpandable cd does not block read-only git' {
         $decision = Invoke-AgentGuardPolicy -Command 'cd $HOME && git status' `
             -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
@@ -829,7 +868,16 @@ try {
         'GIT commit -m test',
         '`git commit -m test`',
         'rm -rf src',
-        'dotnet run'
+        'dotnet run',
+        # Regression: the leading-boundary class enumerated shell delimiters, so a quote or a path
+        # separator before the executable let these exit in Bash without ever reaching policy.
+        '"git" commit -m test',
+        "'git' commit -m test",
+        '"C:\Program Files\Git\cmd\git.exe" commit -m test',
+        'C:\Program` Files\Git\cmd\git.exe commit -m test',
+        '/usr/bin/git commit -m test',
+        '/c/Program\ Files/Git/cmd/git.exe commit -m test',
+        '"/c/Program Files/Git/cmd/git.exe" commit -m test'
     )
 
     foreach ($command in $candidateCommands) {
