@@ -21,7 +21,15 @@ PARSED=0
 
 # Held in single-quoted variables: an inline backtick in a [[ =~ ]] pattern would be taken as
 # command substitution before the match ever happens.
-CANDIDATE_PATTERN='(^|[[:space:];&|()`])(git(\.exe)?|rm|dotnet)([[:space:]]|$)'
+#
+# Both boundaries are "not an identifier character" rather than an enumerated delimiter list. An
+# enumerated list has to predict every character that can precede an executable, and it will miss
+# some: quotes and path separators are not delimiters, so "git" commit, 'git' commit, and
+# "C:\Program Files\Git\cmd\git.exe" commit all escaped the old [[:space:];&|()`] class and exited
+# here without ever reaching policy. The PowerShell core parses all three correctly - only this
+# prefilter was wrong, which is the worst place for it to be. Keep this a conservative superset:
+# a false positive costs one PowerShell start, a false negative silently disables the guard.
+CANDIDATE_PATTERN='(^|[^A-Za-z0-9_.-])(git(\.exe)?|rm|dotnet)([^A-Za-z0-9_.-]|$)'
 
 # Conservative superset of CANDIDATE_PATTERN, applied to the raw payload so the common case
 # never pays for a jq process at all.
