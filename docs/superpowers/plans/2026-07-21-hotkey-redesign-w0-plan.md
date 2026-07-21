@@ -132,7 +132,7 @@ namespace AHKFlowApp.Application.Services;
 
 /// <summary>
 /// AHK v2 string-literal escaping, shared by <see cref="HotstringEmitter"/> and
-/// <see cref="HotkeyEmitter"/>. Used for the contents of a quoted literal —
+/// <c>HotkeyEmitter</c>. Used for the contents of a quoted literal —
 /// <c>SendText "..."</c>, <c>Send "..."</c>, <c>Run("...")</c>.
 /// </summary>
 internal static class AhkEscaping
@@ -156,6 +156,8 @@ internal static class AhkEscaping
             .Replace("\t", "`t");
 }
 ```
+
+`HotkeyEmitter` is referenced as `<c>`, not `<see cref>`, on purpose: it does not exist until Task 2, and an unresolvable cref is CS1574 — an *error* here, because `GenerateDocumentationFile` is on (`AHKFlowApp.Application.csproj:3`) and `TreatWarningsAsErrors` is true (`Directory.Build.props:6`). Only CS1591 is suppressed. Task 1 must compile on its own.
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -396,9 +398,11 @@ Then delete the entire `private static string FormatHotkey(Hotkey hk)` method fr
 
 - [ ] **Step 6: Flip the characterization test**
 
-In `tests/AHKFlowApp.Application.Tests/Services/AhkScriptGeneratorTests.cs`, the existing test at line 424 pins the *old* unescaped behavior and will now fail. Replace it:
+In `tests/AHKFlowApp.Application.Tests/Services/AhkScriptGeneratorTests.cs`, the existing test at line 424 pins the *old* unescaped behavior and will now fail. Replace it **together with the three-line comment above it** (lines 421-423), which still claims validation rejects `"`/backtick and that the emitter "embeds raw — no defensive escaping". Both halves are now false:
 
 ```csharp
+    // Parameters are escaped at emission by HotkeyEmitter, so a quote in a stored
+    // value can no longer break the generated line.
     [Fact]
     public void Generate_Hotkey_EscapesParametersInStringLiteral()
     {
@@ -446,6 +450,8 @@ covers restore/revert/seed which bypass validators. refs #195"
 ### Task 3: Canonical key registry
 
 Keyboard keys only. Mouse and wheel entries are Wave 2 — adding them now would ship a picker group with no UI and no validation path to exercise it.
+
+**Wave assignment of the entries this registry does *not* have.** Spec goldens 13 (`CapsLock::Ctrl`) and 14 (`RAlt::RButton`) need modifier-key entries — `Ctrl`, `Alt`, `Shift`, `LCtrl`, `RCtrl`, `LAlt`, `RAlt`, `LShift`, `RShift`, `LWin`, `RWin` — which W0 deliberately omits: they are only reachable as remap sources and destinations, and remap has no action kind until W1. **W1 adds them** alongside `HotkeyActionKind`, with the role flags that make `RAlt` a legal `RemapSource` but not a `HotkeyKey` on its own. W2 adds mouse and wheel (`RButton`, `MButton`, `WheelUp`, …), which golden 14's *destination* also needs. Golden-driven registry tests therefore land in W1/W2 with the entries, not here — a W0 test asserting `Ctrl` resolves would be asserting a key that has no legal role yet.
 
 **Files:**
 - Create: `src/Backend/AHKFlowApp.Application/Constants/HotkeyKeys.cs`
@@ -505,9 +511,12 @@ public sealed class HotkeyKeysTests
     [Theory]
     [InlineData("vk1B", "vk1b")]
     [InlineData("VK1B", "vk1b")]
+    [InlineData("vk1", "vk01")]
     [InlineData("sc001", "sc001")]
     [InlineData("SC01F", "sc01f")]
-    public void TryCanonicalize_VkOrScCode_LowercasesTheCode(string input, string expected)
+    [InlineData("sc1", "sc001")]
+    [InlineData("sc1F", "sc01f")]
+    public void TryCanonicalize_VkOrScCode_LowercasesAndPadsTheCode(string input, string expected)
     {
         bool ok = HotkeyKeys.TryCanonicalize(input, out string canonical);
 
@@ -531,6 +540,8 @@ public sealed class HotkeyKeysTests
     [InlineData("vkZZ")]
     [InlineData("sc12345")]
     [InlineData("Joy1")]
+    [InlineData(" a")]
+    [InlineData("a ")]
     public void TryCanonicalize_UnknownOrMalformed_IsRejected(string? input)
     {
         bool ok = HotkeyKeys.TryCanonicalize(input, out _);
@@ -645,7 +656,7 @@ internal static class HotkeyKeys
         new("^vk[0-9a-f]{1,2}$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly Regex s_scanCode =
-        new("^sc[0-9a-f]{1,4}$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        new("^sc[0-9a-f]{1,3}$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly string[] s_namedKeys =
     [
@@ -698,29 +709,41 @@ internal static class HotkeyKeys
     /// Resolves any accepted spelling to the single canonical form, or returns false if the
     /// value is neither a registry key nor a well-formed <c>vk</c>/<c>sc</c> code.
     /// </summary>
+    /// <remarks>
+    /// Canonicalization covers all three axes the duplicate check depends on: alias
+    /// (<c>Esc</c> → <c>Escape</c>), case (<c>F5</c>), and code width — <c>vk1</c> → <c>vk01</c>,
+    /// <c>sc1</c> → <c>sc001</c>. Without the padding, <c>vk1</c> and <c>vk01</c> name the same
+    /// physical key but survive as two rows.
+    /// Surrounding whitespace is <em>not</em> trimmed: it is rejected, matching the existing
+    /// "Key must not have leading or trailing whitespace." rule this replaces.
+    /// </remarks>
     public static bool TryCanonicalize(string? key, out string canonical)
     {
         canonical = string.Empty;
         if (string.IsNullOrWhiteSpace(key))
             return false;
 
-        string trimmed = key.Trim();
-
-        if (s_aliases.TryGetValue(trimmed, out string? aliased))
+        if (s_aliases.TryGetValue(key, out string? aliased))
         {
             canonical = aliased;
             return true;
         }
 
-        if (s_byName.TryGetValue(trimmed, out HotkeyKeyEntry? entry))
+        if (s_byName.TryGetValue(key, out HotkeyKeyEntry? entry))
         {
             canonical = entry.Canonical;
             return true;
         }
 
-        if (s_virtualKey.IsMatch(trimmed) || s_scanCode.IsMatch(trimmed))
+        if (s_virtualKey.IsMatch(key))
         {
-            canonical = trimmed.ToLowerInvariant();
+            canonical = "vk" + key[2..].ToLowerInvariant().PadLeft(2, '0');
+            return true;
+        }
+
+        if (s_scanCode.IsMatch(key))
+        {
+            canonical = "sc" + key[2..].ToLowerInvariant().PadLeft(3, '0');
             return true;
         }
 
@@ -769,7 +792,7 @@ internal static class HotkeyKeys
 dotnet test tests/AHKFlowApp.Application.Tests --filter "FullyQualifiedName~HotkeyKeysTests"
 ```
 
-Expected: PASS, 25 tests (the `[Theory]` cases count individually).
+Expected: PASS, every case green (`[Theory]` rows count individually).
 
 - [ ] **Step 5: Commit**
 
@@ -799,6 +822,10 @@ Collapses four 10-argument positional call sites into one record, mirroring `Hot
 - Modify: `src/Backend/AHKFlowApp.Application/Queries/Hotkeys/ListHotkeysQuery.cs:217`
 - Modify: `src/Backend/AHKFlowApp.Application/Commands/Dev/SeedHotkeysCommand.cs:94`
 - Modify: `tests/AHKFlowApp.TestUtilities/Builders/HotkeyBuilder.cs:67-70`
+- Modify: `tests/AHKFlowApp.Domain.Tests/Entities/RestoreFactoryTests.cs:51`
+- Modify: `tests/AHKFlowApp.Application.Tests/Hotkeys/ListHotkeysFilterByCategoryTests.cs:24-27,58-59`
+- Modify: `tests/AHKFlowApp.Application.Tests/Hotkeys/ListHotkeysLazySeedTests.cs:146`
+- Modify: `tests/AHKFlowApp.Application.Tests/Hotkeys/UpdateHotkeyWithCategoriesTests.cs:25,53,92,131`
 
 **Interfaces:**
 - Consumes: nothing.
@@ -982,7 +1009,7 @@ dotnet test tests/AHKFlowApp.Domain.Tests --filter "FullyQualifiedName~HotkeyTes
 
 Expected: PASS, 3 tests. The rest of the solution will not compile yet — that is Step 6.
 
-- [ ] **Step 6: Update all six call sites**
+- [ ] **Step 6: Update all call sites — six in `src/`, twelve in `tests/`**
 
 `CreateHotkeyCommand.cs` — replace the `Hotkey.Create(...)` block:
 
@@ -1099,12 +1126,30 @@ Add `using AHKFlowApp.Domain.Entities;` to any file that lacks it.
     }
 ```
 
+Four test files also call the factories directly rather than going through `HotkeyBuilder`, and the solution will not compile until they are converted too. Use the same positional-to-`HotkeyDefinition` shape as above:
+
+- `tests/AHKFlowApp.Domain.Tests/Entities/RestoreFactoryTests.cs:51` — one `Hotkey.Restore`.
+- `tests/AHKFlowApp.Application.Tests/Hotkeys/ListHotkeysFilterByCategoryTests.cs:24-27,58-59` — six `Hotkey.Create`.
+- `tests/AHKFlowApp.Application.Tests/Hotkeys/ListHotkeysLazySeedTests.cs:146` — one `Hotkey.Create`.
+- `tests/AHKFlowApp.Application.Tests/Hotkeys/UpdateHotkeyWithCategoriesTests.cs:25,53,92,131` — four `Hotkey.Create`.
+
+Prefer converting these to `new HotkeyBuilder()...Build()` where the test does not depend on an explicit `TimeProvider`; otherwise inline the record. Confirm none are left:
+
+```bash
+grep -rn "Hotkey\.\(Create\|Restore\)(" src tests
+```
+
+Expected: every hit passes a `HotkeyDefinition`.
+
 - [ ] **Step 7: Build and run the full suite**
 
 ```bash
 dotnet build AHKFlowApp.slnx --configuration Release
-dotnet test tests/AHKFlowApp.Domain.Tests tests/AHKFlowApp.Application.Tests
+dotnet test tests/AHKFlowApp.Domain.Tests
+dotnet test tests/AHKFlowApp.Application.Tests
 ```
+
+`dotnet test` accepts **one** project path — passing two fails with `MSBUILD : error MSB1008: Only one project can be specified.` Run them as separate commands (or `dotnet test AHKFlowApp.slnx` for everything).
 
 Expected: build succeeds, all tests PASS. This is a pure signature refactor — any behavioral test failure means an argument was mapped to the wrong record property. The positional-to-named conversion is exactly where a `Ctrl`/`Alt` transposition hides, so do not skip this step.
 
@@ -1189,36 +1234,12 @@ public sealed class HotkeyRulesTests
         result.Errors.Should().Contain(e => e.PropertyName.EndsWith("Key"));
     }
 
-    [Fact]
-    public void ValidParameters_DoubleQuoteAndBacktick_AreNowAccepted()
+    [Theory]
+    [InlineData(" a")]
+    [InlineData("a ")]
+    public void ValidKey_SurroundingWhitespace_IsStillRejected(string key)
     {
-        CreateHotkeyDto dto = new(
-            Description: "d",
-            Key: "a",
-            Ctrl: true,
-            Action: HotkeyAction.Send,
-            Parameters: "he said \"hi\" 100`%",
-            AppliesToAllProfiles: true);
-
-        ValidationResult result = new CreateHotkeyCommandValidator()
-            .Validate(new CreateHotkeyCommand(dto));
-
-        result.IsValid.Should().BeTrue();
-    }
-
-    [Fact]
-    public void ValidParameters_ControlCharacter_IsStillRejected()
-    {
-        CreateHotkeyDto dto = new(
-            Description: "d",
-            Key: "a",
-            Ctrl: true,
-            Action: HotkeyAction.Send,
-            Parameters: "bad\0value",
-            AppliesToAllProfiles: true);
-
-        ValidationResult result = new CreateHotkeyCommandValidator()
-            .Validate(new CreateHotkeyCommand(dto));
+        ValidationResult result = ValidateKey(key);
 
         result.IsValid.Should().BeFalse();
     }
@@ -1227,7 +1248,18 @@ public sealed class HotkeyRulesTests
 
 `CreateHotkeyDto` (`DTOs/HotkeyDto.cs:48`) defaults every parameter after `Key`, so the omitted ones need no value. `HotkeyKeys`, `HotkeyEmitter` and `AhkEscaping` are `internal`, which the test project can see — `AHKFlowApp.Application.csproj:20` already declares `<InternalsVisibleTo Include="AHKFlowApp.Application.Tests" />`.
 
-Note the last two tests belong to Task 6's relaxation but are written here so the whole validator surface lands in one file. They fail until Task 6.
+Parameter relaxation is **not** tested here — those tests belong to Task 6 and are written there, so this task's commit is green.
+
+- [ ] **Step 1b: Rewrite the existing key tests that pin the denylist**
+
+`tests/AHKFlowApp.Application.Tests/Hotkeys/CreateHotkeyCommandValidatorTests.cs` pins the interim character rules and will fail once `ValidKey` changes. Stage these edits in *this* task:
+
+- `Validate_WithKeyContainingForbiddenChars_Fails` (line ~124) asserts the exact messages "Key must not contain double-quote characters." / backtick / colon. Those messages no longer exist. Replace the theory with one that keeps the inputs (`a"`, `` a` ``, `a:`) but asserts only that `Input.Key` has an error — the registry rejects all three as unknown names.
+- `Validate_WithKeyContainingControlChars_Fails` (line ~110) asserts "Key must not contain control characters." Same treatment: keep the inputs, drop the message assertion.
+- `Validate_WithSemicolonKey_Succeeds` (line ~139) now fails — `;` is not in the registry. Either delete it or move `;` into the rejection theory. Deleting is wrong: it silently loses coverage of a character the old rule specifically allowed. Move it.
+- Keep the whitespace test (line ~106) but drop its message assertion, matching the new theory above.
+
+`Validate_WithParametersContainingForbiddenChars_Fails` (line ~165) also pins the old rules — leave it alone here; Task 6 rewrites it in the same commit that relaxes them.
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -1235,7 +1267,7 @@ Note the last two tests belong to Task 6's relaxation but are written here so th
 dotnet test tests/AHKFlowApp.Application.Tests --filter "FullyQualifiedName~HotkeyRulesTests"
 ```
 
-Expected: FAIL — `ValidKey_UnknownKey_IsRejected` fails for `NotAKey`, `vk1Bsc001` and `Joy1` (the interim denylist accepts them), and both `ValidParameters` tests fail.
+Expected: FAIL — `ValidKey_UnknownKey_IsRejected` fails for `NotAKey`, `vk1Bsc001` and `Joy1`; the interim denylist accepts all three.
 
 - [ ] **Step 3: Rewrite ValidKey**
 
@@ -1259,25 +1291,63 @@ using AHKFlowApp.Application.Constants;
                          + "or a vkNN / scNNN code. Combined vkNNscNNN is not valid in a hotkey.");
 ```
 
-- [ ] **Step 4: Canonicalize on write**
+- [ ] **Step 4: Canonicalize on write — before the duplicate check, not after**
 
-In `CreateHotkeyCommand.cs`, immediately before building the `HotkeyDefinition`:
+Canonicalization must happen at the *top* of the handler, above the duplicate query. In `CreateHotkeyCommand.cs` the query at line 42 compares `h.Key == input.Key`; canonicalizing later would let `Esc` and `Escape` — or `vk1` and `vk01` — pass the duplicate check and then persist as the same canonical value, producing exactly the duplicate rows the canonicalization exists to prevent.
+
+Insert immediately after `CreateHotkeyDto input = request.Input;`:
 
 ```csharp
         HotkeyKeys.TryCanonicalize(input.Key, out string canonicalKey);
 ```
 
-and use `canonicalKey` instead of `input.Key` in the definition. Apply the identical change in `UpdateHotkeyCommand.cs`. Add `using AHKFlowApp.Application.Constants;` to both files.
+Then use `canonicalKey` in **both** places — the duplicate query and the `HotkeyDefinition`:
+
+```csharp
+        bool duplicate = await db.Hotkeys.AnyAsync(
+            h => h.OwnerOid == ownerOid
+              && h.Key == canonicalKey
+              && h.Ctrl == input.Ctrl
+              /* … unchanged … */,
+            ct);
+```
+
+Apply the identical change in `UpdateHotkeyCommand.cs` (its duplicate query has the same shape plus an `h.Id != request.Id` clause). Add `using AHKFlowApp.Application.Constants;` to both files.
 
 Ignoring the boolean return is correct here and only here: the validating decorator runs before the handler, so an invalid key never reaches this line. Do not add a defensive branch — the codebase does not re-validate inside internal methods.
+
+Note this does **not** retro-canonicalize existing rows. A pre-W0 row stored as `Esc` stays `Esc` until edited, so it will not collide with a newly created `Escape`. That is accepted: no migration is in W0 scope, and the emitted line is valid either way.
+
+- [ ] **Step 4b: Add the persistence and duplicate tests**
+
+Add to `tests/AHKFlowApp.Application.Tests/Hotkeys/` (an integration test class, alongside the existing handler tests — these need a DbContext):
+
+```csharp
+    [Fact]
+    public async Task Create_AliasKey_PersistsCanonicalSpelling()
+```
+Create with `Key: "Esc"`; assert the stored row's `Key` is `"Escape"`.
+
+```csharp
+    [Fact]
+    public async Task Create_AliasOfExistingKey_IsRejectedAsDuplicate()
+```
+Seed a hotkey with `Key: "Escape"` and the same modifiers; create with `Key: "Esc"`; assert `Result.Status` is `Conflict`. Without Step 4's reordering this test fails — that is the point of it.
+
+```csharp
+    [Fact]
+    public async Task Create_UnpaddedVkCode_IsRejectedAsDuplicateOfPaddedForm()
+```
+Seed `vk01`, create `vk1`, assert `Conflict`.
 
 - [ ] **Step 5: Run tests**
 
 ```bash
 dotnet test tests/AHKFlowApp.Application.Tests --filter "FullyQualifiedName~HotkeyRulesTests"
+dotnet test tests/AHKFlowApp.Application.Tests --filter "FullyQualifiedName~CreateHotkeyCommandValidatorTests"
 ```
 
-Expected: the two `ValidKey_*` theories PASS. The two `ValidParameters_*` tests still FAIL — Task 6 fixes them.
+Expected: PASS, both. This task's commit is green — the parameter relaxation and its tests land together in Task 6.
 
 - [ ] **Step 6: Commit**
 
@@ -1286,7 +1356,8 @@ dotnet format AHKFlowApp.slnx
 git add src/Backend/AHKFlowApp.Application/Validation/HotkeyRules.cs \
         src/Backend/AHKFlowApp.Application/Commands/Hotkeys/CreateHotkeyCommand.cs \
         src/Backend/AHKFlowApp.Application/Commands/Hotkeys/UpdateHotkeyCommand.cs \
-        tests/AHKFlowApp.Application.Tests/Validation/HotkeyRulesTests.cs
+        tests/AHKFlowApp.Application.Tests/Validation/HotkeyRulesTests.cs \
+        tests/AHKFlowApp.Application.Tests/Hotkeys/CreateHotkeyCommandValidatorTests.cs
 git commit -m "feat: validate hotkey Key against canonical registry
 
 replaces interim character denylist; canonicalize on write so Esc and
@@ -1301,18 +1372,58 @@ Safe only now: Task 2 put escaping in front of every emission, so `"` and backti
 
 **Files:**
 - Modify: `src/Backend/AHKFlowApp.Application/Validation/HotkeyRules.cs:38-47`
+- Modify: `tests/AHKFlowApp.Application.Tests/Validation/HotkeyRulesTests.cs`
+- Modify: `tests/AHKFlowApp.Application.Tests/Hotkeys/CreateHotkeyCommandValidatorTests.cs:165`
 
 **Interfaces:**
-- Consumes: escaping from Task 2; the tests written in Task 5.
+- Consumes: escaping from Task 2.
 - Produces: unchanged shape — `ValidParameters<T>(this IRuleBuilderInitial<T, string>)`.
 
-- [ ] **Step 1: Confirm the tests still fail**
+- [ ] **Step 1: Write the failing tests**
+
+Append to `HotkeyRulesTests`:
+
+```csharp
+    private static ValidationResult ValidateParameters(string parameters)
+    {
+        CreateHotkeyDto dto = new(
+            Description: "d",
+            Key: "a",
+            Ctrl: true,
+            Action: HotkeyAction.Send,
+            Parameters: parameters,
+            AppliesToAllProfiles: true);
+
+        return new CreateHotkeyCommandValidator().Validate(new CreateHotkeyCommand(dto));
+    }
+
+    [Theory]
+    [InlineData("he said \"hi\" 100`%")]
+    [InlineData("line one\nline two")]
+    [InlineData("col\tcol")]
+    public void ValidParameters_NowEscapedAtEmission_AreAccepted(string parameters)
+    {
+        ValidateParameters(parameters).IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public void ValidParameters_ControlCharacter_IsStillRejected()
+    {
+        ValidateParameters("bad\0value").IsValid.Should().BeFalse();
+    }
+```
+
+Only the first theory fails today — `\0` is already rejected by the existing control-character rule, so that test is a **regression guard**, not a red test. That is fine; it pins the half of the rule the relaxation must not remove.
+
+Also rewrite `Validate_WithParametersContainingForbiddenChars_Fails` in `CreateHotkeyCommandValidatorTests.cs:165`: its `he said "hi"`, `` x`n ``, `x\n` and `x\t` rows all become *accepted* values. Keep only a control-character row (`x`) and rename to `Validate_WithParametersContainingControlChars_Fails`.
+
+- [ ] **Step 1b: Confirm the new test fails**
 
 ```bash
 dotnet test tests/AHKFlowApp.Application.Tests --filter "FullyQualifiedName~ValidParameters"
 ```
 
-Expected: FAIL — `ValidParameters_DoubleQuoteAndBacktick_AreNowAccepted` reports "Parameters must not contain double-quote characters."
+Expected: FAIL — `ValidParameters_NowEscapedAtEmission_AreAccepted` reports "Parameters must not contain double-quote characters."
 
 - [ ] **Step 2: Relax the rule**
 
@@ -1344,7 +1455,7 @@ Expected: PASS, all cases.
 - [ ] **Step 4: Run the whole backend suite**
 
 ```bash
-dotnet test tests/AHKFlowApp.Domain.Tests tests/AHKFlowApp.Application.Tests
+dotnet test AHKFlowApp.slnx
 ```
 
 Expected: PASS. If an existing endpoint or validator test asserted that a quote is rejected, update it — that assertion pinned the interim workaround, and the workaround is what this wave removes.
@@ -1353,7 +1464,9 @@ Expected: PASS. If an existing endpoint or validator test asserted that a quote 
 
 ```bash
 dotnet format AHKFlowApp.slnx
-git add src/Backend/AHKFlowApp.Application/Validation/HotkeyRules.cs
+git add src/Backend/AHKFlowApp.Application/Validation/HotkeyRules.cs \
+        tests/AHKFlowApp.Application.Tests/Validation/HotkeyRulesTests.cs \
+        tests/AHKFlowApp.Application.Tests/Hotkeys/CreateHotkeyCommandValidatorTests.cs
 git commit -m "feat: relax hotkey parameter denylist
 
 quote and backtick now escaped at emission; keep control-char rejection
@@ -1376,6 +1489,10 @@ In `## Escaping`, the two-column table currently attributes `EscapeStringLiteral
 ```
 contents of `SendText "..."` / `Send "..."` / `Run("...")` — hotstrings **and** hotkeys, via the shared `AhkEscaping` helper
 ```
+
+- [ ] **Step 1b: Fix the deleted-method reference**
+
+Line 269 reads "Emitted in the fixed order `^ ! + #` (`AhkScriptGenerator.FormatHotkey`)." That method no longer exists after Task 2. Change the parenthetical to `` (`HotkeyEmitter`) ``.
 
 - [ ] **Step 2: Rewrite the Hotkeys section**
 
@@ -1413,7 +1530,7 @@ An unknown action throws rather than emitting a broken line. Wave 1 replaces thi
 - [ ] **Step 3: Verify the doc has no stale claims**
 
 ```bash
-grep -n "verbatim\|NoEscaping\|not a guarantee" docs/development/ahk-v2-syntax.md
+grep -n "verbatim\|NoEscaping\|not a guarantee\|FormatHotkey" docs/development/ahk-v2-syntax.md
 ```
 
 Expected: no matches inside the Hotkeys section. Any hit is a leftover sentence describing the pre-W0 behavior — delete it.
@@ -1429,11 +1546,43 @@ git commit -m "docs: record hotkey escaping + pre-wave-1 action semantics"
 
 ## Wave 0 Definition of Done
 
-- [ ] `dotnet build AHKFlowApp.slnx --configuration Release` clean.
-- [ ] `dotnet test` green across `Domain.Tests`, `Application.Tests`, `API.Tests`, `Infrastructure.Tests`.
-- [ ] `dotnet format AHKFlowApp.slnx --verify-no-changes` clean.
-- [ ] A hotkey whose `Parameters` contains `"` downloads a profile that loads in AHK v2 without error — the #195 reproduction, now fixed.
-- [ ] No new columns, no migration, no action-model change in the diff.
+- [ ] Build clean:
+
+  ```bash
+  dotnet build AHKFlowApp.slnx --configuration Release
+  ```
+
+- [ ] Whole suite green — one command, since `dotnet test` takes a single project or the solution:
+
+  ```bash
+  dotnet test AHKFlowApp.slnx --configuration Release --no-build
+  ```
+
+  This covers `API.Tests` and `Infrastructure.Tests`, which need Docker running for Testcontainers. If Docker is unavailable, run the two project suites that do not (`Domain.Tests`, `Application.Tests`) and record the skip explicitly rather than silently narrowing the gate.
+
+- [ ] Format clean:
+
+  ```bash
+  dotnet format AHKFlowApp.slnx --verify-no-changes
+  ```
+
+- [ ] **AHK v2 load check** — the #195 reproduction, run by hand because the app never executes `.ahk` files:
+
+  1. Start the stack (`docker compose up --build`) and open `http://localhost:5601`.
+  2. Create a hotkey: key `a`, Ctrl checked, action `Send`, parameters exactly `he said "hi" 100`% ` (quote, backtick and percent).
+  3. Download the profile's `.ahk`.
+  4. Confirm the file contains ``^a::Send("he said `"hi`" 100``% ")``.
+  5. Run the file with AutoHotkey v2 on a Windows host.
+
+  Expected: it loads with no error dialog. Before W0 step 2 was impossible (the validator rejected the input) and the equivalent stored row emitted a syntax error.
+
+- [ ] No new columns, no migration, no action-model change in the diff:
+
+  ```bash
+  git diff main --stat -- src/Backend/AHKFlowApp.Infrastructure/Migrations
+  ```
+
+  Expected: empty.
 
 ## Waves 1–4 Roadmap
 
