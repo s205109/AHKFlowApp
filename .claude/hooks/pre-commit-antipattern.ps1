@@ -110,7 +110,8 @@ foreach ($file in $filesToCheck) {
     if (Test-AntiPattern $file $addedLines 'DateTime\.(Now|UtcNow)'                                    'Use TimeProvider instead of DateTime.Now/UtcNow')                   { $errors++ }
     if (Test-AntiPattern $file $addedLines 'new HttpClient\(\)'                                        'Use IHttpClientFactory instead of new HttpClient()')                { $errors++ }
     if (Test-AntiPattern $file ($addedLines | Where-Object { $_.Text -notmatch 'EventArgs' }) 'async void' 'async void is dangerous, use async Task instead')                { $errors++ }
-    if (Test-AntiPattern $file $addedLines '\.Result\b|\.GetAwaiter\(\)\.GetResult\(\)'                'Avoid sync-over-async (.Result / .GetAwaiter().GetResult())')       { $errors++ }
+    # Polly's Outcome<T>.Result is the resilience outcome value, not a blocking Task.Result.
+    if (Test-AntiPattern $file ($addedLines | Where-Object { $_.Text -notmatch 'Outcome\.Result' }) '\.Result\b|\.GetAwaiter\(\)\.GetResult\(\)' 'Avoid sync-over-async (.Result / .GetAwaiter().GetResult())') { $errors++ }
 }
 
 if ($errors -gt 0) {
