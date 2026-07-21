@@ -266,6 +266,7 @@
                                  Categories="_categories"
                                  HasActiveFilters="HasActiveFilters"
                                  OnClearFilters="ClearFiltersAsync"
+                                 Loading="_loading"
                                  OnEdit="OpenEditDialogAsync"
                                  OnDelete="DeleteAsync"
                                  OnBulkDelete="MobileBulkDeleteAsync" />
@@ -312,6 +313,7 @@
     private bool _loading;
     private string? _loadError;
     private string _search = "";
+    private bool _hasColumnFilters;
     private int _rowsPerPage = UserPreferences.Default.RowsPerPage;
     private readonly CancellationTokenSource _cts = new();
 
@@ -358,6 +360,15 @@
 
         (string? sortField, bool sortDescending) = GetSort(state);
 
+        // Column filters live in the grid's state, not in page fields — capture them here so the
+        // empty state can tell "no hotstrings" from "no matches" for these too.
+        string? triggerFilter = StringFilter(state, "trigger");
+        string? replacementFilter = StringFilter(state, "replacement");
+        string? descriptionFilter = StringFilter(state, "description");
+        _hasColumnFilters = !string.IsNullOrWhiteSpace(triggerFilter)
+            || !string.IsNullOrWhiteSpace(replacementFilter)
+            || !string.IsNullOrWhiteSpace(descriptionFilter);
+
         ApiResult<PagedList<HotstringDto>> result = await ListAsync(
             new HotstringListRequest(
                 Page: state.Page + 1,
@@ -365,9 +376,9 @@
                 Search: string.IsNullOrWhiteSpace(_search) ? null : _search,
                 SortField: sortField,
                 SortDescending: sortDescending,
-                TriggerFilter: StringFilter(state, "trigger"),
-                ReplacementFilter: StringFilter(state, "replacement"),
-                DescriptionFilter: StringFilter(state, "description"),
+                TriggerFilter: triggerFilter,
+                ReplacementFilter: replacementFilter,
+                DescriptionFilter: descriptionFilter,
                 CategoryIds: _selectedCategoryIds.Count > 0 ? _selectedCategoryIds : null,
                 Kind: _selectedKind),
             ct);
@@ -930,15 +941,21 @@
     }
 
     // Separates "you have no hotstrings" from "your filters matched nothing" — the two empty
-    // states need different copy, and only the second one can offer a way out.
+    // states need different copy, and only the second one can offer a way out. Column filters
+    // count too: they reach the API, so they can produce an empty result on their own.
     private bool HasActiveFilters =>
-        !string.IsNullOrWhiteSpace(_search) || _selectedKind is not null || _selectedCategoryIds.Count > 0;
+        !string.IsNullOrWhiteSpace(_search)
+        || _selectedKind is not null
+        || _selectedCategoryIds.Count > 0
+        || _hasColumnFilters;
 
     private async Task ClearFiltersAsync()
     {
         _search = "";
         _selectedKind = null;
         _selectedCategoryIds = [];
+        _grid?.FilterDefinitions.Clear();
+        _hasColumnFilters = false;
         if (_grid is not null) await _grid.ReloadServerData();
         _mobilePage = 1;
         await LoadMobileAsync();
@@ -975,6 +992,7 @@
                             SelectedIds="edit.CategoryIds"
                             SelectedIdsChanged="@(ids => edit.CategoryIds = [.. ids])"
                             Dense="true" Placeholder="Select categories"
+                            Compact="true"
                             DataTest="category-select" />;
 
     private RenderFragment RenderCategories(IReadOnlyCollection<Guid> categoryIds) =>
