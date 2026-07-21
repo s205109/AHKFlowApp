@@ -153,11 +153,8 @@ public sealed class CreateHotkeyCommandValidatorTests
     }
 
     [Theory]
-    [InlineData("he said \"hi\"", "Parameters must not contain double-quote characters.")]
-    [InlineData("x`n", "Parameters must not contain backtick characters.")]
-    [InlineData("x\n", "Parameters must not contain control characters.")]
-    [InlineData("x\t", "Parameters must not contain control characters.")]
-    public void Validate_WithParametersContainingForbiddenChars_Fails(string parameters, string expectedMessage)
+    [InlineData("x\0", "Parameters must not contain control characters.")]
+    public void Validate_WithParametersContainingControlChars_Fails(string parameters, string expectedMessage)
     {
         ValidationResult result = _sut.Validate(Cmd(parameters: parameters));
 

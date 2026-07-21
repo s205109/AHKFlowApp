@@ -27,15 +27,15 @@ internal static class HotkeyRules
               .WithMessage("Key must be a known key name (for example a, F5, Escape, Numpad0) "
                          + "or a vkNN / scNNN code. Combined vkNNscNNN is not valid in a hotkey.");
 
+    // Double-quote and backtick are no longer rejected: HotkeyEmitter escapes Parameters
+    // into the emitted string literal, so they are ordinary characters now. Control
+    // characters stay rejected — the escape routine only covers \n, \r and \t, and the
+    // rest have no meaningful representation in a single-line definition.
     public static IRuleBuilderOptions<T, string> ValidParameters<T>(this IRuleBuilderInitial<T, string> rb) =>
         rb.Cascade(CascadeMode.Stop)
           .MaximumLength(ParametersMaxLength)
               .WithMessage($"Parameters must be {ParametersMaxLength} characters or fewer.")
-          .Must(p => p is null || !p.Contains('"'))
-              .WithMessage("Parameters must not contain double-quote characters.")
-          .Must(p => p is null || !p.Contains('`'))
-              .WithMessage("Parameters must not contain backtick characters.")
-          .Must(p => p is null || !p.Any(char.IsControl))
+          .Must(p => p is null || !p.Any(c => char.IsControl(c) && c is not '\n' and not '\r' and not '\t'))
               .WithMessage("Parameters must not contain control characters.");
 
     public static IRuleBuilderOptions<T, HotkeyAction> ValidAction<T>(this IRuleBuilderInitial<T, HotkeyAction> rb) =>
