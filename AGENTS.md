@@ -280,6 +280,12 @@ Atomic commits: one logical change per commit; feature + its tests = one commit.
 Never force-push to main/master. Run `dotnet build` + `dotnet test` before creating a PR.
 Keep PRs focused on a single concern; split large changes into stacked PRs.
 
+The AHKFlowApp main checkout is human-owned for Git mutations. Agents may inspect, edit, build,
+test, and format there, but must branch, add, commit, merge, rebase, and push for this repository
+only from a managed linked worktree. Use `scripts/new-worktree.ps1` or the `WorktreeCreate` tool.
+`AHKFLOW_ALLOW_MAIN=1` is an explicit location override; destructive-command protections still
+apply. See `docs/agents/cross-agent-git-guardrails.md`.
+
 ## GitHub
 
 Primary way to interact with GitHub is the `gh` CLI.

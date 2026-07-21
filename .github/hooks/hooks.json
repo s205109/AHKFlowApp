@@ -12,7 +12,8 @@
       {
         "type": "command",
         "bash": ".claude/hooks/pre-bash-guard.sh",
-        "comment": "Block destructive bash commands"
+        "powershell": "pwsh -NoProfile -NonInteractive -Command \"& (Join-Path ((git rev-parse --show-toplevel).Trim()) 'scripts/agents/invoke-agent-worktree-guard.ps1') -Adapter Copilot\"",
+        "comment": "Block destructive bash commands and agent git mutations outside a managed worktree"
       },
       {
         "type": "command",

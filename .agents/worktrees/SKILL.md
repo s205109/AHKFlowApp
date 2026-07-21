@@ -175,3 +175,50 @@ or `scripts\prune-worktree-databases.ps1` / `scripts\prune-worktree-docker.ps1`,
 them later. Without `-WorktreePath` it is a no-op.
 
 Worktrees deleted with plain git skip the `WorktreeRemove` hook; the next `new-worktree.ps1` run sweeps orphaned Docker projects as a safety net.
+
+<!-- Edit this source file, not the synchronized copies under other agent surfaces; run
+scripts/agents/setup-cross-agent-skills.ps1 to regenerate them. -->
+
+## Git guardrails: mutate only in a managed worktree
+
+Agents may inspect, edit, build, test, and format in the main checkout, but **Git mutations**
+(branch, add, commit, merge, rebase, push, tag, reset, …) for this repository are allowed only
+from a **managed** linked worktree. This is enforced by the `PreToolUse` command hook and, after
+merge, a `pre-commit` backstop. See `docs/agents/cross-agent-git-guardrails.md`.
+
+A worktree is **managed** only when all three hold:
+
+1. it is a linked worktree (not the main checkout);
+2. it is a direct child of `<main>/.claude/worktrees` or `<main>/.worktrees`;
+3. its `scripts/.env.worktree` manifest is valid — created by `new-worktree.ps1`.
+
+### Recovering from a denial
+
+The stderr message is `BLOCKED: agent Git mutations are allowed only in a managed linked worktree.`
+
+1. Create a proper worktree and run the command there:
+
+   ```bash
+   pwsh -NoProfile -File scripts/new-worktree.ps1 -Name <name>
+   ```
+
+2. For a one-off intentional main mutation, prefix the command with the scoped override — a
+   warning prints and destructive-command rules still apply:
+
+   ```bash
+   AHKFLOW_ALLOW_MAIN=1 git commit -m "..."
+   ```
+
+3. Emergency only — a broken hook that blocks everything. In a human PowerShell terminal set
+   `$env:AHKFLOW_GUARD_DISABLE = '1'`, start a new agent session from it, repair the hook, then
+   unset it. If a syntax error stops even the kill switch, hand-edit `.claude/settings.json`
+   (or `.github/hooks/hooks.json` / `.codex/hooks.json`) to remove the hook object.
+
+`AHKFLOW_ALLOW_MAIN=1` overrides **location only**; `AHKFLOW_GUARD_DISABLE=1` disables the **whole**
+command guard and must never be set persistently.
+
+### Authoritative-main version skew
+
+`core.hooksPath` is the absolute main-checkout `.githooks` directory, so after a guard change lands
+on `main`, **every** worktree — including older branches — runs main's current policy copy, not its
+own. This is intentional: the newest policy is always the one enforced.
