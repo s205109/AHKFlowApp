@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Net.Sockets;
 using System.Text;
 using AHKFlowApp.CLI.Services;
 using FluentAssertions;
@@ -51,6 +52,126 @@ public sealed class CliHttpClientBuilderExtensionsTests
         retryStatusWriter.Messages.Should().BeEmpty();
     }
 
+    [Fact]
+    public async Task ListAsync_GatewayTimeout_RetriesUntilSuccess()
+    {
+        SequenceHandler handler = new(
+            new HttpResponseMessage(HttpStatusCode.GatewayTimeout),
+            CreateSuccessfulListResponse());
+        RecordingRetryStatusWriter retryStatusWriter = new();
+
+        using ServiceProvider provider = CreateServices(handler, retryStatusWriter);
+        IHotstringsApiClient sut = provider.GetRequiredService<IHotstringsApiClient>();
+
+        PagedList<HotstringDto> result = await sut.ListAsync(null, null, 1, 50, CancellationToken.None);
+
+        result.Items.Should().BeEmpty();
+        handler.RequestCount.Should().Be(2);
+    }
+
+    // No response means the method can only come from the resilience context; if that lookup broke,
+    // the request would be treated as unsafe and this read would stop retrying.
+    [Fact]
+    public async Task ListAsync_ConnectionDroppedAfterSend_RetriesUntilSuccess()
+    {
+        SequenceHandler handler = new(
+            new HttpRequestException(
+                HttpRequestError.ConnectionError,
+                "connection reset",
+                new SocketException((int)SocketError.ConnectionReset)),
+            CreateSuccessfulListResponse());
+        RecordingRetryStatusWriter retryStatusWriter = new();
+
+        using ServiceProvider provider = CreateServices(handler, retryStatusWriter);
+        IHotstringsApiClient sut = provider.GetRequiredService<IHotstringsApiClient>();
+
+        PagedList<HotstringDto> result = await sut.ListAsync(null, null, 1, 50, CancellationToken.None);
+
+        result.Items.Should().BeEmpty();
+        handler.RequestCount.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task CreateAsync_GatewayTimeout_DoesNotRetry()
+    {
+        SequenceHandler handler = new(
+            new HttpResponseMessage(HttpStatusCode.GatewayTimeout),
+            CreateSuccessfulCreateResponse());
+        RecordingRetryStatusWriter retryStatusWriter = new();
+
+        using ServiceProvider provider = CreateServices(handler, retryStatusWriter);
+        IHotstringsApiClient sut = provider.GetRequiredService<IHotstringsApiClient>();
+
+        Func<Task> act = async () => await sut.CreateAsync(CreateInput(), CancellationToken.None);
+
+        ApiException ex = (await act.Should().ThrowAsync<ApiException>()).Which;
+        ex.StatusCode.Should().Be(504);
+        handler.RequestCount.Should().Be(1);
+        retryStatusWriter.Messages.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task CreateAsync_ConnectionDroppedAfterSend_DoesNotRetry()
+    {
+        SequenceHandler handler = new(
+            new HttpRequestException(
+                HttpRequestError.ConnectionError,
+                "connection reset",
+                new SocketException((int)SocketError.ConnectionReset)),
+            CreateSuccessfulCreateResponse());
+        RecordingRetryStatusWriter retryStatusWriter = new();
+
+        using ServiceProvider provider = CreateServices(handler, retryStatusWriter);
+        IHotstringsApiClient sut = provider.GetRequiredService<IHotstringsApiClient>();
+
+        Func<Task> act = async () => await sut.CreateAsync(CreateInput(), CancellationToken.None);
+
+        await act.Should().ThrowAsync<HttpRequestException>();
+        handler.RequestCount.Should().Be(1);
+        retryStatusWriter.Messages.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task CreateAsync_StoppedWebAppHtml_RetriesUntilSuccess()
+    {
+        SequenceHandler handler = new(
+            CreateStoppedWebAppResponse(),
+            CreateSuccessfulCreateResponse());
+        RecordingRetryStatusWriter retryStatusWriter = new();
+
+        using ServiceProvider provider = CreateServices(handler, retryStatusWriter);
+        IHotstringsApiClient sut = provider.GetRequiredService<IHotstringsApiClient>();
+
+        HotstringDto result = await sut.CreateAsync(CreateInput(), CancellationToken.None);
+
+        result.Trigger.Should().Be("btw");
+        handler.RequestCount.Should().Be(2);
+        retryStatusWriter.Messages.Should().HaveCount(1);
+    }
+
+    [Fact]
+    public async Task CreateAsync_ConnectionRefused_RetriesUntilSuccess()
+    {
+        SequenceHandler handler = new(
+            new HttpRequestException(
+                HttpRequestError.ConnectionError,
+                "connection refused",
+                new SocketException((int)SocketError.ConnectionRefused)),
+            CreateSuccessfulCreateResponse());
+        RecordingRetryStatusWriter retryStatusWriter = new();
+
+        using ServiceProvider provider = CreateServices(handler, retryStatusWriter);
+        IHotstringsApiClient sut = provider.GetRequiredService<IHotstringsApiClient>();
+
+        HotstringDto result = await sut.CreateAsync(CreateInput(), CancellationToken.None);
+
+        result.Trigger.Should().Be("btw");
+        handler.RequestCount.Should().Be(2);
+        retryStatusWriter.Messages.Should().HaveCount(1);
+    }
+
+    private static CreateHotstringDto CreateInput() => new("btw", "by the way");
+
     private static ServiceProvider CreateServices(
         HttpMessageHandler handler,
         IHttpRetryStatusWriter retryStatusWriter)
@@ -80,6 +201,21 @@ public sealed class CliHttpClientBuilderExtensionsTests
                 "text/html"),
         };
 
+    private static HttpResponseMessage CreateSuccessfulCreateResponse() =>
+        new(HttpStatusCode.Created)
+        {
+            Content = JsonContent.Create(new HotstringDto(
+                Guid.NewGuid(),
+                [],
+                true,
+                "btw",
+                "by the way",
+                true,
+                true,
+                DateTimeOffset.UnixEpoch,
+                DateTimeOffset.UnixEpoch)),
+        };
+
     private static HttpResponseMessage CreateSuccessfulListResponse() =>
         new(HttpStatusCode.OK)
         {
@@ -104,9 +240,11 @@ public sealed class CliHttpClientBuilderExtensionsTests
         }
     }
 
-    private sealed class SequenceHandler(params HttpResponseMessage[] responses) : HttpMessageHandler
+    // Each outcome is either an HttpResponseMessage to return or an Exception to throw, replayed
+    // in order so a test can script transport failures alongside responses.
+    private sealed class SequenceHandler(params object[] outcomes) : HttpMessageHandler
     {
-        private readonly Queue<HttpResponseMessage> _responses = new(responses);
+        private readonly Queue<object> _outcomes = new(outcomes);
 
         public int RequestCount { get; private set; }
 
@@ -115,7 +253,12 @@ public sealed class CliHttpClientBuilderExtensionsTests
             CancellationToken cancellationToken)
         {
             RequestCount++;
-            return Task.FromResult(_responses.Dequeue());
+            return _outcomes.Dequeue() switch
+            {
+                HttpResponseMessage response => Task.FromResult(response),
+                Exception exception => Task.FromException<HttpResponseMessage>(exception),
+                var outcome => throw new InvalidOperationException($"Unsupported outcome: {outcome}"),
+            };
         }
     }
 }
