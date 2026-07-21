@@ -1062,8 +1062,12 @@ function Get-AgentGitLocationDecision {
             break
         }
 
-        # An explicit `git -C <path>` re-anchors the target, so it survives an untrackable cd.
-        if ($unresolvedDirectory -and $parts.DashC.Count -eq 0) {
+        # Only an absolute `git -C <path>` re-anchors the target independently of the shell's cwd.
+        # A relative -C is joined onto the (now-stale) base, so after an untrackable cd it resolves
+        # to a path the command would never actually use - deny rather than classify a guess. Once
+        # any -C in the chain is absolute, git discards the base, so the result is cwd-independent.
+        $dashCReanchors = @($parts.DashC | Where-Object { [System.IO.Path]::IsPathRooted($_) }).Count -gt 0
+        if ($unresolvedDirectory -and -not $dashCReanchors) {
             $blockingState = 'UnresolvedDirectoryChange'
             $blockingTarget = $Cwd
             break

@@ -787,6 +787,29 @@ try {
         Assert-Equal 'agent-unresolved-git-target' $decision.Rule 'Rule'
     }
 
+    # Regression: a *relative* git -C after an unexpandable cd was wrongly treated as a re-anchor
+    # and joined onto the stale base, so `cd $HOME && git -C sub commit` classified against
+    # managed/sub and allowed a commit whose real target the guard could not know.
+    Invoke-TestCase 'A relative git -C after an unexpandable cd is denied (no false re-anchor)' {
+        $decision = Invoke-AgentGuardPolicy -Command 'cd $HOME && git -C sub commit -m test' `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Deny' $decision.Action 'Action'
+        Assert-Equal 'agent-unresolved-git-target' $decision.Rule 'Rule'
+    }
+
+    Invoke-TestCase 'An absolute git -C into a managed worktree still re-anchors past an unexpandable cd' {
+        $command = "cd `$HOME && git -C `"$($fixture.Managed)`" commit -m test"
+        $decision = Invoke-AgentGuardPolicy -Command $command -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Allow' $decision.Action 'Action'
+    }
+
+    Invoke-TestCase 'An absolute git -C into main past an unexpandable cd is denied' {
+        $command = "cd `$HOME && git -C `"$($fixture.Main)`" commit -m test"
+        $decision = Invoke-AgentGuardPolicy -Command $command -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Deny' $decision.Action 'Action'
+        Assert-Equal 'agent-main-git-mutation' $decision.Rule 'Rule'
+    }
+
     # Regression: a cd to a nonexistent path FAILS and leaves the shell where it was, so the
     # mutation runs there. Treating the move as successful classified it against the harmless
     # outside path and allowed a commit that actually landed in main.
