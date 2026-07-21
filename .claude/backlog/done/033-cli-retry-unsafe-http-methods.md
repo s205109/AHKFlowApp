@@ -46,12 +46,12 @@ write commands: `ahkflow hotstring new` against a cold app would fail instead of
 
 ## Acceptance criteria
 
-- [ ] `ahkflow hotstring new` never creates more than one hotstring, even when the first attempt
+- [x] `ahkflow hotstring new` never creates more than one hotstring, even when the first attempt
       returns 504 or the connection drops after send.
-- [ ] Warm-up against a stopped/cold App Service still succeeds for write commands (no regression
+- [x] Warm-up against a stopped/cold App Service still succeeds for write commands (no regression
       of the 10 × 2s wake behaviour).
-- [ ] Read-only commands (`list`, downloads) keep their current retry behaviour unchanged.
-- [ ] Chosen approach is covered by tests in `AHKFlowApp.CLI.Tests`, asserting behaviour (request
+- [x] Read-only commands (`list`, downloads) keep their current retry behaviour unchanged.
+- [x] Chosen approach is covered by tests in `AHKFlowApp.CLI.Tests`, asserting behaviour (request
       count reaching the API) rather than pipeline wiring.
 
 ## Candidate approaches
@@ -66,6 +66,24 @@ write commands: `ahkflow hotstring new` against a cold app would fail instead of
    leaves 504 correctly un-retried but relies on distinguishing pre- from post-send exceptions.
 
 Approach 2 is the smallest correct change if no API work is in scope; approach 1 is the durable fix.
+
+## Resolution
+
+Approach 3. `ShouldRetry` now takes the request method and splits into two failure sets:
+
+- **Idempotent** (`GET`/`HEAD`/`OPTIONS`/`TRACE`) — unchanged transient set.
+- **Everything else** — only failures that prove the origin never ran: the App Service 403 HTML
+  stopped-app page (served by the front end), DNS / TLS / proxy-tunnel `HttpRequestException`, and
+  a refused connect (`SocketError.ConnectionRefused`). An unknown method is treated as unsafe.
+
+`HttpRequestError.ConnectionError` alone is *not* enough — it also covers mid-flight drops, which
+is exactly the post-send case this item is about. Timeouts, 408, 429, 502, 503 and 504 no longer
+retry for writes: none of them prove the write was rejected.
+
+Warm-up survives because a stopped App Service answers with the 403 page rather than failing the
+connection, so `ahkflow hotstring new` still waits out the 10 × 2s wake.
+
+Approach 1 (idempotency key) remains the durable fix if the CLI grows more write commands.
 
 ## Out of scope
 
