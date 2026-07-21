@@ -4,8 +4,9 @@
            SelectedValues="SelectedIds"
            SelectedValuesChanged="OnSelectedValuesChanged"
            ToStringFunc="NameFor"
+           MultiSelectionTextFunc="SelectionTextFunc"
            Dense="Dense" Placeholder="@Placeholder"
-           Clearable="true" SelectAll="true"
+           Clearable="@(!Compact)" SelectAll="true"
            UserAttributes="@_userAttributes">
     @foreach (EntityOption option in Options)
     {
@@ -30,6 +31,26 @@
         _userAttributes = DataTest is null
             ? []
             : new Dictionary<string, object?> { ["data-test"] = DataTest };
+
+    /// <summary>
+    /// Fits the control into a narrow container: collapses a multi-selection to "N selected"
+    /// instead of joined names, and drops the clear button, whose adornment costs more width than
+    /// it earns when unchecking in the dropdown does the same job. Opt-in — every other caller has
+    /// room for the full names and keeps the clear button.
+    /// </summary>
+    [Parameter] public bool Compact { get; set; }
+
+    private Func<IReadOnlyList<string?>?, string>? SelectionTextFunc =>
+        Compact ? SelectionText : null;
+
+    // One selection shows its name; more collapse to a count, which can never overflow.
+    // The open dropdown still shows exactly what is checked.
+    private static string SelectionText(IReadOnlyList<string?>? selected) => selected switch
+    {
+        null or { Count: 0 } => "",
+        { Count: 1 } => selected[0] ?? "",
+        _ => $"{selected.Count} selected",
+    };
 
     private string NameFor(Guid id) =>
         Options.FirstOrDefault(o => o.Id == id)?.Name ?? id.ToString();

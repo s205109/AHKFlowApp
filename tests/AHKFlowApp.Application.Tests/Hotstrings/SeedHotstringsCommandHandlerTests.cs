@@ -16,7 +16,8 @@ namespace AHKFlowApp.Application.Tests.Hotstrings;
 [Trait("Category", "Integration")]
 public sealed class SeedHotstringsCommandHandlerTests(HotstringDbFixture fx)
 {
-    private const int SampleCount = 12;
+    // Derived from the shared seed set so adding a sample doesn't break every count assertion.
+    private static readonly int SampleCount = HotstringSeedSamples.All.Length;
 
     private static AppEnvironment DevEnv(bool isDev) => new(isDev);
 
@@ -28,7 +29,7 @@ public sealed class SeedHotstringsCommandHandlerTests(HotstringDbFixture fx)
     }
 
     [Fact]
-    public async Task Handle_InDevelopment_SeedsTwelveSamples()
+    public async Task Handle_InDevelopment_SeedsAllSamples()
     {
         var owner = Guid.NewGuid();
         await using AppDbContext db = fx.CreateContext();
@@ -127,7 +128,7 @@ public sealed class SeedHotstringsCommandHandlerTests(HotstringDbFixture fx)
     }
 
     [Fact]
-    public async Task Handle_WithReset_AfterFullSeed_KeepsTwelveSamples()
+    public async Task Handle_WithReset_AfterFullSeed_KeepsAllSamples()
     {
         var owner = Guid.NewGuid();
         await SeedCategoriesAsync(owner);
@@ -177,7 +178,7 @@ public sealed class SeedHotstringsCommandHandlerTests(HotstringDbFixture fx)
     }
 
     [Fact]
-    public async Task Handle_BeforeCategoriesSeeded_CreatesTwelveWithNoJunctions()
+    public async Task Handle_BeforeCategoriesSeeded_CreatesAllWithNoJunctions()
     {
         var owner = Guid.NewGuid();
         await using AppDbContext db = fx.CreateContext();

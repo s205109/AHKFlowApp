@@ -51,7 +51,7 @@ public sealed class DevSeedEndpointTests(ApiTestFixture fixture)
         SeedAllResultDto? result = await resp.Content.ReadFromJsonAsync<SeedAllResultDto>();
         result.Should().NotBeNull();
         result!.CategoriesCount.Should().Be(8);
-        result.HotstringsCount.Should().Be(12);
+        result.HotstringsCount.Should().Be(16);
         result.HotkeysCount.Should().Be(12);
     }
 
@@ -67,7 +67,7 @@ public sealed class DevSeedEndpointTests(ApiTestFixture fixture)
         SeedAllResultDto? result = await resp.Content.ReadFromJsonAsync<SeedAllResultDto>();
         result.Should().NotBeNull();
         result!.CategoriesCount.Should().Be(8);
-        result.HotstringsCount.Should().Be(12);
+        result.HotstringsCount.Should().Be(16);
         result.HotkeysCount.Should().Be(12);
     }
 

@@ -20,29 +20,6 @@ internal sealed class SeedHotstringsCommandHandler(
     AppEnvironment env)
     : IUseCaseHandler<SeedHotstringsCommand, Result<PagedList<HotstringDto>>>
 {
-    private static readonly (
-        string Trigger,
-        string Replacement,
-        bool Ending,
-        bool InsideWord,
-        string[] Categories,
-        HotstringKind Kind,
-        string? DateTimeFormat)[] s_samples =
-    [
-        ("recieve", "receive",              true,  true,  ["Autocorrect"],  HotstringKind.Text,     null),
-        ("btw",     "by the way",           true,  false, ["Communication"], HotstringKind.Text,    null),
-        ("brb",     "be right back",        true,  false, ["Communication"], HotstringKind.Text,    null),
-        ("fyi",     "for your information", true,  false, ["Communication"], HotstringKind.Text,    null),
-        ("/today",  "",                     false, false, ["DateTime"],     HotstringKind.DateTime, "yyyy-MM-dd"),
-        ("/now",    "",                     false, false, ["DateTime"],     HotstringKind.DateTime, "HH:mm"),
-        ("@sig",    "Example User\nuser@example.com\nExample Company", false, false, ["Email"], HotstringKind.Text, null),
-        (";arrow",  "→",               false, false, ["Symbols"], HotstringKind.Text, null),
-        (";check",  "✓",               false, false, ["Symbols"], HotstringKind.Text, null),
-        (";shrug",  "¯\\_(ツ)_/¯", false, false, ["Symbols"], HotstringKind.Text, null),
-        (";e:",     "ë",               false, false, ["Symbols"], HotstringKind.Text, null),
-        (";todo",   "TODO(name): ",         false, false, ["Code"], HotstringKind.Text, null),
-    ];
-
     public async Task<Result<PagedList<HotstringDto>>> ExecuteAsync(SeedHotstringsCommand request, CancellationToken ct)
     {
         if (!env.IsDevelopment)
@@ -77,8 +54,9 @@ internal sealed class SeedHotstringsCommandHandler(
                 .Select(x => (x.HotstringId, x.CategoryId))
                 .ToHashSet();
 
-        foreach ((string trigger, string replacement, bool ending, bool inside, string[] cats, HotstringKind kind, string? dateTimeFormat) in s_samples)
+        foreach (HotstringSeedSamples.Sample sample in HotstringSeedSamples.All)
         {
+            string trigger = sample.Trigger;
             Hotstring? existing = request.Reset
                 ? null
                 : await db.Hotstrings.FirstOrDefaultAsync(
@@ -94,15 +72,15 @@ internal sealed class SeedHotstringsCommandHandler(
                 var entity = Hotstring.Create(
                     ownerOid,
                     new HotstringDefinition(
-                        trigger, replacement, Description: null, AppliesToAllProfiles: true,
-                        IsEndingCharacterRequired: ending, IsTriggerInsideWord: inside,
-                        Kind: kind, DateTimeFormat: dateTimeFormat),
+                        sample.Trigger, sample.Replacement, sample.Description, AppliesToAllProfiles: true,
+                        IsEndingCharacterRequired: sample.Ending, IsTriggerInsideWord: sample.InsideWord,
+                        Kind: sample.Kind, DateTimeFormat: sample.DateTimeFormat),
                     clock);
                 db.Hotstrings.Add(entity);
                 hotstringId = entity.Id;
             }
 
-            foreach (string categoryName in cats)
+            foreach (string categoryName in sample.Categories)
             {
                 if (!categoryByName.TryGetValue(categoryName, out Guid categoryId)) continue;
                 if (!existingLinks.Add((hotstringId, categoryId))) continue;

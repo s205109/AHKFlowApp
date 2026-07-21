@@ -138,7 +138,7 @@ public sealed class VersionHistoryFlowTests(StackFixture fixture) : IAsyncLifeti
     private static async Task UpdateHotstringReplacementAsync(IPage page, string trigger, string replacement)
     {
         await page.Locator("tbody tr", new() { HasTextString = trigger })
-            .Locator("button.start-edit")
+            .Locator("button.edit")
             .ClickAsync();
         await page.WaitForSelectorAsync("tr.edit-row");
         await page.FillAsync("tr.edit-row textarea[data-test=\"replacement-input\"]", replacement);

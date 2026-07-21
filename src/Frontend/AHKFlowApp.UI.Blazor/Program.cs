@@ -17,6 +17,9 @@ builder.RootComponents.Add<HeadOutlet>("head::after");
 // override the cached copies for both validation and MSAL.
 if (builder.HostEnvironment.IsDevelopment())
 {
+    // This await blocks before RunAsync, so nothing is mounted and the Blazor boot indicator is
+    // frozen at ~99% for its whole duration. AddCacheBustedDevConfigAsync bounds each fetch with a
+    // cancellation token — a slow or restarting dev host used to park the app there indefinitely.
     using HttpClient configHttp = new() { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) };
     await builder.Configuration.AddCacheBustedDevConfigAsync(configHttp);
 }

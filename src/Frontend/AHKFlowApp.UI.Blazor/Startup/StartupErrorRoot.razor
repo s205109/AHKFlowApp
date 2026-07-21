@@ -64,7 +64,7 @@ else
     {
         // Re-read the same files the host loads at boot, cache-busted, and validate the merged result.
         ConfigurationBuilder configBuilder = new();
-        await configBuilder.AddCacheBustedDevConfigAsync(Http, ct);
+        await configBuilder.AddCacheBustedDevConfigAsync(Http, ct: ct);
         return StartupConfigValidator.Check(configBuilder.Build()) is null;
     }
 
