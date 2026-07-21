@@ -109,7 +109,7 @@ internal static class HotstringEmitter
         string endCharArgument = hs.IsEndingCharacterRequired && !hs.OmitEndingCharacter
             ? ", A_EndChar"
             : "";
-        return $"{PasteHelperName}(\"{EscapeStringLiteral(hs.Replacement)}\"{endCharArgument})";
+        return $"{PasteHelperName}(\"{AhkEscaping.EscapeStringLiteral(hs.Replacement)}\"{endCharArgument})";
     }
 
     private static string BuildBody(Hotstring hs) =>
@@ -153,7 +153,7 @@ internal static class HotstringEmitter
         void FlushText()
         {
             if (textAccumulator.Length == 0) return;
-            lines.Add($"SendText \"{EscapeStringLiteral(textAccumulator.ToString())}\"");
+            lines.Add($"SendText \"{AhkEscaping.EscapeStringLiteral(textAccumulator.ToString())}\"");
             textAccumulator.Clear();
         }
 
@@ -208,15 +208,4 @@ internal static class HotstringEmitter
             .Replace("\t", "`t")
             .Replace(";", "`;");
 
-    // For AHK v2 double-quoted string contents inside a macro's SendText/Send lines.
-    // Unlike Escape() above, no ';' handling is needed (there's no whitespace-preceded-';'
-    // rule inside a quoted string literal). Backtick must be escaped first so later escapes
-    // are not double-escaped.
-    private static string EscapeStringLiteral(string value) =>
-        value
-            .Replace("`", "``")
-            .Replace("\"", "`\"")
-            .Replace("\n", "`n")
-            .Replace("\r", "`r")
-            .Replace("\t", "`t");
 }
