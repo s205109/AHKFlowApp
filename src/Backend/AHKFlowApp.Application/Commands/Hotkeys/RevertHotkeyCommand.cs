@@ -58,15 +58,16 @@ internal sealed class RevertHotkeyCommandHandler(
             .ToArrayAsync(ct);
 
         entity.Update(
-            snapshot.Description,
-            snapshot.Key,
-            snapshot.Ctrl,
-            snapshot.Alt,
-            snapshot.Shift,
-            snapshot.Win,
-            snapshot.Action,
-            snapshot.Parameters,
-            snapshot.AppliesToAllProfiles,
+            new HotkeyDefinition(
+                snapshot.Description,
+                snapshot.Key,
+                snapshot.Ctrl,
+                snapshot.Alt,
+                snapshot.Shift,
+                snapshot.Win,
+                snapshot.Action,
+                snapshot.Parameters,
+                snapshot.AppliesToAllProfiles),
             clock);
 
         db.HotkeyProfiles.RemoveRange(entity.Profiles);

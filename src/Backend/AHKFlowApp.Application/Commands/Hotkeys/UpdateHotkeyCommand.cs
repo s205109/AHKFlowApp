@@ -69,15 +69,16 @@ internal sealed class UpdateHotkeyCommandHandler(
         EntityHistory historyEntry = await recorder.RecordHotkeyAsync(entity, HistoryChangeType.Edit, ct);
 
         entity.Update(
-            input.Description,
-            input.Key,
-            input.Ctrl,
-            input.Alt,
-            input.Shift,
-            input.Win,
-            input.Action,
-            input.Parameters,
-            input.AppliesToAllProfiles,
+            new HotkeyDefinition(
+                input.Description,
+                input.Key,
+                input.Ctrl,
+                input.Alt,
+                input.Shift,
+                input.Win,
+                input.Action,
+                input.Parameters,
+                input.AppliesToAllProfiles),
             clock);
 
         // Replace junction rows via the navigation collections only; adding to the
