@@ -14,10 +14,14 @@ internal static class CliApiFailureDetector
     /// connection can both follow a write the origin already committed, so replaying them would
     /// create duplicates. Idempotent requests keep the broad retry set that wakes a cold API.
     /// </summary>
-    public static bool ShouldRetry(Exception? exception, HttpResponseMessage? response, HttpMethod? requestMethod) =>
+    public static bool ShouldRetry(
+        Exception? exception,
+        HttpResponseMessage? response,
+        string? forbiddenBody,
+        HttpMethod? requestMethod) =>
         IsIdempotent(requestMethod)
-            ? IsTransientFailure(exception, response)
-            : NeverReachedOrigin(exception, response);
+            ? IsTransientFailure(exception, response, forbiddenBody)
+            : NeverReachedOrigin(exception, response, forbiddenBody);
 
     public static bool IsStoppedWebAppResponse(ApiException exception) =>
         exception.StatusCode == (int)HttpStatusCode.Forbidden
@@ -32,18 +36,18 @@ internal static class CliApiFailureDetector
             || requestMethod == HttpMethod.Options
             || requestMethod == HttpMethod.Trace);
 
-    private static bool IsTransientFailure(Exception? exception, HttpResponseMessage? response) =>
+    private static bool IsTransientFailure(Exception? exception, HttpResponseMessage? response, string? forbiddenBody) =>
         exception is HttpRequestException or TimeoutRejectedException
         || response?.StatusCode is HttpStatusCode.RequestTimeout
             or HttpStatusCode.TooManyRequests
             or HttpStatusCode.BadGateway
             or HttpStatusCode.ServiceUnavailable
             or HttpStatusCode.GatewayTimeout
-        || IsStoppedWebAppResponse(response);
+        || IsStoppedWebAppResponse(response, forbiddenBody);
 
-    private static bool NeverReachedOrigin(Exception? exception, HttpResponseMessage? response) =>
+    private static bool NeverReachedOrigin(Exception? exception, HttpResponseMessage? response, string? forbiddenBody) =>
         // The App Service front end serves the stopped-app page itself; the origin never ran.
-        IsStoppedWebAppResponse(response)
+        IsStoppedWebAppResponse(response, forbiddenBody)
         || (exception is HttpRequestException request && FailedBeforeSending(request));
 
     private static bool FailedBeforeSending(HttpRequestException exception) =>
@@ -54,9 +58,13 @@ internal static class CliApiFailureDetector
         // nothing was transmitted. A reset or abort may follow a fully sent request.
         || exception.InnerException is SocketException { SocketErrorCode: SocketError.ConnectionRefused };
 
-    private static bool IsStoppedWebAppResponse(HttpResponseMessage? response) =>
+    // Mirrors the ApiException overload: a bare 403 + text/html is not enough — the stopped-app
+    // marker in the body must be present, or an unrelated HTML 403 (WAF, auth page) would be
+    // mistaken for a cold App Service and retried.
+    private static bool IsStoppedWebAppResponse(HttpResponseMessage? response, string? forbiddenBody) =>
         response?.StatusCode == HttpStatusCode.Forbidden
-        && IsHtmlContentType(response.Content.Headers.ContentType?.MediaType);
+        && IsHtmlContentType(response.Content.Headers.ContentType?.MediaType)
+        && LooksLikeStoppedWebAppPage(forbiddenBody);
 
     private static bool IsHtmlContentType(string? contentType) =>
         contentType?.StartsWith(HtmlContentType, StringComparison.OrdinalIgnoreCase) == true;

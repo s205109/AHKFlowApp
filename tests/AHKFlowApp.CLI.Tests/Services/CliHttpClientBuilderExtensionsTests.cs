@@ -5,6 +5,7 @@ using System.Text;
 using AHKFlowApp.CLI.Services;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
+using Polly.Timeout;
 using Xunit;
 
 namespace AHKFlowApp.CLI.Tests.Services;
@@ -48,6 +49,75 @@ public sealed class CliHttpClientBuilderExtensionsTests
 
         ApiException ex = (await act.Should().ThrowAsync<ApiException>()).Which;
         ex.StatusCode.Should().Be(403);
+        handler.RequestCount.Should().Be(1);
+        retryStatusWriter.Messages.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ListAsync_UnrelatedHtml403_DoesNotRetry()
+    {
+        SequenceHandler handler = new(CreateUnrelatedHtml403Response());
+        RecordingRetryStatusWriter retryStatusWriter = new();
+
+        using ServiceProvider provider = CreateServices(handler, retryStatusWriter);
+        IHotstringsApiClient sut = provider.GetRequiredService<IHotstringsApiClient>();
+
+        Func<Task> act = async () => await sut.ListAsync(null, null, 1, 50, CancellationToken.None);
+
+        ApiException ex = (await act.Should().ThrowAsync<ApiException>()).Which;
+        ex.StatusCode.Should().Be(403);
+        handler.RequestCount.Should().Be(1);
+        retryStatusWriter.Messages.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task CreateAsync_UnrelatedHtml403_DoesNotRetry()
+    {
+        SequenceHandler handler = new(CreateUnrelatedHtml403Response());
+        RecordingRetryStatusWriter retryStatusWriter = new();
+
+        using ServiceProvider provider = CreateServices(handler, retryStatusWriter);
+        IHotstringsApiClient sut = provider.GetRequiredService<IHotstringsApiClient>();
+
+        Func<Task> act = async () => await sut.CreateAsync(CreateInput(), CancellationToken.None);
+
+        ApiException ex = (await act.Should().ThrowAsync<ApiException>()).Which;
+        ex.StatusCode.Should().Be(403);
+        handler.RequestCount.Should().Be(1);
+        retryStatusWriter.Messages.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ListAsync_Timeout_RetriesUntilSuccess()
+    {
+        SequenceHandler handler = new(
+            new TimeoutRejectedException(),
+            CreateSuccessfulListResponse());
+        RecordingRetryStatusWriter retryStatusWriter = new();
+
+        using ServiceProvider provider = CreateServices(handler, retryStatusWriter);
+        IHotstringsApiClient sut = provider.GetRequiredService<IHotstringsApiClient>();
+
+        PagedList<HotstringDto> result = await sut.ListAsync(null, null, 1, 50, CancellationToken.None);
+
+        result.Items.Should().BeEmpty();
+        handler.RequestCount.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task CreateAsync_Timeout_DoesNotRetry()
+    {
+        SequenceHandler handler = new(
+            new TimeoutRejectedException(),
+            CreateSuccessfulCreateResponse());
+        RecordingRetryStatusWriter retryStatusWriter = new();
+
+        using ServiceProvider provider = CreateServices(handler, retryStatusWriter);
+        IHotstringsApiClient sut = provider.GetRequiredService<IHotstringsApiClient>();
+
+        Func<Task> act = async () => await sut.CreateAsync(CreateInput(), CancellationToken.None);
+
+        await act.Should().ThrowAsync<TimeoutRejectedException>();
         handler.RequestCount.Should().Be(1);
         retryStatusWriter.Messages.Should().BeEmpty();
     }
@@ -195,6 +265,23 @@ public sealed class CliHttpClientBuilderExtensionsTests
                 <html>
                 <head><title>Web App - Unavailable</title></head>
                 <body><h1>Error 403 - This web app is stopped.</h1></body>
+                </html>
+                """,
+                Encoding.UTF8,
+                "text/html"),
+        };
+
+    // A 403 with an HTML body that is NOT the App Service stopped-app page — e.g. a WAF or
+    // gateway auth block. Must not be mistaken for a cold origin and retried.
+    private static HttpResponseMessage CreateUnrelatedHtml403Response() =>
+        new(HttpStatusCode.Forbidden)
+        {
+            Content = new StringContent(
+                """
+                <!DOCTYPE html>
+                <html>
+                <head><title>403 Forbidden</title></head>
+                <body><h1>Access denied by web application firewall.</h1></body>
                 </html>
                 """,
                 Encoding.UTF8,
