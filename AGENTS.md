@@ -142,6 +142,7 @@ HTTP Request -> Controller (thin, maps Result to HTTP)
 - AAA pattern (Arrange/Act/Assert) with blank line separation; one assertion concept per test
 - Assert on `Result.IsSuccess` / `Result.Status` in handler unit tests
 - FluentAssertions over raw `Assert` — better failure messages
+- Builder pattern for test data and scenarios — `new HotstringBuilder().WithTrigger("btw").Build()`, not raw construction or many-parameter factories. Builders live in `tests/AHKFlowApp.TestUtilities/Builders/`; add one there for new entities.
 - Shared fixtures: `IClassFixture<T>`, `ICollectionFixture<T>` for expensive setup (containers)
 - NSubstitute for third-party boundaries only — don't mock what you own
 - Test behavior (HTTP response, DB state, Result status), not implementation details
