@@ -15,6 +15,9 @@ A Git mutation is allowed only from a **managed linked worktree**, which is all 
    non-empty, and `AHKFLOW_ROOT` resolving back to the worktree root.
 
 The supported way to create one is `scripts/new-worktree.ps1` or the agent `WorktreeCreate` tool.
+A raw `git worktree add` run by an agent is itself a guarded mutation — denied from main — and it
+skips the manifest and no-auth setup, so the result would fail the managed check anyway. Use the
+tool, whose child Git calls the payload never exposes to the guard.
 
 ## How enforcement works
 
@@ -168,8 +171,9 @@ The stderr diagnostic names the resolved adapter and rule, e.g.
 
 1. If the command genuinely belongs in a worktree, create one with `scripts/new-worktree.ps1` and
    re-run it there.
-2. For a one-off intentional main mutation, prefix with `AHKFLOW_ALLOW_MAIN=1` (a warning is
-   printed; destructive rules still apply).
+2. For a one-off intentional main mutation, set `AHKFLOW_ALLOW_MAIN=1` in the session environment
+   before starting the agent (see "Where `AHKFLOW_ALLOW_MAIN=1` has to be set" — an inline prefix
+   does **not** reach the `PreToolUse` guard). A warning is printed; destructive rules still apply.
 3. Only for a broken hook, use the emergency recovery procedure below.
 
 ### Emergency recovery
