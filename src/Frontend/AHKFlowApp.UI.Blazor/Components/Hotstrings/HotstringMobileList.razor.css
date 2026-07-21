@@ -30,9 +30,15 @@
     vertical-align: middle;
 }
 
+/* Trigger and its kind chip stack, so the replacement column keeps the full remaining width
+   instead of collapsing to an ellipsis at phone widths. */
 .mobile-list .trigger-cell {
-    width: 30%;
+    width: 34%;
     white-space: nowrap;
+}
+
+.mobile-list .trigger-cell code {
+    display: block;
 }
 
 .mobile-list .replacement-cell {
@@ -61,9 +67,11 @@
     text-align: center;
 }
 
-.mobile-list .script-badge {
-    vertical-align: middle;
-    margin-right: 4px;
+/* The kind chip is a child component, so its root carries a different scope — reach into it with
+   ::deep, anchored on .mobile-list, which is this component's own markup. */
+.mobile-list ::deep .kind-chip-host {
+    display: block;
+    margin-top: 2px;
 }
 
 .script-body {

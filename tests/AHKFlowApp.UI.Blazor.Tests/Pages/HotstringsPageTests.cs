@@ -60,6 +60,32 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
         _api.ListAsync(Arg.Any<HotstringListRequest>(), Arg.Any<CancellationToken>())
             .Returns(ApiResult<PagedList<HotstringDto>>.Ok(page));
 
+    [Fact]
+    public async Task Page_WhileReloadIsInFlight_RendersLoadingIndicator()
+    {
+        // The indicator is only observable mid-flight, which no other test covers: ComponentBase
+        // renders once before awaiting a suspending event handler and again on completion, so a
+        // gated API call is the only way to catch the page in its loading state.
+        StubList(Page());
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+        cut.WaitForAssertion(() =>
+            cut.FindAll(".mobile-branch .mud-progress-linear").Should().BeEmpty());
+
+        var gate = new TaskCompletionSource<ApiResult<PagedList<HotstringDto>>>();
+        _api.ListAsync(Arg.Any<HotstringListRequest>(), Arg.Any<CancellationToken>())
+            .Returns(gate.Task);
+
+        await cut.InvokeAsync(() => cut.Find("button.reload-hotstrings-mobile").Click());
+
+        cut.WaitForAssertion(() =>
+            cut.FindAll(".mobile-branch .mud-progress-linear").Should().NotBeEmpty());
+
+        gate.SetResult(ApiResult<PagedList<HotstringDto>>.Ok(Page()));
+
+        cut.WaitForAssertion(() =>
+            cut.FindAll(".mobile-branch .mud-progress-linear").Should().BeEmpty());
+    }
+
     private void StubListFailure(ApiResultStatus status, ApiProblemDetails? problem = null) =>
         _api.ListAsync(Arg.Any<HotstringListRequest>(), Arg.Any<CancellationToken>())
             .Returns(ApiResult<PagedList<HotstringDto>>.Failure(status, problem));
