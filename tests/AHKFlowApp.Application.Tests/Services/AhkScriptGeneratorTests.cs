@@ -418,11 +418,10 @@ public sealed class AhkScriptGeneratorTests
         output.Should().Contain($"F5::{expectedFn}(\"notepad.exe\")");
     }
 
-    // Validation now rejects '"', backtick, and control chars in Key/Parameters
-    // (HotkeyRules), so this input can no longer arrive via the API. Pins that the
-    // emitter still trusts validated input and embeds raw — no defensive escaping.
+    // Parameters are escaped at emission by HotkeyEmitter, so a quote in a stored
+    // value can no longer break the generated line.
     [Fact]
-    public void Generate_Hotkey_EmitsParametersVerbatim_NoEscaping()
+    public void Generate_Hotkey_EscapesParametersInStringLiteral()
     {
         Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
         Hotkey hk = new HotkeyBuilder()
@@ -435,7 +434,7 @@ public sealed class AhkScriptGeneratorTests
 
         string output = DefaultSut().Generate(profile, [], [hk]);
 
-        output.Should().Contain("^a::Send(\"he said \"hi\"\")");
+        output.Should().Contain("^a::Send(\"he said `\"hi`\"\")");
     }
 
     [Fact]
