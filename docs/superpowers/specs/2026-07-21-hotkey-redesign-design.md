@@ -32,6 +32,13 @@ known semantics and known-safe emission:
 | **SendText** | type literal text | `Text` | `SendText("<escaped>")` |
 | **SendKeys** | press a key / combo | `SendKeysContent` token | `Send("^c")` / `Send("{Volume_Up}")` |
 | **Run** | launch app / URL / folder | `RunTarget` + `RunTargetKind` | `Run("<escaped>")` |
+
+`RunTarget` is a **command line**, not a path: AHK's `Run` accepts arguments, and legacy rows
+already rely on it (the dev seed ships `Run "rundll32.exe user32.dll,LockWorkStation"`). So v1 has
+no separate arguments column and **no path-shaped validation** — a rule requiring an existing file
+or a bare executable would reject data the app itself created. `RunTargetKind` is a display label
+that picks the icon and the field's placeholder; it does not change emission. Splitting target from
+arguments is deferred.
 | **Window** | manipulate active window | `WindowOp` | `WinMinimize("A")`, `WinSetAlwaysOnTop(-1, "A")`, … |
 | **Remap** | key behaves as another | `RemapDest` token | `origin::dest` |
 | **Disable** | key does nothing | — | `origin::return` |
@@ -68,8 +75,10 @@ hotkey needs no separate model.
 Preserve the existing dual desktop-grid / mobile-list layout. The desktop `MudDataGrid` keeps
 server-side load, multi-select + bulk delete, category filter chips, history and recycle bin.
 Inline editing is retained **only for the simplest rows** — mirror the hotstring `IsInlineEditable`
-predicate: inline-edit when `ActionKind ∈ {SendText, Run}`, no combo, no toggles, no context; every
-other row opens the fullscreen dialog (single edit button routes by capability, per PR #204).
+predicate (`Validation/HotstringEditModel.cs:58`): inline-edit when `ActionKind ∈ {SendText, Run}`,
+no combo, no toggles, no context, **and the `Key` passes current validation**; every other row opens
+the fullscreen dialog (single edit button routes by capability, per PR #204). The key clause is what
+surfaces un-migratable legacy rows without any new UI — see §8.
 
 A combined **Action** column shows the action chip (color-coded per kind) + a compact modifier/key
 combo label + a window-context indicator, single-sourced through a `HotkeyActionDisplay` helper so
@@ -84,7 +93,8 @@ One fullscreen `HotkeyEditDialog` edits every action. Field flow:
 - **Combo** — optional prefix-key picker; when set, modifier checkboxes disable (combo forbids
   modifiers in v1) and a prefix-suppression note appears.
 - **Toggles** — `*` wildcard, `~` passthrough, `Up` key-up (hidden for Remap/Disable; `Up` disabled
-  for wheel keys).
+  for wheel keys; `*` hidden when a combo is set — combos are already wildcard by default, see §8.
+  `~` and `Up` stay available for combos: `~RButton & C::` and `F1 & e Up::` are both valid AHK).
 - **Action selector** — `MudToggleGroup` of the 7 kinds (icon + color), each revealing its own panel:
   SendText textarea; SendKeys mini-picker (mods + one key); Run target + kind; Window op select;
   Remap dest mini-picker; Disable (no fields); Raw body textarea (mono, brace-lint).
@@ -253,6 +263,19 @@ each *role* a key can play has its own AHK grammar, and one shared token rule ca
 Every role canonicalizes before persisting and before duplicate checks — alias (`Esc`→`Escape`),
 case, and `vk`/`sc` digit width.
 
+**Registry scope = curated subset, `vk`/`sc` as the documented escape hatch.** AHK's key list runs
+past 100 names and there is nothing to reuse — `MacroTokens` recognizes only Enter and Tab. v1
+covers exactly the six picker groups of §4 (letters/digits, F-keys, named/cursor, numpad,
+media/browser, mouse + wheel). **Joystick is excluded on purpose, not for effort**: for joystick
+"hotkey prefix symbols such as `^` (control) and `+` (shift) are not supported", which contradicts
+the modifier-flag model outright, and the axis names (`JoyX`, `JoyY`, `JoyPOV`, …) "cannot be used
+as hotkeys" at all. Hand-held remote keys are excluded as unverifiable and vanishingly rare.
+Anything omitted stays reachable via `vkNN` / `scNNN`, which is what the escape hatch is for.
+
+Each entry carries **role capability flags** (usable as hotkey key / combo prefix / Send token /
+remap source / remap dest) so all five validators read one table instead of maintaining parallel
+allow-lists — wheel, for instance, is a legal hotkey key and Send token but not a remap source.
+
 | Role | Rule |
 |--|--|
 | Hotkey `Key` | ∈ registry, **or** `^vk[0-9a-f]{1,2}$` **or** `^sc[0-9a-f]{1,4}$` — combined `vkNNscNNN` is **rejected** (AHK: `vk1Bsc001::` raises an error; combining is supported only by `Send`, `GetKeyName`, `GetKeyVK`, `GetKeySC`, `A_MenuMaskKey`) |
@@ -265,6 +288,13 @@ case, and `vk`/`sc` digit width.
   forbids the others' (SendText→`Text`; SendKeys→valid `SendKeysContent`; Run→`RunTarget`+`RunTargetKind`;
   Window→`WindowOp`; Remap→valid `RemapDest`; Disable→none; Raw→`Body` brace-balanced, no `#` directive).
 - `IsKeyUp` forbidden for wheel keys.
+- Combo: `ComboPrefixKey` set ⇒ modifiers empty, prefix valid per its role row, `≠ Key`, **and
+  `IsWildcard` false**. `*` is not *illegal* on a combo — AHK says custom combinations "act as
+  though they have the wildcard (`*`) modifier by default", so it is redundant. Reject rather than
+  silently drop, for the same reason modifiers are rejected: a stored toggle that provably does
+  nothing produces a grid label that lies about the row's behavior. `IsPassthrough` and `IsKeyUp`
+  **stay legal** with combos (`~RButton & C::`, `F1 & e Up::` are both valid AHK). Exactly two keys —
+  AHK does not support three or more.
 - Context: both-or-neither; `ContextValue` rejects `"`/backtick/control (embedded raw in `WinActive`).
 - **Relax** the interim `"`/backtick rejection on text fields (now escaped at emission).
 
@@ -283,14 +313,23 @@ case, and `vk`/`sc` digit width.
   them. The "clear, don't map" idea contradicts the very precedent it cited: `RawHotstringKind`
   rewrote every legacy `Script` row in T-SQL, `ScriptToRawComposer` converts legacy snapshots, and
   `RawHotstringKindMigrationTests` pins the two to byte-identical output. Mapping rules:
-  - legacy `Run` → `ActionKind.Run`, `RunTarget` = `Parameters`, `RunTargetKind` inferred
-    (URL scheme → `Url`; trailing separator or existing-directory shape → `Folder`; else `Application`).
+  - legacy `Run` → `ActionKind.Run`, `RunTarget` = `Parameters`, `RunTargetKind` = **`Application`**,
+    except a value beginning `http://` or `https://` → `Url`. No cleverer inference: `Folder`
+    detection would need to stat a path on the user's machine, which a server-side migration cannot
+    do, and `RunTargetKind` is a **label only** — all three kinds emit the same `Run("<escaped>")`,
+    so a wrong guess costs review surface and buys nothing. Users re-label on next edit.
   - legacy `Send` whose `Parameters` is a valid `SendKeysContent` token → `ActionKind.SendKeys`.
   - every other legacy `Send` → `ActionKind.Raw`, `Body` composed to **preserve current emission
     byte-for-byte** (today's output is unescaped `Send("<Parameters>")`, so the composed body must
     reproduce exactly that, not a newly-escaped variant).
-  - rows whose `Key` fails the new registry/`vk`/`sc` validation are **left as-is and flagged**, not
-    deleted — the key is the LHS and has no safe automatic rewrite. See §9 W1.
+  - rows whose `Key` fails the new registry/`vk`/`sc` validation are **left as-is**, not deleted —
+    the key is the LHS and has no safe automatic rewrite. Surfacing them needs **no new UI**: extend
+    the `IsInlineEditable` predicate so such a row returns false and routes to the dialog, where the
+    existing field-level validation error already appears on open. No grid chip, no one-time notice.
+    The row still emits and is still escaped, so this is a data-quality nudge on next edit, not an
+    incident; the migration logs a count and stops there. Volume is small by construction — the
+    lazy seed is `env.IsDevelopment`-only (`ListHotkeysQuery.cs`), so deployed legacy rows are
+    hand-made user data.
 
 ### Preview & history
 
@@ -385,7 +424,12 @@ case, and `vk`/`sc` digit width.
 - **Legacy migration parity** (Infrastructure Testcontainers, mirroring
   `RawHotstringKindMigrationTests`): every legacy fixture row migrated in T-SQL is byte-identical to
   `LegacyHotkeySnapshotConverter` output, and legacy restore/revert produce the same definition.
-  These tests must exist **before** W1's migration is considered done.
+  These tests must exist **before** W1's migration is considered done. Seed the fixture set from the
+  **existing dev lazy-seed rows** (`ListHotkeysQuery.cs:65`) — they already cover every hard case:
+  a Run target carrying arguments (`rundll32.exe user32.dll,LockWorkStation`), a Run target that
+  isn't one (`Reload`), a bare scheme (`https://`), clean one-token Sends (`{Up}`, `^v`) that must
+  become SendKeys, and a leaked hotstring macro token (`{{date:yyyy-MM-dd}}`) that must fall back to
+  Raw. Anything invented would be gentler than the data already in the repo.
 - Integration (WebApplicationFactory + Testcontainers): POST each action kind → 201 + correct DB
   state; duplicate identity → 409; malformed → 400 naming the field.
 - `#HotIf` variant precedence: two context variants of one key emit in deterministic
@@ -431,12 +475,16 @@ case, and `vk`/`sc` digit width.
     composed from discrete picker state, each validated by its own grammar (not one shared rule).
 20. **`$`** is not a v1 user toggle but is auto-emitted for keyboard SendKeys bindings (§5).
 21. **Emission style** standardized on the parenthesized call form (§1).
+22. **Combo toggles**: `*` rejected when a combo is set (combos are wildcard by default); `~` and
+    `Up` stay legal on combos; exactly two keys.
+23. **Legacy `RunTargetKind`**: everything → `Application`, except an `http(s)://` prefix → `Url`.
+    No `Folder` inference. `RunTarget` is a **command line**, not a path — no path-shaped validation,
+    no separate arguments column in v1.
+24. **Legacy invalid keys**: no new UI — extend `IsInlineEditable` to route those rows to the dialog,
+    where the existing validation error already shows. Migration logs a count.
+25. **Registry scope**: curated six groups + `vk`/`sc` escape hatch; joystick and remote keys
+    excluded; entries carry role capability flags feeding all five validators.
 
 ## Unresolved questions
 
-1. Toggles + combo: `~a & b::` is valid AHK; is `*` valid on a combo? If not, W2 must forbid it.
-2. Legacy `RunTargetKind` inference (§8) — accept the heuristic, or migrate every legacy `Run` row to
-   `Application` and let users re-classify?
-3. Flagging legacy rows whose `Key` fails new validation — surface how? (grid warning chip vs.
-   one-time notice vs. silent.)
-4. Registry scope for v1 — full AHK key list, or curated subset with `vk`/`sc` as the escape hatch?
+None. Ready for `writing-plans`.
