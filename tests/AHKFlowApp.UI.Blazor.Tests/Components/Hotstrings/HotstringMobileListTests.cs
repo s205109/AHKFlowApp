@@ -211,7 +211,9 @@ public sealed class HotstringMobileListTests : BunitContext, IAsyncLifetime
             .Add(c => c.Profiles, (IReadOnlyList<ProfileDto>)[])
             .Add(c => c.Categories, (IReadOnlyList<CategoryDto>)[]));
 
-        cut.Find("td.replacement-cell").TextContent.Should().Be("yyyy-MM-dd");
+        // The cell leads with the kind chip, so the summary is what trails it — EndWith still proves
+        // nothing else is appended after the format.
+        cut.Find("td.replacement-cell").TextContent.Trim().Should().EndWith("yyyy-MM-dd");
     }
 
     [Fact]
@@ -241,8 +243,8 @@ public sealed class HotstringMobileListTests : BunitContext, IAsyncLifetime
             .Add(c => c.Profiles, (IReadOnlyList<ProfileDto>)[])
             .Add(c => c.Categories, (IReadOnlyList<CategoryDto>)[]));
 
-        cut.Find("td.replacement-cell").TextContent
-            .Should().Be("Dear {{{{first_name}}}},{{key:Enter}}{{cursor}}Alex");
+        cut.Find("td.replacement-cell").TextContent.Trim()
+            .Should().EndWith("Dear {{{{first_name}}}},{{key:Enter}}{{cursor}}Alex");
         cut.FindAll("td.replacement-cell .macro-token-chip").Should().BeEmpty();
     }
 
@@ -297,19 +299,40 @@ public sealed class HotstringMobileListTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
-    public void TextRow_CollapsedCell_ShowsHotstringChipByDefault()
+    public void TextRow_CollapsedCell_ShowsTintedKindChipNotDelivery()
     {
         IRenderedComponent<HotstringMobileList> cut = Render<HotstringMobileList>(p => p
             .Add(c => c.Items, [Item("btw", "by the way")])
             .Add(c => c.Profiles, (IReadOnlyList<ProfileDto>)[])
             .Add(c => c.Categories, (IReadOnlyList<CategoryDto>)[]));
 
-        cut.Find("[data-test=\"hotstring-delivery\"]").TextContent.Should().Contain("Hotstring");
+        AngleSharp.Dom.IElement chip = cut.Find("td.trigger-cell .mud-chip");
+        chip.TextContent.Should().Contain("Text");
+        chip.ClassList.Should().Contain("kind-chip--text");
         cut.FindAll("[data-test=\"clipboard-delivery\"]").Should().BeEmpty();
     }
 
+    [Theory]
+    [InlineData(HotstringKind.DateTime, "Date", "kind-chip--datetime")]
+    [InlineData(HotstringKind.Macro, "Macro", "kind-chip--macro")]
+    public void CollapsedCell_NonTextKinds_ShowTheirOwnTintedChip(
+        HotstringKind kind, string expectedLabel, string expectedClass)
+    {
+        HotstringEditModel item = Item();
+        item.Kind = kind;
+
+        IRenderedComponent<HotstringMobileList> cut = Render<HotstringMobileList>(p => p
+            .Add(c => c.Items, [item])
+            .Add(c => c.Profiles, (IReadOnlyList<ProfileDto>)[])
+            .Add(c => c.Categories, (IReadOnlyList<CategoryDto>)[]));
+
+        AngleSharp.Dom.IElement chip = cut.Find("td.trigger-cell .mud-chip");
+        chip.TextContent.Should().Contain(expectedLabel);
+        chip.ClassList.Should().Contain(expectedClass);
+    }
+
     [Fact]
-    public void TextRow_CollapsedCell_ShowsClipboardChipFromEffectiveDelivery()
+    public void TextRow_CollapsedCell_ShowsClipboardIconFromEffectiveDelivery()
     {
         HotstringEditModel item = Item("long", "replacement text");
         item.EffectiveDelivery = HotstringDelivery.ClipboardPaste;
@@ -319,8 +342,8 @@ public sealed class HotstringMobileListTests : BunitContext, IAsyncLifetime
             .Add(c => c.Profiles, (IReadOnlyList<ProfileDto>)[])
             .Add(c => c.Categories, (IReadOnlyList<CategoryDto>)[]));
 
-        cut.Find("[data-test=\"clipboard-delivery\"]").TextContent.Should().Contain("Clipboard");
-        cut.FindAll("[data-test=\"hotstring-delivery\"]").Should().BeEmpty();
+        cut.FindAll("[data-test=\"clipboard-delivery\"]").Should().HaveCount(1);
+        cut.Find("td.trigger-cell .mud-chip").ClassList.Should().Contain("kind-chip--text");
     }
 
     [Fact]
@@ -381,7 +404,13 @@ public sealed class HotstringMobileListTests : BunitContext, IAsyncLifetime
             .Add(c => c.Profiles, (IReadOnlyList<ProfileDto>)[])
             .Add(c => c.Categories, (IReadOnlyList<CategoryDto>)[]));
 
-        cut.FindAll("[data-test=\"script-badge-collapsed\"]").Should().HaveCount(1);
+        // The warning now rides on the Raw kind chip itself rather than a separate icon, so only
+        // the Raw row carries it — and it is labelled for screen readers, not color-only.
+        AngleSharp.Dom.IElement badge = cut.Find("[data-test=\"raw-kind-chip\"]");
+        badge.TextContent.Should().Contain("Raw");
+        badge.ClassList.Should().Contain("kind-chip--raw");
+        badge.GetAttribute("aria-label").Should().Contain("Verbatim AutoHotkey definition");
+        cut.FindAll("[data-test=\"raw-kind-chip\"]").Should().HaveCount(1);
     }
 
     [Fact]

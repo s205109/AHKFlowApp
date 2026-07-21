@@ -998,41 +998,8 @@
     private RenderFragment RenderCategories(IReadOnlyCollection<Guid> categoryIds) =>
         @<EntityChips Ids="categoryIds" Options="_categoryOptions" Variant="Variant.Outlined" Color="Color.Primary" />;
 
-    private static string KindLabel(HotstringKind kind) => kind switch
-    {
-        HotstringKind.Text => "Text",
-        HotstringKind.DateTime => "Date & time",
-        HotstringKind.Macro => "Macro",
-        HotstringKind.Raw => "Raw",
-        _ => kind.ToString(),
-    };
-
-    // Every row shows its own kind, so a column titled "Type" actually reports the type. Delivery
-    // is surfaced only for the clipboard exception — clipboard delivery has a real side effect (it
-    // overwrites the user's clipboard), whereas keystroke delivery is the unremarkable default and
-    // labelling it on every row was noise. Tints live in Hotstrings.razor.css.
-    private RenderFragment RenderTypeChip(HotstringEditModel item) => @<text>
-        <MudChip T="string" Size="Size.Small" Variant="Variant.Text"
-                 Class="@KindChipClass(item.Kind)"
-                 Icon="@(item.Kind == HotstringKind.Raw ? Icons.Material.Filled.Warning : null)"
-                 UserAttributes="@KindChipAttributes(item.Kind)">@KindLabel(item.Kind)</MudChip>
-        @if (item.Kind == HotstringKind.Text && DeliveryDisplay.IsClipboard(item.EffectiveDelivery))
-        {
-            <MudIcon Icon="@Icons.Material.Filled.ContentPaste" Size="Size.Small" Class="delivery-icon"
-                     UserAttributes="@DeliveryChipAttributes(item.EffectiveDelivery)" />
-        }
-    </text>;
-
-    private static string KindChipClass(HotstringKind kind) => kind switch
-    {
-        HotstringKind.DateTime => "kind-chip--datetime",
-        HotstringKind.Macro => "kind-chip--macro",
-        HotstringKind.Raw => "kind-chip--raw",
-        _ => "kind-chip--text",
-    };
-
-    private static Dictionary<string, object?> DeliveryChipAttributes(HotstringDelivery effectiveDelivery) =>
-        new() { ["data-test"] = DeliveryDisplay.DataTest(effectiveDelivery) };
+    private RenderFragment RenderTypeChip(HotstringEditModel item) =>
+        @<HotstringKindChip Kind="item.Kind" EffectiveDelivery="item.EffectiveDelivery" />;
 
     private static string OptionGlyphs(HotstringEditModel item)
     {
@@ -1048,17 +1015,15 @@
         return glyphs;
     }
 
-    // Warning conveyed to assistive tech and sighted users alike — the chip's warning color and
-    // icon alone are not exposed to screen readers.
-    private const string ScriptWarningText = "Verbatim AutoHotkey definition — review before running.";
-
     private static string OptionsTooltip(HotstringEditModel item)
     {
-        List<string> parts = [item.Kind == HotstringKind.Text ? DeliveryDisplay.Label(item.EffectiveDelivery) : KindLabel(item.Kind)];
+        List<string> parts = [item.Kind == HotstringKind.Text
+            ? DeliveryDisplay.Label(item.EffectiveDelivery)
+            : HotstringKindDisplay.Label(item.Kind)];
         if (item.Kind == HotstringKind.Raw)
         {
             // Raw's structured flags are meaningless (options live in the verbatim text) — skip them.
-            parts.Add(ScriptWarningText);
+            parts.Add(HotstringKindDisplay.ScriptWarningText);
         }
         else
         {
@@ -1070,11 +1035,6 @@
         if (item.ContextMatchType is not null) parts.Add($"Only in {item.ContextSummary}");
         return string.Join(" · ", parts);
     }
-
-    private static Dictionary<string, object?> KindChipAttributes(HotstringKind kind) =>
-        kind == HotstringKind.Raw
-            ? new Dictionary<string, object?> { ["aria-label"] = $"{KindLabel(kind)}. {ScriptWarningText}" }
-            : [];
 
     private RenderFragment RenderActions(HotstringEditModel item) => @<text>
         @if (IsEditing(item))

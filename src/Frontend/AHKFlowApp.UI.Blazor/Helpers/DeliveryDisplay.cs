@@ -6,14 +6,12 @@ namespace AHKFlowApp.UI.Blazor.Helpers;
 internal static class DeliveryDisplay
 {
     public const string ClipboardDataTest = "clipboard-delivery";
-    public const string HotstringDataTest = "hotstring-delivery";
 
     public static bool IsClipboard(HotstringDelivery effectiveDelivery) =>
         effectiveDelivery == HotstringDelivery.ClipboardPaste;
 
+    /// <summary>Only reached from the Type tooltip now — the chip itself reports the kind, and
+    /// keystroke delivery is the unremarkable default, so only clipboard gets a visual marker.</summary>
     public static string Label(HotstringDelivery effectiveDelivery) =>
         IsClipboard(effectiveDelivery) ? "Clipboard" : "Hotstring";
-
-    public static string DataTest(HotstringDelivery effectiveDelivery) =>
-        IsClipboard(effectiveDelivery) ? ClipboardDataTest : HotstringDataTest;
 }

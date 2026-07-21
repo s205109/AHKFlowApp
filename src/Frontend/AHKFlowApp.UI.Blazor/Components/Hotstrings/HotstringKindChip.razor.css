@@ -1,0 +1,33 @@
+/* Type chips read as data, not actions. The toolbar already owns saturated fill in the brand
+   triad (Primary green #6AA84F, Secondary blue #3B8FC2, Tertiary brick #8C3A3A), so these hues
+   are picked off that triad and kept as soft tints. Mixing against theme variables tracks
+   light/dark without needing a dark-mode selector.
+
+   These live here rather than in Hotstrings.razor.css because the mobile list is a separate
+   component: page-scoped rules keyed on .hotstrings-grid never reached it, which is why mobile
+   Type chips rendered grey. */
+.kind-chip-host ::deep .mud-chip.kind-chip--text {
+    background-color: color-mix(in oklch, var(--mud-palette-surface) 84%, oklch(0.62 0.19 300));
+    color: color-mix(in oklch, var(--mud-palette-text-primary) 35%, oklch(0.52 0.19 300));
+}
+
+.kind-chip-host ::deep .mud-chip.kind-chip--datetime {
+    background-color: color-mix(in oklch, var(--mud-palette-surface) 84%, oklch(0.65 0.13 200));
+    color: color-mix(in oklch, var(--mud-palette-text-primary) 35%, oklch(0.52 0.13 200));
+}
+
+.kind-chip-host ::deep .mud-chip.kind-chip--macro {
+    background-color: color-mix(in oklch, var(--mud-palette-surface) 84%, oklch(0.63 0.20 350));
+    color: color-mix(in oklch, var(--mud-palette-text-primary) 35%, oklch(0.52 0.20 350));
+}
+
+.kind-chip-host ::deep .mud-chip.kind-chip--raw {
+    background-color: color-mix(in oklch, var(--mud-palette-surface) 84%, oklch(0.70 0.15 70));
+    color: color-mix(in oklch, var(--mud-palette-text-primary) 35%, oklch(0.50 0.15 70));
+}
+
+.kind-chip-host ::deep .delivery-icon {
+    opacity: 0.6;
+    margin-left: 4px;
+    vertical-align: middle;
+}

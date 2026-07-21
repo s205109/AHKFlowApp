@@ -53,22 +53,15 @@
                                        @onchange="e => OnRowCheckboxChanged(item, IsChecked(e))" />
                             </td>
                         }
-                        <td class="trigger-cell"><code>@item.Trigger</code></td>
-                        <td class="replacement-cell">
-                            @if (item.Kind == HotstringKind.Raw)
-                            {
-                                <MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Warning" Size="Size.Small" Class="script-badge"
-                                         title="Raw — verbatim AutoHotkey definition"
-                                         UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "script-badge-collapsed" })" />
-                            }
-                            @if (item.Kind == HotstringKind.Text)
-                            {
-                                <MudChip T="string" Size="Size.Small"
-                                         Color="@(DeliveryDisplay.IsClipboard(item.EffectiveDelivery) ? Color.Info : Color.Default)"
-                                         UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = DeliveryDisplay.DataTest(item.EffectiveDelivery) })">@DeliveryDisplay.Label(item.EffectiveDelivery)</MudChip>
-                            }
-                            @RenderReplacementCell(item)
+                        @* Same chip as the desktop grid's Type column — kind for every row, tinted per
+                           kind, with Raw's warning icon riding on the chip. It sits under the trigger
+                           rather than beside the replacement: at 390px a word-width chip in the
+                           replacement cell left that column only wide enough for an ellipsis. *@
+                        <td class="trigger-cell">
+                            <code>@item.Trigger</code>
+                            <HotstringKindChip Kind="item.Kind" EffectiveDelivery="item.EffectiveDelivery" />
                         </td>
+                        <td class="replacement-cell">@RenderReplacementCell(item)</td>
                         <td class="chevron-cell">@(expanded ? "▾" : "▸")</td>
                     </tr>
                     @if (expanded)
