@@ -2,13 +2,13 @@
 
 @if (Any)
 {
-    <MudChip T="string" Size="Size.Small" Color="Color.Info">Any</MudChip>
+    <MudChip T="string" Size="Size.Small" Color="MudBlazor.Color.Info" Variant="Variant">Any</MudChip>
 }
 else
 {
     @foreach (Guid id in Ids)
     {
-        <MudChip T="string" Size="Size.Small">@NameFor(id)</MudChip>
+        <MudChip T="string" Size="Size.Small" Variant="Variant" Color="@(Color ?? MudBlazor.Color.Default)">@NameFor(id)</MudChip>
     }
 }
 
@@ -18,6 +18,11 @@ else
 
     /// <summary>When true, renders a single "Any" chip instead of the id list (profiles case).</summary>
     [Parameter] public bool Any { get; set; }
+
+    [Parameter] public Variant Variant { get; set; } = Variant.Filled;
+
+    /// <summary>Color for the id chips. Null keeps MudBlazor's default (grey). Does not affect the "Any" chip.</summary>
+    [Parameter] public MudBlazor.Color? Color { get; set; }
 
     private string NameFor(Guid id) =>
         Options.FirstOrDefault(o => o.Id == id)?.Name ?? id.ToString()[..8];

@@ -101,10 +101,11 @@ public sealed class RawHotstringFlowTests(StackFixture fixture) : IAsyncLifetime
         await page.ClickAsync("button.commit-edit");
         await page.WaitForSelectorAsync("text=Hotstring created.");
 
-        // Collapsed mobile row (keyed by the derived trigger) shows the Raw warning badge.
+        // Collapsed mobile row (keyed by the derived trigger) shows the Raw kind chip, which carries
+        // the warning icon and the accessible warning text.
         await page.WaitForSelectorAsync("tr.mobile-row:has-text(\"ftw\")");
         await Assertions.Expect(
-            page.Locator("tr.mobile-row:has-text(\"ftw\") [data-test=\"script-badge-collapsed\"]")).ToBeVisibleAsync();
+            page.Locator("tr.mobile-row:has-text(\"ftw\") [data-test=\"raw-kind-chip\"]")).ToBeVisibleAsync();
 
         // Byte-match the downloaded profile script — the verbatim Raw line must appear exactly.
         await page.GotoAsync($"{fixture.Spa.BaseUrl}/downloads");

@@ -11,9 +11,20 @@
         <MudText Typo="Typo.subtitle2">@(_selectMode ? $"{_selectedIds.Count} selected" : "")</MudText>
     </MudStack>
 
-    @if (Items.Count == 0)
+    @if (Items.Count == 0 && !Loading)
     {
-        <MudText Class="pa-4 text-center" Typo="Typo.body2">No hotstrings yet.</MudText>
+        @if (HasActiveFilters)
+        {
+            <MudStack AlignItems="AlignItems.Center" Spacing="2" Class="pa-4">
+                <MudText Typo="Typo.body2">No hotstrings match these filters.</MudText>
+                <MudButton Variant="Variant.Text" Color="Color.Primary" Class="clear-filters"
+                           OnClick="OnClearFilters">Clear filters</MudButton>
+            </MudStack>
+        }
+        else
+        {
+            <MudText Class="pa-4 text-center" Typo="Typo.body2">No hotstrings yet.</MudText>
+        }
     }
     else
     {
@@ -42,22 +53,15 @@
                                        @onchange="e => OnRowCheckboxChanged(item, IsChecked(e))" />
                             </td>
                         }
-                        <td class="trigger-cell"><code>@item.Trigger</code></td>
-                        <td class="replacement-cell">
-                            @if (item.Kind == HotstringKind.Raw)
-                            {
-                                <MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Warning" Size="Size.Small" Class="script-badge"
-                                         title="Raw — verbatim AutoHotkey definition"
-                                         UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "script-badge-collapsed" })" />
-                            }
-                            @if (item.Kind == HotstringKind.Text)
-                            {
-                                <MudChip T="string" Size="Size.Small"
-                                         Color="@(DeliveryDisplay.IsClipboard(item.EffectiveDelivery) ? Color.Info : Color.Default)"
-                                         UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = DeliveryDisplay.DataTest(item.EffectiveDelivery) })">@DeliveryDisplay.Label(item.EffectiveDelivery)</MudChip>
-                            }
-                            @RenderReplacementCell(item)
+                        @* Same chip as the desktop grid's Type column — kind for every row, tinted per
+                           kind, with Raw's warning icon riding on the chip. It sits under the trigger
+                           rather than beside the replacement: at 390px a word-width chip in the
+                           replacement cell left that column only wide enough for an ellipsis. *@
+                        <td class="trigger-cell">
+                            <code>@item.Trigger</code>
+                            <HotstringKindChip Kind="item.Kind" EffectiveDelivery="item.EffectiveDelivery" />
                         </td>
+                        <td class="replacement-cell">@RenderReplacementCell(item)</td>
                         <td class="chevron-cell">@(expanded ? "▾" : "▸")</td>
                     </tr>
                     @if (expanded)
@@ -105,7 +109,7 @@
                                         <EntityChips Ids="item.ProfileIds" Options="_profileOptions" Any="item.AppliesToAllProfiles" />
                                     </MudText>
                                     <MudText Typo="Typo.body2"><strong>Categories:</strong>
-                                        <EntityChips Ids="item.CategoryIds" Options="_categoryOptions" />
+                                        <EntityChips Ids="item.CategoryIds" Options="_categoryOptions" Variant="Variant.Outlined" Color="Color.Primary" />
                                     </MudText>
                                     @if (item.Kind != HotstringKind.Raw)
                                     {
@@ -153,6 +157,14 @@
     [Parameter] public EventCallback<HotstringEditModel> OnEdit { get; set; }
     [Parameter] public EventCallback<HotstringEditModel> OnDelete { get; set; }
     [Parameter] public EventCallback<IReadOnlyList<Guid>> OnBulkDelete { get; set; }
+
+    /// <summary>Drives the empty state: filtered-empty offers a way out, true-empty does not.</summary>
+    [Parameter] public bool HasActiveFilters { get; set; }
+    [Parameter] public EventCallback OnClearFilters { get; set; }
+
+    /// <summary>Suppresses the empty state while a load is in flight — an empty list mid-load is
+    /// not yet known to be empty, and "No hotstrings yet" under a progress bar reads as a result.</summary>
+    [Parameter] public bool Loading { get; set; }
 
     private Guid? _expandedId;
     private bool _selectMode;

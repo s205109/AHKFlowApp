@@ -1,6 +1,7 @@
 using System.Linq.Expressions;
 using System.Reflection;
 using AHKFlowApp.Application.Abstractions;
+using AHKFlowApp.Application.Commands.Dev;
 using AHKFlowApp.Application.Common;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Domain.Constants;
@@ -64,30 +65,6 @@ internal sealed class ListHotstringsQueryHandler(
     : IUseCaseHandler<ListHotstringsQuery, Result<PagedList<HotstringDto>>>
 {
     internal const int ListReplacementPreviewLength = 200;
-
-    // Mirrors SeedHotstringsCommand.s_samples — update both if seed set changes.
-    private static readonly (
-        string Trigger,
-        string Replacement,
-        bool Ending,
-        bool InsideWord,
-        string[] Categories,
-        HotstringKind Kind,
-        string? DateTimeFormat)[] s_lazySeed =
-    [
-        ("recieve", "receive",              true,  true,  ["Autocorrect"],  HotstringKind.Text,     null),
-        ("btw",     "by the way",           true,  false, ["Communication"], HotstringKind.Text,    null),
-        ("brb",     "be right back",        true,  false, ["Communication"], HotstringKind.Text,    null),
-        ("fyi",     "for your information", true,  false, ["Communication"], HotstringKind.Text,    null),
-        ("/today",  "",                     false, false, ["DateTime"],     HotstringKind.DateTime, "yyyy-MM-dd"),
-        ("/now",    "",                     false, false, ["DateTime"],     HotstringKind.DateTime, "HH:mm"),
-        ("@sig",    "Example User\nuser@example.com\nExample Company", false, false, ["Email"], HotstringKind.Text, null),
-        (";arrow",  "→",               false, false, ["Symbols"], HotstringKind.Text, null),
-        (";check",  "✓",               false, false, ["Symbols"], HotstringKind.Text, null),
-        (";shrug",  "¯\\_(ツ)_/¯", false, false, ["Symbols"], HotstringKind.Text, null),
-        (";e:",     "ë",               false, false, ["Symbols"], HotstringKind.Text, null),
-        (";todo",   "TODO(name): ",         false, false, ["Code"], HotstringKind.Text, null),
-    ];
 
     // Shared, EF-translatable "searchable replacement" selector: DateTime-kind hotstrings store
     // Replacement = "" and carry their format string in DateTimeFormat instead. Search/filter/sort
@@ -295,17 +272,17 @@ internal sealed class ListHotstringsQueryHandler(
                     .ToDictionary(c => c.Name, c => c.Id, StringComparer.OrdinalIgnoreCase);
             }
 
-            foreach ((string trigger, string replacement, bool ending, bool inside, string[] cats, HotstringKind kind, string? dateTimeFormat) in s_lazySeed)
+            foreach (HotstringSeedSamples.Sample sample in HotstringSeedSamples.All)
             {
                 var hs = Hotstring.Create(
                     ownerOid,
                     new HotstringDefinition(
-                        trigger, replacement, Description: null,
-                        AppliesToAllProfiles: true, ending, inside,
-                        Kind: kind, DateTimeFormat: dateTimeFormat),
+                        sample.Trigger, sample.Replacement, sample.Description,
+                        AppliesToAllProfiles: true, sample.Ending, sample.InsideWord,
+                        Kind: sample.Kind, DateTimeFormat: sample.DateTimeFormat),
                     clock);
                 db.Hotstrings.Add(hs);
-                foreach (string catName in cats)
+                foreach (string catName in sample.Categories)
                 {
                     if (catByName.TryGetValue(catName, out Guid catId))
                         db.HotstringCategories.Add(HotstringCategory.Create(hs.Id, catId));

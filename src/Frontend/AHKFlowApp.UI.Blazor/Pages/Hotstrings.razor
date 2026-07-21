@@ -74,9 +74,14 @@
                          Dense="true" Hover="true" RowsPerPage="_rowsPerPage"
                          Filterable="true" FilterMode="DataGridFilterMode.ColumnFilterMenu"
                          SortMode="SortMode.Single" ReadOnly="true"
+                         Loading="_loading"
                          RowClassFunc="@GetRowClass">
                 <Columns>
-                    <SelectColumn T="HotstringEditModel" />
+                    @* SelectColumn defaults to an inline width:0% (sized to content under the
+                       default auto table layout). The grid uses table-layout:fixed, where 0% is
+                       taken literally — the column collapses and the Trigger cell covers the
+                       checkbox, making row selection unclickable. Pin an explicit width. *@
+                    <SelectColumn T="HotstringEditModel" HeaderStyle="width:56px" />
                     <PropertyColumn Property="x => x.Trigger" Title="Trigger">
                         <CellTemplate>
                             @if (IsEditing(context.Item))
@@ -150,7 +155,17 @@
                             }
                         </CellTemplate>
                     </TemplateColumn>
-                    <TemplateColumn Title="Type" Sortable="true" SortBy="x => x.Kind" Filterable="false">
+                    <TemplateColumn Sortable="true" SortBy="x => x.Kind" Filterable="false">
+                        <HeaderTemplate>
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="0">
+                                <MudText>Type</MudText>
+                                <MudTooltip Text="* = expands immediately · ? = triggers inside words · C = case sensitive · O = omits ending character · window icon = only in a specific app · clipboard icon = pasted via clipboard">
+                                    <MudIconButton Icon="@Icons.Material.Filled.HelpOutline" Size="Size.Small"
+                                                   Class="type-legend-help"
+                                                   UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = "Glyph legend: * expands immediately, ? triggers inside words, C case sensitive, O omits ending character, window icon only in a specific app, clipboard icon pasted via clipboard" })" />
+                                </MudTooltip>
+                            </MudStack>
+                        </HeaderTemplate>
                         <CellTemplate>
                             <MudTooltip Text="@OptionsTooltip(context.Item)">
                                 <span class="type-badge">
@@ -180,7 +195,20 @@
                         <CellTemplate>@RenderActions(context.Item)</CellTemplate>
                     </TemplateColumn>
                 </Columns>
-                <NoRecordsContent><MudText>No hotstrings yet.</MudText></NoRecordsContent>
+                <NoRecordsContent>
+                    @if (HasActiveFilters)
+                    {
+                        <MudStack AlignItems="AlignItems.Center" Spacing="2" Class="pa-4">
+                            <MudText>No hotstrings match these filters.</MudText>
+                            <MudButton Variant="Variant.Text" Color="Color.Primary" Class="clear-filters"
+                                       OnClick="ClearFiltersAsync">Clear filters</MudButton>
+                        </MudStack>
+                    }
+                    else
+                    {
+                        <MudText>No hotstrings yet.</MudText>
+                    }
+                </NoRecordsContent>
                 <PagerContent>
                     <MudDataGridPager T="HotstringEditModel" PageSizeOptions="UserPreferences.AllowedRowsPerPage" />
                 </PagerContent>
@@ -228,9 +256,17 @@
                 <MudAlert Severity="Severity.Error" Class="mb-3">@_loadError</MudAlert>
             }
 
+            @if (_loading)
+            {
+                <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mb-2" />
+            }
+
             <HotstringMobileList Items="_mobileItems"
                                  Profiles="_profiles"
                                  Categories="_categories"
+                                 HasActiveFilters="HasActiveFilters"
+                                 OnClearFilters="ClearFiltersAsync"
+                                 Loading="_loading"
                                  OnEdit="OpenEditDialogAsync"
                                  OnDelete="DeleteAsync"
                                  OnBulkDelete="MobileBulkDeleteAsync" />
@@ -277,6 +313,7 @@
     private bool _loading;
     private string? _loadError;
     private string _search = "";
+    private bool _hasColumnFilters;
     private int _rowsPerPage = UserPreferences.Default.RowsPerPage;
     private readonly CancellationTokenSource _cts = new();
 
@@ -323,6 +360,15 @@
 
         (string? sortField, bool sortDescending) = GetSort(state);
 
+        // Column filters live in the grid's state, not in page fields — capture them here so the
+        // empty state can tell "no hotstrings" from "no matches" for these too.
+        string? triggerFilter = StringFilter(state, "trigger");
+        string? replacementFilter = StringFilter(state, "replacement");
+        string? descriptionFilter = StringFilter(state, "description");
+        _hasColumnFilters = !string.IsNullOrWhiteSpace(triggerFilter)
+            || !string.IsNullOrWhiteSpace(replacementFilter)
+            || !string.IsNullOrWhiteSpace(descriptionFilter);
+
         ApiResult<PagedList<HotstringDto>> result = await ListAsync(
             new HotstringListRequest(
                 Page: state.Page + 1,
@@ -330,9 +376,9 @@
                 Search: string.IsNullOrWhiteSpace(_search) ? null : _search,
                 SortField: sortField,
                 SortDescending: sortDescending,
-                TriggerFilter: StringFilter(state, "trigger"),
-                ReplacementFilter: StringFilter(state, "replacement"),
-                DescriptionFilter: StringFilter(state, "description"),
+                TriggerFilter: triggerFilter,
+                ReplacementFilter: replacementFilter,
+                DescriptionFilter: descriptionFilter,
                 CategoryIds: _selectedCategoryIds.Count > 0 ? _selectedCategoryIds : null,
                 Kind: _selectedKind),
             ct);
@@ -425,7 +471,14 @@
         };
 
     private string GetRowClass(HotstringEditModel item, int _)
-        => IsEditing(item) ? (ReferenceEquals(item, _pendingCreate) ? "draft-row" : "edit-row") : string.Empty;
+    {
+        List<string> classes = [];
+        if (IsEditing(item))
+            classes.Add(ReferenceEquals(item, _pendingCreate) ? "draft-row" : "edit-row");
+        if (_selected.Contains(item))
+            classes.Add("selected-row");
+        return string.Join(" ", classes);
+    }
 
     private async Task ReloadAsync()
     {
@@ -768,14 +821,9 @@
         }
     }
 
-    private Task OpenEditDialogAsync(HotstringEditModel item) =>
-        OpenEditDialogCoreAsync(item, new DialogOptions { FullScreen = true, CloseButton = false });
-
-    private Task OpenEditDetailsDialogAsync(HotstringEditModel item) =>
-        OpenEditDialogCoreAsync(item, new DialogOptions { FullScreen = false, MaxWidth = MaxWidth.Medium, CloseButton = false });
-
-    private async Task OpenEditDialogCoreAsync(HotstringEditModel item, DialogOptions options)
+    private async Task OpenEditDialogAsync(HotstringEditModel item)
     {
+        DialogOptions options = new() { FullScreen = true, CloseButton = false };
         if (_dialogOpen || item.Id is null)
             return;
 
@@ -892,6 +940,27 @@
         await LoadMobileAsync();
     }
 
+    // Separates "you have no hotstrings" from "your filters matched nothing" — the two empty
+    // states need different copy, and only the second one can offer a way out. Column filters
+    // count too: they reach the API, so they can produce an empty result on their own.
+    private bool HasActiveFilters =>
+        !string.IsNullOrWhiteSpace(_search)
+        || _selectedKind is not null
+        || _selectedCategoryIds.Count > 0
+        || _hasColumnFilters;
+
+    private async Task ClearFiltersAsync()
+    {
+        _search = "";
+        _selectedKind = null;
+        _selectedCategoryIds = [];
+        _grid?.FilterDefinitions.Clear();
+        _hasColumnFilters = false;
+        if (_grid is not null) await _grid.ReloadServerData();
+        _mobilePage = 1;
+        await LoadMobileAsync();
+    }
+
     private RenderFragment RenderProfiles(bool appliesToAllProfiles, IReadOnlyCollection<Guid> profileIds) =>
         @<EntityChips Ids="profileIds" Options="_profileOptions" Any="appliesToAllProfiles" />;
 
@@ -923,33 +992,14 @@
                             SelectedIds="edit.CategoryIds"
                             SelectedIdsChanged="@(ids => edit.CategoryIds = [.. ids])"
                             Dense="true" Placeholder="Select categories"
+                            Compact="true"
                             DataTest="category-select" />;
 
     private RenderFragment RenderCategories(IReadOnlyCollection<Guid> categoryIds) =>
-        @<EntityChips Ids="categoryIds" Options="_categoryOptions" />;
+        @<EntityChips Ids="categoryIds" Options="_categoryOptions" Variant="Variant.Outlined" Color="Color.Primary" />;
 
-    private static string KindLabel(HotstringKind kind) => kind switch
-    {
-        HotstringKind.Text => "Text",
-        HotstringKind.DateTime => "Date & time",
-        HotstringKind.Macro => "Macro",
-        HotstringKind.Raw => "Raw",
-        _ => kind.ToString(),
-    };
-
-    // Text rows show the resolved delivery chip (Hotstring/Clipboard) instead of a "Text" kind
-    // chip — the delivery is the more useful signal once Auto resolves per-row. Non-Text kinds
-    // keep their existing kind chip.
-    private RenderFragment RenderTypeChip(HotstringEditModel item) => item.Kind == HotstringKind.Text
-        ? @<MudChip T="string" Size="Size.Small"
-                    Color="@(DeliveryDisplay.IsClipboard(item.EffectiveDelivery) ? Color.Info : Color.Default)"
-                    UserAttributes="@DeliveryChipAttributes(item.EffectiveDelivery)">@DeliveryDisplay.Label(item.EffectiveDelivery)</MudChip>
-        : @<MudChip T="string" Size="Size.Small" Color="@(item.Kind == HotstringKind.Raw ? Color.Warning : Color.Default)"
-                    Icon="@(item.Kind == HotstringKind.Raw ? Icons.Material.Filled.Warning : null)"
-                    UserAttributes="@KindChipAttributes(item.Kind)">@KindLabel(item.Kind)</MudChip>;
-
-    private static Dictionary<string, object?> DeliveryChipAttributes(HotstringDelivery effectiveDelivery) =>
-        new() { ["data-test"] = DeliveryDisplay.DataTest(effectiveDelivery) };
+    private RenderFragment RenderTypeChip(HotstringEditModel item) =>
+        @<HotstringKindChip Kind="item.Kind" EffectiveDelivery="item.EffectiveDelivery" />;
 
     private static string OptionGlyphs(HotstringEditModel item)
     {
@@ -965,17 +1015,15 @@
         return glyphs;
     }
 
-    // Warning conveyed to assistive tech and sighted users alike — the chip's warning color and
-    // icon alone are not exposed to screen readers.
-    private const string ScriptWarningText = "Verbatim AutoHotkey definition — review before running.";
-
     private static string OptionsTooltip(HotstringEditModel item)
     {
-        List<string> parts = [item.Kind == HotstringKind.Text ? DeliveryDisplay.Label(item.EffectiveDelivery) : KindLabel(item.Kind)];
+        List<string> parts = [item.Kind == HotstringKind.Text
+            ? DeliveryDisplay.Label(item.EffectiveDelivery)
+            : HotstringKindDisplay.Label(item.Kind)];
         if (item.Kind == HotstringKind.Raw)
         {
             // Raw's structured flags are meaningless (options live in the verbatim text) — skip them.
-            parts.Add(ScriptWarningText);
+            parts.Add(HotstringKindDisplay.ScriptWarningText);
         }
         else
         {
@@ -987,11 +1035,6 @@
         if (item.ContextMatchType is not null) parts.Add($"Only in {item.ContextSummary}");
         return string.Join(" · ", parts);
     }
-
-    private static Dictionary<string, object?> KindChipAttributes(HotstringKind kind) =>
-        kind == HotstringKind.Raw
-            ? new Dictionary<string, object?> { ["aria-label"] = $"{KindLabel(kind)}. {ScriptWarningText}" }
-            : [];
 
     private RenderFragment RenderActions(HotstringEditModel item) => @<text>
         @if (IsEditing(item))
@@ -1006,17 +1049,12 @@
         }
         else
         {
-            <MudIconButton Class="edit-details" Icon="@Icons.Material.Filled.EditNote"
-                           OnClick="() => OpenEditDetailsDialogAsync(item)" />
+            <MudIconButton Class="edit" Icon="@Icons.Material.Filled.Edit"
+                           OnClick="() => (item.IsInlineEditable ? StartEditAsync(item) : OpenEditDialogAsync(item))" />
             <MudIconButton Class="show-history" Icon="@Icons.Material.Filled.History"
                            OnClick="() => ShowHistoryAsync(item)" />
             <MudIconButton Class="delete" Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
                            OnClick="() => DeleteAsync(item)" />
-            @if (item.IsInlineEditable)
-            {
-                <MudIconButton Class="start-edit" Icon="@Icons.Material.Filled.Edit"
-                               OnClick="() => StartEditAsync(item)" />
-            }
         }
     </text>;
 

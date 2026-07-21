@@ -1,0 +1,35 @@
+@using AHKFlowApp.UI.Blazor.DTOs
+@using AHKFlowApp.UI.Blazor.Helpers
+@using MudBlazor
+
+@* Every row shows its own kind, so a column titled "Type" actually reports the type. Delivery is
+   surfaced only for the clipboard exception — clipboard delivery has a real side effect (it
+   overwrites the user's clipboard), whereas keystroke delivery is the unremarkable default and
+   labelling it on every row was noise. Lives in its own component so the desktop grid and the
+   mobile list cannot drift apart; the tints ride along in the scoped CSS. *@
+<span class="kind-chip-host">
+    <MudChip T="string" Size="Size.Small" Variant="Variant.Text"
+             Class="@HotstringKindDisplay.ChipClass(Kind)"
+             Icon="@(Kind == HotstringKind.Raw ? Icons.Material.Filled.Warning : null)"
+             UserAttributes="@ChipAttributes()">@HotstringKindDisplay.Label(Kind)</MudChip>
+    @if (Kind == HotstringKind.Text && DeliveryDisplay.IsClipboard(EffectiveDelivery))
+    {
+        <MudIcon Icon="@Icons.Material.Filled.ContentPaste" Size="Size.Small" Class="delivery-icon"
+                 UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = DeliveryDisplay.ClipboardDataTest })" />
+    }
+</span>
+
+@code {
+    [Parameter, EditorRequired] public HotstringKind Kind { get; set; }
+
+    /// <summary>Only read for <see cref="HotstringKind.Text"/> — the sole kind with a delivery choice.</summary>
+    [Parameter] public HotstringDelivery EffectiveDelivery { get; set; }
+
+    private Dictionary<string, object?> ChipAttributes() => Kind == HotstringKind.Raw
+        ? new Dictionary<string, object?>
+        {
+            ["aria-label"] = $"{HotstringKindDisplay.Label(Kind)}. {HotstringKindDisplay.ScriptWarningText}",
+            ["data-test"] = "raw-kind-chip",
+        }
+        : [];
+}

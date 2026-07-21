@@ -58,7 +58,7 @@
 
 ::deep .hotstrings-grid th:nth-child(3),
 ::deep .hotstrings-grid td:nth-child(3) {
-    width: 24%;
+    width: 19%;
 }
 
 /* Replacement column: multi-line imports (continuation sections, converted Send
@@ -70,12 +70,15 @@
 
 ::deep .hotstrings-grid th:nth-child(4),
 ::deep .hotstrings-grid td:nth-child(4) {
-    width: 14%;
+    width: 13%;
 }
 
+/* Profiles renders one short chip ("Any" for most rows), so it can give a little width to
+   Categories — but not much: at high zoom the fixed layout squeezes percentage columns hard,
+   and below ~9% the "Any" chip clips. */
 ::deep .hotstrings-grid th:nth-child(5),
 ::deep .hotstrings-grid td:nth-child(5) {
-    width: 10%;
+    width: 9%;
 }
 
 ::deep .hotstrings-grid th:nth-child(6),
@@ -84,15 +87,40 @@
     text-align: center;
 }
 
+/* Hosts the inline MudSelect. Its dropdown adornment plus cell padding cost a fixed ~40px before
+   any value shows, and the percentage shrinks with the window, so 10% left room for about one
+   character at 1280px. Sized to fit "N selected" there; the width comes from Replacement, which
+   had the most slack and ellipsizes anyway. Below roughly 1150px every column in this grid
+   truncates — a pre-existing limit of fitting 8 fixed-layout columns, not specific to this one. */
 ::deep .hotstrings-grid th:nth-child(7),
 ::deep .hotstrings-grid td:nth-child(7) {
-    width: 10%;
+    width: 17%;
 }
 
-::deep .hotstrings-grid th:nth-child(8),
+/* Actions column holds icon buttons, not text — the shared ellipsis rule above would clip
+   them behind a fake "..." once the fixed-width column can't fit all icons at higher zoom.
+   Its width comes from the column's HeaderStyle in Hotstrings.razor: under table-layout:fixed
+   the header row sizes the column, so an inline header width beats any rule set here. */
 ::deep .hotstrings-grid td:nth-child(8) {
-    width: 132px;
+    overflow: visible;
 }
+
+/* 12% read as barely-there against the dark surface; 18% stays subtle in light while being
+   unambiguous in dark. */
+::deep .hotstrings-grid .selected-row {
+    background-color: color-mix(in srgb, var(--mud-palette-primary) 18%, transparent);
+}
+
+/* Inline editors must not inherit the read-only cell clipping above — that rule is what
+   truncated the category MudSelect to "C...". The edit-row/draft-row classes come from
+   GetRowClass, so this only relaxes the row currently being edited. */
+::deep .hotstrings-grid .edit-row .mud-table-cell,
+::deep .hotstrings-grid .draft-row .mud-table-cell {
+    overflow: visible;
+    white-space: normal;
+}
+
+/* Kind chip tints live in HotstringKindChip.razor.css so the mobile list gets them too. */
 
 ::deep .hotstrings-grid .option-glyphs {
     opacity: 0.6;

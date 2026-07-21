@@ -18,11 +18,13 @@ namespace AHKFlowApp.Application.Tests.Hotstrings;
 public sealed class ListHotstringsLazySeedTests(HotstringDbFixture fx)
 {
     private readonly FakeTimeProvider _clock = new(DateTimeOffset.Parse("2026-05-23T10:00:00Z"));
+    // Derived from the shared seed set so adding a sample doesn't break every count assertion.
+    private static readonly int SampleCount = Application.Commands.Dev.HotstringSeedSamples.All.Length;
     private static readonly AppEnvironment s_dev = new(IsDevelopment: true);
     private static readonly AppEnvironment s_prod = new(IsDevelopment: false);
 
     [Fact]
-    public async Task Handle_FirstCallInDev_Seeds12Hotstrings()
+    public async Task Handle_FirstCallInDev_SeedsAllHotstrings()
     {
         var owner = Guid.NewGuid();
         await using AppDbContext ctx = fx.CreateContext();
@@ -31,7 +33,7 @@ public sealed class ListHotstringsLazySeedTests(HotstringDbFixture fx)
         Result<PagedList<HotstringDto>> result = await sut.ExecuteAsync(new ListHotstringsQuery(), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value.TotalCount.Should().Be(12);
+        result.Value.TotalCount.Should().Be(SampleCount);
     }
 
     [Fact]
@@ -62,7 +64,7 @@ public sealed class ListHotstringsLazySeedTests(HotstringDbFixture fx)
         Result<PagedList<HotstringDto>> result = await sut2.ExecuteAsync(new ListHotstringsQuery(), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value.TotalCount.Should().Be(12);
+        result.Value.TotalCount.Should().Be(SampleCount);
     }
 
     [Fact]
@@ -141,7 +143,7 @@ public sealed class ListHotstringsLazySeedTests(HotstringDbFixture fx)
         Result<PagedList<HotstringDto>> result = await sut.ExecuteAsync(new ListHotstringsQuery(), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value.TotalCount.Should().Be(12);
+        result.Value.TotalCount.Should().Be(SampleCount);
 
         // Marker persisted (the bug: lazy-seed would have detached pref on duplicate-key)
         await using AppDbContext verify = fx.CreateContext();
@@ -231,10 +233,10 @@ public sealed class ListHotstringsLazySeedTests(HotstringDbFixture fx)
         int hotstringCount = await verify.Hotstrings.CountAsync(h => h.OwnerOid == owner);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value.TotalCount.Should().Be(12);
+        result.Value.TotalCount.Should().Be(SampleCount);
         pref!.CategoriesSeededAt.Should().NotBeNull();
         pref.HotstringsSeededAt.Should().NotBeNull();
-        hotstringCount.Should().Be(12);
+        hotstringCount.Should().Be(SampleCount);
     }
 
     [Fact]
@@ -261,7 +263,7 @@ public sealed class ListHotstringsLazySeedTests(HotstringDbFixture fx)
         int hotstringCount = await verify.Hotstrings.CountAsync(h => h.OwnerOid == owner);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value.TotalCount.Should().Be(12);
-        hotstringCount.Should().Be(12);
+        result.Value.TotalCount.Should().Be(SampleCount);
+        hotstringCount.Should().Be(SampleCount);
     }
 }
