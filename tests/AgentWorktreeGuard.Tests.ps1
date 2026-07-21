@@ -478,6 +478,50 @@ try {
         }
     }
 
+    Write-Host 'Segment-scoped rm/dotnet safety (no quoted-argument false positives)' -ForegroundColor Cyan
+
+    $rmDotnetCases = @(
+        # Real invocations still fire.
+        @{ Command = 'rm -rf dist'; Action = 'Deny'; Rule = 'dangerous-rm' },
+        @{ Command = 'git commit -m x && rm -rf src'; Action = 'Deny'; Rule = 'dangerous-rm' },
+        @{ Command = 'cd build; rm -fr out'; Action = 'Deny'; Rule = 'dangerous-rm' },
+        @{ Command = '/usr/bin/rm -Rf leftovers'; Action = 'Deny'; Rule = 'dangerous-rm' },
+        @{ Command = 'dotnet run'; Action = 'Warn'; Rule = 'dotnet-run' },
+        @{ Command = 'dotnet run --project src/Backend/AHKFlowApp.API'; Action = 'Warn'; Rule = 'dotnet-run' },
+        # Build-output targets stay allow-listed regardless of flag spelling.
+        @{ Command = 'rm -rf node_modules'; Action = 'Allow'; Rule = 'none' },
+        @{ Command = 'rm -rf /tmp'; Action = 'Allow'; Rule = 'none' },
+        @{ Command = 'rm -fr obj'; Action = 'Allow'; Rule = 'none' },
+        # Regression: the pattern only inside a quoted git argument must not read as an invocation -
+        # this is what the old raw-string rule got wrong, blocking legitimate commits and read-only
+        # `git log --grep`.
+        @{ Command = 'git commit -m "chore: rm -rf dist before packaging"'; Action = 'Allow'; Rule = 'none' },
+        @{ Command = 'git commit -m "wip: dotnet run smoke test"'; Action = 'Allow'; Rule = 'none' },
+        @{ Command = 'git log --grep "rm -rf dist"'; Action = 'Allow'; Rule = 'none' },
+        @{ Command = 'git commit -m "note: rm -fr build"'; Action = 'Allow'; Rule = 'none' }
+    )
+
+    foreach ($case in $rmDotnetCases) {
+        Invoke-TestCase "Segment safety: $($case.Command)" {
+            $decision = Get-AgentCommandSafetyDecision -Command $case.Command
+            Assert-Equal $case.Action $decision.Action 'Action'
+            Assert-Equal $case.Rule $decision.Rule 'Rule'
+        }
+    }
+
+    Invoke-TestCase 'A commit message mentioning rm -rf is allowed end to end in a managed worktree' {
+        $decision = Invoke-AgentGuardPolicy -Command 'git commit -m "docs: rm -rf dist cleanup"' `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Allow' $decision.Action 'Action'
+    }
+
+    Invoke-TestCase 'A real chained rm -rf is still denied end to end' {
+        $decision = Invoke-AgentGuardPolicy -Command 'git status && rm -rf src' `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Deny' $decision.Action 'Action'
+        Assert-Equal 'dangerous-rm' $decision.Rule 'Rule'
+    }
+
     Write-Host 'Precedence and fault handling' -ForegroundColor Cyan
 
     Invoke-TestCase 'AHKFLOW_ALLOW_MAIN=1 downgrades a location denial to Warn' {
