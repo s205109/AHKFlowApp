@@ -180,7 +180,9 @@ classified from the parsed git subcommand and its arguments rather than from reg
 raw string. Regexes over the unnormalized command missed every ordinary variant that puts
 something between `git` and the subcommand - `git -C . reset --hard`, `git.exe reset --hard`,
 `git --no-pager checkout .` - which let AHKFLOW_ALLOW_MAIN=1 downgrade a destructive command to
-a warning. The non-git rules (rm, dotnet) keep their original raw-string matching.
+a warning. The rm and dotnet rules read the same parsed segments, so a `rm -rf`/`dotnet run`
+pattern that only appears inside a quoted argument - a commit message or a `git log --grep`
+needle - is no longer mistaken for an invocation.
 #>
 function Get-AgentCommandSafetyDecision {
     [CmdletBinding()]
@@ -193,19 +195,78 @@ function Get-AgentCommandSafetyDecision {
     $gitDecision = Get-AgentGitSafetyDecision -Command $Command
     if ($gitDecision.Action -ne 'Allow') { return $gitDecision }
 
-    if ($Command -match 'rm\s+-[a-zA-Z]*r[a-zA-Z]*f' -or $Command -match 'rm\s+-[a-zA-Z]*f[a-zA-Z]*r') {
-        if ($Command -notmatch 'rm\s+-rf\s+(node_modules|bin|obj|TestResults|\.vs|/tmp)') {
+    # rm/dotnet are classified from the same parsed segments, so a pattern that only appears inside
+    # a quoted argument - a commit message or a `git log --grep` needle mentioning `rm -rf` - is not
+    # read as an invocation. Only a segment's leading command word is inspected. A wrapped
+    # `sudo rm -rf` hides exactly the way `sh -c 'git ...'` already does: the documented wrapper
+    # gap, not a new one.
+    $segments = @((Get-AgentCommandSegment -Command $Command).Segments)
+
+    foreach ($segment in $segments) {
+        if ((Get-AgentOtherCommandLeaf -Segment $segment) -ne 'rm') { continue }
+        if (Test-AgentDangerousRmArguments -Arguments @($segment.Tokens | Select-Object -Skip 1)) {
             return New-AgentGuardDecision -Action Deny -Rule 'dangerous-rm' -Message `
                 'WARNING: rm -rf detected in a project directory. Verify the target path is intentional.'
         }
     }
 
-    if ($Command -match 'dotnet\s+run\b') {
-        return New-AgentGuardDecision -Action Warn -Rule 'dotnet-run' -Message `
-            'WARNING: dotnet run detected. Ensure launchSettings.json exists and the correct profile is selected.'
+    foreach ($segment in $segments) {
+        if ((Get-AgentOtherCommandLeaf -Segment $segment) -ne 'dotnet') { continue }
+        $dotnetArgs = @(Get-AgentGitPositionals -Arguments @($segment.Tokens | Select-Object -Skip 1))
+        if ($dotnetArgs.Count -gt 0 -and $dotnetArgs[0] -ieq 'run') {
+            return New-AgentGuardDecision -Action Warn -Rule 'dotnet-run' -Message `
+                'WARNING: dotnet run detected. Ensure launchSettings.json exists and the correct profile is selected.'
+        }
     }
 
     return New-AgentGuardDecision -Action Allow
+}
+
+<#
+.SYNOPSIS
+Returns the lowercased leaf command word of an 'Other' segment, or '' for any other kind.
+
+.DESCRIPTION
+Git/cd/pushd/popd segments are classified elsewhere; only a plain command segment carries its
+executable in Tokens[0]. Matching on the leaf keeps `/usr/bin/rm` and `rm` equivalent, while a
+quoted `rm` inside a git argument - which never becomes its own segment - is never inspected.
+#>
+function Get-AgentOtherCommandLeaf {
+    param([object] $Segment)
+
+    if ($Segment.Kind -ne 'Other') { return '' }
+    $tokens = @($Segment.Tokens)
+    if ($tokens.Count -eq 0) { return '' }
+
+    $name = ([string] $tokens[0]).ToLowerInvariant()
+    return ($name -split '[\\/]')[-1]
+}
+
+<#
+.SYNOPSIS
+True when an rm argument list carries a clustered recursive-force flag aimed at a non-throwaway
+target.
+
+.DESCRIPTION
+Mirrors the original raw-string rule (a single `-rf`/`-fr`/`-Rf`-style flag) but reads it from
+parsed tokens. The build-output allow-list is compared against the target's final path component,
+so `node_modules`, `bin`, `obj`, `TestResults`, `.vs`, and `/tmp` stay allowed. An rm carrying the
+flag with no visible target is treated as dangerous.
+#>
+function Test-AgentDangerousRmArguments {
+    param([string[]] $Arguments)
+
+    $hasRecursiveForce = @($Arguments | Where-Object {
+            $_ -match '^-[a-z]*r[a-z]*f' -or $_ -match '^-[a-z]*f[a-z]*r'
+        }).Count -gt 0
+    if (-not $hasRecursiveForce) { return $false }
+
+    $positionals = @(Get-AgentGitPositionals -Arguments $Arguments)
+    if ($positionals.Count -eq 0) { return $true }
+
+    $leaf = (([string] $positionals[0]) -split '[\\/]')[-1]
+    $allowedTargets = @('node_modules', 'bin', 'obj', 'testresults', '.vs', 'tmp')
+    return $allowedTargets -notcontains $leaf.ToLowerInvariant()
 }
 
 <#
