@@ -111,7 +111,10 @@ foreach ($file in $filesToCheck) {
     if (Test-AntiPattern $file $addedLines 'new HttpClient\(\)'                                        'Use IHttpClientFactory instead of new HttpClient()')                { $errors++ }
     if (Test-AntiPattern $file ($addedLines | Where-Object { $_.Text -notmatch 'EventArgs' }) 'async void' 'async void is dangerous, use async Task instead')                { $errors++ }
     # Polly's Outcome<T>.Result is the resilience outcome value, not a blocking Task.Result.
-    if (Test-AntiPattern $file ($addedLines | Where-Object { $_.Text -notmatch 'Outcome\.Result' }) '\.Result\b|\.GetAwaiter\(\)\.GetResult\(\)' 'Avoid sync-over-async (.Result / .GetAwaiter().GetResult())') { $errors++ }
+    # Strip only that exact expression from each line before scanning, so a real task.Result
+    # sharing a line with Outcome.Result is still caught.
+    $resultScan = $addedLines | ForEach-Object { [PSCustomObject]@{ LineNumber = $_.LineNumber; Text = ($_.Text -replace '\bOutcome\.Result\b', '') } }
+    if (Test-AntiPattern $file $resultScan '\.Result\b|\.GetAwaiter\(\)\.GetResult\(\)' 'Avoid sync-over-async (.Result / .GetAwaiter().GetResult())') { $errors++ }
 }
 
 if ($errors -gt 0) {
