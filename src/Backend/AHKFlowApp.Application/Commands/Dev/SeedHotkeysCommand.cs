@@ -92,8 +92,10 @@ internal sealed class SeedHotkeysCommandHandler(
             else
             {
                 var entity = Hotkey.Create(
-                    ownerOid, descr, key, ctrl, alt, shift, win, action, param,
-                    appliesToAllProfiles: true, clock);
+                    ownerOid,
+                    new HotkeyDefinition(descr, key, ctrl, alt, shift, win, action, param,
+                        AppliesToAllProfiles: true),
+                    clock);
                 db.Hotkeys.Add(entity);
                 hotkeyId = entity.Id;
             }

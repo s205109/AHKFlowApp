@@ -214,8 +214,11 @@ internal sealed class ListHotkeysQueryHandler(
             foreach ((string descr, bool ctrl, bool alt, bool shift, bool win, string key,
                       HotkeyAction action, string param, string[] cats) in s_lazySeed)
             {
-                var hk = Hotkey.Create(ownerOid, descr, key, ctrl, alt, shift, win,
-                    action, param, appliesToAllProfiles: true, clock);
+                var hk = Hotkey.Create(
+                    ownerOid,
+                    new HotkeyDefinition(descr, key, ctrl, alt, shift, win, action, param,
+                        AppliesToAllProfiles: true),
+                    clock);
                 db.Hotkeys.Add(hk);
                 foreach (string catName in cats)
                 {

@@ -22,8 +22,9 @@ public sealed class UpdateHotkeyWithCategoriesTests(HotkeyDbFixture fx)
     public async Task Handle_WhenForeignCategoryId_ReturnsInvalid()
     {
         var owner = Guid.NewGuid();
-        var entity = Hotkey.Create(owner, "Open Notepad", "n", true, false, false, false,
-            HotkeyAction.Send, "", true, _clock);
+        Hotkey entity = new HotkeyBuilder()
+            .WithOwner(owner).WithDescription("Open Notepad").WithKey("n")
+            .WithCtrl().WithAction(HotkeyAction.Send).WithParameters("").Build();
         var foreignCategoryId = Guid.NewGuid();
 
         await using (AppDbContext seed = fx.CreateContext())
@@ -50,8 +51,9 @@ public sealed class UpdateHotkeyWithCategoriesTests(HotkeyDbFixture fx)
     public async Task Handle_WhenReplacingProfiles_ReturnsDtoWithExactProfileIds()
     {
         var owner = Guid.NewGuid();
-        var entity = Hotkey.Create(owner, "Profile swap", "p", true, false, false, false,
-            HotkeyAction.Send, "", false, _clock);
+        Hotkey entity = new HotkeyBuilder()
+            .WithOwner(owner).WithDescription("Profile swap").WithKey("p")
+            .WithCtrl().WithAction(HotkeyAction.Send).WithParameters("").AppliesToAll(false).Build();
         Profile prof1 = new ProfileBuilder().WithOwner(owner).WithName("Old").Build();
         Profile prof2 = new ProfileBuilder().WithOwner(owner).WithName("New1").AsDefault(false).Build();
         Profile prof3 = new ProfileBuilder().WithOwner(owner).WithName("New2").AsDefault(false).Build();
@@ -89,8 +91,9 @@ public sealed class UpdateHotkeyWithCategoriesTests(HotkeyDbFixture fx)
     public async Task Handle_WhenValidCategoryIds_ReplacesJunctionRows()
     {
         var owner = Guid.NewGuid();
-        var entity = Hotkey.Create(owner, "Launch Terminal", "t", true, false, false, false,
-            HotkeyAction.Send, "", true, _clock);
+        Hotkey entity = new HotkeyBuilder()
+            .WithOwner(owner).WithDescription("Launch Terminal").WithKey("t")
+            .WithCtrl().WithAction(HotkeyAction.Send).WithParameters("").Build();
         Category cat1 = new CategoryBuilder().WithOwner(owner).Named("Work").Build();
         Category cat2 = new CategoryBuilder().WithOwner(owner).Named("Home").Build();
         Category cat3 = new CategoryBuilder().WithOwner(owner).Named("Other").Build();
@@ -128,8 +131,9 @@ public sealed class UpdateHotkeyWithCategoriesTests(HotkeyDbFixture fx)
     public async Task Handle_WhenEmptyCategoryIds_ClearsAllCategoryLinks()
     {
         var owner = Guid.NewGuid();
-        var entity = Hotkey.Create(owner, "Close Window", "w", true, false, false, false,
-            HotkeyAction.Send, "", true, _clock);
+        Hotkey entity = new HotkeyBuilder()
+            .WithOwner(owner).WithDescription("Close Window").WithKey("w")
+            .WithCtrl().WithAction(HotkeyAction.Send).WithParameters("").Build();
         Category cat = new CategoryBuilder().WithOwner(owner).Named("Work").Build();
 
         await using (AppDbContext seed = fx.CreateContext())
