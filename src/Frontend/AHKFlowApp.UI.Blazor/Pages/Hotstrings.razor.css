@@ -58,7 +58,7 @@
 
 ::deep .hotstrings-grid th:nth-child(3),
 ::deep .hotstrings-grid td:nth-child(3) {
-    width: 24%;
+    width: 19%;
 }
 
 /* Replacement column: multi-line imports (continuation sections, converted Send
@@ -87,11 +87,14 @@
     text-align: center;
 }
 
-/* Wider than the original 10% so the inline editor is comfortable, but it no longer needs to fit
-   joined category names — MultiSelectionTextFunc collapses multi-selection to "N selected". */
+/* Hosts the inline MudSelect. Its dropdown adornment plus cell padding cost a fixed ~40px before
+   any value shows, and the percentage shrinks with the window, so 10% left room for about one
+   character at 1280px. Sized to fit "N selected" there; the width comes from Replacement, which
+   had the most slack and ellipsizes anyway. Below roughly 1150px every column in this grid
+   truncates — a pre-existing limit of fitting 8 fixed-layout columns, not specific to this one. */
 ::deep .hotstrings-grid th:nth-child(7),
 ::deep .hotstrings-grid td:nth-child(7) {
-    width: 12%;
+    width: 17%;
 }
 
 /* Actions column holds icon buttons, not text — the shared ellipsis rule above would clip

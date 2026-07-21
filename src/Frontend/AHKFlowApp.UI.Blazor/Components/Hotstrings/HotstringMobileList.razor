@@ -11,7 +11,7 @@
         <MudText Typo="Typo.subtitle2">@(_selectMode ? $"{_selectedIds.Count} selected" : "")</MudText>
     </MudStack>
 
-    @if (Items.Count == 0)
+    @if (Items.Count == 0 && !Loading)
     {
         @if (HasActiveFilters)
         {
@@ -168,6 +168,10 @@
     /// <summary>Drives the empty state: filtered-empty offers a way out, true-empty does not.</summary>
     [Parameter] public bool HasActiveFilters { get; set; }
     [Parameter] public EventCallback OnClearFilters { get; set; }
+
+    /// <summary>Suppresses the empty state while a load is in flight — an empty list mid-load is
+    /// not yet known to be empty, and "No hotstrings yet" under a progress bar reads as a result.</summary>
+    [Parameter] public bool Loading { get; set; }
 
     private Guid? _expandedId;
     private bool _selectMode;
