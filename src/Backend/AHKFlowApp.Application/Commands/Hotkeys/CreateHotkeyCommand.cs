@@ -1,5 +1,6 @@
 using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.Common;
+using AHKFlowApp.Application.Constants;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Mapping;
 using AHKFlowApp.Application.Validation;
@@ -39,9 +40,11 @@ internal sealed class CreateHotkeyCommandHandler(
 
         CreateHotkeyDto input = request.Input;
 
+        HotkeyKeys.TryCanonicalize(input.Key, out string canonicalKey);
+
         bool duplicate = await db.Hotkeys.AnyAsync(
             h => h.OwnerOid == ownerOid
-              && h.Key == input.Key
+              && h.Key == canonicalKey
               && h.Ctrl == input.Ctrl
               && h.Alt == input.Alt
               && h.Shift == input.Shift
@@ -72,7 +75,7 @@ internal sealed class CreateHotkeyCommandHandler(
             ownerOid,
             new HotkeyDefinition(
                 input.Description,
-                input.Key,
+                canonicalKey,
                 input.Ctrl,
                 input.Alt,
                 input.Shift,
