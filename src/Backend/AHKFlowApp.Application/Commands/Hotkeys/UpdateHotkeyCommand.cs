@@ -1,5 +1,6 @@
 using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.Common;
+using AHKFlowApp.Application.Constants;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Mapping;
 using AHKFlowApp.Application.Validation;
@@ -49,6 +50,8 @@ internal sealed class UpdateHotkeyCommandHandler(
 
         UpdateHotkeyDto input = request.Input;
 
+        HotkeyKeys.TryCanonicalize(input.Key, out string canonicalKey);
+
         Guid[] distinctProfileIds = input.ProfileIds?.Distinct().ToArray() ?? [];
         if (!input.AppliesToAllProfiles)
         {
@@ -71,7 +74,7 @@ internal sealed class UpdateHotkeyCommandHandler(
         entity.Update(
             new HotkeyDefinition(
                 input.Description,
-                input.Key,
+                canonicalKey,
                 input.Ctrl,
                 input.Alt,
                 input.Shift,

@@ -74,11 +74,14 @@ public sealed class CreateHotkeyCommandValidatorTests
     }
 
     [Fact]
-    public void Validate_WithKeyAt20Chars_Succeeds()
+    public void Validate_WithKeyAt20Chars_DoesNotFailOnLength()
     {
+        // No registry key is 20 characters long (the longest, "Browser_Favorites", is 17),
+        // so this can no longer assert overall success. It still confirms MaximumLength
+        // itself does not reject an exactly-20-char value — only the registry check does.
         ValidationResult result = _sut.Validate(Cmd(key: new string('x', 20)));
 
-        result.IsValid.Should().BeTrue();
+        result.Errors.Should().NotContain(e => e.ErrorMessage == "Key must be 20 characters or fewer.");
     }
 
     [Fact]
@@ -101,9 +104,7 @@ public sealed class CreateHotkeyCommandValidatorTests
         ValidationResult result = _sut.Validate(Cmd(key: key));
 
         result.IsValid.Should().BeFalse();
-        result.Errors.Should().Contain(e =>
-            e.PropertyName == "Input.Key" &&
-            e.ErrorMessage == "Key must not have leading or trailing whitespace.");
+        result.Errors.Should().Contain(e => e.PropertyName == "Input.Key");
     }
 
     [Theory]
@@ -116,31 +117,20 @@ public sealed class CreateHotkeyCommandValidatorTests
         ValidationResult result = _sut.Validate(Cmd(key: key));
 
         result.IsValid.Should().BeFalse();
-        result.Errors.Should().Contain(e =>
-            e.PropertyName == "Input.Key" &&
-            e.ErrorMessage == "Key must not contain control characters.");
+        result.Errors.Should().Contain(e => e.PropertyName == "Input.Key");
     }
 
     [Theory]
-    [InlineData("a\"", "Key must not contain double-quote characters.")]
-    [InlineData("a`", "Key must not contain backtick characters.")]
-    [InlineData("a:", "Key must not contain colon characters.")]
-    public void Validate_WithKeyContainingForbiddenChars_Fails(string key, string expectedMessage)
+    [InlineData("a\"")]
+    [InlineData("a`")]
+    [InlineData("a:")]
+    [InlineData(";")]
+    public void Validate_WithKeyNotInRegistry_Fails(string key)
     {
         ValidationResult result = _sut.Validate(Cmd(key: key));
 
         result.IsValid.Should().BeFalse();
-        result.Errors.Should().Contain(e =>
-            e.PropertyName == "Input.Key" &&
-            e.ErrorMessage == expectedMessage);
-    }
-
-    [Fact]
-    public void Validate_WithSemicolonKey_Succeeds()
-    {
-        ValidationResult result = _sut.Validate(Cmd(key: ";"));
-
-        result.IsValid.Should().BeTrue();
+        result.Errors.Should().Contain(e => e.PropertyName == "Input.Key");
     }
 
     [Fact]

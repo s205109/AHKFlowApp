@@ -1,3 +1,4 @@
+using AHKFlowApp.Application.Constants;
 using AHKFlowApp.Domain.Enums;
 using FluentValidation;
 
@@ -14,26 +15,17 @@ internal static class HotkeyRules
           .NotEmpty().WithMessage("Description is required.")
           .MaximumLength(DescriptionMaxLength).WithMessage($"Description must be {DescriptionMaxLength} characters or fewer.");
 
-    // Key and Parameters are embedded raw by AhkScriptGenerator.FormatHotkey; the character
-    // rejections below keep known-unsafe characters out of the generated line (same trust
-    // model as ContextValue in HotstringRules.AddWindowContextRules) — they do not guarantee
-    // Key is a valid AHK key name. Colon is rejected only in Key: "a:" would emit "a:::...",
-    // which AHK parses as hotstring syntax. Interim until escaping and a Key whitelist land
-    // (see the follow-up to issue #193).
+    // Key is validated against the canonical registry (or a vkNN / scNNN code) rather than
+    // by rejecting known-bad characters. This is the whitelist half of issue #195: an
+    // accepted Key is a real AHK key name, so the emitted left-hand side cannot break the
+    // script. Escaping of the right-hand side lives in HotkeyEmitter.
     public static IRuleBuilderOptions<T, string> ValidKey<T>(this IRuleBuilderInitial<T, string> rb) =>
         rb.Cascade(CascadeMode.Stop)
-          .Must(k => !string.IsNullOrEmpty(k)).WithMessage("Key is required.")
+          .NotEmpty().WithMessage("Key is required.")
           .MaximumLength(KeyMaxLength).WithMessage($"Key must be {KeyMaxLength} characters or fewer.")
-          .Must(k => k is not null && !k.Any(char.IsControl))
-              .WithMessage("Key must not contain control characters.")
-          .Must(k => k is not null && k.Length == k.TrimStart(' ').TrimEnd(' ').Length)
-              .WithMessage("Key must not have leading or trailing whitespace.")
-          .Must(k => k is not null && !k.Contains('"'))
-              .WithMessage("Key must not contain double-quote characters.")
-          .Must(k => k is not null && !k.Contains('`'))
-              .WithMessage("Key must not contain backtick characters.")
-          .Must(k => k is not null && !k.Contains(':'))
-              .WithMessage("Key must not contain colon characters.");
+          .Must(HotkeyKeys.IsValidHotkeyKey)
+              .WithMessage("Key must be a known key name (for example a, F5, Escape, Numpad0) "
+                         + "or a vkNN / scNNN code. Combined vkNNscNNN is not valid in a hotkey.");
 
     public static IRuleBuilderOptions<T, string> ValidParameters<T>(this IRuleBuilderInitial<T, string> rb) =>
         rb.Cascade(CascadeMode.Stop)
