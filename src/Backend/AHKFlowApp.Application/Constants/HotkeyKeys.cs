@@ -1,0 +1,195 @@
+using System.Text.RegularExpressions;
+
+namespace AHKFlowApp.Application.Constants;
+
+/// <summary>Roles a registry key may legally play. Each role has its own AHK grammar.</summary>
+[Flags]
+internal enum HotkeyKeyRoles
+{
+    None = 0,
+
+    /// <summary>Usable as the activating key of a hotkey.</summary>
+    HotkeyKey = 1,
+
+    /// <summary>Usable as the prefix of a custom combination (<c>a &amp; b</c>).</summary>
+    ComboPrefix = 2,
+
+    /// <summary>Usable inside a <c>Send</c> token.</summary>
+    SendToken = 4,
+
+    /// <summary>Usable as the source of a remap.</summary>
+    RemapSource = 8,
+
+    /// <summary>Usable as the destination of a remap.</summary>
+    RemapDest = 16,
+
+    All = HotkeyKey | ComboPrefix | SendToken | RemapSource | RemapDest,
+}
+
+/// <param name="Canonical">The single spelling persisted and emitted.</param>
+/// <param name="Group">Picker grouping label.</param>
+/// <param name="Roles">Which roles this key may play.</param>
+/// <param name="RequiresBracesInSend">
+/// True for named keys, which AHK requires be braced inside a Send string
+/// (<c>{Volume_Up}</c>). False for single printable characters, which are bare (<c>c</c>).
+/// </param>
+internal sealed record HotkeyKeyEntry(
+    string Canonical,
+    string Group,
+    HotkeyKeyRoles Roles,
+    bool RequiresBracesInSend);
+
+/// <summary>
+/// Canonical registry of hotkey keys — the single source shared by validation and (from
+/// Wave 1) the key picker.
+/// </summary>
+/// <remarks>
+/// Scope is a curated subset, not AHK's full key list, with <c>vkNN</c>/<c>scNNN</c> as the
+/// documented escape hatch for anything omitted. Joystick keys are excluded deliberately:
+/// AHK does not support modifier prefixes such as <c>^</c> and <c>+</c> on joystick hotkeys,
+/// and the axis names (JoyX, JoyY, JoyPOV, …) cannot be hotkeys at all — both contradict the
+/// modifier-flag model. Mouse and wheel entries arrive in Wave 2 alongside their picker group.
+/// </remarks>
+internal static class HotkeyKeys
+{
+    public const string GroupLetterOrDigit = "Letters & digits";
+    public const string GroupFunction = "Function keys";
+    public const string GroupNamed = "Named & cursor";
+    public const string GroupNumpad = "Numpad";
+    public const string GroupMedia = "Media & browser";
+
+    // A hotkey definition accepts vkNN or scNNN, but never the combined vkNNscNNN form —
+    // AHK raises an error for "vk1Bsc001::". Combining is supported only by Send,
+    // GetKeyName, GetKeyVK, GetKeySC and A_MenuMaskKey.
+    private static readonly Regex s_virtualKey =
+        new("^vk[0-9a-f]{1,2}$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex s_scanCode =
+        new("^sc[0-9a-f]{1,3}$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly string[] s_namedKeys =
+    [
+        "Enter", "Escape", "Space", "Tab", "Backspace", "Delete", "Insert",
+        "Home", "End", "PgUp", "PgDn", "Up", "Down", "Left", "Right",
+        "CapsLock", "ScrollLock", "PrintScreen", "Pause", "AppsKey",
+    ];
+
+    private static readonly string[] s_numpadKeys =
+    [
+        "Numpad0", "Numpad1", "Numpad2", "Numpad3", "Numpad4",
+        "Numpad5", "Numpad6", "Numpad7", "Numpad8", "Numpad9",
+        "NumpadDot", "NumpadAdd", "NumpadSub", "NumpadMult", "NumpadDiv",
+        "NumpadEnter", "NumLock",
+    ];
+
+    private static readonly string[] s_mediaKeys =
+    [
+        "Volume_Up", "Volume_Down", "Volume_Mute",
+        "Media_Play_Pause", "Media_Stop", "Media_Next", "Media_Prev",
+        "Browser_Back", "Browser_Forward", "Browser_Refresh", "Browser_Stop",
+        "Browser_Search", "Browser_Favorites", "Browser_Home",
+        "Launch_Mail", "Launch_Media",
+    ];
+
+    // Accepted spellings that resolve to a canonical entry. AHK accepts several of these
+    // itself; persisting one spelling keeps duplicate detection honest, so that "Esc" and
+    // "Escape" cannot become two rows for the same physical binding.
+    private static readonly Dictionary<string, string> s_aliases = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Esc"] = "Escape",
+        ["Return"] = "Enter",
+        ["Del"] = "Delete",
+        ["Ins"] = "Insert",
+        ["BS"] = "Backspace",
+        ["Break"] = "Pause",
+        ["PgDown"] = "PgDn",
+        ["PageUp"] = "PgUp",
+        ["PageDown"] = "PgDn",
+    };
+
+    private static readonly IReadOnlyList<HotkeyKeyEntry> s_all = BuildRegistry();
+
+    private static readonly Dictionary<string, HotkeyKeyEntry> s_byName =
+        s_all.ToDictionary(e => e.Canonical, StringComparer.OrdinalIgnoreCase);
+
+    public static IReadOnlyList<HotkeyKeyEntry> All => s_all;
+
+    /// <summary>
+    /// Resolves any accepted spelling to the single canonical form, or returns false if the
+    /// value is neither a registry key nor a well-formed <c>vk</c>/<c>sc</c> code.
+    /// </summary>
+    /// <remarks>
+    /// Canonicalization covers all three axes the duplicate check depends on: alias
+    /// (<c>Esc</c> → <c>Escape</c>), case (<c>F5</c>), and code width — <c>vk1</c> → <c>vk01</c>,
+    /// <c>sc1</c> → <c>sc001</c>. Without the padding, <c>vk1</c> and <c>vk01</c> name the same
+    /// physical key but survive as two rows.
+    /// Surrounding whitespace is <em>not</em> trimmed: it is rejected, matching the existing
+    /// "Key must not have leading or trailing whitespace." rule this replaces.
+    /// </remarks>
+    public static bool TryCanonicalize(string? key, out string canonical)
+    {
+        canonical = string.Empty;
+        if (string.IsNullOrWhiteSpace(key))
+            return false;
+
+        if (s_aliases.TryGetValue(key, out string? aliased))
+        {
+            canonical = aliased;
+            return true;
+        }
+
+        if (s_byName.TryGetValue(key, out HotkeyKeyEntry? entry))
+        {
+            canonical = entry.Canonical;
+            return true;
+        }
+
+        if (s_virtualKey.IsMatch(key))
+        {
+            canonical = "vk" + key[2..].ToLowerInvariant().PadLeft(2, '0');
+            return true;
+        }
+
+        if (s_scanCode.IsMatch(key))
+        {
+            canonical = "sc" + key[2..].ToLowerInvariant().PadLeft(3, '0');
+            return true;
+        }
+
+        return false;
+    }
+
+    public static bool IsValidHotkeyKey(string? key) => TryCanonicalize(key, out _);
+
+    private static List<HotkeyKeyEntry> BuildRegistry()
+    {
+        List<HotkeyKeyEntry> entries = [];
+
+        for (char c = 'a'; c <= 'z'; c++)
+            entries.Add(new(c.ToString(), GroupLetterOrDigit, HotkeyKeyRoles.All, RequiresBracesInSend: false));
+
+        for (char c = '0'; c <= '9'; c++)
+            entries.Add(new(c.ToString(), GroupLetterOrDigit, HotkeyKeyRoles.All, RequiresBracesInSend: false));
+
+        for (int i = 1; i <= 24; i++)
+            entries.Add(new($"F{i}", GroupFunction, HotkeyKeyRoles.All, RequiresBracesInSend: true));
+
+        foreach (string name in s_namedKeys)
+            entries.Add(new(name, GroupNamed, RolesForNamed(name), RequiresBracesInSend: true));
+
+        foreach (string name in s_numpadKeys)
+            entries.Add(new(name, GroupNumpad, HotkeyKeyRoles.All, RequiresBracesInSend: true));
+
+        foreach (string name in s_mediaKeys)
+            entries.Add(new(name, GroupMedia, HotkeyKeyRoles.All, RequiresBracesInSend: true));
+
+        return entries;
+    }
+
+    // Pause is excluded as a remap destination: the name collides with AHK's built-in Pause
+    // function, so a remap must target vk13 instead.
+    private static HotkeyKeyRoles RolesForNamed(string name) =>
+        name == "Pause"
+            ? HotkeyKeyRoles.All & ~HotkeyKeyRoles.RemapDest
+            : HotkeyKeyRoles.All;
+}
