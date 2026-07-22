@@ -6,6 +6,7 @@ using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Domain.Enums;
 using AHKFlowApp.Infrastructure.Persistence;
 using AHKFlowApp.TestUtilities.Builders;
+using AHKFlowApp.TestUtilities.Fixtures;
 using Ardalis.Result;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
@@ -262,15 +263,17 @@ public sealed class RevertCommandTests(HistoryDbFixture fx)
     }
 
     [Theory]
-    [MemberData(nameof(TypedActions))]
-    public async Task RevertHotkey_TypedSnapshot_RestoresTypedActionPayload(CreateHotkeyDto original)
+    [MemberData(nameof(TypedActionCases))]
+    public async Task RevertHotkey_TypedSnapshot_RestoresTypedActionPayload(TypedHotkeyActionCase testCase)
     {
         var owner = Guid.NewGuid();
+        CreateHotkeyDto original = testCase.Original;
         string key = original.Key;
         Guid id = await CreateHotkeyViaHandlerAsync(owner, original);
 
+        HotkeyActionKind overwriteKind = testCase.OverwriteKindForRevert ?? HotkeyActionKind.Disable;
         await UpdateHotkeyViaHandlerAsync(owner, id,
-            new UpdateHotkeyDto("overwritten", key, HotkeyActionKind.Disable,
+            new UpdateHotkeyDto("overwritten", key, overwriteKind,
                 Ctrl: false, Alt: false, Shift: false, Win: false,
                 Text: null, SendKeysContent: null, RunTarget: null, RunTargetKind: null,
                 WindowOp: null, RemapDest: null, Body: null,
@@ -340,20 +343,8 @@ public sealed class RevertCommandTests(HistoryDbFixture fx)
         result.Value.RunTargetKind.Should().Be(RunTargetKind.Url);
     }
 
-    /// <summary>One create payload per action kind — the revert round trip must return each verbatim.</summary>
-    public static TheoryData<CreateHotkeyDto> TypedActions() =>
-    [
-        new CreateHotkeyDto("run", "f2", HotkeyActionKind.Run,
-            RunTarget: "notepad.exe", RunTargetKind: RunTargetKind.Application, AppliesToAllProfiles: true),
-        new CreateHotkeyDto("text", "f3", HotkeyActionKind.SendText,
-            Text: "hello world", AppliesToAllProfiles: true),
-        new CreateHotkeyDto("keys", "f4", HotkeyActionKind.SendKeys,
-            SendKeysContent: "^v", AppliesToAllProfiles: true),
-        new CreateHotkeyDto("window", "f5", HotkeyActionKind.Window,
-            WindowOp: WindowOp.Close, AppliesToAllProfiles: true),
-        new CreateHotkeyDto("remap", "a", HotkeyActionKind.Remap,
-            RemapDest: "b", AppliesToAllProfiles: true),
-        new CreateHotkeyDto("raw", "f6", HotkeyActionKind.Raw,
-            Body: "MsgBox \"hi\"", AppliesToAllProfiles: true),
-    ];
+    /// <summary>One create payload per action kind — the revert round trip must return each verbatim.
+    /// For Disable, overwrite to Run (not Disable) so the revert proves state changes, not vacuously passes.</summary>
+    public static TheoryData<TypedHotkeyActionCase> TypedActionCases() =>
+        new(TypedHotkeyActionFixtures.RevertCases);
 }
