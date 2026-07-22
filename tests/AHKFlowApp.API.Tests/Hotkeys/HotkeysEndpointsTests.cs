@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Domain.Enums;
@@ -403,5 +404,123 @@ public sealed class HotkeysEndpointsTests(ApiTestFixture fixture)
         HttpResponseMessage response = await client.GetAsync("/api/v1/hotkeys?sortField=ownerOid");
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    // Golden per action kind: POST persists the typed columns AND the preview endpoint
+    // (fed the same draft fields) reproduces the exact .ahk line the create would emit.
+    // Pinning the literal snippet — not just the 201 — is the point of a golden: it proves
+    // the round trip through validation, persistence, and HotkeyEmitter produced exactly
+    // the expected AHK v2 syntax for every one of the seven kinds, not merely that some
+    // string came back.
+    [Theory]
+    [MemberData(nameof(KindPayloads))]
+    public async Task Post_EachActionKind_Returns201AndPersistsTypedColumns(
+        CreateHotkeyDto dto, HotkeyActionKind expectedKind, string expectedSnippet)
+    {
+        using HttpClient client = CreateAuthed();
+
+        HttpResponseMessage res = await client.PostAsJsonAsync("/api/v1/hotkeys", dto);
+
+        res.StatusCode.Should().Be(HttpStatusCode.Created);
+        HotkeyDto? created = await res.Content.ReadFromJsonAsync<HotkeyDto>();
+        created!.ActionKind.Should().Be(expectedKind);
+
+        // Same draft fields as the create, through the preview endpoint, over real HTTP —
+        // asserts the exact emitted .ahk line, not just that creation succeeded.
+        var previewDto = new HotkeyPreviewRequestDto(
+            dto.Description, dto.Key, dto.ActionKind,
+            dto.Ctrl, dto.Alt, dto.Shift, dto.Win,
+            dto.Text, dto.SendKeysContent, dto.RunTarget, dto.RunTargetKind,
+            dto.WindowOp, dto.RemapDest, dto.Body);
+        HttpResponseMessage previewRes = await client.PostAsJsonAsync("/api/v1/hotkeys/preview", previewDto);
+        previewRes.StatusCode.Should().Be(HttpStatusCode.OK);
+        HotkeyPreviewDto? preview = await previewRes.Content.ReadFromJsonAsync<HotkeyPreviewDto>();
+        preview!.Snippet.Should().Be(expectedSnippet);
+    }
+
+    // AppliesToAllProfiles: true on every case — the create validator requires it (or a
+    // non-empty ProfileIds) regardless of action kind; without it every case 400s on
+    // Input.ProfileIds before the kind-specific logic under test ever runs.
+    public static TheoryData<CreateHotkeyDto, HotkeyActionKind, string> KindPayloads() => new()
+    {
+        {
+            new("Type text", "a", HotkeyActionKind.SendText, Ctrl: true, Text: "hi", AppliesToAllProfiles: true),
+            HotkeyActionKind.SendText,
+            "; Type text\n^a::SendText(\"hi\")"
+        },
+        {
+            new("Send keys", "b", HotkeyActionKind.SendKeys, Ctrl: true, SendKeysContent: "{Up}", AppliesToAllProfiles: true),
+            HotkeyActionKind.SendKeys,
+            "; Send keys\n$^b::Send(\"{Up}\")"
+        },
+        {
+            new("Run app", "c", HotkeyActionKind.Run, Ctrl: true, RunTarget: "notepad.exe", RunTargetKind: RunTargetKind.Application, AppliesToAllProfiles: true),
+            HotkeyActionKind.Run,
+            "; Run app\n^c::Run(\"notepad.exe\")"
+        },
+        {
+            new("Minimize", "d", HotkeyActionKind.Window, Ctrl: true, WindowOp: WindowOp.Minimize, AppliesToAllProfiles: true),
+            HotkeyActionKind.Window,
+            "; Minimize\n^d::WinMinimize(\"A\")"
+        },
+        {
+            new("Remap", "CapsLock", HotkeyActionKind.Remap, RemapDest: "Ctrl", AppliesToAllProfiles: true),
+            HotkeyActionKind.Remap,
+            "; Remap\nCapsLock::Ctrl"
+        },
+        {
+            new("Disable", "F1", HotkeyActionKind.Disable, AppliesToAllProfiles: true),
+            HotkeyActionKind.Disable,
+            "; Disable\nF1::return"
+        },
+        {
+            new("Raw", "e", HotkeyActionKind.Raw, Ctrl: true, Body: "MsgBox \"hi\"", AppliesToAllProfiles: true),
+            HotkeyActionKind.Raw,
+            "; Raw\n^e::MsgBox \"hi\""
+        },
+    };
+
+    // Raw JSON, not a typed DTO: an out-of-range int is exactly what a hand-rolled client sends,
+    // and it is the only way to reach the undefined-enum path the validator now guards. Must be
+    // 400 from validation, never 500 from the emitter — and the ProblemDetails must name the field
+    // that is actually wrong, so a status-only assertion is not enough.
+    [Theory]
+    [InlineData("{\"description\":\"Bad\",\"key\":\"a\",\"ctrl\":true,\"actionKind\":99}", "ActionKind")]
+    [InlineData("{\"description\":\"Bad\",\"key\":\"a\",\"ctrl\":true,\"actionKind\":3,\"windowOp\":99}", "WindowOp")]
+    [InlineData("{\"description\":\"Bad\",\"key\":\"a\",\"ctrl\":true,\"actionKind\":2,\"runTarget\":\"notepad\",\"runTargetKind\":99}", "RunTargetKind")]
+    public async Task Post_UndefinedEnumValue_Returns400NamingField(string json, string expectedField)
+    {
+        using HttpClient client = CreateAuthed();
+
+        HttpResponseMessage res = await client.PostAsync("/api/v1/hotkeys",
+            new StringContent(json, Encoding.UTF8, "application/json"));
+
+        res.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await res.Content.ReadAsStringAsync()).Should().Contain(expectedField);
+    }
+
+    [Fact]
+    public async Task Post_MalformedSendKeys_Returns400NamingField()
+    {
+        using HttpClient client = CreateAuthed();
+        var dto = new CreateHotkeyDto("Bad", "a", HotkeyActionKind.SendKeys, Ctrl: true, SendKeysContent: "Volume_Up");
+
+        HttpResponseMessage res = await client.PostAsJsonAsync("/api/v1/hotkeys", dto);
+
+        res.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await res.Content.ReadAsStringAsync()).Should().Contain("SendKeysContent");
+    }
+
+    [Fact]
+    public async Task Post_DuplicateKeyAndModifiers_Returns409()
+    {
+        using HttpClient client = CreateAuthed();
+        var dto = new CreateHotkeyDto("First", "z", HotkeyActionKind.Disable, AppliesToAllProfiles: true);
+        (await client.PostAsJsonAsync("/api/v1/hotkeys", dto)).StatusCode.Should().Be(HttpStatusCode.Created);
+
+        HttpResponseMessage second = await client.PostAsJsonAsync("/api/v1/hotkeys",
+            dto with { Description = "Second" });
+
+        second.StatusCode.Should().Be(HttpStatusCode.Conflict);
     }
 }
