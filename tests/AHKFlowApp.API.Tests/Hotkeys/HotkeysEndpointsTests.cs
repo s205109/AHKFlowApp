@@ -341,7 +341,7 @@ public sealed class HotkeysEndpointsTests(ApiTestFixture fixture)
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         PagedList<HotkeyDto>? body = await response.Content.ReadFromJsonAsync<PagedList<HotkeyDto>>();
-        body!.Items.Select(h => h.Key).Should().Equal("f1", "f3");
+        body!.Items.Select(h => h.Key).Should().Equal("F1", "F3");
     }
 
     [Fact]

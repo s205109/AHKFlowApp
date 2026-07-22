@@ -251,6 +251,10 @@ Azure resources are provisioned per-environment using `.\scripts\deploy.ps1`. Ea
 - API: `http://localhost:5600` (single port for all backend scenarios: VS, docker-compose, Docker-only)
 - Frontend: `http://localhost:5601`
 
+These are the **main checkout** ports. Agent git worktrees are assigned their own offset ports so a
+worktree can run alongside the main checkout — read the worktree's own `launchSettings.json` rather
+than assuming (e.g. API 5602 / frontend 5603 / SQL 14330, with a per-worktree `COMPOSE_PROJECT_NAME`).
+
 **Local auth:** the main checkout runs real MSAL (Azure AD) by default. Agent git worktrees run
 **no-auth** (test provider, always signed in as "Test User") automatically — `setup-worktree-local-dev.ps1`
 writes both `appsettings.Development.json` files with `Auth:UseTestProvider=true`, so Playwright/E2E get

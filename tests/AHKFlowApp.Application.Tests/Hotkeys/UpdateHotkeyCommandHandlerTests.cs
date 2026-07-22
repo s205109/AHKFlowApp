@@ -146,4 +146,30 @@ public sealed class UpdateHotkeyCommandHandlerTests(HotkeyDbFixture fx)
 
         result.Status.Should().Be(ResultStatus.Conflict);
     }
+
+    [Fact]
+    public async Task Update_AliasOfExistingKey_IsRejectedAsDuplicate()
+    {
+        var owner = Guid.NewGuid();
+        Hotkey first = new HotkeyBuilder().WithOwner(owner).WithKey("Escape").WithCtrl().AppliesToAll().Build();
+        Hotkey second = new HotkeyBuilder().WithOwner(owner).WithKey("f2").WithCtrl().AppliesToAll().Build();
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotkeys.AddRange(first, second);
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        var handler = new UpdateHotkeyCommandHandler(
+            db, CurrentUserHelper.For(owner), TimeProvider.System, new EntityHistoryRecorder(db, TimeProvider.System));
+        // Try to change second to the alias "Esc", which canonicalizes to "Escape" and should
+        // collide with the first hotkey's canonical key + matching modifiers.
+        var cmd = new UpdateHotkeyCommand(second.Id,
+            new UpdateHotkeyDto("Alias conflict", "Esc", true, false, false, false, HotkeyAction.Run, "", null, true));
+
+        Result<HotkeyDto> result = await handler.ExecuteAsync(cmd, default);
+
+        result.Status.Should().Be(ResultStatus.Conflict);
+    }
 }

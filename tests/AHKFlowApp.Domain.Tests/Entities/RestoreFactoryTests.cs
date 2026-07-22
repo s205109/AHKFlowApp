@@ -49,9 +49,13 @@ public sealed class RestoreFactoryTests
         var now = DateTimeOffset.Parse("2026-07-01T10:00:00Z");
 
         var entity = Hotkey.Restore(
-            id, ownerOid, "Open terminal", "T", ctrl: true, alt: false,
-            shift: true, win: false, HotkeyAction.Run, "wt.exe",
-            appliesToAllProfiles: true, createdAt, new FixedClock(now));
+            id, ownerOid,
+            new HotkeyDefinition(
+                Description: "Open terminal", Key: "T",
+                Ctrl: true, Alt: false, Shift: true, Win: false,
+                Action: HotkeyAction.Run, Parameters: "wt.exe",
+                AppliesToAllProfiles: true),
+            createdAt, new FixedClock(now));
 
         entity.Id.Should().Be(id);
         entity.OwnerOid.Should().Be(ownerOid);

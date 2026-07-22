@@ -91,7 +91,7 @@ public sealed class HotkeyHistoryEndpointsTests(ApiTestFixture fixture)
         restore.StatusCode.Should().Be(HttpStatusCode.OK);
         HotkeyDto? restored = await restore.Content.ReadFromJsonAsync<HotkeyDto>();
         restored!.Id.Should().Be(dto.Id);
-        restored.Key.Should().Be("f19");
+        restored.Key.Should().Be("F19");
 
         (await client.DeleteAsync($"/api/v1/hotkeys/{dto.Id}")).EnsureSuccessStatusCode();
         HttpResponseMessage purge = await client.DeleteAsync($"/api/v1/hotkeys/deleted/{dto.Id}");

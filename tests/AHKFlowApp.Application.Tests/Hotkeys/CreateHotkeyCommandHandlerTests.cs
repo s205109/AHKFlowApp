@@ -132,4 +132,66 @@ public sealed class CreateHotkeyCommandHandlerTests(HotkeyDbFixture fx)
 
         result.IsSuccess.Should().BeTrue();
     }
+
+    [Fact]
+    public async Task Create_AliasKey_PersistsCanonicalSpelling()
+    {
+        await using AppDbContext db = fx.CreateContext();
+        var owner = Guid.NewGuid();
+        var handler = new CreateHotkeyCommandHandler(db, CurrentUserHelper.For(owner), _clock);
+        var cmd = new CreateHotkeyCommand(new CreateHotkeyDto(
+            "Close", "Esc", AppliesToAllProfiles: true));
+
+        Result<HotkeyDto> result = await handler.ExecuteAsync(cmd, default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Key.Should().Be("Escape");
+
+        await using AppDbContext verify = fx.CreateContext();
+        (await verify.Hotkeys.SingleAsync(h => h.OwnerOid == owner)).Key.Should().Be("Escape");
+    }
+
+    [Fact]
+    public async Task Create_AliasOfExistingKey_IsRejectedAsDuplicate()
+    {
+        var owner = Guid.NewGuid();
+        Hotkey existing = new HotkeyBuilder()
+            .WithOwner(owner).WithKey("Escape").AppliesToAll().Build();
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotkeys.Add(existing);
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        var handler = new CreateHotkeyCommandHandler(db, CurrentUserHelper.For(owner), _clock);
+        var cmd = new CreateHotkeyCommand(new CreateHotkeyDto(
+            "Close alias", "Esc", AppliesToAllProfiles: true));
+
+        Result<HotkeyDto> result = await handler.ExecuteAsync(cmd, default);
+
+        result.Status.Should().Be(ResultStatus.Conflict);
+    }
+
+    [Fact]
+    public async Task Create_UnpaddedVkCode_IsRejectedAsDuplicateOfPaddedForm()
+    {
+        var owner = Guid.NewGuid();
+        Hotkey existing = new HotkeyBuilder()
+            .WithOwner(owner).WithKey("vk01").AppliesToAll().Build();
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotkeys.Add(existing);
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        var handler = new CreateHotkeyCommandHandler(db, CurrentUserHelper.For(owner), _clock);
+        var cmd = new CreateHotkeyCommand(new CreateHotkeyDto(
+            "Vk alias", "vk1", AppliesToAllProfiles: true));
+
+        Result<HotkeyDto> result = await handler.ExecuteAsync(cmd, default);
+
+        result.Status.Should().Be(ResultStatus.Conflict);
+    }
 }

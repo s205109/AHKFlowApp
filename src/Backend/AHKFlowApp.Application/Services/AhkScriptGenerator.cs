@@ -74,29 +74,11 @@ public sealed class AhkScriptGenerator(
         foreach (Hotkey hk in hkList)
         {
             lines.AddRange(HotstringEmitter.DescriptionCommentLines(hk.Description));
-            lines.Add(FormatHotkey(hk));
+            lines.Add(HotkeyEmitter.Emit(hk));
         }
 
         lines.Add(renderer.Render(profile.FooterTemplate, ctx));
 
         return string.Join("\n", lines);
-    }
-
-    private static string FormatHotkey(Hotkey hk)
-    {
-        string prefix = "";
-        if (hk.Ctrl) prefix += "^";
-        if (hk.Alt) prefix += "!";
-        if (hk.Shift) prefix += "+";
-        if (hk.Win) prefix += "#";
-
-        string fn = hk.Action switch
-        {
-            HotkeyAction.Send => "Send",
-            HotkeyAction.Run => "Run",
-            _ => throw new InvalidOperationException($"Unsupported HotkeyAction: {hk.Action}"),
-        };
-
-        return $"{prefix}{hk.Key}::{fn}(\"{hk.Parameters}\")";
     }
 }

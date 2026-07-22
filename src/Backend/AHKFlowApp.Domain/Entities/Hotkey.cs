@@ -28,90 +28,54 @@ public sealed class Hotkey
     public ICollection<HotkeyProfile> Profiles { get; private set; } = [];
     public ICollection<HotkeyCategory> Categories { get; private set; } = [];
 
-    public static Hotkey Create(
-        Guid ownerOid,
-        string description,
-        string key,
-        bool ctrl,
-        bool alt,
-        bool shift,
-        bool win,
-        HotkeyAction action,
-        string parameters,
-        bool appliesToAllProfiles,
-        TimeProvider clock)
+    public static Hotkey Create(Guid ownerOid, HotkeyDefinition definition, TimeProvider clock)
     {
         DateTimeOffset now = clock.GetUtcNow();
-        return new Hotkey
+        Hotkey hk = new()
         {
             Id = Guid.NewGuid(),
             OwnerOid = ownerOid,
-            Description = description,
-            Key = key,
-            Ctrl = ctrl,
-            Alt = alt,
-            Shift = shift,
-            Win = win,
-            Action = action,
-            Parameters = parameters,
-            AppliesToAllProfiles = appliesToAllProfiles,
             CreatedAt = now,
             UpdatedAt = now,
         };
+        hk.Apply(definition);
+        return hk;
     }
 
     public static Hotkey Restore(
         Guid id,
         Guid ownerOid,
-        string description,
-        string key,
-        bool ctrl,
-        bool alt,
-        bool shift,
-        bool win,
-        HotkeyAction action,
-        string parameters,
-        bool appliesToAllProfiles,
+        HotkeyDefinition definition,
         DateTimeOffset createdAt,
         TimeProvider clock)
-        => new()
+    {
+        Hotkey hk = new()
         {
             Id = id,
             OwnerOid = ownerOid,
-            Description = description,
-            Key = key,
-            Ctrl = ctrl,
-            Alt = alt,
-            Shift = shift,
-            Win = win,
-            Action = action,
-            Parameters = parameters,
-            AppliesToAllProfiles = appliesToAllProfiles,
             CreatedAt = createdAt,
             UpdatedAt = clock.GetUtcNow(),
         };
+        hk.Apply(definition);
+        return hk;
+    }
 
-    public void Update(
-        string description,
-        string key,
-        bool ctrl,
-        bool alt,
-        bool shift,
-        bool win,
-        HotkeyAction action,
-        string parameters,
-        bool appliesToAllProfiles,
-        TimeProvider clock)
+    public void Update(HotkeyDefinition definition, TimeProvider clock)
     {
-        Description = description;
-        Key = key;
-        Ctrl = ctrl;
-        Alt = alt;
-        Shift = shift;
-        Win = win;
-        Action = action;
-        Parameters = parameters;
-        AppliesToAllProfiles = appliesToAllProfiles;
+        Apply(definition);
         UpdatedAt = clock.GetUtcNow();
+    }
+
+    private void Apply(HotkeyDefinition definition)
+    {
+        Description = definition.Description;
+        Key = definition.Key;
+        Ctrl = definition.Ctrl;
+        Alt = definition.Alt;
+        Shift = definition.Shift;
+        Win = definition.Win;
+        Action = definition.Action;
+        Parameters = definition.Parameters;
+        AppliesToAllProfiles = definition.AppliesToAllProfiles;
     }
 }

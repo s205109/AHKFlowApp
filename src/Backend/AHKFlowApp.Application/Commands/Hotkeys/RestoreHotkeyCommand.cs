@@ -57,15 +57,16 @@ internal sealed class RestoreHotkeyCommandHandler(
         var entity = Hotkey.Restore(
             request.Id,
             ownerOid,
-            snapshot.Description,
-            snapshot.Key,
-            snapshot.Ctrl,
-            snapshot.Alt,
-            snapshot.Shift,
-            snapshot.Win,
-            snapshot.Action,
-            snapshot.Parameters,
-            snapshot.AppliesToAllProfiles,
+            new HotkeyDefinition(
+                Description: snapshot.Description,
+                Key: snapshot.Key,
+                Ctrl: snapshot.Ctrl,
+                Alt: snapshot.Alt,
+                Shift: snapshot.Shift,
+                Win: snapshot.Win,
+                Action: snapshot.Action,
+                Parameters: snapshot.Parameters,
+                AppliesToAllProfiles: snapshot.AppliesToAllProfiles),
             snapshot.CreatedAt,
             clock);
 
