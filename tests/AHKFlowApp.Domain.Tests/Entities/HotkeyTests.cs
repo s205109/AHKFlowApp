@@ -15,9 +15,10 @@ public sealed class HotkeyTests
         Alt: false,
         Shift: false,
         Win: true,
-        Action: HotkeyAction.Run,
-        Parameters: "notepad.exe",
-        AppliesToAllProfiles: true);
+        ActionKind: HotkeyActionKind.Run,
+        AppliesToAllProfiles: true,
+        RunTarget: "notepad.exe",
+        RunTargetKind: RunTargetKind.Application);
 
     [Fact]
     public void Create_FromDefinition_CopiesEveryField()
@@ -31,8 +32,9 @@ public sealed class HotkeyTests
         hk.Description.Should().Be("Open Notepad");
         hk.Key.Should().Be("n");
         hk.Win.Should().BeTrue();
-        hk.Action.Should().Be(HotkeyAction.Run);
-        hk.Parameters.Should().Be("notepad.exe");
+        hk.ActionKind.Should().Be(HotkeyActionKind.Run);
+        hk.RunTarget.Should().Be("notepad.exe");
+        hk.RunTargetKind.Should().Be(RunTargetKind.Application);
         hk.AppliesToAllProfiles.Should().BeTrue();
         hk.CreatedAt.Should().Be(clock.GetUtcNow());
         hk.UpdatedAt.Should().Be(clock.GetUtcNow());
@@ -46,10 +48,10 @@ public sealed class HotkeyTests
         DateTimeOffset created = hk.CreatedAt;
         clock.Advance(TimeSpan.FromMinutes(5));
 
-        hk.Update(Definition() with { Key = "b", Parameters = "calc.exe" }, clock);
+        hk.Update(Definition() with { Key = "b", RunTarget = "calc.exe" }, clock);
 
         hk.Key.Should().Be("b");
-        hk.Parameters.Should().Be("calc.exe");
+        hk.RunTarget.Should().Be("calc.exe");
         hk.CreatedAt.Should().Be(created);
         hk.UpdatedAt.Should().Be(clock.GetUtcNow());
     }

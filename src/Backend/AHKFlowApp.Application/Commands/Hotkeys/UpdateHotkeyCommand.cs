@@ -89,10 +89,8 @@ internal sealed class UpdateHotkeyCommandHandler(
                 Alt: input.Alt,
                 Shift: input.Shift,
                 Win: input.Win,
-                Action: HotkeyAction.Send,   // vestigial until Migration B drops the legacy pair
-                Parameters: "",
-                AppliesToAllProfiles: input.AppliesToAllProfiles,
                 ActionKind: input.ActionKind,
+                AppliesToAllProfiles: input.AppliesToAllProfiles,
                 Text: input.Text,
                 SendKeysContent: input.SendKeysContent,
                 RunTarget: input.RunTarget,

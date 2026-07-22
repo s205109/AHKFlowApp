@@ -1,4 +1,5 @@
-using AHKFlowApp.Domain.Enums;
+using AHKFlowApp.Application.Services;
+using HotkeyAction = AHKFlowApp.Application.Services.LegacyHotkeyDefinitionConverter.HotkeyAction;
 
 namespace AHKFlowApp.Application.Constants;
 
@@ -8,8 +9,9 @@ namespace AHKFlowApp.Application.Constants;
 /// never drift.
 /// </summary>
 /// <remarks>
-/// Deliberately expressed in the legacy <see cref="HotkeyAction"/> + parameters shape. Both seed
-/// loops run the rows through <c>LegacyHotkeyDefinitionConverter.Apply</c>, the same transform the
+/// Deliberately expressed in the legacy <see cref="LegacyHotkeyDefinitionConverter.HotkeyAction"/> +
+/// parameters shape. Both seed
+/// loops run the rows through <c>LegacyHotkeyDefinitionConverter.FromLegacy</c>, the same transform the
 /// EF data migration applies to real legacy rows, which keeps this the single authoritative copy of
 /// the sample data that <c>LegacyHotkeyFixtures</c> mirrors for the migration parity test.
 /// </remarks>

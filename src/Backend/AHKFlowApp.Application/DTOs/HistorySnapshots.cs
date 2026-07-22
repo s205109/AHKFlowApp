@@ -1,3 +1,4 @@
+using AHKFlowApp.Application.Services;
 using AHKFlowApp.Domain.Enums;
 
 namespace AHKFlowApp.Application.DTOs;
@@ -100,5 +101,5 @@ public sealed record HotkeySnapshot(
     WindowOp? WindowOp = null,
     string? RemapDest = null,
     string? Body = null,
-    HotkeyAction? Action = null,
+    LegacyHotkeyDefinitionConverter.HotkeyAction? Action = null,
     string? Parameters = null);

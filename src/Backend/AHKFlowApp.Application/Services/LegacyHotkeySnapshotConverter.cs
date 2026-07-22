@@ -19,47 +19,36 @@ public static class LegacyHotkeySnapshotConverter
         // A legacy snapshot: derive the typed columns from the legacy pair. Mixed snapshots take this
         // arm too, so a row keeps restoring to exactly what it restored to before the typed members
         // existed.
-        if (s.Action is HotkeyAction legacyAction)
+        if (s.Action is LegacyHotkeyDefinitionConverter.HotkeyAction legacyAction)
         {
-            LegacyHotkeyDefinitionConverter.TypedAction t =
-                LegacyHotkeyDefinitionConverter.ToTyped(legacyAction, s.Parameters ?? "");
-
-            return Definition(s, legacyAction, s.Parameters ?? "") with
-            {
-                ActionKind = t.ActionKind,
-                Text = t.Text,
-                SendKeysContent = t.SendKeysContent,
-                RunTarget = t.RunTarget,
-                RunTargetKind = t.RunTargetKind,
-                WindowOp = t.WindowOp,
-                RemapDest = t.RemapDest,
-                Body = t.Body,
-            };
+            return LegacyHotkeyDefinitionConverter.FromLegacy(
+                description: s.Description,
+                key: s.Key,
+                ctrl: s.Ctrl,
+                alt: s.Alt,
+                shift: s.Shift,
+                win: s.Win,
+                action: legacyAction,
+                parameters: s.Parameters ?? "",
+                appliesToAllProfiles: s.AppliesToAllProfiles);
         }
 
-        // A W1 snapshot: pass the typed fields through (legacy pair vestigial until Migration B).
-        return Definition(s, HotkeyAction.Send, "") with
-        {
-            ActionKind = s.ActionKind,
-            Text = s.Text,
-            SendKeysContent = s.SendKeysContent,
-            RunTarget = s.RunTarget,
-            RunTargetKind = s.RunTargetKind,
-            WindowOp = s.WindowOp,
-            RemapDest = s.RemapDest,
-            Body = s.Body,
-        };
-    }
-
-    private static HotkeyDefinition Definition(HotkeySnapshot s, HotkeyAction action, string parameters) =>
-        new(
+        // A W1 snapshot: pass the typed fields through.
+        return new HotkeyDefinition(
             Description: s.Description,
             Key: s.Key,
             Ctrl: s.Ctrl,
             Alt: s.Alt,
             Shift: s.Shift,
             Win: s.Win,
-            Action: action,
-            Parameters: parameters,
-            AppliesToAllProfiles: s.AppliesToAllProfiles);
+            ActionKind: s.ActionKind,
+            AppliesToAllProfiles: s.AppliesToAllProfiles,
+            Text: s.Text,
+            SendKeysContent: s.SendKeysContent,
+            RunTarget: s.RunTarget,
+            RunTargetKind: s.RunTargetKind,
+            WindowOp: s.WindowOp,
+            RemapDest: s.RemapDest,
+            Body: s.Body);
+    }
 }

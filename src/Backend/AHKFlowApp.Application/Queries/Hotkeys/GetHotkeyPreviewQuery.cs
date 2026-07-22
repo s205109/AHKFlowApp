@@ -50,8 +50,8 @@ internal sealed class GetHotkeyPreviewQueryHandler(TimeProvider clock)
             new HotkeyDefinition(
                 Description: i.Description, Key: canonicalKey,
                 Ctrl: i.Ctrl, Alt: i.Alt, Shift: i.Shift, Win: i.Win,
-                Action: HotkeyAction.Send, Parameters: "", AppliesToAllProfiles: true,
-                ActionKind: i.ActionKind, Text: i.Text, SendKeysContent: i.SendKeysContent,
+                ActionKind: i.ActionKind, AppliesToAllProfiles: true,
+                Text: i.Text, SendKeysContent: i.SendKeysContent,
                 RunTarget: i.RunTarget, RunTargetKind: i.RunTargetKind, WindowOp: i.WindowOp,
                 RemapDest: i.RemapDest, Body: i.Body),
             clock);
