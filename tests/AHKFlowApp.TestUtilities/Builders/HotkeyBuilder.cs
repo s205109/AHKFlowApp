@@ -15,6 +15,14 @@ public sealed class HotkeyBuilder
     private bool _win;
     private HotkeyAction _action = HotkeyAction.Run;
     private string _parameters = "notepad.exe";
+    private HotkeyActionKind? _actionKind;
+    private string? _text;
+    private string? _sendKeysContent;
+    private string? _runTarget;
+    private RunTargetKind? _runTargetKind;
+    private WindowOp? _windowOp;
+    private string? _remapDest;
+    private string? _body;
     private bool _appliesToAllProfiles = true;
     private Guid[] _profileIds = [];
     private readonly List<Guid> _categoryIds = [];
@@ -30,6 +38,44 @@ public sealed class HotkeyBuilder
     public HotkeyBuilder WithAction(HotkeyAction action) { _action = action; return this; }
     public HotkeyBuilder WithParameters(string parameters) { _parameters = parameters; return this; }
     public HotkeyBuilder WithClock(TimeProvider clock) { _clock = clock; return this; }
+
+    // Typed action setters. These populate the W1 columns directly, bypassing
+    // LegacyHotkeyDefinitionConverter, so a test can pin one specific action kind.
+
+    public HotkeyBuilder WithSendText(string text)
+    {
+        _actionKind = HotkeyActionKind.SendText; _text = text; return this;
+    }
+
+    public HotkeyBuilder WithSendKeys(string content)
+    {
+        _actionKind = HotkeyActionKind.SendKeys; _sendKeysContent = content; return this;
+    }
+
+    public HotkeyBuilder WithRun(string target, RunTargetKind kind = RunTargetKind.Application)
+    {
+        _actionKind = HotkeyActionKind.Run; _runTarget = target; _runTargetKind = kind; return this;
+    }
+
+    public HotkeyBuilder WithWindow(WindowOp op)
+    {
+        _actionKind = HotkeyActionKind.Window; _windowOp = op; return this;
+    }
+
+    public HotkeyBuilder WithRemap(string dest)
+    {
+        _actionKind = HotkeyActionKind.Remap; _remapDest = dest; return this;
+    }
+
+    public HotkeyBuilder WithDisable()
+    {
+        _actionKind = HotkeyActionKind.Disable; return this;
+    }
+
+    public HotkeyBuilder WithRawBody(string body)
+    {
+        _actionKind = HotkeyActionKind.Raw; _body = body; return this;
+    }
 
     public HotkeyBuilder InProfile(Guid profileId)
     {
@@ -67,14 +113,22 @@ public sealed class HotkeyBuilder
 
     public Hotkey Build()
     {
-        var entity = Hotkey.Create(
-            _ownerOid,
-            LegacyHotkeyDefinitionConverter.Apply(new HotkeyDefinition(
+        HotkeyDefinition definition = _actionKind is HotkeyActionKind kind
+            ? new HotkeyDefinition(
                 Description: _description, Key: _key,
                 Ctrl: _ctrl, Alt: _alt, Shift: _shift, Win: _win,
                 Action: _action, Parameters: _parameters,
-                AppliesToAllProfiles: _appliesToAllProfiles)),
-            _clock);
+                AppliesToAllProfiles: _appliesToAllProfiles,
+                ActionKind: kind, Text: _text, SendKeysContent: _sendKeysContent,
+                RunTarget: _runTarget, RunTargetKind: _runTargetKind, WindowOp: _windowOp,
+                RemapDest: _remapDest, Body: _body)
+            : LegacyHotkeyDefinitionConverter.Apply(new HotkeyDefinition(
+                Description: _description, Key: _key,
+                Ctrl: _ctrl, Alt: _alt, Shift: _shift, Win: _win,
+                Action: _action, Parameters: _parameters,
+                AppliesToAllProfiles: _appliesToAllProfiles));
+
+        var entity = Hotkey.Create(_ownerOid, definition, _clock);
 
         foreach (Guid pid in _profileIds)
             entity.Profiles.Add(HotkeyProfile.Create(entity.Id, pid));

@@ -291,8 +291,7 @@ public sealed class AhkScriptGeneratorTests
         Hotkey hk = new HotkeyBuilder()
             .WithDescription("d")
             .WithKey("n")
-            .WithAction(AHKFlowApp.Domain.Enums.HotkeyAction.Send)
-            .WithParameters("hi")
+            .WithSendText("hi")
             .Build();
 
         string output = DefaultSut().Generate(profile, [hs1, hs2], [hk]);
@@ -304,7 +303,7 @@ public sealed class AhkScriptGeneratorTests
             ":T:b::beta\n" +
             "; --- Hotkeys ---\n" +
             "; d\n" +
-            "n::Send(\"hi\")\n" +
+            "n::SendText(\"hi\")\n" +
             "F");
     }
 
@@ -383,8 +382,7 @@ public sealed class AhkScriptGeneratorTests
             .WithDescription("d")
             .WithKey("n")
             .WithCtrl(ctrl).WithAlt(alt).WithShift(shift).WithWin(win)
-            .WithAction(AHKFlowApp.Domain.Enums.HotkeyAction.Send)
-            .WithParameters("hi")
+            .WithSendText("hi")
             .Build();
 
         string output = DefaultSut().Generate(profile, [], [hk]);
@@ -394,47 +392,56 @@ public sealed class AhkScriptGeneratorTests
             "; --- Hotstrings ---\n" +
             "; --- Hotkeys ---\n" +
             "; d\n" +
-            $"{expectedLhs}::Send(\"hi\")\n" +
+            $"{expectedLhs}::SendText(\"hi\")\n" +
             "F");
     }
 
-    [Theory]
-    [InlineData(AHKFlowApp.Domain.Enums.HotkeyAction.Send, "Send")]
-    [InlineData(AHKFlowApp.Domain.Enums.HotkeyAction.Run, "Run")]
-    public void Generate_Hotkey_EmitsCorrectActionFunctionName(
-        AHKFlowApp.Domain.Enums.HotkeyAction action, string expectedFn)
+    [Fact]
+    public void Generate_Hotkey_SendTextAction_EmitsSendTextCall()
     {
         Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
         Hotkey hk = new HotkeyBuilder()
             .WithDescription("d")
             .WithKey("F5")
-            .WithCtrl(false).WithAlt(false).WithShift(false).WithWin(false)
-            .WithAction(action)
-            .WithParameters("notepad.exe")
+            .WithSendText("notepad.exe")
             .Build();
 
         string output = DefaultSut().Generate(profile, [], [hk]);
 
-        output.Should().Contain($"F5::{expectedFn}(\"notepad.exe\")");
+        output.Should().Contain("F5::SendText(\"notepad.exe\")");
     }
 
-    // Parameters are escaped at emission by HotkeyEmitter, so a quote in a stored
+    [Fact]
+    public void Generate_Hotkey_RunAction_EmitsRunCall()
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotkey hk = new HotkeyBuilder()
+            .WithDescription("d")
+            .WithKey("F5")
+            .WithRun("notepad.exe")
+            .Build();
+
+        string output = DefaultSut().Generate(profile, [], [hk]);
+
+        output.Should().Contain("F5::Run(\"notepad.exe\")");
+    }
+
+    // Free text is escaped at emission by HotkeyEmitter, so a quote in a stored
     // value can no longer break the generated line.
     [Fact]
-    public void Generate_Hotkey_EscapesParametersInStringLiteral()
+    public void Generate_Hotkey_EscapesTextInStringLiteral()
     {
         Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
         Hotkey hk = new HotkeyBuilder()
             .WithDescription("d")
             .WithKey("a")
             .WithCtrl(true)
-            .WithAction(AHKFlowApp.Domain.Enums.HotkeyAction.Send)
-            .WithParameters("he said \"hi\"")
+            .WithSendText("he said \"hi\"")
             .Build();
 
         string output = DefaultSut().Generate(profile, [], [hk]);
 
-        output.Should().Contain("^a::Send(\"he said `\"hi`\"\")");
+        output.Should().Contain("^a::SendText(\"he said `\"hi`\"\")");
     }
 
     [Fact]
@@ -462,17 +469,17 @@ public sealed class AhkScriptGeneratorTests
     {
         Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
         Hotkey z = new HotkeyBuilder().WithDescription("Zeta").WithKey("z")
-            .WithAction(AHKFlowApp.Domain.Enums.HotkeyAction.Send).WithParameters("z").Build();
+            .WithSendText("z").Build();
         Hotkey a = new HotkeyBuilder().WithDescription("Alpha").WithKey("a")
-            .WithAction(AHKFlowApp.Domain.Enums.HotkeyAction.Send).WithParameters("a").Build();
+            .WithSendText("a").Build();
         Hotkey m = new HotkeyBuilder().WithDescription("Mike").WithKey("m")
-            .WithAction(AHKFlowApp.Domain.Enums.HotkeyAction.Send).WithParameters("m").Build();
+            .WithSendText("m").Build();
 
         string output = DefaultSut().Generate(profile, [], [z, a, m]);
 
-        int posA = output.IndexOf("a::Send(\"a\")", StringComparison.Ordinal);
-        int posM = output.IndexOf("m::Send(\"m\")", StringComparison.Ordinal);
-        int posZ = output.IndexOf("z::Send(\"z\")", StringComparison.Ordinal);
+        int posA = output.IndexOf("a::SendText(\"a\")", StringComparison.Ordinal);
+        int posM = output.IndexOf("m::SendText(\"m\")", StringComparison.Ordinal);
+        int posZ = output.IndexOf("z::SendText(\"z\")", StringComparison.Ordinal);
         posA.Should().BeLessThan(posM);
         posM.Should().BeLessThan(posZ);
     }
@@ -1138,8 +1145,7 @@ public sealed class AhkScriptGeneratorTests
         Hotkey hk = new HotkeyBuilder()
             .WithDescription("d")
             .WithKey("n")
-            .WithAction(AHKFlowApp.Domain.Enums.HotkeyAction.Send)
-            .WithParameters("hi")
+            .WithSendText("hi")
             .Build();
 
         string output = DefaultSut().Generate(profile, [hs], [hk]);
@@ -1152,7 +1158,7 @@ public sealed class AhkScriptGeneratorTests
             "#HotIf\n" +
             "; --- Hotkeys ---\n" +
             "; d\n" +
-            "n::Send(\"hi\")\n" +
+            "n::SendText(\"hi\")\n" +
             "F");
     }
 
