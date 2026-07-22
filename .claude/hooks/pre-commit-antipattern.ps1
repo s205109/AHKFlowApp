@@ -115,7 +115,11 @@ foreach ($file in $filesToCheck) {
     # sharing a line with Outcome.Result is still caught. `using Ardalis.Result;` (and any other
     # `using X.Result;` namespace import) is excluded outright — a using directive can never
     # contain a blocking .Result access, but its namespace can end in the literal text ".Result".
-    $resultScan = $addedLines | Where-Object { $_.Text -notmatch '^\s*using\s' } | ForEach-Object { [PSCustomObject]@{ LineNumber = $_.LineNumber; Text = ($_.Text -replace '\bOutcome\.Result\b', '') } }
+    # The exclusion is anchored to the import shape (`using A.B.C;` / `global using ...`, optional
+    # alias) so it can NOT swallow a `using` statement or declaration: `using var x = Foo().Result;`
+    # and `using (Foo().Result) { }` are real sync-over-async and must still be caught.
+    $usingDirective = '^\s*(global\s+)?using\s+(static\s+)?([\w.]+\s*=\s*)?[\w.<>,\[\]\s]+;\s*$'
+    $resultScan = $addedLines | Where-Object { $_.Text -notmatch $usingDirective } | ForEach-Object { [PSCustomObject]@{ LineNumber = $_.LineNumber; Text = ($_.Text -replace '\bOutcome\.Result\b', '') } }
     if (Test-AntiPattern $file $resultScan '\.Result\b|\.GetAwaiter\(\)\.GetResult\(\)' 'Avoid sync-over-async (.Result / .GetAwaiter().GetResult())') { $errors++ }
 }
 
