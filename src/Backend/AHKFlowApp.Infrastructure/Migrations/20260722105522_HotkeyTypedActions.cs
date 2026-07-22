@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore.Migrations;
+﻿using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
@@ -74,7 +74,9 @@ BEGIN
     -- LEN() ignores trailing spaces, so every length here goes through the + N'|' - 1 idiom.
     -- Without it 'a ' measures as 1 and classifies as SendKeys, while the C# grammar sees two
     -- characters and sends it to Raw — a silent parity break on any value with a trailing space.
-    DECLARE @n INT = LEN(@s + N'|') - 1;
+    -- The CAST is load-bearing: concatenating two non-max types truncates the result at 4000
+    -- nchars, so a maximal 4000-character @s would drop the sentinel and measure one short.
+    DECLARE @n INT = LEN(CAST(@s AS NVARCHAR(MAX)) + N'|') - 1;
     IF @s IS NULL OR @n = 0 RETURN 0;
     DECLARE @i INT = 1;
     -- consume optional distinct modifiers ^ ! + #
@@ -92,7 +94,7 @@ BEGIN
     BEGIN
         IF SUBSTRING(@key, @klen, 1) <> '}' OR @klen < 3 RETURN 0;
         DECLARE @inner NVARCHAR(4000) = SUBSTRING(@key, 2, @klen - 2);
-        DECLARE @ilen INT = LEN(@inner + N'|') - 1;
+        DECLARE @ilen INT = LEN(CAST(@inner AS NVARCHAR(MAX)) + N'|') - 1;
         IF CHARINDEX('{', @inner) > 0 OR CHARINDEX('}', @inner) > 0 RETURN 0;
         -- Second face of the trailing-space trap: SQL '=' and IN pad-compare, so '{a }' would match
         -- 'a' in the list below, while TryCanonicalize does not trim and sends it to Raw. LIKE does
@@ -124,10 +126,15 @@ BEGIN
         END
         RETURN 0;
     END
-    -- bare: exactly one printable non-brace char. UNICODE() < 32 and 127 are the control characters
-    -- char.IsControl rejects in C#; ValidParameters lets \n, \r and \t into Parameters, so a lone
-    -- one of those reaches here and must fall through to Raw.
-    IF @klen = 1 AND @key NOT IN ('{','}') AND UNICODE(@key) >= 32 AND UNICODE(@key) <> 127 RETURN 1;
+    -- bare: exactly one printable non-brace char. char.IsControl rejects U+0000-U+001F (< 32),
+    -- U+007F (127) and the C1 block U+0080-U+009F (128-159), so all three ranges fall through to
+    -- Raw. ValidParameters lets \n, \r and \t into Parameters, so a lone one of those reaches here;
+    -- the C1 range is unreachable through today's write path but may exist in rows that predate
+    -- that rule, and a row classified SendKeys here but Raw by the C# converter would split the
+    -- same value between a migrated row and a snapshot restore.
+    IF @klen = 1 AND @key NOT IN ('{','}')
+       AND UNICODE(@key) >= 32 AND UNICODE(@key) <> 127
+       AND NOT (UNICODE(@key) BETWEEN 128 AND 159) RETURN 1;
     RETURN 0;
 END;");
 
@@ -161,14 +168,21 @@ WHERE [Action] = 0
 -- excluded from Parameters — HotkeyRules.ValidParameters allows exactly those three control
 -- characters — so dropping them here would emit a literal newline inside the string literal and
 -- break the script.
+-- [Parameters] is load-bearing. [Parameters] is nvarchar(4000); with no
+-- large-value operand the REPLACE results and the surrounding concatenation are all silently
+-- truncated at 4000 nchars while the expression is evaluated, so a maximal Send row would lose
+-- its closing `"") and emit an unterminated AHK string literal. Body being nvarchar(max) does not
+-- help — the truncation happens before the assignment.
+-- The predicate tests [ActionKind] = 0 (the column default just added above), not <> 1: on a
+-- second run of this migration the <> 1 form would re-escape an already-converted Raw body.
 UPDATE [Hotkeys]
 SET [ActionKind] = 6,
     [Body] = 'Send(""' +
         REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-            [Parameters], '`', '``'), '""', '`""'),
+            CAST([Parameters] AS NVARCHAR(MAX)), '`', '``'), '""', '`""'),
             CHAR(10), '`n'), CHAR(13), '`r'), CHAR(9), '`t') +
         '"")'
-WHERE [Action] = 0 AND [ActionKind] <> 1;");
+WHERE [Action] = 0 AND [ActionKind] = 0;");
 
         migrationBuilder.Sql(@"DROP FUNCTION [dbo].[fn_IsSendKeysContent];");
     }

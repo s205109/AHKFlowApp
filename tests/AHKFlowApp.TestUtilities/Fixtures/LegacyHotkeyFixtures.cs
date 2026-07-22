@@ -1,4 +1,6 @@
-using AHKFlowApp.Application.Constants;
+﻿using AHKFlowApp.Application.Constants;
+using AHKFlowApp.Application.Services;
+using AHKFlowApp.Application.Validation;
 using AHKFlowApp.Domain.Enums;
 
 namespace AHKFlowApp.TestUtilities.Fixtures;
@@ -28,6 +30,10 @@ public sealed record LegacyHotkeyFixture(
 public static class LegacyHotkeyFixtures
 {
     public static IReadOnlyList<LegacyHotkeyFixture> All { get; } = Build();
+
+    /// <summary>A lone C1 control character (U+0085), written as an escape so the source file
+    /// stays plain ASCII — U+0085 is a Unicode line break that editors rewrite in place.</summary>
+    private const string LoneC1 = "\u0085";
 
     private static IReadOnlyList<LegacyHotkeyFixture> Build() =>
     [
@@ -73,6 +79,11 @@ public static class LegacyHotkeyFixtures
             HotkeyActionKind.Raw, null, null, null, null, "Send(\"`r\")"),
         new("send-lone-tab", HotkeyAction.Send, "\t",
             HotkeyActionKind.Raw, null, null, null, null, "Send(\"`t\")"),
+        // char.IsControl also rejects the C1 block U+0080-U+009F, which a naked `UNICODE(@key) >= 32`
+        // test in T-SQL accepts. ValidParameters blocks these at the API boundary today, so this
+        // guards rows that predate that rule rather than anything currently writable.
+        new("send-lone-c1-control", HotkeyAction.Send, LoneC1,
+            HotkeyActionKind.Raw, null, null, null, null, $"Send(\"{LoneC1}\")"),
         // Trailing space: two characters, so not a bare token. Pins the T-SQL LEN() trap —
         // LEN('a ') is 1, which would misclassify this as SendKeys on the migration side only.
         new("send-trailing-space", HotkeyAction.Send, "a ",
@@ -88,8 +99,36 @@ public static class LegacyHotkeyFixtures
             HotkeyActionKind.Raw, null, null, null, null, "Send(\"{vk0}\")"),
         new("send-zero-sc-code", HotkeyAction.Send, "{sc000}",
             HotkeyActionKind.Raw, null, null, null, null, "Send(\"{sc000}\")"),
+        // A modifier may appear at most once. C# tracks them in a HashSet, the SQL classifier in a
+        // CHARINDEX over an accumulator string — two different mechanisms that must agree, including
+        // when the repeat is not adjacent.
+        new("send-duplicate-modifier", HotkeyAction.Send, "^^a",
+            HotkeyActionKind.Raw, null, null, null, null, "Send(\"^^a\")"),
+        new("send-duplicate-modifier-separated", HotkeyAction.Send, "^!^a",
+            HotkeyActionKind.Raw, null, null, null, null, "Send(\"^!^a\")"),
+        // Modifiers with no key at all: C# returns false on the empty remainder, SQL on @klen = 0.
+        new("send-modifiers-only", HotkeyAction.Send, "^!",
+            HotkeyActionKind.Raw, null, null, null, null, "Send(\"^!\")"),
+        MaximumLengthSendCase(),
         .. EverySendKeysToken(),
     ];
+
+    // The widest legal Parameters value, escaped past the nvarchar(4000) ceiling. Built here rather
+    // than pasted so the input and its expectation cannot drift. The migration's back-fill embeds
+    // [Parameters] (nvarchar(4000)) in a concatenation: with no large-value operand the whole
+    // expression truncates at 4000 nchars *before* it is assigned to the nvarchar(max) Body column,
+    // dropping the closing `") and emitting an unterminated AHK string literal. This case fails
+    // unless the migration casts to NVARCHAR(MAX) at the innermost REPLACE.
+    private static LegacyHotkeyFixture MaximumLengthSendCase()
+    {
+        // 50 backtick/quote pairs (100 chars, 200 once escaped) then filler to exactly the limit.
+        string parameters = string.Concat(Enumerable.Repeat("`\"", 50))
+            + new string('x', HotkeyRules.ParametersMaxLength - 100);
+
+        return new("send-maximum-length", HotkeyAction.Send, parameters,
+            HotkeyActionKind.Raw, null, null, null, null,
+            $"Send(\"{AhkEscaping.EscapeStringLiteral(parameters)}\")");
+    }
 
     // Every spelling the C# grammar accepts — not only `HotkeyKeys.All`. `IsValidSendKeysContent`
     // defers to `TryCanonicalize`, which also resolves aliases (Esc → Escape) and vk/sc codes, and
@@ -122,9 +161,18 @@ public static class LegacyHotkeyFixtures
             yield return SendKeysCase($"{{{alias}}}");
         }
 
+        // The loops above only ever apply `^`. All four Send modifiers are accepted in any order and
+        // any combination, braced or bare, so each one needs its own case: the SQL classifier lists
+        // them separately and a typo would drop one silently.
+        string[] modified = ["!a", "+a", "#a", "!{Volume_Up}", "+{Tab}", "#{F5}", "^!+#{Escape}", "+!5"];
+        foreach (string token in modified)
+            yield return SendKeysCase(token);
+
         // vk/sc codes: accepted by TryCanonicalize, not registry names, so no role check applies.
-        // Both widths and both cases, since the grammar is width-tolerant and case-insensitive.
-        string[] codes = ["vk1", "vk01", "vkFF", "sc1", "sc001", "sc01B"];
+        // Every accepted width (vk 1-2, sc 1-3) and both cases of prefix and digits, since the
+        // grammar is width-tolerant and case-insensitive while the SQL side spells one LIKE pattern
+        // per width and leans on a CI collation for the case.
+        string[] codes = ["vk1", "vk01", "vkFF", "VK1", "sc1", "sc1b", "sc001", "sc01B", "SC01B"];
         foreach (string code in codes)
             yield return SendKeysCase($"{{{code}}}");
     }
