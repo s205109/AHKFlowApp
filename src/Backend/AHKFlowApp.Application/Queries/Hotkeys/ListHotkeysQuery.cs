@@ -89,6 +89,7 @@ internal sealed class ListHotkeysQueryHandler(
                 EF.Functions.Like(h.RunTarget ?? "", pattern) ||
                 EF.Functions.Like(h.Text ?? "", pattern) ||
                 EF.Functions.Like(h.SendKeysContent ?? "", pattern) ||
+                EF.Functions.Like(h.RemapDest ?? "", pattern) ||
                 EF.Functions.Like(h.Body ?? "", pattern));
         }
 

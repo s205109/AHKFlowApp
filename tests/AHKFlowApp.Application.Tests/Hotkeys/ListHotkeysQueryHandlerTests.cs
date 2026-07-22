@@ -205,6 +205,30 @@ public sealed class ListHotkeysQueryHandlerTests(HotkeyDbFixture fx)
         result.Value.Items.Should().ContainSingle();
     }
 
+    // RemapDest is a payload column like the rest: the legacy single Parameters column made a
+    // Remap destination findable by search, so dropping it from the predicate would be a
+    // silent capability loss.
+    [Fact]
+    public async Task Handle_Search_MatchesRemapDest()
+    {
+        var owner = Guid.NewGuid();
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotkeys.Add(new HotkeyBuilder().WithOwner(owner).WithKey("f1").WithCtrl().WithDescription("a").WithRemap("Volume_Mute").AppliesToAll().Build());
+            seed.Hotkeys.Add(new HotkeyBuilder().WithOwner(owner).WithKey("f2").WithCtrl().WithDescription("b").WithDisable().AppliesToAll().Build());
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        var handler = new ListHotkeysQueryHandler(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
+
+        Result<PagedList<HotkeyDto>> result = await handler.ExecuteAsync(
+            new ListHotkeysQuery(Search: "Volume_Mute"), default);
+
+        result.Value.Items.Should().ContainSingle().Which.Key.Should().Be("f1");
+    }
+
     [Fact]
     public async Task Handle_ActionKindFilter_ReturnsOnlyThatKind()
     {
