@@ -57,6 +57,7 @@ internal static class HotkeyKeys
     public const string GroupNamed = "Named & cursor";
     public const string GroupNumpad = "Numpad";
     public const string GroupMedia = "Media & browser";
+    public const string GroupModifiers = "Modifiers";
 
     // A hotkey definition accepts vkNN or scNNN, but never the combined vkNNscNNN form —
     // AHK raises an error for "vk1Bsc001::". Combining is supported only by Send,
@@ -93,6 +94,15 @@ internal static class HotkeyKeys
         "Launch_Mail", "Launch_Media",
     ];
 
+    // Modifier keys. They ARE valid hotkey keys (Ctrl::), valid Send tokens ({LWin}), and valid
+    // remap source and destination (CapsLock::Ctrl, RAlt::RButton). Deferred from W0 because remap
+    // — their only reason to exist as picker entries — had no action kind until W1.
+    private static readonly string[] s_modifierKeys =
+    [
+        "Ctrl", "Alt", "Shift", "LWin", "RWin",
+        "LCtrl", "RCtrl", "LAlt", "RAlt", "LShift", "RShift",
+    ];
+
     // Accepted spellings that resolve to a canonical entry. AHK accepts several of these
     // itself; persisting one spelling keeps duplicate detection honest, so that "Esc" and
     // "Escape" cannot become two rows for the same physical binding.
@@ -107,6 +117,9 @@ internal static class HotkeyKeys
         ["PgDown"] = "PgDn",
         ["PageUp"] = "PgUp",
         ["PageDown"] = "PgDn",
+        ["Control"] = "Ctrl",
+        ["Windows"] = "LWin",
+        ["Win"] = "LWin",
     };
 
     private static readonly IReadOnlyList<HotkeyKeyEntry> s_all = BuildRegistry();
@@ -158,6 +171,41 @@ internal static class HotkeyKeys
 
     public static bool IsValidHotkeyKey(string? key) => TryCanonicalize(key, out _);
 
+    /// <summary>Returns the registry entry for a canonical name. Throws if absent — callers pass
+    /// names they already know are in the registry (tests, picker construction).</summary>
+    public static HotkeyKeyEntry HotkeyKeyEntryByCanonical(string canonical) => s_byName[canonical];
+
+    /// <summary>Accepted non-canonical spellings, keyed by alias (<c>Esc</c> → <c>Escape</c>).
+    /// Read by the Migration A name-list generator, which must accept every spelling
+    /// <see cref="TryCanonicalize"/> resolves — the migration itself never canonicalizes.</summary>
+    public static IReadOnlyDictionary<string, string> Aliases => s_aliases;
+
+    /// <summary>
+    /// True if <paramref name="key"/> may be the source of a remap: a registry key carrying the
+    /// <see cref="HotkeyKeyRoles.RemapSource"/> role, or a <c>vk</c>/<c>sc</c> code. Wheel keys
+    /// (Wave 2) will carry the role cleared.
+    /// </summary>
+    public static bool IsValidRemapSource(string? key) => HasRole(key, HotkeyKeyRoles.RemapSource);
+
+    /// <summary>
+    /// True if <paramref name="key"/> may be the destination of a remap: a registry key carrying
+    /// the <see cref="HotkeyKeyRoles.RemapDest"/> role, or a <c>vk</c>/<c>sc</c> code. Excludes
+    /// <c>Pause</c> (collides with the built-in function — use <c>vk13</c>) and braced tokens.
+    /// </summary>
+    public static bool IsValidRemapDest(string? key) => HasRole(key, HotkeyKeyRoles.RemapDest);
+
+    private static bool HasRole(string? key, HotkeyKeyRoles role)
+    {
+        if (!TryCanonicalize(key, out string canonical))
+            return false;
+
+        // vk/sc codes are not in s_byName; they satisfy any single-key role.
+        if (!s_byName.TryGetValue(canonical, out HotkeyKeyEntry? entry))
+            return true;
+
+        return entry.Roles.HasFlag(role);
+    }
+
     // Code zero names no key — AHK rejects "vk00::" and "sc000::" with "Invalid hotkey".
     // The digit-count regexes cannot express "hex, but not all zero", so the value is
     // checked here, after the shape matched and before padding.
@@ -194,6 +242,9 @@ internal static class HotkeyKeys
 
         foreach (string name in s_mediaKeys)
             entries.Add(new(name, GroupMedia, HotkeyKeyRoles.All, RequiresBracesInSend: true));
+
+        foreach (string name in s_modifierKeys)
+            entries.Add(new(name, GroupModifiers, HotkeyKeyRoles.All, RequiresBracesInSend: true));
 
         return entries;
     }
