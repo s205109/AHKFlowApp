@@ -29,7 +29,8 @@ public sealed class HotkeysController(
     IUseCase<RevertHotkeyCommand, Result<HotkeyDto>> revertHotkey,
     IUseCase<ListDeletedHotkeysQuery, Result<DeletedHotkeyDto[]>> listDeletedHotkeys,
     IUseCase<RestoreHotkeyCommand, Result<HotkeyDto>> restoreHotkey,
-    IUseCase<PurgeDeletedHotkeyCommand, Result> purgeDeletedHotkey) : ControllerBase
+    IUseCase<PurgeDeletedHotkeyCommand, Result> purgeDeletedHotkey,
+    IUseCase<GetHotkeyPreviewQuery, Result<HotkeyPreviewDto>> previewHotkey) : ControllerBase
 {
     /// <summary>List hotkeys for the current user, optionally filtered by profile. Paginated.</summary>
     [HttpGet]
@@ -158,4 +159,13 @@ public sealed class HotkeysController(
         Result result = await purgeDeletedHotkey.ExecuteAsync(new PurgeDeletedHotkeyCommand(id), ct);
         return result.IsSuccess ? NoContent() : result.ToProblemActionResult(this);
     }
+
+    /// <summary>Preview the AutoHotkey snippet a hotkey draft would generate, without saving it.</summary>
+    [HttpPost("preview")]
+    [ProducesResponseType(typeof(HotkeyPreviewDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<HotkeyPreviewDto>> Preview(
+        [FromBody] HotkeyPreviewRequestDto dto,
+        CancellationToken ct) =>
+        (await previewHotkey.ExecuteAsync(new GetHotkeyPreviewQuery(dto), ct)).ToProblemActionResult(this);
 }
