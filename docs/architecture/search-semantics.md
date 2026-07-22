@@ -9,7 +9,7 @@
 Both handlers use `EF.Functions.Like(field, "%term%")` on the searchable columns:
 
 - Hotstrings: `Trigger`, `Replacement`.
-- Hotkeys: `Description`, `Key`, `Parameters`.
+- Hotkeys: `Description`, `Key`, and the free-text action columns `RunTarget`, `Text`, `SendKeysContent`, `Body`.
 
 The `LIKE` predicate inherits the SQL Server column collation. The application's default collation is `SQL_Latin1_General_CP1_CI_AS` (case-insensitive, accent-sensitive), so `BTW` matches `btw` without any application-level normalization.
 
