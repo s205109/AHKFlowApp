@@ -80,9 +80,15 @@ no combo, no toggles, no context, **and the `Key` passes current validation**; e
 the fullscreen dialog (single edit button routes by capability, per PR #204). The key clause is what
 surfaces un-migratable legacy rows without any new UI — see §8.
 
-A combined **Action** column shows the action chip (color-coded per kind) + a compact modifier/key
-combo label + a window-context indicator, single-sourced through a `HotkeyActionDisplay` helper so
-grid and mobile can't drift.
+Two columns carry the binding and what it does: a **Hotkey** column showing a compact modifier/key
+combo label, and an **Action** column showing the action chip (color-coded per kind) + a one-line
+payload summary + a window-context indicator. Both are single-sourced through a
+`HotkeyActionDisplay` helper so grid and mobile can't drift.
+
+(This section originally specified *one* combined column. Split into two during W1 UI planning,
+2026-07-22: a single column mixing binding and payload truncates badly at the width available, and
+the binding is the row's identity — it earns its own sortable column. The single-sourcing
+requirement is unchanged and is what the helper exists for.)
 
 ## 4. Advanced editor flow (dialog)
 
@@ -276,9 +282,15 @@ Each entry carries **role capability flags** (usable as hotkey key / combo prefi
 remap source / remap dest) so all five validators read one table instead of maintaining parallel
 allow-lists — wheel, for instance, is a legal hotkey key and Send token but not a remap source.
 
+Scan codes are **three** hex digits, not four, and canonicalization pads to that width (`sc1` →
+`sc001`); a four-digit value could not canonicalize consistently. Anchors are `\A`/`\z`, not
+`^`/`$`: .NET's `$` also matches before a trailing newline, so `vk1\n` would otherwise pass and
+split the emitted left-hand side across two script lines. (This row read `{1,4}` with `^`/`$`
+while W0 was unlanded; corrected 2026-07-22 to match the shipped `Constants/HotkeyKeys.cs`.)
+
 | Role | Rule |
 |--|--|
-| Hotkey `Key` | ∈ registry, **or** `^vk[0-9a-f]{1,2}$` **or** `^sc[0-9a-f]{1,4}$` — combined `vkNNscNNN` is **rejected** (AHK: `vk1Bsc001::` raises an error; combining is supported only by `Send`, `GetKeyName`, `GetKeyVK`, `GetKeySC`, `A_MenuMaskKey`) |
+| Hotkey `Key` | ∈ registry, **or** `\Avk[0-9a-f]{1,2}\z` **or** `\Asc[0-9a-f]{1,3}\z` — combined `vkNNscNNN` is **rejected** (AHK: `vk1Bsc001::` raises an error; combining is supported only by `Send`, `GetKeyName`, `GetKeyVK`, `GetKeySC`, `A_MenuMaskKey`) |
 | `ComboPrefixKey` | as Hotkey `Key`, plus `≠ Key`, and modifiers must be empty |
 | `SendKeysContent` | optional `^!+#` modifiers (**`*` is not a Send modifier**) + exactly one key; a **named** key must be braced — `^{LButton}`, `{Volume_Up}` — while a single printable character is bare (`^c`) |
 | Remap source | as Hotkey `Key`, **minus wheel** (`WheelUp/Down/Left/Right` are not remappable) |

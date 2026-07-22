@@ -3001,7 +3001,7 @@ git commit -m "refactor: retire legacy hotkey action pair from frontend DTOs"
 
 **Spec coverage (§3, §4, §9 W1 UI, §10 UI, §11):**
 - Dual desktop-grid / mobile-list layout preserved → Tasks 9. ✓
-- Combined Action column, chip + combo label, single-sourced via `HotkeyActionDisplay` → Tasks 6, 9. **Deviation, approved:** spec §3 line 83 asks for *one* column carrying chip + combo label + context indicator; this plan ships **two** (Hotkey, Action), chosen deliberately during plan review because a single column mixing binding and payload truncates badly at 28% width. The single-sourcing requirement is met — both columns read from `HotkeyActionDisplay`. Spec §3 should be amended to match, or this reversed; see Resolved item 6.
+- Hotkey + Action columns, chip + combo label, single-sourced via `HotkeyActionDisplay` → Tasks 6, 9. ✓ (Spec §3 was amended 2026-07-22 from one combined column to these two; plan and spec agree.)
 - Inline edit retained for simplest rows; `IsInlineEditable` extended with key validity so legacy rows route to the dialog → Tasks 5, 9. ✓
 - Single edit button routing by capability → Task 9 Step 4. (Spec lists this under W4; pulled forward per §9 W1's own note that a W1 Action column without it leaves simple rows unable to change their action.) ✓
 - Key picker backed by the registry, grouped, plus free-typed `vk`/`sc` → Tasks 1, 4, 7. **Grouping is delivered by ordering plus a per-item group label, not by headers** — `MudAutocomplete` 9.3.0 has no `GroupBy`, and `T="HotkeyKeyDto"` would break `CoerceValue` and with it the escape hatch. This is the one place the plan knowingly renders a spec §4 requirement differently than described; the information is present, the visual form differs.
@@ -3027,22 +3027,20 @@ git commit -m "refactor: retire legacy hotkey action pair from frontend DTOs"
 
 ## Resolved during plan review (2026-07-22)
 
-1. **`sc` code width — the design spec is stale, the code is right.** Spec §8 says `sc[0-9a-f]{1,4}`; `HotkeyKeys.cs:69` says `{1,3}` and canonicalizes by padding to width 3 (`sc1` → `sc001`). The W0 *plan* specified `{1,3}` and pinned it with tests, so this was a considered decision that the spec line predates — the same category as the spec's pre-W0 "unescaped" line the backend plan already annotated. A 4-digit code could not canonicalize against width-3 padding anyway. Task 4 mirrors the code. **Follow-up:** correct spec §8's regex to `{1,3}` with a dated note; no code change.
+1. **`sc` code width — the design spec was stale, the code is right.** Spec §8 said `sc[0-9a-f]{1,4}`; `HotkeyKeys.cs:69` says `{1,3}` and canonicalizes by padding to width 3 (`sc1` → `sc001`). The W0 *plan* specified `{1,3}` and pinned it with tests, so this was a considered decision the spec line predated. A 4-digit code could not canonicalize against width-3 padding anyway. Task 4 mirrors the code. **Spec §8 corrected** (regex and `\A`/`\z` anchors, dated note); no code change.
 2. **Picker grouping — ordering plus per-item labels, not headers.** `MudAutocomplete` 9.3.0 has no `GroupBy` (that is a `MudSelect` feature), and moving to `T="HotkeyKeyDto"` would break `CoerceValue`, which is what makes the `vk`/`sc` escape hatch work in the same field. `ForRoleAsync` orders by group then name; `ItemTemplate` renders the group as dimmed secondary text via `GroupOf`.
 3. **SendKeys brace rule — read the registry flag.** Backend Task 3 confirms `vk`/`sc` codes are valid Send tokens and must be braced (`{vk1B}`), named keys must be braced, single printables are bare — while `RemapDest` is never braced and rejects `{Ctrl}`. `RequiresBracesInSend` covers all three; the earlier `key.Length > 1` proxy is gone.
 4. **Add opens the dialog.** A new hotkey must choose an `ActionKind`, which the grid cannot express, so the inline-create path (`_pendingCreate`) retires with this wave (Task 9 Step 4).
 5. **Test selectors follow the page's existing split** — buttons are semantic CSS classes (`.add-hotkey`, `.start-edit`, `.commit-edit`), only inputs carry `data-test`, matched as `input[data-test="..."]`. An earlier draft invented `data-test` hooks for buttons that do not exist and used descendant selectors the suites do not use.
-6. **Grid keeps two columns (Hotkey, Action), deviating from spec §3's single combined column.** Chosen during plan review with the layout previewed; a single column mixing binding and payload truncates badly. **Follow-up:** amend spec §3 line 83 to describe two columns, with a dated note.
+6. **Grid keeps two columns (Hotkey, Action).** Chosen during plan review with the layout previewed; a single column mixing binding and payload truncates badly, and the binding is the row's identity so it earns its own sortable column. **Spec §3 amended** to describe two columns, with a dated note — the plan and the spec now agree, so this is no longer a deviation.
 7. **Frontend staging is expand → cutover → contract**, mirroring the backend plan, so no task leaves the project red (Tasks 2 and 11).
 8. **History and recycle-bin UI are in scope.** `HotkeySnapshot` carries the action fields and `HotkeyHistoryDialog` renders them, so they migrate in Task 9; `RecycleBinPageTests` retypes in Task 11. Snapshot legacy members are permanent, unlike the DTO ones.
 
-## Cross-plan finding — companion backend plan
+## Companion-plan correction, applied
 
-Not fixed here, because that file is owned by the `feature/wt-hotkey-redesign` branch and editing it from this worktree would conflict.
+**Backend plan Task 9 would not have registered its preview handler.** It claimed the use case "auto-registers via the existing `IUseCase<,>` scan (no manual DI)". There is no scan — `Application/DependencyInjection.cs` registers every handler explicitly, and the only generic registration is the `ValidatingUseCase<,>` decorator. `HotkeysController` would have failed to activate, and this plan's preview panel would 500 on every keystroke.
 
-**Backend plan Task 9 will not register its preview handler.** It states the use case "auto-registers via the existing `IUseCase<,>` scan (no manual DI)". There is no scan — `Application/DependencyInjection.cs` registers every handler explicitly, including the hotstring preview at line 54. Without an added
-`.AddUseCase<GetHotkeyPreviewQuery, Result<HotkeyPreviewDto>, GetHotkeyPreviewQueryHandler>()`,
-`HotkeysController` fails to activate and the preview panel this plan builds gets a 500 on every keystroke. Task 1 of this plan shows the correct pattern. **Raise on the backend branch before its Task 9 executes.**
+Fixed in `docs/superpowers/plans/2026-07-22-hotkey-redesign-w1-backend-plan.md` Task 9 in the same commit as this note, once `feature/wt-hotkey-redesign` merged (#208) and that file moved to `main` with no competing worktree.
 
 ## Unresolved questions
 
