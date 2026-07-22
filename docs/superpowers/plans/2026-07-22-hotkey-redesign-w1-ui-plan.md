@@ -32,7 +32,7 @@ Task 1 is the only task that can be executed before the backend plan lands — i
 - MudBlazor components only — no raw HTML inputs or buttons. **Verify every MudBlazor parameter against the MudMCP server** (`mcp__mudblazor__get_component_parameters`, `get_enum_values`) before writing markup; it serves the pinned 9.3.0 docs.
 - `[Inject]` properties with `= default!`. `ISnackbar.Add()` for feedback. No `StateHasChanged()` after standard event handlers (it *is* required inside fire-and-forget preview continuations).
 - Reuse `Components/Common/` — `EntityMultiSelect`, `EntityChips`, `CategoryFilterChips`. Never hand-roll profile/category selects.
-- Every interactive element carries a `data-test` attribute via `UserAttributes` — bUnit and Playwright both select on it.
+- **Test-selector convention, as the page actually uses it:** form inputs carry `data-test` via `UserAttributes` (`description-input`, `key-input`, `ctrl-checkbox`); buttons carry a semantic **CSS class** (`.add-hotkey`, `.start-edit`, `.commit-edit`, `.cancel-edit`, `.show-history`, `.delete`, `.reload-hotkeys`). Follow the existing split — do not add `data-test` to buttons, and do not invent new names for hooks that already exist.
 - Propagate `CancellationToken` through every async call. No `.Result` / `.Wait()`.
 - FluentAssertions over raw `Assert`. Test naming `MethodName_Scenario_ExpectedResult`. AAA with blank-line separation.
 - `dotnet format` needs an explicit workspace: `dotnet format AHKFlowApp.slnx`.
@@ -621,7 +621,9 @@ Session-scoped cache over the keys endpoint, plus the client-side key-validity c
 
 **Interfaces:**
 - Consumes: `IHotkeysApiClient.GetKeysAsync` (Task 3).
-- Produces: `IHotkeyKeyCatalog` with `ValueTask<IReadOnlyList<HotkeyKeyDto>> ForRoleAsync(string role, CancellationToken ct)`, `bool IsValidKey(string? key)`, `bool IsLoaded { get; }`.
+- Produces: `IHotkeyKeyCatalog` with `ValueTask<IReadOnlyList<HotkeyKeyDto>> ForRoleAsync(string role, CancellationToken ct)`, `bool IsValidKey(string? key)`, `string? GroupOf(string? canonical)`, `bool RequiresBracesInSend(string? canonical)`, `bool IsLoaded { get; }`.
+
+The catalog **indexes on load** rather than scanning per call: `IsValidKey` runs once per grid row per render (50 rows × ~100 entries is 5 000 string comparisons a frame in WASM), and `GroupOf` runs once per rendered picker item. Both become dictionary lookups. Rebuilding both maps with `StringComparer.OrdinalIgnoreCase` at the same time also settles alias casing — `System.Text.Json` deserializes into an ordinal dictionary, so `esc` would otherwise miss where `Esc` hits.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -675,10 +677,34 @@ public sealed class HotkeyKeyCatalogTests
         await api.Received(1).GetKeysAsync(Arg.Any<CancellationToken>());
     }
 
+    [Fact]
+    public async Task GroupOf_ReturnsTheEntrysPickerGroup()
+    {
+        var catalog = new HotkeyKeyCatalog(ApiReturning(Sample));
+        await catalog.ForRoleAsync("HotkeyKey", CancellationToken.None);
+
+        catalog.GroupOf("Volume_Up").Should().Be("Media & browser");
+        catalog.GroupOf("vk1B").Should().BeNull();
+    }
+
+    [Fact]
+    public async Task RequiresBracesInSend_ReadsTheRegistryFlag()
+    {
+        var catalog = new HotkeyKeyCatalog(ApiReturning(Sample));
+        await catalog.ForRoleAsync("SendToken", CancellationToken.None);
+
+        catalog.RequiresBracesInSend("F1").Should().BeTrue();
+        catalog.RequiresBracesInSend("c").Should().BeFalse();
+
+        // Not a registry name: vk/sc codes must still be braced inside a Send token.
+        catalog.RequiresBracesInSend("vk1B").Should().BeTrue();
+    }
+
     [Theory]
     [InlineData("F1")]
     [InlineData("f1")]
     [InlineData("Esc")]
+    [InlineData("esc")]
     [InlineData("vk1B")]
     [InlineData("sc001")]
     public async Task IsValidKey_AcceptsRegistryAliasAndCodes(string key)
@@ -739,7 +765,12 @@ public interface IHotkeyKeyCatalog
     /// <summary>True once the registry has been fetched at least once.</summary>
     bool IsLoaded { get; }
 
-    /// <summary>Keys legal in the given role, fetching the registry on first call.</summary>
+    /// <summary>
+    /// Keys legal in the given role, ordered by picker group then name, fetching the registry
+    /// on first call. The ordering is what makes groups cluster in the picker's dropdown —
+    /// MudAutocomplete 9.3.0 has no group-header support, so order plus a per-item group label
+    /// is how grouping is conveyed.
+    /// </summary>
     ValueTask<IReadOnlyList<HotkeyKeyDto>> ForRoleAsync(string role, CancellationToken ct = default);
 
     /// <summary>
@@ -748,6 +779,16 @@ public interface IHotkeyKeyCatalog
     /// has not arrived yet.
     /// </summary>
     bool IsValidKey(string? key);
+
+    /// <summary>Picker group for a canonical registry name, or null for a vk/sc code or unknown name.</summary>
+    string? GroupOf(string? canonical);
+
+    /// <summary>
+    /// Whether this key must be braced inside a Send token. True for named registry entries
+    /// ({Volume_Up}) and for vk/sc codes ({vk1B}); false for a single printable character (c).
+    /// Not meaningful for a remap destination, which is never braced.
+    /// </summary>
+    bool RequiresBracesInSend(string? canonical);
 }
 ```
 
@@ -776,36 +817,64 @@ public sealed partial class HotkeyKeyCatalog(IHotkeysApiClient api) : IHotkeyKey
     private readonly SemaphoreSlim _gate = new(1, 1);
     private HotkeyKeyCatalogDto? _catalog;
 
+    // Built once on load. IsValidKey runs per grid row per render and GroupOf runs per rendered
+    // picker item, so neither may scan the ~100-entry list. Both maps are OrdinalIgnoreCase,
+    // which also matches the server's case-insensitive alias and name lookups — System.Text.Json
+    // would otherwise hand back an ordinal dictionary in which "esc" misses and "Esc" hits.
+    private Dictionary<string, HotkeyKeyDto> _byName = new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<string, string> _aliases = new(StringComparer.OrdinalIgnoreCase);
+
     public bool IsLoaded => _catalog is not null;
 
     public async ValueTask<IReadOnlyList<HotkeyKeyDto>> ForRoleAsync(string role, CancellationToken ct = default)
     {
         HotkeyKeyCatalogDto catalog = await LoadAsync(ct);
-        return [.. catalog.Keys.Where(k => k.Roles.Contains(role, StringComparer.Ordinal))];
+        return
+        [
+            .. catalog.Keys
+                .Where(k => k.Roles.Contains(role, StringComparer.Ordinal))
+                .OrderBy(k => k.Group, StringComparer.Ordinal)
+                .ThenBy(k => k.Canonical, StringComparer.OrdinalIgnoreCase)
+        ];
     }
 
     public bool IsValidKey(string? key)
     {
         // Optimistic before load: see the interface remark.
-        if (_catalog is not { } catalog)
+        if (_catalog is null)
             return true;
 
         if (string.IsNullOrWhiteSpace(key))
             return false;
 
-        if (catalog.Aliases.ContainsKey(key))
-            return true;
-
-        if (catalog.Keys.Any(k => k.Canonical.Equals(key, StringComparison.OrdinalIgnoreCase)))
+        if (_aliases.ContainsKey(key) || _byName.ContainsKey(key))
             return true;
 
         // A code naming no key (vk00, sc000) is rejected server-side; the digit-count regex
         // cannot express "hex, but not all zero", so it is checked separately here too.
-        if (VirtualKey().IsMatch(key) || ScanCode().IsMatch(key))
+        if (IsCode(key))
             return key[2..].Any(c => c != '0');
 
         return false;
     }
+
+    public string? GroupOf(string? canonical) =>
+        canonical is not null && _byName.TryGetValue(canonical, out HotkeyKeyDto? entry) ? entry.Group : null;
+
+    public bool RequiresBracesInSend(string? canonical)
+    {
+        if (canonical is null)
+            return false;
+
+        if (_byName.TryGetValue(canonical, out HotkeyKeyDto? entry))
+            return entry.RequiresBracesInSend;
+
+        // Off-registry values reaching a Send token are vk/sc codes, which AHK requires braced:
+        // Send "vk1B" types the four literal characters, Send "{vk1B}" presses the key.
+        return IsCode(canonical);
+    }
+
+    private static bool IsCode(string value) => VirtualKey().IsMatch(value) || ScanCode().IsMatch(value);
 
     private async ValueTask<HotkeyKeyCatalogDto> LoadAsync(CancellationToken ct)
     {
@@ -826,6 +895,8 @@ public sealed partial class HotkeyKeyCatalog(IHotkeysApiClient api) : IHotkeyKey
                 return new HotkeyKeyCatalogDto([], new Dictionary<string, string>());
 
             _catalog = result.Value;
+            _byName = result.Value.Keys.ToDictionary(k => k.Canonical, StringComparer.OrdinalIgnoreCase);
+            _aliases = new Dictionary<string, string>(result.Value.Aliases, StringComparer.OrdinalIgnoreCase);
             return _catalog;
         }
         finally
@@ -835,8 +906,6 @@ public sealed partial class HotkeyKeyCatalog(IHotkeysApiClient api) : IHotkeyKey
     }
 }
 ```
-
-> `Aliases.ContainsKey` relies on the server serializing a case-insensitive dictionary; `System.Text.Json` deserializes into an ordinal-comparer `Dictionary`, so the alias lookup here is **case-sensitive** while the server's is not. The test above only asserts the exact spelling `Esc`. If a case-insensitive alias match is wanted, rebuild the dictionary with `StringComparer.OrdinalIgnoreCase` after deserialization — do that inside `LoadAsync`, and extend the theory with `"esc"`.
 
 - [ ] **Step 5: Register the service**
 
@@ -853,7 +922,7 @@ Scoped, not singleton: in Blazor WebAssembly the container lives for the whole a
 ```bash
 dotnet test tests/AHKFlowApp.UI.Blazor.Tests --filter "FullyQualifiedName~HotkeyKeyCatalogTests"
 ```
-Expected: PASS, 13 tests.
+Expected: PASS, 17 tests.
 
 - [ ] **Step 7: Commit**
 
@@ -1509,6 +1578,8 @@ git commit -m "feat: add single-sourced hotkey action display + chip"
 
 One role-parameterized picker, used three times in Wave 1 (hotkey `Key`, SendKeys token key, Remap destination) and a fourth time in Wave 2 (combo prefix). `MudAutocomplete` with `CoerceValue` so a typed `vk1B`/`sc001` passes straight through — the registry path and the escape hatch share one field, with no mode toggle.
 
+> **`T` stays `string`, deliberately.** `MudAutocomplete` 9.3.0 has **no `GroupBy` parameter** — grouping is a `MudSelect` feature — so switching to `T="HotkeyKeyDto"` would buy nothing on that front, and it would actively break the escape hatch: `CoerceValue` sets `Value` from typed text, and there is no string→DTO conversion. Grouping is conveyed instead by ordering results by group (Task 4's `ForRoleAsync`) and rendering the group as dimmed secondary text per item via `ItemTemplate`, which is `RenderFragment<string>` here and looks the group up through `GroupOf`.
+
 **Files:**
 - Create: `src/Frontend/AHKFlowApp.UI.Blazor/Components/Common/KeyPicker.razor`
 - Create: `tests/AHKFlowApp.UI.Blazor.Tests/Components/KeyPickerTests.cs`
@@ -1548,9 +1619,14 @@ public sealed class KeyPickerTests : TestContext
         Services.AddMudServices();
         JSInterop.Mode = JSRuntimeMode.Loose;
         IHotkeyKeyCatalog catalog = Substitute.For<IHotkeyKeyCatalog>();
+        // Mirrors the real ForRoleAsync: filter by role, then order by group so groups cluster.
         catalog.ForRoleAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(call => ValueTask.FromResult<IReadOnlyList<HotkeyKeyDto>>(
-                [.. Keys.Where(k => k.Roles.Contains(call.Arg<string>()))]));
+                [.. Keys.Where(k => k.Roles.Contains(call.Arg<string>()))
+                        .OrderBy(k => k.Group, StringComparer.Ordinal)
+                        .ThenBy(k => k.Canonical, StringComparer.OrdinalIgnoreCase)]));
+        catalog.GroupOf(Arg.Any<string>())
+            .Returns(call => Keys.FirstOrDefault(k => k.Canonical == call.Arg<string>())?.Group);
         Services.AddSingleton(catalog);
         return catalog;
     }
@@ -1603,6 +1679,21 @@ public sealed class KeyPickerTests : TestContext
 
         cut.Markup.Should().Contain("key-picker");
     }
+
+    [Fact]
+    public async Task SearchAsync_PreservesTheCatalogsGroupOrdering()
+    {
+        // MudAutocomplete 9.3.0 cannot render group headers, so clustering depends entirely on
+        // the order ForRoleAsync returns. Re-sorting here would scatter the groups.
+        SetupCatalog();
+        IRenderedComponent<KeyPicker> cut = RenderComponent<KeyPicker>(p => p
+            .Add(x => x.Role, "HotkeyKey"));
+
+        IEnumerable<string> matches = await cut.Instance.SearchAsync("", CancellationToken.None);
+
+        // Ordinal: "Function keys" < "Letters & digits", so F1 precedes c.
+        matches.Should().ContainInOrder("F1", "c");
+    }
 }
 ```
 
@@ -1621,7 +1712,9 @@ Before writing markup, confirm the parameter names against the pinned 9.3.0 docs
 mcp__mudblazor__get_component_parameters with componentName "MudAutocomplete"
 ```
 
-Confirm `SearchFunc`, `CoerceValue`, `CoerceText`, `ResetValueOnEmptyText`, `MaxItems`, `Immediate`, `Value`, `ValueChanged`, `Error`, `ErrorText` exist with those exact spellings. If any differ, use the documented name — do not use the spelling below on faith.
+Confirm `SearchFunc`, `CoerceValue`, `CoerceText`, `ResetValueOnEmptyText`, `MaxItems`, `ItemTemplate`, `Value`, `ValueChanged`, `Error`, `ErrorText` exist with those exact spellings. If any differ, use the documented name — do not use the spelling below on faith.
+
+Two defaults matter and are overridden below: `MaxItems` defaults to **10**, which would silently truncate a ~100-key registry, so it is set to `null` (unlimited, scrolling within `MaxHeight` 300 px). `DebounceInterval` defaults to **100 ms** and is the autocomplete's own keystroke debounce — unrelated to, and additive with, the dialog's 400 ms preview debounce. The markup below omits `Immediate`: `SearchFunc` plus `DebounceInterval` already drive the dropdown on each keystroke, so it earns nothing here even where it is inherited from `MudBaseInput`.
 
 - [ ] **Step 4: Implement the picker**
 
@@ -1639,10 +1732,23 @@ Create `src/Frontend/AHKFlowApp.UI.Blazor/Components/Common/KeyPicker.razor`:
    by server validation, which is the authority. *@
 <MudAutocomplete T="string" Label="@Label" Value="@Value" ValueChanged="OnValueChanged"
                  SearchFunc="SearchAsync" CoerceValue="true" ResetValueOnEmptyText="false"
-                 MaxItems="null" Immediate="true" Dense="@Dense"
+                 MaxItems="null" Dense="@Dense"
                  Error="@Error" ErrorText="@ErrorText"
                  HelperText="@HelperText"
-                 UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = DataTest })" />
+                 UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = DataTest })">
+    <ItemTemplate>
+        @* Results arrive ordered by group, so groups cluster; this label is what tells the
+           user which cluster they are looking at, standing in for the group headers
+           MudAutocomplete 9.3.0 does not support. Blank for vk/sc codes, which have no group. *@
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="flex-grow-1">
+            <span>@context</span>
+            @if (Catalog.GroupOf(context) is { } group)
+            {
+                <MudText Typo="Typo.caption" Color="Color.Tertiary">@group</MudText>
+            }
+        </MudStack>
+    </ItemTemplate>
+</MudAutocomplete>
 
 @code {
     [Inject] private IHotkeyKeyCatalog Catalog { get; set; } = default!;
@@ -1664,6 +1770,7 @@ Create `src/Frontend/AHKFlowApp.UI.Blazor/Components/Common/KeyPicker.razor`:
     /// <summary>
     /// Registry entries for this role matching the typed fragment, plus the fragment itself when
     /// it looks like a vk/sc code so the escape hatch is selectable rather than only typeable.
+    /// Catalog order (group, then name) is preserved — re-sorting here would scatter the groups.
     /// </summary>
     internal async Task<IEnumerable<string>> SearchAsync(string? fragment, CancellationToken ct)
     {
@@ -1687,14 +1794,12 @@ Create `src/Frontend/AHKFlowApp.UI.Blazor/Components/Common/KeyPicker.razor`:
 }
 ```
 
-> Grouped headers: `MudAutocomplete` groups via `GroupBy` on an item-typed overload. This component's `T` is `string`, which cannot carry its group. If grouping is wanted visually, change `T` to `HotkeyKeyDto` with `ToStringFunc` and set `GroupBy = k => k.Group` — verify both parameters exist in 9.3.0 first. The string-typed form above is what the tests assert; keep them in step if you change it.
-
 - [ ] **Step 5: Run tests to verify they pass**
 
 ```bash
 dotnet test tests/AHKFlowApp.UI.Blazor.Tests --filter "FullyQualifiedName~KeyPickerTests"
 ```
-Expected: PASS, 4 tests.
+Expected: PASS, 5 tests.
 
 - [ ] **Step 6: Commit**
 
@@ -1814,30 +1919,230 @@ Expected: FAIL — panels and `data-test` hooks do not exist.
 
 - [ ] **Step 3: Write the dialog markup**
 
-Replace `src/Frontend/AHKFlowApp.UI.Blazor/Components/Hotkeys/HotkeyEditDialog.razor`. Structure, in order:
-
-1. `TitleContent` — unchanged from today (back button, title, Save).
-2. **Key + modifiers** — `<KeyPicker Role="HotkeyKey" Label="Key" @bind-Value="Item.Key" Error="@(FieldError("Key") is not null)" ErrorText="@FieldError("Key")" DataTest="key-picker" />` followed by the four existing modifier `MudCheckBox`es, unchanged.
-3. **Action selector** — one `MudToggleGroup<HotkeyActionKind>` with `Value="Item.ActionKind"` and `ValueChanged="OnActionKindChangedAsync"`, containing seven `MudToggleItem`s. Each renders `<MudIcon Icon="@HotkeyActionDisplay.Icon(kind)" Size="Size.Small" />` plus `<MudText>@HotkeyActionDisplay.Label(kind)</MudText>`, and carries `UserAttributes` with `["data-test"] = $"action-kind-{kind}"`. Generate the seven items with a `@foreach (HotkeyActionKind kind in Enum.GetValues<HotkeyActionKind>())` so the set cannot drift from the enum.
-4. **Action panels** — a `@switch (Item.ActionKind)` rendering exactly one panel, each wrapped in a `<div data-test="<kind>-panel">`:
-   - `SendText`: `MudTextField` `Lines="4"`, `MaxLength="@HotkeyEditModel.TextMaxLength"`, bound to `Item.Text`, error from `FieldError("Text")`.
-   - `SendKeys`: four modifier checkboxes plus `<KeyPicker Role="SendToken" .../>`, composing into `Item.SendKeysContent` (see Step 4).
-   - `Run`: `MudTextField` bound to `Item.RunTarget` with a per-kind placeholder, plus a `MudSelect<RunTargetKind>` bound to `Item.RunTargetKind` whose items use `HotkeyActionDisplay.RunTargetKindLabel`.
-   - `Window`: `MudSelect<WindowOp>` bound to `Item.WindowOp`, items labelled via `HotkeyActionDisplay.WindowOpLabel`.
-   - `Remap`: `<KeyPicker Role="RemapDest" Label="Behaves as" @bind-Value="Item.RemapDest" />`.
-   - `Disable`: no panel at all — the kind needs no fields, and an empty bordered box reads as a bug.
-   - `Raw`: `MudTextField` `Lines="6"` with `Class="raw-body"` (monospace, from the scoped CSS) bound to `Item.Body`, immediately preceded by:
+Replace the `DialogContent` of `src/Frontend/AHKFlowApp.UI.Blazor/Components/Hotkeys/HotkeyEditDialog.razor`. `TitleContent` (back button, title, Save) is unchanged from today.
 
 ```razor
-                    <MudAlert Severity="Severity.Warning" Dense="true"
-                              UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "raw-warning" })">
-                        @HotkeyActionDisplay.RawWarningText
-                    </MudAlert>
+    <DialogContent>
+        <MudForm @ref="_form">
+        <MudStack Spacing="3" Class="pa-2">
+
+            @* ---- Activating input: key + modifiers ---- *@
+            <KeyPicker Role="HotkeyKey" Label="Key" @bind-Value="Item.Key"
+                       Error="@(FieldError(nameof(HotkeyEditModel.Key)) is not null)"
+                       ErrorText="@FieldError(nameof(HotkeyEditModel.Key))"
+                       HelperText="Pick a key, or type a vk/sc code such as vk1B."
+                       DataTest="key-picker" />
+            <MudStack Row="true" Spacing="2">
+                <MudCheckBox T="bool" Value="Item.Ctrl" ValueChanged="@(async (bool v) => { Item.Ctrl = v; await RefreshPreviewAsync(debounce: false); })" Label="Ctrl"
+                             UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "ctrl-checkbox" })" />
+                <MudCheckBox T="bool" Value="Item.Alt" ValueChanged="@(async (bool v) => { Item.Alt = v; await RefreshPreviewAsync(debounce: false); })" Label="Alt"
+                             UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "alt-checkbox" })" />
+                <MudCheckBox T="bool" Value="Item.Shift" ValueChanged="@(async (bool v) => { Item.Shift = v; await RefreshPreviewAsync(debounce: false); })" Label="Shift"
+                             UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "shift-checkbox" })" />
+                <MudCheckBox T="bool" Value="Item.Win" ValueChanged="@(async (bool v) => { Item.Win = v; await RefreshPreviewAsync(debounce: false); })" Label="Win"
+                             UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "win-checkbox" })" />
+            </MudStack>
+
+            @* ---- Action selector. Generated from the enum so the set cannot drift. ---- *@
+            <MudToggleGroup T="HotkeyActionKind" Class="action-kind-group"
+                            Value="Item.ActionKind" ValueChanged="OnActionKindChangedAsync"
+                            UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "action-kind-selector" })">
+                @foreach (HotkeyActionKind kind in Enum.GetValues<HotkeyActionKind>())
+                {
+                    <MudToggleItem Value="@kind"
+                                   UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = $"action-kind-{kind}" })">
+                        <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                            <MudIcon Icon="@HotkeyActionDisplay.Icon(kind)" Size="Size.Small" />
+                            <MudText>@HotkeyActionDisplay.Label(kind)</MudText>
+                        </MudStack>
+                    </MudToggleItem>
+                }
+            </MudToggleGroup>
+
+            @* ---- Exactly one action panel. Disable renders none: it owns no fields, and an
+                   empty bordered box reads as a bug rather than as "nothing to configure". ---- *@
+            @switch (Item.ActionKind)
+            {
+                case HotkeyActionKind.SendText:
+                    <div data-test="sendtext-panel">
+                        <MudTextField T="string" Label="Text to type" @bind-Value="Item.Text"
+                                      Lines="4" MaxLength="@HotkeyEditModel.TextMaxLength" Immediate="true"
+                                      OnDebounceIntervalElapsed="@(() => RefreshPreviewAsync(debounce: false))"
+                                      DebounceInterval="300"
+                                      Error="@(FieldError(nameof(HotkeyEditModel.Text)) is not null)"
+                                      ErrorText="@FieldError(nameof(HotkeyEditModel.Text))"
+                                      HelperText="Typed literally. Quotes and newlines are escaped for you."
+                                      UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "text-input" })" />
+                    </div>
+                    break;
+
+                case HotkeyActionKind.SendKeys:
+                    <div data-test="sendkeys-panel">
+                        <MudStack Row="true" Spacing="2">
+                            <MudCheckBox T="bool" Value="_sendCtrl" ValueChanged="@(async (bool v) => { _sendCtrl = v; await ComposeSendKeysAsync(); })" Label="Ctrl"
+                                         UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "send-ctrl-checkbox" })" />
+                            <MudCheckBox T="bool" Value="_sendAlt" ValueChanged="@(async (bool v) => { _sendAlt = v; await ComposeSendKeysAsync(); })" Label="Alt"
+                                         UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "send-alt-checkbox" })" />
+                            <MudCheckBox T="bool" Value="_sendShift" ValueChanged="@(async (bool v) => { _sendShift = v; await ComposeSendKeysAsync(); })" Label="Shift"
+                                         UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "send-shift-checkbox" })" />
+                            <MudCheckBox T="bool" Value="_sendWin" ValueChanged="@(async (bool v) => { _sendWin = v; await ComposeSendKeysAsync(); })" Label="Win"
+                                         UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "send-win-checkbox" })" />
+                        </MudStack>
+                        <KeyPicker Role="SendToken" Label="Key to press"
+                                   Value="_sendKey" ValueChanged="OnSendKeyChangedAsync"
+                                   Error="@(FieldError(nameof(HotkeyEditModel.SendKeysContent)) is not null)"
+                                   ErrorText="@FieldError(nameof(HotkeyEditModel.SendKeysContent))"
+                                   DataTest="send-key-picker" />
+                    </div>
+                    break;
+
+                case HotkeyActionKind.Run:
+                    <div data-test="run-panel">
+                        <MudSelect T="RunTargetKind?" Label="Target type" Value="Item.RunTargetKind"
+                                   ValueChanged="OnRunTargetKindChangedAsync"
+                                   Error="@(FieldError(nameof(HotkeyEditModel.RunTargetKind)) is not null)"
+                                   ErrorText="@FieldError(nameof(HotkeyEditModel.RunTargetKind))"
+                                   UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "run-target-kind-select" })">
+                            @foreach (RunTargetKind kind in Enum.GetValues<RunTargetKind>())
+                            {
+                                <MudSelectItem T="RunTargetKind?" Value="@kind">@HotkeyActionDisplay.RunTargetKindLabel(kind)</MudSelectItem>
+                            }
+                        </MudSelect>
+                        <MudTextField T="string" Label="Target" @bind-Value="Item.RunTarget"
+                                      MaxLength="@HotkeyEditModel.RunTargetMaxLength" Immediate="true"
+                                      OnDebounceIntervalElapsed="@(() => RefreshPreviewAsync(debounce: false))"
+                                      DebounceInterval="300"
+                                      Placeholder="@RunTargetPlaceholder()"
+                                      Error="@(FieldError(nameof(HotkeyEditModel.RunTarget)) is not null)"
+                                      ErrorText="@FieldError(nameof(HotkeyEditModel.RunTarget))"
+                                      HelperText="A command line — arguments are allowed, e.g. rundll32.exe user32.dll,LockWorkStation"
+                                      UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "run-target-input" })" />
+                    </div>
+                    break;
+
+                case HotkeyActionKind.Window:
+                    <div data-test="window-panel">
+                        <MudSelect T="WindowOp?" Label="Do what" Value="Item.WindowOp"
+                                   ValueChanged="OnWindowOpChangedAsync"
+                                   Error="@(FieldError(nameof(HotkeyEditModel.WindowOp)) is not null)"
+                                   ErrorText="@FieldError(nameof(HotkeyEditModel.WindowOp))"
+                                   HelperText="Applies to the active window."
+                                   UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "window-op-select" })">
+                            @foreach (WindowOp op in Enum.GetValues<WindowOp>())
+                            {
+                                <MudSelectItem T="WindowOp?" Value="@op">@HotkeyActionDisplay.WindowOpLabel(op)</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </div>
+                    break;
+
+                case HotkeyActionKind.Remap:
+                    <div data-test="remap-panel">
+                        <KeyPicker Role="RemapDest" Label="Behaves as"
+                                   Value="Item.RemapDest" ValueChanged="OnRemapDestChangedAsync"
+                                   Error="@(FieldError(nameof(HotkeyEditModel.RemapDest)) is not null)"
+                                   ErrorText="@FieldError(nameof(HotkeyEditModel.RemapDest))"
+                                   HelperText="The key this one will act as."
+                                   DataTest="remap-dest-picker" />
+                    </div>
+                    break;
+
+                case HotkeyActionKind.Raw:
+                    <div data-test="raw-panel">
+                        <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-2"
+                                  UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "raw-warning" })">
+                            @HotkeyActionDisplay.RawWarningText
+                        </MudAlert>
+                        <MudTextField T="string" Label="Action body" @bind-Value="Item.Body"
+                                      Lines="6" Class="raw-body" MaxLength="@HotkeyEditModel.BodyMaxLength" Immediate="true"
+                                      OnDebounceIntervalElapsed="@(() => RefreshPreviewAsync(debounce: false))"
+                                      DebounceInterval="300"
+                                      Error="@(FieldError(nameof(HotkeyEditModel.Body)) is not null)"
+                                      ErrorText="@FieldError(nameof(HotkeyEditModel.Body))"
+                                      HelperText="Emitted verbatim inside { }. Braces must balance; # directives are rejected."
+                                      UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "raw-body-input" })" />
+                    </div>
+                    break;
+            }
+
+            @* ---- Generated code preview. Ported from HotstringEditDialog; no delivery chip,
+                   because hotkeys have no delivery choice. ---- *@
+            <MudExpansionPanels UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "ahk-preview" })">
+                <MudExpansionPanel Text="Generated AutoHotkey code" Expanded="_previewExpanded"
+                                   ExpandedChanged="OnPreviewExpandedChangedAsync">
+                    @if (_previewPending)
+                    {
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-1"
+                                  UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "preview-pending" })">
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                            <MudText Typo="Typo.caption">Updating preview…</MudText>
+                        </MudStack>
+                    }
+                    @if (_previewError is not null)
+                    {
+                        <MudText Color="Color.Error" Class="@(_previewPending ? "preview-stale" : null)"
+                                 UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "preview-error" })">
+                            @_previewError
+                        </MudText>
+                    }
+                    else if (_previewSnippet is not null)
+                    {
+                        <div class="preview-snippet-container">
+                            <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small"
+                                           Class="preview-copy" Disabled="@_previewPending"
+                                           OnClick="CopyPreviewAsync"
+                                           UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = "Copy generated AutoHotkey code", ["data-test"] = "preview-copy" })" />
+                            <pre class="@($"preview-snippet{(_previewPending ? " preview-stale" : "")}")"
+                                 data-test="preview-snippet">@_previewSnippet</pre>
+                        </div>
+                    }
+                </MudExpansionPanel>
+            </MudExpansionPanels>
+
+            @* ---- Metadata: unchanged from today's dialog ---- *@
+            <MudTextField T="string" Label="Description" @bind-Value="Item.Description"
+                          Required="true" RequiredError="Description is required" MaxLength="200"
+                          Error="@(FieldError(nameof(HotkeyEditModel.Description)) is not null)"
+                          ErrorText="@FieldError(nameof(HotkeyEditModel.Description))"
+                          HelperText="Emitted as ; comment lines in the generated script."
+                          UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "description-input" })" />
+
+            <MudCheckBox T="bool" @bind-Value="Item.AppliesToAllProfiles" Label="Apply to all profiles"
+                         UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "applies-to-all-checkbox" })" />
+            @if (!Item.AppliesToAllProfiles)
+            {
+                <EntityMultiSelect Options="_profileOptions" Label="Profiles"
+                                   SelectedIds="Item.ProfileIds"
+                                   SelectedIdsChanged="ids => Item.ProfileIds = [.. ids]"
+                                   DataTest="profile-select" />
+            }
+
+            <EntityMultiSelect Options="_categoryOptions" Label="Categories"
+                               SelectedIds="Item.CategoryIds"
+                               SelectedIdsChanged="ids => Item.CategoryIds = [.. ids]"
+                               DataTest="category-select" />
+
+            @if (_error is not null)
+            {
+                <MudAlert Severity="Severity.Error">@_error</MudAlert>
+            }
+        </MudStack>
+        </MudForm>
+    </DialogContent>
 ```
 
-5. **Preview panel** — port `HotstringEditDialog.razor:219-256` verbatim, substituting `_previewSnippet`/`_previewPending`/`_previewError` and dropping the delivery chip (hotkeys have no delivery). Keep `data-test="ahk-preview"`, `preview-pending`, `preview-error`, `preview-copy`, `preview-snippet`.
-6. **Description**, **Apply-to-all + Profiles**, **Categories** — unchanged from today's dialog.
-7. Bottom `MudAlert` for `_error` — unchanged.
+Add the matching `@using` lines at the top of the file: `AHKFlowApp.UI.Blazor.Components.Common` (for `KeyPicker`) and `AHKFlowApp.UI.Blazor.Helpers` (for `HotkeyActionDisplay`).
+
+`RunTargetPlaceholder()` is a one-liner in the code block — the field's placeholder is the only thing `RunTargetKind` changes in the UI, since all three kinds emit the same `Run("<escaped>")`:
+
+```csharp
+    private string RunTargetPlaceholder() => Item.RunTargetKind switch
+    {
+        DTOs.RunTargetKind.Url => "https://github.com",
+        DTOs.RunTargetKind.Folder => @"C:\Users\me\Documents",
+        _ => "notepad.exe",
+    };
+```
 
 - [ ] **Step 4: Write the dialog code block**
 
@@ -1925,31 +2230,120 @@ Then copy, renamed for hotkeys, from `HotstringEditDialog.razor`: `SchedulePrevi
             }
 ```
 
-**SendKeys token composition.** The panel edits modifier checkboxes and a key, but persists one token string. Compose on every change:
+**Per-panel change handlers.** Each writes its field then re-previews immediately (no debounce — these are discrete choices, not typing):
+
+```csharp
+    private async Task OnRunTargetKindChangedAsync(RunTargetKind? kind)
+    {
+        Item.RunTargetKind = kind;
+        await RefreshPreviewAsync(debounce: false);
+    }
+
+    private async Task OnWindowOpChangedAsync(WindowOp? op)
+    {
+        Item.WindowOp = op;
+        await RefreshPreviewAsync(debounce: false);
+    }
+
+    private async Task OnRemapDestChangedAsync(string? dest)
+    {
+        // A remap destination is never braced and never carries modifiers (backend Task 3
+        // rejects {Ctrl} and ^a), so it is persisted exactly as the picker yields it.
+        Item.RemapDest = dest;
+        await RefreshPreviewAsync(debounce: false);
+    }
+
+    private async Task RefreshPreviewAsync(bool debounce)
+    {
+        if (!_previewExpanded)
+            return;
+
+        SchedulePreview(Item.ToPreviewRequest(), debounce);
+        await Task.CompletedTask;
+    }
+
+    private async Task OnPreviewExpandedChangedAsync(bool expanded)
+    {
+        _previewExpanded = expanded;
+        if (expanded)
+            await RefreshPreviewAsync(debounce: false);
+        else
+            CancelPendingPreview();
+    }
+```
+
+**SendKeys token composition.** The panel edits modifier checkboxes and a key, but persists one token string:
 
 ```csharp
     private bool _sendCtrl, _sendAlt, _sendShift, _sendWin;
     private string? _sendKey;
 
+    private async Task OnSendKeyChangedAsync(string? key)
+    {
+        _sendKey = key;
+        await ComposeSendKeysAsync();
+    }
+
     /// <summary>
     /// Composes the discrete picker state into the single canonical token the server validates:
-    /// optional ^!+# modifiers then exactly one key, braced when the registry says the name
-    /// requires it ({Volume_Up}) and bare when it is a single printable character (c).
-    /// Note '*' is not a Send modifier and is deliberately absent.
+    /// optional ^!+# modifiers then exactly one key. Bracing comes from the registry's
+    /// RequiresBracesInSend, which is true for named entries ({Volume_Up}) and for vk/sc codes
+    /// ({vk1B}), false for a single printable character (c). Note '*' is not a Send modifier
+    /// and is deliberately absent.
     /// </summary>
     private async Task ComposeSendKeysAsync()
     {
         string mods = $"{(_sendCtrl ? "^" : "")}{(_sendAlt ? "!" : "")}{(_sendShift ? "+" : "")}{(_sendWin ? "#" : "")}";
-        string key = _sendKey ?? "";
-        bool braced = key.Length > 1;
-        Item.SendKeysContent = key.Length == 0 ? null : $"{mods}{(braced ? $"{{{key}}}" : key)}";
-        await RefreshPreviewAsync(debounce: true);
+
+        if (string.IsNullOrEmpty(_sendKey))
+        {
+            Item.SendKeysContent = null;
+        }
+        else
+        {
+            string key = Catalog.RequiresBracesInSend(_sendKey) ? $"{{{_sendKey}}}" : _sendKey;
+            Item.SendKeysContent = $"{mods}{key}";
+        }
+
+        await RefreshPreviewAsync(debounce: false);
+    }
+
+    /// <summary>
+    /// Splits a stored token back into the checkboxes and key so reopening an existing SendKeys
+    /// row shows the state that produced it. Leading ^!+# are modifiers; the remainder is the
+    /// key, unwrapped if braced.
+    /// </summary>
+    private void DecomposeSendKeys()
+    {
+        _sendCtrl = _sendAlt = _sendShift = _sendWin = false;
+        _sendKey = null;
+
+        if (Item.SendKeysContent is not { Length: > 0 } token)
+            return;
+
+        int i = 0;
+        for (; i < token.Length; i++)
+        {
+            switch (token[i])
+            {
+                case '^': _sendCtrl = true; continue;
+                case '!': _sendAlt = true; continue;
+                case '+': _sendShift = true; continue;
+                case '#': _sendWin = true; continue;
+            }
+            break;
+        }
+
+        string rest = token[i..];
+        _sendKey = rest.StartsWith('{') && rest.EndsWith('}') ? rest[1..^1] : rest;
     }
 ```
 
-Decompose the stored token back into the checkboxes in `OnParametersSet` when editing an existing SendKeys row, so reopening the dialog shows the state that produced it.
+Call `DecomposeSendKeys()` from `OnParametersSet` whenever the incoming `Item` changes and its kind is `SendKeys`, alongside the existing profile/category option projection. Inject the catalog into the dialog for `RequiresBracesInSend`:
 
-> `braced = key.Length > 1` is a proxy for the registry's `RequiresBracesInSend`. It is correct for every current entry (all multi-character names are braced, all single printables are not) but it is a *guess*, not the registry fact. Prefer reading `RequiresBracesInSend` from `IHotkeyKeyCatalog` for the selected key and falling back to the length rule only for typed `vk`/`sc` codes. If you keep the length rule, add a test pinning it against the catalog's flags so a future registry entry that breaks the correlation fails loudly.
+```csharp
+    [Inject] private IHotkeyKeyCatalog Catalog { get; set; } = default!;
+```
 
 - [ ] **Step 5: Add the scoped CSS**
 
@@ -2065,10 +2459,10 @@ Add to `tests/AHKFlowApp.UI.Blazor.Tests/Pages/HotkeysPageTests.cs`:
     {
         IRenderedComponent<Hotkeys> cut = RenderPageWith(OneHotkeyOfKind(HotkeyActionKind.Raw));
 
-        cut.Find("[data-test=edit-hotkey]").Click();
+        cut.Find(".start-edit").Click();
 
-        cut.FindAll("[data-test=key-picker]").Should().NotBeEmpty();   // dialog opened
-        cut.FindAll("[data-test=inline-description]").Should().BeEmpty();
+        cut.FindAll("[data-test=raw-body-input]").Should().NotBeEmpty();   // dialog opened
+        cut.FindAll(".commit-edit").Should().BeEmpty();                    // no inline row
     }
 
     [Fact]
@@ -2076,9 +2470,9 @@ Add to `tests/AHKFlowApp.UI.Blazor.Tests/Pages/HotkeysPageTests.cs`:
     {
         IRenderedComponent<Hotkeys> cut = RenderPageWith(OneRunHotkey());
 
-        cut.Find("[data-test=edit-hotkey]").Click();
+        cut.Find(".start-edit").Click();
 
-        cut.FindAll("[data-test=inline-description]").Should().ContainSingle();
+        cut.FindAll(".commit-edit").Should().ContainSingle();
     }
 
     [Fact]
@@ -2088,13 +2482,15 @@ Add to `tests/AHKFlowApp.UI.Blazor.Tests/Pages/HotkeysPageTests.cs`:
         // kind is Run, which is how un-migratable legacy rows surface with no extra UI.
         IRenderedComponent<Hotkeys> cut = RenderPageWith(OneRunHotkey(key: "!!legacy!!"), keysValid: false);
 
-        cut.Find("[data-test=edit-hotkey]").Click();
+        cut.Find(".start-edit").Click();
 
-        cut.FindAll("[data-test=inline-description]").Should().BeEmpty();
+        cut.FindAll(".commit-edit").Should().BeEmpty();
     }
 ```
 
 > Build `RenderPageWith`, `OneRunHotkey`, `OneHotkeyOfKind` on top of the fixture helpers already in this file; register a stubbed `IHotkeyKeyCatalog` whose `IsValidKey` returns the `keysValid` argument.
+>
+> **Selectors follow the page's existing convention** (Global Constraints): buttons are CSS classes — `.add-hotkey`, `.start-edit`, `.commit-edit`, `.cancel-edit`, `.show-history`, `.delete` — and only inputs carry `data-test`. `.commit-edit` renders only while a row is in inline-edit mode, which makes it the honest probe for "did this row go inline or open the dialog". Do not add `data-test` hooks to these buttons.
 
 - [ ] **Step 2: Run tests to verify they fail**
 
@@ -2107,16 +2503,16 @@ Expected: FAIL to compile — the page still binds `x.Action` and `x.Parameters`
 
 In `src/Frontend/AHKFlowApp.UI.Blazor/Pages/Hotkeys.razor`, replace the ten `<PropertyColumn>`/`<TemplateColumn>` entries between `<SelectColumn>` and the trailing "Actions" column with five:
 
-- `<PropertyColumn Property="x => x.Description" Title="Description">` — display mode unchanged; edit mode keeps today's `MudTextField` but adds `data-test="inline-description"`.
+- `<PropertyColumn Property="x => x.Description" Title="Description">` — unchanged in both display and edit mode; its editor already carries `data-test="description-input"`.
 - `<TemplateColumn Title="Hotkey" Sortable="false">` — display mode renders `<code>@HotkeyActionDisplay.ComboLabel(context.Item)</code>`; edit mode renders `<KeyPicker Role="HotkeyKey" Dense="true" @bind-Value="context.Item.Key" ... />` plus the four dense modifier checkboxes, and shows the conflict message from the page's existing key-error state.
 - `<TemplateColumn Title="Action" Sortable="false">` — display mode renders `<HotkeyActionChip Kind="context.Item.ActionKind" />` followed by `@HotkeyActionDisplay.Summary(context.Item)`; edit mode renders a single `MudTextField` bound to `Item.Text` or `Item.RunTarget` per kind. The chip stays visible in edit mode — the kind is not inline-changeable, so it is context, not a control.
 - Profiles and Categories columns — unchanged.
 
 Sorting: `Key` remains a valid server sort field, so set `SortBy="x => x.Key"` on the Hotkey column. `ActionKind` is the new sort field for the Action column. Do **not** offer sorting on the summary text — no server field backs it.
 
-- [ ] **Step 4: Route the edit button by capability**
+- [ ] **Step 4: Route the edit button by capability, and send Add to the dialog**
 
-Replace the page's edit-button handler so it inspects the row:
+`StartEditAsync` (currently at `Hotkeys.razor:492`) becomes async and inspects the row:
 
 ```csharp
     [Inject] private IHotkeyKeyCatalog KeyCatalog { get; set; } = default!;
@@ -2124,7 +2520,7 @@ Replace the page's edit-button handler so it inspects the row:
     // One button, two destinations: rows whose whole payload is a single text field edit in
     // place; everything else — and any row whose key would fail server validation — opens the
     // dialog, where the fields exist and the validation error already shows on open.
-    private async Task EditAsync(HotkeyEditModel item)
+    private async Task StartEditAsync(HotkeyEditModel item)
     {
         if (item.IsInlineEditable(KeyCatalog))
             _editingItem = item;
@@ -2132,6 +2528,18 @@ Replace the page's edit-button handler so it inspects the row:
             await OpenEditDialogAsync(item);
     }
 ```
+
+`RenderActions`' edit button already calls `StartEditAsync(item)`; the call site needs no change beyond awaiting.
+
+**`StartAddAsync` must now open the dialog.** Today it creates an inline `_pendingCreate` row (`Hotkeys.razor:482`). A new hotkey has to choose an `ActionKind`, and kind is deliberately not inline-changeable — an inline create row could only ever produce the default kind. Replace it:
+
+```csharp
+    // A new hotkey must pick its action kind, which the grid cannot express, so Add always
+    // opens the dialog. _pendingCreate and the inline-create path retire with it.
+    private Task StartAddAsync() => OpenEditDialogAsync(new HotkeyEditModel());
+```
+
+Then delete the now-unreachable `_pendingCreate` field and every branch that tests it — the `Disabled` binding on the Add button (`Hotkeys.razor:19`), the visibility switch in `LoadServerData` (~`:374-389`), and `_commitAttempted` if nothing else reads it. Confirm `OpenEditDialogAsync` handles a model with `Id is null` by calling `CreateAsync`; it already routes on `Id` today.
 
 Ensure the catalog is warmed on page load so `IsValidKey` is not answering optimistically for the first render:
 
@@ -2198,7 +2606,7 @@ public sealed class HotkeysCrudFlowTests(E2EFixture fixture)
         IPage page = await fixture.NewPageAsync();
         await page.GotoAsync($"{fixture.BaseUrl}/hotkeys");
 
-        await page.ClickAsync("[data-test=new-hotkey]");
+        await page.ClickAsync(".add-hotkey");
         await page.FillAsync("[data-test=description-input] input", "E2E open notepad");
         await page.FillAsync("[data-test=key-picker] input", "n");
         await page.ClickAsync("[data-test=win-checkbox] input");
@@ -2266,7 +2674,7 @@ git commit -m "test: add hotkey crud e2e flow, update mobile flow for typed acti
 - Combined Action column, chip + combo label, single-sourced via `HotkeyActionDisplay` → Tasks 6, 9. ✓
 - Inline edit retained for simplest rows; `IsInlineEditable` extended with key validity so legacy rows route to the dialog → Tasks 5, 9. ✓
 - Single edit button routing by capability → Task 9 Step 4. (Spec lists this under W4; pulled forward per §9 W1's own note that a W1 Action column without it leaves simple rows unable to change their action.) ✓
-- Key picker backed by the registry, grouped, plus free-typed `vk`/`sc` → Tasks 1, 4, 7. **Grouped headers are flagged as conditional** in Task 7 Step 4 — the string-typed control cannot group, and the swap to `T="HotkeyKeyDto"` is written up but not mandated. Closest thing to a gap in this plan.
+- Key picker backed by the registry, grouped, plus free-typed `vk`/`sc` → Tasks 1, 4, 7. **Grouping is delivered by ordering plus a per-item group label, not by headers** — `MudAutocomplete` 9.3.0 has no `GroupBy`, and `T="HotkeyKeyDto"` would break `CoerceValue` and with it the escape hatch. This is the one place the plan knowingly renders a spec §4 requirement differently than described; the information is present, the visual form differs.
 - Action selector as a toggle group of 7 with icon + colour, each revealing its own panel → Task 8. ✓
 - SendKeys mini-picker, Run target + kind, Window op select, Remap dest picker, Raw body with brace warning → Task 8 Step 3. ✓
 - Live debounced preview panel, copy button, field-mapped errors → Task 8 Steps 3–4. ✓
@@ -2275,14 +2683,22 @@ git commit -m "test: add hotkey crud e2e flow, update mobile flow for typed acti
 - bUnit dialog/grid tests, E2E hotkey flow → Tasks 7, 8, 9, 10. ✓
 - **Out of scope by wave, deliberately:** combo/toggle UI, mouse + wheel picker groups, self-lockout and prefix-suppression warnings (W2); window context panel (W3); OKLCH chip tints, glyph legend, `ahk-v2-syntax.md` rewrite (W4). `CONTEXT.md` W1 terms are backend plan Task 12.
 
-**Placeholder scan:** one deliberate stub — the last test in Task 8 Step 1 (`ValidationError_FromSave_LandsOnItsNamedField`) is a comment-only body, flagged inline with an instruction to write it before implementing. Everything else carries real code. `Task 9 Step 3` describes column edits prose-style rather than as a full file listing: the file is 500+ lines and mostly unchanged, so a full rewrite would bury the five real edits.
+**Placeholder scan:** one deliberate stub — the last test in Task 8 Step 1 (`ValidationError_FromSave_LandsOnItsNamedField`) is a comment-only body, flagged inline with an instruction to write it before implementing. Everything else carries real code, including the full dialog markup in Task 8 Step 3. `Task 9 Step 3` still describes column edits prose-style rather than as a full file listing: that file is 800+ lines and mostly unchanged, so a full rewrite would bury the five real edits — unlike the dialog, which is replaced wholesale.
+
+**MudBlazor API claims, verified against the 9.3.0 MCP docs (not memory):** `MudToggleGroup` has `Vertical` and `Size` but **no wrap parameter** — hence the `::deep` flex-wrap rule. `MudAutocomplete` has `SearchFunc`, `CoerceValue`, `CoerceText`, `ResetValueOnEmptyText`, `ItemTemplate`, `ToStringFunc`, `MaxItems` (default **10**, overridden to `null`), `DebounceInterval` (default 100 ms) — and **no `GroupBy`**. Any parameter not in that list must be re-checked before use.
 
 **Type consistency:** `HotkeyActionKind` member order (SendText, SendKeys, Run, Window, Remap, Disable, Raw) is identical in Task 2's mirror, Task 5's `ActiveFields` switch, Task 6's `Label`/`ChipClass`/`Icon`/`Summary` switches and Task 8's panel switch. `HotkeyEditModel`'s typed property names (`Text`, `SendKeysContent`, `RunTarget`, `RunTargetKind`, `WindowOp`, `RemapDest`, `Body`) match the DTO field names in Task 2 and the `KnownFields` set in Task 8, which is what makes the server's `Input.<Field>` error paths map without a translation table. `IHotkeyKeyCatalog.ForRoleAsync`/`IsValidKey`/`IsLoaded` are declared in Task 4 and consumed with those exact names in Tasks 5, 7 and 9. Role strings (`"HotkeyKey"`, `"SendToken"`, `"RemapDest"`) match the `HotkeyKeyRoles` member names Task 1 serializes.
 
 ---
 
+## Resolved during plan review (2026-07-22)
+
+1. **`sc` code width — the design spec is stale, the code is right.** Spec §8 says `sc[0-9a-f]{1,4}`; `HotkeyKeys.cs:69` says `{1,3}` and canonicalizes by padding to width 3 (`sc1` → `sc001`). The W0 *plan* specified `{1,3}` and pinned it with tests, so this was a considered decision that the spec line predates — the same category as the spec's pre-W0 "unescaped" line the backend plan already annotated. A 4-digit code could not canonicalize against width-3 padding anyway. Task 4 mirrors the code. **Follow-up:** correct spec §8's regex to `{1,3}` with a dated note; no code change.
+2. **Picker grouping — ordering plus per-item labels, not headers.** `MudAutocomplete` 9.3.0 has no `GroupBy` (that is a `MudSelect` feature), and moving to `T="HotkeyKeyDto"` would break `CoerceValue`, which is what makes the `vk`/`sc` escape hatch work in the same field. `ForRoleAsync` orders by group then name; `ItemTemplate` renders the group as dimmed secondary text via `GroupOf`.
+3. **SendKeys brace rule — read the registry flag.** Backend Task 3 confirms `vk`/`sc` codes are valid Send tokens and must be braced (`{vk1B}`), named keys must be braced, single printables are bare — while `RemapDest` is never braced and rejects `{Ctrl}`. `RequiresBracesInSend` covers all three; the earlier `key.Length > 1` proxy is gone.
+4. **Add opens the dialog.** A new hotkey must choose an `ActionKind`, which the grid cannot express, so the inline-create path (`_pendingCreate`) retires with this wave (Task 9 Step 4).
+5. **Test selectors follow the page's existing split** — buttons are semantic CSS classes (`.add-hotkey`, `.start-edit`, `.commit-edit`), only inputs carry `data-test`. An earlier draft of this plan invented `data-test` hooks for buttons that do not exist.
+
 ## Unresolved questions
 
-1. **`sc` code width — spec says `{1,4}`, shipped W0 code says `{1,3}`** (`HotkeyKeys.cs:69`, padded to width 3 at `:154`). Which is right? Task 4 mirrors the code so client and server agree; if the spec is correct, the fix is a backend change and this plan's regex follows it.
-2. **Grouped headers in the picker** — accept the ungrouped string autocomplete for W1, or spend the extra complexity now on `T="HotkeyKeyDto"` + `GroupBy` (Task 7 Step 4)? Spec §4 asks for grouping; the six groups only become crowded when W2 adds mouse and wheel.
-3. **SendKeys brace rule** — read `RequiresBracesInSend` from the catalog (correct by construction), or keep the `key.Length > 1` proxy (correct today, silently wrong if a future single-char entry needs braces)? Task 8 Step 4 recommends the former.
+None. Ready for execution.
