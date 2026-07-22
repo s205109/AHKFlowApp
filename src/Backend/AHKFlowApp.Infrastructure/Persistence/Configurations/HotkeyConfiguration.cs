@@ -35,6 +35,20 @@ internal sealed class HotkeyConfiguration : IEntityTypeConfiguration<Hotkey>
             .IsRequired()
             .HasMaxLength(4000);
 
+        // Wave 1 expand phase: the typed action columns live beside the legacy (Action, Parameters)
+        // pair until the contract migration drops it.
+        builder.Property(x => x.ActionKind)
+            .IsRequired()
+            .HasConversion<int>();
+
+        builder.Property(x => x.Text);                                    // nvarchar(max), nullable
+        builder.Property(x => x.SendKeysContent).HasMaxLength(100);
+        builder.Property(x => x.RunTarget).HasMaxLength(4000);
+        builder.Property(x => x.RunTargetKind).HasConversion<int>();      // nullable int
+        builder.Property(x => x.WindowOp).HasConversion<int>();           // nullable int
+        builder.Property(x => x.RemapDest).HasMaxLength(50);
+        builder.Property(x => x.Body);                                    // nvarchar(max), nullable
+
         builder.Property(x => x.AppliesToAllProfiles).IsRequired();
         builder.Property(x => x.CreatedAt).IsRequired();
         builder.Property(x => x.UpdatedAt).IsRequired();

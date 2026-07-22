@@ -3,6 +3,7 @@ using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.Common;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Mapping;
+using AHKFlowApp.Application.Services;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Domain.Enums;
 using Ardalis.Result;
@@ -57,7 +58,7 @@ internal sealed class RestoreHotkeyCommandHandler(
         var entity = Hotkey.Restore(
             request.Id,
             ownerOid,
-            new HotkeyDefinition(
+            LegacyHotkeyDefinitionConverter.Apply(new HotkeyDefinition(
                 Description: snapshot.Description,
                 Key: snapshot.Key,
                 Ctrl: snapshot.Ctrl,
@@ -66,7 +67,7 @@ internal sealed class RestoreHotkeyCommandHandler(
                 Win: snapshot.Win,
                 Action: snapshot.Action,
                 Parameters: snapshot.Parameters,
-                AppliesToAllProfiles: snapshot.AppliesToAllProfiles),
+                AppliesToAllProfiles: snapshot.AppliesToAllProfiles)),
             snapshot.CreatedAt,
             clock);
 

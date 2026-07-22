@@ -1,5 +1,6 @@
 using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.DTOs;
+using AHKFlowApp.Application.Services;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Domain.Enums;
 using Ardalis.Result;
@@ -93,11 +94,11 @@ internal sealed class SeedHotkeysCommandHandler(
             {
                 var entity = Hotkey.Create(
                     ownerOid,
-                    new HotkeyDefinition(
+                    LegacyHotkeyDefinitionConverter.Apply(new HotkeyDefinition(
                         Description: descr, Key: key,
                         Ctrl: ctrl, Alt: alt, Shift: shift, Win: win,
                         Action: action, Parameters: param,
-                        AppliesToAllProfiles: true),
+                        AppliesToAllProfiles: true)),
                     clock);
                 db.Hotkeys.Add(entity);
                 hotkeyId = entity.Id;

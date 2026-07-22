@@ -3,6 +3,7 @@ using AHKFlowApp.Application.Common;
 using AHKFlowApp.Application.Constants;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Mapping;
+using AHKFlowApp.Application.Services;
 using AHKFlowApp.Application.Validation;
 using AHKFlowApp.Domain.Entities;
 using Ardalis.Result;
@@ -75,7 +76,7 @@ internal sealed class CreateHotkeyCommandHandler(
 
         var entity = Hotkey.Create(
             ownerOid,
-            new HotkeyDefinition(
+            LegacyHotkeyDefinitionConverter.Apply(new HotkeyDefinition(
                 Description: input.Description,
                 Key: canonicalKey,
                 Ctrl: input.Ctrl,
@@ -84,7 +85,7 @@ internal sealed class CreateHotkeyCommandHandler(
                 Win: input.Win,
                 Action: input.Action,
                 Parameters: input.Parameters,
-                AppliesToAllProfiles: input.AppliesToAllProfiles),
+                AppliesToAllProfiles: input.AppliesToAllProfiles)),
             clock);
 
         db.Hotkeys.Add(entity);

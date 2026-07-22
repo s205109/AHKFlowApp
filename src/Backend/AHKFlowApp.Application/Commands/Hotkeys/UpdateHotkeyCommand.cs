@@ -3,6 +3,7 @@ using AHKFlowApp.Application.Common;
 using AHKFlowApp.Application.Constants;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Mapping;
+using AHKFlowApp.Application.Services;
 using AHKFlowApp.Application.Validation;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Domain.Enums;
@@ -74,7 +75,7 @@ internal sealed class UpdateHotkeyCommandHandler(
         EntityHistory historyEntry = await recorder.RecordHotkeyAsync(entity, HistoryChangeType.Edit, ct);
 
         entity.Update(
-            new HotkeyDefinition(
+            LegacyHotkeyDefinitionConverter.Apply(new HotkeyDefinition(
                 Description: input.Description,
                 Key: canonicalKey,
                 Ctrl: input.Ctrl,
@@ -83,7 +84,7 @@ internal sealed class UpdateHotkeyCommandHandler(
                 Win: input.Win,
                 Action: input.Action,
                 Parameters: input.Parameters,
-                AppliesToAllProfiles: input.AppliesToAllProfiles),
+                AppliesToAllProfiles: input.AppliesToAllProfiles)),
             clock);
 
         // Replace junction rows via the navigation collections only; adding to the
