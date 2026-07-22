@@ -116,8 +116,8 @@ Every action either embeds no free user text, or escapes it at emission:
 - **Window** emits from a `WindowOp` enum → no free text.
 - **Disable** emits `return` → no free text.
 - **Raw** is the **sole verbatim path**: structured (validated) key + modifiers, plus a user-owned
-  action `Body`, emitted as `origin::{ <body> }`. Brace-balanced, `#`-directive rejected, warned in
-  the UI.
+  action `Body`, emitted as `origin::<body>` — verbatim, with no wrapper added (decision 26). A
+  block body carries its own braces. Brace-balanced, `#`-directive rejected, warned in the UI.
 
 ### What this does and does not guarantee
 
@@ -126,9 +126,9 @@ including Raw — can reintroduce the #195 hazard on the left side.** That is th
 what closes #195.
 
 **Raw is not sandboxed.** AHK parses the whole script at load, so a syntax error anywhere aborts the
-**entire generated profile**, not just its own binding. A body can also escape its wrapper: the
+**entire generated profile**, not just its own binding. A body can also escape its own block: the
 brace-balance check counts `{`/`}` naively, with no awareness of string literals or comments, so a
-body can close the outer block early and have its remainder parsed at top level. This is the same
+body can close its block early and have its remainder parsed at top level. This is the same
 accepted trade-off as hotstring Raw (decisions D8/D12, recorded in
 `docs/development/ahk-v2-syntax.md` → *Known limitations*) — a string- and comment-aware scanner
 would drift toward being a script IDE, so it is deliberately **not** built here either. The UI must
