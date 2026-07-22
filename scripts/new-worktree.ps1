@@ -218,12 +218,9 @@ if (-not $Name) {
 
 $safeName = ConvertTo-SafeName $Name
 if (-not $BranchName) {
-    $BranchName = $safeName
-    # AGENTS.md: worktree-born branches must carry a 'wt-' marker for grepping/cleanup.
-    # An explicit -BranchName is trusted as-is; only the derived default is normalized.
-    if ($BranchName -notmatch '(^|/)wt-') {
-        $BranchName = "wt-$BranchName"
-    }
+    # Derived from the raw name, not $safeName: the directory name has already lost the '/'
+    # that separates a type prefix from the topic. An explicit -BranchName is trusted as-is.
+    $BranchName = ConvertTo-WorktreeBranchName $Name
 }
 
 if (-not $Path) {
