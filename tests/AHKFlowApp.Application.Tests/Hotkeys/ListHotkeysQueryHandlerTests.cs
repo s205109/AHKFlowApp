@@ -2,6 +2,7 @@ using AHKFlowApp.Application;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Queries.Hotkeys;
 using AHKFlowApp.Domain.Entities;
+using AHKFlowApp.Domain.Enums;
 using AHKFlowApp.Infrastructure.Persistence;
 using AHKFlowApp.TestUtilities.Builders;
 using Ardalis.Result;
@@ -156,14 +157,14 @@ public sealed class ListHotkeysQueryHandlerTests(HotkeyDbFixture fx)
     }
 
     [Fact]
-    public async Task Handle_Search_MatchesParameters()
+    public async Task Handle_Search_MatchesRunTarget()
     {
         var owner = Guid.NewGuid();
 
         await using (AppDbContext seed = fx.CreateContext())
         {
-            seed.Hotkeys.Add(new HotkeyBuilder().WithOwner(owner).WithKey("f1").WithCtrl().WithDescription("a").WithParameters("notepad.exe").AppliesToAll().Build());
-            seed.Hotkeys.Add(new HotkeyBuilder().WithOwner(owner).WithKey("f2").WithCtrl().WithDescription("b").WithParameters("calc.exe").AppliesToAll().Build());
+            seed.Hotkeys.Add(new HotkeyBuilder().WithOwner(owner).WithKey("f1").WithCtrl().WithDescription("a").WithRun("notepad.exe").AppliesToAll().Build());
+            seed.Hotkeys.Add(new HotkeyBuilder().WithOwner(owner).WithKey("f2").WithCtrl().WithDescription("b").WithRun("calc.exe").AppliesToAll().Build());
             await seed.SaveChangesAsync();
         }
 
@@ -174,6 +175,79 @@ public sealed class ListHotkeysQueryHandlerTests(HotkeyDbFixture fx)
             new ListHotkeysQuery(Search: "notepad"), default);
 
         result.Value.Items.Should().ContainSingle().Which.Key.Should().Be("f1");
+    }
+
+    // Search spans every typed payload column, so a row whose action carries its text in Text,
+    // SendKeysContent or Body must be reachable by the same query the Run rows are.
+    [Theory]
+    [InlineData("greeting")]
+    [InlineData("Volume_Up")]
+    [InlineData("MsgBox")]
+    public async Task Handle_Search_MatchesTypedPayloadColumns(string term)
+    {
+        var owner = Guid.NewGuid();
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotkeys.Add(new HotkeyBuilder().WithOwner(owner).WithKey("f1").WithCtrl().WithDescription("a").WithSendText("a greeting").AppliesToAll().Build());
+            seed.Hotkeys.Add(new HotkeyBuilder().WithOwner(owner).WithKey("f2").WithCtrl().WithDescription("b").WithSendKeys("{Volume_Up}").AppliesToAll().Build());
+            seed.Hotkeys.Add(new HotkeyBuilder().WithOwner(owner).WithKey("f3").WithCtrl().WithDescription("c").WithRawBody("MsgBox 1").AppliesToAll().Build());
+            seed.Hotkeys.Add(new HotkeyBuilder().WithOwner(owner).WithKey("f4").WithCtrl().WithDescription("d").WithDisable().AppliesToAll().Build());
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        var handler = new ListHotkeysQueryHandler(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
+
+        Result<PagedList<HotkeyDto>> result = await handler.ExecuteAsync(
+            new ListHotkeysQuery(Search: term), default);
+
+        result.Value.Items.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task Handle_ActionKindFilter_ReturnsOnlyThatKind()
+    {
+        var owner = Guid.NewGuid();
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotkeys.Add(new HotkeyBuilder().WithOwner(owner).WithKey("f1").WithCtrl().WithDescription("a").WithRun("notepad.exe").AppliesToAll().Build());
+            seed.Hotkeys.Add(new HotkeyBuilder().WithOwner(owner).WithKey("f2").WithCtrl().WithDescription("b").WithSendText("hi").AppliesToAll().Build());
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        var handler = new ListHotkeysQueryHandler(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
+
+        Result<PagedList<HotkeyDto>> result = await handler.ExecuteAsync(
+            new ListHotkeysQuery(ActionKind: HotkeyActionKind.SendText), default);
+
+        result.Value.TotalCount.Should().Be(1);
+        result.Value.Items.Should().ContainSingle().Which.Key.Should().Be("f2");
+    }
+
+    [Fact]
+    public async Task Handle_SortByActionKindAscending_OrdersByKind()
+    {
+        var owner = Guid.NewGuid();
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotkeys.Add(new HotkeyBuilder().WithOwner(owner).WithKey("f1").WithCtrl().WithDescription("a").WithDisable().AppliesToAll().Build());
+            seed.Hotkeys.Add(new HotkeyBuilder().WithOwner(owner).WithKey("f2").WithCtrl().WithDescription("b").WithSendText("hi").AppliesToAll().Build());
+            seed.Hotkeys.Add(new HotkeyBuilder().WithOwner(owner).WithKey("f3").WithCtrl().WithDescription("c").WithRun("notepad.exe").AppliesToAll().Build());
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        var handler = new ListHotkeysQueryHandler(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
+
+        Result<PagedList<HotkeyDto>> result = await handler.ExecuteAsync(
+            new ListHotkeysQuery(SortField: "actionKind", SortDescending: false), default);
+
+        result.Value.Items.Select(h => h.ActionKind).Should().Equal(
+            HotkeyActionKind.SendText, HotkeyActionKind.Run, HotkeyActionKind.Disable);
     }
 
     [Fact]

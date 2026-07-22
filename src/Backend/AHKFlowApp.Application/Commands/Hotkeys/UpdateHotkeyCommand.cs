@@ -21,8 +21,6 @@ public sealed class UpdateHotkeyCommandValidator : AbstractValidator<UpdateHotke
     {
         RuleFor(x => x.Input.Description).ValidDescription();
         RuleFor(x => x.Input.Key).ValidKey();
-        RuleFor(x => x.Input.Parameters).ValidParameters();
-        RuleFor(x => x.Input.Action).ValidAction();
         this.AddProfileAssociationRules(
             x => x.Input.AppliesToAllProfiles,
             x => x.Input.ProfileIds);
@@ -75,16 +73,24 @@ internal sealed class UpdateHotkeyCommandHandler(
         EntityHistory historyEntry = await recorder.RecordHotkeyAsync(entity, HistoryChangeType.Edit, ct);
 
         entity.Update(
-            LegacyHotkeyDefinitionConverter.Apply(new HotkeyDefinition(
+            new HotkeyDefinition(
                 Description: input.Description,
                 Key: canonicalKey,
                 Ctrl: input.Ctrl,
                 Alt: input.Alt,
                 Shift: input.Shift,
                 Win: input.Win,
-                Action: input.Action,
-                Parameters: input.Parameters,
-                AppliesToAllProfiles: input.AppliesToAllProfiles)),
+                Action: HotkeyAction.Send,   // vestigial until Migration B drops the legacy pair
+                Parameters: "",
+                AppliesToAllProfiles: input.AppliesToAllProfiles,
+                ActionKind: input.ActionKind,
+                Text: input.Text,
+                SendKeysContent: input.SendKeysContent,
+                RunTarget: input.RunTarget,
+                RunTargetKind: input.RunTargetKind,
+                WindowOp: input.WindowOp,
+                RemapDest: input.RemapDest,
+                Body: input.Body),
             clock);
 
         // Replace junction rows via the navigation collections only; adding to the

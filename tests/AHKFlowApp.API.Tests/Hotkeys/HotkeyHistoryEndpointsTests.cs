@@ -19,11 +19,19 @@ public sealed class HotkeyHistoryEndpointsTests(ApiTestFixture fixture)
     private static async Task<HotkeyDto> CreateAsync(HttpClient client, string description, string key)
     {
         HttpResponseMessage created = await client.PostAsJsonAsync(
-            "/api/v1/hotkeys", new CreateHotkeyDto(description, key, AppliesToAllProfiles: true));
+            "/api/v1/hotkeys",
+            new CreateHotkeyDto(description, key, HotkeyActionKind.Disable, AppliesToAllProfiles: true));
         created.EnsureSuccessStatusCode();
 
         return (await created.Content.ReadFromJsonAsync<HotkeyDto>())!;
     }
+
+    private static UpdateHotkeyDto EditHotkey(string description, string key) =>
+        new(description, key, HotkeyActionKind.Disable,
+            Ctrl: false, Alt: false, Shift: false, Win: false,
+            Text: null, SendKeysContent: null, RunTarget: null, RunTargetKind: null,
+            WindowOp: null, RemapDest: null, Body: null,
+            ProfileIds: null, AppliesToAllProfiles: true);
 
     [Fact]
     public async Task History_AfterEdit_ListsVersionAndVersionDetailReturnsSnapshot()
@@ -31,8 +39,7 @@ public sealed class HotkeyHistoryEndpointsTests(ApiTestFixture fixture)
         using HttpClient client = CreateAuthed();
         HotkeyDto dto = await CreateAsync(client, "he1 original", "f16");
         HttpResponseMessage put = await client.PutAsJsonAsync($"/api/v1/hotkeys/{dto.Id}",
-            new UpdateHotkeyDto("he1 changed", "f16", false, false, false, false,
-                HotkeyAction.Send, "", null, true));
+            EditHotkey("he1 changed", "f16"));
         put.EnsureSuccessStatusCode();
 
         HistoryEntryDto[]? entries = await client.GetFromJsonAsync<HistoryEntryDto[]>(
@@ -63,8 +70,7 @@ public sealed class HotkeyHistoryEndpointsTests(ApiTestFixture fixture)
         using HttpClient client = CreateAuthed();
         HotkeyDto dto = await CreateAsync(client, "he3 original", "f18");
         HttpResponseMessage put = await client.PutAsJsonAsync($"/api/v1/hotkeys/{dto.Id}",
-            new UpdateHotkeyDto("he3 changed", "f18", false, false, false, false,
-                HotkeyAction.Send, "", null, true));
+            EditHotkey("he3 changed", "f18"));
         put.EnsureSuccessStatusCode();
 
         HttpResponseMessage revert = await client.PostAsync(

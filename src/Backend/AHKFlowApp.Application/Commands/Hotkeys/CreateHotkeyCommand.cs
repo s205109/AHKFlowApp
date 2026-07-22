@@ -3,9 +3,9 @@ using AHKFlowApp.Application.Common;
 using AHKFlowApp.Application.Constants;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Mapping;
-using AHKFlowApp.Application.Services;
 using AHKFlowApp.Application.Validation;
 using AHKFlowApp.Domain.Entities;
+using AHKFlowApp.Domain.Enums;
 using Ardalis.Result;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
@@ -20,8 +20,6 @@ public sealed class CreateHotkeyCommandValidator : AbstractValidator<CreateHotke
     {
         RuleFor(x => x.Input.Description).ValidDescription();
         RuleFor(x => x.Input.Key).ValidKey();
-        RuleFor(x => x.Input.Parameters).ValidParameters();
-        RuleFor(x => x.Input.Action).ValidAction();
         this.AddProfileAssociationRules(
             x => x.Input.AppliesToAllProfiles,
             x => x.Input.ProfileIds);
@@ -76,16 +74,24 @@ internal sealed class CreateHotkeyCommandHandler(
 
         var entity = Hotkey.Create(
             ownerOid,
-            LegacyHotkeyDefinitionConverter.Apply(new HotkeyDefinition(
+            new HotkeyDefinition(
                 Description: input.Description,
                 Key: canonicalKey,
                 Ctrl: input.Ctrl,
                 Alt: input.Alt,
                 Shift: input.Shift,
                 Win: input.Win,
-                Action: input.Action,
-                Parameters: input.Parameters,
-                AppliesToAllProfiles: input.AppliesToAllProfiles)),
+                Action: HotkeyAction.Send,   // vestigial until Migration B drops the legacy pair
+                Parameters: "",
+                AppliesToAllProfiles: input.AppliesToAllProfiles,
+                ActionKind: input.ActionKind,
+                Text: input.Text,
+                SendKeysContent: input.SendKeysContent,
+                RunTarget: input.RunTarget,
+                RunTargetKind: input.RunTargetKind,
+                WindowOp: input.WindowOp,
+                RemapDest: input.RemapDest,
+                Body: input.Body),
             clock);
 
         db.Hotkeys.Add(entity);
