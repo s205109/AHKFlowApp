@@ -13,6 +13,8 @@ public sealed class HotkeyTokenRulesTests
     [InlineData("{Volume_Up}")]        // named key braced
     [InlineData("^!{Delete}")]         // modifiers + braced named
     [InlineData("+{Left}")]
+    [InlineData("{vk1B}")]             // braced vk code
+    [InlineData("{sc01B}")]            // braced sc code
     public void IsValidSendKeysContent_ValidToken_IsTrue(string token)
     {
         HotkeyRules.Tokens.IsValidSendKeysContent(token).Should().BeTrue();
@@ -28,6 +30,8 @@ public sealed class HotkeyTokenRulesTests
     [InlineData("{Up")]                // unbalanced brace
     [InlineData("^")]                  // modifiers with no key
     [InlineData("{NotAKey}")]          // braced unknown name
+    [InlineData("^^v")]                // duplicate modifier
+    [InlineData("^!^v")]               // duplicate modifier with other modifier
     public void IsValidSendKeysContent_InvalidToken_IsFalse(string? token)
     {
         HotkeyRules.Tokens.IsValidSendKeysContent(token).Should().BeFalse();
