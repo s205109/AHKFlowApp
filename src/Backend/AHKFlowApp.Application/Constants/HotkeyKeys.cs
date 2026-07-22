@@ -117,6 +117,13 @@ internal static class HotkeyKeys
     public static IReadOnlyList<HotkeyKeyEntry> All => s_all;
 
     /// <summary>
+    /// Accepted non-canonical spellings and the entry each resolves to. Exposed so the key
+    /// picker can treat an aliased legacy value (<c>Esc</c>) as valid rather than demoting
+    /// the row to the dialog with an error on a key AutoHotkey accepts.
+    /// </summary>
+    public static IReadOnlyDictionary<string, string> Aliases => s_aliases;
+
+    /// <summary>
     /// Resolves any accepted spelling to the single canonical form, or returns false if the
     /// value is neither a registry key nor a well-formed <c>vk</c>/<c>sc</c> code.
     /// </summary>

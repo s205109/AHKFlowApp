@@ -29,8 +29,16 @@ public sealed class HotkeysController(
     IUseCase<RevertHotkeyCommand, Result<HotkeyDto>> revertHotkey,
     IUseCase<ListDeletedHotkeysQuery, Result<DeletedHotkeyDto[]>> listDeletedHotkeys,
     IUseCase<RestoreHotkeyCommand, Result<HotkeyDto>> restoreHotkey,
-    IUseCase<PurgeDeletedHotkeyCommand, Result> purgeDeletedHotkey) : ControllerBase
+    IUseCase<PurgeDeletedHotkeyCommand, Result> purgeDeletedHotkey,
+    IUseCase<ListHotkeyKeysQuery, Result<HotkeyKeyCatalogDto>> listHotkeyKeys) : ControllerBase
 {
+    /// <summary>Get the canonical key registry backing the hotkey key picker.</summary>
+    /// <remarks>Static reference data; authorized because the controller is, not because it is user-scoped.</remarks>
+    [HttpGet("keys")]
+    [ProducesResponseType(typeof(HotkeyKeyCatalogDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<HotkeyKeyCatalogDto>> Keys(CancellationToken ct) =>
+        (await listHotkeyKeys.ExecuteAsync(new ListHotkeyKeysQuery(), ct)).ToProblemActionResult(this);
+
     /// <summary>List hotkeys for the current user, optionally filtered by profile. Paginated.</summary>
     [HttpGet]
     [ProducesResponseType(typeof(PagedList<HotkeyDto>), StatusCodes.Status200OK)]

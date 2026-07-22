@@ -39,6 +39,7 @@ Task 1 is the only task that can be executed before the backend plan lands — i
 - `dotnet test` accepts **one** project path — run projects as separate commands, or `dotnet test AHKFlowApp.slnx` for everything.
 - **This is a worktree** (`feature/wt-hotkey-ui-plan`). Commit here, never in the main checkout.
 - `GenerateDocumentationFile` is on and `TreatWarningsAsErrors` is true (only CS1591 suppressed). An unresolvable `<see cref>` is CS1574 — an **error**. Reference not-yet-created types with `<c>...</c>`.
+- **Public Application DTOs need a `<param>` per property.** `ApplicationDtoXmlDocCoverageTests` enforces it because those records become OpenAPI schemas; a type-level `<summary>` alone is not enough.
 - Conventional commits, extremely concise. Atomic: one logical change per commit, feature + its tests together.
 
 ---
@@ -130,10 +131,14 @@ public sealed record HotkeyKeyDto(
     bool RequiresBracesInSend);
 
 /// <summary>The whole key registry plus its accepted alias spellings.</summary>
+/// <param name="Keys">Every canonical key, in registry order.</param>
+/// <param name="Aliases">Accepted non-canonical spellings mapped to the canonical name they resolve to.</param>
 public sealed record HotkeyKeyCatalogDto(
     IReadOnlyList<HotkeyKeyDto> Keys,
     IReadOnlyDictionary<string, string> Aliases);
 ```
+
+> **Every public Application DTO needs a `<param>` per property, not just a type `<summary>`.** `ApplicationDtoXmlDocCoverageTests` fails the build otherwise — these records surface as OpenAPI schemas. This bit during execution: `HotkeyKeyCatalogDto.Keys` was undocumented and turned the full API suite red at 172/173.
 
 - [ ] **Step 3: Write the failing test**
 
