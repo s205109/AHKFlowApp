@@ -425,6 +425,21 @@ public sealed class HotkeysEndpointsTests(ApiTestFixture fixture)
         HotkeyDto? created = await res.Content.ReadFromJsonAsync<HotkeyDto>();
         created!.ActionKind.Should().Be(expectedKind);
 
+        // Unconditional, for every kind: the persisted typed columns must echo exactly what was
+        // submitted. Since the request DTO only ever populates the column(s) its own kind owns —
+        // every other typed column defaults to null — this single unconditional block both (a)
+        // proves the owning column(s) round-tripped through creation and (b) proves every
+        // non-owned column came back null, catching a mapping bug that wrote into the wrong
+        // column. Being unconditional (no per-kind branching) means a new kind added to
+        // KindPayloads gets this coverage automatically — there is nothing to remember to add.
+        created.Text.Should().Be(dto.Text);
+        created.SendKeysContent.Should().Be(dto.SendKeysContent);
+        created.RunTarget.Should().Be(dto.RunTarget);
+        created.RunTargetKind.Should().Be(dto.RunTargetKind);
+        created.WindowOp.Should().Be(dto.WindowOp);
+        created.RemapDest.Should().Be(dto.RemapDest);
+        created.Body.Should().Be(dto.Body);
+
         // Same draft fields as the create, through the preview endpoint, over real HTTP —
         // asserts the exact emitted .ahk line, not just that creation succeeded.
         var previewDto = new HotkeyPreviewRequestDto(
@@ -479,6 +494,37 @@ public sealed class HotkeysEndpointsTests(ApiTestFixture fixture)
             "; Raw\n^e::MsgBox \"hi\""
         },
     };
+
+    // KindPayloads exercises at most one modifier per case, so it can never pin the emitter's
+    // fixed modifier order (^ ! + # — Ctrl, Alt, Shift, Win per HotkeyEmitter). This case sets
+    // all four simultaneously; the expected snippet is derived from BuildModifiers' literal
+    // append order in HotkeyEmitter, not from observed output.
+    [Fact]
+    public async Task Post_AllModifiersSet_EmitsInFixedOrder()
+    {
+        using HttpClient client = CreateAuthed();
+        var dto = new CreateHotkeyDto("All modifiers", "q", HotkeyActionKind.SendText,
+            Ctrl: true, Alt: true, Shift: true, Win: true, Text: "hi", AppliesToAllProfiles: true);
+
+        HttpResponseMessage res = await client.PostAsJsonAsync("/api/v1/hotkeys", dto);
+
+        res.StatusCode.Should().Be(HttpStatusCode.Created);
+        HotkeyDto? created = await res.Content.ReadFromJsonAsync<HotkeyDto>();
+        created!.Ctrl.Should().BeTrue();
+        created.Alt.Should().BeTrue();
+        created.Shift.Should().BeTrue();
+        created.Win.Should().BeTrue();
+
+        var previewDto = new HotkeyPreviewRequestDto(
+            dto.Description, dto.Key, dto.ActionKind,
+            dto.Ctrl, dto.Alt, dto.Shift, dto.Win,
+            dto.Text, dto.SendKeysContent, dto.RunTarget, dto.RunTargetKind,
+            dto.WindowOp, dto.RemapDest, dto.Body);
+        HttpResponseMessage previewRes = await client.PostAsJsonAsync("/api/v1/hotkeys/preview", previewDto);
+        previewRes.StatusCode.Should().Be(HttpStatusCode.OK);
+        HotkeyPreviewDto? preview = await previewRes.Content.ReadFromJsonAsync<HotkeyPreviewDto>();
+        preview!.Snippet.Should().Be("; All modifiers\n^!+#q::SendText(\"hi\")");
+    }
 
     // Raw JSON, not a typed DTO: an out-of-range int is exactly what a hand-rolled client sends,
     // and it is the only way to reach the undefined-enum path the validator now guards. Must be
