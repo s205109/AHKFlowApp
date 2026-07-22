@@ -50,6 +50,8 @@ internal sealed class UpdateHotkeyCommandHandler(
 
         UpdateHotkeyDto input = request.Input;
 
+        // Return value ignored: the validator rejects unknown keys before the handler runs,
+        // so this always succeeds here.
         HotkeyKeys.TryCanonicalize(input.Key, out string canonicalKey);
 
         Guid[] distinctProfileIds = input.ProfileIds?.Distinct().ToArray() ?? [];
