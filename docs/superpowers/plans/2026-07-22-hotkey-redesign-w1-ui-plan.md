@@ -60,20 +60,23 @@ Task 1 is the only task that can be executed before the backend plan lands — i
 - `src/Frontend/AHKFlowApp.UI.Blazor/Components/Common/KeyPicker.razor` — role-parameterized key autocomplete.
 
 **Modify (frontend):**
-- `DTOs/HotkeyDto.cs`, `DTOs/CreateHotkeyDto.cs`, `DTOs/UpdateHotkeyDto.cs` — typed fields.
+- `DTOs/HotkeyDto.cs`, `DTOs/CreateHotkeyDto.cs`, `DTOs/UpdateHotkeyDto.cs` — typed fields (Task 2), legacy tail removed (Task 11).
+- `DTOs/HistoryDtos.cs` — `HotkeySnapshot` typed; legacy members stay **permanently**.
 - `DTOs/HotkeyListRequest.cs` — drop `ParametersFilter`, `Action` → `ActionKind`.
 - `Services/IHotkeysApiClient.cs`, `Services/HotkeysApiClient.cs` — `GetKeysAsync`, `PreviewAsync`, filter rename.
 - `Validation/HotkeyEditModel.cs` — typed fields, `IsInlineEditable`, per-kind DTO gating.
 - `Components/Hotkeys/HotkeyEditDialog.razor` (+ new `.razor.css`) — full rebuild.
 - `Components/Hotkeys/HotkeyMobileList.razor` — action chip + shared combo label.
-- `Pages/Hotkeys.razor` — 6-column grid, inline-edit gating.
+- `Components/Hotkeys/HotkeyHistoryDialog.razor` — typed action rendering with legacy fallback.
+- `Pages/Hotkeys.razor` — 6-column grid, inline-edit gating, Add → create dialog.
+- `Pages/Hotkeys.razor.css` — `nth-child` widths retuned from 11 columns to 7.
 - `Program.cs` — register `IHotkeyKeyCatalog`.
 
-**Delete:** `src/Frontend/AHKFlowApp.UI.Blazor/DTOs/HotkeyAction.cs` (backend plan line 2520 leaves this file to us).
+**Delete (Task 11, conditionally):** `src/Frontend/AHKFlowApp.UI.Blazor/DTOs/HotkeyAction.cs` — backend plan line 2520 leaves this file to us. Kept if `HotkeySnapshot` retains typed legacy members, which is the recommended outcome.
 
 **Tests:**
-- Create: `tests/AHKFlowApp.UI.Blazor.Tests/Components/HotkeyEditDialogTests.cs`, `Components/KeyPickerTests.cs`, `Helpers/HotkeyActionDisplayTests.cs`, `Services/HotkeyKeyCatalogTests.cs`, `tests/AHKFlowApp.E2E.Tests/HotkeysCrudFlowTests.cs`
-- Modify: `Pages/HotkeysPageTests.cs`, `Validation/HotkeyEditModelTests.cs`, `Services/HotkeysApiClientTests.cs`, `tests/AHKFlowApp.E2E.Tests/HotkeysMobileFlowTests.cs`
+- Create: `tests/AHKFlowApp.UI.Blazor.Tests/Components/KeyPickerTests.cs`, `Helpers/HotkeyActionDisplayTests.cs`, `Services/HotkeyKeyCatalogTests.cs`, `tests/AHKFlowApp.API.Tests/Hotkeys/HotkeyKeysEndpointTests.cs`, `tests/AHKFlowApp.E2E.Tests/HotkeysCrudFlowTests.cs`
+- Modify: `Components/Hotkeys/HotkeyEditDialogTests.cs` (**exists** — extend, never duplicate), `Components/Hotkeys/HotkeyHistoryDialogTests.cs`, `Components/Hotkeys/HotkeyMobileListTests.cs`, `Pages/HotkeysPageTests.cs`, `Pages/RecycleBinPageTests.cs`, `Validation/HotkeyEditModelTests.cs`, `Services/HotkeysApiClientTests.cs`, `tests/AHKFlowApp.E2E.Tests/HotkeysMobileFlowTests.cs`
 
 ---
 
@@ -86,7 +89,7 @@ The response carries the alias map alongside the entries. The UI needs it for `I
 **Files:**
 - Create: `src/Backend/AHKFlowApp.Application/DTOs/HotkeyKeyDtos.cs`
 - Create: `src/Backend/AHKFlowApp.Application/Queries/Hotkeys/ListHotkeyKeysQuery.cs`
-- Create: `tests/AHKFlowApp.API.Tests/HotkeyKeysEndpointTests.cs`
+- Create: `tests/AHKFlowApp.API.Tests/Hotkeys/HotkeyKeysEndpointTests.cs`
 - Modify: `src/Backend/AHKFlowApp.Application/Constants/HotkeyKeys.cs` (expose `Aliases`)
 - Modify: `src/Backend/AHKFlowApp.Application/DependencyInjection.cs`
 - Modify: `src/Backend/AHKFlowApp.API/Controllers/HotkeysController.cs`
@@ -134,24 +137,30 @@ public sealed record HotkeyKeyCatalogDto(
 
 - [ ] **Step 3: Write the failing test**
 
-Create `tests/AHKFlowApp.API.Tests/HotkeyKeysEndpointTests.cs`:
+Create `tests/AHKFlowApp.API.Tests/Hotkeys/HotkeyKeysEndpointTests.cs`. Fixture shape is copied from the sibling `HotkeysEndpointsTests.cs:12-18` — `[Collection("WebApi")]`, an injected `ApiTestFixture`, and `fixture.Factory.CreateAuthenticatedClient(b => b.WithOid(...))`:
 
 ```csharp
 using System.Net;
 using System.Net.Http.Json;
 using AHKFlowApp.Application.DTOs;
+using AHKFlowApp.TestUtilities.Fixtures;
 using FluentAssertions;
 using Xunit;
 
-namespace AHKFlowApp.API.Tests;
+namespace AHKFlowApp.API.Tests.Hotkeys;
 
-[Collection("SqlServer")]
-public sealed class HotkeyKeysEndpointTests(ApiFactory factory) : IClassFixture<ApiFactory>
+[Collection("WebApi")]
+public sealed class HotkeyKeysEndpointTests(ApiTestFixture fixture)
 {
+    private readonly CustomWebApplicationFactory _factory = fixture.Factory;
+
+    private HttpClient CreateAuthed() =>
+        _factory.CreateAuthenticatedClient(b => b.WithOid(Guid.NewGuid()));
+
     [Fact]
     public async Task GetKeys_ReturnsRegistryWithRolesAndAliases()
     {
-        HttpClient client = factory.CreateAuthenticatedClient();
+        HttpClient client = CreateAuthed();
 
         HttpResponseMessage response = await client.GetAsync("/api/v1/hotkeys/keys");
 
@@ -165,7 +174,7 @@ public sealed class HotkeyKeysEndpointTests(ApiFactory factory) : IClassFixture<
     [Fact]
     public async Task GetKeys_NamedKeyCarriesBraceFlagAndSendRole()
     {
-        HttpClient client = factory.CreateAuthenticatedClient();
+        HttpClient client = CreateAuthed();
 
         HotkeyKeyCatalogDto? catalog =
             await client.GetFromJsonAsync<HotkeyKeyCatalogDto>("/api/v1/hotkeys/keys");
@@ -179,7 +188,7 @@ public sealed class HotkeyKeysEndpointTests(ApiFactory factory) : IClassFixture<
     [Fact]
     public async Task GetKeys_PrintableKeyIsNotBracedInSend()
     {
-        HttpClient client = factory.CreateAuthenticatedClient();
+        HttpClient client = CreateAuthed();
 
         HotkeyKeyCatalogDto? catalog =
             await client.GetFromJsonAsync<HotkeyKeyCatalogDto>("/api/v1/hotkeys/keys");
@@ -190,7 +199,7 @@ public sealed class HotkeyKeysEndpointTests(ApiFactory factory) : IClassFixture<
     [Fact]
     public async Task GetKeys_RequiresAuthentication()
     {
-        HttpClient client = factory.CreateClient();
+        HttpClient client = _factory.CreateClient();
 
         HttpResponseMessage response = await client.GetAsync("/api/v1/hotkeys/keys");
 
@@ -199,12 +208,11 @@ public sealed class HotkeyKeysEndpointTests(ApiFactory factory) : IClassFixture<
 }
 ```
 
-> Match the fixture names already used in `tests/AHKFlowApp.API.Tests` — open `HotkeysEndpointsTests.cs` and copy its factory type, collection attribute, and authenticated-client helper verbatim rather than assuming `ApiFactory`/`CreateAuthenticatedClient`.
-
 - [ ] **Step 4: Run test to verify it fails**
 
 ```bash
 dotnet test tests/AHKFlowApp.API.Tests --filter "FullyQualifiedName~HotkeyKeysEndpointTests"
+# Testcontainers: Docker must be running.
 ```
 Expected: FAIL — 404 Not Found on `/api/v1/hotkeys/keys`.
 
@@ -279,6 +287,7 @@ Then add the action immediately after the existing `List` method. The route lite
 
 ```bash
 dotnet test tests/AHKFlowApp.API.Tests --filter "FullyQualifiedName~HotkeyKeysEndpointTests"
+# Testcontainers: Docker must be running.
 ```
 Expected: PASS, 4 tests.
 
@@ -292,16 +301,20 @@ git commit -m "feat: serve hotkey key registry for UI picker"
 
 ---
 
-### Task 2: Frontend contract mirrors
+### Task 2: Frontend contract mirrors (expand)
 
-Re-mirrors the hotkey DTOs onto the typed model and deletes the obsolete `HotkeyAction` mirror. Pure contract change — the page and dialog still reference the old members, so **this task deliberately leaves the project not compiling**; Task 5 closes it. Do not attempt a green build until Task 5.
+Adds the typed fields **alongside** the legacy `Action`/`Parameters` members and keeps the `HotkeyAction` enum. The frontend stays compiling and its tests stay runnable at every step.
 
-> **Requires backend Task 6 complete.** Copy the field order from the backend's `HotkeyDto` verbatim; a mismatch deserializes silently wrong for positional records.
+> **Why not swap outright.** An earlier draft deleted the legacy members here and accepted a red project until the grid landed. That does not work: `dotnet test tests/AHKFlowApp.UI.Blazor.Tests` builds the referenced frontend project, so every "Expected: PASS" in Tasks 3–8 would have been unreachable. It also under-counted the blast radius — `HotkeyAction` has **nine** consumers beyond the three DTOs (`DTOs/HistoryDtos.cs:38`, `Pages/Hotkeys.razor:155-158,435-444`, `Components/Hotkeys/HotkeyHistoryDialog.razor:48-51`, plus five test files). This plan therefore mirrors the backend's own **expand → cutover → contract** staging: Task 2 expands, Tasks 3–9 move consumers over one at a time, Task 10 contracts.
+>
+> Legacy members are harmless while they linger: the API stops sending `action`/`parameters`, and `System.Text.Json` simply leaves the defaults in place.
+
+> **Requires backend Task 6 complete.** Copy the field order of the *typed* members from the backend's `HotkeyDto` verbatim; a mismatch deserializes silently wrong for positional records.
 
 **Files:**
 - Create: `src/Frontend/AHKFlowApp.UI.Blazor/DTOs/HotkeyActionKind.cs`, `WindowOp.cs`, `RunTargetKind.cs`, `HotkeyKeyDtos.cs`, `HotkeyPreviewDtos.cs`
-- Modify: `DTOs/HotkeyDto.cs`, `DTOs/CreateHotkeyDto.cs`, `DTOs/UpdateHotkeyDto.cs`, `DTOs/HotkeyListRequest.cs`
-- Delete: `DTOs/HotkeyAction.cs`
+- Modify: `DTOs/HotkeyDto.cs`, `DTOs/CreateHotkeyDto.cs`, `DTOs/UpdateHotkeyDto.cs`, `DTOs/HotkeyListRequest.cs`, `DTOs/HistoryDtos.cs`
+- **Not** deleted here: `DTOs/HotkeyAction.cs` retires in Task 10.
 
 **Interfaces:**
 - Consumes: backend `HotkeyDto`/`CreateHotkeyDto`/`UpdateHotkeyDto` (backend plan Task 6), `HotkeyPreviewRequestDto`/`HotkeyPreviewDto` (backend plan Task 9), `HotkeyKeyCatalogDto` (Task 1).
@@ -407,7 +420,7 @@ public sealed record HotkeyPreviewDto(string Snippet);
 
 - [ ] **Step 3: Retype the hotkey DTOs**
 
-Replace `src/Frontend/AHKFlowApp.UI.Blazor/DTOs/HotkeyDto.cs`:
+Replace `src/Frontend/AHKFlowApp.UI.Blazor/DTOs/HotkeyDto.cs`. The legacy pair moves to the tail as defaulted members so existing call sites that pass it positionally keep compiling, and so the record still binds if a stale API is on the other end:
 
 ```csharp
 namespace AHKFlowApp.UI.Blazor.DTOs;
@@ -432,7 +445,11 @@ public sealed record HotkeyDto(
     string? Body,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
-    Guid[]? CategoryIds = null);
+    Guid[]? CategoryIds = null,
+    // Legacy pair — retires in Task 10 once no consumer reads it. The API no longer sends
+    // these; they exist so the frontend compiles while consumers migrate one task at a time.
+    HotkeyAction Action = HotkeyAction.Send,
+    string Parameters = "");
 ```
 
 Replace `src/Frontend/AHKFlowApp.UI.Blazor/DTOs/CreateHotkeyDto.cs`:
@@ -457,7 +474,10 @@ public sealed record CreateHotkeyDto(
     string? Body = null,
     Guid[]? ProfileIds = null,
     bool AppliesToAllProfiles = false,
-    Guid[]? CategoryIds = null);
+    Guid[]? CategoryIds = null,
+    // Legacy pair — retires in Task 10. Serialized but ignored by the typed API.
+    HotkeyAction Action = HotkeyAction.Send,
+    string Parameters = "");
 ```
 
 Replace `src/Frontend/AHKFlowApp.UI.Blazor/DTOs/UpdateHotkeyDto.cs`:
@@ -482,27 +502,60 @@ public sealed record UpdateHotkeyDto(
     string? Body,
     Guid[]? ProfileIds,
     bool AppliesToAllProfiles,
-    Guid[]? CategoryIds = null);
+    Guid[]? CategoryIds = null,
+    // Legacy pair — retires in Task 10. Serialized but ignored by the typed API.
+    HotkeyAction Action = HotkeyAction.Send,
+    string Parameters = "");
 ```
 
-> Field order must match the backend records exactly. Read the backend files before writing these — do not trust the order above if it disagrees with what backend Task 6 produced.
+> Field order of the typed members must match the backend records exactly. Read the backend files before writing these — do not trust the order above if it disagrees with what backend Task 6 produced.
 
-- [ ] **Step 4: Retype the list request**
+- [ ] **Step 4: Expand the history snapshot mirror**
 
-In `src/Frontend/AHKFlowApp.UI.Blazor/DTOs/HotkeyListRequest.cs`, delete the `ParametersFilter` parameter and replace `HotkeyAction? Action = null` with `HotkeyActionKind? ActionKind = null`. Backend Task 6 dropped both the `parametersFilter` query parameter and the `"parameters"`/`"action"` sort keys, so leaving them here would send parameters the API rejects.
+`Components/Hotkeys/HotkeyHistoryDialog.razor:48-51` renders `Snapshot.Action` and `Snapshot.Parameters`, so the mirror needs the typed fields before that dialog can migrate (Task 9). In `src/Frontend/AHKFlowApp.UI.Blazor/DTOs/HistoryDtos.cs`, replace `HotkeySnapshot` (line 31):
 
-- [ ] **Step 5: Delete the obsolete mirror**
+```csharp
+public sealed record HotkeySnapshot(
+    string Description,
+    string Key,
+    bool Ctrl,
+    bool Alt,
+    bool Shift,
+    bool Win,
+    HotkeyActionKind ActionKind,
+    string? Text,
+    string? SendKeysContent,
+    string? RunTarget,
+    RunTargetKind? RunTargetKind,
+    WindowOp? WindowOp,
+    string? RemapDest,
+    string? Body,
+    bool AppliesToAllProfiles,
+    Guid[] ProfileIds,
+    Guid[] CategoryIds,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset UpdatedAt,
+    // Optional legacy members, permanently. Old history JSON still carries them, and the
+    // backend keeps them on its own HotkeySnapshot for exactly that reason (backend Task 8).
+    // Unlike the DTO pair above, these do NOT retire in Task 10.
+    HotkeyAction? Action = null,
+    string? Parameters = null);
+```
+
+- [ ] **Step 5: Retype the list request**
+
+In `src/Frontend/AHKFlowApp.UI.Blazor/DTOs/HotkeyListRequest.cs`, delete the `ParametersFilter` parameter and replace `HotkeyAction? Action = null` with `HotkeyActionKind? ActionKind = null`. Backend Task 6 dropped both the `parametersFilter` query parameter and the `"parameters"`/`"action"` sort keys, so leaving them here would send parameters the API rejects. This one is a true swap rather than an expand: `Hotkeys.razor:435` (`ActionFilter`) is its only consumer and Task 9 retypes it.
+
+- [ ] **Step 6: Build and commit**
+
+`HotkeyListRequest` changed shape, so fix its two call sites now — `Pages/Hotkeys.razor:435-444` (`ActionFilter` returns `HotkeyActionKind?`, parses against the new enum) and `Services/HotkeysApiClient.cs` (Task 3 covers the query-string side).
 
 ```bash
-git rm src/Frontend/AHKFlowApp.UI.Blazor/DTOs/HotkeyAction.cs
+dotnet build src/Frontend/AHKFlowApp.UI.Blazor
+git add src/Frontend/AHKFlowApp.UI.Blazor/DTOs src/Frontend/AHKFlowApp.UI.Blazor/Pages/Hotkeys.razor
+git commit -m "feat: add typed hotkey action fields to frontend mirrors"
 ```
-
-- [ ] **Step 6: Commit (build is intentionally red)**
-
-```bash
-git add src/Frontend/AHKFlowApp.UI.Blazor/DTOs
-git commit -m "refactor: mirror typed hotkey action DTOs in frontend"
-```
+Expected: build succeeds. **Every task from here stays green** — no red-build window.
 
 ---
 
@@ -683,7 +736,8 @@ public sealed class HotkeyKeyCatalogTests
         var catalog = new HotkeyKeyCatalog(ApiReturning(Sample));
         await catalog.ForRoleAsync("HotkeyKey", CancellationToken.None);
 
-        catalog.GroupOf("Volume_Up").Should().Be("Media & browser");
+        catalog.GroupOf("F1").Should().Be("Function keys");
+        catalog.GroupOf("WheelUp").Should().Be("Mouse");
         catalog.GroupOf("vk1B").Should().BeNull();
     }
 
@@ -1128,6 +1182,12 @@ public sealed class HotkeyEditModel
 
     public HotkeyActionKind ActionKind { get; set; } = HotkeyActionKind.SendText;
 
+    // Legacy members, retired in Task 10. Pages/Hotkeys.razor:155-158 still binds Action until
+    // Task 9 replaces that column, and five test files still construct it. Not written to the
+    // wire by ToCreateDto/ToUpdateDto — the typed fields are the contract.
+    public HotkeyAction Action { get; set; } = HotkeyAction.Send;
+    public string Parameters { get; set; } = "";
+
     // Per-kind fields. All are retained across kind switches so a user who toggles away and
     // back does not lose typed work; gating to the active kind happens once, on the wire, in
     // ToCreateDto / ToUpdateDto / ToPreviewRequest. Server validation is both-or-neither, so
@@ -1171,6 +1231,8 @@ public sealed class HotkeyEditModel
         WindowOp = dto.WindowOp,
         RemapDest = dto.RemapDest,
         Body = dto.Body,
+        Action = dto.Action,
+        Parameters = dto.Parameters,
         AppliesToAllProfiles = dto.AppliesToAllProfiles,
         ProfileIds = [.. dto.ProfileIds],
         CategoryIds = [.. dto.CategoryIds ?? []],
@@ -1193,6 +1255,8 @@ public sealed class HotkeyEditModel
         WindowOp = WindowOp,
         RemapDest = RemapDest,
         Body = Body,
+        Action = Action,
+        Parameters = Parameters,
         AppliesToAllProfiles = AppliesToAllProfiles,
         ProfileIds = [.. ProfileIds],
         CategoryIds = [.. CategoryIds],
@@ -1252,7 +1316,7 @@ public sealed class HotkeyEditModel
 ```bash
 dotnet test tests/AHKFlowApp.UI.Blazor.Tests --filter "FullyQualifiedName~HotkeyEditModelTests"
 ```
-Expected: PASS, 13 tests. The Hotkeys page and dialog still reference removed members and will not compile — expected until Tasks 8 and 9.
+Expected: PASS, 13 tests. The project still compiles — legacy members are retained on both the DTOs (Task 2) and the model, and retire together in Task 10.
 
 - [ ] **Step 5: Commit**
 
@@ -1524,11 +1588,18 @@ Create `src/Frontend/AHKFlowApp.UI.Blazor/Components/Hotkeys/HotkeyActionChip.ra
 
 @* Lives in its own component so the desktop grid and the mobile list cannot drift apart;
    the per-kind tints ride along in the scoped CSS. Raw carries its warning in aria-label
-   because the chip's colour and icon alone are not exposed to screen readers. *@
-<MudChip T="string" Size="Size.Small" Variant="Variant.Text"
-         Class="@HotkeyActionDisplay.ChipClass(Kind)"
-         Icon="@HotkeyActionDisplay.Icon(Kind)"
-         UserAttributes="@ChipAttributes()">@HotkeyActionDisplay.Label(Kind)</MudChip>
+   because the chip's colour and icon alone are not exposed to screen readers.
+
+   The .action-chip-host span is load-bearing, not decoration: CSS isolation stamps its scope
+   attribute only on elements this component renders directly. MudChip's root is rendered by
+   MudChip, so a bare .action-chip--run rule would never match. The host span carries the scope
+   and ::deep reaches through — the same shape as Components/Hotstrings/HotstringKindChip. *@
+<span class="action-chip-host">
+    <MudChip T="string" Size="Size.Small" Variant="Variant.Text"
+             Class="@HotkeyActionDisplay.ChipClass(Kind)"
+             Icon="@HotkeyActionDisplay.Icon(Kind)"
+             UserAttributes="@ChipAttributes()">@HotkeyActionDisplay.Label(Kind)</MudChip>
+</span>
 
 @code {
     [Parameter, EditorRequired] public HotkeyActionKind Kind { get; set; }
@@ -1546,16 +1617,47 @@ Create `src/Frontend/AHKFlowApp.UI.Blazor/Components/Hotkeys/HotkeyActionChip.ra
 Create `src/Frontend/AHKFlowApp.UI.Blazor/Components/Hotkeys/HotkeyActionChip.razor.css`:
 
 ```css
-/* Per-kind tints. Kept deliberately low-saturation so seven chips in one column read as a
-   set rather than a warning panel; Raw is the only one allowed to shout. OKLCH refinement
-   of these values is Wave 4. */
-.action-chip--sendtext { background: var(--mud-palette-action-default-hover); }
-.action-chip--sendkeys { background: var(--mud-palette-info-hover); }
-.action-chip--run { background: var(--mud-palette-success-hover); }
-.action-chip--window { background: var(--mud-palette-primary-hover); }
-.action-chip--remap { background: var(--mud-palette-secondary-hover); }
-.action-chip--disable { background: var(--mud-palette-action-disabled-background); }
-.action-chip--raw { background: var(--mud-palette-warning-hover); }
+/* Per-kind tints. Kept deliberately low-saturation so seven chips in one column read as a set
+   rather than a warning panel; Raw is the only one allowed to shout.
+
+   Host-wrapper + ::deep is mandatory here, matching Components/Hotstrings/HotstringKindChip.razor.css:
+   these rules target MudChip's root, which this component does not render itself and which
+   therefore never carries the CSS-isolation scope attribute. color-mix against theme variables
+   tracks light/dark without a separate dark-mode selector, as the hotstring chips already do. */
+.action-chip-host ::deep .mud-chip.action-chip--sendtext {
+    background-color: color-mix(in oklch, var(--mud-palette-surface) 84%, oklch(0.62 0.19 300));
+    color: color-mix(in oklch, var(--mud-palette-text-primary) 35%, oklch(0.52 0.19 300));
+}
+
+.action-chip-host ::deep .mud-chip.action-chip--sendkeys {
+    background-color: color-mix(in oklch, var(--mud-palette-surface) 84%, oklch(0.62 0.15 240));
+    color: color-mix(in oklch, var(--mud-palette-text-primary) 35%, oklch(0.52 0.15 240));
+}
+
+.action-chip-host ::deep .mud-chip.action-chip--run {
+    background-color: color-mix(in oklch, var(--mud-palette-surface) 84%, oklch(0.62 0.15 140));
+    color: color-mix(in oklch, var(--mud-palette-text-primary) 35%, oklch(0.52 0.15 140));
+}
+
+.action-chip-host ::deep .mud-chip.action-chip--window {
+    background-color: color-mix(in oklch, var(--mud-palette-surface) 84%, oklch(0.62 0.13 200));
+    color: color-mix(in oklch, var(--mud-palette-text-primary) 35%, oklch(0.52 0.13 200));
+}
+
+.action-chip-host ::deep .mud-chip.action-chip--remap {
+    background-color: color-mix(in oklch, var(--mud-palette-surface) 84%, oklch(0.62 0.13 260));
+    color: color-mix(in oklch, var(--mud-palette-text-primary) 35%, oklch(0.52 0.13 260));
+}
+
+.action-chip-host ::deep .mud-chip.action-chip--disable {
+    background-color: color-mix(in oklch, var(--mud-palette-surface) 88%, var(--mud-palette-text-disabled));
+    color: var(--mud-palette-text-secondary);
+}
+
+.action-chip-host ::deep .mud-chip.action-chip--raw {
+    background-color: color-mix(in oklch, var(--mud-palette-surface) 80%, oklch(0.70 0.16 70));
+    color: color-mix(in oklch, var(--mud-palette-text-primary) 30%, oklch(0.50 0.16 70));
+}
 ```
 
 - [ ] **Step 5: Run tests to verify they pass**
@@ -1822,35 +1924,51 @@ Two structural notes:
 **Files:**
 - Modify: `src/Frontend/AHKFlowApp.UI.Blazor/Components/Hotkeys/HotkeyEditDialog.razor`
 - Create: `src/Frontend/AHKFlowApp.UI.Blazor/Components/Hotkeys/HotkeyEditDialog.razor.css`
-- Create: `tests/AHKFlowApp.UI.Blazor.Tests/Components/HotkeyEditDialogTests.cs`
+- Modify: `tests/AHKFlowApp.UI.Blazor.Tests/Components/Hotkeys/HotkeyEditDialogTests.cs` (existing file — extend, do not duplicate)
 
 **Interfaces:**
-- Consumes: `HotkeyEditModel` (Task 5), `HotkeyActionDisplay` (Task 6), `KeyPicker` (Task 7), `IHotkeysApiClient.PreviewAsync` (Task 3), `EntityMultiSelect`.
+- Consumes: `HotkeyEditModel` (Task 5), `HotkeyActionDisplay` (Task 6), `KeyPicker` (Task 7), `IHotkeysApiClient.PreviewAsync` (Task 3), `IHotkeyKeyCatalog.RequiresBracesInSend` (Task 4), `EntityMultiSelect`.
 - Produces: `HotkeyEditDialog` with `internal TimeSpan PreviewDebounce` (test seam, default 400 ms).
 
 - [ ] **Step 1: Write the failing tests**
 
-Create `tests/AHKFlowApp.UI.Blazor.Tests/Components/HotkeyEditDialogTests.cs`. Model the fixture on the existing hotstring dialog tests inside `HotstringsPageTests.cs` — reuse its dialog-hosting helper rather than inventing a new one.
+**Extend the existing `tests/AHKFlowApp.UI.Blazor.Tests/Components/Hotkeys/HotkeyEditDialogTests.cs`** — do not create a second file. That file already has the harness (`BunitContext`, a substituted `IHotkeysApiClient`, MudBlazor services, loose JS interop) and hosts the dialog through `MudDialogProvider`, which is the only way a `MudDialog` renders under bUnit.
+
+Its two existing tests (`CreateMode_RendersEmptyFields`, `EditMode_PrefillsFieldsFromItem`) construct `HotkeyDto` with `HotkeyAction.Send` at lines 89 and 131 — retype those to `HotkeyActionKind` as part of this task.
+
+Add a shared host helper next to the existing constructor, then the new tests:
 
 ```csharp
-using AHKFlowApp.UI.Blazor.Components.Hotkeys;
-using AHKFlowApp.UI.Blazor.DTOs;
-using AHKFlowApp.UI.Blazor.Validation;
-using Bunit;
-using FluentAssertions;
-using Xunit;
-
-namespace AHKFlowApp.UI.Blazor.Tests.Components;
-
-public sealed class HotkeyEditDialogTests : TestContext
-{
-    [Fact]
-    public void ActionSelector_OffersAllSevenKinds()
+    // Dialogs render only inside MudDialogProvider; every test needs the same three lines, so
+    // they live here rather than being copied per test.
+    private async Task<IRenderedComponent<MudDialogProvider>> ShowDialogAsync(HotkeyEditModel item)
     {
-        IRenderedComponent<HotkeyEditDialog> cut = RenderDialog(new HotkeyEditModel());
+        Render<MudPopoverProvider>();
+        IRenderedComponent<MudDialogProvider> provider = Render<MudDialogProvider>();
+
+        await provider.InvokeAsync(async () =>
+        {
+            IDialogService dialogService = Services.GetRequiredService<IDialogService>();
+            await dialogService.ShowAsync<HotkeyEditDialog>("Edit",
+                new DialogParameters
+                {
+                    [nameof(HotkeyEditDialog.Item)] = item,
+                    [nameof(HotkeyEditDialog.Profiles)] = (IReadOnlyList<ProfileDto>)[],
+                    [nameof(HotkeyEditDialog.Categories)] = (IReadOnlyList<CategoryDto>)[],
+                },
+                new DialogOptions { FullScreen = true, CloseButton = false });
+        });
+
+        return provider;
+    }
+
+    [Fact]
+    public async Task ActionSelector_OffersAllSevenKinds()
+    {
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(new HotkeyEditModel());
 
         foreach (HotkeyActionKind kind in Enum.GetValues<HotkeyActionKind>())
-            cut.Markup.Should().Contain(HotkeyActionDisplayLabel(kind));
+            provider.FindAll($"[data-test=\"action-kind-{kind}\"]").Should().ContainSingle();
     }
 
     [Theory]
@@ -1860,55 +1978,71 @@ public sealed class HotkeyEditDialogTests : TestContext
     [InlineData(HotkeyActionKind.Window, "window-panel")]
     [InlineData(HotkeyActionKind.Remap, "remap-panel")]
     [InlineData(HotkeyActionKind.Raw, "raw-panel")]
-    public void SelectedKind_RevealsOnlyItsOwnPanel(HotkeyActionKind kind, string panelTest)
+    public async Task SelectedKind_RevealsOnlyItsOwnPanel(HotkeyActionKind kind, string panelTest)
     {
-        IRenderedComponent<HotkeyEditDialog> cut = RenderDialog(new HotkeyEditModel { ActionKind = kind });
+        IRenderedComponent<MudDialogProvider> provider =
+            await ShowDialogAsync(new HotkeyEditModel { ActionKind = kind });
 
-        cut.FindAll($"[data-test={panelTest}]").Should().ContainSingle();
-        cut.FindAll("[data-test$=-panel]").Should().ContainSingle();
+        provider.FindAll($"[data-test=\"{panelTest}\"]").Should().ContainSingle();
+        provider.FindAll("[data-test$=\"-panel\"]").Should().ContainSingle();
     }
 
     [Fact]
-    public void DisableKind_ShowsNoActionPanel()
+    public async Task DisableKind_ShowsNoActionPanel()
     {
-        IRenderedComponent<HotkeyEditDialog> cut =
-            RenderDialog(new HotkeyEditModel { ActionKind = HotkeyActionKind.Disable });
+        IRenderedComponent<MudDialogProvider> provider =
+            await ShowDialogAsync(new HotkeyEditModel { ActionKind = HotkeyActionKind.Disable });
 
-        cut.FindAll("[data-test$=-panel]").Should().BeEmpty();
+        provider.FindAll("[data-test$=\"-panel\"]").Should().BeEmpty();
     }
 
     [Fact]
-    public void RawKind_ShowsTheUncheckedScriptWarning()
+    public async Task RawKind_ShowsTheUncheckedScriptWarning()
     {
-        IRenderedComponent<HotkeyEditDialog> cut =
-            RenderDialog(new HotkeyEditModel { ActionKind = HotkeyActionKind.Raw });
+        IRenderedComponent<MudDialogProvider> provider =
+            await ShowDialogAsync(new HotkeyEditModel { ActionKind = HotkeyActionKind.Raw });
 
-        cut.Find("[data-test=raw-warning]").TextContent
+        provider.Find("[data-test=\"raw-warning\"]").TextContent
             .Should().Contain("stop the whole profile script from loading");
     }
 
     [Fact]
-    public void SwitchingKind_KeepsTheOutgoingKindsTypedValue()
+    public async Task SwitchingKind_KeepsTheOutgoingKindsTypedValue()
     {
-        var model = new HotkeyEditModel { ActionKind = HotkeyActionKind.Run, RunTarget = "notepad" };
-        IRenderedComponent<HotkeyEditDialog> cut = RenderDialog(model);
+        HotkeyEditModel item = new() { ActionKind = HotkeyActionKind.Run, RunTarget = "notepad" };
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(item);
 
-        cut.Find("[data-test=action-kind-SendText]").Click();
+        await provider.Find("[data-test=\"action-kind-SendText\"]").ClickAsync(new MouseEventArgs());
 
-        model.RunTarget.Should().Be("notepad");
-        model.ActionKind.Should().Be(HotkeyActionKind.SendText);
+        item.ActionKind.Should().Be(HotkeyActionKind.SendText);
+        item.RunTarget.Should().Be("notepad");   // retained, gated only on the wire
     }
 
     [Fact]
-    public void ValidationError_FromSave_LandsOnItsNamedField()
+    public async Task ValidationError_FromSave_LandsOnItsNamedField()
     {
-        // Arrange a save returning 400 with { "Input.RunTarget": ["Run target is required."] },
-        // then assert the run-target field renders that message rather than the generic alert.
+        _api.CreateAsync(Arg.Any<CreateHotkeyDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotkeyDto>.Failure(
+                ApiResultStatus.Validation,
+                new ApiProblemDetails
+                {
+                    Errors = new Dictionary<string, string[]>
+                    {
+                        ["Input.RunTarget"] = ["Run target is required."],
+                    },
+                }));
+
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(
+            new HotkeyEditModel { Description = "d", Key = "n", ActionKind = HotkeyActionKind.Run });
+
+        await provider.Find(".commit-edit").ClickAsync(new MouseEventArgs());
+
+        provider.WaitForAssertion(() =>
+            provider.Markup.Should().Contain("Run target is required."));
     }
-}
 ```
 
-> The last test is a stub on purpose only in this listing — **write its body before implementing**, following `HotstringsPageTests`' existing 400-response arrangement. A test with no assertions is a plan failure; do not leave it empty in the committed file.
+> Confirm `ApiProblemDetails`' shape before writing the last test — open `DTOs/ApiProblemDetails.cs` and construct it the way `HotstringsPageTests` already does. If `Errors` is not a settable `IReadOnlyDictionary<string, string[]>`, match whatever that file declares rather than the shape assumed above.
 
 - [ ] **Step 2: Run tests to verify they fail**
 
@@ -1926,8 +2060,11 @@ Replace the `DialogContent` of `src/Frontend/AHKFlowApp.UI.Blazor/Components/Hot
         <MudForm @ref="_form">
         <MudStack Spacing="3" Class="pa-2">
 
-            @* ---- Activating input: key + modifiers ---- *@
-            <KeyPicker Role="HotkeyKey" Label="Key" @bind-Value="Item.Key"
+            @* ---- Activating input: key + modifiers ----
+                 Bound through a handler, not @bind-Value: the key is half the emitted line, so
+                 an expanded preview must not go stale when it changes. *@
+            <KeyPicker Role="HotkeyKey" Label="Key"
+                       Value="Item.Key" ValueChanged="OnKeyChangedAsync"
                        Error="@(FieldError(nameof(HotkeyEditModel.Key)) is not null)"
                        ErrorText="@FieldError(nameof(HotkeyEditModel.Key))"
                        HelperText="Pick a key, or type a vk/sc code such as vk1B."
@@ -1943,21 +2080,24 @@ Replace the `DialogContent` of `src/Frontend/AHKFlowApp.UI.Blazor/Components/Hot
                              UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "win-checkbox" })" />
             </MudStack>
 
-            @* ---- Action selector. Generated from the enum so the set cannot drift. ---- *@
-            <MudToggleGroup T="HotkeyActionKind" Class="action-kind-group"
-                            Value="Item.ActionKind" ValueChanged="OnActionKindChangedAsync"
-                            UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "action-kind-selector" })">
-                @foreach (HotkeyActionKind kind in Enum.GetValues<HotkeyActionKind>())
-                {
-                    <MudToggleItem Value="@kind"
-                                   UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = $"action-kind-{kind}" })">
-                        <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
-                            <MudIcon Icon="@HotkeyActionDisplay.Icon(kind)" Size="Size.Small" />
-                            <MudText>@HotkeyActionDisplay.Label(kind)</MudText>
-                        </MudStack>
-                    </MudToggleItem>
-                }
-            </MudToggleGroup>
+            @* ---- Action selector. Generated from the enum so the set cannot drift.
+                 The wrapper div carries the CSS-isolation scope for the flex-wrap rule. ---- *@
+            <div class="action-kind-wrap">
+                <MudToggleGroup T="HotkeyActionKind"
+                                Value="Item.ActionKind" ValueChanged="OnActionKindChangedAsync"
+                                UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "action-kind-selector" })">
+                    @foreach (HotkeyActionKind kind in Enum.GetValues<HotkeyActionKind>())
+                    {
+                        <MudToggleItem Value="@kind"
+                                       UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = $"action-kind-{kind}" })">
+                            <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                                <MudIcon Icon="@HotkeyActionDisplay.Icon(kind)" Size="Size.Small" />
+                                <MudText>@HotkeyActionDisplay.Label(kind)</MudText>
+                            </MudStack>
+                        </MudToggleItem>
+                    }
+                </MudToggleGroup>
+            </div>
 
             @* ---- Exactly one action panel. Disable renders none: it owns no fields, and an
                    empty bordered box reads as a bug rather than as "nothing to configure". ---- *@
@@ -2053,14 +2193,16 @@ Replace the `DialogContent` of `src/Frontend/AHKFlowApp.UI.Blazor/Components/Hot
                                   UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "raw-warning" })">
                             @HotkeyActionDisplay.RawWarningText
                         </MudAlert>
+                        <div class="raw-body-wrap">
                         <MudTextField T="string" Label="Action body" @bind-Value="Item.Body"
-                                      Lines="6" Class="raw-body" MaxLength="@HotkeyEditModel.BodyMaxLength" Immediate="true"
+                                      Lines="6" MaxLength="@HotkeyEditModel.BodyMaxLength" Immediate="true"
                                       OnDebounceIntervalElapsed="@(() => RefreshPreviewAsync(debounce: false))"
                                       DebounceInterval="300"
                                       Error="@(FieldError(nameof(HotkeyEditModel.Body)) is not null)"
                                       ErrorText="@FieldError(nameof(HotkeyEditModel.Body))"
                                       HelperText="Emitted verbatim inside { }. Braces must balance; # directives are rejected."
                                       UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "raw-body-input" })" />
+                        </div>
                     </div>
                     break;
             }
@@ -2212,7 +2354,56 @@ Port the preview machinery from `HotstringEditDialog` and add the two hotkey-spe
     }
 ```
 
-Then copy, renamed for hotkeys, from `HotstringEditDialog.razor`: `SchedulePreview` (`:831`), `CancelPendingPreview` (`:849`), `RunPreviewAsync` (`:860`), and `Dispose` (`:969`). `RunPreviewAsync` calls `Api.PreviewAsync(Item.ToPreviewRequest(), ct)`; on `ApiResultStatus.Validation` it calls `ApplyFieldErrors` and puts the returned unmapped message in `_previewError`.
+**Preview state and dependencies.** The ported methods do not compile without these. Declare alongside the existing `_error`/`_saving`/`_form`/`_cts` fields:
+
+```csharp
+    private bool _previewExpanded;
+    private bool _previewPending;
+    private string? _previewSnippet;
+    private string? _previewError;
+    private CancellationTokenSource? _previewCts;
+    private int _previewGeneration;
+    private bool _disposed;
+```
+
+Add the injections and directives the ported code needs — the current dialog has none of them:
+
+```razor
+@using Microsoft.Extensions.Logging
+@using Microsoft.JSInterop
+@implements IDisposable
+```
+
+```csharp
+    [Inject] private IJSRuntime JS { get; set; } = default!;
+    [Inject] private ISnackbar Snackbar { get; set; } = default!;
+    [Inject] private ILogger<HotkeyEditDialog> Logger { get; set; } = default!;
+```
+
+Then port, renamed for hotkeys, from `HotstringEditDialog.razor`: `SchedulePreview` (`:831`), `CancelPendingPreview` (`:849`), `RunPreviewAsync` (`:860`), `CopyPreviewAsync` (`:787`) and `Dispose` (`:969`). Keep the generation counter exactly as written — bumping a generation, not merely cancelling, is what discards in-flight responses whose transport ignores cancellation.
+
+`ApplyPreviewResult` is the one piece with no hotstring equivalent worth copying verbatim, since hotkeys have no delivery or Raw summary:
+
+```csharp
+    private void ApplyPreviewResult(ApiResult<HotkeyPreviewDto> result)
+    {
+        _fieldErrors.Clear();
+
+        if (result.IsSuccess)
+        {
+            _previewSnippet = result.Value!.Snippet;
+            _previewError = null;
+            return;
+        }
+
+        _previewSnippet = null;
+        _previewError = result.Status == ApiResultStatus.Validation && result.Problem?.Errors is { Count: > 0 } errors
+            ? ApplyFieldErrors(errors)
+            : ApiErrorMessageFactory.Build(result.Status, result.Problem);
+    }
+```
+
+`CopyPreviewAsync` uses `JS.InvokeVoidAsync("navigator.clipboard.writeText", _previewSnippet)` inside a `try`/`catch (JSException)` that snackbars success or failure — bUnit runs with `JSRuntimeMode.Loose`, so it no-ops safely in tests.
 
 `SaveAsync` keeps today's shape, with the error branch replaced:
 
@@ -2233,6 +2424,14 @@ Then copy, renamed for hotkeys, from `HotstringEditDialog.razor`: `SchedulePrevi
 **Per-panel change handlers.** Each writes its field then re-previews immediately (no debounce — these are discrete choices, not typing):
 
 ```csharp
+    private async Task OnKeyChangedAsync(string? key)
+    {
+        Item.Key = key ?? "";
+        // The key is half the emitted line, so a stale preview here is worse than a stale
+        // payload preview — it shows the wrong binding entirely.
+        await RefreshPreviewAsync(debounce: false);
+    }
+
     private async Task OnRunTargetKindChangedAsync(RunTargetKind? kind)
     {
         Item.RunTargetKind = kind;
@@ -2352,12 +2551,17 @@ Create `src/Frontend/AHKFlowApp.UI.Blazor/Components/Hotkeys/HotkeyEditDialog.ra
 ```css
 /* MudToggleGroup has no wrap parameter in 9.3.0 and its Vertical switch is a C# parameter, so
    a CSS-only breakpoint cannot flip it. Forcing wrap here keeps all seven kinds visible and
-   equal at every width, with no breakpoint service and no JS. */
-.action-kind-group ::deep .mud-toggle-group {
+   equal at every width, with no breakpoint service and no JS.
+
+   Both rules below are keyed on a plain <div> this component renders itself — that div is what
+   carries the CSS-isolation scope attribute. Putting the class on MudToggleGroup or MudTextField
+   via Class= would place it on a child component's root, which never carries this scope, and the
+   rule would silently never match. Same trap as the chip host in HotkeyActionChip. */
+.action-kind-wrap ::deep .mud-toggle-group {
     flex-wrap: wrap;
 }
 
-.raw-body ::deep textarea {
+.raw-body-wrap ::deep textarea {
     font-family: var(--mud-typography-caption-family, monospace);
     font-size: 0.85rem;
 }
@@ -2390,7 +2594,7 @@ Create `src/Frontend/AHKFlowApp.UI.Blazor/Components/Hotkeys/HotkeyEditDialog.ra
 }
 ```
 
-Add `Class="action-kind-group"` to the `MudToggleGroup` so the wrap rule matches.
+These require the two wrapper `<div>`s shown in the Step 3 markup (`action-kind-wrap`, `raw-body-wrap`). Do not move the classes onto the MudBlazor components via `Class=` — see the comment above.
 
 - [ ] **Step 6: Run tests to verify they pass**
 
@@ -2414,8 +2618,12 @@ Collapses the desktop grid from 11 columns to 6 and moves both branches onto `Ho
 
 **Files:**
 - Modify: `src/Frontend/AHKFlowApp.UI.Blazor/Pages/Hotkeys.razor`
+- Modify: `src/Frontend/AHKFlowApp.UI.Blazor/Pages/Hotkeys.razor.css`
 - Modify: `src/Frontend/AHKFlowApp.UI.Blazor/Components/Hotkeys/HotkeyMobileList.razor`
+- Modify: `src/Frontend/AHKFlowApp.UI.Blazor/Components/Hotkeys/HotkeyHistoryDialog.razor`
 - Modify: `tests/AHKFlowApp.UI.Blazor.Tests/Pages/HotkeysPageTests.cs`
+- Modify: `tests/AHKFlowApp.UI.Blazor.Tests/Components/Hotkeys/HotkeyHistoryDialogTests.cs`
+- Modify: `tests/AHKFlowApp.UI.Blazor.Tests/Components/Hotkeys/HotkeyMobileListTests.cs`
 
 **Interfaces:**
 - Consumes: `HotkeyActionDisplay`, `HotkeyActionChip` (Task 6), `KeyPicker` (Task 7), `IHotkeyKeyCatalog` (Task 4), `HotkeyEditModel.IsInlineEditable` (Task 5).
@@ -2531,15 +2739,17 @@ Sorting: `Key` remains a valid server sort field, so set `SortBy="x => x.Key"` o
 
 `RenderActions`' edit button already calls `StartEditAsync(item)`; the call site needs no change beyond awaiting.
 
-**`StartAddAsync` must now open the dialog.** Today it creates an inline `_pendingCreate` row (`Hotkeys.razor:482`). A new hotkey has to choose an `ActionKind`, and kind is deliberately not inline-changeable — an inline create row could only ever produce the default kind. Replace it:
+**`StartAddAsync` must now open the create dialog.** Today it creates an inline `_pendingCreate` row (`Hotkeys.razor:482`). A new hotkey has to choose an `ActionKind`, and kind is deliberately not inline-changeable — an inline create row could only ever produce the default kind. Replace it:
 
 ```csharp
     // A new hotkey must pick its action kind, which the grid cannot express, so Add always
     // opens the dialog. _pendingCreate and the inline-create path retire with it.
-    private Task StartAddAsync() => OpenEditDialogAsync(new HotkeyEditModel());
+    private Task StartAddAsync() => OpenCreateDialogAsync();
 ```
 
-Then delete the now-unreachable `_pendingCreate` field and every branch that tests it — the `Disabled` binding on the Add button (`Hotkeys.razor:19`), the visibility switch in `LoadServerData` (~`:374-389`), and `_commitAttempted` if nothing else reads it. Confirm `OpenEditDialogAsync` handles a model with `Id is null` by calling `CreateAsync`; it already routes on `Id` today.
+> **`OpenCreateDialogAsync`, not `OpenEditDialogAsync`.** The edit path returns immediately when `item.Id is null` (`Hotkeys.razor:716`), so routing Add through it would produce a button that silently does nothing. The page already has the correct create-specific method at `Hotkeys.razor:684` — it builds a fresh `HotkeyEditModel`, titles the dialog "New hotkey", and snackbars "Hotkey created." Use it as-is; it needs no change.
+
+Then delete the now-unreachable `_pendingCreate` field and every branch that tests it — the `Disabled` binding on the Add button (`Hotkeys.razor:19`), the visibility switch in `LoadServerData` (~`:374-389`), and `_commitAttempted` if nothing else reads it.
 
 Ensure the catalog is warmed on page load so `IsValidKey` is not answering optimistically for the first render:
 
@@ -2551,21 +2761,88 @@ Ensure the catalog is warmed on page load so `IsValidKey` is not answering optim
     }
 ```
 
-- [ ] **Step 5: Move the mobile list onto the shared helper**
+- [ ] **Step 5: Retune the grid column widths**
+
+`Pages/Hotkeys.razor.css:49-95` pins widths with `nth-child(1)` through `nth-child(11)` — one rule per column of the 11-column grid. After the collapse there are 7 columns (select + 5 + actions), so the surviving rules land on the wrong ones: the old `nth-child(7)` rule (`width: 56px`, a modifier checkbox column) would squeeze the new Action column to 56 px, and `Profiles`/`Categories` inherit widths meant for `Parameters` and `Categories`.
+
+Replace the whole `nth-child` block with seven rules:
+
+```css
+/* 1 select · 2 Description · 3 Hotkey · 4 Action · 5 Profiles · 6 Categories · 7 row actions */
+::deep .hotkeys-grid th:nth-child(1),
+::deep .hotkeys-grid td:nth-child(1) {
+    width: 56px;
+}
+
+::deep .hotkeys-grid th:nth-child(2),
+::deep .hotkeys-grid td:nth-child(2) {
+    width: 22%;
+}
+
+::deep .hotkeys-grid th:nth-child(3),
+::deep .hotkeys-grid td:nth-child(3) {
+    width: 14%;
+}
+
+::deep .hotkeys-grid th:nth-child(4),
+::deep .hotkeys-grid td:nth-child(4) {
+    width: 28%;
+}
+
+::deep .hotkeys-grid th:nth-child(5),
+::deep .hotkeys-grid td:nth-child(5),
+::deep .hotkeys-grid th:nth-child(6),
+::deep .hotkeys-grid td:nth-child(6) {
+    width: 12%;
+}
+
+::deep .hotkeys-grid th:nth-child(7),
+::deep .hotkeys-grid td:nth-child(7) {
+    width: 160px;
+}
+```
+
+The `.column-header` and `.mud-table-cell` rules above the block are column-count-independent — leave them. Note the Action column's `white-space: nowrap` inheritance: its summary text is already truncated to one line by `HotkeyActionDisplay.Summary`, so no extra rule is needed.
+
+- [ ] **Step 6: Move the mobile list onto the shared helper**
 
 In `src/Frontend/AHKFlowApp.UI.Blazor/Components/Hotkeys/HotkeyMobileList.razor`:
 - Delete the local `FormatCombo` method and replace its call site at line 44 with `@HotkeyActionDisplay.ComboLabel(item)`.
 - In the expanded row, replace `<strong>Action:</strong> @item.Action` with `<HotkeyActionChip Kind="item.ActionKind" />` plus `@HotkeyActionDisplay.Summary(item)`.
 - Delete the `Parameters` block (lines 54-57) — the summary now carries it.
 
-- [ ] **Step 6: Run the full frontend suite**
+Then migrate the history dialog. `Components/Hotkeys/HotkeyHistoryDialog.razor:47-52` renders `Snapshot.Action` and a conditional `Snapshot.Parameters` block. Replace both with the typed rendering, reusing the same helper the grid and mobile list use so all three stay in step:
+
+```razor
+                        <MudText Typo="Typo.subtitle2">Action</MudText>
+                        <MudText Class="mb-2">
+                            @HotkeyActionDisplay.Label(_preview.Snapshot.ActionKind)
+                            — @HotkeyActionDisplay.SummaryOf(_preview.Snapshot)
+                        </MudText>
+```
+
+Add the snapshot overload next to `Summary` in `Helpers/HotkeyActionDisplay.cs`. It cannot reuse the `HotkeyEditModel` overload — a snapshot is a different type — so both delegate to one private core:
+
+```csharp
+    /// <summary>Summary for a history snapshot. Legacy snapshots (pre-typed-action rows) carry
+    /// only the old Action/Parameters pair, so they fall back to showing that verbatim.</summary>
+    public static string SummaryOf(HotkeySnapshot snapshot) =>
+        snapshot.Action is not null
+            ? $"{snapshot.Action} {snapshot.Parameters}".Trim()
+            : Summarize(snapshot.ActionKind, snapshot.Text, snapshot.SendKeysContent,
+                snapshot.RunTarget, snapshot.WindowOp, snapshot.RemapDest, snapshot.Body);
+```
+
+Refactor the existing `Summary(HotkeyEditModel)` to delegate to the same `Summarize(...)` private method rather than duplicating the switch. Update `HotkeyHistoryDialogTests.cs:85,109`, which construct snapshots with `HotkeyAction.Run`, to the typed shape — keep **one** test on the legacy-members path so the fallback above stays covered.
+
+- [ ] **Step 7: Run the full frontend suite**
 
 ```bash
 dotnet test tests/AHKFlowApp.UI.Blazor.Tests
 ```
-Expected: PASS. This is the first green build of the frontend since Task 2.
+Expected: PASS. `HotkeysPageTests:328` still drives `MudSelect<HotkeyAction>` for the old inline Action column — that column is gone, so retype the assertion to the Action-chip rendering as part of this step.
 
-- [ ] **Step 7: Format and commit**
+- [ ] **Step 8: Format and commit**
 
 ```bash
 dotnet format AHKFlowApp.slnx
@@ -2584,50 +2861,56 @@ One browser flow proving dialog → API → preview → grid, plus the mobile-li
 - Modify: `tests/AHKFlowApp.E2E.Tests/HotkeysMobileFlowTests.cs`
 
 **Interfaces:**
-- Consumes: the running worktree stack — **UI 5605 / API 5604** for this worktree (`hotkey-ui-plan`). Read `launchSettings.json` to confirm before running; the numbers differ per worktree and the backend plan's 5602/5603 belong to `hotkey-redesign`.
+- Consumes: `StackFixture` — the E2E collection fixture. It **self-hosts** the API and the published SPA (`Fixtures/StackFixture.cs:46` runs `dotnet publish`), so there is no manual two-terminal prerequisite and no worktree port to configure. `fixture.Spa.BaseUrl` is the SPA origin; `fixture.Browser` is the Playwright browser; `fixture.ResetDataAsync()` clears state per test class.
 
 - [ ] **Step 1: Write the E2E flow**
 
-Create `tests/AHKFlowApp.E2E.Tests/HotkeysCrudFlowTests.cs`, modelled on `HotstringsCrudFlowTests.cs`:
+Create `tests/AHKFlowApp.E2E.Tests/HotkeysCrudFlowTests.cs`. Harness shape copied from `HotstringsCrudFlowTests.cs:1-20` — collection name from `E2ETestCollection.Name`, `IAsyncLifetime` resetting data, and a per-test browser context:
 
 ```csharp
+using AHKFlowApp.E2E.Tests.Fixtures;
 using FluentAssertions;
 using Microsoft.Playwright;
 using Xunit;
 
 namespace AHKFlowApp.E2E.Tests;
 
-[Collection("E2E")]
-public sealed class HotkeysCrudFlowTests(E2EFixture fixture)
+[Collection(E2ETestCollection.Name)]
+public sealed class HotkeysCrudFlowTests(StackFixture fixture) : IAsyncLifetime
 {
+    public Task InitializeAsync() => fixture.ResetDataAsync();
+
+    public Task DisposeAsync() => Task.CompletedTask;
+
     [Fact]
     public async Task CreateRunHotkey_ShowsPreviewThenAppearsInGridWithActionChip()
     {
-        IPage page = await fixture.NewPageAsync();
-        await page.GotoAsync($"{fixture.BaseUrl}/hotkeys");
+        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
+        IPage page = await ctx.NewPageAsync();
+        await page.GotoAsync($"{fixture.Spa.BaseUrl}/hotkeys");
 
         await page.ClickAsync(".add-hotkey");
-        await page.FillAsync("[data-test=description-input] input", "E2E open notepad");
-        await page.FillAsync("[data-test=key-picker] input", "n");
-        await page.ClickAsync("[data-test=win-checkbox] input");
-        await page.ClickAsync("[data-test=action-kind-Run]");
-        await page.FillAsync("[data-test=run-target-input] input", "notepad");
+        await page.FillAsync("input[data-test=\"description-input\"]", "E2E open notepad");
+        await page.FillAsync("input[data-test=\"key-picker\"]", "n");
+        await page.ClickAsync("[data-test=\"action-kind-Run\"]");
+        await page.CheckAsync("input[data-test=\"win-checkbox\"]");
+        await page.FillAsync("input[data-test=\"run-target-input\"]", "notepad");
 
-        await page.ClickAsync("[data-test=ahk-preview]");
-        await page.WaitForSelectorAsync("[data-test=preview-snippet]");
-        string snippet = await page.InnerTextAsync("[data-test=preview-snippet]");
+        await page.ClickAsync("[data-test=\"ahk-preview\"]");
+        await page.WaitForSelectorAsync("[data-test=\"preview-snippet\"]");
+        string snippet = await page.InnerTextAsync("[data-test=\"preview-snippet\"]");
         snippet.Should().Contain("#n::Run(\"notepad\")");
 
         await page.ClickAsync(".commit-edit");
 
         await page.WaitForSelectorAsync("text=E2E open notepad");
-        (await page.InnerTextAsync("[data-test=action-chip]")).Should().Contain("Run");
+        (await page.InnerTextAsync("[data-test=\"action-chip\"]")).Should().Contain("Run");
         (await page.TextContentAsync("body"))!.Should().Contain("Win+N");
     }
 }
 ```
 
-> Copy the fixture type, collection name and page-factory helper from `HotstringsCrudFlowTests.cs` verbatim — do not assume `E2EFixture`/`NewPageAsync`/`BaseUrl` are the real names.
+> Selector style is `input[data-test="..."]`, not `[data-test=...] input` — `UserAttributes` puts the attribute on the rendered `<input>` itself, which is why the existing suites match it directly. Note `action-kind-Run` is clicked **before** the run-target field is filled: that field only exists once the Run panel is showing.
 
 - [ ] **Step 2: Update the mobile flow**
 
@@ -2635,12 +2918,10 @@ In `tests/AHKFlowApp.E2E.Tests/HotkeysMobileFlowTests.cs`, replace any assertion
 
 - [ ] **Step 3: Run the E2E suite**
 
-Start the worktree stack in two terminals, then:
-
 ```bash
 dotnet test tests/AHKFlowApp.E2E.Tests --filter "FullyQualifiedName~Hotkeys"
 ```
-Expected: PASS. Worktrees run no-auth (test provider, always signed in), so no login step is needed.
+Expected: PASS. No manual stack needed — `StackFixture` publishes and self-hosts both tiers, and runs no-auth (test provider, always signed in), so there is no login step. Docker must be running for the SQL container, and the first run is slow because of `dotnet publish`.
 
 - [ ] **Step 4: Full solution gate**
 
@@ -2667,11 +2948,60 @@ git commit -m "test: add hotkey crud e2e flow, update mobile flow for typed acti
 
 ---
 
+### Task 11: Contract — retire the legacy pair
+
+Every consumer now reads typed fields, so the compatibility members added in Task 2 come out. This is the mirror of backend plan Task 11, and it is the task that makes `grep HotkeyAction` come back empty on the frontend.
+
+**Files:**
+- Modify: `DTOs/HotkeyDto.cs`, `DTOs/CreateHotkeyDto.cs`, `DTOs/UpdateHotkeyDto.cs`, `Validation/HotkeyEditModel.cs`
+- Modify: `tests/AHKFlowApp.UI.Blazor.Tests/Services/HotkeysApiClientTests.cs`, `Pages/RecycleBinPageTests.cs`
+- Delete: `DTOs/HotkeyAction.cs`
+
+**Interfaces:**
+- Consumes: nothing new.
+- Produces: DTOs and edit model carrying typed fields only.
+
+> `HotkeySnapshot.Action` / `.Parameters` **stay** — they are optional legacy members by design, because old history JSON still carries them and the backend keeps its own for the same reason (backend plan Task 8). Only the DTO and edit-model copies retire here.
+
+- [ ] **Step 1: Drop the trailing legacy members**
+
+Remove the `HotkeyAction Action = HotkeyAction.Send, string Parameters = ""` tails from `HotkeyDto`, `CreateHotkeyDto`, `UpdateHotkeyDto`, and the `Action`/`Parameters` properties plus their `FromDto`/`Clone` lines from `HotkeyEditModel`.
+
+- [ ] **Step 2: Retype the remaining test constructions**
+
+`Services/HotkeysApiClientTests.cs:20,66,146` and `Pages/RecycleBinPageTests.cs:147` still pass `HotkeyAction.Run` positionally. Convert each to the typed shape, e.g. `ActionKind: HotkeyActionKind.Run, RunTarget: "notepad.exe"`.
+
+- [ ] **Step 3: Delete the enum**
+
+```bash
+git rm src/Frontend/AHKFlowApp.UI.Blazor/DTOs/HotkeyAction.cs
+```
+
+- [ ] **Step 4: Prove nothing references it**
+
+```bash
+grep -rn "HotkeyAction\b" src/Frontend/AHKFlowApp.UI.Blazor tests/AHKFlowApp.UI.Blazor.Tests
+```
+Expected: only `HotkeyActionKind` and `HotkeyActionDisplay` hits — no bare `HotkeyAction`. `HotkeySnapshot`'s legacy members are typed `HotkeyAction?`, so if you kept them (you should), they will appear; confirm those are the only bare hits and that they live in `HistoryDtos.cs`.
+
+> If `HotkeySnapshot` keeps `HotkeyAction?`, the enum cannot be deleted. Two options: keep `DTOs/HotkeyAction.cs` solely as the snapshot's legacy input type (mirroring the backend's choice to move it next to its converter), or widen the snapshot members to `int?`/`string?`. **Prefer keeping the file** — a typed legacy member is clearer than a bare int, and the backend made the same call. Adjust Step 3 accordingly and say so in the commit.
+
+- [ ] **Step 5: Full gate and commit**
+
+```bash
+dotnet test AHKFlowApp.slnx
+dotnet format AHKFlowApp.slnx --verify-no-changes
+git add -A
+git commit -m "refactor: retire legacy hotkey action pair from frontend DTOs"
+```
+
+---
+
 ## Self-Review
 
 **Spec coverage (§3, §4, §9 W1 UI, §10 UI, §11):**
 - Dual desktop-grid / mobile-list layout preserved → Tasks 9. ✓
-- Combined Action column, chip + combo label, single-sourced via `HotkeyActionDisplay` → Tasks 6, 9. ✓
+- Combined Action column, chip + combo label, single-sourced via `HotkeyActionDisplay` → Tasks 6, 9. **Deviation, approved:** spec §3 line 83 asks for *one* column carrying chip + combo label + context indicator; this plan ships **two** (Hotkey, Action), chosen deliberately during plan review because a single column mixing binding and payload truncates badly at 28% width. The single-sourcing requirement is met — both columns read from `HotkeyActionDisplay`. Spec §3 should be amended to match, or this reversed; see Resolved item 6.
 - Inline edit retained for simplest rows; `IsInlineEditable` extended with key validity so legacy rows route to the dialog → Tasks 5, 9. ✓
 - Single edit button routing by capability → Task 9 Step 4. (Spec lists this under W4; pulled forward per §9 W1's own note that a W1 Action column without it leaves simple rows unable to change their action.) ✓
 - Key picker backed by the registry, grouped, plus free-typed `vk`/`sc` → Tasks 1, 4, 7. **Grouping is delivered by ordering plus a per-item group label, not by headers** — `MudAutocomplete` 9.3.0 has no `GroupBy`, and `T="HotkeyKeyDto"` would break `CoerceValue` and with it the escape hatch. This is the one place the plan knowingly renders a spec §4 requirement differently than described; the information is present, the visual form differs.
@@ -2685,6 +3015,10 @@ git commit -m "test: add hotkey crud e2e flow, update mobile flow for typed acti
 
 **Placeholder scan:** one deliberate stub — the last test in Task 8 Step 1 (`ValidationError_FromSave_LandsOnItsNamedField`) is a comment-only body, flagged inline with an instruction to write it before implementing. Everything else carries real code, including the full dialog markup in Task 8 Step 3. `Task 9 Step 3` still describes column edits prose-style rather than as a full file listing: that file is 800+ lines and mostly unchanged, so a full rewrite would bury the five real edits — unlike the dialog, which is replaced wholesale.
 
+**Green-at-every-task:** every task ends compiling and testable. Task 2 expands the mirrors without removing the legacy pair, Tasks 3–9 migrate one consumer group each, Task 11 contracts. There is **no red-build window** — an earlier draft had one, which silently made the filtered `dotnet test` checkpoints in Tasks 3–8 unreachable, since that command builds the whole referenced frontend project before filtering.
+
+**`HotkeyAction` blast radius, enumerated:** `DTOs/HotkeyDto.cs`, `CreateHotkeyDto.cs`, `UpdateHotkeyDto.cs`, `HotkeyListRequest.cs`, `HistoryDtos.cs:38`, `Validation/HotkeyEditModel.cs:22`, `Components/Hotkeys/HotkeyEditDialog.razor:37-40`, `Components/Hotkeys/HotkeyHistoryDialog.razor:48-51`, `Pages/Hotkeys.razor:155-158,435-444`, and five test files (`HotkeyEditDialogTests:89,131`, `HotkeyHistoryDialogTests:85,109`, `HotkeysPageTests:58,328,340`, `RecycleBinPageTests:147`, `HotkeysApiClientTests:20,66,146`, `HotkeyEditModelTests:24`). Every one is assigned to a task.
+
 **MudBlazor API claims, verified against the 9.3.0 MCP docs (not memory):** `MudToggleGroup` has `Vertical` and `Size` but **no wrap parameter** — hence the `::deep` flex-wrap rule. `MudAutocomplete` has `SearchFunc`, `CoerceValue`, `CoerceText`, `ResetValueOnEmptyText`, `ItemTemplate`, `ToStringFunc`, `MaxItems` (default **10**, overridden to `null`), `DebounceInterval` (default 100 ms) — and **no `GroupBy`**. Any parameter not in that list must be re-checked before use.
 
 **Type consistency:** `HotkeyActionKind` member order (SendText, SendKeys, Run, Window, Remap, Disable, Raw) is identical in Task 2's mirror, Task 5's `ActiveFields` switch, Task 6's `Label`/`ChipClass`/`Icon`/`Summary` switches and Task 8's panel switch. `HotkeyEditModel`'s typed property names (`Text`, `SendKeysContent`, `RunTarget`, `RunTargetKind`, `WindowOp`, `RemapDest`, `Body`) match the DTO field names in Task 2 and the `KnownFields` set in Task 8, which is what makes the server's `Input.<Field>` error paths map without a translation table. `IHotkeyKeyCatalog.ForRoleAsync`/`IsValidKey`/`IsLoaded` are declared in Task 4 and consumed with those exact names in Tasks 5, 7 and 9. Role strings (`"HotkeyKey"`, `"SendToken"`, `"RemapDest"`) match the `HotkeyKeyRoles` member names Task 1 serializes.
@@ -2697,7 +3031,18 @@ git commit -m "test: add hotkey crud e2e flow, update mobile flow for typed acti
 2. **Picker grouping — ordering plus per-item labels, not headers.** `MudAutocomplete` 9.3.0 has no `GroupBy` (that is a `MudSelect` feature), and moving to `T="HotkeyKeyDto"` would break `CoerceValue`, which is what makes the `vk`/`sc` escape hatch work in the same field. `ForRoleAsync` orders by group then name; `ItemTemplate` renders the group as dimmed secondary text via `GroupOf`.
 3. **SendKeys brace rule — read the registry flag.** Backend Task 3 confirms `vk`/`sc` codes are valid Send tokens and must be braced (`{vk1B}`), named keys must be braced, single printables are bare — while `RemapDest` is never braced and rejects `{Ctrl}`. `RequiresBracesInSend` covers all three; the earlier `key.Length > 1` proxy is gone.
 4. **Add opens the dialog.** A new hotkey must choose an `ActionKind`, which the grid cannot express, so the inline-create path (`_pendingCreate`) retires with this wave (Task 9 Step 4).
-5. **Test selectors follow the page's existing split** — buttons are semantic CSS classes (`.add-hotkey`, `.start-edit`, `.commit-edit`), only inputs carry `data-test`. An earlier draft of this plan invented `data-test` hooks for buttons that do not exist.
+5. **Test selectors follow the page's existing split** — buttons are semantic CSS classes (`.add-hotkey`, `.start-edit`, `.commit-edit`), only inputs carry `data-test`, matched as `input[data-test="..."]`. An earlier draft invented `data-test` hooks for buttons that do not exist and used descendant selectors the suites do not use.
+6. **Grid keeps two columns (Hotkey, Action), deviating from spec §3's single combined column.** Chosen during plan review with the layout previewed; a single column mixing binding and payload truncates badly. **Follow-up:** amend spec §3 line 83 to describe two columns, with a dated note.
+7. **Frontend staging is expand → cutover → contract**, mirroring the backend plan, so no task leaves the project red (Tasks 2 and 11).
+8. **History and recycle-bin UI are in scope.** `HotkeySnapshot` carries the action fields and `HotkeyHistoryDialog` renders them, so they migrate in Task 9; `RecycleBinPageTests` retypes in Task 11. Snapshot legacy members are permanent, unlike the DTO ones.
+
+## Cross-plan finding — companion backend plan
+
+Not fixed here, because that file is owned by the `feature/wt-hotkey-redesign` branch and editing it from this worktree would conflict.
+
+**Backend plan Task 9 will not register its preview handler.** It states the use case "auto-registers via the existing `IUseCase<,>` scan (no manual DI)". There is no scan — `Application/DependencyInjection.cs` registers every handler explicitly, including the hotstring preview at line 54. Without an added
+`.AddUseCase<GetHotkeyPreviewQuery, Result<HotkeyPreviewDto>, GetHotkeyPreviewQueryHandler>()`,
+`HotkeysController` fails to activate and the preview panel this plan builds gets a 500 on every keystroke. Task 1 of this plan shows the correct pattern. **Raise on the backend branch before its Task 9 executes.**
 
 ## Unresolved questions
 
