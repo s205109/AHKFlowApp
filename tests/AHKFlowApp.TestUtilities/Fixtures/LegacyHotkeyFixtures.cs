@@ -123,7 +123,7 @@ public static class LegacyHotkeyFixtures
     {
         // 50 backtick/quote pairs (100 chars, 200 once escaped) then filler to exactly the limit.
         string parameters = string.Concat(Enumerable.Repeat("`\"", 50))
-            + new string('x', HotkeyRules.ParametersMaxLength - 100);
+            + new string('x', HotkeyRules.PayloadMaxLength - 100);
 
         return new("send-maximum-length", HotkeyAction.Send, parameters,
             HotkeyActionKind.Raw, null, null, null, null,
