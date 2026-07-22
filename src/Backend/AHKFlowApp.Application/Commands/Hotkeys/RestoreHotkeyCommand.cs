@@ -58,16 +58,7 @@ internal sealed class RestoreHotkeyCommandHandler(
         var entity = Hotkey.Restore(
             request.Id,
             ownerOid,
-            LegacyHotkeyDefinitionConverter.Apply(new HotkeyDefinition(
-                Description: snapshot.Description,
-                Key: snapshot.Key,
-                Ctrl: snapshot.Ctrl,
-                Alt: snapshot.Alt,
-                Shift: snapshot.Shift,
-                Win: snapshot.Win,
-                Action: snapshot.Action,
-                Parameters: snapshot.Parameters,
-                AppliesToAllProfiles: snapshot.AppliesToAllProfiles)),
+            LegacyHotkeySnapshotConverter.ToDefinition(snapshot),
             snapshot.CreatedAt,
             clock);
 

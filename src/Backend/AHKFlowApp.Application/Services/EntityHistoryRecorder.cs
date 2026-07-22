@@ -72,6 +72,8 @@ internal sealed class EntityHistoryRecorder(IAppDbContext db, TimeProvider clock
             [
                 .. entities.Select(entity =>
                 {
+                    // Typed columns only: the legacy pair stays null so the snapshot is read back
+                    // through the typed arm of LegacyHotkeySnapshotConverter.
                     HotkeySnapshot snapshot = new(
                         entity.Description,
                         entity.Key,
@@ -79,13 +81,19 @@ internal sealed class EntityHistoryRecorder(IAppDbContext db, TimeProvider clock
                         entity.Alt,
                         entity.Shift,
                         entity.Win,
-                        entity.Action,
-                        entity.Parameters,
                         entity.AppliesToAllProfiles,
                         [.. entity.Profiles.Select(p => p.ProfileId)],
                         [.. entity.Categories.Select(c => c.CategoryId)],
                         entity.CreatedAt,
-                        entity.UpdatedAt);
+                        entity.UpdatedAt,
+                        entity.ActionKind,
+                        entity.Text,
+                        entity.SendKeysContent,
+                        entity.RunTarget,
+                        entity.RunTargetKind,
+                        entity.WindowOp,
+                        entity.RemapDest,
+                        entity.Body);
 
                     return new HistorySnapshot(
                         entity.OwnerOid,
