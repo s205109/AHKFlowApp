@@ -23,3 +23,34 @@ function Test-LinkedWorktree {
     $commonDir = Resolve-GitPath $Root '--git-common-dir'
     return $gitDir.TrimEnd('\') -ine $commonDir.TrimEnd('\')
 }
+
+# AGENTS.md: worktree-born branches are '<type>/wt-<topic>'. The Claude WorktreeCreate hook
+# only ever supplies a worktree name, so an untyped name cannot express intent and falls back
+# to the 'fix/' type; a type prefix the caller did supply is preserved.
+function ConvertTo-WorktreeBranchName {
+    param([string] $Value)
+
+    # Same sanitization as the worktree directory name, except '/' survives so a type prefix
+    # can be expressed. Collapsed and trimmed because git rejects '//' and a trailing '/'.
+    $safe = ($Value.Trim() -replace '[^A-Za-z0-9._/-]+', '-') -replace '/{2,}', '/'
+    $safe = $safe.Trim([char[]] @('-', '/'))
+    if (-not $safe) {
+        throw 'Worktree branch name cannot be empty.'
+    }
+
+    # The branch prefixes from AGENTS.md 'Git Workflow' — deliberately NOT the conventional
+    # commit types listed alongside them ('refactor:', 'test:', 'docs:', 'chore:'), which name
+    # commits rather than branches. An unrecognized leading segment is topic text, not a type.
+    $type = 'fix'
+    $topic = $safe
+    if ($safe -match '^(?<type>feature|fix|hotfix)/(?<topic>.+)$') {
+        $type = $Matches.type
+        $topic = $Matches.topic
+    }
+
+    if ($topic -notmatch '^wt-') {
+        $topic = "wt-$topic"
+    }
+
+    return "$type/$topic"
+}

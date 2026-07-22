@@ -218,7 +218,9 @@ if (-not $Name) {
 
 $safeName = ConvertTo-SafeName $Name
 if (-not $BranchName) {
-    $BranchName = $safeName
+    # Derived from the raw name, not $safeName: the directory name has already lost the '/'
+    # that separates a type prefix from the topic. An explicit -BranchName is trusted as-is.
+    $BranchName = ConvertTo-WorktreeBranchName $Name
 }
 
 if (-not $Path) {
