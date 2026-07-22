@@ -5,7 +5,8 @@ using AHKFlowApp.Domain.Enums;
 namespace AHKFlowApp.Application.Services;
 
 /// <summary>
-/// Converts a legacy hotkey (two-value <see cref="HotkeyAction"/> + free <c>Parameters</c>) into the
+/// Converts a legacy hotkey (two-value <see cref="LegacyHotkeyDefinitionConverter.HotkeyAction"/> +
+/// free <c>Parameters</c>) into the
 /// typed W1 columns. The single C# home of the transform, shared by the write paths (expand phase)
 /// and history restore/revert. The EF data migration hand-writes the same logic in T-SQL; a
 /// Testcontainers parity test proves the two agree. Mirrors <c>ScriptToRawComposer</c>.
@@ -19,6 +20,22 @@ namespace AHKFlowApp.Application.Services;
 /// </remarks>
 public static class LegacyHotkeyDefinitionConverter
 {
+    /// <summary>
+    /// The retired two-value hotkey action. Kept solely as the legacy *input* type of this converter
+    /// and of <see cref="AHKFlowApp.Application.DTOs.HotkeySnapshot.Action"/>; the entity and
+    /// <see cref="HotkeyDefinition"/> dropped it in the Wave 1 contract phase, and the database
+    /// columns went with Migration B. Numeric values must never change — pre-W1 history JSON in the
+    /// database is deserialized through them.
+    /// </summary>
+    public enum HotkeyAction
+    {
+        /// <summary>Legacy send action: <c>Parameters</c> holds the key sequence or literal text.</summary>
+        Send = 0,
+
+        /// <summary>Legacy run action: <c>Parameters</c> holds the application path or URL.</summary>
+        Run = 1,
+    }
+
     /// <summary>The typed columns a legacy pair converts to.</summary>
     public readonly record struct TypedAction(
         HotkeyActionKind ActionKind,
@@ -44,21 +61,47 @@ public static class LegacyHotkeyDefinitionConverter
             $"Send(\"{AhkEscaping.EscapeStringLiteral(parameters)}\")"),
     };
 
-    /// <summary>Returns <paramref name="legacy"/> with its typed fields filled from its legacy pair.</summary>
-    public static HotkeyDefinition Apply(HotkeyDefinition legacy)
+    /// <summary>
+    /// Builds a typed <see cref="HotkeyDefinition"/> from a legacy (action, parameters) pair plus the
+    /// fields that survived the contract phase unchanged.
+    /// </summary>
+    /// <param name="description">Human-readable label.</param>
+    /// <param name="key">Main key.</param>
+    /// <param name="ctrl">Ctrl modifier required.</param>
+    /// <param name="alt">Alt modifier required.</param>
+    /// <param name="shift">Shift modifier required.</param>
+    /// <param name="win">Windows modifier required.</param>
+    /// <param name="action">Legacy action discriminator.</param>
+    /// <param name="parameters">Legacy action payload.</param>
+    /// <param name="appliesToAllProfiles">When true, the hotkey applies to every profile.</param>
+    public static HotkeyDefinition FromLegacy(
+        string description,
+        string key,
+        bool ctrl,
+        bool alt,
+        bool shift,
+        bool win,
+        HotkeyAction action,
+        string parameters,
+        bool appliesToAllProfiles)
     {
-        TypedAction t = ToTyped(legacy.Action, legacy.Parameters);
-        return legacy with
-        {
-            ActionKind = t.ActionKind,
-            Text = t.Text,
-            SendKeysContent = t.SendKeysContent,
-            RunTarget = t.RunTarget,
-            RunTargetKind = t.RunTargetKind,
-            WindowOp = t.WindowOp,
-            RemapDest = t.RemapDest,
-            Body = t.Body,
-        };
+        TypedAction t = ToTyped(action, parameters);
+        return new HotkeyDefinition(
+            Description: description,
+            Key: key,
+            Ctrl: ctrl,
+            Alt: alt,
+            Shift: shift,
+            Win: win,
+            ActionKind: t.ActionKind,
+            AppliesToAllProfiles: appliesToAllProfiles,
+            Text: t.Text,
+            SendKeysContent: t.SendKeysContent,
+            RunTarget: t.RunTarget,
+            RunTargetKind: t.RunTargetKind,
+            WindowOp: t.WindowOp,
+            RemapDest: t.RemapDest,
+            Body: t.Body);
     }
 
     private static RunTargetKind RunTargetKindFor(string parameters) =>

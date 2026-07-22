@@ -79,11 +79,11 @@ internal sealed class SeedHotkeysCommandHandler(
             {
                 var entity = Hotkey.Create(
                     ownerOid,
-                    LegacyHotkeyDefinitionConverter.Apply(new HotkeyDefinition(
-                        Description: sample.Description, Key: key,
-                        Ctrl: ctrl, Alt: alt, Shift: shift, Win: win,
-                        Action: sample.Action, Parameters: sample.Parameters,
-                        AppliesToAllProfiles: true)),
+                    LegacyHotkeyDefinitionConverter.FromLegacy(
+                        description: sample.Description, key: key,
+                        ctrl: ctrl, alt: alt, shift: shift, win: win,
+                        action: sample.Action, parameters: sample.Parameters,
+                        appliesToAllProfiles: true),
                     clock);
                 db.Hotkeys.Add(entity);
                 hotkeyId = entity.Id;

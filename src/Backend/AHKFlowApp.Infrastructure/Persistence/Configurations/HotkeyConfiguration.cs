@@ -26,17 +26,8 @@ internal sealed class HotkeyConfiguration : IEntityTypeConfiguration<Hotkey>
         builder.Property(x => x.Shift).IsRequired();
         builder.Property(x => x.Win).IsRequired();
 
-        // Persist enum as int (default for EF, made explicit here for clarity).
-        builder.Property(x => x.Action)
-            .IsRequired()
-            .HasConversion<int>();
-
-        builder.Property(x => x.Parameters)
-            .IsRequired()
-            .HasMaxLength(4000);
-
-        // Wave 1 expand phase: the typed action columns live beside the legacy (Action, Parameters)
-        // pair until the contract migration drops it.
+        // Typed action columns (Wave 1). The legacy (Action, Parameters) pair was dropped by the
+        // contract migration; enums persist as int (EF's default, explicit here for clarity).
         builder.Property(x => x.ActionKind)
             .IsRequired()
             .HasConversion<int>();

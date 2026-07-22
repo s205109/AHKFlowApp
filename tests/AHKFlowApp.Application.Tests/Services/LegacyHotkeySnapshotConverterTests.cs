@@ -6,6 +6,7 @@ using AHKFlowApp.Domain.Enums;
 using AHKFlowApp.TestUtilities.Fixtures;
 using FluentAssertions;
 using Xunit;
+using HotkeyAction = AHKFlowApp.Application.Services.LegacyHotkeyDefinitionConverter.HotkeyAction;
 
 namespace AHKFlowApp.Application.Tests.Services;
 

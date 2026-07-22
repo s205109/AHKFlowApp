@@ -1,6 +1,7 @@
 using AHKFlowApp.Application.Services;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Domain.Enums;
+using HotkeyAction = AHKFlowApp.Application.Services.LegacyHotkeyDefinitionConverter.HotkeyAction;
 
 namespace AHKFlowApp.TestUtilities.Builders;
 
@@ -117,16 +118,16 @@ public sealed class HotkeyBuilder
             ? new HotkeyDefinition(
                 Description: _description, Key: _key,
                 Ctrl: _ctrl, Alt: _alt, Shift: _shift, Win: _win,
-                Action: _action, Parameters: _parameters,
+                ActionKind: kind,
                 AppliesToAllProfiles: _appliesToAllProfiles,
-                ActionKind: kind, Text: _text, SendKeysContent: _sendKeysContent,
+                Text: _text, SendKeysContent: _sendKeysContent,
                 RunTarget: _runTarget, RunTargetKind: _runTargetKind, WindowOp: _windowOp,
                 RemapDest: _remapDest, Body: _body)
-            : LegacyHotkeyDefinitionConverter.Apply(new HotkeyDefinition(
-                Description: _description, Key: _key,
-                Ctrl: _ctrl, Alt: _alt, Shift: _shift, Win: _win,
-                Action: _action, Parameters: _parameters,
-                AppliesToAllProfiles: _appliesToAllProfiles));
+            : LegacyHotkeyDefinitionConverter.FromLegacy(
+                description: _description, key: _key,
+                ctrl: _ctrl, alt: _alt, shift: _shift, win: _win,
+                action: _action, parameters: _parameters,
+                appliesToAllProfiles: _appliesToAllProfiles);
 
         var entity = Hotkey.Create(_ownerOid, definition, _clock);
 

@@ -199,11 +199,11 @@ internal sealed class ListHotkeysQueryHandler(
             {
                 var hk = Hotkey.Create(
                     ownerOid,
-                    LegacyHotkeyDefinitionConverter.Apply(new HotkeyDefinition(
-                        Description: sample.Description, Key: sample.Key,
-                        Ctrl: sample.Ctrl, Alt: sample.Alt, Shift: sample.Shift, Win: sample.Win,
-                        Action: sample.Action, Parameters: sample.Parameters,
-                        AppliesToAllProfiles: true)),
+                    LegacyHotkeyDefinitionConverter.FromLegacy(
+                        description: sample.Description, key: sample.Key,
+                        ctrl: sample.Ctrl, alt: sample.Alt, shift: sample.Shift, win: sample.Win,
+                        action: sample.Action, parameters: sample.Parameters,
+                        appliesToAllProfiles: true),
                     clock);
                 db.Hotkeys.Add(hk);
                 foreach (string catName in sample.Categories)

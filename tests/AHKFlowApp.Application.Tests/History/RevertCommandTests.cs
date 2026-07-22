@@ -11,6 +11,7 @@ using Ardalis.Result;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
+using HotkeyAction = AHKFlowApp.Application.Services.LegacyHotkeyDefinitionConverter.HotkeyAction;
 
 namespace AHKFlowApp.Application.Tests.History;
 

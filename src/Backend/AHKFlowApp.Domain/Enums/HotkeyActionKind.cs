@@ -1,10 +1,10 @@
 namespace AHKFlowApp.Domain.Enums;
 
 /// <summary>
-/// What a hotkey does when it fires. Replaces the two-value <see cref="HotkeyAction"/>.
+/// What a hotkey does when it fires. Replaces the two-value legacy <c>HotkeyAction</c>.
 /// </summary>
 /// <remarks>
-/// Values are natural and unrelated to legacy <see cref="HotkeyAction"/> ints on purpose: the
+/// Values are natural and unrelated to legacy <c>HotkeyAction</c> ints on purpose: the
 /// legacy-to-typed converter keys off the presence of the legacy snapshot members, never their
 /// numeric value, so a stale <c>Action = 1</c> can never masquerade as a valid new kind (spec §8).
 /// </remarks>
