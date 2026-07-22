@@ -2331,13 +2331,29 @@ git commit -m "docs: W1 hotkey terms, ADR 0004, per-kind emission"
 
 ---
 
-## Unresolved questions
+## Resolved questions
 
-1. **Two migrations vs one.** Plan uses expand (Migration A: add + back-fill) then contract (Migration B: drop) so every task stays green. Spec §8 phrases it as "the W1 action migration" (singular). OK to ship two W1 migrations? (Recommend yes — safer, still additive-per-wave in spirit.)
-2. **Legacy Send→Raw body escaping (O2).** Converter reproduces the **W0-escaped** RHS (`Send("say `"hi`"")`) so downloads are unchanged from today. Spec text (pre-W0) says unescaped. Confirm escaped.
-3. **SendKeys classification in migration T-SQL (O3).** T-SQL classifier accepts a **fixed braced-name list** (kept in sync with `LegacyHotkeyFixtures`), not the full registry. Accept that, or classify **all** legacy Send → Raw in the migration (drops migration↔converter parity but is simpler/safer)?
-4. **`HotkeyAction` retirement home.** Plan moves it into `LegacyHotkeyDefinitionConverter.cs` as the converter's legacy-input enum (so `HotkeySnapshot.Action` stays typed). Prefer that over a private 2-value enum?
-5. **Worktree ports.** Spec §11 says UI 5603 / API 5602; AGENTS.md says 5601 / 5600. Which is current for the (UI-plan) E2E smoke? (No backend-plan impact.)
+All five closed 2026-07-22, before execution. Decisions are binding on the tasks above.
+
+1. **Two migrations vs one — two: expand + contract.** Migration A adds the typed columns and
+   back-fills (Task 4); Migration B drops `Action`/`Parameters` (Task 11). Spec §8's singular
+   phrasing predates the task split. Every task ends green individually.
+2. **Legacy Send→Raw body escaping (O2) — reproduce the W0-escaped RHS.** The converter emits
+   `Send("say `"hi`"")`, leaving downloads byte-identical to today. Spec text saying unescaped is
+   pre-W0 and stale. Confirmed empirically on 2026-07-22: `^a::Send("he said `"hi`" 100``%")` was
+   downloaded from the running app and loaded without error in AutoHotkey v2, so the escaped form
+   is known-good output that this wave must not change.
+3. **SendKeys classification in migration T-SQL (O3) — fixed braced-name list.** The classifier
+   accepts a fixed list of braced key names kept in sync with `LegacyHotkeyFixtures`, preserving
+   migration↔converter parity. Migrating all legacy `Send` to `Raw` was rejected: the seed profile
+   alone carries `{Up}`, `{Down}`, `{Left}`, `{Right}` and `^v`, which would all land in the
+   unchecked `Raw` path.
+4. **`HotkeyAction` retirement home — `LegacyHotkeyDefinitionConverter.cs`.** It becomes the
+   converter's legacy-input enum, next to its only remaining consumer, and keeps
+   `HotkeySnapshot.Action` typed instead of widening it to `int`.
+5. **Worktree ports — UI 5603 / API 5602 (SQL 14330).** Not a contradiction: AGENTS.md's
+   5600/5601 describes the main checkout, spec §11 describes a worktree. Both `launchSettings.json`
+   files were read on 2026-07-22 to confirm. Worktree E2E smoke targets 5602/5603.
 
 ---
 
