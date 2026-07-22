@@ -3,6 +3,7 @@ using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.Common;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Mapping;
+using AHKFlowApp.Application.Services;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Domain.Enums;
 using Ardalis.Result;
@@ -58,7 +59,7 @@ internal sealed class RevertHotkeyCommandHandler(
             .ToArrayAsync(ct);
 
         entity.Update(
-            new HotkeyDefinition(
+            LegacyHotkeyDefinitionConverter.Apply(new HotkeyDefinition(
                 Description: snapshot.Description,
                 Key: snapshot.Key,
                 Ctrl: snapshot.Ctrl,
@@ -67,7 +68,7 @@ internal sealed class RevertHotkeyCommandHandler(
                 Win: snapshot.Win,
                 Action: snapshot.Action,
                 Parameters: snapshot.Parameters,
-                AppliesToAllProfiles: snapshot.AppliesToAllProfiles),
+                AppliesToAllProfiles: snapshot.AppliesToAllProfiles)),
             clock);
 
         db.HotkeyProfiles.RemoveRange(entity.Profiles);

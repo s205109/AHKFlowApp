@@ -1,3 +1,4 @@
+using AHKFlowApp.Application.Services;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Domain.Enums;
 
@@ -68,11 +69,11 @@ public sealed class HotkeyBuilder
     {
         var entity = Hotkey.Create(
             _ownerOid,
-            new HotkeyDefinition(
+            LegacyHotkeyDefinitionConverter.Apply(new HotkeyDefinition(
                 Description: _description, Key: _key,
                 Ctrl: _ctrl, Alt: _alt, Shift: _shift, Win: _win,
                 Action: _action, Parameters: _parameters,
-                AppliesToAllProfiles: _appliesToAllProfiles),
+                AppliesToAllProfiles: _appliesToAllProfiles)),
             _clock);
 
         foreach (Guid pid in _profileIds)

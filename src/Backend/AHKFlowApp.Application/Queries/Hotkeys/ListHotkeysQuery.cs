@@ -1,6 +1,7 @@
 using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.Common;
 using AHKFlowApp.Application.DTOs;
+using AHKFlowApp.Application.Services;
 using AHKFlowApp.Domain.Constants;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Domain.Enums;
@@ -216,11 +217,11 @@ internal sealed class ListHotkeysQueryHandler(
             {
                 var hk = Hotkey.Create(
                     ownerOid,
-                    new HotkeyDefinition(
+                    LegacyHotkeyDefinitionConverter.Apply(new HotkeyDefinition(
                         Description: descr, Key: key,
                         Ctrl: ctrl, Alt: alt, Shift: shift, Win: win,
                         Action: action, Parameters: param,
-                        AppliesToAllProfiles: true),
+                        AppliesToAllProfiles: true)),
                     clock);
                 db.Hotkeys.Add(hk);
                 foreach (string catName in cats)
