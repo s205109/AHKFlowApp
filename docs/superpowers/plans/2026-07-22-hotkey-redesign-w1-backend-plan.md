@@ -12,6 +12,17 @@
 
 **Scope:** Backend only. The UI half of W1 (dialog action panels, `HotkeyActionChip`, `HotkeyActionDisplay`, grid inline-edit gating, mobile list, preview panel, bUnit + E2E) is a **separate plan** authored next. This plan delivers the API, persistence, emission, validation, history, and preview endpoint — independently testable via Application + Infrastructure + API test projects.
 
+> **Separately testable, not separately deployable.** Task 6 removes `Action`/`Parameters` from
+> `HotkeyDto`/`CreateHotkeyDto`/`UpdateHotkeyDto`, and the live UI still both sends and reads them
+> (`src/Frontend/AHKFlowApp.UI.Blazor/Validation/HotkeyEditModel.cs`). The frontend keeps its own DTO
+> mirror, so nothing fails to compile — the hotkeys page breaks at **runtime**: every create/update
+> posts a payload whose `ActionKind` fields are absent (400 from the kind-conditional validator), and
+> every read shows an empty action. Backend and UI must therefore **merge together in one release**
+> — separate branches and PRs are fine, but neither deploys to TEST alone. Keeping a JSON
+> compatibility contract instead was rejected: it would resurrect the legacy pair on the DTOs that
+> Task 6 exists to remove, for one wave, and Task 11 would have to delete it again anyway.
+> **Gate:** do not merge this plan's Task 6 or later until the W1 UI plan is ready to land with it.
+
 ## Global Constraints
 
 - Target framework `net10.0`; Microsoft.* packages on 10.x. Never hardcode package versions; CPM (`Directory.Packages.props`) — no `Version=` in csproj.
@@ -44,6 +55,7 @@ The database column swap (`Action`/`Parameters` → `ActionKind` + typed columns
 - `src/Backend/AHKFlowApp.Domain/Enums/HotkeyActionKind.cs` — seven-kind action discriminator.
 - `src/Backend/AHKFlowApp.Domain/Enums/WindowOp.cs` — window operation.
 - `src/Backend/AHKFlowApp.Domain/Enums/RunTargetKind.cs` — run-target label.
+- `src/Backend/AHKFlowApp.Application/Constants/DefaultHotkeyCatalog.cs` — the one sample-hotkey set, replacing the duplicated `s_lazySeed` / `s_samples` arrays (Task 6).
 - `src/Backend/AHKFlowApp.Application/Services/LegacyHotkeyDefinitionConverter.cs` — legacy (`Action`+`Parameters`) → typed `HotkeyDefinition`; single C# home of the transform (§8).
 - `src/Backend/AHKFlowApp.Application/Services/LegacyHotkeySnapshotConverter.cs` — `HotkeySnapshot` (legacy or typed) → typed `HotkeyDefinition`, for restore/revert.
 - `src/Backend/AHKFlowApp.Application/Queries/Hotkeys/GetHotkeyPreviewQuery.cs` — transient-emit preview (clone of `GetHotstringPreviewQuery`).
@@ -70,8 +82,8 @@ The database column swap (`Action`/`Parameters` → `ActionKind` + typed columns
 - `src/Backend/AHKFlowApp.Application/DTOs/HistorySnapshots.cs` — `HotkeySnapshot` typed + legacy-optional.
 - `src/Backend/AHKFlowApp.Application/Mapping/HotkeyMappings.cs` — typed `ToDto`.
 - `src/Backend/AHKFlowApp.Application/Commands/Hotkeys/{Create,Update,Restore,Revert}HotkeyCommand.cs`
-- `src/Backend/AHKFlowApp.Application/Queries/Hotkeys/ListHotkeysQuery.cs` — typed filters/sort + `s_lazySeed`.
-- `src/Backend/AHKFlowApp.Application/Commands/Dev/SeedHotkeysCommand.cs` — typed `s_samples`.
+- `src/Backend/AHKFlowApp.Application/Queries/Hotkeys/ListHotkeysQuery.cs` — typed filters/sort; `s_lazySeed` → `DefaultHotkeyCatalog`.
+- `src/Backend/AHKFlowApp.Application/Commands/Dev/SeedHotkeysCommand.cs` — `s_samples` → `DefaultHotkeyCatalog`.
 - `src/Backend/AHKFlowApp.API/Controllers/HotkeysController.cs` — `POST /preview`.
 - `tests/AHKFlowApp.TestUtilities/Builders/HotkeyBuilder.cs` — typed builder methods.
 - `CONTEXT.md` — W1 terms (Action, Remap, Run target, Raw).
@@ -498,7 +510,9 @@ In `src/Backend/AHKFlowApp.Application/Validation/HotkeyRules.cs`, add `using AH
                     && HotkeyKeys.HotkeyKeyEntryByCanonical(canonical).Roles.HasFlag(HotkeyKeyRoles.SendToken);
             }
 
-            // Bare: exactly one printable, non-brace, non-modifier character.
+            // Bare: exactly one printable, non-brace, non-modifier character. Quote and backtick
+            // stay valid here — Send can type them. They are hostile to the *string literal*, not
+            // to Send, so the emitter escapes them (Task 5); this validator owns Send semantics only.
             return key.Length == 1 && !char.IsControl(key[0]) && key[0] is not '{' and not '}';
         }
 
@@ -714,6 +728,7 @@ The lazy-seed rows already cover every hard case (spec §11): a Run with argumen
 Create `tests/AHKFlowApp.TestUtilities/Fixtures/LegacyHotkeyFixtures.cs`:
 
 ```csharp
+using AHKFlowApp.Application.Constants;
 using AHKFlowApp.Domain.Enums;
 
 namespace AHKFlowApp.TestUtilities.Fixtures;
@@ -770,9 +785,41 @@ public static class LegacyHotkeyFixtures
             HotkeyActionKind.Raw, null, null, null, null, "Send(\"hello world\")"),
         new("send-with-quote", HotkeyAction.Send, "say \"hi\"",
             HotkeyActionKind.Raw, null, null, null, null, "Send(\"say `\"hi`\"\")"),
+        new("send-with-backtick", HotkeyAction.Send, "100`%",
+            HotkeyActionKind.Raw, null, null, null, null, "Send(\"100``%\")"),
+        // ValidParameters permits exactly \n, \r and \t, so all three reach the back-fill.
+        new("send-with-lf", HotkeyAction.Send, "a\nb",
+            HotkeyActionKind.Raw, null, null, null, null, "Send(\"a`nb\")"),
+        new("send-with-cr", HotkeyAction.Send, "a\rb",
+            HotkeyActionKind.Raw, null, null, null, null, "Send(\"a`rb\")"),
+        new("send-with-tab", HotkeyAction.Send, "a\tb",
+            HotkeyActionKind.Raw, null, null, null, null, "Send(\"a`tb\")"),
+        // Trailing space: two characters, so not a bare token. Pins the T-SQL LEN() trap —
+        // LEN('a ') is 1, which would misclassify this as SendKeys on the migration side only.
+        new("send-trailing-space", HotkeyAction.Send, "a ",
+            HotkeyActionKind.Raw, null, null, null, null, "Send(\"a \")"),
+        new("send-unknown-braced-name", HotkeyAction.Send, "{NotAKey}",
+            HotkeyActionKind.Raw, null, null, null, null, "Send(\"{NotAKey}\")"),
+        .. EveryBracedRegistryToken(),
     ];
+
+    // Every braced registry token, both bare and modified, so the migration's frozen SQL name
+    // list must match the registry the C# converter reads. A name present in one classifier and
+    // absent from the other fails here instead of silently splitting user data between
+    // SendKeys (snapshot restore) and Raw (migrated row).
+    private static IEnumerable<LegacyHotkeyFixture> EveryBracedRegistryToken() =>
+        HotkeyKeys.All
+            .Where(e => e.Roles.HasFlag(HotkeyKeyRoles.SendToken) && e.RequiresBracesInSend)
+            .SelectMany(e => new[] { $"{{{e.Canonical}}}", $"^{{{e.Canonical}}}" })
+            .Select(token => new LegacyHotkeyFixture(
+                $"send-token-{token}", HotkeyAction.Send, token,
+                HotkeyActionKind.SendKeys, null, token, null, null, null));
 }
 ```
+
+`HotkeyKeys` is `internal`, and `AHKFlowApp.Application.csproj` grants `InternalsVisibleTo` to
+`AHKFlowApp.Application.Tests` only — not to `AHKFlowApp.TestUtilities`, where the fixtures live.
+Add a second `<InternalsVisibleTo Include="AHKFlowApp.TestUtilities" />` in the same item group.
 
 > **Design decision (open question O2).** The `Raw` body reproduces the **W0-escaped** RHS (`Send("say `"hi`"")`), not the spec's pre-W0 unescaped text, so the generated download for a converted row is unchanged from what W0 emits today. Confirm before executing (see Unresolved questions).
 
@@ -926,12 +973,17 @@ WHERE [Action] = 0
 
         migrationBuilder.Sql(@"
 -- Every remaining Send → Raw(6): body reproduces the current escaped emission byte-for-byte.
--- Escape order: backtick first, then double-quote (matches AhkEscaping; \n/\r/\t already excluded
--- from single-line Parameters by validation).
+-- All five AhkEscaping replacements, in its exact order: backtick first (so it cannot re-escape
+-- the backticks the later rules introduce), then double-quote, LF, CR, tab. \n/\r/\t are NOT
+-- excluded from Parameters — HotkeyRules.ValidParameters allows exactly those three control
+-- characters — so dropping them here would emit a literal newline inside the string literal and
+-- break the script.
 UPDATE [Hotkeys]
 SET [ActionKind] = 6,
     [Body] = 'Send(""' +
-        REPLACE(REPLACE([Parameters], '`', '``'), '""', '`""') +
+        REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+            [Parameters], '`', '``'), '""', '`""'),
+            CHAR(10), '`n'), CHAR(13), '`r'), CHAR(9), '`t') +
         '"")'
 WHERE [Action] = 0 AND [ActionKind] <> 1;");
 ```
@@ -944,31 +996,38 @@ CREATE FUNCTION [dbo].[fn_IsSendKeysContent](@s NVARCHAR(4000))
 RETURNS BIT
 AS
 BEGIN
-    IF @s IS NULL OR LEN(@s) = 0 RETURN 0;
+    -- LEN() ignores trailing spaces, so every length here goes through the + N'|' - 1 idiom.
+    -- Without it 'a ' measures as 1 and classifies as SendKeys, while the C# grammar sees two
+    -- characters and sends it to Raw — a silent parity break on any value with a trailing space.
+    DECLARE @n INT = LEN(@s + N'|') - 1;
+    IF @s IS NULL OR @n = 0 RETURN 0;
     DECLARE @i INT = 1;
     -- consume optional distinct modifiers ^ ! + #
     DECLARE @seen NVARCHAR(4) = '';
-    WHILE @i <= LEN(@s) AND SUBSTRING(@s, @i, 1) IN ('^','!','+','#')
+    WHILE @i <= @n AND SUBSTRING(@s, @i, 1) IN ('^','!','+','#')
     BEGIN
         IF CHARINDEX(SUBSTRING(@s, @i, 1), @seen) > 0 RETURN 0;
         SET @seen = @seen + SUBSTRING(@s, @i, 1);
         SET @i = @i + 1;
     END
-    DECLARE @key NVARCHAR(4000) = SUBSTRING(@s, @i, LEN(@s) - @i + 1);
-    IF LEN(@key) = 0 RETURN 0;
+    DECLARE @key NVARCHAR(4000) = SUBSTRING(@s, @i, @n - @i + 1);
+    DECLARE @klen INT = @n - @i + 1;
+    IF @klen = 0 RETURN 0;
     IF LEFT(@key, 1) = '{'
     BEGIN
-        IF RIGHT(@key, 1) <> '}' OR LEN(@key) < 3 RETURN 0;
-        DECLARE @inner NVARCHAR(4000) = SUBSTRING(@key, 2, LEN(@key) - 2);
+        IF SUBSTRING(@key, @klen, 1) <> '}' OR @klen < 3 RETURN 0;
+        DECLARE @inner NVARCHAR(4000) = SUBSTRING(@key, 2, @klen - 2);
         IF CHARINDEX('{', @inner) > 0 OR CHARINDEX('}', @inner) > 0 RETURN 0;
-        -- A named send token; the migration only needs to accept the dev-seed names ({Up},{Down},
-        -- {Left},{Right}). Names outside the registry fall to Raw, which is safe. Keep this list in
-        -- sync with the parity fixtures rather than duplicating the full registry in SQL.
-        IF @inner IN ('Up','Down','Left','Right','Volume_Up','Volume_Down','Media_Play_Pause') RETURN 1;
+        -- Exhaustive: every registry name that carries SendToken + RequiresBracesInSend as of
+        -- Migration A. Generated, not hand-typed (see below), and frozen once the migration ships.
+        -- A subset here would classify {F5} / {Enter} / ^{Delete} as Raw in the database while the
+        -- C# converter — which consults the whole registry — calls them SendKeys, so a snapshot
+        -- restore would disagree with the migrated row for the same value.
+        IF @inner COLLATE Latin1_General_CI_AS IN (<generated name list>) RETURN 1;
         RETURN 0;
     END
     -- bare: exactly one printable non-brace char
-    IF LEN(@key) = 1 AND @key NOT IN ('{','}') RETURN 1;
+    IF @klen = 1 AND @key NOT IN ('{','}') RETURN 1;
     RETURN 0;
 END;");
 
@@ -977,7 +1036,24 @@ END;");
         migrationBuilder.Sql(@"DROP FUNCTION [dbo].[fn_IsSendKeysContent];");
 ```
 
-> **Design decision (open question O3).** The T-SQL classifier accepts a **fixed name list** for braced tokens rather than replicating the full registry in SQL. It must stay in sync with `LegacyHotkeyFixtures`; the parity test is the gate. Alternative: classify **all** legacy Send as Raw in the migration (simpler, always safe) and let users re-pick SendKeys on next edit — but then the migration diverges from the converter and parity is dropped. Confirm before executing (see Unresolved questions).
+Produce `<generated name list>` once, from the registry itself, and paste the literal into the migration — never hand-type it. In a scratch xUnit fact or `dotnet script`:
+
+```csharp
+string list = string.Join(", ", HotkeyKeys.All
+    .Where(e => e.Roles.HasFlag(HotkeyKeyRoles.SendToken) && e.RequiresBracesInSend)
+    .Select(e => $"'{e.Canonical}'")
+    .Order(StringComparer.Ordinal));
+```
+
+The pasted list is **frozen** at Migration A: a shipped migration must reproduce byte-identically forever. Later waves that add `SendToken` names (W2 mouse/wheel) do **not** edit this migration — the parity test below fails loudly instead, which is the signal to decide between a top-up migration and accepting Raw for the new names.
+
+> **Design decision (open question O3, revised).** The T-SQL classifier mirrors the **full** registry
+> for braced tokens, generated from `HotkeyKeys.All` and frozen at Migration A. The original
+> fixed seven-name list was wrong: it only covered the dev-seed names, so real user rows holding
+> `{F5}`, `{Enter}` or `^{Delete}` migrated to Raw while `LegacyHotkeySnapshotConverter` — which
+> consults the whole registry — resolves the same values to SendKeys, and a history restore then
+> disagrees with the migrated row. The parity fixtures (Step 10) now iterate every registry name, so
+> a missing entry in the SQL list fails the build rather than shipping a silent split.
 
 Set `Down` to `throw new NotSupportedException(...)` (the back-fill is lossy in reverse; the column drops happen in Migration B), mirroring `RawHotstringKind.Down`.
 
@@ -1209,6 +1285,15 @@ public sealed class HotkeyEmitterTests
         Line(new HotkeyBuilder().WithKey("p").WithWin().WithSendKeys("{Media_Play_Pause}"))
             .Should().Be("$#p::Send(\"{Media_Play_Pause}\")");
 
+    // Quote and backtick are valid one-character SendKeys tokens; unescaped they would emit
+    // Send(""") and Send("`") — both refuse to load. Escaping happens at the literal layer.
+    [Theory]
+    [InlineData("\"", "$a::Send(\"`\"\")")]
+    [InlineData("`", "$a::Send(\"``\")")]
+    public void Emit_SendKeys_EscapesLiteralHostileToken(string token, string expected) =>
+        Line(new HotkeyBuilder().WithKey("a").WithSendKeys(token))
+            .Should().Be(expected);
+
     [Fact] // golden 13
     public void Emit_Remap_BareKey() =>
         Line(new HotkeyBuilder().WithKey("CapsLock").WithRemap("Ctrl"))
@@ -1261,9 +1346,12 @@ namespace AHKFlowApp.Application.Services;
 /// + the key; the right-hand side is per <see cref="HotkeyActionKind"/> (spec §1).
 /// </summary>
 /// <remarks>
-/// Every free-text value (<c>SendText</c>, <c>Run</c>) passes through
-/// <see cref="AhkEscaping.EscapeStringLiteral"/>. SendKeys/Remap emit validated tokens verbatim
-/// (safe by construction). Raw wraps a verbatim body in braces — the sole unchecked path.
+/// Everything embedded in a quoted literal (<c>SendText</c>, <c>SendKeys</c>, <c>Run</c>) passes
+/// through <see cref="AhkEscaping.EscapeStringLiteral"/>. Token validation and string-literal
+/// escaping are separate layers: <c>"</c> and <c>`</c> are legal one-character SendKeys tokens
+/// (Send types them), so a validated token still has to be escaped or it terminates the literal.
+/// Remap emits a bare validated key name — no literal, nothing to escape. Raw wraps a verbatim
+/// body in braces — the sole unchecked path.
 /// </remarks>
 internal static class HotkeyEmitter
 {
@@ -1274,7 +1362,7 @@ internal static class HotkeyEmitter
         string rhs = hk.ActionKind switch
         {
             HotkeyActionKind.SendText => $"SendText(\"{AhkEscaping.EscapeStringLiteral(hk.Text ?? "")}\")",
-            HotkeyActionKind.SendKeys => $"Send(\"{hk.SendKeysContent}\")",
+            HotkeyActionKind.SendKeys => $"Send(\"{AhkEscaping.EscapeStringLiteral(hk.SendKeysContent ?? "")}\")",
             HotkeyActionKind.Run => $"Run(\"{AhkEscaping.EscapeStringLiteral(hk.RunTarget ?? "")}\")",
             HotkeyActionKind.Window => WindowCall(hk.WindowOp),
             HotkeyActionKind.Remap => hk.RemapDest ?? "",
@@ -1343,6 +1431,10 @@ SendText/SendKeys/Run/Window/Remap/Disable/Raw; auto \$ for SendKeys. refs W1"
 ### Task 6: Typed DTOs, mappings, commands, list query, seed
 
 Moves the API surface and write paths onto the typed columns. The entity's legacy `Action`/`Parameters` are still `NOT NULL` until Migration B, so writes set them to **vestigial defaults** (`Send`, `""`) — dead data the emitter no longer reads (Task 5), dropped in Task 11. Not identity fields, so they never affect the unique index.
+
+> **Breaking API change — the UI plan must land with this task.** Dropping `Action`/`Parameters`
+> from the DTOs breaks the live hotkeys page at runtime (see the Scope note at the top). Everything
+> up to Task 5 is additive and shippable alone; from here on, backend and UI release together.
 
 **Files:**
 - Modify: `src/Backend/AHKFlowApp.Application/DTOs/HotkeyDto.cs`
@@ -1482,7 +1574,13 @@ In `ListHotkeysQuery.cs`:
 
 - [ ] **Step 5: Retype the seed tuples**
 
-In `ListHotkeysQuery.s_lazySeed` and `SeedHotkeysCommand.s_samples`, keep them expressed in the **legacy** tuple shape (`HotkeyAction`, `Parameters`) and keep the `LegacyHotkeyDefinitionConverter.Apply(...)` wrap in both seed loops (from Task 4). This is deliberate: the seed set is the parity-fixture source (§11), so leaving it in legacy shape keeps one authoritative copy of the sample data that the converter transforms — the same transform Migration A applies to real legacy rows. Add a comment on `s_lazySeed` noting it feeds `LegacyHotkeyFixtures`.
+`ListHotkeysQuery.s_lazySeed` and `SeedHotkeysCommand.s_samples` are today two byte-identical
+12-row arrays kept in step by a "update both if seed set changes" comment. Collapse them into one
+`DefaultHotkeyCatalog.All` (new file beside the converter, `Application/Constants/`), consumed by
+both seed loops — the duplication is only tolerable while the shape is frozen, and this task
+rewrites both copies anyway.
+
+Keep the catalog expressed in the **legacy** tuple shape (`HotkeyAction`, `Parameters`) and keep the `LegacyHotkeyDefinitionConverter.Apply(...)` wrap in both seed loops (from Task 4). This is deliberate: the seed set is the parity-fixture source (§11), so leaving it in legacy shape keeps one authoritative copy of the sample data that the converter transforms — the same transform Migration A applies to real legacy rows. Comment the catalog to note it feeds `LegacyHotkeyFixtures`.
 
 - [ ] **Step 6: Fix existing test payloads**
 
@@ -1583,6 +1681,25 @@ public sealed class HotkeyKindConditionalRulesTests
         Validate(Base(HotkeyActionKind.Run) with { RunTarget = "x", RunTargetKind = RunTargetKind.Application, Body = "MsgBox 1" })
             .IsValid.Should().BeFalse();
 
+    // Undefined enum ints deserialize happily; the validator, not the emitter, must reject them.
+    [Fact]
+    public void UndefinedActionKind_IsInvalid() =>
+        Validate(Base((HotkeyActionKind)99)).IsValid.Should().BeFalse();
+
+    [Fact]
+    public void UndefinedWindowOp_IsInvalid() =>
+        Validate(Base(HotkeyActionKind.Window) with { WindowOp = (WindowOp)99 }).IsValid.Should().BeFalse();
+
+    [Fact]
+    public void UndefinedRunTargetKind_IsInvalid() =>
+        Validate(Base(HotkeyActionKind.Run) with { RunTarget = "notepad", RunTargetKind = (RunTargetKind)99 })
+            .IsValid.Should().BeFalse();
+
+    [Fact] // RunTargetKind is a foreign field outside Run
+    public void SendText_WithRunTargetKind_IsInvalid() =>
+        Validate(Base(HotkeyActionKind.SendText) with { Text = "hi", RunTargetKind = RunTargetKind.Url })
+            .IsValid.Should().BeFalse();
+
     [Fact]
     public void Raw_HashDirective_IsInvalid() =>
         Validate(Base(HotkeyActionKind.Raw) with { Body = "#SingleInstance Force" }).IsValid.Should().BeFalse();
@@ -1623,6 +1740,16 @@ In `HotkeyRules.cs`, remove `ValidAction` and `ValidParameters` (superseded), an
         {
             HotkeyActionKind k = kind(x);
 
+            // System.Text.Json deserializes any int into an enum field, so a payload can carry
+            // ActionKind: 99. Without this the switch below matches nothing, ForbidExcept sees no
+            // owner, the DTO validates, and the *emitter* is left to throw — a 500 on bad input.
+            // Same for the two nested enums: `is null` alone accepts (WindowOp)99.
+            if (!Enum.IsDefined(k))
+            {
+                ctx.AddFailure("ActionKind", "ActionKind must be a valid HotkeyActionKind value.");
+                return;
+            }
+
             // Required field present + valid, per kind.
             switch (k)
             {
@@ -1630,21 +1757,26 @@ In `HotkeyRules.cs`, remove `ValidAction` and `ValidParameters` (superseded), an
                     ctx.AddFailure("Text", "SendText requires Text."); break;
                 case HotkeyActionKind.SendKeys when !Tokens.IsValidSendKeysContent(sendKeys(x)):
                     ctx.AddFailure("SendKeysContent", "SendKeys requires a valid key token (for example {Volume_Up} or ^c)."); break;
-                case HotkeyActionKind.Run when string.IsNullOrEmpty(runTarget(x)) || runTargetKind(x) is null:
-                    ctx.AddFailure("RunTarget", "Run requires a run target and target kind."); break;
-                case HotkeyActionKind.Window when windowOp(x) is null:
-                    ctx.AddFailure("WindowOp", "Window requires a window operation."); break;
+                case HotkeyActionKind.Run when string.IsNullOrEmpty(runTarget(x))
+                                            || runTargetKind(x) is not RunTargetKind rtk
+                                            || !Enum.IsDefined(rtk):
+                    ctx.AddFailure("RunTarget", "Run requires a run target and a valid target kind."); break;
+                case HotkeyActionKind.Window when windowOp(x) is not WindowOp op || !Enum.IsDefined(op):
+                    ctx.AddFailure("WindowOp", "Window requires a valid window operation."); break;
                 case HotkeyActionKind.Remap when !Tokens.IsValidRemapDest(remapDest(x)):
                     ctx.AddFailure("RemapDest", "Remap requires a valid destination key."); break;
                 case HotkeyActionKind.Raw:
                     ValidateRawBody(body(x), ctx); break;
             }
 
-            // Foreign fields forbidden: only the kind's own field(s) may be set.
+            // Foreign fields forbidden: only the kind's own field(s) may be set. RunTargetKind is
+            // listed too — it is Run's second field, and omitting it let a SendText payload smuggle
+            // one through.
             ForbidExcept(k, ctx,
                 (HotkeyActionKind.SendText, "Text", !string.IsNullOrEmpty(text(x))),
                 (HotkeyActionKind.SendKeys, "SendKeysContent", !string.IsNullOrEmpty(sendKeys(x))),
                 (HotkeyActionKind.Run, "RunTarget", !string.IsNullOrEmpty(runTarget(x))),
+                (HotkeyActionKind.Run, "RunTargetKind", runTargetKind(x) is not null),
                 (HotkeyActionKind.Window, "WindowOp", windowOp(x) is not null),
                 (HotkeyActionKind.Remap, "RemapDest", !string.IsNullOrEmpty(remapDest(x))),
                 (HotkeyActionKind.Raw, "Body", !string.IsNullOrEmpty(body(x))));
@@ -2143,6 +2275,21 @@ public static TheoryData<CreateHotkeyDto, HotkeyActionKind> KindPayloads() => ne
     { new("Raw", "e", HotkeyActionKind.Raw, Ctrl: true, Body: "MsgBox \"hi\""), HotkeyActionKind.Raw },
 };
 
+// Raw JSON, not a typed DTO: an out-of-range int is exactly what a hand-rolled client sends,
+// and it is the only way to reach the undefined-enum path the validator now guards. Must be
+// 400 from validation, never 500 from the emitter.
+[Theory]
+[InlineData("{\"description\":\"Bad\",\"key\":\"a\",\"ctrl\":true,\"actionKind\":99}")]
+[InlineData("{\"description\":\"Bad\",\"key\":\"a\",\"ctrl\":true,\"actionKind\":3,\"windowOp\":99}")]
+[InlineData("{\"description\":\"Bad\",\"key\":\"a\",\"ctrl\":true,\"actionKind\":2,\"runTarget\":\"notepad\",\"runTargetKind\":99}")]
+public async Task Post_UndefinedEnumValue_Returns400(string json)
+{
+    HttpResponseMessage res = await Client.PostAsync("/api/v1/hotkeys",
+        new StringContent(json, Encoding.UTF8, "application/json"));
+
+    res.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+}
+
 [Fact]
 public async Task Post_MalformedSendKeys_Returns400NamingField()
 {
@@ -2343,11 +2490,16 @@ All five closed 2026-07-22, before execution. Decisions are binding on the tasks
    pre-W0 and stale. Confirmed empirically on 2026-07-22: `^a::Send("he said `"hi`" 100``%")` was
    downloaded from the running app and loaded without error in AutoHotkey v2, so the escaped form
    is known-good output that this wave must not change.
-3. **SendKeys classification in migration T-SQL (O3) — fixed braced-name list.** The classifier
-   accepts a fixed list of braced key names kept in sync with `LegacyHotkeyFixtures`, preserving
-   migration↔converter parity. Migrating all legacy `Send` to `Raw` was rejected: the seed profile
-   alone carries `{Up}`, `{Down}`, `{Left}`, `{Right}` and `^v`, which would all land in the
-   unchecked `Raw` path.
+3. **SendKeys classification in migration T-SQL (O3) — full registry, generated and frozen.**
+   Revised 2026-07-22 after review. The classifier accepts every registry name carrying
+   `SendToken` + `RequiresBracesInSend`, generated from `HotkeyKeys.All` and pasted into
+   Migration A as a frozen literal. The earlier decision — a fixed seven-name list — only covered
+   dev-seed names: `{F5}`, `{Enter}` and `^{Delete}` would have migrated to `Raw` while
+   `LegacyHotkeySnapshotConverter` reads the whole registry and calls them `SendKeys`, so a
+   history restore disagreed with the migrated row for the same value. Fixtures now iterate the
+   registry, so a gap fails the parity test. Migrating all legacy `Send` to `Raw` stays rejected:
+   the seed profile alone carries `{Up}`, `{Down}`, `{Left}`, `{Right}` and `^v`, which would all
+   land in the unchecked `Raw` path.
 4. **`HotkeyAction` retirement home — `LegacyHotkeyDefinitionConverter.cs`.** It becomes the
    converter's legacy-input enum, next to its only remaining consumer, and keeps
    `HotkeySnapshot.Action` typed instead of widening it to `int`.

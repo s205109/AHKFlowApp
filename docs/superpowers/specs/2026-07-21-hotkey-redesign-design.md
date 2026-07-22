@@ -320,8 +320,10 @@ allow-lists — wheel, for instance, is a legal hotkey key and Send token but no
     so a wrong guess costs review surface and buys nothing. Users re-label on next edit.
   - legacy `Send` whose `Parameters` is a valid `SendKeysContent` token → `ActionKind.SendKeys`.
   - every other legacy `Send` → `ActionKind.Raw`, `Body` composed to **preserve current emission
-    byte-for-byte** (today's output is unescaped `Send("<Parameters>")`, so the composed body must
-    reproduce exactly that, not a newly-escaped variant).
+    byte-for-byte**. Since W0 that emission is `Send("<escaped Parameters>")` — `HotkeyEmitter`
+    routes `Parameters` through `AhkEscaping.EscapeStringLiteral` — so the composed body reproduces
+    the **escaped** RHS. (This bullet said "unescaped" while W0 was still unlanded; corrected
+    2026-07-22.)
   - rows whose `Key` fails the new registry/`vk`/`sc` validation are **left as-is**, not deleted —
     the key is the LHS and has no safe automatic rewrite. Surfacing them needs **no new UI**: extend
     the `IsInlineEditable` predicate so such a row returns false and routes to the dialog, where the
