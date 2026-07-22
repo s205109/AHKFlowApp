@@ -28,6 +28,10 @@ public enum HotkeyActionKind
     /// <summary>Disable a key (<c>key::return</c>).</summary>
     Disable = 5,
 
-    /// <summary>Verbatim action body (<c>origin::{ body }</c>). The sole unchecked path.</summary>
+    /// <summary>
+    /// Verbatim action body, emitted as <c>origin::&lt;body&gt;</c> with no wrapper — a block body
+    /// carries its own braces. The sole path whose contents AHK never sees validated for meaning;
+    /// only shape is checked (brace balance, no <c>#</c> directive, length).
+    /// </summary>
     Raw = 6,
 }
