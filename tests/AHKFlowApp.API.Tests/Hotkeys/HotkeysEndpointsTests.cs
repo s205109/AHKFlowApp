@@ -406,6 +406,60 @@ public sealed class HotkeysEndpointsTests(ApiTestFixture fixture)
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
+    // W1 renamed the list filter from `action` to `actionKind`. Bind and filter behaviour is
+    // pinned at the HTTP boundary because a rename that silently stopped binding would still
+    // return 200 with a full list.
+    [Fact]
+    public async Task List_WithActionKind_FiltersToThatKindOnly()
+    {
+        var owner = Guid.NewGuid();
+        using HttpClient client = CreateAuthed(owner);
+
+        await client.PostAsJsonAsync("/api/v1/hotkeys",
+            new CreateHotkeyDto("Remap caps", "f9", HotkeyActionKind.Remap,
+                Ctrl: true, RemapDest: "Ctrl", AppliesToAllProfiles: true));
+        await client.PostAsJsonAsync("/api/v1/hotkeys",
+            new CreateHotkeyDto("Launch editor", "f10", HotkeyActionKind.Run,
+                Ctrl: true, RunTarget: "notepad.exe", RunTargetKind: RunTargetKind.Application,
+                AppliesToAllProfiles: true));
+
+        HttpResponseMessage response = await client.GetAsync("/api/v1/hotkeys?actionKind=Remap&pageSize=200");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        PagedList<HotkeyDto>? body = await response.Content.ReadFromJsonAsync<PagedList<HotkeyDto>>();
+        body!.Items.Should().NotBeEmpty();
+        body.Items.Should().OnlyContain(h => h.ActionKind == HotkeyActionKind.Remap);
+        body.Items.Should().Contain(h => h.Key == "F9");
+        body.Items.Should().NotContain(h => h.Key == "F10");
+    }
+
+    // ASP.NET Core ignores query parameters it cannot bind, so a client still sending the
+    // pre-W1 `action` / `parametersFilter` names gets the full unfiltered list rather than an
+    // error. Documenting that here so the silent-wrong-answer is a known contract, not a surprise.
+    [Fact]
+    public async Task List_WithLegacyActionParameters_IgnoresThemAndReturnsUnfilteredList()
+    {
+        var owner = Guid.NewGuid();
+        using HttpClient client = CreateAuthed(owner);
+
+        await client.PostAsJsonAsync("/api/v1/hotkeys",
+            new CreateHotkeyDto("Launch editor", "f11", HotkeyActionKind.Run,
+                Ctrl: true, RunTarget: "notepad.exe", RunTargetKind: RunTargetKind.Application,
+                AppliesToAllProfiles: true));
+        await client.PostAsJsonAsync("/api/v1/hotkeys",
+            new CreateHotkeyDto("Say hi", "f12", HotkeyActionKind.SendText,
+                Ctrl: true, Text: "hi", AppliesToAllProfiles: true));
+
+        HttpResponseMessage unfiltered = await client.GetAsync("/api/v1/hotkeys?pageSize=200");
+        HttpResponseMessage legacy = await client.GetAsync("/api/v1/hotkeys?action=Run&parametersFilter=notepad&pageSize=200");
+
+        legacy.StatusCode.Should().Be(HttpStatusCode.OK);
+        PagedList<HotkeyDto>? all = await unfiltered.Content.ReadFromJsonAsync<PagedList<HotkeyDto>>();
+        PagedList<HotkeyDto>? body = await legacy.Content.ReadFromJsonAsync<PagedList<HotkeyDto>>();
+        body!.TotalCount.Should().Be(all!.TotalCount);
+        body.Items.Should().Contain(h => h.Key == "F12");
+    }
+
     // Golden per action kind: POST persists the typed columns AND the preview endpoint
     // (fed the same draft fields) reproduces the exact .ahk line the create would emit.
     // Pinning the literal snippet — not just the 201 — is the point of a golden: it proves
