@@ -61,11 +61,13 @@ internal static class HotkeyKeys
     // A hotkey definition accepts vkNN or scNNN, but never the combined vkNNscNNN form —
     // AHK raises an error for "vk1Bsc001::". Combining is supported only by Send,
     // GetKeyName, GetKeyVK, GetKeySC and A_MenuMaskKey.
+    // Anchored with \A and \z, not ^ and $: .NET's $ also matches before a trailing newline,
+    // so "vk1\n" would pass and split the emitted left-hand side across two script lines.
     private static readonly Regex s_virtualKey =
-        new("^vk[0-9a-f]{1,2}$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        new(@"\Avk[0-9a-f]{1,2}\z", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly Regex s_scanCode =
-        new("^sc[0-9a-f]{1,3}$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        new(@"\Asc[0-9a-f]{1,3}\z", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly string[] s_namedKeys =
     [
@@ -123,6 +125,7 @@ internal static class HotkeyKeys
     /// (<c>Esc</c> → <c>Escape</c>), case (<c>F5</c>), and code width — <c>vk1</c> → <c>vk01</c>,
     /// <c>sc1</c> → <c>sc001</c>. Without the padding, <c>vk1</c> and <c>vk01</c> name the same
     /// physical key but survive as two rows.
+    /// A zero code (<c>vk0</c>, <c>sc000</c>) is rejected — it names no key.
     /// Surrounding whitespace is <em>not</em> trimmed: it is rejected, matching the existing
     /// "Key must not have leading or trailing whitespace." rule this replaces.
     /// </remarks>
@@ -145,21 +148,30 @@ internal static class HotkeyKeys
         }
 
         if (s_virtualKey.IsMatch(key))
-        {
-            canonical = "vk" + key[2..].ToLowerInvariant().PadLeft(2, '0');
-            return true;
-        }
+            return TryCanonicalizeCode(key, "vk", width: 2, out canonical);
 
         if (s_scanCode.IsMatch(key))
-        {
-            canonical = "sc" + key[2..].ToLowerInvariant().PadLeft(3, '0');
-            return true;
-        }
+            return TryCanonicalizeCode(key, "sc", width: 3, out canonical);
 
         return false;
     }
 
     public static bool IsValidHotkeyKey(string? key) => TryCanonicalize(key, out _);
+
+    // Code zero names no key — AHK rejects "vk00::" and "sc000::" with "Invalid hotkey".
+    // The digit-count regexes cannot express "hex, but not all zero", so the value is
+    // checked here, after the shape matched and before padding.
+    private static bool TryCanonicalizeCode(string key, string prefix, int width, out string canonical)
+    {
+        canonical = string.Empty;
+
+        string digits = key[2..];
+        if (digits.All(c => c == '0'))
+            return false;
+
+        canonical = prefix + digits.ToLowerInvariant().PadLeft(width, '0');
+        return true;
+    }
 
     private static List<HotkeyKeyEntry> BuildRegistry()
     {

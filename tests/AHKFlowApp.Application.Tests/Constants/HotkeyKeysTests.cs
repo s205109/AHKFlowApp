@@ -43,12 +43,44 @@ public sealed class HotkeyKeysTests
     [InlineData("SC01F", "sc01f")]
     [InlineData("sc1", "sc001")]
     [InlineData("sc1F", "sc01f")]
+    [InlineData("vkFF", "vkff")]
+    [InlineData("sc1FF", "sc1ff")]
+    [InlineData("scFFF", "scfff")]
     public void TryCanonicalize_VkOrScCode_LowercasesAndPadsTheCode(string input, string expected)
     {
         bool ok = HotkeyKeys.TryCanonicalize(input, out string canonical);
 
         ok.Should().BeTrue();
         canonical.Should().Be(expected);
+    }
+
+    // AHK rejects "vk00::" / "sc000::" with "Invalid hotkey" — a zero code names no key.
+    [Theory]
+    [InlineData("vk0")]
+    [InlineData("vk00")]
+    [InlineData("VK00")]
+    [InlineData("sc0")]
+    [InlineData("sc00")]
+    [InlineData("sc000")]
+    public void TryCanonicalize_ZeroCode_IsRejected(string input)
+    {
+        bool ok = HotkeyKeys.TryCanonicalize(input, out _);
+
+        ok.Should().BeFalse();
+    }
+
+    // .NET's $ also matches before a trailing newline; \z does not. A code that kept its LF
+    // would split the emitted left-hand side across two script lines.
+    [Theory]
+    [InlineData("vk1\n")]
+    [InlineData("sc1\n")]
+    [InlineData("a\n")]
+    [InlineData("F5\n")]
+    public void TryCanonicalize_TrailingNewline_IsRejected(string input)
+    {
+        bool ok = HotkeyKeys.TryCanonicalize(input, out _);
+
+        ok.Should().BeFalse();
     }
 
     [Fact]
