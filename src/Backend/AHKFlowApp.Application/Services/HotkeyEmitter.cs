@@ -13,8 +13,9 @@ namespace AHKFlowApp.Application.Services;
 /// through <see cref="AhkEscaping.EscapeStringLiteral"/>. Token validation and string-literal
 /// escaping are separate layers: <c>"</c> and <c>`</c> are legal one-character SendKeys tokens
 /// (Send types them), so a validated token still has to be escaped or it terminates the literal.
-/// Remap emits a bare validated key name — no literal, nothing to escape. Raw wraps a verbatim
-/// body in braces — the sole unchecked path.
+/// Remap emits a bare validated key name — no literal, nothing to escape. Raw emits <c>Body</c>
+/// verbatim — the sole unchecked path; a block body carries its own braces (2026-07-22 decision,
+/// see spec Raw emission note — preserves byte-identity for converted legacy <c>Send</c> rows).
 /// </remarks>
 internal static class HotkeyEmitter
 {
@@ -28,9 +29,9 @@ internal static class HotkeyEmitter
             HotkeyActionKind.SendKeys => $"Send(\"{AhkEscaping.EscapeStringLiteral(hk.SendKeysContent ?? "")}\")",
             HotkeyActionKind.Run => $"Run(\"{AhkEscaping.EscapeStringLiteral(hk.RunTarget ?? "")}\")",
             HotkeyActionKind.Window => WindowCall(hk.WindowOp),
-            HotkeyActionKind.Remap => hk.RemapDest ?? "",
+            HotkeyActionKind.Remap => RemapRhs(hk.RemapDest),
             HotkeyActionKind.Disable => "return",
-            HotkeyActionKind.Raw => $"{{{hk.Body}}}",
+            HotkeyActionKind.Raw => hk.Body ?? "",
             _ => throw new InvalidOperationException($"Unsupported HotkeyActionKind: {hk.ActionKind}"),
         };
 
@@ -46,6 +47,9 @@ internal static class HotkeyEmitter
         WindowOp.ToggleAlwaysOnTop => $"WinSetAlwaysOnTop(-1, {ActiveWindow})",
         _ => throw new InvalidOperationException($"Unsupported WindowOp: {op}"),
     };
+
+    private static string RemapRhs(string? dest) =>
+        dest ?? throw new InvalidOperationException("Remap requires a RemapDest");
 
     // $ forces the keyboard hook so a SendKeys binding cannot retrigger the script's own hotkeys
     // (spec §5). Emitted for every SendKeys on a keyboard key. Mouse/wheel keys (Wave 2) use the

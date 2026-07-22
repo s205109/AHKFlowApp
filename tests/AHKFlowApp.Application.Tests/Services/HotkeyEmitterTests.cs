@@ -93,15 +93,27 @@ public sealed class HotkeyEmitterTests
         Line(new HotkeyBuilder().WithKey("F1").WithDisable())
             .Should().Be("F1::return");
 
-    [Fact] // golden 10 body — Raw wraps a verbatim body in braces
-    public void Emit_Raw_WrapsBody() =>
-        Line(new HotkeyBuilder().WithKey("v").WithCtrl().WithShift().WithRawBody("\n\tSendText A_Clipboard\n"))
+    [Fact] // golden 10 — Raw emits Body verbatim; the stored Body carries its own braces
+    public void Emit_Raw_EmitsBodyVerbatim() =>
+        Line(new HotkeyBuilder().WithKey("v").WithCtrl().WithShift().WithRawBody("{\n\tSendText A_Clipboard\n}"))
             .Should().Be("^+v::{\n\tSendText A_Clipboard\n}");
 
     [Fact] // Raw is the sole verbatim path — a quote in the body is NOT re-escaped
     public void Emit_Raw_DoesNotEscapeBody() =>
-        Line(new HotkeyBuilder().WithKey("a").WithRawBody("\nMsgBox \"hi\"\n"))
+        Line(new HotkeyBuilder().WithKey("a").WithRawBody("{\nMsgBox \"hi\"\n}"))
             .Should().Be("a::{\nMsgBox \"hi\"\n}");
+
+    // Pins the human decision (2026-07-22): Raw emits Body verbatim, with no brace-wrapping by the
+    // emitter, so a converted legacy Send row (LegacyHotkeyDefinitionConverter classifies non-token
+    // Send as Raw) emits byte-identically to the pre-typed-columns legacy emission. Driven through
+    // the converter — not a hand-written Body — so converter and emitter stay pinned together.
+    [Theory]
+    [InlineData("hello world", "n::Send(\"hello world\")")]
+    [InlineData("say \"hi\"", "n::Send(\"say `\"hi`\"\")")]
+    [InlineData("100`%", "n::Send(\"100``%\")")]
+    public void Emit_ConvertedLegacySendRow_MatchesLegacyEmissionByteForByte(string parameters, string expected) =>
+        Line(new HotkeyBuilder().WithKey("n").WithAction(HotkeyAction.Send).WithParameters(parameters))
+            .Should().Be(expected);
 
     [Fact]
     public void Emit_UnsupportedKind_Throws()
@@ -123,6 +135,48 @@ public sealed class HotkeyEmitterTests
         Action act = () => HotkeyEmitter.Emit(hk);
 
         act.Should().Throw<InvalidOperationException>().WithMessage("*WindowOp*");
+    }
+
+    // Remap on a null RemapDest is consistent with the sibling Window arm: throw, don't emit the
+    // syntactically invalid `origin::` line.
+    [Fact]
+    public void Emit_RemapKindWithoutDest_Throws()
+    {
+        Hotkey hk = new HotkeyBuilder().WithKey("CapsLock").WithRemap("Ctrl").Build();
+        typeof(Hotkey).GetProperty("RemapDest")!.SetValue(hk, null);
+
+        Action act = () => HotkeyEmitter.Emit(hk);
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*RemapDest*");
+    }
+
+    // Pins the current `?? ""` degrade-to-empty-literal behavior for the three quoted-literal
+    // kinds when their backing column is null — deliberate, not to be changed by this fix.
+    [Fact]
+    public void Emit_SendTextKindWithNullText_EmitsEmptyLiteral()
+    {
+        Hotkey hk = new HotkeyBuilder().WithKey("a").WithSendText("placeholder").Build();
+        typeof(Hotkey).GetProperty("Text")!.SetValue(hk, null);
+
+        HotkeyEmitter.Emit(hk).Should().Be("a::SendText(\"\")");
+    }
+
+    [Fact]
+    public void Emit_SendKeysKindWithNullContent_EmitsEmptyLiteral()
+    {
+        Hotkey hk = new HotkeyBuilder().WithKey("a").WithSendKeys("placeholder").Build();
+        typeof(Hotkey).GetProperty("SendKeysContent")!.SetValue(hk, null);
+
+        HotkeyEmitter.Emit(hk).Should().Be("$a::Send(\"\")");
+    }
+
+    [Fact]
+    public void Emit_RunKindWithNullTarget_EmitsEmptyLiteral()
+    {
+        Hotkey hk = new HotkeyBuilder().WithKey("a").WithRun("placeholder").Build();
+        typeof(Hotkey).GetProperty("RunTarget")!.SetValue(hk, null);
+
+        HotkeyEmitter.Emit(hk).Should().Be("a::Run(\"\")");
     }
 
     private static string Line(HotkeyBuilder b) => HotkeyEmitter.Emit(b.Build());
