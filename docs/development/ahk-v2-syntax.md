@@ -300,6 +300,25 @@ Two limits are worth stating plainly:
 An unknown action throws rather than emitting a broken line. Wave 1 replaces this enum with
 `HotkeyActionKind`; this table is the reference its data migration maps *from*.
 
+#### `Send` has no literal-text mode (pre-Wave-1)
+
+`Parameters` reaches `Send` as a key sequence, so AHK re-reads `^ ! + #` as modifiers and
+`{...}` as key names. Escaping does not — and must not — prevent this: `AhkEscaping` covers the
+string-literal layer only, and by the time `Send` parses the string those characters are ordinary
+text that `Send` is entitled to interpret. Ordinary prose therefore does not survive round-trip:
+
+```ahk
+^a::Send("50% off! a+b {note}")
+```
+
+types `50% off` in Notepad++ and `50% ` in Notepad — `!` becomes Alt, so the remainder turns into
+Alt+key accelerators that each application resolves differently, `+b` sends Shift+b, and `{note}`
+is parsed as a key name. Backticks and `%` are unaffected: `` he said "hi" 100`% `` round-trips
+exactly, because neither is special to `Send`.
+
+There is currently no action that types literal text. Wave 1 splits this into `SendText` (free
+text, escaped) and `SendKeys` (a validated key token), which closes the gap by construction.
+
 ## Input limits
 
 From `HotstringRules`:
