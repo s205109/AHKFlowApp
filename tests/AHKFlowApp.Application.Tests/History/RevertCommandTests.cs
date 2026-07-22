@@ -225,7 +225,11 @@ public sealed class RevertCommandTests(HistoryDbFixture fx)
         }
 
         await UpdateHotkeyViaHandlerAsync(owner, entity.Id,
-            new UpdateHotkeyDto("changed", "f11", false, true, false, false, HotkeyAction.Send, "payload", null, true));
+            new UpdateHotkeyDto("changed", "f11", HotkeyActionKind.SendText,
+                Ctrl: false, Alt: true, Shift: false, Win: false,
+                Text: "payload", SendKeysContent: null, RunTarget: null, RunTargetKind: null,
+                WindowOp: null, RemapDest: null, Body: null,
+                ProfileIds: null, AppliesToAllProfiles: true));
 
         await using AppDbContext db = fx.CreateContext();
         RevertHotkeyCommandHandler handler = new(

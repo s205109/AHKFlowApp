@@ -1,4 +1,5 @@
 using AHKFlowApp.Application.Queries.Hotkeys;
+using AHKFlowApp.Domain.Enums;
 using FluentAssertions;
 using FluentValidation.Results;
 using Xunit;
@@ -77,8 +78,7 @@ public sealed class ListHotkeysQueryValidatorTests
     [InlineData("description")]
     [InlineData("createdAt")]
     [InlineData("updatedAt")]
-    [InlineData("action")]
-    [InlineData("parameters")]
+    [InlineData("actionKind")]
     public void Validate_WithAllowedSortField_Succeeds(string sortField)
     {
         ValidationResult result = _sut.Validate(new ListHotkeysQuery(SortField: sortField));
@@ -118,22 +118,19 @@ public sealed class ListHotkeysQueryValidatorTests
     }
 
     [Fact]
-    public void Validate_WithParametersFilterTooLong_Fails()
-    {
-        string longFilter = new('x', 201);
-
-        ValidationResult result = _sut.Validate(new ListHotkeysQuery(ParametersFilter: longFilter));
-
-        result.IsValid.Should().BeFalse();
-        result.Errors.Should().Contain(e => e.PropertyName == "ParametersFilter");
-    }
-
-    [Fact]
-    public void Validate_WithParametersFilterAtMaxLength_Succeeds()
+    public void Validate_WithKeyFilterAtMaxLength_Succeeds()
     {
         string maxFilter = new('x', 200);
 
-        ValidationResult result = _sut.Validate(new ListHotkeysQuery(ParametersFilter: maxFilter));
+        ValidationResult result = _sut.Validate(new ListHotkeysQuery(KeyFilter: maxFilter));
+
+        result.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Validate_WithActionKindFilter_Succeeds()
+    {
+        ValidationResult result = _sut.Validate(new ListHotkeysQuery(ActionKind: HotkeyActionKind.Run));
 
         result.IsValid.Should().BeTrue();
     }

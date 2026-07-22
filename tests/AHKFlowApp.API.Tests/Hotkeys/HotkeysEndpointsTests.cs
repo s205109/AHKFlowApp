@@ -17,11 +17,30 @@ public sealed class HotkeysEndpointsTests(ApiTestFixture fixture)
     private HttpClient CreateAuthed(Guid? oid = null) =>
         _factory.CreateAuthenticatedClient(b => b.WithOid(oid ?? Guid.NewGuid()));
 
+    // A hotkey whose action carries no payload, for the many cases that only exercise CRUD,
+    // ownership or paging and do not care which typed action the row holds.
+    private static CreateHotkeyDto NewHotkey(
+        string description,
+        string key,
+        bool ctrl = true,
+        bool appliesToAllProfiles = true) =>
+        new(description, key, HotkeyActionKind.Disable,
+            Ctrl: ctrl, AppliesToAllProfiles: appliesToAllProfiles);
+
+    private static UpdateHotkeyDto EditHotkey(string description, string key, bool ctrl = true) =>
+        new(description, key, HotkeyActionKind.Disable,
+            Ctrl: ctrl, Alt: false, Shift: false, Win: false,
+            Text: null, SendKeysContent: null, RunTarget: null, RunTargetKind: null,
+            WindowOp: null, RemapDest: null, Body: null,
+            ProfileIds: null, AppliesToAllProfiles: true);
+
     [Fact]
     public async Task Post_CreatesAndReturns201WithLocation()
     {
         using HttpClient client = CreateAuthed();
-        var dto = new CreateHotkeyDto("Open Notepad", "n", Ctrl: true, AppliesToAllProfiles: true);
+        var dto = new CreateHotkeyDto("Open Notepad", "n", HotkeyActionKind.Run,
+            Ctrl: true, RunTarget: "notepad.exe", RunTargetKind: RunTargetKind.Application,
+            AppliesToAllProfiles: true);
 
         HttpResponseMessage response = await client.PostAsJsonAsync("/api/v1/hotkeys", dto);
 
@@ -33,9 +52,41 @@ public sealed class HotkeysEndpointsTests(ApiTestFixture fixture)
         body.Ctrl.Should().BeTrue();
         body.Description.Should().Be("Open Notepad");
         body.AppliesToAllProfiles.Should().BeTrue();
+        body.ActionKind.Should().Be(HotkeyActionKind.Run);
+        body.RunTarget.Should().Be("notepad.exe");
+        body.RunTargetKind.Should().Be(RunTargetKind.Application);
+        body.Text.Should().BeNull();
+        body.SendKeysContent.Should().BeNull();
+        body.Body.Should().BeNull();
 
         HttpResponseMessage get = await client.GetAsync(response.Headers.Location);
         get.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task Put_ChangingActionKind_ReplacesTypedFields()
+    {
+        using HttpClient client = CreateAuthed();
+        HttpResponseMessage created = await client.PostAsJsonAsync("/api/v1/hotkeys",
+            new CreateHotkeyDto("Launch", "f8", HotkeyActionKind.Run,
+                Ctrl: true, RunTarget: "notepad.exe", RunTargetKind: RunTargetKind.Application,
+                AppliesToAllProfiles: true));
+        HotkeyDto? before = await created.Content.ReadFromJsonAsync<HotkeyDto>();
+
+        HttpResponseMessage put = await client.PutAsJsonAsync(
+            $"/api/v1/hotkeys/{before!.Id}",
+            new UpdateHotkeyDto("Now sends keys", "f8", HotkeyActionKind.SendKeys,
+                Ctrl: true, Alt: false, Shift: false, Win: false,
+                Text: null, SendKeysContent: "{Volume_Up}", RunTarget: null, RunTargetKind: null,
+                WindowOp: null, RemapDest: null, Body: null,
+                ProfileIds: null, AppliesToAllProfiles: true));
+
+        put.StatusCode.Should().Be(HttpStatusCode.OK);
+        HotkeyDto? after = await put.Content.ReadFromJsonAsync<HotkeyDto>();
+        after!.ActionKind.Should().Be(HotkeyActionKind.SendKeys);
+        after.SendKeysContent.Should().Be("{Volume_Up}");
+        after.RunTarget.Should().BeNull();
+        after.RunTargetKind.Should().BeNull();
     }
 
     [Fact]
@@ -43,7 +94,7 @@ public sealed class HotkeysEndpointsTests(ApiTestFixture fixture)
     {
         using HttpClient client = CreateAuthed();
         // Empty description and key — both required
-        var dto = new CreateHotkeyDto("", "", AppliesToAllProfiles: true);
+        CreateHotkeyDto dto = NewHotkey("", "");
 
         HttpResponseMessage response = await client.PostAsJsonAsync("/api/v1/hotkeys", dto);
 
@@ -55,13 +106,13 @@ public sealed class HotkeysEndpointsTests(ApiTestFixture fixture)
     {
         var owner = Guid.NewGuid();
         using HttpClient client = CreateAuthed(owner);
-        var dto = new CreateHotkeyDto("First", "f1", Ctrl: true, AppliesToAllProfiles: true);
+        CreateHotkeyDto dto = NewHotkey("First", "f1");
 
         HttpResponseMessage first = await client.PostAsJsonAsync("/api/v1/hotkeys", dto);
         first.StatusCode.Should().Be(HttpStatusCode.Created);
 
         HttpResponseMessage second = await client.PostAsJsonAsync("/api/v1/hotkeys",
-            new CreateHotkeyDto("Duplicate", "f1", Ctrl: true, AppliesToAllProfiles: true));
+            NewHotkey("Duplicate", "f1"));
 
         second.StatusCode.Should().Be(HttpStatusCode.Conflict);
         second.Content.Headers.ContentType!.MediaType.Should().Be("application/problem+json");
@@ -80,7 +131,7 @@ public sealed class HotkeysEndpointsTests(ApiTestFixture fixture)
     public async Task Put_UnknownId_Returns404_WithProblemDetails()
     {
         using HttpClient client = CreateAuthed();
-        var dto = new UpdateHotkeyDto("Updated", "n", true, false, false, false, HotkeyAction.Run, "", null, true);
+        UpdateHotkeyDto dto = EditHotkey("Updated", "n");
 
         var unknownId = Guid.NewGuid();
         HttpResponseMessage response = await client.PutAsJsonAsync(
@@ -106,13 +157,13 @@ public sealed class HotkeysEndpointsTests(ApiTestFixture fixture)
 
         using HttpClient a = CreateAuthed(ownerA);
         HttpResponseMessage created = await a.PostAsJsonAsync("/api/v1/hotkeys",
-            new CreateHotkeyDto("Owner A hotkey", "f1", Ctrl: true, AppliesToAllProfiles: true));
+            NewHotkey("Owner A hotkey", "f1"));
         HotkeyDto? body = await created.Content.ReadFromJsonAsync<HotkeyDto>();
 
         using HttpClient b = CreateAuthed(ownerB);
         HttpResponseMessage response = await b.PutAsJsonAsync(
             $"/api/v1/hotkeys/{body!.Id}",
-            new UpdateHotkeyDto("Hijacked", "f1", true, false, false, false, HotkeyAction.Run, "", null, true));
+            EditHotkey("Hijacked", "f1"));
 
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -122,14 +173,14 @@ public sealed class HotkeysEndpointsTests(ApiTestFixture fixture)
     {
         using HttpClient client = CreateAuthed();
         HttpResponseMessage created = await client.PostAsJsonAsync("/api/v1/hotkeys",
-            new CreateHotkeyDto("Before", "f3", Ctrl: true, AppliesToAllProfiles: true));
+            NewHotkey("Before", "f3"));
         HotkeyDto? before = await created.Content.ReadFromJsonAsync<HotkeyDto>();
 
         await Task.Delay(10);
 
         HttpResponseMessage put = await client.PutAsJsonAsync(
             $"/api/v1/hotkeys/{before!.Id}",
-            new UpdateHotkeyDto("After", "f3", true, false, false, false, HotkeyAction.Run, "", null, true));
+            EditHotkey("After", "f3"));
 
         put.StatusCode.Should().Be(HttpStatusCode.OK);
         HotkeyDto? after = await put.Content.ReadFromJsonAsync<HotkeyDto>();
@@ -142,7 +193,7 @@ public sealed class HotkeysEndpointsTests(ApiTestFixture fixture)
     {
         using HttpClient client = CreateAuthed();
         HttpResponseMessage created = await client.PostAsJsonAsync("/api/v1/hotkeys",
-            new CreateHotkeyDto("To delete", "f4", Ctrl: true, AppliesToAllProfiles: true));
+            NewHotkey("To delete", "f4"));
         HotkeyDto? body = await created.Content.ReadFromJsonAsync<HotkeyDto>();
 
         HttpResponseMessage del = await client.DeleteAsync($"/api/v1/hotkeys/{body!.Id}");
@@ -161,13 +212,13 @@ public sealed class HotkeysEndpointsTests(ApiTestFixture fixture)
         using HttpClient b = CreateAuthed(ownerB);
 
         HotkeyDto owned1 = (await (await a.PostAsJsonAsync(
-            "/api/v1/hotkeys", new CreateHotkeyDto("Bulk A", "f5", Ctrl: true, AppliesToAllProfiles: true))).Content
+            "/api/v1/hotkeys", NewHotkey("Bulk A", "f5"))).Content
             .ReadFromJsonAsync<HotkeyDto>())!;
         HotkeyDto owned2 = (await (await a.PostAsJsonAsync(
-            "/api/v1/hotkeys", new CreateHotkeyDto("Bulk B", "f6", Ctrl: true, AppliesToAllProfiles: true))).Content
+            "/api/v1/hotkeys", NewHotkey("Bulk B", "f6"))).Content
             .ReadFromJsonAsync<HotkeyDto>())!;
         HotkeyDto foreign = (await (await b.PostAsJsonAsync(
-            "/api/v1/hotkeys", new CreateHotkeyDto("Bulk foreign", "f7", Ctrl: true, AppliesToAllProfiles: true))).Content
+            "/api/v1/hotkeys", NewHotkey("Bulk foreign", "f7"))).Content
             .ReadFromJsonAsync<HotkeyDto>())!;
         var unknown = Guid.NewGuid();
 
@@ -230,7 +281,7 @@ public sealed class HotkeysEndpointsTests(ApiTestFixture fixture)
 
         for (int i = 0; i < 5; i++)
             await client.PostAsJsonAsync("/api/v1/hotkeys",
-                new CreateHotkeyDto($"Hotkey {i}", $"f{i + 1}", Ctrl: true, AppliesToAllProfiles: true));
+                NewHotkey($"Hotkey {i}", $"f{i + 1}"));
 
         HttpResponseMessage response = await client.GetAsync("/api/v1/hotkeys?page=2&pageSize=2");
 
@@ -258,9 +309,9 @@ public sealed class HotkeysEndpointsTests(ApiTestFixture fixture)
         using HttpClient client = CreateAuthed(owner);
 
         await client.PostAsJsonAsync("/api/v1/hotkeys",
-            new CreateHotkeyDto("Help", "F1", Ctrl: true, AppliesToAllProfiles: true));
+            NewHotkey("Help", "F1"));
         await client.PostAsJsonAsync("/api/v1/hotkeys",
-            new CreateHotkeyDto("Rename", "F2", Ctrl: true, AppliesToAllProfiles: true));
+            NewHotkey("Rename", "F2"));
 
         HttpResponseMessage response = await client.GetAsync("/api/v1/hotkeys?search=F1");
 
@@ -304,7 +355,7 @@ public sealed class HotkeysEndpointsTests(ApiTestFixture fixture)
     public async Task Post_InvalidBody_ReturnsProblemDetailsWithErrors()
     {
         using HttpClient client = CreateAuthed();
-        var dto = new CreateHotkeyDto("", "", AppliesToAllProfiles: true);
+        CreateHotkeyDto dto = NewHotkey("", "");
 
         HttpResponseMessage response = await client.PostAsJsonAsync("/api/v1/hotkeys", dto);
 
@@ -330,11 +381,11 @@ public sealed class HotkeysEndpointsTests(ApiTestFixture fixture)
         using HttpClient client = CreateAuthed(owner);
 
         await client.PostAsJsonAsync("/api/v1/hotkeys",
-            new CreateHotkeyDto("MyCustom browser", "f3", Ctrl: true, AppliesToAllProfiles: true));
+            NewHotkey("MyCustom browser", "f3"));
         await client.PostAsJsonAsync("/api/v1/hotkeys",
-            new CreateHotkeyDto("MyCustom notepad", "f1", Ctrl: true, AppliesToAllProfiles: true));
+            NewHotkey("MyCustom notepad", "f1"));
         await client.PostAsJsonAsync("/api/v1/hotkeys",
-            new CreateHotkeyDto("Lock workstation", "f2", Ctrl: true, AppliesToAllProfiles: true));
+            NewHotkey("Lock workstation", "f2"));
 
         HttpResponseMessage response = await client.GetAsync(
             "/api/v1/hotkeys?descriptionFilter=MyCustom&sortField=key&sortDescending=false");

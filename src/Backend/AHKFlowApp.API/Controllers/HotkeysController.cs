@@ -44,8 +44,7 @@ public sealed class HotkeysController(
         [FromQuery] bool sortDescending = true,
         [FromQuery] string? descriptionFilter = null,
         [FromQuery] string? keyFilter = null,
-        [FromQuery] string? parametersFilter = null,
-        [FromQuery] HotkeyAction? action = null,
+        [FromQuery] HotkeyActionKind? actionKind = null,
         [FromQuery] bool? appliesToAllProfiles = null,
         [FromQuery] bool? ctrl = null,
         [FromQuery] bool? alt = null,
@@ -56,8 +55,8 @@ public sealed class HotkeysController(
         (await listHotkeys.ExecuteAsync(new ListHotkeysQuery(
             profileId, search, page, pageSize,
             sortField, sortDescending,
-            descriptionFilter, keyFilter, parametersFilter,
-            action, appliesToAllProfiles,
+            descriptionFilter, keyFilter,
+            actionKind, appliesToAllProfiles,
             ctrl, alt, shift, win, categoryIds), ct)).ToProblemActionResult(this);
 
     /// <summary>Get a hotkey by id.</summary>
