@@ -216,7 +216,10 @@ internal sealed class ListHotkeysQueryHandler(
             {
                 var hk = Hotkey.Create(
                     ownerOid,
-                    new HotkeyDefinition(descr, key, ctrl, alt, shift, win, action, param,
+                    new HotkeyDefinition(
+                        Description: descr, Key: key,
+                        Ctrl: ctrl, Alt: alt, Shift: shift, Win: win,
+                        Action: action, Parameters: param,
                         AppliesToAllProfiles: true),
                     clock);
                 db.Hotkeys.Add(hk);
