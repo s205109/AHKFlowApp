@@ -68,8 +68,11 @@ public sealed class HotkeyBuilder
     {
         var entity = Hotkey.Create(
             _ownerOid,
-            new HotkeyDefinition(_description, _key, _ctrl, _alt, _shift, _win,
-                _action, _parameters, _appliesToAllProfiles),
+            new HotkeyDefinition(
+                Description: _description, Key: _key,
+                Ctrl: _ctrl, Alt: _alt, Shift: _shift, Win: _win,
+                Action: _action, Parameters: _parameters,
+                AppliesToAllProfiles: _appliesToAllProfiles),
             _clock);
 
         foreach (Guid pid in _profileIds)

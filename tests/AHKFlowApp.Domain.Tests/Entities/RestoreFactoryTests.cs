@@ -51,8 +51,9 @@ public sealed class RestoreFactoryTests
         var entity = Hotkey.Restore(
             id, ownerOid,
             new HotkeyDefinition(
-                "Open terminal", "T", Ctrl: true, Alt: false,
-                Shift: true, Win: false, HotkeyAction.Run, "wt.exe",
+                Description: "Open terminal", Key: "T",
+                Ctrl: true, Alt: false, Shift: true, Win: false,
+                Action: HotkeyAction.Run, Parameters: "wt.exe",
                 AppliesToAllProfiles: true),
             createdAt, new FixedClock(now));
 

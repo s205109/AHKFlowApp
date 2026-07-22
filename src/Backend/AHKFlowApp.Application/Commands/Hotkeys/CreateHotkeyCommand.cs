@@ -76,15 +76,15 @@ internal sealed class CreateHotkeyCommandHandler(
         var entity = Hotkey.Create(
             ownerOid,
             new HotkeyDefinition(
-                input.Description,
-                canonicalKey,
-                input.Ctrl,
-                input.Alt,
-                input.Shift,
-                input.Win,
-                input.Action,
-                input.Parameters,
-                input.AppliesToAllProfiles),
+                Description: input.Description,
+                Key: canonicalKey,
+                Ctrl: input.Ctrl,
+                Alt: input.Alt,
+                Shift: input.Shift,
+                Win: input.Win,
+                Action: input.Action,
+                Parameters: input.Parameters,
+                AppliesToAllProfiles: input.AppliesToAllProfiles),
             clock);
 
         db.Hotkeys.Add(entity);
