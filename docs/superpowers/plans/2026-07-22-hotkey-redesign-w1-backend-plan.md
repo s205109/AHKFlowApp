@@ -17,11 +17,36 @@
 > (`src/Frontend/AHKFlowApp.UI.Blazor/Validation/HotkeyEditModel.cs`). The frontend keeps its own DTO
 > mirror, so nothing fails to compile — the hotkeys page breaks at **runtime**: every create/update
 > posts a payload whose `ActionKind` fields are absent (400 from the kind-conditional validator), and
-> every read shows an empty action. Backend and UI must therefore **merge together in one release**
-> — separate branches and PRs are fine, but neither deploys to TEST alone. Keeping a JSON
-> compatibility contract instead was rejected: it would resurrect the legacy pair on the DTOs that
-> Task 6 exists to remove, for one wave, and Task 11 would have to delete it again anyway.
+> every read shows an empty action. Keeping a JSON compatibility contract instead was rejected: it
+> would resurrect the legacy pair on the DTOs that Task 6 exists to remove, for one wave, and Task 11
+> would have to delete it again anyway.
 > **Gate:** do not merge this plan's Task 6 or later until the W1 UI plan is ready to land with it.
+
+### Cutover procedure (not "separate PRs are fine")
+
+`deploy-api.yml` and `deploy-frontend.yml` both trigger on push to `main`, under disjoint path
+filters (`src/Backend/**` + `tests/**` vs `src/Frontend/**`). They are independent pipelines, so
+merge order *is* deploy order and nothing sequences them for us:
+
+1. **One merge, not two.** Backend and UI land in a **single merge commit to `main`** — one PR, or a
+   stacked pair merged as one commit. Two merges are two pushes: the first one deploys half the
+   change and leaves TEST broken until the second lands and finishes. Separate *branches* are fine;
+   separate *merges* are not.
+2. **TEST window is bounded, not zero.** One push starts both workflows concurrently, so whichever
+   finishes first serves against the other's old half until it catches up — a few minutes on TEST
+   only. That window is accepted, not designed away: closing it needs the compatibility contract
+   rejected above. Treat TEST as unavailable for hotkeys until **both** workflows are green, then
+   smoke-test the hotkeys page before calling the wave done.
+3. **PROD is ordered by hand.** Both PROD deploys are `workflow_dispatch`. Dispatch **API first**,
+   wait for green plus `/health`, then dispatch the frontend. API-first is not arbitrary: the API
+   is the half the other depends on and the half carrying the migrations (`deploy-api.yml`'s
+   `migrate-db` job), so it is the one that can fail. If it does, stop — do not ship a UI whose
+   only contract never landed. The reverse order also leaves a new UI posting typed payloads to an
+   API that answers 400 to every one of them.
+4. **Cached clients outlive both deploys.** The UI is a WASM PWA: a browser holding the old bundle
+   keeps posting the old shape until its service worker picks up the new build and the tab reloads.
+   Deploy ordering cannot fix that; it is the same staleness envelope as any breaking DTO change,
+   and it resolves on reload.
 
 ## Global Constraints
 
@@ -338,6 +363,11 @@ Add the lookup helper and the two remap predicates (after `IsValidHotkeyKey`):
     /// names they already know are in the registry (tests, picker construction).</summary>
     public static HotkeyKeyEntry HotkeyKeyEntryByCanonical(string canonical) => s_byName[canonical];
 
+    /// <summary>Accepted non-canonical spellings, keyed by alias (<c>Esc</c> → <c>Escape</c>).
+    /// Read by the Migration A name-list generator, which must accept every spelling
+    /// <see cref="TryCanonicalize"/> resolves — the migration itself never canonicalizes.</summary>
+    public static IReadOnlyDictionary<string, string> Aliases => s_aliases;
+
     /// <summary>
     /// True if <paramref name="key"/> may be the source of a remap: a registry key carrying the
     /// <see cref="HotkeyKeyRoles.RemapSource"/> role, or a <c>vk</c>/<c>sc</c> code. Wheel keys
@@ -576,7 +606,7 @@ The largest task. Adds the typed columns beside the legacy pair, back-fills them
 - Modify: `tests/AHKFlowApp.TestUtilities/Builders/HotkeyBuilder.cs`
 
 **Interfaces:**
-- Consumes: `HotkeyActionKind`, `RunTargetKind` (Task 1); `HotkeyRules.Tokens.IsValidSendKeysContent`, `AhkEscaping.EscapeStringLiteral` (Task 3, W0).
+- Consumes: `HotkeyActionKind`, `RunTargetKind` (Task 1); `HotkeyKeys.All`, `HotkeyKeys.Aliases`, `HotkeyKeys.HotkeyKeyEntryByCanonical` (Task 2); `HotkeyRules.Tokens.IsValidSendKeysContent`, `AhkEscaping.EscapeStringLiteral` (Task 3, W0).
 - Produces:
   - `HotkeyDefinition` with trailing typed fields (defaulted): `HotkeyActionKind ActionKind = HotkeyActionKind.Raw, string? Text = null, string? SendKeysContent = null, string? RunTarget = null, RunTargetKind? RunTargetKind = null, WindowOp? WindowOp = null, string? RemapDest = null, string? Body = null` — **and the legacy `Action`/`Parameters` stay** through the cutover.
   - `Hotkey` typed properties mirroring those fields.
@@ -723,7 +753,7 @@ public sealed class LegacyHotkeyDefinitionConverterTests
 
 - [ ] **Step 5: Write the fixtures (seeded from the dev lazy-seed rows)**
 
-The lazy-seed rows already cover every hard case (spec §11): a Run with arguments, a Run that isn't a path (`Reload`), a bare scheme (`https://`), clean one-token Sends (`{Up}`, `^v`) that become SendKeys, and a leaked macro token (`{{date:yyyy-MM-dd}}`) that falls back to Raw.
+The lazy-seed rows cover the hand-written cases (spec §11): a Run with arguments, a Run that isn't a path (`Reload`), a bare scheme (`https://`), clean one-token Sends (`{Up}`, `^v`) that become SendKeys, and a leaked macro token (`{{date:yyyy-MM-dd}}`) that falls back to Raw. They are **not** the whole set: the generated half below walks the entire accepted SendKeys grammar (canonical names, aliases, vk/sc codes, braced and bare printables) plus the values that grammar rejects (zero codes, lone control characters), because every one of those is a place the T-SQL classifier can drift from the C# one.
 
 Create `tests/AHKFlowApp.TestUtilities/Fixtures/LegacyHotkeyFixtures.cs`:
 
@@ -794,26 +824,74 @@ public static class LegacyHotkeyFixtures
             HotkeyActionKind.Raw, null, null, null, null, "Send(\"a`rb\")"),
         new("send-with-tab", HotkeyAction.Send, "a\tb",
             HotkeyActionKind.Raw, null, null, null, null, "Send(\"a`tb\")"),
+        // A *lone* control character is also a legal Parameters value, and it hits the single-character
+        // branch the three cases above never reach: C# rejects it (char.IsControl), so it must be Raw.
+        // A naked `@klen = 1` test in T-SQL accepts it — these three pin that divergence.
+        new("send-lone-lf", HotkeyAction.Send, "\n",
+            HotkeyActionKind.Raw, null, null, null, null, "Send(\"`n\")"),
+        new("send-lone-cr", HotkeyAction.Send, "\r",
+            HotkeyActionKind.Raw, null, null, null, null, "Send(\"`r\")"),
+        new("send-lone-tab", HotkeyAction.Send, "\t",
+            HotkeyActionKind.Raw, null, null, null, null, "Send(\"`t\")"),
         // Trailing space: two characters, so not a bare token. Pins the T-SQL LEN() trap —
         // LEN('a ') is 1, which would misclassify this as SendKeys on the migration side only.
         new("send-trailing-space", HotkeyAction.Send, "a ",
             HotkeyActionKind.Raw, null, null, null, null, "Send(\"a \")"),
         new("send-unknown-braced-name", HotkeyAction.Send, "{NotAKey}",
             HotkeyActionKind.Raw, null, null, null, null, "Send(\"{NotAKey}\")"),
-        .. EveryBracedRegistryToken(),
+        // Trailing space *inside* the braces. TryCanonicalize does not trim, so this is Raw — but
+        // T-SQL's IN pad-compares, and would match 'a' in the frozen name list without a guard.
+        new("send-braced-trailing-space", HotkeyAction.Send, "{a }",
+            HotkeyActionKind.Raw, null, null, null, null, "Send(\"{a }\")"),
+        // A zero code names no key, so TryCanonicalize rejects it — both classifiers must say Raw.
+        new("send-zero-vk-code", HotkeyAction.Send, "{vk0}",
+            HotkeyActionKind.Raw, null, null, null, null, "Send(\"{vk0}\")"),
+        new("send-zero-sc-code", HotkeyAction.Send, "{sc000}",
+            HotkeyActionKind.Raw, null, null, null, null, "Send(\"{sc000}\")"),
+        .. EverySendKeysToken(),
     ];
 
-    // Every braced registry token, both bare and modified, so the migration's frozen SQL name
-    // list must match the registry the C# converter reads. A name present in one classifier and
-    // absent from the other fails here instead of silently splitting user data between
-    // SendKeys (snapshot restore) and Raw (migrated row).
-    private static IEnumerable<LegacyHotkeyFixture> EveryBracedRegistryToken() =>
-        HotkeyKeys.All
-            .Where(e => e.Roles.HasFlag(HotkeyKeyRoles.SendToken) && e.RequiresBracesInSend)
-            .SelectMany(e => new[] { $"{{{e.Canonical}}}", $"^{{{e.Canonical}}}" })
-            .Select(token => new LegacyHotkeyFixture(
-                $"send-token-{token}", HotkeyAction.Send, token,
-                HotkeyActionKind.SendKeys, null, token, null, null, null));
+    // Every spelling the C# grammar accepts — not only `HotkeyKeys.All`. `IsValidSendKeysContent`
+    // defers to `TryCanonicalize`, which also resolves aliases (Esc → Escape) and vk/sc codes, and
+    // its bare branch takes any single printable character. The migration's frozen SQL classifier
+    // must mirror all of that: a spelling accepted by one side and not the other silently splits
+    // user data between SendKeys (snapshot restore) and Raw (migrated row).
+    private static IEnumerable<LegacyHotkeyFixture> EverySendKeysToken()
+    {
+        // Braced registry names, bare and modified. Not filtered on RequiresBracesInSend: `{a}` is
+        // braced-legal too, and the SQL name list must therefore carry the letters and digits.
+        foreach (HotkeyKeyEntry e in HotkeyKeys.All.Where(e => e.Roles.HasFlag(HotkeyKeyRoles.SendToken)))
+        {
+            yield return SendKeysCase($"{{{e.Canonical}}}");
+            yield return SendKeysCase($"^{{{e.Canonical}}}");
+        }
+
+        // The unbraced half of the same entries — the C# bare-character branch.
+        foreach (HotkeyKeyEntry e in HotkeyKeys.All.Where(e =>
+                     e.Roles.HasFlag(HotkeyKeyRoles.SendToken) && !e.RequiresBracesInSend))
+        {
+            yield return SendKeysCase(e.Canonical);
+        }
+
+        // Alias spellings resolve to a canonical entry, so {Esc} is SendKeys — the SQL list must
+        // hold the alias itself, since the migration never canonicalizes.
+        foreach (string alias in HotkeyKeys.Aliases
+                     .Where(kv => HotkeyKeys.HotkeyKeyEntryByCanonical(kv.Value).Roles.HasFlag(HotkeyKeyRoles.SendToken))
+                     .Select(kv => kv.Key))
+        {
+            yield return SendKeysCase($"{{{alias}}}");
+        }
+
+        // vk/sc codes: accepted by TryCanonicalize, not registry names, so no role check applies.
+        // Both widths and both cases, since the grammar is width-tolerant and case-insensitive.
+        string[] codes = ["vk1", "vk01", "vkFF", "sc1", "sc001", "sc01B"];
+        foreach (string code in codes)
+            yield return SendKeysCase($"{{{code}}}");
+    }
+
+    private static LegacyHotkeyFixture SendKeysCase(string token) =>
+        new($"send-token-{token}", HotkeyAction.Send, token,
+            HotkeyActionKind.SendKeys, null, token, null, null, null);
 }
 ```
 
@@ -907,10 +985,16 @@ So new rows carry typed columns too (not only migrated rows), wrap each `new Hot
         var entity = Hotkey.Create(
             ownerOid,
             LegacyHotkeyDefinitionConverter.Apply(new HotkeyDefinition(
-                input.Description, canonicalKey, input.Ctrl, input.Alt, input.Shift, input.Win,
-                input.Action, input.Parameters, input.AppliesToAllProfiles)),
+                Description: input.Description, Key: canonicalKey,
+                Ctrl: input.Ctrl, Alt: input.Alt, Shift: input.Shift, Win: input.Win,
+                Action: input.Action, Parameters: input.Parameters,
+                AppliesToAllProfiles: input.AppliesToAllProfiles)),
             clock);
 ```
+
+Every `HotkeyDefinition` construction in this plan names its arguments — the record is nine
+same-shaped parameters today and seventeen after Step 1, four of them adjacent `bool`s. Positional
+calls there are a swap waiting to happen, and the compiler cannot see it.
 
 Apply the same `LegacyHotkeyDefinitionConverter.Apply(new HotkeyDefinition(...))` wrap in:
 - `UpdateHotkeyCommand.cs` (`entity.Update`)
@@ -925,7 +1009,10 @@ Apply the same `LegacyHotkeyDefinitionConverter.Apply(new HotkeyDefinition(...))
         var entity = Hotkey.Create(
             _ownerOid,
             LegacyHotkeyDefinitionConverter.Apply(new HotkeyDefinition(
-                _description, _key, _ctrl, _alt, _shift, _win, _action, _parameters, _appliesToAllProfiles)),
+                Description: _description, Key: _key,
+                Ctrl: _ctrl, Alt: _alt, Shift: _shift, Win: _win,
+                Action: _action, Parameters: _parameters,
+                AppliesToAllProfiles: _appliesToAllProfiles)),
             _clock);
 ```
 
@@ -1017,17 +1104,42 @@ BEGIN
     BEGIN
         IF SUBSTRING(@key, @klen, 1) <> '}' OR @klen < 3 RETURN 0;
         DECLARE @inner NVARCHAR(4000) = SUBSTRING(@key, 2, @klen - 2);
+        DECLARE @ilen INT = LEN(@inner + N'|') - 1;
         IF CHARINDEX('{', @inner) > 0 OR CHARINDEX('}', @inner) > 0 RETURN 0;
-        -- Exhaustive: every registry name that carries SendToken + RequiresBracesInSend as of
-        -- Migration A. Generated, not hand-typed (see below), and frozen once the migration ships.
-        -- A subset here would classify {F5} / {Enter} / ^{Delete} as Raw in the database while the
-        -- C# converter — which consults the whole registry — calls them SendKeys, so a snapshot
-        -- restore would disagree with the migrated row for the same value.
+        -- Second face of the trailing-space trap: SQL '=' and IN pad-compare, so '{a }' would match
+        -- 'a' in the list below, while TryCanonicalize does not trim and sends it to Raw. LIKE does
+        -- not pad-compare, so the vk/sc patterns need no equivalent guard.
+        IF RIGHT(@inner, 1) = ' ' RETURN 0;
+        -- Exhaustive: every spelling TryCanonicalize resolves to a SendToken entry as of Migration A
+        -- — canonical names *and* alias spellings (Esc, Return, Del, …), letters and digits included
+        -- ({a} is braced-legal), because the migration never canonicalizes. Generated, not hand-typed
+        -- (see below), and frozen once the migration ships. A subset here would classify {F5} /
+        -- {Enter} / {Esc} as Raw in the database while the C# converter — which consults the whole
+        -- registry through TryCanonicalize — calls them SendKeys, so a snapshot restore would
+        -- disagree with the migrated row for the same value.
         IF @inner COLLATE Latin1_General_CI_AS IN (<generated name list>) RETURN 1;
+        -- vk/sc codes are accepted braced by the C# grammar with no role check: they are not
+        -- registry names, so IsRegistryName is false and IsValidSendKeysContent short-circuits true.
+        -- LIKE is not width- or case-tolerant on its own, hence one pattern per accepted width.
+        IF @inner COLLATE Latin1_General_CI_AS LIKE 'vk[0-9a-f]'
+           OR @inner COLLATE Latin1_General_CI_AS LIKE 'vk[0-9a-f][0-9a-f]'
+           OR @inner COLLATE Latin1_General_CI_AS LIKE 'sc[0-9a-f]'
+           OR @inner COLLATE Latin1_General_CI_AS LIKE 'sc[0-9a-f][0-9a-f]'
+           OR @inner COLLATE Latin1_General_CI_AS LIKE 'sc[0-9a-f][0-9a-f][0-9a-f]'
+        BEGIN
+            -- An all-zero code names no key (TryCanonicalizeCode rejects it). The digits are
+            -- already known hex, so ""all zero"" is ""contains no 1-9a-f"". LIKE never ignores
+            -- trailing spaces, so the patterns above guarantee @ilen counts real characters.
+            IF SUBSTRING(@inner, 3, @ilen - 2) COLLATE Latin1_General_CI_AS NOT LIKE '%[1-9a-f]%'
+                RETURN 0;
+            RETURN 1;
+        END
         RETURN 0;
     END
-    -- bare: exactly one printable non-brace char
-    IF @klen = 1 AND @key NOT IN ('{','}') RETURN 1;
+    -- bare: exactly one printable non-brace char. UNICODE() < 32 and 127 are the control characters
+    -- char.IsControl rejects in C#; ValidParameters lets \n, \r and \t into Parameters, so a lone
+    -- one of those reaches here and must fall through to Raw.
+    IF @klen = 1 AND @key NOT IN ('{','}') AND UNICODE(@key) >= 32 AND UNICODE(@key) <> 127 RETURN 1;
     RETURN 0;
 END;");
 
@@ -1036,24 +1148,38 @@ END;");
         migrationBuilder.Sql(@"DROP FUNCTION [dbo].[fn_IsSendKeysContent];");
 ```
 
-Produce `<generated name list>` once, from the registry itself, and paste the literal into the migration — never hand-type it. In a scratch xUnit fact or `dotnet script`:
+Produce `<generated name list>` once, from the registry itself, and paste the literal into the migration — never hand-type it. It covers **every spelling `TryCanonicalize` resolves**, which is wider than `HotkeyKeys.All`: canonical names (no `RequiresBracesInSend` filter — `{a}` is legal braced) plus the alias keys. In a scratch xUnit fact or `dotnet script`:
 
 ```csharp
-string list = string.Join(", ", HotkeyKeys.All
-    .Where(e => e.Roles.HasFlag(HotkeyKeyRoles.SendToken) && e.RequiresBracesInSend)
-    .Select(e => $"'{e.Canonical}'")
+IEnumerable<string> canonical = HotkeyKeys.All
+    .Where(e => e.Roles.HasFlag(HotkeyKeyRoles.SendToken))
+    .Select(e => e.Canonical);
+
+IEnumerable<string> aliases = HotkeyKeys.Aliases
+    .Where(kv => HotkeyKeys.HotkeyKeyEntryByCanonical(kv.Value).Roles.HasFlag(HotkeyKeyRoles.SendToken))
+    .Select(kv => kv.Key);
+
+string list = string.Join(", ", canonical.Concat(aliases)
+    .Select(n => $"'{n}'")
     .Order(StringComparer.Ordinal));
 ```
 
+`HotkeyKeys.Aliases` is the accessor added in Task 2. vk/sc codes are *not* in the list — the function matches them by shape, since enumerating every code is neither finite-friendly nor frozen-friendly.
+
 The pasted list is **frozen** at Migration A: a shipped migration must reproduce byte-identically forever. Later waves that add `SendToken` names (W2 mouse/wheel) do **not** edit this migration — the parity test below fails loudly instead, which is the signal to decide between a top-up migration and accepting Raw for the new names.
 
-> **Design decision (open question O3, revised).** The T-SQL classifier mirrors the **full** registry
-> for braced tokens, generated from `HotkeyKeys.All` and frozen at Migration A. The original
-> fixed seven-name list was wrong: it only covered the dev-seed names, so real user rows holding
-> `{F5}`, `{Enter}` or `^{Delete}` migrated to Raw while `LegacyHotkeySnapshotConverter` — which
-> consults the whole registry — resolves the same values to SendKeys, and a history restore then
-> disagrees with the migrated row. The parity fixtures (Step 10) now iterate every registry name, so
-> a missing entry in the SQL list fails the build rather than shipping a silent split.
+> **Design decision (open question O3, revised twice).** The T-SQL classifier mirrors the **whole
+> accepted C# grammar**, not a name subset: the generated list of every SendToken canonical *and
+> alias*, a shape match for vk/sc codes, and a control-character exclusion on the bare branch —
+> all frozen at Migration A. Two earlier shapes were wrong. The original fixed seven-name list
+> only covered the dev-seed names, so user rows holding `{F5}` or `{Enter}` migrated to Raw. The
+> follow-up `SendToken && RequiresBracesInSend` list still dropped four classes the C# grammar
+> accepts: aliases (`{Esc}`), vk/sc codes (`{vk1}`), braced printable characters (`{a}`), and —
+> in the other direction — the bare branch accepted a lone `\n`/`\r`/`\t` that `char.IsControl`
+> rejects in C#. Each is a value `LegacyHotkeySnapshotConverter` and the migrated row would
+> classify differently, so a history restore disagrees with the row it restores over. The parity
+> fixtures (Step 10) now iterate the full grammar, so any of the four fails the build instead of
+> shipping a silent split.
 
 Set `Down` to `throw new NotSupportedException(...)` (the back-fill is lossy in reverse; the column drops happen in Migration B), mirroring `RawHotstringKind.Down`.
 
@@ -1227,10 +1353,18 @@ In `Build()`, when `_actionKind` is set, construct the typed `HotkeyDefinition` 
 ```csharp
         HotkeyDefinition definition = _actionKind is HotkeyActionKind kind
             ? new HotkeyDefinition(
-                _description, _key, _ctrl, _alt, _shift, _win, _action, _parameters, _appliesToAllProfiles,
-                kind, _text, _sendKeysContent, _runTarget, _runTargetKind, _windowOp, _remapDest, _body)
+                Description: _description, Key: _key,
+                Ctrl: _ctrl, Alt: _alt, Shift: _shift, Win: _win,
+                Action: _action, Parameters: _parameters,
+                AppliesToAllProfiles: _appliesToAllProfiles,
+                ActionKind: kind, Text: _text, SendKeysContent: _sendKeysContent,
+                RunTarget: _runTarget, RunTargetKind: _runTargetKind, WindowOp: _windowOp,
+                RemapDest: _remapDest, Body: _body)
             : LegacyHotkeyDefinitionConverter.Apply(new HotkeyDefinition(
-                _description, _key, _ctrl, _alt, _shift, _win, _action, _parameters, _appliesToAllProfiles));
+                Description: _description, Key: _key,
+                Ctrl: _ctrl, Alt: _alt, Shift: _shift, Win: _win,
+                Action: _action, Parameters: _parameters,
+                AppliesToAllProfiles: _appliesToAllProfiles));
 
         var entity = Hotkey.Create(_ownerOid, definition, _clock);
 ```
@@ -1539,10 +1673,14 @@ Update the inline `new HotkeyDto(...)` projections in `ListHotkeysQuery.cs` (~li
         var entity = Hotkey.Create(
             ownerOid,
             new HotkeyDefinition(
-                input.Description, canonicalKey, input.Ctrl, input.Alt, input.Shift, input.Win,
-                Action: HotkeyAction.Send, Parameters: "", input.AppliesToAllProfiles,   // vestigial until Migration B
-                input.ActionKind, input.Text, input.SendKeysContent, input.RunTarget,
-                input.RunTargetKind, input.WindowOp, input.RemapDest, input.Body),
+                Description: input.Description, Key: canonicalKey,
+                Ctrl: input.Ctrl, Alt: input.Alt, Shift: input.Shift, Win: input.Win,
+                Action: HotkeyAction.Send, Parameters: "",   // vestigial until Migration B
+                AppliesToAllProfiles: input.AppliesToAllProfiles,
+                ActionKind: input.ActionKind, Text: input.Text,
+                SendKeysContent: input.SendKeysContent, RunTarget: input.RunTarget,
+                RunTargetKind: input.RunTargetKind, WindowOp: input.WindowOp,
+                RemapDest: input.RemapDest, Body: input.Body),
             clock);
 ```
 
@@ -1655,6 +1793,23 @@ public sealed class HotkeyKindConditionalRulesTests
         Validate(Base(HotkeyActionKind.Run) with { RunTarget = "notepad.exe", RunTargetKind = RunTargetKind.Application })
             .IsValid.Should().BeTrue();
 
+    // The two Run failures are separate fields. A merged check would blame RunTarget for a bad
+    // RunTargetKind, and the client would highlight a control it filled in correctly.
+    [Fact]
+    public void Run_WithoutTarget_FailsOnRunTarget() =>
+        Validate(Base(HotkeyActionKind.Run) with { RunTargetKind = RunTargetKind.Application })
+            .Errors.Should().ContainSingle().Which.PropertyName.Should().Be("RunTarget");
+
+    [Fact]
+    public void Run_WithoutTargetKind_FailsOnRunTargetKind() =>
+        Validate(Base(HotkeyActionKind.Run) with { RunTarget = "notepad.exe" })
+            .Errors.Should().ContainSingle().Which.PropertyName.Should().Be("RunTargetKind");
+
+    [Fact]
+    public void Run_UndefinedTargetKind_FailsOnRunTargetKind() =>
+        Validate(Base(HotkeyActionKind.Run) with { RunTarget = "notepad.exe", RunTargetKind = (RunTargetKind)99 })
+            .Errors.Should().ContainSingle().Which.PropertyName.Should().Be("RunTargetKind");
+
     [Fact]
     public void SendKeys_InvalidToken_IsInvalid() =>
         Validate(Base(HotkeyActionKind.SendKeys) with { SendKeysContent = "Volume_Up" }) // must be braced
@@ -1757,10 +1912,13 @@ In `HotkeyRules.cs`, remove `ValidAction` and `ValidParameters` (superseded), an
                     ctx.AddFailure("Text", "SendText requires Text."); break;
                 case HotkeyActionKind.SendKeys when !Tokens.IsValidSendKeysContent(sendKeys(x)):
                     ctx.AddFailure("SendKeysContent", "SendKeys requires a valid key token (for example {Volume_Up} or ^c)."); break;
-                case HotkeyActionKind.Run when string.IsNullOrEmpty(runTarget(x))
-                                            || runTargetKind(x) is not RunTargetKind rtk
-                                            || !Enum.IsDefined(rtk):
-                    ctx.AddFailure("RunTarget", "Run requires a run target and a valid target kind."); break;
+                // Two failures, two fields: a bad RunTargetKind must not be reported against
+                // RunTarget, or the UI highlights the wrong control and the ProblemDetails names a
+                // field the client never sent wrong.
+                case HotkeyActionKind.Run when string.IsNullOrEmpty(runTarget(x)):
+                    ctx.AddFailure("RunTarget", "Run requires a run target."); break;
+                case HotkeyActionKind.Run when runTargetKind(x) is not RunTargetKind rtk || !Enum.IsDefined(rtk):
+                    ctx.AddFailure("RunTargetKind", "Run requires a valid run target kind."); break;
                 case HotkeyActionKind.Window when windowOp(x) is not WindowOp op || !Enum.IsDefined(op):
                     ctx.AddFailure("WindowOp", "Window requires a valid window operation."); break;
                 case HotkeyActionKind.Remap when !Tokens.IsValidRemapDest(remapDest(x)):
@@ -1978,16 +2136,24 @@ public static class LegacyHotkeySnapshotConverter
         {
             var t = LegacyHotkeyDefinitionConverter.ToTyped(legacyAction, s.Parameters ?? "");
             return new HotkeyDefinition(
-                s.Description, s.Key, s.Ctrl, s.Alt, s.Shift, s.Win,
-                Action: legacyAction, Parameters: s.Parameters ?? "", s.AppliesToAllProfiles,
-                t.ActionKind, t.Text, t.SendKeysContent, t.RunTarget, t.RunTargetKind, t.WindowOp, t.RemapDest, t.Body);
+                Description: s.Description, Key: s.Key,
+                Ctrl: s.Ctrl, Alt: s.Alt, Shift: s.Shift, Win: s.Win,
+                Action: legacyAction, Parameters: s.Parameters ?? "",
+                AppliesToAllProfiles: s.AppliesToAllProfiles,
+                ActionKind: t.ActionKind, Text: t.Text, SendKeysContent: t.SendKeysContent,
+                RunTarget: t.RunTarget, RunTargetKind: t.RunTargetKind, WindowOp: t.WindowOp,
+                RemapDest: t.RemapDest, Body: t.Body);
         }
 
         // A W1 snapshot: pass the typed fields through (legacy pair vestigial until Migration B).
         return new HotkeyDefinition(
-            s.Description, s.Key, s.Ctrl, s.Alt, s.Shift, s.Win,
-            Action: HotkeyAction.Send, Parameters: "", s.AppliesToAllProfiles,
-            s.ActionKind, s.Text, s.SendKeysContent, s.RunTarget, s.RunTargetKind, s.WindowOp, s.RemapDest, s.Body);
+            Description: s.Description, Key: s.Key,
+            Ctrl: s.Ctrl, Alt: s.Alt, Shift: s.Shift, Win: s.Win,
+            Action: HotkeyAction.Send, Parameters: "",
+            AppliesToAllProfiles: s.AppliesToAllProfiles,
+            ActionKind: s.ActionKind, Text: s.Text, SendKeysContent: s.SendKeysContent,
+            RunTarget: s.RunTarget, RunTargetKind: s.RunTargetKind, WindowOp: s.WindowOp,
+            RemapDest: s.RemapDest, Body: s.Body);
     }
 }
 ```
@@ -2183,9 +2349,12 @@ internal sealed class GetHotkeyPreviewQueryHandler(TimeProvider clock)
         Hotkey hk = Hotkey.Create(
             Guid.Empty,
             new HotkeyDefinition(
-                i.Description, canonicalKey, i.Ctrl, i.Alt, i.Shift, i.Win,
+                Description: i.Description, Key: canonicalKey,
+                Ctrl: i.Ctrl, Alt: i.Alt, Shift: i.Shift, Win: i.Win,
                 Action: HotkeyAction.Send, Parameters: "", AppliesToAllProfiles: true,
-                i.ActionKind, i.Text, i.SendKeysContent, i.RunTarget, i.RunTargetKind, i.WindowOp, i.RemapDest, i.Body),
+                ActionKind: i.ActionKind, Text: i.Text, SendKeysContent: i.SendKeysContent,
+                RunTarget: i.RunTarget, RunTargetKind: i.RunTargetKind, WindowOp: i.WindowOp,
+                RemapDest: i.RemapDest, Body: i.Body),
             clock);
 
         string snippet = HotkeyEmitter.Emit(hk);
@@ -2277,17 +2446,19 @@ public static TheoryData<CreateHotkeyDto, HotkeyActionKind> KindPayloads() => ne
 
 // Raw JSON, not a typed DTO: an out-of-range int is exactly what a hand-rolled client sends,
 // and it is the only way to reach the undefined-enum path the validator now guards. Must be
-// 400 from validation, never 500 from the emitter.
+// 400 from validation, never 500 from the emitter — and the ProblemDetails must name the field
+// that is actually wrong, so a status-only assertion is not enough.
 [Theory]
-[InlineData("{\"description\":\"Bad\",\"key\":\"a\",\"ctrl\":true,\"actionKind\":99}")]
-[InlineData("{\"description\":\"Bad\",\"key\":\"a\",\"ctrl\":true,\"actionKind\":3,\"windowOp\":99}")]
-[InlineData("{\"description\":\"Bad\",\"key\":\"a\",\"ctrl\":true,\"actionKind\":2,\"runTarget\":\"notepad\",\"runTargetKind\":99}")]
-public async Task Post_UndefinedEnumValue_Returns400(string json)
+[InlineData("{\"description\":\"Bad\",\"key\":\"a\",\"ctrl\":true,\"actionKind\":99}", "ActionKind")]
+[InlineData("{\"description\":\"Bad\",\"key\":\"a\",\"ctrl\":true,\"actionKind\":3,\"windowOp\":99}", "WindowOp")]
+[InlineData("{\"description\":\"Bad\",\"key\":\"a\",\"ctrl\":true,\"actionKind\":2,\"runTarget\":\"notepad\",\"runTargetKind\":99}", "RunTargetKind")]
+public async Task Post_UndefinedEnumValue_Returns400NamingField(string json, string expectedField)
 {
     HttpResponseMessage res = await Client.PostAsync("/api/v1/hotkeys",
         new StringContent(json, Encoding.UTF8, "application/json"));
 
     res.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    (await res.Content.ReadAsStringAsync()).Should().Contain(expectedField);
 }
 
 [Fact]
@@ -2389,12 +2560,20 @@ public sealed record HotkeyDefinition(
 
 `LegacyHotkeyDefinitionConverter.cs` / `LegacyHotkeySnapshotConverter.cs`: they now build the typed-only `HotkeyDefinition` (no `Action:`/`Parameters:` args). Move `HotkeyAction` into the converter file per the note above.
 
-Update every `new HotkeyDefinition(...)` to the typed-only positional shape (drop the two vestigial args): `Create`/`Update` commands, `GetHotkeyPreviewQueryHandler`, `HotkeyBuilder`, and any test constructing a definition directly. Confirm:
+Update every `new HotkeyDefinition(...)` to the typed-only shape — delete the `Action:` and `Parameters:` arguments, keep every remaining argument **named**: `Create`/`Update` commands, `GetHotkeyPreviewQueryHandler`, `HotkeyBuilder`, and any test constructing a definition directly. Confirm:
 
 ```bash
 grep -rn "Action: HotkeyAction\|Parameters: \"\"" src tests
 ```
 Expected: no hits.
+
+Then confirm nothing reverted to positional along the way — every constructed definition should
+name its arguments:
+
+```bash
+grep -rn -A2 "new HotkeyDefinition(" src tests
+```
+Expected: the argument after each `(` is `Description:`, never a bare expression.
 
 - [ ] **Step 4: Retire the enum**
 
@@ -2472,7 +2651,7 @@ git commit -m "docs: W1 hotkey terms, ADR 0004, per-kind emission"
 
 **Placeholder scan:** the `ValidateRawBody` placeholder in Task 7 Step 3 is explicitly removed in the same step (Raw check inlined). Migration names use `<ts>` (EF-generated timestamp) — the actual file name is produced by `dotnet ef`; commands are exact. No TBD/TODO left.
 
-**Type consistency:** `HotkeyActionKind` field order (SendText, SendKeys, Run, Window, Remap, Disable, Raw) is identical across enum (Task 1), converter (Task 4), emitter (Task 5), DTOs (Task 6), validator (Task 7), snapshot (Task 8). `LegacyHotkeyDefinitionConverter.ToTyped` return shape is reused verbatim by the parity test (Task 4) and the snapshot converter (Task 8). `HotkeyDefinition` positional order is stated in full at both its expand shape (Task 4) and contract shape (Task 11).
+**Type consistency:** `HotkeyActionKind` field order (SendText, SendKeys, Run, Window, Remap, Disable, Raw) is identical across enum (Task 1), converter (Task 4), emitter (Task 5), DTOs (Task 6), validator (Task 7), snapshot (Task 8). `LegacyHotkeyDefinitionConverter.ToTyped` return shape is reused verbatim by the parity test (Task 4) and the snapshot converter (Task 8). `HotkeyDefinition`'s parameter list is stated in full at both its expand shape (Task 4) and contract shape (Task 11); every *construction* in this plan names its arguments, matching the convention the live call sites already follow.
 
 **Green-at-every-task:** Tasks 1–3 additive; Task 4 additive columns (existing emitter untouched); Tasks 5–10 each end on `dotnet test AHKFlowApp.slnx` green; Task 11 drops legacy after all reads are re-pointed. The only non-incremental risk is the expand→contract seam, which is why the legacy pair is kept vestigial rather than removed mid-cutover.
 
@@ -2490,16 +2669,19 @@ All five closed 2026-07-22, before execution. Decisions are binding on the tasks
    pre-W0 and stale. Confirmed empirically on 2026-07-22: `^a::Send("he said `"hi`" 100``%")` was
    downloaded from the running app and loaded without error in AutoHotkey v2, so the escaped form
    is known-good output that this wave must not change.
-3. **SendKeys classification in migration T-SQL (O3) — full registry, generated and frozen.**
-   Revised 2026-07-22 after review. The classifier accepts every registry name carrying
-   `SendToken` + `RequiresBracesInSend`, generated from `HotkeyKeys.All` and pasted into
-   Migration A as a frozen literal. The earlier decision — a fixed seven-name list — only covered
-   dev-seed names: `{F5}`, `{Enter}` and `^{Delete}` would have migrated to `Raw` while
-   `LegacyHotkeySnapshotConverter` reads the whole registry and calls them `SendKeys`, so a
-   history restore disagreed with the migrated row for the same value. Fixtures now iterate the
-   registry, so a gap fails the parity test. Migrating all legacy `Send` to `Raw` stays rejected:
-   the seed profile alone carries `{Up}`, `{Down}`, `{Left}`, `{Right}` and `^v`, which would all
-   land in the unchecked `Raw` path.
+3. **SendKeys classification in migration T-SQL (O3) — whole C# grammar, generated and frozen.**
+   Revised twice on 2026-07-22 after review. The classifier mirrors everything
+   `IsValidSendKeysContent` accepts: a generated frozen literal of every `SendToken` canonical
+   *and* alias spelling, a shape match for `vk`/`sc` codes, and a control-character exclusion on
+   the bare-character branch. The first decision — a fixed seven-name list — only covered
+   dev-seed names, so `{F5}` and `{Enter}` migrated to `Raw`. The second —
+   `SendToken && RequiresBracesInSend` — still dropped `{Esc}` (alias), `{vk1}` (code) and `{a}`
+   (braced printable), and its bare branch accepted a lone `\n`/`\r`/`\t` that `char.IsControl`
+   rejects in C#. In each case `LegacyHotkeySnapshotConverter` and the migrated row classify the
+   same value differently, so a history restore disagrees with the row it restores over. Fixtures
+   now iterate the full grammar, so any gap fails the parity test. Migrating all legacy `Send` to
+   `Raw` stays rejected: the seed profile alone carries `{Up}`, `{Down}`, `{Left}`, `{Right}` and
+   `^v`, which would all land in the unchecked `Raw` path.
 4. **`HotkeyAction` retirement home — `LegacyHotkeyDefinitionConverter.cs`.** It becomes the
    converter's legacy-input enum, next to its only remaining consumer, and keeps
    `HotkeySnapshot.Action` typed instead of widening it to `int`.
