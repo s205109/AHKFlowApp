@@ -4,29 +4,54 @@ using AHKFlowApp.Domain.Enums;
 namespace AHKFlowApp.Application.Services;
 
 /// <summary>
-/// Single emission point for hotkey lines, mirroring <see cref="HotstringEmitter"/>.
-/// The left-hand side is modifiers in the fixed order <c>^ ! + #</c> followed by the key;
-/// the right-hand side is the action call.
+/// Single emission point for hotkey lines, mirroring <see cref="HotstringEmitter"/>. The left-hand
+/// side is the auto <c>$</c> (SendKeys on a keyboard key) + modifiers in the fixed order <c>^ ! + #</c>
+/// + the key; the right-hand side is per <see cref="HotkeyActionKind"/> (spec §1).
 /// </summary>
 /// <remarks>
-/// Every free-text value passes through <see cref="AhkEscaping.EscapeStringLiteral"/>.
-/// Because the generator and the profile download both route through here, escaping
-/// reaches rows written by paths that never see a validator — history restore, history
-/// revert, and the development lazy seed.
+/// Everything embedded in a quoted literal (<c>SendText</c>, <c>SendKeys</c>, <c>Run</c>) passes
+/// through <see cref="AhkEscaping.EscapeStringLiteral"/>. Token validation and string-literal
+/// escaping are separate layers: <c>"</c> and <c>`</c> are legal one-character SendKeys tokens
+/// (Send types them), so a validated token still has to be escaped or it terminates the literal.
+/// Remap emits a bare validated key name — no literal, nothing to escape. Raw wraps a verbatim
+/// body in braces — the sole unchecked path.
 /// </remarks>
 internal static class HotkeyEmitter
 {
+    private const string ActiveWindow = "\"A\"";
+
     public static string Emit(Hotkey hk)
     {
-        string function = hk.Action switch
+        string rhs = hk.ActionKind switch
         {
-            HotkeyAction.Send => "Send",
-            HotkeyAction.Run => "Run",
-            _ => throw new InvalidOperationException($"Unsupported HotkeyAction: {hk.Action}"),
+            HotkeyActionKind.SendText => $"SendText(\"{AhkEscaping.EscapeStringLiteral(hk.Text ?? "")}\")",
+            HotkeyActionKind.SendKeys => $"Send(\"{AhkEscaping.EscapeStringLiteral(hk.SendKeysContent ?? "")}\")",
+            HotkeyActionKind.Run => $"Run(\"{AhkEscaping.EscapeStringLiteral(hk.RunTarget ?? "")}\")",
+            HotkeyActionKind.Window => WindowCall(hk.WindowOp),
+            HotkeyActionKind.Remap => hk.RemapDest ?? "",
+            HotkeyActionKind.Disable => "return",
+            HotkeyActionKind.Raw => $"{{{hk.Body}}}",
+            _ => throw new InvalidOperationException($"Unsupported HotkeyActionKind: {hk.ActionKind}"),
         };
 
-        return $"{BuildModifiers(hk)}{hk.Key}::{function}(\"{AhkEscaping.EscapeStringLiteral(hk.Parameters)}\")";
+        return $"{Prefix(hk)}{BuildModifiers(hk)}{hk.Key}::{rhs}";
     }
+
+    private static string WindowCall(WindowOp? op) => op switch
+    {
+        WindowOp.Minimize => $"WinMinimize({ActiveWindow})",
+        WindowOp.Maximize => $"WinMaximize({ActiveWindow})",
+        WindowOp.Restore => $"WinRestore({ActiveWindow})",
+        WindowOp.Close => $"WinClose({ActiveWindow})",
+        WindowOp.ToggleAlwaysOnTop => $"WinSetAlwaysOnTop(-1, {ActiveWindow})",
+        _ => throw new InvalidOperationException($"Unsupported WindowOp: {op}"),
+    };
+
+    // $ forces the keyboard hook so a SendKeys binding cannot retrigger the script's own hotkeys
+    // (spec §5). Emitted for every SendKeys on a keyboard key. Mouse/wheel keys (Wave 2) use the
+    // mouse hook already and get no $ — until then, all registry keys are keyboard keys.
+    private static string Prefix(Hotkey hk) =>
+        hk.ActionKind == HotkeyActionKind.SendKeys ? "$" : "";
 
     private static string BuildModifiers(Hotkey hk)
     {
