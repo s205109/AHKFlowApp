@@ -175,6 +175,9 @@ internal static class HotkeyKeys
     /// names they already know are in the registry (tests, picker construction).</summary>
     public static HotkeyKeyEntry HotkeyKeyEntryByCanonical(string canonical) => s_byName[canonical];
 
+    /// <summary>True if <paramref name="canonical"/> is a named registry entry (not a vk/sc code).</summary>
+    public static bool IsRegistryName(string canonical) => s_byName.ContainsKey(canonical);
+
     /// <summary>Accepted non-canonical spellings, keyed by alias (<c>Esc</c> → <c>Escape</c>).
     /// Read by the Migration A name-list generator, which must accept every spelling
     /// <see cref="TryCanonicalize"/> resolves — the migration itself never canonicalizes.</summary>
