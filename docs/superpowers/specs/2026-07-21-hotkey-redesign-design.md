@@ -42,7 +42,7 @@ arguments is deferred.
 | **Window** | manipulate active window | `WindowOp` | `WinMinimize("A")`, `WinSetAlwaysOnTop(-1, "A")`, … |
 | **Remap** | key behaves as another | `RemapDest` token | `origin::dest` |
 | **Disable** | key does nothing | — | `origin::return` |
-| **Raw** | verbatim action body (escape hatch) | `Body` | `origin::{ <body> }` |
+| **Raw** | verbatim action body (escape hatch) | `Body` | `origin::<body>` (verbatim; a block body carries its own braces — decision 26) |
 
 **Emission style is the parenthesized call form** (`Run("notepad")`, not `Run "notepad"`) for every
 action that emits a call — it is what today's `FormatHotkey` already produces, so W0 stays
@@ -239,7 +239,7 @@ be confirmed against a real AHK v2 load, not just against the emitter.
   - **LHS**: `{$}{*}{~}` + (`{^}{!}{+}{#}` mods **xor** `{ComboPrefixKey} & `) + `Key` + (` Up` if
     key-up). `$` is emitter-derived (SendKeys on a keyboard key), not a stored column.
   - **RHS**: per `ActionKind` (table §1); `EscapeStringLiteral` for SendText/Run; validated tokens for
-    SendKeys/Remap; `return` for Disable; `{ <body> }` for Raw.
+    SendKeys/Remap; `return` for Disable; `Body` emitted verbatim for Raw (decision 26).
   - Join with `::`.
   - `EscapeStringLiteral` moves to a shared internal helper used by both emitters (§5).
 - `AhkScriptGenerator`: delete inline `FormatHotkey`; group hotkeys in the Hotkeys section by
@@ -486,6 +486,16 @@ allow-lists — wheel, for instance, is a legal hotkey key and Send token but no
     where the existing validation error already shows. Migration logs a count.
 25. **Registry scope**: curated six groups + `vk`/`sc` escape hatch; joystick and remote keys
     excluded; entries carry role capability flags feeding all five validators.
+
+## Resolved (implementation review, 2026-07-22)
+
+26. **Raw emits `Body` verbatim, no emitter brace-wrapping.** §1's original table row
+    (`origin::{ <body> }`) contradicted §8's migration rule that a converted legacy `Send` row must
+    **preserve current emission byte-for-byte** — wrapping that row's `Body` (`Send("hi")`) would
+    emit `n::{Send("hi")}`, not the legacy `n::Send("hi")`. Byte-identity wins: `Body` carries its
+    own braces when it needs a block (as example 10 already does). §1 and §8's emission summary are
+    updated accordingly; §5's "emitted as `origin::{ <body> }`" description is superseded by this
+    decision.
 
 ## Unresolved questions
 
