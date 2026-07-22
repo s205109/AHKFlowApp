@@ -21,6 +21,15 @@ public sealed class UpdateHotkeyCommandValidator : AbstractValidator<UpdateHotke
     {
         RuleFor(x => x.Input.Description).ValidDescription();
         RuleFor(x => x.Input.Key).ValidKey();
+        this.AddHotkeyActionRules(
+            x => x.Input.ActionKind,
+            x => x.Input.Text,
+            x => x.Input.SendKeysContent,
+            x => x.Input.RunTarget,
+            x => x.Input.RunTargetKind,
+            x => x.Input.WindowOp,
+            x => x.Input.RemapDest,
+            x => x.Input.Body);
         this.AddProfileAssociationRules(
             x => x.Input.AppliesToAllProfiles,
             x => x.Input.ProfileIds);
