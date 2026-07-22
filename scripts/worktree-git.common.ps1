@@ -38,9 +38,12 @@ function ConvertTo-WorktreeBranchName {
         throw 'Worktree branch name cannot be empty.'
     }
 
+    # The branch prefixes from AGENTS.md 'Git Workflow' — deliberately NOT the conventional
+    # commit types listed alongside them ('refactor:', 'test:', 'docs:', 'chore:'), which name
+    # commits rather than branches. An unrecognized leading segment is topic text, not a type.
     $type = 'fix'
     $topic = $safe
-    if ($safe -match '^(?<type>fix|feature|hotfix|refactor|test|docs|chore)/(?<topic>.+)$') {
+    if ($safe -match '^(?<type>feature|fix|hotfix)/(?<topic>.+)$') {
         $type = $Matches.type
         $topic = $Matches.topic
     }

@@ -32,10 +32,15 @@ Assert-BranchName 'worktree-hook-exec-form' 'fix/wt-worktree-hook-exec-form'
 # Already carrying the wt- marker but untyped: keep the marker, add the fallback type once.
 Assert-BranchName 'wt-foo' 'fix/wt-foo'
 
-# Typed names keep their type and gain the marker.
+# The three branch prefixes from AGENTS.md keep their type and gain the marker.
 Assert-BranchName 'feature/123-thing' 'feature/wt-123-thing'
-Assert-BranchName 'hotfix/456-thing' 'hotfix/wt-456-thing'
-Assert-BranchName 'chore/tidy' 'chore/wt-tidy'
+Assert-BranchName 'fix/456-thing' 'fix/wt-456-thing'
+Assert-BranchName 'hotfix/789-thing' 'hotfix/wt-789-thing'
+
+# Conventional commit types are not branch prefixes: they name commits, not branches, so they
+# are topic text and pick up the 'fix/' fallback like any other unrecognized leading segment.
+Assert-BranchName 'chore/tidy' 'fix/wt-chore/tidy'
+Assert-BranchName 'docs/readme' 'fix/wt-docs/readme'
 
 # Fully conventional names are already correct and must round-trip unchanged.
 Assert-BranchName 'fix/wt-foo' 'fix/wt-foo'
