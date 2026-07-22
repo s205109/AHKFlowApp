@@ -5,6 +5,7 @@ using AHKFlowApp.Application.Queries.Hotkeys;
 using AHKFlowApp.Application.Tests.Dev;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Infrastructure.Persistence;
+using AHKFlowApp.TestUtilities.Builders;
 using Ardalis.Result;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
@@ -143,10 +144,15 @@ public sealed class ListHotkeysLazySeedTests(HotkeyDbFixture fx)
         await using (AppDbContext seedCtx = fx.CreateContext())
         {
             // Insert a key combo that overlaps with the lazy-seed sample set (Ctrl+Alt+N)
-            seedCtx.Hotkeys.Add(Hotkey.Create(owner, "Launch Notepad", "N",
-                ctrl: true, alt: true, shift: false, win: false,
-                AHKFlowApp.Domain.Enums.HotkeyAction.Run, "notepad.exe",
-                appliesToAllProfiles: true, TimeProvider.System));
+            seedCtx.Hotkeys.Add(new HotkeyBuilder()
+                .WithOwner(owner)
+                .WithDescription("Launch Notepad")
+                .WithKey("N")
+                .WithCtrl()
+                .WithAlt()
+                .WithAction(AHKFlowApp.Domain.Enums.HotkeyAction.Run)
+                .WithParameters("notepad.exe")
+                .Build());
             await seedCtx.SaveChangesAsync();
         }
 

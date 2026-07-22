@@ -21,10 +21,10 @@ public sealed class ListHotkeysFilterByCategoryTests(HotkeyDbFixture fx)
         Category cat1 = new CategoryBuilder().WithOwner(owner).Named("Work").Build();
         Category cat2 = new CategoryBuilder().WithOwner(owner).Named("Home").Build();
 
-        var hkA = Hotkey.Create(owner, "A", "a", true, false, false, false, HotkeyAction.Send, "", true, TimeProvider.System);
-        var hkB = Hotkey.Create(owner, "B", "b", true, false, false, false, HotkeyAction.Send, "", true, TimeProvider.System);
-        var hkC = Hotkey.Create(owner, "C", "c", true, false, false, false, HotkeyAction.Send, "", true, TimeProvider.System);
-        var hkD = Hotkey.Create(owner, "D", "d", true, false, false, false, HotkeyAction.Send, "", true, TimeProvider.System);
+        Hotkey hkA = new HotkeyBuilder().WithOwner(owner).WithDescription("A").WithKey("a").WithCtrl().WithAction(HotkeyAction.Send).WithParameters("").Build();
+        Hotkey hkB = new HotkeyBuilder().WithOwner(owner).WithDescription("B").WithKey("b").WithCtrl().WithAction(HotkeyAction.Send).WithParameters("").Build();
+        Hotkey hkC = new HotkeyBuilder().WithOwner(owner).WithDescription("C").WithKey("c").WithCtrl().WithAction(HotkeyAction.Send).WithParameters("").Build();
+        Hotkey hkD = new HotkeyBuilder().WithOwner(owner).WithDescription("D").WithKey("d").WithCtrl().WithAction(HotkeyAction.Send).WithParameters("").Build();
 
         await using (AppDbContext seed = fx.CreateContext())
         {
@@ -55,8 +55,8 @@ public sealed class ListHotkeysFilterByCategoryTests(HotkeyDbFixture fx)
     {
         var owner = Guid.NewGuid();
         Category cat = new CategoryBuilder().WithOwner(owner).Named("Work").Build();
-        var hkA = Hotkey.Create(owner, "Aa", "p", true, false, false, false, HotkeyAction.Send, "", true, TimeProvider.System);
-        var hkB = Hotkey.Create(owner, "Bb", "q", false, true, false, false, HotkeyAction.Send, "", true, TimeProvider.System);
+        Hotkey hkA = new HotkeyBuilder().WithOwner(owner).WithDescription("Aa").WithKey("p").WithCtrl().WithAction(HotkeyAction.Send).WithParameters("").Build();
+        Hotkey hkB = new HotkeyBuilder().WithOwner(owner).WithDescription("Bb").WithKey("q").WithAlt().WithAction(HotkeyAction.Send).WithParameters("").Build();
 
         await using (AppDbContext seed = fx.CreateContext())
         {

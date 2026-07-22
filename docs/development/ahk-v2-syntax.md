@@ -207,7 +207,7 @@ difference matters:
 
 | | `Escape()` | `EscapeStringLiteral()` |
 |---|---|---|
-| Used for | triggers, inline replacements | contents of `SendText "..."` / `Send "..."` |
+| Used for | triggers, inline replacements | contents of `SendText "..."` / `Send "..."` / `Run("...")` — hotstrings **and** hotkeys, via the shared `AhkEscaping` helper |
 | `` ` `` → | ` `` ` | ` `` ` |
 | newline → | `` `n `` | `` `n `` |
 | CR / tab → | `` `r `` / `` `t `` | `` `r `` / `` `t `` |
@@ -266,24 +266,58 @@ validator is the escaping here.
 | Shift | `+` |
 | Win | `#` |
 
-Emitted in the fixed order `^ ! + #` (`AhkScriptGenerator.FormatHotkey`). Actions map to `Send` or
+Emitted in the fixed order `^ ! + #` (`HotkeyEmitter`). Actions map to `Send` or
 `Run`; an unknown action throws rather than emitting a broken line.
 
 ```ahk
 ^!t::Run("notepad.exe")
 ```
 
-Both hotkey `Key` and `Parameters` are interpolated **without** passing through either escape
-routine. Boundary validation rejects the known-unsafe characters — `"`, backticks, and control
-characters in both fields, plus `:` in `Key` (a colon there would emit `a:::...`, which AHK
-parses as hotstring syntax) — the same trust model as `ContextValue` for `#HotIf`. This blocks
-the syntax breaks from issue #193, but is **not** a guarantee the line is valid AHK: `Key` is not
-whitelisted against real key names, so e.g. an invalid `vk`/`sc` spec still fails at load.
-`Generate_Hotkey_EmitsParametersVerbatim_NoEscaping` pins the emitter's raw embedding. Proper
-escaping of `Parameters` and a `Key` whitelist (relaxing these rejections) are deferred to the
-follow-up issue. Rows and history snapshots written before the validation landed are not
-retroactively checked — restore/revert rehydrate snapshots without validation (by design, see
-`RevertHotstringCommand`), so pre-validation values can return until edited.
+`Parameters` is escaped by `AhkEscaping.EscapeStringLiteral` before being embedded in the
+emitted string literal — the same routine the hotstring emitter uses. `Key` is validated
+against the canonical registry in `HotkeyKeys` (or a `vkNN` / `scNNN` code) at the create
+and update boundaries, so an accepted key is a real AHK key name.
+
+Two limits are worth stating plainly:
+
+- **Snapshots bypass validation.** History restore and revert rehydrate a stored snapshot
+  without running validators, as does the development lazy seed. Escaping still applies —
+  it happens at emission, in `HotkeyEmitter`, which every path goes through — but a `Key`
+  written before validation landed can return unvalidated until the row is next edited.
+  This mirrors the hotstring trust model.
+- **Only the combined form of VK/SC is rejected.** `vkNN` and `scNNN` are each accepted;
+  `vkNNscNNN` is not, because AHK raises an error for it in a hotkey definition. The
+  combined form is supported only by `Send`, `GetKeyName`, `GetKeyVK`, `GetKeySC` and
+  `A_MenuMaskKey`.
+
+### Current action semantics (pre-Wave-1)
+
+| `HotkeyAction` | Emits | Notes |
+|---|---|---|
+| `Send` | `Send("<escaped Parameters>")` | `Parameters` is an AHK key sequence — `^v`, `{Up}`. Not validated as one; any string is accepted and escaped. |
+| `Run` | `Run("<escaped Parameters>")` | `Parameters` is a **command line**, not a path — arguments are permitted and in use (`rundll32.exe user32.dll,LockWorkStation`). |
+
+An unknown action throws rather than emitting a broken line. Wave 1 replaces this enum with
+`HotkeyActionKind`; this table is the reference its data migration maps *from*.
+
+#### `Send` has no literal-text mode (pre-Wave-1)
+
+`Parameters` reaches `Send` as a key sequence, so AHK re-reads `^ ! + #` as modifiers and
+`{...}` as key names. Escaping does not — and must not — prevent this: `AhkEscaping` covers the
+string-literal layer only, and by the time `Send` parses the string those characters are ordinary
+text that `Send` is entitled to interpret. Ordinary prose therefore does not survive round-trip:
+
+```ahk
+^a::Send("50% off! a+b {note}")
+```
+
+types `50% off` in Notepad++ and `50% ` in Notepad — `!` becomes Alt, so the remainder turns into
+Alt+key accelerators that each application resolves differently, `+b` sends Shift+b, and `{note}`
+is parsed as a key name. Backticks and `%` are unaffected: `` he said "hi" 100`% `` round-trips
+exactly, because neither is special to `Send`.
+
+There is currently no action that types literal text. Wave 1 splits this into `SendText` (free
+text, escaped) and `SendKeys` (a validated key token), which closes the gap by construction.
 
 ## Input limits
 

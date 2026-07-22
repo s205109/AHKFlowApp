@@ -1,5 +1,6 @@
 using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.Common;
+using AHKFlowApp.Application.Constants;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Mapping;
 using AHKFlowApp.Application.Validation;
@@ -39,9 +40,13 @@ internal sealed class CreateHotkeyCommandHandler(
 
         CreateHotkeyDto input = request.Input;
 
+        // Return value ignored: the validator rejects unknown keys before the handler runs,
+        // so this always succeeds here.
+        HotkeyKeys.TryCanonicalize(input.Key, out string canonicalKey);
+
         bool duplicate = await db.Hotkeys.AnyAsync(
             h => h.OwnerOid == ownerOid
-              && h.Key == input.Key
+              && h.Key == canonicalKey
               && h.Ctrl == input.Ctrl
               && h.Alt == input.Alt
               && h.Shift == input.Shift
@@ -70,15 +75,16 @@ internal sealed class CreateHotkeyCommandHandler(
 
         var entity = Hotkey.Create(
             ownerOid,
-            input.Description,
-            input.Key,
-            input.Ctrl,
-            input.Alt,
-            input.Shift,
-            input.Win,
-            input.Action,
-            input.Parameters,
-            input.AppliesToAllProfiles,
+            new HotkeyDefinition(
+                Description: input.Description,
+                Key: canonicalKey,
+                Ctrl: input.Ctrl,
+                Alt: input.Alt,
+                Shift: input.Shift,
+                Win: input.Win,
+                Action: input.Action,
+                Parameters: input.Parameters,
+                AppliesToAllProfiles: input.AppliesToAllProfiles),
             clock);
 
         db.Hotkeys.Add(entity);
