@@ -261,8 +261,9 @@ validator is the escaping here.
 [$][modifiers]Key::<action>
 ```
 
-`HotkeyEmitter` builds the whole line. The left-hand side is assembled from validated parts only —
-never free text — which is what keeps a hotkey from breaking the script it lands in (ADR-0004).
+`HotkeyEmitter` builds the whole line. On the create and update path the left-hand side is assembled
+from validated parts only — never free text — which is what keeps a hotkey from breaking the script
+it lands in (ADR-0004). Snapshots bypass that path; see the limits below.
 
 | Modifier | Symbol |
 |---|---|
@@ -286,14 +287,21 @@ create and update boundaries, so an accepted key is a real AHK key name. Two lim
 plainly:
 
 - **Snapshots bypass validation.** History restore and revert rehydrate a stored snapshot
-  without running validators, as does the development lazy seed. Escaping still applies —
-  it happens at emission, in `HotkeyEmitter`, which every path goes through — but a `Key`
+  without running validators — `LegacyHotkeySnapshotConverter.ToDefinition` passes a W1
+  snapshot's typed fields straight through — as does the development lazy seed. Emission-time
+  escaping is not a backstop for that: it applies only to the three quoted-literal kinds
+  (see below), so a restored `Raw` row reaches `HotkeyEmitter` and is written verbatim with
+  neither escaping nor the shape check the create/update path applies. A `Key` or a `Body`
   written before validation landed can return unvalidated until the row is next edited.
   This mirrors the hotstring trust model.
-- **Only the combined form of VK/SC is rejected.** `vkNN` and `scNNN` are each accepted;
-  `vkNNscNNN` is not, because AHK raises an error for it in a hotkey definition. The
-  combined form is supported only by `Send`, `GetKeyName`, `GetKeyVK`, `GetKeySC` and
-  `A_MenuMaskKey`.
+- **VK/SC codes are accepted only in a narrow form.** `vkNN` and `scNNN` are each accepted;
+  combined `vkNNscNNN` is not, because AHK raises an error for it in a hotkey definition
+  (that form is supported only by `Send`, `GetKeyName`, `GetKeyVK`, `GetKeySC` and
+  `A_MenuMaskKey`). `HotkeyKeys` also rejects an all-zero code (`vk0`, `vk00`, `sc000`) —
+  it names no key — caps the digits at 2 hex for `vk` and 3 for `sc`, and rejects
+  surrounding whitespace rather than trimming it. Accepted codes are canonicalized by
+  lower-casing and zero-padding (`vk1` → `vk01`, `sc1` → `sc001`), so one physical key
+  cannot survive as two rows.
 
 ### Right-hand side per action
 
@@ -324,14 +332,19 @@ through `AhkEscaping.EscapeStringLiteral`. `Remap` emits a bare key name with no
 
 **Token validation and literal escaping are separate layers.** `"` and `` ` `` are legal
 one-character `SendKeys` tokens — `Send` types them — so a token that passed validation still has to
-be escaped or it terminates the string literal: `` ` `` alone emits ``$a::Send("``")``.
+be escaped or it terminates the string literal. A lone backtick emits:
+
+```ahk
+$a::Send("``")
+```
 
 `RunTarget` is a **command line**, not a path: AHK's `Run` takes arguments and existing rows rely on
 it (`rundll32.exe user32.dll,LockWorkStation`), so there is no path-shaped validation.
 
 An action kind the emitter doesn't know throws rather than emitting a broken line, as do `Window`
-without a `WindowOp` and `Remap` without a `RemapDest`. The three quoted-literal kinds degrade to an
-empty literal (`a::Run("")`) when their column is null — deliberate, and unreachable through the API.
+without a `WindowOp` and `Remap` without a `RemapDest`. The rest degrade instead of throwing: the
+three quoted-literal kinds emit an empty literal (`a::Run("")`) when their column is null, and `Raw`
+with a null `Body` emits a bare `a::`. Deliberate, and unreachable through the API.
 
 #### `Raw` is unchecked
 
@@ -396,7 +409,11 @@ From `HotkeyRules`:
 |---|---|
 | Description | 200 |
 | Key | 20 |
-| `Text`, `RunTarget`, `Body` | 4,000 — the `nvarchar(4000)` ceiling shared by every free-text action field |
+| `Text`, `RunTarget`, `Body` | 4,000 (`HotkeyRules.PayloadMaxLength`) |
+
+The 4,000 is a validation policy, not a column ceiling: it is the cap the retired `ValidParameters`
+rule enforced, carried onto the typed columns so the limit survived the move. Only `RunTarget` is
+actually `nvarchar(4000)` — `Text` and `Body` are `nvarchar(max)`.
 
 ## Known limitations
 
