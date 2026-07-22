@@ -134,10 +134,10 @@ public sealed class EntityHistoryRecorderTests(HistoryDbFixture fx)
     }
 
     [Fact]
-    public async Task RecordHotkeyAsync_WritesHotkeySnapshotWithModifiersAndAction()
+    public async Task RecordHotkeyAsync_WritesTypedActionColumnsAndNoLegacyPair()
     {
         var owner = Guid.NewGuid();
-        Hotkey entity = new HotkeyBuilder().WithOwner(owner).Build();
+        Hotkey entity = new HotkeyBuilder().WithOwner(owner).WithRun("https://github.com", RunTargetKind.Url).Build();
 
         await using AppDbContext db = fx.CreateContext();
         db.Hotkeys.Add(entity);
@@ -149,7 +149,11 @@ public sealed class EntityHistoryRecorderTests(HistoryDbFixture fx)
         entry.ChangeType.Should().Be(HistoryChangeType.Delete);
         HotkeySnapshot? snapshot = JsonSerializer.Deserialize<HotkeySnapshot>(entry.SnapshotJson);
         snapshot!.Key.Should().Be(entity.Key);
-        snapshot.Action.Should().Be(entity.Action);
+        snapshot.ActionKind.Should().Be(HotkeyActionKind.Run);
+        snapshot.RunTarget.Should().Be("https://github.com");
+        snapshot.RunTargetKind.Should().Be(RunTargetKind.Url);
+        snapshot.Action.Should().BeNull();
+        snapshot.Parameters.Should().BeNull();
         snapshot.CreatedAt.Should().Be(entity.CreatedAt);
     }
 

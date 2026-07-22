@@ -201,6 +201,15 @@ public sealed class RevertCommandTests(HistoryDbFixture fx)
         result.Status.Should().Be(ResultStatus.NotFound);
     }
 
+    private async Task<Guid> CreateHotkeyViaHandlerAsync(Guid owner, CreateHotkeyDto dto)
+    {
+        await using AppDbContext db = fx.CreateContext();
+        CreateHotkeyCommandHandler handler = new(db, CurrentUserHelper.For(owner), TimeProvider.System);
+        Result<HotkeyDto> result = await handler.ExecuteAsync(new CreateHotkeyCommand(dto), default);
+        result.IsSuccess.Should().BeTrue();
+        return result.Value.Id;
+    }
+
     [Fact]
     public async Task RevertHotkey_RestoresFieldsAndLinks_AndWritesNewBeforeImage()
     {
@@ -212,6 +221,7 @@ public sealed class RevertCommandTests(HistoryDbFixture fx)
             .WithDescription("original")
             .WithKey("f12")
             .WithCtrl()
+            .WithSendText("payload-v1")
             .WithProfiles(profile.Id)
             .WithCategory(category.Id)
             .Build();
@@ -242,10 +252,108 @@ public sealed class RevertCommandTests(HistoryDbFixture fx)
         result.Value.Key.Should().Be("f12");
         result.Value.Ctrl.Should().BeTrue();
         result.Value.Alt.Should().BeFalse();
+        result.Value.ActionKind.Should().Be(HotkeyActionKind.SendText);
+        result.Value.Text.Should().Be("payload-v1");
         result.Value.ProfileIds.Should().ContainSingle().Which.Should().Be(profile.Id);
         result.Value.CategoryIds.Should().ContainSingle().Which.Should().Be(category.Id);
 
         int versionCount = await db.EntityHistories.CountAsync(h => h.EntityId == entity.Id);
         versionCount.Should().Be(2);
     }
+
+    [Theory]
+    [MemberData(nameof(TypedActions))]
+    public async Task RevertHotkey_TypedSnapshot_RestoresTypedActionPayload(CreateHotkeyDto original)
+    {
+        var owner = Guid.NewGuid();
+        string key = original.Key;
+        Guid id = await CreateHotkeyViaHandlerAsync(owner, original);
+
+        await UpdateHotkeyViaHandlerAsync(owner, id,
+            new UpdateHotkeyDto("overwritten", key, HotkeyActionKind.Disable,
+                Ctrl: false, Alt: false, Shift: false, Win: false,
+                Text: null, SendKeysContent: null, RunTarget: null, RunTargetKind: null,
+                WindowOp: null, RemapDest: null, Body: null,
+                ProfileIds: null, AppliesToAllProfiles: true));
+
+        await using AppDbContext db = fx.CreateContext();
+        RevertHotkeyCommandHandler handler = new(
+            db, CurrentUserHelper.For(owner), TimeProvider.System, new EntityHistoryRecorder(db, TimeProvider.System));
+
+        Result<HotkeyDto> result = await handler.ExecuteAsync(new RevertHotkeyCommand(id, 1), default);
+
+        result.IsSuccess.Should().BeTrue();
+        HotkeyDto restored = result.Value;
+        restored.ActionKind.Should().Be(original.ActionKind);
+        restored.Text.Should().Be(original.Text);
+        restored.SendKeysContent.Should().Be(original.SendKeysContent);
+        restored.RunTarget.Should().Be(original.RunTarget);
+        restored.RunTargetKind.Should().Be(original.RunTargetKind);
+        restored.WindowOp.Should().Be(original.WindowOp);
+        restored.RemapDest.Should().Be(original.RemapDest);
+        restored.Body.Should().Be(original.Body);
+    }
+
+    [Fact]
+    public async Task RevertHotkey_LegacyShapedSnapshot_ConvertsThroughLegacyRules()
+    {
+        var owner = Guid.NewGuid();
+        Hotkey entity = new HotkeyBuilder().WithOwner(owner).WithKey("f7").WithRun("chrome.exe").Build();
+
+        // A pre-W1 history row: only the legacy pair was ever written to the snapshot JSON.
+        string legacyJson = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            Description = "legacy",
+            Key = "f7",
+            Ctrl = false,
+            Alt = false,
+            Shift = false,
+            Win = false,
+            Action = HotkeyAction.Run,
+            Parameters = "https://github.com",
+            AppliesToAllProfiles = true,
+            ProfileIds = Array.Empty<Guid>(),
+            CategoryIds = Array.Empty<Guid>(),
+            CreatedAt = DateTimeOffset.UnixEpoch,
+            UpdatedAt = DateTimeOffset.UnixEpoch,
+        });
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotkeys.Add(entity);
+            seed.EntityHistories.Add(EntityHistory.Create(
+                owner, TrackedEntityType.Hotkey, entity.Id, version: 1, HistoryChangeType.Edit,
+                schemaVersion: 1, legacyJson, TimeProvider.System));
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        RevertHotkeyCommandHandler handler = new(
+            db, CurrentUserHelper.For(owner), TimeProvider.System, new EntityHistoryRecorder(db, TimeProvider.System));
+
+        Result<HotkeyDto> result = await handler.ExecuteAsync(new RevertHotkeyCommand(entity.Id, 1), default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Description.Should().Be("legacy");
+        result.Value.ActionKind.Should().Be(HotkeyActionKind.Run);
+        result.Value.RunTarget.Should().Be("https://github.com");
+        result.Value.RunTargetKind.Should().Be(RunTargetKind.Url);
+    }
+
+    /// <summary>One create payload per action kind — the revert round trip must return each verbatim.</summary>
+    public static TheoryData<CreateHotkeyDto> TypedActions() =>
+    [
+        new CreateHotkeyDto("run", "f2", HotkeyActionKind.Run,
+            RunTarget: "notepad.exe", RunTargetKind: RunTargetKind.Application, AppliesToAllProfiles: true),
+        new CreateHotkeyDto("text", "f3", HotkeyActionKind.SendText,
+            Text: "hello world", AppliesToAllProfiles: true),
+        new CreateHotkeyDto("keys", "f4", HotkeyActionKind.SendKeys,
+            SendKeysContent: "^v", AppliesToAllProfiles: true),
+        new CreateHotkeyDto("window", "f5", HotkeyActionKind.Window,
+            WindowOp: WindowOp.Close, AppliesToAllProfiles: true),
+        new CreateHotkeyDto("remap", "a", HotkeyActionKind.Remap,
+            RemapDest: "b", AppliesToAllProfiles: true),
+        new CreateHotkeyDto("raw", "f6", HotkeyActionKind.Raw,
+            Body: "MsgBox \"hi\"", AppliesToAllProfiles: true),
+    ];
 }

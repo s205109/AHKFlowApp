@@ -58,18 +58,7 @@ internal sealed class RevertHotkeyCommandHandler(
             .Select(c => c.Id)
             .ToArrayAsync(ct);
 
-        entity.Update(
-            LegacyHotkeyDefinitionConverter.Apply(new HotkeyDefinition(
-                Description: snapshot.Description,
-                Key: snapshot.Key,
-                Ctrl: snapshot.Ctrl,
-                Alt: snapshot.Alt,
-                Shift: snapshot.Shift,
-                Win: snapshot.Win,
-                Action: snapshot.Action,
-                Parameters: snapshot.Parameters,
-                AppliesToAllProfiles: snapshot.AppliesToAllProfiles)),
-            clock);
+        entity.Update(LegacyHotkeySnapshotConverter.ToDefinition(snapshot), clock);
 
         db.HotkeyProfiles.RemoveRange(entity.Profiles);
         entity.Profiles.Clear();
