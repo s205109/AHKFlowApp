@@ -99,7 +99,7 @@ namespace AHKFlowApp.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<int>("Action")
+                    b.Property<int>("ActionKind")
                         .HasColumnType("int");
 
                     b.Property<bool>("Alt")
@@ -107,6 +107,9 @@ namespace AHKFlowApp.Infrastructure.Migrations
 
                     b.Property<bool>("AppliesToAllProfiles")
                         .HasColumnType("bit");
+
+                    b.Property<string>("Body")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("datetimeoffset");
@@ -127,19 +130,35 @@ namespace AHKFlowApp.Infrastructure.Migrations
                     b.Property<Guid>("OwnerOid")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<string>("Parameters")
-                        .IsRequired()
+                    b.Property<string>("RemapDest")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<string>("RunTarget")
                         .HasMaxLength(4000)
                         .HasColumnType("nvarchar(4000)");
 
+                    b.Property<int?>("RunTargetKind")
+                        .HasColumnType("int");
+
+                    b.Property<string>("SendKeysContent")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
                     b.Property<bool>("Shift")
                         .HasColumnType("bit");
+
+                    b.Property<string>("Text")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("datetimeoffset");
 
                     b.Property<bool>("Win")
                         .HasColumnType("bit");
+
+                    b.Property<int?>("WindowOp")
+                        .HasColumnType("int");
 
                     b.HasKey("Id");
 

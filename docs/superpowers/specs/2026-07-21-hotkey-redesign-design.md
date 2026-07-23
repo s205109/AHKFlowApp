@@ -42,7 +42,7 @@ arguments is deferred.
 | **Window** | manipulate active window | `WindowOp` | `WinMinimize("A")`, `WinSetAlwaysOnTop(-1, "A")`, … |
 | **Remap** | key behaves as another | `RemapDest` token | `origin::dest` |
 | **Disable** | key does nothing | — | `origin::return` |
-| **Raw** | verbatim action body (escape hatch) | `Body` | `origin::{ <body> }` |
+| **Raw** | verbatim action body (escape hatch) | `Body` | `origin::<body>` (verbatim; a block body carries its own braces — decision 26) |
 
 **Emission style is the parenthesized call form** (`Run("notepad")`, not `Run "notepad"`) for every
 action that emits a call — it is what today's `FormatHotkey` already produces, so W0 stays
@@ -122,8 +122,8 @@ Every action either embeds no free user text, or escapes it at emission:
 - **Window** emits from a `WindowOp` enum → no free text.
 - **Disable** emits `return` → no free text.
 - **Raw** is the **sole verbatim path**: structured (validated) key + modifiers, plus a user-owned
-  action `Body`, emitted as `origin::{ <body> }`. Brace-balanced, `#`-directive rejected, warned in
-  the UI.
+  action `Body`, emitted as `origin::<body>` — verbatim, with no wrapper added (decision 26). A
+  block body carries its own braces. Brace-balanced, `#`-directive rejected, warned in the UI.
 
 ### What this does and does not guarantee
 
@@ -132,9 +132,9 @@ including Raw — can reintroduce the #195 hazard on the left side.** That is th
 what closes #195.
 
 **Raw is not sandboxed.** AHK parses the whole script at load, so a syntax error anywhere aborts the
-**entire generated profile**, not just its own binding. A body can also escape its wrapper: the
+**entire generated profile**, not just its own binding. A body can also escape its own block: the
 brace-balance check counts `{`/`}` naively, with no awareness of string literals or comments, so a
-body can close the outer block early and have its remainder parsed at top level. This is the same
+body can close its block early and have its remainder parsed at top level. This is the same
 accepted trade-off as hotstring Raw (decisions D8/D12, recorded in
 `docs/development/ahk-v2-syntax.md` → *Known limitations*) — a string- and comment-aware scanner
 would drift toward being a script IDE, so it is deliberately **not** built here either. The UI must
@@ -245,7 +245,7 @@ be confirmed against a real AHK v2 load, not just against the emitter.
   - **LHS**: `{$}{*}{~}` + (`{^}{!}{+}{#}` mods **xor** `{ComboPrefixKey} & `) + `Key` + (` Up` if
     key-up). `$` is emitter-derived (SendKeys on a keyboard key), not a stored column.
   - **RHS**: per `ActionKind` (table §1); `EscapeStringLiteral` for SendText/Run; validated tokens for
-    SendKeys/Remap; `return` for Disable; `{ <body> }` for Raw.
+    SendKeys/Remap; `return` for Disable; `Body` emitted verbatim for Raw (decision 26).
   - Join with `::`.
   - `EscapeStringLiteral` moves to a shared internal helper used by both emitters (§5).
 - `AhkScriptGenerator`: delete inline `FormatHotkey`; group hotkeys in the Hotkeys section by
@@ -498,6 +498,16 @@ while W0 was unlanded; corrected 2026-07-22 to match the shipped `Constants/Hotk
     where the existing validation error already shows. Migration logs a count.
 25. **Registry scope**: curated six groups + `vk`/`sc` escape hatch; joystick and remote keys
     excluded; entries carry role capability flags feeding all five validators.
+
+## Resolved (implementation review, 2026-07-22)
+
+26. **Raw emits `Body` verbatim, no emitter brace-wrapping.** §1's original table row
+    (`origin::{ <body> }`) contradicted §8's migration rule that a converted legacy `Send` row must
+    **preserve current emission byte-for-byte** — wrapping that row's `Body` (`Send("hi")`) would
+    emit `n::{Send("hi")}`, not the legacy `n::Send("hi")`. Byte-identity wins: `Body` carries its
+    own braces when it needs a block (as example 10 already does). §1 and §8's emission summary are
+    updated accordingly; §5's "emitted as `origin::{ <body> }`" description is superseded by this
+    decision.
 
 ## Unresolved questions
 

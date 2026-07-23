@@ -108,6 +108,7 @@ jobs:
         run: |
           ./tests/AgentWorktreeGuard.Tests.ps1
           ./tests/AgentPreCommitHook.Tests.ps1
+          ./tests/PreCommitAntiPatternHook.Tests.ps1
           ./tests/WorktreePowerShellHost.Tests.ps1
           ./tests/WorktreeBranchName.Tests.ps1
           ./tests/WorktreeMergedCleanup.Tests.ps1

@@ -6,10 +6,12 @@ using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Domain.Enums;
 using AHKFlowApp.Infrastructure.Persistence;
 using AHKFlowApp.TestUtilities.Builders;
+using AHKFlowApp.TestUtilities.Fixtures;
 using Ardalis.Result;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
+using HotkeyAction = AHKFlowApp.Application.Services.LegacyHotkeyDefinitionConverter.HotkeyAction;
 
 namespace AHKFlowApp.Application.Tests.History;
 
@@ -232,4 +234,91 @@ public sealed class RestoreCommandTests(HistoryDbFixture fx)
             .ToListAsync();
         changes.Should().Equal(HistoryChangeType.Delete, HistoryChangeType.Restore);
     }
+
+    [Theory]
+    [MemberData(nameof(TypedActions))]
+    public async Task RestoreHotkey_TypedTombstone_RestoresTypedActionPayload(CreateHotkeyDto original)
+    {
+        var owner = Guid.NewGuid();
+
+        Guid id;
+        await using (AppDbContext create = fx.CreateContext())
+        {
+            CreateHotkeyCommandHandler handler = new(create, CurrentUserHelper.For(owner), TimeProvider.System);
+            Result<HotkeyDto> created = await handler.ExecuteAsync(new CreateHotkeyCommand(original), default);
+            created.IsSuccess.Should().BeTrue();
+            id = created.Value.Id;
+        }
+
+        await DeleteHotkeyViaHandlerAsync(owner, id);
+
+        await using AppDbContext db = fx.CreateContext();
+        RestoreHotkeyCommandHandler restoreHandler = new(
+            db, CurrentUserHelper.For(owner), TimeProvider.System, new EntityHistoryRecorder(db, TimeProvider.System));
+
+        Result<HotkeyDto> result = await restoreHandler.ExecuteAsync(new RestoreHotkeyCommand(id), default);
+
+        result.IsSuccess.Should().BeTrue();
+        HotkeyDto restored = result.Value;
+        restored.ActionKind.Should().Be(original.ActionKind);
+        restored.Text.Should().Be(original.Text);
+        restored.SendKeysContent.Should().Be(original.SendKeysContent);
+        restored.RunTarget.Should().Be(original.RunTarget);
+        restored.RunTargetKind.Should().Be(original.RunTargetKind);
+        restored.WindowOp.Should().Be(original.WindowOp);
+        restored.RemapDest.Should().Be(original.RemapDest);
+        restored.Body.Should().Be(original.Body);
+
+        Hotkey persisted = await db.Hotkeys.AsNoTracking().SingleAsync(h => h.Id == id);
+        persisted.ActionKind.Should().Be(original.ActionKind);
+    }
+
+    [Fact]
+    public async Task RestoreHotkey_LegacyShapedTombstone_ConvertsThroughLegacyRules()
+    {
+        var owner = Guid.NewGuid();
+        var id = Guid.NewGuid();
+
+        // A pre-W1 tombstone: only the legacy pair was ever written to the snapshot JSON.
+        string legacyJson = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            Description = "legacy run",
+            Key = "f15",
+            Ctrl = false,
+            Alt = false,
+            Shift = false,
+            Win = false,
+            Action = HotkeyAction.Run,
+            Parameters = "notepad.exe",
+            AppliesToAllProfiles = true,
+            ProfileIds = Array.Empty<Guid>(),
+            CategoryIds = Array.Empty<Guid>(),
+            CreatedAt = DateTimeOffset.UnixEpoch,
+            UpdatedAt = DateTimeOffset.UnixEpoch,
+        });
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.EntityHistories.Add(EntityHistory.Create(
+                owner, TrackedEntityType.Hotkey, id, version: 1, HistoryChangeType.Delete,
+                schemaVersion: 1, legacyJson, TimeProvider.System));
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        RestoreHotkeyCommandHandler handler = new(
+            db, CurrentUserHelper.For(owner), TimeProvider.System, new EntityHistoryRecorder(db, TimeProvider.System));
+
+        Result<HotkeyDto> result = await handler.ExecuteAsync(new RestoreHotkeyCommand(id), default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Description.Should().Be("legacy run");
+        result.Value.ActionKind.Should().Be(HotkeyActionKind.Run);
+        result.Value.RunTarget.Should().Be("notepad.exe");
+        result.Value.RunTargetKind.Should().Be(RunTargetKind.Application);
+    }
+
+    /// <summary>One create payload per action kind — the restore round trip must return each verbatim.</summary>
+    public static TheoryData<CreateHotkeyDto> TypedActions() =>
+        new(TypedHotkeyActionFixtures.RestorePayloads);
 }

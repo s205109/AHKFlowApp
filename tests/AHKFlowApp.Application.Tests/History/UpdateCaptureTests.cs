@@ -96,8 +96,12 @@ public sealed class UpdateCaptureTests(HistoryDbFixture fx)
         UpdateHotkeyCommandHandler handler = new(
             db, CurrentUserHelper.For(owner), TimeProvider.System, new EntityHistoryRecorder(db, TimeProvider.System));
         UpdateHotkeyCommand cmd = new(entity.Id,
-            new UpdateHotkeyDto("changed desc", "F9", false, false, false, false,
-                entity.Action, entity.Parameters, null, true, null));
+            new UpdateHotkeyDto("changed desc", "F9", entity.ActionKind,
+                Ctrl: false, Alt: false, Shift: false, Win: false,
+                Text: entity.Text, SendKeysContent: entity.SendKeysContent,
+                RunTarget: entity.RunTarget, RunTargetKind: entity.RunTargetKind,
+                WindowOp: entity.WindowOp, RemapDest: entity.RemapDest, Body: entity.Body,
+                ProfileIds: null, AppliesToAllProfiles: true, CategoryIds: null));
 
         Result<HotkeyDto> result = await handler.ExecuteAsync(cmd, default);
 

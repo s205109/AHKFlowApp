@@ -9,7 +9,9 @@
 Both handlers use `EF.Functions.Like(field, "%term%")` on the searchable columns:
 
 - Hotstrings: `Trigger`, `Replacement`.
-- Hotkeys: `Description`, `Key`, `Parameters`.
+- Hotkeys: `Description`, `Key`, and every action payload column that holds text — `RunTarget`, `Text`, `SendKeysContent`, `RemapDest`, `Body`.
+
+Search covers all of them because the single legacy `Parameters` column they replaced was itself searchable for every action. Adding a new text-bearing action column means adding it to the predicate too; leaving one out silently removes rows from search results.
 
 The `LIKE` predicate inherits the SQL Server column collation. The application's default collation is `SQL_Latin1_General_CP1_CI_AS` (case-insensitive, accent-sensitive), so `BTW` matches `btw` without any application-level normalization.
 

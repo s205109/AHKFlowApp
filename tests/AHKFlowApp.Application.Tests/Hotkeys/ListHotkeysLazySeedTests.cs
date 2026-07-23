@@ -11,6 +11,7 @@ using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Time.Testing;
 using Xunit;
+using HotkeyAction = AHKFlowApp.Application.Services.LegacyHotkeyDefinitionConverter.HotkeyAction;
 
 namespace AHKFlowApp.Application.Tests.Hotkeys;
 
@@ -150,7 +151,7 @@ public sealed class ListHotkeysLazySeedTests(HotkeyDbFixture fx)
                 .WithKey("N")
                 .WithCtrl()
                 .WithAlt()
-                .WithAction(AHKFlowApp.Domain.Enums.HotkeyAction.Run)
+                .WithAction(HotkeyAction.Run)
                 .WithParameters("notepad.exe")
                 .Build());
             await seedCtx.SaveChangesAsync();

@@ -14,13 +14,15 @@ the emitters are the only thing standing between a user's input and a broken scr
 
 | Concern | File |
 |---|---|
-| Script assembly, hotkeys | `src/Backend/AHKFlowApp.Application/Services/AhkScriptGenerator.cs` |
+| Script assembly | `src/Backend/AHKFlowApp.Application/Services/AhkScriptGenerator.cs` |
 | Hotstring lines, options, escaping | `src/Backend/AHKFlowApp.Application/Services/HotstringEmitter.cs` |
+| Hotkey lines, per-action emission | `src/Backend/AHKFlowApp.Application/Services/HotkeyEmitter.cs` |
+| Hotkey key registry and roles | `src/Backend/AHKFlowApp.Application/Constants/HotkeyKeys.cs` |
 | Raw definition parsing | `src/Backend/AHKFlowApp.Application/Services/RawHotstringDefinitionParser.cs` |
 | Macro token lexing | `src/Backend/AHKFlowApp.Application/Services/MacroTokenParser.cs` |
 | Header/footer tokens | `src/Backend/AHKFlowApp.Application/Services/HeaderTokenRenderer.cs` |
 | Default header | `src/Backend/AHKFlowApp.Domain/Constants/DefaultProfileTemplates.cs` |
-| Input limits | `src/Backend/AHKFlowApp.Application/Validation/HotstringRules.cs` |
+| Input limits | `src/Backend/AHKFlowApp.Application/Validation/HotstringRules.cs`, `HotkeyRules.cs` |
 
 ## Script skeleton
 
@@ -256,8 +258,12 @@ validator is the escaping here.
 ## Hotkeys
 
 ```
-[modifiers]Key::Function("Parameters")
+[$][modifiers]Key::<action>
 ```
+
+`HotkeyEmitter` builds the whole line. On the create and update path the left-hand side is assembled
+from validated parts only — never free text — which is what keeps a hotkey from breaking the script
+it lands in (ADR-0004). Snapshots bypass that path; see the limits below.
 
 | Modifier | Symbol |
 |---|---|
@@ -266,58 +272,119 @@ validator is the escaping here.
 | Shift | `+` |
 | Win | `#` |
 
-Emitted in the fixed order `^ ! + #` (`HotkeyEmitter`). Actions map to `Send` or
-`Run`; an unknown action throws rather than emitting a broken line.
+Modifiers are emitted in the fixed order `^ ! + #` regardless of the order they were set in, for the
+same reason the hotstring option flags are ordered: regenerating an unchanged profile must produce
+byte-identical lines.
 
-```ahk
-^!t::Run("notepad.exe")
-```
+A leading `$` is emitted for `SendKeys` and for **no other action**. `$` forces the keyboard hook,
+which as a side effect prevents `Send` from triggering the script's own hotkeys — without it a
+`SendKeys` binding can retrigger itself. It is emitted unconditionally rather than only on a detected
+self-collision: `$` has no other effect, and a same-key-and-modifiers check would still miss
+A-triggers-B-triggers-A chains. It is not a user-facing option.
 
-`Parameters` is escaped by `AhkEscaping.EscapeStringLiteral` before being embedded in the
-emitted string literal — the same routine the hotstring emitter uses. `Key` is validated
-against the canonical registry in `HotkeyKeys` (or a `vkNN` / `scNNN` code) at the create
-and update boundaries, so an accepted key is a real AHK key name.
-
-Two limits are worth stating plainly:
+`Key` is validated against the canonical registry in `HotkeyKeys` (or a `vkNN` / `scNNN` code) at the
+create and update boundaries, so an accepted key is a real AHK key name. Two limits are worth stating
+plainly:
 
 - **Snapshots bypass validation.** History restore and revert rehydrate a stored snapshot
-  without running validators, as does the development lazy seed. Escaping still applies —
-  it happens at emission, in `HotkeyEmitter`, which every path goes through — but a `Key`
+  without running validators — `LegacyHotkeySnapshotConverter.ToDefinition` passes a W1
+  snapshot's typed fields straight through — as does the development lazy seed. Emission-time
+  escaping is not a backstop for that: it applies only to the three quoted-literal kinds
+  (see below), so a restored `Raw` row reaches `HotkeyEmitter` and is written verbatim with
+  neither escaping nor the shape check the create/update path applies. A `Key` or a `Body`
   written before validation landed can return unvalidated until the row is next edited.
   This mirrors the hotstring trust model.
-- **Only the combined form of VK/SC is rejected.** `vkNN` and `scNNN` are each accepted;
-  `vkNNscNNN` is not, because AHK raises an error for it in a hotkey definition. The
-  combined form is supported only by `Send`, `GetKeyName`, `GetKeyVK`, `GetKeySC` and
-  `A_MenuMaskKey`.
+- **VK/SC codes are accepted only in a narrow form.** `vkNN` and `scNNN` are each accepted;
+  combined `vkNNscNNN` is not, because AHK raises an error for it in a hotkey definition
+  (that form is supported only by `Send`, `GetKeyName`, `GetKeyVK`, `GetKeySC` and
+  `A_MenuMaskKey`). `HotkeyKeys` also rejects an all-zero code (`vk0`, `vk00`, `sc000`) —
+  it names no key — caps the digits at 2 hex for `vk` and 3 for `sc`, and rejects
+  surrounding whitespace rather than trimming it. Accepted codes are canonicalized by
+  lower-casing and zero-padding (`vk1` → `vk01`, `sc1` → `sc001`), so one physical key
+  cannot survive as two rows.
 
-### Current action semantics (pre-Wave-1)
+### Right-hand side per action
 
-| `HotkeyAction` | Emits | Notes |
+Each `HotkeyActionKind` owns its own stored field(s) and exactly one emitted form:
+
+| Action | Stored | Emits |
 |---|---|---|
-| `Send` | `Send("<escaped Parameters>")` | `Parameters` is an AHK key sequence — `^v`, `{Up}`. Not validated as one; any string is accepted and escaped. |
-| `Run` | `Run("<escaped Parameters>")` | `Parameters` is a **command line**, not a path — arguments are permitted and in use (`rundll32.exe user32.dll,LockWorkStation`). |
+| `SendText` | `Text` | `SendText("<escaped>")` |
+| `SendKeys` | `SendKeysContent` | `Send("<escaped>")` — plus the `$` prefix |
+| `Run` | `RunTarget`, `RunTargetKind` | `Run("<escaped>")` — `RunTargetKind` is a display label and changes nothing |
+| `Window` | `WindowOp` | `WinMinimize("A")`, `WinMaximize("A")`, `WinRestore("A")`, `WinClose("A")`, `WinSetAlwaysOnTop(-1, "A")` |
+| `Remap` | `RemapDest` | the destination key name, bare |
+| `Disable` | — | `return` |
+| `Raw` | `Body` | `Body`, verbatim |
 
-An unknown action throws rather than emitting a broken line. Wave 1 replaces this enum with
-`HotkeyActionKind`; this table is the reference its data migration maps *from*.
+```ahk
+#n::Run("notepad")
+^!s::SendText("Jane Smith`nAcme")
+$#p::Send("{Media_Play_Pause}")
+^Space::WinSetAlwaysOnTop(-1, "A")
+CapsLock::Ctrl
+F1::return
+```
 
-#### `Send` has no literal-text mode (pre-Wave-1)
+Only the three kinds that embed user text in a quoted literal — `SendText`, `SendKeys`, `Run` — pass
+through `AhkEscaping.EscapeStringLiteral`. `Remap` emits a bare key name with no literal to escape,
+`Disable` emits a fixed word, `Window` emits from an enum, and `Raw` is verbatim by definition.
 
-`Parameters` reaches `Send` as a key sequence, so AHK re-reads `^ ! + #` as modifiers and
-`{...}` as key names. Escaping does not — and must not — prevent this: `AhkEscaping` covers the
-string-literal layer only, and by the time `Send` parses the string those characters are ordinary
-text that `Send` is entitled to interpret. Ordinary prose therefore does not survive round-trip:
+**Token validation and literal escaping are separate layers.** `"` and `` ` `` are legal
+one-character `SendKeys` tokens — `Send` types them — so a token that passed validation still has to
+be escaped or it terminates the string literal. A lone backtick emits:
+
+```ahk
+$a::Send("``")
+```
+
+`RunTarget` is a **command line**, not a path: AHK's `Run` takes arguments and existing rows rely on
+it (`rundll32.exe user32.dll,LockWorkStation`), so there is no path-shaped validation.
+
+An action kind the emitter doesn't know throws rather than emitting a broken line, as do `Window`
+without a `WindowOp` and `Remap` without a `RemapDest`. The rest degrade instead of throwing: the
+three quoted-literal kinds emit an empty literal (`a::Run("")`) when their column is null, and `Raw`
+with a null `Body` emits a bare `a::`. Deliberate, and unreachable through the API.
+
+#### `Raw` is unchecked
+
+`Body` is emitted exactly as stored: no wrapper, no braces added, no escaping. A block body carries
+its own braces, and because the emitter concatenates it straight after `::` the result is the
+one-true-brace form:
+
+```ahk
+^+v::{
+	SendText A_Clipboard
+}
+```
+
+Validation checks shape only — non-empty, balanced `{`/`}`, no line starting with a `#` directive, no
+stray control characters. It does not check that the body is valid AutoHotkey, and the brace count is
+as naive as the hotstring one (see *Known limitations*). AHK parses the whole file at load, so a
+mistake here aborts the **entire** generated profile, not just this binding. Verbatim emission is
+also what keeps legacy `Send` rows migrated onto `Raw` byte-identical to what the app emitted before
+the typed actions landed.
+
+#### Why `SendText` and `SendKeys` are separate
+
+`Send` reads its argument as a key sequence, so AHK re-reads `^ ! + #` as modifiers and `{...}` as
+key names. Escaping does not — and must not — prevent this: `AhkEscaping` covers the string-literal
+layer only, and by the time `Send` parses the string those characters are ordinary text that `Send`
+is entitled to interpret. Prose therefore does not survive `Send`:
 
 ```ahk
 ^a::Send("50% off! a+b {note}")
 ```
 
 types `50% off` in Notepad++ and `50% ` in Notepad — `!` becomes Alt, so the remainder turns into
-Alt+key accelerators that each application resolves differently, `+b` sends Shift+b, and `{note}`
-is parsed as a key name. Backticks and `%` are unaffected: `` he said "hi" 100`% `` round-trips
-exactly, because neither is special to `Send`.
+Alt+key accelerators that each application resolves differently, `+b` sends Shift+b, and `{note}` is
+parsed as a key name. (Backticks and `%` are unaffected: `` he said "hi" 100`% `` round-trips
+exactly, because neither is special to `Send`.)
 
-There is currently no action that types literal text. Wave 1 splits this into `SendText` (free
-text, escaped) and `SendKeys` (a validated key token), which closes the gap by construction.
+That is why prose belongs to `SendText`, which types its argument literally, while `SendKeys` accepts
+only a validated token — optional `^ ! + #` modifiers, each at most once, then exactly one key: a
+single printable character bare (`c`), or a registry key braced (`{Volume_Up}`). A named key
+unbraced, two keys, or a nested brace are all rejected.
 
 ## Input limits
 
@@ -335,6 +402,18 @@ From `HotstringRules`:
 | DateTimeFormat | 50 |
 | Date offset amount | ±3,650 |
 | ContextValue | 200 |
+
+From `HotkeyRules`:
+
+| Field | Limit |
+|---|---|
+| Description | 200 |
+| Key | 20 |
+| `Text`, `RunTarget`, `Body` | 4,000 (`HotkeyRules.PayloadMaxLength`) |
+
+The 4,000 is a validation policy, not a column ceiling: it is the cap the retired `ValidParameters`
+rule enforced, carried onto the typed columns so the limit survived the move. Only `RunTarget` is
+actually `nvarchar(4000)` — `Text` and `Body` are `nvarchar(max)`.
 
 ## Known limitations
 

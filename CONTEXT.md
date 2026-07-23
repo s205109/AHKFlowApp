@@ -11,7 +11,7 @@ An AutoHotkey rule that fires when typed characters match its Trigger. Its Kind 
 _Avoid_: abbreviation, snippet, expansion, shortcut
 
 **Hotkey**:
-A key plus any of Ctrl/Alt/Shift/Win that runs an action — sending keystrokes or running a target.
+A key plus any of Ctrl/Alt/Shift/Win that runs one Action.
 _Avoid_: shortcut, binding, keybinding, accelerator
 
 **Trigger**:
@@ -26,13 +26,26 @@ _Avoid_: expansion, output, body, value
 Which flavour of Hotstring a definition is — Text, Date & time, Macro, or Raw. Decides how that Hotstring's Replacement is read.
 _Avoid_: type, mode
 
+**Action**:
+What a Hotkey does when it fires — one of SendText, SendKeys, Run, Window, Remap, Disable, or Raw. Decides which fields that Hotkey carries and how its line is generated; it is to a Hotkey what Kind is to a Hotstring.
+_Avoid_: type, command, operation
+
 **Macro**:
 A Kind whose Replacement is a sequence of literal text, Enter and Tab key presses, and an optional cursor marker rather than one run of text.
 _Avoid_: template, placeholder snippet
 
 **Raw**:
 A Kind holding one complete AutoHotkey hotstring definition instead of structured fields. The app normalizes its layout, lifts leading comments into the description, and derives its Trigger and options from the definition text, which stays the single source of truth (see ADR-0002).
+Also an Action, holding a verbatim body a Hotkey runs instead of structured fields. Only its shape is checked; the app writes it into the Profile script unchanged, so a mistake in one can stop the whole script from loading (see ADR-0004).
 _Avoid_: Script (a retired name for this Kind), custom, advanced
+
+**Remap**:
+The Action that makes a Hotkey's key behave as another key. It names one destination key and nothing else — no modifiers, no further action.
+_Avoid_: rebind, swap, alias
+
+**Run target**:
+The application, URL, or folder a Run Action launches. It is a command line rather than a path, so arguments are allowed; which of the three it is labelled as only changes how the app presents it, never what is generated.
+_Avoid_: path, executable, program
 
 **Delivery**:
 How a Text Hotstring's Replacement reaches the target window — typed keystroke by keystroke, or pasted through the clipboard. Auto picks between the two by Replacement length.
