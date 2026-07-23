@@ -331,6 +331,10 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
 
         cut.Find("button.commit-edit").Click();
 
+        // The legacy Action dropdown still renders (retired in Task 9/10) and still updates
+        // HotkeyEditModel.Action, but HotkeyEditModel no longer forwards that legacy field onto
+        // the wire (see HotkeyEditModel.ToCreateDto) — ActionKind/per-kind fields are the
+        // contract now, so this assertion no longer checks d.Action.
         cut.WaitForAssertion(() => _api.Received(1).CreateAsync(
             Arg.Is<CreateHotkeyDto>(d =>
                 d.Description == "Open terminal" &&
@@ -338,8 +342,7 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
                 d.Ctrl &&
                 !d.Alt &&
                 d.Shift &&
-                d.Win &&
-                d.Action == HotkeyAction.Run),
+                d.Win),
             Arg.Any<CancellationToken>()));
     }
 
