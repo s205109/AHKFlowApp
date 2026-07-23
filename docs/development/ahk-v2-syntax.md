@@ -118,7 +118,8 @@ than just what we emit (`RawHotstringDefinitionParser.KnownOptions`, case-insens
 plus `Kn` (key delay, `K-1` allowed) and `Pn` (priority) by pattern. Anything else is rejected by
 name. Briefly, for the ones we never emit: `B0` disables auto-backspacing of the abbreviation, `C1`
 stops case-conforming, `R` sends raw (mutually exclusive with `T`), `Z` resets the recognizer after
-each trigger, `SI`/`SP`/`SE` pick the send mode, and a trailing `0` turns most flags back off.
+each trigger, `SI`/`SP`/`SE` pick the send mode, `S`/`S0` toggles suspend-exemption, `Pn` sets
+priority, `Kn` sets the key delay, and a trailing `0` turns most flags back off.
 
 ### Bodies by kind
 
