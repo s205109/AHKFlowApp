@@ -120,7 +120,24 @@ public sealed class HotkeyEditModel
             f.Text, f.SendKeysContent, f.RunTarget, f.RunTargetKind, f.WindowOp, f.RemapDest, f.Body);
     }
 
-    /// <summary>The single place that knows which fields each kind owns.</summary>
+    /// <summary>
+    /// The single place that knows which fields each kind owns — kept beside <see cref="ActiveFields"/>,
+    /// which reads from the same ownership map. Returns the DTO field NAMES (for routing/clearing
+    /// server errors); <see cref="ActiveFields"/> returns the matching typed VALUES for the wire. Add
+    /// a field to a kind here and the dialog's error-clearing follows automatically.
+    /// </summary>
+    internal static IReadOnlyList<string> FieldNamesOwnedBy(HotkeyActionKind kind) => kind switch
+    {
+        HotkeyActionKind.SendText => [nameof(Text)],
+        HotkeyActionKind.SendKeys => [nameof(SendKeysContent)],
+        HotkeyActionKind.Run => [nameof(RunTarget), nameof(RunTargetKind)],
+        HotkeyActionKind.Window => [nameof(WindowOp)],
+        HotkeyActionKind.Remap => [nameof(RemapDest)],
+        HotkeyActionKind.Raw => [nameof(Body)],
+        _ => [],
+    };
+
+    /// <summary>The typed values each kind owns — the value counterpart of <see cref="FieldNamesOwnedBy"/>.</summary>
     private ActionFields ActiveFields() => ActionKind switch
     {
         HotkeyActionKind.SendText => new() { Text = Text },

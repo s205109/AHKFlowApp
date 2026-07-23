@@ -343,6 +343,45 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
+    public async Task EditingAFieldWithASaveError_ClearsOnlyThatFieldsStaleError()
+    {
+        // The finding: a save error keyed to a field must drop from state the moment the user edits
+        // that field, so it cannot outlive — and contradict — the value it judged. Because MudBlazor
+        // inputs mask a field's stale explicit error once its own value changes, the observable seam
+        // is _saveFieldErrors, not the rendered markup: the edited field's key must go while an
+        // untouched field's key stays (proving only the edited field is cleared, per Task 8's
+        // isolation contract).
+        _api.CreateAsync(Arg.Any<CreateHotkeyDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotkeyDto>.Failure(
+                ApiResultStatus.Validation,
+                new ApiProblemDetails(null, "Validation failed", 400, null, null,
+                    new Dictionary<string, string[]>
+                    {
+                        ["Input.RunTarget"] = ["Run target is required."],
+                        ["Input.Description"] = ["Description is not allowed."],
+                    })));
+
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(
+            new HotkeyEditModel { Description = "d", Key = "n", ActionKind = HotkeyActionKind.Run });
+        HotkeyEditDialog dialog = provider.FindComponent<HotkeyEditDialog>().Instance;
+
+        provider.Find("button.commit-edit").Click();
+        provider.WaitForAssertion(() =>
+            dialog.SaveFieldErrors.Keys.Should().BeEquivalentTo(
+                [nameof(HotkeyEditModel.RunTarget), nameof(HotkeyEditModel.Description)]));
+
+        // Edit the RunTarget: after its debounce fires, only its own stale save error is dropped.
+        provider.Find("input[data-test=\"run-target-input\"]").Input("notepad.exe");
+
+        provider.WaitForAssertion(() =>
+        {
+            dialog.SaveFieldErrors.Should().NotContainKey(nameof(HotkeyEditModel.RunTarget));
+            // The untouched field keeps its verdict — the error isolation is preserved.
+            dialog.SaveFieldErrors.Should().ContainKey(nameof(HotkeyEditModel.Description));
+        });
+    }
+
+    [Fact]
     public async Task EmptyKey_BlocksSubmitClientSide()
     {
         IRenderedComponent<MudDialogProvider> provider =
