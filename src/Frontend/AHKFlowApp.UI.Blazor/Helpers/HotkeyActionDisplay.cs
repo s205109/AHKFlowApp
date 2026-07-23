@@ -96,17 +96,35 @@ internal static class HotkeyActionDisplay
     }
 
     /// <summary>One-line summary of the action's payload for the grid and mobile list.</summary>
-    public static string Summary(HotkeyEditModel item) => item.ActionKind switch
-    {
-        HotkeyActionKind.SendText => FirstLine(item.Text),
-        HotkeyActionKind.SendKeys => Plain(item.SendKeysContent),
-        HotkeyActionKind.Run => Plain(item.RunTarget),
-        HotkeyActionKind.Window => item.WindowOp is { } op ? WindowOpLabel(op) : EmDash,
-        HotkeyActionKind.Remap => item.RemapDest is { Length: > 0 } dest ? $"acts as {dest}" : EmDash,
-        HotkeyActionKind.Disable => "does nothing",
-        HotkeyActionKind.Raw => FirstLine(item.Body),
-        _ => EmDash,
-    };
+    public static string Summary(HotkeyEditModel item) =>
+        Summarize(item.ActionKind, item.Text, item.SendKeysContent, item.RunTarget,
+            item.WindowOp, item.RemapDest, item.Body);
+
+    /// <summary>
+    /// Summary for a history snapshot. Legacy snapshots (pre-typed-action rows) carry only the
+    /// old Action/Parameters pair, so they fall back to showing that verbatim.
+    /// </summary>
+    public static string SummaryOf(HotkeySnapshot snapshot) =>
+        snapshot.Action is not null
+            ? $"{snapshot.Action} {snapshot.Parameters}".Trim()
+            : Summarize(snapshot.ActionKind, snapshot.Text, snapshot.SendKeysContent,
+                snapshot.RunTarget, snapshot.WindowOp, snapshot.RemapDest, snapshot.Body);
+
+    // The one switch both overloads share — a snapshot and an edit model are different types
+    // carrying the same seven fields, and two copies of this would drift.
+    private static string Summarize(
+        HotkeyActionKind kind, string? text, string? sendKeysContent, string? runTarget,
+        WindowOp? windowOp, string? remapDest, string? body) => kind switch
+        {
+            HotkeyActionKind.SendText => FirstLine(text),
+            HotkeyActionKind.SendKeys => Plain(sendKeysContent),
+            HotkeyActionKind.Run => Plain(runTarget),
+            HotkeyActionKind.Window => windowOp is { } op ? WindowOpLabel(op) : EmDash,
+            HotkeyActionKind.Remap => remapDest is { Length: > 0 } dest ? $"acts as {dest}" : EmDash,
+            HotkeyActionKind.Disable => "does nothing",
+            HotkeyActionKind.Raw => FirstLine(body),
+            _ => EmDash,
+        };
 
     private const string EmDash = "—";
 

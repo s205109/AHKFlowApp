@@ -36,6 +36,40 @@ public sealed class HotkeyMobileListTests : BunitContext, IAsyncLifetime
         cut.Markup.Should().Contain("Open palette");
     }
 
+    [Theory]
+    // The shared ComboLabel upper-cases a single-character key only when a modifier is present;
+    // a bare key keeps its casing, matching AHK's own convention.
+    [InlineData(true, "c", "Ctrl+C")]
+    [InlineData(false, "n", "n")]
+    public void Renders_ComboLabel_WithSharedCasingRule(bool ctrl, string key, string expected)
+    {
+        IRenderedComponent<HotkeyMobileList> cut = Render<HotkeyMobileList>(p => p
+            .Add(c => c.Items, [Item("Row", key, ctrl: ctrl, shift: false)])
+            .Add(c => c.Profiles, (IReadOnlyList<ProfileDto>)[])
+            .Add(c => c.Categories, (IReadOnlyList<CategoryDto>)[]));
+
+        cut.Find("td.trigger-cell code").TextContent.Should().Be(expected);
+    }
+
+    [Fact]
+    public async Task ExpandedRow_ShowsActionChipAndSummary()
+    {
+        HotkeyEditModel item = Item();
+        item.ActionKind = HotkeyActionKind.Run;
+        item.RunTarget = "notepad.exe";
+
+        IRenderedComponent<HotkeyMobileList> cut = Render<HotkeyMobileList>(p => p
+            .Add(c => c.Items, [item])
+            .Add(c => c.Profiles, (IReadOnlyList<ProfileDto>)[])
+            .Add(c => c.Categories, (IReadOnlyList<CategoryDto>)[]));
+
+        await cut.InvokeAsync(() => cut.Find("tr.mobile-row").Click());
+
+        cut.WaitForAssertion(() =>
+            cut.Find("[data-test=\"action-chip\"]").TextContent.Should().Contain("Run"));
+        cut.Find("tr.mobile-row-expanded").TextContent.Should().Contain("notepad.exe");
+    }
+
     [Fact]
     public void EmptyState_DoesNotRenderTable()
     {

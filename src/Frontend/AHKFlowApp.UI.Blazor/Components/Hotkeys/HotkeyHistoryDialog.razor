@@ -1,4 +1,5 @@
 @using AHKFlowApp.UI.Blazor.DTOs
+@using AHKFlowApp.UI.Blazor.Helpers
 @using AHKFlowApp.UI.Blazor.Services
 @using MudBlazor
 @implements IDisposable
@@ -45,12 +46,10 @@
                         <MudText Typo="Typo.subtitle2">Key</MudText>
                         <MudText Class="mb-2">@FormatCombo(_preview.Snapshot)</MudText>
                         <MudText Typo="Typo.subtitle2">Action</MudText>
-                        <MudText Class="mb-2">@_preview.Snapshot.Action</MudText>
-                        @if (_preview.Snapshot.Parameters is { Length: > 0 } parameters)
-                        {
-                            <MudText Typo="Typo.subtitle2">Parameters</MudText>
-                            <MudText Class="mb-2">@parameters</MudText>
-                        }
+                        <MudText Class="mb-2">
+                            @HotkeyActionDisplay.Label(_preview.Snapshot.ActionKind)
+                            — @HotkeyActionDisplay.SummaryOf(_preview.Snapshot)
+                        </MudText>
                         <MudText Typo="Typo.caption">
                             @ProfileText(_preview.Snapshot) · @_preview.Snapshot.CategoryIds.Length category(s)
                         </MudText>

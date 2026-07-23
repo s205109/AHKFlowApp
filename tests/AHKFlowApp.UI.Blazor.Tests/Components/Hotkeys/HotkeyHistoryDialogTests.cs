@@ -72,10 +72,8 @@ public sealed class HotkeyHistoryDialogTests : BunitContext, IAsyncLifetime
         provider.WaitForAssertion(() => provider.Markup.Should().Contain("No history yet"));
     }
 
-    [Fact]
-    public async Task Dialog_SelectVersionAndRevert_CallsRevertApi()
-    {
-        HotkeySnapshot snapshot = new(
+    private static HotkeySnapshot RunSnapshot() =>
+        new(
             "Open Notepad",
             "F9",
             true,
@@ -94,14 +92,56 @@ public sealed class HotkeyHistoryDialogTests : BunitContext, IAsyncLifetime
             [],
             [],
             DateTimeOffset.UtcNow,
-            DateTimeOffset.UtcNow,
-            Action: HotkeyAction.Run,
-            Parameters: "notepad.exe");
+            DateTimeOffset.UtcNow);
+
+    private void StubOneVersion(HotkeySnapshot snapshot)
+    {
         _api.GetHistoryAsync(_id, Arg.Any<CancellationToken>())
             .Returns(ApiResult<HistoryEntryDto[]>.Ok([new(1, HistoryChangeType.Edit, DateTimeOffset.UtcNow)]));
         _api.GetHistoryVersionAsync(_id, 1, Arg.Any<CancellationToken>())
             .Returns(ApiResult<HotkeyHistoryVersionDto>.Ok(
                 new HotkeyHistoryVersionDto(1, HistoryChangeType.Edit, DateTimeOffset.UtcNow, snapshot)));
+    }
+
+    [Fact]
+    public async Task Dialog_TypedSnapshot_ShowsKindLabelAndSummary()
+    {
+        StubOneVersion(RunSnapshot());
+
+        IRenderedComponent<MudDialogProvider> provider = await OpenDialogAsync();
+        provider.WaitForAssertion(() => provider.Markup.Should().Contain("v1"));
+
+        await provider.InvokeAsync(() => provider.Find("button.history-version").Click());
+
+        provider.WaitForAssertion(() => provider.Markup.Should().Contain("Run"));
+        provider.Markup.Should().Contain("notepad.exe");
+    }
+
+    [Fact]
+    public async Task Dialog_LegacySnapshot_FallsBackToActionAndParameters()
+    {
+        // Old history JSON predates the typed action fields; it only carries the Action /
+        // Parameters pair, and the dialog must still say something useful about it.
+        StubOneVersion(RunSnapshot() with
+        {
+            RunTarget = null,
+            RunTargetKind = null,
+            Action = HotkeyAction.Run,
+            Parameters = "legacy.exe",
+        });
+
+        IRenderedComponent<MudDialogProvider> provider = await OpenDialogAsync();
+        provider.WaitForAssertion(() => provider.Markup.Should().Contain("v1"));
+
+        await provider.InvokeAsync(() => provider.Find("button.history-version").Click());
+
+        provider.WaitForAssertion(() => provider.Markup.Should().Contain("Run legacy.exe"));
+    }
+
+    [Fact]
+    public async Task Dialog_SelectVersionAndRevert_CallsRevertApi()
+    {
+        StubOneVersion(RunSnapshot());
         _api.RevertAsync(_id, 1, Arg.Any<CancellationToken>())
             .Returns(ApiResult<HotkeyDto>.Ok(
                 new HotkeyDto(
