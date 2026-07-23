@@ -1,0 +1,30 @@
+@using AHKFlowApp.UI.Blazor.DTOs
+@using AHKFlowApp.UI.Blazor.Helpers
+@using MudBlazor
+
+@* Lives in its own component so the desktop grid and the mobile list cannot drift apart;
+   the per-kind tints ride along in the scoped CSS. Raw carries its warning in aria-label
+   because the chip's colour and icon alone are not exposed to screen readers.
+
+   The .action-chip-host span is load-bearing, not decoration: CSS isolation stamps its scope
+   attribute only on elements this component renders directly. MudChip's root is rendered by
+   MudChip, so a bare .action-chip--run rule would never match. The host span carries the scope
+   and ::deep reaches through — the same shape as Components/Hotstrings/HotstringKindChip. *@
+<span class="action-chip-host">
+    <MudChip T="string" Size="Size.Small" Variant="Variant.Text"
+             Class="@HotkeyActionDisplay.ChipClass(Kind)"
+             Icon="@HotkeyActionDisplay.Icon(Kind)"
+             UserAttributes="@ChipAttributes()">@HotkeyActionDisplay.Label(Kind)</MudChip>
+</span>
+
+@code {
+    [Parameter, EditorRequired] public HotkeyActionKind Kind { get; set; }
+
+    private Dictionary<string, object?> ChipAttributes() => Kind == HotkeyActionKind.Raw
+        ? new Dictionary<string, object?>
+        {
+            ["aria-label"] = $"{HotkeyActionDisplay.Label(Kind)}. {HotkeyActionDisplay.RawWarningText}",
+            ["data-test"] = "raw-action-chip",
+        }
+        : new Dictionary<string, object?> { ["data-test"] = "action-chip" };
+}

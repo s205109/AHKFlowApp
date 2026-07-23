@@ -1,0 +1,41 @@
+/* Per-kind tints. Kept deliberately low-saturation so seven chips in one column read as a set
+   rather than a warning panel; Raw is the only one allowed to shout.
+
+   Host-wrapper + ::deep is mandatory here, matching Components/Hotstrings/HotstringKindChip.razor.css:
+   these rules target MudChip's root, which this component does not render itself and which
+   therefore never carries the CSS-isolation scope attribute. color-mix against theme variables
+   tracks light/dark without a separate dark-mode selector, as the hotstring chips already do. */
+.action-chip-host ::deep .mud-chip.action-chip--sendtext {
+    background-color: color-mix(in oklch, var(--mud-palette-surface) 84%, oklch(0.62 0.19 300));
+    color: color-mix(in oklch, var(--mud-palette-text-primary) 35%, oklch(0.52 0.19 300));
+}
+
+.action-chip-host ::deep .mud-chip.action-chip--sendkeys {
+    background-color: color-mix(in oklch, var(--mud-palette-surface) 84%, oklch(0.62 0.15 240));
+    color: color-mix(in oklch, var(--mud-palette-text-primary) 35%, oklch(0.52 0.15 240));
+}
+
+.action-chip-host ::deep .mud-chip.action-chip--run {
+    background-color: color-mix(in oklch, var(--mud-palette-surface) 84%, oklch(0.62 0.15 140));
+    color: color-mix(in oklch, var(--mud-palette-text-primary) 35%, oklch(0.52 0.15 140));
+}
+
+.action-chip-host ::deep .mud-chip.action-chip--window {
+    background-color: color-mix(in oklch, var(--mud-palette-surface) 84%, oklch(0.62 0.13 200));
+    color: color-mix(in oklch, var(--mud-palette-text-primary) 35%, oklch(0.52 0.13 200));
+}
+
+.action-chip-host ::deep .mud-chip.action-chip--remap {
+    background-color: color-mix(in oklch, var(--mud-palette-surface) 84%, oklch(0.62 0.13 260));
+    color: color-mix(in oklch, var(--mud-palette-text-primary) 35%, oklch(0.52 0.13 260));
+}
+
+.action-chip-host ::deep .mud-chip.action-chip--disable {
+    background-color: color-mix(in oklch, var(--mud-palette-surface) 88%, var(--mud-palette-text-disabled));
+    color: var(--mud-palette-text-secondary);
+}
+
+.action-chip-host ::deep .mud-chip.action-chip--raw {
+    background-color: color-mix(in oklch, var(--mud-palette-surface) 80%, oklch(0.70 0.16 70));
+    color: color-mix(in oklch, var(--mud-palette-text-primary) 30%, oklch(0.50 0.16 70));
+}
