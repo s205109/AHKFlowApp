@@ -1,0 +1,71 @@
+@using AHKFlowApp.UI.Blazor.DTOs
+@using AHKFlowApp.UI.Blazor.Services
+@using MudBlazor
+
+@* One picker for every key-shaped field. Role selects which registry entries are offered, so
+   the same control serves the hotkey key, the SendKeys token key and the remap destination —
+   each of which has its own AHK grammar server-side. CoerceValue keeps the vkNN / scNNN escape
+   hatch in the same field: anything typed that is not in the list is passed through and judged
+   by server validation, which is the authority. *@
+<MudAutocomplete T="string" Label="@Label" Value="@Value" ValueChanged="OnValueChanged"
+                 SearchFunc="SearchAsync" CoerceValue="true" ResetValueOnEmptyText="false"
+                 MaxItems="null" Dense="@Dense"
+                 Error="@Error" ErrorText="@ErrorText"
+                 HelperText="@HelperText"
+                 UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = DataTest })">
+    <ItemTemplate>
+        @* Results arrive ordered by group, so groups cluster; this label is what tells the
+           user which cluster they are looking at, standing in for the group headers
+           MudAutocomplete 9.3.0 does not support. Blank for vk/sc codes, which have no group. *@
+        <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="flex-grow-1">
+            <span>@context</span>
+            @if (Catalog.GroupOf(context) is { } group)
+            {
+                <MudText Typo="Typo.caption" Color="Color.Tertiary">@group</MudText>
+            }
+        </MudStack>
+    </ItemTemplate>
+</MudAutocomplete>
+
+@code {
+    [Inject] private IHotkeyKeyCatalog Catalog { get; set; } = default!;
+
+    /// <summary>Registry role whose keys this picker offers: HotkeyKey, ComboPrefix, SendToken, RemapSource or RemapDest.</summary>
+    [Parameter, EditorRequired] public string Role { get; set; } = "HotkeyKey";
+
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter] public bool Error { get; set; }
+    [Parameter] public string? ErrorText { get; set; }
+    [Parameter] public string? HelperText { get; set; }
+    [Parameter] public bool Dense { get; set; }
+    [Parameter] public string DataTest { get; set; } = "key-picker";
+
+    private Task OnValueChanged(string? value) => ValueChanged.InvokeAsync(value);
+
+    /// <summary>
+    /// Registry entries for this role matching the typed fragment, plus the fragment itself when
+    /// it looks like a vk/sc code so the escape hatch is selectable rather than only typeable.
+    /// Catalog order (group, then name) is preserved — re-sorting here would scatter the groups.
+    /// </summary>
+    internal async Task<IEnumerable<string>> SearchAsync(string? fragment, CancellationToken ct)
+    {
+        IReadOnlyList<HotkeyKeyDto> keys = await Catalog.ForRoleAsync(Role, ct);
+
+        IEnumerable<string> matches = string.IsNullOrWhiteSpace(fragment)
+            ? keys.Select(k => k.Canonical)
+            : keys.Where(k => k.Canonical.Contains(fragment, StringComparison.OrdinalIgnoreCase))
+                  .Select(k => k.Canonical);
+
+        if (!string.IsNullOrWhiteSpace(fragment)
+            && (fragment.StartsWith("vk", StringComparison.OrdinalIgnoreCase)
+                || fragment.StartsWith("sc", StringComparison.OrdinalIgnoreCase))
+            && !matches.Contains(fragment, StringComparer.OrdinalIgnoreCase))
+        {
+            matches = matches.Prepend(fragment);
+        }
+
+        return matches;
+    }
+}
