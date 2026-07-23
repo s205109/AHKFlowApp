@@ -17,7 +17,4 @@ public sealed record UpdateHotkeyDto(
     string? Body,
     Guid[]? ProfileIds,
     bool AppliesToAllProfiles,
-    Guid[]? CategoryIds = null,
-    // Legacy pair — retires in Task 10. Serialized but ignored by the typed API.
-    HotkeyAction Action = HotkeyAction.Send,
-    string Parameters = "");
+    Guid[]? CategoryIds = null);

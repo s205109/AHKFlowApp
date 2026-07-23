@@ -27,12 +27,6 @@ public sealed class HotkeyEditModel
 
     public HotkeyActionKind ActionKind { get; set; } = HotkeyActionKind.SendText;
 
-    // Legacy members, retired in Task 11. No UI binds them any more — the grid's Action column
-    // moved onto ActionKind in Task 9 — but DTO construction sites still carry them. Not written
-    // to the wire by ToCreateDto/ToUpdateDto: the typed fields are the contract.
-    public HotkeyAction Action { get; set; } = HotkeyAction.Send;
-    public string Parameters { get; set; } = "";
-
     // Per-kind fields. All are retained across kind switches so a user who toggles away and
     // back does not lose typed work; gating to the active kind happens once, on the wire, in
     // ToCreateDto / ToUpdateDto / ToPreviewRequest. Server validation is both-or-neither, so
@@ -76,8 +70,6 @@ public sealed class HotkeyEditModel
         WindowOp = dto.WindowOp,
         RemapDest = dto.RemapDest,
         Body = dto.Body,
-        Action = dto.Action,
-        Parameters = dto.Parameters,
         AppliesToAllProfiles = dto.AppliesToAllProfiles,
         ProfileIds = [.. dto.ProfileIds],
         CategoryIds = [.. dto.CategoryIds ?? []],
@@ -100,8 +92,6 @@ public sealed class HotkeyEditModel
         WindowOp = WindowOp,
         RemapDest = RemapDest,
         Body = Body,
-        Action = Action,
-        Parameters = Parameters,
         AppliesToAllProfiles = AppliesToAllProfiles,
         ProfileIds = [.. ProfileIds],
         CategoryIds = [.. CategoryIds],

@@ -136,8 +136,6 @@ public sealed class HotkeyEditModelTests
             WindowOp = WindowOp.ToggleAlwaysOnTop,
             RemapDest = "F13",
             Body = "raw body",
-            Action = HotkeyAction.Run,
-            Parameters = "legacy params",
             AppliesToAllProfiles = false,
             ProfileIds = [profileId],
             CategoryIds = [categoryId],
