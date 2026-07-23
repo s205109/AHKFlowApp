@@ -69,7 +69,7 @@
                     <div data-test="sendtext-panel">
                         <MudTextField T="string" Label="Text to type" @bind-Value="Item.Text"
                                       Lines="4" MaxLength="@HotkeyEditModel.TextMaxLength" Immediate="true"
-                                      OnDebounceIntervalElapsed="@(() => RefreshPreviewAsync(debounce: false))"
+                                      OnDebounceIntervalElapsed="@(() => OnFieldDebouncedAsync(nameof(HotkeyEditModel.Text)))"
                                       DebounceInterval="300"
                                       Error="@(FieldError(nameof(HotkeyEditModel.Text)) is not null)"
                                       ErrorText="@FieldError(nameof(HotkeyEditModel.Text))"
@@ -112,7 +112,7 @@
                         </MudSelect>
                         <MudTextField T="string" Label="Target" @bind-Value="Item.RunTarget"
                                       MaxLength="@HotkeyEditModel.RunTargetMaxLength" Immediate="true"
-                                      OnDebounceIntervalElapsed="@(() => RefreshPreviewAsync(debounce: false))"
+                                      OnDebounceIntervalElapsed="@(() => OnFieldDebouncedAsync(nameof(HotkeyEditModel.RunTarget)))"
                                       DebounceInterval="300"
                                       Placeholder="@RunTargetPlaceholder()"
                                       Error="@(FieldError(nameof(HotkeyEditModel.RunTarget)) is not null)"
@@ -158,7 +158,7 @@
                         <div class="raw-body-wrap">
                             <MudTextField T="string" Label="Action body" @bind-Value="Item.Body"
                                           Lines="6" MaxLength="@HotkeyEditModel.BodyMaxLength" Immediate="true"
-                                          OnDebounceIntervalElapsed="@(() => RefreshPreviewAsync(debounce: false))"
+                                          OnDebounceIntervalElapsed="@(() => OnFieldDebouncedAsync(nameof(HotkeyEditModel.Body)))"
                                           DebounceInterval="300"
                                           Error="@(FieldError(nameof(HotkeyEditModel.Body)) is not null)"
                                           ErrorText="@FieldError(nameof(HotkeyEditModel.Body))"
@@ -214,6 +214,7 @@
 
             @* ---- Metadata: unchanged from today's dialog ---- *@
             <MudTextField T="string" Label="Description" @bind-Value="Item.Description"
+                          @bind-Value:after="@(() => ClearSaveError(nameof(HotkeyEditModel.Description)))"
                           Required="true" RequiredError="Description is required" MaxLength="200"
                           Error="@(FieldError(nameof(HotkeyEditModel.Description)) is not null)"
                           ErrorText="@FieldError(nameof(HotkeyEditModel.Description))"
@@ -272,6 +273,13 @@
 
     /// <summary>Debounce applied to preview refreshes after a field change. Test seam.</summary>
     internal TimeSpan PreviewDebounce { get; set; } = TimeSpan.FromMilliseconds(400);
+
+    /// <summary>
+    /// Test seam: the save-originated field errors currently held. Exposed because MudBlazor's
+    /// inputs mask a stale explicit error once the field's own value changes, so this dictionary —
+    /// not the rendered markup — is where clearing a save error on edit is observable.
+    /// </summary>
+    internal IReadOnlyDictionary<string, string> SaveFieldErrors => _saveFieldErrors;
 
     // Server-reported errors keyed by DTO field name. Dictionaries rather than the hotstring
     // dialog's positional tuple: seven panels have too many fields for positional returns, and
@@ -333,6 +341,23 @@
     /// </summary>
     private string? FieldError(string field) =>
         _saveFieldErrors.GetValueOrDefault(field) ?? _previewFieldErrors.GetValueOrDefault(field);
+
+    /// <summary>
+    /// Drops a save error the moment the user edits the field it sits on. A save error is a verdict
+    /// on the value that was submitted; once that value changes, the verdict is stale — and would
+    /// otherwise contradict a green preview that already re-ran on the new value. Touches only
+    /// <see cref="_saveFieldErrors"/> so an in-flight preview response cannot be wiped (the Task 8
+    /// two-dictionary split); the caller is always a ValueChanged/debounce handler, which re-renders
+    /// on its own, so no <c>StateHasChanged</c> here.
+    /// </summary>
+    private void ClearSaveError(string field) => _saveFieldErrors.Remove(field);
+
+    /// <summary>Debounced text-field edit: clear that field's stale save error, then re-preview.</summary>
+    private Task OnFieldDebouncedAsync(string field)
+    {
+        ClearSaveError(field);
+        return RefreshPreviewAsync(debounce: false);
+    }
 
     private string RunTargetPlaceholder() => Item.RunTargetKind switch
     {
@@ -407,17 +432,12 @@
         return unmapped.FirstOrDefault();
     }
 
-    /// <summary>The fields a kind owns — the ones whose errors are meaningless under any other kind.</summary>
-    private static string[] FieldsOwnedBy(HotkeyActionKind kind) => kind switch
-    {
-        HotkeyActionKind.SendText => [nameof(HotkeyEditModel.Text)],
-        HotkeyActionKind.SendKeys => [nameof(HotkeyEditModel.SendKeysContent)],
-        HotkeyActionKind.Run => [nameof(HotkeyEditModel.RunTarget), nameof(HotkeyEditModel.RunTargetKind)],
-        HotkeyActionKind.Window => [nameof(HotkeyEditModel.WindowOp)],
-        HotkeyActionKind.Remap => [nameof(HotkeyEditModel.RemapDest)],
-        HotkeyActionKind.Raw => [nameof(HotkeyEditModel.Body)],
-        _ => [],
-    };
+    /// <summary>
+    /// The fields a kind owns — the ones whose errors are meaningless under any other kind.
+    /// Single-sourced from <see cref="HotkeyEditModel.FieldNamesOwnedBy"/> so adding a field to a
+    /// kind is a one-place edit that the wire mapping and this error clearing both track.
+    /// </summary>
+    private static IReadOnlyList<string> FieldsOwnedBy(HotkeyActionKind kind) => HotkeyEditModel.FieldNamesOwnedBy(kind);
 
     /// <summary>
     /// Switching kind drops the outgoing kind's field errors (a stale Raw brace message must not
@@ -444,6 +464,7 @@
     private async Task OnKeyChangedAsync(string? key)
     {
         Item.Key = key ?? "";
+        ClearSaveError(nameof(HotkeyEditModel.Key));
         // The key is half the emitted line, so a stale preview here is worse than a stale
         // payload preview — it shows the wrong binding entirely.
         await RefreshPreviewAsync(debounce: false);
@@ -452,6 +473,7 @@
     private async Task OnRunTargetKindChangedAsync(RunTargetKind? kind)
     {
         Item.RunTargetKind = kind;
+        ClearSaveError(nameof(HotkeyEditModel.RunTargetKind));
         await RefreshPreviewAsync(debounce: false);
     }
 
@@ -466,6 +488,7 @@
         // A remap destination is never braced and never carries modifiers (the backend rejects
         // {Ctrl} and ^a), so it is persisted exactly as the picker yields it.
         Item.RemapDest = dest;
+        ClearSaveError(nameof(HotkeyEditModel.RemapDest));
         await RefreshPreviewAsync(debounce: false);
     }
 
@@ -496,6 +519,7 @@
             Item.SendKeysContent = $"{mods}{key}";
         }
 
+        ClearSaveError(nameof(HotkeyEditModel.SendKeysContent));
         await RefreshPreviewAsync(debounce: false);
     }
 
