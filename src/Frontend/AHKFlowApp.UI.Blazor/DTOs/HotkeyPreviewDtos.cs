@@ -1,6 +1,7 @@
 namespace AHKFlowApp.UI.Blazor.DTOs;
 
-public sealed record CreateHotkeyDto(
+/// <summary>Draft hotkey fields to preview, without saving. Mirror of the backend DTO.</summary>
+public sealed record HotkeyPreviewRequestDto(
     string Description,
     string Key,
     HotkeyActionKind ActionKind,
@@ -14,10 +15,7 @@ public sealed record CreateHotkeyDto(
     RunTargetKind? RunTargetKind = null,
     WindowOp? WindowOp = null,
     string? RemapDest = null,
-    string? Body = null,
-    Guid[]? ProfileIds = null,
-    bool AppliesToAllProfiles = false,
-    Guid[]? CategoryIds = null,
-    // Legacy pair — retires in Task 10. Serialized but ignored by the typed API.
-    HotkeyAction Action = HotkeyAction.Send,
-    string Parameters = "");
+    string? Body = null);
+
+/// <summary>The AutoHotkey snippet a hotkey draft would generate. Mirror of the backend DTO.</summary>
+public sealed record HotkeyPreviewDto(string Snippet);

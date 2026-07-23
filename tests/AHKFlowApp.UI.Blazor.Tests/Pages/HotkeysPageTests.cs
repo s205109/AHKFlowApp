@@ -55,7 +55,9 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
 
     private static HotkeyDto MakeHotkey(string description = "Open terminal", string key = "T") =>
         new(Guid.NewGuid(), [], true, description, key, true, false, false, false,
-            HotkeyAction.Run, "", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+            HotkeyActionKind.Run, null, null, null, null, null, null, null,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow,
+            Action: HotkeyAction.Run, Parameters: "");
 
     private static ProfileDto MakeProfile(string name = "Work") =>
         new(Guid.NewGuid(), name, false, "header text", "footer text", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);

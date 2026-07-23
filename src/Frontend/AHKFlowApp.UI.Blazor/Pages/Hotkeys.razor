@@ -340,8 +340,7 @@
                 SortDescending: sortDescending,
                 DescriptionFilter: StringFilter(state, "description"),
                 KeyFilter: StringFilter(state, "key"),
-                ParametersFilter: StringFilter(state, "parameters"),
-                Action: ActionFilter(state, "action"),
+                ActionKind: ActionFilter(state, "action"),
                 Ctrl: BoolFilter(state, "ctrl"),
                 Alt: BoolFilter(state, "alt"),
                 Shift: BoolFilter(state, "shift"),
@@ -432,7 +431,7 @@
         };
     }
 
-    private static HotkeyAction? ActionFilter(GridState<HotkeyEditModel> state, string identifier)
+    private static HotkeyActionKind? ActionFilter(GridState<HotkeyEditModel> state, string identifier)
     {
         object? value = state.FilterDefinitions
             .FirstOrDefault(filter => ColumnKey(filter) == NormalizeColumnKey(identifier))?
@@ -440,8 +439,8 @@
 
         return value switch
         {
-            HotkeyAction typed => typed,
-            string text when Enum.TryParse(text, ignoreCase: true, out HotkeyAction parsed) => parsed,
+            HotkeyActionKind typed => typed,
+            string text when Enum.TryParse(text, ignoreCase: true, out HotkeyActionKind parsed) => parsed,
             _ => null,
         };
     }
