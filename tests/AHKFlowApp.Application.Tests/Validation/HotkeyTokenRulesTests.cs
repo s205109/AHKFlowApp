@@ -55,4 +55,31 @@ public sealed class HotkeyTokenRulesTests
     {
         HotkeyRules.Tokens.IsValidRemapDest(dest).Should().BeFalse();
     }
+
+    [Theory]
+    [InlineData("{Esc}", "{Escape}")]          // alias, braced named
+    [InlineData("{esc}", "{Escape}")]          // alias + case
+    [InlineData("{vk1}", "{vk01}")]            // vk width
+    [InlineData("{sc1}", "{sc001}")]           // sc width
+    [InlineData("{VOLUME_UP}", "{Volume_Up}")] // registry case
+    [InlineData("^!{del}", "^!{Delete}")]      // modifiers preserved, alias folded
+    [InlineData("+{esc}", "+{Escape}")]        // modifier preserved
+    [InlineData("^c", "^c")]                   // bare printable unchanged (Send case-sensitive)
+    [InlineData("^C", "^C")]                   // bare uppercase NOT folded
+    [InlineData("{Escape}", "{Escape}")]       // already canonical
+    public void NormalizeSendKeysContent_FoldsBracedKeyKeepingModifiers(string input, string expected)
+    {
+        HotkeyRules.Tokens.NormalizeSendKeysContent(input).Should().Be(expected);
+    }
+
+    [Theory]
+    [InlineData("Esc", "Escape")]              // alias
+    [InlineData("escape", "Escape")]           // case
+    [InlineData("vk1", "vk01")]                // vk width
+    [InlineData("sc1", "sc001")]               // sc width
+    [InlineData("Ctrl", "Ctrl")]               // already canonical
+    public void NormalizeRemapDest_FoldsToCanonical(string input, string expected)
+    {
+        HotkeyRules.Tokens.NormalizeRemapDest(input).Should().Be(expected);
+    }
 }

@@ -76,9 +76,12 @@ public sealed class HotkeyTypedActionsMigrationTests(SqlContainerFixture sqlFixt
                 LegacyHotkeyDefinitionConverter.ToTyped(f.Action, f.Parameters);
 
             row.ActionKind.Should().Be(expected.ActionKind, "fixture '{0}'", f.Name);
+            row.Text.Should().Be(expected.Text, "fixture '{0}'", f.Name);
             row.SendKeysContent.Should().Be(expected.SendKeysContent, "fixture '{0}'", f.Name);
             row.RunTarget.Should().Be(expected.RunTarget, "fixture '{0}'", f.Name);
             row.RunTargetKind.Should().Be(expected.RunTargetKind, "fixture '{0}'", f.Name);
+            row.WindowOp.Should().Be(expected.WindowOp, "fixture '{0}'", f.Name);
+            row.RemapDest.Should().Be(expected.RemapDest, "fixture '{0}'", f.Name);
             row.Body.Should().Be(expected.Body, "fixture '{0}'", f.Name);
         }
     }
