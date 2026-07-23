@@ -31,19 +31,19 @@ A Kind whose Replacement is a sequence of literal text, Enter and Tab key presse
 _Avoid_: template, placeholder snippet
 
 **Raw**:
-A Kind holding one complete AutoHotkey hotstring definition instead of structured fields. The app normalizes its layout, lifts leading comments into the description, and derives its Trigger and options from the definition text, which stays the single source of truth (see ADR-0002).
+A Kind holding one complete AutoHotkey hotstring definition instead of structured fields. The app normalizes its layout, lifts leading comments into the description, and derives its Trigger from the definition text, which stays the single source of truth (see ADR-0002).
 _Avoid_: Script (a retired name for this Kind), custom, advanced
 
 **Delivery**:
 How a Text Hotstring's Replacement reaches the target window — typed keystroke by keystroke, or pasted through the clipboard. Auto picks between the two by Replacement length.
-_Avoid_: send mode, paste mode, method, Hotstring (the current UI label for typed delivery)
+_Avoid_: send mode (AutoHotkey's own SI/SP/SE setting, which a Profile script sets once globally), output function, paste mode, method, Hotstring (the current UI label for typed delivery)
 
 **Window context**:
 The restriction that limits a Hotstring to windows matching a given executable, window class, or title substring. A Hotstring without one fires in every window.
 _Avoid_: scope, filter, condition
 
 **Options**:
-The settings that shape how a Hotstring fires: case sensitivity, triggering inside words, and Ending character behavior. Structured Kinds expose them as individual toggles; a Raw definition carries them as flag letters inside the definition text, from which they are derived.
+The settings that shape how a Hotstring fires: case sensitivity, triggering inside words, and Ending character behavior. Structured Kinds expose them as individual toggles; a Raw definition instead carries them as flag letters inside its definition text, which alone governs how it fires.
 _Avoid_: flags (for the toggles), settings, modifiers
 
 **Ending character**:
