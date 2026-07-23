@@ -23,6 +23,19 @@ public sealed class HotkeyKeyCatalogTests
         return api;
     }
 
+    private static IHotkeysApiClient ApiBlockingUntil(TaskCompletionSource<HotkeyKeyCatalogDto> tcs)
+    {
+        IHotkeysApiClient api = Substitute.For<IHotkeysApiClient>();
+        api.GetKeysAsync(Arg.Any<CancellationToken>()).Returns(_ => WaitThenOkAsync(tcs));
+        return api;
+    }
+
+    private static async Task<ApiResult<HotkeyKeyCatalogDto>> WaitThenOkAsync(TaskCompletionSource<HotkeyKeyCatalogDto> tcs)
+    {
+        HotkeyKeyCatalogDto catalog = await tcs.Task;
+        return ApiResult<HotkeyKeyCatalogDto>.Ok(catalog);
+    }
+
     [Fact]
     public async Task ForRoleAsync_ReturnsOnlyKeysCarryingThatRole()
     {
@@ -105,5 +118,44 @@ public sealed class HotkeyKeyCatalogTests
         var catalog = new HotkeyKeyCatalog(ApiReturning(Sample));
 
         catalog.IsValidKey("anything at all").Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ForRoleAsync_RacingCalls_FetchesOnlyOnce()
+    {
+        var tcs = new TaskCompletionSource<HotkeyKeyCatalogDto>();
+        IHotkeysApiClient api = ApiBlockingUntil(tcs);
+        var catalog = new HotkeyKeyCatalog(api);
+
+        // Both calls must enter LoadAsync's pre-lock check before either fetch completes, so
+        // the second finds the gate held rather than short-circuiting on the outer null check.
+        Task<IReadOnlyList<HotkeyKeyDto>> first = catalog.ForRoleAsync("HotkeyKey", CancellationToken.None).AsTask();
+        Task<IReadOnlyList<HotkeyKeyDto>> second = catalog.ForRoleAsync("HotkeyKey", CancellationToken.None).AsTask();
+        tcs.SetResult(Sample);
+        await Task.WhenAll(first, second);
+
+        await api.Received(1).GetKeysAsync(Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task ForRoleAsync_FailedFetch_IsNotCachedAndRetriedOnNextCall()
+    {
+        IHotkeysApiClient api = Substitute.For<IHotkeysApiClient>();
+        api.GetKeysAsync(Arg.Any<CancellationToken>())
+            .Returns(
+                ApiResult<HotkeyKeyCatalogDto>.Failure(ApiResultStatus.ServerError, null),
+                ApiResult<HotkeyKeyCatalogDto>.Ok(Sample));
+        var catalog = new HotkeyKeyCatalog(api);
+
+        IReadOnlyList<HotkeyKeyDto> afterFailure = await catalog.ForRoleAsync("HotkeyKey", CancellationToken.None);
+
+        catalog.IsLoaded.Should().BeFalse();
+        afterFailure.Should().BeEmpty();
+
+        IReadOnlyList<HotkeyKeyDto> afterRetry = await catalog.ForRoleAsync("HotkeyKey", CancellationToken.None);
+
+        afterRetry.Should().NotBeEmpty();
+        catalog.IsLoaded.Should().BeTrue();
+        await api.Received(2).GetKeysAsync(Arg.Any<CancellationToken>());
     }
 }
