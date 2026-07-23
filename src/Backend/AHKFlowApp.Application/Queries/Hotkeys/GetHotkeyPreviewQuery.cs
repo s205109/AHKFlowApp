@@ -42,8 +42,15 @@ internal sealed class GetHotkeyPreviewQueryHandler(TimeProvider clock)
     {
         HotkeyPreviewRequestDto i = request.Input;
 
-        // Canonicalize the key so the preview matches what a save would persist and emit.
+        // Canonicalize the key and token action fields so the preview matches what a save would
+        // persist and emit — same normalization the create/update handlers apply (spec §8).
         HotkeyKeys.TryCanonicalize(i.Key, out string canonicalKey);
+        string? canonicalSendKeys = string.IsNullOrEmpty(i.SendKeysContent)
+            ? i.SendKeysContent
+            : HotkeyRules.Tokens.NormalizeSendKeysContent(i.SendKeysContent);
+        string? canonicalRemapDest = string.IsNullOrEmpty(i.RemapDest)
+            ? i.RemapDest
+            : HotkeyRules.Tokens.NormalizeRemapDest(i.RemapDest);
 
         var hk = Hotkey.Create(
             Guid.Empty,
@@ -51,9 +58,9 @@ internal sealed class GetHotkeyPreviewQueryHandler(TimeProvider clock)
                 Description: i.Description, Key: canonicalKey,
                 Ctrl: i.Ctrl, Alt: i.Alt, Shift: i.Shift, Win: i.Win,
                 ActionKind: i.ActionKind, AppliesToAllProfiles: true,
-                Text: i.Text, SendKeysContent: i.SendKeysContent,
+                Text: i.Text, SendKeysContent: canonicalSendKeys,
                 RunTarget: i.RunTarget, RunTargetKind: i.RunTargetKind, WindowOp: i.WindowOp,
-                RemapDest: i.RemapDest, Body: i.Body),
+                RemapDest: canonicalRemapDest, Body: i.Body),
             clock);
 
         string snippet = HotkeyEmitter.Emit(hk);

@@ -494,6 +494,20 @@ public sealed class HotkeysEndpointsTests(ApiTestFixture fixture)
         created.RemapDest.Should().Be(dto.RemapDest);
         created.Body.Should().Be(dto.Body);
 
+        // Independent read-back through the query path — not the POST echo — so the columns are
+        // proven to have actually persisted and re-mapped, catching a write/read-mapping bug the
+        // returned entity would hide.
+        HotkeyDto? reloaded = await (await client.GetAsync($"/api/v1/hotkeys/{created.Id}"))
+            .Content.ReadFromJsonAsync<HotkeyDto>();
+        reloaded!.ActionKind.Should().Be(expectedKind);
+        reloaded.Text.Should().Be(dto.Text);
+        reloaded.SendKeysContent.Should().Be(dto.SendKeysContent);
+        reloaded.RunTarget.Should().Be(dto.RunTarget);
+        reloaded.RunTargetKind.Should().Be(dto.RunTargetKind);
+        reloaded.WindowOp.Should().Be(dto.WindowOp);
+        reloaded.RemapDest.Should().Be(dto.RemapDest);
+        reloaded.Body.Should().Be(dto.Body);
+
         // Same draft fields as the create, through the preview endpoint, over real HTTP —
         // asserts the exact emitted .ahk line, not just that creation succeeded.
         var previewDto = new HotkeyPreviewRequestDto(
@@ -505,6 +519,56 @@ public sealed class HotkeysEndpointsTests(ApiTestFixture fixture)
         previewRes.StatusCode.Should().Be(HttpStatusCode.OK);
         HotkeyPreviewDto? preview = await previewRes.Content.ReadFromJsonAsync<HotkeyPreviewDto>();
         preview!.Snippet.Should().Be(expectedSnippet);
+    }
+
+    // Non-canonical but valid inputs must be folded onto the single stored spelling (spec §8):
+    // Key alias/case, and the SendKeys / RemapDest tokens' alias, case and vk/sc digit width.
+    // Asserted on an independent read-back (query path), not the POST echo.
+    [Theory]
+    [InlineData("esc", "{vk1}", "Escape", "{vk01}")]        // key alias + SendKeys vk width
+    [InlineData("ESCAPE", "{del}", "Escape", "{Delete}")]  // key case + SendKeys alias
+    [InlineData("f5", "^{volume_up}", "F5", "^{Volume_Up}")] // key case + modifier preserved, registry case folded
+    public async Task Post_SendKeys_CanonicalizesKeyAndTokenBeforePersisting(
+        string submittedKey, string submittedContent, string expectedKey, string expectedContent)
+    {
+        using HttpClient client = CreateAuthed();
+        var dto = new CreateHotkeyDto("Fold me", submittedKey, HotkeyActionKind.SendKeys,
+            Ctrl: true, SendKeysContent: submittedContent, AppliesToAllProfiles: true);
+
+        HotkeyDto? created = await (await client.PostAsJsonAsync("/api/v1/hotkeys", dto))
+            .Content.ReadFromJsonAsync<HotkeyDto>();
+
+        HotkeyDto? reloaded = await (await client.GetAsync($"/api/v1/hotkeys/{created!.Id}"))
+            .Content.ReadFromJsonAsync<HotkeyDto>();
+        reloaded!.Key.Should().Be(expectedKey);
+        reloaded.SendKeysContent.Should().Be(expectedContent);
+
+        // Preview fed the same non-canonical draft must produce the canonical emission — otherwise
+        // the picker's live preview and the saved row would disagree.
+        var previewDto = new HotkeyPreviewRequestDto(
+            dto.Description, submittedKey, HotkeyActionKind.SendKeys,
+            true, false, false, false, null, submittedContent, null, null, null, null, null);
+        HotkeyPreviewDto? preview = await (await client.PostAsJsonAsync("/api/v1/hotkeys/preview", previewDto))
+            .Content.ReadFromJsonAsync<HotkeyPreviewDto>();
+        preview!.Snippet.Should().Contain(expectedContent).And.NotContain(submittedContent);
+    }
+
+    [Theory]
+    [InlineData("esc", "Escape")]   // alias
+    [InlineData("vk1", "vk01")]     // vk width
+    [InlineData("CTRL", "Ctrl")]    // case
+    public async Task Post_Remap_CanonicalizesDestBeforePersisting(string submittedDest, string expectedDest)
+    {
+        using HttpClient client = CreateAuthed();
+        var dto = new CreateHotkeyDto("Remap me", "a", HotkeyActionKind.Remap,
+            RemapDest: submittedDest, AppliesToAllProfiles: true);
+
+        HotkeyDto? created = await (await client.PostAsJsonAsync("/api/v1/hotkeys", dto))
+            .Content.ReadFromJsonAsync<HotkeyDto>();
+
+        HotkeyDto? reloaded = await (await client.GetAsync($"/api/v1/hotkeys/{created!.Id}"))
+            .Content.ReadFromJsonAsync<HotkeyDto>();
+        reloaded!.RemapDest.Should().Be(expectedDest);
     }
 
     // AppliesToAllProfiles: true on every case — the create validator requires it (or a

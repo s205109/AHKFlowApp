@@ -17,6 +17,14 @@ namespace AHKFlowApp.Application.Services;
 /// <c>Send</c> that is a valid SendKeys token → <see cref="HotkeyActionKind.SendKeys"/>; every other
 /// <c>Send</c> → <see cref="HotkeyActionKind.Raw"/> with a body reproducing the current escaped
 /// emission byte-for-byte.
+/// <para>
+/// <b>Canonicalization exception.</b> Unlike the API write paths, this converter does <em>not</em>
+/// fold a migrated <c>SendKeys</c> token onto its canonical spelling: legacy <c>Parameters</c> are
+/// carried through verbatim. That is the byte-identity rule of spec §8 — a converted row must emit
+/// exactly what it did before — and it keeps the hand-written T-SQL migration (which cannot run the
+/// alias/width logic) in parity with this C# transform. The storage invariant therefore holds for
+/// new API writes; legacy rows keep their original accepted spelling.
+/// </para>
 /// </remarks>
 public static class LegacyHotkeyDefinitionConverter
 {

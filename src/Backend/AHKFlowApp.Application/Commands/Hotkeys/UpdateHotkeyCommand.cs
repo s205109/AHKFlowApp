@@ -62,6 +62,15 @@ internal sealed class UpdateHotkeyCommandHandler(
         // so this always succeeds here.
         HotkeyKeys.TryCanonicalize(input.Key, out string canonicalKey);
 
+        // Same for the token action fields: the validator has accepted them, so normalization
+        // folds aliases/case/code-width onto the one persisted spelling (spec §8 invariant).
+        string? canonicalSendKeys = string.IsNullOrEmpty(input.SendKeysContent)
+            ? input.SendKeysContent
+            : HotkeyRules.Tokens.NormalizeSendKeysContent(input.SendKeysContent);
+        string? canonicalRemapDest = string.IsNullOrEmpty(input.RemapDest)
+            ? input.RemapDest
+            : HotkeyRules.Tokens.NormalizeRemapDest(input.RemapDest);
+
         Guid[] distinctProfileIds = input.ProfileIds?.Distinct().ToArray() ?? [];
         if (!input.AppliesToAllProfiles)
         {
@@ -92,11 +101,11 @@ internal sealed class UpdateHotkeyCommandHandler(
                 ActionKind: input.ActionKind,
                 AppliesToAllProfiles: input.AppliesToAllProfiles,
                 Text: input.Text,
-                SendKeysContent: input.SendKeysContent,
+                SendKeysContent: canonicalSendKeys,
                 RunTarget: input.RunTarget,
                 RunTargetKind: input.RunTargetKind,
                 WindowOp: input.WindowOp,
-                RemapDest: input.RemapDest,
+                RemapDest: canonicalRemapDest,
                 Body: input.Body),
             clock);
 

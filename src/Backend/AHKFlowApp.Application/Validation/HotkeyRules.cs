@@ -219,5 +219,36 @@ internal static class HotkeyRules
         /// <c>vk</c>/<c>sc</c> code. No modifiers, no braces (spec §8).
         /// </summary>
         public static bool IsValidRemapDest(string? dest) => HotkeyKeys.IsValidRemapDest(dest);
+
+        /// <summary>
+        /// Canonical spelling of a token already accepted by <see cref="IsValidSendKeysContent"/>
+        /// (spec §8 storage invariant). The modifier prefix is preserved verbatim — its order and
+        /// the four symbols carry meaning — and a braced named/code key is resolved to its registry
+        /// spelling (<c>{Esc}</c> → <c>{Escape}</c>, <c>{vk1}</c> → <c>{vk01}</c>). A bare printable
+        /// character is returned unchanged: Send reads it case-sensitively (<c>^C</c> ≠ <c>^c</c>),
+        /// so folding it would change what is typed.
+        /// </summary>
+        public static string NormalizeSendKeysContent(string content)
+        {
+            int i = 0;
+            while (i < content.Length && content[i] is '^' or '!' or '+' or '#')
+                i++;
+
+            string key = content[i..];
+            if (key.Length == 0 || key[0] != '{')
+                return content;
+
+            string inner = key[1..^1];
+            return HotkeyKeys.TryCanonicalize(inner, out string canonical)
+                ? $"{content[..i]}{{{canonical}}}"
+                : content;
+        }
+
+        /// <summary>
+        /// Canonical spelling of a token already accepted by <see cref="IsValidRemapDest"/>
+        /// (<c>Esc</c> → <c>Escape</c>, <c>vk1</c> → <c>vk01</c>).
+        /// </summary>
+        public static string NormalizeRemapDest(string dest) =>
+            HotkeyKeys.TryCanonicalize(dest, out string canonical) ? canonical : dest;
     }
 }
