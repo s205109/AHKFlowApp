@@ -10,6 +10,7 @@
 <MudAutocomplete T="string" Label="@Label" Value="@Value" ValueChanged="OnValueChanged"
                  SearchFunc="SearchAsync" CoerceValue="true" ResetValueOnEmptyText="false"
                  MaxItems="null" Dense="@Dense"
+                 Required="@Required" RequiredError="@RequiredError"
                  Error="@Error" ErrorText="@ErrorText"
                  HelperText="@HelperText"
                  UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = DataTest })">
@@ -36,6 +37,15 @@
     [Parameter] public string? Label { get; set; }
     [Parameter] public string? Value { get; set; }
     [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    /// <summary>
+    /// Makes the enclosing MudForm block submission while this picker is empty. Forwarded to
+    /// MudAutocomplete so the check happens client-side instead of costing a round trip.
+    /// </summary>
+    [Parameter] public bool Required { get; set; }
+
+    /// <summary>Message shown when <see cref="Required"/> is set and the picker is empty.</summary>
+    [Parameter] public string RequiredError { get; set; } = "Required";
+
     [Parameter] public bool Error { get; set; }
     [Parameter] public string? ErrorText { get; set; }
     [Parameter] public string? HelperText { get; set; }
