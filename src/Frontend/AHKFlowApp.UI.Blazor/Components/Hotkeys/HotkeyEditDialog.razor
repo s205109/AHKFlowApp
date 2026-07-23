@@ -26,6 +26,7 @@
                  an expanded preview must not go stale when it changes. *@
             <KeyPicker Role="HotkeyKey" Label="Key"
                        Value="@Item.Key" ValueChanged="OnKeyChangedAsync"
+                       Required="true" RequiredError="Key is required"
                        Error="@(FieldError(nameof(HotkeyEditModel.Key)) is not null)"
                        ErrorText="@FieldError(nameof(HotkeyEditModel.Key))"
                        HelperText="Pick a key, or type a vk/sc code such as vk1B."
@@ -188,6 +189,15 @@
                             @_previewError
                         </MudText>
                     }
+                    else if (_previewFieldErrors.Count > 0)
+                    {
+                        @* Every message mapped onto an input above, so there is nothing to show
+                           here — but an empty panel body reads as broken. Say why it is empty. *@
+                        <MudText Typo="Typo.body2"
+                                 UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "preview-blocked" })">
+                            Fix the highlighted fields to see the generated code.
+                        </MudText>
+                    }
                     else if (_previewSnippet is not null)
                     {
                         <div class="preview-snippet-container">
@@ -263,10 +273,16 @@
     /// <summary>Debounce applied to preview refreshes after a field change. Test seam.</summary>
     internal TimeSpan PreviewDebounce { get; set; } = TimeSpan.FromMilliseconds(400);
 
-    // Server-reported errors keyed by DTO field name. A dictionary rather than the hotstring
+    // Server-reported errors keyed by DTO field name. Dictionaries rather than the hotstring
     // dialog's positional tuple: seven panels have too many fields for positional returns, and
     // the key is exactly what the server's ProblemDetails reports.
-    private readonly Dictionary<string, string> _fieldErrors = new(StringComparer.OrdinalIgnoreCase);
+    //
+    // Save and preview own separate dictionaries, mirroring the hotstring dialog's
+    // _triggerError / _previewTriggerError split. Sharing one would let an in-flight preview
+    // response, landing after a failed Save, wipe the save error off the field — the generation
+    // counter supersedes previews, not saves.
+    private readonly Dictionary<string, string> _saveFieldErrors = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _previewFieldErrors = new(StringComparer.OrdinalIgnoreCase);
 
     private string? _error;
     private bool _saving;
@@ -310,9 +326,13 @@
         CancelPendingPreview();
     }
 
-    /// <summary>Server-reported error for a DTO field name, or null. Drives every field's Error/ErrorText.</summary>
+    /// <summary>
+    /// Server-reported error for a DTO field name, or null. Drives every field's Error/ErrorText.
+    /// A save error outranks a preview error on the same field: it is the newer, user-initiated
+    /// verdict, and it is the reason the dialog is still open.
+    /// </summary>
     private string? FieldError(string field) =>
-        _fieldErrors.TryGetValue(field, out string? message) ? message : null;
+        _saveFieldErrors.GetValueOrDefault(field) ?? _previewFieldErrors.GetValueOrDefault(field);
 
     private string RunTargetPlaceholder() => Item.RunTargetKind switch
     {
@@ -330,7 +350,7 @@
 
         _saving = true;
         _error = null;
-        _fieldErrors.Clear();
+        _saveFieldErrors.Clear();
         try
         {
             await _form.ValidateAsync();
@@ -344,9 +364,9 @@
             if (!result.IsSuccess)
             {
                 if (result.Status == ApiResultStatus.Conflict)
-                    _fieldErrors[nameof(HotkeyEditModel.Key)] = ApiErrorMessageFactory.Build(result.Status, result.Problem);
+                    _saveFieldErrors[nameof(HotkeyEditModel.Key)] = ApiErrorMessageFactory.Build(result.Status, result.Problem);
                 else if (result.Status == ApiResultStatus.Validation && result.Problem?.Errors is { Count: > 0 } errors)
-                    _error = ApplyFieldErrors(errors);
+                    _error = ApplyFieldErrors(errors, _saveFieldErrors);
                 else
                     _error = ApiErrorMessageFactory.Build(result.Status, result.Problem);
 
@@ -362,13 +382,14 @@
     }
 
     /// <summary>
-    /// Maps a ProblemDetails validation dictionary onto field names. Property paths arrive as
-    /// e.g. "Input.RunTarget" — the last dotted part is the field. Anything that maps to no
-    /// known field falls through to the generic alert rather than being silently dropped.
+    /// Maps a ProblemDetails validation dictionary onto field names, replacing whatever the
+    /// given owner held before. Property paths arrive as e.g. "Input.RunTarget" — the last
+    /// dotted part is the field. Anything that maps to no known field falls through to the
+    /// generic alert rather than being silently dropped.
     /// </summary>
-    private string? ApplyFieldErrors(IReadOnlyDictionary<string, string[]> errors)
+    private static string? ApplyFieldErrors(IReadOnlyDictionary<string, string[]> errors, Dictionary<string, string> target)
     {
-        _fieldErrors.Clear();
+        target.Clear();
         List<string> unmapped = [];
 
         foreach ((string key, string[] messages) in errors)
@@ -378,7 +399,7 @@
 
             string field = key[(key.LastIndexOf('.') + 1)..];
             if (KnownFields.Contains(field))
-                _fieldErrors.TryAdd(field, message);
+                target.TryAdd(field, message);
             else
                 unmapped.Add(message);
         }
@@ -386,18 +407,37 @@
         return unmapped.FirstOrDefault();
     }
 
+    /// <summary>The fields a kind owns — the ones whose errors are meaningless under any other kind.</summary>
+    private static string[] FieldsOwnedBy(HotkeyActionKind kind) => kind switch
+    {
+        HotkeyActionKind.SendText => [nameof(HotkeyEditModel.Text)],
+        HotkeyActionKind.SendKeys => [nameof(HotkeyEditModel.SendKeysContent)],
+        HotkeyActionKind.Run => [nameof(HotkeyEditModel.RunTarget), nameof(HotkeyEditModel.RunTargetKind)],
+        HotkeyActionKind.Window => [nameof(HotkeyEditModel.WindowOp)],
+        HotkeyActionKind.Remap => [nameof(HotkeyEditModel.RemapDest)],
+        HotkeyActionKind.Raw => [nameof(HotkeyEditModel.Body)],
+        _ => [],
+    };
+
     /// <summary>
     /// Switching kind drops the outgoing kind's field errors (a stale Raw brace message must not
-    /// linger on the incoming kind's fields) and re-previews. Field values are deliberately kept:
-    /// gating to the active kind happens on the wire, so toggling away and back loses nothing.
+    /// linger on the incoming kind's fields) and re-previews. Only that kind's own fields are
+    /// dropped: Key and Description are kind-independent, so a duplicate-key conflict on an
+    /// unchanged key must survive the switch. Field values are deliberately kept too — gating to
+    /// the active kind happens on the wire, so toggling away and back loses nothing.
     /// </summary>
     private async Task OnActionKindChangedAsync(HotkeyActionKind kind)
     {
         if (kind == Item.ActionKind)
             return;
 
+        foreach (string field in FieldsOwnedBy(Item.ActionKind))
+        {
+            _saveFieldErrors.Remove(field);
+            _previewFieldErrors.Remove(field);
+        }
+
         Item.ActionKind = kind;
-        _fieldErrors.Clear();
         await RefreshPreviewAsync(debounce: false);
     }
 
@@ -573,7 +613,9 @@
 
     private void ApplyPreviewResult(ApiResult<HotkeyPreviewDto> result)
     {
-        _fieldErrors.Clear();
+        // Only the preview's own field errors are replaced. A save error sitting on the same
+        // field belongs to the user's last Save and must outlive an in-flight preview response.
+        _previewFieldErrors.Clear();
 
         if (result.IsSuccess)
         {
@@ -584,7 +626,7 @@
 
         _previewSnippet = null;
         _previewError = result.Status == ApiResultStatus.Validation && result.Problem?.Errors is { Count: > 0 } errors
-            ? ApplyFieldErrors(errors)
+            ? ApplyFieldErrors(errors, _previewFieldErrors)
             : ApiErrorMessageFactory.Build(result.Status, result.Problem);
     }
 

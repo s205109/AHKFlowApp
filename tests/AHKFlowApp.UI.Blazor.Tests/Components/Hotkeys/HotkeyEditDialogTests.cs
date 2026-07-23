@@ -280,7 +280,78 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
         await provider.Find(".commit-edit").ClickAsync(new MouseEventArgs());
 
         provider.WaitForAssertion(() =>
-            provider.Markup.Should().Contain("Run target is required."));
+        {
+            provider.Markup.Should().Contain("Run target is required.");
+            // Landing inline is the whole point: a message that only reached the generic
+            // bottom-of-dialog alert would satisfy the Contain check above just as well.
+            provider.FindAll(".mud-alert").Should().BeEmpty();
+        });
+    }
+
+    [Fact]
+    public async Task SaveError_SurvivesAnInFlightPreviewResponse()
+    {
+        // The preview call is left pending until after Save has failed, reproducing the race:
+        // a response arriving late must not wipe the save verdict off the field.
+        TaskCompletionSource<ApiResult<HotkeyPreviewDto>> preview = new();
+        _api.PreviewAsync(Arg.Any<HotkeyPreviewRequestDto>(), Arg.Any<CancellationToken>())
+            .Returns(preview.Task);
+        _api.CreateAsync(Arg.Any<CreateHotkeyDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotkeyDto>.Failure(ApiResultStatus.Conflict,
+                new ApiProblemDetails(null, "Conflict", 409, "Hotkey already exists", null, null)));
+
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(
+            new HotkeyEditModel { Description = "d", Key = "k", Text = "hi" });
+        DisablePreviewDebounce(provider);
+
+        provider.Find("[data-test=\"ahk-preview\"] .mud-expand-panel-header").Click();
+        provider.WaitForAssertion(() => _api.Received(1).PreviewAsync(
+            Arg.Any<HotkeyPreviewRequestDto>(), Arg.Any<CancellationToken>()));
+
+        provider.Find("button.commit-edit").Click();
+        provider.WaitForAssertion(() => provider.Markup.Should().Contain("Hotkey already exists"));
+
+        preview.SetResult(ApiResult<HotkeyPreviewDto>.Ok(new HotkeyPreviewDto("k::Send \"hi\"")));
+
+        provider.WaitForAssertion(() => provider.Markup.Should().Contain("k::Send \"hi\""));
+        provider.Markup.Should().Contain("Hotkey already exists");
+    }
+
+    [Fact]
+    public async Task SwitchingKind_KeepsTheKeyConflictButDropsTheOutgoingKindsFieldError()
+    {
+        _api.CreateAsync(Arg.Any<CreateHotkeyDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotkeyDto>.Failure(
+                ApiResultStatus.Validation,
+                new ApiProblemDetails(null, "Validation failed", 400, null, null,
+                    new Dictionary<string, string[]>
+                    {
+                        ["Input.Key"] = ["Key is not a known key."],
+                        ["Input.RunTarget"] = ["Run target is required."],
+                    })));
+
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(
+            new HotkeyEditModel { Description = "d", Key = "n", ActionKind = HotkeyActionKind.Run });
+
+        provider.Find("button.commit-edit").Click();
+        provider.WaitForAssertion(() => provider.Markup.Should().Contain("Run target is required."));
+
+        await provider.Find("[data-test=\"action-kind-Window\"]").ClickAsync(new MouseEventArgs());
+
+        provider.Markup.Should().NotContain("Run target is required.");
+        provider.Markup.Should().Contain("Key is not a known key.");
+    }
+
+    [Fact]
+    public async Task EmptyKey_BlocksSubmitClientSide()
+    {
+        IRenderedComponent<MudDialogProvider> provider =
+            await ShowDialogAsync(new HotkeyEditModel { Description = "Open palette" });
+
+        provider.Find("button.commit-edit").Click();
+
+        provider.WaitForAssertion(() => provider.Markup.Should().Contain("Key is required"));
+        _ = _api.DidNotReceive().CreateAsync(Arg.Any<CreateHotkeyDto>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -416,7 +487,45 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
         {
             provider.FindAll("[data-test=\"preview-error\"]").Should().BeEmpty();
             provider.Markup.Should().Contain("Braces must balance.");
+            // The panel body would otherwise be blank, which reads as broken rather than blocked.
+            provider.Find("[data-test=\"preview-blocked\"]").TextContent
+                .Should().Contain("Fix the highlighted fields");
         });
+    }
+
+    [Fact]
+    public async Task PreviewPanel_OutOfOrderResponses_LaterGenerationWins()
+    {
+        TaskCompletionSource<ApiResult<HotkeyPreviewDto>> first = new();
+        TaskCompletionSource<ApiResult<HotkeyPreviewDto>> second = new();
+        _api.PreviewAsync(Arg.Is<HotkeyPreviewRequestDto>(r => r.Key == "one"), Arg.Any<CancellationToken>())
+            .Returns(first.Task);
+        _api.PreviewAsync(Arg.Is<HotkeyPreviewRequestDto>(r => r.Key == "two"), Arg.Any<CancellationToken>())
+            .Returns(second.Task);
+
+        IRenderedComponent<MudDialogProvider> provider =
+            await ShowDialogAsync(new HotkeyEditModel { Key = "one", Text = "hi" });
+        DisablePreviewDebounce(provider);
+
+        provider.Find("[data-test=\"ahk-preview\"] .mud-expand-panel-header").Click();
+        provider.WaitForAssertion(() => _api.Received(1).PreviewAsync(
+            Arg.Is<HotkeyPreviewRequestDto>(r => r.Key == "one"), Arg.Any<CancellationToken>()));
+
+        await SetKeyAsync(provider, "key-picker", "two");
+        provider.WaitForAssertion(() => _api.Received(1).PreviewAsync(
+            Arg.Is<HotkeyPreviewRequestDto>(r => r.Key == "two"), Arg.Any<CancellationToken>()));
+
+        // Resolve the newer (generation 2) response first, then the superseded one. Cancellation
+        // alone would not discard the stale response — only the generation check does.
+        second.SetResult(ApiResult<HotkeyPreviewDto>.Ok(new HotkeyPreviewDto("snippet-two")));
+        provider.WaitForAssertion(() => provider.Markup.Should().Contain("snippet-two"));
+
+        first.SetResult(ApiResult<HotkeyPreviewDto>.Ok(new HotkeyPreviewDto("snippet-one")));
+        await Task.Delay(150);
+        provider.Render();
+
+        provider.Markup.Should().Contain("snippet-two");
+        provider.Markup.Should().NotContain("snippet-one");
     }
 
     [Fact]
