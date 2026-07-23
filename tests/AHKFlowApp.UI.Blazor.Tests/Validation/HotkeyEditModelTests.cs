@@ -115,6 +115,69 @@ public sealed class HotkeyEditModelTests
     }
 
     [Fact]
+    public void Clone_CopiesAllFields_WithoutSharingCollections()
+    {
+        var profileId = Guid.NewGuid();
+        var categoryId = Guid.NewGuid();
+        var model = new HotkeyEditModel
+        {
+            Id = Guid.NewGuid(),
+            Description = "Open Notepad",
+            Key = "n",
+            Ctrl = true,
+            Alt = true,
+            Shift = true,
+            Win = true,
+            ActionKind = HotkeyActionKind.Run,
+            Text = "text",
+            SendKeysContent = "{Media_Play_Pause}",
+            RunTarget = "notepad",
+            RunTargetKind = RunTargetKind.Application,
+            WindowOp = WindowOp.ToggleAlwaysOnTop,
+            RemapDest = "F13",
+            Body = "raw body",
+            Action = HotkeyAction.Run,
+            Parameters = "legacy params",
+            AppliesToAllProfiles = false,
+            ProfileIds = [profileId],
+            CategoryIds = [categoryId],
+        };
+
+        HotkeyEditModel clone = model.Clone();
+
+        clone.Should().BeEquivalentTo(model);
+
+        clone.ProfileIds.Add(Guid.NewGuid());
+        clone.CategoryIds.Add(Guid.NewGuid());
+
+        model.ProfileIds.Should().Equal(profileId);
+        model.CategoryIds.Should().Equal(categoryId);
+    }
+
+    [Fact]
+    public void ToUpdateDto_NullsFieldsBelongingToOtherKinds()
+    {
+        var model = new HotkeyEditModel
+        {
+            Description = "Open Notepad",
+            Key = "n",
+            Win = true,
+            ActionKind = HotkeyActionKind.Run,
+            RunTarget = "notepad",
+            RunTargetKind = RunTargetKind.Application,
+            Text = "stale text from a previous kind",
+            Body = "stale body",
+        };
+
+        UpdateHotkeyDto dto = model.ToUpdateDto();
+
+        dto.ActionKind.Should().Be(HotkeyActionKind.Run);
+        dto.RunTarget.Should().Be("notepad");
+        dto.Text.Should().BeNull();
+        dto.Body.Should().BeNull();
+    }
+
+    [Fact]
     public void FromDto_RoundTripsTypedFields()
     {
         var dto = new HotkeyDto(
