@@ -144,11 +144,19 @@ public sealed class RecycleBinPageTests : BunitContext, IAsyncLifetime
                     deleted.Alt,
                     deleted.Shift,
                     deleted.Win,
-                    HotkeyAction.Run,
-                    "",
+                    HotkeyActionKind.Run,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
                     DateTimeOffset.UtcNow,
                     DateTimeOffset.UtcNow,
-                    [])));
+                    [],
+                    Action: HotkeyAction.Run,
+                    Parameters: "")));
 
         IRenderedComponent<RecycleBin> cut = RenderPage();
         cut.WaitForAssertion(() => cut.Markup.Should().Contain("Open Terminal"));

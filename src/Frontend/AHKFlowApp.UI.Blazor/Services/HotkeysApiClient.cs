@@ -20,9 +20,8 @@ public sealed class HotkeysApiClient(HttpClient httpClient) : ApiClientBase(http
         Add(parts, "sortField", request.SortField);
         Add(parts, "descriptionFilter", request.DescriptionFilter);
         Add(parts, "keyFilter", request.KeyFilter);
-        Add(parts, "parametersFilter", request.ParametersFilter);
-        if (request.Action.HasValue)
-            parts.Add($"action={Uri.EscapeDataString(request.Action.Value.ToString())}");
+        if (request.ActionKind.HasValue)
+            parts.Add($"action={Uri.EscapeDataString(request.ActionKind.Value.ToString())}");
         if (request.AppliesToAllProfiles.HasValue)
             parts.Add($"appliesToAllProfiles={request.AppliesToAllProfiles.Value.ToString().ToLowerInvariant()}");
         if (request.Ctrl.HasValue)

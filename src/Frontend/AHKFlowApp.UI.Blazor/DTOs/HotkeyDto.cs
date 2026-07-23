@@ -10,8 +10,18 @@ public sealed record HotkeyDto(
     bool Alt,
     bool Shift,
     bool Win,
-    HotkeyAction Action,
-    string Parameters,
+    HotkeyActionKind ActionKind,
+    string? Text,
+    string? SendKeysContent,
+    string? RunTarget,
+    RunTargetKind? RunTargetKind,
+    WindowOp? WindowOp,
+    string? RemapDest,
+    string? Body,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
-    Guid[]? CategoryIds = null);
+    Guid[]? CategoryIds = null,
+    // Legacy pair — retires in Task 10 once no consumer reads it. The API no longer sends
+    // these; they exist so the frontend compiles while consumers migrate one task at a time.
+    HotkeyAction Action = HotkeyAction.Send,
+    string Parameters = "");

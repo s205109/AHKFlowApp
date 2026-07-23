@@ -82,13 +82,21 @@ public sealed class HotkeyHistoryDialogTests : BunitContext, IAsyncLifetime
             false,
             false,
             false,
-            HotkeyAction.Run,
+            HotkeyActionKind.Run,
+            null,
+            null,
             "notepad.exe",
+            RunTargetKind.Application,
+            null,
+            null,
+            null,
             true,
             [],
             [],
             DateTimeOffset.UtcNow,
-            DateTimeOffset.UtcNow);
+            DateTimeOffset.UtcNow,
+            Action: HotkeyAction.Run,
+            Parameters: "notepad.exe");
         _api.GetHistoryAsync(_id, Arg.Any<CancellationToken>())
             .Returns(ApiResult<HistoryEntryDto[]>.Ok([new(1, HistoryChangeType.Edit, DateTimeOffset.UtcNow)]));
         _api.GetHistoryVersionAsync(_id, 1, Arg.Any<CancellationToken>())
@@ -106,8 +114,14 @@ public sealed class HotkeyHistoryDialogTests : BunitContext, IAsyncLifetime
                     false,
                     false,
                     false,
-                    HotkeyAction.Run,
+                    HotkeyActionKind.Run,
+                    null,
+                    null,
                     "notepad.exe",
+                    RunTargetKind.Application,
+                    null,
+                    null,
+                    null,
                     DateTimeOffset.UtcNow,
                     DateTimeOffset.UtcNow,
                     [])));

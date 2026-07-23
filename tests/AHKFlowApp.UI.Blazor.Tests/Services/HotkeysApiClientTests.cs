@@ -17,7 +17,8 @@ public sealed class HotkeysApiClientTests
     {
         var paged = new PagedList<HotkeyDto>(
             Items: [new HotkeyDto(Guid.NewGuid(), [], true, "Open Notepad", "n", true, false, false, false,
-                HotkeyAction.Run, "notepad.exe", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow)],
+                HotkeyActionKind.Run, null, null, "notepad.exe", RunTargetKind.Application, null, null, null,
+                DateTimeOffset.UtcNow, DateTimeOffset.UtcNow)],
             Page: 1, PageSize: 50, TotalCount: 1, TotalPages: 1, HasNextPage: false, HasPreviousPage: false);
         var handler = StubHttpMessageHandler.JsonResponse(HttpStatusCode.OK, paged);
 
@@ -35,7 +36,7 @@ public sealed class HotkeysApiClientTests
         var problem = new ApiProblemDetails(null, "Conflict", 409, "Modifier combo already exists", "/api/v1/hotkeys", null);
         var handler = StubHttpMessageHandler.JsonResponse(HttpStatusCode.Conflict, problem);
 
-        var dto = new CreateHotkeyDto("Open Notepad", "n", Ctrl: true);
+        var dto = new CreateHotkeyDto("Open Notepad", "n", HotkeyActionKind.SendKeys, Ctrl: true);
         ApiResult<HotkeyDto> result = await ClientWith(handler).CreateAsync(dto);
 
         result.IsSuccess.Should().BeFalse();
@@ -63,7 +64,7 @@ public sealed class HotkeysApiClientTests
 
         await ClientWith(handler).ListAsync(new HotkeyListRequest(
             Page: 2, PageSize: 25, SortField: "key", SortDescending: false,
-            DescriptionFilter: "Open browser", Ctrl: true, Action: HotkeyAction.Run));
+            DescriptionFilter: "Open browser", Ctrl: true, ActionKind: HotkeyActionKind.Run));
 
         string query = handler.LastRequest!.RequestUri!.Query;
         query.Should().Contain("page=2");
@@ -143,8 +144,14 @@ public sealed class HotkeysApiClientTests
             false,
             false,
             false,
-            HotkeyAction.Run,
+            HotkeyActionKind.Run,
+            null,
+            null,
             "notepad.exe",
+            RunTargetKind.Application,
+            null,
+            null,
+            null,
             DateTimeOffset.UtcNow,
             DateTimeOffset.UtcNow,
             []);

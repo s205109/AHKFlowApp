@@ -61,10 +61,29 @@ public sealed class HotkeyEditModel
     };
 
     public CreateHotkeyDto ToCreateDto() =>
-        new(Description, Key, Ctrl, Alt, Shift, Win, Action, Parameters,
-            AppliesToAllProfiles ? null : [.. ProfileIds], AppliesToAllProfiles, [.. CategoryIds]);
+        new(Description, Key, ToActionKind(Action), Ctrl, Alt, Shift, Win,
+            ProfileIds: AppliesToAllProfiles ? null : [.. ProfileIds],
+            AppliesToAllProfiles: AppliesToAllProfiles,
+            CategoryIds: [.. CategoryIds],
+            Action: Action,
+            Parameters: Parameters);
 
     public UpdateHotkeyDto ToUpdateDto() =>
-        new(Description, Key, Ctrl, Alt, Shift, Win, Action, Parameters,
-            AppliesToAllProfiles ? null : [.. ProfileIds], AppliesToAllProfiles, [.. CategoryIds]);
+        new(Description, Key, ToActionKind(Action), Ctrl, Alt, Shift, Win,
+            Text: null, SendKeysContent: null, RunTarget: null, RunTargetKind: null, WindowOp: null,
+            RemapDest: null, Body: null,
+            ProfileIds: AppliesToAllProfiles ? null : [.. ProfileIds],
+            AppliesToAllProfiles: AppliesToAllProfiles,
+            CategoryIds: [.. CategoryIds],
+            Action: Action,
+            Parameters: Parameters);
+
+    // Bridges the legacy two-value Action to the typed ActionKind the DTOs now require. This is
+    // a compile-time placeholder, not the real conversion — Task 5 retypes this model with its
+    // own ActionKind field and per-kind panels, at which point this mapping is removed entirely.
+    private static HotkeyActionKind ToActionKind(HotkeyAction action) => action switch
+    {
+        HotkeyAction.Run => HotkeyActionKind.Run,
+        _ => HotkeyActionKind.SendKeys,
+    };
 }
