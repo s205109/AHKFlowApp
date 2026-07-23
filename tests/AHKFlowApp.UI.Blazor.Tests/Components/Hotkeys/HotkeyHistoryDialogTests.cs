@@ -1,5 +1,6 @@
 using AHKFlowApp.UI.Blazor.Components.Hotkeys;
 using AHKFlowApp.UI.Blazor.DTOs;
+using AHKFlowApp.UI.Blazor.Helpers;
 using AHKFlowApp.UI.Blazor.Services;
 using Bunit;
 using FluentAssertions;
@@ -120,10 +121,13 @@ public sealed class HotkeyHistoryDialogTests : BunitContext, IAsyncLifetime
     [Fact]
     public async Task Dialog_LegacySnapshot_FallsBackToActionAndParameters()
     {
-        // Old history JSON predates the typed action fields; it only carries the Action /
-        // Parameters pair, and the dialog must still say something useful about it.
+        // Old history JSON predates the typed action fields: it only carries the Action /
+        // Parameters pair, and its ActionKind deserializes to the record's default — Raw — which
+        // is exactly the wire shape the backend replays (no legacy conversion on read). The
+        // dialog must not present such a row as a Raw script.
         StubOneVersion(RunSnapshot() with
         {
+            ActionKind = HotkeyActionKind.Raw,
             RunTarget = null,
             RunTargetKind = null,
             Action = HotkeyAction.Run,
@@ -135,7 +139,9 @@ public sealed class HotkeyHistoryDialogTests : BunitContext, IAsyncLifetime
 
         await provider.InvokeAsync(() => provider.Find("button.history-version").Click());
 
-        provider.WaitForAssertion(() => provider.Markup.Should().Contain("Run legacy.exe"));
+        provider.WaitForAssertion(() => provider.Markup.Should().Contain("Legacy"));
+        provider.Markup.Should().Contain("Run legacy.exe");
+        provider.Markup.Should().NotContain(HotkeyActionDisplay.Label(HotkeyActionKind.Raw));
     }
 
     [Fact]

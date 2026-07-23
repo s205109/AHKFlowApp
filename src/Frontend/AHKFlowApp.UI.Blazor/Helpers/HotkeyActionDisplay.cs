@@ -18,6 +18,9 @@ internal static class HotkeyActionDisplay
     public const string RawWarningText =
         "Raw is unchecked AutoHotkey. A mistake here can stop the whole profile script from loading.";
 
+    /// <summary>Stands in for the kind of a pre-typed-action history snapshot, which has none.</summary>
+    public const string LegacyLabel = "Legacy";
+
     public static string Label(HotkeyActionKind kind) => kind switch
     {
         HotkeyActionKind.SendText => "Send text",
@@ -99,6 +102,18 @@ internal static class HotkeyActionDisplay
     public static string Summary(HotkeyEditModel item) =>
         Summarize(item.ActionKind, item.Text, item.SendKeysContent, item.RunTarget,
             item.WindowOp, item.RemapDest, item.Body);
+
+    /// <summary>
+    /// Kind label for a history snapshot. A legacy snapshot carries no meaningful
+    /// <c>ActionKind</c>: stored history JSON predates the field, so it deserializes to the
+    /// record's default — <see cref="HotkeyActionKind.Raw"/> — and the backend replays snapshots
+    /// verbatim (it only converts on revert). Labelling those "Raw" would put this UI's
+    /// script-safety wording on rows that are nothing of the sort, so they read "Legacy" instead.
+    /// The kind is not mapped from the legacy action either: <see cref="SummaryOf"/> already
+    /// prints that word, and mapping here would render "Run — Run notepad.exe".
+    /// </summary>
+    public static string LabelOf(HotkeySnapshot snapshot) =>
+        snapshot.Action is not null ? LegacyLabel : Label(snapshot.ActionKind);
 
     /// <summary>
     /// Summary for a history snapshot. Legacy snapshots (pre-typed-action rows) carry only the

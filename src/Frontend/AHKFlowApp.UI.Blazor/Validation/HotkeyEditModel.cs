@@ -27,9 +27,9 @@ public sealed class HotkeyEditModel
 
     public HotkeyActionKind ActionKind { get; set; } = HotkeyActionKind.SendText;
 
-    // Legacy members, retired in Task 10. Pages/Hotkeys.razor:155-158 still binds Action until
-    // Task 9 replaces that column, and five test files still construct it. Not written to the
-    // wire by ToCreateDto/ToUpdateDto — the typed fields are the contract.
+    // Legacy members, retired in Task 11. No UI binds them any more — the grid's Action column
+    // moved onto ActionKind in Task 9 — but DTO construction sites still carry them. Not written
+    // to the wire by ToCreateDto/ToUpdateDto: the typed fields are the contract.
     public HotkeyAction Action { get; set; } = HotkeyAction.Send;
     public string Parameters { get; set; } = "";
 
