@@ -104,13 +104,14 @@ public sealed class ListDeletedQueryTests(HistoryDbFixture fx)
                 false,
                 false,
                 false,
-                HotkeyAction.Run,
-                "",
                 true,
                 [],
                 [],
                 clock.GetUtcNow(),
-                clock.GetUtcNow());
+                clock.GetUtcNow(),
+                HotkeyActionKind.Run,
+                RunTarget: "notepad.exe",
+                RunTargetKind: RunTargetKind.Application);
             db.EntityHistories.Add(EntityHistory.Create(
                 owner,
                 TrackedEntityType.Hotkey,

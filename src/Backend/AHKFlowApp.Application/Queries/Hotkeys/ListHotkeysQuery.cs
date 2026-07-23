@@ -1,6 +1,8 @@
 using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.Common;
+using AHKFlowApp.Application.Constants;
 using AHKFlowApp.Application.DTOs;
+using AHKFlowApp.Application.Services;
 using AHKFlowApp.Domain.Constants;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Domain.Enums;
@@ -19,8 +21,7 @@ public sealed record ListHotkeysQuery(
     bool SortDescending = true,
     string? DescriptionFilter = null,
     string? KeyFilter = null,
-    string? ParametersFilter = null,
-    HotkeyAction? Action = null,
+    HotkeyActionKind? ActionKind = null,
     bool? AppliesToAllProfiles = null,
     bool? Ctrl = null,
     bool? Alt = null,
@@ -33,7 +34,7 @@ public sealed class ListHotkeysQueryValidator : AbstractValidator<ListHotkeysQue
     private static readonly string[] AllowedSortFields =
     [
         "createdat", "updatedat", "description", "key",
-        "ctrl", "alt", "shift", "win", "action", "parameters"
+        "ctrl", "alt", "shift", "win", "actionkind"
     ];
 
     public ListHotkeysQueryValidator()
@@ -43,7 +44,6 @@ public sealed class ListHotkeysQueryValidator : AbstractValidator<ListHotkeysQue
         RuleFor(x => x.PageSize).InclusiveBetween(1, 200);
         RuleFor(x => x.DescriptionFilter).MaximumLength(200);
         RuleFor(x => x.KeyFilter).MaximumLength(200);
-        RuleFor(x => x.ParametersFilter).MaximumLength(200);
         RuleFor(x => x.SortField)
             .Must(f => string.IsNullOrEmpty(f) ||
                        AllowedSortFields.Contains(f.Trim().ToLowerInvariant(),
@@ -59,25 +59,6 @@ internal sealed class ListHotkeysQueryHandler(
     TimeProvider clock)
     : IUseCaseHandler<ListHotkeysQuery, Result<PagedList<HotkeyDto>>>
 {
-    // Mirrors SeedHotkeysCommand.s_samples — update both if seed set changes.
-    private static readonly (
-        string Description, bool Ctrl, bool Alt, bool Shift, bool Win,
-        string Key, HotkeyAction Action, string Parameters, string[] Categories)[] s_lazySeed =
-    [
-        ("Launch Windows Terminal", true,  true,  false, false, "T",     HotkeyAction.Run,  "wt.exe",       ["App Launcher"]),
-        ("Launch Notepad",          true,  true,  false, false, "N",     HotkeyAction.Run,  "notepad.exe",  ["App Launcher"]),
-        ("Launch File Explorer",    true,  true,  false, false, "E",     HotkeyAction.Run,  "explorer.exe", ["App Launcher"]),
-        ("Open default browser",    true,  true,  false, false, "B",     HotkeyAction.Run,  "https://",     ["App Launcher"]),
-        ("Maximize window",         false, true,  false, true,  "Up",    HotkeyAction.Send, "{Up}",         ["Window Management"]),
-        ("Minimize window",         false, true,  false, true,  "Down",  HotkeyAction.Send, "{Down}",       ["Window Management"]),
-        ("Snap window left",        false, true,  false, true,  "Left",  HotkeyAction.Send, "{Left}",       ["Window Management"]),
-        ("Snap window right",       false, true,  false, true,  "Right", HotkeyAction.Send, "{Right}",      ["Window Management"]),
-        ("Paste as plain text",     true,  false, true,  false, "V",     HotkeyAction.Send, "^v",           ["Code"]),
-        ("Insert today's date",     true,  true,  false, false, "D",     HotkeyAction.Send, "{{date:yyyy-MM-dd}}", ["DateTime"]),
-        ("Lock workstation",        true,  true,  false, false, "L",     HotkeyAction.Run,  "rundll32.exe user32.dll,LockWorkStation", ["App Launcher"]),
-        ("Reload AHK script",       true,  true,  false, false, "R",     HotkeyAction.Run,  "Reload",       ["App Launcher"]),
-    ];
-
     public async Task<Result<PagedList<HotkeyDto>>> ExecuteAsync(ListHotkeysQuery request, CancellationToken ct)
     {
         if (currentUser.Oid is not Guid ownerOid)
@@ -105,7 +86,11 @@ internal sealed class ListHotkeysQueryHandler(
             query = query.Where(h =>
                 EF.Functions.Like(h.Description, pattern) ||
                 EF.Functions.Like(h.Key, pattern) ||
-                EF.Functions.Like(h.Parameters, pattern));
+                EF.Functions.Like(h.RunTarget ?? "", pattern) ||
+                EF.Functions.Like(h.Text ?? "", pattern) ||
+                EF.Functions.Like(h.SendKeysContent ?? "", pattern) ||
+                EF.Functions.Like(h.RemapDest ?? "", pattern) ||
+                EF.Functions.Like(h.Body ?? "", pattern));
         }
 
         if (!string.IsNullOrWhiteSpace(request.DescriptionFilter))
@@ -120,14 +105,8 @@ internal sealed class ListHotkeysQueryHandler(
             query = query.Where(h => EF.Functions.Like(h.Key, pattern));
         }
 
-        if (!string.IsNullOrWhiteSpace(request.ParametersFilter))
-        {
-            string pattern = $"%{request.ParametersFilter.Trim()}%";
-            query = query.Where(h => EF.Functions.Like(h.Parameters ?? "", pattern));
-        }
-
-        if (request.Action.HasValue)
-            query = query.Where(h => h.Action == request.Action.Value);
+        if (request.ActionKind.HasValue)
+            query = query.Where(h => h.ActionKind == request.ActionKind.Value);
 
         if (request.AppliesToAllProfiles.HasValue)
             query = query.Where(h => h.AppliesToAllProfiles == request.AppliesToAllProfiles.Value);
@@ -165,8 +144,14 @@ internal sealed class ListHotkeysQueryHandler(
                 h.Alt,
                 h.Shift,
                 h.Win,
-                h.Action,
-                h.Parameters,
+                h.ActionKind,
+                h.Text,
+                h.SendKeysContent,
+                h.RunTarget,
+                h.RunTargetKind,
+                h.WindowOp,
+                h.RemapDest,
+                h.Body,
                 h.CreatedAt,
                 h.UpdatedAt,
                 h.Categories.Select(c => c.CategoryId).ToArray()))
@@ -211,19 +196,18 @@ internal sealed class ListHotkeysQueryHandler(
                     .ToDictionary(c => c.Name, c => c.Id, StringComparer.OrdinalIgnoreCase);
             }
 
-            foreach ((string descr, bool ctrl, bool alt, bool shift, bool win, string key,
-                      HotkeyAction action, string param, string[] cats) in s_lazySeed)
+            foreach (DefaultHotkey sample in DefaultHotkeyCatalog.All)
             {
                 var hk = Hotkey.Create(
                     ownerOid,
-                    new HotkeyDefinition(
-                        Description: descr, Key: key,
-                        Ctrl: ctrl, Alt: alt, Shift: shift, Win: win,
-                        Action: action, Parameters: param,
-                        AppliesToAllProfiles: true),
+                    LegacyHotkeyDefinitionConverter.FromLegacy(
+                        description: sample.Description, key: sample.Key,
+                        ctrl: sample.Ctrl, alt: sample.Alt, shift: sample.Shift, win: sample.Win,
+                        action: sample.Action, parameters: sample.Parameters,
+                        appliesToAllProfiles: true),
                     clock);
                 db.Hotkeys.Add(hk);
-                foreach (string catName in cats)
+                foreach (string catName in sample.Categories)
                 {
                     if (catByName.TryGetValue(catName, out Guid catId))
                         db.HotkeyCategories.Add(HotkeyCategory.Create(hk.Id, catId));
@@ -308,10 +292,8 @@ internal sealed class ListHotkeysQueryHandler(
             ("shift", false) => query.OrderBy(h => h.Shift).ThenBy(h => h.Id),
             ("win", true) => query.OrderByDescending(h => h.Win).ThenBy(h => h.Id),
             ("win", false) => query.OrderBy(h => h.Win).ThenBy(h => h.Id),
-            ("action", true) => query.OrderByDescending(h => h.Action).ThenBy(h => h.Id),
-            ("action", false) => query.OrderBy(h => h.Action).ThenBy(h => h.Id),
-            ("parameters", true) => query.OrderByDescending(h => h.Parameters).ThenBy(h => h.Id),
-            ("parameters", false) => query.OrderBy(h => h.Parameters).ThenBy(h => h.Id),
+            ("actionkind", true) => query.OrderByDescending(h => h.ActionKind).ThenBy(h => h.Id),
+            ("actionkind", false) => query.OrderBy(h => h.ActionKind).ThenBy(h => h.Id),
             (_, true) => query.OrderByDescending(h => h.CreatedAt).ThenBy(h => h.Id),
             (_, false) => query.OrderBy(h => h.CreatedAt).ThenBy(h => h.Id),
         };

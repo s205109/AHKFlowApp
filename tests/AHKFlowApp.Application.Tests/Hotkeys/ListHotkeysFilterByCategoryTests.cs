@@ -7,6 +7,7 @@ using AHKFlowApp.TestUtilities.Builders;
 using Ardalis.Result;
 using FluentAssertions;
 using Xunit;
+using HotkeyAction = AHKFlowApp.Application.Services.LegacyHotkeyDefinitionConverter.HotkeyAction;
 
 namespace AHKFlowApp.Application.Tests.Hotkeys;
 

@@ -8,7 +8,6 @@ public sealed class Hotkey
     {
         Description = string.Empty;
         Key = string.Empty;
-        Parameters = string.Empty;
     }
 
     public Guid Id { get; private set; }
@@ -19,8 +18,14 @@ public sealed class Hotkey
     public bool Alt { get; private set; }
     public bool Shift { get; private set; }
     public bool Win { get; private set; }
-    public HotkeyAction Action { get; private set; }
-    public string Parameters { get; private set; }
+    public HotkeyActionKind ActionKind { get; private set; }
+    public string? Text { get; private set; }
+    public string? SendKeysContent { get; private set; }
+    public string? RunTarget { get; private set; }
+    public RunTargetKind? RunTargetKind { get; private set; }
+    public WindowOp? WindowOp { get; private set; }
+    public string? RemapDest { get; private set; }
+    public string? Body { get; private set; }
     public bool AppliesToAllProfiles { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
@@ -74,8 +79,14 @@ public sealed class Hotkey
         Alt = definition.Alt;
         Shift = definition.Shift;
         Win = definition.Win;
-        Action = definition.Action;
-        Parameters = definition.Parameters;
         AppliesToAllProfiles = definition.AppliesToAllProfiles;
+        ActionKind = definition.ActionKind;
+        Text = definition.Text;
+        SendKeysContent = definition.SendKeysContent;
+        RunTarget = definition.RunTarget;
+        RunTargetKind = definition.RunTargetKind;
+        WindowOp = definition.WindowOp;
+        RemapDest = definition.RemapDest;
+        Body = definition.Body;
     }
 }

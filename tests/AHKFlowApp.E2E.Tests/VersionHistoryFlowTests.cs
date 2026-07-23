@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Playwright;
 using Xunit;
+using HotkeyAction = AHKFlowApp.Application.Services.LegacyHotkeyDefinitionConverter.HotkeyAction;
 
 namespace AHKFlowApp.E2E.Tests;
 
@@ -103,9 +104,9 @@ public sealed class VersionHistoryFlowTests(StackFixture fixture) : IAsyncLifeti
         Hotkey reverted = await FindHotkeyAsync(hotkeyId);
         Assert.True(reverted.Ctrl);
         Assert.True(reverted.Alt);
-        Assert.Equal(HotkeyAction.Run, reverted.Action);
+        Assert.Equal(HotkeyActionKind.Run, reverted.ActionKind);
         Assert.Equal("T", reverted.Key);
-        Assert.Equal("wt.exe", reverted.Parameters);
+        Assert.Equal("wt.exe", reverted.RunTarget);
 
         await DeleteHotkeyAsync(page, "Open Terminal");
 
@@ -119,9 +120,9 @@ public sealed class VersionHistoryFlowTests(StackFixture fixture) : IAsyncLifeti
         Hotkey restored = await FindHotkeyAsync(hotkeyId);
         Assert.True(restored.Ctrl);
         Assert.True(restored.Alt);
-        Assert.Equal(HotkeyAction.Run, restored.Action);
+        Assert.Equal(HotkeyActionKind.Run, restored.ActionKind);
         Assert.Equal("T", restored.Key);
-        Assert.Equal("wt.exe", restored.Parameters);
+        Assert.Equal("wt.exe", restored.RunTarget);
     }
 
     private static async Task CreateHotstringAsync(IPage page, string trigger, string replacement)

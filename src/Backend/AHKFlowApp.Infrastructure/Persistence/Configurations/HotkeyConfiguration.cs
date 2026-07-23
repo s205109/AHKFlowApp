@@ -26,14 +26,19 @@ internal sealed class HotkeyConfiguration : IEntityTypeConfiguration<Hotkey>
         builder.Property(x => x.Shift).IsRequired();
         builder.Property(x => x.Win).IsRequired();
 
-        // Persist enum as int (default for EF, made explicit here for clarity).
-        builder.Property(x => x.Action)
+        // Typed action columns (Wave 1). The legacy (Action, Parameters) pair was dropped by the
+        // contract migration; enums persist as int (EF's default, explicit here for clarity).
+        builder.Property(x => x.ActionKind)
             .IsRequired()
             .HasConversion<int>();
 
-        builder.Property(x => x.Parameters)
-            .IsRequired()
-            .HasMaxLength(4000);
+        builder.Property(x => x.Text);                                    // nvarchar(max), nullable
+        builder.Property(x => x.SendKeysContent).HasMaxLength(100);
+        builder.Property(x => x.RunTarget).HasMaxLength(4000);
+        builder.Property(x => x.RunTargetKind).HasConversion<int>();      // nullable int
+        builder.Property(x => x.WindowOp).HasConversion<int>();           // nullable int
+        builder.Property(x => x.RemapDest).HasMaxLength(50);
+        builder.Property(x => x.Body);                                    // nvarchar(max), nullable
 
         builder.Property(x => x.AppliesToAllProfiles).IsRequired();
         builder.Property(x => x.CreatedAt).IsRequired();

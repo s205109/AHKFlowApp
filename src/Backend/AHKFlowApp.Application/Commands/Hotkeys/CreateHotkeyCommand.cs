@@ -5,6 +5,7 @@ using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Mapping;
 using AHKFlowApp.Application.Validation;
 using AHKFlowApp.Domain.Entities;
+using AHKFlowApp.Domain.Enums;
 using Ardalis.Result;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
@@ -19,8 +20,15 @@ public sealed class CreateHotkeyCommandValidator : AbstractValidator<CreateHotke
     {
         RuleFor(x => x.Input.Description).ValidDescription();
         RuleFor(x => x.Input.Key).ValidKey();
-        RuleFor(x => x.Input.Parameters).ValidParameters();
-        RuleFor(x => x.Input.Action).ValidAction();
+        this.AddHotkeyActionRules(
+            x => x.Input.ActionKind,
+            x => x.Input.Text,
+            x => x.Input.SendKeysContent,
+            x => x.Input.RunTarget,
+            x => x.Input.RunTargetKind,
+            x => x.Input.WindowOp,
+            x => x.Input.RemapDest,
+            x => x.Input.Body);
         this.AddProfileAssociationRules(
             x => x.Input.AppliesToAllProfiles,
             x => x.Input.ProfileIds);
@@ -43,6 +51,15 @@ internal sealed class CreateHotkeyCommandHandler(
         // Return value ignored: the validator rejects unknown keys before the handler runs,
         // so this always succeeds here.
         HotkeyKeys.TryCanonicalize(input.Key, out string canonicalKey);
+
+        // Same for the token action fields: the validator has accepted them, so normalization
+        // folds aliases/case/code-width onto the one persisted spelling (spec §8 invariant).
+        string? canonicalSendKeys = string.IsNullOrEmpty(input.SendKeysContent)
+            ? input.SendKeysContent
+            : HotkeyRules.Tokens.NormalizeSendKeysContent(input.SendKeysContent);
+        string? canonicalRemapDest = string.IsNullOrEmpty(input.RemapDest)
+            ? input.RemapDest
+            : HotkeyRules.Tokens.NormalizeRemapDest(input.RemapDest);
 
         bool duplicate = await db.Hotkeys.AnyAsync(
             h => h.OwnerOid == ownerOid
@@ -82,9 +99,15 @@ internal sealed class CreateHotkeyCommandHandler(
                 Alt: input.Alt,
                 Shift: input.Shift,
                 Win: input.Win,
-                Action: input.Action,
-                Parameters: input.Parameters,
-                AppliesToAllProfiles: input.AppliesToAllProfiles),
+                ActionKind: input.ActionKind,
+                AppliesToAllProfiles: input.AppliesToAllProfiles,
+                Text: input.Text,
+                SendKeysContent: canonicalSendKeys,
+                RunTarget: input.RunTarget,
+                RunTargetKind: input.RunTargetKind,
+                WindowOp: input.WindowOp,
+                RemapDest: canonicalRemapDest,
+                Body: input.Body),
             clock);
 
         db.Hotkeys.Add(entity);

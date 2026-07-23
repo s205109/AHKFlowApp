@@ -66,6 +66,7 @@ public static class DependencyInjection
             .AddUseCase<ListHotkeysQuery, Result<PagedList<HotkeyDto>>, ListHotkeysQueryHandler>()
             .AddUseCase<GetHotkeyQuery, Result<HotkeyDto>, GetHotkeyQueryHandler>()
             .AddUseCase<SeedHotkeysCommand, Result<PagedList<HotkeyDto>>, SeedHotkeysCommandHandler>()
+            .AddUseCase<GetHotkeyPreviewQuery, Result<HotkeyPreviewDto>, GetHotkeyPreviewQueryHandler>()
             .AddUseCase<CreateProfileCommand, Result<ProfileDto>, CreateProfileCommandHandler>()
             .AddUseCase<UpdateProfileCommand, Result<ProfileDto>, UpdateProfileCommandHandler>()
             .AddUseCase<DeleteProfileCommand, Result, DeleteProfileCommandHandler>()

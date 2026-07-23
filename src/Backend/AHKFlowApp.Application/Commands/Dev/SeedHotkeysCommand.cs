@@ -1,7 +1,8 @@
 using AHKFlowApp.Application.Abstractions;
+using AHKFlowApp.Application.Constants;
 using AHKFlowApp.Application.DTOs;
+using AHKFlowApp.Application.Services;
 using AHKFlowApp.Domain.Entities;
-using AHKFlowApp.Domain.Enums;
 using Ardalis.Result;
 using Microsoft.EntityFrameworkCore;
 
@@ -19,28 +20,6 @@ internal sealed class SeedHotkeysCommandHandler(
     AppEnvironment env)
     : IUseCaseHandler<SeedHotkeysCommand, Result<PagedList<HotkeyDto>>>
 {
-    private static readonly (
-        string Description,
-        bool Ctrl, bool Alt, bool Shift, bool Win,
-        string Key,
-        HotkeyAction Action,
-        string Parameters,
-        string[] Categories)[] s_samples =
-    [
-        ("Launch Windows Terminal", true,  true,  false, false, "T",     HotkeyAction.Run,  "wt.exe",       ["App Launcher"]),
-        ("Launch Notepad",          true,  true,  false, false, "N",     HotkeyAction.Run,  "notepad.exe",  ["App Launcher"]),
-        ("Launch File Explorer",    true,  true,  false, false, "E",     HotkeyAction.Run,  "explorer.exe", ["App Launcher"]),
-        ("Open default browser",    true,  true,  false, false, "B",     HotkeyAction.Run,  "https://",     ["App Launcher"]),
-        ("Maximize window",         false, true,  false, true,  "Up",    HotkeyAction.Send, "{Up}",         ["Window Management"]),
-        ("Minimize window",         false, true,  false, true,  "Down",  HotkeyAction.Send, "{Down}",       ["Window Management"]),
-        ("Snap window left",        false, true,  false, true,  "Left",  HotkeyAction.Send, "{Left}",       ["Window Management"]),
-        ("Snap window right",       false, true,  false, true,  "Right", HotkeyAction.Send, "{Right}",      ["Window Management"]),
-        ("Paste as plain text",     true,  false, true,  false, "V",     HotkeyAction.Send, "^v",           ["Code"]),
-        ("Insert today's date",     true,  true,  false, false, "D",     HotkeyAction.Send, "{{date:yyyy-MM-dd}}", ["DateTime"]),
-        ("Lock workstation",        true,  true,  false, false, "L",     HotkeyAction.Run,  "rundll32.exe user32.dll,LockWorkStation", ["App Launcher"]),
-        ("Reload AHK script",       true,  true,  false, false, "R",     HotkeyAction.Run,  "Reload",       ["App Launcher"]),
-    ];
-
     public async Task<Result<PagedList<HotkeyDto>>> ExecuteAsync(SeedHotkeysCommand request, CancellationToken ct)
     {
         if (!env.IsDevelopment)
@@ -75,8 +54,15 @@ internal sealed class SeedHotkeysCommandHandler(
                 .Select(x => (x.HotkeyId, x.CategoryId))
                 .ToHashSet();
 
-        foreach ((string descr, bool ctrl, bool alt, bool shift, bool win, string key, HotkeyAction action, string param, string[] cats) in s_samples)
+        foreach (DefaultHotkey sample in DefaultHotkeyCatalog.All)
         {
+            // Copied into locals so the identity lookup below closes over plain values.
+            string key = sample.Key;
+            bool ctrl = sample.Ctrl;
+            bool alt = sample.Alt;
+            bool shift = sample.Shift;
+            bool win = sample.Win;
+
             Hotkey? existing = request.Reset
                 ? null
                 : await db.Hotkeys.FirstOrDefaultAsync(h =>
@@ -93,17 +79,17 @@ internal sealed class SeedHotkeysCommandHandler(
             {
                 var entity = Hotkey.Create(
                     ownerOid,
-                    new HotkeyDefinition(
-                        Description: descr, Key: key,
-                        Ctrl: ctrl, Alt: alt, Shift: shift, Win: win,
-                        Action: action, Parameters: param,
-                        AppliesToAllProfiles: true),
+                    LegacyHotkeyDefinitionConverter.FromLegacy(
+                        description: sample.Description, key: key,
+                        ctrl: ctrl, alt: alt, shift: shift, win: win,
+                        action: sample.Action, parameters: sample.Parameters,
+                        appliesToAllProfiles: true),
                     clock);
                 db.Hotkeys.Add(entity);
                 hotkeyId = entity.Id;
             }
 
-            foreach (string cat in cats)
+            foreach (string cat in sample.Categories)
             {
                 if (!catByName.TryGetValue(cat, out Guid cid)) continue;
                 if (!existingLinks.Add((hotkeyId, cid))) continue;
@@ -143,8 +129,14 @@ internal sealed class SeedHotkeysCommandHandler(
                 h.Alt,
                 h.Shift,
                 h.Win,
-                h.Action,
-                h.Parameters,
+                h.ActionKind,
+                h.Text,
+                h.SendKeysContent,
+                h.RunTarget,
+                h.RunTargetKind,
+                h.WindowOp,
+                h.RemapDest,
+                h.Body,
                 h.CreatedAt,
                 h.UpdatedAt,
                 h.Categories.Select(hc => hc.CategoryId).ToArray()))

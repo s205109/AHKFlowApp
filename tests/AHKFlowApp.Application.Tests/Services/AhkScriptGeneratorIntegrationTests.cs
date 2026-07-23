@@ -8,6 +8,7 @@ using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using NSubstitute;
 using Xunit;
+using HotkeyAction = AHKFlowApp.Application.Services.LegacyHotkeyDefinitionConverter.HotkeyAction;
 
 namespace AHKFlowApp.Application.Tests.Services;
 
@@ -97,7 +98,9 @@ public sealed class AhkScriptGeneratorIntegrationTests(ScriptGeneratorDbFixture 
             "; Open Notepad\n" +             // Description emitted as a comment above the hotkey
             "^!n::Run(\"notepad.exe\")\n" +  // 'O' < 'R' so Open Notepad before Reload
             "; Reload\n" +
-            "^F5::Send(\"{F5}\")\n" +
+            // The legacy Send "{F5}" converts to ActionKind.SendKeys, which auto-emits the
+            // leading $ so the binding's own Send cannot retrigger it (spec §5).
+            "$^F5::Send(\"{F5}\")\n" +
             "; end");
     }
 }

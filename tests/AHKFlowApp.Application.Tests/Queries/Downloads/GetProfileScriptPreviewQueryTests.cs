@@ -12,6 +12,7 @@ using FluentAssertions;
 using Microsoft.Extensions.Time.Testing;
 using NSubstitute;
 using Xunit;
+using HotkeyAction = AHKFlowApp.Application.Services.LegacyHotkeyDefinitionConverter.HotkeyAction;
 
 namespace AHKFlowApp.Application.Tests.Queries.Downloads;
 
