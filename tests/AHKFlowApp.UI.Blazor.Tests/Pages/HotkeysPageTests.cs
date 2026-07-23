@@ -363,6 +363,8 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
         cut.Find("[data-test=\"action-chip\"]").TextContent.Should().Contain("Run");
         cut.FindAll("[data-test=\"run-target-input\"]").Should().NotBeEmpty();
 
+        // Ctrl starts on in the fixture, so clearing it is what proves the binding is two-way.
+        cut.Find("input[data-test=\"ctrl-checkbox\"]").Change(false);
         cut.Find("input[data-test=\"shift-checkbox\"]").Change(true);
         cut.Find("input[data-test=\"win-checkbox\"]").Change(true);
         cut.Find("button.commit-edit").Click();
@@ -371,10 +373,32 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
             Arg.Is<UpdateHotkeyDto>(d =>
                 d.Description == "Open terminal" &&
                 d.Key == "T" &&
-                d.Ctrl &&
+                !d.Ctrl &&
                 !d.Alt &&
                 d.Shift &&
                 d.Win),
+            Arg.Any<CancellationToken>()));
+    }
+
+    [Fact]
+    public void Page_EditSendTextRow_CommitsTextAndNotRunTarget()
+    {
+        HotkeyDto dto = OneHotkeyOfKind(HotkeyActionKind.SendText);
+        _api.UpdateAsync(dto.Id, Arg.Any<UpdateHotkeyDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotkeyDto>.Ok(dto));
+
+        IRenderedComponent<Hotkeys> cut = StartInlineEdit(dto);
+
+        // The other inline-editable kind: one field, bound to Text rather than RunTarget.
+        cut.FindAll("[data-test=\"run-target-input\"]").Should().BeEmpty();
+        cut.Find("input[data-test=\"text-input\"]").Input("Jane Smith");
+        cut.Find("button.commit-edit").Click();
+
+        cut.WaitForAssertion(() => _api.Received(1).UpdateAsync(dto.Id,
+            Arg.Is<UpdateHotkeyDto>(d =>
+                d.ActionKind == HotkeyActionKind.SendText &&
+                d.Text == "Jane Smith" &&
+                d.RunTarget == null),
             Arg.Any<CancellationToken>()));
     }
 
@@ -517,13 +541,15 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
         headers.Should().NotContain(["Ctrl", "Alt", "Shift", "Win", "Key", "Parameters"]);
     }
 
+    // The mobile branch renders from the same stub in the same tree, so both of these scope to
+    // .desktop-branch — an unscoped Markup assertion would pass on the mobile list alone.
     [Fact]
     public void Grid_ActionCellShowsChipAndSummary()
     {
         IRenderedComponent<Hotkeys> cut = RenderPageWith(OneRunHotkey());
 
-        cut.Find("[data-test=\"action-chip\"]").TextContent.Should().Contain("Run");
-        cut.Markup.Should().Contain("notepad");
+        cut.Find(".desktop-branch [data-test=\"action-chip\"]").TextContent.Should().Contain("Run");
+        cut.Find(".desktop-branch td:nth-child(4)").TextContent.Should().Contain("notepad.exe");
     }
 
     [Fact]
@@ -531,7 +557,7 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
     {
         IRenderedComponent<Hotkeys> cut = RenderPageWith(OneRunHotkey());
 
-        cut.Markup.Should().Contain("Win+N");
+        cut.Find(".desktop-branch td code").TextContent.Should().Be("Win+N");
     }
 
     [Fact]
