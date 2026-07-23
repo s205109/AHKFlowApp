@@ -20,8 +20,4 @@ public sealed record HotkeyDto(
     string? Body,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
-    Guid[]? CategoryIds = null,
-    // Legacy pair — retires in Task 10 once no consumer reads it. The API no longer sends
-    // these; they exist so the frontend compiles while consumers migrate one task at a time.
-    HotkeyAction Action = HotkeyAction.Send,
-    string Parameters = "");
+    Guid[]? CategoryIds = null);

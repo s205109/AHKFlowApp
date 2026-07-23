@@ -17,7 +17,4 @@ public sealed record CreateHotkeyDto(
     string? Body = null,
     Guid[]? ProfileIds = null,
     bool AppliesToAllProfiles = false,
-    Guid[]? CategoryIds = null,
-    // Legacy pair — retires in Task 10. Serialized but ignored by the typed API.
-    HotkeyAction Action = HotkeyAction.Send,
-    string Parameters = "");
+    Guid[]? CategoryIds = null);
