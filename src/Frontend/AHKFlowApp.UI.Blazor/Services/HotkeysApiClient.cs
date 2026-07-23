@@ -21,7 +21,7 @@ public sealed class HotkeysApiClient(HttpClient httpClient) : ApiClientBase(http
         Add(parts, "descriptionFilter", request.DescriptionFilter);
         Add(parts, "keyFilter", request.KeyFilter);
         if (request.ActionKind.HasValue)
-            parts.Add($"action={Uri.EscapeDataString(request.ActionKind.Value.ToString())}");
+            parts.Add($"actionKind={Uri.EscapeDataString(request.ActionKind.Value.ToString())}");
         if (request.AppliesToAllProfiles.HasValue)
             parts.Add($"appliesToAllProfiles={request.AppliesToAllProfiles.Value.ToString().ToLowerInvariant()}");
         if (request.Ctrl.HasValue)
@@ -86,4 +86,10 @@ public sealed class HotkeysApiClient(HttpClient httpClient) : ApiClientBase(http
     {
         if (!string.IsNullOrWhiteSpace(value)) parts.Add($"{key}={Uri.EscapeDataString(value)}");
     }
+
+    public Task<ApiResult<HotkeyKeyCatalogDto>> GetKeysAsync(CancellationToken ct = default) =>
+        SendAsync<HotkeyKeyCatalogDto>(HttpMethod.Get, $"{BasePath}/keys", null, ct);
+
+    public Task<ApiResult<HotkeyPreviewDto>> PreviewAsync(HotkeyPreviewRequestDto request, CancellationToken ct = default) =>
+        SendAsync<HotkeyPreviewDto>(HttpMethod.Post, $"{BasePath}/preview", JsonContent.Create(request), ct);
 }

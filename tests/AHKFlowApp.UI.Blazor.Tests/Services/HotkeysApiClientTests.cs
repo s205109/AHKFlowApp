@@ -73,7 +73,7 @@ public sealed class HotkeysApiClientTests
         query.Should().Contain("sortDescending=false");
         query.Should().Contain("descriptionFilter=Open%20browser");
         query.Should().Contain("ctrl=true");
-        query.Should().Contain("action=Run");
+        query.Should().Contain("actionKind=Run");
     }
 
     [Fact]
@@ -188,6 +188,37 @@ public sealed class HotkeysApiClientTests
         result.IsSuccess.Should().BeTrue();
         handler.LastRequest!.Method.Should().Be(HttpMethod.Delete);
         handler.LastRequest.RequestUri!.AbsolutePath.Should().Be($"/api/v1/hotkeys/deleted/{id}");
+    }
+
+    [Fact]
+    public async Task GetKeysAsync_RequestsKeysRoute()
+    {
+        var catalog = new HotkeyKeyCatalogDto(
+            [new HotkeyKeyDto("F1", "Function keys", ["HotkeyKey"], true)],
+            new Dictionary<string, string> { ["Esc"] = "Escape" });
+        var handler = StubHttpMessageHandler.JsonResponse(HttpStatusCode.OK, catalog);
+
+        ApiResult<HotkeyKeyCatalogDto> result = await ClientWith(handler).GetKeysAsync();
+
+        result.IsSuccess.Should().BeTrue();
+        handler.LastRequest!.RequestUri!.PathAndQuery.Should().EndWith("api/v1/hotkeys/keys");
+        result.Value!.Keys.Should().ContainSingle(k => k.Canonical == "F1");
+    }
+
+    [Fact]
+    public async Task PreviewAsync_PostsDraftToPreviewRoute()
+    {
+        var preview = new HotkeyPreviewDto("#n::Run(\"notepad\")");
+        var handler = StubHttpMessageHandler.JsonResponse(HttpStatusCode.OK, preview);
+
+        ApiResult<HotkeyPreviewDto> result = await ClientWith(handler).PreviewAsync(new HotkeyPreviewRequestDto(
+            "Open Notepad", "n", HotkeyActionKind.Run, Win: true,
+            RunTarget: "notepad", RunTargetKind: RunTargetKind.Application));
+
+        result.IsSuccess.Should().BeTrue();
+        handler.LastRequest!.Method.Should().Be(HttpMethod.Post);
+        handler.LastRequest.RequestUri!.PathAndQuery.Should().EndWith("api/v1/hotkeys/preview");
+        result.Value!.Snippet.Should().Be("#n::Run(\"notepad\")");
     }
 
     private sealed class StubHttpMessageHandler : HttpMessageHandler
