@@ -1,0 +1,45 @@
+/* MudToggleGroup has no wrap parameter in 9.3.0 and its Vertical switch is a C# parameter, so
+   a CSS-only breakpoint cannot flip it. The group is a CSS grid whose columns MudBlazor writes
+   as an inline `grid-template-columns: repeat(N, minmax(0, 1fr))`, so overriding that track
+   definition (which needs !important to beat the inline style) is what lets the seven kinds
+   wrap instead of being squeezed into one unreadable row.
+
+   Both rules below are keyed on a plain <div> this component renders itself — that div is what
+   carries the CSS-isolation scope attribute. Putting the class on MudToggleGroup or MudTextField
+   via Class= would place it on a child component's root, which never carries this scope, and the
+   rule would silently never match. Same trap as the chip host in HotkeyActionChip. */
+.action-kind-wrap ::deep .mud-toggle-group {
+    grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr)) !important;
+}
+
+.raw-body-wrap ::deep textarea {
+    font-family: var(--mud-typography-caption-family, monospace);
+    font-size: 0.85rem;
+}
+
+/* Preview panel — copied from HotstringEditDialog.razor.css so the two dialogs render the
+   generated-code block identically. */
+.preview-snippet-container {
+    position: relative;
+    max-width: 100%;
+}
+
+.preview-snippet {
+    margin: 0;
+    padding: 8px 40px 8px 12px;
+    font-size: 0.85rem;
+    background: var(--mud-palette-background-grey);
+    border-radius: 4px;
+    overflow-x: auto;
+    max-width: 100%;
+}
+
+.preview-snippet-container ::deep .preview-copy {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+}
+
+.preview-stale {
+    opacity: 0.5;
+}
