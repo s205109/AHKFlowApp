@@ -1,6 +1,7 @@
 using AHKFlowApp.E2E.Tests.Fixtures;
 using AHKFlowApp.Infrastructure.Persistence;
 using AHKFlowApp.TestUtilities.Builders;
+using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Playwright;
 using Xunit;
@@ -69,7 +70,31 @@ public sealed class HotkeysMobileFlowTests(StackFixture fixture) : IAsyncLifetim
         await page.ClickAsync("button.add-hotkey-fab");
         await page.WaitForSelectorAsync(".hotkey-edit-dialog");
         await page.WaitForSelectorAsync(".hotkey-edit-dialog input[data-test=\"description-input\"]");
-        await page.WaitForSelectorAsync(".hotkey-edit-dialog input[data-test=\"key-input\"]");
+        // The dialog's key field is the KeyPicker autocomplete (key-picker); key-input is the
+        // desktop grid's inline editor and no longer exists in the dialog.
+        await page.WaitForSelectorAsync(".hotkey-edit-dialog input[data-test=\"key-picker\"]");
+    }
+
+    [Fact]
+    public async Task ExpandedRow_OnPhoneViewport_ShowsActionChipAndSummary()
+    {
+        await SeedRunHotkeyAsync(fixture, "Launch Terminal", "F5", "wt.exe");
+
+        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(PhoneViewport);
+        IPage page = await ctx.NewPageAsync();
+
+        await page.GotoAsync($"{fixture.Spa.BaseUrl}/hotkeys");
+        ILocator row = page.Locator(".mobile-row", new() { HasTextString = "Launch Terminal" });
+        await row.WaitForAsync();
+
+        // Tapping the row expands it; the expanded panel renders the typed action's chip and
+        // one-line summary — the rows replacing the old free-text Action/Parameters cells.
+        await row.ClickAsync();
+
+        ILocator expanded = page.Locator(".mobile-row-expanded");
+        await expanded.WaitForAsync();
+        (await expanded.Locator("[data-test=\"action-chip\"]").InnerTextAsync()).Should().Contain("Run");
+        await Assertions.Expect(expanded).ToContainTextAsync("wt.exe");
     }
 
     [Fact]
@@ -110,6 +135,21 @@ public sealed class HotkeysMobileFlowTests(StackFixture fixture) : IAsyncLifetim
                 .WithKey(key)
                 .Build());
         }
+
+        await db.SaveChangesAsync();
+    }
+
+    private static async Task SeedRunHotkeyAsync(StackFixture fixture, string description, string key, string target)
+    {
+        await using AsyncServiceScope scope = fixture.Api.Services.CreateAsyncScope();
+        AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        db.Hotkeys.Add(new HotkeyBuilder()
+            .WithOwner(TestAuthHandler.TestOwnerOid)
+            .WithDescription(description)
+            .WithKey(key)
+            .WithRun(target)
+            .Build());
 
         await db.SaveChangesAsync();
     }
