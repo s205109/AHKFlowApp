@@ -8,9 +8,6 @@ namespace AHKFlowApp.UI.Blazor.Services;
 /// </summary>
 public interface IHotkeyKeyCatalog
 {
-    /// <summary>True once the registry has been fetched at least once.</summary>
-    bool IsLoaded { get; }
-
     /// <summary>
     /// Keys legal in the given role, ordered by picker group then name, fetching the registry
     /// on first call. The ordering is what makes groups cluster in the picker's dropdown —

@@ -149,13 +149,11 @@ public sealed class HotkeyKeyCatalogTests
 
         IReadOnlyList<HotkeyKeyDto> afterFailure = await catalog.ForRoleAsync("HotkeyKey", CancellationToken.None);
 
-        catalog.IsLoaded.Should().BeFalse();
         afterFailure.Should().BeEmpty();
 
         IReadOnlyList<HotkeyKeyDto> afterRetry = await catalog.ForRoleAsync("HotkeyKey", CancellationToken.None);
 
         afterRetry.Should().NotBeEmpty();
-        catalog.IsLoaded.Should().BeTrue();
         await api.Received(2).GetKeysAsync(Arg.Any<CancellationToken>());
     }
 }

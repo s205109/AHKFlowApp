@@ -246,19 +246,26 @@
 
         if (_isAuthenticated)
         {
-            ApiResult<IReadOnlyList<ProfileDto>> profilesResult = await ProfilesApi.ListAsync(_cts.Token);
+            // Three independent fetches, so they go out together rather than costing three
+            // serial round trips before the list can start loading. The key registry is warmed
+            // here because IsValidKey answers optimistically until it arrives, which would
+            // route a legacy row to inline edit by mistake.
+            Task<ApiResult<IReadOnlyList<ProfileDto>>> profilesTask = ProfilesApi.ListAsync(_cts.Token);
+            Task<ApiResult<PagedList<CategoryDto>>> catTask =
+                CategoriesApi.ListAsync(new CategoryListRequest(PageSize: 200), _cts.Token);
+            Task keysTask = KeyCatalog.ForRoleAsync("HotkeyKey", _cts.Token).AsTask();
+
+            await Task.WhenAll(profilesTask, catTask, keysTask);
+
+            ApiResult<IReadOnlyList<ProfileDto>> profilesResult = await profilesTask;
             if (profilesResult.IsSuccess)
                 _profiles = profilesResult.Value ?? [];
 
-            ApiResult<PagedList<CategoryDto>> catResult = await CategoriesApi.ListAsync(new CategoryListRequest(PageSize: 200), _cts.Token);
+            ApiResult<PagedList<CategoryDto>> catResult = await catTask;
             if (catResult.IsSuccess) _categories = catResult.Value?.Items ?? [];
 
             _profileOptions = [.. _profiles.Select(p => new EntityOption(p.Id, p.Name))];
             _categoryOptions = [.. _categories.Select(c => new EntityOption(c.Id, c.Name))];
-
-            // Warm the registry before the first row renders: IsValidKey answers optimistically
-            // until it arrives, which would route a legacy row to inline edit by mistake.
-            await KeyCatalog.ForRoleAsync("HotkeyKey", _cts.Token);
 
             await LoadMobileAsync();
         }

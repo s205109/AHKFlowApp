@@ -121,31 +121,37 @@ public sealed class HotkeyEditModel
     }
 
     /// <summary>
-    /// The single place that knows which fields each kind owns, and how to pull their typed
-    /// values off an instance. <see cref="FieldNamesOwnedBy"/> and <see cref="ActiveFields"/> both
-    /// read this one map, so adding a field to a kind is a one-place edit both track.
+    /// DTO field names a kind owns — used for routing/clearing server errors, and for the set of
+    /// fields the dialog can surface an error on. Kept beside <see cref="ActiveFields"/>, the only
+    /// other place that states which fields belong to which kind; adding a field to a kind means
+    /// editing these two switches and nothing else.
     /// </summary>
-    private static readonly IReadOnlyDictionary<HotkeyActionKind, OwnedFields> FieldOwnership = new Dictionary<HotkeyActionKind, OwnedFields>
+    internal static IReadOnlyList<string> FieldNamesOwnedBy(HotkeyActionKind kind) => kind switch
     {
-        [HotkeyActionKind.SendText] = new([nameof(Text)], m => new() { Text = m.Text }),
-        [HotkeyActionKind.SendKeys] = new([nameof(SendKeysContent)], m => new() { SendKeysContent = m.SendKeysContent }),
-        [HotkeyActionKind.Run] = new([nameof(RunTarget), nameof(RunTargetKind)], m => new() { RunTarget = m.RunTarget, RunTargetKind = m.RunTargetKind }),
-        [HotkeyActionKind.Window] = new([nameof(WindowOp)], m => new() { WindowOp = m.WindowOp }),
-        [HotkeyActionKind.Remap] = new([nameof(RemapDest)], m => new() { RemapDest = m.RemapDest }),
-        [HotkeyActionKind.Raw] = new([nameof(Body)], m => new() { Body = m.Body }),
+        HotkeyActionKind.SendText => [nameof(Text)],
+        HotkeyActionKind.SendKeys => [nameof(SendKeysContent)],
+        HotkeyActionKind.Run => [nameof(RunTarget), nameof(RunTargetKind)],
+        HotkeyActionKind.Window => [nameof(WindowOp)],
+        HotkeyActionKind.Remap => [nameof(RemapDest)],
+        HotkeyActionKind.Raw => [nameof(Body)],
+        _ => [],
     };
 
-    private static readonly OwnedFields NoFields = new([], _ => new());
-
-    /// <summary>DTO field names a kind owns — used for routing/clearing server errors.</summary>
-    internal static IReadOnlyList<string> FieldNamesOwnedBy(HotkeyActionKind kind) =>
-        (FieldOwnership.TryGetValue(kind, out OwnedFields? owned) ? owned : NoFields).Names;
+    /// <summary>Every field name any kind owns — the dialog's set of routable error fields.</summary>
+    internal static IEnumerable<string> AllActionFieldNames =>
+        Enum.GetValues<HotkeyActionKind>().SelectMany(FieldNamesOwnedBy);
 
     /// <summary>The typed values <see cref="ActionKind"/> owns, pulled from this instance.</summary>
-    private ActionFields ActiveFields() =>
-        (FieldOwnership.TryGetValue(ActionKind, out OwnedFields? owned) ? owned : NoFields).Build(this);
-
-    private sealed record OwnedFields(IReadOnlyList<string> Names, Func<HotkeyEditModel, ActionFields> Build);
+    private ActionFields ActiveFields() => ActionKind switch
+    {
+        HotkeyActionKind.SendText => new() { Text = Text },
+        HotkeyActionKind.SendKeys => new() { SendKeysContent = SendKeysContent },
+        HotkeyActionKind.Run => new() { RunTarget = RunTarget, RunTargetKind = RunTargetKind },
+        HotkeyActionKind.Window => new() { WindowOp = WindowOp },
+        HotkeyActionKind.Remap => new() { RemapDest = RemapDest },
+        HotkeyActionKind.Raw => new() { Body = Body },
+        _ => new(),
+    };
 
     private sealed record ActionFields
     {

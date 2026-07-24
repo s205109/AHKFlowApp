@@ -1,4 +1,5 @@
 using AHKFlowApp.Application.Constants;
+using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Domain.Enums;
 using FluentValidation;
 
@@ -38,20 +39,12 @@ internal static class HotkeyRules
     /// field(s) and forbids the others'. SendKeys/Remap fields are additionally token-validated; Raw
     /// is brace-balanced with no <c>#</c> directive.
     /// </summary>
-    public static void AddHotkeyActionRules<T>(
-        this AbstractValidator<T> v,
-        Func<T, HotkeyActionKind> kind,
-        Func<T, string?> text,
-        Func<T, string?> sendKeys,
-        Func<T, string?> runTarget,
-        Func<T, RunTargetKind?> runTargetKind,
-        Func<T, WindowOp?> windowOp,
-        Func<T, string?> remapDest,
-        Func<T, string?> body)
+    public static void AddHotkeyActionRules<T>(this AbstractValidator<T> v, Func<T, IHotkeyDraft> draft)
     {
         v.RuleFor(x => x).Custom((x, ctx) =>
         {
-            HotkeyActionKind k = kind(x);
+            IHotkeyDraft d = draft(x);
+            HotkeyActionKind k = d.ActionKind;
 
             // System.Text.Json deserializes any int into an enum field, so a payload can carry
             // ActionKind: 99. Without this the switch below matches nothing, ForbidExcept sees no
@@ -67,14 +60,14 @@ internal static class HotkeyRules
             switch (k)
             {
                 case HotkeyActionKind.SendText:
-                    if (string.IsNullOrEmpty(text(x)))
+                    if (string.IsNullOrEmpty(d.Text))
                         ctx.AddFailure("Text", "SendText requires Text.");
                     else
-                        ValidateFreeText(text(x), "Text", ctx);
+                        ValidateFreeText(d.Text, "Text", ctx);
                     break;
 
                 case HotkeyActionKind.SendKeys:
-                    if (!Tokens.IsValidSendKeysContent(sendKeys(x)))
+                    if (!Tokens.IsValidSendKeysContent(d.SendKeysContent))
                         ctx.AddFailure("SendKeysContent", "SendKeys requires a valid key token (for example {Volume_Up} or ^c).");
                     break;
 
@@ -82,22 +75,22 @@ internal static class HotkeyRules
                 // RunTarget, or the UI highlights the wrong control and the ProblemDetails names a
                 // field the client never sent wrong.
                 case HotkeyActionKind.Run:
-                    if (string.IsNullOrEmpty(runTarget(x)))
+                    if (string.IsNullOrEmpty(d.RunTarget))
                         ctx.AddFailure("RunTarget", "Run requires a run target.");
                     else
-                        ValidateFreeText(runTarget(x), "RunTarget", ctx);
+                        ValidateFreeText(d.RunTarget, "RunTarget", ctx);
 
-                    if (runTargetKind(x) is not RunTargetKind rtk || !Enum.IsDefined(rtk))
+                    if (d.RunTargetKind is not RunTargetKind rtk || !Enum.IsDefined(rtk))
                         ctx.AddFailure("RunTargetKind", "Run requires a valid run target kind.");
                     break;
 
                 case HotkeyActionKind.Window:
-                    if (windowOp(x) is not WindowOp op || !Enum.IsDefined(op))
+                    if (d.WindowOp is not WindowOp op || !Enum.IsDefined(op))
                         ctx.AddFailure("WindowOp", "Window requires a valid window operation.");
                     break;
 
                 case HotkeyActionKind.Remap:
-                    if (!Tokens.IsValidRemapDest(remapDest(x)))
+                    if (!Tokens.IsValidRemapDest(d.RemapDest))
                         ctx.AddFailure("RemapDest", "Remap requires a valid destination key.");
                     break;
 
@@ -105,15 +98,14 @@ internal static class HotkeyRules
                 // its own outer braces. Counting braces holds either way; it does not assume an
                 // emitter-supplied wrapper.
                 case HotkeyActionKind.Raw:
-                    string b = body(x) ?? "";
-                    if (string.IsNullOrEmpty(b))
+                    if (string.IsNullOrEmpty(d.Body))
                         ctx.AddFailure("Body", "Raw requires an action body.");
-                    else if (b.Count(c => c == '{') != b.Count(c => c == '}'))
+                    else if (!BracesBalanced(d.Body))
                         ctx.AddFailure("Body", "Raw body braces are unbalanced.");
-                    else if (b.Split('\n').Any(line => line.TrimStart().StartsWith('#')))
+                    else if (HasDirectiveLine(d.Body))
                         ctx.AddFailure("Body", "Raw body must not contain a # directive.");
                     else
-                        ValidateFreeText(b, "Body", ctx);
+                        ValidateFreeText(d.Body, "Body", ctx);
                     break;
 
                 case HotkeyActionKind.Disable:
@@ -124,13 +116,13 @@ internal static class HotkeyRules
             // listed too — it is Run's second field, and omitting it let a SendText payload smuggle
             // one through.
             ForbidExcept(k, ctx,
-                (HotkeyActionKind.SendText, "Text", !string.IsNullOrEmpty(text(x))),
-                (HotkeyActionKind.SendKeys, "SendKeysContent", !string.IsNullOrEmpty(sendKeys(x))),
-                (HotkeyActionKind.Run, "RunTarget", !string.IsNullOrEmpty(runTarget(x))),
-                (HotkeyActionKind.Run, "RunTargetKind", runTargetKind(x) is not null),
-                (HotkeyActionKind.Window, "WindowOp", windowOp(x) is not null),
-                (HotkeyActionKind.Remap, "RemapDest", !string.IsNullOrEmpty(remapDest(x))),
-                (HotkeyActionKind.Raw, "Body", !string.IsNullOrEmpty(body(x))));
+                (HotkeyActionKind.SendText, "Text", !string.IsNullOrEmpty(d.Text)),
+                (HotkeyActionKind.SendKeys, "SendKeysContent", !string.IsNullOrEmpty(d.SendKeysContent)),
+                (HotkeyActionKind.Run, "RunTarget", !string.IsNullOrEmpty(d.RunTarget)),
+                (HotkeyActionKind.Run, "RunTargetKind", d.RunTargetKind is not null),
+                (HotkeyActionKind.Window, "WindowOp", d.WindowOp is not null),
+                (HotkeyActionKind.Remap, "RemapDest", !string.IsNullOrEmpty(d.RemapDest)),
+                (HotkeyActionKind.Raw, "Body", !string.IsNullOrEmpty(d.Body)));
         });
     }
 
@@ -140,15 +132,51 @@ internal static class HotkeyRules
     /// and so do control characters: <c>AhkEscaping</c> represents only <c>\n</c>, <c>\r</c> and
     /// <c>\t</c>, so any other one would reach the emitted script verbatim.
     /// </summary>
-    private static void ValidateFreeText<T>(string? value, string field, ValidationContext<T> ctx)
+    private static void ValidateFreeText<T>(string value, string field, ValidationContext<T> ctx)
     {
-        if (value is null)
-            return;
-
         if (value.Length > PayloadMaxLength)
             ctx.AddFailure(field, $"{field} must be {PayloadMaxLength} characters or fewer.");
         else if (value.Any(c => char.IsControl(c) && c is not '\n' and not '\r' and not '\t'))
             ctx.AddFailure(field, $"{field} must not contain control characters.");
+    }
+
+    /// <summary>
+    /// Equal counts of <c>{</c> and <c>}</c> — deliberately not nesting order, which a verbatim
+    /// body may legitimately open and close across the lines the emitter writes untouched.
+    /// </summary>
+    private static bool BracesBalanced(string body)
+    {
+        int open = 0, close = 0;
+        foreach (char c in body)
+        {
+            if (c == '{')
+                open++;
+            else if (c == '}')
+                close++;
+        }
+
+        return open == close;
+    }
+
+    // Split on '\n' only, matching what the emitted script treats as a line: a lone '\r' does not
+    // start a new directive line, so neither does it here.
+    private static bool HasDirectiveLine(string body)
+    {
+        ReadOnlySpan<char> rest = body;
+        while (!rest.IsEmpty)
+        {
+            int nl = rest.IndexOf('\n');
+            ReadOnlySpan<char> line = nl < 0 ? rest : rest[..nl];
+            if (line.TrimStart().StartsWith('#'))
+                return true;
+
+            if (nl < 0)
+                break;
+
+            rest = rest[(nl + 1)..];
+        }
+
+        return false;
     }
 
     private static void ForbidExcept<T>(
@@ -179,16 +207,16 @@ internal static class HotkeyRules
             if (string.IsNullOrEmpty(content))
                 return false;
 
-            int i = 0;
-            var seen = new HashSet<char>();
-            while (i < content.Length && content[i] is '^' or '!' or '+' or '#')
+            (string mods, string key) = SplitSendKeysToken(content);
+
+            // Each modifier at most once. The prefix is four symbols at most, so a linear
+            // look-back is cheaper than any set.
+            for (int i = 1; i < mods.Length; i++)
             {
-                if (!seen.Add(content[i]))
-                    return false; // duplicate modifier
-                i++;
+                if (mods.IndexOf(mods[i]) < i)
+                    return false;
             }
 
-            string key = content[i..];
             if (key.Length == 0)
                 return false; // modifiers but no key
 
@@ -201,11 +229,8 @@ internal static class HotkeyRules
                 if (inner.Length == 0 || inner.Contains('{') || inner.Contains('}'))
                     return false;
 
-                if (!HotkeyKeys.TryCanonicalize(inner, out string canonical))
-                    return false;
                 // vk/sc codes are valid Send tokens; named keys must carry the SendToken role.
-                return !HotkeyKeys.IsRegistryName(canonical)
-                    || HotkeyKeys.HotkeyKeyEntryByCanonical(canonical).Roles.HasFlag(HotkeyKeyRoles.SendToken);
+                return HotkeyKeys.IsValidSendToken(inner);
             }
 
             // Bare: exactly one printable, non-brace, non-modifier character. Quote and backtick
@@ -228,19 +253,18 @@ internal static class HotkeyRules
         /// character is returned unchanged: Send reads it case-sensitively (<c>^C</c> ≠ <c>^c</c>),
         /// so folding it would change what is typed.
         /// </summary>
-        public static string NormalizeSendKeysContent(string content)
+        public static string? NormalizeSendKeysContent(string? content)
         {
-            int i = 0;
-            while (i < content.Length && content[i] is '^' or '!' or '+' or '#')
-                i++;
+            if (string.IsNullOrEmpty(content))
+                return content;
 
-            string key = content[i..];
+            (string mods, string key) = SplitSendKeysToken(content);
             if (key.Length == 0 || key[0] != '{')
                 return content;
 
             string inner = key[1..^1];
             return HotkeyKeys.TryCanonicalize(inner, out string canonical)
-                ? $"{content[..i]}{{{canonical}}}"
+                ? $"{mods}{{{canonical}}}"
                 : content;
         }
 
@@ -248,7 +272,22 @@ internal static class HotkeyRules
         /// Canonical spelling of a token already accepted by <see cref="IsValidRemapDest"/>
         /// (<c>Esc</c> → <c>Escape</c>, <c>vk1</c> → <c>vk01</c>).
         /// </summary>
-        public static string NormalizeRemapDest(string dest) =>
+        public static string? NormalizeRemapDest(string? dest) =>
             HotkeyKeys.TryCanonicalize(dest, out string canonical) ? canonical : dest;
+
+        /// <summary>
+        /// Splits a Send token into its modifier prefix and the key part that follows. Shared by
+        /// the validator and the normalizer so the two cannot disagree on where the modifiers end
+        /// — a disagreement would persist an accepted token unnormalized and break the §8 storage
+        /// invariant duplicate detection depends on.
+        /// </summary>
+        private static (string Mods, string Key) SplitSendKeysToken(string content)
+        {
+            int i = 0;
+            while (i < content.Length && content[i] is '^' or '!' or '+' or '#')
+                i++;
+
+            return (content[..i], content[i..]);
+        }
     }
 }
