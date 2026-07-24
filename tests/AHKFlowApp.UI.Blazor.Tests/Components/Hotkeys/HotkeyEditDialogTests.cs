@@ -129,7 +129,7 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
         IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync();
 
         provider.WaitForAssertion(() => provider.Find("input[data-test=\"description-input\"]"));
-        provider.Find("input[data-test=\"description-input\"]").Change("Open palette");
+        provider.Find("input[data-test=\"description-input\"]").Input("Open palette");
         await SetKeyAsync(provider, "key-picker", "K");
         provider.Find("button.commit-edit").Click();
 
@@ -176,7 +176,7 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
         IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync();
 
         provider.WaitForAssertion(() => provider.Find("input[data-test=\"description-input\"]"));
-        provider.Find("input[data-test=\"description-input\"]").Change("Open palette");
+        provider.Find("input[data-test=\"description-input\"]").Input("Open palette");
         await SetKeyAsync(provider, "key-picker", "K");
         provider.Find("button.commit-edit").Click();
 
@@ -382,6 +382,30 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
+    public async Task CorrectingWindowOp_ClearsItsStaleSaveError()
+    {
+        _api.CreateAsync(Arg.Any<CreateHotkeyDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotkeyDto>.Failure(
+                ApiResultStatus.Validation,
+                new ApiProblemDetails(null, "Validation failed", 400, null, null,
+                    new Dictionary<string, string[]> { ["Input.WindowOp"] = ["Window requires an operation."] })));
+
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(
+            new HotkeyEditModel { Description = "d", Key = "n", ActionKind = HotkeyActionKind.Window });
+        HotkeyEditDialog dialog = provider.FindComponent<HotkeyEditDialog>().Instance;
+
+        provider.Find("button.commit-edit").Click();
+        provider.WaitForAssertion(() =>
+            dialog.SaveFieldErrors.Should().ContainKey(nameof(HotkeyEditModel.WindowOp)));
+
+        await provider.InvokeAsync(() => provider.FindComponent<MudSelect<WindowOp?>>()
+            .Instance.ValueChanged.InvokeAsync(WindowOp.Minimize));
+
+        provider.WaitForAssertion(() =>
+            dialog.SaveFieldErrors.Should().NotContainKey(nameof(HotkeyEditModel.WindowOp)));
+    }
+
+    [Fact]
     public async Task EmptyKey_BlocksSubmitClientSide()
     {
         IRenderedComponent<MudDialogProvider> provider =
@@ -480,6 +504,28 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
 
         provider.WaitForAssertion(() =>
             provider.Find("[data-test=\"preview-snippet\"]").TextContent.Should().Contain("^k::Send \"hi\""));
+    }
+
+    [Fact]
+    public async Task PreviewPanel_DescriptionEdit_RepreviewsWithTheNewDescription()
+    {
+        // The generated snippet includes the Description as comment lines, so editing it must
+        // re-preview like every other field feeding the snippet — not just clear its save error.
+        _api.PreviewAsync(Arg.Any<HotkeyPreviewRequestDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotkeyPreviewDto>.Ok(new HotkeyPreviewDto("snippet")));
+
+        IRenderedComponent<MudDialogProvider> provider =
+            await ShowDialogAsync(new HotkeyEditModel { Key = "k", Text = "hi", Description = "one" });
+        DisablePreviewDebounce(provider);
+
+        provider.Find("[data-test=\"ahk-preview\"] .mud-expand-panel-header").Click();
+        provider.WaitForAssertion(() => _api.Received(1).PreviewAsync(
+            Arg.Is<HotkeyPreviewRequestDto>(r => r.Description == "one"), Arg.Any<CancellationToken>()));
+
+        provider.Find("input[data-test=\"description-input\"]").Input("two");
+
+        provider.WaitForAssertion(() => _api.Received(1).PreviewAsync(
+            Arg.Is<HotkeyPreviewRequestDto>(r => r.Description == "two"), Arg.Any<CancellationToken>()));
     }
 
     [Fact]

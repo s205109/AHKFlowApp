@@ -162,7 +162,7 @@
                                           DebounceInterval="300"
                                           Error="@(FieldError(nameof(HotkeyEditModel.Body)) is not null)"
                                           ErrorText="@FieldError(nameof(HotkeyEditModel.Body))"
-                                          HelperText="Emitted verbatim inside { }. Braces must balance; # directives are rejected."
+                                          HelperText="Emitted verbatim after ::. Include your own { } for a block body. Braces must balance; # directives are rejected."
                                           UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "raw-body-input" })" />
                         </div>
                     </div>
@@ -214,8 +214,9 @@
 
             @* ---- Metadata: unchanged from today's dialog ---- *@
             <MudTextField T="string" Label="Description" @bind-Value="Item.Description"
-                          @bind-Value:after="@(() => ClearSaveError(nameof(HotkeyEditModel.Description)))"
-                          Required="true" RequiredError="Description is required" MaxLength="200"
+                          Required="true" RequiredError="Description is required" MaxLength="200" Immediate="true"
+                          OnDebounceIntervalElapsed="@(() => OnFieldDebouncedAsync(nameof(HotkeyEditModel.Description)))"
+                          DebounceInterval="300"
                           Error="@(FieldError(nameof(HotkeyEditModel.Description)) is not null)"
                           ErrorText="@FieldError(nameof(HotkeyEditModel.Description))"
                           HelperText="Emitted as ; comment lines in the generated script."
@@ -480,6 +481,7 @@
     private async Task OnWindowOpChangedAsync(WindowOp? op)
     {
         Item.WindowOp = op;
+        ClearSaveError(nameof(HotkeyEditModel.WindowOp));
         await RefreshPreviewAsync(debounce: false);
     }
 
