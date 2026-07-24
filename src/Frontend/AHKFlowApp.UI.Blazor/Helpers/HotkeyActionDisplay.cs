@@ -82,18 +82,29 @@ internal static class HotkeyActionDisplay
     /// a bare key (no modifiers) keeps its original casing, matching AHK's own convention of
     /// writing unmodified single-key hotkeys lowercase. Named keys always keep their spelling.
     /// </summary>
-    public static string ComboLabel(HotkeyEditModel item)
+    public static string ComboLabel(HotkeyEditModel item) =>
+        ComboLabel(item.Key, item.Ctrl, item.Alt, item.Shift, item.Win);
+
+    /// <summary>Combo label for a history snapshot — see <see cref="ComboLabel(HotkeyEditModel)"/>.</summary>
+    public static string ComboLabel(HotkeySnapshot snapshot) =>
+        ComboLabel(snapshot.Key, snapshot.Ctrl, snapshot.Alt, snapshot.Shift, snapshot.Win);
+
+    /// <summary>Combo label for a deleted hotkey row — see <see cref="ComboLabel(HotkeyEditModel)"/>.</summary>
+    public static string ComboLabel(DeletedHotkeyDto dto) =>
+        ComboLabel(dto.Key, dto.Ctrl, dto.Alt, dto.Shift, dto.Win);
+
+    private static string ComboLabel(string key, bool ctrl, bool alt, bool shift, bool win)
     {
         List<string> parts = [];
-        if (item.Ctrl) parts.Add("Ctrl");
-        if (item.Alt) parts.Add("Alt");
-        if (item.Shift) parts.Add("Shift");
-        if (item.Win) parts.Add("Win");
+        if (ctrl) parts.Add("Ctrl");
+        if (alt) parts.Add("Alt");
+        if (shift) parts.Add("Shift");
+        if (win) parts.Add("Win");
 
-        string key = parts.Count > 0 && item.Key.Length == 1
-            ? item.Key.ToUpperInvariant()
-            : item.Key;
-        parts.Add(key);
+        string label = parts.Count > 0 && key.Length == 1
+            ? key.ToUpperInvariant()
+            : key;
+        parts.Add(label);
 
         return string.Join("+", parts);
     }

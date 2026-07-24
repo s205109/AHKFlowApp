@@ -151,7 +151,8 @@
     <MudPaper Class="pa-2 mobile-shell">
         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="mb-2">
             <MudIconButton Class="reload-hotkeys-mobile" Icon="@Icons.Material.Filled.Refresh"
-                           OnClick="ReloadAsync" Disabled="@(!_isAuthenticated || _loading)" />
+                           OnClick="ReloadAsync" Disabled="@(!_isAuthenticated || _loading)"
+                           UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = "Reload hotkeys" })" />
             <MudSpacer />
         </MudStack>
 
@@ -762,18 +763,23 @@
         @if (IsEditing(item))
         {
             <MudIconButton Class="commit-edit" Icon="@Icons.Material.Filled.Check"
-                           Color="Color.Success" OnClick="() => CommitEditAsync(item)" />
+                           Color="Color.Success" OnClick="() => CommitEditAsync(item)"
+                           UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = $"Save {item.Description}" })" />
             <MudIconButton Class="cancel-edit" Icon="@Icons.Material.Filled.Close"
-                           Color="Color.Default" OnClick="CancelEditAsync" />
+                           Color="Color.Default" OnClick="CancelEditAsync"
+                           UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = "Cancel edit" })" />
         }
         else
         {
             <MudIconButton Class="show-history" Icon="@Icons.Material.Filled.History"
-                           OnClick="() => ShowHistoryAsync(item)" />
+                           OnClick="() => ShowHistoryAsync(item)"
+                           UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = $"Show history for {item.Description}" })" />
             <MudIconButton Class="delete" Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
-                           OnClick="() => DeleteAsync(item)" />
+                           OnClick="() => DeleteAsync(item)"
+                           UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = $"Delete {item.Description}" })" />
             <MudIconButton Class="start-edit" Icon="@Icons.Material.Filled.Edit"
-                           OnClick="() => StartEditAsync(item)" />
+                           OnClick="() => StartEditAsync(item)"
+                           UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = $"Edit {item.Description}" })" />
         }
     </text>;
 

@@ -14,15 +14,15 @@ commit (4af382f) to keep that change minimal.
 
 ## Acceptance criteria
 
-- [ ] Centralize combo formatting shared by the grid, history dialog, and Recycle Bin — history
+- [x] Centralize combo formatting shared by the grid, history dialog, and Recycle Bin — history
       duplicates it today and formats character casing differently
       (`Components/Hotkeys/HotkeyHistoryDialog.razor:128`)
-- [ ] Combine action field names and values into one descriptor — `HotkeyEditModel` currently
+- [x] Combine action field names and values into one descriptor — `HotkeyEditModel` currently
       maintains parallel switches (`FieldNamesOwnedBy` / `ActiveFields`) despite claiming a
       one-place mapping (`Validation/HotkeyEditModel.cs:128`)
-- [ ] Add `IsInEnum` validation for the nullable `ActionKind` list-query filter — an undefined
+- [x] Add `IsInEnum` validation for the nullable `ActionKind` list-query filter — an undefined
       numeric value currently produces an empty result instead of a 400
-- [ ] Add accessible names to icon-only controls and mobile row checkbox labels — mostly
+- [x] Add accessible names to icon-only controls and mobile row checkbox labels — mostly
       pre-existing debt, but on the touched surface
 
 ## Out of scope

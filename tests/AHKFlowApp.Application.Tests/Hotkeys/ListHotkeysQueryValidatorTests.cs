@@ -134,4 +134,13 @@ public sealed class ListHotkeysQueryValidatorTests
 
         result.IsValid.Should().BeTrue();
     }
+
+    [Fact]
+    public void Validate_WithUndefinedActionKind_Fails()
+    {
+        ValidationResult result = _sut.Validate(new ListHotkeysQuery(ActionKind: (HotkeyActionKind)999));
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.PropertyName == "ActionKind");
+    }
 }

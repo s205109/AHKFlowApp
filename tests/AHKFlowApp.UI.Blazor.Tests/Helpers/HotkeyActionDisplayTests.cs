@@ -34,6 +34,29 @@ public sealed class HotkeyActionDisplayTests
     }
 
     [Fact]
+    public void ComboLabel_Snapshot_MatchesEditModelCasing()
+    {
+        var snapshot = new HotkeySnapshot(
+            Description: "Test", Key: "n", Ctrl: true, Alt: false, Shift: false, Win: false,
+            ActionKind: HotkeyActionKind.SendText, Text: null, SendKeysContent: null, RunTarget: null,
+            RunTargetKind: null, WindowOp: null, RemapDest: null, Body: null,
+            AppliesToAllProfiles: true, ProfileIds: [], CategoryIds: [],
+            CreatedAt: DateTimeOffset.UnixEpoch, UpdatedAt: DateTimeOffset.UnixEpoch);
+
+        HotkeyActionDisplay.ComboLabel(snapshot).Should().Be("Ctrl+N");
+    }
+
+    [Fact]
+    public void ComboLabel_DeletedHotkeyDto_MatchesEditModelCasing()
+    {
+        var dto = new DeletedHotkeyDto(
+            Id: Guid.NewGuid(), Description: "Test", Key: "n",
+            Ctrl: true, Alt: false, Shift: false, Win: false, DeletedAt: DateTimeOffset.UnixEpoch);
+
+        HotkeyActionDisplay.ComboLabel(dto).Should().Be("Ctrl+N");
+    }
+
+    [Fact]
     public void Summary_SendText_IsFirstLineWithEllipsis()
     {
         var model = new HotkeyEditModel { ActionKind = HotkeyActionKind.SendText, Text = "Jane Smith\nAcme" };

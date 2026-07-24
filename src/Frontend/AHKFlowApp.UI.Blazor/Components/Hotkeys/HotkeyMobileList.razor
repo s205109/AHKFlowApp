@@ -7,7 +7,8 @@
     <MudStack Row="true" AlignItems="AlignItems.Center" Class="pa-2">
         <MudIconButton Class="toggle-select-mode"
                        Icon="@(_selectMode ? Icons.Material.Filled.Close : Icons.Material.Filled.CheckBox)"
-                       OnClick="ToggleSelectMode" />
+                       OnClick="ToggleSelectMode"
+                       UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = _selectMode ? "Exit select mode" : "Select hotkeys" })" />
         <MudText Typo="Typo.subtitle2">@(_selectMode ? $"{_selectedIds.Count} selected" : "")</MudText>
     </MudStack>
 
@@ -38,6 +39,7 @@
                         {
                             <td class="checkbox-cell" @onclick:stopPropagation="true">
                                 <input type="checkbox" class="row-checkbox"
+                                       aria-label="@($"Select {item.Description}")"
                                        checked="@(item.Id is { } checkboxId && _selectedIds.Contains(checkboxId))"
                                        @onchange="e => OnRowCheckboxChanged(item, IsChecked(e))" />
                             </td>
