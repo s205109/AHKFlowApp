@@ -132,10 +132,12 @@ public sealed class AhkScriptGeneratorIntegrationTests(ScriptGeneratorDbFixture 
         // Corrected samples.
         output.Should().Contain("^!r::Reload()");
         output.Should().Contain("^!d::SendText(FormatTime(A_Now, \"yyyy-MM-dd\"))");
-        output.Should().Contain("$!#Up::Send(\"#{Up}\")");
-        output.Should().Contain("$!#Down::Send(\"#{Down}\")");
-        output.Should().Contain("$!#Left::Send(\"#{Left}\")");
-        output.Should().Contain("$!#Right::Send(\"#{Right}\")");
+        output.Should().Contain("^!Up::WinMaximize(\"A\")");
+        output.Should().Contain("^!Down::WinMinimize(\"A\")");
+        output.Should().Contain("^!Left::{\n    WinRestore(\"A\")");
+        output.Should().Contain("    WinMove(l, t, (r - l) // 2, b - t, \"A\")");
+        output.Should().Contain("^!Right::{\n    WinRestore(\"A\")");
+        output.Should().Contain("    WinMove(l + (r - l) // 2, t, (r - l) // 2, b - t, \"A\")");
         // Paste-as-plain-text Raw block: keeps its own braces, save/strip/paste/restore.
         output.Should().Contain("^+v::{\n    saved := ClipboardAll()");
         output.Should().Contain("    A_Clipboard := saved         ; restore the original formatting");
@@ -144,6 +146,6 @@ public sealed class AhkScriptGeneratorIntegrationTests(ScriptGeneratorDbFixture 
         output.Should().Contain("F10::Volume_Mute");
         output.Should().Contain("F9::Volume_Up");
         output.Should().Contain("^!a::WinSetAlwaysOnTop(-1, \"A\")");
-        output.Should().Contain("^!m::WinMinimize(\"A\")");
+        output.Should().Contain("^!m::WinRestore(\"A\")");
     }
 }
