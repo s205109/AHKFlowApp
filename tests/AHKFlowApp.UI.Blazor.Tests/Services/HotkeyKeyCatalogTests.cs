@@ -156,4 +156,29 @@ public sealed class HotkeyKeyCatalogTests
         afterRetry.Should().NotBeEmpty();
         await api.Received(2).GetKeysAsync(Arg.Any<CancellationToken>());
     }
+
+    [Fact]
+    public async Task ForRoleAsync_RacingCalls_FirstFetchFails_DoesNotPoisonTheRoleCache()
+    {
+        // Two callers race while the first fetch is in flight and about to fail; the second is
+        // queued behind the gate. The failing caller must not cache its empty projection — not even
+        // after the second caller succeeds and sets the catalog before the first resumes.
+        var firstFetch = new TaskCompletionSource<ApiResult<HotkeyKeyCatalogDto>>();
+        IHotkeysApiClient api = Substitute.For<IHotkeysApiClient>();
+        api.GetKeysAsync(Arg.Any<CancellationToken>())
+            .Returns(_ => firstFetch.Task, _ => Task.FromResult(ApiResult<HotkeyKeyCatalogDto>.Ok(Sample)));
+        var catalog = new HotkeyKeyCatalog(api);
+
+        Task<IReadOnlyList<HotkeyKeyDto>> failing = catalog.ForRoleAsync("HotkeyKey", CancellationToken.None).AsTask();
+        Task<IReadOnlyList<HotkeyKeyDto>> succeeding = catalog.ForRoleAsync("SendToken", CancellationToken.None).AsTask();
+        firstFetch.SetResult(ApiResult<HotkeyKeyCatalogDto>.Failure(ApiResultStatus.ServerError, null));
+
+        (await failing).Should().BeEmpty();
+        (await succeeding).Should().NotBeEmpty();
+
+        // The role whose first projection came from the failed fetch reloads instead of being
+        // answered empty from a poisoned cache. No third fetch: the catalog is already loaded.
+        (await catalog.ForRoleAsync("HotkeyKey", CancellationToken.None)).Should().NotBeEmpty();
+        await api.Received(2).GetKeysAsync(Arg.Any<CancellationToken>());
+    }
 }
