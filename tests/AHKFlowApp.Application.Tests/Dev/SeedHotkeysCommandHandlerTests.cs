@@ -14,7 +14,7 @@ namespace AHKFlowApp.Application.Tests.Dev;
 [Trait("Category", "Integration")]
 public sealed class SeedHotkeysCommandHandlerTests(DevDbFixture fx)
 {
-    private const int SampleCount = 12;
+    private const int SampleCount = 17;
 
     private readonly Guid _ownerOid = Guid.NewGuid();
     private readonly AppEnvironment _devEnv = new(IsDevelopment: true);
@@ -37,7 +37,7 @@ public sealed class SeedHotkeysCommandHandlerTests(DevDbFixture fx)
         new(db, user ?? User(), TimeProvider.System, _devEnv);
 
     [Fact]
-    public async Task Handle_InDevelopment_SeedsTwelveSamples()
+    public async Task Handle_InDevelopment_SeedsAllSamples()
     {
         await using AppDbContext db = fx.CreateContext();
 
@@ -99,7 +99,7 @@ public sealed class SeedHotkeysCommandHandlerTests(DevDbFixture fx)
     }
 
     [Fact]
-    public async Task Handle_WithReset_AfterFullSeed_KeepsTwelveSamples()
+    public async Task Handle_WithReset_AfterFullSeed_KeepsAllSamples()
     {
         await SeedCategoriesAsync();
 
@@ -141,7 +141,7 @@ public sealed class SeedHotkeysCommandHandlerTests(DevDbFixture fx)
     }
 
     [Fact]
-    public async Task Handle_BeforeCategoriesSeeded_CreatesTwelveWithNoJunctions()
+    public async Task Handle_BeforeCategoriesSeeded_CreatesAllWithNoJunctions()
     {
         await using AppDbContext db = fx.CreateContext();
 

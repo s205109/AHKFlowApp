@@ -24,7 +24,7 @@ public sealed class ListHotkeysLazySeedTests(HotkeyDbFixture fx)
     private static readonly AppEnvironment s_prod = new(IsDevelopment: false);
 
     [Fact]
-    public async Task Handle_FirstCallInDev_Seeds12Hotkeys()
+    public async Task Handle_FirstCallInDev_Seeds17Hotkeys()
     {
         var owner = Guid.NewGuid();
         await using AppDbContext ctx = fx.CreateContext();
@@ -33,7 +33,7 @@ public sealed class ListHotkeysLazySeedTests(HotkeyDbFixture fx)
         Result<PagedList<HotkeyDto>> result = await sut.ExecuteAsync(new ListHotkeysQuery(), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value.TotalCount.Should().Be(12);
+        result.Value.TotalCount.Should().Be(17);
     }
 
     [Fact]
@@ -64,7 +64,7 @@ public sealed class ListHotkeysLazySeedTests(HotkeyDbFixture fx)
         Result<PagedList<HotkeyDto>> result = await sut2.ExecuteAsync(new ListHotkeysQuery(), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value.TotalCount.Should().Be(12);
+        result.Value.TotalCount.Should().Be(17);
     }
 
     [Fact]
@@ -113,7 +113,7 @@ public sealed class ListHotkeysLazySeedTests(HotkeyDbFixture fx)
         Result<PagedList<HotkeyDto>> result = await sut.ExecuteAsync(new ListHotkeysQuery(), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value.TotalCount.Should().Be(12);
+        result.Value.TotalCount.Should().Be(17);
 
         // Marker persisted (the bug: lazy-seed would have detached pref on duplicate-key)
         await using AppDbContext verify = fx.CreateContext();
@@ -200,10 +200,10 @@ public sealed class ListHotkeysLazySeedTests(HotkeyDbFixture fx)
         int hotkeyCount = await verify.Hotkeys.CountAsync(h => h.OwnerOid == owner);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value.TotalCount.Should().Be(12);
+        result.Value.TotalCount.Should().Be(17);
         pref!.CategoriesSeededAt.Should().NotBeNull();
         pref.HotkeysSeededAt.Should().NotBeNull();
-        hotkeyCount.Should().Be(12);
+        hotkeyCount.Should().Be(17);
     }
 
     [Fact]
@@ -230,7 +230,7 @@ public sealed class ListHotkeysLazySeedTests(HotkeyDbFixture fx)
         int hotkeyCount = await verify.Hotkeys.CountAsync(h => h.OwnerOid == owner);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value.TotalCount.Should().Be(12);
-        hotkeyCount.Should().Be(12);
+        result.Value.TotalCount.Should().Be(17);
+        hotkeyCount.Should().Be(17);
     }
 }
