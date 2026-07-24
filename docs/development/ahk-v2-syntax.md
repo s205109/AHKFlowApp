@@ -118,7 +118,8 @@ than just what we emit (`RawHotstringDefinitionParser.KnownOptions`, case-insens
 plus `Kn` (key delay, `K-1` allowed) and `Pn` (priority) by pattern. Anything else is rejected by
 name. Briefly, for the ones we never emit: `B0` disables auto-backspacing of the abbreviation, `C1`
 stops case-conforming, `R` sends raw (mutually exclusive with `T`), `Z` resets the recognizer after
-each trigger, `SI`/`SP`/`SE` pick the send mode, and a trailing `0` turns most flags back off.
+each trigger, `SI`/`SP`/`SE` pick the send mode, `S`/`S0` toggles suspend-exemption, `Pn` sets
+priority, `Kn` sets the key delay, and a trailing `0` turns most flags back off.
 
 ### Bodies by kind
 
@@ -226,6 +227,12 @@ re-escape the backticks they just introduced, turning `` `n `` into `` ``n ``.
 
 Newlines are escaped rather than emitted so that every hotstring stays on one physical line — which
 is what makes the file greppable and the `\n` join safe.
+
+A Windows `\r\n` in a replacement escapes to `` `r``n ``, which **Text mode collapses to a single
+`Enter`** — AHK translates `` `n ``, `` `r ``, and `` `r``n `` all to one `Enter` under Text mode (and
+`SendText`), whereas default/Raw mode turns `` `r``n `` into *two*. Every current path is Text mode
+(`:T:` hotstrings, `SendText(...)` for DateTime/clipboard), so one CRLF yields one newline as intended.
+This only bites if a future emitter sends the same escaped string outside Text mode.
 
 ## Window context
 
