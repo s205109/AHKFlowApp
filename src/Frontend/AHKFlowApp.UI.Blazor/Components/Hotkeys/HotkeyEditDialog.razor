@@ -1,6 +1,10 @@
+@using AHKFlowApp.UI.Blazor.Components.Common
 @using AHKFlowApp.UI.Blazor.DTOs
+@using AHKFlowApp.UI.Blazor.Helpers
 @using AHKFlowApp.UI.Blazor.Services
 @using AHKFlowApp.UI.Blazor.Validation
+@using Microsoft.Extensions.Logging
+@using Microsoft.JSInterop
 @using MudBlazor
 @implements IDisposable
 
@@ -16,32 +20,207 @@
     <DialogContent>
         <MudForm @ref="_form">
         <MudStack Spacing="3" Class="pa-2">
-            <MudTextField T="string" Label="Description" @bind-Value="Item.Description"
-                          Required="true" RequiredError="Description is required" MaxLength="200"
-                          HelperText="Emitted as ; comment lines in the generated script."
-                          UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "description-input" })" />
-            <MudTextField T="string" Label="Key" @bind-Value="Item.Key"
-                          Required="true" RequiredError="Key is required" MaxLength="20"
-                          Error="@(_keyError is not null)" ErrorText="@_keyError"
-                          UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "key-input" })" />
+
+            @* ---- Activating input: key + modifiers ----
+                 Bound through a handler, not @bind-Value: the key is half the emitted line, so
+                 an expanded preview must not go stale when it changes. *@
+            <KeyPicker Role="HotkeyKey" Label="Key"
+                       Value="@Item.Key" ValueChanged="OnKeyChangedAsync"
+                       Required="true" RequiredError="Key is required"
+                       Error="@(FieldError(nameof(HotkeyEditModel.Key)) is not null)"
+                       ErrorText="@FieldError(nameof(HotkeyEditModel.Key))"
+                       HelperText="Pick a key, or type a vk/sc code such as vk1B."
+                       DataTest="key-picker" />
             <MudStack Row="true" Spacing="2">
-                <MudCheckBox T="bool" @bind-Value="Item.Ctrl" Label="Ctrl"
+                <MudCheckBox T="bool" Value="Item.Ctrl" ValueChanged="@(async (bool v) => { Item.Ctrl = v; await RefreshPreviewAsync(debounce: false); })" Label="Ctrl"
                              UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "ctrl-checkbox" })" />
-                <MudCheckBox T="bool" @bind-Value="Item.Alt" Label="Alt"
+                <MudCheckBox T="bool" Value="Item.Alt" ValueChanged="@(async (bool v) => { Item.Alt = v; await RefreshPreviewAsync(debounce: false); })" Label="Alt"
                              UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "alt-checkbox" })" />
-                <MudCheckBox T="bool" @bind-Value="Item.Shift" Label="Shift"
+                <MudCheckBox T="bool" Value="Item.Shift" ValueChanged="@(async (bool v) => { Item.Shift = v; await RefreshPreviewAsync(debounce: false); })" Label="Shift"
                              UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "shift-checkbox" })" />
-                <MudCheckBox T="bool" @bind-Value="Item.Win" Label="Win"
+                <MudCheckBox T="bool" Value="Item.Win" ValueChanged="@(async (bool v) => { Item.Win = v; await RefreshPreviewAsync(debounce: false); })" Label="Win"
                              UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "win-checkbox" })" />
             </MudStack>
-            <MudSelect T="HotkeyAction" @bind-Value="Item.Action" Label="Action"
-                       UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "action-select" })">
-                <MudSelectItem T="HotkeyAction" Value="HotkeyAction.Send">Send</MudSelectItem>
-                <MudSelectItem T="HotkeyAction" Value="HotkeyAction.Run">Run</MudSelectItem>
-            </MudSelect>
-            <MudTextField T="string" Label="Parameters" @bind-Value="Item.Parameters"
-                          Lines="3" MaxLength="4000"
-                          UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "parameters-input" })" />
+
+            @* ---- Action selector. Generated from the enum so the set cannot drift.
+                 The wrapper div carries the CSS-isolation scope for the wrapping rule. ---- *@
+            <div class="action-kind-wrap">
+                <MudToggleGroup T="HotkeyActionKind"
+                                Value="Item.ActionKind" ValueChanged="OnActionKindChangedAsync"
+                                UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "action-kind-selector" })">
+                    @foreach (HotkeyActionKind kind in Enum.GetValues<HotkeyActionKind>())
+                    {
+                        <MudToggleItem Value="@kind"
+                                       UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = $"action-kind-{kind}" })">
+                            <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center">
+                                <MudIcon Icon="@HotkeyActionDisplay.Icon(kind)" Size="Size.Small" />
+                                <MudText>@HotkeyActionDisplay.Label(kind)</MudText>
+                            </MudStack>
+                        </MudToggleItem>
+                    }
+                </MudToggleGroup>
+            </div>
+
+            @* ---- Exactly one action panel. Disable renders none: it owns no fields, and an
+                   empty bordered box reads as a bug rather than as "nothing to configure". ---- *@
+            @switch (Item.ActionKind)
+            {
+                case HotkeyActionKind.SendText:
+                    <div data-test="sendtext-panel">
+                        <MudTextField T="string" Label="Text to type" @bind-Value="Item.Text"
+                                      Lines="4" MaxLength="@HotkeyEditModel.TextMaxLength" Immediate="true"
+                                      OnDebounceIntervalElapsed="@(() => OnFieldDebouncedAsync(nameof(HotkeyEditModel.Text)))"
+                                      DebounceInterval="300"
+                                      Error="@(FieldError(nameof(HotkeyEditModel.Text)) is not null)"
+                                      ErrorText="@FieldError(nameof(HotkeyEditModel.Text))"
+                                      HelperText="Typed literally. Quotes and newlines are escaped for you."
+                                      UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "text-input" })" />
+                    </div>
+                    break;
+
+                case HotkeyActionKind.SendKeys:
+                    <div data-test="sendkeys-panel">
+                        <MudStack Row="true" Spacing="2">
+                            <MudCheckBox T="bool" Value="_sendCtrl" ValueChanged="@(async (bool v) => { _sendCtrl = v; await ComposeSendKeysAsync(); })" Label="Ctrl"
+                                         UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "send-ctrl-checkbox" })" />
+                            <MudCheckBox T="bool" Value="_sendAlt" ValueChanged="@(async (bool v) => { _sendAlt = v; await ComposeSendKeysAsync(); })" Label="Alt"
+                                         UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "send-alt-checkbox" })" />
+                            <MudCheckBox T="bool" Value="_sendShift" ValueChanged="@(async (bool v) => { _sendShift = v; await ComposeSendKeysAsync(); })" Label="Shift"
+                                         UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "send-shift-checkbox" })" />
+                            <MudCheckBox T="bool" Value="_sendWin" ValueChanged="@(async (bool v) => { _sendWin = v; await ComposeSendKeysAsync(); })" Label="Win"
+                                         UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "send-win-checkbox" })" />
+                        </MudStack>
+                        <KeyPicker Role="SendToken" Label="Key to press"
+                                   Value="@_sendKey" ValueChanged="OnSendKeyChangedAsync"
+                                   Error="@(FieldError(nameof(HotkeyEditModel.SendKeysContent)) is not null)"
+                                   ErrorText="@FieldError(nameof(HotkeyEditModel.SendKeysContent))"
+                                   DataTest="send-key-picker" />
+                    </div>
+                    break;
+
+                case HotkeyActionKind.Run:
+                    <div data-test="run-panel">
+                        <MudSelect T="RunTargetKind?" Label="Target type" Value="Item.RunTargetKind"
+                                   ValueChanged="OnRunTargetKindChangedAsync"
+                                   Error="@(FieldError(nameof(HotkeyEditModel.RunTargetKind)) is not null)"
+                                   ErrorText="@FieldError(nameof(HotkeyEditModel.RunTargetKind))"
+                                   UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "run-target-kind-select" })">
+                            @foreach (RunTargetKind kind in Enum.GetValues<RunTargetKind>())
+                            {
+                                <MudSelectItem T="RunTargetKind?" Value="@kind">@HotkeyActionDisplay.RunTargetKindLabel(kind)</MudSelectItem>
+                            }
+                        </MudSelect>
+                        <MudTextField T="string" Label="Target" @bind-Value="Item.RunTarget"
+                                      MaxLength="@HotkeyEditModel.RunTargetMaxLength" Immediate="true"
+                                      OnDebounceIntervalElapsed="@(() => OnFieldDebouncedAsync(nameof(HotkeyEditModel.RunTarget)))"
+                                      DebounceInterval="300"
+                                      Placeholder="@RunTargetPlaceholder()"
+                                      Error="@(FieldError(nameof(HotkeyEditModel.RunTarget)) is not null)"
+                                      ErrorText="@FieldError(nameof(HotkeyEditModel.RunTarget))"
+                                      HelperText="A command line — arguments are allowed, e.g. rundll32.exe user32.dll,LockWorkStation"
+                                      UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "run-target-input" })" />
+                    </div>
+                    break;
+
+                case HotkeyActionKind.Window:
+                    <div data-test="window-panel">
+                        <MudSelect T="WindowOp?" Label="Do what" Value="Item.WindowOp"
+                                   ValueChanged="OnWindowOpChangedAsync"
+                                   Error="@(FieldError(nameof(HotkeyEditModel.WindowOp)) is not null)"
+                                   ErrorText="@FieldError(nameof(HotkeyEditModel.WindowOp))"
+                                   HelperText="Applies to the active window."
+                                   UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "window-op-select" })">
+                            @foreach (WindowOp op in Enum.GetValues<WindowOp>())
+                            {
+                                <MudSelectItem T="WindowOp?" Value="@op">@HotkeyActionDisplay.WindowOpLabel(op)</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </div>
+                    break;
+
+                case HotkeyActionKind.Remap:
+                    <div data-test="remap-panel">
+                        <KeyPicker Role="RemapDest" Label="Behaves as"
+                                   Value="@Item.RemapDest" ValueChanged="OnRemapDestChangedAsync"
+                                   Error="@(FieldError(nameof(HotkeyEditModel.RemapDest)) is not null)"
+                                   ErrorText="@FieldError(nameof(HotkeyEditModel.RemapDest))"
+                                   HelperText="The key this one will act as."
+                                   DataTest="remap-dest-picker" />
+                    </div>
+                    break;
+
+                case HotkeyActionKind.Raw:
+                    <div data-test="raw-panel">
+                        <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-2"
+                                  UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "raw-warning" })">
+                            @HotkeyActionDisplay.RawWarningText
+                        </MudAlert>
+                        <div class="raw-body-wrap">
+                            <MudTextField T="string" Label="Action body" @bind-Value="Item.Body"
+                                          Lines="6" MaxLength="@HotkeyEditModel.BodyMaxLength" Immediate="true"
+                                          OnDebounceIntervalElapsed="@(() => OnFieldDebouncedAsync(nameof(HotkeyEditModel.Body)))"
+                                          DebounceInterval="300"
+                                          Error="@(FieldError(nameof(HotkeyEditModel.Body)) is not null)"
+                                          ErrorText="@FieldError(nameof(HotkeyEditModel.Body))"
+                                          HelperText="Emitted verbatim after ::. Include your own { } for a block body. Braces must balance; # directives are rejected."
+                                          UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "raw-body-input" })" />
+                        </div>
+                    </div>
+                    break;
+            }
+
+            @* ---- Generated code preview. Ported from HotstringEditDialog; no delivery chip,
+                   because hotkeys have no delivery choice. ---- *@
+            <MudExpansionPanels UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "ahk-preview" })">
+                <MudExpansionPanel Text="Generated AutoHotkey code" Expanded="_previewExpanded"
+                                   ExpandedChanged="OnPreviewExpandedChangedAsync">
+                    @if (_previewPending)
+                    {
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-1"
+                                  UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "preview-pending" })">
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                            <MudText Typo="Typo.caption">Updating preview…</MudText>
+                        </MudStack>
+                    }
+                    @if (_previewError is not null)
+                    {
+                        <MudText Color="Color.Error" Class="@(_previewPending ? "preview-stale" : null)"
+                                 UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "preview-error" })">
+                            @_previewError
+                        </MudText>
+                    }
+                    else if (_previewFieldErrors.Count > 0)
+                    {
+                        @* Every message mapped onto an input above, so there is nothing to show
+                           here — but an empty panel body reads as broken. Say why it is empty. *@
+                        <MudText Typo="Typo.body2"
+                                 UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "preview-blocked" })">
+                            Fix the highlighted fields to see the generated code.
+                        </MudText>
+                    }
+                    else if (_previewSnippet is not null)
+                    {
+                        <div class="preview-snippet-container">
+                            <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small"
+                                           Class="preview-copy" Disabled="@_previewPending"
+                                           OnClick="CopyPreviewAsync"
+                                           UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = "Copy generated AutoHotkey code", ["data-test"] = "preview-copy" })" />
+                            <pre class="@($"preview-snippet{(_previewPending ? " preview-stale" : "")}")"
+                                 data-test="preview-snippet">@_previewSnippet</pre>
+                        </div>
+                    }
+                </MudExpansionPanel>
+            </MudExpansionPanels>
+
+            @* ---- Metadata: unchanged from today's dialog ---- *@
+            <MudTextField T="string" Label="Description" @bind-Value="Item.Description"
+                          Required="true" RequiredError="Description is required" MaxLength="200" Immediate="true"
+                          OnDebounceIntervalElapsed="@(() => OnFieldDebouncedAsync(nameof(HotkeyEditModel.Description)))"
+                          DebounceInterval="300"
+                          Error="@(FieldError(nameof(HotkeyEditModel.Description)) is not null)"
+                          ErrorText="@FieldError(nameof(HotkeyEditModel.Description))"
+                          HelperText="Emitted as ; comment lines in the generated script."
+                          UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "description-input" })" />
 
             <MudCheckBox T="bool" @bind-Value="Item.AppliesToAllProfiles" Label="Apply to all profiles"
                          UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "applies-to-all-checkbox" })" />
@@ -68,26 +247,125 @@
 </MudDialog>
 
 @code {
+    /// <summary>DTO field names a server validation error may be routed to an input for.</summary>
+    private static readonly HashSet<string> KnownFields = new(StringComparer.OrdinalIgnoreCase)
+    {
+        nameof(HotkeyEditModel.Key),
+        nameof(HotkeyEditModel.Description),
+        nameof(HotkeyEditModel.Text),
+        nameof(HotkeyEditModel.SendKeysContent),
+        nameof(HotkeyEditModel.RunTarget),
+        nameof(HotkeyEditModel.RunTargetKind),
+        nameof(HotkeyEditModel.WindowOp),
+        nameof(HotkeyEditModel.RemapDest),
+        nameof(HotkeyEditModel.Body),
+    };
+
     [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = default!;
     [Inject] private IHotkeysApiClient Api { get; set; } = default!;
+    [Inject] private IHotkeyKeyCatalog Catalog { get; set; } = default!;
+    [Inject] private IJSRuntime JS { get; set; } = default!;
+    [Inject] private ISnackbar Snackbar { get; set; } = default!;
+    [Inject] private ILogger<HotkeyEditDialog> Logger { get; set; } = default!;
 
     [Parameter] public HotkeyEditModel Item { get; set; } = new();
     [Parameter] public IReadOnlyList<ProfileDto> Profiles { get; set; } = [];
     [Parameter] public IReadOnlyList<CategoryDto> Categories { get; set; } = [];
 
+    /// <summary>Debounce applied to preview refreshes after a field change. Test seam.</summary>
+    internal TimeSpan PreviewDebounce { get; set; } = TimeSpan.FromMilliseconds(400);
+
+    /// <summary>
+    /// Test seam: the save-originated field errors currently held. Exposed because MudBlazor's
+    /// inputs mask a stale explicit error once the field's own value changes, so this dictionary —
+    /// not the rendered markup — is where clearing a save error on edit is observable.
+    /// </summary>
+    internal IReadOnlyDictionary<string, string> SaveFieldErrors => _saveFieldErrors;
+
+    // Server-reported errors keyed by DTO field name. Dictionaries rather than the hotstring
+    // dialog's positional tuple: seven panels have too many fields for positional returns, and
+    // the key is exactly what the server's ProblemDetails reports.
+    //
+    // Save and preview own separate dictionaries, mirroring the hotstring dialog's
+    // _triggerError / _previewTriggerError split. Sharing one would let an in-flight preview
+    // response, landing after a failed Save, wipe the save error off the field — the generation
+    // counter supersedes previews, not saves.
+    private readonly Dictionary<string, string> _saveFieldErrors = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _previewFieldErrors = new(StringComparer.OrdinalIgnoreCase);
+
     private string? _error;
-    private string? _keyError;
     private bool _saving;
     private MudForm _form = default!;
     private readonly CancellationTokenSource _cts = new();
     private IReadOnlyList<EntityOption> _profileOptions = [];
     private IReadOnlyList<EntityOption> _categoryOptions = [];
+    private HotkeyEditModel? _lastItem;
+
+    // SendKeys is edited as discrete modifier checkboxes plus a key, but persisted as the one
+    // canonical token the server validates.
+    private bool _sendCtrl, _sendAlt, _sendShift, _sendWin;
+    private string? _sendKey;
+
+    private bool _previewExpanded;
+    private bool _previewPending;
+    private string? _previewSnippet;
+    private string? _previewError;
+    private CancellationTokenSource? _previewCts;
+    private int _previewGeneration;
+    private bool _disposed;
 
     protected override void OnParametersSet()
     {
         _profileOptions = [.. Profiles.Select(p => new EntityOption(p.Id, p.Name))];
         _categoryOptions = [.. Categories.Select(c => new EntityOption(c.Id, c.Name))];
+
+        if (!ReferenceEquals(_lastItem, Item))
+        {
+            _lastItem = Item;
+            if (Item.ActionKind == HotkeyActionKind.SendKeys)
+                DecomposeSendKeys();
+        }
     }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        _cts.Cancel();
+        _cts.Dispose();
+        CancelPendingPreview();
+    }
+
+    /// <summary>
+    /// Server-reported error for a DTO field name, or null. Drives every field's Error/ErrorText.
+    /// A save error outranks a preview error on the same field: it is the newer, user-initiated
+    /// verdict, and it is the reason the dialog is still open.
+    /// </summary>
+    private string? FieldError(string field) =>
+        _saveFieldErrors.GetValueOrDefault(field) ?? _previewFieldErrors.GetValueOrDefault(field);
+
+    /// <summary>
+    /// Drops a save error the moment the user edits the field it sits on. A save error is a verdict
+    /// on the value that was submitted; once that value changes, the verdict is stale — and would
+    /// otherwise contradict a green preview that already re-ran on the new value. Touches only
+    /// <see cref="_saveFieldErrors"/> so an in-flight preview response cannot be wiped (the Task 8
+    /// two-dictionary split); the caller is always a ValueChanged/debounce handler, which re-renders
+    /// on its own, so no <c>StateHasChanged</c> here.
+    /// </summary>
+    private void ClearSaveError(string field) => _saveFieldErrors.Remove(field);
+
+    /// <summary>Debounced text-field edit: clear that field's stale save error, then re-preview.</summary>
+    private Task OnFieldDebouncedAsync(string field)
+    {
+        ClearSaveError(field);
+        return RefreshPreviewAsync(debounce: false);
+    }
+
+    private string RunTargetPlaceholder() => Item.RunTargetKind switch
+    {
+        DTOs.RunTargetKind.Url => "https://github.com",
+        DTOs.RunTargetKind.Folder => @"C:\Users\me\Documents",
+        _ => "notepad.exe",
+    };
 
     private void Cancel() => Dialog.Cancel();
 
@@ -98,7 +376,7 @@
 
         _saving = true;
         _error = null;
-        _keyError = null;
+        _saveFieldErrors.Clear();
         try
         {
             await _form.ValidateAsync();
@@ -111,11 +389,12 @@
 
             if (!result.IsSuccess)
             {
-                string message = ApiErrorMessageFactory.Build(result.Status, result.Problem);
                 if (result.Status == ApiResultStatus.Conflict)
-                    _keyError = message;
+                    _saveFieldErrors[nameof(HotkeyEditModel.Key)] = ApiErrorMessageFactory.Build(result.Status, result.Problem);
+                else if (result.Status == ApiResultStatus.Validation && result.Problem?.Errors is { Count: > 0 } errors)
+                    _error = ApplyFieldErrors(errors, _saveFieldErrors);
                 else
-                    _error = message;
+                    _error = ApiErrorMessageFactory.Build(result.Status, result.Problem);
 
                 return;
             }
@@ -128,5 +407,268 @@
         }
     }
 
-    public void Dispose() { _cts.Cancel(); _cts.Dispose(); }
+    /// <summary>
+    /// Maps a ProblemDetails validation dictionary onto field names, replacing whatever the
+    /// given owner held before. Property paths arrive as e.g. "Input.RunTarget" — the last
+    /// dotted part is the field. Anything that maps to no known field falls through to the
+    /// generic alert rather than being silently dropped.
+    /// </summary>
+    private static string? ApplyFieldErrors(IReadOnlyDictionary<string, string[]> errors, Dictionary<string, string> target)
+    {
+        target.Clear();
+        List<string> unmapped = [];
+
+        foreach ((string key, string[] messages) in errors)
+        {
+            if (messages.FirstOrDefault() is not { } message)
+                continue;
+
+            string field = key[(key.LastIndexOf('.') + 1)..];
+            if (KnownFields.Contains(field))
+                target.TryAdd(field, message);
+            else
+                unmapped.Add(message);
+        }
+
+        return unmapped.FirstOrDefault();
+    }
+
+    /// <summary>
+    /// The fields a kind owns — the ones whose errors are meaningless under any other kind.
+    /// Single-sourced from <see cref="HotkeyEditModel.FieldNamesOwnedBy"/> so adding a field to a
+    /// kind is a one-place edit that the wire mapping and this error clearing both track.
+    /// </summary>
+    private static IReadOnlyList<string> FieldsOwnedBy(HotkeyActionKind kind) => HotkeyEditModel.FieldNamesOwnedBy(kind);
+
+    /// <summary>
+    /// Switching kind drops the outgoing kind's field errors (a stale Raw brace message must not
+    /// linger on the incoming kind's fields) and re-previews. Only that kind's own fields are
+    /// dropped: Key and Description are kind-independent, so a duplicate-key conflict on an
+    /// unchanged key must survive the switch. Field values are deliberately kept too — gating to
+    /// the active kind happens on the wire, so toggling away and back loses nothing.
+    /// </summary>
+    private async Task OnActionKindChangedAsync(HotkeyActionKind kind)
+    {
+        if (kind == Item.ActionKind)
+            return;
+
+        foreach (string field in FieldsOwnedBy(Item.ActionKind))
+        {
+            _saveFieldErrors.Remove(field);
+            _previewFieldErrors.Remove(field);
+        }
+
+        Item.ActionKind = kind;
+        await RefreshPreviewAsync(debounce: false);
+    }
+
+    private async Task OnKeyChangedAsync(string? key)
+    {
+        Item.Key = key ?? "";
+        ClearSaveError(nameof(HotkeyEditModel.Key));
+        // The key is half the emitted line, so a stale preview here is worse than a stale
+        // payload preview — it shows the wrong binding entirely.
+        await RefreshPreviewAsync(debounce: false);
+    }
+
+    private async Task OnRunTargetKindChangedAsync(RunTargetKind? kind)
+    {
+        Item.RunTargetKind = kind;
+        ClearSaveError(nameof(HotkeyEditModel.RunTargetKind));
+        await RefreshPreviewAsync(debounce: false);
+    }
+
+    private async Task OnWindowOpChangedAsync(WindowOp? op)
+    {
+        Item.WindowOp = op;
+        ClearSaveError(nameof(HotkeyEditModel.WindowOp));
+        await RefreshPreviewAsync(debounce: false);
+    }
+
+    private async Task OnRemapDestChangedAsync(string? dest)
+    {
+        // A remap destination is never braced and never carries modifiers (the backend rejects
+        // {Ctrl} and ^a), so it is persisted exactly as the picker yields it.
+        Item.RemapDest = dest;
+        ClearSaveError(nameof(HotkeyEditModel.RemapDest));
+        await RefreshPreviewAsync(debounce: false);
+    }
+
+    private async Task OnSendKeyChangedAsync(string? key)
+    {
+        _sendKey = key;
+        await ComposeSendKeysAsync();
+    }
+
+    /// <summary>
+    /// Composes the discrete picker state into the single canonical token the server validates:
+    /// optional ^!+# modifiers then exactly one key. Bracing comes from the registry's
+    /// RequiresBracesInSend, which is true for named entries ({Volume_Up}) and for vk/sc codes
+    /// ({vk1B}), false for a single printable character (c). Note '*' is not a Send modifier
+    /// and is deliberately absent.
+    /// </summary>
+    private async Task ComposeSendKeysAsync()
+    {
+        string mods = $"{(_sendCtrl ? "^" : "")}{(_sendAlt ? "!" : "")}{(_sendShift ? "+" : "")}{(_sendWin ? "#" : "")}";
+
+        if (string.IsNullOrEmpty(_sendKey))
+        {
+            Item.SendKeysContent = null;
+        }
+        else
+        {
+            string key = Catalog.RequiresBracesInSend(_sendKey) ? $"{{{_sendKey}}}" : _sendKey;
+            Item.SendKeysContent = $"{mods}{key}";
+        }
+
+        ClearSaveError(nameof(HotkeyEditModel.SendKeysContent));
+        await RefreshPreviewAsync(debounce: false);
+    }
+
+    /// <summary>
+    /// Splits a stored token back into the checkboxes and key so reopening an existing SendKeys
+    /// row shows the state that produced it. Leading ^!+# are modifiers; the remainder is the
+    /// key, unwrapped if braced.
+    /// </summary>
+    private void DecomposeSendKeys()
+    {
+        _sendCtrl = _sendAlt = _sendShift = _sendWin = false;
+        _sendKey = null;
+
+        if (Item.SendKeysContent is not { Length: > 0 } token)
+            return;
+
+        int i = 0;
+        for (; i < token.Length; i++)
+        {
+            switch (token[i])
+            {
+                case '^': _sendCtrl = true; continue;
+                case '!': _sendAlt = true; continue;
+                case '+': _sendShift = true; continue;
+                case '#': _sendWin = true; continue;
+            }
+            break;
+        }
+
+        string rest = token[i..];
+        _sendKey = rest.StartsWith('{') && rest.EndsWith('}') ? rest[1..^1] : rest;
+    }
+
+    private Task RefreshPreviewAsync(bool debounce)
+    {
+        if (_previewExpanded)
+            SchedulePreview(Item.ToPreviewRequest(), debounce);
+
+        return Task.CompletedTask;
+    }
+
+    private async Task OnPreviewExpandedChangedAsync(bool expanded)
+    {
+        _previewExpanded = expanded;
+        if (expanded)
+            await RefreshPreviewAsync(debounce: false);
+        else
+            CancelPendingPreview();
+    }
+
+    private void SchedulePreview(HotkeyPreviewRequestDto request, bool debounce)
+    {
+        CancelPendingPreview();
+        CancellationTokenSource cts = new();
+        _previewCts = cts;
+        int generation = ++_previewGeneration;
+        _previewPending = true;
+
+        // Fire-and-forget: RunPreviewAsync handles every exception it can raise (including
+        // unexpected ones), so the task never faults.
+        _ = RunPreviewAsync(request, cts.Token, generation, debounce);
+
+        StateHasChanged();
+    }
+
+    private void CancelPendingPreview()
+    {
+        // Bumping the generation (not just cancelling) also discards in-flight responses
+        // whose transport ignores cancellation and completes successfully afterwards.
+        _previewGeneration++;
+        _previewPending = false;
+        _previewCts?.Cancel();
+        _previewCts?.Dispose();
+        _previewCts = null;
+    }
+
+    private async Task RunPreviewAsync(HotkeyPreviewRequestDto request, CancellationToken ct, int generation, bool debounce)
+    {
+        try
+        {
+            if (debounce && PreviewDebounce > TimeSpan.Zero)
+                await Task.Delay(PreviewDebounce, ct);
+
+            ApiResult<HotkeyPreviewDto> result = await Api.PreviewAsync(request, ct);
+
+            if (generation != _previewGeneration || _disposed)
+                return;
+
+            _previewPending = false;
+            ApplyPreviewResult(result);
+            StateHasChanged();
+        }
+        catch (OperationCanceledException)
+        {
+            // A cancelled preview (superseded input, panel collapsed, dialog disposed) is
+            // silently ignored — never surfaced as an error.
+        }
+        catch (Exception ex)
+        {
+            // Boundary for a fire-and-forget background task: successful-response
+            // deserialization (or anything else) can throw after ApiClientBase's
+            // HttpRequestException handling. Log it and surface a friendly message instead
+            // of leaving the "Updating preview…" spinner stuck forever.
+            Logger.LogError(ex, "Hotkey preview failed unexpectedly.");
+
+            if (generation != _previewGeneration || _disposed)
+                return;
+
+            _previewPending = false;
+            _previewSnippet = null;
+            _previewError = "Something went wrong generating the preview. Try again.";
+            StateHasChanged();
+        }
+    }
+
+    private void ApplyPreviewResult(ApiResult<HotkeyPreviewDto> result)
+    {
+        // Only the preview's own field errors are replaced. A save error sitting on the same
+        // field belongs to the user's last Save and must outlive an in-flight preview response.
+        _previewFieldErrors.Clear();
+
+        if (result.IsSuccess)
+        {
+            _previewSnippet = result.Value!.Snippet;
+            _previewError = null;
+            return;
+        }
+
+        _previewSnippet = null;
+        _previewError = result.Status == ApiResultStatus.Validation && result.Problem?.Errors is { Count: > 0 } errors
+            ? ApplyFieldErrors(errors, _previewFieldErrors)
+            : ApiErrorMessageFactory.Build(result.Status, result.Problem);
+    }
+
+    private async Task CopyPreviewAsync()
+    {
+        if (_previewSnippet is null)
+            return;
+
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", _previewSnippet);
+            Snackbar.Add("Generated code copied.", Severity.Success);
+        }
+        catch (JSException)
+        {
+            Snackbar.Add("Copy to clipboard failed.", Severity.Warning);
+        }
+    }
 }

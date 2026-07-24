@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Playwright;
 using Xunit;
+using HotkeyAction = AHKFlowApp.Application.Services.LegacyHotkeyDefinitionConverter.HotkeyAction;
 
 namespace AHKFlowApp.E2E.Tests;
 
@@ -103,9 +104,9 @@ public sealed class VersionHistoryFlowTests(StackFixture fixture) : IAsyncLifeti
         Hotkey reverted = await FindHotkeyAsync(hotkeyId);
         Assert.True(reverted.Ctrl);
         Assert.True(reverted.Alt);
-        Assert.Equal(HotkeyAction.Run, reverted.Action);
+        Assert.Equal(HotkeyActionKind.Run, reverted.ActionKind);
         Assert.Equal("T", reverted.Key);
-        Assert.Equal("wt.exe", reverted.Parameters);
+        Assert.Equal("wt.exe", reverted.RunTarget);
 
         await DeleteHotkeyAsync(page, "Open Terminal");
 
@@ -119,9 +120,9 @@ public sealed class VersionHistoryFlowTests(StackFixture fixture) : IAsyncLifeti
         Hotkey restored = await FindHotkeyAsync(hotkeyId);
         Assert.True(restored.Ctrl);
         Assert.True(restored.Alt);
-        Assert.Equal(HotkeyAction.Run, restored.Action);
+        Assert.Equal(HotkeyActionKind.Run, restored.ActionKind);
         Assert.Equal("T", restored.Key);
-        Assert.Equal("wt.exe", restored.Parameters);
+        Assert.Equal("wt.exe", restored.RunTarget);
     }
 
     private static async Task CreateHotstringAsync(IPage page, string trigger, string replacement)
@@ -147,17 +148,25 @@ public sealed class VersionHistoryFlowTests(StackFixture fixture) : IAsyncLifeti
         await page.WaitForSelectorAsync($"tbody tr:has-text(\"{replacement}\")");
     }
 
-    private static async Task UpdateHotkeyAsync(IPage page, string description, string key, string parameters)
+    private static async Task UpdateHotkeyAsync(IPage page, string description, string key, string target)
     {
         await page.Locator("tbody tr", new() { HasTextString = description })
             .Locator("button.start-edit")
             .ClickAsync();
         await page.WaitForSelectorAsync("tr.edit-row");
-        await page.FillAsync("tr.edit-row input[data-test=\"key-input\"]", key);
-        await page.FillAsync("tr.edit-row input[data-test=\"parameters-input\"]", parameters);
+
+        // key-input is now a MudAutocomplete (KeyPicker) with CoerceValue: FillAsync sets the text
+        // but does not commit; blurring coerces the typed key onto the bound value.
+        ILocator keyInput = page.Locator("tr.edit-row input[data-test=\"key-input\"]");
+        await keyInput.ClickAsync();
+        await keyInput.FillAsync(key);
+        await keyInput.PressAsync("Tab");
+
+        // The old free-text parameters-input is gone; a Run row's payload is the run-target field.
+        await page.FillAsync("tr.edit-row input[data-test=\"run-target-input\"]", target);
         await page.ClickAsync("tr.edit-row button.commit-edit");
         await page.WaitForSelectorAsync("text=Hotkey updated.");
-        await page.WaitForSelectorAsync($"tbody tr:has-text(\"{parameters}\")");
+        await page.WaitForSelectorAsync($"tbody tr:has-text(\"{target}\")");
     }
 
     private static async Task OpenHistoryAsync(IPage page, string rowText)

@@ -1,10 +1,15 @@
 using System.ComponentModel.DataAnnotations;
 using AHKFlowApp.UI.Blazor.DTOs;
+using AHKFlowApp.UI.Blazor.Services;
 
 namespace AHKFlowApp.UI.Blazor.Validation;
 
 public sealed class HotkeyEditModel
 {
+    public const int TextMaxLength = 4_000;
+    public const int BodyMaxLength = 4_000;
+    public const int RunTargetMaxLength = 4_000;
+
     public Guid? Id { get; set; }
 
     [Required(ErrorMessage = "Description is required.")]
@@ -19,14 +24,34 @@ public sealed class HotkeyEditModel
     public bool Alt { get; set; }
     public bool Shift { get; set; }
     public bool Win { get; set; }
-    public HotkeyAction Action { get; set; } = HotkeyAction.Send;
 
-    [MaxLength(4000, ErrorMessage = "Parameters must be 4000 characters or fewer.")]
-    public string Parameters { get; set; } = "";
+    public HotkeyActionKind ActionKind { get; set; } = HotkeyActionKind.SendText;
+
+    // Per-kind fields. All are retained across kind switches so a user who toggles away and
+    // back does not lose typed work; gating to the active kind happens once, on the wire, in
+    // ToCreateDto / ToUpdateDto / ToPreviewRequest. Server validation is both-or-neither, so
+    // sending a field belonging to an inactive kind is a 400.
+    public string? Text { get; set; }
+    public string? SendKeysContent { get; set; }
+    public string? RunTarget { get; set; }
+    public RunTargetKind? RunTargetKind { get; set; }
+    public WindowOp? WindowOp { get; set; }
+    public string? RemapDest { get; set; }
+    public string? Body { get; set; }
 
     public bool AppliesToAllProfiles { get; set; } = true;
     public List<Guid> ProfileIds { get; set; } = [];
     public List<Guid> CategoryIds { get; set; } = [];
+
+    /// <summary>
+    /// Grid rows offer inline edit only for the two kinds whose whole payload is a single text
+    /// field, and only when the key would survive server-side validation. The key clause is what
+    /// surfaces legacy rows the action migration could not rewrite: they route to the dialog,
+    /// where the existing field-level error already appears on open. No extra UI, per spec §8.
+    /// </summary>
+    public bool IsInlineEditable(IHotkeyKeyCatalog catalog) =>
+        ActionKind is HotkeyActionKind.SendText or HotkeyActionKind.Run
+        && catalog.IsValidKey(Key);
 
     public static HotkeyEditModel FromDto(HotkeyDto dto) => new()
     {
@@ -37,8 +62,14 @@ public sealed class HotkeyEditModel
         Alt = dto.Alt,
         Shift = dto.Shift,
         Win = dto.Win,
-        Action = dto.Action,
-        Parameters = dto.Parameters,
+        ActionKind = dto.ActionKind,
+        Text = dto.Text,
+        SendKeysContent = dto.SendKeysContent,
+        RunTarget = dto.RunTarget,
+        RunTargetKind = dto.RunTargetKind,
+        WindowOp = dto.WindowOp,
+        RemapDest = dto.RemapDest,
+        Body = dto.Body,
         AppliesToAllProfiles = dto.AppliesToAllProfiles,
         ProfileIds = [.. dto.ProfileIds],
         CategoryIds = [.. dto.CategoryIds ?? []],
@@ -53,18 +84,80 @@ public sealed class HotkeyEditModel
         Alt = Alt,
         Shift = Shift,
         Win = Win,
-        Action = Action,
-        Parameters = Parameters,
+        ActionKind = ActionKind,
+        Text = Text,
+        SendKeysContent = SendKeysContent,
+        RunTarget = RunTarget,
+        RunTargetKind = RunTargetKind,
+        WindowOp = WindowOp,
+        RemapDest = RemapDest,
+        Body = Body,
         AppliesToAllProfiles = AppliesToAllProfiles,
         ProfileIds = [.. ProfileIds],
         CategoryIds = [.. CategoryIds],
     };
 
-    public CreateHotkeyDto ToCreateDto() =>
-        new(Description, Key, Ctrl, Alt, Shift, Win, Action, Parameters,
+    public CreateHotkeyDto ToCreateDto()
+    {
+        ActionFields f = ActiveFields();
+        return new(Description, Key, ActionKind, Ctrl, Alt, Shift, Win,
+            f.Text, f.SendKeysContent, f.RunTarget, f.RunTargetKind, f.WindowOp, f.RemapDest, f.Body,
             AppliesToAllProfiles ? null : [.. ProfileIds], AppliesToAllProfiles, [.. CategoryIds]);
+    }
 
-    public UpdateHotkeyDto ToUpdateDto() =>
-        new(Description, Key, Ctrl, Alt, Shift, Win, Action, Parameters,
+    public UpdateHotkeyDto ToUpdateDto()
+    {
+        ActionFields f = ActiveFields();
+        return new(Description, Key, ActionKind, Ctrl, Alt, Shift, Win,
+            f.Text, f.SendKeysContent, f.RunTarget, f.RunTargetKind, f.WindowOp, f.RemapDest, f.Body,
             AppliesToAllProfiles ? null : [.. ProfileIds], AppliesToAllProfiles, [.. CategoryIds]);
+    }
+
+    public HotkeyPreviewRequestDto ToPreviewRequest()
+    {
+        ActionFields f = ActiveFields();
+        return new(Description, Key, ActionKind, Ctrl, Alt, Shift, Win,
+            f.Text, f.SendKeysContent, f.RunTarget, f.RunTargetKind, f.WindowOp, f.RemapDest, f.Body);
+    }
+
+    /// <summary>
+    /// The single place that knows which fields each kind owns — kept beside <see cref="ActiveFields"/>,
+    /// which reads from the same ownership map. Returns the DTO field NAMES (for routing/clearing
+    /// server errors); <see cref="ActiveFields"/> returns the matching typed VALUES for the wire. Add
+    /// a field to a kind here and the dialog's error-clearing follows automatically.
+    /// </summary>
+    internal static IReadOnlyList<string> FieldNamesOwnedBy(HotkeyActionKind kind) => kind switch
+    {
+        HotkeyActionKind.SendText => [nameof(Text)],
+        HotkeyActionKind.SendKeys => [nameof(SendKeysContent)],
+        HotkeyActionKind.Run => [nameof(RunTarget), nameof(RunTargetKind)],
+        HotkeyActionKind.Window => [nameof(WindowOp)],
+        HotkeyActionKind.Remap => [nameof(RemapDest)],
+        HotkeyActionKind.Raw => [nameof(Body)],
+        _ => [],
+    };
+
+    /// <summary>The typed values each kind owns — the value counterpart of <see cref="FieldNamesOwnedBy"/>.</summary>
+    private ActionFields ActiveFields() => ActionKind switch
+    {
+        HotkeyActionKind.SendText => new() { Text = Text },
+        HotkeyActionKind.SendKeys => new() { SendKeysContent = SendKeysContent },
+        HotkeyActionKind.Run => new() { RunTarget = RunTarget, RunTargetKind = RunTargetKind },
+        HotkeyActionKind.Window => new() { WindowOp = WindowOp },
+        HotkeyActionKind.Remap => new() { RemapDest = RemapDest },
+        HotkeyActionKind.Disable => new(),
+        HotkeyActionKind.Raw => new() { Body = Body },
+        _ => new(),
+    };
+
+    private sealed record ActionFields
+    {
+        public string? Text { get; init; }
+        public string? SendKeysContent { get; init; }
+        public string? RunTarget { get; init; }
+        public RunTargetKind? RunTargetKind { get; init; }
+        public WindowOp? WindowOp { get; init; }
+        public string? RemapDest { get; init; }
+        public string? Body { get; init; }
+    }
 }

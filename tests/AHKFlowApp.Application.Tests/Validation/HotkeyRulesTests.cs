@@ -14,9 +14,10 @@ public sealed class HotkeyRulesTests
         CreateHotkeyDto dto = new(
             Description: "d",
             Key: key,
+            ActionKind: HotkeyActionKind.Run,
             Ctrl: true,
-            Action: HotkeyAction.Run,
-            Parameters: "notepad.exe",
+            RunTarget: "notepad.exe",
+            RunTargetKind: RunTargetKind.Application,
             AppliesToAllProfiles: true);
 
         return new CreateHotkeyCommandValidator().Validate(new CreateHotkeyCommand(dto));
@@ -61,31 +62,6 @@ public sealed class HotkeyRulesTests
         result.IsValid.Should().BeFalse();
     }
 
-    private static ValidationResult ValidateParameters(string parameters)
-    {
-        CreateHotkeyDto dto = new(
-            Description: "d",
-            Key: "a",
-            Ctrl: true,
-            Action: HotkeyAction.Send,
-            Parameters: parameters,
-            AppliesToAllProfiles: true);
-
-        return new CreateHotkeyCommandValidator().Validate(new CreateHotkeyCommand(dto));
-    }
-
-    [Theory]
-    [InlineData("he said \"hi\" 100`%")]
-    [InlineData("line one\nline two")]
-    [InlineData("col\tcol")]
-    public void ValidParameters_NowEscapedAtEmission_AreAccepted(string parameters)
-    {
-        ValidateParameters(parameters).IsValid.Should().BeTrue();
-    }
-
-    [Fact]
-    public void ValidParameters_ControlCharacter_IsStillRejected()
-    {
-        ValidateParameters("bad\0value").IsValid.Should().BeFalse();
-    }
+    // The free-text Parameters rules retired with the legacy column; the typed per-kind payload
+    // grammars are covered by HotkeyKindConditionalRulesTests.
 }

@@ -17,7 +17,8 @@ public sealed class HotkeysApiClientTests
     {
         var paged = new PagedList<HotkeyDto>(
             Items: [new HotkeyDto(Guid.NewGuid(), [], true, "Open Notepad", "n", true, false, false, false,
-                HotkeyAction.Run, "notepad.exe", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow)],
+                HotkeyActionKind.Run, null, null, "notepad.exe", RunTargetKind.Application, null, null, null,
+                DateTimeOffset.UtcNow, DateTimeOffset.UtcNow)],
             Page: 1, PageSize: 50, TotalCount: 1, TotalPages: 1, HasNextPage: false, HasPreviousPage: false);
         var handler = StubHttpMessageHandler.JsonResponse(HttpStatusCode.OK, paged);
 
@@ -35,7 +36,7 @@ public sealed class HotkeysApiClientTests
         var problem = new ApiProblemDetails(null, "Conflict", 409, "Modifier combo already exists", "/api/v1/hotkeys", null);
         var handler = StubHttpMessageHandler.JsonResponse(HttpStatusCode.Conflict, problem);
 
-        var dto = new CreateHotkeyDto("Open Notepad", "n", Ctrl: true);
+        var dto = new CreateHotkeyDto("Open Notepad", "n", HotkeyActionKind.SendKeys, Ctrl: true);
         ApiResult<HotkeyDto> result = await ClientWith(handler).CreateAsync(dto);
 
         result.IsSuccess.Should().BeFalse();
@@ -63,7 +64,7 @@ public sealed class HotkeysApiClientTests
 
         await ClientWith(handler).ListAsync(new HotkeyListRequest(
             Page: 2, PageSize: 25, SortField: "key", SortDescending: false,
-            DescriptionFilter: "Open browser", Ctrl: true, Action: HotkeyAction.Run));
+            DescriptionFilter: "Open browser", Ctrl: true, ActionKind: HotkeyActionKind.Run));
 
         string query = handler.LastRequest!.RequestUri!.Query;
         query.Should().Contain("page=2");
@@ -72,7 +73,7 @@ public sealed class HotkeysApiClientTests
         query.Should().Contain("sortDescending=false");
         query.Should().Contain("descriptionFilter=Open%20browser");
         query.Should().Contain("ctrl=true");
-        query.Should().Contain("action=Run");
+        query.Should().Contain("actionKind=Run");
     }
 
     [Fact]
@@ -143,8 +144,14 @@ public sealed class HotkeysApiClientTests
             false,
             false,
             false,
-            HotkeyAction.Run,
+            HotkeyActionKind.Run,
+            null,
+            null,
             "notepad.exe",
+            RunTargetKind.Application,
+            null,
+            null,
+            null,
             DateTimeOffset.UtcNow,
             DateTimeOffset.UtcNow,
             []);
@@ -181,6 +188,37 @@ public sealed class HotkeysApiClientTests
         result.IsSuccess.Should().BeTrue();
         handler.LastRequest!.Method.Should().Be(HttpMethod.Delete);
         handler.LastRequest.RequestUri!.AbsolutePath.Should().Be($"/api/v1/hotkeys/deleted/{id}");
+    }
+
+    [Fact]
+    public async Task GetKeysAsync_RequestsKeysRoute()
+    {
+        var catalog = new HotkeyKeyCatalogDto(
+            [new HotkeyKeyDto("F1", "Function keys", ["HotkeyKey"], true)],
+            new Dictionary<string, string> { ["Esc"] = "Escape" });
+        var handler = StubHttpMessageHandler.JsonResponse(HttpStatusCode.OK, catalog);
+
+        ApiResult<HotkeyKeyCatalogDto> result = await ClientWith(handler).GetKeysAsync();
+
+        result.IsSuccess.Should().BeTrue();
+        handler.LastRequest!.RequestUri!.PathAndQuery.Should().EndWith("api/v1/hotkeys/keys");
+        result.Value!.Keys.Should().ContainSingle(k => k.Canonical == "F1");
+    }
+
+    [Fact]
+    public async Task PreviewAsync_PostsDraftToPreviewRoute()
+    {
+        var preview = new HotkeyPreviewDto("#n::Run(\"notepad\")");
+        var handler = StubHttpMessageHandler.JsonResponse(HttpStatusCode.OK, preview);
+
+        ApiResult<HotkeyPreviewDto> result = await ClientWith(handler).PreviewAsync(new HotkeyPreviewRequestDto(
+            "Open Notepad", "n", HotkeyActionKind.Run, Win: true,
+            RunTarget: "notepad", RunTargetKind: RunTargetKind.Application));
+
+        result.IsSuccess.Should().BeTrue();
+        handler.LastRequest!.Method.Should().Be(HttpMethod.Post);
+        handler.LastRequest.RequestUri!.PathAndQuery.Should().EndWith("api/v1/hotkeys/preview");
+        result.Value!.Snippet.Should().Be("#n::Run(\"notepad\")");
     }
 
     private sealed class StubHttpMessageHandler : HttpMessageHandler

@@ -29,8 +29,17 @@ public sealed class HotkeysController(
     IUseCase<RevertHotkeyCommand, Result<HotkeyDto>> revertHotkey,
     IUseCase<ListDeletedHotkeysQuery, Result<DeletedHotkeyDto[]>> listDeletedHotkeys,
     IUseCase<RestoreHotkeyCommand, Result<HotkeyDto>> restoreHotkey,
-    IUseCase<PurgeDeletedHotkeyCommand, Result> purgeDeletedHotkey) : ControllerBase
+    IUseCase<PurgeDeletedHotkeyCommand, Result> purgeDeletedHotkey,
+    IUseCase<ListHotkeyKeysQuery, Result<HotkeyKeyCatalogDto>> listHotkeyKeys,
+    IUseCase<GetHotkeyPreviewQuery, Result<HotkeyPreviewDto>> previewHotkey) : ControllerBase
 {
+    /// <summary>Get the canonical key registry backing the hotkey key picker.</summary>
+    /// <remarks>Static reference data; authorized because the controller is, not because it is user-scoped.</remarks>
+    [HttpGet("keys")]
+    [ProducesResponseType(typeof(HotkeyKeyCatalogDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<HotkeyKeyCatalogDto>> Keys(CancellationToken ct) =>
+        (await listHotkeyKeys.ExecuteAsync(new ListHotkeyKeysQuery(), ct)).ToProblemActionResult(this);
+
     /// <summary>List hotkeys for the current user, optionally filtered by profile. Paginated.</summary>
     [HttpGet]
     [ProducesResponseType(typeof(PagedList<HotkeyDto>), StatusCodes.Status200OK)]
@@ -44,8 +53,7 @@ public sealed class HotkeysController(
         [FromQuery] bool sortDescending = true,
         [FromQuery] string? descriptionFilter = null,
         [FromQuery] string? keyFilter = null,
-        [FromQuery] string? parametersFilter = null,
-        [FromQuery] HotkeyAction? action = null,
+        [FromQuery] HotkeyActionKind? actionKind = null,
         [FromQuery] bool? appliesToAllProfiles = null,
         [FromQuery] bool? ctrl = null,
         [FromQuery] bool? alt = null,
@@ -56,8 +64,8 @@ public sealed class HotkeysController(
         (await listHotkeys.ExecuteAsync(new ListHotkeysQuery(
             profileId, search, page, pageSize,
             sortField, sortDescending,
-            descriptionFilter, keyFilter, parametersFilter,
-            action, appliesToAllProfiles,
+            descriptionFilter, keyFilter,
+            actionKind, appliesToAllProfiles,
             ctrl, alt, shift, win, categoryIds), ct)).ToProblemActionResult(this);
 
     /// <summary>Get a hotkey by id.</summary>
@@ -159,4 +167,13 @@ public sealed class HotkeysController(
         Result result = await purgeDeletedHotkey.ExecuteAsync(new PurgeDeletedHotkeyCommand(id), ct);
         return result.IsSuccess ? NoContent() : result.ToProblemActionResult(this);
     }
+
+    /// <summary>Preview the AutoHotkey snippet a hotkey draft would generate, without saving it.</summary>
+    [HttpPost("preview")]
+    [ProducesResponseType(typeof(HotkeyPreviewDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<HotkeyPreviewDto>> Preview(
+        [FromBody] HotkeyPreviewRequestDto dto,
+        CancellationToken ct) =>
+        (await previewHotkey.ExecuteAsync(new GetHotkeyPreviewQuery(dto), ct)).ToProblemActionResult(this);
 }

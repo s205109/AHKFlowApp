@@ -2384,7 +2384,15 @@ In `HotkeysController.cs`, inject `IUseCase<GetHotkeyPreviewQuery, Result<Hotkey
         (await previewHotkey.ExecuteAsync(new GetHotkeyPreviewQuery(dto), ct)).ToProblemActionResult(this);
 ```
 
-The use case auto-registers via the existing `IUseCase<,>` scan (no manual DI). Confirm the controller carries `[Authorize]` like its siblings.
+Register the use case explicitly in `src/Backend/AHKFlowApp.Application/DependencyInjection.cs`, alongside its hotstring counterpart at line 54:
+
+```csharp
+            .AddUseCase<GetHotkeyPreviewQuery, Result<HotkeyPreviewDto>, GetHotkeyPreviewQueryHandler>()
+```
+
+There is **no** assembly scan — every handler in this project is registered by hand, and the only generic registration is the `ValidatingUseCase<,>` decorator (line 28). Without the line above, `HotkeysController` fails to activate the moment the preview endpoint is wired, and the UI plan's preview panel 500s on every keystroke. (An earlier revision of this task claimed auto-registration; corrected 2026-07-22.)
+
+Confirm the controller carries `[Authorize]` like its siblings.
 
 - [ ] **Step 5: Run + full suite**
 
