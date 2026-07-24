@@ -37,7 +37,13 @@ the user that the Send route is a dead end. This design closes both.
 
 ## 1. Snap operations (`WindowOp.SnapLeft` / `SnapRight`)
 
-`WindowOp` gains two values. The emitter's `WindowCall` returns a block body for them:
+**Two enums, not one.** `WindowOp` is duplicated: the domain enum
+(`AHKFlowApp.Domain/Enums/WindowOp.cs`) and its numeric wire-contract mirror in the frontend
+(`AHKFlowApp.UI.Blazor/DTOs/WindowOp.cs`). Both gain `SnapLeft = 5` / `SnapRight = 6` with
+matching numeric values — the dropdown enumerates the *frontend* type via `Enum.GetValues`, so a
+domain-only change would leave 5/6 absent from the UI and the new label cases would not compile.
+
+The emitter's `WindowCall` returns a block body for them:
 
 ```ahk
 {
@@ -47,8 +53,9 @@ the user that the Send route is a dead end. This design closes both.
 }
 ```
 
-SnapRight differs only in the `WinMove` X/Width:
-`WinMove(l + (r - l) // 2, t, (r - l) // 2, b - t, "A")`.
+SnapRight differs only in the `WinMove` X/Width. Its X is the left window's right edge, and its
+width spans from there to `r` so an odd work-area width leaves no uncovered strip:
+`WinMove(l + (r - l) // 2, t, r - (l + (r - l) // 2), b - t, "A")`.
 
 `WinRestore("A")` first so a maximized window can be moved. `//` is AHK integer division.
 `MonitorGetPrimary()` keeps the emit readable; a real multi-monitor snap would resolve the
@@ -62,7 +69,7 @@ undefined value the validator would already have rejected).
 | WindowOp | Emits (rhs after `key::`) |
 |---|---|
 | SnapLeft | `{ WinRestore("A") … WinMove(l, t, (r-l)//2, b-t, "A") }` |
-| SnapRight | `{ WinRestore("A") … WinMove(l+(r-l)//2, t, (r-l)//2, b-t, "A") }` |
+| SnapRight | `{ WinRestore("A") … WinMove(l+(r-l)//2, t, r-(l+(r-l)//2), b-t, "A") }` |
 
 ## 2. Catalog: snap samples become `Window` kind
 
@@ -74,22 +81,25 @@ assertions do not change. Sample count stays 17.
 
 ## 3. Labels
 
-`HotkeyActionDisplay.WindowOpLabel` gains **"Snap left"** and **"Snap right"**. The Window-op
-dropdown (`HotkeyEditDialog`) and the read-only action chips are enum-driven, so they pick up
-the new entries with no further change.
+`HotkeyActionDisplay.WindowOpLabel` gains **"Snap left"** and **"Snap right"** — these `case`
+arms reference the frontend `WindowOp.SnapLeft` / `SnapRight` members added in §1, so that enum
+change lands first. The Window-op dropdown (`HotkeyEditDialog`) and the read-only action chips
+are enum-driven, so they pick up the new entries with no further change.
 
 ## 4. SendKeys warning (non-blocking)
 
 In the SendKeys panel of `HotkeyEditDialog`, when the Win modifier checkbox (`_sendWin`) is
-checked, render a `MudAlert` (`Severity.Warning`, `Dense`), mirroring the existing Raw-panel
-warning:
+checked **and an arrow key is the sent key**, render a `MudAlert` (`Severity.Warning`,
+`Dense`), mirroring the existing Raw-panel warning:
 
-> ⚠ Sending Win + a key rarely triggers Windows shortcuts like Aero Snap or Win+D — Windows
-> ignores injected Win. To snap or resize the window, use a **Window** action. For anything
-> else, use **Raw**.
+> ⚠ Sending Win + Arrow won't snap the window — Windows ignores injected Win for Aero Snap.
+> To snap the active window, use a **Window** action (Snap left / Snap right). For other Win
+> shortcuts, use **Raw**.
 
 - **Non-blocking**: Save is unaffected; the token still validates and persists.
-- **Trigger**: any Win+key, not only arrows — injected Win is unreliable for every OS gesture.
+- **Trigger**: Win + arrow only — that is the sole gesture documented to fail (Aero Snap;
+  companion spec §2b). Injected Win *does* fire some OS shortcuts (`Send "#e"` = Win+E per the
+  AHK v2 Send docs), so a blanket "all Win+key" warning would be wrong.
 - The message string and its `data-test` id are constants beside `RawWarningText` in
   `HotkeyActionDisplay`, so markup and tests share one source.
 
@@ -99,14 +109,18 @@ warning:
 - **Validator** (`HotkeyKindConditionalRulesTests`): `Window` accepts `SnapLeft` / `SnapRight`
   (guards `Enum.IsDefined`).
 - **UI** (`HotkeyEditDialog` bUnit): the warning renders when the Send Win checkbox is checked
-  and is absent otherwise; Save is not blocked while it shows.
+  **and an arrow key is chosen**, is absent for Win + a non-arrow key and for arrow-without-Win,
+  and Save is not blocked while it shows. The op dropdown lists the two new frontend `WindowOp`
+  values.
 - **Catalog** (`AhkScriptGeneratorIntegrationTests`): existing snap-line assertions stand
   (same emit); the two samples now report `Window` kind.
 - **Display** (`HotkeyActionDisplayTests`): labels for the two new ops.
 
 ## Files touched
 
-- `src/Backend/AHKFlowApp.Domain/Enums/WindowOp.cs` — two enum values.
+- `src/Backend/AHKFlowApp.Domain/Enums/WindowOp.cs` — two enum values (`SnapLeft=5`, `SnapRight=6`).
+- `src/Frontend/AHKFlowApp.UI.Blazor/DTOs/WindowOp.cs` — same two values in the frontend mirror
+  (the dropdown enumerates this type).
 - `src/Backend/AHKFlowApp.Application/Services/HotkeyEmitter.cs` — `WindowCall` snap cases.
 - `src/Backend/AHKFlowApp.Application/Constants/DefaultHotkeyCatalog.cs` — snap rows → Window;
   drop the two Raw body consts.
@@ -114,6 +128,8 @@ warning:
   constant.
 - `src/Frontend/AHKFlowApp.UI.Blazor/Components/Hotkeys/HotkeyEditDialog.razor` — SendKeys
   warning alert.
+- `docs/development/ahk-v2-syntax.md` — extend the `Window` emit row with the two block-bodied
+  snap ops and their primary-monitor `MonitorGetWorkArea` behavior.
 - Tests as listed above.
 
 ## Open questions
