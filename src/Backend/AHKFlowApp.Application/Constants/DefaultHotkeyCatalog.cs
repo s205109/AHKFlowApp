@@ -12,12 +12,12 @@ namespace AHKFlowApp.Application.Constants;
 /// </summary>
 /// <remarks>
 /// Mixed shape: each row is a pre-built <see cref="HotkeyDefinition"/> plus its category names. The
-/// legacy-shaped subset (app launchers, lock, native snaps) is built through <see cref="Legacy"/>,
-/// which runs the row through <c>LegacyHotkeyDefinitionConverter.FromLegacy</c> — the same transform
-/// the EF data migration applies to real legacy rows. Only the launcher/lock subset (unchanged
-/// emitted output) is mirrored by <c>LegacyHotkeyFixtures</c> for the migration-parity test; the
-/// snap rows changed input, and the fixed/new rows are typed, so both are excluded from that mirror.
-/// The seed path bypasses validation, so every typed definition here must be correct by construction.
+/// legacy-shaped subset (app launchers, lock) is built through <see cref="Legacy"/>, which runs the
+/// row through <c>LegacyHotkeyDefinitionConverter.FromLegacy</c> — the same transform the EF data
+/// migration applies to real legacy rows. That launcher/lock subset (unchanged emitted output) is
+/// mirrored by <c>LegacyHotkeyFixtures</c> for the migration-parity test; the window rows and the
+/// fixed/new rows are typed or Raw, so they are excluded from that mirror. The seed path bypasses
+/// validation, so every typed definition here must be correct by construction.
 /// </remarks>
 internal static class DefaultHotkeyCatalog
 {
@@ -31,14 +31,17 @@ internal static class DefaultHotkeyCatalog
         Legacy("Open default browser",    true, true, false, false, "B", HotkeyAction.Run, "https://",     ["App Launcher"]),
         Legacy("Lock workstation",        true, true, false, false, "L", HotkeyAction.Run, "rundll32.exe user32.dll,LockWorkStation", ["App Launcher"]),
 
-        // Native snap/resize — stay SendKeys via Legacy(). Trigger is Alt+Win+Arrow (a distinct combo);
-        // the RHS sends the native Win+Arrow gesture. Binding Win+Arrow directly would remap the key to
-        // itself — intercepting the native gesture and re-sending it while Win is held breaks the snap.
-        // '#' added to payload vs original; output changed → excluded from the parity mirror (design §2b).
-        Legacy("Maximize window",  false, true, false, true, "Up",    HotkeyAction.Send, "#{Up}",    ["Window Management"]),
-        Legacy("Minimize window",  false, true, false, true, "Down",  HotkeyAction.Send, "#{Down}",  ["Window Management"]),
-        Legacy("Snap window left", false, true, false, true, "Left",  HotkeyAction.Send, "#{Left}",  ["Window Management"]),
-        Legacy("Snap window right",false, true, false, true, "Right", HotkeyAction.Send, "#{Right}", ["Window Management"]),
+        // Window resize/snap on Ctrl+Alt+Arrow. These do NOT Send Win+Arrow: injected LWin (the
+        // LLKHF_INJECTED flag + SendInput's atomic batch) is not reliably recognized by the shell's
+        // Aero-Snap / Win-hotkey handler, so `Send("#{Left}")` fails to snap (design §2b). Native
+        // window functions are deterministic. Max/Min use the typed Window kind; snap L/R need a
+        // half-work-area WinMove that no WindowOp expresses, so they are Raw bodies.
+        Typed("Maximize window", "Up",   HotkeyActionKind.Window, ["Window Management"],
+            ctrl: true, alt: true, windowOp: WindowOp.Maximize),
+        Typed("Minimize window", "Down", HotkeyActionKind.Window, ["Window Management"],
+            ctrl: true, alt: true, windowOp: WindowOp.Minimize),
+        Raw("Snap window left",  true, true, false, false, "Left",  SnapLeftBody,  ["Window Management"]),
+        Raw("Snap window right", true, true, false, false, "Right", SnapRightBody, ["Window Management"]),
 
         // Fixed → Raw: legacy shape could not express a function call or block body (design §2).
         Raw("Reload AHK script",   true, true, false, false, "r", "Reload()", ["App Launcher"]),
@@ -56,8 +59,9 @@ internal static class DefaultHotkeyCatalog
             ["App Launcher"], remapDest: "Volume_Up"),
         Typed("Keep window on top", "a", HotkeyActionKind.Window, ["Window Management"],
             ctrl: true, alt: true, windowOp: WindowOp.ToggleAlwaysOnTop),
-        Typed("Minimize active window", "m", HotkeyActionKind.Window, ["Window Management"],
-            ctrl: true, alt: true, windowOp: WindowOp.Minimize),
+        // Restore, not another Minimize — Ctrl+Alt+Down already minimizes; this demoes a third WindowOp.
+        Typed("Restore active window", "m", HotkeyActionKind.Window, ["Window Management"],
+            ctrl: true, alt: true, windowOp: WindowOp.Restore),
     ];
 
     // Mirrors the app's clipboard helper (ahk-v2-syntax.md "Clipboard delivery"): save the rich
@@ -71,6 +75,25 @@ internal static class DefaultHotkeyCatalog
         "    Sleep(150)                   ; let the paste consume the clipboard first\n" +
         "    A_Clipboard := saved         ; restore the original formatting\n" +
         "    saved := \"\"\n" +
+        "}";
+
+    // Snap the active window to the left/right half of the primary monitor's work area (excludes the
+    // taskbar). WinRestore first so a maximized window can be moved. `//` is AHK integer division.
+    // Deterministic native positioning — see the resize/snap comment above for why Send("#{Left}") is
+    // not used. Primary monitor keeps the sample readable; a real multi-monitor snap would resolve the
+    // window's own monitor first.
+    private const string SnapLeftBody =
+        "{\n" +
+        "    WinRestore(\"A\")\n" +
+        "    MonitorGetWorkArea(MonitorGetPrimary(), &l, &t, &r, &b)\n" +
+        "    WinMove(l, t, (r - l) // 2, b - t, \"A\")\n" +
+        "}";
+
+    private const string SnapRightBody =
+        "{\n" +
+        "    WinRestore(\"A\")\n" +
+        "    MonitorGetWorkArea(MonitorGetPrimary(), &l, &t, &r, &b)\n" +
+        "    WinMove(l + (r - l) // 2, t, (r - l) // 2, b - t, \"A\")\n" +
         "}";
 
     /// <summary>Legacy-shaped row: converted to typed columns at build time, pinned all-profiles.</summary>

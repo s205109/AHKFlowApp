@@ -48,14 +48,15 @@ seeded rows.
 paste `^+v`→ save/strip/paste/restore block (design §2, mirrors the app clipboard helper — a bare
 `A_Clipboard := A_Clipboard` would permanently strip the clipboard).
 
-**Fixed → stays `SendKeys` (add `#`, keep `Alt`+`Win`):** the live rows are `!#Up` etc.; sole fault
-(missing `#`) fixed, trigger kept distinct from target → Maximize `!#Up`→`#{Up}` · Minimize
-`!#Down`→`#{Down}` · Snap-L `!#Left`→`#{Left}` · Snap-R `!#Right`→`#{Right}`.
+**Window resize/snap → native, Ctrl+Alt+Arrow (no `Send`):** `Send("#{…}")` never snaps — injected
+Win isn't recognized by Aero Snap (design §2b). Maximize `^!Up`→Window `WinMaximize("A")` · Minimize
+`^!Down`→Window `WinMinimize("A")` · Snap-L `^!Left`→Raw `WinMove` left half · Snap-R `^!Right`→Raw
+`WinMove` right half.
 
 **New:** Disable F1 Help `F1`→`return` · Mute `F10`→Remap `Volume_Mute` · Volume up `F9`→Remap
-`Volume_Up` · Keep-on-top `^!a`→Window `WinSetAlwaysOnTop(-1, "A")` · Minimize active `^!m`→Window
-`WinMinimize("A")`. All pinned `AppliesToAllProfiles = true`; the F1/F9/F10 Descriptions carry the
-global-hijack disclosure (design §3).
+`Volume_Up` · Keep-on-top `^!a`→Window `WinSetAlwaysOnTop(-1, "A")` · Restore active `^!m`→Window
+`WinRestore("A")` (was Minimize; Ctrl+Alt+Down now minimizes). All pinned `AppliesToAllProfiles = true`;
+the F1/F9/F10 Descriptions carry the global-hijack disclosure (design §3).
 
 Categories: remaps + F1-disable + reload + lock → App Launcher; snaps + windows → Window Management;
 date → DateTime; paste → Code. No hotkey collisions.
@@ -84,8 +85,9 @@ date → DateTime; paste → Code. No hotkey collisions.
 2. `dotnet test tests/AHKFlowApp.Application.Tests --configuration Release`.
 3. Run API (`Docker SQL (No Auth)` worktree profile) + frontend; download the profile `.ahk` and
    assert the exact lines: `^!r::Reload()`, `^!d::SendText(FormatTime(A_Now, "yyyy-MM-dd"))`,
-   `^+v::{ … }`, `$!#Up::Send("#{Up}")`, `F1::return`, `F10::Volume_Mute`, `F9::Volume_Up`,
-   `^!a::WinSetAlwaysOnTop(-1, "A")`, `^!m::WinMinimize("A")`. Use the `playwright-cli` skill for the
+   `^+v::{ … }`, `^!Up::WinMaximize("A")`, `^!Down::WinMinimize("A")`, `^!Left::{ … WinMove … }`,
+   `F1::return`, `F10::Volume_Mute`, `F9::Volume_Up`,
+   `^!a::WinSetAlwaysOnTop(-1, "A")`, `^!m::WinRestore("A")`. Use the `playwright-cli` skill for the
    UI smoke pass.
 4. Optional off-app AHK check: the generated script loads with no parse error; date / plain-paste /
    snap / mute bindings behave.
