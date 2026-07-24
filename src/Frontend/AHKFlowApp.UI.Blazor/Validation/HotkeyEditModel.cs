@@ -8,7 +8,7 @@ public sealed class HotkeyEditModel
 {
     public const int TextMaxLength = 4_000;
     public const int BodyMaxLength = 4_000;
-    public const int RunTargetMaxLength = 500;
+    public const int RunTargetMaxLength = 4_000;
 
     public Guid? Id { get; set; }
 
