@@ -28,7 +28,7 @@ native-snap samples — surfaced during planning and shares the root class (wron
 | Reload AHK script | `Run("Reload")` | `Run` tries to **launch a file** named `Reload` → "The system cannot find the file specified" (the reported error). `Reload` is a built-in function, not a program. |
 | Insert today's date | `Send("{{date:yyyy-MM-dd}}")` | `{{date:…}}` is an AHKFlow **hotstring macro token**, never expanded for hotkeys. `Send` reads `{…}` as key names → invalid → nothing fires. |
 | Paste as plain text | `$^+V::Send("^v")` | Sends Ctrl+V = a normal paste; formatting is preserved. No clipboard stripping happens. |
-| Maximize / Minimize / Snap L / Snap R | `$!#Up::Send("{Up}")`, … | Two faults: the catalog sets **`Alt`+`Win`** (spurious `Alt`), and the payload is a bare arrow with **no `#`**. AHK auto-releases the hotkey's own `Win` before `Send`, so a plain arrow is sent and nothing snaps or maximizes. |
+| Maximize / Minimize / Snap L / Snap R | `$!#Up::Send("{Up}")`, … | One fault: the payload is a bare arrow with **no `#`**. AHK auto-releases the hotkey's own modifiers (`Alt`+`Win`) before `Send`, so a plain `{Up}` is sent and nothing snaps or maximizes. The `Alt`+`Win` trigger is fine — it is a distinct chord from the sent Win+Arrow gesture. Fix: add `#` to the payload so the RHS re-presses Win. |
 
 ## Goals / Non-goals
 
@@ -108,18 +108,21 @@ These three stay their existing categories (Reload → App Launcher, date → Da
 
 ### 2b. Corrected native-snap samples (stay `SendKeys`)
 
-The four snap rows keep their kind and the `Legacy(...)` helper, but each needs **two** changes: drop
-the spurious `Alt` modifier (the live catalog sets `Alt`+`Win`, so the hotkey is `!#Up`, not `#Up`)
-**and** add the missing `#` to the `Send` payload. `#{Up}` is a valid SendKeys token (`#` modifier +
-`{Up}`). The `$` prefix already blocks the sent `#{Up}` from re-triggering the hotkey, so Windows
-receives the real Win+Arrow and snaps.
+The four snap rows keep their kind, the `Legacy(...)` helper, and the `Alt`+`Win` trigger (`!#Up`); the
+only change is adding the missing `#` to the `Send` payload. `#{Up}` is a valid SendKeys token (`#`
+modifier + `{Up}`), so the RHS reproduces the native Win+Arrow gesture. The trigger (Alt+Win+Arrow)
+is a **distinct** combo from the sent key (Win+Arrow) — this is the point of the sample. Do **not**
+drop `Alt`: binding `#Up::Send("#{Up}")` remaps the key to itself. The `$` hook still fires, so the
+native Win+Up is suppressed, then `Send("#{Up}")` re-issues Win+Up while the physical Win is held —
+the synthetic modifier collides with the real one and the snap fails. The `$` prefix blocks the sent
+`#{Up}` from re-triggering the Alt+Win hotkey.
 
-| Description | Hotkey before → after | `Parameters` before → after | Emits |
+| Description | Hotkey | `Parameters` before → after | Emits |
 |---|---|---|---|
-| Maximize window | `!#Up` → `#Up` | `{Up}` → `#{Up}` | `$#Up::Send("#{Up}")` |
-| Minimize window | `!#Down` → `#Down` | `{Down}` → `#{Down}` | `$#Down::Send("#{Down}")` |
-| Snap window left | `!#Left` → `#Left` | `{Left}` → `#{Left}` | `$#Left::Send("#{Left}")` |
-| Snap window right | `!#Right` → `#Right` | `{Right}` → `#{Right}` | `$#Right::Send("#{Right}")` |
+| Maximize window | `!#Up` | `{Up}` → `#{Up}` | `$!#Up::Send("#{Up}")` |
+| Minimize window | `!#Down` | `{Down}` → `#{Down}` | `$!#Down::Send("#{Down}")` |
+| Snap window left | `!#Left` | `{Left}` → `#{Left}` | `$!#Left::Send("#{Left}")` |
+| Snap window right | `!#Right` | `{Right}` → `#{Right}` | `$!#Right::Send("#{Right}")` |
 
 ### 3. New samples
 
@@ -188,8 +191,8 @@ Migration-parity fixtures (`LegacyHotkeyFixtures`):
 2. **Second remap is `F9::Volume_Up`** — pairs with F10 mute as one volume cluster.
 3. **Categories:** the media remaps + F1-disable go to **App Launcher**, following the seed's existing
    precedent (Lock workstation and Reload already live there as non-launcher system utilities).
-4. **Native-snap samples are in scope** — fixed by dropping the spurious `Alt` **and** adding `#` to
-   their `Send` content (§2b).
+4. **Native-snap samples are in scope** — fixed by adding `#` to their `Send` content; the `Alt`+`Win`
+   trigger stays (a distinct chord from the sent Win+Arrow — not a self-remap) (§2b).
 5. **Catalog shape:** one unified typed list; `Legacy(...)` helper for legacy/SendKeys rows.
 6. **Existing rows: reset-only, no backfill.** Dev-only data; owners refresh via `reset=true`. No
    exact-old-sample backfill query is added (keeps the change minimal; avoids touching real-looking

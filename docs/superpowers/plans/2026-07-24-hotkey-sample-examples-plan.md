@@ -48,8 +48,9 @@ seeded rows.
 paste `^+v`→ save/strip/paste/restore block (design §2, mirrors the app clipboard helper — a bare
 `A_Clipboard := A_Clipboard` would permanently strip the clipboard).
 
-**Fixed → stays `SendKeys` (drop `Alt`, add `#`):** the live rows are `!#Up` etc.; both faults fixed →
-Maximize `#Up`→`#{Up}` · Minimize `#Down`→`#{Down}` · Snap-L `#Left`→`#{Left}` · Snap-R `#Right`→`#{Right}`.
+**Fixed → stays `SendKeys` (add `#`, keep `Alt`+`Win`):** the live rows are `!#Up` etc.; sole fault
+(missing `#`) fixed, trigger kept distinct from target → Maximize `!#Up`→`#{Up}` · Minimize
+`!#Down`→`#{Down}` · Snap-L `!#Left`→`#{Left}` · Snap-R `!#Right`→`#{Right}`.
 
 **New:** Disable F1 Help `F1`→`return` · Mute `F10`→Remap `Volume_Mute` · Volume up `F9`→Remap
 `Volume_Up` · Keep-on-top `^!a`→Window `WinSetAlwaysOnTop(-1, "A")` · Minimize active `^!m`→Window
@@ -83,7 +84,7 @@ date → DateTime; paste → Code. No hotkey collisions.
 2. `dotnet test tests/AHKFlowApp.Application.Tests --configuration Release`.
 3. Run API (`Docker SQL (No Auth)` worktree profile) + frontend; download the profile `.ahk` and
    assert the exact lines: `^!r::Reload()`, `^!d::SendText(FormatTime(A_Now, "yyyy-MM-dd"))`,
-   `^+v::{ … }`, `$#Up::Send("#{Up}")`, `F1::return`, `F10::Volume_Mute`, `F9::Volume_Up`,
+   `^+v::{ … }`, `$!#Up::Send("#{Up}")`, `F1::return`, `F10::Volume_Mute`, `F9::Volume_Up`,
    `^!a::WinSetAlwaysOnTop(-1, "A")`, `^!m::WinMinimize("A")`. Use the `playwright-cli` skill for the
    UI smoke pass.
 4. Optional off-app AHK check: the generated script loads with no parse error; date / plain-paste /
