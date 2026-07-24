@@ -14,7 +14,7 @@ namespace AHKFlowApp.Application.Tests.Dev;
 [Trait("Category", "Integration")]
 public sealed class SeedHotkeysCommandHandlerTests(DevDbFixture fx)
 {
-    private const int SampleCount = 17;
+    private const int SampleCount = 19;
 
     private readonly Guid _ownerOid = Guid.NewGuid();
     private readonly AppEnvironment _devEnv = new(IsDevelopment: true);

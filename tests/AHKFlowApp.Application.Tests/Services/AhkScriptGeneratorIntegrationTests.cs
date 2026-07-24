@@ -147,5 +147,8 @@ public sealed class AhkScriptGeneratorIntegrationTests(ScriptGeneratorDbFixture 
         output.Should().Contain("F9::Volume_Up");
         output.Should().Contain("^!a::WinSetAlwaysOnTop(-1, \"A\")");
         output.Should().Contain("^!m::WinRestore(\"A\")");
+        // SendKeys samples ($ prefix per emitter).
+        output.Should().Contain("$^!p::Send(\"{Media_Play_Pause}\")");
+        output.Should().Contain("$^!k::Send(\"+{End}\")");
     }
 }

@@ -37,7 +37,7 @@ public sealed class DevSeedEndpointTests(ApiTestFixture fixture)
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         PagedList<HotkeyDto>? body = await resp.Content.ReadFromJsonAsync<PagedList<HotkeyDto>>();
         body.Should().NotBeNull();
-        body!.Items.Should().HaveCount(17);
+        body!.Items.Should().HaveCount(19);
     }
 
     [Fact]
@@ -52,7 +52,7 @@ public sealed class DevSeedEndpointTests(ApiTestFixture fixture)
         result.Should().NotBeNull();
         result!.CategoriesCount.Should().Be(8);
         result.HotstringsCount.Should().Be(16);
-        result.HotkeysCount.Should().Be(17);
+        result.HotkeysCount.Should().Be(19);
     }
 
     [Fact]
@@ -68,7 +68,7 @@ public sealed class DevSeedEndpointTests(ApiTestFixture fixture)
         result.Should().NotBeNull();
         result!.CategoriesCount.Should().Be(8);
         result.HotstringsCount.Should().Be(16);
-        result.HotkeysCount.Should().Be(17);
+        result.HotkeysCount.Should().Be(19);
     }
 
     [Fact]

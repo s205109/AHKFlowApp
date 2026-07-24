@@ -119,11 +119,14 @@ token converts to `HotkeyActionKind.SendKeys` and emits `$key::Send("<token>")` 
 | Description | Hotkey | Token | Emits | Category |
 |---|---|---|---|---|
 | Play / pause media | Ctrl+Alt+P | `{Media_Play_Pause}` | `$^!p::Send("{Media_Play_Pause}")` | App Launcher |
-| Select current line | Ctrl+Alt+K | `{Home}+{End}` | `$^!k::Send("{Home}+{End}")` | Code |
+| Select to end of line | Ctrl+Alt+K | `+{End}` | `$^!k::Send("+{End}")` | Code |
 
-- These pick a virtual media key and a modified key sequence — the two things `SendKeys` does
-  that `SendText`/`Run` cannot — so one working sample earns its place.
-- Keys `P` / `K` are free of existing Ctrl+Alt bindings (`T N E B L r d a m` + arrows are taken).
+- These pick a virtual media key and a modified key — the two things `SendKeys` does that
+  `SendText`/`Run` cannot — so one working sample earns its place.
+- **Single token only.** `IsValidSendKeysContent` accepts one key (optionally modifier-prefixed:
+  `+{End}`), not a multi-key sequence — `{Home}+{End}` is two braced tokens and is rejected, so a
+  whole-line select is not `SendKeys`-expressible. Hence "select to end of line", not "select line".
+- Keys `p` / `k` are free of existing Ctrl+Alt bindings (`r d a m` + arrows are taken).
 - Like the other new rows, both are **excluded** from the `LegacyHotkeyFixtures` migration-parity
   mirror (they never existed as real legacy data); they stay pinned `AppliesToAllProfiles = true`.
 
@@ -131,7 +134,7 @@ token converts to `HotkeyActionKind.SendKeys` and emits `$key::Send("<token>")` 
 
 - **Emitter** (`HotkeyEmitterTests`): a case per snap op asserting the exact WinMove block.
 - **Catalog SendKeys** (`AhkScriptGeneratorIntegrationTests`): the two new rows emit
-  `$^!p::Send("{Media_Play_Pause}")` / `$^!k::Send("{Home}+{End}")` and report `SendKeys` kind.
+  `$^!p::Send("{Media_Play_Pause}")` / `$^!k::Send("+{End}")` and report `SendKeys` kind.
 - **Validator** (`HotkeyKindConditionalRulesTests`): `Window` accepts `SnapLeft` / `SnapRight`
   (guards `Enum.IsDefined`).
 - **UI** (`HotkeyEditDialog` bUnit): the warning renders when the Send Win checkbox is checked
