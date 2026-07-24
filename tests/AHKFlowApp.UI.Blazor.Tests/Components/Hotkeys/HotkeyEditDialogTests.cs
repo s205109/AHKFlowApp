@@ -182,6 +182,31 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
+    public async Task TogglingAModifier_ClearsAStaleCombinationConflict()
+    {
+        // A duplicate conflict is a verdict on the whole key+modifier combination. Toggling a
+        // modifier changes that combination, so the stale conflict must clear off the key rather
+        // than contradict a combination the server was never asked about.
+        _api.CreateAsync(Arg.Any<CreateHotkeyDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotkeyDto>.Failure(ApiResultStatus.Conflict,
+                new ApiProblemDetails(null, "Conflict", 409, "Hotkey already exists", null, null)));
+
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync();
+
+        provider.WaitForAssertion(() => provider.Find("input[data-test=\"description-input\"]"));
+        provider.Find("input[data-test=\"description-input\"]").Input("Open palette");
+        await SetKeyAsync(provider, "key-picker", "K");
+        provider.Find("button.commit-edit").Click();
+        provider.WaitForAssertion(() => provider.Markup.Should().Contain("Hotkey already exists"));
+
+        // The Ctrl modifier is the first bool checkbox on the panel.
+        await provider.InvokeAsync(() =>
+            provider.FindComponents<MudCheckBox<bool>>()[0].Instance.ValueChanged.InvokeAsync(true));
+
+        provider.WaitForAssertion(() => provider.Markup.Should().NotContain("Hotkey already exists"));
+    }
+
+    [Fact]
     public async Task ActionSelector_OffersAllSevenKinds()
     {
         IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(new HotkeyEditModel());

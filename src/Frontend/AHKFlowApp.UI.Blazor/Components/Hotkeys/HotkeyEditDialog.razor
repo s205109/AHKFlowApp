@@ -33,13 +33,13 @@
                        HelperText="Pick a key, or type a vk/sc code such as vk1B."
                        DataTest="key-picker" />
             <MudStack Row="true" Spacing="2">
-                <MudCheckBox T="bool" Value="Item.Ctrl" ValueChanged="@((bool v) => { Item.Ctrl = v; RefreshPreview(); })" Label="Ctrl"
+                <MudCheckBox T="bool" Value="Item.Ctrl" ValueChanged="@((bool v) => { Item.Ctrl = v; OnModifierChanged(); })" Label="Ctrl"
                              UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "ctrl-checkbox" })" />
-                <MudCheckBox T="bool" Value="Item.Alt" ValueChanged="@((bool v) => { Item.Alt = v; RefreshPreview(); })" Label="Alt"
+                <MudCheckBox T="bool" Value="Item.Alt" ValueChanged="@((bool v) => { Item.Alt = v; OnModifierChanged(); })" Label="Alt"
                              UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "alt-checkbox" })" />
-                <MudCheckBox T="bool" Value="Item.Shift" ValueChanged="@((bool v) => { Item.Shift = v; RefreshPreview(); })" Label="Shift"
+                <MudCheckBox T="bool" Value="Item.Shift" ValueChanged="@((bool v) => { Item.Shift = v; OnModifierChanged(); })" Label="Shift"
                              UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "shift-checkbox" })" />
-                <MudCheckBox T="bool" Value="Item.Win" ValueChanged="@((bool v) => { Item.Win = v; RefreshPreview(); })" Label="Win"
+                <MudCheckBox T="bool" Value="Item.Win" ValueChanged="@((bool v) => { Item.Win = v; OnModifierChanged(); })" Label="Win"
                              UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "win-checkbox" })" />
             </MudStack>
 
@@ -287,6 +287,12 @@
     private readonly Dictionary<string, string> _saveFieldErrors = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _previewFieldErrors = new(StringComparer.OrdinalIgnoreCase);
 
+    // The duplicate key+modifier conflict (409). Shown on the Key input but kept apart from a
+    // genuine key-validation error, because its verdict is on the whole combination: it must clear
+    // when the key OR any modifier changes, whereas a "not a known key" error clears on key edit
+    // only. Folding it into _saveFieldErrors["Key"] would tie the two together.
+    private string? _combinationConflict;
+
     private string? _error;
     private bool _saving;
     private MudForm _form = default!;
@@ -335,7 +341,9 @@
     /// verdict, and it is the reason the dialog is still open.
     /// </summary>
     private string? FieldError(string field) =>
-        _saveFieldErrors.GetValueOrDefault(field) ?? _previewFieldErrors.GetValueOrDefault(field);
+        (field == nameof(HotkeyEditModel.Key) ? _combinationConflict : null)
+        ?? _saveFieldErrors.GetValueOrDefault(field)
+        ?? _previewFieldErrors.GetValueOrDefault(field);
 
     /// <summary>
     /// Drops a save error the moment the user edits the field it sits on. A save error is a verdict
@@ -371,6 +379,7 @@
         _saving = true;
         _error = null;
         _saveFieldErrors.Clear();
+        _combinationConflict = null;
         try
         {
             await _form.ValidateAsync();
@@ -384,7 +393,7 @@
             if (!result.IsSuccess)
             {
                 if (result.Status == ApiResultStatus.Conflict)
-                    _saveFieldErrors[nameof(HotkeyEditModel.Key)] = ApiErrorMessageFactory.Build(result.Status, result.Problem);
+                    _combinationConflict = ApiErrorMessageFactory.Build(result.Status, result.Problem);
                 else if (result.Status == ApiResultStatus.Validation && result.Problem?.Errors is { Count: > 0 } errors)
                     _error = ApplyFieldErrors(errors, _saveFieldErrors);
                 else
@@ -455,8 +464,20 @@
     {
         Item.Key = key ?? "";
         ClearSaveError(nameof(HotkeyEditModel.Key));
+        _combinationConflict = null;
         // The key is half the emitted line, so a stale preview here is worse than a stale
         // payload preview — it shows the wrong binding entirely.
+        RefreshPreview();
+    }
+
+    /// <summary>
+    /// A modifier toggle changes which key+modifier combination is being saved, so a duplicate-
+    /// combination conflict from the last save no longer applies — drop it. A genuine key-validation
+    /// error is left alone: it depends on the key, not the modifiers.
+    /// </summary>
+    private void OnModifierChanged()
+    {
+        _combinationConflict = null;
         RefreshPreview();
     }
 

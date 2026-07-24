@@ -27,32 +27,46 @@ public sealed partial class HotkeyKeyCatalog(IHotkeysApiClient api) : IHotkeyKey
 
     // Per-role projections, memoized. MudAutocomplete calls SearchFunc on every keystroke, and
     // each call reaches ForRoleAsync — without this, every keystroke re-filters and re-sorts the
-    // whole ~110-entry registry, per open picker.
+    // whole ~110-entry registry, per open picker. Written only under _gate.
     private readonly Dictionary<string, IReadOnlyList<HotkeyKeyDto>> _byRole = new(StringComparer.Ordinal);
-
-    public bool IsLoaded => throw new NotImplementedException();
 
     public async ValueTask<IReadOnlyList<HotkeyKeyDto>> ForRoleAsync(string role, CancellationToken ct = default)
     {
+        // Fast path, no gate: a projected role is never mutated afterwards, and on WASM's single
+        // thread a concurrent add cannot tear a read into a false hit.
         if (_byRole.TryGetValue(role, out IReadOnlyList<HotkeyKeyDto>? cached))
             return cached;
 
-        HotkeyKeyCatalogDto catalog = await LoadAsync(ct);
+        await _gate.WaitAsync(ct);
+        try
+        {
+            // Re-check under the gate: another awaiter may have projected this role while we waited.
+            if (_byRole.TryGetValue(role, out cached))
+                return cached;
 
-        IReadOnlyList<HotkeyKeyDto> keys =
-        [
-            .. catalog.Keys
-                .Where(k => k.Roles.Contains(role, StringComparer.Ordinal))
-                .OrderBy(k => k.Group, StringComparer.Ordinal)
-                .ThenBy(k => k.Canonical, StringComparer.OrdinalIgnoreCase)
-        ];
+            HotkeyKeyCatalogDto catalog = await EnsureCatalogAsync(ct);
 
-        // Only a successful fetch is memoized — the empty list a failed one yields must not
-        // become the answer for the rest of the session. Same reasoning as LoadAsync.
-        if (_catalog is not null)
-            _byRole[role] = keys;
+            IReadOnlyList<HotkeyKeyDto> keys =
+            [
+                .. catalog.Keys
+                    .Where(k => k.Roles.Contains(role, StringComparer.Ordinal))
+                    .OrderBy(k => k.Group, StringComparer.Ordinal)
+                    .ThenBy(k => k.Canonical, StringComparer.OrdinalIgnoreCase)
+            ];
 
-        return keys;
+            // Memoize only a projection of the successfully-loaded registry. A failed fetch returns
+            // a throwaway empty catalog that is never assigned to _catalog; caching its projection
+            // would answer this role empty for the rest of the session — even after a later fetch
+            // succeeds and even if a concurrent caller has already set _catalog by now.
+            if (ReferenceEquals(catalog, _catalog))
+                _byRole[role] = keys;
+
+            return keys;
+        }
+        finally
+        {
+            _gate.Release();
+        }
     }
 
     public bool IsValidKey(string? key)
@@ -93,32 +107,21 @@ public sealed partial class HotkeyKeyCatalog(IHotkeysApiClient api) : IHotkeyKey
 
     private static bool IsCode(string value) => VirtualKey().IsMatch(value) || ScanCode().IsMatch(value);
 
-    private async ValueTask<HotkeyKeyCatalogDto> LoadAsync(CancellationToken ct)
+    // Fetches the registry once and caches it. The caller holds _gate, so the check-then-set on
+    // _catalog needs no further guarding here. A failed fetch is not cached: it returns a throwaway
+    // empty catalog, so the next call retries rather than offering no keys for the session.
+    private async ValueTask<HotkeyKeyCatalogDto> EnsureCatalogAsync(CancellationToken ct)
     {
         if (_catalog is { } cached)
             return cached;
 
-        await _gate.WaitAsync(ct);
-        try
-        {
-            if (_catalog is { } raced)
-                return raced;
+        ApiResult<HotkeyKeyCatalogDto> result = await api.GetKeysAsync(ct);
+        if (!result.IsSuccess || result.Value is null)
+            return new HotkeyKeyCatalogDto([], new Dictionary<string, string>());
 
-            ApiResult<HotkeyKeyCatalogDto> result = await api.GetKeysAsync(ct);
-
-            // A failed fetch is not cached: the picker renders empty and the next dialog
-            // open retries, rather than permanently offering no keys for the session.
-            if (!result.IsSuccess || result.Value is null)
-                return new HotkeyKeyCatalogDto([], new Dictionary<string, string>());
-
-            _catalog = result.Value;
-            _byName = result.Value.Keys.ToDictionary(k => k.Canonical, StringComparer.OrdinalIgnoreCase);
-            _aliases = new Dictionary<string, string>(result.Value.Aliases, StringComparer.OrdinalIgnoreCase);
-            return _catalog;
-        }
-        finally
-        {
-            _gate.Release();
-        }
+        _catalog = result.Value;
+        _byName = result.Value.Keys.ToDictionary(k => k.Canonical, StringComparer.OrdinalIgnoreCase);
+        _aliases = new Dictionary<string, string>(result.Value.Aliases, StringComparer.OrdinalIgnoreCase);
+        return _catalog;
     }
 }
