@@ -1,7 +1,6 @@
 using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.Constants;
 using AHKFlowApp.Application.DTOs;
-using AHKFlowApp.Application.Services;
 using AHKFlowApp.Domain.Entities;
 using Ardalis.Result;
 using Microsoft.EntityFrameworkCore;
@@ -57,11 +56,11 @@ internal sealed class SeedHotkeysCommandHandler(
         foreach (DefaultHotkey sample in DefaultHotkeyCatalog.All)
         {
             // Copied into locals so the identity lookup below closes over plain values.
-            string key = sample.Key;
-            bool ctrl = sample.Ctrl;
-            bool alt = sample.Alt;
-            bool shift = sample.Shift;
-            bool win = sample.Win;
+            string key = sample.Definition.Key;
+            bool ctrl = sample.Definition.Ctrl;
+            bool alt = sample.Definition.Alt;
+            bool shift = sample.Definition.Shift;
+            bool win = sample.Definition.Win;
 
             Hotkey? existing = request.Reset
                 ? null
@@ -77,14 +76,7 @@ internal sealed class SeedHotkeysCommandHandler(
             }
             else
             {
-                var entity = Hotkey.Create(
-                    ownerOid,
-                    LegacyHotkeyDefinitionConverter.FromLegacy(
-                        description: sample.Description, key: key,
-                        ctrl: ctrl, alt: alt, shift: shift, win: win,
-                        action: sample.Action, parameters: sample.Parameters,
-                        appliesToAllProfiles: true),
-                    clock);
+                var entity = Hotkey.Create(ownerOid, sample.Definition, clock);
                 db.Hotkeys.Add(entity);
                 hotkeyId = entity.Id;
             }

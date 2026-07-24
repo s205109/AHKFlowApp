@@ -25,8 +25,11 @@ public sealed record LegacyHotkeyFixture(
 /// <summary>
 /// Golden set guarding the two copies of the legacy→typed transform: the C# converter
 /// (<c>LegacyHotkeyDefinitionConverter</c>) and the EF data migration's hand-written T-SQL.
-/// Seeded from the dev lazy-seed rows (<c>ListHotkeysQuery.s_lazySeed</c>) — they already exercise
-/// every branch. Mirrors <c>ScriptToRawFixtures</c>.
+/// These are historical converter cases, not a live mirror of <c>DefaultHotkeyCatalog</c>: the
+/// catalog's Reload / paste / date rows are now typed (<c>Raw</c>) and no longer feed this set, but
+/// real databases and snapshots still hold their legacy inputs (<c>run-not-a-path</c>,
+/// <c>send-ctrl-v</c>, <c>send-macro-leak</c>), so the cases stay to guard the transform regardless.
+/// Mirrors <c>ScriptToRawFixtures</c>.
 /// </summary>
 public static class LegacyHotkeyFixtures
 {

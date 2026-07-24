@@ -288,7 +288,7 @@ public sealed class HotkeysEndpointsTests(ApiTestFixture fixture)
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         PagedList<HotkeyDto>? body = await response.Content.ReadFromJsonAsync<PagedList<HotkeyDto>>();
-        body!.TotalCount.Should().Be(17);  // 5 created + 12 lazy-seeded in dev
+        body!.TotalCount.Should().Be(22);  // 5 created + 17 lazy-seeded in dev
         body.Items.Should().HaveCount(2);
         body.Page.Should().Be(2);
     }
@@ -309,16 +309,17 @@ public sealed class HotkeysEndpointsTests(ApiTestFixture fixture)
         var owner = Guid.NewGuid();
         using HttpClient client = CreateAuthed(owner);
 
+        // F3/F4 avoid the lazy-seeded samples, which occupy F1/F9/F10.
         await client.PostAsJsonAsync("/api/v1/hotkeys",
-            NewHotkey("Help", "F1"));
+            NewHotkey("Help", "F3"));
         await client.PostAsJsonAsync("/api/v1/hotkeys",
-            NewHotkey("Rename", "F2"));
+            NewHotkey("Rename", "F4"));
 
-        HttpResponseMessage response = await client.GetAsync("/api/v1/hotkeys?search=F1");
+        HttpResponseMessage response = await client.GetAsync("/api/v1/hotkeys?search=F3");
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         PagedList<HotkeyDto>? body = await response.Content.ReadFromJsonAsync<PagedList<HotkeyDto>>();
-        body!.Items.Should().ContainSingle().Which.Key.Should().Be("F1");
+        body!.Items.Should().ContainSingle().Which.Key.Should().Be("F3");
     }
 
     [Fact]
@@ -415,11 +416,12 @@ public sealed class HotkeysEndpointsTests(ApiTestFixture fixture)
         var owner = Guid.NewGuid();
         using HttpClient client = CreateAuthed(owner);
 
+        // Keys chosen to avoid colliding with the lazy-seeded samples (which include Remap F9/F10).
         await client.PostAsJsonAsync("/api/v1/hotkeys",
-            new CreateHotkeyDto("Remap caps", "f9", HotkeyActionKind.Remap,
+            new CreateHotkeyDto("Remap caps", "f6", HotkeyActionKind.Remap,
                 Ctrl: true, RemapDest: "Ctrl", AppliesToAllProfiles: true));
         await client.PostAsJsonAsync("/api/v1/hotkeys",
-            new CreateHotkeyDto("Launch editor", "f10", HotkeyActionKind.Run,
+            new CreateHotkeyDto("Launch editor", "f7", HotkeyActionKind.Run,
                 Ctrl: true, RunTarget: "notepad.exe", RunTargetKind: RunTargetKind.Application,
                 AppliesToAllProfiles: true));
 
@@ -429,8 +431,8 @@ public sealed class HotkeysEndpointsTests(ApiTestFixture fixture)
         PagedList<HotkeyDto>? body = await response.Content.ReadFromJsonAsync<PagedList<HotkeyDto>>();
         body!.Items.Should().NotBeEmpty();
         body.Items.Should().OnlyContain(h => h.ActionKind == HotkeyActionKind.Remap);
-        body.Items.Should().Contain(h => h.Key == "F9");
-        body.Items.Should().NotContain(h => h.Key == "F10");
+        body.Items.Should().Contain(h => h.Key == "F6");
+        body.Items.Should().NotContain(h => h.Key == "F7");
     }
 
     // ASP.NET Core ignores query parameters it cannot bind, so a client still sending the

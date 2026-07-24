@@ -41,7 +41,7 @@ public sealed class DevController(
         CancellationToken ct = default) =>
         (await seedCategories.ExecuteAsync(new SeedCategoriesCommand(reset), ct)).ToProblemActionResult(this);
 
-    /// <summary>Seeds 12 sample hotkeys for the authenticated user. Development only.</summary>
+    /// <summary>Seeds 17 sample hotkeys for the authenticated user. Development only.</summary>
     [HttpPost("hotkeys/seed")]
     [ProducesResponseType(typeof(PagedList<HotkeyDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]

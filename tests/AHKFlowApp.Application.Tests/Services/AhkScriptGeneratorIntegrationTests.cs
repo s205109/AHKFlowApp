@@ -1,4 +1,5 @@
 using AHKFlowApp.Application.Abstractions;
+using AHKFlowApp.Application.Constants;
 using AHKFlowApp.Application.Services;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Domain.Enums;
@@ -102,5 +103,47 @@ public sealed class AhkScriptGeneratorIntegrationTests(ScriptGeneratorDbFixture 
             // leading $ so the binding's own Send cannot retrigger it (spec §5).
             "$^F5::Send(\"{F5}\")\n" +
             "; end");
+    }
+
+    [Fact]
+    public async Task Generate_FromSeededCatalog_EmitsCorrectedAndNewLines()
+    {
+        await using AppDbContext ctx = fx.CreateContext();
+
+        Profile profile = new ProfileBuilder()
+            .WithOwner(_ownerOid).WithName("Work").AsDefault()
+            .WithHeader("#Requires AutoHotkey v2.0").WithFooter("")
+            .Build();
+
+        // Seed the catalog directly (every sample is AppliesToAllProfiles) and emit against it.
+        var hotkeys = DefaultHotkeyCatalog.All
+            .Select(s => Hotkey.Create(_ownerOid, s.Definition, TimeProvider.System))
+            .ToList();
+        ctx.Profiles.Add(profile);
+        ctx.Hotkeys.AddRange(hotkeys);
+        await ctx.SaveChangesAsync();
+
+        Profile reloaded = await ctx.Profiles.AsNoTracking().FirstAsync(p => p.Id == profile.Id);
+        List<Hotkey> forProfile = await ctx.Hotkeys.AsNoTracking()
+            .Where(h => h.OwnerOid == _ownerOid).ToListAsync();
+
+        string output = _sut.Generate(reloaded, [], forProfile);
+
+        // Corrected samples.
+        output.Should().Contain("^!r::Reload()");
+        output.Should().Contain("^!d::SendText(FormatTime(A_Now, \"yyyy-MM-dd\"))");
+        output.Should().Contain("$#Up::Send(\"#{Up}\")");
+        output.Should().Contain("$#Down::Send(\"#{Down}\")");
+        output.Should().Contain("$#Left::Send(\"#{Left}\")");
+        output.Should().Contain("$#Right::Send(\"#{Right}\")");
+        // Paste-as-plain-text Raw block: keeps its own braces, save/strip/paste/restore.
+        output.Should().Contain("^+v::{\n    saved := ClipboardAll()");
+        output.Should().Contain("    A_Clipboard := saved         ; restore the original formatting");
+        // New typed kinds.
+        output.Should().Contain("F1::return");
+        output.Should().Contain("F10::Volume_Mute");
+        output.Should().Contain("F9::Volume_Up");
+        output.Should().Contain("^!a::WinSetAlwaysOnTop(-1, \"A\")");
+        output.Should().Contain("^!m::WinMinimize(\"A\")");
     }
 }

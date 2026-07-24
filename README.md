@@ -68,7 +68,7 @@ Open http://localhost:5601 in a browser. The app loads as `Local User` with no s
 | API OpenAPI | http://localhost:5600/swagger/v1/swagger.json |
 | SQL Server | localhost:1433 (sa / `Dev!LocalOnly_2026`) |
 
-To populate sample data — 12 hotstrings, 12 hotkeys, and 8 categories in one transaction:
+To populate sample data — 12 hotstrings, 17 hotkeys, and 8 categories in one transaction:
 
 ```bash
 curl -X POST http://localhost:5600/api/v1/dev/seed-all
