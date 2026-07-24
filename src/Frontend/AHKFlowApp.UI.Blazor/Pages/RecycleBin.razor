@@ -1,5 +1,6 @@
 @page "/recycle-bin"
 @using AHKFlowApp.UI.Blazor.DTOs
+@using AHKFlowApp.UI.Blazor.Helpers
 @using AHKFlowApp.UI.Blazor.Services
 @using Microsoft.AspNetCore.Components.Authorization
 @using MudBlazor
@@ -52,10 +53,12 @@
                 <MudTd>
                     <MudIconButton Class="restore-item" Icon="@Icons.Material.Filled.RestoreFromTrash"
                                    Color="Color.Success" Disabled="@IsBusy(context)"
-                                   OnClick="() => RestoreAsync(context)" />
+                                   OnClick="() => RestoreAsync(context)"
+                                   UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = $"Restore {context.Name}" })" />
                     <MudIconButton Class="purge-item" Icon="@Icons.Material.Filled.DeleteForever"
                                    Color="Color.Error" Disabled="@IsBusy(context)"
-                                   OnClick="() => PurgeAsync(context)" />
+                                   OnClick="() => PurgeAsync(context)"
+                                   UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = $"Delete {context.Name} forever" })" />
                 </MudTd>
             </RowTemplate>
         </MudTable>
@@ -131,7 +134,7 @@
                     dto.Id,
                     HotkeyType,
                     dto.Description,
-                    FormatCombo(dto),
+                    HotkeyActionDisplay.ComboLabel(dto),
                     dto.DeletedAt)),
             ];
             _rows = [.. _rows.OrderByDescending(row => row.DeletedAt)];
@@ -214,18 +217,6 @@
     {
         ApiResult<HotkeyDto> result = await Hotkeys.RestoreAsync(id, _cts.Token);
         return result.IsSuccess ? null : ApiErrorMessageFactory.Build(result.Status, result.Problem);
-    }
-
-    private static string FormatCombo(DeletedHotkeyDto dto)
-    {
-        List<string> parts = [];
-        if (dto.Ctrl) parts.Add("Ctrl");
-        if (dto.Alt) parts.Add("Alt");
-        if (dto.Shift) parts.Add("Shift");
-        if (dto.Win) parts.Add("Win");
-        parts.Add(dto.Key);
-
-        return string.Join("+", parts);
     }
 
     private static string BusyKey(RecycleBinRow row) => $"{row.Type}:{row.Id}";
