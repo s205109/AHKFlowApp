@@ -608,6 +608,7 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
         {
             cut.Find(".desktop-branch button.add-hotkey").Should().NotBeNull();
             cut.Find(".mobile-branch button.add-hotkey-fab").Should().NotBeNull();
+            cut.Find(".mobile-branch button.add-hotkey-fab").GetAttribute("aria-label").Should().Be("Add hotkey");
         });
     }
 }
