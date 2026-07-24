@@ -15,8 +15,9 @@ namespace AHKFlowApp.Application.Constants;
 /// legacy-shaped subset (app launchers, lock) is built through <see cref="Legacy"/>, which runs the
 /// row through <c>LegacyHotkeyDefinitionConverter.FromLegacy</c> — the same transform the EF data
 /// migration applies to real legacy rows. That launcher/lock subset (unchanged emitted output) is
-/// mirrored by <c>LegacyHotkeyFixtures</c> for the migration-parity test; the window rows and the
-/// fixed/new rows are typed or Raw, so they are excluded from that mirror. The seed path bypasses
+/// mirrored by <c>LegacyHotkeyFixtures</c> for the migration-parity test; the window rows, the two
+/// SendKeys rows, and the fixed/new rows are excluded from that mirror (the SendKeys rows are new
+/// samples, never real legacy data). The seed path bypasses
 /// validation, so every typed definition here must be correct by construction.
 /// </remarks>
 internal static class DefaultHotkeyCatalog
@@ -48,6 +49,13 @@ internal static class DefaultHotkeyCatalog
         Raw("Insert today's date", true, true, false, false, "d",
             "SendText(FormatTime(A_Now, \"yyyy-MM-dd\"))", ["DateTime"]),
         Raw("Paste as plain text", true, false, true, false, "v", PastePlainTextBody, ["Code"]),
+
+        // SendKeys — the only kind with no sample otherwise (SendText is shown via the date Raw body;
+        // the snap rows dropped SendKeys for native window calls). A virtual media key and a modified
+        // key sequence show what Send does that SendText/Run cannot. Neither uses Win, so neither trips
+        // the Win-in-Send guardrail. Legacy(Send, <valid token>) converts to the SendKeys kind.
+        Legacy("Play / pause media",   true, true, false, false, "p", HotkeyAction.Send, "{Media_Play_Pause}", ["App Launcher"]),
+        Legacy("Select to end of line", true, true, false, false, "k", HotkeyAction.Send, "+{End}",            ["Code"]),
 
         // New typed kinds — one sample each for Disable, Remap, Window (design §3). Descriptions carry
         // the global-hijack disclosure for the risky F-key rows.
