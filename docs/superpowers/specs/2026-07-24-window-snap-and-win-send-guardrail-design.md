@@ -77,7 +77,8 @@ The two snap samples (currently `Raw` bodies from the sibling spec) become
 `Typed(… WindowOp.SnapLeft / SnapRight)` on Ctrl+Alt+Left / Ctrl+Alt+Right. The Raw
 `SnapLeftBody` / `SnapRightBody` string constants are removed — the WinMove AHK now lives
 once, in the emitter. Emitted output is byte-identical, so the golden integration-test
-assertions do not change. Sample count stays 17.
+assertions do not change. The snap conversion is in-place, so it alone keeps the count at 17;
+§5 then adds two SendKeys rows, taking the catalog to **19**.
 
 ## 3. Labels
 
@@ -103,9 +104,34 @@ checked **and an arrow key is the sent key**, render a `MudAlert` (`Severity.War
 - The message string and its `data-test` id are constants beside `RawWarningText` in
   `HotkeyActionDisplay`, so markup and tests share one source.
 
+## 5. SendKeys samples
+
+The catalog demonstrates every action kind **except `SendKeys`**: the sibling spec left
+`SendText` unrepresented on purpose and moved the old snap rows off `SendKeys` onto Window/Raw
+(§2b there), so no seeded sample now shows the `SendKeys` kind at all. That is also the kind the
+§4 warning teaches about — with no working sample, the only `SendKeys` a new owner meets is the
+broken Win+Arrow one. Add two working, **no-Win** samples so the kind has a positive example.
+
+Both go through the existing `Legacy(… HotkeyAction.Send, "<token>")` helper: a valid SendKeys
+token converts to `HotkeyActionKind.SendKeys` and emits `$key::Send("<token>")` (per
+`LegacyHotkeyDefinitionConverter`). No new helper, no new category.
+
+| Description | Hotkey | Token | Emits | Category |
+|---|---|---|---|---|
+| Play / pause media | Ctrl+Alt+P | `{Media_Play_Pause}` | `$^!p::Send("{Media_Play_Pause}")` | App Launcher |
+| Select current line | Ctrl+Alt+K | `{Home}+{End}` | `$^!k::Send("{Home}+{End}")` | Code |
+
+- These pick a virtual media key and a modified key sequence — the two things `SendKeys` does
+  that `SendText`/`Run` cannot — so one working sample earns its place.
+- Keys `P` / `K` are free of existing Ctrl+Alt bindings (`T N E B L r d a m` + arrows are taken).
+- Like the other new rows, both are **excluded** from the `LegacyHotkeyFixtures` migration-parity
+  mirror (they never existed as real legacy data); they stay pinned `AppliesToAllProfiles = true`.
+
 ## Testing
 
 - **Emitter** (`HotkeyEmitterTests`): a case per snap op asserting the exact WinMove block.
+- **Catalog SendKeys** (`AhkScriptGeneratorIntegrationTests`): the two new rows emit
+  `$^!p::Send("{Media_Play_Pause}")` / `$^!k::Send("{Home}+{End}")` and report `SendKeys` kind.
 - **Validator** (`HotkeyKindConditionalRulesTests`): `Window` accepts `SnapLeft` / `SnapRight`
   (guards `Enum.IsDefined`).
 - **UI** (`HotkeyEditDialog` bUnit): the warning renders when the Send Win checkbox is checked
@@ -114,6 +140,10 @@ checked **and an arrow key is the sent key**, render a `MudAlert` (`Severity.War
   values.
 - **Catalog** (`AhkScriptGeneratorIntegrationTests`): existing snap-line assertions stand
   (same emit); the two samples now report `Window` kind.
+- **Seed counts**: the two SendKeys rows move the catalog 17 → **19**. Update every count
+  assertion the sibling spec inventoried — `SeedHotkeysCommandHandlerTests`,
+  `ListHotkeysLazySeedTests`, `SeedAllCommandHandlerTests`, `DevSeedEndpointTests`,
+  `HotkeysEndpointsTests` pagination (`5 created + 19` = **24**), and any "seeds N samples" prose.
 - **Display** (`HotkeyActionDisplayTests`): labels for the two new ops.
 
 ## Files touched
@@ -123,7 +153,7 @@ checked **and an arrow key is the sent key**, render a `MudAlert` (`Severity.War
   (the dropdown enumerates this type).
 - `src/Backend/AHKFlowApp.Application/Services/HotkeyEmitter.cs` — `WindowCall` snap cases.
 - `src/Backend/AHKFlowApp.Application/Constants/DefaultHotkeyCatalog.cs` — snap rows → Window;
-  drop the two Raw body consts.
+  drop the two Raw body consts; add two `Legacy(… Send …)` SendKeys rows (§5).
 - `src/Frontend/AHKFlowApp.UI.Blazor/Helpers/HotkeyActionDisplay.cs` — snap labels + warning
   constant.
 - `src/Frontend/AHKFlowApp.UI.Blazor/Components/Hotkeys/HotkeyEditDialog.razor` — SendKeys

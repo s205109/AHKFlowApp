@@ -46,6 +46,9 @@ snaps reliably (injected Win; §2b).
 - No `SendText`-only sample. `SendText` stays unrepresented on purpose (the date sample uses
   `SendText(...)` inside a `Raw` body, which is enough to show the pattern) — so this change does **not**
   claim a sample for literally every action kind, only for the three previously-unshown typed kinds.
+  (`SendKeys` is also unshown after §2b moves the snap rows off it; the follow-up
+  `2026-07-24-window-snap-and-win-send-guardrail-design.md` §5 adds two working SendKeys samples,
+  taking the catalog to 19.)
 - No runtime execution of `.ahk` (permanently out of scope).
 - **No backfill of existing seeded rows.** Both seed paths are Development-only; the fix lands on
   fresh owners and on `POST /dev/seed?reset=true`. A dev owner already carrying the old broken rows
