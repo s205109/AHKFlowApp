@@ -1,11 +1,9 @@
 using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.Common;
-using AHKFlowApp.Application.Constants;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Mapping;
 using AHKFlowApp.Application.Validation;
 using AHKFlowApp.Domain.Entities;
-using AHKFlowApp.Domain.Enums;
 using Ardalis.Result;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
@@ -20,15 +18,7 @@ public sealed class CreateHotkeyCommandValidator : AbstractValidator<CreateHotke
     {
         RuleFor(x => x.Input.Description).ValidDescription();
         RuleFor(x => x.Input.Key).ValidKey();
-        this.AddHotkeyActionRules(
-            x => x.Input.ActionKind,
-            x => x.Input.Text,
-            x => x.Input.SendKeysContent,
-            x => x.Input.RunTarget,
-            x => x.Input.RunTargetKind,
-            x => x.Input.WindowOp,
-            x => x.Input.RemapDest,
-            x => x.Input.Body);
+        this.AddHotkeyActionRules(x => x.Input);
         this.AddProfileAssociationRules(
             x => x.Input.AppliesToAllProfiles,
             x => x.Input.ProfileIds);
@@ -48,18 +38,8 @@ internal sealed class CreateHotkeyCommandHandler(
 
         CreateHotkeyDto input = request.Input;
 
-        // Return value ignored: the validator rejects unknown keys before the handler runs,
-        // so this always succeeds here.
-        HotkeyKeys.TryCanonicalize(input.Key, out string canonicalKey);
-
-        // Same for the token action fields: the validator has accepted them, so normalization
-        // folds aliases/case/code-width onto the one persisted spelling (spec §8 invariant).
-        string? canonicalSendKeys = string.IsNullOrEmpty(input.SendKeysContent)
-            ? input.SendKeysContent
-            : HotkeyRules.Tokens.NormalizeSendKeysContent(input.SendKeysContent);
-        string? canonicalRemapDest = string.IsNullOrEmpty(input.RemapDest)
-            ? input.RemapDest
-            : HotkeyRules.Tokens.NormalizeRemapDest(input.RemapDest);
+        HotkeyDefinition definition = input.ToDefinition(input.AppliesToAllProfiles);
+        string canonicalKey = definition.Key;
 
         bool duplicate = await db.Hotkeys.AnyAsync(
             h => h.OwnerOid == ownerOid
@@ -90,25 +70,7 @@ internal sealed class CreateHotkeyCommandHandler(
         if (categoryError is not null)
             return Result.Invalid(categoryError);
 
-        var entity = Hotkey.Create(
-            ownerOid,
-            new HotkeyDefinition(
-                Description: input.Description,
-                Key: canonicalKey,
-                Ctrl: input.Ctrl,
-                Alt: input.Alt,
-                Shift: input.Shift,
-                Win: input.Win,
-                ActionKind: input.ActionKind,
-                AppliesToAllProfiles: input.AppliesToAllProfiles,
-                Text: input.Text,
-                SendKeysContent: canonicalSendKeys,
-                RunTarget: input.RunTarget,
-                RunTargetKind: input.RunTargetKind,
-                WindowOp: input.WindowOp,
-                RemapDest: canonicalRemapDest,
-                Body: input.Body),
-            clock);
+        var entity = Hotkey.Create(ownerOid, definition, clock);
 
         db.Hotkeys.Add(entity);
 

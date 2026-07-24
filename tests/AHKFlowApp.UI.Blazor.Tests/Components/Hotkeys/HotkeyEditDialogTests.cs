@@ -76,9 +76,6 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
         return provider;
     }
 
-    private static void DisablePreviewDebounce(IRenderedComponent<MudDialogProvider> provider) =>
-        provider.FindComponent<HotkeyEditDialog>().Instance.PreviewDebounce = TimeSpan.Zero;
-
     // The key is a KeyPicker, not a plain text field: driving its ValueChanged is what a
     // selection from the dropdown does, without depending on popover/JS behaviour.
     private static bool IsChecked(IRenderedComponent<MudDialogProvider> provider, string dataTest) =>
@@ -302,7 +299,6 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
 
         IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(
             new HotkeyEditModel { Description = "d", Key = "k", Text = "hi" });
-        DisablePreviewDebounce(provider);
 
         provider.Find("[data-test=\"ahk-preview\"] .mud-expand-panel-header").Click();
         provider.WaitForAssertion(() => _api.Received(1).PreviewAsync(
@@ -483,7 +479,6 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
     {
         IRenderedComponent<MudDialogProvider> provider =
             await ShowDialogAsync(new HotkeyEditModel { Key = "K", ActionKind = HotkeyActionKind.SendText, Text = "hi" });
-        DisablePreviewDebounce(provider);
 
         await SetKeyAsync(provider, "key-picker", "L");
 
@@ -498,7 +493,6 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
 
         IRenderedComponent<MudDialogProvider> provider =
             await ShowDialogAsync(new HotkeyEditModel { Key = "k", Ctrl = true, Text = "hi" });
-        DisablePreviewDebounce(provider);
 
         provider.Find("[data-test=\"ahk-preview\"] .mud-expand-panel-header").Click();
 
@@ -516,7 +510,6 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
 
         IRenderedComponent<MudDialogProvider> provider =
             await ShowDialogAsync(new HotkeyEditModel { Key = "k", Text = "hi", Description = "one" });
-        DisablePreviewDebounce(provider);
 
         provider.Find("[data-test=\"ahk-preview\"] .mud-expand-panel-header").Click();
         provider.WaitForAssertion(() => _api.Received(1).PreviewAsync(
@@ -536,7 +529,6 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
 
         IRenderedComponent<MudDialogProvider> provider =
             await ShowDialogAsync(new HotkeyEditModel { Key = "k", Text = "hi" });
-        DisablePreviewDebounce(provider);
 
         provider.Find("[data-test=\"ahk-preview\"] .mud-expand-panel-header").Click();
         provider.WaitForAssertion(() => _api.Received(1).PreviewAsync(
@@ -564,7 +556,6 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
 
         IRenderedComponent<MudDialogProvider> provider =
             await ShowDialogAsync(new HotkeyEditModel { Key = "k", ActionKind = HotkeyActionKind.Raw, Body = "Send \"{" });
-        DisablePreviewDebounce(provider);
 
         provider.Find("[data-test=\"ahk-preview\"] .mud-expand-panel-header").Click();
 
@@ -590,7 +581,6 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
 
         IRenderedComponent<MudDialogProvider> provider =
             await ShowDialogAsync(new HotkeyEditModel { Key = "one", Text = "hi" });
-        DisablePreviewDebounce(provider);
 
         provider.Find("[data-test=\"ahk-preview\"] .mud-expand-panel-header").Click();
         provider.WaitForAssertion(() => _api.Received(1).PreviewAsync(
@@ -621,7 +611,6 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
 
         IRenderedComponent<MudDialogProvider> provider =
             await ShowDialogAsync(new HotkeyEditModel { Key = "k", Text = "hi" });
-        DisablePreviewDebounce(provider);
 
         provider.Find("[data-test=\"ahk-preview\"] .mud-expand-panel-header").Click();
 

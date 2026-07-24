@@ -22,16 +22,6 @@ public sealed class HotkeysApiClient(HttpClient httpClient) : ApiClientBase(http
         Add(parts, "keyFilter", request.KeyFilter);
         if (request.ActionKind.HasValue)
             parts.Add($"actionKind={Uri.EscapeDataString(request.ActionKind.Value.ToString())}");
-        if (request.AppliesToAllProfiles.HasValue)
-            parts.Add($"appliesToAllProfiles={request.AppliesToAllProfiles.Value.ToString().ToLowerInvariant()}");
-        if (request.Ctrl.HasValue)
-            parts.Add($"ctrl={request.Ctrl.Value.ToString().ToLowerInvariant()}");
-        if (request.Alt.HasValue)
-            parts.Add($"alt={request.Alt.Value.ToString().ToLowerInvariant()}");
-        if (request.Shift.HasValue)
-            parts.Add($"shift={request.Shift.Value.ToString().ToLowerInvariant()}");
-        if (request.Win.HasValue)
-            parts.Add($"win={request.Win.Value.ToString().ToLowerInvariant()}");
         if (request.CategoryIds is { Count: > 0 })
         {
             foreach (Guid id in request.CategoryIds)

@@ -64,7 +64,7 @@ public sealed class HotkeysApiClientTests
 
         await ClientWith(handler).ListAsync(new HotkeyListRequest(
             Page: 2, PageSize: 25, SortField: "key", SortDescending: false,
-            DescriptionFilter: "Open browser", Ctrl: true, ActionKind: HotkeyActionKind.Run));
+            DescriptionFilter: "Open browser", ActionKind: HotkeyActionKind.Run));
 
         string query = handler.LastRequest!.RequestUri!.Query;
         query.Should().Contain("page=2");
@@ -72,7 +72,6 @@ public sealed class HotkeysApiClientTests
         query.Should().Contain("sortField=key");
         query.Should().Contain("sortDescending=false");
         query.Should().Contain("descriptionFilter=Open%20browser");
-        query.Should().Contain("ctrl=true");
         query.Should().Contain("actionKind=Run");
     }
 

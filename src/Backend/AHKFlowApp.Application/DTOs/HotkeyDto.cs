@@ -80,7 +80,7 @@ public sealed record CreateHotkeyDto(
     string? Body = null,
     Guid[]? ProfileIds = null,
     bool AppliesToAllProfiles = false,
-    Guid[]? CategoryIds = null);
+    Guid[]? CategoryIds = null) : IHotkeyDraft;
 
 /// <summary>Payload to replace the editable fields of an existing hotkey.</summary>
 /// <param name="Description">Human-readable label.</param>
@@ -117,4 +117,4 @@ public sealed record UpdateHotkeyDto(
     string? Body,
     Guid[]? ProfileIds,
     bool AppliesToAllProfiles,
-    Guid[]? CategoryIds = null);
+    Guid[]? CategoryIds = null) : IHotkeyDraft;

@@ -63,17 +63,20 @@
     {
         IReadOnlyList<HotkeyKeyDto> keys = await Catalog.ForRoleAsync(Role, ct);
 
-        IEnumerable<string> matches = string.IsNullOrWhiteSpace(fragment)
-            ? keys.Select(k => k.Canonical)
-            : keys.Where(k => k.Canonical.Contains(fragment, StringComparison.OrdinalIgnoreCase))
-                  .Select(k => k.Canonical);
+        // Materialized, not left deferred: MudAutocomplete enumerates the result more than once
+        // per keystroke, and a deferred chain would re-run the filter over the whole role list
+        // on each pass.
+        List<string> matches = string.IsNullOrWhiteSpace(fragment)
+            ? [.. keys.Select(k => k.Canonical)]
+            : [.. keys.Where(k => k.Canonical.Contains(fragment, StringComparison.OrdinalIgnoreCase))
+                      .Select(k => k.Canonical)];
 
         if (!string.IsNullOrWhiteSpace(fragment)
             && (fragment.StartsWith("vk", StringComparison.OrdinalIgnoreCase)
                 || fragment.StartsWith("sc", StringComparison.OrdinalIgnoreCase))
             && !matches.Contains(fragment, StringComparer.OrdinalIgnoreCase))
         {
-            matches = matches.Prepend(fragment);
+            matches.Insert(0, fragment);
         }
 
         return matches;

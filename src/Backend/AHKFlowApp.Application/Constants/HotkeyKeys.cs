@@ -184,8 +184,12 @@ internal static class HotkeyKeys
     /// names they already know are in the registry (tests, picker construction).</summary>
     public static HotkeyKeyEntry HotkeyKeyEntryByCanonical(string canonical) => s_byName[canonical];
 
-    /// <summary>True if <paramref name="canonical"/> is a named registry entry (not a vk/sc code).</summary>
-    public static bool IsRegistryName(string canonical) => s_byName.ContainsKey(canonical);
+    /// <summary>
+    /// True if <paramref name="key"/> may appear inside a <c>Send</c> token: a registry key
+    /// carrying the <see cref="HotkeyKeyRoles.SendToken"/> role, or a <c>vk</c>/<c>sc</c> code.
+    /// The caller owns the surrounding brace grammar; this answers only "is this key sendable".
+    /// </summary>
+    public static bool IsValidSendToken(string? key) => HasRole(key, HotkeyKeyRoles.SendToken);
 
     /// <summary>
     /// True if <paramref name="key"/> may be the source of a remap: a registry key carrying the

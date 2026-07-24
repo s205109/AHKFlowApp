@@ -87,11 +87,14 @@ internal sealed class ListHotkeysQueryHandler(
             query = query.Where(h =>
                 EF.Functions.Like(h.Description, pattern) ||
                 EF.Functions.Like(h.Key, pattern) ||
-                EF.Functions.Like(h.RunTarget ?? "", pattern) ||
-                EF.Functions.Like(h.Text ?? "", pattern) ||
-                EF.Functions.Like(h.SendKeysContent ?? "", pattern) ||
-                EF.Functions.Like(h.RemapDest ?? "", pattern) ||
-                EF.Functions.Like(h.Body ?? "", pattern));
+                // No ?? "" on the nullable columns: NULL LIKE x is NULL, which is already not-true
+                // inside the OR chain. Wrapping them would put an ISNULL around every scanned row,
+                // including the two nvarchar(max) ones, for no change in what matches.
+                EF.Functions.Like(h.RunTarget!, pattern) ||
+                EF.Functions.Like(h.Text!, pattern) ||
+                EF.Functions.Like(h.SendKeysContent!, pattern) ||
+                EF.Functions.Like(h.RemapDest!, pattern) ||
+                EF.Functions.Like(h.Body!, pattern));
         }
 
         if (!string.IsNullOrWhiteSpace(request.DescriptionFilter))

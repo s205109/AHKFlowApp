@@ -31,7 +31,7 @@ public sealed record HotkeyPreviewRequestDto(
     RunTargetKind? RunTargetKind = null,
     WindowOp? WindowOp = null,
     string? RemapDest = null,
-    string? Body = null);
+    string? Body = null) : IHotkeyDraft;
 
 /// <summary>The AutoHotkey snippet a hotkey draft would generate.</summary>
 /// <param name="Snippet">The exact <c>.ahk</c> line a save would produce for the given draft, including any <c>; </c> Description comment lines.</param>

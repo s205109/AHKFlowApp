@@ -1,6 +1,5 @@
 using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.Common;
-using AHKFlowApp.Application.Constants;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Mapping;
 using AHKFlowApp.Application.Services;
@@ -21,15 +20,7 @@ public sealed class UpdateHotkeyCommandValidator : AbstractValidator<UpdateHotke
     {
         RuleFor(x => x.Input.Description).ValidDescription();
         RuleFor(x => x.Input.Key).ValidKey();
-        this.AddHotkeyActionRules(
-            x => x.Input.ActionKind,
-            x => x.Input.Text,
-            x => x.Input.SendKeysContent,
-            x => x.Input.RunTarget,
-            x => x.Input.RunTargetKind,
-            x => x.Input.WindowOp,
-            x => x.Input.RemapDest,
-            x => x.Input.Body);
+        this.AddHotkeyActionRules(x => x.Input);
         this.AddProfileAssociationRules(
             x => x.Input.AppliesToAllProfiles,
             x => x.Input.ProfileIds);
@@ -58,19 +49,6 @@ internal sealed class UpdateHotkeyCommandHandler(
 
         UpdateHotkeyDto input = request.Input;
 
-        // Return value ignored: the validator rejects unknown keys before the handler runs,
-        // so this always succeeds here.
-        HotkeyKeys.TryCanonicalize(input.Key, out string canonicalKey);
-
-        // Same for the token action fields: the validator has accepted them, so normalization
-        // folds aliases/case/code-width onto the one persisted spelling (spec §8 invariant).
-        string? canonicalSendKeys = string.IsNullOrEmpty(input.SendKeysContent)
-            ? input.SendKeysContent
-            : HotkeyRules.Tokens.NormalizeSendKeysContent(input.SendKeysContent);
-        string? canonicalRemapDest = string.IsNullOrEmpty(input.RemapDest)
-            ? input.RemapDest
-            : HotkeyRules.Tokens.NormalizeRemapDest(input.RemapDest);
-
         Guid[] distinctProfileIds = input.ProfileIds?.Distinct().ToArray() ?? [];
         if (!input.AppliesToAllProfiles)
         {
@@ -90,24 +68,7 @@ internal sealed class UpdateHotkeyCommandHandler(
 
         EntityHistory historyEntry = await recorder.RecordHotkeyAsync(entity, HistoryChangeType.Edit, ct);
 
-        entity.Update(
-            new HotkeyDefinition(
-                Description: input.Description,
-                Key: canonicalKey,
-                Ctrl: input.Ctrl,
-                Alt: input.Alt,
-                Shift: input.Shift,
-                Win: input.Win,
-                ActionKind: input.ActionKind,
-                AppliesToAllProfiles: input.AppliesToAllProfiles,
-                Text: input.Text,
-                SendKeysContent: canonicalSendKeys,
-                RunTarget: input.RunTarget,
-                RunTargetKind: input.RunTargetKind,
-                WindowOp: input.WindowOp,
-                RemapDest: canonicalRemapDest,
-                Body: input.Body),
-            clock);
+        entity.Update(input.ToDefinition(input.AppliesToAllProfiles), clock);
 
         // Replace junction rows via the navigation collections only; adding to the
         // DbSet as well would double-add through EF navigation fixup

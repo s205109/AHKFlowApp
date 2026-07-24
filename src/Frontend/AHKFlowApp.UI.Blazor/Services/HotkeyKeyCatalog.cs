@@ -25,18 +25,34 @@ public sealed partial class HotkeyKeyCatalog(IHotkeysApiClient api) : IHotkeyKey
     private Dictionary<string, HotkeyKeyDto> _byName = new(StringComparer.OrdinalIgnoreCase);
     private Dictionary<string, string> _aliases = new(StringComparer.OrdinalIgnoreCase);
 
-    public bool IsLoaded => _catalog is not null;
+    // Per-role projections, memoized. MudAutocomplete calls SearchFunc on every keystroke, and
+    // each call reaches ForRoleAsync — without this, every keystroke re-filters and re-sorts the
+    // whole ~110-entry registry, per open picker.
+    private readonly Dictionary<string, IReadOnlyList<HotkeyKeyDto>> _byRole = new(StringComparer.Ordinal);
+
+    public bool IsLoaded => throw new NotImplementedException();
 
     public async ValueTask<IReadOnlyList<HotkeyKeyDto>> ForRoleAsync(string role, CancellationToken ct = default)
     {
+        if (_byRole.TryGetValue(role, out IReadOnlyList<HotkeyKeyDto>? cached))
+            return cached;
+
         HotkeyKeyCatalogDto catalog = await LoadAsync(ct);
-        return
+
+        IReadOnlyList<HotkeyKeyDto> keys =
         [
             .. catalog.Keys
                 .Where(k => k.Roles.Contains(role, StringComparer.Ordinal))
                 .OrderBy(k => k.Group, StringComparer.Ordinal)
                 .ThenBy(k => k.Canonical, StringComparer.OrdinalIgnoreCase)
         ];
+
+        // Only a successful fetch is memoized — the empty list a failed one yields must not
+        // become the answer for the rest of the session. Same reasoning as LoadAsync.
+        if (_catalog is not null)
+            _byRole[role] = keys;
+
+        return keys;
     }
 
     public bool IsValidKey(string? key)

@@ -1,10 +1,9 @@
 using AHKFlowApp.Application.Abstractions;
-using AHKFlowApp.Application.Constants;
 using AHKFlowApp.Application.DTOs;
+using AHKFlowApp.Application.Mapping;
 using AHKFlowApp.Application.Services;
 using AHKFlowApp.Application.Validation;
 using AHKFlowApp.Domain.Entities;
-using AHKFlowApp.Domain.Enums;
 using Ardalis.Result;
 using FluentValidation;
 
@@ -18,15 +17,7 @@ public sealed class GetHotkeyPreviewQueryValidator : AbstractValidator<GetHotkey
     {
         RuleFor(x => x.Input.Description).ValidDescription();
         RuleFor(x => x.Input.Key).ValidKey();
-        this.AddHotkeyActionRules(
-            x => x.Input.ActionKind,
-            x => x.Input.Text,
-            x => x.Input.SendKeysContent,
-            x => x.Input.RunTarget,
-            x => x.Input.RunTargetKind,
-            x => x.Input.WindowOp,
-            x => x.Input.RemapDest,
-            x => x.Input.Body);
+        this.AddHotkeyActionRules(x => x.Input);
     }
 }
 
@@ -40,28 +31,9 @@ internal sealed class GetHotkeyPreviewQueryHandler(TimeProvider clock)
 {
     public Task<Result<HotkeyPreviewDto>> ExecuteAsync(GetHotkeyPreviewQuery request, CancellationToken ct)
     {
-        HotkeyPreviewRequestDto i = request.Input;
-
-        // Canonicalize the key and token action fields so the preview matches what a save would
-        // persist and emit — same normalization the create/update handlers apply (spec §8).
-        HotkeyKeys.TryCanonicalize(i.Key, out string canonicalKey);
-        string? canonicalSendKeys = string.IsNullOrEmpty(i.SendKeysContent)
-            ? i.SendKeysContent
-            : HotkeyRules.Tokens.NormalizeSendKeysContent(i.SendKeysContent);
-        string? canonicalRemapDest = string.IsNullOrEmpty(i.RemapDest)
-            ? i.RemapDest
-            : HotkeyRules.Tokens.NormalizeRemapDest(i.RemapDest);
-
-        var hk = Hotkey.Create(
-            Guid.Empty,
-            new HotkeyDefinition(
-                Description: i.Description, Key: canonicalKey,
-                Ctrl: i.Ctrl, Alt: i.Alt, Shift: i.Shift, Win: i.Win,
-                ActionKind: i.ActionKind, AppliesToAllProfiles: true,
-                Text: i.Text, SendKeysContent: canonicalSendKeys,
-                RunTarget: i.RunTarget, RunTargetKind: i.RunTargetKind, WindowOp: i.WindowOp,
-                RemapDest: canonicalRemapDest, Body: i.Body),
-            clock);
+        // ToDefinition applies the same key/token canonicalization the create and update handlers
+        // do, so the previewed snippet is exactly what a save would persist and emit (spec §8).
+        var hk = Hotkey.Create(Guid.Empty, request.Input.ToDefinition(appliesToAllProfiles: true), clock);
 
         string snippet = HotkeyEmitter.Emit(hk);
         string commentBlock = string.Join('\n', HotstringEmitter.DescriptionCommentLines(hk.Description));
