@@ -193,7 +193,8 @@
 
         <MudFab Class="add-hotkey-fab" Color="Color.Primary"
                 StartIcon="@Icons.Material.Filled.Add"
-                OnClick="OpenCreateDialogAsync" />
+                OnClick="OpenCreateDialogAsync"
+                UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = "Add hotkey" })" />
     </MudPaper>
 </div>
 
