@@ -31,12 +31,14 @@ internal static class DefaultHotkeyCatalog
         Legacy("Open default browser",    true, true, false, false, "B", HotkeyAction.Run, "https://",     ["App Launcher"]),
         Legacy("Lock workstation",        true, true, false, false, "L", HotkeyAction.Run, "rundll32.exe user32.dll,LockWorkStation", ["App Launcher"]),
 
-        // Native snap/resize — stay SendKeys via Legacy(), but Alt dropped + '#' added (design §2b),
-        // so their output changed → excluded from the parity mirror.
-        Legacy("Maximize window",  false, false, false, true, "Up",    HotkeyAction.Send, "#{Up}",    ["Window Management"]),
-        Legacy("Minimize window",  false, false, false, true, "Down",  HotkeyAction.Send, "#{Down}",  ["Window Management"]),
-        Legacy("Snap window left", false, false, false, true, "Left",  HotkeyAction.Send, "#{Left}",  ["Window Management"]),
-        Legacy("Snap window right",false, false, false, true, "Right", HotkeyAction.Send, "#{Right}", ["Window Management"]),
+        // Native snap/resize — stay SendKeys via Legacy(). Trigger is Alt+Win+Arrow (a distinct combo);
+        // the RHS sends the native Win+Arrow gesture. Binding Win+Arrow directly would remap the key to
+        // itself — intercepting the native gesture and re-sending it while Win is held breaks the snap.
+        // '#' added to payload vs original; output changed → excluded from the parity mirror (design §2b).
+        Legacy("Maximize window",  false, true, false, true, "Up",    HotkeyAction.Send, "#{Up}",    ["Window Management"]),
+        Legacy("Minimize window",  false, true, false, true, "Down",  HotkeyAction.Send, "#{Down}",  ["Window Management"]),
+        Legacy("Snap window left", false, true, false, true, "Left",  HotkeyAction.Send, "#{Left}",  ["Window Management"]),
+        Legacy("Snap window right",false, true, false, true, "Right", HotkeyAction.Send, "#{Right}", ["Window Management"]),
 
         // Fixed → Raw: legacy shape could not express a function call or block body (design §2).
         Raw("Reload AHK script",   true, true, false, false, "r", "Reload()", ["App Launcher"]),

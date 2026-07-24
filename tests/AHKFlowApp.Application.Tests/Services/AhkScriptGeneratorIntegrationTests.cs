@@ -132,10 +132,10 @@ public sealed class AhkScriptGeneratorIntegrationTests(ScriptGeneratorDbFixture 
         // Corrected samples.
         output.Should().Contain("^!r::Reload()");
         output.Should().Contain("^!d::SendText(FormatTime(A_Now, \"yyyy-MM-dd\"))");
-        output.Should().Contain("$#Up::Send(\"#{Up}\")");
-        output.Should().Contain("$#Down::Send(\"#{Down}\")");
-        output.Should().Contain("$#Left::Send(\"#{Left}\")");
-        output.Should().Contain("$#Right::Send(\"#{Right}\")");
+        output.Should().Contain("$!#Up::Send(\"#{Up}\")");
+        output.Should().Contain("$!#Down::Send(\"#{Down}\")");
+        output.Should().Contain("$!#Left::Send(\"#{Left}\")");
+        output.Should().Contain("$!#Right::Send(\"#{Right}\")");
         // Paste-as-plain-text Raw block: keeps its own braces, save/strip/paste/restore.
         output.Should().Contain("^+v::{\n    saved := ClipboardAll()");
         output.Should().Contain("    A_Clipboard := saved         ; restore the original formatting");
