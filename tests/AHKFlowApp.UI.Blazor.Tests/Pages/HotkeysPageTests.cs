@@ -9,6 +9,7 @@ using FluentAssertions;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Extensions.DependencyInjection;
 using MudBlazor;
+using MudBlazor.Extensions;
 using MudBlazor.Services;
 using NSubstitute;
 using Xunit;
@@ -684,5 +685,80 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
             cut.FindComponents<PropertyColumn<HotkeyEditModel, HotkeyActionKind>>().Single();
 
         actionColumn.Instance.Filterable.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Page_EmptyFilteredResults_ShowsClearFiltersButton()
+    {
+        // "You have no hotkeys" and "your filters matched nothing" need different copy, and only
+        // the second can offer a way out.
+        StubList(Page());
+
+        IRenderedComponent<Hotkeys> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find("[data-test=\"action-filter\"]"));
+
+        IRenderedComponent<MudSelect<HotkeyActionKind?>> actionFilter = cut
+            .FindComponents<MudSelect<HotkeyActionKind?>>()
+            .Single(c => c.Markup.Contains("data-test=\"action-filter\""));
+        await cut.InvokeAsync(() => actionFilter.Instance.ValueChanged.InvokeAsync(HotkeyActionKind.Remap));
+
+        cut.WaitForAssertion(() =>
+        {
+            cut.Markup.Should().Contain("No hotkeys match these filters.");
+            // Scoped to the grid: the mobile branch renders its own true-empty text until Task 3,
+            // and this test is about the desktop empty state.
+            cut.Find(".hotkeys-grid").InnerHtml.Should().NotContain("No hotkeys yet.");
+            cut.FindAll(".hotkeys-grid button.clear-filters").Should().ContainSingle();
+        });
+    }
+
+    [Fact]
+    public async Task Page_ClearFilters_ResetsSearchActionAndCategoryAndReloads()
+    {
+        var categoryId = Guid.NewGuid();
+        StubCategories(new CategoryDto(categoryId, "Work", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow));
+        StubList(Page());
+
+        IRenderedComponent<Hotkeys> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find("[data-test=\"action-filter\"]"));
+
+        IRenderedComponent<MudTextField<string>> search = cut
+            .FindComponents<MudTextField<string>>()
+            .First(c => c.Markup.Contains("search-hotkeys"));
+        await cut.InvokeAsync(() => search.Instance.ValueChanged.InvokeAsync("term"));
+
+        IRenderedComponent<MudSelect<HotkeyActionKind?>> actionFilter = cut
+            .FindComponents<MudSelect<HotkeyActionKind?>>()
+            .Single(c => c.Markup.Contains("data-test=\"action-filter\""));
+        await cut.InvokeAsync(() => actionFilter.Instance.ValueChanged.InvokeAsync(HotkeyActionKind.Remap));
+
+        IRenderedComponent<CategoryFilterChips> chips = cut.FindComponents<CategoryFilterChips>().First();
+        await cut.InvokeAsync(() => chips.Instance.SelectedIdsChanged.InvokeAsync([categoryId]));
+
+        cut.WaitForAssertion(() => cut.Find(".hotkeys-grid button.clear-filters"));
+
+        // The page's own first load was already an all-null request, so without this the assertion
+        // below would pass even if Clear filters did nothing at all.
+        _api.ClearReceivedCalls();
+
+        await cut.InvokeAsync(() => cut.Find(".hotkeys-grid button.clear-filters").Click());
+
+        cut.WaitForAssertion(() =>
+        {
+            _api.Received().ListAsync(
+                Arg.Is<HotkeyListRequest>(r =>
+                    r.Search == null
+                    && r.ActionKind == null
+                    && r.CategoryIds == null
+                    && r.DescriptionFilter == null
+                    && r.KeyFilter == null),
+                Arg.Any<CancellationToken>());
+
+            // The controls must visibly reset too - a cleared request with a still-filled search
+            // box or dropdown is a half-done clear.
+            search.Instance.GetState(x => x.Value).Should().BeNullOrEmpty();
+            actionFilter.Instance.GetState(x => x.Value).Should().BeNull();
+            chips.Instance.SelectedIds.Should().BeEmpty();
+        });
     }
 }
