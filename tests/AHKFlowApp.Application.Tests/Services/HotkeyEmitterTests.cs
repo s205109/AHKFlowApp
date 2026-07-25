@@ -50,6 +50,30 @@ public sealed class HotkeyEmitterTests
         Line(new HotkeyBuilder().WithKey("r").WithWin().WithWindow(WindowOp.Restore))
             .Should().Be("#r::WinRestore(\"A\")");
 
+    // Snap is the only Window op with a block body: the half-work-area WinMove needs three
+    // statements. Pinned byte-for-byte because this string is what lands in the user's script.
+    [Fact]
+    public void Emit_Window_SnapLeft() =>
+        Line(new HotkeyBuilder().WithKey("Left").WithCtrl().WithAlt().WithWindow(WindowOp.SnapLeft))
+            .Should().Be(
+                "^!Left::{\n" +
+                "    WinRestore(\"A\")\n" +
+                "    MonitorGetWorkArea(MonitorGetPrimary(), &l, &t, &r, &b)\n" +
+                "    WinMove(l, t, (r - l) // 2, b - t, \"A\")\n" +
+                "}");
+
+    // SnapRight's width is measured back from r rather than repeating (r - l) // 2, so an odd
+    // work-area width still reaches the right edge instead of leaving an uncovered column there.
+    [Fact]
+    public void Emit_Window_SnapRight() =>
+        Line(new HotkeyBuilder().WithKey("Right").WithCtrl().WithAlt().WithWindow(WindowOp.SnapRight))
+            .Should().Be(
+                "^!Right::{\n" +
+                "    WinRestore(\"A\")\n" +
+                "    MonitorGetWorkArea(MonitorGetPrimary(), &l, &t, &r, &b)\n" +
+                "    WinMove(l + (r - l) // 2, t, r - (l + (r - l) // 2), b - t, \"A\")\n" +
+                "}");
+
     [Fact] // golden 9 — SendText escapes free text (backtick-n from a newline)
     public void Emit_SendText_EscapesMultiline() =>
         Line(new HotkeyBuilder().WithKey("s").WithCtrl().WithAlt().WithSendText("Jane Smith\nAcme"))
