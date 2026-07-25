@@ -22,6 +22,10 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
         new("F1", "Function keys", ["HotkeyKey", "RemapDest", "SendToken"], true),
         new("c", "Letters & digits", ["HotkeyKey", "RemapDest", "SendToken"], false),
         new("Volume_Up", "Media & browser", ["SendToken"], true),
+        new("Up", "Navigation & editing", ["HotkeyKey", "RemapDest", "SendToken"], true),
+        new("Down", "Navigation & editing", ["HotkeyKey", "RemapDest", "SendToken"], true),
+        new("Left", "Navigation & editing", ["HotkeyKey", "RemapDest", "SendToken"], true),
+        new("Right", "Navigation & editing", ["HotkeyKey", "RemapDest", "SendToken"], true),
     ];
 
     private readonly IHotkeysApiClient _api = Substitute.For<IHotkeysApiClient>();
@@ -426,6 +430,26 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
             dialog.SaveFieldErrors.Should().NotContainKey(nameof(HotkeyEditModel.WindowOp)));
     }
 
+    // Expected ops are listed literally, not as Enum.GetValues<WindowOp>(): the dropdown builds its
+    // items from that same call, so comparing against it could never fail. The literal catches the
+    // dropdown narrowing its source — a hardcoded subset, or a .Where(...) filter over the enum.
+    // Mirror completeness is a different failure, covered by WindowOpTests.MirrorsDomainEnum.
+    // Asserting rendered items, rather than driving ValueChanged (which passes whether or not the
+    // item exists), is what makes an unpickable op visible at all.
+    [Fact]
+    public async Task WindowPanel_OpDropdown_ListsEveryWindowOp()
+    {
+        IRenderedComponent<MudDialogProvider> provider =
+            await ShowDialogAsync(new HotkeyEditModel { ActionKind = HotkeyActionKind.Window });
+
+        IReadOnlyList<WindowOp?> items = [.. provider.FindComponents<MudSelectItem<WindowOp?>>()
+            .Select(c => c.Instance.Value)];
+
+        items.Should().BeEquivalentTo<WindowOp?>([
+            WindowOp.Minimize, WindowOp.Maximize, WindowOp.Restore, WindowOp.Close,
+            WindowOp.ToggleAlwaysOnTop, WindowOp.SnapLeft, WindowOp.SnapRight]);
+    }
+
     [Fact]
     public async Task EmptyKey_BlocksSubmitClientSide()
     {
@@ -497,6 +521,73 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
         IsChecked(provider, "send-alt-checkbox").Should().BeTrue();
         IsChecked(provider, "send-shift-checkbox").Should().BeFalse();
         provider.Find("input[data-test=\"send-key-picker\"]").GetAttribute("value").Should().Be("Volume_Up");
+    }
+
+    // Injected Win is not honoured by the shell's Aero-Snap handler, so Send("#{Left}") silently
+    // does nothing. All four arrows are the same gesture — Win+Up/Down maximize and minimize, and
+    // fail the same way. Advisory only — see SendKeysPanel_WinArrowWarning_DoesNotBlockSave.
+    [Theory]
+    [InlineData("Up")]
+    [InlineData("Down")]
+    [InlineData("Left")]
+    [InlineData("Right")]
+    public async Task SendKeysPanel_WinPlusArrow_ShowsTheSnapWarning(string arrow)
+    {
+        HotkeyEditModel item = new() { ActionKind = HotkeyActionKind.SendKeys };
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(item);
+
+        provider.Find("input[data-test=\"send-win-checkbox\"]").Change(true);
+        await SetKeyAsync(provider, "send-key-picker", arrow);
+
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"send-win-arrow-warning\"]")
+            .TextContent.Should().Contain("won't snap or resize the window"));
+    }
+
+    // Send "#e" really does open Explorer, so a blanket all-Win warning would be wrong: only the
+    // arrow gesture is documented to fail.
+    [Fact]
+    public async Task SendKeysPanel_WinPlusNonArrow_ShowsNoWarning()
+    {
+        HotkeyEditModel item = new() { ActionKind = HotkeyActionKind.SendKeys };
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(item);
+
+        provider.Find("input[data-test=\"send-win-checkbox\"]").Change(true);
+        await SetKeyAsync(provider, "send-key-picker", "c");
+
+        provider.FindAll("[data-test=\"send-win-arrow-warning\"]").Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task SendKeysPanel_ArrowWithoutWin_ShowsNoWarning()
+    {
+        HotkeyEditModel item = new() { ActionKind = HotkeyActionKind.SendKeys };
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(item);
+
+        await SetKeyAsync(provider, "send-key-picker", "Left");
+
+        provider.FindAll("[data-test=\"send-win-arrow-warning\"]").Should().BeEmpty();
+    }
+
+    // Non-blocking by design: the token is valid AHK and the user may have a reason.
+    [Fact]
+    public async Task SendKeysPanel_WinArrowWarning_DoesNotBlockSave()
+    {
+        HotkeyDto created = new(Guid.NewGuid(), [], true, "Snap attempt", "n", true, false, false, false,
+            HotkeyActionKind.SendKeys, null, "#{Left}", null, null, null, null, null,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        _api.CreateAsync(Arg.Any<CreateHotkeyDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotkeyDto>.Ok(created));
+
+        HotkeyEditModel item = new() { Description = "Snap attempt", Key = "n", ActionKind = HotkeyActionKind.SendKeys };
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(item);
+
+        provider.Find("input[data-test=\"send-win-checkbox\"]").Change(true);
+        await SetKeyAsync(provider, "send-key-picker", "Left");
+        provider.Find("button.commit-edit").Click();
+
+        provider.WaitForAssertion(() => _api.Received(1).CreateAsync(
+            Arg.Is<CreateHotkeyDto>(d => d.SendKeysContent == "#{Left}"),
+            Arg.Any<CancellationToken>()));
     }
 
     [Fact]

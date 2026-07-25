@@ -35,14 +35,16 @@ internal static class DefaultHotkeyCatalog
         // Window resize/snap on Ctrl+Alt+Arrow. These do NOT Send Win+Arrow: injected LWin (the
         // LLKHF_INJECTED flag + SendInput's atomic batch) is not reliably recognized by the shell's
         // Aero-Snap / Win-hotkey handler, so `Send("#{Left}")` fails to snap (design §2b). Native
-        // window functions are deterministic. Max/Min use the typed Window kind; snap L/R need a
-        // half-work-area WinMove that no WindowOp expresses, so they are Raw bodies.
+        // window functions are deterministic. All four use the typed Window kind; the snap pair's
+        // half-work-area WinMove block lives in the emitter, not here.
         Typed("Maximize window", "Up",   HotkeyActionKind.Window, ["Window Management"],
             ctrl: true, alt: true, windowOp: WindowOp.Maximize),
         Typed("Minimize window", "Down", HotkeyActionKind.Window, ["Window Management"],
             ctrl: true, alt: true, windowOp: WindowOp.Minimize),
-        Raw("Snap window left",  true, true, false, false, "Left",  SnapLeftBody,  ["Window Management"]),
-        Raw("Snap window right", true, true, false, false, "Right", SnapRightBody, ["Window Management"]),
+        Typed("Snap window left",  "Left",  HotkeyActionKind.Window, ["Window Management"],
+            ctrl: true, alt: true, windowOp: WindowOp.SnapLeft),
+        Typed("Snap window right", "Right", HotkeyActionKind.Window, ["Window Management"],
+            ctrl: true, alt: true, windowOp: WindowOp.SnapRight),
 
         // Fixed → Raw: legacy shape could not express a function call or block body (design §2).
         Raw("Reload AHK script",   true, true, false, false, "r", "Reload()", ["App Launcher"]),
@@ -83,25 +85,6 @@ internal static class DefaultHotkeyCatalog
         "    Sleep(150)                   ; let the paste consume the clipboard first\n" +
         "    A_Clipboard := saved         ; restore the original formatting\n" +
         "    saved := \"\"\n" +
-        "}";
-
-    // Snap the active window to the left/right half of the primary monitor's work area (excludes the
-    // taskbar). WinRestore first so a maximized window can be moved. `//` is AHK integer division.
-    // Deterministic native positioning — see the resize/snap comment above for why Send("#{Left}") is
-    // not used. Primary monitor keeps the sample readable; a real multi-monitor snap would resolve the
-    // window's own monitor first.
-    private const string SnapLeftBody =
-        "{\n" +
-        "    WinRestore(\"A\")\n" +
-        "    MonitorGetWorkArea(MonitorGetPrimary(), &l, &t, &r, &b)\n" +
-        "    WinMove(l, t, (r - l) // 2, b - t, \"A\")\n" +
-        "}";
-
-    private const string SnapRightBody =
-        "{\n" +
-        "    WinRestore(\"A\")\n" +
-        "    MonitorGetWorkArea(MonitorGetPrimary(), &l, &t, &r, &b)\n" +
-        "    WinMove(l + (r - l) // 2, t, (r - l) // 2, b - t, \"A\")\n" +
         "}";
 
     /// <summary>Legacy-shaped row: converted to typed columns at build time, pinned all-profiles.</summary>

@@ -17,4 +17,10 @@ public enum WindowOp
 
     /// <summary><c>WinSetAlwaysOnTop(-1, "A")</c>.</summary>
     ToggleAlwaysOnTop = 4,
+
+    /// <summary>Left half of the primary monitor's work area — a <c>WinMove</c> block body.</summary>
+    SnapLeft = 5,
+
+    /// <summary>Right half of the primary monitor's work area — a <c>WinMove</c> block body.</summary>
+    SnapRight = 6,
 }

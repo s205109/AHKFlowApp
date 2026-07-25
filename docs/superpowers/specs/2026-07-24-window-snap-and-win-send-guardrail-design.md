@@ -54,7 +54,8 @@ The emitter's `WindowCall` returns a block body for them:
 ```
 
 SnapRight differs only in the `WinMove` X/Width. Its X is the left window's right edge, and its
-width spans from there to `r` so an odd work-area width leaves no uncovered strip:
+width spans from there to `r` so an odd work-area width still reaches the right edge instead of
+leaving an uncovered column there:
 `WinMove(l + (r - l) // 2, t, r - (l + (r - l) // 2), b - t, "A")`.
 
 `WinRestore("A")` first so a maximized window can be moved. `//` is AHK integer division.
@@ -76,9 +77,12 @@ undefined value the validator would already have rejected).
 The two snap samples (currently `Raw` bodies from the sibling spec) become
 `Typed(… WindowOp.SnapLeft / SnapRight)` on Ctrl+Alt+Left / Ctrl+Alt+Right. The Raw
 `SnapLeftBody` / `SnapRightBody` string constants are removed — the WinMove AHK now lives
-once, in the emitter. Emitted output is byte-identical, so the golden integration-test
-assertions do not change. The snap conversion is in-place, so it alone keeps the count at 17;
-§5 then adds two SendKeys rows, taking the catalog to **19**.
+once, in the emitter. SnapLeft's emitted output is byte-identical; **SnapRight's is not** — the
+retired constant emitted width `(r - l) // 2`, while §1's formula emits `r - (l + (r - l) // 2)`
+so an odd work-area width reaches the right edge. That is a deliberate fix, and it changes one
+existing golden assertion in `AhkScriptGeneratorIntegrationTests`. The snap conversion is
+in-place, so it alone keeps the count at 17; §5 then adds two SendKeys rows, taking the catalog
+to **19**.
 
 ## 3. Labels
 
@@ -93,16 +97,21 @@ In the SendKeys panel of `HotkeyEditDialog`, when the Win modifier checkbox (`_s
 checked **and an arrow key is the sent key**, render a `MudAlert` (`Severity.Warning`,
 `Dense`), mirroring the existing Raw-panel warning:
 
-> ⚠ Sending Win + Arrow won't snap the window — Windows ignores injected Win for Aero Snap.
-> To snap the active window, use a **Window** action (Snap left / Snap right). For other Win
-> shortcuts, use **Raw**.
+> ⚠ Sending Win + Arrow won't snap or resize the window — Windows ignores injected Win for Aero
+> Snap. Use the matching Window action instead (Minimize, Maximize, Snap left, or Snap right).
+> For other Win shortcuts, use Raw.
 
 - **Non-blocking**: Save is unaffected; the token still validates and persists.
 - **Trigger**: Win + arrow only — that is the sole gesture documented to fail (Aero Snap;
   companion spec §2b). Injected Win *does* fire some OS shortcuts (`Send "#e"` = Win+E per the
   AHK v2 Send docs), so a blanket "all Win+key" warning would be wrong.
-- The message string and its `data-test` id are constants beside `RawWarningText` in
-  `HotkeyActionDisplay`, so markup and tests share one source.
+- **All four arrows**, not just left/right: Win+Up/Down are the same Aero-Snap gesture, which is
+  why the copy names Minimize and Maximize alongside the snap ops.
+- Plain text, no Markdown bold: `MudAlert` renders the constant verbatim, and the alert's warning
+  styling already carries the emphasis.
+- The message string is a constant beside `RawWarningText` in `HotkeyActionDisplay`, so markup and
+  tests share one source. The `data-test` id stays a literal, matching every other `data-test` in
+  the codebase (the Raw warning included).
 
 ## 5. SendKeys samples
 
@@ -133,16 +142,22 @@ token converts to `HotkeyActionKind.SendKeys` and emits `$key::Send("<token>")` 
 ## Testing
 
 - **Emitter** (`HotkeyEmitterTests`): a case per snap op asserting the exact WinMove block.
+- **Enum ordinals**: the two new values are wire contract, so both sides pin them —
+  `AHKFlowApp.Domain.Tests/Enums/WindowOpTests` and `AHKFlowApp.UI.Blazor.Tests/DTOs/WindowOpTests`,
+  mirroring the existing `HotstringImportRowStatusTests` pair.
 - **Catalog SendKeys** (`AhkScriptGeneratorIntegrationTests`): the two new rows emit
   `$^!p::Send("{Media_Play_Pause}")` / `$^!k::Send("+{End}")` and report `SendKeys` kind.
 - **Validator** (`HotkeyKindConditionalRulesTests`): `Window` accepts `SnapLeft` / `SnapRight`
   (guards `Enum.IsDefined`).
-- **UI** (`HotkeyEditDialog` bUnit): the warning renders when the Send Win checkbox is checked
-  **and an arrow key is chosen**, is absent for Win + a non-arrow key and for arrow-without-Win,
-  and Save is not blocked while it shows. The op dropdown lists the two new frontend `WindowOp`
-  values.
-- **Catalog** (`AhkScriptGeneratorIntegrationTests`): existing snap-line assertions stand
-  (same emit); the two samples now report `Window` kind.
+- **UI** (`HotkeyEditDialog` bUnit): the warning renders for each of the four arrows when the Send
+  Win checkbox is checked, is absent for Win + a non-arrow key and for arrow-without-Win, and Save
+  is not blocked while it shows. The op dropdown is asserted by enumerating its rendered
+  `MudSelectItem<WindowOp?>` values against `Enum.GetValues<WindowOp>()` — the technique
+  `HotstringsPageTests.Page_KindFilter_ListsAllFourKinds` already uses — not by driving
+  `ValueChanged`, which would pass even if the item never rendered.
+- **Catalog** (`AhkScriptGeneratorIntegrationTests`): the SnapLeft line assertion stands unchanged
+  and the SnapRight one moves to the §1 width; both samples are asserted to carry
+  `ActionKind.Window` plus their `WindowOp`, so a Raw row emitting equivalent text cannot pass.
 - **Seed counts**: the two SendKeys rows move the catalog 17 → **19**. Update every count
   assertion the sibling spec inventoried — `SeedHotkeysCommandHandlerTests`,
   `ListHotkeysLazySeedTests`, `SeedAllCommandHandlerTests`, `DevSeedEndpointTests`,

@@ -137,7 +137,7 @@ public sealed class AhkScriptGeneratorIntegrationTests(ScriptGeneratorDbFixture 
         output.Should().Contain("^!Left::{\n    WinRestore(\"A\")");
         output.Should().Contain("    WinMove(l, t, (r - l) // 2, b - t, \"A\")");
         output.Should().Contain("^!Right::{\n    WinRestore(\"A\")");
-        output.Should().Contain("    WinMove(l + (r - l) // 2, t, (r - l) // 2, b - t, \"A\")");
+        output.Should().Contain("    WinMove(l + (r - l) // 2, t, r - (l + (r - l) // 2), b - t, \"A\")");
         // Paste-as-plain-text Raw block: keeps its own braces, save/strip/paste/restore.
         output.Should().Contain("^+v::{\n    saved := ClipboardAll()");
         output.Should().Contain("    A_Clipboard := saved         ; restore the original formatting");
@@ -150,5 +150,15 @@ public sealed class AhkScriptGeneratorIntegrationTests(ScriptGeneratorDbFixture 
         // SendKeys samples ($ prefix per emitter).
         output.Should().Contain("$^!p::Send(\"{Media_Play_Pause}\")");
         output.Should().Contain("$^!k::Send(\"+{End}\")");
+
+        // The snap rows are Window-kind samples now, not Raw bodies that merely emit the same
+        // text — assert the stored kind, or a regression to Raw would pass on output alone.
+        Hotkey snapLeft = forProfile.Single(h => h.Description == "Snap window left");
+        snapLeft.ActionKind.Should().Be(HotkeyActionKind.Window);
+        snapLeft.WindowOp.Should().Be(WindowOp.SnapLeft);
+
+        Hotkey snapRight = forProfile.Single(h => h.Description == "Snap window right");
+        snapRight.ActionKind.Should().Be(HotkeyActionKind.Window);
+        snapRight.WindowOp.Should().Be(WindowOp.SnapRight);
     }
 }
