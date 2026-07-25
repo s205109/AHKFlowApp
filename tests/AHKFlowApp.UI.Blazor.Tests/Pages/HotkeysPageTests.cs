@@ -611,4 +611,78 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
             cut.Find(".mobile-branch button.add-hotkey-fab").GetAttribute("aria-label").Should().Be("Add hotkey");
         });
     }
+
+    [Fact]
+    public async Task Page_ActionFilter_ReloadsDataWithSelectedAction()
+    {
+        StubList(Page());
+
+        IRenderedComponent<Hotkeys> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find("[data-test=\"action-filter\"]"));
+
+        IRenderedComponent<MudSelect<HotkeyActionKind?>> desktopActionFilter = cut
+            .FindComponents<MudSelect<HotkeyActionKind?>>()
+            .Single(c => c.Markup.Contains("data-test=\"action-filter\""));
+        await cut.InvokeAsync(() => desktopActionFilter.Instance.ValueChanged.InvokeAsync(HotkeyActionKind.Remap));
+
+        cut.WaitForAssertion(() => _api.Received().ListAsync(
+            Arg.Is<HotkeyListRequest>(r => r.ActionKind == HotkeyActionKind.Remap),
+            Arg.Any<CancellationToken>()));
+    }
+
+    [Fact]
+    public async Task Page_MobileActionFilter_ReloadsDataWithSelectedAction()
+    {
+        StubList(Page());
+
+        IRenderedComponent<Hotkeys> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find("[data-test=\"action-filter-mobile\"]"));
+
+        IRenderedComponent<MudSelect<HotkeyActionKind?>> mobileActionFilter = cut
+            .FindComponents<MudSelect<HotkeyActionKind?>>()
+            .Single(c => c.Markup.Contains("data-test=\"action-filter-mobile\""));
+        await cut.InvokeAsync(() => mobileActionFilter.Instance.ValueChanged.InvokeAsync(HotkeyActionKind.Window));
+
+        cut.WaitForAssertion(() => _api.Received().ListAsync(
+            Arg.Is<HotkeyListRequest>(r => r.ActionKind == HotkeyActionKind.Window),
+            Arg.Any<CancellationToken>()));
+    }
+
+    [Fact]
+    public void Page_ActionFilter_ListsAllSevenKinds()
+    {
+        StubList(Page());
+
+        IRenderedComponent<Hotkeys> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find("[data-test=\"action-filter\"]"));
+
+        // Desktop + mobile selects each render all HotkeyActionKind items - 7 kinds x 2 selects.
+        IReadOnlyList<HotkeyActionKind?> allValues = [.. cut.FindComponents<MudSelectItem<HotkeyActionKind?>>()
+            .Select(c => c.Instance.Value)];
+
+        allValues.Should().HaveCount(14);
+        allValues.Distinct().Should().BeEquivalentTo(
+        [
+            HotkeyActionKind.SendText, HotkeyActionKind.SendKeys, HotkeyActionKind.Run,
+            HotkeyActionKind.Window, HotkeyActionKind.Remap, HotkeyActionKind.Disable,
+            HotkeyActionKind.Raw,
+        ]);
+    }
+
+    [Fact]
+    public void Page_ActionColumn_FunnelFilterDisabled()
+    {
+        // The toolbar dropdown owns ActionKind. A live column funnel on the same field would be a
+        // second control writing the same request value - keep it off (Hotstrings does the same
+        // for its Type column).
+        StubList(Page());
+
+        IRenderedComponent<Hotkeys> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find("[data-test=\"action-filter\"]"));
+
+        IRenderedComponent<PropertyColumn<HotkeyEditModel, HotkeyActionKind>> actionColumn =
+            cut.FindComponents<PropertyColumn<HotkeyEditModel, HotkeyActionKind>>().Single();
+
+        actionColumn.Instance.Filterable.Should().BeFalse();
+    }
 }
