@@ -153,7 +153,20 @@
                 <CellTemplate>@RenderActions(context.Item)</CellTemplate>
             </TemplateColumn>
         </Columns>
-        <NoRecordsContent><MudText>No hotkeys yet.</MudText></NoRecordsContent>
+        <NoRecordsContent>
+            @if (HasActiveFilters)
+            {
+                <MudStack AlignItems="AlignItems.Center" Spacing="2" Class="pa-4">
+                    <MudText>No hotkeys match these filters.</MudText>
+                    <MudButton Variant="Variant.Text" Color="Color.Primary" Class="clear-filters"
+                               OnClick="ClearFiltersAsync">Clear filters</MudButton>
+                </MudStack>
+            }
+            else
+            {
+                <MudText>No hotkeys yet.</MudText>
+            }
+        </NoRecordsContent>
         <PagerContent>
             <MudDataGridPager T="HotkeyEditModel" PageSizeOptions="UserPreferences.AllowedRowsPerPage" />
         </PagerContent>
@@ -249,6 +262,7 @@
     private bool _loading;
     private string? _loadError;
     private string _search = "";
+    private bool _hasColumnFilters;
     private int _rowsPerPage = UserPreferences.Default.RowsPerPage;
     private readonly CancellationTokenSource _cts = new();
 
@@ -306,6 +320,13 @@
 
         (string? sortField, bool sortDescending) = GetSort(state);
 
+        // Column filters live in the grid's state, not in page fields - capture them here so the
+        // empty state can tell "no hotkeys" from "no matches" for these too.
+        string? descriptionFilter = StringFilter(state, "description");
+        string? keyFilter = StringFilter(state, "key");
+        _hasColumnFilters = !string.IsNullOrWhiteSpace(descriptionFilter)
+            || !string.IsNullOrWhiteSpace(keyFilter);
+
         ApiResult<PagedList<HotkeyDto>> result = await ListAsync(
             new HotkeyListRequest(
                 Page: state.Page + 1,
@@ -313,8 +334,8 @@
                 Search: string.IsNullOrWhiteSpace(_search) ? null : _search,
                 SortField: sortField,
                 SortDescending: sortDescending,
-                DescriptionFilter: StringFilter(state, "description"),
-                KeyFilter: StringFilter(state, "key"),
+                DescriptionFilter: descriptionFilter,
+                KeyFilter: keyFilter,
                 ActionKind: _selectedAction,
                 CategoryIds: _selectedCategoryIds.Count > 0 ? _selectedCategoryIds : null),
             ct);
@@ -784,6 +805,27 @@
 
     private async Task OnActionFilterChangedAsync()
     {
+        if (_grid is not null) await _grid.ReloadServerData();
+        _mobilePage = 1;
+        await LoadMobileAsync();
+    }
+
+    // Separates "you have no hotkeys" from "your filters matched nothing" - the two empty states
+    // need different copy, and only the second one can offer a way out. Column filters count too:
+    // they reach the API, so they can produce an empty result on their own.
+    private bool HasActiveFilters =>
+        !string.IsNullOrWhiteSpace(_search)
+        || _selectedAction is not null
+        || _selectedCategoryIds.Count > 0
+        || _hasColumnFilters;
+
+    private async Task ClearFiltersAsync()
+    {
+        _search = "";
+        _selectedAction = null;
+        _selectedCategoryIds = [];
+        _grid?.FilterDefinitions.Clear();
+        _hasColumnFilters = false;
         if (_grid is not null) await _grid.ReloadServerData();
         _mobilePage = 1;
         await LoadMobileAsync();
