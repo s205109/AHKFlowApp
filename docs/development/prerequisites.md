@@ -21,6 +21,8 @@ After cloning, run the symlink setup once:
 .\scripts\agents\setup-copilot-symlinks.ps1
 ```
 
+`scripts/agents/setup-cross-agent-skills.ps1` (re-run automatically by the `post-merge` hook when skills change) also bumps the Codex plugin version in `plugins/ahkflowapp/.codex-plugin/plugin.json` from a content hash and refreshes the installed Codex plugin cache via `codex plugin add ahkflowapp@ahkflowapp-local`. Codex captures available skills at session start — start a new Codex session after skill changes.
+
 ## Optional
 
 - **SQL Server LocalDB** — included with Visual Studio. Alternative to Docker SQL via the `LocalDB SQL` launch profile.
