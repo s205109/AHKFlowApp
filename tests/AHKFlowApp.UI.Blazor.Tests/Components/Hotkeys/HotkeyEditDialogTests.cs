@@ -430,9 +430,12 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
             dialog.SaveFieldErrors.Should().NotContainKey(nameof(HotkeyEditModel.WindowOp)));
     }
 
-    // The op dropdown enumerates Enum.GetValues<WindowOp>(), so an op absent from the frontend
-    // mirror is an op the user cannot pick. Asserting the rendered items — rather than driving
-    // ValueChanged, which passes whether or not the item exists — is what catches that.
+    // Expected ops are listed literally, not as Enum.GetValues<WindowOp>(): the dropdown builds its
+    // items from that same call, so comparing against it could never fail. The literal catches the
+    // dropdown narrowing its source — a hardcoded subset, or a .Where(...) filter over the enum.
+    // Mirror completeness is a different failure, covered by WindowOpTests.MirrorsDomainEnum.
+    // Asserting rendered items, rather than driving ValueChanged (which passes whether or not the
+    // item exists), is what makes an unpickable op visible at all.
     [Fact]
     public async Task WindowPanel_OpDropdown_ListsEveryWindowOp()
     {
@@ -442,7 +445,9 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
         IReadOnlyList<WindowOp?> items = [.. provider.FindComponents<MudSelectItem<WindowOp?>>()
             .Select(c => c.Instance.Value)];
 
-        items.Should().BeEquivalentTo(Enum.GetValues<WindowOp>().Cast<WindowOp?>());
+        items.Should().BeEquivalentTo<WindowOp?>([
+            WindowOp.Minimize, WindowOp.Maximize, WindowOp.Restore, WindowOp.Close,
+            WindowOp.ToggleAlwaysOnTop, WindowOp.SnapLeft, WindowOp.SnapRight]);
     }
 
     [Fact]

@@ -24,12 +24,15 @@ internal static class HotkeyActionDisplay
     /// silently does nothing. Non-blocking: the token is valid AHK and Save is unaffected. Scoped to
     /// arrows only — injected Win *does* fire some shortcuts (Send "#e" opens Explorer). Names all
     /// four Window ops because the warning covers all four arrows: Win+Up/Down are maximize and
-    /// minimize. Plain text, no Markdown — MudAlert renders the constant verbatim.
+    /// minimize. Those four names come from <see cref="WindowOpLabel"/> rather than being spelled
+    /// out, so renaming a dropdown label cannot leave this advisory pointing at a control name the
+    /// user no longer sees. Plain text, no Markdown — MudAlert renders the string verbatim.
     /// </summary>
-    public const string SendWinArrowWarningText =
+    public static readonly string SendWinArrowWarningText =
         "Sending Win + Arrow won't snap or resize the window — Windows ignores injected Win for " +
-        "Aero Snap. Use the matching Window action instead (Minimize, Maximize, Snap left, or " +
-        "Snap right). For other Win shortcuts, use Raw.";
+        $"Aero Snap. Use the matching Window action instead ({WindowOpLabel(DTOs.WindowOp.Minimize)}, " +
+        $"{WindowOpLabel(DTOs.WindowOp.Maximize)}, {WindowOpLabel(DTOs.WindowOp.SnapLeft)}, or " +
+        $"{WindowOpLabel(DTOs.WindowOp.SnapRight)}). For other Win shortcuts, use Raw.";
 
     /// <summary>Stands in for the kind of a pre-typed-action history snapshot, which has none.</summary>
     public const string LegacyLabel = "Legacy";
