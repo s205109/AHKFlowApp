@@ -18,6 +18,22 @@ internal static class HotkeyActionDisplay
     public const string RawWarningText =
         "Raw is unchecked AutoHotkey. A mistake here can stop the whole profile script from loading.";
 
+    /// <summary>
+    /// Advisory shown when a SendKeys row sends Win + an arrow. Injected LWin (SendInput's atomic
+    /// batch, flagged LLKHF_INJECTED) is not honoured by the shell's Aero-Snap handler, so the send
+    /// silently does nothing. Non-blocking: the token is valid AHK and Save is unaffected. Scoped to
+    /// arrows only — injected Win *does* fire some shortcuts (Send "#e" opens Explorer). Names all
+    /// four Window ops because the warning covers all four arrows: Win+Up/Down are maximize and
+    /// minimize. Those four names come from <see cref="WindowOpLabel"/> rather than being spelled
+    /// out, so renaming a dropdown label cannot leave this advisory pointing at a control name the
+    /// user no longer sees. Plain text, no Markdown — MudAlert renders the string verbatim.
+    /// </summary>
+    public static readonly string SendWinArrowWarningText =
+        "Sending Win + Arrow won't snap or resize the window — Windows ignores injected Win for " +
+        $"Aero Snap. Use the matching Window action instead ({WindowOpLabel(DTOs.WindowOp.Minimize)}, " +
+        $"{WindowOpLabel(DTOs.WindowOp.Maximize)}, {WindowOpLabel(DTOs.WindowOp.SnapLeft)}, or " +
+        $"{WindowOpLabel(DTOs.WindowOp.SnapRight)}). For other Win shortcuts, use Raw.";
+
     /// <summary>Stands in for the kind of a pre-typed-action history snapshot, which has none.</summary>
     public const string LegacyLabel = "Legacy";
 
@@ -64,6 +80,8 @@ internal static class HotkeyActionDisplay
         DTOs.WindowOp.Restore => "Restore",
         DTOs.WindowOp.Close => "Close",
         DTOs.WindowOp.ToggleAlwaysOnTop => "Toggle always on top",
+        DTOs.WindowOp.SnapLeft => "Snap left",
+        DTOs.WindowOp.SnapRight => "Snap right",
         _ => op.ToString(),
     };
 

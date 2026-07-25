@@ -319,7 +319,7 @@ Each `HotkeyActionKind` owns its own stored field(s) and exactly one emitted for
 | `SendText` | `Text` | `SendText("<escaped>")` |
 | `SendKeys` | `SendKeysContent` | `Send("<escaped>")` — plus the `$` prefix |
 | `Run` | `RunTarget`, `RunTargetKind` | `Run("<escaped>")` — `RunTargetKind` is a display label and changes nothing |
-| `Window` | `WindowOp` | `WinMinimize("A")`, `WinMaximize("A")`, `WinRestore("A")`, `WinClose("A")`, `WinSetAlwaysOnTop(-1, "A")` |
+| `Window` | `WindowOp` | five one-line ops — `WinMinimize("A")`, `WinMaximize("A")`, `WinRestore("A")`, `WinClose("A")`, `WinSetAlwaysOnTop(-1, "A")` — plus two block-bodied snap ops (see below) |
 | `Remap` | `RemapDest` | the destination key name, bare |
 | `Disable` | — | `return` |
 | `Raw` | `Body` | `Body`, verbatim |
@@ -331,6 +331,27 @@ $#p::Send("{Media_Play_Pause}")
 ^Space::WinSetAlwaysOnTop(-1, "A")
 CapsLock::Ctrl
 F1::return
+```
+
+`Window`'s two snap ops (`SnapLeft`, `SnapRight`) are the only non-one-line emit: each is a
+brace block that restores the window, reads the **primary** monitor's work area
+(`MonitorGetWorkArea(MonitorGetPrimary(), &l, &t, &r, &b)`), then `WinMove`s to the left or right
+half. SnapRight's width is measured back from `r` rather than repeating the left half's
+`(r - l) // 2`, so an odd work-area width still reaches `r` instead of leaving an uncovered column
+at the far-right edge. Both bodies in full — these are the emitted strings verbatim:
+
+```ahk
+^!Left::{
+    WinRestore("A")
+    MonitorGetWorkArea(MonitorGetPrimary(), &l, &t, &r, &b)
+    WinMove(l, t, (r - l) // 2, b - t, "A")
+}
+
+^!Right::{
+    WinRestore("A")
+    MonitorGetWorkArea(MonitorGetPrimary(), &l, &t, &r, &b)
+    WinMove(l + (r - l) // 2, t, r - (l + (r - l) // 2), b - t, "A")
+}
 ```
 
 Only the three kinds that embed user text in a quoted literal — `SendText`, `SendKeys`, `Run` — pass

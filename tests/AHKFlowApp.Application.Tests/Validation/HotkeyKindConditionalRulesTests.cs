@@ -222,6 +222,14 @@ public sealed class HotkeyKindConditionalRulesTests
     public void Raw_IndentedHashDirective_IsInvalid() =>
         Validate(Base(HotkeyActionKind.Raw) with { Body = "{\n    #Requires AutoHotkey v2\n}" }).IsValid.Should().BeFalse();
 
+    // Enum.IsDefined is the whole Window gate, so new WindowOp values need no validator change.
+    // Pinned so a future "allowed ops" list cannot silently drop snap.
+    [Theory]
+    [InlineData(WindowOp.SnapLeft)]
+    [InlineData(WindowOp.SnapRight)]
+    public void Window_AcceptsSnapOps(WindowOp op) =>
+        Validate(Base(HotkeyActionKind.Window) with { WindowOp = op }).IsValid.Should().BeTrue();
+
     // --- Free-text limits carried over from the retired ValidParameters rule ---------------
 
     [Theory]
