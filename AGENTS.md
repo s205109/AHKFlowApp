@@ -10,13 +10,8 @@ Blazor WebAssembly PWA frontend + ASP.NET Core Web API backend + `ahkflow` CLI c
 - **.NET 10.0** — all projects target `net10.0`; Microsoft.* packages use 10.x versions
 - **EF Core** + SQL Server (LocalDB/Docker Compose/Azure SQL) with `EnableRetryOnFailure()`
 - **Blazor WebAssembly** PWA with MudBlazor 9.x and Azure AD (MSAL) authentication
-- **Explicit use cases** (`IUseCase`/`IUseCaseHandler`) for CQRS — commands, queries, validation decoration
-- **Ardalis.Result** for typed operation outcomes (handlers only)
-- **FluentValidation** via `ValidatingUseCase<TRequest,TResult>` decorator (auto-validates before handler)
-- `.AddStandardResilienceHandler()` on all HttpClient registrations
+- **MinVer** for versioning from git tags; `.AddStandardResilienceHandler()` on all HttpClient registrations
 - **Serilog** for structured logging (console, file, Application Insights sinks) — keep `CreateBootstrapLogger()` before host build and `Log.CloseAndFlushAsync()` on exit; `UseSerilogRequestLogging` after exception middleware; structured `{Property}` templates over interpolation; never log secrets or tokens
-- **MinVer** for automatic semantic versioning from git tags
-- **Testing:** xUnit + FluentAssertions + NSubstitute; Testcontainers (SQL Server) for integration tests
 
 ## Commands
 
@@ -77,15 +72,10 @@ dotnet format
 ### Patterns We Use
 - Primary constructors for DI (no `_field = field` ceremony)
 - Records for DTOs, commands, queries, and value objects
-- File-scoped namespaces, Allman brace style — enforced by `.editorconfig`
 - Controller-based APIs: `[ApiController]` + `[Route("api/v1/[controller]")]`
-- `var` when type is apparent, null-coalescing (`??`) over verbose null checks
-- `sealed` on classes not designed for inheritance
-- `internal` by default, `public` only when needed
-- Collection expressions (`[1, 2, 3]`) over constructor calls (`new List<int> { 1, 2, 3 }`)
-- Pattern matching / switch expressions over if-else chains
-- Member ordering: constants, fields, constructors, properties, public methods, private methods
+- `sealed` on classes not designed for inheritance; `internal` by default, `public` only when needed
 - Domain state: private setters plus factory/domain methods — never public setters on domain entities
+- Style (file-scoped namespaces, Allman braces, `var`, collection expressions, pattern matching) — enforced by `.editorconfig`; run `dotnet format`
 - English for all code comments and documentation
 - PowerShell for script files, bash for manual scripts in .md files
 
@@ -99,33 +89,20 @@ dotnet format
 - **Stored procedures** — EF Core only
 - **.NET Foundation license header** — this project is not part of the .NET Foundation
 
-## Request Flow
-
-```
-HTTP Request -> Controller (thin, maps Result to HTTP)
-  -> IUseCase<TRequest,TResult>.ExecuteAsync()
-    -> ValidatingUseCase<TRequest,TResult> (FluentValidation)
-      -> IUseCaseHandler<TRequest,TResult> (business logic, returns Result<T>)
-        -> AppDbContext (EF Core, direct injection)
-```
-
 ## Testing
+
+Frameworks: xUnit, FluentAssertions (over raw `Assert`), NSubstitute, Testcontainers (SQL Server). AAA pattern; naming `MethodName_Scenario_ExpectedResult`.
 
 - **TDD first:** FluentValidation validators (pure functions), domain business rules
 - **Test alongside:** Controllers + handlers — write impl + integration test together
 - **Skip:** DTOs (records, no logic), DI registration, simple Blazor pages
 - **Integration tests first** — WebApplicationFactory + Testcontainers catches serialization, middleware, DI, and query bugs
 - **No `UseInMemoryDatabase`** — different behavior from real providers; always use Testcontainers
-- Test naming: `MethodName_Scenario_ExpectedResult`
-- AAA pattern (Arrange/Act/Assert) with blank line separation; one assertion concept per test
 - Assert on `Result.IsSuccess` / `Result.Status` in handler unit tests
-- FluentAssertions over raw `Assert` — better failure messages
 - Builder pattern for test data and scenarios — `new HotstringBuilder().WithTrigger("btw").Build()`, not raw construction or many-parameter factories. Builders live in `tests/AHKFlowApp.TestUtilities/Builders/`; add one there for new entities.
-- Shared fixtures: `IClassFixture<T>`, `ICollectionFixture<T>` for expensive setup (containers)
 - NSubstitute for third-party boundaries only — don't mock what you own
 - Test behavior (HTTP response, DB state, Result status), not implementation details
 - `FakeTimeProvider` (from `Microsoft.Extensions.TimeProvider.Testing`) for time-dependent tests
-- Frameworks: xUnit, FluentAssertions, NSubstitute, Testcontainers (SQL Server)
 
 ## Plans
 
@@ -172,62 +149,30 @@ When asking the user to manually test or verify anything (UI flows, commands, ac
 
 ### Performance
 
-- Always propagate `CancellationToken` through the entire call chain.
-- Async all the way — no `.Result` or `.Wait()`. Only exception: `Program.cs` top-level statements.
-- `TimeProvider` over `DateTime.Now` / `DateTime.UtcNow` — injectable and testable.
-- `IHttpClientFactory` over `new HttpClient()` — prevents socket exhaustion.
+- Propagate `CancellationToken` through the entire call chain; async all the way — no `.Result` / `.Wait()` (only exception: `Program.cs` top-level statements); `TimeProvider` over `DateTime.Now` / `DateTime.UtcNow`; `IHttpClientFactory` over `new HttpClient()`.
 - Disable retries for unsafe HTTP methods (`options.Retry.DisableForUnsafeHttpMethods()`) when a client makes non-idempotent calls.
 - Cross-cutting HTTP concerns (auth, correlation IDs, logging) belong in `DelegatingHandler`s, not call sites.
-- `ArrayPool<T>` / `MemoryPool<T>` for buffer-heavy operations.
-- Compiled queries (`EF.CompileAsyncQuery`) for hot-path EF Core queries.
-- `ValueTask<T>` over `Task<T>` for high-throughput paths that often complete synchronously.
 
 ### Security
 
-- Never hardcode secrets. Use `dotnet user-secrets` locally and Azure App Service Configuration in deployed environments.
-- Never commit `.env` files, `appsettings.Development.json` with real credentials, or `credentials.json`.
+- Never hardcode secrets. Use `dotnet user-secrets` locally and Azure App Service Configuration in deployed environments. Never commit `.env` files, `appsettings.Development.json` with real credentials, or `credentials.json`.
 - Blazor WASM `wwwroot/appsettings*.json` is public (downloadable by any user) — never treat it as secret.
 - Options classes bind via `.BindConfiguration().ValidateDataAnnotations().ValidateOnStart()` — fail fast at startup.
-- Validate all external input at system boundaries (FluentValidation / validation attributes).
-- Parameterized queries only — never string concatenation for SQL. EF Core `$""` interpolation is safe; `ExecuteSqlRaw` with concatenation is not.
 - Always add `[Authorize]` or `[AllowAnonymous]` explicitly on every controller/endpoint.
-- HTTPS everywhere — enforce via HSTS, redirect HTTP to HTTPS.
-- Data Protection API for encrypting user data at rest — never roll your own encryption.
-- CORS: explicit origins only, never `AllowAnyOrigin()` in production.
+- Parameterized queries only — EF Core `$""` interpolation is safe; `ExecuteSqlRaw` with concatenation is not.
 
 ## CI/CD
 
-GitHub Actions workflows in `.github/workflows/`:
-- `ci.yml` — PR gate: build, test, format check, Bicep lint
-- `deploy-api.yml` — build, test, publish/package the API, migrate DB, deploy to Azure App Service (TEST on push to main, PROD on manual trigger)
-- `deploy-frontend.yml` — build and deploy Blazor to Azure Static Web Apps (TEST on push to main, PROD on manual trigger)
-- `migrate-db.yml` — manual database migration workflow with environment selection
-- `provision.yml` — manual Bicep-only provisioning (advanced path; initial setup always requires `deploy.ps1`)
-- `release-cli.yml` — on `v*` tags: build, test, package `ahkflow-win-x64.zip`, and publish it as a GitHub Release asset (CLI releases / winget source)
+Workflows live in `.github/workflows/` under self-describing names. `ci.yml` is the PR gate — build, test, format check, Bicep lint. `provision.yml` is Bicep-only provisioning (advanced path; initial setup always requires `deploy.ps1`). `release-cli.yml` fires on `v*` tags and publishes `ahkflow-win-x64.zip` as a GitHub Release asset.
 
-**Environments:**
-- **DEV:** Local development environment (`ASPNETCORE_ENVIRONMENT=Development`)
-  - LocalDB or Docker SQL Server
-  - No Azure resources required
-  - Run locally with `dotnet run`
-- **TEST:** Azure pre-production environment (`ASPNETCORE_ENVIRONMENT=Test`)
-  - Auto-deploys on push to `main` branch
-  - Azure App Service, Azure SQL Database, Static Web Apps
-  - Resource suffix: `-test`
-- **PROD:** Azure production environment (`ASPNETCORE_ENVIRONMENT=Production`)
-  - Manual deployment via workflow_dispatch trigger
-  - Azure App Service, Azure SQL Database, Static Web Apps
-  - Resource suffix: `-prod`
-
-Configuration: Frontend `appsettings.json` is committed (public, no secrets). Backend secrets are managed via Azure App Service Configuration. Environment-specific settings in `appsettings.{Environment}.json` files.
-
-Azure resources are provisioned per-environment using `.\scripts\deploy.ps1`. Each environment gets its own isolated resource group, SQL database, App Service, and Static Web App. See `docs/deployment/getting-started.md` for full instructions.
+- **DEV** — local (`ASPNETCORE_ENVIRONMENT=Development`), LocalDB or Docker SQL, no Azure resources
+- **TEST** auto-deploys on push to `main`; **PROD** deploys manually via `workflow_dispatch`. Resource suffix `-test` / `-prod`
+- Provisioned per-environment with `.\scripts\deploy.ps1` — each gets its own resource group, SQL database, App Service, and Static Web App. See `docs/deployment/getting-started.md`
+- Environment settings in `appsettings.{Environment}.json`. Frontend `appsettings.json` is committed (public, no secrets); backend secrets live in Azure App Service Configuration
 
 ## Environment URLs
 
-### DEV (Local)
-- API: `http://localhost:5600` (single port for all backend scenarios: VS, docker-compose, Docker-only)
-- Frontend: `http://localhost:5601`
+**DEV (local):** API `http://localhost:5600` (single port for all backend scenarios: VS, docker-compose, Docker-only), frontend `http://localhost:5601`.
 
 These are the **main checkout** ports. Agent git worktrees are assigned their own offset ports so a
 worktree can run alongside the main checkout — read the worktree's own `launchSettings.json` rather
@@ -239,19 +184,11 @@ writes both `appsettings.Development.json` files with `Auth:UseTestProvider=true
 full CRUD with no login. Humans in the main checkout opt into no-auth via the `http (No Auth)` frontend
 and `Docker SQL (No Auth)` backend launch profiles.
 
-App Service and SQL Server names include a short deterministic suffix (e.g. `ahkflowapp-api-test-ab12cd`)
-to avoid Azure's global-name collisions. Exact names/URLs are saved to `scripts/.env.<env>` after
-running `deploy.ps1`.
-
-### TEST (Azure)
-- API: `https://<APP_SERVICE_NAME_TEST>.azurewebsites.net` — read from `scripts/.env.test`
-- API health: append `/health` to the URL above
-- Frontend (SWA): `az staticwebapp show --name ahkflowapp-swa-test --query defaultHostname -o tsv`
-
-### PROD (Azure)
-- API: `https://<APP_SERVICE_NAME_PROD>.azurewebsites.net` — read from `scripts/.env.prod`
-- API health: append `/health` to the URL above
-- Frontend (SWA): `az staticwebapp show --name ahkflowapp-swa-prod --query defaultHostname -o tsv`
+**TEST / PROD (Azure):** App Service and SQL Server names include a short deterministic suffix (e.g.
+`ahkflowapp-api-test-ab12cd`) to avoid Azure's global-name collisions, so never guess them — read the
+exact names/URLs from `scripts/.env.test` / `scripts/.env.prod`, written by `deploy.ps1`. API health is
+the API URL + `/health`. SWA hostname:
+`az staticwebapp show --name ahkflowapp-swa-<env> --query defaultHostname -o tsv`.
 
 ## Git Workflow
 
@@ -268,10 +205,6 @@ test, and format there, but must branch, add, commit, merge, rebase, and push fo
 only from a managed linked worktree. Use `scripts/new-worktree.ps1` or the `WorktreeCreate` tool.
 `AHKFLOW_ALLOW_MAIN=1` is an explicit location override; destructive-command protections still
 apply. See `docs/agents/cross-agent-git-guardrails.md`.
-
-## GitHub
-
-Primary way to interact with GitHub is the `gh` CLI.
 
 ## Agent skills
 
@@ -291,10 +224,6 @@ The AHK v2 syntax we emit — option flags, escaping, `#HotIf`, bodies per kind 
 
 ## Prerequisites
 
-- **Windows Developer Mode** must be enabled (required for symlinks without admin privileges)
-- **`git config core.symlinks true`** must be set per-repo (default is `false` on Windows)
-- **Roslyn Navigator MCP** (`CWM.RoslynNavigator`) powers the code-navigation calls in the `dck-verify`, `dck-build-fix`, and `dck-de-sloppify` skills — install with `dotnet tool install -g CWM.RoslynNavigator` (registered in the repo's `.mcp.json`). Without it, those skills fall back to Grep/Roslyn LSP instead of the richer diagnostics.
+One-time setup — Windows Developer Mode, `git config core.symlinks true`, and the symlink / cross-agent skill scripts — is in [`docs/development/prerequisites.md`](docs/development/prerequisites.md). Symlinks fail silently without it. Codex captures skills at session start, so restart Codex after skill changes.
 
-Run `scripts/agents/setup-copilot-symlinks.ps1` after cloning to configure symlinks for GitHub Copilot CLI skill discovery.
-
-`scripts/agents/setup-cross-agent-skills.ps1` (re-run automatically by the `post-merge` hook when skills change) also bumps the Codex plugin version in `plugins/ahkflowapp/.codex-plugin/plugin.json` from a content hash and refreshes the installed Codex plugin cache via `codex plugin add ahkflowapp@ahkflowapp-local`. Codex captures available skills at session start — start a new Codex session after skill changes.
+**Roslyn Navigator MCP** (`CWM.RoslynNavigator`) powers the code-navigation calls in the `dck-verify`, `dck-build-fix`, and `dck-de-sloppify` skills — install with `dotnet tool install -g CWM.RoslynNavigator` (registered in the repo's `.mcp.json`). Without it, those skills fall back to Grep/Roslyn LSP instead of the richer diagnostics.
