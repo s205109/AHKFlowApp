@@ -8,4 +8,6 @@ public enum WindowOp
     Restore = 2,
     Close = 3,
     ToggleAlwaysOnTop = 4,
+    SnapLeft = 5,
+    SnapRight = 6,
 }
