@@ -45,8 +45,22 @@ internal static class HotkeyEmitter
         WindowOp.Restore => $"WinRestore({ActiveWindow})",
         WindowOp.Close => $"WinClose({ActiveWindow})",
         WindowOp.ToggleAlwaysOnTop => $"WinSetAlwaysOnTop(-1, {ActiveWindow})",
+        WindowOp.SnapLeft => SnapBody("l", "(r - l) // 2"),
+        WindowOp.SnapRight => SnapBody("l + (r - l) // 2", "r - (l + (r - l) // 2)"),
         _ => throw new InvalidOperationException($"Unsupported WindowOp: {op}"),
     };
+
+    // Snap to one half of the PRIMARY monitor's work area (which excludes the taskbar). WinRestore
+    // first so a maximized window can be moved; `//` is AHK integer division. The right half's width
+    // is measured back from r instead of reusing the left half's, so an odd work-area width still
+    // reaches the right edge instead of leaving an uncovered column there. Resolving the window's
+    // own monitor is a later refinement (design non-goal).
+    private static string SnapBody(string x, string width) =>
+        "{\n" +
+        $"    WinRestore({ActiveWindow})\n" +
+        "    MonitorGetWorkArea(MonitorGetPrimary(), &l, &t, &r, &b)\n" +
+        $"    WinMove({x}, t, {width}, b - t, {ActiveWindow})\n" +
+        "}";
 
     private static string RemapRhs(string? dest) =>
         dest ?? throw new InvalidOperationException("Remap requires a RemapDest");
