@@ -1,6 +1,6 @@
 # Window snap operations + Win-in-Send guardrail — implementation plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task — the tasks are small, sequential, and repeatedly touch the same files, so inline execution beats a fresh subagent per task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add `SnapLeft` / `SnapRight` as first-class `Window` operations, move the two seeded snap samples off Raw bodies, and warn (non-blocking) when a SendKeys hotkey sends Win + an arrow key.
 
@@ -16,8 +16,8 @@
 - **Enum values are wire contract.** `SnapLeft = 5`, `SnapRight = 6` in *both* `AHKFlowApp.Domain/Enums/WindowOp.cs` and `AHKFlowApp.UI.Blazor/DTOs/WindowOp.cs`, with identical numeric values.
 - **Catalog count stays 19.** The snap conversion is in-place — no row is added or removed by this plan. Do not touch any seed-count assertion.
 - **Spec §5 is already implemented** on this branch's base (`feat: seed two SendKeys sample hotkeys`, catalog rows `Play / pause media` + `Select to end of line`, counts already 17 → 19). This plan does **not** re-do it.
-- **Deviation from spec §2 — read this before Task 2.** The spec claims the emitted output is byte-identical so golden assertions do not change. That holds for SnapLeft but **not** SnapRight: the existing catalog constant emits width `(r - l) // 2`, while spec §1's formula emits `r - (l + (r - l) // 2)` (the fix for odd work-area widths). Task 2 therefore updates one existing assertion in `AhkScriptGeneratorIntegrationTests`. This is intentional — the new formula is the spec's, and it is what closes the uncovered-strip gap.
-- `dotnet format` runs via hook after edits — do not revert its changes.
+- **SnapRight's emitted width changes.** The retired catalog constant emits width `(r - l) // 2`; spec §1's formula emits `r - (l + (r - l) // 2)`, so on an odd work-area width the right half reaches `r` instead of leaving an uncovered column at the far-right edge. Task 2 updates the one existing golden assertion in `AhkScriptGeneratorIntegrationTests`. The spec has been corrected to say so — its earlier "byte-identical / assertions do not change" wording was true only for SnapLeft.
+- `dotnet format` runs via hook after edits — do not revert its changes. The repo root holds both `AHKFlowApp.csproj` and `AHKFlowApp.slnx`, so bare `dotnet format` aborts with `Both a MSBuild project file and solution file found` — always pass the workspace: `dotnet format AHKFlowApp.slnx`.
 - Run `dotnet build` and `dotnet test` before opening a PR.
 
 ---
@@ -27,6 +27,7 @@
 **Files:**
 - Modify: `src/Backend/AHKFlowApp.Domain/Enums/WindowOp.cs:19`
 - Modify: `src/Backend/AHKFlowApp.Application/Services/HotkeyEmitter.cs:41-49`
+- Create: `tests/AHKFlowApp.Domain.Tests/Enums/WindowOpTests.cs`
 - Test: `tests/AHKFlowApp.Application.Tests/Services/HotkeyEmitterTests.cs`
 - Test: `tests/AHKFlowApp.Application.Tests/Validation/HotkeyKindConditionalRulesTests.cs`
 
@@ -52,7 +53,7 @@ Add after the `Emit_Window_Restore` test in `tests/AHKFlowApp.Application.Tests/
                 "}");
 
     // SnapRight's width is measured back from r rather than repeating (r - l) // 2, so an odd
-    // work-area width leaves no uncovered strip between the two halves.
+    // work-area width still reaches the right edge instead of leaving an uncovered column there.
     [Fact]
     public void Emit_Window_SnapRight() =>
         Line(new HotkeyBuilder().WithKey("Right").WithCtrl().WithAlt().WithWindow(WindowOp.SnapRight))
@@ -97,8 +98,9 @@ Then add this private helper directly below the `WindowCall` method (above `Rema
 ```csharp
     // Snap to one half of the PRIMARY monitor's work area (which excludes the taskbar). WinRestore
     // first so a maximized window can be moved; `//` is AHK integer division. The right half's width
-    // is measured back from r instead of reusing the left half's, so an odd work-area width leaves
-    // no uncovered strip. Resolving the window's own monitor is a later refinement (design non-goal).
+    // is measured back from r instead of reusing the left half's, so an odd work-area width still
+    // reaches the right edge instead of leaving an uncovered column there. Resolving the window's
+    // own monitor is a later refinement (design non-goal).
     private static string SnapBody(string x, string width) =>
         "{\n" +
         $"    WinRestore({ActiveWindow})\n" +
@@ -133,10 +135,47 @@ Run: `dotnet test tests/AHKFlowApp.Application.Tests --filter "FullyQualifiedNam
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 8: Pin the domain ordinals**
+
+`WindowOp` is persisted as an `int` and hand-mirrored in the frontend (Task 3), so both sides pin their ordinals — the same pairing `HotstringImportRowStatusTests` uses in `AHKFlowApp.Application.Tests/Hotstrings/` and `AHKFlowApp.UI.Blazor.Tests/DTOs/`. Create `tests/AHKFlowApp.Domain.Tests/Enums/WindowOpTests.cs`:
+
+```csharp
+using AHKFlowApp.Domain.Enums;
+using FluentAssertions;
+using Xunit;
+
+namespace AHKFlowApp.Domain.Tests.Enums;
+
+public sealed class WindowOpTests
+{
+    [Theory]
+    [InlineData(WindowOp.Minimize, 0)]
+    [InlineData(WindowOp.Maximize, 1)]
+    [InlineData(WindowOp.Restore, 2)]
+    [InlineData(WindowOp.Close, 3)]
+    [InlineData(WindowOp.ToggleAlwaysOnTop, 4)]
+    [InlineData(WindowOp.SnapLeft, 5)]
+    [InlineData(WindowOp.SnapRight, 6)]
+    public void OrdinalValue_MatchesUiMirror(WindowOp op, int expected)
+    {
+        // WindowOp is persisted as an int and hand-mirrored in
+        // AHKFlowApp.UI.Blazor.DTOs.WindowOp — these ordinals must stay in lockstep with
+        // that file's WindowOpTests. Renumbering here silently rewrites stored rows.
+        ((int)op).Should().Be(expected);
+    }
+}
+```
+
+- [ ] **Step 9: Run the ordinal test**
+
+Run: `dotnet test tests/AHKFlowApp.Domain.Tests --filter "FullyQualifiedName~WindowOpTests"`
+
+Expected: PASS, 7 cases.
+
+- [ ] **Step 10: Commit**
 
 ```bash
-git add src/Backend/AHKFlowApp.Domain/Enums/WindowOp.cs src/Backend/AHKFlowApp.Application/Services/HotkeyEmitter.cs tests/AHKFlowApp.Application.Tests/Services/HotkeyEmitterTests.cs tests/AHKFlowApp.Application.Tests/Validation/HotkeyKindConditionalRulesTests.cs
+git add src/Backend/AHKFlowApp.Domain/Enums/WindowOp.cs src/Backend/AHKFlowApp.Application/Services/HotkeyEmitter.cs tests/AHKFlowApp.Domain.Tests/Enums/WindowOpTests.cs tests/AHKFlowApp.Application.Tests/Services/HotkeyEmitterTests.cs tests/AHKFlowApp.Application.Tests/Validation/HotkeyKindConditionalRulesTests.cs
 git commit -m "feat: emit SnapLeft/SnapRight WindowOp block bodies"
 ```
 
@@ -152,9 +191,11 @@ git commit -m "feat: emit SnapLeft/SnapRight WindowOp block bodies"
 - Consumes: `WindowOp.SnapLeft` / `WindowOp.SnapRight` and the emitter block bodies from Task 1.
 - Produces: no new API. `DefaultHotkeyCatalog.All` keeps 19 rows; the two snap rows now report `HotkeyActionKind.Window` instead of `Raw`.
 
-- [ ] **Step 1: Update the integration-test assertion to the new SnapRight width**
+- [ ] **Step 1: Update the SnapRight width assertion and assert the rows' kind**
 
-This is the one place the emitted text changes (see the Global Constraints deviation note). In `tests/AHKFlowApp.Application.Tests/Services/AhkScriptGeneratorIntegrationTests.cs`, replace line 140:
+Two edits in `tests/AHKFlowApp.Application.Tests/Services/AhkScriptGeneratorIntegrationTests.cs`.
+
+First, replace line 140 (the one place the emitted text changes — see Global Constraints):
 
 ```csharp
         output.Should().Contain("    WinMove(l + (r - l) // 2, t, (r - l) // 2, b - t, \"A\")");
@@ -168,11 +209,27 @@ with:
 
 Leave lines 137-139 exactly as they are — SnapLeft's emit and both `::{\n    WinRestore("A")` prefixes are unchanged.
 
+Second, output assertions alone would still pass if the rows stayed `Raw` bodies emitting the same text, so pin the kind too. Add after the last SendKeys assertion (line 152), using the `forProfile` list already materialized at line 127:
+
+```csharp
+        // The snap rows are Window-kind samples now, not Raw bodies that merely emit the same
+        // text — assert the stored kind, or a regression to Raw would pass on output alone.
+        Hotkey snapLeft = forProfile.Single(h => h.Description == "Snap window left");
+        snapLeft.ActionKind.Should().Be(HotkeyActionKind.Window);
+        snapLeft.WindowOp.Should().Be(WindowOp.SnapLeft);
+
+        Hotkey snapRight = forProfile.Single(h => h.Description == "Snap window right");
+        snapRight.ActionKind.Should().Be(HotkeyActionKind.Window);
+        snapRight.WindowOp.Should().Be(WindowOp.SnapRight);
+```
+
+`AHKFlowApp.Domain.Enums` and `AHKFlowApp.Domain.Entities` are already imported at lines 4-5.
+
 - [ ] **Step 2: Run the integration test to verify it fails**
 
 Run: `dotnet test tests/AHKFlowApp.Application.Tests --filter "FullyQualifiedName~AhkScriptGeneratorIntegrationTests.Generate_FromSeededCatalog_EmitsCorrectedAndNewLines"`
 
-Expected: FAIL — the catalog still seeds the old Raw constant, so the output contains the old width string, not the new one. (Requires Docker: this test uses the SQL Server Testcontainer fixture.)
+Expected: FAIL on the width assertion — the catalog still seeds the old Raw constant, so the output contains the old width string. The kind assertions would fail too (`ActionKind` is still `Raw`). (Requires Docker: this test uses the SQL Server Testcontainer fixture.)
 
 - [ ] **Step 3: Convert the two catalog rows**
 
@@ -319,25 +376,26 @@ Expected: PASS.
 
 - [ ] **Step 7: Add the dialog dropdown test**
 
-The op `MudSelect` lives in a popover, so asserting on rendered `MudSelectItem`s is brittle in bUnit. Instead drive the select's `ValueChanged` with a snap value — the same technique `CorrectingWindowOp_ClearsItsStaleSaveError` uses at line 422 — which proves the dropdown is typed to carry it and the dialog stores it. Add to `tests/AHKFlowApp.UI.Blazor.Tests/Components/Hotkeys/HotkeyEditDialogTests.cs`, after `CorrectingWindowOp_ClearsItsStaleSaveError` (currently ends at line 427):
+Assert on the rendered items, not on `ValueChanged`: driving `ValueChanged` with an enum value passes even when no item for it was ever rendered, so it would not catch a missing dropdown entry. `MudSelectItem`s render without opening the popover — `HotstringsPageTests.Page_KindFilter_ListsAllFourKinds` (line 962) already does exactly this. Add to `tests/AHKFlowApp.UI.Blazor.Tests/Components/Hotkeys/HotkeyEditDialogTests.cs`, after `CorrectingWindowOp_ClearsItsStaleSaveError` (currently ends at line 427):
 
 ```csharp
-    // The op dropdown enumerates the frontend WindowOp, so a value missing there is a value the
-    // user cannot pick. Driving ValueChanged is what selecting the item does, minus the popover.
-    [Theory]
-    [InlineData(WindowOp.SnapLeft)]
-    [InlineData(WindowOp.SnapRight)]
-    public async Task WindowPanel_AcceptsSnapOps(WindowOp op)
+    // The op dropdown enumerates Enum.GetValues<WindowOp>(), so an op absent from the frontend
+    // mirror is an op the user cannot pick. Asserting the rendered items — rather than driving
+    // ValueChanged, which passes whether or not the item exists — is what catches that.
+    [Fact]
+    public async Task WindowPanel_OpDropdown_ListsEveryWindowOp()
     {
-        HotkeyEditModel item = new() { Description = "d", Key = "n", ActionKind = HotkeyActionKind.Window };
-        IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(item);
+        IRenderedComponent<MudDialogProvider> provider =
+            await ShowDialogAsync(new HotkeyEditModel { ActionKind = HotkeyActionKind.Window });
 
-        await provider.InvokeAsync(() => provider.FindComponent<MudSelect<WindowOp?>>()
-            .Instance.ValueChanged.InvokeAsync(op));
+        IReadOnlyList<WindowOp?> items = [.. provider.FindComponents<MudSelectItem<WindowOp?>>()
+            .Select(c => c.Instance.Value)];
 
-        item.WindowOp.Should().Be(op);
+        items.Should().BeEquivalentTo(Enum.GetValues<WindowOp>().Cast<WindowOp?>());
     }
 ```
+
+If `FindComponents<MudSelectItem<WindowOp?>>()` comes back empty, the dialog's select renders its items lazily — in that case assert `provider.Markup` contains `Snap left` and `Snap right` instead, and say so in the step's notes. Do **not** fall back to the `ValueChanged` form.
 
 - [ ] **Step 8: Run the dialog test suite**
 
@@ -362,10 +420,10 @@ git commit -m "feat: snap ops in frontend WindowOp mirror and labels"
 - Test: `tests/AHKFlowApp.UI.Blazor.Tests/Components/Hotkeys/HotkeyEditDialogTests.cs`
 
 **Interfaces:**
-- Consumes: `HotkeyActionDisplay.WindowOpLabel` wording from Task 3 (the warning text names "Snap left / Snap right").
-- Produces: `HotkeyActionDisplay.SendWinArrowWarningText` (const string) and a `data-test="send-win-arrow-warning"` element in the SendKeys panel.
+- Consumes: `HotkeyActionDisplay.WindowOpLabel` wording from Task 3 (the warning text names the four Window ops by their labels).
+- Produces: `HotkeyActionDisplay.SendWinArrowWarningText` (const string) and a `data-test="send-win-arrow-warning"` element in the SendKeys panel. The `data-test` id stays a string literal in markup and tests, matching every other `data-test` in the codebase including the Raw warning — the spec's §4 bullet was amended to say so.
 
-- [ ] **Step 1: Add an arrow key to the test catalog**
+- [ ] **Step 1: Add the four arrow keys to the test catalog**
 
 The dialog's test double (`CatalogKeys`, line 20-25) has no arrow key, so no test can select one. Replace the array with:
 
@@ -375,11 +433,14 @@ The dialog's test double (`CatalogKeys`, line 20-25) has no arrow key, so no tes
         new("F1", "Function keys", ["HotkeyKey", "RemapDest", "SendToken"], true),
         new("c", "Letters & digits", ["HotkeyKey", "RemapDest", "SendToken"], false),
         new("Volume_Up", "Media & browser", ["SendToken"], true),
+        new("Up", "Navigation & editing", ["HotkeyKey", "RemapDest", "SendToken"], true),
+        new("Down", "Navigation & editing", ["HotkeyKey", "RemapDest", "SendToken"], true),
         new("Left", "Navigation & editing", ["HotkeyKey", "RemapDest", "SendToken"], true),
+        new("Right", "Navigation & editing", ["HotkeyKey", "RemapDest", "SendToken"], true),
     ];
 ```
 
-`Left` is a named key in the real registry (`HotkeyKeys.s_namedKeys`), carries all roles, and has `RequiresBracesInSend: true` — this mirrors it.
+All four are named keys in the real registry (`HotkeyKeys.s_namedKeys`), carry every role, and have `RequiresBracesInSend: true` — this mirrors them.
 
 - [ ] **Step 2: Write the three failing warning tests**
 
@@ -387,18 +448,23 @@ Add to `tests/AHKFlowApp.UI.Blazor.Tests/Components/Hotkeys/HotkeyEditDialogTest
 
 ```csharp
     // Injected Win is not honoured by the shell's Aero-Snap handler, so Send("#{Left}") silently
-    // does nothing. The warning is advisory only — see SendKeysPanel_WinArrowWarning_DoesNotBlockSave.
-    [Fact]
-    public async Task SendKeysPanel_WinPlusArrow_ShowsTheSnapWarning()
+    // does nothing. All four arrows are the same gesture — Win+Up/Down maximize and minimize, and
+    // fail the same way. Advisory only — see SendKeysPanel_WinArrowWarning_DoesNotBlockSave.
+    [Theory]
+    [InlineData("Up")]
+    [InlineData("Down")]
+    [InlineData("Left")]
+    [InlineData("Right")]
+    public async Task SendKeysPanel_WinPlusArrow_ShowsTheSnapWarning(string arrow)
     {
         HotkeyEditModel item = new() { ActionKind = HotkeyActionKind.SendKeys };
         IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(item);
 
         provider.Find("input[data-test=\"send-win-checkbox\"]").Change(true);
-        await SetKeyAsync(provider, "send-key-picker", "Left");
+        await SetKeyAsync(provider, "send-key-picker", arrow);
 
         provider.WaitForAssertion(() => provider.Find("[data-test=\"send-win-arrow-warning\"]")
-            .TextContent.Should().Contain("won't snap the window"));
+            .TextContent.Should().Contain("won't snap or resize the window"));
     }
 
     // Send "#e" really does open Explorer, so a blanket all-Win warning would be wrong: only the
@@ -467,12 +533,14 @@ In `src/Frontend/AHKFlowApp.UI.Blazor/Helpers/HotkeyActionDisplay.cs`, directly 
     /// Advisory shown when a SendKeys row sends Win + an arrow. Injected LWin (SendInput's atomic
     /// batch, flagged LLKHF_INJECTED) is not honoured by the shell's Aero-Snap handler, so the send
     /// silently does nothing. Non-blocking: the token is valid AHK and Save is unaffected. Scoped to
-    /// arrows only — injected Win *does* fire some shortcuts (Send "#e" opens Explorer).
+    /// arrows only — injected Win *does* fire some shortcuts (Send "#e" opens Explorer). Names all
+    /// four Window ops because the warning covers all four arrows: Win+Up/Down are maximize and
+    /// minimize. Plain text, no Markdown — MudAlert renders the constant verbatim.
     /// </summary>
     public const string SendWinArrowWarningText =
-        "Sending Win + Arrow won't snap the window — Windows ignores injected Win for Aero Snap. " +
-        "To snap the active window, use a Window action (Snap left / Snap right). " +
-        "For other Win shortcuts, use Raw.";
+        "Sending Win + Arrow won't snap or resize the window — Windows ignores injected Win for " +
+        "Aero Snap. Use the matching Window action instead (Minimize, Maximize, Snap left, or " +
+        "Snap right). For other Win shortcuts, use Raw.";
 ```
 
 - [ ] **Step 5: Add the arrow-detection helper to the dialog**
@@ -555,14 +623,15 @@ brace block that restores the window, reads the **primary** monitor's work area
 half. SnapRight's width is `r - (l + (r-l)//2)` so an odd work-area width still reaches `r`:
 
 ```ahk
-^!Left::
-{
+^!Left::{
     WinRestore("A")
     MonitorGetWorkArea(MonitorGetPrimary(), &l, &t, &r, &b)
     WinMove(l, t, (r - l) // 2, b - t, "A")
 }
 ```
 ````
+
+The `::{` on one line is not a style choice — the emitter concatenates the body straight after `::`, so that is the literal output, and it matches how this document already shows the `Raw` block example (`^+v::{`, line 363).
 
 - [ ] **Step 3: Verify the doc matches the emitter**
 
@@ -597,9 +666,9 @@ Expected: all green. Docker must be running — the Application and API integrat
 
 - [ ] **Step 3: Check formatting**
 
-Run: `dotnet format --verify-no-changes`
+Run: `dotnet format AHKFlowApp.slnx --verify-no-changes --no-restore`
 
-Expected: no diff. If it reports changes, run `dotnet format` and amend the owning commit.
+Expected: no diff. If it reports changes, run `dotnet format AHKFlowApp.slnx` and amend the owning commit. The workspace argument is required — the repo root holds both `AHKFlowApp.csproj` and `AHKFlowApp.slnx`, and bare `dotnet format` aborts with `Both a MSBuild project file and solution file found`.
 
 - [ ] **Step 4: Report**
 
@@ -607,7 +676,12 @@ State the actual `dotnet test` summary line (passed/failed/skipped counts). If a
 
 ---
 
+## Resolved decisions
+
+1. **SnapRight width** — approved. `r - (l + (r - l) // 2)` replaces `(r - l) // 2`; on an odd work-area width the old formula left an uncovered column at the far-right edge. Spec §2 and the golden assertion updated to match.
+2. **Warning copy** — plain text, no Markdown bold. `MudAlert`'s warning styling supplies the emphasis, and a literal constant stays single-sourced and easy to assert. Spec §4 updated.
+3. **Execution mode** — inline (`superpowers:executing-plans`), not a subagent per task: the tasks are small, sequential, and repeatedly touch the same files.
+
 ## Unresolved questions
 
-1. SnapRight width changes from `(r-l)//2` to `r-(l+(r-l)//2)` — spec's formula, breaks §2's "byte-identical" claim. Confirm OK?
-2. Warning copy: spec has bold markdown (`**Window**`, `**Raw**`); `MudAlert` renders plain text. Plan drops the asterisks. Want bold via markup instead?
+None.
