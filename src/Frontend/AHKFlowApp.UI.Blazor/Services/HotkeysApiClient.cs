@@ -20,19 +20,8 @@ public sealed class HotkeysApiClient(HttpClient httpClient) : ApiClientBase(http
         Add(parts, "sortField", request.SortField);
         Add(parts, "descriptionFilter", request.DescriptionFilter);
         Add(parts, "keyFilter", request.KeyFilter);
-        Add(parts, "parametersFilter", request.ParametersFilter);
-        if (request.Action.HasValue)
-            parts.Add($"action={Uri.EscapeDataString(request.Action.Value.ToString())}");
-        if (request.AppliesToAllProfiles.HasValue)
-            parts.Add($"appliesToAllProfiles={request.AppliesToAllProfiles.Value.ToString().ToLowerInvariant()}");
-        if (request.Ctrl.HasValue)
-            parts.Add($"ctrl={request.Ctrl.Value.ToString().ToLowerInvariant()}");
-        if (request.Alt.HasValue)
-            parts.Add($"alt={request.Alt.Value.ToString().ToLowerInvariant()}");
-        if (request.Shift.HasValue)
-            parts.Add($"shift={request.Shift.Value.ToString().ToLowerInvariant()}");
-        if (request.Win.HasValue)
-            parts.Add($"win={request.Win.Value.ToString().ToLowerInvariant()}");
+        if (request.ActionKind.HasValue)
+            parts.Add($"actionKind={Uri.EscapeDataString(request.ActionKind.Value.ToString())}");
         if (request.CategoryIds is { Count: > 0 })
         {
             foreach (Guid id in request.CategoryIds)
@@ -87,4 +76,10 @@ public sealed class HotkeysApiClient(HttpClient httpClient) : ApiClientBase(http
     {
         if (!string.IsNullOrWhiteSpace(value)) parts.Add($"{key}={Uri.EscapeDataString(value)}");
     }
+
+    public Task<ApiResult<HotkeyKeyCatalogDto>> GetKeysAsync(CancellationToken ct = default) =>
+        SendAsync<HotkeyKeyCatalogDto>(HttpMethod.Get, $"{BasePath}/keys", null, ct);
+
+    public Task<ApiResult<HotkeyPreviewDto>> PreviewAsync(HotkeyPreviewRequestDto request, CancellationToken ct = default) =>
+        SendAsync<HotkeyPreviewDto>(HttpMethod.Post, $"{BasePath}/preview", JsonContent.Create(request), ct);
 }

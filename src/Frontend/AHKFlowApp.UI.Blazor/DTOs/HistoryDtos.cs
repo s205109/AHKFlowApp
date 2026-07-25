@@ -35,13 +35,24 @@ public sealed record HotkeySnapshot(
     bool Alt,
     bool Shift,
     bool Win,
-    HotkeyAction Action,
-    string Parameters,
+    HotkeyActionKind ActionKind,
+    string? Text,
+    string? SendKeysContent,
+    string? RunTarget,
+    RunTargetKind? RunTargetKind,
+    WindowOp? WindowOp,
+    string? RemapDest,
+    string? Body,
     bool AppliesToAllProfiles,
     Guid[] ProfileIds,
     Guid[] CategoryIds,
     DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt);
+    DateTimeOffset UpdatedAt,
+    // Optional legacy members, permanently. Old history JSON still carries them, and the
+    // backend keeps them on its own HotkeySnapshot for exactly that reason (backend Task 8).
+    // Unlike the DTO pair above, these do NOT retire in Task 10.
+    HotkeyAction? Action = null,
+    string? Parameters = null);
 
 public sealed record HotstringHistoryVersionDto(
     int Version,

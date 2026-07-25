@@ -160,4 +160,6 @@ else
         baseAddress, TimeSpan.FromSeconds(30), useAuth: true);
 }
 
+builder.Services.AddScoped<IHotkeyKeyCatalog, HotkeyKeyCatalog>();
+
 await builder.Build().RunAsync();

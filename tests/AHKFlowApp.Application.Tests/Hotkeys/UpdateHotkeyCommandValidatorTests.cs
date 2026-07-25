@@ -18,11 +18,15 @@ public sealed class UpdateHotkeyCommandValidatorTests
         bool alt = false,
         bool shift = false,
         bool win = false,
-        HotkeyAction action = HotkeyAction.Run,
-        string parameters = "notepad.exe",
         Guid[]? profileIds = null,
         bool appliesToAllProfiles = true)
-        => new(Guid.NewGuid(), new UpdateHotkeyDto(description, key, ctrl, alt, shift, win, action, parameters, profileIds, appliesToAllProfiles));
+        => new(Guid.NewGuid(), new UpdateHotkeyDto(
+            description, key, HotkeyActionKind.Run,
+            Ctrl: ctrl, Alt: alt, Shift: shift, Win: win,
+            Text: null, SendKeysContent: null,
+            RunTarget: "notepad.exe", RunTargetKind: RunTargetKind.Application,
+            WindowOp: null, RemapDest: null, Body: null,
+            ProfileIds: profileIds, AppliesToAllProfiles: appliesToAllProfiles));
 
     [Fact]
     public void Validate_WithValidInput_Succeeds()
@@ -65,16 +69,8 @@ public sealed class UpdateHotkeyCommandValidatorTests
             e.ErrorMessage == "Key is required.");
     }
 
-    [Fact]
-    public void Validate_WithInvalidAction_Fails()
-    {
-        ValidationResult result = _sut.Validate(Cmd(action: (HotkeyAction)999));
-
-        result.IsValid.Should().BeFalse();
-        result.Errors.Should().Contain(e =>
-            e.PropertyName == "Input.Action" &&
-            e.ErrorMessage == "Action must be a valid HotkeyAction value.");
-    }
+    // Payload rules (per-kind field requirements, token grammars, length and control-character
+    // limits) move onto the typed columns in HotkeyKindConditionalRulesTests.
 
     [Fact]
     public void Validate_AppliesToAllProfiles_WithProfileIds_Fails()

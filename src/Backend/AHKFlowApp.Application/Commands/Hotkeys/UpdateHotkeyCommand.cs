@@ -1,8 +1,8 @@
 using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.Common;
-using AHKFlowApp.Application.Constants;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Mapping;
+using AHKFlowApp.Application.Services;
 using AHKFlowApp.Application.Validation;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Domain.Enums;
@@ -20,8 +20,7 @@ public sealed class UpdateHotkeyCommandValidator : AbstractValidator<UpdateHotke
     {
         RuleFor(x => x.Input.Description).ValidDescription();
         RuleFor(x => x.Input.Key).ValidKey();
-        RuleFor(x => x.Input.Parameters).ValidParameters();
-        RuleFor(x => x.Input.Action).ValidAction();
+        this.AddHotkeyActionRules(x => x.Input);
         this.AddProfileAssociationRules(
             x => x.Input.AppliesToAllProfiles,
             x => x.Input.ProfileIds);
@@ -50,10 +49,6 @@ internal sealed class UpdateHotkeyCommandHandler(
 
         UpdateHotkeyDto input = request.Input;
 
-        // Return value ignored: the validator rejects unknown keys before the handler runs,
-        // so this always succeeds here.
-        HotkeyKeys.TryCanonicalize(input.Key, out string canonicalKey);
-
         Guid[] distinctProfileIds = input.ProfileIds?.Distinct().ToArray() ?? [];
         if (!input.AppliesToAllProfiles)
         {
@@ -73,18 +68,7 @@ internal sealed class UpdateHotkeyCommandHandler(
 
         EntityHistory historyEntry = await recorder.RecordHotkeyAsync(entity, HistoryChangeType.Edit, ct);
 
-        entity.Update(
-            new HotkeyDefinition(
-                Description: input.Description,
-                Key: canonicalKey,
-                Ctrl: input.Ctrl,
-                Alt: input.Alt,
-                Shift: input.Shift,
-                Win: input.Win,
-                Action: input.Action,
-                Parameters: input.Parameters,
-                AppliesToAllProfiles: input.AppliesToAllProfiles),
-            clock);
+        entity.Update(input.ToDefinition(input.AppliesToAllProfiles), clock);
 
         // Replace junction rows via the navigation collections only; adding to the
         // DbSet as well would double-add through EF navigation fixup

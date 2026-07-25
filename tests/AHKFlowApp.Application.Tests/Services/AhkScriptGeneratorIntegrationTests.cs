@@ -1,4 +1,5 @@
 using AHKFlowApp.Application.Abstractions;
+using AHKFlowApp.Application.Constants;
 using AHKFlowApp.Application.Services;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Domain.Enums;
@@ -8,6 +9,7 @@ using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using NSubstitute;
 using Xunit;
+using HotkeyAction = AHKFlowApp.Application.Services.LegacyHotkeyDefinitionConverter.HotkeyAction;
 
 namespace AHKFlowApp.Application.Tests.Services;
 
@@ -97,7 +99,56 @@ public sealed class AhkScriptGeneratorIntegrationTests(ScriptGeneratorDbFixture 
             "; Open Notepad\n" +             // Description emitted as a comment above the hotkey
             "^!n::Run(\"notepad.exe\")\n" +  // 'O' < 'R' so Open Notepad before Reload
             "; Reload\n" +
-            "^F5::Send(\"{F5}\")\n" +
+            // The legacy Send "{F5}" converts to ActionKind.SendKeys, which auto-emits the
+            // leading $ so the binding's own Send cannot retrigger it (spec §5).
+            "$^F5::Send(\"{F5}\")\n" +
             "; end");
+    }
+
+    [Fact]
+    public async Task Generate_FromSeededCatalog_EmitsCorrectedAndNewLines()
+    {
+        await using AppDbContext ctx = fx.CreateContext();
+
+        Profile profile = new ProfileBuilder()
+            .WithOwner(_ownerOid).WithName("Work").AsDefault()
+            .WithHeader("#Requires AutoHotkey v2.0").WithFooter("")
+            .Build();
+
+        // Seed the catalog directly (every sample is AppliesToAllProfiles) and emit against it.
+        var hotkeys = DefaultHotkeyCatalog.All
+            .Select(s => Hotkey.Create(_ownerOid, s.Definition, TimeProvider.System))
+            .ToList();
+        ctx.Profiles.Add(profile);
+        ctx.Hotkeys.AddRange(hotkeys);
+        await ctx.SaveChangesAsync();
+
+        Profile reloaded = await ctx.Profiles.AsNoTracking().FirstAsync(p => p.Id == profile.Id);
+        List<Hotkey> forProfile = await ctx.Hotkeys.AsNoTracking()
+            .Where(h => h.OwnerOid == _ownerOid).ToListAsync();
+
+        string output = _sut.Generate(reloaded, [], forProfile);
+
+        // Corrected samples.
+        output.Should().Contain("^!r::Reload()");
+        output.Should().Contain("^!d::SendText(FormatTime(A_Now, \"yyyy-MM-dd\"))");
+        output.Should().Contain("^!Up::WinMaximize(\"A\")");
+        output.Should().Contain("^!Down::WinMinimize(\"A\")");
+        output.Should().Contain("^!Left::{\n    WinRestore(\"A\")");
+        output.Should().Contain("    WinMove(l, t, (r - l) // 2, b - t, \"A\")");
+        output.Should().Contain("^!Right::{\n    WinRestore(\"A\")");
+        output.Should().Contain("    WinMove(l + (r - l) // 2, t, (r - l) // 2, b - t, \"A\")");
+        // Paste-as-plain-text Raw block: keeps its own braces, save/strip/paste/restore.
+        output.Should().Contain("^+v::{\n    saved := ClipboardAll()");
+        output.Should().Contain("    A_Clipboard := saved         ; restore the original formatting");
+        // New typed kinds.
+        output.Should().Contain("F1::return");
+        output.Should().Contain("F10::Volume_Mute");
+        output.Should().Contain("F9::Volume_Up");
+        output.Should().Contain("^!a::WinSetAlwaysOnTop(-1, \"A\")");
+        output.Should().Contain("^!m::WinRestore(\"A\")");
+        // SendKeys samples ($ prefix per emitter).
+        output.Should().Contain("$^!p::Send(\"{Media_Play_Pause}\")");
+        output.Should().Contain("$^!k::Send(\"+{End}\")");
     }
 }

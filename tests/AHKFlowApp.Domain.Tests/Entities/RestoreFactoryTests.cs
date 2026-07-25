@@ -53,8 +53,9 @@ public sealed class RestoreFactoryTests
             new HotkeyDefinition(
                 Description: "Open terminal", Key: "T",
                 Ctrl: true, Alt: false, Shift: true, Win: false,
-                Action: HotkeyAction.Run, Parameters: "wt.exe",
-                AppliesToAllProfiles: true),
+                ActionKind: HotkeyActionKind.Run,
+                AppliesToAllProfiles: true,
+                RunTarget: "wt.exe", RunTargetKind: RunTargetKind.Application),
             createdAt, new FixedClock(now));
 
         entity.Id.Should().Be(id);
@@ -63,8 +64,8 @@ public sealed class RestoreFactoryTests
         entity.Key.Should().Be("T");
         entity.Ctrl.Should().BeTrue();
         entity.Shift.Should().BeTrue();
-        entity.Action.Should().Be(HotkeyAction.Run);
-        entity.Parameters.Should().Be("wt.exe");
+        entity.ActionKind.Should().Be(HotkeyActionKind.Run);
+        entity.RunTarget.Should().Be("wt.exe");
         entity.AppliesToAllProfiles.Should().BeTrue();
         entity.CreatedAt.Should().Be(createdAt);
         entity.UpdatedAt.Should().Be(now);

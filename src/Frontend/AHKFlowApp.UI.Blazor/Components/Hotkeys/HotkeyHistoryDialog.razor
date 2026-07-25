@@ -1,4 +1,5 @@
 @using AHKFlowApp.UI.Blazor.DTOs
+@using AHKFlowApp.UI.Blazor.Helpers
 @using AHKFlowApp.UI.Blazor.Services
 @using MudBlazor
 @implements IDisposable
@@ -6,7 +7,8 @@
 <MudDialog Class="hotkey-history-dialog">
     <TitleContent>
         <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="flex-grow-1">
-            <MudIconButton Class="close-history" Icon="@Icons.Material.Filled.ArrowBack" OnClick="Close" />
+            <MudIconButton Class="close-history" Icon="@Icons.Material.Filled.ArrowBack" OnClick="Close"
+                           UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = "Close history" })" />
             <MudText Typo="Typo.h6">History</MudText>
             <MudSpacer />
         </MudStack>
@@ -43,14 +45,12 @@
                         <MudText Typo="Typo.subtitle2">Description</MudText>
                         <MudText Class="mb-2">@_preview.Snapshot.Description</MudText>
                         <MudText Typo="Typo.subtitle2">Key</MudText>
-                        <MudText Class="mb-2">@FormatCombo(_preview.Snapshot)</MudText>
+                        <MudText Class="mb-2">@HotkeyActionDisplay.ComboLabel(_preview.Snapshot)</MudText>
                         <MudText Typo="Typo.subtitle2">Action</MudText>
-                        <MudText Class="mb-2">@_preview.Snapshot.Action</MudText>
-                        @if (_preview.Snapshot.Parameters is { Length: > 0 } parameters)
-                        {
-                            <MudText Typo="Typo.subtitle2">Parameters</MudText>
-                            <MudText Class="mb-2">@parameters</MudText>
-                        }
+                        <MudText Class="mb-2">
+                            @HotkeyActionDisplay.LabelOf(_preview.Snapshot)
+                            — @HotkeyActionDisplay.SummaryOf(_preview.Snapshot)
+                        </MudText>
                         <MudText Typo="Typo.caption">
                             @ProfileText(_preview.Snapshot) · @_preview.Snapshot.CategoryIds.Length category(s)
                         </MudText>
@@ -124,18 +124,6 @@
         {
             _busy = false;
         }
-    }
-
-    private static string FormatCombo(HotkeySnapshot snapshot)
-    {
-        List<string> parts = [];
-        if (snapshot.Ctrl) parts.Add("Ctrl");
-        if (snapshot.Alt) parts.Add("Alt");
-        if (snapshot.Shift) parts.Add("Shift");
-        if (snapshot.Win) parts.Add("Win");
-        parts.Add(snapshot.Key);
-
-        return string.Join("+", parts);
     }
 
     private static string ProfileText(HotkeySnapshot snapshot) =>
