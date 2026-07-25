@@ -426,6 +426,21 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
             dialog.SaveFieldErrors.Should().NotContainKey(nameof(HotkeyEditModel.WindowOp)));
     }
 
+    // The op dropdown enumerates Enum.GetValues<WindowOp>(), so an op absent from the frontend
+    // mirror is an op the user cannot pick. Asserting the rendered items — rather than driving
+    // ValueChanged, which passes whether or not the item exists — is what catches that.
+    [Fact]
+    public async Task WindowPanel_OpDropdown_ListsEveryWindowOp()
+    {
+        IRenderedComponent<MudDialogProvider> provider =
+            await ShowDialogAsync(new HotkeyEditModel { ActionKind = HotkeyActionKind.Window });
+
+        IReadOnlyList<WindowOp?> items = [.. provider.FindComponents<MudSelectItem<WindowOp?>>()
+            .Select(c => c.Instance.Value)];
+
+        items.Should().BeEquivalentTo(Enum.GetValues<WindowOp>().Cast<WindowOp?>());
+    }
+
     [Fact]
     public async Task EmptyKey_BlocksSubmitClientSide()
     {

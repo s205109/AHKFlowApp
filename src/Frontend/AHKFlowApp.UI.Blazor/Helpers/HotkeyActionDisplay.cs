@@ -64,6 +64,8 @@ internal static class HotkeyActionDisplay
         DTOs.WindowOp.Restore => "Restore",
         DTOs.WindowOp.Close => "Close",
         DTOs.WindowOp.ToggleAlwaysOnTop => "Toggle always on top",
+        DTOs.WindowOp.SnapLeft => "Snap left",
+        DTOs.WindowOp.SnapRight => "Snap right",
         _ => op.ToString(),
     };
 

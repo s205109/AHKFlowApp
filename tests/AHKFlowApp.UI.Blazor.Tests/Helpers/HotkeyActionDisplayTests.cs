@@ -80,6 +80,12 @@ public sealed class HotkeyActionDisplayTests
         HotkeyActionDisplay.Summary(model).Should().Be("Toggle always on top");
     }
 
+    [Theory]
+    [InlineData(WindowOp.SnapLeft, "Snap left")]
+    [InlineData(WindowOp.SnapRight, "Snap right")]
+    public void WindowOpLabel_Snap_IsHumanReadable(WindowOp op, string expected) =>
+        HotkeyActionDisplay.WindowOpLabel(op).Should().Be(expected);
+
     [Fact]
     public void Summary_Remap_ShowsDestination()
     {
