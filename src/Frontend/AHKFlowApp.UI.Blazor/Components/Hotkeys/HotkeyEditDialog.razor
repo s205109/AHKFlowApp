@@ -91,6 +91,13 @@
                             <MudCheckBox T="bool" Value="_sendWin" ValueChanged="@((bool v) => { _sendWin = v; ComposeSendKeys(); })" Label="Win"
                                          UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "send-win-checkbox" })" />
                         </MudStack>
+                        @if (ShowSendWinArrowWarning)
+                        {
+                            <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-2"
+                                      UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "send-win-arrow-warning" })">
+                                @HotkeyActionDisplay.SendWinArrowWarningText
+                            </MudAlert>
+                        }
                         <KeyPicker Role="SendToken" Label="Key to press"
                                    Value="@_sendKey" ValueChanged="OnSendKeyChanged"
                                    Error="@(FieldError(nameof(HotkeyEditModel.SendKeysContent)) is not null)"
@@ -305,6 +312,13 @@
     // canonical token the server validates.
     private bool _sendCtrl, _sendAlt, _sendShift, _sendWin;
     private string? _sendKey;
+
+    // The four arrow canonicals from the key registry. Compared case-insensitively because a stored
+    // token is decomposed back into _sendKey verbatim, and AHK itself is case-insensitive on key names.
+    private static readonly string[] s_arrowKeys = ["Up", "Down", "Left", "Right"];
+
+    private bool ShowSendWinArrowWarning =>
+        _sendWin && _sendKey is not null && s_arrowKeys.Contains(_sendKey, StringComparer.OrdinalIgnoreCase);
 
     private bool _previewExpanded;
     private bool _previewPending;

@@ -18,6 +18,19 @@ internal static class HotkeyActionDisplay
     public const string RawWarningText =
         "Raw is unchecked AutoHotkey. A mistake here can stop the whole profile script from loading.";
 
+    /// <summary>
+    /// Advisory shown when a SendKeys row sends Win + an arrow. Injected LWin (SendInput's atomic
+    /// batch, flagged LLKHF_INJECTED) is not honoured by the shell's Aero-Snap handler, so the send
+    /// silently does nothing. Non-blocking: the token is valid AHK and Save is unaffected. Scoped to
+    /// arrows only — injected Win *does* fire some shortcuts (Send "#e" opens Explorer). Names all
+    /// four Window ops because the warning covers all four arrows: Win+Up/Down are maximize and
+    /// minimize. Plain text, no Markdown — MudAlert renders the constant verbatim.
+    /// </summary>
+    public const string SendWinArrowWarningText =
+        "Sending Win + Arrow won't snap or resize the window — Windows ignores injected Win for " +
+        "Aero Snap. Use the matching Window action instead (Minimize, Maximize, Snap left, or " +
+        "Snap right). For other Win shortcuts, use Raw.";
+
     /// <summary>Stands in for the kind of a pre-typed-action history snapshot, which has none.</summary>
     public const string LegacyLabel = "Legacy";
 
