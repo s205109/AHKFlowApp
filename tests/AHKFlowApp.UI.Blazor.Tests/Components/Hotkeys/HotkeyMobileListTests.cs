@@ -158,4 +158,50 @@ public sealed class HotkeyMobileListTests : BunitContext, IAsyncLifetime
 
         deletedIds.Should().BeEquivalentTo(new[] { a.Id!.Value, b.Id!.Value });
     }
+
+    [Fact]
+    public void EmptyState_WithActiveFilters_OffersClearFilters()
+    {
+        IRenderedComponent<HotkeyMobileList> cut = Render<HotkeyMobileList>(p => p
+            .Add(c => c.Items, [])
+            .Add(c => c.HasActiveFilters, true)
+            .Add(c => c.Profiles, (IReadOnlyList<ProfileDto>)[])
+            .Add(c => c.Categories, (IReadOnlyList<CategoryDto>)[]));
+
+        cut.Markup.Should().Contain("No hotkeys match these filters.");
+        cut.Markup.Should().NotContain("No hotkeys yet.");
+        cut.FindAll("button.clear-filters").Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task EmptyState_ClearFiltersButton_RaisesCallback()
+    {
+        bool cleared = false;
+
+        IRenderedComponent<HotkeyMobileList> cut = Render<HotkeyMobileList>(p => p
+            .Add(c => c.Items, [])
+            .Add(c => c.HasActiveFilters, true)
+            .Add(c => c.Profiles, (IReadOnlyList<ProfileDto>)[])
+            .Add(c => c.Categories, (IReadOnlyList<CategoryDto>)[])
+            .Add(c => c.OnClearFilters, EventCallback.Factory.Create(this, () => cleared = true)));
+
+        await cut.InvokeAsync(() => cut.Find("button.clear-filters").Click());
+
+        cleared.Should().BeTrue();
+    }
+
+    [Fact]
+    public void EmptyState_WhileLoading_ShowsNoEmptyMessage()
+    {
+        // An empty list mid-load is not yet known to be empty - "No hotkeys yet." rendered during
+        // a fetch reads as a result the user does not actually have.
+        IRenderedComponent<HotkeyMobileList> cut = Render<HotkeyMobileList>(p => p
+            .Add(c => c.Items, [])
+            .Add(c => c.Loading, true)
+            .Add(c => c.Profiles, (IReadOnlyList<ProfileDto>)[])
+            .Add(c => c.Categories, (IReadOnlyList<CategoryDto>)[]));
+
+        cut.Markup.Should().NotContain("No hotkeys yet.");
+        cut.Markup.Should().NotContain("No hotkeys match these filters.");
+    }
 }
