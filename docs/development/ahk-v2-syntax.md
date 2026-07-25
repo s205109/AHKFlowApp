@@ -336,13 +336,21 @@ F1::return
 `Window`'s two snap ops (`SnapLeft`, `SnapRight`) are the only non-one-line emit: each is a
 brace block that restores the window, reads the **primary** monitor's work area
 (`MonitorGetWorkArea(MonitorGetPrimary(), &l, &t, &r, &b)`), then `WinMove`s to the left or right
-half. SnapRight's width is `r - (l + (r-l)//2)` so an odd work-area width still reaches `r`:
+half. SnapRight's width is measured back from `r` rather than repeating the left half's
+`(r - l) // 2`, so an odd work-area width still reaches `r` instead of leaving an uncovered column
+at the far-right edge. Both bodies in full — these are the emitted strings verbatim:
 
 ```ahk
 ^!Left::{
     WinRestore("A")
     MonitorGetWorkArea(MonitorGetPrimary(), &l, &t, &r, &b)
     WinMove(l, t, (r - l) // 2, b - t, "A")
+}
+
+^!Right::{
+    WinRestore("A")
+    MonitorGetWorkArea(MonitorGetPrimary(), &l, &t, &r, &b)
+    WinMove(l + (r - l) // 2, t, r - (l + (r - l) // 2), b - t, "A")
 }
 ```
 

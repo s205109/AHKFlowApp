@@ -86,6 +86,18 @@ public sealed class HotkeyActionDisplayTests
     public void WindowOpLabel_Snap_IsHumanReadable(WindowOp op, string expected) =>
         HotkeyActionDisplay.WindowOpLabel(op).Should().Be(expected);
 
+    // The advisory tells the user to reach for a specific dropdown entry, so it must name that entry
+    // as the dropdown labels it. Composed from WindowOpLabel for exactly this reason — pinned so a
+    // future edit cannot re-inline the wording and let the two drift apart.
+    [Theory]
+    [InlineData(WindowOp.Minimize)]
+    [InlineData(WindowOp.Maximize)]
+    [InlineData(WindowOp.SnapLeft)]
+    [InlineData(WindowOp.SnapRight)]
+    public void SendWinArrowWarningText_NamesTheWindowOpByItsDropdownLabel(WindowOp op) =>
+        HotkeyActionDisplay.SendWinArrowWarningText
+            .Should().Contain(HotkeyActionDisplay.WindowOpLabel(op));
+
     [Fact]
     public void Summary_Remap_ShowsDestination()
     {
