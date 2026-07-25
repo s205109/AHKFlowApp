@@ -308,7 +308,9 @@ Append to `HotkeysPageTests`:
         cut.WaitForAssertion(() =>
         {
             cut.Markup.Should().Contain("No hotkeys match these filters.");
-            cut.Markup.Should().NotContain("No hotkeys yet.");
+            // Scoped to the grid: the mobile branch renders its own true-empty text until Task 3,
+            // and this test is about the desktop empty state.
+            cut.Find(".hotkeys-grid").InnerHtml.Should().NotContain("No hotkeys yet.");
             cut.FindAll(".hotkeys-grid button.clear-filters").Should().ContainSingle();
         });
     }
@@ -337,12 +339,30 @@ Append to `HotkeysPageTests`:
         await cut.InvokeAsync(() => chips.Instance.SelectedIdsChanged.InvokeAsync([categoryId]));
 
         cut.WaitForAssertion(() => cut.Find(".hotkeys-grid button.clear-filters"));
+
+        // The page's own first load was already an all-null request, so without this the assertion
+        // below would pass even if Clear filters did nothing at all.
+        _api.ClearReceivedCalls();
+
         await cut.InvokeAsync(() => cut.Find(".hotkeys-grid button.clear-filters").Click());
 
-        cut.WaitForAssertion(() => _api.Received().ListAsync(
-            Arg.Is<HotkeyListRequest>(r =>
-                r.Search == null && r.ActionKind == null && r.CategoryIds == null),
-            Arg.Any<CancellationToken>()));
+        cut.WaitForAssertion(() =>
+        {
+            _api.Received().ListAsync(
+                Arg.Is<HotkeyListRequest>(r =>
+                    r.Search == null
+                    && r.ActionKind == null
+                    && r.CategoryIds == null
+                    && r.DescriptionFilter == null
+                    && r.KeyFilter == null),
+                Arg.Any<CancellationToken>());
+
+            // The controls must visibly reset too - a cleared request with a still-filled search
+            // box or dropdown is a half-done clear.
+            search.Instance.Value.Should().BeNullOrEmpty();
+            actionFilter.Instance.Value.Should().BeNull();
+            chips.Instance.SelectedIds.Should().BeEmpty();
+        });
     }
 ```
 
@@ -450,9 +470,7 @@ with:
 dotnet test tests/AHKFlowApp.UI.Blazor.Tests --filter "FullyQualifiedName~HotkeysPageTests"
 ```
 
-Expected: PASS, all `HotkeysPageTests`.
-
-If `Page_EmptyFilteredResults_ShowsClearFiltersButton` fails on the `NotContain("No hotkeys yet.")` assertion, the mobile branch is still rendering its own true-empty text — that is expected until Task 3 and means the assertion should be scoped: replace it with `cut.Find(".hotkeys-grid").InnerHtml.Should().NotContain("No hotkeys yet.")`. Do not weaken the positive assertions.
+Expected: PASS, all `HotkeysPageTests`. The negative assertion in `Page_EmptyFilteredResults_ShowsClearFiltersButton` is already scoped to `.hotkeys-grid` because the mobile branch keeps emitting its own `No hotkeys yet.` until Task 3. Do not widen it back to the whole page and do not weaken the positive assertions.
 
 - [ ] **Step 8: Commit**
 
@@ -618,11 +636,13 @@ Expected: PASS, no failures.
 - [ ] **Step 8: Format and build the solution**
 
 ```bash
-dotnet format --verify-no-changes
+dotnet format AHKFlowApp.slnx --verify-no-changes
 dotnet build --configuration Release
 ```
 
-Expected: format reports no changes needed; build succeeds with no new warnings. If `dotnet format --verify-no-changes` fails, run `dotnet format` and include the result in the commit.
+The solution file is required: the repo root holds both `AHKFlowApp.csproj` and `AHKFlowApp.slnx`, so a bare `dotnet format` cannot pick a target and fails.
+
+Expected: format reports no changes needed; build succeeds with no new warnings. If the verify run fails, run `dotnet format AHKFlowApp.slnx` and include the result in the commit.
 
 - [ ] **Step 9: Commit**
 
