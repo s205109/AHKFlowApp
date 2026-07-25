@@ -18,5 +18,8 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="AHKFlowApp.Application.Tests" />
+    <!-- LegacyHotkeyFixtures reads the internal HotkeyKeys registry to enumerate the whole
+         SendKeys grammar for the converter + migration parity tests. -->
+    <InternalsVisibleTo Include="AHKFlowApp.TestUtilities" />
   </ItemGroup>
 </Project>

@@ -46,6 +46,7 @@
     white-space: nowrap;
 }
 
+/* 1 select · 2 Description · 3 Hotkey · 4 Action · 5 Profiles · 6 Categories · 7 row actions */
 ::deep .hotkeys-grid th:nth-child(1),
 ::deep .hotkeys-grid td:nth-child(1) {
     width: 56px;
@@ -53,47 +54,27 @@
 
 ::deep .hotkeys-grid th:nth-child(2),
 ::deep .hotkeys-grid td:nth-child(2) {
-    width: 16%;
+    width: 22%;
 }
 
 ::deep .hotkeys-grid th:nth-child(3),
 ::deep .hotkeys-grid td:nth-child(3) {
-    width: 72px;
+    width: 14%;
 }
 
 ::deep .hotkeys-grid th:nth-child(4),
-::deep .hotkeys-grid td:nth-child(4),
+::deep .hotkeys-grid td:nth-child(4) {
+    width: 28%;
+}
+
 ::deep .hotkeys-grid th:nth-child(5),
 ::deep .hotkeys-grid td:nth-child(5),
 ::deep .hotkeys-grid th:nth-child(6),
-::deep .hotkeys-grid td:nth-child(6),
+::deep .hotkeys-grid td:nth-child(6) {
+    width: 12%;
+}
+
 ::deep .hotkeys-grid th:nth-child(7),
 ::deep .hotkeys-grid td:nth-child(7) {
-    width: 56px;
-    text-align: center;
-}
-
-::deep .hotkeys-grid th:nth-child(8),
-::deep .hotkeys-grid td:nth-child(8) {
-    width: 88px;
-}
-
-::deep .hotkeys-grid th:nth-child(9),
-::deep .hotkeys-grid td:nth-child(9) {
-    width: 10%;
-}
-
-::deep .hotkeys-grid th:nth-child(10),
-::deep .hotkeys-grid td:nth-child(10) {
-    width: 16%;
-}
-
-::deep .hotkeys-grid th:nth-child(11),
-::deep .hotkeys-grid td:nth-child(11) {
-    width: 10%;
-}
-
-::deep .hotkeys-grid th:nth-child(12),
-::deep .hotkeys-grid td:nth-child(12) {
-    width: 88px;
+    width: 160px;
 }

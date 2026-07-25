@@ -26,7 +26,7 @@ public sealed class CreateHotkeyWithCategoriesTests(HotkeyDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         var handler = new CreateHotkeyCommandHandler(db, CurrentUserHelper.For(owner), _clock);
         var cmd = new CreateHotkeyCommand(new CreateHotkeyDto(
-            "Open Notepad", "n", Ctrl: true, AppliesToAllProfiles: true,
+            "Open Notepad", "n", HotkeyActionKind.Disable, Ctrl: true, AppliesToAllProfiles: true,
             CategoryIds: [foreignCategoryId]));
 
         Result<HotkeyDto> result = await handler.ExecuteAsync(cmd, default);
@@ -51,7 +51,7 @@ public sealed class CreateHotkeyWithCategoriesTests(HotkeyDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         var handler = new CreateHotkeyCommandHandler(db, CurrentUserHelper.For(owner), _clock);
         var cmd = new CreateHotkeyCommand(new CreateHotkeyDto(
-            "Open Notepad", "n", Ctrl: true, AppliesToAllProfiles: true,
+            "Open Notepad", "n", HotkeyActionKind.Disable, Ctrl: true, AppliesToAllProfiles: true,
             CategoryIds: [cat1.Id, cat2.Id]));
 
         Result<HotkeyDto> result = await handler.ExecuteAsync(cmd, default);
@@ -73,7 +73,7 @@ public sealed class CreateHotkeyWithCategoriesTests(HotkeyDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         var handler = new CreateHotkeyCommandHandler(db, CurrentUserHelper.For(owner), _clock);
         var cmd = new CreateHotkeyCommand(new CreateHotkeyDto(
-            "Open Notepad", "n", Ctrl: true, AppliesToAllProfiles: true,
+            "Open Notepad", "n", HotkeyActionKind.Disable, Ctrl: true, AppliesToAllProfiles: true,
             CategoryIds: null));
 
         Result<HotkeyDto> result = await handler.ExecuteAsync(cmd, default);

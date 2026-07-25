@@ -18,28 +18,6 @@ Blazor WebAssembly PWA frontend + ASP.NET Core Web API backend + `ahkflow` CLI c
 - **MinVer** for automatic semantic versioning from git tags
 - **Testing:** xUnit + FluentAssertions + NSubstitute; Testcontainers (SQL Server) for integration tests
 
-## Project Structure
-
-```
-src/Backend/
-  AHKFlowApp.Domain/              # Entities, value objects — zero external dependencies
-  AHKFlowApp.Application/         # DTOs, commands/queries, use case handlers, validators
-  AHKFlowApp.Infrastructure/      # EF Core DbContext, repositories, migrations
-  AHKFlowApp.API/                 # Controllers, middleware, DI registration
-
-src/Frontend/
-  AHKFlowApp.UI.Blazor/           # Blazor WebAssembly PWA (MudBlazor, MSAL auth)
-
-tests/
-  AHKFlowApp.API.Tests/           # API integration tests (WebApplicationFactory)
-  AHKFlowApp.Application.Tests/   # Validator + handler unit/integration tests
-  AHKFlowApp.Domain.Tests/        # Domain logic unit tests
-  AHKFlowApp.Infrastructure.Tests/ # EF Core integration tests
-  AHKFlowApp.UI.Blazor.Tests/     # Blazor component tests (bUnit)
-  AHKFlowApp.E2E.Tests/           # End-to-end browser tests (Playwright)
-  AHKFlowApp.TestUtilities/       # Shared builders and DB fixtures
-```
-
 ## Commands
 
 ```bash

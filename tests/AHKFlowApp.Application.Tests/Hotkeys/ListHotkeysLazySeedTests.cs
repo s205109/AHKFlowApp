@@ -11,6 +11,7 @@ using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Time.Testing;
 using Xunit;
+using HotkeyAction = AHKFlowApp.Application.Services.LegacyHotkeyDefinitionConverter.HotkeyAction;
 
 namespace AHKFlowApp.Application.Tests.Hotkeys;
 
@@ -23,7 +24,7 @@ public sealed class ListHotkeysLazySeedTests(HotkeyDbFixture fx)
     private static readonly AppEnvironment s_prod = new(IsDevelopment: false);
 
     [Fact]
-    public async Task Handle_FirstCallInDev_Seeds12Hotkeys()
+    public async Task Handle_FirstCallInDev_Seeds19Hotkeys()
     {
         var owner = Guid.NewGuid();
         await using AppDbContext ctx = fx.CreateContext();
@@ -32,7 +33,7 @@ public sealed class ListHotkeysLazySeedTests(HotkeyDbFixture fx)
         Result<PagedList<HotkeyDto>> result = await sut.ExecuteAsync(new ListHotkeysQuery(), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value.TotalCount.Should().Be(12);
+        result.Value.TotalCount.Should().Be(19);
     }
 
     [Fact]
@@ -63,7 +64,7 @@ public sealed class ListHotkeysLazySeedTests(HotkeyDbFixture fx)
         Result<PagedList<HotkeyDto>> result = await sut2.ExecuteAsync(new ListHotkeysQuery(), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value.TotalCount.Should().Be(12);
+        result.Value.TotalCount.Should().Be(19);
     }
 
     [Fact]
@@ -112,7 +113,7 @@ public sealed class ListHotkeysLazySeedTests(HotkeyDbFixture fx)
         Result<PagedList<HotkeyDto>> result = await sut.ExecuteAsync(new ListHotkeysQuery(), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value.TotalCount.Should().Be(12);
+        result.Value.TotalCount.Should().Be(19);
 
         // Marker persisted (the bug: lazy-seed would have detached pref on duplicate-key)
         await using AppDbContext verify = fx.CreateContext();
@@ -150,7 +151,7 @@ public sealed class ListHotkeysLazySeedTests(HotkeyDbFixture fx)
                 .WithKey("N")
                 .WithCtrl()
                 .WithAlt()
-                .WithAction(AHKFlowApp.Domain.Enums.HotkeyAction.Run)
+                .WithAction(HotkeyAction.Run)
                 .WithParameters("notepad.exe")
                 .Build());
             await seedCtx.SaveChangesAsync();
@@ -199,10 +200,10 @@ public sealed class ListHotkeysLazySeedTests(HotkeyDbFixture fx)
         int hotkeyCount = await verify.Hotkeys.CountAsync(h => h.OwnerOid == owner);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value.TotalCount.Should().Be(12);
+        result.Value.TotalCount.Should().Be(19);
         pref!.CategoriesSeededAt.Should().NotBeNull();
         pref.HotkeysSeededAt.Should().NotBeNull();
-        hotkeyCount.Should().Be(12);
+        hotkeyCount.Should().Be(19);
     }
 
     [Fact]
@@ -229,7 +230,7 @@ public sealed class ListHotkeysLazySeedTests(HotkeyDbFixture fx)
         int hotkeyCount = await verify.Hotkeys.CountAsync(h => h.OwnerOid == owner);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value.TotalCount.Should().Be(12);
-        hotkeyCount.Should().Be(12);
+        result.Value.TotalCount.Should().Be(19);
+        hotkeyCount.Should().Be(19);
     }
 }

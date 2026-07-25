@@ -1,5 +1,6 @@
 using AHKFlowApp.UI.Blazor.Components.Hotkeys;
 using AHKFlowApp.UI.Blazor.DTOs;
+using AHKFlowApp.UI.Blazor.Helpers;
 using AHKFlowApp.UI.Blazor.Services;
 using Bunit;
 using FluentAssertions;
@@ -72,28 +73,81 @@ public sealed class HotkeyHistoryDialogTests : BunitContext, IAsyncLifetime
         provider.WaitForAssertion(() => provider.Markup.Should().Contain("No history yet"));
     }
 
-    [Fact]
-    public async Task Dialog_SelectVersionAndRevert_CallsRevertApi()
-    {
-        HotkeySnapshot snapshot = new(
+    private static HotkeySnapshot RunSnapshot() =>
+        new(
             "Open Notepad",
             "F9",
             true,
             false,
             false,
             false,
-            HotkeyAction.Run,
+            HotkeyActionKind.Run,
+            null,
+            null,
             "notepad.exe",
+            RunTargetKind.Application,
+            null,
+            null,
+            null,
             true,
             [],
             [],
             DateTimeOffset.UtcNow,
             DateTimeOffset.UtcNow);
+
+    private void StubOneVersion(HotkeySnapshot snapshot)
+    {
         _api.GetHistoryAsync(_id, Arg.Any<CancellationToken>())
             .Returns(ApiResult<HistoryEntryDto[]>.Ok([new(1, HistoryChangeType.Edit, DateTimeOffset.UtcNow)]));
         _api.GetHistoryVersionAsync(_id, 1, Arg.Any<CancellationToken>())
             .Returns(ApiResult<HotkeyHistoryVersionDto>.Ok(
                 new HotkeyHistoryVersionDto(1, HistoryChangeType.Edit, DateTimeOffset.UtcNow, snapshot)));
+    }
+
+    [Fact]
+    public async Task Dialog_TypedSnapshot_ShowsKindLabelAndSummary()
+    {
+        StubOneVersion(RunSnapshot());
+
+        IRenderedComponent<MudDialogProvider> provider = await OpenDialogAsync();
+        provider.WaitForAssertion(() => provider.Markup.Should().Contain("v1"));
+
+        await provider.InvokeAsync(() => provider.Find("button.history-version").Click());
+
+        provider.WaitForAssertion(() => provider.Markup.Should().Contain("Run"));
+        provider.Markup.Should().Contain("notepad.exe");
+    }
+
+    [Fact]
+    public async Task Dialog_LegacySnapshot_FallsBackToActionAndParameters()
+    {
+        // Old history JSON predates the typed action fields: it only carries the Action /
+        // Parameters pair, and its ActionKind deserializes to the record's default — Raw — which
+        // is exactly the wire shape the backend replays (no legacy conversion on read). The
+        // dialog must not present such a row as a Raw script.
+        StubOneVersion(RunSnapshot() with
+        {
+            ActionKind = HotkeyActionKind.Raw,
+            RunTarget = null,
+            RunTargetKind = null,
+            Action = HotkeyAction.Run,
+            Parameters = "legacy.exe",
+        });
+
+        IRenderedComponent<MudDialogProvider> provider = await OpenDialogAsync();
+        provider.WaitForAssertion(() => provider.Markup.Should().Contain("v1"));
+
+        await provider.InvokeAsync(() => provider.Find("button.history-version").Click());
+
+        provider.WaitForAssertion(() => provider.Markup.Should().Contain("Legacy"));
+        provider.Markup.Should().Contain("Run legacy.exe");
+        provider.Markup.Should().NotContain(HotkeyActionDisplay.Label(HotkeyActionKind.Raw));
+    }
+
+    [Fact]
+    public async Task Dialog_SelectVersionAndRevert_CallsRevertApi()
+    {
+        StubOneVersion(RunSnapshot());
         _api.RevertAsync(_id, 1, Arg.Any<CancellationToken>())
             .Returns(ApiResult<HotkeyDto>.Ok(
                 new HotkeyDto(
@@ -106,8 +160,14 @@ public sealed class HotkeyHistoryDialogTests : BunitContext, IAsyncLifetime
                     false,
                     false,
                     false,
-                    HotkeyAction.Run,
+                    HotkeyActionKind.Run,
+                    null,
+                    null,
                     "notepad.exe",
+                    RunTargetKind.Application,
+                    null,
+                    null,
+                    null,
                     DateTimeOffset.UtcNow,
                     DateTimeOffset.UtcNow,
                     [])));

@@ -1,6 +1,5 @@
 using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.Common;
-using AHKFlowApp.Application.Constants;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Mapping;
 using AHKFlowApp.Application.Validation;
@@ -19,8 +18,7 @@ public sealed class CreateHotkeyCommandValidator : AbstractValidator<CreateHotke
     {
         RuleFor(x => x.Input.Description).ValidDescription();
         RuleFor(x => x.Input.Key).ValidKey();
-        RuleFor(x => x.Input.Parameters).ValidParameters();
-        RuleFor(x => x.Input.Action).ValidAction();
+        this.AddHotkeyActionRules(x => x.Input);
         this.AddProfileAssociationRules(
             x => x.Input.AppliesToAllProfiles,
             x => x.Input.ProfileIds);
@@ -40,9 +38,8 @@ internal sealed class CreateHotkeyCommandHandler(
 
         CreateHotkeyDto input = request.Input;
 
-        // Return value ignored: the validator rejects unknown keys before the handler runs,
-        // so this always succeeds here.
-        HotkeyKeys.TryCanonicalize(input.Key, out string canonicalKey);
+        HotkeyDefinition definition = input.ToDefinition(input.AppliesToAllProfiles);
+        string canonicalKey = definition.Key;
 
         bool duplicate = await db.Hotkeys.AnyAsync(
             h => h.OwnerOid == ownerOid
@@ -73,19 +70,7 @@ internal sealed class CreateHotkeyCommandHandler(
         if (categoryError is not null)
             return Result.Invalid(categoryError);
 
-        var entity = Hotkey.Create(
-            ownerOid,
-            new HotkeyDefinition(
-                Description: input.Description,
-                Key: canonicalKey,
-                Ctrl: input.Ctrl,
-                Alt: input.Alt,
-                Shift: input.Shift,
-                Win: input.Win,
-                Action: input.Action,
-                Parameters: input.Parameters,
-                AppliesToAllProfiles: input.AppliesToAllProfiles),
-            clock);
+        var entity = Hotkey.Create(ownerOid, definition, clock);
 
         db.Hotkeys.Add(entity);
 

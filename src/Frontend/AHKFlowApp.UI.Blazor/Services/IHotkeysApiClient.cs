@@ -19,4 +19,6 @@ public interface IHotkeysApiClient
     Task<ApiResult<DeletedHotkeyDto[]>> ListDeletedAsync(CancellationToken ct = default);
     Task<ApiResult<HotkeyDto>> RestoreAsync(Guid id, CancellationToken ct = default);
     Task<ApiResult> PurgeDeletedAsync(Guid id, CancellationToken ct = default);
+    Task<ApiResult<HotkeyKeyCatalogDto>> GetKeysAsync(CancellationToken ct = default);
+    Task<ApiResult<HotkeyPreviewDto>> PreviewAsync(HotkeyPreviewRequestDto request, CancellationToken ct = default);
 }

@@ -1,4 +1,5 @@
 @using AHKFlowApp.UI.Blazor.DTOs
+@using AHKFlowApp.UI.Blazor.Helpers
 @using AHKFlowApp.UI.Blazor.Validation
 @using MudBlazor
 
@@ -6,7 +7,8 @@
     <MudStack Row="true" AlignItems="AlignItems.Center" Class="pa-2">
         <MudIconButton Class="toggle-select-mode"
                        Icon="@(_selectMode ? Icons.Material.Filled.Close : Icons.Material.Filled.CheckBox)"
-                       OnClick="ToggleSelectMode" />
+                       OnClick="ToggleSelectMode"
+                       UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = _selectMode ? "Exit select mode" : "Select hotkeys" })" />
         <MudText Typo="Typo.subtitle2">@(_selectMode ? $"{_selectedIds.Count} selected" : "")</MudText>
     </MudStack>
 
@@ -37,11 +39,12 @@
                         {
                             <td class="checkbox-cell" @onclick:stopPropagation="true">
                                 <input type="checkbox" class="row-checkbox"
+                                       aria-label="@($"Select {item.Description}")"
                                        checked="@(item.Id is { } checkboxId && _selectedIds.Contains(checkboxId))"
                                        @onchange="e => OnRowCheckboxChanged(item, IsChecked(e))" />
                             </td>
                         }
-                        <td class="trigger-cell"><code>@FormatCombo(item)</code></td>
+                        <td class="trigger-cell"><code>@HotkeyActionDisplay.ComboLabel(item)</code></td>
                         <td class="replacement-cell">@item.Description</td>
                         <td class="chevron-cell">@(expanded ? "▾" : "▸")</td>
                     </tr>
@@ -50,11 +53,10 @@
                         <tr class="mobile-row-expanded">
                             <td colspan="3">
                                 <MudStack Spacing="1" Class="pa-3">
-                                    <MudText Typo="Typo.body2"><strong>Action:</strong> @item.Action</MudText>
-                                    @if (!string.IsNullOrWhiteSpace(item.Parameters))
-                                    {
-                                        <MudText Typo="Typo.body2"><strong>Parameters:</strong> @item.Parameters</MudText>
-                                    }
+                                    <MudText Typo="Typo.body2"><strong>Action:</strong>
+                                        <HotkeyActionChip Kind="item.ActionKind" />
+                                        @HotkeyActionDisplay.Summary(item)
+                                    </MudText>
                                     <MudText Typo="Typo.body2"><strong>Profiles:</strong>
                                         <EntityChips Ids="item.ProfileIds" Options="_profileOptions" Any="item.AppliesToAllProfiles" />
                                     </MudText>
@@ -154,16 +156,5 @@
         await OnBulkDelete.InvokeAsync(ids);
         _selectMode = false;
         _selectedIds.Clear();
-    }
-
-    private static string FormatCombo(HotkeyEditModel item)
-    {
-        List<string> parts = [];
-        if (item.Ctrl) parts.Add("Ctrl");
-        if (item.Alt) parts.Add("Alt");
-        if (item.Shift) parts.Add("Shift");
-        if (item.Win) parts.Add("Win");
-        parts.Add(item.Key);
-        return string.Join("+", parts);
     }
 }

@@ -24,7 +24,9 @@ public sealed class CreateHotkeyCommandHandlerTests(HotkeyDbFixture fx)
         var owner = Guid.NewGuid();
         var handler = new CreateHotkeyCommandHandler(db, CurrentUserHelper.For(owner), _clock);
         var cmd = new CreateHotkeyCommand(new CreateHotkeyDto(
-            "Open Notepad", "n", Ctrl: true, AppliesToAllProfiles: true));
+            "Open Notepad", "n", HotkeyActionKind.Run, Ctrl: true,
+            RunTarget: "notepad.exe", RunTargetKind: RunTargetKind.Application,
+            AppliesToAllProfiles: true));
 
         Result<HotkeyDto> result = await handler.ExecuteAsync(cmd, default);
 
@@ -33,9 +35,20 @@ public sealed class CreateHotkeyCommandHandlerTests(HotkeyDbFixture fx)
         result.Value.Ctrl.Should().BeTrue();
         result.Value.Description.Should().Be("Open Notepad");
         result.Value.AppliesToAllProfiles.Should().BeTrue();
+        result.Value.ActionKind.Should().Be(HotkeyActionKind.Run);
+        result.Value.RunTarget.Should().Be("notepad.exe");
+        result.Value.RunTargetKind.Should().Be(RunTargetKind.Application);
 
         await using AppDbContext verify = fx.CreateContext();
-        (await verify.Hotkeys.CountAsync(h => h.OwnerOid == owner)).Should().Be(1);
+        Hotkey persisted = await verify.Hotkeys.SingleAsync(h => h.OwnerOid == owner);
+        persisted.ActionKind.Should().Be(HotkeyActionKind.Run);
+        persisted.RunTarget.Should().Be("notepad.exe");
+        persisted.RunTargetKind.Should().Be(RunTargetKind.Application);
+        persisted.Text.Should().BeNull();
+        persisted.SendKeysContent.Should().BeNull();
+        persisted.WindowOp.Should().BeNull();
+        persisted.RemapDest.Should().BeNull();
+        persisted.Body.Should().BeNull();
     }
 
     [Fact]
@@ -45,7 +58,7 @@ public sealed class CreateHotkeyCommandHandlerTests(HotkeyDbFixture fx)
         var owner = Guid.NewGuid();
         var handler = new CreateHotkeyCommandHandler(db, CurrentUserHelper.For(owner), _clock);
         var cmd = new CreateHotkeyCommand(new CreateHotkeyDto(
-            "Open Notepad", "n", Ctrl: true,
+            "Open Notepad", "n", HotkeyActionKind.Disable, Ctrl: true,
             ProfileIds: [Guid.NewGuid()], AppliesToAllProfiles: false));
 
         Result<HotkeyDto> result = await handler.ExecuteAsync(cmd, default);
@@ -59,7 +72,7 @@ public sealed class CreateHotkeyCommandHandlerTests(HotkeyDbFixture fx)
     {
         await using AppDbContext db = fx.CreateContext();
         var handler = new CreateHotkeyCommandHandler(db, CurrentUserHelper.For(null), _clock);
-        var cmd = new CreateHotkeyCommand(new CreateHotkeyDto("Open Notepad", "n", AppliesToAllProfiles: true));
+        var cmd = new CreateHotkeyCommand(new CreateHotkeyDto("Open Notepad", "n", HotkeyActionKind.Disable, AppliesToAllProfiles: true));
 
         Result<HotkeyDto> result = await handler.ExecuteAsync(cmd, default);
 
@@ -81,7 +94,7 @@ public sealed class CreateHotkeyCommandHandlerTests(HotkeyDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         var handler = new CreateHotkeyCommandHandler(db, CurrentUserHelper.For(owner), _clock);
         var cmd = new CreateHotkeyCommand(new CreateHotkeyDto(
-            "Duplicate", "f1", Ctrl: true, AppliesToAllProfiles: true));
+            "Duplicate", "f1", HotkeyActionKind.Disable, Ctrl: true, AppliesToAllProfiles: true));
 
         Result<HotkeyDto> result = await handler.ExecuteAsync(cmd, default);
 
@@ -103,7 +116,7 @@ public sealed class CreateHotkeyCommandHandlerTests(HotkeyDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         var handler = new CreateHotkeyCommandHandler(db, CurrentUserHelper.For(owner2), _clock);
         var cmd = new CreateHotkeyCommand(new CreateHotkeyDto(
-            "Same key different owner", "f1", Ctrl: true, AppliesToAllProfiles: true));
+            "Same key different owner", "f1", HotkeyActionKind.Disable, Ctrl: true, AppliesToAllProfiles: true));
 
         Result<HotkeyDto> result = await handler.ExecuteAsync(cmd, default);
 
@@ -126,7 +139,7 @@ public sealed class CreateHotkeyCommandHandlerTests(HotkeyDbFixture fx)
         var handler = new CreateHotkeyCommandHandler(db, CurrentUserHelper.For(owner), _clock);
         // Same key, different modifier (Alt instead of Ctrl)
         var cmd = new CreateHotkeyCommand(new CreateHotkeyDto(
-            "Alt version", "f1", Alt: true, AppliesToAllProfiles: true));
+            "Alt version", "f1", HotkeyActionKind.Disable, Alt: true, AppliesToAllProfiles: true));
 
         Result<HotkeyDto> result = await handler.ExecuteAsync(cmd, default);
 
@@ -140,7 +153,7 @@ public sealed class CreateHotkeyCommandHandlerTests(HotkeyDbFixture fx)
         var owner = Guid.NewGuid();
         var handler = new CreateHotkeyCommandHandler(db, CurrentUserHelper.For(owner), _clock);
         var cmd = new CreateHotkeyCommand(new CreateHotkeyDto(
-            "Close", "Esc", AppliesToAllProfiles: true));
+            "Close", "Esc", HotkeyActionKind.Disable, AppliesToAllProfiles: true));
 
         Result<HotkeyDto> result = await handler.ExecuteAsync(cmd, default);
 
@@ -166,7 +179,7 @@ public sealed class CreateHotkeyCommandHandlerTests(HotkeyDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         var handler = new CreateHotkeyCommandHandler(db, CurrentUserHelper.For(owner), _clock);
         var cmd = new CreateHotkeyCommand(new CreateHotkeyDto(
-            "Close alias", "Esc", AppliesToAllProfiles: true));
+            "Close alias", "Esc", HotkeyActionKind.Disable, AppliesToAllProfiles: true));
 
         Result<HotkeyDto> result = await handler.ExecuteAsync(cmd, default);
 
@@ -188,7 +201,7 @@ public sealed class CreateHotkeyCommandHandlerTests(HotkeyDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         var handler = new CreateHotkeyCommandHandler(db, CurrentUserHelper.For(owner), _clock);
         var cmd = new CreateHotkeyCommand(new CreateHotkeyDto(
-            "Vk alias", "vk1", AppliesToAllProfiles: true));
+            "Vk alias", "vk1", HotkeyActionKind.Disable, AppliesToAllProfiles: true));
 
         Result<HotkeyDto> result = await handler.ExecuteAsync(cmd, default);
 

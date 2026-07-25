@@ -9,11 +9,5 @@ public sealed record HotkeyListRequest(
     bool SortDescending = true,
     string? DescriptionFilter = null,
     string? KeyFilter = null,
-    string? ParametersFilter = null,
-    HotkeyAction? Action = null,
-    bool? AppliesToAllProfiles = null,
-    bool? Ctrl = null,
-    bool? Alt = null,
-    bool? Shift = null,
-    bool? Win = null,
+    HotkeyActionKind? ActionKind = null,
     IReadOnlyList<Guid>? CategoryIds = null);
