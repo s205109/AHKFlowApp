@@ -29,6 +29,19 @@ internal static class ProblemDetailsResultExtensions
             ? new OkResult()
             : BuildProblem(result.Status, result.Errors, result.ValidationErrors, controller.HttpContext);
 
+    /// <summary>
+    /// The same problem response as <see cref="ToProblemActionResult{T}"/>, but as a bare
+    /// <see cref="IActionResult"/> — for actions whose success path returns a file rather than
+    /// <typeparamref name="T"/>, so the declared return type is <c>Task&lt;IActionResult&gt;</c>.
+    /// Both <c>ActionResult&lt;T&gt;</c> branches are built from an <see cref="ActionResult"/>,
+    /// so <c>Result</c> is always populated. Use this instead of reading
+    /// <c>ToProblemActionResult(...).Result</c> at the call site: that property is not
+    /// <see cref="Task{TResult}.Result"/>, but it reads exactly like it and invites a
+    /// sync-over-async misdiagnosis on every review.
+    /// </summary>
+    public static IActionResult ToProblemResult<T>(this Result<T> result, ControllerBase controller) =>
+        result.ToProblemActionResult(controller).Result!;
+
     private static ObjectResult BuildProblem(
         ResultStatus status,
         IEnumerable<string> errors,
