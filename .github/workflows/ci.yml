@@ -111,6 +111,7 @@ jobs:
           ./tests/PreCommitAntiPatternHook.Tests.ps1
           ./tests/WorktreePowerShellHost.Tests.ps1
           ./tests/WorktreeBranchName.Tests.ps1
+          ./tests/WorktreeBaseRef.Tests.ps1
           ./tests/WorktreeMergedCleanup.Tests.ps1
           ./tests/WorktreeRemoveHook.Tests.ps1
           ./tests/WorktreeLocalDevSetup.Tests.ps1
