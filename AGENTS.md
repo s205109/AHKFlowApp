@@ -103,6 +103,13 @@ Frameworks: xUnit, FluentAssertions (over raw `Assert`), NSubstitute, Testcontai
 - NSubstitute for third-party boundaries only — don't mock what you own
 - Test behavior (HTTP response, DB state, Result status), not implementation details
 - `FakeTimeProvider` (from `Microsoft.Extensions.TimeProvider.Testing`) for time-dependent tests
+- Derive expected seed keys and row counts from the seed source — never hard-code them, or a catalog change breaks unrelated suites
+- Rebuild in Release **and restart the API/UI** before any live smoke test; a stale Debug build has served old seed data and produced a false failure
+
+## Debugging
+
+- State the root cause with `file:line` evidence before editing. Can't point to it — say so and keep investigating instead of shipping a plausible guess.
+- If a fix fails ("it still does not work"), stop patching. Go back to instrumentation or docs research rather than guessing again at the same shape.
 
 ## Plans
 
