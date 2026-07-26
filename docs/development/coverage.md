@@ -1,8 +1,8 @@
 # Code coverage
 
-## Canonical local verification
+## The coverage step
 
-For day-to-day development, prefer the targeted test slices in [Local testing workflow](testing-workflow.md). The coverage command below remains the full pre-PR confidence gate; CI runs it on every PR. The pre-push hook itself only runs quick checks (see below), not full coverage.
+The canonical pre-PR gate lives in [Local testing workflow](testing-workflow.md#canonical-pre-pr-gate). This page documents only its coverage step and the thresholds behind it.
 
 From the repo root, run:
 
@@ -10,7 +10,7 @@ From the repo root, run:
 pwsh .\scripts\run-coverage.ps1
 ```
 
-That command is the recommended pre-push / pre-PR coverage check. It:
+`test-fast.ps1 -Mode Coverage` delegates to this script. It:
 
 1. runs the test suite with `XPlat Code Coverage`
 2. merges the per-project coverage files into `CoverageReport\Cobertura.xml`
