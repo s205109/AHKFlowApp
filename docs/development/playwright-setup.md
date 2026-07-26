@@ -28,15 +28,21 @@ Once installed, Claude Code can drive the browser during a session. Common uses 
 ```
 "Open the health page in headed mode so I can see it"
 "Take a screenshot of the home page"
-"Check if the UI is loading correctly on localhost:5601"
+"Read this worktree's launchSettings.json for the frontend port, then check the UI loads"
 ```
 
 ## Ports
+
+These are the **main checkout** ports only:
 
 | Service | URL |
 |---------|-----|
 | Blazor UI | http://localhost:5601 |
 | API | http://localhost:5600 |
+
+**In an agent worktree these are the wrong ports.** Each worktree gets its own offset pair (e.g. API 5602 / frontend 5603) so it can run alongside the main checkout — read the worktree's own `launchSettings.json` rather than assuming. Driving 5601 from a worktree hits the main checkout or a dead port, and the failure looks like a broken app rather than a wrong URL.
+
+Worktrees also run no-auth automatically (`Auth:UseTestProvider=true`, always signed in as "Test User"), so a browser drive gets full CRUD with no login.
 
 ## Notes
 

@@ -1,6 +1,25 @@
 # Local testing workflow
 
-Use the fastest test slice that still covers the code you changed. The pre-push hook runs an incremental build plus the fast slice automatically; run the full coverage gate yourself before opening a PR (CI enforces it on every PR regardless).
+Use the fastest test slice that still covers the code you changed. The pre-push hook runs an incremental build plus the fast slice automatically; run the full coverage gate yourself before opening a PR (CI enforces it on every non-docs PR regardless).
+
+This file is the single source for which tests to run and when. Other docs link here rather than restating commands.
+
+## Canonical pre-PR gate
+
+Four steps, in order. Nothing else counts as the gate.
+
+```bash
+dotnet build AHKFlowApp.slnx --configuration Release
+dotnet format AHKFlowApp.slnx --verify-no-changes
+pwsh .\scripts\test-fast.ps1 -Mode Coverage
+git diff --check main...HEAD
+```
+
+Pass the `main...HEAD` range to `git diff --check`. The bare form inspects only uncommitted work, so on a clean branch it passes without ever looking at the commits you are about to propose. Run the bare form as well if you have changes still in flight.
+
+Then verify the change actually works — see **Verification After Implementation** in [`AGENTS.md`](../../AGENTS.md). A green gate proves nothing regressed; it does not prove the new behavior happened.
+
+CI enforces the same build, format, and coverage-threshold steps on every **non-docs** PR. A PR touching only `**/*.md`, `docs/**`, or `.claude/**` skips build, test, and coverage entirely — see the `dorny/paths-filter` step in `ci.yml`. On a docs-only branch CI proves nothing, so this local gate is the only gate. The pre-push hook is a faster subset (incremental build + fast slice, `scripts/pre-push-quick-checks.ps1`), not this gate.
 
 ## Fast inner loop
 
@@ -47,13 +66,49 @@ E2E mode runs `AHKFlowApp.E2E.Tests`. Use it for browser flows, Playwright-cover
 
 The first E2E run after frontend source changes publishes the Blazor app before Playwright starts. Unchanged reruns reuse the cached publish output through the E2E project target, so the publish step is skipped while the browser tests still run normally. E2E flow classes share one API/Spa/browser stack, and each test resets mutable database rows before it starts.
 
+### Writing a flow test
+
+A UI change is verified by adding or extending a `*FlowTests.cs`. The shape — copy it from a neighbour such as `HotkeysCrudFlowTests.cs`:
+
+```csharp
+[Collection(E2ETestCollection.Name)]
+public sealed class MyFeatureFlowTests(StackFixture fixture) : IAsyncLifetime
+{
+    public Task InitializeAsync() => fixture.ResetDataAsync();
+
+    public Task DisposeAsync() => Task.CompletedTask;
+
+    [Fact]
+    public async Task DoingTheThing_ProducesTheVisibleResult()
+    {
+        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
+        IPage page = await ctx.NewPageAsync();
+
+        await page.GotoAsync($"{fixture.Spa.BaseUrl}/hotkeys");
+        await page.ClickAsync("[data-test=\"some-control\"]");
+
+        await Assertions.Expect(page.Locator("[data-test=\"result\"]"))
+            .ToContainTextAsync("expected");
+    }
+}
+```
+
+Four rules that are easy to get wrong:
+
+- **Select on `data-test`**, not MudBlazor's generated classes — they change between MudBlazor versions.
+- **Scope grid assertions to `.desktop-branch` or the mobile branch.** Both render into the DOM; the mobile one is hidden by CSS only, so an unscoped selector can match twice.
+- **`MudAutocomplete` with `CoerceValue` needs a blur to commit.** `FillAsync` sets the text but not the bound value — follow it with `PressAsync("Tab")`.
+- **Debounced fields only refresh a preview while the panel is already open.** Expand first, then fill, or the preview stays stale.
+
+Assert on something a user would see — rendered text, a grid cell, a snackbar — not on internal component state.
+
 ## Full coverage gate
 
 ```bash
 pwsh .\scripts\test-fast.ps1 -Mode Coverage
 ```
 
-Coverage mode delegates to `scripts/run-coverage.ps1`. Run it before opening a PR; CI enforces the same coverage + threshold gate on every PR. The pre-push hook itself only runs quick checks (incremental build + fast slice, see `scripts/pre-push-quick-checks.ps1`), not this full coverage path. The local coverage script uses the same disposable shared SQL container behavior as Integration mode for the SQL-backed suites.
+Coverage mode delegates to `scripts/run-coverage.ps1`. Run it before opening a PR; CI enforces the same coverage + threshold gate on every non-docs PR. The pre-push hook itself only runs quick checks (incremental build + fast slice, see `scripts/pre-push-quick-checks.ps1`), not this full coverage path. The local coverage script uses the same disposable shared SQL container behavior as Integration mode for the SQL-backed suites.
 
 ## Trait contract
 

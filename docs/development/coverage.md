@@ -1,8 +1,8 @@
 # Code coverage
 
-## Canonical local verification
+## The coverage step
 
-For day-to-day development, prefer the targeted test slices in [Local testing workflow](testing-workflow.md). The coverage command below remains the full pre-PR confidence gate; CI runs it on every PR. The pre-push hook itself only runs quick checks (see below), not full coverage.
+The canonical pre-PR gate lives in [Local testing workflow](testing-workflow.md#canonical-pre-pr-gate). This page documents only its coverage step and the thresholds behind it.
 
 From the repo root, run:
 
@@ -10,7 +10,7 @@ From the repo root, run:
 pwsh .\scripts\run-coverage.ps1
 ```
 
-That command is the recommended pre-push / pre-PR coverage check. It:
+`test-fast.ps1 -Mode Coverage` delegates to this script. It:
 
 1. runs the test suite with `XPlat Code Coverage`
 2. merges the per-project coverage files into `CoverageReport\Cobertura.xml`
@@ -38,7 +38,7 @@ git config core.hooksPath .githooks
 
 The canonical gate also requires `python` on `PATH`.
 
-That `core.hooksPath` setting enables the repo-managed `.githooks/pre-push` hook, which runs `pwsh .\scripts\pre-push-quick-checks.ps1` automatically before each push — an incremental build plus the container-free fast test slice, not full coverage. CI runs the full coverage + format gate on every PR, so the hook is a quick local sanity check rather than the authoritative gate. Run `pwsh .\scripts\run-coverage.ps1` yourself before opening a PR if you want the full local confidence check.
+That `core.hooksPath` setting enables the repo-managed `.githooks/pre-push` hook, which runs `pwsh .\scripts\pre-push-quick-checks.ps1` automatically before each push — an incremental build plus the container-free fast test slice, not full coverage. CI runs the full coverage + format gate on every non-docs PR, so the hook is a quick local sanity check rather than the authoritative gate. Run `pwsh .\scripts\run-coverage.ps1` yourself before opening a PR if you want the full local confidence check.
 
 The hook adds well under two minutes per push. Skip it for WIP pushes with either:
 
