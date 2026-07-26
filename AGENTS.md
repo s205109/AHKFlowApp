@@ -103,6 +103,13 @@ Frameworks: xUnit, FluentAssertions (over raw `Assert`), NSubstitute, Testcontai
 - NSubstitute for third-party boundaries only — don't mock what you own
 - Test behavior (HTTP response, DB state, Result status), not implementation details
 - `FakeTimeProvider` (from `Microsoft.Extensions.TimeProvider.Testing`) for time-dependent tests
+- Derive expected seed keys and row counts from the seed source — never hard-code them, or a catalog change breaks unrelated suites
+- Rebuild in Release **and restart the API/UI** before any live smoke test; a stale Debug build has served old seed data and produced a false failure
+
+## Debugging
+
+- State the root cause with `file:line` evidence before editing. Can't point to it — say so and keep investigating instead of shipping a plausible guess.
+- If a fix fails ("it still does not work"), stop patching. Go back to instrumentation or docs research rather than guessing again at the same shape.
 
 ## Plans
 
@@ -223,6 +230,14 @@ Conventional commits: `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:` �
 Atomic commits: one logical change per commit; feature + its tests = one commit. Don't bundle unrelated changes.
 Never force-push to main/master. Run the canonical pre-PR gate before creating a PR — [`docs/development/testing-workflow.md`](docs/development/testing-workflow.md#canonical-pre-pr-gate).
 Keep PRs focused on a single concern; split large changes into stacked PRs.
+
+Confirm the base before branching. A new branch starts from the main checkout's current HEAD, so
+work that builds on unmerged work must say so explicitly: pass `-BaseRef <branch>` to
+`scripts/new-worktree.ps1`. Check which branch actually contains the spec, plan, or code you are
+building on rather than defaulting to `main` — branching from `main` while the prerequisite sits on
+an open branch produces a diff full of unrelated commits after the first rebase. Claude Code's native
+worktree creation cannot pass a base ref, so stacked work must call the script directly; see the
+`worktrees` skill.
 
 The AHKFlowApp main checkout is human-owned for Git mutations. Agents may inspect, edit, build,
 test, and format there, but must branch, add, commit, merge, rebase, and push for this repository

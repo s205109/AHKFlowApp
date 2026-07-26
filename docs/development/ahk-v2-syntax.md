@@ -310,6 +310,13 @@ plainly:
   lower-casing and zero-padding (`vk1` → `vk01`, `sc1` → `sc001`), so one physical key
   cannot survive as two rows.
 
+### Keys to avoid in examples
+
+`CapsLock`, `ScrollLock`, `RAlt`, and `Pause` are all valid registry keys, but don't reach for them
+when writing samples, seeded catalog rows, or doc examples — they are absent or already remapped on a
+laptop keyboard, so the example can't be tried as written. Prefer a modifier plus a key that is
+physically present. (`Pause` is separately excluded as a remap destination; see `HotkeyKeys`.)
+
 ### Right-hand side per action
 
 Each `HotkeyActionKind` owns its own stored field(s) and exactly one emitted form:
