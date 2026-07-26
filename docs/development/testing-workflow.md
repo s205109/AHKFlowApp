@@ -2,6 +2,23 @@
 
 Use the fastest test slice that still covers the code you changed. The pre-push hook runs an incremental build plus the fast slice automatically; run the full coverage gate yourself before opening a PR (CI enforces it on every PR regardless).
 
+This file is the single source for which tests to run and when. Other docs link here rather than restating commands.
+
+## Canonical pre-PR gate
+
+Four steps, in order. Nothing else counts as the gate.
+
+```bash
+dotnet build AHKFlowApp.slnx --configuration Release
+dotnet format AHKFlowApp.slnx --verify-no-changes
+pwsh .\scripts\test-fast.ps1 -Mode Coverage
+git diff --check
+```
+
+Then verify the change actually works — see **Verification After Implementation** in [`AGENTS.md`](../../AGENTS.md). A green gate proves nothing regressed; it does not prove the new behavior happened.
+
+CI enforces the same build, format, and coverage-threshold steps on every PR. The pre-push hook is a faster subset (incremental build + fast slice, `scripts/pre-push-quick-checks.ps1`), not this gate.
+
 ## Fast inner loop
 
 ```bash
@@ -46,6 +63,42 @@ pwsh .\scripts\test-fast.ps1 -Mode E2E
 E2E mode runs `AHKFlowApp.E2E.Tests`. Use it for browser flows, Playwright-covered UI behavior, mobile viewport behavior, service-worker/PWA behavior, and changes to the E2E fixture or published Blazor output. The script starts the same disposable shared SQL Server container used by Integration mode, and the E2E API fixture uses an isolated per-assembly database on that server.
 
 The first E2E run after frontend source changes publishes the Blazor app before Playwright starts. Unchanged reruns reuse the cached publish output through the E2E project target, so the publish step is skipped while the browser tests still run normally. E2E flow classes share one API/Spa/browser stack, and each test resets mutable database rows before it starts.
+
+### Writing a flow test
+
+A UI change is verified by adding or extending a `*FlowTests.cs`. The shape — copy it from a neighbour such as `HotkeysCrudFlowTests.cs`:
+
+```csharp
+[Collection(E2ETestCollection.Name)]
+public sealed class MyFeatureFlowTests(StackFixture fixture) : IAsyncLifetime
+{
+    public Task InitializeAsync() => fixture.ResetDataAsync();
+
+    public Task DisposeAsync() => Task.CompletedTask;
+
+    [Fact]
+    public async Task DoingTheThing_ProducesTheVisibleResult()
+    {
+        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
+        IPage page = await ctx.NewPageAsync();
+
+        await page.GotoAsync($"{fixture.Spa.BaseUrl}/hotkeys");
+        await page.ClickAsync("[data-test=\"some-control\"]");
+
+        await Assertions.Expect(page.Locator("[data-test=\"result\"]"))
+            .ToContainTextAsync("expected");
+    }
+}
+```
+
+Four rules that are easy to get wrong:
+
+- **Select on `data-test`**, not MudBlazor's generated classes — they change between MudBlazor versions.
+- **Scope grid assertions to `.desktop-branch` or the mobile branch.** Both render into the DOM; the mobile one is hidden by CSS only, so an unscoped selector can match twice.
+- **`MudAutocomplete` with `CoerceValue` needs a blur to commit.** `FillAsync` sets the text but not the bound value — follow it with `PressAsync("Tab")`.
+- **Debounced fields only refresh a preview while the panel is already open.** Expand first, then fill, or the preview stays stale.
+
+Assert on something a user would see — rendered text, a grid cell, a snackbar — not on internal component state.
 
 ## Full coverage gate
 
