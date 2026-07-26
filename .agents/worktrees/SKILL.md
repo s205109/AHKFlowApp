@@ -21,6 +21,14 @@ It creates the branch, places the worktree under `.claude/worktrees/<name>/`, co
 
 **Branch naming:** worktree branches insert `wt-` after the type prefix — `fix/wt-<topic>`, `feature/wt-NNN-<topic>` (see AGENTS.md Git Workflow). Pass it explicitly (`-BranchName fix/wt-<topic>`) or name the worktree so the derived branch matches.
 
+**Stacking on unmerged work:** the `WorktreeCreate` hook contract carries only a worktree name, so the native Claude Code path can express no base ref and always branches from the main checkout's current HEAD. When the work builds on a branch that has not merged yet, **skip native creation** and run the script directly with `-BaseRef`:
+
+```bash
+pwsh -NoProfile -File scripts/new-worktree.ps1 -Name <name> -BranchName feature/wt-<topic> -BaseRef feature/wt-<prerequisite>
+```
+
+Then enter it with the native worktree tool by path. `-BaseRef` accepts a branch, tag, or SHA, and is rejected if the branch or the worktree already exists — the base of existing history cannot be changed after the fact.
+
 **Do NOT** run bare `git worktree add` — it checks out files but skips isolation setup, leaving a broken worktree.
 
 ### Cleanup of merged worktrees on create
