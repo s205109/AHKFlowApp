@@ -1,10 +1,30 @@
 ---
 name: playwright-cli
-description: Use when testing local web pages, browser behavior, screenshots, or Playwright flows from the CLI.
+description: Use when driving the AHKFlowApp UI in a browser for a visual or exploratory check, or when testing local web pages, screenshots, or Playwright flows from the CLI.
 allowed-tools: Bash(playwright-cli:*) Bash(npx:*) Bash(npm:*)
 ---
 
 # Browser Automation with playwright-cli
+
+## In this project, first
+
+**Prefer an E2E flow test over an ad-hoc drive.** If the check can be asserted, add or extend a
+`*FlowTests.cs` in `tests/AHKFlowApp.E2E.Tests` and run `pwsh .\scripts\test-fast.ps1 -Mode E2E` — the
+test keeps proving the behavior after this session ends, a drive proves it once. Reach for this skill
+when the check is visual or exploratory, or when you need to see the page to work out what is wrong.
+See **Verification After Implementation** in `AGENTS.md` for the routing, and
+`docs/development/testing-workflow.md#writing-a-flow-test` for the test template.
+
+**Get the ports from `launchSettings.json`, not from memory.** The main checkout runs the frontend on
+5601 and the API on 5600, but every agent worktree gets its own offset pair (e.g. 5603 / 5602) so it can
+run alongside. Driving 5601 from a worktree silently hits the main checkout or a dead port, and it looks
+like a broken app rather than a wrong URL.
+
+**Worktrees are already signed in.** They run no-auth (`Auth:UseTestProvider=true`, user "Test User"),
+so full CRUD is reachable with no login step. The main checkout runs real MSAL unless started on its
+`http (No Auth)` profile.
+
+Setup and troubleshooting: `docs/development/playwright-setup.md`.
 
 ## Quick start
 

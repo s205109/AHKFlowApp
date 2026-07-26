@@ -1,6 +1,6 @@
 ---
 name: dck-verify
-description: Use when verifying AHKFlowApp build, tests, formatting, diagnostics, security, or readiness before commit, push, or PR.
+description: Use when verifying AHKFlowApp build, tests, formatting, diagnostics, security, runtime behavior, or readiness — after implementing a change, and before commit, push, or PR.
 ---
 
 # Verify
@@ -13,8 +13,8 @@ Verification is evidence, not confidence. Report PASS, WARN, FAIL, or SKIP for e
 
 | Change | Phases |
 |---|---|
-| Feature, refactor, pre-PR | All 7 |
-| Bug fix | Build, diagnostics, tests, diff |
+| Feature, refactor, pre-PR | All 8 |
+| Bug fix | Build, diagnostics, tests, diff — **plus runtime when the bug had an observable symptom** |
 | Dependency update | Build, tests, vulnerable packages, format |
 | EF migration | Build, migration SQL review, tests, format, diff |
 | Skill/docs only | Targeted text checks, setup script if skill surface changed, diff |
@@ -22,7 +22,7 @@ Verification is evidence, not confidence. Report PASS, WARN, FAIL, or SKIP for e
 
 When unsure, run the full pipeline.
 
-## 7-Phase Pipeline
+## 8-Phase Pipeline
 
 ### 1. Build
 
@@ -55,18 +55,18 @@ Look especially for sync-over-async, `DateTime.Now`/`UtcNow`, missing `Cancellat
 
 ### 4. Tests
 
-```bash
-dotnet test --configuration Release --no-build --verbosity normal
-```
-
-For narrow changes, run affected test projects first, then broaden if risk warrants:
+Pick the slice that covers what changed. `docs/development/testing-workflow.md` owns the mode
+definitions and the canonical pre-PR gate — follow it rather than restating commands here.
 
 ```bash
-dotnet test tests/AHKFlowApp.Application.Tests --configuration Release --verbosity normal
-dotnet test tests/AHKFlowApp.API.Tests --configuration Release --verbosity normal
+pwsh .\scripts\test-fast.ps1 -Mode Fast          # domain, validators, bUnit
+pwsh .\scripts\test-fast.ps1 -Mode Integration   # EF Core, API, CLI flows
+pwsh .\scripts\test-fast.ps1 -Mode E2E           # browser, PWA, mobile viewport
+pwsh .\scripts\test-fast.ps1 -Mode Coverage      # full gate before a PR
 ```
 
-Any failing test is FAIL.
+The script manages one disposable shared SQL container; plain `dotnet test` falls back to slower
+per-project Testcontainers. Any failing test is FAIL.
 
 ### 5. Security and Packages
 
@@ -101,6 +101,29 @@ git diff --check
 
 Inspect the diff for accidental files, debug leftovers, secrets, stale references, and changes outside the task.
 
+### 8. Runtime Verification
+
+The other seven phases prove the code compiles and the existing suite still passes. None of them
+exercise the change. This phase does.
+
+Route on what surface changed — the table in `AGENTS.md` under **Verification After Implementation**
+is authoritative. In short:
+
+| Changed | Evidence |
+|---|---|
+| Blazor UI flow | A new or extended `*FlowTests.cs` in `tests/AHKFlowApp.E2E.Tests`, green under `-Mode E2E` |
+| UI, visual only | A `playwright-cli` drive of the running app plus a screenshot |
+| API, use case, EF Core | An integration test covering the new behavior, green under `-Mode Integration` |
+| CLI | A `CLI.Tests` integration flow, green under `-Mode Integration` |
+| Emitted `.ahk` | An assertion on the generated text; manual AHK steps only for a construct never shipped before |
+| Bug fix with an observable symptom | The original repro re-run, showing the symptom gone |
+
+Prefer a durable test over a one-off drive — a test keeps proving the behavior after this session.
+
+Report the artifact by path, not as a claim. SKIP is allowed only for one of the three exemptions in
+`AGENTS.md`, and the exemption must be named. For the refactor exemption, name the covering tests and
+paste their fresh output.
+
 ## Skill Surface Verification
 
 When `.agents/*` skills change:
@@ -130,8 +153,12 @@ For renamed skills, confirm no stale `.agents/cck-*` directories remain and the 
 | Tests | PASS | Failed: 0 |
 | Format | PASS | verify-no-changes exit 0 |
 | Diff | WARN | docs-only changes plus plugin cache refresh |
+| Runtime | PASS | HotkeysCrudFlowTests.CreateRunHotkey_... green under -Mode E2E |
 
 Verdict: READY / NEEDS FIXES
 ```
 
 Do not claim ready until the evidence is fresh.
+
+`Runtime = SKIP` blocks `READY` unless the Evidence cell names one of the three `AGENTS.md`
+exemptions. Green build and green tests are not runtime evidence.
