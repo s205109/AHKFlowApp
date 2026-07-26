@@ -23,7 +23,7 @@ Three concrete reasons, all found by audit:
 
 Compounding it: `AGENTS.md` stopped naming `AHKFlowApp.E2E.Tests` two days ago (`2e888e5`), so
 "Playwright" in agent instructions now means only ad-hoc `playwright-cli` driving — while the repo
-actually has 11 mature E2E flow classes. And five documents define five different pre-PR gates with
+actually has 10 mature E2E flow classes. And five documents define five different pre-PR gates with
 no cross-references.
 
 **Outcome wanted:** verification happens as part of implementing, routed by surface, with a durable
@@ -33,7 +33,7 @@ test as the default artifact — so regressions are caught by the suite, not by 
 
 | Asset | Path | Use |
 |---|---|---|
-| E2E flow suite | `tests/AHKFlowApp.E2E.Tests/*FlowTests.cs` (11 classes) | Template for new flow tests |
+| E2E flow suite | `tests/AHKFlowApp.E2E.Tests/*FlowTests.cs` (10 classes) | Template for new flow tests |
 | E2E stack fixture | `tests/AHKFlowApp.E2E.Tests/Fixtures/StackFixture.cs` | API+SPA+browser, `ResetDataAsync()` per test |
 | E2E test shape | `HotkeysCrudFlowTests.cs` | `[Collection(E2ETestCollection.Name)]`, `data-test` selectors, `.desktop-branch` scoping |
 | Test slice runner | `scripts/test-fast.ps1` (`-Mode Fast\|Integration\|E2E\|Coverage`) | Every command in the routing table |
