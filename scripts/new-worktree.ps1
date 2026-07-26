@@ -236,6 +236,12 @@ $worktreePath = [System.IO.Path]::GetFullPath($Path)
 Assert-WorktreeLocation -RepoRoot $repoRoot -WorktreePath $worktreePath
 $worktreeExists = Test-Path -LiteralPath (Join-Path $worktreePath '.git')
 
+# -BaseRef only affects branch creation. Reusing an existing worktree cannot honor it, and
+# rerunning setup while ignoring the flag would imply the requested base had been applied.
+if ($BaseRef -and $worktreeExists) {
+    throw "Worktree '$worktreePath' already exists, so -BaseRef '$BaseRef' cannot apply. Remove that worktree first, or omit -BaseRef to reuse it as-is."
+}
+
 # Sweep other worktrees whose branch is already merged into main before creating/reusing
 # this one. -ExcludePath protects $worktreePath itself: without it a same-named create/reuse
 # could race the async removal. -IsHook passes the RAW hook context; the cleanup script's
@@ -261,11 +267,8 @@ if (-not $worktreeExists) {
 
     New-Item -ItemType Directory -Path (Split-Path -Parent $worktreePath) -Force | Out-Null
 
-    if ($branchExists) {
-        Invoke-Git $repoRoot @('worktree', 'add', $worktreePath, $BranchName)
-    } else {
-        Invoke-Git $repoRoot @('worktree', 'add', $worktreePath, '-b', $BranchName, $sourceRef)
-    }
+    $addArguments = Get-WorktreeAddArguments -WorktreePath $worktreePath -BranchName $BranchName -BranchExists $branchExists -SourceRef $sourceRef
+    Invoke-Git $repoRoot $addArguments
 }
 
 Copy-WorktreeIncludeEntries $repoRoot $worktreePath
