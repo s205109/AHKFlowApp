@@ -129,24 +129,25 @@ The path Task 1 mandates is currently broken in two places.
   Keep the "don't claim a capability is unavailable without checking `.claude/skills/`" half; it is
   a separate, still-useful guard.
 
-## Task 5 — reactivate `dck-testing` as the test-writing skill
+## Task 5 — dropped mid-execution: do not reactivate `dck-testing`
 
-The plan mandates writing tests; the repo already has a 341-line templates skill that nothing loads
-because it is named `REFERENCE.md` instead of `SKILL.md`. Its frontmatter is already valid
-(`name: dck-testing`, description covering xUnit / WebApplicationFactory / Testcontainers / bUnit).
+Originally this task reactivated `.agents/dck-testing/REFERENCE.md` as a `SKILL.md` to hold the E2E
+template. **Reversed during execution after checking history.** `45278aa` (2026-07-16) retired that
+skill and five siblings deliberately:
 
-- **Rename** `.agents/dck-testing/REFERENCE.md` → `SKILL.md`.
-- **Refresh the stale test-project list** (`REFERENCE.md:16-25`) — it predates `AHKFlowApp.E2E.Tests`,
-  `AHKFlowApp.CLI.Tests`, and `AHKFlowApp.TestUtilities`, all of which exist now.
-- **Add an E2E flow-test template** modeled on `tests/AHKFlowApp.E2E.Tests/HotkeysCrudFlowTests.cs`:
-  `[Collection(E2ETestCollection.Name)]`, `StackFixture` injection, `ResetDataAsync()` in
-  `InitializeAsync`, `data-test` selectors, and `.desktop-branch` scoping so a selector cannot match
-  both the desktop and mobile branch. This is the artifact the Task 1 routing table demands most
-  often, so the template carries the most weight.
-- **Cross-link** to `testing-workflow.md` for which slice to run, and to the `AGENTS.md` section for
-  when to write which kind of test.
-- **Trim overlap** with `AGENTS.md` Testing — the skill keeps code templates, `AGENTS.md` keeps the
-  principles. Don't restate the anti-patterns in both.
+> Ambient triggers ("use when writing C#") never fire — no discrete moment to load a reference.
+> Content already in always-loaded AGENTS.md, so each was a second source of truth that could drift.
+
+`.claude/skills/README.md:21-25` documents `REFERENCE.md` as the retirement convention, and unique
+rules were ported into `AGENTS.md` before retiring. One of the two reasons has expired — the routing
+table *is* the discrete trigger that was missing — but the drift risk has not.
+
+**Resolution:** the E2E flow-test template went into `docs/development/testing-workflow.md` (Task 3),
+which now owns testing routing anyway. `dck-testing` stays retired. Skill count unchanged.
+
+Worth recording as a process point: the original framing here ("deactivated by filename, nothing loads
+it") was asserted without reading git history, and a decision was taken on it. That is the same defect
+this plan exists to prevent.
 
 ## Task 6 — dedupe the user memory
 
@@ -169,22 +170,19 @@ lives in `AGENTS.md` Testing from commit `4a846d1`, so make the memory defer rat
 
 ## Commits
 
-Branch `docs/wt-verification-routing`, worktree `.claude/worktrees/verification-routing` — both
-already created. This plan is already committed there as `7345fa2`
-(`docs/superpowers/plans/2026-07-26-post-implementation-verification-plan.md`), so execution starts
-at commit 2 below.
+Branch `docs/wt-verification-routing`, worktree `.claude/worktrees/verification-routing`. As landed:
 
-1. ~~plan doc~~ — landed, `7345fa2`
-2. `docs: route verification by surface after implementation` — Task 1
-3. `docs: add runtime phase to dck-verify` — Task 2
-4. `docs: one canonical pre-PR gate` — Task 3
-5. `docs: fix worktree ports + playwright-cli project context` — Task 4
-6. `docs: reactivate dck-testing with E2E template` — Task 5
+| SHA | Commit | Task |
+|---|---|---|
+| `743264d` | `docs: plan post-implementation verification routing` | this plan |
+| `bf344c6` | `docs: route verification by surface after implementation` | 1 |
+| `d6acbf0` | `docs: add runtime phase to dck-verify` | 2 |
+| `86fa855` | `docs: one canonical pre-PR gate` | 3 + E2E template |
+| `7f2a187` | `docs: fix worktree ports + playwright-cli project context` | 4 |
+| `249f9a2` | `chore: refresh Codex plugin mirror for skill edits` | setup script output |
 
-Task 6 (memory dedupe) is a user-config edit outside the repo, not a commit. Per the standing rule on
-`~/.claude` changes, flag it for the user to commit in their own config repo.
-
-Amend `7345fa2` if the answers below change the plan text, so the committed plan matches what ships.
+Task 5 was dropped (see above). Task 6 (memory dedupe) is a user-config edit outside the repo, not a
+commit — per the standing rule on `~/.claude` changes, the user commits it in their own config repo.
 
 Separate and unrelated: the `docs/wt-insights-rules` worktree from earlier this session holds
 `4a846d1` (root-cause + smoke-test + laptop-key rules), still unpushed. `git worktree prune` also
@@ -198,10 +196,9 @@ has to produce evidence:
 1. `pwsh ./scripts/agents/setup-cross-agent-skills.ps1` — required after any `.agents/` change;
    expect a `[DONE]` line. Skips silently wrong without it.
 2. `pwsh -NoProfile -File tests/SkillParity.Tests.ps1` and
-   `pwsh -NoProfile -File tests/CodexSkillsHashParity.Tests.ps1` — prove the `dck-verify`,
-   `playwright-cli`, and newly-activated `dck-testing` edits propagated to `.claude/skills/` and
-   `.github/skills/`. `dck-testing` is the one that can actually fail here: it has never had a
-   `SKILL.md`, so it has no symlink in either mirror yet.
+   `pwsh -NoProfile -File tests/CodexSkillsHashParity.Tests.ps1` — prove the `dck-verify` and
+   `playwright-cli` edits propagated to `.claude/skills/` and `.github/skills/`. The Codex hash parity
+   script is Linux-only and skips on Windows; the setup script's own hard-link refresh covers it.
 3. `git diff --check` plus a read-through of each changed file.
 4. Grep that no orphan cross-references remain: search for `clearly easier or faster`,
    `7-Phase`, and `Manual Testing Requests` — all three strings should be gone repo-wide.
@@ -220,7 +217,7 @@ Nothing outstanding. Settled during planning:
 - Docs-only enforcement — no Stop hook.
 - Three exemptions, with the refactor one fenced by named covering tests plus fresh green output.
 - `testing-workflow.md` owns the single canonical pre-PR gate; four other definitions link to it.
-- `dck-testing` reactivated as the test-writing templates skill, refreshed with an E2E template.
+- `dck-testing` stays retired per `45278aa`; the E2E template lives in `testing-workflow.md` instead.
 - Manual AHK checklist only for constructs the repo has not emitted before.
 - Phase 8 mandatory for bug fixes that had an observable symptom.
 
