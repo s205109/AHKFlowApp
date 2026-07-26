@@ -1,6 +1,6 @@
 # Local testing workflow
 
-Use the fastest test slice that still covers the code you changed. The pre-push hook runs an incremental build plus the fast slice automatically; run the full coverage gate yourself before opening a PR (CI enforces it on every PR regardless).
+Use the fastest test slice that still covers the code you changed. The pre-push hook runs an incremental build plus the fast slice automatically; run the full coverage gate yourself before opening a PR (CI enforces it on every non-docs PR regardless).
 
 This file is the single source for which tests to run and when. Other docs link here rather than restating commands.
 
@@ -12,12 +12,14 @@ Four steps, in order. Nothing else counts as the gate.
 dotnet build AHKFlowApp.slnx --configuration Release
 dotnet format AHKFlowApp.slnx --verify-no-changes
 pwsh .\scripts\test-fast.ps1 -Mode Coverage
-git diff --check
+git diff --check main...HEAD
 ```
+
+Pass the `main...HEAD` range to `git diff --check`. The bare form inspects only uncommitted work, so on a clean branch it passes without ever looking at the commits you are about to propose. Run the bare form as well if you have changes still in flight.
 
 Then verify the change actually works — see **Verification After Implementation** in [`AGENTS.md`](../../AGENTS.md). A green gate proves nothing regressed; it does not prove the new behavior happened.
 
-CI enforces the same build, format, and coverage-threshold steps on every PR. The pre-push hook is a faster subset (incremental build + fast slice, `scripts/pre-push-quick-checks.ps1`), not this gate.
+CI enforces the same build, format, and coverage-threshold steps on every **non-docs** PR. A PR touching only `**/*.md`, `docs/**`, or `.claude/**` skips build, test, and coverage entirely — see the `dorny/paths-filter` step in `ci.yml`. On a docs-only branch CI proves nothing, so this local gate is the only gate. The pre-push hook is a faster subset (incremental build + fast slice, `scripts/pre-push-quick-checks.ps1`), not this gate.
 
 ## Fast inner loop
 
@@ -106,7 +108,7 @@ Assert on something a user would see — rendered text, a grid cell, a snackbar 
 pwsh .\scripts\test-fast.ps1 -Mode Coverage
 ```
 
-Coverage mode delegates to `scripts/run-coverage.ps1`. Run it before opening a PR; CI enforces the same coverage + threshold gate on every PR. The pre-push hook itself only runs quick checks (incremental build + fast slice, see `scripts/pre-push-quick-checks.ps1`), not this full coverage path. The local coverage script uses the same disposable shared SQL container behavior as Integration mode for the SQL-backed suites.
+Coverage mode delegates to `scripts/run-coverage.ps1`. Run it before opening a PR; CI enforces the same coverage + threshold gate on every non-docs PR. The pre-push hook itself only runs quick checks (incremental build + fast slice, see `scripts/pre-push-quick-checks.ps1`), not this full coverage path. The local coverage script uses the same disposable shared SQL container behavior as Integration mode for the SQL-backed suites.
 
 ## Trait contract
 

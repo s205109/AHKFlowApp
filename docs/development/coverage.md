@@ -38,7 +38,7 @@ git config core.hooksPath .githooks
 
 The canonical gate also requires `python` on `PATH`.
 
-That `core.hooksPath` setting enables the repo-managed `.githooks/pre-push` hook, which runs `pwsh .\scripts\pre-push-quick-checks.ps1` automatically before each push — an incremental build plus the container-free fast test slice, not full coverage. CI runs the full coverage + format gate on every PR, so the hook is a quick local sanity check rather than the authoritative gate. Run `pwsh .\scripts\run-coverage.ps1` yourself before opening a PR if you want the full local confidence check.
+That `core.hooksPath` setting enables the repo-managed `.githooks/pre-push` hook, which runs `pwsh .\scripts\pre-push-quick-checks.ps1` automatically before each push — an incremental build plus the container-free fast test slice, not full coverage. CI runs the full coverage + format gate on every non-docs PR, so the hook is a quick local sanity check rather than the authoritative gate. Run `pwsh .\scripts\run-coverage.ps1` yourself before opening a PR if you want the full local confidence check.
 
 The hook adds well under two minutes per push. Skip it for WIP pushes with either:
 
