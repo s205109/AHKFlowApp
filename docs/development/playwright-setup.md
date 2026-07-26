@@ -28,7 +28,7 @@ Once installed, Claude Code can drive the browser during a session. Common uses 
 ```
 "Open the health page in headed mode so I can see it"
 "Take a screenshot of the home page"
-"Check if the UI is loading correctly on localhost:5601"
+"Read this worktree's launchSettings.json for the frontend port, then check the UI loads"
 ```
 
 ## Ports
