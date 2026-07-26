@@ -200,6 +200,12 @@ Atomic commits: one logical change per commit; feature + its tests = one commit.
 Never force-push to main/master. Run `dotnet build` + `dotnet test` before creating a PR.
 Keep PRs focused on a single concern; split large changes into stacked PRs.
 
+Confirm the base before branching. A new branch starts from the main checkout's current HEAD, so
+work that builds on unmerged work must say so explicitly: pass `-BaseRef <branch>` to
+`scripts/new-worktree.ps1`. Check which branch actually contains the spec, plan, or code you are
+building on rather than defaulting to `main` — branching from `main` while the prerequisite sits on
+an open branch produces a diff full of unrelated commits after the first rebase.
+
 The AHKFlowApp main checkout is human-owned for Git mutations. Agents may inspect, edit, build,
 test, and format there, but must branch, add, commit, merge, rebase, and push for this repository
 only from a managed linked worktree. Use `scripts/new-worktree.ps1` or the `WorktreeCreate` tool.

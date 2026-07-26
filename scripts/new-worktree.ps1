@@ -9,6 +9,10 @@
     output on stderr) to sweep worktrees whose branch is already merged into main. That
     sweep is opt-in via `git config --local ahkflow.worktreeCleanup true`; -Cleanup forces
     it for this run. See cleanup-merged-worktrees.ps1 for the full precedence.
+
+    A new branch is created from the main checkout's current HEAD unless -BaseRef names another
+    starting point. Pass -BaseRef when the work builds on an unmerged branch, so the new worktree
+    stacks on that branch instead of silently picking up whatever main happens to be on.
 #>
 
 [CmdletBinding()]
@@ -16,6 +20,7 @@ param(
     [string] $Name,
     [string] $BranchName,
     [string] $Path,
+    [string] $BaseRef,
 
     [Alias('c')]
     [switch] $Cleanup
@@ -246,7 +251,12 @@ Invoke-OrphanDockerPrune $repoRoot
 
 if (-not $worktreeExists) {
     $branchExists = Test-BranchExists $repoRoot $BranchName
-    $sourceRef = if ($branchExists) { $BranchName } else { 'HEAD' }
+
+    if ($BaseRef -and -not (Test-RefExists $repoRoot $BaseRef)) {
+        throw "-BaseRef '$BaseRef' does not resolve to a commit in this repository. Fetch it first, or pass a local branch, tag, or SHA."
+    }
+
+    $sourceRef = Resolve-WorktreeSourceRef -BranchName $BranchName -BranchExists $branchExists -BaseRef $BaseRef
     Assert-SetupScriptCommitted -RepoRoot $repoRoot -Ref $sourceRef
 
     New-Item -ItemType Directory -Path (Split-Path -Parent $worktreePath) -Force | Out-Null
@@ -254,7 +264,7 @@ if (-not $worktreeExists) {
     if ($branchExists) {
         Invoke-Git $repoRoot @('worktree', 'add', $worktreePath, $BranchName)
     } else {
-        Invoke-Git $repoRoot @('worktree', 'add', $worktreePath, '-b', $BranchName)
+        Invoke-Git $repoRoot @('worktree', 'add', $worktreePath, '-b', $BranchName, $sourceRef)
     }
 }
 

@@ -24,6 +24,46 @@ function Test-LinkedWorktree {
     return $gitDir.TrimEnd('\') -ine $commonDir.TrimEnd('\')
 }
 
+function Test-RefExists {
+    param(
+        [string] $Root,
+        [string] $Ref
+    )
+
+    # Deliberately broader than a branch probe: a base ref may legitimately be a local branch, a
+    # remote-tracking ref, a tag, or a raw SHA. The '^{commit}' suffix rejects a ref that resolves
+    # to something that cannot be branched from.
+    & git -C $Root rev-parse --verify --quiet "$Ref^{commit}" *> $null
+    return $LASTEXITCODE -eq 0
+}
+
+# Which ref a new worktree's branch starts from. Pure so the precedence is testable without a
+# repo: an existing branch owns its own history, an explicit -BaseRef stacks on unmerged work,
+# and HEAD is the default that preserves the historical behavior.
+function Resolve-WorktreeSourceRef {
+    param(
+        [string] $BranchName,
+        [bool] $BranchExists,
+        [string] $BaseRef
+    )
+
+    # Silently ignoring -BaseRef here would hand back a worktree based on something other than
+    # what was asked for — the exact confusion the parameter exists to prevent.
+    if ($BaseRef -and $BranchExists) {
+        throw "Branch '$BranchName' already exists, so -BaseRef '$BaseRef' cannot apply. Omit -BaseRef to check out the existing branch, or pick a new -BranchName."
+    }
+
+    if ($BranchExists) {
+        return $BranchName
+    }
+
+    if ($BaseRef) {
+        return $BaseRef
+    }
+
+    return 'HEAD'
+}
+
 # AGENTS.md: worktree-born branches are '<type>/wt-<topic>'. The Claude WorktreeCreate hook
 # only ever supplies a worktree name, so an untyped name cannot express intent and falls back
 # to the 'fix/' type; a type prefix the caller did supply is preserved.
