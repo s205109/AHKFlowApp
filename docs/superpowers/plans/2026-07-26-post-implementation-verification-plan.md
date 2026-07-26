@@ -140,7 +140,13 @@ skill and five siblings deliberately:
 
 `.claude/skills/README.md:21-25` documents `REFERENCE.md` as the retirement convention, and unique
 rules were ported into `AGENTS.md` before retiring. One of the two reasons has expired — the routing
-table *is* the discrete trigger that was missing — but the drift risk has not.
+table *is* the discrete trigger that was missing — but the drift risk has not, and the drift already
+happened: `REFERENCE.md:121-134` builds a per-class `MsSqlContainer` and migrates it by hand, while the
+live API suite uses a shared `[Collection("WebApi")]` plus `ApiTestFixture`
+(`tests/AHKFlowApp.API.Tests/Hotstrings/HotstringsEndpointsTests.cs:12-15`). Refreshing the project
+list alone would have shipped a misleading template. A correct reactivation means rewriting every
+template against the live suites — a bigger job than this plan, and not one worth doing to hold a
+single E2E snippet.
 
 **Resolution:** the E2E flow-test template went into `docs/development/testing-workflow.md` (Task 3),
 which now owns testing routing anyway. `dck-testing` stays retired. Skill count unchanged.
@@ -195,13 +201,23 @@ has to produce evidence:
 
 1. `pwsh ./scripts/agents/setup-cross-agent-skills.ps1` — required after any `.agents/` change;
    expect a `[DONE]` line. Skips silently wrong without it.
-2. `pwsh -NoProfile -File tests/SkillParity.Tests.ps1` and
-   `pwsh -NoProfile -File tests/CodexSkillsHashParity.Tests.ps1` — prove the `dck-verify` and
-   `playwright-cli` edits propagated to `.claude/skills/` and `.github/skills/`. The Codex hash parity
-   script is Linux-only and skips on Windows; the setup script's own hard-link refresh covers it.
+2. `pwsh -NoProfile -File tests/SkillParity.Tests.ps1` — proves the **Codex plugin mirror**
+   (`plugins/ahkflowapp/skills`) is byte-identical to `.agents`. That is all it checks: it never reads
+   `.claude/skills/` or `.github/skills/` (`SkillParity.Tests.ps1:10-11`).
+   `tests/CodexSkillsHashParity.Tests.ps1` skips on Windows — the bash script is Linux-only — so it
+   proves nothing here.
+   The symlink mirrors are proven instead by the setup script's own per-entry output
+   (`[OK] .claude/skills/<name> already points to .agents/<name>`, same for `.github/skills`). Read
+   those lines; don't infer them from the parity test.
 3. `git diff --check` plus a read-through of each changed file.
-4. Grep that no orphan cross-references remain: search for `clearly easier or faster`,
-   `7-Phase`, and `Manual Testing Requests` — all three strings should be gone repo-wide.
+4. Grep that no orphan cross-references remain in **active instruction surfaces** — search
+   `clearly easier or faster`, `7-Phase`, and `Manual Testing Requests` across `AGENTS.md`, `.agents/`,
+   `.claude/`, `.github/`, and `docs/development/`. Not repo-wide: this plan quotes all three strings
+   as historical context, so an unrestricted search can never come back empty.
+
+   ```bash
+   git grep -n -- "clearly easier or faster" -- AGENTS.md .agents .claude .github docs/development
+   ```
 5. Confirm `AHKFlowApp.E2E.Tests` appears in `AGENTS.md` again.
 
 **Dogfood check:** after landing, the next UI change in this repo should produce a new or extended
