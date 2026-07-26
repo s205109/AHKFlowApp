@@ -112,11 +112,35 @@ When finalizing a plan or spec (right before presenting the final plan for appro
 
 Only commit plans/specs to `docs/superpowers/` when they relate to project improvements — code, features, infra, deployment, tests, repo tooling that affects contributors. Skip writing (or keep out-of-repo) plans for agent optimization, personal workflow tuning, agent housekeeping, or one-off context/config cleanups.
 
-## Manual Testing Requests
+## Verification After Implementation
 
-Prefer verifying yourself with browser automation (Playwright preferred; Claude in Chrome as fallback) over asking the user to test manually. Asking is fine when automation can't cover it (e.g. real Azure AD login, visual judgment calls) or when asking is clearly easier or faster.
+This fires when implementation of a feature, fix, or plan task completes — **before reporting it done**, not only before commit, push, or PR. A change that has never been exercised is not finished. Don't leave defects for a review agent to find.
 
-When asking the user to manually test or verify anything (UI flows, commands, acceptance checks), always provide:
+Default to a **durable test** as the verification artifact. Driving the app by hand proves it once; a test keeps proving it.
+
+| Surface changed | Verification artifact | Command |
+|---|---|---|
+| Blazor UI flow, assertable | Add or extend a `*FlowTests.cs` in `tests/AHKFlowApp.E2E.Tests` | `pwsh .\scripts\test-fast.ps1 -Mode E2E` |
+| UI, visual or exploratory only | Drive the running app with the `playwright-cli` skill, capture a screenshot | Read the worktree's own `launchSettings.json` for ports |
+| API, use case, EF Core | Integration test (`Category=Integration` trait, or `API.Tests`) | `pwsh .\scripts\test-fast.ps1 -Mode Integration` |
+| CLI behavior | `CLI.Tests` integration flow | `pwsh .\scripts\test-fast.ps1 -Mode Integration` |
+| Emitted `.ahk` output | Assert the generated text. Add manual steps **only when the change emits a construct the repo has not shipped before** — new option flag, new escaping path, new action kind. Running `.ahk` is out of scope, so for proven constructs the assertion is the contract | `pwsh .\scripts\test-fast.ps1 -Mode Fast` |
+| Domain rule, validator | Unit test | `pwsh .\scripts\test-fast.ps1 -Mode Fast` |
+| Real Azure AD login, visual judgment call | Numbered manual steps for the user | — |
+
+Which slice to run, test templates, and the canonical pre-PR gate: [`docs/development/testing-workflow.md`](docs/development/testing-workflow.md).
+
+### The only exemptions
+
+1. **Docs, skills, or plan files only** — nothing compiled. Targeted text checks plus diff review.
+2. **Internal-only, no observable surface** — no UI, no API contract, no emitted `.ahk` change, no schema change.
+3. **Pure refactor, no behavior change** — to claim this, name the existing tests that cover the changed code and paste their fresh pass output. No named coverage, no exemption; verify at runtime instead.
+
+State the verdict either way. Naming an exemption is fine; saying nothing is not.
+
+### When manual steps are the answer
+
+Ask the user only for the cases the table sends to them. Then always provide:
 
 - **Preconditions first** — what must be running, exact URL, login/profile, starting state
 - **Numbered steps, one action each** — never combine actions in one step
