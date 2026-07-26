@@ -64,6 +64,24 @@ function Resolve-WorktreeSourceRef {
     return 'HEAD'
 }
 
+# The exact 'git worktree add' argv. Kept separate from the call so a test can assert the start
+# point is really passed through: dropping $SourceRef would still produce a working script and
+# would be invisible to a test that only checked the resolver's return value.
+function Get-WorktreeAddArguments {
+    param(
+        [string] $WorktreePath,
+        [string] $BranchName,
+        [bool] $BranchExists,
+        [string] $SourceRef
+    )
+
+    if ($BranchExists) {
+        return , @('worktree', 'add', $WorktreePath, $BranchName)
+    }
+
+    return , @('worktree', 'add', $WorktreePath, '-b', $BranchName, $SourceRef)
+}
+
 # AGENTS.md: worktree-born branches are '<type>/wt-<topic>'. The Claude WorktreeCreate hook
 # only ever supplies a worktree name, so an untyped name cannot express intent and falls back
 # to the 'fix/' type; a type prefix the caller did supply is preserved.
