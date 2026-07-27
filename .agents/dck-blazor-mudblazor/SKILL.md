@@ -8,7 +8,7 @@ description: Use when building AHKFlowApp Blazor WebAssembly UI with MudBlazor p
 ## Core Principles
 
 1. **MudBlazor components first** — Always use MudBlazor components (`MudTable`, `MudForm`, `MudDialog`, `MudButton`) over raw HTML. Consistent styling, accessibility, and behavior out of the box.
-2. **Typed HttpClient for all API calls** — Use `IAHKFlowApiHttpClient` (registered via `AddHttpClient<T>`). Never create HttpClient manually.
+2. **Typed API client per entity** — Use the per-entity interface in `src/Frontend/AHKFlowApp.UI.Blazor/Services/` (`ICategoriesApiClient`, `IHotstringsApiClient`, `IHotkeysApiClient`, etc.), each extending `ApiClientBase` and exposing `ListAsync`/`GetAsync`/`CreateAsync`/`UpdateAsync`/`DeleteAsync` returning `ApiResult`/`ApiResult<T>`. `IAhkFlowAppApiHttpClient` only exposes `GetHealthAsync` — never route entity CRUD through it. Never create `HttpClient` manually.
 3. **Dialogs for create/edit, snackbars for feedback** — `IDialogService.ShowAsync<T>` for forms, `ISnackbar.Add()` for success/error notifications.
 4. **Loading states everywhere** — Set `_loading = true` before async calls, `false` after. Use `MudTable.Loading` and `MudProgressLinear` for visual feedback.
 5. **CancellationToken propagation** — Pass tokens through all async paths to support cancellation.
@@ -30,7 +30,7 @@ Full-screen `MudDialog` for create/edit is the **mobile-branch** pattern in this
 
 ### Opening Dialogs / Delete Confirmation
 
-See `HotstringEditDialog.razor`'s caller in `Pages/Hotstrings.razor` for `IDialogService.ShowAsync<T>` and result handling, and any page's delete action for `IDialogService.ShowMessageBox(...)` — the shape (title, message, yesText/cancelText, `== true` check) matches the original template; no drift found here.
+See `HotstringEditDialog.razor`'s caller in `Pages/Hotstrings.razor` for `IDialogService.ShowAsync<T>` and result handling. For delete confirmation, the real method is `IDialogService.ShowMessageBoxAsync(...)`, not `ShowMessageBox(...)` — see `src/Frontend/AHKFlowApp.UI.Blazor/Pages/Categories.razor:222-225` (`bool? confirm = await DialogService.ShowMessageBoxAsync(title: ..., message: ..., yesText: "Delete", cancelText: "Cancel"); if (confirm != true) return;`).
 
 ### Form Validation (per-field delegates, not a FluentValidation adapter)
 
@@ -54,25 +54,30 @@ There is no `FluentValidationExtensions.ValidateValue` adapter in this codebase 
 <MudButton Variant="Variant.Filled" OnClick="Submit">Save</MudButton>
 ```
 
-### Don't Forget `For` Lambda on Form Fields
+### Don't Skip Field-Level Validation
+
+Real forms in this app don't use a `For` lambda at all — `Validation/HotstringEditModel.cs`'s fields validate through a `Func<string, string?>` delegate passed directly to `Validation`, with `Error`/`ErrorText` bound to the same check (see `Components/Hotstrings/HotstringEditDialog.razor:89-94`, no `For` present). `For` only matters if a field is linked into `MudForm`'s `EditContext`-based validation, which this codebase doesn't use.
 
 ```razor
-@* BAD — validation messages won't display for this field *@
+@* BAD — no validation wired up at all *@
 <MudTextField @bind-Value="_model.Trigger" Label="Trigger" />
 
-@* GOOD — For links the field to the model's validation delegate *@
-<MudTextField @bind-Value="_model.Trigger" For="() => _model.Trigger" Label="Trigger" />
+@* GOOD — Validation delegate + Error/ErrorText, matching HotstringEditDialog.razor *@
+<MudTextField @bind-Value="_model.Trigger" Label="Trigger"
+              Validation="@(new Func<string, string?>(ValidateTrigger))"
+              Error="@(ValidateTrigger(_model.Trigger) is not null)"
+              ErrorText="@ValidateTrigger(_model.Trigger)" />
 ```
 
 ### Don't Skip Loading States
 
 ```csharp
 // BAD — UI freezes with no feedback during API calls
-_hotstrings = await Api.GetHotstringsAsync();
+ApiResult<PagedList<HotstringDto>> result = await Api.ListAsync(request, ct);
 
-// GOOD — loading indicator visible during fetch
+// GOOD — loading indicator visible during fetch (Api is IHotstringsApiClient)
 _loading = true;
-_hotstrings = await Api.GetHotstringsAsync();
+ApiResult<PagedList<HotstringDto>> result = await Api.ListAsync(request, ct);
 _loading = false;
 ```
 
@@ -80,12 +85,12 @@ _loading = false;
 
 ```csharp
 // BAD — unnecessary, Blazor re-renders after event handlers
-await Api.CreateHotstringAsync(dto);
+await Api.CreateAsync(dto, ct);
 StateHasChanged(); // redundant
 
 // GOOD — only call StateHasChanged after non-UI-thread operations
 // Blazor auto-renders after event handlers and OnInitializedAsync
-await Api.CreateHotstringAsync(dto);
+await Api.CreateAsync(dto, ct);
 ```
 
 ### Don't Nest Dialogs
@@ -106,11 +111,11 @@ MudDialog.Close(DialogResult.Ok(result));
 | List of items, simple (≤6 fields) | `MudTable` inline row editing (see `Categories.razor`) |
 | List of items, larger/sortable/bulk-select | `MudDataGrid` with `ServerData` (see `Hotstrings.razor`, `Hotkeys.razor`) |
 | Create/Edit form | Inline edit (`MudTable`/`MudDataGrid`) by default; `MudDialog` + `EditModel` only for the mobile branch |
-| Delete confirmation | `DialogService.ShowMessageBox()` |
+| Delete confirmation | `DialogService.ShowMessageBoxAsync()` |
 | Success/error feedback | `ISnackbar.Add()` with `Severity` |
 | Search with debounce | `MudTextField` with `DebounceInterval` + `OnDebounceIntervalElapsed` |
 | Sorting | `MudTableSortLabel` with `SortLabel` |
 | Pagination | `MudTablePager` (server-side) or built-in (client-side) |
-| Form validation | `EditModel` with per-field `Func<string,string?>` delegates + `For` lambdas |
+| Form validation | `EditModel` with per-field `Func<string,string?>` delegates on `Validation`/`Error`/`ErrorText` (no `For`) |
 | Loading indicator | `MudTable.Loading` or `MudProgressLinear` |
 | Navigation | `MudNavMenu` + `MudNavLink` |

@@ -49,14 +49,14 @@ builder.Services.AddProblemDetails(options =>
 
 ```csharp
 // BAD — no response type annotations, schema won't include response types
-[HttpGet("{id:int}")]
-public async Task<IActionResult> GetById(int id, CancellationToken ct) { ... }
+[HttpGet("{id:guid}")]
+public async Task<ActionResult<HotstringDto>> Get(Guid id, CancellationToken ct) { ... }
 
-// GOOD — explicit annotations
-[HttpGet("{id:int}")]
-[ProducesResponseType<HotstringDto>(StatusCodes.Status200OK)]
-[ProducesResponseType(StatusCodes.Status404NotFound)]
-public async Task<IActionResult> GetById(int id, CancellationToken ct) { ... }
+// GOOD — explicit annotations (real IDs in this app are Guid, routed with :guid)
+[HttpGet("{id:guid}")]
+[ProducesResponseType(typeof(HotstringDto), StatusCodes.Status200OK)]
+[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+public async Task<ActionResult<HotstringDto>> Get(Guid id, CancellationToken ct) { ... }
 ```
 
 ### Minimal API OpenAPI Patterns in Controllers

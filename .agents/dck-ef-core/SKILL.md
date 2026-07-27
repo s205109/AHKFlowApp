@@ -10,7 +10,7 @@ description: Use when changing AHKFlowApp EF Core, SQL Server, DbContext, migrat
 1. **EF Core is the default ORM** — Use it for all data access. No stored procedures, no raw ADO.NET except for diagnostics.
 2. **`IAppDbContext` injected into handlers** — This project wraps `AppDbContext` behind `IAppDbContext` (`src/Backend/AHKFlowApp.Application/Abstractions/IAppDbContext.cs`) purely so handler unit tests can substitute it — the interface still exposes `DbSet<T>` properties directly, no per-entity CRUD methods, so it is not a repository. Never add a repository interface on top of it.
 3. **SQL Server only** — LocalDB for local dev, Docker Compose SQL Server for dev containers, Azure SQL for production. `EnableRetryOnFailure()` on all registrations.
-4. **Queries should be projections** — Use `.Select()` to project into DTOs. Avoids over-fetching and N+1 issues.
+4. **List queries project, detail queries load-and-map** — List/paginated queries use `.Select()` to build the DTO directly in the query (see `ListCategoriesQuery.cs:52`, `ListHotstringsQuery.cs:179`); single-entity "get by id" queries load the tracked-off entity with `Include()` and map with an explicit `.ToDto()` extension instead (see `GetHotstringQuery.cs`, below). Both avoid over-fetching; pick the shape that matches the query, not one universal rule.
 5. **Migrations are code** — Review them, test them, never auto-apply in production.
 
 ## Patterns
@@ -25,28 +25,30 @@ See `src/Backend/AHKFlowApp.Infrastructure/DependencyInjection.cs:16-21` for the
 
 ### Handler Injects IAppDbContext Directly
 
-`src/Backend/AHKFlowApp.Application/Queries/Hotstrings/GetHotstringQuery.cs` is the live shape: the handler class is named `{Query}Handler` off the full query name (`GetHotstringQueryHandler`, not `GetHotstringHandler`), it takes `IAppDbContext` (not `AppDbContext`) and `ICurrentUser` in its primary constructor, and it loads the entity with `AsNoTracking()` + `Include()` rather than a `.Select()` projection, then maps with an explicit `.ToDto()` extension (`Application/Mapping/`). Follow that shape, not a `.Select()` projection — see below.
+`src/Backend/AHKFlowApp.Application/Queries/Hotstrings/GetHotstringQuery.cs` is the live shape for a detail query: the handler class is named `{Query}Handler` off the full query name (`GetHotstringQueryHandler`, not `GetHotstringHandler`), it takes `IAppDbContext` (not `AppDbContext`) and `ICurrentUser` in its primary constructor, and it loads the entity with `AsNoTracking()` + `Include()`, then maps with an explicit `.ToDto()` extension (`Application/Mapping/`). List queries use a different shape — see below.
 
-### Loading and Mapping (not `.Select()` projection)
+### Loading and Mapping — detail queries vs list queries
 
-Core Principle #4 above ("Queries should be projections") describes the *intent* — avoid over-fetching — but the actual pattern in this codebase is `AsNoTracking()` + `Include()` on the entity, then an explicit `.ToDto()` extension method in `Application/Mapping/`, not an inline `.Select(x => new Dto(...))`. See `GetHotstringQuery.cs` above for the live shape. Reach for `.Select()` projection only if a query needs to avoid loading a large related collection that `.ToDto()` would otherwise touch.
+Two live shapes, not one:
+- **Detail query (single entity by id)** — `AsNoTracking()` + `Include()` on the entity, then an explicit `.ToDto()` extension method in `Application/Mapping/`. See `GetHotstringQuery.cs` above.
+- **List/paginated query** — `.Select(x => new Dto(...))` projecting straight from the queryable, no `.ToDto()` call. See `ListCategoriesQuery.cs:52` (`.Select(c => new CategoryDto(c.Id, c.Name, c.CreatedAt, c.UpdatedAt))`) and `ListHotstringsQuery.cs:179`.
+
+Follow whichever shape matches the query you're writing — don't force a list query into `.ToDto()` or a detail query into `.Select()`.
 
 ### ExecuteUpdateAsync / ExecuteDeleteAsync
 
 Bulk operations that bypass change tracking for better performance.
 
-_No live example in this codebase yet — nothing here bulk-updates/deletes today. Framework API reference for when that need arises; convert to a pointer at that time instead of trusting this snippet to still be current._
+_No live example in this codebase yet — nothing here bulk-updates/deletes today, and no `Hotstring.ProfileId`/`Hotstring.IsActive` properties exist (see `Hotstring.cs`) to bulk-update. The example below is the official EF Core 10 docs sample (generic `Employees`/`Tags` entities), not this app's data — convert to a pointer once a real usage exists._
 
 ```csharp
+// From https://learn.microsoft.com/ef/core/saving/execute-insert-update-delete (EF Core 10)
 // Update without loading entities
-await db.Hotstrings
-    .Where(h => h.ProfileId == request.ProfileId)
-    .ExecuteUpdateAsync(s => s.SetProperty(h => h.IsActive, false), ct);
+await context.Employees.ExecuteUpdateAsync(
+    s => s.SetProperty(e => e.Salary, e => e.Salary + 1000), ct);
 
-// Delete without loading entities
-await db.Hotstrings
-    .Where(h => h.ProfileId == request.ProfileId)
-    .ExecuteDeleteAsync(ct);
+// Delete without loading entities, with a filter
+await context.Tags.Where(t => t.Text.Contains(".NET")).ExecuteDeleteAsync(ct);
 ```
 
 ### Interceptors
@@ -95,21 +97,16 @@ services.AddDbContext<AppDbContext>((sp, options) =>
 
 Use for hot-path queries that execute frequently with the same shape.
 
-_No live example in this codebase — no compiled query exists today. Framework API reference only._
+_No live example in this codebase — no compiled query exists today. The example below is the official EF Core 10 docs sample (`EF.CompileAsyncQuery` API definition), not this app's data — every ID in this app is a `Guid`, not the `int` shown here._
 
 ```csharp
-public static class HotstringQueries
-{
-    public static readonly Func<AppDbContext, int, CancellationToken, Task<HotstringDto?>> GetById =
-        EF.CompileAsyncQuery((AppDbContext db, int id, CancellationToken ct) =>
-            db.Hotstrings
-                .Where(h => h.Id == id)
-                .Select(h => new HotstringDto(h.Id, h.Trigger, h.Replacement))
-                .FirstOrDefault());
-}
+// From https://learn.microsoft.com/dotnet/api/microsoft.entityframeworkcore.ef.compileasyncquery (EF Core 10)
+private static readonly Func<BloggingContext, int, IAsyncEnumerable<Blog>> _compiledQuery
+    = EF.CompileAsyncQuery(
+        (BloggingContext context, int length) => context.Blogs.Where(b => b.Url.StartsWith("http://") && b.Url.Length == length));
 
-// Usage
-var dto = await HotstringQueries.GetById(db, request.Id, ct);
+// Usage — the delegate is thread-safe and can run concurrently on different context instances
+await foreach (Blog blog in _compiledQuery(context, 8)) { /* ... */ }
 ```
 
 ### Value Converters
