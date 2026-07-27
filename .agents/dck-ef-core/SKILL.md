@@ -182,7 +182,7 @@ var hotstrings = await db.Hotstrings
     .ToListAsync(ct);
 ```
 
-Projecting into a DTO with `.Select()` (the default in this project) is already effectively no-tracking. Reach for `AsNoTrackingWithIdentityResolution()` only when a query can return the same row more than once (e.g. a join that repeats a `Profile`) and you want one shared instance instead of duplicates.
+`AsNoTracking()` (the default read pattern in this project — see "Loading and Mapping" above) is enough for a single-row read. Reach for `AsNoTrackingWithIdentityResolution()` only when a query can return the same row more than once (e.g. a join that repeats a `Profile`) and you want one shared instance instead of duplicates.
 
 #### Split Queries (avoid cartesian explosion)
 
@@ -292,4 +292,4 @@ options.UseSqlServer(connectionString, sql => sql.EnableRetryOnFailure(...));
 | Delete / restore | `EntityHistory` snapshot + explicit commands (no global query filter) |
 | Strongly-typed IDs | Not used — every ID is a `Guid` |
 | Production migration | Idempotent SQL script, never auto-migrate |
-| Integration tests | Testcontainers `MsSqlContainer` |
+| Integration tests | Shared `ApiTestFixture` / `SqlContainerFixture`, `[Collection("WebApi")]` — never a per-class `MsSqlContainer` |
