@@ -765,10 +765,10 @@
     private RenderFragment RenderProfiles(bool appliesToAllProfiles, IReadOnlyCollection<Guid> profileIds) =>
         @<EntityChips Ids="profileIds" Options="_profileOptions" Any="appliesToAllProfiles" />;
 
-    private RenderFragment RenderProfileEditor(HotkeyEditModel edit) => @<MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+    private RenderFragment RenderProfileEditor(HotkeyEditModel edit) => @<MudStack AlignItems="AlignItems.Start" Spacing="1">
         <MudCheckBox T="bool" Value="edit.AppliesToAllProfiles"
                      ValueChanged="value => SetAppliesToAllProfiles(edit, value)"
-                     Label="Any"
+                     Label="All profiles"
                      UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "applies-to-all-checkbox" })" />
         @if (!edit.AppliesToAllProfiles)
         {

@@ -10,8 +10,8 @@ internal static class DeliveryDisplay
     public static bool IsClipboard(HotstringDelivery effectiveDelivery) =>
         effectiveDelivery == HotstringDelivery.ClipboardPaste;
 
-    /// <summary>Only reached from the Type tooltip now — the chip itself reports the kind, and
+    /// <summary>Only reached from the Kind tooltip now — the chip itself reports the kind, and
     /// keystroke delivery is the unremarkable default, so only clipboard gets a visual marker.</summary>
     public static string Label(HotstringDelivery effectiveDelivery) =>
-        IsClipboard(effectiveDelivery) ? "Clipboard" : "Hotstring";
+        IsClipboard(effectiveDelivery) ? "Clipboard" : "Typed";
 }

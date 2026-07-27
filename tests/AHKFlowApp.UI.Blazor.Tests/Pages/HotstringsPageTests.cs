@@ -614,10 +614,10 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
 
         cut.WaitForAssertion(() =>
         {
-            // The Type column reports the kind. Keystroke delivery is the unremarkable default and
+            // The Kind column reports the kind. Keystroke delivery is the unremarkable default and
             // is deliberately left unmarked — only clipboard delivery, which overwrites the user's
             // clipboard, earns an icon.
-            cut.Find(".desktop-branch .type-badge").TextContent.Should().Contain("Text");
+            cut.Find(".desktop-branch .kind-badge").TextContent.Should().Contain("Text");
             cut.FindAll(".desktop-branch [data-test=\"clipboard-delivery\"]").Should().BeEmpty();
             cut.Find(".option-glyphs").TextContent.Should().Be("*?C");
         });
@@ -637,7 +637,7 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
         cut.WaitForAssertion(() =>
         {
             // Kind chip plus a clipboard icon beside it; the icon carries the marker, not text.
-            cut.Find(".desktop-branch .type-badge .mud-chip").TextContent.Should().Contain("Text");
+            cut.Find(".desktop-branch .kind-badge .mud-chip").TextContent.Should().Contain("Text");
             cut.FindAll(".desktop-branch [data-test=\"clipboard-delivery\"]").Should().HaveCount(1);
         });
         return Task.CompletedTask;
@@ -814,6 +814,29 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
+    public Task Page_KindFilter_IsLabelledKindNotType()
+    {
+        StubList(Page());
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+
+        cut.WaitForAssertion(() =>
+        {
+            // CONTEXT.md lists "type" under Avoid for Kind. Lock the label so it cannot drift back.
+            IRenderedComponent<MudSelect<HotstringKind?>> desktop = cut
+                .FindComponents<MudSelect<HotstringKind?>>()
+                .Single(c => c.Markup.Contains("data-test=\"kind-filter\""));
+            desktop.Instance.Label.Should().Be("Kind");
+
+            IRenderedComponent<MudSelect<HotstringKind?>> mobile = cut
+                .FindComponents<MudSelect<HotstringKind?>>()
+                .Single(c => c.Markup.Contains("data-test=\"kind-filter-mobile\""));
+            mobile.Instance.Label.Should().Be("Kind");
+        });
+        return Task.CompletedTask;
+    }
+
+    [Fact]
     public Task Page_RawRow_ShowsFirstLineMonospaceEllipsis()
     {
         var dto = new HotstringDto(Guid.NewGuid(), [], true, "~ver", ":*:~ver::\n{\nMsgBox A_AhkVersion\n}",
@@ -842,7 +865,7 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
 
         cut.WaitForAssertion(() =>
         {
-            AngleSharp.Dom.IElement badge = cut.Find(".type-badge .mud-chip");
+            AngleSharp.Dom.IElement badge = cut.Find(".kind-badge .mud-chip");
             badge.TextContent.Should().Contain("Raw");
             badge.ClassList.Should().Contain("kind-chip--raw");
             // Warning must be conveyed semantically, not just via color — screen readers read the
@@ -865,7 +888,7 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
 
         cut.WaitForAssertion(() =>
         {
-            AngleSharp.Dom.IElement badge = cut.Find(".type-badge .mud-chip");
+            AngleSharp.Dom.IElement badge = cut.Find(".kind-badge .mud-chip");
             badge.TextContent.Should().Contain("Date");
             badge.ClassList.Should().Contain("kind-chip--datetime");
         });
@@ -883,7 +906,7 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
 
         cut.WaitForAssertion(() =>
         {
-            AngleSharp.Dom.IElement badge = cut.Find(".type-badge .mud-chip");
+            AngleSharp.Dom.IElement badge = cut.Find(".kind-badge .mud-chip");
             badge.TextContent.Should().Contain("Macro");
             badge.ClassList.Should().Contain("kind-chip--macro");
         });
@@ -922,7 +945,7 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
 
         IRenderedComponent<Hotstrings> cut = RenderPage();
 
-        cut.WaitForAssertion(() => cut.Find(".type-legend-help").Should().NotBeNull());
+        cut.WaitForAssertion(() => cut.Find(".kind-legend-help").Should().NotBeNull());
     }
 
     [Fact]
@@ -954,7 +977,7 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
         cut.WaitForAssertion(() =>
         {
             cut.Find(".hotstrings-grid .option-glyphs").TextContent.Should().BeEmpty();
-            cut.Find(".hotstrings-grid .type-badge").TextContent.Should().Contain("Raw");
+            cut.Find(".hotstrings-grid .kind-badge").TextContent.Should().Contain("Raw");
         });
         return Task.CompletedTask;
     }

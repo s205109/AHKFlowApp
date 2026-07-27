@@ -15,7 +15,7 @@ Blazor WebAssembly PWA frontend for AHKFlowApp.
 - `IDialogService.ShowMessageBox(...)` for delete confirmations
 - No `StateHasChanged()` after standard event handlers — Blazor re-renders automatically
 - For list pages that need mobile support: render both branches as plain `.desktop-branch` and `.mobile-branch` containers, then gate visibility in the page's scoped `.razor.css` at `959.95px`. Desktop uses `MudDataGrid`; mobile uses a compact list component, full-screen `MudDialog`, and `MudFab`. See `Components/Hotstrings/` and `Components/Hotkeys/` for examples.
-- Reuse shared selection/chip components in `Components/Common/` — `EntityMultiSelect` (multi-select over an `EntityOption` list), `EntityChips` (read-only id→name chips, with `Any` for "all profiles"), `CategoryFilterChips` (category filter chipset). Don't hand-roll `MudSelect`/`MudChip` blocks for profiles/categories.
+- Reuse shared selection/chip components in `Components/Common/` — `EntityMultiSelect` (multi-select over an `EntityOption` list), `EntityChips` (read-only id→name chips; its `Any` parameter renders a single "All profiles" chip), `CategoryFilterChips` (category filter chipset). Don't hand-roll `MudSelect`/`MudChip` blocks for profiles/categories.
 
 ## MudBlazor API Verification
 

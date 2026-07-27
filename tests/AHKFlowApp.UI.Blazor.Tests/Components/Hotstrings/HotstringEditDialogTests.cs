@@ -1475,7 +1475,9 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
 
         provider.WaitForAssertion(() =>
         {
-            provider.Find("[data-test=\"preview-delivery\"]").TextContent.Should().Contain("Hotstring");
+            // "Typed" replaced "Hotstring" here — CONTEXT.md lists the old label under Avoid,
+            // because it overloaded the name of the whole entity.
+            provider.Find("[data-test=\"preview-delivery\"]").TextContent.Should().Contain("Typed");
         });
     }
 

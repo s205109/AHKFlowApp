@@ -62,6 +62,10 @@ public sealed class RecycleBinPageTests : BunitContext, IAsyncLifetime
         cut.Markup.Should().Contain("Open Notepad");
         cut.Markup.Should().Contain("Hotstring");
         cut.Markup.Should().Contain("Hotkey");
+
+        // First column says whether the row is a Hotstring or a Hotkey. CONTEXT.md calls that
+        // an Item; "Type" is on its Avoid list and clashed with a Hotstring's Kind.
+        cut.Find("th").TextContent.Trim().Should().Be("Item");
     }
 
     [Fact]

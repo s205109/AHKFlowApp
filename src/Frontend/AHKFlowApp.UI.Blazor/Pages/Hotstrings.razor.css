@@ -58,7 +58,7 @@
 
 ::deep .hotstrings-grid th:nth-child(3),
 ::deep .hotstrings-grid td:nth-child(3) {
-    width: 19%;
+    width: 15%;
 }
 
 /* Replacement column: multi-line imports (continuation sections, converted Send
@@ -73,12 +73,13 @@
     width: 13%;
 }
 
-/* Profiles renders one short chip ("Any" for most rows), so it can give a little width to
-   Categories — but not much: at high zoom the fixed layout squeezes percentage columns hard,
-   and below ~9% the "Any" chip clips. */
+/* Profiles renders one chip reading "All profiles" for most rows. That is four times longer than
+   the old "Any" label, which already clipped below ~9%, so this column needs the extra width. The
+   4% came from Replacement, which ellipsizes anyway. At high zoom the fixed layout squeezes
+   percentage columns hard, so do not take this back below 13%. */
 ::deep .hotstrings-grid th:nth-child(5),
 ::deep .hotstrings-grid td:nth-child(5) {
-    width: 9%;
+    width: 13%;
 }
 
 ::deep .hotstrings-grid th:nth-child(6),
