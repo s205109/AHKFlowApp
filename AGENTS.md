@@ -95,12 +95,13 @@ Applies to repo documentation (`docs/`, `AGENTS.md`, `CLAUDE.md`, specs, plans, 
 
 The reader may not be a native English speaker. Write so they never have to re-read a sentence.
 
-- Easy to read beats short. When the two fight, use more words.
+- Easy to read matters more than short. When the two conflict, use more words.
 - One idea per sentence. Keep sentences under about 20 words.
 - Use common words. "use" not "leverage". "cannot be undone" not "irreversible". "start" not "initiate". "text" not "prose".
 - No idioms, no metaphors, no culture references. Cut "blow past it", "moving the needle", "escape hatch".
 - Active voice. "The handler saves the record", not "the record is saved by the handler".
-- Keep technical terms exact. Never simplify `IUseCaseHandler`, `Result.NotFound()`, or an error string. Explain the term once instead.
+- Keep identifiers exact. Never simplify `IUseCaseHandler` or `Result.NotFound()`. Explain the term once instead.
+- When you quote an existing error string, keep it exact. When you write a new error message, apply the rules above.
 - Do not stack clauses. Split a long sentence into two.
 
 Commit messages and PR titles are the exception — those stay extremely short, grammar optional.
