@@ -76,7 +76,7 @@ dotnet format
 - `sealed` on classes not designed for inheritance; `internal` by default, `public` only when needed
 - Domain state: private setters plus factory/domain methods — never public setters on domain entities
 - Style (file-scoped namespaces, Allman braces, `var`, collection expressions, pattern matching) — enforced by `.editorconfig`; run `dotnet format`
-- English for all code comments and documentation
+- English for all code comments and documentation — follow **Plain English** below
 - PowerShell for script files, bash for manual scripts in .md files
 
 ### Patterns We DON'T Use (Never Suggest)
@@ -88,6 +88,23 @@ dotnet format
 - **Exceptions for flow control** — use Ardalis.Result
 - **Stored procedures** — EF Core only
 - **.NET Foundation license header** — this project is not part of the .NET Foundation
+
+## Plain English
+
+Applies to repo documentation (`docs/`, `AGENTS.md`, `CLAUDE.md`, specs, plans, skill files, README) and to app-facing text (Blazor UI labels, error messages, validation messages, CLI help and output).
+
+The reader may not be a native English speaker. Write so they never have to re-read a sentence.
+
+- Easy to read matters more than short. When the two conflict, use more words.
+- One idea per sentence. Keep sentences under about 20 words.
+- Use common words. "use" not "leverage". "cannot be undone" not "irreversible". "start" not "initiate". "text" not "prose".
+- No idioms, no metaphors, no culture references. Cut "blow past it", "moving the needle", "escape hatch".
+- Active voice. "The handler saves the record", not "the record is saved by the handler".
+- Keep identifiers exact. Never simplify `IUseCaseHandler` or `Result.NotFound()`. Explain the term once instead.
+- When you quote an existing error string, keep it exact. When you write a new error message, apply the rules above.
+- Do not stack clauses. Split a long sentence into two.
+
+Commit messages and PR titles are the exception — those stay extremely short, grammar optional.
 
 ## Testing
 
