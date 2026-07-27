@@ -6,8 +6,9 @@
 # per immediate .agents/<skill>/ directory. The repo-local Codex plugin
 # skills folder mirrors each skill directory with hard-linked files (SKILL.md plus
 # companion files such as templates and agents/openai.yaml) because Codex plugin
-# installation ignores symlinks. Reference docs, disabled dirs, and plugin packaging
-# are ignored.
+# installation ignores symlinks. A directory without a SKILL.md is not a skill. Only
+# .agents/skills/ and .agents/plugins/ may exist without one. There are no parking
+# directories: retiring a skill means deleting it.
 
 set -euo pipefail
 
@@ -120,8 +121,12 @@ fi
 
 is_active_skill() {
     local name="$1"
+    # skills and plugins are the only two .agents/ subdirectories that are not skills.
+    # Retiring a skill means deleting it, so there are no parking directories for
+    # disabled or reference-only content. tests/SkillLayout.Tests.ps1 enforces the
+    # same list. Keep the two in sync.
     case "$name" in
-        skills|plugins|skills.disabled|disabled|reference|references)
+        skills|plugins)
             return 1
             ;;
     esac

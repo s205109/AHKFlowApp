@@ -18,11 +18,26 @@ allowlisted entries are removed.
 A `post-merge` git hook re-runs the setup automatically when `.agents/` or the
 setup scripts change in a pull/merge.
 
-## Deactivated skills
+## Retiring a skill
 
-Skills retired but kept for reference live as `.agents/<name>/REFERENCE.md`
-(no `SKILL.md`). They are ignored by Claude Code, GitHub Copilot, and the
-Codex plugin.
+Delete the whole `.agents/<name>/` directory, then re-run the setup script.
+
+Do not park a skill by renaming `SKILL.md` to something else, and do not move it
+to a disabled folder. No agent loads a directory without a `SKILL.md`. The content
+stays in the repository but nobody reads it, so it drifts from the live code
+without anyone noticing.
+
+Six skills were retired that way in July 2026 and drifted for months before the
+problem was found. `tests/SkillLayout.Tests.ps1` now fails CI if any `.agents/`
+directory has no `SKILL.md`. Only `.agents/skills/` and `.agents/plugins/` are
+allowed to.
+
+Deleted skills stay in git history. To find and read one:
+
+```bash
+git log --diff-filter=D --name-only -- .agents/
+git show <commit>^:.agents/<skill>/SKILL.md
+```
 
 ## Why three locations?
 
