@@ -27,17 +27,20 @@ to a disabled folder. No agent loads a directory without a `SKILL.md`. The conte
 stays in the repository but nobody reads it, so it drifts from the live code
 without anyone noticing.
 
-Six skills were retired that way in July 2026 and drifted for months before the
-problem was found. `tests/SkillLayout.Tests.ps1` now fails CI if any `.agents/`
-directory has no `SKILL.md`. Only `.agents/skills/` and `.agents/plugins/` are
-allowed to.
+Six skills were retired that way in July 2026, and their content went stale before
+the problem was found. `tests/SkillLayout.Tests.ps1` now fails CI if any `.agents/`
+directory has no `SKILL.md`. Only `.agents/plugins/` is allowed to. `.agents/skills/`
+is not allowed either — both setup scripts delete it, or stop and ask you to remove it.
 
 Deleted skills stay in git history. To find and read one:
 
 ```bash
 git log --diff-filter=D --name-only -- .agents/
-git show <commit>^:.agents/<skill>/SKILL.md
+git show <commit>^:<one of the paths that command printed>
 ```
+
+Use the exact path the first command printed. A parked skill was often deleted under
+a name other than `SKILL.md`, so guessing the file name gives an error.
 
 ## Why three locations?
 
