@@ -33,7 +33,7 @@ public sealed class DownloadsController(
     {
         Result<ProfileScript> result = await generateProfileScript.ExecuteAsync(new GenerateProfileScriptQuery(profileId), ct);
         if (!result.IsSuccess)
-            return result.ToProblemActionResult(this).Result!;
+            return result.ToProblemResult(this);
 
         byte[] bytes = Encoding.UTF8.GetBytes(result.Value.Content);
         return File(bytes, AhkContentType, fileDownloadName: result.Value.FileName);
@@ -59,7 +59,7 @@ public sealed class DownloadsController(
     {
         Result<ProfileScriptZip> result = await generateAllProfileScriptsZip.ExecuteAsync(new GenerateAllProfileScriptsZipQuery(), ct);
         if (!result.IsSuccess)
-            return result.ToProblemActionResult(this).Result!;
+            return result.ToProblemResult(this);
 
         return File(result.Value.Content, ZipContentType, fileDownloadName: result.Value.FileName);
     }
