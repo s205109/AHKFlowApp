@@ -24,7 +24,7 @@ Every action must declare all possible response types. `src/Backend/AHKFlowApp.A
 
 ### Enable XML Documentation
 
-```csharp
+```xml
 <!-- src/Backend/AHKFlowApp.API/AHKFlowApp.API.csproj:4-5 (also set in AHKFlowApp.Application.csproj:3) -->
 <GenerateDocumentationFile>true</GenerateDocumentationFile>
 <NoWarn>$(NoWarn);CS1591</NoWarn>
