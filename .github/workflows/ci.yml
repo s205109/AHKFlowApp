@@ -116,6 +116,7 @@ jobs:
           ./tests/WorktreeRemoveHook.Tests.ps1
           ./tests/WorktreeLocalDevSetup.Tests.ps1
           ./tests/SkillParity.Tests.ps1
+          ./tests/SkillLayout.Tests.ps1
           ./tests/PrePushHook.Tests.ps1
 
   codex-skills-hash-parity:
