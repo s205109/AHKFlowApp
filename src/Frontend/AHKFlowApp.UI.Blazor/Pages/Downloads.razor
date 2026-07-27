@@ -1,5 +1,6 @@
 @page "/downloads"
 @using AHKFlowApp.UI.Blazor.DTOs
+@using AHKFlowApp.UI.Blazor.Helpers
 @using AHKFlowApp.UI.Blazor.Services
 @using MudBlazor
 @using Microsoft.AspNetCore.Components.Authorization
@@ -63,6 +64,7 @@
     [Inject] private IDownloadsApiClient DownloadsApi { get; set; } = default!;
     [Inject] private IFileSaver FileSaver { get; set; } = default!;
     [Inject] private ISnackbar Snackbar { get; set; } = default!;
+    [Inject] private TimeProvider Clock { get; set; } = default!;
 
     private List<ProfileDto> _profiles = [];
     private bool _isAuthenticated;
@@ -154,7 +156,7 @@
         }
     }
 
-    private static string Timestamp() => DateTime.Now.ToString("yyyyMMdd_HHmmss");
+    private string Timestamp() => DownloadFileNames.Timestamp(Clock);
 
     private static string SafeStem(string name)
     {

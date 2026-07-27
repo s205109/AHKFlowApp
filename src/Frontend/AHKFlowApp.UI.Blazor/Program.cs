@@ -47,6 +47,7 @@ if (!useTestAuth)
 builder.RootComponents.Add<AHKFlowApp.UI.Blazor.App>("#app");
 
 builder.Services.AddMudServices();
+builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<IFileSaver, JsFileSaver>();
 builder.Services.AddScoped<LocalStorageUserPreferencesService>();
 builder.Services.AddScoped<IUserPreferencesService, HybridUserPreferencesService>();
