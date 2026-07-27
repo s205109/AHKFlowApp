@@ -2,15 +2,15 @@
 
 # Layout test for the .agents/ skill tree.
 #
-# Every directory in .agents/ must hold a SKILL.md file. Only .agents/skills/ and
-# .agents/plugins/ may exist without one.
+# Every directory in .agents/ must hold a SKILL.md file. Only .agents/plugins/ may
+# exist without one.
 #
 # The reason is that no agent loads a directory without a SKILL.md. Claude Code,
 # GitHub Copilot, and the Codex plugin all skip it. Such a directory keeps its
 # content in the repository but stops being read, so the content goes stale and
 # nobody notices. Six skills were retired that way in July 2026. Their files were
-# renamed from SKILL.md to REFERENCE.md and then drifted from the live code for
-# months. This test stops that from happening again.
+# renamed from SKILL.md to REFERENCE.md, and the content then went stale. This
+# test stops that from happening again.
 #
 # The test also checks that both setup scripts use the same allowlist as this file.
 # Three copies of the list exist. If they ever disagree, this test fails.
@@ -23,9 +23,10 @@ param()
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# The only two .agents/ subdirectories that are not skills.
+# The only .agents/ subdirectory that is not a skill. .agents/skills/ is not on this
+# list on purpose: both setup scripts delete it or refuse to run while it exists.
 # scripts/agents/setup-cross-agent-skills.ps1 and .sh carry the same list.
-$allowedNonSkillDirs = @('skills', 'plugins')
+$allowedNonSkillDirs = @('plugins')
 
 $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $agentsRoot = Join-Path $repoRoot '.agents'
@@ -55,7 +56,7 @@ foreach ($offender in $offenders) {
 .agents/$($offender.Name)/ has no SKILL.md. It contains: $strayText
 
 Every directory in .agents/ must contain a SKILL.md file.
-The only exceptions are .agents/skills/ and .agents/plugins/.
+The only exception is .agents/plugins/.
 
 A skill cannot be parked. Retiring a skill means deleting its directory.
 Do not rename SKILL.md to REFERENCE.md. Do not move it to a disabled folder.
@@ -63,7 +64,10 @@ No agent loads a directory without a SKILL.md, so its content goes stale unseen.
 
 Deleted skills stay in git history. To find and read one:
   git log --diff-filter=D --name-only -- .agents/
-  git show <commit>^:.agents/<skill>/SKILL.md
+  git show <commit>^:<one of the paths that command printed>
+
+Use the exact path from git log. A parked skill was often deleted under a name
+other than SKILL.md, so guessing the file name gives an error.
 "@
 }
 
