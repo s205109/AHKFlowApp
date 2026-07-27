@@ -1,3 +1,4 @@
+using System.Globalization;
 using AHKFlowApp.UI.Blazor.Helpers;
 using FluentAssertions;
 using Microsoft.Extensions.Time.Testing;
@@ -24,5 +25,22 @@ public sealed class DownloadFileNamesTests
         clock.SetLocalTimeZone(TimeZoneInfo.CreateCustomTimeZone("t", TimeSpan.FromHours(2), "t", "t"));
 
         DownloadFileNames.Timestamp(clock).Should().Be("20260726_140000");
+    }
+
+    [Fact]
+    public void Timestamp_ignores_a_non_Gregorian_ambient_calendar()
+    {
+        CultureInfo original = CultureInfo.CurrentCulture;
+        // th-TH resolves to the Buddhist calendar, which would stamp year 2569 without InvariantCulture.
+        CultureInfo.CurrentCulture = new CultureInfo("th-TH");
+        try
+        {
+            DownloadFileNames.Timestamp(new DateTimeOffset(2026, 7, 26, 14, 5, 9, TimeSpan.Zero))
+                .Should().Be("20260726_140509");
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = original;
+        }
     }
 }

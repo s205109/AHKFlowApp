@@ -6,6 +6,7 @@ using Bunit;
 using FluentAssertions;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Time.Testing;
 using MudBlazor;
 using MudBlazor.Services;
 using NSubstitute;
@@ -18,6 +19,7 @@ public sealed class DownloadsPageTests : BunitContext, IAsyncLifetime
     private readonly IProfilesApiClient _profiles = Substitute.For<IProfilesApiClient>();
     private readonly IDownloadsApiClient _downloads = Substitute.For<IDownloadsApiClient>();
     private readonly IFileSaver _saver = Substitute.For<IFileSaver>();
+    private readonly FakeTimeProvider _clock = new(new DateTimeOffset(2026, 7, 26, 14, 5, 9, TimeSpan.Zero));
 
     private static readonly Task<AuthenticationState> AuthenticatedState =
         Task.FromResult(new AuthenticationState(
@@ -28,6 +30,7 @@ public sealed class DownloadsPageTests : BunitContext, IAsyncLifetime
         Services.AddSingleton(_profiles);
         Services.AddSingleton(_downloads);
         Services.AddSingleton(_saver);
+        Services.AddSingleton<TimeProvider>(_clock);
         Services.AddMudServices();
         JSInterop.Mode = JSRuntimeMode.Loose;
     }
@@ -82,9 +85,9 @@ public sealed class DownloadsPageTests : BunitContext, IAsyncLifetime
         cut.WaitForAssertion(() => cut.Find("button.download-profile"));
         cut.Find("button.download-profile").Click();
 
-        // filename is {yyyyMMdd_HHmmss}_ahkflow_Work.ahk — assert suffix, not exact timestamp
+        // Exact name — the stamp comes from the injected clock, so it is deterministic.
         return _saver.Received(1).SaveAsync(
-            Arg.Is<string>(n => n.EndsWith("_ahkflow_Work.ahk")),
+            "20260726_140509_ahkflow_Work.ahk",
             "text/plain; charset=utf-8",
             Arg.Is<byte[]>(b => b.SequenceEqual(payload.Content)));
     }
@@ -101,9 +104,9 @@ public sealed class DownloadsPageTests : BunitContext, IAsyncLifetime
         cut.WaitForAssertion(() => cut.Find("button.download-all"));
         cut.Find("button.download-all").Click();
 
-        // filename is {yyyyMMdd_HHmmss}_ahkflow_scripts.zip — assert suffix
+        // Exact name — the stamp comes from the injected clock, so it is deterministic.
         return _saver.Received(1).SaveAsync(
-            Arg.Is<string>(n => n.EndsWith("_ahkflow_scripts.zip")),
+            "20260726_140509_ahkflow_scripts.zip",
             "application/zip",
             Arg.Is<byte[]>(b => b.SequenceEqual(zip.Content)));
     }
