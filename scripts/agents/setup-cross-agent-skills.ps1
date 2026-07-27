@@ -8,7 +8,8 @@
     active skill back to .agents/<skill>. The repo-local Codex plugin skills folder mirrors
     each skill directory with hard-linked files (SKILL.md plus companion files such as
     templates and agents/openai.yaml) because Codex plugin installation ignores symlinks.
-    Reference docs, disabled dirs, and plugin packaging are ignored.
+    A directory without a SKILL.md is not a skill. Only .agents/skills/ and .agents/plugins/
+    may exist without one. There are no parking directories: retiring a skill means deleting it.
     Everything stays inside the repo — no user-folder changes.
     Requires Windows Developer Mode and git core.symlinks=true.
 .PARAMETER PrintCodexHash
@@ -165,7 +166,10 @@ if (Test-Path $agentsSkills) {
     }
 }
 
-$ignoredSkillDirs = @('skills', 'plugins', 'skills.disabled', 'disabled', 'reference', 'references')
+# The only two .agents/ subdirectories that are not skills. Retiring a skill means deleting
+# it, so there are no parking directories for disabled or reference-only content.
+# tests/SkillLayout.Tests.ps1 enforces the same list. Keep the two in sync.
+$ignoredSkillDirs = @('skills', 'plugins')
 $skillDirs = Get-ChildItem -Force $agentsRoot -Directory |
     Where-Object {
         $ignoredSkillDirs -notcontains $_.Name -and
