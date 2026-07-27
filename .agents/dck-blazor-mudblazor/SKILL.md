@@ -18,242 +18,27 @@ description: Use when building AHKFlowApp Blazor WebAssembly UI with MudBlazor p
 
 ### Page Layout (List View)
 
-```razor
-@page "/hotstrings"
+This app uses two shapes depending on list complexity (documented in `src/Frontend/AHKFlowApp.UI.Blazor/CLAUDE.md`, "Conventions"):
+- **Simple list, ≤6 short fields, inline edit** — `MudTable` with inline row editing. See `src/Frontend/AHKFlowApp.UI.Blazor/Pages/Categories.razor`.
+- **Larger list needing sort/filter/bulk-select** — `MudDataGrid` with `ServerData`, inline row editing, and a bulk-select toolbar. See `src/Frontend/AHKFlowApp.UI.Blazor/Pages/Hotstrings.razor:70-78` (the `MudDataGrid` declaration) and `Pages/Hotkeys.razor` for a second example.
 
-<PageTitle>Hotstrings</PageTitle>
-
-<MudContainer MaxWidth="MaxWidth.Large" Class="mt-4">
-    <MudText Typo="Typo.h4" Class="mb-4">Hotstrings</MudText>
-
-    <MudButton Variant="Variant.Filled" Color="Color.Primary"
-               StartIcon="@Icons.Material.Filled.Add"
-               OnClick="OpenCreateDialog" Class="mb-4">
-        Add Hotstring
-    </MudButton>
-
-    <MudTable Items="_hotstrings" Hover Loading="_loading"
-              Breakpoint="Breakpoint.Sm" LoadingProgressColor="Color.Primary">
-        <HeaderContent>
-            <MudTh>Trigger</MudTh>
-            <MudTh>Replacement</MudTh>
-            <MudTh Style="width: 120px;">Actions</MudTh>
-        </HeaderContent>
-        <RowTemplate>
-            <MudTd DataLabel="Trigger">@context.Trigger</MudTd>
-            <MudTd DataLabel="Replacement">@context.Replacement</MudTd>
-            <MudTd>
-                <MudIconButton Icon="@Icons.Material.Filled.Edit"
-                               Size="Size.Small"
-                               OnClick="() => OpenEditDialog(context)" />
-                <MudIconButton Icon="@Icons.Material.Filled.Delete"
-                               Size="Size.Small" Color="Color.Error"
-                               OnClick="() => ConfirmDelete(context)" />
-            </MudTd>
-        </RowTemplate>
-    </MudTable>
-</MudContainer>
-
-@code {
-    [Inject] private IAHKFlowApiHttpClient Api { get; set; } = default!;
-    [Inject] private IDialogService DialogService { get; set; } = default!;
-    [Inject] private ISnackbar Snackbar { get; set; } = default!;
-
-    private List<HotstringDto> _hotstrings = [];
-    private bool _loading = true;
-
-    protected override async Task OnInitializedAsync()
-    {
-        await LoadDataAsync();
-    }
-
-    private async Task LoadDataAsync()
-    {
-        _loading = true;
-        _hotstrings = await Api.GetHotstringsAsync();
-        _loading = false;
-    }
-}
-```
+Pages needing mobile support render both a `.desktop-branch` and `.mobile-branch`, gated by scoped CSS at 959.95px — see `Components/Hotstrings/` and `Components/Hotkeys/` for the mobile-branch components.
 
 ### MudDialog for Create/Edit
 
-```razor
-<MudDialog>
-    <TitleContent>
-        <MudText Typo="Typo.h6">@(IsEdit ? "Edit Hotstring" : "Add Hotstring")</MudText>
-    </TitleContent>
-    <DialogContent>
-        <MudForm @ref="_form" Model="_model" Validation="_validator.ValidateValue">
-            <MudTextField @bind-Value="_model.Trigger"
-                          For="() => _model.Trigger"
-                          Label="Trigger" Variant="Variant.Outlined"
-                          Immediate />
-            <MudTextField @bind-Value="_model.Replacement"
-                          For="() => _model.Replacement"
-                          Label="Replacement" Variant="Variant.Outlined"
-                          Lines="3" Immediate />
-        </MudForm>
-    </DialogContent>
-    <DialogActions>
-        <MudButton OnClick="Cancel">Cancel</MudButton>
-        <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                   OnClick="Submit">Save</MudButton>
-    </DialogActions>
-</MudDialog>
+Full-screen `MudDialog` for create/edit is the **mobile-branch** pattern in this app, not the default — desktop list pages edit inline in the table/grid (previous section). See `src/Frontend/AHKFlowApp.UI.Blazor/Components/Hotstrings/HotstringEditDialog.razor` for the live shape: a `MudDialog` with a `TitleContent` back-button + save button, an `EditModel` (`Validation/HotstringEditModel.cs`) bound via `@bind-Value`, and per-field `Func<string,string?>` validators (see "Form Validation" below — no FluentValidation adapter is involved).
 
-@code {
-    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = default!;
-    [Parameter] public HotstringDto? Existing { get; set; }
+### Opening Dialogs / Delete Confirmation
 
-    private bool IsEdit => Existing is not null;
-    private MudForm _form = default!;
-    private CreateHotstringDto _model = new();
-    private CreateHotstringDtoValidator _validator = new();
+See `HotstringEditDialog.razor`'s caller in `Pages/Hotstrings.razor` for `IDialogService.ShowAsync<T>` and result handling, and any page's delete action for `IDialogService.ShowMessageBox(...)` — the shape (title, message, yesText/cancelText, `== true` check) matches the original template; no drift found here.
 
-    protected override void OnParametersSet()
-    {
-        if (Existing is not null)
-        {
-            _model = new() { Trigger = Existing.Trigger, Replacement = Existing.Replacement };
-        }
-    }
+### Form Validation (per-field delegates, not a FluentValidation adapter)
 
-    private async Task Submit()
-    {
-        await _form.Validate();
-        if (_form.IsValid)
-        {
-            MudDialog.Close(DialogResult.Ok(_model));
-        }
-    }
-
-    private void Cancel() => MudDialog.Cancel();
-}
-```
-
-### Opening Dialogs from Pages
-
-```csharp
-private async Task OpenCreateDialog()
-{
-    var dialog = await DialogService.ShowAsync<HotstringDialog>("Add Hotstring");
-    var result = await dialog.Result;
-
-    if (result is { Canceled: false, Data: CreateHotstringDto dto })
-    {
-        await Api.CreateHotstringAsync(dto);
-        Snackbar.Add("Hotstring created", Severity.Success);
-        await LoadDataAsync();
-    }
-}
-
-private async Task OpenEditDialog(HotstringDto hotstring)
-{
-    var parameters = new DialogParameters { ["Existing"] = hotstring };
-    var dialog = await DialogService.ShowAsync<HotstringDialog>("Edit Hotstring", parameters);
-    var result = await dialog.Result;
-
-    if (result is { Canceled: false, Data: CreateHotstringDto dto })
-    {
-        await Api.UpdateHotstringAsync(hotstring.Id, dto);
-        Snackbar.Add("Hotstring updated", Severity.Success);
-        await LoadDataAsync();
-    }
-}
-```
-
-### Delete Confirmation
-
-```csharp
-private async Task ConfirmDelete(HotstringDto hotstring)
-{
-    var confirmed = await DialogService.ShowMessageBox(
-        "Delete Hotstring",
-        $"Delete trigger '{hotstring.Trigger}'? This cannot be undone.",
-        yesText: "Delete", cancelText: "Cancel");
-
-    if (confirmed == true)
-    {
-        await Api.DeleteHotstringAsync(hotstring.Id);
-        Snackbar.Add("Hotstring deleted", Severity.Success);
-        await LoadDataAsync();
-    }
-}
-```
-
-### MudForm Validation with FluentValidation
-
-```csharp
-// Validator adapter for MudForm — wraps FluentValidation for @bind-Value + For
-public static class FluentValidationExtensions
-{
-    public static Func<object, string, Task<IEnumerable<string>>> ValidateValue<T>(
-        this IValidator<T> validator) where T : class
-    {
-        return async (model, propertyName) =>
-        {
-            var result = await validator.ValidateAsync(
-                ValidationContext<T>.CreateWithOptions(
-                    (T)model, x => x.IncludeProperties(propertyName)));
-
-            return result.IsValid
-                ? []
-                : result.Errors.Select(e => e.ErrorMessage);
-        };
-    }
-}
-```
+There is no `FluentValidationExtensions.ValidateValue` adapter in this codebase — real forms validate with a plain `Func<string, string?>` delegate per field, defined as a method on an `EditModel` class in `Validation/` (e.g. `Validation/HotstringEditModel.cs`), wired up as `Validation="@(new Func<string, string?>(Item.ValidateReplacement))"` (see `Components/Hotstrings/HotstringEditDialog.razor:90`). Don't introduce a FluentValidation-to-MudForm adapter — follow the `EditModel` pattern instead.
 
 ### Server-Side Table (Pagination/Search)
 
-```razor
-<MudTable ServerData="LoadServerData" @ref="_table" Hover
-          Loading="_loading" LoadingProgressColor="Color.Primary">
-    <ToolBarContent>
-        <MudTextField @bind-Value="_searchString" Placeholder="Search..."
-                      Adornment="Adornment.Start"
-                      AdornmentIcon="@Icons.Material.Filled.Search"
-                      Immediate DebounceInterval="300"
-                      OnDebounceIntervalElapsed="OnSearch" />
-    </ToolBarContent>
-    <HeaderContent>
-        <MudTh><MudTableSortLabel SortLabel="trigger" T="HotstringDto">Trigger</MudTableSortLabel></MudTh>
-        <MudTh><MudTableSortLabel SortLabel="replacement" T="HotstringDto">Replacement</MudTableSortLabel></MudTh>
-    </HeaderContent>
-    <RowTemplate>
-        <MudTd DataLabel="Trigger">@context.Trigger</MudTd>
-        <MudTd DataLabel="Replacement">@context.Replacement</MudTd>
-    </RowTemplate>
-    <PagerContent>
-        <MudTablePager />
-    </PagerContent>
-</MudTable>
-
-@code {
-    private MudTable<HotstringDto> _table = default!;
-    private string _searchString = string.Empty;
-    private bool _loading;
-
-    private async Task<TableData<HotstringDto>> LoadServerData(TableState state,
-        CancellationToken ct)
-    {
-        _loading = true;
-        var response = await Api.SearchHotstringsAsync(
-            _searchString, state.Page + 1, state.PageSize, state.SortLabel,
-            state.SortDirection == SortDirection.Descending, ct);
-        _loading = false;
-
-        return new TableData<HotstringDto>
-        {
-            Items = response.Items,
-            TotalItems = response.TotalCount
-        };
-    }
-
-    private void OnSearch() => _table.ReloadServerData();
-}
-```
+`Pages/Categories.razor` (`MudTable`) and `Pages/Hotstrings.razor` / `Pages/Hotkeys.razor` (`MudDataGrid`) all use `ServerData` — see "Page Layout" above for which shape applies to a new page.
 
 ## Anti-patterns
 
@@ -275,7 +60,7 @@ public static class FluentValidationExtensions
 @* BAD — validation messages won't display for this field *@
 <MudTextField @bind-Value="_model.Trigger" Label="Trigger" />
 
-@* GOOD — For links the field to FluentValidation *@
+@* GOOD — For links the field to the model's validation delegate *@
 <MudTextField @bind-Value="_model.Trigger" For="() => _model.Trigger" Label="Trigger" />
 ```
 
@@ -318,13 +103,14 @@ MudDialog.Close(DialogResult.Ok(result));
 
 | Scenario | Recommendation |
 |----------|---------------|
-| List of items | `MudTable` with `Items` (client) or `ServerData` (server) |
-| Create/Edit form | `MudDialog` + `MudForm` + FluentValidation |
+| List of items, simple (≤6 fields) | `MudTable` inline row editing (see `Categories.razor`) |
+| List of items, larger/sortable/bulk-select | `MudDataGrid` with `ServerData` (see `Hotstrings.razor`, `Hotkeys.razor`) |
+| Create/Edit form | Inline edit (`MudTable`/`MudDataGrid`) by default; `MudDialog` + `EditModel` only for the mobile branch |
 | Delete confirmation | `DialogService.ShowMessageBox()` |
 | Success/error feedback | `ISnackbar.Add()` with `Severity` |
 | Search with debounce | `MudTextField` with `DebounceInterval` + `OnDebounceIntervalElapsed` |
 | Sorting | `MudTableSortLabel` with `SortLabel` |
 | Pagination | `MudTablePager` (server-side) or built-in (client-side) |
-| Form validation | `MudForm` + `Validation` + `For` lambdas |
+| Form validation | `EditModel` with per-field `Func<string,string?>` delegates + `For` lambdas |
 | Loading indicator | `MudTable.Loading` or `MudProgressLinear` |
 | Navigation | `MudNavMenu` + `MudNavLink` |
