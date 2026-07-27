@@ -16,140 +16,31 @@ description: Use when changing AHKFlowApp OpenAPI, Swagger, API docs, response a
 
 ### Basic Setup (Program.cs)
 
-```csharp
-// Program.cs
-builder.Services.AddSwaggerGen(options =>
-{
-    options.SwaggerDoc("v1", new OpenApiInfo
-    {
-        Title = "AHKFlowApp API",
-        Version = "v1",
-        Description = "API for managing AutoHotkey hotstrings and hotkeys."
-    });
-
-    // Include XML comments from the API project
-    var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
-    var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
-    options.IncludeXmlComments(xmlPath);
-});
-
-// ...
-
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI(options =>
-    {
-        options.SwaggerEndpoint("/swagger/v1/swagger.json", "AHKFlowApp API v1");
-        options.RoutePrefix = "swagger";  // available at /swagger
-    });
-}
-```
+Swagger setup is behind two extension methods, not inlined in `Program.cs`: `AddSwaggerDocs()` and `UseSwaggerDocs()` in `src/Backend/AHKFlowApp.API/Extensions/ApiExtensions.cs:50-101`, called conditionally in Development from `src/Backend/AHKFlowApp.API/Program.cs:102,196`. Read the extension methods rather than copying an inline shape — they also register `AddSwaggerExamplesFromAssemblies` and read XML comments from both `AHKFlowApp.API` and `AHKFlowApp.Application` assemblies.
 
 ### ProducesResponseType on Controller Actions
 
-Every action must declare all possible response types.
-
-```csharp
-[ApiController]
-[Route("api/v1/[controller]")]
-public sealed class HotstringsController(
-    IUseCase<CreateHotstringCommand, Result<HotstringDto>> createHotstring,
-    IUseCase<GetHotstringQuery, Result<HotstringDto>> getHotstring,
-    IUseCase<ListHotstringsQuery, Result<IReadOnlyList<HotstringDto>>> listHotstrings)
-    : ControllerBase
-{
-    /// <summary>Creates a new hotstring.</summary>
-    /// <param name="dto">Trigger and replacement text.</param>
-    /// <response code="201">Hotstring created successfully.</response>
-    /// <response code="400">Validation failed.</response>
-    /// <response code="409">A hotstring with this trigger already exists.</response>
-    [HttpPost]
-    [ProducesResponseType<HotstringDto>(StatusCodes.Status201Created)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status409Conflict)]
-    public async Task<IActionResult> Create(CreateHotstringDto dto, CancellationToken ct)
-    {
-        var result = await createHotstring.ExecuteAsync(new CreateHotstringCommand(dto.Trigger, dto.Replacement), ct);
-        return result.ToActionResult(this);
-    }
-
-    /// <summary>Gets a hotstring by ID.</summary>
-    /// <param name="id">The hotstring ID.</param>
-    /// <response code="200">Returns the hotstring.</response>
-    /// <response code="404">Hotstring not found.</response>
-    [HttpGet("{id:int}")]
-    [ProducesResponseType<HotstringDto>(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> GetById(int id, CancellationToken ct)
-    {
-        var result = await getHotstring.ExecuteAsync(new GetHotstringQuery(id), ct);
-        return result.ToActionResult(this);
-    }
-
-    /// <summary>Lists all hotstrings.</summary>
-    /// <response code="200">Returns the list of hotstrings.</response>
-    [HttpGet]
-    [ProducesResponseType<IReadOnlyList<HotstringDto>>(StatusCodes.Status200OK)]
-    public async Task<IActionResult> List(CancellationToken ct)
-    {
-        var result = await listHotstrings.ExecuteAsync(new ListHotstringsQuery(), ct);
-        return result.ToActionResult(this);
-    }
-}
-```
+Every action must declare all possible response types. `src/Backend/AHKFlowApp.API/Controllers/HotstringsController.cs` is the live, much larger example — 15 actions, each with XML `<summary>`/`<response>` comments and `[ProducesResponseType]` per possible status. It also carries class-level `[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]` / `...Status403Forbidden` that a per-action-only approach would miss — those apply to every action via `[Authorize]` + `[RequiredScope]` and don't need repeating per action.
 
 ### Enable XML Documentation
 
-In `AHKFlowApp.API.csproj`:
-
-```xml
-<PropertyGroup>
-    <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <NoWarn>$(NoWarn);1591</NoWarn>  <!-- suppress missing XML comment warnings -->
-</PropertyGroup>
+```csharp
+<!-- src/Backend/AHKFlowApp.API/AHKFlowApp.API.csproj:4-5 (also set in AHKFlowApp.Application.csproj:3) -->
+<GenerateDocumentationFile>true</GenerateDocumentationFile>
+<NoWarn>$(NoWarn);CS1591</NoWarn>
 ```
 
 ### Bearer Token Security Scheme
 
-For Azure AD (MSAL) authentication in Swagger UI:
-
-```csharp
-builder.Services.AddSwaggerGen(options =>
-{
-    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
-    {
-        Name = "Authorization",
-        Type = SecuritySchemeType.Http,
-        Scheme = "bearer",
-        BearerFormat = "JWT",
-        In = ParameterLocation.Header,
-        Description = "Enter JWT token"
-    });
-
-    options.AddSecurityRequirement(new OpenApiSecurityRequirement
-    {
-        {
-            new OpenApiSecurityScheme
-            {
-                Reference = new OpenApiReference
-                {
-                    Type = ReferenceType.SecurityScheme,
-                    Id = "Bearer"
-                }
-            },
-            []
-        }
-    });
-});
-```
+The real registration is in `AddSwaggerDocs()` (`ApiExtensions.cs:61-74`) and uses the newer `Microsoft.OpenApi` shape — `OpenApiSecuritySchemeReference("Bearer", doc)` inside `AddSecurityRequirement(doc => ...)`, not the older `OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" }` shape. Copy the live extension method rather than an older-API block; the two are not interchangeable across `Microsoft.OpenApi` versions.
 
 ### ProblemDetails Schema
 
-Register `AddProblemDetails()` to ensure ProblemDetails appears correctly in the OpenAPI schema:
-
 ```csharp
-builder.Services.AddProblemDetails();
+// src/Backend/AHKFlowApp.API/Program.cs:75-77 — also stamps a traceId extension on every problem response
+builder.Services.AddProblemDetails(options =>
+    options.CustomizeProblemDetails = ctx =>
+        ctx.ProblemDetails.Extensions["traceId"] = ctx.HttpContext.TraceIdentifier);
 ```
 
 ## Anti-patterns
