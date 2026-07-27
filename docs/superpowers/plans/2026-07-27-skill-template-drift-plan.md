@@ -6,7 +6,7 @@
 
 **Architecture:** No app code changes. Each task edits one `SKILL.md` file. A "pointer" is one or two sentences naming the exact file (and line range where useful) that demonstrates the pattern, replacing an inlined code block that copied it. Where research below found **no live example** of a taught pattern anywhere in the repo, the block is kept but re-labeled so a reader knows it is a framework-API reference, not a description of this app's behavior — inventing a citation for something that does not exist would be exactly the kind of fabrication the issue is about.
 
-**Tech Stack:** Markdown only. No build, no tests to run — this falls under AGENTS.md's "Docs, skills, or plan files only" verification exemption. Verification per task is: (1) grep the cited `file:line` after editing to confirm it still contains what's claimed, (2) read the rewritten section back for accuracy.
+**Tech Stack:** Markdown only, no application build. This still has one real test gate: `tests/SkillParity.Tests.ps1` byte-compares every canonical `.agents/<skill>/SKILL.md` against its mirrored copy under `plugins/ahkflowapp/skills/<skill>/`, so editing a canonical skill file without re-running `scripts/agents/setup-cross-agent-skills.ps1` fails that test. Verification per task is: (1) grep the cited `file:line` after editing to confirm it still contains what's claimed, (2) read the rewritten section back for accuracy; after all five skills are edited, run the setup script once and confirm `tests/SkillParity.Tests.ps1` passes (Task 6).
 
 ## Global Constraints
 
@@ -410,7 +410,23 @@ Confirm no leftover contradiction (e.g. a "Decision Guide" row that still says `
 
 Run: `wc -l .agents/dck-security-scan/SKILL.md .agents/dck-ef-core/SKILL.md .agents/dck-blazor-mudblazor/SKILL.md .agents/dck-scaffolding/SKILL.md .agents/dck-openapi/SKILL.md`
 
-- [ ] **Step 3: Push and open the PR referencing #220**
+- [ ] **Step 3: Sync the Codex plugin mirror and re-run parity**
+
+Editing files under `.agents/` only touches the canonical copy — `tests/SkillParity.Tests.ps1` byte-compares each one against its mirror under `plugins/ahkflowapp/skills/` and fails until the mirror catches up.
+
+```powershell
+pwsh scripts/agents/setup-cross-agent-skills.ps1
+pwsh tests/SkillParity.Tests.ps1
+```
+
+Commit the mirrored files plus the resulting `plugins/ahkflowapp/.codex-plugin/plugin.json` version bump.
+
+```bash
+git add plugins/ahkflowapp
+git commit -m "chore: sync Codex plugin mirror after skill edits"
+```
+
+- [ ] **Step 4: Push and open the PR referencing #220**
 
 ```bash
 git push -u origin fix/wt-skill-template-drift

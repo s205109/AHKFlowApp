@@ -51,7 +51,7 @@ src/Backend/AHKFlowApp.Infrastructure/
 
 ## Validator
 
-Validators are usually a nested class in the same file as the command they validate (see `CreateHotkeyCommandValidator` in `CreateHotkeyCommand.cs` above) — not a separate file, despite the Layer Structure diagram above implying otherwise for large validators. Follow the co-located shape unless a validator grows large enough to warrant its own file.
+Validators are usually a top-level class co-located in the same file as the command they validate — not nested inside the handler, and not a separate file (see `CreateHotkeyCommandValidator` in `CreateHotkeyCommand.cs:15` above), despite the Layer Structure diagram above implying a separate file for large validators. Follow the co-located shape unless a validator grows large enough to warrant its own file.
 
 ## Query and Handler
 
