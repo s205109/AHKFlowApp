@@ -147,9 +147,9 @@ Every plan names things it claims already exist. Each one is either proven or ma
 
 Anything you cannot prove is marked **FABRICATED** in the draft. Do not quietly delete it and do not soften it into a vague sentence. List the fabricated items, then revise, then present.
 
-When finalizing a plan or spec (right before presenting the final plan for approval), save it in the repo as `docs/superpowers/plans/YYYY-MM-DD-<topic>-plan.md` or `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` — never only in a local plans folder outside the repo.
+When finalizing a plan or spec (right before presenting the final plan for approval), save it under `docs/superpowers/plans/YYYY-MM-DD-<topic>-plan.md` or `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`. That folder is a separate PRIVATE git repo (`AHKFlowApp-plans`). It is cloned into the public repo, but the public repo git-ignores the path. So commit the plan from inside `docs/superpowers/`, not from the main repo root. `git add` from the root silently skips that path, so a root commit saves the plan nowhere. Never save a plan only in a local folder outside `docs/superpowers/`.
 
-Only commit plans/specs to `docs/superpowers/` when they relate to project improvements — code, features, infra, deployment, tests, repo tooling that affects contributors. Skip writing (or keep out-of-repo) plans for agent optimization, personal workflow tuning, agent housekeeping, or one-off context/config cleanups.
+Only commit plans/specs to the private `docs/superpowers/` repo when they relate to project improvements — code, features, infra, deployment, tests, repo tooling that affects contributors. Skip writing (or keep out-of-repo) plans for agent optimization, personal workflow tuning, agent housekeeping, or one-off context/config cleanups.
 
 ## Verification After Implementation
 

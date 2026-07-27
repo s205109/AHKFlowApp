@@ -463,3 +463,7 @@ CoverageReport/
 
 # Superpowers brainstorming scratch (local-only)
 .superpowers/
+
+# Planning docs live in a separate PRIVATE repo (AHKFlowApp-plans), cloned into
+# docs/superpowers/. The public repo must not track them.
+docs/superpowers/
