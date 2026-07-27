@@ -273,7 +273,8 @@ worktree creation cannot pass a base ref, so stacked work must call the script d
 
 The AHKFlowApp main checkout is human-owned for Git mutations. Agents may inspect, edit, build,
 test, and format there, but must branch, add, commit, merge, rebase, and push for this repository
-only from a managed linked worktree. Use `scripts/new-worktree.ps1` or the `WorktreeCreate` tool.
+only from a managed linked worktree. Use `scripts/new-worktree.ps1`, or the native `EnterWorktree`
+tool — that tool fires the `WorktreeCreate` hook, which runs the same script.
 `AHKFLOW_ALLOW_MAIN=1` is an explicit location override; destructive-command protections still
 apply. See `docs/agents/cross-agent-git-guardrails.md`.
 

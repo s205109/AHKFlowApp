@@ -14,7 +14,8 @@ A Git mutation is allowed only from a **managed linked worktree**, which is all 
    once, the three ports numeric, the API/UI URLs carrying the manifest ports, DB/compose values
    non-empty, and `AHKFLOW_ROOT` resolving back to the worktree root.
 
-The supported way to create one is `scripts/new-worktree.ps1` or the agent `WorktreeCreate` tool.
+The supported way to create one is `scripts/new-worktree.ps1`, or the agent's native `EnterWorktree`
+tool — that tool fires the `WorktreeCreate` hook, which runs the same script.
 A raw `git worktree add` run by an agent is itself a guarded mutation — denied from main — and it
 skips the manifest and no-auth setup, so the result would fail the managed check anyway. Use the
 tool, whose child Git calls the payload never exposes to the guard.
