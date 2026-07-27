@@ -138,15 +138,14 @@ Run this on your own draft, right before you present a plan or spec for approval
 
 Every plan names things it claims already exist. Each one is either proven or made up. Prove them:
 
-- **Code identifiers** — a type, method, property, or option a plan says to call or extend. Paste the `file:line` that defines it.
-- **Component parameters** — any MudBlazor or other component parameter you pass. Prove it from the component API, not from memory. Guessed parameter names have reached plans before.
+- **Identifiers defined in this repository** — a type, method, property, or option the plan says to call or extend. Paste the `file:line` that defines it.
+- **Identifiers from .NET or a NuGet package** — `TimeProvider`, `HttpClient`, an `Ardalis.Result` member, an EF Core method. These have no `file:line` here, so that form of proof does not apply. Cite the official documentation instead, for the version this repository uses. Read that version from `Directory.Packages.props`. Never cite an external API from memory.
+- **Component parameters** — any MudBlazor or other component parameter you pass. Prove it against the component API for the version in `Directory.Packages.props`. Guessed parameter names have reached plans before.
 - **Selectors and test hooks** — every CSS selector and `data-test` value a test step depends on. Paste the `file:line` in the `.razor` file that renders it.
 - **Emitted AHK syntax** — every option flag or construct the plan says to emit. Cite [`docs/development/ahk-v2-syntax.md`](docs/development/ahk-v2-syntax.md) or the official AHK v2 docs.
 - **Branch and file state** — every claim about what is merged, what a sibling branch contains, or which files exist. Prove each with a `git` or filesystem command and keep the output.
 
 Anything you cannot prove is marked **FABRICATED** in the draft. Do not quietly delete it and do not soften it into a vague sentence. List the fabricated items, then revise, then present.
-
-Skill and reference file paths are already checked by `tests/SkillLayout.Tests.ps1` in CI. You do not need to re-check those by hand.
 
 When finalizing a plan or spec (right before presenting the final plan for approval), save it in the repo as `docs/superpowers/plans/YYYY-MM-DD-<topic>-plan.md` or `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` — never only in a local plans folder outside the repo.
 
