@@ -64,6 +64,7 @@
     [Inject] private IDownloadsApiClient DownloadsApi { get; set; } = default!;
     [Inject] private IFileSaver FileSaver { get; set; } = default!;
     [Inject] private ISnackbar Snackbar { get; set; } = default!;
+    [Inject] private TimeProvider Clock { get; set; } = default!;
 
     private List<ProfileDto> _profiles = [];
     private bool _isAuthenticated;
@@ -155,7 +156,7 @@
         }
     }
 
-    private static string Timestamp() => DownloadFileNames.Timestamp(TimeProvider.System);
+    private string Timestamp() => DownloadFileNames.Timestamp(Clock);
 
     private static string SafeStem(string name)
     {
