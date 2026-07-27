@@ -47,167 +47,27 @@ src/Backend/AHKFlowApp.Infrastructure/
 
 ## Command and Handler
 
-```csharp
-namespace AHKFlowApp.Application.Commands;
-
-public sealed record CreateHotstringCommand(CreateHotstringDto Input);
-```
-
-```csharp
-namespace AHKFlowApp.Application.Commands;
-
-internal sealed class CreateHotstringHandler(AppDbContext db, TimeProvider timeProvider)
-    : IUseCaseHandler<CreateHotstringCommand, Result<HotstringDto>>
-{
-    public async Task<Result<HotstringDto>> ExecuteAsync(
-        CreateHotstringCommand request,
-        CancellationToken cancellationToken)
-    {
-        var hotstring = Hotstring.Create(
-            ownerOid,
-            request.Input.Trigger,
-            request.Input.Replacement,
-            timeProvider.GetUtcNow());
-
-        db.Hotstrings.Add(hotstring);
-        await db.SaveChangesAsync(cancellationToken);
-
-        return Result.Success(new HotstringDto(hotstring.Id, hotstring.Trigger, hotstring.Replacement));
-    }
-}
-```
-
-Register the use case in Application DI:
-
-```csharp
-services.AddUseCase<CreateHotstringCommand, Result<HotstringDto>, CreateHotstringHandler>();
-```
+`src/Backend/AHKFlowApp.Application/Commands/Hotkeys/CreateHotkeyCommand.cs` is a live example: command record + validator + handler share one file, the handler class is `{CommandName}Handler` (e.g. `CreateHotkeyCommandHandler`, not `CreateHotkeyHandler`), it injects `IAppDbContext` (not `AppDbContext`) plus `ICurrentUser` and `TimeProvider`, and DI registration is a chained `.AddUseCase<TCommand, TResult, THandler>()` call in `src/Backend/AHKFlowApp.Application/DependencyInjection.cs` (see lines 33-40 for the chain shape).
 
 ## Validator
 
-```csharp
-namespace AHKFlowApp.Application.Commands;
-
-public sealed class CreateHotstringValidator : AbstractValidator<CreateHotstringCommand>
-{
-    public CreateHotstringValidator()
-    {
-        RuleFor(x => x.Input.Trigger).NotEmpty().MaximumLength(50);
-        RuleFor(x => x.Input.Replacement).NotEmpty().MaximumLength(500);
-    }
-}
-```
+Validators are usually a top-level class co-located in the same file as the command they validate — not nested inside the handler, and not a separate file (see `CreateHotkeyCommandValidator` in `CreateHotkeyCommand.cs:15` above), despite the Layer Structure diagram above implying a separate file for large validators. Follow the co-located shape unless a validator grows large enough to warrant its own file.
 
 ## Query and Handler
 
-```csharp
-namespace AHKFlowApp.Application.Queries;
-
-public sealed record GetHotstringQuery(Guid Id);
-```
-
-```csharp
-namespace AHKFlowApp.Application.Queries;
-
-internal sealed class GetHotstringHandler(AppDbContext db)
-    : IUseCaseHandler<GetHotstringQuery, Result<HotstringDto>>
-{
-    public async Task<Result<HotstringDto>> ExecuteAsync(
-        GetHotstringQuery request,
-        CancellationToken cancellationToken)
-    {
-        var entity = await db.Hotstrings.FindAsync([request.Id], cancellationToken);
-        return entity is null
-            ? Result.NotFound()
-            : Result.Success(new HotstringDto(entity.Id, entity.Trigger, entity.Replacement));
-    }
-}
-```
+`src/Backend/AHKFlowApp.Application/Queries/Hotstrings/GetHotstringQuery.cs` is the live shape — handler class `GetHotstringQueryHandler` (not `GetHotstringHandler`), `IAppDbContext` + `ICurrentUser` injected, `AsNoTracking()` + `Include()` + `.ToDto()` rather than a `.Select()` projection. See `.agents/dck-ef-core/SKILL.md` for the EF Core side of this pattern.
 
 ## Controller
 
-```csharp
-namespace AHKFlowApp.API.Controllers;
-
-[ApiController]
-[Route("api/v1/[controller]")]
-[Authorize]
-public sealed class HotstringsController(
-    IUseCase<CreateHotstringCommand, Result<HotstringDto>> createHotstring,
-    IUseCase<GetHotstringQuery, Result<HotstringDto>> getHotstring)
-    : ControllerBase
-{
-    [HttpPost]
-    [ProducesResponseType<HotstringDto>(StatusCodes.Status201Created)]
-    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
-    public async Task<IActionResult> Create(CreateHotstringDto dto, CancellationToken cancellationToken)
-    {
-        var result = await createHotstring.ExecuteAsync(new CreateHotstringCommand(dto), cancellationToken);
-        return result.ToActionResult(this);
-    }
-
-    [HttpGet("{id:guid}")]
-    [ProducesResponseType<HotstringDto>(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> GetById(Guid id, CancellationToken cancellationToken)
-    {
-        var result = await getHotstring.ExecuteAsync(new GetHotstringQuery(id), cancellationToken);
-        return result.ToActionResult(this);
-    }
-}
-```
+`src/Backend/AHKFlowApp.API/Controllers/HotstringsController.cs` is the live shape. Note three things the simplified template above misses: results map via `result.ToProblemActionResult(this)` (an in-repo RFC 9457 extension, `src/Backend/AHKFlowApp.API/Extensions/ProblemDetailsResultExtensions.cs`), not the bare `Ardalis.Result.AspNetCore.ToActionResult`; class-level attributes add `[RequiredScope("access_as_user")]` and `[ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]` / `...Status403Forbidden`; and action methods return `ActionResult<T>`, not `IActionResult`.
 
 ## Entity and EF Configuration
 
-Entities use private setters, constructor/factory methods, and domain methods:
-
-```csharp
-namespace AHKFlowApp.Domain.Entities;
-
-public sealed class Hotstring
-{
-    private Hotstring()
-    {
-        Trigger = string.Empty;
-        Replacement = string.Empty;
-    }
-
-    public Guid Id { get; private set; }
-    public Guid OwnerOid { get; private set; }
-    public string Trigger { get; private set; }
-    public string Replacement { get; private set; }
-    public DateTimeOffset CreatedAt { get; private set; }
-    public DateTimeOffset UpdatedAt { get; private set; }
-
-    public static Hotstring Create(Guid ownerOid, string trigger, string replacement, DateTimeOffset now) =>
-        new()
-        {
-            Id = Guid.NewGuid(),
-            OwnerOid = ownerOid,
-            Trigger = trigger,
-            Replacement = replacement,
-            CreatedAt = now,
-            UpdatedAt = now
-        };
-}
-```
-
-```csharp
-internal sealed class HotstringConfiguration : IEntityTypeConfiguration<Hotstring>
-{
-    public void Configure(EntityTypeBuilder<Hotstring> builder)
-    {
-        builder.HasKey(x => x.Id);
-        builder.Property(x => x.Trigger).HasMaxLength(50).IsRequired();
-        builder.Property(x => x.Replacement).HasMaxLength(500).IsRequired();
-        builder.HasIndex(x => new { x.OwnerOid, x.Trigger }).IsUnique();
-    }
-}
-```
+`src/Backend/AHKFlowApp.Domain/Entities/Hotstring.cs` (entity: private setters, `Create` factory) and `src/Backend/AHKFlowApp.Infrastructure/Persistence/Configurations/HotstringConfiguration.cs` (EF config: required/max-length properties, enum-as-int conversions, a filtered unique index) are the live, much richer versions of the toy example above — read them before scaffolding a new entity, don't copy the simplified shape here.
 
 ## Integration Test Shape
 
-Use `WebApplicationFactory` and SQL Server Testcontainers. Replace `DbContextOptions<AppDbContext>` with `services.RemoveAll<DbContextOptions<AppDbContext>>()`, run migrations, and assert behavior through HTTP or handler results.
+Use the shared `ApiTestFixture` (`tests/AHKFlowApp.TestUtilities/Fixtures/ApiTestFixture.cs`) via `[Collection("WebApi")]` — see `tests/AHKFlowApp.API.Tests/Hotstrings/HotstringsEndpointsTests.cs:12-15`. Don't stand up a new `WebApplicationFactory`/`MsSqlContainer` per test class.
 
 ## Anti-Patterns
 

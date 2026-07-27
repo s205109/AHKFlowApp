@@ -8,104 +8,52 @@ description: Use when changing AHKFlowApp EF Core, SQL Server, DbContext, migrat
 ## Core Principles
 
 1. **EF Core is the default ORM** — Use it for all data access. No stored procedures, no raw ADO.NET except for diagnostics.
-2. **DbContext injected directly into handlers** — No repository pattern. No IAppDbContext interface. EF Core's DbSet already implements repository and unit-of-work. Adding another layer adds indirection without value.
+2. **`IAppDbContext` injected into handlers** — This project wraps `AppDbContext` behind `IAppDbContext` (`src/Backend/AHKFlowApp.Application/Abstractions/IAppDbContext.cs`) purely so handler unit tests can substitute it — the interface still exposes `DbSet<T>` properties directly, no per-entity CRUD methods, so it is not a repository. Never add a repository interface on top of it.
 3. **SQL Server only** — LocalDB for local dev, Docker Compose SQL Server for dev containers, Azure SQL for production. `EnableRetryOnFailure()` on all registrations.
-4. **Queries should be projections** — Use `.Select()` to project into DTOs. Avoids over-fetching and N+1 issues.
+4. **List queries project, detail queries load-and-map** — List/paginated queries use `.Select()` to build the DTO directly in the query (see `ListCategoriesQuery.cs:52`, `ListHotstringsQuery.cs:179`); single-entity "get by id" queries load the tracked-off entity with `Include()` and map with an explicit `.ToDto()` extension instead (see `GetHotstringQuery.cs`, below). Both avoid over-fetching; pick the shape that matches the query, not one universal rule.
 5. **Migrations are code** — Review them, test them, never auto-apply in production.
 
 ## Patterns
 
 ### DbContext Registration (SQL Server)
 
-```csharp
-// Program.cs or Infrastructure DI extension
-services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlServer(
-        connectionString,
-        sql => sql.EnableRetryOnFailure(
-            maxRetryCount: 3,
-            maxRetryDelay: TimeSpan.FromSeconds(10),
-            errorNumbersToAdd: null)));
-```
+See `src/Backend/AHKFlowApp.Infrastructure/DependencyInjection.cs:16-21` for the live registration — `AddDbContext<AppDbContext>` with `EnableRetryOnFailure()`, plus a scoped `IAppDbContext` registration that resolves to the same `AppDbContext` instance.
 
 ### DbContext Configuration
 
-Use `IEntityTypeConfiguration<T>` to keep entity configs separate and discoverable. No data annotations on entities.
+`AppDbContext` lives at `src/Backend/AHKFlowApp.Infrastructure/Persistence/AppDbContext.cs`; entity configs live one level down in `Configurations/`, one file per entity, each implementing `IEntityTypeConfiguration<T>`. `Configurations/HotstringConfiguration.cs` is the fullest example — required/max-length properties, an enum-as-int conversion, and a filtered unique index (`HasIndex(...).HasFilter(null)`) for the "one global row per owner+trigger" rule. Follow its shape rather than a simplified one.
 
-```csharp
-// Infrastructure/Persistence/AppDbContext.cs
-public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
-{
-    public DbSet<Hotstring> Hotstrings => Set<Hotstring>();
+### Handler Injects IAppDbContext Directly
 
-    protected override void OnModelCreating(ModelBuilder modelBuilder)
-    {
-        modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
-    }
-}
-```
+`src/Backend/AHKFlowApp.Application/Queries/Hotstrings/GetHotstringQuery.cs` is the live shape for a detail query: the handler class is named `{Query}Handler` off the full query name (`GetHotstringQueryHandler`, not `GetHotstringHandler`), it takes `IAppDbContext` (not `AppDbContext`) and `ICurrentUser` in its primary constructor, and it loads the entity with `AsNoTracking()` + `Include()`, then maps with an explicit `.ToDto()` extension (`Application/Mapping/`). List queries use a different shape — see below.
 
-```csharp
-// Infrastructure/Persistence/Configurations/HotstringConfiguration.cs
-internal sealed class HotstringConfiguration : IEntityTypeConfiguration<Hotstring>
-{
-    public void Configure(EntityTypeBuilder<Hotstring> builder)
-    {
-        builder.HasKey(x => x.Id);
-        builder.Property(x => x.Trigger).HasMaxLength(50).IsRequired();
-        builder.Property(x => x.Replacement).HasMaxLength(500).IsRequired();
-        builder.HasIndex(x => x.Trigger).IsUnique();
-    }
-}
-```
+### Loading and Mapping — detail queries vs list queries
 
-### Handler Injects DbContext Directly
+Two live shapes, not one:
+- **Detail query (single entity by id)** — `AsNoTracking()` + `Include()` on the entity, then an explicit `.ToDto()` extension method in `Application/Mapping/`. See `GetHotstringQuery.cs` above.
+- **List/paginated query** — `.Select(x => new Dto(...))` projecting straight from the queryable, no `.ToDto()` call. See `ListCategoriesQuery.cs:52` (`.Select(c => new CategoryDto(c.Id, c.Name, c.CreatedAt, c.UpdatedAt))`) and `ListHotstringsQuery.cs:179`.
 
-```csharp
-// Application/Queries/GetHotstringHandler.cs — DO inject DbContext directly
-internal sealed class GetHotstringHandler(AppDbContext db)
-    : IUseCaseHandler<GetHotstringQuery, Result<HotstringDto>>
-{
-    public async Task<Result<HotstringDto>> ExecuteAsync(
-        GetHotstringQuery request, CancellationToken ct)
-    {
-        var entity = await db.Hotstrings.FindAsync([request.Id], ct);
-        return entity is not null
-            ? Result.Success(new HotstringDto(entity.Id, entity.Trigger, entity.Replacement))
-            : Result.NotFound();
-    }
-}
-```
-
-### Query Projections (Avoid Over-Fetching)
-
-```csharp
-// GOOD — project to DTO, only loads needed columns
-var dto = await db.Hotstrings
-    .Where(h => h.Id == request.Id)
-    .Select(h => new HotstringDto(h.Id, h.Trigger, h.Replacement))
-    .FirstOrDefaultAsync(ct);
-```
+Follow whichever shape matches the query you're writing — don't force a list query into `.ToDto()` or a detail query into `.Select()`.
 
 ### ExecuteUpdateAsync / ExecuteDeleteAsync
 
 Bulk operations that bypass change tracking for better performance.
 
-```csharp
-// Update without loading entities
-await db.Hotstrings
-    .Where(h => h.ProfileId == request.ProfileId)
-    .ExecuteUpdateAsync(s => s.SetProperty(h => h.IsActive, false), ct);
+_No live example in this codebase yet — nothing here bulk-updates/deletes today, and no `Hotstring.ProfileId`/`Hotstring.IsActive` properties exist (see `Hotstring.cs`) to bulk-update. The example below is the official EF Core 10 docs sample (generic `Employees`/`Tags` entities), not this app's data — convert to a pointer once a real usage exists._
 
-// Delete without loading entities
-await db.Hotstrings
-    .Where(h => h.ProfileId == request.ProfileId)
-    .ExecuteDeleteAsync(ct);
+```csharp
+// From https://learn.microsoft.com/ef/core/saving/execute-insert-update-delete (EF Core 10)
+// Update without loading entities
+await context.Employees.ExecuteUpdateAsync(
+    s => s.SetProperty(e => e.Salary, e => e.Salary + 1000), ct);
+
+// Delete without loading entities, with a filter
+await context.Tags.Where(t => t.Text.Contains(".NET")).ExecuteDeleteAsync(ct);
 ```
 
 ### Interceptors
 
-Use interceptors for cross-cutting concerns like audit trails.
+_No `SaveChangesInterceptor` exists in this codebase. This app's audit trail (`EntityHistory`) is written explicitly inside command handlers, not via an interceptor — see `src/Backend/AHKFlowApp.Application/Commands/Hotkeys/RestoreHotkeyCommand.cs` for the shape. Keep this section as a framework-API reference only; don't imply the project uses interceptors._
 
 ```csharp
 public sealed class AuditInterceptor(TimeProvider clock) : SaveChangesInterceptor
@@ -149,35 +97,28 @@ services.AddDbContext<AppDbContext>((sp, options) =>
 
 Use for hot-path queries that execute frequently with the same shape.
 
-```csharp
-public static class HotstringQueries
-{
-    public static readonly Func<AppDbContext, int, CancellationToken, Task<HotstringDto?>> GetById =
-        EF.CompileAsyncQuery((AppDbContext db, int id, CancellationToken ct) =>
-            db.Hotstrings
-                .Where(h => h.Id == id)
-                .Select(h => new HotstringDto(h.Id, h.Trigger, h.Replacement))
-                .FirstOrDefault());
-}
+_No live example in this codebase — no compiled query exists today. The example below is the official EF Core 10 docs sample (`EF.CompileAsyncQuery` API definition), not this app's data — every ID in this app is a `Guid`, not the `int` shown here._
 
-// Usage
-var dto = await HotstringQueries.GetById(db, request.Id, ct);
+```csharp
+// From https://learn.microsoft.com/dotnet/api/microsoft.entityframeworkcore.ef.compileasyncquery (EF Core 10)
+private static readonly Func<BloggingContext, int, IAsyncEnumerable<Blog>> _compiledQuery
+    = EF.CompileAsyncQuery(
+        (BloggingContext context, int length) => context.Blogs.Where(b => b.Url.StartsWith("http://") && b.Url.Length == length));
+
+// Usage — the delegate is thread-safe and can run concurrently on different context instances
+await foreach (Blog blog in _compiledQuery(context, 8)) { /* ... */ }
 ```
 
 ### Value Converters
 
 ```csharp
-// Store enum as string
-builder.Property(h => h.Status)
-    .HasConversion<string>()
-    .HasMaxLength(50);
-
-// Strongly-typed IDs
-public readonly record struct HotstringId(int Value);
-
-builder.Property(h => h.Id)
-    .HasConversion(id => id.Value, value => new HotstringId(value));
+// Real example: enum stored as int — src/Backend/AHKFlowApp.Infrastructure/Persistence/Configurations/HotstringConfiguration.cs:35-37
+builder.Property(x => x.Kind)
+    .IsRequired()
+    .HasConversion<int>();
 ```
+
+_Strongly-typed ID value converters (e.g. a `HotstringId` wrapper) are not used anywhere in this codebase — every ID is a plain `Guid`. Framework API reference only if that changes._
 
 ### Migrations Workflow
 
@@ -199,30 +140,15 @@ dotnet ef database update \
 dotnet ef migrations script --idempotent --output migrations.sql
 ```
 
-### Global Query Filters
+### Soft Delete / Recycle Bin (this app does NOT use a global query filter)
 
-```csharp
-// Soft delete filter
-builder.HasQueryFilter(h => !h.IsDeleted);
-
-// Bypass when needed
-var all = await db.Hotstrings.IgnoreQueryFilters().ToListAsync(ct);
-```
+This app has no `IsDeleted` flag and no `HasQueryFilter`. Delete/restore is modeled through an `EntityHistory` snapshot table plus explicit commands — see `src/Backend/AHKFlowApp.Application/Commands/Hotkeys/{RestoreHotkeyCommand,PurgeDeletedHotkeyCommand}.cs`. If a future entity needs true soft-delete via a boolean flag, `HasQueryFilter` is still the right EF Core mechanism — but don't describe it as what this app already does.
 
 ### Testcontainers (SQL Server)
 
 Always use SQL Server Testcontainers for integration tests — never in-memory provider.
 
-```csharp
-private readonly MsSqlContainer _mssql = new MsSqlBuilder()
-    .WithImage("mcr.microsoft.com/mssql/server:2022-latest")
-    .Build();
-
-// In ConfigureWebHost
-services.RemoveAll<DbContextOptions<AppDbContext>>();
-services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlServer(_mssql.GetConnectionString()));
-```
+The shared fixture lives in `tests/AHKFlowApp.TestUtilities/Fixtures/`: `SqlContainerFixture.cs` owns the `MsSqlContainer`, `ApiTestFixture.cs` wraps it with a `CustomWebApplicationFactory`. Tests share one container per collection via `[Collection("WebApi")]` — see `tests/AHKFlowApp.API.Tests/Hotstrings/HotstringsEndpointsTests.cs:12-15` for the live shape. Never spin up a per-test-class `MsSqlContainer` — that is the exact pattern this project already retired once (see issue #220).
 
 ### Query Performance
 
@@ -253,11 +179,13 @@ var hotstrings = await db.Hotstrings
     .ToListAsync(ct);
 ```
 
-Projecting into a DTO with `.Select()` (the default in this project) is already effectively no-tracking. Reach for `AsNoTrackingWithIdentityResolution()` only when a query can return the same row more than once (e.g. a join that repeats a `Profile`) and you want one shared instance instead of duplicates.
+`AsNoTracking()` (the default read pattern in this project — see "Loading and Mapping" above) is enough for a single-row read. Reach for `AsNoTrackingWithIdentityResolution()` only when a query can return the same row more than once (e.g. a join that repeats a `Profile`) and you want one shared instance instead of duplicates.
 
 #### Split Queries (avoid cartesian explosion)
 
 A single query with multiple or large `Include`s multiplies rows (cartesian product). Split it into one round-trip per collection.
+
+_No live example in this codebase — no query combines multiple/large `Include`s today. Framework API reference only._
 
 ```csharp
 var profiles = await db.Profiles
@@ -298,8 +226,8 @@ public interface IHotstringRepository
     Task SaveChangesAsync();
 }
 
-// GOOD — use AppDbContext directly in handlers
-internal sealed class GetHotstringHandler(AppDbContext db) { }
+// GOOD — use IAppDbContext directly in handlers (see GetHotstringQueryHandler)
+internal sealed class GetHotstringQueryHandler(IAppDbContext db, ICurrentUser currentUser) { }
 ```
 
 ### Don't Use Lazy Loading
@@ -350,15 +278,15 @@ options.UseSqlServer(connectionString, sql => sql.EnableRetryOnFailure(...));
 
 | Scenario | Recommendation |
 |---|---|
-| Standard CRUD | AppDbContext with projections in handler |
-| Bulk updates (100+ rows) | `ExecuteUpdateAsync` / `ExecuteDeleteAsync` |
-| Hot-path read query | Compiled query |
-| Read-only query | `AsNoTracking()`, or project to a DTO |
-| Multiple / large `Include`s | `AsSplitQuery()` |
+| Standard CRUD | `IAppDbContext` with `AsNoTracking()` + `Include()` + `.ToDto()` in handler |
+| Bulk updates (100+ rows) | `ExecuteUpdateAsync` / `ExecuteDeleteAsync` (no live example yet) |
+| Hot-path read query | Compiled query (no live example yet) |
+| Read-only query | `AsNoTracking()`, or map with `.ToDto()` |
+| Multiple / large `Include`s | `AsSplitQuery()` (no live example yet) |
 | Existence check | `AnyAsync`, never `CountAsync > 0` |
 | Diagnosing a slow query | Log `Microsoft.EntityFrameworkCore.Database.Command` |
-| Audit trails | `SaveChangesInterceptor` |
-| Soft deletes | Global query filter + interceptor |
-| Strongly-typed IDs | Value converter |
+| Audit trails | Explicit `EntityHistory` writes in the handler (no interceptor) |
+| Delete / restore | `EntityHistory` snapshot + explicit commands (no global query filter) |
+| Strongly-typed IDs | Not used — every ID is a `Guid` |
 | Production migration | Idempotent SQL script, never auto-migrate |
-| Integration tests | Testcontainers `MsSqlContainer` |
+| Integration tests | Shared `ApiTestFixture` / `SqlContainerFixture`, `[Collection("WebApi")]` — never a per-class `MsSqlContainer` |

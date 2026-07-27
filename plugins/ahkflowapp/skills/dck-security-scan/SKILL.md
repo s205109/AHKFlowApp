@@ -146,6 +146,8 @@ CHECKLIST:
    - API key validation in middleware, not in each controller
 ```
 
+This app doesn't hand-build `TokenValidationParameters` — it delegates JWT validation to `Microsoft.Identity.Web`'s `AddMicrosoftIdentityWebApi(builder.Configuration.GetSection("AzureAd"))` (`src/Backend/AHKFlowApp.API/Program.cs:130-135`), which reads issuer/audience/signing-key config from the `AzureAd` section and validates all four checklist items above automatically. A test-only bypass exists for local dev (`TestAuthenticationHandler`, gated to `Development` + `Auth:UseTestProvider=true`, `Program.cs:114-129`) — flag it as a finding only if it can be reached outside Development. Scanning this project's auth means checking the `AzureAd` config is populated and that `useTestAuth` can't go true outside Development, not reviewing hand-rolled `TokenValidationParameters` (the BAD/GOOD block below is a reference for other .NET apps that do configure JWT bearer manually — this app doesn't).
+
 ```csharp
 // BAD — JWT configuration with weak validation
 builder.Services.AddAuthentication().AddJwtBearer(options =>
@@ -200,7 +202,11 @@ policy.AllowAnyOrigin()             // Any website can read API responses
       .AllowAnyHeader()
       .AllowAnyMethod();
 // Acceptable ONLY for truly public APIs (e.g., public data feeds)
+```
 
+This app's real CORS policy (`src/Backend/AHKFlowApp.API/Extensions/ApiExtensions.cs:10-24`) doesn't use a static `WithOrigins(...)` array like the block below — it uses `SetIsOriginAllowed` reading `Cors:AllowedOrigins` from live configuration on every request, so an edited `appsettings.Development.json` takes effect without an API restart. Check for that dynamic-origin pattern here specifically; the static-array block below is the general-case illustration.
+
+```csharp
 // GOOD — explicit origins
 builder.Services.AddCors(options =>
 {
