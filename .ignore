@@ -1,4 +1,34 @@
+# Search and @-file-picker rules. Three tools read this file: ripgrep, Codex,
+# and .claude/file-suggestion.sh, which supplies the @-mention list in
+# Claude Code. That script runs ripgrep with --no-ignore-vcs, so .gitignore is
+# switched off and this file is not. Every rule the @ picker needs lives here.
+#
+# Keep this file in step with .gitignore. A new build folder added there stays
+# visible to the @ picker until it is named here too.
+
 # Keep private plans searchable in Codex and ripgrep.
 !docs/
 !docs/superpowers/
 !docs/superpowers/**
+
+# Build output and caches. .gitignore already hides these from git, but the
+# suggestion script does not read .gitignore, so repeat them here. Without
+# these the picker offers about 17,600 files instead of about 1,500.
+bin/
+obj/
+node_modules/
+CoverageReport/
+TestResults/
+target/
+.vs/
+.worktrees/
+
+# Hidden folders that hold whole checkouts or tool caches. The suggestion
+# script passes --hidden, so these need naming or they flood the picker.
+.claude/worktrees/
+.vscode/
+.playwright-cli/
+.tmp/
+
+# Note: do not add `dist/` here. Bootstrap ships tracked files under
+# src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/lib/bootstrap/dist/.
