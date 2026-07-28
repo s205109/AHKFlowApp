@@ -3,6 +3,10 @@
     "MAX_MCP_OUTPUT_TOKENS": "50000"
   },
   "respectGitignore": false,
+  "fileSuggestion": {
+    "type": "command",
+    "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/file-suggestion.sh\""
+  },
   "enabledMcpjsonServers": ["cwm-roslyn-navigator"],
   "permissions": {
     "allow": [

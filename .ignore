@@ -20,5 +20,12 @@ target/
 .vs/
 .worktrees/
 
+# Hidden folders that hold whole checkouts or tool caches. The suggestion
+# script passes --hidden, so these need naming or they flood the picker.
+.claude/worktrees/
+.vscode/
+.playwright-cli/
+.tmp/
+
 # Note: do not add `dist/` here. Bootstrap ships tracked files under
 # src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/lib/bootstrap/dist/.
