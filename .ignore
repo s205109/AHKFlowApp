@@ -1,0 +1,4 @@
+# Keep private plans searchable in Codex and ripgrep.
+!docs/
+!docs/superpowers/
+!docs/superpowers/**
