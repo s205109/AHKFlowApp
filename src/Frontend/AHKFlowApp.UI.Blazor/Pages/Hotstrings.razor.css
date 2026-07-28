@@ -91,6 +91,13 @@
     padding-right: 4px;
 }
 
+/* The cell rule above sets white-space: nowrap, so the edit-mode checkbox label cannot wrap and
+   would clip its last letter once the column tightens. Let this one label wrap onto a second line.
+   That holds at any zoom, where adding a few pixels of column width would not. */
+::deep .hotstrings-grid td:nth-child(5) .mud-checkbox {
+    white-space: normal;
+}
+
 ::deep .hotstrings-grid th:nth-child(6),
 ::deep .hotstrings-grid td:nth-child(6) {
     width: 130px;
