@@ -2,6 +2,7 @@
   "env": {
     "MAX_MCP_OUTPUT_TOKENS": "50000"
   },
+  "respectGitignore": false,
   "enabledMcpjsonServers": ["cwm-roslyn-navigator"],
   "permissions": {
     "allow": [

@@ -1,4 +1,24 @@
+# Search and @-file-picker rules. Read by ripgrep and by Codex.
+# Claude Code reads this file too, and `.claude/settings.json` sets
+# "respectGitignore": false. That turns off .gitignore filtering for the
+# @-file picker, so every rule the picker needs must live here.
+
 # Keep private plans searchable in Codex and ripgrep.
 !docs/
 !docs/superpowers/
 !docs/superpowers/**
+
+# Build output and caches. .gitignore already hides these from git, but the
+# @-file picker no longer reads .gitignore, so repeat them here. Without these
+# the picker lists about 17,600 files instead of about 1,700.
+bin/
+obj/
+node_modules/
+CoverageReport/
+TestResults/
+target/
+.vs/
+.worktrees/
+
+# Note: do not add `dist/` here. Bootstrap ships tracked files under
+# src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/lib/bootstrap/dist/.
