@@ -82,6 +82,15 @@
     width: 13%;
 }
 
+/* The default cell padding is 16px left and 24px right. That is 40px of a ~114px cell at 1280px,
+   which left only 74px for a chip needing 98px, so the chip clipped even at 13%. Trim the padding
+   instead of taking more width from Replacement. */
+::deep .hotstrings-grid th:nth-child(5),
+::deep .hotstrings-grid td:nth-child(5) {
+    padding-left: 4px;
+    padding-right: 4px;
+}
+
 ::deep .hotstrings-grid th:nth-child(6),
 ::deep .hotstrings-grid td:nth-child(6) {
     width: 130px;

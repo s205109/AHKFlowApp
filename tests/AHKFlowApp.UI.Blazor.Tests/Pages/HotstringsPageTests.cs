@@ -602,7 +602,7 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
-    public Task Page_RendersTypeBadgeWithOptionGlyphs()
+    public Task Page_RendersKindBadgeWithOptionGlyphs()
     {
         var dto = new HotstringDto(Guid.NewGuid(), [], true, "btw", "by the way", null,
             false, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null,
@@ -814,6 +814,29 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
+    public Task Page_PromoteButton_SaysChangeKindNotChangeType()
+    {
+        var dto = new HotstringDto(Guid.NewGuid(), [], true, "btw", "by the way", null, true, true,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        StubList(Page(dto));
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+
+        cut.WaitForAssertion(() => cut.Find("button.edit"));
+        cut.Find("button.edit").Click();
+
+        cut.WaitForAssertion(() =>
+        {
+            // Both the visible tooltip and the accessible name. CONTEXT.md lists "type" under
+            // Avoid for Kind, so a screen reader must not hear the retired word either.
+            AngleSharp.Dom.IElement promote = cut.Find("button.promote-edit");
+            promote.GetAttribute("title").Should().Be("More options / change kind");
+            promote.GetAttribute("aria-label").Should().Be("More options / change kind");
+        });
+        return Task.CompletedTask;
+    }
+
+    [Fact]
     public Task Page_KindFilter_IsLabelledKindNotType()
     {
         StubList(Page());
@@ -931,7 +954,7 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
             categoryChips.Should().NotBeEmpty();
             categoryChips.Should().OnlyContain(chip => chip.ClassList.Contains("mud-chip-outlined"));
             // Categories carry the brand accent, not MudBlazor's default grey. Outlined + accent is
-            // a deliberately separate channel from the tinted, filled kind chips in the Type column.
+            // a deliberately separate channel from the tinted, filled kind chips in the Kind column.
             categoryChips.Should().OnlyContain(chip =>
                 chip.ClassList.Any(c => c.Contains("primary", StringComparison.OrdinalIgnoreCase)));
         });
@@ -939,7 +962,7 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
-    public void Page_TypeColumnHeader_ShowsGlyphLegendHelpIcon()
+    public void Page_KindColumnHeader_ShowsGlyphLegendHelpIcon()
     {
         StubList(Page());
 

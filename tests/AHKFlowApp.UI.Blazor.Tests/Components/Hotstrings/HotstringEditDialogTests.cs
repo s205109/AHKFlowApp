@@ -1,5 +1,6 @@
 using AHKFlowApp.UI.Blazor.Components.Hotstrings;
 using AHKFlowApp.UI.Blazor.DTOs;
+using AHKFlowApp.UI.Blazor.Helpers;
 using AHKFlowApp.UI.Blazor.Services;
 using AHKFlowApp.UI.Blazor.Validation;
 using Bunit;
@@ -1461,8 +1462,19 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
         });
     }
 
+    [Theory]
+    [InlineData(HotstringDelivery.Auto, "Auto")]
+    [InlineData(HotstringDelivery.Type, "Typed")]
+    [InlineData(HotstringDelivery.ClipboardPaste, "Clipboard")]
+    public void DeliveryOptionLabel_UsesGlossaryWording(HotstringDelivery delivery, string expected)
+    {
+        // The delivery picker renders these three labels (HotstringEditDialog.razor). CONTEXT.md
+        // lists "Hotstring" under Avoid for Delivery — it overloaded the name of the whole entity.
+        DeliveryDisplay.OptionLabel(delivery).Should().Be(expected);
+    }
+
     [Fact]
-    public async Task PreviewPanel_ShowsEffectiveTypedDeliveryAsHotstring()
+    public async Task PreviewPanel_ShowsEffectiveTypedDeliveryAsTyped()
     {
         _api.PreviewAsync(Arg.Any<HotstringPreviewRequestDto>(), Arg.Any<CancellationToken>())
             .Returns(ApiResult<HotstringPreviewDto>.Ok(

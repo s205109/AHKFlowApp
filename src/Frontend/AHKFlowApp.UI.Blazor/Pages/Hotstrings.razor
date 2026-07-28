@@ -964,7 +964,9 @@
     private RenderFragment RenderProfiles(bool appliesToAllProfiles, IReadOnlyCollection<Guid> profileIds) =>
         @<EntityChips Ids="profileIds" Options="_profileOptions" Any="appliesToAllProfiles" />;
 
-    private RenderFragment RenderProfileEditor(HotstringEditModel edit) => @<MudStack AlignItems="AlignItems.Start" Spacing="1">
+    @* No Row and no AlignItems: MudStack defaults to a column, and leaving alignment unset lets the
+       multi-select stretch to the cell width. AlignItems.Start shrank it to about 50px. *@
+    private RenderFragment RenderProfileEditor(HotstringEditModel edit) => @<MudStack Spacing="1">
         <MudCheckBox T="bool" Value="edit.AppliesToAllProfiles"
                      ValueChanged="value => SetAppliesToAllProfiles(edit, value)"
                      Label="All profiles"
@@ -1045,7 +1047,7 @@
                            Color="Color.Default" OnClick="CancelEditAsync" />
             <MudIconButton Class="promote-edit" Icon="@Icons.Material.Filled.Tune"
                            OnClick="() => PromoteInlineRowAsync(item)"
-                           UserAttributes="@(new Dictionary<string, object?> { ["title"] = "More options / change type", ["aria-label"] = "More options / change type" })" />
+                           UserAttributes="@(new Dictionary<string, object?> { ["title"] = "More options / change kind", ["aria-label"] = "More options / change kind" })" />
         }
         else
         {

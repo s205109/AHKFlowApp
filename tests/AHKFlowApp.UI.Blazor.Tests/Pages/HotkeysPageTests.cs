@@ -675,7 +675,7 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
     {
         // The toolbar dropdown owns ActionKind. A live column funnel on the same field would be a
         // second control writing the same request value - keep it off (Hotstrings does the same
-        // for its Type column).
+        // for its Kind column).
         StubList(Page());
 
         IRenderedComponent<Hotkeys> cut = RenderPage();
