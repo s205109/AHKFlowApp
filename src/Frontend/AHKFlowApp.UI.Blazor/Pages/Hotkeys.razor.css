@@ -74,6 +74,22 @@
     width: 12%;
 }
 
+/* Profiles renders one "All profiles" chip. The default 16px/24px cell padding ate 40px of a
+   ~109px cell at 1280px, clipping the chip. Trim the padding rather than widen the column. */
+::deep .hotkeys-grid th:nth-child(5),
+::deep .hotkeys-grid td:nth-child(5) {
+    padding-left: 4px;
+    padding-right: 4px;
+}
+
+/* The cell rule above sets white-space: nowrap, so the edit-mode checkbox label could not wrap and
+   clipped its last letter instead: 32px control plus an 82px label needs 114px, and the content box
+   is 101px. Let this one label wrap onto a second line. That holds at any zoom, where adding a few
+   pixels of column width would not. */
+::deep .hotkeys-grid td:nth-child(5) .mud-checkbox {
+    white-space: normal;
+}
+
 ::deep .hotkeys-grid th:nth-child(7),
 ::deep .hotkeys-grid td:nth-child(7) {
     width: 160px;

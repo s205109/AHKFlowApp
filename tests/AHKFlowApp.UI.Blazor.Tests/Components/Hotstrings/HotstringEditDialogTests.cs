@@ -1,5 +1,6 @@
 using AHKFlowApp.UI.Blazor.Components.Hotstrings;
 using AHKFlowApp.UI.Blazor.DTOs;
+using AHKFlowApp.UI.Blazor.Helpers;
 using AHKFlowApp.UI.Blazor.Services;
 using AHKFlowApp.UI.Blazor.Validation;
 using Bunit;
@@ -1461,8 +1462,43 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
         });
     }
 
+    [Theory]
+    [InlineData(HotstringDelivery.Auto, "Auto")]
+    [InlineData(HotstringDelivery.Type, "Typed")]
+    [InlineData(HotstringDelivery.ClipboardPaste, "Clipboard")]
+    public void DeliveryOptionLabel_UsesGlossaryWording(HotstringDelivery delivery, string expected)
+    {
+        // The delivery picker renders these three labels (HotstringEditDialog.razor). CONTEXT.md
+        // lists "Hotstring" under Avoid for Delivery — it overloaded the name of the whole entity.
+        DeliveryDisplay.OptionLabel(delivery).Should().Be(expected);
+    }
+
     [Fact]
-    public async Task PreviewPanel_ShowsEffectiveTypedDeliveryAsHotstring()
+    public async Task DeliverySelector_OpenMenu_RendersGlossaryOptions()
+    {
+        HotstringEditModel item = new() { Trigger = "btw", Replacement = "by the way" };
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"delivery-select\"]"));
+
+        // The theory above covers the helper. This covers the dialog markup actually calling it —
+        // swapping the literals back to "Hotstring" must fail here.
+        IRenderedComponent<MudSelect<HotstringDelivery>> select =
+            provider.FindComponent<MudSelect<HotstringDelivery>>();
+        await provider.InvokeAsync(select.Instance.OpenMenu);
+
+        IRenderedComponent<MudPopoverProvider> popover = _popoverProvider!;
+        popover.WaitForAssertion(() =>
+        {
+            string menu = popover.Markup;
+            menu.Should().Contain("Typed");
+            menu.Should().Contain("Auto");
+            menu.Should().Contain("Clipboard");
+            menu.Should().NotContain("Hotstring");
+        });
+    }
+
+    [Fact]
+    public async Task PreviewPanel_ShowsEffectiveTypedDeliveryAsTyped()
     {
         _api.PreviewAsync(Arg.Any<HotstringPreviewRequestDto>(), Arg.Any<CancellationToken>())
             .Returns(ApiResult<HotstringPreviewDto>.Ok(
@@ -1475,7 +1511,9 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
 
         provider.WaitForAssertion(() =>
         {
-            provider.Find("[data-test=\"preview-delivery\"]").TextContent.Should().Contain("Hotstring");
+            // "Typed" replaced "Hotstring" here — CONTEXT.md lists the old label under Avoid,
+            // because it overloaded the name of the whole entity.
+            provider.Find("[data-test=\"preview-delivery\"]").TextContent.Should().Contain("Typed");
         });
     }
 
@@ -1512,9 +1550,13 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
     private static void DisablePreviewDebounce(IRenderedComponent<MudDialogProvider> provider) =>
         provider.FindComponent<HotstringEditDialog>().Instance.PreviewDebounce = TimeSpan.Zero;
 
+    /// <summary>Set by <see cref="RenderDialogAsync"/>. MudSelect renders its open menu into the
+    /// popover provider's tree, not the dialog's, so a test that inspects menu items needs this.</summary>
+    private IRenderedComponent<MudPopoverProvider>? _popoverProvider;
+
     private async Task<IRenderedComponent<MudDialogProvider>> RenderDialogAsync(HotstringEditModel? item = null)
     {
-        Render<MudPopoverProvider>();
+        _popoverProvider = Render<MudPopoverProvider>();
         IRenderedComponent<MudDialogProvider> provider = Render<MudDialogProvider>();
 
         await provider.InvokeAsync(async () =>

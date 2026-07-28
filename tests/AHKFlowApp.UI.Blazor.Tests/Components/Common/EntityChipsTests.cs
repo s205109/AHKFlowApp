@@ -44,7 +44,10 @@ public sealed class EntityChipsTests : BunitContext, IAsyncLifetime
             .Add(p => p.Options, options)
             .Add(p => p.Any, true));
 
-        cut.Markup.Should().Contain("Any");
+        // "All profiles" is the glossary short form of "Apply to all profiles" (CONTEXT.md).
+        // The old "Any" label was an avoided synonym, so assert it is gone for good.
+        cut.Markup.Should().Contain("All profiles");
+        cut.Markup.Should().NotContain(">Any<");
         cut.Markup.Should().NotContain("Work");
     }
 

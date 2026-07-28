@@ -109,7 +109,7 @@
             @* The chip renders in both modes: the kind is not inline-changeable, so it is
                context for the payload beside it, not a control. *@
             @* The toolbar Action dropdown owns this filter value; a column funnel here would be a
-               second control writing the same request field. Same reason Hotstrings' Type column sets it. *@
+               second control writing the same request field. Same reason Hotstrings' Kind column sets it. *@
             <PropertyColumn Property="x => x.ActionKind" Title="Action" Filterable="false">
                 <CellTemplate>
                     <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
@@ -765,10 +765,12 @@
     private RenderFragment RenderProfiles(bool appliesToAllProfiles, IReadOnlyCollection<Guid> profileIds) =>
         @<EntityChips Ids="profileIds" Options="_profileOptions" Any="appliesToAllProfiles" />;
 
-    private RenderFragment RenderProfileEditor(HotkeyEditModel edit) => @<MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+    @* No Row and no AlignItems: MudStack defaults to a column, and leaving alignment unset lets the
+       multi-select stretch to the cell width. AlignItems.Start shrank it to about 50px. *@
+    private RenderFragment RenderProfileEditor(HotkeyEditModel edit) => @<MudStack Spacing="1">
         <MudCheckBox T="bool" Value="edit.AppliesToAllProfiles"
                      ValueChanged="value => SetAppliesToAllProfiles(edit, value)"
-                     Label="Any"
+                     Label="All profiles"
                      UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "applies-to-all-checkbox" })" />
         @if (!edit.AppliesToAllProfiles)
         {

@@ -72,9 +72,9 @@
             {
                 <MudSelect T="HotstringDelivery" @bind-Value="Item.Delivery" Label="Delivery"
                            UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "delivery-select" })">
-                    <MudSelectItem T="HotstringDelivery" Value="HotstringDelivery.Auto">Auto</MudSelectItem>
-                    <MudSelectItem T="HotstringDelivery" Value="HotstringDelivery.Type">Hotstring</MudSelectItem>
-                    <MudSelectItem T="HotstringDelivery" Value="HotstringDelivery.ClipboardPaste">Clipboard</MudSelectItem>
+                    <MudSelectItem T="HotstringDelivery" Value="HotstringDelivery.Auto">@DeliveryDisplay.OptionLabel(HotstringDelivery.Auto)</MudSelectItem>
+                    <MudSelectItem T="HotstringDelivery" Value="HotstringDelivery.Type">@DeliveryDisplay.OptionLabel(HotstringDelivery.Type)</MudSelectItem>
+                    <MudSelectItem T="HotstringDelivery" Value="HotstringDelivery.ClipboardPaste">@DeliveryDisplay.OptionLabel(HotstringDelivery.ClipboardPaste)</MudSelectItem>
                 </MudSelect>
                 <MudText Typo="Typo.caption" Color="Color.Secondary">
                     Auto types short replacements and pastes 200+ characters via the clipboard. Pasted text is not case-conforming (typed replacements adapt to how you capitalized the trigger; pasted ones don't).

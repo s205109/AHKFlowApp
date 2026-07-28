@@ -2,7 +2,7 @@
 
 @if (Any)
 {
-    <MudChip T="string" Size="Size.Small" Color="MudBlazor.Color.Info" Variant="Variant">Any</MudChip>
+    <MudChip T="string" Size="Size.Small" Color="MudBlazor.Color.Info" Variant="Variant">All profiles</MudChip>
 }
 else
 {
@@ -16,12 +16,12 @@ else
     [Parameter, EditorRequired] public IReadOnlyCollection<Guid> Ids { get; set; } = [];
     [Parameter, EditorRequired] public IReadOnlyList<EntityOption> Options { get; set; } = [];
 
-    /// <summary>When true, renders a single "Any" chip instead of the id list (profiles case).</summary>
+    /// <summary>When true, renders a single "All profiles" chip instead of the id list (profiles case).</summary>
     [Parameter] public bool Any { get; set; }
 
     [Parameter] public Variant Variant { get; set; } = Variant.Filled;
 
-    /// <summary>Color for the id chips. Null keeps MudBlazor's default (grey). Does not affect the "Any" chip.</summary>
+    /// <summary>Color for the id chips. Null keeps MudBlazor's default (grey). Does not affect the "All profiles" chip.</summary>
     [Parameter] public MudBlazor.Color? Color { get; set; }
 
     private string NameFor(Guid id) =>

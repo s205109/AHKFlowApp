@@ -4,6 +4,21 @@ Where a user defines the text expansions and keyboard shortcuts they want on Win
 
 ## Language
 
+### Short forms
+
+Some places in the UI are too narrow for a full term. A chip or a dense grid cell is an example.
+
+In those places you may shorten a canonical term, but only by removing words from it. Never swap in
+a different word. "All profiles" is allowed, because it is "Apply to all profiles" with two words
+removed. "Any" is not allowed, because it is a different word — that is why it appears under
+_Avoid_.
+
+Use the full term everywhere there is room, such as a dialog or a form label.
+
+| Canonical term | Short form |
+|---|---|
+| Apply to all profiles | All profiles |
+
 ### Definitions
 
 **Hotstring**:
@@ -13,6 +28,11 @@ _Avoid_: abbreviation, snippet, expansion, shortcut
 **Hotkey**:
 A key plus any of Ctrl/Alt/Shift/Win that runs one Action.
 _Avoid_: shortcut, binding, keybinding, accelerator
+
+**Item**:
+A Hotstring or a Hotkey, when it does not matter which of the two it is. Use it where both are
+meant, such as the Recycle Bin or an entry's history.
+_Avoid_: type, entity, record, object
 
 **Trigger**:
 The characters a user types to fire a Hotstring. Hotkeys have no trigger — they have a key and modifiers.
@@ -75,6 +95,7 @@ _Avoid_: group, set, collection, workspace
 
 **Apply to all profiles**:
 Said of a hotstring or hotkey that belongs to every Profile, including profiles created later, instead of being listed in particular ones.
+Short form in narrow places: "All profiles". See **Short forms** above.
 _Avoid_: Any, global, shared, all-profiles
 
 **Category**:

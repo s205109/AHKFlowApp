@@ -58,7 +58,7 @@
 
 ::deep .hotstrings-grid th:nth-child(3),
 ::deep .hotstrings-grid td:nth-child(3) {
-    width: 19%;
+    width: 15%;
 }
 
 /* Replacement column: multi-line imports (continuation sections, converted Send
@@ -73,12 +73,29 @@
     width: 13%;
 }
 
-/* Profiles renders one short chip ("Any" for most rows), so it can give a little width to
-   Categories — but not much: at high zoom the fixed layout squeezes percentage columns hard,
-   and below ~9% the "Any" chip clips. */
+/* Profiles renders one chip reading "All profiles" for most rows. That is four times longer than
+   the old "Any" label, which already clipped below ~9%, so this column needs the extra width. The
+   4% came from Replacement, which ellipsizes anyway. At high zoom the fixed layout squeezes
+   percentage columns hard, so do not take this back below 13%. */
 ::deep .hotstrings-grid th:nth-child(5),
 ::deep .hotstrings-grid td:nth-child(5) {
-    width: 9%;
+    width: 13%;
+}
+
+/* The default cell padding is 16px left and 24px right. That is 40px of a ~114px cell at 1280px,
+   which left only 74px for a chip needing 98px, so the chip clipped even at 13%. Trim the padding
+   instead of taking more width from Replacement. */
+::deep .hotstrings-grid th:nth-child(5),
+::deep .hotstrings-grid td:nth-child(5) {
+    padding-left: 4px;
+    padding-right: 4px;
+}
+
+/* The cell rule above sets white-space: nowrap, so the edit-mode checkbox label cannot wrap and
+   would clip its last letter once the column tightens. Let this one label wrap onto a second line.
+   That holds at any zoom, where adding a few pixels of column width would not. */
+::deep .hotstrings-grid td:nth-child(5) .mud-checkbox {
+    white-space: normal;
 }
 
 ::deep .hotstrings-grid th:nth-child(6),
