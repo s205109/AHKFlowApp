@@ -1,4 +1,4 @@
-using AHKFlowApp.Application.Abstractions;
+﻿using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -25,6 +25,8 @@ internal sealed class RunBeforeNthSaveDbContext(AppDbContext inner, int runBefor
     public DbSet<HotstringCategory> HotstringCategories => inner.HotstringCategories;
     public DbSet<HotkeyCategory> HotkeyCategories => inner.HotkeyCategories;
     public DbSet<EntityHistory> EntityHistories => inner.EntityHistories;
+    public DbSet<CustomKnownShortcut> CustomKnownShortcuts => inner.CustomKnownShortcuts;
+    public DbSet<IgnoredKnownShortcut> IgnoredKnownShortcuts => inner.IgnoredKnownShortcuts;
 
     public async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {

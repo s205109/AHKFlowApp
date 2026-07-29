@@ -17,6 +17,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<HotstringCategory> HotstringCategories => Set<HotstringCategory>();
     public DbSet<HotkeyCategory> HotkeyCategories => Set<HotkeyCategory>();
     public DbSet<EntityHistory> EntityHistories => Set<EntityHistory>();
+    public DbSet<CustomKnownShortcut> CustomKnownShortcuts => Set<CustomKnownShortcut>();
+    public DbSet<IgnoredKnownShortcut> IgnoredKnownShortcuts => Set<IgnoredKnownShortcut>();
 
     public Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
         => Database.BeginTransactionAsync(cancellationToken);

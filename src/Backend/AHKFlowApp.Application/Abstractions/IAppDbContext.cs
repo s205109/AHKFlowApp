@@ -16,6 +16,8 @@ public interface IAppDbContext
     DbSet<HotstringCategory> HotstringCategories { get; }
     DbSet<HotkeyCategory> HotkeyCategories { get; }
     DbSet<EntityHistory> EntityHistories { get; }
+    DbSet<CustomKnownShortcut> CustomKnownShortcuts { get; }
+    DbSet<IgnoredKnownShortcut> IgnoredKnownShortcuts { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 
