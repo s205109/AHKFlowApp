@@ -26,11 +26,15 @@ public abstract class ApiClientBase(HttpClient httpClient)
         catch (HttpRequestException) { return ApiResult<T>.Failure(ApiResultStatus.NetworkError, null); }
     }
 
-    protected async Task<ApiResult> SendNoContentAsync(HttpMethod method, string path, CancellationToken ct)
+    protected Task<ApiResult> SendNoContentAsync(HttpMethod method, string path, CancellationToken ct) =>
+        SendNoContentAsync(method, path, content: null, ct);
+
+    protected async Task<ApiResult> SendNoContentAsync(
+        HttpMethod method, string path, HttpContent? content, CancellationToken ct)
     {
         try
         {
-            using var req = new HttpRequestMessage(method, path);
+            using var req = new HttpRequestMessage(method, path) { Content = content };
             using HttpResponseMessage resp = await HttpClient.SendAsync(req, ct);
             if (resp.StatusCode == HttpStatusCode.NoContent) return ApiResult.Ok();
             ApiProblemDetails? problem = await TryReadProblem(resp, ct);
