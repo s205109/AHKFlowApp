@@ -30,6 +30,14 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
 
     private readonly IHotkeysApiClient _api = Substitute.For<IHotkeysApiClient>();
     private readonly IHotkeyKeyCatalog _catalog = Substitute.For<IHotkeyKeyCatalog>();
+    private readonly IKnownShortcutCatalog _knownShortcuts = Substitute.For<IKnownShortcutCatalog>();
+
+    private static KnownShortcutCatalogDto WinECatalog() =>
+        new([
+            new KnownShortcutDto("windows.file-explorer", "e", false, false, false, true,
+                [new ShortcutUseDto("Windows", ShortcutProtection.Normal, ShortcutScope.Global, "open File Explorer")],
+                null),
+        ]);
 
     public HotkeyEditDialogTests()
     {
@@ -45,7 +53,15 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
             .Returns(call => CatalogKeys.FirstOrDefault(k => k.Canonical == call.Arg<string>())?.Group);
         _catalog.RequiresBracesInSend(Arg.Any<string>())
             .Returns(call => CatalogKeys.FirstOrDefault(k => k.Canonical == call.Arg<string>())?.RequiresBracesInSend ?? false);
+        // Canonicalization is a real code path now: without this the substitute returns null and
+        // every combination misses its catalog row.
+        _catalog.CanonicalizeAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(call => ValueTask.FromResult(call.Arg<string>() ?? ""));
         Services.AddSingleton(_catalog);
+
+        _knownShortcuts.GetAsync(Arg.Any<CancellationToken>())
+            .Returns(ValueTask.FromResult<KnownShortcutCatalogDto?>(WinECatalog()));
+        Services.AddSingleton(_knownShortcuts);
 
         Services.AddMudServices();
         JSInterop.Mode = JSRuntimeMode.Loose;
@@ -84,6 +100,14 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
     // selection from the dropdown does, without depending on popover/JS behaviour.
     private static bool IsChecked(IRenderedComponent<MudDialogProvider> provider, string dataTest) =>
         ((IHtmlInputElement)provider.Find($"input[data-test=\"{dataTest}\"]")).IsChecked;
+
+    // Same idea for the modifier boxes: drive ValueChanged rather than the rendered input, so the
+    // test does not depend on MudCheckBox's internal markup.
+    private static Task SetModifierAsync(IRenderedComponent<MudDialogProvider> provider, string dataTest, bool value) =>
+        provider.InvokeAsync(() => provider
+            .FindComponents<MudCheckBox<bool>>()
+            .Single(c => c.Instance.UserAttributes.TryGetValue("data-test", out object? v) && (string?)v == dataTest)
+            .Instance.ValueChanged.InvokeAsync(value));
 
     private static Task SetKeyAsync(IRenderedComponent<MudDialogProvider> provider, string dataTest, string? key) =>
         provider.InvokeAsync(() => provider
@@ -736,5 +760,90 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
                 "an unexpected fault must not leave the spinner stuck forever");
             provider.Find("[data-test=\"preview-error\"]").TextContent.Should().NotBeNullOrWhiteSpace();
         });
+    }
+
+    [Fact]
+    public async Task Open_ExistingHotkeyMatchingAKnownShortcut_ShowsWarning()
+    {
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(
+            new HotkeyEditModel { Id = Guid.NewGuid(), Key = "e", Win = true, Description = "Open notes" });
+
+        provider.WaitForAssertion(() =>
+            provider.Find("[data-test=\"shortcut-warning\"]").TextContent
+                .Should().Contain("Windows uses Win+E to open File Explorer."));
+    }
+
+    [Fact]
+    public async Task Open_CombinationWithNoKnownShortcut_ShowsNoWarning()
+    {
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(
+            new HotkeyEditModel { Key = "F1", Ctrl = true });
+
+        provider.FindAll("[data-test=\"shortcut-warning\"]").Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ChangingModifier_IntoAKnownShortcut_ShowsWarning()
+    {
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(
+            new HotkeyEditModel { Key = "e" });
+
+        provider.FindAll("[data-test=\"shortcut-warning\"]").Should().BeEmpty();
+
+        await SetModifierAsync(provider, "win-checkbox", true);
+
+        provider.WaitForAssertion(() =>
+            provider.Find("[data-test=\"shortcut-warning\"]").Should().NotBeNull());
+    }
+
+    [Fact]
+    public async Task ChangingModifier_OutOfAKnownShortcut_ClearsWarning()
+    {
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(
+            new HotkeyEditModel { Key = "e", Win = true });
+
+        provider.WaitForAssertion(() =>
+            provider.Find("[data-test=\"shortcut-warning\"]").Should().NotBeNull());
+
+        await SetModifierAsync(provider, "win-checkbox", false);
+
+        provider.WaitForAssertion(() =>
+            provider.FindAll("[data-test=\"shortcut-warning\"]").Should().BeEmpty());
+    }
+
+    [Fact]
+    public async Task CatalogLoadFailure_ShowsNoWarningAndNoError()
+    {
+        // The catalog service turns a failed fetch into null, so that is what the dialog sees.
+        _knownShortcuts.GetAsync(Arg.Any<CancellationToken>())
+            .Returns(ValueTask.FromResult<KnownShortcutCatalogDto?>(null));
+
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(
+            new HotkeyEditModel { Key = "e", Win = true });
+
+        provider.FindAll("[data-test=\"shortcut-warning\"]").Should().BeEmpty();
+        provider.FindAll(".mud-alert-filled-error").Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Save_IsNeverBlockedByAWarning()
+    {
+        HotkeyDto created = new(Guid.NewGuid(), [], true, "Open notes", "e", false, false, false, true,
+            HotkeyActionKind.SendKeys, null, null, null, null, null, null, null,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        _api.CreateAsync(Arg.Any<CreateHotkeyDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotkeyDto>.Ok(created));
+
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(
+            new HotkeyEditModel { Key = "e", Win = true, Description = "Open notes" });
+
+        provider.WaitForAssertion(() =>
+            provider.Find("[data-test=\"shortcut-warning\"]").Should().NotBeNull());
+
+        provider.Find("button.commit-edit").HasAttribute("disabled").Should().BeFalse();
+        provider.Find("button.commit-edit").Click();
+
+        provider.WaitForAssertion(() => _api.Received(1).CreateAsync(
+            Arg.Any<CreateHotkeyDto>(), Arg.Any<CancellationToken>()));
     }
 }

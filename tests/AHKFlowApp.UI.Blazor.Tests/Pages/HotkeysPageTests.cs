@@ -52,6 +52,13 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
         StubKeyCatalog(keysValid: true);
         Services.AddSingleton(_catalog);
 
+        // The edit dialog injects this. An empty catalog means no shortcut warning, which is what
+        // these page tests want — they are about the grid and the dialog opening, not the notice.
+        IKnownShortcutCatalog knownShortcuts = Substitute.For<IKnownShortcutCatalog>();
+        knownShortcuts.GetAsync(Arg.Any<CancellationToken>())
+            .Returns(ValueTask.FromResult<KnownShortcutCatalogDto?>(new KnownShortcutCatalogDto([])));
+        Services.AddSingleton(knownShortcuts);
+
         Services.AddMudServices();
         JSInterop.Mode = JSRuntimeMode.Loose;
     }
