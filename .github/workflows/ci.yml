@@ -113,6 +113,7 @@ jobs:
           ./tests/WorktreeBranchName.Tests.ps1
           ./tests/WorktreeBaseRef.Tests.ps1
           ./tests/WorktreeMergedCleanup.Tests.ps1
+          ./tests/WorktreePlansSymlink.Tests.ps1
           ./tests/WorktreeRemoveHook.Tests.ps1
           ./tests/WorktreeLocalDevSetup.Tests.ps1
           ./tests/SkillParity.Tests.ps1
