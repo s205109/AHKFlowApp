@@ -37,7 +37,7 @@ $script:AgentGuardEnvAssignmentPattern = '^[A-Za-z_][A-Za-z0-9_]*='
 function New-AgentGuardDecision {
     [CmdletBinding()]
     param(
-        [ValidateSet('Allow', 'Warn', 'Deny')]
+        [ValidateSet('Allow', 'Warn', 'Deny', 'Ask')]
         [string] $Action = 'Allow',
         [string] $Rule = 'none',
         [string] $Message = ''
@@ -127,6 +127,8 @@ function ConvertFrom-AgentHookInput {
 
     $rawToolName = ''
     $command = ''
+    $agentId = ''
+    $agentType = ''
 
     if ($resolvedAdapter -eq 'Copilot') {
         if (Test-AgentGuardProperty $payload 'toolName') { $rawToolName = [string] $payload.toolName }
@@ -152,6 +154,12 @@ function ConvertFrom-AgentHookInput {
             $toolInput = $payload.tool_input
             if (Test-AgentGuardProperty $toolInput 'command') { $command = [string] $toolInput.command }
         }
+
+        # Present at the top level only when the call originates inside a subagent or --agent
+        # session (https://code.claude.com/docs/en/hooks). Codex's payload shape may not carry
+        # them at all - Test-AgentGuardProperty returns $false and both stay ''.
+        if (Test-AgentGuardProperty $payload 'agent_id') { $agentId = [string] $payload.agent_id }
+        if (Test-AgentGuardProperty $payload 'agent_type') { $agentType = [string] $payload.agent_type }
     }
 
     $cwd = ''
@@ -163,10 +171,12 @@ function ConvertFrom-AgentHookInput {
     }
 
     return [pscustomobject]@{
-        Adapter  = $resolvedAdapter
-        ToolName = $normalizedToolName
-        Command  = $command
-        Cwd      = (ConvertTo-AgentGuardNormalizedPath $cwd)
+        Adapter   = $resolvedAdapter
+        ToolName  = $normalizedToolName
+        Command   = $command
+        Cwd       = (ConvertTo-AgentGuardNormalizedPath $cwd)
+        AgentId   = $agentId
+        AgentType = $agentType
     }
 }
 
@@ -603,6 +613,13 @@ agent session. An inline "AHKFLOW_ALLOW_MAIN=1 git ..." prefix does not work: th
 its own process and never sees it.
 '@
 
+$script:AgentGuardAskMessage = @'
+This command changes Git state in the main checkout you are working in: {0}
+Approve only if you want it to run here. To run it in an isolated workspace instead, create one
+with scripts/new-worktree.ps1 or the agent WorktreeCreate tool.
+Read-only Git and ordinary edit/build/test commands are unaffected.
+'@
+
 # Global options that consume the following token, so the subcommand scan skips their argument.
 $script:AgentGuardValueGlobalOptions = @('-C', '-c', '--git-dir', '--work-tree', '--namespace', '--exec-path')
 
@@ -672,6 +689,27 @@ function Test-AgentGitArgsContainAny {
         foreach ($option in $Options) {
             if ($arg -ieq $option -or $arg -ilike "$option=*") { return $true }
         }
+    }
+    return $false
+}
+
+<#
+.SYNOPSIS
+True when any argument carries a force flag, including a clustered short option.
+
+.DESCRIPTION
+Test-AgentGitArgsContainAny only matches a complete option token or opt=*, so it misses a
+clustered short option such as -df or -fd. This inspects each argument independently for
+--force, --force-*, or any short-option cluster containing a lowercase f. Case-sensitive
+(-c operators): -F is a different option to git in several subcommands, matching the discipline
+the safety rules already use at common.ps1:300 and :316.
+#>
+function Test-AgentGuardHasForceFlag {
+    param([string[]] $Arguments)
+    foreach ($arg in $Arguments) {
+        if ($arg -ceq '--force') { return $true }
+        if ($arg -clike '--force-*') { return $true }
+        if ($arg -cmatch '^-[a-zA-Z]*f') { return $true }
     }
     return $false
 }
@@ -785,6 +823,60 @@ function Test-AgentGitMutation {
         'init' {
             # init always mutates; its effective target decides whether the location allows it.
             return $true
+        }
+        default {
+            return $false
+        }
+    }
+}
+
+<#
+.SYNOPSIS
+True when a mutating git invocation is Tier 2: safe to run from the main checkout with no prompt,
+because it cannot disturb the owner's HEAD, index, or working tree.
+
+.DESCRIPTION
+Every rule here is force-conditional except worktree prune and remote prune, which have no force
+variant that changes their risk. `-D` is git's own shorthand for "-d --force" on `branch`, so it
+is checked explicitly and case-sensitively alongside the generic force-cluster helper - a plain
+case-insensitive match would treat -D as equal to -d and wrongly allow it.
+#>
+function Test-AgentGitTier2Allowed {
+    [CmdletBinding()]
+    param([string] $Subcommand, [string[]] $Arguments)
+
+    $subcommand = $Subcommand.ToLowerInvariant()
+    $positionals = @(Get-AgentGitPositionals -Arguments $Arguments)
+    $first = if ($positionals.Count -gt 0) { ([string] $positionals[0]).ToLowerInvariant() } else { '' }
+
+    switch ($subcommand) {
+        'worktree' {
+            if ($first -eq 'prune') { return $true }
+            if ($first -in @('add', 'remove')) {
+                return -not (Test-AgentGuardHasForceFlag -Arguments $Arguments)
+            }
+            return $false
+        }
+        'branch' {
+            $hasForce = (Test-AgentGuardHasForceFlag -Arguments $Arguments) -or
+                (@($Arguments | Where-Object { $_ -ceq '-D' }).Count -gt 0)
+            $hasDelete = @($Arguments | Where-Object {
+                    $_ -ceq '-d' -or $_ -ceq '--delete' -or $_ -clike '--delete=*'
+                }).Count -gt 0
+            $hasOtherFlag = @($Arguments | Where-Object {
+                    $_ -like '-*' -and $_ -cne '-d' -and $_ -cne '--delete' -and $_ -cnotlike '--delete=*'
+                }).Count -gt 0
+
+            if ($hasDelete -and -not $hasForce -and -not $hasOtherFlag) { return $true }
+
+            # Plain create: only the branch name (and optional start-point), no flags at all.
+            $hasAnyFlag = @($Arguments | Where-Object { $_ -like '-*' }).Count -gt 0
+            if (-not $hasAnyFlag -and $positionals.Count -ge 1) { return $true }
+
+            return $false
+        }
+        'remote' {
+            return $first -eq 'prune'
         }
         default {
             return $false
@@ -1000,6 +1092,7 @@ function Get-AgentGitLocationDecision {
     $directoryStack = New-Object System.Collections.Generic.List[string]
     $blockingState = ''
     $blockingTarget = ''
+    $blockingSubcommand = ''
 
     foreach ($segment in $Segments) {
         if ($segment.Kind -eq 'PopDirectory') {
@@ -1056,9 +1149,14 @@ function Get-AgentGitLocationDecision {
             continue
         }
 
+        if (Test-AgentGitTier2Allowed -Subcommand $parts.Subcommand -Arguments $parts.Args) {
+            continue
+        }
+
         if ($parts.UsesGitDirOrWorkTree) {
             $blockingState = 'ExplicitGitDir'
             $blockingTarget = $Cwd
+            $blockingSubcommand = $parts.Subcommand
             break
         }
 
@@ -1070,6 +1168,7 @@ function Get-AgentGitLocationDecision {
         if ($unresolvedDirectory -and -not $dashCReanchors) {
             $blockingState = 'UnresolvedDirectoryChange'
             $blockingTarget = $Cwd
+            $blockingSubcommand = $parts.Subcommand
             break
         }
 
@@ -1079,6 +1178,7 @@ function Get-AgentGitLocationDecision {
         if ($state -inotin $script:AgentGuardAllowedStates) {
             $blockingState = $state
             $blockingTarget = $targetDir
+            $blockingSubcommand = $parts.Subcommand
             break
         }
     }
@@ -1087,12 +1187,15 @@ function Get-AgentGitLocationDecision {
         return New-AgentGuardDecision -Action Allow
     }
 
+    $isTier1b = ($blockingSubcommand -ieq 'commit')
+
     if ($blockingState -eq 'ExplicitGitDir') {
         if ($AllowMain) {
             return New-AgentGuardDecision -Action Warn -Rule 'agent-git-dir-override-overridden' -Message `
             ("WARNING: AHKFLOW_ALLOW_MAIN=1 overrode the --git-dir/--work-tree restriction for: $blockingTarget")
         }
-        return New-AgentGuardDecision -Action Deny -Rule 'agent-git-dir-mutation' -Message `
+        $action = if ($isTier1b) { 'Deny' } else { 'Ask' }
+        return New-AgentGuardDecision -Action $action -Rule 'agent-git-dir-mutation' -Message `
         ('BLOCKED: agent Git mutations with --git-dir or --work-tree are not allowed; the ' +
             'target cannot be verified. Run the command from inside a managed linked worktree instead.')
     }
@@ -1102,7 +1205,8 @@ function Get-AgentGitLocationDecision {
             return New-AgentGuardDecision -Action Warn -Rule 'agent-unresolved-cd-overridden' -Message `
             ("WARNING: AHKFLOW_ALLOW_MAIN=1 overrode an unverifiable directory change before a git mutation.")
         }
-        return New-AgentGuardDecision -Action Deny -Rule 'agent-unresolved-git-target' -Message `
+        $action = if ($isTier1b) { 'Deny' } else { 'Ask' }
+        return New-AgentGuardDecision -Action $action -Rule 'agent-unresolved-git-target' -Message `
         ('BLOCKED: this command changes directory to a target the guard cannot expand, so the ' +
             'git mutation cannot be verified. Run git from a managed linked worktree, or pass an ' +
             'explicit `git -C <path>`.')
@@ -1114,8 +1218,13 @@ function Get-AgentGitLocationDecision {
             "($blockingState) for: $blockingTarget")
     }
 
-    $message = [string]::Format($script:AgentGuardDenialMessage, $blockingTarget)
-    return New-AgentGuardDecision -Action Deny -Rule 'agent-main-git-mutation' -Message $message
+    if ($isTier1b) {
+        $message = [string]::Format($script:AgentGuardDenialMessage, $blockingTarget)
+        return New-AgentGuardDecision -Action Deny -Rule 'agent-main-git-mutation' -Message $message
+    }
+
+    $message = [string]::Format($script:AgentGuardAskMessage, $blockingTarget)
+    return New-AgentGuardDecision -Action Ask -Rule 'agent-main-git-mutation' -Message $message
 }
 
 <#

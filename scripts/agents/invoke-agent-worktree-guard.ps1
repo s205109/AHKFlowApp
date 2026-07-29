@@ -81,14 +81,23 @@ $decision = Invoke-AgentGuardPolicy `
     -ProtectedRepoRoot $protectedRepoRoot `
     -AllowMain ($env:AHKFLOW_ALLOW_MAIN -eq '1')
 
+if ($decision.Action -eq 'Ask' -and -not [string]::IsNullOrWhiteSpace($normalized.AgentId)) {
+    $decision = New-AgentGuardDecision -Action Deny -Rule $decision.Rule -Message `
+        ($decision.Message + ' This call originated from a subagent and cannot show an interactive prompt. Report this back so the main-thread agent can retry it, which will prompt correctly.')
+}
+
 if ($decision.Action -ne 'Allow') {
     # Names the resolved adapter so a real-session probe can prove which contract was selected.
     Write-GuardDiagnostic "$($decision.Action.ToLowerInvariant()) [$($decision.Rule)]"
 }
 
+$locationDecisionRules = @('agent-main-git-mutation', 'agent-git-dir-mutation', 'agent-unresolved-git-target')
+
 switch ($Adapter) {
     'Codex' {
-        if ($decision.Action -eq 'Deny') {
+        # Codex: 'ask' is parsed but not supported yet - emitting it marks the hook run failed and
+        # the tool call proceeds (fails OPEN). Treat Ask exactly like Deny here, never emit 'ask'.
+        if ($decision.Action -in @('Deny', 'Ask')) {
             @{
                 hookSpecificOutput = @{
                     hookEventName            = 'PreToolUse'
@@ -101,8 +110,19 @@ switch ($Adapter) {
 
         if ($decision.Action -eq 'Warn') {
             @{ systemMessage = $decision.Message } | ConvertTo-Json -Compress -Depth 4 | Write-Output
+            exit 0
         }
 
+        if ($decision.Action -eq 'Allow') { exit 0 }
+
+        Write-GuardDiagnostic "unrecognized decision action '$($decision.Action)'; denying to fail closed."
+        @{
+            hookSpecificOutput = @{
+                hookEventName            = 'PreToolUse'
+                permissionDecision       = 'deny'
+                permissionDecisionReason = 'BLOCKED: the guard produced an unrecognized decision; denying to fail closed.'
+            }
+        } | ConvertTo-Json -Compress -Depth 4 | Write-Output
         exit 0
     }
 
@@ -115,18 +135,48 @@ switch ($Adapter) {
             exit 0
         }
 
+        if ($decision.Action -eq 'Ask') {
+            @{
+                permissionDecision       = 'ask'
+                permissionDecisionReason = $decision.Message
+            } | ConvertTo-Json -Compress -Depth 4 | Write-Output
+            exit 0
+        }
+
         if ($decision.Action -eq 'Warn') {
             @{
                 permissionDecision       = 'allow'
                 permissionDecisionReason = $decision.Message
             } | ConvertTo-Json -Compress -Depth 4 | Write-Output
+            exit 0
         }
 
+        if ($decision.Action -eq 'Allow') { exit 0 }
+
+        Write-GuardDiagnostic "unrecognized decision action '$($decision.Action)'; denying to fail closed."
+        @{
+            permissionDecision       = 'deny'
+            permissionDecisionReason = 'BLOCKED: the guard produced an unrecognized decision; denying to fail closed.'
+        } | ConvertTo-Json -Compress -Depth 4 | Write-Output
         exit 0
     }
 
     default {
-        # Claude: stderr plus exit 2 blocks; exit 0 allows.
+        # Claude. Ask and Deny outcomes from the three location rules use the JSON
+        # hookSpecificOutput protocol (this is what makes Ask possible at all); everything else
+        # (safety-rule Deny, ambiguous-git-command Deny) keeps the legacy stderr + exit 2 protocol.
+        if ($decision.Rule -in $locationDecisionRules -and $decision.Action -in @('Ask', 'Deny')) {
+            $permissionDecision = if ($decision.Action -eq 'Ask') { 'ask' } else { 'deny' }
+            @{
+                hookSpecificOutput = @{
+                    hookEventName            = 'PreToolUse'
+                    permissionDecision       = $permissionDecision
+                    permissionDecisionReason = $decision.Message
+                }
+            } | ConvertTo-Json -Compress -Depth 4 | Write-Output
+            exit 0
+        }
+
         if ($decision.Action -eq 'Deny') {
             [Console]::Error.WriteLine($decision.Message)
             exit 2
@@ -134,8 +184,13 @@ switch ($Adapter) {
 
         if ($decision.Action -eq 'Warn') {
             [Console]::Error.WriteLine($decision.Message)
+            exit 0
         }
 
-        exit 0
+        if ($decision.Action -eq 'Allow') { exit 0 }
+
+        Write-GuardDiagnostic "unrecognized decision action '$($decision.Action)'; denying to fail closed."
+        [Console]::Error.WriteLine('BLOCKED: the guard produced an unrecognized decision; denying to fail closed.')
+        exit 2
     }
 }
