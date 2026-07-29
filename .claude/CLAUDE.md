@@ -32,15 +32,20 @@ Create the worktree first. Do not start writing a plan in the main checkout and 
 afterwards. Use `scripts/new-worktree.ps1`, or the native `EnterWorktree` tool — that tool fires the
 `WorktreeCreate` hook, which runs the same script for you.
 
-You cannot write the planning documents inside the worktree. The file system forbids it. Worktrees
-have **no `docs/superpowers/` folder** — it is a separate private repo (`AHKFlowApp-plans`), the
-public repo ignores the path, and `git worktree add` does not create it. So follow this order:
+Write and commit the planning documents from the **main checkout**, not from the worktree.
+`docs/superpowers/` is a separate private repo (`AHKFlowApp-plans`). The public repo ignores the
+path, so `git worktree add` never checks it out. `scripts/new-worktree.ps1` links the folder into
+each worktree instead, so a worktree can **read** its spec and plan at the same relative path.
+Treat that link as read-only: keep every plan write and plan commit in the main checkout, so the
+plans repo has one place work happens. Follow this order:
 
 1. Create the worktree, but stay in the main checkout for now.
 2. Write and commit the spec and the plan there, under `docs/superpowers/specs/` and
    `docs/superpowers/plans/`. Commit from inside `docs/superpowers/`, never from the repo root.
 3. Switch fully into the worktree. Everything else — code, tests, docs, config — happens there and
-   commits from there.
+   commits from there. The spec and plan stay readable at `docs/superpowers/` through the link.
+4. If a review round changes the plan, go back to the main checkout to edit and commit it. The
+   worktree sees the update straight away, because the link points at one shared working copy.
 
 Step 2 does not apply to every plan. **Plans** in AGENTS.md lists the kinds that stay out of the
 private repo: agent optimization, personal workflow tuning, agent housekeeping, and one-off

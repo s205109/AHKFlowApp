@@ -31,6 +31,7 @@ $ErrorActionPreference = 'Stop'
 
 . (Join-Path $PSScriptRoot 'worktree-git.common.ps1')
 . (Join-Path $PSScriptRoot 'worktree-powershell.common.ps1')
+. (Join-Path $PSScriptRoot 'worktree-plans.common.ps1')
 
 function Get-HookInput {
     if (-not [Console]::IsInputRedirected) {
@@ -272,6 +273,12 @@ if (-not $worktreeExists) {
 }
 
 Copy-WorktreeIncludeEntries $repoRoot $worktreePath
+
+try {
+    Add-PlansSymlink -RepoRoot $repoRoot -WorktreePath $worktreePath
+} catch {
+    Write-Stderr "Plans symlink skipped: $($_.Exception.Message)"
+}
 
 $setupScript = Join-Path $worktreePath 'scripts\setup-worktree-local-dev.ps1'
 if (-not (Test-Path -LiteralPath $setupScript)) {

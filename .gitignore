@@ -466,4 +466,4 @@ CoverageReport/
 
 # Planning docs live in a separate PRIVATE repo (AHKFlowApp-plans), cloned into
 # docs/superpowers/. The public repo must not track them.
-docs/superpowers/
+docs/superpowers
