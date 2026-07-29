@@ -1,4 +1,4 @@
-using AHKFlowApp.Application.Abstractions;
+﻿using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.Common;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Domain.Enums;
@@ -135,6 +135,8 @@ public sealed class HistorySaveRetryTests(HistoryDbFixture fx)
         public DbSet<HotstringCategory> HotstringCategories => inner.HotstringCategories;
         public DbSet<HotkeyCategory> HotkeyCategories => inner.HotkeyCategories;
         public DbSet<EntityHistory> EntityHistories => inner.EntityHistories;
+        public DbSet<CustomKnownShortcut> CustomKnownShortcuts => inner.CustomKnownShortcuts;
+        public DbSet<IgnoredKnownShortcut> IgnoredKnownShortcuts => inner.IgnoredKnownShortcuts;
 
         public async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
         {

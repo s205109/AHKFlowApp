@@ -4,6 +4,7 @@ using AHKFlowApp.Application.Commands.Categories;
 using AHKFlowApp.Application.Commands.Dev;
 using AHKFlowApp.Application.Commands.Hotkeys;
 using AHKFlowApp.Application.Commands.Hotstrings;
+using AHKFlowApp.Application.Commands.KnownShortcuts;
 using AHKFlowApp.Application.Commands.Preferences;
 using AHKFlowApp.Application.Commands.Profiles;
 using AHKFlowApp.Application.DTOs;
@@ -12,6 +13,7 @@ using AHKFlowApp.Application.Queries.Dashboard;
 using AHKFlowApp.Application.Queries.Downloads;
 using AHKFlowApp.Application.Queries.Hotkeys;
 using AHKFlowApp.Application.Queries.Hotstrings;
+using AHKFlowApp.Application.Queries.KnownShortcuts;
 using AHKFlowApp.Application.Queries.Preferences;
 using AHKFlowApp.Application.Queries.Profiles;
 using AHKFlowApp.Application.Services;
@@ -54,6 +56,11 @@ public static class DependencyInjection
             .AddUseCase<GetHotstringPreviewQuery, Result<HotstringPreviewDto>, GetHotstringPreviewQueryHandler>()
             .AddUseCase<ListHotkeyKeysQuery, Result<HotkeyKeyCatalogDto>, ListHotkeyKeysQueryHandler>()
             .AddUseCase<ListKnownShortcutsQuery, Result<KnownShortcutCatalogDto>, ListKnownShortcutsQueryHandler>()
+            .AddUseCase<ListManagedKnownShortcutsQuery, Result<ManagedKnownShortcutCatalogDto>, ListManagedKnownShortcutsQueryHandler>()
+            .AddUseCase<CreateCustomKnownShortcutCommand, Result<ManagedKnownShortcutCatalogDto>, CreateCustomKnownShortcutCommandHandler>()
+            .AddUseCase<DeleteCustomKnownShortcutCommand, Result, DeleteCustomKnownShortcutCommandHandler>()
+            .AddUseCase<IgnoreKnownShortcutCommand, Result, IgnoreKnownShortcutCommandHandler>()
+            .AddUseCase<RestoreKnownShortcutCommand, Result, RestoreKnownShortcutCommandHandler>()
             .AddUseCase<CreateHotkeyCommand, Result<HotkeyDto>, CreateHotkeyCommandHandler>()
             .AddUseCase<UpdateHotkeyCommand, Result<HotkeyDto>, UpdateHotkeyCommandHandler>()
             .AddUseCase<DeleteHotkeyCommand, Result, DeleteHotkeyCommandHandler>()

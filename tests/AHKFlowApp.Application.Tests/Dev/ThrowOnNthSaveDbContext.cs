@@ -1,4 +1,4 @@
-using AHKFlowApp.Application.Abstractions;
+﻿using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -23,6 +23,8 @@ internal sealed class ThrowOnNthSaveDbContext(AppDbContext inner, int failOnCall
     public DbSet<HotstringCategory> HotstringCategories => inner.HotstringCategories;
     public DbSet<HotkeyCategory> HotkeyCategories => inner.HotkeyCategories;
     public DbSet<EntityHistory> EntityHistories => inner.EntityHistories;
+    public DbSet<CustomKnownShortcut> CustomKnownShortcuts => inner.CustomKnownShortcuts;
+    public DbSet<IgnoredKnownShortcut> IgnoredKnownShortcuts => inner.IgnoredKnownShortcuts;
 
     public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {

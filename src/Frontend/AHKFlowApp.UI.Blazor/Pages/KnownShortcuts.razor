@@ -1,0 +1,318 @@
+﻿@page "/known-shortcuts"
+@using AHKFlowApp.UI.Blazor.DTOs
+@using AHKFlowApp.UI.Blazor.Helpers
+@using AHKFlowApp.UI.Blazor.Services
+@using MudBlazor
+@implements IDisposable
+
+<PageTitle>Known shortcuts</PageTitle>
+
+<MudText Typo="Typo.h4" GutterBottom="true">Known shortcuts</MudText>
+
+<MudText Typo="Typo.body2" Class="mb-3">
+    These are the shortcuts AHKFlow warns you about when you pick the same keys for a hotkey.
+    Add the ones your own programs use. Silence any warning you do not want.
+</MudText>
+
+<MudPaper Class="pa-4">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Wrap="Wrap.Wrap" Class="mb-4">
+        <MudButton Class="add-known-shortcut" Variant="Variant.Filled" Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.Add" OnClick="StartAdd" Disabled="@_adding">
+            Add
+        </MudButton>
+        <MudButton Class="reload-known-shortcuts" Variant="Variant.Filled" Color="Color.Secondary"
+                   StartIcon="@Icons.Material.Filled.Refresh" OnClick="ReloadAsync" Disabled="@_loading">
+            Reload
+        </MudButton>
+        <MudTextField T="string" @bind-Value="_search" Immediate="true" Clearable="true"
+                      Placeholder="Search" Adornment="Adornment.Start"
+                      AdornmentIcon="@Icons.Material.Filled.Search"
+                      UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "known-shortcut-search" })" />
+    </MudStack>
+
+    @if (_adding)
+    {
+        <MudPaper Class="pa-4 mb-4" Outlined="true">
+            <MudText Typo="Typo.subtitle1" GutterBottom="true">Record a shortcut you know about</MudText>
+            <MudStack Spacing="3">
+                <KeyPicker Role="HotkeyKey" Label="Key"
+                           Value="@_draft.Key" ValueChanged="@(v => _draft.Key = v ?? "")"
+                           HelperText="Pick a key, or type a vk/sc code such as vk1B."
+                           DataTest="known-shortcut-key-picker" />
+                <MudStack Row="true" Spacing="2">
+                    <MudCheckBox @bind-Value="_draft.Ctrl" T="bool" Label="Ctrl"
+                                 UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "ctrl-checkbox" })" />
+                    <MudCheckBox @bind-Value="_draft.Alt" T="bool" Label="Alt"
+                                 UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "alt-checkbox" })" />
+                    <MudCheckBox @bind-Value="_draft.Shift" T="bool" Label="Shift"
+                                 UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "shift-checkbox" })" />
+                    <MudCheckBox @bind-Value="_draft.Win" T="bool" Label="Win"
+                                 UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "win-checkbox" })" />
+                </MudStack>
+                <MudTextField @bind-Value="_draft.UsedBy" Label="Used by" MaxLength="60" Immediate="true"
+                              HelperText="What uses these keys, for example Visual Studio."
+                              UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "known-shortcut-usedby-input" })" />
+                <MudTextField @bind-Value="_draft.Does" Label="What it does" MaxLength="200" Immediate="true"
+                              HelperText="Start with a lowercase verb, for example open the settings window."
+                              UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "known-shortcut-does-input" })" />
+                <MudSelect @bind-Value="_draft.Scope" T="ShortcutScope" Label="Where it applies"
+                           UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "known-shortcut-scope-select" })">
+                    <MudSelectItem Value="@ShortcutScope.Foreground">Only while that program is in front</MudSelectItem>
+                    <MudSelectItem Value="@ShortcutScope.Global">Anywhere in Windows</MudSelectItem>
+                </MudSelect>
+                @if (_formError is not null)
+                {
+                    <MudAlert Severity="Severity.Error" Class="mb-2">@_formError</MudAlert>
+                }
+                <MudStack Row="true" Spacing="2">
+                    <MudButton Class="commit-edit" Variant="Variant.Filled" Color="Color.Primary"
+                               OnClick="CommitAddAsync" Disabled="@_saving">
+                        Save
+                    </MudButton>
+                    <MudButton Class="cancel-edit" Variant="Variant.Text" OnClick="CancelAdd" Disabled="@_saving">
+                        Cancel
+                    </MudButton>
+                </MudStack>
+            </MudStack>
+        </MudPaper>
+    }
+
+    <MudTable T="UseRow" Items="_rows" Filter="MatchesSearch" Dense="true" Hover="true" Loading="_loading">
+        <HeaderContent>
+            <MudTh>Combination</MudTh>
+            <MudTh>Used by</MudTh>
+            <MudTh>What it does</MudTh>
+            <MudTh>Where it applies</MudTh>
+            <MudTh>Source</MudTh>
+            <MudTh Style="width:120px">Actions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            @* One row per use, never per combination: a browser combination holds a Chrome use
+               and an Edge use, and each is silenced on its own. The Combination cell repeats. *@
+            <MudTd DataLabel="Combination">
+                <span data-test="known-shortcut-row"
+                      data-shortcut-id="@context.ShortcutId"
+                      data-used-by="@context.Use.UsedBy">@context.ComboLabel</span>
+            </MudTd>
+            <MudTd DataLabel="Used by">@context.Use.UsedBy</MudTd>
+            <MudTd DataLabel="What it does">@context.Use.Does</MudTd>
+            <MudTd DataLabel="Where it applies">@ScopeLabel(context.Use.Scope)</MudTd>
+            <MudTd DataLabel="Source">
+                @if (context.Use.IsIgnored)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Default">Silenced</MudChip>
+                }
+                else
+                {
+                    <MudChip T="string" Size="Size.Small"
+                             Color="@(context.Use.Origin == ShortcutRecordOrigin.Owner ? Color.Primary : Color.Default)">
+                        @(context.Use.Origin == ShortcutRecordOrigin.Owner ? "Yours" : "Built in")
+                    </MudChip>
+                }
+            </MudTd>
+            <MudTd DataLabel="Actions">
+                @if (context.Use.Origin == ShortcutRecordOrigin.Owner)
+                {
+                    <MudIconButton Class="delete-use" Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
+                                   OnClick="() => DeleteAsync(context)"
+                                   UserAttributes='@UseAttributes(context, "Delete this record")' />
+                }
+                else if (context.Use.IsIgnored)
+                {
+                    <MudIconButton Class="restore-use" Icon="@Icons.Material.Filled.NotificationsActive"
+                                   OnClick="() => RestoreAsync(context)"
+                                   UserAttributes='@UseAttributes(context, "Warn about this again")' />
+                }
+                else
+                {
+                    <MudIconButton Class="ignore-use" Icon="@Icons.Material.Filled.NotificationsOff"
+                                   OnClick="() => IgnoreAsync(context)"
+                                   UserAttributes='@UseAttributes(context, "Stop warning about this")' />
+                }
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            @if (_loadError is not null)
+            {
+                <MudAlert Severity="Severity.Error">@_loadError</MudAlert>
+            }
+            else
+            {
+                <MudText>No known shortcuts.</MudText>
+            }
+        </NoRecordsContent>
+        <PagerContent>
+            <MudTablePager PageSizeOptions="@(new[] { 25, 50, 100 })" />
+        </PagerContent>
+    </MudTable>
+</MudPaper>
+
+@code {
+    [Inject] private IKnownShortcutsApiClient Api { get; set; } = default!;
+    [Inject] private IKnownShortcutCatalog Catalog { get; set; } = default!;
+    [Inject] private ISnackbar Snackbar { get; set; } = default!;
+
+    /// <summary>One use, flattened out of its combination so MudTable stays one row per item.</summary>
+    private sealed record UseRow(string ShortcutId, string ComboLabel, ManagedShortcutUseDto Use);
+
+    private sealed class DraftModel
+    {
+        public string Key { get; set; } = "";
+        public bool Ctrl { get; set; }
+        public bool Alt { get; set; }
+        public bool Shift { get; set; }
+        public bool Win { get; set; }
+        public string UsedBy { get; set; } = "";
+        public string Does { get; set; } = "";
+        public ShortcutScope Scope { get; set; } = ShortcutScope.Foreground;
+
+        public CreateCustomKnownShortcutDto ToDto() =>
+            new(Key, Ctrl, Alt, Shift, Win, UsedBy, Scope, Does);
+    }
+
+    private List<UseRow> _rows = [];
+    private DraftModel _draft = new();
+    private string? _search;
+    private string? _loadError;
+    private string? _formError;
+    private bool _adding;
+    private bool _loading;
+    private bool _saving;
+    private readonly CancellationTokenSource _cts = new();
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _loadError = null;
+
+        ApiResult<ManagedKnownShortcutCatalogDto> result = await Api.ListManagedAsync(_cts.Token);
+
+        _loading = false;
+
+        if (!result.IsSuccess)
+        {
+            _loadError = ApiErrorMessageFactory.Build(result.Status, result.Problem);
+            _rows = [];
+            return;
+        }
+
+        Flatten(result.Value!);
+    }
+
+    private Task ReloadAsync() => LoadAsync();
+
+    private void Flatten(ManagedKnownShortcutCatalogDto catalog) =>
+        _rows =
+        [
+            .. catalog.Shortcuts
+                .SelectMany(s => s.Uses.Select(u => new UseRow(
+                    s.Id,
+                    HotkeyActionDisplay.ComboLabel(s.Key, s.Ctrl, s.Alt, s.Shift, s.Win),
+                    u)))
+                .OrderBy(r => r.ComboLabel, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(r => r.Use.UsedBy, StringComparer.OrdinalIgnoreCase)
+        ];
+
+    private bool MatchesSearch(UseRow row)
+    {
+        if (string.IsNullOrWhiteSpace(_search))
+            return true;
+
+        string term = _search.Trim();
+        return row.ComboLabel.Contains(term, StringComparison.OrdinalIgnoreCase)
+            || row.Use.UsedBy.Contains(term, StringComparison.OrdinalIgnoreCase)
+            || row.Use.Does.Contains(term, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string ScopeLabel(ShortcutScope scope) =>
+        scope == ShortcutScope.Global ? "Anywhere" : "Only in front";
+
+    // Every action button carries the pair that names its use, so a selector can tell the Chrome
+    // row from the Edge row on the same combination. Tooltip text rides along as a plain title
+    // attribute: MudIconButton has no Title parameter.
+    private static Dictionary<string, object?> UseAttributes(UseRow row, string title) => new()
+    {
+        ["data-shortcut-id"] = row.ShortcutId,
+        ["data-used-by"] = row.Use.UsedBy,
+        ["title"] = title,
+    };
+
+    private void StartAdd()
+    {
+        _draft = new DraftModel();
+        _formError = null;
+        _adding = true;
+    }
+
+    private void CancelAdd()
+    {
+        _adding = false;
+        _formError = null;
+    }
+
+    private async Task CommitAddAsync()
+    {
+        _saving = true;
+        _formError = null;
+
+        ApiResult<ManagedKnownShortcutCatalogDto> result = await Api.CreateAsync(_draft.ToDto(), _cts.Token);
+
+        _saving = false;
+
+        if (!result.IsSuccess)
+        {
+            // The form stays open, holding what was typed, so the message can be acted on.
+            _formError = ApiErrorMessageFactory.Build(result.Status, result.Problem);
+            return;
+        }
+
+        _adding = false;
+        Snackbar.Add("Shortcut recorded.", Severity.Success);
+
+        // Create returns the whole merged list, so this one needs no extra round trip.
+        Flatten(result.Value!);
+        Catalog.Invalidate();
+    }
+
+    private async Task DeleteAsync(UseRow row)
+    {
+        if (row.Use.OwnerRecordId is not Guid recordId)
+            return;
+
+        ApiResult result = await Api.DeleteAsync(recordId, _cts.Token);
+        await AfterMutationAsync(result, "Record deleted.");
+    }
+
+    private async Task IgnoreAsync(UseRow row)
+    {
+        ApiResult result = await Api.IgnoreAsync(row.ShortcutId, row.Use.UsedBy, _cts.Token);
+        await AfterMutationAsync(result, "Warning silenced.");
+    }
+
+    private async Task RestoreAsync(UseRow row)
+    {
+        ApiResult result = await Api.RestoreAsync(row.ShortcutId, row.Use.UsedBy, _cts.Token);
+        await AfterMutationAsync(result, "Warning turned back on.");
+    }
+
+    // These three routes answer 204 with no body, so the page holds no fresh state and reloads.
+    // The dialog holds its own cached copy, so it is invalidated here too — reloading _rows
+    // refreshes this page only. A failed call invalidates nothing: throwing the cache away would
+    // cost a refetch for no reason and hide the failure behind a slow dialog.
+    private async Task AfterMutationAsync(ApiResult result, string successMessage)
+    {
+        if (!result.IsSuccess)
+        {
+            Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
+            return;
+        }
+
+        Snackbar.Add(successMessage, Severity.Success);
+        Catalog.Invalidate();
+        await LoadAsync();
+    }
+
+    public void Dispose() { _cts.Cancel(); _cts.Dispose(); }
+}

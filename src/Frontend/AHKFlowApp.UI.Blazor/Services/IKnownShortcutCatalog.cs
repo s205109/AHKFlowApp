@@ -13,4 +13,11 @@ public interface IKnownShortcutCatalog
     /// failed — the caller shows no warning, and the next call tries again.
     /// </summary>
     ValueTask<KnownShortcutCatalogDto?> GetAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Throws the cached catalog away, so the next <see cref="GetAsync"/> fetches again. Called
+    /// after an owner creates, deletes, ignores, or restores — each one changes what the dialog
+    /// should say, and a stale catalog would warn about a use the owner just silenced.
+    /// </summary>
+    void Invalidate();
 }

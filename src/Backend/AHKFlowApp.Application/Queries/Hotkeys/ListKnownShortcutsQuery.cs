@@ -1,28 +1,27 @@
-using AHKFlowApp.Application.Abstractions;
-using AHKFlowApp.Application.Constants;
+﻿using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.DTOs;
+using AHKFlowApp.Application.Services;
+using AHKFlowApp.Domain.Entities;
 using Ardalis.Result;
 
 namespace AHKFlowApp.Application.Queries.Hotkeys;
 
-/// <summary>Returns the curated known-shortcut list the hotkey dialog warns from. Static reference data.</summary>
+/// <summary>Known shortcuts the dialog should warn about — built-ins the owner has not silenced, plus their own records.</summary>
 public sealed record ListKnownShortcutsQuery();
 
-internal sealed class ListKnownShortcutsQueryHandler
+internal sealed class ListKnownShortcutsQueryHandler(IAppDbContext db, ICurrentUser currentUser)
     : IUseCaseHandler<ListKnownShortcutsQuery, Result<KnownShortcutCatalogDto>>
 {
-    // Projected once: the manifest is immutable for the process lifetime.
-    private static readonly KnownShortcutCatalogDto s_catalog = Project();
+    public async Task<Result<KnownShortcutCatalogDto>> ExecuteAsync(
+        ListKnownShortcutsQuery request, CancellationToken ct)
+    {
+        if (currentUser.Oid is not Guid ownerOid)
+            return Result.Unauthorized();
 
-    public Task<Result<KnownShortcutCatalogDto>> ExecuteAsync(
-        ListKnownShortcutsQuery request, CancellationToken ct) =>
-        Task.FromResult(Result<KnownShortcutCatalogDto>.Success(s_catalog));
+        (CustomKnownShortcut[] owned, IgnoredKnownShortcut[] ignored) =
+            await OwnerKnownShortcutLoader.LoadAsync(db, ownerOid, ct);
 
-    private static KnownShortcutCatalogDto Project() => new(
-    [
-        .. KnownShortcutCatalog.All.Select(s => new KnownShortcutDto(
-            s.Id, s.Key, s.Ctrl, s.Alt, s.Shift, s.Win,
-            [.. s.Uses.Select(u => new ShortcutUseDto(u.UsedBy, u.Protection, u.Scope, u.Does))],
-            s.WarningText))
-    ]);
+        return Result<KnownShortcutCatalogDto>.Success(
+            new KnownShortcutCatalogDto(KnownShortcutMerge.ForDialog(owned, ignored)));
+    }
 }

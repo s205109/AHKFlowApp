@@ -111,7 +111,11 @@ internal static class HotkeyActionDisplay
     public static string ComboLabel(DeletedHotkeyDto dto) =>
         ComboLabel(dto.Key, dto.Ctrl, dto.Alt, dto.Shift, dto.Win);
 
-    private static string ComboLabel(string key, bool ctrl, bool alt, bool shift, bool win)
+    /// <summary>
+    /// Combo label from loose parts — see <see cref="ComboLabel(HotkeyEditModel)"/>. Used by the
+    /// known-shortcuts page, whose rows are catalog records rather than hotkeys.
+    /// </summary>
+    public static string ComboLabel(string key, bool ctrl, bool alt, bool shift, bool win)
     {
         List<string> parts = [];
         if (ctrl) parts.Add("Ctrl");

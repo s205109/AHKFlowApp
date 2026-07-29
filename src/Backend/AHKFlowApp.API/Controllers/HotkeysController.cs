@@ -41,12 +41,13 @@ public sealed class HotkeysController(
     public async Task<ActionResult<HotkeyKeyCatalogDto>> Keys(CancellationToken ct) =>
         (await listHotkeyKeys.ExecuteAsync(new ListHotkeyKeysQuery(), ct)).ToProblemActionResult(this);
 
-    /// <summary>Get the curated list of shortcuts Windows already uses.</summary>
+    /// <summary>Get the curated list of shortcuts Windows or a browser already uses.</summary>
     /// <remarks>
-    /// Advisory only — nothing here blocks a save. Static reference data in this release;
-    /// authorized because the controller is, not because it is user-scoped.
+    /// Advisory only — nothing here blocks a save. The answer is owner-specific: it leaves out
+    /// built-in uses this owner silenced, and adds the records they made themselves.
     /// </remarks>
     [HttpGet("known-shortcuts")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     [ProducesResponseType(typeof(KnownShortcutCatalogDto), StatusCodes.Status200OK)]
     public async Task<ActionResult<KnownShortcutCatalogDto>> KnownShortcuts(CancellationToken ct) =>
         (await listKnownShortcuts.ExecuteAsync(new ListKnownShortcutsQuery(), ct)).ToProblemActionResult(this);
