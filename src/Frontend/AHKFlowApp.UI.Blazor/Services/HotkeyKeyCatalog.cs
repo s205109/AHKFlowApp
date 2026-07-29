@@ -69,6 +69,47 @@ public sealed partial class HotkeyKeyCatalog(IHotkeysApiClient api) : IHotkeyKey
         }
     }
 
+    public async ValueTask<string> CanonicalizeAsync(string? key, CancellationToken ct = default)
+    {
+        // No Trim. The server rejects surrounding whitespace rather than stripping it, so " Esc "
+        // is not "Esc" on either side. Returning it unchanged keeps the two in step.
+        if (string.IsNullOrWhiteSpace(key))
+            return "";
+
+        // Reuses the same load-once path the pickers use; a failed fetch leaves the maps empty
+        // and the input is returned unchanged, which is the safe answer.
+        await ForRoleAsync("HotkeyKey", ct);
+
+        // Alias map first, then registry names — HotkeyKeys.TryCanonicalize checks them in that
+        // order. Both maps are OrdinalIgnoreCase already.
+        if (_aliases.TryGetValue(key, out string? aliased))
+            return aliased;
+
+        if (_byName.TryGetValue(key, out HotkeyKeyDto? entry))
+            return entry.Canonical;
+
+        // vk/sc codes: pad to the server's widths and lowercase the digits, so vk1, VK01 and vk01
+        // all become vk01. An all-zero code names no key and the server rejects it, so it is
+        // handed back untouched rather than turned into a code that looks real.
+        if (VirtualKey().IsMatch(key))
+            return PadCode(key, "vk", width: 2);
+
+        if (ScanCode().IsMatch(key))
+            return PadCode(key, "sc", width: 3);
+
+        return key;
+    }
+
+    // Mirrors HotkeyKeys.TryCanonicalizeCode, minus its bool: an unusable code comes back as the
+    // caller wrote it, which is what every caller here wants for an unrecognised key.
+    private static string PadCode(string key, string prefix, int width)
+    {
+        string digits = key[2..];
+        return digits.All(c => c == '0')
+            ? key
+            : prefix + digits.ToLowerInvariant().PadLeft(width, '0');
+    }
+
     public bool IsValidKey(string? key)
     {
         // Optimistic before load: see the interface remark.

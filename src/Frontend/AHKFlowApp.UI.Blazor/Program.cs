@@ -125,6 +125,8 @@ if (useTestAuth)
         baseAddress, TimeSpan.FromSeconds(10), useAuth: false);
     AddApiClient<ICategoriesApiClient, CategoriesApiClient>(
         baseAddress, TimeSpan.FromSeconds(30), useAuth: false);
+    AddApiClient<IKnownShortcutsApiClient, KnownShortcutsApiClient>(
+        baseAddress, TimeSpan.FromSeconds(15), useAuth: false);
 }
 else
 {
@@ -159,8 +161,11 @@ else
         baseAddress, TimeSpan.FromSeconds(10), useAuth: true);
     AddApiClient<ICategoriesApiClient, CategoriesApiClient>(
         baseAddress, TimeSpan.FromSeconds(30), useAuth: true);
+    AddApiClient<IKnownShortcutsApiClient, KnownShortcutsApiClient>(
+        baseAddress, TimeSpan.FromSeconds(15), useAuth: true);
 }
 
 builder.Services.AddScoped<IHotkeyKeyCatalog, HotkeyKeyCatalog>();
+builder.Services.AddScoped<IKnownShortcutCatalog, KnownShortcutCatalog>();
 
 await builder.Build().RunAsync();

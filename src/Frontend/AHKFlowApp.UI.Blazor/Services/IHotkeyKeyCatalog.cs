@@ -23,6 +23,13 @@ public interface IHotkeyKeyCatalog
     /// </summary>
     bool IsValidKey(string? key);
 
+    /// <summary>
+    /// The canonical spelling of a key, fetching the registry on first call. Returns the input
+    /// unchanged for a name the registry does not know. Needed before comparing a typed key
+    /// against curated data, or "Esc" and "Escape" read as two different keys.
+    /// </summary>
+    ValueTask<string> CanonicalizeAsync(string? key, CancellationToken ct = default);
+
     /// <summary>Picker group for a canonical registry name, or null for a vk/sc code or unknown name.</summary>
     string? GroupOf(string? canonical);
 

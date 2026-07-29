@@ -31,6 +31,7 @@ public sealed class HotkeysController(
     IUseCase<RestoreHotkeyCommand, Result<HotkeyDto>> restoreHotkey,
     IUseCase<PurgeDeletedHotkeyCommand, Result> purgeDeletedHotkey,
     IUseCase<ListHotkeyKeysQuery, Result<HotkeyKeyCatalogDto>> listHotkeyKeys,
+    IUseCase<ListKnownShortcutsQuery, Result<KnownShortcutCatalogDto>> listKnownShortcuts,
     IUseCase<GetHotkeyPreviewQuery, Result<HotkeyPreviewDto>> previewHotkey) : ControllerBase
 {
     /// <summary>Get the canonical key registry backing the hotkey key picker.</summary>
@@ -39,6 +40,16 @@ public sealed class HotkeysController(
     [ProducesResponseType(typeof(HotkeyKeyCatalogDto), StatusCodes.Status200OK)]
     public async Task<ActionResult<HotkeyKeyCatalogDto>> Keys(CancellationToken ct) =>
         (await listHotkeyKeys.ExecuteAsync(new ListHotkeyKeysQuery(), ct)).ToProblemActionResult(this);
+
+    /// <summary>Get the curated list of shortcuts Windows already uses.</summary>
+    /// <remarks>
+    /// Advisory only — nothing here blocks a save. Static reference data in this release;
+    /// authorized because the controller is, not because it is user-scoped.
+    /// </remarks>
+    [HttpGet("known-shortcuts")]
+    [ProducesResponseType(typeof(KnownShortcutCatalogDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<KnownShortcutCatalogDto>> KnownShortcuts(CancellationToken ct) =>
+        (await listKnownShortcuts.ExecuteAsync(new ListKnownShortcutsQuery(), ct)).ToProblemActionResult(this);
 
     /// <summary>List hotkeys for the current user, optionally filtered by profile. Paginated.</summary>
     [HttpGet]

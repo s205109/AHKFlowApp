@@ -43,6 +43,15 @@
                              UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "win-checkbox" })" />
             </MudStack>
 
+            @* ---- Known-shortcut notice. Advisory only — it never gates Save. ---- *@
+            @if (_shortcutWarning is not null)
+            {
+                <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-2"
+                          UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "shortcut-warning" })">
+                    @_shortcutWarning
+                </MudAlert>
+            }
+
             @* ---- Action selector. Generated from the enum so the set cannot drift.
                  The wrapper div carries the CSS-isolation scope for the wrapping rule. ---- *@
             <div class="action-kind-wrap">
@@ -271,6 +280,7 @@
     [Inject] private IJSRuntime JS { get; set; } = default!;
     [Inject] private ISnackbar Snackbar { get; set; } = default!;
     [Inject] private ILogger<HotkeyEditDialog> Logger { get; set; } = default!;
+    [Inject] private IKnownShortcutCatalog KnownShortcuts { get; set; } = default!;
 
     [Parameter] public HotkeyEditModel Item { get; set; } = new();
     [Parameter] public IReadOnlyList<ProfileDto> Profiles { get; set; } = [];
@@ -294,11 +304,11 @@
     private readonly Dictionary<string, string> _saveFieldErrors = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _previewFieldErrors = new(StringComparer.OrdinalIgnoreCase);
 
-    // The duplicate key+modifier conflict (409). Shown on the Key input but kept apart from a
+    // The duplicate key+modifier message (409). Shown on the Key input but kept apart from a
     // genuine key-validation error, because its verdict is on the whole combination: it must clear
     // when the key OR any modifier changes, whereas a "not a known key" error clears on key edit
     // only. Folding it into _saveFieldErrors["Key"] would tie the two together.
-    private string? _combinationConflict;
+    private string? _duplicateCombination;
 
     private string? _error;
     private bool _saving;
@@ -328,6 +338,13 @@
     private int _previewGeneration;
     private bool _disposed;
 
+    // The known-shortcut notice for the current combination, or null. Advisory only: it never
+    // gates Save. The list behind it is session-cached by IKnownShortcutCatalog, the same way
+    // IHotkeyKeyCatalog caches the key registry.
+    private string? _shortcutWarning;
+    private CancellationTokenSource? _shortcutCts;
+    private int _shortcutGeneration;
+
     protected override void OnParametersSet()
     {
         _profileOptions = [.. Profiles.Select(p => new EntityOption(p.Id, p.Name))];
@@ -338,6 +355,9 @@
             _lastItem = Item;
             if (Item.ActionKind == HotkeyActionKind.SendKeys)
                 DecomposeSendKeys();
+
+            _shortcutWarning = null;
+            _ = RefreshShortcutWarningAsync();
         }
     }
 
@@ -347,6 +367,74 @@
         _cts.Cancel();
         _cts.Dispose();
         CancelPendingPreview();
+        _shortcutCts?.Cancel();
+        _shortcutCts?.Dispose();
+        _shortcutCts = null;
+    }
+
+    /// <summary>
+    /// Refreshes the known-shortcut notice for the current combination. Fire-and-forget from the
+    /// change handlers: the notice is advisory, so nothing waits on it.
+    /// </summary>
+    /// <remarks>
+    /// Follows the preview's generation-counter pattern. A response for an older combination is
+    /// dropped rather than rendered, so holding a modifier key down cannot leave a stale notice
+    /// on screen. A failed fetch clears the notice and says nothing — a list that will not load
+    /// must never confuse saving.
+    /// </remarks>
+    private async Task RefreshShortcutWarningAsync()
+    {
+        _shortcutCts?.Cancel();
+        _shortcutCts?.Dispose();
+        CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token);
+        _shortcutCts = cts;
+        int generation = ++_shortcutGeneration;
+
+        try
+        {
+            string canonical = await Catalog.CanonicalizeAsync(Item.Key, cts.Token);
+
+            // Session-cached: only the first call in a session reaches the network. The
+            // generation check below still earns its place, because that first call can be slow
+            // enough for the user to change the combination while it is in flight.
+            KnownShortcutCatalogDto? catalog = await KnownShortcuts.GetAsync(cts.Token);
+
+            if (generation != _shortcutGeneration || _disposed)
+                return;
+
+            if (catalog is null)
+            {
+                // The fetch failed. Say nothing to the user — the feature is advisory — but leave
+                // a trace in the browser console. The cache does not memoize the failure, so the
+                // next open retries.
+                Logger.LogWarning("Known-shortcut list could not be read; showing no warning.");
+                _shortcutWarning = null;
+                StateHasChanged();
+                return;
+            }
+
+            KnownShortcutDto? match = KnownShortcutWarning.Match(
+                catalog, canonical, Item.Ctrl, Item.Alt, Item.Shift, Item.Win);
+
+            _shortcutWarning = match is null
+                ? null
+                : KnownShortcutWarning.TextFor(match, HotkeyActionDisplay.ComboLabel(Item));
+
+            StateHasChanged();
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer combination, or the dialog closed. Nothing to show.
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Known-shortcut list could not be read; showing no warning.");
+            if (generation == _shortcutGeneration && !_disposed)
+            {
+                _shortcutWarning = null;
+                StateHasChanged();
+            }
+        }
     }
 
     /// <summary>
@@ -355,7 +443,7 @@
     /// verdict, and it is the reason the dialog is still open.
     /// </summary>
     private string? FieldError(string field) =>
-        (field == nameof(HotkeyEditModel.Key) ? _combinationConflict : null)
+        (field == nameof(HotkeyEditModel.Key) ? _duplicateCombination : null)
         ?? _saveFieldErrors.GetValueOrDefault(field)
         ?? _previewFieldErrors.GetValueOrDefault(field);
 
@@ -393,7 +481,7 @@
         _saving = true;
         _error = null;
         _saveFieldErrors.Clear();
-        _combinationConflict = null;
+        _duplicateCombination = null;
         try
         {
             await _form.ValidateAsync();
@@ -407,7 +495,7 @@
             if (!result.IsSuccess)
             {
                 if (result.Status == ApiResultStatus.Conflict)
-                    _combinationConflict = ApiErrorMessageFactory.Build(result.Status, result.Problem);
+                    _duplicateCombination = ApiErrorMessageFactory.Build(result.Status, result.Problem);
                 else if (result.Status == ApiResultStatus.Validation && result.Problem?.Errors is { Count: > 0 } errors)
                     _error = ApplyFieldErrors(errors, _saveFieldErrors);
                 else
@@ -478,21 +566,23 @@
     {
         Item.Key = key ?? "";
         ClearSaveError(nameof(HotkeyEditModel.Key));
-        _combinationConflict = null;
+        _duplicateCombination = null;
         // The key is half the emitted line, so a stale preview here is worse than a stale
         // payload preview — it shows the wrong binding entirely.
         RefreshPreview();
+        _ = RefreshShortcutWarningAsync();
     }
 
     /// <summary>
     /// A modifier toggle changes which key+modifier combination is being saved, so a duplicate-
-    /// combination conflict from the last save no longer applies — drop it. A genuine key-validation
+    /// combination message from the last save no longer applies — drop it. A genuine key-validation
     /// error is left alone: it depends on the key, not the modifiers.
     /// </summary>
     private void OnModifierChanged()
     {
-        _combinationConflict = null;
+        _duplicateCombination = null;
         RefreshPreview();
+        _ = RefreshShortcutWarningAsync();
     }
 
     private void OnRunTargetKindChanged(RunTargetKind? kind)
