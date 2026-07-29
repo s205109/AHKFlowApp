@@ -142,6 +142,66 @@ function Copy-WorktreeIncludeEntries {
     }
 }
 
+# Links the worktree's docs\superpowers to the main checkout's copy instead of duplicating it.
+# docs\superpowers holds a second, private git repo (AHKFlowApp-plans); the public repo's
+# .gitignore excludes it, so `git worktree add` never checks it out. A one-time copy would go
+# stale the moment the plan is revised in the main checkout, and a second clone would let the
+# worktree accumulate commits that never reach the canonical repo -- every commit to that repo
+# must happen from the main checkout. A symlink keeps both paths pointing at the same working
+# copy, so there is nothing to keep in sync. Best-effort and non-fatal: a missing or broken
+# plans checkout must never block worktree creation.
+function Add-PlansSymlink {
+    param(
+        [string] $RepoRoot,
+        [string] $WorktreePath
+    )
+
+    $sourcePath = Join-Path $RepoRoot 'docs\superpowers'
+    if (-not (Test-Path -LiteralPath $sourcePath)) {
+        return
+    }
+
+    $linkPath = Join-Path $WorktreePath 'docs\superpowers'
+    $resolvedSource = (Resolve-Path -LiteralPath $sourcePath).Path
+
+    if (Test-Path -LiteralPath $linkPath) {
+        $existing = Get-Item -LiteralPath $linkPath -Force
+        if ($existing.LinkType -eq 'SymbolicLink') {
+            $target = $existing.Target
+            if ($target -is [array]) { $target = $target[0] }
+            $resolvedTarget = if ($target) {
+                (Resolve-Path -LiteralPath $target -ErrorAction SilentlyContinue).Path
+            } else {
+                $null
+            }
+
+            if ($resolvedTarget -and $resolvedTarget.TrimEnd('\') -ieq $resolvedSource.TrimEnd('\')) {
+                return
+            }
+
+            Remove-Item -LiteralPath $linkPath -Force
+        } else {
+            Write-Stderr "docs\superpowers already exists in the worktree and is not a symlink; leaving it alone: $linkPath"
+            return
+        }
+    }
+
+    New-Item -ItemType Directory -Path (Split-Path -Parent $linkPath) -Force | Out-Null
+
+    Push-Location (Split-Path -Parent $linkPath)
+    try {
+        cmd /c mklink /D 'superpowers' $resolvedSource > $null 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Write-Stderr 'Failed to link docs\superpowers into the worktree; continuing without it.'
+            return
+        }
+    } finally {
+        Pop-Location
+    }
+
+    Write-Stderr "Linked docs\superpowers -> $resolvedSource"
+}
+
 # Sweep orphaned per-worktree Docker compose projects (worktrees removed by plain git,
 # Codex, or Copilot never fire the WorktreeRemove hook). Best-effort and non-fatal: a
 # missing docker CLI or a prune error must never block worktree creation. Output is
@@ -272,6 +332,12 @@ if (-not $worktreeExists) {
 }
 
 Copy-WorktreeIncludeEntries $repoRoot $worktreePath
+
+try {
+    Add-PlansSymlink -RepoRoot $repoRoot -WorktreePath $worktreePath
+} catch {
+    Write-Stderr "Plans symlink skipped: $($_.Exception.Message)"
+}
 
 $setupScript = Join-Path $worktreePath 'scripts\setup-worktree-local-dev.ps1'
 if (-not (Test-Path -LiteralPath $setupScript)) {

@@ -32,3 +32,10 @@ target/
 
 # Note: do not add `dist/` here. Bootstrap ships tracked files under
 # src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/lib/bootstrap/dist/.
+
+# Symlink mirrors of .agents/<skill>/ and root AGENTS.md. The suggestion script now passes
+# --follow (for the docs/superpowers worktree link above), which would otherwise list every
+# skill file and AGENTS.md two or three times.
+.claude/skills/
+.github/skills/
+.github/AGENTS.md

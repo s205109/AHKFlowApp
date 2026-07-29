@@ -37,8 +37,13 @@ fi
 
 # --no-ignore-vcs drops .gitignore but keeps .ignore.
 # The .git glob covers the nested repository under docs/superpowers/ too.
+# --follow is what makes docs/superpowers show up in an agent worktree: there it is a
+# directory symlink back to the main checkout (see scripts/new-worktree.ps1), and rg does
+# not descend into symlinked directories without this flag. .ignore denies the pre-existing
+# skill-mirror symlinks (.claude/skills/, .github/skills/, .github/AGENTS.md) so --follow
+# does not also duplicate every skill file and AGENTS.md in the suggestion list.
 list_files() {
-  rg --files --hidden --no-ignore-vcs --glob '!**/.git/**' 2>/dev/null | tr '\\' '/'
+  rg --files --hidden --no-ignore-vcs --follow --glob '!**/.git/**' 2>/dev/null | tr '\\' '/'
 }
 
 if [ -z "$query" ]; then
