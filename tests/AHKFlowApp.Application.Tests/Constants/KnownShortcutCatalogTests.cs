@@ -157,16 +157,16 @@ public sealed class KnownShortcutCatalogTests
     [Fact]
     public void Manifest_TextMakesNoAbsoluteClaim()
     {
-        string[] banned = ["never", "will not", "cannot", "won't", "can't"];
-
+        // One rule, shared with the owner-input validator through ShortcutWording. Two copies
+        // would let the manifest ban a term the validator still accepts.
         foreach (KnownShortcut shortcut in KnownShortcutCatalog.All)
         {
-            foreach (string term in banned)
-            {
-                shortcut.WarningText?.ToLowerInvariant().Should().NotContain(term);
-                foreach (ShortcutUse use in shortcut.Uses)
-                    use.Does.ToLowerInvariant().Should().NotContain(term, $"{shortcut.Id} / {use.UsedBy}");
-            }
+            if (shortcut.WarningText is string text)
+                ShortcutWording.MakesAbsoluteClaim(text).Should().BeFalse(shortcut.Id);
+
+            foreach (ShortcutUse use in shortcut.Uses)
+                ShortcutWording.MakesAbsoluteClaim(use.Does).Should()
+                    .BeFalse($"{shortcut.Id} / {use.UsedBy}");
         }
     }
 }
