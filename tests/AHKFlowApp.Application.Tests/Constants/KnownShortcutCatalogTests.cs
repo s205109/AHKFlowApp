@@ -129,4 +129,20 @@ public sealed class KnownShortcutCatalogTests
         KnownShortcutCatalog.All.SelectMany(s => s.Uses)
             .Should().NotContain(u => u.UsedBy == "Firefox");
     }
+
+    [Fact]
+    public void Manifest_TextMakesNoAbsoluteClaim()
+    {
+        string[] banned = ["never", "will not", "cannot", "won't", "can't"];
+
+        foreach (KnownShortcut shortcut in KnownShortcutCatalog.All)
+        {
+            foreach (string term in banned)
+            {
+                shortcut.WarningText?.ToLowerInvariant().Should().NotContain(term);
+                foreach (ShortcutUse use in shortcut.Uses)
+                    use.Does.ToLowerInvariant().Should().NotContain(term, $"{shortcut.Id} / {use.UsedBy}");
+            }
+        }
+    }
 }

@@ -181,4 +181,29 @@ public sealed class HotkeyKeyCatalogTests
         (await catalog.ForRoleAsync("HotkeyKey", CancellationToken.None)).Should().NotBeEmpty();
         await api.Received(2).GetKeysAsync(Arg.Any<CancellationToken>());
     }
+
+    // Its own catalog, not the shared Sample: other tests count what Sample projects, so adding
+    // a key there would fail them.
+    private static readonly HotkeyKeyCatalogDto CanonicalSample = new(
+        [
+            new HotkeyKeyDto("Escape", "Navigation", ["HotkeyKey"], true),
+        ],
+        new Dictionary<string, string> { ["Esc"] = "Escape" });
+
+    [Theory]
+    [InlineData("Esc", "Escape")]       // alias
+    [InlineData("esc", "Escape")]       // alias, wrong case
+    [InlineData("Escape", "Escape")]    // already canonical
+    [InlineData("vk1B", "vk1b")]        // digits lowercased
+    [InlineData("vk1", "vk01")]         // padded to the server's width
+    [InlineData("SC1", "sc001")]        // prefix and digits both normalised
+    [InlineData("vk0", "vk0")]          // names no key, so unchanged
+    [InlineData(" Esc ", " Esc ")]      // whitespace rejected, never trimmed
+    [InlineData("", "")]
+    public async Task CanonicalizeAsync_MatchesTheServersCanonicalForm(string input, string expected)
+    {
+        var catalog = new HotkeyKeyCatalog(ApiReturning(CanonicalSample));
+
+        (await catalog.CanonicalizeAsync(input)).Should().Be(expected);
+    }
 }
