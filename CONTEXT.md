@@ -87,6 +87,18 @@ _Avoid_: terminator, delimiter, end char
 A user's note on a hotstring or hotkey, carried into its Profile script as a comment above the definition. For a Raw Hotstring it is lifted from the leading comments of the pasted definition.
 _Avoid_: comment, note, label
 
+**Known shortcut**:
+A key and modifiers that something outside AHKFlow uses. It is a record of a use, not a problem — a problem only exists once a Hotkey matches one. Not the same as two AHKFlow hotkeys sharing a combination, which the app refuses outright.
+_Avoid_: conflict, clash, collision, duplicate, reserved, blacklist
+
+**Used by**:
+What uses a Known shortcut — Windows, a named application, or a label the Owner types. An Owner who records a Visual Studio shortcut has not become the user of it; Visual Studio is still what uses it.
+_Avoid_: source, provider, origin, owner
+
+**Shortcut warning**:
+The notice shown when a Hotkey matches a Known shortcut. It describes what else uses those keys. It never blocks saving, and it never promises what will happen when the keys are pressed.
+_Avoid_: error, conflict, alert
+
 ### Organizing
 
 **Profile**:
