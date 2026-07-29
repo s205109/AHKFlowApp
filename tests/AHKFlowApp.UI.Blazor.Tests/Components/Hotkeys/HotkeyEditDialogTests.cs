@@ -846,4 +846,35 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
         provider.WaitForAssertion(() => _api.Received(1).CreateAsync(
             Arg.Any<CreateHotkeyDto>(), Arg.Any<CancellationToken>()));
     }
+
+    [Fact]
+    public async Task SlowResponseForAnOldCombination_CannotOverwriteTheNewerVerdict()
+    {
+        // Regression test for the generation counter. The first fetch is held open while the user
+        // changes the key, so its response lands last and carries the old canonical key. The stub
+        // ignores the cancellation token on purpose: that models a response already past the point
+        // where cancelling helps, which leaves the generation check as the only thing guarding the
+        // notice. Drop that check and the stale "Win+E opens File Explorer" line appears here.
+        TaskCompletionSource<KnownShortcutCatalogDto?> gate = new();
+        _knownShortcuts.GetAsync(Arg.Any<CancellationToken>()).Returns(
+            _ => new ValueTask<KnownShortcutCatalogDto?>(gate.Task),
+            _ => ValueTask.FromResult<KnownShortcutCatalogDto?>(WinECatalog()));
+
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(
+            new HotkeyEditModel { Key = "e", Win = true });
+
+        // The first evaluation is still waiting on the gate, so nothing is shown yet.
+        provider.FindAll("[data-test=\"shortcut-warning\"]").Should().BeEmpty();
+
+        // A newer combination. Its own fetch answers at once and matches nothing.
+        await SetKeyAsync(provider, "key-picker", "F1");
+        provider.FindAll("[data-test=\"shortcut-warning\"]").Should().BeEmpty();
+
+        // Release the old fetch from inside the renderer, then flush: the continuation is queued
+        // on the same dispatcher, so the second InvokeAsync runs after it.
+        await provider.InvokeAsync(() => gate.SetResult(WinECatalog()));
+        await provider.InvokeAsync(() => { });
+
+        provider.FindAll("[data-test=\"shortcut-warning\"]").Should().BeEmpty();
+    }
 }

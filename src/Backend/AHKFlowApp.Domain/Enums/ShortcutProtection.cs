@@ -7,7 +7,11 @@ namespace AHKFlowApp.Domain.Enums;
 /// </summary>
 public enum ShortcutProtection
 {
-    /// <summary>Windows handles the keys before any hook can see them. Needs a pinned Microsoft source.</summary>
+    /// <summary>
+    /// Windows handles the keys itself. Needs a pinned Microsoft source saying so. It makes no
+    /// claim about what other software sees: no Microsoft source rules a keyboard hook out, and
+    /// PowerToys documents remapping keys at the low level.
+    /// </summary>
     Protected = 0,
 
     /// <summary>Something uses it, and a script may or may not take it over.</summary>

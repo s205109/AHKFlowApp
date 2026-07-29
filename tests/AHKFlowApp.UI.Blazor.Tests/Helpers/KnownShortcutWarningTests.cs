@@ -110,6 +110,31 @@ public sealed class KnownShortcutWarningTests
     }
 
     [Fact]
+    public void TextFor_ProtectedBeatsNormal_ForTheClosingSentence()
+    {
+        // The pairing Stage 2's merged uses produce most often: a curated Windows row plus an
+        // owner-recorded Normal use on the same combination. Without this, Normal taking
+        // precedence over Protected would go unnoticed.
+        KnownShortcutDto shortcut = Shortcut("windows.lock", "l", false, false, false, true,
+            Use("Windows", ShortcutProtection.Protected, ShortcutScope.Global, "lock the computer"),
+            Use("My tool", ShortcutProtection.Normal, ShortcutScope.Global, "log the time"));
+
+        KnownShortcutWarning.TextFor(shortcut, "Win+L")
+            .Should().EndWith("Windows handles these keys itself.");
+    }
+
+    [Fact]
+    public void TextFor_NormalBeatsUnknown_ForTheClosingSentence()
+    {
+        KnownShortcutDto shortcut = Shortcut("windows.file-explorer", "e", false, false, false, true,
+            Use("Windows", ShortcutProtection.Normal, ShortcutScope.Global, "open File Explorer"),
+            Use("My tool", ShortcutProtection.Unknown, ShortcutScope.Global, "log the time"));
+
+        KnownShortcutWarning.TextFor(shortcut, "Win+E")
+            .Should().EndWith("Your hotkey may override this shortcut.");
+    }
+
+    [Fact]
     public void TextFor_UnknownOnly_UsesTheNeutralClosingSentence()
     {
         KnownShortcutDto shortcut = Shortcut("owner.thing", "q", true, true, false, false,
