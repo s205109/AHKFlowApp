@@ -85,6 +85,14 @@ public sealed class CreateCustomKnownShortcutCommandValidatorTests
             .Contain(e => e.ErrorMessage.StartsWith("Start with a lowercase verb", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public void Validate_DoesStartsWithACapitalAfterASpace_Fails()
+    {
+        // The handler trims before storing, so leading whitespace must not hide the capital.
+        Result(Command(does: "  Open the settings window")).Should()
+            .Contain(e => e.ErrorMessage.StartsWith("Start with a lowercase verb", StringComparison.Ordinal));
+    }
+
     [Theory]
     [InlineData("open the settings window")]
     [InlineData("open Visual Studio")]

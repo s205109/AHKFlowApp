@@ -50,9 +50,14 @@ public sealed class CreateCustomKnownShortcutCommandValidator
     // A leading capital would read as "Windows uses Win+E to Open File Explorer." Only the first
     // character is judged: a product name later in the phrase is fine, and often required.
     // Anything that is not a letter — a digit, a quote — passes, because there is no case to get
-    // wrong.
-    private static bool StartsLowercase(string? does) =>
-        string.IsNullOrEmpty(does) || !char.IsUpper(does[0]);
+    // wrong. The text is trimmed first, because the handler stores the trimmed value: without this
+    // a leading space would let a capital through.
+    private static bool StartsLowercase(string? does)
+    {
+        string trimmed = does?.Trim() ?? string.Empty;
+
+        return trimmed.Length == 0 || !char.IsUpper(trimmed[0]);
+    }
 
     // The same ban the built-in manifest lives under, applied to owner text. An owner record ends
     // up in the same warning sentence as a curated one, so it inherits the same promise: describe

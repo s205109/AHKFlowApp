@@ -278,6 +278,45 @@ public sealed class KnownShortcutsControllerTests(ApiTestFixture fixture)
     }
 
     [Fact]
+    public async Task Restore_ByAnotherOwner_LeavesTheFirstOwnersIgnoreInPlace()
+    {
+        using HttpClient owner = CreateAuthed();
+        using HttpClient stranger = CreateAuthed();
+        await owner.PostAsJsonAsync(
+            "/api/v1/knownshortcuts/ignore", new KnownShortcutUseRefDto(ExplorerId, "Windows"));
+
+        HttpResponseMessage response = await stranger.PostAsJsonAsync(
+            "/api/v1/knownshortcuts/restore", new KnownShortcutUseRefDto(ExplorerId, "Windows"));
+
+        // The stranger owns no ignore row, so restore is a no-op success for them.
+        response.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        ManagedKnownShortcutCatalogDto? catalog =
+            await owner.GetFromJsonAsync<ManagedKnownShortcutCatalogDto>("/api/v1/knownshortcuts");
+        catalog!.Shortcuts.Single(s => s.Id == ExplorerId).Uses.Single().IsIgnored.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Restore_SentConcurrently_AllSucceed()
+    {
+        using HttpClient client = CreateAuthed();
+        await client.PostAsJsonAsync(
+            "/api/v1/knownshortcuts/ignore", new KnownShortcutUseRefDto(ExplorerId, "Windows"));
+
+        // Several requests read the same ignore row, then all try to delete it. Only one delete
+        // affects a row; the rest must still report success instead of a 500.
+        HttpResponseMessage[] responses = await Task.WhenAll(
+            Enumerable.Range(0, 8).Select(_ => client.PostAsJsonAsync(
+                "/api/v1/knownshortcuts/restore", new KnownShortcutUseRefDto(ExplorerId, "Windows"))));
+
+        responses.Should().OnlyContain(r => r.StatusCode == HttpStatusCode.NoContent);
+
+        ManagedKnownShortcutCatalogDto? catalog =
+            await client.GetFromJsonAsync<ManagedKnownShortcutCatalogDto>("/api/v1/knownshortcuts");
+        catalog!.Shortcuts.Single(s => s.Id == ExplorerId).Uses.Single().IsIgnored.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task Ignore_SentConcurrently_AllSucceedAndWriteOneRow()
     {
         using HttpClient client = CreateAuthed();

@@ -23,12 +23,21 @@ internal sealed class RestoreKnownShortcutCommandHandler(IAppDbContext db, ICurr
             ct);
 
         // No row means the use already warns. The owner asked for that state, so this is success.
-        // Deleting twice needs no race guard for the same reason.
         if (ignore is null)
             return Result.Success();
 
         db.IgnoredKnownShortcuts.Remove(ignore);
-        await db.SaveChangesAsync(ct);
+
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // Two requests can read the same row and then both delete it. The second DELETE affects
+            // no rows, which EF Core reports as a concurrency conflict. The row is gone either way,
+            // so the owner got the state they asked for.
+        }
 
         return Result.Success();
     }
