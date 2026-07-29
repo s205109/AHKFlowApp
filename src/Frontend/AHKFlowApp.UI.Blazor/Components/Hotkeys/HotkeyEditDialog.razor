@@ -1,4 +1,4 @@
-@using AHKFlowApp.UI.Blazor.Components.Common
+﻿@using AHKFlowApp.UI.Blazor.Components.Common
 @using AHKFlowApp.UI.Blazor.DTOs
 @using AHKFlowApp.UI.Blazor.Helpers
 @using AHKFlowApp.UI.Blazor.Services
@@ -51,6 +51,11 @@
                     @_shortcutWarning
                 </MudAlert>
             }
+            @* Outside the @if, so it renders on every pass. It is how an E2E test can tell
+               "no warning" apart from "not decided yet". Hidden: it is not for the reader. *@
+            <span data-test="shortcut-warning-checked"
+                  data-combination="@_shortcutChecked"
+                  style="display:none"></span>
 
             @* ---- Action selector. Generated from the enum so the set cannot drift.
                  The wrapper div carries the CSS-isolation scope for the wrapping rule. ---- *@
@@ -342,6 +347,13 @@
     // gates Save. The list behind it is session-cached by IKnownShortcutCatalog, the same way
     // IHotkeyKeyCatalog caches the key registry.
     private string? _shortcutWarning;
+
+    // The combination the notice above was last decided for, or "" before the first decision. Set
+    // together with _shortcutWarning and under the same generation check, so it never announces a
+    // decision that a newer combination has already replaced. Read only by the E2E tests: it is
+    // how a test can tell "no warning" apart from "not evaluated yet".
+    private string _shortcutChecked = "";
+
     private CancellationTokenSource? _shortcutCts;
     private int _shortcutGeneration;
 
@@ -409,6 +421,9 @@
                 // next open retries.
                 Logger.LogWarning("Known-shortcut list could not be read; showing no warning.");
                 _shortcutWarning = null;
+                // A list that will not load has still finished deciding, and it decides "no
+                // warning". Saying so keeps the E2E wait honest instead of hanging.
+                _shortcutChecked = HotkeyActionDisplay.ComboLabel(Item);
                 StateHasChanged();
                 return;
             }
@@ -419,6 +434,7 @@
             _shortcutWarning = match is null
                 ? null
                 : KnownShortcutWarning.TextFor(match, HotkeyActionDisplay.ComboLabel(Item));
+            _shortcutChecked = HotkeyActionDisplay.ComboLabel(Item);
 
             StateHasChanged();
         }
@@ -432,6 +448,7 @@
             if (generation == _shortcutGeneration && !_disposed)
             {
                 _shortcutWarning = null;
+                _shortcutChecked = HotkeyActionDisplay.ComboLabel(Item);
                 StateHasChanged();
             }
         }

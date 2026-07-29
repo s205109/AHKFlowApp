@@ -774,6 +774,18 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
+    public async Task Open_AfterDeciding_AnnouncesTheCombinationItDecidedFor()
+    {
+        // The E2E flows read this hook to tell "no warning" apart from "not decided yet".
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(
+            new HotkeyEditModel { Key = "F1", Ctrl = true });
+
+        provider.WaitForAssertion(() =>
+            provider.Find("[data-test=\"shortcut-warning-checked\"]")
+                .GetAttribute("data-combination").Should().Be("Ctrl+F1"));
+    }
+
+    [Fact]
     public async Task Open_CombinationWithNoKnownShortcut_ShowsNoWarning()
     {
         IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(
