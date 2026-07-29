@@ -10,18 +10,18 @@ public sealed class KnownShortcutCatalogTests
     [Fact]
     public void All_HasExpectedRecordCount()
     {
-        // 67 Windows rows, per design §3. The 36 browser rows are Stage 2 — when they land,
-        // this becomes 103. Recount from the manifest then; do not guess a new number.
-        KnownShortcutCatalog.All.Should().HaveCount(67);
+        // 67 Windows rows plus 36 browser rows, per design §3.
+        KnownShortcutCatalog.All.Should().HaveCount(103);
     }
 
     [Fact]
-    public void All_ContainsOnlyWindowsRows()
+    public void All_RowIdsUseAKnownPrefix()
     {
-        // Guards the stage boundary. A browser row appearing here means Stage 2 work leaked in
-        // without the ignore mechanism that makes it tolerable.
-        KnownShortcutCatalog.All.Should()
-            .OnlyContain(s => s.Id.StartsWith("windows.", StringComparison.Ordinal));
+        // Two sources ship today. A third one gets its own prefix and its own line here, so a
+        // typo in an id cannot quietly create a source nothing else knows about.
+        KnownShortcutCatalog.All.Should().OnlyContain(s =>
+            s.Id.StartsWith("windows.", StringComparison.Ordinal) ||
+            s.Id.StartsWith("browser.", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -115,11 +115,35 @@ public sealed class KnownShortcutCatalogTests
     }
 
     [Fact]
-    public void All_RowsCarryExactlyOneUse()
+    public void Browser_RowsAreForegroundNormalAndNameBothBrowsers()
     {
-        // True only while the manifest is Windows-only. Stage 2's browser rows carry two uses
-        // each, so that plan replaces this test rather than adding rows around it.
-        KnownShortcutCatalog.All.Should().OnlyContain(s => s.Uses.Count == 1);
+        KnownShortcut[] browserRows =
+        [
+            .. KnownShortcutCatalog.All.Where(s => s.Id.StartsWith("browser.", StringComparison.Ordinal))
+        ];
+
+        browserRows.Should().HaveCount(36);
+
+        foreach (KnownShortcut shortcut in browserRows)
+        {
+            shortcut.Uses.Select(u => u.UsedBy).Should()
+                .BeEquivalentTo(["Chrome", "Edge"], $"{shortcut.Id} is documented by both");
+            shortcut.Uses.Should().OnlyContain(u => u.Scope == ShortcutScope.Foreground);
+            shortcut.Uses.Should().OnlyContain(u => u.Protection == ShortcutProtection.Normal);
+        }
+    }
+
+    [Fact]
+    public void Browser_EachUseCitesItsOwnBrowsersPage()
+    {
+        // One evidence page per use is the manifest rule. Both uses pointing at one page would
+        // mean one of the two claims is unproven.
+        foreach (KnownShortcut shortcut in KnownShortcutCatalog.All
+                     .Where(s => s.Id.StartsWith("browser.", StringComparison.Ordinal)))
+        {
+            shortcut.Uses.Single(u => u.UsedBy == "Chrome").EvidenceUrl.Should().Contain("google.com");
+            shortcut.Uses.Single(u => u.UsedBy == "Edge").EvidenceUrl.Should().Contain("microsoft.com");
+        }
     }
 
     [Fact]

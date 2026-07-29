@@ -41,7 +41,7 @@ public sealed class HotkeysController(
     public async Task<ActionResult<HotkeyKeyCatalogDto>> Keys(CancellationToken ct) =>
         (await listHotkeyKeys.ExecuteAsync(new ListHotkeyKeysQuery(), ct)).ToProblemActionResult(this);
 
-    /// <summary>Get the curated list of shortcuts Windows already uses.</summary>
+    /// <summary>Get the curated list of shortcuts Windows or a browser already uses.</summary>
     /// <remarks>
     /// Advisory only — nothing here blocks a save. Static reference data in this release;
     /// authorized because the controller is, not because it is user-scoped.

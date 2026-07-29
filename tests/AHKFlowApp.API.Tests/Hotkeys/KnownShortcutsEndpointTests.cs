@@ -53,6 +53,24 @@ public sealed class KnownShortcutsEndpointTests(ApiTestFixture fixture)
     }
 
     [Fact]
+    public async Task GetKnownShortcuts_BrowserRowCarriesTwoForegroundUses()
+    {
+        HttpClient client = _factory.CreateAuthenticatedClient();
+
+        KnownShortcutCatalogDto? catalog =
+            await client.GetFromJsonAsync<KnownShortcutCatalogDto>("/api/v1/hotkeys/known-shortcuts");
+
+        KnownShortcutDto newWindow = catalog!.Shortcuts.Single(s => s.Id == "browser.new-window");
+        newWindow.Key.Should().Be("n");
+        newWindow.Ctrl.Should().BeTrue();
+        newWindow.Win.Should().BeFalse();
+
+        newWindow.Uses.Select(u => u.UsedBy).Should().BeEquivalentTo(["Chrome", "Edge"]);
+        newWindow.Uses.Should().OnlyContain(u => u.Scope == ShortcutScope.Foreground);
+        newWindow.Uses.Should().OnlyContain(u => u.Does == "open a new window");
+    }
+
+    [Fact]
     public async Task GetKnownShortcuts_ProtectedRowIsMarkedProtected()
     {
         HttpClient client = _factory.CreateAuthenticatedClient();

@@ -59,9 +59,15 @@ internal static class KnownShortcutCatalog
     private const string WinLockUrl =
         "https://learn.microsoft.com/en-us/troubleshoot/azure/virtual-desktop/win-key-remains-held-after-pressing-ctrl-win-l-in-remote-session";
 
+    private const string ChromeUrl =
+        "https://support.google.com/chrome/answer/157179?co=GENIE.Platform%3DDesktop&hl=en-en";
+
+    private const string EdgeUrl =
+        "https://support.microsoft.com/en-US/edge/keyboard-shortcuts-in-microsoft-edge";
+
     private static readonly DateOnly s_checkedOn = new(2026, 7, 29);
 
-    /// <summary>One row per combination, in design §3 order. Windows only in this release.</summary>
+    /// <summary>One row per combination, in design §3 order.</summary>
     /// <remarks>
     /// Letter keys are stored lowercase because that is what <see cref="HotkeyKeys"/> canonicalizes
     /// them to. Matching ignores case, so the stored spelling is a storage rule, not a display one.
@@ -154,8 +160,49 @@ internal static class KnownShortcutCatalog
         Windows("windows.window-menu", "Space", "open the active window's context menu", alt: true, win: false),
         Windows("windows.show-password", "F8", "show the password on the sign-in screen", alt: true, win: false),
 
-        // Browser rows (design §3) are Stage 2 — see the Stage 2 plan. They need the ignore
-        // mechanism before they are tolerable, because they cover 15 of 26 Ctrl+letter keys.
+        // ---- Browsers. Every row is Foreground and Normal, and names both Chrome and Edge. ----
+        // Each row is documented by Chrome and by Edge with the same meaning, so it carries two
+        // uses with one evidence page each. Owners silence a use they do not want, per use.
+        Browser("browser.new-tab", "t", "open a new tab", ctrl: true),
+        Browser("browser.new-window", "n", "open a new window", ctrl: true),
+        Browser("browser.close-tab", "w", "close the current tab", ctrl: true),
+        Browser("browser.close-window", "w", "close the current window", ctrl: true, shift: true),
+        Browser("browser.reopen-tab", "t", "reopen the last closed tab", ctrl: true, shift: true),
+        Browser("browser.next-tab", "Tab", "switch to the next tab", ctrl: true),
+        Browser("browser.previous-tab", "Tab", "switch to the previous tab", ctrl: true, shift: true),
+
+        // Ctrl+1 through Ctrl+8 pick a tab by position. Ctrl+9 picks the last tab, whatever its
+        // position, which is why it does not read "switch to tab 9".
+        Browser("browser.tab-1", "1", "switch to tab 1", ctrl: true),
+        Browser("browser.tab-2", "2", "switch to tab 2", ctrl: true),
+        Browser("browser.tab-3", "3", "switch to tab 3", ctrl: true),
+        Browser("browser.tab-4", "4", "switch to tab 4", ctrl: true),
+        Browser("browser.tab-5", "5", "switch to tab 5", ctrl: true),
+        Browser("browser.tab-6", "6", "switch to tab 6", ctrl: true),
+        Browser("browser.tab-7", "7", "switch to tab 7", ctrl: true),
+        Browser("browser.tab-8", "8", "switch to tab 8", ctrl: true),
+        Browser("browser.tab-9", "9", "switch to the last tab", ctrl: true),
+
+        Browser("browser.address-bar", "l", "focus the address bar", ctrl: true),
+        Browser("browser.address-bar-alt", "d", "focus the address bar", alt: true),
+        Browser("browser.search-e", "e", "search from the address bar", ctrl: true),
+        Browser("browser.search-k", "k", "search from the address bar", ctrl: true),
+        Browser("browser.devtools-i", "i", "open developer tools", ctrl: true, shift: true),
+        Browser("browser.devtools-f12", "F12", "open developer tools"),
+        Browser("browser.view-source", "u", "view the page source", ctrl: true),
+        Browser("browser.history", "h", "open history", ctrl: true),
+        Browser("browser.downloads", "j", "open downloads", ctrl: true),
+        Browser("browser.bookmark", "d", "bookmark the current tab", ctrl: true),
+        Browser("browser.bookmark-all", "d", "bookmark all open tabs", ctrl: true, shift: true),
+        Browser("browser.bookmark-manager", "o", "open the bookmark manager", ctrl: true, shift: true),
+        Browser("browser.bookmark-bar", "b", "show and hide the bookmarks bar", ctrl: true, shift: true),
+        Browser("browser.find", "f", "find text on the page", ctrl: true),
+        Browser("browser.find-next", "g", "go to the next find result", ctrl: true),
+        Browser("browser.find-previous", "g", "go to the previous find result", ctrl: true, shift: true),
+        Browser("browser.print", "p", "print the page", ctrl: true),
+        Browser("browser.save-page", "s", "save the page", ctrl: true),
+        Browser("browser.reload", "r", "reload the page", ctrl: true),
+        Browser("browser.hard-reload", "r", "reload the page and skip the cache", ctrl: true, shift: true),
     ];
 
     // Win is the default modifier because most Windows rows use it; the no-Win rows pass win: false.
@@ -172,5 +219,21 @@ internal static class KnownShortcutCatalog
         new(id, key, ctrl, alt, shift, win,
         [
             new ShortcutUse("Windows", protection, ShortcutScope.Global, does, evidenceUrl, s_checkedOn),
+        ]);
+
+    // Two uses, one per browser, because the manifest rule is one evidence page per use. That also
+    // lets an owner silence the Chrome use and keep the Edge one, which a single "Chrome, Edge"
+    // label could not offer. Both are Foreground: a browser only answers these keys while in front.
+    private static KnownShortcut Browser(
+        string id,
+        string key,
+        string does,
+        bool ctrl = false,
+        bool alt = false,
+        bool shift = false) =>
+        new(id, key, ctrl, alt, shift, Win: false,
+        [
+            new ShortcutUse("Chrome", ShortcutProtection.Normal, ShortcutScope.Foreground, does, ChromeUrl, s_checkedOn),
+            new ShortcutUse("Edge", ShortcutProtection.Normal, ShortcutScope.Foreground, does, EdgeUrl, s_checkedOn),
         ]);
 }
