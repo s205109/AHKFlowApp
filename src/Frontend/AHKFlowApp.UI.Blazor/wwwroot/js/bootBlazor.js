@@ -32,6 +32,67 @@
         }
     }
 
+    // Copied from Startup/StartupError.razor so both failure screens look the same. They stay
+    // inline because Blazor never started, so MudBlazor's theme provider is not mounted.
+    var containerStyle =
+        'min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1.5rem;' +
+        'font-family:Inter,Roboto,sans-serif;background:#eef3ec;';
+
+    var cardStyle =
+        'max-width:560px;width:100%;background:#fff;border-radius:12px;padding:2.5rem 2rem;' +
+        'box-shadow:0 10px 30px rgba(0,0,0,.08);text-align:center;';
+
+    var buttonStyle =
+        'background:#6AA84F;color:#fff;border:none;border-radius:8px;padding:.6rem 1.5rem;' +
+        'font-size:1rem;font-weight:500;cursor:pointer;';
+
+    function showBootError() {
+        var app = document.getElementById('app');
+        if (!app) {
+            return;
+        }
+
+        var container = document.createElement('div');
+        container.setAttribute('role', 'alert');
+        container.setAttribute('tabindex', '-1');
+        container.setAttribute('data-test', 'boot-error');
+        container.setAttribute('style', containerStyle);
+        container.innerHTML =
+            '<div style="' + cardStyle + '">' +
+                '<div style="font-size:2.5rem;line-height:1;margin-bottom:1rem;">⚠️</div>' +
+                '<h1 style="margin:0 0 .5rem;font-size:1.5rem;color:#1f2933;">Couldn\'t load the app</h1>' +
+                '<p style="margin:0 0 1.25rem;color:#52606d;">' +
+                    'The app started to load, but some of its files could not be downloaded.' +
+                '</p>' +
+                '<div style="text-align:left;background:#f5faf3;border:1px solid #d9e6d4;' +
+                    'border-radius:8px;padding:1rem 1.25rem;color:#3e4c59;">' +
+                    '<strong style="display:block;margin-bottom:.5rem;color:#1f2933;">How to fix it</strong>' +
+                    '<ul style="margin:0;padding-left:1.2rem;">' +
+                        '<li style="margin-bottom:.5rem;">Reload the page. This fixes most cases.</li>' +
+                        '<li>If reloading does not help, check your internet connection and ' +
+                            'try again in a few minutes.</li>' +
+                    '</ul>' +
+                '</div>' +
+                '<div style="margin-top:1.5rem;">' +
+                    '<button type="button" data-test="boot-error-reload" style="' + buttonStyle + '">' +
+                        'Reload' +
+                    '</button>' +
+                '</div>' +
+            '</div>';
+
+        // Replaces the loading circle, which is frozen and no longer means anything.
+        app.replaceChildren(container);
+
+        container.querySelector('[data-test="boot-error-reload"]')
+            .addEventListener('click', function () {
+                window.location.reload();
+            });
+
+        // The message appears after the page has loaded, so a screen reader will not announce it
+        // on its own. Focus was left on a loading circle that no longer exists.
+        container.focus();
+    }
+
     // How long to wait after an uncaught error before calling the boot failed. A failed asset
     // download is reported by the .NET runtime as an uncaught error, and the promise returned by
     // Blazor.start() then never settles, so the uncaught error is the only signal we get. Waiting
@@ -59,7 +120,10 @@
 
         if (tryClaimReload()) {
             window.location.reload();
+            return;
         }
+
+        showBootError();
     }
 
     function onUncaughtDuringBoot(error) {
