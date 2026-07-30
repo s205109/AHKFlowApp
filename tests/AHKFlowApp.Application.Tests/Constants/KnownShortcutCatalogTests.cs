@@ -88,6 +88,23 @@ public sealed class KnownShortcutCatalogTests
     }
 
     [Fact]
+    public void All_DoesPhrasesUsePlainEnglish()
+    {
+        // Each phrase lands in a sentence a reader has to understand at a glance, so the manifest
+        // holds itself to AGENTS.md's Plain English rules. "toggle" is the one word that kept
+        // creeping in; "turn X on and off" says the same thing in common words. A phrase also
+        // reads as a whole sentence with "Windows uses Win+E to …" in front of it, which is why
+        // it must not start with "to".
+        foreach (KnownShortcut shortcut in KnownShortcutCatalog.All)
+            foreach (ShortcutUse use in shortcut.Uses)
+            {
+                use.Does.Should().NotStartWith("toggle", $"{shortcut.Id} / {use.UsedBy}");
+                use.Does.Should().NotStartWith("to ", $"{shortcut.Id} / {use.UsedBy}");
+                use.Does.Should().NotEndWith(".", $"{shortcut.Id} / {use.UsedBy}");
+            }
+    }
+
+    [Fact]
     public void Protected_IsClaimedByExactlyTheTwoDocumentedRows()
     {
         KnownShortcutCatalog.All
