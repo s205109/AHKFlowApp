@@ -52,3 +52,4 @@ Server=tcp:{SQL_SERVER_FQDN},1433;Database={SQL_DATABASE_NAME};Authentication=Ac
 - **TEST/PROD: deploy fails** — verify GitHub secrets/variables have `_TEST` / `_PROD` suffix, the deployer UAMI has RBAC, and the SQL firewall allows the runner IP.
 - **TEST/PROD: API returns 500** — `az webapp log tail --name <APP_SERVICE_NAME> --resource-group <RESOURCE_GROUP>` and check Application Insights.
 - **Wrong appsettings loaded** — `ASPNETCORE_ENVIRONMENT` is case-sensitive (`Development` / `Test` / `Production`).
+- **Frontend shows "Couldn't load the app"** — one or more `_framework` files failed to download. The page already reloaded itself once. Reload again; if that does not help, check the browser console for the failing request.
