@@ -31,6 +31,20 @@ $script:AgentGuardChangeDirectoryCommands = @('cd', 'chdir', 'set-location')
 $script:AgentGuardPushDirectoryCommands = @('pushd', 'push-location')
 $script:AgentGuardPopDirectoryCommands = @('popd', 'pop-location')
 
+# A transparent command wrapper runs the rest of the command line as a child process.
+# It does not change the shell's own state, such as its working directory.
+# The guard reads past the wrapper to classify the command the wrapper runs.
+# Adding a wrapper to this list can only expose more of a command to classification.
+# It must never let the guard allow something the bare command would deny.
+$script:AgentGuardTransparentWrappers = @('rtk', 'rtk.exe')
+# rtk subcommands that take a raw command as their remaining arguments.
+# Confirmed against rtk 0.43.0 --help. proxy and run were the original two.
+# err, summary, and test also run a raw command, showing only part of its output.
+# rtk's global options never consume a following token: -v/--verbose, --ultra-compact,
+# --skip-env, -h/--help, -V/--version. So the generic leading-option scan below does not
+# need to skip any of them separately.
+$script:AgentGuardWrapperPassThroughSubcommands = @('proxy', 'run', 'err', 'summary', 'test')
+
 # A leading NAME=value assignment is a prefix, not the command being run.
 $script:AgentGuardEnvAssignmentPattern = '^[A-Za-z_][A-Za-z0-9_]*='
 
@@ -439,6 +453,75 @@ function Split-AgentCommandSegment {
 
 <#
 .SYNOPSIS
+Strips a leading transparent-wrapper prefix (currently just rtk) so the guard classifies the
+command the wrapper actually runs, not the wrapper itself.
+
+.DESCRIPTION
+rtk rewrites `git ...` into `rtk git ...`. It does not change the shell's own state. Without this
+function, the guard saw `rtk` as the leading word. It never recognized the git invocation
+underneath.
+
+This matches on the leaf of the leading token. It uses the same check as the git leaf check a few
+lines below. So `rtk`, `rtk.exe`, and a full path like `C:\tools\rtk.exe` all match.
+
+The function skips every leading option token first (any token starting with `-`). Then it looks
+for one pass-through subcommand: `proxy`, `run`, `err`, `summary`, or `test`. Then it repeats this
+whole process. A repeated wrapper such as `rtk rtk git commit` loses both copies of `rtk`. The
+function skips any `-*` token, not a fixed list of known options. This means a future rtk global
+option cannot make the guard permit more than it does today.
+
+The function never strips a wrapper ahead of a directory-change command: `cd`, `chdir`,
+`set-location`, `pushd`, `push-location`, `popd`, or `pop-location`. rtk cannot move the calling
+shell's own working directory. If the guard treated `rtk cd X` as a real directory change, it
+would track an effective working directory the shell never actually reached. That is the only way
+this function could relax a decision, instead of just reading past a wrapper.
+
+When the function stops before a directory-change command, it returns the tokens it already
+stripped, not the original list. For `rtk rtk cd X`, it returns `rtk cd X`, because the outer `rtk`
+was already removed on an earlier pass. This is still safe. The returned leading token (`rtk`) is
+still a wrapper name, so the caller classifies the segment as `Other`, not as a directory change.
+
+The function does not model a wrapper option that consumes the next token as its value (for
+example, a hypothetical `rtk --out foo git commit`). It inspects the token after the option for a
+pass-through subcommand. If that fails, the token becomes the new leading word instead. rtk has no
+such option today. This is a documented, deliberately accepted gap, not a bug.
+#>
+function Remove-AgentWrapperPrefix {
+    [CmdletBinding()]
+    param([string[]] $Tokens)
+
+    $current = @($Tokens)
+
+    while ($current.Count -gt 0) {
+        $leaf = (([string] $current[0]).ToLowerInvariant() -split '[\\/]')[-1]
+        if ($script:AgentGuardTransparentWrappers -notcontains $leaf) { return $current }
+
+        $index = 1
+        while ($index -lt $current.Count -and ([string] $current[$index]) -like '-*') { $index++ }
+
+        if ($index -lt $current.Count) {
+            $subcommand = ([string] $current[$index]).ToLowerInvariant()
+            if ($script:AgentGuardWrapperPassThroughSubcommands -contains $subcommand) { $index++ }
+        }
+
+        if ($index -ge $current.Count) { return @() }
+
+        $remainder = @($current[$index..($current.Count - 1)])
+        $remainderName = ([string] $remainder[0]).ToLowerInvariant()
+        if ($script:AgentGuardChangeDirectoryCommands -contains $remainderName -or
+            $script:AgentGuardPushDirectoryCommands -contains $remainderName -or
+            $script:AgentGuardPopDirectoryCommands -contains $remainderName) {
+            return $current
+        }
+
+        $current = $remainder
+    }
+
+    return $current
+}
+
+<#
+.SYNOPSIS
 Classifies each top-level segment as a git invocation, a directory change, or something else.
 
 .DESCRIPTION
@@ -470,6 +553,12 @@ function Get-AgentCommandSegment {
         if ($start -ge $tokens.Count) { continue }
 
         $effective = @($tokens[$start..($tokens.Count - 1)])
+
+        # Strip a transparent wrapper (rtk) after the NAME=value prefix, not before: order
+        # matters so `SKIP_COVERAGE_HOOK=1 rtk git push` loses the assignment first, then rtk.
+        $effective = @(Remove-AgentWrapperPrefix -Tokens $effective)
+        if ($effective.Count -eq 0) { continue }
+
         $name = ([string] $effective[0]).ToLowerInvariant()
         $leaf = ($name -split '[\\/]')[-1]
 
