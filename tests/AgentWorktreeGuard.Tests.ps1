@@ -765,6 +765,14 @@ try {
         }
     }
 
+    # No wrapped-command case above ever runs from a managed worktree - every Cwd is $fixture.Main.
+    # Pin that a wrapped commit is a plain Allow there too, the same as its bare form.
+    Invoke-TestCase 'Wrapped commit is Allow from a managed worktree' {
+        $decision = Invoke-AgentGuardPolicy -Command 'rtk git commit -m x' `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Allow' $decision.Action 'Action'
+    }
+
     # Every spelling below must still deny a commit exactly the way the bare command does. This
     # covers rtk 0.43.0's global options (-v/-vv/-vvv/--verbose/--ultra-compact/--skip-env), all
     # five pass-through subcommands (proxy/run/err/summary/test), a repeated wrapper, a leading
@@ -821,6 +829,44 @@ try {
     # the unrelated directory rtk was told to cd into, when the real shell never left main.
     Invoke-TestCase 'rtk cd to an outside directory does not escalate a commit in main to Allow' {
         $command = "rtk cd `"$($fixture.Unrelated)`" && git commit -m x"
+        $decision = Invoke-AgentGuardPolicy -Command $command -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Deny' $decision.Action 'Action'
+        Assert-Equal 'agent-main-git-mutation' $decision.Rule 'Rule'
+    }
+
+    # Same escalation guard, the pushd/push-location spelling. A bare `pushd <dir>` really can move
+    # the shell (Get-AgentGitLocationDecision tracks it as PushDirectory), which is exactly why the
+    # concrete gap in the finding matters: `pushd C:/Windows && git commit -m x` resolves as Allow
+    # today, because Windows already has that directory and it sits outside the protected repo. A
+    # wrapped `rtk pushd ...` must still deny, the same way `rtk cd ...` does above.
+    Invoke-TestCase 'rtk pushd to an outside directory does not escalate a commit in main to Allow' {
+        $command = "rtk pushd `"$($fixture.Unrelated)`" && git commit -m x"
+        $decision = Invoke-AgentGuardPolicy -Command $command -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Deny' $decision.Action 'Action'
+        Assert-Equal 'agent-main-git-mutation' $decision.Rule 'Rule'
+    }
+
+    Invoke-TestCase 'rtk push-location to an outside directory does not escalate a commit in main to Allow' {
+        $command = "rtk push-location `"$($fixture.Unrelated)`" && git commit -m x"
+        $decision = Invoke-AgentGuardPolicy -Command $command -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Deny' $decision.Action 'Action'
+        Assert-Equal 'agent-main-git-mutation' $decision.Rule 'Rule'
+    }
+
+    # popd/pop-location take no directory argument, so there is nothing to escalate to - it pops
+    # whatever the (guard-tracked) stack already holds. With an empty stack the commit still runs
+    # against the unchanged Cwd, main, so the correct expectation is the same Deny a bare `popd`
+    # already gets today (confirmed by direct probe): both the bare and the wrapped spelling stay
+    # in main and deny the commit. This test pins that the wrapper does not change that outcome.
+    Invoke-TestCase 'rtk popd does not escalate a commit in main to Allow' {
+        $command = 'rtk popd && git commit -m x'
+        $decision = Invoke-AgentGuardPolicy -Command $command -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Deny' $decision.Action 'Action'
+        Assert-Equal 'agent-main-git-mutation' $decision.Rule 'Rule'
+    }
+
+    Invoke-TestCase 'rtk pop-location does not escalate a commit in main to Allow' {
+        $command = 'rtk pop-location && git commit -m x'
         $decision = Invoke-AgentGuardPolicy -Command $command -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
         Assert-Equal 'Deny' $decision.Action 'Action'
         Assert-Equal 'agent-main-git-mutation' $decision.Rule 'Rule'

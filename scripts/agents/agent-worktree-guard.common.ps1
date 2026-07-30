@@ -457,29 +457,34 @@ Strips a leading transparent-wrapper prefix (currently just rtk) so the guard cl
 command the wrapper actually runs, not the wrapper itself.
 
 .DESCRIPTION
-rtk rewrites `git ...` into `rtk git ...` without changing the shell's own state, so without
-this the guard saw `rtk` as the leading word and never recognized the git invocation underneath.
-Matches on the leaf of the leading token, the same way the git leaf check does a few lines below,
-so `rtk`, `rtk.exe`, and a full path like `C:\tools\rtk.exe` all match. Skips every leading option
-token (anything starting with `-`) before looking for one pass-through subcommand (`proxy`, `run`,
-`err`, `summary`, `test`), then repeats, so a repeated wrapper such as `rtk rtk git commit` loses
-both. Skipping any `-*` token, not an enumerated list, means a future rtk global option cannot make
-the guard permit more than it does today.
+rtk rewrites `git ...` into `rtk git ...`. It does not change the shell's own state. Without this
+function, the guard saw `rtk` as the leading word. It never recognized the git invocation
+underneath.
 
-Never strips ahead of a directory-change command (`cd`, `chdir`, `set-location`, `pushd`,
-`push-location`, `popd`, `pop-location`). rtk cannot move the calling shell's own working
-directory, so treating `rtk cd X` as a real directory change would let the guard track an
-effective working directory the shell never actually reached - the only way this helper could
-relax a decision instead of just reading past a wrapper. When that happens, this returns the
-tokens as stripped so far, not the original list unchanged: for `rtk rtk cd X` it returns
-`rtk cd X`, because the outer `rtk` was already removed by an earlier pass of the loop. This is
-still safe, because the returned leading token (`rtk`) is still a wrapper name, so the caller
-classifies the segment as `Other`, not as a directory change.
+This matches on the leaf of the leading token. It uses the same check as the git leaf check a few
+lines below. So `rtk`, `rtk.exe`, and a full path like `C:\tools\rtk.exe` all match.
 
-A wrapper option that consumes the next token as its value (for example a hypothetical
-`rtk --out foo git commit`) is not modelled: the token after the option is inspected for a
-pass-through subcommand or, failing that, becomes the new leading word. rtk has no such option
-today; this is a documented, deliberately accepted gap, not a bug.
+The function skips every leading option token first (any token starting with `-`). Then it looks
+for one pass-through subcommand: `proxy`, `run`, `err`, `summary`, or `test`. Then it repeats this
+whole process. A repeated wrapper such as `rtk rtk git commit` loses both copies of `rtk`. The
+function skips any `-*` token, not a fixed list of known options. This means a future rtk global
+option cannot make the guard permit more than it does today.
+
+The function never strips a wrapper ahead of a directory-change command: `cd`, `chdir`,
+`set-location`, `pushd`, `push-location`, `popd`, or `pop-location`. rtk cannot move the calling
+shell's own working directory. If the guard treated `rtk cd X` as a real directory change, it
+would track an effective working directory the shell never actually reached. That is the only way
+this function could relax a decision, instead of just reading past a wrapper.
+
+When the function stops before a directory-change command, it returns the tokens it already
+stripped, not the original list. For `rtk rtk cd X`, it returns `rtk cd X`, because the outer `rtk`
+was already removed on an earlier pass. This is still safe. The returned leading token (`rtk`) is
+still a wrapper name, so the caller classifies the segment as `Other`, not as a directory change.
+
+The function does not model a wrapper option that consumes the next token as its value (for
+example, a hypothetical `rtk --out foo git commit`). It inspects the token after the option for a
+pass-through subcommand. If that fails, the token becomes the new leading word instead. rtk has no
+such option today. This is a documented, deliberately accepted gap, not a bug.
 #>
 function Remove-AgentWrapperPrefix {
     [CmdletBinding()]
