@@ -155,9 +155,10 @@ function ConvertFrom-AgentHookInput {
             if (Test-AgentGuardProperty $toolInput 'command') { $command = [string] $toolInput.command }
         }
 
-        # Present at the top level only when the call originates inside a subagent or --agent
-        # session (https://code.claude.com/docs/en/hooks). Codex's payload shape may not carry
-        # them at all - Test-AgentGuardProperty returns $false and both stay ''.
+        # agent_id is present at the top level only when the call originates inside a subagent
+        # call; agent_type is present for a subagent call OR an --agent session
+        # (https://code.claude.com/docs/en/hooks). Codex's payload shape may not carry either at
+        # all - Test-AgentGuardProperty returns $false and both stay ''.
         if (Test-AgentGuardProperty $payload 'agent_id') { $agentId = [string] $payload.agent_id }
         if (Test-AgentGuardProperty $payload 'agent_type') { $agentType = [string] $payload.agent_type }
     }

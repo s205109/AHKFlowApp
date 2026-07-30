@@ -10,7 +10,7 @@ test, and format** in main — this is a Git-mutation guard, not a filesystem sa
 
 ## What "managed" means
 
-A Git mutation is allowed only from a **managed linked worktree**, which is all three of:
+Most Git mutations are allowed only from a **managed linked worktree**, which is all three of:
 
 1. a **linked** worktree (its `--git-dir` differs from the repository's `--git-common-dir`);
 2. located as a **direct child** of `<main>/.claude/worktrees` or `<main>/.worktrees`;
@@ -20,9 +20,10 @@ A Git mutation is allowed only from a **managed linked worktree**, which is all 
 
 The supported way to create one is `scripts/new-worktree.ps1`, or the agent's native `EnterWorktree`
 tool — that tool fires the `WorktreeCreate` hook, which runs the same script.
-A raw `git worktree add` run by an agent is itself a guarded mutation — denied from main — and it
-skips the manifest and no-auth setup, so the result would fail the managed check anyway. Use the
-tool, whose child Git calls the payload never exposes to the guard.
+A raw `git worktree add` run by an agent is Tier 2 — allowed even from main, with no prompt (see
+"Location tiers" below). It skips the manifest and no-auth setup that `scripts/new-worktree.ps1`
+performs, though, so the resulting worktree would still fail the managed check. Use the script, or
+the `EnterWorktree` tool, whose child Git calls the payload never exposes to the guard.
 
 This "managed worktree" requirement applies only to Tier 1a and Tier 1b operations (see "Location
 tiers" below). Tier 2 operations never need a managed worktree — for example `git worktree prune`,
@@ -116,7 +117,9 @@ Every Tier 1a operation needs an in-session approval prompt to run from main.
 `commit` can never become a prompt. A `PreToolUse` approval happens before the command runs. The
 separate `.githooks/pre-commit` backstop runs after, and it has no way to know a prompt was
 approved. An approved-then-backstop-blocked commit would be worse than today's outright denial, so
-`commit` stays a hard denial regardless of location.
+`commit` stays a hard denial regardless of location. This dominates the whole chained command, not
+just the `commit` segment: `git add . && git commit -m x` is denied outright, even though `git add`
+alone would only need a prompt.
 
 Two more hard denials exist outside the tier system entirely. This change does not touch them: a
 destructive-command safety-rule match (force-push, `reset --hard`, `clean -f`, `checkout .`, a
@@ -138,9 +141,13 @@ location logic.
 
 **Subagents never see `Ask`.** A Task/Agent-tool call carries `agent_id` in Claude's hook payload
 only when it originates inside a subagent. The guard reads that field and downgrades an `Ask` to
-`Deny` for a subagent call, on every adapter. It is unclear whether a subagent's permission
-prompt reaches the human the same way a main-thread prompt does. A blocked subagent should report
-back that the command needs a retry from the main thread, where it gets a real prompt.
+`Deny` for a subagent call, on every adapter that can detect it. In practice, `agent_id` is
+extracted only from the non-Copilot payload branch (see the adapter contract above), so on Copilot
+this downgrade can never fire — a Copilot subagent call is never detected as one, and instead
+surfaces as whatever Copilot's own `Ask` handling decides (see "Adapter matrix for `Ask`" above).
+It is unclear whether a subagent's permission prompt reaches the human the same way a main-thread
+prompt does. A blocked subagent should report back that the command needs a retry from the main
+thread, where it gets a real prompt.
 
 ### Measured latency
 
