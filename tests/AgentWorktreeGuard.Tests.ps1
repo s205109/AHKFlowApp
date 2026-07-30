@@ -192,13 +192,19 @@ function Invoke-BashShim {
 }
 
 function New-ClaudePayload {
-    param([string] $Command, [string] $Cwd)
-    return @{
+    param([string] $Command, [string] $Cwd, [string] $AgentId = '')
+    $payload = @{
         hook_event_name = 'PreToolUse'
         tool_name       = 'Bash'
         tool_input      = @{ command = $Command }
         cwd             = $Cwd
-    } | ConvertTo-Json -Compress -Depth 4
+    }
+    # Present at the top level only when the call originates inside a subagent - see
+    # ConvertFrom-AgentHookInput. Optional so every existing caller is unaffected.
+    if (-not [string]::IsNullOrWhiteSpace($AgentId)) {
+        $payload.agent_id = $AgentId
+    }
+    return $payload | ConvertTo-Json -Compress -Depth 4
 }
 
 function New-CodexPayload {
@@ -604,6 +610,220 @@ try {
         Assert-Equal 'ambiguous-git-command' $decision.Rule 'Rule'
     }
 
+    Write-Host 'Tier reclassification' -ForegroundColor Cyan
+
+    $somewhere = Join-Path $fixture.TestRoot 'somewhere'
+    $somewhereElse = Join-Path $fixture.TestRoot 'somewhere-else'
+
+    # Tier 2: cannot disturb the owner's HEAD, index, or working tree - unconditional Allow, even
+    # from the main checkout, with no AllowMain. Nothing here touches the filesystem: Tier 2
+    # short-circuits before the location decision ever resolves a target directory.
+    $tier2AllowCases = @(
+        'git worktree prune',
+        'git worktree prune -n',
+        "git worktree remove $somewhere",
+        "git worktree add $somewhere sometopic",
+        "git worktree add -b topic $somewhere", # lowercase -b is the safe, non-destructive spelling
+        'git worktree list', # already allowed today (read-only) - pin, not a new behavior
+        'git branch -d topic',
+        'git branch --delete topic',
+        'git branch newtopic',
+        'git remote prune origin',
+        'git fetch --prune' # already unguarded (not a recognized mutating subcommand) - pin
+    )
+    foreach ($command in $tier2AllowCases) {
+        Invoke-TestCase "Tier 2 unconditional allow from main: $command" {
+            $decision = Invoke-AgentGuardPolicy -Command $command -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
+            Assert-Equal 'Allow' $decision.Action 'Action'
+        }
+    }
+
+    # The force/destructive sibling of each Tier 2 case above can disturb the working tree (or, for
+    # branch -D et al, discard unmerged work), so it drops out of Tier 2 into ordinary Tier 1a Ask.
+    $forceVariantAskCases = @(
+        "git worktree remove --force $somewhere",
+        "git worktree remove -f $somewhere",
+        "git worktree add --force $somewhere sometopic",
+        "git worktree move $somewhere $somewhereElse",
+        'git worktree repair',
+        "git worktree lock $somewhere",
+        "git worktree unlock $somewhere",
+        'git branch -D topic',
+        'git branch -d -f topic',
+        'git branch -df topic',
+        'git branch -fd topic',
+        'git branch --delete --force topic',
+        'git branch -m a b',
+        'git branch -M a b',
+        # -B is git's own force spelling for worktree add (resets an existing branch's tip); the
+        # lowercase -b clustered/exact-match test coverage above (via $tier2AllowCases) stays Allow.
+        "git worktree add -B topic $somewhere"
+    )
+    foreach ($command in $forceVariantAskCases) {
+        Invoke-TestCase "Force/destructive variant asks (not Tier 2) from main: $command" {
+            $decision = Invoke-AgentGuardPolicy -Command $command -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
+            Assert-Equal 'Ask' $decision.Action 'Action'
+            Assert-Equal 'agent-main-git-mutation' $decision.Rule 'Rule'
+        }
+    }
+
+    # Tier 1a: guarded, not Tier 2, not commit - a permission prompt instead of a silent Deny.
+    $tier1aAskCases = @(
+        'git checkout other', 'git switch other', 'git reset HEAD~1', 'git stash', 'git push',
+        'git tag v1.0.0', 'git add .', 'git config user.name x'
+    )
+    foreach ($command in $tier1aAskCases) {
+        Invoke-TestCase "Tier 1a asks from main: $command" {
+            $decision = Invoke-AgentGuardPolicy -Command $command -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
+            Assert-Equal 'Ask' $decision.Action 'Action'
+        }
+    }
+
+    # Tier 1b: only commit stays a silent Deny. `git commit -m test` and the unbalanced-quote case
+    # are already covered above; this adds the one commit variant that was not: --amend.
+    Invoke-TestCase 'git commit --amend from main is still denied (Tier 1b, unchanged)' {
+        $decision = Invoke-AgentGuardPolicy -Command 'git commit --amend' -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Deny' $decision.Action 'Action'
+        Assert-Equal 'agent-main-git-mutation' $decision.Rule 'Rule'
+    }
+
+    # Critical regression: the location scan used to break at the FIRST blocking segment and derive
+    # the Tier1b-vs-Ask decision from that one segment alone. So a non-commit mutation blocking
+    # earlier in a chain (e.g. `git add .`) hid a `commit` blocking later, misclassifying the whole
+    # command as Ask. commit must never be reachable behind an Ask prompt: approving the prompt
+    # would run the earlier mutation in the owner's checkout, then commit would die at the separate
+    # pre-commit backstop, leaving the owner's index staged with the agent's files.
+    $commitDominatesCases = @(
+        'git add . && git commit -m x',
+        'git add .; git commit -m x',
+        'git commit -m x && git add .'
+    )
+    foreach ($command in $commitDominatesCases) {
+        Invoke-TestCase "Commit dominates regardless of scan order: $command" {
+            $decision = Invoke-AgentGuardPolicy -Command $command -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
+            Assert-Equal 'Deny' $decision.Action 'Action'
+            Assert-Equal 'agent-main-git-mutation' $decision.Rule 'Rule'
+        }
+    }
+
+    # Safety rules (force-push, reset --hard, clean -f, checkout ., dangerous rm) short-circuit
+    # Invoke-AgentGuardPolicy before the location decision ever runs (see common.ps1:1147), so Ask
+    # is structurally unreachable for them. $safetyCases/$indirectSafetyCases above already pin
+    # Get-AgentCommandSafetyDecision's Action/Rule; this confirms the same end to end through the
+    # full policy, never downgraded to Ask.
+    $safetyStillDenyEndToEndCases = @(
+        'git push --force', 'git push -f', 'git reset --hard', 'git clean -fd', 'git checkout .', 'rm -rf src'
+    )
+    foreach ($command in $safetyStillDenyEndToEndCases) {
+        Invoke-TestCase "Safety rule still denies end to end, never Ask: $command" {
+            $decision = Invoke-AgentGuardPolicy -Command $command -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
+            Assert-Equal 'Deny' $decision.Action 'Action'
+        }
+    }
+
+    # No regression inside a managed worktree: every Tier 1a and Tier 2 command above must still be
+    # a plain Allow when it is not targeting the main checkout at all.
+    foreach ($command in (@($tier2AllowCases) + @($forceVariantAskCases) + @($tier1aAskCases))) {
+        Invoke-TestCase "No regression in a managed worktree: $command" {
+            $decision = Invoke-AgentGuardPolicy -Command $command -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
+            Assert-Equal 'Allow' $decision.Action 'Action'
+        }
+    }
+
+    Invoke-TestCase 'AHKFLOW_ALLOW_MAIN=1 downgrades a Tier 1a Ask to Warn' {
+        $decision = Invoke-AgentGuardPolicy -Command 'git checkout other' `
+            -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main -AllowMain $true
+        Assert-Equal 'Warn' $decision.Action 'Action'
+    }
+
+    # Resolved design decision: AHKFLOW_ALLOW_MAIN=1 keeps its exact current behavior for commit -
+    # a warned Allow, not a Deny. This task only changes whether a prompt is offered when it's unset.
+    Invoke-TestCase 'AHKFLOW_ALLOW_MAIN=1 still turns a commit Deny into a warned Allow' {
+        $decision = Invoke-AgentGuardPolicy -Command 'git commit -m test' `
+            -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main -AllowMain $true
+        Assert-Equal 'Warn' $decision.Action 'Action'
+    }
+
+    Write-Host 'Tier reclassification: adapter matrix' -ForegroundColor Cyan
+
+    Invoke-TestCase 'Claude: a Tier 1a decision emits permissionDecision ask' {
+        $result = Invoke-Entrypoint -StdIn (New-ClaudePayload 'git checkout other' $script:RealMainCheckout) -Adapter 'Claude'
+        Assert-Equal 0 $result.ExitCode 'ExitCode'
+        $json = $result.StdOut | ConvertFrom-Json
+        Assert-Equal 'ask' $json.hookSpecificOutput.permissionDecision 'permissionDecision'
+    }
+
+    Invoke-TestCase 'Codex: a Tier 1a decision is translated to deny, never ask' {
+        $result = Invoke-Entrypoint -StdIn (New-CodexPayload 'git checkout other' $script:RealMainCheckout) -Adapter 'Codex'
+        Assert-Equal 0 $result.ExitCode 'ExitCode'
+        $json = $result.StdOut | ConvertFrom-Json
+        Assert-Equal 'deny' $json.hookSpecificOutput.permissionDecision 'permissionDecision'
+    }
+
+    Invoke-TestCase 'Copilot: a Tier 1a decision emits permissionDecision ask' {
+        $result = Invoke-Entrypoint -StdIn (New-CopilotPayload 'git checkout other' $script:RealMainCheckout) -Adapter 'Copilot'
+        Assert-Equal 0 $result.ExitCode 'ExitCode'
+        $json = $result.StdOut | ConvertFrom-Json
+        Assert-Equal 'ask' $json.permissionDecision 'permissionDecision'
+    }
+
+    Write-Host 'Subagent Ask->Deny downgrade' -ForegroundColor Cyan
+
+    # Binding security control (plan-mandated): a subagent cannot show an interactive prompt, so a
+    # Tier 1a hit from a subagent call must resolve to Deny, never Ask, on every adapter.
+    Invoke-TestCase 'Claude: a subagent Tier 1a hit is denied, never asked' {
+        $result = Invoke-Entrypoint -StdIn (New-ClaudePayload 'git checkout other' $script:RealMainCheckout -AgentId 'subagent-test-1') -Adapter 'Claude'
+        Assert-Equal 0 $result.ExitCode 'ExitCode'
+        $json = $result.StdOut | ConvertFrom-Json
+        Assert-Equal 'deny' $json.hookSpecificOutput.permissionDecision 'permissionDecision'
+        Assert-Match 'subagent' $json.hookSpecificOutput.permissionDecisionReason 'reason'
+    }
+
+    # Control: the identical command with no agent_id must still Ask - otherwise the Deny assertion
+    # above could pass vacuously (e.g. if the command were Deny for an unrelated reason).
+    Invoke-TestCase 'Claude: the same Tier 1a command without agent_id still asks (control)' {
+        $result = Invoke-Entrypoint -StdIn (New-ClaudePayload 'git checkout other' $script:RealMainCheckout) -Adapter 'Claude'
+        Assert-Equal 0 $result.ExitCode 'ExitCode'
+        $json = $result.StdOut | ConvertFrom-Json
+        Assert-Equal 'ask' $json.hookSpecificOutput.permissionDecision 'permissionDecision'
+    }
+
+    Invoke-TestCase 'Unknown decision action fails closed, verified structurally on every adapter branch' {
+        # New-AgentGuardDecision's ValidateSet (Allow/Warn/Deny/Ask) makes an "unrecognized" Action
+        # structurally unreachable through any real policy input - it can only come from a defect in
+        # the decision engine itself. Invoke-Entrypoint runs the entrypoint as a real subprocess
+        # (Invoke-CapturedProcess), so a function shadow defined in this test process cannot reach
+        # it; calling Invoke-AgentGuardPolicy directly cannot exercise the adapter's own JSON/exit
+        # translation, which is exactly what is under test. There is no seam to inject a fault into
+        # the subprocess without adding a test-only hook to the product code, which is not
+        # proportionate for this one case (see task-1-brief.md, section C1). This instead asserts
+        # the fail-closed *structure* by inspecting the entrypoint's source: every adapter branch
+        # must explicitly deny on any action it does not recognize, rather than falling through to
+        # an implicit allow.
+        $source = Get-Content -LiteralPath $entrypointScript -Raw
+
+        $codexStart = $source.IndexOf("'Codex' {")
+        $copilotStart = $source.IndexOf("'Copilot' {")
+        $claudeStart = $source.IndexOf('default {')
+        Assert-True ($codexStart -ge 0 -and $copilotStart -gt $codexStart -and $claudeStart -gt $copilotStart) `
+            'expected the switch to contain Codex, then Copilot, then the default (Claude) branch in that order'
+
+        $branches = @(
+            @{ Name = 'Codex'; Text = $source.Substring($codexStart, $copilotStart - $codexStart) },
+            @{ Name = 'Copilot'; Text = $source.Substring($copilotStart, $claudeStart - $copilotStart) },
+            @{ Name = 'Claude (default)'; Text = $source.Substring($claudeStart) }
+        )
+
+        foreach ($branch in $branches) {
+            Assert-True ($branch.Text.Contains("if (`$decision.Action -eq 'Allow') { exit 0 }")) `
+                "$($branch.Name): a recognized Allow must exit before the fail-closed fallback is reached"
+            Assert-True ($branch.Text.Contains('unrecognized decision action')) `
+                "$($branch.Name): must diagnose an unrecognized action rather than silently falling through"
+            Assert-True ($branch.Text.ToLowerInvariant().Contains('deny')) `
+                "$($branch.Name): must deny an unrecognized action (fail closed)"
+        }
+    }
+
     Write-Host 'Mutation detection' -ForegroundColor Cyan
 
     $mutatingCommands = @(
@@ -761,7 +981,9 @@ try {
     }
 
     Invoke-TestCase 'Set-Location into main before a git mutation is denied' {
-        $command = "Set-Location -LiteralPath `"$($fixture.Main)`"; git branch review-bypass"
+        # git commit is the go-to probe for "any location mutation" here: a plain `git branch
+        # <name>` create is now Tier 2 Allow, so it no longer demonstrates a location denial.
+        $command = "Set-Location -LiteralPath `"$($fixture.Main)`"; git commit -m test"
         $decision = Invoke-AgentGuardPolicy -Command $command -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
         Assert-Equal 'Deny' $decision.Action 'Action'
         Assert-Equal 'agent-main-git-mutation' $decision.Rule 'Rule'
@@ -868,9 +1090,10 @@ try {
         Assert-Equal 'Deny' $decision.Action 'Action'
     }
 
-    Invoke-TestCase 'git init inside the protected checkout is denied' {
+    Invoke-TestCase 'git init inside the protected checkout is asked (Tier 1a, not commit)' {
         $decision = Invoke-AgentGuardPolicy -Command 'git init .' -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
-        Assert-Equal 'Deny' $decision.Action 'Action'
+        Assert-Equal 'Ask' $decision.Action 'Action'
+        Assert-Equal 'agent-main-git-mutation' $decision.Rule 'Rule'
     }
 
     Invoke-TestCase 'git init in an unrelated empty temp directory is allowed' {
@@ -882,10 +1105,22 @@ try {
 
     Write-Host 'Adapter output contracts' -ForegroundColor Cyan
 
-    Invoke-TestCase 'Claude denial writes stderr and exits 2' {
+    Invoke-TestCase 'Claude commit denial (a location rule) emits hookSpecificOutput deny and exits 0' {
+        # Commit stays Tier 1b Deny, but the wire protocol for the three location rules is now the
+        # JSON hookSpecificOutput contract on every action (Ask included), not the legacy
+        # stderr + exit 2 pair - that pair is reserved for safety-rule and ambiguous-command denials.
         $result = Invoke-Entrypoint -StdIn (New-ClaudePayload 'git commit -m test' $script:RealMainCheckout) -Adapter 'Claude'
+        Assert-Equal 0 $result.ExitCode 'ExitCode'
+        $json = $result.StdOut | ConvertFrom-Json
+        Assert-Equal 'PreToolUse' $json.hookSpecificOutput.hookEventName 'hookEventName'
+        Assert-Equal 'deny' $json.hookSpecificOutput.permissionDecision 'permissionDecision'
+        Assert-Match 'BLOCKED: agent Git mutations' $json.hookSpecificOutput.permissionDecisionReason 'reason'
+    }
+
+    Invoke-TestCase 'Claude safety-rule denial still uses the legacy stderr + exit 2 protocol' {
+        $result = Invoke-Entrypoint -StdIn (New-ClaudePayload 'git reset --hard' $script:RealMainCheckout) -Adapter 'Claude'
         Assert-Equal 2 $result.ExitCode 'ExitCode'
-        Assert-Match 'BLOCKED: agent Git mutations' $result.StdErr 'StdErr'
+        Assert-Match 'BLOCKED: git reset --hard' $result.StdErr 'StdErr'
     }
 
     Invoke-TestCase 'Codex denial emits hookSpecificOutput and exits 0' {
@@ -950,9 +1185,12 @@ try {
     foreach ($command in $candidateCommands) {
         Invoke-TestCase "Bash shim forwards candidate command: $command" {
             $result = Invoke-BashShim -StdIn (New-ClaudePayload $command $script:RealMainCheckout) -ShimArguments @('Claude')
-            # Reaching PowerShell is what is under test: every candidate above either denies or warns.
-            $reachedPolicy = $result.ExitCode -eq 2 -or $result.StdErr -match 'BLOCKED|WARNING'
-            Assert-True $reachedPolicy "expected the command to reach the policy core (exit $($result.ExitCode), stderr '$($result.StdErr)')"
+            # Reaching PowerShell is what is under test: every candidate above either denies (legacy
+            # stderr + exit 2, or the JSON hookSpecificOutput protocol for a location-rule commit
+            # denial) or warns.
+            $reachedPolicy = $result.ExitCode -eq 2 -or $result.StdErr -match 'BLOCKED|WARNING' -or
+            $result.StdOut -match 'permissionDecision'
+            Assert-True $reachedPolicy "expected the command to reach the policy core (exit $($result.ExitCode), stdout '$($result.StdOut)', stderr '$($result.StdErr)')"
         }
     }
 
@@ -963,8 +1201,10 @@ try {
         '{"command":"cd f&&git commit -m test"},"cwd":"' +
         ($script:RealMainCheckout -replace '\\', '\\') + '"}'
         $result = Invoke-BashShim -StdIn $escaped -ShimArguments @('Claude')
-        Assert-Equal 2 $result.ExitCode 'ExitCode'
-        Assert-Match 'BLOCKED: agent Git mutations' $result.StdErr 'StdErr'
+        Assert-Equal 0 $result.ExitCode 'ExitCode'
+        $json = $result.StdOut | ConvertFrom-Json
+        Assert-Equal 'deny' $json.hookSpecificOutput.permissionDecision 'permissionDecision'
+        Assert-Match 'BLOCKED: agent Git mutations' $json.hookSpecificOutput.permissionDecisionReason 'reason'
     }
 
     Invoke-TestCase 'Bash shim exits fast for a noncandidate command despite a matching cwd' {
@@ -1015,8 +1255,10 @@ try {
 
         $result = Invoke-BashShim -StdIn (New-ClaudePayload 'git commit -m test' $script:RealMainCheckout) `
             -ShimArguments @('Claude') -EnvironmentOverrides @{ PATH = $pathWithoutPwsh }
-        Assert-Equal 2 $result.ExitCode 'ExitCode'
-        Assert-Match 'BLOCKED: agent Git mutations' $result.StdErr 'StdErr'
+        Assert-Equal 0 $result.ExitCode 'ExitCode'
+        $json = $result.StdOut | ConvertFrom-Json
+        Assert-Equal 'deny' $json.hookSpecificOutput.permissionDecision 'permissionDecision'
+        Assert-Match 'BLOCKED: agent Git mutations' $json.hookSpecificOutput.permissionDecisionReason 'reason'
     }
 
     Invoke-TestCase 'Bash shim warns and allows when no PowerShell host exists' {

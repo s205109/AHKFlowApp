@@ -17,11 +17,34 @@ $ErrorActionPreference = 'Stop'
 
 $suiteRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 
+# The real AHKFlowApp checkout's own policy core - used only for the PreToolUse-layer pin below,
+# which asserts against the guard's decision object directly rather than a real commit attempt.
+# Every actual commit attempt in this suite still runs against a disposable fixture repository,
+# never this checkout.
+. (Join-Path $suiteRoot 'scripts\agents\agent-worktree-guard.common.ps1')
+
+# $suiteRoot is this file's own location, which is the *main checkout* only when the suite is run
+# from there - a run from inside a managed linked worktree (as agent sessions do) makes $suiteRoot
+# a worktree instead, and Get-ManagedWorktreeState would then read it as ManagedWorktree, not
+# MainCheckout. Same derivation AgentWorktreeGuard.Tests.ps1 uses for $script:RealMainCheckout:
+# walk up from the git-common-dir, which always resolves to the true main checkout regardless of
+# which worktree the suite happens to run from.
+$script:RealMainCheckout = Split-Path -Parent (
+    (& git -C $suiteRoot rev-parse --path-format=absolute --git-common-dir).Trim())
+$script:RealMainCheckout = (Resolve-Path -LiteralPath $script:RealMainCheckout).Path
+
 $script:Failures = New-Object System.Collections.Generic.List[string]
 
 function Assert-True {
     param([bool] $Condition, [string] $Message)
     if (-not $Condition) { throw $Message }
+}
+
+function Assert-Equal {
+    param($Expected, $Actual, [string] $Message)
+    if (-not [string]::Equals([string] $Expected, [string] $Actual, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "$Message (expected '$Expected', got '$Actual')"
+    }
 }
 
 function Invoke-Git {
@@ -190,6 +213,17 @@ $markers = @(
 $fixture = $null
 try {
     $fixture = New-CommitFixture
+
+    # Pins that the PreToolUse layer denies commit from main before the pre-commit backstop this
+    # file otherwise tests is ever reached. Uses the real AHKFlowApp checkout
+    # ($script:RealMainCheckout) as both -Cwd and -ProtectedRepoRoot, the same pattern
+    # AgentWorktreeGuard.Tests.ps1 uses for its Claude/Codex/Copilot adapter-output tests.
+    Invoke-TestCase 'PreToolUse denies commit from main before the backstop is ever reached' {
+        $decision = Invoke-AgentGuardPolicy -Command 'git commit -m test' `
+            -Cwd $script:RealMainCheckout -ProtectedRepoRoot $script:RealMainCheckout
+        Assert-Equal 'Deny' $decision.Action 'Action'
+        Assert-Equal 'agent-main-git-mutation' $decision.Rule 'Rule'
+    }
 
     Invoke-TestCase 'Human commit in main (no agent marker) succeeds' {
         $result = Invoke-CommitAttempt -RepoRoot $fixture.Main

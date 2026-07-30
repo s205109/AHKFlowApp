@@ -271,12 +271,15 @@ an open branch produces a diff full of unrelated commits after the first rebase.
 worktree creation cannot pass a base ref, so stacked work must call the script directly; see the
 `worktrees` skill.
 
-The AHKFlowApp main checkout is human-owned for Git mutations. Agents may inspect, edit, build,
-test, and format there, but must branch, add, commit, merge, rebase, and push for this repository
-only from a managed linked worktree. Use `scripts/new-worktree.ps1`, or the native `EnterWorktree`
-tool — that tool fires the `WorktreeCreate` hook, which runs the same script.
-`AHKFLOW_ALLOW_MAIN=1` is an explicit location override; destructive-command protections still
-apply. See `docs/agents/cross-agent-git-guardrails.md`.
+The AHKFlowApp main checkout is human-owned. Agents may inspect, edit, build, test, and format
+there. The guard gates a Git command only when it could change the human's HEAD, index, or
+working tree in main. Most of these mutations need a managed linked worktree. Run from main
+instead, and most now get an in-session approval prompt. A short list of operations — such as
+`git worktree prune` or deleting an already-merged branch — always run from main, no prompt.
+`git commit` is the one exception. It always needs a worktree, or a session-wide
+`AHKFLOW_ALLOW_MAIN=1` set before the session starts. It never gets a prompt. Use
+`scripts/new-worktree.ps1`, or the native `EnterWorktree` tool — that tool fires the
+`WorktreeCreate` hook, which runs the same script. See `docs/agents/cross-agent-git-guardrails.md`.
 
 ## Agent skills
 

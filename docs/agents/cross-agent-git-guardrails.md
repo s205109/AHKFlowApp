@@ -1,12 +1,16 @@
 # Cross-Agent Git Guardrails
 
-Local Claude Code, Codex, and GitHub Copilot agent sessions must not mutate Git state in the
-human-owned main checkout of this repository. Agents may still **read, edit, build, test, and
-format** in main — this is a Git-mutation guard, not a filesystem sandbox.
+The human works directly in the main checkout of this repository. They do not want an agent
+changing state under them — especially the branch they are standing on. Local Claude Code, Codex,
+and GitHub Copilot agent sessions gate every Git command the same way. The test: could it change
+the human's HEAD, index, or working tree in the main checkout? A command that cannot is allowed
+even from main. Most commands that can need a managed linked worktree, or an in-session approval
+prompt. See "Location tiers" below for the full breakdown. Agents may still **read, edit, build,
+test, and format** in main — this is a Git-mutation guard, not a filesystem sandbox.
 
 ## What "managed" means
 
-A Git mutation is allowed only from a **managed linked worktree**, which is all three of:
+Most Git mutations are allowed only from a **managed linked worktree**, which is all three of:
 
 1. a **linked** worktree (its `--git-dir` differs from the repository's `--git-common-dir`);
 2. located as a **direct child** of `<main>/.claude/worktrees` or `<main>/.worktrees`;
@@ -16,9 +20,14 @@ A Git mutation is allowed only from a **managed linked worktree**, which is all 
 
 The supported way to create one is `scripts/new-worktree.ps1`, or the agent's native `EnterWorktree`
 tool — that tool fires the `WorktreeCreate` hook, which runs the same script.
-A raw `git worktree add` run by an agent is itself a guarded mutation — denied from main — and it
-skips the manifest and no-auth setup, so the result would fail the managed check anyway. Use the
-tool, whose child Git calls the payload never exposes to the guard.
+A raw `git worktree add` run by an agent is Tier 2 — allowed even from main, with no prompt (see
+"Location tiers" below). It skips the manifest and no-auth setup that `scripts/new-worktree.ps1`
+performs, though, so the resulting worktree would still fail the managed check. Use the script, or
+the `EnterWorktree` tool, whose child Git calls the payload never exposes to the guard.
+
+This "managed worktree" requirement applies only to Tier 1a and Tier 1b operations (see "Location
+tiers" below). Tier 2 operations never need a managed worktree — for example `git worktree prune`,
+or a safe `git branch -d` on an already-merged branch. They run from main with no prompt.
 
 ## How enforcement works
 
@@ -45,7 +54,7 @@ Policy input:
   Command + Cwd + ProtectedRepoRoot + AHKFLOW_ALLOW_MAIN.
 
 Policy output:
-  { Action = Allow|Warn|Deny, Rule, Message }
+  { Action = Allow|Warn|Deny|Ask, Rule, Message }
 
 Adapter output:
   The agent's native allow/warn/deny response.
@@ -66,6 +75,79 @@ Rule:
 - **Codex** registers `.codex/hooks.json` with a Bash matcher only. On Windows the `commandWindows`
   variant runs one explicit PowerShell process and resolves the repository root inside it. Codex
   reviews project hooks when a repository becomes trusted.
+
+### Location tiers
+
+The location rule sorts every mutating Git invocation into one of three tiers. The test: could
+this command change the human's HEAD, index, or working tree in the main checkout?
+
+**Tier 2 — always allowed, even from main, no worktree, no prompt.** None of these can touch the
+human's HEAD, index, or working tree:
+
+- `git worktree prune`, in any form.
+- `git worktree add <path> <branch>` — unless it carries `--force`/`-f`, or `-B`. `-B` is git's
+  own force spelling for `worktree add`: it resets an existing branch's tip, which is not the same
+  as the safe `-b`.
+- `git worktree remove <path>` — unless `--force`/`-f`.
+- `git worktree list` — already read-only, unaffected by this change.
+- `git branch -d`/`--delete <name>` — unless it carries any force spelling, including bare `-D`
+  (git treats `-D` as `-d --force` combined — it is not the same flag as `-d`) or a clustered
+  short option such as `-df`/`-fd`.
+- A plain `git branch <name>` create — only when it carries zero flags at all.
+- `git remote prune <name>`.
+- `git fetch` — already unguarded before this change, still unaffected.
+
+**Tier 1a — Ask.** The rule: every currently-guarded Git subcommand that is not on the Tier 2 list
+above, and is not `commit`, falls in Tier 1a. This is the complement of two closed sets, so the
+rule cannot go stale the way a hand-typed list can — a subcommand this rule misses cannot exist by
+construction.
+
+For example, Tier 1a covers `checkout`, `reset`, `stash`, `push`, `tag` create/delete, and
+`worktree move`/`repair`, plus roughly two dozen more. This is a sample for readability, not the
+full list. For the full, authoritative set, read `$script:AgentGuardMutatingSubcommands` and the
+conditional-subcommand `switch` inside `Test-AgentGitMutation`, both in
+`scripts/agents/agent-worktree-guard.common.ps1`.
+
+`push` stays in Tier 1a on purpose: TEST auto-deploys on push to `main`. An unprompted push could
+trigger a live deployment. That is a risk on top of the HEAD/index/working-tree test.
+
+Every Tier 1a operation needs an in-session approval prompt to run from main.
+
+**Tier 1b — hard denial, no prompt, ever.** `git commit` is the only Git-mutation subcommand here.
+`commit` can never become a prompt. A `PreToolUse` approval happens before the command runs. The
+separate `.githooks/pre-commit` backstop runs after, and it has no way to know a prompt was
+approved. An approved-then-backstop-blocked commit would be worse than today's outright denial, so
+`commit` stays a hard denial regardless of location. This dominates the whole chained command, not
+just the `commit` segment: `git add . && git commit -m x` is denied outright, even though `git add`
+alone would only need a prompt.
+
+Two more hard denials exist outside the tier system entirely. This change does not touch them: a
+destructive-command safety-rule match (force-push, `reset --hard`, `clean -f`, `checkout .`, a
+dangerous `rm -rf`), and an unparseable `ambiguous-git-command`. Neither was ever gated by
+location logic.
+
+**Adapter matrix for `Ask`.** Each adapter renders `Ask` differently:
+
+- **Claude** sets `hookSpecificOutput.permissionDecision = "ask"` and exits 0, which escalates to
+  a real permission prompt in the session.
+- **Copilot** also sends `permissionDecision = "ask"`. Without an interactive user — cloud or pipe
+  mode — Copilot degrades that to a deny, which is safe.
+- **Codex never receives `ask`.** Codex's hook contract marks `ask` "parsed but not supported
+  yet." It treats an unsupported value as a failed hook run. A failed hook run lets the tool call
+  proceed, so Codex fails *open* on it. The guard renders every `Ask`-tier decision as `deny` on
+  Codex instead. Codex agents get a hard denial where Claude and Copilot agents get a prompt; that
+  is deliberate, not a gap.
+- An unrecognized decision action fails closed (denies) on every adapter.
+
+**Subagents never see `Ask`.** A Task/Agent-tool call carries `agent_id` in Claude's hook payload
+only when it originates inside a subagent. The guard reads that field and downgrades an `Ask` to
+`Deny` for a subagent call, on every adapter that can detect it. In practice, `agent_id` is
+extracted only from the non-Copilot payload branch (see the adapter contract above), so on Copilot
+this downgrade can never fire — a Copilot subagent call is never detected as one, and instead
+surfaces as whatever Copilot's own `Ask` handling decides (see "Adapter matrix for `Ask`" above).
+It is unclear whether a subagent's permission prompt reaches the human the same way a main-thread
+prompt does. A blocked subagent should report back that the command needs a retry from the main
+thread, where it gets a real prompt.
 
 ### Measured latency
 
@@ -97,7 +179,14 @@ starting PowerShell for every command (rejected — it would cost the ~54 ms com
 
 | Switch | Effect |
 | --- | --- |
-| `AHKFLOW_ALLOW_MAIN=1` | Overrides the **location** rule only (turns a location Deny into a warned Allow). Force-push, destructive-Git, and dangerous-file rules still apply. |
+| `AHKFLOW_ALLOW_MAIN=1` | Overrides the **location** rule for every tier, including `commit` (turns a location Deny, or what would otherwise be an Ask prompt, into a warned Allow). Force-push, destructive-Git, and dangerous-file rules still apply. |
+| `AHKFLOW_GUARD_DISABLE=1` | Emergency kill switch. Short-circuits the **entire** command guard before strict mode, module loading, stdin parsing, or Git probes, and warns loudly. Never set it persistently. |
+
+`AHKFLOW_ALLOW_MAIN=1` is no longer the main way to handle a one-off main-checkout mutation. For
+everything except `commit`, the in-session approval prompt handles that now — see "Location
+tiers" above. Set `AHKFLOW_ALLOW_MAIN=1` instead when you expect several main-checkout mutations
+in one session and do not want to approve each one. It is also the only way through when the
+mutation is `commit`, which never prompts.
 
 ### Where `AHKFLOW_ALLOW_MAIN=1` has to be set
 
@@ -116,9 +205,9 @@ call.
 The `pre-commit` backstop behaves differently: git spawns it and passes its own environment down,
 so there an inline `AHKFLOW_ALLOW_MAIN=1 git commit ...` does take effect.
 
-A human's own shell is never subject to the `PreToolUse` guard at all — it is an agent hook. Main
-checkout maintenance (`git worktree remove`, `git branch -D`) is simply run directly.
-| `AHKFLOW_GUARD_DISABLE=1` | Emergency kill switch. Short-circuits the **entire** command guard before strict mode, module loading, stdin parsing, or Git probes, and warns loudly. Never set it persistently. |
+A human's own shell is never subject to the `PreToolUse` guard at all — it is an agent hook. A
+human's own shell can still run main-checkout maintenance directly — for example `git branch -D`.
+An agent running the same command would need a prompt or override.
 
 ## Accepted limitations
 
@@ -148,6 +237,9 @@ checkout maintenance (`git worktree remove`, `git branch -D`) is simply run dire
   Git after such a `cd` is unaffected. Pass an explicit `git -C <path>` to be classified normally.
 - `commit --no-verify` and `--git-dir`/`--work-tree` targeting cannot be safely inferred, so a
   mutating invocation using `--git-dir`/`--work-tree` is denied outright (unless `AHKFLOW_ALLOW_MAIN=1`).
+- File edits in main are not guarded by this mechanism at all. An `Edit`/`Write` tool call can
+  change the human's files under them the same way a Git mutation can, but this guard only covers
+  Git commands. Closing that gap is separate work, not part of this change.
 
 ## Version-skew and authoritative main
 
@@ -165,17 +257,43 @@ pwsh -NoProfile -File tests/AgentPreCommitHook.Tests.ps1
 
 Both also run under Windows PowerShell 5.1 and in the `worktree-powershell-tests` CI job.
 
-## Diagnosing a denial without disabling hooks globally
+## Diagnosing a denial or approval prompt without disabling hooks globally
 
-The stderr diagnostic names the resolved adapter and rule, e.g.
+The stderr diagnostic names the resolved adapter, action, and rule, e.g.
+`[agent-guard:Claude] ask [agent-main-git-mutation]` or
 `[agent-guard:Claude] deny [agent-main-git-mutation]`. To act on it:
 
-1. If the command genuinely belongs in a worktree, create one with `scripts/new-worktree.ps1` and
-   re-run it there.
-2. For a one-off intentional main mutation, set `AHKFLOW_ALLOW_MAIN=1` in the session environment
-   before starting the agent (see "Where `AHKFLOW_ALLOW_MAIN=1` has to be set" — an inline prefix
-   does **not** reach the `PreToolUse` guard). A warning is printed; destructive rules still apply.
-3. Only for a broken hook, use the emergency recovery procedure below.
+1. If the command triggered an approval prompt, decide right there: approve it to run in main now,
+   or create a worktree with `scripts/new-worktree.ps1` and re-run the command there instead.
+2. If the command was denied outright by the location guard (rule `agent-main-git-mutation` and
+   similar), with no prompt at all, several different cases land here, including:
+   - **`git commit`.** `commit` never prompts, no matter where it runs from. Create a worktree
+     with `scripts/new-worktree.ps1` and re-run it there (or set `AHKFLOW_ALLOW_MAIN=1` in
+     advance — see item 3 below).
+   - **Any other guarded operation, run by a subagent.** A Task/Agent-tool call would normally get
+     `Ask`, but the guard downgrades that to a hard `Deny` when the call comes from a subagent
+     rather than the main conversation thread (see "Subagents never see `Ask`" above). Retry the
+     same command from the main thread — it gets a real prompt there — or run it from a managed
+     worktree instead, which never produces a prompt in the first place.
+   - **Any other guarded operation, run from Codex, or from Copilot without an interactive user.**
+     Both adapters would normally get `Ask` too, but neither can show a real prompt there: Codex's
+     hook contract does not support `ask` yet, so the guard renders every `Ask`-tier decision as
+     `deny` for Codex instead; Copilot does emit a real `ask`, but in cloud or pipe mode — with no
+     interactive user to answer it — Copilot itself degrades that to a deny (see "Adapter matrix
+     for `Ask`" above). Retrying does not help here, since the cause is the adapter, not the
+     caller. Create a managed worktree, or set `AHKFLOW_ALLOW_MAIN=1` in advance for the session
+     (see item 3 below) — the prompt itself is never available in this case, by design.
+
+   This list is not exhaustive — other combinations of adapter and caller may hard-deny the same
+   way. A denial from a different rule (force-push, `git reset --hard`, an unparseable command, and
+   the like) is a destructive-command safety rule, not a location rule. A worktree will not change
+   its outcome — discuss the command with the user instead.
+3. Expect several main-checkout mutations this session and do not want to approve each one? Set
+   `AHKFLOW_ALLOW_MAIN=1` in the session environment before starting the agent (see "Where
+   `AHKFLOW_ALLOW_MAIN=1` has to be set" — an inline prefix does **not** reach the `PreToolUse`
+   guard). It is also the only way through for `git commit`, which never prompts. A warning is
+   printed; destructive rules still apply.
+4. Only for a broken hook, use the emergency recovery procedure below.
 
 ### Emergency recovery
 

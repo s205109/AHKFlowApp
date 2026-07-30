@@ -7,7 +7,9 @@
 #
 # The optional first argument is an explicit adapter override (Codex uses it). Without one,
 # Copilot is inferred from a top-level "toolArgs" key and Claude is assumed otherwise.
-# Exit 2 = block the command, exit 0 = allow.
+# Exit 2 = block (legacy stderr protocol). Exit 0 does not always mean allow: for Claude, a
+# deny or ask decision from the location rules travels as JSON on stdout instead, still with
+# exit 0. See invoke-agent-worktree-guard.ps1 for each adapter's exact protocol.
 
 if [[ "${AHKFLOW_GUARD_DISABLE:-}" == "1" ]]; then
   echo "WARNING: AHKFLOW_GUARD_DISABLE=1; all agent command guardrails are disabled." >&2
