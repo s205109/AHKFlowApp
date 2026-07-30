@@ -96,14 +96,21 @@ human's HEAD, index, or working tree:
 - `git remote prune <name>`.
 - `git fetch` — already unguarded before this change, still unaffected.
 
-**Tier 1a — Ask.** Everything else that is currently guarded and is not `commit`: `checkout`,
-`switch`, `restore`, `reset`, `stash`, `add`, `mv`, `rm`, `merge`, `rebase`, `pull`,
-`cherry-pick`, `revert`, `push` (kept in this tier on purpose — TEST auto-deploys on push to
-`main`, so an unprompted push could trigger a live deployment, a risk on top of the
-HEAD/index/working-tree test), `tag` create/delete, `config` writes, `gc`/`repack`/`maintenance`,
-`reflog expire`/`delete`, `worktree add`/`remove` with `--force`/`-f`/`-B`, `worktree
-move`/`repair`/`lock`/`unlock` in every form, `branch -D`/`-m`/`-M`/`-f`/`-u`/`--set-upstream-to`,
-and any `-d` carrying a force flag. These need an in-session approval prompt to run from main.
+**Tier 1a — Ask.** The rule: every currently-guarded Git subcommand that is not on the Tier 2 list
+above, and is not `commit`, falls in Tier 1a. This is the complement of two closed sets, so the
+rule cannot go stale the way a hand-typed list can — a subcommand this rule misses cannot exist by
+construction.
+
+For example, Tier 1a covers `checkout`, `reset`, `stash`, `push`, `tag` create/delete, and
+`worktree move`/`repair`, plus roughly two dozen more. This is a sample for readability, not the
+full list. For the full, authoritative set, read `$script:AgentGuardMutatingSubcommands` and the
+conditional-subcommand `switch` inside `Test-AgentGitMutation`, both in
+`scripts/agents/agent-worktree-guard.common.ps1`.
+
+`push` stays in Tier 1a on purpose: TEST auto-deploys on push to `main`. An unprompted push could
+trigger a live deployment. That is a risk on top of the HEAD/index/working-tree test.
+
+Every Tier 1a operation needs an in-session approval prompt to run from main.
 
 **Tier 1b — hard denial, no prompt, ever.** `git commit` is the only Git-mutation subcommand here.
 `commit` can never become a prompt. A `PreToolUse` approval happens before the command runs. The
@@ -252,11 +259,19 @@ The stderr diagnostic names the resolved adapter, action, and rule, e.g.
 1. If the command triggered an approval prompt, decide right there: approve it to run in main now,
    or create a worktree with `scripts/new-worktree.ps1` and re-run the command there instead.
 2. If the command was denied outright by the location guard (rule `agent-main-git-mutation` and
-   similar), it needs a worktree. This is always `git commit`, the one subcommand that never
-   prompts. Create a worktree with `scripts/new-worktree.ps1` and re-run it there. A denial from a
-   different rule (force-push, `git reset --hard`, an unparseable command, and the like) is a
-   destructive-command safety rule, not a location rule. A worktree will not change its outcome —
-   discuss the command with the user instead.
+   similar), with no prompt at all, two different cases land here:
+   - **`git commit`.** `commit` never prompts, no matter where it runs from. Create a worktree
+     with `scripts/new-worktree.ps1` and re-run it there (or set `AHKFLOW_ALLOW_MAIN=1` in
+     advance — see item 3 below).
+   - **Any other guarded operation, run by a subagent.** A Task/Agent-tool call would normally get
+     `Ask`, but the guard downgrades that to a hard `Deny` when the call comes from a subagent
+     rather than the main conversation thread (see "Subagents never see `Ask`" above). Retry the
+     same command from the main thread — it gets a real prompt there — or run it from a managed
+     worktree instead, which never produces a prompt in the first place.
+
+   A denial from a different rule (force-push, `git reset --hard`, an unparseable command, and the
+   like) is a destructive-command safety rule, not a location rule. A worktree will not change its
+   outcome — discuss the command with the user instead.
 3. Expect several main-checkout mutations this session and do not want to approve each one? Set
    `AHKFLOW_ALLOW_MAIN=1` in the session environment before starting the agent (see "Where
    `AHKFLOW_ALLOW_MAIN=1` has to be set" — an inline prefix does **not** reach the `PreToolUse`
