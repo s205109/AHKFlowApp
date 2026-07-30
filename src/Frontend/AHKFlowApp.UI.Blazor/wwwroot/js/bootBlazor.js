@@ -32,12 +32,55 @@
         }
     }
 
+    // How long to wait after an uncaught error before calling the boot failed. A failed asset
+    // download is reported by the .NET runtime as an uncaught error, and the promise returned by
+    // Blazor.start() then never settles, so the uncaught error is the only signal we get. Waiting
+    // a few seconds first means an unrelated error thrown by a boot that still succeeds is ignored.
+    var bootFailureGraceMs = 5000;
+
+    var bootSettled = false;
+
+    function onBootSucceeded() {
+        bootSettled = true;
+        clearReloadGuard();
+    }
+
+    function onBootFailed(error) {
+        if (bootSettled) {
+            return;
+        }
+
+        bootSettled = true;
+
+        // Required, not optional: catching the rejection removes the browser's own
+        // "Uncaught (in promise)" log, so without this a developer is left with less
+        // than before. Pass the original error object, never a summarized string.
+        console.error('Blazor failed to start:', error);
+
+        if (tryClaimReload()) {
+            window.location.reload();
+        }
+    }
+
+    function onUncaughtDuringBoot(error) {
+        if (bootSettled) {
+            return;
+        }
+
+        window.setTimeout(function () {
+            onBootFailed(error);
+        }, bootFailureGraceMs);
+    }
+
+    window.addEventListener('error', function (event) {
+        onUncaughtDuringBoot(event.error || event.message);
+    });
+
+    window.addEventListener('unhandledrejection', function (event) {
+        onUncaughtDuringBoot(event.reason);
+    });
+
     Blazor.start()
-        .then(clearReloadGuard)
-        .catch(function (error) {
-            // Required, not optional: catching the rejection removes the browser's own
-            // "Uncaught (in promise)" log, so without this a developer is left with less
-            // than before. Pass the original error object, never a summarized string.
-            console.error('Blazor failed to start:', error);
-        });
+        .then(onBootSucceeded)
+        .catch(onBootFailed);
 })();
