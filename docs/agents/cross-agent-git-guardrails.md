@@ -217,9 +217,21 @@ An agent running the same command would need a prompt or override.
   ref write, and is too blunt for this guardrail.
 - No general shell-command allowlist. Unknown non-Git commands and unknown Git subcommands are
   allowed; mutation detection is a denylist, not an allowlist.
-- `git commit --no-verify`, a replaced `core.hooksPath`, shell aliases, and wrappers such as
-  `pwsh -File custom.ps1` (whose child Git calls the outer payload never exposes) remain bypasses.
-  This is also why calling `new-worktree.ps1` / `remove-worktree-local-dev.ps1` does not self-lock.
+- `git commit --no-verify`, a replaced `core.hooksPath`, and shell aliases remain bypasses. This is
+  also why calling `new-worktree.ps1` / `remove-worktree-local-dev.ps1` does not self-lock.
+- The guard now sees through `rtk`, including its leading global options and its pass-through
+  subcommands (`proxy`, `run`, `err`, `summary`, `test`). A wrapper that hides the command inside a
+  quoted string still bypasses the guard, because the tokenizer keeps a quoted string as one token:
+  `sh -c '...'`, `rtk run "..."`, and `pwsh -File custom.ps1` all bypass the guard this way. Two
+  smaller gaps are pinned by tests instead of fixed: a wrapper option that consumes the next token
+  as its value (`rtk --out foo git commit`, which rtk has no option for today), and a `NAME=value`
+  assignment placed after the wrapper (`rtk FOO=1 git commit -m x`).
+- An externally registered command-rewriting `PreToolUse` hook can quietly turn the guard off. This
+  differs from a person knowingly typing a wrapper, because the hook runs on every command by
+  default, not only when someone chooses to type it. `rtk hook claude` is one example; the
+  transparent-wrapper list is the mitigation.
+- The transparent-wrapper list is hard-coded and narrow on purpose. Any wrapper that is not on the
+  list hides its child git calls exactly as before.
 - Adapter parse errors and unexpected location-policy errors **fail open** with a warning; only an
   explicit safety-rule match (or a safety-rule evaluation fault) **fails closed**.
 - Main-tree edits, builds, tests, and formatters are allowed and can dirty the working tree. The
