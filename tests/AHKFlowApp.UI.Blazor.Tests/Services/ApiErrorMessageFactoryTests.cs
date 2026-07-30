@@ -20,6 +20,28 @@ public sealed class ApiErrorMessageFactoryTests
     }
 
     [Fact]
+    public void Build_ForValidation_ShowsOnlyTheLastSegmentOfANestedKey()
+    {
+        // FluentValidation names a nested property by its whole path. "Input.Does" describes the
+        // request object, not anything the reader typed into.
+        var problem = new ApiProblemDetails(null, "Validation failed", 400, null, null,
+            new Dictionary<string, string[]> { ["Input.Does"] = ["Say what the keys do."] });
+
+        string msg = ApiErrorMessageFactory.Build(ApiResultStatus.Validation, problem);
+
+        msg.Should().Be("Does: Say what the keys do.");
+    }
+
+    [Fact]
+    public void Build_ForNotFoundWithoutDetail_NamesNoEntity()
+    {
+        // Every page shares this helper, so the fallback must not name one entity.
+        string msg = ApiErrorMessageFactory.Build(ApiResultStatus.NotFound, null);
+
+        msg.Should().NotContain("otstring");
+    }
+
+    [Fact]
     public void Build_ForConflict_UsesProblemDetailOrFallback()
     {
         var problem = new ApiProblemDetails(null, "Conflict", 409, "Trigger already exists for this profile", null, null);
