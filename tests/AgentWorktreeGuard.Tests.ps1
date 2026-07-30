@@ -192,13 +192,19 @@ function Invoke-BashShim {
 }
 
 function New-ClaudePayload {
-    param([string] $Command, [string] $Cwd)
-    return @{
+    param([string] $Command, [string] $Cwd, [string] $AgentId = '')
+    $payload = @{
         hook_event_name = 'PreToolUse'
         tool_name       = 'Bash'
         tool_input      = @{ command = $Command }
         cwd             = $Cwd
-    } | ConvertTo-Json -Compress -Depth 4
+    }
+    # Present at the top level only when the call originates inside a subagent - see
+    # ConvertFrom-AgentHookInput. Optional so every existing caller is unaffected.
+    if (-not [string]::IsNullOrWhiteSpace($AgentId)) {
+        $payload.agent_id = $AgentId
+    }
+    return $payload | ConvertTo-Json -Compress -Depth 4
 }
 
 function New-CodexPayload {
@@ -647,7 +653,10 @@ try {
         'git branch -fd topic',
         'git branch --delete --force topic',
         'git branch -m a b',
-        'git branch -M a b'
+        'git branch -M a b',
+        # -B is git's own force spelling for worktree add (resets an existing branch's tip); the
+        # lowercase -b clustered/exact-match test coverage above (via $tier2AllowCases) stays Allow.
+        "git worktree add -B topic $somewhere"
     )
     foreach ($command in $forceVariantAskCases) {
         Invoke-TestCase "Force/destructive variant asks (not Tier 2) from main: $command" {
@@ -675,6 +684,25 @@ try {
         $decision = Invoke-AgentGuardPolicy -Command 'git commit --amend' -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
         Assert-Equal 'Deny' $decision.Action 'Action'
         Assert-Equal 'agent-main-git-mutation' $decision.Rule 'Rule'
+    }
+
+    # Critical regression: the location scan used to break at the FIRST blocking segment and derive
+    # the Tier1b-vs-Ask decision from that one segment alone. So a non-commit mutation blocking
+    # earlier in a chain (e.g. `git add .`) hid a `commit` blocking later, misclassifying the whole
+    # command as Ask. commit must never be reachable behind an Ask prompt: approving the prompt
+    # would run the earlier mutation in the owner's checkout, then commit would die at the separate
+    # pre-commit backstop, leaving the owner's index staged with the agent's files.
+    $commitDominatesCases = @(
+        'git add . && git commit -m x',
+        'git add .; git commit -m x',
+        'git commit -m x && git add .'
+    )
+    foreach ($command in $commitDominatesCases) {
+        Invoke-TestCase "Commit dominates regardless of scan order: $command" {
+            $decision = Invoke-AgentGuardPolicy -Command $command -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
+            Assert-Equal 'Deny' $decision.Action 'Action'
+            Assert-Equal 'agent-main-git-mutation' $decision.Rule 'Rule'
+        }
     }
 
     # Safety rules (force-push, reset --hard, clean -f, checkout ., dangerous rm) short-circuit
@@ -736,6 +764,27 @@ try {
         Assert-Equal 0 $result.ExitCode 'ExitCode'
         $json = $result.StdOut | ConvertFrom-Json
         Assert-Equal 'ask' $json.permissionDecision 'permissionDecision'
+    }
+
+    Write-Host 'Subagent Ask->Deny downgrade' -ForegroundColor Cyan
+
+    # Binding security control (plan-mandated): a subagent cannot show an interactive prompt, so a
+    # Tier 1a hit from a subagent call must resolve to Deny, never Ask, on every adapter.
+    Invoke-TestCase 'Claude: a subagent Tier 1a hit is denied, never asked' {
+        $result = Invoke-Entrypoint -StdIn (New-ClaudePayload 'git checkout other' $script:RealMainCheckout -AgentId 'subagent-test-1') -Adapter 'Claude'
+        Assert-Equal 0 $result.ExitCode 'ExitCode'
+        $json = $result.StdOut | ConvertFrom-Json
+        Assert-Equal 'deny' $json.hookSpecificOutput.permissionDecision 'permissionDecision'
+        Assert-Match 'subagent' $json.hookSpecificOutput.permissionDecisionReason 'reason'
+    }
+
+    # Control: the identical command with no agent_id must still Ask - otherwise the Deny assertion
+    # above could pass vacuously (e.g. if the command were Deny for an unrelated reason).
+    Invoke-TestCase 'Claude: the same Tier 1a command without agent_id still asks (control)' {
+        $result = Invoke-Entrypoint -StdIn (New-ClaudePayload 'git checkout other' $script:RealMainCheckout) -Adapter 'Claude'
+        Assert-Equal 0 $result.ExitCode 'ExitCode'
+        $json = $result.StdOut | ConvertFrom-Json
+        Assert-Equal 'ask' $json.hookSpecificOutput.permissionDecision 'permissionDecision'
     }
 
     Invoke-TestCase 'Unknown decision action fails closed, verified structurally on every adapter branch' {

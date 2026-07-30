@@ -852,7 +852,16 @@ function Test-AgentGitTier2Allowed {
     switch ($subcommand) {
         'worktree' {
             if ($first -eq 'prune') { return $true }
-            if ($first -in @('add', 'remove')) {
+            if ($first -eq 'add') {
+                # -B is git's own force spelling for worktree add (resets an existing branch's tip
+                # to the given commit-ish, unlike -b which refuses if the branch already exists) -
+                # the same discard/move-history risk -D already covers for branch below. worktree
+                # add does not accept clustered short options, so a plain case-sensitive exact match
+                # is enough; -b (lowercase, the safe non-destructive form) stays Tier 2-eligible.
+                if (@($Arguments | Where-Object { $_ -ceq '-B' }).Count -gt 0) { return $false }
+                return -not (Test-AgentGuardHasForceFlag -Arguments $Arguments)
+            }
+            if ($first -eq 'remove') {
                 return -not (Test-AgentGuardHasForceFlag -Arguments $Arguments)
             }
             return $false
@@ -1093,6 +1102,11 @@ function Get-AgentGitLocationDecision {
     $blockingState = ''
     $blockingTarget = ''
     $blockingSubcommand = ''
+    # Tracks whether ANY blocking segment in the whole chain is a commit, independent of which
+    # segment blocked first. commit must never resolve to Ask under any condition (see the
+    # Deny-vs-Ask branch below), so the scan cannot stop at the first block: an earlier `git add .`
+    # blocking first must not hide a `git commit` blocking later in the same command.
+    $commitBlocks = $false
 
     foreach ($segment in $Segments) {
         if ($segment.Kind -eq 'PopDirectory') {
@@ -1154,10 +1168,13 @@ function Get-AgentGitLocationDecision {
         }
 
         if ($parts.UsesGitDirOrWorkTree) {
-            $blockingState = 'ExplicitGitDir'
-            $blockingTarget = $Cwd
-            $blockingSubcommand = $parts.Subcommand
-            break
+            if ($blockingState -eq '') {
+                $blockingState = 'ExplicitGitDir'
+                $blockingTarget = $Cwd
+                $blockingSubcommand = $parts.Subcommand
+            }
+            if ($parts.Subcommand -ieq 'commit') { $commitBlocks = $true }
+            continue
         }
 
         # Only an absolute `git -C <path>` re-anchors the target independently of the shell's cwd.
@@ -1166,20 +1183,26 @@ function Get-AgentGitLocationDecision {
         # any -C in the chain is absolute, git discards the base, so the result is cwd-independent.
         $dashCReanchors = @($parts.DashC | Where-Object { [System.IO.Path]::IsPathRooted($_) }).Count -gt 0
         if ($unresolvedDirectory -and -not $dashCReanchors) {
-            $blockingState = 'UnresolvedDirectoryChange'
-            $blockingTarget = $Cwd
-            $blockingSubcommand = $parts.Subcommand
-            break
+            if ($blockingState -eq '') {
+                $blockingState = 'UnresolvedDirectoryChange'
+                $blockingTarget = $Cwd
+                $blockingSubcommand = $parts.Subcommand
+            }
+            if ($parts.Subcommand -ieq 'commit') { $commitBlocks = $true }
+            continue
         }
 
         $targetDir = Resolve-AgentGitTargetDirectory -Parts $parts -BaseCwd $effectiveCwd
         $state = Get-ManagedWorktreeState -Cwd $targetDir -ProtectedRepoRoot $ProtectedRepoRoot
 
         if ($state -inotin $script:AgentGuardAllowedStates) {
-            $blockingState = $state
-            $blockingTarget = $targetDir
-            $blockingSubcommand = $parts.Subcommand
-            break
+            if ($blockingState -eq '') {
+                $blockingState = $state
+                $blockingTarget = $targetDir
+                $blockingSubcommand = $parts.Subcommand
+            }
+            if ($parts.Subcommand -ieq 'commit') { $commitBlocks = $true }
+            continue
         }
     }
 
@@ -1187,7 +1210,12 @@ function Get-AgentGitLocationDecision {
         return New-AgentGuardDecision -Action Allow
     }
 
-    $isTier1b = ($blockingSubcommand -ieq 'commit')
+    # Commit dominates regardless of scan order. If a commit blocks anywhere in the chain, the
+    # overall decision is Tier 1b (Deny), never Ask - even when a different segment (e.g. `git add
+    # .`) blocked first and supplied the message/target above. Approving an Ask here would let the
+    # earlier mutation run, then commit would die at the separate pre-commit backstop, leaving the
+    # owner's index staged with the agent's files - exactly the failure mode Ask must never produce.
+    $isTier1b = $commitBlocks
 
     if ($blockingState -eq 'ExplicitGitDir') {
         if ($AllowMain) {
