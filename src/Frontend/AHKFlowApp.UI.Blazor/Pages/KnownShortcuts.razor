@@ -3,6 +3,7 @@
 @using AHKFlowApp.UI.Blazor.Helpers
 @using AHKFlowApp.UI.Blazor.Services
 @using MudBlazor
+@using Microsoft.AspNetCore.Components.Authorization
 @implements IDisposable
 
 <PageTitle>Known shortcuts</PageTitle>
@@ -17,11 +18,13 @@
 <MudPaper Class="pa-4">
     <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Wrap="Wrap.Wrap" Class="mb-4">
         <MudButton Class="add-known-shortcut" Variant="Variant.Filled" Color="Color.Primary"
-                   StartIcon="@Icons.Material.Filled.Add" OnClick="StartAdd" Disabled="@_adding">
+                   StartIcon="@Icons.Material.Filled.Add" OnClick="StartAdd"
+                   Disabled="@(!_isAuthenticated || _adding || _busy)">
             Add
         </MudButton>
         <MudButton Class="reload-known-shortcuts" Variant="Variant.Filled" Color="Color.Secondary"
-                   StartIcon="@Icons.Material.Filled.Refresh" OnClick="ReloadAsync" Disabled="@_loading">
+                   StartIcon="@Icons.Material.Filled.Refresh" OnClick="ReloadAsync"
+                   Disabled="@(!_isAuthenticated || _loading || _busy)">
             Reload
         </MudButton>
         <MudTextField T="string" @bind-Value="_search" Immediate="true" Clearable="true"
@@ -29,6 +32,11 @@
                       AdornmentIcon="@Icons.Material.Filled.Search"
                       UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "known-shortcut-search" })" />
     </MudStack>
+
+    @if (!_isAuthenticated)
+    {
+        <MudAlert Severity="Severity.Info" Class="mb-3">You are not signed in.</MudAlert>
+    }
 
     @if (_adding)
     {
@@ -111,22 +119,24 @@
                 }
             </MudTd>
             <MudTd DataLabel="Actions">
+                @* Every action is disabled while one is running. Two overlapping writes each end
+                   with their own reload, and the older answer could land last. *@
                 @if (context.Use.Origin == ShortcutRecordOrigin.Owner)
                 {
                     <MudIconButton Class="delete-use" Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
-                                   OnClick="() => DeleteAsync(context)"
+                                   OnClick="() => DeleteAsync(context)" Disabled="@_busy"
                                    UserAttributes='@UseAttributes(context, "Delete this record")' />
                 }
                 else if (context.Use.IsIgnored)
                 {
                     <MudIconButton Class="restore-use" Icon="@Icons.Material.Filled.NotificationsActive"
-                                   OnClick="() => RestoreAsync(context)"
+                                   OnClick="() => RestoreAsync(context)" Disabled="@_busy"
                                    UserAttributes='@UseAttributes(context, "Warn about this again")' />
                 }
                 else
                 {
                     <MudIconButton Class="ignore-use" Icon="@Icons.Material.Filled.NotificationsOff"
-                                   OnClick="() => IgnoreAsync(context)"
+                                   OnClick="() => IgnoreAsync(context)" Disabled="@_busy"
                                    UserAttributes='@UseAttributes(context, "Stop warning about this")' />
                 }
             </MudTd>
@@ -148,9 +158,11 @@
 </MudPaper>
 
 @code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
     [Inject] private IKnownShortcutsApiClient Api { get; set; } = default!;
     [Inject] private IKnownShortcutCatalog Catalog { get; set; } = default!;
     [Inject] private ISnackbar Snackbar { get; set; } = default!;
+    [Inject] private IDialogService DialogService { get; set; } = default!;
 
     /// <summary>One use, flattened out of its combination so MudTable stays one row per item.</summary>
     private sealed record UseRow(string ShortcutId, string ComboLabel, ManagedShortcutUseDto Use);
@@ -175,12 +187,30 @@
     private string? _search;
     private string? _loadError;
     private string? _formError;
+    private bool _isAuthenticated;
     private bool _adding;
     private bool _loading;
     private bool _saving;
+
+    // True while a write is in flight. Every action button reads it, so a second write cannot
+    // start before the first one has reloaded the list. Reload watches _loading for the same
+    // reason: one read and one write at a time means two answers can never arrive out of order.
+    private bool _busy;
+
     private readonly CancellationTokenSource _cts = new();
 
-    protected override Task OnInitializedAsync() => LoadAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is not null)
+        {
+            AuthenticationState state = await AuthState;
+            _isAuthenticated = state.User.Identity?.IsAuthenticated ?? false;
+        }
+
+        // Signed out, every call comes back 401. Say so once instead of asking and reporting.
+        if (_isAuthenticated)
+            await LoadAsync();
+    }
 
     private async Task LoadAsync()
     {
@@ -281,31 +311,62 @@
         if (row.Use.OwnerRecordId is not Guid recordId)
             return;
 
-        ApiResult result = await Api.DeleteAsync(recordId, _cts.Token);
-        await AfterMutationAsync(result, "Record deleted.");
+        // Asked first, like every other delete in the app. There is no recycle bin for these, so
+        // a mis-click would mean typing the record again.
+        bool? confirmed = await DialogService.ShowMessageBoxAsync(
+            title: "Delete this record?",
+            message: $"Stop recording that {row.Use.UsedBy} uses {row.ComboLabel}? This cannot be undone.",
+            yesText: "Delete", cancelText: "Cancel");
+
+        if (confirmed != true)
+            return;
+
+        await RunMutationAsync(() => Api.DeleteAsync(recordId, _cts.Token), "Record deleted.");
     }
 
-    private async Task IgnoreAsync(UseRow row)
-    {
-        ApiResult result = await Api.IgnoreAsync(row.ShortcutId, row.Use.UsedBy, _cts.Token);
-        await AfterMutationAsync(result, "Warning silenced.");
-    }
+    private Task IgnoreAsync(UseRow row) => RunMutationAsync(
+        () => Api.IgnoreAsync(row.ShortcutId, row.Use.UsedBy, _cts.Token), "Warning silenced.");
 
-    private async Task RestoreAsync(UseRow row)
+    private Task RestoreAsync(UseRow row) => RunMutationAsync(
+        () => Api.RestoreAsync(row.ShortcutId, row.Use.UsedBy, _cts.Token), "Warning turned back on.");
+
+    // One write at a time. Every action button is disabled while _busy, so two writes cannot
+    // overlap and race their reloads.
+    private async Task RunMutationAsync(Func<Task<ApiResult>> call, string successMessage)
     {
-        ApiResult result = await Api.RestoreAsync(row.ShortcutId, row.Use.UsedBy, _cts.Token);
-        await AfterMutationAsync(result, "Warning turned back on.");
+        if (_busy)
+            return;
+
+        _busy = true;
+
+        try
+        {
+            await AfterMutationAsync(await call(), successMessage);
+        }
+        finally
+        {
+            _busy = false;
+        }
     }
 
     // These three routes answer 204 with no body, so the page holds no fresh state and reloads.
     // The dialog holds its own cached copy, so it is invalidated here too — reloading _rows
-    // refreshes this page only. A failed call invalidates nothing: throwing the cache away would
-    // cost a refetch for no reason and hide the failure behind a slow dialog.
+    // refreshes this page only.
     private async Task AfterMutationAsync(ApiResult result, string successMessage)
     {
         if (!result.IsSuccess)
         {
             Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
+
+            // A failure the server answered changed nothing, so the page is still right and the
+            // cache is still worth keeping. A lost response is different: the write may have
+            // landed, so the only honest thing to show is what the server says now.
+            if (result.Status == ApiResultStatus.NetworkError)
+            {
+                Catalog.Invalidate();
+                await LoadAsync();
+            }
+
             return;
         }
 

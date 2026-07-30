@@ -1,9 +1,11 @@
-﻿using AHKFlowApp.UI.Blazor.DTOs;
+﻿using System.Security.Claims;
+using AHKFlowApp.UI.Blazor.DTOs;
 using AHKFlowApp.UI.Blazor.Pages;
 using AHKFlowApp.UI.Blazor.Services;
 using AngleSharp.Dom;
 using Bunit;
 using FluentAssertions;
+using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Extensions.DependencyInjection;
 using MudBlazor;
 using MudBlazor.Services;
@@ -63,10 +65,35 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
         _api.ListManagedAsync(Arg.Any<CancellationToken>())
             .Returns(ApiResult<ManagedKnownShortcutCatalogDto>.Failure(ApiResultStatus.ServerError, null));
 
+    private static readonly Task<AuthenticationState> AuthenticatedState =
+        Task.FromResult(new AuthenticationState(
+            new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.Name, "testuser")], "test"))));
+
+    private static readonly Task<AuthenticationState> AnonymousState =
+        Task.FromResult(new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity())));
+
     private IRenderedComponent<KnownShortcuts> RenderPage()
     {
         Render<MudPopoverProvider>();
-        return Render<KnownShortcuts>();
+        return Render<KnownShortcuts>(p => p.AddCascadingValue(AuthenticatedState));
+    }
+
+    private IRenderedComponent<KnownShortcuts> RenderSignedOutPage()
+    {
+        Render<MudPopoverProvider>();
+        return Render<KnownShortcuts>(p => p.AddCascadingValue(AnonymousState));
+    }
+
+    // Confirms or cancels the delete message box. Registered before the page renders, because the
+    // page resolves IDialogService once.
+    private void StubDeleteConfirmation(bool confirmed)
+    {
+        IDialogService dialogService = Substitute.For<IDialogService>();
+        dialogService.ShowMessageBoxAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(),
+            Arg.Any<DialogOptions>())
+            .Returns(Task.FromResult<bool?>(confirmed ? true : null));
+        Services.AddSingleton(dialogService);
     }
 
     private static IElement Button(IRenderedComponent<KnownShortcuts> page, string css, string shortcutId, string usedBy) =>
@@ -116,13 +143,15 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
     public void OwnerUse_OffersDelete_AndCallsItWithTheRecordId()
     {
         var recordId = Guid.NewGuid();
+        StubDeleteConfirmation(confirmed: true);
         StubList(Shortcut("owner.1", "F7", OwnerUse(recordId)));
         _api.DeleteAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(ApiResult.Ok());
 
         IRenderedComponent<KnownShortcuts> page = RenderPage();
         page.Find("button.delete-use").Click();
 
-        _api.Received(1).DeleteAsync(recordId, Arg.Any<CancellationToken>());
+        page.WaitForAssertion(() =>
+            _api.Received(1).DeleteAsync(recordId, Arg.Any<CancellationToken>()));
     }
 
     [Fact]
@@ -245,6 +274,105 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
         page.FindAll("div.mud-alert").Should().NotBeEmpty();
     }
 
+    [Fact]
+    public void SignedOut_SaysSo_AndReadsNothing()
+    {
+        // Same shape as the categories page: no request goes out, and the two toolbar buttons are
+        // dead until there is someone to act as.
+        StubList(Shortcut("windows.file-explorer", "e", BuiltInUse()));
+
+        IRenderedComponent<KnownShortcuts> page = RenderSignedOutPage();
+
+        _api.DidNotReceive().ListManagedAsync(Arg.Any<CancellationToken>());
+        page.Markup.Should().Contain("You are not signed in.");
+        page.Find("button.add-known-shortcut").HasAttribute("disabled").Should().BeTrue();
+        page.Find("button.reload-known-shortcuts").HasAttribute("disabled").Should().BeTrue();
+    }
+
+    [Fact]
+    public void Delete_WhenTheConfirmationIsCancelled_RemovesNothing()
+    {
+        StubDeleteConfirmation(confirmed: false);
+        StubList(Shortcut("owner.1", "F7", OwnerUse(Guid.NewGuid())));
+        _api.DeleteAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(ApiResult.Ok());
+
+        IRenderedComponent<KnownShortcuts> page = RenderPage();
+        page.Find("button.delete-use").Click();
+
+        _api.DidNotReceive().DeleteAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+        page.FindAll("[data-test=\"known-shortcut-row\"]").Should().ContainSingle();
+    }
+
+    [Fact]
+    public void Delete_WhenConfirmed_RemovesTheRecord()
+    {
+        var recordId = Guid.NewGuid();
+        StubDeleteConfirmation(confirmed: true);
+        StubList(Shortcut("owner.1", "F7", OwnerUse(recordId)));
+        _api.DeleteAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(ApiResult.Ok());
+
+        IRenderedComponent<KnownShortcuts> page = RenderPage();
+        page.Find("button.delete-use").Click();
+
+        page.WaitForAssertion(() =>
+            _api.Received(1).DeleteAsync(recordId, Arg.Any<CancellationToken>()));
+    }
+
+    [Fact]
+    public void WhileAMutationIsInFlight_TheRowActionsAreDisabled()
+    {
+        // Two clicks on one row used to send two requests, and their two reloads then raced.
+        TaskCompletionSource<ApiResult> pending = new();
+        StubList(Shortcut("windows.file-explorer", "e", BuiltInUse()));
+        _api.IgnoreAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(pending.Task);
+
+        IRenderedComponent<KnownShortcuts> page = RenderPage();
+        page.Find("button.ignore-use").Click();
+
+        page.Find("button.ignore-use").HasAttribute("disabled").Should().BeTrue();
+        page.Find("button.reload-known-shortcuts").HasAttribute("disabled").Should().BeTrue();
+
+        pending.SetResult(ApiResult.Ok());
+        page.WaitForAssertion(() =>
+            page.Find("button.reload-known-shortcuts").HasAttribute("disabled").Should().BeFalse());
+    }
+
+    [Fact]
+    public void WhileAReadIsInFlight_ReloadIsDisabled()
+    {
+        // The other half of "one at a time": a second read cannot start while the first is out,
+        // so two answers can never arrive in the wrong order.
+        TaskCompletionSource<ApiResult<ManagedKnownShortcutCatalogDto>> pending = new();
+        _api.ListManagedAsync(Arg.Any<CancellationToken>()).Returns(pending.Task);
+
+        IRenderedComponent<KnownShortcuts> page = RenderPage();
+
+        page.Find("button.reload-known-shortcuts").HasAttribute("disabled").Should().BeTrue();
+
+        pending.SetResult(ApiResult<ManagedKnownShortcutCatalogDto>.Ok(
+            new ManagedKnownShortcutCatalogDto([BrowserShortcut()])));
+
+        page.WaitForAssertion(() =>
+            page.Find("button.reload-known-shortcuts").HasAttribute("disabled").Should().BeFalse());
+    }
+
+    [Fact]
+    public void AMutationLostToTheNetwork_ReconcilesWithTheServer()
+    {
+        // No response came back, so the write may or may not have landed. The page and the dialog
+        // cache both have to be re-read, or a silenced use keeps warning until a hard reload.
+        StubList(Shortcut("windows.file-explorer", "e", BuiltInUse()));
+        _api.IgnoreAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult.Failure(ApiResultStatus.NetworkError, null));
+
+        IRenderedComponent<KnownShortcuts> page = RenderPage();
+        page.Find("button.ignore-use").Click();
+
+        page.WaitForAssertion(() => _catalog.Received(1).Invalidate());
+        _api.Received(2).ListManagedAsync(Arg.Any<CancellationToken>());
+    }
+
     [Theory]
     [InlineData("ignore")]
     [InlineData("restore")]
@@ -257,7 +385,7 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
         IRenderedComponent<KnownShortcuts> page = RenderPage();
         PerformMutation(page, mutation);
 
-        _catalog.Received(1).Invalidate();
+        page.WaitForAssertion(() => _catalog.Received(1).Invalidate());
     }
 
     [Theory]
@@ -267,8 +395,10 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
     [InlineData("create")]
     public void AFailedMutation_DoesNotInvalidateTheDialogCache(string mutation)
     {
-        // Throwing the cache away on a failure costs a refetch for no reason, and hides the
-        // failure behind a slow dialog.
+        // A failure the server answered — 500 here — changed nothing the page is showing, so
+        // throwing the cache away costs a refetch for no reason and hides the failure behind a
+        // slow dialog. A lost response is the other case, and
+        // AMutationLostToTheNetwork_ReconcilesWithTheServer covers it.
         ArrangeMutation(mutation, succeeds: false);
 
         IRenderedComponent<KnownShortcuts> page = RenderPage();
@@ -280,6 +410,9 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
     private void ArrangeMutation(string mutation, bool succeeds)
     {
         ApiResult result = succeeds ? ApiResult.Ok() : ApiResult.Failure(ApiResultStatus.ServerError, null);
+
+        // Delete asks first. Both theories drive the confirmed path.
+        StubDeleteConfirmation(confirmed: true);
 
         switch (mutation)
         {
