@@ -187,7 +187,7 @@ Worktrees deleted with plain git skip the `WorktreeRemove` hook; the next `new-w
 <!-- Edit this source file, not the synchronized copies under other agent surfaces; run
 scripts/agents/setup-cross-agent-skills.ps1 to regenerate them. -->
 
-## Git guardrails: mutate only in a managed worktree
+## Git guardrails: most mutations need a worktree or a prompt
 
 Agents may inspect, edit, build, test, and format in the main checkout. Most **Git mutations**
 (branch, add, commit, merge, rebase, push, tag, reset, …) for this repository still need either a
@@ -196,11 +196,12 @@ checkout. This is enforced by the `PreToolUse` command hook and, after merge, a 
 backstop. See `docs/agents/cross-agent-git-guardrails.md`.
 
 A short list of operations is always allowed, even from the main checkout, with no worktree and no
-prompt: `git worktree prune`; `git worktree add`/`remove` without `--force`/`-f`; `git branch
--d`/`--delete` without any force spelling; a plain `git branch <name>` create with no flags; `git
-remote prune <name>`. Force or destructive variants of these are **not** on this list — for example
-`git worktree remove --force`, `git branch -D`, and `git branch -m`/`-M` still need the prompt
-below, like every other guarded operation.
+prompt: `git worktree prune`; `git worktree add` without `--force`/`-f`/`-B` (`-B` is git's own
+force spelling — it resets an existing branch's tip, unlike safe `-b`); `git worktree remove`
+without `--force`/`-f`; `git branch -d`/`--delete` without any force spelling; a plain `git branch
+<name>` create with no flags; `git remote prune <name>`. Force or destructive variants of these are
+**not** on this list — for example `git worktree remove --force`, `git branch -D`, and `git branch
+-m`/`-M` still need the prompt below, like every other guarded operation.
 
 `git commit` is the one exception that always needs a worktree, or a session-wide
 `AHKFLOW_ALLOW_MAIN=1` (see below). It can never be approved through the prompt: a separate
@@ -215,9 +216,11 @@ A worktree is **managed** only when all three hold:
 
 ### Recovering from a denial
 
-The stderr message for a hard denial is `BLOCKED: agent Git mutations are allowed only in a
-managed linked worktree.` Most other denials show up as an in-session permission prompt instead —
-read on for which is which.
+The denial message itself (`BLOCKED: agent Git mutations are allowed only in a managed linked
+worktree.`) does not always land on stderr. For Claude it travels as JSON (`permissionDecisionReason`)
+on stdout, with exit 0. Stderr only ever carries a short diagnostic line, like
+`[agent-guard:Claude] deny [agent-main-git-mutation]`. Most other denials show up as an in-session
+permission prompt instead — read on for which is which.
 
 1. Create a proper worktree and run the command there:
 
@@ -226,8 +229,17 @@ read on for which is which.
    ```
 
 2. For most guarded commands, a permission prompt appears in the session. Approve it if you want
-   the command to run in the main checkout right now — no restart needed. This does not apply to
-   `git commit`, which is always a hard denial and never prompts (see above).
+   the command to run in the main checkout right now — no restart needed.
+
+   Three cases never get a prompt, and need a worktree (or `AHKFLOW_ALLOW_MAIN=1`) instead:
+   - `git commit` — always a hard denial (see above).
+   - A call from a subagent — the guard downgrades the prompt to a hard denial, because a subagent
+     prompt cannot reach you. Retry from the main conversation thread instead, where it prompts
+     normally.
+   - Codex, or Copilot without an interactive user — neither adapter can show a real prompt at all.
+
+   See "Adapter matrix for `Ask`" in `docs/agents/cross-agent-git-guardrails.md` for the full
+   breakdown.
 
 3. `AHKFLOW_ALLOW_MAIN=1` still exists, and still silences prompts — and unblocks `commit` — for a
    whole session, including from the main checkout. It has to be set in the shell environment
