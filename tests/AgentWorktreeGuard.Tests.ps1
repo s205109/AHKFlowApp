@@ -766,13 +766,13 @@ try {
     }
 
     # Every spelling below must still deny a commit exactly the way the bare command does. This
-    # covers rtk 0.43.0's global options (-v/-vv/-vvv/--verbose/--ultra-compact/--skip-env), the
-    # proxy/run pass-through subcommands, a repeated wrapper, a leading NAME=value assignment, and
-    # a full path to the rtk executable.
+    # covers rtk 0.43.0's global options (-v/-vv/-vvv/--verbose/--ultra-compact/--skip-env), all
+    # five pass-through subcommands (proxy/run/err/summary/test), a repeated wrapper, a leading
+    # NAME=value assignment, and a full path to the rtk executable.
     $wrapperSpellings = @(
         'rtk', 'rtk.exe', 'C:\tools\rtk.exe', 'rtk -v', 'rtk -vvv', 'rtk --ultra-compact',
         'rtk --skip-env', 'rtk --ultra-compact --skip-env', 'rtk proxy', 'rtk --ultra-compact proxy',
-        'rtk rtk', 'SKIP_COVERAGE_HOOK=1 rtk'
+        'rtk rtk', 'SKIP_COVERAGE_HOOK=1 rtk', 'rtk err', 'rtk summary', 'rtk test'
     )
     foreach ($prefix in $wrapperSpellings) {
         Invoke-TestCase "Wrapper spelling still denies a commit: $prefix git commit -m x" {
@@ -790,11 +790,14 @@ try {
         Assert-Equal 'agent-main-git-mutation' $decision.Rule 'Rule'
     }
 
-    # Documented remaining bypasses, pinned as tests so a future change to either is deliberate,
-    # not accidental. The tokenizer keeps a quoted string as one token, so a subcommand that takes
-    # a raw command string hides the git word inside a single token. A hypothetical rtk option
-    # that takes the next token as its value has the same effect: the git word is no longer the
-    # segment's leading word. Neither case is modelled today.
+    # Documented remaining bypasses, pinned as tests so a future change to any of them is
+    # deliberate, not accidental. The tokenizer keeps a quoted string as one token, so a
+    # subcommand that takes a raw command string hides the git word inside a single token. A
+    # hypothetical rtk option that takes the next token as its value has the same effect: the git
+    # word is no longer the segment's leading word. A NAME=value assignment placed after the
+    # wrapper is never stripped, because the NAME=value strip in Get-AgentCommandSegment runs once,
+    # before the wrapper strip, and is not repeated afterward. None of these three cases is
+    # modelled today.
     Invoke-TestCase 'Documented bypass: rtk run with a quoted command stays Allow' {
         $decision = Invoke-AgentGuardPolicy -Command 'rtk run "git commit -m x"' `
             -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
@@ -803,6 +806,12 @@ try {
 
     Invoke-TestCase 'Documented bypass: a value-taking rtk option stays Allow' {
         $decision = Invoke-AgentGuardPolicy -Command 'rtk --out foo git commit -m x' `
+            -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Allow' $decision.Action 'Action'
+    }
+
+    Invoke-TestCase 'Documented bypass: a NAME=value assignment after the wrapper stays Allow' {
+        $decision = Invoke-AgentGuardPolicy -Command 'rtk FOO=1 git commit -m x' `
             -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
         Assert-Equal 'Allow' $decision.Action 'Action'
     }
@@ -850,8 +859,8 @@ try {
         Assert-Equal 'Allow' $decision.Action 'Action'
     }
 
-    Invoke-TestCase 'pwsh -File running a script is untouched by the wrapper rule' {
-        $decision = Invoke-AgentGuardPolicy -Command 'pwsh -File custom.ps1' -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
+    Invoke-TestCase 'pwsh running a git word after its options is untouched by the wrapper rule' {
+        $decision = Invoke-AgentGuardPolicy -Command 'pwsh -Command git commit -m x' -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
         Assert-Equal 'Allow' $decision.Action 'Action'
     }
 

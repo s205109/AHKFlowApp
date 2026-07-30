@@ -31,12 +31,18 @@ $script:AgentGuardChangeDirectoryCommands = @('cd', 'chdir', 'set-location')
 $script:AgentGuardPushDirectoryCommands = @('pushd', 'push-location')
 $script:AgentGuardPopDirectoryCommands = @('popd', 'pop-location')
 
-# Transparent command wrappers: tools that run the rest of the line as a child process without
-# changing the shell's own state. Deliberately narrow - a wrapper here must only make the guard
-# see through it, never let it permit more than the bare command would.
+# A transparent command wrapper runs the rest of the command line as a child process.
+# It does not change the shell's own state, such as its working directory.
+# The guard reads past the wrapper to classify the command the wrapper runs.
+# Adding a wrapper to this list can only expose more of a command to classification.
+# It must never let the guard allow something the bare command would deny.
 $script:AgentGuardTransparentWrappers = @('rtk', 'rtk.exe')
-# rtk subcommands that take a raw command as their remaining arguments.
-$script:AgentGuardWrapperPassThroughSubcommands = @('proxy', 'run')
+# rtk subcommands that take a raw command as their remaining arguments. Confirmed against
+# rtk 0.43.0 --help: proxy and run were the original two; err, summary, and test also run a raw
+# command and show only part of its output. rtk's global options (-v/--verbose, --ultra-compact,
+# --skip-env, -h/--help, -V/--version) never consume a following token, so none of them needs to
+# be skipped separately from the generic leading-option scan below.
+$script:AgentGuardWrapperPassThroughSubcommands = @('proxy', 'run', 'err', 'summary', 'test')
 
 # A leading NAME=value assignment is a prefix, not the command being run.
 $script:AgentGuardEnvAssignmentPattern = '^[A-Za-z_][A-Za-z0-9_]*='
@@ -463,8 +469,11 @@ Never strips ahead of a directory-change command (`cd`, `chdir`, `set-location`,
 `push-location`, `popd`, `pop-location`). rtk cannot move the calling shell's own working
 directory, so treating `rtk cd X` as a real directory change would let the guard track an
 effective working directory the shell never actually reached - the only way this helper could
-relax a decision instead of just seeing through a wrapper. When that happens, the tokens are
-returned unchanged and the caller classifies the segment as `Other`.
+relax a decision instead of just seeing through a wrapper. When that happens, this returns the
+tokens as stripped so far, not the original list unchanged: for `rtk rtk cd X` it returns
+`rtk cd X`, because the outer `rtk` was already removed by an earlier pass of the loop. This is
+still safe, because the returned leading token (`rtk`) is still a wrapper name, so the caller
+classifies the segment as `Other`, not as a directory change.
 
 A wrapper option that consumes the next token as its value (for example a hypothetical
 `rtk --out foo git commit`) is not modelled: the token after the option is inspected for a
