@@ -623,6 +623,7 @@ try {
         'git worktree prune -n',
         "git worktree remove $somewhere",
         "git worktree add $somewhere sometopic",
+        "git worktree add -b topic $somewhere", # lowercase -b is the safe, non-destructive spelling
         'git worktree list', # already allowed today (read-only) - pin, not a new behavior
         'git branch -d topic',
         'git branch --delete topic',

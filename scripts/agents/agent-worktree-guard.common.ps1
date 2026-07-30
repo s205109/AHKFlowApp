@@ -1102,7 +1102,6 @@ function Get-AgentGitLocationDecision {
     $directoryStack = New-Object System.Collections.Generic.List[string]
     $blockingState = ''
     $blockingTarget = ''
-    $blockingSubcommand = ''
     # Tracks whether ANY blocking segment in the whole chain is a commit, independent of which
     # segment blocked first. commit must never resolve to Ask under any condition (see the
     # Deny-vs-Ask branch below), so the scan cannot stop at the first block: an earlier `git add .`
@@ -1172,7 +1171,6 @@ function Get-AgentGitLocationDecision {
             if ($blockingState -eq '') {
                 $blockingState = 'ExplicitGitDir'
                 $blockingTarget = $Cwd
-                $blockingSubcommand = $parts.Subcommand
             }
             if ($parts.Subcommand -ieq 'commit') { $commitBlocks = $true }
             continue
@@ -1187,7 +1185,6 @@ function Get-AgentGitLocationDecision {
             if ($blockingState -eq '') {
                 $blockingState = 'UnresolvedDirectoryChange'
                 $blockingTarget = $Cwd
-                $blockingSubcommand = $parts.Subcommand
             }
             if ($parts.Subcommand -ieq 'commit') { $commitBlocks = $true }
             continue
@@ -1200,7 +1197,6 @@ function Get-AgentGitLocationDecision {
             if ($blockingState -eq '') {
                 $blockingState = $state
                 $blockingTarget = $targetDir
-                $blockingSubcommand = $parts.Subcommand
             }
             if ($parts.Subcommand -ieq 'commit') { $commitBlocks = $true }
             continue
@@ -1224,9 +1220,16 @@ function Get-AgentGitLocationDecision {
             ("WARNING: AHKFLOW_ALLOW_MAIN=1 overrode the --git-dir/--work-tree restriction for: $blockingTarget")
         }
         $action = if ($isTier1b) { 'Deny' } else { 'Ask' }
-        return New-AgentGuardDecision -Action $action -Rule 'agent-git-dir-mutation' -Message `
-        ('BLOCKED: agent Git mutations with --git-dir or --work-tree are not allowed; the ' +
-            'target cannot be verified. Run the command from inside a managed linked worktree instead.')
+        $message = if ($isTier1b) {
+            ('BLOCKED: agent Git mutations with --git-dir or --work-tree are not allowed; the ' +
+                'target cannot be verified. Run the command from inside a managed linked worktree instead.')
+        }
+        else {
+            ('This command uses --git-dir or --work-tree, so the guard cannot verify its target ' +
+                'from the command text alone. Approve only if you want it to run here. To avoid ' +
+                'the ambiguity, run it from inside a managed linked worktree instead.')
+        }
+        return New-AgentGuardDecision -Action $action -Rule 'agent-git-dir-mutation' -Message $message
     }
 
     if ($blockingState -eq 'UnresolvedDirectoryChange') {
@@ -1235,10 +1238,18 @@ function Get-AgentGitLocationDecision {
             ("WARNING: AHKFLOW_ALLOW_MAIN=1 overrode an unverifiable directory change before a git mutation.")
         }
         $action = if ($isTier1b) { 'Deny' } else { 'Ask' }
-        return New-AgentGuardDecision -Action $action -Rule 'agent-unresolved-git-target' -Message `
-        ('BLOCKED: this command changes directory to a target the guard cannot expand, so the ' +
-            'git mutation cannot be verified. Run git from a managed linked worktree, or pass an ' +
-            'explicit `git -C <path>`.')
+        $message = if ($isTier1b) {
+            ('BLOCKED: this command changes directory to a target the guard cannot expand, so the ' +
+                'git mutation cannot be verified. Run git from a managed linked worktree, or pass an ' +
+                'explicit `git -C <path>`.')
+        }
+        else {
+            ('This command changes directory to a target the guard cannot expand, so it cannot ' +
+                'verify where the git mutation would run. Approve only if you want it to run here ' +
+                'anyway. To avoid the ambiguity, pass an explicit `git -C <path>`, or run it from ' +
+                'inside a managed linked worktree.')
+        }
+        return New-AgentGuardDecision -Action $action -Rule 'agent-unresolved-git-target' -Message $message
     }
 
     if ($AllowMain) {
