@@ -219,13 +219,18 @@ An agent running the same command would need a prompt or override.
   allowed; mutation detection is a denylist, not an allowlist.
 - `git commit --no-verify`, a replaced `core.hooksPath`, and shell aliases remain bypasses. This is
   also why calling `new-worktree.ps1` / `remove-worktree-local-dev.ps1` does not self-lock.
-- The guard now sees through `rtk`, including its leading global options and its pass-through
-  subcommands (`proxy`, `run`, `err`, `summary`, `test`). A wrapper that hides the command inside a
-  quoted string still bypasses the guard, because the tokenizer keeps a quoted string as one token:
-  `sh -c '...'`, `rtk run "..."`, and `pwsh -File custom.ps1` all bypass the guard this way. Two
-  smaller gaps are pinned by tests instead of fixed: a wrapper option that consumes the next token
-  as its value (`rtk --out foo git commit`, which rtk has no option for today), and a `NAME=value`
-  assignment placed after the wrapper (`rtk FOO=1 git commit -m x`).
+- The guard now reads past `rtk`, including its leading global options and its pass-through
+  subcommands (`proxy`, `run`, `err`, `summary`, `test`).
+- A wrapper can still hide the command inside a quoted string. The tokenizer keeps a quoted string
+  as one token, so the guard cannot classify the git word inside it. `sh -c '...'` and
+  `rtk run "..."` bypass the guard this way.
+- `pwsh -File custom.ps1` bypasses the guard for a different reason: it runs git from inside a
+  script file, not from a quoted string. The guard only reads the command line the hook reports,
+  not any file that command line points to.
+- Tests pin two smaller gaps here instead of fixing them. A wrapper option can consume the next
+  token as its value, for example `rtk --out foo git commit`. rtk has no such option today. A
+  `NAME=value` assignment placed after the wrapper also bypasses the guard, for example
+  `rtk FOO=1 git commit -m x`.
 - An externally registered command-rewriting `PreToolUse` hook can quietly turn the guard off. This
   differs from a person knowingly typing a wrapper, because the hook runs on every command by
   default, not only when someone chooses to type it. `rtk hook claude` is one example; the

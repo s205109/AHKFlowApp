@@ -37,11 +37,12 @@ $script:AgentGuardPopDirectoryCommands = @('popd', 'pop-location')
 # Adding a wrapper to this list can only expose more of a command to classification.
 # It must never let the guard allow something the bare command would deny.
 $script:AgentGuardTransparentWrappers = @('rtk', 'rtk.exe')
-# rtk subcommands that take a raw command as their remaining arguments. Confirmed against
-# rtk 0.43.0 --help: proxy and run were the original two; err, summary, and test also run a raw
-# command and show only part of its output. rtk's global options (-v/--verbose, --ultra-compact,
-# --skip-env, -h/--help, -V/--version) never consume a following token, so none of them needs to
-# be skipped separately from the generic leading-option scan below.
+# rtk subcommands that take a raw command as their remaining arguments.
+# Confirmed against rtk 0.43.0 --help. proxy and run were the original two.
+# err, summary, and test also run a raw command, showing only part of its output.
+# rtk's global options never consume a following token: -v/--verbose, --ultra-compact,
+# --skip-env, -h/--help, -V/--version. So the generic leading-option scan below does not
+# need to skip any of them separately.
 $script:AgentGuardWrapperPassThroughSubcommands = @('proxy', 'run', 'err', 'summary', 'test')
 
 # A leading NAME=value assignment is a prefix, not the command being run.
@@ -460,16 +461,16 @@ rtk rewrites `git ...` into `rtk git ...` without changing the shell's own state
 this the guard saw `rtk` as the leading word and never recognized the git invocation underneath.
 Matches on the leaf of the leading token, the same way the git leaf check does a few lines below,
 so `rtk`, `rtk.exe`, and a full path like `C:\tools\rtk.exe` all match. Skips every leading option
-token (anything starting with `-`) before looking for one pass-through subcommand (`proxy`,
-`run`), then repeats, so a repeated wrapper such as `rtk rtk git commit` loses both. Skipping any
-`-*` token, not an enumerated list, means a future rtk global option cannot silently reopen this
-hole.
+token (anything starting with `-`) before looking for one pass-through subcommand (`proxy`, `run`,
+`err`, `summary`, `test`), then repeats, so a repeated wrapper such as `rtk rtk git commit` loses
+both. Skipping any `-*` token, not an enumerated list, means a future rtk global option cannot make
+the guard permit more than it does today.
 
 Never strips ahead of a directory-change command (`cd`, `chdir`, `set-location`, `pushd`,
 `push-location`, `popd`, `pop-location`). rtk cannot move the calling shell's own working
 directory, so treating `rtk cd X` as a real directory change would let the guard track an
 effective working directory the shell never actually reached - the only way this helper could
-relax a decision instead of just seeing through a wrapper. When that happens, this returns the
+relax a decision instead of just reading past a wrapper. When that happens, this returns the
 tokens as stripped so far, not the original list unchanged: for `rtk rtk cd X` it returns
 `rtk cd X`, because the outer `rtk` was already removed by an earlier pass of the loop. This is
 still safe, because the returned leading token (`rtk`) is still a wrapper name, so the caller
