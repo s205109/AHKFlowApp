@@ -111,6 +111,30 @@ public sealed class BootFailureFlowTests(StackFixture fixture) : IAsyncLifetime
             "the Reload button to request the document again");
     }
 
+    [Fact]
+    public async Task BootFailure_WithBlockedSessionStorage_ShowsMessageAndDoesNotReload()
+    {
+        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
+
+        // Some browsers block storage entirely. Reading sessionStorage then throws, and an
+        // unguarded read inside the error handler would leave the user on a frozen screen.
+        await ctx.AddInitScriptAsync(@"Object.defineProperty(window, 'sessionStorage', {
+    configurable: true,
+    get: function () { throw new Error('sessionStorage is blocked'); }
+});");
+
+        await BootFault.Fail404OnAppAssemblyAsync(ctx);
+        var documents = DocumentRequestCounter.Attach(ctx);
+
+        IPage page = await ctx.NewPageAsync();
+        await page.GotoAsync(fixture.Spa.BaseUrl, new PageGotoOptions { WaitUntil = WaitUntilState.Commit });
+
+        await page.Locator("[data-test=\"boot-error\"]").WaitForAsync();
+
+        // No guard can be stored, so the auto-reload is skipped and the message comes straight away.
+        documents.Count.Should().Be(1);
+    }
+
     // Playwright's own waits are tied to a page, and the page navigates underneath these tests,
     // so poll the context-level counter instead.
     private static async Task WaitUntilAsync(Func<bool> condition, string description)
