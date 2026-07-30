@@ -111,6 +111,39 @@ public sealed class BootFailureFlowTests(StackFixture fixture) : IAsyncLifetime
             "the Reload button to request the document again");
     }
 
+    // Only the runtime's own boot failure counts as a boot failure. An unrelated uncaught error
+    // during a slow boot must not reload the page or claim that files could not be downloaded,
+    // however long the boot takes.
+    [Fact]
+    public async Task SlowBoot_WithUnrelatedUncaughtError_StillRendersApp()
+    {
+        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
+
+        // Well past any grace period, so a timer-based failure signal would fire before the app
+        // finishes booting.
+        await BootFault.DelayAppAssemblyAsync(ctx, TimeSpan.FromSeconds(8));
+
+        // An uncaught error from something other than the boot: a browser extension, an analytics
+        // script, or any other page script.
+        await ctx.AddInitScriptAsync(
+            "setTimeout(function () { throw new Error('unrelated boot-time error'); }, 500);");
+
+        var documents = DocumentRequestCounter.Attach(ctx);
+
+        IPage page = await ctx.NewPageAsync();
+        await page.GotoAsync($"{fixture.Spa.BaseUrl}/hotstrings",
+            new PageGotoOptions { WaitUntil = WaitUntilState.Commit });
+
+        await page.WaitForSelectorAsync("button.add-hotstring", new PageWaitForSelectorOptions { Timeout = 60_000 });
+
+        (await page.Locator("[data-test=\"boot-error\"]").CountAsync()).Should().Be(0);
+        documents.Count.Should().Be(1);
+
+        string? guard = await page.EvaluateAsync<string?>(
+            $"() => sessionStorage.getItem('{ReloadGuardKey}')");
+        guard.Should().BeNull();
+    }
+
     [Fact]
     public async Task BootFailure_WithBlockedSessionStorage_ShowsMessageAndDoesNotReload()
     {

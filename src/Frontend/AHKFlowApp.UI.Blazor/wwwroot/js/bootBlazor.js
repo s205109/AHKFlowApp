@@ -93,13 +93,35 @@
         container.focus();
     }
 
-    // How long to wait after an uncaught error before calling the boot failed. A failed asset
-    // download is reported by the .NET runtime as an uncaught error, and the promise returned by
-    // Blazor.start() then never settles, so the uncaught error is the only signal we get. Waiting
-    // a few seconds first means an unrelated error thrown by a boot that still succeeds is ignored.
-    var bootFailureGraceMs = 5000;
+    // The .NET runtime reports a failed asset download as an uncaught error, and the promise
+    // returned by Blazor.start() then never settles, so that uncaught error is the only signal we
+    // get. Only the runtime's own two failure messages count. Reacting to any uncaught error would
+    // be far too wide: a slow boot that still succeeds must not be reported as a failure just
+    // because an unrelated script threw while it was loading.
+
+    // Thrown by the runtime for each boot file it could not download, as:
+    // "download '<url>' for <name> failed <status> <inner error>".
+    var downloadFailurePattern = /download '.*' for .* failed/;
+
+    // Thrown by blazor.webassembly.js when the boot itself gives up, as:
+    // "Failed to start platform. Reason: <inner error>". The runtime does not always get this far,
+    // so it confirms a failure but cannot be relied on to report one.
+    var startFailurePattern = /Failed to start platform/;
+
+    // The runtime retries a failed download, so one failed download does not mean the boot is lost.
+    // Wait, then report only if the boot still has not finished.
+    var bootFailureGraceMs = 10000;
 
     var bootSettled = false;
+
+    function messageOf(error) {
+        if (!error) {
+            return '';
+        }
+
+        var message = typeof error === 'string' ? error : error.message;
+        return typeof message === 'string' ? message : '';
+    }
 
     function onBootSucceeded() {
         bootSettled = true;
@@ -131,9 +153,19 @@
             return;
         }
 
-        window.setTimeout(function () {
+        var message = messageOf(error);
+
+        // The boot gave up, so there is nothing left to wait for.
+        if (startFailurePattern.test(message)) {
             onBootFailed(error);
-        }, bootFailureGraceMs);
+            return;
+        }
+
+        if (downloadFailurePattern.test(message)) {
+            window.setTimeout(function () {
+                onBootFailed(error);
+            }, bootFailureGraceMs);
+        }
     }
 
     window.addEventListener('error', function (event) {

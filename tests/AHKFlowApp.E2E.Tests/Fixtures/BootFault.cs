@@ -26,6 +26,17 @@ public static class BootFault
             ContentType = "text/plain",
             Body = string.Empty,
         }));
+
+    /// <summary>
+    /// Serves the app assembly normally, but late. Used to prove that a boot slower than any grace
+    /// period still counts as a success.
+    /// </summary>
+    public static Task DelayAppAssemblyAsync(IBrowserContext context, TimeSpan delay) =>
+        context.RouteAsync(AppAssemblyPattern, async route =>
+        {
+            await Task.Delay(delay);
+            await route.ContinueAsync();
+        });
 }
 
 /// <summary>
