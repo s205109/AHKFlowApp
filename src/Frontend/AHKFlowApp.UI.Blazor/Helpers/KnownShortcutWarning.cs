@@ -30,7 +30,11 @@ internal static class KnownShortcutWarning
     private const string UnknownClosing =
         "What happens when you press these keys depends on what else is installed.";
 
-    private const string ForegroundTail = ", but only while that application is in front.";
+    // Agrees with the subject. One sentence can name several products — "Chrome and Edge use
+    // Ctrl+T …" — and a fixed singular tail made that sentence disagree with itself.
+    private const string ForegroundTailOne = ", but only while that application is in front.";
+
+    private const string ForegroundTailMany = ", but only while those applications are in front.";
 
     /// <summary>
     /// The known shortcut this combination matches, or null. The key must already be canonical —
@@ -67,7 +71,9 @@ internal static class KnownShortcutWarning
             string[] labels = [.. group.Select(u => u.UsedBy)];
             string subject = JoinLabels(labels);
             string verb = labels.Length == 1 ? "uses" : "use";
-            string tail = group.Key.Scope == ShortcutScope.Foreground ? ForegroundTail : ".";
+            string tail = group.Key.Scope == ShortcutScope.Foreground
+                ? labels.Length == 1 ? ForegroundTailOne : ForegroundTailMany
+                : ".";
 
             sentences.Add($"{subject} {verb} {comboLabel} to {group.Key.Does}{tail}");
         }

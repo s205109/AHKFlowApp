@@ -40,6 +40,12 @@ cp wwwroot/appsettings.Development.json.example wwwroot/appsettings.Development.
 `Auth:UseTestProvider=true`), paired with the API's `Docker SQL (No Auth)` profile. Git worktrees
 get this automatically via `setup-worktree-local-dev.ps1` (no example copy needed).
 
+> **This profile does not work in the main checkout right now.** .NET 10 fixes the WebAssembly boot
+> environment at build time, so `appsettings.NoAuth.json` is never read and the app boots into MSAL.
+> Worktrees are unaffected, because their script writes `appsettings.Development.json` instead. See
+> `.claude/backlog/039-no-auth-frontend-profile-broken.md` and the workaround in
+> `docs/development/playwright-setup.md`.
+
 ## Adding a Page
 
 1. Create `Pages/MyPage.razor` with `@page "/my-page"` directive

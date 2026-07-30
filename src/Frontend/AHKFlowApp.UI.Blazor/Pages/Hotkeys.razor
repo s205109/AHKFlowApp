@@ -729,20 +729,26 @@
         _cachedListPage = null;
     }
 
-    private RenderFragment RenderKeyEditor(HotkeyEditModel edit) => @<MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Wrap="Wrap.Wrap">
-        <KeyPicker Role="HotkeyKey" Dense="true"
-                   Value="@edit.Key" ValueChanged="value => edit.Key = value ?? string.Empty"
-                   Error="@(_commitAttempted && ValidateKey(edit.Key) is not null)"
-                   ErrorText="@(_commitAttempted ? ValidateKey(edit.Key) : null)"
-                   DataTest="key-input" />
-        <MudCheckBox T="bool" Dense="true" Label="Ctrl" @bind-Value="edit.Ctrl"
-                     UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "ctrl-checkbox" })" />
-        <MudCheckBox T="bool" Dense="true" Label="Alt" @bind-Value="edit.Alt"
-                     UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "alt-checkbox" })" />
-        <MudCheckBox T="bool" Dense="true" Label="Shift" @bind-Value="edit.Shift"
-                     UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "shift-checkbox" })" />
-        <MudCheckBox T="bool" Dense="true" Label="Win" @bind-Value="edit.Win"
-                     UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "win-checkbox" })" />
+    private RenderFragment RenderKeyEditor(HotkeyEditModel edit) => @<MudStack Spacing="1">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Wrap="Wrap.Wrap">
+            <KeyPicker Role="HotkeyKey" Dense="true"
+                       Value="@edit.Key" ValueChanged="value => edit.Key = value ?? string.Empty"
+                       Error="@(_commitAttempted && ValidateKey(edit.Key) is not null)"
+                       ErrorText="@(_commitAttempted ? ValidateKey(edit.Key) : null)"
+                       DataTest="key-input" />
+            <MudCheckBox T="bool" Dense="true" Label="Ctrl" @bind-Value="edit.Ctrl"
+                         UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "ctrl-checkbox" })" />
+            <MudCheckBox T="bool" Dense="true" Label="Alt" @bind-Value="edit.Alt"
+                         UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "alt-checkbox" })" />
+            <MudCheckBox T="bool" Dense="true" Label="Shift" @bind-Value="edit.Shift"
+                         UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "shift-checkbox" })" />
+            <MudCheckBox T="bool" Dense="true" Label="Win" @bind-Value="edit.Win"
+                         UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "win-checkbox" })" />
+        </MudStack>
+        @* The row edits the keys, so the row warns about them — the same component the dialog
+           renders. Without it, re-keying an existing hotkey to Win+E said nothing. *@
+        <ShortcutWarning Key="@edit.Key" Ctrl="@edit.Ctrl" Alt="@edit.Alt"
+                         Shift="@edit.Shift" Win="@edit.Win" />
     </MudStack>;
 
     // Only the two single-field kinds reach inline edit (HotkeyEditModel.IsInlineEditable), so
@@ -857,6 +863,11 @@
             <MudIconButton Class="start-edit" Icon="@Icons.Material.Filled.Edit"
                            OnClick="() => StartEditAsync(item)"
                            UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = $"Edit {item.Description}" })" />
+            @* Inline edit covers the two single-field kinds, and it cannot change the action kind.
+               This is how those rows reach the full editor, which can. *@
+            <MudIconButton Class="open-full-editor" Icon="@Icons.Material.Filled.OpenInFull"
+                           OnClick="() => OpenEditDialogAsync(item)"
+                           UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = $"Open the full editor for {item.Description}", ["title"] = "Open the full editor" })" />
         }
     </text>;
 

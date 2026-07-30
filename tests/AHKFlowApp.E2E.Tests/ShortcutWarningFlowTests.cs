@@ -55,6 +55,62 @@ public sealed class ShortcutWarningFlowTests(StackFixture fixture) : IAsyncLifet
             new PageWaitForSelectorOptions { State = WaitForSelectorState.Detached });
     }
 
+    [Fact]
+    public async Task RekeyingAnExistingHotkeyInline_WarnsInTheRow()
+    {
+        await using IBrowserContext context = await fixture.Browser.NewContextAsync();
+        IPage page = await context.NewPageAsync();
+
+        // A SendText hotkey edits inline, in the grid row, never in the dialog. The row changes the
+        // key and every modifier, so the row has to warn about them too.
+        await OpenCreateDialogAsync(page);
+        await CommitKeyAsync(page, "F13");
+        await page.FillAsync(".hotkey-edit-dialog input[data-test=\"description-input\"]", "E2E inline rekey");
+        await page.FillAsync(".hotkey-edit-dialog [data-test=\"text-input\"]", "my notes");
+        await page.ClickAsync(".hotkey-edit-dialog button.commit-edit");
+        await page.WaitForSelectorAsync("text=Hotkey created.");
+
+        // Scoped to the desktop branch: the mobile branch renders too and is hidden by CSS only.
+        await page.Locator(".desktop-branch tr", new() { HasTextString = "E2E inline rekey" })
+            .Locator("button.start-edit").ClickAsync();
+
+        // The editing row is addressed by its own class from here on. Its cells hold inputs now, so
+        // the description no longer appears as row text and a HasText filter stops matching it —
+        // the same reason VersionHistoryFlowTests uses tr.edit-row.
+        ILocator row = page.Locator("tr.edit-row");
+        await page.WaitForSelectorAsync("tr.edit-row");
+
+        ILocator keyInput = row.Locator("input[data-test=\"key-input\"]");
+        await keyInput.ClickAsync();
+        await keyInput.FillAsync("e");
+        await keyInput.PressAsync("Tab");
+        await row.Locator("input[data-test=\"win-checkbox\"]").CheckAsync();
+
+        await Assertions.Expect(row.Locator("[data-test=\"shortcut-warning\"]"))
+            .ToContainTextAsync("Windows uses Win+E to open File Explorer.");
+    }
+
+    [Fact]
+    public async Task AnInlineEditableRow_CanStillOpenTheFullEditor()
+    {
+        await using IBrowserContext context = await fixture.Browser.NewContextAsync();
+        IPage page = await context.NewPageAsync();
+
+        await OpenCreateDialogAsync(page);
+        await CommitKeyAsync(page, "F14");
+        await page.FillAsync(".hotkey-edit-dialog input[data-test=\"description-input\"]", "E2E full editor");
+        await page.FillAsync(".hotkey-edit-dialog [data-test=\"text-input\"]", "my notes");
+        await page.ClickAsync(".hotkey-edit-dialog button.commit-edit");
+        await page.WaitForSelectorAsync("text=Hotkey created.");
+
+        // Edit sends this row inline, which cannot change the action kind. This button is the way
+        // back to the editor that can.
+        ILocator row = page.Locator(".desktop-branch tr", new() { HasTextString = "E2E full editor" });
+        await row.Locator("button.open-full-editor").ClickAsync();
+
+        await page.WaitForSelectorAsync(".hotkey-edit-dialog [data-test=\"action-kind-selector\"]");
+    }
+
     // Addresses the Windows use of Win+E by id and use label, not by row text. A combination can
     // hold several uses, and each has its own buttons.
     private const string WindowsFileExplorerUse =

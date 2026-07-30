@@ -90,14 +90,14 @@ internal static class KnownShortcutCatalog
         Windows("windows.file-explorer", "e", "open File Explorer"),
         Windows("windows.feedback-hub", "f", "open Feedback Hub"),
         Windows("windows.game-bar", "g", "open Game Bar"),
-        Windows("windows.voice-dictation", "h", "open voice dictation"),
+        Windows("windows.voice-dictation", "h", "open voice typing"),
         Windows("windows.settings", "i", "open Settings"),
         Windows("windows.recall", "j", "open Recall"),
         Windows("windows.cast", "k", "open Cast"),
         Windows("windows.minimize-all", "m", "minimize all windows"),
-        Windows("windows.notification-center", "n", "open notification center and calendar"),
-        Windows("windows.lock-orientation", "o", "lock device orientation"),
-        Windows("windows.project", "p", "open presentation display modes"),
+        Windows("windows.notification-center", "n", "open the notification center and calendar"),
+        Windows("windows.lock-orientation", "o", "lock the device orientation"),
+        Windows("windows.project", "p", "choose a presentation display mode"),
         Windows("windows.search-q", "q", "open search"),
         Windows("windows.run", "r", "open the Run dialog"),
         Windows("windows.search-s", "s", "open search"),
@@ -111,13 +111,13 @@ internal static class KnownShortcutCatalog
         // Win + named key.
         Windows("windows.task-view", "Tab", "open Task View"),
         Windows("windows.close-magnifier", "Escape", "close Magnifier"),
-        Windows("windows.about", "Pause", "open Settings to System > About"),
+        Windows("windows.about", "Pause", "open the About page in Settings"),
         Windows("windows.screenshot-file", "PrintScreen", "save a full-screen screenshot to a file"),
         Windows("windows.minimize-others", "Home", "minimize or restore all but the active window"),
         Windows("windows.maximize", "Up", "maximize the active window"),
         Windows("windows.minimize", "Down", "minimize the active window"),
-        Windows("windows.snap-left", "Left", "snap the window left"),
-        Windows("windows.snap-right", "Right", "snap the window right"),
+        Windows("windows.snap-left", "Left", "snap the window to the left half"),
+        Windows("windows.snap-right", "Right", "snap the window to the right half"),
         Windows("windows.input-next", "Space", "switch to the next input language or layout"),
 
         // Win + Shift.
@@ -134,7 +134,7 @@ internal static class KnownShortcutCatalog
         Windows("windows.input-previous", "Space", "switch to the previous input language or layout", shift: true),
 
         // Win + Ctrl. windows.wake-display carries Shift as well, so it lives here.
-        Windows("windows.color-filters", "c", "toggle color filters", ctrl: true),
+        Windows("windows.color-filters", "c", "turn color filters on and off", ctrl: true),
         Windows("windows.narrator", "Enter", "open Narrator", ctrl: true),
         Windows("windows.find-devices", "f", "search for devices on a network", ctrl: true),
         Windows("windows.quick-assist", "q", "open Quick Assist", ctrl: true),
@@ -143,7 +143,7 @@ internal static class KnownShortcutCatalog
         Windows("windows.input-recent", "Space", "switch to the previous input option", ctrl: true),
 
         // Win + Alt.
-        Windows("windows.hdr", "b", "toggle high dynamic range", alt: true),
+        Windows("windows.hdr", "b", "turn high dynamic range on and off", alt: true),
         Windows("windows.desktop-clock", "d", "show and hide date and time on the desktop", alt: true),
         Windows("windows.voice-keyboard-focus", "h", "focus the keyboard during voice typing", alt: true),
         Windows("windows.mute-mic", "k", "mute or unmute the microphone", alt: true),
@@ -155,7 +155,7 @@ internal static class KnownShortcutCatalog
         Windows("windows.start-menu", "Escape", "open the Start menu", ctrl: true, win: false),
         Windows("windows.switch-windows", "Tab", "switch between open windows", alt: true, win: false),
         Windows("windows.app-thumbnails", "Tab", "view thumbnails of all open apps", ctrl: true, alt: true, win: false),
-        Windows("windows.cycle-windows", "Escape", "cycle windows in the order opened", alt: true, win: false),
+        Windows("windows.cycle-windows", "Escape", "cycle through windows in the order they were opened", alt: true, win: false),
         Windows("windows.close-window", "F4", "close the active window", alt: true, win: false),
         Windows("windows.window-menu", "Space", "open the active window's context menu", alt: true, win: false),
         Windows("windows.show-password", "F8", "show the password on the sign-in screen", alt: true, win: false),

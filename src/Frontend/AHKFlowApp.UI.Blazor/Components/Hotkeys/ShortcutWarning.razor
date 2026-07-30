@@ -1,0 +1,135 @@
+@using AHKFlowApp.UI.Blazor.DTOs
+@using AHKFlowApp.UI.Blazor.Helpers
+@using AHKFlowApp.UI.Blazor.Services
+@using MudBlazor
+@implements IDisposable
+
+@* Advisory only — this never gates a save. Both places a hotkey's keys can be changed render
+   it: the edit dialog and the grid's inline row. *@
+@if (_warning is not null)
+{
+    <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-2"
+              UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "shortcut-warning" })">
+        @_warning
+    </MudAlert>
+}
+@* Outside the @if, so it renders on every pass. It is how an E2E test can tell "no warning"
+   apart from "not decided yet". Hidden: it is not for the reader. *@
+<span data-test="shortcut-warning-checked"
+      data-combination="@_checked"
+      style="display:none"></span>
+
+@code {
+    [Parameter] public string? Key { get; set; }
+    [Parameter] public bool Ctrl { get; set; }
+    [Parameter] public bool Alt { get; set; }
+    [Parameter] public bool Shift { get; set; }
+    [Parameter] public bool Win { get; set; }
+
+    [Inject] private IHotkeyKeyCatalog Keys { get; set; } = default!;
+    [Inject] private IKnownShortcutCatalog KnownShortcuts { get; set; } = default!;
+    [Inject] private ILogger<ShortcutWarning> Logger { get; set; } = default!;
+
+    // The notice for the current combination, or null when nothing uses these keys.
+    private string? _warning;
+
+    // The combination the notice above was last decided for, or "" before the first decision. Set
+    // together with _warning and under the same generation check, so it never announces a decision
+    // that a newer combination has already replaced. Read only by the E2E tests: it is how a test
+    // can tell "no warning" apart from "not evaluated yet".
+    private string _checked = "";
+
+    // The combination the last evaluation ran for. Parameters are re-set on every parent render,
+    // and most of those renders change something else entirely.
+    private string? _evaluated;
+
+    private readonly CancellationTokenSource _cts = new();
+    private CancellationTokenSource? _shortcutCts;
+    private int _generation;
+    private bool _disposed;
+
+    protected override void OnParametersSet()
+    {
+        string combination = HotkeyActionDisplay.ComboLabel(Key ?? "", Ctrl, Alt, Shift, Win);
+
+        if (combination == _evaluated)
+            return;
+
+        _evaluated = combination;
+        _ = RefreshAsync(combination);
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        _cts.Cancel();
+        _cts.Dispose();
+        _shortcutCts?.Cancel();
+        _shortcutCts?.Dispose();
+        _shortcutCts = null;
+    }
+
+    /// <summary>
+    /// Refreshes the notice for one combination. Fire-and-forget from <c>OnParametersSet</c>: the
+    /// notice is advisory, so nothing waits on it.
+    /// </summary>
+    /// <remarks>
+    /// A response for an older combination is dropped rather than rendered, so holding a modifier
+    /// key down cannot leave a stale notice on screen. A failed fetch clears the notice and says
+    /// nothing — a list that will not load must never confuse saving.
+    /// </remarks>
+    private async Task RefreshAsync(string combination)
+    {
+        _shortcutCts?.Cancel();
+        _shortcutCts?.Dispose();
+        CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token);
+        _shortcutCts = cts;
+        int generation = ++_generation;
+
+        try
+        {
+            string canonical = await Keys.CanonicalizeAsync(Key, cts.Token);
+
+            // Session-cached: only the first call in a session reaches the network. The generation
+            // check below still earns its place, because that first call can be slow enough for the
+            // user to change the combination while it is in flight.
+            KnownShortcutCatalogDto? catalog = await KnownShortcuts.GetAsync(cts.Token);
+
+            if (generation != _generation || _disposed)
+                return;
+
+            if (catalog is null)
+            {
+                // The fetch failed. Say nothing to the user — the feature is advisory — but leave a
+                // trace in the browser console. The cache does not memoize the failure, so the next
+                // evaluation retries.
+                Logger.LogWarning("Known-shortcut list could not be read; showing no warning.");
+                Decide(warning: null, combination);
+                return;
+            }
+
+            KnownShortcutDto? match = KnownShortcutWarning.Match(catalog, canonical, Ctrl, Alt, Shift, Win);
+
+            Decide(match is null ? null : KnownShortcutWarning.TextFor(match, combination), combination);
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded by a newer combination, or the host went away. Nothing to show.
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Known-shortcut list could not be read; showing no warning.");
+            if (generation == _generation && !_disposed)
+                Decide(warning: null, combination);
+        }
+    }
+
+    // A list that will not load has still finished deciding, and it decides "no warning". Saying so
+    // keeps the E2E wait honest instead of hanging.
+    private void Decide(string? warning, string combination)
+    {
+        _warning = warning;
+        _checked = combination;
+        StateHasChanged();
+    }
+}
