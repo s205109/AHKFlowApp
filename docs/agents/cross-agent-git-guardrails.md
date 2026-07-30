@@ -259,7 +259,7 @@ The stderr diagnostic names the resolved adapter, action, and rule, e.g.
 1. If the command triggered an approval prompt, decide right there: approve it to run in main now,
    or create a worktree with `scripts/new-worktree.ps1` and re-run the command there instead.
 2. If the command was denied outright by the location guard (rule `agent-main-git-mutation` and
-   similar), with no prompt at all, two different cases land here:
+   similar), with no prompt at all, several different cases land here, including:
    - **`git commit`.** `commit` never prompts, no matter where it runs from. Create a worktree
      with `scripts/new-worktree.ps1` and re-run it there (or set `AHKFLOW_ALLOW_MAIN=1` in
      advance — see item 3 below).
@@ -268,10 +268,19 @@ The stderr diagnostic names the resolved adapter, action, and rule, e.g.
      rather than the main conversation thread (see "Subagents never see `Ask`" above). Retry the
      same command from the main thread — it gets a real prompt there — or run it from a managed
      worktree instead, which never produces a prompt in the first place.
+   - **Any other guarded operation, run from Codex, or from Copilot without an interactive user.**
+     Both adapters would normally get `Ask` too, but neither can show a real prompt there: Codex's
+     hook contract does not support `ask` yet, so the guard renders every `Ask`-tier decision as
+     `deny` for Codex instead; Copilot does emit a real `ask`, but in cloud or pipe mode — with no
+     interactive user to answer it — Copilot itself degrades that to a deny (see "Adapter matrix
+     for `Ask`" above). Retrying does not help here, since the cause is the adapter, not the
+     caller. Create a managed worktree, or set `AHKFLOW_ALLOW_MAIN=1` in advance for the session
+     (see item 3 below) — the prompt itself is never available in this case, by design.
 
-   A denial from a different rule (force-push, `git reset --hard`, an unparseable command, and the
-   like) is a destructive-command safety rule, not a location rule. A worktree will not change its
-   outcome — discuss the command with the user instead.
+   This list is not exhaustive — other combinations of adapter and caller may hard-deny the same
+   way. A denial from a different rule (force-push, `git reset --hard`, an unparseable command, and
+   the like) is a destructive-command safety rule, not a location rule. A worktree will not change
+   its outcome — discuss the command with the user instead.
 3. Expect several main-checkout mutations this session and do not want to approve each one? Set
    `AHKFLOW_ALLOW_MAIN=1` in the session environment before starting the agent (see "Where
    `AHKFLOW_ALLOW_MAIN=1` has to be set" — an inline prefix does **not** reach the `PreToolUse`
