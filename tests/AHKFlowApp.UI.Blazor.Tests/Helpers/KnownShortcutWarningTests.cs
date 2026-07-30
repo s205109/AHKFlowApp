@@ -69,7 +69,28 @@ public sealed class KnownShortcutWarningTests
             Use("Edge", ShortcutProtection.Normal, ShortcutScope.Foreground, "open a new tab"));
 
         KnownShortcutWarning.TextFor(shortcut, "Ctrl+T").Should().StartWith(
-            "Chrome and Edge use Ctrl+T to open a new tab, but only while that application is in front.");
+            "Chrome and Edge use Ctrl+T to open a new tab, but only while those applications are in front.");
+    }
+
+    [Fact]
+    public void TextFor_ForegroundTail_AgreesWithTheNumberOfLabels()
+    {
+        // One label keeps the singular tail. Two share one sentence, so the tail turns plural —
+        // "Chrome and Edge use … while that application is in front" disagreed with itself.
+        KnownShortcutDto one = Shortcut("browser.new-tab", "t", true, false, false, false,
+            Use("Chrome", ShortcutProtection.Normal, ShortcutScope.Foreground, "open a new tab"));
+
+        KnownShortcutDto two = Shortcut("browser.new-tab", "t", true, false, false, false,
+            Use("Chrome", ShortcutProtection.Normal, ShortcutScope.Foreground, "open a new tab"),
+            Use("Edge", ShortcutProtection.Normal, ShortcutScope.Foreground, "open a new tab"));
+
+        KnownShortcutWarning.TextFor(one, "Ctrl+T")
+            .Should().Contain("but only while that application is in front.")
+            .And.NotContain("those applications");
+
+        KnownShortcutWarning.TextFor(two, "Ctrl+T")
+            .Should().Contain("but only while those applications are in front.")
+            .And.NotContain("that application");
     }
 
     [Fact]
