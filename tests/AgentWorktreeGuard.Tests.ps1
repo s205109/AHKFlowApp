@@ -744,6 +744,117 @@ try {
         Assert-Equal 'Warn' $decision.Action 'Action'
     }
 
+    Write-Host 'Wrapper prefix (rtk)' -ForegroundColor Cyan
+
+    # Parity: a wrapped command must get exactly the same decision as its bare form, across every
+    # tier the guard recognizes. Driven from pairs so the two forms can never drift apart.
+    $wrapperParityPairs = @(
+        @{ Bare = 'git worktree prune'; Wrapped = 'rtk git worktree prune' },
+        @{ Bare = 'git branch newtopic'; Wrapped = 'rtk git branch newtopic' },
+        @{ Bare = 'git worktree repair'; Wrapped = 'rtk git worktree repair' },
+        @{ Bare = 'git branch -D topic'; Wrapped = 'rtk git branch -D topic' },
+        @{ Bare = 'git commit -m x'; Wrapped = 'rtk git commit -m x' },
+        @{ Bare = 'git commit --amend'; Wrapped = 'rtk git commit --amend' }
+    )
+    foreach ($pair in $wrapperParityPairs) {
+        Invoke-TestCase "Wrapped command matches its bare form: $($pair.Wrapped)" {
+            $bareDecision = Invoke-AgentGuardPolicy -Command $pair.Bare -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
+            $wrappedDecision = Invoke-AgentGuardPolicy -Command $pair.Wrapped -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
+            Assert-Equal $bareDecision.Action $wrappedDecision.Action 'Action'
+            Assert-Equal $bareDecision.Rule $wrappedDecision.Rule 'Rule'
+        }
+    }
+
+    # Every spelling below must still deny a commit exactly the way the bare command does. This
+    # covers rtk 0.43.0's global options (-v/-vv/-vvv/--verbose/--ultra-compact/--skip-env), the
+    # proxy/run pass-through subcommands, a repeated wrapper, a leading NAME=value assignment, and
+    # a full path to the rtk executable.
+    $wrapperSpellings = @(
+        'rtk', 'rtk.exe', 'C:\tools\rtk.exe', 'rtk -v', 'rtk -vvv', 'rtk --ultra-compact',
+        'rtk --skip-env', 'rtk --ultra-compact --skip-env', 'rtk proxy', 'rtk --ultra-compact proxy',
+        'rtk rtk', 'SKIP_COVERAGE_HOOK=1 rtk'
+    )
+    foreach ($prefix in $wrapperSpellings) {
+        Invoke-TestCase "Wrapper spelling still denies a commit: $prefix git commit -m x" {
+            $decision = Invoke-AgentGuardPolicy -Command "$prefix git commit -m x" `
+                -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
+            Assert-Equal 'Deny' $decision.Action 'Action'
+            Assert-Equal 'agent-main-git-mutation' $decision.Rule 'Rule'
+        }
+    }
+
+    Invoke-TestCase 'Commit still dominates through a chain of wrapped segments' {
+        $decision = Invoke-AgentGuardPolicy -Command 'rtk git add . && rtk git commit -m x' `
+            -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Deny' $decision.Action 'Action'
+        Assert-Equal 'agent-main-git-mutation' $decision.Rule 'Rule'
+    }
+
+    # Documented remaining bypasses, pinned as tests so a future change to either is deliberate,
+    # not accidental. The tokenizer keeps a quoted string as one token, so a subcommand that takes
+    # a raw command string hides the git word inside a single token. A hypothetical rtk option
+    # that takes the next token as its value has the same effect: the git word is no longer the
+    # segment's leading word. Neither case is modelled today.
+    Invoke-TestCase 'Documented bypass: rtk run with a quoted command stays Allow' {
+        $decision = Invoke-AgentGuardPolicy -Command 'rtk run "git commit -m x"' `
+            -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Allow' $decision.Action 'Action'
+    }
+
+    Invoke-TestCase 'Documented bypass: a value-taking rtk option stays Allow' {
+        $decision = Invoke-AgentGuardPolicy -Command 'rtk --out foo git commit -m x' `
+            -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Allow' $decision.Action 'Action'
+    }
+
+    # The one escalation guard: rtk cannot move the calling shell's own working directory, so the
+    # guard must not act as if it did. Without this, the commit below would look like it targeted
+    # the unrelated directory rtk was told to cd into, when the real shell never left main.
+    Invoke-TestCase 'rtk cd to an outside directory does not escalate a commit in main to Allow' {
+        $command = "rtk cd `"$($fixture.Unrelated)`" && git commit -m x"
+        $decision = Invoke-AgentGuardPolicy -Command $command -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Deny' $decision.Action 'Action'
+        Assert-Equal 'agent-main-git-mutation' $decision.Rule 'Rule'
+    }
+
+    # The rm/dotnet safety rules read the same parsed segments as git, so they see through the
+    # wrapper as a side effect of the fix, with no rule change of their own.
+    Invoke-TestCase 'Wrapped force-push still denies' {
+        $decision = Invoke-AgentGuardPolicy -Command 'rtk git push --force' -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Deny' $decision.Action 'Action'
+        Assert-Equal 'force-push' $decision.Rule 'Rule'
+    }
+
+    Invoke-TestCase 'Wrapped git reset --hard still denies' {
+        $decision = Invoke-AgentGuardPolicy -Command 'rtk git reset --hard' -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Deny' $decision.Action 'Action'
+        Assert-Equal 'git-reset-hard' $decision.Rule 'Rule'
+    }
+
+    Invoke-TestCase 'Wrapped rm -rf still denies' {
+        $decision = Invoke-AgentGuardPolicy -Command 'rtk rm -rf C:/somewhere' -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Deny' $decision.Action 'Action'
+        Assert-Equal 'dangerous-rm' $decision.Rule 'Rule'
+    }
+
+    Invoke-TestCase 'Wrapped dotnet run still warns' {
+        $decision = Invoke-AgentGuardPolicy -Command 'rtk dotnet run' -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Warn' $decision.Action 'Action'
+        Assert-Equal 'dotnet-run' $decision.Rule 'Rule'
+    }
+
+    # Not over-broad: a non-wrapper leading word is left untouched. These stay documented accepted
+    # limitations, not something this change fixes.
+    Invoke-TestCase 'sh -c wrapping a commit stays an accepted limitation, not newly caught' {
+        $decision = Invoke-AgentGuardPolicy -Command 'sh -c "git commit -m x"' -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Allow' $decision.Action 'Action'
+    }
+
+    Invoke-TestCase 'pwsh -File running a script is untouched by the wrapper rule' {
+        $decision = Invoke-AgentGuardPolicy -Command 'pwsh -File custom.ps1' -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Allow' $decision.Action 'Action'
+    }
+
     Write-Host 'Tier reclassification: adapter matrix' -ForegroundColor Cyan
 
     Invoke-TestCase 'Claude: a Tier 1a decision emits permissionDecision ask' {
@@ -1201,6 +1312,14 @@ try {
         '{"command":"cd f&&git commit -m test"},"cwd":"' +
         ($script:RealMainCheckout -replace '\\', '\\') + '"}'
         $result = Invoke-BashShim -StdIn $escaped -ShimArguments @('Claude')
+        Assert-Equal 0 $result.ExitCode 'ExitCode'
+        $json = $result.StdOut | ConvertFrom-Json
+        Assert-Equal 'deny' $json.hookSpecificOutput.permissionDecision 'permissionDecision'
+        Assert-Match 'BLOCKED: agent Git mutations' $json.hookSpecificOutput.permissionDecisionReason 'reason'
+    }
+
+    Invoke-TestCase 'Bash shim forwards an rtk-wrapped commit and produces the deny JSON' {
+        $result = Invoke-BashShim -StdIn (New-ClaudePayload 'rtk git commit -m x' $script:RealMainCheckout) -ShimArguments @('Claude')
         Assert-Equal 0 $result.ExitCode 'ExitCode'
         $json = $result.StdOut | ConvertFrom-Json
         Assert-Equal 'deny' $json.hookSpecificOutput.permissionDecision 'permissionDecision'
