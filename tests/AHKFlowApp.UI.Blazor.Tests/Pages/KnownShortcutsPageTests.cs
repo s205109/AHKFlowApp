@@ -274,6 +274,58 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
         page.FindAll("div.mud-alert").Should().NotBeEmpty();
     }
 
+    [Theory]
+    [InlineData("Ctrl+N")]
+    [InlineData("Ctrl + N")]
+    [InlineData("ctrl n")]
+    public void Search_MatchesACombinationHoweverItIsSpaced(string term)
+    {
+        StubList(BrowserShortcut(), Shortcut("windows.file-explorer", "e", BuiltInUse()));
+
+        IRenderedComponent<KnownShortcuts> page = RenderPage();
+        page.Find("[data-test=\"known-shortcut-search\"]").Input(term);
+
+        page.FindAll("[data-test=\"known-shortcut-row\"]").Should()
+            .HaveCount(2, "Ctrl+N carries a Chrome use and an Edge use");
+    }
+
+    [Fact]
+    public void Search_OnTheOtherFields_KeepsSpacesMeaningful()
+    {
+        StubList(BrowserShortcut());
+
+        IRenderedComponent<KnownShortcuts> page = RenderPage();
+        page.Find("[data-test=\"known-shortcut-search\"]").Input("new window");
+
+        page.FindAll("[data-test=\"known-shortcut-row\"]").Should().HaveCount(2);
+    }
+
+    [Fact]
+    public void TheBellIconShowsTheState_NotTheAction()
+    {
+        // A ringing bell beside the word "Silenced" read as a contradiction. The icon agrees with
+        // the chip now, and the tooltip says what the click does.
+        StubList(
+            Shortcut("windows.file-explorer", "e", BuiltInUse()),
+            Shortcut("windows.lock", "l", BuiltInUse(ignored: true)));
+
+        IRenderedComponent<KnownShortcuts> page = RenderPage();
+
+        page.Find("button.ignore-use").InnerHtml
+            .Should().Contain(IconPath(Icons.Material.Filled.NotificationsActive));
+        page.Find("button.restore-use").InnerHtml
+            .Should().Contain(IconPath(Icons.Material.Filled.NotificationsOff));
+    }
+
+    // MudBlazor icons are whole SVG strings. Only the path data survives rendering unchanged, so
+    // that is what the assertion compares — and it comes from the constant, never retyped.
+    private static string IconPath(string icon)
+    {
+        int start = icon.IndexOf("d=\"", StringComparison.Ordinal) + 3;
+        int end = icon.IndexOf('"', start);
+        return icon[start..end];
+    }
+
     [Fact]
     public void SignedOut_SaysSo_AndReadsNothing()
     {

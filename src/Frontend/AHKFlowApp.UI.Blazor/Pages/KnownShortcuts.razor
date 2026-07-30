@@ -127,15 +127,19 @@
                                    OnClick="() => DeleteAsync(context)" Disabled="@_busy"
                                    UserAttributes='@UseAttributes(context, "Delete this record")' />
                 }
+                @* The bell shows the state of the row, matching its chip: crossed out on a
+                   silenced use, ringing on one that still warns. It used to show the action
+                   instead, which put a ringing bell next to the word "Silenced". The tooltip
+                   carries what the click does. *@
                 else if (context.Use.IsIgnored)
                 {
-                    <MudIconButton Class="restore-use" Icon="@Icons.Material.Filled.NotificationsActive"
+                    <MudIconButton Class="restore-use" Icon="@Icons.Material.Filled.NotificationsOff"
                                    OnClick="() => RestoreAsync(context)" Disabled="@_busy"
                                    UserAttributes='@UseAttributes(context, "Warn about this again")' />
                 }
                 else
                 {
-                    <MudIconButton Class="ignore-use" Icon="@Icons.Material.Filled.NotificationsOff"
+                    <MudIconButton Class="ignore-use" Icon="@Icons.Material.Filled.NotificationsActive"
                                    OnClick="() => IgnoreAsync(context)" Disabled="@_busy"
                                    UserAttributes='@UseAttributes(context, "Stop warning about this")' />
                 }
@@ -251,10 +255,20 @@
             return true;
 
         string term = _search.Trim();
-        return row.ComboLabel.Contains(term, StringComparison.OrdinalIgnoreCase)
+        return MatchesCombination(row.ComboLabel, term)
             || row.Use.UsedBy.Contains(term, StringComparison.OrdinalIgnoreCase)
             || row.Use.Does.Contains(term, StringComparison.OrdinalIgnoreCase);
     }
+
+    // A combination gets written several ways. The label is "Ctrl+T", and people type "Ctrl + T"
+    // or "ctrl t". Spaces and plus signs are dropped from both sides before comparing, so every
+    // spelling finds the same row. Only this field is treated that way — the other two are
+    // ordinary text, where a space is part of what was typed.
+    private static bool MatchesCombination(string comboLabel, string term) =>
+        Squeeze(comboLabel).Contains(Squeeze(term), StringComparison.OrdinalIgnoreCase);
+
+    private static string Squeeze(string value) =>
+        value.Replace(" ", "", StringComparison.Ordinal).Replace("+", "", StringComparison.Ordinal);
 
     private static string ScopeLabel(ShortcutScope scope) =>
         scope == ShortcutScope.Global ? "Anywhere" : "Only in front";

@@ -43,19 +43,10 @@
                              UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "win-checkbox" })" />
             </MudStack>
 
-            @* ---- Known-shortcut notice. Advisory only — it never gates Save. ---- *@
-            @if (_shortcutWarning is not null)
-            {
-                <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-2"
-                          UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "shortcut-warning" })">
-                    @_shortcutWarning
-                </MudAlert>
-            }
-            @* Outside the @if, so it renders on every pass. It is how an E2E test can tell
-               "no warning" apart from "not decided yet". Hidden: it is not for the reader. *@
-            <span data-test="shortcut-warning-checked"
-                  data-combination="@_shortcutChecked"
-                  style="display:none"></span>
+            @* ---- Known-shortcut notice. Advisory only — it never gates Save. The grid's inline
+                 row renders the same component, so both places the keys can change warn. ---- *@
+            <ShortcutWarning Key="@Item.Key" Ctrl="@Item.Ctrl" Alt="@Item.Alt"
+                             Shift="@Item.Shift" Win="@Item.Win" />
 
             @* ---- Action selector. Generated from the enum so the set cannot drift.
                  The wrapper div carries the CSS-isolation scope for the wrapping rule. ---- *@
@@ -285,7 +276,6 @@
     [Inject] private IJSRuntime JS { get; set; } = default!;
     [Inject] private ISnackbar Snackbar { get; set; } = default!;
     [Inject] private ILogger<HotkeyEditDialog> Logger { get; set; } = default!;
-    [Inject] private IKnownShortcutCatalog KnownShortcuts { get; set; } = default!;
 
     [Parameter] public HotkeyEditModel Item { get; set; } = new();
     [Parameter] public IReadOnlyList<ProfileDto> Profiles { get; set; } = [];
@@ -343,20 +333,6 @@
     private int _previewGeneration;
     private bool _disposed;
 
-    // The known-shortcut notice for the current combination, or null. Advisory only: it never
-    // gates Save. The list behind it is session-cached by IKnownShortcutCatalog, the same way
-    // IHotkeyKeyCatalog caches the key registry.
-    private string? _shortcutWarning;
-
-    // The combination the notice above was last decided for, or "" before the first decision. Set
-    // together with _shortcutWarning and under the same generation check, so it never announces a
-    // decision that a newer combination has already replaced. Read only by the E2E tests: it is
-    // how a test can tell "no warning" apart from "not evaluated yet".
-    private string _shortcutChecked = "";
-
-    private CancellationTokenSource? _shortcutCts;
-    private int _shortcutGeneration;
-
     protected override void OnParametersSet()
     {
         _profileOptions = [.. Profiles.Select(p => new EntityOption(p.Id, p.Name))];
@@ -367,9 +343,6 @@
             _lastItem = Item;
             if (Item.ActionKind == HotkeyActionKind.SendKeys)
                 DecomposeSendKeys();
-
-            _shortcutWarning = null;
-            _ = RefreshShortcutWarningAsync();
         }
     }
 
@@ -379,79 +352,6 @@
         _cts.Cancel();
         _cts.Dispose();
         CancelPendingPreview();
-        _shortcutCts?.Cancel();
-        _shortcutCts?.Dispose();
-        _shortcutCts = null;
-    }
-
-    /// <summary>
-    /// Refreshes the known-shortcut notice for the current combination. Fire-and-forget from the
-    /// change handlers: the notice is advisory, so nothing waits on it.
-    /// </summary>
-    /// <remarks>
-    /// Follows the preview's generation-counter pattern. A response for an older combination is
-    /// dropped rather than rendered, so holding a modifier key down cannot leave a stale notice
-    /// on screen. A failed fetch clears the notice and says nothing — a list that will not load
-    /// must never confuse saving.
-    /// </remarks>
-    private async Task RefreshShortcutWarningAsync()
-    {
-        _shortcutCts?.Cancel();
-        _shortcutCts?.Dispose();
-        CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token);
-        _shortcutCts = cts;
-        int generation = ++_shortcutGeneration;
-
-        try
-        {
-            string canonical = await Catalog.CanonicalizeAsync(Item.Key, cts.Token);
-
-            // Session-cached: only the first call in a session reaches the network. The
-            // generation check below still earns its place, because that first call can be slow
-            // enough for the user to change the combination while it is in flight.
-            KnownShortcutCatalogDto? catalog = await KnownShortcuts.GetAsync(cts.Token);
-
-            if (generation != _shortcutGeneration || _disposed)
-                return;
-
-            if (catalog is null)
-            {
-                // The fetch failed. Say nothing to the user — the feature is advisory — but leave
-                // a trace in the browser console. The cache does not memoize the failure, so the
-                // next open retries.
-                Logger.LogWarning("Known-shortcut list could not be read; showing no warning.");
-                _shortcutWarning = null;
-                // A list that will not load has still finished deciding, and it decides "no
-                // warning". Saying so keeps the E2E wait honest instead of hanging.
-                _shortcutChecked = HotkeyActionDisplay.ComboLabel(Item);
-                StateHasChanged();
-                return;
-            }
-
-            KnownShortcutDto? match = KnownShortcutWarning.Match(
-                catalog, canonical, Item.Ctrl, Item.Alt, Item.Shift, Item.Win);
-
-            _shortcutWarning = match is null
-                ? null
-                : KnownShortcutWarning.TextFor(match, HotkeyActionDisplay.ComboLabel(Item));
-            _shortcutChecked = HotkeyActionDisplay.ComboLabel(Item);
-
-            StateHasChanged();
-        }
-        catch (OperationCanceledException)
-        {
-            // Superseded by a newer combination, or the dialog closed. Nothing to show.
-        }
-        catch (Exception ex)
-        {
-            Logger.LogWarning(ex, "Known-shortcut list could not be read; showing no warning.");
-            if (generation == _shortcutGeneration && !_disposed)
-            {
-                _shortcutWarning = null;
-                _shortcutChecked = HotkeyActionDisplay.ComboLabel(Item);
-                StateHasChanged();
-            }
-        }
     }
 
     /// <summary>
@@ -585,9 +485,9 @@
         ClearSaveError(nameof(HotkeyEditModel.Key));
         _duplicateCombination = null;
         // The key is half the emitted line, so a stale preview here is worse than a stale
-        // payload preview — it shows the wrong binding entirely.
+        // payload preview — it shows the wrong binding entirely. The known-shortcut notice needs
+        // no call: ShortcutWarning re-decides from its parameters.
         RefreshPreview();
-        _ = RefreshShortcutWarningAsync();
     }
 
     /// <summary>
@@ -597,9 +497,10 @@
     /// </summary>
     private void OnModifierChanged()
     {
+        // The known-shortcut notice needs no call here: ShortcutWarning takes the combination as
+        // parameters and re-decides whenever this render changes them.
         _duplicateCombination = null;
         RefreshPreview();
-        _ = RefreshShortcutWarningAsync();
     }
 
     private void OnRunTargetKindChanged(RunTargetKind? kind)
