@@ -17,7 +17,7 @@ public sealed class HotkeysApiClientTests
     {
         var paged = new PagedList<HotkeyDto>(
             Items: [new HotkeyDto(Guid.NewGuid(), [], true, "Open Notepad", "n", true, false, false, false,
-                HotkeyActionKind.Run, null, null, "notepad.exe", RunTargetKind.Application, null, null, null,
+                HotkeyActionKind.Run, null, null, "notepad.exe", RunTargetKind.Application, null, null, null, null, null,
                 DateTimeOffset.UtcNow, DateTimeOffset.UtcNow)],
             Page: 1, PageSize: 50, TotalCount: 1, TotalPages: 1, HasNextPage: false, HasPreviousPage: false);
         var handler = StubHttpMessageHandler.JsonResponse(HttpStatusCode.OK, paged);
@@ -148,6 +148,8 @@ public sealed class HotkeysApiClientTests
             null,
             "notepad.exe",
             RunTargetKind.Application,
+            null,
+            null,
             null,
             null,
             null,

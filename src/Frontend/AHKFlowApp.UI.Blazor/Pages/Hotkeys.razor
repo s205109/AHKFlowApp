@@ -121,6 +121,12 @@
                         else
                         {
                             <span>@HotkeyActionDisplay.Summary(context.Item)</span>
+                            @if (context.Item.ContextMatchType is not null)
+                            {
+                                <MudTooltip Text="@($"Only in {context.Item.ContextSummary}")">
+                                    <MudIcon Icon="@Icons.Material.Filled.DesktopWindows" Size="Size.Small" Class="context-icon" />
+                                </MudTooltip>
+                            }
                         }
                     </MudStack>
                 </CellTemplate>

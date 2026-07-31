@@ -19,6 +19,9 @@ public sealed class CreateHotkeyCommandValidator : AbstractValidator<CreateHotke
         RuleFor(x => x.Input.Description).ValidDescription();
         RuleFor(x => x.Input.Key).ValidKey();
         this.AddHotkeyActionRules(x => x.Input);
+        this.AddWindowContextRules(
+            x => x.Input.ContextMatchType,
+            x => x.Input.ContextValue);
         this.AddProfileAssociationRules(
             x => x.Input.AppliesToAllProfiles,
             x => x.Input.ProfileIds);
@@ -47,11 +50,14 @@ internal sealed class CreateHotkeyCommandHandler(
               && h.Ctrl == input.Ctrl
               && h.Alt == input.Alt
               && h.Shift == input.Shift
-              && h.Win == input.Win,
+              && h.Win == input.Win
+              && h.ContextMatchType == input.ContextMatchType
+              && h.ContextValue == input.ContextValue,
             ct);
 
         if (duplicate)
-            return Result.Conflict("A hotkey with this key + modifier combination already exists.");
+            return Result.Conflict(
+                HotkeyConflictMessages.Duplicate(definition.ContextMatchType, definition.ContextValue));
 
         Guid[] distinctProfileIds = input.ProfileIds?.Distinct().ToArray() ?? [];
         if (!input.AppliesToAllProfiles)
@@ -89,7 +95,8 @@ internal sealed class CreateHotkeyCommandHandler(
         }
         catch (DbUpdateException ex) when (ex.IsDuplicateKeyViolation())
         {
-            return Result.Conflict("A hotkey with this key + modifier combination already exists.");
+            return Result.Conflict(
+                HotkeyConflictMessages.Duplicate(definition.ContextMatchType, definition.ContextValue));
         }
 
         await db.Entry(entity).Collection(h => h.Profiles).LoadAsync(ct);

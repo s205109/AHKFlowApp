@@ -20,6 +20,8 @@ namespace AHKFlowApp.Application.DTOs;
 /// <param name="WindowOp">Window operation performed by a <see cref="HotkeyActionKind.Window"/> hotkey.</param>
 /// <param name="RemapDest">Destination key of a <see cref="HotkeyActionKind.Remap"/> hotkey.</param>
 /// <param name="Body">Verbatim AHK body emitted by a <see cref="HotkeyActionKind.Raw"/> hotkey.</param>
+/// <param name="ContextMatchType">How <paramref name="ContextValue"/> is matched against the active window. Null means the hotkey fires everywhere.</param>
+/// <param name="ContextValue">The window the hotkey is limited to. Null means the hotkey fires everywhere.</param>
 /// <param name="CreatedAt">UTC creation timestamp.</param>
 /// <param name="UpdatedAt">UTC last-update timestamp.</param>
 /// <param name="CategoryIds">Categories assigned to this hotkey.</param>
@@ -41,6 +43,8 @@ public sealed record HotkeyDto(
     WindowOp? WindowOp,
     string? RemapDest,
     string? Body,
+    WindowMatchType? ContextMatchType,
+    string? ContextValue,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
     Guid[] CategoryIds);
@@ -63,6 +67,8 @@ public sealed record HotkeyDto(
 /// <param name="ProfileIds">Profiles to attach the new hotkey to.</param>
 /// <param name="AppliesToAllProfiles">When true, the hotkey applies to every profile.</param>
 /// <param name="CategoryIds">Categories to assign to the new hotkey.</param>
+/// <param name="ContextMatchType">How the context value is matched against the active window. Null means the hotkey fires everywhere.</param>
+/// <param name="ContextValue">The window the hotkey is limited to. Null means the hotkey fires everywhere.</param>
 public sealed record CreateHotkeyDto(
     string Description,
     string Key,
@@ -80,7 +86,9 @@ public sealed record CreateHotkeyDto(
     string? Body = null,
     Guid[]? ProfileIds = null,
     bool AppliesToAllProfiles = false,
-    Guid[]? CategoryIds = null) : IHotkeyDraft;
+    Guid[]? CategoryIds = null,
+    WindowMatchType? ContextMatchType = null,
+    string? ContextValue = null) : IHotkeyDraft;
 
 /// <summary>Payload to replace the editable fields of an existing hotkey.</summary>
 /// <param name="Description">Human-readable label.</param>
@@ -100,6 +108,8 @@ public sealed record CreateHotkeyDto(
 /// <param name="ProfileIds">Replacement profile-attachment set.</param>
 /// <param name="AppliesToAllProfiles">When true, the hotkey applies to every profile.</param>
 /// <param name="CategoryIds">Replacement category assignment set.</param>
+/// <param name="ContextMatchType">How the context value is matched against the active window. Null means the hotkey fires everywhere.</param>
+/// <param name="ContextValue">The window the hotkey is limited to. Null means the hotkey fires everywhere.</param>
 public sealed record UpdateHotkeyDto(
     string Description,
     string Key,
@@ -117,4 +127,6 @@ public sealed record UpdateHotkeyDto(
     string? Body,
     Guid[]? ProfileIds,
     bool AppliesToAllProfiles,
-    Guid[]? CategoryIds = null) : IHotkeyDraft;
+    Guid[]? CategoryIds = null,
+    WindowMatchType? ContextMatchType = null,
+    string? ContextValue = null) : IHotkeyDraft;

@@ -102,6 +102,108 @@ public sealed class CreateHotkeyCommandHandlerTests(HotkeyDbFixture fx)
     }
 
     [Fact]
+    public async Task Handle_SameCombinationDifferentContext_Succeeds()
+    {
+        var owner = Guid.NewGuid();
+        Hotkey existing = new HotkeyBuilder()
+            .WithOwner(owner).WithKey("f1").WithCtrl().AppliesToAll()
+            .WithContext(WindowMatchType.Executable, "notepad.exe")
+            .Build();
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotkeys.Add(existing);
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        var handler = new CreateHotkeyCommandHandler(db, CurrentUserHelper.For(owner), _clock);
+        var cmd = new CreateHotkeyCommand(new CreateHotkeyDto(
+            "Same combination, other window", "f1", HotkeyActionKind.Disable, Ctrl: true,
+            AppliesToAllProfiles: true,
+            ContextMatchType: WindowMatchType.Executable, ContextValue: "code.exe"));
+
+        Result<HotkeyDto> result = await handler.ExecuteAsync(cmd, default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.ContextMatchType.Should().Be(WindowMatchType.Executable);
+        result.Value.ContextValue.Should().Be("code.exe");
+    }
+
+    [Fact]
+    public async Task Handle_SameCombinationSameContext_ReturnsConflictNamingTheWindow()
+    {
+        var owner = Guid.NewGuid();
+        Hotkey existing = new HotkeyBuilder()
+            .WithOwner(owner).WithKey("f1").WithCtrl().AppliesToAll()
+            .WithContext(WindowMatchType.Executable, "notepad.exe")
+            .Build();
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotkeys.Add(existing);
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        var handler = new CreateHotkeyCommandHandler(db, CurrentUserHelper.For(owner), _clock);
+        var cmd = new CreateHotkeyCommand(new CreateHotkeyDto(
+            "Duplicate", "f1", HotkeyActionKind.Disable, Ctrl: true,
+            AppliesToAllProfiles: true,
+            ContextMatchType: WindowMatchType.Executable, ContextValue: "notepad.exe"));
+
+        Result<HotkeyDto> result = await handler.ExecuteAsync(cmd, default);
+
+        result.Status.Should().Be(ResultStatus.Conflict);
+        result.Errors.Should().ContainSingle().Which.Should().Be(
+            "A hotkey with this key + modifier combination already exists for \"notepad.exe\".");
+    }
+
+    [Fact]
+    public async Task Handle_GlobalDuplicate_ReturnsConflictSayingAllWindows()
+    {
+        var owner = Guid.NewGuid();
+        Hotkey existing = new HotkeyBuilder()
+            .WithOwner(owner).WithKey("f1").WithCtrl().AppliesToAll().Build();
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotkeys.Add(existing);
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        var handler = new CreateHotkeyCommandHandler(db, CurrentUserHelper.For(owner), _clock);
+        var cmd = new CreateHotkeyCommand(new CreateHotkeyDto(
+            "Duplicate", "f1", HotkeyActionKind.Disable, Ctrl: true, AppliesToAllProfiles: true));
+
+        Result<HotkeyDto> result = await handler.ExecuteAsync(cmd, default);
+
+        result.Status.Should().Be(ResultStatus.Conflict);
+        result.Errors.Should().ContainSingle().Which.Should().Be(
+            "A hotkey with this key + modifier combination already exists for all windows.");
+    }
+
+    [Fact]
+    public async Task Handle_WithContext_PersistsBothContextColumns()
+    {
+        await using AppDbContext db = fx.CreateContext();
+        var owner = Guid.NewGuid();
+        var handler = new CreateHotkeyCommandHandler(db, CurrentUserHelper.For(owner), _clock);
+        var cmd = new CreateHotkeyCommand(new CreateHotkeyDto(
+            "Open Notepad", "n", HotkeyActionKind.Run, Ctrl: true,
+            RunTarget: "notepad.exe", RunTargetKind: RunTargetKind.Application,
+            AppliesToAllProfiles: true,
+            ContextMatchType: WindowMatchType.WindowClass, ContextValue: "Notepad"));
+
+        Result<HotkeyDto> result = await handler.ExecuteAsync(cmd, default);
+
+        result.IsSuccess.Should().BeTrue();
+
+        await using AppDbContext verify = fx.CreateContext();
+        Hotkey persisted = await verify.Hotkeys.SingleAsync(h => h.OwnerOid == owner);
+        persisted.ContextMatchType.Should().Be(WindowMatchType.WindowClass);
+        persisted.ContextValue.Should().Be("Notepad");
+    }
+
+    [Fact]
     public async Task Handle_SameKeyDifferentOwners_Succeeds()
     {
         var owner1 = Guid.NewGuid();

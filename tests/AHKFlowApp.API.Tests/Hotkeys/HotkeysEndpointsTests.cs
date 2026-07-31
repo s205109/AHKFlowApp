@@ -129,6 +129,72 @@ public sealed class HotkeysEndpointsTests(ApiTestFixture fixture)
     }
 
     [Fact]
+    public async Task PostThenPut_WindowContext_SurvivesTheWireInBothDirections()
+    {
+        var owner = Guid.NewGuid();
+        using HttpClient client = CreateAuthed(owner);
+        var create = new CreateHotkeyDto("Scoped", "f2", HotkeyActionKind.Disable,
+            Ctrl: true, AppliesToAllProfiles: true,
+            ContextMatchType: WindowMatchType.Executable, ContextValue: "notepad.exe");
+
+        HttpResponseMessage created = await client.PostAsJsonAsync("/api/v1/hotkeys", create);
+        created.StatusCode.Should().Be(HttpStatusCode.Created);
+        HotkeyDto body = (await created.Content.ReadFromJsonAsync<HotkeyDto>())!;
+        body.ContextMatchType.Should().Be(WindowMatchType.Executable);
+        body.ContextValue.Should().Be("notepad.exe");
+
+        HotkeyDto readBack = (await client.GetFromJsonAsync<HotkeyDto>($"/api/v1/hotkeys/{body.Id}"))!;
+        readBack.ContextMatchType.Should().Be(WindowMatchType.Executable);
+        readBack.ContextValue.Should().Be("notepad.exe");
+
+        var update = new UpdateHotkeyDto("Scoped", "f2", HotkeyActionKind.Disable,
+            Ctrl: true, Alt: false, Shift: false, Win: false,
+            Text: null, SendKeysContent: null, RunTarget: null, RunTargetKind: null,
+            WindowOp: null, RemapDest: null, Body: null,
+            ProfileIds: null, AppliesToAllProfiles: true, CategoryIds: null,
+            ContextMatchType: WindowMatchType.WindowClass, ContextValue: "Notepad");
+
+        HttpResponseMessage updated = await client.PutAsJsonAsync($"/api/v1/hotkeys/{body.Id}", update);
+        updated.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        HotkeyDto afterUpdate = (await client.GetFromJsonAsync<HotkeyDto>($"/api/v1/hotkeys/{body.Id}"))!;
+        afterUpdate.ContextMatchType.Should().Be(WindowMatchType.WindowClass);
+        afterUpdate.ContextValue.Should().Be("Notepad");
+    }
+
+    [Fact]
+    public async Task Post_SameCombinationDifferentContext_Returns201()
+    {
+        var owner = Guid.NewGuid();
+        using HttpClient client = CreateAuthed(owner);
+
+        HttpResponseMessage first = await client.PostAsJsonAsync("/api/v1/hotkeys",
+            new CreateHotkeyDto("In Notepad", "f3", HotkeyActionKind.Disable,
+                Ctrl: true, AppliesToAllProfiles: true,
+                ContextMatchType: WindowMatchType.Executable, ContextValue: "notepad.exe"));
+        first.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        HttpResponseMessage second = await client.PostAsJsonAsync("/api/v1/hotkeys",
+            new CreateHotkeyDto("In VS Code", "f3", HotkeyActionKind.Disable,
+                Ctrl: true, AppliesToAllProfiles: true,
+                ContextMatchType: WindowMatchType.Executable, ContextValue: "code.exe"));
+
+        second.StatusCode.Should().Be(HttpStatusCode.Created);
+    }
+
+    [Fact]
+    public async Task Post_ContextValueWithoutMatchType_Returns400()
+    {
+        using HttpClient client = CreateAuthed();
+
+        HttpResponseMessage response = await client.PostAsJsonAsync("/api/v1/hotkeys",
+            new CreateHotkeyDto("Bad context", "f4", HotkeyActionKind.Disable,
+                Ctrl: true, AppliesToAllProfiles: true, ContextValue: "notepad.exe"));
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
     public async Task Put_UnknownId_Returns404_WithProblemDetails()
     {
         using HttpClient client = CreateAuthed();

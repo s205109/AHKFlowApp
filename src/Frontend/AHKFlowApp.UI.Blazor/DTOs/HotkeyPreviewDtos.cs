@@ -15,7 +15,9 @@ public sealed record HotkeyPreviewRequestDto(
     RunTargetKind? RunTargetKind = null,
     WindowOp? WindowOp = null,
     string? RemapDest = null,
-    string? Body = null);
+    string? Body = null,
+    WindowMatchType? ContextMatchType = null,
+    string? ContextValue = null);
 
 /// <summary>The AutoHotkey snippet a hotkey draft would generate. Mirror of the backend DTO.</summary>
 public sealed record HotkeyPreviewDto(string Snippet);

@@ -52,7 +52,9 @@ public sealed record HotkeySnapshot(
     // backend keeps them on its own HotkeySnapshot for exactly that reason (backend Task 8).
     // Unlike the DTO pair above, these do NOT retire in Task 10.
     HotkeyAction? Action = null,
-    string? Parameters = null);
+    string? Parameters = null,
+    WindowMatchType? ContextMatchType = null,
+    string? ContextValue = null);
 
 public sealed record HotstringHistoryVersionDto(
     int Version,

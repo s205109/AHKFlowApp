@@ -80,19 +80,19 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
 
     private static HotkeyDto MakeHotkey(string description = "Open terminal", string key = "T") =>
         new(Guid.NewGuid(), [], true, description, key, true, false, false, false,
-            HotkeyActionKind.Run, null, null, "wt.exe", RunTargetKind.Application, null, null, null,
+            HotkeyActionKind.Run, null, null, "wt.exe", RunTargetKind.Application, null, null, null, null, null,
             DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
 
     /// <summary>A Run row bound to Win+N — inline-editable, and its combo exercises the casing rule.</summary>
     private static HotkeyDto OneRunHotkey(string key = "n") =>
         new(Guid.NewGuid(), [], true, "Open notepad", key, false, false, false, true,
-            HotkeyActionKind.Run, null, null, "notepad.exe", RunTargetKind.Application, null, null, null,
+            HotkeyActionKind.Run, null, null, "notepad.exe", RunTargetKind.Application, null, null, null, null, null,
             DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
 
     private static HotkeyDto OneHotkeyOfKind(HotkeyActionKind kind)
     {
         HotkeyDto row = new(Guid.NewGuid(), [], true, "Kind row", "F1", false, false, false, true,
-            kind, null, null, null, null, null, null, null,
+            kind, null, null, null, null, null, null, null, null, null,
             DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
 
         return kind switch
@@ -767,5 +767,32 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
             actionFilter.Instance.GetState(x => x.Value).Should().BeNull();
             chips.Instance.SelectedIds.Should().BeEmpty();
         });
+    }
+
+    [Fact]
+    public void Grid_HotkeyLimitedToOneWindow_ShowsTheContextIcon()
+    {
+        StubKeyCatalog(keysValid: true);
+        StubList(Page(MakeHotkey() with
+        {
+            ContextMatchType = WindowMatchType.Executable,
+            ContextValue = "notepad.exe",
+        }));
+
+        IRenderedComponent<Hotkeys> cut = RenderPage();
+
+        cut.WaitForAssertion(() => cut.FindAll(".context-icon").Should().ContainSingle());
+    }
+
+    [Fact]
+    public void Grid_GlobalHotkey_ShowsNoContextIcon()
+    {
+        StubKeyCatalog(keysValid: true);
+        StubList(Page(MakeHotkey()));
+
+        IRenderedComponent<Hotkeys> cut = RenderPage();
+
+        cut.WaitForAssertion(() => cut.Find("button.start-edit"));
+        cut.FindAll(".context-icon").Should().BeEmpty();
     }
 }

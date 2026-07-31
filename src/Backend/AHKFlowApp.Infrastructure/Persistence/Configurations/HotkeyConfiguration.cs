@@ -40,13 +40,37 @@ internal sealed class HotkeyConfiguration : IEntityTypeConfiguration<Hotkey>
         builder.Property(x => x.RemapDest).HasMaxLength(50);
         builder.Property(x => x.Body);                                    // nvarchar(max), nullable
 
+        // Persist enum as int (default for EF, made explicit here for clarity).
+        builder.Property(x => x.ContextMatchType)
+            .HasConversion<int>();
+
+        builder.Property(x => x.ContextValue)
+            .HasMaxLength(200);
+
         builder.Property(x => x.AppliesToAllProfiles).IsRequired();
         builder.Property(x => x.CreatedAt).IsRequired();
         builder.Property(x => x.UpdatedAt).IsRequired();
 
-        // One mapping per modifier-combo per user.
-        builder.HasIndex(x => new { x.OwnerOid, x.Key, x.Ctrl, x.Alt, x.Shift, x.Win })
+        // One mapping per modifier-combo per owner per context — a combination may have one global
+        // (null context) row plus one row per distinct window-context value. Profiles are tracked in
+        // the junction table.
+        // HasFilter(null) overrides EF's default SQL Server convention of adding an "IS NOT NULL"
+        // filter to unique indexes with nullable columns: we want SQL Server's native unique-index
+        // semantics, where two rows with NULL in every indexed nullable column are treated as
+        // duplicates, so only one global (null-context) row per combination is allowed.
+        builder.HasIndex(x => new
+        {
+            x.OwnerOid,
+            x.Key,
+            x.Ctrl,
+            x.Alt,
+            x.Shift,
+            x.Win,
+            x.ContextMatchType,
+            x.ContextValue,
+        })
             .IsUnique()
-            .HasDatabaseName("IX_Hotkey_Owner_Modifiers");
+            .HasFilter(null)
+            .HasDatabaseName("IX_Hotkey_Owner_Modifiers_Context");
     }
 }

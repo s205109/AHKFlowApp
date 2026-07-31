@@ -71,6 +71,38 @@ public sealed class HotkeyMobileListTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
+    public async Task ExpandedRow_WithWindowContext_ShowsTheContextRow()
+    {
+        HotkeyEditModel item = Item();
+        item.ContextMatchType = WindowMatchType.Executable;
+        item.ContextValue = "notepad.exe";
+
+        IRenderedComponent<HotkeyMobileList> cut = Render<HotkeyMobileList>(p => p
+            .Add(c => c.Items, [item])
+            .Add(c => c.Profiles, (IReadOnlyList<ProfileDto>)[])
+            .Add(c => c.Categories, (IReadOnlyList<CategoryDto>)[]));
+
+        await cut.InvokeAsync(() => cut.Find("tr.mobile-row").Click());
+
+        cut.WaitForAssertion(() =>
+            cut.Find("[data-test=\"context-row\"]").TextContent.Should().Contain("exe:notepad.exe"));
+    }
+
+    [Fact]
+    public async Task ExpandedRow_WithoutWindowContext_HidesTheContextRow()
+    {
+        IRenderedComponent<HotkeyMobileList> cut = Render<HotkeyMobileList>(p => p
+            .Add(c => c.Items, [Item()])
+            .Add(c => c.Profiles, (IReadOnlyList<ProfileDto>)[])
+            .Add(c => c.Categories, (IReadOnlyList<CategoryDto>)[]));
+
+        await cut.InvokeAsync(() => cut.Find("tr.mobile-row").Click());
+
+        cut.WaitForAssertion(() => cut.Find("tr.mobile-row-expanded").Should().NotBeNull());
+        cut.FindAll("[data-test=\"context-row\"]").Should().BeEmpty();
+    }
+
+    [Fact]
     public void EmptyState_DoesNotRenderTable()
     {
         IRenderedComponent<HotkeyMobileList> cut = Render<HotkeyMobileList>(p => p

@@ -18,6 +18,8 @@ public sealed record HotkeyDto(
     WindowOp? WindowOp,
     string? RemapDest,
     string? Body,
+    WindowMatchType? ContextMatchType,
+    string? ContextValue,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
     Guid[]? CategoryIds = null);

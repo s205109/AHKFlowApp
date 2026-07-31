@@ -70,7 +70,7 @@ internal static class HotstringEmitter
     }
 
     // ContextValue has already passed validation guaranteeing no double-quote, backtick, or
-    // control characters (see HotstringRules.AddWindowContextRules) — safe to embed raw here.
+    // control characters (see WindowContextRules.AddWindowContextRules) — safe to embed raw here.
     public static string EmitHotIfOpen(WindowMatchType matchType, string value)
     {
         string criterion = matchType switch

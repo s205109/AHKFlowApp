@@ -37,7 +37,9 @@ internal static class HotkeyMappings
             RunTargetKind: d.RunTargetKind,
             WindowOp: d.WindowOp,
             RemapDest: HotkeyRules.Tokens.NormalizeRemapDest(d.RemapDest),
-            Body: d.Body);
+            Body: d.Body,
+            ContextMatchType: d.ContextMatchType,
+            ContextValue: d.ContextValue);
     }
 
     public static HotkeyDto ToDto(this Hotkey h) => new(
@@ -58,6 +60,8 @@ internal static class HotkeyMappings
         h.WindowOp,
         h.RemapDest,
         h.Body,
+        h.ContextMatchType,
+        h.ContextValue,
         h.CreatedAt,
         h.UpdatedAt,
         h.Categories.Select(c => c.CategoryId).ToArray());

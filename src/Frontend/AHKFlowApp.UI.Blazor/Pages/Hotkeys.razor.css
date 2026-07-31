@@ -46,6 +46,12 @@
     white-space: nowrap;
 }
 
+::deep .hotkeys-grid .context-icon {
+    opacity: 0.6;
+    margin-left: 4px;
+    vertical-align: middle;
+}
+
 /* 1 select · 2 Description · 3 Hotkey · 4 Action · 5 Profiles · 6 Categories · 7 row actions */
 ::deep .hotkeys-grid th:nth-child(1),
 ::deep .hotkeys-grid td:nth-child(1) {

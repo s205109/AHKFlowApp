@@ -89,6 +89,52 @@ public sealed class HotkeyPreviewEndpointsTests(ApiTestFixture fixture)
     }
 
     [Fact]
+    public async Task Preview_WithExecutableContext_WrapsSnippetInHotIfLines()
+    {
+        using HttpClient client = CreateAuthed();
+        var dto = new HotkeyPreviewRequestDto(
+            "Open Notepad", "n", HotkeyActionKind.Run, Win: true,
+            RunTarget: "notepad", RunTargetKind: RunTargetKind.Application,
+            ContextMatchType: WindowMatchType.Executable, ContextValue: "notepad.exe");
+
+        HttpResponseMessage response = await client.PostAsJsonAsync("/api/v1/hotkeys/preview", dto);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        HotkeyPreviewDto? body = await response.Content.ReadFromJsonAsync<HotkeyPreviewDto>();
+        body!.Snippet.Should().Be(
+            "#HotIf WinActive(\"ahk_exe notepad.exe\")\n; Open Notepad\n#n::Run(\"notepad\")\n#HotIf");
+    }
+
+    [Fact]
+    public async Task Preview_WithoutContext_SnippetUnwrapped()
+    {
+        using HttpClient client = CreateAuthed();
+        var dto = new HotkeyPreviewRequestDto(
+            "Open Notepad", "n", HotkeyActionKind.Run, Win: true,
+            RunTarget: "notepad", RunTargetKind: RunTargetKind.Application);
+
+        HttpResponseMessage response = await client.PostAsJsonAsync("/api/v1/hotkeys/preview", dto);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        HotkeyPreviewDto? body = await response.Content.ReadFromJsonAsync<HotkeyPreviewDto>();
+        body!.Snippet.Should().NotContain("#HotIf");
+    }
+
+    [Fact]
+    public async Task Preview_MatchTypeWithoutValue_Returns400()
+    {
+        using HttpClient client = CreateAuthed();
+        var dto = new HotkeyPreviewRequestDto(
+            "Open Notepad", "n", HotkeyActionKind.Run, Win: true,
+            RunTarget: "notepad", RunTargetKind: RunTargetKind.Application,
+            ContextMatchType: WindowMatchType.Executable);
+
+        HttpResponseMessage response = await client.PostAsJsonAsync("/api/v1/hotkeys/preview", dto);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
     public async Task Preview_Unauthenticated_Returns401()
     {
         using HttpClient client = _factory.CreateClient();

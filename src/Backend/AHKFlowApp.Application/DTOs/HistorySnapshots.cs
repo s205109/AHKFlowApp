@@ -81,6 +81,8 @@ public sealed record HotstringSnapshot(
 /// <param name="Body">Verbatim AutoHotkey body for <see cref="HotkeyActionKind.Raw"/>.</param>
 /// <param name="Action">Legacy action kind. Present only in pre-W1 snapshots; the converter keys off it.</param>
 /// <param name="Parameters">Legacy action-specific parameter payload. Present only in pre-W1 snapshots.</param>
+/// <param name="ContextMatchType">How the context value is matched against the active window. Null means the hotkey fires everywhere.</param>
+/// <param name="ContextValue">The window the hotkey was limited to. Null means the hotkey fires everywhere.</param>
 public sealed record HotkeySnapshot(
     string Description,
     string Key,
@@ -102,4 +104,6 @@ public sealed record HotkeySnapshot(
     string? RemapDest = null,
     string? Body = null,
     LegacyHotkeyDefinitionConverter.HotkeyAction? Action = null,
-    string? Parameters = null);
+    string? Parameters = null,
+    WindowMatchType? ContextMatchType = null,
+    string? ContextValue = null);

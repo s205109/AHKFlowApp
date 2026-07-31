@@ -49,6 +49,36 @@ public sealed class LegacyHotkeySnapshotConverterTests
     }
 
     [Fact]
+    public void ToDefinition_TypedSnapshot_CarriesWindowContextThrough()
+    {
+        HotkeySnapshot typed = Snapshot() with
+        {
+            ContextMatchType = WindowMatchType.Executable,
+            ContextValue = "notepad.exe",
+        };
+
+        HotkeyDefinition def = LegacyHotkeySnapshotConverter.ToDefinition(typed);
+
+        def.ContextMatchType.Should().Be(WindowMatchType.Executable);
+        def.ContextValue.Should().Be("notepad.exe");
+    }
+
+    [Fact]
+    public void ToDefinition_LegacySnapshot_YieldsNullContext()
+    {
+        HotkeySnapshot legacy = Snapshot() with
+        {
+            Action = HotkeyAction.Run,
+            Parameters = "notepad.exe",
+        };
+
+        HotkeyDefinition def = LegacyHotkeySnapshotConverter.ToDefinition(legacy);
+
+        def.ContextMatchType.Should().BeNull();
+        def.ContextValue.Should().BeNull();
+    }
+
+    [Fact]
     public void ToDefinition_TypedSnapshot_CarriesIdentityFieldsThrough()
     {
         HotkeySnapshot typed = Snapshot() with

@@ -30,4 +30,6 @@ internal interface IHotkeyDraft
     WindowOp? WindowOp { get; }
     string? RemapDest { get; }
     string? Body { get; }
+    WindowMatchType? ContextMatchType { get; }
+    string? ContextValue { get; }
 }

@@ -61,8 +61,8 @@ defaults to round-trip `o`). Unknown tokens are left verbatim rather than blanke
 All formatting uses `InvariantCulture` — generated scripts must not vary by server locale.
 
 Body layout, in order: paste helper (only when some hotstring needs it), `; --- Hotstrings ---`,
-window-context groups, global hotstrings, `; --- Hotkeys ---`, hotkeys, footer. Lines are joined
-with `\n`.
+hotstring window-context groups, global hotstrings, `; --- Hotkeys ---`, hotkey window-context
+groups, global hotkeys, footer. Lines are joined with `\n`.
 
 ## Hotstring definitions
 
@@ -238,13 +238,22 @@ This only bites if a future emitter sends the same escaped string outside Text m
 
 ## Window context
 
-Hotstrings with a window context are grouped and wrapped in `#HotIf`. Groups come first (ordered by
-match type, then value); the global group is emitted last, unwrapped. Grouping is why the
-`GroupBy` in `AhkScriptGenerator` must stay stable — the ordinal trigger sort has to survive it.
+Hotstrings and hotkeys with a window context are grouped and wrapped in `#HotIf`. Each section groups
+its own entries: the hotstring section first, then the hotkey section. Within a section, context
+groups come first (ordered by match type, then value) and the global group is emitted last,
+unwrapped. Grouping is why the `GroupBy` in `AhkScriptGenerator` must stay stable — the ordinal sort
+(trigger for hotstrings, description for hotkeys) has to survive it.
 
 ```ahk
 #HotIf WinActive("ahk_exe notepad.exe")
 :T:btw::by the way
+#HotIf
+```
+
+```ahk
+#HotIf WinActive("ahk_exe notepad.exe")
+; Open Notepad
+#n::Run("notepad")
 #HotIf
 ```
 
@@ -255,12 +264,13 @@ match type, then value); the global group is emitted last, unwrapped. Grouping i
 | `TitleContains` | `WinActive("<value>")` — substring, per `SetTitleMatchMode 2` |
 
 A bare `#HotIf` (no expression) clears context and restores global scope. Every opened group **must**
-be closed with one, or the context leaks into every subsequent hotstring in the file. Use
-`HotstringEmitter.HotIfClose` rather than a literal, so the generator and the preview handler can't drift.
+be closed with one, or the context leaks into every hotstring and hotkey that follows it in the file.
+Use `HotstringEmitter.HotIfClose` rather than a literal, so the generator and the preview handler
+can't drift.
 
 `ContextValue` is embedded raw into the `WinActive()` expression. That's only safe because
-`AddWindowContextRules` rejects double-quotes, backticks, and control characters up front — the
-validator is the escaping here.
+`WindowContextRules.AddWindowContextRules` rejects double-quotes, backticks, and control characters
+up front — the validator is the escaping here.
 
 ## Hotkeys
 

@@ -245,6 +245,29 @@
                                    DataTest="profile-select" />
             }
 
+            <MudText Typo="Typo.subtitle2" Class="mt-1">Window context</MudText>
+            <MudSwitch T="bool" Value="@(Item.ContextMatchType is not null)" ValueChanged="OnContextSwitchChanged"
+                       Label="Only in specific windows"
+                       UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "context-switch" })" />
+            @if (Item.ContextMatchType is not null)
+            {
+                <MudSelect T="WindowMatchType" Value="Item.ContextMatchType.Value" ValueChanged="OnContextMatchTypeChanged"
+                           Label="Match by"
+                           UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "context-match-type-select" })">
+                    <MudSelectItem T="WindowMatchType" Value="WindowMatchType.Executable">Program</MudSelectItem>
+                    <MudSelectItem T="WindowMatchType" Value="WindowMatchType.WindowClass">Window class</MudSelectItem>
+                    <MudSelectItem T="WindowMatchType" Value="WindowMatchType.TitleContains">Title contains</MudSelectItem>
+                </MudSelect>
+                <MudTextField T="string" Label="Value" @bind-Value="Item.ContextValue" Immediate="true"
+                              Required="true" RequiredError="Value is required" MaxLength="200"
+                              OnDebounceIntervalElapsed="OnContextValueDebounced"
+                              DebounceInterval="300"
+                              Placeholder="@ContextValuePlaceholder"
+                              Error="@(FieldError(nameof(HotkeyEditModel.ContextValue)) is not null)"
+                              ErrorText="@FieldError(nameof(HotkeyEditModel.ContextValue))"
+                              UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "context-value-input" })" />
+            }
+
             <EntityMultiSelect Options="_categoryOptions" Label="Categories"
                                SelectedIds="Item.CategoryIds"
                                SelectedIdsChanged="ids => Item.CategoryIds = [.. ids]"
@@ -267,7 +290,8 @@
     /// </summary>
     private static readonly HashSet<string> KnownFields = new(
         HotkeyEditModel.AllActionFieldNames.Concat(
-            [nameof(HotkeyEditModel.Key), nameof(HotkeyEditModel.Description)]),
+            [nameof(HotkeyEditModel.Key), nameof(HotkeyEditModel.Description),
+             nameof(HotkeyEditModel.ContextValue)]),
         StringComparer.OrdinalIgnoreCase);
 
     [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = default!;
@@ -502,6 +526,58 @@
         _duplicateCombination = null;
         RefreshPreview();
     }
+
+    /// <summary>
+    /// Turning the switch on limits the hotkey to one program and starts with a blank value;
+    /// turning it off clears both parts, so the hotkey fires everywhere again.
+    /// </summary>
+    private void OnContextSwitchChanged(bool isOn)
+    {
+        if (isOn)
+        {
+            Item.ContextMatchType = WindowMatchType.Executable;
+            Item.ContextValue = "";
+        }
+        else
+        {
+            Item.ContextMatchType = null;
+            Item.ContextValue = null;
+        }
+
+        OnContextChanged();
+    }
+
+    private void OnContextMatchTypeChanged(WindowMatchType matchType)
+    {
+        Item.ContextMatchType = matchType;
+        OnContextChanged();
+    }
+
+    private void OnContextValueDebounced()
+    {
+        ClearSaveError(nameof(HotkeyEditModel.ContextValue));
+        OnContextChanged();
+    }
+
+    /// <summary>
+    /// Window context is part of the uniqueness key, so a duplicate-combination message from the
+    /// last save is stale the moment any context field changes — the same reasoning as
+    /// <see cref="OnModifierChanged"/>. A dedicated handler rather than <see cref="OnFieldDebounced"/>:
+    /// that one runs for Description and Body too, and those edits must not clear the message.
+    /// </summary>
+    private void OnContextChanged()
+    {
+        _duplicateCombination = null;
+        RefreshPreview();
+    }
+
+    private string ContextValuePlaceholder => Item.ContextMatchType switch
+    {
+        WindowMatchType.Executable => "notepad.exe",
+        WindowMatchType.WindowClass => "Chrome_WidgetWin_1",
+        WindowMatchType.TitleContains => "- Visual Studio",
+        _ => "",
+    };
 
     private void OnRunTargetKindChanged(RunTargetKind? kind)
     {

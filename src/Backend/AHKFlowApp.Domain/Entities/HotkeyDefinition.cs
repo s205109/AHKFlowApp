@@ -27,4 +27,6 @@ public sealed record HotkeyDefinition(
     RunTargetKind? RunTargetKind = null,
     WindowOp? WindowOp = null,
     string? RemapDest = null,
-    string? Body = null);
+    string? Body = null,
+    WindowMatchType? ContextMatchType = null,
+    string? ContextValue = null);

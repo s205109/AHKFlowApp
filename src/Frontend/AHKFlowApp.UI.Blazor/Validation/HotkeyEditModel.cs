@@ -39,9 +39,28 @@ public sealed class HotkeyEditModel
     public string? RemapDest { get; set; }
     public string? Body { get; set; }
 
+    // Window context. Both parts are set together or both left null; the server rejects one
+    // without the other.
+    public WindowMatchType? ContextMatchType { get; set; }
+
+    [MaxLength(200, ErrorMessage = "Context value must be 200 characters or fewer.")]
+    public string? ContextValue { get; set; }
+
     public bool AppliesToAllProfiles { get; set; } = true;
     public List<Guid> ProfileIds { get; set; } = [];
     public List<Guid> CategoryIds { get; set; } = [];
+
+    /// <summary>
+    /// Humanized window-context summary (e.g. "exe:notepad.exe") for the grid tooltip and the
+    /// mobile detail row. Blank when the hotkey fires everywhere.
+    /// </summary>
+    public string ContextSummary => ContextMatchType switch
+    {
+        WindowMatchType.Executable => $"exe:{ContextValue}",
+        WindowMatchType.WindowClass => $"class:{ContextValue}",
+        WindowMatchType.TitleContains => $"title:{ContextValue}",
+        _ => "",
+    };
 
     /// <summary>
     /// Grid rows offer inline edit only for the two kinds whose whole payload is a single text
@@ -70,6 +89,8 @@ public sealed class HotkeyEditModel
         WindowOp = dto.WindowOp,
         RemapDest = dto.RemapDest,
         Body = dto.Body,
+        ContextMatchType = dto.ContextMatchType,
+        ContextValue = dto.ContextValue,
         AppliesToAllProfiles = dto.AppliesToAllProfiles,
         ProfileIds = [.. dto.ProfileIds],
         CategoryIds = [.. dto.CategoryIds ?? []],
@@ -92,6 +113,8 @@ public sealed class HotkeyEditModel
         WindowOp = WindowOp,
         RemapDest = RemapDest,
         Body = Body,
+        ContextMatchType = ContextMatchType,
+        ContextValue = ContextValue,
         AppliesToAllProfiles = AppliesToAllProfiles,
         ProfileIds = [.. ProfileIds],
         CategoryIds = [.. CategoryIds],
@@ -102,7 +125,8 @@ public sealed class HotkeyEditModel
         ActionFields f = ActiveFields();
         return new(Description, Key, ActionKind, Ctrl, Alt, Shift, Win,
             f.Text, f.SendKeysContent, f.RunTarget, f.RunTargetKind, f.WindowOp, f.RemapDest, f.Body,
-            AppliesToAllProfiles ? null : [.. ProfileIds], AppliesToAllProfiles, [.. CategoryIds]);
+            AppliesToAllProfiles ? null : [.. ProfileIds], AppliesToAllProfiles, [.. CategoryIds],
+            ContextMatchType, ContextValue);
     }
 
     public UpdateHotkeyDto ToUpdateDto()
@@ -110,14 +134,24 @@ public sealed class HotkeyEditModel
         ActionFields f = ActiveFields();
         return new(Description, Key, ActionKind, Ctrl, Alt, Shift, Win,
             f.Text, f.SendKeysContent, f.RunTarget, f.RunTargetKind, f.WindowOp, f.RemapDest, f.Body,
-            AppliesToAllProfiles ? null : [.. ProfileIds], AppliesToAllProfiles, [.. CategoryIds]);
+            AppliesToAllProfiles ? null : [.. ProfileIds], AppliesToAllProfiles, [.. CategoryIds],
+            ContextMatchType, ContextValue);
     }
 
+    /// <summary>
+    /// Builds the preview request. While the context value is still blank, both context members
+    /// are sent as null even when the switch is on. The server rejects a blank value, so sending
+    /// it would turn the preview panel red on every keystroke until the value is complete. Save is
+    /// unaffected: the field is required client-side, and the server still rejects a blank value.
+    /// </summary>
     public HotkeyPreviewRequestDto ToPreviewRequest()
     {
         ActionFields f = ActiveFields();
+        bool contextReady = ContextMatchType is not null && !string.IsNullOrWhiteSpace(ContextValue);
         return new(Description, Key, ActionKind, Ctrl, Alt, Shift, Win,
-            f.Text, f.SendKeysContent, f.RunTarget, f.RunTargetKind, f.WindowOp, f.RemapDest, f.Body);
+            f.Text, f.SendKeysContent, f.RunTarget, f.RunTargetKind, f.WindowOp, f.RemapDest, f.Body,
+            contextReady ? ContextMatchType : null,
+            contextReady ? ContextValue : null);
     }
 
     /// <summary>

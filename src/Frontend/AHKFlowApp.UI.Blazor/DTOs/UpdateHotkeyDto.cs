@@ -17,4 +17,6 @@ public sealed record UpdateHotkeyDto(
     string? Body,
     Guid[]? ProfileIds,
     bool AppliesToAllProfiles,
-    Guid[]? CategoryIds = null);
+    Guid[]? CategoryIds = null,
+    WindowMatchType? ContextMatchType = null,
+    string? ContextValue = null);
