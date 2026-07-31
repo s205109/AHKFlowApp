@@ -109,8 +109,9 @@
     /// </summary>
     /// <remarks>
     /// A response for an older combination is dropped rather than rendered, so holding a modifier
-    /// key down cannot leave a stale notice on screen. A failed fetch clears the notice and says
-    /// nothing — a list that will not load must never confuse saving.
+    /// key down cannot leave a stale notice on screen. A failed fetch clears the source notice and
+    /// says nothing there — a list that will not load must never confuse saving. It still decides
+    /// the destination notice, whose modifier rule needs no list.
     /// </remarks>
     private async Task RefreshAsync(EvaluationKey key)
     {
@@ -151,28 +152,21 @@
 
             if (catalog is null)
             {
-                // The fetch failed. Say nothing to the user — the feature is advisory — but leave a
-                // trace in the browser console. The cache does not memoize the failure, so the next
-                // evaluation retries.
-                Logger.LogWarning("Known-shortcut list could not be read; showing no warning.");
-                Decide(source: null, destination: null, key, canonicalDest);
+                // The fetch failed. The source side says nothing, because deciding it needs the
+                // list, but leave a trace in the browser console. The cache does not memoize the
+                // failure, so the next evaluation retries.
+                // The destination side is still decided. Its modifier rule reads the destination
+                // key alone, so an outage must not take that notice away.
+                Logger.LogWarning("Known-shortcut list could not be read; showing no source warning.");
+                Decide(source: null, DestinationNotice(null, canonical, canonicalDest, key), key, canonicalDest);
                 return;
             }
 
             KnownShortcutDto? match = KnownShortcutWarning.Match(catalog, canonical, Ctrl, Alt, Shift, Win);
 
-            // The destination notice names the source combination twice, so it needs a key to name.
-            // A new row can reach Remap and a destination before its key is picked, and modifiers
-            // alone make the label "Ctrl+" — not blank, but still naming no key. Both would render
-            // "This hotkey makes  act as Ctrl." The source side is already silent without a key,
-            // because Match ignores a blank one.
-            string? destination = string.IsNullOrWhiteSpace(canonical)
-                ? null
-                : KnownShortcutWarning.DestinationTextFor(catalog, canonicalDest, key.Combination);
-
             Decide(
                 match is null ? null : KnownShortcutWarning.TextFor(match, key.Combination),
-                destination,
+                DestinationNotice(catalog, canonical, canonicalDest, key),
                 key,
                 canonicalDest);
         }
@@ -192,8 +186,22 @@
         }
     }
 
-    // A list that will not load has still finished deciding, and it decides "no warning". Saying so
-    // keeps the E2E wait honest instead of hanging.
+    // The destination notice, or null when there is no source key to name. The notice names the
+    // source combination twice, and a new row can reach Remap and a destination before its key is
+    // picked. Modifiers alone make the label "Ctrl+" — not blank, but still naming no key. Either
+    // one would render "This hotkey makes  act as Ctrl." The source side needs no such guard,
+    // because Match ignores a blank key.
+    private static string? DestinationNotice(
+        KnownShortcutCatalogDto? catalog,
+        string canonicalSource,
+        string? canonicalDest,
+        EvaluationKey key) =>
+        string.IsNullOrWhiteSpace(canonicalSource)
+            ? null
+            : KnownShortcutWarning.DestinationTextFor(catalog, canonicalDest, key.Combination);
+
+    // A list that will not load has still finished deciding. Saying so keeps the E2E wait honest
+    // instead of hanging.
     private void Decide(string? source, string? destination, EvaluationKey key, string? canonicalDest)
     {
         _sourceWarning = source;

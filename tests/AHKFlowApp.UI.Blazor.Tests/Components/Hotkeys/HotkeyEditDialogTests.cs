@@ -1056,6 +1056,55 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
+    public async Task CatalogLoadFailure_StillWarnsAboutAModifierDestination()
+    {
+        // The modifier rule reads only the destination key, so it needs no catalog at all. An
+        // outage must not take it away. The source side still says nothing, because deciding that
+        // does need the list.
+        _knownShortcuts.GetAsync(Arg.Any<CancellationToken>())
+            .Returns(ValueTask.FromResult<KnownShortcutCatalogDto?>(null));
+
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(new HotkeyEditModel
+        {
+            Id = Guid.NewGuid(),
+            Description = "Caps Lock as Ctrl",
+            Key = "CapsLock",
+            ActionKind = HotkeyActionKind.Remap,
+            RemapDest = "Ctrl",
+        });
+
+        provider.WaitForAssertion(() =>
+            provider.Find("[data-test=\"destination-warning\"]").TextContent.Trim().Should().Be(
+                "This hotkey makes CapsLock act as Ctrl. " +
+                "Shortcuts that use Ctrl may also respond when you hold CapsLock."));
+
+        provider.FindAll("[data-test=\"source-warning\"]").Should().BeEmpty();
+        provider.FindAll(".mud-alert-filled-error").Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task CatalogLoadFailure_AndNoSourceKeyYet_StillSaysNothing()
+    {
+        // The blank-key guard outranks the modifier rule: with no key there is nothing to name.
+        _knownShortcuts.GetAsync(Arg.Any<CancellationToken>())
+            .Returns(ValueTask.FromResult<KnownShortcutCatalogDto?>(null));
+
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(new HotkeyEditModel
+        {
+            Description = "Not finished yet",
+            Key = "",
+            ActionKind = HotkeyActionKind.Remap,
+            RemapDest = "Ctrl",
+        });
+
+        provider.WaitForAssertion(() =>
+            provider.Find("[data-test=\"shortcut-warning-checked\"]")
+                .GetAttribute("data-destination").Should().Be("Ctrl"));
+
+        provider.FindAll("[data-test=\"shortcut-warning\"]").Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task CatalogLoadFailure_ShowsNoWarningAndNoError()
     {
         // The catalog service turns a failed fetch into null, so that is what the dialog sees.
