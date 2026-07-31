@@ -40,6 +40,18 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
                 null),
         ]);
 
+    // Win+E plus a bare F12 row. The F12 row is what a remap destination matches: a destination is
+    // looked up with no modifiers at all.
+    private static KnownShortcutCatalogDto WinEAndF12Catalog() =>
+        new([
+            new KnownShortcutDto("windows.file-explorer", "e", false, false, false, true,
+                [new ShortcutUseDto("Windows", ShortcutProtection.Normal, ShortcutScope.Global, "open File Explorer")],
+                null),
+            new KnownShortcutDto("browser.devtools-f12", "F12", false, false, false, false,
+                [new ShortcutUseDto("Chrome", ShortcutProtection.Normal, ShortcutScope.Foreground, "open developer tools")],
+                null),
+        ]);
+
     public HotkeyEditDialogTests()
     {
         Services.AddSingleton(_api);
@@ -822,6 +834,147 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
 
         provider.WaitForAssertion(() =>
             provider.FindAll("[data-test=\"shortcut-warning\"]").Should().BeEmpty());
+    }
+
+    [Fact]
+    public async Task Open_RemapToAModifier_WarnsAboutTheDestination()
+    {
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(new HotkeyEditModel
+        {
+            Id = Guid.NewGuid(),
+            Description = "Caps Lock as Ctrl",
+            Key = "CapsLock",
+            ActionKind = HotkeyActionKind.Remap,
+            RemapDest = "Ctrl",
+        });
+
+        provider.WaitForAssertion(() =>
+            provider.Find("[data-test=\"destination-warning\"]").TextContent.Trim().Should().Be(
+                "This hotkey makes CapsLock act as Ctrl. " +
+                "Shortcuts that use Ctrl may also respond when you hold CapsLock."));
+    }
+
+    [Fact]
+    public async Task Open_RemapToAKnownKey_MatchesItWithNoModifiers()
+    {
+        _knownShortcuts.GetAsync(Arg.Any<CancellationToken>())
+            .Returns(ValueTask.FromResult<KnownShortcutCatalogDto?>(WinEAndF12Catalog()));
+
+        // The row carries Ctrl. The destination is still matched bare, because AHK releases a
+        // modifier that is on the source and not on the destination.
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(new HotkeyEditModel
+        {
+            Id = Guid.NewGuid(),
+            Description = "Ctrl+C behaves as F12",
+            Key = "c",
+            Ctrl = true,
+            ActionKind = HotkeyActionKind.Remap,
+            RemapDest = "F12",
+        });
+
+        provider.WaitForAssertion(() =>
+            provider.Find("[data-test=\"destination-warning\"]").TextContent.Trim().Should().Be(
+                "This hotkey makes Ctrl+C act as F12. " +
+                "Chrome uses F12 to open developer tools, but only while that application is in front."));
+    }
+
+    [Fact]
+    public async Task ChangingOnlyTheRemapDestination_ReEvaluatesTheNotice()
+    {
+        _knownShortcuts.GetAsync(Arg.Any<CancellationToken>())
+            .Returns(ValueTask.FromResult<KnownShortcutCatalogDto?>(WinEAndF12Catalog()));
+
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(new HotkeyEditModel
+        {
+            Id = Guid.NewGuid(),
+            Description = "Caps Lock behaves as F12",
+            Key = "CapsLock",
+            ActionKind = HotkeyActionKind.Remap,
+            RemapDest = "F12",
+        });
+
+        provider.WaitForAssertion(() =>
+            provider.Find("[data-test=\"destination-warning\"]").TextContent.Should().Contain("developer tools"));
+
+        await SetKeyAsync(provider, "remap-dest-picker", "Ctrl");
+
+        provider.WaitForAssertion(() =>
+            provider.Find("[data-test=\"destination-warning\"]").TextContent.Should().Contain(
+                "Shortcuts that use Ctrl may also respond when you hold CapsLock."));
+    }
+
+    [Fact]
+    public async Task Open_NotARemapButRemapDestRetained_SaysNothingAboutTheDestination()
+    {
+        // The edit model keeps per-kind fields across kind switches on purpose, so a SendText row
+        // can still carry a destination from an earlier switch. It must stay silent.
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(new HotkeyEditModel
+        {
+            Id = Guid.NewGuid(),
+            Description = "Types a note",
+            Key = "CapsLock",
+            ActionKind = HotkeyActionKind.SendText,
+            Text = "my notes",
+            RemapDest = "Ctrl",
+        });
+
+        provider.WaitForAssertion(() =>
+            provider.Find("[data-test=\"shortcut-warning-checked\"]")
+                .GetAttribute("data-combination").Should().Be("CapsLock"));
+
+        provider.FindAll("[data-test=\"destination-warning\"]").Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Open_BothSidesWarn_ShowsLabelledSectionsInOneAlert()
+    {
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(new HotkeyEditModel
+        {
+            Id = Guid.NewGuid(),
+            Description = "Win+E behaves as Ctrl",
+            Key = "e",
+            Win = true,
+            ActionKind = HotkeyActionKind.Remap,
+            RemapDest = "Ctrl",
+        });
+
+        provider.WaitForAssertion(() =>
+        {
+            provider.FindAll("[data-test=\"shortcut-warning\"]").Should().HaveCount(1);
+            provider.Find("[data-test=\"source-warning\"]").TextContent
+                .Should().Contain("Windows uses Win+E to open File Explorer.");
+            provider.Find("[data-test=\"destination-warning\"]").TextContent
+                .Should().Contain("Shortcuts that use Ctrl may also respond");
+            provider.Find("[data-test=\"shortcut-warning\"]").TextContent
+                .Should().Contain("Key and modifiers").And.Contain("Remap destination");
+        });
+    }
+
+    [Fact]
+    public async Task EachEvaluation_ReadsTheCatalogOnce()
+    {
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(new HotkeyEditModel
+        {
+            Id = Guid.NewGuid(),
+            Description = "Caps Lock as Ctrl",
+            Key = "CapsLock",
+            ActionKind = HotkeyActionKind.Remap,
+            RemapDest = "Ctrl",
+        });
+
+        provider.WaitForAssertion(() =>
+            provider.Find("[data-test=\"shortcut-warning-checked\"]")
+                .GetAttribute("data-destination").Should().Be("Ctrl"));
+
+        _ = _knownShortcuts.Received(1).GetAsync(Arg.Any<CancellationToken>());
+
+        await SetKeyAsync(provider, "remap-dest-picker", "LWin");
+
+        provider.WaitForAssertion(() =>
+            provider.Find("[data-test=\"shortcut-warning-checked\"]")
+                .GetAttribute("data-destination").Should().Be("LWin"));
+
+        _ = _knownShortcuts.Received(2).GetAsync(Arg.Any<CancellationToken>());
     }
 
     [Fact]
