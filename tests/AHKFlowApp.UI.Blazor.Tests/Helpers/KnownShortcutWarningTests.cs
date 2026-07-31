@@ -206,10 +206,12 @@ public sealed class KnownShortcutWarningTests
     [Theory]
     [InlineData("LCtrl", "Ctrl")]
     [InlineData("RCtrl", "Ctrl")]
+    [InlineData("Alt", "Alt")]
     [InlineData("LAlt", "Alt")]
     [InlineData("RAlt", "Alt")]
-    [InlineData("LShift", "Shift")]
     [InlineData("Shift", "Shift")]
+    [InlineData("LShift", "Shift")]
+    [InlineData("RShift", "Shift")]
     [InlineData("LWin", "the Windows key")]
     [InlineData("RWin", "the Windows key")]
     public void DestinationTextFor_EverySideOfAModifier_ReadsAsThePlainModifier(string destination, string label)
