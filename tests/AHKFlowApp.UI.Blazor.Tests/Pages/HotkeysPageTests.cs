@@ -768,4 +768,31 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
             chips.Instance.SelectedIds.Should().BeEmpty();
         });
     }
+
+    [Fact]
+    public void Grid_HotkeyLimitedToOneWindow_ShowsTheContextIcon()
+    {
+        StubKeyCatalog(keysValid: true);
+        StubList(Page(MakeHotkey() with
+        {
+            ContextMatchType = WindowMatchType.Executable,
+            ContextValue = "notepad.exe",
+        }));
+
+        IRenderedComponent<Hotkeys> cut = RenderPage();
+
+        cut.WaitForAssertion(() => cut.FindAll(".context-icon").Should().ContainSingle());
+    }
+
+    [Fact]
+    public void Grid_GlobalHotkey_ShowsNoContextIcon()
+    {
+        StubKeyCatalog(keysValid: true);
+        StubList(Page(MakeHotkey()));
+
+        IRenderedComponent<Hotkeys> cut = RenderPage();
+
+        cut.WaitForAssertion(() => cut.Find("button.start-edit"));
+        cut.FindAll(".context-icon").Should().BeEmpty();
+    }
 }

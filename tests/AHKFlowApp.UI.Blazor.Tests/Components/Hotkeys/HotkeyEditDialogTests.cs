@@ -9,6 +9,7 @@ using FluentAssertions;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
 using MudBlazor;
+using MudBlazor.Extensions;
 using MudBlazor.Services;
 using NSubstitute;
 using Xunit;
@@ -888,5 +889,204 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
         await provider.InvokeAsync(() => { });
 
         provider.FindAll("[data-test=\"shortcut-warning\"]").Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ContextSwitch_TurnedOn_ShowsMatchTypeAndValueFields()
+    {
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync();
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"context-switch\"]"));
+
+        provider.FindAll("[data-test=\"context-match-type-select\"]").Should().BeEmpty();
+        provider.FindAll("[data-test=\"context-value-input\"]").Should().BeEmpty();
+
+        provider.Find("input[data-test=\"context-switch\"]").Change(true);
+
+        provider.WaitForAssertion(() =>
+        {
+            provider.Find("[data-test=\"context-match-type-select\"]").Should().NotBeNull();
+            provider.Find("[data-test=\"context-value-input\"]").Should().NotBeNull();
+        });
+    }
+
+    [Fact]
+    public async Task ContextSwitch_TurnedOff_ClearsBothContextFields()
+    {
+        HotkeyEditModel item = new() { Description = "d", Key = "K", Text = "hi" };
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(item);
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"context-switch\"]"));
+
+        provider.Find("input[data-test=\"context-switch\"]").Change(true);
+        provider.WaitForAssertion(() => provider.Find("input[data-test=\"context-value-input\"]"));
+        provider.Find("input[data-test=\"context-value-input\"]").Input("notepad.exe");
+        provider.WaitForAssertion(() => item.ContextValue.Should().Be("notepad.exe"));
+
+        provider.Find("input[data-test=\"context-switch\"]").Change(false);
+
+        provider.WaitForAssertion(() =>
+        {
+            item.ContextMatchType.Should().BeNull();
+            item.ContextValue.Should().BeNull();
+            provider.FindAll("[data-test=\"context-value-input\"]").Should().BeEmpty();
+        });
+    }
+
+    [Fact]
+    public async Task ContextValueField_ExecutableSelected_ShowsExePlaceholder()
+    {
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync();
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"context-switch\"]"));
+
+        provider.Find("input[data-test=\"context-switch\"]").Change(true);
+
+        provider.WaitForAssertion(() =>
+            provider.Find("input[data-test=\"context-value-input\"]")
+                .GetAttribute("placeholder").Should().Be("notepad.exe"));
+    }
+
+    [Fact]
+    public async Task Save_WithContext_SendsContextInCreateDto()
+    {
+        HotkeyDto created = new(Guid.NewGuid(), [], true, "Open palette", "K", false, false, false, false,
+            HotkeyActionKind.SendText, "hi", null, null, null, null, null, null,
+            WindowMatchType.Executable, "notepad.exe",
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        _api.CreateAsync(Arg.Any<CreateHotkeyDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotkeyDto>.Ok(created));
+
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(
+            new HotkeyEditModel { Description = "Open palette", Key = "K", Text = "hi" });
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"context-switch\"]"));
+
+        provider.Find("input[data-test=\"context-switch\"]").Change(true);
+        provider.WaitForAssertion(() => provider.Find("input[data-test=\"context-value-input\"]"));
+        provider.Find("input[data-test=\"context-value-input\"]").Input("notepad.exe");
+        provider.Find("button.commit-edit").Click();
+
+        provider.WaitForAssertion(() => _api.Received(1).CreateAsync(
+            Arg.Is<CreateHotkeyDto>(d =>
+                d.ContextMatchType == WindowMatchType.Executable && d.ContextValue == "notepad.exe"),
+            Arg.Any<CancellationToken>()));
+    }
+
+    [Fact]
+    public async Task PreviewPanel_ContextValueTyped_RepreviewsWithTheContext()
+    {
+        _api.PreviewAsync(Arg.Any<HotkeyPreviewRequestDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotkeyPreviewDto>.Ok(new HotkeyPreviewDto("snippet")));
+
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(
+            new HotkeyEditModel { Description = "d", Key = "k", Text = "hi" });
+
+        provider.Find("[data-test=\"ahk-preview\"] .mud-expand-panel-header").Click();
+        provider.WaitForAssertion(() => _api.Received(1).PreviewAsync(
+            Arg.Is<HotkeyPreviewRequestDto>(r => r.ContextMatchType == null), Arg.Any<CancellationToken>()));
+
+        provider.Find("input[data-test=\"context-switch\"]").Change(true);
+        provider.WaitForAssertion(() => provider.Find("input[data-test=\"context-value-input\"]"));
+        provider.Find("input[data-test=\"context-value-input\"]").Input("notepad.exe");
+
+        provider.WaitForAssertion(() => _api.Received(1).PreviewAsync(
+            Arg.Is<HotkeyPreviewRequestDto>(r =>
+                r.ContextMatchType == WindowMatchType.Executable && r.ContextValue == "notepad.exe"),
+            Arg.Any<CancellationToken>()));
+    }
+
+    [Fact]
+    public async Task PreviewPanel_ContextSwitchOnWithBlankValue_SendsNullContext()
+    {
+        // Turning the switch on sets the match type but leaves the value blank. The server rejects
+        // that pair, so the request must carry no context until the value is filled in.
+        _api.PreviewAsync(Arg.Any<HotkeyPreviewRequestDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotkeyPreviewDto>.Ok(new HotkeyPreviewDto("snippet")));
+
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(
+            new HotkeyEditModel { Description = "d", Key = "k", Text = "hi" });
+
+        provider.Find("[data-test=\"ahk-preview\"] .mud-expand-panel-header").Click();
+        provider.WaitForAssertion(() => _api.Received(1).PreviewAsync(
+            Arg.Any<HotkeyPreviewRequestDto>(), Arg.Any<CancellationToken>()));
+
+        provider.Find("input[data-test=\"context-switch\"]").Change(true);
+
+        provider.WaitForAssertion(() => _api.Received(2).PreviewAsync(
+            Arg.Is<HotkeyPreviewRequestDto>(r => r.ContextMatchType == null && r.ContextValue == null),
+            Arg.Any<CancellationToken>()));
+    }
+
+    [Theory]
+    [InlineData("switch")]
+    [InlineData("match-type")]
+    [InlineData("value")]
+    public async Task ChangingContext_ClearsAStaleCombinationConflict(string field)
+    {
+        // Window context is part of the uniqueness key, so a 409 from the last save no longer
+        // applies once any context field changes.
+        _api.CreateAsync(Arg.Any<CreateHotkeyDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotkeyDto>.Failure(ApiResultStatus.Conflict,
+                new ApiProblemDetails(null, "Conflict", 409, "Hotkey already exists", null, null)));
+
+        HotkeyEditModel item = new()
+        {
+            Description = "Open palette",
+            Key = "K",
+            Text = "hi",
+            ContextMatchType = WindowMatchType.Executable,
+            ContextValue = "notepad.exe",
+        };
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(item);
+
+        provider.Find("button.commit-edit").Click();
+        provider.WaitForAssertion(() => provider.Markup.Should().Contain("Hotkey already exists"));
+
+        switch (field)
+        {
+            case "switch":
+                provider.Find("input[data-test=\"context-switch\"]").Change(false);
+                break;
+            case "match-type":
+                await provider.InvokeAsync(() => provider
+                    .FindComponents<MudSelect<WindowMatchType>>()
+                    .Single()
+                    .Instance.ValueChanged.InvokeAsync(WindowMatchType.WindowClass));
+                break;
+            default:
+                provider.Find("input[data-test=\"context-value-input\"]").Input("code.exe");
+                break;
+        }
+
+        provider.WaitForAssertion(() => provider.Markup.Should().NotContain("Hotkey already exists"));
+    }
+
+    [Fact]
+    public async Task SaveError_OnContextValue_RendersInlineNotInTheGenericAlert()
+    {
+        const string message = "ContextValue must not contain double-quote characters.";
+        _api.CreateAsync(Arg.Any<CreateHotkeyDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotkeyDto>.Failure(ApiResultStatus.Validation,
+                new ApiProblemDetails(null, "Validation failed", 400, null, null,
+                    new Dictionary<string, string[]> { ["Input.ContextValue"] = [message] })));
+
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(new HotkeyEditModel
+        {
+            Description = "Open palette",
+            Key = "K",
+            Text = "hi",
+            ContextMatchType = WindowMatchType.Executable,
+            ContextValue = "note\"pad.exe",
+        });
+        HotkeyEditDialog dialog = provider.FindComponent<HotkeyEditDialog>().Instance;
+
+        provider.Find("button.commit-edit").Click();
+
+        provider.WaitForAssertion(() =>
+        {
+            dialog.SaveFieldErrors.Should().ContainKey(nameof(HotkeyEditModel.ContextValue));
+            MudTextField<string> valueField = provider.FindComponents<MudTextField<string>>()
+                .Single(f => f.Instance.Label == "Value").Instance;
+            valueField.GetState(x => x.Error).Should().BeTrue();
+            valueField.GetState(x => x.ErrorText).Should().Be(message);
+        });
+        provider.FindAll(".mud-alert").Should().BeEmpty();
     }
 }

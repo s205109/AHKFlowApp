@@ -190,4 +190,134 @@ public sealed class HotkeyEditModelTests
         model.WindowOp.Should().Be(WindowOp.ToggleAlwaysOnTop);
         model.Ctrl.Should().BeTrue();
     }
+
+    [Fact]
+    public void FromDto_RoundTripsWindowContext()
+    {
+        var dto = new HotkeyDto(
+            Guid.NewGuid(), [], true, "Open palette", "K",
+            Ctrl: true, Alt: false, Shift: false, Win: false,
+            HotkeyActionKind.SendText, "hi", null, null, null, null, null, null,
+            WindowMatchType.WindowClass, "Notepad",
+            DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch);
+
+        var model = HotkeyEditModel.FromDto(dto);
+
+        model.ContextMatchType.Should().Be(WindowMatchType.WindowClass);
+        model.ContextValue.Should().Be("Notepad");
+    }
+
+    [Fact]
+    public void ToCreateDto_CarriesWindowContext()
+    {
+        HotkeyEditModel model = new()
+        {
+            Description = "d",
+            Key = "K",
+            ActionKind = HotkeyActionKind.SendText,
+            Text = "hi",
+            ContextMatchType = WindowMatchType.Executable,
+            ContextValue = "notepad.exe",
+        };
+
+        CreateHotkeyDto dto = model.ToCreateDto();
+
+        dto.ContextMatchType.Should().Be(WindowMatchType.Executable);
+        dto.ContextValue.Should().Be("notepad.exe");
+    }
+
+    [Fact]
+    public void ToUpdateDto_CarriesWindowContext()
+    {
+        HotkeyEditModel model = new()
+        {
+            Id = Guid.NewGuid(),
+            Description = "d",
+            Key = "K",
+            ActionKind = HotkeyActionKind.SendText,
+            Text = "hi",
+            ContextMatchType = WindowMatchType.TitleContains,
+            ContextValue = "Untitled",
+        };
+
+        UpdateHotkeyDto dto = model.ToUpdateDto();
+
+        dto.ContextMatchType.Should().Be(WindowMatchType.TitleContains);
+        dto.ContextValue.Should().Be("Untitled");
+    }
+
+    [Fact]
+    public void Clone_CopiesWindowContext()
+    {
+        HotkeyEditModel model = new()
+        {
+            Description = "d",
+            Key = "K",
+            ContextMatchType = WindowMatchType.WindowClass,
+            ContextValue = "Notepad",
+        };
+
+        HotkeyEditModel clone = model.Clone();
+
+        clone.ContextMatchType.Should().Be(WindowMatchType.WindowClass);
+        clone.ContextValue.Should().Be("Notepad");
+    }
+
+    [Theory]
+    [InlineData(WindowMatchType.Executable, "notepad.exe", "exe:notepad.exe")]
+    [InlineData(WindowMatchType.WindowClass, "Notepad", "class:Notepad")]
+    [InlineData(WindowMatchType.TitleContains, "Untitled", "title:Untitled")]
+    public void ContextSummary_PrefixesByMatchType(WindowMatchType matchType, string value, string expected)
+    {
+        HotkeyEditModel model = new() { ContextMatchType = matchType, ContextValue = value };
+
+        model.ContextSummary.Should().Be(expected);
+    }
+
+    [Fact]
+    public void ContextSummary_NoContext_IsBlank()
+    {
+        new HotkeyEditModel().ContextSummary.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void ToPreviewRequest_ContextValueBlank_SendsNoContext(string? value)
+    {
+        HotkeyEditModel model = new()
+        {
+            Description = "d",
+            Key = "K",
+            ActionKind = HotkeyActionKind.SendText,
+            Text = "hi",
+            ContextMatchType = WindowMatchType.Executable,
+            ContextValue = value,
+        };
+
+        HotkeyPreviewRequestDto dto = model.ToPreviewRequest();
+
+        dto.ContextMatchType.Should().BeNull();
+        dto.ContextValue.Should().BeNull();
+    }
+
+    [Fact]
+    public void ToPreviewRequest_ContextPairComplete_SendsBothParts()
+    {
+        HotkeyEditModel model = new()
+        {
+            Description = "d",
+            Key = "K",
+            ActionKind = HotkeyActionKind.SendText,
+            Text = "hi",
+            ContextMatchType = WindowMatchType.Executable,
+            ContextValue = "notepad.exe",
+        };
+
+        HotkeyPreviewRequestDto dto = model.ToPreviewRequest();
+
+        dto.ContextMatchType.Should().Be(WindowMatchType.Executable);
+        dto.ContextValue.Should().Be("notepad.exe");
+    }
 }
