@@ -5,18 +5,37 @@
 @implements IDisposable
 
 @* Advisory only — this never gates a save. Both places a hotkey's keys can be changed render
-   it: the edit dialog and the grid's inline row. *@
-@if (_warning is not null)
+   it: the edit dialog and the grid's inline row. One alert holds both notices: they carry the
+   same severity and the same advice, so two boxes would only add noise. *@
+@if (_sourceWarning is not null || _destinationWarning is not null)
 {
     <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-2"
               UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "shortcut-warning" })">
-        @_warning
+        @if (_sourceWarning is not null)
+        {
+            @* Labels only when both notices are present. A source-only notice then reads exactly
+               as it read before the destination check existed. *@
+            @if (BothSections)
+            {
+                <MudText Typo="Typo.subtitle2">Key and modifiers</MudText>
+            }
+            <div data-test="source-warning">@_sourceWarning</div>
+        }
+        @if (_destinationWarning is not null)
+        {
+            @if (BothSections)
+            {
+                <MudText Typo="Typo.subtitle2" Class="mt-2">Remap destination</MudText>
+            }
+            <div data-test="destination-warning">@_destinationWarning</div>
+        }
     </MudAlert>
 }
 @* Outside the @if, so it renders on every pass. It is how an E2E test can tell "no warning"
    apart from "not decided yet". Hidden: it is not for the reader. *@
 <span data-test="shortcut-warning-checked"
       data-combination="@_checked"
+      data-destination="@_checkedDestination"
       style="display:none"></span>
 
 @code {
@@ -26,22 +45,36 @@
     [Parameter] public bool Shift { get; set; }
     [Parameter] public bool Win { get; set; }
 
+    [Parameter] public HotkeyActionKind ActionKind { get; set; }
+
+    /// <summary>Destination of a Remap row. Ignored for every other action kind.</summary>
+    [Parameter] public string? RemapDest { get; set; }
+
     [Inject] private IHotkeyKeyCatalog Keys { get; set; } = default!;
     [Inject] private IKnownShortcutCatalog KnownShortcuts { get; set; } = default!;
     [Inject] private ILogger<ShortcutWarning> Logger { get; set; } = default!;
 
-    // The notice for the current combination, or null when nothing uses these keys.
-    private string? _warning;
+    // The notice for the keys the user presses, or null when nothing uses them.
+    private string? _sourceWarning;
 
-    // The combination the notice above was last decided for, or "" before the first decision. Set
-    // together with _warning and under the same generation check, so it never announces a decision
-    // that a newer combination has already replaced. Read only by the E2E tests: it is how a test
-    // can tell "no warning" apart from "not evaluated yet".
+    // The notice for a Remap row's destination, or null when the destination says nothing.
+    private string? _destinationWarning;
+
+    private bool BothSections => _sourceWarning is not null && _destinationWarning is not null;
+
+    // The combination the notices above were last decided for, or "" before the first decision,
+    // and the canonical destination that decision used. Set together with the notices and under
+    // the same generation check, so neither announces a decision a newer state has replaced. Read
+    // only by the tests: they are how a test tells "no warning" from "not evaluated yet".
     private string _checked = "";
+    private string _checkedDestination = "";
 
-    // The combination the last evaluation ran for. Parameters are re-set on every parent render,
-    // and most of those renders change something else entirely.
-    private string? _evaluated;
+    // What one evaluation was for. The source combination alone is not enough: switching the
+    // action kind, or picking a new destination, changes the notice while the combination stands
+    // still.
+    private readonly record struct EvaluationKey(string Combination, HotkeyActionKind Kind, string? RemapDest);
+
+    private EvaluationKey? _evaluated;
 
     private readonly CancellationTokenSource _cts = new();
     private CancellationTokenSource? _shortcutCts;
@@ -51,12 +84,13 @@
     protected override void OnParametersSet()
     {
         string combination = HotkeyActionDisplay.ComboLabel(Key ?? "", Ctrl, Alt, Shift, Win);
+        EvaluationKey key = new(combination, ActionKind, RemapDest);
 
-        if (combination == _evaluated)
+        if (key == _evaluated)
             return;
 
-        _evaluated = combination;
-        _ = RefreshAsync(combination);
+        _evaluated = key;
+        _ = RefreshAsync(key);
     }
 
     public void Dispose()
@@ -78,7 +112,7 @@
     /// key down cannot leave a stale notice on screen. A failed fetch clears the notice and says
     /// nothing — a list that will not load must never confuse saving.
     /// </remarks>
-    private async Task RefreshAsync(string combination)
+    private async Task RefreshAsync(EvaluationKey key)
     {
         _shortcutCts?.Cancel();
         _shortcutCts?.Dispose();
@@ -89,6 +123,12 @@
         try
         {
             string canonical = await Keys.CanonicalizeAsync(Key, cts.Token);
+
+            // Only a Remap has a destination. Every other kind may still carry a stale value: the
+            // edit model keeps per-kind fields across kind switches on purpose.
+            string? canonicalDest = key.Kind == HotkeyActionKind.Remap && !string.IsNullOrWhiteSpace(key.RemapDest)
+                ? await Keys.CanonicalizeAsync(key.RemapDest, cts.Token)
+                : null;
 
             // Session-cached: only the first call in a session reaches the network. The generation
             // check below still earns its place, because that first call can be slow enough for the
@@ -104,32 +144,41 @@
                 // trace in the browser console. The cache does not memoize the failure, so the next
                 // evaluation retries.
                 Logger.LogWarning("Known-shortcut list could not be read; showing no warning.");
-                Decide(warning: null, combination);
+                Decide(source: null, destination: null, key, canonicalDest);
                 return;
             }
 
             KnownShortcutDto? match = KnownShortcutWarning.Match(catalog, canonical, Ctrl, Alt, Shift, Win);
 
-            Decide(match is null ? null : KnownShortcutWarning.TextFor(match, combination), combination);
+            Decide(
+                match is null ? null : KnownShortcutWarning.TextFor(match, key.Combination),
+                KnownShortcutWarning.DestinationTextFor(catalog, canonicalDest, key.Combination),
+                key,
+                canonicalDest);
         }
         catch (OperationCanceledException)
         {
-            // Superseded by a newer combination, or the host went away. Nothing to show.
+            // Superseded by a newer evaluation, or the host went away. Nothing to show.
         }
         catch (Exception ex)
         {
             Logger.LogWarning(ex, "Known-shortcut list could not be read; showing no warning.");
+
+            // The destination is unknown here: canonicalizing it is what may have thrown. The
+            // decision is still announced, so a waiting test finishes instead of hanging.
             if (generation == _generation && !_disposed)
-                Decide(warning: null, combination);
+                Decide(source: null, destination: null, key, canonicalDest: null);
         }
     }
 
     // A list that will not load has still finished deciding, and it decides "no warning". Saying so
     // keeps the E2E wait honest instead of hanging.
-    private void Decide(string? warning, string combination)
+    private void Decide(string? source, string? destination, EvaluationKey key, string? canonicalDest)
     {
-        _warning = warning;
-        _checked = combination;
+        _sourceWarning = source;
+        _destinationWarning = destination;
+        _checked = key.Combination;
+        _checkedDestination = canonicalDest ?? "";
         StateHasChanged();
     }
 }

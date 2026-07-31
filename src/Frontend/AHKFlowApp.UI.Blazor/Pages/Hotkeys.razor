@@ -747,8 +747,11 @@
         </MudStack>
         @* The row edits the keys, so the row warns about them — the same component the dialog
            renders. Without it, re-keying an existing hotkey to Win+E said nothing. *@
+        @* The inline row cannot hold a Remap today (HotkeyEditModel.IsInlineEditable is SendText
+           or Run), but passing the pair keeps one component contract if that ever changes. *@
         <ShortcutWarning Key="@edit.Key" Ctrl="@edit.Ctrl" Alt="@edit.Alt"
-                         Shift="@edit.Shift" Win="@edit.Win" />
+                         Shift="@edit.Shift" Win="@edit.Win"
+                         ActionKind="@edit.ActionKind" RemapDest="@edit.RemapDest" />
     </MudStack>;
 
     // Only the two single-field kinds reach inline edit (HotkeyEditModel.IsInlineEditable), so
