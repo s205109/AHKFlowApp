@@ -161,9 +161,18 @@
 
             KnownShortcutDto? match = KnownShortcutWarning.Match(catalog, canonical, Ctrl, Alt, Shift, Win);
 
+            // The destination notice names the source combination twice, so it needs a key to name.
+            // A new row can reach Remap and a destination before its key is picked, and modifiers
+            // alone make the label "Ctrl+" — not blank, but still naming no key. Both would render
+            // "This hotkey makes  act as Ctrl." The source side is already silent without a key,
+            // because Match ignores a blank one.
+            string? destination = string.IsNullOrWhiteSpace(canonical)
+                ? null
+                : KnownShortcutWarning.DestinationTextFor(catalog, canonicalDest, key.Combination);
+
             Decide(
                 match is null ? null : KnownShortcutWarning.TextFor(match, key.Combination),
-                KnownShortcutWarning.DestinationTextFor(catalog, canonicalDest, key.Combination),
+                destination,
                 key,
                 canonicalDest);
         }

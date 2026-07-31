@@ -936,6 +936,74 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
+    public async Task SwitchingAwayFromRemap_ClearsTheDestinationNotice()
+    {
+        // The kind is part of what one evaluation is for. Drop it and this row keeps showing a
+        // destination notice for an action that no longer has a destination.
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(new HotkeyEditModel
+        {
+            Id = Guid.NewGuid(),
+            Description = "Caps Lock as Ctrl",
+            Key = "CapsLock",
+            ActionKind = HotkeyActionKind.Remap,
+            RemapDest = "Ctrl",
+        });
+
+        provider.WaitForAssertion(() =>
+            provider.Find("[data-test=\"destination-warning\"]").TextContent
+                .Should().Contain("Shortcuts that use Ctrl may also respond"));
+
+        // The model keeps RemapDest across the switch on purpose, so only the kind changes here.
+        await provider.Find("[data-test=\"action-kind-SendText\"]").ClickAsync(new MouseEventArgs());
+
+        provider.WaitForAssertion(() =>
+            provider.FindAll("[data-test=\"destination-warning\"]").Should().BeEmpty());
+    }
+
+    [Fact]
+    public async Task Open_RemapWithNoSourceKeyYet_SaysNothingAboutTheDestination()
+    {
+        // A new row can reach Remap and a destination before its key is picked. Without a key the
+        // notice would read "This hotkey makes  act as Ctrl." — a sentence with a hole in it.
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(new HotkeyEditModel
+        {
+            Description = "Not finished yet",
+            Key = "",
+            ActionKind = HotkeyActionKind.Remap,
+            RemapDest = "Ctrl",
+        });
+
+        // The destination is still announced, so this waits for a real decision rather than for
+        // the evaluation that has not run yet.
+        provider.WaitForAssertion(() =>
+            provider.Find("[data-test=\"shortcut-warning-checked\"]")
+                .GetAttribute("data-destination").Should().Be("Ctrl"));
+
+        provider.FindAll("[data-test=\"shortcut-warning\"]").Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Open_RemapWithModifiersButNoSourceKey_SaysNothingAboutTheDestination()
+    {
+        // Modifiers alone make ComboLabel return "Ctrl+", which is not blank but still names no
+        // key. The notice must wait for the key here too.
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(new HotkeyEditModel
+        {
+            Description = "Not finished yet",
+            Key = "",
+            Ctrl = true,
+            ActionKind = HotkeyActionKind.Remap,
+            RemapDest = "Ctrl",
+        });
+
+        provider.WaitForAssertion(() =>
+            provider.Find("[data-test=\"shortcut-warning-checked\"]")
+                .GetAttribute("data-destination").Should().Be("Ctrl"));
+
+        provider.FindAll("[data-test=\"shortcut-warning\"]").Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task Open_BothSidesWarn_ShowsLabelledSectionsInOneAlert()
     {
         IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(new HotkeyEditModel
