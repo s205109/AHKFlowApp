@@ -87,7 +87,10 @@ internal sealed class RevertHotkeyCommandHandler(
         {
             return ex.IsHistoryVersionConflict()
                 ? Result.Conflict("The item was modified concurrently. Retry the operation.")
-                : Result.Conflict("A hotkey with this key + modifier combination already exists.");
+                // Read from the entity, not the snapshot: a pre-W1 snapshot carries no context, and
+                // the converter is what turns that into "fires everywhere".
+                : Result.Conflict(
+                    HotkeyConflictMessages.Duplicate(entity.ContextMatchType, entity.ContextValue));
         }
 
         return Result.Success(entity.ToDto());

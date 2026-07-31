@@ -181,7 +181,7 @@ public sealed class HotkeyEditModelTests
         var dto = new HotkeyDto(
             Guid.NewGuid(), [], true, "Always on top", "Space",
             Ctrl: true, Alt: false, Shift: false, Win: false,
-            HotkeyActionKind.Window, null, null, null, null, WindowOp.ToggleAlwaysOnTop, null, null,
+            HotkeyActionKind.Window, null, null, null, null, WindowOp.ToggleAlwaysOnTop, null, null, null, null,
             DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch);
 
         var model = HotkeyEditModel.FromDto(dto);

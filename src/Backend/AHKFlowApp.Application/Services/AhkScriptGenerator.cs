@@ -36,49 +36,71 @@ public sealed class AhkScriptGenerator(
             lines.Add(HotstringEmitter.PasteHelperFunction);
         lines.Add(HotstringsSection);
 
-        // Group by window context (both-null = global). GroupBy is stable, so the
-        // trigger-ordinal pre-sort above survives within each group. Context groups are
-        // wrapped in #HotIf WinActive(...) / #HotIf and emitted first, ordered by match
-        // type then value; the global group is emitted last, unwrapped.
-        List<IGrouping<(WindowMatchType? MatchType, string? Value), Hotstring>> groups =
-            [.. hsList.GroupBy(h => (h.ContextMatchType, h.ContextValue))];
-
-        IEnumerable<IGrouping<(WindowMatchType? MatchType, string? Value), Hotstring>> contextGroups = groups
-            .Where(g => g.Key.MatchType is not null)
-            .OrderBy(g => (int)g.Key.MatchType!.Value)
-            .ThenBy(g => g.Key.Value, StringComparer.Ordinal);
-
-        foreach (IGrouping<(WindowMatchType? MatchType, string? Value), Hotstring> group in contextGroups)
-        {
-            lines.Add(HotstringEmitter.EmitHotIfOpen(group.Key.MatchType!.Value, group.Key.Value!));
-            foreach (Hotstring hs in group)
+        EmitContextGroups(
+            lines,
+            hsList,
+            h => (h.ContextMatchType, h.ContextValue),
+            (target, hs) =>
             {
-                lines.AddRange(HotstringEmitter.DescriptionCommentLines(hs.Description));
-                lines.Add(HotstringEmitter.Emit(hs));
-            }
-            lines.Add(HotstringEmitter.HotIfClose);
-        }
-
-        IGrouping<(WindowMatchType? MatchType, string? Value), Hotstring>? globalGroup =
-            groups.FirstOrDefault(g => g.Key.MatchType is null);
-
-        if (globalGroup is not null)
-            foreach (Hotstring hs in globalGroup)
-            {
-                lines.AddRange(HotstringEmitter.DescriptionCommentLines(hs.Description));
-                lines.Add(HotstringEmitter.Emit(hs));
-            }
+                target.AddRange(HotstringEmitter.DescriptionCommentLines(hs.Description));
+                target.Add(HotstringEmitter.Emit(hs));
+            });
 
         lines.Add(HotkeysSection);
 
-        foreach (Hotkey hk in hkList)
-        {
-            lines.AddRange(HotstringEmitter.DescriptionCommentLines(hk.Description));
-            lines.Add(HotkeyEmitter.Emit(hk));
-        }
+        EmitContextGroups(
+            lines,
+            hkList,
+            h => (h.ContextMatchType, h.ContextValue),
+            (target, hk) =>
+            {
+                target.AddRange(HotstringEmitter.DescriptionCommentLines(hk.Description));
+                target.Add(HotkeyEmitter.Emit(hk));
+            });
 
         lines.Add(renderer.Render(profile.FooterTemplate, ctx));
 
         return string.Join("\n", lines);
+    }
+
+    /// <summary>
+    /// Groups entries by window context (both parts null means global) and appends them to
+    /// <paramref name="lines"/>. Context groups come first, wrapped in
+    /// <c>#HotIf WinActive(...)</c> and closed with a bare <c>#HotIf</c>, ordered by match type
+    /// then by value. The global group comes last and stays unwrapped. Every group closes before
+    /// the next one opens, so no context can leak into the entries that follow.
+    /// </summary>
+    /// <remarks>
+    /// <c>GroupBy</c> is stable, so the caller's pre-sort survives inside each group. Hotstrings
+    /// and hotkeys share this method because AHK's <c>#HotIf</c> applies to both.
+    /// </remarks>
+    private static void EmitContextGroups<T>(
+        List<string> lines,
+        List<T> ordered,
+        Func<T, (WindowMatchType? MatchType, string? Value)> contextOf,
+        Action<List<string>, T> emitOne)
+    {
+        List<IGrouping<(WindowMatchType? MatchType, string? Value), T>> groups =
+            [.. ordered.GroupBy(contextOf)];
+
+        IEnumerable<IGrouping<(WindowMatchType? MatchType, string? Value), T>> contextGroups = groups
+            .Where(g => g.Key.MatchType is not null)
+            .OrderBy(g => (int)g.Key.MatchType!.Value)
+            .ThenBy(g => g.Key.Value, StringComparer.Ordinal);
+
+        foreach (IGrouping<(WindowMatchType? MatchType, string? Value), T> group in contextGroups)
+        {
+            lines.Add(HotstringEmitter.EmitHotIfOpen(group.Key.MatchType!.Value, group.Key.Value!));
+            foreach (T item in group)
+                emitOne(lines, item);
+            lines.Add(HotstringEmitter.HotIfClose);
+        }
+
+        IGrouping<(WindowMatchType? MatchType, string? Value), T>? globalGroup =
+            groups.FirstOrDefault(g => g.Key.MatchType is null);
+
+        if (globalGroup is not null)
+            foreach (T item in globalGroup)
+                emitOne(lines, item);
     }
 }

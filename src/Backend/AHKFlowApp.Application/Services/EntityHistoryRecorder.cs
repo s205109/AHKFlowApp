@@ -93,7 +93,10 @@ internal sealed class EntityHistoryRecorder(IAppDbContext db, TimeProvider clock
                         entity.RunTargetKind,
                         entity.WindowOp,
                         entity.RemapDest,
-                        entity.Body);
+                        entity.Body,
+                        // Named: the legacy Action / Parameters pair sits between Body and these two.
+                        ContextMatchType: entity.ContextMatchType,
+                        ContextValue: entity.ContextValue);
 
                     return new HistorySnapshot(
                         entity.OwnerOid,

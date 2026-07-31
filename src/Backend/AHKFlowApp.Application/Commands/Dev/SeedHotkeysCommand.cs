@@ -129,6 +129,8 @@ internal sealed class SeedHotkeysCommandHandler(
                 h.WindowOp,
                 h.RemapDest,
                 h.Body,
+                h.ContextMatchType,
+                h.ContextValue,
                 h.CreatedAt,
                 h.UpdatedAt,
                 h.Categories.Select(hc => hc.CategoryId).ToArray()))

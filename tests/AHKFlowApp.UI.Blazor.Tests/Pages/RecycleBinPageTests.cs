@@ -156,6 +156,8 @@ public sealed class RecycleBinPageTests : BunitContext, IAsyncLifetime
                     null,
                     null,
                     null,
+                    null,
+                    null,
                     DateTimeOffset.UtcNow,
                     DateTimeOffset.UtcNow,
                     [])));

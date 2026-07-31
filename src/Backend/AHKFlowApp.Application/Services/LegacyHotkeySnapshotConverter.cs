@@ -18,7 +18,8 @@ public static class LegacyHotkeySnapshotConverter
     {
         // A legacy snapshot: derive the typed columns from the legacy pair. Mixed snapshots take this
         // arm too, so a row keeps restoring to exactly what it restored to before the typed members
-        // existed.
+        // existed. FromLegacy uses named arguments throughout, so window context stays null here —
+        // a pre-W1 hotkey restores as a global hotkey, which fires everywhere.
         if (s.Action is LegacyHotkeyDefinitionConverter.HotkeyAction legacyAction)
         {
             return LegacyHotkeyDefinitionConverter.FromLegacy(
@@ -49,6 +50,8 @@ public static class LegacyHotkeySnapshotConverter
             RunTargetKind: s.RunTargetKind,
             WindowOp: s.WindowOp,
             RemapDest: s.RemapDest,
-            Body: s.Body);
+            Body: s.Body,
+            ContextMatchType: s.ContextMatchType,
+            ContextValue: s.ContextValue);
     }
 }

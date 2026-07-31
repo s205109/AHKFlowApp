@@ -80,19 +80,19 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
 
     private static HotkeyDto MakeHotkey(string description = "Open terminal", string key = "T") =>
         new(Guid.NewGuid(), [], true, description, key, true, false, false, false,
-            HotkeyActionKind.Run, null, null, "wt.exe", RunTargetKind.Application, null, null, null,
+            HotkeyActionKind.Run, null, null, "wt.exe", RunTargetKind.Application, null, null, null, null, null,
             DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
 
     /// <summary>A Run row bound to Win+N — inline-editable, and its combo exercises the casing rule.</summary>
     private static HotkeyDto OneRunHotkey(string key = "n") =>
         new(Guid.NewGuid(), [], true, "Open notepad", key, false, false, false, true,
-            HotkeyActionKind.Run, null, null, "notepad.exe", RunTargetKind.Application, null, null, null,
+            HotkeyActionKind.Run, null, null, "notepad.exe", RunTargetKind.Application, null, null, null, null, null,
             DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
 
     private static HotkeyDto OneHotkeyOfKind(HotkeyActionKind kind)
     {
         HotkeyDto row = new(Guid.NewGuid(), [], true, "Kind row", "F1", false, false, false, true,
-            kind, null, null, null, null, null, null, null,
+            kind, null, null, null, null, null, null, null, null, null,
             DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
 
         return kind switch

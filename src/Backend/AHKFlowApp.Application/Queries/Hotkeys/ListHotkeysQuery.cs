@@ -155,6 +155,8 @@ internal sealed class ListHotkeysQueryHandler(
                 h.WindowOp,
                 h.RemapDest,
                 h.Body,
+                h.ContextMatchType,
+                h.ContextValue,
                 h.CreatedAt,
                 h.UpdatedAt,
                 h.Categories.Select(c => c.CategoryId).ToArray()))

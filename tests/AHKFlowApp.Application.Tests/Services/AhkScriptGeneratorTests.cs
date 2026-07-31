@@ -1216,4 +1216,173 @@ public sealed class AhkScriptGeneratorTests
 
         output.Should().EndWith("; bye v1.2.3");
     }
+
+    [Fact]
+    public void Generate_HotkeyExecutableContext_WrapsInHotIfWinActiveAhkExe()
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotkey hk = new HotkeyBuilder()
+            .WithDescription("d")
+            .WithKey("n")
+            .WithWin()
+            .WithRun("notepad")
+            .WithContext(WindowMatchType.Executable, "notepad.exe")
+            .Build();
+
+        string output = DefaultSut().Generate(profile, [], [hk]);
+
+        output.Should().Be(
+            "H\n" +
+            "; --- Hotstrings ---\n" +
+            "; --- Hotkeys ---\n" +
+            "#HotIf WinActive(\"ahk_exe notepad.exe\")\n" +
+            "; d\n" +
+            "#n::Run(\"notepad\")\n" +
+            "#HotIf\n" +
+            "F");
+    }
+
+    [Fact]
+    public void Generate_HotkeyWindowClassContext_WrapsInHotIfWinActiveAhkClass()
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotkey hk = new HotkeyBuilder()
+            .WithDescription("d")
+            .WithKey("n")
+            .WithWin()
+            .WithRun("notepad")
+            .WithContext(WindowMatchType.WindowClass, "Notepad")
+            .Build();
+
+        string output = DefaultSut().Generate(profile, [], [hk]);
+
+        output.Should().Be(
+            "H\n" +
+            "; --- Hotstrings ---\n" +
+            "; --- Hotkeys ---\n" +
+            "#HotIf WinActive(\"ahk_class Notepad\")\n" +
+            "; d\n" +
+            "#n::Run(\"notepad\")\n" +
+            "#HotIf\n" +
+            "F");
+    }
+
+    [Fact]
+    public void Generate_HotkeyTitleContainsContext_WrapsInHotIfWinActiveBareValue()
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotkey hk = new HotkeyBuilder()
+            .WithDescription("d")
+            .WithKey("n")
+            .WithWin()
+            .WithRun("notepad")
+            .WithContext(WindowMatchType.TitleContains, "Untitled - Notepad")
+            .Build();
+
+        string output = DefaultSut().Generate(profile, [], [hk]);
+
+        output.Should().Be(
+            "H\n" +
+            "; --- Hotstrings ---\n" +
+            "; --- Hotkeys ---\n" +
+            "#HotIf WinActive(\"Untitled - Notepad\")\n" +
+            "; d\n" +
+            "#n::Run(\"notepad\")\n" +
+            "#HotIf\n" +
+            "F");
+    }
+
+    [Fact]
+    public void Generate_TwoHotkeysSameContext_ShareOneHotIfBlock()
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotkey first = new HotkeyBuilder()
+            .WithDescription("a").WithKey("n").WithWin().WithRun("notepad")
+            .WithContext(WindowMatchType.Executable, "notepad.exe")
+            .Build();
+        Hotkey second = new HotkeyBuilder()
+            .WithDescription("b").WithKey("m").WithWin().WithRun("calc")
+            .WithContext(WindowMatchType.Executable, "notepad.exe")
+            .Build();
+
+        string output = DefaultSut().Generate(profile, [], [first, second]);
+
+        output.Should().Be(
+            "H\n" +
+            "; --- Hotstrings ---\n" +
+            "; --- Hotkeys ---\n" +
+            "#HotIf WinActive(\"ahk_exe notepad.exe\")\n" +
+            "; a\n" +
+            "#n::Run(\"notepad\")\n" +
+            "; b\n" +
+            "#m::Run(\"calc\")\n" +
+            "#HotIf\n" +
+            "F");
+    }
+
+    [Fact]
+    public void Generate_MixedHotkeyContextAndGlobal_EmitsContextGroupBeforeGlobalGroup()
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        // Description order ("a" < "z") would put the global hotkey first if group ordering
+        // did not take precedence — this test locks in that group order wins.
+        Hotkey global = new HotkeyBuilder()
+            .WithDescription("a").WithKey("n").WithWin().WithRun("notepad").Build();
+        Hotkey scoped = new HotkeyBuilder()
+            .WithDescription("z").WithKey("m").WithWin().WithRun("calc")
+            .WithContext(WindowMatchType.Executable, "notepad.exe")
+            .Build();
+
+        string output = DefaultSut().Generate(profile, [], [global, scoped]);
+
+        output.Should().Be(
+            "H\n" +
+            "; --- Hotstrings ---\n" +
+            "; --- Hotkeys ---\n" +
+            "#HotIf WinActive(\"ahk_exe notepad.exe\")\n" +
+            "; z\n" +
+            "#m::Run(\"calc\")\n" +
+            "#HotIf\n" +
+            "; a\n" +
+            "#n::Run(\"notepad\")\n" +
+            "F");
+    }
+
+    [Fact]
+    public void Generate_GlobalHotkeysOnly_StayUnwrapped()
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotkey hk = new HotkeyBuilder()
+            .WithDescription("d").WithKey("n").WithWin().WithRun("notepad").Build();
+
+        string output = DefaultSut().Generate(profile, [], [hk]);
+
+        output.Should().NotContain("#HotIf");
+    }
+
+    [Fact]
+    public void Generate_HotstringContextGroup_ClosesBeforeTheHotkeysSection()
+    {
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotstring hs = new HotstringBuilder()
+            .WithTrigger("btw").WithReplacement("by the way")
+            .WithEndingCharacterRequired(true).WithTriggerInsideWord(false)
+            .WithContext(WindowMatchType.Executable, "notepad.exe")
+            .Build();
+        Hotkey hk = new HotkeyBuilder()
+            .WithDescription("d").WithKey("n").WithWin().WithRun("notepad").Build();
+
+        string output = DefaultSut().Generate(profile, [hs], [hk]);
+
+        output.Should().Be(
+            "H\n" +
+            "; --- Hotstrings ---\n" +
+            "#HotIf WinActive(\"ahk_exe notepad.exe\")\n" +
+            ":T:btw::by the way\n" +
+            "#HotIf\n" +
+            "; --- Hotkeys ---\n" +
+            "; d\n" +
+            "#n::Run(\"notepad\")\n" +
+            "F");
+    }
 }

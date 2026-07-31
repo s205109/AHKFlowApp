@@ -17,4 +17,6 @@ public sealed record CreateHotkeyDto(
     string? Body = null,
     Guid[]? ProfileIds = null,
     bool AppliesToAllProfiles = false,
-    Guid[]? CategoryIds = null);
+    Guid[]? CategoryIds = null,
+    WindowMatchType? ContextMatchType = null,
+    string? ContextValue = null);

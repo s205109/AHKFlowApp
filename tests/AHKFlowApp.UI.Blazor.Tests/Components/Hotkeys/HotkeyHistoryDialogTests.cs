@@ -168,6 +168,8 @@ public sealed class HotkeyHistoryDialogTests : BunitContext, IAsyncLifetime
                     null,
                     null,
                     null,
+                    null,
+                    null,
                     DateTimeOffset.UtcNow,
                     DateTimeOffset.UtcNow,
                     [])));

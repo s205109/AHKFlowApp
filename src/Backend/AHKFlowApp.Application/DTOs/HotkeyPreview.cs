@@ -17,6 +17,8 @@ namespace AHKFlowApp.Application.DTOs;
 /// <param name="WindowOp">Window operation performed by a <see cref="HotkeyActionKind.Window"/> hotkey.</param>
 /// <param name="RemapDest">Destination key of a <see cref="HotkeyActionKind.Remap"/> hotkey.</param>
 /// <param name="Body">Verbatim AHK body emitted by a <see cref="HotkeyActionKind.Raw"/> hotkey.</param>
+/// <param name="ContextMatchType">How the context value is matched against the active window. Null means the hotkey fires everywhere.</param>
+/// <param name="ContextValue">The window the hotkey is limited to. Null means the hotkey fires everywhere.</param>
 public sealed record HotkeyPreviewRequestDto(
     string Description,
     string Key,
@@ -31,7 +33,9 @@ public sealed record HotkeyPreviewRequestDto(
     RunTargetKind? RunTargetKind = null,
     WindowOp? WindowOp = null,
     string? RemapDest = null,
-    string? Body = null) : IHotkeyDraft;
+    string? Body = null,
+    WindowMatchType? ContextMatchType = null,
+    string? ContextValue = null) : IHotkeyDraft;
 
 /// <summary>The AutoHotkey snippet a hotkey draft would generate.</summary>
 /// <param name="Snippet">The exact <c>.ahk</c> line a save would produce for the given draft, including any <c>; </c> Description comment lines.</param>

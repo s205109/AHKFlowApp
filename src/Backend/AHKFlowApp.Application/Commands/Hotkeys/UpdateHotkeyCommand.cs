@@ -21,6 +21,9 @@ public sealed class UpdateHotkeyCommandValidator : AbstractValidator<UpdateHotke
         RuleFor(x => x.Input.Description).ValidDescription();
         RuleFor(x => x.Input.Key).ValidKey();
         this.AddHotkeyActionRules(x => x.Input);
+        this.AddWindowContextRules(
+            x => x.Input.ContextMatchType,
+            x => x.Input.ContextValue);
         this.AddProfileAssociationRules(
             x => x.Input.AppliesToAllProfiles,
             x => x.Input.ProfileIds);
@@ -95,7 +98,8 @@ internal sealed class UpdateHotkeyCommandHandler(
         {
             return ex.IsHistoryVersionConflict()
                 ? Result.Conflict("The item was modified concurrently. Retry the operation.")
-                : Result.Conflict("A hotkey with this key + modifier combination already exists.");
+                : Result.Conflict(
+                    HotkeyConflictMessages.Duplicate(input.ContextMatchType, input.ContextValue));
         }
 
         return Result.Success(entity.ToDto());

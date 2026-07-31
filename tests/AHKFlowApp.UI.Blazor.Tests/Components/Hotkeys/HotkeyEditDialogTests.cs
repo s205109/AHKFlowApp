@@ -146,7 +146,7 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
     public async Task SaveInCreateMode_CallsCreateAsync()
     {
         HotkeyDto created = new(Guid.NewGuid(), [], true, "Open palette", "K", true, false, true, false,
-            HotkeyActionKind.SendKeys, null, null, null, null, null, null, null,
+            HotkeyActionKind.SendKeys, null, null, null, null, null, null, null, null, null,
             DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
         _api.CreateAsync(Arg.Any<CreateHotkeyDto>(), Arg.Any<CancellationToken>())
             .Returns(ApiResult<HotkeyDto>.Ok(created));
@@ -176,7 +176,7 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
         _api.UpdateAsync(item.Id!.Value, Arg.Any<UpdateHotkeyDto>(), Arg.Any<CancellationToken>())
             .Returns(ApiResult<HotkeyDto>.Ok(
                 new HotkeyDto(item.Id.Value, [], true, "Open palette", "P", true, false, false, false,
-                    HotkeyActionKind.SendKeys, null, null, null, null, null, null, null,
+                    HotkeyActionKind.SendKeys, null, null, null, null, null, null, null, null, null,
                     DateTimeOffset.UtcNow, DateTimeOffset.UtcNow)));
 
         IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(item);
@@ -597,7 +597,7 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
     public async Task SendKeysPanel_WinArrowWarning_DoesNotBlockSave()
     {
         HotkeyDto created = new(Guid.NewGuid(), [], true, "Snap attempt", "n", true, false, false, false,
-            HotkeyActionKind.SendKeys, null, "#{Left}", null, null, null, null, null,
+            HotkeyActionKind.SendKeys, null, "#{Left}", null, null, null, null, null, null, null,
             DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
         _api.CreateAsync(Arg.Any<CreateHotkeyDto>(), Arg.Any<CancellationToken>())
             .Returns(ApiResult<HotkeyDto>.Ok(created));
@@ -841,7 +841,7 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
     public async Task Save_IsNeverBlockedByAWarning()
     {
         HotkeyDto created = new(Guid.NewGuid(), [], true, "Open notes", "e", false, false, false, true,
-            HotkeyActionKind.SendKeys, null, null, null, null, null, null, null,
+            HotkeyActionKind.SendKeys, null, null, null, null, null, null, null, null, null,
             DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
         _api.CreateAsync(Arg.Any<CreateHotkeyDto>(), Arg.Any<CancellationToken>())
             .Returns(ApiResult<HotkeyDto>.Ok(created));
