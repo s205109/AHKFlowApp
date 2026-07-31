@@ -191,4 +191,121 @@ public sealed class KnownShortcutWarningTests
         foreach (string banned in BannedTerms)
             text.Should().NotContainEquivalentOf(banned, $"'{banned}' promises an outcome we cannot know");
     }
+
+    [Fact]
+    public void DestinationTextFor_ModifierDestination_SaysShortcutsMayAlsoRespond()
+    {
+        KnownShortcutCatalogDto catalog = new([]);
+
+        KnownShortcutWarning.DestinationTextFor(catalog, "Ctrl", "CapsLock")
+            .Should().Be(
+                "This hotkey makes CapsLock act as Ctrl. " +
+                "Shortcuts that use Ctrl may also respond when you hold CapsLock.");
+    }
+
+    [Theory]
+    [InlineData("LCtrl", "Ctrl")]
+    [InlineData("RCtrl", "Ctrl")]
+    [InlineData("Alt", "Alt")]
+    [InlineData("LAlt", "Alt")]
+    [InlineData("RAlt", "Alt")]
+    [InlineData("Shift", "Shift")]
+    [InlineData("LShift", "Shift")]
+    [InlineData("RShift", "Shift")]
+    [InlineData("LWin", "the Windows key")]
+    [InlineData("RWin", "the Windows key")]
+    public void DestinationTextFor_EverySideOfAModifier_ReadsAsThePlainModifier(string destination, string label)
+    {
+        KnownShortcutCatalogDto catalog = new([]);
+
+        KnownShortcutWarning.DestinationTextFor(catalog, destination, "CapsLock")
+            .Should().Contain($"Shortcuts that use {label} may also respond when you hold CapsLock.");
+    }
+
+    [Fact]
+    public void DestinationTextFor_MatchesTheCatalogWithNoModifiers_EvenWhenTheRowHasThem()
+    {
+        // ^c::F12 sends a bare F12: AHK releases a modifier that is on the source and not on the
+        // destination. So the F12 row must match even though the row itself carries Ctrl.
+        KnownShortcutCatalogDto catalog = new([
+            Shortcut("browser.devtools-f12", "F12", false, false, false, false,
+                Use("Chrome", ShortcutProtection.Normal, ShortcutScope.Foreground, "open developer tools")),
+        ]);
+
+        KnownShortcutWarning.DestinationTextFor(catalog, "F12", "Ctrl+C")
+            .Should().Be(
+                "This hotkey makes Ctrl+C act as F12. " +
+                "Chrome uses F12 to open developer tools, but only while that application is in front.");
+    }
+
+    [Fact]
+    public void DestinationTextFor_NeverAddsTheOverrideClosing()
+    {
+        KnownShortcutCatalogDto catalog = new([
+            Shortcut("browser.devtools-f12", "F12", false, false, false, false,
+                Use("Chrome", ShortcutProtection.Normal, ShortcutScope.Foreground, "open developer tools")),
+        ]);
+
+        string? text = KnownShortcutWarning.DestinationTextFor(catalog, "F12", "CapsLock");
+
+        text.Should().NotContain("override");
+        foreach (string banned in BannedTerms)
+            text.Should().NotContainEquivalentOf(banned);
+    }
+
+    [Fact]
+    public void DestinationTextFor_ProtectedDestination_SaysWindowsHandlesTheKeys()
+    {
+        KnownShortcutCatalogDto catalog = new([
+            Shortcut("windows.print-screen", "PrintScreen", false, false, false, false,
+                Use("Windows", ShortcutProtection.Protected, ShortcutScope.Global, "take a screenshot")),
+        ]);
+
+        KnownShortcutWarning.DestinationTextFor(catalog, "PrintScreen", "F1")
+            .Should().EndWith("Windows handles these keys itself.");
+    }
+
+    [Fact]
+    public void DestinationTextFor_ModifierThatIsAlsoACatalogRow_SaysBoth()
+    {
+        // An owner can record a use of bare Ctrl: CreateCustomKnownShortcutCommand accepts any
+        // valid hotkey key, and modifier keys are valid ones.
+        KnownShortcutCatalogDto catalog = new([
+            Shortcut("owner.ctrl", "Ctrl", false, false, false, false,
+                Use("My macro tool", ShortcutProtection.Normal, ShortcutScope.Global, "cancel a recording")),
+        ]);
+
+        string? text = KnownShortcutWarning.DestinationTextFor(catalog, "Ctrl", "CapsLock");
+
+        text.Should().Contain("My macro tool uses Ctrl to cancel a recording.");
+        text.Should().Contain("Shortcuts that use Ctrl may also respond when you hold CapsLock.");
+    }
+
+    [Fact]
+    public void DestinationTextFor_OrdinaryKeyNothingUses_SaysNothing()
+    {
+        KnownShortcutCatalogDto catalog = new([
+            Shortcut("windows.file-explorer", "e", false, false, false, true,
+                Use("Windows", ShortcutProtection.Normal, ShortcutScope.Global, "open File Explorer")),
+        ]);
+
+        KnownShortcutWarning.DestinationTextFor(catalog, "F13", "CapsLock").Should().BeNull();
+    }
+
+    [Fact]
+    public void DestinationTextFor_NoDestination_SaysNothing()
+    {
+        KnownShortcutCatalogDto catalog = new([]);
+
+        KnownShortcutWarning.DestinationTextFor(catalog, null, "CapsLock").Should().BeNull();
+        KnownShortcutWarning.DestinationTextFor(catalog, "   ", "CapsLock").Should().BeNull();
+    }
+
+    [Fact]
+    public void DestinationTextFor_NoCatalog_StillWarnsAboutAModifier()
+    {
+        // The list failing to load must not hide the modifier rule, which needs no catalog.
+        KnownShortcutWarning.DestinationTextFor(null, "Ctrl", "CapsLock")
+            .Should().Contain("Shortcuts that use Ctrl may also respond");
+    }
 }

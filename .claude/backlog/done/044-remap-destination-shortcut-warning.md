@@ -24,11 +24,11 @@ This is the small version of the problem item 042 describes. Item 042 defers the
 
 ## Acceptance criteria
 
-- [ ] A `Remap` row whose destination is a modifier key warns that shortcuts using that modifier gain a second trigger
-- [ ] A `Remap` row whose destination matches a known shortcut warns, naming what already uses it
-- [ ] The warning says which side of the remap it is about, so a row that warns on both sides is not confusing
-- [ ] A row that is not a `Remap` behaves exactly as it does today
-- [ ] The check runs in the edit dialog, on the same catalog fetch the existing warning uses, with no extra request
+- [x] A `Remap` row whose destination is a modifier key warns that shortcuts using that modifier gain a second trigger
+- [x] A `Remap` row whose destination matches a known shortcut warns, naming what already uses it
+- [x] The warning says which side of the remap it is about, so a row that warns on both sides is not confusing
+- [x] A row that is not a `Remap` behaves exactly as it does today
+- [x] The check runs in the edit dialog, on the same catalog fetch the existing warning uses, with no extra request
 
 ## Out of scope
 
