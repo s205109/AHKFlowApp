@@ -24,6 +24,8 @@ public sealed class HotkeyBuilder
     private WindowOp? _windowOp;
     private string? _remapDest;
     private string? _body;
+    private WindowMatchType? _contextMatchType;
+    private string? _contextValue;
     private bool _appliesToAllProfiles = true;
     private Guid[] _profileIds = [];
     private readonly List<Guid> _categoryIds = [];
@@ -78,6 +80,17 @@ public sealed class HotkeyBuilder
         _actionKind = HotkeyActionKind.Raw; _body = body; return this;
     }
 
+    /// <summary>
+    /// Limits the hotkey to one window. Both parts are set together, because the validator rejects
+    /// a match type without a value and a value without a match type.
+    /// </summary>
+    public HotkeyBuilder WithContext(WindowMatchType matchType, string value)
+    {
+        _contextMatchType = matchType;
+        _contextValue = value;
+        return this;
+    }
+
     public HotkeyBuilder InProfile(Guid profileId)
     {
         _appliesToAllProfiles = false;
@@ -128,6 +141,16 @@ public sealed class HotkeyBuilder
                 ctrl: _ctrl, alt: _alt, shift: _shift, win: _win,
                 action: _action, parameters: _parameters,
                 appliesToAllProfiles: _appliesToAllProfiles);
+
+        // Applied to both arms, so WithContext works whether or not a typed action kind was pinned.
+        if (_contextMatchType is not null || _contextValue is not null)
+        {
+            definition = definition with
+            {
+                ContextMatchType = _contextMatchType,
+                ContextValue = _contextValue,
+            };
+        }
 
         var entity = Hotkey.Create(_ownerOid, definition, _clock);
 

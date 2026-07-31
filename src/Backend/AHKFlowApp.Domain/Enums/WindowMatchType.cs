@@ -1,7 +1,7 @@
 namespace AHKFlowApp.Domain.Enums;
 
 /// <summary>
-/// How a hotstring's window context value is matched against the active window
+/// How the window context value of a hotstring or a hotkey is matched against the active window
 /// when generating AutoHotkey's <c>WinActive</c> expression.
 /// </summary>
 public enum WindowMatchType

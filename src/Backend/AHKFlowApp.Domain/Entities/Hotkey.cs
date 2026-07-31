@@ -26,6 +26,8 @@ public sealed class Hotkey
     public WindowOp? WindowOp { get; private set; }
     public string? RemapDest { get; private set; }
     public string? Body { get; private set; }
+    public WindowMatchType? ContextMatchType { get; private set; }
+    public string? ContextValue { get; private set; }
     public bool AppliesToAllProfiles { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
@@ -88,5 +90,7 @@ public sealed class Hotkey
         WindowOp = definition.WindowOp;
         RemapDest = definition.RemapDest;
         Body = definition.Body;
+        ContextMatchType = definition.ContextMatchType;
+        ContextValue = definition.ContextValue;
     }
 }
