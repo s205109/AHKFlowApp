@@ -72,7 +72,7 @@ How a Text Hotstring's Replacement reaches the target window — typed keystroke
 _Avoid_: send mode (AutoHotkey's own SI/SP/SE setting, which a Profile script sets once globally), output function, paste mode, method, Hotstring (the current UI label for typed delivery)
 
 **Window context**:
-The restriction that limits a Hotstring to windows matching a given executable, window class, or title substring. A Hotstring without one fires in every window.
+The restriction that limits a Hotstring or a Hotkey to windows matching a given executable, window class, or title substring. A Hotstring or Hotkey without one fires in every window.
 _Avoid_: scope, filter, condition
 
 **Options**:

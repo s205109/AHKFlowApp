@@ -64,6 +64,46 @@ public sealed class HotkeysCrudFlowTests(StackFixture fixture) : IAsyncLifetime
         await Assertions.Expect(row.Locator("code")).ToContainTextAsync("Win+N");
     }
 
+    [Fact]
+    public async Task CreateHotkeyLimitedToOneProgram_PreviewWrapsSnippetInHotIf()
+    {
+        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
+        IPage page = await ctx.NewPageAsync();
+
+        await page.GotoAsync($"{fixture.Spa.BaseUrl}/hotkeys");
+        await page.WaitForSelectorAsync("button.add-hotkey");
+
+        await page.ClickAsync("button.add-hotkey");
+        await page.WaitForSelectorAsync(".hotkey-edit-dialog");
+
+        await page.FillAsync(".hotkey-edit-dialog input[data-test=\"description-input\"]", "E2E notepad only");
+        await CommitKeyAsync(page, ".hotkey-edit-dialog input[data-test=\"key-picker\"]", "n");
+
+        await page.ClickAsync(".hotkey-edit-dialog [data-test=\"action-kind-Run\"]");
+        await SelectRunTargetKindAsync(page, "Application");
+        await page.CheckAsync(".hotkey-edit-dialog input[data-test=\"win-checkbox\"]");
+
+        // Same reason as the flow above: open the preview before the debounced fields are filled.
+        await page.ClickAsync(".hotkey-edit-dialog [data-test=\"ahk-preview\"] .mud-expand-panel-header");
+        await page.FillAsync(".hotkey-edit-dialog input[data-test=\"run-target-input\"]", "notepad");
+
+        // Limit the hotkey to one program. The match type defaults to Program, so only the value
+        // needs filling in.
+        await page.CheckAsync(".hotkey-edit-dialog input[data-test=\"context-switch\"]");
+        await page.WaitForSelectorAsync(".hotkey-edit-dialog input[data-test=\"context-value-input\"]");
+        await page.FillAsync(".hotkey-edit-dialog input[data-test=\"context-value-input\"]", "notepad.exe");
+
+        await Assertions.Expect(page.Locator(".hotkey-edit-dialog [data-test=\"preview-snippet\"]"))
+            .ToContainTextAsync("#HotIf WinActive(\"ahk_exe notepad.exe\")");
+
+        await page.ClickAsync(".hotkey-edit-dialog button.commit-edit");
+        await page.WaitForSelectorAsync("text=Hotkey created.");
+
+        ILocator row = page.Locator(".desktop-branch tr", new() { HasTextString = "E2E notepad only" });
+        await row.WaitForAsync();
+        await row.Locator(".context-icon").WaitForAsync();
+    }
+
     // Fills a MudAutocomplete key picker and commits the typed value by blurring (CoerceValue).
     private static async Task CommitKeyAsync(IPage page, string selector, string key)
     {
