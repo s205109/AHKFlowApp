@@ -120,20 +120,31 @@
         _shortcutCts = cts;
         int generation = ++_generation;
 
+        // Read once, before the first await. A newer evaluation cancels and disposes this source,
+        // and reading Token on a disposed source throws ObjectDisposedException. That is not an
+        // OperationCanceledException, so it would reach the catch below and log a list-read failure
+        // that never happened.
+        CancellationToken token = cts.Token;
+
+        // Declared out here so the catch can report the destination it had already resolved.
+        string? canonicalDest = null;
+
         try
         {
-            string canonical = await Keys.CanonicalizeAsync(Key, cts.Token);
+            string canonical = await Keys.CanonicalizeAsync(Key, token);
 
             // Only a Remap has a destination. Every other kind may still carry a stale value: the
             // edit model keeps per-kind fields across kind switches on purpose.
-            string? canonicalDest = key.Kind == HotkeyActionKind.Remap && !string.IsNullOrWhiteSpace(key.RemapDest)
-                ? await Keys.CanonicalizeAsync(key.RemapDest, cts.Token)
-                : null;
+            // A key registry that failed to load hands the key back unchanged, so an alias such as
+            // "Win" stays "Win" and matches no modifier. This feature is advisory, so a miss is the
+            // safe outcome.
+            if (key.Kind == HotkeyActionKind.Remap && !string.IsNullOrWhiteSpace(key.RemapDest))
+                canonicalDest = await Keys.CanonicalizeAsync(key.RemapDest, token);
 
             // Session-cached: only the first call in a session reaches the network. The generation
             // check below still earns its place, because that first call can be slow enough for the
             // user to change the combination while it is in flight.
-            KnownShortcutCatalogDto? catalog = await KnownShortcuts.GetAsync(cts.Token);
+            KnownShortcutCatalogDto? catalog = await KnownShortcuts.GetAsync(token);
 
             if (generation != _generation || _disposed)
                 return;
@@ -164,10 +175,11 @@
         {
             Logger.LogWarning(ex, "Known-shortcut list could not be read; showing no warning.");
 
-            // The destination is unknown here: canonicalizing it is what may have thrown. The
-            // decision is still announced, so a waiting test finishes instead of hanging.
+            // The decision is still announced, so a waiting test finishes instead of hanging. It
+            // carries whatever destination was resolved before the throw. Reading the list is not
+            // the only step that can fail, and "" would read as "not evaluated yet".
             if (generation == _generation && !_disposed)
-                Decide(source: null, destination: null, key, canonicalDest: null);
+                Decide(source: null, destination: null, key, canonicalDest);
         }
     }
 

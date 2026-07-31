@@ -783,6 +783,11 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
         provider.WaitForAssertion(() =>
             provider.Find("[data-test=\"shortcut-warning\"]").TextContent
                 .Should().Contain("Windows uses Win+E to open File Explorer."));
+
+        // One notice, so no section labels. They appear only when both sides warn, which is what
+        // keeps a source-only notice reading exactly as it read before the destination check.
+        provider.Find("[data-test=\"shortcut-warning\"]").TextContent
+            .Should().NotContain("Key and modifiers").And.NotContain("Remap destination");
     }
 
     [Fact]
@@ -851,6 +856,12 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
             provider.Find("[data-test=\"destination-warning\"]").TextContent.Trim().Should().Be(
                 "This hotkey makes CapsLock act as Ctrl. " +
                 "Shortcuts that use Ctrl may also respond when you hold CapsLock."));
+
+        // Destination-only notice: still no labels. CapsLock matches no catalog row, so the source
+        // side says nothing.
+        provider.FindAll("[data-test=\"source-warning\"]").Should().BeEmpty();
+        provider.Find("[data-test=\"shortcut-warning\"]").TextContent
+            .Should().NotContain("Key and modifiers").And.NotContain("Remap destination");
     }
 
     [Fact]
