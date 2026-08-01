@@ -47,7 +47,7 @@ Worktrees also run no-auth automatically (`Auth:UseTestProvider=true`, always si
 **Known problem in the main checkout:** the `http (No Auth)` frontend profile does not sign you in. In
 .NET 10 the WebAssembly boot environment is fixed at build time, so `wwwroot/appsettings.NoAuth.json`
 is never loaded and the app boots into MSAL. Worktrees are unaffected — their setup script writes
-`appsettings.Development.json`, which does load. Tracked in `.claude/backlog/039-no-auth-frontend-profile-broken.md`.
+`appsettings.Development.json`, which does load. Tracked in `.claude/backlog/047-no-auth-frontend-profile-broken.md`.
 Until it is fixed, drive the main checkout with a real login, or intercept the config request:
 
 ```bash

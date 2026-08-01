@@ -43,7 +43,7 @@ get this automatically via `setup-worktree-local-dev.ps1` (no example copy neede
 > **This profile does not work in the main checkout right now.** .NET 10 fixes the WebAssembly boot
 > environment at build time, so `appsettings.NoAuth.json` is never read and the app boots into MSAL.
 > Worktrees are unaffected, because their script writes `appsettings.Development.json` instead. See
-> `.claude/backlog/039-no-auth-frontend-profile-broken.md` and the workaround in
+> `.claude/backlog/047-no-auth-frontend-profile-broken.md` and the workaround in
 > `docs/development/playwright-setup.md`.
 
 ## Adding a Page

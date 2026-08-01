@@ -1,4 +1,4 @@
-# 039 - Make the no-auth frontend profile work in the main checkout
+# 047 - Make the no-auth frontend profile work in the main checkout
 
 ## Metadata
 
@@ -18,14 +18,14 @@ As a developer, I want the no-auth launch profile to sign me in as the test user
 
 - Started the frontend with `--launch-profile "http (No Auth)"`: the app rendered **LOG IN** and `button.add-hotkey` was `disabled`.
 - Started it again with `ASPNETCORE_ENVIRONMENT=NoAuth` set directly. The host log confirmed `Hosting environment: NoAuth`, and the app still rendered **LOG IN**.
-- The cause is already written down in this repository, at `tests/AHKFlowApp.E2E.Tests/Fixtures/SpaHost.cs:27-32`: in .NET 10 the Blazor WebAssembly boot configuration is baked into `blazor.webassembly.js` at build time. The dev server's environment does not change which `appsettings.{Environment}.json` the WebAssembly app loads, so `wwwroot/appsettings.NoAuth.json` is never read.
+- The cause is already written down in this repository, at `tests/AHKFlowApp.E2E.Tests/Fixtures/SpaHost.cs:27-32`: in .NET 10 the Blazor WebAssembly boot configuration is baked into `_framework/dotnet.js` at build time. The dev server's environment does not change which `appsettings.{Environment}.json` the WebAssembly app loads, so `wwwroot/appsettings.NoAuth.json` is never read.
 - `Program.cs:27` reads `Auth:UseTestProvider` from configuration, so a file that never loads leaves the flag false.
 
 ## Acceptance criteria
 
-- [ ] Running the frontend on its no-auth profile signs the browser in as the test user, with no Azure AD round trip
+- [ ] The documented no-auth command signs the browser in as the test user
 - [ ] `button.add-hotkey` is enabled on that profile
-- [ ] `.claude/CLAUDE.md`, `src/Frontend/AHKFlowApp.UI.Blazor/CLAUDE.md`, and `docs/development/playwright-setup.md` describe what actually works
+- [ ] `AGENTS.md`, `src/Frontend/AHKFlowApp.UI.Blazor/CLAUDE.md`, `docs/development/playwright-setup.md`, and `.agents/playwright-cli/SKILL.md` describe what actually works
 - [ ] The E2E fixture keeps working unchanged — it already solves this by intercepting every `appsettings*.json` request
 
 ## Out of scope
