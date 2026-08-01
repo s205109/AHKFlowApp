@@ -4,6 +4,10 @@ Use the fastest test slice that still covers the code you changed. The pre-push 
 
 This file is the single source for which tests to run and when. Other docs link here rather than restating commands.
 
+## Housekeeping worktree
+
+For small, unrelated doc or config tweaks — backlog notes, minor rule edits, one-off cleanups — that don't warrant their own branch, keep one long-lived worktree open, e.g. `chore/wt-backlog-housekeeping`. Commit each change to it immediately, as its own commit, so it shows up in git history right away — don't leave it staged or uncommitted. Don't open a PR after every commit. Once the branch holds a few of these, or one grows in importance, open the PR and start a fresh housekeeping worktree for the next round.
+
 ## Canonical pre-PR gate
 
 Four steps, in order. Nothing else counts as the gate.
