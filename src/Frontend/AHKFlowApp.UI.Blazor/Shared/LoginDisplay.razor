@@ -1,9 +1,17 @@
+@using AHKFlowApp.UI.Blazor.Helpers
 @inject NavigationManager Navigation
 @inject IConfiguration Configuration
+@inject TimeProvider Clock
 
 <AuthorizeView>
     <Authorized>
-        <MudText Typo="Typo.body2" Class="mr-2">@context.User.Identity!.Name</MudText>
+        @{
+            string? greeting = Greeting.Build(Clock, context.User.Identity!.Name);
+        }
+        @if (greeting is not null)
+        {
+            <MudText Typo="Typo.body2" Class="mr-2">@greeting</MudText>
+        }
         @if (_useTestAuth)
         {
             <MudTooltip Text="Sign-out is not available in local-install mode (no real authentication)">

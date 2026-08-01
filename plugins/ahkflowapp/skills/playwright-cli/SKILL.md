@@ -21,8 +21,16 @@ run alongside. Driving 5601 from a worktree silently hits the main checkout or a
 like a broken app rather than a wrong URL.
 
 **Worktrees are already signed in.** They run no-auth (`Auth:UseTestProvider=true`, user "Test User"),
-so full CRUD is reachable with no login step. The main checkout runs real MSAL unless started on its
-`http (No Auth)` profile.
+so full CRUD is reachable with no login step. The main checkout runs real MSAL by default. No-auth
+there takes two commands, and both are needed:
+
+```powershell
+dotnet run --project src/Backend/AHKFlowApp.API --launch-profile "Docker SQL (No Auth)"
+pwsh .\scripts\run-frontend.ps1 -NoAuth
+```
+
+Start the frontend alone and every CRUD controller still answers `401 Unauthorized`, because the API
+keeps its default JWT authentication and the no-auth frontend sends no bearer token.
 
 Setup and troubleshooting: `docs/development/playwright-setup.md`.
 

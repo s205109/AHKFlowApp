@@ -24,13 +24,17 @@ Different application layers require different configuration strategies:
 **Configuration pattern:**
 - `appsettings.json` → Local development default (`http://localhost:5600`)
 - `appsettings.Development.json` → Optional local override (ignored by git, copy from `.example` if needed)
+- `appsettings.NoAuth.json` → Local no-auth run (`Auth:UseTestProvider=true`, signs in as the test user)
 - `appsettings.Test.json` → TEST Azure API URL
 - `appsettings.Production.json` → PROD Azure API URL
 
-The active file is selected at runtime based on the `Blazor-Environment` HTTP header sent by the host:
-- Azure SWA (TEST): `staticwebapp.config.json` sets `blazor-environment: Test`
-- Azure SWA (PROD): `deploy-frontend.yml` patches `staticwebapp.config.json` to `blazor-environment: Production` before publishing
-- Local dev: ASP.NET Core host sets `Blazor-Environment: Development` automatically
+The active file is chosen at build time by the `WasmApplicationEnvironmentName` MSBuild property.
+.NET 10 bakes this value into `_framework/dotnet.js`. A standalone Blazor WebAssembly app cannot
+switch environments at runtime. The `Blazor-Environment` HTTP header is not read:
+- Azure SWA (TEST/PROD): `deploy-frontend.yml` passes `-p:WasmApplicationEnvironmentName=Test` or
+  `=Production` to `dotnet publish`
+- Local dev: `scripts/run-frontend.ps1` passes `-p:WasmApplicationEnvironmentName=Development`
+  (or `NoAuth` with the `-NoAuth` switch) to `dotnet build`
 
 ### Why This Works
 
@@ -53,6 +57,7 @@ Per [Microsoft documentation](https://learn.microsoft.com/aspnet/core/blazor/fun
 src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/
 ├── appsettings.json                     Committed (localhost default)
 ├── appsettings.Development.json.example Committed (optional local override template)
+├── appsettings.NoAuth.json              Committed (local no-auth run, test user sign-in)
 ├── appsettings.Test.json                Committed (TEST Azure API URL)
 └── appsettings.Production.json          Committed (PROD Azure API URL)
 ```
@@ -135,7 +140,7 @@ Azure App Service loads configuration in this order (later overrides earlier):
 | **Files** | `appsettings.json`, `appsettings.Test.json`, `appsettings.Production.json`, optional local `appsettings.Development.json` |
 | **Storage** | Defaults committed; `appsettings.Development.json` is gitignored |
 | **Contains** | Public config only (API URL) |
-| **Environment selection** | `Blazor-Environment` header from SWA (`staticwebapp.config.json`) |
+| **Environment selection** | `WasmApplicationEnvironmentName` MSBuild property, baked in at build time |
 | **Why** | Client-side code is always visible to users |
 
 ### Backend (API)
@@ -185,7 +190,7 @@ src/Backend/**/appsettings.Production.json
 
 ### Frontend
 
-`appsettings.json` points to `http://localhost:5600` by default. If you need a machine-specific override, copy `appsettings.Development.json.example` to `appsettings.Development.json` (ignored by git). The Blazor dev server sets `Blazor-Environment: Development` automatically.
+`appsettings.json` points to `http://localhost:5600` by default. If you need a machine-specific override, copy `appsettings.Development.json.example` to `appsettings.Development.json` (ignored by git). Run `pwsh .\scripts\run-frontend.ps1` (no switch) to build with `WasmApplicationEnvironmentName=Development`, or add `-NoAuth` to sign in as the test user instead.
 
 **Auth setup required:** The `AzureAd` block in `appsettings.Development.json` is intentionally empty. After running `scripts/setup-entra-app.ps1 -Environment dev`, fill it in:
 

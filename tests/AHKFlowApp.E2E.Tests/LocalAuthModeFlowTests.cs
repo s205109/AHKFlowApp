@@ -4,8 +4,9 @@ using Xunit;
 
 namespace AHKFlowApp.E2E.Tests;
 
-// Guards the local no-auth (test provider) mode agent worktrees and the "No Auth" launch profiles
-// rely on: the app boots already signed in as the synthetic user and full CRUD works with no login.
+// Guards the local no-auth (test provider) mode that agent worktrees, the backend's
+// "Docker SQL (No Auth)" launch profile, and `scripts/run-frontend.ps1 -NoAuth` rely on: the app
+// boots already signed in as the synthetic user and full CRUD works with no login.
 [Collection(E2ETestCollection.Name)]
 public sealed class LocalAuthModeFlowTests(StackFixture fixture) : IAsyncLifetime
 {

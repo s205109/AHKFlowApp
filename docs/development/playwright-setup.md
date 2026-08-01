@@ -44,18 +44,31 @@ These are the **main checkout** ports only:
 
 Worktrees also run no-auth automatically (`Auth:UseTestProvider=true`, always signed in as "Test User"), so a browser drive gets full CRUD with no login.
 
-**Known problem in the main checkout:** the `http (No Auth)` frontend profile does not sign you in. In
-.NET 10 the WebAssembly boot environment is fixed at build time, so `wwwroot/appsettings.NoAuth.json`
-is never loaded and the app boots into MSAL. Worktrees are unaffected — their setup script writes
-`appsettings.Development.json`, which does load. Tracked in `.claude/backlog/039-no-auth-frontend-profile-broken.md`.
-Until it is fixed, drive the main checkout with a real login, or intercept the config request:
+**In the main checkout, no-auth takes two commands. Start both sides, or CRUD fails.**
 
-```bash
-playwright-cli route "**/appsettings*.json" --body='{"Auth":{"UseTestProvider":true},"ApiHttpClient":{"BaseAddress":"http://localhost:5600"}}'
+Start the API with the no-auth backend profile:
+
+```powershell
+dotnet run --project src/Backend/AHKFlowApp.API --launch-profile "Docker SQL (No Auth)"
 ```
+
+Then start the frontend, in a second terminal:
+
+```powershell
+pwsh .\scripts\run-frontend.ps1 -NoAuth
+```
+
+The frontend command builds with `WasmApplicationEnvironmentName=NoAuth`, so
+`wwwroot/appsettings.NoAuth.json` loads and the app skips MSAL. Run the script with no switch for
+the normal MSAL path.
+
+The API command sets `Auth__UseTestProvider=true`. Without it the API keeps the default JWT
+authentication, and every CRUD controller carries `[Authorize]`. The no-auth frontend sends no
+bearer token, so each call comes back `401 Unauthorized` — the pages load, but lists stay empty and
+saving fails.
 
 ## Notes
 
 - The browser opens headless by default. Add `--headed` to see the browser window.
 - The Blazor app reads `ApiHttpClient:BaseAddress` directly from `appsettings.json` (single URL, no probing). If the API is not running, health checks will fail with `ERR_CONNECTION_REFUSED`.
-- Ensure the API is running before navigating to `/health`: `dotnet run --project src/Backend/AHKFlowApp.API`
+- Ensure the API is running before navigating to `/health`: `dotnet run --project src/Backend/AHKFlowApp.API`. For a no-auth browser drive, use the `Docker SQL (No Auth)` launch profile shown above instead.
