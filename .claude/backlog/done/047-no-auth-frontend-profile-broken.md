@@ -23,10 +23,10 @@ As a developer, I want the no-auth frontend start command to sign me in as the t
 
 ## Acceptance criteria
 
-- [ ] The documented no-auth command signs the browser in as the test user
-- [ ] `button.add-hotkey` is enabled after running the documented no-auth command
-- [ ] `AGENTS.md`, `src/Frontend/AHKFlowApp.UI.Blazor/CLAUDE.md`, `docs/development/playwright-setup.md`, and `.agents/playwright-cli/SKILL.md` describe what actually works
-- [ ] The E2E fixture keeps working unchanged — it already solves this by intercepting every `appsettings*.json` request
+- [x] The documented no-auth command signs the browser in as the test user
+- [x] `button.add-hotkey` is enabled after running the documented no-auth command
+- [x] `AGENTS.md`, `src/Frontend/AHKFlowApp.UI.Blazor/CLAUDE.md`, `docs/development/playwright-setup.md`, and `.agents/playwright-cli/SKILL.md` describe what actually works
+- [x] The E2E fixture keeps working unchanged — it already solves this by intercepting every `appsettings*.json` request
 
 ## Out of scope
 

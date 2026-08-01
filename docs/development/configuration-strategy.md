@@ -24,6 +24,7 @@ Different application layers require different configuration strategies:
 **Configuration pattern:**
 - `appsettings.json` → Local development default (`http://localhost:5600`)
 - `appsettings.Development.json` → Optional local override (ignored by git, copy from `.example` if needed)
+- `appsettings.NoAuth.json` → Local no-auth run (`Auth:UseTestProvider=true`, signs in as the test user)
 - `appsettings.Test.json` → TEST Azure API URL
 - `appsettings.Production.json` → PROD Azure API URL
 
@@ -56,6 +57,7 @@ Per [Microsoft documentation](https://learn.microsoft.com/aspnet/core/blazor/fun
 src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/
 ├── appsettings.json                     Committed (localhost default)
 ├── appsettings.Development.json.example Committed (optional local override template)
+├── appsettings.NoAuth.json              Committed (local no-auth run, test user sign-in)
 ├── appsettings.Test.json                Committed (TEST Azure API URL)
 └── appsettings.Production.json          Committed (PROD Azure API URL)
 ```
