@@ -31,11 +31,11 @@ These files are meant to stay uncommitted forever, so nothing is lost in git tod
 
 ## Acceptance criteria
 
-- [ ] Running `setup-worktree-local-dev.ps1` in a fresh worktree leaves every comment in `.vscode/launch.json` intact
-- [ ] No rewritten file gains a UTF-8 BOM that it did not already have
-- [ ] Array formatting is unchanged in files the script rewrites
-- [ ] `git diff` in a fresh worktree shows only the port, database, and project-name changes
-- [ ] A regression test covers a rewrite of a JSON file that contains comments and a single-line array
+- [x] Running `setup-worktree-local-dev.ps1` in a fresh worktree leaves every comment in `.vscode/launch.json` intact
+- [x] No rewritten file gains a UTF-8 BOM that it did not already have
+- [x] Array formatting is unchanged in files the script rewrites
+- [x] `git diff` in a fresh worktree shows only the port, database, and project-name changes
+- [x] A regression test covers a rewrite of a JSON file that contains comments and a single-line array
 
 ## Out of scope
 
