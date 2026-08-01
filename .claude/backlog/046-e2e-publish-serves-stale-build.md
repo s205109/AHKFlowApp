@@ -30,10 +30,10 @@ A test that cannot fail is worse than no test. This one hides regressions and wa
 
 ## Acceptance criteria
 
-- [ ] An E2E run after a source change always exercises that change, with no manual publish step
-- [ ] The publish destination holds exactly one copy of the app, so stale hashed assets cannot be served
+- [x] An E2E run after a source change always exercises that change, with no manual publish step
+- [x] The publish destination holds exactly one copy of the app, so stale hashed assets cannot be served
 - [ ] Deliberately breaking a component that an E2E test asserts on makes that test fail on a normal `test-fast.ps1 -Mode E2E` run
-- [ ] `docs/development/testing-workflow.md` describes whatever the resulting procedure is
+- [x] `docs/development/testing-workflow.md` describes whatever the resulting procedure is
 
 ## Out of scope
 
