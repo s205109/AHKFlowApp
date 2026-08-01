@@ -71,13 +71,39 @@ function New-FrontendBuilder {
     }.GetNewClosure()
 }
 
+# Builds a $Runner scriptblock for Invoke-FrontendLaunch, the same way New-FrontendBuilder builds a
+# $Builder. It runs $FilePath with $ArgumentList through Invoke-NativeCommand and returns the exit
+# code as a plain scalar, so Invoke-FrontendLaunch can check it. scripts/run-frontend.ps1 calls this
+# with 'dotnet' for the real run; RunFrontend.Tests.ps1 calls it with 'cmd'.
+#
+# The closure captures Invoke-NativeCommand in a variable for the same scope reason spelled out on
+# New-FrontendBuilder above.
+function New-FrontendRunner {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $FilePath,
+
+        [Parameter(Mandatory = $true)]
+        [string[]] $ArgumentList
+    )
+
+    $invokeNativeCommand = ${function:Invoke-NativeCommand}
+
+    return {
+        return & $invokeNativeCommand -FilePath $FilePath -ArgumentList $ArgumentList
+    }.GetNewClosure()
+}
+
 # Builds the frontend for the given environment, then runs it, but only when the build succeeds.
 # $Builder receives the build argument array and must return the process exit code. $Runner takes
-# no arguments. Both are scriptblocks so a test can drive this without ever shelling out to dotnet.
+# no arguments and returns the run's exit code, or nothing when it has no process to report on.
+# Both are scriptblocks so a test can drive this without ever shelling out to dotnet.
 #
-# $ErrorActionPreference = 'Stop' does not stop a failed native command on its own, so the exit
-# code check below is explicit. Without it, a failed build would still fall through to $Runner and
-# serve the previous, stale build.
+# $ErrorActionPreference = 'Stop' does not stop a failed native command on its own, so both exit
+# code checks below are explicit. Without the build check, a failed build would still fall through
+# to $Runner and serve the previous, stale build. Without the run check, a frontend that never
+# started -- a port already in use, for example -- would still let the whole command exit
+# successfully.
 function Invoke-FrontendLaunch {
     param(
         [Parameter(Mandatory = $true)]
@@ -101,7 +127,11 @@ function Invoke-FrontendLaunch {
         throw "Frontend build failed for environment '$EnvironmentName'."
     }
 
-    & $Runner
+    # A runner that returns nothing counts as success: it had no process exit code to report.
+    $runExitCode = & $Runner
+    if ($null -ne $runExitCode -and $runExitCode -ne 0) {
+        throw "Frontend run failed for environment '$EnvironmentName' (exit code $runExitCode)."
+    }
 
     return [pscustomobject]@{
         EnvironmentName = $EnvironmentName

@@ -158,4 +158,58 @@ $nestedScopeScript = @"
 $nestedScopeOutput = (& $powerShellHost -NoProfile -Command $nestedScopeScript 2>&1 | ForEach-Object { $_.ToString() }) -join "`n"
 Assert-True ($nestedScopeOutput -like '*exit-code=0*') "A builder created in a non-global scope must return exit code 0. Got: '$nestedScopeOutput'"
 
+# Cases 8-10 cover the run step's exit code. The build step already had cases 4 and 6; the run step
+# had nothing, so a frontend that failed to start -- a port already in use, for example -- exited
+# quietly and the whole command still looked successful.
+
+# Case 8: a runner that reports failure must throw, and the message must name the exit code.
+Assert-Throws {
+    Invoke-FrontendLaunch -EnvironmentName 'Development' -Builder $successBuilder -Runner { return 7 }
+} 'run failed' 'A failing run must throw.'
+
+Assert-Throws {
+    Invoke-FrontendLaunch -EnvironmentName 'Development' -Builder $successBuilder -Runner { return 7 }
+} '7' 'The run failure message must carry the exit code.'
+
+# Case 9: the real runner wiring, not a fake exit code. New-FrontendRunner is the factory
+# scripts/run-frontend.ps1 calls with 'dotnet'. A run that prints a line and exits 7 must still
+# throw. This is the regression test for the discarded exit code: the run result used to go to
+# Out-Null, so a failed start reached no check at all.
+$failingRunner = New-FrontendRunner -FilePath 'cmd' -ArgumentList @('/c', 'echo run-failed-line & exit 7')
+
+Assert-Throws {
+    Invoke-FrontendLaunch -EnvironmentName 'Development' -Builder $successBuilder -Runner $failingRunner 6>$null
+} 'run failed' 'A noisy failing run must still throw.'
+
+# Case 10: the same real wiring, exiting 0. It must not throw, and the run's own console output
+# must still reach the developer even though the caller pipes the result to Out-Null.
+$script:caughtMessage = $null
+$succeedingRunner = New-FrontendRunner -FilePath 'cmd' -ArgumentList @('/c', 'echo run-line-one & exit 0')
+
+$runHostOutput = & {
+    try {
+        Invoke-FrontendLaunch -EnvironmentName 'Development' -Builder $successBuilder -Runner $succeedingRunner | Out-Null
+    } catch {
+        $script:caughtMessage = $_.Exception.Message
+    }
+} 6>&1
+
+Assert-True ($null -eq $script:caughtMessage) "A noisy run that exits 0 must not throw. It threw: '$($script:caughtMessage)'"
+
+$runHostText = (@($runHostOutput) | ForEach-Object { $_.ToString() }) -join "`n"
+Assert-True ($runHostText -like '*run-line-one*') "The run's own output must reach the console. Got: '$runHostText'"
+
+# Case 11: New-FrontendRunner must also work when the shared script is dot-sourced into a scope
+# that is not the global one -- the same closure-scope trap case 7 covers for the builder.
+$nestedRunnerScript = @"
+& {
+    . '$(Join-Path $repoRoot 'scripts\run-frontend.common.ps1')'
+    `$nestedRunner = New-FrontendRunner -FilePath 'cmd' -ArgumentList @('/c', 'exit 0')
+    Write-Output ('exit-code=' + (& `$nestedRunner))
+}
+"@
+
+$nestedRunnerOutput = (& $powerShellHost -NoProfile -Command $nestedRunnerScript 2>&1 | ForEach-Object { $_.ToString() }) -join "`n"
+Assert-True ($nestedRunnerOutput -like '*exit-code=0*') "A runner created in a non-global scope must return exit code 0. Got: '$nestedRunnerOutput'"
+
 Write-Host 'Run-frontend launcher tests passed.'
