@@ -6,6 +6,7 @@
 - **Type**: Feature
 - **Interfaces**: CLI
 - **Depends on**: 030-cli-native-windows-distribution
+- **Status**: On hold — see Notes/dependencies
 
 ## Summary
 
@@ -39,6 +40,9 @@ As a Windows user, I want to run `winget install AHKFlow.CLI` so that I can inst
 
 ## Notes / dependencies
 
+- On hold until the API is complete and the frontend design has been updated with the Claude design
+  files. Packaging and publishing a CLI installer against a client shape that is still changing risks
+  shipping a distribution for a UI/API surface that gets reworked shortly after.
 - Submission targets the existing v0.1.1 GitHub Release; no rebuild.
 - Manifests use `InstallerType: zip` + `NestedInstallerType: portable` so Winget handles PATH registration via its symlink directory.
 - License pulled from existing root `LICENSE` (MIT, Copyright 2026 Bart Segers).
