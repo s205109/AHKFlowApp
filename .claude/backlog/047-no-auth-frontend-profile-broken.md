@@ -24,7 +24,7 @@ As a developer, I want the no-auth launch profile to sign me in as the test user
 ## Acceptance criteria
 
 - [ ] The documented no-auth command signs the browser in as the test user
-- [ ] `button.add-hotkey` is enabled on that profile
+- [ ] `button.add-hotkey` is enabled after running the documented no-auth command
 - [ ] `AGENTS.md`, `src/Frontend/AHKFlowApp.UI.Blazor/CLAUDE.md`, `docs/development/playwright-setup.md`, and `.agents/playwright-cli/SKILL.md` describe what actually works
 - [ ] The E2E fixture keeps working unchanged — it already solves this by intercepting every `appsettings*.json` request
 
