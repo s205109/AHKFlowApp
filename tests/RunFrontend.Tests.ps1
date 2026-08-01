@@ -136,4 +136,26 @@ Assert-Throws {
 } 'build failed' 'A noisy failing build must still throw.'
 Assert-True ($script:runnerCallCount -eq 0) "Runner must never run after a noisy failing build. Called $script:runnerCallCount times."
 
+# Case 7: the builder must still work when run-frontend.common.ps1 is dot-sourced into a scope
+# that is not the global one. This is the regression test for the closure-scope bug: the builder
+# used to call Invoke-NativeCommand by name, and GetNewClosure() binds the returned scriptblock to
+# a new dynamic module, which resolves an unqualified name against the global scope only.
+#
+# The check runs in a fresh host process, because the arrangement cannot be built inside this one.
+# This file already dot-sourced the shared script at the top, and under 'pwsh -File' that top-level
+# scope is the global scope, so a nested dot-source here would still find the earlier global copy
+# and hide the bug. The child process dot-sources the script inside '& { }' only, which is exactly
+# what scripts/run-frontend.ps1 does not get for free, and prints the exit code it received.
+$powerShellHost = (Get-Process -Id $PID).Path
+$nestedScopeScript = @"
+& {
+    . '$(Join-Path $repoRoot 'scripts\run-frontend.common.ps1')'
+    `$nestedBuilder = New-FrontendBuilder -FilePath 'cmd'
+    Write-Output ('exit-code=' + (& `$nestedBuilder @('/c', 'exit 0')))
+}
+"@
+
+$nestedScopeOutput = (& $powerShellHost -NoProfile -Command $nestedScopeScript 2>&1 | ForEach-Object { $_.ToString() }) -join "`n"
+Assert-True ($nestedScopeOutput -like '*exit-code=0*') "A builder created in a non-global scope must return exit code 0. Got: '$nestedScopeOutput'"
+
 Write-Host 'Run-frontend launcher tests passed.'

@@ -49,15 +49,25 @@ $script:FrontendProjectPath = 'src/Frontend/AHKFlowApp.UI.Blazor'
 # Invoke-NativeCommand and returns the exit code as a plain scalar. scripts/run-frontend.ps1 calls
 # this with 'dotnet' for its real build; RunFrontend.Tests.ps1 calls it with 'cmd' so the shipped
 # wiring can be tested without ever shelling out to dotnet.
+#
+# The closure captures Invoke-NativeCommand as a scriptblock in $invokeNativeCommand, and calls
+# that variable instead of the function name. GetNewClosure() binds the returned scriptblock to a
+# new dynamic module, and a module resolves an unqualified command name against the global scope,
+# not against the scope that dot-sourced this file. When a script dot-sources this file, the
+# function lands in that script's own scope, so the closure could not see it by name and failed
+# with "The term 'Invoke-NativeCommand' is not recognized". A captured variable has no such
+# problem: GetNewClosure() copies it into the closure itself.
 function New-FrontendBuilder {
     param(
         [Parameter(Mandatory = $true)]
         [string] $FilePath
     )
 
+    $invokeNativeCommand = ${function:Invoke-NativeCommand}
+
     return {
         param($BuildArguments)
-        return Invoke-NativeCommand -FilePath $FilePath -ArgumentList $BuildArguments
+        return & $invokeNativeCommand -FilePath $FilePath -ArgumentList $BuildArguments
     }.GetNewClosure()
 }
 
