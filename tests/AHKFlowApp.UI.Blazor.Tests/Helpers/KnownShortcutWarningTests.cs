@@ -1,3 +1,4 @@
+using AHKFlowApp.TestUtilities.Fixtures;
 using AHKFlowApp.UI.Blazor.DTOs;
 using AHKFlowApp.UI.Blazor.Helpers;
 using FluentAssertions;
@@ -307,5 +308,31 @@ public sealed class KnownShortcutWarningTests
         // The list failing to load must not hide the modifier rule, which needs no catalog.
         KnownShortcutWarning.DestinationTextFor(null, "Ctrl", "CapsLock")
             .Should().Contain("Shortcuts that use Ctrl may also respond");
+    }
+
+    public static TheoryData<string> RegistryModifiers()
+    {
+        TheoryData<string> data = [];
+        foreach (string canonical in HotkeyKeyFixtures.ModifierCanonicals)
+            data.Add(canonical);
+
+        return data;
+    }
+
+    // Guards the hard-coded modifier label map against the key registry it mirrors. A modifier
+    // added to HotkeyKeys with no label entry produces no notice at all, and nothing else catches
+    // it. One case per key, so the failing test name already names the missing modifier.
+    [Theory]
+    [MemberData(nameof(RegistryModifiers))]
+    public void DestinationTextFor_EveryRegistryModifier_WarnsAboutTheModifier(string canonical)
+    {
+        // A null catalog isolates the modifier branch: Match returns null, so any text produced
+        // here came from the label map.
+        string? text = KnownShortcutWarning.DestinationTextFor(catalog: null, canonical, "Ctrl+F1");
+
+        text.Should().NotBeNull(
+            $"'{canonical}' is a modifier in HotkeyKeys but has no entry in "
+            + "KnownShortcutWarning.s_modifierLabels — add it there");
+        text.Should().Contain("may also respond");
     }
 }

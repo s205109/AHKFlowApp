@@ -22,11 +22,13 @@ The frontend cannot reference that constant. `tests/AHKFlowApp.UI.Blazor.Tests` 
 
 The frontend does receive the registry at runtime, through the key catalog endpoint. So the check has to run where both sides are reachable. That means an integration test or an E2E test, not a unit test.
 
+**Correction, found while doing the work:** a unit test was possible after all. `AHKFlowApp.TestUtilities` already holds `InternalsVisibleTo` from the Application project and already reads `HotkeyKeys.All`. `tests/AHKFlowApp.UI.Blazor.Tests` already references `TestUtilities`. So the registry reaches a frontend unit test through a seam that already existed, and the guard needed no new project reference.
+
 ## Acceptance criteria
 
-- [ ] A test fails when the key registry gains a modifier the frontend label map does not cover
-- [ ] The failure message names the missing key, so the fix is obvious
-- [ ] The test lives where both the registry and the frontend map are reachable
+- [x] A test fails when the key registry gains a modifier the frontend label map does not cover
+- [x] The failure message names the missing key, so the fix is obvious
+- [x] The test lives where both the registry and the frontend map are reachable
 
 ## Out of scope
 
