@@ -12,7 +12,7 @@ public sealed class TestAuthenticationProvider : AuthenticationStateProvider
         var identity = new ClaimsIdentity(
         [
             new Claim("oid", TestOwnerOid),
-            new Claim("name", "Test User"),
+            new Claim(ClaimTypes.Name, "Test User"),
             new Claim("preferred_username", "test@example.com"),
             new Claim("http://schemas.microsoft.com/identity/claims/scope", "access_as_user"),
         ], authenticationType: "Test");
