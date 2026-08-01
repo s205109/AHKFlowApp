@@ -15,6 +15,32 @@ function Get-FrontendEnvironmentName {
     return 'Development'
 }
 
+# Runs a native command and returns its exit code as a plain scalar integer.
+#
+# A bare, unredirected native call inside a scriptblock lets PowerShell merge the command's own
+# stdout lines into whatever the scriptblock returns. '& dotnet build ...; return $LASTEXITCODE'
+# looks safe, but if the command prints anything, the caller receives an array of
+# [...output lines..., exit code], not the exit code alone -- and '-ne 0' against that array is
+# truthy for every real build, even one that succeeded.
+#
+# This function avoids that trap: '2>&1 | ForEach-Object { Write-Host $_ }' drains the command's
+# stdout and stderr through Write-Host, which writes straight to the console host and never joins
+# the success stream. That keeps two things true at once: the caller gets a clean scalar exit
+# code, and the command's own output still reaches the developer even if the caller later pipes
+# this function's result to Out-Null.
+function Invoke-NativeCommand {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $FilePath,
+
+        [Parameter(Mandatory = $true)]
+        [string[]] $ArgumentList
+    )
+
+    & $FilePath @ArgumentList 2>&1 | ForEach-Object { Write-Host $_ }
+    return $LASTEXITCODE
+}
+
 # Builds the frontend for the given environment, then runs it, but only when the build succeeds.
 # $Builder receives the build argument array and must return the process exit code. $Runner takes
 # no arguments. Both are scriptblocks so a test can drive this without ever shelling out to dotnet.

@@ -38,16 +38,19 @@ if (-not $frontendUrl) {
     $frontendUrl = 'check the console output below'
 }
 
+# Both scriptblocks run their real command through Invoke-NativeCommand. That keeps the build's
+# reported exit code a clean scalar (see the comment on Invoke-NativeCommand for why a bare
+# native call cannot be trusted for that), and it keeps dotnet's own console output visible to
+# the developer even though the call to Invoke-FrontendLaunch below is piped to Out-Null.
 $builder = {
     param($BuildArguments)
-    & dotnet @BuildArguments
-    return $LASTEXITCODE
+    return Invoke-NativeCommand -FilePath 'dotnet' -ArgumentList $BuildArguments
 }
 
 $runner = {
     Write-Success "Starting the frontend with $modeLabel."
     Write-Success "Frontend URL: $frontendUrl"
-    & dotnet run --project $frontendProject --no-build
+    Invoke-NativeCommand -FilePath 'dotnet' -ArgumentList @('run', '--project', $frontendProject, '--no-build') | Out-Null
 }
 
 Push-Location $repoRoot
