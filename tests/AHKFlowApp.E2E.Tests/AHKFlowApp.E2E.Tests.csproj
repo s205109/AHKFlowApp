@@ -34,6 +34,6 @@
   </ItemGroup>
   <Target Name="PublishBlazorForE2E" BeforeTargets="VSTest">
     <RemoveDir Directories="$(BlazorE2EPublishDir)" Condition="'$(BlazorE2EPublishDir)' != ''" />
-    <Exec Command="dotnet publish &quot;$(BlazorE2EProject)&quot; -c $(Configuration) --no-build --no-restore --disable-build-servers -p:UseSharedCompilation=false -o &quot;$(BlazorE2EPublishDir)&quot;" />
+    <Exec Command="dotnet publish &quot;$(BlazorE2EProject)&quot; -c $(Configuration) --no-restore --disable-build-servers -p:UseSharedCompilation=false -o &quot;$(BlazorE2EPublishDir)&quot;" />
   </Target>
 </Project>

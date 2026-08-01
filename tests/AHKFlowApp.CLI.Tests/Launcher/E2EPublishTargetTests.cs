@@ -37,7 +37,9 @@ public sealed class E2EPublishTargetTests
         command.Should().Contain("dotnet publish");
         command.Should().Contain("\"$(BlazorE2EProject)\"");
         command.Should().Contain("-c $(Configuration)");
-        command.Should().Contain("--no-build");
+        command.Should().NotContain(
+            "--no-build",
+            "--no-build reuses a stale trimmed assembly, so the published app can miss the latest source");
         command.Should().Contain("--no-restore");
         command.Should().Contain("-o \"$(BlazorE2EPublishDir)\"");
     }
