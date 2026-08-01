@@ -22,7 +22,7 @@ API backend (`src/Backend/AHKFlowApp.API/appsettings*.json`):
 Blazor frontend (`src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/appsettings*.json`):
 
 1. `appsettings.json`
-2. `appsettings.{BlazorEnvironment}.json` — chosen by the `Blazor-Environment` HTTP header (`Test` via `staticwebapp.config.json`, `Production` patched in by `deploy-frontend.yml`, `Development` from the dev server). For local-install / homelab, `appsettings.Local.json` is baked into the container image.
+2. `appsettings.{BlazorEnvironment}.json` — chosen at build time by the `WasmApplicationEnvironmentName` MSBuild property (`Test` or `Production` passed by `deploy-frontend.yml`, `Development` or `NoAuth` passed by `scripts/run-frontend.ps1`). For local-install / homelab, `appsettings.Local.json` is baked into the container image.
 
 No secrets live in frontend config; all values are public.
 

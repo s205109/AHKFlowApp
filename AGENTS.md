@@ -244,8 +244,9 @@ than assuming (e.g. API 5602 / frontend 5603 / SQL 14330, with a per-worktree `C
 **Local auth:** the main checkout runs real MSAL (Azure AD) by default. Agent git worktrees run
 **no-auth** (test provider, always signed in as "Test User") automatically — `setup-worktree-local-dev.ps1`
 writes both `appsettings.Development.json` files with `Auth:UseTestProvider=true`, so Playwright/E2E get
-full CRUD with no login. Humans in the main checkout opt into no-auth via the `http (No Auth)` frontend
-and `Docker SQL (No Auth)` backend launch profiles.
+full CRUD with no login. Humans in the main checkout opt into no-auth by running
+`pwsh .\scripts\run-frontend.ps1 -NoAuth`, paired with the API's `Docker SQL (No Auth)` backend
+launch profile.
 
 **TEST / PROD (Azure):** App Service and SQL Server names include a short deterministic suffix (e.g.
 `ahkflowapp-api-test-ab12cd`) to avoid Azure's global-name collisions, so never guess them — read the

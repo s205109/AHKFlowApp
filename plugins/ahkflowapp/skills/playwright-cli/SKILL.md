@@ -21,8 +21,8 @@ run alongside. Driving 5601 from a worktree silently hits the main checkout or a
 like a broken app rather than a wrong URL.
 
 **Worktrees are already signed in.** They run no-auth (`Auth:UseTestProvider=true`, user "Test User"),
-so full CRUD is reachable with no login step. The main checkout runs real MSAL unless started on its
-`http (No Auth)` profile.
+so full CRUD is reachable with no login step. The main checkout runs real MSAL by default. To sign in
+as the test user there instead, run `pwsh .\scripts\run-frontend.ps1 -NoAuth`.
 
 Setup and troubleshooting: `docs/development/playwright-setup.md`.
 

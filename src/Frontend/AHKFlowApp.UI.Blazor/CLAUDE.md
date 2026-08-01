@@ -35,16 +35,16 @@ params. The server is optional and configured locally (per-developer MCP setup).
 cp wwwroot/appsettings.Development.json.example wwwroot/appsettings.Development.json
 ```
 
-**No-auth (test provider, always signed in):** run with the `http (No Auth)` launch profile
-(`ASPNETCORE_ENVIRONMENT=NoAuth` → loads committed `wwwroot/appsettings.NoAuth.json` with
-`Auth:UseTestProvider=true`), paired with the API's `Docker SQL (No Auth)` profile. Git worktrees
-get this automatically via `setup-worktree-local-dev.ps1` (no example copy needed).
+**No-auth (test provider, always signed in):** run
 
-> **This profile does not work in the main checkout right now.** .NET 10 fixes the WebAssembly boot
-> environment at build time, so `appsettings.NoAuth.json` is never read and the app boots into MSAL.
-> Worktrees are unaffected, because their script writes `appsettings.Development.json` instead. See
-> `.claude/backlog/047-no-auth-frontend-profile-broken.md` and the workaround in
-> `docs/development/playwright-setup.md`.
+```powershell
+pwsh .\scripts\run-frontend.ps1 -NoAuth
+```
+
+This builds with `WasmApplicationEnvironmentName=NoAuth`, so the app loads committed
+`wwwroot/appsettings.NoAuth.json` with `Auth:UseTestProvider=true`. Pair it with the API's
+`Docker SQL (No Auth)` profile. Git worktrees get no-auth automatically via
+`setup-worktree-local-dev.ps1` (no example copy, no script needed).
 
 ## Adding a Page
 
