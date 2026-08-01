@@ -45,25 +45,32 @@ public sealed class StackFixture : IAsyncLifetime
         nameof(InitializeAsync),
         InitializeCoreAsync);
 
+    public string PublishedWwwroot { get; } = ResolvePublishedWwwroot();
+
+    public static string ResolveConfiguration() =>
+        new DirectoryInfo(AppContext.BaseDirectory).Parent?.Name ?? "Release";
+
+    public static string ResolvePublishedWwwroot()
+    {
+        var testOutputDirectory = new DirectoryInfo(AppContext.BaseDirectory);
+        string targetFramework = testOutputDirectory.Name;
+
+        return Path.GetFullPath(Path.Combine(
+            AppContext.BaseDirectory, "..", "..", "..", "..", "..",
+            "src", "Frontend", "AHKFlowApp.UI.Blazor", "bin", ResolveConfiguration(), targetFramework, "publish", "wwwroot"));
+    }
+
     private async Task InitializeCoreAsync()
     {
         await Api.StartAsync();
 
-        var testOutputDirectory = new DirectoryInfo(AppContext.BaseDirectory);
-        string targetFramework = testOutputDirectory.Name;
-        string configuration = testOutputDirectory.Parent?.Name ?? "Release";
-
-        string wwwroot = Path.GetFullPath(Path.Combine(
-            AppContext.BaseDirectory, "..", "..", "..", "..", "..",
-            "src", "Frontend", "AHKFlowApp.UI.Blazor", "bin", configuration, targetFramework, "publish", "wwwroot"));
-
-        if (!Directory.Exists(wwwroot))
+        if (!Directory.Exists(PublishedWwwroot))
         {
-            throw new DirectoryNotFoundException($"Publish wwwroot not found at {wwwroot}. Run: dotnet publish src/Frontend/AHKFlowApp.UI.Blazor -c {configuration}");
+            throw new DirectoryNotFoundException($"Publish wwwroot not found at {PublishedWwwroot}. Run: dotnet publish src/Frontend/AHKFlowApp.UI.Blazor -c {ResolveConfiguration()}");
         }
 
         HttpMessageInvoker apiClient = new(Api.Server.CreateHandler());
-        Spa = await SpaHost.StartAsync(wwwroot, apiClient, Api.Server.BaseAddress.ToString());
+        Spa = await SpaHost.StartAsync(PublishedWwwroot, apiClient, Api.Server.BaseAddress.ToString());
 
         int exitCode = Microsoft.Playwright.Program.Main(["install", "chromium"]);
         if (exitCode != 0)
