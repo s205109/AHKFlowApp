@@ -7,21 +7,32 @@ namespace AHKFlowApp.CLI.Tests.Launcher;
 public sealed class E2EPublishTargetTests
 {
     [Fact]
-    public void PublishBlazorForE2E_Target_IsIncrementalAndUsesBuiltFrontendOutput()
+    public void PublishBlazorForE2E_Target_AlwaysRunsAndCleansBeforePublish()
     {
         // Arrange
         var document = XDocument.Load(FindE2ETestProjectPath());
 
         // Act
         XElement target = FindElement(document, "Target", "Name", "PublishBlazorForE2E");
+        List<XElement> tasks = [.. target.Elements()];
+        XElement removeDir = target.Elements("RemoveDir").Single();
         XElement exec = target.Elements("Exec").Single();
-        XElement touch = target.Elements("Touch").Single();
         string command = exec.Attribute("Command")?.Value ?? string.Empty;
 
         // Assert
         target.Attribute("BeforeTargets")?.Value.Should().Be("VSTest");
-        target.Attribute("Inputs")?.Value.Should().Be("@(BlazorE2EPublishInput)");
-        target.Attribute("Outputs")?.Value.Should().Be("$(BlazorE2EPublishStamp);$(BlazorE2EPublishIndex)");
+        target.Attribute("Inputs").Should()
+            .BeNull("an up-to-date check lets MSBuild skip the publish and serve a stale app");
+        target.Attribute("Outputs").Should()
+            .BeNull("an up-to-date check lets MSBuild skip the publish and serve a stale app");
+        target.Elements("Touch").Should()
+            .BeEmpty("the stamp and index.html proxy outputs no longer exist");
+
+        removeDir.Attribute("Directories")?.Value.Should().Be("$(BlazorE2EPublishDir)");
+        removeDir.Attribute("Condition")?.Value.Should().Be("'$(BlazorE2EPublishDir)' != ''");
+        tasks.IndexOf(removeDir).Should().BeLessThan(
+            tasks.IndexOf(exec),
+            "cleaning after the publish would delete the app it just copied");
 
         command.Should().Contain("dotnet publish");
         command.Should().Contain("\"$(BlazorE2EProject)\"");
@@ -29,28 +40,29 @@ public sealed class E2EPublishTargetTests
         command.Should().Contain("--no-build");
         command.Should().Contain("--no-restore");
         command.Should().Contain("-o \"$(BlazorE2EPublishDir)\"");
-
-        touch.Attribute("Files")?.Value.Should().Be("$(BlazorE2EPublishStamp);$(BlazorE2EPublishIndex)");
-        touch.Attribute("AlwaysCreate")?.Value.Should().Be("true");
     }
 
     [Fact]
-    public void PublishBlazorForE2E_Inputs_TrackFrontendSourcesAndExcludeGeneratedOutput()
+    public void PublishBlazorForE2E_ObsoleteIncrementalMachinery_IsAbsent()
     {
         // Arrange
         var document = XDocument.Load(FindE2ETestProjectPath());
 
         // Act
-        XElement item = document.Root!
-            .Elements("ItemGroup")
-            .Elements("BlazorE2EPublishInput")
-            .Single();
-        string exclude = item.Attribute("Exclude")?.Value ?? string.Empty;
+        List<string> itemNames =
+        [
+            .. document.Root!.Elements("ItemGroup").Elements().Select(element => element.Name.LocalName)
+        ];
+        List<string> propertyNames =
+        [
+            .. document.Root!.Elements("PropertyGroup").Elements().Select(element => element.Name.LocalName)
+        ];
 
         // Assert
-        item.Attribute("Include")?.Value.Should().Be("$(BlazorE2EProjectDir)**/*");
-        exclude.Should().Contain("$(BlazorE2EProjectDir)bin/**/*");
-        exclude.Should().Contain("$(BlazorE2EProjectDir)obj/**/*");
+        itemNames.Should().NotContain("BlazorE2EPublishInput");
+        propertyNames.Should().NotContain("BlazorE2EPublishStamp");
+        propertyNames.Should().NotContain("BlazorE2EPublishIndex");
+        propertyNames.Should().NotContain("BlazorE2EProjectDir");
     }
 
     private static XElement FindElement(
