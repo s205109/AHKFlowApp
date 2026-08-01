@@ -624,3 +624,176 @@ function New-JsoncChainLiteral {
     $inner = New-JsoncChainLiteral -Names $Names[1..($Names.Count - 1)] -Value $Value -Indent ($Indent + '  ') -Eol $Eol
     return (ConvertTo-JsonStringLiteral $Names[0]) + ': {' + $Eol + $Indent + '  ' + $inner + $Eol + $Indent + '}'
 }
+
+# --- Splicer ------------------------------------------------------------------
+
+function New-JsoncSplice {
+    param([int] $Start, [int] $End, [string] $Text, [int] $Rank, [string] $Path)
+
+    # Rank breaks ties when two splices sit at the same offset. Splices are applied from the
+    # highest offset down, and at equal offsets from the highest rank down, so an inserted
+    # member (rank 1) is placed before the comma that must precede it (rank 0).
+    return [pscustomobject]@{ Start = $Start; End = $End; Text = $Text; Rank = $Rank; Path = $Path }
+}
+
+# Splices for every new member going into one object. All members of an object are emitted
+# together: one at a time, each would write its own separating comma at the same offset,
+# producing ",," and no comma between the new members.
+function New-JsoncInsertion {
+    param(
+        [string] $Text,
+        [hashtable] $Object,
+        [System.Collections.ArrayList] $Members,
+        [string] $Eol
+    )
+
+    $label = (($Members | ForEach-Object { $_.Label }) -join ', ')
+
+    if ($Object.IsEmpty) {
+        # Splice over the whitespace run in front of the closing brace, never over the whole
+        # {...} span: an object that holds only comments has no members but must keep them.
+        $closeIndent = Get-JsoncLineIndent $Text $Object.Start
+        $indent = $closeIndent + '  '
+        $literals = @()
+        foreach ($member in $Members) {
+            $literals += New-JsoncChainLiteral -Names $member.Names -Value $member.Value -Indent $indent -Eol $Eol
+        }
+
+        $body = $Eol + $indent + ($literals -join (',' + $Eol + $indent)) + $Eol + $closeIndent
+        $runStart = Get-JsoncWhitespaceRunStart $Text $Object.CloseIndex
+        return @(New-JsoncSplice -Start $runStart -End $Object.CloseIndex -Text $body -Rank 0 -Path $label)
+    }
+
+    $indent = $Object.Indent
+    $last = $Object.Order[$Object.Order.Count - 1]
+    $literals = @()
+    foreach ($member in $Members) {
+        $literals += New-JsoncChainLiteral -Names $member.Names -Value $member.Value -Indent $indent -Eol $Eol
+    }
+
+    # Splice at LineEnd, not at the value's end, so a trailing comment stays attached to the
+    # member it describes instead of drifting onto the new member's line.
+    $body = $Eol + $indent + ($literals -join (',' + $Eol + $indent))
+    $splices = @(New-JsoncSplice -Start $last.LineEnd -End $last.LineEnd -Text $body -Rank 1 -Path $label)
+    if ($last.CommaIndex -lt 0) {
+        $splices += New-JsoncSplice -Start $last.Value.End -End $last.Value.End -Text ',' -Rank 0 -Path $label
+    }
+
+    return $splices
+}
+
+# Classify one edit against the tree: either a span to replace, or a set of names to insert
+# into the deepest object that does exist. Splices are not built here, because insertions
+# into the same object must be merged first.
+function Resolve-JsoncEdit {
+    param(
+        [hashtable] $Root,
+        [object[]] $Path
+    )
+
+    $label = ($Path -join '.')
+    if ($Path.Count -eq 0) { throw 'Cannot apply a JSON edit with an empty path.' }
+
+    $node = $Root
+
+    for ($i = 0; $i -lt $Path.Count; $i++) {
+        $segment = $Path[$i]
+        $isLast = ($i -eq $Path.Count - 1)
+
+        if ($segment -is [int]) {
+            if ($node.Kind -ne 'Array') {
+                throw "Cannot apply JSON edit '$label': segment $i needs an array at offset $($node.Start)."
+            }
+            if ($segment -lt 0 -or $segment -ge $node.Items.Count) {
+                throw "Cannot apply JSON edit '$label': array index $segment is out of range at offset $($node.Start)."
+            }
+
+            $node = $node.Items[$segment]
+            if ($isLast) { return @{ Kind = 'Replace'; Node = $node; Label = $label } }
+            continue
+        }
+
+        if ($node.Kind -ne 'Object') {
+            throw "Cannot apply JSON edit '$label': segment $i needs an object at offset $($node.Start)."
+        }
+
+        $name = [string] $segment
+        if ($node.Members.ContainsKey($name)) {
+            $node = $node.Members[$name].Value
+            if ($isLast) { return @{ Kind = 'Replace'; Node = $node; Label = $label } }
+            continue
+        }
+
+        # The segment is missing. Every remaining segment must name a property: the script
+        # never needs to grow an array, so a missing integer segment is a fault.
+        $remaining = @($Path[$i..($Path.Count - 1)])
+        foreach ($remainingSegment in $remaining) {
+            if ($remainingSegment -is [int]) {
+                throw "Cannot apply JSON edit '$label': cannot create array index $remainingSegment at offset $($node.Start)."
+            }
+        }
+
+        return @{ Kind = 'Insert'; Object = $node; Names = ([string[]] $remaining); Label = $label }
+    }
+
+    throw "Cannot apply JSON edit '$label': the path resolved to nothing."
+}
+
+# Return new document text with every edit applied. Nothing is written when any edit fails,
+# so a caller can never leave a file half-patched.
+function Set-JsoncValues {
+    param(
+        [Parameter(Mandatory)][string] $Json,
+        [Parameter(Mandatory)][AllowEmptyCollection()][hashtable[]] $Edits,
+        [string] $Eol
+    )
+
+    if ($Edits.Count -eq 0) { return $Json }
+    if (-not $Eol) { $Eol = Get-JsoncEol $Json }
+
+    $root = Read-JsoncTree $Json
+    $splices = New-Object System.Collections.ArrayList
+    $groups = New-Object System.Collections.ArrayList
+    $groupByObjectStart = @{}
+
+    foreach ($edit in $Edits) {
+        $resolved = Resolve-JsoncEdit -Root $root -Path ([object[]] $edit.Path)
+
+        if ($resolved.Kind -eq 'Replace') {
+            [void] $splices.Add((New-JsoncSplice -Start $resolved.Node.Start -End $resolved.Node.End `
+                -Text (ConvertTo-JsonLiteral $edit.Value) -Rank 0 -Path $resolved.Label))
+            continue
+        }
+
+        # Every insertion into the same object joins one group, keyed by that object's start
+        # offset. Emitting them separately is what produced ",," before.
+        $key = [string] $resolved.Object.Start
+        if (-not $groupByObjectStart.ContainsKey($key)) {
+            $group = @{ Object = $resolved.Object; Members = (New-Object System.Collections.ArrayList) }
+            $groupByObjectStart[$key] = $group
+            [void] $groups.Add($group)
+        }
+        [void] $groupByObjectStart[$key].Members.Add(@{ Names = $resolved.Names; Value = $edit.Value; Label = $resolved.Label })
+    }
+
+    foreach ($group in $groups) {
+        foreach ($splice in (New-JsoncInsertion -Text $Json -Object $group.Object -Members $group.Members -Eol $Eol)) {
+            [void] $splices.Add($splice)
+        }
+    }
+
+    $ascending = @($splices | Sort-Object -Property Start, End)
+    for ($i = 1; $i -lt $ascending.Count; $i++) {
+        if ($ascending[$i].Start -lt $ascending[$i - 1].End) {
+            throw "Conflicting JSON edits: '$($ascending[$i - 1].Path)' covers offsets $($ascending[$i - 1].Start)..$($ascending[$i - 1].End) and '$($ascending[$i].Path)' starts at offset $($ascending[$i].Start)."
+        }
+    }
+
+    $result = $Json
+    $descending = @($splices | Sort-Object -Property @{ Expression = 'Start'; Descending = $true }, @{ Expression = 'Rank'; Descending = $true })
+    foreach ($splice in $descending) {
+        $result = $result.Substring(0, $splice.Start) + $splice.Text + $result.Substring($splice.End)
+    }
+
+    return $result
+}

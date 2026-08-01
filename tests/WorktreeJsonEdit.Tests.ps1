@@ -184,4 +184,246 @@ Assert-ExactText (@(
     '}'
 ) -join "`r`n") $deepChain 'A three-name chain adds two spaces per level and honours CRLF.'
 
+# --- Set-JsoncValues ---
+
+# 1. Replacing a scalar keeps the comment above it and the comment below it.
+$doc = @(
+    '{',
+    '  // explains port',
+    '  "port": 5600,',
+    '  // explains name',
+    '  "name": "api"',
+    '}'
+) -join "`n"
+Assert-ExactText (@(
+    '{',
+    '  // explains port',
+    '  "port": 5604,',
+    '  // explains name',
+    '  "name": "api"',
+    '}'
+) -join "`n") (Set-JsoncValues -Json $doc -Edits @(@{ Path = @('port'); Value = 5604 })) 'Comments around a replaced value must survive.'
+
+# 2. A one-line array elsewhere in the file is untouched by an unrelated edit.
+$doc = @(
+    '{',
+    '  "Using": [ "Serilog.Sinks.Console", "Serilog.Sinks.File" ],',
+    '  "AllowedHosts": "*"',
+    '}'
+) -join "`n"
+Assert-ExactText (@(
+    '{',
+    '  "Using": [ "Serilog.Sinks.Console", "Serilog.Sinks.File" ],',
+    '  "AllowedHosts": "localhost"',
+    '}'
+) -join "`n") (Set-JsoncValues -Json $doc -Edits @(@{ Path = @('AllowedHosts'); Value = 'localhost' })) 'A one-line array must not be re-flowed.'
+
+# 3. A missing property is inserted last, at the parent's member indent.
+$doc = @('{', '  "environmentVariables": {', '    "A": "1"', '  }', '}') -join "`n"
+Assert-ExactText (@(
+    '{',
+    '  "environmentVariables": {',
+    '    "A": "1",',
+    '    "B": "2"',
+    '  }',
+    '}'
+) -join "`n") (Set-JsoncValues -Json $doc -Edits @(@{ Path = @('environmentVariables', 'B'); Value = '2' })) 'An inserted property lands last at the parent indent.'
+
+# 4. A missing property in an empty object.
+$doc = @('{', '  "Cors": {}', '}') -join "`n"
+Assert-ExactText (@(
+    '{',
+    '  "Cors": {',
+    '    "AllowedOrigins": ["http://localhost:5605"]',
+    '  }',
+    '}'
+) -join "`n") (Set-JsoncValues -Json $doc -Edits @(@{ Path = @('Cors', 'AllowedOrigins'); Value = @('http://localhost:5605') })) 'An empty object must be opened up correctly.'
+
+# 5. A missing intermediate section is created.
+$doc = @('{', '  "AllowedHosts": "*"', '}') -join "`n"
+Assert-ExactText (@(
+    '{',
+    '  "AllowedHosts": "*",',
+    '  "Cors": {',
+    '    "AllowedOrigins": ["http://localhost:5605"]',
+    '  }',
+    '}'
+) -join "`n") (Set-JsoncValues -Json $doc -Edits @(@{ Path = @('Cors', 'AllowedOrigins'); Value = @('http://localhost:5605') })) 'A missing section must be created with its nested property.'
+
+# 6. An array-index path.
+$doc = @(
+    '{',
+    '  "configurations": [',
+    '    { "name": "a", "url": "http://localhost:5600" },',
+    '    { "name": "b" },',
+    '    { "name": "c", "url": "http://localhost:5600/swagger" }',
+    '  ]',
+    '}'
+) -join "`n"
+Assert-ExactText (@(
+    '{',
+    '  "configurations": [',
+    '    { "name": "a", "url": "http://localhost:5600" },',
+    '    { "name": "b" },',
+    '    { "name": "c", "url": "http://localhost:5604/swagger" }',
+    '  ]',
+    '}'
+) -join "`n") (Set-JsoncValues -Json $doc -Edits @(@{ Path = @('configurations', 2, 'url'); Value = 'http://localhost:5604/swagger' })) 'An array index must select the right element.'
+
+# 7. Escaping in a written value.
+$doc = @('{', '  "v": "x"', '}') -join "`n"
+Assert-ExactText (@('{', '  "v": "a\"b\\c\td"', '}') -join "`n") `
+    (Set-JsoncValues -Json $doc -Edits @(@{ Path = @('v'); Value = ('a"b\c' + [char] 9 + 'd') })) 'A written value must be escaped.'
+
+# 8. A trailing comma in the input survives.
+$doc = @('{', '  "a": 1,', '  "b": 2,', '}') -join "`n"
+Assert-ExactText (@('{', '  "a": 3,', '  "b": 2,', '}') -join "`n") `
+    (Set-JsoncValues -Json $doc -Edits @(@{ Path = @('a'); Value = 3 })) 'A trailing comma must survive an edit.'
+
+# 9. Line endings are preserved in both directions.
+$crlf = @('{', '  "a": 1', '}') -join "`r`n"
+Assert-ExactText (@('{', '  "a": 1,', '  "b": 2', '}') -join "`r`n") `
+    (Set-JsoncValues -Json $crlf -Edits @(@{ Path = @('b'); Value = 2 })) 'A CRLF file must keep CRLF.'
+$lf = @('{', '  "a": 1', '}') -join "`n"
+Assert-ExactText (@('{', '  "a": 1,', '  "b": 2', '}') -join "`n") `
+    (Set-JsoncValues -Json $lf -Edits @(@{ Path = @('b'); Value = 2 })) 'An LF file must keep LF.'
+
+# 10. Applying the same edits twice is byte-identical.
+$doc = @('{', '  "environmentVariables": {', '    "A": "1"', '  }', '}') -join "`n"
+$edits = @(
+    @{ Path = @('environmentVariables', 'A'); Value = '9' },
+    @{ Path = @('environmentVariables', 'B'); Value = '2' }
+)
+$once = Set-JsoncValues -Json $doc -Edits $edits
+$twice = Set-JsoncValues -Json $once -Edits $edits
+Assert-ExactText $once $twice 'Re-applying the same edits must change nothing.'
+
+# 11. An out-of-range array index throws, naming the path and the offset.
+$doc = @('{', '  "configurations": [ { "url": "a" } ]', '}') -join "`n"
+Assert-Throws { Set-JsoncValues -Json $doc -Edits @(@{ Path = @('configurations', 5, 'url'); Value = 'b' }) } `
+    'configurations\.5\.url.*offset' 'An out-of-range index must name the path and the offset.'
+
+# 12. Inserting after a member that carries a trailing // comment.
+$doc = @('{', '  "a": 1 // explains a', '}') -join "`n"
+Assert-ExactText (@('{', '  "a": 1, // explains a', '  "b": 2', '}') -join "`n") `
+    (Set-JsoncValues -Json $doc -Edits @(@{ Path = @('b'); Value = 2 })) 'The comma must land before a trailing line comment.'
+
+# 13. Inserting after a member that carries a trailing block comment.
+$doc = @('{', '  "a": 1 /* note */', '}') -join "`n"
+Assert-ExactText (@('{', '  "a": 1, /* note */', '  "b": 2', '}') -join "`n") `
+    (Set-JsoncValues -Json $doc -Edits @(@{ Path = @('b'); Value = 2 })) 'The comma must land before a trailing block comment.'
+
+# 14. Inserting after a member whose block comment closes lines later.
+$doc = @('{', '  "a": 1 /* note', '     more note */', '}') -join "`n"
+Assert-ExactText (@('{', '  "a": 1, /* note', '     more note */', '  "b": 2', '}') -join "`n") `
+    (Set-JsoncValues -Json $doc -Edits @(@{ Path = @('b'); Value = 2 })) 'A multi-line trailing comment must stay whole.'
+
+# 15. Inserting after a member that already has a trailing comma writes no second comma.
+$doc = @('{', '  "a": 1,', '}') -join "`n"
+Assert-ExactText (@('{', '  "a": 1,', '  "b": 2', '}') -join "`n") `
+    (Set-JsoncValues -Json $doc -Edits @(@{ Path = @('b'); Value = 2 })) 'An existing trailing comma is reused as the separator.'
+
+# 16. Overlapping edits are rejected before anything is written.
+$doc = @('{', '  "a": { "b": 1 }', '}') -join "`n"
+Assert-Throws { Set-JsoncValues -Json $doc -Edits @(
+        @{ Path = @('a'); Value = 'x' },
+        @{ Path = @('a', 'b'); Value = 2 }
+    ) } 'Conflicting JSON edits' 'Two edits whose spans overlap must throw.'
+
+# 17. Two missing sections under the same parent produce one comma each and stay valid JSON.
+$doc = @('{', '  "AllowedHosts": "*"', '}') -join "`n"
+$actual = Set-JsoncValues -Json $doc -Edits @(
+    @{ Path = @('Cors', 'AllowedOrigins'); Value = @('http://localhost:5605') },
+    @{ Path = @('ConnectionStrings', 'DefaultConnection'); Value = 'Server=localhost' }
+)
+Assert-ExactText (@(
+    '{',
+    '  "AllowedHosts": "*",',
+    '  "Cors": {',
+    '    "AllowedOrigins": ["http://localhost:5605"]',
+    '  },',
+    '  "ConnectionStrings": {',
+    '    "DefaultConnection": "Server=localhost"',
+    '  }',
+    '}'
+) -join "`n") $actual 'Two missing sections under one parent must be written as two members.'
+Assert-True ([bool] ($actual | ConvertFrom-Json)) 'Two missing sections must still produce parseable JSON.'
+
+# 18. Two missing keys in the same non-empty object, alongside a replacement in it.
+$doc = @(
+    '{',
+    '  "environmentVariables": {',
+    '    "ASPNETCORE_ENVIRONMENT": "Development",',
+    '    "AHKFLOW_START_DOCKER_SQL": "true"',
+    '  }',
+    '}'
+) -join "`n"
+$actual = Set-JsoncValues -Json $doc -Edits @(
+    @{ Path = @('environmentVariables', 'ASPNETCORE_ENVIRONMENT'); Value = 'Staging' },
+    @{ Path = @('environmentVariables', 'COMPOSE_PROJECT_NAME'); Value = 'ahkflowapp-wt' },
+    @{ Path = @('environmentVariables', 'AHKFLOW_SQL_PORT'); Value = '14330' }
+)
+Assert-ExactText (@(
+    '{',
+    '  "environmentVariables": {',
+    '    "ASPNETCORE_ENVIRONMENT": "Staging",',
+    '    "AHKFLOW_START_DOCKER_SQL": "true",',
+    '    "COMPOSE_PROJECT_NAME": "ahkflowapp-wt",',
+    '    "AHKFLOW_SQL_PORT": "14330"',
+    '  }',
+    '}'
+) -join "`n") $actual 'Two inserted keys must be separated by one comma each.'
+Assert-True ([bool] ($actual | ConvertFrom-Json)) 'Two inserted keys must still produce parseable JSON.'
+
+# 19. Two missing keys in an empty object.
+$doc = @('{', '  "environmentVariables": {}', '}') -join "`n"
+Assert-ExactText (@(
+    '{',
+    '  "environmentVariables": {',
+    '    "A": "1",',
+    '    "B": "2"',
+    '  }',
+    '}'
+) -join "`n") (Set-JsoncValues -Json $doc -Edits @(
+    @{ Path = @('environmentVariables', 'A'); Value = '1' },
+    @{ Path = @('environmentVariables', 'B'); Value = '2' }
+)) 'Two inserted keys in an empty object must be separated by a comma.'
+
+# 20. An object holding only comments keeps them when a member is inserted.
+$doc = @(
+    '{',
+    '  "Cors": {',
+    '    // keep this explanation',
+    '  }',
+    '}'
+) -join "`n"
+Assert-ExactText (@(
+    '{',
+    '  "Cors": {',
+    '    // keep this explanation',
+    '    "AllowedOrigins": ["http://localhost:5605"]',
+    '  }',
+    '}'
+) -join "`n") (Set-JsoncValues -Json $doc -Edits @(@{ Path = @('Cors', 'AllowedOrigins'); Value = @('http://localhost:5605') })) 'A comment-only object must keep its comment.'
+
+# 21. A comment-only object written on one line keeps its comment too.
+$doc = @('{', '  "Cors": { /* why */ }', '}') -join "`n"
+Assert-ExactText (@(
+    '{',
+    '  "Cors": { /* why */',
+    '    "AllowedOrigins": []',
+    '  }',
+    '}'
+) -join "`n") (Set-JsoncValues -Json $doc -Edits @(@{ Path = @('Cors', 'AllowedOrigins'); Value = @() })) 'A one-line comment-only object must keep its comment.'
+
+# 22. Grouped insertions are idempotent too.
+$doc = @('{', '  "AllowedHosts": "*"', '}') -join "`n"
+$groupEdits = @(
+    @{ Path = @('Cors', 'AllowedOrigins'); Value = @('http://localhost:5605') },
+    @{ Path = @('ConnectionStrings', 'DefaultConnection'); Value = 'Server=localhost' }
+)
+$once = Set-JsoncValues -Json $doc -Edits $groupEdits
+$twice = Set-JsoncValues -Json $once -Edits $groupEdits
+Assert-ExactText $once $twice 'Re-applying grouped insertions must change nothing.'
+
 Write-Host 'Worktree JSON edit tests passed.'
