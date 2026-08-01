@@ -28,8 +28,8 @@ Different application layers require different configuration strategies:
 - `appsettings.Production.json` → PROD Azure API URL
 
 The active file is chosen at build time by the `WasmApplicationEnvironmentName` MSBuild property.
-.NET 10 bakes this value into `_framework/dotnet.js`, so a standalone Blazor WebAssembly app cannot
-switch environments at runtime — the `Blazor-Environment` HTTP header is not read:
+.NET 10 bakes this value into `_framework/dotnet.js`. A standalone Blazor WebAssembly app cannot
+switch environments at runtime. The `Blazor-Environment` HTTP header is not read:
 - Azure SWA (TEST/PROD): `deploy-frontend.yml` passes `-p:WasmApplicationEnvironmentName=Test` or
   `=Production` to `dotnet publish`
 - Local dev: `scripts/run-frontend.ps1` passes `-p:WasmApplicationEnvironmentName=Development`

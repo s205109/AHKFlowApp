@@ -18,10 +18,11 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$frontendProject = 'src/Frontend/AHKFlowApp.UI.Blazor'
 
 . "$PSScriptRoot\run-frontend.common.ps1"
 . "$PSScriptRoot\Common.ps1"
+
+$frontendProject = $script:FrontendProjectPath
 
 $environmentName = Get-FrontendEnvironmentName -NoAuth $NoAuth.IsPresent
 $modeLabel = if ($NoAuth) { 'the no-auth test user' } else { 'MSAL sign-in' }
@@ -38,14 +39,11 @@ if (-not $frontendUrl) {
     $frontendUrl = 'check the console output below'
 }
 
-# Both scriptblocks run their real command through Invoke-NativeCommand. That keeps the build's
-# reported exit code a clean scalar (see the comment on Invoke-NativeCommand for why a bare
-# native call cannot be trusted for that), and it keeps dotnet's own console output visible to
-# the developer even though the call to Invoke-FrontendLaunch below is piped to Out-Null.
-$builder = {
-    param($BuildArguments)
-    return Invoke-NativeCommand -FilePath 'dotnet' -ArgumentList $BuildArguments
-}
+# $builder runs the real build command through Invoke-NativeCommand (see New-FrontendBuilder and
+# the comment on Invoke-NativeCommand for why a bare native call cannot be trusted for a clean exit
+# code). $runner does the same for the run command directly, keeping dotnet's own console output
+# visible to the developer even though the call to Invoke-FrontendLaunch below is piped to Out-Null.
+$builder = New-FrontendBuilder -FilePath 'dotnet'
 
 $runner = {
     Write-Success "Starting the frontend with $modeLabel."

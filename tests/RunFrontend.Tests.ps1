@@ -87,16 +87,18 @@ Assert-True ($script:runnerCallCount -eq 0) "Runner must never be called after a
 # real build look like a failure. Cases 1-4 cannot see that bug, because their fake builders never
 # print anything.
 #
-# So these two cases call Invoke-NativeCommand, the same function scripts/run-frontend.ps1 uses for
-# its real $Builder and $Runner. They point it at 'cmd', which is always present on Windows and
-# costs almost nothing to start, so the suite still never shells out to dotnet.
+# So these two cases build $Builder with New-FrontendBuilder -FilePath 'cmd' -- the exact factory
+# scripts/run-frontend.ps1 calls with 'dotnet' for its real $Builder. 'cmd' is always present on
+# Windows and costs almost nothing to start, so the suite still never shells out to dotnet, while
+# still exercising the shipped object rather than a locally re-declared copy of its shape.
 $countingRunner2 = { $script:runnerCallCount++ }
+$cmdBuilder = New-FrontendBuilder -FilePath 'cmd'
 
 # Case 5: a build that prints two lines and exits 0 must not throw, and must reach the runner.
 $script:runnerCallCount = 0
 $noisySuccessBuilder = {
     param($BuildArguments)
-    return Invoke-NativeCommand -FilePath 'cmd' -ArgumentList @('/c', 'echo build-line-one & echo build-line-two & exit 0')
+    return & $cmdBuilder @('/c', 'echo build-line-one & echo build-line-two & exit 0')
 }
 
 $script:caughtMessage = $null
@@ -126,7 +128,7 @@ Assert-True ($hostText -like '*build-line-two*') "The build's own output must re
 $script:runnerCallCount = 0
 $noisyFailureBuilder = {
     param($BuildArguments)
-    return Invoke-NativeCommand -FilePath 'cmd' -ArgumentList @('/c', 'echo build-failed-line & exit 1')
+    return & $cmdBuilder @('/c', 'echo build-failed-line & exit 1')
 }
 
 Assert-Throws {

@@ -41,6 +41,26 @@ function Invoke-NativeCommand {
     return $LASTEXITCODE
 }
 
+# The frontend project path, relative to the repo root. Read by both the builder factory below and
+# scripts/run-frontend.ps1, so it lives in exactly one place.
+$script:FrontendProjectPath = 'src/Frontend/AHKFlowApp.UI.Blazor'
+
+# Builds a $Builder scriptblock for Invoke-FrontendLaunch: it runs $FilePath through
+# Invoke-NativeCommand and returns the exit code as a plain scalar. scripts/run-frontend.ps1 calls
+# this with 'dotnet' for its real build; RunFrontend.Tests.ps1 calls it with 'cmd' so the shipped
+# wiring can be tested without ever shelling out to dotnet.
+function New-FrontendBuilder {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $FilePath
+    )
+
+    return {
+        param($BuildArguments)
+        return Invoke-NativeCommand -FilePath $FilePath -ArgumentList $BuildArguments
+    }.GetNewClosure()
+}
+
 # Builds the frontend for the given environment, then runs it, but only when the build succeeds.
 # $Builder receives the build argument array and must return the process exit code. $Runner takes
 # no arguments. Both are scriptblocks so a test can drive this without ever shelling out to dotnet.
@@ -62,7 +82,7 @@ function Invoke-FrontendLaunch {
 
     $buildArguments = @(
         'build',
-        'src/Frontend/AHKFlowApp.UI.Blazor',
+        $script:FrontendProjectPath,
         "-p:WasmApplicationEnvironmentName=$EnvironmentName"
     )
 
