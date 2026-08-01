@@ -42,6 +42,9 @@ plans repo has one place work happens. Follow this order:
 1. Create the worktree, but stay in the main checkout for now.
 2. Write and commit the spec and the plan there, under `docs/superpowers/specs/` and
    `docs/superpowers/plans/`. Commit from inside `docs/superpowers/`, never from the repo root.
+   Target that repo with `git -C docs/superpowers commit`, not `cd docs/superpowers && git commit`.
+   The agent Git guard reads the command before the shell runs the `cd`, so it still sees the main
+   checkout and blocks the commit. `-C` shows it the real target, which is a different repository.
 3. Switch fully into the worktree. Everything else — code, tests, docs, config — happens there and
    commits from there. The spec and plan stay readable at `docs/superpowers/` through the link.
 4. If a review round changes the plan, go back to the main checkout to edit and commit it. The
