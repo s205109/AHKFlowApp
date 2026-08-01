@@ -559,3 +559,68 @@ function Write-JsoncFile {
 
     [System.IO.File]::WriteAllText($Path, $Text, (New-Object System.Text.UTF8Encoding($HasBom)))
 }
+
+# --- Literal writers ----------------------------------------------------------
+# Written by hand rather than through ConvertTo-Json: Windows PowerShell 5.1 escapes
+# < > & ' as \u00xx and PowerShell 7 does not, so only a hand-written escaper gives
+# byte-identical output on both hosts.
+
+function ConvertTo-JsonStringLiteral {
+    param([Parameter(Mandatory)][AllowEmptyString()][string] $Value)
+
+    $sb = New-Object System.Text.StringBuilder
+    [void] $sb.Append('"')
+
+    foreach ($c in $Value.ToCharArray()) {
+        $code = [int] $c
+        if ($c -eq '"') { [void] $sb.Append('\"') }
+        elseif ($c -eq '\') { [void] $sb.Append('\\') }
+        elseif ($code -eq 8) { [void] $sb.Append('\b') }
+        elseif ($code -eq 9) { [void] $sb.Append('\t') }
+        elseif ($code -eq 10) { [void] $sb.Append('\n') }
+        elseif ($code -eq 12) { [void] $sb.Append('\f') }
+        elseif ($code -eq 13) { [void] $sb.Append('\r') }
+        elseif ($code -lt 32) { [void] $sb.Append('\u').Append($code.ToString('x4', [System.Globalization.CultureInfo]::InvariantCulture)) }
+        else { [void] $sb.Append($c) }
+    }
+
+    [void] $sb.Append('"')
+    return $sb.ToString()
+}
+
+# Leaf values only. Building a missing object is New-JsoncChainLiteral's job.
+function ConvertTo-JsonLiteral {
+    param($Value)
+
+    if ($null -eq $Value) { return 'null' }
+    if ($Value -is [string]) { return ConvertTo-JsonStringLiteral $Value }
+    if ($Value -is [bool]) { if ($Value) { return 'true' } else { return 'false' } }
+    if ($Value -is [int] -or $Value -is [long]) { return $Value.ToString([System.Globalization.CultureInfo]::InvariantCulture) }
+
+    if ($Value -is [System.Collections.IEnumerable]) {
+        $parts = @()
+        foreach ($item in $Value) { $parts += ConvertTo-JsonLiteral $item }
+        return '[' + ($parts -join ',') + ']'
+    }
+
+    throw "ConvertTo-JsonLiteral cannot write a value of type '$($Value.GetType().FullName)'."
+}
+
+# Text for a property whose value may sit under a chain of objects that do not exist yet.
+# $Indent is the indent of the line the property will be written on; each nested level adds
+# two spaces, and each closing brace sits at the indent of its own opening line.
+function New-JsoncChainLiteral {
+    param(
+        [Parameter(Mandatory)][string[]] $Names,
+        $Value,
+        [Parameter(Mandatory)][AllowEmptyString()][string] $Indent,
+        [Parameter(Mandatory)][string] $Eol
+    )
+
+    if ($Names.Count -eq 1) {
+        return (ConvertTo-JsonStringLiteral $Names[0]) + ': ' + (ConvertTo-JsonLiteral $Value)
+    }
+
+    $inner = New-JsoncChainLiteral -Names $Names[1..($Names.Count - 1)] -Value $Value -Indent ($Indent + '  ') -Eol $Eol
+    return (ConvertTo-JsonStringLiteral $Names[0]) + ': {' + $Eol + $Indent + '  ' + $inner + $Eol + $Indent + '}'
+}

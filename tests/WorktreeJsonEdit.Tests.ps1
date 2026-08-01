@@ -151,4 +151,37 @@ Assert-True (-not ($bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq
 Remove-Item -LiteralPath (Split-Path -Parent $noBomPath) -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath (Split-Path -Parent $bomPath) -Recurse -Force -ErrorAction SilentlyContinue
 
+# --- Literal writers ---
+
+Assert-ExactText '"api"' (ConvertTo-JsonLiteral 'api') 'A string becomes a quoted literal.'
+Assert-ExactText '"a\"b\\c\td"' (ConvertTo-JsonLiteral ('a"b\c' + [char] 9 + 'd')) 'Quote, backslash, and tab must be escaped.'
+Assert-ExactText (('"' + [char]92 + 'u0001"')) (ConvertTo-JsonLiteral ([string] [char] 1)) "A control character becomes a backslash-u escape."
+Assert-ExactText ('"caf' + [char] 233 + '"') (ConvertTo-JsonLiteral ('caf' + [char] 233)) 'Non-ASCII is written literally.'
+Assert-ExactText 'true' (ConvertTo-JsonLiteral $true) 'A true boolean becomes true.'
+Assert-ExactText 'false' (ConvertTo-JsonLiteral $false) 'A false boolean becomes false.'
+Assert-ExactText '5602' (ConvertTo-JsonLiteral 5602) 'An integer becomes invariant digits.'
+Assert-ExactText '["a","b"]' (ConvertTo-JsonLiteral @('a', 'b')) 'A string array stays on one line.'
+Assert-ExactText '[]' (ConvertTo-JsonLiteral @()) 'An empty array becomes [].'
+Assert-Throws { ConvertTo-JsonLiteral ([pscustomobject]@{ a = 1 }) } 'cannot write' 'An unsupported type must throw.'
+
+Assert-ExactText '"BaseAddress": "http://localhost:5602"' `
+    (New-JsoncChainLiteral -Names @('BaseAddress') -Value 'http://localhost:5602' -Indent '  ' -Eol "`n") `
+    'A single name produces one property.'
+
+$chain = New-JsoncChainLiteral -Names @('Cors', 'AllowedOrigins') -Value @('http://localhost:5605') -Indent '  ' -Eol "`n"
+Assert-ExactText (@(
+    '"Cors": {',
+    '    "AllowedOrigins": ["http://localhost:5605"]',
+    '  }'
+) -join "`n") $chain 'A two-name chain nests one object level and closes at the parent indent.'
+
+$deepChain = New-JsoncChainLiteral -Names @('a', 'b', 'c') -Value 1 -Indent '' -Eol "`r`n"
+Assert-ExactText (@(
+    '"a": {',
+    '  "b": {',
+    '    "c": 1',
+    '  }',
+    '}'
+) -join "`r`n") $deepChain 'A three-name chain adds two spaces per level and honours CRLF.'
+
 Write-Host 'Worktree JSON edit tests passed.'
