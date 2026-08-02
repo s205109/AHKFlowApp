@@ -16,10 +16,10 @@ As an owner on a phone, I want the known shortcuts list to read like the other l
 
 ## Acceptance criteria
 
-- [ ] The page renders a `.desktop-branch` and a `.mobile-branch`, gated in `Pages/KnownShortcuts.razor.css` at `959.95px`, matching `Pages/Hotkeys.razor` and `Pages/Hotstrings.razor`
-- [ ] The mobile branch shows the combination, what uses it, and what it does, plus the row's one action
-- [ ] Search still filters both branches
-- [ ] An E2E flow test at a phone viewport silences a use and brings it back
+- [x] The page renders a `.desktop-branch` and a `.mobile-branch`, gated in `Pages/KnownShortcuts.razor.css` at `959.95px`, matching `Pages/Hotkeys.razor` and `Pages/Hotstrings.razor`
+- [x] The mobile branch shows the combination, what uses it, and what it does, plus the row's one action
+- [x] Search still filters both branches
+- [x] An E2E flow test at a phone viewport silences a use and brings it back
 
 ## Out of scope
 
