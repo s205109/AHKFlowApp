@@ -10,6 +10,11 @@ namespace AHKFlowApp.Application.Services;
 /// is converted through the same rules as the data migration via
 /// <see cref="LegacyHotkeyDefinitionConverter"/>; a W1 snapshot is applied as-is. The
 /// <c>ScriptToRawComposer.ToDefinition</c> analogue (spec §8).
+/// <para>
+/// This shim is permanent by decision, not by neglect. See
+/// <c>docs/adr/0005-legacy-hotkey-snapshots-stay-readable-in-place.md</c>. Do not replace it with a
+/// migration over <c>EntityHistory.SnapshotJson</c> without reading that record first.
+/// </para>
 /// </summary>
 public static class LegacyHotkeySnapshotConverter
 {
