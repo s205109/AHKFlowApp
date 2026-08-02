@@ -85,10 +85,16 @@ internal sealed class PreviewScheduler<TRequest, TResult>(
             onResult(result);
             stateHasChanged();
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             // A cancelled preview (superseded input, panel collapsed, dialog disposed) is
             // silently ignored — never surfaced as an error.
+            //
+            // The token check is what makes this arm safe. HttpClient reports its own timeout as
+            // a TaskCanceledException, which is an OperationCanceledException even though nobody
+            // asked this preview to stop. Catching that here too would leave the spinner running,
+            // the snippet dimmed and the copy button disabled with no way back, so it falls
+            // through to the failure arm below instead.
         }
         catch (Exception ex)
         {

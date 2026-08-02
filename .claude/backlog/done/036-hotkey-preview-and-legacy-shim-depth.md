@@ -30,8 +30,9 @@ are recorded here rather than dropped.
       `(HotkeyAction, Parameters)` shape run through `LegacyHotkeyDefinitionConverter.FromLegacy`.
       A back-compat converter should not be the authoring format for data that has no legacy; it
       also keeps `LegacyHotkeyDefinitionConverter.HotkeyAction` alive as a public production type.
-      Note this is where "Maximize window" seeds as `SendKeys {Up}` rather than the `Window` kind
-      that now exists for it — decide deliberately whether to keep the current output.
+      The original note here said "Maximize window" seeds as `SendKeys {Up}`. That was already out
+      of date when this item was picked up: the four window rows use the typed `Window` kind and a
+      `WindowOp`, so there was nothing to decide.
 - [x] Decide whether `LegacyHotkeySnapshotConverter` stays permanent runtime code or becomes a
       third migration over `EntityHistory.SnapshotJson`. Keeping it freezes the legacy enum, the
       two optional members on `HistorySnapshots`, and the frontend's legacy display arms. The

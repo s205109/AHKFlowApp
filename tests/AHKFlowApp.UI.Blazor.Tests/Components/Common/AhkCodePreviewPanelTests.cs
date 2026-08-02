@@ -3,6 +3,7 @@ using Bunit;
 using FluentAssertions;
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.JSInterop;
 using MudBlazor;
 using MudBlazor.Services;
 using NSubstitute;
@@ -123,6 +124,25 @@ public sealed class AhkCodePreviewPanelTests : BunitContext
         JSInterop.VerifyInvoke("navigator.clipboard.writeText")
             .Arguments[0].Should().Be("k::return");
         _snackbar.Received(1).Add("Generated code copied.", Severity.Success,
+            Arg.Any<Action<SnackbarOptions>?>(), Arg.Any<string?>());
+    }
+
+    [Fact]
+    public async Task Copy_WhenTheBrowserRefuses_WarnsInsteadOfConfirming()
+    {
+        // A page without clipboard permission throws from the interop call. The user must be told
+        // the copy failed, not shown a success message for something that did not happen.
+        JSInterop.Mode = JSRuntimeMode.Strict;
+        JSInterop.SetupVoid("navigator.clipboard.writeText", _ => true)
+            .SetException(new JSException("Write permission denied."));
+
+        IRenderedComponent<AhkCodePreviewPanel> panel = RenderPanel(snippet: "k::return");
+
+        await panel.Find("[data-test=\"preview-copy\"]").ClickAsync(new());
+
+        _snackbar.Received(1).Add("Copy to clipboard failed.", Severity.Warning,
+            Arg.Any<Action<SnackbarOptions>?>(), Arg.Any<string?>());
+        _snackbar.DidNotReceive().Add("Generated code copied.", Severity.Success,
             Arg.Any<Action<SnackbarOptions>?>(), Arg.Any<string?>());
     }
 }

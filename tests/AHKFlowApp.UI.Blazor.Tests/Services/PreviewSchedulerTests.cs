@@ -125,22 +125,53 @@ public sealed class PreviewSchedulerTests
     }
 
     [Fact]
-    public async Task Schedule_Cancelled_IsSilent()
+    public async Task Schedule_CancelledThroughItsOwnToken_IsSilent()
     {
+        // The scheduler's own token is what a supersede, a collapsed panel or a disposed dialog
+        // cancels. Only that is a real cancellation, and only that is silent.
         List<(Exception Error, bool IsCurrent)> failures = [];
         List<ApiResult<string>> results = [];
         PreviewScheduler<int, string> sut = new(
-            fetchAsync: (_, ct) => Task.FromCanceled<ApiResult<string>>(
-                new CancellationToken(canceled: true)),
+            fetchAsync: async (_, ct) =>
+            {
+                await Task.Delay(Timeout.Infinite, ct);
+                return Ok("never reached");
+            },
             onResult: results.Add,
             onUnexpectedError: (error, isCurrent) => failures.Add((error, isCurrent)),
             stateHasChanged: () => { });
 
         sut.Schedule(1, TimeSpan.Zero);
+        sut.Cancel();
         await Task.Yield();
 
         failures.Should().BeEmpty("a cancelled preview is never surfaced as an error");
         results.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Schedule_HttpTimeout_ClearsPendingAndReportsTheFailure()
+    {
+        // HttpClient's own timeout throws TaskCanceledException, which is an
+        // OperationCanceledException — but nothing asked this preview to stop, so its token is
+        // not cancelled. Treating it as a user cancellation would leave the spinner running, the
+        // snippet dimmed and the copy button disabled with no way back.
+        List<(Exception Error, bool IsCurrent)> failures = [];
+        int renders = 0;
+        PreviewScheduler<int, string> sut = new(
+            fetchAsync: (_, _) => Task.FromCanceled<ApiResult<string>>(
+                new CancellationToken(canceled: true)),
+            onResult: _ => { },
+            onUnexpectedError: (error, isCurrent) => failures.Add((error, isCurrent)),
+            stateHasChanged: () => renders++);
+
+        sut.Schedule(1, TimeSpan.Zero);
+        await Task.Yield();
+
+        sut.Pending.Should().BeFalse("a timed-out preview must not leave the spinner running");
+        failures.Should().ContainSingle();
+        failures[0].IsCurrent.Should().BeTrue();
+        renders.Should().BeGreaterThan(1, "the cleared spinner has to reach the screen");
     }
 
     [Fact]
