@@ -102,7 +102,26 @@
                     }
                     else
                     {
-                        <code>@HotkeyActionDisplay.ComboLabel(context.Item)</code>
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                            <code>@HotkeyActionDisplay.ComboLabel(context.Item)</code>
+                            @if (GridNotice(context.Item) is { } notice)
+                            {
+                                @* The attributes go on MudTooltip, never on MudIcon. MudIcon
+                                   hard-codes aria-hidden="true" on every branch, so a screen
+                                   reader ignores anything named there. MudTooltip puts
+                                   UserAttributes on its own root div, and that root is what
+                                   handles focusin — tabindex="0" makes the plain div focusable,
+                                   so a keyboard user can reveal the text. *@
+                                <MudTooltip Text="@notice"
+                                            UserAttributes="@(new Dictionary<string, object?> {
+                                                ["data-test"] = "known-shortcut-marker",
+                                                ["role"] = "img",
+                                                ["aria-label"] = notice,
+                                                ["tabindex"] = "0" })">
+                                    <MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Warning" Size="Size.Small" />
+                                </MudTooltip>
+                            }
+                        </MudStack>
                     }
                 </CellTemplate>
             </PropertyColumn>
@@ -256,6 +275,8 @@
     [Inject] private IDialogService DialogService { get; set; } = default!;
     [Inject] private IUserPreferencesService Preferences { get; set; } = default!;
     [Inject] private IHotkeyKeyCatalog KeyCatalog { get; set; } = default!;
+    [Inject] private IKnownShortcutCatalog KnownShortcuts { get; set; } = default!;
+    [Inject] private ILogger<Hotkeys> Logger { get; set; } = default!;
 
     private MudDataGrid<HotkeyEditModel>? _grid;
     private HotkeyEditModel? _editingItem;
@@ -274,6 +295,14 @@
     private bool _hasColumnFilters;
     private int _rowsPerPage = UserPreferences.Default.RowsPerPage;
     private readonly CancellationTokenSource _cts = new();
+
+    // Notices for the desktop grid, keyed by the combination label the cell prints. Mobile gets
+    // its own field in the block below: both branches are in the DOM at once and load through
+    // separate paths, so one shared field would let a desktop load erase the mobile markers.
+    // Rebuilt on every load, never accumulated — the catalog is invalidated when an owner
+    // silences or restores a use, and a surviving dictionary would keep showing a warning the
+    // owner just turned off.
+    private IReadOnlyDictionary<string, string> _gridNotices = new Dictionary<string, string>();
 
     private IReadOnlyList<HotkeyEditModel> _mobileItems = [];
     private int _mobilePage = 1;
@@ -354,11 +383,16 @@
         if (!result.IsSuccess)
         {
             _loadError = ApiErrorMessageFactory.Build(result.Status, result.Problem);
+            _gridNotices = new Dictionary<string, string>();
             await InvokeAsync(StateHasChanged);
             return new GridData<HotkeyEditModel> { Items = [], TotalItems = 0 };
         }
 
         List<HotkeyEditModel> items = [.. result.Value!.Items.Select(MapItem)];
+
+        // Built inside the await the grid is already in, so the cells have their notices by the
+        // time this returns and no extra StateHasChanged is needed.
+        _gridNotices = await KnownShortcutNotices.BuildAsync(items, KeyCatalog, KnownShortcuts, Logger, ct);
 
         ClearEditingIfMissing(items);
 
@@ -411,6 +445,11 @@
 
     private bool IsEditing(HotkeyEditModel item) =>
         _editingItem is { Id: Guid editingId } && item.Id == editingId;
+
+    // The lookup key is the label the cell is about to print, so nothing new has to be threaded
+    // into the cell. A miss means "no marker".
+    private string? GridNotice(HotkeyEditModel item) =>
+        _gridNotices.TryGetValue(HotkeyActionDisplay.ComboLabel(item), out string? notice) ? notice : null;
 
     private string GetRowClass(HotkeyEditModel item, int _)
         => IsEditing(item) ? "edit-row" : string.Empty;

@@ -4,6 +4,7 @@ using AHKFlowApp.UI.Blazor.DTOs;
 using AHKFlowApp.UI.Blazor.Pages;
 using AHKFlowApp.UI.Blazor.Services;
 using AHKFlowApp.UI.Blazor.Validation;
+using AngleSharp.Dom;
 using Bunit;
 using FluentAssertions;
 using Microsoft.AspNetCore.Components.Authorization;
@@ -28,6 +29,7 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
     private readonly IProfilesApiClient _profilesApi = Substitute.For<IProfilesApiClient>();
     private readonly ICategoriesApiClient _categoriesApi = Substitute.For<ICategoriesApiClient>();
     private readonly IHotkeyKeyCatalog _catalog = Substitute.For<IHotkeyKeyCatalog>();
+    private readonly IKnownShortcutCatalog _knownShortcuts = Substitute.For<IKnownShortcutCatalog>();
 
     private IRenderedComponent<MudDialogProvider>? _dialogProvider;
 
@@ -52,12 +54,10 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
         StubKeyCatalog(keysValid: true);
         Services.AddSingleton(_catalog);
 
-        // The edit dialog injects this. An empty catalog means no shortcut warning, which is what
-        // these page tests want — they are about the grid and the dialog opening, not the notice.
-        IKnownShortcutCatalog knownShortcuts = Substitute.For<IKnownShortcutCatalog>();
-        knownShortcuts.GetAsync(Arg.Any<CancellationToken>())
-            .Returns(ValueTask.FromResult<KnownShortcutCatalogDto?>(new KnownShortcutCatalogDto([])));
-        Services.AddSingleton(knownShortcuts);
+        // The edit dialog and the list both inject this. The default is an empty catalog: most
+        // page tests are about the grid and the dialog opening, not the notice.
+        StubKnownShortcuts(new KnownShortcutCatalogDto([]));
+        Services.AddSingleton(_knownShortcuts);
 
         Services.AddMudServices();
         JSInterop.Mode = JSRuntimeMode.Loose;
@@ -125,7 +125,21 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
         _catalog.GroupOf(Arg.Any<string>())
             .Returns(call => CatalogKeys.FirstOrDefault(k => k.Canonical == call.Arg<string>())?.Group);
         _catalog.IsValidKey(Arg.Any<string>()).Returns(keysValid);
+        _catalog.CanonicalizeAsync(Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(call => ValueTask.FromResult(call.Arg<string?>() ?? ""));
     }
+
+    private void StubKnownShortcuts(KnownShortcutCatalogDto catalog) =>
+        _knownShortcuts.GetAsync(Arg.Any<CancellationToken>())
+            .Returns(ValueTask.FromResult<KnownShortcutCatalogDto?>(catalog));
+
+    /// <summary>The Windows use of Win+N, so a row bound to Win+N carries a marker.</summary>
+    private static KnownShortcutCatalogDto WinNCatalog() =>
+        new([
+            new KnownShortcutDto("windows.notepad", "n", false, false, false, true,
+                [new ShortcutUseDto("Windows", ShortcutProtection.Normal, ShortcutScope.Global, "open Notepad")],
+                null),
+        ]);
 
     private static ProfileDto MakeProfile(string name = "Work") =>
         new(Guid.NewGuid(), name, false, "header text", "footer text", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
@@ -166,6 +180,53 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
     // selection from the dropdown does, without depending on popover/JS behaviour.
     private static Task SetKeyAsync(IRenderedComponent<Hotkeys> cut, string? key) =>
         cut.InvokeAsync(() => cut.FindComponent<KeyPicker>().Instance.ValueChanged.InvokeAsync(key));
+
+    // Both branches render at once — the scoped CSS only hides one — so every marker assertion
+    // is scoped to the branch it is about.
+    private const string DesktopMarker = ".desktop-branch [data-test=\"known-shortcut-marker\"]";
+
+    [Fact]
+    public void Grid_RowMatchingAKnownShortcut_ShowsTheMarker()
+    {
+        StubKnownShortcuts(WinNCatalog());
+
+        IRenderedComponent<Hotkeys> cut = RenderPageWith(OneRunHotkey());
+
+        cut.WaitForAssertion(() => cut.FindAll(DesktopMarker).Should().ContainSingle());
+
+        IElement marker = cut.Find(DesktopMarker);
+        marker.GetAttribute("role").Should().Be("img");
+        marker.GetAttribute("tabindex").Should().Be("0");
+        marker.GetAttribute("aria-label").Should().Be(
+            "Windows uses Win+N to open Notepad. Your hotkey may override this shortcut.");
+    }
+
+    [Fact]
+    public void Grid_RowMatchingNothing_ShowsNoMarker()
+    {
+        StubKnownShortcuts(WinNCatalog());
+
+        // F1 with Win held is not the Win+N row, so nothing marks it.
+        IRenderedComponent<Hotkeys> cut = RenderPageWith(OneHotkeyOfKind(HotkeyActionKind.Run));
+
+        cut.WaitForAssertion(() => cut.Find("button.start-edit"));
+        cut.FindAll(DesktopMarker).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Grid_RowInInlineEdit_ShowsNoMarker()
+    {
+        StubKnownShortcuts(WinNCatalog());
+
+        IRenderedComponent<Hotkeys> cut = RenderPageWith(OneRunHotkey());
+        cut.WaitForAssertion(() => cut.FindAll(DesktopMarker).Should().ContainSingle());
+
+        // The inline row renders the full ShortcutWarning alert, so an icon would say the same
+        // thing twice.
+        await cut.InvokeAsync(() => cut.Find(".desktop-branch button.start-edit").Click());
+
+        cut.WaitForAssertion(() => cut.FindAll(DesktopMarker).Should().BeEmpty());
+    }
 
     [Fact]
     public void Page_OnLoad_ShowsRowsFromApi()
