@@ -1,6 +1,7 @@
 ﻿@page "/known-shortcuts"
 @using AHKFlowApp.UI.Blazor.DTOs
 @using AHKFlowApp.UI.Blazor.Helpers
+@using AHKFlowApp.UI.Blazor.Components.KnownShortcuts
 @using AHKFlowApp.UI.Blazor.Services
 @using MudBlazor
 @using Microsoft.AspNetCore.Components.Authorization
@@ -85,7 +86,7 @@
         </MudPaper>
     }
 
-    <MudTable T="UseRow" Items="_rows" Filter="MatchesSearch" Dense="true" Hover="true" Loading="_loading">
+    <MudTable T="KnownShortcutUseRow" Items="_rows" Filter="MatchesSearch" Dense="true" Hover="true" Loading="_loading">
         <HeaderContent>
             <MudTh>Combination</MudTh>
             <MudTh>Used by</MudTh>
@@ -104,7 +105,7 @@
             </MudTd>
             <MudTd DataLabel="Used by">@context.Use.UsedBy</MudTd>
             <MudTd DataLabel="What it does">@context.Use.Does</MudTd>
-            <MudTd DataLabel="Where it applies">@ScopeLabel(context.Use.Scope)</MudTd>
+            <MudTd DataLabel="Where it applies">@ShortcutScopeDisplay.Label(context.Use.Scope)</MudTd>
             <MudTd DataLabel="Source">
                 @if (context.Use.IsIgnored)
                 {
@@ -168,9 +169,6 @@
     [Inject] private ISnackbar Snackbar { get; set; } = default!;
     [Inject] private IDialogService DialogService { get; set; } = default!;
 
-    /// <summary>One use, flattened out of its combination so MudTable stays one row per item.</summary>
-    private sealed record UseRow(string ShortcutId, string ComboLabel, ManagedShortcutUseDto Use);
-
     private sealed class DraftModel
     {
         public string Key { get; set; } = "";
@@ -186,7 +184,7 @@
             new(Key, Ctrl, Alt, Shift, Win, UsedBy, Scope, Does);
     }
 
-    private List<UseRow> _rows = [];
+    private List<KnownShortcutUseRow> _rows = [];
     private DraftModel _draft = new();
     private string? _search;
     private string? _loadError;
@@ -241,7 +239,7 @@
         _rows =
         [
             .. catalog.Shortcuts
-                .SelectMany(s => s.Uses.Select(u => new UseRow(
+                .SelectMany(s => s.Uses.Select(u => new KnownShortcutUseRow(
                     s.Id,
                     HotkeyActionDisplay.ComboLabel(s.Key, s.Ctrl, s.Alt, s.Shift, s.Win),
                     u)))
@@ -249,7 +247,7 @@
                 .ThenBy(r => r.Use.UsedBy, StringComparer.OrdinalIgnoreCase)
         ];
 
-    private bool MatchesSearch(UseRow row)
+    private bool MatchesSearch(KnownShortcutUseRow row)
     {
         if (string.IsNullOrWhiteSpace(_search))
             return true;
@@ -270,13 +268,10 @@
     private static string Squeeze(string value) =>
         value.Replace(" ", "", StringComparison.Ordinal).Replace("+", "", StringComparison.Ordinal);
 
-    private static string ScopeLabel(ShortcutScope scope) =>
-        scope == ShortcutScope.Global ? "Anywhere" : "Only in front";
-
     // Every action button carries the pair that names its use, so a selector can tell the Chrome
     // row from the Edge row on the same combination. Tooltip text rides along as a plain title
     // attribute: MudIconButton has no Title parameter.
-    private static Dictionary<string, object?> UseAttributes(UseRow row, string title) => new()
+    private static Dictionary<string, object?> UseAttributes(KnownShortcutUseRow row, string title) => new()
     {
         ["data-shortcut-id"] = row.ShortcutId,
         ["data-used-by"] = row.Use.UsedBy,
@@ -320,7 +315,7 @@
         Catalog.Invalidate();
     }
 
-    private async Task DeleteAsync(UseRow row)
+    private async Task DeleteAsync(KnownShortcutUseRow row)
     {
         if (row.Use.OwnerRecordId is not Guid recordId)
             return;
@@ -338,10 +333,10 @@
         await RunMutationAsync(() => Api.DeleteAsync(recordId, _cts.Token), "Record deleted.");
     }
 
-    private Task IgnoreAsync(UseRow row) => RunMutationAsync(
+    private Task IgnoreAsync(KnownShortcutUseRow row) => RunMutationAsync(
         () => Api.IgnoreAsync(row.ShortcutId, row.Use.UsedBy, _cts.Token), "Warning silenced.");
 
-    private Task RestoreAsync(UseRow row) => RunMutationAsync(
+    private Task RestoreAsync(KnownShortcutUseRow row) => RunMutationAsync(
         () => Api.RestoreAsync(row.ShortcutId, row.Use.UsedBy, _cts.Token), "Warning turned back on.");
 
     // One write at a time. Every action button is disabled while _busy, so two writes cannot
