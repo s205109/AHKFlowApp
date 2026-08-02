@@ -1,0 +1,80 @@
+@using AHKFlowApp.UI.Blazor.DTOs
+@using AHKFlowApp.UI.Blazor.Helpers
+@using MudBlazor
+
+@* Flat rows, not tap-to-expand. A use has three short fields, so hiding two of them behind a tap
+   would cost a tap and buy nothing. The hotkeys mobile list expands because a hotkey has six more
+   fields worth reading. *@
+@if (LoadError is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="ma-2">@LoadError</MudAlert>
+}
+else
+{
+    @* A blank panel during a fetch reads as "nothing here" just as wrongly as the empty message
+       would. Same bar the hotstrings mobile branch shows (Pages/Hotstrings.razor:261). *@
+    @if (Loading)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mb-2"
+                           UserAttributes="@LoadingAttributes" />
+    }
+
+    @if (Items.Count > 0)
+    {
+        <div class="mobile-list">
+            @* One row per use, never per combination: a browser combination holds a Chrome use and
+               an Edge use, and each is silenced on its own. The combination label repeats. *@
+            @foreach (KnownShortcutUseRow row in Items)
+            {
+                <div class="mobile-row">
+                    @* Three grid columns: the combination takes what is left, the chip and the
+                       button take what they need. A flex row with a spacer let a long combination
+                       push the button off a 375px screen instead of wrapping. *@
+                    <div class="row-head">
+                        <code data-test="known-shortcut-row"
+                              data-shortcut-id="@row.ShortcutId"
+                              data-used-by="@row.Use.UsedBy">@row.ComboLabel</code>
+                        <KnownShortcutSourceChip Use="row.Use" />
+                        <KnownShortcutUseActions Row="row" Busy="Busy"
+                                                 OnIgnore="OnIgnore" OnRestore="OnRestore"
+                                                 OnDelete="OnDelete" />
+                    </div>
+                    @* The separator is real text, not CSS content. Generated content is dropped
+                       from the accessibility tree and from a copied selection, so the two values
+                       would run together for the readers least able to guess where one ends. *@
+                    <div class="row-what">
+                        <span class="used-by">@row.Use.UsedBy</span><span class="separator">: </span><span class="does">@row.Use.Does</span>
+                    </div>
+                    <div class="scope">@ShortcutScopeDisplay.Label(row.Use.Scope)</div>
+                </div>
+            }
+        </div>
+    }
+    else if (!Loading)
+    {
+        <MudText Class="pa-4 text-center" Typo="Typo.body2">No known shortcuts.</MudText>
+    }
+}
+
+@code {
+    [Parameter] public IReadOnlyList<KnownShortcutUseRow> Items { get; set; } = [];
+
+    /// <summary>True while a write is in flight. Every action button reads it.</summary>
+    [Parameter] public bool Busy { get; set; }
+
+    /// <summary>Holds the empty state back while a read is out — an empty list mid-load is not
+    /// yet known to be empty.</summary>
+    [Parameter] public bool Loading { get; set; }
+
+    /// <summary>Replaces the list when the read failed, matching the desktop table.</summary>
+    [Parameter] public string? LoadError { get; set; }
+
+    [Parameter] public EventCallback<KnownShortcutUseRow> OnIgnore { get; set; }
+    [Parameter] public EventCallback<KnownShortcutUseRow> OnRestore { get; set; }
+    [Parameter] public EventCallback<KnownShortcutUseRow> OnDelete { get; set; }
+
+    private static readonly Dictionary<string, object?> LoadingAttributes = new()
+    {
+        ["data-test"] = "known-shortcut-loading",
+    };
+}
