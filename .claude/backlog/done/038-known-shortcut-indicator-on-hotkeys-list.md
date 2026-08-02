@@ -16,10 +16,10 @@ As an owner, I want my hotkeys list to show which hotkeys match a known shortcut
 
 ## Acceptance criteria
 
-- [ ] A row whose combination matches a known shortcut carries a visible marker
-- [ ] The marker names what uses the combination, on hover or on tap
-- [ ] The desktop `MudDataGrid` branch and the mobile list branch both show it
-- [ ] The list reads the catalog through `IKnownShortcutCatalog`, so it costs no extra fetch
+- [x] A row whose combination matches a known shortcut carries a visible marker
+- [x] The marker names what uses the combination, on hover or on tap
+- [x] The desktop `MudDataGrid` branch and the mobile list branch both show it
+- [x] The list reads the catalog through `IKnownShortcutCatalog`, so it costs no extra fetch
 
 ## Out of scope
 
