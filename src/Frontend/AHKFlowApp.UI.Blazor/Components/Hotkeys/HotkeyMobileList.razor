@@ -45,6 +45,7 @@
                 @foreach (HotkeyEditModel item in Items)
                 {
                     bool expanded = item.Id is { } id && !_selectMode && _expandedId == id;
+                    string? notice = Notice(item);
                     <tr class="mobile-row" @onclick="() => OnRowClick(item)">
                         @if (_selectMode)
                         {
@@ -55,7 +56,20 @@
                                        @onchange="e => OnRowCheckboxChanged(item, IsChecked(e))" />
                             </td>
                         }
-                        <td class="trigger-cell"><code>@HotkeyActionDisplay.ComboLabel(item)</code></td>
+                        <td class="trigger-cell">
+                            <code>@HotkeyActionDisplay.ComboLabel(item)</code>
+                            @if (notice is not null)
+                            {
+                                @* No tooltip here: a tap-to-open tooltip would fight the row's own
+                                   tap-to-expand handler, and the text has its own line in the
+                                   panel. So a plain wrapper carries the name and the test hook,
+                                   and the icon stays decoration. No tabindex — there is nothing
+                                   to reveal on focus. *@
+                                <span role="img" aria-label="@notice" data-test="known-shortcut-marker">
+                                    <MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Warning" Size="Size.Small" />
+                                </span>
+                            }
+                        </td>
                         <td class="replacement-cell">@item.Description</td>
                         <td class="chevron-cell">@(expanded ? "▾" : "▸")</td>
                     </tr>
@@ -72,6 +86,12 @@
                                     {
                                         <MudText Typo="Typo.body2" UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "context-row" })">
                                             <strong>Context:</strong> @item.ContextSummary
+                                        </MudText>
+                                    }
+                                    @if (notice is not null)
+                                    {
+                                        <MudText Typo="Typo.body2" UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "known-shortcut-row" })">
+                                            <strong>Known shortcut:</strong> @notice
                                         </MudText>
                                     }
                                     <MudText Typo="Typo.body2"><strong>Profiles:</strong>
@@ -123,6 +143,13 @@
     /// <summary>Suppresses the empty state while a load is in flight - an empty list mid-load is
     /// not yet known to be empty, and "No hotkeys yet" during a fetch reads as a result.</summary>
     [Parameter] public bool Loading { get; set; }
+
+    /// <summary>
+    /// Known-shortcut notices, keyed by the combination label a row prints. A row whose
+    /// combination is absent carries no marker.
+    /// </summary>
+    [Parameter] public IReadOnlyDictionary<string, string> ShortcutNotices { get; set; } =
+        new Dictionary<string, string>();
 
     private Guid? _expandedId;
     private bool _selectMode;
@@ -182,4 +209,7 @@
         _selectMode = false;
         _selectedIds.Clear();
     }
+
+    private string? Notice(HotkeyEditModel item) =>
+        ShortcutNotices.TryGetValue(HotkeyActionDisplay.ComboLabel(item), out string? notice) ? notice : null;
 }

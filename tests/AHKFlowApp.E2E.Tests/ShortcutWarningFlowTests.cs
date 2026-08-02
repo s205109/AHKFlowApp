@@ -220,6 +220,32 @@ public sealed class ShortcutWarningFlowTests(StackFixture fixture) : IAsyncLifet
             .ToHaveCountAsync(0);
     }
 
+    [Fact]
+    public async Task AHotkeyOnAKnownShortcut_IsMarkedOnTheList()
+    {
+        await using IBrowserContext context = await fixture.Browser.NewContextAsync();
+        IPage page = await context.NewPageAsync();
+
+        // Win+L is a seeded Protected row: Windows locks the computer with it.
+        await OpenCreateDialogAsync(page);
+        await CommitKeyAsync(page, "l");
+        await page.CheckAsync(".hotkey-edit-dialog input[data-test=\"win-checkbox\"]");
+        await page.FillAsync(".hotkey-edit-dialog input[data-test=\"description-input\"]", "E2E lock marker");
+        await page.FillAsync(".hotkey-edit-dialog [data-test=\"text-input\"]", "my notes");
+        await page.ClickAsync(".hotkey-edit-dialog button.commit-edit");
+        await page.WaitForSelectorAsync("text=Hotkey created.");
+
+        // Scoped to the desktop branch: the mobile branch renders too and is hidden by CSS only.
+        ILocator marker = page.Locator(".desktop-branch tr", new() { HasTextString = "E2E lock marker" })
+            .Locator("[data-test=\"known-shortcut-marker\"]");
+
+        await Assertions.Expect(marker).ToHaveCountAsync(1);
+
+        // The name a screen reader reads is the whole notice, the same sentence the dialog shows.
+        string? label = await marker.GetAttributeAsync("aria-label");
+        Assert.Contains("Windows uses Win+L to lock the computer.", label, StringComparison.Ordinal);
+    }
+
     // The table holds a row per use, over a hundred of them, and pages at 25. Every row this file
     // acts on is addressed through the search box, never by paging to it.
     private async Task OpenKnownShortcutsAsync(IPage page, string? search = null)

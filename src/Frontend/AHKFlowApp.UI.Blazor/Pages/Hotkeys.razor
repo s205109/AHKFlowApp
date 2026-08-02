@@ -102,7 +102,26 @@
                     }
                     else
                     {
-                        <code>@HotkeyActionDisplay.ComboLabel(context.Item)</code>
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                            <code>@HotkeyActionDisplay.ComboLabel(context.Item)</code>
+                            @if (GridNotice(context.Item) is { } notice)
+                            {
+                                @* The attributes go on MudTooltip, never on MudIcon. MudIcon
+                                   hard-codes aria-hidden="true" on every branch, so a screen
+                                   reader ignores anything named there. MudTooltip puts
+                                   UserAttributes on its own root div, and that root is what
+                                   handles focusin — tabindex="0" makes the plain div focusable,
+                                   so a keyboard user can reveal the text. *@
+                                <MudTooltip Text="@notice"
+                                            UserAttributes="@(new Dictionary<string, object?> {
+                                                ["data-test"] = "known-shortcut-marker",
+                                                ["role"] = "img",
+                                                ["aria-label"] = notice,
+                                                ["tabindex"] = "0" })">
+                                    <MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Warning" Size="Size.Small" />
+                                </MudTooltip>
+                            }
+                        </MudStack>
                     }
                 </CellTemplate>
             </PropertyColumn>
@@ -225,6 +244,7 @@
         }
 
         <HotkeyMobileList Items="_mobileItems"
+                         ShortcutNotices="_mobileNotices"
                          Profiles="_profiles"
                          Categories="_categories"
                          HasActiveFilters="HasActiveFilters"
@@ -256,6 +276,8 @@
     [Inject] private IDialogService DialogService { get; set; } = default!;
     [Inject] private IUserPreferencesService Preferences { get; set; } = default!;
     [Inject] private IHotkeyKeyCatalog KeyCatalog { get; set; } = default!;
+    [Inject] private IKnownShortcutCatalog KnownShortcuts { get; set; } = default!;
+    [Inject] private ILogger<Hotkeys> Logger { get; set; } = default!;
 
     private MudDataGrid<HotkeyEditModel>? _grid;
     private HotkeyEditModel? _editingItem;
@@ -274,6 +296,17 @@
     private bool _hasColumnFilters;
     private int _rowsPerPage = UserPreferences.Default.RowsPerPage;
     private readonly CancellationTokenSource _cts = new();
+
+    // Notices for the desktop grid, keyed by the combination label the cell prints. Mobile gets
+    // its own field in the block below: both branches are in the DOM at once and load through
+    // separate paths, so one shared field would let a desktop load erase the mobile markers.
+    // Rebuilt on every load, never accumulated — the catalog is invalidated when an owner
+    // silences or restores a use, and a surviving dictionary would keep showing a warning the
+    // owner just turned off.
+    private IReadOnlyDictionary<string, string> _gridNotices = new Dictionary<string, string>();
+
+    // The mobile branch's own copy. See the note on _gridNotices for why these are two fields.
+    private IReadOnlyDictionary<string, string> _mobileNotices = new Dictionary<string, string>();
 
     private IReadOnlyList<HotkeyEditModel> _mobileItems = [];
     private int _mobilePage = 1;
@@ -297,16 +330,19 @@
 
         if (_isAuthenticated)
         {
-            // Three independent fetches, so they go out together rather than costing three
+            // Four independent fetches, so they go out together rather than costing four
             // serial round trips before the list can start loading. The key registry is warmed
             // here because IsValidKey answers optimistically until it arrives, which would
-            // route a legacy row to inline edit by mistake.
+            // route a legacy row to inline edit by mistake. The known-shortcut catalog is
+            // warmed here too, so the first BuildAsync call finds it already cached instead of
+            // paying its own round trip after the list has already come back.
             Task<ApiResult<IReadOnlyList<ProfileDto>>> profilesTask = ProfilesApi.ListAsync(_cts.Token);
             Task<ApiResult<PagedList<CategoryDto>>> catTask =
                 CategoriesApi.ListAsync(new CategoryListRequest(PageSize: 200), _cts.Token);
             Task keysTask = KeyCatalog.ForRoleAsync("HotkeyKey", _cts.Token).AsTask();
+            Task shortcutsTask = KnownShortcuts.GetAsync(_cts.Token).AsTask();
 
-            await Task.WhenAll(profilesTask, catTask, keysTask);
+            await Task.WhenAll(profilesTask, catTask, keysTask, shortcutsTask);
 
             ApiResult<IReadOnlyList<ProfileDto>> profilesResult = await profilesTask;
             if (profilesResult.IsSuccess)
@@ -354,11 +390,16 @@
         if (!result.IsSuccess)
         {
             _loadError = ApiErrorMessageFactory.Build(result.Status, result.Problem);
+            _gridNotices = new Dictionary<string, string>();
             await InvokeAsync(StateHasChanged);
             return new GridData<HotkeyEditModel> { Items = [], TotalItems = 0 };
         }
 
         List<HotkeyEditModel> items = [.. result.Value!.Items.Select(MapItem)];
+
+        // Built inside the await the grid is already in, so the cells have their notices by the
+        // time this returns and no extra StateHasChanged is needed.
+        _gridNotices = await KnownShortcutNotices.BuildAsync(items, KeyCatalog, KnownShortcuts, Logger, ct);
 
         ClearEditingIfMissing(items);
 
@@ -411,6 +452,11 @@
 
     private bool IsEditing(HotkeyEditModel item) =>
         _editingItem is { Id: Guid editingId } && item.Id == editingId;
+
+    // The lookup key is the label the cell is about to print, so nothing new has to be threaded
+    // into the cell. A miss means "no marker".
+    private string? GridNotice(HotkeyEditModel item) =>
+        _gridNotices.TryGetValue(HotkeyActionDisplay.ComboLabel(item), out string? notice) ? notice : null;
 
     private string GetRowClass(HotkeyEditModel item, int _)
         => IsEditing(item) ? "edit-row" : string.Empty;
@@ -602,12 +648,18 @@
         {
             _loadError = ApiErrorMessageFactory.Build(result.Status, result.Problem);
             _mobileItems = [];
+            _mobileNotices = new Dictionary<string, string>();
             _mobileTotalPages = 0;
             return;
         }
 
         _mobileItems = [.. result.Value!.Items.Select(HotkeyEditModel.FromDto)];
         _mobileTotalPages = (int)Math.Ceiling((double)result.Value.TotalCount / _mobilePageSize);
+
+        // This path is awaited from an event handler or from OnInitializedAsync, so the render
+        // that follows already picks the notices up. No extra StateHasChanged is needed.
+        _mobileNotices = await KnownShortcutNotices.BuildAsync(
+            _mobileItems, KeyCatalog, KnownShortcuts, Logger, _cts.Token);
     }
 
     private async Task OnMobilePageChangedAsync(int page)
