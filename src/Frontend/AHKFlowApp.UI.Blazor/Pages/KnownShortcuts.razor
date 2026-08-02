@@ -110,30 +110,9 @@
                 <KnownShortcutSourceChip Use="context.Use" />
             </MudTd>
             <MudTd DataLabel="Actions">
-                @* Every action is disabled while one is running. Two overlapping writes each end
-                   with their own reload, and the older answer could land last. *@
-                @if (context.Use.Origin == ShortcutRecordOrigin.Owner)
-                {
-                    <MudIconButton Class="delete-use" Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
-                                   OnClick="() => DeleteAsync(context)" Disabled="@_busy"
-                                   UserAttributes='@UseAttributes(context, "Delete this record")' />
-                }
-                @* The bell shows the state of the row, matching its chip: crossed out on a
-                   silenced use, ringing on one that still warns. It used to show the action
-                   instead, which put a ringing bell next to the word "Silenced". The tooltip
-                   carries what the click does. *@
-                else if (context.Use.IsIgnored)
-                {
-                    <MudIconButton Class="restore-use" Icon="@Icons.Material.Filled.NotificationsOff"
-                                   OnClick="() => RestoreAsync(context)" Disabled="@_busy"
-                                   UserAttributes='@UseAttributes(context, "Warn about this again")' />
-                }
-                else
-                {
-                    <MudIconButton Class="ignore-use" Icon="@Icons.Material.Filled.NotificationsActive"
-                                   OnClick="() => IgnoreAsync(context)" Disabled="@_busy"
-                                   UserAttributes='@UseAttributes(context, "Stop warning about this")' />
-                }
+                <KnownShortcutUseActions Row="context" Busy="_busy"
+                                         OnIgnore="IgnoreAsync" OnRestore="RestoreAsync"
+                                         OnDelete="DeleteAsync" />
             </MudTd>
         </RowTemplate>
         <NoRecordsContent>
@@ -257,16 +236,6 @@
 
     private static string Squeeze(string value) =>
         value.Replace(" ", "", StringComparison.Ordinal).Replace("+", "", StringComparison.Ordinal);
-
-    // Every action button carries the pair that names its use, so a selector can tell the Chrome
-    // row from the Edge row on the same combination. Tooltip text rides along as a plain title
-    // attribute: MudIconButton has no Title parameter.
-    private static Dictionary<string, object?> UseAttributes(KnownShortcutUseRow row, string title) => new()
-    {
-        ["data-shortcut-id"] = row.ShortcutId,
-        ["data-used-by"] = row.Use.UsedBy,
-        ["title"] = title,
-    };
 
     private void StartAdd()
     {

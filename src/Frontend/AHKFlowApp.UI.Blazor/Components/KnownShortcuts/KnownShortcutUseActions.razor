@@ -1,0 +1,55 @@
+@using AHKFlowApp.UI.Blazor.DTOs
+@using MudBlazor
+
+@* Every action is disabled while one is running. Two overlapping writes each end with their own
+   reload, and the older answer could land last.
+
+   The bell shows the state of the row, matching its chip: crossed out on a silenced use, ringing
+   on one that still warns. It used to show the action instead, which put a ringing bell next to
+   the word "Silenced". The tooltip carries what the click does.
+
+   Lives in its own component so the desktop table and the mobile list cannot drift apart. *@
+@if (Row.Use.Origin == ShortcutRecordOrigin.Owner)
+{
+    <MudIconButton Class="delete-use" Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
+                   OnClick="() => OnDelete.InvokeAsync(Row)" Disabled="@Busy"
+                   UserAttributes="@Attributes("Delete this record", $"Delete the record that {Row.Use.UsedBy} uses {Row.ComboLabel}")" />
+}
+else if (Row.Use.IsIgnored)
+{
+    <MudIconButton Class="restore-use" Icon="@Icons.Material.Filled.NotificationsOff"
+                   OnClick="() => OnRestore.InvokeAsync(Row)" Disabled="@Busy"
+                   UserAttributes="@Attributes("Warn about this again", $"Warn again that {Row.Use.UsedBy} uses {Row.ComboLabel}")" />
+}
+else
+{
+    <MudIconButton Class="ignore-use" Icon="@Icons.Material.Filled.NotificationsActive"
+                   OnClick="() => OnIgnore.InvokeAsync(Row)" Disabled="@Busy"
+                   UserAttributes="@Attributes("Stop warning about this", $"Stop warning that {Row.Use.UsedBy} uses {Row.ComboLabel}")" />
+}
+
+@code {
+    [Parameter, EditorRequired] public KnownShortcutUseRow Row { get; set; } = default!;
+
+    /// <summary>True while a write is in flight anywhere on the page.</summary>
+    [Parameter] public bool Busy { get; set; }
+
+    [Parameter] public EventCallback<KnownShortcutUseRow> OnIgnore { get; set; }
+    [Parameter] public EventCallback<KnownShortcutUseRow> OnRestore { get; set; }
+    [Parameter] public EventCallback<KnownShortcutUseRow> OnDelete { get; set; }
+
+    // The button carries the pair that names its use, so a selector can tell the Chrome row from
+    // the Edge row on the same combination.
+    //
+    // Both text attributes ride along as plain attributes: MudIconButton has no Title and no
+    // AriaLabel parameter, so they reach the rendered button through MudComponentBase's
+    // UserAttributes. The title is the short hover tooltip. The aria-label names the use in full,
+    // because the button shows an icon and no text, so "this" would be all a screen reader heard.
+    private Dictionary<string, object?> Attributes(string title, string ariaLabel) => new()
+    {
+        ["data-shortcut-id"] = Row.ShortcutId,
+        ["data-used-by"] = Row.Use.UsedBy,
+        ["title"] = title,
+        ["aria-label"] = ariaLabel,
+    };
+}
