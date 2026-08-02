@@ -96,8 +96,12 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
         Services.AddSingleton(dialogService);
     }
 
-    private static IElement Button(IRenderedComponent<KnownShortcuts> page, string css, string shortcutId, string usedBy) =>
-        page.Find($"button.{css}[data-shortcut-id=\"{shortcutId}\"][data-used-by=\"{usedBy}\"]");
+    // Both branches render this button with the same class and the same pair, so every lookup has
+    // to say which branch it means. CSS hides one; bunit sees both.
+    private static IElement Button(
+        IRenderedComponent<KnownShortcuts> page, string css, string shortcutId, string usedBy,
+        string branch = ".desktop-branch") =>
+        page.Find($"{branch} button.{css}[data-shortcut-id=\"{shortcutId}\"][data-used-by=\"{usedBy}\"]");
 
     [Fact]
     public void Page_RendersOneRowPerUse()
@@ -106,10 +110,10 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
 
         IRenderedComponent<KnownShortcuts> page = RenderPage();
 
-        page.FindAll("[data-test=\"known-shortcut-row\"]").Should().HaveCount(2);
-        page.FindAll("[data-test=\"known-shortcut-row\"]").Should()
+        page.FindAll(".desktop-branch [data-test=\"known-shortcut-row\"]").Should().HaveCount(2);
+        page.FindAll(".desktop-branch [data-test=\"known-shortcut-row\"]").Should()
             .OnlyContain(r => r.TextContent == "Ctrl+N");
-        page.FindAll("button.ignore-use").Should().HaveCount(2);
+        page.FindAll(".desktop-branch button.ignore-use").Should().HaveCount(2);
     }
 
     [Fact]
@@ -133,7 +137,7 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
             .Returns(ApiResult.Ok());
 
         IRenderedComponent<KnownShortcuts> page = RenderPage();
-        page.FindAll("button.ignore-use").Should().BeEmpty();
+        page.FindAll(".desktop-branch button.ignore-use").Should().BeEmpty();
         Button(page, "restore-use", "windows.file-explorer", "Windows").Click();
 
         _api.Received(1).RestoreAsync("windows.file-explorer", "Windows", Arg.Any<CancellationToken>());
@@ -148,7 +152,7 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
         _api.DeleteAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(ApiResult.Ok());
 
         IRenderedComponent<KnownShortcuts> page = RenderPage();
-        page.Find("button.delete-use").Click();
+        page.Find(".desktop-branch button.delete-use").Click();
 
         page.WaitForAssertion(() =>
             _api.Received(1).DeleteAsync(recordId, Arg.Any<CancellationToken>()));
@@ -163,9 +167,9 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
 
         IRenderedComponent<KnownShortcuts> page = RenderPage();
 
-        page.FindAll("button.ignore-use").Should().ContainSingle()
+        page.FindAll(".desktop-branch button.ignore-use").Should().ContainSingle()
             .Which.GetAttribute("data-shortcut-id").Should().Be("windows.file-explorer");
-        page.FindAll("button.delete-use").Should().ContainSingle()
+        page.FindAll(".desktop-branch button.delete-use").Should().ContainSingle()
             .Which.GetAttribute("data-shortcut-id").Should().Be("owner.1");
     }
 
@@ -176,9 +180,9 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
 
         IRenderedComponent<KnownShortcuts> page = RenderPage();
 
-        page.FindAll("[data-test=\"known-shortcut-row\"]").Should().HaveCount(2);
-        page.FindAll("button.ignore-use").Should().ContainSingle();
-        page.FindAll("button.delete-use").Should().ContainSingle();
+        page.FindAll(".desktop-branch [data-test=\"known-shortcut-row\"]").Should().HaveCount(2);
+        page.FindAll(".desktop-branch button.ignore-use").Should().ContainSingle();
+        page.FindAll(".desktop-branch button.delete-use").Should().ContainSingle();
     }
 
     [Fact]
@@ -223,7 +227,7 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
         Button(page, "ignore-use", "windows.file-explorer", "Windows").Click();
 
         _api.Received(2).ListManagedAsync(Arg.Any<CancellationToken>());
-        page.FindAll("button.restore-use").Should().ContainSingle();
+        page.FindAll(".desktop-branch button.restore-use").Should().ContainSingle();
     }
 
     [Fact]
@@ -243,7 +247,7 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
         _api.Received(1).CreateAsync(
             Arg.Is<CreateCustomKnownShortcutDto>(d => d.UsedBy == "My notes tool" && d.Does == "open my notes"),
             Arg.Any<CancellationToken>());
-        page.FindAll("[data-test=\"known-shortcut-row\"]").Should().ContainSingle();
+        page.FindAll(".desktop-branch [data-test=\"known-shortcut-row\"]").Should().ContainSingle();
     }
 
     [Fact]
@@ -270,7 +274,7 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
 
         IRenderedComponent<KnownShortcuts> page = RenderPage();
 
-        page.FindAll("[data-test=\"known-shortcut-row\"]").Should().BeEmpty();
+        page.FindAll(".desktop-branch [data-test=\"known-shortcut-row\"]").Should().BeEmpty();
         page.FindAll("div.mud-alert").Should().NotBeEmpty();
     }
 
@@ -285,7 +289,7 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
         IRenderedComponent<KnownShortcuts> page = RenderPage();
         page.Find("[data-test=\"known-shortcut-search\"]").Input(term);
 
-        page.FindAll("[data-test=\"known-shortcut-row\"]").Should()
+        page.FindAll(".desktop-branch [data-test=\"known-shortcut-row\"]").Should()
             .HaveCount(2, "Ctrl+N carries a Chrome use and an Edge use");
     }
 
@@ -297,7 +301,7 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
         IRenderedComponent<KnownShortcuts> page = RenderPage();
         page.Find("[data-test=\"known-shortcut-search\"]").Input("new window");
 
-        page.FindAll("[data-test=\"known-shortcut-row\"]").Should().HaveCount(2);
+        page.FindAll(".desktop-branch [data-test=\"known-shortcut-row\"]").Should().HaveCount(2);
     }
 
     [Fact]
@@ -311,9 +315,9 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
 
         IRenderedComponent<KnownShortcuts> page = RenderPage();
 
-        page.Find("button.ignore-use").InnerHtml
+        page.Find(".desktop-branch button.ignore-use").InnerHtml
             .Should().Contain(IconPath(Icons.Material.Filled.NotificationsActive));
-        page.Find("button.restore-use").InnerHtml
+        page.Find(".desktop-branch button.restore-use").InnerHtml
             .Should().Contain(IconPath(Icons.Material.Filled.NotificationsOff));
     }
 
@@ -349,10 +353,10 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
         _api.DeleteAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(ApiResult.Ok());
 
         IRenderedComponent<KnownShortcuts> page = RenderPage();
-        page.Find("button.delete-use").Click();
+        page.Find(".desktop-branch button.delete-use").Click();
 
         _api.DidNotReceive().DeleteAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
-        page.FindAll("[data-test=\"known-shortcut-row\"]").Should().ContainSingle();
+        page.FindAll(".desktop-branch [data-test=\"known-shortcut-row\"]").Should().ContainSingle();
     }
 
     [Fact]
@@ -364,7 +368,7 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
         _api.DeleteAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(ApiResult.Ok());
 
         IRenderedComponent<KnownShortcuts> page = RenderPage();
-        page.Find("button.delete-use").Click();
+        page.Find(".desktop-branch button.delete-use").Click();
 
         page.WaitForAssertion(() =>
             _api.Received(1).DeleteAsync(recordId, Arg.Any<CancellationToken>()));
@@ -380,9 +384,9 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
             .Returns(pending.Task);
 
         IRenderedComponent<KnownShortcuts> page = RenderPage();
-        page.Find("button.ignore-use").Click();
+        page.Find(".desktop-branch button.ignore-use").Click();
 
-        page.Find("button.ignore-use").HasAttribute("disabled").Should().BeTrue();
+        page.Find(".desktop-branch button.ignore-use").HasAttribute("disabled").Should().BeTrue();
         page.Find("button.reload-known-shortcuts").HasAttribute("disabled").Should().BeTrue();
 
         pending.SetResult(ApiResult.Ok());
@@ -419,7 +423,7 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
             .Returns(ApiResult.Failure(ApiResultStatus.NetworkError, null));
 
         IRenderedComponent<KnownShortcuts> page = RenderPage();
-        page.Find("button.ignore-use").Click();
+        page.Find(".desktop-branch button.ignore-use").Click();
 
         page.WaitForAssertion(() => _catalog.Received(1).Invalidate());
         _api.Received(2).ListManagedAsync(Arg.Any<CancellationToken>());
@@ -497,18 +501,91 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
         switch (mutation)
         {
             case "ignore":
-                page.Find("button.ignore-use").Click();
+                page.Find(".desktop-branch button.ignore-use").Click();
                 break;
             case "restore":
-                page.Find("button.restore-use").Click();
+                page.Find(".desktop-branch button.restore-use").Click();
                 break;
             case "delete":
-                page.Find("button.delete-use").Click();
+                page.Find(".desktop-branch button.delete-use").Click();
                 break;
             default:
                 page.Find("button.add-known-shortcut").Click();
                 page.Find("button.commit-edit").Click();
                 break;
         }
+    }
+
+    [Fact]
+    public void ThePage_RendersBothBranches()
+    {
+        StubList(BrowserShortcut());
+
+        IRenderedComponent<KnownShortcuts> page = RenderPage();
+
+        page.FindAll(".desktop-branch [data-test=\"known-shortcut-row\"]").Should().HaveCount(2);
+        page.FindAll(".mobile-branch [data-test=\"known-shortcut-row\"]").Should().HaveCount(2);
+    }
+
+    [Fact]
+    public void OneSearchTerm_FiltersBothBranches()
+    {
+        StubList(BrowserShortcut(), Shortcut("windows.file-explorer", "e", BuiltInUse()));
+
+        IRenderedComponent<KnownShortcuts> page = RenderPage();
+        page.Find("[data-test=\"known-shortcut-search\"]").Input("File Explorer");
+
+        page.FindAll(".desktop-branch [data-test=\"known-shortcut-row\"]").Should().ContainSingle();
+        page.FindAll(".mobile-branch [data-test=\"known-shortcut-row\"]").Should().ContainSingle();
+    }
+
+    [Fact]
+    public void TheMobileBranch_ActsOnTheUseItNames()
+    {
+        StubList(BrowserShortcut());
+        _api.IgnoreAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult.Ok());
+
+        IRenderedComponent<KnownShortcuts> page = RenderPage();
+        Button(page, "ignore-use", "browser.new-window", "Edge", ".mobile-branch").Click();
+
+        _api.Received(1).IgnoreAsync("browser.new-window", "Edge", Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public void TheMobileBranch_PagesTwentyRowsAtATime()
+    {
+        // The catalog runs past a hundred rows. An unpaged card list would render every one.
+        StubList([.. Enumerable.Range(0, 25).Select(i =>
+            Shortcut($"built-in.{i}", "e", BuiltInUse(usedBy: $"Program {i:00}")))]);
+
+        IRenderedComponent<KnownShortcuts> page = RenderPage();
+
+        page.FindAll(".mobile-branch [data-test=\"known-shortcut-row\"]").Should().HaveCount(20);
+    }
+
+    [Fact]
+    public void ANewSearchTerm_ReturnsTheMobileBranchToPageOne()
+    {
+        // Searching from page 2 used to leave the page number alone, so a term matching three rows
+        // showed an empty page 2. Starting this test on page 1 would pass without the reset.
+        StubList([.. Enumerable.Range(0, 25).Select(i =>
+            Shortcut($"built-in.{i}", "e", BuiltInUse(usedBy: $"Program {i:00}")))]);
+
+        IRenderedComponent<KnownShortcuts> page = RenderPage();
+
+        // Page 2 holds the last five rows, Program 20 to Program 24. The page button is found by
+        // its own number rather than an aria-label, so the test does not depend on wording
+        // MudPagination could change between versions.
+        page.FindAll(".mobile-branch .mud-pagination button")
+            .Single(b => b.TextContent.Trim() == "2")
+            .Click();
+        page.FindAll(".mobile-branch [data-test=\"known-shortcut-row\"]").Should().HaveCount(5);
+
+        page.Find("[data-test=\"known-shortcut-search\"]").Input("Program 0");
+
+        // Program 00 to Program 09 match, and all ten fit on page 1. Still on page 2, this would
+        // find nothing.
+        page.FindAll(".mobile-branch [data-test=\"known-shortcut-row\"]").Should().HaveCount(10);
     }
 }

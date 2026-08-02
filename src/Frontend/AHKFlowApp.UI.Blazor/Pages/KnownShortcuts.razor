@@ -28,7 +28,8 @@
                    Disabled="@(!_isAuthenticated || _loading || _busy)">
             Reload
         </MudButton>
-        <MudTextField T="string" @bind-Value="_search" Immediate="true" Clearable="true"
+        <MudTextField T="string" @bind-Value="_search" @bind-Value:after="OnSearchChanged"
+                      Immediate="true" Clearable="true"
                       Placeholder="Search" Adornment="Adornment.Start"
                       AdornmentIcon="@Icons.Material.Filled.Search"
                       UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "known-shortcut-search" })" />
@@ -86,6 +87,7 @@
         </MudPaper>
     }
 
+    <div class="desktop-branch">
     <MudTable T="KnownShortcutUseRow" Items="_rows" Filter="MatchesSearch" Dense="true" Hover="true" Loading="_loading">
         <HeaderContent>
             <MudTh>Combination</MudTh>
@@ -129,6 +131,19 @@
             <MudTablePager PageSizeOptions="@(new[] { 25, 50, 100 })" />
         </PagerContent>
     </MudTable>
+    </div>
+
+    <div class="mobile-branch">
+        <KnownShortcutMobileList Items="MobilePageRows" Busy="_busy" Loading="_loading"
+                                 LoadError="@_loadError"
+                                 OnIgnore="IgnoreAsync" OnRestore="RestoreAsync"
+                                 OnDelete="DeleteAsync" />
+        @if (MobileTotalPages > 1)
+        {
+            <MudPagination Class="mt-2" Count="MobileTotalPages" Selected="_mobilePage"
+                           SelectedChanged="OnMobilePageChanged" />
+        }
+    </div>
 </MudPaper>
 
 @code {
@@ -162,6 +177,24 @@
     private bool _adding;
     private bool _loading;
     private bool _saving;
+
+    // The desktop table pages itself at 25. The card list has no pager of its own, so the page
+    // slices the filtered rows for it. Searching resets to the first page, or a term that matches
+    // three rows would show an empty page four.
+    private const int MobilePageSize = 20;
+    private int _mobilePage = 1;
+
+    private List<KnownShortcutUseRow> FilteredRows => [.. _rows.Where(MatchesSearch)];
+
+    private int MobileTotalPages =>
+        (int)Math.Ceiling((double)FilteredRows.Count / MobilePageSize);
+
+    private IReadOnlyList<KnownShortcutUseRow> MobilePageRows =>
+        [.. FilteredRows.Skip((_mobilePage - 1) * MobilePageSize).Take(MobilePageSize)];
+
+    private void OnMobilePageChanged(int page) => _mobilePage = page;
+
+    private void OnSearchChanged() => _mobilePage = 1;
 
     // True while a write is in flight. Every action button reads it, so a second write cannot
     // start before the first one has reloaded the list. Reload watches _loading for the same
@@ -204,7 +237,8 @@
 
     private Task ReloadAsync() => LoadAsync();
 
-    private void Flatten(ManagedKnownShortcutCatalogDto catalog) =>
+    private void Flatten(ManagedKnownShortcutCatalogDto catalog)
+    {
         _rows =
         [
             .. catalog.Shortcuts
@@ -215,6 +249,11 @@
                 .OrderBy(r => r.ComboLabel, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(r => r.Use.UsedBy, StringComparer.OrdinalIgnoreCase)
         ];
+
+        // A shorter list can leave the reader on a page that no longer exists.
+        if (_mobilePage > MobileTotalPages)
+            _mobilePage = 1;
+    }
 
     private bool MatchesSearch(KnownShortcutUseRow row)
     {
