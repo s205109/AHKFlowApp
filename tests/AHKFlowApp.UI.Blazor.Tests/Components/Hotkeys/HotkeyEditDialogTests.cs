@@ -273,6 +273,19 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
+    public async Task RunPanel_LabelsTheTargetPickerKindNotType()
+    {
+        IRenderedComponent<MudDialogProvider> provider =
+            await ShowDialogAsync(new HotkeyEditModel { ActionKind = HotkeyActionKind.Run });
+
+        // CONTEXT.md lists "type" under Avoid for Kind, Action, and Item. Lock the label
+        // so it cannot drift back to "Target type".
+        string panel = provider.Find("[data-test=\"run-panel\"]").InnerHtml;
+        panel.Should().Contain("Target kind");
+        panel.Should().NotContain("Target type");
+    }
+
+    [Fact]
     public async Task DisableKind_ShowsNoActionPanel()
     {
         IRenderedComponent<MudDialogProvider> provider =

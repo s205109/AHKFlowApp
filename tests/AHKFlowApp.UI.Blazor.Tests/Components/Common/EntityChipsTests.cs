@@ -42,7 +42,7 @@ public sealed class EntityChipsTests : BunitContext, IAsyncLifetime
         IRenderedComponent<EntityChips> cut = Render<EntityChips>(ps => ps
             .Add(p => p.Ids, new[] { work })
             .Add(p => p.Options, options)
-            .Add(p => p.Any, true));
+            .Add(p => p.AppliesToAllProfiles, true));
 
         // "All profiles" is the glossary short form of "Apply to all profiles" (CONTEXT.md).
         // The old "Any" label was an avoided synonym, so assert it is gone for good.
