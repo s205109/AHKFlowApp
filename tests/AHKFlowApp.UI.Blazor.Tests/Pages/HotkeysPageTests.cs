@@ -184,6 +184,17 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
     // Both branches render at once — the scoped CSS only hides one — so every marker assertion
     // is scoped to the branch it is about.
     private const string DesktopMarker = ".desktop-branch [data-test=\"known-shortcut-marker\"]";
+    private const string MobileMarker = ".mobile-branch [data-test=\"known-shortcut-marker\"]";
+
+    [Fact]
+    public void Mobile_RowMatchingAKnownShortcut_ShowsTheMarker()
+    {
+        StubKnownShortcuts(WinNCatalog());
+
+        IRenderedComponent<Hotkeys> cut = RenderPageWith(OneRunHotkey());
+
+        cut.WaitForAssertion(() => cut.FindAll(MobileMarker).Should().ContainSingle());
+    }
 
     [Fact]
     public void Grid_RowMatchingAKnownShortcut_ShowsTheMarker()

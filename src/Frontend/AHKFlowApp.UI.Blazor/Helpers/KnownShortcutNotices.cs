@@ -69,16 +69,12 @@ internal static class KnownShortcutNotices
                     notices[label] = KnownShortcutWarning.TextFor(match, label);
             }
         }
-        catch (OperationCanceledException)
-        {
-            // The page moved on. Whatever was resolved so far is handed back; a newer load
-            // replaces it.
-        }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             // Caught broadly on purpose, the same way the edit dialog does. The marker is
             // advisory, and a list page must never fail to render because a notice could not be
-            // worked out.
+            // worked out. Cancellation is excluded: it propagates to the caller, exactly like
+            // the list fetch that already runs before this method is called.
             logger.LogWarning(ex, "Known-shortcut markers could not be built.");
         }
 

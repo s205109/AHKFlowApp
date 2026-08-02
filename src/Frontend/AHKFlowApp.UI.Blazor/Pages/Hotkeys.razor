@@ -330,16 +330,19 @@
 
         if (_isAuthenticated)
         {
-            // Three independent fetches, so they go out together rather than costing three
+            // Four independent fetches, so they go out together rather than costing four
             // serial round trips before the list can start loading. The key registry is warmed
             // here because IsValidKey answers optimistically until it arrives, which would
-            // route a legacy row to inline edit by mistake.
+            // route a legacy row to inline edit by mistake. The known-shortcut catalog is
+            // warmed here too, so the first BuildAsync call finds it already cached instead of
+            // paying its own round trip after the list has already come back.
             Task<ApiResult<IReadOnlyList<ProfileDto>>> profilesTask = ProfilesApi.ListAsync(_cts.Token);
             Task<ApiResult<PagedList<CategoryDto>>> catTask =
                 CategoriesApi.ListAsync(new CategoryListRequest(PageSize: 200), _cts.Token);
             Task keysTask = KeyCatalog.ForRoleAsync("HotkeyKey", _cts.Token).AsTask();
+            Task shortcutsTask = KnownShortcuts.GetAsync(_cts.Token).AsTask();
 
-            await Task.WhenAll(profilesTask, catTask, keysTask);
+            await Task.WhenAll(profilesTask, catTask, keysTask, shortcutsTask);
 
             ApiResult<IReadOnlyList<ProfileDto>> profilesResult = await profilesTask;
             if (profilesResult.IsSuccess)
