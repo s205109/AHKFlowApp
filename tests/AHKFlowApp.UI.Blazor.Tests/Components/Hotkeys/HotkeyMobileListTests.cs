@@ -1,6 +1,7 @@
 using AHKFlowApp.UI.Blazor.Components.Hotkeys;
 using AHKFlowApp.UI.Blazor.DTOs;
 using AHKFlowApp.UI.Blazor.Validation;
+using AngleSharp.Dom;
 using Bunit;
 using FluentAssertions;
 using Microsoft.AspNetCore.Components;
@@ -235,5 +236,68 @@ public sealed class HotkeyMobileListTests : BunitContext, IAsyncLifetime
 
         cut.Markup.Should().NotContain("No hotkeys yet.");
         cut.Markup.Should().NotContain("No hotkeys match these filters.");
+    }
+
+    private const string Notice =
+        "Windows uses Ctrl+Shift+K to open the console. Your hotkey may override this shortcut.";
+
+    private static IReadOnlyDictionary<string, string> NoticeFor(string label) =>
+        new Dictionary<string, string> { [label] = Notice };
+
+    [Fact]
+    public void CollapsedRow_WithAKnownShortcut_ShowsTheMarkerWithItsName()
+    {
+        IRenderedComponent<HotkeyMobileList> cut = Render<HotkeyMobileList>(p => p
+            .Add(c => c.Items, [Item("Open palette", "K", ctrl: true, shift: true)])
+            .Add(c => c.Profiles, (IReadOnlyList<ProfileDto>)[])
+            .Add(c => c.Categories, (IReadOnlyList<CategoryDto>)[])
+            .Add(c => c.ShortcutNotices, NoticeFor("Ctrl+Shift+K")));
+
+        // No tooltip here, so the wrapper carries the accessible name. MudIcon hard-codes
+        // aria-hidden="true", so naming the icon itself would reach no screen reader.
+        IElement marker = cut.Find("td.trigger-cell [data-test=\"known-shortcut-marker\"]");
+        marker.GetAttribute("role").Should().Be("img");
+        marker.GetAttribute("aria-label").Should().Be(Notice);
+    }
+
+    [Fact]
+    public void CollapsedRow_WithoutAKnownShortcut_ShowsNoMarker()
+    {
+        IRenderedComponent<HotkeyMobileList> cut = Render<HotkeyMobileList>(p => p
+            .Add(c => c.Items, [Item("Open palette", "K", ctrl: true, shift: true)])
+            .Add(c => c.Profiles, (IReadOnlyList<ProfileDto>)[])
+            .Add(c => c.Categories, (IReadOnlyList<CategoryDto>)[])
+            .Add(c => c.ShortcutNotices, NoticeFor("Win+E")));
+
+        cut.FindAll("[data-test=\"known-shortcut-marker\"]").Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ExpandedRow_WithAKnownShortcut_ShowsTheNoticeLine()
+    {
+        IRenderedComponent<HotkeyMobileList> cut = Render<HotkeyMobileList>(p => p
+            .Add(c => c.Items, [Item("Open palette", "K", ctrl: true, shift: true)])
+            .Add(c => c.Profiles, (IReadOnlyList<ProfileDto>)[])
+            .Add(c => c.Categories, (IReadOnlyList<CategoryDto>)[])
+            .Add(c => c.ShortcutNotices, NoticeFor("Ctrl+Shift+K")));
+
+        await cut.InvokeAsync(() => cut.Find("tr.mobile-row").Click());
+
+        cut.WaitForAssertion(() =>
+            cut.Find("[data-test=\"known-shortcut-row\"]").TextContent.Should().Contain(Notice));
+    }
+
+    [Fact]
+    public async Task ExpandedRow_WithoutAKnownShortcut_HidesTheNoticeLine()
+    {
+        IRenderedComponent<HotkeyMobileList> cut = Render<HotkeyMobileList>(p => p
+            .Add(c => c.Items, [Item()])
+            .Add(c => c.Profiles, (IReadOnlyList<ProfileDto>)[])
+            .Add(c => c.Categories, (IReadOnlyList<CategoryDto>)[]));
+
+        await cut.InvokeAsync(() => cut.Find("tr.mobile-row").Click());
+
+        cut.WaitForAssertion(() => cut.Find("tr.mobile-row-expanded").Should().NotBeNull());
+        cut.FindAll("[data-test=\"known-shortcut-row\"]").Should().BeEmpty();
     }
 }

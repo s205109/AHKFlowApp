@@ -244,6 +244,7 @@
         }
 
         <HotkeyMobileList Items="_mobileItems"
+                         ShortcutNotices="_mobileNotices"
                          Profiles="_profiles"
                          Categories="_categories"
                          HasActiveFilters="HasActiveFilters"
@@ -303,6 +304,9 @@
     // silences or restores a use, and a surviving dictionary would keep showing a warning the
     // owner just turned off.
     private IReadOnlyDictionary<string, string> _gridNotices = new Dictionary<string, string>();
+
+    // The mobile branch's own copy. See the note on _gridNotices for why these are two fields.
+    private IReadOnlyDictionary<string, string> _mobileNotices = new Dictionary<string, string>();
 
     private IReadOnlyList<HotkeyEditModel> _mobileItems = [];
     private int _mobilePage = 1;
@@ -641,12 +645,18 @@
         {
             _loadError = ApiErrorMessageFactory.Build(result.Status, result.Problem);
             _mobileItems = [];
+            _mobileNotices = new Dictionary<string, string>();
             _mobileTotalPages = 0;
             return;
         }
 
         _mobileItems = [.. result.Value!.Items.Select(HotkeyEditModel.FromDto)];
         _mobileTotalPages = (int)Math.Ceiling((double)result.Value.TotalCount / _mobilePageSize);
+
+        // This path is awaited from an event handler or from OnInitializedAsync, so the render
+        // that follows already picks the notices up. No extra StateHasChanged is needed.
+        _mobileNotices = await KnownShortcutNotices.BuildAsync(
+            _mobileItems, KeyCatalog, KnownShortcuts, Logger, _cts.Token);
     }
 
     private async Task OnMobilePageChangedAsync(int page)
