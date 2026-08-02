@@ -35,9 +35,19 @@ That disagreement is why this is a decision to make rather than a defect to fix.
 
 ## Acceptance criteria
 
-- [ ] A decision is recorded: delete the two `add_header` lines, or keep them with a comment that states .NET 10 does not read the header
-- [ ] The chosen change is applied at both `default.conf:10` and `:34`
-- [ ] If the lines are deleted, the container path is verified to still serve the correct configuration
+- [x] A decision is recorded: delete the two `add_header` lines, or keep them with a comment that states .NET 10 does not read the header
+- [x] The chosen change is applied at both `default.conf:10` and `:34`
+- [x] If the lines are deleted, the container path is verified to still serve the correct configuration
+
+**Decision:** both `add_header` lines were deleted. Every other place in the
+repository that mentions the header already says it is dead, so keeping it would
+have left the nginx file as the only misleading text.
+
+The .NET 10 release notes state the behaviour directly:
+[Set the environment in standalone Blazor WebAssembly apps](https://learn.microsoft.com/en-us/aspnet/core/release-notes/aspnetcore-10.0?view=aspnetcore-10.0#set-the-environment-in-standalone-blazor-webassembly-apps).
+The Blazor environments page linked under **Notes / dependencies** also still shows
+an nginx `add_header` recipe, but that section is version-gated to ASP.NET Core 3.1
+through 9.0 and does not render on the .NET 10 view of the page.
 
 ## Out of scope
 
