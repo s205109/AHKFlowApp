@@ -1,0 +1,17 @@
+.desktop-branch {
+    display: block;
+}
+
+.mobile-branch {
+    display: none;
+}
+
+@media (max-width: 959.95px) {
+    .desktop-branch {
+        display: none;
+    }
+
+    .mobile-branch {
+        display: block;
+    }
+}

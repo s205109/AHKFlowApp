@@ -1,0 +1,43 @@
+.mobile-row {
+    border-top: 1px solid var(--mud-palette-divider);
+    padding: 10px 12px;
+}
+
+/* Three columns: the combination takes what is left, the chip and the button take what they need.
+   minmax(0, 1fr) rather than 1fr — a bare 1fr floors at the content's minimum width, which is what
+   pushes a long combination past the right edge instead of wrapping it. */
+.mobile-row .row-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: 8px;
+}
+
+.mobile-row .row-head code {
+    font-size: 0.9rem;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+/* Owner text is up to 60 and 200 characters and need not contain a space. */
+.mobile-row .row-what {
+    margin-top: 4px;
+    font-size: 0.9rem;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.mobile-row .used-by {
+    font-weight: 500;
+}
+
+.mobile-row .separator {
+    color: var(--mud-palette-text-secondary);
+}
+
+.mobile-row .scope {
+    margin-top: 2px;
+    font-size: 0.75rem;
+    color: var(--mud-palette-text-secondary);
+    overflow-wrap: anywhere;
+}
