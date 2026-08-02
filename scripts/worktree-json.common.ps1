@@ -636,6 +636,69 @@ function New-JsoncSplice {
     return [pscustomobject]@{ Start = $Start; End = $End; Text = $Text; Rank = $Rank; Path = $Path }
 }
 
+# Property text for every new member going into one object, with members that share a missing
+# ancestor merged into one section. Rendering each chain on its own writes that ancestor once
+# per edit, and ConvertFrom-Json keeps only the last of two properties with the same name, so
+# the earlier edits would vanish with no error.
+function New-JsoncMemberLiterals {
+    param(
+        [System.Collections.ArrayList] $Members,
+        [string] $Indent,
+        [string] $Eol,
+        # Start of the existing object the new members go into. Every failure below reports it,
+        # so a caller can point at the place in the file that the edit could not be applied.
+        [int] $Offset
+    )
+
+    # Group by the first name, keeping the order the edits arrived in.
+    $order = New-Object System.Collections.ArrayList
+    $byName = @{}
+    foreach ($member in $Members) {
+        $name = $member.Names[0]
+        if (-not $byName.ContainsKey($name)) {
+            $byName[$name] = New-Object System.Collections.ArrayList
+            [void] $order.Add($name)
+        }
+        [void] $byName[$name].Add($member)
+    }
+
+    $literals = @()
+    foreach ($name in $order) {
+        $group = $byName[$name]
+
+        if ($group.Count -eq 1) {
+            $member = $group[0]
+            try {
+                $literals += New-JsoncChainLiteral -Names $member.Names -Value $member.Value -Indent $Indent -Eol $Eol
+            } catch {
+                throw "Cannot apply JSON edit '$($member.Label)' at offset $Offset`: $($_.Exception.Message)"
+            }
+            continue
+        }
+
+        # More than one edit wants this name. That only works when every one of them treats it
+        # as a parent object; a name cannot be a value for one edit and an object for another.
+        $inner = New-Object System.Collections.ArrayList
+        foreach ($member in $group) {
+            if ($member.Names.Count -eq 1) {
+                throw "Conflicting JSON edits at offset $Offset`: '$($member.Label)' writes '$name' as a value, and another edit writes properties inside it."
+            }
+            [void] $inner.Add(@{
+                Names = ([string[]] $member.Names[1..($member.Names.Count - 1)])
+                Value = $member.Value
+                Label = $member.Label
+            })
+        }
+
+        $childIndent = $Indent + '  '
+        $childLiterals = New-JsoncMemberLiterals -Members $inner -Indent $childIndent -Eol $Eol -Offset $Offset
+        $literals += (ConvertTo-JsonStringLiteral $name) + ': {' + $Eol + $childIndent +
+            ($childLiterals -join (',' + $Eol + $childIndent)) + $Eol + $Indent + '}'
+    }
+
+    return $literals
+}
+
 # Splices for every new member going into one object. All members of an object are emitted
 # together: one at a time, each would write its own separating comma at the same offset,
 # producing ",," and no comma between the new members.
@@ -654,10 +717,7 @@ function New-JsoncInsertion {
         # {...} span: an object that holds only comments has no members but must keep them.
         $closeIndent = Get-JsoncLineIndent $Text $Object.Start
         $indent = $closeIndent + '  '
-        $literals = @()
-        foreach ($member in $Members) {
-            $literals += New-JsoncChainLiteral -Names $member.Names -Value $member.Value -Indent $indent -Eol $Eol
-        }
+        $literals = New-JsoncMemberLiterals -Members $Members -Indent $indent -Eol $Eol -Offset $Object.Start
 
         $body = $Eol + $indent + ($literals -join (',' + $Eol + $indent)) + $Eol + $closeIndent
         $runStart = Get-JsoncWhitespaceRunStart $Text $Object.CloseIndex
@@ -666,10 +726,7 @@ function New-JsoncInsertion {
 
     $indent = $Object.Indent
     $last = $Object.Order[$Object.Order.Count - 1]
-    $literals = @()
-    foreach ($member in $Members) {
-        $literals += New-JsoncChainLiteral -Names $member.Names -Value $member.Value -Indent $indent -Eol $Eol
-    }
+    $literals = New-JsoncMemberLiterals -Members $Members -Indent $indent -Eol $Eol -Offset $Object.Start
 
     # Splice at LineEnd, not at the value's end, so a trailing comment stays attached to the
     # member it describes instead of drifting onto the new member's line.
@@ -760,8 +817,16 @@ function Set-JsoncValues {
         $resolved = Resolve-JsoncEdit -Root $root -Path ([object[]] $edit.Path)
 
         if ($resolved.Kind -eq 'Replace') {
+            # A value the writer cannot express is reported against the edit that carried it,
+            # not as a bare type name with no clue which of the edits was at fault.
+            try {
+                $literal = ConvertTo-JsonLiteral $edit.Value
+            } catch {
+                throw "Cannot apply JSON edit '$($resolved.Label)' at offset $($resolved.Node.Start)`: $($_.Exception.Message)"
+            }
+
             [void] $splices.Add((New-JsoncSplice -Start $resolved.Node.Start -End $resolved.Node.End `
-                -Text (ConvertTo-JsonLiteral $edit.Value) -Rank 0 -Path $resolved.Label))
+                -Text $literal -Rank 0 -Path $resolved.Label))
             continue
         }
 

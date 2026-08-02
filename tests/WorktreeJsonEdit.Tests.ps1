@@ -426,4 +426,99 @@ $once = Set-JsoncValues -Json $doc -Edits $groupEdits
 $twice = Set-JsoncValues -Json $once -Edits $groupEdits
 Assert-ExactText $once $twice 'Re-applying grouped insertions must change nothing.'
 
+# 23. Two edits under one missing ancestor merge into a single section.
+# Rendering each chain on its own writes the ancestor twice. ConvertFrom-Json keeps only the
+# last duplicate, so the first edit disappears without any error.
+$doc = @('{', '  "AllowedHosts": "*"', '}') -join "`n"
+$actual = Set-JsoncValues -Json $doc -Edits @(
+    @{ Path = @('parent', 'child', 'a'); Value = 1 },
+    @{ Path = @('parent', 'child', 'b'); Value = 2 }
+)
+Assert-ExactText (@(
+    '{',
+    '  "AllowedHosts": "*",',
+    '  "parent": {',
+    '    "child": {',
+    '      "a": 1,',
+    '      "b": 2',
+    '    }',
+    '  }',
+    '}'
+) -join "`n") $actual 'Two edits under one missing ancestor must merge into a single section.'
+$parsed = $actual | ConvertFrom-Json
+Assert-True ($parsed.parent.child.a -eq 1) 'The first edit under a shared missing ancestor must survive.'
+Assert-True ($parsed.parent.child.b -eq 2) 'The second edit under a shared missing ancestor must survive.'
+
+# 24. The merge only joins the segments the edits actually share.
+$doc = @('{', '  "AllowedHosts": "*"', '}') -join "`n"
+$actual = Set-JsoncValues -Json $doc -Edits @(
+    @{ Path = @('root', 'left', 'a'); Value = 1 },
+    @{ Path = @('root', 'right', 'b'); Value = 2 },
+    @{ Path = @('root', 'top'); Value = 3 }
+)
+Assert-ExactText (@(
+    '{',
+    '  "AllowedHosts": "*",',
+    '  "root": {',
+    '    "left": {',
+    '      "a": 1',
+    '    },',
+    '    "right": {',
+    '      "b": 2',
+    '    },',
+    '    "top": 3',
+    '  }',
+    '}'
+) -join "`n") $actual 'A shared ancestor must branch where the paths diverge.'
+Assert-True ([bool] ($actual | ConvertFrom-Json)) 'A branching merge must still produce parseable JSON.'
+
+# 25. Merging into an empty object works the same way.
+$doc = @('{', '  "Cors": {}', '}') -join "`n"
+Assert-ExactText (@(
+    '{',
+    '  "Cors": {',
+    '    "inner": {',
+    '      "a": 1,',
+    '      "b": 2',
+    '    }',
+    '  }',
+    '}'
+) -join "`n") (Set-JsoncValues -Json $doc -Edits @(
+    @{ Path = @('Cors', 'inner', 'a'); Value = 1 },
+    @{ Path = @('Cors', 'inner', 'b'); Value = 2 }
+)) 'A shared missing ancestor inside an empty object must merge too.'
+
+# 26. Merged insertions stay idempotent.
+$doc = @('{', '  "AllowedHosts": "*"', '}') -join "`n"
+$mergeEdits = @(
+    @{ Path = @('parent', 'child', 'a'); Value = 1 },
+    @{ Path = @('parent', 'child', 'b'); Value = 2 }
+)
+$once = Set-JsoncValues -Json $doc -Edits $mergeEdits
+$twice = Set-JsoncValues -Json $once -Edits $mergeEdits
+Assert-ExactText $once $twice 'Re-applying merged insertions must change nothing.'
+
+# 27. One name cannot be both a value and a parent object.
+$doc = @('{', '  "AllowedHosts": "*"', '}') -join "`n"
+Assert-Throws { Set-JsoncValues -Json $doc -Edits @(
+        @{ Path = @('parent'); Value = 1 },
+        @{ Path = @('parent', 'child'); Value = 2 }
+    ) } 'Conflicting JSON edits' 'A name used as both a value and a parent must throw.'
+Assert-Throws { Set-JsoncValues -Json $doc -Edits @(
+        @{ Path = @('parent', 'child'); Value = 1 },
+        @{ Path = @('parent', 'child'); Value = 2 }
+    ) } 'Conflicting JSON edits' 'Two edits writing the same missing path must throw.'
+
+# --- Unsupported values name the path and the offset ---
+
+# 28. On the replace path.
+$doc = @('{', '  "v": "x"', '}') -join "`n"
+Assert-Throws { Set-JsoncValues -Json $doc -Edits @(@{ Path = @('v'); Value = ([pscustomobject]@{ a = 1 }) }) } `
+    "JSON edit 'v'.*offset" 'An unsupported replacement value must name the path and the offset.'
+
+# 29. On the insert path, which reaches the writer through New-JsoncChainLiteral.
+$doc = @('{', '  "AllowedHosts": "*"', '}') -join "`n"
+Assert-Throws { Set-JsoncValues -Json $doc -Edits @(@{ Path = @('Cors', 'AllowedOrigins'); Value = ([pscustomobject]@{ a = 1 }) }) } `
+    "JSON edit 'Cors\.AllowedOrigins'.*offset" 'An unsupported inserted value must name the path and the offset.'
+
 Write-Host 'Worktree JSON edit tests passed.'
