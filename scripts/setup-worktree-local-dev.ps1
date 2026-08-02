@@ -351,6 +351,19 @@ function Invoke-WithFileLock {
     }
 }
 
+# Record one edit for Set-JsoncValues. A string path segment names an object property; an
+# integer segment names an array index.
+function Add-JsonEdit {
+    param(
+        # AllowEmptyCollection: the list starts empty, and Mandatory alone rejects that.
+        [Parameter(Mandatory)][AllowEmptyCollection()][System.Collections.ArrayList] $Edits,
+        [Parameter(Mandatory)][object[]] $Path,
+        $Value
+    )
+
+    [void] $Edits.Add(@{ Path = $Path; Value = $Value })
+}
+
 function Write-JsonFile {
     param(
         [string] $Path,
@@ -359,7 +372,7 @@ function Write-JsonFile {
 
     New-Item -ItemType Directory -Path (Split-Path -Parent $Path) -Force | Out-Null
     $json = Format-Json ($Value | ConvertTo-Json -Depth 8)
-    [System.IO.File]::WriteAllText($Path, $json + [Environment]::NewLine, [System.Text.Encoding]::UTF8)
+    [System.IO.File]::WriteAllText($Path, $json + [Environment]::NewLine, (New-Object System.Text.UTF8Encoding($false)))
 }
 
 function Update-TrackedWorktreeJsonOverride {
@@ -380,38 +393,23 @@ function Update-TrackedWorktreeJsonOverride {
 
     & git -C $Root update-index --no-skip-worktree -- $RelativePath 2>$null
 
-    # launch.json / launchSettings.json may carry comments and trailing commas (JSONC), which
-    # Windows PowerShell 5.1's ConvertFrom-Json rejects; ConvertFrom-Jsonc tolerates them.
-    $jsonObject = ConvertFrom-Jsonc (Get-Content -LiteralPath $jsonPath -Raw)
-    & $PatchJson $jsonObject
+    # Edit the text in place. Re-serializing a parsed object deletes comments, adds a BOM,
+    # and re-flows one-line arrays (backlog 048), so only the changed spans are spliced.
+    $file = Read-JsoncFile $jsonPath
 
-    $json = Format-Json ($jsonObject | ConvertTo-Json -Depth 16)
-    [System.IO.File]::WriteAllText($jsonPath, $json + [Environment]::NewLine, [System.Text.Encoding]::UTF8)
+    # launch.json / launchSettings.json may carry comments and trailing commas (JSONC), which
+    # Windows PowerShell 5.1's ConvertFrom-Json rejects; ConvertFrom-Jsonc tolerates them. The
+    # parsed object is read-only here: the scriptblock uses it to decide, and records edits.
+    $jsonObject = ConvertFrom-Jsonc $file.Text
+    $edits = New-Object System.Collections.ArrayList
+    & $PatchJson $jsonObject $edits
+
+    if ($edits.Count -gt 0) {
+        $updated = Set-JsoncValues -Json $file.Text -Edits ([hashtable[]] $edits.ToArray()) -Eol $file.Eol
+        Write-JsoncFile -Path $jsonPath -Text $updated -HasBom $file.HasBom
+    }
 
     & git -C $Root update-index --skip-worktree -- $RelativePath
-}
-
-# Set $Object.$Section.$Property = $Value on a parsed JSON object, creating the section
-# and/or property when absent. Used to override appsettings keys regardless of whether the
-# target's committed file already declares them.
-function Set-JsonSectionValue {
-    param(
-        [object] $Object,
-        [string] $Section,
-        [string] $Property,
-        [object] $Value
-    )
-
-    if (($Object.PSObject.Properties.Name) -notcontains $Section) {
-        $Object | Add-Member -NotePropertyName $Section -NotePropertyValue ([pscustomobject]@{})
-    }
-
-    $sectionObject = $Object.$Section
-    if (($sectionObject.PSObject.Properties.Name) -notcontains $Property) {
-        $sectionObject | Add-Member -NotePropertyName $Property -NotePropertyValue $Value
-    } else {
-        $sectionObject.$Property = $Value
-    }
 }
 
 function Write-VsCodeWorktreeLaunchConfig {
@@ -422,11 +420,14 @@ function Write-VsCodeWorktreeLaunchConfig {
     )
 
     Update-TrackedWorktreeJsonOverride $Root $VsCodeLaunchSettingsRelativePath {
-        param([object] $Launch)
+        param([object] $Launch, [System.Collections.ArrayList] $Edits)
 
-        foreach ($configuration in $Launch.configurations) {
+        # An edit path needs the array index, so this loop is indexed rather than foreach.
+        for ($index = 0; $index -lt $Launch.configurations.Count; $index++) {
+            $configuration = $Launch.configurations[$index]
+
             if ($configuration.name -eq 'UI: http') {
-                $configuration.url = $UiUrl
+                Add-JsonEdit -Edits $Edits -Path @('configurations', $index, 'url') -Value $UiUrl
             }
 
             # Rebase a standalone Chrome opener for the API (e.g. the Swagger browser launched
@@ -436,7 +437,7 @@ function Write-VsCodeWorktreeLaunchConfig {
                 ($configuration.type -eq 'chrome') -and
                 (($configuration.PSObject.Properties.Name) -contains 'url') -and
                 ($configuration.url -match '^(https?://[^/]+)(.*)$')) {
-                $configuration.url = $ApiUrl + $matches[2]
+                Add-JsonEdit -Edits $Edits -Path @('configurations', $index, 'url') -Value ($ApiUrl + $matches[2])
             }
 
             # Rebase a hardcoded API browser URL (e.g. http://localhost:5600/swagger). A
@@ -446,7 +447,7 @@ function Write-VsCodeWorktreeLaunchConfig {
                 $serverReadyAction = $configuration.serverReadyAction
                 if ((($serverReadyAction.PSObject.Properties.Name) -contains 'uriFormat') -and
                     ($serverReadyAction.uriFormat -match '^(https?://[^/]+)(.*)$')) {
-                    $serverReadyAction.uriFormat = $ApiUrl + $matches[2]
+                    Add-JsonEdit -Edits $Edits -Path @('configurations', $index, 'serverReadyAction', 'uriFormat') -Value ($ApiUrl + $matches[2])
                 }
             }
         }
@@ -460,14 +461,16 @@ function Write-BackendWorktreeLaunchSettings {
     )
 
     Update-TrackedWorktreeJsonOverride $Root $BackendLaunchSettingsRelativePath {
-        param([object] $LaunchSettings)
+        param([object] $LaunchSettings, [System.Collections.ArrayList] $Edits)
 
+        # Iterate the properties, not their values: an edit path needs the profile name.
         # Only "Project" profiles bind via applicationUrl; leave Docker/Executable/IISExpress alone.
-        foreach ($profile in $LaunchSettings.profiles.PSObject.Properties.Value) {
-            $names = $profile.PSObject.Properties.Name
-            if (($names -contains 'commandName') -and ($profile.commandName -eq 'Project') -and
+        foreach ($profileProperty in $LaunchSettings.profiles.PSObject.Properties) {
+            $launchProfile = $profileProperty.Value
+            $names = $launchProfile.PSObject.Properties.Name
+            if (($names -contains 'commandName') -and ($launchProfile.commandName -eq 'Project') -and
                 ($names -contains 'applicationUrl')) {
-                $profile.applicationUrl = $ApiUrl
+                Add-JsonEdit -Edits $Edits -Path @('profiles', $profileProperty.Name, 'applicationUrl') -Value $ApiUrl
             }
         }
     }
@@ -481,11 +484,11 @@ function Write-FrontendWorktreeLaunchSettings {
 
     $relativePath = $FrontendLaunchSettingsRelativePath
     Update-TrackedWorktreeJsonOverride $Root $relativePath {
-        param([object] $LaunchSettings)
+        param([object] $LaunchSettings, [System.Collections.ArrayList] $Edits)
 
-        foreach ($profile in $LaunchSettings.profiles.PSObject.Properties.Value) {
-            if ($profile.PSObject.Properties.Name -contains 'applicationUrl') {
-                $profile.applicationUrl = $UiUrl
+        foreach ($profileProperty in $LaunchSettings.profiles.PSObject.Properties) {
+            if ($profileProperty.Value.PSObject.Properties.Name -contains 'applicationUrl') {
+                Add-JsonEdit -Edits $Edits -Path @('profiles', $profileProperty.Name, 'applicationUrl') -Value $UiUrl
             }
         }
     }
@@ -499,10 +502,11 @@ function Write-BackendWorktreeAppSettings {
     )
 
     Update-TrackedWorktreeJsonOverride $Root $BackendAppSettingsRelativePath {
-        param([object] $Config)
+        param([object] $Config, [System.Collections.ArrayList] $Edits)
 
-        Set-JsonSectionValue $Config 'Cors' 'AllowedOrigins' @($UiUrl)
-        Set-JsonSectionValue $Config 'ConnectionStrings' 'DefaultConnection' $ConnectionString
+        # Set-JsoncValues creates a missing section, so no probe of $Config is needed here.
+        Add-JsonEdit -Edits $Edits -Path @('Cors', 'AllowedOrigins') -Value @($UiUrl)
+        Add-JsonEdit -Edits $Edits -Path @('ConnectionStrings', 'DefaultConnection') -Value $ConnectionString
     }
 }
 
@@ -513,9 +517,9 @@ function Write-FrontendWorktreeAppSettings {
     )
 
     Update-TrackedWorktreeJsonOverride $Root $FrontendAppSettingsRelativePath {
-        param([object] $Config)
+        param([object] $Config, [System.Collections.ArrayList] $Edits)
 
-        Set-JsonSectionValue $Config 'ApiHttpClient' 'BaseAddress' $ApiUrl
+        Add-JsonEdit -Edits $Edits -Path @('ApiHttpClient', 'BaseAddress') -Value $ApiUrl
     }
 }
 
@@ -605,16 +609,6 @@ function Resolve-WorktreeDatabaseName {
     return $name
 }
 
-function Set-NoteProperty {
-    param([object] $Object, [string] $Name, [object] $Value)
-
-    if (($Object.PSObject.Properties.Name) -notcontains $Name) {
-        $Object | Add-Member -NotePropertyName $Name -NotePropertyValue $Value
-    } else {
-        $Object.$Name = $Value
-    }
-}
-
 function Write-BackendWorktreeDockerProfile {
     param([string] $Root, [int] $SqlPort, [string] $ComposeProject)
 
@@ -623,7 +617,7 @@ function Write-BackendWorktreeDockerProfile {
     $composeIntended = Test-Path -LiteralPath (Join-Path $Root 'docker-compose.yml')
 
     Update-TrackedWorktreeJsonOverride $Root $BackendLaunchSettingsRelativePath {
-        param([object] $LaunchSettings)
+        param([object] $LaunchSettings, [System.Collections.ArrayList] $Edits)
 
         $profiles = $LaunchSettings.profiles
         $patched = 0
@@ -640,13 +634,13 @@ function Write-BackendWorktreeDockerProfile {
                 continue
             }
 
-            Set-NoteProperty $env 'COMPOSE_PROJECT_NAME' $ComposeProject
-            Set-NoteProperty $env 'AHKFLOW_SQL_PORT' ([string] $SqlPort)
+            Add-JsonEdit -Edits $Edits -Path @('profiles', $profileName, 'environmentVariables', 'COMPOSE_PROJECT_NAME') -Value $ComposeProject
+            Add-JsonEdit -Edits $Edits -Path @('profiles', $profileName, 'environmentVariables', 'AHKFLOW_SQL_PORT') -Value ([string] $SqlPort)
 
             if (($env.PSObject.Properties.Name) -contains 'ConnectionStrings__DefaultConnection') {
                 $builder = New-Object System.Data.SqlClient.SqlConnectionStringBuilder([string] $env.'ConnectionStrings__DefaultConnection')
                 $builder['Data Source'] = "localhost,$SqlPort"
-                $env.'ConnectionStrings__DefaultConnection' = $builder.ConnectionString
+                Add-JsonEdit -Edits $Edits -Path @('profiles', $profileName, 'environmentVariables', 'ConnectionStrings__DefaultConnection') -Value $builder.ConnectionString
             }
             $patched++
         }
