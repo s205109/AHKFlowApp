@@ -962,7 +962,7 @@
     }
 
     private RenderFragment RenderProfiles(bool appliesToAllProfiles, IReadOnlyCollection<Guid> profileIds) =>
-        @<EntityChips Ids="profileIds" Options="_profileOptions" Any="appliesToAllProfiles" />;
+        @<EntityChips Ids="profileIds" Options="_profileOptions" AppliesToAllProfiles="appliesToAllProfiles" />;
 
     @* No Row and no AlignItems: MudStack defaults to a column, and leaving alignment unset lets the
        multi-select stretch to the cell width. AlignItems.Start shrank it to about 50px. *@

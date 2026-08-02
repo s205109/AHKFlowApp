@@ -114,7 +114,7 @@
 
                 case HotkeyActionKind.Run:
                     <div data-test="run-panel">
-                        <MudSelect T="RunTargetKind?" Label="Target type" Value="Item.RunTargetKind"
+                        <MudSelect T="RunTargetKind?" Label="Target kind" Value="Item.RunTargetKind"
                                    ValueChanged="OnRunTargetKindChanged"
                                    Error="@(FieldError(nameof(HotkeyEditModel.RunTargetKind)) is not null)"
                                    ErrorText="@FieldError(nameof(HotkeyEditModel.RunTargetKind))"
