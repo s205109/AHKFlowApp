@@ -112,9 +112,11 @@ public sealed class ShortcutWarningFlowTests(StackFixture fixture) : IAsyncLifet
     }
 
     // Addresses the Windows use of Win+E by id and use label, not by row text. A combination can
-    // hold several uses, and each has its own buttons.
+    // hold several uses, and each has its own buttons. The page renders a desktop branch and a
+    // mobile branch, both carrying this pair, so the branch is named here once. {0} is the action
+    // class. This file runs at the default desktop viewport, so it always means the desktop one.
     private const string WindowsFileExplorerUse =
-        "[data-shortcut-id=\"windows.file-explorer\"][data-used-by=\"Windows\"]";
+        ".desktop-branch button{0}[data-shortcut-id=\"windows.file-explorer\"][data-used-by=\"Windows\"]";
 
     [Fact]
     public async Task IgnoringTheWindowsUse_SilencesTheWarning_AndRestoringBringsItBack()
@@ -124,8 +126,8 @@ public sealed class ShortcutWarningFlowTests(StackFixture fixture) : IAsyncLifet
 
         // Silence the Windows use of Win+E.
         await OpenKnownShortcutsAsync(page, "Win+E");
-        await page.ClickAsync($"button.ignore-use{WindowsFileExplorerUse}");
-        await page.WaitForSelectorAsync($"button.restore-use{WindowsFileExplorerUse}");
+        await page.ClickAsync(string.Format(WindowsFileExplorerUse, ".ignore-use"));
+        await page.WaitForSelectorAsync(string.Format(WindowsFileExplorerUse, ".restore-use"));
 
         // The dialog no longer warns. Arm the wait before the dialog opens: the catalog request
         // fires as it loads, and a fixed delay would let a slow response assert on an empty page.
@@ -151,8 +153,8 @@ public sealed class ShortcutWarningFlowTests(StackFixture fixture) : IAsyncLifet
 
         // Bring it back.
         await OpenKnownShortcutsAsync(page, "Win+E");
-        await page.ClickAsync($"button.restore-use{WindowsFileExplorerUse}");
-        await page.WaitForSelectorAsync($"button.ignore-use{WindowsFileExplorerUse}");
+        await page.ClickAsync(string.Format(WindowsFileExplorerUse, ".restore-use"));
+        await page.WaitForSelectorAsync(string.Format(WindowsFileExplorerUse, ".ignore-use"));
 
         await OpenCreateDialogAsync(page);
         await CommitKeyAsync(page, "e");
@@ -182,7 +184,7 @@ public sealed class ShortcutWarningFlowTests(StackFixture fixture) : IAsyncLifet
         // The table paginates 103 built-in rows plus this one, so search for the new row rather
         // than hunting for it across pages.
         await page.FillAsync("input[data-test=\"known-shortcut-search\"]", "My notes tool");
-        await page.WaitForSelectorAsync("text=My notes tool");
+        await page.WaitForSelectorAsync(".desktop-branch >> text=My notes tool");
 
         await OpenCreateDialogAsync(page);
         await CommitKeyAsync(page, "F7");
