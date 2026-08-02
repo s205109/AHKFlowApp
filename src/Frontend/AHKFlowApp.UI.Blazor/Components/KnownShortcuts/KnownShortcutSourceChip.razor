@@ -1,0 +1,28 @@
+@using AHKFlowApp.UI.Blazor.DTOs
+@using MudBlazor
+
+@* Lives in its own component so the desktop table and the mobile list cannot drift apart. A
+   silenced use reads "Silenced" whatever it came from: that state is what the reader acts on,
+   and it is the state the bell beside it agrees with. *@
+@if (Use.IsIgnored)
+{
+    <MudChip T="string" Size="Size.Small" Color="Color.Default"
+             UserAttributes="@ChipAttributes">Silenced</MudChip>
+}
+else
+{
+    <MudChip T="string" Size="Size.Small"
+             Color="@(Use.Origin == ShortcutRecordOrigin.Owner ? Color.Primary : Color.Default)"
+             UserAttributes="@ChipAttributes">
+        @(Use.Origin == ShortcutRecordOrigin.Owner ? "Yours" : "Built in")
+    </MudChip>
+}
+
+@code {
+    [Parameter, EditorRequired] public ManagedShortcutUseDto Use { get; set; } = default!;
+
+    private static readonly Dictionary<string, object?> ChipAttributes = new()
+    {
+        ["data-test"] = "known-shortcut-source-chip",
+    };
+}

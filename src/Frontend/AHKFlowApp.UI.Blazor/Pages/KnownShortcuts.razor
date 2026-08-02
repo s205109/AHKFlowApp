@@ -107,17 +107,7 @@
             <MudTd DataLabel="What it does">@context.Use.Does</MudTd>
             <MudTd DataLabel="Where it applies">@ShortcutScopeDisplay.Label(context.Use.Scope)</MudTd>
             <MudTd DataLabel="Source">
-                @if (context.Use.IsIgnored)
-                {
-                    <MudChip T="string" Size="Size.Small" Color="Color.Default">Silenced</MudChip>
-                }
-                else
-                {
-                    <MudChip T="string" Size="Size.Small"
-                             Color="@(context.Use.Origin == ShortcutRecordOrigin.Owner ? Color.Primary : Color.Default)">
-                        @(context.Use.Origin == ShortcutRecordOrigin.Owner ? "Yours" : "Built in")
-                    </MudChip>
-                }
+                <KnownShortcutSourceChip Use="context.Use" />
             </MudTd>
             <MudTd DataLabel="Actions">
                 @* Every action is disabled while one is running. Two overlapping writes each end
