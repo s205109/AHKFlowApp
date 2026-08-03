@@ -736,6 +736,34 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
+    public async Task PreviewPanel_ValidationKeyInADifferentCase_StillLandsOnItsField()
+    {
+        // The server may spell the property path in a case the model does not use. A
+        // case-sensitive lookup would push this into the generic alert instead of onto the input.
+        _api.PreviewAsync(Arg.Any<HotkeyPreviewRequestDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotkeyPreviewDto>.Failure(
+                ApiResultStatus.Validation,
+                new ApiProblemDetails(null, "Validation failed", 400, null, null,
+                    new Dictionary<string, string[]>
+                    {
+                        ["input.body"] = ["Braces must balance."],
+                    })));
+
+        IRenderedComponent<MudDialogProvider> provider =
+            await ShowDialogAsync(new HotkeyEditModel { Key = "k", ActionKind = HotkeyActionKind.Raw, Body = "Send \"{" });
+
+        provider.Find("[data-test=\"ahk-preview\"] .mud-expand-panel-header").Click();
+
+        provider.WaitForAssertion(() =>
+        {
+            provider.FindAll("[data-test=\"preview-error\"]").Should().BeEmpty(
+                "the message belongs on the Body input, not in the panel");
+            provider.Find("[data-test=\"preview-blocked\"]").TextContent
+                .Should().Contain("Fix the highlighted fields");
+        });
+    }
+
+    [Fact]
     public async Task PreviewPanel_OutOfOrderResponses_LaterGenerationWins()
     {
         TaskCompletionSource<ApiResult<HotkeyPreviewDto>> first = new();

@@ -89,7 +89,7 @@
                               MaxLength="@Item.ReplacementMaxLength"
                               Validation="@(new Func<string, string?>(Item.ValidateReplacement))"
                               Placeholder="@(Item.Kind == HotstringKind.Raw ? ":K1000 SE*:ftw::for the win" : null)"
-                              Error="@(_previewReplacementError is not null)" ErrorText="@_previewReplacementError"
+                              Error="@(PreviewFieldError(nameof(HotstringEditModel.Replacement)) is not null)" ErrorText="@PreviewFieldError(nameof(HotstringEditModel.Replacement))"
                               HelperText="@ReplacementHelperText"
                               UserAttributes="@GetReplacementUserAttributes()" />
             }
@@ -216,45 +216,23 @@
                 </MudText>
             }
 
-            <MudExpansionPanels UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "ahk-preview" })">
-                <MudExpansionPanel Text="Generated AutoHotkey code" Expanded="_previewExpanded" ExpandedChanged="OnPreviewExpandedChangedAsync">
-                    @if (_previewPending)
+            <AhkCodePreviewPanel Expanded="_previewExpanded"
+                                 ExpandedChanged="OnPreviewExpandedChangedAsync"
+                                 Pending="_preview.Pending"
+                                 Error="@_previewError"
+                                 Snippet="@_previewSnippet">
+                <SnippetHeader>
+                    @if (Item.Kind == HotstringKind.Text && _effectiveDelivery is { } effectiveDelivery)
                     {
-                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-1"
-                                  UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "preview-pending" })">
-                            <MudProgressCircular Size="Size.Small" Indeterminate="true" />
-                            <MudText Typo="Typo.caption">Updating preview…</MudText>
-                        </MudStack>
+                        <MudChip T="string" Size="Size.Small"
+                                 Color="@(DeliveryDisplay.IsClipboard(effectiveDelivery) ? Color.Info : Color.Default)"
+                                 Class="mb-2"
+                                 UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "preview-delivery" })">
+                            @DeliveryDisplay.Label(effectiveDelivery)
+                        </MudChip>
                     }
-                    @if (_previewError is not null)
-                    {
-                        <MudText Color="Color.Error" Class="@(_previewPending ? "preview-stale" : null)"
-                                 UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "preview-error" })">
-                            @_previewError
-                        </MudText>
-                    }
-                    else if (_previewSnippet is not null)
-                    {
-                        @if (Item.Kind == HotstringKind.Text && _effectiveDelivery is { } effectiveDelivery)
-                        {
-                            <MudChip T="string" Size="Size.Small"
-                                     Color="@(DeliveryDisplay.IsClipboard(effectiveDelivery) ? Color.Info : Color.Default)"
-                                     Class="mb-2"
-                                     UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "preview-delivery" })">
-                                @DeliveryDisplay.Label(effectiveDelivery)
-                            </MudChip>
-                        }
-                        <div class="preview-snippet-container">
-                            <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small"
-                                           Class="preview-copy" Disabled="@_previewPending"
-                                           OnClick="CopyPreviewAsync"
-                                           UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = "Copy generated AutoHotkey code", ["data-test"] = "preview-copy" })" />
-                            <pre class="@($"preview-snippet{(_previewPending ? " preview-stale" : "")}")"
-                                 data-test="preview-snippet">@_previewSnippet</pre>
-                        </div>
-                    }
-                </MudExpansionPanel>
-            </MudExpansionPanels>
+                </SnippetHeader>
+            </AhkCodePreviewPanel>
 
             <MudTextField T="string" Label="Description" @bind-Value="Item.Description"
                           MaxLength="200" HelperText="Emitted as ; comment lines in the generated script."
@@ -300,7 +278,7 @@
                 <MudTextField T="string" Label="Value" @bind-Value="Item.ContextValue" Immediate="true"
                               Required="true" RequiredError="Value is required" MaxLength="200"
                               Placeholder="@ContextValuePlaceholder"
-                              Error="@(_previewContextValueError is not null)" ErrorText="@_previewContextValueError"
+                              Error="@(PreviewFieldError(nameof(HotstringEditModel.ContextValue)) is not null)" ErrorText="@PreviewFieldError(nameof(HotstringEditModel.ContextValue))"
                               UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "context-value-input" })" />
             }
 
@@ -389,19 +367,31 @@
     private bool _rawExamplesExpanded;
     private string? _macroInsertHint;
     private bool _previewExpanded;
-    private bool _previewPending;
     private string? _previewSnippet;
     private string? _previewError;
-    private string? _previewTriggerError;
-    private string? _previewReplacementError;
-    private string? _previewContextValueError;
+
+    // Server-reported preview errors keyed by DTO field name. One dictionary, matching the hotkey
+    // dialog and the shared mapper. Save's failure branch writes here too, which is the behavior
+    // this dialog already had.
+    private readonly Dictionary<string, string> _previewFieldErrors =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>DTO field names a validation message may be routed to an input for.</summary>
+    private static readonly HashSet<string> KnownFields = new(
+        [nameof(HotstringEditModel.Trigger), nameof(HotstringEditModel.Replacement),
+         nameof(HotstringEditModel.ContextValue)],
+        StringComparer.OrdinalIgnoreCase);
+
     private HotstringDelivery? _effectiveDelivery;
     private HotstringPreviewRequestDto? _lastPreviewRequest;
-    private CancellationTokenSource? _previewCts;
-    private int _previewGeneration;
-    private bool _disposed;
 
-    private string? TriggerErrorText => _triggerError ?? _previewTriggerError;
+    // Cancellation, generation counting and the fire-and-forget boundary live in the scheduler.
+    private PreviewScheduler<HotstringPreviewRequestDto, HotstringPreviewDto> _preview = default!;
+
+    private string? PreviewFieldError(string field) => _previewFieldErrors.GetValueOrDefault(field);
+
+    private string? TriggerErrorText =>
+        _triggerError ?? PreviewFieldError(nameof(HotstringEditModel.Trigger));
 
     private bool HasCursorToken => MacroTokens.CursorTokenStart(Item.Replacement) is not null;
 
@@ -409,6 +399,13 @@
     // inline validation render below the textarea, so they must stay live by default. The panel's
     // expand state only controls whether the generated snippet is shown.
     private bool ShouldAutoPreview => _previewExpanded || Item.Kind == HotstringKind.Raw;
+
+    protected override void OnInitialized() =>
+        _preview = new PreviewScheduler<HotstringPreviewRequestDto, HotstringPreviewDto>(
+            fetchAsync: (request, ct) => Api.PreviewAsync(request, ct),
+            onResult: ApplyPreviewResult,
+            onUnexpectedError: OnPreviewFailed,
+            stateHasChanged: StateHasChanged);
 
     protected override void OnParametersSet()
     {
@@ -450,9 +447,7 @@
         // Field-level preview errors and the Raw summary belong to the outgoing kind — drop them so
         // a stale message (e.g. a Raw brace error) can't linger on the incoming kind's fields.
         _rawSummary = null;
-        _previewTriggerError = null;
-        _previewReplacementError = null;
-        _previewContextValueError = null;
+        _previewFieldErrors.Clear();
 
         // Leaving Raw for a structured kind: decompose the definition, warning first when it
         // carries option flags the structured fields can't express (they would be discarded).
@@ -743,9 +738,7 @@
         {
             _error = null;
             _triggerError = null;
-            _previewTriggerError = null;
-            _previewReplacementError = null;
-            _previewContextValueError = null;
+            _previewFieldErrors.Clear();
 
             await _form.ValidateAsync();
             if (!_form.IsValid)
@@ -766,7 +759,7 @@
                     // Route validation failures through the same field-error mapper the preview
                     // panel uses (e.g. a save-time brace-imbalance lands inline on Replacement,
                     // not the generic bottom-of-dialog alert).
-                    (_previewTriggerError, _previewReplacementError, _previewContextValueError, _error) = MapFieldErrors(errors);
+                    _error = FieldErrorMapper.Map(errors, KnownFields, _previewFieldErrors);
                 }
                 else
                 {
@@ -784,22 +777,6 @@
         }
     }
 
-    private async Task CopyPreviewAsync()
-    {
-        if (_previewSnippet is null)
-            return;
-
-        try
-        {
-            await JS.InvokeVoidAsync("navigator.clipboard.writeText", _previewSnippet);
-            Snackbar.Add("Generated code copied.", Severity.Success);
-        }
-        catch (JSException)
-        {
-            Snackbar.Add("Copy to clipboard failed.", Severity.Warning);
-        }
-    }
-
     private Task OnPreviewExpandedChangedAsync(bool expanded)
     {
         _previewExpanded = expanded;
@@ -813,10 +790,8 @@
         {
             // Nothing left to preview (non-Raw collapsed): stop and clear inline errors. Raw keeps
             // auto-previewing while collapsed so its summary + inline validation stay live.
-            CancelPendingPreview();
-            _previewTriggerError = null;
-            _previewReplacementError = null;
-            _previewContextValueError = null;
+            _preview.Cancel();
+            _previewFieldErrors.Clear();
         }
 
         return Task.CompletedTask;
@@ -830,78 +805,30 @@
 
     private void SchedulePreview(HotstringPreviewRequestDto request, bool debounce)
     {
-        CancelPendingPreview();
-        CancellationTokenSource cts = new();
-        _previewCts = cts;
-        int generation = ++_previewGeneration;
-        _previewPending = true;
-        _previewTriggerError = null;
-        _previewReplacementError = null;
-        _previewContextValueError = null;
-
-        // Fire-and-forget: RunPreviewAsync handles every exception it can raise (including
-        // unexpected ones), so the task never faults.
-        _ = RunPreviewAsync(request, cts.Token, generation, debounce);
-
-        StateHasChanged();
+        _previewFieldErrors.Clear();
+        _preview.Schedule(request, debounce ? PreviewDebounce : TimeSpan.Zero);
     }
 
-    private void CancelPendingPreview()
+    /// <summary>
+    /// An exception the preview call did not handle. Logged whether or not the response is still
+    /// current, so a superseded failure is still diagnosable; the message is shown only when it is,
+    /// so it cannot overwrite a newer preview.
+    /// </summary>
+    private void OnPreviewFailed(Exception ex, bool isCurrent)
     {
-        // Bumping the generation (not just cancelling) also discards in-flight responses
-        // whose transport ignores cancellation and completes successfully afterwards.
-        _previewGeneration++;
-        _previewPending = false;
-        _previewCts?.Cancel();
-        _previewCts?.Dispose();
-        _previewCts = null;
-    }
+        Logger.LogError(ex, "Hotstring preview failed unexpectedly.");
 
-    private async Task RunPreviewAsync(HotstringPreviewRequestDto request, CancellationToken ct, int generation, bool debounce)
-    {
-        try
-        {
-            if (debounce && PreviewDebounce > TimeSpan.Zero)
-                await Task.Delay(PreviewDebounce, ct);
+        if (!isCurrent)
+            return;
 
-            ApiResult<HotstringPreviewDto> result = await Api.PreviewAsync(request, ct);
-
-            if (generation != _previewGeneration || _disposed)
-                return;
-
-            _previewPending = false;
-            ApplyPreviewResult(result);
-            StateHasChanged();
-        }
-        catch (OperationCanceledException)
-        {
-            // A cancelled preview (superseded input, panel collapsed, dialog disposed) is
-            // silently ignored — never surfaced as an error.
-        }
-        catch (Exception ex)
-        {
-            // Boundary for a fire-and-forget background task: successful-response
-            // deserialization (or anything else) can throw after ApiClientBase's
-            // HttpRequestException handling. Log it and surface a friendly message instead
-            // of leaving the "Updating preview…" spinner stuck forever.
-            Logger.LogError(ex, "Hotstring preview failed unexpectedly.");
-
-            if (generation != _previewGeneration || _disposed)
-                return;
-
-            _previewPending = false;
-            _previewSnippet = null;
-            _effectiveDelivery = null;
-            _previewError = "Something went wrong generating the preview. Try again.";
-            StateHasChanged();
-        }
+        _previewSnippet = null;
+        _effectiveDelivery = null;
+        _previewError = "Something went wrong generating the preview. Try again.";
     }
 
     private void ApplyPreviewResult(ApiResult<HotstringPreviewDto> result)
     {
-        _previewTriggerError = null;
-        _previewReplacementError = null;
-        _previewContextValueError = null;
+        _previewFieldErrors.Clear();
 
         if (result.IsSuccess)
         {
@@ -921,7 +848,7 @@
             // Errors mapped onto Trigger/Replacement show inline only; the panel is
             // reserved for anything that isn't shown next to a field, so the same message
             // never appears twice.
-            (_previewTriggerError, _previewReplacementError, _previewContextValueError, _previewError) = MapFieldErrors(errors);
+            _previewError = FieldErrorMapper.Map(errors, KnownFields, _previewFieldErrors);
         }
         else
         {
@@ -929,48 +856,10 @@
         }
     }
 
-    /// <summary>
-    /// Maps FluentValidation-shaped field errors (dotted property paths, e.g. "Input.Replacement")
-    /// onto the Trigger/Replacement/ContextValue fields they belong next to, plus a catch-all
-    /// "unmapped" message for anything that isn't shown inline next to a field. Shared by the
-    /// preview panel (<see cref="ApplyPreviewResult"/>) and Save's failure branch so a save-time
-    /// validation failure (e.g. a Script brace imbalance) lands inline on the same field a
-    /// preview failure would, instead of only in the generic bottom-of-dialog alert.
-    /// </summary>
-    private (string? Trigger, string? Replacement, string? ContextValue, string? Unmapped) MapFieldErrors(
-        IReadOnlyDictionary<string, string[]> errors)
-    {
-        string? triggerError = null;
-        string? replacementError = null;
-        string? contextValueError = null;
-        List<string> unmapped = [];
-
-        foreach ((string key, string[] messages) in errors)
-        {
-            if (messages.FirstOrDefault() is not { } message)
-                continue;
-
-            // Property paths arrive as e.g. "Input.Replacement" — the last dotted part
-            // is the field name.
-            string field = key[(key.LastIndexOf('.') + 1)..];
-            if (field.Equals(nameof(Item.Trigger), StringComparison.OrdinalIgnoreCase))
-                triggerError ??= message;
-            else if (field.Equals(nameof(Item.Replacement), StringComparison.OrdinalIgnoreCase))
-                replacementError ??= message;
-            else if (field.Equals(nameof(Item.ContextValue), StringComparison.OrdinalIgnoreCase))
-                contextValueError ??= message;
-            else
-                unmapped.Add(message);
-        }
-
-        return (triggerError, replacementError, contextValueError, unmapped.FirstOrDefault());
-    }
-
     public void Dispose()
     {
-        _disposed = true;
         _cts.Cancel();
         _cts.Dispose();
-        CancelPendingPreview();
+        _preview.Dispose();
     }
 }

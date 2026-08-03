@@ -15,28 +15,31 @@ are recorded here rather than dropped.
 
 ## Acceptance criteria
 
-- [ ] Extract the live-preview machinery shared by `HotkeyEditDialog` and `HotstringEditDialog` —
+- [x] Extract the live-preview machinery shared by `HotkeyEditDialog` and `HotstringEditDialog` —
       `SchedulePreview` / `CancelPendingPreview` / `RunPreviewAsync` / `CopyPreviewAsync`, the
       cts+generation field set, the `MudExpansionPanels` block, and all four rules of
       `HotkeyEditDialog.razor.css` are near-verbatim copies (~120 lines). A
       `Components/Common/AhkCodePreviewPanel` plus a `PreviewScheduler<TRequest,TResult>` would
       leave each dialog supplying only a request factory and a result handler. Keep the existing
       `data-test` names — the bUnit tests key on them.
-- [ ] Move `HotkeyEditDialog.ApplyFieldErrors` next to `Services/ApiErrorMessageFactory` as a
+- [x] Move `HotkeyEditDialog.ApplyFieldErrors` next to `Services/ApiErrorMessageFactory` as a
       shared `MapFieldErrors(errors, knownFields, target)`. The hotkey version (dictionary) is
       strictly better than `HotstringEditDialog.MapFieldErrors` (positional 4-tuple); fold the
       hotstring dialog onto it.
-- [ ] Author `Constants/DefaultHotkeyCatalog` in the typed model instead of the retired
+- [x] Author `Constants/DefaultHotkeyCatalog` in the typed model instead of the retired
       `(HotkeyAction, Parameters)` shape run through `LegacyHotkeyDefinitionConverter.FromLegacy`.
       A back-compat converter should not be the authoring format for data that has no legacy; it
       also keeps `LegacyHotkeyDefinitionConverter.HotkeyAction` alive as a public production type.
-      Note this is where "Maximize window" seeds as `SendKeys {Up}` rather than the `Window` kind
-      that now exists for it — decide deliberately whether to keep the current output.
-- [ ] Decide whether `LegacyHotkeySnapshotConverter` stays permanent runtime code or becomes a
+      The original note here said "Maximize window" seeds as `SendKeys {Up}`. That was already out
+      of date when this item was picked up: the four window rows use the typed `Window` kind and a
+      `WindowOp`, so there was nothing to decide.
+- [x] Decide whether `LegacyHotkeySnapshotConverter` stays permanent runtime code or becomes a
       third migration over `EntityHistory.SnapshotJson`. Keeping it freezes the legacy enum, the
       two optional members on `HistorySnapshots`, and the frontend's legacy display arms. The
       *definition* converter is correctly permanent — the migration T-SQL mirrors it and the parity
       test depends on it.
+      **Decided:** stays permanent runtime code. See
+      `docs/adr/0005-legacy-hotkey-snapshots-stay-readable-in-place.md`.
 
 ## Out of scope
 

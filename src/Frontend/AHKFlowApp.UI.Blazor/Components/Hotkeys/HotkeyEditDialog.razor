@@ -4,7 +4,6 @@
 @using AHKFlowApp.UI.Blazor.Services
 @using AHKFlowApp.UI.Blazor.Validation
 @using Microsoft.Extensions.Logging
-@using Microsoft.JSInterop
 @using MudBlazor
 @implements IDisposable
 
@@ -183,48 +182,15 @@
                     break;
             }
 
-            @* ---- Generated code preview. Ported from HotstringEditDialog; no delivery chip,
-                   because hotkeys have no delivery choice. ---- *@
-            <MudExpansionPanels UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "ahk-preview" })">
-                <MudExpansionPanel Text="Generated AutoHotkey code" Expanded="_previewExpanded"
-                                   ExpandedChanged="OnPreviewExpandedChanged">
-                    @if (_previewPending)
-                    {
-                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-1"
-                                  UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "preview-pending" })">
-                            <MudProgressCircular Size="Size.Small" Indeterminate="true" />
-                            <MudText Typo="Typo.caption">Updating preview…</MudText>
-                        </MudStack>
-                    }
-                    @if (_previewError is not null)
-                    {
-                        <MudText Color="Color.Error" Class="@(_previewPending ? "preview-stale" : null)"
-                                 UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "preview-error" })">
-                            @_previewError
-                        </MudText>
-                    }
-                    else if (_previewFieldErrors.Count > 0)
-                    {
-                        @* Every message mapped onto an input above, so there is nothing to show
-                           here — but an empty panel body reads as broken. Say why it is empty. *@
-                        <MudText Typo="Typo.body2"
-                                 UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "preview-blocked" })">
-                            Fix the highlighted fields to see the generated code.
-                        </MudText>
-                    }
-                    else if (_previewSnippet is not null)
-                    {
-                        <div class="preview-snippet-container">
-                            <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small"
-                                           Class="preview-copy" Disabled="@_previewPending"
-                                           OnClick="CopyPreviewAsync"
-                                           UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = "Copy generated AutoHotkey code", ["data-test"] = "preview-copy" })" />
-                            <pre class="@($"preview-snippet{(_previewPending ? " preview-stale" : "")}")"
-                                 data-test="preview-snippet">@_previewSnippet</pre>
-                        </div>
-                    }
-                </MudExpansionPanel>
-            </MudExpansionPanels>
+            @* ---- Generated code preview. The panel, its CSS and the copy action live in
+                   AhkCodePreviewPanel; no delivery chip, because hotkeys have no delivery
+                   choice. ---- *@
+            <AhkCodePreviewPanel Expanded="_previewExpanded"
+                                 ExpandedChanged="OnPreviewExpandedChanged"
+                                 Pending="_preview.Pending"
+                                 Error="@_previewError"
+                                 BlockedMessage="@(_previewFieldErrors.Count > 0 ? "Fix the highlighted fields to see the generated code." : null)"
+                                 Snippet="@_previewSnippet" />
 
             @* ---- Metadata: unchanged from today's dialog ---- *@
             <MudTextField T="string" Label="Description" @bind-Value="Item.Description"
@@ -298,7 +264,6 @@
     [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = default!;
     [Inject] private IHotkeysApiClient Api { get; set; } = default!;
     [Inject] private IHotkeyKeyCatalog Catalog { get; set; } = default!;
-    [Inject] private IJSRuntime JS { get; set; } = default!;
     [Inject] private ISnackbar Snackbar { get; set; } = default!;
     [Inject] private ILogger<HotkeyEditDialog> Logger { get; set; } = default!;
 
@@ -351,12 +316,20 @@
         _sendWin && _sendKey is not null && s_arrowKeys.Contains(_sendKey, StringComparer.OrdinalIgnoreCase);
 
     private bool _previewExpanded;
-    private bool _previewPending;
     private string? _previewSnippet;
     private string? _previewError;
-    private CancellationTokenSource? _previewCts;
-    private int _previewGeneration;
-    private bool _disposed;
+
+    // Cancellation, generation counting and the fire-and-forget boundary live in the scheduler.
+    // Debounce is TimeSpan.Zero here: every text field already debounces through MudTextField's
+    // DebounceInterval, so a second delay would only make the preview feel slower.
+    private PreviewScheduler<HotkeyPreviewRequestDto, HotkeyPreviewDto> _preview = default!;
+
+    protected override void OnInitialized() =>
+        _preview = new PreviewScheduler<HotkeyPreviewRequestDto, HotkeyPreviewDto>(
+            fetchAsync: (request, ct) => Api.PreviewAsync(request, ct),
+            onResult: ApplyPreviewResult,
+            onUnexpectedError: OnPreviewFailed,
+            stateHasChanged: StateHasChanged);
 
     protected override void OnParametersSet()
     {
@@ -373,10 +346,9 @@
 
     public void Dispose()
     {
-        _disposed = true;
         _cts.Cancel();
         _cts.Dispose();
-        CancelPendingPreview();
+        _preview.Dispose();
     }
 
     /// <summary>
@@ -439,7 +411,7 @@
                 if (result.Status == ApiResultStatus.Conflict)
                     _duplicateCombination = ApiErrorMessageFactory.Build(result.Status, result.Problem);
                 else if (result.Status == ApiResultStatus.Validation && result.Problem?.Errors is { Count: > 0 } errors)
-                    _error = ApplyFieldErrors(errors, _saveFieldErrors);
+                    _error = FieldErrorMapper.Map(errors, KnownFields, _saveFieldErrors);
                 else
                     _error = ApiErrorMessageFactory.Build(result.Status, result.Problem);
 
@@ -452,32 +424,6 @@
         {
             _saving = false;
         }
-    }
-
-    /// <summary>
-    /// Maps a ProblemDetails validation dictionary onto field names, replacing whatever the
-    /// given owner held before. Property paths arrive as e.g. "Input.RunTarget" — the last
-    /// dotted part is the field. Anything that maps to no known field falls through to the
-    /// generic alert rather than being silently dropped.
-    /// </summary>
-    private static string? ApplyFieldErrors(IReadOnlyDictionary<string, string[]> errors, Dictionary<string, string> target)
-    {
-        target.Clear();
-        List<string> unmapped = [];
-
-        foreach ((string key, string[] messages) in errors)
-        {
-            if (messages.FirstOrDefault() is not { } message)
-                continue;
-
-            string field = key[(key.LastIndexOf('.') + 1)..];
-            if (KnownFields.Contains(field))
-                target.TryAdd(field, message);
-            else
-                unmapped.Add(message);
-        }
-
-        return unmapped.FirstOrDefault();
     }
 
     /// <summary>
@@ -667,7 +613,7 @@
     private void RefreshPreview()
     {
         if (_previewExpanded)
-            SchedulePreview(Item.ToPreviewRequest());
+            _preview.Schedule(Item.ToPreviewRequest(), TimeSpan.Zero);
     }
 
     private void OnPreviewExpandedChanged(bool expanded)
@@ -676,69 +622,23 @@
         if (expanded)
             RefreshPreview();
         else
-            CancelPendingPreview();
+            _preview.Cancel();
     }
 
-    private void SchedulePreview(HotkeyPreviewRequestDto request)
+    /// <summary>
+    /// An exception the preview call did not handle. Logged whether or not the response is still
+    /// current, so a superseded failure is still diagnosable; the message is shown only when it is,
+    /// so it cannot overwrite a newer preview.
+    /// </summary>
+    private void OnPreviewFailed(Exception ex, bool isCurrent)
     {
-        CancelPendingPreview();
-        CancellationTokenSource cts = new();
-        _previewCts = cts;
-        int generation = ++_previewGeneration;
-        _previewPending = true;
+        Logger.LogError(ex, "Hotkey preview failed unexpectedly.");
 
-        // Fire-and-forget: RunPreviewAsync handles every exception it can raise (including
-        // unexpected ones), so the task never faults.
-        _ = RunPreviewAsync(request, cts.Token, generation);
+        if (!isCurrent)
+            return;
 
-        StateHasChanged();
-    }
-
-    private void CancelPendingPreview()
-    {
-        // Bumping the generation (not just cancelling) also discards in-flight responses
-        // whose transport ignores cancellation and completes successfully afterwards.
-        _previewGeneration++;
-        _previewPending = false;
-        _previewCts?.Cancel();
-        _previewCts?.Dispose();
-        _previewCts = null;
-    }
-
-    private async Task RunPreviewAsync(HotkeyPreviewRequestDto request, CancellationToken ct, int generation)
-    {
-        try
-        {
-            ApiResult<HotkeyPreviewDto> result = await Api.PreviewAsync(request, ct);
-
-            if (generation != _previewGeneration || _disposed)
-                return;
-
-            _previewPending = false;
-            ApplyPreviewResult(result);
-            StateHasChanged();
-        }
-        catch (OperationCanceledException)
-        {
-            // A cancelled preview (superseded input, panel collapsed, dialog disposed) is
-            // silently ignored — never surfaced as an error.
-        }
-        catch (Exception ex)
-        {
-            // Boundary for a fire-and-forget background task: successful-response
-            // deserialization (or anything else) can throw after ApiClientBase's
-            // HttpRequestException handling. Log it and surface a friendly message instead
-            // of leaving the "Updating preview…" spinner stuck forever.
-            Logger.LogError(ex, "Hotkey preview failed unexpectedly.");
-
-            if (generation != _previewGeneration || _disposed)
-                return;
-
-            _previewPending = false;
-            _previewSnippet = null;
-            _previewError = "Something went wrong generating the preview. Try again.";
-            StateHasChanged();
-        }
+        _previewSnippet = null;
+        _previewError = "Something went wrong generating the preview. Try again.";
     }
 
     private void ApplyPreviewResult(ApiResult<HotkeyPreviewDto> result)
@@ -756,23 +656,7 @@
 
         _previewSnippet = null;
         _previewError = result.Status == ApiResultStatus.Validation && result.Problem?.Errors is { Count: > 0 } errors
-            ? ApplyFieldErrors(errors, _previewFieldErrors)
+            ? FieldErrorMapper.Map(errors, KnownFields, _previewFieldErrors)
             : ApiErrorMessageFactory.Build(result.Status, result.Problem);
-    }
-
-    private async Task CopyPreviewAsync()
-    {
-        if (_previewSnippet is null)
-            return;
-
-        try
-        {
-            await JS.InvokeVoidAsync("navigator.clipboard.writeText", _previewSnippet);
-            Snackbar.Add("Generated code copied.", Severity.Success);
-        }
-        catch (JSException)
-        {
-            Snackbar.Add("Copy to clipboard failed.", Severity.Warning);
-        }
     }
 }

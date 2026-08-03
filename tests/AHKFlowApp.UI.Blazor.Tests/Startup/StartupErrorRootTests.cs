@@ -61,7 +61,11 @@ public sealed class StartupErrorRootTests : BunitContext
         nav.History.Should().Contain(h => h.Options.ForceLoad);
     }
 
-    private void UseConfigHandler(bool devAvailable, int devAvailableFromCall = 1)
+    // devAvailableFromCall defaults to "never": with 1, the first poll already satisfied
+    // devCalls >= devAvailableFromCall, so dev config appeared immediately even when the caller
+    // asked for devAvailable: false. That made ShowsErrorMessageWhileConfigInvalid a race between
+    // reading Markup and the 10ms poll, which it lost whenever the machine was busy.
+    private void UseConfigHandler(bool devAvailable, int devAvailableFromCall = int.MaxValue)
     {
         int devCalls = 0;
         var handler = new StubHandler(request =>

@@ -1,3 +1,8 @@
+/* Moved here from HotkeyEditDialog.razor.css and HotstringEditDialog.razor.css, which held
+   identical copies. Both rules that use ::deep key on elements this component renders itself —
+   that is what carries the CSS-isolation scope attribute. Keying them on a MudBlazor component's
+   Class= would place the scope on a child component's root, which never carries it, and the rule
+   would silently never match. */
 .preview-snippet-container {
     position: relative;
     max-width: 100%;

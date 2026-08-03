@@ -16,30 +16,3 @@
     font-family: var(--mud-typography-caption-family, monospace);
     font-size: 0.85rem;
 }
-
-/* Preview panel — copied from HotstringEditDialog.razor.css so the two dialogs render the
-   generated-code block identically. */
-.preview-snippet-container {
-    position: relative;
-    max-width: 100%;
-}
-
-.preview-snippet {
-    margin: 0;
-    padding: 8px 40px 8px 12px;
-    font-size: 0.85rem;
-    background: var(--mud-palette-background-grey);
-    border-radius: 4px;
-    overflow-x: auto;
-    max-width: 100%;
-}
-
-.preview-snippet-container ::deep .preview-copy {
-    position: absolute;
-    top: 2px;
-    right: 2px;
-}
-
-.preview-stale {
-    opacity: 0.5;
-}

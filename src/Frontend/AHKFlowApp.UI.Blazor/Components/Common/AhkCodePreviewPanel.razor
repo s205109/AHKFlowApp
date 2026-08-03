@@ -1,0 +1,89 @@
+@using Microsoft.JSInterop
+@using MudBlazor
+
+<MudExpansionPanels UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "ahk-preview" })">
+    <MudExpansionPanel Text="Generated AutoHotkey code" Expanded="Expanded"
+                       ExpandedChanged="ExpandedChanged">
+        @if (Pending)
+        {
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-1"
+                      UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "preview-pending" })">
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                <MudText Typo="Typo.caption">Updating preview…</MudText>
+            </MudStack>
+        }
+        @if (Error is not null)
+        {
+            <MudText Color="Color.Error" Class="@(Pending ? "preview-stale" : null)"
+                     UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "preview-error" })">
+                @Error
+            </MudText>
+        }
+        else if (BlockedMessage is not null)
+        {
+            @* Every message mapped onto an input above, so there is nothing to show
+               here — but an empty panel body reads as broken. Say why it is empty. *@
+            <MudText Typo="Typo.body2"
+                     UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "preview-blocked" })">
+                @BlockedMessage
+            </MudText>
+        }
+        else if (Snippet is not null)
+        {
+            @SnippetHeader
+            <div class="preview-snippet-container">
+                <MudIconButton Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small"
+                               Class="preview-copy" Disabled="@Pending"
+                               OnClick="CopyAsync"
+                               UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = "Copy generated AutoHotkey code", ["data-test"] = "preview-copy" })" />
+                <pre class="@($"preview-snippet{(Pending ? " preview-stale" : "")}")"
+                     data-test="preview-snippet">@Snippet</pre>
+            </div>
+        }
+    </MudExpansionPanel>
+</MudExpansionPanels>
+
+@code {
+    [Inject] private IJSRuntime JS { get; set; } = default!;
+    [Inject] private ISnackbar Snackbar { get; set; } = default!;
+
+    /// <summary>Whether the panel body is open.</summary>
+    [Parameter] public bool Expanded { get; set; }
+
+    /// <summary>Raised when the user expands or collapses the panel.</summary>
+    [Parameter] public EventCallback<bool> ExpandedChanged { get; set; }
+
+    /// <summary>True while a preview is in flight. Shows the spinner and dims the snippet.</summary>
+    [Parameter] public bool Pending { get; set; }
+
+    /// <summary>A panel-level error. Outranks both other arms.</summary>
+    [Parameter] public string? Error { get; set; }
+
+    /// <summary>
+    /// Why the panel is empty when every message landed on an input above it. Shown only when
+    /// <see cref="Error"/> is null.
+    /// </summary>
+    [Parameter] public string? BlockedMessage { get; set; }
+
+    /// <summary>The generated code.</summary>
+    [Parameter] public string? Snippet { get; set; }
+
+    /// <summary>Optional content rendered directly above the snippet, inside the same arm.</summary>
+    [Parameter] public RenderFragment? SnippetHeader { get; set; }
+
+    private async Task CopyAsync()
+    {
+        if (Snippet is null)
+            return;
+
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", Snippet);
+            Snackbar.Add("Generated code copied.", Severity.Success);
+        }
+        catch (JSException)
+        {
+            Snackbar.Add("Copy to clipboard failed.", Severity.Warning);
+        }
+    }
+}
