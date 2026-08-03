@@ -72,6 +72,33 @@ public sealed class RawHotkeyBodyScannerTests
         line.Should().Be(2);
     }
 
+    // AHK v2 (KeyList.htm, "Keyboard"): "Although any single character can be used as a key name,
+    // its meaning (scan code or virtual keycode) depends on the current keyboard layout." A key
+    // name is therefore not limited to ASCII letters, digits and a short punctuation list.
+    [Fact]
+    public void NonAsciiSingleCharacterKey_StillDetected()
+    {
+        int? line = RawHotkeyBodyScanner.FindInjectedDefinitionLine("return\né::Run(\"calc\")");
+
+        line.Should().Be(2);
+    }
+
+    [Fact]
+    public void SymbolKeyOutsideTheOldPunctuationList_StillDetected()
+    {
+        int? line = RawHotkeyBodyScanner.FindInjectedDefinitionLine("return\n@::Run(\"calc\")");
+
+        line.Should().Be(2);
+    }
+
+    [Fact]
+    public void NonAsciiKeyInACustomCombination_StillDetected()
+    {
+        int? line = RawHotkeyBodyScanner.FindInjectedDefinitionLine("return\nF1 & é::Run(\"calc\")");
+
+        line.Should().Be(2);
+    }
+
     [Fact]
     public void IndentedDefinition_StillDetected()
     {
@@ -112,6 +139,29 @@ public sealed class RawHotkeyBodyScannerTests
             "Send(\"a\")\n(\ntext\n)\n^a::Run(\"calc\")");
 
         line.Should().Be(5);
+    }
+
+    // AHK v2 (Scripts.htm): "any code after the closing parenthesis is also joined with the other
+    // lines". So a continuation section ends at the first line whose first non-blank character is
+    // ")", even when real code follows it — the closing line is not required to be ")" alone.
+    [Fact]
+    public void DefinitionAfterAClosingParenthesisWithTrailingCode_StillDetected()
+    {
+        int? line = RawHotkeyBodyScanner.FindInjectedDefinitionLine(
+            "FileAppend \"\n(\nLine 1 of the text.\n)\", \"C:\\File.txt\"\n^a::Run(\"calc\")");
+
+        line.Should().Be(5);
+    }
+
+    // AHK v2 (Scripts.htm): "to have a line start with literal closing parenthesis, precede it
+    // with an accent/backtick: `)". An escaped one is literal text and must not end the section.
+    [Fact]
+    public void EscapedClosingParenthesis_DoesNotEndTheContinuationSection()
+    {
+        int? line = RawHotkeyBodyScanner.FindInjectedDefinitionLine(
+            "Send(\"a\")\n(\n`)\n^a::Run(\"calc\")\n)");
+
+        line.Should().BeNull();
     }
 
     // --- Mutation guards: each proves a specific rule is doing real work -------------------
@@ -175,6 +225,27 @@ public sealed class RawHotkeyBodyScannerTests
     {
         int? line = RawHotkeyBodyScanner.FindInjectedDefinitionLine(
             "return\n/*\ncomment */\n^a::Run(\"calc\")");
+
+        line.Should().Be(4);
+    }
+
+    // AHK v2 (Language.htm): "Excluding tabs and spaces, /* must appear at the start of the line,
+    // while */ can appear only at the start or end of a line." Fails if only the trailing closer
+    // is recognized, which would leave every later line hidden inside the comment.
+    [Fact]
+    public void BlockCommentClosedByLeadingCloser_StillDetectsDefinitionAfter()
+    {
+        int? line = RawHotkeyBodyScanner.FindInjectedDefinitionLine(
+            "return\n/*\ncomment\n*/ ; close\n^a::Run(\"calc\")");
+
+        line.Should().Be(5);
+    }
+
+    [Fact]
+    public void DefinitionOnTheSameLineAsALeadingCloser_IsDetected()
+    {
+        int? line = RawHotkeyBodyScanner.FindInjectedDefinitionLine(
+            "return\n/*\ncomment\n*/ ^a::Run(\"calc\")");
 
         line.Should().Be(4);
     }

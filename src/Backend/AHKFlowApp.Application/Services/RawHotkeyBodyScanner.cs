@@ -20,9 +20,16 @@ namespace AHKFlowApp.Application.Services;
 internal static partial class RawHotkeyBodyScanner
 {
     // Prefix/modifier symbols, then a key name (letters/digits/underscore, i.e. named keys and
-    // vk/sc codes) or one punctuation key, then an optional "& Key" custom combination, then an
-    // optional "Up" suffix, then "::". Leading indentation is ignored (AHK ignores it too).
-    [GeneratedRegex(@"^[ \t]*[~*$!^+#<>]*(?:[A-Za-z0-9_]+|[\[\];',./\\`=\-:<>])(?:[ \t]*&[ \t]*[~*$!^+#<>]*(?:[A-Za-z0-9_]+|[\[\];',./\\`=\-:<>]))?(?:[ \t]+[Uu][Pp])?[ \t]*::")]
+    // vk/sc codes) or one single-character key, then an optional "& Key" custom combination, then
+    // an optional "Up" suffix, then "::". Leading indentation is ignored (AHK ignores it too).
+    //
+    // The single-character branch is any non-whitespace character, not a fixed punctuation list:
+    // AHK v2 (KeyList.htm, "Keyboard") says "any single character can be used as a key name", so a
+    // symbol or a non-ASCII letter such as "é" is a real key. Matching too widely only costs a
+    // rejected body, and a line carrying "::" outside a string or a comment is not valid AHK v2
+    // code in the first place — the multi-character branch is tried first, so "a & b::" still
+    // parses as a custom combination rather than eating the "&".
+    [GeneratedRegex(@"^[ \t]*[~*$!^+#<>]*(?:[A-Za-z0-9_]+|\S)(?:[ \t]*&[ \t]*[~*$!^+#<>]*(?:[A-Za-z0-9_]+|\S))?(?:[ \t]+[Uu][Pp])?[ \t]*::")]
     private static partial Regex HotkeyDefinitionLine();
 
     /// <summary>
@@ -45,13 +52,23 @@ internal static partial class RawHotkeyBodyScanner
 
             if (inContinuation)
             {
-                if (line.Trim() == ")")
+                // AHK v2 (Scripts.htm): the section ends at the first line whose first non-blank
+                // character is ")", and "any code after the closing parenthesis is also joined
+                // with the other lines" — so the closing line is not required to be ")" alone.
+                // A literal closing parenthesis is written "`)" and correctly fails this test.
+                // The rest of the closing line belongs to the continued expression, never to a new
+                // top-level definition, so it is neither scanned nor brace-counted.
+                if (line.TrimStart().StartsWith(')'))
                     inContinuation = false;
                 continue;
             }
 
             (string code, bool stillInBlockComment) = StripCommentsAndStrings(line, inBlockComment);
-            bool wasCandidate = i > 0 && depth == 0 && !inBlockComment;
+
+            // No "not in a block comment" term: a line that lies wholly inside a block comment
+            // strips to empty code and is filtered by the length test below, while a line that
+            // closes the comment and then carries real code must stay a candidate.
+            bool wasCandidate = i > 0 && depth == 0;
             inBlockComment = stillInBlockComment;
 
             if (wasCandidate && code.TrimStart().Length > 0)
@@ -84,14 +101,19 @@ internal static partial class RawHotkeyBodyScanner
     {
         if (startedInBlockComment)
         {
-            // AHK v2 (Language.htm): "*/" closes a block comment when it appears at the start or
-            // the end of a line — not only when the whole trimmed line is "*/". A closer with real
-            // code on both sides (neither start nor end) does not close it (the documented
-            // "Common mistake" example). Only the at-the-end case is implemented: any text before
-            // the closer on this line is still comment content, so the line's own code is empty
-            // either way. A closer at the start of the line, with code following it on that same
-            // line, is not detected — a deliberate, narrow gap in the safe direction (a missed
-            // rejection, not a false one), matching this scanner's error-toward-accepting stance.
+            // AHK v2 (Language.htm): "Excluding tabs and spaces, /* must appear at the start of
+            // the line, while */ can appear only at the start or end of a line." A closer with
+            // real code on both sides (neither start nor end) does not close it — the documented
+            // "Common mistake" example.
+            //
+            // Closer at the start: the comment ends there and the rest of the line is live code,
+            // so strip that remainder exactly as an ordinary line is stripped.
+            string leading = line.TrimStart();
+            if (leading.StartsWith("*/", StringComparison.Ordinal))
+                return StripCommentsAndStrings(leading[2..], startedInBlockComment: false);
+
+            // Closer at the end: every character before it is still comment content, so this
+            // line contributes no code either way.
             return line.TrimEnd().EndsWith("*/", StringComparison.Ordinal) ? ("", false) : ("", true);
         }
 
