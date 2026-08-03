@@ -111,7 +111,24 @@
                                    reader ignores anything named there. MudTooltip puts
                                    UserAttributes on its own root div, and that root is what
                                    handles focusin — tabindex="0" makes the plain div focusable,
-                                   so a keyboard user can reveal the text. *@
+                                   so a keyboard user can reveal the text.
+
+                                   aria-label and Text carry the same sentence on purpose. MudTooltip
+                                   9.3.0 sets no aria-describedby and no role="tooltip", so the
+                                   tooltip text is never announced as a second name. The sentence is
+                                   read once, as the element's name.
+
+                                   tabindex="0" stays even though this element is not interactive.
+                                   The grid has no notice line of its own, unlike the mobile panel,
+                                   so the tooltip is the only way a sighted keyboard user can read
+                                   the sentence. The cost is one extra tab stop on marked rows, and
+                                   it lands in the tab sequence for screen reader users too.
+
+                                   One MudPopover is created per marked row, and each one costs a
+                                   holder, a div, and a JS connection even while closed. Only the
+                                   text itself waits until the popover opens. This is accepted
+                                   because a page shows at most 100 rows, and only rows matching
+                                   the catalog are marked. *@
                                 <MudTooltip Text="@notice"
                                             UserAttributes="@(new Dictionary<string, object?> {
                                                 ["data-test"] = "known-shortcut-marker",
