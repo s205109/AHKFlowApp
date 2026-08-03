@@ -300,4 +300,28 @@ public sealed class HotkeyMobileListTests : BunitContext, IAsyncLifetime
         cut.WaitForAssertion(() => cut.Find("tr.mobile-row-expanded").Should().NotBeNull());
         cut.FindAll("[data-test=\"known-shortcut-row\"]").Should().BeEmpty();
     }
+
+    [Fact]
+    public async Task ExpandedRow_WithAKnownShortcut_HidesTheMarkerFromScreenReaders()
+    {
+        IRenderedComponent<HotkeyMobileList> cut = Render<HotkeyMobileList>(p => p
+            .Add(c => c.Items, [Item("Open palette", "K", ctrl: true, shift: true)])
+            .Add(c => c.Profiles, (IReadOnlyList<ProfileDto>)[])
+            .Add(c => c.Categories, (IReadOnlyList<CategoryDto>)[])
+            .Add(c => c.ShortcutNotices, NoticeFor("Ctrl+Shift+K")));
+
+        // Collapsed, the icon is the only place the sentence lives, so it keeps its name.
+        cut.Find("[data-test=\"known-shortcut-marker\"]").GetAttribute("aria-hidden").Should().BeNull();
+
+        await cut.InvokeAsync(() => cut.Find("tr.mobile-row").Click());
+
+        // Expanded, the panel prints the same sentence as text. Two named copies would be read
+        // out twice, so the icon leaves the accessibility tree and stays as decoration.
+        cut.WaitForAssertion(() => cut
+            .Find("[data-test=\"known-shortcut-marker\"]")
+            .GetAttribute("aria-hidden")
+            .Should().Be("true"));
+
+        cut.Find("[data-test=\"known-shortcut-row\"]").TextContent.Should().Contain(Notice);
+    }
 }

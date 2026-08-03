@@ -36,9 +36,12 @@
                     {
                         <th class="checkbox-column"></th>
                     }
-                    <th>Combo</th>
-                    <th>Description</th>
-                    <th></th>
+                    @* table-layout: fixed reads column widths from this header row, not from the
+                       data rows below. These classes must match the td classes in each data row,
+                       so the width rules on .trigger-cell / .chevron-cell actually take effect. *@
+                    <th class="trigger-cell">Combo</th>
+                    <th class="replacement-cell">Description</th>
+                    <th class="chevron-cell"></th>
                 </tr>
             </thead>
             <tbody>
@@ -64,8 +67,17 @@
                                    tap-to-expand handler, and the text has its own line in the
                                    panel. So a plain wrapper carries the name and the test hook,
                                    and the icon stays decoration. No tabindex — there is nothing
-                                   to reveal on focus. *@
-                                <span role="img" aria-label="@notice" data-test="known-shortcut-marker">
+                                   to reveal on focus.
+
+                                   The expanded panel prints the same sentence as text, in its own
+                                   table row. Both rows are read one after the other, so a named
+                                   icon would make a screen reader say it twice. While the row is
+                                   expanded the icon leaves the accessibility tree and stays as a
+                                   visual marker. Blazor removes an attribute whose value is null,
+                                   so the collapsed row is untouched. *@
+                                <span role="img" aria-label="@notice"
+                                      aria-hidden="@(expanded ? "true" : null)"
+                                      data-test="known-shortcut-marker">
                                     <MudIcon Icon="@Icons.Material.Filled.Warning" Color="Color.Warning" Size="Size.Small" />
                                 </span>
                             }

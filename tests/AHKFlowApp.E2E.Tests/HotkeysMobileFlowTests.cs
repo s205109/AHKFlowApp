@@ -28,6 +28,13 @@ public sealed class HotkeysMobileFlowTests(StackFixture fixture) : IAsyncLifetim
         public int DocumentOverflow { get; init; }
     }
 
+    private sealed class CellMetrics
+    {
+        public int ScrollWidth { get; init; }
+
+        public int ClientWidth { get; init; }
+    }
+
     public Task InitializeAsync() =>
         fixture.ResetDataAsync();
 
@@ -122,6 +129,68 @@ public sealed class HotkeysMobileFlowTests(StackFixture fixture) : IAsyncLifetim
         await page.WaitForSelectorAsync("text=Deleted 2 hotkey");
     }
 
+    [Fact]
+    public async Task PhoneViewport_MarkedRowWithTheLongestCombo_KeepsTheTriggerCellInsideItsColumn()
+    {
+        await SeedMarkedHotkeyAsync(fixture, "Task manager row");
+
+        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(PhoneViewport);
+        IPage page = await ctx.NewPageAsync();
+
+        await page.GotoAsync($"{fixture.Spa.BaseUrl}/hotkeys");
+
+        ILocator row = page.Locator(
+            ".mobile-branch tr.mobile-row",
+            new() { HasTextString = "Task manager row" });
+        await row.WaitForAsync();
+
+        // The marker must be there. Without this, an empty cell would satisfy the width check.
+        await Assertions.Expect(row.Locator("[data-test=\"known-shortcut-marker\"]"))
+            .ToHaveCountAsync(1);
+
+        // scrollWidth over clientWidth means the content spills out of its own column. The column
+        // cannot grow, because the table is table-layout: fixed, so the spill lands on the
+        // description beside it.
+        CellMetrics metrics = await row.Locator("td.trigger-cell").EvaluateAsync<CellMetrics>(
+            "el => ({ ScrollWidth: el.scrollWidth, ClientWidth: el.clientWidth })");
+
+        Assert.True(
+            metrics.ScrollWidth <= metrics.ClientWidth,
+            $"Trigger cell overflowed its column by {metrics.ScrollWidth - metrics.ClientWidth}px "
+            + $"(scrollWidth {metrics.ScrollWidth}, clientWidth {metrics.ClientWidth}).");
+    }
+
+    [Fact]
+    public async Task PhoneViewport_UnmarkedRowWithALongCombo_ShowsTheWholeCombination()
+    {
+        await SeedLongComboHotkeyAsync(fixture, "Long combo row");
+
+        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(PhoneViewport);
+        IPage page = await ctx.NewPageAsync();
+
+        await page.GotoAsync($"{fixture.Spa.BaseUrl}/hotkeys");
+
+        ILocator row = page.Locator(
+            ".mobile-branch tr.mobile-row",
+            new() { HasTextString = "Long combo row" });
+        await row.WaitForAsync();
+
+        // This combination is not in the known-shortcut catalog, so the row carries no marker.
+        // Without this the test would silently become a second copy of the marked-row test.
+        await Assertions.Expect(row.Locator("[data-test=\"known-shortcut-marker\"]"))
+            .ToHaveCountAsync(0);
+
+        // The combination is the row's identity, and the expanded panel does not repeat it. So it
+        // must never be cut off. scrollWidth over clientWidth means part of it is hidden.
+        CellMetrics metrics = await row.Locator("td.trigger-cell").EvaluateAsync<CellMetrics>(
+            "el => ({ ScrollWidth: el.scrollWidth, ClientWidth: el.clientWidth })");
+
+        Assert.True(
+            metrics.ScrollWidth <= metrics.ClientWidth,
+            $"Trigger cell hid {metrics.ScrollWidth - metrics.ClientWidth}px of the combination "
+            + $"(scrollWidth {metrics.ScrollWidth}, clientWidth {metrics.ClientWidth}).");
+    }
+
     private static async Task SeedHotkeysAsync(StackFixture fixture, params (string Description, string Key)[] hotkeys)
     {
         await using AsyncServiceScope scope = fixture.Api.Services.CreateAsyncScope();
@@ -149,6 +218,46 @@ public sealed class HotkeysMobileFlowTests(StackFixture fixture) : IAsyncLifetim
             .WithDescription(description)
             .WithKey(key)
             .WithRun(target)
+            .Build());
+
+        await db.SaveChangesAsync();
+    }
+
+    // Ctrl+Shift+Escape is the longest combination in the known-shortcut catalog, so this row
+    // makes the widest trigger cell that can ever carry a marker.
+    private static async Task SeedMarkedHotkeyAsync(StackFixture fixture, string description)
+    {
+        await using AsyncServiceScope scope = fixture.Api.Services.CreateAsyncScope();
+        AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        db.Hotkeys.Add(new HotkeyBuilder()
+            .WithOwner(TestAuthHandler.TestOwnerOid)
+            .WithDescription(description)
+            .WithKey("Escape")
+            .WithCtrl()
+            .WithShift()
+            .WithRun("notepad.exe")
+            .Build());
+
+        await db.SaveChangesAsync();
+    }
+
+    // Four modifiers plus the longest key name in the registry. No catalog entry matches it, so the
+    // row is unmarked. This is the widest combination a user can realistically enter.
+    private static async Task SeedLongComboHotkeyAsync(StackFixture fixture, string description)
+    {
+        await using AsyncServiceScope scope = fixture.Api.Services.CreateAsyncScope();
+        AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        db.Hotkeys.Add(new HotkeyBuilder()
+            .WithOwner(TestAuthHandler.TestOwnerOid)
+            .WithDescription(description)
+            .WithKey("PrintScreen")
+            .WithCtrl()
+            .WithAlt()
+            .WithShift()
+            .WithWin()
+            .WithRun("notepad.exe")
             .Build());
 
         await db.SaveChangesAsync();
