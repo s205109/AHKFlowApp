@@ -160,6 +160,37 @@ public sealed class HotkeysMobileFlowTests(StackFixture fixture) : IAsyncLifetim
             + $"(scrollWidth {metrics.ScrollWidth}, clientWidth {metrics.ClientWidth}).");
     }
 
+    [Fact]
+    public async Task PhoneViewport_UnmarkedRowWithALongCombo_ShowsTheWholeCombination()
+    {
+        await SeedLongComboHotkeyAsync(fixture, "Long combo row");
+
+        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(PhoneViewport);
+        IPage page = await ctx.NewPageAsync();
+
+        await page.GotoAsync($"{fixture.Spa.BaseUrl}/hotkeys");
+
+        ILocator row = page.Locator(
+            ".mobile-branch tr.mobile-row",
+            new() { HasTextString = "Long combo row" });
+        await row.WaitForAsync();
+
+        // This combination is not in the known-shortcut catalog, so the row carries no marker.
+        // Without this the test would silently become a second copy of the marked-row test.
+        await Assertions.Expect(row.Locator("[data-test=\"known-shortcut-marker\"]"))
+            .ToHaveCountAsync(0);
+
+        // The combination is the row's identity, and the expanded panel does not repeat it. So it
+        // must never be cut off. scrollWidth over clientWidth means part of it is hidden.
+        CellMetrics metrics = await row.Locator("td.trigger-cell").EvaluateAsync<CellMetrics>(
+            "el => ({ ScrollWidth: el.scrollWidth, ClientWidth: el.clientWidth })");
+
+        Assert.True(
+            metrics.ScrollWidth <= metrics.ClientWidth,
+            $"Trigger cell hid {metrics.ScrollWidth - metrics.ClientWidth}px of the combination "
+            + $"(scrollWidth {metrics.ScrollWidth}, clientWidth {metrics.ClientWidth}).");
+    }
+
     private static async Task SeedHotkeysAsync(StackFixture fixture, params (string Description, string Key)[] hotkeys)
     {
         await using AsyncServiceScope scope = fixture.Api.Services.CreateAsyncScope();
@@ -205,6 +236,27 @@ public sealed class HotkeysMobileFlowTests(StackFixture fixture) : IAsyncLifetim
             .WithKey("Escape")
             .WithCtrl()
             .WithShift()
+            .WithRun("notepad.exe")
+            .Build());
+
+        await db.SaveChangesAsync();
+    }
+
+    // Four modifiers plus the longest key name in the registry. No catalog entry matches it, so the
+    // row is unmarked. This is the widest combination a user can realistically enter.
+    private static async Task SeedLongComboHotkeyAsync(StackFixture fixture, string description)
+    {
+        await using AsyncServiceScope scope = fixture.Api.Services.CreateAsyncScope();
+        AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        db.Hotkeys.Add(new HotkeyBuilder()
+            .WithOwner(TestAuthHandler.TestOwnerOid)
+            .WithDescription(description)
+            .WithKey("PrintScreen")
+            .WithCtrl()
+            .WithAlt()
+            .WithShift()
+            .WithWin()
             .WithRun("notepad.exe")
             .Build());
 

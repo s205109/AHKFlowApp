@@ -31,14 +31,20 @@
 }
 
 /* The table is table-layout: fixed, so this column never grows to fit its content. This column is
-   sized to 51% so the longest marked combination fits. The description takes the rest of the row's
-   width and truncates with its own ellipsis. Anything in this column still too long for 51% clips
-   with an ellipsis here too. */
+   sized to 51%, which holds the longest marked combination on one line on most phones. The
+   description takes the rest of the row's width and truncates with its own ellipsis.
+
+   The combination is never truncated. It is the row's identity, and the expanded panel does not
+   repeat it, so a cut-off combination cannot be read at all. A combination too long for 51% wraps
+   to a second line instead, which makes the row taller than its neighbours. overflow-wrap: anywhere
+   lets the break fall between any two characters, because a combination has no spaces.
+
+   Wrapping also keeps the layout stable across platforms. Font metrics differ between Windows and
+   the Linux CI runner, so a width tuned to fit exactly on one machine overflows on the other. */
 .mobile-list .trigger-cell {
     width: 51%;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
     overflow: hidden;
-    text-overflow: ellipsis;
 }
 
 .mobile-list .replacement-cell {
