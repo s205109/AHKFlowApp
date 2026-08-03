@@ -349,6 +349,10 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
             [HotkeyEditModel.FromDto(a), HotkeyEditModel.FromDto(b)]));
 
         cut.WaitForAssertion(() => cut.Find("button.bulk-delete-hotkeys"));
+
+        // An empty page is what the next load returns once both rows are gone.
+        StubList(Page());
+
         cut.Find("button.bulk-delete-hotkeys").Click();
 
         cut.WaitForAssertion(() => _api.Received(1).BulkDeleteAsync(
@@ -357,9 +361,16 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
                 ids.Contains(aId) &&
                 ids.Contains(bId)),
             Arg.Any<CancellationToken>()));
-        cut.WaitForAssertion(() => _api.Received().ListAsync(
-            Arg.Any<HotkeyListRequest>(),
-            Arg.Any<CancellationToken>()));
+
+        // Scoped to the branch: the desktop grid and the mobile list both render, and only the
+        // mobile one is at risk here. Naming rows that must be gone cannot pass from the initial
+        // load, unlike a bare Received() on ListAsync.
+        cut.WaitForAssertion(() =>
+        {
+            string mobile = cut.Find(".mobile-branch").TextContent;
+            mobile.Should().NotContain("desc-a");
+            mobile.Should().NotContain("desc-b");
+        });
     }
 
     [Fact]
@@ -427,6 +438,27 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
 
         cut.WaitForAssertion(() => _api.Received(1).UpdateAsync(dto.Id,
             Arg.Is<UpdateHotkeyDto>(d => d.Key == "F1"), Arg.Any<CancellationToken>()));
+    }
+
+    [Fact]
+    public void Page_CommitInlineEdit_RefreshesTheMobileBranch()
+    {
+        HotkeyDto dto = MakeHotkey("Open terminal", "T");
+        _api.UpdateAsync(dto.Id, Arg.Any<UpdateHotkeyDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotkeyDto>.Ok(dto with { Description = "Renamed" }));
+
+        IRenderedComponent<Hotkeys> cut = StartInlineEdit(dto);
+
+        cut.Find("input[data-test=\"description-input\"]").Input("Renamed");
+
+        // Both branches read the same endpoint, so this is what a real reload brings back.
+        StubList(Page(dto with { Description = "Renamed" }));
+
+        cut.Find("button.commit-edit").Click();
+
+        // Both branches render at once, so the assertion names the branch it is about.
+        cut.WaitForAssertion(() =>
+            cut.Find(".mobile-branch").TextContent.Should().Contain("Renamed"));
     }
 
     [Fact]

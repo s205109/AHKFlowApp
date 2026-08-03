@@ -532,10 +532,10 @@
         {
             _editingItem = null;
             Snackbar.Add("Hotkey updated.", Severity.Success);
-            ClearListCache();
 
-            if (_grid is not null)
-                await _grid.ReloadServerData();
+            // Both branches are in the DOM at once, so reloading the grid alone leaves the mobile
+            // list stale. ReloadAllAsync clears the cache itself, so no separate call is needed.
+            await ReloadAllAsync();
         }
         else Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
     }
@@ -617,10 +617,9 @@
                 : $"Deleted {deleted} hotkey(s).";
             Snackbar.Add(message, Severity.Success);
             _selected = [];
-            ClearListCache();
 
-            if (_grid is not null)
-                await _grid.ReloadServerData();
+            // Same reason as CommitEditAsync: the mobile branch would keep the deleted rows.
+            await ReloadAllAsync();
         }
         else
         {
