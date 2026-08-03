@@ -1,5 +1,6 @@
 using AHKFlowApp.Application.Constants;
 using AHKFlowApp.Application.DTOs;
+using AHKFlowApp.Application.Services;
 using AHKFlowApp.Domain.Enums;
 using FluentValidation;
 
@@ -104,6 +105,11 @@ internal static class HotkeyRules
                         ctx.AddFailure("Body", "Raw body braces are unbalanced.");
                     else if (HasDirectiveLine(d.Body))
                         ctx.AddFailure("Body", "Raw body must not contain a # directive.");
+                    else if (RawHotkeyBodyScanner.FindInjectedDefinitionLine(d.Body) is int line)
+                        ctx.AddFailure("Body",
+                            "The action body must not define another hotkey or hotstring. "
+                          + $"Line {line} starts a new definition. "
+                          + "Create that definition as a separate hotkey or hotstring.");
                     else
                         ValidateFreeText(d.Body, "Body", ctx);
                     break;

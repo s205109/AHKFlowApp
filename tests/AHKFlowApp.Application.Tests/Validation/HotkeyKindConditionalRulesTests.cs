@@ -222,6 +222,45 @@ public sealed class HotkeyKindConditionalRulesTests
     public void Raw_IndentedHashDirective_IsInvalid() =>
         Validate(Base(HotkeyActionKind.Raw) with { Body = "{\n    #Requires AutoHotkey v2\n}" }).IsValid.Should().BeFalse();
 
+    // Backlog 037: a second line that opens a new top-level hotkey definition (the ADR-0004
+    // example) is rejected, and the failure lands on Body.
+    [Fact]
+    public void Raw_BodyInjectsAnotherHotkeyDefinition_IsInvalid()
+    {
+        ValidationResult result = Validate(
+            Base(HotkeyActionKind.Raw) with { Body = "return\n^a::Run(\"calc\")" });
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().ContainSingle().Which.PropertyName.Should().Be("Body");
+    }
+
+    [Fact]
+    public void Raw_BodyInjectsAHotstringDefinition_IsInvalid()
+    {
+        ValidationResult result = Validate(
+            Base(HotkeyActionKind.Raw) with { Body = "return\n::btw::by the way" });
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().ContainSingle().Which.PropertyName.Should().Be("Body");
+    }
+
+    [Fact]
+    public void Raw_BodyInjectsAnotherDefinition_ErrorNamesTheLine() =>
+        Validate(Base(HotkeyActionKind.Raw) with { Body = "return\n^a::Run(\"calc\")" })
+            .Errors.Should().ContainSingle().Which.ErrorMessage.Should().Contain("Line 2");
+
+    // A directive line is still caught by the existing directive rule first, not this one — the
+    // Body case would otherwise get whichever message the else-if chain lands on second.
+    [Fact]
+    public void Raw_HashDirective_ReportsDirectiveMessage_NotInjectedDefinitionMessage() =>
+        Validate(Base(HotkeyActionKind.Raw) with { Body = "#SingleInstance Force" })
+            .Errors.Should().ContainSingle().Which.ErrorMessage.Should().Contain("directive");
+
+    [Fact]
+    public void Raw_ValidMultiLineBraceBody_IsStillValid() =>
+        Validate(Base(HotkeyActionKind.Raw) with { Body = "{\n    x := 1\n    MsgBox(x)\n}" })
+            .IsValid.Should().BeTrue();
+
     // Enum.IsDefined is the whole Window gate, so new WindowOp values need no validator change.
     // Pinned so a future "allowed ops" list cannot silently drop snap.
     [Theory]
