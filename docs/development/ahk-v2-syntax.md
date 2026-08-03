@@ -404,11 +404,16 @@ one-true-brace form:
 ```
 
 Validation checks shape only — non-empty, balanced `{`/`}`, no line starting with a `#` directive, no
-stray control characters. It does not check that the body is valid AutoHotkey, and the brace count is
-as naive as the hotstring one (see *Known limitations*). AHK parses the whole file at load, so a
-mistake here aborts the **entire** generated profile, not just this binding. Verbatim emission is
-also what keeps legacy `Send` rows migrated onto `Raw` byte-identical to what the app emitted before
-the typed actions landed.
+stray control characters, and no line that opens a new top-level hotkey or hotstring definition
+(`RawHotkeyBodyScanner`, backlog 037). It does not check that the body is valid AutoHotkey otherwise,
+and the brace count `HotkeyRules.BracesBalanced` uses is as naive as the hotstring one (see *Known
+limitations*). `RawHotkeyBodyScanner` cannot reuse that naive count: a naive count reads a brace
+inside a line comment or a string as real, which would either hide an injected definition
+(`; {` on one line, the injection on the next) or reject a genuinely balanced body. It keeps its own
+depth from code only — braces inside a string, a line comment, or a block comment (`/* ... */`) do
+not count. AHK parses the whole file at load, so a mistake here aborts the **entire** generated
+profile, not just this binding. Verbatim emission is also what keeps legacy `Send` rows migrated onto
+`Raw` byte-identical to what the app emitted before the typed actions landed.
 
 #### Why `SendText` and `SendKeys` are separate
 
