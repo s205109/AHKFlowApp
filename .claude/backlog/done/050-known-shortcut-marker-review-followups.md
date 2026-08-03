@@ -29,9 +29,9 @@ need no work at all.
       longest combination in the catalog. Measured `scrollWidth` 167 against `clientWidth` 167 (fits
       exactly after the fix). A CSS-only fix on `.trigger-cell` alone did not work, because
       `table-layout: fixed` sizes columns from the header row, not the data row. The fix widens
-      `.trigger-cell` to 51% and adds matching `trigger-cell`, `replacement-cell`, and `chevron-cell`
-      classes to the three header `<th>` cells in `HotkeyMobileList.razor`, which the original plan
-      did not call for.
+      `.trigger-cell` to 51%. It also adds matching `trigger-cell`, `replacement-cell`, and
+      `chevron-cell` classes to the three header `<th>` cells in `HotkeyMobileList.razor`. The
+      original plan did not call for the header-row classes.
       Guarded by
       `HotkeysMobileFlowTests.PhoneViewport_MarkedRowWithTheLongestCombo_KeepsTheTriggerCellInsideItsColumn`
 - [x] A desktop edit or bulk delete now refreshes the mobile branch. `CommitEditAsync` and
