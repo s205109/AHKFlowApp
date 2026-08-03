@@ -64,6 +64,26 @@ public sealed class HotkeyPreviewEndpointsTests(ApiTestFixture fixture)
         doc.RootElement.GetProperty("errors").TryGetProperty("WindowOp", out _).Should().BeTrue();
     }
 
+    // Backlog 037: a Raw body that injects a second top-level definition must not reach the
+    // emitter — the preview validator is one of three callers of AddHotkeyActionRules and needs
+    // its own coverage. This is the response body the dialog's preview panel reads to show its
+    // "Fix the highlighted fields..." message (backlog 051: the per-field inline highlight this
+    // response feeds does not render, pre-existing and unrelated to this validator).
+    [Fact]
+    public async Task Preview_RawBodyInjectsAnotherDefinition_Returns400NotServerError()
+    {
+        using HttpClient client = CreateAuthed();
+        var dto = new HotkeyPreviewRequestDto(
+            "Bad raw", "j", HotkeyActionKind.Raw, Body: "return\n^a::Run(\"calc\")");
+
+        HttpResponseMessage response = await client.PostAsJsonAsync("/api/v1/hotkeys/preview", dto);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        doc.RootElement.GetProperty("title").GetString().Should().Be("Validation failed");
+        doc.RootElement.GetProperty("errors").TryGetProperty("Body", out _).Should().BeTrue();
+    }
+
     [Fact]
     public async Task Preview_MalformedInput_MatchesCreateEndpointErrorMessage()
     {

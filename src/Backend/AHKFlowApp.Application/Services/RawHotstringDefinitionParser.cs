@@ -94,6 +94,21 @@ internal static partial class RawHotstringDefinitionParser
     public static string Normalize(string rawDefinition) => Prepare(rawDefinition).NormalizedDefinition;
 
     /// <summary>
+    /// Whether <paramref name="line"/> is a <c>:options:trigger::</c> hotstring definition line.
+    /// Shared with <see cref="RawHotkeyBodyScanner"/> so the two parsers use one definition of
+    /// this shape rather than risking drift between two copies of the same regex.
+    /// </summary>
+    public static bool IsDefinitionLine(string line) => HotstringLine().IsMatch(line);
+
+    /// <summary>
+    /// Whether <paramref name="line"/> opens an AHK v2 continuation section — first non-blank
+    /// character <c>(</c>, and not reinterpreted as an expression per <see cref="OpenerIsExpression"/>.
+    /// Shared with <see cref="RawHotkeyBodyScanner"/>, which needs the same test standalone.
+    /// </summary>
+    public static bool IsContinuationOpener(string line) =>
+        line.TrimStart().StartsWith('(') && !OpenerIsExpression(line);
+
+    /// <summary>
     /// One authoritative preparation pass for a pasted Raw definition: lift leading <c>;</c>
     /// comment lines into <see cref="RawPrepared.LiftedComment"/>, body-aware normalize the
     /// remainder, and parse it — so validation, save, and preview never disagree.
@@ -292,7 +307,9 @@ internal static partial class RawHotstringDefinitionParser
     // option's parameter) makes AHK read the line as an expression, not an opener (Scripts.htm).
     private static BodyClassification ClassifyContinuation(string[] lines, int openerIdx)
     {
-        if (OpenerIsExpression(lines[openerIdx]))
+        // Caller already confirmed the line starts with '(', so a failed IsContinuationOpener
+        // here means OpenerIsExpression, not "no leading '('".
+        if (!IsContinuationOpener(lines[openerIdx]))
             return new(false, OpenerIsExpressionError, RawBodyKind.None, 0, -1, -1);
 
         int closeIdx = -1;

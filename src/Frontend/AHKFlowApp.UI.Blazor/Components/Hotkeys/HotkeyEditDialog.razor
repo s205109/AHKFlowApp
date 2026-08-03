@@ -175,7 +175,7 @@
                                           DebounceInterval="300"
                                           Error="@(FieldError(nameof(HotkeyEditModel.Body)) is not null)"
                                           ErrorText="@FieldError(nameof(HotkeyEditModel.Body))"
-                                          HelperText="Emitted verbatim after ::. Include your own { } for a block body. Braces must balance; # directives are rejected."
+                                          HelperText="Emitted verbatim after ::. Include your own { } for a block body. Braces must balance; # directives and lines that define another hotkey or hotstring are rejected."
                                           UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "raw-body-input" })" />
                         </div>
                     </div>

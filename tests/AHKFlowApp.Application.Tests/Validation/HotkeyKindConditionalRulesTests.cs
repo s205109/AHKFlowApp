@@ -222,6 +222,54 @@ public sealed class HotkeyKindConditionalRulesTests
     public void Raw_IndentedHashDirective_IsInvalid() =>
         Validate(Base(HotkeyActionKind.Raw) with { Body = "{\n    #Requires AutoHotkey v2\n}" }).IsValid.Should().BeFalse();
 
+    // Backlog 037: a second line that opens a new top-level hotkey definition (the ADR-0004
+    // example) is rejected, and the failure lands on Body.
+    [Fact]
+    public void Raw_BodyInjectsAnotherHotkeyDefinition_IsInvalid()
+    {
+        ValidationResult result = Validate(
+            Base(HotkeyActionKind.Raw) with { Body = "return\n^a::Run(\"calc\")" });
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().ContainSingle().Which.PropertyName.Should().Be("Body");
+    }
+
+    [Fact]
+    public void Raw_BodyInjectsAHotstringDefinition_IsInvalid()
+    {
+        ValidationResult result = Validate(
+            Base(HotkeyActionKind.Raw) with { Body = "return\n::btw::by the way" });
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().ContainSingle().Which.PropertyName.Should().Be("Body");
+    }
+
+    [Fact]
+    public void Raw_BodyInjectsAnotherDefinition_ErrorNamesTheLine() =>
+        Validate(Base(HotkeyActionKind.Raw) with { Body = "return\n^a::Run(\"calc\")" })
+            .Errors.Should().ContainSingle().Which.ErrorMessage.Should().Contain("Line 2");
+
+    // A directive that is not shaped like a hotkey definition (no "::") still gets the directive
+    // message — the scanner's regex cannot match it, so it falls through regardless of order.
+    [Fact]
+    public void Raw_HashDirective_ReportsDirectiveMessage_NotInjectedDefinitionMessage() =>
+        Validate(Base(HotkeyActionKind.Raw) with { Body = "#SingleInstance Force" })
+            .Errors.Should().ContainSingle().Which.ErrorMessage.Should().Contain("directive");
+
+    // "#" is both the directive prefix and the Win modifier symbol, so "#a::Run(...)" is a
+    // genuine injected hotkey definition, not merely a directive-shaped string. The scanner runs
+    // before the directive check so this case gets the more accurate, line-numbered message —
+    // the acceptance criterion promises the message names the line, with no carve-out for "#".
+    [Fact]
+    public void Raw_BodyInjectsWinModifierHotkey_ReportsInjectedDefinitionMessage_NotDirective() =>
+        Validate(Base(HotkeyActionKind.Raw) with { Body = "return\n#a::Run(\"calc\")" })
+            .Errors.Should().ContainSingle().Which.ErrorMessage.Should().Contain("Line 2");
+
+    [Fact]
+    public void Raw_ValidMultiLineBraceBody_IsStillValid() =>
+        Validate(Base(HotkeyActionKind.Raw) with { Body = "{\n    x := 1\n    MsgBox(x)\n}" })
+            .IsValid.Should().BeTrue();
+
     // Enum.IsDefined is the whole Window gate, so new WindowOp values need no validator change.
     // Pinned so a future "allowed ops" list cannot silently drop snap.
     [Theory]

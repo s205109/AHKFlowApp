@@ -102,6 +102,44 @@ public sealed class HotkeysEndpointsTests(ApiTestFixture fixture)
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
+    // Backlog 037: a Raw body that injects a second top-level definition (the ADR-0004 example)
+    // must never be persisted, so create and update both reject it.
+    [Fact]
+    public async Task Post_RawBodyInjectsAnotherDefinition_Returns400WithBodyError()
+    {
+        using HttpClient client = CreateAuthed();
+        var dto = new CreateHotkeyDto("Bad raw", "j", HotkeyActionKind.Raw,
+            Ctrl: true, Body: "return\n^a::Run(\"calc\")", AppliesToAllProfiles: true);
+
+        HttpResponseMessage response = await client.PostAsJsonAsync("/api/v1/hotkeys", dto);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        doc.RootElement.GetProperty("errors").TryGetProperty("Body", out _).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Put_RawBodyInjectsAnotherDefinition_Returns400WithBodyError()
+    {
+        using HttpClient client = CreateAuthed();
+        HttpResponseMessage created = await client.PostAsJsonAsync("/api/v1/hotkeys",
+            new CreateHotkeyDto("Good raw", "j", HotkeyActionKind.Raw,
+                Ctrl: true, Body: "MsgBox 1", AppliesToAllProfiles: true));
+        HotkeyDto before = (await created.Content.ReadFromJsonAsync<HotkeyDto>())!;
+
+        HttpResponseMessage put = await client.PutAsJsonAsync(
+            $"/api/v1/hotkeys/{before.Id}",
+            new UpdateHotkeyDto("Good raw", "j", HotkeyActionKind.Raw,
+                Ctrl: true, Alt: false, Shift: false, Win: false,
+                Text: null, SendKeysContent: null, RunTarget: null, RunTargetKind: null,
+                WindowOp: null, RemapDest: null, Body: "return\n^a::Run(\"calc\")",
+                ProfileIds: null, AppliesToAllProfiles: true));
+
+        put.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        using var doc = JsonDocument.Parse(await put.Content.ReadAsStringAsync());
+        doc.RootElement.GetProperty("errors").TryGetProperty("Body", out _).Should().BeTrue();
+    }
+
     [Fact]
     public async Task Post_DuplicateKeyModifiers_Returns409_WithProblemDetails()
     {
