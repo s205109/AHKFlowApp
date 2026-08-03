@@ -108,6 +108,12 @@ public sealed class HotkeysCrudFlowTests(StackFixture fixture) : IAsyncLifetime
     // the preview can generate. The preview panel's blocked message only appears while it is
     // expanded (HotkeyEditDialog.razor:613-616), so the flow opens it before typing the body.
     //
+    // The flow goes through a VALID body first and waits for the generated snippet. An empty Raw
+    // body is itself invalid ("Raw requires an action body.", HotkeyRules.cs:102-103), so asserting
+    // the blocked message straight after typing would also pass while that first error was still
+    // on screen — the body field debounces for 300 ms (HotkeyEditDialog.razor:175). Proving the
+    // snippet rendered first means the blocked message can only come from the injected definition.
+    //
     // This does NOT assert the field-level highlight on the Body textarea itself — that binding is
     // broken for every Raw rule today, not just this one (backlog 051, found while writing this
     // test). Only the panel-level message is asserted, because that is the part that actually works.
@@ -129,12 +135,22 @@ public sealed class HotkeysCrudFlowTests(StackFixture fixture) : IAsyncLifetime
         await page.ClickAsync(".hotkey-edit-dialog [data-test=\"action-kind-Raw\"]");
         await page.ClickAsync(".hotkey-edit-dialog [data-test=\"ahk-preview\"] .mud-expand-panel-header");
 
+        // A one-line body the guard accepts — the preview must generate before anything is blocked.
+        await page.FillAsync(".hotkey-edit-dialog textarea[data-test=\"raw-body-input\"]", "return");
+        await Assertions.Expect(page.Locator(".hotkey-edit-dialog [data-test=\"preview-snippet\"]"))
+            .ToContainTextAsync("j::return");
+        await Assertions.Expect(page.Locator(".hotkey-edit-dialog [data-test=\"preview-blocked\"]"))
+            .ToHaveCountAsync(0);
+
+        // Same body plus an injected second definition — now the preview must be blocked.
         await page.FillAsync(
             ".hotkey-edit-dialog textarea[data-test=\"raw-body-input\"]",
             "return\n^a::Run(\"calc\")");
 
         await Assertions.Expect(page.Locator(".hotkey-edit-dialog [data-test=\"preview-blocked\"]"))
             .ToContainTextAsync("Fix the highlighted fields to see the generated code.");
+        await Assertions.Expect(page.Locator(".hotkey-edit-dialog [data-test=\"preview-snippet\"]"))
+            .ToHaveCountAsync(0);
     }
 
     // Fills a MudAutocomplete key picker and commits the typed value by blurring (CoerceValue).
