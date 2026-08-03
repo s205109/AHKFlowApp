@@ -36,9 +36,12 @@
                     {
                         <th class="checkbox-column"></th>
                     }
-                    <th>Combo</th>
-                    <th>Description</th>
-                    <th></th>
+                    @* table-layout: fixed reads column widths from this header row, not from the
+                       data rows below. These classes must match the td classes in each data row,
+                       so the width rules on .trigger-cell / .chevron-cell actually take effect. *@
+                    <th class="trigger-cell">Combo</th>
+                    <th class="replacement-cell">Description</th>
+                    <th class="chevron-cell"></th>
                 </tr>
             </thead>
             <tbody>

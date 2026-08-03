@@ -30,9 +30,13 @@
     vertical-align: middle;
 }
 
+/* The table is table-layout: fixed, so this column never grows to fit its content. A combination
+   that is too long would spill over the description beside it, so the cell clips instead. The
+   description already truncates with an ellipsis, so it is the one that gives way. */
 .mobile-list .trigger-cell {
-    width: 30%;
+    width: 51%;
     white-space: nowrap;
+    overflow: hidden;
 }
 
 .mobile-list .replacement-cell {
