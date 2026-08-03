@@ -84,8 +84,15 @@ internal static partial class RawHotkeyBodyScanner
     {
         if (startedInBlockComment)
         {
-            // A block comment closes only on a line whose trimmed text is exactly "*/".
-            return line.Trim() == "*/" ? ("", false) : ("", true);
+            // AHK v2 (Language.htm): "*/" closes a block comment when it appears at the start or
+            // the end of a line — not only when the whole trimmed line is "*/". A closer with real
+            // code on both sides (neither start nor end) does not close it (the documented
+            // "Common mistake" example). Only the at-the-end case is implemented: any text before
+            // the closer on this line is still comment content, so the line's own code is empty
+            // either way. A closer at the start of the line, with code following it on that same
+            // line, is not detected — a deliberate, narrow gap in the safe direction (a missed
+            // rejection, not a false one), matching this scanner's error-toward-accepting stance.
+            return line.TrimEnd().EndsWith("*/", StringComparison.Ordinal) ? ("", false) : ("", true);
         }
 
         string trimmed = line.TrimStart();
@@ -96,13 +103,15 @@ internal static partial class RawHotkeyBodyScanner
             return closeAt >= 0 ? ("", false) : ("", true);
         }
 
+        // AHK v2 accepts both single- and double-quoted strings (Language.htm): a string opened
+        // with one quote character closes only on the same character, so quoteChar tracks which.
         StringBuilder code = new(line.Length);
-        bool inString = false;
+        char? quoteChar = null;
         for (int i = 0; i < line.Length; i++)
         {
             char c = line[i];
 
-            if (inString)
+            if (quoteChar is char q)
             {
                 if (c == '`' && i + 1 < line.Length)
                 {
@@ -110,15 +119,15 @@ internal static partial class RawHotkeyBodyScanner
                     continue;
                 }
 
-                if (c == '"')
-                    inString = false;
+                if (c == q)
+                    quoteChar = null;
 
                 continue;
             }
 
-            if (c == '"')
+            if (c is '"' or '\'')
             {
-                inString = true;
+                quoteChar = c;
                 continue;
             }
 

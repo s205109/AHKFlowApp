@@ -249,12 +249,21 @@ public sealed class HotkeyKindConditionalRulesTests
         Validate(Base(HotkeyActionKind.Raw) with { Body = "return\n^a::Run(\"calc\")" })
             .Errors.Should().ContainSingle().Which.ErrorMessage.Should().Contain("Line 2");
 
-    // A directive line is still caught by the existing directive rule first, not this one — the
-    // Body case would otherwise get whichever message the else-if chain lands on second.
+    // A directive that is not shaped like a hotkey definition (no "::") still gets the directive
+    // message — the scanner's regex cannot match it, so it falls through regardless of order.
     [Fact]
     public void Raw_HashDirective_ReportsDirectiveMessage_NotInjectedDefinitionMessage() =>
         Validate(Base(HotkeyActionKind.Raw) with { Body = "#SingleInstance Force" })
             .Errors.Should().ContainSingle().Which.ErrorMessage.Should().Contain("directive");
+
+    // "#" is both the directive prefix and the Win modifier symbol, so "#a::Run(...)" is a
+    // genuine injected hotkey definition, not merely a directive-shaped string. The scanner runs
+    // before the directive check so this case gets the more accurate, line-numbered message —
+    // the acceptance criterion promises the message names the line, with no carve-out for "#".
+    [Fact]
+    public void Raw_BodyInjectsWinModifierHotkey_ReportsInjectedDefinitionMessage_NotDirective() =>
+        Validate(Base(HotkeyActionKind.Raw) with { Body = "return\n#a::Run(\"calc\")" })
+            .Errors.Should().ContainSingle().Which.ErrorMessage.Should().Contain("Line 2");
 
     [Fact]
     public void Raw_ValidMultiLineBraceBody_IsStillValid() =>

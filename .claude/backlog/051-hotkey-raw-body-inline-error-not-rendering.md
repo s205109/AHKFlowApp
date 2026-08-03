@@ -46,5 +46,5 @@ itself, so I know what to fix.
   known field like `Body` into `_saveFieldErrors` rather than the generic `_error` alert
   (`HotkeyEditDialog.razor:414`), so Save also depends on the same broken field-level rendering.
 - 037's own E2E coverage (`tests/AHKFlowApp.E2E.Tests/HotkeysCrudFlowTests.cs`,
-  `RawBodyInjectingAnotherHotkey_ShowsInlineErrorAndBlocksPreview`) only asserts the panel-level
+  `RawBodyInjectingAnotherHotkey_BlocksPreviewGeneration`) only asserts the panel-level
   blocked message for this reason — it could not honestly assert the field-level highlight.

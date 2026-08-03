@@ -103,13 +103,19 @@ internal static class HotkeyRules
                         ctx.AddFailure("Body", "Raw requires an action body.");
                     else if (!BracesBalanced(d.Body))
                         ctx.AddFailure("Body", "Raw body braces are unbalanced.");
-                    else if (HasDirectiveLine(d.Body))
-                        ctx.AddFailure("Body", "Raw body must not contain a # directive.");
+                    // Scanner runs before the directive check: "#" is both the directive prefix
+                    // and the Win modifier symbol, so a line like "#a::Run(...)" is a genuine
+                    // injected hotkey definition, not merely a directive-shaped string. Checking
+                    // the scanner first gives that case the more accurate, line-numbered message.
+                    // A true directive ("#Requires ...") has no "::" and never matches the
+                    // scanner's regex, so it still falls through to the directive check unchanged.
                     else if (RawHotkeyBodyScanner.FindInjectedDefinitionLine(d.Body) is int line)
                         ctx.AddFailure("Body",
                             "The action body must not define another hotkey or hotstring. "
                           + $"Line {line} starts a new definition. "
                           + "Create that definition as a separate hotkey or hotstring.");
+                    else if (HasDirectiveLine(d.Body))
+                        ctx.AddFailure("Body", "Raw body must not contain a # directive.");
                     else
                         ValidateFreeText(d.Body, "Body", ctx);
                     break;

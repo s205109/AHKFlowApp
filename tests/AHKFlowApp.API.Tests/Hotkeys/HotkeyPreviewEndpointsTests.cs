@@ -66,7 +66,9 @@ public sealed class HotkeyPreviewEndpointsTests(ApiTestFixture fixture)
 
     // Backlog 037: a Raw body that injects a second top-level definition must not reach the
     // emitter — the preview validator is one of three callers of AddHotkeyActionRules and needs
-    // its own coverage, because it is what turns into the dialog's inline field error.
+    // its own coverage. This is the response body the dialog's preview panel reads to show its
+    // "Fix the highlighted fields..." message (backlog 051: the per-field inline highlight this
+    // response feeds does not render, pre-existing and unrelated to this validator).
     [Fact]
     public async Task Preview_RawBodyInjectsAnotherDefinition_Returns400NotServerError()
     {

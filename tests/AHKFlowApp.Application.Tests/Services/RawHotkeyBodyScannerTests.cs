@@ -146,6 +146,17 @@ public sealed class RawHotkeyBodyScannerTests
         line.Should().Be(2);
     }
 
+    // AHK v2 accepts single-quoted strings too (Language.htm: "enclosed... in single or double
+    // quotation marks"). Fails if the scanner only tracks double quotes.
+    [Fact]
+    public void BraceInsideASingleQuotedString_DoesNotHideAnInjectedDefinition()
+    {
+        int? line = RawHotkeyBodyScanner.FindInjectedDefinitionLine(
+            "MsgBox('{')\n^a::Run(\"calc\")\nMsgBox('}')");
+
+        line.Should().Be(2);
+    }
+
     [Fact]
     public void BlockCommentedDefinition_IsIgnored()
     {
@@ -154,6 +165,18 @@ public sealed class RawHotkeyBodyScannerTests
             "return\n/*\n^a::Run(\"calc\")\n*/");
 
         line.Should().BeNull();
+    }
+
+    // AHK v2 (Language.htm): "*/" closes a block comment when it appears at the start OR the end
+    // of a line — not only when the whole trimmed line is "*/". Fails if the closer is only
+    // recognized as an exact-line match.
+    [Fact]
+    public void BlockCommentClosedByTrailingCloser_StillDetectsDefinitionAfter()
+    {
+        int? line = RawHotkeyBodyScanner.FindInjectedDefinitionLine(
+            "return\n/*\ncomment */\n^a::Run(\"calc\")");
+
+        line.Should().Be(4);
     }
 
     // --- Accepted: definition-shaped text that is not a real top-level definition ----------
