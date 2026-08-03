@@ -33,7 +33,10 @@ need no work at all.
       `chevron-cell` classes to the three header `<th>` cells in `HotkeyMobileList.razor`. The
       original plan did not call for the header-row classes.
       Guarded by
-      `HotkeysMobileFlowTests.PhoneViewport_MarkedRowWithTheLongestCombo_KeepsTheTriggerCellInsideItsColumn`
+      `HotkeysMobileFlowTests.PhoneViewport_MarkedRowWithTheLongestCombo_KeepsTheTriggerCellInsideItsColumn`.
+      The 167-against-167 measurement leaves zero margin. A future font-metric or MudBlazor
+      typography change could flip this guard test red — that would mean the fit changed, not that
+      the test is flaky.
 - [x] A desktop edit or bulk delete now refreshes the mobile branch. `CommitEditAsync` and
       `BulkDeleteAsync` call `ReloadAllAsync()` instead of reloading the grid alone. Covered by
       `Page_CommitInlineEdit_RefreshesTheMobileBranch` and `Page_BulkDelete_CallsApiAndReloads`
