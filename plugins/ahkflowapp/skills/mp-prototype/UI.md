@@ -60,20 +60,46 @@ variant with [`[SupplyParameterFromQuery]`](https://learn.microsoft.com/aspnet/c
 
 ```razor
 @page "/settings"
+@using Microsoft.AspNetCore.Components.WebAssembly.Hosting
+@inject IWebAssemblyHostEnvironment HostEnvironment
 
-@if (Variant == "B") { <VariantB Data="data" /> }
-else if (Variant == "C") { <VariantC Data="data" /> }
-else { <VariantA Data="data" /> }
+@if (HostEnvironment.IsDevelopment())
+{
+    @if (PrototypeVariant == "B") { <VariantB Data="data" /> }
+    else if (PrototypeVariant == "C") { <VariantC Data="data" /> }
+    else { <VariantA Data="data" /> }
 
-<PrototypeSwitcher Variants="@(new[] { "A", "B", "C" })" Current="@(Variant ?? "A")" />
+    <PrototypeSwitcher Variants="@(new[] { "A", "B", "C" })" Current="@(PrototypeVariant ?? "A")" />
+}
+else
+{
+    <RealSettingsContent Data="data" />
+}
 
 @code {
     [SupplyParameterFromQuery]
-    private string? Variant { get; set; }
+    private string? PrototypeVariant { get; set; }
 }
 ```
 
-`[Parameter]` is not needed alongside `[SupplyParameterFromQuery]`, and the property may be
+Three things about that example are repo-specific, and each one is a trap if you skip it:
+
+**Never name the property `Variant`.** `Variant` is a MudBlazor enum, and `_Imports.razor` pulls
+`@using MudBlazor` into every component in this app — so the hazard is not limited to one page.
+`src/Frontend/AHKFlowApp.UI.Blazor/Pages/Settings.razor:12` passes `Variant="Variant.Outlined"`. A
+component member called `Variant` shadows the type, and every `Variant.Outlined` on that page stops
+compiling. `PrototypeVariant` avoids the collision.
+
+**`@using Microsoft.AspNetCore.Components.WebAssembly.Hosting` is required.** `_Imports.razor` does
+not include that namespace, so `IWebAssemblyHostEnvironment` will not resolve without it. Existing
+pages declare it per file — see `Pages/Settings.razor:3`.
+
+**Gate the whole prototype subtree, not just the switcher.** The dispatch above sits inside the
+`IsDevelopment()` branch, with the real page as the production fallback. Gating only the switcher
+leaves variant A rendering as the live page in production, and leaves B and C reachable by anyone
+who types `?variant=C`.
+
+**`[Parameter]` is not needed alongside `[SupplyParameterFromQuery]`**, and the property may be
 `private`. Both are true from .NET 8 onward.
 
 For sub-shape A (existing page): keep all the existing data fetching above the switcher; only the rendered subtree changes per variant.
@@ -93,19 +119,7 @@ Behaviour:
 - Clicking an arrow updates the URL search param so the variant is shareable and reload-stable. In Blazor, inject `NavigationManager` and call `Navigation.NavigateTo(Navigation.GetUriWithQueryParameter("variant", next))`.
 - Keyboard: `←` and `→` arrow keys also cycle. Don't intercept arrow keys when an `<input>`, `<textarea>`, or `[contenteditable]` is focused.
 - Visually distinct from the page (e.g. high-contrast pill, subtle shadow) so it's obviously not part of the design being evaluated.
-- Hidden in production builds, so a stray prototype merge cannot ship the bar to users. In this repo, gate on the `DEBUG` compilation symbol. Preprocessor directives do not work in Razor markup, so set a field inside `@code` and branch on it in markup:
-
-  ```razor
-  @if (ShowSwitcher) { <PrototypeSwitcher ... /> }
-
-  @code {
-  #if DEBUG
-      private const bool ShowSwitcher = true;
-  #else
-      private const bool ShowSwitcher = false;
-  #endif
-  }
-  ```
+- Hidden in production, so a stray prototype merge cannot ship the bar to users. It sits inside the same `HostEnvironment.IsDevelopment()` branch as the variant dispatch in step 3 — one gate, not two. Do **not** gate on the `DEBUG` compilation symbol: **Testing** in `AGENTS.md` requires a Release rebuild before any live smoke test, so a `DEBUG` gate would hide the switcher during the very run that is meant to exercise it. `IWebAssemblyHostEnvironment` is the repo idiom — see `src/Frontend/AHKFlowApp.UI.Blazor/Pages/Settings.razor:34` and `Pages/Authentication.razor:4`.
 
 Put the switcher in a single shared component so both sub-shapes can reuse it. Locate it wherever shared UI lives in the project.
 
@@ -115,7 +129,7 @@ Surface the URL (and the `?variant=` keys). The user will flip through whenever 
 
 ### 6. Capture the answer and clean up
 
-Once a variant has won, capture the answer — which variant and why — then capture the prototype the way the [SKILL](SKILL.md) describes. Fold the winner into the real code and move the rest onto the throwaway branch, not into main:
+Once a variant has won, capture the answer — which variant and why — then capture the prototype the way the [SKILL](SKILL.md) describes. Both captures come **before** any cleanup below, because every step below deletes something. Push the throwaway branch first, then fold:
 
 - **Sub-shape A** — fold the winner into the existing page; drop the losing variants and the switcher from main.
 - **Sub-shape B** — promote the winning variant to a real route; drop the throwaway route and the switcher from main.

@@ -18,15 +18,15 @@ Its job:
 
 ## In this repo
 
-**Check the repo before going outside it.** For AutoHotkey v2, the subset this app generates and parses is already written up in `docs/development/ahk-v2-syntax.md` at the repo root. Read it first. Research the official docs only for what sits outside that surface.
+**Read the internal reference for context, then verify against the primary source.** For AutoHotkey v2, `docs/development/ahk-v2-syntax.md` at the repo root describes the subset this app generates and parses. Read it first — it tells you which corner of AHK the question lives in, and what this app already assumes. It does not settle the question. That file calls itself a working reference and names the official v2 docs as authoritative (`docs/development/ahk-v2-syntax.md:3-8`), so treat it as orientation, never as the citation. Every claim in your findings file cites the primary source, including claims the internal reference happens to agree with. A disagreement between the two is itself a finding worth reporting.
 
 **AutoHotkey docs 403 automated fetchers.** `autohotkey.com` rejects `WebFetch`. The same pages are served from the source repo, so fetch them with `gh`. Run this in Git Bash:
 
 ```bash
-gh api repos/AutoHotkey/AutoHotkeyDocs/contents/docs/Hotstrings.htm --jq .content | base64 -d
+gh api "repos/AutoHotkey/AutoHotkeyDocs/contents/docs/Hotstrings.htm?ref=v2" --jq .content | base64 -d
 ```
 
-That repo's `v2` branch is the primary source for v2 syntax. `docs/development/ahk-v2-syntax.md:7` records the same fallback.
+`?ref=v2` is not optional. That repository's default branch is `v1`, so leaving it off silently returns **v1** documentation for a v2 question — the worst kind of wrong answer, because it looks right. Note the form: `-f ref=v2` does not work here, because `-f` turns the request into a POST and the endpoint answers 404. Use the query string, or `-X GET -f ref=v2`.
 
 **Pin the version before citing a .NET or NuGet API.** Read the version this repo uses from `Directory.Packages.props`, then cite the documentation for that version. Never cite an external API from memory — the same rule **Plans** in `AGENTS.md` applies to plan drafts.
 
