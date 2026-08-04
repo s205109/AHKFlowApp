@@ -1,0 +1,86 @@
+@using AHKFlowApp.UI.Blazor.DTOs
+@using AHKFlowApp.UI.Blazor.Services
+@using MudBlazor
+
+<MudDialog Class="header-preset-picker">
+    <DialogContent>
+        @if (_loading)
+        {
+            <MudProgressCircular Indeterminate="true" />
+        }
+        else if (_error is not null)
+        {
+            <MudAlert Severity="Severity.Error">@_error</MudAlert>
+        }
+        else
+        {
+            <MudText Typo="Typo.body2" Class="mb-3">
+                A preset is added to the end of your header. After that it is ordinary text you can edit.
+            </MudText>
+
+            @foreach (IGrouping<string, HeaderPresetDto> group in _groups)
+            {
+                <MudText Typo="Typo.subtitle2" Class="mt-3">@group.Key</MudText>
+                @foreach (HeaderPresetDto preset in group)
+                {
+                    <MudPaper Elevation="0" Class="pa-3 mt-2"
+                              Style="background-color: var(--mud-palette-background-grey);">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween"
+                                  Spacing="2" Wrap="Wrap.Wrap">
+                            <MudStack Spacing="0">
+                                <MudText Typo="Typo.body1">@preset.Name</MudText>
+                                <MudText Typo="Typo.caption">@preset.Description</MudText>
+                            </MudStack>
+                            @if (HeaderPresetInserter.IsPresent(Header, preset.Id))
+                            {
+                                <MudText Typo="Typo.caption">Already in the header</MudText>
+                            }
+                            else
+                            {
+                                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                           OnClick="@(() => Pick(preset))"
+                                           UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = $"header-preset-insert-{preset.Id}" })">
+                                    Insert
+                                </MudButton>
+                            }
+                        </MudStack>
+                    </MudPaper>
+                }
+            }
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton Class="cancel-preset-picker" OnClick="Cancel">Cancel</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = default!;
+    [Inject] private IProfilesApiClient Api { get; set; } = default!;
+
+    /// <summary>The header being edited. Used only to mark a preset as already there.</summary>
+    [Parameter] public string Header { get; set; } = "";
+
+    private IReadOnlyList<IGrouping<string, HeaderPresetDto>> _groups = [];
+    private bool _loading = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        ApiResult<HeaderPresetCatalogDto> result = await Api.GetHeaderPresetsAsync();
+        _loading = false;
+
+        if (!result.IsSuccess)
+        {
+            _error = ApiErrorMessageFactory.Build(result.Status, result.Problem);
+            return;
+        }
+
+        // GroupBy is stable, so both tags and presets keep catalog order.
+        _groups = [.. result.Value!.Presets.GroupBy(p => p.Tag)];
+    }
+
+    private void Pick(HeaderPresetDto preset) => Dialog.Close(DialogResult.Ok(preset));
+
+    private void Cancel() => Dialog.Cancel();
+}
