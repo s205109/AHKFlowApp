@@ -41,10 +41,14 @@ What was checked, in order:
    change to production code. The preview path was already correct.
 3. `RawBodySaveError_ShowsInlineOnTheBodyField` covers the second criterion. It leaves the preview
    panel collapsed, so only the Save response can produce the message it asserts.
+4. The Save test then re-checks the message 1500 ms later. Filling the body arms a 300 ms debounce
+   whose elapsed handler calls `ClearSaveError("Body")` — the same key the Save response writes. The
+   message was measured as still present after that window, so the two do not race. Without this
+   second check the test would pass on a message that vanished a moment later.
 
-Why the original investigation saw nothing is not established. The most likely reading is that
-`aria-invalid` was polled on the wrong element — the Body input is a `textarea`, not an `input`, so
-a selector written for the other fields would match nothing and never change.
+Why the original investigation saw nothing is not established, and this item does not claim to know.
+No evidence from that session survives, so the question is left open rather than answered with a
+guess.
 
 ## Out of scope
 

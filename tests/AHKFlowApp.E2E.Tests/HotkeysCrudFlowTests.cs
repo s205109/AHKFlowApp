@@ -217,6 +217,18 @@ public sealed class HotkeysCrudFlowTests(StackFixture fixture) : IAsyncLifetime
         await Assertions.Expect(page.Locator(".hotkey-edit-dialog textarea[data-test=\"raw-body-input\"]"))
             .ToHaveAttributeAsync("aria-invalid", "true");
 
+        // The message must still be there once the field's debounce can no longer be pending.
+        // Filling the body arms a 300 ms timer (HotkeyEditDialog.razor:173-175) whose elapsed
+        // handler calls ClearSaveError("Body") (razor:375-379) — the same key the Save response
+        // writes (razor:414). Playwright's Expect polls, so the assertions above would go green on
+        // a message that vanished a moment later. Re-checking after the window closes is what
+        // makes this test prove the user can actually read the message.
+        await page.WaitForTimeoutAsync(1500);
+        await Assertions.Expect(page.Locator(".hotkey-edit-dialog .raw-body-wrap .mud-input-helper-text"))
+            .ToContainTextAsync("Raw body braces are unbalanced.");
+        await Assertions.Expect(page.Locator(".hotkey-edit-dialog textarea[data-test=\"raw-body-input\"]"))
+            .ToHaveAttributeAsync("aria-invalid", "true");
+
         // The rejected hotkey must not have been created, and the dialog must still be open on it.
         await Assertions.Expect(page.Locator(".hotkey-edit-dialog")).ToBeVisibleAsync();
     }
