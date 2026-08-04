@@ -22,10 +22,10 @@ paste does not stop my entire Profile script from loading.
 - [x] A Raw body line that opens a new top-level hotkey definition is rejected before saving.
 - [x] A Raw body line that opens a new top-level hotstring definition is rejected before saving.
 - [x] The validation message names the line number, and the API returns it on the `Body` field.
-      The web UI does **not** yet show it on the Raw body field — that rendering is broken for
-      every Raw rule and pre-dates this item. It is tracked in
-      `backlog/done/051-hotkey-raw-body-inline-error-not-rendering.md`, and until 051 lands a
-      web UI user only sees the panel's generic "Fix the highlighted fields" message.
+      While this item was open, the web UI appeared not to show that message on the Raw body
+      field. Item `backlog/done/051-hotkey-raw-body-inline-error-not-rendering.md` investigated
+      it and could not reproduce it. Both the preview path and the Save path already put the
+      message on the field, so 051 closed with guard tests and no production code change.
 - [x] A definition-looking line inside braces, inside a string, inside a line or block comment, or
       inside a continuation section is still accepted.
 - [x] Generated `.ahk` output is unchanged.
@@ -43,8 +43,9 @@ Implemented as rejection, not comparison — see the design decision note below.
   context fields" note below was true when this item was filed and is now stale.)
 - Known shortcuts. That is a different concept and a different mechanism — see
   `docs/superpowers/specs/2026-07-28-hotkey-conflict-warnings-design.md`.
-- Fixing the pre-existing Raw body field inline-error rendering bug found while implementing this item.
-  See `backlog/done/051-hotkey-raw-body-inline-error-not-rendering.md`.
+- The Raw body field inline-error rendering problem reported while implementing this item. It was
+  split out as `backlog/done/051-hotkey-raw-body-inline-error-not-rendering.md`, which found no
+  defect.
 
 ## Notes / dependencies
 
