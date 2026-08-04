@@ -95,5 +95,4 @@ public sealed class HotstringsMobileFlowTests(StackFixture fixture) : IAsyncLife
         await page.Locator(".mobile-branch tr.mobile-row", new() { HasTextString = "btwx" })
             .WaitForAsync();
     }
-
 }

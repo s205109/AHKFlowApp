@@ -254,7 +254,8 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
         Services.AddSingleton(dialogService);
 
         IRenderedComponent<Hotstrings> cut = RenderPage();
-        cut.WaitForState(() => cut.Markup.Contains("aaa"));
+        cut.WaitForAssertion(() =>
+            cut.Find(".mobile-branch").TextContent.Should().Contain("aaa"));
 
         await cut.InvokeAsync(() => cut.Instance.OnSelectedItemsChanged(
             [HotstringEditModel.FromDto(a), HotstringEditModel.FromDto(b)]));

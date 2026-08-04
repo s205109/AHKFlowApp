@@ -322,7 +322,7 @@
     private readonly int _mobilePageSize = 10;
     private int _mobileTotalPages;
     private HotstringListRequest? _cachedListRequest;
-    // Same-request cache only; every mutation path must call ClearListCache before reloading.
+    // Same-request cache only; every mutation path must reload through ReloadAllAsync, which clears it first.
     private PagedList<HotstringDto>? _cachedListPage;
     private bool _dialogOpen;
 
