@@ -56,6 +56,7 @@ public static class DependencyInjection
             .AddUseCase<GetHotstringPreviewQuery, Result<HotstringPreviewDto>, GetHotstringPreviewQueryHandler>()
             .AddUseCase<ListHotkeyKeysQuery, Result<HotkeyKeyCatalogDto>, ListHotkeyKeysQueryHandler>()
             .AddUseCase<ListKnownShortcutsQuery, Result<KnownShortcutCatalogDto>, ListKnownShortcutsQueryHandler>()
+            .AddUseCase<ListHeaderPresetsQuery, Result<HeaderPresetCatalogDto>, ListHeaderPresetsQueryHandler>()
             .AddUseCase<ListManagedKnownShortcutsQuery, Result<ManagedKnownShortcutCatalogDto>, ListManagedKnownShortcutsQueryHandler>()
             .AddUseCase<CreateCustomKnownShortcutCommand, Result<ManagedKnownShortcutCatalogDto>, CreateCustomKnownShortcutCommandHandler>()
             .AddUseCase<DeleteCustomKnownShortcutCommand, Result, DeleteCustomKnownShortcutCommandHandler>()
