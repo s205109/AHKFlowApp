@@ -16,13 +16,13 @@ This is the same bug that backlog 050 fixed on the hotkeys page.
 
 ## Acceptance criteria
 
-- [ ] `CommitEditAsync` refreshes both branches. Its create arm (`:559`) and its update arm (`:573`)
+- [x] `CommitEditAsync` refreshes both branches. Its create arm (`:559`) and its update arm (`:573`)
       each reload the grid alone today
-- [ ] The desktop bulk delete refreshes both branches. It reloads the grid alone today (`:659`)
-- [ ] Each fix replaces the whole `ClearListCache()` plus grid-reload block with a single
+- [x] The desktop bulk delete refreshes both branches. It reloads the grid alone today (`:659`)
+- [x] Each fix replaces the whole `ClearListCache()` plus grid-reload block with a single
       `await ReloadAllAsync();`. `ReloadAllAsync` clears the cache itself, so keeping the original
       call would clear it twice
-- [ ] A bUnit test in `HotstringsPageTests` covers each of the two call sites, asserting on the
+- [x] A bUnit test in `HotstringsPageTests` covers each of the two call sites, asserting on the
       `.mobile-branch` content rather than on a call count
 
 ## Out of scope
