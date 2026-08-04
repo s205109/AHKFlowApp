@@ -340,6 +340,32 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
+    public void Page_CommitInlineEdit_RefreshesTheMobileBranch()
+    {
+        var dto = new HotstringDto(Guid.NewGuid(), [], true, "btwx", "by the way", null, true, true,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        HotstringDto renamed = dto with { Replacement = "renamed replacement" };
+        StubList(Page(dto));
+        _api.UpdateAsync(dto.Id, Arg.Any<UpdateHotstringDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotstringDto>.Ok(renamed));
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find("button.edit"));
+        cut.Find("button.edit").Click();
+        cut.WaitForAssertion(() => cut.Find("textarea[data-test=\"replacement-input\"]"));
+        cut.Find("textarea[data-test=\"replacement-input\"]").Input("renamed replacement");
+
+        // Both branches read the same endpoint, so this is what a real reload brings back.
+        StubList(Page(renamed));
+
+        cut.Find("button.commit-edit").Click();
+
+        // Both branches render at once, so the assertion names the branch it is about.
+        cut.WaitForAssertion(() =>
+            cut.Find(".mobile-branch").TextContent.Should().Contain("renamed replacement"));
+    }
+
+    [Fact]
     public Task Page_InlineCreate_Allows4001CharacterAutoReplacement()
     {
         string replacement = new('x', 4_001);

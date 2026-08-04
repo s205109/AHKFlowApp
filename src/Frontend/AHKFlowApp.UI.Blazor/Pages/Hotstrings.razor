@@ -567,10 +567,7 @@
             {
                 _editingItem = null;
                 Snackbar.Add("Hotstring updated.", Severity.Success);
-                ClearListCache();
-
-                if (_grid is not null)
-                    await _grid.ReloadServerData();
+                await ReloadAllAsync();
             }
             else Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
         }
