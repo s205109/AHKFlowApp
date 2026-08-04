@@ -69,4 +69,31 @@ public sealed class HotstringsMobileFlowTests(StackFixture fixture) : IAsyncLife
         await page.WaitForSelectorAsync(".hotstring-edit-dialog textarea[data-test=\"replacement-input\"]");
     }
 
+    [Fact]
+    public async Task DesktopCreate_ThenPhoneViewport_ShowsTheNewRowInTheMobileBranch()
+    {
+        // No viewport option means the default 1280x720, which is wider than the 959.95px
+        // breakpoint in Pages/Hotstrings.razor.css. So the page opens on the desktop branch.
+        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
+        IPage page = await ctx.NewPageAsync();
+
+        await page.GotoAsync($"{fixture.Spa.BaseUrl}/hotstrings");
+        await page.WaitForSelectorAsync("button.add-hotstring");
+
+        await page.ClickAsync("button.add-hotstring");
+        await page.WaitForSelectorAsync("tr.draft-row");
+        await page.FillAsync("input[data-test=\"trigger-input\"]", "btwx");
+        await page.FillAsync("textarea[data-test=\"replacement-input\"]", "by the way");
+        await page.ClickAsync("button.commit-edit");
+
+        await page.WaitForSelectorAsync("text=Hotstring created.");
+
+        // Resizing fetches nothing. It only changes which branch the CSS shows. So whatever the
+        // mobile list holds now is exactly what the desktop mutation left behind.
+        await page.SetViewportSizeAsync(375, 812);
+
+        await page.Locator(".mobile-branch tr.mobile-row", new() { HasTextString = "btwx" })
+            .WaitForAsync();
+    }
+
 }
