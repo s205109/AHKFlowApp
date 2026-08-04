@@ -21,7 +21,7 @@ Only these are exempt. Everything else plans first:
 - Answering a question, or reading and reporting
 - Running a command that changes nothing
 
-Picking up a `.claude/backlog/` item is never trivial. Neither is any change to user-facing wording,
+Picking up a `backlog/` item is never trivial. Neither is any change to user-facing wording,
 labels, or names — a wrong shared assumption about a word is cheap to catch up front and expensive
 to undo later. Staying inside one file does not make such a change trivial. When a change matches
 both the exemption list and this paragraph, this paragraph wins: plan first.
@@ -64,13 +64,13 @@ context or config cleanups. Those still get a plan. The plan just is not committ
 
 - Runtime execution of AutoHotkey scripts — intentionally excluded (the app generates `.ahk` files, never runs them)
 
-Pending features are tracked in `.claude/backlog/`.
+Pending features are tracked in `backlog/`.
 
 ## Project Configuration
 
 - Rules (always loaded): `.claude/rules/`
 - Skills (on demand): `.claude/skills/`
-- Backlog: `.claude/backlog/` — open items; completed items live in `done/`. The PR that finishes an item also moves its file into `done/` — see **Git Workflow** in AGENTS.md
+- Backlog: `backlog/` (repo root) — open items; completed items live in `done/`. The PR that finishes an item also moves its file into `done/` — see **Git Workflow** in AGENTS.md
 - Frontend instructions: `src/Frontend/AHKFlowApp.UI.Blazor/CLAUDE.md`
 - Private/local config: `.claude/CLAUDE.local.md` (gitignored)
 - Documentation: `docs/` — architecture, azure, development guides

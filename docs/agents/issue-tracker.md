@@ -25,9 +25,9 @@ When set to `yes`, PRs run through the same labels and states as issues, using t
 
 GitHub shares one number space across issues and PRs, so a bare `#42` may be either — resolve with `gh pr view 42` and fall back to `gh issue view 42`.
 
-## Relationship to `.claude/backlog/`
+## Relationship to `backlog/`
 
-`.claude/backlog/` is a personal, pre-tracker surface — a scratch queue for items not yet worth an issue. GitHub Issues is the tracker the skills read and write. There is no bulk migration: promote backlog items to GitHub Issues opportunistically, when one becomes real work someone else might pick up.
+`backlog/` is a personal, pre-tracker surface — a scratch queue for items not yet worth an issue. GitHub Issues is the tracker the skills read and write. There is no bulk migration: promote backlog items to GitHub Issues opportunistically, when one becomes real work someone else might pick up.
 
 ## When a skill says "publish to the issue tracker"
 

@@ -5,8 +5,8 @@
 #   .\scripts\agents\create-github-issues.ps1 -BacklogPath "<path>" -Execute  # Create issues
 #
 # Example:
-#   .\create-github-issues.ps1 -BacklogPath "..\..\..\.claude\backlog"
-#   .\create-github-issues.ps1 -BacklogPath "..\..\..\.claude\backlog" -Execute
+#   .\create-github-issues.ps1 -BacklogPath "..\..\backlog"
+#   .\create-github-issues.ps1 -BacklogPath "..\..\backlog" -Execute
 
 param(
     [switch]$Execute,
