@@ -580,12 +580,19 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
         page.FindAll(".mobile-branch .mud-pagination button")
             .Single(b => b.TextContent.Trim() == "2")
             .Click();
-        page.FindAll(".mobile-branch [data-test=\"known-shortcut-row\"]").Should().HaveCount(5);
+
+        // Both assertions wait. MudPagination handles the click asynchronously, so the render it
+        // causes can still be queued when Click returns. The typed term then lands behind that
+        // render. On a loaded CI runner this test read the page-2 rows back and failed, while it
+        // passed every time on a quiet machine. WaitForAssertion retries until the queue drains.
+        page.WaitForAssertion(() =>
+            page.FindAll(".mobile-branch [data-test=\"known-shortcut-row\"]").Should().HaveCount(5));
 
         page.Find("[data-test=\"known-shortcut-search\"]").Input("Program 0");
 
         // Program 00 to Program 09 match, and all ten fit on page 1. Still on page 2, this would
         // find nothing.
-        page.FindAll(".mobile-branch [data-test=\"known-shortcut-row\"]").Should().HaveCount(10);
+        page.WaitForAssertion(() =>
+            page.FindAll(".mobile-branch [data-test=\"known-shortcut-row\"]").Should().HaveCount(10));
     }
 }
