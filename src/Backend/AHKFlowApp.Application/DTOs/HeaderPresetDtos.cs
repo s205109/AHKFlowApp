@@ -14,4 +14,5 @@ public sealed record HeaderPresetDto(
     string Body);
 
 /// <summary>The whole shipped preset list, in catalog order.</summary>
+/// <param name="Presets">The shipped presets, in catalog order.</param>
 public sealed record HeaderPresetCatalogDto(IReadOnlyList<HeaderPresetDto> Presets);
