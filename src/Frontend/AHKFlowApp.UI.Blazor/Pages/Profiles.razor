@@ -1,4 +1,5 @@
 @page "/profiles"
+@using AHKFlowApp.UI.Blazor.Components.Profiles
 @using AHKFlowApp.UI.Blazor.DTOs
 @using AHKFlowApp.UI.Blazor.Services
 @using AHKFlowApp.UI.Blazor.Validation
@@ -93,6 +94,11 @@
                         <MudText Typo="Typo.subtitle2">Header template</MudText>
                         @if (edit is not null)
                         {
+                            <MudButton Class="header-preset-open mb-2" Variant="Variant.Outlined"
+                                       Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                                       OnClick="() => OpenPresetPickerAsync(context.Id)">
+                                Insert preset
+                            </MudButton>
                             <MudTextField @bind-Value="edit.HeaderTemplate"
                                           T="string" Lines="20" Variant="Variant.Outlined"
                                           MaxLength="8000" Style="font-family: monospace;"
@@ -282,6 +288,32 @@
         {
             Snackbar.Add("Copy to clipboard failed.", Severity.Warning);
         }
+    }
+
+    private async Task OpenPresetPickerAsync(Guid id)
+    {
+        if (!_editing.TryGetValue(id, out ProfileEditModel? edit)) return;
+
+        DialogParameters parameters = new()
+        {
+            [nameof(HeaderPresetPickerDialog.Header)] = edit.HeaderTemplate,
+        };
+
+        IDialogReference dialog = await DialogService.ShowAsync<HeaderPresetPickerDialog>(
+            "Insert preset", parameters);
+
+        DialogResult? result = await dialog.Result;
+        if (result?.Canceled != false || result.Data is not HeaderPresetDto preset) return;
+
+        HeaderPresetInsertResult insert = HeaderPresetInserter.Insert(edit.HeaderTemplate, preset);
+        if (!insert.Inserted)
+        {
+            Snackbar.Add(insert.Error!, Severity.Error);
+            return;
+        }
+
+        edit.HeaderTemplate = insert.Header;
+        Snackbar.Add("Preset added to the header.", Severity.Success);
     }
 
     private static string? ValidateName(string? value)

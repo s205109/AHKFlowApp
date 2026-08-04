@@ -226,4 +226,28 @@ public sealed class ProfilesPageTests : BunitContext, IAsyncLifetime
             Arg.Is<CreateProfileDto>(d => d.Name == "Work"),
             Arg.Any<CancellationToken>()));
     }
+
+    [Fact]
+    public async Task InsertPreset_WritesIntoTheEditorAndSavesNothing()
+    {
+        ProfileDto profile = MakeProfile();
+        StubList(profile);
+        _api.GetHeaderPresetsAsync(Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HeaderPresetCatalogDto>.Ok(new HeaderPresetCatalogDto(
+                [new HeaderPresetDto("lock-keys-off", "Keep lock keys off", "Holds three keys off.",
+                    "Lock keys", "SetNumLockState \"AlwaysOff\"")])));
+        IRenderedComponent<MudDialogProvider> dialogProvider = Render<MudDialogProvider>();
+        IRenderedComponent<Profiles> cut = RenderPage();
+
+        cut.Find("button.start-edit").Click();
+        cut.Find("button.header-preset-open").Click();
+        dialogProvider.WaitForElement("button[data-test=\"header-preset-insert-lock-keys-off\"]");
+        await dialogProvider.InvokeAsync(() =>
+            dialogProvider.Find("button[data-test=\"header-preset-insert-lock-keys-off\"]").Click());
+
+        cut.WaitForAssertion(() =>
+            cut.Markup.Should().Contain("; --- AHKFlow preset: lock-keys-off ---"));
+        await _api.DidNotReceive().UpdateAsync(
+            Arg.Any<Guid>(), Arg.Any<UpdateProfileDto>(), Arg.Any<CancellationToken>());
+    }
 }
