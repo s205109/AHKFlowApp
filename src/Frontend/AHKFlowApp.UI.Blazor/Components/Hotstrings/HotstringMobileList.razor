@@ -35,9 +35,13 @@
                     {
                         <th class="checkbox-column"></th>
                     }
-                    <th>Trigger</th>
-                    <th>Replacement</th>
-                    <th></th>
+                    @* The table is table-layout: fixed, so the browser sizes every column from
+                       this header row alone. The width rules live on these class names, so the
+                       header cells must carry them too — otherwise the three columns split the
+                       row evenly and the data-row classes do nothing. *@
+                    <th class="trigger-cell">Trigger</th>
+                    <th class="replacement-cell">Replacement</th>
+                    <th class="chevron-cell"></th>
                 </tr>
             </thead>
             <tbody>
