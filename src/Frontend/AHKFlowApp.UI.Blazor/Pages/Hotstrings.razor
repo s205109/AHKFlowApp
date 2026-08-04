@@ -650,10 +650,7 @@
                 : $"Deleted {deleted} hotstring(s).";
             Snackbar.Add(message, Severity.Success);
             _selected = [];
-            ClearListCache();
-
-            if (_grid is not null)
-                await _grid.ReloadServerData();
+            await ReloadAllAsync();
         }
         else
         {

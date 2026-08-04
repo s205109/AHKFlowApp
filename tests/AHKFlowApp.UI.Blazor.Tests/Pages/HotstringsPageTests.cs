@@ -234,6 +234,49 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
+    public async Task Page_DesktopBulkDelete_ClearsTheMobileBranch()
+    {
+        var aId = Guid.NewGuid();
+        var bId = Guid.NewGuid();
+        var a = new HotstringDto(aId, [], true, "aaa", "first", null, true, true,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        var b = new HotstringDto(bId, [], true, "bbb", "second", null, true, true,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        StubList(Page(a, b));
+        _api.BulkDeleteAsync(Arg.Any<IReadOnlyList<Guid>>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<BulkDeleteResultDto>.Ok(new BulkDeleteResultDto(2, [])));
+
+        IDialogService dialogService = Substitute.For<IDialogService>();
+        dialogService.ShowMessageBoxAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(),
+            Arg.Any<DialogOptions>())
+            .Returns(Task.FromResult<bool?>(true));
+        Services.AddSingleton(dialogService);
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+        cut.WaitForState(() => cut.Markup.Contains("aaa"));
+
+        await cut.InvokeAsync(() => cut.Instance.OnSelectedItemsChanged(
+            [HotstringEditModel.FromDto(a), HotstringEditModel.FromDto(b)]));
+
+        cut.WaitForAssertion(() => cut.Find("button.bulk-delete-hotstrings"));
+
+        // An empty page is what the next load returns once both rows are gone.
+        StubList(Page());
+
+        cut.Find("button.bulk-delete-hotstrings").Click();
+
+        // Both branches render at once, so the assertion names the branch it is about. Naming rows
+        // that must be gone cannot pass from the initial load, unlike a bare Received() on ListAsync.
+        cut.WaitForAssertion(() =>
+        {
+            string mobile = cut.Find(".mobile-branch").TextContent;
+            mobile.Should().NotContain("aaa");
+            mobile.Should().NotContain("bbb");
+        });
+    }
+
+    [Fact]
     public void Page_ReloadWhileExpanded_KeepsMobileRowControls()
     {
         var dto = new HotstringDto(Guid.NewGuid(), [], true, "btw", "by the way", null, true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
