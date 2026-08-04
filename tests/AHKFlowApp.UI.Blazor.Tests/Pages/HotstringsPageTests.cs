@@ -234,6 +234,50 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
+    public async Task Page_DesktopBulkDelete_ClearsTheMobileBranch()
+    {
+        var aId = Guid.NewGuid();
+        var bId = Guid.NewGuid();
+        var a = new HotstringDto(aId, [], true, "aaa", "first", null, true, true,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        var b = new HotstringDto(bId, [], true, "bbb", "second", null, true, true,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        StubList(Page(a, b));
+        _api.BulkDeleteAsync(Arg.Any<IReadOnlyList<Guid>>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<BulkDeleteResultDto>.Ok(new BulkDeleteResultDto(2, [])));
+
+        IDialogService dialogService = Substitute.For<IDialogService>();
+        dialogService.ShowMessageBoxAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(),
+            Arg.Any<DialogOptions>())
+            .Returns(Task.FromResult<bool?>(true));
+        Services.AddSingleton(dialogService);
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+        cut.WaitForAssertion(() =>
+            cut.Find(".mobile-branch").TextContent.Should().Contain("aaa"));
+
+        await cut.InvokeAsync(() => cut.Instance.OnSelectedItemsChanged(
+            [HotstringEditModel.FromDto(a), HotstringEditModel.FromDto(b)]));
+
+        cut.WaitForAssertion(() => cut.Find("button.bulk-delete-hotstrings"));
+
+        // An empty page is what the next load returns once both rows are gone.
+        StubList(Page());
+
+        cut.Find("button.bulk-delete-hotstrings").Click();
+
+        // Both branches render at once, so the assertion names the branch it is about. Naming rows
+        // that must be gone cannot pass from the initial load, unlike a bare Received() on ListAsync.
+        cut.WaitForAssertion(() =>
+        {
+            string mobile = cut.Find(".mobile-branch").TextContent;
+            mobile.Should().NotContain("aaa");
+            mobile.Should().NotContain("bbb");
+        });
+    }
+
+    [Fact]
     public void Page_ReloadWhileExpanded_KeepsMobileRowControls()
     {
         var dto = new HotstringDto(Guid.NewGuid(), [], true, "btw", "by the way", null, true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
@@ -278,6 +322,29 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
+    public void Page_CommitInlineCreate_RefreshesTheMobileBranch()
+    {
+        var created = new HotstringDto(Guid.NewGuid(), [], true, "btwx", "by the way", null, true, true,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        StubList(Page());
+        _api.CreateAsync(Arg.Any<CreateHotstringDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotstringDto>.Ok(created));
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+        StartDraftEdit(cut);
+        FillRequiredFields(cut, "btwx", "by the way");
+
+        // Both branches read the same endpoint, so this is what a real reload brings back.
+        StubList(Page(created));
+
+        cut.Find("button.commit-edit").Click();
+
+        // Both branches render at once, so the assertion names the branch it is about.
+        cut.WaitForAssertion(() =>
+            cut.Find(".mobile-branch").TextContent.Should().Contain("btwx"));
+    }
+
+    [Fact]
     public Task Page_BlankReplacement_BlocksCommit_AndShowsValidationMessage()
     {
         StubList(Page());
@@ -314,6 +381,32 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
         cut.WaitForAssertion(() => _api.Received(1).UpdateAsync(dto.Id,
             Arg.Is<UpdateHotstringDto>(d => d.Replacement == "by the way!"), Arg.Any<CancellationToken>()));
         return Task.CompletedTask;
+    }
+
+    [Fact]
+    public void Page_CommitInlineEdit_RefreshesTheMobileBranch()
+    {
+        var dto = new HotstringDto(Guid.NewGuid(), [], true, "btwx", "by the way", null, true, true,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        HotstringDto renamed = dto with { Replacement = "renamed replacement" };
+        StubList(Page(dto));
+        _api.UpdateAsync(dto.Id, Arg.Any<UpdateHotstringDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotstringDto>.Ok(renamed));
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find("button.edit"));
+        cut.Find("button.edit").Click();
+        cut.WaitForAssertion(() => cut.Find("textarea[data-test=\"replacement-input\"]"));
+        cut.Find("textarea[data-test=\"replacement-input\"]").Input("renamed replacement");
+
+        // Both branches read the same endpoint, so this is what a real reload brings back.
+        StubList(Page(renamed));
+
+        cut.Find("button.commit-edit").Click();
+
+        // Both branches render at once, so the assertion names the branch it is about.
+        cut.WaitForAssertion(() =>
+            cut.Find(".mobile-branch").TextContent.Should().Contain("renamed replacement"));
     }
 
     [Fact]

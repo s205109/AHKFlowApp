@@ -322,7 +322,7 @@
     private readonly int _mobilePageSize = 10;
     private int _mobileTotalPages;
     private HotstringListRequest? _cachedListRequest;
-    // Same-request cache only; every mutation path must call ClearListCache before reloading.
+    // Same-request cache only; every mutation path must reload through ReloadAllAsync, which clears it first.
     private PagedList<HotstringDto>? _cachedListPage;
     private bool _dialogOpen;
 
@@ -553,10 +553,10 @@
                 _pendingCreate = null;
                 _editingItem = null;
                 Snackbar.Add("Hotstring created.", Severity.Success);
-                ClearListCache();
 
-                if (_grid is not null)
-                    await _grid.ReloadServerData();
+                // Both branches are in the DOM at once, so reloading the grid alone leaves the mobile
+                // list stale. ReloadAllAsync clears the cache itself, so no separate call is needed.
+                await ReloadAllAsync();
             }
             else Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
         }
@@ -567,10 +567,7 @@
             {
                 _editingItem = null;
                 Snackbar.Add("Hotstring updated.", Severity.Success);
-                ClearListCache();
-
-                if (_grid is not null)
-                    await _grid.ReloadServerData();
+                await ReloadAllAsync();
             }
             else Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
         }
@@ -591,7 +588,6 @@
         if (result.IsSuccess)
         {
             Snackbar.Add("Hotstring deleted.", Severity.Success);
-            ClearListCache();
             await ReloadAllAsync();
         }
         else Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
@@ -653,10 +649,7 @@
                 : $"Deleted {deleted} hotstring(s).";
             Snackbar.Add(message, Severity.Success);
             _selected = [];
-            ClearListCache();
-
-            if (_grid is not null)
-                await _grid.ReloadServerData();
+            await ReloadAllAsync();
         }
         else
         {
@@ -884,7 +877,6 @@
         if (result.IsSuccess)
         {
             Snackbar.Add($"Deleted {result.Value!.DeletedCount} hotstring(s).", Severity.Success);
-            ClearListCache();
             await ReloadAllAsync();
         }
         else
