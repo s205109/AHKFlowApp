@@ -60,6 +60,8 @@ The whole frame should fit on one screen.
 
 Add a script to the project's existing task runner (`package.json` scripts, `Makefile`, `justfile`, `pyproject.toml`). The user should run `pnpm run <prototype-name>` or equivalent — never need to remember a path.
 
+In this repo that means a small console project plus one command: `dotnet run --project <path>`. Put the command in the prototype's own README or top-of-file comment; do not add it to `scripts/` next to the real build and test scripts.
+
 If the host project has no task runner, just put the command at the top of the prototype's README.
 
 ### 6. Hand it over

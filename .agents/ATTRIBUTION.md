@@ -70,13 +70,21 @@ The following skills are adapted from `mattpocock/skills` (MIT), pinned at commi
 `9603c1cc8118d08bc1b3bf34cf714f62178dea3b` — the baseline for future selective merges:
 
 - `mp-grilling`, `mp-grill-me`, `mp-domain-modeling`, `mp-grill-with-docs`, `mp-handoff`,
-  `mp-triage`, `mp-setup-matt-pocock-skills`
+  `mp-triage`, `mp-setup-matt-pocock-skills`, `mp-prototype`, `mp-research`
 
 Adapted, not vendored unchanged (same fork policy as `dck-*`): internal cross-skill references
 are rewritten to the `mp-` folder names, `mp-setup-matt-pocock-skills`'s triage-installed
 detection targets `mp-triage` instead of upstream's literal `triage`, and long descriptions
 are trimmed to this repo's 140-char skill-description budget. Each `SKILL.md` carries a header
 comment recording the pinned commit and update policy (manual-selective-merge).
+
+`mp-prototype` and `mp-research` are adapted further than the other seven, because upstream names
+concrete tools this repo does not have. In `mp-prototype`, the JavaScript examples are replaced
+with their Blazor equivalents — `[SupplyParameterFromQuery]` and `NavigationManager` for the
+variant switch, the `DEBUG` compilation symbol for the production gate, and `dotnet run` for the
+one-command rule. In `mp-research`, an "In this repo" section is appended covering the
+AutoHotkey docs 403 fallback, version-pinned API citations, and citation review. Upstream prose
+is otherwise left intact, so a future selective merge still lines up.
 
 Upstream license notice (`mattpocock/skills`):
 
