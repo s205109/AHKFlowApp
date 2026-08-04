@@ -278,6 +278,29 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
+    public void Page_CommitInlineCreate_RefreshesTheMobileBranch()
+    {
+        var created = new HotstringDto(Guid.NewGuid(), [], true, "btwx", "by the way", null, true, true,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        StubList(Page());
+        _api.CreateAsync(Arg.Any<CreateHotstringDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotstringDto>.Ok(created));
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+        StartDraftEdit(cut);
+        FillRequiredFields(cut, "btwx", "by the way");
+
+        // Both branches read the same endpoint, so this is what a real reload brings back.
+        StubList(Page(created));
+
+        cut.Find("button.commit-edit").Click();
+
+        // Both branches render at once, so the assertion names the branch it is about.
+        cut.WaitForAssertion(() =>
+            cut.Find(".mobile-branch").TextContent.Should().Contain("btwx"));
+    }
+
+    [Fact]
     public Task Page_BlankReplacement_BlocksCommit_AndShowsValidationMessage()
     {
         StubList(Page());

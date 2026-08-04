@@ -553,10 +553,10 @@
                 _pendingCreate = null;
                 _editingItem = null;
                 Snackbar.Add("Hotstring created.", Severity.Success);
-                ClearListCache();
 
-                if (_grid is not null)
-                    await _grid.ReloadServerData();
+                // Both branches are in the DOM at once, so reloading the grid alone leaves the mobile
+                // list stale. ReloadAllAsync clears the cache itself, so no separate call is needed.
+                await ReloadAllAsync();
             }
             else Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
         }
