@@ -64,6 +64,29 @@ Body layout, in order: paste helper (only when some hotstring needs it), `; --- 
 hotstring window-context groups, global hotstrings, `; --- Hotkeys ---`, hotkey window-context
 groups, global hotkeys, footer. Lines are joined with `\n`.
 
+## Header presets
+
+`HeaderPresetCatalog` ships blocks an owner can append to a profile header from the Profiles page.
+The text is copied in once; the app never rewrites a header afterwards. The blocks use four
+constructs the emitters do not:
+
+| Construct | Used by | Official page |
+|---|---|---|
+| `SetCapsLockState "AlwaysOff"` and its Num/Scroll siblings | lock keys, Caps Lock layer | `docs/lib/SetNumScrollCapsLockState.htm` |
+| `*Key::` / `*Key up::` with `Send "{Blind}{LCtrl DownR}"` | both keyboard layers | `docs/misc/Remap.htm` — AutoHotkey's own translation of a remap |
+| `SetTimer` plus `Suspend` | pause while an application is in front | `docs/lib/SetTimer.htm`, `docs/lib/Suspend.htm` |
+| `#Hotstring EndChars ...` | ending characters | `docs/Hotstrings.htm`, "Ending Characters" |
+
+Two rules bind every body, and `HeaderPresetCatalogTests` enforces both:
+
+- **No doubled braces.** `HeaderTokenRenderer` turns `{{` into `{`, which would silently change
+  the script.
+- **No directive the default header already sets.** Setting one twice warns or misbehaves.
+
+**A preset must not use `#HotIf`.** `AhkScriptGenerator` closes every window-context group with a
+bare `#HotIf`, so a context opened in the header does not survive. Use `Suspend` on a timer
+instead.
+
 ## Hotstring definitions
 
 The shape is:
