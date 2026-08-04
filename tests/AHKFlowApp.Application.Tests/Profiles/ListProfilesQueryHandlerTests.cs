@@ -47,6 +47,20 @@ public sealed class ListProfilesQueryHandlerTests(ProfileDbFixture fx)
     }
 
     [Fact]
+    public async Task ExecuteAsync_LazySeededProfile_HeaderHoldsNoPresetMarker()
+    {
+        await using AppDbContext ctx = fx.CreateContext();
+        ListProfilesQueryHandler sut = CreateSut(ctx);
+
+        Result<IReadOnlyList<ProfileDto>> result = await sut.ExecuteAsync(new ListProfilesQuery(), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().ContainSingle();
+        ProfileDto seeded = result.Value[0];
+        seeded.HeaderTemplate.Should().NotContain("; --- AHKFlow preset:");
+    }
+
+    [Fact]
     public async Task Returns_unauthorized_when_no_oid()
     {
         await using AppDbContext ctx = fx.CreateContext();
