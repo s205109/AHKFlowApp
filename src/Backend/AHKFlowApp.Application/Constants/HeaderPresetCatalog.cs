@@ -94,8 +94,10 @@ internal static class HeaderPresetCatalog
 
     private const string HotstringEndCharactersBody = """
         ; Choose which characters finish a hotstring.
-        ; This list replaces AutoHotkey's default list for every hotstring below it.
+        ; This list replaces AutoHotkey's default list for all hotstrings, not just the ones below it.
         ; `n is Enter, `s is Space, `t is Tab.
+        ; This list matches AutoHotkey's own default, so it changes nothing unless you edit it.
+        ; Remove characters you don't want, or add ones you do.
         #Hotstring EndChars -()[]{}:;'"/\,.?!`n`s`t
         """;
 }
