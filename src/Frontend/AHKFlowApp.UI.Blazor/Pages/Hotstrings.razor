@@ -588,7 +588,6 @@
         if (result.IsSuccess)
         {
             Snackbar.Add("Hotstring deleted.", Severity.Success);
-            ClearListCache();
             await ReloadAllAsync();
         }
         else Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
@@ -878,7 +877,6 @@
         if (result.IsSuccess)
         {
             Snackbar.Add($"Deleted {result.Value!.DeletedCount} hotstring(s).", Severity.Success);
-            ClearListCache();
             await ReloadAllAsync();
         }
         else
