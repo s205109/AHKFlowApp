@@ -24,7 +24,7 @@ paste does not stop my entire Profile script from loading.
 - [x] The validation message names the line number, and the API returns it on the `Body` field.
       The web UI does **not** yet show it on the Raw body field — that rendering is broken for
       every Raw rule and pre-dates this item. It is tracked in
-      `.claude/backlog/051-hotkey-raw-body-inline-error-not-rendering.md`, and until 051 lands a
+      `backlog/done/051-hotkey-raw-body-inline-error-not-rendering.md`, and until 051 lands a
       web UI user only sees the panel's generic "Fix the highlighted fields" message.
 - [x] A definition-looking line inside braces, inside a string, inside a line or block comment, or
       inside a continuation section is still accepted.
@@ -44,7 +44,7 @@ Implemented as rejection, not comparison — see the design decision note below.
 - Known shortcuts. That is a different concept and a different mechanism — see
   `docs/superpowers/specs/2026-07-28-hotkey-conflict-warnings-design.md`.
 - Fixing the pre-existing Raw body field inline-error rendering bug found while implementing this item.
-  See `.claude/backlog/051-hotkey-raw-body-inline-error-not-rendering.md`.
+  See `backlog/done/051-hotkey-raw-body-inline-error-not-rendering.md`.
 
 ## Notes / dependencies
 
