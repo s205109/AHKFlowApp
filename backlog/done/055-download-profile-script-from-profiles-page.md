@@ -20,20 +20,20 @@ not have to find the same profile again on a second page.
 
 ## Acceptance criteria
 
-- [ ] A download button sits in each Profiles row, between expand and edit
-- [ ] Pressing it saves the same file the Downloads page saves for that profile — same content, same
+- [x] A download button sits in each Profiles row, between expand and edit
+- [x] Pressing it saves the same file the Downloads page saves for that profile — same content, same
       filename. Both pages call one shared `ProfileScriptDownloader`, so the two cannot drift
-- [ ] The button is disabled while the row is being edited, and on the unsaved new-profile row. The
+- [x] The button is disabled while the row is being edited, and on the unsaved new-profile row. The
       server builds the script from saved data, so downloading mid-edit would hand back a file that
       does not hold the unsaved change
-- [ ] A disabled button explains itself. MudBlazor sets `pointer-events: none` on disabled buttons,
+- [x] A disabled button explains itself. MudBlazor sets `pointer-events: none` on disabled buttons,
       so the reason rides on a `MudTooltip` wrapper and on the button's own `aria-label`
-- [ ] While one download runs, every row's download button is disabled, and the running row shows a
+- [x] While one download runs, every row's download button is disabled, and the running row shows a
       spinner. All rows become usable again after success, after failure, and after cancellation
-- [ ] Cancelling by leaving the page shows no snackbar
-- [ ] The Actions column keeps its shape when a row enters edit mode — the button is present in both
+- [x] Cancelling by leaving the page shows no snackbar
+- [x] The Actions column keeps its shape when a row enters edit mode — the button is present in both
       action groups
-- [ ] An end-to-end test downloads from `/profiles` and asserts the saved text is that profile's
+- [x] An end-to-end test downloads from `/profiles` and asserts the saved text is that profile's
       script
 
 ## Out of scope
