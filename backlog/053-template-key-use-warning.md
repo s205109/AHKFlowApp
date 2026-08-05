@@ -43,10 +43,13 @@ destination. Item 043 shipped the preset that makes it easy to hit.
 
 - [ ] A row whose key is used by a header or footer template of a Profile the row belongs to shows a warning
 - [ ] The warning names the Profile and says which template used the key
+- [ ] Both places a row can be edited show it — the edit dialog and the grid's inline row
+- [ ] Changing a row's Profiles without changing its key updates the warning
 - [ ] A row with "apply to all profiles" is checked against every Profile's templates
 - [ ] Matching is on the key alone, so a row carrying modifiers still warns
 - [ ] A template line carrying its own modifiers, such as `^!c::`, does not make every row with that key warn
 - [ ] A comment line and a custom combination in a template are not read as key uses
+- [ ] The warning names at most three Profiles and counts the rest
 - [ ] The warning never blocks saving
 - [ ] A row whose key no template uses behaves exactly as it does today
 
@@ -62,5 +65,7 @@ destination. Item 043 shipped the preset that makes it easy to hit.
 - Design: `docs/superpowers/specs/2026-08-05-header-template-key-use-warning-design.md`
 - Prototype proving the parser rules: `prototypes/HeaderKeyUsePrototype`
 - The notice belongs beside the existing ones in `ShortcutWarning.razor`, the way 044 added `DestinationTextFor`
-- `HotkeyEditDialog.razor:271` already receives full `ProfileDto` objects, and `ProfileDto` already carries both templates. No new endpoint is needed
+- Both call sites already hold full `ProfileDto` objects, and `ProfileDto` already carries both templates — `HotkeyEditDialog.razor:271` and `Hotkeys.razor:303`. No new endpoint is needed
+- `ShortcutWarning.razor:75` decides re-evaluation from `(Combination, Kind, RemapDest)`. Profile scope has to join it, or a Profile change is ignored
 - `CONTEXT.md:92` bans conflict, clash, collision, and duplicate for this area. The house word is "uses"
+- `docs/development/ahk-v2-syntax.md` documents none of `*`, `~`, or `up::` in prose. It needs extending as part of this work
