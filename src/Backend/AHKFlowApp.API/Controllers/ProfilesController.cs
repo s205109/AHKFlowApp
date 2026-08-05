@@ -21,8 +21,19 @@ public sealed class ProfilesController(
     IUseCase<GetProfileQuery, Result<ProfileDto>> getProfile,
     IUseCase<CreateProfileCommand, Result<ProfileDto>> createProfile,
     IUseCase<UpdateProfileCommand, Result<ProfileDto>> updateProfile,
-    IUseCase<DeleteProfileCommand, Result> deleteProfile) : ControllerBase
+    IUseCase<DeleteProfileCommand, Result> deleteProfile,
+    IUseCase<ListHeaderPresetsQuery, Result<HeaderPresetCatalogDto>> listHeaderPresets) : ControllerBase
 {
+    /// <summary>Get the shipped header presets for the profile header picker.</summary>
+    /// <remarks>
+    /// Static reference data. Authorized because the controller is, not because it is
+    /// user-scoped. Inserting a preset is a client-side text edit saved through PUT.
+    /// </remarks>
+    [HttpGet("header-presets")]
+    [ProducesResponseType(typeof(HeaderPresetCatalogDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<HeaderPresetCatalogDto>> HeaderPresets(CancellationToken ct) =>
+        (await listHeaderPresets.ExecuteAsync(new ListHeaderPresetsQuery(), ct)).ToProblemActionResult(this);
+
     /// <summary>List the current user's profiles. Lazily seeds a default profile on first call.</summary>
     [HttpGet]
     [ProducesResponseType(typeof(IReadOnlyList<ProfileDto>), StatusCodes.Status200OK)]

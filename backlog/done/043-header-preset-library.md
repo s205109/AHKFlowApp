@@ -10,6 +10,8 @@
 
 A profile header is an empty box with a few default lines in it. Anything beyond that has to be typed from memory, in a language most owners do not write daily. Ship a short list of ready-made header blocks that an owner can pick from a list and drop straight into the header.
 
+**Shipped as "header preset", not "snippet"** — `CONTEXT.md` lists snippet as a word to avoid.
+
 ## User story
 
 As an owner, I want to pick a common header setting from a list, so that I do not have to write AutoHotkey by hand to change how my whole profile behaves.
@@ -74,18 +76,18 @@ This is the same test that keeps clipboard hotkeys out. Applying it to some cand
 
 ## Acceptance criteria
 
-- [ ] A snippet catalog exists in the Application project as shipped constants, each entry carrying a stable id, name, one-line description, tag, and body
-- [ ] The API serves the catalog read-only, through a query and controller action, the same way the hotkey key registry is served
-- [ ] The Blazor project reads the catalog from that endpoint and holds no copy of the bodies
-- [ ] The profile header editor has a control that opens the picker, grouped by tag
-- [ ] Picking a snippet appends it to the header, wrapped in the marker comments
-- [ ] A header that does not end with a line break gets one before the opening marker, so a marker never joins the owner's last line
-- [ ] An insert that would push the header past `ProfileRules.HeaderTemplateMaxLength` is refused with a message, and the header is left unchanged
-- [ ] A snippet already present in the header is shown as unavailable
-- [ ] No snippet body repeats a directive the default header already emits
-- [ ] Every snippet body survives header rendering unchanged
-- [ ] Every snippet body is checked against the project's AutoHotkey v2 syntax reference before it ships
-- [ ] No snippet is inserted on its own. A newly created profile and a lazily seeded profile both have a header with no snippet markers in it
+- [x] A snippet catalog exists in the Application project as shipped constants, each entry carrying a stable id, name, one-line description, tag, and body
+- [x] The API serves the catalog read-only, through a query and controller action, the same way the hotkey key registry is served
+- [x] The Blazor project reads the catalog from that endpoint and holds no copy of the bodies
+- [x] The profile header editor has a control that opens the picker, grouped by tag
+- [x] Picking a snippet appends it to the header, wrapped in the marker comments
+- [x] A header that does not end with a line break gets one before the opening marker, so a marker never joins the owner's last line
+- [x] An insert that would push the header past `ProfileRules.HeaderTemplateMaxLength` is refused with a message, and the header is left unchanged
+- [x] A snippet already present in the header is shown as unavailable
+- [x] No snippet body repeats a directive the default header already emits
+- [x] Every snippet body survives header rendering unchanged
+- [x] Every snippet body is checked against the project's AutoHotkey v2 syntax reference before it ships
+- [x] No snippet is inserted on its own. A newly created profile and a lazily seeded profile both have a header with no snippet markers in it
 
 ## Out of scope
 

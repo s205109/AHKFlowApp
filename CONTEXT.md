@@ -126,6 +126,10 @@ _Avoid_: script (unqualified), file, output, ahk
 The user-editable text a Profile places before and after the definitions in its Profile script. Tokens such as the profile's name or the generation time are substituted when the script is generated; unknown tokens are left as typed.
 _Avoid_: preamble, banner, boilerplate, prologue/epilogue
 
+**Header preset**:
+A ready-made block of AutoHotkey the app can append to a Profile's header template. The app ships a fixed list; an owner picks one, and from then on the text is an ordinary part of their header. Presets carry settings that apply to a whole Profile, which no Hotstring or Hotkey can express.
+_Avoid_: snippet, template, macro, boilerplate
+
 ### History
 
 **Snapshot**:

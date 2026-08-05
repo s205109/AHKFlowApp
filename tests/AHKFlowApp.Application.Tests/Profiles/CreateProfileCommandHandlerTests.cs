@@ -1,6 +1,7 @@
 using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.Commands.Profiles;
 using AHKFlowApp.Application.DTOs;
+using AHKFlowApp.Domain.Constants;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Infrastructure.Persistence;
 using AHKFlowApp.TestUtilities.Builders;
@@ -83,6 +84,24 @@ public sealed class CreateProfileCommandHandlerTests(ProfileDbFixture fx)
         result.IsSuccess.Should().BeTrue();
         result.Value.HeaderTemplate.Should().Be("#Include work.ahk");
         result.Value.FooterTemplate.Should().Be("return");
+    }
+
+    [Fact]
+    public async Task Handle_NewProfile_HeaderHoldsNoPresetMarker()
+    {
+        await using AppDbContext ctx = fx.CreateContext();
+        ICurrentUser user = Substitute.For<ICurrentUser>();
+        user.Oid.Returns(_ownerOid);
+
+        var sut = new CreateProfileCommandHandler(ctx, user, _clock);
+
+        Result<ProfileDto> result = await sut.ExecuteAsync(
+            new CreateProfileCommand(new CreateProfileDto("Work")), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        ProfileDto created = result.Value;
+        created.HeaderTemplate.Should().NotContain("; --- AHKFlow preset:");
+        created.HeaderTemplate.Should().Be(DefaultProfileTemplates.Header);
     }
 
     [Fact]

@@ -105,6 +105,21 @@ public sealed class ProfilesApiClientTests
         result.Status.Should().Be(ApiResultStatus.NetworkError);
     }
 
+    [Fact]
+    public async Task GetHeaderPresetsAsync_OnSuccess_ReturnsCatalogFromTheHeaderPresetsPath()
+    {
+        var catalog = new HeaderPresetCatalogDto(
+            [new HeaderPresetDto("lock-keys-off", "Keep lock keys off", "Holds three keys off.",
+                "Lock keys", "SetNumLockState \"AlwaysOff\"")]);
+        var handler = StubHttpMessageHandler.JsonResponse(HttpStatusCode.OK, catalog);
+
+        ApiResult<HeaderPresetCatalogDto> result = await ClientWith(handler).GetHeaderPresetsAsync();
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.Presets.Should().ContainSingle().Which.Id.Should().Be("lock-keys-off");
+        handler.LastRequest!.RequestUri!.PathAndQuery.Should().Be("/api/v1/profiles/header-presets");
+    }
+
     private sealed class StubHttpMessageHandler : HttpMessageHandler
     {
         public HttpRequestMessage? LastRequest { get; private set; }

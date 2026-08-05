@@ -21,4 +21,7 @@ public sealed class ProfilesApiClient(HttpClient httpClient) : ApiClientBase(htt
 
     public Task<ApiResult> DeleteAsync(Guid id, CancellationToken ct = default) =>
         SendNoContentAsync(HttpMethod.Delete, $"{BasePath}/{id}", ct);
+
+    public Task<ApiResult<HeaderPresetCatalogDto>> GetHeaderPresetsAsync(CancellationToken ct = default) =>
+        SendAsync<HeaderPresetCatalogDto>(HttpMethod.Get, $"{BasePath}/header-presets", content: null, ct);
 }

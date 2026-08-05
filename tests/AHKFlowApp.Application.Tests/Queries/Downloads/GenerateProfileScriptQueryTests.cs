@@ -120,4 +120,26 @@ public sealed class GenerateProfileScriptQueryTests(ScriptGeneratorDbFixture fx)
         result.IsSuccess.Should().BeFalse();
         result.Status.Should().Be(ResultStatus.Unauthorized);
     }
+
+    [Fact]
+    public async Task Handle_OnlyAllProfilesHotstrings_StillEmitsThem()
+    {
+        await using AppDbContext ctx = fx.CreateContext();
+        Profile work = new ProfileBuilder().WithOwner(_ownerOid).WithName($"Work-{Guid.NewGuid():N}")
+            .WithHeader("#Requires AutoHotkey v2.0").WithFooter("; end").Build();
+        Hotstring hsAny = new HotstringBuilder().WithOwner(_ownerOid)
+            .WithTrigger("btw").WithReplacement("by the way")
+            .WithEndingCharacterRequired(false).WithTriggerInsideWord(true)
+            .AppliesToAllProfiles().Build();
+        ctx.Profiles.Add(work);
+        ctx.Hotstrings.Add(hsAny);
+        await ctx.SaveChangesAsync();
+
+        GenerateProfileScriptQueryHandler sut = CreateSut(ctx);
+        Result<ProfileScript> result = await sut.ExecuteAsync(
+            new GenerateProfileScriptQuery(work.Id), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Content.Should().Contain(":*?T:btw::by the way");
+    }
 }
