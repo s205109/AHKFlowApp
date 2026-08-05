@@ -3,8 +3,8 @@ namespace HeaderKeyUsePrototype;
 /// <summary>
 /// PROTOTYPE — the keeper half. Pure, no I/O, no terminal code.
 ///
-/// Question this answers: given real Profile header text, does the agreed parser rule pick out
-/// exactly the keys a header uses as hotkeys, and no others?
+/// Question this answers: given real Profile template text, does the agreed parser rule pick out
+/// exactly the keys a template uses as hotkeys, and no others?
 ///
 /// The agreed rule (grilling Q8, option A):
 ///   - Skip a line whose first non-space character is ';'
@@ -13,19 +13,21 @@ namespace HeaderKeyUsePrototype;
 ///   - Skip custom combinations, which contain '&amp;' on the left of '::'
 ///   - Accept optional '*' '~' '$' prefixes, then a key name, then optional " up", then "::"
 ///   - "Key up::" and "Key::" both use the same one key
+///
+/// Runs over a header template and a footer template alike — both reach the generated script.
 /// </summary>
-public static class HeaderKeyUses
+public static class TemplateKeyUses
 {
     private const string Prefixes = "*~$";
     private const string ModifierSymbols = "^!+#<>";
 
-    /// <summary>Every key the header template uses as a hotkey. Case-insensitive, de-duplicated.</summary>
-    public static IReadOnlyList<string> Parse(string headerTemplate)
+    /// <summary>Every key the template uses as a hotkey. Case-insensitive, de-duplicated.</summary>
+    public static IReadOnlyList<string> Parse(string template)
     {
         List<string> keys = [];
         HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
 
-        foreach (string rawLine in headerTemplate.Split('\n'))
+        foreach (string rawLine in template.Split('\n'))
         {
             string? key = KeyUsedBy(rawLine);
 

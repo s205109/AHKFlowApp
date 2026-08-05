@@ -94,9 +94,28 @@ public static class Fixtures
 
         """;
 
+    public static readonly string[] FooterVariantNames =
+    [
+        "empty footer",
+        "footer with *ScrollLock::",
+        "footer with the Caps Lock layer too",
+    ];
+
+    public static string Footer(int variant) => variant switch
+    {
+        1 => """
+
+            *ScrollLock::Run "notepad"
+
+            """,
+        2 => CapsLockLayerPreset,
+        _ => "",
+    };
+
     /// <summary>
     /// Stands in for the key registry. Only the names this prototype drives through are listed.
-    /// The real app calls IHotkeyKeyCatalog.CanonicalizeAsync (HotkeyKeyCatalog.cs).
+    /// The real app calls IHotkeyKeyCatalog.CanonicalizeAsync (IHotkeyKeyCatalog.cs:31), which
+    /// hands back the input unchanged for a name the registry does not know — so this does too.
     /// </summary>
     private static readonly Dictionary<string, string> s_canonical = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -110,6 +129,6 @@ public static class Fixtures
         ["F1"] = "F1",
     };
 
-    public static string? Canonicalize(string key) =>
-        s_canonical.TryGetValue(key, out string? canonical) ? canonical : null;
+    public static string Canonicalize(string key) =>
+        s_canonical.TryGetValue(key, out string? canonical) ? canonical : key;
 }

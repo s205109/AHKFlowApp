@@ -13,6 +13,7 @@ const string Green = "\x1b[32m";
 
 string[] profileNames = ["Work", "Games", "Writing"];
 int[] variants = [0, 1, 2];
+int[] footerVariants = [0, 0, 0];
 bool[] member = [true, true, false];
 int focused = 0;
 
@@ -58,6 +59,7 @@ while (true)
         case '2': focused = 1; break;
         case '3': focused = 2; break;
         case 'h': variants[focused] = (variants[focused] + 1) % Fixtures.VariantNames.Length; break;
+        case 'f': footerVariants[focused] = (footerVariants[focused] + 1) % Fixtures.FooterVariantNames.Length; break;
         case 'k': rowKeyIndex = (rowKeyIndex + 1) % rowKeys.Length; break;
         case 'm': modifierIndex = (modifierIndex + 1) % modifierLabels.Length; break;
         case 'a': appliesToAll = !appliesToAll; break;
@@ -86,26 +88,36 @@ void Render()
 
     for (int i = 0; i < profileNames.Length; i++)
     {
-        IReadOnlyList<string> keys = HeaderKeyUses.Parse(Fixtures.Header(variants[i]));
         string marker = i == focused ? ">" : " ";
         string inRow = appliesToAll || member[i] ? "in row" : "      ";
-        string used = keys.Count == 0 ? $"{Dim}(uses no keys){Reset}" : string.Join(", ", keys);
 
-        Console.WriteLine($" {marker} {profileNames[i],-8} {Dim}{inRow}{Reset}  {Fixtures.VariantNames[variants[i]],-42} {used}");
+        Console.WriteLine($" {marker} {profileNames[i],-8} {Dim}{inRow}{Reset}  {Fixtures.VariantNames[variants[i]],-42} {Used(Header(i))}");
+        Console.WriteLine($"   {Dim}footer{Reset}   {"",-6}  {Fixtures.FooterVariantNames[footerVariants[i]],-42} {Used(Footer(i))}");
     }
 
     Console.WriteLine();
     Console.WriteLine($"{Bold}Warning{Reset}");
 
-    string? text = HeaderUseText.TextFor(Considered(), rowKeys[rowKeyIndex], Fixtures.Canonicalize);
+    string? text = TemplateUseText.TextFor(Considered(), Fixtures.Canonicalize(rowKeys[rowKeyIndex]));
 
     Console.WriteLine(text is null
         ? $"  {Green}(none){Reset}"
         : $"  {Yellow}{text}{Reset}");
 
     Console.WriteLine();
-    Console.WriteLine($"{Dim}[1|2|3] focus  [h] header variant  [k] row key  [m] modifiers  [a] all profiles  [space] membership  [q] quit{Reset}");
+    Console.WriteLine($"{Dim}[1|2|3] focus  [h] header  [f] footer  [k] row key  [m] modifiers  [a] all profiles  [space] membership  [q] quit{Reset}");
 }
+
+string Used(IReadOnlyList<string> keys) =>
+    keys.Count == 0 ? $"{Dim}(uses no keys){Reset}" : string.Join(", ", keys);
+
+// The component canonicalizes before composing, because CanonicalizeAsync is asynchronous and the
+// composer is a pure synchronous function (IHotkeyKeyCatalog.cs:31).
+List<string> Header(int i) =>
+    [.. TemplateKeyUses.Parse(Fixtures.Header(variants[i])).Select(Fixtures.Canonicalize)];
+
+List<string> Footer(int i) =>
+    [.. TemplateKeyUses.Parse(Fixtures.Footer(footerVariants[i])).Select(Fixtures.Canonicalize)];
 
 string Membership()
 {
@@ -113,16 +125,16 @@ string Membership()
     return names.Length == 0 ? "(none)" : string.Join(", ", names);
 }
 
-List<ProfileHeaderUse> Considered()
+List<ProfileTemplateUse> Considered()
 {
-    List<ProfileHeaderUse> uses = [];
+    List<ProfileTemplateUse> uses = [];
 
     for (int i = 0; i < profileNames.Length; i++)
     {
         if (!appliesToAll && !member[i])
             continue;
 
-        uses.Add(new ProfileHeaderUse(profileNames[i], HeaderKeyUses.Parse(Fixtures.Header(variants[i]))));
+        uses.Add(new ProfileTemplateUse(profileNames[i], Header(i), Footer(i)));
     }
 
     return uses;
