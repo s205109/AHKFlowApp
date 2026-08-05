@@ -31,6 +31,9 @@ public sealed class DownloadsPageTests : BunitContext, IAsyncLifetime
         Services.AddSingleton(_downloads);
         Services.AddSingleton(_saver);
         Services.AddSingleton<TimeProvider>(_clock);
+        // The page calls the real downloader. It is sealed, so NSubstitute cannot fake it, and
+        // every dependency it needs is already a substitute here.
+        Services.AddSingleton<ProfileScriptDownloader>();
         Services.AddMudServices();
         JSInterop.Mode = JSRuntimeMode.Loose;
     }
@@ -90,6 +93,26 @@ public sealed class DownloadsPageTests : BunitContext, IAsyncLifetime
             "20260726_140509_ahkflow_Work.ahk",
             "text/plain; charset=utf-8",
             Arg.Is<byte[]>(b => b.SequenceEqual(payload.Content)));
+    }
+
+    [Fact]
+    public Task Click_PerProfileDownload_ApiFails_SavesNothing()
+    {
+        ProfileDto work = MakeProfile("Work");
+        StubProfileList(work);
+        _downloads.GetProfileScriptAsync(work.Id, Arg.Any<CancellationToken>())
+            .Returns(ApiResult<FileDownload>.Failure(ApiResultStatus.NetworkError, null));
+
+        IRenderedComponent<Downloads> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find("button.download-profile"));
+        cut.Find("button.download-profile").Click();
+
+        // MudBlazor snackbars render through a portal, so the error message is not in the page
+        // markup here. The saver is the assertable proof that the failure path took no action.
+        cut.WaitForAssertion(() => _downloads.Received(1).GetProfileScriptAsync(
+            work.Id, Arg.Any<CancellationToken>()));
+        return _saver.DidNotReceive().SaveAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<byte[]>());
     }
 
     [Fact]
