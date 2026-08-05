@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    PROTOTYPE — throwaway. Not in AHKFlowApp.slnx on purpose, so it never reaches CI.
+    Code style and warnings-as-errors are relaxed here; the real code picks both back up when the
+    validated logic is lifted into src/.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>HeaderKeyUsePrototype</AssemblyName>
+    <RootNamespace>HeaderKeyUsePrototype</RootNamespace>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+  </PropertyGroup>
+
+</Project>
