@@ -361,6 +361,15 @@ try {
     Add-TestWorktree -RepoDir $repo -BranchName 'feat-wip' -Unmerged | Out-Null
     Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-wip')) 'A committed but unmerged branch must not report merged own work.'
 
+    # A finished worktree that catches up with main after its pull request merged. `git merge
+    # --ff-only main` moves the tip off the merge commit's second parent and onto the merge commit
+    # itself, so the CURRENT tip no longer proves anything. The work really was merged, and backlog
+    # 060 requires such a worktree to stay sweepable, so the proof must come from the ref-log
+    # history rather than the tip alone.
+    $catchupPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-catchup'
+    Invoke-TestGit $catchupPath @('merge', '--ff-only', 'main') | Out-Null
+    Assert-True (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-catchup') 'A merged branch that then fast-forwarded to main must still report merged own work.'
+
     # A branch created off another branch (the -BaseRef shape) gets its own ref log with one
     # "branch: Created from <base>" entry. It holds no work of its own.
     Invoke-TestGit $repo @('branch', 'feat-child', 'feat-done') | Out-Null
@@ -443,6 +452,22 @@ try {
     Assert-True ($keys -contains (ConvertTo-Key $donePath)) 'A branch really merged into main must stay eligible.'
     Assert-True (-not ($keys -contains (ConvertTo-Key $freshPath))) 'A worktree with no commits of its own must never be eligible.'
     Assert-True (-not ($keys -contains (ConvertTo-Key $freshTwoPath))) 'A worktree fast-forwarded to main without its own commits must never be eligible.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: a merged worktree stays eligible after it catches up with main -------------
+# The sweep's whole job. A worktree left open after its pull request merged, then updated with
+# `git merge --ff-only main`, still holds finished work and must still be removed.
+$repo = New-TempGitRepo
+try {
+    $caughtUpPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-caught-up'
+    Invoke-TestGit $caughtUpPath @('merge', '--ff-only', 'main') | Out-Null
+
+    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
+    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
+
+    Assert-True ($keys -contains (ConvertTo-Key $caughtUpPath)) 'A merged worktree that fast-forwarded to main must stay eligible for cleanup.'
 } finally {
     Remove-TempTree $repo
 }

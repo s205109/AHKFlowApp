@@ -73,8 +73,11 @@ shell, with no Claude Code worktree tool involved.
 
 ### How it was fixed
 
-- Removal now needs two independent signals: a `commit`-prefixed ref-log entry AND the branch tip
-  being a non-first parent of a merge commit in `main`. Each covers the other's blind spot, and
-  anything unproven keeps the worktree
+- Removal now needs two independent signals: a `commit`-prefixed ref-log entry AND some commit the
+  branch has pointed at being a non-first parent of a merge commit in `main`. Each covers the
+  other's blind spot, and anything unproven keeps the worktree
+- The second signal reads the branch's whole ref-log history. Checking only the current tip broke
+  the third acceptance criterion: a finished worktree that ran `git merge --ff-only main` moved its
+  tip onto the merge commit and stopped being swept
 - Sweeping only branches with a merged pull request, the second option listed above, was not
   needed. The merge-commit shape gives the same evidence locally, with no network access

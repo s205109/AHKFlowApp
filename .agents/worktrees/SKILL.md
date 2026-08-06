@@ -78,13 +78,19 @@ that caught up with `main` by fast-forward. Closing a worktree yourself still re
 rule governs the automatic sweep only.
 
 The sweep removes a worktree only when two independent signals both say its own work was merged:
-the branch ref log holds a `commit`-prefixed entry, **and** the branch tip is a non-first parent
-of a merge commit in `main` — the shape a GitHub "Merge pull request" leaves behind. Neither
-signal is trusted alone. Ref-log text is caller-controlled (`GIT_REFLOG_ACTION`, `git update-ref
--m`), and a branch created at an already-merged tip is structurally a merged parent without ever
-being committed to. Anything the sweep cannot establish keeps the worktree, so these branches are
-never swept and must be closed by hand: work merged by squash, rebase, or fast-forward, and any
-branch whose ref log was disabled or expired.
+the branch ref log holds a `commit`-prefixed entry, **and** some commit the branch has pointed at
+is a non-first parent of a merge commit in `main` — the shape a GitHub "Merge pull request"
+leaves behind. Neither signal is trusted alone. Ref-log text is caller-controlled
+(`GIT_REFLOG_ACTION`, `git update-ref -m`), and a branch created at an already-merged tip is
+structurally a merged parent without ever being committed to.
+
+The second signal reads the branch's whole ref-log history, not just its current tip. A finished
+worktree that runs `git merge --ff-only main` after its pull request merged moves its tip onto
+the merge commit, and it must stay sweepable.
+
+Anything the sweep cannot establish keeps the worktree, so these are never swept and must be
+closed by hand: work merged by squash or rebase, work fast-forwarded into `main` with no merge
+commit, and any branch whose ref log was disabled or expired.
 
 #### Claude Code in-conversation native creation: ask once, then remember
 

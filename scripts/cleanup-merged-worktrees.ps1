@@ -74,24 +74,32 @@ function Test-BranchOwnWorkWasMerged {
         [string] $MainRef = 'main'
     )
 
-    # Signal 1. Missing ref log (core.logAllRefUpdates off, gc expired it) or an unknown branch
-    # exits non-zero and reads as unstarted.
-    $subjects = & git -C $RepoRoot reflog show --format='%gs' "refs/heads/$Branch" 2>$null
+    # One walk of the branch ref log feeds both signals. '%gs' is the subject, '%H' is the commit
+    # the branch pointed at after that entry. Missing ref log (core.logAllRefUpdates off, gc
+    # expired it) or an unknown branch exits non-zero and reads as unstarted.
+    $entries = & git -C $RepoRoot reflog show --format='%H %gs' "refs/heads/$Branch" 2>$null
     if ($LASTEXITCODE -ne 0) { return $false }
 
     $sawCommitSubject = $false
-    foreach ($subject in $subjects) {
-        if (([string] $subject).Trim() -match '^commit\b') { $sawCommitSubject = $true; break }
+    $everPointedAt = @{}
+    foreach ($entry in $entries) {
+        $text = ([string] $entry).Trim()
+        if (-not $text) { continue }
+
+        $sha, $subject = $text -split '\s+', 2
+        if ($sha) { $everPointedAt[$sha] = $true }
+        if ($subject -and $subject -match '^commit\b') { $sawCommitSubject = $true }
     }
     if (-not $sawCommitSubject) { return $false }
 
     # Signal 2. `--format=%P` emits a 'commit <sha>' header line per commit followed by that
     # commit's parents; --min-parents=2 keeps merges only, and every parent after the first is a
     # tip that was merged in.
-    $tip = & git -C $RepoRoot rev-parse --verify "refs/heads/$Branch" 2>$null
-    if ($LASTEXITCODE -ne 0) { return $false }
-    $tip = ([string] $tip).Trim()
-
+    #
+    # Every commit the branch has EVER pointed at counts, not just its current tip. A finished
+    # worktree that runs `git merge --ff-only main` after its pull request merged moves its tip
+    # off the merge commit's second parent and onto the merge commit itself. The work was still
+    # merged, and the sweep must still remove it, so the proof has to survive that move.
     $parentLines = & git -C $RepoRoot rev-list --min-parents=2 --format='%P' $MainRef 2>$null
     if ($LASTEXITCODE -ne 0) { return $false }
 
@@ -100,7 +108,7 @@ function Test-BranchOwnWorkWasMerged {
         if (-not $text -or $text -like 'commit *') { continue }
         $parents = @($text -split '\s+')
         for ($i = 1; $i -lt $parents.Count; $i++) {
-            if ($parents[$i] -eq $tip) { return $true }
+            if ($everPointedAt.ContainsKey($parents[$i])) { return $true }
         }
     }
 
