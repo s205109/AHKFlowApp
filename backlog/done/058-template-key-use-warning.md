@@ -1,4 +1,4 @@
-# 053 - Hotkey warnings ignore keys a profile template already uses
+# 058 - Hotkey warnings ignore keys a profile template already uses
 
 ## Metadata
 
@@ -46,7 +46,8 @@ destination. Item 043 shipped the preset that makes it easy to hit.
 - [x] Both places a row can be edited show it — the edit dialog and the grid's inline row
 - [x] Changing a row's Profiles without changing its key updates the warning
 - [x] A row with "apply to all profiles" is checked against every Profile's templates
-- [x] Matching is on the key alone, so a row carrying modifiers still warns
+- [x] A wildcard template hotkey warns for a row on the same key, whatever modifiers the row carries
+- [x] A template hotkey that declares its own modifiers warns only for a row carrying exactly those
 - [x] A template line carrying its own modifiers, such as `^!c::`, does not make every row with that key warn
 - [x] A comment line and a custom combination in a template are not read as key uses
 - [x] The warning names at most three Profiles and counts the rest
@@ -63,7 +64,7 @@ destination. Item 043 shipped the preset that makes it easy to hit.
 ## Notes / dependencies
 
 - Design: `docs/superpowers/specs/2026-08-05-header-template-key-use-warning-design.md`
-- Prototype proving the parser rules: `prototypes/HeaderKeyUsePrototype`
+- Prototype proving the parser rules: deleted on merge; read it at commits `7f4dcf78` and `c36861bd`
 - The notice belongs beside the existing ones in `ShortcutWarning.razor`, the way 044 added `DestinationTextFor`
 - Both call sites already hold full `ProfileDto` objects, and `ProfileDto` already carries both templates — `HotkeyEditDialog.razor:271` and `Hotkeys.razor:303`. No new endpoint is needed
 - `ShortcutWarning.razor:75` decides re-evaluation from `(Combination, Kind, RemapDest)`. Profile scope has to join it, or a Profile change is ignored

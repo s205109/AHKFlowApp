@@ -333,6 +333,13 @@ but `TemplateKeyUses` reads them, so they are documented here.
 | `*` | Wildcard. The hotkey fires even when extra modifiers are held. `*a::` and `a::` are entirely separate hotkeys, and the wildcard one eclipses the plain one |
 | `~` | The key keeps its own behaviour as well as firing the hotkey |
 | `Key up::` | Fires when the key is released rather than pressed |
+| `<` and `>` | Pick a side for the modifier that follows. `<^a::` is left Ctrl only |
+
+Modifiers decide who matches whom. A plain hotkey fires only for the modifiers it declares, so
+`a::` does not fire while Ctrl is held. A wildcard hotkey fires while extra modifiers are held, so
+`*a::` covers `a`, `Ctrl+a`, and every other combination on that key. `TemplateKeyUses` reads the
+prefix and the modifiers together for that reason, and a Hotkey row warns only when AutoHotkey
+would really put the two hotkeys on the same keys.
 
 A remap is not one hotkey. AutoHotkey translates `a::b` into the pair `*a::` and `*a up::`, each
 sending `{Blind}{b DownR}` and `{Blind}{b Up}`. So a `Remap` row and a hand-written `*a::` in a
