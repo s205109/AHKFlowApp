@@ -825,7 +825,9 @@
            or Run), but passing the pair keeps one component contract if that ever changes. *@
         <ShortcutWarning Key="@edit.Key" Ctrl="@edit.Ctrl" Alt="@edit.Alt"
                          Shift="@edit.Shift" Win="@edit.Win"
-                         ActionKind="@edit.ActionKind" RemapDest="@edit.RemapDest" />
+                         ActionKind="@edit.ActionKind" RemapDest="@edit.RemapDest"
+                         Profiles="@_profiles" ProfileIds="@edit.ProfileIds"
+                         AppliesToAllProfiles="@edit.AppliesToAllProfiles" />
     </MudStack>;
 
     // Only the two single-field kinds reach inline edit (HotkeyEditModel.IsInlineEditable), so

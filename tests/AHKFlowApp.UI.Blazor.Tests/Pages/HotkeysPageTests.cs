@@ -899,4 +899,28 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
         cut.WaitForAssertion(() => cut.Find("button.start-edit"));
         cut.FindAll(".context-icon").Should().BeEmpty();
     }
+
+    [Fact]
+    public void InlineRow_ShowsTheTemplateNoticeForAKeyTheProfileHeaderUses()
+    {
+        // A profile whose header carries the shipped Caps Lock layer.
+        ProfileDto work = new(
+            Guid.NewGuid(), "Work", false,
+            "#Requires AutoHotkey v2.0\n\n*CapsLock::\n{\n    Send \"{Blind}{LCtrl DownR}\"\n}",
+            "", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+
+        StubProfiles(work);
+
+        // Run is one of the two inline-editable kinds (HotkeyEditModel.IsInlineEditable).
+        HotkeyDto row = new(
+            Guid.NewGuid(), [work.Id], false, "Open notepad", "CapsLock", false, false, false, false,
+            HotkeyActionKind.Run, null, null, "notepad.exe", RunTargetKind.Application,
+            null, null, null, null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+
+        IRenderedComponent<Hotkeys> cut = StartInlineEdit(row);
+
+        cut.WaitForAssertion(() =>
+            cut.Find("[data-test=\"template-warning\"]").TextContent
+                .Should().Be("The header template in Work also uses CapsLock. Your hotkey may not fire."));
+    }
 }

@@ -1411,4 +1411,263 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
         });
         provider.FindAll(".mud-alert").Should().BeEmpty();
     }
+
+    private static ProfileDto Profile(string name, string header, string footer = "") =>
+        new(Guid.NewGuid(), name, false, header, footer, DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch);
+
+    private const string CapsLockLayerHeader = """
+        #Requires AutoHotkey v2.0
+
+        *CapsLock::
+        {
+            SetKeyDelay -1
+            Send "{Blind}{LCtrl DownR}"
+        }
+        """;
+
+    private async Task<IRenderedComponent<MudDialogProvider>> ShowDialogWithProfilesAsync(
+        HotkeyEditModel item,
+        params ProfileDto[] profiles)
+    {
+        Render<MudPopoverProvider>();
+        IRenderedComponent<MudDialogProvider> provider = Render<MudDialogProvider>();
+
+        await provider.InvokeAsync(async () =>
+        {
+            IDialogService dialogService = Services.GetRequiredService<IDialogService>();
+            DialogParameters parameters = new()
+            {
+                [nameof(HotkeyEditDialog.Item)] = item,
+                [nameof(HotkeyEditDialog.Profiles)] = (IReadOnlyList<ProfileDto>)profiles,
+                [nameof(HotkeyEditDialog.Categories)] = (IReadOnlyList<CategoryDto>)[],
+            };
+
+            await dialogService.ShowAsync<HotkeyEditDialog>("Edit", parameters,
+                new DialogOptions { FullScreen = true, CloseButton = false });
+        });
+
+        return provider;
+    }
+
+    [Fact]
+    public async Task TemplateNotice_AppearsWhenAProfileHeaderUsesTheRowsKey()
+    {
+        ProfileDto work = Profile("Work", CapsLockLayerHeader);
+        HotkeyEditModel item = new()
+        {
+            Key = "CapsLock",
+            ActionKind = HotkeyActionKind.SendText,
+            Text = "hi",
+            AppliesToAllProfiles = false,
+            ProfileIds = [work.Id],
+        };
+
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogWithProfilesAsync(item, work);
+
+        provider.WaitForAssertion(() =>
+            provider.Find("[data-test=\"template-warning\"]").TextContent
+                .Should().Be("The header template in Work also uses CapsLock. Your hotkey may not fire."));
+    }
+
+    [Fact]
+    public async Task TemplateNotice_AppearsWhenTheRowCarriesModifiers()
+    {
+        // A wildcard template hotkey fires whatever extra modifiers are held, so a row carrying
+        // modifiers is affected just as much as a bare one. The notice names what the row presses.
+        ProfileDto work = Profile("Work", CapsLockLayerHeader);
+        HotkeyEditModel item = new()
+        {
+            Key = "CapsLock",
+            Ctrl = true,
+            Shift = true,
+            ActionKind = HotkeyActionKind.SendText,
+            Text = "hi",
+            AppliesToAllProfiles = false,
+            ProfileIds = [work.Id],
+        };
+
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogWithProfilesAsync(item, work);
+
+        provider.WaitForAssertion(() =>
+            provider.Find("[data-test=\"template-warning\"]").TextContent
+                .Should().Be(
+                    "The header template in Work also uses Ctrl+Shift+CapsLock. Your hotkey may not fire."));
+    }
+
+    [Fact]
+    public async Task TemplateNotice_SkipsAPlainTemplateHotkeyWhenTheRowCarriesModifiers()
+    {
+        // "CapsLock::" with no wildcard fires only when nothing else is held, so this row is
+        // untouched by it. The parser reads the modifiers, so the notice stays away.
+        ProfileDto work = Profile("Work", "#Requires AutoHotkey v2.0\n\nCapsLock::Send \"hello\"");
+        HotkeyEditModel item = new()
+        {
+            Key = "CapsLock",
+            Ctrl = true,
+            ActionKind = HotkeyActionKind.SendText,
+            Text = "hi",
+            AppliesToAllProfiles = false,
+            ProfileIds = [work.Id],
+        };
+
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogWithProfilesAsync(item, work);
+
+        provider.WaitForAssertion(() =>
+            provider.Find("[data-test=\"shortcut-warning-checked\"]").GetAttribute("data-combination")
+                .Should().Be("Ctrl+CapsLock"));
+
+        provider.FindAll("[data-test=\"template-warning\"]").Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task TemplateNotice_AppearsWhenATemplateHotkeyCarriesTheSameModifiers()
+    {
+        // The emitter writes "^!c::" for a Ctrl+Alt+C row (HotkeyEmitter.cs:38), which is the same
+        // hotkey name the template line already defines.
+        ProfileDto work = Profile("Work", "#Requires AutoHotkey v2.0\n\n^!c::Run \"calc.exe\"");
+        HotkeyEditModel item = new()
+        {
+            Key = "c",
+            Ctrl = true,
+            Alt = true,
+            ActionKind = HotkeyActionKind.SendText,
+            Text = "hi",
+            AppliesToAllProfiles = false,
+            ProfileIds = [work.Id],
+        };
+
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogWithProfilesAsync(item, work);
+
+        provider.WaitForAssertion(() =>
+            provider.Find("[data-test=\"template-warning\"]").TextContent
+                .Should().Be("The header template in Work also uses Ctrl+Alt+C. Your hotkey may not fire."));
+    }
+
+    [Fact]
+    public async Task TemplateNotice_StaysAwayWhenNoProfileTemplateUsesTheKey()
+    {
+        ProfileDto work = Profile("Work", CapsLockLayerHeader);
+        HotkeyEditModel item = new()
+        {
+            Key = "F9",
+            ActionKind = HotkeyActionKind.SendText,
+            Text = "hi",
+            AppliesToAllProfiles = false,
+            ProfileIds = [work.Id],
+        };
+
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogWithProfilesAsync(item, work);
+
+        provider.WaitForAssertion(() =>
+            provider.Find("[data-test=\"shortcut-warning-checked\"]").GetAttribute("data-combination")
+                .Should().Be("F9"));
+
+        provider.FindAll("[data-test=\"template-warning\"]").Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task TemplateNotice_IgnoresAProfileTheRowIsNotIn()
+    {
+        ProfileDto work = Profile("Work", CapsLockLayerHeader);
+        ProfileDto games = Profile("Games", "#Requires AutoHotkey v2.0");
+        HotkeyEditModel item = new()
+        {
+            Key = "CapsLock",
+            ActionKind = HotkeyActionKind.SendText,
+            Text = "hi",
+            AppliesToAllProfiles = false,
+            ProfileIds = [games.Id],
+        };
+
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogWithProfilesAsync(item, work, games);
+
+        provider.WaitForAssertion(() =>
+            provider.Find("[data-test=\"shortcut-warning-checked\"]").GetAttribute("data-combination")
+                .Should().Be("CapsLock"));
+
+        provider.FindAll("[data-test=\"template-warning\"]").Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task TemplateNotice_ReadsEveryProfileWhenTheRowAppliesToAll()
+    {
+        ProfileDto work = Profile("Work", CapsLockLayerHeader);
+        HotkeyEditModel item = new()
+        {
+            Key = "CapsLock",
+            ActionKind = HotkeyActionKind.SendText,
+            Text = "hi",
+            AppliesToAllProfiles = true,
+        };
+
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogWithProfilesAsync(item, work);
+
+        provider.WaitForAssertion(() =>
+            provider.Find("[data-test=\"template-warning\"]").TextContent
+                .Should().Contain("The header template in Work"));
+    }
+
+    [Fact]
+    public async Task TemplateNotice_ReEvaluatesWhenProfileMembershipChangesWithoutTheKey()
+    {
+        ProfileDto work = Profile("Work", CapsLockLayerHeader);
+        ProfileDto games = Profile("Games", "#Requires AutoHotkey v2.0");
+        HotkeyEditModel item = new()
+        {
+            Key = "CapsLock",
+            ActionKind = HotkeyActionKind.SendText,
+            Text = "hi",
+            AppliesToAllProfiles = false,
+            ProfileIds = [games.Id],
+        };
+
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogWithProfilesAsync(item, work, games);
+
+        provider.WaitForAssertion(() =>
+            provider.FindAll("[data-test=\"template-warning\"]").Should().BeEmpty());
+
+        await provider.InvokeAsync(() => provider
+            .FindComponents<EntityMultiSelect>()
+            .Single(s => s.Instance.DataTest == "profile-select")
+            .Instance.SelectedIdsChanged.InvokeAsync([work.Id]));
+
+        provider.WaitForAssertion(() =>
+            provider.Find("[data-test=\"template-warning\"]").TextContent
+                .Should().Contain("The header template in Work"));
+    }
+
+    [Fact]
+    public async Task TemplateNotice_SitsBetweenTheSourceAndDestinationNotices()
+    {
+        _knownShortcuts.GetAsync(Arg.Any<CancellationToken>())
+            .Returns(new KnownShortcutCatalogDto([
+                new("windows.caps", "CapsLock", false, false, false, false,
+                    [new("Windows", ShortcutProtection.Normal, ShortcutScope.Global, "switch capitals on and off")],
+                    null),
+            ]));
+
+        ProfileDto work = Profile("Work", CapsLockLayerHeader);
+        HotkeyEditModel item = new()
+        {
+            Key = "CapsLock",
+            ActionKind = HotkeyActionKind.Remap,
+            RemapDest = "LCtrl",
+            AppliesToAllProfiles = false,
+            ProfileIds = [work.Id],
+        };
+
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogWithProfilesAsync(item, work);
+
+        provider.WaitForAssertion(() =>
+            provider.FindAll("[data-test=\"template-warning\"]").Should().NotBeEmpty());
+
+        string[] order =
+        [
+            .. provider
+                .FindAll("[data-test=\"source-warning\"], [data-test=\"template-warning\"], [data-test=\"destination-warning\"]")
+                .Select(e => e.GetAttribute("data-test")!)
+        ];
+
+        order.Should().Equal("source-warning", "template-warning", "destination-warning");
+    }
 }

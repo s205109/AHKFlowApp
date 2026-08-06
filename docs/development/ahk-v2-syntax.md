@@ -322,6 +322,43 @@ which as a side effect prevents `Send` from triggering the script's own hotkeys 
 self-collision: `$` has no other effect, and a same-key-and-modifiers check would still miss
 A-triggers-B-triggers-A chains. It is not a user-facing option.
 
+### Prefixes AHKFlow does not emit, but must recognize
+
+A Profile's header or footer template can carry hand-written hotkeys, and the shipped
+`capslock-modifier-layer` header preset carries three of these. The generator never writes them,
+but `TemplateKeyUses` reads them, so they are documented here.
+
+| Prefix | Meaning |
+|---|---|
+| `*` | Wildcard. The hotkey fires even when extra modifiers are held. `*a::` and `a::` are entirely separate hotkeys, and the wildcard one eclipses the plain one |
+| `~` | The key keeps its own behaviour as well as firing the hotkey |
+| `Key up::` | Fires when the key is released rather than pressed |
+| `<` and `>` | Pick a side for the modifier that follows. `<^a::` is left Ctrl only |
+
+Modifiers decide who matches whom. A plain hotkey fires only for the modifiers it declares, so
+`a::` does not fire while Ctrl is held. A wildcard hotkey fires while extra modifiers are held, so
+`*a::` covers `a`, `Ctrl+a`, and every other combination on that key. `TemplateKeyUses` reads the
+prefix and the modifiers together for that reason, and a Hotkey row warns only when AutoHotkey
+would really put the two hotkeys on the same keys.
+
+A remap is not one hotkey. AutoHotkey translates `a::b` into the pair `*a::` and `*a up::`, each
+sending `{Blind}{b DownR}` and `{Blind}{b Up}`. So a `Remap` row and a hand-written `*a::` in a
+template land on the same two hotkey names.
+
+Prefixes and modifiers may be written in any order. `^~c::` and `~^c::` are the same hotkey, so
+`TemplateKeyUses` reads both kinds of symbol in one pass.
+
+Two limits of that reader are worth stating. The warning it feeds is advisory, so both are accepted:
+
+- **A window context is not read.** A template hotkey under `#HotIf` fires only in that context, but
+  it is reported like any other. A row can be warned about a hotkey it never collides with.
+- **A line the reader cannot model is skipped.** Anything after the key other than `up` drops the
+  line, and so drops a possible warning.
+
+Sources: [Hotkeys](https://www.autohotkey.com/docs/v2/Hotkeys.htm#wildcard),
+[#HotIf variants](https://www.autohotkey.com/docs/v2/lib/_HotIf.htm#variant),
+[Remapping keys](https://www.autohotkey.com/docs/v2/misc/Remap.htm).
+
 `Key` is validated against the canonical registry in `HotkeyKeys` (or a `vkNN` / `scNNN` code) at the
 create and update boundaries, so an accepted key is a real AHK key name. Two limits are worth stating
 plainly:
