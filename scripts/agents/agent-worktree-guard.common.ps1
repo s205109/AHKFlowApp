@@ -1050,6 +1050,60 @@ function Test-AgentGitTier2Allowed {
 
 <#
 .SYNOPSIS
+The nearest existing ancestor of a directory, or '' when none exists.
+
+.DESCRIPTION
+A target that does not exist yet (e.g. `git init newsub`) is classified by its nearest existing
+ancestor: git would walk up to that enclosing repository too.
+#>
+function Get-AgentGuardProbeDirectory {
+    param([string] $Path)
+
+    $probeDir = $Path
+    while (-not [string]::IsNullOrWhiteSpace($probeDir) -and -not (Test-Path -LiteralPath $probeDir)) {
+        $parent = Split-Path -Parent $probeDir
+        if ($parent -eq $probeDir) { break }
+        $probeDir = $parent
+    }
+    if ([string]::IsNullOrWhiteSpace($probeDir) -or -not (Test-Path -LiteralPath $probeDir)) { return '' }
+    return $probeDir
+}
+
+# Working directory -> that directory's git top level. One hook process can classify several
+# chained commands, so the probe is cached rather than re-spawning git per link.
+$script:AgentGuardTopLevelCache = @{}
+
+<#
+.SYNOPSIS
+The git top level containing a session's working directory, falling back to that directory.
+
+.DESCRIPTION
+The fallback only applies when git cannot answer - the directory is gone, or it is not in a
+repository at all. Callers use the result as the session's own worktree, so it must be the
+worktree ROOT and not the subdirectory the session happens to have started in.
+#>
+function Get-AgentSessionWorktreeRoot {
+    [CmdletBinding()]
+    param([string] $Cwd)
+
+    if ($script:AgentGuardTopLevelCache.ContainsKey($Cwd)) { return $script:AgentGuardTopLevelCache[$Cwd] }
+
+    $result = ConvertTo-AgentGuardNormalizedPath $Cwd
+    $probeDir = Get-AgentGuardProbeDirectory -Path $Cwd
+    if (-not [string]::IsNullOrWhiteSpace($probeDir)) {
+        $topLevel = Invoke-AgentGuardGitProbe @(
+            '-C', $probeDir, 'rev-parse', '--path-format=absolute', '--show-toplevel')
+        if (-not [string]::IsNullOrWhiteSpace($topLevel)) {
+            $result = ConvertTo-AgentGuardNormalizedPath $topLevel
+        }
+    }
+
+    $script:AgentGuardTopLevelCache[$Cwd] = $result
+    return $result
+}
+
+<#
+.SYNOPSIS
 Classifies a directory relative to the protected AHKFlowApp checkout.
 
 .DESCRIPTION
@@ -1067,15 +1121,8 @@ function Get-ManagedWorktreeState {
         return 'NotRepository'
     }
 
-    # A target that does not exist yet (e.g. `git init newsub`) is classified by its nearest
-    # existing ancestor: git would walk up to that enclosing repository too.
-    $probeDir = $Cwd
-    while (-not [string]::IsNullOrWhiteSpace($probeDir) -and -not (Test-Path -LiteralPath $probeDir)) {
-        $parent = Split-Path -Parent $probeDir
-        if ($parent -eq $probeDir) { break }
-        $probeDir = $parent
-    }
-    if ([string]::IsNullOrWhiteSpace($probeDir) -or -not (Test-Path -LiteralPath $probeDir)) {
+    $probeDir = Get-AgentGuardProbeDirectory -Path $Cwd
+    if ([string]::IsNullOrWhiteSpace($probeDir)) {
         return 'NotRepository'
     }
 
@@ -1276,6 +1323,39 @@ function Get-AgentNamedParameterValue {
 
 <#
 .SYNOPSIS
+The directory named by -t / --target-directory, or $null when the arguments carry neither.
+
+.DESCRIPTION
+cp, mv, install, and ln all accept this option, and it changes which argument is the
+destination. Three spellings are read: `-t DIR`, `--target-directory DIR`, and
+`--target-directory=DIR`. Short options cluster, so `-rt DIR` and `-vtDIR` are read too. The `t`
+test is case-sensitive: `-T` is --no-target-directory, a different option that names nothing.
+#>
+function Get-AgentTargetDirectoryOption {
+    param([string[]] $Arguments)
+
+    $list = @($Arguments)
+    for ($i = 0; $i -lt $list.Count; $i++) {
+        $argument = [string] $list[$i]
+
+        if ($argument -ilike '--target-directory=*') {
+            return $argument.Substring('--target-directory='.Length)
+        }
+
+        $takesNext = $argument -ieq '--target-directory' -or $argument -cmatch '^-[a-zA-Z]*t$'
+        if ($takesNext) {
+            if (($i + 1) -lt $list.Count) { return [string] $list[$i + 1] }
+            return $null
+        }
+
+        # A cluster with the value attached, e.g. `cp -vtDIR src`.
+        if ($argument -cmatch '^-[a-zA-Z]*t(.+)$') { return $Matches[1] }
+    }
+    return $null
+}
+
+<#
+.SYNOPSIS
 Every path one command segment would write, move, or delete.
 
 .DESCRIPTION
@@ -1332,7 +1412,11 @@ function Get-AgentSegmentWriteTarget {
         foreach ($positional in $positionals) { [void] $targets.Add($positional) }
     }
     elseif ($script:AgentGuardWriteLastPositional -contains $leaf) {
-        if ($positionals.Count -ge 1) { [void] $targets.Add($positionals[$positionals.Count - 1]) }
+        # -t/--target-directory moves the destination off the last positional: with it, every
+        # positional is a SOURCE and the named directory is the only thing written.
+        $targetDirectory = Get-AgentTargetDirectoryOption -Arguments $arguments
+        if ($null -ne $targetDirectory) { [void] $targets.Add($targetDirectory) }
+        elseif ($positionals.Count -ge 1) { [void] $targets.Add($positionals[$positionals.Count - 1]) }
     }
     elseif ($leaf -eq 'sed') {
         $inPlace = @($arguments | Where-Object { $_ -ceq '-i' -or $_ -clike '-i*' -or $_ -ceq '--in-place' }).Count -gt 0
@@ -1381,6 +1465,11 @@ $script:AgentGuardMaxInterpreterDepth = 2
 Every write target in a command string, following nested interpreter arguments.
 
 .DESCRIPTION
+Returns { Targets = @(string[]); Unresolved = bool }. Unresolved means some inner command was
+never scanned, so the target list is incomplete and the caller must fail closed rather than read
+an empty list as "writes nothing". Two things set it: an inner command the tokenizer could not
+split safely, and nesting deeper than AgentGuardMaxInterpreterDepth.
+
 Recursion is scoped to the write-target scan alone. Git classification still treats a quoted
 nested command as opaque, which stays a documented accepted limitation of this guard.
 #>
@@ -1388,17 +1477,19 @@ function Get-AgentCommandWriteTarget {
     [CmdletBinding()]
     param([string] $Command, [int] $Depth = 0)
 
-    $parsed = Get-AgentCommandSegment -Command $Command
-    if ($parsed.Ambiguous) { return @() }
-
     $targets = New-Object System.Collections.Generic.List[string]
+
+    $parsed = Get-AgentCommandSegment -Command $Command
+    if ($parsed.Ambiguous) {
+        return [pscustomobject]@{ Targets = $targets.ToArray(); Unresolved = $true }
+    }
+
+    $unresolved = $false
 
     foreach ($segment in $parsed.Segments) {
         foreach ($target in (Get-AgentSegmentWriteTarget -Tokens $segment.Tokens -Masks $segment.Masks)) {
             [void] $targets.Add($target)
         }
-
-        if ($Depth -ge $script:AgentGuardMaxInterpreterDepth) { continue }
 
         $tokens = @($segment.Tokens)
         if ($tokens.Count -lt 3) { continue }
@@ -1410,15 +1501,22 @@ function Get-AgentCommandWriteTarget {
         for ($i = 1; $i -lt $tokens.Count - 1; $i++) {
             if ($spec.Flags -notcontains ([string] $tokens[$i]).ToLowerInvariant()) { continue }
 
-            $inner = [string] $tokens[$i + 1]
-            foreach ($target in (Get-AgentCommandWriteTarget -Command $inner -Depth ($Depth + 1))) {
-                [void] $targets.Add($target)
+            # The depth test lives here, not at the top of the loop: a segment that is not an
+            # interpreter carrying an inner command was already scanned in full above, so it must
+            # not be reported as unresolved just because the recursion budget ran out.
+            if ($Depth -ge $script:AgentGuardMaxInterpreterDepth) {
+                $unresolved = $true
+                break
             }
+
+            $inner = Get-AgentCommandWriteTarget -Command ([string] $tokens[$i + 1]) -Depth ($Depth + 1)
+            foreach ($target in $inner.Targets) { [void] $targets.Add($target) }
+            if ($inner.Unresolved) { $unresolved = $true }
             break
         }
     }
 
-    return $targets.ToArray()
+    return [pscustomobject]@{ Targets = $targets.ToArray(); Unresolved = $unresolved }
 }
 
 # Characters that make a path component impossible to expand from the command text alone.
@@ -1479,9 +1577,12 @@ function Resolve-AgentSymlinkPath {
 Turns one raw write target into an absolute path, or marks it unresolved.
 
 .DESCRIPTION
-Only the longest leading literal prefix has to be expandable. A trailing glob cannot change
-which repository the path falls in, so `./obj/*` classifies on `./obj`. A target whose FIRST
-component is unexpandable - `$MAIN_ROOT/x.tmp` - has no literal prefix and is unresolved.
+A glob is classified on the literal prefix before it: a glob cannot match `..` or an absolute
+path, so it cannot change which repository the path falls in, and `./obj/*` classifies on
+`./obj`. A variable, a percent expansion, or a command substitution can expand to anything,
+including `../..` or a rooted path, so ONE anywhere in the target makes the whole target
+unresolved. A leading literal prefix proves nothing about it: `./scripts/$DEST` reaches main
+when DEST is `../../../../README.md`.
 
 Mirrors the precedent at Get-AgentCommandSegment, where a cd target matching [\$%] marks the
 following git mutation untargetable rather than guessing where it lands.
@@ -1499,10 +1600,14 @@ function Get-AgentWriteTargetResolution {
         return [pscustomobject]@{ Path = ''; Unresolved = $true }
     }
 
+    if ($trimmed -match $script:AgentGuardUnexpandablePattern) {
+        return [pscustomobject]@{ Path = ''; Unresolved = $true }
+    }
+
     $parts = @($trimmed -split '[\\/]')
     $literal = New-Object System.Collections.Generic.List[string]
     foreach ($part in $parts) {
-        if ($part -match $script:AgentGuardUnexpandablePattern -or $part -match '[\*\?]') { break }
+        if ($part -match '[\*\?]') { break }
         [void] $literal.Add($part)
     }
 
@@ -1618,9 +1723,13 @@ function Get-AgentWorktreeWriteDecision {
     if ([string]::IsNullOrWhiteSpace($protectedCommonDir)) { return New-AgentGuardDecision -Action Allow }
     $mainCheckout = ConvertTo-AgentGuardNormalizedPath (Split-Path -Parent (
             ConvertTo-AgentGuardNormalizedPath $protectedCommonDir))
-    $worktreeRoot = ConvertTo-AgentGuardNormalizedPath $Cwd
+    # The session's own worktree is its git top level, not the directory it happens to sit in. A
+    # session started in <worktree>\src would otherwise treat src as the whole worktree and refuse
+    # a write to the worktree's own root, which is inside main and so fails the outside-main test.
+    $worktreeRoot = Get-AgentSessionWorktreeRoot -Cwd $Cwd
 
     $effectiveCwd = $Cwd
+    $unresolvedDirectory = $false
     $directoryStack = New-Object System.Collections.Generic.List[string]
     $blockingPath = ''
     $unresolvedBlock = $false
@@ -1630,19 +1739,32 @@ function Get-AgentWorktreeWriteDecision {
             if ($directoryStack.Count -gt 0) {
                 $effectiveCwd = $directoryStack[$directoryStack.Count - 1]
                 $directoryStack.RemoveAt($directoryStack.Count - 1)
+                $unresolvedDirectory = $false
             }
             continue
         }
 
         if ($segment.Kind -eq 'ChangeDirectory' -or $segment.Kind -eq 'PushDirectory') {
-            if ($segment.Unresolved) { continue }
+            # A cd the guard cannot expand leaves the shell somewhere unknown, so every later
+            # RELATIVE write is untargetable. Dropping the move and keeping the old directory
+            # classified `cd "$MAIN_ROOT"; printf x > x.tmp` against the worktree and allowed a
+            # write that landed in main. Mirrors Get-AgentGitLocationDecision.
+            if ($segment.Unresolved) {
+                $unresolvedDirectory = $true
+                continue
+            }
             $candidate = if ([System.IO.Path]::IsPathRooted($segment.Directory)) { $segment.Directory }
             elseif (-not [string]::IsNullOrWhiteSpace($effectiveCwd)) { Join-Path $effectiveCwd $segment.Directory }
             else { '' }
-            if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
+            if ([string]::IsNullOrWhiteSpace($candidate)) {
+                $unresolvedDirectory = $true
+                continue
+            }
+            # A cd to a path that does not exist fails, leaving the shell where it already was.
             if (-not (Test-Path -LiteralPath $candidate -PathType Container)) { continue }
             if ($segment.Kind -eq 'PushDirectory') { [void] $directoryStack.Add($effectiveCwd) }
             $effectiveCwd = $candidate
+            $unresolvedDirectory = $false
             continue
         }
 
@@ -1656,14 +1778,22 @@ function Get-AgentWorktreeWriteDecision {
             if ($null -ne $spec) {
                 for ($i = 1; $i -lt $tokens.Count - 1; $i++) {
                     if ($spec.Flags -notcontains ([string] $tokens[$i]).ToLowerInvariant()) { continue }
-                    $targets += @(Get-AgentCommandWriteTarget -Command ([string] $tokens[$i + 1]) -Depth 1)
+                    $nested = Get-AgentCommandWriteTarget -Command ([string] $tokens[$i + 1]) -Depth 1
+                    $targets += @($nested.Targets)
+                    # An inner command that was never scanned is not an inner command that writes
+                    # nothing. Fail closed on it.
+                    if ($nested.Unresolved) { $unresolvedBlock = $true }
                     break
                 }
             }
         }
 
         foreach ($target in $targets) {
-            $resolution = Get-AgentWriteTargetResolution -Target $target -BaseDirectory $effectiveCwd
+            # A relative target after an unexpandable cd cannot be placed. Passing no base
+            # directory is what makes Get-AgentWriteTargetResolution report that; an absolute
+            # target ignores the base and still classifies exactly.
+            $baseDirectory = if ($unresolvedDirectory) { '' } else { $effectiveCwd }
+            $resolution = Get-AgentWriteTargetResolution -Target $target -BaseDirectory $baseDirectory
             if ($resolution.Unresolved) {
                 if (-not $unresolvedBlock -and $blockingPath -eq '') { $unresolvedBlock = $true }
                 continue

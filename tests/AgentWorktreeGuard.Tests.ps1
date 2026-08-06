@@ -1602,14 +1602,26 @@ try {
 
     foreach ($case in $nestedCases) {
         Invoke-TestCase "Nested: $($case.Command)" {
-            $actual = @(Get-AgentCommandWriteTarget -Command $case.Command)
-            Assert-Equal ($case.Expected -join '|') ($actual -join '|') 'Targets'
+            $result = Get-AgentCommandWriteTarget -Command $case.Command
+            Assert-Equal ($case.Expected -join '|') (@($result.Targets) -join '|') 'Targets'
+            Assert-True (-not $result.Unresolved) 'Must resolve'
         }
     }
 
     Invoke-TestCase 'Nested: pwsh -File is deliberately not followed' {
-        $actual = @(Get-AgentCommandWriteTarget -Command 'pwsh -File build.ps1')
-        Assert-Equal '' ($actual -join '|') 'Targets'
+        $result = Get-AgentCommandWriteTarget -Command 'pwsh -File build.ps1'
+        Assert-Equal '' (@($result.Targets) -join '|') 'Targets'
+        Assert-True (-not $result.Unresolved) 'Must resolve'
+    }
+
+    Invoke-TestCase 'Nested: nesting past the cap reports unresolved, not an empty target list' {
+        $result = Get-AgentCommandWriteTarget -Command 'sh -c "sh -c \"sh -c ''rm out.txt''\""'
+        Assert-True $result.Unresolved 'Must be unresolved'
+    }
+
+    Invoke-TestCase 'Nested: an untokenizable inner command reports unresolved' {
+        $result = Get-AgentCommandWriteTarget -Command 'sh -c "rm ''out.txt"'
+        Assert-True $result.Unresolved 'Must be unresolved'
     }
 
     Write-Host 'Write-target path resolution' -ForegroundColor Cyan
@@ -1643,6 +1655,16 @@ try {
     $unresolvedCases = @('$MAIN_ROOT/x.tmp', '%USERPROFILE%\x.tmp', '~/x.tmp')
     foreach ($case in $unresolvedCases) {
         Invoke-TestCase "Resolution: unexpandable leading component is unresolved: $case" {
+            $resolution = Get-AgentWriteTargetResolution -Target $case -BaseDirectory $fixture.Managed
+            Assert-True $resolution.Unresolved 'Must be unresolved'
+        }
+    }
+
+    # A glob cannot match '..', so a literal prefix pins the directory. A variable or a command
+    # substitution can expand to anything, including an absolute path or a parent escape.
+    $unexpandableTailCases = @('./scripts/$DEST', 'scripts/%DEST%/x.tmp', 'scripts/$(cat p)/x.tmp', 'a/`b`/x.tmp')
+    foreach ($case in $unexpandableTailCases) {
+        Invoke-TestCase "Resolution: an unexpandable component after a literal prefix is unresolved: $case" {
             $resolution = Get-AgentWriteTargetResolution -Target $case -BaseDirectory $fixture.Managed
             Assert-True $resolution.Unresolved 'Must be unresolved'
         }
@@ -1719,6 +1741,65 @@ try {
         # A cd earlier in the chain moves where the write lands.
         @{ Name    = 'cd into main then write'
             Command = 'cd <MAIN>; printf x > x.tmp'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        # An unexpandable cd target leaves the guard blind to where a later relative write lands.
+        @{ Name    = 'unresolved cd then a relative write'
+            Command = 'cd "$MAIN_ROOT"; printf x > x.tmp'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'unresolved cd then an absolute write inside the worktree'
+            Command = 'cd "$MAIN_ROOT"; printf x > <MANAGED>/x.tmp'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        @{ Name    = 'a later resolved cd restores tracking'
+            Command = 'cd "$MAIN_ROOT"; cd <MANAGED>; printf x > x.tmp'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        # An unresolved pushd never lands on the guard's stack, because the guard cannot tell
+        # whether the real pushd succeeded. So the following popd cannot prove where the shell
+        # ended up either, and the chain stays untargetable.
+        @{ Name    = 'popd after an unresolved pushd stays untargetable'
+            Command = 'pushd "$MAIN_ROOT"; popd; printf x > x.tmp'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'popd after a resolved pushd restores tracking'
+            Command = 'pushd <MAIN>; popd; printf x > x.tmp'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        # A variable anywhere in the path can expand through '..' into main.
+        @{ Name    = 'a variable after a literal prefix fails closed'
+            Command = 'printf x > ./scripts/$DEST'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        # -t / --target-directory move the destination off the last positional.
+        @{ Name    = 'cp -t into main'
+            Command = 'cp -t <MAIN> source.txt'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'cp --target-directory= into main'
+            Command = 'cp --target-directory=<MAIN> source.txt'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'cp with a clustered -t into main'
+            Command = 'cp -rt <MAIN> source.txt'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'mv -t into main'
+            Command = 'mv -t <MAIN> source.txt'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'ln -t into main'
+            Command = 'ln -s -t <MAIN> source.txt'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'install -t into main'
+            Command = 'install -m 644 -t <MAIN> source.txt'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'cp -t inside the worktree stays allowed'
+            Command = 'cp -t ./obj a.txt'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        # Nesting deeper than the interpreter cap is never scanned, so it must fail closed.
+        @{ Name    = 'nesting past the interpreter cap'
+            Command = 'sh -c "sh -c \"sh -c ''printf x > <MAIN>/x.tmp''\""'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'nesting past the cap fails closed even when the inner command only reads'
+            Command = 'sh -c "sh -c \"sh -c ''cat <MAIN>/seed.txt''\""'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        # The session's worktree root is the git top level, not whatever directory it started in.
+        @{ Name    = 'a subdirectory session writes its own worktree root'
+            Command = 'printf x > ../README.md'; Cwd = 'ManagedSub'; Action = 'Allow'
+        },
+        @{ Name    = 'a subdirectory session still cannot write main'
+            Command = 'printf x > <MAIN>/x.tmp'; Cwd = 'ManagedSub'; Action = 'Deny'
         }
     )
 
@@ -1726,8 +1807,13 @@ try {
         Invoke-TestCase "Write isolation: $($case.Name)" {
             $command = $case.Command.
             Replace('<MAIN>', $fixture.Main.Replace('\', '/')).
-            Replace('<MANAGED2>', $fixture.Managed2.Replace('\', '/'))
-            $cwd = if ($case.Cwd -eq 'Main') { $fixture.Main } else { $fixture.Managed }
+            Replace('<MANAGED2>', $fixture.Managed2.Replace('\', '/')).
+            Replace('<MANAGED>', $fixture.Managed.Replace('\', '/'))
+            $cwd = switch ($case.Cwd) {
+                'Main' { $fixture.Main }
+                'ManagedSub' { Join-Path $fixture.Managed 'scripts' }
+                default { $fixture.Managed }
+            }
             $decision = Invoke-AgentGuardPolicy -Command $command `
                 -Cwd $cwd -ProtectedRepoRoot $fixture.Main -AllowMain $false
             Assert-Equal $case.Action $decision.Action 'Action'

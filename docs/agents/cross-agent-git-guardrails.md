@@ -146,9 +146,22 @@ A **sibling** worktree is refused. It is another agent's checkout, so writing in
 same isolation the rule exists to protect.
 
 Write targets are found from unquoted redirects, from a per-command destination table, and from
-nested `sh -c` / `pwsh -Command` arguments to a depth of 2. A target the guard cannot expand — one
-carrying a variable or a leading `~` — is denied, because the guard cannot tell where it lands.
-Only the leading literal prefix must expand, so `rm -rf ./obj/*` stays allowed.
+nested `sh -c` / `pwsh -Command` arguments to a depth of 2. `cp`, `mv`, `install`, and `ln` are
+read for `-t` and `--target-directory` as well, because that option moves the destination off the
+last argument.
+
+A target the guard cannot expand is denied, because the guard cannot tell where it lands. That
+covers a leading `~`, and a variable, a percent expansion, a command substitution, or a backtick
+**anywhere** in the path. A leading literal prefix does not rescue it: `./scripts/$DEST` reaches
+main when `DEST` is `../../../../README.md`. A glob is different — a glob cannot match `..` or a
+rooted path, so the literal prefix before it decides, and `rm -rf ./obj/*` stays allowed.
+
+The same rule applies to nesting past the depth limit. An inner command the guard never scanned
+is not an inner command that writes nothing, so a third level of `sh -c` is denied outright.
+
+A directory change the guard cannot expand — `cd "$MAIN_ROOT"` — makes every later **relative**
+write in the same chain untargetable, so those are denied too. Later absolute writes still
+classify exactly, and a later resolved `cd` restores tracking.
 
 `AHKFLOW_ALLOW_MAIN=1` downgrades this to a warned allow, as it does for the location rules.
 
