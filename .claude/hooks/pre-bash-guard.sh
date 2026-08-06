@@ -44,9 +44,20 @@ CANDIDATE_PATTERN='(^|[^A-Za-z0-9_.-])(git(\.exe)?|rm|dotnet)([^A-Za-z0-9_.-]|$)
 # A false positive only costs one jq call; a false negative would silently disable the guard.
 RAW_CANDIDATE_PATTERN='(git(\.exe)?|rm|dotnet)([^A-Za-z0-9_.-]|$)'
 
+# Worktree write isolation. This clause only matters when the SESSION is inside a worktree, and
+# a worktree cwd always contains the "worktrees" path segment. A main-checkout session never
+# matches, so its cost stays exactly what it was: one Bash exit, no PowerShell start.
+#
+# Same conservative-superset discipline as CANDIDATE_PATTERN above: a false positive costs one
+# PowerShell start, a false negative silently disables the guard. The command text itself may
+# contain "worktrees", which costs one wasted start in a main session. That is the accepted
+# direction of error.
+WORKTREE_SESSION_PATTERN='worktrees'
+WRITE_CANDIDATE_PATTERN='(>|(^|[^A-Za-z0-9_.-])(cp|mv|tee|truncate|install|ln|touch|mkdir|rmdir|dd|sed|unlink|shred|Set-Content|Add-Content|Clear-Content|Out-File|New-Item|Remove-Item|Copy-Item|Move-Item|Rename-Item)([^A-Za-z0-9_.-]|$))'
+
 shopt -s nocasematch
 
-if [[ ! "$INPUT" =~ $RAW_CANDIDATE_PATTERN ]]; then
+if [[ ! "$INPUT" =~ $RAW_CANDIDATE_PATTERN ]] && [[ ! "$INPUT" =~ $WORKTREE_SESSION_PATTERN ]]; then
   exit 0
 fi
 
@@ -64,7 +75,12 @@ if [[ $PARSED -eq 1 ]]; then
   # Match only the extracted command, never the raw payload: a cwd containing "segocom-github"
   # must not drag a noncandidate command onto the slow path.
   if [[ ! "$COMMAND" =~ $CANDIDATE_PATTERN ]]; then
-    exit 0
+    # Not a git/rm/dotnet candidate. It may still be a write from a worktree session, which is
+    # decided from the payload's cwd, not from the command text.
+    CWD=$(printf '%s' "$INPUT" | jq -er '.cwd // empty' 2>/dev/null) || CWD=""
+    if [[ ! "$CWD" =~ $WORKTREE_SESSION_PATTERN ]] || [[ ! "$COMMAND" =~ $WRITE_CANDIDATE_PATTERN ]]; then
+      exit 0
+    fi
   fi
 
   if [[ "$ADAPTER" == "Auto" ]]; then

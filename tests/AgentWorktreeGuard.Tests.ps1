@@ -1763,6 +1763,31 @@ try {
         Assert-Equal 'Deny' $decision.Action 'Action'
         Assert-Equal 'agent-main-git-mutation' $decision.Rule 'Rule'
     }
+
+    Write-Host 'Bash shim prefilter for worktree writes' -ForegroundColor Cyan
+
+    # These three run against the REAL repository identity, like every other shim test above: the
+    # entrypoint derives the protected repository from its own checked-in location, so a fixture
+    # path would classify as OutsideProtectedRepository and prove nothing. Nothing is executed -
+    # the shim only classifies the command text.
+    $script:RealWriteCommand = 'printf probe > ' + $script:RealMainCheckout.Replace('\', '/') + '/.guard-probe.tmp'
+
+    Invoke-TestCase 'Shim: a worktree-session redirect reaches the policy core' {
+        $result = Invoke-BashShim -StdIn (New-ClaudePayload $script:RealWriteCommand $suiteRoot)
+        Assert-Match 'agent-worktree-main-write' ($result.StdOut + $result.StdErr) 'Decision must be reported'
+    }
+
+    Invoke-TestCase 'Shim: a main-session redirect still exits in Bash' {
+        $result = Invoke-BashShim -StdIn (New-ClaudePayload $script:RealWriteCommand $script:RealMainCheckout)
+        Assert-Equal 0 $result.ExitCode 'Exit code'
+        Assert-Equal '' $result.StdOut.Trim() 'Must produce no decision payload'
+    }
+
+    Invoke-TestCase 'Shim: a worktree-session read still exits in Bash' {
+        $result = Invoke-BashShim -StdIn (New-ClaudePayload 'cat README.md' $suiteRoot)
+        Assert-Equal 0 $result.ExitCode 'Exit code'
+        Assert-Equal '' $result.StdOut.Trim() 'Must produce no decision payload'
+    }
 }
 finally {
     Remove-GuardFixture -Fixture $fixture
