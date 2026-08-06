@@ -1464,6 +1464,46 @@ try {
         Assert-Match 'invoke-agent-worktree-guard\.ps1' $guards[0].powershell 'powershell command'
         Assert-Match '-Adapter Copilot' $guards[0].powershell 'powershell adapter'
     }
+
+    Write-Host 'Token quote masks' -ForegroundColor Cyan
+
+    $maskCases = @(
+        @{ Command = 'printf x > out.txt'; Token = 2; ExpectedToken = '>'; ExpectedMask = 'u' },
+        @{ Command = "printf 'a>b'"; Token = 1; ExpectedToken = 'a>b'; ExpectedMask = 'qqq' },
+        @{ Command = 'printf "a>b"'; Token = 1; ExpectedToken = 'a>b'; ExpectedMask = 'qqq' },
+        @{ Command = 'printf x>out.txt'; Token = 1; ExpectedToken = 'x>out.txt'; ExpectedMask = 'uuuuuuuuu' }
+    )
+
+    foreach ($case in $maskCases) {
+        Invoke-TestCase "Mask: $($case.Command)" {
+            $parsed = Get-AgentCommandSegment -Command $case.Command
+            $segment = $parsed.Segments[0]
+            Assert-Equal $case.ExpectedToken $segment.Tokens[$case.Token] 'Token'
+            Assert-Equal $case.ExpectedMask $segment.Masks[$case.Token] 'Mask'
+        }
+    }
+
+    Invoke-TestCase 'Mask: an escaped redirect character is quoted, not a redirect' {
+        $parsed = Get-AgentCommandSegment -Command 'printf x\>y'
+        $segment = $parsed.Segments[0]
+        Assert-Equal 'x>y' $segment.Tokens[1] 'Token'
+        Assert-Equal 'uqu' $segment.Masks[1] 'Mask'
+    }
+
+    Invoke-TestCase 'Mask: masks stay aligned after an rtk wrapper is stripped' {
+        $parsed = Get-AgentCommandSegment -Command 'rtk proxy printf x>out.txt'
+        $segment = $parsed.Segments[0]
+        Assert-Equal 'printf' $segment.Tokens[0] 'Leading token'
+        Assert-Equal 'x>out.txt' $segment.Tokens[1] 'Target token'
+        Assert-Equal 'uuuuuuuuu' $segment.Masks[1] 'Mask'
+    }
+
+    Invoke-TestCase 'Mask: masks stay aligned after a NAME=value prefix is stripped' {
+        $parsed = Get-AgentCommandSegment -Command 'FOO=1 printf x>out.txt'
+        $segment = $parsed.Segments[0]
+        Assert-Equal 'printf' $segment.Tokens[0] 'Leading token'
+        Assert-Equal 'uuuuuuuuu' $segment.Masks[1] 'Mask'
+    }
 }
 finally {
     Remove-GuardFixture -Fixture $fixture

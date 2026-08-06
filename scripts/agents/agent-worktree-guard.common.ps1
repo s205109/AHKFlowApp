@@ -21,7 +21,9 @@ $script:AgentGuardProtectedCommonDirCache = @{}
 # Characters a backslash may escape inside double quotes (POSIX), and outside quotes. Compared
 # with IndexOf, not -contains: -contains on a string tests the whole string, never a character.
 $script:AgentGuardDoubleQuoteEscapables = '$`"\'
-$script:AgentGuardUnquotedEscapables = '$`"\;&|()' + "'"
+# '>' and '<' are here so `printf x\>y` reads as a literal '>', not a redirect. Neither character
+# is legal in a Windows path, so no path the guard has to classify is affected.
+$script:AgentGuardUnquotedEscapables = '$`"\;&|()<>' + "'"
 
 # Commands that move the shell's working directory, so a later `git` in the same chain does not
 # run where the hook payload said it would. pushd/popd are tracked separately because they form a
@@ -368,9 +370,13 @@ unless it precedes $, `, ", \, or newline), which keeps quoted Windows paths suc
 "C:\some;path" intact. Outside quotes a backslash only escapes a metacharacter or whitespace,
 so an unquoted C:\Dev\repo survives too.
 
-Returns { Segments = @(string[]); Ambiguous = bool }. Ambiguous means the string ended inside an
-unterminated quote or escape, which makes every segment boundary in it untrustworthy.
-This is intentionally not a complete shell parser.
+Returns { Segments = @([pscustomobject]@{ Tokens = string[]; Masks = string[] }); Ambiguous = bool }.
+Each mask runs parallel to its token, one character per token character: 'u' where the character
+was unquoted, 'q' where it came from quotes or an escape. That is what lets a later scan tell a
+real redirect from a literal '>' the tokenizer already stripped the quotes from.
+
+Ambiguous means the string ended inside an unterminated quote or escape, which makes every
+segment boundary in it untrustworthy. This is intentionally not a complete shell parser.
 #>
 function Split-AgentCommandSegment {
     [CmdletBinding()]
@@ -378,7 +384,9 @@ function Split-AgentCommandSegment {
 
     $segments = New-Object System.Collections.Generic.List[object]
     $tokens = New-Object System.Collections.Generic.List[string]
+    $masks = New-Object System.Collections.Generic.List[string]
     $current = New-Object System.Text.StringBuilder
+    $currentMask = New-Object System.Text.StringBuilder
     $hasCurrent = $false
     $state = 'None'
     $returnState = 'None'
@@ -388,6 +396,7 @@ function Split-AgentCommandSegment {
 
         if ($state -eq 'Escaped') {
             [void] $current.Append($ch)
+            [void] $currentMask.Append('q')
             $hasCurrent = $true
             $state = $returnState
             continue
@@ -395,7 +404,9 @@ function Split-AgentCommandSegment {
 
         if ($state -eq 'SingleQuoted') {
             if ($ch -eq "'") { $state = 'None' }
-            else { [void] $current.Append($ch); $hasCurrent = $true }
+            else {
+                [void] $current.Append($ch); [void] $currentMask.Append('q'); $hasCurrent = $true
+            }
             continue
         }
 
@@ -406,7 +417,9 @@ function Split-AgentCommandSegment {
                 $state = 'Escaped'
             }
             elseif ($ch -eq '"') { $state = 'None' }
-            else { [void] $current.Append($ch); $hasCurrent = $true }
+            else {
+                [void] $current.Append($ch); [void] $currentMask.Append('q'); $hasCurrent = $true
+            }
             continue
         }
 
@@ -424,17 +437,31 @@ function Split-AgentCommandSegment {
 
         if ($ch -eq "`n" -or $ch -eq "`r" -or $ch -eq ';' -or $ch -eq '&' -or $ch -eq '|' -or
             $ch -eq '`' -or $ch -eq '(' -or $ch -eq ')') {
-            if ($hasCurrent) { [void] $tokens.Add($current.ToString()); [void] $current.Clear(); $hasCurrent = $false }
-            if ($tokens.Count -gt 0) { [void] $segments.Add($tokens.ToArray()); $tokens.Clear() }
+            if ($hasCurrent) {
+                [void] $tokens.Add($current.ToString())
+                [void] $masks.Add($currentMask.ToString())
+                [void] $current.Clear(); [void] $currentMask.Clear(); $hasCurrent = $false
+            }
+            if ($tokens.Count -gt 0) {
+                [void] $segments.Add([pscustomobject]@{
+                        Tokens = $tokens.ToArray(); Masks = $masks.ToArray()
+                    })
+                $tokens.Clear(); $masks.Clear()
+            }
             continue
         }
 
         if ([char]::IsWhiteSpace($ch)) {
-            if ($hasCurrent) { [void] $tokens.Add($current.ToString()); [void] $current.Clear(); $hasCurrent = $false }
+            if ($hasCurrent) {
+                [void] $tokens.Add($current.ToString())
+                [void] $masks.Add($currentMask.ToString())
+                [void] $current.Clear(); [void] $currentMask.Clear(); $hasCurrent = $false
+            }
             continue
         }
 
         [void] $current.Append($ch)
+        [void] $currentMask.Append('u')
         $hasCurrent = $true
     }
 
@@ -442,8 +469,15 @@ function Split-AgentCommandSegment {
         return [pscustomobject]@{ Segments = @(); Ambiguous = $true }
     }
 
-    if ($hasCurrent) { [void] $tokens.Add($current.ToString()) }
-    if ($tokens.Count -gt 0) { [void] $segments.Add($tokens.ToArray()) }
+    if ($hasCurrent) {
+        [void] $tokens.Add($current.ToString())
+        [void] $masks.Add($currentMask.ToString())
+    }
+    if ($tokens.Count -gt 0) {
+        [void] $segments.Add([pscustomobject]@{
+                Tokens = $tokens.ToArray(); Masks = $masks.ToArray()
+            })
+    }
 
     return [pscustomobject]@{
         Segments  = $segments.ToArray()
@@ -490,11 +524,27 @@ function Remove-AgentWrapperPrefix {
     [CmdletBinding()]
     param([string[]] $Tokens)
 
+    return (Remove-AgentWrapperPrefixDetailed -Tokens $Tokens).Tokens
+}
+
+<#
+.SYNOPSIS
+Same as Remove-AgentWrapperPrefix, but also reports how many leading tokens were removed.
+
+.DESCRIPTION
+The mask array runs parallel to the token array, so it must be sliced by the same count. The
+original function returns only the surviving tokens, which is not enough to slice the masks.
+#>
+function Remove-AgentWrapperPrefixDetailed {
+    [CmdletBinding()]
+    param([string[]] $Tokens)
+
     $current = @($Tokens)
+    $removed = 0
 
     while ($current.Count -gt 0) {
         $leaf = (([string] $current[0]).ToLowerInvariant() -split '[\\/]')[-1]
-        if ($script:AgentGuardTransparentWrappers -notcontains $leaf) { return $current }
+        if ($script:AgentGuardTransparentWrappers -notcontains $leaf) { break }
 
         $index = 1
         while ($index -lt $current.Count -and ([string] $current[$index]) -like '-*') { $index++ }
@@ -504,20 +554,23 @@ function Remove-AgentWrapperPrefix {
             if ($script:AgentGuardWrapperPassThroughSubcommands -contains $subcommand) { $index++ }
         }
 
-        if ($index -ge $current.Count) { return @() }
+        if ($index -ge $current.Count) {
+            return [pscustomobject]@{ Tokens = @(); Removed = ($removed + $current.Count) }
+        }
 
         $remainder = @($current[$index..($current.Count - 1)])
         $remainderName = ([string] $remainder[0]).ToLowerInvariant()
         if ($script:AgentGuardChangeDirectoryCommands -contains $remainderName -or
             $script:AgentGuardPushDirectoryCommands -contains $remainderName -or
             $script:AgentGuardPopDirectoryCommands -contains $remainderName) {
-            return $current
+            break
         }
 
         $current = $remainder
+        $removed += $index
     }
 
-    return $current
+    return [pscustomobject]@{ Tokens = $current; Removed = $removed }
 }
 
 <#
@@ -526,7 +579,8 @@ Classifies each top-level segment as a git invocation, a directory change, or so
 
 .DESCRIPTION
 Returns { Segments = @(objects); Ambiguous = bool }. Each segment carries Kind
-(Git | ChangeDirectory | Other), Tokens (leading NAME=value assignments removed), and - for
+(Git | ChangeDirectory | Other), Tokens (leading NAME=value assignments removed), Masks (quote
+provenance, one character per token character, parallel to Tokens), and - for
 ChangeDirectory - Directory plus Unresolved. Unresolved marks a target the guard cannot expand
 literally (`cd -`, `cd $HOME`, bare `cd`), so a following mutation is treated as untargetable
 rather than silently classified against a stale directory.
@@ -546,18 +600,24 @@ function Get-AgentCommandSegment {
 
     $classified = New-Object System.Collections.Generic.List[object]
 
-    foreach ($tokens in $split.Segments) {
+    foreach ($entry in $split.Segments) {
+        $tokens = @($entry.Tokens)
+        $entryMasks = @($entry.Masks)
+
         # Drop NAME=value prefixes so `AHKFLOW_ALLOW_MAIN=1 git commit` still reads as git.
         $start = 0
         while ($start -lt $tokens.Count -and $tokens[$start] -match $script:AgentGuardEnvAssignmentPattern) { $start++ }
         if ($start -ge $tokens.Count) { continue }
 
         $effective = @($tokens[$start..($tokens.Count - 1)])
+        $effectiveMasks = @($entryMasks[$start..($entryMasks.Count - 1)])
 
         # Strip a transparent wrapper (rtk) after the NAME=value prefix, not before: order
         # matters so `SKIP_COVERAGE_HOOK=1 rtk git push` loses the assignment first, then rtk.
-        $effective = @(Remove-AgentWrapperPrefix -Tokens $effective)
+        $stripped = Remove-AgentWrapperPrefixDetailed -Tokens $effective
+        $effective = @($stripped.Tokens)
         if ($effective.Count -eq 0) { continue }
+        $effectiveMasks = @($effectiveMasks | Select-Object -Skip $stripped.Removed)
 
         $name = ([string] $effective[0]).ToLowerInvariant()
         $leaf = ($name -split '[\\/]')[-1]
@@ -565,9 +625,11 @@ function Get-AgentCommandSegment {
         if ($leaf -eq 'git' -or $leaf -eq 'git.exe') {
             # @() around the slice: a bare `git` has no tail, and 1..0 counts backwards.
             $tail = if ($effective.Count -gt 1) { @($effective[1..($effective.Count - 1)]) } else { @() }
+            $tailMasks = if ($effectiveMasks.Count -gt 1) { @($effectiveMasks[1..($effectiveMasks.Count - 1)]) } else { @() }
             [void] $classified.Add([pscustomobject]@{
                     Kind       = 'Git'
                     Tokens     = $tail
+                    Masks      = $tailMasks
                     Directory  = ''
                     Unresolved = $false
                 })
@@ -578,6 +640,7 @@ function Get-AgentCommandSegment {
             [void] $classified.Add([pscustomobject]@{
                     Kind       = 'PopDirectory'
                     Tokens     = $effective
+                    Masks      = $effectiveMasks
                     Directory  = ''
                     Unresolved = $false
                 })
@@ -596,6 +659,7 @@ function Get-AgentCommandSegment {
             [void] $classified.Add([pscustomobject]@{
                     Kind       = if ($isPush) { 'PushDirectory' } else { 'ChangeDirectory' }
                     Tokens     = $effective
+                    Masks      = $effectiveMasks
                     Directory  = $directory
                     Unresolved = $unresolved
                 })
@@ -605,6 +669,7 @@ function Get-AgentCommandSegment {
         [void] $classified.Add([pscustomobject]@{
                 Kind       = 'Other'
                 Tokens     = $effective
+                Masks      = $effectiveMasks
                 Directory  = ''
                 Unresolved = $false
             })
