@@ -183,7 +183,9 @@
             if (generation != _generation || _disposed)
                 return;
 
-            string? templateNotice = TemplateUseText.TextFor(templateUses, canonical);
+            string? templateNotice = TemplateUseText.TextFor(
+                templateUses,
+                new RowCombination(canonical, Ctrl, Alt, Shift, Win, key.Combination));
 
             if (catalog is null)
             {
@@ -247,8 +249,8 @@
         {
             uses.Add(new ProfileTemplateUse(
                 profile.Name,
-                await CanonicalKeysAsync(profile.HeaderTemplate, token),
-                await CanonicalKeysAsync(profile.FooterTemplate, token)));
+                await CanonicalHotkeysAsync(profile.HeaderTemplate, token),
+                await CanonicalHotkeysAsync(profile.FooterTemplate, token)));
         }
 
         return uses;
@@ -257,12 +259,12 @@
     private IEnumerable<ProfileDto> SelectedProfiles() =>
         AppliesToAllProfiles ? Profiles : Profiles.Where(p => ProfileIds.Contains(p.Id));
 
-    private async Task<List<string>> CanonicalKeysAsync(string template, CancellationToken token)
+    private async Task<List<TemplateHotkey>> CanonicalHotkeysAsync(string template, CancellationToken token)
     {
-        List<string> canonical = [];
+        List<TemplateHotkey> canonical = [];
 
-        foreach (string key in TemplateKeyUses.Parse(template))
-            canonical.Add(await Keys.CanonicalizeAsync(key, token));
+        foreach (TemplateHotkey hotkey in TemplateKeyUses.Parse(template))
+            canonical.Add(hotkey with { Key = await Keys.CanonicalizeAsync(hotkey.Key, token) });
 
         return canonical;
     }

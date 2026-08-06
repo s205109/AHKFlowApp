@@ -25,10 +25,14 @@ public sealed class TemplateKeyUsesTests
         }
         """;
 
+    private static TemplateHotkey Plain(string key) => new(key, false, false, false, false, false);
+
+    private static TemplateHotkey Wildcard(string key) => new(key, true, false, false, false, false);
+
     [Fact]
     public void Parse_ReadsAWildcardHotkeyAndItsKeyUpHalfAsOneKey()
     {
-        TemplateKeyUses.Parse(CapsLockLayer).Should().Equal("CapsLock");
+        TemplateKeyUses.Parse(CapsLockLayer).Should().Equal(Wildcard("CapsLock"));
     }
 
     [Fact]
@@ -46,9 +50,26 @@ public sealed class TemplateKeyUsesTests
     }
 
     [Fact]
-    public void Parse_IgnoresALineCarryingItsOwnModifiers()
+    public void Parse_ReadsTheModifiersALineCarries()
     {
-        TemplateKeyUses.Parse("""^!c::Run "calc.exe" """).Should().BeEmpty();
+        TemplateKeyUses.Parse("""^!c::Run "calc.exe" """)
+            .Should().Equal(new TemplateHotkey("c", false, true, true, false, false));
+    }
+
+    [Fact]
+    public void Parse_ReadsASideSpecificModifierAsThatModifier()
+    {
+        // A row cannot say "left Ctrl only", so the side is dropped. The two hotkeys still overlap:
+        // holding left Ctrl presses both.
+        TemplateKeyUses.Parse("<^a::MsgBox \"left\"")
+            .Should().Equal(new TemplateHotkey("a", false, true, false, false, false));
+    }
+
+    [Fact]
+    public void Parse_ReadsAWildcardHotkeyThatAlsoCarriesModifiers()
+    {
+        TemplateKeyUses.Parse("*#e::Run \"explorer.exe\"")
+            .Should().Equal(new TemplateHotkey("e", true, false, false, false, true));
     }
 
     [Fact]
@@ -78,18 +99,27 @@ public sealed class TemplateKeyUsesTests
     [Fact]
     public void Parse_ReadsAPlainHotkeyWithNoPrefix()
     {
-        TemplateKeyUses.Parse("""CapsLock::Send "hello" """).Should().Equal("CapsLock");
+        TemplateKeyUses.Parse("""CapsLock::Send "hello" """).Should().Equal(Plain("CapsLock"));
     }
 
     [Fact]
     public void Parse_ReadsATildePrefixedHotkey()
     {
-        TemplateKeyUses.Parse("~ScrollLock::Reload").Should().Equal("ScrollLock");
+        TemplateKeyUses.Parse("~ScrollLock::Reload").Should().Equal(Plain("ScrollLock"));
     }
 
     [Fact]
     public void Parse_KeepsOneEntryPerKeyIgnoringCase()
     {
-        TemplateKeyUses.Parse("*CapsLock::\n*capslock up::").Should().Equal("CapsLock");
+        TemplateKeyUses.Parse("*CapsLock::\n*capslock up::").Should().Equal(Wildcard("CapsLock"));
+    }
+
+    [Fact]
+    public void Parse_KeepsTwoEntriesWhenTheSameKeyCarriesDifferentModifiers()
+    {
+        TemplateKeyUses.Parse("^c::\n^!c::")
+            .Should().Equal(
+                new TemplateHotkey("c", false, true, false, false, false),
+                new TemplateHotkey("c", false, true, true, false, false));
     }
 }

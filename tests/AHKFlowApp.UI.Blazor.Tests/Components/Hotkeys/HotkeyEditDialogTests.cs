@@ -1472,8 +1472,8 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
     [Fact]
     public async Task TemplateNotice_AppearsWhenTheRowCarriesModifiers()
     {
-        // A wildcard template hotkey fires whatever extra modifiers are held, so matching reads the
-        // key alone. A row on Ctrl+CapsLock is affected just as much as a bare one.
+        // A wildcard template hotkey fires whatever extra modifiers are held, so a row carrying
+        // modifiers is affected just as much as a bare one. The notice names what the row presses.
         ProfileDto work = Profile("Work", CapsLockLayerHeader);
         HotkeyEditModel item = new()
         {
@@ -1490,7 +1490,57 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
 
         provider.WaitForAssertion(() =>
             provider.Find("[data-test=\"template-warning\"]").TextContent
-                .Should().Be("The header template in Work also uses CapsLock. Your hotkey may not fire."));
+                .Should().Be(
+                    "The header template in Work also uses Ctrl+Shift+CapsLock. Your hotkey may not fire."));
+    }
+
+    [Fact]
+    public async Task TemplateNotice_SkipsAPlainTemplateHotkeyWhenTheRowCarriesModifiers()
+    {
+        // "CapsLock::" with no wildcard fires only when nothing else is held, so this row is
+        // untouched by it. The parser reads the modifiers, so the notice stays away.
+        ProfileDto work = Profile("Work", "#Requires AutoHotkey v2.0\n\nCapsLock::Send \"hello\"");
+        HotkeyEditModel item = new()
+        {
+            Key = "CapsLock",
+            Ctrl = true,
+            ActionKind = HotkeyActionKind.SendText,
+            Text = "hi",
+            AppliesToAllProfiles = false,
+            ProfileIds = [work.Id],
+        };
+
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogWithProfilesAsync(item, work);
+
+        provider.WaitForAssertion(() =>
+            provider.Find("[data-test=\"shortcut-warning-checked\"]").GetAttribute("data-combination")
+                .Should().Be("Ctrl+CapsLock"));
+
+        provider.FindAll("[data-test=\"template-warning\"]").Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task TemplateNotice_AppearsWhenATemplateHotkeyCarriesTheSameModifiers()
+    {
+        // The emitter writes "^!c::" for a Ctrl+Alt+C row (HotkeyEmitter.cs:38), which is the same
+        // hotkey name the template line already defines.
+        ProfileDto work = Profile("Work", "#Requires AutoHotkey v2.0\n\n^!c::Run \"calc.exe\"");
+        HotkeyEditModel item = new()
+        {
+            Key = "c",
+            Ctrl = true,
+            Alt = true,
+            ActionKind = HotkeyActionKind.SendText,
+            Text = "hi",
+            AppliesToAllProfiles = false,
+            ProfileIds = [work.Id],
+        };
+
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogWithProfilesAsync(item, work);
+
+        provider.WaitForAssertion(() =>
+            provider.Find("[data-test=\"template-warning\"]").TextContent
+                .Should().Be("The header template in Work also uses Ctrl+Alt+C. Your hotkey may not fire."));
     }
 
     [Fact]
