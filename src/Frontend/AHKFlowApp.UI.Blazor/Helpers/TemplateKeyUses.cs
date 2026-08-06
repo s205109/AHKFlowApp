@@ -23,6 +23,19 @@ internal sealed record TemplateHotkey(
 /// The keys come back spelled as the template spells them. Canonicalizing is the caller's job,
 /// because <see cref="Services.IHotkeyKeyCatalog.CanonicalizeAsync"/> is asynchronous and this
 /// stays a pure function.
+/// <para>
+/// Known limits. The warning this feeds is advisory, so both are accepted:
+/// </para>
+/// <list type="bullet">
+/// <item><description>
+/// A window context is not read. A hotkey written under <c>#HotIf</c> only fires in that context,
+/// but it is reported like any other, so a row can be warned about a hotkey it never collides with.
+/// </description></item>
+/// <item><description>
+/// A line whose key is followed by anything other than <c>up</c> is skipped. That drops a hotkey
+/// this parser does not model, such as a custom combination, at the cost of missing a warning.
+/// </description></item>
+/// </list>
 /// </remarks>
 internal static class TemplateKeyUses
 {
@@ -66,24 +79,22 @@ internal static class TemplateKeyUses
 
         int i = 0;
         bool wildcard = false;
-
-        while (i < left.Length && Prefixes.Contains(left[i]))
-        {
-            wildcard |= left[i] == '*';
-            i++;
-        }
-
         bool ctrl = false;
         bool alt = false;
         bool shift = false;
         bool win = false;
 
+        // One pass over prefixes and modifiers together, because AutoHotkey accepts them in any
+        // order: "^~c::" and "~^c::" are the same hotkey.
         // "<" and ">" pick a side for the modifier that follows. A row has no side, so they are
         // skipped and the modifier itself is what counts.
         while (i < left.Length)
         {
             switch (left[i])
             {
+                case char p when Prefixes.Contains(p):
+                    wildcard |= p == '*';
+                    break;
                 case '<' or '>':
                     break;
                 case '^':

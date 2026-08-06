@@ -61,6 +61,12 @@
     [Parameter] public string? RemapDest { get; set; }
 
     /// <summary>Every Profile the owner has, with their templates. Both call sites already hold this.</summary>
+    /// <remarks>
+    /// The list is read as fixed for the lifetime of the page. Its content is not part of
+    /// <see cref="EvaluationKey"/>, so replacing the list while a notice is on screen would not
+    /// re-evaluate. Neither call site does that: the Hotkeys page loads it once
+    /// (<c>Pages/Hotkeys.razor</c>) and hands the same list to the edit dialog.
+    /// </remarks>
     [Parameter] public IReadOnlyList<ProfileDto> Profiles { get; set; } = [];
 
     /// <summary>The Profiles this row belongs to. Ignored when <see cref="AppliesToAllProfiles"/> is true.</summary>

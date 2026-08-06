@@ -345,6 +345,16 @@ A remap is not one hotkey. AutoHotkey translates `a::b` into the pair `*a::` and
 sending `{Blind}{b DownR}` and `{Blind}{b Up}`. So a `Remap` row and a hand-written `*a::` in a
 template land on the same two hotkey names.
 
+Prefixes and modifiers may be written in any order. `^~c::` and `~^c::` are the same hotkey, so
+`TemplateKeyUses` reads both kinds of symbol in one pass.
+
+Two limits of that reader are worth stating. The warning it feeds is advisory, so both are accepted:
+
+- **A window context is not read.** A template hotkey under `#HotIf` fires only in that context, but
+  it is reported like any other. A row can be warned about a hotkey it never collides with.
+- **A line the reader cannot model is skipped.** Anything after the key other than `up` drops the
+  line, and so drops a possible warning.
+
 Sources: [Hotkeys](https://www.autohotkey.com/docs/v2/Hotkeys.htm#wildcard),
 [#HotIf variants](https://www.autohotkey.com/docs/v2/lib/_HotIf.htm#variant),
 [Remapping keys](https://www.autohotkey.com/docs/v2/misc/Remap.htm).

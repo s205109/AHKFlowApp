@@ -109,6 +109,35 @@ public sealed class TemplateKeyUsesTests
     }
 
     [Fact]
+    public void Parse_ReadsAPrefixThatFollowsAModifier()
+    {
+        // AutoHotkey reads the prefix symbols and the modifiers in one pass, so "^~c" and "~^c"
+        // are the same hotkey. Reading only prefixes first would drop this line.
+        TemplateKeyUses.Parse("^~c::MsgBox \"ctrl c\"")
+            .Should().Equal(new TemplateHotkey("c", false, true, false, false, false));
+    }
+
+    [Fact]
+    public void Parse_ReadsAWildcardThatFollowsAModifier()
+    {
+        TemplateKeyUses.Parse("#*e::Run \"explorer.exe\"")
+            .Should().Equal(new TemplateHotkey("e", true, false, false, false, true));
+    }
+
+    [Fact]
+    public void Parse_ReadsAHotkeyWithATrailingComment()
+    {
+        TemplateKeyUses.Parse("*CapsLock:: ; hold for the modifier layer")
+            .Should().Equal(Wildcard("CapsLock"));
+    }
+
+    [Fact]
+    public void Parse_ReadsAHotkeyWithAnOpeningBraceOnTheSameLine()
+    {
+        TemplateKeyUses.Parse("CapsLock::{").Should().Equal(Plain("CapsLock"));
+    }
+
+    [Fact]
     public void Parse_KeepsOneEntryPerKeyIgnoringCase()
     {
         TemplateKeyUses.Parse("*CapsLock::\n*capslock up::").Should().Equal(Wildcard("CapsLock"));
