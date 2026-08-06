@@ -246,6 +246,36 @@ public sealed class ShortcutWarningFlowTests(StackFixture fixture) : IAsyncLifet
         Assert.Contains("Windows uses Win+L to lock the computer.", label, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task AHotkeyOnAKeyTheProfileHeaderUses_IsWarnedAbout()
+    {
+        await using IBrowserContext context = await fixture.Browser.NewContextAsync();
+        IPage page = await context.NewPageAsync();
+
+        // Put the Caps Lock layer into the seeded profile's header template.
+        await page.GotoAsync($"{fixture.Spa.BaseUrl}/profiles");
+        await page.WaitForSelectorAsync("button.start-edit");
+        await page.ClickAsync("button.start-edit");
+        await page.WaitForSelectorAsync("textarea[data-test=\"profile-header-input\"]");
+        await page.FillAsync("textarea[data-test=\"profile-header-input\"]",
+            "#Requires AutoHotkey v2.0\n\n*CapsLock::\n{\n    Send \"{Blind}{LCtrl DownR}\"\n}");
+        await page.ClickAsync("button.commit-edit");
+        await page.WaitForSelectorAsync("text=Profile updated.");
+
+        // Now bind a hotkey to the same key. "Apply to all profiles" avoids picking one by name.
+        await OpenCreateDialogAsync(page);
+        await CommitKeyAsync(page, "CapsLock");
+        await page.CheckAsync(".hotkey-edit-dialog input[data-test=\"applies-to-all-checkbox\"]");
+
+        await page.WaitForSelectorAsync(".hotkey-edit-dialog [data-test=\"template-warning\"]");
+        string warning = await page.InnerTextAsync(".hotkey-edit-dialog [data-test=\"template-warning\"]");
+
+        Assert.Contains("also uses CapsLock", warning, StringComparison.Ordinal);
+        Assert.Contains("Your hotkey may not fire.", warning, StringComparison.Ordinal);
+        Assert.DoesNotContain("never", warning, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("will not", warning, StringComparison.OrdinalIgnoreCase);
+    }
+
     // The table holds a row per use, over a hundred of them, and pages at 25. Every row this file
     // acts on is addressed through the search box, never by paging to it.
     private async Task OpenKnownShortcutsAsync(IPage page, string? search = null)
