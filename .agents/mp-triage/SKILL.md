@@ -5,7 +5,7 @@ disable-model-invocation: true
 ---
 
 <!--
-AHKFlow adaptation of mattpocock/skills (MIT), pinned at commit 9603c1cc8118d08bc1b3bf34cf714f62178dea3b.
+AHKFlow adaptation of mattpocock/skills (MIT), pinned at commit 6acc160e4e0cd062dbbbd7a1b26ae92855edf07e.
 Update policy: manual-selective-merge — do not bulk-sync with upstream.
 -->
 
@@ -78,7 +78,7 @@ Show counts and a one-line summary per item. Let the maintainer pick.
 
 3. **Verify the claim.** Before any grilling, check that the claim holds up. For a bug, reproduce it from the reporter's steps. For a PR, confirm the diff does what it claims — check it out, run the relevant tests or commands. Report what happened: confirmed (with code path), failed, or insufficient detail (a strong `needs-info` signal). A confirmed verification makes a much stronger agent brief.
 
-4. **Grill (if needed).** If the request needs fleshing out, run the `/mp-grilling` and `/mp-domain-modeling` skills together — grill it into shape one question at a time, sharpening domain terms and updating `CONTEXT.md`/ADRs inline as decisions land.
+4. **Grill (if needed).** If the request needs fleshing out, run the `/mp-grilling` and `/mp-domain-modeling` skills together — grill it into shape a round of questions at a time, sharpening domain terms and updating `CONTEXT.md`/ADRs inline as decisions land.
 
 5. **Apply the outcome:**
    - `ready-for-agent` — post an agent brief comment ([AGENT-BRIEF.md](AGENT-BRIEF.md)).

@@ -67,7 +67,7 @@ SOFTWARE.
 ## mattpocock/skills
 
 The following skills are adapted from `mattpocock/skills` (MIT), pinned at commit
-`9603c1cc8118d08bc1b3bf34cf714f62178dea3b` — the baseline for future selective merges:
+`6acc160e4e0cd062dbbbd7a1b26ae92855edf07e` — the baseline for future selective merges:
 
 - `mp-grilling`, `mp-grill-me`, `mp-domain-modeling`, `mp-grill-with-docs`, `mp-handoff`,
   `mp-triage`, `mp-setup-matt-pocock-skills`, `mp-prototype`, `mp-research`
@@ -79,12 +79,15 @@ are trimmed to this repo's 140-char skill-description budget. Each `SKILL.md` ca
 comment recording the pinned commit and update policy (manual-selective-merge).
 
 `mp-prototype` and `mp-research` are adapted further than the other seven, because upstream names
-concrete tools this repo does not have. In `mp-prototype`, the JavaScript examples are replaced
-with their Blazor equivalents — `[SupplyParameterFromQuery]` and `NavigationManager` for the
-variant switch, the `DEBUG` compilation symbol for the production gate, and `dotnet run` for the
-one-command rule. In `mp-research`, an "In this repo" section is appended covering the
-AutoHotkey docs 403 fallback, version-pinned API citations, and citation review. Upstream prose
-is otherwise left intact, so a future selective merge still lines up.
+concrete tools this repo does not have. In `mp-prototype`'s `UI.md`, the JavaScript examples are
+replaced with their Blazor equivalents — `[SupplyParameterFromQuery]` and `NavigationManager` for
+the variant switch, `IWebAssemblyHostEnvironment.IsDevelopment()` for the production gate (not the
+`DEBUG` compilation symbol, which would hide the switcher during the Release smoke test `AGENTS.md`
+requires). `LOGIC.md` needed no such adaptation after its upstream rewrite to a single
+self-contained HTML file — that shape has no host-project runtime to swap in. In `mp-research`,
+an "In this repo" section is appended covering the AutoHotkey docs 403 fallback, version-pinned
+API citations, and citation review. Upstream prose is otherwise left intact, so a future selective
+merge still lines up.
 
 Upstream license notice (`mattpocock/skills`):
 
