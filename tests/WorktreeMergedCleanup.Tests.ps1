@@ -72,18 +72,20 @@ function New-TempGitRepo {
 # Adds a linked worktree on a new branch off main. By default the branch gets one commit and is
 # then merged into main with a merge commit -- the shape a merged pull request leaves behind.
 # -Unmerged keeps the commit out of main; -NoCommits leaves the branch where it was created, which
-# is what a brand-new worktree looks like; -Dirty leaves an uncommitted change.
+# is what a brand-new worktree looks like; -Dirty leaves an uncommitted change. -BaseRef starts the
+# branch somewhere other than main, which is the stacked shape new-worktree.ps1 -BaseRef creates.
 function Add-TestWorktree {
     param(
         [string] $RepoDir,
         [string] $BranchName,
         [switch] $Unmerged,
         [switch] $Dirty,
-        [switch] $NoCommits
+        [switch] $NoCommits,
+        [string] $BaseRef = 'main'
     )
 
     $wtPath = Join-Path (Split-Path -Parent $RepoDir) ('wt-' + $BranchName)
-    Invoke-TestGit $RepoDir @('worktree', 'add', '-b', $BranchName, $wtPath, 'main') | Out-Null
+    Invoke-TestGit $RepoDir @('worktree', 'add', '-b', $BranchName, $wtPath, $BaseRef) | Out-Null
 
     if (-not $NoCommits) {
         Set-Content -LiteralPath (Join-Path $wtPath 'work.txt') -Value "work on $BranchName" -Encoding utf8
@@ -406,6 +408,19 @@ try {
     Assert-True ($spoofSubjects -match '(?m)^commit:') 'Sanity check: GIT_REFLOG_ACTION must really have forged a "commit:" ref-log subject.'
     Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-spoof')) 'A forged "commit:" ref-log subject must not count as own commits.'
 
+    # The two signals must come from the SAME ref-log entry, or a stacked branch combines them.
+    # `new-worktree.ps1 -BaseRef <branch>` starts a branch at another branch's tip. When that base
+    # was merged with a merge commit, its tip is a non-first parent, so the 'branch: Created from'
+    # entry alone satisfies the structural half. Forging a 'commit:' subject onto a later
+    # fast-forward then satisfies the other half from a DIFFERENT entry, and an unstarted worktree
+    # gets deleted. The structural proof has to come from the 'commit'-prefixed entry itself.
+    $stackedPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-stacked-spoof' -NoCommits -BaseRef 'feat-done'
+    Invoke-TestGitWithReflogAction -RepoDir $stackedPath -Action 'commit' -GitArgs @('merge', '--ff-only', 'main') | Out-Null
+    $stackedEntries = (Invoke-TestGit $repo @('reflog', 'show', '--format=%H %gs', 'refs/heads/feat-stacked-spoof')) -join "`n"
+    Assert-True ($stackedEntries -match '(?m)commit: Fast-forward') 'Sanity check: the stacked branch must carry a forged "commit:" entry.'
+    Assert-True ($stackedEntries -match '(?m)branch: Created from') 'Sanity check: the stacked branch must have been created off an already-merged branch.'
+    Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-stacked-spoof')) 'A forged "commit:" entry plus a merged base SHA from a different entry must not count as merged own work.'
+
     # The other half of the pair: structural proof alone is fooled by a branch created AT an
     # already-merged branch tip, which really is a non-first parent of a merge commit in main.
     # feat-child above covers that; it must stay unstarted because its ref log shows no commit.
@@ -488,6 +503,26 @@ try {
 
     Assert-True (-not ($keys -contains (ConvertTo-Key $spoofPath))) 'A forged "commit:" ref-log subject must not make an unstarted worktree eligible.'
     Assert-True ($keys -contains (ConvertTo-Key $donePath)) 'Genuinely merged work must stay eligible alongside the spoofed branch.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: a stacked branch cannot combine the two signals into eligibility ------------
+# The signals must correlate. A branch started at an already-merged branch's tip (the -BaseRef
+# workflow) carries a merged SHA in its 'branch: Created from' entry. Forging a 'commit:' subject
+# onto a later fast-forward supplies the other half from a different entry. Neither entry alone
+# proves work, so this worktree must survive -Cleanup.
+$repo = New-TempGitRepo
+try {
+    $basePath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-stack-base'
+    $stackedPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-stack-child' -NoCommits -BaseRef 'feat-stack-base'
+    Invoke-TestGitWithReflogAction -RepoDir $stackedPath -Action 'commit' -GitArgs @('merge', '--ff-only', 'main') | Out-Null
+
+    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
+    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
+
+    Assert-True (-not ($keys -contains (ConvertTo-Key $stackedPath))) 'A stacked branch with no commits of its own must never be eligible, even with a forged "commit:" entry.'
+    Assert-True ($keys -contains (ConvertTo-Key $basePath)) 'The merged base branch must stay eligible.'
 } finally {
     Remove-TempTree $repo
 }

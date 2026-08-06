@@ -73,11 +73,14 @@ shell, with no Claude Code worktree tool involved.
 
 ### How it was fixed
 
-- Removal now needs two independent signals: a `commit`-prefixed ref-log entry AND some commit the
-  branch has pointed at being a non-first parent of a merge commit in `main`. Each covers the
-  other's blind spot, and anything unproven keeps the worktree
-- The second signal reads the branch's whole ref-log history. Checking only the current tip broke
-  the third acceptance criterion: a finished worktree that ran `git merge --ff-only main` moved its
-  tip onto the merge commit and stopped being swept
+- Removal now needs one ref-log entry to prove both halves at once: the subject starts with
+  `commit` AND the commit that entry points at is a non-first parent of a merge commit in `main`.
+  Each half covers the other's blind spot, and anything unproven keeps the worktree
+- The halves must correlate. Read from different entries, a branch created with `-BaseRef` supplies
+  the structural half from its `branch: Created from` entry and a forged subject supplies the other,
+  so an unstarted stacked worktree would be deleted
+- The check reads the branch's whole ref-log history. Checking only the current tip broke the third
+  acceptance criterion: a finished worktree that ran `git merge --ff-only main` moved its tip onto
+  the merge commit and stopped being swept
 - Sweeping only branches with a merged pull request, the second option listed above, was not
   needed. The merge-commit shape gives the same evidence locally, with no network access
