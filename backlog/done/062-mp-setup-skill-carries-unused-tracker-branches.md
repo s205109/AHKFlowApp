@@ -34,15 +34,26 @@ Two reasons this is not urgent:
 
 Raised in the review of commit `0b8bed15`, graded Low, and deferred there.
 
+## Resolution
+
+Deleted the whole skill instead of trimming it. Trimming assumed the skill still had a job. It did
+not. It ran once during adoption and wrote the three `docs/agents/*.md` files. Those files are what
+agents read, and they stay. The skill had no second job, so every unreachable branch inside it was
+unreachable for the same reason: the skill itself was spent.
+
+Deleting also settles the fork-policy tension the original item raised. There is no longer a file to
+keep aligned with upstream.
+
 ## Acceptance criteria
 
-- [ ] Decide whether to trim the skill or keep it aligned with upstream. Record the decision in
+- [x] Decide whether to trim the skill or keep it aligned with upstream. Record the decision in
       `.agents/ATTRIBUTION.md`.
-- [ ] If trimming: drop the GitLab, local-markdown, and "other" tracker branches, and the
-      `issue-tracker-gitlab.md` and `issue-tracker-local.md` seed files.
-- [ ] If trimming: remove or explain the references to `to-tickets`, `to-spec`, and `/wayfinder`,
-      none of which are vendored here.
-- [ ] `pwsh tests/SkillParity.Tests.ps1` and `pwsh tests/SkillLayout.Tests.ps1` pass afterwards.
+- [x] Unreachable tracker branches gone — the whole skill is gone, including
+      `issue-tracker-gitlab.md` and `issue-tracker-local.md`.
+- [x] References to `to-tickets`, `to-spec`, and `/wayfinder` gone with it. The one live pointer
+      into the skill, at `.agents/mp-triage/SKILL.md:48`, now points at
+      `docs/agents/triage-labels.md` instead.
+- [x] `pwsh tests/SkillParity.Tests.ps1` and `pwsh tests/SkillLayout.Tests.ps1` pass afterwards.
 
 ## Out of scope
 

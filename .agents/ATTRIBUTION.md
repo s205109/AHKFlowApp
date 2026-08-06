@@ -70,15 +70,21 @@ The following skills are adapted from `mattpocock/skills` (MIT), pinned at commi
 `6acc160e4e0cd062dbbbd7a1b26ae92855edf07e` — the baseline for future selective merges:
 
 - `mp-grilling`, `mp-grill-me`, `mp-domain-modeling`, `mp-grill-with-docs`, `mp-handoff`,
-  `mp-triage`, `mp-setup-matt-pocock-skills`, `mp-prototype`, `mp-research`
+  `mp-triage`, `mp-prototype`, `mp-research`
 
 Adapted, not vendored unchanged (same fork policy as `dck-*`): internal cross-skill references
-are rewritten to the `mp-` folder names, `mp-setup-matt-pocock-skills`'s triage-installed
-detection targets `mp-triage` instead of upstream's literal `triage`, and long descriptions
-are trimmed to this repo's 140-char skill-description budget. Each `SKILL.md` carries a header
-comment recording the pinned commit and update policy (manual-selective-merge).
+are rewritten to the `mp-` folder names, and long descriptions are trimmed to this repo's
+140-char skill-description budget. Each `SKILL.md` carries a header comment recording the pinned
+commit and update policy (manual-selective-merge).
 
-`mp-prototype` and `mp-research` are adapted further than the other seven, because upstream names
+Upstream's `setup-matt-pocock-skills` was vendored as `mp-setup-matt-pocock-skills`, run once, and
+then deleted. It is a one-time bootstrapper: it asks which issue tracker, which triage labels, and
+which domain-doc layout the repo uses, then writes the answers to `docs/agents/issue-tracker.md`,
+`docs/agents/triage-labels.md`, and `docs/agents/domain.md`. Those three files are the lasting
+artifact and they stay. The skill itself had no second job, so keeping it only spent a slot in every
+agent's skill list. Restore it from git history if the repo ever changes issue tracker.
+
+`mp-prototype` and `mp-research` are adapted further than the other six, because upstream names
 concrete tools this repo does not have. In `mp-prototype`'s `UI.md`, the JavaScript examples are
 replaced with their Blazor equivalents — `[SupplyParameterFromQuery]` and `NavigationManager` for
 the variant switch, `IWebAssemblyHostEnvironment.IsDevelopment()` for the production gate (not the
