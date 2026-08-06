@@ -233,6 +233,8 @@ function New-GuardFixture {
         'ahkflow-agent-guard-' + [guid]::NewGuid().ToString('N'))
     $main = Join-Path $testRoot 'repo'
     $managed = Join-Path $main '.claude\worktrees\valid'
+    # A second managed worktree, so a write into a sibling agent's checkout can be tested.
+    $managed2 = Join-Path $main '.claude\worktrees\second'
     $badManifest = Join-Path $main '.claude\worktrees\badmanifest'
     # One level deeper than the approved parent: an approved grandparent must not qualify.
     $nested = Join-Path $main '.claude\worktrees\group\nested'
@@ -251,6 +253,7 @@ function New-GuardFixture {
     Invoke-Git -C $main add seed.txt
     Invoke-Git -C $main commit -m 'test: seed temporary repository'
     Invoke-Git -C $main worktree add -b feature/wt-valid $managed
+    Invoke-Git -C $main worktree add -b feature/wt-second $managed2
     Invoke-Git -C $main worktree add -b feature/wt-badmanifest $badManifest
     Invoke-Git -C $main worktree add -b feature/wt-nested $nested
     Invoke-Git -C $main worktree add -b feature/wt-sibling $siblingPrefix
@@ -269,6 +272,41 @@ function New-GuardFixture {
         "AHKFLOW_ROOT=$managedRoot"
     ) -join "`n"
     Set-Content -LiteralPath (Join-Path $managedRoot 'scripts\.env.worktree') -Value $manifest -Encoding utf8
+
+    $managed2Root = (Resolve-Path -LiteralPath $managed2).Path
+    New-Item -ItemType Directory -Path (Join-Path $managed2Root 'scripts') -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $managed2Root 'scripts\.env.worktree') -Encoding utf8 -Value (@(
+            'AHKFLOW_API_PORT=5604',
+            'AHKFLOW_UI_PORT=5605',
+            'AHKFLOW_API_URL=http://localhost:5604',
+            'AHKFLOW_UI_URL=http://localhost:5605',
+            'AHKFLOW_DB_NAME=AHKFlowApp_second',
+            'AHKFLOW_SQL_PORT=14333',
+            'AHKFLOW_COMPOSE_PROJECT=ahkflow-second',
+            "AHKFLOW_ROOT=$managed2Root"
+        ) -join "`n")
+
+    # The symlinked docs/superpowers path is one of the two probes backlog 054 records, so its
+    # absence must fail the suite rather than quietly skip a required regression.
+    $plansSource = Join-Path $main 'docs\superpowers'
+    New-Item -ItemType Directory -Path $plansSource -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $plansSource 'seed-plan.md') -Value '# seed' -Encoding utf8
+
+    $plansLinkParent = Join-Path $managedRoot 'docs'
+    New-Item -ItemType Directory -Path $plansLinkParent -Force | Out-Null
+    Push-Location $plansLinkParent
+    try { cmd /c mklink /D 'superpowers' $plansSource > $null 2>&1 }
+    finally { Pop-Location }
+
+    $plansLink = Join-Path $plansLinkParent 'superpowers'
+    if (-not (Test-Path -LiteralPath $plansLink)) {
+        throw ('Could not create the docs\superpowers symlink the guard tests require. ' +
+            'Enable Windows Developer Mode, then re-run. See docs/development/prerequisites.md.')
+    }
+    if ((Get-Item -LiteralPath $plansLink -Force).LinkType -ne 'SymbolicLink') {
+        throw ('docs\superpowers was created as a real directory, not a symlink. ' +
+            'Enable Windows Developer Mode, then re-run. See docs/development/prerequisites.md.')
+    }
 
     # badManifest sits in an approved parent but its manifest port disagrees with its URL.
     $badRoot = (Resolve-Path -LiteralPath $badManifest).Path
@@ -307,6 +345,7 @@ function New-GuardFixture {
         TestRoot      = (Resolve-Path -LiteralPath $testRoot).Path
         Main          = (Resolve-Path -LiteralPath $main).Path
         Managed       = $managedRoot
+        Managed2      = $managed2Root
         BadManifest   = $badRoot
         Nested        = $nestedRoot
         SiblingPrefix = $siblingRoot
@@ -327,7 +366,7 @@ function Remove-GuardFixture {
     }
 
     foreach ($worktree in @(
-            $Fixture.Managed, $Fixture.BadManifest, $Fixture.Nested,
+            $Fixture.Managed, $Fixture.Managed2, $Fixture.BadManifest, $Fixture.Nested,
             $Fixture.SiblingPrefix, $Fixture.Unmanaged)) {
         Invoke-Git -C $Fixture.Main worktree remove --force $worktree
     }
@@ -1571,6 +1610,48 @@ try {
     Invoke-TestCase 'Nested: pwsh -File is deliberately not followed' {
         $actual = @(Get-AgentCommandWriteTarget -Command 'pwsh -File build.ps1')
         Assert-Equal '' ($actual -join '|') 'Targets'
+    }
+
+    Write-Host 'Write-target path resolution' -ForegroundColor Cyan
+
+    Invoke-TestCase 'Resolution: a relative target joins the base directory' {
+        $resolution = Get-AgentWriteTargetResolution -Target 'out.txt' -BaseDirectory $fixture.Managed
+        Assert-True (-not $resolution.Unresolved) 'Must resolve'
+        Assert-Equal (Join-Path $fixture.Managed 'out.txt') $resolution.Path 'Path'
+    }
+
+    Invoke-TestCase 'Resolution: an absolute target ignores the base directory' {
+        $target = Join-Path $fixture.Main 'x.tmp'
+        $resolution = Get-AgentWriteTargetResolution -Target $target -BaseDirectory $fixture.Managed
+        Assert-True (-not $resolution.Unresolved) 'Must resolve'
+        Assert-Equal $target $resolution.Path 'Path'
+    }
+
+    Invoke-TestCase 'Resolution: a symlinked directory resolves to its target' {
+        $target = 'docs/superpowers/probe.tmp'
+        $resolution = Get-AgentWriteTargetResolution -Target $target -BaseDirectory $fixture.Managed
+        Assert-True (-not $resolution.Unresolved) 'Must resolve'
+        Assert-Equal (Join-Path $fixture.Main 'docs\superpowers\probe.tmp') $resolution.Path 'Path'
+    }
+
+    Invoke-TestCase 'Resolution: a parent escape resolves out of the worktree' {
+        $resolution = Get-AgentWriteTargetResolution -Target '../../../x.tmp' -BaseDirectory $fixture.Managed
+        Assert-True (-not $resolution.Unresolved) 'Must resolve'
+        Assert-Equal (Join-Path $fixture.Main 'x.tmp') $resolution.Path 'Path'
+    }
+
+    $unresolvedCases = @('$MAIN_ROOT/x.tmp', '%USERPROFILE%\x.tmp', '~/x.tmp')
+    foreach ($case in $unresolvedCases) {
+        Invoke-TestCase "Resolution: unexpandable leading component is unresolved: $case" {
+            $resolution = Get-AgentWriteTargetResolution -Target $case -BaseDirectory $fixture.Managed
+            Assert-True $resolution.Unresolved 'Must be unresolved'
+        }
+    }
+
+    Invoke-TestCase 'Resolution: a glob after a literal prefix stays resolved' {
+        $resolution = Get-AgentWriteTargetResolution -Target './obj/*' -BaseDirectory $fixture.Managed
+        Assert-True (-not $resolution.Unresolved) 'Must resolve on the literal prefix'
+        Assert-Equal (Join-Path $fixture.Managed 'obj') $resolution.Path 'Path'
     }
 }
 finally {

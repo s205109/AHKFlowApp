@@ -1421,6 +1421,114 @@ function Get-AgentCommandWriteTarget {
     return $targets.ToArray()
 }
 
+# Characters that make a path component impossible to expand from the command text alone.
+$script:AgentGuardUnexpandablePattern = '[\$%`]'
+
+<#
+.SYNOPSIS
+Replaces every reparse point in a path with its target, walking from the root down.
+
+.DESCRIPTION
+Windows PowerShell 5.1 has no ResolveLinkTarget, so this uses (Get-Item -Force).Target, which
+both supported hosts provide. 5.1 types that property as string[] and pwsh 7 as string, so the
+array form is normalized. The iteration cap stops a symlink cycle from hanging the hook.
+#>
+function Resolve-AgentSymlinkPath {
+    [CmdletBinding()]
+    param([string] $Path)
+
+    if ([string]::IsNullOrWhiteSpace($Path)) { return $Path }
+
+    $result = $Path
+    for ($pass = 0; $pass -lt 16; $pass++) {
+        $changed = $false
+
+        $parts = $result -split '[\\/]'
+        if ($parts.Count -eq 0) { break }
+
+        $accumulated = $parts[0]
+        for ($i = 1; $i -lt $parts.Count; $i++) {
+            if ([string]::IsNullOrEmpty($parts[$i])) { continue }
+            $accumulated = Join-Path $accumulated $parts[$i]
+
+            if (-not (Test-Path -LiteralPath $accumulated)) { continue }
+
+            $item = Get-Item -LiteralPath $accumulated -Force -ErrorAction SilentlyContinue
+            if ($null -eq $item) { continue }
+            if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -eq 0) { continue }
+
+            $target = $item.Target
+            if ($target -is [array]) { $target = $target[0] }
+            if ([string]::IsNullOrWhiteSpace($target)) { continue }
+
+            $remainder = @($parts[($i + 1)..($parts.Count - 1)]) | Where-Object { $_ }
+            $result = $target
+            foreach ($piece in $remainder) { $result = Join-Path $result $piece }
+            $changed = $true
+            break
+        }
+
+        if (-not $changed) { break }
+    }
+
+    return $result
+}
+
+<#
+.SYNOPSIS
+Turns one raw write target into an absolute path, or marks it unresolved.
+
+.DESCRIPTION
+Only the longest leading literal prefix has to be expandable. A trailing glob cannot change
+which repository the path falls in, so `./obj/*` classifies on `./obj`. A target whose FIRST
+component is unexpandable - `$MAIN_ROOT/x.tmp` - has no literal prefix and is unresolved.
+
+Mirrors the precedent at Get-AgentCommandSegment, where a cd target matching [\$%] marks the
+following git mutation untargetable rather than guessing where it lands.
+#>
+function Get-AgentWriteTargetResolution {
+    [CmdletBinding()]
+    param([string] $Target, [string] $BaseDirectory)
+
+    if ([string]::IsNullOrWhiteSpace($Target)) {
+        return [pscustomobject]@{ Path = ''; Unresolved = $true }
+    }
+
+    $trimmed = $Target.Trim().Trim('"', "'")
+    if ($trimmed.StartsWith('~')) {
+        return [pscustomobject]@{ Path = ''; Unresolved = $true }
+    }
+
+    $parts = @($trimmed -split '[\\/]')
+    $literal = New-Object System.Collections.Generic.List[string]
+    foreach ($part in $parts) {
+        if ($part -match $script:AgentGuardUnexpandablePattern -or $part -match '[\*\?]') { break }
+        [void] $literal.Add($part)
+    }
+
+    if ($literal.Count -eq 0) {
+        return [pscustomobject]@{ Path = ''; Unresolved = $true }
+    }
+
+    $candidate = $literal -join '\'
+    if (-not [System.IO.Path]::IsPathRooted($candidate)) {
+        if ([string]::IsNullOrWhiteSpace($BaseDirectory)) {
+            return [pscustomobject]@{ Path = ''; Unresolved = $true }
+        }
+        $candidate = Join-Path $BaseDirectory $candidate
+    }
+
+    # GetFullPath collapses '..' segments; it does not touch the filesystem.
+    try { $candidate = [System.IO.Path]::GetFullPath($candidate) }
+    catch { return [pscustomobject]@{ Path = ''; Unresolved = $true } }
+
+    $resolved = Resolve-AgentSymlinkPath -Path $candidate
+    return [pscustomobject]@{
+        Path       = (ConvertTo-AgentGuardNormalizedPath $resolved)
+        Unresolved = $false
+    }
+}
+
 $script:AgentGuardAllowedStates = @('NotRepository', 'OutsideProtectedRepository', 'ManagedWorktree')
 
 <#
