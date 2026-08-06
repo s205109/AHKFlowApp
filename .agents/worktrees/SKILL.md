@@ -71,6 +71,13 @@ worktree currently being created or reused is always excluded from the sweep. Re
 reuses `remove-worktree-local-dev.ps1` (`git branch -d`, DB drop, Docker teardown,
 lock-safe folder delete) and is logged to `.claude\worktrees\worktree-removal.log`.
 
+A worktree whose branch has never been committed to is never removed either, not even with
+`-Cleanup`. Its branch points at the same commit as `main`, so `git branch --merged main` lists
+it from the moment it exists. The sweep reads the branch ref log and sweeps only branches whose
+ref log shows a commit, so two brand-new worktrees can exist side by side, and so can one that
+caught up with `main` by fast-forward. Closing a worktree yourself still removes it — this rule
+governs the automatic sweep only.
+
 #### Claude Code in-conversation native creation: ask once, then remember
 
 Applies when *you* create a brand-new worktree in direct response to a conversation

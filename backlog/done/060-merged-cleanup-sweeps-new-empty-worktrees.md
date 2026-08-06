@@ -43,12 +43,12 @@ shell, with no Claude Code worktree tool involved.
 
 ## Acceptance criteria
 
-- [ ] A worktree whose branch has no commits of its own is never swept, whatever the cleanup
+- [x] A worktree whose branch has no commits of its own is never swept, whatever the cleanup
       setting says
-- [ ] Two freshly created worktrees can exist at the same time
-- [ ] A worktree whose branch really was merged into `main` is still swept, so the feature keeps
+- [x] Two freshly created worktrees can exist at the same time
+- [x] A worktree whose branch really was merged into `main` is still swept, so the feature keeps
       working
-- [ ] A test in `tests/WorktreeMergedCleanup.Tests.ps1` covers the empty-branch case
+- [x] A test in `tests/WorktreeMergedCleanup.Tests.ps1` covers the empty-branch case
 
 ## Out of scope
 
@@ -66,3 +66,6 @@ shell, with no Claude Code worktree tool involved.
 - A second option is to sweep only branches with a merged pull request. That is a bigger change and
   needs network access, so weigh it before choosing
 - Found while creating worktrees for backlog 057 and backlog 053
+- Fixed by matching ref-log subjects, not by `git rev-list --count main..<branch>`. That count is 0
+  for a merged branch too, so the suggested check would have switched the sweep off completely. A
+  ref-log entry count fails as well: an untouched worktree fast-forwarded to `main` has two entries.
