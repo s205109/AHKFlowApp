@@ -60,12 +60,21 @@ shell, with no Claude Code worktree tool involved.
 
 ## Notes / dependencies
 
-- Likely fix: add a "has its own commits" test beside the merged test, for example
-  `git rev-list --count main..<branch>` returning 0 means unstarted, so skip it. An unstarted
-  worktree is not finished work
-- A second option is to sweep only branches with a merged pull request. That is a bigger change and
-  needs network access, so weigh it before choosing
 - Found while creating worktrees for backlog 057 and backlog 053
-- Fixed by matching ref-log subjects, not by `git rev-list --count main..<branch>`. That count is 0
-  for a merged branch too, so the suggested check would have switched the sweep off completely. A
-  ref-log entry count fails as well: an untouched worktree fast-forwarded to `main` has two entries.
+
+### Rejected approaches
+
+- `git rev-list --count main..<branch>` returning 0, proposed here as the likely fix. That count is
+  0 for a merged branch too, so it would have switched the sweep off completely
+- Counting ref-log entries. An untouched worktree that ran `git merge --ff-only main` has two
+  entries, exactly like finished work
+- Matching ref-log subjects on their own. `GIT_REFLOG_ACTION` and `git update-ref -m` let a caller
+  write a `commit:` subject for an operation that created no commit
+
+### How it was fixed
+
+- Removal now needs two independent signals: a `commit`-prefixed ref-log entry AND the branch tip
+  being a non-first parent of a merge commit in `main`. Each covers the other's blind spot, and
+  anything unproven keeps the worktree
+- Sweeping only branches with a merged pull request, the second option listed above, was not
+  needed. The merge-commit shape gives the same evidence locally, with no network access

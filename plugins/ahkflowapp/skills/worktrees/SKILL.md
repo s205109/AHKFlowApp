@@ -73,10 +73,18 @@ lock-safe folder delete) and is logged to `.claude\worktrees\worktree-removal.lo
 
 A worktree whose branch has never been committed to is never removed either, not even with
 `-Cleanup`. Its branch points at the same commit as `main`, so `git branch --merged main` lists
-it from the moment it exists. The sweep reads the branch ref log and sweeps only branches whose
-ref log shows a commit, so two brand-new worktrees can exist side by side, and so can one that
-caught up with `main` by fast-forward. Closing a worktree yourself still removes it — this rule
-governs the automatic sweep only.
+it from the moment it exists. So two brand-new worktrees can exist side by side, and so can one
+that caught up with `main` by fast-forward. Closing a worktree yourself still removes it — this
+rule governs the automatic sweep only.
+
+The sweep removes a worktree only when two independent signals both say its own work was merged:
+the branch ref log holds a `commit`-prefixed entry, **and** the branch tip is a non-first parent
+of a merge commit in `main` — the shape a GitHub "Merge pull request" leaves behind. Neither
+signal is trusted alone. Ref-log text is caller-controlled (`GIT_REFLOG_ACTION`, `git update-ref
+-m`), and a branch created at an already-merged tip is structurally a merged parent without ever
+being committed to. Anything the sweep cannot establish keeps the worktree, so these branches are
+never swept and must be closed by hand: work merged by squash, rebase, or fast-forward, and any
+branch whose ref log was disabled or expired.
 
 #### Claude Code in-conversation native creation: ask once, then remember
 
