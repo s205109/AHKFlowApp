@@ -4,6 +4,7 @@
 @using AHKFlowApp.UI.Blazor.Services
 @using MudBlazor
 @using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.JSInterop
 @implements IDisposable
 
 <PageTitle>Downloads</PageTitle>
@@ -125,6 +126,11 @@
             Snackbar.Add($"Downloaded {outcome.FileName}", Severity.Success);
         }
         catch (OperationCanceledException) when (_cts.IsCancellationRequested) { }
+        // Catch this error so Blazor can render the cleared busy state.
+        catch (JSException)
+        {
+            Snackbar.Add("Saving the file failed.", Severity.Error);
+        }
         finally
         {
             _busyProfileId = null;
@@ -149,6 +155,11 @@
             Snackbar.Add($"Downloaded {fileName}", Severity.Success);
         }
         catch (OperationCanceledException) when (_cts.IsCancellationRequested) { }
+        // Catch this error so Blazor can render the cleared busy state.
+        catch (JSException)
+        {
+            Snackbar.Add("Saving the file failed.", Severity.Error);
+        }
         finally
         {
             _zipLoading = false;
