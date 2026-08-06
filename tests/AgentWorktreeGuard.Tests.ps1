@@ -1504,6 +1504,48 @@ try {
         Assert-Equal 'printf' $segment.Tokens[0] 'Leading token'
         Assert-Equal 'uuuuuuuuu' $segment.Masks[1] 'Mask'
     }
+
+    Write-Host 'Write-target extraction' -ForegroundColor Cyan
+
+    $writeTargetCases = @(
+        # Redirects
+        @{ Command = 'printf x > out.txt'; Expected = @('out.txt') },
+        @{ Command = 'printf x >> out.txt'; Expected = @('out.txt') },
+        @{ Command = 'printf x>out.txt'; Expected = @('out.txt') },
+        @{ Command = 'printf x >out.txt'; Expected = @('out.txt') },
+        @{ Command = 'dotnet build 2> err.log'; Expected = @('err.log') },
+        @{ Command = "printf 'a>b'"; Expected = @() },
+        @{ Command = 'printf x\>y'; Expected = @() },
+        # Destination arguments
+        @{ Command = 'cp a.txt b.txt'; Expected = @('b.txt') },
+        @{ Command = 'mv a.txt b.txt'; Expected = @('b.txt') },
+        @{ Command = 'rm a.txt b.txt'; Expected = @('a.txt', 'b.txt') },
+        @{ Command = 'tee out.txt'; Expected = @('out.txt') },
+        @{ Command = 'touch a.txt'; Expected = @('a.txt') },
+        @{ Command = 'sed -i s/a/b/ file.txt'; Expected = @('file.txt') },
+        @{ Command = 'sed s/a/b/ file.txt'; Expected = @() },
+        @{ Command = 'dd if=a.bin of=b.bin'; Expected = @('b.bin') },
+        @{ Command = 'Set-Content -Path out.txt -Value x'; Expected = @('out.txt') },
+        @{ Command = 'Set-Content out.txt x'; Expected = @('out.txt') },
+        @{ Command = 'Out-File -FilePath out.txt'; Expected = @('out.txt') },
+        @{ Command = 'Copy-Item a.txt -Destination b.txt'; Expected = @('b.txt') },
+        @{ Command = 'Copy-Item a.txt b.txt'; Expected = @('b.txt') },
+        @{ Command = 'Remove-Item -LiteralPath out.txt'; Expected = @('out.txt') },
+        # Reads produce nothing
+        @{ Command = 'cat out.txt'; Expected = @() },
+        @{ Command = 'Get-Content out.txt'; Expected = @() }
+    )
+
+    foreach ($case in $writeTargetCases) {
+        Invoke-TestCase "Write target: $($case.Command)" {
+            $parsed = Get-AgentCommandSegment -Command $case.Command
+            $actual = @()
+            foreach ($segment in $parsed.Segments) {
+                $actual += @(Get-AgentSegmentWriteTarget -Tokens $segment.Tokens -Masks $segment.Masks)
+            }
+            Assert-Equal ($case.Expected -join '|') ($actual -join '|') 'Targets'
+        }
+    }
 }
 finally {
     Remove-GuardFixture -Fixture $fixture

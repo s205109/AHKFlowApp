@@ -1201,6 +1201,168 @@ function Test-AgentWorktreeManifest {
     return $true
 }
 
+# ── Write-target grammar ────────────────────────────────────────────────────────────────────
+# The tokenizer yields segments, not write targets. These tables and functions turn a segment
+# into the list of paths it would write, move, or delete. Over-reporting a target is safe: it
+# only ever produces a denial for a path that already resolves under the main checkout.
+# Under-reporting silently disables the rule, so keep every list a superset.
+
+$script:AgentGuardWriteEveryPositional = @(
+    'rm', 'unlink', 'shred', 'truncate', 'touch', 'mkdir', 'rmdir', 'tee'
+)
+$script:AgentGuardWriteLastPositional = @('cp', 'mv', 'install', 'ln')
+
+# Cmdlet name -> the parameter naming its write target. Positional fallbacks are handled below.
+$script:AgentGuardWriteCmdlets = @{
+    'set-content'   = @('Path', 'LiteralPath')
+    'add-content'   = @('Path', 'LiteralPath')
+    'clear-content' = @('Path', 'LiteralPath')
+    'out-file'      = @('FilePath', 'LiteralPath', 'Path')
+    'new-item'      = @('Path')
+    'remove-item'   = @('Path', 'LiteralPath')
+}
+$script:AgentGuardWriteDestinationCmdlets = @('copy-item', 'move-item', 'rename-item')
+
+<#
+.SYNOPSIS
+Index of the first unquoted '>' in a token, or -1 when the token carries no redirect.
+#>
+function Find-AgentUnquotedRedirectIndex {
+    param([string] $Token, [string] $Mask)
+
+    for ($i = 0; $i -lt $Token.Length; $i++) {
+        if ($Token[$i] -ne '>') { continue }
+        if ($i -lt $Mask.Length -and $Mask[$i] -eq 'u') { return $i }
+    }
+    return -1
+}
+
+<#
+.SYNOPSIS
+Lowercased leaf of a command word, with any .exe/.cmd/.bat suffix removed.
+#>
+function Get-AgentCommandLeafName {
+    param([string] $Word)
+
+    $leaf = (([string] $Word).ToLowerInvariant() -split '[\\/]')[-1]
+    return ($leaf -replace '\.(exe|cmd|bat|ps1)$', '')
+}
+
+<#
+.SYNOPSIS
+Value of the first matching -Name parameter, or $null.
+
+.DESCRIPTION
+Accepts both `-Path value` and PowerShell's `-Path:value` colon form.
+#>
+function Get-AgentNamedParameterValue {
+    param([string[]] $Arguments, [string[]] $Names)
+
+    $list = @($Arguments)
+    for ($i = 0; $i -lt $list.Count; $i++) {
+        $argument = [string] $list[$i]
+        foreach ($name in $Names) {
+            if ($argument -ieq "-$name") {
+                if (($i + 1) -lt $list.Count) { return [string] $list[$i + 1] }
+                return $null
+            }
+            if ($argument -ilike "-${name}:*") {
+                return $argument.Substring($name.Length + 2)
+            }
+        }
+    }
+    return $null
+}
+
+<#
+.SYNOPSIS
+Every path one command segment would write, move, or delete.
+
+.DESCRIPTION
+Two independent sources are scanned. Redirects are read from the token/mask pair, so only an
+unquoted '>' counts. Destination arguments are read from the leading command word using the
+tables above. A segment can produce both, for example `cp a b > log.txt`.
+#>
+function Get-AgentSegmentWriteTarget {
+    [CmdletBinding()]
+    param([string[]] $Tokens, [string[]] $Masks)
+
+    $targets = New-Object System.Collections.Generic.List[string]
+    $tokens = @($Tokens)
+    $masks = @($Masks)
+    if ($tokens.Count -eq 0) { return @() }
+
+    # --- Redirects -------------------------------------------------------------------------
+    $consumedByRedirect = @{}
+    for ($i = 0; $i -lt $tokens.Count; $i++) {
+        $token = [string] $tokens[$i]
+        $mask = if ($i -lt $masks.Count) { [string] $masks[$i] } else { '' }
+
+        $gt = Find-AgentUnquotedRedirectIndex -Token $token -Mask $mask
+        if ($gt -lt 0) { continue }
+
+        $end = $gt
+        while ($end -lt $token.Length -and $token[$end] -eq '>') { $end++ }
+        $rest = $token.Substring($end)
+
+        if (-not [string]::IsNullOrWhiteSpace($rest)) {
+            [void] $targets.Add($rest)
+        }
+        elseif (($i + 1) -lt $tokens.Count) {
+            [void] $targets.Add([string] $tokens[$i + 1])
+            $consumedByRedirect[$i + 1] = $true
+        }
+    }
+
+    # --- Destination arguments -------------------------------------------------------------
+    $leaf = Get-AgentCommandLeafName -Word $tokens[0]
+
+    # A token consumed as a redirect target is not also a positional argument of the command.
+    $arguments = @()
+    for ($i = 1; $i -lt $tokens.Count; $i++) {
+        if ($consumedByRedirect.ContainsKey($i)) { continue }
+        $token = [string] $tokens[$i]
+        $mask = if ($i -lt $masks.Count) { [string] $masks[$i] } else { '' }
+        if ((Find-AgentUnquotedRedirectIndex -Token $token -Mask $mask) -ge 0) { continue }
+        $arguments += $token
+    }
+    $positionals = @(Get-AgentGitPositionals -Arguments $arguments)
+
+    if ($script:AgentGuardWriteEveryPositional -contains $leaf) {
+        foreach ($positional in $positionals) { [void] $targets.Add($positional) }
+    }
+    elseif ($script:AgentGuardWriteLastPositional -contains $leaf) {
+        if ($positionals.Count -ge 1) { [void] $targets.Add($positionals[$positionals.Count - 1]) }
+    }
+    elseif ($leaf -eq 'sed') {
+        $inPlace = @($arguments | Where-Object { $_ -ceq '-i' -or $_ -clike '-i*' -or $_ -ceq '--in-place' }).Count -gt 0
+        if ($inPlace) {
+            # With -e or -f the script is an option value, so every positional is a file.
+            # Without them the first positional IS the script, so skip it.
+            $hasScriptOption = @($arguments | Where-Object { $_ -ceq '-e' -or $_ -ceq '-f' }).Count -gt 0
+            $files = if ($hasScriptOption) { $positionals } else { @($positionals | Select-Object -Skip 1) }
+            foreach ($file in $files) { [void] $targets.Add($file) }
+        }
+    }
+    elseif ($leaf -eq 'dd') {
+        foreach ($argument in $arguments) {
+            if ($argument -ilike 'of=*') { [void] $targets.Add($argument.Substring(3)) }
+        }
+    }
+    elseif ($script:AgentGuardWriteCmdlets.ContainsKey($leaf)) {
+        $named = Get-AgentNamedParameterValue -Arguments $arguments -Names $script:AgentGuardWriteCmdlets[$leaf]
+        if ($null -ne $named) { [void] $targets.Add($named) }
+        elseif ($positionals.Count -ge 1) { [void] $targets.Add($positionals[0]) }
+    }
+    elseif ($script:AgentGuardWriteDestinationCmdlets -contains $leaf) {
+        $named = Get-AgentNamedParameterValue -Arguments $arguments -Names @('Destination', 'NewName')
+        if ($null -ne $named) { [void] $targets.Add($named) }
+        elseif ($positionals.Count -ge 2) { [void] $targets.Add($positionals[1]) }
+    }
+
+    return $targets.ToArray()
+}
+
 $script:AgentGuardAllowedStates = @('NotRepository', 'OutsideProtectedRepository', 'ManagedWorktree')
 
 <#
