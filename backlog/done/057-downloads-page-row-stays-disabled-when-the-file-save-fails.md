@@ -24,10 +24,13 @@ purpose, because backlog 055 put changes to that page out of scope. The two page
 
 ## Acceptance criteria
 
-- [ ] A failed file save on the Downloads page shows an error message
-- [ ] The row's Download button works again straight after the failure
-- [ ] Both pages report a failed save with the same wording
-- [ ] A bUnit test covers the failing save on the Downloads page
+- [x] A failed file save on the Downloads page shows an error message
+- [x] The row's Download button works again straight after the failure
+- [x] Both pages report a failed save with the same wording
+- [x] A bUnit test covers the failing save on the Downloads page
+
+The "Download all" (zip) button had the same bug, in `DownloadAllAsync`. Fixed it too, and covered
+it with the same test shapes.
 
 ## Out of scope
 

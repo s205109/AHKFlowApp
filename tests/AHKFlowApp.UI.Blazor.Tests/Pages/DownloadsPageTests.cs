@@ -7,9 +7,11 @@ using FluentAssertions;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
+using Microsoft.JSInterop;
 using MudBlazor;
 using MudBlazor.Services;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using Xunit;
 
 namespace AHKFlowApp.UI.Blazor.Tests.Pages;
@@ -115,6 +117,47 @@ public sealed class DownloadsPageTests : BunitContext, IAsyncLifetime
             Arg.Any<Action<SnackbarOptions>>(), Arg.Any<string>()));
         return _saver.DidNotReceive().SaveAsync(
             Arg.Any<string>(), Arg.Any<string>(), Arg.Any<byte[]>());
+    }
+
+    [Fact]
+    public void Click_PerProfileDownload_FileSaverFails_ReportsItAndFreesTheRow()
+    {
+        ProfileDto work = MakeProfile("Work");
+        StubProfileList(work);
+        FileDownload payload = new([0x41, 0x42], "ahkflow_Work.ahk", "text/plain; charset=utf-8");
+        _downloads.GetProfileScriptAsync(work.Id, Arg.Any<CancellationToken>())
+            .Returns(ApiResult<FileDownload>.Ok(payload));
+        _saver.SaveAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<byte[]>())
+            .Throws(new JSException("the browser refused the download"));
+
+        IRenderedComponent<Downloads> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find("button.download-profile"));
+        cut.Find("button.download-profile").Click();
+
+        cut.WaitForAssertion(() => _snackbar.Received(1).Add(
+            "Saving the file failed.", Severity.Error,
+            Arg.Any<Action<SnackbarOptions>>(), Arg.Any<string>()));
+        cut.Find("button.download-profile").GetAttribute("disabled").Should().BeNull();
+    }
+
+    [Fact]
+    public void Click_DownloadAll_FileSaverFails_ReportsItAndFreesTheButton()
+    {
+        StubProfileList(MakeProfile("Work"));
+        FileDownload zip = new([0x50, 0x4B, 0x05, 0x06], "ahkflow_scripts.zip", "application/zip");
+        _downloads.GetAllProfileScriptsZipAsync(Arg.Any<CancellationToken>())
+            .Returns(ApiResult<FileDownload>.Ok(zip));
+        _saver.SaveAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<byte[]>())
+            .Throws(new JSException("the browser refused the download"));
+
+        IRenderedComponent<Downloads> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find("button.download-all"));
+        cut.Find("button.download-all").Click();
+
+        cut.WaitForAssertion(() => _snackbar.Received(1).Add(
+            "Saving the file failed.", Severity.Error,
+            Arg.Any<Action<SnackbarOptions>>(), Arg.Any<string>()));
+        cut.Find("button.download-all").GetAttribute("disabled").Should().BeNull();
     }
 
     [Fact]
