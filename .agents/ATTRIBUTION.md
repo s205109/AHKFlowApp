@@ -70,7 +70,7 @@ The following skills are adapted from `mattpocock/skills` (MIT), pinned at commi
 `6acc160e4e0cd062dbbbd7a1b26ae92855edf07e` — the baseline for future selective merges:
 
 - `mp-grilling`, `mp-grill-me`, `mp-domain-modeling`, `mp-grill-with-docs`, `mp-handoff`,
-  `mp-triage`, `mp-prototype`, `mp-research`
+  `mp-triage`, `mp-prototype`, `mp-research`, `mp-wait-what`, `mp-writing-for-agents`
 
 Adapted, not vendored unchanged (same fork policy as `dck-*`): internal cross-skill references
 are rewritten to the `mp-` folder names, and long descriptions are trimmed to this repo's
@@ -96,6 +96,17 @@ refuses a `file:` URL, so the demo is served over HTTP before any agent drives i
 an "In this repo" section is appended covering the AutoHotkey docs 403 fallback, version-pinned
 API citations, and citation review. Upstream prose is otherwise left intact, so a future selective
 merge still lines up.
+
+`mp-writing-for-agents` gets an appended "In this repo" section, same shape as `mp-research`. It
+covers three things upstream cannot know: `AGENTS.md` **Plain English** applies to skill files and
+asks for the opposite trade to pruning, so a live sentence is never compressed into something the
+reader must decode twice; skill descriptions are capped at 140 characters by
+`scripts/agents/setup-cross-agent-skills.ps1`; and the three projected skill locations are generated,
+with `.claude/skills/README.md` as the authority on adding or retiring one. Its companion file
+`SKILL-MECHANICS.md` is vendored unchanged apart from the `mp-` cross-reference.
+
+`mp-wait-what` is vendored unchanged apart from the `mp-` name. It already points at `CONTEXT.md`,
+which is this repo's domain-term glossary, so no adaptation was needed.
 
 Where an upstream rewrite introduces a new term, the adaptation explains the term in plain words
 rather than rewriting the sentence around it. `AGENTS.md` **Plain English** asks for exactly that —
