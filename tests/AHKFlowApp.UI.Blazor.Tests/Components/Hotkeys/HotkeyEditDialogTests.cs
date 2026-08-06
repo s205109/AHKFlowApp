@@ -1470,6 +1470,30 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
+    public async Task TemplateNotice_AppearsWhenTheRowCarriesModifiers()
+    {
+        // A wildcard template hotkey fires whatever extra modifiers are held, so matching reads the
+        // key alone. A row on Ctrl+CapsLock is affected just as much as a bare one.
+        ProfileDto work = Profile("Work", CapsLockLayerHeader);
+        HotkeyEditModel item = new()
+        {
+            Key = "CapsLock",
+            Ctrl = true,
+            Shift = true,
+            ActionKind = HotkeyActionKind.SendText,
+            Text = "hi",
+            AppliesToAllProfiles = false,
+            ProfileIds = [work.Id],
+        };
+
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogWithProfilesAsync(item, work);
+
+        provider.WaitForAssertion(() =>
+            provider.Find("[data-test=\"template-warning\"]").TextContent
+                .Should().Be("The header template in Work also uses CapsLock. Your hotkey may not fire."));
+    }
+
+    [Fact]
     public async Task TemplateNotice_StaysAwayWhenNoProfileTemplateUsesTheKey()
     {
         ProfileDto work = Profile("Work", CapsLockLayerHeader);

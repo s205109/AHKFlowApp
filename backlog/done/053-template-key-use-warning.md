@@ -41,17 +41,17 @@ destination. Item 043 shipped the preset that makes it easy to hit.
 
 ## Acceptance criteria
 
-- [ ] A row whose key is used by a header or footer template of a Profile the row belongs to shows a warning
-- [ ] The warning names the Profile and says which template used the key
-- [ ] Both places a row can be edited show it — the edit dialog and the grid's inline row
-- [ ] Changing a row's Profiles without changing its key updates the warning
-- [ ] A row with "apply to all profiles" is checked against every Profile's templates
-- [ ] Matching is on the key alone, so a row carrying modifiers still warns
-- [ ] A template line carrying its own modifiers, such as `^!c::`, does not make every row with that key warn
-- [ ] A comment line and a custom combination in a template are not read as key uses
-- [ ] The warning names at most three Profiles and counts the rest
-- [ ] The warning never blocks saving
-- [ ] A row whose key no template uses behaves exactly as it does today
+- [x] A row whose key is used by a header or footer template of a Profile the row belongs to shows a warning
+- [x] The warning names the Profile and says which template used the key
+- [x] Both places a row can be edited show it — the edit dialog and the grid's inline row
+- [x] Changing a row's Profiles without changing its key updates the warning
+- [x] A row with "apply to all profiles" is checked against every Profile's templates
+- [x] Matching is on the key alone, so a row carrying modifiers still warns
+- [x] A template line carrying its own modifiers, such as `^!c::`, does not make every row with that key warn
+- [x] A comment line and a custom combination in a template are not read as key uses
+- [x] The warning names at most three Profiles and counts the rest
+- [x] The warning never blocks saving
+- [x] A row whose key no template uses behaves exactly as it does today
 
 ## Out of scope
 

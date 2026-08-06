@@ -274,6 +274,12 @@ public sealed class ShortcutWarningFlowTests(StackFixture fixture) : IAsyncLifet
         Assert.Contains("Your hotkey may not fire.", warning, StringComparison.Ordinal);
         Assert.DoesNotContain("never", warning, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("will not", warning, StringComparison.OrdinalIgnoreCase);
+
+        // The notice is advice, not a gate: the row still saves.
+        await page.FillAsync(".hotkey-edit-dialog input[data-test=\"description-input\"]", "E2E template notice");
+        await page.FillAsync(".hotkey-edit-dialog [data-test=\"text-input\"]", "my notes");
+        await page.ClickAsync(".hotkey-edit-dialog button.commit-edit");
+        await page.WaitForSelectorAsync("text=Hotkey created.");
     }
 
     // The table holds a row per use, over a hundred of them, and pages at 25. Every row this file

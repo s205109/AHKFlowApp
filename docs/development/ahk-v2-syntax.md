@@ -322,6 +322,26 @@ which as a side effect prevents `Send` from triggering the script's own hotkeys 
 self-collision: `$` has no other effect, and a same-key-and-modifiers check would still miss
 A-triggers-B-triggers-A chains. It is not a user-facing option.
 
+### Prefixes AHKFlow does not emit, but must recognize
+
+A Profile's header or footer template can carry hand-written hotkeys, and the shipped
+`capslock-modifier-layer` header preset carries three of these. The generator never writes them,
+but `TemplateKeyUses` reads them, so they are documented here.
+
+| Prefix | Meaning |
+|---|---|
+| `*` | Wildcard. The hotkey fires even when extra modifiers are held. `*a::` and `a::` are entirely separate hotkeys, and the wildcard one eclipses the plain one |
+| `~` | The key keeps its own behaviour as well as firing the hotkey |
+| `Key up::` | Fires when the key is released rather than pressed |
+
+A remap is not one hotkey. AutoHotkey translates `a::b` into the pair `*a::` and `*a up::`, each
+sending `{Blind}{b DownR}` and `{Blind}{b Up}`. So a `Remap` row and a hand-written `*a::` in a
+template land on the same two hotkey names.
+
+Sources: [Hotkeys](https://www.autohotkey.com/docs/v2/Hotkeys.htm#wildcard),
+[#HotIf variants](https://www.autohotkey.com/docs/v2/lib/_HotIf.htm#variant),
+[Remapping keys](https://www.autohotkey.com/docs/v2/misc/Remap.htm).
+
 `Key` is validated against the canonical registry in `HotkeyKeys` (or a `vkNN` / `scNNN` code) at the
 create and update boundaries, so an accepted key is a real AHK key name. Two limits are worth stating
 plainly:
