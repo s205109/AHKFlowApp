@@ -48,6 +48,34 @@ function ConvertFrom-WorktreePorcelain {
     return , $worktrees
 }
 
+# Answers what `git branch --merged` cannot: has a commit ever been made on this branch?
+# A worktree branch that was just created points at a commit main already had, so the merged test
+# passes and the sweep would delete unstarted work. Two cheaper checks look right and are not:
+# `git rev-list --count main..<branch>` is 0 for an unstarted branch AND for a branch whose commits
+# main has absorbed, and a ref-log entry count is 2 for both finished work and an untouched
+# worktree that ran `git merge --ff-only main`. The ref-log SUBJECTS do separate them: git writes
+# 'commit: <subject>' (also 'commit (amend):', 'commit (merge):') only when a commit is made on the
+# ref, and writes 'branch: Created from ...', 'merge main: Fast-forward' or 'reset: moving to ...'
+# for every other move. Those strings come from git's C code and are never translated.
+# Unknown -- git failed, or the ref log is missing because core.logAllRefUpdates is off or gc
+# expired it -- returns $false, which keeps the worktree. Losing unstarted work is the bug this
+# guards against, so an unclear answer must never remove anything.
+function Test-BranchHasOwnCommits {
+    param(
+        [Parameter(Mandatory)][string] $RepoRoot,
+        [Parameter(Mandatory)][string] $Branch
+    )
+
+    $subjects = & git -C $RepoRoot reflog show --format='%gs' "refs/heads/$Branch" 2>$null
+    if ($LASTEXITCODE -ne 0) { return $false }
+
+    foreach ($subject in $subjects) {
+        if (([string] $subject).Trim() -match '^commit\b') { return $true }
+    }
+
+    return $false
+}
+
 # Returns the worktrees that are merged into $MainRef AND clean, excluding the main
 # checkout, any detached/bare worktree, and $ExcludePath when given. Each item:
 # { Path (normalized); Branch }.
@@ -113,6 +141,11 @@ function Get-EligibleMergedWorktrees {
         # standalone run from inside a linked worktree) so this check must not depend on it.
         if ([string]::Equals($wt.Branch, $mainBranchShortName, [System.StringComparison]::OrdinalIgnoreCase)) { continue }
         if (-not $mergedSet.ContainsKey($wt.Branch)) { continue }
+        # A branch nobody has committed on is unstarted, not finished. It points at a commit main
+        # already had, so the merged check above always passes for it. Skipping here -- in
+        # eligibility, ahead of every setting -- means no flag, env override, or config value can
+        # remove a brand-new worktree, and report-only mode never lists one either.
+        if (-not (Test-BranchHasOwnCommits -RepoRoot $RepoRoot -Branch $wt.Branch)) { continue }
 
         $status = & git -C $wtFull status --porcelain 2>$null
         if ($LASTEXITCODE -ne 0) {
