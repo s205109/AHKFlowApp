@@ -1546,6 +1546,32 @@ try {
             Assert-Equal ($case.Expected -join '|') ($actual -join '|') 'Targets'
         }
     }
+
+    Write-Host 'Nested interpreter write targets' -ForegroundColor Cyan
+
+    $nestedCases = @(
+        @{ Command = 'pwsh -Command "Set-Content -Path out.txt -Value x"'; Expected = @('out.txt') },
+        @{ Command = "sh -c 'printf x > out.txt'"; Expected = @('out.txt') },
+        @{ Command = "bash -c 'rm out.txt'"; Expected = @('out.txt') },
+        @{ Command = 'cmd /c "del out.txt"'; Expected = @() },
+        @{ Command = 'powershell -Command "Remove-Item out.txt"'; Expected = @('out.txt') },
+        # Depth 2 is reached and still scanned.
+        @{ Command = 'sh -c "pwsh -Command ''Set-Content out.txt x''"'; Expected = @('out.txt') },
+        # A plain read inside the nested command yields nothing.
+        @{ Command = "sh -c 'cat out.txt'"; Expected = @() }
+    )
+
+    foreach ($case in $nestedCases) {
+        Invoke-TestCase "Nested: $($case.Command)" {
+            $actual = @(Get-AgentCommandWriteTarget -Command $case.Command)
+            Assert-Equal ($case.Expected -join '|') ($actual -join '|') 'Targets'
+        }
+    }
+
+    Invoke-TestCase 'Nested: pwsh -File is deliberately not followed' {
+        $actual = @(Get-AgentCommandWriteTarget -Command 'pwsh -File build.ps1')
+        Assert-Equal '' ($actual -join '|') 'Targets'
+    }
 }
 finally {
     Remove-GuardFixture -Fixture $fixture

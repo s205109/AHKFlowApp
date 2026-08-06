@@ -1363,6 +1363,64 @@ function Get-AgentSegmentWriteTarget {
     return $targets.ToArray()
 }
 
+# Interpreters whose quoted argument is itself a command line. `-File` and `/k`-style script
+# paths are deliberately absent: those point at a file, and the guard never reads files.
+$script:AgentGuardInterpreterSpecs = @(
+    @{ Leaf = 'sh'; Flags = @('-c') },
+    @{ Leaf = 'bash'; Flags = @('-c') },
+    @{ Leaf = 'zsh'; Flags = @('-c') },
+    @{ Leaf = 'pwsh'; Flags = @('-command', '-c') },
+    @{ Leaf = 'powershell'; Flags = @('-command', '-c') },
+    @{ Leaf = 'cmd'; Flags = @('/c', '/k') }
+)
+
+$script:AgentGuardMaxInterpreterDepth = 2
+
+<#
+.SYNOPSIS
+Every write target in a command string, following nested interpreter arguments.
+
+.DESCRIPTION
+Recursion is scoped to the write-target scan alone. Git classification still treats a quoted
+nested command as opaque, which stays a documented accepted limitation of this guard.
+#>
+function Get-AgentCommandWriteTarget {
+    [CmdletBinding()]
+    param([string] $Command, [int] $Depth = 0)
+
+    $parsed = Get-AgentCommandSegment -Command $Command
+    if ($parsed.Ambiguous) { return @() }
+
+    $targets = New-Object System.Collections.Generic.List[string]
+
+    foreach ($segment in $parsed.Segments) {
+        foreach ($target in (Get-AgentSegmentWriteTarget -Tokens $segment.Tokens -Masks $segment.Masks)) {
+            [void] $targets.Add($target)
+        }
+
+        if ($Depth -ge $script:AgentGuardMaxInterpreterDepth) { continue }
+
+        $tokens = @($segment.Tokens)
+        if ($tokens.Count -lt 3) { continue }
+
+        $leaf = Get-AgentCommandLeafName -Word $tokens[0]
+        $spec = $script:AgentGuardInterpreterSpecs | Where-Object { $_.Leaf -eq $leaf } | Select-Object -First 1
+        if ($null -eq $spec) { continue }
+
+        for ($i = 1; $i -lt $tokens.Count - 1; $i++) {
+            if ($spec.Flags -notcontains ([string] $tokens[$i]).ToLowerInvariant()) { continue }
+
+            $inner = [string] $tokens[$i + 1]
+            foreach ($target in (Get-AgentCommandWriteTarget -Command $inner -Depth ($Depth + 1))) {
+                [void] $targets.Add($target)
+            }
+            break
+        }
+    }
+
+    return $targets.ToArray()
+}
+
 $script:AgentGuardAllowedStates = @('NotRepository', 'OutsideProtectedRepository', 'ManagedWorktree')
 
 <#
