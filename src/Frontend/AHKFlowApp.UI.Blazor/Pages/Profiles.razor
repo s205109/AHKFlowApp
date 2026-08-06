@@ -298,8 +298,18 @@
     // disabled button, so a title on the button itself would never fire — the tooltip root is a
     // plain div, which still receives the hover. The running row swaps its icon for a spinner,
     // because MudIconButton has no Loading parameter.
+    //
+    // The running row is checked first. Edit stays available during a download, and a row that
+    // entered edit mode mid-download must keep showing that the download is still running.
     private RenderFragment DownloadButton(ProfileDto profile) =>@<text>
-        @if (IsDownloadBlocked(profile))
+        @if (_downloadingProfileId == profile.Id)
+        {
+            <MudIconButton Class="download-profile-script" Disabled="true"
+                           UserAttributes="@DownloadAttributes(profile, blocked: false)">
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+            </MudIconButton>
+        }
+        else if (IsDownloadBlocked(profile))
         {
             <MudTooltip Text="@DownloadBlockedReason"
                         UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "download-disabled-reason" })">
@@ -307,13 +317,6 @@
                                Disabled="true"
                                UserAttributes="@DownloadAttributes(profile, blocked: true)" />
             </MudTooltip>
-        }
-        else if (_downloadingProfileId == profile.Id)
-        {
-            <MudIconButton Class="download-profile-script" Disabled="true"
-                           UserAttributes="@DownloadAttributes(profile, blocked: false)">
-                <MudProgressCircular Size="Size.Small" Indeterminate="true" />
-            </MudIconButton>
         }
         else
         {
@@ -358,6 +361,13 @@
         }
         // Leaving the page cancels the call. There is nobody left to read a message.
         catch (OperationCanceledException) when (_cts.IsCancellationRequested) { }
+        // The browser refused to write the file. Letting this travel on would leave the event
+        // task faulted, and Blazor skips its own re-render after a fault — so every row would
+        // stay drawn as disabled even though the field behind them was already cleared.
+        catch (JSException)
+        {
+            Snackbar.Add("Saving the file failed.", Severity.Error);
+        }
         finally
         {
             // Cleared on every path, so a failure or a cancellation still frees the other rows.

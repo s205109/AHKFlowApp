@@ -7,9 +7,11 @@ using FluentAssertions;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
+using Microsoft.JSInterop;
 using MudBlazor;
 using MudBlazor.Services;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using Xunit;
 
 namespace AHKFlowApp.UI.Blazor.Tests.Pages;
@@ -390,7 +392,30 @@ public sealed class ProfilesPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
-    public async Task Download_CancelledByLeavingThePage_ShowsNoMessage()
+    public void Download_FileSaverFails_ReportsItAndFreesEveryRow()
+    {
+        ProfileDto alpha = MakeProfile("Alpha");
+        ProfileDto beta = MakeProfile("Beta");
+        StubList(alpha, beta);
+        StubScript(alpha);
+        _saver.SaveAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<byte[]>())
+            .Throws(new JSException("the browser refused the download"));
+
+        IRenderedComponent<Profiles> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.FindAll(DownloadButtonSelector).Should().HaveCount(2));
+        cut.FindAll(DownloadButtonSelector)[0].Click();
+
+        cut.WaitForAssertion(() => _snackbar.Received(1).Add(
+            "Saving the file failed.", Severity.Error,
+            Arg.Any<Action<SnackbarOptions>>(), Arg.Any<string>()));
+        // A faulted event task skips Blazor's own re-render, so without the catch the rows stay
+        // rendered as disabled even though the field behind them was cleared.
+        cut.FindAll(DownloadButtonSelector)
+            .Should().OnlyContain(button => !button.HasAttribute("disabled"));
+    }
+
+    [Fact]
+    public void Download_RowEntersEditWhileRunning_KeepsTheSpinner()
     {
         ProfileDto work = MakeProfile("Work");
         StubList(work);
@@ -400,10 +425,40 @@ public sealed class ProfilesPageTests : BunitContext, IAsyncLifetime
         IRenderedComponent<Profiles> cut = RenderPage();
         cut.WaitForAssertion(() => cut.Find(DownloadButtonSelector));
         cut.Find(DownloadButtonSelector).Click();
+        cut.Find("button.start-edit").Click();
+
+        // The download is still running, so the row must keep saying so.
+        cut.WaitForAssertion(() => cut.FindAll($"{DownloadButtonSelector} .mud-progress-circular")
+            .Should().ContainSingle());
+    }
+
+    [Fact]
+    public async Task Download_CancelledByLeavingThePage_ShowsNoMessage()
+    {
+        ProfileDto work = MakeProfile("Work");
+        StubList(work);
+        TaskCompletionSource<ApiResult<FileDownload>> pending = new();
+        CancellationToken passedToken = CancellationToken.None;
+        _downloads.GetProfileScriptAsync(work.Id, Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                passedToken = call.Arg<CancellationToken>();
+                return pending.Task;
+            });
+
+        IRenderedComponent<Profiles> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find(DownloadButtonSelector));
+        cut.Find(DownloadButtonSelector).Click();
 
         // Leaving the page disposes the component, which cancels its token source.
         await Renderer.DisposeComponents();
-        pending.SetException(new OperationCanceledException());
+
+        // The page must hand its own token to the downloader, and disposal must cancel it.
+        // Without this the test would still pass on a page that passed CancellationToken.None.
+        passedToken.CanBeCanceled.Should().BeTrue();
+        passedToken.IsCancellationRequested.Should().BeTrue();
+
+        pending.SetException(new OperationCanceledException(passedToken));
         await Task.Yield();
 
         AssertNoSnackbar();

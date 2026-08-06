@@ -19,6 +19,7 @@ public sealed class DownloadsPageTests : BunitContext, IAsyncLifetime
     private readonly IProfilesApiClient _profiles = Substitute.For<IProfilesApiClient>();
     private readonly IDownloadsApiClient _downloads = Substitute.For<IDownloadsApiClient>();
     private readonly IFileSaver _saver = Substitute.For<IFileSaver>();
+    private readonly ISnackbar _snackbar = Substitute.For<ISnackbar>();
     private readonly FakeTimeProvider _clock = new(new DateTimeOffset(2026, 7, 26, 14, 5, 9, TimeSpan.Zero));
 
     private static readonly Task<AuthenticationState> AuthenticatedState =
@@ -35,6 +36,8 @@ public sealed class DownloadsPageTests : BunitContext, IAsyncLifetime
         // every dependency it needs is already a substitute here.
         Services.AddSingleton<ProfileScriptDownloader>();
         Services.AddMudServices();
+        // Registered after AddMudServices so this substitute wins over MudBlazor's own snackbar.
+        Services.AddSingleton(_snackbar);
         JSInterop.Mode = JSRuntimeMode.Loose;
     }
 
@@ -107,10 +110,9 @@ public sealed class DownloadsPageTests : BunitContext, IAsyncLifetime
         cut.WaitForAssertion(() => cut.Find("button.download-profile"));
         cut.Find("button.download-profile").Click();
 
-        // MudBlazor snackbars render through a portal, so the error message is not in the page
-        // markup here. The saver is the assertable proof that the failure path took no action.
-        cut.WaitForAssertion(() => _downloads.Received(1).GetProfileScriptAsync(
-            work.Id, Arg.Any<CancellationToken>()));
+        cut.WaitForAssertion(() => _snackbar.Received(1).Add(
+            "Unable to reach the API. Check your connection and try again.", Severity.Error,
+            Arg.Any<Action<SnackbarOptions>>(), Arg.Any<string>()));
         return _saver.DidNotReceive().SaveAsync(
             Arg.Any<string>(), Arg.Any<string>(), Arg.Any<byte[]>());
     }
