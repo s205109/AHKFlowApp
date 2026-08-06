@@ -46,7 +46,9 @@
                  row renders the same component, so both places the keys can change warn. ---- *@
             <ShortcutWarning Key="@Item.Key" Ctrl="@Item.Ctrl" Alt="@Item.Alt"
                              Shift="@Item.Shift" Win="@Item.Win"
-                             ActionKind="@Item.ActionKind" RemapDest="@Item.RemapDest" />
+                             ActionKind="@Item.ActionKind" RemapDest="@Item.RemapDest"
+                             Profiles="@Profiles" ProfileIds="@Item.ProfileIds"
+                             AppliesToAllProfiles="@Item.AppliesToAllProfiles" />
 
             @* ---- Action selector. Generated from the enum so the set cannot drift.
                  The wrapper div carries the CSS-isolation scope for the wrapping rule. ---- *@

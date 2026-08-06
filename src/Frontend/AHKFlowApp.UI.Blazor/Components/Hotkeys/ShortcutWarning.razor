@@ -7,19 +7,29 @@
 @* Advisory only — this never gates a save. Both places a hotkey's keys can be changed render
    it: the edit dialog and the grid's inline row. One alert holds both notices: they carry the
    same severity and the same advice, so two boxes would only add noise. *@
-@if (_sourceWarning is not null || _destinationWarning is not null)
+@if (SourceSection || _destinationWarning is not null)
 {
     <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-2"
               UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "shortcut-warning" })">
-        @if (_sourceWarning is not null)
+        @if (SourceSection)
         {
-            @* Labels only when both notices are present. A source-only notice then reads exactly
-               as it read before the destination check existed. *@
+            @* Labels only when a destination notice is also present. A source-side-only notice
+               then reads exactly as it read before the destination check existed. *@
             @if (BothSections)
             {
                 <MudText Typo="Typo.subtitle2">Key and modifiers</MudText>
             }
-            <div data-test="source-warning">@_sourceWarning</div>
+            @if (_sourceWarning is not null)
+            {
+                <div data-test="source-warning">@_sourceWarning</div>
+            }
+            @* Second, because the known-shortcut notice is about the wider world and this one is
+               about the owner's own profile. Both describe the keys pressed, so they share a
+               section. *@
+            @if (_templateWarning is not null)
+            {
+                <div data-test="template-warning">@_templateWarning</div>
+            }
         }
         @if (_destinationWarning is not null)
         {
@@ -50,6 +60,14 @@
     /// <summary>Destination of a Remap row. Ignored for every other action kind.</summary>
     [Parameter] public string? RemapDest { get; set; }
 
+    /// <summary>Every Profile the owner has, with their templates. Both call sites already hold this.</summary>
+    [Parameter] public IReadOnlyList<ProfileDto> Profiles { get; set; } = [];
+
+    /// <summary>The Profiles this row belongs to. Ignored when <see cref="AppliesToAllProfiles"/> is true.</summary>
+    [Parameter] public IReadOnlyCollection<Guid> ProfileIds { get; set; } = [];
+
+    [Parameter] public bool AppliesToAllProfiles { get; set; }
+
     [Inject] private IHotkeyKeyCatalog Keys { get; set; } = default!;
     [Inject] private IKnownShortcutCatalog KnownShortcuts { get; set; } = default!;
     [Inject] private ILogger<ShortcutWarning> Logger { get; set; } = default!;
@@ -60,7 +78,12 @@
     // The notice for a Remap row's destination, or null when the destination says nothing.
     private string? _destinationWarning;
 
-    private bool BothSections => _sourceWarning is not null && _destinationWarning is not null;
+    // The notice for a Profile template that already uses this row's key, or null when none does.
+    private string? _templateWarning;
+
+    private bool SourceSection => _sourceWarning is not null || _templateWarning is not null;
+
+    private bool BothSections => SourceSection && _destinationWarning is not null;
 
     // The combination the notices above were last decided for, or "" before the first decision,
     // and the canonical destination that decision used. Set together with the notices and under
@@ -70,9 +93,13 @@
     private string _checkedDestination = "";
 
     // What one evaluation was for. The source combination alone is not enough: switching the
-    // action kind, or picking a new destination, changes the notice while the combination stands
-    // still.
-    private readonly record struct EvaluationKey(string Combination, HotkeyActionKind Kind, string? RemapDest);
+    // action kind, picking a new destination, or changing which Profiles the row belongs to all
+    // change the notice while the combination stands still.
+    private readonly record struct EvaluationKey(
+        string Combination,
+        HotkeyActionKind Kind,
+        string? RemapDest,
+        string ProfileScope);
 
     private EvaluationKey? _evaluated;
 
@@ -84,7 +111,7 @@
     protected override void OnParametersSet()
     {
         string combination = HotkeyActionDisplay.ComboLabel(Key ?? "", Ctrl, Alt, Shift, Win);
-        EvaluationKey key = new(combination, ActionKind, RemapDest);
+        EvaluationKey key = new(combination, ActionKind, RemapDest, ProfileScope());
 
         if (key == _evaluated)
             return;
@@ -92,6 +119,10 @@
         _evaluated = key;
         _ = RefreshAsync(key);
     }
+
+    // Sorted, so reordering the multi-select does not force a pointless re-evaluation.
+    private string ProfileScope() =>
+        AppliesToAllProfiles ? "*" : string.Join(",", ProfileIds.Order());
 
     public void Dispose()
     {
@@ -142,6 +173,8 @@
             if (key.Kind == HotkeyActionKind.Remap && !string.IsNullOrWhiteSpace(key.RemapDest))
                 canonicalDest = await Keys.CanonicalizeAsync(key.RemapDest, token);
 
+            List<ProfileTemplateUse> templateUses = await TemplateUsesAsync(token);
+
             // Session-cached: only the first call in a session reaches the network. The generation
             // check below still earns its place, because that first call can be slow enough for the
             // user to change the combination while it is in flight.
@@ -149,6 +182,8 @@
 
             if (generation != _generation || _disposed)
                 return;
+
+            string? templateNotice = TemplateUseText.TextFor(templateUses, canonical);
 
             if (catalog is null)
             {
@@ -158,7 +193,8 @@
                 // The destination side is still decided. Its modifier rule reads the destination
                 // key alone, so an outage must not take that notice away.
                 Logger.LogWarning("Known-shortcut list could not be read; showing no source warning.");
-                Decide(source: null, DestinationNotice(null, canonical, canonicalDest, key), key, canonicalDest);
+                Decide(source: null, templateNotice,
+                    DestinationNotice(null, canonical, canonicalDest, key), key, canonicalDest);
                 return;
             }
 
@@ -166,6 +202,7 @@
 
             Decide(
                 match is null ? null : KnownShortcutWarning.TextFor(match, key.Combination),
+                templateNotice,
                 DestinationNotice(catalog, canonical, canonicalDest, key),
                 key,
                 canonicalDest);
@@ -182,7 +219,7 @@
             // carries whatever destination was resolved before the throw. Reading the list is not
             // the only step that can fail, and "" would read as "not evaluated yet".
             if (generation == _generation && !_disposed)
-                Decide(source: null, destination: null, key, canonicalDest);
+                Decide(source: null, template: null, destination: null, key, canonicalDest);
         }
     }
 
@@ -200,11 +237,47 @@
             ? null
             : KnownShortcutWarning.DestinationTextFor(catalog, canonicalDest, key.Combination);
 
+    // Canonicalizing every parsed key is what lets a template spelling such as "Capital" match a
+    // row on "CapsLock". The registry is session-cached, so only the first call reaches the network.
+    private async Task<List<ProfileTemplateUse>> TemplateUsesAsync(CancellationToken token)
+    {
+        List<ProfileTemplateUse> uses = [];
+
+        foreach (ProfileDto profile in SelectedProfiles())
+        {
+            uses.Add(new ProfileTemplateUse(
+                profile.Name,
+                await CanonicalKeysAsync(profile.HeaderTemplate, token),
+                await CanonicalKeysAsync(profile.FooterTemplate, token)));
+        }
+
+        return uses;
+    }
+
+    private IEnumerable<ProfileDto> SelectedProfiles() =>
+        AppliesToAllProfiles ? Profiles : Profiles.Where(p => ProfileIds.Contains(p.Id));
+
+    private async Task<List<string>> CanonicalKeysAsync(string template, CancellationToken token)
+    {
+        List<string> canonical = [];
+
+        foreach (string key in TemplateKeyUses.Parse(template))
+            canonical.Add(await Keys.CanonicalizeAsync(key, token));
+
+        return canonical;
+    }
+
     // A list that will not load has still finished deciding. Saying so keeps the E2E wait honest
     // instead of hanging.
-    private void Decide(string? source, string? destination, EvaluationKey key, string? canonicalDest)
+    private void Decide(
+        string? source,
+        string? template,
+        string? destination,
+        EvaluationKey key,
+        string? canonicalDest)
     {
         _sourceWarning = source;
+        _templateWarning = template;
         _destinationWarning = destination;
         _checked = key.Combination;
         _checkedDestination = canonicalDest ?? "";
