@@ -63,6 +63,7 @@
     [Inject] private IProfilesApiClient ProfilesApi { get; set; } = default!;
     [Inject] private IDownloadsApiClient DownloadsApi { get; set; } = default!;
     [Inject] private IFileSaver FileSaver { get; set; } = default!;
+    [Inject] private ProfileScriptDownloader Downloader { get; set; } = default!;
     [Inject] private ISnackbar Snackbar { get; set; } = default!;
     [Inject] private TimeProvider Clock { get; set; } = default!;
 
@@ -113,17 +114,15 @@
         _busyProfileId = profile.Id;
         try
         {
-            ApiResult<FileDownload> result = await DownloadsApi.GetProfileScriptAsync(profile.Id, _cts.Token);
+            DownloadOutcome outcome = await Downloader.DownloadAsync(profile.Id, profile.Name, _cts.Token);
 
-            if (!result.IsSuccess)
+            if (!outcome.Saved)
             {
-                Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);
+                Snackbar.Add(outcome.Error!, Severity.Error);
                 return;
             }
 
-            string fileName = $"{Timestamp()}_ahkflow_{SafeStem(profile.Name)}.ahk";
-            await FileSaver.SaveAsync(fileName, result.Value!.ContentType, result.Value.Content);
-            Snackbar.Add($"Downloaded {fileName}", Severity.Success);
+            Snackbar.Add($"Downloaded {outcome.FileName}", Severity.Success);
         }
         catch (OperationCanceledException) when (_cts.IsCancellationRequested) { }
         finally
@@ -157,20 +156,6 @@
     }
 
     private string Timestamp() => DownloadFileNames.Timestamp(Clock);
-
-    private static string SafeStem(string name)
-    {
-        var sb = new System.Text.StringBuilder(name.Length);
-        bool prev_ = false;
-        foreach (char c in name)
-        {
-            bool safe = char.IsAsciiLetterOrDigit(c) || c == '.' || c == '-';
-            if (safe) { sb.Append(c); prev_ = false; }
-            else if (!prev_) { sb.Append('_'); prev_ = true; }
-        }
-        string s = sb.ToString().Trim('_');
-        return s.Length == 0 ? "profile" : s.Length > 64 ? s[..64] : s;
-    }
 
     public void Dispose() { _cts.Cancel(); _cts.Dispose(); }
 }

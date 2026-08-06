@@ -63,6 +63,7 @@
                 <MudTd>@(context.Id == Guid.Empty ? "—" : context.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm"))</MudTd>
                 <MudTd>@(context.Id == Guid.Empty ? "—" : context.UpdatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm"))</MudTd>
                 <MudTd>
+                    @DownloadButton(context)
                     <MudIconButton Class="commit-edit" Icon="@Icons.Material.Filled.Check"
                                    Color="Color.Success" OnClick="() => CommitEditAsync(context.Id)" />
                     <MudIconButton Class="cancel-edit" Icon="@Icons.Material.Filled.Close"
@@ -78,6 +79,7 @@
                 <MudTd>
                     <MudIconButton Class="toggle-expand" Icon="@(IsExpanded(context.Id) ? Icons.Material.Filled.ExpandLess : Icons.Material.Filled.ExpandMore)"
                                    OnClick="() => ToggleExpand(context.Id)" />
+                    @DownloadButton(context)
                     <MudIconButton Class="start-edit" Icon="@Icons.Material.Filled.Edit"
                                    OnClick="() => StartEdit(context)" />
                     <MudIconButton Class="delete" Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
@@ -176,6 +178,7 @@
     [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
     [Inject] private IProfilesApiClient Api { get; set; } = default!;
     [Inject] private IDownloadsApiClient DownloadsApi { get; set; } = default!;
+    [Inject] private ProfileScriptDownloader Downloader { get; set; } = default!;
     [Inject] private ISnackbar Snackbar { get; set; } = default!;
     [Inject] private IDialogService DialogService { get; set; } = default!;
     [Inject] private IJSRuntime JS { get; set; } = default!;
@@ -188,6 +191,12 @@
     private bool _isAuthenticated;
     private bool _loading;
     private string? _loadError;
+
+    /// <summary>
+    /// The profile whose script is downloading, if one is. One field cannot hold two downloads,
+    /// so while it has a value every row's download button is disabled.
+    /// </summary>
+    private Guid? _downloadingProfileId;
     private readonly CancellationTokenSource _cts = new();
 
     protected override async Task OnInitializedAsync()
@@ -271,6 +280,99 @@
 
         state.Preview = null;
         state.Error = ApiErrorMessageFactory.Build(result.Status, result.Problem);
+    }
+
+    private const string DownloadBlockedReason = "Save your changes first";
+
+    /// <summary>
+    /// The server builds the script from saved data. Downloading mid-edit would hand back a file
+    /// that does not hold the unsaved change, and the new row has nothing on the server at all.
+    /// </summary>
+    private bool IsDownloadBlocked(ProfileDto profile) =>
+        profile.Id == Guid.Empty || _editing.ContainsKey(profile.Id);
+
+    // The row's download action. It renders in both action groups, so the Actions column keeps
+    // its shape when a row enters edit mode.
+    //
+    // A blocked button sits inside a MudTooltip. MudBlazor sets pointer-events: none on a
+    // disabled button, so a title on the button itself would never fire — the tooltip root is a
+    // plain div, which still receives the hover. The running row swaps its icon for a spinner,
+    // because MudIconButton has no Loading parameter.
+    //
+    // The running row is checked first. Edit stays available during a download, and a row that
+    // entered edit mode mid-download must keep showing that the download is still running.
+    private RenderFragment DownloadButton(ProfileDto profile) =>@<text>
+        @if (_downloadingProfileId == profile.Id)
+        {
+            <MudIconButton Class="download-profile-script" Disabled="true"
+                           UserAttributes="@DownloadAttributes(profile, blocked: false)">
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+            </MudIconButton>
+        }
+        else if (IsDownloadBlocked(profile))
+        {
+            <MudTooltip Text="@DownloadBlockedReason"
+                        UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "download-disabled-reason" })">
+                <MudIconButton Class="download-profile-script" Icon="@Icons.Material.Filled.Download"
+                               Disabled="true"
+                               UserAttributes="@DownloadAttributes(profile, blocked: true)" />
+            </MudTooltip>
+        }
+        else
+        {
+            <MudIconButton Class="download-profile-script" Icon="@Icons.Material.Filled.Download"
+                           Disabled="@(_downloadingProfileId is not null)"
+                           OnClick="() => DownloadScriptAsync(profile)"
+                           UserAttributes="@DownloadAttributes(profile, blocked: false)" />
+        }
+    </text>;
+
+    // MudIconButton has no AriaLabel parameter, so the label reaches the button as a plain
+    // attribute through MudComponentBase's UserAttributes. The button shows an icon and no text,
+    // so without it a screen reader announces only "button". A screen reader still announces a
+    // disabled button's name, so the reason it is disabled belongs here too. It cannot go on the
+    // MudTooltip wrapper: that div has no role, so its label would be ignored.
+    private static Dictionary<string, object?> DownloadAttributes(ProfileDto profile, bool blocked)
+    {
+        string name = string.IsNullOrWhiteSpace(profile.Name) ? "new profile" : profile.Name;
+        string label = $"Download the {name} script";
+        if (blocked)
+        {
+            label += $" — {char.ToLowerInvariant(DownloadBlockedReason[0])}{DownloadBlockedReason[1..]}";
+        }
+
+        return new Dictionary<string, object?> { ["aria-label"] = label };
+    }
+
+    private async Task DownloadScriptAsync(ProfileDto profile)
+    {
+        _downloadingProfileId = profile.Id;
+        try
+        {
+            DownloadOutcome outcome = await Downloader.DownloadAsync(profile.Id, profile.Name, _cts.Token);
+
+            if (!outcome.Saved)
+            {
+                Snackbar.Add(outcome.Error!, Severity.Error);
+                return;
+            }
+
+            Snackbar.Add($"Downloaded {outcome.FileName}", Severity.Success);
+        }
+        // Leaving the page cancels the call. There is nobody left to read a message.
+        catch (OperationCanceledException) when (_cts.IsCancellationRequested) { }
+        // The browser refused to write the file. Letting this travel on would leave the event
+        // task faulted, and Blazor skips its own re-render after a fault — so every row would
+        // stay drawn as disabled even though the field behind them was already cleared.
+        catch (JSException)
+        {
+            Snackbar.Add("Saving the file failed.", Severity.Error);
+        }
+        finally
+        {
+            // Cleared on every path, so a failure or a cancellation still frees the other rows.
+            _downloadingProfileId = null;
+        }
     }
 
     private async Task CopyPreviewAsync(Guid id)
