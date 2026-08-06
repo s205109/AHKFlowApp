@@ -273,9 +273,10 @@ an open branch produces a diff full of unrelated commits after the first rebase.
 worktree creation cannot pass a base ref, so stacked work must call the script directly; see the
 `worktrees` skill.
 
-The AHKFlowApp main checkout is human-owned. Agents may inspect, edit, build, test, and format
-there. The guard gates a Git command only when it could change the human's HEAD, index, or
-working tree in main. Most of these mutations need a managed linked worktree. Run from main
+The AHKFlowApp main checkout is human-owned. A session running **in main** may inspect, edit,
+build, test, and format there. A session running in a managed worktree may read main, but a shell
+command that writes, moves, or deletes a path under main is refused. The guard gates a Git command
+only when it could change the human's HEAD, index, or working tree in main. Most of these mutations need a managed linked worktree. Run from main
 instead, and most now get an in-session approval prompt. A short list of operations — such as
 `git worktree prune` or deleting an already-merged branch — always run from main, no prompt.
 `git commit` is the one exception. It always needs a worktree, or a session-wide

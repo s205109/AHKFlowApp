@@ -233,6 +233,8 @@ function New-GuardFixture {
         'ahkflow-agent-guard-' + [guid]::NewGuid().ToString('N'))
     $main = Join-Path $testRoot 'repo'
     $managed = Join-Path $main '.claude\worktrees\valid'
+    # A second managed worktree, so a write into a sibling agent's checkout can be tested.
+    $managed2 = Join-Path $main '.claude\worktrees\second'
     $badManifest = Join-Path $main '.claude\worktrees\badmanifest'
     # One level deeper than the approved parent: an approved grandparent must not qualify.
     $nested = Join-Path $main '.claude\worktrees\group\nested'
@@ -251,6 +253,7 @@ function New-GuardFixture {
     Invoke-Git -C $main add seed.txt
     Invoke-Git -C $main commit -m 'test: seed temporary repository'
     Invoke-Git -C $main worktree add -b feature/wt-valid $managed
+    Invoke-Git -C $main worktree add -b feature/wt-second $managed2
     Invoke-Git -C $main worktree add -b feature/wt-badmanifest $badManifest
     Invoke-Git -C $main worktree add -b feature/wt-nested $nested
     Invoke-Git -C $main worktree add -b feature/wt-sibling $siblingPrefix
@@ -269,6 +272,41 @@ function New-GuardFixture {
         "AHKFLOW_ROOT=$managedRoot"
     ) -join "`n"
     Set-Content -LiteralPath (Join-Path $managedRoot 'scripts\.env.worktree') -Value $manifest -Encoding utf8
+
+    $managed2Root = (Resolve-Path -LiteralPath $managed2).Path
+    New-Item -ItemType Directory -Path (Join-Path $managed2Root 'scripts') -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $managed2Root 'scripts\.env.worktree') -Encoding utf8 -Value (@(
+            'AHKFLOW_API_PORT=5604',
+            'AHKFLOW_UI_PORT=5605',
+            'AHKFLOW_API_URL=http://localhost:5604',
+            'AHKFLOW_UI_URL=http://localhost:5605',
+            'AHKFLOW_DB_NAME=AHKFlowApp_second',
+            'AHKFLOW_SQL_PORT=14333',
+            'AHKFLOW_COMPOSE_PROJECT=ahkflow-second',
+            "AHKFLOW_ROOT=$managed2Root"
+        ) -join "`n")
+
+    # The symlinked docs/superpowers path is one of the two probes backlog 054 records, so its
+    # absence must fail the suite rather than quietly skip a required regression.
+    $plansSource = Join-Path $main 'docs\superpowers'
+    New-Item -ItemType Directory -Path $plansSource -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $plansSource 'seed-plan.md') -Value '# seed' -Encoding utf8
+
+    $plansLinkParent = Join-Path $managedRoot 'docs'
+    New-Item -ItemType Directory -Path $plansLinkParent -Force | Out-Null
+    Push-Location $plansLinkParent
+    try { cmd /c mklink /D 'superpowers' $plansSource > $null 2>&1 }
+    finally { Pop-Location }
+
+    $plansLink = Join-Path $plansLinkParent 'superpowers'
+    if (-not (Test-Path -LiteralPath $plansLink)) {
+        throw ('Could not create the docs\superpowers symlink the guard tests require. ' +
+            'Enable Windows Developer Mode, then re-run. See docs/development/prerequisites.md.')
+    }
+    if ((Get-Item -LiteralPath $plansLink -Force).LinkType -ne 'SymbolicLink') {
+        throw ('docs\superpowers was created as a real directory, not a symlink. ' +
+            'Enable Windows Developer Mode, then re-run. See docs/development/prerequisites.md.')
+    }
 
     # badManifest sits in an approved parent but its manifest port disagrees with its URL.
     $badRoot = (Resolve-Path -LiteralPath $badManifest).Path
@@ -307,6 +345,7 @@ function New-GuardFixture {
         TestRoot      = (Resolve-Path -LiteralPath $testRoot).Path
         Main          = (Resolve-Path -LiteralPath $main).Path
         Managed       = $managedRoot
+        Managed2      = $managed2Root
         BadManifest   = $badRoot
         Nested        = $nestedRoot
         SiblingPrefix = $siblingRoot
@@ -327,7 +366,7 @@ function Remove-GuardFixture {
     }
 
     foreach ($worktree in @(
-            $Fixture.Managed, $Fixture.BadManifest, $Fixture.Nested,
+            $Fixture.Managed, $Fixture.Managed2, $Fixture.BadManifest, $Fixture.Nested,
             $Fixture.SiblingPrefix, $Fixture.Unmanaged)) {
         Invoke-Git -C $Fixture.Main worktree remove --force $worktree
     }
@@ -1463,6 +1502,377 @@ try {
         Assert-Match 'pre-bash-guard\.sh' $guards[0].bash 'bash command'
         Assert-Match 'invoke-agent-worktree-guard\.ps1' $guards[0].powershell 'powershell command'
         Assert-Match '-Adapter Copilot' $guards[0].powershell 'powershell adapter'
+    }
+
+    Write-Host 'Token quote masks' -ForegroundColor Cyan
+
+    $maskCases = @(
+        @{ Command = 'printf x > out.txt'; Token = 2; ExpectedToken = '>'; ExpectedMask = 'u' },
+        @{ Command = "printf 'a>b'"; Token = 1; ExpectedToken = 'a>b'; ExpectedMask = 'qqq' },
+        @{ Command = 'printf "a>b"'; Token = 1; ExpectedToken = 'a>b'; ExpectedMask = 'qqq' },
+        @{ Command = 'printf x>out.txt'; Token = 1; ExpectedToken = 'x>out.txt'; ExpectedMask = 'uuuuuuuuu' }
+    )
+
+    foreach ($case in $maskCases) {
+        Invoke-TestCase "Mask: $($case.Command)" {
+            $parsed = Get-AgentCommandSegment -Command $case.Command
+            $segment = $parsed.Segments[0]
+            Assert-Equal $case.ExpectedToken $segment.Tokens[$case.Token] 'Token'
+            Assert-Equal $case.ExpectedMask $segment.Masks[$case.Token] 'Mask'
+        }
+    }
+
+    Invoke-TestCase 'Mask: an escaped redirect character is quoted, not a redirect' {
+        $parsed = Get-AgentCommandSegment -Command 'printf x\>y'
+        $segment = $parsed.Segments[0]
+        Assert-Equal 'x>y' $segment.Tokens[1] 'Token'
+        Assert-Equal 'uqu' $segment.Masks[1] 'Mask'
+    }
+
+    Invoke-TestCase 'Mask: masks stay aligned after an rtk wrapper is stripped' {
+        $parsed = Get-AgentCommandSegment -Command 'rtk proxy printf x>out.txt'
+        $segment = $parsed.Segments[0]
+        Assert-Equal 'printf' $segment.Tokens[0] 'Leading token'
+        Assert-Equal 'x>out.txt' $segment.Tokens[1] 'Target token'
+        Assert-Equal 'uuuuuuuuu' $segment.Masks[1] 'Mask'
+    }
+
+    Invoke-TestCase 'Mask: masks stay aligned after a NAME=value prefix is stripped' {
+        $parsed = Get-AgentCommandSegment -Command 'FOO=1 printf x>out.txt'
+        $segment = $parsed.Segments[0]
+        Assert-Equal 'printf' $segment.Tokens[0] 'Leading token'
+        Assert-Equal 'uuuuuuuuu' $segment.Masks[1] 'Mask'
+    }
+
+    Write-Host 'Write-target extraction' -ForegroundColor Cyan
+
+    $writeTargetCases = @(
+        # Redirects
+        @{ Command = 'printf x > out.txt'; Expected = @('out.txt') },
+        @{ Command = 'printf x >> out.txt'; Expected = @('out.txt') },
+        @{ Command = 'printf x>out.txt'; Expected = @('out.txt') },
+        @{ Command = 'printf x >out.txt'; Expected = @('out.txt') },
+        @{ Command = 'dotnet build 2> err.log'; Expected = @('err.log') },
+        @{ Command = "printf 'a>b'"; Expected = @() },
+        @{ Command = 'printf x\>y'; Expected = @() },
+        # Destination arguments
+        @{ Command = 'cp a.txt b.txt'; Expected = @('b.txt') },
+        @{ Command = 'mv a.txt b.txt'; Expected = @('b.txt') },
+        @{ Command = 'rm a.txt b.txt'; Expected = @('a.txt', 'b.txt') },
+        @{ Command = 'tee out.txt'; Expected = @('out.txt') },
+        @{ Command = 'touch a.txt'; Expected = @('a.txt') },
+        @{ Command = 'sed -i s/a/b/ file.txt'; Expected = @('file.txt') },
+        @{ Command = 'sed s/a/b/ file.txt'; Expected = @() },
+        @{ Command = 'dd if=a.bin of=b.bin'; Expected = @('b.bin') },
+        @{ Command = 'Set-Content -Path out.txt -Value x'; Expected = @('out.txt') },
+        @{ Command = 'Set-Content out.txt x'; Expected = @('out.txt') },
+        @{ Command = 'Out-File -FilePath out.txt'; Expected = @('out.txt') },
+        @{ Command = 'Copy-Item a.txt -Destination b.txt'; Expected = @('b.txt') },
+        @{ Command = 'Copy-Item a.txt b.txt'; Expected = @('b.txt') },
+        @{ Command = 'Remove-Item -LiteralPath out.txt'; Expected = @('out.txt') },
+        # Reads produce nothing
+        @{ Command = 'cat out.txt'; Expected = @() },
+        @{ Command = 'Get-Content out.txt'; Expected = @() }
+    )
+
+    foreach ($case in $writeTargetCases) {
+        Invoke-TestCase "Write target: $($case.Command)" {
+            $parsed = Get-AgentCommandSegment -Command $case.Command
+            $actual = @()
+            foreach ($segment in $parsed.Segments) {
+                $actual += @(Get-AgentSegmentWriteTarget -Tokens $segment.Tokens -Masks $segment.Masks)
+            }
+            Assert-Equal ($case.Expected -join '|') ($actual -join '|') 'Targets'
+        }
+    }
+
+    Write-Host 'Nested interpreter write targets' -ForegroundColor Cyan
+
+    $nestedCases = @(
+        @{ Command = 'pwsh -Command "Set-Content -Path out.txt -Value x"'; Expected = @('out.txt') },
+        @{ Command = "sh -c 'printf x > out.txt'"; Expected = @('out.txt') },
+        @{ Command = "bash -c 'rm out.txt'"; Expected = @('out.txt') },
+        @{ Command = 'cmd /c "del out.txt"'; Expected = @() },
+        @{ Command = 'powershell -Command "Remove-Item out.txt"'; Expected = @('out.txt') },
+        # Depth 2 is reached and still scanned.
+        @{ Command = 'sh -c "pwsh -Command ''Set-Content out.txt x''"'; Expected = @('out.txt') },
+        # A plain read inside the nested command yields nothing.
+        @{ Command = "sh -c 'cat out.txt'"; Expected = @() }
+    )
+
+    foreach ($case in $nestedCases) {
+        Invoke-TestCase "Nested: $($case.Command)" {
+            $result = Get-AgentCommandWriteTarget -Command $case.Command
+            Assert-Equal ($case.Expected -join '|') (@($result.Targets) -join '|') 'Targets'
+            Assert-True (-not $result.Unresolved) 'Must resolve'
+        }
+    }
+
+    Invoke-TestCase 'Nested: pwsh -File is deliberately not followed' {
+        $result = Get-AgentCommandWriteTarget -Command 'pwsh -File build.ps1'
+        Assert-Equal '' (@($result.Targets) -join '|') 'Targets'
+        Assert-True (-not $result.Unresolved) 'Must resolve'
+    }
+
+    Invoke-TestCase 'Nested: nesting past the cap reports unresolved, not an empty target list' {
+        $result = Get-AgentCommandWriteTarget -Command 'sh -c "sh -c \"sh -c ''rm out.txt''\""'
+        Assert-True $result.Unresolved 'Must be unresolved'
+    }
+
+    Invoke-TestCase 'Nested: an untokenizable inner command reports unresolved' {
+        $result = Get-AgentCommandWriteTarget -Command 'sh -c "rm ''out.txt"'
+        Assert-True $result.Unresolved 'Must be unresolved'
+    }
+
+    Write-Host 'Write-target path resolution' -ForegroundColor Cyan
+
+    Invoke-TestCase 'Resolution: a relative target joins the base directory' {
+        $resolution = Get-AgentWriteTargetResolution -Target 'out.txt' -BaseDirectory $fixture.Managed
+        Assert-True (-not $resolution.Unresolved) 'Must resolve'
+        Assert-Equal (Join-Path $fixture.Managed 'out.txt') $resolution.Path 'Path'
+    }
+
+    Invoke-TestCase 'Resolution: an absolute target ignores the base directory' {
+        $target = Join-Path $fixture.Main 'x.tmp'
+        $resolution = Get-AgentWriteTargetResolution -Target $target -BaseDirectory $fixture.Managed
+        Assert-True (-not $resolution.Unresolved) 'Must resolve'
+        Assert-Equal $target $resolution.Path 'Path'
+    }
+
+    Invoke-TestCase 'Resolution: a symlinked directory resolves to its target' {
+        $target = 'docs/superpowers/probe.tmp'
+        $resolution = Get-AgentWriteTargetResolution -Target $target -BaseDirectory $fixture.Managed
+        Assert-True (-not $resolution.Unresolved) 'Must resolve'
+        Assert-Equal (Join-Path $fixture.Main 'docs\superpowers\probe.tmp') $resolution.Path 'Path'
+    }
+
+    Invoke-TestCase 'Resolution: a parent escape resolves out of the worktree' {
+        $resolution = Get-AgentWriteTargetResolution -Target '../../../x.tmp' -BaseDirectory $fixture.Managed
+        Assert-True (-not $resolution.Unresolved) 'Must resolve'
+        Assert-Equal (Join-Path $fixture.Main 'x.tmp') $resolution.Path 'Path'
+    }
+
+    $unresolvedCases = @('$MAIN_ROOT/x.tmp', '%USERPROFILE%\x.tmp', '~/x.tmp')
+    foreach ($case in $unresolvedCases) {
+        Invoke-TestCase "Resolution: unexpandable leading component is unresolved: $case" {
+            $resolution = Get-AgentWriteTargetResolution -Target $case -BaseDirectory $fixture.Managed
+            Assert-True $resolution.Unresolved 'Must be unresolved'
+        }
+    }
+
+    # A glob cannot match '..', so a literal prefix pins the directory. A variable or a command
+    # substitution can expand to anything, including an absolute path or a parent escape.
+    $unexpandableTailCases = @('./scripts/$DEST', 'scripts/%DEST%/x.tmp', 'scripts/$(cat p)/x.tmp', 'a/`b`/x.tmp')
+    foreach ($case in $unexpandableTailCases) {
+        Invoke-TestCase "Resolution: an unexpandable component after a literal prefix is unresolved: $case" {
+            $resolution = Get-AgentWriteTargetResolution -Target $case -BaseDirectory $fixture.Managed
+            Assert-True $resolution.Unresolved 'Must be unresolved'
+        }
+    }
+
+    Invoke-TestCase 'Resolution: a glob after a literal prefix stays resolved' {
+        $resolution = Get-AgentWriteTargetResolution -Target './obj/*' -BaseDirectory $fixture.Managed
+        Assert-True (-not $resolution.Unresolved) 'Must resolve on the literal prefix'
+        Assert-Equal (Join-Path $fixture.Managed 'obj') $resolution.Path 'Path'
+    }
+
+    Write-Host 'Worktree write isolation' -ForegroundColor Cyan
+
+    $writeDecisionCases = @(
+        # The two probes recorded in backlog 054.
+        @{ Name    = 'probe 1, symlinked plans path'
+            Command = 'printf probe > docs/superpowers/.guard-probe.tmp'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'probe 2, plain main checkout root'
+            Command = 'printf probe > <MAIN>/.guard-probe2.tmp'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        # Reads stay allowed.
+        @{ Name    = 'read through the symlink'
+            Command = 'cat docs/superpowers/seed-plan.md'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        @{ Name    = 'read a main checkout file'
+            Command = 'cat <MAIN>/seed.txt'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        # Writes inside the session's own worktree stay allowed.
+        @{ Name    = 'write inside the worktree'
+            Command = 'printf x > src.tmp'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        # Build output in main stays allowed.
+        @{ Name    = 'build output in main'
+            Command = 'printf x > <MAIN>/obj/build.tmp'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        @{ Name    = 'nested build output in main'
+            Command = 'printf x > <MAIN>/src/Api/bin/Debug/app.dll'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        # A sibling worktree is another agent's checkout.
+        @{ Name    = 'sibling worktree is refused'
+            Command = 'printf x > <MANAGED2>/src.tmp'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        # The removal log is the one allowed path under the worktree parent.
+        @{ Name    = 'removal log is allowed'
+            Command = 'printf x >> <MAIN>/.claude/worktrees/worktree-removal.log'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        # A main-checkout session is unaffected.
+        @{ Name    = 'main session writes main'
+            Command = 'printf x > <MAIN>/x.tmp'; Cwd = 'Main'; Action = 'Allow'
+        },
+        # Grammar shapes, end to end.
+        @{ Name    = 'attached redirect'
+            Command = 'printf x><MAIN>/x.tmp'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'nested interpreter'
+            Command = 'pwsh -Command "Set-Content <MAIN>/x.tmp y"'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'destination argument'
+            Command = 'cp a.txt <MAIN>/a.txt'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'quoted literal redirect is not a redirect'
+            Command = "printf 'a><MAIN>/x.tmp'"; Cwd = 'Managed'; Action = 'Allow'
+        },
+        @{ Name    = 'unresolved target fails closed'
+            Command = 'printf x > "$MAIN_ROOT/x.tmp"'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        # `rm -rf` is not used here: the older dangerous-rm safety rule denies it on its own, so
+        # the case would pass for the wrong reason. The write rule is exercised in isolation
+        # below with the exact `rm -rf ./obj/*` command instead.
+        @{ Name    = 'glob inside the worktree stays allowed'
+            Command = 'rm -f ./obj/*'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        # A cd earlier in the chain moves where the write lands.
+        @{ Name    = 'cd into main then write'
+            Command = 'cd <MAIN>; printf x > x.tmp'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        # An unexpandable cd target leaves the guard blind to where a later relative write lands.
+        @{ Name    = 'unresolved cd then a relative write'
+            Command = 'cd "$MAIN_ROOT"; printf x > x.tmp'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'unresolved cd then an absolute write inside the worktree'
+            Command = 'cd "$MAIN_ROOT"; printf x > <MANAGED>/x.tmp'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        @{ Name    = 'a later resolved cd restores tracking'
+            Command = 'cd "$MAIN_ROOT"; cd <MANAGED>; printf x > x.tmp'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        # An unresolved pushd never lands on the guard's stack, because the guard cannot tell
+        # whether the real pushd succeeded. So the following popd cannot prove where the shell
+        # ended up either, and the chain stays untargetable.
+        @{ Name    = 'popd after an unresolved pushd stays untargetable'
+            Command = 'pushd "$MAIN_ROOT"; popd; printf x > x.tmp'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'popd after a resolved pushd restores tracking'
+            Command = 'pushd <MAIN>; popd; printf x > x.tmp'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        # A variable anywhere in the path can expand through '..' into main.
+        @{ Name    = 'a variable after a literal prefix fails closed'
+            Command = 'printf x > ./scripts/$DEST'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        # -t / --target-directory move the destination off the last positional.
+        @{ Name    = 'cp -t into main'
+            Command = 'cp -t <MAIN> source.txt'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'cp --target-directory= into main'
+            Command = 'cp --target-directory=<MAIN> source.txt'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'cp with a clustered -t into main'
+            Command = 'cp -rt <MAIN> source.txt'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'mv -t into main'
+            Command = 'mv -t <MAIN> source.txt'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'ln -t into main'
+            Command = 'ln -s -t <MAIN> source.txt'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'install -t into main'
+            Command = 'install -m 644 -t <MAIN> source.txt'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'cp -t inside the worktree stays allowed'
+            Command = 'cp -t ./obj a.txt'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        # Nesting deeper than the interpreter cap is never scanned, so it must fail closed.
+        @{ Name    = 'nesting past the interpreter cap'
+            Command = 'sh -c "sh -c \"sh -c ''printf x > <MAIN>/x.tmp''\""'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'nesting past the cap fails closed even when the inner command only reads'
+            Command = 'sh -c "sh -c \"sh -c ''cat <MAIN>/seed.txt''\""'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        # The session's worktree root is the git top level, not whatever directory it started in.
+        @{ Name    = 'a subdirectory session writes its own worktree root'
+            Command = 'printf x > ../README.md'; Cwd = 'ManagedSub'; Action = 'Allow'
+        },
+        @{ Name    = 'a subdirectory session still cannot write main'
+            Command = 'printf x > <MAIN>/x.tmp'; Cwd = 'ManagedSub'; Action = 'Deny'
+        }
+    )
+
+    foreach ($case in $writeDecisionCases) {
+        Invoke-TestCase "Write isolation: $($case.Name)" {
+            $command = $case.Command.
+            Replace('<MAIN>', $fixture.Main.Replace('\', '/')).
+            Replace('<MANAGED2>', $fixture.Managed2.Replace('\', '/')).
+            Replace('<MANAGED>', $fixture.Managed.Replace('\', '/'))
+            $cwd = switch ($case.Cwd) {
+                'Main' { $fixture.Main }
+                'ManagedSub' { Join-Path $fixture.Managed 'scripts' }
+                default { $fixture.Managed }
+            }
+            $decision = Invoke-AgentGuardPolicy -Command $command `
+                -Cwd $cwd -ProtectedRepoRoot $fixture.Main -AllowMain $false
+            Assert-Equal $case.Action $decision.Action 'Action'
+        }
+    }
+
+    Invoke-TestCase 'Write isolation: rm -rf on a worktree glob is not a write-rule denial' {
+        $decision = Get-AgentWorktreeWriteDecision -Command 'rm -rf ./obj/*' `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'Allow' $decision.Action 'Action'
+    }
+
+    Invoke-TestCase 'Write isolation: the plans refusal does not name a worktree copy' {
+        $decision = Invoke-AgentGuardPolicy -Command 'printf probe > docs/superpowers/x.tmp' `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'Deny' $decision.Action 'Action'
+        Assert-Equal 'agent-worktree-main-write' $decision.Rule 'Rule'
+        Assert-Match 'no worktree copy' $decision.Message 'Message'
+        Assert-True ($decision.Message -notmatch 'Edit the worktree copy') 'Must not send the agent looking for a copy'
+    }
+
+    Invoke-TestCase 'Write isolation: AHKFLOW_ALLOW_MAIN=1 downgrades to a warning' {
+        $command = 'printf probe > ' + $fixture.Main.Replace('\', '/') + '/x.tmp'
+        $decision = Invoke-AgentGuardPolicy -Command $command `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $true
+        Assert-Equal 'Warn' $decision.Action 'Action'
+    }
+
+    Invoke-TestCase 'Write isolation: a git mutation decision still wins over a write decision' {
+        $command = 'git commit -m x'
+        $decision = Invoke-AgentGuardPolicy -Command $command `
+            -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'Deny' $decision.Action 'Action'
+        Assert-Equal 'agent-main-git-mutation' $decision.Rule 'Rule'
+    }
+
+    Write-Host 'Bash shim prefilter for worktree writes' -ForegroundColor Cyan
+
+    # These three run against the REAL repository identity, like every other shim test above: the
+    # entrypoint derives the protected repository from its own checked-in location, so a fixture
+    # path would classify as OutsideProtectedRepository and prove nothing. Nothing is executed -
+    # the shim only classifies the command text.
+    $script:RealWriteCommand = 'printf probe > ' + $script:RealMainCheckout.Replace('\', '/') + '/.guard-probe.tmp'
+
+    Invoke-TestCase 'Shim: a worktree-session redirect reaches the policy core' {
+        $result = Invoke-BashShim -StdIn (New-ClaudePayload $script:RealWriteCommand $suiteRoot)
+        Assert-Match 'agent-worktree-main-write' ($result.StdOut + $result.StdErr) 'Decision must be reported'
+    }
+
+    Invoke-TestCase 'Shim: a main-session redirect still exits in Bash' {
+        $result = Invoke-BashShim -StdIn (New-ClaudePayload $script:RealWriteCommand $script:RealMainCheckout)
+        Assert-Equal 0 $result.ExitCode 'Exit code'
+        Assert-Equal '' $result.StdOut.Trim() 'Must produce no decision payload'
+    }
+
+    Invoke-TestCase 'Shim: a worktree-session read still exits in Bash' {
+        $result = Invoke-BashShim -StdIn (New-ClaudePayload 'cat README.md' $suiteRoot)
+        Assert-Equal 0 $result.ExitCode 'Exit code'
+        Assert-Equal '' $result.StdOut.Trim() 'Must produce no decision payload'
     }
 }
 finally {

@@ -21,7 +21,9 @@ $script:AgentGuardProtectedCommonDirCache = @{}
 # Characters a backslash may escape inside double quotes (POSIX), and outside quotes. Compared
 # with IndexOf, not -contains: -contains on a string tests the whole string, never a character.
 $script:AgentGuardDoubleQuoteEscapables = '$`"\'
-$script:AgentGuardUnquotedEscapables = '$`"\;&|()' + "'"
+# '>' and '<' are here so `printf x\>y` reads as a literal '>', not a redirect. Neither character
+# is legal in a Windows path, so no path the guard has to classify is affected.
+$script:AgentGuardUnquotedEscapables = '$`"\;&|()<>' + "'"
 
 # Commands that move the shell's working directory, so a later `git` in the same chain does not
 # run where the hook payload said it would. pushd/popd are tracked separately because they form a
@@ -368,9 +370,13 @@ unless it precedes $, `, ", \, or newline), which keeps quoted Windows paths suc
 "C:\some;path" intact. Outside quotes a backslash only escapes a metacharacter or whitespace,
 so an unquoted C:\Dev\repo survives too.
 
-Returns { Segments = @(string[]); Ambiguous = bool }. Ambiguous means the string ended inside an
-unterminated quote or escape, which makes every segment boundary in it untrustworthy.
-This is intentionally not a complete shell parser.
+Returns { Segments = @([pscustomobject]@{ Tokens = string[]; Masks = string[] }); Ambiguous = bool }.
+Each mask runs parallel to its token, one character per token character: 'u' where the character
+was unquoted, 'q' where it came from quotes or an escape. That is what lets a later scan tell a
+real redirect from a literal '>' the tokenizer already stripped the quotes from.
+
+Ambiguous means the string ended inside an unterminated quote or escape, which makes every
+segment boundary in it untrustworthy. This is intentionally not a complete shell parser.
 #>
 function Split-AgentCommandSegment {
     [CmdletBinding()]
@@ -378,7 +384,9 @@ function Split-AgentCommandSegment {
 
     $segments = New-Object System.Collections.Generic.List[object]
     $tokens = New-Object System.Collections.Generic.List[string]
+    $masks = New-Object System.Collections.Generic.List[string]
     $current = New-Object System.Text.StringBuilder
+    $currentMask = New-Object System.Text.StringBuilder
     $hasCurrent = $false
     $state = 'None'
     $returnState = 'None'
@@ -388,6 +396,7 @@ function Split-AgentCommandSegment {
 
         if ($state -eq 'Escaped') {
             [void] $current.Append($ch)
+            [void] $currentMask.Append('q')
             $hasCurrent = $true
             $state = $returnState
             continue
@@ -395,7 +404,9 @@ function Split-AgentCommandSegment {
 
         if ($state -eq 'SingleQuoted') {
             if ($ch -eq "'") { $state = 'None' }
-            else { [void] $current.Append($ch); $hasCurrent = $true }
+            else {
+                [void] $current.Append($ch); [void] $currentMask.Append('q'); $hasCurrent = $true
+            }
             continue
         }
 
@@ -406,7 +417,9 @@ function Split-AgentCommandSegment {
                 $state = 'Escaped'
             }
             elseif ($ch -eq '"') { $state = 'None' }
-            else { [void] $current.Append($ch); $hasCurrent = $true }
+            else {
+                [void] $current.Append($ch); [void] $currentMask.Append('q'); $hasCurrent = $true
+            }
             continue
         }
 
@@ -424,17 +437,31 @@ function Split-AgentCommandSegment {
 
         if ($ch -eq "`n" -or $ch -eq "`r" -or $ch -eq ';' -or $ch -eq '&' -or $ch -eq '|' -or
             $ch -eq '`' -or $ch -eq '(' -or $ch -eq ')') {
-            if ($hasCurrent) { [void] $tokens.Add($current.ToString()); [void] $current.Clear(); $hasCurrent = $false }
-            if ($tokens.Count -gt 0) { [void] $segments.Add($tokens.ToArray()); $tokens.Clear() }
+            if ($hasCurrent) {
+                [void] $tokens.Add($current.ToString())
+                [void] $masks.Add($currentMask.ToString())
+                [void] $current.Clear(); [void] $currentMask.Clear(); $hasCurrent = $false
+            }
+            if ($tokens.Count -gt 0) {
+                [void] $segments.Add([pscustomobject]@{
+                        Tokens = $tokens.ToArray(); Masks = $masks.ToArray()
+                    })
+                $tokens.Clear(); $masks.Clear()
+            }
             continue
         }
 
         if ([char]::IsWhiteSpace($ch)) {
-            if ($hasCurrent) { [void] $tokens.Add($current.ToString()); [void] $current.Clear(); $hasCurrent = $false }
+            if ($hasCurrent) {
+                [void] $tokens.Add($current.ToString())
+                [void] $masks.Add($currentMask.ToString())
+                [void] $current.Clear(); [void] $currentMask.Clear(); $hasCurrent = $false
+            }
             continue
         }
 
         [void] $current.Append($ch)
+        [void] $currentMask.Append('u')
         $hasCurrent = $true
     }
 
@@ -442,8 +469,15 @@ function Split-AgentCommandSegment {
         return [pscustomobject]@{ Segments = @(); Ambiguous = $true }
     }
 
-    if ($hasCurrent) { [void] $tokens.Add($current.ToString()) }
-    if ($tokens.Count -gt 0) { [void] $segments.Add($tokens.ToArray()) }
+    if ($hasCurrent) {
+        [void] $tokens.Add($current.ToString())
+        [void] $masks.Add($currentMask.ToString())
+    }
+    if ($tokens.Count -gt 0) {
+        [void] $segments.Add([pscustomobject]@{
+                Tokens = $tokens.ToArray(); Masks = $masks.ToArray()
+            })
+    }
 
     return [pscustomobject]@{
         Segments  = $segments.ToArray()
@@ -490,11 +524,27 @@ function Remove-AgentWrapperPrefix {
     [CmdletBinding()]
     param([string[]] $Tokens)
 
+    return (Remove-AgentWrapperPrefixDetailed -Tokens $Tokens).Tokens
+}
+
+<#
+.SYNOPSIS
+Same as Remove-AgentWrapperPrefix, but also reports how many leading tokens were removed.
+
+.DESCRIPTION
+The mask array runs parallel to the token array, so it must be sliced by the same count. The
+original function returns only the surviving tokens, which is not enough to slice the masks.
+#>
+function Remove-AgentWrapperPrefixDetailed {
+    [CmdletBinding()]
+    param([string[]] $Tokens)
+
     $current = @($Tokens)
+    $removed = 0
 
     while ($current.Count -gt 0) {
         $leaf = (([string] $current[0]).ToLowerInvariant() -split '[\\/]')[-1]
-        if ($script:AgentGuardTransparentWrappers -notcontains $leaf) { return $current }
+        if ($script:AgentGuardTransparentWrappers -notcontains $leaf) { break }
 
         $index = 1
         while ($index -lt $current.Count -and ([string] $current[$index]) -like '-*') { $index++ }
@@ -504,20 +554,23 @@ function Remove-AgentWrapperPrefix {
             if ($script:AgentGuardWrapperPassThroughSubcommands -contains $subcommand) { $index++ }
         }
 
-        if ($index -ge $current.Count) { return @() }
+        if ($index -ge $current.Count) {
+            return [pscustomobject]@{ Tokens = @(); Removed = ($removed + $current.Count) }
+        }
 
         $remainder = @($current[$index..($current.Count - 1)])
         $remainderName = ([string] $remainder[0]).ToLowerInvariant()
         if ($script:AgentGuardChangeDirectoryCommands -contains $remainderName -or
             $script:AgentGuardPushDirectoryCommands -contains $remainderName -or
             $script:AgentGuardPopDirectoryCommands -contains $remainderName) {
-            return $current
+            break
         }
 
         $current = $remainder
+        $removed += $index
     }
 
-    return $current
+    return [pscustomobject]@{ Tokens = $current; Removed = $removed }
 }
 
 <#
@@ -526,7 +579,8 @@ Classifies each top-level segment as a git invocation, a directory change, or so
 
 .DESCRIPTION
 Returns { Segments = @(objects); Ambiguous = bool }. Each segment carries Kind
-(Git | ChangeDirectory | Other), Tokens (leading NAME=value assignments removed), and - for
+(Git | ChangeDirectory | Other), Tokens (leading NAME=value assignments removed), Masks (quote
+provenance, one character per token character, parallel to Tokens), and - for
 ChangeDirectory - Directory plus Unresolved. Unresolved marks a target the guard cannot expand
 literally (`cd -`, `cd $HOME`, bare `cd`), so a following mutation is treated as untargetable
 rather than silently classified against a stale directory.
@@ -546,18 +600,24 @@ function Get-AgentCommandSegment {
 
     $classified = New-Object System.Collections.Generic.List[object]
 
-    foreach ($tokens in $split.Segments) {
+    foreach ($entry in $split.Segments) {
+        $tokens = @($entry.Tokens)
+        $entryMasks = @($entry.Masks)
+
         # Drop NAME=value prefixes so `AHKFLOW_ALLOW_MAIN=1 git commit` still reads as git.
         $start = 0
         while ($start -lt $tokens.Count -and $tokens[$start] -match $script:AgentGuardEnvAssignmentPattern) { $start++ }
         if ($start -ge $tokens.Count) { continue }
 
         $effective = @($tokens[$start..($tokens.Count - 1)])
+        $effectiveMasks = @($entryMasks[$start..($entryMasks.Count - 1)])
 
         # Strip a transparent wrapper (rtk) after the NAME=value prefix, not before: order
         # matters so `SKIP_COVERAGE_HOOK=1 rtk git push` loses the assignment first, then rtk.
-        $effective = @(Remove-AgentWrapperPrefix -Tokens $effective)
+        $stripped = Remove-AgentWrapperPrefixDetailed -Tokens $effective
+        $effective = @($stripped.Tokens)
         if ($effective.Count -eq 0) { continue }
+        $effectiveMasks = @($effectiveMasks | Select-Object -Skip $stripped.Removed)
 
         $name = ([string] $effective[0]).ToLowerInvariant()
         $leaf = ($name -split '[\\/]')[-1]
@@ -565,9 +625,11 @@ function Get-AgentCommandSegment {
         if ($leaf -eq 'git' -or $leaf -eq 'git.exe') {
             # @() around the slice: a bare `git` has no tail, and 1..0 counts backwards.
             $tail = if ($effective.Count -gt 1) { @($effective[1..($effective.Count - 1)]) } else { @() }
+            $tailMasks = if ($effectiveMasks.Count -gt 1) { @($effectiveMasks[1..($effectiveMasks.Count - 1)]) } else { @() }
             [void] $classified.Add([pscustomobject]@{
                     Kind       = 'Git'
                     Tokens     = $tail
+                    Masks      = $tailMasks
                     Directory  = ''
                     Unresolved = $false
                 })
@@ -578,6 +640,7 @@ function Get-AgentCommandSegment {
             [void] $classified.Add([pscustomobject]@{
                     Kind       = 'PopDirectory'
                     Tokens     = $effective
+                    Masks      = $effectiveMasks
                     Directory  = ''
                     Unresolved = $false
                 })
@@ -596,6 +659,7 @@ function Get-AgentCommandSegment {
             [void] $classified.Add([pscustomobject]@{
                     Kind       = if ($isPush) { 'PushDirectory' } else { 'ChangeDirectory' }
                     Tokens     = $effective
+                    Masks      = $effectiveMasks
                     Directory  = $directory
                     Unresolved = $unresolved
                 })
@@ -605,6 +669,7 @@ function Get-AgentCommandSegment {
         [void] $classified.Add([pscustomobject]@{
                 Kind       = 'Other'
                 Tokens     = $effective
+                Masks      = $effectiveMasks
                 Directory  = ''
                 Unresolved = $false
             })
@@ -985,6 +1050,60 @@ function Test-AgentGitTier2Allowed {
 
 <#
 .SYNOPSIS
+The nearest existing ancestor of a directory, or '' when none exists.
+
+.DESCRIPTION
+A target that does not exist yet (e.g. `git init newsub`) is classified by its nearest existing
+ancestor: git would walk up to that enclosing repository too.
+#>
+function Get-AgentGuardProbeDirectory {
+    param([string] $Path)
+
+    $probeDir = $Path
+    while (-not [string]::IsNullOrWhiteSpace($probeDir) -and -not (Test-Path -LiteralPath $probeDir)) {
+        $parent = Split-Path -Parent $probeDir
+        if ($parent -eq $probeDir) { break }
+        $probeDir = $parent
+    }
+    if ([string]::IsNullOrWhiteSpace($probeDir) -or -not (Test-Path -LiteralPath $probeDir)) { return '' }
+    return $probeDir
+}
+
+# Working directory -> that directory's git top level. One hook process can classify several
+# chained commands, so the probe is cached rather than re-spawning git per link.
+$script:AgentGuardTopLevelCache = @{}
+
+<#
+.SYNOPSIS
+The git top level containing a session's working directory, falling back to that directory.
+
+.DESCRIPTION
+The fallback only applies when git cannot answer - the directory is gone, or it is not in a
+repository at all. Callers use the result as the session's own worktree, so it must be the
+worktree ROOT and not the subdirectory the session happens to have started in.
+#>
+function Get-AgentSessionWorktreeRoot {
+    [CmdletBinding()]
+    param([string] $Cwd)
+
+    if ($script:AgentGuardTopLevelCache.ContainsKey($Cwd)) { return $script:AgentGuardTopLevelCache[$Cwd] }
+
+    $result = ConvertTo-AgentGuardNormalizedPath $Cwd
+    $probeDir = Get-AgentGuardProbeDirectory -Path $Cwd
+    if (-not [string]::IsNullOrWhiteSpace($probeDir)) {
+        $topLevel = Invoke-AgentGuardGitProbe @(
+            '-C', $probeDir, 'rev-parse', '--path-format=absolute', '--show-toplevel')
+        if (-not [string]::IsNullOrWhiteSpace($topLevel)) {
+            $result = ConvertTo-AgentGuardNormalizedPath $topLevel
+        }
+    }
+
+    $script:AgentGuardTopLevelCache[$Cwd] = $result
+    return $result
+}
+
+<#
+.SYNOPSIS
 Classifies a directory relative to the protected AHKFlowApp checkout.
 
 .DESCRIPTION
@@ -1002,15 +1121,8 @@ function Get-ManagedWorktreeState {
         return 'NotRepository'
     }
 
-    # A target that does not exist yet (e.g. `git init newsub`) is classified by its nearest
-    # existing ancestor: git would walk up to that enclosing repository too.
-    $probeDir = $Cwd
-    while (-not [string]::IsNullOrWhiteSpace($probeDir) -and -not (Test-Path -LiteralPath $probeDir)) {
-        $parent = Split-Path -Parent $probeDir
-        if ($parent -eq $probeDir) { break }
-        $probeDir = $parent
-    }
-    if ([string]::IsNullOrWhiteSpace($probeDir) -or -not (Test-Path -LiteralPath $probeDir)) {
+    $probeDir = Get-AgentGuardProbeDirectory -Path $Cwd
+    if ([string]::IsNullOrWhiteSpace($probeDir)) {
         return 'NotRepository'
     }
 
@@ -1134,6 +1246,594 @@ function Test-AgentWorktreeManifest {
     if ($manifestRoot -ine (ConvertTo-AgentGuardNormalizedPath $WorktreeRoot)) { return $false }
 
     return $true
+}
+
+# ── Write-target grammar ────────────────────────────────────────────────────────────────────
+# The tokenizer yields segments, not write targets. These tables and functions turn a segment
+# into the list of paths it would write, move, or delete. Over-reporting a target is safe: it
+# only ever produces a denial for a path that already resolves under the main checkout.
+# Under-reporting silently disables the rule, so keep every list a superset.
+
+$script:AgentGuardWriteEveryPositional = @(
+    'rm', 'unlink', 'shred', 'truncate', 'touch', 'mkdir', 'rmdir', 'tee'
+)
+$script:AgentGuardWriteLastPositional = @('cp', 'mv', 'install', 'ln')
+
+# Cmdlet name -> the parameter naming its write target. Positional fallbacks are handled below.
+$script:AgentGuardWriteCmdlets = @{
+    'set-content'   = @('Path', 'LiteralPath')
+    'add-content'   = @('Path', 'LiteralPath')
+    'clear-content' = @('Path', 'LiteralPath')
+    'out-file'      = @('FilePath', 'LiteralPath', 'Path')
+    'new-item'      = @('Path')
+    'remove-item'   = @('Path', 'LiteralPath')
+}
+$script:AgentGuardWriteDestinationCmdlets = @('copy-item', 'move-item', 'rename-item')
+
+<#
+.SYNOPSIS
+Index of the first unquoted '>' in a token, or -1 when the token carries no redirect.
+#>
+function Find-AgentUnquotedRedirectIndex {
+    param([string] $Token, [string] $Mask)
+
+    for ($i = 0; $i -lt $Token.Length; $i++) {
+        if ($Token[$i] -ne '>') { continue }
+        if ($i -lt $Mask.Length -and $Mask[$i] -eq 'u') { return $i }
+    }
+    return -1
+}
+
+<#
+.SYNOPSIS
+Lowercased leaf of a command word, with any .exe/.cmd/.bat suffix removed.
+#>
+function Get-AgentCommandLeafName {
+    param([string] $Word)
+
+    $leaf = (([string] $Word).ToLowerInvariant() -split '[\\/]')[-1]
+    return ($leaf -replace '\.(exe|cmd|bat|ps1)$', '')
+}
+
+<#
+.SYNOPSIS
+Value of the first matching -Name parameter, or $null.
+
+.DESCRIPTION
+Accepts both `-Path value` and PowerShell's `-Path:value` colon form.
+#>
+function Get-AgentNamedParameterValue {
+    param([string[]] $Arguments, [string[]] $Names)
+
+    $list = @($Arguments)
+    for ($i = 0; $i -lt $list.Count; $i++) {
+        $argument = [string] $list[$i]
+        foreach ($name in $Names) {
+            if ($argument -ieq "-$name") {
+                if (($i + 1) -lt $list.Count) { return [string] $list[$i + 1] }
+                return $null
+            }
+            if ($argument -ilike "-${name}:*") {
+                return $argument.Substring($name.Length + 2)
+            }
+        }
+    }
+    return $null
+}
+
+<#
+.SYNOPSIS
+The directory named by -t / --target-directory, or $null when the arguments carry neither.
+
+.DESCRIPTION
+cp, mv, install, and ln all accept this option, and it changes which argument is the
+destination. Three spellings are read: `-t DIR`, `--target-directory DIR`, and
+`--target-directory=DIR`. Short options cluster, so `-rt DIR` and `-vtDIR` are read too. The `t`
+test is case-sensitive: `-T` is --no-target-directory, a different option that names nothing.
+#>
+function Get-AgentTargetDirectoryOption {
+    param([string[]] $Arguments)
+
+    $list = @($Arguments)
+    for ($i = 0; $i -lt $list.Count; $i++) {
+        $argument = [string] $list[$i]
+
+        if ($argument -ilike '--target-directory=*') {
+            return $argument.Substring('--target-directory='.Length)
+        }
+
+        $takesNext = $argument -ieq '--target-directory' -or $argument -cmatch '^-[a-zA-Z]*t$'
+        if ($takesNext) {
+            if (($i + 1) -lt $list.Count) { return [string] $list[$i + 1] }
+            return $null
+        }
+
+        # A cluster with the value attached, e.g. `cp -vtDIR src`.
+        if ($argument -cmatch '^-[a-zA-Z]*t(.+)$') { return $Matches[1] }
+    }
+    return $null
+}
+
+<#
+.SYNOPSIS
+Every path one command segment would write, move, or delete.
+
+.DESCRIPTION
+Two independent sources are scanned. Redirects are read from the token/mask pair, so only an
+unquoted '>' counts. Destination arguments are read from the leading command word using the
+tables above. A segment can produce both, for example `cp a b > log.txt`.
+#>
+function Get-AgentSegmentWriteTarget {
+    [CmdletBinding()]
+    param([string[]] $Tokens, [string[]] $Masks)
+
+    $targets = New-Object System.Collections.Generic.List[string]
+    $tokens = @($Tokens)
+    $masks = @($Masks)
+    if ($tokens.Count -eq 0) { return @() }
+
+    # --- Redirects -------------------------------------------------------------------------
+    $consumedByRedirect = @{}
+    for ($i = 0; $i -lt $tokens.Count; $i++) {
+        $token = [string] $tokens[$i]
+        $mask = if ($i -lt $masks.Count) { [string] $masks[$i] } else { '' }
+
+        $gt = Find-AgentUnquotedRedirectIndex -Token $token -Mask $mask
+        if ($gt -lt 0) { continue }
+
+        $end = $gt
+        while ($end -lt $token.Length -and $token[$end] -eq '>') { $end++ }
+        $rest = $token.Substring($end)
+
+        if (-not [string]::IsNullOrWhiteSpace($rest)) {
+            [void] $targets.Add($rest)
+        }
+        elseif (($i + 1) -lt $tokens.Count) {
+            [void] $targets.Add([string] $tokens[$i + 1])
+            $consumedByRedirect[$i + 1] = $true
+        }
+    }
+
+    # --- Destination arguments -------------------------------------------------------------
+    $leaf = Get-AgentCommandLeafName -Word $tokens[0]
+
+    # A token consumed as a redirect target is not also a positional argument of the command.
+    $arguments = @()
+    for ($i = 1; $i -lt $tokens.Count; $i++) {
+        if ($consumedByRedirect.ContainsKey($i)) { continue }
+        $token = [string] $tokens[$i]
+        $mask = if ($i -lt $masks.Count) { [string] $masks[$i] } else { '' }
+        if ((Find-AgentUnquotedRedirectIndex -Token $token -Mask $mask) -ge 0) { continue }
+        $arguments += $token
+    }
+    $positionals = @(Get-AgentGitPositionals -Arguments $arguments)
+
+    if ($script:AgentGuardWriteEveryPositional -contains $leaf) {
+        foreach ($positional in $positionals) { [void] $targets.Add($positional) }
+    }
+    elseif ($script:AgentGuardWriteLastPositional -contains $leaf) {
+        # -t/--target-directory moves the destination off the last positional: with it, every
+        # positional is a SOURCE and the named directory is the only thing written.
+        $targetDirectory = Get-AgentTargetDirectoryOption -Arguments $arguments
+        if ($null -ne $targetDirectory) { [void] $targets.Add($targetDirectory) }
+        elseif ($positionals.Count -ge 1) { [void] $targets.Add($positionals[$positionals.Count - 1]) }
+    }
+    elseif ($leaf -eq 'sed') {
+        $inPlace = @($arguments | Where-Object { $_ -ceq '-i' -or $_ -clike '-i*' -or $_ -ceq '--in-place' }).Count -gt 0
+        if ($inPlace) {
+            # With -e or -f the script is an option value, so every positional is a file.
+            # Without them the first positional IS the script, so skip it.
+            $hasScriptOption = @($arguments | Where-Object { $_ -ceq '-e' -or $_ -ceq '-f' }).Count -gt 0
+            $files = if ($hasScriptOption) { $positionals } else { @($positionals | Select-Object -Skip 1) }
+            foreach ($file in $files) { [void] $targets.Add($file) }
+        }
+    }
+    elseif ($leaf -eq 'dd') {
+        foreach ($argument in $arguments) {
+            if ($argument -ilike 'of=*') { [void] $targets.Add($argument.Substring(3)) }
+        }
+    }
+    elseif ($script:AgentGuardWriteCmdlets.ContainsKey($leaf)) {
+        $named = Get-AgentNamedParameterValue -Arguments $arguments -Names $script:AgentGuardWriteCmdlets[$leaf]
+        if ($null -ne $named) { [void] $targets.Add($named) }
+        elseif ($positionals.Count -ge 1) { [void] $targets.Add($positionals[0]) }
+    }
+    elseif ($script:AgentGuardWriteDestinationCmdlets -contains $leaf) {
+        $named = Get-AgentNamedParameterValue -Arguments $arguments -Names @('Destination', 'NewName')
+        if ($null -ne $named) { [void] $targets.Add($named) }
+        elseif ($positionals.Count -ge 2) { [void] $targets.Add($positionals[1]) }
+    }
+
+    return $targets.ToArray()
+}
+
+# Interpreters whose quoted argument is itself a command line. `-File` and `/k`-style script
+# paths are deliberately absent: those point at a file, and the guard never reads files.
+$script:AgentGuardInterpreterSpecs = @(
+    @{ Leaf = 'sh'; Flags = @('-c') },
+    @{ Leaf = 'bash'; Flags = @('-c') },
+    @{ Leaf = 'zsh'; Flags = @('-c') },
+    @{ Leaf = 'pwsh'; Flags = @('-command', '-c') },
+    @{ Leaf = 'powershell'; Flags = @('-command', '-c') },
+    @{ Leaf = 'cmd'; Flags = @('/c', '/k') }
+)
+
+$script:AgentGuardMaxInterpreterDepth = 2
+
+<#
+.SYNOPSIS
+Every write target in a command string, following nested interpreter arguments.
+
+.DESCRIPTION
+Returns { Targets = @(string[]); Unresolved = bool }. Unresolved means some inner command was
+never scanned, so the target list is incomplete and the caller must fail closed rather than read
+an empty list as "writes nothing". Two things set it: an inner command the tokenizer could not
+split safely, and nesting deeper than AgentGuardMaxInterpreterDepth.
+
+Recursion is scoped to the write-target scan alone. Git classification still treats a quoted
+nested command as opaque, which stays a documented accepted limitation of this guard.
+#>
+function Get-AgentCommandWriteTarget {
+    [CmdletBinding()]
+    param([string] $Command, [int] $Depth = 0)
+
+    $targets = New-Object System.Collections.Generic.List[string]
+
+    $parsed = Get-AgentCommandSegment -Command $Command
+    if ($parsed.Ambiguous) {
+        return [pscustomobject]@{ Targets = $targets.ToArray(); Unresolved = $true }
+    }
+
+    $unresolved = $false
+
+    foreach ($segment in $parsed.Segments) {
+        foreach ($target in (Get-AgentSegmentWriteTarget -Tokens $segment.Tokens -Masks $segment.Masks)) {
+            [void] $targets.Add($target)
+        }
+
+        $tokens = @($segment.Tokens)
+        if ($tokens.Count -lt 3) { continue }
+
+        $leaf = Get-AgentCommandLeafName -Word $tokens[0]
+        $spec = $script:AgentGuardInterpreterSpecs | Where-Object { $_.Leaf -eq $leaf } | Select-Object -First 1
+        if ($null -eq $spec) { continue }
+
+        for ($i = 1; $i -lt $tokens.Count - 1; $i++) {
+            if ($spec.Flags -notcontains ([string] $tokens[$i]).ToLowerInvariant()) { continue }
+
+            # The depth test lives here, not at the top of the loop: a segment that is not an
+            # interpreter carrying an inner command was already scanned in full above, so it must
+            # not be reported as unresolved just because the recursion budget ran out.
+            if ($Depth -ge $script:AgentGuardMaxInterpreterDepth) {
+                $unresolved = $true
+                break
+            }
+
+            $inner = Get-AgentCommandWriteTarget -Command ([string] $tokens[$i + 1]) -Depth ($Depth + 1)
+            foreach ($target in $inner.Targets) { [void] $targets.Add($target) }
+            if ($inner.Unresolved) { $unresolved = $true }
+            break
+        }
+    }
+
+    return [pscustomobject]@{ Targets = $targets.ToArray(); Unresolved = $unresolved }
+}
+
+# Characters that make a path component impossible to expand from the command text alone.
+$script:AgentGuardUnexpandablePattern = '[\$%`]'
+
+<#
+.SYNOPSIS
+Replaces every reparse point in a path with its target, walking from the root down.
+
+.DESCRIPTION
+Windows PowerShell 5.1 has no ResolveLinkTarget, so this uses (Get-Item -Force).Target, which
+both supported hosts provide. 5.1 types that property as string[] and pwsh 7 as string, so the
+array form is normalized. The iteration cap stops a symlink cycle from hanging the hook.
+#>
+function Resolve-AgentSymlinkPath {
+    [CmdletBinding()]
+    param([string] $Path)
+
+    if ([string]::IsNullOrWhiteSpace($Path)) { return $Path }
+
+    $result = $Path
+    for ($pass = 0; $pass -lt 16; $pass++) {
+        $changed = $false
+
+        $parts = $result -split '[\\/]'
+        if ($parts.Count -eq 0) { break }
+
+        $accumulated = $parts[0]
+        for ($i = 1; $i -lt $parts.Count; $i++) {
+            if ([string]::IsNullOrEmpty($parts[$i])) { continue }
+            $accumulated = Join-Path $accumulated $parts[$i]
+
+            if (-not (Test-Path -LiteralPath $accumulated)) { continue }
+
+            $item = Get-Item -LiteralPath $accumulated -Force -ErrorAction SilentlyContinue
+            if ($null -eq $item) { continue }
+            if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -eq 0) { continue }
+
+            $target = $item.Target
+            if ($target -is [array]) { $target = $target[0] }
+            if ([string]::IsNullOrWhiteSpace($target)) { continue }
+
+            $remainder = @($parts[($i + 1)..($parts.Count - 1)]) | Where-Object { $_ }
+            $result = $target
+            foreach ($piece in $remainder) { $result = Join-Path $result $piece }
+            $changed = $true
+            break
+        }
+
+        if (-not $changed) { break }
+    }
+
+    return $result
+}
+
+<#
+.SYNOPSIS
+Turns one raw write target into an absolute path, or marks it unresolved.
+
+.DESCRIPTION
+A glob is classified on the literal prefix before it: a glob cannot match `..` or an absolute
+path, so it cannot change which repository the path falls in, and `./obj/*` classifies on
+`./obj`. A variable, a percent expansion, or a command substitution can expand to anything,
+including `../..` or a rooted path, so ONE anywhere in the target makes the whole target
+unresolved. A leading literal prefix proves nothing about it: `./scripts/$DEST` reaches main
+when DEST is `../../../../README.md`.
+
+Mirrors the precedent at Get-AgentCommandSegment, where a cd target matching [\$%] marks the
+following git mutation untargetable rather than guessing where it lands.
+#>
+function Get-AgentWriteTargetResolution {
+    [CmdletBinding()]
+    param([string] $Target, [string] $BaseDirectory)
+
+    if ([string]::IsNullOrWhiteSpace($Target)) {
+        return [pscustomobject]@{ Path = ''; Unresolved = $true }
+    }
+
+    $trimmed = $Target.Trim().Trim('"', "'")
+    if ($trimmed.StartsWith('~')) {
+        return [pscustomobject]@{ Path = ''; Unresolved = $true }
+    }
+
+    if ($trimmed -match $script:AgentGuardUnexpandablePattern) {
+        return [pscustomobject]@{ Path = ''; Unresolved = $true }
+    }
+
+    $parts = @($trimmed -split '[\\/]')
+    $literal = New-Object System.Collections.Generic.List[string]
+    foreach ($part in $parts) {
+        if ($part -match '[\*\?]') { break }
+        [void] $literal.Add($part)
+    }
+
+    if ($literal.Count -eq 0) {
+        return [pscustomobject]@{ Path = ''; Unresolved = $true }
+    }
+
+    $candidate = $literal -join '\'
+    if (-not [System.IO.Path]::IsPathRooted($candidate)) {
+        if ([string]::IsNullOrWhiteSpace($BaseDirectory)) {
+            return [pscustomobject]@{ Path = ''; Unresolved = $true }
+        }
+        $candidate = Join-Path $BaseDirectory $candidate
+    }
+
+    # GetFullPath collapses '..' segments; it does not touch the filesystem.
+    try { $candidate = [System.IO.Path]::GetFullPath($candidate) }
+    catch { return [pscustomobject]@{ Path = ''; Unresolved = $true } }
+
+    $resolved = Resolve-AgentSymlinkPath -Path $candidate
+    return [pscustomobject]@{
+        Path       = (ConvertTo-AgentGuardNormalizedPath $resolved)
+        Unresolved = $false
+    }
+}
+
+# Path components that are build output or third-party content, never source the human owns.
+$script:AgentGuardThrowawayComponents = @('bin', 'obj', 'testresults', '.vs', 'node_modules')
+
+$script:AgentGuardWriteDenialMessage = @'
+BLOCKED: this session is isolated in a worktree, so it cannot write into the main checkout at {0}
+Read from here. Write from the main checkout.
+To override, a human must set AHKFLOW_ALLOW_MAIN=1 in the shell environment before starting the
+agent session.
+'@
+
+$script:AgentGuardPlansDenialMessage = @'
+BLOCKED: this session is isolated in a worktree, so it cannot write into the main checkout at {0}
+docs/superpowers is a symlink to the main checkout. There is no worktree copy of it, so do not
+look for one. Plan and spec writes belong in the main checkout by design.
+Read the plan from here. Write and commit it from the main checkout.
+'@
+
+$script:AgentGuardUnresolvedWriteMessage = @'
+BLOCKED: this session is isolated in a worktree, and the guard cannot expand this write target, so
+it cannot tell whether the write lands in the main checkout.
+Write the path out literally instead of using a variable, or run the command from the main checkout.
+'@
+
+<#
+.SYNOPSIS
+True when a resolved path is one the session may write despite sitting under the main checkout.
+#>
+function Test-AgentWriteTargetAllowed {
+    [CmdletBinding()]
+    param([string] $ResolvedPath, [string] $MainCheckout, [string] $WorktreeRoot)
+
+    $path = $ResolvedPath.TrimEnd('\', '/')
+    $main = $MainCheckout.TrimEnd('\', '/')
+    $worktree = $WorktreeRoot.TrimEnd('\', '/')
+
+    # The session's own worktree, and anything inside it.
+    if ($path -ieq $worktree -or $path.StartsWith($worktree + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $true
+    }
+
+    # Anything outside the protected checkout entirely.
+    if (-not ($path -ieq $main -or $path.StartsWith($main + '\', [System.StringComparison]::OrdinalIgnoreCase))) {
+        return $true
+    }
+
+    # The removal log, by exact path. Its parent directory stays refused, so a sibling worktree
+    # is not writable just because the log lives beside it.
+    $removalLog = Join-Path $main '.claude\worktrees\worktree-removal.log'
+    if ($path -ieq (ConvertTo-AgentGuardNormalizedPath $removalLog)) { return $true }
+
+    # Build output and third-party content.
+    $relative = $path.Substring($main.Length).Trim('\', '/')
+    foreach ($component in ($relative -split '[\\/]')) {
+        if ($script:AgentGuardThrowawayComponents -contains $component.ToLowerInvariant()) { return $true }
+    }
+
+    return $false
+}
+
+<#
+.SYNOPSIS
+Refuses a shell write into the main checkout from a session isolated in a managed worktree.
+
+.DESCRIPTION
+Only fires when the session's own working directory is a managed worktree. A main-checkout
+session is unaffected, which keeps the AGENTS.md rule that agents may edit, build, test, and
+format in main. Segments are walked in order so an earlier cd moves where a later write lands,
+matching Get-AgentGitLocationDecision.
+#>
+function Get-AgentWorktreeWriteDecision {
+    [CmdletBinding()]
+    param(
+        [string] $Command,
+        [string] $Cwd,
+        [string] $ProtectedRepoRoot,
+        [bool] $AllowMain = $false
+    )
+
+    $sessionState = Get-ManagedWorktreeState -Cwd $Cwd -ProtectedRepoRoot $ProtectedRepoRoot
+    if ($sessionState -ne 'ManagedWorktree') { return New-AgentGuardDecision -Action Allow }
+
+    $parsed = Get-AgentCommandSegment -Command $Command
+    if ($parsed.Ambiguous) { return New-AgentGuardDecision -Action Allow }
+
+    $protectedCommonDir = Invoke-AgentGuardGitProbe @(
+        '-C', $ProtectedRepoRoot, 'rev-parse', '--path-format=absolute', '--git-common-dir')
+    if ([string]::IsNullOrWhiteSpace($protectedCommonDir)) { return New-AgentGuardDecision -Action Allow }
+    $mainCheckout = ConvertTo-AgentGuardNormalizedPath (Split-Path -Parent (
+            ConvertTo-AgentGuardNormalizedPath $protectedCommonDir))
+    # The session's own worktree is its git top level, not the directory it happens to sit in. A
+    # session started in <worktree>\src would otherwise treat src as the whole worktree and refuse
+    # a write to the worktree's own root, which is inside main and so fails the outside-main test.
+    $worktreeRoot = Get-AgentSessionWorktreeRoot -Cwd $Cwd
+
+    $effectiveCwd = $Cwd
+    $unresolvedDirectory = $false
+    $directoryStack = New-Object System.Collections.Generic.List[string]
+    $blockingPath = ''
+    $unresolvedBlock = $false
+
+    foreach ($segment in $parsed.Segments) {
+        if ($segment.Kind -eq 'PopDirectory') {
+            if ($directoryStack.Count -gt 0) {
+                $effectiveCwd = $directoryStack[$directoryStack.Count - 1]
+                $directoryStack.RemoveAt($directoryStack.Count - 1)
+                $unresolvedDirectory = $false
+            }
+            continue
+        }
+
+        if ($segment.Kind -eq 'ChangeDirectory' -or $segment.Kind -eq 'PushDirectory') {
+            # A cd the guard cannot expand leaves the shell somewhere unknown, so every later
+            # RELATIVE write is untargetable. Dropping the move and keeping the old directory
+            # classified `cd "$MAIN_ROOT"; printf x > x.tmp` against the worktree and allowed a
+            # write that landed in main. Mirrors Get-AgentGitLocationDecision.
+            if ($segment.Unresolved) {
+                $unresolvedDirectory = $true
+                continue
+            }
+            $candidate = if ([System.IO.Path]::IsPathRooted($segment.Directory)) { $segment.Directory }
+            elseif (-not [string]::IsNullOrWhiteSpace($effectiveCwd)) { Join-Path $effectiveCwd $segment.Directory }
+            else { '' }
+            if ([string]::IsNullOrWhiteSpace($candidate)) {
+                $unresolvedDirectory = $true
+                continue
+            }
+            # A cd to a path that does not exist fails, leaving the shell where it already was.
+            if (-not (Test-Path -LiteralPath $candidate -PathType Container)) { continue }
+            if ($segment.Kind -eq 'PushDirectory') { [void] $directoryStack.Add($effectiveCwd) }
+            $effectiveCwd = $candidate
+            $unresolvedDirectory = $false
+            continue
+        }
+
+        $targets = @(Get-AgentSegmentWriteTarget -Tokens $segment.Tokens -Masks $segment.Masks)
+
+        # Nested interpreters: re-scan the quoted argument the tokenizer kept whole.
+        $tokens = @($segment.Tokens)
+        if ($tokens.Count -ge 3) {
+            $leaf = Get-AgentCommandLeafName -Word $tokens[0]
+            $spec = $script:AgentGuardInterpreterSpecs | Where-Object { $_.Leaf -eq $leaf } | Select-Object -First 1
+            if ($null -ne $spec) {
+                for ($i = 1; $i -lt $tokens.Count - 1; $i++) {
+                    if ($spec.Flags -notcontains ([string] $tokens[$i]).ToLowerInvariant()) { continue }
+                    $nested = Get-AgentCommandWriteTarget -Command ([string] $tokens[$i + 1]) -Depth 1
+                    $targets += @($nested.Targets)
+                    # An inner command that was never scanned is not an inner command that writes
+                    # nothing. Fail closed on it.
+                    if ($nested.Unresolved) { $unresolvedBlock = $true }
+                    break
+                }
+            }
+        }
+
+        foreach ($target in $targets) {
+            # A relative target after an unexpandable cd cannot be placed. Passing no base
+            # directory is what makes Get-AgentWriteTargetResolution report that; an absolute
+            # target ignores the base and still classifies exactly.
+            $baseDirectory = if ($unresolvedDirectory) { '' } else { $effectiveCwd }
+            $resolution = Get-AgentWriteTargetResolution -Target $target -BaseDirectory $baseDirectory
+            if ($resolution.Unresolved) {
+                if (-not $unresolvedBlock -and $blockingPath -eq '') { $unresolvedBlock = $true }
+                continue
+            }
+
+            if (Test-AgentWriteTargetAllowed -ResolvedPath $resolution.Path `
+                    -MainCheckout $mainCheckout -WorktreeRoot $worktreeRoot) {
+                continue
+            }
+
+            if ($blockingPath -eq '') { $blockingPath = $resolution.Path }
+        }
+    }
+
+    if ($blockingPath -eq '' -and -not $unresolvedBlock) {
+        return New-AgentGuardDecision -Action Allow
+    }
+
+    if ($AllowMain) {
+        $overrideTarget = if ($blockingPath -ne '') { $blockingPath } else { 'an unexpandable target' }
+        return New-AgentGuardDecision -Action Warn -Rule 'agent-worktree-main-write-overridden' -Message `
+        ("WARNING: AHKFLOW_ALLOW_MAIN=1 overrode the worktree write-isolation rule for: $overrideTarget")
+    }
+
+    if ($blockingPath -eq '') {
+        return New-AgentGuardDecision -Action Deny -Rule 'agent-worktree-main-write' -Message `
+            $script:AgentGuardUnresolvedWriteMessage
+    }
+
+    $plansRoot = ConvertTo-AgentGuardNormalizedPath (Join-Path $mainCheckout 'docs\superpowers')
+    $template = if ($blockingPath -ieq $plansRoot -or
+        $blockingPath.StartsWith($plansRoot + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
+        $script:AgentGuardPlansDenialMessage
+    }
+    else {
+        $script:AgentGuardWriteDenialMessage
+    }
+
+    return New-AgentGuardDecision -Action Deny -Rule 'agent-worktree-main-write' -Message `
+    ([string]::Format($template, $blockingPath))
 }
 
 $script:AgentGuardAllowedStates = @('NotRepository', 'OutsideProtectedRepository', 'ManagedWorktree')
@@ -1395,6 +2095,18 @@ function Invoke-AgentGuardPolicy {
     }
 
     if ($location.Action -ne 'Allow') { return $location }
+
+    try {
+        $write = Get-AgentWorktreeWriteDecision -Command $Command -Cwd $Cwd `
+            -ProtectedRepoRoot $ProtectedRepoRoot -AllowMain $AllowMain
+    }
+    catch {
+        # Fail open, same as the location rule: keep the shell usable, but say so loudly.
+        return New-AgentGuardDecision -Action Warn -Rule 'write-guard-error' -Message `
+        ("WARNING: the agent worktree write guard could not evaluate this command: $($_.Exception.Message)")
+    }
+
+    if ($write.Action -ne 'Allow') { return $write }
 
     return $safety
 }

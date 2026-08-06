@@ -5,8 +5,10 @@ changing state under them — especially the branch they are standing on. Local 
 and GitHub Copilot agent sessions gate every Git command the same way. The test: could it change
 the human's HEAD, index, or working tree in the main checkout? A command that cannot is allowed
 even from main. Most commands that can need a managed linked worktree, or an in-session approval
-prompt. See "Location tiers" below for the full breakdown. Agents may still **read, edit, build,
-test, and format** in main — this is a Git-mutation guard, not a filesystem sandbox.
+prompt. See "Location tiers" below for the full breakdown. A session running **in main** may still
+**read, edit, build, test, and format** there — this is a Git-mutation guard, not a filesystem
+sandbox. A session running in a managed worktree is different: it may read main, but a shell
+command that writes there is refused. See "Worktree write isolation" below.
 
 ## What "managed" means
 
@@ -126,6 +128,43 @@ destructive-command safety-rule match (force-push, `reset --hard`, `clean -f`, `
 dangerous `rm -rf`), and an unparseable `ambiguous-git-command`. Neither was ever gated by
 location logic.
 
+### Worktree write isolation
+
+Separate from the Git tiers. When the session's working directory is a **managed worktree**, a
+shell command that writes, moves, or deletes a path resolving under the main checkout is denied,
+with rule `agent-worktree-main-write`.
+
+Allowed anyway:
+
+- Anything inside the session's own worktree.
+- Anything outside the protected checkout.
+- Build output and third-party content, matched on any path component: `bin`, `obj`, `TestResults`,
+  `.vs`, `node_modules`.
+- `<main>\.claude\worktrees\worktree-removal.log`, by exact path.
+
+A **sibling** worktree is refused. It is another agent's checkout, so writing into it breaks the
+same isolation the rule exists to protect.
+
+Write targets are found from unquoted redirects, from a per-command destination table, and from
+nested `sh -c` / `pwsh -Command` arguments to a depth of 2. `cp`, `mv`, `install`, and `ln` are
+read for `-t` and `--target-directory` as well, because that option moves the destination off the
+last argument.
+
+A target the guard cannot expand is denied, because the guard cannot tell where it lands. That
+covers a leading `~`, and a variable, a percent expansion, a command substitution, or a backtick
+**anywhere** in the path. A leading literal prefix does not rescue it: `./scripts/$DEST` reaches
+main when `DEST` is `../../../../README.md`. A glob is different — a glob cannot match `..` or a
+rooted path, so the literal prefix before it decides, and `rm -rf ./obj/*` stays allowed.
+
+The same rule applies to nesting past the depth limit. An inner command the guard never scanned
+is not an inner command that writes nothing, so a third level of `sh -c` is denied outright.
+
+A directory change the guard cannot expand — `cd "$MAIN_ROOT"` — makes every later **relative**
+write in the same chain untargetable, so those are denied too. Later absolute writes still
+classify exactly, and a later resolved `cd` restores tracking.
+
+`AHKFLOW_ALLOW_MAIN=1` downgrades this to a warned allow, as it does for the location rules.
+
 **Adapter matrix for `Ask`.** Each adapter renders `Ask` differently:
 
 - **Claude** sets `hookSpecificOutput.permissionDecision = "ask"` and exits 0, which escalates to
@@ -159,11 +198,21 @@ Warm p50 over 20 runs after 5 warmups, Windows 11 / PowerShell 7:
 | Shim, read-only Git candidate | ~725 ms |
 | Shim, mutating Git candidate | ~975 ms |
 | Codex direct PowerShell, mutating Git candidate | ~630 ms |
+| Shim, worktree session, noncandidate read (exits in Bash after two `jq` calls) | ~267 ms |
+| Shim, worktree session, write candidate | ~1256 ms |
+
+The two worktree-session rows were measured later, on a different day. A main-checkout noncandidate
+re-measured at ~72 ms in that same run, against the ~54 ms above, so read the two sets as separate
+baselines rather than comparing them directly.
 
 The floor is process startup: ~260 ms for `pwsh` itself, plus ~200–340 ms more when Git Bash is
 the one spawning it. Only *candidate* commands pay this. Making the Git paths faster would mean
 either duplicating policy into Bash (rejected — it would drift from the PowerShell core) or
 starting PowerShell for every command (rejected — it would cost the ~54 ms common case ~500 ms).
+
+A worktree session pays more than a main-checkout session even for a read. Its `cwd` contains the
+`worktrees` segment, so the raw prefilter cannot exit early and the shim runs `jq` twice before
+deciding. A main-checkout session never matches that pattern and keeps its original cost.
 
 ## Setup and trust
 
@@ -254,9 +303,20 @@ An agent running the same command would need a prompt or override.
   Git after such a `cd` is unaffected. Pass an explicit `git -C <path>` to be classified normally.
 - `commit --no-verify` and `--git-dir`/`--work-tree` targeting cannot be safely inferred, so a
   mutating invocation using `--git-dir`/`--work-tree` is denied outright (unless `AHKFLOW_ALLOW_MAIN=1`).
-- File edits in main are not guarded by this mechanism at all. An `Edit`/`Write` tool call can
-  change the human's files under them the same way a Git mutation can, but this guard only covers
-  Git commands. Closing that gap is separate work, not part of this change.
+- Shell **writes** into main are guarded, in one direction only: a session whose working directory
+  is a managed worktree cannot write, move, or delete a path resolving under the main checkout. A
+  main-checkout session is unaffected and may still edit, build, test, and format there. `Edit` and
+  `Write` tool calls are not covered by this repository at all — Claude Code's own worktree
+  isolation covers them for Claude sessions, and Codex and Copilot have no equivalent.
+- The write scan reads a denylist of write commands, not an allowlist of safe ones. A writer
+  outside that list — `del`, `python -c`, a compiled tool — is not detected. Same trade-off the
+  Git mutation rule already makes.
+- `pwsh -File script.ps1` is still unread. The guard classifies the command line the hook reports,
+  never a file that command line points at.
+- Claude Code's own `Edit`/`Write` refusal tells the agent to edit "the worktree copy of this
+  file". For `docs/superpowers` no worktree copy can exist, because `.gitignore` excludes the path
+  and `scripts/worktree-plans.common.ps1` links it in instead. That text belongs to the harness and
+  cannot be changed here. Tracked in `backlog/058-native-edit-refusal-names-missing-worktree-copy.md`.
 
 ## Version-skew and authoritative main
 

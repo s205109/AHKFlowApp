@@ -48,13 +48,16 @@ The message therefore names a file that cannot exist, and sends the next agent l
 
 ## Acceptance criteria
 
-- [ ] A Bash command that writes, moves, or deletes a file under the main checkout is refused from a
+- [x] A Bash command that writes, moves, or deletes a file under the main checkout is refused from a
       worktree-isolated session, the same way Edit and Write already are
-- [ ] Reads stay allowed. AGENTS.md says agents may inspect, build, test, and format in main, and
+- [x] Reads stay allowed. AGENTS.md says agents may inspect, build, test, and format in main, and
       building writes to `obj/` and `bin/` — so the rule must target source paths, not every write
-- [ ] The refusal names the real reason and a real next step. When no worktree copy of the path can
-      exist, it must not tell the agent to edit one
-- [ ] A test covers both probes above — the symlinked path and a plain main-checkout path
+- [x] The **Bash** refusal this repo owns names the real reason and a real next step. When no
+      worktree copy of the path can exist, it must not tell the agent to edit one
+- [x] A test covers both probes above — the symlinked path and a plain main-checkout path
+
+The Edit tool's refusal message is Claude Code's own text, not this repo's. It moved to
+`backlog/058-native-edit-refusal-names-missing-worktree-copy.md`, so this item stays closable.
 
 ## Out of scope
 
