@@ -57,6 +57,31 @@ Send them the file, or open it for them. They'll click through the walkthroughs 
 
 Once the prototype has answered its question, capture the answer, then capture the prototype the way the [SKILL](SKILL.md) describes. The logic-specific mapping: the validated reducer / machine / function set lifts into the real module (the decision, absorbed); the HTML shell rides along to the throwaway branch that keeps the prototype as a primary source — and being one self-contained file, it stays trivially re-runnable there.
 
+## In this repo
+
+**The pure module is JavaScript. The real codebase is not.** AHKFlowApp is .NET 10 and Blazor. So
+step 2 above is only half true here. The module still has to be pure and small, for the same reason:
+it holds the answer. But you cannot lift it into the app as it stands. You translate it into C#
+first. Plan for that from the start — model the state with records, and use the same names the
+domain uses, so the translation stays mechanical.
+
+The translation is real code, so it is not exempt from verification. **Verification After
+Implementation** in `AGENTS.md` decides which test the translated code needs — a unit test for a
+domain rule or validator, an integration test for a use case. The prototype skips tests; the
+translation does not.
+
+**Run the demo over HTTP, not from disk.** `playwright-cli` refuses a `file:` URL. It fails with
+`Access to "file:" protocol is blocked.` Serve the folder first, then open the page. Run this in
+PowerShell:
+
+```powershell
+Start-Process python -ArgumentList '-m','http.server','8899' -WorkingDirectory <folder> -WindowStyle Hidden
+playwright-cli goto http://localhost:8899/<file>.html
+```
+
+Stop the server when you are done. A human opening the file by double-click is unaffected — this
+limit applies only to the browser automation.
+
 ## Anti-patterns
 
 - **Don't add tests.** A prototype that needs tests is no longer a prototype.

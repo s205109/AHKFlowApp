@@ -25,3 +25,14 @@ Each round the user answers reshapes the tree — settled decisions push the fro
 Finding _facts_ is your job, never the user's. When a frontier question needs a fact from the environment (filesystem, tools, etc.), dispatch a sub-agent to find it — don't ask the user for anything you could look up yourself. Don't block on it: a running exploration is an unsettled prerequisite, so only the questions downstream of it wait for the sub-agent to report — ask the rest of the frontier now. The _decisions_ are the user's — put each to them and wait.
 
 The session is done when the frontier is empty: every branch of the design tree visited, nothing left silently assumed. Do not act on it until the user confirms you have reached a shared understanding.
+
+## Two terms, explained once
+
+**Design tree** — all the decisions this work needs, drawn as a tree. One decision sits above
+another when the answer to the first changes what the second even asks.
+
+**Frontier** — the decisions you can ask about right now. A decision is on the frontier when every
+decision above it is already answered. Nothing above it is still open.
+
+So a round is one sweep of the frontier. You ask every question that is ready. You wait. The answers
+make more questions ready. You ask those next.

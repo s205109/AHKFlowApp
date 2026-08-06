@@ -83,11 +83,18 @@ concrete tools this repo does not have. In `mp-prototype`'s `UI.md`, the JavaScr
 replaced with their Blazor equivalents — `[SupplyParameterFromQuery]` and `NavigationManager` for
 the variant switch, `IWebAssemblyHostEnvironment.IsDevelopment()` for the production gate (not the
 `DEBUG` compilation symbol, which would hide the switcher during the Release smoke test `AGENTS.md`
-requires). `LOGIC.md` needed no such adaptation after its upstream rewrite to a single
-self-contained HTML file — that shape has no host-project runtime to swap in. In `mp-research`,
+requires). `LOGIC.md` gets an appended "In this repo" section instead of inline edits. It covers two
+things upstream cannot know: the pure module it tells you to write is JavaScript, but this app is
+.NET and Blazor, so the module is translated into C# rather than lifted as-is; and `playwright-cli`
+refuses a `file:` URL, so the demo is served over HTTP before any agent drives it. In `mp-research`,
 an "In this repo" section is appended covering the AutoHotkey docs 403 fallback, version-pinned
 API citations, and citation review. Upstream prose is otherwise left intact, so a future selective
 merge still lines up.
+
+Where an upstream rewrite introduces a new term, the adaptation explains the term in plain words
+rather than rewriting the sentence around it. `AGENTS.md` **Plain English** asks for exactly that —
+keep the term exact, explain it once. Rewriting upstream prose would break the merge alignment this
+pin exists to protect. `mp-grilling` carries such a gloss for "design tree" and "frontier".
 
 Upstream license notice (`mattpocock/skills`):
 
