@@ -1653,6 +1653,116 @@ try {
         Assert-True (-not $resolution.Unresolved) 'Must resolve on the literal prefix'
         Assert-Equal (Join-Path $fixture.Managed 'obj') $resolution.Path 'Path'
     }
+
+    Write-Host 'Worktree write isolation' -ForegroundColor Cyan
+
+    $writeDecisionCases = @(
+        # The two probes recorded in backlog 054.
+        @{ Name    = 'probe 1, symlinked plans path'
+            Command = 'printf probe > docs/superpowers/.guard-probe.tmp'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'probe 2, plain main checkout root'
+            Command = 'printf probe > <MAIN>/.guard-probe2.tmp'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        # Reads stay allowed.
+        @{ Name    = 'read through the symlink'
+            Command = 'cat docs/superpowers/seed-plan.md'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        @{ Name    = 'read a main checkout file'
+            Command = 'cat <MAIN>/seed.txt'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        # Writes inside the session's own worktree stay allowed.
+        @{ Name    = 'write inside the worktree'
+            Command = 'printf x > src.tmp'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        # Build output in main stays allowed.
+        @{ Name    = 'build output in main'
+            Command = 'printf x > <MAIN>/obj/build.tmp'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        @{ Name    = 'nested build output in main'
+            Command = 'printf x > <MAIN>/src/Api/bin/Debug/app.dll'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        # A sibling worktree is another agent's checkout.
+        @{ Name    = 'sibling worktree is refused'
+            Command = 'printf x > <MANAGED2>/src.tmp'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        # The removal log is the one allowed path under the worktree parent.
+        @{ Name    = 'removal log is allowed'
+            Command = 'printf x >> <MAIN>/.claude/worktrees/worktree-removal.log'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        # A main-checkout session is unaffected.
+        @{ Name    = 'main session writes main'
+            Command = 'printf x > <MAIN>/x.tmp'; Cwd = 'Main'; Action = 'Allow'
+        },
+        # Grammar shapes, end to end.
+        @{ Name    = 'attached redirect'
+            Command = 'printf x><MAIN>/x.tmp'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'nested interpreter'
+            Command = 'pwsh -Command "Set-Content <MAIN>/x.tmp y"'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'destination argument'
+            Command = 'cp a.txt <MAIN>/a.txt'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'quoted literal redirect is not a redirect'
+            Command = "printf 'a><MAIN>/x.tmp'"; Cwd = 'Managed'; Action = 'Allow'
+        },
+        @{ Name    = 'unresolved target fails closed'
+            Command = 'printf x > "$MAIN_ROOT/x.tmp"'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        # `rm -rf` is not used here: the older dangerous-rm safety rule denies it on its own, so
+        # the case would pass for the wrong reason. The write rule is exercised in isolation
+        # below with the exact `rm -rf ./obj/*` command instead.
+        @{ Name    = 'glob inside the worktree stays allowed'
+            Command = 'rm -f ./obj/*'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        # A cd earlier in the chain moves where the write lands.
+        @{ Name    = 'cd into main then write'
+            Command = 'cd <MAIN>; printf x > x.tmp'; Cwd = 'Managed'; Action = 'Deny'
+        }
+    )
+
+    foreach ($case in $writeDecisionCases) {
+        Invoke-TestCase "Write isolation: $($case.Name)" {
+            $command = $case.Command.
+            Replace('<MAIN>', $fixture.Main.Replace('\', '/')).
+            Replace('<MANAGED2>', $fixture.Managed2.Replace('\', '/'))
+            $cwd = if ($case.Cwd -eq 'Main') { $fixture.Main } else { $fixture.Managed }
+            $decision = Invoke-AgentGuardPolicy -Command $command `
+                -Cwd $cwd -ProtectedRepoRoot $fixture.Main -AllowMain $false
+            Assert-Equal $case.Action $decision.Action 'Action'
+        }
+    }
+
+    Invoke-TestCase 'Write isolation: rm -rf on a worktree glob is not a write-rule denial' {
+        $decision = Get-AgentWorktreeWriteDecision -Command 'rm -rf ./obj/*' `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'Allow' $decision.Action 'Action'
+    }
+
+    Invoke-TestCase 'Write isolation: the plans refusal does not name a worktree copy' {
+        $decision = Invoke-AgentGuardPolicy -Command 'printf probe > docs/superpowers/x.tmp' `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'Deny' $decision.Action 'Action'
+        Assert-Equal 'agent-worktree-main-write' $decision.Rule 'Rule'
+        Assert-Match 'no worktree copy' $decision.Message 'Message'
+        Assert-True ($decision.Message -notmatch 'Edit the worktree copy') 'Must not send the agent looking for a copy'
+    }
+
+    Invoke-TestCase 'Write isolation: AHKFLOW_ALLOW_MAIN=1 downgrades to a warning' {
+        $command = 'printf probe > ' + $fixture.Main.Replace('\', '/') + '/x.tmp'
+        $decision = Invoke-AgentGuardPolicy -Command $command `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $true
+        Assert-Equal 'Warn' $decision.Action 'Action'
+    }
+
+    Invoke-TestCase 'Write isolation: a git mutation decision still wins over a write decision' {
+        $command = 'git commit -m x'
+        $decision = Invoke-AgentGuardPolicy -Command $command `
+            -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'Deny' $decision.Action 'Action'
+        Assert-Equal 'agent-main-git-mutation' $decision.Rule 'Rule'
+    }
 }
 finally {
     Remove-GuardFixture -Fixture $fixture

@@ -1529,6 +1529,183 @@ function Get-AgentWriteTargetResolution {
     }
 }
 
+# Path components that are build output or third-party content, never source the human owns.
+$script:AgentGuardThrowawayComponents = @('bin', 'obj', 'testresults', '.vs', 'node_modules')
+
+$script:AgentGuardWriteDenialMessage = @'
+BLOCKED: this session is isolated in a worktree, so it cannot write into the main checkout at {0}
+Read from here. Write from the main checkout.
+To override, a human must set AHKFLOW_ALLOW_MAIN=1 in the shell environment before starting the
+agent session.
+'@
+
+$script:AgentGuardPlansDenialMessage = @'
+BLOCKED: this session is isolated in a worktree, so it cannot write into the main checkout at {0}
+docs/superpowers is a symlink to the main checkout. There is no worktree copy of it, so do not
+look for one. Plan and spec writes belong in the main checkout by design.
+Read the plan from here. Write and commit it from the main checkout.
+'@
+
+$script:AgentGuardUnresolvedWriteMessage = @'
+BLOCKED: this session is isolated in a worktree, and the guard cannot expand this write target, so
+it cannot tell whether the write lands in the main checkout.
+Write the path out literally instead of using a variable, or run the command from the main checkout.
+'@
+
+<#
+.SYNOPSIS
+True when a resolved path is one the session may write despite sitting under the main checkout.
+#>
+function Test-AgentWriteTargetAllowed {
+    [CmdletBinding()]
+    param([string] $ResolvedPath, [string] $MainCheckout, [string] $WorktreeRoot)
+
+    $path = $ResolvedPath.TrimEnd('\', '/')
+    $main = $MainCheckout.TrimEnd('\', '/')
+    $worktree = $WorktreeRoot.TrimEnd('\', '/')
+
+    # The session's own worktree, and anything inside it.
+    if ($path -ieq $worktree -or $path.StartsWith($worktree + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $true
+    }
+
+    # Anything outside the protected checkout entirely.
+    if (-not ($path -ieq $main -or $path.StartsWith($main + '\', [System.StringComparison]::OrdinalIgnoreCase))) {
+        return $true
+    }
+
+    # The removal log, by exact path. Its parent directory stays refused, so a sibling worktree
+    # is not writable just because the log lives beside it.
+    $removalLog = Join-Path $main '.claude\worktrees\worktree-removal.log'
+    if ($path -ieq (ConvertTo-AgentGuardNormalizedPath $removalLog)) { return $true }
+
+    # Build output and third-party content.
+    $relative = $path.Substring($main.Length).Trim('\', '/')
+    foreach ($component in ($relative -split '[\\/]')) {
+        if ($script:AgentGuardThrowawayComponents -contains $component.ToLowerInvariant()) { return $true }
+    }
+
+    return $false
+}
+
+<#
+.SYNOPSIS
+Refuses a shell write into the main checkout from a session isolated in a managed worktree.
+
+.DESCRIPTION
+Only fires when the session's own working directory is a managed worktree. A main-checkout
+session is unaffected, which keeps the AGENTS.md rule that agents may edit, build, test, and
+format in main. Segments are walked in order so an earlier cd moves where a later write lands,
+matching Get-AgentGitLocationDecision.
+#>
+function Get-AgentWorktreeWriteDecision {
+    [CmdletBinding()]
+    param(
+        [string] $Command,
+        [string] $Cwd,
+        [string] $ProtectedRepoRoot,
+        [bool] $AllowMain = $false
+    )
+
+    $sessionState = Get-ManagedWorktreeState -Cwd $Cwd -ProtectedRepoRoot $ProtectedRepoRoot
+    if ($sessionState -ne 'ManagedWorktree') { return New-AgentGuardDecision -Action Allow }
+
+    $parsed = Get-AgentCommandSegment -Command $Command
+    if ($parsed.Ambiguous) { return New-AgentGuardDecision -Action Allow }
+
+    $protectedCommonDir = Invoke-AgentGuardGitProbe @(
+        '-C', $ProtectedRepoRoot, 'rev-parse', '--path-format=absolute', '--git-common-dir')
+    if ([string]::IsNullOrWhiteSpace($protectedCommonDir)) { return New-AgentGuardDecision -Action Allow }
+    $mainCheckout = ConvertTo-AgentGuardNormalizedPath (Split-Path -Parent (
+            ConvertTo-AgentGuardNormalizedPath $protectedCommonDir))
+    $worktreeRoot = ConvertTo-AgentGuardNormalizedPath $Cwd
+
+    $effectiveCwd = $Cwd
+    $directoryStack = New-Object System.Collections.Generic.List[string]
+    $blockingPath = ''
+    $unresolvedBlock = $false
+
+    foreach ($segment in $parsed.Segments) {
+        if ($segment.Kind -eq 'PopDirectory') {
+            if ($directoryStack.Count -gt 0) {
+                $effectiveCwd = $directoryStack[$directoryStack.Count - 1]
+                $directoryStack.RemoveAt($directoryStack.Count - 1)
+            }
+            continue
+        }
+
+        if ($segment.Kind -eq 'ChangeDirectory' -or $segment.Kind -eq 'PushDirectory') {
+            if ($segment.Unresolved) { continue }
+            $candidate = if ([System.IO.Path]::IsPathRooted($segment.Directory)) { $segment.Directory }
+            elseif (-not [string]::IsNullOrWhiteSpace($effectiveCwd)) { Join-Path $effectiveCwd $segment.Directory }
+            else { '' }
+            if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
+            if (-not (Test-Path -LiteralPath $candidate -PathType Container)) { continue }
+            if ($segment.Kind -eq 'PushDirectory') { [void] $directoryStack.Add($effectiveCwd) }
+            $effectiveCwd = $candidate
+            continue
+        }
+
+        $targets = @(Get-AgentSegmentWriteTarget -Tokens $segment.Tokens -Masks $segment.Masks)
+
+        # Nested interpreters: re-scan the quoted argument the tokenizer kept whole.
+        $tokens = @($segment.Tokens)
+        if ($tokens.Count -ge 3) {
+            $leaf = Get-AgentCommandLeafName -Word $tokens[0]
+            $spec = $script:AgentGuardInterpreterSpecs | Where-Object { $_.Leaf -eq $leaf } | Select-Object -First 1
+            if ($null -ne $spec) {
+                for ($i = 1; $i -lt $tokens.Count - 1; $i++) {
+                    if ($spec.Flags -notcontains ([string] $tokens[$i]).ToLowerInvariant()) { continue }
+                    $targets += @(Get-AgentCommandWriteTarget -Command ([string] $tokens[$i + 1]) -Depth 1)
+                    break
+                }
+            }
+        }
+
+        foreach ($target in $targets) {
+            $resolution = Get-AgentWriteTargetResolution -Target $target -BaseDirectory $effectiveCwd
+            if ($resolution.Unresolved) {
+                if (-not $unresolvedBlock -and $blockingPath -eq '') { $unresolvedBlock = $true }
+                continue
+            }
+
+            if (Test-AgentWriteTargetAllowed -ResolvedPath $resolution.Path `
+                    -MainCheckout $mainCheckout -WorktreeRoot $worktreeRoot) {
+                continue
+            }
+
+            if ($blockingPath -eq '') { $blockingPath = $resolution.Path }
+        }
+    }
+
+    if ($blockingPath -eq '' -and -not $unresolvedBlock) {
+        return New-AgentGuardDecision -Action Allow
+    }
+
+    if ($AllowMain) {
+        $overrideTarget = if ($blockingPath -ne '') { $blockingPath } else { 'an unexpandable target' }
+        return New-AgentGuardDecision -Action Warn -Rule 'agent-worktree-main-write-overridden' -Message `
+        ("WARNING: AHKFLOW_ALLOW_MAIN=1 overrode the worktree write-isolation rule for: $overrideTarget")
+    }
+
+    if ($blockingPath -eq '') {
+        return New-AgentGuardDecision -Action Deny -Rule 'agent-worktree-main-write' -Message `
+            $script:AgentGuardUnresolvedWriteMessage
+    }
+
+    $plansRoot = ConvertTo-AgentGuardNormalizedPath (Join-Path $mainCheckout 'docs\superpowers')
+    $template = if ($blockingPath -ieq $plansRoot -or
+        $blockingPath.StartsWith($plansRoot + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
+        $script:AgentGuardPlansDenialMessage
+    }
+    else {
+        $script:AgentGuardWriteDenialMessage
+    }
+
+    return New-AgentGuardDecision -Action Deny -Rule 'agent-worktree-main-write' -Message `
+    ([string]::Format($template, $blockingPath))
+}
+
 $script:AgentGuardAllowedStates = @('NotRepository', 'OutsideProtectedRepository', 'ManagedWorktree')
 
 <#
@@ -1788,6 +1965,18 @@ function Invoke-AgentGuardPolicy {
     }
 
     if ($location.Action -ne 'Allow') { return $location }
+
+    try {
+        $write = Get-AgentWorktreeWriteDecision -Command $Command -Cwd $Cwd `
+            -ProtectedRepoRoot $ProtectedRepoRoot -AllowMain $AllowMain
+    }
+    catch {
+        # Fail open, same as the location rule: keep the shell usable, but say so loudly.
+        return New-AgentGuardDecision -Action Warn -Rule 'write-guard-error' -Message `
+        ("WARNING: the agent worktree write guard could not evaluate this command: $($_.Exception.Message)")
+    }
+
+    if ($write.Action -ne 'Allow') { return $write }
 
     return $safety
 }
