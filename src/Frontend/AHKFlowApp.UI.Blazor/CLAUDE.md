@@ -16,6 +16,7 @@ Blazor WebAssembly PWA frontend for AHKFlowApp.
 - No `StateHasChanged()` after standard event handlers — Blazor re-renders automatically
 - For list pages that need mobile support: render both branches as plain `.desktop-branch` and `.mobile-branch` containers, then gate visibility in the page's scoped `.razor.css` at `959.95px`. Desktop uses `MudDataGrid`; mobile uses a compact list component, full-screen `MudDialog`, and `MudFab`. See `Components/Hotstrings/` and `Components/Hotkeys/` for examples.
 - Reuse shared selection/chip components in `Components/Common/` — `EntityMultiSelect` (multi-select over an `EntityOption` list), `EntityChips` (read-only id→name chips; its `AppliesToAllProfiles` parameter renders a single "All profiles" chip), `CategoryFilterChips` (category filter chipset). Don't hand-roll `MudSelect`/`MudChip` blocks for profiles/categories.
+- Never put hover text in a `title` attribute on a control that can be disabled. MudBlazor sets `pointer-events: none` on a disabled control, so the browser never fires the hover and the text never appears. Wrap the control in a `MudTooltip` instead. The tooltip root is a plain `<div>` that is never disabled, so it still receives the hover. Keep `aria-label` and any `data-*` hooks on the control itself — a `<div>` has no role, so a screen reader ignores a label on the wrapper. Examples: `Components/KnownShortcuts/KnownShortcutUseActions.razor`, `Pages/Profiles.razor` (blocked download button).
 
 ## MudBlazor API Verification
 
