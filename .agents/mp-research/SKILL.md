@@ -4,7 +4,7 @@ description: Use when a technical question needs primary-source research, captur
 ---
 
 <!--
-AHKFlow adaptation of mattpocock/skills (MIT), pinned at commit 9603c1cc8118d08bc1b3bf34cf714f62178dea3b.
+AHKFlow adaptation of mattpocock/skills (MIT), pinned at commit 6acc160e4e0cd062dbbbd7a1b26ae92855edf07e.
 Update policy: manual-selective-merge — do not bulk-sync with upstream.
 -->
 
