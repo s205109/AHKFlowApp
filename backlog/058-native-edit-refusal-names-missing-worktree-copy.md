@@ -33,25 +33,48 @@ before an item moves to `backlog/done/`.
 This item is also Claude-only. Codex and Copilot have no equivalent isolation, so they never show
 this message.
 
-## First step: is it fixable here at all?
+## First step: is it fixable here at all? Answered — no
 
-This is a real question, not a foregone conclusion. Answer it before designing anything.
+Probed on 2026-08-07, against Claude Code 2.1.224. **The harness refusal takes precedence, so no
+hook can replace its message.**
 
-A `PreToolUse` hook matching `Edit|Write` can return a deny decision with its own message. If that
-hook fires **before** the harness's own isolation check, this repository can emit a correct message
-and the item is fixable locally. If the harness checks first, its message wins and no hook can
-replace it.
+The probe measured which refusal reaches the agent, not the harness's internal execution order.
+That is enough to close this item either way: whatever runs first inside the harness, a hook that
+denies with its own message cannot get that message shown. Do not restate this as "the harness
+check runs before the hook" in an upstream report without instrumenting it — `--debug-file` records
+which hooks actually executed (https://code.claude.com/docs/en/hooks).
 
-Probe: register a temporary `PreToolUse` hook on `Edit|Write` that denies with a recognizable
-string, then attempt an `Edit` on a main-checkout path from a worktree session. Whichever message
-appears answers the question.
+Full method and evidence:
+`docs/superpowers/specs/2026-08-07-worktree-edit-isolation-precedence-design.md`.
+
+Two runs settled it. Both asked a fresh session to make the same `Edit` on a main-checkout path,
+with the same `PreToolUse` deny hook on `Edit|Write` supplied through `--settings`.
+
+Control, without `-w`. The hook denied the edit, which proves the hook loaded and works:
+
+> PreToolUse:Edit hook error: PROBE-C-HOOK-DENY: this refusal came from a repo PreToolUse hook, not
+> the harness.
+
+Test, with `-w`. The same hook produced nothing. The harness answered instead:
+
+> This session is isolated in the worktree
+> C:\Dev\segocom-github\AHKFlowApp\.claude\worktrees\probe058c. Edit the worktree copy of this file
+> instead of the shared-checkout path.
+
+A second finding came out of the same probes, and it is filed separately as
+`backlog/065-native-edit-isolation-misses-worktree-sessions-without-w-flag.md`. The harness check is
+driven by a session flag, not by the working directory. It fires for `-w`, `--worktree`, and
+`EnterWorktree` sessions only. A session that merely has a worktree as its working directory gets no
+check at all, and there a `PreToolUse` hook does win.
 
 ## Acceptance criteria
 
-- [ ] The hook-versus-harness precedence question above is answered, with the observed message
+- [x] The hook-versus-harness precedence question above is answered, with the observed message
       recorded
-- [ ] If a hook can win: a refusal message that names the real reason and a real next step, and that
+- [x] If a hook can win: a refusal message that names the real reason and a real next step, and that
       never tells the agent to edit a worktree copy which cannot exist for `docs/superpowers`
+      — **not applicable.** The probe showed a hook cannot win for the sessions this item covers.
+      The case where a hook *can* win is backlog 065, not this item.
 - [ ] If a hook cannot win: an upstream report filed with Anthropic, linked from this item, and the
       limitation recorded in `docs/agents/cross-agent-git-guardrails.md`
 
@@ -66,3 +89,8 @@ appears answers the question.
 - Depends on 054 only for context, not for code. They can land in either order.
 - Design for 054: `docs/superpowers/specs/2026-08-06-worktree-guard-bash-writes-design.md`, section
   "Backlog scope"
+- Probe method and evidence:
+  `docs/superpowers/specs/2026-08-07-worktree-edit-isolation-precedence-design.md`
+- The probe also exposed a gap that **is** fixable here. Filed as
+  `backlog/065-native-edit-isolation-misses-worktree-sessions-without-w-flag.md`. Both items share
+  the one probe, so nothing needs re-running.
