@@ -2,6 +2,7 @@ using System.Security.Claims;
 using AHKFlowApp.UI.Blazor.DTOs;
 using AHKFlowApp.UI.Blazor.Pages;
 using AHKFlowApp.UI.Blazor.Services;
+using AngleSharp.Dom;
 using Bunit;
 using FluentAssertions;
 using Microsoft.AspNetCore.Components.Authorization;
@@ -297,7 +298,7 @@ public sealed class ProfilesPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
-    public void Download_RowBeingEdited_ButtonIsDisabled()
+    public void Download_RowBeingEdited_ButtonIsBlocked()
     {
         StubList(MakeProfile("Work"));
 
@@ -305,12 +306,18 @@ public sealed class ProfilesPageTests : BunitContext, IAsyncLifetime
         cut.WaitForAssertion(() => cut.Find("button.start-edit"));
         cut.Find("button.start-edit").Click();
 
+        // Blocked, not disabled: the button must stay focusable so a keyboard or touch user can
+        // still read why it refuses.
         cut.WaitForAssertion(() =>
-            cut.Find(DownloadButtonSelector).HasAttribute("disabled").Should().BeTrue());
+        {
+            IElement button = cut.Find(DownloadButtonSelector);
+            button.GetAttribute("aria-disabled").Should().Be("true");
+            button.HasAttribute("disabled").Should().BeFalse();
+        });
     }
 
     [Fact]
-    public void Download_UnsavedNewRow_ButtonIsDisabled()
+    public void Download_UnsavedNewRow_ButtonIsBlocked()
     {
         StubList();
 
@@ -319,11 +326,15 @@ public sealed class ProfilesPageTests : BunitContext, IAsyncLifetime
         cut.Find("button.add-profile").Click();
 
         cut.WaitForAssertion(() =>
-            cut.Find(DownloadButtonSelector).HasAttribute("disabled").Should().BeTrue());
+        {
+            IElement button = cut.Find(DownloadButtonSelector);
+            button.GetAttribute("aria-disabled").Should().Be("true");
+            button.HasAttribute("disabled").Should().BeFalse();
+        });
     }
 
     [Fact]
-    public void Download_DisabledButton_ExplainsWhy()
+    public void Download_BlockedButton_ExplainsWhy()
     {
         StubList(MakeProfile("Work"));
 
@@ -331,11 +342,14 @@ public sealed class ProfilesPageTests : BunitContext, IAsyncLifetime
         cut.WaitForAssertion(() => cut.Find("button.start-edit"));
         cut.Find("button.start-edit").Click();
 
-        // The wrapper carries the sighted reason, because MudBlazor sets pointer-events: none on
-        // a disabled button, so a title on the button itself would never fire.
-        cut.WaitForAssertion(() => cut.Find("[data-test=\"download-disabled-reason\"]"));
-        cut.Find(DownloadButtonSelector).GetAttribute("aria-label")
-            .Should().Be("Download the Work script — save your changes first");
+        cut.WaitForAssertion(() => cut.Find("[data-test=\"blocked-action\"]"));
+
+        // The name says what the button does. The reason is a description, so it rides on
+        // aria-describedby instead of being glued onto the name.
+        IElement button = cut.Find(DownloadButtonSelector);
+        button.GetAttribute("aria-label").Should().Be("Download the Work script");
+        cut.Find($"#{button.GetAttribute("aria-describedby")}").TextContent
+            .Should().Be("Save your changes first");
     }
 
     [Fact]
