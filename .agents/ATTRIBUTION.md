@@ -67,24 +67,51 @@ SOFTWARE.
 ## mattpocock/skills
 
 The following skills are adapted from `mattpocock/skills` (MIT), pinned at commit
-`9603c1cc8118d08bc1b3bf34cf714f62178dea3b` — the baseline for future selective merges:
+`6acc160e4e0cd062dbbbd7a1b26ae92855edf07e` — the baseline for future selective merges:
 
 - `mp-grilling`, `mp-grill-me`, `mp-domain-modeling`, `mp-grill-with-docs`, `mp-handoff`,
-  `mp-triage`, `mp-setup-matt-pocock-skills`, `mp-prototype`, `mp-research`
+  `mp-triage`, `mp-prototype`, `mp-research`, `mp-wait-what`, `mp-writing-for-agents`
 
 Adapted, not vendored unchanged (same fork policy as `dck-*`): internal cross-skill references
-are rewritten to the `mp-` folder names, `mp-setup-matt-pocock-skills`'s triage-installed
-detection targets `mp-triage` instead of upstream's literal `triage`, and long descriptions
-are trimmed to this repo's 140-char skill-description budget. Each `SKILL.md` carries a header
-comment recording the pinned commit and update policy (manual-selective-merge).
+are rewritten to the `mp-` folder names, and long descriptions are trimmed to this repo's
+140-char skill-description budget. Each `SKILL.md` carries a header comment recording the pinned
+commit and update policy (manual-selective-merge).
 
-`mp-prototype` and `mp-research` are adapted further than the other seven, because upstream names
-concrete tools this repo does not have. In `mp-prototype`, the JavaScript examples are replaced
-with their Blazor equivalents — `[SupplyParameterFromQuery]` and `NavigationManager` for the
-variant switch, the `DEBUG` compilation symbol for the production gate, and `dotnet run` for the
-one-command rule. In `mp-research`, an "In this repo" section is appended covering the
-AutoHotkey docs 403 fallback, version-pinned API citations, and citation review. Upstream prose
-is otherwise left intact, so a future selective merge still lines up.
+Upstream's `setup-matt-pocock-skills` was vendored as `mp-setup-matt-pocock-skills`, run once, and
+then deleted. It is a one-time bootstrapper: it asks which issue tracker, which triage labels, and
+which domain-doc layout the repo uses, then writes the answers to `docs/agents/issue-tracker.md`,
+`docs/agents/triage-labels.md`, and `docs/agents/domain.md`. Those three files are the lasting
+artifact and they stay. The skill itself had no second job, so keeping it only spent a slot in every
+agent's skill list. Restore it from git history if the repo ever changes issue tracker.
+
+`mp-prototype` and `mp-research` are adapted further than the other six, because upstream names
+concrete tools this repo does not have. In `mp-prototype`'s `UI.md`, the JavaScript examples are
+replaced with their Blazor equivalents — `[SupplyParameterFromQuery]` and `NavigationManager` for
+the variant switch, `IWebAssemblyHostEnvironment.IsDevelopment()` for the production gate (not the
+`DEBUG` compilation symbol, which would hide the switcher during the Release smoke test `AGENTS.md`
+requires). `LOGIC.md` gets an appended "In this repo" section instead of inline edits. It covers two
+things upstream cannot know: the pure module it tells you to write is JavaScript, but this app is
+.NET and Blazor, so the module is translated into C# rather than lifted as-is; and `playwright-cli`
+refuses a `file:` URL, so the demo is served over HTTP before any agent drives it. In `mp-research`,
+an "In this repo" section is appended covering the AutoHotkey docs 403 fallback, version-pinned
+API citations, and citation review. Upstream prose is otherwise left intact, so a future selective
+merge still lines up.
+
+`mp-writing-for-agents` gets an appended "In this repo" section, same shape as `mp-research`. It
+covers three things upstream cannot know: `AGENTS.md` **Plain English** applies to skill files and
+asks for the opposite trade to pruning, so a live sentence is never compressed into something the
+reader must decode twice; skill descriptions are capped at 140 characters by
+`scripts/agents/setup-cross-agent-skills.ps1`; and the three projected skill locations are generated,
+with `.claude/skills/README.md` as the authority on adding or retiring one. Its companion file
+`SKILL-MECHANICS.md` is vendored unchanged apart from the `mp-` cross-reference.
+
+`mp-wait-what` is vendored unchanged apart from the `mp-` name. It already points at `CONTEXT.md`,
+which is this repo's domain-term glossary, so no adaptation was needed.
+
+Where an upstream rewrite introduces a new term, the adaptation explains the term in plain words
+rather than rewriting the sentence around it. `AGENTS.md` **Plain English** asks for exactly that —
+keep the term exact, explain it once. Rewriting upstream prose would break the merge alignment this
+pin exists to protect. `mp-grilling` carries such a gloss for "design tree" and "frontier".
 
 Upstream license notice (`mattpocock/skills`):
 
