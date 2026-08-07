@@ -14,12 +14,16 @@ A new item's number is chosen by hand. The person or agent filing it has to list
 and `backlog/done/` and take the highest number. Nothing checks the result, so a wrong guess is
 saved and committed.
 
-Existing collisions:
+Existing collisions (resolved 2026-08-07):
 
-- `051` — `backlog/done/051-hotkey-raw-body-inline-error-not-rendering.md` and
-  `backlog/done/051-hotstrings-mobile-branch-stale-after-desktop-mutation.md`
-- `058` — `backlog/058-native-edit-refusal-names-missing-worktree-copy.md` and
-  `backlog/done/058-template-key-use-warning.md`
+- `051` — `backlog/done/051-hotkey-raw-body-inline-error-not-rendering.md` kept `051` (most inbound
+  references). `backlog/done/051-hotstrings-mobile-branch-stale-after-desktop-mutation.md` was
+  renumbered to `backlog/done/063-hotstrings-mobile-branch-stale-after-desktop-mutation.md`.
+- `058` — `backlog/058-native-edit-refusal-names-missing-worktree-copy.md` kept `058` (most inbound
+  references). `backlog/done/058-template-key-use-warning.md` was renumbered to
+  `backlog/done/064-template-key-use-warning.md`.
+
+Every inbound reference to the renumbered files was updated in the same change.
 
 The `b` suffix items (`022b`, `024b`, `027b`) are not collisions. Those are deliberate follow-ups to
 a parent item and this work leaves them alone.
@@ -42,15 +46,15 @@ suffix, would remove collisions but make every reference harder to read and say.
 
 ## Acceptance criteria
 
-- [ ] A script scaffolds a new backlog item from `backlog/000-backlog-item-template.md`. It takes a
+- [x] A script scaffolds a new backlog item from `backlog/000-backlog-item-template.md`. It takes a
       title, works out the next free number across `backlog/` and `backlog/done/`, and writes the
       file
-- [ ] Nobody has to read or type a backlog number by hand to file an item
-- [ ] A check fails when two files share the same numeric prefix across `backlog/` and
+- [x] Nobody has to read or type a backlog number by hand to file an item
+- [x] A check fails when two files share the same numeric prefix across `backlog/` and
       `backlog/done/`. The failure message names both files
-- [ ] The check runs in CI, so a duplicate cannot reach `main`
-- [ ] The `b` suffix items keep passing the check
-- [ ] The two existing collisions are resolved, and every reference to the renumbered items is
+- [x] The check runs in CI, so a duplicate cannot reach `main`
+- [x] The `b` suffix items keep passing the check
+- [x] The two existing collisions are resolved, and every reference to the renumbered items is
       updated in the same change
 
 ## Out of scope
@@ -68,3 +72,6 @@ suffix, would remove collisions but make every reference harder to read and say.
   Keep it out of the file name, so references stay short
 - Renumbering the existing collisions is the risky part. Search for the old number as a bare
   reference before moving any file
+- The check runs in CI only, not in `scripts/pre-push-quick-checks.ps1`. This item's acceptance
+  criteria only ask for a CI check. Adding it to pre-push as well was considered and dropped, to
+  keep this change to what the item asks for

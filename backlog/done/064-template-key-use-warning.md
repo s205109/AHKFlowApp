@@ -1,4 +1,4 @@
-# 058 - Hotkey warnings ignore keys a profile template already uses
+# 064 - Hotkey warnings ignore keys a profile template already uses
 
 ## Metadata
 
@@ -70,3 +70,4 @@ destination. Item 043 shipped the preset that makes it easy to hit.
 - `ShortcutWarning.razor:75` decides re-evaluation from `(Combination, Kind, RemapDest)`. Profile scope has to join it, or a Profile change is ignored
 - `CONTEXT.md:92` bans conflict, clash, collision, and duplicate for this area. The house word is "uses"
 - `docs/development/ahk-v2-syntax.md` documents none of `*`, `~`, or `up::` in prose. It needs extending as part of this work
+- Filed as 053, renumbered to 058. Renumbered again to 064 on 2026-08-07, because two items shared 058. See backlog 061

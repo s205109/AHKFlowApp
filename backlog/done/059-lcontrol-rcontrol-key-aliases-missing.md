@@ -17,7 +17,7 @@ never meet.
 
 ## Background
 
-Found while addressing review findings on item 058. The one-line alias addition was reverted,
+Found while addressing review findings on item 064 (filed as 058). The one-line alias addition was reverted,
 because it breaks a frozen invariant rather than the feature under review.
 
 `LegacyHotkeyFixtures.cs:161` builds its Send-token fixtures from `HotkeyKeys.Aliases` at run time.
