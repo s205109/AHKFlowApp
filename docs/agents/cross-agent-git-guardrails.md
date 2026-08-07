@@ -325,7 +325,10 @@ An agent running the same command would need a prompt or override.
   The same hook denies normally once `-w` is dropped, which proves it was loaded. What was measured
   is which refusal reaches the agent, not the harness's internal execution order. Method and output:
   `docs/superpowers/specs/2026-08-07-worktree-edit-isolation-precedence-design.md`. Tracked in
-  `backlog/058-native-edit-refusal-names-missing-worktree-copy.md`.
+  `backlog/blocked/058-native-edit-refusal-names-missing-worktree-copy.md`, which is blocked: the
+  only remaining step is a report to Anthropic, and that report has not been filed. Confirmed on
+  Claude Code `2.1.224`. Until it changes upstream, treat the refusal text as wrong for
+  `docs/superpowers` and do not go looking for a worktree copy of a plan or spec.
 
 ## Version-skew and authoritative main
 

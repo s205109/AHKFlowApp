@@ -57,7 +57,8 @@ The message therefore names a file that cannot exist, and sends the next agent l
 - [x] A test covers both probes above — the symlinked path and a plain main-checkout path
 
 The Edit tool's refusal message is Claude Code's own text, not this repo's. It moved to
-`backlog/058-native-edit-refusal-names-missing-worktree-copy.md`, so this item stays closable.
+`backlog/blocked/058-native-edit-refusal-names-missing-worktree-copy.md`, so this item stays
+closable.
 
 ## Out of scope
 

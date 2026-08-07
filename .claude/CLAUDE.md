@@ -70,7 +70,7 @@ Pending features are tracked in `backlog/`.
 
 - Rules (always loaded): `.claude/rules/`
 - Skills (on demand): `.claude/skills/`
-- Backlog: `backlog/` (repo root) — open items; completed items live in `done/`. The PR that finishes an item also moves its file into `done/` — see **Git Workflow** in AGENTS.md
+- Backlog: `backlog/` (repo root) — open items; completed items live in `done/`; items blocked on something outside this repository live in `blocked/`. The PR that finishes an item also moves its file into `done/` — see **Git Workflow** in AGENTS.md
 - Frontend instructions: `src/Frontend/AHKFlowApp.UI.Blazor/CLAUDE.md`
 - Private/local config: `.claude/CLAUDE.local.md` (gitignored)
 - Documentation: `docs/` — architecture, azure, development guides

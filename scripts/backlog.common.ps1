@@ -14,10 +14,15 @@ function Get-BacklogItem {
     $root = (Resolve-Path -LiteralPath $BacklogRoot).Path
     $repoRoot = Split-Path -Parent $root
 
+    # Every folder that holds a real item must be scanned, or its number stops counting as taken
+    # and the duplicate check below goes blind to it. 'done' is finished work; 'blocked' is work
+    # blocked on something outside this repository. Both keep their numbers reserved.
     $files = @(Get-ChildItem -LiteralPath $root -Filter '*.md' -File)
-    $doneDir = Join-Path $root 'done'
-    if (Test-Path -LiteralPath $doneDir) {
-        $files += Get-ChildItem -LiteralPath $doneDir -Filter '*.md' -File
+    foreach ($subfolder in @('done', 'blocked')) {
+        $subfolderPath = Join-Path $root $subfolder
+        if (Test-Path -LiteralPath $subfolderPath) {
+            $files += Get-ChildItem -LiteralPath $subfolderPath -Filter '*.md' -File
+        }
     }
 
     foreach ($file in $files) {
@@ -57,7 +62,7 @@ function Get-BacklogProblem {
         $problems += "Bad backlog file name: $($item.RelativePath). Expected NNN-slug.md or NNNx-slug.md."
     }
 
-    # --- Duplicate key across backlog/ and backlog/done/ ---
+    # --- Duplicate key across backlog/, backlog/done/, and backlog/blocked/ ---
     $byKey = $items | Where-Object { $null -ne $_.Key } | Group-Object -Property Key
     foreach ($group in $byKey | Where-Object { $_.Count -gt 1 }) {
         $names = ($group.Group | Select-Object -ExpandProperty RelativePath) -join ', '
