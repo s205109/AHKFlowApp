@@ -27,15 +27,25 @@ name.
 
 ## Acceptance criteria
 
-- [ ] Hovering a disabled known-shortcut action button shows its short text
-- [ ] The fix wraps the button rather than styling the disabled state. `LoginDisplay.razor:17-19`
+- [x] Hovering a disabled known-shortcut action button shows its short text
+- [x] The fix wraps the button rather than styling the disabled state. `LoginDisplay.razor:17-19`
       is the pattern already in the repo — a disabled `MudButton` inside a `MudTooltip`. The
       tooltip root is a plain div, it is not disabled, so it receives the hover
-- [ ] The `aria-label` at `:53` keeps naming the use in full, so the desktop table and the mobile
+- [x] The `aria-label` at `:53` keeps naming the use in full, so the desktop table and the mobile
       list can still tell the Chrome row from the Edge row on the same combination
-- [ ] A bUnit test renders the component with `Busy="true"` and asserts the wrapper is present and
+- [x] A bUnit test renders the component with `Busy="true"` and asserts the wrapper is present and
       carries the text. Assert on markup that is always rendered, not on `MudTooltip Text` — that
       text only reaches the DOM once a `MudPopoverProvider` is rendered and the popover opens
+
+      Done as written: the wrapper is found by `data-test="use-action-tooltip"`, and the text is
+      read out of the popover after a real `PointerEnter`, not off `MudTooltip.Text`. The bUnit
+      test renders `MudPopoverProvider` first, because the popover text renders into that tree.
+      An E2E flow test repeats the same hover in a real browser while a write is held open.
+      The E2E test needed one more step: a preceding click leaves the pointer inside the tooltip
+      root, so `HoverAsync` alone would move to a point the pointer already occupies and fire no
+      `pointerenter`. The test parks the pointer with `Mouse.MoveAsync(0, 0)` first, then hovers,
+      and asserts on `.mud-popover-open.use-action-tooltip-text` because MudBlazor keeps every
+      matching popover mounted and the search text matches more than one row.
 
 ## Out of scope
 

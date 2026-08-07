@@ -162,6 +162,57 @@ public sealed class ShortcutWarningFlowTests(StackFixture fixture) : IAsyncLifet
         await page.WaitForSelectorAsync(".hotkey-edit-dialog [data-test=\"shortcut-warning\"]");
     }
 
+    // The wrapper that holds the Windows use of Win+E. :has() picks the tooltip root by the button
+    // inside it, because the identifying pair lives on the button, not on the wrapper.
+    private const string WindowsFileExplorerWrapper =
+        ".desktop-branch [data-test=\"use-action-tooltip\"]:has(button.ignore-use" +
+        "[data-shortcut-id=\"windows.file-explorer\"][data-used-by=\"Windows\"])";
+
+    [Fact]
+    public async Task WhileAWriteIsInFlight_HoveringADisabledAction_StillShowsItsText()
+    {
+        await using IBrowserContext context = await fixture.Browser.NewContextAsync();
+        IPage page = await context.NewPageAsync();
+
+        // Hold the write open, so the button is really disabled while the hover happens. The
+        // handler waits on the source below instead of on a fixed delay, so the test never races.
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await context.RouteAsync("**/api/v1/knownshortcuts/ignore", async route =>
+        {
+            await release.Task;
+            await route.ContinueAsync();
+        });
+
+        await OpenKnownShortcutsAsync(page, "Win+E");
+        await page.ClickAsync(string.Format(WindowsFileExplorerUse, ".ignore-use"));
+
+        // MudBlazor sets pointer-events: none on a disabled button, so a title on the button would
+        // be dead right here. The tooltip root still takes the hover.
+        await Assertions.Expect(page.Locator(string.Format(WindowsFileExplorerUse, ".ignore-use")))
+            .ToBeDisabledAsync();
+
+        // The click left the pointer inside this same tooltip root, and MudTooltip closes on click.
+        // A tooltip opens on pointerenter, which only fires when the pointer crosses into the root
+        // from outside. Hovering a point the pointer is already on fires nothing, so the tooltip
+        // would stay shut forever. Park the pointer off the wrapper first, so the hover below is a
+        // real entry.
+        await page.Mouse.MoveAsync(0, 0);
+        await page.HoverAsync(WindowsFileExplorerWrapper);
+
+        // "Win+E" filters to more than one row, so more than one tooltip popover exists in the DOM
+        // at once, all sharing the .use-action-tooltip-text class from Task 1 — MudBlazor keeps
+        // every one mounted, off-screen, until it opens (MudBlazor.min.css, MudPopover 9.3.0:
+        // .mud-popover{opacity:0;top:-9999px;left:-9999px}). mud-popover-open is the class
+        // MudBlazor adds to the one actually shown (MudPopover.razor.cs PopoverClass,
+        // .AddClass($"mud-popover-open", Open)), so it picks out this hover's popover specifically.
+        await Assertions.Expect(page.Locator(".mud-popover-open.use-action-tooltip-text"))
+            .ToContainTextAsync("Stop warning about this");
+
+        // Let the write finish, so the test leaves the page in a settled state.
+        release.SetResult();
+        await page.WaitForSelectorAsync(string.Format(WindowsFileExplorerUse, ".restore-use"));
+    }
+
     [Fact]
     public async Task AnOwnerRecord_WarnsOnItsOwnCombination()
     {
