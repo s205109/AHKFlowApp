@@ -5,6 +5,35 @@
 - **Epic**: Agent tooling
 - **Type**: Bug
 - **Interfaces**: UI | API | CLI (none — agent tooling only)
+- **Status**: Blocked since 2026-08-07 — see the section below
+
+## Blocked — waiting on an upstream report that has not been filed
+
+Nothing in this repository can fix this. The probe below settled that. The only work left is the
+third acceptance box: file a report with Anthropic. That report was deliberately deferred on
+2026-08-07, so the item is blocked rather than open. Do not pick it up as available work.
+
+**What would unblock it:**
+
+- The report gets filed. Then link it here, tick the last box, and move the file to
+  `backlog/done/`.
+- Or Anthropic changes the refusal wording in a later Claude Code release. Then re-run the check
+  below, record the new text, and close the item as fixed upstream.
+
+**Evidence freshness.** The probes ran against Claude Code `2.1.224`. That is still the installed
+version as of 2026-08-07, so the recorded messages have not gone stale. Re-check before filing:
+
+```powershell
+claude --version
+```
+
+**Neighbouring upstream reports**, none of which covers this wording bug:
+
+- [anthropics/claude-code#84258](https://github.com/anthropics/claude-code/issues/84258) — worktree
+  isolation hard-blocks `git -C <main-checkout>` even after a `PreToolUse` hook approves it. Filed
+  by someone else, and independent support for finding 1 below.
+- [anthropics/claude-code#64322](https://github.com/anthropics/claude-code/issues/64322) — closed.
+  Asks for `Edit`-tool path validation in `isolation: "worktree"` agents. Different request.
 
 ## Summary
 

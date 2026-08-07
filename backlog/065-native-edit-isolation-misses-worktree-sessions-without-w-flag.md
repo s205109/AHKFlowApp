@@ -79,9 +79,11 @@ Same session, same target path, opposite outcomes depending on which tool made t
 
 ## Why this is its own item
 
-Found while probing `backlog/058-native-edit-refusal-names-missing-worktree-copy.md`. 058 is about
-the **wording** of a refusal that does fire. This item is about a case where **no refusal fires at
-all**. Different defect, different fix, and 058 stays closable on its own scope.
+Found while probing `backlog/blocked/058-native-edit-refusal-names-missing-worktree-copy.md`.
+058 is about the **wording** of a refusal that does fire. This item is about a case where **no
+refusal fires at all**. Different defect, different fix, and 058 stays closable on its own scope.
+058 is now blocked, because its only remaining step is an upstream report. This item is not
+blocked by that, and stays open.
 
 `docs/agents/cross-agent-git-guardrails.md` used to record that `Edit` and `Write` are "not covered
 by this repository at all — Claude Code's own worktree isolation covers them for Claude sessions".

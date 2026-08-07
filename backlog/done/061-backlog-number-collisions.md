@@ -19,9 +19,10 @@ Existing collisions (resolved 2026-08-07):
 - `051` — `backlog/done/051-hotkey-raw-body-inline-error-not-rendering.md` kept `051` (most inbound
   references). `backlog/done/051-hotstrings-mobile-branch-stale-after-desktop-mutation.md` was
   renumbered to `backlog/done/063-hotstrings-mobile-branch-stale-after-desktop-mutation.md`.
-- `058` — `backlog/058-native-edit-refusal-names-missing-worktree-copy.md` kept `058` (most inbound
-  references). `backlog/done/058-template-key-use-warning.md` was renumbered to
-  `backlog/done/064-template-key-use-warning.md`.
+- `058` — `backlog/blocked/058-native-edit-refusal-names-missing-worktree-copy.md` kept `058` (most
+  inbound references). `backlog/done/058-template-key-use-warning.md` was renumbered to
+  `backlog/done/064-template-key-use-warning.md`. It sat in `backlog/` at the time and moved to
+  `backlog/blocked/` later; the number never changed.
 
 Every inbound reference to the renumbered files was updated in the same change.
 
@@ -36,7 +37,7 @@ documents and commit messages. Some examples in the repo today:
 - `backlog/042-key-rebinds-as-first-class-rows.md:42` points at item 044
 - `backlog/056-disabled-button-reason-unreachable-by-keyboard-and-touch.md:38` points at item 053
 - `backlog/057-downloads-page-row-stays-disabled-when-the-file-save-fails.md:23` points at item 055
-- `backlog/058-native-edit-refusal-names-missing-worktree-copy.md:25` points at item 054
+- `backlog/blocked/058-native-edit-refusal-names-missing-worktree-copy.md:53` points at item 054
 
 So a duplicate number does not only break sorting. It makes an existing reference point at two
 different items, and the reader cannot tell which one was meant.

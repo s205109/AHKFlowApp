@@ -263,6 +263,7 @@ Conventional commits: `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:` �
 Atomic commits: one logical change per commit; feature + its tests = one commit. Don't bundle unrelated changes.
 Filing a `backlog/` item: run `pwsh ./scripts/new-backlog-item.ps1 -Title "..."`. It works out the next free number and writes the file from the template. Never pick a number by hand — two items have already ended up sharing one. CI fails when two files share a number.
 Finishing a `backlog/` item: tick its acceptance boxes **and** `git mv` the file into `backlog/done/` in the same PR that does the work. Merging that PR is what completes the item, so the move belongs there. Never open a separate PR just to mark an item done.
+Blocking a `backlog/` item: `git mv` it into `backlog/blocked/` when it is blocked on something outside this repository — an upstream bug report, an unreleased platform feature, a decision the human deferred. The test is whether the work is possible right now, not whether it is worth doing. A low-priority item stays in `backlog/`. A blocked item keeps its number and its unticked boxes, and must say near the top what would unblock it. All three folders are scanned for duplicate numbers, so blocking never frees a number.
 Never force-push to main/master. Run the canonical pre-PR gate before creating a PR — [`docs/development/testing-workflow.md`](docs/development/testing-workflow.md#canonical-pre-pr-gate).
 Keep PRs focused on a single concern; split large changes into stacked PRs.
 

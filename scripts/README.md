@@ -73,4 +73,4 @@ lists ignored local files `new-worktree.ps1` copies into a new worktree.
 | `_open-env.ps1` | `Open-Env` helper that reads a saved `.env.<env>` and opens its URLs. |
 | `test-sql-container.common.ps1` | Shared SQL Server Testcontainer settings for the coverage/test scripts. |
 | `run-frontend.common.ps1` | Shared build/run logic for `run-frontend.ps1`, dot-sourced so a test can drive it through injected scriptblocks. |
-| `backlog.common.ps1` | Shared backlog-numbering helpers for `new-backlog-item.ps1` and `tests/BacklogNumbering.Tests.ps1`. |
+| `backlog.common.ps1` | Shared backlog-numbering helpers for `new-backlog-item.ps1` and `tests/BacklogNumbering.Tests.ps1`. Scans all three item folders — `backlog/`, `backlog/done/`, and `backlog/blocked/` — so a number stays taken wherever its item sits. |

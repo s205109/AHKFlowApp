@@ -25,6 +25,7 @@ function New-TemporaryBacklogRoot {
     $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) "backlog-numbering-tests-$([guid]::NewGuid())"
     New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
     New-Item -ItemType Directory -Path (Join-Path $tempRoot 'done') -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $tempRoot 'blocked') -Force | Out-Null
     Copy-Item -LiteralPath $templatePath -Destination (Join-Path $tempRoot '000-backlog-item-template.md')
     return $tempRoot
 }
@@ -183,6 +184,60 @@ try {
 
     $finalContent = Get-Content -LiteralPath $targetPath -Raw
     Assert-True ($finalContent -eq 'first writer content') "Concurrent write should not clobber the first writer's file, got: '$finalContent'"
+}
+finally {
+    Remove-Item -LiteralPath $tempRoot -Recurse -Force
+}
+
+# --- Case 10: a blocked item in blocked/ still holds its number ---
+#
+# A blocked item is not finished, so it keeps its number reserved. If the scan skipped
+# blocked/, this duplicate would go unreported and two files could end up sharing one number —
+# the exact failure backlog 061 was filed for.
+
+$tempRoot = New-TemporaryBacklogRoot
+try {
+    Set-Content -LiteralPath (Join-Path $tempRoot '058-open.md') -Value "# 058 - Open`n"
+    Set-Content -LiteralPath (Join-Path $tempRoot 'blocked/058-blocked.md') -Value "# 058 - Blocked`n"
+
+    $problems = @(Get-BacklogProblem -BacklogRoot $tempRoot)
+    $dupProblem = $problems | Where-Object { $_ -like "*Duplicate backlog number '058'*" }
+    Assert-True ($null -ne $dupProblem) "Expected a duplicate-058 problem across backlog/ and blocked/, got: $($problems -join ' | ')"
+    if ($dupProblem) {
+        Assert-True ($dupProblem -like '*058-open.md*') "Duplicate message should name 058-open.md: $dupProblem"
+        Assert-True ($dupProblem -like '*blocked/058-blocked.md*') "Duplicate message should name blocked/058-blocked.md: $dupProblem"
+    }
+}
+finally {
+    Remove-Item -LiteralPath $tempRoot -Recurse -Force
+}
+
+# --- Case 11: a blocked item counts toward the next free number ---
+
+$tempRoot = New-TemporaryBacklogRoot
+try {
+    Set-Content -LiteralPath (Join-Path $tempRoot '060-open.md') -Value "# 060 - Open`n"
+    Set-Content -LiteralPath (Join-Path $tempRoot 'blocked/071-blocked.md') -Value "# 071 - Blocked`n"
+
+    $next = Get-NextBacklogNumber -BacklogRoot $tempRoot
+    Assert-True ($next -eq '072') "Expected the next number to follow the blocked item, got '$next'"
+}
+finally {
+    Remove-Item -LiteralPath $tempRoot -Recurse -Force
+}
+
+# --- Case 12: a backlog root with no blocked/ folder still works ---
+#
+# The folder is optional. A checkout that has never blocked an item has no blocked/ directory, and
+# the scan must not fail on that.
+
+$tempRoot = New-TemporaryBacklogRoot
+try {
+    Remove-Item -LiteralPath (Join-Path $tempRoot 'blocked') -Recurse -Force
+    Set-Content -LiteralPath (Join-Path $tempRoot '060-open.md') -Value "# 060 - Open`n"
+
+    $problems = @(Get-BacklogProblem -BacklogRoot $tempRoot)
+    Assert-True ($problems.Count -eq 0) "A root with no blocked/ folder should pass, found: $($problems -join ' | ')"
 }
 finally {
     Remove-Item -LiteralPath $tempRoot -Recurse -Force
