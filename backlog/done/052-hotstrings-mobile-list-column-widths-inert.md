@@ -57,7 +57,7 @@ being true.
 
 ## Notes / dependencies
 
-- Found during backlog 051. See
+- Found during backlog 063 (filed as 051). See
   `docs/superpowers/specs/2026-08-04-hotstrings-mobile-branch-stale-design.md`
 - Line numbers were read on `fix/wt-051-hotstrings-mobile-branch-stale` at `5d8583c2`
 - The expanded row's `colspan="3"` (`:70`) was checked at the same time and is correct. The normal

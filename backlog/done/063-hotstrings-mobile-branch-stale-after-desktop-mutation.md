@@ -1,4 +1,4 @@
-# 051 - Hotstrings mobile branch goes stale after a desktop mutation
+# 063 - Hotstrings mobile branch goes stale after a desktop mutation
 
 ## Metadata
 
@@ -38,6 +38,7 @@ This is the same bug that backlog 050 fixed on the hotkeys page.
 - The cost is one extra mobile load per mutation, and at most one extra API request. `ListAsync`
   returns its cached page when the next request is equal, so a matching grid and mobile request
   costs nothing extra
+- Filed as 051. Renumbered to 063 on 2026-08-07, because two items shared 051. See backlog 061
 - `Hotkeys.razor` still has two call sites, `DeleteAsync` and `MobileBulkDeleteAsync`, that call
   `ClearListCache()` right before `ReloadAllAsync()`. `ReloadAllAsync` clears the cache itself, so
   this clears it twice. It is harmless, but it does not match the convention this branch set at the
