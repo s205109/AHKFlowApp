@@ -1825,10 +1825,24 @@ try {
         Assert-Equal (Join-Path $fixture.Main '.claude\q.tmp') $resolution.Path 'Path'
     }
 
-    Invoke-TestCase 'Resolution: -Literal keeps surrounding quotes in a file name' {
-        $resolution = Get-AgentWriteTargetResolution -Target '"quoted.cs"' `
+    Invoke-TestCase 'Resolution: -Literal keeps a single quote in a file name' {
+        $resolution = Get-AgentWriteTargetResolution -Target "'quoted'.cs" `
             -BaseDirectory $fixture.Managed -Literal
-        Assert-Equal (Join-Path $fixture.Managed '"quoted.cs"') $resolution.Path 'Path'
+        Assert-Equal (Join-Path $fixture.Managed "'quoted'.cs") $resolution.Path 'Path'
+    }
+
+    # Windows PowerShell 5.1 runs on .NET Framework, whose path APIs reject '"' outright; pwsh 7
+    # accepts it. Assert the invariant both hosts must hold: never throw, and never quietly drop
+    # the character. Throwing would reach the entrypoint's catch and allow the write.
+    Invoke-TestCase 'Resolution: -Literal never throws on a double quote in a file name' {
+        $resolution = Get-AgentWriteTargetResolution -Target '"quoted".cs' `
+            -BaseDirectory $fixture.Managed -Literal
+        if ($resolution.Unresolved) {
+            Assert-Equal '' $resolution.Path 'An unresolved target carries no path'
+        }
+        else {
+            Assert-Equal (Join-Path $fixture.Managed '"quoted".cs') $resolution.Path 'Path'
+        }
     }
 
     Invoke-TestCase 'Resolution: a command-line target still has its quoting stripped' {

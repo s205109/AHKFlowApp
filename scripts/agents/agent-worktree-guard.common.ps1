@@ -1673,16 +1673,25 @@ function Get-AgentWriteTargetResolution {
     }
 
     $candidate = $literalParts -join '\'
-    if (-not [System.IO.Path]::IsPathRooted($candidate)) {
-        if ([string]::IsNullOrWhiteSpace($BaseDirectory)) {
-            return [pscustomobject]@{ Path = ''; Unresolved = $true }
+    try {
+        if (-not [System.IO.Path]::IsPathRooted($candidate)) {
+            if ([string]::IsNullOrWhiteSpace($BaseDirectory)) {
+                return [pscustomobject]@{ Path = ''; Unresolved = $true }
+            }
+            $candidate = Join-Path $BaseDirectory $candidate
         }
-        $candidate = Join-Path $BaseDirectory $candidate
-    }
 
-    # GetFullPath collapses '..' segments; it does not touch the filesystem.
-    try { $candidate = [System.IO.Path]::GetFullPath($candidate) }
-    catch { return [pscustomobject]@{ Path = ''; Unresolved = $true } }
+        # GetFullPath collapses '..' segments; it does not touch the filesystem.
+        $candidate = [System.IO.Path]::GetFullPath($candidate)
+    }
+    catch {
+        # Windows PowerShell 5.1 runs on .NET Framework, whose path APIs reject characters such
+        # as '"' outright, and IsPathRooted throws before GetFullPath is ever reached. A path
+        # this host cannot parse is one the guard cannot classify, so report it unresolved. The
+        # caller then denies. Letting the exception escape would instead reach the entrypoint's
+        # catch and allow the write.
+        return [pscustomobject]@{ Path = ''; Unresolved = $true }
+    }
 
     $resolved = Resolve-AgentSymlinkPath -Path $candidate
     return [pscustomobject]@{
