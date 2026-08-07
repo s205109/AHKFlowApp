@@ -2,6 +2,7 @@ using AHKFlowApp.UI.Blazor.Components.KnownShortcuts;
 using AHKFlowApp.UI.Blazor.DTOs;
 using Bunit;
 using FluentAssertions;
+using MudBlazor;
 using MudBlazor.Services;
 using Xunit;
 
@@ -15,7 +16,11 @@ public sealed class KnownShortcutMobileListTests : BunitContext, IAsyncLifetime
         JSInterop.Mode = JSRuntimeMode.Loose;
     }
 
-    Task IAsyncLifetime.InitializeAsync() => Task.CompletedTask;
+    Task IAsyncLifetime.InitializeAsync()
+    {
+        Render<MudPopoverProvider>();
+        return Task.CompletedTask;
+    }
 
     async Task IAsyncLifetime.DisposeAsync() => await DisposeAsync();
 

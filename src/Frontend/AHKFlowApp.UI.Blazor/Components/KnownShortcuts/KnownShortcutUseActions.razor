@@ -6,26 +6,36 @@
 
    The bell shows the state of the row, matching its chip: crossed out on a silenced use, ringing
    on one that still warns. It used to show the action instead, which put a ringing bell next to
-   the word "Silenced". The tooltip carries what the click does.
+   the word "Silenced". The tooltip carries what the click does. It wraps the button rather than sitting on it, so the
+   text still appears while the button is disabled.
 
    Lives in its own component so the desktop table and the mobile list cannot drift apart. *@
 @if (Row.Use.Origin == ShortcutRecordOrigin.Owner)
 {
-    <MudIconButton Class="delete-use" Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
-                   OnClick="() => OnDelete.InvokeAsync(Row)" Disabled="@Busy"
-                   UserAttributes="@Attributes("Delete this record", $"Delete the record that {Row.Use.UsedBy} uses {Row.ComboLabel}")" />
+    <MudTooltip Text="Delete this record" Class="use-action-tooltip-text"
+                UserAttributes="@TooltipAttributes()">
+        <MudIconButton Class="delete-use" Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
+                       OnClick="() => OnDelete.InvokeAsync(Row)" Disabled="@Busy"
+                       UserAttributes="@Attributes($"Delete the record that {Row.Use.UsedBy} uses {Row.ComboLabel}")" />
+    </MudTooltip>
 }
 else if (Row.Use.IsIgnored)
 {
-    <MudIconButton Class="restore-use" Icon="@Icons.Material.Filled.NotificationsOff"
-                   OnClick="() => OnRestore.InvokeAsync(Row)" Disabled="@Busy"
-                   UserAttributes="@Attributes("Warn about this again", $"Warn again that {Row.Use.UsedBy} uses {Row.ComboLabel}")" />
+    <MudTooltip Text="Warn about this again" Class="use-action-tooltip-text"
+                UserAttributes="@TooltipAttributes()">
+        <MudIconButton Class="restore-use" Icon="@Icons.Material.Filled.NotificationsOff"
+                       OnClick="() => OnRestore.InvokeAsync(Row)" Disabled="@Busy"
+                       UserAttributes="@Attributes($"Warn again that {Row.Use.UsedBy} uses {Row.ComboLabel}")" />
+    </MudTooltip>
 }
 else
 {
-    <MudIconButton Class="ignore-use" Icon="@Icons.Material.Filled.NotificationsActive"
-                   OnClick="() => OnIgnore.InvokeAsync(Row)" Disabled="@Busy"
-                   UserAttributes="@Attributes("Stop warning about this", $"Stop warning that {Row.Use.UsedBy} uses {Row.ComboLabel}")" />
+    <MudTooltip Text="Stop warning about this" Class="use-action-tooltip-text"
+                UserAttributes="@TooltipAttributes()">
+        <MudIconButton Class="ignore-use" Icon="@Icons.Material.Filled.NotificationsActive"
+                       OnClick="() => OnIgnore.InvokeAsync(Row)" Disabled="@Busy"
+                       UserAttributes="@Attributes($"Stop warning that {Row.Use.UsedBy} uses {Row.ComboLabel}")" />
+    </MudTooltip>
 }
 
 @code {
@@ -41,15 +51,26 @@ else
     // The button carries the pair that names its use, so a selector can tell the Chrome row from
     // the Edge row on the same combination.
     //
-    // Both text attributes ride along as plain attributes: MudIconButton has no Title and no
-    // AriaLabel parameter, so they reach the rendered button through MudComponentBase's
-    // UserAttributes. The title is the short hover tooltip. The aria-label names the use in full,
-    // because the button shows an icon and no text, so "this" would be all a screen reader heard.
-    private Dictionary<string, object?> Attributes(string title, string ariaLabel) => new()
+    // The label rides along as a plain attribute: MudIconButton has no AriaLabel parameter, so it
+    // reaches the rendered button through MudComponentBase's UserAttributes. It names the use in
+    // full, because the button shows an icon and no text, so "this" would be all a screen reader
+    // heard.
+    private Dictionary<string, object?> Attributes(string ariaLabel) => new()
     {
         ["data-shortcut-id"] = Row.ShortcutId,
         ["data-used-by"] = Row.Use.UsedBy,
-        ["title"] = title,
         ["aria-label"] = ariaLabel,
+    };
+
+    // The short hover text sits on the MudTooltip, not on the button. MudBlazor sets
+    // pointer-events: none on a disabled button, so a title on the button itself would never fire
+    // while Busy is true. The tooltip root is a plain div, it is never disabled, and it still
+    // receives the hover. Same reason as Profiles.razor's blocked download button.
+    //
+    // The label cannot move here with it: a div has no role, so a screen reader ignores a label on
+    // the wrapper.
+    private static Dictionary<string, object?> TooltipAttributes() => new()
+    {
+        ["data-test"] = "use-action-tooltip",
     };
 }

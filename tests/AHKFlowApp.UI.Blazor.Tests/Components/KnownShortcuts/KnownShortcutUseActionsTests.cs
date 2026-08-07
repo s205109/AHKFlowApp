@@ -1,7 +1,10 @@
 using AHKFlowApp.UI.Blazor.Components.KnownShortcuts;
 using AHKFlowApp.UI.Blazor.DTOs;
+using AngleSharp.Dom;
 using Bunit;
 using FluentAssertions;
+using Microsoft.AspNetCore.Components.Web;
+using MudBlazor;
 using MudBlazor.Services;
 using Xunit;
 
@@ -9,13 +12,19 @@ namespace AHKFlowApp.UI.Blazor.Tests.Components.KnownShortcuts;
 
 public sealed class KnownShortcutUseActionsTests : BunitContext, IAsyncLifetime
 {
+    private IRenderedComponent<MudPopoverProvider>? _popovers;
+
     public KnownShortcutUseActionsTests()
     {
         Services.AddMudServices();
         JSInterop.Mode = JSRuntimeMode.Loose;
     }
 
-    Task IAsyncLifetime.InitializeAsync() => Task.CompletedTask;
+    Task IAsyncLifetime.InitializeAsync()
+    {
+        _popovers = Render<MudPopoverProvider>();
+        return Task.CompletedTask;
+    }
 
     async Task IAsyncLifetime.DisposeAsync() => await DisposeAsync();
 
@@ -66,13 +75,29 @@ public sealed class KnownShortcutUseActionsTests : BunitContext, IAsyncLifetime
         cut.Find($"button.{cssClass}").GetAttribute("aria-label").Should().Be(expectedLabel);
     }
 
-    [Fact]
-    public void TheButton_KeepsAShortHoverTooltip()
+    [Theory]
+    // MudBlazor sets pointer-events: none on a disabled button, so a title on the button itself
+    // would never fire. The tooltip root is a plain div, it is never disabled, and it still
+    // receives the hover. Busy is true here because that is the state the fix is for.
+    [InlineData(ShortcutRecordOrigin.BuiltIn, false, "ignore-use", "Stop warning about this")]
+    [InlineData(ShortcutRecordOrigin.BuiltIn, true, "restore-use", "Warn about this again")]
+    [InlineData(ShortcutRecordOrigin.Owner, false, "delete-use", "Delete this record")]
+    public void WhileBusy_HoveringTheWrapper_ShowsTheShortText(
+        ShortcutRecordOrigin origin, bool ignored, string cssClass, string expectedText)
     {
-        IRenderedComponent<KnownShortcutUseActions> cut =
-            Render<KnownShortcutUseActions>(p => p.Add(c => c.Row, Row()));
+        IRenderedComponent<KnownShortcutUseActions> cut = Render<KnownShortcutUseActions>(p => p
+            .Add(c => c.Row, Row(origin, ignored, origin == ShortcutRecordOrigin.Owner ? Guid.NewGuid() : null))
+            .Add(c => c.Busy, true));
 
-        cut.Find("button.ignore-use").GetAttribute("title").Should().Be("Stop warning about this");
+        IElement wrapper = cut.Find("[data-test=\"use-action-tooltip\"]");
+        IElement? button = wrapper.QuerySelector($"button.{cssClass}");
+        button.Should().NotBeNull();
+        button!.HasAttribute("disabled").Should().BeTrue();
+
+        wrapper.PointerEnter(new PointerEventArgs());
+
+        _popovers!.WaitForAssertion(() =>
+            _popovers!.Find(".use-action-tooltip-text").TextContent.Should().Contain(expectedText));
     }
 
     [Theory]
