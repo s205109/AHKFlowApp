@@ -1586,10 +1586,13 @@ when DEST is `../../../../README.md`.
 
 Mirrors the precedent at Get-AgentCommandSegment, where a cd target matching [\$%] marks the
 following git mutation untargetable rather than guessing where it lands.
+
+Pass -Literal for a path that came from a tool call rather than a command line. That skips the
+shell-expansion rule only. Rooting, `..` collapsing, and symlink resolution are unchanged.
 #>
 function Get-AgentWriteTargetResolution {
     [CmdletBinding()]
-    param([string] $Target, [string] $BaseDirectory)
+    param([string] $Target, [string] $BaseDirectory, [switch] $Literal)
 
     if ([string]::IsNullOrWhiteSpace($Target)) {
         return [pscustomobject]@{ Path = ''; Unresolved = $true }
@@ -1600,22 +1603,28 @@ function Get-AgentWriteTargetResolution {
         return [pscustomobject]@{ Path = ''; Unresolved = $true }
     }
 
-    if ($trimmed -match $script:AgentGuardUnexpandablePattern) {
+    # A tool call carries one literal path and no shell runs over it, so '$', '%' and backtick are
+    # ordinary file name characters there. Applying the shell rule would refuse a real edit inside
+    # the session's own worktree. A '~' still fails closed under -Literal: nothing in the payload
+    # says which home directory it means.
+    if (-not $Literal -and $trimmed -match $script:AgentGuardUnexpandablePattern) {
         return [pscustomobject]@{ Path = ''; Unresolved = $true }
     }
 
     $parts = @($trimmed -split '[\\/]')
-    $literal = New-Object System.Collections.Generic.List[string]
+    # Named literalParts, not literal: PowerShell variable names are case-insensitive, so a plain
+    # $literal here would be the -Literal switch parameter above.
+    $literalParts = New-Object System.Collections.Generic.List[string]
     foreach ($part in $parts) {
         if ($part -match '[\*\?]') { break }
-        [void] $literal.Add($part)
+        [void] $literalParts.Add($part)
     }
 
-    if ($literal.Count -eq 0) {
+    if ($literalParts.Count -eq 0) {
         return [pscustomobject]@{ Path = ''; Unresolved = $true }
     }
 
-    $candidate = $literal -join '\'
+    $candidate = $literalParts -join '\'
     if (-not [System.IO.Path]::IsPathRooted($candidate)) {
         if ([string]::IsNullOrWhiteSpace($BaseDirectory)) {
             return [pscustomobject]@{ Path = ''; Unresolved = $true }
@@ -1834,6 +1843,75 @@ function Get-AgentWorktreeWriteDecision {
 
     return New-AgentGuardDecision -Action Deny -Rule 'agent-worktree-main-write' -Message `
     ([string]::Format($template, $blockingPath))
+}
+
+<#
+.SYNOPSIS
+Refuses an Edit, Write, or NotebookEdit tool call that lands in the main checkout from a session
+isolated in a managed worktree.
+
+.DESCRIPTION
+Get-AgentWorktreeWriteDecision has to parse a command line before it can find a write target. A
+tool call carries one literal path instead, so this function shares that rule's path resolution,
+allow-list, and refusal messages but none of its parsing. Like the shell rule, it only fires when
+the session's own working directory is a managed worktree, which keeps the AGENTS.md rule that
+agents may edit, build, test, and format in the main checkout.
+#>
+function Get-AgentFileEditWriteDecision {
+    [CmdletBinding()]
+    param(
+        [string] $TargetPath,
+        [string] $Cwd,
+        [string] $ProtectedRepoRoot,
+        [bool] $AllowMain = $false
+    )
+
+    # A payload with no path is malformed. The tool rejects it anyway, so there is nothing here to
+    # protect.
+    if ([string]::IsNullOrWhiteSpace($TargetPath)) { return New-AgentGuardDecision -Action Allow }
+
+    $sessionState = Get-ManagedWorktreeState -Cwd $Cwd -ProtectedRepoRoot $ProtectedRepoRoot
+    if ($sessionState -ne 'ManagedWorktree') { return New-AgentGuardDecision -Action Allow }
+
+    $protectedCommonDir = Invoke-AgentGuardGitProbe @(
+        '-C', $ProtectedRepoRoot, 'rev-parse', '--path-format=absolute', '--git-common-dir')
+    if ([string]::IsNullOrWhiteSpace($protectedCommonDir)) { return New-AgentGuardDecision -Action Allow }
+    $mainCheckout = ConvertTo-AgentGuardNormalizedPath (Split-Path -Parent (
+            ConvertTo-AgentGuardNormalizedPath $protectedCommonDir))
+    # The session's own worktree is its git top level, not the directory it happens to sit in.
+    $worktreeRoot = Get-AgentSessionWorktreeRoot -Cwd $Cwd
+
+    $resolution = Get-AgentWriteTargetResolution -Target $TargetPath -BaseDirectory $Cwd -Literal
+
+    if (-not $resolution.Unresolved) {
+        if (Test-AgentWriteTargetAllowed -ResolvedPath $resolution.Path `
+                -MainCheckout $mainCheckout -WorktreeRoot $worktreeRoot) {
+            return New-AgentGuardDecision -Action Allow
+        }
+    }
+
+    if ($AllowMain) {
+        $overrideTarget = if ($resolution.Unresolved) { 'an unexpandable target' } else { $resolution.Path }
+        return New-AgentGuardDecision -Action Warn -Rule 'agent-worktree-main-write-overridden' -Message `
+        ("WARNING: AHKFLOW_ALLOW_MAIN=1 overrode the worktree write-isolation rule for: $overrideTarget")
+    }
+
+    if ($resolution.Unresolved) {
+        return New-AgentGuardDecision -Action Deny -Rule 'agent-worktree-main-write' -Message `
+            $script:AgentGuardUnresolvedWriteMessage
+    }
+
+    $plansRoot = ConvertTo-AgentGuardNormalizedPath (Join-Path $mainCheckout 'docs\superpowers')
+    $template = if ($resolution.Path -ieq $plansRoot -or
+        $resolution.Path.StartsWith($plansRoot + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
+        $script:AgentGuardPlansDenialMessage
+    }
+    else {
+        $script:AgentGuardWriteDenialMessage
+    }
+
+    return New-AgentGuardDecision -Action Deny -Rule 'agent-worktree-main-write' -Message `
+    ([string]::Format($template, $resolution.Path))
 }
 
 $script:AgentGuardAllowedStates = @('NotRepository', 'OutsideProtectedRepository', 'ManagedWorktree')

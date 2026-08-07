@@ -1850,6 +1850,112 @@ try {
         Assert-Equal 'agent-main-git-mutation' $decision.Rule 'Rule'
     }
 
+    Write-Host 'File-edit write isolation' -ForegroundColor Cyan
+
+    # One literal path per case. Placeholders are replaced against the disposable fixture below,
+    # so no case names a real repository path.
+    $fileEditCases = @(
+        @{ Name = 'a file inside the session worktree'
+            Path = '<MANAGED>\src\a.cs'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        @{ Name = 'a file in the main checkout'
+            Path = '<MAIN>\README.md'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name = 'a file in a sibling worktree'
+            Path = '<MANAGED2>\src\a.cs'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name = 'build output under the main checkout'
+            Path = '<MAIN>\obj\x.dll'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        @{ Name = 'a path outside the protected checkout'
+            Path = '<UNRELATED>\x.txt'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        @{ Name = 'the worktree removal log'
+            Path = '<MAIN>\.claude\worktrees\worktree-removal.log'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        @{ Name = 'a main-checkout session may still edit main'
+            Path = '<MAIN>\README.md'; Cwd = 'Main'; Action = 'Allow'
+        },
+        @{ Name = 'an unmanaged worktree session is not covered by this rule'
+            Path = '<MAIN>\README.md'; Cwd = 'Unmanaged'; Action = 'Allow'
+        },
+        # docs\superpowers is a directory symlink back to the main checkout, so the resolved path
+        # lands in main even though the path the agent typed sits inside the worktree.
+        @{ Name = 'the plans symlink resolves back into the main checkout'
+            Path = '<MANAGED>\docs\superpowers\x.md'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name = 'a relative path resolves against the session working directory'
+            Path = 'README.md'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        @{ Name = 'a relative path can climb out into the main checkout'
+            Path = '..\..\..\README.md'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name = 'an empty path has nothing to classify'
+            Path = ''; Cwd = 'Managed'; Action = 'Allow'
+        },
+        # A tool call cannot expand '~'. Fail closed rather than guess which home directory.
+        @{ Name = 'a home-relative path fails closed'
+            Path = '~\x.txt'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        # '$', '%' and backtick are legal in a Windows file name, and a tool call carries a literal
+        # path with no shell expansion. Treating one as unexpandable would refuse a real edit
+        # inside the session's own worktree.
+        @{ Name = 'a dollar sign in a file name is not a shell expansion'
+            Path = '<MANAGED>\src\a$b.cs'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        @{ Name = 'a percent sign in a file name is not a shell expansion'
+            Path = '<MANAGED>\src\a%b.cs'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        @{ Name = 'a subdirectory session writes its own worktree root'
+            Path = '<MANAGED>\README.md'; Cwd = 'ManagedSub'; Action = 'Allow'
+        },
+        @{ Name = 'a subdirectory session still cannot write the main checkout'
+            Path = '<MAIN>\x.tmp'; Cwd = 'ManagedSub'; Action = 'Deny'
+        }
+    )
+
+    foreach ($case in $fileEditCases) {
+        Invoke-TestCase "File-edit isolation: $($case.Name)" {
+            $path = $case.Path.
+            Replace('<MANAGED2>', $fixture.Managed2).
+            Replace('<MANAGED>', $fixture.Managed).
+            Replace('<UNRELATED>', $fixture.Unrelated).
+            Replace('<MAIN>', $fixture.Main)
+            $cwd = switch ($case.Cwd) {
+                'Main' { $fixture.Main }
+                'Unmanaged' { $fixture.Unmanaged }
+                'ManagedSub' { Join-Path $fixture.Managed 'scripts' }
+                default { $fixture.Managed }
+            }
+            $decision = Get-AgentFileEditWriteDecision -TargetPath $path `
+                -Cwd $cwd -ProtectedRepoRoot $fixture.Main -AllowMain $false
+            Assert-Equal $case.Action $decision.Action 'Action'
+        }
+    }
+
+    Invoke-TestCase 'File-edit isolation: a denial carries the shared write rule name' {
+        $decision = Get-AgentFileEditWriteDecision -TargetPath (Join-Path $fixture.Main 'README.md') `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'agent-worktree-main-write' $decision.Rule 'Rule'
+        Assert-Match 'cannot write into the main checkout' $decision.Message 'Message'
+    }
+
+    Invoke-TestCase 'File-edit isolation: the plans refusal does not name a worktree copy' {
+        $path = Join-Path $fixture.Managed 'docs\superpowers\x.md'
+        $decision = Get-AgentFileEditWriteDecision -TargetPath $path `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'Deny' $decision.Action 'Action'
+        Assert-Match 'no worktree copy' $decision.Message 'Message'
+        Assert-True ($decision.Message -notmatch 'Edit the worktree copy') 'Must not send the agent looking for a copy'
+    }
+
+    Invoke-TestCase 'File-edit isolation: AHKFLOW_ALLOW_MAIN=1 downgrades to a warning' {
+        $decision = Get-AgentFileEditWriteDecision -TargetPath (Join-Path $fixture.Main 'README.md') `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $true
+        Assert-Equal 'Warn' $decision.Action 'Action'
+        Assert-Match 'AHKFLOW_ALLOW_MAIN=1' $decision.Message 'Message'
+    }
+
     Write-Host 'Bash shim prefilter for worktree writes' -ForegroundColor Cyan
 
     # These three run against the REAL repository identity, like every other shim test above: the
