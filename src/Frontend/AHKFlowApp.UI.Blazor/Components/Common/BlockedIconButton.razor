@@ -1,0 +1,60 @@
+@using MudBlazor
+@inject ISnackbar Snackbar
+
+@* An action that cannot run right now, and must still say why.
+
+   The button is not disabled. MudBlazor sets pointer-events: none on a disabled button, so a
+   disabled button takes no hover, no focus, and no tap. The reason then never reaches a keyboard
+   user or a touch user. aria-disabled keeps the button focusable and clickable, and still tells a
+   screen reader the action is unavailable. OnClick refuses the action and shows the reason.
+
+   The look is not free. MudBlazor hangs its disabled styling off the :disabled selector, so
+   .blocked-action in wwwroot/css/app.css repeats it, without the pointer-events rule. *@
+<MudTooltip Text="@Reason" Class="blocked-action-text" UserAttributes="@TooltipAttributes()">
+    <MudIconButton Icon="@Icon" Class="@ButtonClass" Ripple="false"
+                   OnClick="Explain" UserAttributes="@ButtonAttributes()" />
+</MudTooltip>
+@* The reason is a description, not part of the button's name. MudTooltip 9.3.0 sets no
+   aria-describedby of its own, and its text only reaches the DOM once the popover opens. *@
+<span id="@_reasonId" class="mud-sr-only">@Reason</span>
+
+@code {
+    /// <summary>The icon shown on the button.</summary>
+    [Parameter, EditorRequired] public string Icon { get; set; } = default!;
+
+    /// <summary>Why the action cannot run. One short sentence.</summary>
+    [Parameter, EditorRequired] public string Reason { get; set; } = default!;
+
+    /// <summary>The action's name, without the reason. The button shows an icon and no text.</summary>
+    [Parameter, EditorRequired] public string AriaLabel { get; set; } = default!;
+
+    /// <summary>Extra CSS classes for the button, so a page keeps its own test selector.</summary>
+    [Parameter] public string? Class { get; set; }
+
+    private string _reasonId = default!;
+
+    // Generated once. A new id on every render would break aria-describedby mid-read.
+    protected override void OnInitialized() => _reasonId = $"blocked-reason-{Guid.NewGuid():N}";
+
+    private string ButtonClass => $"blocked-action {Class}".TrimEnd();
+
+    private static Dictionary<string, object?> TooltipAttributes() => new()
+    {
+        ["data-test"] = "blocked-action",
+    };
+
+    // MudIconButton has no AriaLabel parameter, so these reach the button as plain attributes
+    // through MudComponentBase's UserAttributes.
+    //
+    // There is no free-form attribute parameter on purpose. A caller that could pass
+    // aria-disabled="false", or its own aria-describedby, would undo the one guarantee this
+    // component exists to give. A page that needs a data-* hook gets a named parameter here.
+    private Dictionary<string, object?> ButtonAttributes() => new()
+    {
+        ["aria-label"] = AriaLabel,
+        ["aria-disabled"] = "true",
+        ["aria-describedby"] = _reasonId,
+    };
+
+    private void Explain() => Snackbar.Add(Reason, Severity.Info);
+}
