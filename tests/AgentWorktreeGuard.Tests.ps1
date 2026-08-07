@@ -2004,6 +2004,85 @@ try {
         Assert-Match 'AHKFLOW_ALLOW_MAIN=1' $decision.Message 'Message'
     }
 
+    # The entrypoint derives the protected repository from its own location, so a fixture path
+    # would classify as OutsideProtectedRepository and prove nothing. These cases need a real
+    # managed worktree of this repository. There may be none, so they report that instead of
+    # passing silently.
+    function Get-RealManagedWorktree {
+        $approved = (Join-Path $script:RealMainCheckout '.claude\worktrees').ToLowerInvariant()
+        $lines = @((& git -C $script:RealMainCheckout worktree list --porcelain) -split "`r?`n")
+        foreach ($line in $lines) {
+            if ($line -notlike 'worktree *') { continue }
+            $candidate = $line.Substring('worktree '.Length).Replace('/', '\')
+            if (-not (Test-Path -LiteralPath $candidate)) { continue }
+            $parent = (Split-Path -Parent $candidate).ToLowerInvariant()
+            if ($parent -ne $approved) { continue }
+            if (-not (Test-Path -LiteralPath (Join-Path $candidate 'scripts\.env.worktree'))) { continue }
+            return (Resolve-Path -LiteralPath $candidate).Path
+        }
+        return ''
+    }
+
+    $script:RealManagedWorktree = Get-RealManagedWorktree
+    $script:NoWorktreeMessage = 'This repository has no managed worktree, so the entrypoint cases cannot run. Create one with scripts/new-worktree.ps1.'
+
+    foreach ($toolName in @('Edit', 'Write', 'NotebookEdit')) {
+        Invoke-TestCase "Entrypoint: $toolName into the main checkout is denied" {
+            Assert-True (-not [string]::IsNullOrWhiteSpace($script:RealManagedWorktree)) $script:NoWorktreeMessage
+            $target = Join-Path $script:RealMainCheckout 'README.md'
+            $result = Invoke-Entrypoint -Adapter 'Claude' `
+                -StdIn (New-ClaudeEditPayload $toolName $target $script:RealManagedWorktree)
+            Assert-Equal 2 $result.ExitCode 'ExitCode'
+            Assert-Match 'cannot write into the main checkout' $result.StdErr 'StdErr'
+        }
+    }
+
+    Invoke-TestCase 'Entrypoint: an edit inside the session worktree is allowed' {
+        Assert-True (-not [string]::IsNullOrWhiteSpace($script:RealManagedWorktree)) $script:NoWorktreeMessage
+        $target = Join-Path $script:RealManagedWorktree 'README.md'
+        $result = Invoke-Entrypoint -Adapter 'Claude' `
+            -StdIn (New-ClaudeEditPayload 'Edit' $target $script:RealManagedWorktree)
+        Assert-Equal 0 $result.ExitCode 'ExitCode'
+        Assert-Equal '' $result.StdOut.Trim() 'Must produce no decision payload'
+    }
+
+    Invoke-TestCase 'Entrypoint: a main-checkout session may still edit the main checkout' {
+        $target = Join-Path $script:RealMainCheckout 'README.md'
+        $result = Invoke-Entrypoint -Adapter 'Claude' `
+            -StdIn (New-ClaudeEditPayload 'Edit' $target $script:RealMainCheckout)
+        Assert-Equal 0 $result.ExitCode 'ExitCode'
+    }
+
+    Invoke-TestCase 'Entrypoint: AHKFLOW_ALLOW_MAIN=1 warns instead of denying an edit' {
+        Assert-True (-not [string]::IsNullOrWhiteSpace($script:RealManagedWorktree)) $script:NoWorktreeMessage
+        $target = Join-Path $script:RealMainCheckout 'README.md'
+        $result = Invoke-Entrypoint -Adapter 'Claude' `
+            -StdIn (New-ClaudeEditPayload 'Edit' $target $script:RealManagedWorktree) `
+            -EnvironmentOverrides @{ AHKFLOW_ALLOW_MAIN = '1' }
+        Assert-Equal 0 $result.ExitCode 'ExitCode'
+        Assert-Match 'AHKFLOW_ALLOW_MAIN=1 overrode' $result.StdErr 'StdErr'
+    }
+
+    Invoke-TestCase 'Entrypoint: AHKFLOW_GUARD_DISABLE=1 skips the file-edit rule too' {
+        Assert-True (-not [string]::IsNullOrWhiteSpace($script:RealManagedWorktree)) $script:NoWorktreeMessage
+        $target = Join-Path $script:RealMainCheckout 'README.md'
+        $result = Invoke-Entrypoint -Adapter 'Claude' `
+            -StdIn (New-ClaudeEditPayload 'Edit' $target $script:RealManagedWorktree) `
+            -EnvironmentOverrides @{ AHKFLOW_GUARD_DISABLE = '1' }
+        Assert-Equal 0 $result.ExitCode 'ExitCode'
+    }
+
+    foreach ($adapter in @('Codex', 'Copilot')) {
+        Invoke-TestCase "Entrypoint: $adapter file-edit calls stay out of scope" {
+            Assert-True (-not [string]::IsNullOrWhiteSpace($script:RealManagedWorktree)) $script:NoWorktreeMessage
+            $target = Join-Path $script:RealMainCheckout 'README.md'
+            $result = Invoke-Entrypoint -Adapter $adapter `
+                -StdIn (New-ClaudeEditPayload 'Edit' $target $script:RealManagedWorktree)
+            Assert-Equal 0 $result.ExitCode 'ExitCode'
+            Assert-Equal '' $result.StdOut.Trim() 'Must produce no decision payload'
+        }
+    }
+
     Write-Host 'Bash shim prefilter for worktree writes' -ForegroundColor Cyan
 
     # These three run against the REAL repository identity, like every other shim test above: the
