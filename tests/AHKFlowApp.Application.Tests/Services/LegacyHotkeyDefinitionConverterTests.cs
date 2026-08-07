@@ -1,4 +1,5 @@
 using AHKFlowApp.Application.Services;
+using AHKFlowApp.Domain.Enums;
 using AHKFlowApp.TestUtilities.Fixtures;
 using FluentAssertions;
 using Xunit;
@@ -28,5 +29,19 @@ public sealed class LegacyHotkeyDefinitionConverterTests
         foreach (LegacyHotkeyFixture f in LegacyHotkeyFixtures.All)
             data.Add(f);
         return data;
+    }
+
+    // The other half of the divergence ADR 0004 records. The live converter resolves LControl
+    // through the alias map, so a legacy history snapshot restores as SendKeys where the migrated
+    // row stays Raw. Both halves are pinned, so neither side can move unnoticed.
+    [Fact]
+    public void ToTyped_SpellingAddedAfterMigrationA_IsSendKeys()
+    {
+        LegacyHotkeyDefinitionConverter.TypedAction typed = LegacyHotkeyDefinitionConverter.ToTyped(
+            LegacyHotkeyDefinitionConverter.HotkeyAction.Send, "{LControl}");
+
+        typed.ActionKind.Should().Be(HotkeyActionKind.SendKeys);
+        typed.SendKeysContent.Should().Be("{LControl}");
+        typed.Body.Should().BeNull();
     }
 }

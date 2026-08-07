@@ -282,6 +282,34 @@ public sealed class ShortcutWarningFlowTests(StackFixture fixture) : IAsyncLifet
         await page.WaitForSelectorAsync("text=Hotkey created.");
     }
 
+    // AutoHotkey spells one key two ways. The template says LControl, the row says LCtrl, and the
+    // warning has to see them as the same key. Both sides canonicalize through the key registry.
+    [Fact]
+    public async Task AHotkeyOnAKeyTheHeaderSpellsDifferently_IsWarnedAbout()
+    {
+        await using IBrowserContext context = await fixture.Browser.NewContextAsync();
+        IPage page = await context.NewPageAsync();
+
+        await page.GotoAsync($"{fixture.Spa.BaseUrl}/profiles");
+        await page.WaitForSelectorAsync("button.start-edit");
+        await page.ClickAsync("button.start-edit");
+        await page.WaitForSelectorAsync("textarea[data-test=\"profile-header-input\"]");
+        await page.FillAsync("textarea[data-test=\"profile-header-input\"]",
+            "#Requires AutoHotkey v2.0\n\n*LControl::\n{\n    Send \"{Blind}{LAlt DownR}\"\n}");
+        await page.ClickAsync("button.commit-edit");
+        await page.WaitForSelectorAsync("text=Profile updated.");
+
+        await OpenCreateDialogAsync(page);
+        await CommitKeyAsync(page, "LCtrl");
+        await page.CheckAsync(".hotkey-edit-dialog input[data-test=\"applies-to-all-checkbox\"]");
+
+        await page.WaitForSelectorAsync(".hotkey-edit-dialog [data-test=\"template-warning\"]");
+        string warning = await page.InnerTextAsync(".hotkey-edit-dialog [data-test=\"template-warning\"]");
+
+        Assert.Contains("also uses LCtrl", warning, StringComparison.Ordinal);
+        Assert.Contains("Your hotkey may not fire.", warning, StringComparison.Ordinal);
+    }
+
     // The table holds a row per use, over a hundred of them, and pages at 25. Every row this file
     // acts on is addressed through the search box, never by paging to it.
     private async Task OpenKnownShortcutsAsync(IPage page, string? search = null)

@@ -793,4 +793,34 @@ public sealed class HotkeysEndpointsTests(ApiTestFixture fixture)
 
         second.StatusCode.Should().Be(HttpStatusCode.Conflict);
     }
+
+    // AutoHotkey spells each side-specific control key two ways. Both reach the boundary, and the
+    // row stores the canonical one. Driven over HTTP on purpose: the validator that rejects an
+    // unknown key runs in the ValidatingUseCase decorator, which a handler test never reaches.
+    [Theory]
+    [InlineData("LControl", "LCtrl")]
+    [InlineData("RControl", "RCtrl")]
+    public async Task PostThenPut_SideSpecificControlAlias_PersistsCanonicalSpelling(
+        string alias, string canonical)
+    {
+        using HttpClient client = CreateAuthed();
+
+        HttpResponseMessage created =
+            await client.PostAsJsonAsync("/api/v1/hotkeys", NewHotkey("Alias create", alias));
+
+        created.StatusCode.Should().Be(HttpStatusCode.Created);
+        HotkeyDto? body = await created.Content.ReadFromJsonAsync<HotkeyDto>();
+        body!.Key.Should().Be(canonical);
+
+        // The update path canonicalizes through the same map, so send the alias again and change
+        // one other field, making this a real update rather than a no-op.
+        HttpResponseMessage put = await client.PutAsJsonAsync(
+            $"/api/v1/hotkeys/{body.Id}", EditHotkey("Alias update", alias, ctrl: false));
+
+        put.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        HotkeyDto readBack = (await client.GetFromJsonAsync<HotkeyDto>($"/api/v1/hotkeys/{body.Id}"))!;
+        readBack.Key.Should().Be(canonical);
+        readBack.Description.Should().Be("Alias update");
+    }
 }

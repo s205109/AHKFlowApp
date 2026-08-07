@@ -118,6 +118,8 @@ internal static class HotkeyKeys
         ["PageUp"] = "PgUp",
         ["PageDown"] = "PgDn",
         ["Control"] = "Ctrl",
+        ["LControl"] = "LCtrl",
+        ["RControl"] = "RCtrl",
         ["Windows"] = "LWin",
         ["Win"] = "LWin",
     };
@@ -133,8 +135,9 @@ internal static class HotkeyKeys
     /// Accepted non-canonical spellings, keyed by alias (<c>Esc</c> → <c>Escape</c>), each
     /// mapped to the entry it resolves to. Exposed so the key picker can treat an aliased legacy
     /// value (<c>Esc</c>) as valid rather than demoting the row to the dialog with an error on a
-    /// key AutoHotkey accepts, and read by the Migration A name-list generator, which must accept
-    /// every spelling <see cref="TryCanonicalize"/> resolves — the migration itself never canonicalizes.
+    /// key AutoHotkey accepts. The Migration A name-list generator read this map once, when that
+    /// migration was written; the list it produced is frozen in the migration and cannot gain an
+    /// alias added later. See ADR 0004, "Adding a key spelling after Migration A".
     /// </summary>
     public static IReadOnlyDictionary<string, string> Aliases => s_aliases;
 

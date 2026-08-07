@@ -29,10 +29,41 @@ public sealed record LegacyHotkeyFixture(
 /// catalog's Reload / paste / date rows are now typed (<c>Raw</c>) and no longer feed this set, but
 /// real databases and snapshots still hold their legacy inputs (<c>run-not-a-path</c>,
 /// <c>send-ctrl-v</c>, <c>send-macro-leak</c>), so the cases stay to guard the transform regardless.
-/// Mirrors <c>ScriptToRawFixtures</c>.
+/// Mirrors <c>ScriptToRawFixtures</c>. The guard is not total: spellings named in
+/// <c>s_spellingsAddedAfterMigrationA</c> are left out, because the applied migration cannot learn
+/// a name. See that field's remarks.
 /// </summary>
 public static class LegacyHotkeyFixtures
 {
+    /// <summary>
+    /// Spellings <c>HotkeyKeys</c> accepts today that the frozen migration classifier never knew,
+    /// because they were added after <c>20260722105522_HotkeyTypedActions</c> shipped. No fixture is
+    /// generated for them. That migration's name list cannot gain a name after the fact: rows are
+    /// already back-filled with the classification it made.
+    /// <para>
+    /// This is an additions allow-list, not a snapshot of what the migration knew. The loops below
+    /// still read the live registry, so a spelling the migration knew that is later removed, or that
+    /// loses its <see cref="HotkeyKeyRoles.SendToken"/> role, silently loses its fixture too. Catching
+    /// that would need a pasted baseline list, which this set is not.
+    /// </para>
+    /// <para>
+    /// The accepted cost is a split, pinned by two tests:
+    /// <c>HotkeyTypedActionsMigrationTests.Migration_SpellingAddedAfterItShipped_StaysRaw</c> and
+    /// <c>LegacyHotkeyDefinitionConverterTests.ToTyped_SpellingAddedAfterMigrationA_IsSendKeys</c>.
+    /// See ADR 0004, "Adding a key spelling after Migration A".
+    /// </para>
+    /// <para>
+    /// A spelling that is not listed here still gets a fixture, so the parity test still fails
+    /// loudly for the next one. That failure is the signal to make this same decision again, not a
+    /// reason to edit the migration.
+    /// </para>
+    /// </summary>
+    private static readonly HashSet<string> s_spellingsAddedAfterMigrationA =
+        new(StringComparer.OrdinalIgnoreCase) { "LControl", "RControl" };
+
+    private static bool KnownToMigrationA(string spelling) =>
+        !s_spellingsAddedAfterMigrationA.Contains(spelling);
+
     public static IReadOnlyList<LegacyHotkeyFixture> All { get; } = Build();
 
     /// <summary>A lone C1 control character (U+0085), written as an escape so the source file
@@ -134,7 +165,8 @@ public static class LegacyHotkeyFixtures
             $"Send(\"{AhkEscaping.EscapeStringLiteral(parameters)}\")");
     }
 
-    // Every spelling the C# grammar accepts — not only `HotkeyKeys.All`. `IsValidSendKeysContent`
+    // Every spelling the C# grammar accepts, minus the ones named in
+    // s_spellingsAddedAfterMigrationA — not only `HotkeyKeys.All`. `IsValidSendKeysContent`
     // defers to `TryCanonicalize`, which also resolves aliases (Esc → Escape) and vk/sc codes, and
     // its bare branch takes any single printable character. The migration's frozen SQL classifier
     // must mirror all of that: a spelling accepted by one side and not the other silently splits
@@ -143,7 +175,8 @@ public static class LegacyHotkeyFixtures
     {
         // Braced registry names, bare and modified. Not filtered on RequiresBracesInSend: `{a}` is
         // braced-legal too, and the SQL name list must therefore carry the letters and digits.
-        foreach (HotkeyKeyEntry e in HotkeyKeys.All.Where(e => e.Roles.HasFlag(HotkeyKeyRoles.SendToken)))
+        foreach (HotkeyKeyEntry e in HotkeyKeys.All.Where(e =>
+                     e.Roles.HasFlag(HotkeyKeyRoles.SendToken) && KnownToMigrationA(e.Canonical)))
         {
             yield return SendKeysCase($"{{{e.Canonical}}}");
             yield return SendKeysCase($"^{{{e.Canonical}}}");
@@ -151,7 +184,9 @@ public static class LegacyHotkeyFixtures
 
         // The unbraced half of the same entries — the C# bare-character branch.
         foreach (HotkeyKeyEntry e in HotkeyKeys.All.Where(e =>
-                     e.Roles.HasFlag(HotkeyKeyRoles.SendToken) && !e.RequiresBracesInSend))
+                     e.Roles.HasFlag(HotkeyKeyRoles.SendToken)
+                     && !e.RequiresBracesInSend
+                     && KnownToMigrationA(e.Canonical)))
         {
             yield return SendKeysCase(e.Canonical);
         }
@@ -159,7 +194,8 @@ public static class LegacyHotkeyFixtures
         // Alias spellings resolve to a canonical entry, so {Esc} is SendKeys — the SQL list must
         // hold the alias itself, since the migration never canonicalizes.
         foreach (string alias in HotkeyKeys.Aliases
-                     .Where(kv => HotkeyKeys.HotkeyKeyEntryByCanonical(kv.Value).Roles.HasFlag(HotkeyKeyRoles.SendToken))
+                     .Where(kv => HotkeyKeys.HotkeyKeyEntryByCanonical(kv.Value).Roles.HasFlag(HotkeyKeyRoles.SendToken)
+                                  && KnownToMigrationA(kv.Key))
                      .Select(kv => kv.Key))
         {
             yield return SendKeysCase($"{{{alias}}}");

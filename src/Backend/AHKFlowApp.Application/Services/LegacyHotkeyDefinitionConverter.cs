@@ -9,7 +9,9 @@ namespace AHKFlowApp.Application.Services;
 /// free <c>Parameters</c>) into the
 /// typed W1 columns. The single C# home of the transform, shared by the write paths (expand phase)
 /// and history restore/revert. The EF data migration hand-writes the same logic in T-SQL; a
-/// Testcontainers parity test proves the two agree. Mirrors <c>ScriptToRawComposer</c>.
+/// Testcontainers parity test proves the two agree on every spelling that migration knew. Key
+/// spellings added to <c>HotkeyKeys</c> afterwards are the documented exception — see ADR 0004,
+/// "Adding a key spelling after Migration A". Mirrors <c>ScriptToRawComposer</c>.
 /// </summary>
 /// <remarks>
 /// Rules (spec §8): <c>Run</c> → <see cref="HotkeyActionKind.Run"/> with <c>RunTarget = Parameters</c>

@@ -1,4 +1,5 @@
 using AHKFlowApp.Application.Services;
+using AHKFlowApp.Domain.Enums;
 using AHKFlowApp.Infrastructure.Persistence;
 using AHKFlowApp.TestUtilities.Fixtures;
 using FluentAssertions;
@@ -19,10 +20,12 @@ namespace AHKFlowApp.Infrastructure.Tests.Migrations;
 public sealed class HotkeyTypedActionsMigrationTests(SqlContainerFixture sqlFixture)
 {
     private const string DbName = "HotkeyTypedActions_Parity";
+    private const string DivergenceDbName = "HotkeyTypedActions_Divergence";
 
-    private AppDbContext CreateContext()
+    // Each fact migrates from scratch, so each needs its own database.
+    private AppDbContext CreateContext(string dbName = DbName)
     {
-        SqlConnectionStringBuilder csb = new(sqlFixture.ConnectionString) { InitialCatalog = DbName };
+        SqlConnectionStringBuilder csb = new(sqlFixture.ConnectionString) { InitialCatalog = dbName };
 
         DbContextOptions<AppDbContext> options = new DbContextOptionsBuilder<AppDbContext>()
             .UseSqlServer(csb.ConnectionString, sql => sql.EnableRetryOnFailure())
@@ -84,5 +87,46 @@ public sealed class HotkeyTypedActionsMigrationTests(SqlContainerFixture sqlFixt
             row.RemapDest.Should().Be(expected.RemapDest, "fixture '{0}'", f.Name);
             row.Body.Should().Be(expected.Body, "fixture '{0}'", f.Name);
         }
+    }
+
+    // LControl was added to HotkeyKeys after this migration shipped, so its frozen name list does
+    // not hold it and LegacyHotkeyFixtures skips it. The parity test therefore never seeds this
+    // value. Pin what the migration actually does with it, so the divergence ADR 0004 records is a
+    // tested decision rather than an untested paragraph.
+    [Fact]
+    public async Task Migration_SpellingAddedAfterItShipped_StaysRaw()
+    {
+        var id = Guid.NewGuid();
+
+        await using (AppDbContext setup = CreateContext(DivergenceDbName))
+        {
+            IMigrator migrator = ((IInfrastructure<IServiceProvider>)setup).Instance.GetRequiredService<IMigrator>();
+            await migrator.MigrateAsync("AddHotstringDelivery");
+
+            // Legacy Action: Send = 0, Run = 1. Parameters is a SQL parameter, not embedded in the
+            // literal text — ExecuteSqlRawAsync treats the raw SQL as a composite format string, and
+            // a literal '{LControl}' in the text would be misread as a format placeholder.
+            await setup.Database.ExecuteSqlRawAsync(
+                """
+                INSERT INTO Hotkeys
+                    (Id, OwnerOid, Description, [Key], Ctrl, Alt, Shift, Win,
+                     Action, Parameters, AppliesToAllProfiles, CreatedAt, UpdatedAt)
+                VALUES
+                    (@id, @owner, 'legacy LControl', 'a', 0, 0, 0, 0,
+                     0, @params, 1, SYSDATETIMEOFFSET(), SYSDATETIMEOFFSET());
+                """,
+                new SqlParameter("@id", id),
+                new SqlParameter("@owner", Guid.NewGuid()),
+                new SqlParameter("@params", "{LControl}"));
+
+            await setup.Database.MigrateAsync();
+        }
+
+        await using AppDbContext verify = CreateContext(DivergenceDbName);
+        Domain.Entities.Hotkey row = await verify.Hotkeys.AsNoTracking().SingleAsync(h => h.Id == id);
+
+        row.ActionKind.Should().Be(HotkeyActionKind.Raw);
+        row.Body.Should().Be("""Send("{LControl}")""");
+        row.SendKeysContent.Should().BeNull();
     }
 }
