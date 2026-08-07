@@ -395,6 +395,19 @@ function New-GuardFixture {
             'Enable Windows Developer Mode, then re-run. See docs/development/prerequisites.md.')
     }
 
+    # A FILE symlink with a RELATIVE target, inside the worktree, pointing at the main checkout.
+    # Windows resolves such a target against the directory holding the link. This repository
+    # already tracks one of these at .github\AGENTS.md, so it is not a theoretical shape.
+    Push-Location $managedRoot
+    try { cmd /c mklink 'relative-link.md' '..\..\..\seed.txt' > $null 2>&1 }
+    finally { Pop-Location }
+
+    $relativeLink = Join-Path $managedRoot 'relative-link.md'
+    if (-not (Test-Path -LiteralPath $relativeLink)) {
+        throw ('Could not create the relative file symlink the guard tests require. ' +
+            'Enable Windows Developer Mode, then re-run. See docs/development/prerequisites.md.')
+    }
+
     # badManifest sits in an approved parent but its manifest port disagrees with its URL.
     $badRoot = (Resolve-Path -LiteralPath $badManifest).Path
     New-Item -ItemType Directory -Path (Join-Path $badRoot 'scripts') -Force | Out-Null
@@ -1788,6 +1801,41 @@ try {
         Assert-Equal (Join-Path $fixture.Main 'x.tmp') $resolution.Path 'Path'
     }
 
+    # A symlink target may be relative, and Windows resolves it against the directory holding the
+    # link. Resolving it against the hook process's working directory instead classified the wrong
+    # file, and a link that is the LAST path component indexed past the end of the split array.
+    Invoke-TestCase 'Resolution: a relative file symlink resolves against the link parent' {
+        $link = Join-Path $fixture.Managed 'relative-link.md'
+        Assert-Equal (Join-Path $fixture.Main 'seed.txt') (Resolve-AgentSymlinkPath -Path $link) 'Resolved path'
+    }
+
+    Invoke-TestCase 'Resolution: a relative file symlink is classified in the main checkout' {
+        $link = Join-Path $fixture.Managed 'relative-link.md'
+        $resolution = Get-AgentWriteTargetResolution -Target $link -BaseDirectory $fixture.Managed -Literal
+        Assert-True (-not $resolution.Unresolved) 'Must resolve'
+        Assert-Equal (Join-Path $fixture.Main 'seed.txt') $resolution.Path 'Path'
+    }
+
+    # -Literal must classify the exact path the tool will open. A quote and a leading or trailing
+    # space are legal Windows file name characters, so stripping them names a different file.
+    Invoke-TestCase 'Resolution: -Literal keeps a leading quote in the path' {
+        $resolution = Get-AgentWriteTargetResolution -Target "'\..\..\..\q.tmp" `
+            -BaseDirectory $fixture.Managed -Literal
+        Assert-True (-not $resolution.Unresolved) 'Must resolve'
+        Assert-Equal (Join-Path $fixture.Main '.claude\q.tmp') $resolution.Path 'Path'
+    }
+
+    Invoke-TestCase 'Resolution: -Literal keeps surrounding quotes in a file name' {
+        $resolution = Get-AgentWriteTargetResolution -Target '"quoted.cs"' `
+            -BaseDirectory $fixture.Managed -Literal
+        Assert-Equal (Join-Path $fixture.Managed '"quoted.cs"') $resolution.Path 'Path'
+    }
+
+    Invoke-TestCase 'Resolution: a command-line target still has its quoting stripped' {
+        $resolution = Get-AgentWriteTargetResolution -Target '"quoted.cs"' -BaseDirectory $fixture.Managed
+        Assert-Equal (Join-Path $fixture.Managed 'quoted.cs') $resolution.Path 'Path'
+    }
+
     $unresolvedCases = @('$MAIN_ROOT/x.tmp', '%USERPROFILE%\x.tmp', '~/x.tmp')
     foreach ($case in $unresolvedCases) {
         Invoke-TestCase "Resolution: unexpandable leading component is unresolved: $case" {
@@ -2047,6 +2095,16 @@ try {
         },
         @{ Name = 'a subdirectory session still cannot write the main checkout'
             Path = '<MAIN>\x.tmp'; Cwd = 'ManagedSub'; Action = 'Deny'
+        },
+        # A file symlink inside the worktree whose relative target climbs into the main checkout.
+        # Edit and Write follow the link, so the classification has to follow it too.
+        @{ Name = 'a relative file symlink into the main checkout'
+            Path = '<MANAGED>\relative-link.md'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        # A leading quote is a legal Windows file name character. Stripping it turned this path
+        # into a drive-rooted one outside the checkout, and the write was allowed.
+        @{ Name = 'a leading quote does not turn a parent escape into a rooted path'
+            Path = "'\..\..\..\q.tmp"; Cwd = 'Managed'; Action = 'Deny'
         }
     )
 

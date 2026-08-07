@@ -1546,6 +1546,10 @@ Replaces every reparse point in a path with its target, walking from the root do
 Windows PowerShell 5.1 has no ResolveLinkTarget, so this uses (Get-Item -Force).Target, which
 both supported hosts provide. 5.1 types that property as string[] and pwsh 7 as string, so the
 array form is normalized. The iteration cap stops a symlink cycle from hanging the hook.
+
+A relative target is anchored to the directory holding the link, which is how Windows resolves
+one. Anchoring it to the process working directory instead classified the wrong file, and a
+worktree link pointing at `..\..\..\README.md` then looked like a path outside the checkout.
 #>
 function Resolve-AgentSymlinkPath {
     [CmdletBinding()]
@@ -1575,9 +1579,30 @@ function Resolve-AgentSymlinkPath {
             if ($target -is [array]) { $target = $target[0] }
             if ([string]::IsNullOrWhiteSpace($target)) { continue }
 
-            $remainder = @($parts[($i + 1)..($parts.Count - 1)]) | Where-Object { $_ }
+            # A link that IS the last component has no remainder. Taking the slice anyway asks
+            # for index $parts.Count, which strict mode rejects outright and which otherwise
+            # produces a DESCENDING range that hands back the leaf a second time.
+            $remainder = @()
+            if ($i + 1 -le $parts.Count - 1) {
+                $remainder = @($parts[($i + 1)..($parts.Count - 1)]) | Where-Object { $_ }
+            }
+
+            # A symlink target may be relative. Windows resolves it against the directory holding
+            # the link, never against the process working directory. Anchoring it here is what
+            # keeps `..\..\..\README.md` inside a worktree from classifying as outside the
+            # protected checkout. The repository tracks such a link at .github\AGENTS.md.
+            if (-not [System.IO.Path]::IsPathRooted($target)) {
+                $linkParent = Split-Path -Parent $accumulated
+                if (-not [string]::IsNullOrWhiteSpace($linkParent)) {
+                    $target = Join-Path $linkParent $target
+                }
+            }
+
             $result = $target
             foreach ($piece in $remainder) { $result = Join-Path $result $piece }
+            # Collapse the '..' segments the substitution just introduced, so the next pass walks
+            # a real path. GetFullPath is lexical; it does not touch the filesystem.
+            try { $result = [System.IO.Path]::GetFullPath($result) } catch { }
             $changed = $true
             break
         }
@@ -1604,7 +1629,9 @@ Mirrors the precedent at Get-AgentCommandSegment, where a cd target matching [\$
 following git mutation untargetable rather than guessing where it lands.
 
 Pass -Literal for a path that came from a tool call rather than a command line. That skips the
-shell-expansion rule only. Rooting, `..` collapsing, and symlink resolution are unchanged.
+shell-expansion rule, and it keeps the target byte for byte: no quote stripping and no whitespace
+trimming, because those are legal Windows file name characters and the tool will open the path
+exactly as given. Rooting, `..` collapsing, and symlink resolution are unchanged.
 #>
 function Get-AgentWriteTargetResolution {
     [CmdletBinding()]
@@ -1614,7 +1641,12 @@ function Get-AgentWriteTargetResolution {
         return [pscustomobject]@{ Path = ''; Unresolved = $true }
     }
 
-    $trimmed = $Target.Trim().Trim('"', "'")
+    # A command-line target still carries the shell's quoting, so quotes and outer whitespace are
+    # stripped off it. A tool call carries the path exactly as the tool will open it, and a quote
+    # or a leading space is a legal Windows file name character. Stripping there classified a
+    # different file: "'\..\..\..\q.tmp" became the drive-rooted "\..\..\..\q.tmp", which lands
+    # outside the checkout and was allowed.
+    $trimmed = if ($Literal) { $Target } else { $Target.Trim().Trim('"', "'") }
     if ($trimmed.StartsWith('~')) {
         return [pscustomobject]@{ Path = ''; Unresolved = $true }
     }
