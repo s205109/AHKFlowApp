@@ -261,6 +261,7 @@ Branch naming: `feature/NNN-short-description`, `fix/short-description`, `hotfix
 Branches created in agent git worktrees insert `wt-` after the type prefix: `fix/wt-<topic>`, `feature/wt-NNN-<topic>` — marks worktree-born branches for grepping/cleanup.
 Conventional commits: `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:` — body explains "why", not "what".
 Atomic commits: one logical change per commit; feature + its tests = one commit. Don't bundle unrelated changes.
+Filing a `backlog/` item: run `pwsh ./scripts/new-backlog-item.ps1 -Title "..."`. It works out the next free number and writes the file from the template. Never pick a number by hand — two items have already ended up sharing one. CI fails when two files share a number.
 Finishing a `backlog/` item: tick its acceptance boxes **and** `git mv` the file into `backlog/done/` in the same PR that does the work. Merging that PR is what completes the item, so the move belongs there. Never open a separate PR just to mark an item done.
 Never force-push to main/master. Run the canonical pre-PR gate before creating a PR — [`docs/development/testing-workflow.md`](docs/development/testing-workflow.md#canonical-pre-pr-gate).
 Keep PRs focused on a single concern; split large changes into stacked PRs.
