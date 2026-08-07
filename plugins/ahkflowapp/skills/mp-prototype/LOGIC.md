@@ -75,9 +75,12 @@ translation does not.
 PowerShell:
 
 ```powershell
-Start-Process python -ArgumentList '-m','http.server','8899' -WorkingDirectory <folder> -WindowStyle Hidden
+Start-Process python -ArgumentList '-m','http.server','8899','--bind','127.0.0.1' -WorkingDirectory <folder> -WindowStyle Hidden
 playwright-cli goto http://localhost:8899/<file>.html
 ```
+
+`--bind 127.0.0.1` keeps the server on loopback. Without it `http.server` listens on every network
+interface, so anyone on the same network could read every file in `<folder>`.
 
 Stop the server when you are done. A human opening the file by double-click is unaffected — this
 limit applies only to the browser automation.
