@@ -43,12 +43,12 @@ shell, with no Claude Code worktree tool involved.
 
 ## Acceptance criteria
 
-- [ ] A worktree whose branch has no commits of its own is never swept, whatever the cleanup
+- [x] A worktree whose branch has no commits of its own is never swept, whatever the cleanup
       setting says
-- [ ] Two freshly created worktrees can exist at the same time
-- [ ] A worktree whose branch really was merged into `main` is still swept, so the feature keeps
+- [x] Two freshly created worktrees can exist at the same time
+- [x] A worktree whose branch really was merged into `main` is still swept, so the feature keeps
       working
-- [ ] A test in `tests/WorktreeMergedCleanup.Tests.ps1` covers the empty-branch case
+- [x] A test in `tests/WorktreeMergedCleanup.Tests.ps1` covers the empty-branch case
 
 ## Out of scope
 
@@ -60,9 +60,27 @@ shell, with no Claude Code worktree tool involved.
 
 ## Notes / dependencies
 
-- Likely fix: add a "has its own commits" test beside the merged test, for example
-  `git rev-list --count main..<branch>` returning 0 means unstarted, so skip it. An unstarted
-  worktree is not finished work
-- A second option is to sweep only branches with a merged pull request. That is a bigger change and
-  needs network access, so weigh it before choosing
 - Found while creating worktrees for backlog 057 and backlog 053
+
+### Rejected approaches
+
+- `git rev-list --count main..<branch>` returning 0, proposed here as the likely fix. That count is
+  0 for a merged branch too, so it would have switched the sweep off completely
+- Counting ref-log entries. An untouched worktree that ran `git merge --ff-only main` has two
+  entries, exactly like finished work
+- Matching ref-log subjects on their own. `GIT_REFLOG_ACTION` and `git update-ref -m` let a caller
+  write a `commit:` subject for an operation that created no commit
+
+### How it was fixed
+
+- Removal now needs one ref-log entry to prove both halves at once: the subject starts with
+  `commit` AND the commit that entry points at is a non-first parent of a merge commit in `main`.
+  Each half covers the other's blind spot, and anything unproven keeps the worktree
+- The halves must correlate. Read from different entries, a branch created with `-BaseRef` supplies
+  the structural half from its `branch: Created from` entry and a forged subject supplies the other,
+  so an unstarted stacked worktree would be deleted
+- The check reads the branch's whole ref-log history. Checking only the current tip broke the third
+  acceptance criterion: a finished worktree that ran `git merge --ff-only main` moved its tip onto
+  the merge commit and stopped being swept
+- Sweeping only branches with a merged pull request, the second option listed above, was not
+  needed. The merge-commit shape gives the same evidence locally, with no network access

@@ -71,6 +71,31 @@ worktree currently being created or reused is always excluded from the sweep. Re
 reuses `remove-worktree-local-dev.ps1` (`git branch -d`, DB drop, Docker teardown,
 lock-safe folder delete) and is logged to `.claude\worktrees\worktree-removal.log`.
 
+A worktree whose branch has never been committed to is never removed either, not even with
+`-Cleanup`. Its branch points at the same commit as `main`, so `git branch --merged main` lists
+it from the moment it exists. So two brand-new worktrees can exist side by side, and so can one
+that caught up with `main` by fast-forward. Closing a worktree yourself still removes it — this
+rule governs the automatic sweep only.
+
+The sweep removes a worktree only when one ref-log entry proves both halves at once: the entry's
+subject starts with `commit`, **and** the commit that entry points at is a non-first parent of a
+merge commit in `main` — the shape a GitHub "Merge pull request" leaves behind. Neither half is
+trusted alone. Ref-log text is caller-controlled (`GIT_REFLOG_ACTION`, `git update-ref -m`), and
+a branch created at an already-merged tip is structurally a merged parent without ever being
+committed to.
+
+Both halves must come from the **same** entry. A branch started with `-BaseRef <branch>` carries a
+merged commit in its `branch: Created from` entry, so reading the two halves from different entries
+would let a stacked branch look finished without a single commit.
+
+The check reads the branch's whole ref-log history, not just its current tip. A finished worktree
+that runs `git merge --ff-only main` after its pull request merged moves its tip onto the merge
+commit, and it must stay sweepable.
+
+Anything the sweep cannot establish keeps the worktree, so these are never swept and must be
+closed by hand: work merged by squash or rebase, work fast-forwarded into `main` with no merge
+commit, and any branch whose ref log was disabled or expired.
+
 #### Claude Code in-conversation native creation: ask once, then remember
 
 Applies when *you* create a brand-new worktree in direct response to a conversation

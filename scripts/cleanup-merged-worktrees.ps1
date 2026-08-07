@@ -48,6 +48,77 @@ function ConvertFrom-WorktreePorcelain {
     return , $worktrees
 }
 
+# Answers what `git branch --merged` cannot: did this branch's own work get merged into $MainRef?
+# A just-created worktree branch points at a commit main already had, so the merged test passes
+# for it and the sweep would delete unstarted work.
+#
+# Removal is destructive, so this returns $true only when BOTH signals agree, and $false for
+# anything it cannot establish -- an unclear answer keeps the worktree.
+#
+#   1. The branch ref log holds a 'commit'-prefixed subject. Git writes 'commit: <subject>'
+#      (also 'commit (amend):', 'commit (merge):') when a commit is made on the ref.
+#   2. The branch tip is a NON-FIRST parent of a merge commit reachable from $MainRef -- what a
+#      GitHub "Merge pull request" (`--no-ff`) leaves behind. Git history, not text.
+#
+# Neither signal is sufficient alone, and each covers the other's blind spot:
+#   - Ref-log subjects are caller-controlled text. GIT_REFLOG_ACTION and `git update-ref -m` let
+#     any caller write 'commit: Fast-forward' onto a branch that created no commit, so signal 1
+#     alone can be forged into deleting a brand-new worktree.
+#   - A branch created AT an already-merged branch's tip (the -BaseRef shape) really is a
+#     non-first parent, so signal 2 alone reads unstarted work as finished. Its ref log shows no
+#     commit, so signal 1 rejects it.
+function Test-BranchOwnWorkWasMerged {
+    param(
+        [Parameter(Mandatory)][string] $RepoRoot,
+        [Parameter(Mandatory)][string] $Branch,
+        [string] $MainRef = 'main'
+    )
+
+    # Walk the branch ref log once. '%gs' is the subject, '%H' is the commit the branch pointed at
+    # after that entry. Missing ref log (core.logAllRefUpdates off, gc expired it) or an unknown
+    # branch exits non-zero and reads as unstarted.
+    #
+    # Keep only the SHAs carried by 'commit'-prefixed entries. Both halves of the proof must come
+    # from the SAME entry, or a stacked branch supplies one half from each: a branch started at an
+    # already-merged branch's tip (`new-worktree.ps1 -BaseRef`) carries a non-first parent in its
+    # 'branch: Created from' entry, and a forged 'commit:' subject on a later fast-forward would
+    # then complete the pair without a single commit ever being made.
+    $entries = & git -C $RepoRoot reflog show --format='%H %gs' "refs/heads/$Branch" 2>$null
+    if ($LASTEXITCODE -ne 0) { return $false }
+
+    $committedShas = @{}
+    foreach ($entry in $entries) {
+        $text = ([string] $entry).Trim()
+        if (-not $text) { continue }
+
+        $sha, $subject = $text -split '\s+', 2
+        if ($sha -and $subject -and $subject -match '^commit\b') { $committedShas[$sha] = $true }
+    }
+    if ($committedShas.Count -eq 0) { return $false }
+
+    # Signal 2. `--format=%P` emits a 'commit <sha>' header line per commit followed by that
+    # commit's parents; --min-parents=2 keeps merges only, and every parent after the first is a
+    # tip that was merged in.
+    #
+    # Every commit the branch recorded a 'commit' entry for counts, not just its current tip. A
+    # finished worktree that runs `git merge --ff-only main` after its pull request merged moves
+    # its tip off the merge commit's second parent onto the merge commit itself. The work was
+    # still merged, and the sweep must still remove it, so the proof has to survive that move.
+    $parentLines = & git -C $RepoRoot rev-list --min-parents=2 --format='%P' $MainRef 2>$null
+    if ($LASTEXITCODE -ne 0) { return $false }
+
+    foreach ($line in $parentLines) {
+        $text = ([string] $line).Trim()
+        if (-not $text -or $text -like 'commit *') { continue }
+        $parents = @($text -split '\s+')
+        for ($i = 1; $i -lt $parents.Count; $i++) {
+            if ($committedShas.ContainsKey($parents[$i])) { return $true }
+        }
+    }
+
+    return $false
+}
+
 # Returns the worktrees that are merged into $MainRef AND clean, excluding the main
 # checkout, any detached/bare worktree, and $ExcludePath when given. Each item:
 # { Path (normalized); Branch }.
@@ -113,6 +184,11 @@ function Get-EligibleMergedWorktrees {
         # standalone run from inside a linked worktree) so this check must not depend on it.
         if ([string]::Equals($wt.Branch, $mainBranchShortName, [System.StringComparison]::OrdinalIgnoreCase)) { continue }
         if (-not $mergedSet.ContainsKey($wt.Branch)) { continue }
+        # A branch nobody has committed on is unstarted, not finished. It points at a commit main
+        # already had, so the merged check above always passes for it. Skipping here -- in
+        # eligibility, ahead of every setting -- means no flag, env override, or config value can
+        # remove a brand-new worktree, and report-only mode never lists one either.
+        if (-not (Test-BranchOwnWorkWasMerged -RepoRoot $RepoRoot -Branch $wt.Branch -MainRef $MainRef)) { continue }
 
         $status = & git -C $wtFull status --porcelain 2>$null
         if ($LASTEXITCODE -ne 0) {
