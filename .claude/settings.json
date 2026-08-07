@@ -158,6 +158,16 @@
             "statusMessage": "Checking for destructive operations..."
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/pre-edit-guard.sh\"",
+            "statusMessage": "Checking worktree write isolation..."
+          }
+        ]
       }
     ],
     "PostToolUse": [

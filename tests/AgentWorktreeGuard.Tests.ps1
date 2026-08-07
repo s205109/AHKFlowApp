@@ -1626,6 +1626,20 @@ try {
         Assert-Match '-Adapter Copilot' $guards[0].powershell 'powershell adapter'
     }
 
+    Invoke-TestCase 'Claude registers the file-edit guard on all three writing tools' {
+        $settings = Get-Content -LiteralPath (Join-Path $suiteRoot '.claude\settings.json') -Raw | ConvertFrom-Json
+        $guards = @($settings.hooks.PreToolUse | Where-Object {
+                @($_.hooks) | Where-Object {
+                    $_.PSObject.Properties['command'] -and $_.command -match 'pre-edit-guard'
+                }
+            })
+
+        Assert-Equal 1 $guards.Count 'exactly one file-edit guard registration'
+        foreach ($tool in @('Edit', 'Write', 'NotebookEdit')) {
+            Assert-Match "\b$tool\b" $guards[0].matcher "matcher must cover $tool"
+        }
+    }
+
     Write-Host 'Token quote masks' -ForegroundColor Cyan
 
     $maskCases = @(
