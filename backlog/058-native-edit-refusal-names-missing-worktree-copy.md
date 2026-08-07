@@ -45,7 +45,7 @@ check runs before the hook" in an upstream report without instrumenting it — `
 which hooks actually executed (https://code.claude.com/docs/en/hooks).
 
 Full method and evidence:
-[`docs/superpowers/specs/2026-08-07-worktree-edit-isolation-precedence-design.md`](../docs/superpowers/specs/2026-08-07-worktree-edit-isolation-precedence-design.md).
+`docs/superpowers/specs/2026-08-07-worktree-edit-isolation-precedence-design.md`.
 
 Two runs settled it. Both asked a fresh session to make the same `Edit` on a main-checkout path,
 with the same `PreToolUse` deny hook on `Edit|Write` supplied through `--settings`.
