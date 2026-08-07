@@ -25,12 +25,12 @@ public sealed class LocalAuthModeFlowTests(StackFixture fixture) : IAsyncLifetim
         await page.GotoAsync($"{fixture.Spa.BaseUrl}/hotstrings");
         await page.WaitForSelectorAsync("button.add-hotstring");
 
-        // Local-install-mode signature (Shared/LoginDisplay.razor): a *disabled* Log out button only
-        // renders in the Authorized + test-auth branch, so it proves both "signed in" and no-auth mode.
+        // Local-install-mode signature (Shared/LoginDisplay.razor): this note only renders in the
+        // Authorized + test-auth branch, so it proves both "signed in" and no-auth mode.
         // The app bar sits behind an async AuthorizeView, so wait for it rather than snapshotting.
-        ILocator logOut = page.Locator("button:has-text(\"Log out\")");
-        await logOut.WaitForAsync();
-        Assert.True(await logOut.IsDisabledAsync());
+        ILocator note = page.Locator("[data-test=\"local-install-note\"]");
+        await note.WaitForAsync();
+        Assert.Equal("Local install — no sign-out", (await note.TextContentAsync())?.Trim());
 
         // Full CRUD works without any login step.
         await page.ClickAsync("button.add-hotstring");
