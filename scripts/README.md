@@ -28,6 +28,7 @@ and must be changed as one set (see below).
 | `run-frontend.ps1` | Builds and starts the Blazor frontend, signed in with MSAL or (with `-NoAuth`) the no-auth test user. |
 | `publish-cli.ps1` | Publishes the `ahkflow` CLI as a native single-file executable with baked-in API/auth config. |
 | `new-worktree.ps1` | Creates a git worktree and applies AHKFlowApp local-dev isolation. |
+| `new-backlog-item.ps1` | Scaffolds a new `backlog/` item from the template with the next free number filled in. |
 
 ## CI-internal (`ci/`)
 
@@ -72,3 +73,4 @@ lists ignored local files `new-worktree.ps1` copies into a new worktree.
 | `_open-env.ps1` | `Open-Env` helper that reads a saved `.env.<env>` and opens its URLs. |
 | `test-sql-container.common.ps1` | Shared SQL Server Testcontainer settings for the coverage/test scripts. |
 | `run-frontend.common.ps1` | Shared build/run logic for `run-frontend.ps1`, dot-sourced so a test can drive it through injected scriptblocks. |
+| `backlog.common.ps1` | Shared backlog-numbering helpers for `new-backlog-item.ps1` and `tests/BacklogNumbering.Tests.ps1`. |

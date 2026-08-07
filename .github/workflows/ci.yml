@@ -121,6 +121,7 @@ jobs:
           ./tests/SkillParity.Tests.ps1
           ./tests/SkillLayout.Tests.ps1
           ./tests/PrePushHook.Tests.ps1
+          ./tests/BacklogNumbering.Tests.ps1
 
   codex-skills-hash-parity:
     # Runs on Linux: the bash setup script refuses under Windows Git Bash, and this
