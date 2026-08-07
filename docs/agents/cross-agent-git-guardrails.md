@@ -306,8 +306,12 @@ An agent running the same command would need a prompt or override.
 - Shell **writes** into main are guarded, in one direction only: a session whose working directory
   is a managed worktree cannot write, move, or delete a path resolving under the main checkout. A
   main-checkout session is unaffected and may still edit, build, test, and format there. `Edit` and
-  `Write` tool calls are not covered by this repository at all — Claude Code's own worktree
-  isolation covers them for Claude sessions, and Codex and Copilot have no equivalent.
+  `Write` tool calls are not covered by this repository at all. Claude Code's own worktree isolation
+  covers them, but only for a session started with `-w`, `--worktree`, or the `EnterWorktree` tool.
+  That check reads a session flag, not the working directory. A Claude session that merely has a
+  worktree as its working directory gets no check, so it can `Edit` and `Write` into main freely.
+  Codex and Copilot have no equivalent isolation at all. Tracked in
+  `backlog/065-native-edit-isolation-misses-worktree-sessions-without-w-flag.md`.
 - The write scan reads a denylist of write commands, not an allowlist of safe ones. A writer
   outside that list — `del`, `python -c`, a compiled tool — is not detected. Same trade-off the
   Git mutation rule already makes.
@@ -316,7 +320,12 @@ An agent running the same command would need a prompt or override.
 - Claude Code's own `Edit`/`Write` refusal tells the agent to edit "the worktree copy of this
   file". For `docs/superpowers` no worktree copy can exist, because `.gitignore` excludes the path
   and `scripts/worktree-plans.common.ps1` links it in instead. That text belongs to the harness and
-  cannot be changed here. Tracked in `backlog/058-native-edit-refusal-names-missing-worktree-copy.md`.
+  cannot be changed here. This was measured, not assumed: a `PreToolUse` hook on `Edit|Write` that
+  denies with its own message is silenced in a `-w` session — the harness refusal takes precedence.
+  The same hook denies normally once `-w` is dropped, which proves it was loaded. What was measured
+  is which refusal reaches the agent, not the harness's internal execution order. Method and output:
+  `docs/superpowers/specs/2026-08-07-worktree-edit-isolation-precedence-design.md`. Tracked in
+  `backlog/058-native-edit-refusal-names-missing-worktree-copy.md`.
 
 ## Version-skew and authoritative main
 
