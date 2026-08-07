@@ -30,10 +30,10 @@ So adding any alias whose canonical key carries the `SendToken` role fails that 
 
 ## Acceptance criteria
 
-- [ ] `LControl` canonicalizes to `LCtrl`, and `RControl` to `RCtrl`
-- [ ] Both spellings are accepted at the create and update boundaries
-- [ ] A template line `*LControl::` warns for a row on `LCtrl`
-- [ ] The migration parity test still passes, and the reason it passes is written down
+- [x] `LControl` canonicalizes to `LCtrl`, and `RControl` to `RCtrl`
+- [x] Both spellings are accepted at the create and update boundaries
+- [x] A template line `*LControl::` warns for a row on `LCtrl`
+- [x] The migration parity test still passes, and the reason it passes is written down
 
 ## Out of scope
 
@@ -45,3 +45,7 @@ So adding any alias whose canonical key carries the `SendToken` role fails that 
 - Decide first how the fixture set should treat aliases added after a migration shipped. Either the
   fixtures snapshot the alias list that migration knew, or the parity test excludes later aliases
 - Same question applies to every future alias, not only these two
+- Answered by: `docs/superpowers/specs/2026-08-07-lcontrol-rcontrol-aliases-design.md`. The fixture
+  set becomes an additions allow-list — `LegacyHotkeyFixtures.s_spellingsAddedAfterMigrationA` names
+  later spellings and skips them. Both sides of the resulting split are pinned by tests. ADR 0004
+  carries the reason under "Adding a key spelling after Migration A"

@@ -24,6 +24,10 @@ public sealed class HotkeyKeysEndpointTests(ApiTestFixture fixture)
         catalog.Should().NotBeNull();
         catalog!.Keys.Should().NotBeEmpty();
         catalog.Aliases.Should().ContainKey("Esc").WhoseValue.Should().Be("Escape");
+        // The frontend key catalog canonicalizes from this dictionary, so a missing alias here is
+        // what makes a template line "*LControl::" miss a row on "LCtrl".
+        catalog.Aliases.Should().ContainKey("LControl").WhoseValue.Should().Be("LCtrl");
+        catalog.Aliases.Should().ContainKey("RControl").WhoseValue.Should().Be("RCtrl");
     }
 
     [Fact]

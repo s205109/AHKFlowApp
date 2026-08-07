@@ -27,6 +27,9 @@ public sealed class HotkeyKeysTests
     [InlineData("Del", "Delete")]
     [InlineData("Ins", "Insert")]
     [InlineData("BS", "Backspace")]
+    [InlineData("LControl", "LCtrl")]
+    [InlineData("RControl", "RCtrl")]
+    [InlineData("lcontrol", "LCtrl")]
     public void TryCanonicalize_Alias_ResolvesToCanonicalName(string alias, string expected)
     {
         bool ok = HotkeyKeys.TryCanonicalize(alias, out string canonical);

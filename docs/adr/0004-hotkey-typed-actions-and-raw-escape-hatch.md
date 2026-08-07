@@ -18,7 +18,7 @@ That is what closes the injection hazard the feature carried (issue #195), and i
 
 ## Migrating off the legacy pair
 
-The typed columns replaced a two-value `HotkeyAction` plus one opaque `Parameters` string, in two migrations rather than one: the first adds the typed columns and back-fills them, a later one drops the legacy pair, so every commit in between runs against a database of either shape. The back-fill is hand-written T-SQL and the identical transform exists in C# as `LegacyHotkeyDefinitionConverter`, because history JSON written before the change still has to be read on Restore and Revert; a Testcontainers parity test runs the same fixtures through both and requires identical output.
+The typed columns replaced a two-value `HotkeyAction` plus one opaque `Parameters` string, in two migrations rather than one: the first adds the typed columns and back-fills them, a later one drops the legacy pair, so every commit in between runs against a database of either shape. The back-fill is hand-written T-SQL and the identical transform exists in C# as `LegacyHotkeyDefinitionConverter`, because history JSON written before the change still has to be read on Restore and Revert; a Testcontainers parity test runs the same fixtures through both and requires identical output, for every key spelling that migration knew — see "Adding a key spelling after Migration A" below.
 
 The mapping preserves what the app already emitted, with one deliberate exception. `Run` becomes `Run`, and every `Send` whose parameters do *not* parse as a valid key token becomes `Raw` with a body reproducing the previously emitted `Send("…")` line byte for byte — which is the reason Raw emits verbatim instead of wrapping the body in braces. Those two branches regenerate identically.
 
@@ -31,3 +31,30 @@ Adding an Action kind is now a schema change plus a branch in the validator, emi
 Snapshots are immutable, so pre-existing history keeps its legacy `Action`/`Parameters` members forever and the converter can never be deleted — only the live columns were dropped.
 
 Deploying the migration that drops the legacy pair costs a brief outage, accepted rather than engineered away. `deploy-api.yml` gates `deploy` on `migrate-db`, so the columns are gone before the new build is swapped in, and the still-running previous build maps them as required — every hotkey read returns 500 until the swap completes. The alternative, holding the drop for a later release, buys a zero-downtime cutover at the cost of carrying dead columns across two releases; this project already ships `DropColumn` through the same pipeline and accepts the same window. Two operational consequences follow: take a database backup first, because the back-fill migration's `Down` throws and the drop's `Down` restores structure but not data, so recovery is point-in-time restore only; and treat hotkeys as unavailable until both the API and frontend deploys are green.
+
+## Adding a key spelling after Migration A
+
+> **Amendment, 2026-08-07 (backlog 059):** `20260722105522_HotkeyTypedActions` carries a hard-coded
+> name list, and it is applied, so it cannot gain a spelling after the fact — rows are already
+> back-filled with the classification it made. Adding `LControl` and `RControl` to `HotkeyKeys`
+> therefore takes the "accept Raw for the new names" branch that migration's own comment offers.
+>
+> `LegacyHotkeyFixtures.s_spellingsAddedAfterMigrationA` names the spellings the frozen classifier
+> never knew, and no Send-token fixture is generated for them. This is an additions allow-list, not
+> a snapshot: every other live spelling still gets a fixture, so the Testcontainers parity test
+> still fails loudly for the next spelling added. That failure is the signal to make this decision
+> again, not a reason to edit the migration.
+>
+> The accepted cost: a pre-W1 row whose legacy `Parameters` was exactly `{LControl}` was migrated to
+> `Raw` with `Body = Send("{LControl}")`, while the same value read out of a pre-W1 history snapshot
+> converts to `SendKeys`, because that path runs live C# (ADR 0005). Both emit the same `Send` call,
+> but the left-hand side differs and that is behavioral: `SendKeys` carries the auto `$` prefix,
+> which forces the keyboard hook so the binding cannot retrigger the script's own hotkeys, and `Raw`
+> does not. The migrated row can retrigger; the restored snapshot cannot. How many such rows exist
+> is unknown — no data audit was run. Both halves of the split are pinned by tests, so neither side
+> can move unnoticed.
+>
+> A top-up migration that reclassifies those rows was rejected. `20260722182812_DropLegacyHotkeyAction`
+> dropped `Action` and `Parameters`, so a later migration cannot tell a `Raw` row this migration
+> produced from a `Raw` row a user wrote on purpose with the same body. Matching on body text would
+> silently rewrite the second kind.
