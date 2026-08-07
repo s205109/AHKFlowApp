@@ -141,12 +141,29 @@ function Invoke-Entrypoint {
         [string] $StdIn,
         [string] $Adapter = 'Auto',
         [hashtable] $EnvironmentOverrides = @{},
-        [string] $WorkingDirectory = $suiteRoot
+        [string] $WorkingDirectory = $suiteRoot,
+        # Defaults to the checked-in entrypoint, which protects the real repository. Pass a copy
+        # planted inside the disposable fixture to protect the fixture instead.
+        [string] $ScriptPath = $entrypointScript
     )
 
     return Invoke-CapturedProcess -FilePath $script:PowerShellHost `
-        -Arguments @('-NoProfile', '-NonInteractive', '-File', $entrypointScript, '-Adapter', $Adapter) `
+        -Arguments @('-NoProfile', '-NonInteractive', '-File', $ScriptPath, '-Adapter', $Adapter) `
         -StdIn $StdIn -EnvironmentOverrides $EnvironmentOverrides -WorkingDirectory $WorkingDirectory
+}
+
+# The entrypoint derives the repository it protects from its own location, and that cannot be
+# overridden. Planting a copy inside the fixture is therefore the only way to point it at the
+# fixture. Without this, entrypoint cases would need a managed worktree of the REAL repository,
+# which does not exist in a plain checkout or in CI.
+function New-FixtureEntrypoint {
+    param([string] $RepoRoot)
+
+    $agents = Join-Path $RepoRoot 'scripts\agents'
+    New-Item -ItemType Directory -Path $agents -Force | Out-Null
+    Copy-Item -LiteralPath $commonScript -Destination $agents
+    Copy-Item -LiteralPath $entrypointScript -Destination $agents
+    return (Resolve-Path -LiteralPath (Join-Path $agents 'invoke-agent-worktree-guard.ps1')).Path
 }
 
 function ConvertTo-BashPath {
@@ -188,6 +205,63 @@ function Invoke-BashShim {
 
     return Invoke-CapturedProcess -FilePath $script:BashExecutable `
         -Arguments (@((ConvertTo-BashPath $bashShim)) + $ShimArguments) `
+        -StdIn $StdIn -EnvironmentOverrides $EnvironmentOverrides
+}
+
+# A shim's only job is to decide whether to forward. Proving that against the real entrypoint
+# needs the suite to be running inside a managed worktree, which it is not when it runs from a
+# plain checkout or in CI. So the shim is copied into a temporary tree whose entrypoint is a stub
+# that announces itself. Forwarded and not-forwarded then differ in the output, always.
+$script:ShimStubMarker = 'STUB-ENTRYPOINT-REACHED'
+
+function New-ShimHarness {
+    param([string] $ShimFileName)
+
+    $root = Join-Path ([System.IO.Path]::GetTempPath()) (
+        'ahkflow-shim-harness-' + [guid]::NewGuid().ToString('N'))
+    $hooks = Join-Path $root '.claude\hooks'
+    $agents = Join-Path $root 'scripts\agents'
+    New-Item -ItemType Directory -Path $hooks -Force | Out-Null
+    New-Item -ItemType Directory -Path $agents -Force | Out-Null
+
+    Copy-Item -LiteralPath (Join-Path $suiteRoot ".claude\hooks\$ShimFileName") `
+        -Destination (Join-Path $hooks $ShimFileName)
+
+    # The stub replaces the real entrypoint at the same relative path the shim resolves.
+    Set-Content -LiteralPath (Join-Path $agents 'invoke-agent-worktree-guard.ps1') -Encoding utf8 -Value @"
+param([string] `$Adapter = 'Auto')
+[Console]::Error.WriteLine("$($script:ShimStubMarker) adapter=`$Adapter")
+exit 0
+"@
+
+    return [pscustomobject]@{
+        Root = (Resolve-Path -LiteralPath $root).Path
+        Shim = (Resolve-Path -LiteralPath (Join-Path $hooks $ShimFileName)).Path
+    }
+}
+
+function Remove-ShimHarness {
+    param([object] $Harness)
+
+    if ($null -eq $Harness) { return }
+    $tempRoot = (Resolve-Path -LiteralPath ([System.IO.Path]::GetTempPath())).Path.TrimEnd('\', '/')
+    $target = $Harness.Root.TrimEnd('\', '/')
+    if (-not $target.StartsWith($tempRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing to delete a shim harness outside the temp directory: $target"
+    }
+    Remove-Item -LiteralPath $target -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+function Invoke-HarnessShim {
+    param(
+        [object] $Harness,
+        [string] $StdIn,
+        [string[]] $ShimArguments = @(),
+        [hashtable] $EnvironmentOverrides = @{}
+    )
+
+    return Invoke-CapturedProcess -FilePath $script:BashExecutable `
+        -Arguments (@((ConvertTo-BashPath $Harness.Shim)) + $ShimArguments) `
         -StdIn $StdIn -EnvironmentOverrides $EnvironmentOverrides
 }
 
@@ -2004,83 +2078,70 @@ try {
         Assert-Match 'AHKFLOW_ALLOW_MAIN=1' $decision.Message 'Message'
     }
 
-    # The entrypoint derives the protected repository from its own location, so a fixture path
-    # would classify as OutsideProtectedRepository and prove nothing. These cases need a real
-    # managed worktree of this repository. There may be none, so they report that instead of
-    # passing silently.
-    function Get-RealManagedWorktree {
-        $approved = (Join-Path $script:RealMainCheckout '.claude\worktrees').ToLowerInvariant()
-        $lines = @((& git -C $script:RealMainCheckout worktree list --porcelain) -split "`r?`n")
-        foreach ($line in $lines) {
-            if ($line -notlike 'worktree *') { continue }
-            $candidate = $line.Substring('worktree '.Length).Replace('/', '\')
-            if (-not (Test-Path -LiteralPath $candidate)) { continue }
-            $parent = (Split-Path -Parent $candidate).ToLowerInvariant()
-            if ($parent -ne $approved) { continue }
-            if (-not (Test-Path -LiteralPath (Join-Path $candidate 'scripts\.env.worktree'))) { continue }
-            return (Resolve-Path -LiteralPath $candidate).Path
-        }
-        return ''
-    }
-
-    $script:RealManagedWorktree = Get-RealManagedWorktree
-    $script:NoWorktreeMessage = 'This repository has no managed worktree, so the entrypoint cases cannot run. Create one with scripts/new-worktree.ps1.'
+    # A copy of the entrypoint planted inside the fixture, so it protects the fixture's main
+    # checkout and treats $fixture.Managed as a real managed worktree. The checked-in entrypoint
+    # would protect the real repository instead, and a fixture path would classify as
+    # OutsideProtectedRepository.
+    $script:FixtureEntrypoint = New-FixtureEntrypoint -RepoRoot $fixture.Main
 
     foreach ($toolName in @('Edit', 'Write', 'NotebookEdit')) {
         Invoke-TestCase "Entrypoint: $toolName into the main checkout is denied" {
-            Assert-True (-not [string]::IsNullOrWhiteSpace($script:RealManagedWorktree)) $script:NoWorktreeMessage
-            $target = Join-Path $script:RealMainCheckout 'README.md'
-            $result = Invoke-Entrypoint -Adapter 'Claude' `
-                -StdIn (New-ClaudeEditPayload $toolName $target $script:RealManagedWorktree)
+            $target = Join-Path $fixture.Main 'README.md'
+            $result = Invoke-Entrypoint -Adapter 'Claude' -ScriptPath $script:FixtureEntrypoint `
+                -StdIn (New-ClaudeEditPayload $toolName $target $fixture.Managed)
             Assert-Equal 2 $result.ExitCode 'ExitCode'
             Assert-Match 'cannot write into the main checkout' $result.StdErr 'StdErr'
         }
     }
 
+    Invoke-TestCase 'Entrypoint: the plans refusal reaches the agent verbatim' {
+        $target = Join-Path $fixture.Managed 'docs\superpowers\x.md'
+        $result = Invoke-Entrypoint -Adapter 'Claude' -ScriptPath $script:FixtureEntrypoint `
+            -StdIn (New-ClaudeEditPayload 'Write' $target $fixture.Managed)
+        Assert-Equal 2 $result.ExitCode 'ExitCode'
+        Assert-Match 'no worktree copy' $result.StdErr 'StdErr'
+        Assert-True ($result.StdErr -notmatch 'Edit the worktree copy') 'Must not send the agent looking for a copy'
+    }
+
     Invoke-TestCase 'Entrypoint: an edit inside the session worktree is allowed' {
-        Assert-True (-not [string]::IsNullOrWhiteSpace($script:RealManagedWorktree)) $script:NoWorktreeMessage
-        $target = Join-Path $script:RealManagedWorktree 'README.md'
-        $result = Invoke-Entrypoint -Adapter 'Claude' `
-            -StdIn (New-ClaudeEditPayload 'Edit' $target $script:RealManagedWorktree)
+        $target = Join-Path $fixture.Managed 'README.md'
+        $result = Invoke-Entrypoint -Adapter 'Claude' -ScriptPath $script:FixtureEntrypoint `
+            -StdIn (New-ClaudeEditPayload 'Edit' $target $fixture.Managed)
         Assert-Equal 0 $result.ExitCode 'ExitCode'
         Assert-Equal '' $result.StdOut.Trim() 'Must produce no decision payload'
     }
 
     Invoke-TestCase 'Entrypoint: a main-checkout session may still edit the main checkout' {
-        $target = Join-Path $script:RealMainCheckout 'README.md'
-        $result = Invoke-Entrypoint -Adapter 'Claude' `
-            -StdIn (New-ClaudeEditPayload 'Edit' $target $script:RealMainCheckout)
+        $target = Join-Path $fixture.Main 'README.md'
+        $result = Invoke-Entrypoint -Adapter 'Claude' -ScriptPath $script:FixtureEntrypoint `
+            -StdIn (New-ClaudeEditPayload 'Edit' $target $fixture.Main)
         Assert-Equal 0 $result.ExitCode 'ExitCode'
     }
 
     Invoke-TestCase 'Entrypoint: AHKFLOW_ALLOW_MAIN=1 warns instead of denying an edit' {
-        Assert-True (-not [string]::IsNullOrWhiteSpace($script:RealManagedWorktree)) $script:NoWorktreeMessage
-        $target = Join-Path $script:RealMainCheckout 'README.md'
-        $result = Invoke-Entrypoint -Adapter 'Claude' `
-            -StdIn (New-ClaudeEditPayload 'Edit' $target $script:RealManagedWorktree) `
+        $target = Join-Path $fixture.Main 'README.md'
+        $result = Invoke-Entrypoint -Adapter 'Claude' -ScriptPath $script:FixtureEntrypoint `
+            -StdIn (New-ClaudeEditPayload 'Edit' $target $fixture.Managed) `
             -EnvironmentOverrides @{ AHKFLOW_ALLOW_MAIN = '1' }
         Assert-Equal 0 $result.ExitCode 'ExitCode'
         Assert-Match 'AHKFLOW_ALLOW_MAIN=1 overrode' $result.StdErr 'StdErr'
     }
 
     Invoke-TestCase 'Entrypoint: AHKFLOW_GUARD_DISABLE=1 skips the file-edit rule too' {
-        Assert-True (-not [string]::IsNullOrWhiteSpace($script:RealManagedWorktree)) $script:NoWorktreeMessage
-        $target = Join-Path $script:RealMainCheckout 'README.md'
-        $result = Invoke-Entrypoint -Adapter 'Claude' `
-            -StdIn (New-ClaudeEditPayload 'Edit' $target $script:RealManagedWorktree) `
+        $target = Join-Path $fixture.Main 'README.md'
+        $result = Invoke-Entrypoint -Adapter 'Claude' -ScriptPath $script:FixtureEntrypoint `
+            -StdIn (New-ClaudeEditPayload 'Edit' $target $fixture.Managed) `
             -EnvironmentOverrides @{ AHKFLOW_GUARD_DISABLE = '1' }
         Assert-Equal 0 $result.ExitCode 'ExitCode'
+        Assert-True ($result.StdErr -notmatch 'cannot write into the main checkout') 'Must not deny'
     }
 
-    foreach ($adapter in @('Codex', 'Copilot')) {
-        Invoke-TestCase "Entrypoint: $adapter file-edit calls stay out of scope" {
-            Assert-True (-not [string]::IsNullOrWhiteSpace($script:RealManagedWorktree)) $script:NoWorktreeMessage
-            $target = Join-Path $script:RealMainCheckout 'README.md'
-            $result = Invoke-Entrypoint -Adapter $adapter `
-                -StdIn (New-ClaudeEditPayload 'Edit' $target $script:RealManagedWorktree)
-            Assert-Equal 0 $result.ExitCode 'ExitCode'
-            Assert-Equal '' $result.StdOut.Trim() 'Must produce no decision payload'
-        }
+    Invoke-TestCase 'Entrypoint: Codex file-edit calls stay out of scope' {
+        $target = Join-Path $fixture.Main 'README.md'
+        $result = Invoke-Entrypoint -Adapter 'Codex' -ScriptPath $script:FixtureEntrypoint `
+            -StdIn (New-ClaudeEditPayload 'Edit' $target $fixture.Managed)
+        Assert-Equal 0 $result.ExitCode 'ExitCode'
+        Assert-True ($result.StdErr -notmatch 'cannot write into the main checkout') 'Must not deny'
     }
 
     Write-Host 'Bash shim prefilter for worktree writes' -ForegroundColor Cyan
@@ -2091,9 +2152,18 @@ try {
     # the shim only classifies the command text.
     $script:RealWriteCommand = 'printf probe > ' + $script:RealMainCheckout.Replace('\', '/') + '/.guard-probe.tmp'
 
-    Invoke-TestCase 'Shim: a worktree-session redirect reaches the policy core' {
-        $result = Invoke-BashShim -StdIn (New-ClaudePayload $script:RealWriteCommand $suiteRoot)
-        Assert-Match 'agent-worktree-main-write' ($result.StdOut + $result.StdErr) 'Decision must be reported'
+    # Proved against the stub entrypoint, not the real one. The old version of this case passed a
+    # payload whose cwd was $suiteRoot and expected a denial, which only happens when the suite
+    # itself runs inside a managed worktree. From a plain checkout, and in CI, it failed.
+    Invoke-TestCase 'Shim: a worktree-session write is forwarded to the policy core' {
+        $harness = New-ShimHarness -ShimFileName 'pre-bash-guard.sh'
+        try {
+            $worktreeCwd = Join-Path $script:RealMainCheckout '.claude\worktrees\probe'
+            $result = Invoke-HarnessShim -Harness $harness `
+                -StdIn (New-ClaudePayload 'printf probe > ../../../README.md' $worktreeCwd)
+            Assert-Match $script:ShimStubMarker $result.StdErr 'Must forward to the entrypoint'
+        }
+        finally { Remove-ShimHarness -Harness $harness }
     }
 
     Invoke-TestCase 'Shim: a main-session redirect still exits in Bash' {
@@ -2106,6 +2176,81 @@ try {
         $result = Invoke-BashShim -StdIn (New-ClaudePayload 'cat README.md' $suiteRoot)
         Assert-Equal 0 $result.ExitCode 'Exit code'
         Assert-Equal '' $result.StdOut.Trim() 'Must produce no decision payload'
+    }
+
+    Write-Host 'Bash shim prefilter for file-edit tool calls' -ForegroundColor Cyan
+
+    Invoke-TestCase 'Edit shim: a worktree-session edit is forwarded to the policy core' {
+        $harness = New-ShimHarness -ShimFileName 'pre-edit-guard.sh'
+        try {
+            $worktreeCwd = Join-Path $script:RealMainCheckout '.claude\worktrees\probe'
+            $target = Join-Path $script:RealMainCheckout 'README.md'
+            $result = Invoke-HarnessShim -Harness $harness `
+                -StdIn (New-ClaudeEditPayload 'Edit' $target $worktreeCwd)
+            Assert-Match $script:ShimStubMarker $result.StdErr 'Must forward to the entrypoint'
+            Assert-Match 'adapter=Claude' $result.StdErr 'Must select the Claude adapter'
+        }
+        finally { Remove-ShimHarness -Harness $harness }
+    }
+
+    Invoke-TestCase 'Edit shim: a main-session edit exits in Bash' {
+        $harness = New-ShimHarness -ShimFileName 'pre-edit-guard.sh'
+        try {
+            $target = Join-Path $script:RealMainCheckout 'README.md'
+            $result = Invoke-HarnessShim -Harness $harness `
+                -StdIn (New-ClaudeEditPayload 'Edit' $target $script:RealMainCheckout)
+            Assert-Equal 0 $result.ExitCode 'ExitCode'
+            Assert-True ($result.StdErr -notmatch $script:ShimStubMarker) 'Must not start PowerShell'
+        }
+        finally { Remove-ShimHarness -Harness $harness }
+    }
+
+    Invoke-TestCase 'Edit shim: a Write payload is forwarded too' {
+        $harness = New-ShimHarness -ShimFileName 'pre-edit-guard.sh'
+        try {
+            $worktreeCwd = Join-Path $script:RealMainCheckout '.claude\worktrees\probe'
+            $target = Join-Path $script:RealMainCheckout 'notes.md'
+            $result = Invoke-HarnessShim -Harness $harness `
+                -StdIn (New-ClaudeEditPayload 'Write' $target $worktreeCwd)
+            Assert-Match $script:ShimStubMarker $result.StdErr 'Must forward to the entrypoint'
+        }
+        finally { Remove-ShimHarness -Harness $harness }
+    }
+
+    Invoke-TestCase 'Edit shim: honors AHKFLOW_GUARD_DISABLE before doing any work' {
+        $harness = New-ShimHarness -ShimFileName 'pre-edit-guard.sh'
+        try {
+            $worktreeCwd = Join-Path $script:RealMainCheckout '.claude\worktrees\probe'
+            $target = Join-Path $script:RealMainCheckout 'README.md'
+            $result = Invoke-HarnessShim -Harness $harness `
+                -StdIn (New-ClaudeEditPayload 'Edit' $target $worktreeCwd) `
+                -EnvironmentOverrides @{ AHKFLOW_GUARD_DISABLE = '1' }
+            Assert-Equal 0 $result.ExitCode 'ExitCode'
+            Assert-Match 'AHKFLOW_GUARD_DISABLE=1' $result.StdErr 'StdErr'
+            Assert-True ($result.StdErr -notmatch $script:ShimStubMarker) 'Must not start PowerShell'
+        }
+        finally { Remove-ShimHarness -Harness $harness }
+    }
+
+    Invoke-TestCase 'Edit shim: warns and allows when no PowerShell host exists' {
+        $harness = New-ShimHarness -ShimFileName 'pre-edit-guard.sh'
+        try {
+            $pathWithoutAnyHost = (
+                $env:PATH -split ';' |
+                Where-Object {
+                    $_ -and -not (Test-Path -LiteralPath (Join-Path $_ 'pwsh.exe')) -and
+                    -not (Test-Path -LiteralPath (Join-Path $_ 'powershell.exe'))
+                }
+            ) -join ';'
+            $worktreeCwd = Join-Path $script:RealMainCheckout '.claude\worktrees\probe'
+            $target = Join-Path $script:RealMainCheckout 'README.md'
+            $result = Invoke-HarnessShim -Harness $harness `
+                -StdIn (New-ClaudeEditPayload 'Edit' $target $worktreeCwd) `
+                -EnvironmentOverrides @{ PATH = $pathWithoutAnyHost }
+            Assert-Equal 0 $result.ExitCode 'ExitCode'
+            Assert-Match 'could not find PowerShell' $result.StdErr 'StdErr'
+        }
+        finally { Remove-ShimHarness -Harness $harness }
     }
 }
 finally {
