@@ -226,6 +226,19 @@ function New-CopilotPayload {
     } | ConvertTo-Json -Compress -Depth 4
 }
 
+function New-ClaudeEditPayload {
+    param([string] $ToolName, [string] $Path, [string] $Cwd)
+
+    # Edit and Write carry file_path; NotebookEdit carries notebook_path.
+    $pathKey = if ($ToolName -ieq 'NotebookEdit') { 'notebook_path' } else { 'file_path' }
+    return @{
+        hook_event_name = 'PreToolUse'
+        tool_name       = $ToolName
+        tool_input      = @{ $pathKey = $Path }
+        cwd             = $Cwd
+    } | ConvertTo-Json -Compress -Depth 4
+}
+
 # ── Disposable git fixture ──────────────────────────────────────────────────────────────────
 
 function New-GuardFixture {
@@ -405,6 +418,41 @@ try {
     Invoke-TestCase 'Auto adapter falls back to Claude without toolArgs' {
         $normalized = ConvertFrom-AgentHookInput -Adapter 'Auto' -InputJson (New-ClaudePayload 'git status' $fixture.Main)
         Assert-Equal 'Claude' $normalized.Adapter 'Adapter'
+    }
+
+    Invoke-TestCase 'Edit payload normalizes to the file-edit contract' {
+        $json = New-ClaudeEditPayload 'Edit' 'C:\repo\src\a.cs' $fixture.Main
+        $normalized = ConvertFrom-AgentHookInput -Adapter 'Claude' -InputJson $json
+        Assert-Equal 'file-edit' $normalized.ToolName 'ToolName'
+        Assert-Equal 'C:\repo\src\a.cs' $normalized.TargetPath 'TargetPath'
+        Assert-Equal '' $normalized.Command 'Command'
+    }
+
+    Invoke-TestCase 'Write payload normalizes to the file-edit contract' {
+        $json = New-ClaudeEditPayload 'Write' 'C:\repo\src\b.cs' $fixture.Main
+        $normalized = ConvertFrom-AgentHookInput -Adapter 'Claude' -InputJson $json
+        Assert-Equal 'file-edit' $normalized.ToolName 'ToolName'
+        Assert-Equal 'C:\repo\src\b.cs' $normalized.TargetPath 'TargetPath'
+    }
+
+    Invoke-TestCase 'NotebookEdit payload carries its path under notebook_path' {
+        $json = New-ClaudeEditPayload 'NotebookEdit' 'C:\repo\note.ipynb' $fixture.Main
+        $normalized = ConvertFrom-AgentHookInput -Adapter 'Claude' -InputJson $json
+        Assert-Equal 'file-edit' $normalized.ToolName 'ToolName'
+        Assert-Equal 'C:\repo\note.ipynb' $normalized.TargetPath 'TargetPath'
+    }
+
+    Invoke-TestCase 'A Bash payload still carries no target path' {
+        $normalized = ConvertFrom-AgentHookInput -Adapter 'Claude' `
+            -InputJson (New-ClaudePayload 'git status' $fixture.Main)
+        Assert-Equal 'shell' $normalized.ToolName 'ToolName'
+        Assert-Equal '' $normalized.TargetPath 'TargetPath'
+    }
+
+    Invoke-TestCase 'An unknown tool name stays unrecognized' {
+        $json = New-ClaudeEditPayload 'Read' 'C:\repo\src\a.cs' $fixture.Main
+        $normalized = ConvertFrom-AgentHookInput -Adapter 'Claude' -InputJson $json
+        Assert-Equal 'Read' $normalized.ToolName 'ToolName'
     }
 
     Write-Host 'Entrypoint input handling' -ForegroundColor Cyan

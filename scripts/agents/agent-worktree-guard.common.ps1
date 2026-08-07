@@ -16,6 +16,10 @@
 
 $script:AgentGuardShellToolNames = @('bash', 'shell', 'shell_command', 'sh', 'powershell', 'pwsh')
 
+# Claude's file-writing tools. These carry a literal path rather than a command, so they are
+# classified by Get-AgentFileEditWriteDecision instead of the command evaluators.
+$script:AgentGuardFileEditToolNames = @('edit', 'write', 'notebookedit')
+
 $script:AgentGuardProtectedCommonDirCache = @{}
 
 # Characters a backslash may escape inside double quotes (POSIX), and outside quotes. Compared
@@ -116,11 +120,16 @@ function ConvertTo-AgentGuardNormalizedPath {
 
 <#
 .SYNOPSIS
-Normalizes a native agent PreToolUse payload into { Adapter, ToolName, Command, Cwd }.
+Normalizes a native agent PreToolUse payload into
+{ Adapter, ToolName, Command, TargetPath, Cwd, AgentId, AgentType }.
 
 .DESCRIPTION
 Adapter 'Auto' infers Copilot from a top-level 'toolArgs' key and Claude otherwise; Codex
 always supplies an explicit override. Throws on malformed JSON so the caller can fail open.
+
+A shell tool name normalizes to 'shell' and fills Command. A file-writing tool name normalizes to
+'file-edit' and fills TargetPath from file_path, or from notebook_path for NotebookEdit. Any other
+tool name is returned unchanged, and both fields stay empty.
 #>
 function ConvertFrom-AgentHookInput {
     [CmdletBinding()]
@@ -143,6 +152,7 @@ function ConvertFrom-AgentHookInput {
 
     $rawToolName = ''
     $command = ''
+    $targetPath = ''
     $agentId = ''
     $agentType = ''
 
@@ -169,6 +179,8 @@ function ConvertFrom-AgentHookInput {
         if (Test-AgentGuardProperty $payload 'tool_input') {
             $toolInput = $payload.tool_input
             if (Test-AgentGuardProperty $toolInput 'command') { $command = [string] $toolInput.command }
+            if (Test-AgentGuardProperty $toolInput 'file_path') { $targetPath = [string] $toolInput.file_path }
+            elseif (Test-AgentGuardProperty $toolInput 'notebook_path') { $targetPath = [string] $toolInput.notebook_path }
         }
 
         # agent_id is present at the top level only when the call originates inside a subagent
@@ -186,14 +198,18 @@ function ConvertFrom-AgentHookInput {
     if ($script:AgentGuardShellToolNames -contains $rawToolName.ToLowerInvariant()) {
         $normalizedToolName = 'shell'
     }
+    elseif ($script:AgentGuardFileEditToolNames -contains $rawToolName.ToLowerInvariant()) {
+        $normalizedToolName = 'file-edit'
+    }
 
     return [pscustomobject]@{
-        Adapter   = $resolvedAdapter
-        ToolName  = $normalizedToolName
-        Command   = $command
-        Cwd       = (ConvertTo-AgentGuardNormalizedPath $cwd)
-        AgentId   = $agentId
-        AgentType = $agentType
+        Adapter    = $resolvedAdapter
+        ToolName   = $normalizedToolName
+        Command    = $command
+        TargetPath = $targetPath
+        Cwd        = (ConvertTo-AgentGuardNormalizedPath $cwd)
+        AgentId    = $agentId
+        AgentType  = $agentType
     }
 }
 
