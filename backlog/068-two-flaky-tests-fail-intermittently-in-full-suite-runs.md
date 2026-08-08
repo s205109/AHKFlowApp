@@ -103,6 +103,16 @@ proving nothing.
 Version pinned at `Directory.Packages.props:13`. bUnit documentation for the behavior:
 https://bunit.dev/docs/verification/async-assertion.html
 
+**Confidence runs.** After the fix, and against a rebuilt Release assembly, the whole
+`AHKFlowApp.UI.Blazor.Tests` project ran 50 times. All 50 passed, 950 of 950 tests each time.
+
+Read that honestly. At the observed rate of about 1 failure in 32 runs, 50 clean runs would happen
+by luck roughly 20% of the time if nothing had been fixed. So the runs support the named mechanism.
+They do not prove it on their own. The argument is the mechanism plus the runs, not the runs.
+
+The 65 runs made **before** the fix are not counted here. They found the bug; they say nothing about
+whether it is gone.
+
 ### Flake A - not reproduced, every lead ruled out
 
 The suite ran 40 times standalone and passed every time. The full runner
