@@ -20,7 +20,7 @@ require_tests_review = true
 require_estimate_effort_to_review = false
 num_max_findings = 5
 
-extra_instructions = """
+extra_instructions = '''
 Focus on:
 - correctness
 - regressions
@@ -32,14 +32,14 @@ Focus on:
 
 Only report actionable findings.
 Do not invent issues.
-"""
+'''
 
 [pr_code_suggestions]
 commitable_code_suggestions = true
 
 # /improve reads its own extra_instructions, not the reviewer's. It writes
 # committable code onto the diff, so it needs the same limits.
-extra_instructions = """
+extra_instructions = '''
 Focus on:
 - correctness
 - regressions
@@ -51,4 +51,4 @@ Focus on:
 
 Only report actionable findings.
 Do not invent issues.
-"""
+'''

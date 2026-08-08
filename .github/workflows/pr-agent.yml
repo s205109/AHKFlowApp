@@ -39,6 +39,11 @@ jobs:
 
     runs-on: ubuntu-latest
 
+    # PR-Agent caps each model call at 120 seconds, but nothing caps the job. A
+    # stalled pull or a connection that hangs would otherwise run to GitHub's
+    # 6-hour default.
+    timeout-minutes: 15
+
     permissions:
       contents: read
       issues: write
