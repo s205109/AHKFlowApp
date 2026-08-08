@@ -1,0 +1,30 @@
+name: PR-Agent
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  pr_agent:
+    if: >
+      github.event.issue.pull_request &&
+      github.event.sender.type != 'Bot' &&
+      contains(
+        fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'),
+        github.event.comment.author_association
+      )
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+
+    steps:
+      - name: Run PR-Agent
+        # pragent/pr-agent:0.41.1-github_action
+        uses: docker://pragent/pr-agent@sha256:ec267eb168375c150d75efc024e2b10e0e2768ad0c000f15fd2378fe63abfe98
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          openrouter__key: ${{ secrets.OPENROUTER_API_KEY }}

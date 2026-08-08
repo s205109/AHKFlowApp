@@ -1,0 +1,27 @@
+[config]
+restricted_mode = true
+model = "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free"
+fallback_models = []
+
+[pr_reviewer]
+require_security_review = true
+require_tests_review = true
+require_estimate_effort_to_review = false
+num_max_findings = 5
+
+extra_instructions = """
+Focus on:
+- correctness
+- regressions
+- security
+- concurrency
+- error handling
+- maintainability
+- missing tests
+
+Only report actionable findings.
+Do not invent issues.
+"""
+
+[pr_code_suggestions]
+commitable_code_suggestions = true
