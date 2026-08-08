@@ -16,6 +16,10 @@
 
 $script:AgentGuardShellToolNames = @('bash', 'shell', 'shell_command', 'sh', 'powershell', 'pwsh')
 
+# Claude's file-writing tools. These carry a literal path rather than a command, so they are
+# classified by Get-AgentFileEditWriteDecision instead of the command evaluators.
+$script:AgentGuardFileEditToolNames = @('edit', 'write', 'notebookedit')
+
 $script:AgentGuardProtectedCommonDirCache = @{}
 
 # Characters a backslash may escape inside double quotes (POSIX), and outside quotes. Compared
@@ -116,11 +120,16 @@ function ConvertTo-AgentGuardNormalizedPath {
 
 <#
 .SYNOPSIS
-Normalizes a native agent PreToolUse payload into { Adapter, ToolName, Command, Cwd }.
+Normalizes a native agent PreToolUse payload into
+{ Adapter, ToolName, Command, TargetPath, Cwd, AgentId, AgentType }.
 
 .DESCRIPTION
 Adapter 'Auto' infers Copilot from a top-level 'toolArgs' key and Claude otherwise; Codex
 always supplies an explicit override. Throws on malformed JSON so the caller can fail open.
+
+A shell tool name normalizes to 'shell' and fills Command. A file-writing tool name normalizes to
+'file-edit' and fills TargetPath from file_path, or from notebook_path for NotebookEdit. Any other
+tool name is returned unchanged, and both fields stay empty.
 #>
 function ConvertFrom-AgentHookInput {
     [CmdletBinding()]
@@ -143,6 +152,7 @@ function ConvertFrom-AgentHookInput {
 
     $rawToolName = ''
     $command = ''
+    $targetPath = ''
     $agentId = ''
     $agentType = ''
 
@@ -169,6 +179,8 @@ function ConvertFrom-AgentHookInput {
         if (Test-AgentGuardProperty $payload 'tool_input') {
             $toolInput = $payload.tool_input
             if (Test-AgentGuardProperty $toolInput 'command') { $command = [string] $toolInput.command }
+            if (Test-AgentGuardProperty $toolInput 'file_path') { $targetPath = [string] $toolInput.file_path }
+            elseif (Test-AgentGuardProperty $toolInput 'notebook_path') { $targetPath = [string] $toolInput.notebook_path }
         }
 
         # agent_id is present at the top level only when the call originates inside a subagent
@@ -186,14 +198,18 @@ function ConvertFrom-AgentHookInput {
     if ($script:AgentGuardShellToolNames -contains $rawToolName.ToLowerInvariant()) {
         $normalizedToolName = 'shell'
     }
+    elseif ($script:AgentGuardFileEditToolNames -contains $rawToolName.ToLowerInvariant()) {
+        $normalizedToolName = 'file-edit'
+    }
 
     return [pscustomobject]@{
-        Adapter   = $resolvedAdapter
-        ToolName  = $normalizedToolName
-        Command   = $command
-        Cwd       = (ConvertTo-AgentGuardNormalizedPath $cwd)
-        AgentId   = $agentId
-        AgentType = $agentType
+        Adapter    = $resolvedAdapter
+        ToolName   = $normalizedToolName
+        Command    = $command
+        TargetPath = $targetPath
+        Cwd        = (ConvertTo-AgentGuardNormalizedPath $cwd)
+        AgentId    = $agentId
+        AgentType  = $agentType
     }
 }
 
@@ -1530,6 +1546,10 @@ Replaces every reparse point in a path with its target, walking from the root do
 Windows PowerShell 5.1 has no ResolveLinkTarget, so this uses (Get-Item -Force).Target, which
 both supported hosts provide. 5.1 types that property as string[] and pwsh 7 as string, so the
 array form is normalized. The iteration cap stops a symlink cycle from hanging the hook.
+
+A relative target is anchored to the directory holding the link, which is how Windows resolves
+one. Anchoring it to the process working directory instead classified the wrong file, and a
+worktree link pointing at `..\..\..\README.md` then looked like a path outside the checkout.
 #>
 function Resolve-AgentSymlinkPath {
     [CmdletBinding()]
@@ -1559,9 +1579,30 @@ function Resolve-AgentSymlinkPath {
             if ($target -is [array]) { $target = $target[0] }
             if ([string]::IsNullOrWhiteSpace($target)) { continue }
 
-            $remainder = @($parts[($i + 1)..($parts.Count - 1)]) | Where-Object { $_ }
+            # A link that IS the last component has no remainder. Taking the slice anyway asks
+            # for index $parts.Count, which strict mode rejects outright and which otherwise
+            # produces a DESCENDING range that hands back the leaf a second time.
+            $remainder = @()
+            if ($i + 1 -le $parts.Count - 1) {
+                $remainder = @($parts[($i + 1)..($parts.Count - 1)]) | Where-Object { $_ }
+            }
+
+            # A symlink target may be relative. Windows resolves it against the directory holding
+            # the link, never against the process working directory. Anchoring it here is what
+            # keeps `..\..\..\README.md` inside a worktree from classifying as outside the
+            # protected checkout. The repository tracks such a link at .github\AGENTS.md.
+            if (-not [System.IO.Path]::IsPathRooted($target)) {
+                $linkParent = Split-Path -Parent $accumulated
+                if (-not [string]::IsNullOrWhiteSpace($linkParent)) {
+                    $target = Join-Path $linkParent $target
+                }
+            }
+
             $result = $target
             foreach ($piece in $remainder) { $result = Join-Path $result $piece }
+            # Collapse the '..' segments the substitution just introduced, so the next pass walks
+            # a real path. GetFullPath is lexical; it does not touch the filesystem.
+            try { $result = [System.IO.Path]::GetFullPath($result) } catch { }
             $changed = $true
             break
         }
@@ -1586,46 +1627,71 @@ when DEST is `../../../../README.md`.
 
 Mirrors the precedent at Get-AgentCommandSegment, where a cd target matching [\$%] marks the
 following git mutation untargetable rather than guessing where it lands.
+
+Pass -Literal for a path that came from a tool call rather than a command line. That skips the
+shell-expansion rule, and it keeps the target byte for byte: no quote stripping and no whitespace
+trimming, because those are legal Windows file name characters and the tool will open the path
+exactly as given. Rooting, `..` collapsing, and symlink resolution are unchanged.
 #>
 function Get-AgentWriteTargetResolution {
     [CmdletBinding()]
-    param([string] $Target, [string] $BaseDirectory)
+    param([string] $Target, [string] $BaseDirectory, [switch] $Literal)
 
     if ([string]::IsNullOrWhiteSpace($Target)) {
         return [pscustomobject]@{ Path = ''; Unresolved = $true }
     }
 
-    $trimmed = $Target.Trim().Trim('"', "'")
+    # A command-line target still carries the shell's quoting, so quotes and outer whitespace are
+    # stripped off it. A tool call carries the path exactly as the tool will open it, and a quote
+    # or a leading space is a legal Windows file name character. Stripping there classified a
+    # different file: "'\..\..\..\q.tmp" became the drive-rooted "\..\..\..\q.tmp", which lands
+    # outside the checkout and was allowed.
+    $trimmed = if ($Literal) { $Target } else { $Target.Trim().Trim('"', "'") }
     if ($trimmed.StartsWith('~')) {
         return [pscustomobject]@{ Path = ''; Unresolved = $true }
     }
 
-    if ($trimmed -match $script:AgentGuardUnexpandablePattern) {
+    # A tool call carries one literal path and no shell runs over it, so '$', '%' and backtick are
+    # ordinary file name characters there. Applying the shell rule would refuse a real edit inside
+    # the session's own worktree. A '~' still fails closed under -Literal: nothing in the payload
+    # says which home directory it means.
+    if (-not $Literal -and $trimmed -match $script:AgentGuardUnexpandablePattern) {
         return [pscustomobject]@{ Path = ''; Unresolved = $true }
     }
 
     $parts = @($trimmed -split '[\\/]')
-    $literal = New-Object System.Collections.Generic.List[string]
+    # Named literalParts, not literal: PowerShell variable names are case-insensitive, so a plain
+    # $literal here would be the -Literal switch parameter above.
+    $literalParts = New-Object System.Collections.Generic.List[string]
     foreach ($part in $parts) {
         if ($part -match '[\*\?]') { break }
-        [void] $literal.Add($part)
+        [void] $literalParts.Add($part)
     }
 
-    if ($literal.Count -eq 0) {
+    if ($literalParts.Count -eq 0) {
         return [pscustomobject]@{ Path = ''; Unresolved = $true }
     }
 
-    $candidate = $literal -join '\'
-    if (-not [System.IO.Path]::IsPathRooted($candidate)) {
-        if ([string]::IsNullOrWhiteSpace($BaseDirectory)) {
-            return [pscustomobject]@{ Path = ''; Unresolved = $true }
+    $candidate = $literalParts -join '\'
+    try {
+        if (-not [System.IO.Path]::IsPathRooted($candidate)) {
+            if ([string]::IsNullOrWhiteSpace($BaseDirectory)) {
+                return [pscustomobject]@{ Path = ''; Unresolved = $true }
+            }
+            $candidate = Join-Path $BaseDirectory $candidate
         }
-        $candidate = Join-Path $BaseDirectory $candidate
-    }
 
-    # GetFullPath collapses '..' segments; it does not touch the filesystem.
-    try { $candidate = [System.IO.Path]::GetFullPath($candidate) }
-    catch { return [pscustomobject]@{ Path = ''; Unresolved = $true } }
+        # GetFullPath collapses '..' segments; it does not touch the filesystem.
+        $candidate = [System.IO.Path]::GetFullPath($candidate)
+    }
+    catch {
+        # Windows PowerShell 5.1 runs on .NET Framework, whose path APIs reject characters such
+        # as '"' outright, and IsPathRooted throws before GetFullPath is ever reached. A path
+        # this host cannot parse is one the guard cannot classify, so report it unresolved. The
+        # caller then denies. Letting the exception escape would instead reach the entrypoint's
+        # catch and allow the write.
+        return [pscustomobject]@{ Path = ''; Unresolved = $true }
+    }
 
     $resolved = Resolve-AgentSymlinkPath -Path $candidate
     return [pscustomobject]@{
@@ -1834,6 +1900,75 @@ function Get-AgentWorktreeWriteDecision {
 
     return New-AgentGuardDecision -Action Deny -Rule 'agent-worktree-main-write' -Message `
     ([string]::Format($template, $blockingPath))
+}
+
+<#
+.SYNOPSIS
+Refuses an Edit, Write, or NotebookEdit tool call that lands in the main checkout from a session
+isolated in a managed worktree.
+
+.DESCRIPTION
+Get-AgentWorktreeWriteDecision has to parse a command line before it can find a write target. A
+tool call carries one literal path instead, so this function shares that rule's path resolution,
+allow-list, and refusal messages but none of its parsing. Like the shell rule, it only fires when
+the session's own working directory is a managed worktree, which keeps the AGENTS.md rule that
+agents may edit, build, test, and format in the main checkout.
+#>
+function Get-AgentFileEditWriteDecision {
+    [CmdletBinding()]
+    param(
+        [string] $TargetPath,
+        [string] $Cwd,
+        [string] $ProtectedRepoRoot,
+        [bool] $AllowMain = $false
+    )
+
+    # A payload with no path is malformed. The tool rejects it anyway, so there is nothing here to
+    # protect.
+    if ([string]::IsNullOrWhiteSpace($TargetPath)) { return New-AgentGuardDecision -Action Allow }
+
+    $sessionState = Get-ManagedWorktreeState -Cwd $Cwd -ProtectedRepoRoot $ProtectedRepoRoot
+    if ($sessionState -ne 'ManagedWorktree') { return New-AgentGuardDecision -Action Allow }
+
+    $protectedCommonDir = Invoke-AgentGuardGitProbe @(
+        '-C', $ProtectedRepoRoot, 'rev-parse', '--path-format=absolute', '--git-common-dir')
+    if ([string]::IsNullOrWhiteSpace($protectedCommonDir)) { return New-AgentGuardDecision -Action Allow }
+    $mainCheckout = ConvertTo-AgentGuardNormalizedPath (Split-Path -Parent (
+            ConvertTo-AgentGuardNormalizedPath $protectedCommonDir))
+    # The session's own worktree is its git top level, not the directory it happens to sit in.
+    $worktreeRoot = Get-AgentSessionWorktreeRoot -Cwd $Cwd
+
+    $resolution = Get-AgentWriteTargetResolution -Target $TargetPath -BaseDirectory $Cwd -Literal
+
+    if (-not $resolution.Unresolved) {
+        if (Test-AgentWriteTargetAllowed -ResolvedPath $resolution.Path `
+                -MainCheckout $mainCheckout -WorktreeRoot $worktreeRoot) {
+            return New-AgentGuardDecision -Action Allow
+        }
+    }
+
+    if ($AllowMain) {
+        $overrideTarget = if ($resolution.Unresolved) { 'an unexpandable target' } else { $resolution.Path }
+        return New-AgentGuardDecision -Action Warn -Rule 'agent-worktree-main-write-overridden' -Message `
+        ("WARNING: AHKFLOW_ALLOW_MAIN=1 overrode the worktree write-isolation rule for: $overrideTarget")
+    }
+
+    if ($resolution.Unresolved) {
+        return New-AgentGuardDecision -Action Deny -Rule 'agent-worktree-main-write' -Message `
+            $script:AgentGuardUnresolvedWriteMessage
+    }
+
+    $plansRoot = ConvertTo-AgentGuardNormalizedPath (Join-Path $mainCheckout 'docs\superpowers')
+    $template = if ($resolution.Path -ieq $plansRoot -or
+        $resolution.Path.StartsWith($plansRoot + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
+        $script:AgentGuardPlansDenialMessage
+    }
+    else {
+        $script:AgentGuardWriteDenialMessage
+    }
+
+    return New-AgentGuardDecision -Action Deny -Rule 'agent-worktree-main-write' -Message `
+    ([string]::Format($template, $resolution.Path))
 }
 
 $script:AgentGuardAllowedStates = @('NotRepository', 'OutsideProtectedRepository', 'ManagedWorktree')

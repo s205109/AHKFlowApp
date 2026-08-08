@@ -116,12 +116,12 @@ So this item is designable now. It needs a plan before implementation, because i
       058 — answering it once serves both)
 - [x] `docs/agents/cross-agent-git-guardrails.md` corrected — the claim that native isolation covers
       `Edit`/`Write` for Claude sessions holds only for `-w` and `EnterWorktree` sessions
-- [ ] A session started inside a worktree without `-w` cannot `Edit` or `Write` into the main
+- [x] A session started inside a worktree without `-w` cannot `Edit` or `Write` into the main
       checkout, and the refusal names the real reason and a real next step
-- [ ] The `docs/superpowers` case reuses the wording already shipped at
+- [x] The `docs/superpowers` case reuses the wording already shipped at
       `scripts/agents/agent-worktree-guard.common.ps1:1647`, which never tells the agent to look for
       a worktree copy
-- [ ] A test covers the gap, in the style of the existing cases in `tests/AgentWorktreeGuard.Tests.ps1`
+- [x] A test covers the gap, in the style of the existing cases in `tests/AgentWorktreeGuard.Tests.ps1`
 
 ## Out of scope
 
@@ -138,3 +138,15 @@ So this item is designable now. It needs a plan before implementation, because i
 - 054 already guards Bash writes from a worktree using the hook payload `cwd`. The fix here is the
   same rule applied to `Edit` and `Write`, so it should reuse 054's path resolution rather than
   grow a second copy.
+- Closed by `docs/superpowers/specs/2026-08-07-worktree-edit-write-isolation-design.md` and
+  `docs/superpowers/plans/2026-08-07-worktree-edit-write-isolation.md`
+- Reusing 054's path resolution exposed three defects in it, all fixed on the same branch: a symlink
+  whose target is relative was resolved against the hook process's working directory rather than the
+  directory holding the link; a link that was the last path component indexed past the end of an
+  array, which throws under the entrypoint's strict mode; and a path the PowerShell host cannot
+  parse threw instead of reporting itself unresolved. Each of the three reached the entrypoint's
+  catch, which allows the write. They affected the Bash rule too, so 054 is now stricter as well.
+- The real-session probe that proves the fix is recorded in the pull request that closes this item.
+  Three runs, all from `.claude/worktrees/065-edit-write-isolation` with no `-w`, on Claude Code
+  2.1.225: a `Write` into the main checkout was denied, a `Write` into `docs/superpowers` was denied
+  with the plans wording, and a `Write` inside the worktree succeeded.

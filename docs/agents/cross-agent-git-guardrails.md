@@ -36,6 +36,7 @@ or a safe `git branch -d` on an already-merged branch. They run from main with n
 | Layer | Where | Scope |
 | --- | --- | --- |
 | `PreToolUse` command guard | `.claude/hooks/pre-bash-guard.sh` → `scripts/agents/invoke-agent-worktree-guard.ps1` | Primary. Every agent Bash/shell tool call. |
+| `PreToolUse` file-edit guard | `.claude/hooks/pre-edit-guard.sh` → `scripts/agents/invoke-agent-worktree-guard.ps1` | Claude `Edit`, `Write`, and `NotebookEdit` tool calls. |
 | `pre-commit` backstop | `.githooks/pre-commit` → `.githooks/pre-commit.ps1` | Narrow. Agent-marked commits only, after merge. |
 
 The Bash hook is a fast candidate-token filter: a command that cannot contain `git`, `rm`, or
@@ -131,8 +132,22 @@ location logic.
 ### Worktree write isolation
 
 Separate from the Git tiers. When the session's working directory is a **managed worktree**, a
-shell command that writes, moves, or deletes a path resolving under the main checkout is denied,
-with rule `agent-worktree-main-write`.
+write that resolves under the main checkout is denied, with rule `agent-worktree-main-write`. Two
+kinds of write are covered: a shell command that writes, moves, or deletes a path, and a Claude
+`Edit`, `Write`, or `NotebookEdit` tool call.
+
+The two kinds share the path rules below and the same refusal text. They differ in what has to be
+parsed. A shell command needs a command line taken apart first, so every limit further down this
+section applies to it. A tool call carries one literal path, so none of those limits apply: there
+is no redirect to find, no chained `cd` to track, and no shell to expand `$`, `%`, or a backtick,
+which are ordinary characters in a Windows file name. The path is classified exactly as the tool
+will open it, with no quote stripping and no whitespace trimming. A `~` still fails closed, because
+nothing in the payload says which home directory it means. So does a path the PowerShell host
+cannot parse at all — Windows PowerShell 5.1 rejects a `"` in a path where pwsh 7 accepts it.
+
+Symlinks are followed before classification, and a relative link target is resolved against the
+directory holding the link. That matters because a link inside a worktree can point at
+`..\..\..\README.md`, and following it lands in the main checkout.
 
 Allowed anyway:
 
@@ -303,32 +318,38 @@ An agent running the same command would need a prompt or override.
   Git after such a `cd` is unaffected. Pass an explicit `git -C <path>` to be classified normally.
 - `commit --no-verify` and `--git-dir`/`--work-tree` targeting cannot be safely inferred, so a
   mutating invocation using `--git-dir`/`--work-tree` is denied outright (unless `AHKFLOW_ALLOW_MAIN=1`).
-- Shell **writes** into main are guarded, in one direction only: a session whose working directory
-  is a managed worktree cannot write, move, or delete a path resolving under the main checkout. A
-  main-checkout session is unaffected and may still edit, build, test, and format there. `Edit` and
-  `Write` tool calls are not covered by this repository at all. Claude Code's own worktree isolation
-  covers them, but only for a session started with `-w`, `--worktree`, or the `EnterWorktree` tool.
-  That check reads a session flag, not the working directory. A Claude session that merely has a
-  worktree as its working directory gets no check, so it can `Edit` and `Write` into main freely.
-  Codex and Copilot have no equivalent isolation at all. Tracked in
-  `backlog/065-native-edit-isolation-misses-worktree-sessions-without-w-flag.md`.
+- **Writes** into main are guarded, in one direction only: a session whose working directory is a
+  managed worktree cannot write, move, or delete a path resolving under the main checkout. This
+  covers shell commands and Claude `Edit`, `Write`, and `NotebookEdit` tool calls. A main-checkout
+  session is unaffected and may still edit, build, test, and format there.
+- Claude Code has its own worktree isolation for `Edit` and `Write`, and it reads a session flag
+  rather than the working directory. It fires only for a session started with `-w`, `--worktree`, or
+  the `EnterWorktree` tool. This repository's guard reads the working directory instead, so the two
+  now overlap rather than leave a gap. In a `-w` session the harness refusal wins; in every other
+  worktree session this repository's refusal is the one that fires.
+- Codex and Copilot file-edit tool calls are **not** covered. Their tool names and payload shapes are
+  not verified here, and neither agent has native worktree isolation. Their shell commands are
+  covered as before.
 - The write scan reads a denylist of write commands, not an allowlist of safe ones. A writer
   outside that list — `del`, `python -c`, a compiled tool — is not detected. Same trade-off the
   Git mutation rule already makes.
 - `pwsh -File script.ps1` is still unread. The guard classifies the command line the hook reports,
   never a file that command line points at.
-- Claude Code's own `Edit`/`Write` refusal tells the agent to edit "the worktree copy of this
-  file". For `docs/superpowers` no worktree copy can exist, because `.gitignore` excludes the path
-  and `scripts/worktree-plans.common.ps1` links it in instead. That text belongs to the harness and
-  cannot be changed here. This was measured, not assumed: a `PreToolUse` hook on `Edit|Write` that
-  denies with its own message is silenced in a `-w` session — the harness refusal takes precedence.
-  The same hook denies normally once `-w` is dropped, which proves it was loaded. What was measured
-  is which refusal reaches the agent, not the harness's internal execution order. Method and output:
+- In a `-w` session, Claude Code's own `Edit`/`Write` refusal wins, and it tells the agent to edit
+  "the worktree copy of this file". For `docs/superpowers` no worktree copy can exist, because
+  `.gitignore` excludes the path and `scripts/worktree-plans.common.ps1` links it in instead. That
+  text belongs to the harness and cannot be changed here. This was measured, not assumed: a
+  `PreToolUse` hook on `Edit|Write` that denies with its own message is silenced in a `-w` session —
+  the harness refusal takes precedence. The same hook denies normally once `-w` is dropped, which
+  proves it was loaded. What was measured is which refusal reaches the agent, not the harness's
+  internal execution order. Method and output:
   `docs/superpowers/specs/2026-08-07-worktree-edit-isolation-precedence-design.md`. Tracked in
   `backlog/blocked/058-native-edit-refusal-names-missing-worktree-copy.md`, which is blocked: the
   only remaining step is a report to Anthropic, and that report has not been filed. Confirmed on
   Claude Code `2.1.224`. Until it changes upstream, treat the refusal text as wrong for
-  `docs/superpowers` and do not go looking for a worktree copy of a plan or spec.
+  `docs/superpowers` and do not go looking for a worktree copy of a plan or spec. This applies to a
+  `-w` session only. Outside one, this repository's own refusal fires instead, and it names the
+  symlink rather than a worktree copy.
 
 ## Version-skew and authoritative main
 

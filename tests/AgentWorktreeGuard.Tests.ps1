@@ -141,12 +141,29 @@ function Invoke-Entrypoint {
         [string] $StdIn,
         [string] $Adapter = 'Auto',
         [hashtable] $EnvironmentOverrides = @{},
-        [string] $WorkingDirectory = $suiteRoot
+        [string] $WorkingDirectory = $suiteRoot,
+        # Defaults to the checked-in entrypoint, which protects the real repository. Pass a copy
+        # planted inside the disposable fixture to protect the fixture instead.
+        [string] $ScriptPath = $entrypointScript
     )
 
     return Invoke-CapturedProcess -FilePath $script:PowerShellHost `
-        -Arguments @('-NoProfile', '-NonInteractive', '-File', $entrypointScript, '-Adapter', $Adapter) `
+        -Arguments @('-NoProfile', '-NonInteractive', '-File', $ScriptPath, '-Adapter', $Adapter) `
         -StdIn $StdIn -EnvironmentOverrides $EnvironmentOverrides -WorkingDirectory $WorkingDirectory
+}
+
+# The entrypoint derives the repository it protects from its own location, and that cannot be
+# overridden. Planting a copy inside the fixture is therefore the only way to point it at the
+# fixture. Without this, entrypoint cases would need a managed worktree of the REAL repository,
+# which does not exist in a plain checkout or in CI.
+function New-FixtureEntrypoint {
+    param([string] $RepoRoot)
+
+    $agents = Join-Path $RepoRoot 'scripts\agents'
+    New-Item -ItemType Directory -Path $agents -Force | Out-Null
+    Copy-Item -LiteralPath $commonScript -Destination $agents
+    Copy-Item -LiteralPath $entrypointScript -Destination $agents
+    return (Resolve-Path -LiteralPath (Join-Path $agents 'invoke-agent-worktree-guard.ps1')).Path
 }
 
 function ConvertTo-BashPath {
@@ -191,6 +208,63 @@ function Invoke-BashShim {
         -StdIn $StdIn -EnvironmentOverrides $EnvironmentOverrides
 }
 
+# A shim's only job is to decide whether to forward. Proving that against the real entrypoint
+# needs the suite to be running inside a managed worktree, which it is not when it runs from a
+# plain checkout or in CI. So the shim is copied into a temporary tree whose entrypoint is a stub
+# that announces itself. Forwarded and not-forwarded then differ in the output, always.
+$script:ShimStubMarker = 'STUB-ENTRYPOINT-REACHED'
+
+function New-ShimHarness {
+    param([string] $ShimFileName)
+
+    $root = Join-Path ([System.IO.Path]::GetTempPath()) (
+        'ahkflow-shim-harness-' + [guid]::NewGuid().ToString('N'))
+    $hooks = Join-Path $root '.claude\hooks'
+    $agents = Join-Path $root 'scripts\agents'
+    New-Item -ItemType Directory -Path $hooks -Force | Out-Null
+    New-Item -ItemType Directory -Path $agents -Force | Out-Null
+
+    Copy-Item -LiteralPath (Join-Path $suiteRoot ".claude\hooks\$ShimFileName") `
+        -Destination (Join-Path $hooks $ShimFileName)
+
+    # The stub replaces the real entrypoint at the same relative path the shim resolves.
+    Set-Content -LiteralPath (Join-Path $agents 'invoke-agent-worktree-guard.ps1') -Encoding utf8 -Value @"
+param([string] `$Adapter = 'Auto')
+[Console]::Error.WriteLine("$($script:ShimStubMarker) adapter=`$Adapter")
+exit 0
+"@
+
+    return [pscustomobject]@{
+        Root = (Resolve-Path -LiteralPath $root).Path
+        Shim = (Resolve-Path -LiteralPath (Join-Path $hooks $ShimFileName)).Path
+    }
+}
+
+function Remove-ShimHarness {
+    param([object] $Harness)
+
+    if ($null -eq $Harness) { return }
+    $tempRoot = (Resolve-Path -LiteralPath ([System.IO.Path]::GetTempPath())).Path.TrimEnd('\', '/')
+    $target = $Harness.Root.TrimEnd('\', '/')
+    if (-not $target.StartsWith($tempRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing to delete a shim harness outside the temp directory: $target"
+    }
+    Remove-Item -LiteralPath $target -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+function Invoke-HarnessShim {
+    param(
+        [object] $Harness,
+        [string] $StdIn,
+        [string[]] $ShimArguments = @(),
+        [hashtable] $EnvironmentOverrides = @{}
+    )
+
+    return Invoke-CapturedProcess -FilePath $script:BashExecutable `
+        -Arguments (@((ConvertTo-BashPath $Harness.Shim)) + $ShimArguments) `
+        -StdIn $StdIn -EnvironmentOverrides $EnvironmentOverrides
+}
+
 function New-ClaudePayload {
     param([string] $Command, [string] $Cwd, [string] $AgentId = '')
     $payload = @{
@@ -223,6 +297,19 @@ function New-CopilotPayload {
         toolName = $ToolName
         toolArgs = (@{ command = $Command } | ConvertTo-Json -Compress)
         cwd      = $Cwd
+    } | ConvertTo-Json -Compress -Depth 4
+}
+
+function New-ClaudeEditPayload {
+    param([string] $ToolName, [string] $Path, [string] $Cwd)
+
+    # Edit and Write carry file_path; NotebookEdit carries notebook_path.
+    $pathKey = if ($ToolName -ieq 'NotebookEdit') { 'notebook_path' } else { 'file_path' }
+    return @{
+        hook_event_name = 'PreToolUse'
+        tool_name       = $ToolName
+        tool_input      = @{ $pathKey = $Path }
+        cwd             = $Cwd
     } | ConvertTo-Json -Compress -Depth 4
 }
 
@@ -305,6 +392,19 @@ function New-GuardFixture {
     }
     if ((Get-Item -LiteralPath $plansLink -Force).LinkType -ne 'SymbolicLink') {
         throw ('docs\superpowers was created as a real directory, not a symlink. ' +
+            'Enable Windows Developer Mode, then re-run. See docs/development/prerequisites.md.')
+    }
+
+    # A FILE symlink with a RELATIVE target, inside the worktree, pointing at the main checkout.
+    # Windows resolves such a target against the directory holding the link. This repository
+    # already tracks one of these at .github\AGENTS.md, so it is not a theoretical shape.
+    Push-Location $managedRoot
+    try { cmd /c mklink 'relative-link.md' '..\..\..\seed.txt' > $null 2>&1 }
+    finally { Pop-Location }
+
+    $relativeLink = Join-Path $managedRoot 'relative-link.md'
+    if (-not (Test-Path -LiteralPath $relativeLink)) {
+        throw ('Could not create the relative file symlink the guard tests require. ' +
             'Enable Windows Developer Mode, then re-run. See docs/development/prerequisites.md.')
     }
 
@@ -405,6 +505,41 @@ try {
     Invoke-TestCase 'Auto adapter falls back to Claude without toolArgs' {
         $normalized = ConvertFrom-AgentHookInput -Adapter 'Auto' -InputJson (New-ClaudePayload 'git status' $fixture.Main)
         Assert-Equal 'Claude' $normalized.Adapter 'Adapter'
+    }
+
+    Invoke-TestCase 'Edit payload normalizes to the file-edit contract' {
+        $json = New-ClaudeEditPayload 'Edit' 'C:\repo\src\a.cs' $fixture.Main
+        $normalized = ConvertFrom-AgentHookInput -Adapter 'Claude' -InputJson $json
+        Assert-Equal 'file-edit' $normalized.ToolName 'ToolName'
+        Assert-Equal 'C:\repo\src\a.cs' $normalized.TargetPath 'TargetPath'
+        Assert-Equal '' $normalized.Command 'Command'
+    }
+
+    Invoke-TestCase 'Write payload normalizes to the file-edit contract' {
+        $json = New-ClaudeEditPayload 'Write' 'C:\repo\src\b.cs' $fixture.Main
+        $normalized = ConvertFrom-AgentHookInput -Adapter 'Claude' -InputJson $json
+        Assert-Equal 'file-edit' $normalized.ToolName 'ToolName'
+        Assert-Equal 'C:\repo\src\b.cs' $normalized.TargetPath 'TargetPath'
+    }
+
+    Invoke-TestCase 'NotebookEdit payload carries its path under notebook_path' {
+        $json = New-ClaudeEditPayload 'NotebookEdit' 'C:\repo\note.ipynb' $fixture.Main
+        $normalized = ConvertFrom-AgentHookInput -Adapter 'Claude' -InputJson $json
+        Assert-Equal 'file-edit' $normalized.ToolName 'ToolName'
+        Assert-Equal 'C:\repo\note.ipynb' $normalized.TargetPath 'TargetPath'
+    }
+
+    Invoke-TestCase 'A Bash payload still carries no target path' {
+        $normalized = ConvertFrom-AgentHookInput -Adapter 'Claude' `
+            -InputJson (New-ClaudePayload 'git status' $fixture.Main)
+        Assert-Equal 'shell' $normalized.ToolName 'ToolName'
+        Assert-Equal '' $normalized.TargetPath 'TargetPath'
+    }
+
+    Invoke-TestCase 'An unknown tool name stays unrecognized' {
+        $json = New-ClaudeEditPayload 'Read' 'C:\repo\src\a.cs' $fixture.Main
+        $normalized = ConvertFrom-AgentHookInput -Adapter 'Claude' -InputJson $json
+        Assert-Equal 'Read' $normalized.ToolName 'ToolName'
     }
 
     Write-Host 'Entrypoint input handling' -ForegroundColor Cyan
@@ -1504,6 +1639,20 @@ try {
         Assert-Match '-Adapter Copilot' $guards[0].powershell 'powershell adapter'
     }
 
+    Invoke-TestCase 'Claude registers the file-edit guard on all three writing tools' {
+        $settings = Get-Content -LiteralPath (Join-Path $suiteRoot '.claude\settings.json') -Raw | ConvertFrom-Json
+        $guards = @($settings.hooks.PreToolUse | Where-Object {
+                @($_.hooks) | Where-Object {
+                    $_.PSObject.Properties['command'] -and $_.command -match 'pre-edit-guard'
+                }
+            })
+
+        Assert-Equal 1 $guards.Count 'exactly one file-edit guard registration'
+        foreach ($tool in @('Edit', 'Write', 'NotebookEdit')) {
+            Assert-Match "\b$tool\b" $guards[0].matcher "matcher must cover $tool"
+        }
+    }
+
     Write-Host 'Token quote masks' -ForegroundColor Cyan
 
     $maskCases = @(
@@ -1650,6 +1799,55 @@ try {
         $resolution = Get-AgentWriteTargetResolution -Target '../../../x.tmp' -BaseDirectory $fixture.Managed
         Assert-True (-not $resolution.Unresolved) 'Must resolve'
         Assert-Equal (Join-Path $fixture.Main 'x.tmp') $resolution.Path 'Path'
+    }
+
+    # A symlink target may be relative, and Windows resolves it against the directory holding the
+    # link. Resolving it against the hook process's working directory instead classified the wrong
+    # file, and a link that is the LAST path component indexed past the end of the split array.
+    Invoke-TestCase 'Resolution: a relative file symlink resolves against the link parent' {
+        $link = Join-Path $fixture.Managed 'relative-link.md'
+        Assert-Equal (Join-Path $fixture.Main 'seed.txt') (Resolve-AgentSymlinkPath -Path $link) 'Resolved path'
+    }
+
+    Invoke-TestCase 'Resolution: a relative file symlink is classified in the main checkout' {
+        $link = Join-Path $fixture.Managed 'relative-link.md'
+        $resolution = Get-AgentWriteTargetResolution -Target $link -BaseDirectory $fixture.Managed -Literal
+        Assert-True (-not $resolution.Unresolved) 'Must resolve'
+        Assert-Equal (Join-Path $fixture.Main 'seed.txt') $resolution.Path 'Path'
+    }
+
+    # -Literal must classify the exact path the tool will open. A quote and a leading or trailing
+    # space are legal Windows file name characters, so stripping them names a different file.
+    Invoke-TestCase 'Resolution: -Literal keeps a leading quote in the path' {
+        $resolution = Get-AgentWriteTargetResolution -Target "'\..\..\..\q.tmp" `
+            -BaseDirectory $fixture.Managed -Literal
+        Assert-True (-not $resolution.Unresolved) 'Must resolve'
+        Assert-Equal (Join-Path $fixture.Main '.claude\q.tmp') $resolution.Path 'Path'
+    }
+
+    Invoke-TestCase 'Resolution: -Literal keeps a single quote in a file name' {
+        $resolution = Get-AgentWriteTargetResolution -Target "'quoted'.cs" `
+            -BaseDirectory $fixture.Managed -Literal
+        Assert-Equal (Join-Path $fixture.Managed "'quoted'.cs") $resolution.Path 'Path'
+    }
+
+    # Windows PowerShell 5.1 runs on .NET Framework, whose path APIs reject '"' outright; pwsh 7
+    # accepts it. Assert the invariant both hosts must hold: never throw, and never quietly drop
+    # the character. Throwing would reach the entrypoint's catch and allow the write.
+    Invoke-TestCase 'Resolution: -Literal never throws on a double quote in a file name' {
+        $resolution = Get-AgentWriteTargetResolution -Target '"quoted".cs' `
+            -BaseDirectory $fixture.Managed -Literal
+        if ($resolution.Unresolved) {
+            Assert-Equal '' $resolution.Path 'An unresolved target carries no path'
+        }
+        else {
+            Assert-Equal (Join-Path $fixture.Managed '"quoted".cs') $resolution.Path 'Path'
+        }
+    }
+
+    Invoke-TestCase 'Resolution: a command-line target still has its quoting stripped' {
+        $resolution = Get-AgentWriteTargetResolution -Target '"quoted.cs"' -BaseDirectory $fixture.Managed
+        Assert-Equal (Join-Path $fixture.Managed 'quoted.cs') $resolution.Path 'Path'
     }
 
     $unresolvedCases = @('$MAIN_ROOT/x.tmp', '%USERPROFILE%\x.tmp', '~/x.tmp')
@@ -1850,6 +2048,188 @@ try {
         Assert-Equal 'agent-main-git-mutation' $decision.Rule 'Rule'
     }
 
+    Write-Host 'File-edit write isolation' -ForegroundColor Cyan
+
+    # One literal path per case. Placeholders are replaced against the disposable fixture below,
+    # so no case names a real repository path.
+    $fileEditCases = @(
+        @{ Name = 'a file inside the session worktree'
+            Path = '<MANAGED>\src\a.cs'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        @{ Name = 'a file in the main checkout'
+            Path = '<MAIN>\README.md'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name = 'a file in a sibling worktree'
+            Path = '<MANAGED2>\src\a.cs'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name = 'build output under the main checkout'
+            Path = '<MAIN>\obj\x.dll'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        @{ Name = 'a path outside the protected checkout'
+            Path = '<UNRELATED>\x.txt'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        @{ Name = 'the worktree removal log'
+            Path = '<MAIN>\.claude\worktrees\worktree-removal.log'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        @{ Name = 'a main-checkout session may still edit main'
+            Path = '<MAIN>\README.md'; Cwd = 'Main'; Action = 'Allow'
+        },
+        @{ Name = 'an unmanaged worktree session is not covered by this rule'
+            Path = '<MAIN>\README.md'; Cwd = 'Unmanaged'; Action = 'Allow'
+        },
+        # docs\superpowers is a directory symlink back to the main checkout, so the resolved path
+        # lands in main even though the path the agent typed sits inside the worktree.
+        @{ Name = 'the plans symlink resolves back into the main checkout'
+            Path = '<MANAGED>\docs\superpowers\x.md'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name = 'a relative path resolves against the session working directory'
+            Path = 'README.md'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        @{ Name = 'a relative path can climb out into the main checkout'
+            Path = '..\..\..\README.md'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name = 'an empty path has nothing to classify'
+            Path = ''; Cwd = 'Managed'; Action = 'Allow'
+        },
+        # A tool call cannot expand '~'. Fail closed rather than guess which home directory.
+        @{ Name = 'a home-relative path fails closed'
+            Path = '~\x.txt'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        # '$', '%' and backtick are legal in a Windows file name, and a tool call carries a literal
+        # path with no shell expansion. Treating one as unexpandable would refuse a real edit
+        # inside the session's own worktree.
+        @{ Name = 'a dollar sign in a file name is not a shell expansion'
+            Path = '<MANAGED>\src\a$b.cs'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        @{ Name = 'a percent sign in a file name is not a shell expansion'
+            Path = '<MANAGED>\src\a%b.cs'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        @{ Name = 'a subdirectory session writes its own worktree root'
+            Path = '<MANAGED>\README.md'; Cwd = 'ManagedSub'; Action = 'Allow'
+        },
+        @{ Name = 'a subdirectory session still cannot write the main checkout'
+            Path = '<MAIN>\x.tmp'; Cwd = 'ManagedSub'; Action = 'Deny'
+        },
+        # A file symlink inside the worktree whose relative target climbs into the main checkout.
+        # Edit and Write follow the link, so the classification has to follow it too.
+        @{ Name = 'a relative file symlink into the main checkout'
+            Path = '<MANAGED>\relative-link.md'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        # A leading quote is a legal Windows file name character. Stripping it turned this path
+        # into a drive-rooted one outside the checkout, and the write was allowed.
+        @{ Name = 'a leading quote does not turn a parent escape into a rooted path'
+            Path = "'\..\..\..\q.tmp"; Cwd = 'Managed'; Action = 'Deny'
+        }
+    )
+
+    foreach ($case in $fileEditCases) {
+        Invoke-TestCase "File-edit isolation: $($case.Name)" {
+            $path = $case.Path.
+            Replace('<MANAGED2>', $fixture.Managed2).
+            Replace('<MANAGED>', $fixture.Managed).
+            Replace('<UNRELATED>', $fixture.Unrelated).
+            Replace('<MAIN>', $fixture.Main)
+            $cwd = switch ($case.Cwd) {
+                'Main' { $fixture.Main }
+                'Unmanaged' { $fixture.Unmanaged }
+                'ManagedSub' { Join-Path $fixture.Managed 'scripts' }
+                default { $fixture.Managed }
+            }
+            $decision = Get-AgentFileEditWriteDecision -TargetPath $path `
+                -Cwd $cwd -ProtectedRepoRoot $fixture.Main -AllowMain $false
+            Assert-Equal $case.Action $decision.Action 'Action'
+        }
+    }
+
+    Invoke-TestCase 'File-edit isolation: a denial carries the shared write rule name' {
+        $decision = Get-AgentFileEditWriteDecision -TargetPath (Join-Path $fixture.Main 'README.md') `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'agent-worktree-main-write' $decision.Rule 'Rule'
+        Assert-Match 'cannot write into the main checkout' $decision.Message 'Message'
+    }
+
+    Invoke-TestCase 'File-edit isolation: the plans refusal does not name a worktree copy' {
+        $path = Join-Path $fixture.Managed 'docs\superpowers\x.md'
+        $decision = Get-AgentFileEditWriteDecision -TargetPath $path `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'Deny' $decision.Action 'Action'
+        Assert-Match 'no worktree copy' $decision.Message 'Message'
+        Assert-True ($decision.Message -notmatch 'Edit the worktree copy') 'Must not send the agent looking for a copy'
+    }
+
+    Invoke-TestCase 'File-edit isolation: AHKFLOW_ALLOW_MAIN=1 downgrades to a warning' {
+        $decision = Get-AgentFileEditWriteDecision -TargetPath (Join-Path $fixture.Main 'README.md') `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $true
+        Assert-Equal 'Warn' $decision.Action 'Action'
+        Assert-Match 'AHKFLOW_ALLOW_MAIN=1' $decision.Message 'Message'
+    }
+
+    # A copy of the entrypoint planted inside the fixture, so it protects the fixture's main
+    # checkout and treats $fixture.Managed as a real managed worktree. The checked-in entrypoint
+    # would protect the real repository instead, and a fixture path would classify as
+    # OutsideProtectedRepository.
+    $script:FixtureEntrypoint = New-FixtureEntrypoint -RepoRoot $fixture.Main
+
+    foreach ($toolName in @('Edit', 'Write', 'NotebookEdit')) {
+        Invoke-TestCase "Entrypoint: $toolName into the main checkout is denied" {
+            $target = Join-Path $fixture.Main 'README.md'
+            $result = Invoke-Entrypoint -Adapter 'Claude' -ScriptPath $script:FixtureEntrypoint `
+                -StdIn (New-ClaudeEditPayload $toolName $target $fixture.Managed)
+            Assert-Equal 2 $result.ExitCode 'ExitCode'
+            Assert-Match 'cannot write into the main checkout' $result.StdErr 'StdErr'
+        }
+    }
+
+    Invoke-TestCase 'Entrypoint: the plans refusal reaches the agent verbatim' {
+        $target = Join-Path $fixture.Managed 'docs\superpowers\x.md'
+        $result = Invoke-Entrypoint -Adapter 'Claude' -ScriptPath $script:FixtureEntrypoint `
+            -StdIn (New-ClaudeEditPayload 'Write' $target $fixture.Managed)
+        Assert-Equal 2 $result.ExitCode 'ExitCode'
+        Assert-Match 'no worktree copy' $result.StdErr 'StdErr'
+        Assert-True ($result.StdErr -notmatch 'Edit the worktree copy') 'Must not send the agent looking for a copy'
+    }
+
+    Invoke-TestCase 'Entrypoint: an edit inside the session worktree is allowed' {
+        $target = Join-Path $fixture.Managed 'README.md'
+        $result = Invoke-Entrypoint -Adapter 'Claude' -ScriptPath $script:FixtureEntrypoint `
+            -StdIn (New-ClaudeEditPayload 'Edit' $target $fixture.Managed)
+        Assert-Equal 0 $result.ExitCode 'ExitCode'
+        Assert-Equal '' $result.StdOut.Trim() 'Must produce no decision payload'
+    }
+
+    Invoke-TestCase 'Entrypoint: a main-checkout session may still edit the main checkout' {
+        $target = Join-Path $fixture.Main 'README.md'
+        $result = Invoke-Entrypoint -Adapter 'Claude' -ScriptPath $script:FixtureEntrypoint `
+            -StdIn (New-ClaudeEditPayload 'Edit' $target $fixture.Main)
+        Assert-Equal 0 $result.ExitCode 'ExitCode'
+    }
+
+    Invoke-TestCase 'Entrypoint: AHKFLOW_ALLOW_MAIN=1 warns instead of denying an edit' {
+        $target = Join-Path $fixture.Main 'README.md'
+        $result = Invoke-Entrypoint -Adapter 'Claude' -ScriptPath $script:FixtureEntrypoint `
+            -StdIn (New-ClaudeEditPayload 'Edit' $target $fixture.Managed) `
+            -EnvironmentOverrides @{ AHKFLOW_ALLOW_MAIN = '1' }
+        Assert-Equal 0 $result.ExitCode 'ExitCode'
+        Assert-Match 'AHKFLOW_ALLOW_MAIN=1 overrode' $result.StdErr 'StdErr'
+    }
+
+    Invoke-TestCase 'Entrypoint: AHKFLOW_GUARD_DISABLE=1 skips the file-edit rule too' {
+        $target = Join-Path $fixture.Main 'README.md'
+        $result = Invoke-Entrypoint -Adapter 'Claude' -ScriptPath $script:FixtureEntrypoint `
+            -StdIn (New-ClaudeEditPayload 'Edit' $target $fixture.Managed) `
+            -EnvironmentOverrides @{ AHKFLOW_GUARD_DISABLE = '1' }
+        Assert-Equal 0 $result.ExitCode 'ExitCode'
+        Assert-True ($result.StdErr -notmatch 'cannot write into the main checkout') 'Must not deny'
+    }
+
+    Invoke-TestCase 'Entrypoint: Codex file-edit calls stay out of scope' {
+        $target = Join-Path $fixture.Main 'README.md'
+        $result = Invoke-Entrypoint -Adapter 'Codex' -ScriptPath $script:FixtureEntrypoint `
+            -StdIn (New-ClaudeEditPayload 'Edit' $target $fixture.Managed)
+        Assert-Equal 0 $result.ExitCode 'ExitCode'
+        Assert-True ($result.StdErr -notmatch 'cannot write into the main checkout') 'Must not deny'
+    }
+
     Write-Host 'Bash shim prefilter for worktree writes' -ForegroundColor Cyan
 
     # These three run against the REAL repository identity, like every other shim test above: the
@@ -1858,9 +2238,18 @@ try {
     # the shim only classifies the command text.
     $script:RealWriteCommand = 'printf probe > ' + $script:RealMainCheckout.Replace('\', '/') + '/.guard-probe.tmp'
 
-    Invoke-TestCase 'Shim: a worktree-session redirect reaches the policy core' {
-        $result = Invoke-BashShim -StdIn (New-ClaudePayload $script:RealWriteCommand $suiteRoot)
-        Assert-Match 'agent-worktree-main-write' ($result.StdOut + $result.StdErr) 'Decision must be reported'
+    # Proved against the stub entrypoint, not the real one. The old version of this case passed a
+    # payload whose cwd was $suiteRoot and expected a denial, which only happens when the suite
+    # itself runs inside a managed worktree. From a plain checkout, and in CI, it failed.
+    Invoke-TestCase 'Shim: a worktree-session write is forwarded to the policy core' {
+        $harness = New-ShimHarness -ShimFileName 'pre-bash-guard.sh'
+        try {
+            $worktreeCwd = Join-Path $script:RealMainCheckout '.claude\worktrees\probe'
+            $result = Invoke-HarnessShim -Harness $harness `
+                -StdIn (New-ClaudePayload 'printf probe > ../../../README.md' $worktreeCwd)
+            Assert-Match $script:ShimStubMarker $result.StdErr 'Must forward to the entrypoint'
+        }
+        finally { Remove-ShimHarness -Harness $harness }
     }
 
     Invoke-TestCase 'Shim: a main-session redirect still exits in Bash' {
@@ -1873,6 +2262,81 @@ try {
         $result = Invoke-BashShim -StdIn (New-ClaudePayload 'cat README.md' $suiteRoot)
         Assert-Equal 0 $result.ExitCode 'Exit code'
         Assert-Equal '' $result.StdOut.Trim() 'Must produce no decision payload'
+    }
+
+    Write-Host 'Bash shim prefilter for file-edit tool calls' -ForegroundColor Cyan
+
+    Invoke-TestCase 'Edit shim: a worktree-session edit is forwarded to the policy core' {
+        $harness = New-ShimHarness -ShimFileName 'pre-edit-guard.sh'
+        try {
+            $worktreeCwd = Join-Path $script:RealMainCheckout '.claude\worktrees\probe'
+            $target = Join-Path $script:RealMainCheckout 'README.md'
+            $result = Invoke-HarnessShim -Harness $harness `
+                -StdIn (New-ClaudeEditPayload 'Edit' $target $worktreeCwd)
+            Assert-Match $script:ShimStubMarker $result.StdErr 'Must forward to the entrypoint'
+            Assert-Match 'adapter=Claude' $result.StdErr 'Must select the Claude adapter'
+        }
+        finally { Remove-ShimHarness -Harness $harness }
+    }
+
+    Invoke-TestCase 'Edit shim: a main-session edit exits in Bash' {
+        $harness = New-ShimHarness -ShimFileName 'pre-edit-guard.sh'
+        try {
+            $target = Join-Path $script:RealMainCheckout 'README.md'
+            $result = Invoke-HarnessShim -Harness $harness `
+                -StdIn (New-ClaudeEditPayload 'Edit' $target $script:RealMainCheckout)
+            Assert-Equal 0 $result.ExitCode 'ExitCode'
+            Assert-True ($result.StdErr -notmatch $script:ShimStubMarker) 'Must not start PowerShell'
+        }
+        finally { Remove-ShimHarness -Harness $harness }
+    }
+
+    Invoke-TestCase 'Edit shim: a Write payload is forwarded too' {
+        $harness = New-ShimHarness -ShimFileName 'pre-edit-guard.sh'
+        try {
+            $worktreeCwd = Join-Path $script:RealMainCheckout '.claude\worktrees\probe'
+            $target = Join-Path $script:RealMainCheckout 'notes.md'
+            $result = Invoke-HarnessShim -Harness $harness `
+                -StdIn (New-ClaudeEditPayload 'Write' $target $worktreeCwd)
+            Assert-Match $script:ShimStubMarker $result.StdErr 'Must forward to the entrypoint'
+        }
+        finally { Remove-ShimHarness -Harness $harness }
+    }
+
+    Invoke-TestCase 'Edit shim: honors AHKFLOW_GUARD_DISABLE before doing any work' {
+        $harness = New-ShimHarness -ShimFileName 'pre-edit-guard.sh'
+        try {
+            $worktreeCwd = Join-Path $script:RealMainCheckout '.claude\worktrees\probe'
+            $target = Join-Path $script:RealMainCheckout 'README.md'
+            $result = Invoke-HarnessShim -Harness $harness `
+                -StdIn (New-ClaudeEditPayload 'Edit' $target $worktreeCwd) `
+                -EnvironmentOverrides @{ AHKFLOW_GUARD_DISABLE = '1' }
+            Assert-Equal 0 $result.ExitCode 'ExitCode'
+            Assert-Match 'AHKFLOW_GUARD_DISABLE=1' $result.StdErr 'StdErr'
+            Assert-True ($result.StdErr -notmatch $script:ShimStubMarker) 'Must not start PowerShell'
+        }
+        finally { Remove-ShimHarness -Harness $harness }
+    }
+
+    Invoke-TestCase 'Edit shim: warns and allows when no PowerShell host exists' {
+        $harness = New-ShimHarness -ShimFileName 'pre-edit-guard.sh'
+        try {
+            $pathWithoutAnyHost = (
+                $env:PATH -split ';' |
+                Where-Object {
+                    $_ -and -not (Test-Path -LiteralPath (Join-Path $_ 'pwsh.exe')) -and
+                    -not (Test-Path -LiteralPath (Join-Path $_ 'powershell.exe'))
+                }
+            ) -join ';'
+            $worktreeCwd = Join-Path $script:RealMainCheckout '.claude\worktrees\probe'
+            $target = Join-Path $script:RealMainCheckout 'README.md'
+            $result = Invoke-HarnessShim -Harness $harness `
+                -StdIn (New-ClaudeEditPayload 'Edit' $target $worktreeCwd) `
+                -EnvironmentOverrides @{ PATH = $pathWithoutAnyHost }
+            Assert-Equal 0 $result.ExitCode 'ExitCode'
+            Assert-Match 'could not find PowerShell' $result.StdErr 'StdErr'
+        }
+        finally { Remove-ShimHarness -Harness $harness }
     }
 }
 finally {

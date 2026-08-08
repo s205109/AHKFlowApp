@@ -9,6 +9,10 @@ scripts/agents/agent-worktree-guard.common.ps1, and writes the resolved agent's 
 allow/warn/deny response. Adapters normalize payloads and responses only - no policy regex or
 path decision belongs in this file.
 
+Two kinds of tool call are evaluated. A shell call is classified from its command line by
+Invoke-AgentGuardPolicy. A Claude Edit, Write, or NotebookEdit call is classified from its single
+literal path by Get-AgentFileEditWriteDecision. Every other tool call exits without a decision.
+
 Adapter 'Auto' infers Copilot from a top-level 'toolArgs' key and Claude otherwise.
 #>
 [CmdletBinding()]
@@ -62,7 +66,40 @@ catch {
     exit 0
 }
 
-if ($normalized.ToolName -ne 'shell') {
+if ($normalized.ToolName -notin @('shell', 'file-edit')) {
+    exit 0
+}
+
+# Derive the protected repository from this checked-in script's own location, never from the
+# command's target - otherwise `git -C <elsewhere>` would redefine what is being protected.
+$protectedRepoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
+
+# A file-writing tool call carries one literal path and no command, so none of the command
+# evaluators apply to it. It is answered here and never reaches the adapter switch below: the
+# only outcomes are a stderr denial, a stderr warning, or silence.
+if ($normalized.ToolName -eq 'file-edit') {
+    # Codex and Copilot are out of scope. Their file-edit tool names and payload shapes are not
+    # verified here. See docs/agents/cross-agent-git-guardrails.md.
+    if ($Adapter -ne 'Claude') { exit 0 }
+
+    try {
+        $editDecision = Get-AgentFileEditWriteDecision `
+            -TargetPath $normalized.TargetPath `
+            -Cwd $normalized.Cwd `
+            -ProtectedRepoRoot $protectedRepoRoot `
+            -AllowMain ($env:AHKFLOW_ALLOW_MAIN -eq '1')
+    }
+    catch {
+        # Fail open, same as the shell write rule: keep the agent's editor usable, but say so.
+        Write-GuardDiagnostic "the file-edit write guard could not evaluate this path; allowing. $($_.Exception.Message)"
+        exit 0
+    }
+
+    if ($editDecision.Action -eq 'Allow') { exit 0 }
+
+    Write-GuardDiagnostic "$($editDecision.Action.ToLowerInvariant()) [$($editDecision.Rule)]"
+    [Console]::Error.WriteLine($editDecision.Message)
+    if ($editDecision.Action -eq 'Deny') { exit 2 }
     exit 0
 }
 
@@ -70,10 +107,6 @@ if ([string]::IsNullOrWhiteSpace($normalized.Command)) {
     Write-GuardDiagnostic 'hook payload carried no command; allowing.'
     exit 0
 }
-
-# Derive the protected repository from this checked-in script's own location, never from the
-# command's target - otherwise `git -C <elsewhere>` would redefine what is being protected.
-$protectedRepoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
 
 $decision = Invoke-AgentGuardPolicy `
     -Command $normalized.Command `
