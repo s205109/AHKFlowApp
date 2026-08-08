@@ -140,7 +140,12 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
         page.FindAll(".desktop-branch button.ignore-use").Should().BeEmpty();
         Button(page, "restore-use", "windows.file-explorer", "Windows").Click();
 
-        _api.Received(1).RestoreAsync("windows.file-explorer", "Windows", Arg.Any<CancellationToken>());
+        // The assertion waits. Click hands the event to the renderer and returns, so the handler
+        // can still be queued. On a loaded machine this read the substitute first and reported
+        // "Actually received no matching calls" — once in 65 full-project runs. WaitForAssertion
+        // retries until the handler has run.
+        page.WaitForAssertion(() =>
+            _api.Received(1).RestoreAsync("windows.file-explorer", "Windows", Arg.Any<CancellationToken>()));
     }
 
     [Fact]
