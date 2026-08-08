@@ -1,0 +1,58 @@
+name: PR-Agent
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+
+# One PR-Agent run at a time per pull request. PR-Agent edits its previous
+# comment instead of posting a new one, so two runs would overwrite each other.
+# Runs queue rather than cancel, so a /review is not killed by a later /improve.
+concurrency:
+  group: pr-agent-${{ github.event.issue.number || github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  pr_agent:
+    # PR-Agent strips a leading slash rather than requiring one, so a plain
+    # comment starting with "describe ..." would run /describe and overwrite the
+    # pull request body. Only run for an explicit command we want, which also
+    # keeps /oc comments meant for the opencode workflow from starting a job.
+    if: >
+      github.event.sender.type != 'Bot' &&
+      (
+        (github.event.issue.pull_request && github.event.issue.state == 'open') ||
+        (github.event.pull_request && github.event.pull_request.state == 'open')
+      ) &&
+      contains(
+        fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'),
+        github.event.comment.author_association
+      ) &&
+      (
+        startsWith(github.event.comment.body, '/review') ||
+        startsWith(github.event.comment.body, '/describe') ||
+        startsWith(github.event.comment.body, '/improve') ||
+        startsWith(github.event.comment.body, '/ask') ||
+        startsWith(github.event.comment.body, '/help')
+      )
+
+    runs-on: ubuntu-latest
+
+    # PR-Agent caps each model call at 120 seconds, but nothing caps the job. A
+    # stalled pull or a connection that hangs would otherwise run to GitHub's
+    # 6-hour default.
+    timeout-minutes: 15
+
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+
+    steps:
+      - name: Run PR-Agent
+        # pragent/pr-agent:0.41.1-github_action
+        uses: docker://pragent/pr-agent@sha256:ec267eb168375c150d75efc024e2b10e0e2768ad0c000f15fd2378fe63abfe98
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          openrouter__key: ${{ secrets.OPENROUTER_API_KEY }}
