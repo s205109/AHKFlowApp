@@ -30,18 +30,20 @@ touch `tests/*.Tests.ps1`.
 
 ## Acceptance criteria
 
-- [ ] `powershell-suites` is a required status check on `main`, so a red run blocks the merge
+- [x] `powershell-suites` is a required status check on `main`, so a red run blocks the merge
 - [x] `scripts/test-fast.ps1` gains a mode that runs `scripts/run-powershell-suites.ps1`
 - [x] The new mode appears in `scripts/README.md` and in `docs/development/testing-workflow.md`
 - [x] The canonical pre-PR gate in `docs/development/testing-workflow.md` names the new mode
 
 ## Status
 
-The local half is done. `pwsh .\scripts\test-fast.ps1 -Mode PowerShell` runs the suites, and the
-canonical pre-PR gate names it.
+Done. The `PowerShell` mode landed in PR #281, and the repository owner made `powershell-suites`
+required on `main` on 2026-08-08. Read back on that date:
 
-One criterion is left, and an agent cannot do it. Making `powershell-suites` a required status check
-is a repository settings change on `s205109/AHKFlowApp`, so it needs a human with admin rights.
+```
+gh api repos/s205109/AHKFlowApp/branches/main/protection/required_status_checks --jq '{strict,checks}'
+{"checks":[{"app_id":15368,"context":"build-test"},{"app_id":15368,"context":"powershell-suites"}],"strict":false}
+```
 
 ## Out of scope
 
