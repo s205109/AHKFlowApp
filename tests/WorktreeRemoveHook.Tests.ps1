@@ -171,12 +171,28 @@ function Wait-ForCondition {
         if (& $Condition) { return $true }
         Start-Sleep -Milliseconds 250
     }
-
-    # A script block that writes more than one value to the pipeline would otherwise make this
-    # function return an array, which no caller expects. Take the last value and make it boolean.
-    $values = @(& $Condition)
-    return ($values.Count -gt 0) -and [bool]$values[-1]
+    return & $Condition
 }
+
+# --- Test: Assert-True names the call site when handed a non-boolean -----------
+# Backlog 068 saw an array reach Assert-True once, and never found which line sent it. A typed
+# [bool] parameter fails during parameter binding, and a binding failure names no line. This test
+# is the only thing that exercises the replacement check, because a passing suite never reaches it.
+$diagnosticFired = $false
+$diagnosticMessage = ''
+try {
+    # Test-Path with two paths returns System.Object[], which is the shape that was reported.
+    Assert-True (Test-Path -LiteralPath @($suiteRoot, $scriptsDir)) 'array argument'
+} catch {
+    $diagnosticFired = $true
+    $diagnosticMessage = $_.Exception.Message
+}
+
+Assert-True $diagnosticFired 'Assert-True must refuse a non-boolean argument instead of accepting it.'
+Assert-True ($diagnosticMessage -match 'System\.Object\[\]') `
+    "Expected the runtime type in the message. Got: $diagnosticMessage"
+Assert-True ($diagnosticMessage -match 'from line \d+') `
+    "Expected the caller's line number in the message. Got: $diagnosticMessage"
 
 # --- Test: merged + clean -> folder removed (unchanged behavior) ---------------
 $repo = New-TempGitRepo
