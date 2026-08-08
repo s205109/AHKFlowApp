@@ -11,7 +11,19 @@ $scriptsDir = Join-Path $suiteRoot 'scripts'
 $removeScript = Join-Path $scriptsDir 'remove-worktree-local-dev.ps1'
 
 function Assert-True {
-    param([bool] $Condition, [string] $Message)
+    param($Condition, [string] $Message)
+
+    # The parameter used to be typed [bool]. An array argument then failed during parameter
+    # binding, and a binding failure names no line, so backlog 068 could not find the call site.
+    # The type is checked here instead. The suite still fails, but it says which line handed over
+    # what.
+    if ($Condition -isnot [bool]) {
+        $caller = (Get-PSCallStack)[1]
+        $typeName = if ($null -eq $Condition) { 'null' } else { $Condition.GetType().FullName }
+        throw ("Assert-True needs a boolean. Got [$typeName] with $(@($Condition).Count) value(s) " +
+            "from line $($caller.ScriptLineNumber): $(@($Condition) -join ' | '). Original message: $Message")
+    }
+
     if (-not $Condition) { throw $Message }
 }
 
@@ -159,7 +171,11 @@ function Wait-ForCondition {
         if (& $Condition) { return $true }
         Start-Sleep -Milliseconds 250
     }
-    return & $Condition
+
+    # A script block that writes more than one value to the pipeline would otherwise make this
+    # function return an array, which no caller expects. Take the last value and make it boolean.
+    $values = @(& $Condition)
+    return ($values.Count -gt 0) -and [bool]$values[-1]
 }
 
 # --- Test: merged + clean -> folder removed (unchanged behavior) ---------------
