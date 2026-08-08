@@ -365,7 +365,8 @@ pwsh -NoProfile -File tests/AgentWorktreeGuard.Tests.ps1
 pwsh -NoProfile -File tests/AgentPreCommitHook.Tests.ps1
 ```
 
-Both also run under Windows PowerShell 5.1 and in the `worktree-powershell-tests` CI job.
+Both also run under Windows PowerShell 5.1 and in the `powershell-suites` CI job. Run every
+PowerShell suite at once with `pwsh -NoProfile -File scripts/run-powershell-suites.ps1`.
 
 ## Diagnosing a denial or approval prompt without disabling hooks globally
 

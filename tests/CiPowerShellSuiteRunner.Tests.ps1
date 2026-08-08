@@ -1,10 +1,10 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-Tests for scripts/ci/run-powershell-suites.ps1, the driver that runs every PowerShell suite in CI.
+Tests for scripts/run-powershell-suites.ps1, the script that runs every PowerShell suite in CI.
 
 .DESCRIPTION
-The driver decides whether the worktree-powershell-tests job is honest, so it needs its own proof.
+That script decides whether the powershell-suites job is honest, so it needs its own proof.
 Each case builds a disposable folder of tiny fake suites under the system temp directory and runs
 the driver against it with -SuiteRoot. No case touches the repository's real tests folder.
 
@@ -24,7 +24,7 @@ $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 
 $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
-$script:DriverPath = Join-Path $repoRoot 'scripts\ci\run-powershell-suites.ps1'
+$script:DriverPath = Join-Path $repoRoot 'scripts\run-powershell-suites.ps1'
 $script:HostExe = [System.Diagnostics.Process]::GetCurrentProcess().Path
 
 $script:Failures = New-Object System.Collections.Generic.List[string]

@@ -3,7 +3,8 @@
 .SYNOPSIS
   Runs every PowerShell test suite in tests/ and fails when any of them fails.
 .DESCRIPTION
-  Called by the worktree-powershell-tests job in .github/workflows/ci.yml.
+  Run it locally before a push, and read the table it prints. CI runs the same script in the
+  powershell-suites job in .github/workflows/ci.yml.
 
   Each suite runs as its own process. That is the whole point of this script. The suites end in
   two different ways: some call 'exit 1' on failure and 'exit 0' on success, others throw on
@@ -21,7 +22,8 @@ param(
 
     # Suites that have their own CI job. CodexSkillsHashParity runs on Linux in the
     # codex-skills-hash-parity job, because the bash setup script it compares against
-    # refuses to run under Windows Git Bash.
+    # refuses to run under Windows Git Bash. Every name here must match a real file;
+    # the script fails when one does not.
     [string[]] $Exclude = @('CodexSkillsHashParity.Tests.ps1')
 )
 
@@ -33,7 +35,7 @@ Set-StrictMode -Version Latest
 # is exactly the behaviour this job must not have. Opt out so a failing suite is data, not an error.
 $PSNativeCommandUseErrorActionPreference = $false
 
-$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+$repoRoot = Split-Path -Parent $PSScriptRoot
 if ([string]::IsNullOrWhiteSpace($SuiteRoot)) {
     $SuiteRoot = Join-Path $repoRoot 'tests'
 }

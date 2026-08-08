@@ -23,6 +23,7 @@ and must be changed as one set (see below).
 | `test-fast.ps1` | Runs explicit local test slices (fast, integration, E2E, coverage). |
 | `run-coverage.ps1` | Runs tests with coverage, builds the merged report, enforces the CI coverage gate. |
 | `pre-push-quick-checks.ps1` | Incremental build + container-free fast test slice; runs automatically via the pre-push hook. |
+| `run-powershell-suites.ps1` | Runs every `tests/*.Tests.ps1` suite as its own process, so one failing suite fails the run and the rest still run. Prints a table naming the failures. CI runs the same script in the `powershell-suites` job. |
 | `measure-tests.ps1` | Measures test project, class, test, and SQL fixture setup timings. |
 | `kill-dev-ports.ps1` | Frees the dev-server ports so `dotnet run` doesn't fail with "address already in use". |
 | `run-frontend.ps1` | Builds and starts the Blazor frontend, signed in with MSAL or (with `-NoAuth`) the no-auth test user. |
@@ -36,7 +37,6 @@ and must be changed as one set (see below).
 | --- | --- |
 | `ci/check-coverage-thresholds.py` | Enforces per-assembly line/branch thresholds from the merged Cobertura report. |
 | `ci/generate-changelog-json.ps1` | Regenerates the in-app changelog asset from `CHANGELOG.md` (requires PowerShell 7). |
-| `ci/run-powershell-suites.ps1` | Runs every `tests/*.Tests.ps1` suite as its own process for the `worktree-powershell-tests` job. One failing suite fails the job, the rest still run, and the job summary names the failures. |
 
 ## Agent tooling (`agents/`)
 
