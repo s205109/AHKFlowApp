@@ -99,29 +99,16 @@ jobs:
       - if: steps.filter.outputs.code == 'true'
         run: dotnet format AHKFlowApp.slnx --verify-no-changes
 
-  worktree-powershell-tests:
+  powershell-suites:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Run worktree PowerShell tests
+      # The script runs every tests/*.Tests.ps1 as its own process, so one failing suite fails
+      # this job and the rest still run. Listing the suites here let fifteen of them fail
+      # silently - see backlog/done/066-ci-swallows-powershell-suite-failures-in-worktree-powershell-tests.md.
+      - name: Run PowerShell suites
         shell: pwsh
-        run: |
-          ./tests/AgentWorktreeGuard.Tests.ps1
-          ./tests/AgentPreCommitHook.Tests.ps1
-          ./tests/PreCommitAntiPatternHook.Tests.ps1
-          ./tests/WorktreePowerShellHost.Tests.ps1
-          ./tests/WorktreeBranchName.Tests.ps1
-          ./tests/WorktreeBaseRef.Tests.ps1
-          ./tests/WorktreeMergedCleanup.Tests.ps1
-          ./tests/WorktreePlansSymlink.Tests.ps1
-          ./tests/WorktreeRemoveHook.Tests.ps1
-          ./tests/WorktreeLocalDevSetup.Tests.ps1
-          ./tests/WorktreeJsonEdit.Tests.ps1
-          ./tests/RunFrontend.Tests.ps1
-          ./tests/SkillParity.Tests.ps1
-          ./tests/SkillLayout.Tests.ps1
-          ./tests/PrePushHook.Tests.ps1
-          ./tests/BacklogNumbering.Tests.ps1
+        run: ./scripts/run-powershell-suites.ps1
 
   codex-skills-hash-parity:
     # Runs on Linux: the bash setup script refuses under Windows Git Bash, and this
