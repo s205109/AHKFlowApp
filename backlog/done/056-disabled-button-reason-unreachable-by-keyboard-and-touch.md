@@ -23,11 +23,23 @@ repository-wide gap, not one page's bug.
 
 ## Acceptance criteria
 
-- [ ] A sighted keyboard user can read why a button is disabled, without a screen reader
-- [ ] A touch user can read the same reason
-- [ ] One shared way to do this, used by every disabled action that has a reason — no per-page
+- [x] A sighted keyboard user can read why a button is disabled, without a screen reader
+- [x] A touch user can read the same reason
+- [x] One shared way to do this, used by every disabled action that has a reason — no per-page
       variation
-- [ ] A test covers the keyboard path
+- [x] A test covers the keyboard path
+
+      Done with `aria-disabled` rather than a focusable wrapper. The button is no longer disabled,
+      so it keeps focus and pointer events, and `Components/Common/BlockedIconButton.razor` renders
+      the button itself, so no page can apply half the pattern. Activating it shows the reason in a
+      snackbar, which is what carries the touch path — a tap cannot rely on a tooltip, because
+      `pointerenter`, `pointerup`, and `pointerleave` all fire inside one tap and cancel each other
+      out. The keyboard path is covered by `BlockedIconButtonTests.FocusingTheButton_ShowsTheReason`
+      and by `ProfileScriptDownloadFlowTests.BlockedDownload_ReachableByKeyboard_ShowsWhyItRefuses`,
+      which presses `Tab` until the button is `document.activeElement`.
+
+      `Shared/LoginDisplay.razor` lost its permanently disabled button instead of adopting the
+      component. That state can never work, so it is now plain text.
 
 ## Out of scope
 

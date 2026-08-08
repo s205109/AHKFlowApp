@@ -294,54 +294,48 @@
     // The row's download action. It renders in both action groups, so the Actions column keeps
     // its shape when a row enters edit mode.
     //
-    // A blocked button sits inside a MudTooltip. MudBlazor sets pointer-events: none on a
-    // disabled button, so a title on the button itself would never fire — the tooltip root is a
-    // plain div, which still receives the hover. The running row swaps its icon for a spinner,
-    // because MudIconButton has no Loading parameter.
+    // Three states, two mechanisms. A download running on this row, and a download running on
+    // another row, are plain disabled: there is nothing to explain. The blocked state has a
+    // reason, so it uses BlockedIconButton, which keeps the button focusable and clickable so a
+    // keyboard user and a touch user can reach that reason.
     //
-    // The running row is checked first. Edit stays available during a download, and a row that
+    // The running row swaps its icon for a spinner, because MudIconButton has no Loading
+    // parameter. It is checked first: edit stays available during a download, and a row that
     // entered edit mode mid-download must keep showing that the download is still running.
     private RenderFragment DownloadButton(ProfileDto profile) =>@<text>
         @if (_downloadingProfileId == profile.Id)
         {
             <MudIconButton Class="download-profile-script" Disabled="true"
-                           UserAttributes="@DownloadAttributes(profile, blocked: false)">
+                           UserAttributes="@DownloadAttributes(profile)">
                 <MudProgressCircular Size="Size.Small" Indeterminate="true" />
             </MudIconButton>
         }
         else if (IsDownloadBlocked(profile))
         {
-            <MudTooltip Text="@DownloadBlockedReason"
-                        UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "download-disabled-reason" })">
-                <MudIconButton Class="download-profile-script" Icon="@Icons.Material.Filled.Download"
-                               Disabled="true"
-                               UserAttributes="@DownloadAttributes(profile, blocked: true)" />
-            </MudTooltip>
+            <BlockedIconButton Icon="@Icons.Material.Filled.Download"
+                               Class="download-profile-script"
+                               Reason="@DownloadBlockedReason"
+                               AriaLabel="@DownloadName(profile)" />
         }
         else
         {
             <MudIconButton Class="download-profile-script" Icon="@Icons.Material.Filled.Download"
                            Disabled="@(_downloadingProfileId is not null)"
                            OnClick="() => DownloadScriptAsync(profile)"
-                           UserAttributes="@DownloadAttributes(profile, blocked: false)" />
+                           UserAttributes="@DownloadAttributes(profile)" />
         }
     </text>;
 
     // MudIconButton has no AriaLabel parameter, so the label reaches the button as a plain
     // attribute through MudComponentBase's UserAttributes. The button shows an icon and no text,
-    // so without it a screen reader announces only "button". A screen reader still announces a
-    // disabled button's name, so the reason it is disabled belongs here too. It cannot go on the
-    // MudTooltip wrapper: that div has no role, so its label would be ignored.
-    private static Dictionary<string, object?> DownloadAttributes(ProfileDto profile, bool blocked)
+    // so without it a screen reader announces only "button".
+    private static Dictionary<string, object?> DownloadAttributes(ProfileDto profile) =>
+        new() { ["aria-label"] = DownloadName(profile) };
+
+    private static string DownloadName(ProfileDto profile)
     {
         string name = string.IsNullOrWhiteSpace(profile.Name) ? "new profile" : profile.Name;
-        string label = $"Download the {name} script";
-        if (blocked)
-        {
-            label += $" — {char.ToLowerInvariant(DownloadBlockedReason[0])}{DownloadBlockedReason[1..]}";
-        }
-
-        return new Dictionary<string, object?> { ["aria-label"] = label };
+        return $"Download the {name} script";
     }
 
     private async Task DownloadScriptAsync(ProfileDto profile)

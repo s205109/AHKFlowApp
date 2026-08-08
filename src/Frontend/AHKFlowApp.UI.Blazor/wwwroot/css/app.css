@@ -182,3 +182,15 @@ button.import-hotstring-fab {
 .cli-copy-btn {
     color: #cccccc !important;
 }
+/* A blocked action keeps aria-disabled instead of the disabled attribute, so it stays focusable
+   and clickable. MudBlazor's own disabled rules only match :disabled, so repeat the look here.
+   The pointer-events: none rule from MudBlazor is left out on purpose — it is what made a
+   disabled button's reason unreachable by keyboard and touch. */
+.mud-button-root.blocked-action[aria-disabled="true"] {
+    color: var(--mud-palette-action-disabled) !important;
+    cursor: default;
+}
+
+.mud-button-root.blocked-action[aria-disabled="true"]:hover {
+    background-color: transparent;
+}

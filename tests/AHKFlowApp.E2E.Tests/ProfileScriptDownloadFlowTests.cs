@@ -42,4 +42,49 @@ public sealed class ProfileScriptDownloadFlowTests(StackFixture fixture) : IAsyn
         // the trigger. What matters here is that the file holds this profile's script.
         Assert.Contains("dlflow::downloaded from profiles", script, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public async Task BlockedDownload_ReachableByKeyboard_ShowsWhyItRefuses()
+    {
+        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
+        IPage page = await ctx.NewPageAsync();
+
+        await page.GotoAsync($"{fixture.Spa.BaseUrl}/profiles");
+        await page.WaitForSelectorAsync("button.start-edit");
+
+        // Editing a row blocks its download: the server builds the script from saved data.
+        await page.ClickAsync("button.start-edit");
+
+        ILocator download = page.Locator("button.download-profile-script").First;
+        await Assertions.Expect(download).ToHaveAttributeAsync("aria-disabled", "true");
+
+        // The HTML attribute is what removes a button from the tab order, so that is what this
+        // asserts. Playwright's ToBeDisabled counts aria-disabled as disabled too, so it cannot
+        // tell the two mechanisms apart, and Not.ToBeDisabled would never pass on this button.
+        bool reallyDisabled = await download.EvaluateAsync<bool>("el => el.hasAttribute('disabled')");
+        Assert.False(reallyDisabled, "The blocked button must not carry the disabled attribute.");
+
+        // Nothing is open yet. Without this the next assertion could pass on a popover that was
+        // already showing.
+        await Assertions.Expect(page.Locator(".mud-popover-open.blocked-action-text"))
+            .ToHaveCountAsync(0);
+
+        // The sighted keyboard path. Tab is pressed for real, because FocusAsync would prove only
+        // that the element can hold focus, not that keyboard navigation ever reaches it.
+        bool reached = false;
+        for (int i = 0; i < 60 && !reached; i++)
+        {
+            await page.Keyboard.PressAsync("Tab");
+            reached = await download.EvaluateAsync<bool>("el => el === document.activeElement");
+        }
+
+        Assert.True(reached, "Tab never reached the blocked download button, so it left the tab order.");
+
+        await Assertions.Expect(page.Locator(".mud-popover-open.blocked-action-text"))
+            .ToContainTextAsync("Save your changes first");
+
+        // The activation path, shared by Enter, Space, a mouse click, and a tap.
+        await page.Keyboard.PressAsync("Enter");
+        await Assertions.Expect(page.Locator(".mud-snackbar")).ToContainTextAsync("Save your changes first");
+    }
 }

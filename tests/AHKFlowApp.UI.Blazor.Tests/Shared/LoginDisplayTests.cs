@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using AHKFlowApp.UI.Blazor.Shared;
+using AngleSharp.Dom;
 using Bunit;
 using FluentAssertions;
 using Microsoft.AspNetCore.Authorization;
@@ -37,19 +38,25 @@ public sealed class LoginDisplayTests : BunitContext, IAsyncLifetime
     async Task IAsyncLifetime.DisposeAsync() => await DisposeAsync();
 
     [Fact]
-    public void LoginDisplay_WhenUserIsAuthenticatedInTestAuthMode_ShowsDisabledLogoutButton()
+    public void LoginDisplay_WhenUserIsAuthenticatedInTestAuthMode_ShowsPlainTextInsteadOfAButton()
     {
-        // Arrange — UseTestProvider suppresses real sign-out; logout button must be disabled
+        // Arrange — UseTestProvider suppresses real sign-out for the whole session. A control that
+        // can never work is not a control, so this state renders text.
         Services.AddSingleton<IConfiguration>(BuildConfiguration(useTestAuth: true));
         Services.AddScoped<AuthenticationStateProvider>(_ => new StubAuthenticationStateProvider(isAuthenticated: true));
 
-        // Act — MudTooltip requires MudPopoverProvider in the render tree
+        // Act
         Render<MudPopoverProvider>();
         IRenderedComponent<CascadingAuthenticationState> cut = Render<CascadingAuthenticationState>(parameters =>
             parameters.AddChildContent<LoginDisplay>());
 
         // Assert
-        cut.Find("button").HasAttribute("disabled").Should().BeTrue();
+        IElement note = cut.Find("[data-test=\"local-install-note\"]");
+        note.TextContent.Should().Contain("Local install — no sign-out");
+        // MudText renders Typo.body2 as a <p> unless HtmlTag says otherwise, and a block element
+        // breaks the app bar's inline row.
+        note.TagName.Should().Be("SPAN");
+        cut.FindAll("button").Should().BeEmpty();
     }
 
     [Fact]

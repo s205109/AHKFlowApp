@@ -12,11 +12,17 @@
         {
             <MudText Typo="Typo.body2" Class="mr-2">@greeting</MudText>
         }
+        @* Local-install mode has no real sign-in, so there is nothing to sign out of. This used to
+           be a permanently disabled button with the reason in a tooltip. A tooltip on a disabled
+           button never reaches a keyboard user or a touch user, and a control that can never work
+           is not a control. Plain text reaches everyone.
+
+           HtmlTag="span" is required. MudText maps Typo.body2 to a <p>, and a block element would
+           break the app bar's inline row. Class="mr-2" matches the greeting beside it. *@
         @if (_useTestAuth)
         {
-            <MudTooltip Text="Sign-out is not available in local-install mode (no real authentication)">
-                <MudButton Variant="Variant.Text" Color="Color.Inherit" Disabled="true">Log out</MudButton>
-            </MudTooltip>
+            <MudText Typo="Typo.body2" HtmlTag="span" Class="mr-2"
+                     data-test="local-install-note">Local install — no sign-out</MudText>
         }
         else
         {
