@@ -5,16 +5,27 @@
 .DESCRIPTION
   Fast mode runs whole-project fast suites plus non-integration slices from mixed projects.
   Integration mode runs integration slices from mixed projects plus whole-project SQL/API suites.
+  PowerShell mode runs every tests/*.Tests.ps1 suite through scripts/run-powershell-suites.ps1.
+  It ignores -Configuration and -NoBuild, because PowerShell suites are not built.
   Each selected test project must discover at least one test.
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('Fast', 'Integration', 'E2E', 'Coverage')]
+    [ValidateSet('Fast', 'Integration', 'E2E', 'Coverage', 'PowerShell')]
     [string]$Mode = 'Fast',
 
     [string]$Configuration = 'Release',
 
-    [switch]$NoBuild
+    [switch]$NoBuild,
+
+    # PowerShell mode only. Forwarded to run-powershell-suites.ps1 so a test can point the mode at a
+    # folder of fake suites. Empty means the runner picks its own default of tests/.
+    #
+    # This goes last on purpose. An unattributed parameter takes an implicit position in declaration
+    # order, and switches take none, so putting it here leaves $Mode at position 0 and
+    # $Configuration at position 1. Put it above $Configuration instead and 'test-fast.ps1 Fast
+    # Debug' silently binds Debug to $SuiteRoot while $Configuration stays Release.
+    [string]$SuiteRoot
 )
 
 $ErrorActionPreference = 'Stop'
@@ -155,6 +166,20 @@ try {
         & (Join-Path $PSScriptRoot 'run-coverage.ps1') -Configuration $Configuration
         if ($LASTEXITCODE -ne 0) {
             throw 'Coverage mode failed.'
+        }
+
+        return
+    }
+
+    if ($Mode -eq 'PowerShell') {
+        $suiteArguments = @{}
+        if (-not [string]::IsNullOrWhiteSpace($SuiteRoot)) {
+            $suiteArguments['SuiteRoot'] = $SuiteRoot
+        }
+
+        & (Join-Path $PSScriptRoot 'run-powershell-suites.ps1') @suiteArguments
+        if ($LASTEXITCODE -ne 0) {
+            throw 'PowerShell suites failed.'
         }
 
         return

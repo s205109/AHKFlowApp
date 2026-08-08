@@ -10,11 +10,12 @@ For small, unrelated doc or config tweaks — backlog notes, minor rule edits, o
 
 ## Canonical pre-PR gate
 
-Four steps, in order. Nothing else counts as the gate.
+Five steps, in order. Nothing else counts as the gate.
 
 ```bash
 dotnet build AHKFlowApp.slnx --configuration Release
 dotnet format AHKFlowApp.slnx --verify-no-changes
+pwsh .\scripts\test-fast.ps1 -Mode PowerShell
 pwsh .\scripts\test-fast.ps1 -Mode Coverage
 git diff --check main...HEAD
 ```
@@ -23,7 +24,7 @@ Pass the `main...HEAD` range to `git diff --check`. The bare form inspects only 
 
 Then verify the change actually works — see **Verification After Implementation** in [`AGENTS.md`](../../AGENTS.md). A green gate proves nothing regressed; it does not prove the new behavior happened.
 
-CI enforces the same build, format, and coverage-threshold steps on every **non-docs** PR. A PR touching only `**/*.md`, `docs/**`, or `.claude/**` skips build, test, and coverage entirely — see the `dorny/paths-filter` step in `ci.yml`. On a docs-only branch CI proves nothing, so this local gate is the only gate. The pre-push hook is a faster subset (incremental build + fast slice, `scripts/pre-push-quick-checks.ps1`), not this gate.
+CI enforces the same build, format, and coverage-threshold steps on every **non-docs** PR. On a PR touching only `**/*.md`, `docs/**`, or `.claude/**`, the `build-test` job still starts, but every one of its .NET steps is skipped — build, test, coverage, thresholds, and the format check are all guarded by the `dorny/paths-filter` step in `ci.yml`. Two things still run on such a PR. The changelog check (`scripts/ci/generate-changelog-json.ps1 -Check`) sits above that filter in `build-test`, so it runs on every PR. And the `powershell-suites`, `codex-skills-hash-parity`, and `bicep-lint` jobs carry no filter at all, so they run on every PR too. Nothing checks the .NET side of a docs-only branch, which makes this local gate matter more there, not less. The pre-push hook is a faster subset (incremental build + fast slice, `scripts/pre-push-quick-checks.ps1`), not this gate.
 
 ## Fast inner loop
 
@@ -105,6 +106,25 @@ Four rules that are easy to get wrong:
 - **Debounced fields only refresh a preview while the panel is already open.** Expand first, then fill, or the preview stays stale.
 
 Assert on something a user would see — rendered text, a grid cell, a snackbar — not on internal component state.
+
+## PowerShell script suites
+
+```bash
+pwsh .\scripts\test-fast.ps1 -Mode PowerShell
+```
+
+This mode runs every non-excluded `tests/*.Tests.ps1` suite through
+`scripts/run-powershell-suites.ps1`. Use it when you change a git hook, a worktree script, the
+backlog numbering rules, or the skill layout.
+
+Each suite runs as its own process, so one failing suite does not stop the rest. The run prints a
+table naming every suite, its result, and how long it took. The whole run takes about three minutes.
+
+`CodexSkillsHashParity.Tests.ps1` is skipped. CI runs it in its own Linux job, because the bash
+script it compares against refuses to run under Windows Git Bash.
+
+CI runs the same script in the `powershell-suites` job, and that job has no docs-only filter, so it
+runs on every PR.
 
 ## Full coverage gate
 

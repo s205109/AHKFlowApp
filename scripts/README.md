@@ -20,7 +20,7 @@ and must be changed as one set (see below).
 
 | Script | Purpose |
 | --- | --- |
-| `test-fast.ps1` | Runs explicit local test slices (fast, integration, E2E, coverage). |
+| `test-fast.ps1` | Runs explicit local test slices (fast, integration, E2E, PowerShell suites, coverage). |
 | `run-coverage.ps1` | Runs tests with coverage, builds the merged report, enforces the CI coverage gate. |
 | `pre-push-quick-checks.ps1` | Incremental build + container-free fast test slice; runs automatically via the pre-push hook. |
 | `run-powershell-suites.ps1` | Runs every `tests/*.Tests.ps1` suite as its own process, so one failing suite fails the run and the rest still run. Prints a table naming the failures. CI runs the same script in the `powershell-suites` job. |
