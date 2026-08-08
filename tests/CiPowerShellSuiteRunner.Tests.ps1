@@ -103,8 +103,13 @@ function Test-MarkerExists {
     return Test-Path -LiteralPath (Join-Path (Join-Path $Root 'markers') $Name)
 }
 
-# Runs the driver as its own process and returns its exit code plus everything it printed. The
-# child process is the point: it is exactly what the CI step measures.
+# Runs the driver as its own process and returns its exit code, everything it printed, and the
+# job summary it wrote. The child process is the point: it is exactly what the CI step measures.
+#
+# The child inherits this process's environment. Under CI that includes GITHUB_STEP_SUMMARY, so
+# without the redirect below every fake suite table here would be appended to the real
+# powershell-suites job summary — including the deliberate failures. Point the child at a scratch
+# file instead. Redirecting rather than clearing keeps the driver's summary-writing branch covered.
 function Invoke-Driver {
     param([string] $SuiteRoot, [string[]] $Exclude = @())
 
@@ -114,12 +119,29 @@ function Invoke-Driver {
         '@(' + (($Exclude | ForEach-Object { "'$_'" }) -join ',') + ')'
     }
 
-    $command = "& '$script:DriverPath' -SuiteRoot '$SuiteRoot' -Exclude $excludeLiteral; exit `$LASTEXITCODE"
-    $output = & $script:HostExe -NoProfile -Command $command 2>&1 | Out-String
+    $summaryPath = Join-Path ([System.IO.Path]::GetTempPath()) ('ahkflow-suiterunner-summary-' + [guid]::NewGuid().ToString('N') + '.md')
+    $previousSummary = $env:GITHUB_STEP_SUMMARY
+    $env:GITHUB_STEP_SUMMARY = $summaryPath
+
+    try {
+        $command = "& '$script:DriverPath' -SuiteRoot '$SuiteRoot' -Exclude $excludeLiteral; exit `$LASTEXITCODE"
+        $output = & $script:HostExe -NoProfile -Command $command 2>&1 | Out-String
+        $exitCode = $LASTEXITCODE
+
+        $summary = if (Test-Path -LiteralPath $summaryPath) {
+            Get-Content -LiteralPath $summaryPath -Raw
+        } else {
+            ''
+        }
+    } finally {
+        $env:GITHUB_STEP_SUMMARY = $previousSummary
+        Remove-Item -LiteralPath $summaryPath -Force -ErrorAction SilentlyContinue
+    }
 
     return [pscustomobject]@{
-        ExitCode = $LASTEXITCODE
+        ExitCode = $exitCode
         Output   = $output
+        Summary  = $summary
     }
 }
 
@@ -218,6 +240,24 @@ Invoke-TestCase 'The summary names every failed suite and no passing one' {
         Assert-True ($result.Output -match '02-pass\.Tests\.ps1 \| passed') "02-pass must be listed as passed. Output: $($result.Output)"
         Assert-True ($result.Output -match '04-pass\.Tests\.ps1 \| passed') "04-pass must be listed as passed. Output: $($result.Output)"
         Assert-True (-not ($result.Output -match '02-pass\.Tests\.ps1 \| failed')) "02-pass must not be listed as failed. Output: $($result.Output)"
+    } finally {
+        Remove-SuiteFixture -Root $root
+    }
+}
+
+# The job summary is how a failure is read in the GitHub UI, and it goes to the file named by
+# GITHUB_STEP_SUMMARY. This case also proves the redirect in Invoke-Driver works, which is what
+# keeps these fake tables out of the real job summary.
+Invoke-TestCase 'The driver writes its table to the GITHUB_STEP_SUMMARY file' {
+    $root = New-SuiteFixture
+    try {
+        Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
+        Add-FakeSuite -Root $root -Name '02-fail.Tests.ps1' -Ending 'exit-one'
+
+        $result = Invoke-Driver -SuiteRoot $root
+        Assert-True ($result.Summary -match '### PowerShell suites') "The summary file must hold the table heading. Summary: $($result.Summary)"
+        Assert-True ($result.Summary -match '02-fail\.Tests\.ps1 \| failed') "The summary file must mark 02-fail as failed. Summary: $($result.Summary)"
+        Assert-True ($result.Summary -match '1 of 2 suite\(s\) failed') "The summary file must hold the failure count. Summary: $($result.Summary)"
     } finally {
         Remove-SuiteFixture -Root $root
     }
