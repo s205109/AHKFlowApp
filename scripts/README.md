@@ -36,6 +36,7 @@ and must be changed as one set (see below).
 | --- | --- |
 | `ci/check-coverage-thresholds.py` | Enforces per-assembly line/branch thresholds from the merged Cobertura report. |
 | `ci/generate-changelog-json.ps1` | Regenerates the in-app changelog asset from `CHANGELOG.md` (requires PowerShell 7). |
+| `ci/run-powershell-suites.ps1` | Runs every `tests/*.Tests.ps1` suite as its own process for the `worktree-powershell-tests` job. One failing suite fails the job, the rest still run, and the job summary names the failures. |
 
 ## Agent tooling (`agents/`)
 
