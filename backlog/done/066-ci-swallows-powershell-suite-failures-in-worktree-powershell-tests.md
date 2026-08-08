@@ -74,12 +74,16 @@ backlog numbering check, so the blind spot covers most of the repository's own t
 
 ## Acceptance criteria
 
-- [ ] A failure in any suite in `worktree-powershell-tests` fails the job
-- [ ] Every suite still runs when an earlier one fails, so one run reports every broken suite rather
+- [x] A failure in any suite in `worktree-powershell-tests` fails the job
+- [x] Every suite still runs when an earlier one fails, so one run reports every broken suite rather
       than only the first
-- [ ] The job's summary names which suites failed
-- [ ] A deliberately failing suite is used once to prove the job goes red, and the proof is recorded
+- [x] The job's summary names which suites failed
+- [x] A deliberately failing suite is used once to prove the job goes red, and the proof is recorded
       in the PR
+
+The job was renamed to `powershell-suites` while this item was done, so the first box refers to a
+job that no longer carries the old name. `BacklogNumbering`, `SkillParity`, `SkillLayout`, and
+`RunFrontend` are not worktree things, and glob discovery only widened that drift.
 
 ## Out of scope
 
@@ -90,4 +94,8 @@ backlog numbering check, so the blind spot covers most of the repository's own t
 
 - Found while planning `backlog/065-native-edit-isolation-misses-worktree-sessions-without-w-flag.md`
 - `scripts/test-fast.ps1` does not run these suites, so the local pre-PR gate has the same blind spot
-  unless the suites are run by hand
+  unless the suites are run by hand. `scripts/run-powershell-suites.ps1` now makes that one command.
+  A `test-fast.ps1` mode is tracked in
+  `backlog/067-make-the-powershell-suites-ci-check-required-and-runnable-from-test-fast.md`
+- That same item covers the other gap this one leaves: the job is not a required status check, so a
+  red run still merges. This item makes a failure visible, not blocking.
