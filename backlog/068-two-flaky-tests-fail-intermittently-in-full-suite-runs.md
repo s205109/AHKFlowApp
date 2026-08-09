@@ -103,8 +103,12 @@ proving nothing.
 Version pinned at `Directory.Packages.props:13`. bUnit documentation for the behavior:
 https://bunit.dev/docs/verification/async-assertion.html
 
-**Confidence runs.** After the fix, and against a rebuilt Release assembly, the whole
-`AHKFlowApp.UI.Blazor.Tests` project ran 50 times. All 50 passed, 950 of 950 tests each time.
+**Confidence runs.** After the last test change, and against a Release assembly rebuilt from it,
+the whole `AHKFlowApp.UI.Blazor.Tests` project ran 50 times. All 50 passed, 950 of 950 tests each
+time.
+
+An earlier batch of 50 also passed, but review then changed the same file again, so that batch
+described an older assembly. It is not counted. Only runs made after the final change count.
 
 Read that honestly. At the observed rate of about 1 failure in 32 runs, 50 clean runs would happen
 by luck roughly 20% of the time if nothing had been fixed. So the runs support the named mechanism.
