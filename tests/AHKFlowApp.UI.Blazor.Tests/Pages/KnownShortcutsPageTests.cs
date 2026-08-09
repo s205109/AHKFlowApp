@@ -96,6 +96,17 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
         Services.AddSingleton(dialogService);
     }
 
+    // Opening the add form is a click like any other, so the form can still be pending when Click
+    // returns. Reading a field straight after throws ElementNotFoundException, and a
+    // WaitForAssertion further down the test never runs, because the throw happens first. So wait
+    // for the form here. The Save button and both text fields sit in one @if (_adding) block in
+    // KnownShortcuts.razor, so the button appearing means the whole form is there.
+    private static void OpenAddForm(IRenderedComponent<KnownShortcuts> page)
+    {
+        page.Find("button.add-known-shortcut").Click();
+        page.WaitForElement("button.commit-edit");
+    }
+
     // Both branches render this button with the same class and the same pair, so every lookup has
     // to say which branch it means. CSS hides one; bunit sees both.
     private static IElement Button(
@@ -254,7 +265,7 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
                 [Shortcut("owner.1", "F7", OwnerUse(Guid.NewGuid()))])));
 
         IRenderedComponent<KnownShortcuts> page = RenderPage();
-        page.Find("button.add-known-shortcut").Click();
+        OpenAddForm(page);
         page.Find("[data-test=\"known-shortcut-usedby-input\"]").Input("My notes tool");
         page.Find("[data-test=\"known-shortcut-does-input\"]").Input("open my notes");
         page.Find("button.commit-edit").Click();
@@ -278,7 +289,7 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
                 new ApiProblemDetails(null, "Conflict", 409, "You have already recorded this one.", null, null)));
 
         IRenderedComponent<KnownShortcuts> page = RenderPage();
-        page.Find("button.add-known-shortcut").Click();
+        OpenAddForm(page);
         page.Find("button.commit-edit").Click();
 
         page.WaitForAssertion(() =>
@@ -540,7 +551,7 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
                 page.Find(".desktop-branch button.delete-use").Click();
                 break;
             default:
-                page.Find("button.add-known-shortcut").Click();
+                OpenAddForm(page);
                 page.Find("button.commit-edit").Click();
                 break;
         }
