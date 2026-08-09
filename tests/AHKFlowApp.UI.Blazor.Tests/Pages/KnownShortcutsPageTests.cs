@@ -96,6 +96,17 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
         Services.AddSingleton(dialogService);
     }
 
+    // Opening the add form is a click like any other, so the form can still be pending when Click
+    // returns. Reading a field straight after throws ElementNotFoundException, and a
+    // WaitForAssertion further down the test never runs, because the throw happens first. So wait
+    // for the form here. The Save button and both text fields sit in one @if (_adding) block in
+    // KnownShortcuts.razor, so the button appearing means the whole form is there.
+    private static void OpenAddForm(IRenderedComponent<KnownShortcuts> page)
+    {
+        page.Find("button.add-known-shortcut").Click();
+        page.WaitForElement("button.commit-edit");
+    }
+
     // Both branches render this button with the same class and the same pair, so every lookup has
     // to say which branch it means. CSS hides one; bunit sees both.
     private static IElement Button(
@@ -126,7 +137,8 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
         IRenderedComponent<KnownShortcuts> page = RenderPage();
         Button(page, "ignore-use", "browser.new-window", "Chrome").Click();
 
-        _api.Received(1).IgnoreAsync("browser.new-window", "Chrome", Arg.Any<CancellationToken>());
+        page.WaitForAssertion(() =>
+            _api.Received(1).IgnoreAsync("browser.new-window", "Chrome", Arg.Any<CancellationToken>()));
     }
 
     [Fact]
@@ -140,7 +152,17 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
         page.FindAll(".desktop-branch button.ignore-use").Should().BeEmpty();
         Button(page, "restore-use", "windows.file-explorer", "Windows").Click();
 
-        _api.Received(1).RestoreAsync("windows.file-explorer", "Windows", Arg.Any<CancellationToken>());
+        // The assertion waits. In bUnit 2.7.2 the synchronous Click() discards the task its async
+        // counterpart returns, and the event goes through the renderer's dispatcher, so the
+        // handler can still be pending when Click() returns. On a loaded machine this read the
+        // substitute first and reported "Actually received no matching calls" — once in 65
+        // full-project runs. WaitForAssertion runs the assertion immediately and again after each
+        // render, until it passes or the timeout expires.
+        //
+        // Every other click in this file that then reads a positive result waits the same way.
+        // The negative ones do not — see the note above the delete-cancelled test.
+        page.WaitForAssertion(() =>
+            _api.Received(1).RestoreAsync("windows.file-explorer", "Windows", Arg.Any<CancellationToken>()));
     }
 
     [Fact]
@@ -210,7 +232,8 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
 
         Button(page, "ignore-use", "browser.new-window", "Chrome").Click();
 
-        Button(page, "restore-use", "browser.new-window", "Chrome").Should().NotBeNull();
+        page.WaitForAssertion(() =>
+            Button(page, "restore-use", "browser.new-window", "Chrome").Should().NotBeNull());
         Button(page, "ignore-use", "browser.new-window", "Edge").Should().NotBeNull();
     }
 
@@ -226,8 +249,11 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
 
         Button(page, "ignore-use", "windows.file-explorer", "Windows").Click();
 
-        _api.Received(2).ListManagedAsync(Arg.Any<CancellationToken>());
-        page.FindAll(".desktop-branch button.restore-use").Should().ContainSingle();
+        page.WaitForAssertion(() =>
+        {
+            _api.Received(2).ListManagedAsync(Arg.Any<CancellationToken>());
+            page.FindAll(".desktop-branch button.restore-use").Should().ContainSingle();
+        });
     }
 
     [Fact]
@@ -239,15 +265,18 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
                 [Shortcut("owner.1", "F7", OwnerUse(Guid.NewGuid()))])));
 
         IRenderedComponent<KnownShortcuts> page = RenderPage();
-        page.Find("button.add-known-shortcut").Click();
+        OpenAddForm(page);
         page.Find("[data-test=\"known-shortcut-usedby-input\"]").Input("My notes tool");
         page.Find("[data-test=\"known-shortcut-does-input\"]").Input("open my notes");
         page.Find("button.commit-edit").Click();
 
-        _api.Received(1).CreateAsync(
-            Arg.Is<CreateCustomKnownShortcutDto>(d => d.UsedBy == "My notes tool" && d.Does == "open my notes"),
-            Arg.Any<CancellationToken>());
-        page.FindAll(".desktop-branch [data-test=\"known-shortcut-row\"]").Should().ContainSingle();
+        page.WaitForAssertion(() =>
+        {
+            _api.Received(1).CreateAsync(
+                Arg.Is<CreateCustomKnownShortcutDto>(d => d.UsedBy == "My notes tool" && d.Does == "open my notes"),
+                Arg.Any<CancellationToken>());
+            page.FindAll(".desktop-branch [data-test=\"known-shortcut-row\"]").Should().ContainSingle();
+        });
     }
 
     [Fact]
@@ -260,11 +289,14 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
                 new ApiProblemDetails(null, "Conflict", 409, "You have already recorded this one.", null, null)));
 
         IRenderedComponent<KnownShortcuts> page = RenderPage();
-        page.Find("button.add-known-shortcut").Click();
+        OpenAddForm(page);
         page.Find("button.commit-edit").Click();
 
-        page.Markup.Should().Contain("You have already recorded this one.");
-        page.FindAll("button.commit-edit").Should().ContainSingle("the form stays open");
+        page.WaitForAssertion(() =>
+        {
+            page.Markup.Should().Contain("You have already recorded this one.");
+            page.FindAll("button.commit-edit").Should().ContainSingle("the form stays open");
+        });
     }
 
     [Fact]
@@ -345,6 +377,12 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
         page.Find("button.reload-known-shortcuts").HasAttribute("disabled").Should().BeTrue();
     }
 
+    // The two "nothing happened" tests below, and AFailedMutation_DoesNotInvalidateTheDialogCache,
+    // read a negative straight after a click. WaitForAssertion cannot help them: it passes on the
+    // first try, which is exactly the moment a queued handler has not run yet, so it would prove
+    // nothing. They need a positive signal to wait for first — a rendered state that only appears
+    // once the click has been handled — and picking that signal per test is its own piece of work.
+    // Backlog 069 covers it. Neither test has ever failed.
     [Fact]
     public void Delete_WhenTheConfirmationIsCancelled_RemovesNothing()
     {
@@ -386,8 +424,11 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
         IRenderedComponent<KnownShortcuts> page = RenderPage();
         page.Find(".desktop-branch button.ignore-use").Click();
 
-        page.Find(".desktop-branch button.ignore-use").HasAttribute("disabled").Should().BeTrue();
-        page.Find("button.reload-known-shortcuts").HasAttribute("disabled").Should().BeTrue();
+        page.WaitForAssertion(() =>
+        {
+            page.Find(".desktop-branch button.ignore-use").HasAttribute("disabled").Should().BeTrue();
+            page.Find("button.reload-known-shortcuts").HasAttribute("disabled").Should().BeTrue();
+        });
 
         pending.SetResult(ApiResult.Ok());
         page.WaitForAssertion(() =>
@@ -510,7 +551,7 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
                 page.Find(".desktop-branch button.delete-use").Click();
                 break;
             default:
-                page.Find("button.add-known-shortcut").Click();
+                OpenAddForm(page);
                 page.Find("button.commit-edit").Click();
                 break;
         }
@@ -549,7 +590,8 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
         IRenderedComponent<KnownShortcuts> page = RenderPage();
         Button(page, "ignore-use", "browser.new-window", "Edge", ".mobile-branch").Click();
 
-        _api.Received(1).IgnoreAsync("browser.new-window", "Edge", Arg.Any<CancellationToken>());
+        page.WaitForAssertion(() =>
+            _api.Received(1).IgnoreAsync("browser.new-window", "Edge", Arg.Any<CancellationToken>()));
     }
 
     [Fact]
@@ -584,7 +626,8 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
         // Both assertions wait. MudPagination handles the click asynchronously, so the render it
         // causes can still be queued when Click returns. The typed term then lands behind that
         // render. On a loaded CI runner this test read the page-2 rows back and failed, while it
-        // passed every time on a quiet machine. WaitForAssertion retries until the queue drains.
+        // passed every time on a quiet machine. WaitForAssertion runs the assertion immediately and
+        // again after each render, until it passes or the timeout expires.
         page.WaitForAssertion(() =>
             page.FindAll(".mobile-branch [data-test=\"known-shortcut-row\"]").Should().HaveCount(5));
 

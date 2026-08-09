@@ -11,7 +11,19 @@ $scriptsDir = Join-Path $suiteRoot 'scripts'
 $removeScript = Join-Path $scriptsDir 'remove-worktree-local-dev.ps1'
 
 function Assert-True {
-    param([bool] $Condition, [string] $Message)
+    param($Condition, [string] $Message)
+
+    # The parameter used to be typed [bool]. An array argument then failed during parameter
+    # binding, and a binding failure names no line, so backlog 068 could not find the call site.
+    # The type is checked here instead. The suite still fails, but it says which line handed over
+    # what.
+    if ($Condition -isnot [bool]) {
+        $caller = (Get-PSCallStack)[1]
+        $typeName = if ($null -eq $Condition) { 'null' } else { $Condition.GetType().FullName }
+        throw ("Assert-True needs a boolean. Got [$typeName] with $(@($Condition).Count) value(s) " +
+            "from line $($caller.ScriptLineNumber): $(@($Condition) -join ' | '). Original message: $Message")
+    }
+
     if (-not $Condition) { throw $Message }
 }
 
@@ -161,6 +173,37 @@ function Wait-ForCondition {
     }
     return & $Condition
 }
+
+# --- Test: Assert-True names the call site when handed a non-boolean -----------
+# Backlog 068 saw an array reach Assert-True once, and never found which line sent it. A typed
+# [bool] parameter fails during parameter binding, and a binding failure names no line. This test
+# is the only thing that exercises the replacement check, because a passing suite never reaches it.
+$diagnosticFired = $false
+$diagnosticMessage = ''
+try {
+    # Test-Path with two paths returns System.Object[], which is the shape that was reported.
+    Assert-True (Test-Path -LiteralPath @($suiteRoot, $scriptsDir)) 'array argument' # ARRAY-CALL-SITE
+} catch {
+    $diagnosticFired = $true
+    $diagnosticMessage = $_.Exception.Message
+}
+
+# The line the message must name, read out of this file rather than typed in, so editing the suite
+# cannot leave a stale number behind. The token is joined at run time, so the search below does not
+# find itself - only the tagged call above carries the whole string.
+$callSiteToken = 'ARRAY-CALL' + '-SITE'
+$expectedLine = (Select-String -LiteralPath $PSCommandPath -SimpleMatch -Pattern $callSiteToken |
+    Select-Object -First 1).LineNumber
+
+Assert-True $diagnosticFired 'Assert-True must refuse a non-boolean argument instead of accepting it.'
+Assert-True ($diagnosticMessage -match 'System\.Object\[\]') `
+    "Expected the runtime type in the message. Got: $diagnosticMessage"
+
+# Checking for any number here would pass on a message reporting Assert-True's own line, which is
+# the exact bug this test exists to catch. The number has to be the caller's.
+Assert-True ($null -ne $expectedLine) 'Could not find the tagged call site in this file.'
+Assert-True ($diagnosticMessage -match "from line ${expectedLine}:") `
+    "Expected the message to name line $expectedLine. Got: $diagnosticMessage"
 
 # --- Test: merged + clean -> folder removed (unchanged behavior) ---------------
 $repo = New-TempGitRepo
