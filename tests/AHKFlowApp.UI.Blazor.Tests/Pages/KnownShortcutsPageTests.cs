@@ -6,6 +6,7 @@ using AngleSharp.Dom;
 using Bunit;
 using FluentAssertions;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
 using MudBlazor;
 using MudBlazor.Services;
@@ -367,6 +368,13 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
     {
         // Same shape as the categories page: no request goes out, and the two toolbar buttons are
         // dead until there is someone to act as.
+        //
+        // This one needs no wait, unlike the two negative assertions further down. There is no
+        // click here, and nothing is ever queued: the page reads inside `if (_isAuthenticated)` at
+        // KnownShortcuts.razor:215-216, and the cascaded state here is anonymous. On top of that,
+        // AnonymousState is an already-completed task, so OnInitializedAsync runs straight through
+        // and finishes before Render returns. Breaking that `if` on purpose makes this test fail,
+        // which is what proves the assertion still has teeth.
         StubList(Shortcut("windows.file-explorer", "e", BuiltInUse()));
 
         IRenderedComponent<KnownShortcuts> page = RenderSignedOutPage();
@@ -377,23 +385,30 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
         page.Find("button.reload-known-shortcuts").HasAttribute("disabled").Should().BeTrue();
     }
 
-    // The two "nothing happened" tests below, and AFailedMutation_DoesNotInvalidateTheDialogCache,
-    // read a negative straight after a click. WaitForAssertion cannot help them: it passes on the
-    // first try, which is exactly the moment a queued handler has not run yet, so it would prove
-    // nothing. They need a positive signal to wait for first — a rendered state that only appears
-    // once the click has been handled — and picking that signal per test is its own piece of work.
-    // Backlog 069 covers it. Neither test has ever failed.
+    // This test and AFailedMutation_DoesNotInvalidateTheDialogCache read a negative after a click.
+    // A negative assertion passes on its first try, so WaitForAssertion cannot protect it: the
+    // first try is exactly the moment a queued click handler has not run yet.
+    //
+    // So both await the click instead. bUnit's ClickAsync returns "a task that completes when the
+    // event handler is done", where the synchronous Click() discards that task. Awaiting it is the
+    // signal: the whole handler has finished, so anything it was going to call, it has called.
+    // That is stronger than waiting for a rendered state, because the cancelled-delete path
+    // renders nothing at all.
     [Fact]
-    public void Delete_WhenTheConfirmationIsCancelled_RemovesNothing()
+    public async Task Delete_WhenTheConfirmationIsCancelled_RemovesNothing()
     {
         StubDeleteConfirmation(confirmed: false);
         StubList(Shortcut("owner.1", "F7", OwnerUse(Guid.NewGuid())));
         _api.DeleteAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()).Returns(ApiResult.Ok());
 
         IRenderedComponent<KnownShortcuts> page = RenderPage();
-        page.Find(".desktop-branch button.delete-use").Click();
 
-        _api.DidNotReceive().DeleteAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+        // Awaited: when this returns, DeleteAsync on the page has run past the dialog and returned.
+        await page.Find(".desktop-branch button.delete-use").ClickAsync(new MouseEventArgs());
+
+        // Discarded on purpose. A DidNotReceive check on an async method returns a null task, so
+        // the test method being async would otherwise turn CS4014 into a build error.
+        _ = _api.DidNotReceive().DeleteAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
         page.FindAll(".desktop-branch [data-test=\"known-shortcut-row\"]").Should().ContainSingle();
     }
 
@@ -475,13 +490,15 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
     [InlineData("restore")]
     [InlineData("delete")]
     [InlineData("create")]
-    public void EverySuccessfulMutation_InvalidatesTheDialogCache(string mutation)
+    public async Task EverySuccessfulMutation_InvalidatesTheDialogCache(string mutation)
     {
         ArrangeMutation(mutation, succeeds: true);
 
         IRenderedComponent<KnownShortcuts> page = RenderPage();
-        PerformMutation(page, mutation);
+        await PerformMutationAsync(page, mutation);
 
+        // It awaits because it shares the helper with the theory below. The wait stays as backlog
+        // 068 left it: a positive assertion loses nothing by also retrying.
         page.WaitForAssertion(() => _catalog.Received(1).Invalidate());
     }
 
@@ -490,7 +507,7 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
     [InlineData("restore")]
     [InlineData("delete")]
     [InlineData("create")]
-    public void AFailedMutation_DoesNotInvalidateTheDialogCache(string mutation)
+    public async Task AFailedMutation_DoesNotInvalidateTheDialogCache(string mutation)
     {
         // A failure the server answered — 500 here — changed nothing the page is showing, so
         // throwing the cache away costs a refetch for no reason and hides the failure behind a
@@ -499,7 +516,11 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
         ArrangeMutation(mutation, succeeds: false);
 
         IRenderedComponent<KnownShortcuts> page = RenderPage();
-        PerformMutation(page, mutation);
+
+        // Awaited, for the reason above Delete_WhenTheConfirmationIsCancelled_RemovesNothing. When
+        // this returns, RunMutationAsync has finished, so it has already passed the one line that
+        // would have called Invalidate.
+        await PerformMutationAsync(page, mutation);
 
         _catalog.DidNotReceive().Invalidate();
     }
@@ -537,23 +558,22 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
         }
     }
 
-    private static void PerformMutation(IRenderedComponent<KnownShortcuts> page, string mutation)
+    // Returns a task that completes when the page has finished handling the click. Both theories
+    // await it. OpenAddForm keeps its own wait: StartAdd is a plain synchronous handler, so the
+    // form appearing is already proof that the click was handled.
+    private static Task PerformMutationAsync(IRenderedComponent<KnownShortcuts> page, string mutation)
     {
         switch (mutation)
         {
             case "ignore":
-                page.Find(".desktop-branch button.ignore-use").Click();
-                break;
+                return page.Find(".desktop-branch button.ignore-use").ClickAsync(new MouseEventArgs());
             case "restore":
-                page.Find(".desktop-branch button.restore-use").Click();
-                break;
+                return page.Find(".desktop-branch button.restore-use").ClickAsync(new MouseEventArgs());
             case "delete":
-                page.Find(".desktop-branch button.delete-use").Click();
-                break;
+                return page.Find(".desktop-branch button.delete-use").ClickAsync(new MouseEventArgs());
             default:
                 OpenAddForm(page);
-                page.Find("button.commit-edit").Click();
-                break;
+                return page.Find("button.commit-edit").ClickAsync(new MouseEventArgs());
         }
     }
 
