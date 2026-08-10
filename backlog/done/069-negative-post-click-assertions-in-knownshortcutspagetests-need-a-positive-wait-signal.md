@@ -197,7 +197,7 @@ form was shown blind to a real regression, and the new form was shown to catch i
 
 ## Notes / dependencies
 
-- Split out of `backlog/068-two-flaky-tests-fail-intermittently-in-full-suite-runs.md` on
-  2026-08-08, during review of the fix for that item
+- Split out of `backlog/blocked/068-two-flaky-tests-fail-intermittently-in-full-suite-runs.md` on
+  2026-08-08, during review of the fix for that item. Item 068 moved to `blocked/` on 2026-08-10
 - bUnit `WaitForAssertion` behavior: https://bunit.dev/docs/verification/async-assertion.html
 - bUnit version is pinned at `Directory.Packages.props:13`

@@ -5,6 +5,28 @@
 - **Epic**: Test reliability
 - **Type**: Bug
 - **Interfaces**: UI | API | CLI (none — test code only)
+- **Status**: Blocked since 2026-08-10 — see the section below
+
+## Blocked — waiting for flake A to fail again
+
+Flake B is fixed and merged. Flake A has one open acceptance box, and no work in this repository
+can tick it. The box asks which call site passed an array to `Assert-True`. Reading the code says
+no call site can do that, and the failure still happened once on 2026-08-08. The only honest way
+to name the line is to see the failure again.
+
+The diagnostic that will name it is already merged, at `tests/WorktreeRemoveHook.Tests.ps1:13-27`.
+It replaces the `[bool]` parameter type with an explicit check. A recurrence now reports the
+runtime type, the values, and the caller's line number.
+
+Do not pick this up as available work. Adding more green runs proves nothing: a diagnostic that
+never fires says nothing about a fault seen once.
+
+**What would unblock it:**
+
+- The suite fails again, in CI or locally. The new message names the call site. Then fix that call
+  site, tick the last two boxes, and move the file to `backlog/done/`.
+- Or a decision that one unexplained failure, now made locatable, is enough. Then close the item
+  with that reason written down.
 
 ## Summary
 
@@ -96,7 +118,7 @@ again after each render, until it passes or the timeout expires.
 
 The fix wraps that assertion, and every other assertion in the file that reads a **positive**
 result after a click. The three assertions that read a **negative** after a click were left alone
-on purpose and moved to `backlog/069-...`. `WaitForAssertion` passes on its first try, which is
+on purpose and moved to `backlog/done/069-...`. `WaitForAssertion` passes on its first try, which is
 exactly the moment a queued handler has not run, so it would make those tests look careful while
 proving nothing.
 
@@ -168,7 +190,7 @@ path made one function answer the same script block two different ways. It was r
 - [ ] Both are exercised repeatedly enough to give confidence - run each in its normal full-suite
       context several times in a row and record the results
 
-**This item stays open.** Criterion 3 is not met and is not being claimed. Nothing stops an array
+**This item is blocked, not open.** Criterion 3 is not met and is not being claimed. Nothing stops an array
 from reaching `Assert-True`; the change only makes such a call fail with a location instead of
 failing during parameter binding with none. The call site that failed on 2026-08-08 is still
 unknown, and the only honest way to name it is to see it happen again.
@@ -183,7 +205,8 @@ diagnostic that never fires proves nothing about a fault that appeared once.
   exception is the rest of `KnownShortcutsPageTests.cs`: the assertions that read a positive result
   after a click share the proven mechanism, so they were fixed in the same pass.
 - Negative assertions after a click. Moved to
-  `backlog/069-negative-post-click-assertions-in-knownshortcutspagetests-need-a-positive-wait-signal.md`.
+  `backlog/done/069-negative-post-click-assertions-in-knownshortcutspagetests-need-a-positive-wait-signal.md`,
+  and finished there.
 - The other 15 PowerShell suites that define their own `Assert-True`. If the diagnostic proves
   useful, spreading it is separate work.
 
