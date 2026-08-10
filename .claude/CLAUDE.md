@@ -57,13 +57,14 @@ checkout and blocks the commit. `-C` shows it the real target.
 
 Step 2 has exceptions. **Plans** in AGENTS.md lists the kinds that stay out of the private repo:
 agent optimization, personal workflow tuning, agent housekeeping, and one-off context or config
-cleanups. Those still get a plan. The plan is not committed there.
+cleanups. These plans may be skipped. If you write one, keep it out of the private repo.
 
 ### Other
 
 - When asked to store an instruction or a rule, put it in CLAUDE.md or `.claude/rules/`.
-  Never put it in an auto memory file. Auto memory is on by default and writes notes Claude
-  chooses itself; it is not a place for instructions I gave you. Toggle it from `/memory`.
+  Do not put it in an auto memory file unless I ask for one in that turn. Auto memory is on by
+  default and writes notes Claude chooses itself; it is not a place for instructions I gave you.
+  Toggle it from `/memory`.
 - Verifying finished work is governed by **Verification After Implementation** in AGENTS.md. Invoke the `playwright-cli` skill via the Skill tool when that routing calls for a browser drive.
 - Before claiming a tool or capability is unavailable, check `.claude/skills/` and available skills. Never assume browser automation is missing — `playwright-cli` is installed.
 
