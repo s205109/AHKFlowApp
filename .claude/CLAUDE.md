@@ -1,6 +1,11 @@
-Be concise in all interactions. For documentation and app-facing text, follow **Plain English** in AGENTS.md — when short and easy-to-read conflict, choose easy-to-read. In commit messages, be extremely concise — sacrifice grammar for brevity.
-
 @../AGENTS.md
+
+Be concise in all interactions.
+
+Your chat replies follow the `ASD-STE100` output style (user level).
+Text written into this repository — docs, specs, plans, app-facing strings — follows
+**Plain English** in AGENTS.md. Commit messages are exempt from both: be extremely
+concise, sacrifice grammar for brevity.
 
 # Claude Code Configuration
 
@@ -28,35 +33,38 @@ both the exemption list and this paragraph, this paragraph wins: plan first.
 
 ### Create the worktree before you write the plan
 
-Create the worktree first. Do not start writing a plan in the main checkout and then move the work
-afterwards. Use `scripts/new-worktree.ps1`, or the native `EnterWorktree` tool — that tool fires the
-`WorktreeCreate` hook, which runs the same script for you.
+Create the worktree first. Never start a plan in the main checkout and move the work later.
+Use `scripts/new-worktree.ps1`, or the native `EnterWorktree` tool. That tool fires the
+`WorktreeCreate` hook, which runs the same script.
 
-Write and commit the planning documents from the **main checkout**, not from the worktree.
-`docs/superpowers/` is a separate private repo (`AHKFlowApp-plans`). The public repo ignores the
-path, so `git worktree add` never checks it out. `scripts/new-worktree.ps1` links the folder into
-each worktree instead, so a worktree can **read** its spec and plan at the same relative path.
-Treat that link as read-only: keep every plan write and plan commit in the main checkout, so the
-plans repo has one place work happens. Follow this order:
+Order of work:
 
-1. Create the worktree, but stay in the main checkout for now.
-2. Write and commit the spec and the plan there, under `docs/superpowers/specs/` and
-   `docs/superpowers/plans/`. Commit from inside `docs/superpowers/`, never from the repo root.
-   Target that repo with `git -C docs/superpowers commit`, not `cd docs/superpowers && git commit`.
-   The agent Git guard reads the command before the shell runs the `cd`, so it still sees the main
-   checkout and blocks the commit. `-C` shows it the real target, which is a different repository.
-3. Switch fully into the worktree. Everything else — code, tests, docs, config — happens there and
-   commits from there. The spec and plan stay readable at `docs/superpowers/` through the link.
-4. If a review round changes the plan, go back to the main checkout to edit and commit it. The
-   worktree sees the update straight away, because the link points at one shared working copy.
+1. Create the worktree. Stay in the main checkout.
+2. Write and commit the spec and the plan from the main checkout, under
+   `docs/superpowers/specs/` and `docs/superpowers/plans/`.
+3. Switch into the worktree. Code, tests, docs, and config happen there and commit there.
+4. If a review round changes the plan, return to the main checkout to edit and commit it.
+   The worktree sees the update at once.
 
-Step 2 does not apply to every plan. **Plans** in AGENTS.md lists the kinds that stay out of the
-private repo: agent optimization, personal workflow tuning, agent housekeeping, and one-off
-context or config cleanups. Those still get a plan. The plan just is not committed there.
+Why the split: `docs/superpowers/` is a separate private repo (`AHKFlowApp-plans`). The public
+repo ignores the path, so `git worktree add` never checks it out. `scripts/new-worktree.ps1`
+links the folder into each worktree instead. A worktree can read its spec and plan at the same
+relative path. Treat that link as read-only.
+
+Commit plans with `git -C docs/superpowers commit`. Never use `cd docs/superpowers && git commit`.
+The agent Git guard reads the command before the shell runs the `cd`, so it still sees the main
+checkout and blocks the commit. `-C` shows it the real target.
+
+Step 2 has exceptions. **Plans** in AGENTS.md lists the kinds that stay out of the private repo:
+agent optimization, personal workflow tuning, agent housekeeping, and one-off context or config
+cleanups. These plans may be skipped. If you write one, keep it out of the private repo.
 
 ### Other
 
-- When asked to store instructions or rules, put them in CLAUDE.md (not memory files) unless explicitly told otherwise.
+- When asked to store an instruction or a rule, put it in CLAUDE.md or `.claude/rules/`.
+  Do not put it in an auto memory file unless I ask for one in that turn. Auto memory is on by
+  default and writes notes Claude chooses itself; it is not a place for instructions I gave you.
+  Toggle it from `/memory`.
 - Verifying finished work is governed by **Verification After Implementation** in AGENTS.md. Invoke the `playwright-cli` skill via the Skill tool when that routing calls for a browser drive.
 - Before claiming a tool or capability is unavailable, check `.claude/skills/` and available skills. Never assume browser automation is missing — `playwright-cli` is installed.
 
