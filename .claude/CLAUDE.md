@@ -1,4 +1,4 @@
-Be concise in all interactions. For documentation and app-facing text, follow **Plain English** in AGENTS.md — when short and easy-to-read conflict, choose easy-to-read. In commit messages, be extremely concise — sacrifice grammar for brevity.
+The `ASD-STE100` output style governs chat text. **Plain English** in AGENTS.md governs text written into the repository: documentation, specs, plans, and app-facing strings. When short and easy-to-read conflict, choose easy-to-read. In commit messages, be extremely concise — sacrifice grammar for brevity.
 
 @../AGENTS.md
 
