@@ -2,7 +2,7 @@
 
 Be concise in all interactions.
 
-Text I read in chat follows the `ASD-STE100` output style (user level).
+Your chat replies follow the `ASD-STE100` output style (user level).
 Text written into this repository — docs, specs, plans, app-facing strings — follows
 **Plain English** in AGENTS.md. Commit messages are exempt from both: be extremely
 concise, sacrifice grammar for brevity.
