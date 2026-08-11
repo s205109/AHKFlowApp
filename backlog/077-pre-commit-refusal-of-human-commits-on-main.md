@@ -5,7 +5,7 @@
 - **Epic**: Development process
 - **Type**: Tooling
 - **Interfaces**: none (git hooks)
-- **Difficulty**: moderate
+- **Difficulty**: complex
 - **Stage**: 1-pickup
 
 ## Summary
@@ -28,7 +28,8 @@ that every change reaches `main` through a pull request.
 - [ ] The refusal message names the normal route: the housekeeping worktree.
 - [ ] `AHKFLOW_ALLOW_MAIN=1` lets the commit through.
 - [ ] The agent-side denial is unchanged. It stays a hard denial with no prompt.
-- [ ] This item carries its own spec before implementation.
+- [ ] This item carries its own spec before implementation. That is why its Difficulty is
+      `complex` and not `moderate`: only `complex` routes through Design.
 
 ## Out of scope
 

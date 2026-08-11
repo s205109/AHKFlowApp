@@ -33,9 +33,30 @@ one of them can never leave the other two behind.
 - [ ] The check recomputes the SHA-256 of the cheatsheet HTML and compares it against
       `docs/development/ahk-workflow.pdf.source.sha256`. A mismatch means the PDF is
       stale. It also checks that the PDF page tree contains `/Count 1`.
-- [ ] A drift guard scans the process sections of `AGENTS.md`. It fails on a rule line
-      without a `docs/development/workflow.md#stage-N-name` anchor, and on an anchor that
-      does not exist in `workflow.md`.
+- [ ] **The hash is line-ending independent.** Both the check and the sidecar generator
+      read the file, replace every CRLF with LF, and hash the UTF-8 bytes of that
+      normalized text. Hashing the raw bytes makes the result depend on the checkout: this
+      repository sets `core.autocrlf=true` and `.gitattributes` carries no `*.html` rule,
+      so the same file is `590125CF…75F0F` with LF and `168A95B6…01625` with CRLF.
+- [ ] `.gitattributes` gains `*.html text eol=lf`, so the working copy stops depending on
+      the platform. The normalized hashing above stays regardless — it is what makes the
+      check correct rather than merely consistent on one machine.
+- [ ] A drift guard scans the process sections of `AGENTS.md`. The sections it scans are
+      named explicitly: `Debugging`, `Plans`, `Verification After Implementation`, and
+      `Git Workflow`, plus the `Plan before you edit` and
+      `Create the worktree before you write the plan` sections of `.claude/CLAUDE.md`.
+- [ ] Inside those sections the guard scans **only top-level bullet lines** — a line
+      matching `^- ` at column 1. It fails on such a line without a
+      `docs/development/workflow.md#stage-N-name` anchor, and on an anchor that does not
+      exist in `workflow.md`.
+- [ ] The guard ignores every other Markdown form, because those carry reference data
+      rather than rules: table rows (`^|`), numbered list items (`^\d+\.`), indented or
+      nested bullets (`^\s+- `), fenced code blocks, headings, and plain paragraphs. The
+      verification routing table and the numbered exemption list in `AGENTS.md` are the
+      reason this exclusion exists — they are process content that carries no anchor by
+      design.
+- [ ] A fixture proves both directions: an unanchored top-level bullet inside a scanned
+      section fails the guard, and an unanchored table row inside the same section does not.
 - [ ] `backlog/000-backlog-item-template.md` carries a `- **Difficulty**:` line and a
       `- **Stage**:` line.
 - [ ] `scripts/new-backlog-item.ps1` writes both lines into every new item.
@@ -48,6 +69,13 @@ one of them can never leave the other two behind.
       and emitter.
 - [ ] `docs/adr/` gains one ADR: process canon lives in `workflow.md`.
 - [ ] The friction baseline table below is filled by backlog 071 task 8.
+- [ ] `docs/development/testing-workflow.md` renames its "Canonical pre-PR gate" heading to
+      name what the gate actually gates: the pull request going **ready**, not the pull
+      request being created. The draft pull request opens at Pickup, long before the gate
+      runs. Its opening line, "run the full coverage gate yourself before opening a PR",
+      changes with it. `workflow.md` and `AGENTS.md` already say "before ready"; this file
+      is the last one still saying "before you open a PR". It fell outside the wave-1 file
+      allowlist, which is why it was not fixed there.
 
 ## Friction baselines
 

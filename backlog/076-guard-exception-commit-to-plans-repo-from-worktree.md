@@ -5,7 +5,7 @@
 - **Epic**: Development process
 - **Type**: Tooling
 - **Interfaces**: none (agent git guard)
-- **Difficulty**: moderate
+- **Difficulty**: complex
 - **Stage**: 1-pickup
 
 ## Summary
@@ -26,8 +26,9 @@ repo so that a review round does not force me out of the worktree.
       HEAD.
 - [ ] The exception is scoped to the plans repo path. No other path gains a new right.
 - [ ] `docs/agents/cross-agent-git-guardrails.md` records the exception and its reason.
-- [ ] This item carries its own spec before implementation. It is `complex` enough to need
-      one even though the change itself is small: the guard is a safety boundary.
+- [ ] This item carries its own spec before implementation. That is why its Difficulty is
+      `complex` and not `moderate`: only `complex` routes through Design, and the guard is a
+      safety boundary even though the change itself is small.
 
 ## Out of scope
 
