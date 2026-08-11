@@ -275,11 +275,19 @@ second push the remote item still reads `Stage: 1-pickup` while the local branch
 on, and the remote is what a reader from `main` sees.
 
 That leaves a window: a session that dies between the Stage commit and the second push
-resumes at the new stage and never goes back for the push. So **resume compares the field
-against the remote, not only against the local file** — `git status -sb` showing the branch
-ahead means the transition is unpublished, whatever stage the field names. Push first, then
-continue. This applies to every stage, not only Pickup; Pickup is just where the two-step
-makes it most likely.
+resumes at Design, Plan or Execute and never goes back for the push, so the remote still
+reads `1-pickup`.
+
+Close it at Pickup itself rather than with a general rule. **Pickup is not complete until
+`gh pr view --json headRefOid` matches the local Stage commit.** Resume at Pickup re-runs
+that comparison and pushes if they differ.
+
+Do not generalise this to other stages by reading `git status -sb`. Being ahead does not
+mean the transition is unpublished: Execute's own task commits leave the branch ahead by
+design, a worktree created with `worktree add -b`
+(`scripts/worktree-git.common.ps1:82`) has no upstream at all until the first push, and the
+remote-tracking ref is stale without a fetch. A housekeeping round has no Stage commit to
+compare — its record is the pull request body.
 
 **The draft pull request opens before any gate has run, and that is deliberate.** The pull
 request exists from Pickup so it can point at the work through Design and Plan. It is a
@@ -484,7 +492,7 @@ Otherwise it sits in `backlog/` forever describing a blocker that cleared.
 |---|---|---|
 | success | closure commit pushed when there is one, then CI green and merged | 10-cleanup |
 | failure | CI red after ready; convert the PR back to draft first. Tracked item: `git mv` the item back out of `backlog/done/`, restore `PLAN-PROGRESS.md`, set `Stage: 6-verify` — one commit — then push. A round: rewrite the PR body's `Stage:` line to `6-verify`; no records to restore, no transition commit, so no push. Start recovery only after that | 6-verify |
-| blocked | merge depends on something outside the repository, such as a required-check outage; the PR stays ready. Tracked item: restore `PLAN-PROGRESS.md`, `git mv` the item from `backlog/done/` to `backlog/blocked/` with the unblock note, keep `Stage: 9-ship`, commit, push. A round has no item: file one naming the round PR and the blocker, move that item to `backlog/blocked/`, and leave the round PR body at `Stage: 9-ship` | blocked/ |
+| blocked | merge depends on something outside the repository, such as a required-check outage; the PR stays ready. Tracked item: restore `PLAN-PROGRESS.md`, `git mv` the item from `backlog/done/` to `backlog/blocked/` with the unblock note, keep `Stage: 9-ship`, commit, push. A round has no item: file one naming the round PR and the blocker, move that item to `backlog/blocked/`, **commit and push it** — an unpushed blocker exists only on one machine — and leave the round PR body at `Stage: 9-ship` | blocked/ |
 | not applicable | cannot occur: everything ships through a pull request | none |
 | resume | `gh pr view` for the live state, continue from ready-flip or merge | stay |
 
@@ -534,9 +542,16 @@ Cleanup therefore ends in one of two ways, and the session says which:
 1. **Synchronous.** Removal runs from a session outside the worktree — the main checkout,
    or any shell not standing in the folder. That session runs all three checks itself and
    takes the success edge.
-2. **Deferred to the watcher.** The session triggers removal, states that the watcher owns
-   the outcome, and ends. The **next** session in this repository runs the three checks and
-   takes the success edge then.
+2. **Deferred to the watcher.** The session triggers removal, **updates memory before it
+   ends** — that is the one exit condition no later session can reconstruct — states that
+   the watcher owns the worktree and branch, and ends. A later session confirms the other
+   two only if something is left behind.
+
+   Memory comes first because the watcher's success path removes both the worktree and the
+   branch (`scripts/remove-worktree-local-dev.ps1:919`). After a clean run there is no
+   worktree, no branch, and no marker, so a later session has nothing to find and nothing to
+   act on — which is correct, because nothing is left to do. The leftover check below exists
+   for the partial-failure cases only.
 
    That needs a trigger, and the merged pull request cannot be one: it looks identical
    before and after the checks, and a housekeeping round has no `done/` item at all. The
@@ -567,7 +582,7 @@ branch. The removal script scopes its own check the same way
 |---|---|---|
 | success | all three confirmed — `git -C <main-checkout> worktree list` shows no entry, `git -C <main-checkout> show-ref --verify --quiet refs/heads/<branch>` exits 1, memory updated | terminal |
 | failure | removal attempt failed — a holder process or a lock; name the holder, follow the removal log's manual guidance, retry | stay |
-| blocked | removal depends on something outside the repository, such as an upstream tooling bug. The work already merged, so the original item stays in `backlog/done/`: file a new item naming the merged PR, the worktree path, the blocker, and what would unblock it, and move that new item to `backlog/blocked/` | blocked/ |
+| blocked | removal depends on something outside the repository, such as an upstream tooling bug. The work already merged, so the original item stays in `backlog/done/`. File a new item naming the merged PR, the worktree path, the blocker, and what would unblock it, and move it to `backlog/blocked/` — but **file it from the main checkout or a housekeeping round, never inside the worktree being removed**. Writing it there leaves the tree dirty, and committing it moves HEAD off `main`'s ancestry; the removal script rejects both (`scripts/remove-worktree-local-dev.ps1:328,314-322`), so filing the blocker in place would itself prevent the removal from ever succeeding | blocked/ |
 | not applicable | cannot occur: Cleanup is entered only after a merge, and a round mid-flight never reaches it | none |
 | resume | re-check all three; worktree present → continue removal; worktree absent but branch still there → delete the branch; both gone but memory not written → update memory; all three done → take the success edge | stay |
 

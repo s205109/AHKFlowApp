@@ -41,4 +41,4 @@ that I never have to work out where to stand first.
 - Spec: `docs/superpowers/specs/2026-08-10-development-process-design-071.md` §13
   (private plans repo).
 - Target: directory-bound commands handed to the human drop to zero, and next-step asks
-  drop further, against the wave-1 baseline in backlog 072.
+  drop further, as a direction, not a percentage: backlog 072 has no established baseline yet.

@@ -38,5 +38,5 @@ apply to it so that I do not wait for a full .NET build to approve a one-line ch
   here.
 - Spec: `docs/superpowers/specs/2026-08-10-development-process-design-071.md` §2 (P6) and
   §13 (private plans repo).
-- Target: CI minutes on non-.NET changes drop to near zero for qualifying paths, against
-  the wave-1 baseline in backlog 072.
+- Target: CI minutes on non-.NET changes drop to near zero for qualifying paths. That is a
+  direction, not a percentage: backlog 072 has no established baseline yet.

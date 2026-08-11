@@ -85,30 +85,51 @@ Measured once by backlog 071, on 2026-08-11. **Every number is approximate.** Th
 the worktree removal log, and the GitHub run history. Wave 3 to wave 5 targets are stated
 against these numbers.
 
-**These numbers were re-measured on 2026-08-11 after review round 4 found the first set
-invalid.** The original method pattern-matched the serialized JSONL line rather than the
-parsed message, so it counted tool results as human turns, matched commands inside tool
-output, and counted `Timeout=300s` configuration echoes as timeout events. The first set was
-too high by roughly 5 to 20 times. Do not use it; it is recorded in git history only.
+> **No baseline is published. Every attempt so far has been wrong, and measuring this
+> properly is part of this item's work, not a prerequisite already met.**
 
-The corrected method parses each JSONL record, keeps only `text` blocks, and separates
-`user` from `assistant` roles. Window unchanged: 2026-07-28 to 2026-08-11, 245 transcripts.
+Two attempts were made during backlog 071 and both were rejected in review:
 
-| Count | Baseline | Method |
+1. **2026-08-10.** Pattern-matched the serialized JSONL line, so tool results counted as
+   human turns, commands inside tool output counted as handed-over commands, and 91
+   `Timeout=300s` configuration echoes counted as timeout events. Too high by 5 to 20 times.
+2. **2026-08-11.** Parsed records and filtered to `text` blocks, which fixed the worst of it
+   but still counted injected skill content as human input (it is stored as `role=user`),
+   still filtered files by modification time rather than records by timestamp, still counted
+   sidechain subagent messages, and still counted the same message twice when history was
+   copied forward. Round 5's field-based audit found **18** in-window human next-step rows
+   against the 59 published; handoffs 20 against 30; cleanup 15 against 16; commands 113
+   distinct against 120 raw.
+
+The pattern is the lesson: each attempt fixed the previous flaw and introduced or retained
+another, and each produced a number confident enough to be used. So this item measures the
+counts as a task with the requirements below, rather than inheriting a figure.
+
+| Count | Baseline | Status |
 |---|---|---|
-| Blocked-agent handoffs | 30 messages across 18 sessions | Assistant **text** blocks matching `AHKFLOW_ALLOW_MAIN`, `cannot commit`, or `agent-worktree-main-write`. Tool results excluded — they carry the refusal text too, which is what inflated the original 570 |
-| Directory-bound commands handed to the human | 120 commands across 18 sessions | Command lines inside fenced `powershell`/`bash`/`sh` blocks **in assistant text only**, starting `git`, `gh`, `dotnet`, `pwsh`, or `npm`, carrying no `git -C`, `--repo`, `--project`, or absolute path. The original 2750 counted fenced blocks appearing anywhere in the serialized record, including tool output |
-| Cleanup popups and blocked runs | 16 events | `.claude/worktrees/worktree-removal.log` lines matching `cannot access the file`. **Real timed-out events: 0.** The original 107 added 91 lines matching `timeout`, every one of which was a `Timeout=300s` configuration echo, not an event |
-| Next-step asks | 59 messages across 49 sessions | `user`-role **text** blocks matching `what … next`, `next step`, `wat nu`, or `hoe verder`. The original 163 included 104 tool results, which are `user`-role records but not the human speaking |
-| CI minutes on non-.NET changes | **not reproducible — re-measure before use** | The classification read each PR's *current* file list, so a PR touched after measurement reclassifies and the number moves. The original 142.7 minutes over 26 runs cannot be reproduced. A valid method must classify from the files as they were at the run's own commit |
+| Blocked-agent handoffs | not established | Candidate figures 570, then 30, then 20 |
+| Directory-bound commands handed to the human | not established | Candidate figures 2750, then 120, then 113 distinct |
+| Cleanup popups and blocked runs | not established | Candidate figures 107, then 16, then 15 in-window |
+| Next-step asks | not established | Candidate figures 163, then 59, then 18 |
+| CI minutes on non-.NET changes | not established | 142.7 was not reproducible: it classified from each PR's *current* files, not the files at the run's own commit |
 
-Known limits that remain. Counts 1, 2 and 4 are text patterns, so they still catch
-discussion of a handoff as well as a handoff. Count 3 reads only the removal log, so a
-cleanup failure that never reached the log is invisible. Count 5 needs a new method before
-it means anything.
+### What a valid measurement must do
 
-The lesson worth keeping for the wave-2 checks: a pattern run over serialized JSON measures
-the transcript format, not the behaviour. Parse first, then count.
+- [ ] Select **records** by their own timestamp, inside the stated window. Filtering files by
+      modification time includes out-of-window records and excludes in-window ones.
+- [ ] Count a human turn only when the record is genuinely the human. `role=user` is not
+      sufficient: tool results and injected skill content both carry that role.
+- [ ] Exclude sidechain subagent transcripts, or count them separately and say which.
+- [ ] Deduplicate by message id. Copied-forward history repeats the same message, so raw
+      occurrences overstate distinct deliveries.
+- [ ] Classify CI runs from the files as they were at the run's own commit, so the result is
+      stable when a PR is touched later.
+- [ ] Separate a real event from discussion of one, or state plainly that it does not and
+      treat the figure as an upper bound.
+- [ ] Publish the script with the numbers, so any figure can be reproduced and challenged.
+
+Until those hold, wave 3 to wave 5 targets are stated as directions — fewer handoffs, fewer
+directory-bound commands — not as percentages against a number.
 
 ## Out of scope
 

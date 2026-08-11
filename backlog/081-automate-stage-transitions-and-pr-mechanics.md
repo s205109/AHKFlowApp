@@ -22,9 +22,9 @@ This item turns the written transition into a command.
 ## Why now
 
 The process is finally specified tightly enough to encode. Wave 1 wrote it down and
-deliberately changed no scripts, so none of it is automated. The friction this leaves is
-already measured in backlog 072: about 570 blocked-agent handoffs and about 2750
-directory-bound commands over two weeks.
+deliberately changed no scripts, so none of it is automated. Backlog 072 holds no usable
+figure for the friction this leaves — three measurement attempts were all rejected in review
+— so the case for this item rests on the defects below, not on a count.
 
 Three defects from the backlog-071 review rounds were transition mechanics, not rules:
 
