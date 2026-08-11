@@ -6,7 +6,7 @@
 - **Type**: Process / documentation
 - **Interfaces**: none (docs, backlog, AGENTS.md, .claude/CLAUDE.md)
 - **Difficulty**: complex
-- **Stage**: 4-execute
+- **Stage**: 5-simplify
 
 ## Summary
 
