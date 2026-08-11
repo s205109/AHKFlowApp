@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AHKFlow artifact design system</title>
+<style>
+  /* ---------------------------------------------------------------
+     Tokens. Values come from the wave-1 design spec, section 9.
+     Do not invent new colour values. Add a token only when the spec
+     grows one.
+     --------------------------------------------------------------- */
+  :root {
+    --font-stack: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+    --ground: #f8fafc;
+    --card-bg: #ffffff;
+    --card-border: #e2e8f0;
+    --card-radius: 8px;
+
+    --text-heading: #0f172a;
+    --text-body: #334155;
+    --text-secondary: #475569;
+    --text-secondary-alt: #64748b;
+    --text-muted: #94a3b8;
+
+    /* green win */
+    --win-bg: #f0fdf4;
+    --win-border: #bbf7d0;
+    --win-text: #166534;
+
+    /* red friction */
+    --friction-bg: #fef2f2;
+    --friction-border: #fca5a5;
+    --friction-text: #991b1b;
+
+    /* amber summary - the spec gives a background range, so the fill
+       is a gradient from --summary-bg to --summary-bg-end */
+    --summary-bg: #fef3c7;
+    --summary-bg-end: #fde68a;
+    --summary-border: #f59e0b;
+    --summary-text: #92400e;
+
+    /* blue action */
+    --action-bg: #eff6ff;
+    --action-border: #bfdbfe;
+    --action-text: #1e40af;
+  }
+
+  /* minimal reset */
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin: 0; }
+
+  body {
+    font-family: var(--font-stack);
+    background: var(--ground);
+    color: var(--text-body);
+    line-height: 1.6;
+    padding: 32px 20px 64px;
+  }
+
+  main { max-width: 860px; margin: 0 auto; }
+
+  h1, h2, h3 { color: var(--text-heading); line-height: 1.25; margin: 0 0 12px; }
+  h1 { font-size: 32px; }
+  h2 { font-size: 24px; margin-top: 40px; }
+  h3 { font-size: 18px; margin-top: 28px; }
+
+  p { margin: 0 0 14px; }
+  .secondary { color: var(--text-secondary); }
+  .secondary-alt { color: var(--text-secondary-alt); }
+  .muted { color: var(--text-muted); }
+
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: var(--card-radius);
+    padding: 20px 22px;
+    margin: 16px 0;
+  }
+
+  /* Callouts. Every callout carries a text label as well as a colour,
+     so the meaning survives without colour vision. */
+  .callout {
+    border: 1px solid;
+    border-left-width: 5px;
+    border-radius: var(--card-radius);
+    padding: 14px 18px;
+    margin: 12px 0;
+  }
+  .callout .label {
+    display: inline-block;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .callout p { margin: 0; }
+
+  .callout.win      { background: var(--win-bg);      border-color: var(--win-border);      color: var(--win-text); }
+  .callout.friction { background: var(--friction-bg); border-color: var(--friction-border); color: var(--friction-text); }
+  .callout.summary  { background: linear-gradient(180deg, var(--summary-bg), var(--summary-bg-end));
+                      border-color: var(--summary-border); color: var(--summary-text); }
+  .callout.action   { background: var(--action-bg);   border-color: var(--action-border);   color: var(--action-text); }
+
+  .swatches { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0; padding: 0; list-style: none; }
+  .swatches li {
+    border: 1px solid var(--card-border);
+    border-radius: var(--card-radius);
+    background: var(--card-bg);
+    padding: 8px 10px;
+    font-size: 13px;
+    min-width: 190px;
+  }
+  .chip {
+    display: inline-block;
+    width: 16px; height: 16px;
+    border: 1px solid var(--card-border);
+    border-radius: 3px;
+    vertical-align: -3px;
+    margin-right: 8px;
+  }
+  code { font-family: ui-monospace, Consolas, 'Courier New', monospace; font-size: 13px; }
+
+  pre {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: var(--card-radius);
+    padding: 16px 18px;
+    overflow-x: auto;
+    font-family: ui-monospace, Consolas, 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-heading);
+  }
+
+  a { color: var(--action-text); }
+  a:focus-visible, summary:focus-visible { outline: 3px solid var(--summary-border); outline-offset: 2px; }
+
+  @media print {
+    @page { size: A4; margin: 14mm; }
+    body { background: #ffffff; padding: 0; font-size: 11pt; }
+    .card, .callout, pre { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<main>
+
+  <h1>AHKFlow artifact design system</h1>
+  <p class="secondary">
+    One token set and one page skeleton for every AHKFlow document page. This page renders
+    each element, so it is its own preview. Copy the tokens; do not invent new colours.
+  </p>
+
+  <div class="callout action">
+    <span class="label">Action</span>
+    <p>
+      Do not import Inter from Google Fonts. The Artifact content security policy blocks
+      every external request, so the import fails silently and the page falls back to the
+      system stack anyway. Ship the system stack, or embed the font as a data URI.
+    </p>
+  </div>
+
+  <h2>Page ground and card</h2>
+  <p>
+    The page ground is <code>--ground</code>. Content sits on white cards with a
+    <code>--card-border</code> hairline and an 8&nbsp;pixel radius.
+  </p>
+
+  <div class="card">
+    <h3 style="margin-top:0">This is a card</h3>
+    <p>Body text uses <code>--text-body</code>.</p>
+    <p class="secondary">Secondary text uses <code>--text-secondary</code>.</p>
+    <p class="secondary-alt">The lighter secondary is <code>--text-secondary-alt</code>.</p>
+    <p class="muted">Muted text uses <code>--text-muted</code>.</p>
+  </div>
+
+  <h2>Heading scale</h2>
+  <div class="card">
+    <h1 style="margin-top:0">Heading 1 — 32px</h1>
+    <h2 style="margin-top:0">Heading 2 — 24px</h2>
+    <h3 style="margin-top:0">Heading 3 — 18px</h3>
+    <p>Body — 16px, line height 1.6.</p>
+  </div>
+
+  <h2>Callouts</h2>
+  <p>
+    Four callouts. Each one carries a text label as well as a colour and a thick left
+    border. Colour is never the only signal.
+  </p>
+
+  <div class="callout win">
+    <span class="label">Win</span>
+    <p>Something worked. Green: <code>--win-bg</code>, <code>--win-border</code>, <code>--win-text</code>.</p>
+  </div>
+
+  <div class="callout friction">
+    <span class="label">Friction</span>
+    <p>Something cost time. Red: <code>--friction-bg</code>, <code>--friction-border</code>, <code>--friction-text</code>.</p>
+  </div>
+
+  <div class="callout summary">
+    <span class="label">Summary</span>
+    <p>The short version. Amber: <code>--summary-bg</code> to <code>--summary-bg-end</code>, <code>--summary-border</code>, <code>--summary-text</code>.</p>
+  </div>
+
+  <div class="callout action">
+    <span class="label">Action</span>
+    <p>Do this next. Blue: <code>--action-bg</code>, <code>--action-border</code>, <code>--action-text</code>.</p>
+  </div>
+
+  <h2>The full token set</h2>
+
+  <h3>Surfaces and text</h3>
+  <ul class="swatches">
+    <li><span class="chip" style="background:#f8fafc"></span><code>--ground</code> #f8fafc</li>
+    <li><span class="chip" style="background:#ffffff"></span><code>--card-bg</code> #ffffff</li>
+    <li><span class="chip" style="background:#e2e8f0"></span><code>--card-border</code> #e2e8f0</li>
+    <li><span class="chip" style="background:#0f172a"></span><code>--text-heading</code> #0f172a</li>
+    <li><span class="chip" style="background:#334155"></span><code>--text-body</code> #334155</li>
+    <li><span class="chip" style="background:#475569"></span><code>--text-secondary</code> #475569</li>
+    <li><span class="chip" style="background:#64748b"></span><code>--text-secondary-alt</code> #64748b</li>
+    <li><span class="chip" style="background:#94a3b8"></span><code>--text-muted</code> #94a3b8</li>
+  </ul>
+
+  <h3>Callout triples</h3>
+  <ul class="swatches">
+    <li><span class="chip" style="background:#f0fdf4"></span><code>--win-bg</code> #f0fdf4</li>
+    <li><span class="chip" style="background:#bbf7d0"></span><code>--win-border</code> #bbf7d0</li>
+    <li><span class="chip" style="background:#166534"></span><code>--win-text</code> #166534</li>
+    <li><span class="chip" style="background:#fef2f2"></span><code>--friction-bg</code> #fef2f2</li>
+    <li><span class="chip" style="background:#fca5a5"></span><code>--friction-border</code> #fca5a5</li>
+    <li><span class="chip" style="background:#991b1b"></span><code>--friction-text</code> #991b1b</li>
+    <li><span class="chip" style="background:#fef3c7"></span><code>--summary-bg</code> #fef3c7</li>
+    <li><span class="chip" style="background:#fde68a"></span><code>--summary-bg-end</code> #fde68a</li>
+    <li><span class="chip" style="background:#f59e0b"></span><code>--summary-border</code> #f59e0b</li>
+    <li><span class="chip" style="background:#92400e"></span><code>--summary-text</code> #92400e</li>
+    <li><span class="chip" style="background:#eff6ff"></span><code>--action-bg</code> #eff6ff</li>
+    <li><span class="chip" style="background:#bfdbfe"></span><code>--action-border</code> #bfdbfe</li>
+    <li><span class="chip" style="background:#1e40af"></span><code>--action-text</code> #1e40af</li>
+  </ul>
+
+  <div class="callout summary">
+    <span class="label">Summary</span>
+    <p>
+      The spec lists two secondary text values. <code>--text-secondary</code> is the darker
+      one. <code>--text-secondary-alt</code> is the lighter one. The amber callout
+      background is a range, so it is a gradient from <code>--summary-bg</code> to
+      <code>--summary-bg-end</code>.
+    </p>
+  </div>
+
+  <h2>Copyable page skeleton</h2>
+  <p>
+    Paste this into a blank file and it renders. It is self-contained: no external
+    stylesheet, no external font, no script.
+  </p>
+
+<pre>&lt;!doctype html&gt;
+&lt;html lang="en"&gt;
+&lt;head&gt;
+&lt;meta charset="utf-8"&gt;
+&lt;meta name="viewport" content="width=device-width, initial-scale=1"&gt;
+&lt;title&gt;Page title&lt;/title&gt;
+&lt;style&gt;
+  :root {
+    --font-stack: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --ground: #f8fafc;
+    --card-bg: #ffffff;
+    --card-border: #e2e8f0;
+    --card-radius: 8px;
+    --text-heading: #0f172a;
+    --text-body: #334155;
+    --text-secondary: #475569;
+    --text-secondary-alt: #64748b;
+    --text-muted: #94a3b8;
+    --win-bg: #f0fdf4;      --win-border: #bbf7d0;      --win-text: #166534;
+    --friction-bg: #fef2f2; --friction-border: #fca5a5; --friction-text: #991b1b;
+    --summary-bg: #fef3c7;  --summary-bg-end: #fde68a;
+    --summary-border: #f59e0b; --summary-text: #92400e;
+    --action-bg: #eff6ff;   --action-border: #bfdbfe;   --action-text: #1e40af;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin: 0; }
+
+  body {
+    font-family: var(--font-stack);
+    background: var(--ground);
+    color: var(--text-body);
+    line-height: 1.6;
+    padding: 32px 20px 64px;
+  }
+  main { max-width: 860px; margin: 0 auto; }
+  h1, h2, h3 { color: var(--text-heading); line-height: 1.25; margin: 0 0 12px; }
+
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: var(--card-radius);
+    padding: 20px 22px;
+    margin: 16px 0;
+  }
+
+  @media print {
+    @page { size: A4; margin: 14mm; }
+    body { background: #ffffff; padding: 0; font-size: 11pt; }
+    .card { break-inside: avoid; }
+  }
+&lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+&lt;main&gt;
+  &lt;h1&gt;Page title&lt;/h1&gt;
+  &lt;div class="card"&gt;
+    &lt;p&gt;Card content.&lt;/p&gt;
+  &lt;/div&gt;
+&lt;/main&gt;
+&lt;/body&gt;
+&lt;/html&gt;</pre>
+
+  <h2>Rules for every page built from this set</h2>
+  <div class="card">
+    <ul>
+      <li>Self-contained. Zero external requests: no CDN, no web font, no remote image.</li>
+      <li>Colour is never the only signal. Every state carries text, a label, or a shape.</li>
+      <li>Every interactive element is reachable by keyboard, and its focus ring is visible.</li>
+      <li>An A4 print stylesheet is part of the page, not an afterthought.</li>
+      <li>Wide content scrolls inside its own container. The page body never scrolls sideways.</li>
+    </ul>
+  </div>
+
+  <p class="muted">
+    Token source: the wave-1 development process design, section 9 (private plans repo).
+    First consumer: <a href="workflow.html">workflow.html</a>.
+  </p>
+
+</main>
+</body>
+</html>
