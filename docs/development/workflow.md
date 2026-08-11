@@ -91,8 +91,9 @@ pushes for the first time and opens the round pull request.
 **Record the decision to close before pushing.** Between the push and a successful
 `gh pr create` the round has no durable marker, and its commit log looks exactly like a
 round still accumulating changes — so a session that dies in that window resumes by
-committing more work instead of finishing the close. Make the decision visible first: an
-empty marker commit (`chore: close round, opening PR`) is enough. Round resume therefore
+committing more work instead of finishing the close. Make the decision visible first with an
+empty marker commit — `git commit --allow-empty -m "chore: close round, opening PR"`. The
+flag is required: an ordinary `git commit` refuses an unchanged tree. Round resume therefore
 checks the upstream branch and the pull request state before it reads the commit log, and
 retries `gh pr create` when the marker is present and no pull request exists.
 
@@ -192,7 +193,7 @@ stage's Exit field above it.
 | failure | missing Difficulty or summary; complete the item | stay |
 | blocked | cannot specify without an external answer; file what is known with the unblock note | blocked/ |
 | not applicable | a housekeeping round needs no item — taken once per round, at its first change; the round's commits are the record; say so | 1-pickup |
-| resume | item sat idle; revise Difficulty once, then re-check the whole exit condition — a placeholder summary keeps it here | 1-pickup |
+| resume | item sat idle; revise Difficulty once, then re-check the whole exit condition — a placeholder summary keeps it here, and only a complete item takes the success edge | stay |
 
 **Where Intake writes the file.** A new item written into the main checkout cannot reach a
 worktree by itself. `git worktree add` builds the new tree from a commit, and
@@ -234,7 +235,15 @@ inside it — which is why its branch had to be named before its number was know
 copy that. It worked only because the number was picked by hand, which is the thing
 `new-backlog-item.ps1` exists to prevent.
 
-Automating this away is backlog 080.
+**Known cost, stated rather than hidden: this contaminates later branches.** A new worktree
+is created from `HEAD` unless `-BaseRef` says otherwise
+(`scripts/worktree-git.common.ps1:64`), so every Intake commit sitting unmerged on local
+`main` rides into every worktree created afterwards, and into its pull request diff. The
+more items you file before merging, the more unrelated commits each later branch carries.
+
+Two ways to limit it, neither free: file an item immediately before creating its worktree
+rather than batching Intake, or merge the filing commits promptly. Backlog 080 removes the
+cause by reserving the number without a commit on `main`.
 
 A housekeeping round files no item at all, so none of this applies to it.
 
@@ -264,6 +273,13 @@ so `gh pr create` has something to open a pull request against; nothing is stamp
 second carries the Stage transition commit after the pull request exists. Without that
 second push the remote item still reads `Stage: 1-pickup` while the local branch has moved
 on, and the remote is what a reader from `main` sees.
+
+That leaves a window: a session that dies between the Stage commit and the second push
+resumes at the new stage and never goes back for the push. So **resume compares the field
+against the remote, not only against the local file** — `git status -sb` showing the branch
+ahead means the transition is unpublished, whatever stage the field names. Push first, then
+continue. This applies to every stage, not only Pickup; Pickup is just where the two-step
+makes it most likely.
 
 **The draft pull request opens before any gate has run, and that is deliberate.** The pull
 request exists from Pickup so it can point at the work through Design and Plan. It is a
@@ -373,7 +389,7 @@ create a PR" as "before you mark it ready".
 | Edge | Condition | Target |
 |---|---|---|
 | success | exit condition met | 7-document |
-| failure | red; before the transition, append the failing command, its output, and a named recovery task to `PLAN-PROGRESS.md`, so Execute resume has something to find | 4-execute |
+| failure | red; before the transition, record the failing command, its output, and a named recovery task — in `PLAN-PROGRESS.md` for tracked work, in the round pull request body for a round, which has no progress file — so Execute resume has something to find | 4-execute |
 | blocked | verification depends on something outside the repository | blocked/ |
 | not applicable | cannot occur: AGENTS.md requires a verdict either way, and an exemption replaces only the artifact while the gate still runs, so an exempt change takes the success edge with the exemption named | none |
 | resume | re-run the verification commands; they are reproducible | stay |
@@ -415,7 +431,7 @@ create a PR" as "before you mark it ready".
 | Edge | Condition | Target |
 |---|---|---|
 | success | exit condition met | 9-ship |
-| failure | findings need code changes; then Simplify, Verify, Document again as needed | 4-execute |
+| failure | findings need code changes; record them as named recovery tasks first — in `PLAN-PROGRESS.md`, or the round pull request body — because Execute resume reads those, never the review threads; then Simplify, Verify, Document again as needed | 4-execute |
 | blocked | a finding depends on something outside the repository | blocked/ |
 | not applicable | cannot occur: every pull request — a tracked item's or a round's — is reviewed | none |
 | resume | fetch unresolved threads, continue with `custom-review-findings` | stay |
@@ -453,14 +469,20 @@ edges restore no records. They rewrite the `Stage:` line in the round pull reque
 instead, and they push only if the recovery work itself makes a commit.
 
 **One exception to "nothing extra": a round-level blocker item.** If the round filed one
-because it could not merge or could not be removed, that item is real tracked work and it
-does not close itself. When the round finally merges, `git mv` that item into
-`backlog/done/`, tick its boxes, and include it in the same closure commit Ship pushes.
+because it **could not merge**, that item is real tracked work and it does not close itself.
+When the round finally merges, `git mv` that item into `backlog/done/`, tick its boxes, and
+include it in the same closure commit Ship pushes.
+
+A blocker filed because the worktree **could not be removed** cannot use that route: Cleanup
+runs after the merge, so the pull request that would have carried the closure commit is
+already merged and its branch is gone. Close that item the way Cleanup's own blocked edge
+says — it stays in `backlog/blocked/` until the removal succeeds, and then a housekeeping
+round moves it to `backlog/done/` as one of its own changes.
 Otherwise it sits in `backlog/` forever describing a blocker that cleared.
 
 | Edge | Condition | Target |
 |---|---|---|
-| success | closure commit pushed, then CI green and merged | 10-cleanup |
+| success | closure commit pushed when there is one, then CI green and merged | 10-cleanup |
 | failure | CI red after ready; convert the PR back to draft first. Tracked item: `git mv` the item back out of `backlog/done/`, restore `PLAN-PROGRESS.md`, set `Stage: 6-verify` — one commit — then push. A round: rewrite the PR body's `Stage:` line to `6-verify`; no records to restore, no transition commit, so no push. Start recovery only after that | 6-verify |
 | blocked | merge depends on something outside the repository, such as a required-check outage; the PR stays ready. Tracked item: restore `PLAN-PROGRESS.md`, `git mv` the item from `backlog/done/` to `backlog/blocked/` with the unblock note, keep `Stage: 9-ship`, commit, push. A round has no item: file one naming the round PR and the blocker, move that item to `backlog/blocked/`, and leave the round PR body at `Stage: 9-ship` | blocked/ |
 | not applicable | cannot occur: everything ships through a pull request | none |
@@ -479,9 +501,16 @@ Otherwise it sits in `backlog/` forever describing a blocker that cleared.
 - **Context** — clear freely
 - **Review** — reviewed
 
-**Update local `main` before attempting removal.** The removal script decides a worktree is
-merged with `git merge-base --is-ancestor HEAD main`
-(`scripts/remove-worktree-local-dev.ps1:314-322`), and that reads the **local** `main`.
+**Merge with a merge commit, not a rebase merge.** The removal script decides a worktree is
+merged with `git merge-base --is-ancestor HEAD main`. A rebase merge rewrites the commits, so
+the branch head that was merged is not an ancestor of `main` and removal is refused even
+though the work landed. This repository has rebase merging enabled
+(`allow_rebase_merge: true`), so it is a live trap, not a theoretical one. Until the script
+tests a merged-PR fact rather than ancestry — backlog 073 — Ship uses a merge commit for any
+branch whose worktree you expect Cleanup to remove.
+
+**Update local `main` before attempting removal.** The same check
+(`scripts/remove-worktree-local-dev.ps1:314-322`) reads the **local** `main`.
 `gh pr merge` merges on GitHub and never advances it, so straight after a merge the script
 still calls the worktree unmerged and preserves it. A worktree session cannot update `main`
 under the guard, so this is a main-checkout step:
@@ -511,10 +540,16 @@ Cleanup therefore ends in one of two ways, and the session says which:
 
    That needs a trigger, and the merged pull request cannot be one: it looks identical
    before and after the checks, and a housekeeping round has no `done/` item at all. The
-   durable trigger is the leftover itself. A session starting in this repository lists
-   `git -C <main-checkout> worktree list`, and for every worktree whose branch is already
-   merged it runs the three checks and finishes that cleanup before its own work. A
-   worktree that should be gone is the record that it is not gone yet.
+   durable trigger is the leftover itself — but it must be **either** leftover, not only the
+   worktree. The watcher prunes the worktree before it deletes the branch
+   (`scripts/remove-worktree-local-dev.ps1:840-850`) and has a documented outcome that stops
+   in between, logging "worktree removed; branch preserved" (`:921`). Checking the worktree
+   alone would miss exactly that case.
+
+   So a session starting in this repository checks both lists: `git -C <main-checkout>
+   worktree list`, and `git -C <main-checkout> branch --merged main`. Any worktree whose
+   branch is merged, **or** any merged branch left behind with no worktree, is unfinished
+   cleanup. Finish it before starting new work.
 
 Neither route lets a session claim success it did not observe. All three exit conditions
 are checked, never the worktree alone. The removal script has a
@@ -588,13 +623,17 @@ wins. The others are evidence.
 private plans repo (`git -C docs/superpowers commit`), then the Stage-field update to the
 public work branch. The public Stage commit is the authoritative transition marker.
 
-**The plans-repo commit must run from the main checkout, not from the worktree.**
-`docs/superpowers/` is a symlink into the main checkout, and the guard refuses a worktree
-session writing there — see
-[`cross-agent-git-guardrails.md`](../agents/cross-agent-git-guardrails.md). This applies to
-every agent, not only Claude. So Design and Plan run in the worktree but hand the spec or
-plan commit back to a main-checkout session. Backlog 076 removes this detour; until it
-lands, state the handoff instead of retrying the refused command.
+**The plans-repo commit runs fine from the worktree. The file edit does not.** Measured, not
+assumed: `git -C <path>/docs/superpowers commit` is allowed from a worktree session, through
+the symlink or the absolute path, because the guard gates commands that could change the
+*protected checkout's* HEAD, index, or working tree — and the plans repo is a different
+repository (`agent-worktree-guard.common.ps1:1176-1178`). What is refused is writing the
+file: `Edit`, `Write`, and shell writes into that path. That refusal is Claude-only
+(`invoke-agent-worktree-guard.ps1:80-83`); Codex and Copilot file edits are not covered.
+
+So the handoff is narrower than it looks: write the content from a main-checkout session, or
+to the scratchpad and copy it in, then commit from wherever you are. Backlog 076 removes the
+edit restriction.
 
 **Push boundaries.** Push at every pre-merge stage completion that has a live branch and a
 transition commit — stages 1 to 9. A tracked item's Pickup push is the first push and opens

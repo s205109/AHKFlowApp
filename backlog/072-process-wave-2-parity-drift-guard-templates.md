@@ -85,18 +85,30 @@ Measured once by backlog 071, on 2026-08-11. **Every number is approximate.** Th
 the worktree removal log, and the GitHub run history. Wave 3 to wave 5 targets are stated
 against these numbers.
 
+**These numbers were re-measured on 2026-08-11 after review round 4 found the first set
+invalid.** The original method pattern-matched the serialized JSONL line rather than the
+parsed message, so it counted tool results as human turns, matched commands inside tool
+output, and counted `Timeout=300s` configuration echoes as timeout events. The first set was
+too high by roughly 5 to 20 times. Do not use it; it is recorded in git history only.
+
+The corrected method parses each JSONL record, keeps only `text` blocks, and separates
+`user` from `assistant` roles. Window unchanged: 2026-07-28 to 2026-08-11, 245 transcripts.
+
 | Count | Baseline | Method |
 |---|---|---|
-| Blocked-agent handoffs | about 570 messages across 80 sessions | Transcript lines matching `AHKFLOW_ALLOW_MAIN`, `cannot commit`, `agent-worktree-main-write`, or the isolation refusal text. A broader pattern that also counts `run these` and `Copy-Item` gives 602 messages across 91 sessions, so read 570 as the lower bound |
-| Directory-bound commands handed to the human | about 2750 commands across 153 sessions | Command lines inside fenced `powershell`, `bash`, or `sh` blocks that start with `git`, `gh`, `dotnet`, `pwsh`, or `npm` and carry no `git -C`, no `--repo`, no `--project`, and no absolute path. 3197 fenced commands were examined, so about 86 percent were directory-bound |
-| Cleanup popups and blocked runs | 107 events | `.claude/worktrees/worktree-removal.log`: 16 lines matching `cannot access the file` plus 91 lines matching `timed out` or `timeout` |
-| Next-step asks | about 160 messages across 69 sessions | Transcript lines with a user role that also match `what ... next`, `next step`, `wat nu`, or `hoe verder` |
-| CI minutes on non-.NET changes | about 143 job minutes over 26 runs | 96 `ci.yml` runs in the window. A run qualifies only when its PR changed no `*.cs`, `*.razor`, `*.csproj`, `*.props`, `*.targets`, `*.sln`, or `global.json` — kind, not location — and every remaining file matches `**/*.md`, `docs/**`, `.claude/**`, `.pr_agent.toml`, `.github/workflows/**`, `.githooks/**`, or `scripts/**/*.ps1`. Minutes are the summed job durations from `completedAt` minus `startedAt` |
+| Blocked-agent handoffs | 30 messages across 18 sessions | Assistant **text** blocks matching `AHKFLOW_ALLOW_MAIN`, `cannot commit`, or `agent-worktree-main-write`. Tool results excluded — they carry the refusal text too, which is what inflated the original 570 |
+| Directory-bound commands handed to the human | 120 commands across 18 sessions | Command lines inside fenced `powershell`/`bash`/`sh` blocks **in assistant text only**, starting `git`, `gh`, `dotnet`, `pwsh`, or `npm`, carrying no `git -C`, `--repo`, `--project`, or absolute path. The original 2750 counted fenced blocks appearing anywhere in the serialized record, including tool output |
+| Cleanup popups and blocked runs | 16 events | `.claude/worktrees/worktree-removal.log` lines matching `cannot access the file`. **Real timed-out events: 0.** The original 107 added 91 lines matching `timeout`, every one of which was a `Timeout=300s` configuration echo, not an event |
+| Next-step asks | 59 messages across 49 sessions | `user`-role **text** blocks matching `what … next`, `next step`, `wat nu`, or `hoe verder`. The original 163 included 104 tool results, which are `user`-role records but not the human speaking |
+| CI minutes on non-.NET changes | **not reproducible — re-measure before use** | The classification read each PR's *current* file list, so a PR touched after measurement reclassifies and the number moves. The original 142.7 minutes over 26 runs cannot be reproduced. A valid method must classify from the files as they were at the run's own commit |
 
-Known limits of these numbers. A transcript line is one message, so a message that hands
-over three commands counts as one match for count 1 and as three for count 2. Counts 1 and
-4 use text patterns, so they catch discussion of a handoff as well as a handoff. Count 5
-measures wall-clock job duration, not billed runner minutes.
+Known limits that remain. Counts 1, 2 and 4 are text patterns, so they still catch
+discussion of a handoff as well as a handoff. Count 3 reads only the removal log, so a
+cleanup failure that never reached the log is invisible. Count 5 needs a new method before
+it means anything.
+
+The lesson worth keeping for the wave-2 checks: a pattern run over serialized JSON measures
+the transcript format, not the behaviour. Parse first, then count.
 
 ## Out of scope
 
