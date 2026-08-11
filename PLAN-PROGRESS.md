@@ -25,3 +25,4 @@ Verify | - | exemption 1 named; gate ALL FIVE green - build 17 projects 0 warnin
 Document | - | verdict: nothing to document - the change set IS the documentation | not-applicable edge -> 8-review
 NOTE: rounds 2 and 3 recorded the Review failure edge after the fixes were made, not before. workflow.md now requires the failure transition to be recorded first, with the red evidence and a recovery task. Round 4 onward follows that order.
 Review round 3 | pending | 23 threads: 1 critical, 8 high, 14 medium; all CONFIRMED, 0 pushback | 16 fixable here, 7 need the private plans repo which this worktree cannot write
+Review round 3 | df6e018 | 23 threads all CONFIRMED, 0 pushback | 16 fixed here, 7 blocked on the private plans repo (guard) including the critical Ship-no-push line in the plan | 2 of the 23 were defects introduced by round 2 fixes | gate all five green, parity green, sidecar fresh | 23/23 replied and resolved, summary comment posted
