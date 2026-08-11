@@ -18,10 +18,12 @@
     --text-heading: #0f172a;
     --text-body: #334155;
     --text-secondary: #475569;
+    --text-secondary-alt: #64748b;
     --text-muted: #94a3b8;
 
     --win-bg: #f0fdf4;      --win-text: #166534;
     --friction-bg: #fef2f2; --friction-text: #991b1b;
+    --action-text: #1e40af;
   }
 
   *, *::before, *::after { box-sizing: border-box; }
@@ -39,6 +41,11 @@
 
   h1 { color: var(--text-heading); font-size: 23px; margin: 0 0 3px; }
   .lede { color: var(--text-secondary); font-size: 12.5px; margin: 0 0 14px; }
+
+  /* Wide content scrolls inside its own container, so the page body never scrolls
+     sideways. tabindex on the container makes the scroll reachable by keyboard. */
+  .table-scroll { overflow-x: auto; }
+  .table-scroll:focus-visible { outline: 3px solid var(--action-text); outline-offset: 2px; border-radius: var(--card-radius); }
 
   table {
     width: 100%;
@@ -63,7 +70,9 @@
   }
   tbody tr:last-child td { border-bottom: none; }
 
-  td.n { color: var(--text-muted); width: 26px; text-align: right; }
+  /* --text-muted is 2.45:1 on --ground, below the 4.5:1 text needs.
+     --text-secondary-alt is 4.55:1. */
+  td.n { color: var(--text-secondary-alt); width: 26px; text-align: right; }
   td.stage { color: var(--text-heading); font-weight: 600; white-space: nowrap; }
   td.exit { color: var(--text-body); }
   td.ok, td.bad {
@@ -74,12 +83,21 @@
   td.ok  { background: var(--win-bg);      color: var(--win-text); }
   td.bad { background: var(--friction-bg); color: var(--friction-text); }
 
-  .foot { color: var(--text-muted); font-size: 11px; margin-top: 10px; }
+  .foot { color: var(--text-secondary-alt); font-size: 11px; margin-top: 10px; }
+
+  /* Narrow screens: let the target cells wrap rather than force a sideways page. */
+  @media (max-width: 640px) {
+    body { padding: 14px; font-size: 13px; }
+    th, td { padding: 5px 7px; }
+    td.ok, td.bad, td.stage { white-space: normal; }
+  }
 
   @media print {
     @page { size: A4; margin: 12mm; }
     body { background: #ffffff; padding: 0; font-size: 14px; }
     table { break-inside: avoid; }
+    .table-scroll { overflow-x: visible; }
+    td.ok, td.bad, td.stage { white-space: nowrap; }
   }
 </style>
 </head>
@@ -92,6 +110,7 @@
     workflow.md. Full tree with all five edges: workflow.html.
   </p>
 
+  <div class="table-scroll" tabindex="0" role="region" aria-label="The eleven workflow stages">
   <table>
     <thead>
       <tr>
@@ -162,7 +181,7 @@
       <tr data-stage="8-review">
         <td class="n">8</td>
         <td class="stage">Review</td>
-        <td class="exit" data-exit="All review threads resolved, gate re-green">All review threads resolved, gate re-green</td>
+        <td class="exit" data-exit="Review received, all threads resolved, gate re-green">Review received, all threads resolved, gate re-green</td>
         <td class="ok" data-next="success:9-ship">9-ship</td>
         <td class="bad" data-next="failure:4-execute">4-execute</td>
       </tr>
@@ -182,6 +201,7 @@
       </tr>
     </tbody>
   </table>
+  </div>
 
   <p class="foot">
     Targets: a stage id goes to that stage. 2-design/3-plan/4-execute is the Difficulty

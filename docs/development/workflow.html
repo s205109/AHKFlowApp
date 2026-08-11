@@ -48,7 +48,9 @@
   a { color: var(--action-text); }
 
   .lede { color: var(--text-secondary); }
-  .muted { color: var(--text-muted); font-size: 14px; }
+  /* --text-muted measures 2.45:1 on --ground, below the 4.5:1 needed for text.
+     Text uses --text-secondary-alt (4.55:1); --text-muted stays for decoration. */
+  .muted { color: var(--text-secondary-alt); font-size: 14px; }
 
   .legend {
     background: var(--card-bg);
@@ -78,7 +80,9 @@
   summary::-webkit-details-marker { display: none; }
   summary::before { content: '\25B8'; display: inline-block; width: 1em; color: var(--text-muted); }
   details[open] > summary::before { content: '\25BE'; }
-  summary:focus-visible { outline: 3px solid var(--summary-border); outline-offset: -3px; border-radius: var(--card-radius); }
+  /* --summary-border measures 2.05:1 on --ground, below the 3:1 a focus ring needs.
+     --action-text measures 8.34:1. */
+  summary:focus-visible { outline: 3px solid var(--action-text); outline-offset: -3px; border-radius: var(--card-radius); }
 
   .num {
     display: inline-block;
@@ -301,14 +305,14 @@
       <div class="body">
         <p class="field"><b>Entry:</b> code settled</p>
         <p class="field"><b>Who:</b> Sonnet, default effort &middot; <b>Technique:</b> the AGENTS.md Verification routing table (<code>dck-verify</code>)</p>
-        <p class="field"><b>Action:</b> produce the verification artifact the table names, and run the gate. A wait on the human for manual steps keeps the stage in progress; it is not an edge. Under an AGENTS.md exemption, the exemption's own work is the artifact and the gate — for exemption 1 that is targeted text checks plus diff review. Name the exemption, state the verdict, take the success edge</p>
+        <p class="field"><b>Action:</b> produce the verification artifact the table names, then run the canonical five-step gate. A wait on the human for manual steps keeps the stage in progress; it is not an edge. An AGENTS.md exemption replaces the <b>artifact</b> only — for exemption 1, targeted text checks plus diff review stand in for a test. The gate still runs, on a docs-only branch too, because CI skips its .NET steps there. Name the exemption, state the verdict, take the success edge</p>
         <p class="field exit" data-exit="Verification artifact green, gate green, verdict stated"><b>Exit:</b> Verification artifact green, gate green, verdict stated</p>
         <p class="field note"><b>Context:</b> safe to clear after green &middot; <b>Review:</b> not yet reviewed</p>
         <ul class="edges">
           <li class="e-success" data-next="success:7-document"><span class="badge"><span class="glyph">&#10003;</span>success</span> exit condition met <span class="target">&rarr; 7-document</span></li>
           <li class="e-failure" data-next="failure:4-execute"><span class="badge"><span class="glyph">&#10007;</span>failure</span> red; carry the failing output back <span class="target">&rarr; 4-execute</span></li>
           <li class="e-blocked" data-next="blocked:blocked/"><span class="badge"><span class="glyph">&#9632;</span>blocked</span> verification depends on something outside the repository <span class="target">&rarr; blocked/</span></li>
-          <li class="e-na" data-next="not applicable:none"><span class="badge"><span class="glyph">&#8212;</span>not applicable</span> cannot occur: AGENTS.md requires a verdict either way, and an exemption is itself verification work — targeted checks plus diff review — so an exempt change takes the success edge with the exemption named <span class="target">&rarr; none</span></li>
+          <li class="e-na" data-next="not applicable:none"><span class="badge"><span class="glyph">&#8212;</span>not applicable</span> cannot occur: AGENTS.md requires a verdict either way, and an exemption replaces only the artifact while the gate still runs, so an exempt change takes the success edge with the exemption named <span class="target">&rarr; none</span></li>
           <li class="e-resume" data-next="resume:stay"><span class="badge"><span class="glyph">&#8635;</span>resume</span> re-run the verification commands; they are reproducible <span class="target">&rarr; stay</span></li>
         </ul>
       </div>
@@ -340,9 +344,10 @@
       <summary><span class="num">8</span>Review</summary>
       <div class="body">
         <p class="field"><b>Entry:</b> work presentable, pushed at the last stage boundary, pull request still draft</p>
-        <p class="field"><b>Who:</b> <code>--model opus --effort high</code>; Codex locally posts to the same pull request threads &middot; <b>Technique:</b> <code>custom-review-findings</code> (PR mode)</p>
-        <p class="field"><b>Action:</b> review lands as pull request threads. Verify, fix, reply, resolve. A wait on the reviewer keeps the stage in progress; it is not an edge</p>
-        <p class="field exit" data-exit="All review threads resolved, gate re-green"><b>Exit:</b> All review threads resolved, gate re-green</p>
+        <p class="field"><b>Who:</b> <code>--model opus --effort high</code>; Codex locally posts to the same pull request threads</p>
+        <p class="field"><b>Technique:</b> two halves. <b>Producing</b> the review: a reviewer session, or Codex, reads the branch and posts threads. <code>custom-review-findings</code> cannot do this half — it only consumes findings. <b>Handling</b> the review: <code>custom-review-findings</code> (PR mode)</p>
+        <p class="field"><b>Action:</b> ask a reviewer for the review, then handle what comes back. Reply and resolve every thread. A wait on the reviewer keeps the stage in progress; it is not an edge. Fix inside Review only what needs no code change. Any finding that needs a code change takes the failure edge to Execute; do not fix it here</p>
+        <p class="field exit" data-exit="Review received, all threads resolved, gate re-green"><b>Exit:</b> Review received, all threads resolved, gate re-green</p>
         <p class="field note"><b>Context:</b> keep until threads resolved &middot; <b>Review:</b> reviewed; state it in the recap</p>
         <ul class="edges">
           <li class="e-success" data-next="success:9-ship"><span class="badge"><span class="glyph">&#10003;</span>success</span> exit condition met <span class="target">&rarr; 9-ship</span></li>

@@ -36,7 +36,7 @@ Stage names are fixed. The exit strings below are canonical. They appear word fo
 | 5 | Simplify | Simplification applied or verdict 'nothing to simplify' stated |
 | 6 | Verify | Verification artifact green, gate green, verdict stated |
 | 7 | Document | Docs updated or verdict 'nothing to document' stated |
-| 8 | Review | All review threads resolved, gate re-green |
+| 8 | Review | Review received, all threads resolved, gate re-green |
 | 9 | Ship | Records closed, PR ready, CI green, merged |
 | 10 | Cleanup | Worktree gone, branch deleted, memory updated |
 
@@ -164,7 +164,7 @@ stage's Exit field above it.
 - **Entry** — friction, idea, or bug arrives
 - **Who** — Sonnet, default effort
 - **Technique** — `scripts/new-backlog-item.ps1`
-- **Action** — file the item, set Difficulty; for bugs, attach root-cause evidence or mark it `to-be-determined`
+- **Action** — file the item where the work will run (see below), set Difficulty; for bugs, attach root-cause evidence or mark it `to-be-determined`
 - **Exit** — Item filed with the script, Difficulty set
 - **Next** — `1-pickup`
 - **Context** — safe to clear
@@ -177,6 +177,24 @@ stage's Exit field above it.
 | blocked | cannot specify without an external answer; file what is known with the unblock note | blocked/ |
 | not applicable | a housekeeping round needs no item — taken once per round, at its first change; the round's commits are the record; say so | 1-pickup |
 | resume | item sat idle; revise Difficulty once | 1-pickup |
+
+**Where Intake writes the file.** A new item written into the main checkout cannot reach a
+worktree by itself. `git worktree add` builds the new tree from a commit, and
+`scripts/new-worktree.ps1` copies only the entries listed in `.worktreeinclude`, which is
+empty. An agent also cannot commit on `main`. So an uncommitted new item in main is
+stranded.
+
+Two legal routes, and the session states which one it took:
+
+1. **Agent, tracked work — the normal route.** Create the execution location first, then run
+   `scripts/new-backlog-item.ps1` from inside it, so the item is written and committed on the
+   work branch. The stage order is unchanged: Intake still completes before Pickup's exit
+   condition, and the Stage field records `0-intake` then `1-pickup`. Only the file's
+   location moves. Backlog 071 was filed this way.
+2. **Human, or a session with `AHKFLOW_ALLOW_MAIN=1`.** File and commit the item on `main`
+   first. A later worktree then carries it, because the item is committed.
+
+A housekeeping round files no item at all, so this note does not apply to it.
 
 <a id="stage-1-pickup"></a>
 
@@ -198,6 +216,14 @@ stage's Exit field above it.
 | blocked | prerequisite outside the repository; for a round, the one blocked change is filed as its own item and only that item moves | blocked/ |
 | not applicable | cannot occur: every item chooses a location | none |
 | resume | worktree exists; re-confirm branch and base, then continue at the recorded Stage for a tracked item, or from the round's commit log and PR state for a round | stay |
+
+**The draft pull request opens before any gate has run, and that is deliberate.** The pull
+request exists from Pickup so it can point at the work through Design and Plan. It is a
+**draft**, which is not a request to merge. The canonical five-step gate in
+[`testing-workflow.md`](testing-workflow.md#canonical-pre-pr-gate) is therefore a
+**pre-ready** gate: it runs at [Verify](#stage-6-verify), and it must be green before
+[Ship](#stage-9-ship) flips the pull request to ready. Read every rule that says "before you
+create a PR" as "before you mark it ready".
 
 <a id="stage-2-design"></a>
 
@@ -290,7 +316,7 @@ stage's Exit field above it.
 - **Entry** — code settled
 - **Who** — Sonnet, default effort
 - **Technique** — the AGENTS.md Verification routing table (`dck-verify`)
-- **Action** — produce the verification artifact the table names, and run the gate. A wait on the human for manual steps keeps the stage in progress; it is not an edge. Under an AGENTS.md exemption, the exemption's own work is the artifact and the gate. For exemption 1 that is targeted text checks plus diff review. Name the exemption, state the verdict, and take the success edge
+- **Action** — produce the verification artifact the table names, then run the canonical five-step gate in [`testing-workflow.md`](testing-workflow.md#canonical-pre-pr-gate). A wait on the human for manual steps keeps the stage in progress; it is not an edge. An AGENTS.md exemption replaces the **artifact** only — for exemption 1, targeted text checks plus diff review stand in for a test. The gate still runs. It runs on a docs-only branch too, because CI skips its .NET steps there, so the local gate is the only .NET check that branch gets. Name the exemption, state the verdict, and take the success edge
 - **Exit** — Verification artifact green, gate green, verdict stated
 - **Next** — `7-document`
 - **Context** — safe to clear after green
@@ -301,7 +327,7 @@ stage's Exit field above it.
 | success | exit condition met | 7-document |
 | failure | red; carry the failing output back | 4-execute |
 | blocked | verification depends on something outside the repository | blocked/ |
-| not applicable | cannot occur: AGENTS.md requires a verdict either way, and an exemption is itself verification work — targeted checks plus diff review — so an exempt change takes the success edge with the exemption named | none |
+| not applicable | cannot occur: AGENTS.md requires a verdict either way, and an exemption replaces only the artifact while the gate still runs, so an exempt change takes the success edge with the exemption named | none |
 | resume | re-run the verification commands; they are reproducible | stay |
 
 <a id="stage-7-document"></a>
@@ -331,9 +357,9 @@ stage's Exit field above it.
 
 - **Entry** — work presentable, pushed at the last stage boundary, pull request still draft
 - **Who** — `--model opus --effort high`; Codex locally posts to the same pull request threads
-- **Technique** — `custom-review-findings` (PR mode)
-- **Action** — review lands as pull request threads. Verify, fix, reply, resolve. A wait on the reviewer keeps the stage in progress; it is not an edge
-- **Exit** — All review threads resolved, gate re-green
+- **Technique** — two halves. **Producing** the review: a reviewer session, or Codex, reads the branch and posts threads. `custom-review-findings` cannot do this half — it only consumes findings. **Handling** the review: `custom-review-findings` (PR mode)
+- **Action** — ask a reviewer for the review, then handle what comes back. Reply and resolve every thread. A wait on the reviewer keeps the stage in progress; it is not an edge. Fix inside Review only what needs no code change: a reply, a wording fix in the pull request, a resolved misunderstanding. Any finding that needs a code change takes the failure edge to Execute; do not fix it here
+- **Exit** — Review received, all threads resolved, gate re-green
 - **Next** — `9-ship`
 - **Context** — keep until threads resolved
 - **Review** — reviewed; state it in the recap
