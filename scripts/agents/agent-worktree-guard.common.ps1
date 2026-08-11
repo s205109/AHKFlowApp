@@ -1286,6 +1286,12 @@ $script:AgentGuardWriteCmdlets = @{
 }
 $script:AgentGuardWriteDestinationCmdlets = @('copy-item', 'move-item', 'rename-item')
 
+# Commands that REMOVE their source as well as writing their destination. A move into an allowed
+# path is still a delete of the path it came from, so the source is a write target too. cp,
+# install and ln are deliberately absent: they leave the source where it is.
+$script:AgentGuardMoveCommands = @('mv')
+$script:AgentGuardMoveCmdlets = @('move-item', 'rename-item')
+
 <#
 .SYNOPSIS
 Index of the first unquoted '>' in a token, or -1 when the token carries no redirect.
@@ -1372,6 +1378,47 @@ function Get-AgentTargetDirectoryOption {
 
 <#
 .SYNOPSIS
+A move's options and its operands, with '--' honoured.
+
+.DESCRIPTION
+Get-AgentGitPositionals drops every token that starts with '-', so `mv -- -a.md dest` loses the
+source entirely. A move deletes what it reads, so losing a source hides a delete. This reader
+keeps everything after '--' whatever it looks like, and hands back the options separately:
+Get-AgentTargetDirectoryOption does not stop at '--' either, and would read `-tracked.md` as a
+clustered -t. Only -t / --target-directory consume the following token; every other option mv
+accepts is a flag.
+#>
+function Get-AgentMoveArgumentSet {
+    param([string[]] $Arguments)
+
+    $options = New-Object System.Collections.Generic.List[string]
+    $operands = New-Object System.Collections.Generic.List[string]
+    $list = @($Arguments)
+    $afterDoubleDash = $false
+
+    for ($i = 0; $i -lt $list.Count; $i++) {
+        $argument = [string] $list[$i]
+
+        if ($afterDoubleDash) { [void] $operands.Add($argument); continue }
+        if ($argument -ceq '--') { $afterDoubleDash = $true; continue }
+
+        if ($argument -like '-*') {
+            [void] $options.Add($argument)
+            if ($argument -ieq '--target-directory' -or $argument -cmatch '^-[a-zA-Z]*t$') {
+                if (($i + 1) -lt $list.Count) { [void] $options.Add([string] $list[$i + 1]) }
+                $i++
+            }
+            continue
+        }
+
+        [void] $operands.Add($argument)
+    }
+
+    return [pscustomobject]@{ Options = $options.ToArray(); Operands = $operands.ToArray() }
+}
+
+<#
+.SYNOPSIS
 Every path one command segment would write, move, or delete.
 
 .DESCRIPTION
@@ -1428,11 +1475,27 @@ function Get-AgentSegmentWriteTarget {
         foreach ($positional in $positionals) { [void] $targets.Add($positional) }
     }
     elseif ($script:AgentGuardWriteLastPositional -contains $leaf) {
-        # -t/--target-directory moves the destination off the last positional: with it, every
-        # positional is a SOURCE and the named directory is the only thing written.
-        $targetDirectory = Get-AgentTargetDirectoryOption -Arguments $arguments
+        # A move reads its own operands, because a moved file may be named '-something' and only
+        # a '--'-aware reader keeps it. cp, install and ln do not delete, so they keep the older
+        # positional reader.
+        $isMove = $script:AgentGuardMoveCommands -contains $leaf
+        $moveSet = if ($isMove) { Get-AgentMoveArgumentSet -Arguments $arguments } else { $null }
+        $optionArguments = if ($isMove) { $moveSet.Options } else { $arguments }
+        $operands = if ($isMove) { @($moveSet.Operands) } else { $positionals }
+
+        # -t/--target-directory moves the destination off the last operand: with it, every
+        # operand is a SOURCE and the named directory is the only thing written.
+        $targetDirectory = Get-AgentTargetDirectoryOption -Arguments $optionArguments
         if ($null -ne $targetDirectory) { [void] $targets.Add($targetDirectory) }
-        elseif ($positionals.Count -ge 1) { [void] $targets.Add($positionals[$positionals.Count - 1]) }
+        elseif ($operands.Count -ge 1) { [void] $targets.Add($operands[$operands.Count - 1]) }
+
+        # A move also removes every source it names. With -t every operand is a source; without
+        # it the last operand is the destination, so drop it.
+        if ($isMove) {
+            $sources = if ($null -ne $targetDirectory) { @($operands) }
+            else { @($operands | Select-Object -SkipLast 1) }
+            foreach ($source in $sources) { [void] $targets.Add($source) }
+        }
     }
     elseif ($leaf -eq 'sed') {
         $inPlace = @($arguments | Where-Object { $_ -ceq '-i' -or $_ -clike '-i*' -or $_ -ceq '--in-place' }).Count -gt 0
@@ -1458,6 +1521,18 @@ function Get-AgentSegmentWriteTarget {
         $named = Get-AgentNamedParameterValue -Arguments $arguments -Names @('Destination', 'NewName')
         if ($null -ne $named) { [void] $targets.Add($named) }
         elseif ($positionals.Count -ge 2) { [void] $targets.Add($positionals[1]) }
+
+        # Move-Item and Rename-Item remove the paths they read. Copy-Item does not, so it is not
+        # in the move table. -Path takes an array, so read every operand rather than one token,
+        # and split on the comma PowerShell leaves attached to each element.
+        if ($script:AgentGuardMoveCmdlets -contains $leaf) {
+            foreach ($operand in $positionals) {
+                foreach ($piece in ($operand -split ',')) {
+                    $source = $piece.Trim()
+                    if ($source -ne '' -and -not $targets.Contains($source)) { [void] $targets.Add($source) }
+                }
+            }
+        }
     }
 
     return $targets.ToArray()

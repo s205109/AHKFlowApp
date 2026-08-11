@@ -1706,7 +1706,26 @@ try {
         @{ Command = 'printf x\>y'; Expected = @() },
         # Destination arguments
         @{ Command = 'cp a.txt b.txt'; Expected = @('b.txt') },
-        @{ Command = 'mv a.txt b.txt'; Expected = @('b.txt') },
+        # A move removes its source, so both endpoints are write targets. Destination first,
+        # then sources - the assertion below joins the list in order.
+        @{ Command = 'mv a.txt b.txt'; Expected = @('b.txt', 'a.txt') },
+        @{ Command = 'mv a.txt c.txt b.txt'; Expected = @('b.txt', 'a.txt', 'c.txt') },
+        @{ Command = 'mv -f a.txt b.txt'; Expected = @('b.txt', 'a.txt') },
+        @{ Command = 'mv -t out a.txt c.txt'; Expected = @('out', 'a.txt', 'c.txt') },
+        @{ Command = 'mv --target-directory=out a.txt'; Expected = @('out', 'a.txt') },
+        # '--' ends the options. A file name after it may start with a dash.
+        @{ Command = 'mv -- -tracked.md dest.md'; Expected = @('dest.md', '-tracked.md') },
+        @{ Command = 'mv -t out -- -a.txt'; Expected = @('out', '-a.txt') },
+        @{ Command = 'Move-Item a.txt b.txt'; Expected = @('b.txt', 'a.txt') },
+        @{ Command = 'Move-Item -Path a.txt -Destination b.txt'; Expected = @('b.txt', 'a.txt') },
+        @{ Command = 'Move-Item -LiteralPath a.txt -Destination b.txt'; Expected = @('b.txt', 'a.txt') },
+        # -Path takes an array, and PowerShell splits it across tokens at each comma.
+        @{ Command = 'Move-Item -Path a.md,b.md -Destination x.md'; Expected = @('x.md', 'a.md', 'b.md') },
+        @{ Command = 'Move-Item -Path a.md, b.md -Destination x.md'; Expected = @('x.md', 'a.md', 'b.md') },
+        @{ Command = 'Rename-Item a.txt b.txt'; Expected = @('b.txt', 'a.txt') },
+        # cp, install and ln leave the source in place, so they stay destination-only.
+        @{ Command = 'cp -t out a.txt'; Expected = @('out') },
+        @{ Command = 'Copy-Item a.txt -Destination b.txt'; Expected = @('b.txt') },
         @{ Command = 'rm a.txt b.txt'; Expected = @('a.txt', 'b.txt') },
         @{ Command = 'tee out.txt'; Expected = @('out.txt') },
         @{ Command = 'touch a.txt'; Expected = @('a.txt') },
@@ -1982,6 +2001,35 @@ try {
         @{ Name    = 'install -t into main'
             Command = 'install -m 644 -t <MAIN> source.txt'; Cwd = 'Managed'; Action = 'Deny'
         },
+        # A move out of main deletes a path in main, whatever its destination is.
+        @{ Name    = 'mv out of main into the worktree is refused'
+            Command = 'mv <MAIN>/seed.txt <MANAGED>/seed.txt'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'mv -t out of main into the worktree is refused'
+            Command = 'mv -t <MANAGED> <MAIN>/seed.txt'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'Move-Item out of main is refused'
+            Command = 'Move-Item <MAIN>/seed.txt <MANAGED>/seed.txt'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'Rename-Item inside main is refused'
+            Command = 'Rename-Item <MAIN>/seed.txt old.txt'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        # A copy leaves the source alone, so it stays allowed.
+        @{ Name    = 'cp out of main into the worktree stays allowed'
+            Command = 'cp <MAIN>/seed.txt <MANAGED>/seed.txt'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        @{ Name    = 'mv inside the worktree stays allowed'
+            Command = 'mv a.txt b.txt'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        # A dash-prefixed source after '--' is a real file, not an option.
+        @{ Name    = 'mv of a dash-prefixed source out of main is refused'
+            Command = 'mv -- <MAIN>/-tracked.md <MANAGED>/tracked.md'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        # -Path takes an array. The second element is the one that reaches main.
+        @{ Name    = 'Move-Item with an array source is refused on the second element'
+            Command = 'Move-Item -Path a.md, <MAIN>/seed.txt -Destination <MANAGED>/x.md'
+            Cwd = 'Managed'; Action = 'Deny'
+        },
         @{ Name    = 'cp -t inside the worktree stays allowed'
             Command = 'cp -t ./obj a.txt'; Cwd = 'Managed'; Action = 'Allow'
         },
@@ -2016,6 +2064,15 @@ try {
                 -Cwd $cwd -ProtectedRepoRoot $fixture.Main -AllowMain $false
             Assert-Equal $case.Action $decision.Action 'Action'
         }
+    }
+
+    Invoke-TestCase 'Write isolation: a move out of main names the source, not the destination' {
+        $source = $fixture.Main.Replace('\', '/') + '/seed.txt'
+        $destination = $fixture.Managed.Replace('\', '/') + '/seed.txt'
+        $decision = Invoke-AgentGuardPolicy -Command "mv $source $destination" `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'Deny' $decision.Action 'Action'
+        Assert-Match ([regex]::Escape((Join-Path $fixture.Main 'seed.txt'))) $decision.Message 'Message'
     }
 
     Invoke-TestCase 'Write isolation: rm -rf on a worktree glob is not a write-rule denial' {
