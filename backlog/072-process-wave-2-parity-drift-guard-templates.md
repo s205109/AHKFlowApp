@@ -51,16 +51,23 @@ one of them can never leave the other two behind.
 
 ## Friction baselines
 
-Measured once in wave 1, approximate, from the last two weeks of transcripts and
-repository history. Wave 3 to wave 5 targets are stated against these numbers.
+Measured once by backlog 071, on 2026-08-11. **Every number is approximate.** The window is
+2026-07-28 to 2026-08-11 — the last two weeks. The sources are 244 local session transcripts,
+the worktree removal log, and the GitHub run history. Wave 3 to wave 5 targets are stated
+against these numbers.
 
 | Count | Baseline | Method |
 |---|---|---|
-| Blocked-agent handoffs | | |
-| Directory-bound commands handed to the human | | |
-| Cleanup popups and blocked runs | | |
-| Next-step asks | | |
-| CI minutes on non-.NET changes | | |
+| Blocked-agent handoffs | about 570 messages across 80 sessions | Transcript lines matching `AHKFLOW_ALLOW_MAIN`, `cannot commit`, `agent-worktree-main-write`, or the isolation refusal text. A broader pattern that also counts `run these` and `Copy-Item` gives 602 messages across 91 sessions, so read 570 as the lower bound |
+| Directory-bound commands handed to the human | about 2750 commands across 153 sessions | Command lines inside fenced `powershell`, `bash`, or `sh` blocks that start with `git`, `gh`, `dotnet`, `pwsh`, or `npm` and carry no `git -C`, no `--repo`, no `--project`, and no absolute path. 3197 fenced commands were examined, so about 86 percent were directory-bound |
+| Cleanup popups and blocked runs | 107 events | `.claude/worktrees/worktree-removal.log`: 16 lines matching `cannot access the file` plus 91 lines matching `timed out` or `timeout` |
+| Next-step asks | about 160 messages across 69 sessions | Transcript lines with a user role that also match `what ... next`, `next step`, `wat nu`, or `hoe verder` |
+| CI minutes on non-.NET changes | about 143 job minutes over 26 runs | 96 `ci.yml` runs in the window. A run qualifies only when its PR changed no `*.cs`, `*.razor`, `*.csproj`, `*.props`, `*.targets`, `*.sln`, or `global.json` — kind, not location — and every remaining file matches `**/*.md`, `docs/**`, `.claude/**`, `.pr_agent.toml`, `.github/workflows/**`, `.githooks/**`, or `scripts/**/*.ps1`. Minutes are the summed job durations from `completedAt` minus `startedAt` |
+
+Known limits of these numbers. A transcript line is one message, so a message that hands
+over three commands counts as one match for count 1 and as three for count 2. Counts 1 and
+4 use text patterns, so they catch discussion of a handoff as well as a handoff. Count 5
+measures wall-clock job duration, not billed runner minutes.
 
 ## Out of scope
 
