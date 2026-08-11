@@ -19,10 +19,10 @@ The lines below are rules; each links to the stage that owns the narrative.
 ### Plan before you edit
 
 - Classify the change by Difficulty before you touch code. `complex` goes to Design, `moderate` to Plan, `trivial` straight to Execute — see [workflow.md#stage-1-pickup](../docs/development/workflow.md#stage-1-pickup).
-- A change is `trivial` only when all three predicates are provably false: more than one file changes, an interface other code depends on changes, app-facing text changes — see [workflow.md#stage-5-simplify](../docs/development/workflow.md#stage-5-simplify).
-- Repository documentation is not app-facing text, so a docs-only change can stay `trivial` — see [workflow.md#stage-5-simplify](../docs/development/workflow.md#stage-5-simplify).
+- A change is `trivial` only when all three predicates are provably false: more than one file changes, an interface other code depends on changes, app-facing text changes — see [workflow.md#stage-1-pickup](../docs/development/workflow.md#stage-1-pickup).
+- Repository documentation is not app-facing text, so a docs-only change can stay `trivial` — see [workflow.md#stage-1-pickup](../docs/development/workflow.md#stage-1-pickup).
 - Picking up a `backlog/` item is never `trivial` — see [workflow.md#stage-0-intake](../docs/development/workflow.md#stage-0-intake).
-- Any change to app-facing wording, labels, or names is never `trivial`, even inside one file — see [workflow.md#stage-5-simplify](../docs/development/workflow.md#stage-5-simplify).
+- Any change to app-facing wording, labels, or names is never `trivial`, even inside one file — see [workflow.md#stage-1-pickup](../docs/development/workflow.md#stage-1-pickup).
 - Run `superpowers:brainstorming` and `mp-grilling` before you write code, not after — see [workflow.md#stage-2-design](../docs/development/workflow.md#stage-2-design).
 - Give a `trivial` change an inline plan of at most ten lines in chat: files, change, verification artifact, difficulty verdict — see [workflow.md#stage-3-plan](../docs/development/workflow.md#stage-3-plan).
 

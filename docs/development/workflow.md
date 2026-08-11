@@ -59,8 +59,9 @@ entry. This turns the AGENTS.md Debugging rule into a gate.
   are frozen, so its terms and ADR are filed in the wave-2 backlog item instead.
 - **The plain summary** is at most ten lines, and the human confirms understanding before
   the plan is written.
-- **Stage push done.** Execute makes two local commits per task and pushes once, when the
-  stage completes.
+- **Stage push done.** Execute pushes once, when the stage completes. Tracked plan work
+  makes two local commits per task before that push. A housekeeping round makes one commit
+  per change.
 
 ---
 
