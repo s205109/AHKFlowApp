@@ -43,13 +43,14 @@ Order of work:
 2. Write and commit the spec and the plan from the main checkout, under
    `docs/superpowers/specs/` and `docs/superpowers/plans/`.
 3. Switch into the worktree. Code, tests, docs, and config happen there and commit there.
-4. If a review round changes the plan, return to the main checkout to edit and commit it.
-   The worktree sees the update at once.
+4. If a review round changes the plan, edit and commit it from the worktree. Backlog 076 allows
+   writes inside `docs/superpowers/`. Commit with `git -C docs/superpowers commit`, as below.
 
 Why the split: `docs/superpowers/` is a separate private repo (`AHKFlowApp-plans`). The public
 repo ignores the path, so `git worktree add` never checks it out. `scripts/new-worktree.ps1`
 links the folder into each worktree instead. A worktree can read its spec and plan at the same
-relative path. Treat that link as read-only.
+relative path. Writes inside that folder are allowed from a worktree; the folder itself must not be
+renamed or deleted.
 
 Commit plans with `git -C docs/superpowers commit`. Never use `cd docs/superpowers && git commit`.
 The agent Git guard reads the command before the shell runs the `cd`, so it still sees the main

@@ -47,7 +47,7 @@ round does not force me out of the worktree for every artifact change.
 
 ## Acceptance criteria
 
-- [ ] A worktree session whose writes this repository's guard adjudicates can create and
+- [x] A worktree session whose writes this repository's guard adjudicates can create and
       edit files under `<main>/docs/superpowers/`. That is the supported shell write commands
       from every agent, and Claude `Edit`/`Write`/`NotebookEdit` **outside** a `-w` session.
       The guard reads a denylist of write commands, so a writer outside that list — `del`,
@@ -55,10 +55,10 @@ round does not force me out of the worktree for every artifact change.
       (`docs/agents/cross-agent-git-guardrails.md:333-335`). In a `-w` session Claude Code's
       own isolation refuses first and this change cannot affect it
       (`docs/agents/cross-agent-git-guardrails.md:338-352`).
-- [ ] `<main>/docs/superpowers-decoy/` and any other sibling whose name merely starts the
+- [x] `<main>/docs/superpowers-decoy/` and any other sibling whose name merely starts the
       same way is still refused. `StartsWith($plansRoot + '\')` is what makes this pass,
       matching the existing convention at `agent-worktree-guard.common.ps1:1893`.
-- [ ] Every other write into the main checkout is still refused, including a sibling
+- [x] Every other write into the main checkout is still refused, including a sibling
       worktree's own files. A sibling's `docs/superpowers` link resolves to the same private
       repository, so it is allowed; that grants no access this exception does not already
       give. Symlinks are resolved before the predicate runs
@@ -66,15 +66,15 @@ round does not force me out of the worktree for every artifact change.
       the direct path are one and the same target. The two exceptions that already exist stay
       exactly as they are: the removal log by exact path, and the build-output path components
       (`agent-worktree-guard.common.ps1:1748-1757`).
-- [ ] Create, edit, move and delete are allowed for files and directories whose every
+- [x] Create, edit, move and delete are allowed for files and directories whose every
       endpoint is **inside** the plans repo. The rule at
       `docs/agents/cross-agent-git-guardrails.md:134-137` governs shell writes, moves and
       deletes together, so the exception cannot cover only some.
-- [ ] Delete inside the plans repo is allowed only as an ordinary classified delete. The
+- [x] Delete inside the plans repo is allowed only as an ordinary classified delete. The
       destructive-command rules run before any location logic and no location rule can relax
       them (`agent-worktree-guard.common.ps1:221,246-254`), so `rm -rf` stays denied inside
       the plans repo just as it is everywhere else.
-- [ ] A move whose **source** is a main-checkout path outside the plans repo is still
+- [x] A move whose **source** is a main-checkout path outside the plans repo is still
       refused, even when its destination is inside the plans repo. Today the guard reports
       only a move's destination — `agent-worktree-guard.common.ps1:1430-1436` for `mv`,
       `:1457-1460` for `Move-Item` and `Rename-Item` — so a destination-only exception would
@@ -83,23 +83,23 @@ round does not force me out of the worktree for every artifact change.
       else. `Get-AgentSegmentWriteTarget` must therefore report a move's source as a write
       target as well. `cp`, `install` and `ln` are unchanged, because they do not remove the
       source.
-- [ ] The wider denial that move-source classification creates is accepted and stated: a
+- [x] The wider denial that move-source classification creates is accepted and stated: a
       move out of the main checkout to any destination, a worktree included, becomes a
       denial. That is correct — the move deletes a path in main — and it matches the write
       grammar's own rule that a target list must be a superset
       (`agent-worktree-guard.common.ps1:1268-1271`).
-- [ ] The plans root itself is **not** writable. The allow requires a path strictly under
+- [x] The plans root itself is **not** writable. The allow requires a path strictly under
       `<plansRoot>\`, never equal to it: deleting or renaming that directory would break
       every worktree's link.
-- [ ] The git rules are unchanged. No new git allowance is added, because none is needed.
-- [ ] `AHKFLOW_ALLOW_MAIN=1` remains the only escape for everything else, and the
+- [x] The git rules are unchanged. No new git allowance is added, because none is needed.
+- [x] `AHKFLOW_ALLOW_MAIN=1` remains the only escape for everything else, and the
       destructive-command tier it cannot downgrade is untouched.
-- [ ] `docs/agents/cross-agent-git-guardrails.md` records the exception and its reason.
-- [ ] `tests/AgentWorktreeGuard.Tests.ps1` covers the allow case, the decoy case, the
+- [x] `docs/agents/cross-agent-git-guardrails.md` records the exception and its reason.
+- [x] `tests/AgentWorktreeGuard.Tests.ps1` covers the allow case, the decoy case, the
       plans-root case, a sibling worktree's own files, a move inside the plans repo, a move
       from main into the plans repo, and `rm -rf` inside the plans repo; `pwsh
       .\scripts\test-fast.ps1 -Mode PowerShell` is green.
-- [ ] This item carries its own spec before implementation. That is why its Difficulty is
+- [x] This item carries its own spec before implementation. That is why its Difficulty is
       `complex` and not `moderate`: only `complex` routes through Design, and the guard is a
       safety boundary even though the change itself is small.
 
