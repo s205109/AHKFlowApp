@@ -2,7 +2,7 @@
 
 ## The coverage step
 
-The canonical pre-PR gate lives in [Local testing workflow](testing-workflow.md#canonical-pre-pr-gate). This page documents only its coverage step and the thresholds behind it.
+The canonical gate lives in [Local testing workflow](testing-workflow.md#canonical-pre-pr-gate). This page documents only its coverage step and the thresholds behind it.
 
 From the repo root, run:
 

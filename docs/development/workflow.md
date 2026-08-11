@@ -11,7 +11,7 @@ Artifact: https://claude.ai/code/artifact/29e1af46-2c4d-409c-9b18-ca2acc5eb497
 
 Related files:
 
-- Which tests to run, and the canonical pre-PR gate:
+- Which tests to run, and the canonical gate:
   [`testing-workflow.md`](testing-workflow.md)
 - What an agent may and may not do in the main checkout:
   [`cross-agent-git-guardrails.md`](../agents/cross-agent-git-guardrails.md)

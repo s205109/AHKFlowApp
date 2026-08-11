@@ -169,7 +169,7 @@ the narrative.
 | Domain rule, validator | Unit test | `pwsh .\scripts\test-fast.ps1 -Mode Fast` |
 | Real Azure AD login, visual judgment call | Numbered manual steps for the user | — |
 
-Which slice to run, test templates, and the canonical pre-PR gate: [`docs/development/testing-workflow.md`](docs/development/testing-workflow.md).
+Which slice to run, test templates, and the canonical gate: [`docs/development/testing-workflow.md`](docs/development/testing-workflow.md).
 
 ### The only exemptions
 

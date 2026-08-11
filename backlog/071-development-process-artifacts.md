@@ -58,5 +58,8 @@ me.
   unchanged would have left the exact contradiction the review had just caught. So
   `docs/development/testing-workflow.md` and `docs/development/coverage.md` were added to
   the allowlist and fixed here rather than deferred to wave 2.
+  `.github/PULL_REQUEST_TEMPLATE.md` followed for the same reason: its checklist item was
+  the last place still calling the gate a "pre-PR" gate, and a checklist is where a reader
+  meets the rule.
 - Spec: `docs/superpowers/specs/2026-08-10-development-process-design-071.md` (private plans repo)
 - Research: `docs/superpowers/research/2026-08-10-worktrees-and-linking-071.md` (private plans repo)
