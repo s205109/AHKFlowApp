@@ -7,7 +7,7 @@ stage has five edges. One durable record says where a piece of work stands.
 document disagrees with this file about the process, this file wins. Fix the other
 document.
 
-Artifact: (recorded by Task 6)
+Artifact: https://claude.ai/code/artifact/29e1af46-2c4d-409c-9b18-ca2acc5eb497
 
 Related files:
 
