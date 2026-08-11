@@ -2,6 +2,7 @@
 
 ## Metadata
 
+- **Difficulty**: moderate
 - **Stage**: 1-pickup
 
 ## Problem

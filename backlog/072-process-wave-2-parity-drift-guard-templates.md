@@ -38,9 +38,10 @@ one of them can never leave the other two behind.
       normalized text. Hashing the raw bytes makes the result depend on the checkout: this
       repository sets `core.autocrlf=true` and `.gitattributes` carries no `*.html` rule,
       so the same file is `590125CF…75F0F` with LF and `168A95B6…01625` with CRLF.
-- [ ] `.gitattributes` gains `*.html text eol=lf`, so the working copy stops depending on
-      the platform. The normalized hashing above stays regardless — it is what makes the
-      check correct rather than merely consistent on one machine.
+- [x] `.gitattributes` gains `*.html text eol=lf`, so the working copy stops depending on
+      the platform. Done by backlog 071 in review round 2. The normalized hashing above
+      stays regardless — it is what makes the check correct rather than merely consistent
+      on one machine.
 - [ ] A drift guard scans the process sections of `AGENTS.md`. The sections it scans are
       named explicitly: `Debugging`, `Plans`, `Verification After Implementation`, and
       `Git Workflow`, plus the `Plan before you edit` and
