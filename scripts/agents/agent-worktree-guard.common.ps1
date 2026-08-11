@@ -1786,10 +1786,11 @@ agent session.
 '@
 
 $script:AgentGuardPlansDenialMessage = @'
-BLOCKED: this session is isolated in a worktree, so it cannot write into the main checkout at {0}
-docs/superpowers is a symlink to the main checkout. There is no worktree copy of it, so do not
-look for one. Plan and spec writes belong in the main checkout by design.
-Read the plan from here. Write and commit it from the main checkout.
+BLOCKED: {0} is the root of the private plans repository, and this session is isolated in a
+worktree.
+Files inside it are writable from here. The root itself is not: every worktree links to it, so
+deleting or renaming it breaks all of them.
+Write inside docs/superpowers instead, or run this from the main checkout.
 '@
 
 $script:AgentGuardUnresolvedWriteMessage = @'
@@ -1824,6 +1825,19 @@ function Test-AgentWriteTargetAllowed {
     # is not writable just because the log lives beside it.
     $removalLog = Join-Path $main '.claude\worktrees\worktree-removal.log'
     if ($path -ieq (ConvertTo-AgentGuardNormalizedPath $removalLog)) { return $true }
+
+    # The private plans repo. It is a separate repository that the public repo git-ignores and
+    # links into every worktree, so a write here cannot touch the protected checkout's tracked
+    # files. Design and Plan produce their artifacts from the worktree; without this they would
+    # hand every spec and plan edit to a main-checkout session.
+    #
+    # Strictly under the root, never the root itself: deleting or renaming docs\superpowers would
+    # break the link every worktree depends on. A move INTO this subtree is still refused when its
+    # source sits elsewhere in main, because a move reports both endpoints.
+    $plansRepo = ConvertTo-AgentGuardNormalizedPath (Join-Path $main 'docs\superpowers')
+    if ($path.StartsWith($plansRepo + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $true
+    }
 
     # Build output and third-party content.
     $relative = $path.Substring($main.Length).Trim('\', '/')

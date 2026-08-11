@@ -1897,8 +1897,37 @@ try {
 
     $writeDecisionCases = @(
         # The two probes recorded in backlog 054.
-        @{ Name    = 'probe 1, symlinked plans path'
-            Command = 'printf probe > docs/superpowers/.guard-probe.tmp'; Cwd = 'Managed'; Action = 'Deny'
+        # Backlog 054 recorded this as a denial. Backlog 076 turned it into an allow on purpose:
+        # docs/superpowers is a separate private repository the public repo git-ignores.
+        @{ Name    = 'probe 1, symlinked plans path is now allowed'
+            Command = 'printf probe > docs/superpowers/.guard-probe.tmp'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        @{ Name    = 'a nested path inside the plans repo is allowed'
+            Command = 'printf x > <MAIN>/docs/superpowers/plans/x.md'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        @{ Name    = 'deleting a file inside the plans repo is allowed'
+            Command = 'rm <MAIN>/docs/superpowers/seed-plan.md'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        @{ Name    = 'moving a file within the plans repo is allowed'
+            Command = 'mv <MAIN>/docs/superpowers/a.md <MAIN>/docs/superpowers/b.md'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        # The move source is outside the plans repo, so the exception must not rescue it.
+        @{ Name    = 'moving a main file into the plans repo is refused'
+            Command = 'mv <MAIN>/seed.txt <MAIN>/docs/superpowers/seed.txt'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        # The root is the link every worktree depends on.
+        @{ Name    = 'the plans root itself is refused'
+            Command = 'rm <MAIN>/docs/superpowers'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'renaming the plans root is refused'
+            Command = 'mv <MAIN>/docs/superpowers <MAIN>/docs/superpowers-old'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        # A name that merely starts the same way is a different directory.
+        @{ Name    = 'a decoy sibling of the plans root is refused'
+            Command = 'printf x > <MAIN>/docs/superpowers-decoy/x.md'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'another docs subtree is still refused'
+            Command = 'printf x > <MAIN>/docs/anything-else/x.md'; Cwd = 'Managed'; Action = 'Deny'
         },
         @{ Name    = 'probe 2, plain main checkout root'
             Command = 'printf probe > <MAIN>/.guard-probe2.tmp'; Cwd = 'Managed'; Action = 'Deny'
@@ -2081,13 +2110,22 @@ try {
         Assert-Equal 'Allow' $decision.Action 'Action'
     }
 
-    Invoke-TestCase 'Write isolation: the plans refusal does not name a worktree copy' {
-        $decision = Invoke-AgentGuardPolicy -Command 'printf probe > docs/superpowers/x.tmp' `
+    Invoke-TestCase 'Write isolation: rm -rf inside the plans repo is still denied' {
+        $command = 'rm -rf ' + $fixture.Main.Replace('\', '/') + '/docs/superpowers/plans'
+        $decision = Invoke-AgentGuardPolicy -Command $command `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'Deny' $decision.Action 'Action'
+        Assert-Equal 'dangerous-rm' $decision.Rule 'Rule'
+    }
+
+    Invoke-TestCase 'Write isolation: the plans-root refusal explains what is still refused' {
+        $command = 'rm ' + $fixture.Main.Replace('\', '/') + '/docs/superpowers'
+        $decision = Invoke-AgentGuardPolicy -Command $command `
             -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
         Assert-Equal 'Deny' $decision.Action 'Action'
         Assert-Equal 'agent-worktree-main-write' $decision.Rule 'Rule'
-        Assert-Match 'no worktree copy' $decision.Message 'Message'
-        Assert-True ($decision.Message -notmatch 'Edit the worktree copy') 'Must not send the agent looking for a copy'
+        Assert-Match 'Files inside it are writable' $decision.Message 'Message'
+        Assert-True ($decision.Message -notmatch 'worktree copy') 'Must not send the agent looking for a copy'
     }
 
     Invoke-TestCase 'Write isolation: AHKFLOW_ALLOW_MAIN=1 downgrades to a warning' {
@@ -2134,10 +2172,23 @@ try {
         @{ Name = 'an unmanaged worktree session is not covered by this rule'
             Path = '<MAIN>\README.md'; Cwd = 'Unmanaged'; Action = 'Allow'
         },
-        # docs\superpowers is a directory symlink back to the main checkout, so the resolved path
-        # lands in main even though the path the agent typed sits inside the worktree.
-        @{ Name = 'the plans symlink resolves back into the main checkout'
-            Path = '<MANAGED>\docs\superpowers\x.md'; Cwd = 'Managed'; Action = 'Deny'
+        # docs\superpowers is a directory symlink back to the main checkout. The resolved path lands
+        # in main, and backlog 076 allows it: the target is a separate private repository.
+        @{ Name = 'the plans symlink resolves into the plans repo and is allowed'
+            Path = '<MANAGED>\docs\superpowers\x.md'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        @{ Name = 'the direct main path into the plans repo is allowed'
+            Path = '<MAIN>\docs\superpowers\specs\x.md'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        @{ Name = 'the plans root itself is refused'
+            Path = '<MAIN>\docs\superpowers'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name = 'a decoy sibling of the plans root is refused'
+            Path = '<MAIN>\docs\superpowers-decoy\x.md'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        # A sibling worktree's own files are not the plans repo and stay refused.
+        @{ Name = 'a sibling worktree file is still refused'
+            Path = '<MANAGED2>\docs\notes.md'; Cwd = 'Managed'; Action = 'Deny'
         },
         @{ Name = 'a relative path resolves against the session working directory'
             Path = 'README.md'; Cwd = 'Managed'; Action = 'Allow'
@@ -2205,13 +2256,20 @@ try {
         Assert-Match 'cannot write into the main checkout' $decision.Message 'Message'
     }
 
-    Invoke-TestCase 'File-edit isolation: the plans refusal does not name a worktree copy' {
+    Invoke-TestCase 'File-edit isolation: a file inside the plans repo is allowed' {
         $path = Join-Path $fixture.Managed 'docs\superpowers\x.md'
         $decision = Get-AgentFileEditWriteDecision -TargetPath $path `
             -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'Allow' $decision.Action 'Action'
+    }
+
+    Invoke-TestCase 'File-edit isolation: the plans root itself explains what is still refused' {
+        $path = Join-Path $fixture.Main 'docs\superpowers'
+        $decision = Get-AgentFileEditWriteDecision -TargetPath $path `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
         Assert-Equal 'Deny' $decision.Action 'Action'
-        Assert-Match 'no worktree copy' $decision.Message 'Message'
-        Assert-True ($decision.Message -notmatch 'Edit the worktree copy') 'Must not send the agent looking for a copy'
+        Assert-Match 'Files inside it are writable' $decision.Message 'Message'
+        Assert-True ($decision.Message -notmatch 'worktree copy') 'Must not send the agent looking for a copy'
     }
 
     Invoke-TestCase 'File-edit isolation: AHKFLOW_ALLOW_MAIN=1 downgrades to a warning' {
@@ -2237,13 +2295,21 @@ try {
         }
     }
 
-    Invoke-TestCase 'Entrypoint: the plans refusal reaches the agent verbatim' {
+    Invoke-TestCase 'Entrypoint: a Write inside the plans repo is allowed' {
         $target = Join-Path $fixture.Managed 'docs\superpowers\x.md'
         $result = Invoke-Entrypoint -Adapter 'Claude' -ScriptPath $script:FixtureEntrypoint `
             -StdIn (New-ClaudeEditPayload 'Write' $target $fixture.Managed)
+        Assert-Equal 0 $result.ExitCode 'ExitCode'
+        Assert-Equal '' $result.StdOut.Trim() 'Must produce no decision payload'
+    }
+
+    Invoke-TestCase 'Entrypoint: the plans-root refusal reaches the agent verbatim' {
+        $target = Join-Path $fixture.Main 'docs\superpowers'
+        $result = Invoke-Entrypoint -Adapter 'Claude' -ScriptPath $script:FixtureEntrypoint `
+            -StdIn (New-ClaudeEditPayload 'Write' $target $fixture.Managed)
         Assert-Equal 2 $result.ExitCode 'ExitCode'
-        Assert-Match 'no worktree copy' $result.StdErr 'StdErr'
-        Assert-True ($result.StdErr -notmatch 'Edit the worktree copy') 'Must not send the agent looking for a copy'
+        Assert-Match 'Files inside it are writable' $result.StdErr 'StdErr'
+        Assert-True ($result.StdErr -notmatch 'worktree copy') 'Must not send the agent looking for a copy'
     }
 
     Invoke-TestCase 'Entrypoint: an edit inside the session worktree is allowed' {
