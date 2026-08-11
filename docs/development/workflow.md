@@ -24,7 +24,9 @@ Related files:
 ## 1. The stage spine
 
 Stage names are fixed. The exit strings below are canonical. They appear word for word in
-`workflow.html`, in the cheatsheet, and in this table. A check compares all three.
+`workflow.html`, in the cheatsheet, and in this table. **Keeping the three in step is
+manual today** — the scripted parity check is wave-2 work in backlog 072. Until it lands,
+change an exit string in all three files in the same commit, and regenerate the PDF.
 
 | # | Stage | Exit condition |
 |---|---|---|
@@ -108,7 +110,9 @@ $pr   = <round PR number>
 $next = '<N-name>'                      # e.g. 6-verify
 $rx   = '(?m)^Stage: [^\r\n]+'          # CRLF-safe: does not eat the carriage return
 
-$body = gh pr view $pr --repo s205109/AHKFlowApp --json body -q .body
+# -join is not cosmetic. PowerShell captures multiline native output as System.Object[],
+# and [regex]::Matches on an array matches nothing, so the check below would always throw.
+$body = (gh pr view $pr --repo s205109/AHKFlowApp --json body -q .body) -join "`n"
 $hits = ([regex]::Matches($body, $rx)).Count
 if ($hits -ne 1) { throw "PR $pr body: expected 1 Stage line, found $hits" }
 
@@ -119,6 +123,9 @@ Remove-Item $tmp.FullName
 
 gh pr view $pr --repo s205109/AHKFlowApp --json body -q .body | Select-String -Pattern $rx
 ```
+
+`Select-String` on the last line takes pipeline input line by line, so it needs no join.
+Only the `[regex]::Matches` calls do.
 
 The read-back is the check, and it is part of the transition. It must print
 `Stage: <N-name>` once. If it prints nothing, or the old value, the transition did not
@@ -176,7 +183,7 @@ stage's Exit field above it.
 | failure | missing Difficulty or summary; complete the item | stay |
 | blocked | cannot specify without an external answer; file what is known with the unblock note | blocked/ |
 | not applicable | a housekeeping round needs no item — taken once per round, at its first change; the round's commits are the record; say so | 1-pickup |
-| resume | item sat idle; revise Difficulty once | 1-pickup |
+| resume | item sat idle; revise Difficulty once, then re-check the whole exit condition — a placeholder summary keeps it here | 1-pickup |
 
 **Where Intake writes the file.** A new item written into the main checkout cannot reach a
 worktree by itself. `git worktree add` builds the new tree from a commit, and
@@ -184,17 +191,32 @@ worktree by itself. `git worktree add` builds the new tree from a commit, and
 empty. An agent also cannot commit on `main`. So an uncommitted new item in main is
 stranded.
 
-Two legal routes, and the session states which one it took:
+There is a second constraint, and the two together decide the route. The worktree needs the
+item's **number before it exists**: `scripts/new-worktree.ps1:221` throws without `-Name`,
+the branch convention is `feature/wt-NNN-<topic>`, and the pre-PR discovery rule below finds
+work by its number-prefixed worktree. But `scripts/new-backlog-item.ps1` only assigns the
+next free number when it writes the file. Filing inside a worktree that is already named
+therefore needs a number nobody has assigned yet.
 
-1. **Agent, tracked work — the normal route.** Create the execution location first, then run
-   `scripts/new-backlog-item.ps1` from inside it, so the item is written and committed on the
-   work branch. The stage order is unchanged: Intake still completes before Pickup's exit
-   condition, and the Stage field records `0-intake` then `1-pickup`. Only the file's
-   location moves. Backlog 071 was filed this way.
-2. **Human, or a session with `AHKFLOW_ALLOW_MAIN=1`.** File and commit the item on `main`
-   first. A later worktree then carries it, because the item is committed.
+**The route today: file and commit the item on `main` first, then create the worktree.**
+The item is committed, so `git worktree add` carries it, and its number is known before the
+worktree is named. An agent cannot commit on `main`, so this step belongs to the human, or
+to a session started with `AHKFLOW_ALLOW_MAIN=1`.
 
-A housekeeping round files no item at all, so this note does not apply to it.
+```powershell
+pwsh ./scripts/new-backlog-item.ps1 -Title "..."   # prints the path, including the number
+git -C C:\Dev\segocom-github\AHKFlowApp add backlog/<NNN>-<slug>.md
+git -C C:\Dev\segocom-github\AHKFlowApp commit -m "chore: file backlog <NNN> <title>"
+```
+
+Backlog 071 took a different route — the worktree existed first and the item was filed
+inside it — which is why its branch had to be named before its number was known. Do not
+copy that. It worked only because the number was picked by hand, which is the thing
+`new-backlog-item.ps1` exists to prevent.
+
+Automating this away is backlog 080.
+
+A housekeeping round files no item at all, so none of this applies to it.
 
 <a id="stage-1-pickup"></a>
 
@@ -203,7 +225,7 @@ A housekeeping round files no item at all, so this note does not apply to it.
 - **Entry** — item chosen
 - **Who** — Sonnet, default effort
 - **Technique** — `scripts/new-worktree.ps1` (`-BaseRef` for stacked work), or the housekeeping worktree
-- **Action** — choose the execution location by Difficulty: a dedicated worktree for `moderate` and `complex`, the housekeeping worktree for `trivial`. Confirm branch and base, and state both. For a tracked item: stamp Stage, push, open the draft pull request. For a housekeeping round: no item, so no Stage stamp and no push here. The round worktree is the pointer, and the route is the round pull request opened at Execute close
+- **Action** — choose the execution location by Difficulty: a dedicated worktree for `moderate` and `complex`, the housekeeping worktree for `trivial`. Confirm branch and base, and state both. For a tracked item: push the branch, open the draft pull request, and **only then** stamp the Stage the Difficulty jump names — publishing the next Stage before the pull request exists would claim an exit condition that is still false. Until that stamp lands the item keeps `Stage: 1-pickup`, and the worktree is the pointer. For a housekeeping round: no item, so no Stage stamp and no push here. The round worktree is the pointer, and the route is the round pull request opened at Execute close
 - **Exit** — Location chosen by Difficulty, base confirmed and stated, PR route in place
 - **Next** — `2-design/3-plan/4-execute`
 - **Context** — safe to clear
@@ -379,7 +401,7 @@ create a PR" as "before you mark it ready".
 - **Entry** — review closed
 - **Who** — Sonnet, default effort
 - **Technique** — `gh pr ready`, then merge
-- **Action** — close the records, flip the pull request to ready, wait for CI, merge. Tracked work: tick the item's boxes, `git mv` it to `backlog/done/`, delete `PLAN-PROGRESS.md`, set `Stage: 9-ship`. A round: nothing extra
+- **Action** — close the records, **push**, then flip the pull request to ready, wait for CI, merge. Tracked work: tick the item's boxes, `git mv` it to `backlog/done/`, delete `PLAN-PROGRESS.md`, set `Stage: 9-ship` — one commit, pushed before the ready flip. A round: nothing extra to close, so nothing to push
 - **Exit** — Records closed, PR ready, CI green, merged
 - **Next** — `10-cleanup`
 - **Context** — keep until the pull request description is final; safe after merge
@@ -394,8 +416,11 @@ stage, and Review's entry condition is a draft pull request. Without the undo, t
 shut. Blocked keeps the ready pull request, because it resumes at Ship, and Ship needs a
 ready pull request.
 
-Both edges push whenever they make a commit. Ship's success is the only Ship transition
-that never pushes: the merge carries it.
+**Every Ship transition that makes a commit pushes it, success included.** GitHub merges
+the remote pull request head, not your local branch. A closure commit that stays local is
+not in what gets merged, so the merged `main` would carry the work without the records that
+close it — and Cleanup then deletes the worktree holding the only copy. Push the closure
+commit before the ready flip. The merge adds nothing after that.
 
 A round has no item, no progress file, and nothing extra to close at Ship. Its non-success
 edges restore no records. They rewrite the `Stage:` line in the round pull request body
@@ -403,7 +428,7 @@ instead, and they push only if the recovery work itself makes a commit.
 
 | Edge | Condition | Target |
 |---|---|---|
-| success | merged; no push — the merge carries it | 10-cleanup |
+| success | closure commit pushed, then CI green and merged | 10-cleanup |
 | failure | CI red after ready; convert the PR back to draft first. Tracked item: `git mv` the item back out of `backlog/done/`, restore `PLAN-PROGRESS.md`, set `Stage: 6-verify` — one commit — then push. A round: rewrite the PR body's `Stage:` line to `6-verify`; no records to restore, no transition commit, so no push. Start recovery only after that | 6-verify |
 | blocked | merge depends on something outside the repository, such as a required-check outage; the PR stays ready. Tracked item: restore `PLAN-PROGRESS.md`, `git mv` the item from `backlog/done/` to `backlog/blocked/` with the unblock note, keep `Stage: 9-ship`, commit, push. A round has no item: file one naming the round PR and the blocker, move that item to `backlog/blocked/`, and leave the round PR body at `Stage: 9-ship` | blocked/ |
 | not applicable | cannot occur: everything ships through a pull request | none |
@@ -422,7 +447,25 @@ instead, and they push only if the recovery work itself makes a commit.
 - **Context** — clear freely
 - **Review** — reviewed
 
-All three exit conditions are checked, never the worktree alone. The removal script has a
+**The session that starts Cleanup usually cannot finish it.** The removal hook spawns a
+detached watcher that outlives `claude.exe` and can only delete the worktree after that
+process exits (`scripts/remove-worktree-local-dev.ps1:9-28`). So the session that triggers
+removal cannot run the three success checks below — the folder is still locked while it is
+alive.
+
+Cleanup therefore ends in one of two ways, and the session says which:
+
+1. **Synchronous.** Removal runs from a session outside the worktree — the main checkout,
+   or any shell not standing in the folder. That session runs all three checks itself and
+   takes the success edge.
+2. **Deferred to the watcher.** The session triggers removal, states that the watcher owns
+   the outcome, and ends. The **next** session in this repository runs the three checks
+   before anything else and takes the success edge then. The merged pull request plus the
+   item in `backlog/done/` are the pending-cleanup record; no Stage field is written after
+   the merge, so there is nothing else to read.
+
+Neither route lets a session claim success it did not observe. All three exit conditions
+are checked, never the worktree alone. The removal script has a
 documented outcome that removes the worktree and keeps the branch
 (`scripts/remove-worktree-local-dev.ps1:921`, "worktree removed; branch preserved").
 
@@ -461,6 +504,21 @@ field in the same commit that completes the stage. A failure edge sets the field
 the target stage. A blocked item keeps its last stage; the move to `backlog/blocked/` plus
 the unblock note carry the rest.
 
+**Coming back out of `backlog/blocked/`.** Every blocked edge moves an item in; nothing
+moves it back, so the move out is a step of its own and it comes **before** the resume
+edge. When the external condition the unblock note names has cleared:
+
+```powershell
+git -C <worktree> mv backlog/blocked/<NNN>-<slug>.md backlog/<NNN>-<slug>.md
+# remove the unblock note, keep the Stage field exactly as it was
+git -C <worktree> commit -m "chore: unblock <NNN>, <what cleared>"
+```
+
+Then take the resume edge of the stage the field already names. The folder is the durable
+record of blocked-ness, so an item left in `backlog/blocked/` still reads as blocked no
+matter what its Stage field says. A round-level blocker's item comes back the same way, and
+the round continues from its pull request body's `Stage:` line.
+
 The field lives in the work branch during a task. The draft pull request is the live
 pointer from `main`. If branch name, pull request state, and field disagree, the field
 wins. The others are evidence.
@@ -469,12 +527,21 @@ wins. The others are evidence.
 private plans repo (`git -C docs/superpowers commit`), then the Stage-field update to the
 public work branch. The public Stage commit is the authoritative transition marker.
 
+**The plans-repo commit must run from the main checkout, not from the worktree.**
+`docs/superpowers/` is a symlink into the main checkout, and the guard refuses a worktree
+session writing there — see
+[`cross-agent-git-guardrails.md`](../agents/cross-agent-git-guardrails.md). This applies to
+every agent, not only Claude. So Design and Plan run in the worktree but hand the spec or
+plan commit back to a main-checkout session. Backlog 076 removes this detour; until it
+lands, state the handoff instead of retrying the refused command.
+
 **Push boundaries.** Push at every pre-merge stage completion that has a live branch and a
-transition commit — stages 1 to 8. A tracked item's Pickup push is the first push and opens
+transition commit — stages 1 to 9. A tracked item's Pickup push is the first push and opens
 the draft pull request, so the pull request exists from stage 1 and can point at stages 2
 and 3. A housekeeping round's first push comes at Execute close and opens the round pull
-request. Ship success ends through the merge, and Cleanup runs after it. Neither pushes,
-and after the merge the branch is gone.
+request. **Ship pushes too**: its closure commit must reach the remote before the ready
+flip, because the merge takes the remote head. Only Cleanup runs after the merge, and it
+never pushes: by then the branch is gone.
 
 **Ship failure and Ship blocked undo what Ship already did.** Both happen pre-merge on a
 live branch. For a tracked item: `git mv` the item back out of `backlog/done/`, restore
@@ -516,6 +583,14 @@ Difficulty decides where Pickup jumps and which artifacts the work needs:
 
 A skipped stage is never entered and takes no edge.
 
+**A filed backlog item is never `trivial`.** `trivial` classifies work that runs as a
+housekeeping round, and a round files no item — that is the whole of its unit contract in
+section 2. So the `trivial` row above describes unfiled work only. Picking up an item from
+`backlog/` means its Difficulty is `moderate`, `complex`, or `to-be-determined`; if the work
+turns out to be trivial in size, it is still tracked work and still gets a plan. The
+reverse also holds: when a change inside a round grows past the trivial test, it leaves the
+round and becomes a filed item, which is why it cannot stay `trivial`.
+
 ### The trivial test
 
 A change is trivial when all three predicates are provably false from the planned change:
@@ -540,7 +615,10 @@ the artifacts that value needs.
 The reclassified change leaves its round before the round pushes. A round never grows a
 non-trivial member.
 
-- Not yet committed: move the files into the new worktree and continue there.
+- Not yet committed: **commit it in the round first**, then use the cherry-pick route
+  below. A worktree session cannot write into a sibling worktree — the guard refuses it
+  outright — so there is no direct file move between them. Committing first is what makes
+  the change reachable from the other worktree at all.
 - Already committed in the round: cherry-pick that commit into the new worktree's branch
   (`git -C <new> cherry-pick <sha>`), then drop it from the round branch. The round branch
   is unpushed, so drop the commit itself: `git -C <round> rebase --onto <sha>^ <sha>`.
