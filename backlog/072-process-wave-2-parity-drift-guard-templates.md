@@ -35,9 +35,11 @@ one of them can never leave the other two behind.
       stale. It also checks that the PDF page tree contains `/Count 1`.
 - [ ] **The hash is line-ending independent.** Both the check and the sidecar generator
       read the file, replace every CRLF with LF, and hash the UTF-8 bytes of that
-      normalized text. Hashing the raw bytes makes the result depend on the checkout: this
-      repository sets `core.autocrlf=true` and `.gitattributes` carries no `*.html` rule,
-      so the same file is `590125CF…75F0F` with LF and `168A95B6…01625` with CRLF.
+      normalized text. Hashing raw bytes made the result depend on the checkout: before
+      round 2 this repository set `core.autocrlf=true` with no `*.html` rule in
+      `.gitattributes`, and the same file hashed differently as LF and as CRLF. The
+      `eol=lf` rule below fixed the working copy; normalized hashing is still required, so
+      the check stays correct rather than merely consistent on one machine.
 - [x] `.gitattributes` gains `*.html text eol=lf`, so the working copy stops depending on
       the platform. Done by backlog 071 in review round 2. The normalized hashing above
       stays regardless — it is what makes the check correct rather than merely consistent

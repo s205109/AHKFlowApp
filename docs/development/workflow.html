@@ -186,10 +186,10 @@
         <p class="field"><b>Entry:</b> friction, idea, or bug arrives</p>
         <p class="field"><b>Who:</b> Sonnet, default effort &middot; <b>Technique:</b> <code>scripts/new-backlog-item.ps1</code></p>
         <p class="field"><b>Action:</b> file the item, set Difficulty; for bugs, attach root-cause evidence or mark it <code>to-be-determined</code></p>
-        <p class="field exit" data-exit="Item filed with the script, Difficulty set"><b>Exit:</b> Item filed with the script, Difficulty set</p>
+        <p class="field exit" data-exit="Item filed with the script, summary written, Difficulty set"><b>Exit:</b> Item filed with the script, summary written, Difficulty set</p>
         <p class="field note"><b>Context:</b> safe to clear &middot; <b>Review:</b> not reviewed</p>
         <ul class="edges">
-          <li class="e-success" data-next="success:1-pickup"><span class="badge"><span class="glyph">&#10003;</span>success</span> filed, Difficulty set <span class="target">&rarr; 1-pickup</span></li>
+          <li class="e-success" data-next="success:1-pickup"><span class="badge"><span class="glyph">&#10003;</span>success</span> filed, the template placeholder summary replaced with a real one, Difficulty set <span class="target">&rarr; 1-pickup</span></li>
           <li class="e-failure" data-next="failure:stay"><span class="badge"><span class="glyph">&#10007;</span>failure</span> missing Difficulty or summary; complete the item <span class="target">&rarr; stay</span></li>
           <li class="e-blocked" data-next="blocked:blocked/"><span class="badge"><span class="glyph">&#9632;</span>blocked</span> cannot specify without an external answer; file what is known with the unblock note <span class="target">&rarr; blocked/</span></li>
           <li class="e-na" data-next="not applicable:1-pickup"><span class="badge"><span class="glyph">&#8212;</span>not applicable</span> a housekeeping round needs no item — taken once per round, at its first change; the round's commits are the record; say so <span class="target">&rarr; 1-pickup</span></li>
@@ -232,7 +232,7 @@
           <li class="e-success" data-next="success:3-plan"><span class="badge"><span class="glyph">&#10003;</span>success</span> exit condition met <span class="target">&rarr; 3-plan</span></li>
           <li class="e-failure" data-next="failure:stay"><span class="badge"><span class="glyph">&#10007;</span>failure</span> spec rejected; revise with the objections <span class="target">&rarr; stay</span></li>
           <li class="e-blocked" data-next="blocked:blocked/"><span class="badge"><span class="glyph">&#9632;</span>blocked</span> external decision or platform gap <span class="target">&rarr; blocked/</span></li>
-          <li class="e-na" data-next="not applicable:3-plan"><span class="badge"><span class="glyph">&#8212;</span>not applicable</span> reclassification at entry: no spec needed; set Difficulty <code>moderate</code>, say so; a reclassified <code>trivial</code> continues through Plan's not-applicable edge <span class="target">&rarr; 3-plan</span></li>
+          <li class="e-na" data-next="not applicable:3-plan"><span class="badge"><span class="glyph">&#8212;</span>not applicable</span> reclassification at entry: no spec needed; set Difficulty <code>moderate</code> and say so. <code>trivial</code> is not available here — a filed item is never trivial <span class="target">&rarr; 3-plan</span></li>
           <li class="e-resume" data-next="resume:stay"><span class="badge"><span class="glyph">&#8635;</span>resume</span> re-read spec and review state, continue grilling or submit <span class="target">&rarr; stay</span></li>
         </ul>
       </div>
@@ -252,7 +252,7 @@
           <li class="e-success" data-next="success:4-execute"><span class="badge"><span class="glyph">&#10003;</span>success</span> exit condition met <span class="target">&rarr; 4-execute</span></li>
           <li class="e-failure" data-next="failure:stay"><span class="badge"><span class="glyph">&#10007;</span>failure</span> grilling or fabrication check fails; revise <span class="target">&rarr; stay</span></li>
           <li class="e-blocked" data-next="blocked:blocked/"><span class="badge"><span class="glyph">&#9632;</span>blocked</span> plan exposes an external dependency <span class="target">&rarr; blocked/</span></li>
-          <li class="e-na" data-next="not applicable:4-execute"><span class="badge"><span class="glyph">&#8212;</span>not applicable</span> reclassification at entry: <code>trivial</code>; inline plan of at most 10 lines in chat; say so <span class="target">&rarr; 4-execute</span></li>
+          <li class="e-na" data-next="not applicable:none"><span class="badge"><span class="glyph">&#8212;</span>not applicable</span> cannot occur for a filed item: every tracked item gets a committed plan, however small the work. Only a housekeeping round skips Plan, and a round never enters it <span class="target">&rarr; none</span></li>
           <li class="e-resume" data-next="resume:stay"><span class="badge"><span class="glyph">&#8635;</span>resume</span> plan exists; if execution started, take Plan's success edge and use Execute's resume there; else re-read and submit <span class="target">&rarr; stay</span></li>
         </ul>
       </div>

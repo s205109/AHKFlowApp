@@ -6,7 +6,7 @@ This file is the single source for which tests to run and when. Other docs link 
 
 ## Housekeeping worktree
 
-For small, unrelated doc or config tweaks — backlog notes, minor rule edits, one-off cleanups — that don't warrant their own branch, keep one long-lived worktree open, e.g. `chore/wt-backlog-housekeeping`. Commit each change to it immediately, as its own commit, so it shows up in git history right away — don't leave it staged or uncommitted. Don't open a PR after every commit. Once the branch holds a few of these, or one grows in importance, open the PR and start a fresh housekeeping worktree for the next round.
+For small, unrelated doc or config tweaks — backlog notes, minor rule edits, one-off cleanups — that don't warrant their own branch, keep one long-lived worktree open, e.g. `chore/wt-backlog-housekeeping`. Commit each change to it immediately, as its own commit, so it shows up in git history right away — don't leave it staged or uncommitted. Don't open a PR after every commit. Once the branch holds a few of these, open the PR and start a fresh housekeeping worktree for the next round. If one change **grows in importance**, it does not close the round: it leaves the round and becomes tracked work of its own. See [`workflow.md`](workflow.md#stage-4-execute) for that route — publishing non-trivial work inside the housekeeping PR skips its whole tracked workflow.
 
 <a id="canonical-pre-pr-gate"></a>
 
@@ -28,7 +28,14 @@ pwsh .\scripts\test-fast.ps1 -Mode Coverage
 git diff --check main...HEAD
 ```
 
-Pass the `main...HEAD` range to `git diff --check`. The bare form inspects only uncommitted work, so on a clean branch it passes without ever looking at the commits you are about to propose. Run the bare form as well if you have changes still in flight.
+Pass the `<base>...HEAD` range to `git diff --check`. The bare form inspects only uncommitted work, so on a clean branch it passes without ever looking at the commits you are about to propose. Run the bare form as well if you have changes still in flight.
+
+`<base>` is `main` for ordinary work, but **not for a stacked PR**. Stacked work branches from another open branch via `-BaseRef`, and `main...HEAD` would then include the prerequisite branch's commits — failing your PR on someone else's whitespace. Read the real base and use it:
+
+```bash
+gh pr view --json baseRefName -q .baseRefName
+git diff --check "$(gh pr view --json baseRefName -q .baseRefName)...HEAD"
+```
 
 Then verify the change actually works — see **Verification After Implementation** in [`AGENTS.md`](../../AGENTS.md). A green gate proves nothing regressed; it does not prove the new behavior happened.
 
