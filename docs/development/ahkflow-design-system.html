@@ -69,7 +69,9 @@
   p { margin: 0 0 14px; }
   .secondary { color: var(--text-secondary); }
   .secondary-alt { color: var(--text-secondary-alt); }
-  .muted { color: var(--text-muted); }
+  /* --text-muted measures 2.45:1 on --ground, below the 4.5:1 needed for text.
+     Text uses --text-secondary-alt (4.55:1); --text-muted stays for decoration. */
+  .muted { color: var(--text-secondary-alt); }
 
   .card {
     background: var(--card-bg);
@@ -136,7 +138,9 @@
   }
 
   a { color: var(--action-text); }
-  a:focus-visible, summary:focus-visible { outline: 3px solid var(--summary-border); outline-offset: 2px; }
+  /* --summary-border measures 2.05:1 on --ground, below the 3:1 a focus ring needs.
+     --action-text measures 8.34:1. */
+  a:focus-visible, summary:focus-visible { outline: 3px solid var(--action-text); outline-offset: 2px; }
 
   @media print {
     @page { size: A4; margin: 14mm; }
@@ -174,7 +178,7 @@
     <p>Body text uses <code>--text-body</code>.</p>
     <p class="secondary">Secondary text uses <code>--text-secondary</code>.</p>
     <p class="secondary-alt">The lighter secondary is <code>--text-secondary-alt</code>.</p>
-    <p class="muted">Muted text uses <code>--text-muted</code>.</p>
+    <p class="muted">The lightest text still uses <code>--text-secondary-alt</code>, not <code>--text-muted</code>. See the contrast rule below.</p>
   </div>
 
   <h2>Heading scale</h2>
@@ -249,6 +253,26 @@
       one. <code>--text-secondary-alt</code> is the lighter one. The amber callout
       background is a range, so it is a gradient from <code>--summary-bg</code> to
       <code>--summary-bg-end</code>.
+    </p>
+  </div>
+
+  <h3>Contrast rule</h3>
+  <div class="callout friction">
+    <span class="label">Friction</span>
+    <p>
+      Two tokens fail contrast if you use them the obvious way. Measured against
+      <code>--ground</code> <code>#f8fafc</code>:
+    </p>
+    <ul>
+      <li><code>--text-muted</code> <code>#94a3b8</code> gives <b>2.45:1</b>. Normal text
+        needs 4.5:1. Never set text in it. Use it for chips, rules, and dividers only. The
+        lightest text token is <code>--text-secondary-alt</code> at <b>4.55:1</b>.</li>
+      <li><code>--summary-border</code> <code>#f59e0b</code> gives <b>2.05:1</b>. A focus
+        indicator needs 3:1. Focus rings use <code>--action-text</code>
+        <code>#1e40af</code> at <b>8.34:1</b>.</li>
+    </ul>
+    <p>
+      The token values are unchanged. What changed is which roles they may fill.
     </p>
   </div>
 
