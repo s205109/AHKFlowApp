@@ -49,7 +49,7 @@ Order of work:
 Why the split: `docs/superpowers/` is a separate private repo (`AHKFlowApp-plans`). The public
 repo ignores the path, so `git worktree add` never checks it out. `scripts/new-worktree.ps1`
 links the folder into each worktree instead. A worktree can read its spec and plan at the same
-relative path. Writes inside that folder are allowed from a worktree; the folder itself must not be
+relative path. Writes inside that folder are allowed from a worktree. The folder itself must not be
 renamed or deleted.
 
 Commit plans with `git -C docs/superpowers commit`. Never use `cd docs/superpowers && git commit`.

@@ -1532,6 +1532,24 @@ function Get-AgentSegmentWriteTarget {
                     if ($source -ne '' -and -not $targets.Contains($source)) { [void] $targets.Add($source) }
                 }
             }
+
+            # PowerShell's attached-colon parameter form (-Path:value, -LiteralPath:value, and
+            # abbreviations such as -pa:value, -li:value) packs the value into a single
+            # dash-prefixed token, so Get-AgentGitPositionals drops it along with every other
+            # '-*' token and the loop above never sees it. Harvest the value of any
+            # colon-attached dash-token as an additional candidate source too. This does not try
+            # to tell which parameter each token belongs to (a colon-form -Destination:value gets
+            # reported as a source as well as a target) — over-reporting a target is safe here,
+            # the same superset doctrine the rest of this table follows; under-reporting a move
+            # source is not.
+            foreach ($argument in $arguments) {
+                if ($argument -match '^-[A-Za-z]+:(.+)$') {
+                    foreach ($piece in ($Matches[1] -split ',')) {
+                        $source = $piece.Trim()
+                        if ($source -ne '' -and -not $targets.Contains($source)) { [void] $targets.Add($source) }
+                    }
+                }
+            }
         }
     }
 
@@ -1978,9 +1996,11 @@ function Get-AgentWorktreeWriteDecision {
             $script:AgentGuardUnresolvedWriteMessage
     }
 
+    # Anything strictly under $plansRoot is allowed unconditionally (Test-AgentWriteTargetAllowed
+    # above), so a blocked path can never be a StartsWith match here — only the exact root can
+    # reach this denial. Testing only -ieq keeps that reachable case and drops the dead half.
     $plansRoot = ConvertTo-AgentGuardNormalizedPath (Join-Path $mainCheckout 'docs\superpowers')
-    $template = if ($blockingPath -ieq $plansRoot -or
-        $blockingPath.StartsWith($plansRoot + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
+    $template = if ($blockingPath -ieq $plansRoot) {
         $script:AgentGuardPlansDenialMessage
     }
     else {
@@ -2047,9 +2067,11 @@ function Get-AgentFileEditWriteDecision {
             $script:AgentGuardUnresolvedWriteMessage
     }
 
+    # Anything strictly under $plansRoot is allowed unconditionally (Test-AgentWriteTargetAllowed
+    # above), so a blocked path can never be a StartsWith match here — only the exact root can
+    # reach this denial. Testing only -ieq keeps that reachable case and drops the dead half.
     $plansRoot = ConvertTo-AgentGuardNormalizedPath (Join-Path $mainCheckout 'docs\superpowers')
-    $template = if ($resolution.Path -ieq $plansRoot -or
-        $resolution.Path.StartsWith($plansRoot + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
+    $template = if ($resolution.Path -ieq $plansRoot) {
         $script:AgentGuardPlansDenialMessage
     }
     else {

@@ -1719,6 +1719,10 @@ try {
         @{ Command = 'Move-Item a.txt b.txt'; Expected = @('b.txt', 'a.txt') },
         @{ Command = 'Move-Item -Path a.txt -Destination b.txt'; Expected = @('b.txt', 'a.txt') },
         @{ Command = 'Move-Item -LiteralPath a.txt -Destination b.txt'; Expected = @('b.txt', 'a.txt') },
+        # PowerShell's attached-colon form (-Path:value) packs the source into a dash-prefixed
+        # token, which the positional reader alone would drop.
+        @{ Command = 'Move-Item -Path:a.txt -Destination:b.txt'; Expected = @('b.txt', 'a.txt') },
+        @{ Command = 'Move-Item -LiteralPath:a.txt -Destination b.txt'; Expected = @('b.txt', 'a.txt') },
         # -Path takes an array, and PowerShell splits it across tokens at each comma.
         @{ Command = 'Move-Item -Path a.md,b.md -Destination x.md'; Expected = @('x.md', 'a.md', 'b.md') },
         @{ Command = 'Move-Item -Path a.md, b.md -Destination x.md'; Expected = @('x.md', 'a.md', 'b.md') },
@@ -1914,6 +1918,19 @@ try {
         # The move source is outside the plans repo, so the exception must not rescue it.
         @{ Name    = 'moving a main file into the plans repo is refused'
             Command = 'mv <MAIN>/seed.txt <MAIN>/docs/superpowers/seed.txt'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        # PowerShell's attached-colon parameter form (-Path:value, -Destination:value) must not
+        # slip the source past detection: the destination is inside the plans repo, but the
+        # source is a plain main-checkout file the exception must not rescue.
+        @{ Name    = 'moving a main file into the plans repo with colon-form parameters is refused'
+            Command = 'Move-Item -Path:<MAIN>/seed.txt -Destination:<MAIN>/docs/superpowers/seed.txt'
+            Cwd = 'Managed'; Action = 'Deny'
+        },
+        # The reverse direction: a file that already lives in the plans repo, moved back out to
+        # an ordinary main-checkout location. The destination is outside the plans subtree, so
+        # this must deny even though the source itself was allowed to live inside it.
+        @{ Name    = 'moving a file out of the plans repo into main is refused'
+            Command = 'mv <MAIN>/docs/superpowers/a.md <MAIN>/x.md'; Cwd = 'Managed'; Action = 'Deny'
         },
         # The root is the link every worktree depends on.
         @{ Name    = 'the plans root itself is refused'
