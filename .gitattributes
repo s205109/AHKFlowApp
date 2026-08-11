@@ -30,6 +30,12 @@
 *.md text eol=lf
 *.json text eol=lf
 
+# HTML — LF. docs/development/ahk-workflow.pdf.source.sha256 records the SHA-256 of the
+# cheatsheet HTML, and that hash changes with the line endings. Without this rule
+# core.autocrlf=true checks the file out as CRLF on Windows and the freshness check fails
+# on a clean clone.
+*.html text eol=lf
+
 # Binaries — no line ending conversion
 *.png binary
 *.jpg binary
