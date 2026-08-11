@@ -2,3 +2,4 @@
 Task 1 | 023e92c0 | checks: 072-079 filed once each, no duplicate numbers, 079 in blocked/, four items stamped | deferrals: none
 Wave-2 item: backlog/072-process-wave-2-parity-drift-guard-templates.md (Task 8 writes baselines here)
 Task 2 | dfb3d082 | checks: 11 anchors, 8 fields x 11 nodes, 11 spine exits verbatim, 55 edge rows case-sensitive, all edge targets legal | deferrals: linking convention written from spec 7a - FABLE-PROMPT.md is not in this repository, so its 4.5 table could not be transcribed
+Task 3 | ee6a1624 | checks: page renders standalone, zero page-made external requests (only browser favicon 404), four callouts each show border plus label text, skeleton pasted into a blank file renders with ground f8fafc card-border e2e8f0 radius 8px | deferrals: report.html is not in the repository, so tokens were taken from spec section 9 verbatim
