@@ -1,5 +1,9 @@
 # 070 - Keep personal-defaults.md in sync with the web preferences box
 
+## Metadata
+
+- **Stage**: 1-pickup
+
 ## Problem
 
 The same content lives in three places and drifts independently:
