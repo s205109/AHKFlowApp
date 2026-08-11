@@ -13,51 +13,27 @@ concise, sacrifice grammar for brevity.
 
 ## Workflow Preferences
 
+The canonical process is [`docs/development/workflow.md`](../docs/development/workflow.md).
+The lines below are rules; each links to the stage that owns the narrative.
+
 ### Plan before you edit
 
-Before any **non-trivial** task, run `superpowers:brainstorming`, write a plan, and use `mp-grilling`
-to settle open questions. Do this before touching code, not after.
-
-Only these are exempt. Everything else plans first:
-
-- A one-file change that changes no behavior, no user-facing wording or name, and no interface
-  that other code depends on
-- Typo, comment, or formatting fixes
-- Answering a question, or reading and reporting
-- Running a command that changes nothing
-
-Picking up a `backlog/` item is never trivial. Neither is any change to user-facing wording,
-labels, or names — a wrong shared assumption about a word is cheap to catch up front and expensive
-to undo later. Staying inside one file does not make such a change trivial. When a change matches
-both the exemption list and this paragraph, this paragraph wins: plan first.
+- Classify the change by Difficulty before you touch code. `complex` goes to Design, `moderate` to Plan, `trivial` straight to Execute — see [workflow.md#stage-1-pickup](../docs/development/workflow.md#stage-1-pickup).
+- A change is `trivial` only when all three predicates are provably false: more than one file changes, an interface other code depends on changes, app-facing text changes — see [workflow.md#stage-5-simplify](../docs/development/workflow.md#stage-5-simplify).
+- Repository documentation is not app-facing text, so a docs-only change can stay `trivial` — see [workflow.md#stage-5-simplify](../docs/development/workflow.md#stage-5-simplify).
+- Picking up a `backlog/` item is never `trivial` — see [workflow.md#stage-0-intake](../docs/development/workflow.md#stage-0-intake).
+- Any change to app-facing wording, labels, or names is never `trivial`, even inside one file — see [workflow.md#stage-5-simplify](../docs/development/workflow.md#stage-5-simplify).
+- Run `superpowers:brainstorming` and `mp-grilling` before you write code, not after — see [workflow.md#stage-2-design](../docs/development/workflow.md#stage-2-design).
+- Give a `trivial` change an inline plan of at most ten lines in chat: files, change, verification artifact, difficulty verdict — see [workflow.md#stage-3-plan](../docs/development/workflow.md#stage-3-plan).
 
 ### Create the worktree before you write the plan
 
-Create the worktree first. Never start a plan in the main checkout and move the work later.
-Use `scripts/new-worktree.ps1`, or the native `EnterWorktree` tool. That tool fires the
-`WorktreeCreate` hook, which runs the same script.
-
-Order of work:
-
-1. Create the worktree. Stay in the main checkout.
-2. Write and commit the spec and the plan from the main checkout, under
-   `docs/superpowers/specs/` and `docs/superpowers/plans/`.
-3. Switch into the worktree. Code, tests, docs, and config happen there and commit there.
-4. If a review round changes the plan, return to the main checkout to edit and commit it.
-   The worktree sees the update at once.
-
-Why the split: `docs/superpowers/` is a separate private repo (`AHKFlowApp-plans`). The public
-repo ignores the path, so `git worktree add` never checks it out. `scripts/new-worktree.ps1`
-links the folder into each worktree instead. A worktree can read its spec and plan at the same
-relative path. Treat that link as read-only.
-
-Commit plans with `git -C docs/superpowers commit`. Never use `cd docs/superpowers && git commit`.
-The agent Git guard reads the command before the shell runs the `cd`, so it still sees the main
-checkout and blocks the commit. `-C` shows it the real target.
-
-Step 2 has exceptions. **Plans** in AGENTS.md lists the kinds that stay out of the private repo:
-agent optimization, personal workflow tuning, agent housekeeping, and one-off context or config
-cleanups. These plans may be skipped. If you write one, keep it out of the private repo.
+- Create the worktree first, with `scripts/new-worktree.ps1` or the native `EnterWorktree` tool. Never start a plan in the main checkout and move the work later — see [workflow.md#stage-1-pickup](../docs/development/workflow.md#stage-1-pickup).
+- Write and commit the spec and the plan from the main checkout, under `docs/superpowers/specs/` and `docs/superpowers/plans/` — see [workflow.md#stage-2-design](../docs/development/workflow.md#stage-2-design).
+- Switch into the worktree for code, tests, docs, and config, and commit them there — see [workflow.md#stage-4-execute](../docs/development/workflow.md#stage-4-execute).
+- Return to the main checkout to edit and commit a plan a review round changed. The worktree sees the update at once — see [workflow.md#stage-8-review](../docs/development/workflow.md#stage-8-review).
+- Commit plans with `git -C docs/superpowers commit`. Never use `cd docs/superpowers && git commit`: the guard reads the command before the shell runs the `cd`, so it still sees the main checkout and blocks the commit — see [workflow.md#stage-3-plan](../docs/development/workflow.md#stage-3-plan).
+- Treat the worktree's `docs/superpowers/` link as read-only. It is a separate private repo that `scripts/new-worktree.ps1` links into each worktree — see [workflow.md#stage-1-pickup](../docs/development/workflow.md#stage-1-pickup).
 
 ### Other
 
