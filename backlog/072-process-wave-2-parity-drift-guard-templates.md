@@ -69,13 +69,11 @@ one of them can never leave the other two behind.
       and emitter.
 - [ ] `docs/adr/` gains one ADR: process canon lives in `workflow.md`.
 - [ ] The friction baseline table below is filled by backlog 071 task 8.
-- [ ] `docs/development/testing-workflow.md` renames its "Canonical pre-PR gate" heading to
-      name what the gate actually gates: the pull request going **ready**, not the pull
-      request being created. The draft pull request opens at Pickup, long before the gate
-      runs. Its opening line, "run the full coverage gate yourself before opening a PR",
-      changes with it. `workflow.md` and `AGENTS.md` already say "before ready"; this file
-      is the last one still saying "before you open a PR". It fell outside the wave-1 file
-      allowlist, which is why it was not fixed there.
+- [ ] The drift guard also checks that no document tells a reader to run the gate "before
+      opening a PR". The gate gates the pull request going **ready**, not its creation, and
+      the wording drifted back once already. Backlog 071 fixed
+      `docs/development/testing-workflow.md`, `docs/development/coverage.md`, and
+      `AGENTS.md`; the guard keeps them fixed.
 
 ## Friction baselines
 

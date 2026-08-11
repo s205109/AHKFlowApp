@@ -49,5 +49,14 @@ me.
 
 ## Notes / dependencies
 
+- **The wave-1 file allowlist was widened by two files during review round 1**, with the
+  human's approval on 2026-08-11. Spec §1 listed six new `docs/development/` files plus
+  `AGENTS.md`, `.claude/CLAUDE.md`, `backlog/`, and `docs/superpowers/`. Review finding 2
+  showed that `docs/development/testing-workflow.md` contradicted the corrected rule: it
+  told the reader to run the gate before *opening* a pull request, while the draft pull
+  request now opens at Pickup, long before the gate can run. Shipping wave 1 with that file
+  unchanged would have left the exact contradiction the review had just caught. So
+  `docs/development/testing-workflow.md` and `docs/development/coverage.md` were added to
+  the allowlist and fixed here rather than deferred to wave 2.
 - Spec: `docs/superpowers/specs/2026-08-10-development-process-design-071.md` (private plans repo)
 - Research: `docs/superpowers/research/2026-08-10-worktrees-and-linking-071.md` (private plans repo)
