@@ -6,7 +6,7 @@
 - **Type**: Feature
 - **Interfaces**: CLI
 - **Difficulty**: complex
-- **Stage**: 2-design
+- **Stage**: 3-plan
 
 ## Summary
 
