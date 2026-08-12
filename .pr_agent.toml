@@ -1,17 +1,17 @@
 [config]
 restricted_mode = true
-model = "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free"
-fallback_models = ["openrouter/nvidia/nemotron-3-super-120b-a12b:free"]
+model = "openrouter/deepseek/deepseek-v4-flash-0731"
+fallback_models = ["openrouter/tencent/hy3"]
 
 # PR-Agent only knows the context size of models in its own built-in table, and
-# this one is not in it. Without custom_model_max_tokens it raises before the
-# first call. The model itself accepts 1M tokens.
-custom_model_max_tokens = 1000000
+# these are not in it. Without custom_model_max_tokens it raises before the
+# first call. One value covers both models, so use the smaller of the two:
+# deepseek-v4-flash accepts 1,048,576 tokens, tencent/hy3 accepts 262,144.
+custom_model_max_tokens = 262144
 
 # The real cap on how much diff we send. PR-Agent defaults this to 32000, which
 # would silently truncate a large pull request. Raise it, but stay well under
-# the model limit: quality drops on very long input, and this is a free
-# endpoint with shared capacity.
+# the model limit: quality drops on very long input, and every token is billed.
 max_model_tokens = 64000
 
 [pr_reviewer]
