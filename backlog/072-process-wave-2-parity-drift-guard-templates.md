@@ -71,7 +71,7 @@ one of them can never leave the other two behind.
 - [ ] `CONTEXT.md` gains the terms stage, edge, wave, difficulty, housekeeping worktree,
       and emitter.
 - [ ] `docs/adr/` gains one ADR: process canon lives in `workflow.md`.
-- [ ] The friction baseline table below is filled by backlog 071 task 8.
+- [ ] The five friction counts are measured here, to the requirements below. Backlog 071 attempted this three times and withdrew every result; nothing is inherited.
 - [ ] The drift guard also checks that no document tells a reader to run the gate "before
       opening a PR". The gate gates the pull request going **ready**, not its creation, and
       the wording drifted back once already. Backlog 071 fixed
@@ -79,11 +79,6 @@ one of them can never leave the other two behind.
       `AGENTS.md`; the guard keeps them fixed.
 
 ## Friction baselines
-
-Measured once by backlog 071, on 2026-08-11. **Every number is approximate.** The window is
-2026-07-28 to 2026-08-11 — the last two weeks. The sources are 244 local session transcripts,
-the worktree removal log, and the GitHub run history. Wave 3 to wave 5 targets are stated
-against these numbers.
 
 > **No baseline is published. Every attempt so far has been wrong, and measuring this
 > properly is part of this item's work, not a prerequisite already met.**
@@ -115,15 +110,30 @@ counts as a task with the requirements below, rather than inheriting a figure.
 
 ### What a valid measurement must do
 
-- [ ] Select **records** by their own timestamp, inside the stated window. Filtering files by
-      modification time includes out-of-window records and excludes in-window ones.
-- [ ] Count a human turn only when the record is genuinely the human. `role=user` is not
-      sufficient: tool results and injected skill content both carry that role.
-- [ ] Exclude sidechain subagent transcripts, or count them separately and say which.
-- [ ] Deduplicate by message id. Copied-forward history repeats the same message, so raw
-      occurrences overstate distinct deliveries.
-- [ ] Classify CI runs from the files as they were at the run's own commit, so the result is
-      stable when a PR is touched later.
+Two scripts that both satisfy this list must produce the same number, so each rule names the
+field it reads rather than describing an intention.
+
+- [ ] **Window.** Select on the record's own `timestamp` field, `>= start` and `< end`, both
+      in UTC. Never on file modification time.
+- [ ] **Human turn.** A record counts only when `message.role == "user"` **and** at least one
+      element of `message.content` has `type == "text"` **and** that record carries no
+      `toolUseResult` field. Tool results and injected skill content both arrive as
+      `role: user`; the `type` and `toolUseResult` tests are what separate them.
+- [ ] **Sidechain.** Exclude any record with `isSidechain == true`. Report the excluded count
+      alongside the result so the exclusion is visible rather than assumed.
+- [ ] **Unit of count.** State it per metric and use it consistently: handoffs and next-step
+      asks count **distinct `message.id`**; directory-bound commands count **command lines**,
+      not messages, because one message can hand over several.
+- [ ] **Deduplication.** Deduplicate on `message.id` across the whole corpus before counting,
+      not per file. Copied-forward history repeats the same id in several transcripts.
+- [ ] **Grouping.** "Sessions" means distinct transcript file names after deduplication, and
+      a metric reports both the item count and the session count.
+- [ ] **CI classification.** Resolve each run's changed files from its own
+      `headSha` — `gh api repos/{owner}/{repo}/compare/{base}...{headSha}` — never from the
+      pull request's current file list, which moves when the PR is touched later.
+- [ ] **One primary result per metric.** Where this list allows a choice, the script fixes
+      the choice and records it. An option that leaves two compliant scripts disagreeing is
+      not a specification.
 - [ ] Separate a real event from discussion of one, or state plainly that it does not and
       treat the figure as an upper bound.
 - [ ] Publish the script with the numbers, so any figure can be reproduced and challenged.

@@ -278,9 +278,26 @@ That leaves a window: a session that dies between the Stage commit and the secon
 resumes at Design, Plan or Execute and never goes back for the push, so the remote still
 reads `1-pickup`.
 
-Close it at Pickup itself rather than with a general rule. **Pickup is not complete until
-`gh pr view --json headRefOid` matches the local Stage commit.** Resume at Pickup re-runs
-that comparison and pushes if they differ.
+A check inside Pickup's resume cannot close this. After the crash the field already says
+Design, Plan or Execute, resume follows the field, and Pickup is never re-entered.
+
+**So every resume compares the field on the remote against the field locally**, before doing
+anything else:
+
+```powershell
+git -C <worktree> fetch --quiet
+git -C <worktree> show "origin/<branch>:backlog/<NNN>-<slug>.md" |
+  Select-String -Pattern '(?m)^- \*\*Stage\*\*: '
+```
+
+Different from the local file, or the path missing on the remote, means the last transition
+was never published. Push, then continue from the field.
+
+This compares **the field**, not commit divergence, which is what makes it safe: Execute's
+own task commits leave the branch ahead without touching the field, so they raise no false
+alarm, and a worktree with no upstream fails the `origin/<branch>` lookup outright rather
+than reporting a spurious match. A housekeeping round has no item and no field — its record
+is the pull request body, checked the same way with `gh pr view`.
 
 Do not generalise this to other stages by reading `git status -sb`. Being ahead does not
 mean the transition is unpublished: Execute's own task commits leave the branch ahead by
@@ -561,10 +578,16 @@ Cleanup therefore ends in one of two ways, and the session says which:
    in between, logging "worktree removed; branch preserved" (`:921`). Checking the worktree
    alone would miss exactly that case.
 
-   So a session starting in this repository checks both lists: `git -C <main-checkout>
-   worktree list`, and `git -C <main-checkout> branch --merged main`. Any worktree whose
-   branch is merged, **or** any merged branch left behind with no worktree, is unfinished
-   cleanup. Finish it before starting new work.
+   So a session starting in this repository runs
+   `pwsh .\scripts\cleanup-merged-worktrees.ps1` and finishes what it reports. Use that
+   script's own eligibility rule rather than a hand-rolled one: it already excludes the main
+   worktree and requires proof that the branch's **own work** merged
+   (`scripts/cleanup-merged-worktrees.ps1:51-69,179-191`).
+
+   A hand-rolled `git branch --merged main` does not work. It lists `main` itself — on this
+   checkout that is the only entry — and it lists any branch created from `main` that has no
+   commits yet. Both are permanently "merged", so such a check reports unfinished cleanup
+   forever and teaches the reader to ignore it.
 
 Neither route lets a session claim success it did not observe. All three exit conditions
 are checked, never the worktree alone. The removal script has a

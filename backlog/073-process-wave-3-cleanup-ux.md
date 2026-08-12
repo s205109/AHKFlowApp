@@ -40,5 +40,5 @@ that a merged branch never leaves me a popup to dismiss.
 - The sweep deletes the worktree folder directly today
   (`scripts/remove-worktree-local-dev.ps1`), so a git-level lock alone protects nothing.
   The lock must be read by the sweep itself.
-- Target: cleanup popups and blocked runs drop to zero against the wave-1 baseline in
-  backlog 072.
+- Target: cleanup popups and blocked runs drop to zero. That is a direction, not a
+  percentage: backlog 072 has no established baseline yet.
