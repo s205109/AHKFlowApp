@@ -1725,6 +1725,12 @@ try {
         @{ Command = 'mv -f a.txt b.txt'; Expected = @('b.txt', 'a.txt') },
         @{ Command = 'mv -t out a.txt c.txt'; Expected = @('out', 'a.txt', 'c.txt') },
         @{ Command = 'mv --target-directory=out a.txt'; Expected = @('out', 'a.txt') },
+        # A short option takes its value from the FIRST 't' onward, so '-tout' is -t with the
+        # value 'out'. Reading the LAST 't' instead made '-tout' look like a bare '-t' cluster,
+        # which swallowed the next token as the directory and lost the real destination.
+        @{ Command = 'mv -tout a.txt'; Expected = @('out', 'a.txt') },
+        @{ Command = 'mv -vtout a.txt'; Expected = @('out', 'a.txt') },
+        @{ Command = 'mv -tout a.txt c.txt'; Expected = @('out', 'a.txt', 'c.txt') },
         # '--' ends the options. A file name after it may start with a dash.
         @{ Command = 'mv -- -tracked.md dest.md'; Expected = @('dest.md', '-tracked.md') },
         @{ Command = 'mv -t out -- -a.txt'; Expected = @('out', '-a.txt') },
@@ -1757,6 +1763,7 @@ try {
         @{ Command = 'Rename-Item a.txt b.txt'; Expected = @('b.txt', 'a.txt') },
         # cp, install and ln leave the source in place, so they stay destination-only.
         @{ Command = 'cp -t out a.txt'; Expected = @('out') },
+        @{ Command = 'cp -tout a.txt'; Expected = @('out') },
         @{ Command = 'Copy-Item a.txt -Destination b.txt'; Expected = @('b.txt') },
         @{ Command = 'rm a.txt b.txt'; Expected = @('a.txt', 'b.txt') },
         @{ Command = 'tee out.txt'; Expected = @('out.txt') },

@@ -1470,13 +1470,55 @@ function Get-AgentCommandLeafName {
 
 <#
 .SYNOPSIS
+How one token spells -t / --target-directory, or $null when it spells neither.
+
+.DESCRIPTION
+Four spellings reach this reader: `-t DIR`, `--target-directory DIR`, `--target-directory=DIR`,
+and the attached short form `-tDIR`. Short options cluster, so `-rt DIR` and `-vtDIR` count too.
+The returned object carries TakesNextToken, which is $true when the directory is the following
+token, and Value, which holds the directory when the token already carries it.
+
+A short cluster ends at its FIRST 't': everything after that letter is the option value, exactly
+as getopt reads it. `-tout` is therefore -t with the value 'out', not a bare -t cluster. Reading
+the LAST 't' instead treated `-tout` as bare, swallowed the next token as the directory, and lost
+the real destination.
+
+The `t` test is case-sensitive: `-T` is --no-target-directory, a different option that names
+nothing.
+#>
+function Read-AgentTargetDirectoryToken {
+    param([string] $Argument)
+
+    if ($Argument -ilike '--target-directory=*') {
+        return [pscustomobject]@{
+            TakesNextToken = $false
+            Value          = $Argument.Substring('--target-directory='.Length)
+        }
+    }
+
+    if ($Argument -ieq '--target-directory') {
+        return [pscustomobject]@{ TakesNextToken = $true; Value = $null }
+    }
+
+    # '*?' is lazy, so the match stops at the first 't' in the cluster.
+    if ($Argument -cmatch '^-([a-zA-Z]*?)t(.*)$') {
+        $attached = [string] $Matches[2]
+        if ($attached.Length -eq 0) {
+            return [pscustomobject]@{ TakesNextToken = $true; Value = $null }
+        }
+        return [pscustomobject]@{ TakesNextToken = $false; Value = $attached }
+    }
+
+    return $null
+}
+
+<#
+.SYNOPSIS
 The directory named by -t / --target-directory, or $null when the arguments carry neither.
 
 .DESCRIPTION
 cp, mv, install, and ln all accept this option, and it changes which argument is the
-destination. Three spellings are read: `-t DIR`, `--target-directory DIR`, and
-`--target-directory=DIR`. Short options cluster, so `-rt DIR` and `-vtDIR` are read too. The `t`
-test is case-sensitive: `-T` is --no-target-directory, a different option that names nothing.
+destination. Read-AgentTargetDirectoryToken decides how each token spells the option.
 #>
 function Get-AgentTargetDirectoryOption {
     param([string[]] $Arguments)
@@ -1485,18 +1527,12 @@ function Get-AgentTargetDirectoryOption {
     for ($i = 0; $i -lt $list.Count; $i++) {
         $argument = [string] $list[$i]
 
-        if ($argument -ilike '--target-directory=*') {
-            return $argument.Substring('--target-directory='.Length)
-        }
+        $spelling = Read-AgentTargetDirectoryToken -Argument $argument
+        if ($null -eq $spelling) { continue }
 
-        $takesNext = $argument -ieq '--target-directory' -or $argument -cmatch '^-[a-zA-Z]*t$'
-        if ($takesNext) {
-            if (($i + 1) -lt $list.Count) { return [string] $list[$i + 1] }
-            return $null
-        }
-
-        # A cluster with the value attached, e.g. `cp -vtDIR src`.
-        if ($argument -cmatch '^-[a-zA-Z]*t(.+)$') { return $Matches[1] }
+        if (-not $spelling.TakesNextToken) { return $spelling.Value }
+        if (($i + 1) -lt $list.Count) { return [string] $list[$i + 1] }
+        return $null
     }
     return $null
 }
@@ -1529,7 +1565,8 @@ function Get-AgentMoveArgumentSet {
 
         if ($argument -like '-*') {
             [void] $options.Add($argument)
-            if ($argument -ieq '--target-directory' -or $argument -cmatch '^-[a-zA-Z]*t$') {
+            $spelling = Read-AgentTargetDirectoryToken -Argument $argument
+            if ($null -ne $spelling -and $spelling.TakesNextToken) {
                 if (($i + 1) -lt $list.Count) { [void] $options.Add([string] $list[$i + 1]) }
                 $i++
             }
