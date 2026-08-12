@@ -156,6 +156,18 @@ Allowed anyway:
 - Build output and third-party content, matched on any path component: `bin`, `obj`, `TestResults`,
   `.vs`, `node_modules`.
 - `<main>\.claude\worktrees\worktree-removal.log`, by exact path.
+- Anything **strictly inside** `<main>\docs\superpowers\`, the private plans repository. The public
+  repo git-ignores that path and links it into every worktree, so a write there cannot change a
+  tracked file or enter a public commit. The root itself stays refused: every worktree links to it.
+  A move from elsewhere in main into it stays refused too, because a move reports both endpoints.
+  Deletes there are ordinary deletes — `rm -rf` is denied inside it exactly as it is everywhere.
+
+Two paths are refused before any of the allowances above are read: `<main>\.git` and
+`<main>\docs\superpowers\.git`. A repository's metadata is not an ordinary file inside it, and
+destroying it destroys the repository with all history that was never pushed. The order matters:
+a branch may be named `bin` or `obj`, and `.git\worktrees` holds one directory per managed
+worktree, so a ref or metadata path can carry a build-output component. Read later, the
+build-output allowance would clear it.
 
 A **sibling** worktree is refused. It is another agent's checkout, so writing into it breaks the
 same isolation the rule exists to protect.
@@ -164,6 +176,10 @@ Write targets are found from unquoted redirects, from a per-command destination 
 nested `sh -c` / `pwsh -Command` arguments to a depth of 2. `cp`, `mv`, `install`, and `ln` are
 read for `-t` and `--target-directory` as well, because that option moves the destination off the
 last argument.
+
+`mv`, `Move-Item`, and `Rename-Item` report their **source** as well as their destination, because
+a move deletes the path it reads. `cp`, `install`, `ln`, and `Copy-Item` report the destination
+only. So moving a file out of main is refused wherever it is going, a worktree included.
 
 A target the guard cannot expand is denied, because the guard cannot tell where it lands. That
 covers a leading `~`, and a variable, a percent expansion, a command substitution, or a backtick
@@ -348,8 +364,8 @@ An agent running the same command would need a prompt or override.
   only remaining step is a report to Anthropic, and that report has not been filed. Confirmed on
   Claude Code `2.1.224`. Until it changes upstream, treat the refusal text as wrong for
   `docs/superpowers` and do not go looking for a worktree copy of a plan or spec. This applies to a
-  `-w` session only. Outside one, this repository's own refusal fires instead, and it names the
-  symlink rather than a worktree copy.
+  `-w` session only. Outside one, a write inside `docs/superpowers` is now allowed outright, so no
+  refusal fires at all. Only the plans root itself is still refused there.
 
 ## Version-skew and authoritative main
 

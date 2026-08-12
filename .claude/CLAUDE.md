@@ -31,9 +31,9 @@ The lines below are rules; each links to the stage that owns the narrative.
 - Create the worktree first, with `scripts/new-worktree.ps1` or the native `EnterWorktree` tool. Never start a plan in the main checkout and move the work later — see [workflow.md#stage-1-pickup](../docs/development/workflow.md#stage-1-pickup).
 - Write and commit the spec and the plan from the main checkout, under `docs/superpowers/specs/` and `docs/superpowers/plans/` — see [workflow.md#stage-2-design](../docs/development/workflow.md#stage-2-design).
 - Switch into the worktree for code, tests, docs, and config, and commit them there — see [workflow.md#stage-4-execute](../docs/development/workflow.md#stage-4-execute).
-- Return to the main checkout to edit and commit a plan a review round changed. The worktree sees the update at once — see [workflow.md#stage-8-review](../docs/development/workflow.md#stage-8-review).
+- Edit and commit a plan a review round changed from the worktree. The guard allows writes inside `docs/superpowers/` — see [workflow.md#stage-8-review](../docs/development/workflow.md#stage-8-review).
 - Commit plans with `git -C docs/superpowers commit`. Never use `cd docs/superpowers && git commit`: the guard reads the command before the shell runs the `cd`, so it still sees the main checkout and blocks the commit — see [workflow.md#stage-3-plan](../docs/development/workflow.md#stage-3-plan).
-- Treat the worktree's `docs/superpowers/` link as read-only. It is a separate private repo that `scripts/new-worktree.ps1` links into each worktree — see [workflow.md#stage-1-pickup](../docs/development/workflow.md#stage-1-pickup).
+- Write inside the worktree's `docs/superpowers/` link, but never rename or delete the folder itself. It is a separate private repo that `scripts/new-worktree.ps1` links into each worktree — see [workflow.md#stage-1-pickup](../docs/development/workflow.md#stage-1-pickup).
 
 ### Other
 

@@ -291,18 +291,30 @@ True when an rm argument list carries a clustered recursive-force flag aimed at 
 target.
 
 .DESCRIPTION
-Mirrors the original raw-string rule (a single `-rf`/`-fr`/`-Rf`-style flag) but reads it from
-parsed tokens. The build-output allow-list is compared against the target's final path component,
-so `node_modules`, `bin`, `obj`, `TestResults`, `.vs`, and `/tmp` stay allowed. An rm carrying the
-flag with no visible target is treated as dangerous.
+Recursive and force are collected separately and across every argument, so the clustered `-rf`,
+the split `-r -f`, and the long `--recursive --force` all read the same. Collecting them per
+token instead would only catch the clustered spelling. The build-output allow-list is compared
+against the target's final path component, so `node_modules`, `bin`, `obj`, `TestResults`, `.vs`,
+and `/tmp` stay allowed. An rm carrying both flags with no visible target is treated as dangerous.
 #>
 function Test-AgentDangerousRmArguments {
     param([string[]] $Arguments)
 
-    $hasRecursiveForce = @($Arguments | Where-Object {
-            $_ -match '^-[a-z]*r[a-z]*f' -or $_ -match '^-[a-z]*f[a-z]*r'
-        }).Count -gt 0
-    if (-not $hasRecursiveForce) { return $false }
+    $hasRecursive = $false
+    $hasForce = $false
+    foreach ($argument in @($Arguments)) {
+        $token = [string] $argument
+        if ($token -ieq '--recursive') { $hasRecursive = $true; continue }
+        if ($token -ieq '--force') { $hasForce = $true; continue }
+
+        # A short-option cluster only. '--something-else' and operands are not flag carriers.
+        if ($token -notmatch '^-[a-zA-Z]+$') { continue }
+        $letters = $token.Substring(1)
+        # rm spells recursive '-r' or '-R', and force '-f'. '-F' is not an rm flag.
+        if ($letters -cmatch '[rR]') { $hasRecursive = $true }
+        if ($letters -cmatch 'f') { $hasForce = $true }
+    }
+    if (-not ($hasRecursive -and $hasForce)) { return $false }
 
     $positionals = @(Get-AgentGitPositionals -Arguments $Arguments)
     if ($positionals.Count -eq 0) { return $true }
@@ -1286,6 +1298,151 @@ $script:AgentGuardWriteCmdlets = @{
 }
 $script:AgentGuardWriteDestinationCmdlets = @('copy-item', 'move-item', 'rename-item')
 
+# Commands that REMOVE their source as well as writing their destination. A move into an allowed
+# path is still a delete of the path it came from, so the source is a write target too. cp,
+# install and ln are deliberately absent: they leave the source where it is.
+$script:AgentGuardMoveCommands = @('mv')
+$script:AgentGuardMoveCmdlets = @('move-item', 'rename-item')
+
+<#
+.SYNOPSIS
+True when a cmdlet parameter name is one that names a move's SOURCE.
+
+.DESCRIPTION
+Move-Item and Rename-Item take their source from -Path or -LiteralPath. PowerShell binds any
+unambiguous prefix, so -pa is -Path and -li is -LiteralPath, and this accepts every prefix of
+either name. A prefix short enough to be ambiguous, such as -p, is accepted too: PowerShell
+would reject the command outright, and reading one extra token as a source only ever
+over-reports, which is the safe direction for this grammar.
+#>
+function Test-AgentMoveSourceParameterName {
+    param([string] $Name)
+
+    return (Test-AgentParameterNamePrefix -Name $Name -Candidates @('path', 'literalpath'))
+}
+
+<#
+.SYNOPSIS
+True when a cmdlet parameter name is a prefix of any candidate name.
+
+.DESCRIPTION
+PowerShell binds any unambiguous prefix, so -Dest is -Destination and -pa is -Path. Comparing
+against the full name only would miss every abbreviation. A prefix short enough to be ambiguous
+is accepted as well: PowerShell would reject such a command outright, and reading one extra
+token as a write target only ever over-reports, which is the safe direction for this grammar.
+#>
+function Test-AgentParameterNamePrefix {
+    param([string] $Name, [string[]] $Candidates)
+
+    $lower = ([string] $Name).ToLowerInvariant()
+    if ($lower -eq '') { return $false }
+    foreach ($candidate in @($Candidates)) {
+        if (([string] $candidate).ToLowerInvariant().StartsWith($lower, [System.StringComparison]::Ordinal)) {
+            return $true
+        }
+    }
+    return $false
+}
+
+# Parameters of Move-Item / Rename-Item that consume the token after them. Their values are not
+# files the command touches, so the operand reader must skip them rather than read them as
+# sources. Switches (-Force, -Confirm, -WhatIf, -PassThru) take no value and are absent here.
+$script:AgentGuardMoveValueParameters = @(
+    'path', 'literalpath', 'destination', 'newname', 'filter', 'include', 'exclude', 'credential'
+)
+
+<#
+.SYNOPSIS
+An option's value, rejoined across the tokens an array value splits into.
+
+.DESCRIPTION
+PowerShell writes an array value as `-Path a.md, b.md`, which the tokenizer hands over as
+'a.md,' then 'b.md'. Reading one token would take 'a.md,' and lose the rest. A trailing comma is
+what says the value continues, so tokens are joined until one does not end in a comma. Returns
+the joined text and the index of the last token consumed.
+#>
+function Get-AgentOptionValueSpan {
+    param([string[]] $List, [int] $Index)
+
+    $parts = New-Object System.Collections.Generic.List[string]
+    $i = $Index
+    while ($i -lt $List.Count) {
+        $token = [string] $List[$i]
+        [void] $parts.Add($token)
+        if (-not $token.TrimEnd().EndsWith(',')) { break }
+        $i++
+    }
+    return [pscustomobject]@{ Value = ($parts -join ''); LastIndex = [Math]::Min($i, $List.Count - 1) }
+}
+
+<#
+.SYNOPSIS
+The true positional operands of a move cmdlet, with option values removed.
+
+.DESCRIPTION
+Get-AgentGitPositionals drops every '-*' token but keeps the token AFTER it, so the value of
+`-Filter *.tmp` is left behind and read as though it were a file the move touches. That
+over-reports a target and refuses ordinary in-worktree moves. This reader consumes each
+value-taking option together with its value.
+#>
+function Get-AgentMoveCmdletOperand {
+    param([string[]] $Arguments)
+
+    $operands = New-Object System.Collections.Generic.List[string]
+    $list = @($Arguments)
+    for ($i = 0; $i -lt $list.Count; $i++) {
+        $argument = [string] $list[$i]
+
+        # The colon form carries its own value, so it consumes no following token.
+        if ($argument -match '^-[A-Za-z]+:') { continue }
+
+        if ($argument -match '^-([A-Za-z]+)$') {
+            $name = [string] $Matches[1]
+            if (Test-AgentParameterNamePrefix -Name $name -Candidates $script:AgentGuardMoveValueParameters) {
+                # Consume the whole value, including the tokens an array value splits into.
+                if (($i + 1) -lt $list.Count) {
+                    $i = (Get-AgentOptionValueSpan -List $list -Index ($i + 1)).LastIndex
+                }
+                else { $i++ }
+            }
+            continue
+        }
+
+        [void] $operands.Add($argument)
+    }
+    return $operands.ToArray()
+}
+
+<#
+.SYNOPSIS
+Value of the first parameter whose name is a prefix of any given name, or $null.
+
+.DESCRIPTION
+Both the `-Name value` and `-Name:value` forms are read, and the name may be any prefix of a
+candidate. Needed because `-Dest:<path>` names a destination that no positional fallback can
+recover: the colon token is dropped as an option, so the target would simply go unreported.
+#>
+function Get-AgentPrefixedParameterValue {
+    param([string[]] $Arguments, [string[]] $Names)
+
+    $list = @($Arguments)
+    for ($i = 0; $i -lt $list.Count; $i++) {
+        $argument = [string] $list[$i]
+        if ($argument -notmatch '^-([A-Za-z]+)(:(.*))?$') { continue }
+
+        # Capture before anything else can overwrite $Matches.
+        $name = [string] $Matches[1]
+        $hasColonForm = $Matches.ContainsKey(2)
+        $colonValue = if ($hasColonForm) { [string] $Matches[3] } else { '' }
+        if (-not (Test-AgentParameterNamePrefix -Name $name -Candidates $Names)) { continue }
+
+        if ($hasColonForm) { return $colonValue }
+        if (($i + 1) -lt $list.Count) { return [string] $list[$i + 1] }
+        return $null
+    }
+    return $null
+}
+
 <#
 .SYNOPSIS
 Index of the first unquoted '>' in a token, or -1 when the token carries no redirect.
@@ -1313,27 +1470,45 @@ function Get-AgentCommandLeafName {
 
 <#
 .SYNOPSIS
-Value of the first matching -Name parameter, or $null.
+How one token spells -t / --target-directory, or $null when it spells neither.
 
 .DESCRIPTION
-Accepts both `-Path value` and PowerShell's `-Path:value` colon form.
-#>
-function Get-AgentNamedParameterValue {
-    param([string[]] $Arguments, [string[]] $Names)
+Four spellings reach this reader: `-t DIR`, `--target-directory DIR`, `--target-directory=DIR`,
+and the attached short form `-tDIR`. Short options cluster, so `-rt DIR` and `-vtDIR` count too.
+The returned object carries TakesNextToken, which is $true when the directory is the following
+token, and Value, which holds the directory when the token already carries it.
 
-    $list = @($Arguments)
-    for ($i = 0; $i -lt $list.Count; $i++) {
-        $argument = [string] $list[$i]
-        foreach ($name in $Names) {
-            if ($argument -ieq "-$name") {
-                if (($i + 1) -lt $list.Count) { return [string] $list[$i + 1] }
-                return $null
-            }
-            if ($argument -ilike "-${name}:*") {
-                return $argument.Substring($name.Length + 2)
-            }
+A short cluster ends at its FIRST 't': everything after that letter is the option value, exactly
+as getopt reads it. `-tout` is therefore -t with the value 'out', not a bare -t cluster. Reading
+the LAST 't' instead treated `-tout` as bare, swallowed the next token as the directory, and lost
+the real destination.
+
+The `t` test is case-sensitive: `-T` is --no-target-directory, a different option that names
+nothing.
+#>
+function Read-AgentTargetDirectoryToken {
+    param([string] $Argument)
+
+    if ($Argument -ilike '--target-directory=*') {
+        return [pscustomobject]@{
+            TakesNextToken = $false
+            Value          = $Argument.Substring('--target-directory='.Length)
         }
     }
+
+    if ($Argument -ieq '--target-directory') {
+        return [pscustomobject]@{ TakesNextToken = $true; Value = $null }
+    }
+
+    # '*?' is lazy, so the match stops at the first 't' in the cluster.
+    if ($Argument -cmatch '^-([a-zA-Z]*?)t(.*)$') {
+        $attached = [string] $Matches[2]
+        if ($attached.Length -eq 0) {
+            return [pscustomobject]@{ TakesNextToken = $true; Value = $null }
+        }
+        return [pscustomobject]@{ TakesNextToken = $false; Value = $attached }
+    }
+
     return $null
 }
 
@@ -1343,9 +1518,7 @@ The directory named by -t / --target-directory, or $null when the arguments carr
 
 .DESCRIPTION
 cp, mv, install, and ln all accept this option, and it changes which argument is the
-destination. Three spellings are read: `-t DIR`, `--target-directory DIR`, and
-`--target-directory=DIR`. Short options cluster, so `-rt DIR` and `-vtDIR` are read too. The `t`
-test is case-sensitive: `-T` is --no-target-directory, a different option that names nothing.
+destination. Read-AgentTargetDirectoryToken decides how each token spells the option.
 #>
 function Get-AgentTargetDirectoryOption {
     param([string[]] $Arguments)
@@ -1354,20 +1527,56 @@ function Get-AgentTargetDirectoryOption {
     for ($i = 0; $i -lt $list.Count; $i++) {
         $argument = [string] $list[$i]
 
-        if ($argument -ilike '--target-directory=*') {
-            return $argument.Substring('--target-directory='.Length)
-        }
+        $spelling = Read-AgentTargetDirectoryToken -Argument $argument
+        if ($null -eq $spelling) { continue }
 
-        $takesNext = $argument -ieq '--target-directory' -or $argument -cmatch '^-[a-zA-Z]*t$'
-        if ($takesNext) {
-            if (($i + 1) -lt $list.Count) { return [string] $list[$i + 1] }
-            return $null
-        }
-
-        # A cluster with the value attached, e.g. `cp -vtDIR src`.
-        if ($argument -cmatch '^-[a-zA-Z]*t(.+)$') { return $Matches[1] }
+        if (-not $spelling.TakesNextToken) { return $spelling.Value }
+        if (($i + 1) -lt $list.Count) { return [string] $list[$i + 1] }
+        return $null
     }
     return $null
+}
+
+<#
+.SYNOPSIS
+A move's options and its operands, with '--' honoured.
+
+.DESCRIPTION
+Get-AgentGitPositionals drops every token that starts with '-', so `mv -- -a.md dest` loses the
+source entirely. A move deletes what it reads, so losing a source hides a delete. This reader
+keeps everything after '--' whatever it looks like, and hands back the options separately:
+Get-AgentTargetDirectoryOption does not stop at '--' either, and would read `-tracked.md` as a
+clustered -t. Only -t / --target-directory consume the following token; every other option mv
+accepts is a flag.
+#>
+function Get-AgentMoveArgumentSet {
+    param([string[]] $Arguments)
+
+    $options = New-Object System.Collections.Generic.List[string]
+    $operands = New-Object System.Collections.Generic.List[string]
+    $list = @($Arguments)
+    $afterDoubleDash = $false
+
+    for ($i = 0; $i -lt $list.Count; $i++) {
+        $argument = [string] $list[$i]
+
+        if ($afterDoubleDash) { [void] $operands.Add($argument); continue }
+        if ($argument -ceq '--') { $afterDoubleDash = $true; continue }
+
+        if ($argument -like '-*') {
+            [void] $options.Add($argument)
+            $spelling = Read-AgentTargetDirectoryToken -Argument $argument
+            if ($null -ne $spelling -and $spelling.TakesNextToken) {
+                if (($i + 1) -lt $list.Count) { [void] $options.Add([string] $list[$i + 1]) }
+                $i++
+            }
+            continue
+        }
+
+        [void] $operands.Add($argument)
+    }
+
+    return [pscustomobject]@{ Options = $options.ToArray(); Operands = $operands.ToArray() }
 }
 
 <#
@@ -1428,11 +1637,27 @@ function Get-AgentSegmentWriteTarget {
         foreach ($positional in $positionals) { [void] $targets.Add($positional) }
     }
     elseif ($script:AgentGuardWriteLastPositional -contains $leaf) {
-        # -t/--target-directory moves the destination off the last positional: with it, every
-        # positional is a SOURCE and the named directory is the only thing written.
-        $targetDirectory = Get-AgentTargetDirectoryOption -Arguments $arguments
+        # A move reads its own operands, because a moved file may be named '-something' and only
+        # a '--'-aware reader keeps it. cp, install and ln do not delete, so they keep the older
+        # positional reader.
+        $isMove = $script:AgentGuardMoveCommands -contains $leaf
+        $moveSet = if ($isMove) { Get-AgentMoveArgumentSet -Arguments $arguments } else { $null }
+        $optionArguments = if ($isMove) { $moveSet.Options } else { $arguments }
+        $operands = if ($isMove) { @($moveSet.Operands) } else { $positionals }
+
+        # -t/--target-directory moves the destination off the last operand: with it, every
+        # operand is a SOURCE and the named directory is the only thing written.
+        $targetDirectory = Get-AgentTargetDirectoryOption -Arguments $optionArguments
         if ($null -ne $targetDirectory) { [void] $targets.Add($targetDirectory) }
-        elseif ($positionals.Count -ge 1) { [void] $targets.Add($positionals[$positionals.Count - 1]) }
+        elseif ($operands.Count -ge 1) { [void] $targets.Add($operands[$operands.Count - 1]) }
+
+        # A move also removes every source it names. With -t every operand is a source; without
+        # it the last operand is the destination, so drop it.
+        if ($isMove) {
+            $sources = if ($null -ne $targetDirectory) { @($operands) }
+            else { @($operands | Select-Object -SkipLast 1) }
+            foreach ($source in $sources) { [void] $targets.Add($source) }
+        }
     }
     elseif ($leaf -eq 'sed') {
         $inPlace = @($arguments | Where-Object { $_ -ceq '-i' -or $_ -clike '-i*' -or $_ -ceq '--in-place' }).Count -gt 0
@@ -1450,14 +1675,67 @@ function Get-AgentSegmentWriteTarget {
         }
     }
     elseif ($script:AgentGuardWriteCmdlets.ContainsKey($leaf)) {
-        $named = Get-AgentNamedParameterValue -Arguments $arguments -Names $script:AgentGuardWriteCmdlets[$leaf]
+        # Prefix-aware: `Set-Content -Pa:<path>` names the same target as `-Path <path>`, and the
+        # colon token is dropped as an option, so no positional fallback could recover it.
+        $named = Get-AgentPrefixedParameterValue -Arguments $arguments -Names $script:AgentGuardWriteCmdlets[$leaf]
         if ($null -ne $named) { [void] $targets.Add($named) }
         elseif ($positionals.Count -ge 1) { [void] $targets.Add($positionals[0]) }
     }
     elseif ($script:AgentGuardWriteDestinationCmdlets -contains $leaf) {
-        $named = Get-AgentNamedParameterValue -Arguments $arguments -Names @('Destination', 'NewName')
+        # Operands with option values removed, so `-Filter *.tmp` does not look like a file.
+        $cmdletOperands = @(Get-AgentMoveCmdletOperand -Arguments $arguments)
+
+        $named = Get-AgentPrefixedParameterValue -Arguments $arguments -Names @('Destination', 'NewName')
         if ($null -ne $named) { [void] $targets.Add($named) }
-        elseif ($positionals.Count -ge 2) { [void] $targets.Add($positionals[1]) }
+        elseif ($cmdletOperands.Count -ge 2) { [void] $targets.Add($cmdletOperands[1]) }
+
+        # Move-Item and Rename-Item remove the paths they read. Copy-Item does not, so it is not
+        # in the move table. -Path takes an array, so read every operand rather than one token,
+        # and split on the comma PowerShell leaves attached to each element.
+        if ($script:AgentGuardMoveCmdlets -contains $leaf) {
+            foreach ($operand in $cmdletOperands) {
+                foreach ($piece in ($operand -split ',')) {
+                    $source = $piece.Trim()
+                    if ($source -ne '' -and -not $targets.Contains($source)) { [void] $targets.Add($source) }
+                }
+            }
+
+            # Read the parameters that actually name a source: -Path and -LiteralPath. The
+            # positional loop above cannot see them in either of two shapes. PowerShell's
+            # attached-colon form (-Path:value, and abbreviations such as -pa:value) packs the
+            # value into one dash-prefixed token, and a source whose own name starts with a dash
+            # (-Path -tracked.md) puts a dash-prefixed token in the value slot. Get-AgentGitPositionals
+            # drops every '-*' token, so both vanish.
+            #
+            # Selecting on the parameter NAME is what makes this correct. An earlier version
+            # harvested every colon-attached token and then filtered by VALUE, skipping $true and
+            # $false to avoid switch parameters. That was wrong in both directions: it dropped a
+            # real source named by -Path:$false, and it harvested -Force:$myVar, which the
+            # resolver cannot expand, so an ordinary in-worktree move was refused.
+            for ($i = 0; $i -lt $arguments.Count; $i++) {
+                $argument = [string] $arguments[$i]
+                if ($argument -notmatch '^-([A-Za-z]+)(:(.*))?$') { continue }
+
+                # Capture before anything else can overwrite $Matches.
+                $parameterName = [string] $Matches[1]
+                $hasColonForm = $Matches.ContainsKey(2)
+                $colonValue = if ($hasColonForm) { [string] $Matches[3] } else { '' }
+                if (-not (Test-AgentMoveSourceParameterName -Name $parameterName)) { continue }
+
+                # `-Path value` puts the value in the next token; `-Path:value` carries its own.
+                # An array value spans several tokens, so take the whole span, not one token.
+                $value = if ($hasColonForm) { $colonValue }
+                elseif (($i + 1) -lt $arguments.Count) {
+                    (Get-AgentOptionValueSpan -List $arguments -Index ($i + 1)).Value
+                }
+                else { '' }
+
+                foreach ($piece in ($value -split ',')) {
+                    $source = $piece.Trim()
+                    if ($source -ne '' -and -not $targets.Contains($source)) { [void] $targets.Add($source) }
+                }
+            }
+        }
     }
 
     return $targets.ToArray()
@@ -1651,6 +1929,15 @@ function Get-AgentWriteTargetResolution {
         return [pscustomobject]@{ Path = ''; Unresolved = $true }
     }
 
+    # A provider-qualified path such as 'FileSystem::C:\repo\file' names a real location, but
+    # IsPathRooted below reads it as relative and joins it to the session's own directory. That
+    # turns a main-checkout path into an allowed worktree one. No valid Windows path contains
+    # '::', so failing closed here costs nothing and cannot be worked around by spelling the
+    # provider differently.
+    if ($trimmed -match '::') {
+        return [pscustomobject]@{ Path = ''; Unresolved = $true }
+    }
+
     # A tool call carries one literal path and no shell runs over it, so '$', '%' and backtick are
     # ordinary file name characters there. Applying the shell rule would refuse a real edit inside
     # the session's own worktree. A '~' still fails closed under -Literal: nothing in the payload
@@ -1711,10 +1998,11 @@ agent session.
 '@
 
 $script:AgentGuardPlansDenialMessage = @'
-BLOCKED: this session is isolated in a worktree, so it cannot write into the main checkout at {0}
-docs/superpowers is a symlink to the main checkout. There is no worktree copy of it, so do not
-look for one. Plan and spec writes belong in the main checkout by design.
-Read the plan from here. Write and commit it from the main checkout.
+BLOCKED: {0} is the root of the private plans repository, and this session is isolated in a
+worktree.
+Files inside it are writable from here. The root itself is not: every worktree links to it, so
+deleting or renaming it breaks all of them.
+Write inside docs/superpowers instead, or run this from the main checkout.
 '@
 
 $script:AgentGuardUnresolvedWriteMessage = @'
@@ -1749,6 +2037,42 @@ function Test-AgentWriteTargetAllowed {
     # is not writable just because the log lives beside it.
     $removalLog = Join-Path $main '.claude\worktrees\worktree-removal.log'
     if ($path -ieq (ConvertTo-AgentGuardNormalizedPath $removalLog)) { return $true }
+
+    # The private plans repo. It is a separate repository that the public repo git-ignores and
+    # links into every worktree, so a write here cannot touch the protected checkout's tracked
+    # files. Design and Plan produce their artifacts from the worktree; without this they would
+    # hand every spec and plan edit to a main-checkout session.
+    #
+    # Strictly under the root, never the root itself: deleting or renaming docs\superpowers would
+    # break the link every worktree depends on. A move INTO this subtree is still refused when its
+    # source sits elsewhere in main, because a move reports both endpoints.
+    #
+    # The repository's own .git is excluded as well. The exception exists so a session can edit
+    # plans and commit them, and destroying .git destroys the repository itself, including history
+    # that was never pushed. Remove-Item is not the 'rm' the destructive-command tier matches, so
+    # this boundary is the only thing that refuses it.
+    # This refuses outright rather than falling through. The build-output allow-list below clears
+    # any path with a 'bin' or 'obj' component, and a git ref may be named either, so
+    # docs\superpowers\.git\refs\heads\bin would otherwise walk straight back out of this boundary.
+    $plansRepo = ConvertTo-AgentGuardNormalizedPath (Join-Path $main 'docs\superpowers')
+    $plansGit = ConvertTo-AgentGuardNormalizedPath (Join-Path $plansRepo '.git')
+    if (($path -ieq $plansGit) -or
+        $path.StartsWith($plansGit + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $false
+    }
+
+    if ($path.StartsWith($plansRepo + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $true
+    }
+
+    # The protected checkout's own .git, for the same reason and against the same reopening. A
+    # branch may be named 'bin' or 'obj', which puts a throwaway component in .git\refs\heads, and
+    # .git\worktrees holds one directory per managed worktree, so either name can appear there too.
+    $mainGit = ConvertTo-AgentGuardNormalizedPath (Join-Path $main '.git')
+    if (($path -ieq $mainGit) -or
+        $path.StartsWith($mainGit + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $false
+    }
 
     # Build output and third-party content.
     $relative = $path.Substring($main.Length).Trim('\', '/')
@@ -1889,9 +2213,11 @@ function Get-AgentWorktreeWriteDecision {
             $script:AgentGuardUnresolvedWriteMessage
     }
 
+    # Anything strictly under $plansRoot is allowed unconditionally (Test-AgentWriteTargetAllowed
+    # above), so a blocked path can never be a StartsWith match here — only the exact root can
+    # reach this denial. Testing only -ieq keeps that reachable case and drops the dead half.
     $plansRoot = ConvertTo-AgentGuardNormalizedPath (Join-Path $mainCheckout 'docs\superpowers')
-    $template = if ($blockingPath -ieq $plansRoot -or
-        $blockingPath.StartsWith($plansRoot + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
+    $template = if ($blockingPath -ieq $plansRoot) {
         $script:AgentGuardPlansDenialMessage
     }
     else {
@@ -1958,9 +2284,11 @@ function Get-AgentFileEditWriteDecision {
             $script:AgentGuardUnresolvedWriteMessage
     }
 
+    # Anything strictly under $plansRoot is allowed unconditionally (Test-AgentWriteTargetAllowed
+    # above), so a blocked path can never be a StartsWith match here — only the exact root can
+    # reach this denial. Testing only -ieq keeps that reachable case and drops the dead half.
     $plansRoot = ConvertTo-AgentGuardNormalizedPath (Join-Path $mainCheckout 'docs\superpowers')
-    $template = if ($resolution.Path -ieq $plansRoot -or
-        $resolution.Path.StartsWith($plansRoot + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
+    $template = if ($resolution.Path -ieq $plansRoot) {
         $script:AgentGuardPlansDenialMessage
     }
     else {

@@ -679,17 +679,19 @@ wins. The others are evidence.
 private plans repo (`git -C docs/superpowers commit`), then the Stage-field update to the
 public work branch. The public Stage commit is the authoritative transition marker.
 
-**The plans-repo commit runs fine from the worktree. The file edit does not.** Measured, not
+**Both the plans-repo commit and the file edit run from the worktree.** Measured, not
 assumed: `git -C <path>/docs/superpowers commit` is allowed from a worktree session, through
 the symlink or the absolute path, because the guard gates commands that could change the
 *protected checkout's* HEAD, index, or working tree — and the plans repo is a different
-repository (`agent-worktree-guard.common.ps1:1176-1178`). What is refused is writing the
-file: `Edit`, `Write`, and shell writes into that path. That refusal is Claude-only
-(`invoke-agent-worktree-guard.ps1:80-83`); Codex and Copilot file edits are not covered.
+repository. `Edit`, `Write`, and shell writes under that path are allowed for the same reason
+(`agent-worktree-guard.common.ps1:2041-2066`).
 
-So the handoff is narrower than it looks: write the content from a main-checkout session, or
-to the scratchpad and copy it in, then commit from wherever you are. Backlog 076 removes the
-edit restriction.
+Two paths stay refused. The folder root itself, because renaming or deleting `docs/superpowers`
+breaks the link every worktree depends on. And `docs/superpowers/.git`, because destroying it
+destroys history that was never pushed.
+
+So Design and Plan finish inside the worktree: write the artifact there, then commit it with
+`git -C docs/superpowers commit`.
 
 **Push boundaries.** Push at every pre-merge stage completion that has a live branch and a
 transition commit — stages 1 to 9. A tracked item's Pickup push is the first push and opens

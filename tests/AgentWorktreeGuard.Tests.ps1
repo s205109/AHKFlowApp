@@ -604,6 +604,18 @@ try {
         @{ Command = 'git checkout .'; Action = 'Deny'; Rule = 'git-checkout-dot' },
         @{ Command = 'rm -rf src'; Action = 'Deny'; Rule = 'dangerous-rm' },
         @{ Command = 'rm -fr src'; Action = 'Deny'; Rule = 'dangerous-rm' },
+        # Recursive and force need not share a token. Splitting them, or spelling them out, is
+        # the same command and must reach the same verdict.
+        @{ Command = 'rm -r -f src'; Action = 'Deny'; Rule = 'dangerous-rm' },
+        @{ Command = 'rm -f -r src'; Action = 'Deny'; Rule = 'dangerous-rm' },
+        @{ Command = 'rm --recursive --force src'; Action = 'Deny'; Rule = 'dangerous-rm' },
+        @{ Command = 'rm -r --force src'; Action = 'Deny'; Rule = 'dangerous-rm' },
+        @{ Command = 'rm -R -f src'; Action = 'Deny'; Rule = 'dangerous-rm' },
+        # Either flag on its own is not the destructive pair.
+        @{ Command = 'rm -r src'; Action = 'Allow'; Rule = 'none' },
+        @{ Command = 'rm -f src'; Action = 'Allow'; Rule = 'none' },
+        # The build-output allow-list still applies to the split spelling.
+        @{ Command = 'rm -r -f node_modules'; Action = 'Allow'; Rule = 'none' },
         @{ Command = 'rm -rf node_modules'; Action = 'Allow'; Rule = 'none' },
         @{ Command = 'rm -rf bin'; Action = 'Allow'; Rule = 'none' },
         @{ Command = 'rm -rf obj'; Action = 'Allow'; Rule = 'none' },
@@ -1706,7 +1718,53 @@ try {
         @{ Command = 'printf x\>y'; Expected = @() },
         # Destination arguments
         @{ Command = 'cp a.txt b.txt'; Expected = @('b.txt') },
-        @{ Command = 'mv a.txt b.txt'; Expected = @('b.txt') },
+        # A move removes its source, so both endpoints are write targets. Destination first,
+        # then sources - the assertion below joins the list in order.
+        @{ Command = 'mv a.txt b.txt'; Expected = @('b.txt', 'a.txt') },
+        @{ Command = 'mv a.txt c.txt b.txt'; Expected = @('b.txt', 'a.txt', 'c.txt') },
+        @{ Command = 'mv -f a.txt b.txt'; Expected = @('b.txt', 'a.txt') },
+        @{ Command = 'mv -t out a.txt c.txt'; Expected = @('out', 'a.txt', 'c.txt') },
+        @{ Command = 'mv --target-directory=out a.txt'; Expected = @('out', 'a.txt') },
+        # A short option takes its value from the FIRST 't' onward, so '-tout' is -t with the
+        # value 'out'. Reading the LAST 't' instead made '-tout' look like a bare '-t' cluster,
+        # which swallowed the next token as the directory and lost the real destination.
+        @{ Command = 'mv -tout a.txt'; Expected = @('out', 'a.txt') },
+        @{ Command = 'mv -vtout a.txt'; Expected = @('out', 'a.txt') },
+        @{ Command = 'mv -tout a.txt c.txt'; Expected = @('out', 'a.txt', 'c.txt') },
+        # '--' ends the options. A file name after it may start with a dash.
+        @{ Command = 'mv -- -tracked.md dest.md'; Expected = @('dest.md', '-tracked.md') },
+        @{ Command = 'mv -t out -- -a.txt'; Expected = @('out', '-a.txt') },
+        @{ Command = 'Move-Item a.txt b.txt'; Expected = @('b.txt', 'a.txt') },
+        @{ Command = 'Move-Item -Path a.txt -Destination b.txt'; Expected = @('b.txt', 'a.txt') },
+        @{ Command = 'Move-Item -LiteralPath a.txt -Destination b.txt'; Expected = @('b.txt', 'a.txt') },
+        # PowerShell's attached-colon form (-Path:value) packs the source into a dash-prefixed
+        # token, which the positional reader alone would drop.
+        @{ Command = 'Move-Item -Path:a.txt -Destination:b.txt'; Expected = @('b.txt', 'a.txt') },
+        @{ Command = 'Move-Item -LiteralPath:a.txt -Destination b.txt'; Expected = @('b.txt', 'a.txt') },
+        # Only -Path and -LiteralPath name a source, so a switch parameter is never harvested,
+        # whatever value it carries. Reading the parameter NAME is what makes that true: an
+        # earlier version filtered on the VALUE, which both dropped real paths and denied
+        # ordinary switch values it could not expand.
+        @{ Command = 'Move-Item a.txt b.txt -Confirm:$false'; Expected = @('b.txt', 'a.txt') },
+        @{ Command = 'Move-Item a.txt b.txt -Force:$myVar'; Expected = @('b.txt', 'a.txt') },
+        @{ Command = 'Move-Item a.txt b.txt -Confirm:$null'; Expected = @('b.txt', 'a.txt') },
+        # A source whose name begins with a dash is a real file. The positional reader drops
+        # every '-*' token, so only reading -Path by name keeps it.
+        @{ Command = 'Move-Item -Path -tracked.md -Destination b.txt'; Expected = @('b.txt', '-tracked.md') },
+        @{ Command = 'Move-Item -LiteralPath:-tracked.md -Destination b.txt'; Expected = @('b.txt', '-tracked.md') },
+        # PowerShell binds an unambiguous prefix, so -pa and -li are -Path and -LiteralPath.
+        @{ Command = 'Move-Item -pa:a.txt -Destination b.txt'; Expected = @('b.txt', 'a.txt') },
+        @{ Command = 'Move-Item -li a.txt -Destination b.txt'; Expected = @('b.txt', 'a.txt') },
+        # A boolean bound to -Path is a real (if odd) source name, so it is reported, not skipped.
+        @{ Command = 'Move-Item -Path:$false -Destination b.txt'; Expected = @('b.txt', '$false') },
+        # -Path takes an array, and PowerShell splits it across tokens at each comma.
+        @{ Command = 'Move-Item -Path a.md,b.md -Destination x.md'; Expected = @('x.md', 'a.md', 'b.md') },
+        @{ Command = 'Move-Item -Path a.md, b.md -Destination x.md'; Expected = @('x.md', 'a.md', 'b.md') },
+        @{ Command = 'Rename-Item a.txt b.txt'; Expected = @('b.txt', 'a.txt') },
+        # cp, install and ln leave the source in place, so they stay destination-only.
+        @{ Command = 'cp -t out a.txt'; Expected = @('out') },
+        @{ Command = 'cp -tout a.txt'; Expected = @('out') },
+        @{ Command = 'Copy-Item a.txt -Destination b.txt'; Expected = @('b.txt') },
         @{ Command = 'rm a.txt b.txt'; Expected = @('a.txt', 'b.txt') },
         @{ Command = 'tee out.txt'; Expected = @('out.txt') },
         @{ Command = 'touch a.txt'; Expected = @('a.txt') },
@@ -1878,8 +1936,122 @@ try {
 
     $writeDecisionCases = @(
         # The two probes recorded in backlog 054.
-        @{ Name    = 'probe 1, symlinked plans path'
-            Command = 'printf probe > docs/superpowers/.guard-probe.tmp'; Cwd = 'Managed'; Action = 'Deny'
+        # Backlog 054 recorded this as a denial. Backlog 076 turned it into an allow on purpose:
+        # docs/superpowers is a separate private repository the public repo git-ignores.
+        @{ Name    = 'probe 1, symlinked plans path is now allowed'
+            Command = 'printf probe > docs/superpowers/.guard-probe.tmp'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        @{ Name    = 'a nested path inside the plans repo is allowed'
+            Command = 'printf x > <MAIN>/docs/superpowers/plans/x.md'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        @{ Name    = 'deleting a file inside the plans repo is allowed'
+            Command = 'rm <MAIN>/docs/superpowers/seed-plan.md'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        @{ Name    = 'moving a file within the plans repo is allowed'
+            Command = 'mv <MAIN>/docs/superpowers/a.md <MAIN>/docs/superpowers/b.md'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        # The move source is outside the plans repo, so the exception must not rescue it.
+        @{ Name    = 'moving a main file into the plans repo is refused'
+            Command = 'mv <MAIN>/seed.txt <MAIN>/docs/superpowers/seed.txt'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        # PowerShell's attached-colon parameter form (-Path:value, -Destination:value) must not
+        # slip the source past detection: the destination is inside the plans repo, but the
+        # source is a plain main-checkout file the exception must not rescue.
+        @{ Name    = 'moving a main file into the plans repo with colon-form parameters is refused'
+            Command = 'Move-Item -Path:<MAIN>/seed.txt -Destination:<MAIN>/docs/superpowers/seed.txt'
+            Cwd = 'Managed'; Action = 'Deny'
+        },
+        # A colon-form switch parameter riding along must not reopen the gap the case above
+        # closes: the move source is still a plain main-checkout file, so this still denies.
+        @{ Name    = 'moving a main file into the plans repo with colon-form parameters and a switch is refused'
+            Command = 'Move-Item -Path:<MAIN>/seed.txt -Destination:<MAIN>/docs/superpowers/seed.txt -Confirm:$false'
+            Cwd = 'Managed'; Action = 'Deny'
+        },
+        # The reverse direction: a file that already lives in the plans repo, moved back out to
+        # an ordinary main-checkout location. The destination is outside the plans subtree, so
+        # this must deny even though the source itself was allowed to live inside it.
+        @{ Name    = 'moving a file out of the plans repo into main is refused'
+            Command = 'mv <MAIN>/docs/superpowers/a.md <MAIN>/x.md'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        # The plans repo's own .git is not an ordinary file inside it. Destroying it destroys the
+        # private repository, including history that was never pushed, so the exception stops at
+        # the repository boundary. Remove-Item is not the 'rm' the destructive tier matches, so
+        # nothing else refuses this.
+        @{ Name    = 'deleting the plans repo .git directory is refused'
+            Command = 'Remove-Item <MAIN>/docs/superpowers/.git -Recurse -Force'
+            Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'writing inside the plans repo .git directory is refused'
+            Command = 'printf x > <MAIN>/docs/superpowers/.git/config'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        # A git ref may be named 'bin', and 'bin' is a build-output component the allow-list
+        # normally clears. The .git boundary has to win over that list, or a ref path reopens it.
+        @{ Name    = 'a build-output name under the plans .git is still refused'
+            Command = 'printf x > <MAIN>/docs/superpowers/.git/refs/heads/bin'
+            Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'an obj name under the plans .git is still refused'
+            Command = 'printf x > <MAIN>/docs/superpowers/.git/objects/obj'
+            Cwd = 'Managed'; Action = 'Deny'
+        },
+        # The protected checkout's own .git carries the same risk one level up. A branch named
+        # 'bin' or 'obj' puts a build-output component in the ref path, and the allow-list would
+        # clear it, so a worktree session could delete a branch in the human's checkout.
+        @{ Name    = 'a build-output name under the main .git is refused'
+            Command = 'printf x > <MAIN>/.git/refs/heads/bin'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'deleting inside the main .git is refused'
+            Command = 'Remove-Item <MAIN>/.git/worktrees/obj -Recurse -Force'
+            Cwd = 'Managed'; Action = 'Deny'
+        },
+        # A real build-output path elsewhere in main stays allowed, so the fix above must not
+        # disable the allow-list itself.
+        @{ Name    = 'build output elsewhere in main stays allowed'
+            Command = 'printf x > <MAIN>/src/bin/x.dll'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        # PowerShell binds an unambiguous prefix for -Destination and -NewName too. The colon
+        # form carries its own value, so no positional fallback can rescue a missed target.
+        @{ Name    = 'an abbreviated colon-form destination into main is refused'
+            Command = 'Move-Item a.txt -Dest:<MAIN>/x.txt'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'an abbreviated colon-form NewName into main is refused'
+            Command = 'Rename-Item a.txt -NewN:<MAIN>/x.txt'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'an abbreviated colon-form Set-Content path into main is refused'
+            Command = 'Set-Content -Pa:<MAIN>/x.txt -Value y'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        # An option value is not a file the move touches, so it must not be read as a source.
+        @{ Name    = 'a -Filter value is not treated as a move source'
+            Command = 'Move-Item -Path a.txt -Destination b.txt -Filter <MAIN>/seed.txt'
+            Cwd = 'Managed'; Action = 'Allow'
+        },
+        @{ Name    = 'an -Exclude value is not treated as a move source'
+            Command = 'Move-Item -Path a.txt -Destination b.txt -Exclude <MAIN>/seed.txt'
+            Cwd = 'Managed'; Action = 'Allow'
+        },
+        # A provider-qualified path names a real location, but it is not a rooted path, so it
+        # would otherwise be anchored under the session worktree and wrongly allowed.
+        @{ Name    = 'a provider-qualified move source out of main is refused'
+            Command = "Move-Item -Path 'FileSystem::<MAIN>/seed.txt' -Destination <MANAGED>/x.md"
+            Cwd = 'Managed'; Action = 'Deny'
+        },
+        # A switch parameter the guard cannot expand must not make an in-worktree move fail.
+        @{ Name    = 'an unexpandable switch value does not block an in-worktree move'
+            Command = 'Move-Item a.txt b.txt -Force:$myVar'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        # The root is the link every worktree depends on.
+        @{ Name    = 'the plans root itself is refused'
+            Command = 'rm <MAIN>/docs/superpowers'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'renaming the plans root is refused'
+            Command = 'mv <MAIN>/docs/superpowers <MAIN>/docs/superpowers-old'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        # A name that merely starts the same way is a different directory.
+        @{ Name    = 'a decoy sibling of the plans root is refused'
+            Command = 'printf x > <MAIN>/docs/superpowers-decoy/x.md'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'another docs subtree is still refused'
+            Command = 'printf x > <MAIN>/docs/anything-else/x.md'; Cwd = 'Managed'; Action = 'Deny'
         },
         @{ Name    = 'probe 2, plain main checkout root'
             Command = 'printf probe > <MAIN>/.guard-probe2.tmp'; Cwd = 'Managed'; Action = 'Deny'
@@ -1982,6 +2154,41 @@ try {
         @{ Name    = 'install -t into main'
             Command = 'install -m 644 -t <MAIN> source.txt'; Cwd = 'Managed'; Action = 'Deny'
         },
+        # A move out of main deletes a path in main, whatever its destination is.
+        @{ Name    = 'mv out of main into the worktree is refused'
+            Command = 'mv <MAIN>/seed.txt <MANAGED>/seed.txt'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'mv -t out of main into the worktree is refused'
+            Command = 'mv -t <MANAGED> <MAIN>/seed.txt'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'Move-Item out of main is refused'
+            Command = 'Move-Item <MAIN>/seed.txt <MANAGED>/seed.txt'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'Rename-Item inside main is refused'
+            Command = 'Rename-Item <MAIN>/seed.txt old.txt'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        # A copy leaves the source alone, so it stays allowed.
+        @{ Name    = 'cp out of main into the worktree stays allowed'
+            Command = 'cp <MAIN>/seed.txt <MANAGED>/seed.txt'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        @{ Name    = 'mv inside the worktree stays allowed'
+            Command = 'mv a.txt b.txt'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        # A colon-form switch parameter is a normal non-interactive idiom and must not make the
+        # harvest treat $false as an unresolvable source, which would deny an otherwise benign
+        # in-worktree move.
+        @{ Name    = 'Move-Item inside the worktree with a colon-form switch stays allowed'
+            Command = 'Move-Item a.txt b.txt -Confirm:$false'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        # A dash-prefixed source after '--' is a real file, not an option.
+        @{ Name    = 'mv of a dash-prefixed source out of main is refused'
+            Command = 'mv -- <MAIN>/-tracked.md <MANAGED>/tracked.md'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        # -Path takes an array. The second element is the one that reaches main.
+        @{ Name    = 'Move-Item with an array source is refused on the second element'
+            Command = 'Move-Item -Path a.md, <MAIN>/seed.txt -Destination <MANAGED>/x.md'
+            Cwd = 'Managed'; Action = 'Deny'
+        },
         @{ Name    = 'cp -t inside the worktree stays allowed'
             Command = 'cp -t ./obj a.txt'; Cwd = 'Managed'; Action = 'Allow'
         },
@@ -2018,19 +2225,37 @@ try {
         }
     }
 
+    Invoke-TestCase 'Write isolation: a move out of main names the source, not the destination' {
+        $source = $fixture.Main.Replace('\', '/') + '/seed.txt'
+        $destination = $fixture.Managed.Replace('\', '/') + '/seed.txt'
+        $decision = Invoke-AgentGuardPolicy -Command "mv $source $destination" `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'Deny' $decision.Action 'Action'
+        Assert-Match ([regex]::Escape((Join-Path $fixture.Main 'seed.txt'))) $decision.Message 'Message'
+    }
+
     Invoke-TestCase 'Write isolation: rm -rf on a worktree glob is not a write-rule denial' {
         $decision = Get-AgentWorktreeWriteDecision -Command 'rm -rf ./obj/*' `
             -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
         Assert-Equal 'Allow' $decision.Action 'Action'
     }
 
-    Invoke-TestCase 'Write isolation: the plans refusal does not name a worktree copy' {
-        $decision = Invoke-AgentGuardPolicy -Command 'printf probe > docs/superpowers/x.tmp' `
+    Invoke-TestCase 'Write isolation: rm -rf inside the plans repo is still denied' {
+        $command = 'rm -rf ' + $fixture.Main.Replace('\', '/') + '/docs/superpowers/plans'
+        $decision = Invoke-AgentGuardPolicy -Command $command `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'Deny' $decision.Action 'Action'
+        Assert-Equal 'dangerous-rm' $decision.Rule 'Rule'
+    }
+
+    Invoke-TestCase 'Write isolation: the plans-root refusal explains what is still refused' {
+        $command = 'rm ' + $fixture.Main.Replace('\', '/') + '/docs/superpowers'
+        $decision = Invoke-AgentGuardPolicy -Command $command `
             -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
         Assert-Equal 'Deny' $decision.Action 'Action'
         Assert-Equal 'agent-worktree-main-write' $decision.Rule 'Rule'
-        Assert-Match 'no worktree copy' $decision.Message 'Message'
-        Assert-True ($decision.Message -notmatch 'Edit the worktree copy') 'Must not send the agent looking for a copy'
+        Assert-Match 'Files inside it are writable' $decision.Message 'Message'
+        Assert-True ($decision.Message -notmatch 'worktree copy') 'Must not send the agent looking for a copy'
     }
 
     Invoke-TestCase 'Write isolation: AHKFLOW_ALLOW_MAIN=1 downgrades to a warning' {
@@ -2077,10 +2302,23 @@ try {
         @{ Name = 'an unmanaged worktree session is not covered by this rule'
             Path = '<MAIN>\README.md'; Cwd = 'Unmanaged'; Action = 'Allow'
         },
-        # docs\superpowers is a directory symlink back to the main checkout, so the resolved path
-        # lands in main even though the path the agent typed sits inside the worktree.
-        @{ Name = 'the plans symlink resolves back into the main checkout'
-            Path = '<MANAGED>\docs\superpowers\x.md'; Cwd = 'Managed'; Action = 'Deny'
+        # docs\superpowers is a directory symlink back to the main checkout. The resolved path lands
+        # in main, and backlog 076 allows it: the target is a separate private repository.
+        @{ Name = 'the plans symlink resolves into the plans repo and is allowed'
+            Path = '<MANAGED>\docs\superpowers\x.md'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        @{ Name = 'the direct main path into the plans repo is allowed'
+            Path = '<MAIN>\docs\superpowers\specs\x.md'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        @{ Name = 'the plans root itself is refused'
+            Path = '<MAIN>\docs\superpowers'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name = 'a decoy sibling of the plans root is refused'
+            Path = '<MAIN>\docs\superpowers-decoy\x.md'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        # A sibling worktree's own files are not the plans repo and stay refused.
+        @{ Name = 'a sibling worktree file is still refused'
+            Path = '<MANAGED2>\docs\notes.md'; Cwd = 'Managed'; Action = 'Deny'
         },
         @{ Name = 'a relative path resolves against the session working directory'
             Path = 'README.md'; Cwd = 'Managed'; Action = 'Allow'
@@ -2148,13 +2386,20 @@ try {
         Assert-Match 'cannot write into the main checkout' $decision.Message 'Message'
     }
 
-    Invoke-TestCase 'File-edit isolation: the plans refusal does not name a worktree copy' {
+    Invoke-TestCase 'File-edit isolation: a file inside the plans repo is allowed' {
         $path = Join-Path $fixture.Managed 'docs\superpowers\x.md'
         $decision = Get-AgentFileEditWriteDecision -TargetPath $path `
             -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'Allow' $decision.Action 'Action'
+    }
+
+    Invoke-TestCase 'File-edit isolation: the plans root itself explains what is still refused' {
+        $path = Join-Path $fixture.Main 'docs\superpowers'
+        $decision = Get-AgentFileEditWriteDecision -TargetPath $path `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
         Assert-Equal 'Deny' $decision.Action 'Action'
-        Assert-Match 'no worktree copy' $decision.Message 'Message'
-        Assert-True ($decision.Message -notmatch 'Edit the worktree copy') 'Must not send the agent looking for a copy'
+        Assert-Match 'Files inside it are writable' $decision.Message 'Message'
+        Assert-True ($decision.Message -notmatch 'worktree copy') 'Must not send the agent looking for a copy'
     }
 
     Invoke-TestCase 'File-edit isolation: AHKFLOW_ALLOW_MAIN=1 downgrades to a warning' {
@@ -2180,13 +2425,21 @@ try {
         }
     }
 
-    Invoke-TestCase 'Entrypoint: the plans refusal reaches the agent verbatim' {
+    Invoke-TestCase 'Entrypoint: a Write inside the plans repo is allowed' {
         $target = Join-Path $fixture.Managed 'docs\superpowers\x.md'
         $result = Invoke-Entrypoint -Adapter 'Claude' -ScriptPath $script:FixtureEntrypoint `
             -StdIn (New-ClaudeEditPayload 'Write' $target $fixture.Managed)
+        Assert-Equal 0 $result.ExitCode 'ExitCode'
+        Assert-Equal '' $result.StdOut.Trim() 'Must produce no decision payload'
+    }
+
+    Invoke-TestCase 'Entrypoint: the plans-root refusal reaches the agent verbatim' {
+        $target = Join-Path $fixture.Main 'docs\superpowers'
+        $result = Invoke-Entrypoint -Adapter 'Claude' -ScriptPath $script:FixtureEntrypoint `
+            -StdIn (New-ClaudeEditPayload 'Write' $target $fixture.Managed)
         Assert-Equal 2 $result.ExitCode 'ExitCode'
-        Assert-Match 'no worktree copy' $result.StdErr 'StdErr'
-        Assert-True ($result.StdErr -notmatch 'Edit the worktree copy') 'Must not send the agent looking for a copy'
+        Assert-Match 'Files inside it are writable' $result.StdErr 'StdErr'
+        Assert-True ($result.StdErr -notmatch 'worktree copy') 'Must not send the agent looking for a copy'
     }
 
     Invoke-TestCase 'Entrypoint: an edit inside the session worktree is allowed' {
