@@ -1763,10 +1763,23 @@ function Get-AgentSegmentWriteTarget {
 }
 
 # Cmdlets that DELETE whatever the pipeline hands them, and that bind that input to their own
-# source parameter. Copy-Item and Set-Content are absent: they consume pipeline input too, but
-# they leave every path they receive where it is. mv and rm are absent as well - neither reads a
-# path from standard input, so piping into one deletes nothing.
-$script:AgentGuardPipelineSinkCmdlets = @('move-item', 'rename-item', 'remove-item')
+# source parameter, split by how many operands prove the source is written out. Copy-Item and
+# Set-Content are absent from both: they consume pipeline input too, but they leave every path
+# they receive where it is.
+#
+# Every built-in alias is listed. PowerShell resolves `Get-Item x | ri` to Remove-Item and
+# deletes x, so reading the full cmdlet names alone left every aliased spelling allowed. That
+# includes `rm` and `mv`: both are Remove-Item and Move-Item in PowerShell, whatever they mean
+# in bash. Denying a bash `... | rm` costs nothing, because coreutils rm reads no path from
+# standard input, so that pipeline deletes nothing either way.
+$script:AgentGuardPipelineRemoveSinks = @(
+    'remove-item', 'ri', 'rd', 'rmdir', 'del', 'erase', 'rm'
+)
+$script:AgentGuardPipelineMoveSinks = @(
+    'move-item', 'mi', 'move', 'mv', 'rename-item', 'rni', 'ren'
+)
+$script:AgentGuardPipelineSinkCmdlets =
+$script:AgentGuardPipelineRemoveSinks + $script:AgentGuardPipelineMoveSinks
 
 <#
 .SYNOPSIS
@@ -1785,6 +1798,9 @@ positional source. Move-Item and Rename-Item take the source first and the desti
 so a single operand is ambiguous under a pipe: PowerShell binds it to -Path, which then leaves
 the piped input with nowhere to go. Two operands are needed before the source is provably
 written out.
+
+The leaf is matched against every built-in alias too, because PowerShell resolves one to the same
+cmdlet: `Get-Item <main>\README.md | ri` deletes the file exactly as `| Remove-Item` does.
 #>
 function Test-AgentPipelineBoundSource {
     param([string[]] $Tokens)
@@ -1809,7 +1825,7 @@ function Test-AgentPipelineBoundSource {
 
     # Option values are consumed with their option, so `-Destination x` leaves no false operand.
     $operands = @(Get-AgentMoveCmdletOperand -Arguments $arguments)
-    $needed = if ($leaf -eq 'remove-item') { 1 } else { 2 }
+    $needed = if ($script:AgentGuardPipelineRemoveSinks -contains $leaf) { 1 } else { 2 }
     return ($operands.Count -lt $needed)
 }
 

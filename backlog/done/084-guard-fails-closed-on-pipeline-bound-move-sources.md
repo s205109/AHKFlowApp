@@ -42,10 +42,11 @@ source check that a written-out path gets.
   no source — needs a false-positive review first. `Get-ChildItem *.tmp | Remove-Item` scoped
   entirely inside a worktree is a normal thing to write, and it would start failing. Decide
   whether the guard denies outright or resolves the pipeline's own segment first.
-  **Resolved: deny outright.** No script or document in this repository pipes into `Remove-Item`
-  or `Move-Item`, so the idiom costs nothing here, and the denial names the rewrite. Resolving
-  the upstream segment was rejected: it is a much larger capability and it still has holes, since
-  a non-path operand such as `Where-Object Length` reads as a relative path.
+  **Resolved: deny outright.** No script in this repository pipes into `Remove-Item` or
+  `Move-Item`, so the idiom costs nothing here, and the denial names the rewrite. Documentation
+  mentions those pipelines, including this file and the guardrails doc, but nothing runs them.
+  Resolving the upstream segment was rejected: it is a much larger capability and it still has
+  holes, since a non-path operand such as `Where-Object Length` reads as a relative path.
 - Deferred from PR #289 deliberately: it needs pipeline-aware classification, a new capability
   rather than a fix to the work that branch did.
 - Related: [083](083-guard-classifies-link-targets-as-write-targets.md), the other deferred

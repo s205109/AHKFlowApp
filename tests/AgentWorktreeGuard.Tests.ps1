@@ -1838,9 +1838,27 @@ try {
         @{ Command = 'Copy-Item -Destination b.txt'; Expected = $false },
         @{ Command = 'Set-Content -Path out.txt'; Expected = $false },
         @{ Command = 'Select-Object Name'; Expected = $false },
-        # Neither reads a path from standard input, so piping into one deletes nothing.
-        @{ Command = 'rm'; Expected = $false },
-        @{ Command = 'mv'; Expected = $false }
+        # Every built-in alias of the three sinks. PowerShell resolves these to the same cmdlets,
+        # so a pipeline into one deletes exactly what a pipeline into the full name would.
+        @{ Command = 'ri'; Expected = $true },
+        @{ Command = 'rd'; Expected = $true },
+        @{ Command = 'rmdir'; Expected = $true },
+        @{ Command = 'del'; Expected = $true },
+        @{ Command = 'erase'; Expected = $true },
+        @{ Command = 'rm'; Expected = $true },
+        @{ Command = 'mi -Destination b.txt'; Expected = $true },
+        @{ Command = 'move -Destination b.txt'; Expected = $true },
+        @{ Command = 'mv -Destination b.txt'; Expected = $true },
+        @{ Command = 'rni -NewName b.txt'; Expected = $true },
+        @{ Command = 'ren -NewName b.txt'; Expected = $true },
+        # An alias that names its own source is written out, exactly as the full name would be.
+        @{ Command = 'ri a.txt'; Expected = $false },
+        @{ Command = 'rm -Path a.txt'; Expected = $false },
+        @{ Command = 'mv a.txt b.txt'; Expected = $false },
+        @{ Command = 'ren a.txt b.txt'; Expected = $false },
+        # Aliases of cmdlets that delete nothing they receive stay out.
+        @{ Command = 'cpi -Destination b.txt'; Expected = $false },
+        @{ Command = 'copy -Destination b.txt'; Expected = $false }
     )
 
     foreach ($case in $pipelineSinkCases) {
@@ -2273,6 +2291,29 @@ try {
         @{ Name    = 'Get-ChildItem out of main piped into Rename-Item is refused'
             Command = 'Get-ChildItem <MAIN> | Rename-Item -NewName old.txt'
             Cwd = 'Managed'; Action = 'Deny'
+        },
+        # An alias resolves to the same cmdlet, so it must reach the same verdict. Reading the
+        # full names only left every one of these allowed.
+        @{ Name    = 'Get-Item out of main piped into ri is refused'
+            Command = 'Get-Item <MAIN>/seed.txt | ri'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'Get-Item out of main piped into rm is refused'
+            Command = 'Get-Item <MAIN>/seed.txt | rm'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'Get-Item out of main piped into del is refused'
+            Command = 'Get-Item <MAIN>/seed.txt | del'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'Get-Item out of main piped into mv is refused'
+            Command = 'Get-Item <MAIN>/seed.txt | mv -Destination <MANAGED>/x.txt'
+            Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'Get-Item out of main piped into ren is refused'
+            Command = 'Get-Item <MAIN>/seed.txt | ren -NewName old.txt'
+            Cwd = 'Managed'; Action = 'Deny'
+        },
+        # An alias that names its own source in the worktree is classified normally.
+        @{ Name    = 'a piped ri that names a worktree source stays allowed'
+            Command = 'Get-Content list.txt | ri a.txt'; Cwd = 'Managed'; Action = 'Allow'
         },
         # The guard never runs the upstream command, so it cannot tell a worktree glob from a main
         # one. This idiom is refused too; the denial says to write the paths out as arguments.
