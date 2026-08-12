@@ -123,22 +123,34 @@ field it reads rather than describing an intention.
 
 - [ ] **Window.** Select on the record's own `timestamp` field, `>= start` and `< end`, both
       in UTC. Never on file modification time.
-- [ ] **Human turn.** A record counts only when `message.role == "user"` **and** at least one
-      element of `message.content` has `type == "text"` **and** that record carries no
-      `toolUseResult` field. Tool results and injected skill content both arrive as
-      `role: user`; the `type` and `toolUseResult` tests are what separate them.
+- [ ] **Human turn.** A record counts only when `type == "user"` **and**
+      `promptSource == "typed"` **and** `origin.kind == "human"`. Verified against a live
+      transcript: a real typed prompt has string `message.content` and both those fields
+      set; a tool-result or injected-content record has array `message.content` and both
+      fields **absent** (`null`). Round 7 showed the array/text-block test does not separate
+      them — injected content also carries a `text`-typed block — so the field pair is the
+      actual predicate, not the content shape.
 - [ ] **Sidechain.** Exclude any record with `isSidechain == true`. Report the excluded count
       alongside the result so the exclusion is visible rather than assumed.
-- [ ] **Unit of count.** State it per metric and use it consistently: handoffs and next-step
-      asks count **distinct `message.id`**; directory-bound commands count **command lines**,
-      not messages, because one message can hand over several.
-- [ ] **Deduplication.** Deduplicate on `message.id` across the whole corpus before counting,
-      not per file. Copied-forward history repeats the same id in several transcripts.
+- [ ] **Unit of count.** State it per metric and use it consistently: directory-bound
+      commands count **command lines**, not messages, because one message can hand over
+      several.
+- [ ] **Deduplication key.** `message.id` exists only on **assistant** records
+      (`msg_...`); a user record carries no `message.id` at all — verified against a live
+      transcript. So handoffs (assistant text) deduplicate on `message.id`; next-step asks
+      (user text) deduplicate on the record's top-level `uuid` instead. Using `message.id`
+      for a user-role metric silently deduplicates nothing, because the field is always
+      absent and every comparison is against `null`.
 - [ ] **Grouping.** "Sessions" means distinct transcript file names after deduplication, and
       a metric reports both the item count and the session count.
-- [ ] **CI classification.** Resolve each run's changed files from its own
-      `headSha` — `gh api repos/{owner}/{repo}/compare/{base}...{headSha}` — never from the
-      pull request's current file list, which moves when the PR is touched later.
+- [ ] **CI classification.** Resolve each run's changed files from its own `headSha`
+      against its own **run-time base**, not against current `main`:
+      `gh run view <id> --json headSha,headBranch` then the merge-base of that `headSha`
+      and the base branch **as it stood then** —
+      `gh api repos/{owner}/{repo}/compare/{base}...{headSha}` records the diff at query
+      time, so comparing against today's `main` reclassifies a run every time `main` moves.
+      Record the resolved base SHA next to the result so the classification is itself
+      reproducible, not only the file list.
 - [ ] **One primary result per metric.** Where this list allows a choice, the script fixes
       the choice and records it. An option that leaves two compliant scripts disagreeing is
       not a specification.

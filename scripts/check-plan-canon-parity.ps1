@@ -45,6 +45,34 @@ foreach ($path in @($CanonPath, $PlanPath)) {
 $canon = (Get-Content -LiteralPath $CanonPath -Raw) -replace "`r`n", "`n"
 $plan = (Get-Content -LiteralPath $PlanPath -Raw) -replace "`r`n", "`n"
 
+# Every stage must yield exactly one exit and these five edges, on both sides. Without this
+# the check fails open: a deleted row, a deleted Exit, or a duplicated edge all compare
+# equal to nothing and pass. Review round 7 proved all three.
+$expectedStageCount = 11
+$requiredEdges = @('success', 'failure', 'blocked', 'not applicable', 'resume')
+$problems = New-Object System.Collections.Generic.List[string]
+
+function Assert-StageShape {
+    param([string] $Side, [string] $Id, [string] $Exit, $Edges, [int] $ExitCount)
+
+    if ($ExitCount -ne 1) { $script:problems.Add("$Side/$Id : expected 1 Exit, found $ExitCount") }
+    elseif ([string]::IsNullOrWhiteSpace($Exit)) { $script:problems.Add("$Side/$Id : Exit is empty") }
+
+    foreach ($edge in $script:requiredEdges) {
+        if (-not $Edges.Contains($edge)) { $script:problems.Add("$Side/$Id : missing '$edge' edge") }
+    }
+    foreach ($edge in $Edges.Keys) {
+        if ($script:requiredEdges -notcontains $edge) { $script:problems.Add("$Side/$Id : unexpected edge '$edge'") }
+        if ([string]::IsNullOrWhiteSpace($Edges[$edge])) { $script:problems.Add("$Side/$Id : '$edge' has an empty target") }
+    }
+}
+
+# Appendix A only. The last stage otherwise runs to end-of-file, and the greedy edge match
+# swallows Appendix B's walkthrough arrows - round 7 hid real Stage 10 drift that way.
+$appendixA = [regex]::Match($plan, '(?s)## Appendix A(.*?)(?=\n## Appendix B|\z)')
+if (-not $appendixA.Success) { throw 'Appendix A not found in the plan. Fix this script before trusting a green result.' }
+$plan = $appendixA.Value
+
 # The canon carries one explicit anchor per stage, then a five-row edge table.
 $canonStages = [ordered]@{}
 $anchors = [regex]::Matches($canon, '<a id="stage-([0-9a-z-]+)"></a>')
@@ -56,13 +84,18 @@ for ($i = 0; $i -lt $anchors.Count; $i++) {
 
     $edges = [ordered]@{}
     foreach ($m in [regex]::Matches($block, '(?m)^\| (success|failure|blocked|not applicable|resume) \| [^|]+ \| ([^|]+) \|$')) {
-        $edges[$m.Groups[1].Value] = $m.Groups[2].Value.Trim()
+        $word = $m.Groups[1].Value
+        # A duplicate must be reported, never silently overwritten: a wrong row followed by
+        # a correct one passed before this check existed.
+        if ($edges.Contains($word)) { $problems.Add("canon/$id : duplicate '$word' edge") ; continue }
+        $edges[$word] = $m.Groups[2].Value.Trim()
     }
 
-    $canonStages[$id] = @{
-        Exit  = [regex]::Match($block, '(?m)^- \*\*Exit\*\* — (.+)$').Groups[1].Value.Trim()
-        Edges = $edges
-    }
+    $exitMatches = [regex]::Matches($block, '(?m)^- \*\*Exit\*\* — (.+)$')
+    $exit = if ($exitMatches.Count -ge 1) { $exitMatches[0].Groups[1].Value.Trim() } else { '' }
+    Assert-StageShape -Side 'canon' -Id $id -Exit $exit -Edges $edges -ExitCount $exitMatches.Count
+
+    $canonStages[$id] = @{ Exit = $exit; Edges = $edges }
 }
 
 # Appendix A writes each stage as prose, wrapped mid-sentence. Flatten before matching:
@@ -82,19 +115,35 @@ for ($i = 0; $i -lt $heads.Count; $i++) {
         if (-not $word) { continue }
         $targets = [regex]::Matches($segment, '→\s*`([^`]+)`')
         if ($targets.Count -eq 0) { continue }
+        if ($edges.Contains($word)) { $problems.Add("plan/$id : duplicate '$word' edge") ; continue }
         # The last arrow in a segment is its target; earlier ones appear inside conditions.
         $edges[$word] = $targets[$targets.Count - 1].Groups[1].Value.Trim()
     }
 
-    $planStages[$id] = @{
-        Exit  = [regex]::Match($flat, 'Exit — (.+?) Next —').Groups[1].Value.TrimEnd('.')
-        Edges = $edges
-    }
+    $exitMatches = [regex]::Matches($flat, 'Exit — (.+?) Next —')
+    $exit = if ($exitMatches.Count -ge 1) { $exitMatches[0].Groups[1].Value.TrimEnd('.') } else { '' }
+    Assert-StageShape -Side 'plan' -Id $id -Exit $exit -Edges $edges -ExitCount $exitMatches.Count
+
+    $planStages[$id] = @{ Exit = $exit; Edges = $edges }
 }
 
 "canon stages: $($canonStages.Count)   plan stages: $($planStages.Count)"
-if ($canonStages.Count -eq 0 -or $planStages.Count -eq 0) {
-    throw 'Extracted no stages from one side. The document format changed; fix this script before trusting a green result.'
+
+# Count is asserted, not merely reported. A document whose format drifted extracts fewer
+# stages, and comparing whatever survived is how a check passes vacuously.
+if ($canonStages.Count -ne $expectedStageCount) { $problems.Add("canon: expected $expectedStageCount stages, extracted $($canonStages.Count)") }
+if ($planStages.Count -ne $expectedStageCount) { $problems.Add("plan: expected $expectedStageCount stages, extracted $($planStages.Count)") }
+foreach ($id in $planStages.Keys) {
+    if (-not $canonStages.Contains($id)) { $problems.Add("plan/$id : stage not present in the canon") }
+}
+
+if ($problems.Count) {
+    ''
+    'STRUCTURE:'
+    $problems | ForEach-Object { "  $_" }
+    ''
+    "RESULT: $($problems.Count) structural problem(s). Nothing was compared."
+    exit 1
 }
 
 $differences = 0

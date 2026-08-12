@@ -286,12 +286,21 @@ anything else:
 
 ```powershell
 git -C <worktree> fetch --quiet
-git -C <worktree> show "origin/<branch>:backlog/<NNN>-<slug>.md" |
+# Find the item wherever it legitimately lives, rather than assuming backlog/.
+git -C <worktree> ls-tree -r --name-only "origin/<branch>" |
+  Select-String -Pattern "/<NNN>-<slug>\.md$"
+git -C <worktree> show "origin/<branch>:<that path>" |
   Select-String -Pattern '(?m)^- \*\*Stage\*\*: '
 ```
 
-Different from the local file, or the path missing on the remote, means the last transition
-was never published. Push, then continue from the field.
+A different Stage value means the last transition was never published: push, then continue
+from the field.
+
+**Look the path up; do not hard-code `backlog/`.** Ship moves the item to `backlog/done/`
+and a blocked transition moves it to `backlog/blocked/`, both correctly. A check that only
+reads `backlog/<item>.md` would find nothing there and call a properly pushed transition
+unpublished. The item missing from **every** location on the remote is the real signal that
+nothing was pushed.
 
 This compares **the field**, not commit divergence, which is what makes it safe: Execute's
 own task commits leave the branch ahead without touching the field, so they raise no false
@@ -578,16 +587,25 @@ Cleanup therefore ends in one of two ways, and the session says which:
    in between, logging "worktree removed; branch preserved" (`:921`). Checking the worktree
    alone would miss exactly that case.
 
-   So a session starting in this repository runs
-   `pwsh .\scripts\cleanup-merged-worktrees.ps1` and finishes what it reports. Use that
-   script's own eligibility rule rather than a hand-rolled one: it already excludes the main
-   worktree and requires proof that the branch's **own work** merged
-   (`scripts/cleanup-merged-worktrees.ps1:51-69,179-191`).
+   Two leftovers are possible and **one check does not find both**.
 
-   A hand-rolled `git branch --merged main` does not work. It lists `main` itself — on this
-   checkout that is the only entry — and it lists any branch created from `main` that has no
-   commits yet. Both are permanently "merged", so such a check reports unfinished cleanup
-   forever and teaches the reader to ignore it.
+   *Worktree still present.* Run `pwsh .\scripts\cleanup-merged-worktrees.ps1` and finish
+   what it reports. Use its eligibility rule rather than a hand-rolled one.
+
+   *Branch still present, worktree already gone.* That sweep cannot see this case: it
+   enumerates `git worktree list` (`scripts/cleanup-merged-worktrees.ps1:158`), and the
+   watcher prunes the worktree **before** deleting the branch (`:840-850`), then may stop
+   with "worktree removed; branch preserved" (`:921`). So the exact partial failure the
+   deferred route exists for is invisible to it. Until backlog 073 scripts this, check it
+   directly: a local branch other than `main`, merged into `main`, with no registered
+   worktree, whose tip differs from `main`'s tip.
+
+   The tip comparison is what makes it usable. `git branch --merged main` alone lists `main`
+   itself and every branch freshly cut from `main` with no commits of its own — permanently
+   "merged", so it reports leftovers forever and teaches the reader to ignore it. Requiring
+   the tip to differ from `main`'s keeps only branches that contributed commits now merged.
+   Verified on this repository: the sweep-based list plus that predicate reports zero, while
+   `git branch --merged main` reports `main`.
 
 Neither route lets a session claim success it did not observe. All three exit conditions
 are checked, never the worktree alone. The removal script has a

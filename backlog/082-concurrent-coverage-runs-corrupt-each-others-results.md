@@ -43,25 +43,28 @@ System.AggregateException: One or more errors occurred.
 ::error title=Coverage gate failed::1 assembly(s) failed per-assembly coverage thresholds.
 ```
 
-- Every preserved TRX reported **zero** failing tests.
-- Only **5 of 8** test assemblies produced a TRX at all. `API.Tests`,
-  `Infrastructure.Tests` and `E2E.Tests` produced none, so their coverage was missing from
-  the report.
-- The 5 that did appear carry the **Fast-slice** counts — `Application.Tests` 1747,
-  `CLI.Tests` 182 — not the Coverage counts of 2101 and 207 seen on a clean run. The results
-  in the directory did not come from the run that was being measured.
 - The failure was `FAIL AHKFlowApp.UI.Blazor` and
-  `1 assembly(s) failed per-assembly coverage thresholds`, thrown at `:94`.
-- The next Coverage run passed with every threshold met, line 94.6%, branch 82.6%, with
-  nothing changed in the repository.
+  `1 assembly(s) failed per-assembly coverage thresholds`, thrown at `run-coverage.ps1:94`.
+- The output carried `The process cannot access the file …` for
+  `AHKFlowApp.Application.dll` and `ahkflow.dll`.
+- 15 `dotnet` processes were alive, the oldest from the previous day.
+  `dotnet build-server shutdown` left 1, and the next Coverage run passed with every
+  threshold met, line 94.6%, branch 82.6%, nothing changed in the repository.
 
-The consistent reading: a second run wiped and repopulated the shared results directory
-while the first was using it, so the coverage report was assembled from partial and foreign
-data. Incomplete data pushed one assembly under its threshold.
+**The competing run was Fast, not another Coverage run.** `run-coverage.ps1:63-69` requests
+no TRX logger at all; `scripts/test-fast.ps1:109` does. So the TRX files found in
+`TestResults` after the failure were produced by a **Fast** run, and their Fast-slice counts
+say the same thing. An earlier version of this item reasoned from those files as though
+Coverage had produced them, and concluded that Coverage had written partial results. That
+reasoning was wrong, and the conclusion with it.
 
-What is **not** established: which phase held the DLL locks that also appeared in the
-output, and whether any test ever executed against an assembly it did not match. Both remain
-open questions rather than findings.
+What is established: a Fast run and a Coverage run overlapped; both build the same outputs
+and both write under `TestResults`; the Coverage run failed a threshold; a later run alone
+passed unchanged.
+
+What is **not** established: which process held the DLL locks, and whether any test executed
+against an assembly the run did not produce. Round 7 pointed out both are answerable rather
+than unknowable — see the open questions below.
 
 This is **not** `backlog/blocked/068`, the known intermittent test failures. No test failed.
 
@@ -74,13 +77,13 @@ destroys the first's evidence mid-flight.
 
 ## Acceptance criteria
 
-- [ ] **A second concurrent run cannot start, or cannot collide.** Either serialise on a
-      lock file and fail fast with a clear message, or give each run its own results and
-      report directories. Serialising is the smaller change and matches how the script is
-      actually used.
-- [ ] The coverage gate refuses to report when the result set is **incomplete**: it knows
-      which test assemblies it expected and fails naming any that produced no TRX, rather
-      than computing a threshold from partial data.
+- [ ] **A second concurrent run cannot start, or cannot collide — across scripts, not just
+      within one.** The lock must be shared by `run-coverage.ps1` and `test-fast.ps1`, since
+      the observed collision was between them. A lock held only by `run-coverage.ps1` would
+      not have prevented it.
+- [ ] The coverage gate refuses to report when its input is **incomplete**, measured in
+      **coverage artifacts** — the per-assembly Cobertura XML it actually consumes at
+      `run-coverage.ps1:79-82` — not in TRX files, which Coverage never produces.
 - [ ] The threshold error stops claiming coverage when the cause is missing input. The
       current text sends a reader hunting for a coverage regression that does not exist.
 - [ ] Timestamps are **not** used to prove freshness. With concurrent runs a file newer than
