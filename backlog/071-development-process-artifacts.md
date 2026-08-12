@@ -61,6 +61,11 @@ me.
   `.github/PULL_REQUEST_TEMPLATE.md` followed for the same reason: its checklist item was
   the last place still calling the gate a "pre-PR" gate, and a checklist is where a reader
   meets the rule.
+  Review round 6 added `scripts/check-plan-canon-parity.ps1`, the first `scripts/` change in
+  this wave. Three consecutive rounds found Appendix A drifting from the canon, each caught
+  by hand and each fixed only where the review pointed. The check finds it in seconds and
+  exits non-zero, so the next round cannot repeat that; leaving it in a scratchpad would
+  have thrown away the one artifact that stops the defect recurring.
   Review round 2 added `.gitattributes` as well. This item's own criterion requires the PDF
   generation to be **reproducible**, and it was not: `core.autocrlf=true` with no HTML rule
   meant a clean clone checked the cheatsheet out as CRLF, whose hash differs from the

@@ -44,6 +44,14 @@ one of them can never leave the other two behind.
       the platform. Done by backlog 071 in review round 2. The normalized hashing above
       stays regardless — it is what makes the check correct rather than merely consistent
       on one machine.
+- [x] A plan-versus-canon check exists: `scripts/check-plan-canon-parity.ps1` compares a
+      plan's Appendix A against `workflow.md` on every stage's exit string and all five edge
+      targets, and exits 1 on any difference. Added by backlog 071 in review round 6, after
+      three consecutive rounds found that drift by hand. It covers the stage machine only,
+      not the narrative fields.
+- [ ] The plan-versus-canon check joins the suite, so drift fails a run rather than waiting
+      for a reviewer. Extend it to the narrative fields — Action, Technique, Context — or
+      state plainly that those stay manual.
 - [ ] A drift guard scans the process sections of `AGENTS.md`. The sections it scans are
       named explicitly: `Debugging`, `Plans`, `Verification After Implementation`, and
       `Git Workflow`, plus the `Plan before you edit` and
