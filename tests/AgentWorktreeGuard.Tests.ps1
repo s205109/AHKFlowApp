@@ -604,6 +604,18 @@ try {
         @{ Command = 'git checkout .'; Action = 'Deny'; Rule = 'git-checkout-dot' },
         @{ Command = 'rm -rf src'; Action = 'Deny'; Rule = 'dangerous-rm' },
         @{ Command = 'rm -fr src'; Action = 'Deny'; Rule = 'dangerous-rm' },
+        # Recursive and force need not share a token. Splitting them, or spelling them out, is
+        # the same command and must reach the same verdict.
+        @{ Command = 'rm -r -f src'; Action = 'Deny'; Rule = 'dangerous-rm' },
+        @{ Command = 'rm -f -r src'; Action = 'Deny'; Rule = 'dangerous-rm' },
+        @{ Command = 'rm --recursive --force src'; Action = 'Deny'; Rule = 'dangerous-rm' },
+        @{ Command = 'rm -r --force src'; Action = 'Deny'; Rule = 'dangerous-rm' },
+        @{ Command = 'rm -R -f src'; Action = 'Deny'; Rule = 'dangerous-rm' },
+        # Either flag on its own is not the destructive pair.
+        @{ Command = 'rm -r src'; Action = 'Allow'; Rule = 'none' },
+        @{ Command = 'rm -f src'; Action = 'Allow'; Rule = 'none' },
+        # The build-output allow-list still applies to the split spelling.
+        @{ Command = 'rm -r -f node_modules'; Action = 'Allow'; Rule = 'none' },
         @{ Command = 'rm -rf node_modules'; Action = 'Allow'; Rule = 'none' },
         @{ Command = 'rm -rf bin'; Action = 'Allow'; Rule = 'none' },
         @{ Command = 'rm -rf obj'; Action = 'Allow'; Rule = 'none' },
@@ -1964,6 +1976,41 @@ try {
         },
         @{ Name    = 'writing inside the plans repo .git directory is refused'
             Command = 'printf x > <MAIN>/docs/superpowers/.git/config'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        # A git ref may be named 'bin', and 'bin' is a build-output component the allow-list
+        # normally clears. The .git boundary has to win over that list, or a ref path reopens it.
+        @{ Name    = 'a build-output name under the plans .git is still refused'
+            Command = 'printf x > <MAIN>/docs/superpowers/.git/refs/heads/bin'
+            Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'an obj name under the plans .git is still refused'
+            Command = 'printf x > <MAIN>/docs/superpowers/.git/objects/obj'
+            Cwd = 'Managed'; Action = 'Deny'
+        },
+        # A real build-output path elsewhere in main stays allowed, so the fix above must not
+        # disable the allow-list itself.
+        @{ Name    = 'build output elsewhere in main stays allowed'
+            Command = 'printf x > <MAIN>/src/bin/x.dll'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        # PowerShell binds an unambiguous prefix for -Destination and -NewName too. The colon
+        # form carries its own value, so no positional fallback can rescue a missed target.
+        @{ Name    = 'an abbreviated colon-form destination into main is refused'
+            Command = 'Move-Item a.txt -Dest:<MAIN>/x.txt'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'an abbreviated colon-form NewName into main is refused'
+            Command = 'Rename-Item a.txt -NewN:<MAIN>/x.txt'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'an abbreviated colon-form Set-Content path into main is refused'
+            Command = 'Set-Content -Pa:<MAIN>/x.txt -Value y'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        # An option value is not a file the move touches, so it must not be read as a source.
+        @{ Name    = 'a -Filter value is not treated as a move source'
+            Command = 'Move-Item -Path a.txt -Destination b.txt -Filter <MAIN>/seed.txt'
+            Cwd = 'Managed'; Action = 'Allow'
+        },
+        @{ Name    = 'an -Exclude value is not treated as a move source'
+            Command = 'Move-Item -Path a.txt -Destination b.txt -Exclude <MAIN>/seed.txt'
+            Cwd = 'Managed'; Action = 'Allow'
         },
         # A provider-qualified path names a real location, but it is not a rooted path, so it
         # would otherwise be anchored under the session worktree and wrongly allowed.

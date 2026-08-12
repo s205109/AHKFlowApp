@@ -291,18 +291,30 @@ True when an rm argument list carries a clustered recursive-force flag aimed at 
 target.
 
 .DESCRIPTION
-Mirrors the original raw-string rule (a single `-rf`/`-fr`/`-Rf`-style flag) but reads it from
-parsed tokens. The build-output allow-list is compared against the target's final path component,
-so `node_modules`, `bin`, `obj`, `TestResults`, `.vs`, and `/tmp` stay allowed. An rm carrying the
-flag with no visible target is treated as dangerous.
+Recursive and force are collected separately and across every argument, so the clustered `-rf`,
+the split `-r -f`, and the long `--recursive --force` all read the same. Collecting them per
+token instead would only catch the clustered spelling. The build-output allow-list is compared
+against the target's final path component, so `node_modules`, `bin`, `obj`, `TestResults`, `.vs`,
+and `/tmp` stay allowed. An rm carrying both flags with no visible target is treated as dangerous.
 #>
 function Test-AgentDangerousRmArguments {
     param([string[]] $Arguments)
 
-    $hasRecursiveForce = @($Arguments | Where-Object {
-            $_ -match '^-[a-z]*r[a-z]*f' -or $_ -match '^-[a-z]*f[a-z]*r'
-        }).Count -gt 0
-    if (-not $hasRecursiveForce) { return $false }
+    $hasRecursive = $false
+    $hasForce = $false
+    foreach ($argument in @($Arguments)) {
+        $token = [string] $argument
+        if ($token -ieq '--recursive') { $hasRecursive = $true; continue }
+        if ($token -ieq '--force') { $hasForce = $true; continue }
+
+        # A short-option cluster only. '--something-else' and operands are not flag carriers.
+        if ($token -notmatch '^-[a-zA-Z]+$') { continue }
+        $letters = $token.Substring(1)
+        # rm spells recursive '-r' or '-R', and force '-f'. '-F' is not an rm flag.
+        if ($letters -cmatch '[rR]') { $hasRecursive = $true }
+        if ($letters -cmatch 'f') { $hasForce = $true }
+    }
+    if (-not ($hasRecursive -and $hasForce)) { return $false }
 
     $positionals = @(Get-AgentGitPositionals -Arguments $Arguments)
     if ($positionals.Count -eq 0) { return $true }
@@ -1306,10 +1318,130 @@ over-reports, which is the safe direction for this grammar.
 function Test-AgentMoveSourceParameterName {
     param([string] $Name)
 
+    return (Test-AgentParameterNamePrefix -Name $Name -Candidates @('path', 'literalpath'))
+}
+
+<#
+.SYNOPSIS
+True when a cmdlet parameter name is a prefix of any candidate name.
+
+.DESCRIPTION
+PowerShell binds any unambiguous prefix, so -Dest is -Destination and -pa is -Path. Comparing
+against the full name only would miss every abbreviation. A prefix short enough to be ambiguous
+is accepted as well: PowerShell would reject such a command outright, and reading one extra
+token as a write target only ever over-reports, which is the safe direction for this grammar.
+#>
+function Test-AgentParameterNamePrefix {
+    param([string] $Name, [string[]] $Candidates)
+
     $lower = ([string] $Name).ToLowerInvariant()
     if ($lower -eq '') { return $false }
-    return ('path'.StartsWith($lower, [System.StringComparison]::Ordinal) -or
-        'literalpath'.StartsWith($lower, [System.StringComparison]::Ordinal))
+    foreach ($candidate in @($Candidates)) {
+        if (([string] $candidate).ToLowerInvariant().StartsWith($lower, [System.StringComparison]::Ordinal)) {
+            return $true
+        }
+    }
+    return $false
+}
+
+# Parameters of Move-Item / Rename-Item that consume the token after them. Their values are not
+# files the command touches, so the operand reader must skip them rather than read them as
+# sources. Switches (-Force, -Confirm, -WhatIf, -PassThru) take no value and are absent here.
+$script:AgentGuardMoveValueParameters = @(
+    'path', 'literalpath', 'destination', 'newname', 'filter', 'include', 'exclude', 'credential'
+)
+
+<#
+.SYNOPSIS
+An option's value, rejoined across the tokens an array value splits into.
+
+.DESCRIPTION
+PowerShell writes an array value as `-Path a.md, b.md`, which the tokenizer hands over as
+'a.md,' then 'b.md'. Reading one token would take 'a.md,' and lose the rest. A trailing comma is
+what says the value continues, so tokens are joined until one does not end in a comma. Returns
+the joined text and the index of the last token consumed.
+#>
+function Get-AgentOptionValueSpan {
+    param([string[]] $List, [int] $Index)
+
+    $parts = New-Object System.Collections.Generic.List[string]
+    $i = $Index
+    while ($i -lt $List.Count) {
+        $token = [string] $List[$i]
+        [void] $parts.Add($token)
+        if (-not $token.TrimEnd().EndsWith(',')) { break }
+        $i++
+    }
+    return [pscustomobject]@{ Value = ($parts -join ''); LastIndex = [Math]::Min($i, $List.Count - 1) }
+}
+
+<#
+.SYNOPSIS
+The true positional operands of a move cmdlet, with option values removed.
+
+.DESCRIPTION
+Get-AgentGitPositionals drops every '-*' token but keeps the token AFTER it, so the value of
+`-Filter *.tmp` is left behind and read as though it were a file the move touches. That
+over-reports a target and refuses ordinary in-worktree moves. This reader consumes each
+value-taking option together with its value.
+#>
+function Get-AgentMoveCmdletOperand {
+    param([string[]] $Arguments)
+
+    $operands = New-Object System.Collections.Generic.List[string]
+    $list = @($Arguments)
+    for ($i = 0; $i -lt $list.Count; $i++) {
+        $argument = [string] $list[$i]
+
+        # The colon form carries its own value, so it consumes no following token.
+        if ($argument -match '^-[A-Za-z]+:') { continue }
+
+        if ($argument -match '^-([A-Za-z]+)$') {
+            $name = [string] $Matches[1]
+            if (Test-AgentParameterNamePrefix -Name $name -Candidates $script:AgentGuardMoveValueParameters) {
+                # Consume the whole value, including the tokens an array value splits into.
+                if (($i + 1) -lt $list.Count) {
+                    $i = (Get-AgentOptionValueSpan -List $list -Index ($i + 1)).LastIndex
+                }
+                else { $i++ }
+            }
+            continue
+        }
+
+        [void] $operands.Add($argument)
+    }
+    return $operands.ToArray()
+}
+
+<#
+.SYNOPSIS
+Value of the first parameter whose name is a prefix of any given name, or $null.
+
+.DESCRIPTION
+The prefix-aware counterpart of Get-AgentNamedParameterValue. Both the `-Name value` and
+`-Name:value` forms are read. Needed because `-Dest:<path>` names a destination that no
+positional fallback can recover: the colon token is dropped as an option, so the target would
+simply go unreported.
+#>
+function Get-AgentPrefixedParameterValue {
+    param([string[]] $Arguments, [string[]] $Names)
+
+    $list = @($Arguments)
+    for ($i = 0; $i -lt $list.Count; $i++) {
+        $argument = [string] $list[$i]
+        if ($argument -notmatch '^-([A-Za-z]+)(:(.*))?$') { continue }
+
+        # Capture before anything else can overwrite $Matches.
+        $name = [string] $Matches[1]
+        $hasColonForm = $Matches.ContainsKey(2)
+        $colonValue = if ($hasColonForm) { [string] $Matches[3] } else { '' }
+        if (-not (Test-AgentParameterNamePrefix -Name $name -Candidates $Names)) { continue }
+
+        if ($hasColonForm) { return $colonValue }
+        if (($i + 1) -lt $list.Count) { return [string] $list[$i + 1] }
+        return $null
+    }
+    return $null
 }
 
 <#
@@ -1533,20 +1665,25 @@ function Get-AgentSegmentWriteTarget {
         }
     }
     elseif ($script:AgentGuardWriteCmdlets.ContainsKey($leaf)) {
-        $named = Get-AgentNamedParameterValue -Arguments $arguments -Names $script:AgentGuardWriteCmdlets[$leaf]
+        # Prefix-aware: `Set-Content -Pa:<path>` names the same target as `-Path <path>`, and the
+        # colon token is dropped as an option, so no positional fallback could recover it.
+        $named = Get-AgentPrefixedParameterValue -Arguments $arguments -Names $script:AgentGuardWriteCmdlets[$leaf]
         if ($null -ne $named) { [void] $targets.Add($named) }
         elseif ($positionals.Count -ge 1) { [void] $targets.Add($positionals[0]) }
     }
     elseif ($script:AgentGuardWriteDestinationCmdlets -contains $leaf) {
-        $named = Get-AgentNamedParameterValue -Arguments $arguments -Names @('Destination', 'NewName')
+        # Operands with option values removed, so `-Filter *.tmp` does not look like a file.
+        $cmdletOperands = @(Get-AgentMoveCmdletOperand -Arguments $arguments)
+
+        $named = Get-AgentPrefixedParameterValue -Arguments $arguments -Names @('Destination', 'NewName')
         if ($null -ne $named) { [void] $targets.Add($named) }
-        elseif ($positionals.Count -ge 2) { [void] $targets.Add($positionals[1]) }
+        elseif ($cmdletOperands.Count -ge 2) { [void] $targets.Add($cmdletOperands[1]) }
 
         # Move-Item and Rename-Item remove the paths they read. Copy-Item does not, so it is not
         # in the move table. -Path takes an array, so read every operand rather than one token,
         # and split on the comma PowerShell leaves attached to each element.
         if ($script:AgentGuardMoveCmdlets -contains $leaf) {
-            foreach ($operand in $positionals) {
+            foreach ($operand in $cmdletOperands) {
                 foreach ($piece in ($operand -split ',')) {
                     $source = $piece.Trim()
                     if ($source -ne '' -and -not $targets.Contains($source)) { [void] $targets.Add($source) }
@@ -1576,8 +1713,11 @@ function Get-AgentSegmentWriteTarget {
                 if (-not (Test-AgentMoveSourceParameterName -Name $parameterName)) { continue }
 
                 # `-Path value` puts the value in the next token; `-Path:value` carries its own.
+                # An array value spans several tokens, so take the whole span, not one token.
                 $value = if ($hasColonForm) { $colonValue }
-                elseif (($i + 1) -lt $arguments.Count) { [string] $arguments[$i + 1] }
+                elseif (($i + 1) -lt $arguments.Count) {
+                    (Get-AgentOptionValueSpan -List $arguments -Index ($i + 1)).Value
+                }
                 else { '' }
 
                 foreach ($piece in ($value -split ',')) {
@@ -1901,12 +2041,17 @@ function Test-AgentWriteTargetAllowed {
     # plans and commit them, and destroying .git destroys the repository itself, including history
     # that was never pushed. Remove-Item is not the 'rm' the destructive-command tier matches, so
     # this boundary is the only thing that refuses it.
+    # This refuses outright rather than falling through. The build-output allow-list below clears
+    # any path with a 'bin' or 'obj' component, and a git ref may be named either, so
+    # docs\superpowers\.git\refs\heads\bin would otherwise walk straight back out of this boundary.
     $plansRepo = ConvertTo-AgentGuardNormalizedPath (Join-Path $main 'docs\superpowers')
     $plansGit = ConvertTo-AgentGuardNormalizedPath (Join-Path $plansRepo '.git')
-    $insidePlansGit = ($path -ieq $plansGit) -or
-        $path.StartsWith($plansGit + '\', [System.StringComparison]::OrdinalIgnoreCase)
-    if (-not $insidePlansGit -and
-        $path.StartsWith($plansRepo + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
+    if (($path -ieq $plansGit) -or
+        $path.StartsWith($plansGit + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $false
+    }
+
+    if ($path.StartsWith($plansRepo + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
         return $true
     }
 
