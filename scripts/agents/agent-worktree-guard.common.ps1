@@ -899,6 +899,32 @@ function Test-AgentGuardHasForceFlag {
 
 <#
 .SYNOPSIS
+True when a cp invocation carries a flag that makes it create a link instead of a copy.
+
+.DESCRIPTION
+cp -l / --link makes a hard link and cp -s / --symbolic-link makes a symbolic one, so a cp
+carrying either aims at a path the way ln does. Shaped exactly like Test-AgentGuardHasForceFlag
+above, and for the same reason: short options cluster, so `cp -al src dst` carries -l inside a
+token that equals neither '-l' nor '--link', and a literal list of spellings would miss it.
+
+The cluster match is deliberately loose - any cp cluster holding 'l' or 's' sends the command
+down the link branch. Every cp operand is a path, so the worst outcome is that a plain copy
+reports its sources as well as its destination, which is the same over-report mv already makes.
+
+Case-sensitive: -S is --suffix, a different option that takes a value and names no link.
+#>
+function Test-AgentGuardHasLinkFlag {
+    param([string[]] $Arguments)
+    foreach ($arg in $Arguments) {
+        if ($arg -ceq '--link') { return $true }
+        if ($arg -ceq '--symbolic-link') { return $true }
+        if ($arg -cmatch '^-[a-zA-Z]*[ls]') { return $true }
+    }
+    return $false
+}
+
+<#
+.SYNOPSIS
 True when the tokenized git invocation mutates repository state.
 
 .DESCRIPTION
@@ -1749,7 +1775,8 @@ function Get-AgentSegmentWriteTarget {
     # First in the chain on purpose. cp is in the last-positional table below, so a link branch
     # placed after that one would never run for a linking cp: the elseif would win every time and
     # the rule would be dead rather than wrong.
-    if ($script:AgentGuardLinkCommands -contains $leaf) {
+    if (($script:AgentGuardLinkCommands -contains $leaf) -or
+        ($leaf -eq 'cp' -and (Test-AgentGuardHasLinkFlag -Arguments $arguments))) {
         foreach ($target in (Get-AgentLinkWriteTarget -Leaf $leaf -Arguments $arguments)) {
             [void] $targets.Add($target)
         }

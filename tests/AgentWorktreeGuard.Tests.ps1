@@ -1833,6 +1833,20 @@ try {
         @{ Command = 'mklink /d deep\linkdir ..\..\docs'
             Expected = @('deep\linkdir', '..\..\docs', 'deep\linkdir\..\..\docs', 'deep\..\..\docs')
         },
+        # cp --link and cp --symbolic-link create links, so they carry the same hole as ln.
+        @{ Command = 'cp -l a.md b.md'; Expected = @('b.md', 'a.md', 'b.md\a.md') },
+        @{ Command = 'cp -s a.md b.md'; Expected = @('b.md', 'a.md', 'b.md\a.md') },
+        @{ Command = 'cp --link a.md b.md'; Expected = @('b.md', 'a.md', 'b.md\a.md') },
+        @{ Command = 'cp --symbolic-link a.md b.md'
+            Expected = @('b.md', 'a.md', 'b.md\a.md')
+        },
+        # Short options cluster. A literal list of four spellings would miss every one of these.
+        @{ Command = 'cp -al a.md b.md'; Expected = @('b.md', 'a.md', 'b.md\a.md') },
+        @{ Command = 'cp -rs a.md b.md'; Expected = @('b.md', 'a.md', 'b.md\a.md') },
+        # Case matters: -S is --suffix, a different option that names no link.
+        @{ Command = 'cp -S .bak a.md b.md'; Expected = @('b.md') },
+        # A plain copy is untouched by the new branch and still reports its destination alone.
+        @{ Command = 'cp a.md b.md'; Expected = @('b.md') },
         @{ Command = 'Copy-Item a.txt -Destination b.txt'; Expected = @('b.txt') },
         @{ Command = 'rm a.txt b.txt'; Expected = @('a.txt', 'b.txt') },
         @{ Command = 'tee out.txt'; Expected = @('out.txt') },
