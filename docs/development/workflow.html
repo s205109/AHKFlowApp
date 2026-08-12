@@ -1,0 +1,430 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AHKFlow development workflow</title>
+<style>
+  /* Tokens copied from ahkflow-design-system.html. Inline on purpose:
+     this page must make zero external requests. */
+  :root {
+    --font-stack: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+    --ground: #f8fafc;
+    --card-bg: #ffffff;
+    --card-border: #e2e8f0;
+    --card-radius: 8px;
+
+    --text-heading: #0f172a;
+    --text-body: #334155;
+    --text-secondary: #475569;
+    --text-secondary-alt: #64748b;
+    --text-muted: #94a3b8;
+
+    --win-bg: #f0fdf4;      --win-border: #bbf7d0;      --win-text: #166534;
+    --friction-bg: #fef2f2; --friction-border: #fca5a5; --friction-text: #991b1b;
+    --summary-bg: #fef3c7;  --summary-bg-end: #fde68a;
+    --summary-border: #f59e0b; --summary-text: #92400e;
+    --action-bg: #eff6ff;   --action-border: #bfdbfe;   --action-text: #1e40af;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin: 0; }
+
+  body {
+    font-family: var(--font-stack);
+    background: var(--ground);
+    color: var(--text-body);
+    line-height: 1.6;
+    padding: 32px 20px 64px;
+  }
+  main { max-width: 900px; margin: 0 auto; }
+
+  h1, h2 { color: var(--text-heading); line-height: 1.25; margin: 0 0 12px; }
+  h1 { font-size: 30px; }
+  h2 { font-size: 20px; margin-top: 36px; }
+  p { margin: 0 0 12px; }
+  code { font-family: ui-monospace, Consolas, 'Courier New', monospace; font-size: 13px; }
+  a { color: var(--action-text); }
+
+  .lede { color: var(--text-secondary); }
+  /* --text-muted measures 2.45:1 on --ground, below the 4.5:1 needed for text.
+     Text uses --text-secondary-alt (4.55:1); --text-muted stays for decoration. */
+  .muted { color: var(--text-secondary-alt); font-size: 14px; }
+
+  .legend {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: var(--card-radius);
+    padding: 14px 18px;
+    margin: 16px 0 28px;
+  }
+  .legend ul { margin: 8px 0 0; padding-left: 0; list-style: none; }
+  .legend li { margin: 4px 0; font-size: 14px; }
+
+  section {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: var(--card-radius);
+    margin: 10px 0;
+  }
+
+  summary {
+    cursor: pointer;
+    padding: 14px 18px;
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--text-heading);
+    list-style: none;
+  }
+  summary::-webkit-details-marker { display: none; }
+  summary::before { content: '\25B8'; display: inline-block; width: 1em; color: var(--text-muted); }
+  details[open] > summary::before { content: '\25BE'; }
+  /* --summary-border measures 2.05:1 on --ground, below the 3:1 a focus ring needs.
+     --action-text measures 8.34:1. */
+  summary:focus-visible { outline: 3px solid var(--action-text); outline-offset: -3px; border-radius: var(--card-radius); }
+
+  .num {
+    display: inline-block;
+    min-width: 26px;
+    text-align: center;
+    background: var(--ground);
+    border: 1px solid var(--card-border);
+    border-radius: 4px;
+    font-size: 13px;
+    margin-right: 8px;
+    color: var(--text-secondary);
+  }
+
+  .body { padding: 0 18px 16px; border-top: 1px solid var(--card-border); }
+  .field { margin: 10px 0 0; font-size: 15px; }
+  .field b { color: var(--text-heading); }
+  .field.exit { color: var(--win-text); }
+  .note { font-size: 14px; color: var(--text-secondary-alt); }
+
+  ul.edges { list-style: none; margin: 14px 0 0; padding: 0; }
+  ul.edges > li {
+    border: 1px solid var(--card-border);
+    border-left-width: 5px;
+    border-radius: var(--card-radius);
+    padding: 8px 12px;
+    margin: 6px 0;
+    font-size: 14px;
+  }
+  .badge {
+    display: inline-block;
+    min-width: 116px;
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .glyph { display: inline-block; width: 1.2em; }
+  .target { font-family: ui-monospace, Consolas, 'Courier New', monospace; white-space: nowrap; }
+
+  li.e-success  { background: var(--win-bg);      border-color: var(--win-border); }
+  li.e-success  .badge, li.e-success  .target { color: var(--win-text); }
+  li.e-failure  { background: var(--friction-bg); border-color: var(--friction-border); }
+  li.e-failure  .badge, li.e-failure  .target { color: var(--friction-text); }
+  li.e-blocked  { background: linear-gradient(180deg, var(--summary-bg), var(--summary-bg-end)); border-color: var(--summary-border); }
+  li.e-blocked  .badge, li.e-blocked  .target { color: var(--summary-text); }
+  li.e-na       { background: var(--ground);      border-color: var(--card-border); }
+  li.e-na       .badge, li.e-na       .target { color: var(--text-secondary); }
+  li.e-resume   { background: var(--action-bg);   border-color: var(--action-border); }
+  li.e-resume   .badge, li.e-resume   .target { color: var(--action-text); }
+
+  @media print {
+    @page { size: A4; margin: 12mm; }
+    body { background: #ffffff; padding: 0; font-size: 10pt; }
+    section, ul.edges > li, .legend { break-inside: avoid; }
+    summary { cursor: auto; }
+    .screen-only { display: none; }
+  }
+</style>
+</head>
+<body>
+<main>
+
+  <h1>AHKFlow development workflow</h1>
+  <p class="lede">
+    Eleven stages. Five edges from every stage. Open a stage to see its eight fields and
+    every legal next step.
+  </p>
+  <p class="muted">
+    The canonical text is <a href="workflow.md">workflow.md</a>. This page draws the same
+    process. If the two ever disagree, <code>workflow.md</code> wins. One printable page:
+    <a href="ahkflow-workflow-cheatsheet.html">the cheatsheet</a>.
+  </p>
+
+  <div class="legend">
+    <b>The five edges.</b> Every stage has all five. Each one carries a word and a shape as
+    well as a colour.
+    <ul>
+      <li><span class="glyph">&#10003;</span> <b>success</b> — the exit condition is met</li>
+      <li><span class="glyph">&#10007;</span> <b>failure</b> — a check came back red</li>
+      <li><span class="glyph">&#9632;</span> <b>blocked</b> — progress needs something outside this repository</li>
+      <li><span class="glyph">&#8212;</span> <b>not applicable</b> — entered and found empty, or reclassified at entry</li>
+      <li><span class="glyph">&#8635;</span> <b>resume</b> — picked up again after being put down</li>
+    </ul>
+    <p class="note" style="margin-top:10px">
+      Targets: a stage id goes to that stage. <code>2-design/3-plan/4-execute</code> is the
+      Difficulty split. <code>stay</code> means remain here. <code>terminal</code> means no
+      next stage. <code>blocked/</code> means the item moves to <code>backlog/blocked/</code>.
+      <code>none</code> means the edge cannot occur here.
+    </p>
+    <p class="note screen-only" style="margin-bottom:0">
+      Every stage is closed at first. Printing opens all of them, then closes them again.
+    </p>
+  </div>
+
+  <h2>The stages</h2>
+
+  <section data-stage="0-intake">
+    <details>
+      <summary><span class="num">0</span>Intake</summary>
+      <div class="body">
+        <p class="field"><b>Entry:</b> friction, idea, or bug arrives</p>
+        <p class="field"><b>Who:</b> Sonnet, default effort &middot; <b>Technique:</b> <code>scripts/new-backlog-item.ps1</code></p>
+        <p class="field"><b>Action:</b> file the item, set Difficulty; for bugs, attach root-cause evidence or mark it <code>to-be-determined</code></p>
+        <p class="field exit" data-exit="Item filed with the script, summary written, Difficulty set"><b>Exit:</b> Item filed with the script, summary written, Difficulty set</p>
+        <p class="field note"><b>Context:</b> safe to clear &middot; <b>Review:</b> not reviewed</p>
+        <ul class="edges">
+          <li class="e-success" data-next="success:1-pickup"><span class="badge"><span class="glyph">&#10003;</span>success</span> filed, the template placeholder summary replaced with a real one, Difficulty set <span class="target">&rarr; 1-pickup</span></li>
+          <li class="e-failure" data-next="failure:stay"><span class="badge"><span class="glyph">&#10007;</span>failure</span> missing Difficulty or summary; complete the item <span class="target">&rarr; stay</span></li>
+          <li class="e-blocked" data-next="blocked:blocked/"><span class="badge"><span class="glyph">&#9632;</span>blocked</span> cannot specify without an external answer; file what is known with the unblock note <span class="target">&rarr; blocked/</span></li>
+          <li class="e-na" data-next="not applicable:1-pickup"><span class="badge"><span class="glyph">&#8212;</span>not applicable</span> a housekeeping round needs no item — taken once per round, at its first change; the round's commits are the record; say so <span class="target">&rarr; 1-pickup</span></li>
+          <li class="e-resume" data-next="resume:stay"><span class="badge"><span class="glyph">&#8635;</span>resume</span> item sat idle; revise Difficulty once, then re-check the whole exit condition — a placeholder summary keeps it here, and only a complete item takes the success edge <span class="target">&rarr; stay</span></li>
+        </ul>
+      </div>
+    </details>
+  </section>
+
+  <section data-stage="1-pickup">
+    <details>
+      <summary><span class="num">1</span>Pickup</summary>
+      <div class="body">
+        <p class="field"><b>Entry:</b> item chosen</p>
+        <p class="field"><b>Who:</b> Sonnet, default effort &middot; <b>Technique:</b> <code>scripts/new-worktree.ps1</code> (<code>-BaseRef</code> for stacked work), or the housekeeping worktree</p>
+        <p class="field"><b>Action:</b> choose the execution location by Difficulty — a dedicated worktree for <code>moderate</code> and <code>complex</code>, the housekeeping worktree for <code>trivial</code>. Confirm branch and base, and state both. Tracked item: push the branch, open the draft pull request, and <b>only then</b> stamp the Stage the Difficulty jump names; until that stamp lands the item keeps <code>Stage: 1-pickup</code> and the worktree is the pointer. Housekeeping round: no item, so no Stage stamp and no push here</p>
+        <p class="field exit" data-exit="Location chosen by Difficulty, base confirmed and stated, PR route in place"><b>Exit:</b> Location chosen by Difficulty, base confirmed and stated, PR route in place</p>
+        <p class="field note"><b>Context:</b> safe to clear &middot; <b>Review:</b> not reviewed</p>
+        <ul class="edges">
+          <li class="e-success" data-next="success:2-design/3-plan/4-execute"><span class="badge"><span class="glyph">&#10003;</span>success</span> location chosen, base stated, PR in place; jump by Difficulty <span class="target">&rarr; 2-design/3-plan/4-execute</span></li>
+          <li class="e-failure" data-next="failure:stay"><span class="badge"><span class="glyph">&#10007;</span>failure</span> wrong base discovered; recreate the worktree with <code>-BaseRef</code> <span class="target">&rarr; stay</span></li>
+          <li class="e-blocked" data-next="blocked:blocked/"><span class="badge"><span class="glyph">&#9632;</span>blocked</span> prerequisite outside the repository; for a round, the one blocked change is filed as its own item and only that item moves <span class="target">&rarr; blocked/</span></li>
+          <li class="e-na" data-next="not applicable:none"><span class="badge"><span class="glyph">&#8212;</span>not applicable</span> cannot occur: every item chooses a location <span class="target">&rarr; none</span></li>
+          <li class="e-resume" data-next="resume:stay"><span class="badge"><span class="glyph">&#8635;</span>resume</span> worktree exists; re-confirm branch and base, then continue at the recorded Stage for a tracked item, or from the round's commit log and PR state for a round <span class="target">&rarr; stay</span></li>
+        </ul>
+      </div>
+    </details>
+  </section>
+
+  <section data-stage="2-design">
+    <details>
+      <summary><span class="num">2</span>Design</summary>
+      <div class="body">
+        <p class="field"><b>Entry:</b> Difficulty <code>complex</code> or <code>to-be-determined</code>; bugs enter only with root-cause evidence</p>
+        <p class="field"><b>Who:</b> <code>--model opus --effort xhigh</code> &middot; <b>Technique:</b> <code>mp-grill-with-docs</code></p>
+        <p class="field"><b>Action:</b> grill the design, write the spec, pin glossary terms and ADRs, write the plain summary of at most 10 lines, and get the human's confirmation</p>
+        <p class="field exit" data-exit="Spec committed, terms and ADRs written, plain summary confirmed"><b>Exit:</b> Spec committed, terms and ADRs written, plain summary confirmed</p>
+        <p class="field note"><b>Context:</b> keep; it feeds the plan &middot; <b>Review:</b> spec reviewed before Plan</p>
+        <ul class="edges">
+          <li class="e-success" data-next="success:3-plan"><span class="badge"><span class="glyph">&#10003;</span>success</span> exit condition met <span class="target">&rarr; 3-plan</span></li>
+          <li class="e-failure" data-next="failure:stay"><span class="badge"><span class="glyph">&#10007;</span>failure</span> spec rejected; revise with the objections <span class="target">&rarr; stay</span></li>
+          <li class="e-blocked" data-next="blocked:blocked/"><span class="badge"><span class="glyph">&#9632;</span>blocked</span> external decision or platform gap <span class="target">&rarr; blocked/</span></li>
+          <li class="e-na" data-next="not applicable:3-plan"><span class="badge"><span class="glyph">&#8212;</span>not applicable</span> reclassification at entry: no spec needed; set Difficulty <code>moderate</code> and say so. <code>trivial</code> is not available here — a filed item is never trivial <span class="target">&rarr; 3-plan</span></li>
+          <li class="e-resume" data-next="resume:stay"><span class="badge"><span class="glyph">&#8635;</span>resume</span> re-read spec and review state, continue grilling or submit <span class="target">&rarr; stay</span></li>
+        </ul>
+      </div>
+    </details>
+  </section>
+
+  <section data-stage="3-plan">
+    <details>
+      <summary><span class="num">3</span>Plan</summary>
+      <div class="body">
+        <p class="field"><b>Entry:</b> spec approved, or <code>moderate</code> item picked</p>
+        <p class="field"><b>Who:</b> <code>--model opus --effort xhigh</code> &middot; <b>Technique:</b> <code>superpowers:writing-plans</code>, then <code>mp-grilling</code> on the draft, then the fabrication check</p>
+        <p class="field"><b>Action:</b> write the plan; every task lists its completion criteria and every surface that must change</p>
+        <p class="field exit" data-exit="Plan committed, grilled, fabrication-checked"><b>Exit:</b> Plan committed, grilled, fabrication-checked</p>
+        <p class="field note"><b>Context:</b> clear before Execute; the plan carries the line numbers &middot; <b>Review:</b> plan reviewed before execution</p>
+        <ul class="edges">
+          <li class="e-success" data-next="success:4-execute"><span class="badge"><span class="glyph">&#10003;</span>success</span> exit condition met <span class="target">&rarr; 4-execute</span></li>
+          <li class="e-failure" data-next="failure:stay"><span class="badge"><span class="glyph">&#10007;</span>failure</span> grilling or fabrication check fails; revise <span class="target">&rarr; stay</span></li>
+          <li class="e-blocked" data-next="blocked:blocked/"><span class="badge"><span class="glyph">&#9632;</span>blocked</span> plan exposes an external dependency <span class="target">&rarr; blocked/</span></li>
+          <li class="e-na" data-next="not applicable:none"><span class="badge"><span class="glyph">&#8212;</span>not applicable</span> cannot occur for a filed item: every tracked item gets a committed plan, however small the work. Only a housekeeping round skips Plan, and a round never enters it <span class="target">&rarr; none</span></li>
+          <li class="e-resume" data-next="resume:stay"><span class="badge"><span class="glyph">&#8635;</span>resume</span> plan exists; if execution started, take Plan's success edge and use Execute's resume there; else re-read and submit <span class="target">&rarr; stay</span></li>
+        </ul>
+      </div>
+    </details>
+  </section>
+
+  <section data-stage="4-execute">
+    <details>
+      <summary><span class="num">4</span>Execute</summary>
+      <div class="body">
+        <p class="field"><b>Entry:</b> plan committed, or inline plan stated</p>
+        <p class="field"><b>Who:</b> <code>--model sonnet --effort high</code> &middot; <b>Technique:</b> <code>superpowers:executing-plans</code> inline, or subagent-driven when <code>complex</code> plus four or more independent tasks; state the choice</p>
+        <p class="field"><b>Action:</b> work the tasks. Tracked plan work: two local commits per task boundary, the deliverable then the progress line, with <code>PLAN-PROGRESS.md</code> kept current. Housekeeping round: one commit per change, no progress file, and the round closes when a few changes have gathered. One push when the stage completes</p>
+        <p class="field exit" data-exit="All planned work committed, tracking current, stage push done"><b>Exit:</b> All planned work committed, tracking current, stage push done</p>
+        <p class="field note"><b>Context:</b> safe to clear at any task boundary &middot; <b>Review:</b> not yet reviewed</p>
+        <ul class="edges">
+          <li class="e-success" data-next="success:5-simplify"><span class="badge"><span class="glyph">&#10003;</span>success</span> exit condition met <span class="target">&rarr; 5-simplify</span></li>
+          <li class="e-failure" data-next="failure:stay"><span class="badge"><span class="glyph">&#10007;</span>failure</span> a task's check is red; root cause unclear &rarr; <code>superpowers:systematic-debugging</code> before the next edit <span class="target">&rarr; stay</span></li>
+          <li class="e-blocked" data-next="blocked:blocked/"><span class="badge"><span class="glyph">&#9632;</span>blocked</span> external blocker mid-run; commit the checkpoint with the unblock note <span class="target">&rarr; blocked/</span></li>
+          <li class="e-na" data-next="not applicable:none"><span class="badge"><span class="glyph">&#8212;</span>not applicable</span> cannot occur: every item executes something <span class="target">&rarr; none</span></li>
+          <li class="e-resume" data-next="resume:stay"><span class="badge"><span class="glyph">&#8635;</span>resume</span> tracked work: read <code>PLAN-PROGRESS.md</code>, continue at the first task without a progress line, never redo a committed task; a round: read the commit log, continue committing <span class="target">&rarr; stay</span></li>
+        </ul>
+      </div>
+    </details>
+  </section>
+
+  <section data-stage="5-simplify">
+    <details>
+      <summary><span class="num">5</span>Simplify</summary>
+      <div class="body">
+        <p class="field"><b>Entry:</b> tasks done</p>
+        <p class="field"><b>Who:</b> Sonnet, default effort &middot; <b>Technique:</b> <code>/simplify</code> (<code>code-simplifier</code>)</p>
+        <p class="field"><b>Action:</b> fold duplication, delete dead code; the gate must stay green</p>
+        <p class="field exit" data-exit="Simplification applied or verdict 'nothing to simplify' stated"><b>Exit:</b> Simplification applied or verdict 'nothing to simplify' stated</p>
+        <p class="field note"><b>Context:</b> safe to clear &middot; <b>Review:</b> not yet reviewed</p>
+        <ul class="edges">
+          <li class="e-success" data-next="success:6-verify"><span class="badge"><span class="glyph">&#10003;</span>success</span> exit condition met <span class="target">&rarr; 6-verify</span></li>
+          <li class="e-failure" data-next="failure:stay"><span class="badge"><span class="glyph">&#10007;</span>failure</span> simplification broke the gate; revert or fix <span class="target">&rarr; stay</span></li>
+          <li class="e-blocked" data-next="blocked:blocked/"><span class="badge"><span class="glyph">&#9632;</span>blocked</span> external blocker <span class="target">&rarr; blocked/</span></li>
+          <li class="e-na" data-next="not applicable:6-verify"><span class="badge"><span class="glyph">&#8212;</span>not applicable</span> entered and found empty — docs-only or trivial; say 'nothing to simplify' <span class="target">&rarr; 6-verify</span></li>
+          <li class="e-resume" data-next="resume:stay"><span class="badge"><span class="glyph">&#8635;</span>resume</span> re-run <code>/simplify</code> on the diff; it is repeatable <span class="target">&rarr; stay</span></li>
+        </ul>
+      </div>
+    </details>
+  </section>
+
+  <section data-stage="6-verify">
+    <details>
+      <summary><span class="num">6</span>Verify</summary>
+      <div class="body">
+        <p class="field"><b>Entry:</b> code settled</p>
+        <p class="field"><b>Who:</b> Sonnet, default effort &middot; <b>Technique:</b> the AGENTS.md Verification routing table (<code>dck-verify</code>)</p>
+        <p class="field"><b>Action:</b> produce the verification artifact the table names, then run the canonical five-step gate. A wait on the human for manual steps keeps the stage in progress; it is not an edge. An AGENTS.md exemption replaces the <b>artifact</b> only — for exemption 1, targeted text checks plus diff review stand in for a test. The gate still runs, on a docs-only branch too, because CI skips its .NET steps there. Name the exemption, state the verdict, take the success edge</p>
+        <p class="field exit" data-exit="Verification artifact green, gate green, verdict stated"><b>Exit:</b> Verification artifact green, gate green, verdict stated</p>
+        <p class="field note"><b>Context:</b> safe to clear after green &middot; <b>Review:</b> not yet reviewed</p>
+        <ul class="edges">
+          <li class="e-success" data-next="success:7-document"><span class="badge"><span class="glyph">&#10003;</span>success</span> exit condition met <span class="target">&rarr; 7-document</span></li>
+          <li class="e-failure" data-next="failure:4-execute"><span class="badge"><span class="glyph">&#10007;</span>failure</span> red; carry the failing output back <span class="target">&rarr; 4-execute</span></li>
+          <li class="e-blocked" data-next="blocked:blocked/"><span class="badge"><span class="glyph">&#9632;</span>blocked</span> verification depends on something outside the repository <span class="target">&rarr; blocked/</span></li>
+          <li class="e-na" data-next="not applicable:none"><span class="badge"><span class="glyph">&#8212;</span>not applicable</span> cannot occur: AGENTS.md requires a verdict either way, and an exemption replaces only the artifact while the gate still runs, so an exempt change takes the success edge with the exemption named <span class="target">&rarr; none</span></li>
+          <li class="e-resume" data-next="resume:stay"><span class="badge"><span class="glyph">&#8635;</span>resume</span> re-run the verification commands; they are reproducible <span class="target">&rarr; stay</span></li>
+        </ul>
+      </div>
+    </details>
+  </section>
+
+  <section data-stage="7-document">
+    <details>
+      <summary><span class="num">7</span>Document</summary>
+      <div class="body">
+        <p class="field"><b>Entry:</b> behaviour, vocabulary, or a rule moved — or the check that none did</p>
+        <p class="field"><b>Who:</b> Sonnet, default effort &middot; <b>Technique:</b> docs edit plus <code>CONTEXT.md</code> and skill updates</p>
+        <p class="field"><b>Action:</b> update docs, README, and skills; or state the verdict</p>
+        <p class="field exit" data-exit="Docs updated or verdict 'nothing to document' stated"><b>Exit:</b> Docs updated or verdict 'nothing to document' stated</p>
+        <p class="field note"><b>Context:</b> safe to clear &middot; <b>Review:</b> not yet reviewed</p>
+        <ul class="edges">
+          <li class="e-success" data-next="success:8-review"><span class="badge"><span class="glyph">&#10003;</span>success</span> exit condition met <span class="target">&rarr; 8-review</span></li>
+          <li class="e-failure" data-next="failure:stay"><span class="badge"><span class="glyph">&#10007;</span>failure</span> docs found contradicting the change; fix <span class="target">&rarr; stay</span></li>
+          <li class="e-blocked" data-next="blocked:blocked/"><span class="badge"><span class="glyph">&#9632;</span>blocked</span> external doc dependency <span class="target">&rarr; blocked/</span></li>
+          <li class="e-na" data-next="not applicable:8-review"><span class="badge"><span class="glyph">&#8212;</span>not applicable</span> entered, nothing moved — 'nothing to document'; the verdict is mandatory, silence is not <span class="target">&rarr; 8-review</span></li>
+          <li class="e-resume" data-next="resume:stay"><span class="badge"><span class="glyph">&#8635;</span>resume</span> diff docs against the change, continue <span class="target">&rarr; stay</span></li>
+        </ul>
+      </div>
+    </details>
+  </section>
+
+  <section data-stage="8-review">
+    <details>
+      <summary><span class="num">8</span>Review</summary>
+      <div class="body">
+        <p class="field"><b>Entry:</b> work presentable, pushed at the last stage boundary, pull request still draft</p>
+        <p class="field"><b>Who:</b> <code>--model opus --effort high</code>; Codex locally posts to the same pull request threads</p>
+        <p class="field"><b>Technique:</b> two halves. <b>Producing</b> the review: a reviewer session, or Codex, reads the branch and posts threads. <code>custom-review-findings</code> cannot do this half — it only consumes findings. <b>Handling</b> the review: <code>custom-review-findings</code> (PR mode)</p>
+        <p class="field"><b>Action:</b> ask a reviewer for the review, then handle what comes back. Reply and resolve every thread. A wait on the reviewer keeps the stage in progress; it is not an edge. Fix inside Review only what needs no code change. Any finding that needs a code change takes the failure edge to Execute; do not fix it here</p>
+        <p class="field exit" data-exit="Review received, all threads resolved, gate re-green"><b>Exit:</b> Review received, all threads resolved, gate re-green</p>
+        <p class="field note"><b>Context:</b> keep until threads resolved &middot; <b>Review:</b> reviewed; state it in the recap</p>
+        <ul class="edges">
+          <li class="e-success" data-next="success:9-ship"><span class="badge"><span class="glyph">&#10003;</span>success</span> exit condition met <span class="target">&rarr; 9-ship</span></li>
+          <li class="e-failure" data-next="failure:4-execute"><span class="badge"><span class="glyph">&#10007;</span>failure</span> findings need code changes; then Simplify, Verify, Document again as needed <span class="target">&rarr; 4-execute</span></li>
+          <li class="e-blocked" data-next="blocked:blocked/"><span class="badge"><span class="glyph">&#9632;</span>blocked</span> a finding depends on something outside the repository <span class="target">&rarr; blocked/</span></li>
+          <li class="e-na" data-next="not applicable:none"><span class="badge"><span class="glyph">&#8212;</span>not applicable</span> cannot occur: every pull request — a tracked item's or a round's — is reviewed <span class="target">&rarr; none</span></li>
+          <li class="e-resume" data-next="resume:stay"><span class="badge"><span class="glyph">&#8635;</span>resume</span> fetch unresolved threads, continue with <code>custom-review-findings</code> <span class="target">&rarr; stay</span></li>
+        </ul>
+      </div>
+    </details>
+  </section>
+
+  <section data-stage="9-ship">
+    <details>
+      <summary><span class="num">9</span>Ship</summary>
+      <div class="body">
+        <p class="field"><b>Entry:</b> review closed</p>
+        <p class="field"><b>Who:</b> Sonnet, default effort &middot; <b>Technique:</b> <code>gh pr ready</code>, then merge</p>
+        <p class="field"><b>Action:</b> close the records, <b>push</b>, then flip the pull request to ready, wait for CI, merge. Tracked work: tick the item's boxes, <code>git mv</code> it to <code>backlog/done/</code>, delete <code>PLAN-PROGRESS.md</code>, set <code>Stage: 9-ship</code> — one commit, pushed before the ready flip. A round: nothing extra to close, so nothing to push</p>
+        <p class="field exit" data-exit="Records closed, PR ready, CI green, merged"><b>Exit:</b> Records closed, PR ready, CI green, merged</p>
+        <p class="field note"><b>Context:</b> keep until the pull request description is final; safe after merge &middot; <b>Review:</b> reviewed</p>
+        <p class="field note">Ship closes the records before CI runs, so both non-success edges must undo what Ship already did. Failure converts the pull request back to draft; blocked keeps it ready, because it resumes at Ship. <b>Every Ship transition that makes a commit pushes it, success included</b> — GitHub merges the remote head, so a closure commit left local would never reach the merged <code>main</code>, and Cleanup would delete its only copy.</p>
+        <ul class="edges">
+          <li class="e-success" data-next="success:10-cleanup"><span class="badge"><span class="glyph">&#10003;</span>success</span> closure commit pushed when there is one, then CI green and merged <span class="target">&rarr; 10-cleanup</span></li>
+          <li class="e-failure" data-next="failure:6-verify"><span class="badge"><span class="glyph">&#10007;</span>failure</span> CI red after ready; convert the PR back to draft first. Tracked item: <code>git mv</code> the item back out of <code>backlog/done/</code>, restore <code>PLAN-PROGRESS.md</code>, set <code>Stage: 6-verify</code> — one commit — then push. A round: rewrite the PR body's <code>Stage:</code> line to <code>6-verify</code>; no records to restore, no transition commit, so no push. Start recovery only after that <span class="target">&rarr; 6-verify</span></li>
+          <li class="e-blocked" data-next="blocked:blocked/"><span class="badge"><span class="glyph">&#9632;</span>blocked</span> merge depends on something outside the repository, such as a required-check outage; the PR stays ready. Tracked item: restore <code>PLAN-PROGRESS.md</code>, <code>git mv</code> the item from <code>backlog/done/</code> to <code>backlog/blocked/</code> with the unblock note, keep <code>Stage: 9-ship</code>, commit, push. A round has no item: file one naming the round PR and the blocker, move that item to <code>backlog/blocked/</code>, and leave the round PR body at <code>Stage: 9-ship</code> <span class="target">&rarr; blocked/</span></li>
+          <li class="e-na" data-next="not applicable:none"><span class="badge"><span class="glyph">&#8212;</span>not applicable</span> cannot occur: everything ships through a pull request <span class="target">&rarr; none</span></li>
+          <li class="e-resume" data-next="resume:stay"><span class="badge"><span class="glyph">&#8635;</span>resume</span> <code>gh pr view</code> for the live state, continue from ready-flip or merge <span class="target">&rarr; stay</span></li>
+        </ul>
+      </div>
+    </details>
+  </section>
+
+  <section data-stage="10-cleanup">
+    <details>
+      <summary><span class="num">10</span>Cleanup</summary>
+      <div class="body">
+        <p class="field"><b>Entry:</b> pull request merged</p>
+        <p class="field"><b>Who:</b> Sonnet, default effort &middot; <b>Technique:</b> worktree removal scripts, then session end</p>
+        <p class="field"><b>Action:</b> remove the worktree and branch, clear context, update memory. A local holder process is a failure to retry, not a blocked edge</p>
+        <p class="field exit" data-exit="Worktree gone, branch deleted, memory updated"><b>Exit:</b> Worktree gone, branch deleted, memory updated</p>
+        <p class="field note"><b>Context:</b> clear freely &middot; <b>Review:</b> reviewed</p>
+        <p class="field note"><b>The session that starts Cleanup usually cannot finish it.</b> The removal hook spawns a detached watcher that outlives <code>claude.exe</code> and can only delete the worktree once that process exits. So either run removal from a session outside the worktree and check all three conditions yourself, or state that the watcher owns the outcome and let the <b>next</b> session in this repository run the checks. Neither route lets a session claim success it did not observe.</p>
+        <p class="field note">All three exit conditions are checked, never the worktree alone. The removal script can remove the worktree and keep the branch. The branch check accepts exit code 1 only: outside a repository <code>git show-ref</code> exits 128 for every ref, including refs that still exist.</p>
+        <ul class="edges">
+          <li class="e-success" data-next="success:terminal"><span class="badge"><span class="glyph">&#10003;</span>success</span> all three confirmed — <code>git -C &lt;main-checkout&gt; worktree list</code> shows no entry, <code>git -C &lt;main-checkout&gt; show-ref --verify --quiet refs/heads/&lt;branch&gt;</code> exits 1, memory updated <span class="target">&rarr; terminal</span></li>
+          <li class="e-failure" data-next="failure:stay"><span class="badge"><span class="glyph">&#10007;</span>failure</span> removal attempt failed — a holder process or a lock; name the holder, follow the removal log's manual guidance, retry <span class="target">&rarr; stay</span></li>
+          <li class="e-blocked" data-next="blocked:blocked/"><span class="badge"><span class="glyph">&#9632;</span>blocked</span> removal depends on something outside the repository, such as an upstream tooling bug. The work already merged, so the original item stays in <code>backlog/done/</code>: file a new item naming the merged PR, the worktree path, the blocker, and what would unblock it, and move that new item to <code>backlog/blocked/</code> <span class="target">&rarr; blocked/</span></li>
+          <li class="e-na" data-next="not applicable:none"><span class="badge"><span class="glyph">&#8212;</span>not applicable</span> cannot occur: Cleanup is entered only after a merge, and a round mid-flight never reaches it <span class="target">&rarr; none</span></li>
+          <li class="e-resume" data-next="resume:stay"><span class="badge"><span class="glyph">&#8635;</span>resume</span> re-check all three; worktree present &rarr; continue removal; worktree absent but branch still there &rarr; delete the branch; both gone but memory not written &rarr; update memory; all three done &rarr; take the success edge <span class="target">&rarr; stay</span></li>
+        </ul>
+      </div>
+    </details>
+  </section>
+
+  <p class="muted" style="margin-top:28px">
+    Canonical text: <a href="workflow.md">workflow.md</a>.
+    Tokens: <a href="ahkflow-design-system.html">ahkflow-design-system.html</a>.
+  </p>
+
+</main>
+
+<script>
+  let printSnapshot = null;
+  const openAll = () => {
+    const all = [...document.querySelectorAll('details')];
+    if (printSnapshot === null) printSnapshot = all.map(d => d.open);
+    all.forEach(d => d.open = true);
+  };
+  const restore = () => {
+    if (printSnapshot === null) return;
+    [...document.querySelectorAll('details')].forEach((d, i) => d.open = printSnapshot[i]);
+    printSnapshot = null;
+  };
+  window.addEventListener('beforeprint', openAll);
+  window.addEventListener('afterprint', restore);
+  matchMedia('print').addEventListener('change', e => e.matches ? openAll() : restore());
+</script>
+</body>
+</html>

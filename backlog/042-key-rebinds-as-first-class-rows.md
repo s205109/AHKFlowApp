@@ -6,6 +6,8 @@
 - **Type**: Feature
 - **Interfaces**: UI | API
 - **Status**: Deferred
+- **Difficulty**: complex
+- **Stage**: 1-pickup
 
 ## Summary
 

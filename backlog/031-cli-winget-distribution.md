@@ -7,6 +7,8 @@
 - **Interfaces**: CLI
 - **Depends on**: 030-cli-native-windows-distribution
 - **Status**: On hold — see Notes/dependencies
+- **Difficulty**: moderate
+- **Stage**: 1-pickup
 
 ## Summary
 

@@ -123,39 +123,41 @@ Frameworks: xUnit, FluentAssertions (over raw `Assert`), NSubstitute, Testcontai
 - Derive expected seed keys and row counts from the seed source — never hard-code them, or a catalog change breaks unrelated suites
 - Rebuild in Release **and restart the API/UI** before any live smoke test; a stale Debug build has served old seed data and produced a false failure
 
+## The development process
+
+The canonical process is [`docs/development/workflow.md`](docs/development/workflow.md).
+Eleven stages, five edges per stage, one durable record of where the work stands. On any
+disagreement between that file and this one, `workflow.md` wins.
+
+The sections below are the rule index. Each line is a rule; its link is the stage that owns
+the narrative.
+
 ## Debugging
 
-- State the root cause with `file:line` evidence before editing. Can't point to it — say so and keep investigating instead of shipping a plausible guess.
-- If a fix fails ("it still does not work"), stop patching. Go back to instrumentation or docs research rather than guessing again at the same shape.
+- State the root cause with `file:line` evidence before editing — see [workflow.md#stage-2-design](docs/development/workflow.md#stage-2-design).
+- Cannot point to it: say so and keep investigating. Never ship a plausible guess — see [workflow.md#stage-2-design](docs/development/workflow.md#stage-2-design).
+- A fix that fails ("it still does not work") ends the patching. Go back to instrumentation or docs research — see [workflow.md#stage-4-execute](docs/development/workflow.md#stage-4-execute).
 
 ## Plans
 
-At the end of each plan, give me a list of unresolved questions to answer, if any. Make the questions extremely concise. Sacrifice grammar for the sake of concision.
-
-### Verify the draft before you present it
-
-Run this on your own draft, right before you present a plan or spec for approval. It is not optional, and it is not something I have to ask for.
-
-Every plan names things it claims already exist. Each one is either proven or made up. Prove them:
-
-- **Identifiers defined in this repository** — a type, method, property, or option the plan says to call or extend. Paste the `file:line` that defines it.
-- **Identifiers from .NET or a NuGet package** — `TimeProvider`, `HttpClient`, an `Ardalis.Result` member, an EF Core method. These have no `file:line` here, so that form of proof does not apply. Cite the official documentation instead, for the version this repository uses. Read that version from `Directory.Packages.props`. Never cite an external API from memory.
-- **Component parameters** — any MudBlazor or other component parameter you pass. Prove it against the component API for the version in `Directory.Packages.props`. Guessed parameter names have reached plans before.
-- **Selectors and test hooks** — every CSS selector and `data-test` value a test step depends on. Paste the `file:line` in the `.razor` file that renders it.
-- **Emitted AHK syntax** — every option flag or construct the plan says to emit. Cite [`docs/development/ahk-v2-syntax.md`](docs/development/ahk-v2-syntax.md) or the official AHK v2 docs.
-- **Branch and file state** — every claim about what is merged, what a sibling branch contains, or which files exist. Prove each with a `git` or filesystem command and keep the output.
-
-Anything you cannot prove is marked **FABRICATED** in the draft. Do not quietly delete it and do not soften it into a vague sentence. List the fabricated items, then revise, then present.
-
-When finalizing a plan or spec (right before presenting the final plan for approval), save it under `docs/superpowers/plans/YYYY-MM-DD-<topic>-plan.md` or `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`. That folder is a separate PRIVATE git repo (`AHKFlowApp-plans`). It is cloned into the public repo, but the public repo git-ignores the path. So commit the plan from inside `docs/superpowers/`, not from the main repo root. `git add` from the root silently skips that path, so a root commit saves the plan nowhere. Never save a plan only in a local folder outside `docs/superpowers/`.
-
-Only commit plans/specs to the private `docs/superpowers/` repo when they relate to project improvements — code, features, infra, deployment, tests, repo tooling that affects contributors. Skip writing (or keep out-of-repo) plans for agent optimization, personal workflow tuning, agent housekeeping, or one-off context/config cleanups.
+- End every plan with a list of unresolved questions, if any. Keep them extremely concise; sacrifice grammar — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
+- Run the fabrication check on your own draft before you present it. It is not optional — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
+- Prove every identifier defined in this repository with the `file:line` that defines it — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
+- Prove every .NET or NuGet identifier against the official documentation for the version in `Directory.Packages.props`. Never cite an external API from memory — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
+- Prove every MudBlazor or other component parameter against that component's API for the version in `Directory.Packages.props` — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
+- Prove every CSS selector and `data-test` value with the `file:line` in the `.razor` file that renders it — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
+- Prove every emitted AHK construct against [`docs/development/ahk-v2-syntax.md`](docs/development/ahk-v2-syntax.md) or the official AHK v2 docs — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
+- Prove every claim about branch or file state with a `git` or filesystem command, and keep the output — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
+- Mark anything you cannot prove **FABRICATED** in the draft. Do not delete it and do not soften it. List the fabricated items, revise, then present — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
+- Save the final spec under `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` and the final plan under `docs/superpowers/plans/YYYY-MM-DD-<topic>-plan.md` — see [workflow.md#stage-2-design](docs/development/workflow.md#stage-2-design).
+- Commit from inside the private repo with `git -C docs/superpowers commit`. `git add` from the repo root silently skips that path, so a root commit saves the plan nowhere — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
+- Commit a plan or spec to the private repo only when it relates to project improvements — code, features, infra, deployment, tests, repo tooling. Keep agent optimization, personal workflow tuning, agent housekeeping, and one-off context or config cleanups out of it — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
 
 ## Verification After Implementation
 
-This fires when implementation of a feature, fix, or plan task completes — **before reporting it done**, not only before commit, push, or PR. A change that has never been exercised is not finished. Don't leave defects for a review agent to find.
-
-Default to a **durable test** as the verification artifact. Driving the app by hand proves it once; a test keeps proving it.
+- Verify when implementation of a feature, fix, or plan task completes, **before reporting it done** — not only before commit, push, or PR — see [workflow.md#stage-6-verify](docs/development/workflow.md#stage-6-verify).
+- Default to a **durable test** as the verification artifact. Driving the app by hand proves it once; a test keeps proving it — see [workflow.md#stage-6-verify](docs/development/workflow.md#stage-6-verify).
+- Produce the artifact the table below names for the surface you changed — see [workflow.md#stage-6-verify](docs/development/workflow.md#stage-6-verify).
 
 | Surface changed | Verification artifact | Command |
 |---|---|---|
@@ -167,7 +169,7 @@ Default to a **durable test** as the verification artifact. Driving the app by h
 | Domain rule, validator | Unit test | `pwsh .\scripts\test-fast.ps1 -Mode Fast` |
 | Real Azure AD login, visual judgment call | Numbered manual steps for the user | — |
 
-Which slice to run, test templates, and the canonical pre-PR gate: [`docs/development/testing-workflow.md`](docs/development/testing-workflow.md).
+Which slice to run, test templates, and the canonical gate: [`docs/development/testing-workflow.md`](docs/development/testing-workflow.md).
 
 ### The only exemptions
 
@@ -179,7 +181,7 @@ State the verdict either way. Naming an exemption is fine; saying nothing is not
 
 ### When manual steps are the answer
 
-Ask the user only for the cases the table sends to them. Then always provide:
+Ask the user only for the cases the table sends to them — see [workflow.md#stage-6-verify](docs/development/workflow.md#stage-6-verify). Then always provide:
 
 - **Preconditions first** — what must be running, exact URL, login/profile, starting state
 - **Numbered steps, one action each** — never combine actions in one step
@@ -256,35 +258,20 @@ the API URL + `/health`. SWA hostname:
 
 ## Git Workflow
 
-GitHub Flow — feature branches from `main`, PR required for all merges.
-Branch naming: `feature/NNN-short-description`, `fix/short-description`, `hotfix/issueid-short-description`
-Branches created in agent git worktrees insert `wt-` after the type prefix: `fix/wt-<topic>`, `feature/wt-NNN-<topic>` — marks worktree-born branches for grepping/cleanup.
-Conventional commits: `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:` — body explains "why", not "what".
-Atomic commits: one logical change per commit; feature + its tests = one commit. Don't bundle unrelated changes.
-Filing a `backlog/` item: run `pwsh ./scripts/new-backlog-item.ps1 -Title "..."`. It works out the next free number and writes the file from the template. Never pick a number by hand — two items have already ended up sharing one. CI fails when two files share a number.
-Finishing a `backlog/` item: tick its acceptance boxes **and** `git mv` the file into `backlog/done/` in the same PR that does the work. Merging that PR is what completes the item, so the move belongs there. Never open a separate PR just to mark an item done.
-Blocking a `backlog/` item: `git mv` it into `backlog/blocked/` when it is blocked on something outside this repository — an upstream bug report, an unreleased platform feature, a decision the human deferred. The test is whether the work is possible right now, not whether it is worth doing. A low-priority item stays in `backlog/`. A blocked item keeps its number and its unticked boxes, and must say near the top what would unblock it. All three folders are scanned for duplicate numbers, so blocking never frees a number.
-Never force-push to main/master. Run the canonical pre-PR gate before creating a PR — [`docs/development/testing-workflow.md`](docs/development/testing-workflow.md#canonical-pre-pr-gate).
-Keep PRs focused on a single concern; split large changes into stacked PRs.
-
-Confirm the base before branching. A new branch starts from the main checkout's current HEAD, so
-work that builds on unmerged work must say so explicitly: pass `-BaseRef <branch>` to
-`scripts/new-worktree.ps1`. Check which branch actually contains the spec, plan, or code you are
-building on rather than defaulting to `main` — branching from `main` while the prerequisite sits on
-an open branch produces a diff full of unrelated commits after the first rebase. Claude Code's native
-worktree creation cannot pass a base ref, so stacked work must call the script directly; see the
-`worktrees` skill.
-
-The AHKFlowApp main checkout is human-owned. A session running **in main** may inspect, edit,
-build, test, and format there. A session running in a managed worktree may read main, but a shell
-command that writes, moves, or deletes a path under main is refused. The guard gates a Git command
-only when it could change the human's HEAD, index, or working tree in main. Most of these mutations need a managed linked worktree. Run from main
-instead, and most now get an in-session approval prompt. A short list of operations — such as
-`git worktree prune` or deleting an already-merged branch — always run from main, no prompt.
-`git commit` is the one exception. It always needs a worktree, or a session-wide
-`AHKFLOW_ALLOW_MAIN=1` set before the session starts. It never gets a prompt. Use
-`scripts/new-worktree.ps1`, or the native `EnterWorktree` tool — that tool fires the
-`WorktreeCreate` hook, which runs the same script. See `docs/agents/cross-agent-git-guardrails.md`.
+- Use GitHub Flow: feature branches from `main`, a PR for every merge — see [workflow.md#stage-1-pickup](docs/development/workflow.md#stage-1-pickup).
+- Name branches `feature/NNN-short-description`, `fix/short-description`, or `hotfix/issueid-short-description` — see [workflow.md#stage-1-pickup](docs/development/workflow.md#stage-1-pickup).
+- Insert `wt-` after the type prefix for a branch born in an agent worktree: `fix/wt-<topic>`, `feature/wt-NNN-<topic>` — see [workflow.md#stage-1-pickup](docs/development/workflow.md#stage-1-pickup).
+- Confirm the base before branching, and state it. Pass `-BaseRef <branch>` to `scripts/new-worktree.ps1` for work that builds on an unmerged branch. The native worktree tool cannot pass a base ref, so stacked work calls the script directly — see [workflow.md#stage-1-pickup](docs/development/workflow.md#stage-1-pickup).
+- Write conventional commits: `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`. The body explains "why", not "what" — see [workflow.md#stage-4-execute](docs/development/workflow.md#stage-4-execute).
+- Keep commits atomic: one logical change per commit, a feature and its tests together. Do not bundle unrelated changes — see [workflow.md#stage-4-execute](docs/development/workflow.md#stage-4-execute).
+- File a `backlog/` item with `pwsh ./scripts/new-backlog-item.ps1 -Title "..."`. Never pick a number by hand; CI fails when two files share one — see [workflow.md#stage-0-intake](docs/development/workflow.md#stage-0-intake).
+- Finish a `backlog/` item by ticking its boxes **and** `git mv`-ing the file into `backlog/done/` in the same PR that does the work. Never open a separate PR to mark an item done — see [workflow.md#stage-9-ship](docs/development/workflow.md#stage-9-ship).
+- Block a `backlog/` item by `git mv`-ing it into `backlog/blocked/` when it waits on something outside this repository. The test is whether the work is possible right now, not whether it is worth doing; a low-priority item stays in `backlog/`. It keeps its number and its unticked boxes, and says near the top what would unblock it — see [workflow.md#stage-1-pickup](docs/development/workflow.md#stage-1-pickup).
+- Never force-push to `main` — see [workflow.md#stage-9-ship](docs/development/workflow.md#stage-9-ship).
+- Run the canonical five-step gate before you mark a pull request **ready**, not when you open the draft: [`docs/development/testing-workflow.md`](docs/development/testing-workflow.md#canonical-pre-pr-gate) — see [workflow.md#stage-6-verify](docs/development/workflow.md#stage-6-verify).
+- Keep a PR focused on a single concern; split a large change into stacked PRs — see [workflow.md#stage-8-review](docs/development/workflow.md#stage-8-review).
+- Treat the main checkout as human-owned. A session in main may inspect, edit, build, test, and format. A session in a managed worktree may read main, but any shell command that writes, moves, or deletes a path under main is refused — see [workflow.md#stage-1-pickup](docs/development/workflow.md#stage-1-pickup).
+- Run a gated Git command from main, where most now get an in-session prompt. `git commit` is the exception: it always needs a worktree, or a session-wide `AHKFLOW_ALLOW_MAIN=1` set before the session starts, and it never gets a prompt. Full rules: [`docs/agents/cross-agent-git-guardrails.md`](docs/agents/cross-agent-git-guardrails.md) — see [workflow.md#stage-1-pickup](docs/development/workflow.md#stage-1-pickup).
 
 ## Agent skills
 
