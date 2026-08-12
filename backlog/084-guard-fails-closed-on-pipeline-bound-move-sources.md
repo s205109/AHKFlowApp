@@ -1,4 +1,4 @@
-# 078 - Guard fails closed on pipeline-bound move sources
+# 084 - Guard fails closed on pipeline-bound move sources
 
 ## Metadata
 
@@ -44,5 +44,5 @@ source check that a written-out path gets.
   whether the guard denies outright or resolves the pipeline's own segment first.
 - Deferred from PR #289 deliberately: it needs pipeline-aware classification, a new capability
   rather than a fix to the work that branch did.
-- Related: [077](077-guard-classifies-link-targets-as-write-targets.md), the other deferred
+- Related: [083](083-guard-classifies-link-targets-as-write-targets.md), the other deferred
   finding from the same review.

@@ -1,4 +1,4 @@
-# 077 - Guard classifies link targets as write targets
+# 083 - Guard classifies link targets as write targets
 
 ## Metadata
 
@@ -46,5 +46,5 @@ through a link it made itself.
 - Deferred from PR #289 deliberately: closing it means the write grammar has to understand link
   semantics, which is a new capability in a security-critical hot path rather than a fix to the
   work that branch did.
-- Related: [078](078-guard-fails-closed-on-pipeline-bound-move-sources.md), the other deferred
+- Related: [084](084-guard-fails-closed-on-pipeline-bound-move-sources.md), the other deferred
   finding from the same review.
