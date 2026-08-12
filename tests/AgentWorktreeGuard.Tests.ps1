@@ -1723,6 +1723,10 @@ try {
         # token, which the positional reader alone would drop.
         @{ Command = 'Move-Item -Path:a.txt -Destination:b.txt'; Expected = @('b.txt', 'a.txt') },
         @{ Command = 'Move-Item -LiteralPath:a.txt -Destination b.txt'; Expected = @('b.txt', 'a.txt') },
+        # A colon-form switch parameter (-Confirm:$false) is not a path source. $true/$false are
+        # the only values a switch's colon form ever carries, and no path-bearing parameter's
+        # value is ever a bare boolean, so the harvest must skip it.
+        @{ Command = 'Move-Item a.txt b.txt -Confirm:$false'; Expected = @('b.txt', 'a.txt') },
         # -Path takes an array, and PowerShell splits it across tokens at each comma.
         @{ Command = 'Move-Item -Path a.md,b.md -Destination x.md'; Expected = @('x.md', 'a.md', 'b.md') },
         @{ Command = 'Move-Item -Path a.md, b.md -Destination x.md'; Expected = @('x.md', 'a.md', 'b.md') },
@@ -1926,6 +1930,12 @@ try {
             Command = 'Move-Item -Path:<MAIN>/seed.txt -Destination:<MAIN>/docs/superpowers/seed.txt'
             Cwd = 'Managed'; Action = 'Deny'
         },
+        # A colon-form switch parameter riding along must not reopen the gap the case above
+        # closes: the move source is still a plain main-checkout file, so this still denies.
+        @{ Name    = 'moving a main file into the plans repo with colon-form parameters and a switch is refused'
+            Command = 'Move-Item -Path:<MAIN>/seed.txt -Destination:<MAIN>/docs/superpowers/seed.txt -Confirm:$false'
+            Cwd = 'Managed'; Action = 'Deny'
+        },
         # The reverse direction: a file that already lives in the plans repo, moved back out to
         # an ordinary main-checkout location. The destination is outside the plans subtree, so
         # this must deny even though the source itself was allowed to live inside it.
@@ -2066,6 +2076,12 @@ try {
         },
         @{ Name    = 'mv inside the worktree stays allowed'
             Command = 'mv a.txt b.txt'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        # A colon-form switch parameter is a normal non-interactive idiom and must not make the
+        # harvest treat $false as an unresolvable source, which would deny an otherwise benign
+        # in-worktree move.
+        @{ Name    = 'Move-Item inside the worktree with a colon-form switch stays allowed'
+            Command = 'Move-Item a.txt b.txt -Confirm:$false'; Cwd = 'Managed'; Action = 'Allow'
         },
         # A dash-prefixed source after '--' is a real file, not an option.
         @{ Name    = 'mv of a dash-prefixed source out of main is refused'

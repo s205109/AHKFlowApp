@@ -1541,12 +1541,17 @@ function Get-AgentSegmentWriteTarget {
             # to tell which parameter each token belongs to (a colon-form -Destination:value gets
             # reported as a source as well as a target) — over-reporting a target is safe here,
             # the same superset doctrine the rest of this table follows; under-reporting a move
-            # source is not.
+            # source is not. The one value this harvest must skip is $true / $false: PowerShell's
+            # colon form on a switch parameter (-Confirm:$false, -WhatIf:$true) only ever carries
+            # one of those two literals, and no path-bearing parameter's value is ever a bare
+            # boolean, so excluding exactly those two removes every switch false positive without
+            # dropping a real path.
             foreach ($argument in $arguments) {
                 if ($argument -match '^-[A-Za-z]+:(.+)$') {
                     foreach ($piece in ($Matches[1] -split ',')) {
                         $source = $piece.Trim()
-                        if ($source -ne '' -and -not $targets.Contains($source)) { [void] $targets.Add($source) }
+                        if ($source -eq '' -or $source -match '^\$(true|false)$') { continue }
+                        if (-not $targets.Contains($source)) { [void] $targets.Add($source) }
                     }
                 }
             }
