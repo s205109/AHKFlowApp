@@ -23,12 +23,12 @@ through a link it made itself.
 
 ## Acceptance criteria
 
-- [ ] `New-Item -ItemType HardLink -Path <allowed>\x.md -Target <main>\README.md` is refused from a
+- [x] `New-Item -ItemType HardLink -Path <allowed>\x.md -Target <main>\README.md` is refused from a
       managed worktree
-- [ ] The same holds for `-ItemType SymbolicLink` and `-ItemType Junction`
-- [ ] The same holds for the `ln` and `mklink` spellings
-- [ ] Creating a link whose target is inside the session's own worktree stays allowed
-- [ ] Tests cover each spelling above, in `tests/AgentWorktreeGuard.Tests.ps1`
+- [x] The same holds for `-ItemType SymbolicLink` and `-ItemType Junction`
+- [x] The same holds for the `ln` and `mklink` spellings
+- [x] Creating a link whose target is inside the session's own worktree stays allowed
+- [x] Tests cover each spelling above, in `tests/AgentWorktreeGuard.Tests.ps1`
 
 ## Out of scope
 

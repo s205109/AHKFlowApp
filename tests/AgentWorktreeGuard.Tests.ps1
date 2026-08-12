@@ -2520,6 +2520,99 @@ try {
         }
     }
 
+    Write-Host 'Link creation aimed at the main checkout' -ForegroundColor Cyan
+
+    # A link created at an allowed path but AIMED at the main checkout is a write into the main
+    # checkout: the next Set-Content through the link lands on the protected file, and names only
+    # an allowed path while doing it.
+    $linkDecisionCases = @(
+        @{ Name = 'New-Item HardLink into main'
+            Command = 'New-Item -ItemType HardLink -Path <MANAGED>\bait.md -Target <MAIN>\README.md'
+            Action = 'Deny'
+        },
+        @{ Name = 'New-Item SymbolicLink into main'
+            Command = 'New-Item -ItemType SymbolicLink -Path <MANAGED>\bait.md -Target <MAIN>\README.md'
+            Action = 'Deny'
+        },
+        @{ Name = 'New-Item Junction into main'
+            Command = 'New-Item -ItemType Junction -Path <MANAGED>\baitdir -Target <MAIN>\docs'
+            Action = 'Deny'
+        },
+        @{ Name = 'New-Item using the -Value spelling'
+            Command = 'New-Item -ItemType SymbolicLink -Path <MANAGED>\bait.md -Value <MAIN>\README.md'
+            Action = 'Deny'
+        },
+        @{ Name = 'ln -s into main'
+            Command = 'ln -s <MAIN>\README.md <MANAGED>\bait.md'
+            Action = 'Deny'
+        },
+        @{ Name = 'ln hard link into main'
+            Command = 'ln <MAIN>\README.md <MANAGED>\bait.md'
+            Action = 'Deny'
+        },
+        @{ Name = 'mklink through cmd, unquoted'
+            Command = 'cmd /c mklink /H <MANAGED>\bait.md <MAIN>\README.md'
+            Action = 'Deny'
+        },
+        @{ Name = 'mklink through cmd, Git Bash flag spelling'
+            Command = 'cmd //c mklink /D <MANAGED>\baitdir <MAIN>\docs'
+            Action = 'Deny'
+        },
+        @{ Name = 'cp with a clustered link flag into main'
+            Command = 'cp -al <MAIN>\README.md <MANAGED>\bait.md'
+            Action = 'Deny'
+        },
+        # The regression the three-form emission exists for. Anchored to the working directory
+        # this target lands ABOVE the checkout and looks allowed; anchored to the directory
+        # holding the link, which is how Windows resolves it, it lands inside main.
+        @{ Name = 'a relative target only the parent anchor catches'
+            Command = 'ln -s ../../../../README.md deep/bait.md'
+            Action = 'Deny'
+        },
+        # A link that stays inside the session's own worktree is ordinary work.
+        @{ Name = 'a link inside the session worktree'
+            Command = 'New-Item -ItemType SymbolicLink -Path <MANAGED>\bait.md -Target <MANAGED>\src\a.cs'
+            Action = 'Allow'
+        },
+        @{ Name = 'ln inside the session worktree'
+            Command = 'ln -s <MANAGED>\src\a.cs <MANAGED>\bait.md'
+            Action = 'Allow'
+        },
+        # Every one of the three anchors has to stay inside the worktree for this to be Allow.
+        # '../src/a.cs' would NOT: from the worktree root it climbs into .claude\worktrees, which
+        # is main.
+        @{ Name = 'a relative link that stays inside the session worktree'
+            Command = 'ln -s src/a.cs deep/bait.md'
+            Action = 'Allow'
+        },
+        # The gate from Task 5, proved at the decision layer: content is not a path.
+        @{ Name = 'an ordinary file write with a value is untouched'
+            Command = 'New-Item -ItemType File -Path <MANAGED>\notes.md -Value plain-text'
+            Action = 'Allow'
+        }
+    )
+
+    foreach ($case in $linkDecisionCases) {
+        Invoke-TestCase "Link creation: $($case.Name)" {
+            $command = $case.Command.
+            Replace('<MANAGED>', $fixture.Managed).
+            Replace('<MAIN>', $fixture.Main)
+            $decision = Invoke-AgentGuardPolicy -Command $command `
+                -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+            Assert-Equal $case.Action $decision.Action 'Action'
+        }
+    }
+
+    Invoke-TestCase 'Link creation: a refused link names the file the write would land on' {
+        $command = 'New-Item -ItemType HardLink -Path ' + $fixture.Managed +
+        '\bait.md -Target ' + $fixture.Main + '\README.md'
+        $decision = Invoke-AgentGuardPolicy -Command $command `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'agent-worktree-main-write' $decision.Rule 'Rule'
+        Assert-Match 'cannot write into the main checkout' $decision.Message 'Message'
+        Assert-Match 'README.md' $decision.Message 'Message names the target'
+    }
+
     Invoke-TestCase 'File-edit isolation: a denial carries the shared write rule name' {
         $decision = Get-AgentFileEditWriteDecision -TargetPath (Join-Path $fixture.Main 'README.md') `
             -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
