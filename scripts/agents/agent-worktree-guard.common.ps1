@@ -1649,6 +1649,20 @@ function Get-AgentLinkWriteTarget {
 
     $found = New-Object System.Collections.Generic.List[string]
 
+    if ($Leaf -eq 'mklink') {
+        # mklink [[/d] | [/h] | [/j]] <link> <target>. All three options are switches: none of
+        # them consumes the token that follows, so the reader drops the option and reads on. The
+        # '-*' test stays because Get-AgentGitPositionals cannot be reused here - it keeps
+        # '/'-prefixed tokens, and they would be read as the link and the target.
+        $linkOperands = @($Arguments | Where-Object { $_ -notlike '-*' -and $_ -notlike '/*' })
+        if ($linkOperands.Count -ge 1) { [void] $found.Add([string] $linkOperands[0]) }
+        if ($linkOperands.Count -ge 2) {
+            Add-AgentLinkTargetCandidate -LinkPath ([string] $linkOperands[0]) `
+                -Target ([string] $linkOperands[1]) -Sink $found
+        }
+        return $found.ToArray()
+    }
+
     $set = Get-AgentMoveArgumentSet -Arguments $Arguments
     $operands = @($set.Operands)
     $targetDirectory = Get-AgentTargetDirectoryOption -Arguments $set.Options

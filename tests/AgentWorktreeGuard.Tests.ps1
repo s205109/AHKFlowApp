@@ -1820,6 +1820,19 @@ try {
         },
         # One operand names a link in the working directory and nothing else.
         @{ Command = 'ln -s a.md'; Expected = @('a.md') },
+        # mklink puts the LINK first and the TARGET second, and its options are '/'-prefixed.
+        @{ Command = 'mklink link.md C:\repo\README.md'
+            Expected = @('link.md', 'C:\repo\README.md')
+        },
+        @{ Command = 'mklink /D linkdir C:\repo\docs'; Expected = @('linkdir', 'C:\repo\docs') },
+        @{ Command = 'mklink /H link.md C:\repo\README.md'
+            Expected = @('link.md', 'C:\repo\README.md')
+        },
+        @{ Command = 'mklink /J linkdir C:\repo\docs'; Expected = @('linkdir', 'C:\repo\docs') },
+        # Lower case spells the same switch, and a relative target needs all three forms.
+        @{ Command = 'mklink /d deep\linkdir ..\..\docs'
+            Expected = @('deep\linkdir', '..\..\docs', 'deep\linkdir\..\..\docs', 'deep\..\..\docs')
+        },
         @{ Command = 'Copy-Item a.txt -Destination b.txt'; Expected = @('b.txt') },
         @{ Command = 'rm a.txt b.txt'; Expected = @('a.txt', 'b.txt') },
         @{ Command = 'tee out.txt'; Expected = @('out.txt') },
