@@ -1924,6 +1924,23 @@ try {
         @{ Command = "sh -c 'printf x > out.txt'"; Expected = @('out.txt') },
         @{ Command = "bash -c 'rm out.txt'"; Expected = @('out.txt') },
         @{ Command = 'cmd /c "del out.txt"'; Expected = @() },
+        # mklink is a cmd builtin, so the rule only ever fires through cmd. Unquoted, the inner
+        # command is the REST of this segment, already tokenized.
+        @{ Command = 'cmd /c mklink /D linkdir C:\repo\docs'
+            Expected = @('linkdir', 'C:\repo\docs')
+        },
+        # Git Bash writes the flag '//c'; MSYS rewrites it to '/c' on the way to cmd, and the
+        # guard reads the text before that happens.
+        @{ Command = 'cmd //c mklink /H link.md C:\repo\README.md'
+            Expected = @('link.md', 'C:\repo\README.md')
+        },
+        # Quoted, the whole inner command is one token, which the existing recursion already
+        # handles. It must be reported once, not twice.
+        @{ Command = 'cmd /c "mklink /D linkdir C:\repo\docs"'
+            Expected = @('linkdir', 'C:\repo\docs')
+        },
+        # The remainder scan is general, so an unquoted inner write is now seen too.
+        @{ Command = 'sh -c rm out.txt'; Expected = @('out.txt') },
         @{ Command = 'powershell -Command "Remove-Item out.txt"'; Expected = @('out.txt') },
         # Depth 2 is reached and still scanned.
         @{ Command = 'sh -c "pwsh -Command ''Set-Content out.txt x''"'; Expected = @('out.txt') },

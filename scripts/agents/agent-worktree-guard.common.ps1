@@ -1963,10 +1963,84 @@ $script:AgentGuardInterpreterSpecs = @(
     @{ Leaf = 'zsh'; Flags = @('-c') },
     @{ Leaf = 'pwsh'; Flags = @('-command', '-c') },
     @{ Leaf = 'powershell'; Flags = @('-command', '-c') },
-    @{ Leaf = 'cmd'; Flags = @('/c', '/k') }
+    # '//c' and '//k' are how Git Bash writes these: MSYS rewrites a leading '//' to '/' on the
+    # way to cmd, and this guard reads the command text before that rewrite happens.
+    @{ Leaf = 'cmd'; Flags = @('/c', '/k', '//c', '//k') }
 )
 
 $script:AgentGuardMaxInterpreterDepth = 2
+
+<#
+.SYNOPSIS
+Write targets carried by the inner command of an interpreter invocation.
+
+.DESCRIPTION
+Two shapes reach an interpreter, and each needs its own reader.
+
+Quoted - `cmd /c "mklink /D a b"` - hands the whole inner command over as ONE token, so it is
+re-tokenized through Get-AgentCommandWriteTarget.
+
+Unquoted - `cmd /c mklink /D a b` - leaves the inner command as the rest of THIS segment, already
+split into tokens. Reading only the token after the flag would see 'mklink' and lose every
+operand. Re-joining the tokens into a string would break any path holding a space. So the slice
+travels whole, with the masks that say which characters were quoted: Get-AgentSegmentWriteTarget
+reads them to tell an unquoted '>' from a quoted one, and a regenerated mask would call quoted
+text unquoted.
+
+The two do not double-count. A quoted inner command leaves nothing after the flag, so the
+remainder slice is empty; an unquoted one leaves a first token whose leaf matches no table.
+
+This lives in one function because the policy core needs the same logic, and two copies of a
+security rule drift silently.
+#>
+function Get-AgentInterpreterInnerTarget {
+    [CmdletBinding()]
+    param([string[]] $Tokens, [string[]] $Masks, [int] $Depth)
+
+    $found = New-Object System.Collections.Generic.List[string]
+    $unresolved = $false
+    $tokens = @($Tokens)
+    $masks = @($Masks)
+
+    if ($tokens.Count -lt 3) {
+        return [pscustomobject]@{ Targets = $found.ToArray(); Unresolved = $false }
+    }
+
+    $leaf = Get-AgentCommandLeafName -Word $tokens[0]
+    $spec = $script:AgentGuardInterpreterSpecs | Where-Object { $_.Leaf -eq $leaf } | Select-Object -First 1
+    if ($null -eq $spec) {
+        return [pscustomobject]@{ Targets = $found.ToArray(); Unresolved = $false }
+    }
+
+    for ($i = 1; $i -lt $tokens.Count - 1; $i++) {
+        if ($spec.Flags -notcontains ([string] $tokens[$i]).ToLowerInvariant()) { continue }
+
+        # The depth test lives here, not at the top: a segment that is not an interpreter carrying
+        # an inner command was already scanned in full by the caller, so it must not be reported
+        # as unresolved just because the recursion budget ran out.
+        if ($Depth -ge $script:AgentGuardMaxInterpreterDepth) {
+            $unresolved = $true
+            break
+        }
+
+        $inner = Get-AgentCommandWriteTarget -Command ([string] $tokens[$i + 1]) -Depth ($Depth + 1)
+        foreach ($target in $inner.Targets) { [void] $found.Add($target) }
+        if ($inner.Unresolved) { $unresolved = $true }
+
+        $last = $tokens.Count - 1
+        if (($i + 1) -lt $last) {
+            $restTokens = @($tokens[($i + 1)..$last])
+            $maskEnd = [Math]::Min($last, $masks.Count - 1)
+            $restMasks = if (($i + 1) -le $maskEnd) { @($masks[($i + 1)..$maskEnd]) } else { @() }
+            foreach ($target in (Get-AgentSegmentWriteTarget -Tokens $restTokens -Masks $restMasks)) {
+                [void] $found.Add($target)
+            }
+        }
+        break
+    }
+
+    return [pscustomobject]@{ Targets = $found.ToArray(); Unresolved = $unresolved }
+}
 
 <#
 .SYNOPSIS
@@ -1999,29 +2073,9 @@ function Get-AgentCommandWriteTarget {
             [void] $targets.Add($target)
         }
 
-        $tokens = @($segment.Tokens)
-        if ($tokens.Count -lt 3) { continue }
-
-        $leaf = Get-AgentCommandLeafName -Word $tokens[0]
-        $spec = $script:AgentGuardInterpreterSpecs | Where-Object { $_.Leaf -eq $leaf } | Select-Object -First 1
-        if ($null -eq $spec) { continue }
-
-        for ($i = 1; $i -lt $tokens.Count - 1; $i++) {
-            if ($spec.Flags -notcontains ([string] $tokens[$i]).ToLowerInvariant()) { continue }
-
-            # The depth test lives here, not at the top of the loop: a segment that is not an
-            # interpreter carrying an inner command was already scanned in full above, so it must
-            # not be reported as unresolved just because the recursion budget ran out.
-            if ($Depth -ge $script:AgentGuardMaxInterpreterDepth) {
-                $unresolved = $true
-                break
-            }
-
-            $inner = Get-AgentCommandWriteTarget -Command ([string] $tokens[$i + 1]) -Depth ($Depth + 1)
-            foreach ($target in $inner.Targets) { [void] $targets.Add($target) }
-            if ($inner.Unresolved) { $unresolved = $true }
-            break
-        }
+        $inner = Get-AgentInterpreterInnerTarget -Tokens $segment.Tokens -Masks $segment.Masks -Depth $Depth
+        foreach ($target in $inner.Targets) { [void] $targets.Add($target) }
+        if ($inner.Unresolved) { $unresolved = $true }
     }
 
     return [pscustomobject]@{ Targets = $targets.ToArray(); Unresolved = $unresolved }
@@ -2374,23 +2428,13 @@ function Get-AgentWorktreeWriteDecision {
 
         $targets = @(Get-AgentSegmentWriteTarget -Tokens $segment.Tokens -Masks $segment.Masks)
 
-        # Nested interpreters: re-scan the quoted argument the tokenizer kept whole.
-        $tokens = @($segment.Tokens)
-        if ($tokens.Count -ge 3) {
-            $leaf = Get-AgentCommandLeafName -Word $tokens[0]
-            $spec = $script:AgentGuardInterpreterSpecs | Where-Object { $_.Leaf -eq $leaf } | Select-Object -First 1
-            if ($null -ne $spec) {
-                for ($i = 1; $i -lt $tokens.Count - 1; $i++) {
-                    if ($spec.Flags -notcontains ([string] $tokens[$i]).ToLowerInvariant()) { continue }
-                    $nested = Get-AgentCommandWriteTarget -Command ([string] $tokens[$i + 1]) -Depth 1
-                    $targets += @($nested.Targets)
-                    # An inner command that was never scanned is not an inner command that writes
-                    # nothing. Fail closed on it.
-                    if ($nested.Unresolved) { $unresolvedBlock = $true }
-                    break
-                }
-            }
-        }
+        # Nested interpreters, quoted and unquoted alike. Same reader as
+        # Get-AgentCommandWriteTarget uses, so the two cannot drift.
+        $nested = Get-AgentInterpreterInnerTarget -Tokens $segment.Tokens -Masks $segment.Masks -Depth 0
+        $targets += @($nested.Targets)
+        # An inner command that was never scanned is not an inner command that writes nothing.
+        # Fail closed on it.
+        if ($nested.Unresolved) { $unresolvedBlock = $true }
 
         foreach ($target in $targets) {
             # A relative target after an unexpandable cd cannot be placed. Passing no base
