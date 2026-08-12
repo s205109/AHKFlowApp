@@ -21,12 +21,12 @@ source check that a written-out path gets.
 
 ## Acceptance criteria
 
-- [ ] `Get-Item <main>/seed.txt | Move-Item -Destination <managed>/seed.txt` is refused from a
+- [x] `Get-Item <main>/seed.txt | Move-Item -Destination <managed>/seed.txt` is refused from a
       managed worktree
-- [ ] The same holds for `Get-ChildItem ... | Move-Item` and for `... | Remove-Item`
-- [ ] A move that names its source in its own arguments keeps working unchanged
-- [ ] A pipeline whose sink is a read-only command is unaffected
-- [ ] Tests cover each shape above, in `tests/AgentWorktreeGuard.Tests.ps1`
+- [x] The same holds for `Get-ChildItem ... | Move-Item` and for `... | Remove-Item`
+- [x] A move that names its source in its own arguments keeps working unchanged
+- [x] A pipeline whose sink is a read-only command is unaffected
+- [x] Tests cover each shape above, in `tests/AgentWorktreeGuard.Tests.ps1`
 
 ## Out of scope
 
@@ -42,6 +42,10 @@ source check that a written-out path gets.
   no source — needs a false-positive review first. `Get-ChildItem *.tmp | Remove-Item` scoped
   entirely inside a worktree is a normal thing to write, and it would start failing. Decide
   whether the guard denies outright or resolves the pipeline's own segment first.
+  **Resolved: deny outright.** No script or document in this repository pipes into `Remove-Item`
+  or `Move-Item`, so the idiom costs nothing here, and the denial names the rewrite. Resolving
+  the upstream segment was rejected: it is a much larger capability and it still has holes, since
+  a non-path operand such as `Where-Object Length` reads as a relative path.
 - Deferred from PR #289 deliberately: it needs pipeline-aware classification, a new capability
   rather than a fix to the work that branch did.
 - Related: [083](083-guard-classifies-link-targets-as-write-targets.md), the other deferred
