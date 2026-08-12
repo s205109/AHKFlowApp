@@ -1294,6 +1294,26 @@ $script:AgentGuardMoveCmdlets = @('move-item', 'rename-item')
 
 <#
 .SYNOPSIS
+True when a cmdlet parameter name is one that names a move's SOURCE.
+
+.DESCRIPTION
+Move-Item and Rename-Item take their source from -Path or -LiteralPath. PowerShell binds any
+unambiguous prefix, so -pa is -Path and -li is -LiteralPath, and this accepts every prefix of
+either name. A prefix short enough to be ambiguous, such as -p, is accepted too: PowerShell
+would reject the command outright, and reading one extra token as a source only ever
+over-reports, which is the safe direction for this grammar.
+#>
+function Test-AgentMoveSourceParameterName {
+    param([string] $Name)
+
+    $lower = ([string] $Name).ToLowerInvariant()
+    if ($lower -eq '') { return $false }
+    return ('path'.StartsWith($lower, [System.StringComparison]::Ordinal) -or
+        'literalpath'.StartsWith($lower, [System.StringComparison]::Ordinal))
+}
+
+<#
+.SYNOPSIS
 Index of the first unquoted '>' in a token, or -1 when the token carries no redirect.
 #>
 function Find-AgentUnquotedRedirectIndex {
@@ -1533,26 +1553,36 @@ function Get-AgentSegmentWriteTarget {
                 }
             }
 
-            # PowerShell's attached-colon parameter form (-Path:value, -LiteralPath:value, and
-            # abbreviations such as -pa:value, -li:value) packs the value into a single
-            # dash-prefixed token, so Get-AgentGitPositionals drops it along with every other
-            # '-*' token and the loop above never sees it. Harvest the value of any
-            # colon-attached dash-token as an additional candidate source too. This does not try
-            # to tell which parameter each token belongs to (a colon-form -Destination:value gets
-            # reported as a source as well as a target) — over-reporting a target is safe here,
-            # the same superset doctrine the rest of this table follows; under-reporting a move
-            # source is not. The one value this harvest must skip is $true / $false: PowerShell's
-            # colon form on a switch parameter (-Confirm:$false, -WhatIf:$true) only ever carries
-            # one of those two literals, and no path-bearing parameter's value is ever a bare
-            # boolean, so excluding exactly those two removes every switch false positive without
-            # dropping a real path.
-            foreach ($argument in $arguments) {
-                if ($argument -match '^-[A-Za-z]+:(.+)$') {
-                    foreach ($piece in ($Matches[1] -split ',')) {
-                        $source = $piece.Trim()
-                        if ($source -eq '' -or $source -match '^\$(true|false)$') { continue }
-                        if (-not $targets.Contains($source)) { [void] $targets.Add($source) }
-                    }
+            # Read the parameters that actually name a source: -Path and -LiteralPath. The
+            # positional loop above cannot see them in either of two shapes. PowerShell's
+            # attached-colon form (-Path:value, and abbreviations such as -pa:value) packs the
+            # value into one dash-prefixed token, and a source whose own name starts with a dash
+            # (-Path -tracked.md) puts a dash-prefixed token in the value slot. Get-AgentGitPositionals
+            # drops every '-*' token, so both vanish.
+            #
+            # Selecting on the parameter NAME is what makes this correct. An earlier version
+            # harvested every colon-attached token and then filtered by VALUE, skipping $true and
+            # $false to avoid switch parameters. That was wrong in both directions: it dropped a
+            # real source named by -Path:$false, and it harvested -Force:$myVar, which the
+            # resolver cannot expand, so an ordinary in-worktree move was refused.
+            for ($i = 0; $i -lt $arguments.Count; $i++) {
+                $argument = [string] $arguments[$i]
+                if ($argument -notmatch '^-([A-Za-z]+)(:(.*))?$') { continue }
+
+                # Capture before anything else can overwrite $Matches.
+                $parameterName = [string] $Matches[1]
+                $hasColonForm = $Matches.ContainsKey(2)
+                $colonValue = if ($hasColonForm) { [string] $Matches[3] } else { '' }
+                if (-not (Test-AgentMoveSourceParameterName -Name $parameterName)) { continue }
+
+                # `-Path value` puts the value in the next token; `-Path:value` carries its own.
+                $value = if ($hasColonForm) { $colonValue }
+                elseif (($i + 1) -lt $arguments.Count) { [string] $arguments[$i + 1] }
+                else { '' }
+
+                foreach ($piece in ($value -split ',')) {
+                    $source = $piece.Trim()
+                    if ($source -ne '' -and -not $targets.Contains($source)) { [void] $targets.Add($source) }
                 }
             }
         }
@@ -1749,6 +1779,15 @@ function Get-AgentWriteTargetResolution {
         return [pscustomobject]@{ Path = ''; Unresolved = $true }
     }
 
+    # A provider-qualified path such as 'FileSystem::C:\repo\file' names a real location, but
+    # IsPathRooted below reads it as relative and joins it to the session's own directory. That
+    # turns a main-checkout path into an allowed worktree one. No valid Windows path contains
+    # '::', so failing closed here costs nothing and cannot be worked around by spelling the
+    # provider differently.
+    if ($trimmed -match '::') {
+        return [pscustomobject]@{ Path = ''; Unresolved = $true }
+    }
+
     # A tool call carries one literal path and no shell runs over it, so '$', '%' and backtick are
     # ordinary file name characters there. Applying the shell rule would refuse a real edit inside
     # the session's own worktree. A '~' still fails closed under -Literal: nothing in the payload
@@ -1857,8 +1896,17 @@ function Test-AgentWriteTargetAllowed {
     # Strictly under the root, never the root itself: deleting or renaming docs\superpowers would
     # break the link every worktree depends on. A move INTO this subtree is still refused when its
     # source sits elsewhere in main, because a move reports both endpoints.
+    #
+    # The repository's own .git is excluded as well. The exception exists so a session can edit
+    # plans and commit them, and destroying .git destroys the repository itself, including history
+    # that was never pushed. Remove-Item is not the 'rm' the destructive-command tier matches, so
+    # this boundary is the only thing that refuses it.
     $plansRepo = ConvertTo-AgentGuardNormalizedPath (Join-Path $main 'docs\superpowers')
-    if ($path.StartsWith($plansRepo + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
+    $plansGit = ConvertTo-AgentGuardNormalizedPath (Join-Path $plansRepo '.git')
+    $insidePlansGit = ($path -ieq $plansGit) -or
+        $path.StartsWith($plansGit + '\', [System.StringComparison]::OrdinalIgnoreCase)
+    if (-not $insidePlansGit -and
+        $path.StartsWith($plansRepo + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
         return $true
     }
 

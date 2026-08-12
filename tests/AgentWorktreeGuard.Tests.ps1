@@ -1723,10 +1723,22 @@ try {
         # token, which the positional reader alone would drop.
         @{ Command = 'Move-Item -Path:a.txt -Destination:b.txt'; Expected = @('b.txt', 'a.txt') },
         @{ Command = 'Move-Item -LiteralPath:a.txt -Destination b.txt'; Expected = @('b.txt', 'a.txt') },
-        # A colon-form switch parameter (-Confirm:$false) is not a path source. $true/$false are
-        # the only values a switch's colon form ever carries, and no path-bearing parameter's
-        # value is ever a bare boolean, so the harvest must skip it.
+        # Only -Path and -LiteralPath name a source, so a switch parameter is never harvested,
+        # whatever value it carries. Reading the parameter NAME is what makes that true: an
+        # earlier version filtered on the VALUE, which both dropped real paths and denied
+        # ordinary switch values it could not expand.
         @{ Command = 'Move-Item a.txt b.txt -Confirm:$false'; Expected = @('b.txt', 'a.txt') },
+        @{ Command = 'Move-Item a.txt b.txt -Force:$myVar'; Expected = @('b.txt', 'a.txt') },
+        @{ Command = 'Move-Item a.txt b.txt -Confirm:$null'; Expected = @('b.txt', 'a.txt') },
+        # A source whose name begins with a dash is a real file. The positional reader drops
+        # every '-*' token, so only reading -Path by name keeps it.
+        @{ Command = 'Move-Item -Path -tracked.md -Destination b.txt'; Expected = @('b.txt', '-tracked.md') },
+        @{ Command = 'Move-Item -LiteralPath:-tracked.md -Destination b.txt'; Expected = @('b.txt', '-tracked.md') },
+        # PowerShell binds an unambiguous prefix, so -pa and -li are -Path and -LiteralPath.
+        @{ Command = 'Move-Item -pa:a.txt -Destination b.txt'; Expected = @('b.txt', 'a.txt') },
+        @{ Command = 'Move-Item -li a.txt -Destination b.txt'; Expected = @('b.txt', 'a.txt') },
+        # A boolean bound to -Path is a real (if odd) source name, so it is reported, not skipped.
+        @{ Command = 'Move-Item -Path:$false -Destination b.txt'; Expected = @('b.txt', '$false') },
         # -Path takes an array, and PowerShell splits it across tokens at each comma.
         @{ Command = 'Move-Item -Path a.md,b.md -Destination x.md'; Expected = @('x.md', 'a.md', 'b.md') },
         @{ Command = 'Move-Item -Path a.md, b.md -Destination x.md'; Expected = @('x.md', 'a.md', 'b.md') },
@@ -1941,6 +1953,27 @@ try {
         # this must deny even though the source itself was allowed to live inside it.
         @{ Name    = 'moving a file out of the plans repo into main is refused'
             Command = 'mv <MAIN>/docs/superpowers/a.md <MAIN>/x.md'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        # The plans repo's own .git is not an ordinary file inside it. Destroying it destroys the
+        # private repository, including history that was never pushed, so the exception stops at
+        # the repository boundary. Remove-Item is not the 'rm' the destructive tier matches, so
+        # nothing else refuses this.
+        @{ Name    = 'deleting the plans repo .git directory is refused'
+            Command = 'Remove-Item <MAIN>/docs/superpowers/.git -Recurse -Force'
+            Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'writing inside the plans repo .git directory is refused'
+            Command = 'printf x > <MAIN>/docs/superpowers/.git/config'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        # A provider-qualified path names a real location, but it is not a rooted path, so it
+        # would otherwise be anchored under the session worktree and wrongly allowed.
+        @{ Name    = 'a provider-qualified move source out of main is refused'
+            Command = "Move-Item -Path 'FileSystem::<MAIN>/seed.txt' -Destination <MANAGED>/x.md"
+            Cwd = 'Managed'; Action = 'Deny'
+        },
+        # A switch parameter the guard cannot expand must not make an in-worktree move fail.
+        @{ Name    = 'an unexpandable switch value does not block an in-worktree move'
+            Command = 'Move-Item a.txt b.txt -Force:$myVar'; Cwd = 'Managed'; Action = 'Allow'
         },
         # The root is the link every worktree depends on.
         @{ Name    = 'the plans root itself is refused'
