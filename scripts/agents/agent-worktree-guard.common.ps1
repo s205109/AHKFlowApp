@@ -1318,6 +1318,10 @@ $script:AgentGuardWriteLastPositional = @('cp', 'mv', 'install')
 # would otherwise see only the first. ln leaves the last-positional table above for this reason.
 $script:AgentGuardLinkCommands = @('ln', 'mklink')
 
+# The New-Item item types that make a link. Matched without case, because -ItemType is not
+# case-sensitive.
+$script:AgentGuardLinkItemTypes = @('symboliclink', 'hardlink', 'junction')
+
 # Cmdlet name -> the parameter naming its write target. Positional fallbacks are handled below.
 $script:AgentGuardWriteCmdlets = @{
     'set-content'   = @('Path', 'LiteralPath')
@@ -1720,6 +1724,43 @@ function Get-AgentLinkWriteTarget {
 
 <#
 .SYNOPSIS
+The path a New-Item link points at, or nothing when the command creates no link.
+
+.DESCRIPTION
+Target is an ALIAS for the Value parameter, and Type an alias for ItemType. So -Target and
+-Value are one parameter with two spellings, and the value is a path only when the item type
+says a link is being created. On a File the same value is content:
+`New-Item -ItemType File -Path notes.md -Value 'cost is $5'` would otherwise be read as a path,
+meet AgentGuardUnexpandablePattern, and be refused as an unresolved write target.
+
+Three things decide the gate. A named link kind reads the value. A named non-link kind does not.
+An ItemType the guard cannot expand - a variable - could still be a link, so it reads the value
+and fails closed. No -ItemType at all creates a file, so it reads nothing.
+#>
+function Get-AgentNewItemLinkTarget {
+    param([string[]] $Arguments, [string] $LinkPath)
+
+    $found = New-Object System.Collections.Generic.List[string]
+
+    $itemType = Get-AgentPrefixedParameterValue -Arguments $Arguments -Names @('ItemType', 'Type')
+    if ($null -eq $itemType) { return $found.ToArray() }
+
+    # The tokenizer strips quotes, so this trim only ever matters for a spelling it kept.
+    $kind = ([string] $itemType).Trim().Trim("'", '"').ToLowerInvariant()
+    $canExpand = $kind -notmatch $script:AgentGuardUnexpandablePattern
+    if ($canExpand -and ($script:AgentGuardLinkItemTypes -notcontains $kind)) {
+        return $found.ToArray()
+    }
+
+    $linkTarget = Get-AgentPrefixedParameterValue -Arguments $Arguments -Names @('Target', 'Value')
+    if ($null -eq $linkTarget) { return $found.ToArray() }
+
+    Add-AgentLinkTargetCandidate -LinkPath $LinkPath -Target $linkTarget -Sink $found
+    return $found.ToArray()
+}
+
+<#
+.SYNOPSIS
 Every path one command segment would write, move, or delete.
 
 .DESCRIPTION
@@ -1826,8 +1867,33 @@ function Get-AgentSegmentWriteTarget {
         # Prefix-aware: `Set-Content -Pa:<path>` names the same target as `-Path <path>`, and the
         # colon token is dropped as an option, so no positional fallback could recover it.
         $named = Get-AgentPrefixedParameterValue -Arguments $arguments -Names $script:AgentGuardWriteCmdlets[$leaf]
-        if ($null -ne $named) { [void] $targets.Add($named) }
-        elseif ($positionals.Count -ge 1) { [void] $targets.Add($positionals[0]) }
+        $linkPath = ''
+        if ($null -ne $named) {
+            [void] $targets.Add($named)
+            $linkPath = [string] $named
+        }
+        elseif ($positionals.Count -ge 1) {
+            [void] $targets.Add($positionals[0])
+            $linkPath = [string] $positionals[0]
+        }
+
+        if ($leaf -eq 'new-item') {
+            # -Name reads through its own call: Get-AgentPrefixedParameterValue returns the FIRST
+            # match and stops, so one call naming both Path and Name would drop whichever came
+            # second. The -Path value stays the anchor for a relative link target, because in this
+            # parameter set it is the directory holding the link.
+            $itemName = Get-AgentPrefixedParameterValue -Arguments $arguments -Names @('Name')
+            if ($null -ne $itemName -and $linkPath -ne '') {
+                [void] $targets.Add((Join-Path $linkPath $itemName))
+            }
+            elseif ($null -ne $itemName) {
+                [void] $targets.Add($itemName)
+            }
+
+            foreach ($target in (Get-AgentNewItemLinkTarget -Arguments $arguments -LinkPath $linkPath)) {
+                [void] $targets.Add($target)
+            }
+        }
     }
     elseif ($script:AgentGuardWriteDestinationCmdlets -contains $leaf) {
         # Operands with option values removed, so `-Filter *.tmp` does not look like a file.

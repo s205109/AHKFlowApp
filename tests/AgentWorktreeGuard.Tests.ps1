@@ -1847,6 +1847,47 @@ try {
         @{ Command = 'cp -S .bak a.md b.md'; Expected = @('b.md') },
         # A plain copy is untouched by the new branch and still reports its destination alone.
         @{ Command = 'cp a.md b.md'; Expected = @('b.md') },
+        # New-Item creates every link kind Windows has, and -Target is where it aims.
+        @{ Command = 'New-Item -ItemType HardLink -Path link.md -Target C:\repo\README.md'
+            Expected = @('link.md', 'C:\repo\README.md')
+        },
+        @{ Command = 'New-Item -ItemType SymbolicLink -Path link.md -Target C:\repo\README.md'
+            Expected = @('link.md', 'C:\repo\README.md')
+        },
+        @{ Command = 'New-Item -ItemType Junction -Path linkdir -Target C:\repo\docs'
+            Expected = @('linkdir', 'C:\repo\docs')
+        },
+        # -Target IS -Value, so the -Value spelling reaches the same place.
+        @{ Command = 'New-Item -ItemType SymbolicLink -Path link.md -Value C:\repo\README.md'
+            Expected = @('link.md', 'C:\repo\README.md')
+        },
+        # -Type is an alias of -ItemType, and the kind is matched without case.
+        @{ Command = 'New-Item -Type symboliclink -Path link.md -Target C:\repo\README.md'
+            Expected = @('link.md', 'C:\repo\README.md')
+        },
+        # A relative link target needs all three forms.
+        @{ Command = 'New-Item -ItemType SymbolicLink -Path deep\link.md -Target ..\..\README.md'
+            Expected = @('deep\link.md', '..\..\README.md',
+                'deep\link.md\..\..\README.md', 'deep\..\..\README.md')
+        },
+        # The gate. On a File the same parameter is CONTENT, under either spelling, so reading it
+        # as a path would refuse an ordinary write.
+        @{ Command = 'New-Item -ItemType File -Path notes.md -Value plain-text'
+            Expected = @('notes.md')
+        },
+        @{ Command = 'New-Item -ItemType File -Path notes.md -Target plain-text'
+            Expected = @('notes.md')
+        },
+        @{ Command = 'New-Item -Path notes.md -Value plain-text'; Expected = @('notes.md') },
+        @{ Command = 'New-Item -ItemType Directory -Path sub'; Expected = @('sub') },
+        # An item type the guard cannot expand could still be a link, so it fails closed.
+        @{ Command = 'New-Item -ItemType $kind -Path link.md -Target C:\repo\README.md'
+            Expected = @('link.md', 'C:\repo\README.md')
+        },
+        # -Name puts the leaf under -Path, and the -Path value stays the anchor.
+        @{ Command = 'New-Item -Path deep -Name link.md -ItemType SymbolicLink -Target ..\README.md'
+            Expected = @('deep', 'deep\link.md', '..\README.md', 'deep\..\README.md')
+        },
         @{ Command = 'Copy-Item a.txt -Destination b.txt'; Expected = @('b.txt') },
         @{ Command = 'rm a.txt b.txt'; Expected = @('a.txt', 'b.txt') },
         @{ Command = 'tee out.txt'; Expected = @('out.txt') },
