@@ -1285,7 +1285,12 @@ function Test-AgentWorktreeManifest {
 $script:AgentGuardWriteEveryPositional = @(
     'rm', 'unlink', 'shred', 'truncate', 'touch', 'mkdir', 'rmdir', 'tee'
 )
-$script:AgentGuardWriteLastPositional = @('cp', 'mv', 'install', 'ln')
+$script:AgentGuardWriteLastPositional = @('cp', 'mv', 'install')
+
+# Commands that CREATE a link. Both endpoints are write targets: the path the link is created
+# at, and the path it points to. A write through the link lands on the second one, and the guard
+# would otherwise see only the first. ln leaves the last-positional table above for this reason.
+$script:AgentGuardLinkCommands = @('ln', 'mklink')
 
 # Cmdlet name -> the parameter naming its write target. Positional fallbacks are handled below.
 $script:AgentGuardWriteCmdlets = @{
@@ -1629,6 +1634,52 @@ function Add-AgentLinkTargetCandidate {
 
 <#
 .SYNOPSIS
+Every path a link-creation command would write or aim at.
+
+.DESCRIPTION
+ln has three forms - `ln TARGET LINK_NAME`, `ln TARGET... DIRECTORY`, and
+`ln -t DIRECTORY TARGET...` - and every operand of all three is a path. So every operand is
+reported, and each link target is expanded through Add-AgentLinkTargetCandidate.
+
+Get-AgentMoveArgumentSet does the option/operand split. Its name says move; its behaviour is the
+general split these commands share, including honouring '--' and consuming the -t value.
+#>
+function Get-AgentLinkWriteTarget {
+    param([string] $Leaf, [string[]] $Arguments)
+
+    $found = New-Object System.Collections.Generic.List[string]
+
+    $set = Get-AgentMoveArgumentSet -Arguments $Arguments
+    $operands = @($set.Operands)
+    $targetDirectory = Get-AgentTargetDirectoryOption -Arguments $set.Options
+
+    # With -t the named directory holds every link, so no operand is the link path.
+    if ($null -ne $targetDirectory) {
+        [void] $found.Add($targetDirectory)
+        foreach ($operand in $operands) {
+            Add-AgentLinkTargetCandidate -LinkPath $targetDirectory -Target ([string] $operand) -Sink $found
+        }
+        return $found.ToArray()
+    }
+
+    if ($operands.Count -eq 0) { return $found.ToArray() }
+
+    # One operand names a link in the working directory. There is no target to expand.
+    if ($operands.Count -eq 1) {
+        [void] $found.Add([string] $operands[0])
+        return $found.ToArray()
+    }
+
+    $linkPath = [string] $operands[$operands.Count - 1]
+    [void] $found.Add($linkPath)
+    foreach ($operand in ($operands | Select-Object -SkipLast 1)) {
+        Add-AgentLinkTargetCandidate -LinkPath $linkPath -Target ([string] $operand) -Sink $found
+    }
+    return $found.ToArray()
+}
+
+<#
+.SYNOPSIS
 Every path one command segment would write, move, or delete.
 
 .DESCRIPTION
@@ -1681,12 +1732,20 @@ function Get-AgentSegmentWriteTarget {
     }
     $positionals = @(Get-AgentGitPositionals -Arguments $arguments)
 
-    if ($script:AgentGuardWriteEveryPositional -contains $leaf) {
+    # First in the chain on purpose. cp is in the last-positional table below, so a link branch
+    # placed after that one would never run for a linking cp: the elseif would win every time and
+    # the rule would be dead rather than wrong.
+    if ($script:AgentGuardLinkCommands -contains $leaf) {
+        foreach ($target in (Get-AgentLinkWriteTarget -Leaf $leaf -Arguments $arguments)) {
+            [void] $targets.Add($target)
+        }
+    }
+    elseif ($script:AgentGuardWriteEveryPositional -contains $leaf) {
         foreach ($positional in $positionals) { [void] $targets.Add($positional) }
     }
     elseif ($script:AgentGuardWriteLastPositional -contains $leaf) {
         # A move reads its own operands, because a moved file may be named '-something' and only
-        # a '--'-aware reader keeps it. cp, install and ln do not delete, so they keep the older
+        # a '--'-aware reader keeps it. cp and install do not delete, so they keep the older
         # positional reader.
         $isMove = $script:AgentGuardMoveCommands -contains $leaf
         $moveSet = if ($isMove) { Get-AgentMoveArgumentSet -Arguments $arguments } else { $null }

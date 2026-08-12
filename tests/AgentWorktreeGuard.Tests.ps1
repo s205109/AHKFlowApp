@@ -1805,6 +1805,21 @@ try {
         # cp, install and ln leave the source in place, so they stay destination-only.
         @{ Command = 'cp -t out a.txt'; Expected = @('out') },
         @{ Command = 'cp -tout a.txt'; Expected = @('out') },
+        # Every operand of ln is a path, so every operand is a write target: a link created at an
+        # allowed path but AIMED at the main checkout is a write into the main checkout.
+        @{ Command = 'ln -s a.md b.md'; Expected = @('b.md', 'a.md', 'b.md\a.md') },
+        @{ Command = 'ln a.md b.md'; Expected = @('b.md', 'a.md', 'b.md\a.md') },
+        @{ Command = 'ln -s C:\repo\README.md b.md'; Expected = @('b.md', 'C:\repo\README.md') },
+        # With -t every operand is a link target and the named directory holds the links.
+        @{ Command = 'ln -t out a.md b.md'
+            Expected = @('out', 'a.md', 'out\a.md', 'b.md', 'out\b.md')
+        },
+        # '--' keeps a target whose own name begins with a dash.
+        @{ Command = 'ln -s -- -a.md link.md'
+            Expected = @('link.md', '-a.md', 'link.md\-a.md')
+        },
+        # One operand names a link in the working directory and nothing else.
+        @{ Command = 'ln -s a.md'; Expected = @('a.md') },
         @{ Command = 'Copy-Item a.txt -Destination b.txt'; Expected = @('b.txt') },
         @{ Command = 'rm a.txt b.txt'; Expected = @('a.txt', 'b.txt') },
         @{ Command = 'tee out.txt'; Expected = @('out.txt') },
