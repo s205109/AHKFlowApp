@@ -1581,6 +1581,54 @@ function Get-AgentMoveArgumentSet {
 
 <#
 .SYNOPSIS
+Adds every path a link target could mean to a write-target list.
+
+.DESCRIPTION
+Windows resolves a RELATIVE link target against the directory holding the link, not against the
+working directory (see the CreateSymbolicLink reference, and the same note on
+Resolve-AgentSymlinkPath below). The resolver this guard uses anchors a relative write target to
+the working directory instead, so one anchor is not enough: `ln -s ../../../../../README.md
+deep/dir/x` walks ABOVE the checkout from the working directory and INTO it from the link's own
+directory. Anchoring one way only would allow that link.
+
+So a relative target is offered three ways - as written, joined to the link path, and joined to
+the link path's parent - and whichever one lands in the main checkout produces the denial. All
+three are paths, so this over-reports only paths, which is the safe direction for this grammar.
+
+An absolute target means the same file from every directory, so it is added once.
+#>
+function Add-AgentLinkTargetCandidate {
+    param(
+        [string] $LinkPath,
+        [string] $Target,
+        [System.Collections.Generic.List[string]] $Sink
+    )
+
+    $target = [string] $Target
+    if ([string]::IsNullOrWhiteSpace($target)) { return }
+
+    [void] $Sink.Add($target)
+
+    # Tested with a pattern rather than [System.IO.Path]::IsPathRooted, which throws on Windows
+    # PowerShell 5.1 for characters that host rejects outright. A throw here would escape into the
+    # entrypoint's catch, and that catch ALLOWS the write.
+    if ($target -match '^([A-Za-z]:|[\\/])') { return }
+
+    $link = [string] $LinkPath
+    if ([string]::IsNullOrWhiteSpace($link)) { return }
+
+    # The link path names a directory the link is created inside.
+    [void] $Sink.Add((Join-Path $link $target))
+
+    # The link path names the link file itself, so its parent holds the link.
+    $parent = Split-Path -Parent $link
+    if (-not [string]::IsNullOrWhiteSpace($parent)) {
+        [void] $Sink.Add((Join-Path $parent $target))
+    }
+}
+
+<#
+.SYNOPSIS
 Every path one command segment would write, move, or delete.
 
 .DESCRIPTION

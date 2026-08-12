@@ -1705,6 +1705,47 @@ try {
         Assert-Equal 'uuuuuuuuu' $segment.Masks[1] 'Mask'
     }
 
+    Write-Host 'Link target candidates' -ForegroundColor Cyan
+
+    # A relative link target is resolved against the directory holding the link, not the working
+    # directory, so one target has to be offered in every form it could mean.
+    $linkCandidateCases = @(
+        @{ Name = 'an absolute target says the same thing from every directory'
+            LinkPath = 'link.md'; Target = 'C:\repo\README.md'
+            Expected = @('C:\repo\README.md')
+        },
+        @{ Name = 'a UNC target is absolute too'
+            LinkPath = 'link.md'; Target = '\\server\share\x.md'
+            Expected = @('\\server\share\x.md')
+        },
+        @{ Name = 'a relative target with a parentless link drops the parent form'
+            LinkPath = 'link.md'; Target = '..\README.md'
+            Expected = @('..\README.md', 'link.md\..\README.md')
+        },
+        @{ Name = 'a relative target with a nested link carries all three forms'
+            LinkPath = 'deep\x.md'; Target = '..\..\README.md'
+            Expected = @('..\..\README.md', 'deep\x.md\..\..\README.md', 'deep\..\..\README.md')
+        },
+        # Join-Path rewrites every separator in BOTH arguments to the OS one, so the joined forms
+        # come back fully backslashed. The raw target is added as written and keeps its slashes.
+        @{ Name = 'a forward-slash link path splits the same way'
+            LinkPath = 'deep/x.md'; Target = '../README.md'
+            Expected = @('../README.md', 'deep\x.md\..\README.md', 'deep\..\README.md')
+        },
+        @{ Name = 'an empty target adds nothing'
+            LinkPath = 'link.md'; Target = ''
+            Expected = @()
+        }
+    )
+
+    foreach ($case in $linkCandidateCases) {
+        Invoke-TestCase "Link candidate: $($case.Name)" {
+            $sink = New-Object System.Collections.Generic.List[string]
+            Add-AgentLinkTargetCandidate -LinkPath $case.LinkPath -Target $case.Target -Sink $sink
+            Assert-Equal ($case.Expected -join '|') ($sink.ToArray() -join '|') 'Candidates'
+        }
+    }
+
     Write-Host 'Write-target extraction' -ForegroundColor Cyan
 
     $writeTargetCases = @(
