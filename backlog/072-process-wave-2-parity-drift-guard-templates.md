@@ -123,13 +123,30 @@ field it reads rather than describing an intention.
 
 - [ ] **Window.** Select on the record's own `timestamp` field, `>= start` and `< end`, both
       in UTC. Never on file modification time.
-- [ ] **Human turn.** A record counts only when `type == "user"` **and**
-      `promptSource == "typed"` **and** `origin.kind == "human"`. Verified against a live
-      transcript: a real typed prompt has string `message.content` and both those fields
-      set; a tool-result or injected-content record has array `message.content` and both
-      fields **absent** (`null`). Round 7 showed the array/text-block test does not separate
-      them — injected content also carries a `text`-typed block — so the field pair is the
-      actual predicate, not the content shape.
+- [ ] **Human turn.** A record counts only when `type == "user"` **and** either
+      `origin.kind == "human"` **or** `promptSource` is one of `typed`,
+      `suggestion_accepted`, `queued`. The two fields are alternatives, not a pair: a
+      conjunction drops real turns. Measured over all 195 transcripts in this project:
+
+      | `promptSource` / `origin.kind` | records | human turn? |
+      |---|---|---|
+      | `<absent>` / `<absent>` | 8452 | no — tool results and injected content |
+      | `typed` / `human` | 636 | yes |
+      | `system` / `task-notification` | 203 | no |
+      | `suggestion_accepted` / `human` | 17 | yes |
+      | `sdk` / `human` | 15 | yes |
+      | `queued` / `human` | 4 | yes |
+      | `typed` / `<absent>` | 2 | yes — a typed slash command, e.g. `/logo` |
+      | `sdk` / `<absent>` | 1 | no — no human field on either side |
+
+      The rule above counts 674 records — all 672 that carry `origin.kind == "human"`, plus
+      the 2 typed ones that carry no `origin` at all — and excludes the other 8656.
+      Requiring `typed` **and** `human` together counts only 636, silently dropping every
+      accepted suggestion, every queued prompt, and every slash command.
+
+      Do **not** test the shape of `message.content`. A real typed prompt carries a string
+      and injected content carries an array, but injected content also carries a
+      `text`-typed block, so the array/text-block test does not separate them either.
 - [ ] **Sidechain.** Exclude any record with `isSidechain == true`. Report the excluded count
       alongside the result so the exclusion is visible rather than assumed.
 - [ ] **Unit of count.** State it per metric and use it consistently: directory-bound

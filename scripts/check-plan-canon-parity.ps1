@@ -69,9 +69,11 @@ function Assert-StageShape {
 
 # Appendix A only. The last stage otherwise runs to end-of-file, and the greedy edge match
 # swallows Appendix B's walkthrough arrows - round 7 hid real Stage 10 drift that way.
-$appendixA = [regex]::Match($plan, '(?s)## Appendix A(.*?)(?=\n## Appendix B|\z)')
-if (-not $appendixA.Success) { throw 'Appendix A not found in the plan. Fix this script before trusting a green result.' }
-$plan = $appendixA.Value
+# Both headings are required. A lazy match with an end-of-file fallback would drop the bound
+# silently the day Appendix B is renamed, which is that same failure a second time.
+if ($plan -notmatch '(?m)^## Appendix A') { throw 'Appendix A not found in the plan. Fix this script before trusting a green result.' }
+if ($plan -notmatch '(?m)^## Appendix B') { throw 'Appendix B not found in the plan, so Appendix A has no end bound. Fix this script before trusting a green result.' }
+$plan = [regex]::Match($plan, '(?sm)^## Appendix A.*?(?=^## Appendix B)').Value
 
 # The canon carries one explicit anchor per stage, then a five-row edge table.
 $canonStages = [ordered]@{}

@@ -52,7 +52,7 @@ System.AggregateException: One or more errors occurred.
   threshold met, line 94.6%, branch 82.6%, nothing changed in the repository.
 
 **The competing run was Fast, not another Coverage run.** `run-coverage.ps1:63-69` requests
-no TRX logger at all; `scripts/test-fast.ps1:109` does. So the TRX files found in
+no TRX logger at all; `scripts/test-fast.ps1:118` does. So the TRX files found in
 `TestResults` after the failure were produced by a **Fast** run, and their Fast-slice counts
 say the same thing. An earlier version of this item reasoned from those files as though
 Coverage had produced them, and concluded that Coverage had written partial results. That
