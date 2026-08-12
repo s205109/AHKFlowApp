@@ -1987,6 +1987,16 @@ try {
             Command = 'printf x > <MAIN>/docs/superpowers/.git/objects/obj'
             Cwd = 'Managed'; Action = 'Deny'
         },
+        # The protected checkout's own .git carries the same risk one level up. A branch named
+        # 'bin' or 'obj' puts a build-output component in the ref path, and the allow-list would
+        # clear it, so a worktree session could delete a branch in the human's checkout.
+        @{ Name    = 'a build-output name under the main .git is refused'
+            Command = 'printf x > <MAIN>/.git/refs/heads/bin'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'deleting inside the main .git is refused'
+            Command = 'Remove-Item <MAIN>/.git/worktrees/obj -Recurse -Force'
+            Cwd = 'Managed'; Action = 'Deny'
+        },
         # A real build-output path elsewhere in main stays allowed, so the fix above must not
         # disable the allow-list itself.
         @{ Name    = 'build output elsewhere in main stays allowed'

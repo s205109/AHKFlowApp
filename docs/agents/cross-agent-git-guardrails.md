@@ -162,6 +162,13 @@ Allowed anyway:
   A move from elsewhere in main into it stays refused too, because a move reports both endpoints.
   Deletes there are ordinary deletes — `rm -rf` is denied inside it exactly as it is everywhere.
 
+Two paths are refused before any of the allowances above are read: `<main>\.git` and
+`<main>\docs\superpowers\.git`. A repository's metadata is not an ordinary file inside it, and
+destroying it destroys the repository with all history that was never pushed. The order matters:
+a branch may be named `bin` or `obj`, and `.git\worktrees` holds one directory per managed
+worktree, so a ref or metadata path can carry a build-output component. Read later, the
+build-output allowance would clear it.
+
 A **sibling** worktree is refused. It is another agent's checkout, so writing into it breaks the
 same isolation the rule exists to protect.
 

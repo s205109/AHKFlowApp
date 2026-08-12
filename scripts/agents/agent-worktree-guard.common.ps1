@@ -1418,10 +1418,9 @@ function Get-AgentMoveCmdletOperand {
 Value of the first parameter whose name is a prefix of any given name, or $null.
 
 .DESCRIPTION
-The prefix-aware counterpart of Get-AgentNamedParameterValue. Both the `-Name value` and
-`-Name:value` forms are read. Needed because `-Dest:<path>` names a destination that no
-positional fallback can recover: the colon token is dropped as an option, so the target would
-simply go unreported.
+Both the `-Name value` and `-Name:value` forms are read, and the name may be any prefix of a
+candidate. Needed because `-Dest:<path>` names a destination that no positional fallback can
+recover: the colon token is dropped as an option, so the target would simply go unreported.
 #>
 function Get-AgentPrefixedParameterValue {
     param([string[]] $Arguments, [string[]] $Names)
@@ -1467,32 +1466,6 @@ function Get-AgentCommandLeafName {
 
     $leaf = (([string] $Word).ToLowerInvariant() -split '[\\/]')[-1]
     return ($leaf -replace '\.(exe|cmd|bat|ps1)$', '')
-}
-
-<#
-.SYNOPSIS
-Value of the first matching -Name parameter, or $null.
-
-.DESCRIPTION
-Accepts both `-Path value` and PowerShell's `-Path:value` colon form.
-#>
-function Get-AgentNamedParameterValue {
-    param([string[]] $Arguments, [string[]] $Names)
-
-    $list = @($Arguments)
-    for ($i = 0; $i -lt $list.Count; $i++) {
-        $argument = [string] $list[$i]
-        foreach ($name in $Names) {
-            if ($argument -ieq "-$name") {
-                if (($i + 1) -lt $list.Count) { return [string] $list[$i + 1] }
-                return $null
-            }
-            if ($argument -ilike "-${name}:*") {
-                return $argument.Substring($name.Length + 2)
-            }
-        }
-    }
-    return $null
 }
 
 <#
@@ -2053,6 +2026,15 @@ function Test-AgentWriteTargetAllowed {
 
     if ($path.StartsWith($plansRepo + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
         return $true
+    }
+
+    # The protected checkout's own .git, for the same reason and against the same reopening. A
+    # branch may be named 'bin' or 'obj', which puts a throwaway component in .git\refs\heads, and
+    # .git\worktrees holds one directory per managed worktree, so either name can appear there too.
+    $mainGit = ConvertTo-AgentGuardNormalizedPath (Join-Path $main '.git')
+    if (($path -ieq $mainGit) -or
+        $path.StartsWith($mainGit + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $false
     }
 
     # Build output and third-party content.
