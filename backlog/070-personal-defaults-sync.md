@@ -3,7 +3,7 @@
 ## Metadata
 
 - **Difficulty**: moderate
-- **Stage**: 3-plan
+- **Stage**: 4-execute
 
 ## Problem
 
