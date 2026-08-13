@@ -17,6 +17,11 @@
 
 [CmdletBinding()]
 param(
+    # The backlog item's title. The worktree is named 'wt-' plus the title's slug, and
+    # new-backlog-item.ps1 slugs the same title the same way, so the worktree name and the
+    # backlog item file name agree. Use -Name instead when there is no backlog item.
+    [string] $Title,
+
     [string] $Name,
     [string] $BranchName,
     [string] $Path,
@@ -32,6 +37,7 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'worktree-git.common.ps1')
 . (Join-Path $PSScriptRoot 'worktree-powershell.common.ps1')
 . (Join-Path $PSScriptRoot 'worktree-plans.common.ps1')
+. (Join-Path $PSScriptRoot 'slug.common.ps1')
 
 function Get-HookInput {
     if (-not [Console]::IsInputRedirected) {
@@ -207,6 +213,21 @@ function Assert-SetupScriptCommitted {
 
 $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 Assert-MainCheckout $repoRoot
+
+# -Title and -Name both set the worktree name, so accepting both would silently ignore one.
+if ($Title -and $Name) {
+    throw 'Pass -Title or -Name, not both. -Title names the worktree from a backlog item title; -Name sets the directory name directly.'
+}
+
+if ($Title) {
+    # The same slug rule new-backlog-item.ps1 uses, so the worktree name matches the backlog
+    # item file name. ConvertTo-SafeName is not enough here: it does not lower-case.
+    #
+    # This runs before the hook-input read below, so a -Title call is treated as the direct
+    # call it is and never waits on stdin.
+    $Name = "wt-$(ConvertTo-BacklogSlug -Title $Title)"
+}
+
 # A direct call supplies -Name and never needs hook stdin; only read it for hook invocations.
 $hookInput = if ($Name) { $null } else { Get-HookInput }
 

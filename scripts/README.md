@@ -28,8 +28,8 @@ and must be changed as one set (see below).
 | `kill-dev-ports.ps1` | Frees the dev-server ports so `dotnet run` doesn't fail with "address already in use". |
 | `run-frontend.ps1` | Builds and starts the Blazor frontend, signed in with MSAL or (with `-NoAuth`) the no-auth test user. |
 | `publish-cli.ps1` | Publishes the `ahkflow` CLI as a native single-file executable with baked-in API/auth config. |
-| `new-worktree.ps1` | Creates a git worktree and applies AHKFlowApp local-dev isolation. |
-| `new-backlog-item.ps1` | Scaffolds a new `backlog/` item from the template with the next free number filled in. |
+| `new-worktree.ps1` | Creates a git worktree and applies AHKFlowApp local-dev isolation. `-Title` names the worktree from a backlog item title. |
+| `new-backlog-item.ps1` | Scaffolds a new `backlog/` item from the template with the next free number filled in. Run it inside the worktree the item's work will use. |
 
 ## CI-internal (`ci/`)
 
@@ -75,3 +75,4 @@ lists ignored local files `new-worktree.ps1` copies into a new worktree.
 | `test-sql-container.common.ps1` | Shared SQL Server Testcontainer settings for the coverage/test scripts. |
 | `run-frontend.common.ps1` | Shared build/run logic for `run-frontend.ps1`, dot-sourced so a test can drive it through injected scriptblocks. |
 | `backlog.common.ps1` | Shared backlog-numbering helpers for `new-backlog-item.ps1` and `tests/BacklogNumbering.Tests.ps1`. Scans all three item folders — `backlog/`, `backlog/done/`, and `backlog/blocked/` — so a number stays taken wherever its item sits. |
+| `slug.common.ps1` | The one slug rule, shared by `backlog.common.ps1` and `new-worktree.ps1`. It sits in its own file at the PowerShell 5.1 floor because `new-worktree.ps1` supports 5.1 and `backlog.common.ps1` requires 7.0. |
