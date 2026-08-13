@@ -28,7 +28,9 @@ $thresholdScriptPath = Join-Path $repoRoot 'scripts' 'ci' 'check-coverage-thresh
 $sharedSqlScript = Join-Path $PSScriptRoot 'test-sql-container.common.ps1'
 . $sharedSqlScript
 . "$PSScriptRoot\Common.ps1"
+. "$PSScriptRoot\test-run-lock.common.ps1"
 
+$testRunLock = Enter-AhkFlowTestRunLock -RepoRoot $repoRoot -Mode 'Coverage'
 Push-Location $repoRoot
 try {
     if (-not (Get-Command reportgenerator -ErrorAction SilentlyContinue)) {
@@ -106,4 +108,5 @@ try {
 }
 finally {
     Pop-Location
+    Exit-AhkFlowTestRunLock -Handle $testRunLock
 }

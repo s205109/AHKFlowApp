@@ -35,6 +35,7 @@ $resultsRoot = Join-Path $repoRoot "TestResults\test-fast\$Mode"
 $sharedSqlScript = Join-Path $PSScriptRoot 'test-sql-container.common.ps1'
 . $sharedSqlScript
 . "$PSScriptRoot\Common.ps1"
+. "$PSScriptRoot\test-run-lock.common.ps1"
 
 function New-TestRun {
     param(
@@ -158,6 +159,7 @@ function Invoke-TestRun {
 }
 
 $sharedSqlContainer = $null
+$testRunLock = $null
 $previousSharedSqlConnectionString = $env:AHKFLOW_TEST_SQL_CONNECTION_STRING
 
 Push-Location $repoRoot
@@ -184,6 +186,8 @@ try {
 
         return
     }
+
+    $testRunLock = Enter-AhkFlowTestRunLock -RepoRoot $repoRoot -Mode $Mode
 
     if ($Mode -eq 'Integration' -or $Mode -eq 'E2E') {
         Write-Step 'Starting shared SQL test container'
@@ -212,5 +216,6 @@ finally {
         Stop-AhkFlowTestSqlContainer -ContainerName $sharedSqlContainer.ContainerName
     }
 
+    Exit-AhkFlowTestRunLock -Handle $testRunLock
     Pop-Location
 }
