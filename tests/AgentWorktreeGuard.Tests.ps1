@@ -2780,6 +2780,25 @@ try {
         Assert-Equal 'Deny' $decision.Action 'Action'
     }
 
+    # A single-quoted delimiter may contain a space (Read-AgentHeredocDelimiter and the
+    # delimiter-reader suite both pin that). The opener token then carries that space too, and the
+    # opener-token pattern must still recognize it as an opener rather than an ordinary path.
+    Invoke-TestCase 'Body: a heredoc opener with a single-quoted, space-bearing delimiter as a positional path argument to Remove-Item is denied' {
+        $target = $fixture.Main.Replace('\', '/') + '/seed.txt'
+        $command = "Remove-Item <<'E F'`n$target`nE F"
+        $decision = Invoke-AgentGuardPolicy -Command $command `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'Deny' $decision.Action 'Action'
+    }
+
+    Invoke-TestCase 'Body: a heredoc opener with a double-quoted, space-bearing delimiter as a positional path argument to Remove-Item is denied' {
+        $target = $fixture.Main.Replace('\', '/') + '/seed.txt'
+        $command = "Remove-Item <<`"E F`"`n$target`nE F"
+        $decision = Invoke-AgentGuardPolicy -Command $command `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'Deny' $decision.Action 'Action'
+    }
+
     Write-Host 'File-edit write isolation' -ForegroundColor Cyan
 
     # One literal path per case. Placeholders are replaced against the disposable fixture below,

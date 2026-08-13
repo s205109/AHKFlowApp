@@ -2173,7 +2173,12 @@ $script:AgentGuardUnexpandablePattern = '[\$%`]'
 # followed by its delimiter word, with nothing else in the token. A write target that is nothing
 # but one of these names no real path - the body the opener introduces is what names one, and the
 # tokenizer already skipped that body without producing any tokens for it.
-$script:AgentGuardOpenerTokenPattern = '^(@[''"]|<<-?\S+)$'
+#
+# The heredoc branch accepts any text after << or <<-, including whitespace, because a quoted
+# delimiter can contain a space (<<'E F'), and the opener token then carries that space too. This
+# stays safe: '<' is not a legal character in a Windows file name, so no real path this check has
+# to classify can start with << or <<-.
+$script:AgentGuardOpenerTokenPattern = '^(@[''"]|<<-?.+)$'
 
 <#
 .SYNOPSIS
