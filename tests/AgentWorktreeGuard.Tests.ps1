@@ -2743,6 +2743,43 @@ try {
         Assert-Equal 'Deny' $decision.Action 'Action'
     }
 
+    # Final-review finding: the opener token left behind by a skipped body can itself land in a
+    # write command's own path argument slot. Base commit 4cbcfbd2 denied every one of these,
+    # because the whole multi-line string was one write target and its embedded newline made path
+    # resolution throw. Marking the bare opener token unresolved restores that denial without
+    # reading the body as a real path.
+    Invoke-TestCase 'Body: a here-string as a positional path argument to Remove-Item is denied' {
+        $target = $fixture.Main.Replace('\', '/') + '/seed.txt'
+        $command = "Remove-Item @'`n$target`n'@"
+        $decision = Invoke-AgentGuardPolicy -Command $command `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'Deny' $decision.Action 'Action'
+    }
+
+    Invoke-TestCase 'Body: a here-string as the -Path value of Remove-Item is denied' {
+        $target = $fixture.Main.Replace('\', '/') + '/seed.txt'
+        $command = "Remove-Item -Path @'`n$target`n'@"
+        $decision = Invoke-AgentGuardPolicy -Command $command `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'Deny' $decision.Action 'Action'
+    }
+
+    Invoke-TestCase 'Body: a piped source into Remove-Item with a here-string filler body is denied' {
+        $source = $fixture.Main.Replace('\', '/') + '/seed.txt'
+        $command = "Get-Item $source | Remove-Item @'`nfiller`n'@"
+        $decision = Invoke-AgentGuardPolicy -Command $command `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'Deny' $decision.Action 'Action'
+    }
+
+    Invoke-TestCase 'Body: a heredoc opener as a positional path argument to Remove-Item is denied' {
+        $target = $fixture.Main.Replace('\', '/') + '/seed.txt'
+        $command = "Remove-Item <<EOF`n$target`nEOF"
+        $decision = Invoke-AgentGuardPolicy -Command $command `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'Deny' $decision.Action 'Action'
+    }
+
     Write-Host 'File-edit write isolation' -ForegroundColor Cyan
 
     # One literal path per case. Placeholders are replaced against the disposable fixture below,

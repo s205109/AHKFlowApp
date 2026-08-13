@@ -2168,6 +2168,13 @@ function Get-AgentCommandWriteTarget {
 # Characters that make a path component impossible to expand from the command text alone.
 $script:AgentGuardUnexpandablePattern = '[\$%`]'
 
+# The exact shape Split-AgentCommandSegment leaves behind for a skipped heredoc or here-string
+# opener: a here-string opener is exactly @' or @"; a heredoc opener is << or <<- immediately
+# followed by its delimiter word, with nothing else in the token. A write target that is nothing
+# but one of these names no real path - the body the opener introduces is what names one, and the
+# tokenizer already skipped that body without producing any tokens for it.
+$script:AgentGuardOpenerTokenPattern = '^(@[''"]|<<-?\S+)$'
+
 <#
 .SYNOPSIS
 Replaces every reparse point in a path with its target, walking from the root down.
@@ -2268,6 +2275,19 @@ function Get-AgentWriteTargetResolution {
     param([string] $Target, [string] $BaseDirectory, [switch] $Literal)
 
     if ([string]::IsNullOrWhiteSpace($Target)) {
+        return [pscustomobject]@{ Path = ''; Unresolved = $true }
+    }
+
+    # A target that is nothing but a heredoc or here-string opener token carries no real path.
+    # Get-AgentSegmentWriteTarget can only report the bare opener as a write command's own target
+    # when the tokenizer already skipped the body that names the real path, for example
+    # `Remove-Item @'<a path>'@`. Resolving the two- or three-character opener as if it were a
+    # literal relative path let that command through; treating it as unresolved denies it instead,
+    # matching how a command carrying an unexpandable path component is already handled below.
+    # Checked before the quote-trim just below: trimming a here-string opener's own quote
+    # character would erase the exact shape this matches. A tool-call path never carries this
+    # shape, so -Literal skips it the same way it skips the other shell-only checks.
+    if (-not $Literal -and $Target.Trim() -match $script:AgentGuardOpenerTokenPattern) {
         return [pscustomobject]@{ Path = ''; Unresolved = $true }
     }
 

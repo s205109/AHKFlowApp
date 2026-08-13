@@ -338,7 +338,10 @@ An agent running the same command would need a prompt or override.
   run the command. A bash command whose line ends in `@'` therefore has the text below it skipped
   as a here-string body, although bash has no here-strings. That text is invisible to the guard
   today as well, because the tokenizer swallows it into one quoted string, so this opens no new
-  gap. It only makes the result the same every time.
+  gap. It only makes the result the same every time. The leftover opener token (`@'`, `@"`,
+  `<<WORD`, `<<-WORD`) can still land in a write command's own path argument, for example
+  `Remove-Item @'<path>'@`. The guard treats a target that is nothing but that token as
+  unresolvable and denies the command, so the opener is never read as a real path.
 - `pwsh -File custom.ps1` bypasses the guard for a different reason: it runs git from inside a
   script file, not from a quoted string. The guard only reads the command line the hook reports,
   not any file that command line points to.
