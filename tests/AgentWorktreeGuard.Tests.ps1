@@ -1901,6 +1901,22 @@ try {
         @{ Command = 'Copy-Item a.txt -Destination b.txt'; Expected = @('b.txt') },
         @{ Command = 'Copy-Item a.txt b.txt'; Expected = @('b.txt') },
         @{ Command = 'Remove-Item -LiteralPath out.txt'; Expected = @('out.txt') },
+        # An option value standing before the path used to become operand 0, so the path itself
+        # was never reported. The command still wrote it.
+        @{ Command = 'Set-Content -Encoding utf8 out.txt x'; Expected = @('out.txt') },
+        @{ Command = 'Set-Content -ErrorAction Stop out.txt x'; Expected = @('out.txt') },
+        @{ Command = 'Add-Content -Encoding utf8 out.txt x'; Expected = @('out.txt') },
+        @{ Command = 'Out-File -Encoding utf8 out.txt'; Expected = @('out.txt') },
+        @{ Command = 'Remove-Item -Filter *.md out'; Expected = @('out') },
+        @{ Command = 'New-Item -ItemType File -Value hello out.txt'; Expected = @('out.txt') },
+        # Same root cause, harmless face: -Name with no -Path read the -ItemType value as the
+        # link path, so the reported paths were 'SymbolicLink' and 'SymbolicLink\bait'.
+        @{ Command = 'New-Item -ItemType SymbolicLink -Name bait -Target C:\repo\README.md'
+            Expected = @('bait', 'C:\repo\README.md')
+        },
+        # A switch takes no value, so the token after it stays a path.
+        @{ Command = 'Set-Content -Force out.txt x'; Expected = @('out.txt') },
+        @{ Command = 'Remove-Item -Recurse out'; Expected = @('out') },
         # Reads produce nothing
         @{ Command = 'cat out.txt'; Expected = @() },
         @{ Command = 'Get-Content out.txt'; Expected = @() }
@@ -2245,6 +2261,33 @@ try {
         @{ Name    = 'an -Exclude value is not treated as a move source'
             Command = 'Move-Item -Path a.txt -Destination b.txt -Exclude <MAIN>/seed.txt'
             Cwd = 'Managed'; Action = 'Allow'
+        },
+        # The same reader now serves the content-writing cmdlets. Without it an option value
+        # standing before the path took the operand 0 slot, the guard scanned that value instead
+        # of the path, and every one of these writes into main was ALLOWED.
+        @{ Name    = 'an -Encoding value before a main path does not hide the write'
+            Command = 'Set-Content -Encoding utf8 <MAIN>/x.txt hello'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'a common parameter before a main path does not hide the write'
+            Command = 'Set-Content -ErrorAction Stop <MAIN>/x.txt hello'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'an -Encoding value before a main Out-File path does not hide the write'
+            Command = 'Out-File -Encoding utf8 <MAIN>/x.txt'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'a -Value before a main New-Item path does not hide the write'
+            Command = 'New-Item -ItemType File -Value hello <MAIN>/x.txt'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'a -Filter value before a main Remove-Item path does not hide the delete'
+            Command = 'Remove-Item -Filter x.md <MAIN>/docs'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        # The other direction: the option value itself is not a path the command writes.
+        @{ Name    = 'a Set-Content -Filter value is not treated as a write target'
+            Command = 'Set-Content -Path notes.tmp -Filter <MAIN>/seed.txt -Value y'
+            Cwd = 'Managed'; Action = 'Allow'
+        },
+        # A switch consumes nothing, so the path after it must still be read.
+        @{ Name    = 'a switch before a main path does not hide the write'
+            Command = 'Set-Content -Force <MAIN>/x.txt hello'; Cwd = 'Managed'; Action = 'Deny'
         },
         # A provider-qualified path names a real location, but it is not a rooted path, so it
         # would otherwise be anchored under the session worktree and wrongly allowed.
@@ -2750,11 +2793,25 @@ try {
             Action = 'Allow'
         },
         # Every one of the three anchors has to stay inside the worktree for this to be Allow.
-        # '../src/a.cs' would NOT: from the worktree root it climbs into .claude\worktrees, which
-        # is main.
         @{ Name = 'a relative link that stays inside the session worktree'
             Command = 'ln -s src/a.cs deep/bait.md'
             Action = 'Allow'
+        },
+        # The over-report the three anchors cost, pinned rather than left to a comment. Windows
+        # resolves this symbolic link inside the worktree, so the link is legitimate work. The
+        # as-written anchor climbs into <main>\.claude\worktrees, and Deny wins. Backlog 086
+        # reads the link kind and turns this case into Allow; until then the refusal is the
+        # documented price, and the message names a path no write would land on.
+        @{ Name = 'a relative symbolic link inside the worktree is over-reported'
+            Command = 'ln -s ../src/a.cs deep/bait.md'
+            Action = 'Deny'
+        },
+        # Why the as-written anchor cannot simply be dropped. A HARD link resolves its source
+        # against the working directory, so this one names <main>\.claude\worktrees\README.md.
+        # The two link-relative anchors both land inside the worktree and would allow it.
+        @{ Name = 'a relative hard link only the as-written anchor catches'
+            Command = 'ln ../README.md deep/bait.md'
+            Action = 'Deny'
         },
         # The gate from Task 5, proved at the decision layer: content is not a path.
         @{ Name = 'an ordinary file write with a value is untouched'

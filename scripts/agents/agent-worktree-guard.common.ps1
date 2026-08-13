@@ -1407,6 +1407,24 @@ $script:AgentGuardMoveValueParameters = @(
     'path', 'literalpath', 'destination', 'newname', 'filter', 'include', 'exclude', 'credential'
 )
 
+# The same list for the content-writing cmdlets in AgentGuardWriteCmdlets. Every name here
+# consumes the token after it, so none of those tokens is a path the command writes. The common
+# parameters are on the list because `Set-Content -ErrorAction Stop <path>` hides a path behind
+# 'Stop' exactly as `-Encoding utf8` hides one behind 'utf8'.
+#
+# Switches are absent on purpose: -Force, -Confirm, -WhatIf, -PassThru, -Append, -NoClobber,
+# -NoNewline, -Recurse, -UseTransaction, -Verbose, -Debug. Listing one would consume the path
+# that follows it and lose the target. No full switch name here is a prefix of a listed name,
+# so the prefix match cannot confuse the two; an abbreviation short enough to match both, such
+# as -F, is ambiguous to PowerShell too and the command does not run.
+$script:AgentGuardWriteCmdletValueParameters = @(
+    'path', 'literalpath', 'filepath', 'value', 'itemtype', 'type', 'name', 'target',
+    'encoding', 'filter', 'include', 'exclude', 'stream', 'delimiter', 'inputobject',
+    'width', 'credential', 'erroraction', 'warningaction', 'informationaction',
+    'errorvariable', 'warningvariable', 'informationvariable', 'outvariable', 'outbuffer',
+    'pipelinevariable'
+)
+
 <#
 .SYNOPSIS
 An option's value, rejoined across the tokens an array value splits into.
@@ -1433,16 +1451,21 @@ function Get-AgentOptionValueSpan {
 
 <#
 .SYNOPSIS
-The true positional operands of a move cmdlet, with option values removed.
+The true positional operands of a cmdlet, with option values removed.
 
 .DESCRIPTION
 Get-AgentGitPositionals drops every '-*' token but keeps the token AFTER it, so the value of
-`-Filter *.tmp` is left behind and read as though it were a file the move touches. That
-over-reports a target and refuses ordinary in-worktree moves. This reader consumes each
-value-taking option together with its value.
+`-Filter *.tmp` is left behind and read as though it were a file the command touches. This
+reader consumes each value-taking option together with its value.
+
+The two callers fail in opposite directions without it. A move over-reports a target and
+refuses ordinary in-worktree moves. A content write does worse: `Set-Content -Encoding utf8
+<main>\README.md hello` reads 'utf8' as operand 0, so the real path is never scanned and the
+write into the main checkout is ALLOWED. So ValueParameters is per caller, and each list holds
+only parameters that consume a value - a switch such as -Force takes none and must stay out.
 #>
-function Get-AgentMoveCmdletOperand {
-    param([string[]] $Arguments)
+function Get-AgentCmdletOperand {
+    param([string[]] $Arguments, [string[]] $ValueParameters)
 
     $operands = New-Object System.Collections.Generic.List[string]
     $list = @($Arguments)
@@ -1454,7 +1477,7 @@ function Get-AgentMoveCmdletOperand {
 
         if ($argument -match '^-([A-Za-z]+)$') {
             $name = [string] $Matches[1]
-            if (Test-AgentParameterNamePrefix -Name $name -Candidates $script:AgentGuardMoveValueParameters) {
+            if (Test-AgentParameterNamePrefix -Name $name -Candidates $ValueParameters) {
                 # Consume the whole value, including the tokens an array value splits into.
                 if (($i + 1) -lt $list.Count) {
                     $i = (Get-AgentOptionValueSpan -List $list -Index ($i + 1)).LastIndex
@@ -1650,6 +1673,18 @@ directory. Anchoring one way only would allow that link.
 So a relative target is offered three ways - as written, joined to the link path, and joined to
 the link path's parent - and whichever one lands in the main checkout produces the denial. All
 three are paths, so this over-reports only paths, which is the safe direction for this grammar.
+
+The as-written anchor stays even though Windows never resolves a SYMBOLIC link that way, because
+a HARD link resolves its source exactly that way: `ln ../README.md deep/bait.md` names
+<main>\.claude\worktrees\README.md, and only the as-written anchor reaches it. Drop that anchor
+and the hard link is allowed, which hands the session a second name for a file in the main
+checkout. Reading the link kind first would let each form keep only its own anchor, and backlog
+086 holds that work.
+
+The cost of keeping all three is a real over-report, and it is not theoretical: `ln -s ../src/a.cs
+deep/bait.md` from the worktree root stays inside the worktree, and the guard still refuses it.
+The message then names a main-checkout path that no write would have landed on. Use a target with
+no '..' in it, or an absolute one. Both directions are pinned by tests.
 
 An absolute target means the same file from every directory, so it is added once.
 #>
@@ -1885,6 +1920,13 @@ function Get-AgentSegmentWriteTarget {
         }
     }
     elseif ($script:AgentGuardWriteCmdlets.ContainsKey($leaf)) {
+        # Operands with option values removed. Reading $positionals here was a hole rather than a
+        # wart: `Set-Content -Encoding utf8 <main>\README.md hello` left 'utf8' in operand 0, so
+        # the guard reported a relative path inside the worktree, never scanned the real target,
+        # and ALLOWED a write into the main checkout.
+        $cmdletOperands = @(Get-AgentCmdletOperand -Arguments $arguments `
+                -ValueParameters $script:AgentGuardWriteCmdletValueParameters)
+
         # Prefix-aware: `Set-Content -Pa:<path>` names the same target as `-Path <path>`, and the
         # colon token is dropped as an option, so no positional fallback could recover it.
         $named = Get-AgentPrefixedParameterValue -Arguments $arguments -Names $script:AgentGuardWriteCmdlets[$leaf]
@@ -1893,9 +1935,9 @@ function Get-AgentSegmentWriteTarget {
             [void] $targets.Add($named)
             $linkPath = [string] $named
         }
-        elseif ($positionals.Count -ge 1) {
-            [void] $targets.Add($positionals[0])
-            $linkPath = [string] $positionals[0]
+        elseif ($cmdletOperands.Count -ge 1) {
+            [void] $targets.Add($cmdletOperands[0])
+            $linkPath = [string] $cmdletOperands[0]
         }
 
         if ($leaf -eq 'new-item') {
@@ -1918,7 +1960,8 @@ function Get-AgentSegmentWriteTarget {
     }
     elseif ($script:AgentGuardWriteDestinationCmdlets -contains $leaf) {
         # Operands with option values removed, so `-Filter *.tmp` does not look like a file.
-        $cmdletOperands = @(Get-AgentMoveCmdletOperand -Arguments $arguments)
+        $cmdletOperands = @(Get-AgentCmdletOperand -Arguments $arguments `
+                -ValueParameters $script:AgentGuardMoveValueParameters)
 
         $named = Get-AgentPrefixedParameterValue -Arguments $arguments -Names @('Destination', 'NewName')
         if ($null -ne $named) { [void] $targets.Add($named) }
@@ -2038,7 +2081,8 @@ function Test-AgentPipelineBoundSource {
     }
 
     # Option values are consumed with their option, so `-Destination x` leaves no false operand.
-    $operands = @(Get-AgentMoveCmdletOperand -Arguments $arguments)
+    $operands = @(Get-AgentCmdletOperand -Arguments $arguments `
+            -ValueParameters $script:AgentGuardMoveValueParameters)
     $needed = if ($script:AgentGuardPipelineRemoveSinks -contains $leaf) { 1 } else { 2 }
     return ($operands.Count -lt $needed)
 }
