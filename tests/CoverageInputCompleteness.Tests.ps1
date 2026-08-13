@@ -1,0 +1,127 @@
+#Requires -Version 5.1
+<#
+.SYNOPSIS
+Tests the coverage-input completeness check in scripts/coverage-inputs.common.ps1.
+
+.DESCRIPTION
+Backlog 082: when coverlet cannot instrument a locked assembly it writes no coverage file for
+that test project, and dotnet test still exits 0. The coverage gate then blames coverage for
+missing input. These cases prove the run notices the missing file first.
+
+The cases build a fake results tree under the system temp directory. No case runs dotnet.
+#>
+[CmdletBinding()]
+param()
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+$PSNativeCommandUseErrorActionPreference = $false
+
+$repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
+. (Join-Path $repoRoot 'scripts\coverage-inputs.common.ps1')
+
+$script:Failures = New-Object System.Collections.Generic.List[string]
+
+function Assert-True {
+    param([bool] $Condition, [string] $Message)
+    if (-not $Condition) { throw $Message }
+}
+
+function Invoke-TestCase {
+    param([string] $Name, [scriptblock] $Body)
+    try {
+        & $Body
+        Write-Host "  PASS  $Name" -ForegroundColor Green
+    }
+    catch {
+        $script:Failures.Add("$Name :: $($_.Exception.Message)")
+        Write-Host "  FAIL  $Name" -ForegroundColor Red
+        Write-Host "        $($_.Exception.Message)" -ForegroundColor DarkRed
+    }
+}
+
+# Builds <root>\<project>\<guid>\coverage.cobertura.xml for each named project, which is the
+# shape coverlet produces under a per-project results directory.
+function New-ResultsFixture {
+    param([string[]] $ProjectName)
+
+    $root = Join-Path ([System.IO.Path]::GetTempPath()) ('ahkflow-coverage-' + [guid]::NewGuid().ToString('N'))
+    foreach ($name in $ProjectName) {
+        $folder = Join-Path (Join-Path $root $name) ([guid]::NewGuid().ToString())
+        New-Item -ItemType Directory -Path $folder -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $folder 'coverage.cobertura.xml') `
+            -Value '<coverage><packages /></coverage>' -Encoding utf8
+    }
+
+    return (Resolve-Path -LiteralPath $root).Path
+}
+
+function Remove-ResultsFixture {
+    param([string] $Root)
+    if (Test-Path -LiteralPath $Root) {
+        Remove-Item -LiteralPath $Root -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+Invoke-TestCase 'A complete result set reports nothing missing' {
+    $expected = @('AHKFlowApp.Domain.Tests', 'AHKFlowApp.UI.Blazor.Tests')
+    $root = New-ResultsFixture -ProjectName $expected
+    try {
+        $missing = @(Get-AhkFlowMissingCoverageInput -ResultsRoot $root -ExpectedProjectName $expected)
+        Assert-True ($missing.Count -eq 0) "Expected nothing missing, got: $($missing -join ', ')"
+    }
+    finally {
+        Remove-ResultsFixture -Root $root
+    }
+}
+
+Invoke-TestCase 'Removing one expected coverage file names that project' {
+    $expected = @('AHKFlowApp.Domain.Tests', 'AHKFlowApp.UI.Blazor.Tests')
+    $root = New-ResultsFixture -ProjectName $expected
+    try {
+        Get-ChildItem -LiteralPath (Join-Path $root 'AHKFlowApp.UI.Blazor.Tests') -Recurse -Filter 'coverage.cobertura.xml' |
+            Remove-Item -Force
+
+        $missing = @(Get-AhkFlowMissingCoverageInput -ResultsRoot $root -ExpectedProjectName $expected)
+        Assert-True ($missing.Count -eq 1) "Expected exactly one missing project, got: $($missing -join ', ')"
+        Assert-True ($missing[0] -eq 'AHKFlowApp.UI.Blazor.Tests') "Expected the UI project, got: $($missing[0])"
+    }
+    finally {
+        Remove-ResultsFixture -Root $root
+    }
+}
+
+Invoke-TestCase 'A project folder that was never created counts as missing' {
+    $expected = @('AHKFlowApp.Domain.Tests', 'AHKFlowApp.CLI.Tests')
+    $root = New-ResultsFixture -ProjectName @('AHKFlowApp.Domain.Tests')
+    try {
+        $missing = @(Get-AhkFlowMissingCoverageInput -ResultsRoot $root -ExpectedProjectName $expected)
+        Assert-True ($missing.Count -eq 1) "Expected exactly one missing project, got: $($missing -join ', ')"
+        Assert-True ($missing[0] -eq 'AHKFlowApp.CLI.Tests') "Expected the CLI project, got: $($missing[0])"
+    }
+    finally {
+        Remove-ResultsFixture -Root $root
+    }
+}
+
+Invoke-TestCase 'The expected project list comes from the solution and coverlet' {
+    $projects = @(Get-AhkFlowCoverageProject -RepoRoot $repoRoot)
+    $names = @($projects | ForEach-Object { $_.Name })
+    Assert-True ($names.Count -ge 1) 'Expected at least one coverage-producing test project.'
+    Assert-True ($names -contains 'AHKFlowApp.UI.Blazor.Tests') "Expected the UI test project. Got: $($names -join ', ')"
+    Assert-True ($names -notcontains 'AHKFlowApp.TestUtilities') 'TestUtilities is a library, not a test project.'
+
+    foreach ($project in $projects) {
+        Assert-True (Test-Path -LiteralPath $project.Path -PathType Leaf) "Project path does not exist: $($project.Path)"
+    }
+}
+
+Write-Host ''
+if ($script:Failures.Count -gt 0) {
+    Write-Host "FAILED: $($script:Failures.Count) test(s)" -ForegroundColor Red
+    foreach ($failure in $script:Failures) { Write-Host "  - $failure" -ForegroundColor Red }
+    exit 1
+}
+
+Write-Host 'Coverage input completeness tests passed.' -ForegroundColor Green
+exit 0

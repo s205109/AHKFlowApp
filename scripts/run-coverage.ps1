@@ -25,10 +25,12 @@ $coverageReportDirectory = Join-Path $repoRoot 'CoverageReport'
 $summaryJsonPath = Join-Path $coverageReportDirectory 'Summary.json'
 $summaryGithubPath = Join-Path $coverageReportDirectory 'SummaryGithub.md'
 $thresholdScriptPath = Join-Path $repoRoot 'scripts' 'ci' 'check-coverage-thresholds.py'
+$coverageResultsRoot = Join-Path $repoRoot 'TestResults' 'coverage'
 $sharedSqlScript = Join-Path $PSScriptRoot 'test-sql-container.common.ps1'
 . $sharedSqlScript
 . "$PSScriptRoot\Common.ps1"
 . "$PSScriptRoot\test-run-lock.common.ps1"
+. "$PSScriptRoot\coverage-inputs.common.ps1"
 
 $testRunLock = Enter-AhkFlowTestRunLock -RepoRoot $repoRoot -Mode 'Coverage'
 Push-Location $repoRoot
@@ -62,14 +64,27 @@ try {
         $env:AHKFLOW_TEST_SQL_CONNECTION_STRING = $sharedSqlContainer.ConnectionString
         Write-Success ("Shared SQL test container ready in {0} ms." -f $sharedSqlContainer.ElapsedMilliseconds)
 
-        dotnet test --configuration $Configuration `
-            --disable-build-servers `
-            --no-build `
-            --no-restore `
-            --collect:"XPlat Code Coverage" `
-            --results-directory TestResults `
-            --settings coverlet.runsettings
-        $testExitCode = $LASTEXITCODE
+        $coverageProject = Get-AhkFlowCoverageProject -RepoRoot $repoRoot
+        if ($coverageProject.Count -eq 0) {
+            throw "No test project in the solution references coverlet.collector. A coverage run with nothing to measure must not look green."
+        }
+
+        $expectedProjectName = @($coverageProject | ForEach-Object { $_.Name })
+
+        foreach ($project in $coverageProject) {
+            $projectName = $project.Name
+            $projectResultsDirectory = Join-Path $coverageResultsRoot $projectName
+
+            Write-Step "Collecting coverage for $projectName"
+            dotnet test $project.Path --configuration $Configuration `
+                --disable-build-servers `
+                --no-build `
+                --no-restore `
+                --collect:"XPlat Code Coverage" `
+                --results-directory $projectResultsDirectory `
+                --settings coverlet.runsettings
+            if ($LASTEXITCODE -ne 0) { $testExitCode = $LASTEXITCODE }
+        }
     }
     finally {
         $env:AHKFLOW_TEST_SQL_CONNECTION_STRING = $previousSharedSqlConnectionString
@@ -77,6 +92,24 @@ try {
     }
 
     if ($testExitCode -ne 0) { throw "dotnet test failed" }
+
+    $missingCoverageInput = Get-AhkFlowMissingCoverageInput `
+        -ResultsRoot $coverageResultsRoot `
+        -ExpectedProjectName $expectedProjectName
+    if ($missingCoverageInput.Count -gt 0) {
+        Write-Fail 'Coverage input is incomplete. This run measured nothing for these test projects:'
+        foreach ($name in $missingCoverageInput) { Write-Host "  - $name" -ForegroundColor Red }
+        throw @"
+$($missingCoverageInput.Count) test project(s) produced no coverage.cobertura.xml.
+This is missing input, not a coverage regression. Do not read the numbers from this run.
+
+The usual cause is a second test run in the same repository. coverlet instruments every
+assembly in a test project's output folder, so another run holding one of those files makes
+instrumentation fail while dotnet test still exits 0.
+
+Make sure no other test run is active, then run this script again.
+"@
+    }
 
     reportgenerator `
         -reports:"TestResults/**/coverage.cobertura.xml" `
