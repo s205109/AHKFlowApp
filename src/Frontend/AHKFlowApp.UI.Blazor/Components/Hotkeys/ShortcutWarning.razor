@@ -62,10 +62,10 @@
 
     /// <summary>Every Profile the owner has, with their templates. Both call sites already hold this.</summary>
     /// <remarks>
-    /// The list is read as fixed for the lifetime of the page. Its content is not part of
-    /// <see cref="EvaluationKey"/>, so replacing the list while a notice is on screen would not
-    /// re-evaluate. Neither call site does that: the Hotkeys page loads it once
-    /// (<c>Pages/Hotkeys.razor</c>) and hands the same list to the edit dialog.
+    /// The Hotkeys page fills this list from its own request, so the grid can render an editable row
+    /// before the list arrives. The templates the notice reads are therefore part of
+    /// <see cref="EvaluationKey"/>: a list that lands later re-evaluates instead of leaving a row
+    /// that can never warn.
     /// </remarks>
     [Parameter] public IReadOnlyList<ProfileDto> Profiles { get; set; } = [];
 
@@ -99,13 +99,14 @@
     private string _checkedDestination = "";
 
     // What one evaluation was for. The source combination alone is not enough: switching the
-    // action kind, picking a new destination, or changing which Profiles the row belongs to all
-    // change the notice while the combination stands still.
+    // action kind, picking a new destination, changing which Profiles the row belongs to, or
+    // receiving the Profile list itself all change the notice while the combination stands still.
     private readonly record struct EvaluationKey(
         string Combination,
         HotkeyActionKind Kind,
         string? RemapDest,
-        string ProfileScope);
+        string ProfileScope,
+        string Templates);
 
     private EvaluationKey? _evaluated;
 
@@ -117,7 +118,7 @@
     protected override void OnParametersSet()
     {
         string combination = HotkeyActionDisplay.ComboLabel(Key ?? "", Ctrl, Alt, Shift, Win);
-        EvaluationKey key = new(combination, ActionKind, RemapDest, ProfileScope());
+        EvaluationKey key = new(combination, ActionKind, RemapDest, ProfileScope(), TemplateStamp());
 
         if (key == _evaluated)
             return;
@@ -129,6 +130,19 @@
     // Sorted, so reordering the multi-select does not force a pointless re-evaluation.
     private string ProfileScope() =>
         AppliesToAllProfiles ? "*" : string.Join(",", ProfileIds.Order());
+
+    // Everything the notice reads, from exactly the Profiles it reads it from: the name it
+    // prints, and the two templates it matches the row against. A longer list, a renamed
+    // Profile, or an edited template each produce a different stamp, so the notice follows
+    // every one of them. The separators are the ASCII record and unit separators, which no
+    // AutoHotkey template holds, so text moved from the header to the footer changes the stamp
+    // instead of reading the same both ways.
+    private const string FieldSeparator = "\u001E";
+    private const string ProfileSeparator = "\u001F";
+
+    private string TemplateStamp() =>
+        string.Join(ProfileSeparator, SelectedProfiles().Select(p => string.Join(
+            FieldSeparator, p.Id, p.Name, p.HeaderTemplate, p.FooterTemplate)));
 
     public void Dispose()
     {

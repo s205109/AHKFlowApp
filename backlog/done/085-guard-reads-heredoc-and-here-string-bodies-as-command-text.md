@@ -5,6 +5,8 @@
 - **Epic**: Agent guardrails
 - **Type**: Feature
 - **Interfaces**: CLI
+- **Difficulty**: complex
+- **Stage**: 9-ship
 
 ## Summary
 
@@ -21,13 +23,13 @@ as running it.
 
 ## Acceptance criteria
 
-- [ ] `git commit -F -` with a heredoc body containing `| Remove-Item` is allowed from a managed
+- [x] `git commit -F -` with a heredoc body containing `| Remove-Item` is allowed from a managed
       worktree
-- [ ] The same holds for a PowerShell here-string body, including one whose text contains an
+- [x] The same holds for a PowerShell here-string body, including one whose text contains an
       apostrophe before the pipe
-- [ ] A real `| Remove-Item` outside any heredoc or here-string is still refused
-- [ ] A body containing `> file` or `rm -rf` is no longer read as a redirect or a delete either
-- [ ] Tests cover each shape above, in `tests/AgentWorktreeGuard.Tests.ps1`
+- [x] A real `| Remove-Item` outside any heredoc or here-string is still refused
+- [x] A body containing `> file` or `rm -rf` is no longer read as a redirect or a delete either
+- [x] Tests cover each shape above, in `tests/AgentWorktreeGuard.Tests.ps1`
 
 ## Out of scope
 

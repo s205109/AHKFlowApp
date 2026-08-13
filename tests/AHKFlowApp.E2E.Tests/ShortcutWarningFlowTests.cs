@@ -304,14 +304,7 @@ public sealed class ShortcutWarningFlowTests(StackFixture fixture) : IAsyncLifet
         IPage page = await context.NewPageAsync();
 
         // Put the Caps Lock layer into the seeded profile's header template.
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/profiles");
-        await page.WaitForSelectorAsync("button.start-edit");
-        await page.ClickAsync("button.start-edit");
-        await page.WaitForSelectorAsync("textarea[data-test=\"profile-header-input\"]");
-        await page.FillAsync("textarea[data-test=\"profile-header-input\"]",
-            "#Requires AutoHotkey v2.0\n\n*CapsLock::\n{\n    Send \"{Blind}{LCtrl DownR}\"\n}");
-        await page.ClickAsync("button.commit-edit");
-        await page.WaitForSelectorAsync("text=Profile updated.");
+        await SetProfileHeaderAsync(page, CapsLockLayerHeader);
 
         // Now bind a hotkey to the same key. "Apply to all profiles" avoids picking one by name.
         await OpenCreateDialogAsync(page);
@@ -333,6 +326,42 @@ public sealed class ShortcutWarningFlowTests(StackFixture fixture) : IAsyncLifet
         await page.WaitForSelectorAsync("text=Hotkey created.");
     }
 
+    // The page hands the create dialog the Profile list it holds at the moment the dialog opens.
+    // The list arrives from its own request, so a fast click can reach the dialog first. The
+    // template notice reads that list, and the dialog never receives a later one, so an early
+    // click used to produce a dialog that could never warn. This is the flake CI hit.
+    [Fact]
+    public async Task WhileTheProfileListIsStillLoading_TheCreateDialogStillWarns()
+    {
+        await using IBrowserContext context = await fixture.Browser.NewContextAsync();
+        IPage page = await context.NewPageAsync();
+
+        await SetProfileHeaderAsync(page, CapsLockLayerHeader);
+
+        // Hold the Profile list open, so the hotkeys page reaches its first render without it. The
+        // handler waits on the source below rather than on a fixed delay, so the test never races.
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await context.RouteAsync("**/api/v1/profiles", async route =>
+        {
+            await release.Task;
+            await route.ContinueAsync();
+        });
+
+        await page.GotoAsync($"{fixture.Spa.BaseUrl}/hotkeys");
+
+        // Click as early as the page allows. Playwright waits for the button to be enabled, so this
+        // lands at the first moment the page offers the dialog at all.
+        await page.ClickAsync("button.add-hotkey");
+        release.SetResult();
+
+        await page.WaitForSelectorAsync(".hotkey-edit-dialog");
+        await CommitKeyAsync(page, "CapsLock");
+        await page.CheckAsync(".hotkey-edit-dialog input[data-test=\"applies-to-all-checkbox\"]");
+
+        await Assertions.Expect(page.Locator(".hotkey-edit-dialog [data-test=\"template-warning\"]"))
+            .ToContainTextAsync("also uses CapsLock");
+    }
+
     // AutoHotkey spells one key two ways. The template says LControl, the row says LCtrl, and the
     // warning has to see them as the same key. Both sides canonicalize through the key registry.
     [Fact]
@@ -341,14 +370,8 @@ public sealed class ShortcutWarningFlowTests(StackFixture fixture) : IAsyncLifet
         await using IBrowserContext context = await fixture.Browser.NewContextAsync();
         IPage page = await context.NewPageAsync();
 
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/profiles");
-        await page.WaitForSelectorAsync("button.start-edit");
-        await page.ClickAsync("button.start-edit");
-        await page.WaitForSelectorAsync("textarea[data-test=\"profile-header-input\"]");
-        await page.FillAsync("textarea[data-test=\"profile-header-input\"]",
+        await SetProfileHeaderAsync(page,
             "#Requires AutoHotkey v2.0\n\n*LControl::\n{\n    Send \"{Blind}{LAlt DownR}\"\n}");
-        await page.ClickAsync("button.commit-edit");
-        await page.WaitForSelectorAsync("text=Profile updated.");
 
         await OpenCreateDialogAsync(page);
         await CommitKeyAsync(page, "LCtrl");
@@ -371,6 +394,22 @@ public sealed class ShortcutWarningFlowTests(StackFixture fixture) : IAsyncLifet
         if (search is not null)
             await page.FillAsync("input[data-test=\"known-shortcut-search\"]", search);
     }
+
+    // Writes one template into the seeded Profile's header and waits for the save to land. Three
+    // tests start this way, and each of them then binds a hotkey to a key the template uses.
+    private async Task SetProfileHeaderAsync(IPage page, string template)
+    {
+        await page.GotoAsync($"{fixture.Spa.BaseUrl}/profiles");
+        await page.WaitForSelectorAsync("button.start-edit");
+        await page.ClickAsync("button.start-edit");
+        await page.WaitForSelectorAsync("textarea[data-test=\"profile-header-input\"]");
+        await page.FillAsync("textarea[data-test=\"profile-header-input\"]", template);
+        await page.ClickAsync("button.commit-edit");
+        await page.WaitForSelectorAsync("text=Profile updated.");
+    }
+
+    private const string CapsLockLayerHeader =
+        "#Requires AutoHotkey v2.0\n\n*CapsLock::\n{\n    Send \"{Blind}{LCtrl DownR}\"\n}";
 
     private async Task OpenCreateDialogAsync(IPage page)
     {

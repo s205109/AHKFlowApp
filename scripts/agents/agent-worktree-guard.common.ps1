@@ -29,6 +29,10 @@ $script:AgentGuardDoubleQuoteEscapables = '$`"\'
 # is legal in a Windows path, so no path the guard has to classify is affected.
 $script:AgentGuardUnquotedEscapables = '$`"\;&|()<>' + "'"
 
+# Characters that end an unquoted heredoc delimiter word. These are the same separators the
+# tokenizer treats as segment boundaries, so `<<EOF; echo x` reads EOF and keeps the rest.
+$script:AgentGuardHeredocDelimiterStops = ';&|`()<>'
+
 # Commands that move the shell's working directory, so a later `git` in the same chain does not
 # run where the hook payload said it would. pushd/popd are tracked separately because they form a
 # stack: treating popd as an unrecognized command left the guard believing the shell was still in
@@ -387,6 +391,173 @@ function Get-AgentGitSafetyDecision {
 
 <#
 .SYNOPSIS
+Reads the delimiter word of a heredoc opener, starting just past '<<' or '<<-'.
+
+.DESCRIPTION
+bash allows whitespace between the operator and the word. It also allows the word to be quoted
+('EOF', "EOF") or backslash-quoted (\EOF). All four spellings name the same terminator: quoting
+only suppresses expansion inside the body, and the guard never expands anything. A backslash is
+handled here rather than through the tokenizer's own escape table, which keeps a literal
+backslash in an unquoted Windows path and would otherwise read the delimiter as \EOF.
+
+The word ends at whitespace or at one of $script:AgentGuardHeredocDelimiterStops. A newline or
+the end of the string before any character is a bash syntax error, and so is an unterminated
+quoted delimiter; both return $null so the caller can fail closed.
+
+Returns @{ Word = string; NextIndex = int }, or $null when there is no readable delimiter.
+#>
+function Read-AgentHeredocDelimiter {
+    [CmdletBinding()]
+    param([string] $Command, [int] $StartIndex)
+
+    $word = New-Object System.Text.StringBuilder
+    $i = $StartIndex
+
+    while ($i -lt $Command.Length -and ($Command[$i] -eq ' ' -or $Command[$i] -eq "`t")) { $i++ }
+
+    while ($i -lt $Command.Length) {
+        $ch = $Command[$i]
+
+        if ([char]::IsWhiteSpace($ch)) { break }
+        if ($script:AgentGuardHeredocDelimiterStops.IndexOf($ch) -ge 0) { break }
+
+        if ($ch -eq '\' -and ($i + 1) -lt $Command.Length) {
+            [void] $word.Append($Command[$i + 1])
+            $i += 2
+            continue
+        }
+
+        if ($ch -eq "'" -or $ch -eq '"') {
+            $quote = $ch
+            $i++
+            while ($i -lt $Command.Length -and $Command[$i] -ne $quote) {
+                [void] $word.Append($Command[$i])
+                $i++
+            }
+            if ($i -ge $Command.Length) { return $null }
+            $i++
+            continue
+        }
+
+        [void] $word.Append($ch)
+        $i++
+    }
+
+    if ($word.Length -eq 0) { return $null }
+
+    return @{ Word = $word.ToString(); NextIndex = $i }
+}
+
+<#
+.SYNOPSIS
+Consumes queued heredoc bodies that start at $StartIndex, one per queued delimiter, in order.
+
+.DESCRIPTION
+A body ends at a line equal to its delimiter. '<<-' strips leading TAB characters from the
+candidate line before the comparison. It never strips spaces, so a space-indented terminator
+leaves the body open, exactly as bash leaves it. The comparison is ordinal and case-sensitive.
+
+A trailing carriage return is removed before the comparison, so a command that arrives with CRLF
+line endings closes on the same terminator line a LF command closes on.
+
+Returns the index of the first character after the last body, or -1 when a body never closes.
+#>
+function Read-AgentHeredocBodyEnd {
+    [CmdletBinding()]
+    param([string] $Command, [int] $StartIndex, [object[]] $Pending)
+
+    $position = $StartIndex
+
+    foreach ($heredoc in $Pending) {
+        $closed = $false
+
+        while ($position -lt $Command.Length) {
+            $lineEnd = $Command.IndexOf("`n", $position)
+            if ($lineEnd -lt 0) { $lineEnd = $Command.Length }
+
+            $line = $Command.Substring($position, $lineEnd - $position)
+            if ($line.EndsWith("`r")) { $line = $line.Substring(0, $line.Length - 1) }
+
+            if ($lineEnd -lt $Command.Length) { $position = $lineEnd + 1 }
+            else { $position = $Command.Length }
+
+            $candidate = $line
+            if ($heredoc.StripTabs) { $candidate = $candidate.TrimStart("`t") }
+
+            if ([string]::Equals($candidate, $heredoc.Delimiter, [System.StringComparison]::Ordinal)) {
+                $closed = $true
+                break
+            }
+        }
+
+        if (-not $closed) { return -1 }
+    }
+
+    return $position
+}
+
+<#
+.SYNOPSIS
+True when the character at $QuoteIndex opens a PowerShell here-string.
+
+.DESCRIPTION
+PowerShell allows nothing but the line ending after a here-string header: it reports "No
+characters are allowed after a here-string header but before the end of the line." So a line
+whose last non-whitespace characters are @' or @" opens a body, and anything else - such as
+Write-Output a@'b' - is an ordinary argument.
+#>
+function Test-AgentHereStringHeader {
+    [CmdletBinding()]
+    param([string] $Command, [int] $QuoteIndex)
+
+    for ($i = $QuoteIndex + 1; $i -lt $Command.Length; $i++) {
+        if ($Command[$i] -eq "`n") { return $true }
+        if (-not [char]::IsWhiteSpace($Command[$i])) { return $false }
+    }
+
+    # The header runs to the end of the command. PowerShell calls that an unterminated
+    # here-string; the caller turns it into an ambiguous parse.
+    return $true
+}
+
+<#
+.SYNOPSIS
+Finds the end of a PowerShell here-string body opened by the quote at $QuoteIndex.
+
+.DESCRIPTION
+The body ends at a line whose first two characters are the matching terminator, '@ or "@. A
+leading space disqualifies the line: PowerShell reports "White space is not allowed before the
+string terminator." Code may follow the terminator on the same line, so the returned index is
+the character right after the two terminator characters, not the next line.
+
+Returns -1 when the body never closes, which the caller turns into an ambiguous parse.
+#>
+function Read-AgentHereStringBodyEnd {
+    [CmdletBinding()]
+    param([string] $Command, [int] $QuoteIndex)
+
+    $terminator = [string] $Command[$QuoteIndex] + '@'
+
+    $lineEnd = $Command.IndexOf("`n", $QuoteIndex)
+    if ($lineEnd -lt 0) { return -1 }
+
+    $position = $lineEnd + 1
+    while ($position -lt $Command.Length) {
+        if (($position + 1) -lt $Command.Length -and
+            $Command.Substring($position, 2) -ceq $terminator) {
+            return $position + 2
+        }
+
+        $nextEnd = $Command.IndexOf("`n", $position)
+        if ($nextEnd -lt 0) { return -1 }
+        $position = $nextEnd + 1
+    }
+
+    return -1
+}
+
+<#
+.SYNOPSIS
 Splits a command string into tokenized top-level segments using a small shell-quoting model.
 
 .DESCRIPTION
@@ -397,6 +568,15 @@ rather than one opaque string. Double-quote escaping follows POSIX (a backslash 
 unless it precedes $, `, ", \, or newline), which keeps quoted Windows paths such as
 "C:\some;path" intact. Outside quotes a backslash only escapes a metacharacter or whitespace,
 so an unquoted C:\Dev\repo survives too.
+
+Two block forms carry data rather than commands, and both are skipped. A bash heredoc opener
+(<<WORD, <<-WORD) queues its delimiter; the queued bodies are consumed at the newline that ends
+that line, and each body ends at a line equal to its delimiter. A PowerShell here-string opener
+(@' or @" as the last characters on a line) skips to its terminator at the start of a later line.
+A body produces no tokens at all, so nothing inside it can be read as a redirect, a pipeline, or
+a command. Each opener still produces one token, which keeps the segment's argument count honest.
+An opener whose body never closes makes the whole parse ambiguous, exactly like an unterminated
+quote.
 
 Returns { Segments = @([pscustomobject]@{ Tokens = string[]; Masks = string[]; PipedFrom = bool });
 Ambiguous = bool }.
@@ -426,6 +606,9 @@ function Split-AgentCommandSegment {
     # True while the segment being built follows an unquoted '|'. A pipeline sink reads its input
     # from the segment before it, so a command that names no path of its own may still act on one.
     $piped = $false
+    # Heredoc openers met on the current line, in order. Their bodies are consumed at the newline
+    # that ends the line, which is where bash starts reading them.
+    $pendingHeredocs = New-Object System.Collections.Generic.List[object]
 
     for ($i = 0; $i -lt $Command.Length; $i++) {
         $ch = $Command[$i]
@@ -471,6 +654,66 @@ function Split-AgentCommandSegment {
         if ($ch -eq "'") { $state = 'SingleQuoted'; $hasCurrent = $true; continue }
         if ($ch -eq '"') { $state = 'DoubleQuoted'; $hasCurrent = $true; continue }
 
+        # A PowerShell here-string opener. The body is data and produces no tokens; the opener
+        # stays as one 'q'-masked token so the segment keeps its argument count. The guard is
+        # never told which shell will run the string, so a bash line ending in @' has its body
+        # skipped too. That text is already invisible today - the tokenizer swallows it into one
+        # quoted token - so this only makes the behaviour the same every time.
+        if ($ch -eq '@' -and ($i + 1) -lt $Command.Length -and
+            ($Command[$i + 1] -eq "'" -or $Command[$i + 1] -eq '"') -and
+            (Test-AgentHereStringHeader -Command $Command -QuoteIndex ($i + 1))) {
+            $bodyEnd = Read-AgentHereStringBodyEnd -Command $Command -QuoteIndex ($i + 1)
+            if ($bodyEnd -lt 0) {
+                return [pscustomobject]@{ Segments = @(); Ambiguous = $true }
+            }
+
+            [void] $current.Append($Command.Substring($i, 2))
+            [void] $currentMask.Append('qq')
+            $hasCurrent = $true
+            $i = $bodyEnd - 1
+            continue
+        }
+
+        # A heredoc opener. The third character decides: '<<<' is a bash here-string taking one
+        # word, not a heredoc. All three characters of a '<<<' are consumed here, because leaving
+        # the second one to the next pass would read '<<' + '<...' as an opener after all. The
+        # opener stays as one token so the segment keeps its argument count, and the delimiter is
+        # masked 'q' so a delimiter such as <<'a>b' never reads as a redirect. The body itself
+        # produces no tokens.
+        if ($ch -eq '<' -and ($i + 1) -lt $Command.Length -and $Command[$i + 1] -eq '<' -and
+            ($i + 2) -lt $Command.Length -and $Command[$i + 2] -eq '<') {
+            [void] $current.Append('<<<')
+            [void] $currentMask.Append('uuu')
+            $hasCurrent = $true
+            $i += 2
+            continue
+        }
+
+        if ($ch -eq '<' -and ($i + 1) -lt $Command.Length -and $Command[$i + 1] -eq '<') {
+            $stripTabs = ($i + 2) -lt $Command.Length -and $Command[$i + 2] -eq '-'
+            $delimiterStart = $i + 2
+            if ($stripTabs) { $delimiterStart++ }
+
+            $delimiter = Read-AgentHeredocDelimiter -Command $Command -StartIndex $delimiterStart
+            if ($null -eq $delimiter) {
+                return [pscustomobject]@{ Segments = @(); Ambiguous = $true }
+            }
+
+            $opener = '<<'
+            if ($stripTabs) { $opener = '<<-' }
+            [void] $current.Append($opener)
+            [void] $currentMask.Append('u' * $opener.Length)
+            [void] $current.Append($delimiter.Word)
+            [void] $currentMask.Append('q' * $delimiter.Word.Length)
+            $hasCurrent = $true
+
+            [void] $pendingHeredocs.Add([pscustomobject]@{
+                    Delimiter = $delimiter.Word; StripTabs = $stripTabs
+                })
+            $i = $delimiter.NextIndex - 1
+            continue
+        }
+
         if ($ch -eq "`n" -or $ch -eq "`r" -or $ch -eq ';' -or $ch -eq '&' -or $ch -eq '|' -or
             $ch -eq '`' -or $ch -eq '(' -or $ch -eq ')') {
             if ($hasCurrent) {
@@ -489,6 +732,19 @@ function Split-AgentCommandSegment {
                 $tokens.Clear(); $masks.Clear()
             }
             $piped = ($ch -eq '|' -and $endedCommand)
+
+            # bash reads a queued body from the line after the opener, so consume at '\n' only. A
+            # CRLF command reaches this branch at '\r' first; consuming there would read the '\n'
+            # as an empty first body line.
+            if ($ch -eq "`n" -and $pendingHeredocs.Count -gt 0) {
+                $bodyEnd = Read-AgentHeredocBodyEnd -Command $Command -StartIndex ($i + 1) `
+                    -Pending $pendingHeredocs.ToArray()
+                if ($bodyEnd -lt 0) {
+                    return [pscustomobject]@{ Segments = @(); Ambiguous = $true }
+                }
+                $pendingHeredocs.Clear()
+                $i = $bodyEnd - 1
+            }
             continue
         }
 
@@ -506,7 +762,9 @@ function Split-AgentCommandSegment {
         $hasCurrent = $true
     }
 
-    if ($state -ne 'None') {
+    # An unterminated quote, an unterminated escape, or an opener whose body never started makes
+    # every segment boundary untrustworthy.
+    if ($state -ne 'None' -or $pendingHeredocs.Count -gt 0) {
         return [pscustomobject]@{ Segments = @(); Ambiguous = $true }
     }
 
@@ -2222,6 +2480,18 @@ function Get-AgentCommandWriteTarget {
 # Characters that make a path component impossible to expand from the command text alone.
 $script:AgentGuardUnexpandablePattern = '[\$%`]'
 
+# The exact shape Split-AgentCommandSegment leaves behind for a skipped heredoc or here-string
+# opener: a here-string opener is exactly @' or @"; a heredoc opener is << or <<- immediately
+# followed by its delimiter word, with nothing else in the token. A write target that is nothing
+# but one of these names no real path - the body the opener introduces is what names one, and the
+# tokenizer already skipped that body without producing any tokens for it.
+#
+# The heredoc branch accepts any text after << or <<-, including whitespace, because a quoted
+# delimiter can contain a space (<<'E F'), and the opener token then carries that space too. This
+# stays safe: '<' is not a legal character in a Windows file name, so no real path this check has
+# to classify can start with << or <<-.
+$script:AgentGuardOpenerTokenPattern = '^(@[''"]|<<-?.+)$'
+
 <#
 .SYNOPSIS
 Replaces every reparse point in a path with its target, walking from the root down.
@@ -2322,6 +2592,19 @@ function Get-AgentWriteTargetResolution {
     param([string] $Target, [string] $BaseDirectory, [switch] $Literal)
 
     if ([string]::IsNullOrWhiteSpace($Target)) {
+        return [pscustomobject]@{ Path = ''; Unresolved = $true }
+    }
+
+    # A target that is nothing but a heredoc or here-string opener token carries no real path.
+    # Get-AgentSegmentWriteTarget can only report the bare opener as a write command's own target
+    # when the tokenizer already skipped the body that names the real path, for example
+    # `Remove-Item @'<a path>'@`. Resolving the two- or three-character opener as if it were a
+    # literal relative path let that command through; treating it as unresolved denies it instead,
+    # matching how a command carrying an unexpandable path component is already handled below.
+    # Checked before the quote-trim just below: trimming a here-string opener's own quote
+    # character would erase the exact shape this matches. A tool-call path never carries this
+    # shape, so -Literal skips it the same way it skips the other shell-only checks.
+    if (-not $Literal -and $Target.Trim() -match $script:AgentGuardOpenerTokenPattern) {
         return [pscustomobject]@{ Path = ''; Unresolved = $true }
     }
 
