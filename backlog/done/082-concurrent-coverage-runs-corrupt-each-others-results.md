@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: none (test scripts)
 - **Difficulty**: moderate
-- **Stage**: 4-execute
+- **Stage**: 9-ship
 
 ## Summary
 
