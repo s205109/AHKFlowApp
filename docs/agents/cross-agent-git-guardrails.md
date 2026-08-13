@@ -334,12 +334,11 @@ An agent running the same command would need a prompt or override.
 - A wrapper can still hide the command inside a quoted string. The tokenizer keeps a quoted string
   as one token, so the guard cannot classify the git word inside it. `sh -c '...'` and
   `rtk run "..."` bypass the guard this way.
-- The tokenizer does not understand a heredoc or a here-string, so it reads the **body** as
-  command text. A `git commit` message body that contains `| Remove-Item`, or an apostrophe that
-  ends the tokenizer's quoted state before one, is denied by the pipeline-sink rule even though
-  nothing in it runs. The trap predates that rule — a body carrying `> file` or `rm -rf` already
-  tripped the older tiers — but the rule widens it. Pass a long message with
-  `git commit -F <file>` instead. Tracked as backlog item 085.
+- The tokenizer skips a heredoc body and a here-string body, but it is never told which shell will
+  run the command. A bash command whose line ends in `@'` therefore has the text below it skipped
+  as a here-string body, although bash has no here-strings. That text is invisible to the guard
+  today as well, because the tokenizer swallows it into one quoted string, so this opens no new
+  gap. It only makes the result the same every time.
 - `pwsh -File custom.ps1` bypasses the guard for a different reason: it runs git from inside a
   script file, not from a quoted string. The guard only reads the command line the hook reports,
   not any file that command line points to.
