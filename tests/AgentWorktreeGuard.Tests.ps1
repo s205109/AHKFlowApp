@@ -2671,6 +2671,78 @@ try {
         Assert-Equal 'agent-main-git-mutation' $decision.Rule 'Rule'
     }
 
+    Write-Host 'Heredoc and here-string bodies end to end' -ForegroundColor Cyan
+
+    # The backlog 084 repro: the commit message described the bug it was fixing, and the guard
+    # read the description as the command.
+    Invoke-TestCase 'Body: a heredoc commit message naming a pipeline sink is allowed' {
+        $command = "git commit -F - <<'EOF'`n" +
+        "fix: guard fails closed on pipeline-bound move sources`n`n" +
+        "Get-Item x | Move-Item -Destination y deletes a tracked file.`n" +
+        'EOF'
+        $decision = Invoke-AgentGuardPolicy -Command $command `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'Allow' $decision.Action 'Action'
+    }
+
+    # The pull request 293 repro: a recursive force delete inside markdown backticks. A backtick
+    # is an unquoted separator, so the text after it used to start a segment leading with rm.
+    Invoke-TestCase 'Body: a heredoc naming rm -rf inside backticks is allowed' {
+        # Single-quoted, so the backticks stay literal markdown and PowerShell escapes nothing.
+        $command = "gh pr create --body-file - <<'EOF'`n" +
+        'The guard denied `rm -rf src` because the body reads as a command.' + "`n" +
+        'EOF'
+        $decision = Invoke-AgentGuardPolicy -Command $command `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'Allow' $decision.Action 'Action'
+    }
+
+    Invoke-TestCase 'Body: a heredoc naming a redirect is allowed' {
+        $command = "git commit -F - <<'EOF'`nbody writes > somefile.txt`nEOF"
+        $decision = Invoke-AgentGuardPolicy -Command $command `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'Allow' $decision.Action 'Action'
+    }
+
+    Invoke-TestCase 'Body: a here-string with an apostrophe and a pipe is allowed' {
+        $command = "`$body = @'`n" +
+        "it's the apostrophe that used to end the quoted state | Remove-Item`n" +
+        "'@`ngh pr create --body `$body"
+        $decision = Invoke-AgentGuardPolicy -Command $command `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'Allow' $decision.Action 'Action'
+    }
+
+    Invoke-TestCase 'Body: a real rm -rf after a heredoc terminator is still denied' {
+        $command = "git commit -F - <<'EOF'`nharmless body`nEOF`nrm -rf src"
+        $decision = Invoke-AgentGuardPolicy -Command $command `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'Deny' $decision.Action 'Action'
+        Assert-Equal 'dangerous-rm' $decision.Rule 'Rule'
+    }
+
+    Invoke-TestCase 'Body: a real pipeline out of main after a here-string is still denied' {
+        $source = $fixture.Main.Replace('\', '/') + '/seed.txt'
+        $command = "`$body = @'`nharmless`n'@`nGet-Item $source | Remove-Item"
+        $decision = Invoke-AgentGuardPolicy -Command $command `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'Deny' $decision.Action 'Action'
+    }
+
+    Invoke-TestCase 'Body: a real pipeline on the here-string terminator line is still denied' {
+        $command = "`$body = @'`nharmless`n'@ | Remove-Item"
+        $decision = Invoke-AgentGuardPolicy -Command $command `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'Deny' $decision.Action 'Action'
+    }
+
+    Invoke-TestCase 'Body: an unterminated heredoc is refused' {
+        $command = "git commit -F - <<'EOF'`nbody that never ends"
+        $decision = Invoke-AgentGuardPolicy -Command $command `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'Deny' $decision.Action 'Action'
+    }
+
     Write-Host 'File-edit write isolation' -ForegroundColor Cyan
 
     # One literal path per case. Placeholders are replaced against the disposable fixture below,
