@@ -304,14 +304,7 @@ public sealed class ShortcutWarningFlowTests(StackFixture fixture) : IAsyncLifet
         IPage page = await context.NewPageAsync();
 
         // Put the Caps Lock layer into the seeded profile's header template.
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/profiles");
-        await page.WaitForSelectorAsync("button.start-edit");
-        await page.ClickAsync("button.start-edit");
-        await page.WaitForSelectorAsync("textarea[data-test=\"profile-header-input\"]");
-        await page.FillAsync("textarea[data-test=\"profile-header-input\"]",
-            "#Requires AutoHotkey v2.0\n\n*CapsLock::\n{\n    Send \"{Blind}{LCtrl DownR}\"\n}");
-        await page.ClickAsync("button.commit-edit");
-        await page.WaitForSelectorAsync("text=Profile updated.");
+        await SetProfileHeaderAsync(page, CapsLockLayerHeader);
 
         // Now bind a hotkey to the same key. "Apply to all profiles" avoids picking one by name.
         await OpenCreateDialogAsync(page);
@@ -343,14 +336,7 @@ public sealed class ShortcutWarningFlowTests(StackFixture fixture) : IAsyncLifet
         await using IBrowserContext context = await fixture.Browser.NewContextAsync();
         IPage page = await context.NewPageAsync();
 
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/profiles");
-        await page.WaitForSelectorAsync("button.start-edit");
-        await page.ClickAsync("button.start-edit");
-        await page.WaitForSelectorAsync("textarea[data-test=\"profile-header-input\"]");
-        await page.FillAsync("textarea[data-test=\"profile-header-input\"]",
-            "#Requires AutoHotkey v2.0\n\n*CapsLock::\n{\n    Send \"{Blind}{LCtrl DownR}\"\n}");
-        await page.ClickAsync("button.commit-edit");
-        await page.WaitForSelectorAsync("text=Profile updated.");
+        await SetProfileHeaderAsync(page, CapsLockLayerHeader);
 
         // Hold the Profile list open, so the hotkeys page reaches its first render without it. The
         // handler waits on the source below rather than on a fixed delay, so the test never races.
@@ -384,14 +370,8 @@ public sealed class ShortcutWarningFlowTests(StackFixture fixture) : IAsyncLifet
         await using IBrowserContext context = await fixture.Browser.NewContextAsync();
         IPage page = await context.NewPageAsync();
 
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/profiles");
-        await page.WaitForSelectorAsync("button.start-edit");
-        await page.ClickAsync("button.start-edit");
-        await page.WaitForSelectorAsync("textarea[data-test=\"profile-header-input\"]");
-        await page.FillAsync("textarea[data-test=\"profile-header-input\"]",
+        await SetProfileHeaderAsync(page,
             "#Requires AutoHotkey v2.0\n\n*LControl::\n{\n    Send \"{Blind}{LAlt DownR}\"\n}");
-        await page.ClickAsync("button.commit-edit");
-        await page.WaitForSelectorAsync("text=Profile updated.");
 
         await OpenCreateDialogAsync(page);
         await CommitKeyAsync(page, "LCtrl");
@@ -414,6 +394,22 @@ public sealed class ShortcutWarningFlowTests(StackFixture fixture) : IAsyncLifet
         if (search is not null)
             await page.FillAsync("input[data-test=\"known-shortcut-search\"]", search);
     }
+
+    // Writes one template into the seeded Profile's header and waits for the save to land. Three
+    // tests start this way, and each of them then binds a hotkey to a key the template uses.
+    private async Task SetProfileHeaderAsync(IPage page, string template)
+    {
+        await page.GotoAsync($"{fixture.Spa.BaseUrl}/profiles");
+        await page.WaitForSelectorAsync("button.start-edit");
+        await page.ClickAsync("button.start-edit");
+        await page.WaitForSelectorAsync("textarea[data-test=\"profile-header-input\"]");
+        await page.FillAsync("textarea[data-test=\"profile-header-input\"]", template);
+        await page.ClickAsync("button.commit-edit");
+        await page.WaitForSelectorAsync("text=Profile updated.");
+    }
+
+    private const string CapsLockLayerHeader =
+        "#Requires AutoHotkey v2.0\n\n*CapsLock::\n{\n    Send \"{Blind}{LCtrl DownR}\"\n}";
 
     private async Task OpenCreateDialogAsync(IPage page)
     {

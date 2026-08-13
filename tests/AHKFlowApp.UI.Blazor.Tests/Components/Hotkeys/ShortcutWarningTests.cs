@@ -70,6 +70,56 @@ public sealed class ShortcutWarningTests : BunitContext
     }
 
     [Fact]
+    public void TemplateNotice_FollowsARenameOfTheProfileItNames()
+    {
+        ProfileDto work = Profile("Work", CapsLockLayerHeader);
+
+        IRenderedComponent<ShortcutWarning> warning = Render<ShortcutWarning>(parameters => parameters
+            .Add(p => p.Key, "CapsLock")
+            .Add(p => p.AppliesToAllProfiles, true)
+            .Add(p => p.Profiles, (IReadOnlyList<ProfileDto>)[work]));
+
+        warning.WaitForAssertion(() =>
+            warning.Find("[data-test=\"template-warning\"]").TextContent.Should().Contain("in Work"));
+
+        // The notice prints the Profile name, so a rename with the same templates has to reach it.
+        warning.Render(parameters => parameters
+            .Add(p => p.Key, "CapsLock")
+            .Add(p => p.AppliesToAllProfiles, true)
+            .Add(p => p.Profiles, (IReadOnlyList<ProfileDto>)[work with { Name = "Home" }]));
+
+        warning.WaitForAssertion(() =>
+            warning.Find("[data-test=\"template-warning\"]").TextContent.Should().Contain("in Home"));
+    }
+
+    [Fact]
+    public void TemplateNotice_FollowsTemplateTextMovingFromTheHeaderToTheFooter()
+    {
+        // The two templates carry the same text in turn. A stamp that ran them together without a
+        // separator would read the same both ways, and the notice would keep saying "header".
+        ProfileDto work = Profile("Work", CapsLockLayerHeader);
+
+        IRenderedComponent<ShortcutWarning> warning = Render<ShortcutWarning>(parameters => parameters
+            .Add(p => p.Key, "CapsLock")
+            .Add(p => p.AppliesToAllProfiles, true)
+            .Add(p => p.Profiles, (IReadOnlyList<ProfileDto>)[work]));
+
+        warning.WaitForAssertion(() =>
+            warning.Find("[data-test=\"template-warning\"]").TextContent
+                .Should().Be("The header template in Work also uses CapsLock. Your hotkey may not fire."));
+
+        warning.Render(parameters => parameters
+            .Add(p => p.Key, "CapsLock")
+            .Add(p => p.AppliesToAllProfiles, true)
+            .Add(p => p.Profiles, (IReadOnlyList<ProfileDto>)
+                [work with { HeaderTemplate = "", FooterTemplate = CapsLockLayerHeader }]));
+
+        warning.WaitForAssertion(() =>
+            warning.Find("[data-test=\"template-warning\"]").TextContent
+                .Should().Be("The footer template in Work also uses CapsLock. Your hotkey may not fire."));
+    }
+
+    [Fact]
     public void TemplateNotice_FollowsAnEditToTheTemplateItAlreadyRead()
     {
         ProfileDto work = Profile("Work", CapsLockLayerHeader);

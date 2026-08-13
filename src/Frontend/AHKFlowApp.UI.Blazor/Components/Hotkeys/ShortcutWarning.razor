@@ -131,11 +131,18 @@
     private string ProfileScope() =>
         AppliesToAllProfiles ? "*" : string.Join(",", ProfileIds.Order());
 
-    // Exactly the text the notice reads, from exactly the Profiles it reads it from. A page that
-    // hands over a longer list, or an edited template, produces a different stamp and re-evaluates.
+    // Everything the notice reads, from exactly the Profiles it reads it from: the name it
+    // prints, and the two templates it matches the row against. A longer list, a renamed
+    // Profile, or an edited template each produce a different stamp, so the notice follows
+    // every one of them. The separators are the ASCII record and unit separators, which no
+    // AutoHotkey template holds, so text moved from the header to the footer changes the stamp
+    // instead of reading the same both ways.
+    private const string FieldSeparator = "\u001E";
+    private const string ProfileSeparator = "\u001F";
+
     private string TemplateStamp() =>
-        string.Join("", SelectedProfiles()
-            .Select(p => $"{p.Id}{p.HeaderTemplate}{p.FooterTemplate}"));
+        string.Join(ProfileSeparator, SelectedProfiles().Select(p => string.Join(
+            FieldSeparator, p.Id, p.Name, p.HeaderTemplate, p.FooterTemplate)));
 
     public void Dispose()
     {
