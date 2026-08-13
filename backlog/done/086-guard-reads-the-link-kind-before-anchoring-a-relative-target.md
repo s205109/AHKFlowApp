@@ -5,7 +5,7 @@
 - **Epic**: Agent guardrails
 - **Type**: Feature
 - **Interfaces**: none (agent git guard)
-- **Stage**: 1-pickup
+- **Stage**: 9-ship
 - **Difficulty**: moderate
 
 ## Summary
@@ -62,12 +62,12 @@ Every command form already carries its kind, so the guard can read it:
 
 ## Acceptance criteria
 
-- [ ] A relative symbolic-link target uses the two link-relative anchors only
-- [ ] A relative hard-link source uses the working-directory anchor only
-- [ ] A command whose kind the guard cannot read keeps all three anchors and stays fail-closed
-- [ ] `ln -s ../src/a.cs deep/bait.md` inside a worktree is allowed, and the test that pins today's
+- [x] A relative symbolic-link target uses the two link-relative anchors only
+- [x] A relative hard-link source uses the working-directory anchor only
+- [x] A command whose kind the guard cannot read keeps all three anchors and stays fail-closed
+- [x] `ln -s ../src/a.cs deep/bait.md` inside a worktree is allowed, and the test that pins today's
       Deny is rewritten to expect Allow
-- [ ] Every link denial the suite makes today still denies
+- [x] Every link denial the suite makes today still denies
 
 ## Out of scope
 
@@ -78,3 +78,7 @@ Every command form already carries its kind, so the guard can read it:
 
 - Found in review of pull request #296 (backlog 083 redelivery)
 - The reasoning lives in the `Add-AgentLinkTargetCandidate` comment; keep the two in step
+- Delivered in pull request #304. `Get-AgentLinkKind` reads the kind, and
+  `Add-AgentLinkTargetCandidate` takes a `-Kind` parameter
+- A junction is read as an unknown kind on purpose. The Microsoft articles on junctions do not
+  say how a relative target is anchored, so a junction keeps all three anchors
