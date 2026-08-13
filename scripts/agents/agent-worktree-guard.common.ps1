@@ -450,6 +450,54 @@ function Read-AgentHeredocDelimiter {
 
 <#
 .SYNOPSIS
+Consumes queued heredoc bodies that start at $StartIndex, one per queued delimiter, in order.
+
+.DESCRIPTION
+A body ends at a line equal to its delimiter. '<<-' strips leading TAB characters from the
+candidate line before the comparison. It never strips spaces, so a space-indented terminator
+leaves the body open, exactly as bash leaves it. The comparison is ordinal and case-sensitive.
+
+A trailing carriage return is removed before the comparison, so a command that arrives with CRLF
+line endings closes on the same terminator line a LF command closes on.
+
+Returns the index of the first character after the last body, or -1 when a body never closes.
+#>
+function Read-AgentHeredocBodyEnd {
+    [CmdletBinding()]
+    param([string] $Command, [int] $StartIndex, [object[]] $Pending)
+
+    $position = $StartIndex
+
+    foreach ($heredoc in $Pending) {
+        $closed = $false
+
+        while ($position -lt $Command.Length) {
+            $lineEnd = $Command.IndexOf("`n", $position)
+            if ($lineEnd -lt 0) { $lineEnd = $Command.Length }
+
+            $line = $Command.Substring($position, $lineEnd - $position)
+            if ($line.EndsWith("`r")) { $line = $line.Substring(0, $line.Length - 1) }
+
+            if ($lineEnd -lt $Command.Length) { $position = $lineEnd + 1 }
+            else { $position = $Command.Length }
+
+            $candidate = $line
+            if ($heredoc.StripTabs) { $candidate = $candidate.TrimStart("`t") }
+
+            if ([string]::Equals($candidate, $heredoc.Delimiter, [System.StringComparison]::Ordinal)) {
+                $closed = $true
+                break
+            }
+        }
+
+        if (-not $closed) { return -1 }
+    }
+
+    return $position
+}
+
+<#
+.SYNOPSIS
 Splits a command string into tokenized top-level segments using a small shell-quoting model.
 
 .DESCRIPTION
@@ -489,6 +537,9 @@ function Split-AgentCommandSegment {
     # True while the segment being built follows an unquoted '|'. A pipeline sink reads its input
     # from the segment before it, so a command that names no path of its own may still act on one.
     $piped = $false
+    # Heredoc openers met on the current line, in order. Their bodies are consumed at the newline
+    # that ends the line, which is where bash starts reading them.
+    $pendingHeredocs = New-Object System.Collections.Generic.List[object]
 
     for ($i = 0; $i -lt $Command.Length; $i++) {
         $ch = $Command[$i]
@@ -534,6 +585,46 @@ function Split-AgentCommandSegment {
         if ($ch -eq "'") { $state = 'SingleQuoted'; $hasCurrent = $true; continue }
         if ($ch -eq '"') { $state = 'DoubleQuoted'; $hasCurrent = $true; continue }
 
+        # A heredoc opener. The third character decides: '<<<' is a bash here-string taking one
+        # word, not a heredoc. All three characters of a '<<<' are consumed here, because leaving
+        # the second one to the next pass would read '<<' + '<...' as an opener after all. The
+        # opener stays as one token so the segment keeps its argument count, and the delimiter is
+        # masked 'q' so a delimiter such as <<'a>b' never reads as a redirect. The body itself
+        # produces no tokens.
+        if ($ch -eq '<' -and ($i + 1) -lt $Command.Length -and $Command[$i + 1] -eq '<' -and
+            ($i + 2) -lt $Command.Length -and $Command[$i + 2] -eq '<') {
+            [void] $current.Append('<<<')
+            [void] $currentMask.Append('uuu')
+            $hasCurrent = $true
+            $i += 2
+            continue
+        }
+
+        if ($ch -eq '<' -and ($i + 1) -lt $Command.Length -and $Command[$i + 1] -eq '<') {
+            $stripTabs = ($i + 2) -lt $Command.Length -and $Command[$i + 2] -eq '-'
+            $delimiterStart = $i + 2
+            if ($stripTabs) { $delimiterStart++ }
+
+            $delimiter = Read-AgentHeredocDelimiter -Command $Command -StartIndex $delimiterStart
+            if ($null -eq $delimiter) {
+                return [pscustomobject]@{ Segments = @(); Ambiguous = $true }
+            }
+
+            $opener = '<<'
+            if ($stripTabs) { $opener = '<<-' }
+            [void] $current.Append($opener)
+            [void] $currentMask.Append('u' * $opener.Length)
+            [void] $current.Append($delimiter.Word)
+            [void] $currentMask.Append('q' * $delimiter.Word.Length)
+            $hasCurrent = $true
+
+            [void] $pendingHeredocs.Add([pscustomobject]@{
+                    Delimiter = $delimiter.Word; StripTabs = $stripTabs
+                })
+            $i = $delimiter.NextIndex - 1
+            continue
+        }
+
         if ($ch -eq "`n" -or $ch -eq "`r" -or $ch -eq ';' -or $ch -eq '&' -or $ch -eq '|' -or
             $ch -eq '`' -or $ch -eq '(' -or $ch -eq ')') {
             if ($hasCurrent) {
@@ -552,6 +643,19 @@ function Split-AgentCommandSegment {
                 $tokens.Clear(); $masks.Clear()
             }
             $piped = ($ch -eq '|' -and $endedCommand)
+
+            # bash reads a queued body from the line after the opener, so consume at '\n' only. A
+            # CRLF command reaches this branch at '\r' first; consuming there would read the '\n'
+            # as an empty first body line.
+            if ($ch -eq "`n" -and $pendingHeredocs.Count -gt 0) {
+                $bodyEnd = Read-AgentHeredocBodyEnd -Command $Command -StartIndex ($i + 1) `
+                    -Pending $pendingHeredocs.ToArray()
+                if ($bodyEnd -lt 0) {
+                    return [pscustomobject]@{ Segments = @(); Ambiguous = $true }
+                }
+                $pendingHeredocs.Clear()
+                $i = $bodyEnd - 1
+            }
             continue
         }
 
@@ -569,7 +673,9 @@ function Split-AgentCommandSegment {
         $hasCurrent = $true
     }
 
-    if ($state -ne 'None') {
+    # An unterminated quote, an unterminated escape, or an opener whose body never started makes
+    # every segment boundary untrustworthy.
+    if ($state -ne 'None' -or $pendingHeredocs.Count -gt 0) {
         return [pscustomobject]@{ Segments = @(); Ambiguous = $true }
     }
 

@@ -1748,6 +1748,114 @@ try {
         }
     }
 
+    Write-Host 'Heredoc bodies' -ForegroundColor Cyan
+
+    # A body is data. It must produce no tokens, and the command after the terminator must be
+    # classified normally. Expected lists the tokens of every segment, segments joined by ' :: '.
+    # A Git segment drops its leading 'git' word: Get-AgentCommandSegment stores the tail
+    # (agent-worktree-guard.common.ps1:670-683).
+    $heredocCases = @(
+        @{ Name     = 'a body that reads like a pipeline'
+            Command  = "git commit -F - <<'EOF'`nGet-Item x | Remove-Item`nEOF"
+            Expected = 'commit -F - <<EOF'
+        },
+        @{ Name     = 'a body that reads like a redirect'
+            Command  = "git commit -F - <<'EOF'`nbody writes > somefile.txt`nEOF"
+            Expected = 'commit -F - <<EOF'
+        },
+        @{ Name     = 'a body that reads like a delete'
+            Command  = "git commit -F - <<'EOF'`nrm -rf src`nEOF"
+            Expected = 'commit -F - <<EOF'
+        },
+        @{ Name     = 'a command after the terminator is still tokenized'
+            Command  = "git commit -F - <<'EOF'`nharmless body`nEOF`nrm -rf src"
+            Expected = 'commit -F - <<EOF :: rm -rf src'
+        },
+        @{ Name     = 'an unquoted delimiter'
+            Command  = "cat <<EOF`nbody`nEOF"
+            Expected = 'cat <<EOF'
+        },
+        @{ Name     = 'a backslash-quoted delimiter'
+            Command  = "cat <<\EOF`nbody`nEOF"
+            Expected = 'cat <<EOF'
+        },
+        @{ Name     = 'whitespace between the operator and the delimiter'
+            Command  = "cat << EOF`nbody`nEOF"
+            Expected = 'cat <<EOF'
+        },
+        @{ Name     = 'an opener with no whitespace in front of it'
+            Command  = "echo x<<b`necho INSIDE`nb"
+            Expected = 'echo x<<b'
+        },
+        # CRLF is the subtlest path: the tokenizer reaches the separator branch at '\r' first, and
+        # consuming a body there would read the '\n' as an empty first body line.
+        @{ Name     = 'a body with CRLF line endings'
+            Command  = "cat <<EOF`r`nGet-Item x | Remove-Item`r`nEOF"
+            Expected = 'cat <<EOF'
+        },
+        @{ Name     = 'a command after a CRLF terminator is still tokenized'
+            Command  = "cat <<EOF`r`nharmless body`r`nEOF`r`nrm -rf src"
+            Expected = 'cat <<EOF :: rm -rf src'
+        },
+        @{ Name     = '<<- closes on a tab-indented terminator'
+            Command  = "cat <<-EOF`n`tbody`n`tEOF"
+            Expected = 'cat <<-EOF'
+        },
+        @{ Name     = 'two openers on one line consume both bodies in order'
+            Command  = "cat <<A <<B`nfirst`nA`nsecond`nB`necho done"
+            Expected = 'cat <<A <<B :: echo done'
+        },
+        # '<<<' is a bash here-string taking one word. It must not swallow the rest of the command.
+        @{ Name     = 'a here-string word is not a heredoc'
+            Command  = "cat <<<'zeta | Remove-Item'`necho done"
+            Expected = 'cat <<<zeta | Remove-Item :: echo done'
+        }
+    )
+
+    foreach ($case in $heredocCases) {
+        Invoke-TestCase "Heredoc body: $($case.Name)" {
+            $parsed = Get-AgentCommandSegment -Command $case.Command
+            Assert-True (-not $parsed.Ambiguous) 'parse must not be ambiguous'
+            $actual = @($parsed.Segments | ForEach-Object { ($_.Tokens -join ' ') }) -join ' :: '
+            Assert-Equal $case.Expected $actual 'Segments'
+        }
+    }
+
+    $heredocAmbiguousCases = @(
+        @{ Name = 'a body that never closes'; Command = "cat <<EOF`nbody`nnot-the-end" },
+        # bash strips tabs for <<-, never spaces, so a space-indented terminator leaves the body
+        # open. With nothing after it, the whole command is ambiguous.
+        @{ Name = 'a space-indented terminator'; Command = "cat <<EOF`nbody`n  EOF" },
+        @{ Name = 'a space-indented terminator under <<-'; Command = "cat <<-EOF`nbody`n  EOF" },
+        @{ Name = 'an opener with no delimiter'; Command = "cat <<`nEOF" },
+        # Stricter than today: this text tokenizes now and fails closed after the change, because
+        # bash calls a missing delimiter a syntax error.
+        @{ Name = 'an opener with a separator where the delimiter belongs'; Command = 'cat <<; echo x' },
+        @{ Name = 'an opener at the end of the command'; Command = 'cat <<EOF' }
+    )
+
+    foreach ($case in $heredocAmbiguousCases) {
+        Invoke-TestCase "Heredoc body: ambiguous for $($case.Name)" {
+            $parsed = Get-AgentCommandSegment -Command $case.Command
+            Assert-True ([bool] $parsed.Ambiguous) 'parse must be ambiguous'
+        }
+    }
+
+    Invoke-TestCase 'Heredoc body: a quoted delimiter never reads as a redirect' {
+        $parsed = Get-AgentCommandSegment -Command "cat <<'a>b'`nbody`na>b"
+        $segment = $parsed.Segments[0]
+        Assert-Equal 'cat <<a>b' ($segment.Tokens -join ' ') 'Tokens'
+        $targets = @(Get-AgentSegmentWriteTarget -Tokens $segment.Tokens -Masks $segment.Masks)
+        Assert-Equal '' ($targets -join '|') 'Targets'
+    }
+
+    Invoke-TestCase 'Heredoc body: an opener inside quotes is text, not an opener' {
+        $parsed = Get-AgentCommandSegment -Command "git commit -m ""see <<EOF for the format"""
+        Assert-True (-not $parsed.Ambiguous) 'parse must not be ambiguous'
+        Assert-Equal 'commit -m see <<EOF for the format' `
+            ($parsed.Segments[0].Tokens -join ' ') 'Tokens'
+    }
+
     Write-Host 'Write-target extraction' -ForegroundColor Cyan
 
     $writeTargetCases = @(
