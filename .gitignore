@@ -461,6 +461,10 @@ coverage-report/
 CoverageReport/
 **/TestResults/
 
+# Shared test-run lock (scripts/test-run-lock.common.ps1)
+.test-run.lock
+.test-run.lock.owner
+
 # Superpowers brainstorming scratch (local-only)
 .superpowers/
 

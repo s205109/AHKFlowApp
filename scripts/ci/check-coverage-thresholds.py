@@ -171,19 +171,24 @@ def print_per_assembly_results(results: list[AssemblyResult]) -> None:
 
 
 def print_failure_summary(failures: list[AssemblyResult]) -> None:
-    print()
-    print(f"Coverage gate failed for {len(failures)} assembly(s):")
+    missing = [failure for failure in failures if failure.missing]
+    below = [failure for failure in failures if not failure.missing]
 
-    for failure in failures:
-        print(f"- {failure.name}")
-
-        if failure.missing:
+    if missing:
+        print()
+        print(f"Coverage input is incomplete. {len(missing)} assembly(s) never reached the merged report:")
+        for failure in missing:
+            print(f"- {failure.name}")
             print("  - package missing from CoverageReport\\Cobertura.xml")
-            continue
 
-        for metric in (failure.line, failure.branch):
-            if metric is not None and not metric.passed:
-                print(format_metric(metric))
+    if below:
+        print()
+        print(f"Coverage gate failed for {len(below)} assembly(s):")
+        for failure in below:
+            print(f"- {failure.name}")
+            for metric in (failure.line, failure.branch):
+                if metric is not None and not metric.passed:
+                    print(format_metric(metric))
 
 
 def print_next_steps(results: list[AssemblyResult]) -> None:
@@ -241,11 +246,27 @@ def main() -> int:
         print_failure_summary(failures)
         print_next_steps(results)
         print()
-        print(
-            "::error title=Coverage gate failed::"
-            f"{len(failures)} assembly(s) failed per-assembly coverage thresholds. "
-            f"Run `{LOCAL_REPRO_COMMAND}` from the repo root to reproduce locally."
-        )
+
+        missing = [result for result in failures if result.missing]
+        below = [result for result in failures if not result.missing]
+
+        if missing:
+            print(
+                "::error title=Coverage input incomplete::"
+                f"{len(missing)} assembly(s) are missing from the merged Cobertura report: "
+                f"{', '.join(result.name for result in missing)}. "
+                "This is missing measurement, not a coverage regression. "
+                "The usual local cause is a second test run in the same repository. "
+                f"Run `{LOCAL_REPRO_COMMAND}` from the repo root with no other test run active."
+            )
+
+        if below:
+            print(
+                "::error title=Coverage gate failed::"
+                f"{len(below)} assembly(s) failed per-assembly coverage thresholds. "
+                f"Run `{LOCAL_REPRO_COMMAND}` from the repo root to reproduce locally."
+            )
+
         return 1
 
     print()
