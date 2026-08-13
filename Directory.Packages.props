@@ -42,6 +42,10 @@
     <PackageVersion Include="Serilog.Sinks.ApplicationInsights" Version="5.0.0" />
     <PackageVersion Include="Serilog.Sinks.Console" Version="6.1.1" />
     <PackageVersion Include="Serilog.Sinks.File" Version="7.0.0" />
+    <!-- Transitive pin: Testcontainers 4.11.0 floors SSH.NET at 2025.1.0 (NU1903 high vuln,
+         GHSA-q939-rpr3-3284); 2026.0.0 has the fix. Bumping Testcontainers does not help - even
+         4.13.0 asks for >= 2025.1.0, and NuGet resolves the lowest match. -->
+    <PackageVersion Include="SSH.NET" Version="2026.0.0" />
     <PackageVersion Include="System.CommandLine" Version="3.0.0-preview.3.26207.106" />
     <PackageVersion Include="System.Security.Cryptography.Xml" Version="10.0.10" />
     <PackageVersion Include="Testcontainers.MsSql" Version="4.11.0" />

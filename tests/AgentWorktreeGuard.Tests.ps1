@@ -1793,6 +1793,82 @@ try {
         }
     }
 
+    Write-Host 'Pipeline-bound sources' -ForegroundColor Cyan
+
+    $pipedFromCases = @(
+        @{ Command = 'Get-Item a.txt | Remove-Item'; Expected = @($false, $true) },
+        @{ Command = 'Get-Item a.txt; Remove-Item b.txt'; Expected = @($false, $false) },
+        @{ Command = 'Get-Item a.txt && Remove-Item b.txt'; Expected = @($false, $false) },
+        # '||' is bash's OR. It hands over no objects, so the second half is not a pipeline sink.
+        @{ Command = 'Get-Item a.txt || Remove-Item'; Expected = @($false, $false) },
+        # Every stage of a longer pipeline follows a '|', including the middle one.
+        @{ Command = 'Get-ChildItem | Where-Object Length | Remove-Item'
+            Expected = @($false, $true, $true)
+        },
+        # A '|' inside quotes is text the tokenizer already stripped the quotes from.
+        @{ Command = "printf 'a|b'"; Expected = @($false) }
+    )
+
+    foreach ($case in $pipedFromCases) {
+        Invoke-TestCase "PipedFrom: $($case.Command)" {
+            $parsed = Get-AgentCommandSegment -Command $case.Command
+            $actual = @($parsed.Segments | ForEach-Object { [bool] $_.PipedFrom })
+            Assert-Equal ($case.Expected -join '|') ($actual -join '|') 'PipedFrom flags'
+        }
+    }
+
+    $pipelineSinkCases = @(
+        # No source of its own: the pipeline supplies it, and the guard cannot see it.
+        @{ Command = 'Remove-Item'; Expected = $true },
+        @{ Command = 'Remove-Item -Recurse -Force'; Expected = $true },
+        @{ Command = 'Move-Item -Destination b.txt'; Expected = $true },
+        @{ Command = 'Rename-Item -NewName b.txt'; Expected = $true },
+        # Move-Item binds a single positional to -Path, which leaves the piped input unbound.
+        # That is ambiguous, so it counts as no source.
+        @{ Command = 'Move-Item b.txt'; Expected = $true },
+        # A source written out in the command itself, positionally or by name.
+        @{ Command = 'Remove-Item a.txt'; Expected = $false },
+        @{ Command = 'Remove-Item -Path a.txt'; Expected = $false },
+        @{ Command = 'Remove-Item -LiteralPath:a.txt'; Expected = $false },
+        @{ Command = 'Remove-Item -li a.txt'; Expected = $false },
+        @{ Command = 'Move-Item a.txt b.txt'; Expected = $false },
+        @{ Command = 'Move-Item -Path a.txt -Destination b.txt'; Expected = $false },
+        @{ Command = 'Rename-Item a.txt b.txt'; Expected = $false },
+        # Cmdlets that consume pipeline input but delete nothing they receive.
+        @{ Command = 'Copy-Item -Destination b.txt'; Expected = $false },
+        @{ Command = 'Set-Content -Path out.txt'; Expected = $false },
+        @{ Command = 'Select-Object Name'; Expected = $false },
+        # Every built-in alias of the three sinks. PowerShell resolves these to the same cmdlets,
+        # so a pipeline into one deletes exactly what a pipeline into the full name would.
+        @{ Command = 'ri'; Expected = $true },
+        @{ Command = 'rd'; Expected = $true },
+        @{ Command = 'rmdir'; Expected = $true },
+        @{ Command = 'del'; Expected = $true },
+        @{ Command = 'erase'; Expected = $true },
+        @{ Command = 'rm'; Expected = $true },
+        @{ Command = 'mi -Destination b.txt'; Expected = $true },
+        @{ Command = 'move -Destination b.txt'; Expected = $true },
+        @{ Command = 'mv -Destination b.txt'; Expected = $true },
+        @{ Command = 'rni -NewName b.txt'; Expected = $true },
+        @{ Command = 'ren -NewName b.txt'; Expected = $true },
+        # An alias that names its own source is written out, exactly as the full name would be.
+        @{ Command = 'ri a.txt'; Expected = $false },
+        @{ Command = 'rm -Path a.txt'; Expected = $false },
+        @{ Command = 'mv a.txt b.txt'; Expected = $false },
+        @{ Command = 'ren a.txt b.txt'; Expected = $false },
+        # Aliases of cmdlets that delete nothing they receive stay out.
+        @{ Command = 'cpi -Destination b.txt'; Expected = $false },
+        @{ Command = 'copy -Destination b.txt'; Expected = $false }
+    )
+
+    foreach ($case in $pipelineSinkCases) {
+        Invoke-TestCase "Pipeline sink: $($case.Command)" {
+            $parsed = Get-AgentCommandSegment -Command $case.Command
+            $actual = Test-AgentPipelineBoundSource -Tokens $parsed.Segments[0].Tokens
+            Assert-Equal $case.Expected $actual 'Pipeline-bound source'
+        }
+    }
+
     Write-Host 'Nested interpreter write targets' -ForegroundColor Cyan
 
     $nestedCases = @(
@@ -2199,6 +2275,84 @@ try {
         @{ Name    = 'nesting past the cap fails closed even when the inner command only reads'
             Command = 'sh -c "sh -c \"sh -c ''cat <MAIN>/seed.txt''\""'; Cwd = 'Managed'; Action = 'Deny'
         },
+        # A sink that takes its source from the pipeline names no path the guard can classify, so
+        # it fails closed. Without this, the move below deleted a tracked file in main.
+        @{ Name    = 'Get-Item out of main piped into Move-Item is refused'
+            Command = 'Get-Item <MAIN>/seed.txt | Move-Item -Destination <MANAGED>/seed.txt'
+            Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'Get-ChildItem out of main piped into Move-Item is refused'
+            Command = 'Get-ChildItem <MAIN> | Move-Item -Destination <MANAGED>/seed.txt'
+            Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'Get-Item out of main piped into Remove-Item is refused'
+            Command = 'Get-Item <MAIN>/seed.txt | Remove-Item'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'Get-ChildItem out of main piped into Rename-Item is refused'
+            Command = 'Get-ChildItem <MAIN> | Rename-Item -NewName old.txt'
+            Cwd = 'Managed'; Action = 'Deny'
+        },
+        # An alias resolves to the same cmdlet, so it must reach the same verdict. Reading the
+        # full names only left every one of these allowed.
+        @{ Name    = 'Get-Item out of main piped into ri is refused'
+            Command = 'Get-Item <MAIN>/seed.txt | ri'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'Get-Item out of main piped into rm is refused'
+            Command = 'Get-Item <MAIN>/seed.txt | rm'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'Get-Item out of main piped into del is refused'
+            Command = 'Get-Item <MAIN>/seed.txt | del'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'Get-Item out of main piped into mv is refused'
+            Command = 'Get-Item <MAIN>/seed.txt | mv -Destination <MANAGED>/x.txt'
+            Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'Get-Item out of main piped into ren is refused'
+            Command = 'Get-Item <MAIN>/seed.txt | ren -NewName old.txt'
+            Cwd = 'Managed'; Action = 'Deny'
+        },
+        # An alias that names its own source in the worktree is classified normally.
+        @{ Name    = 'a piped ri that names a worktree source stays allowed'
+            Command = 'Get-Content list.txt | ri a.txt'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        # The guard never runs the upstream command, so it cannot tell a worktree glob from a main
+        # one. This idiom is refused too; the denial says to write the paths out as arguments.
+        @{ Name    = 'a worktree glob piped into Remove-Item is refused as well'
+            Command = 'Get-ChildItem *.tmp | Remove-Item'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        # A sink whose source IS written out is classified normally, pipeline or not.
+        @{ Name    = 'a piped Remove-Item that names its own source stays allowed'
+            Command = 'Get-Content list.txt | Remove-Item -Path a.txt'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        @{ Name    = 'a piped Remove-Item that names a main source is still refused'
+            Command = 'Get-Content list.txt | Remove-Item -Path <MAIN>/seed.txt'
+            Cwd = 'Managed'; Action = 'Deny'
+        },
+        # A move that names its source in its own arguments keeps working unchanged.
+        @{ Name    = 'Move-Item inside the worktree with no pipeline stays allowed'
+            Command = 'Move-Item a.txt b.txt'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        # A pipeline whose sink deletes nothing is unaffected, wherever it reads from.
+        @{ Name    = 'a read-only sink reading main stays allowed'
+            Command = 'Get-Item <MAIN>/seed.txt | Select-Object Name'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        @{ Name    = 'a copy sink reading main stays allowed'
+            Command = 'Get-Item <MAIN>/seed.txt | Copy-Item -Destination <MANAGED>/seed.txt'
+            Cwd = 'Managed'; Action = 'Allow'
+        },
+        # '||' is bash's OR, not a pipeline, so it hands the second half no paths.
+        @{ Name    = 'Remove-Item after || is not treated as a pipeline sink'
+            Command = 'test -f a.txt || Remove-Item b.txt'; Cwd = 'Managed'; Action = 'Allow'
+        },
+        # The nested-interpreter scan fails closed on a piped sink for the same reason.
+        @{ Name    = 'a piped sink inside a nested interpreter is refused'
+            Command = 'pwsh -Command "Get-Item <MAIN>/seed.txt | Remove-Item"'
+            Cwd = 'Managed'; Action = 'Deny'
+        },
+        # The rule only fires for a session isolated in a worktree.
+        @{ Name    = 'a main-checkout session may pipe into Remove-Item'
+            Command = 'Get-Item <MAIN>/seed.txt | Remove-Item'; Cwd = 'Main'; Action = 'Allow'
+        },
         # The session's worktree root is the git top level, not whatever directory it started in.
         @{ Name    = 'a subdirectory session writes its own worktree root'
             Command = 'printf x > ../README.md'; Cwd = 'ManagedSub'; Action = 'Allow'
@@ -2232,6 +2386,23 @@ try {
             -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
         Assert-Equal 'Deny' $decision.Action 'Action'
         Assert-Match ([regex]::Escape((Join-Path $fixture.Main 'seed.txt'))) $decision.Message 'Message'
+    }
+
+    Invoke-TestCase 'Write isolation: a piped source denial names the sink and the fix' {
+        $source = $fixture.Main.Replace('\', '/') + '/seed.txt'
+        $decision = Invoke-AgentGuardPolicy -Command "Get-Item $source | Move-Item -Destination x.txt" `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'Deny' $decision.Action 'Action'
+        Assert-Equal 'agent-worktree-main-write' $decision.Rule 'Rule'
+        Assert-Match 'Move-Item takes the paths it deletes from the' $decision.Message 'Sink named'
+        Assert-Match 'instead of piping them in' $decision.Message 'Fix named'
+    }
+
+    Invoke-TestCase 'Write isolation: AHKFLOW_ALLOW_MAIN overrides a piped source denial' {
+        $decision = Get-AgentWorktreeWriteDecision -Command 'Get-ChildItem *.tmp | Remove-Item' `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $true
+        Assert-Equal 'Warn' $decision.Action 'Action'
+        Assert-Match 'a source piped into Remove-Item' $decision.Message 'Override target'
     }
 
     Invoke-TestCase 'Write isolation: rm -rf on a worktree glob is not a write-rule denial' {
