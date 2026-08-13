@@ -9,6 +9,8 @@ prompt. See "Location tiers" below for the full breakdown. A session running **i
 **read, edit, build, test, and format** there — this is a Git-mutation guard, not a filesystem
 sandbox. A session running in a managed worktree is different: it may read main, but a shell
 command that writes there is refused. See "Worktree write isolation" below.
+One rule is not agent-scoped at all: a change that would land directly on `main` is refused for
+the human too. See "The main-branch rule" below.
 
 ## What "managed" means
 
@@ -37,12 +39,28 @@ or a safe `git branch -d` on an already-merged branch. They run from main with n
 | --- | --- | --- |
 | `PreToolUse` command guard | `.claude/hooks/pre-bash-guard.sh` → `scripts/agents/invoke-agent-worktree-guard.ps1` | Primary. Every agent Bash/shell tool call. |
 | `PreToolUse` file-edit guard | `.claude/hooks/pre-edit-guard.sh` → `scripts/agents/invoke-agent-worktree-guard.ps1` | Claude `Edit`, `Write`, and `NotebookEdit` tool calls. |
-| `pre-commit` backstop | `.githooks/pre-commit` → `.githooks/pre-commit.ps1` | Narrow. Agent-marked commits only, after merge. |
+| `pre-commit` backstop | `.githooks/pre-commit` and `.githooks/pre-merge-commit` → `.githooks/pre-commit.ps1` | Agent-marked commits after merge, plus the main-branch rule for every session. |
 
 The Bash hook is a fast candidate-token filter: a command that cannot contain `git`, `rm`, or
 `dotnet` exits without starting PowerShell. Candidates go to the shared policy core in
 `scripts/agents/agent-worktree-guard.common.ps1`, which normalizes the native payload, runs the
 ported destructive-command rules, then classifies the effective Git target's location.
+
+### The main-branch rule
+
+This rule sits outside the tier system and is not agent-scoped. `.githooks/pre-commit.ps1`
+refuses a commit when HEAD is on branch `main`, whoever runs it. `AHKFLOW_ALLOW_MAIN=1` allows it
+and prints a warning. The refusal names the worktree route and the override.
+
+`.githooks/pre-merge-commit` runs the same script, so a local `git merge` into `main` is refused
+as well. Git runs that hook, and not `pre-commit`, when a merge succeeds automatically. A
+fast-forward `git pull` creates no commit at all, so it runs no hook and is unaffected.
+
+The agent rule still runs first and keeps its own message, so an agent committing from the main
+checkout sees the worktree refusal, not this one.
+
+Three commands still put commits on `main` with no refusal, because git runs no `pre-commit` hook
+for them: `git cherry-pick`, `git revert`, and `git rebase`. Measured on git 2.55.0.
 
 ### Adapter contract
 
@@ -289,7 +307,7 @@ deciding. A main-checkout session never matches that pattern and keeps its origi
 
 | Switch | Effect |
 | --- | --- |
-| `AHKFLOW_ALLOW_MAIN=1` | Overrides the **location** rule for every tier, including `commit` (turns a location Deny, or what would otherwise be an Ask prompt, into a warned Allow). Force-push, destructive-Git, and dangerous-file rules still apply. |
+| `AHKFLOW_ALLOW_MAIN=1` | Overrides the **location** rule for every tier, including `commit` (turns a location Deny, or what would otherwise be an Ask prompt, into a warned Allow). Force-push, destructive-Git, and dangerous-file rules still apply. It also overrides the main-branch rule in `.githooks/pre-commit.ps1`. |
 | `AHKFLOW_GUARD_DISABLE=1` | Emergency kill switch. Short-circuits the **entire** command guard before strict mode, module loading, stdin parsing, or Git probes, and warns loudly. Never set it persistently. |
 
 `AHKFLOW_ALLOW_MAIN=1` is no longer the main way to handle a one-off main-checkout mutation. For
@@ -329,6 +347,9 @@ An agent running the same command would need a prompt or override.
   allowed; mutation detection is a denylist, not an allowlist.
 - `git commit --no-verify`, a replaced `core.hooksPath`, and shell aliases remain bypasses. This is
   also why calling `new-worktree.ps1` / `remove-worktree-local-dev.ps1` does not self-lock.
+- `git cherry-pick`, `git revert`, and `git rebase` land commits on `main` with no refusal. Git
+  runs no `pre-commit` hook for any of them (measured, git 2.55.0), so only a shell alias or a
+  wrapper command could close them. That is a different kind of control and is not built here.
 - The guard now reads past `rtk`, including its leading global options and its pass-through
   subcommands (`proxy`, `run`, `err`, `summary`, `test`).
 - A wrapper can still hide the command inside a quoted string. The tokenizer keeps a quoted string
