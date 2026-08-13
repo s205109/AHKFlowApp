@@ -36,10 +36,15 @@ step in the middle.
 
 - [ ] An agent can file a new tracked item and create its correctly named worktree without
       any human commit on `main`.
-- [ ] The number is reserved atomically. Two sessions filing at the same moment never
-      receive the same number.
+- [ ] The number is reserved atomically inside one checkout. Two sessions on the same machine
+      filing at the same moment never receive the same number. Two machines still can. A
+      reservation is local by design, so the duplicate check in `Get-BacklogProblem` and the
+      CI job that runs it stay the net for that case, exactly as they are today.
 - [ ] The reservation survives a session that dies before it files, or it expires cleanly.
-      A reservation must never permanently consume a number.
+      A reservation must never permanently consume a number. One exception: a reservation file
+      the tooling cannot read is warned about, not deleted, so that number waits for a person.
+      Numbering is also monotonic, so a freed low number returns only once nothing above it is
+      held.
 - [ ] The branch name, the worktree directory name, and the item file all carry the same
       number.
 - [ ] `docs/development/workflow.md` replaces its documented main-checkout route with the
@@ -50,6 +55,8 @@ step in the middle.
 
 - Letting agents commit on `main`. That stays refused; see backlog 077.
 - The plans-repo guard exception; that is backlog 076.
+- Cross-machine reservations. They need a shared store or a commit, and a commit is the thing
+  this item removes.
 
 ## Notes / dependencies
 
