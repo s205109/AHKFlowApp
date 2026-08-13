@@ -80,24 +80,28 @@ function Read-PersonalDefaultsMarker {
 }
 
 # Returns one string per problem. An empty array means the file and its marker agree.
+#
+# Every return here writes the array straight to the output stream, which PowerShell unrolls, so
+# the caller wraps the call in @(). Do not write 'return , $failures': the comma wraps an empty
+# array in a one-element array, and the caller then counts one problem where there are none.
 function Test-PersonalDefaultsMarker {
     param([Parameter(Mandatory)][string] $Path)
 
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
-        return , @("Personal defaults file not found: $Path")
+        return @("Personal defaults file not found: $Path")
     }
 
     $marker = Read-PersonalDefaultsMarker -Path $Path
     if ($marker.Count -eq 0) {
-        return , @("$Path has no sync marker. Run 'pwsh ./scripts/update-personal-defaults-marker.ps1' to add one, and paste the file into the Claude web preferences box.")
+        return @("$Path has no sync marker. Run 'pwsh ./scripts/update-personal-defaults-marker.ps1' to add one, and paste the file into the Claude web preferences box.")
     }
 
     if ($marker.Count -gt 1) {
-        return , @("$Path has $($marker.Count) sync marker lines. Keep exactly one.")
+        return @("$Path has $($marker.Count) sync marker lines. Keep exactly one.")
     }
 
     if (-not $marker.Hash) {
-        return , @("$Path has a malformed sync marker: $($marker.Lines[0]). Expected '<!-- sync-marker body-sha256=<64 hex characters> pasted-to-web=YYYY-MM-DD -->'.")
+        return @("$Path has a malformed sync marker: $($marker.Lines[0]). Expected '<!-- sync-marker body-sha256=<64 hex characters> pasted-to-web=YYYY-MM-DD -->'.")
     }
 
     $failures = @()
@@ -123,5 +127,5 @@ function Test-PersonalDefaultsMarker {
         ) -join [Environment]::NewLine
     }
 
-    return , $failures
+    return $failures
 }

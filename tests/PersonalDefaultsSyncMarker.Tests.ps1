@@ -99,6 +99,51 @@ try {
     if ($lfHash -ne $crlfHash) {
         $failures += "Line endings: the LF body hashes to $lfHash and the CRLF body to $crlfHash. They must agree."
     }
+
+    # Case: the update script makes a file verify, and records today.
+    $stamped = New-Fixture $sampleBody
+    $fixtures += $stamped
+    & $updateScript -Path $stamped 6> $null
+    $result = @(Test-PersonalDefaultsMarker -Path $stamped)
+    if ($result.Count -gt 0) {
+        $failures += "Update script: the stamped file still fails the check: $($result -join '; ')"
+    }
+
+    $stampedMarker = Read-PersonalDefaultsMarker -Path $stamped
+    $today = (Get-Date).ToString('yyyy-MM-dd')
+    if ($stampedMarker.Pasted -ne $today) {
+        $failures += "Update script: recorded pasted-to-web=$($stampedMarker.Pasted), expected $today."
+    }
+
+    # The marker sits under the frontmatter, and the frontmatter still opens the file. Copilot reads
+    # .github/instructions/personal-defaults.md by its 'applyTo' key, so a marker written above the
+    # frontmatter would break how the file loads.
+    $stampedLines = ([System.IO.File]::ReadAllText($stamped) -replace "`r`n", "`n") -split "`n"
+    if ($stampedLines[0] -ne '---') {
+        $failures += "Update script: the first line is '$($stampedLines[0])', expected the frontmatter opener '---'."
+    }
+    if ($stampedLines[4] -notlike '<!-- sync-marker *') {
+        $failures += "Update script: expected the marker on line 5, got '$($stampedLines[4])'."
+    }
+
+    # Case: running the script twice changes nothing the second time. Without this, each run leaves
+    # behind the blank line of the marker it replaced.
+    $firstRun = [System.IO.File]::ReadAllText($stamped)
+    & $updateScript -Path $stamped 6> $null
+    if ([System.IO.File]::ReadAllText($stamped) -ne $firstRun) {
+        $failures += 'Update script: a second run changed the file. It must be idempotent on the same day.'
+    }
+
+    # Case: the real file is in sync. This is the check that fires in CI after somebody edits it.
+    $result = @(Test-PersonalDefaultsMarker -Path $personalDefaults)
+    if ($result.Count -gt 0) {
+        $failures += ($result -join [Environment]::NewLine)
+    }
+
+    # Acceptance criterion from backlog 070: no copy still claims MediatR.
+    if ([System.IO.File]::ReadAllText($personalDefaults) -match 'MediatR') {
+        $failures += "$personalDefaults still names MediatR. This repository has no MediatR package."
+    }
 }
 finally {
     foreach ($fixture in $fixtures) {

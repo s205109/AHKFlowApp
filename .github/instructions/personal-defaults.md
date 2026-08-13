@@ -2,6 +2,8 @@
 applyTo: "**"
 ---
 
+<!-- sync-marker body-sha256=25e3ce183f1e08898423e1c4c69d3a9e699c03e5e3089aea7f38460932e38532 pasted-to-web=2026-08-13 -->
+
 # Personal Defaults
 
 > These are general defaults. Repository-level instructions (AGENTS.md, CLAUDE.md, `.github/instructions/`) always take precedence.
