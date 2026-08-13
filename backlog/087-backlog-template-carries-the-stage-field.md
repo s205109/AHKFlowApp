@@ -5,7 +5,8 @@
 - **Epic**: Development process
 - **Type**: Tooling
 - **Interfaces**: none (repo process)
-- **Stage**: 0-intake
+- **Difficulty**: moderate
+- **Stage**: 1-pickup
 
 ## Summary
 
