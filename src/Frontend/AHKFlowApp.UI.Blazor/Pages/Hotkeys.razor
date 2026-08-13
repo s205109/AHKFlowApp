@@ -334,6 +334,12 @@
     private PagedList<HotkeyDto>? _cachedListPage;
     private bool _dialogOpen;
 
+    // The fetch that fills _profiles and _categories. Both dialog openers copy those lists into
+    // dialog parameters, and a dialog keeps the copy it was given, so opening one before this task
+    // finishes would leave it with empty lists for the rest of its life. Completed for a signed-out
+    // visitor, who reaches no dialog at all.
+    private Task _referenceData = Task.CompletedTask;
+
     protected override async Task OnInitializedAsync()
     {
         if (AuthState is not null)
@@ -347,32 +353,41 @@
 
         if (_isAuthenticated)
         {
-            // Four independent fetches, so they go out together rather than costing four
-            // serial round trips before the list can start loading. The key registry is warmed
-            // here because IsValidKey answers optimistically until it arrives, which would
-            // route a legacy row to inline edit by mistake. The known-shortcut catalog is
-            // warmed here too, so the first BuildAsync call finds it already cached instead of
-            // paying its own round trip after the list has already come back.
-            Task<ApiResult<IReadOnlyList<ProfileDto>>> profilesTask = ProfilesApi.ListAsync(_cts.Token);
-            Task<ApiResult<PagedList<CategoryDto>>> catTask =
-                CategoriesApi.ListAsync(new CategoryListRequest(PageSize: 200), _cts.Token);
-            Task keysTask = KeyCatalog.ForRoleAsync("HotkeyKey", _cts.Token).AsTask();
-            Task shortcutsTask = KnownShortcuts.GetAsync(_cts.Token).AsTask();
-
-            await Task.WhenAll(profilesTask, catTask, keysTask, shortcutsTask);
-
-            ApiResult<IReadOnlyList<ProfileDto>> profilesResult = await profilesTask;
-            if (profilesResult.IsSuccess)
-                _profiles = profilesResult.Value ?? [];
-
-            ApiResult<PagedList<CategoryDto>> catResult = await catTask;
-            if (catResult.IsSuccess) _categories = catResult.Value?.Items ?? [];
-
-            _profileOptions = [.. _profiles.Select(p => new EntityOption(p.Id, p.Name))];
-            _categoryOptions = [.. _categories.Select(c => new EntityOption(c.Id, c.Name))];
+            // Held in a field so the dialog openers can wait for it. The grid loads its rows from
+            // its own request, so a page whose rows arrive first re-renders with the Add button
+            // enabled while these lists are still in flight.
+            _referenceData = LoadReferenceDataAsync();
+            await _referenceData;
 
             await LoadMobileAsync();
         }
+    }
+
+    private async Task LoadReferenceDataAsync()
+    {
+        // Four independent fetches, so they go out together rather than costing four
+        // serial round trips before the list can start loading. The key registry is warmed
+        // here because IsValidKey answers optimistically until it arrives, which would
+        // route a legacy row to inline edit by mistake. The known-shortcut catalog is
+        // warmed here too, so the first BuildAsync call finds it already cached instead of
+        // paying its own round trip after the list has already come back.
+        Task<ApiResult<IReadOnlyList<ProfileDto>>> profilesTask = ProfilesApi.ListAsync(_cts.Token);
+        Task<ApiResult<PagedList<CategoryDto>>> catTask =
+            CategoriesApi.ListAsync(new CategoryListRequest(PageSize: 200), _cts.Token);
+        Task keysTask = KeyCatalog.ForRoleAsync("HotkeyKey", _cts.Token).AsTask();
+        Task shortcutsTask = KnownShortcuts.GetAsync(_cts.Token).AsTask();
+
+        await Task.WhenAll(profilesTask, catTask, keysTask, shortcutsTask);
+
+        ApiResult<IReadOnlyList<ProfileDto>> profilesResult = await profilesTask;
+        if (profilesResult.IsSuccess)
+            _profiles = profilesResult.Value ?? [];
+
+        ApiResult<PagedList<CategoryDto>> catResult = await catTask;
+        if (catResult.IsSuccess) _categories = catResult.Value?.Items ?? [];
+
+        _profileOptions = [.. _profiles.Select(p => new EntityOption(p.Id, p.Name))];
+        _categoryOptions = [.. _categories.Select(c => new EntityOption(c.Id, c.Name))];
     }
 
     private async Task<GridData<HotkeyEditModel>> LoadServerData(GridState<HotkeyEditModel> state, CancellationToken ct)
@@ -692,6 +707,10 @@
         _dialogOpen = true;
         try
         {
+            // The lists below are read once, here. Wait for them, or a click that beat the fetch
+            // opens a dialog that can never warn about a Profile template.
+            await _referenceData;
+
             DialogParameters parameters = new()
             {
                 [nameof(HotkeyEditDialog.Item)] = new HotkeyEditModel(),
@@ -724,6 +743,9 @@
         _dialogOpen = true;
         try
         {
+            // Same reason as the create path: the dialog keeps the lists it is handed.
+            await _referenceData;
+
             DialogParameters parameters = new()
             {
                 [nameof(HotkeyEditDialog.Item)] = item.Clone(),
