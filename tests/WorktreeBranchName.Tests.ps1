@@ -72,4 +72,25 @@ $newWorktreeContent = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts\new
 Assert-True ($newWorktreeContent -match '(?m)if\s*\(-not\s+\$BranchName\)\s*\{[^}]*\$BranchName\s*=\s*ConvertTo-WorktreeBranchName\s+\$Name') 'new-worktree.ps1 must derive BranchName via ConvertTo-WorktreeBranchName only when -BranchName was not supplied.'
 Assert-True (([regex]::Matches($newWorktreeContent, 'ConvertTo-WorktreeBranchName')).Count -eq 1) 'new-worktree.ps1 should normalize the branch name in exactly one place.'
 
+# --- -Title derives the worktree name through the shared slug rule ---
+#
+# Backlog 080: the worktree name and the backlog item file name have to agree, because the
+# worktree is the pointer before a draft pull request exists. Deriving both from one title
+# through one slug rule is what makes them agree by construction.
+
+. (Join-Path $repoRoot 'scripts\slug.common.ps1')
+
+Assert-True ((ConvertTo-BacklogSlug -Title 'Race Safe Intake') -eq 'race-safe-intake') 'slug.common.ps1 must be dot-sourceable from a 5.1 test host'
+
+$newWorktreeText = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts\new-worktree.ps1') -Raw
+
+Assert-True ($newWorktreeText -match '(?m)\[string\]\s*\$Title') 'new-worktree.ps1 must accept -Title'
+Assert-True ($newWorktreeText -match "slug\.common\.ps1") 'new-worktree.ps1 must dot-source slug.common.ps1 for the slug rule'
+Assert-True ($newWorktreeText -notmatch 'backlog\.common\.ps1') 'new-worktree.ps1 must NOT dot-source backlog.common.ps1: it requires PowerShell 7.0 and this script supports 5.1'
+Assert-True ($newWorktreeText -match '(?m)if\s*\(\$Title\s+-and\s+\$Name\)') 'new-worktree.ps1 must refuse -Title together with -Name'
+Assert-True ($newWorktreeText -match 'wt-\$\(ConvertTo-BacklogSlug') 'new-worktree.ps1 must derive the name as wt- plus the title slug'
+
+# Unchanged from before: the branch is still derived from the name, in exactly one place.
+Assert-True (([regex]::Matches($newWorktreeText, 'ConvertTo-WorktreeBranchName')).Count -eq 1) 'Adding -Title must not add a second branch-name derivation'
+
 Write-Host 'Worktree branch name tests passed.'
