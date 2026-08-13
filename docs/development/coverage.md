@@ -57,6 +57,10 @@ Prefer `SKIP_PUSH_HOOK=1` — it skips only this repo's pre-push hook, while `--
 - `CoverageReport/SummaryGithub.md` — markdown summary used in the PR sticky comment and Actions job summary.
 - `TestResults/**/coverage.cobertura.xml` — per-project coverage files produced by `dotnet test`.
 
+Per-project coverage lands under `TestResults/coverage/<ProjectName>/`. The run checks that
+every test project the solution names produced a file there, and stops before the report when
+one did not. See [One test run at a time](testing-workflow.md#one-test-run-at-a-time).
+
 ## CI gate
 
 CI and the local verification path both use `scripts/ci/check-coverage-thresholds.py` to enforce per-assembly line and branch thresholds from the merged Cobertura report.
