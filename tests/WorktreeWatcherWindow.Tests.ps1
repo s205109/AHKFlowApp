@@ -75,8 +75,17 @@ Assert-True ($startup.ShowWindow -eq 0) "Expected ShowWindow = 0 (SW_HIDE), got 
 
 # --- a process spawned with it never shows a window ---------------------------------------
 
-$probeScript = Join-Path ([System.IO.Path]::GetTempPath()) "ahkflowapp-window-probe-$([guid]::NewGuid().ToString('N')).ps1"
-Set-Content -LiteralPath $probeScript -Value 'Start-Sleep -Seconds 3' -Encoding utf8
+$probeId = [guid]::NewGuid().ToString('N')
+$probeScript = Join-Path ([System.IO.Path]::GetTempPath()) "ahkflowapp-window-probe-$probeId.ps1"
+$probeMarker = Join-Path ([System.IO.Path]::GetTempPath()) "ahkflowapp-window-probe-$probeId.started"
+
+# The marker tells the scan below when the PowerShell host has finished starting. The window
+# this suite guards against is created before that point, so the scan must cover the whole
+# startup, however slow the machine is that day.
+Set-Content -LiteralPath $probeScript -Encoding utf8 -Value @"
+New-Item -ItemType File -Path '$probeMarker' -Force | Out-Null
+Start-Sleep -Seconds 3
+"@
 
 $probeProcessId = 0
 try {
@@ -97,22 +106,38 @@ try {
     $probeProcessId = [uint32] $result.ProcessId
     Assert-True ($probeProcessId -ne 0) 'Win32_Process.Create reported success but returned no process id.'
 
-    # Poll rather than sample once: the window this guards against appeared about 200 ms after
-    # the spawn, so a single check right after the call would miss it.
+    # Poll rather than sample once: the window this guards against appeared 135-369 ms after the
+    # spawn on a developer machine, so a single check right after the call would miss it.
+    #
+    # Scan until the host has started, plus a short tail, rather than for a fixed span. A fixed
+    # span turns into a false pass on a loaded CI runner, where the process can start after the
+    # scan has already given up.
     $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
     $seen = ''
-    while ($stopwatch.ElapsedMilliseconds -lt 2000) {
+    $hostStartedAt = $null
+    while ($stopwatch.ElapsedMilliseconds -lt 30000) {
         $seen = [WorktreeWindowScan]::VisibleWindowsFor($probeProcessId)
         if ($seen) { break }
+
+        if ($null -eq $hostStartedAt) {
+            if (Test-Path -LiteralPath $probeMarker) { $hostStartedAt = $stopwatch.ElapsedMilliseconds }
+        } elseif (($stopwatch.ElapsedMilliseconds - $hostStartedAt) -ge 500) {
+            break
+        }
+
         Start-Sleep -Milliseconds 5
     }
 
     Assert-True ([string]::IsNullOrEmpty($seen)) "A visible window appeared for the spawned watcher after $($stopwatch.ElapsedMilliseconds)ms: $seen"
+
+    # No marker means the probe never ran, so the scan proved nothing. Detached_Process fails
+    # exactly this way: Create returns 0 and the child does nothing.
+    Assert-True ($null -ne $hostStartedAt) 'The probe process never started; the window scan proved nothing.'
 } finally {
     if ($probeProcessId -ne 0) {
         Stop-Process -Id $probeProcessId -Force -ErrorAction SilentlyContinue
     }
-    Remove-Item -LiteralPath $probeScript -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $probeScript, $probeMarker -Force -ErrorAction SilentlyContinue
 }
 
 # --- the removal script actually passes it ------------------------------------------------
