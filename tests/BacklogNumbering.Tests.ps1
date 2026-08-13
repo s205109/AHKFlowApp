@@ -281,12 +281,11 @@ try {
         Where-Object { $_.Name -ne '000-backlog-item-template.md' })
     Assert-True ($written.Count -eq 1) "Expected one backlog item file, got $($written.Count)"
     if ($written.Count -eq 1) {
-        # Strip the 'NNN-' prefix the script adds; what remains must be the title's slug, and
-        # 'wt-' plus that slug is exactly what new-worktree.ps1 -Title produces.
+        # Strip the 'NNN-' prefix the script adds; what remains must be the title's slug, which
+        # is the slug new-worktree.ps1 -Title puts after 'wt-'.
         $fileSlug = $written[0].BaseName -replace '^\d{3}[a-z]?-', ''
         $expectedSlug = ConvertTo-BacklogSlug -Title $title
         Assert-True ($fileSlug -eq $expectedSlug) "The backlog item file slug '$fileSlug' must equal the title slug '$expectedSlug'"
-        Assert-True ("wt-$fileSlug" -eq "wt-$expectedSlug") "The worktree name must be 'wt-' plus that same slug"
     }
 }
 finally {

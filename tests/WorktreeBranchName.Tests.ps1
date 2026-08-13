@@ -70,6 +70,8 @@ Assert-True $threw 'Expected a name with no usable characters to throw.'
 # require creating a worktree and mutating git state.
 $newWorktreeContent = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts\new-worktree.ps1') -Raw
 Assert-True ($newWorktreeContent -match '(?m)if\s*\(-not\s+\$BranchName\)\s*\{[^}]*\$BranchName\s*=\s*ConvertTo-WorktreeBranchName\s+\$Name') 'new-worktree.ps1 must derive BranchName via ConvertTo-WorktreeBranchName only when -BranchName was not supplied.'
+# This one count also guards the -Title block below: deriving the branch from the title
+# directly would add a second call here.
 Assert-True (([regex]::Matches($newWorktreeContent, 'ConvertTo-WorktreeBranchName')).Count -eq 1) 'new-worktree.ps1 should normalize the branch name in exactly one place.'
 
 # --- -Title derives the worktree name through the shared slug rule ---
@@ -78,19 +80,16 @@ Assert-True (([regex]::Matches($newWorktreeContent, 'ConvertTo-WorktreeBranchNam
 # worktree is the pointer before a draft pull request exists. Deriving both from one title
 # through one slug rule is what makes them agree by construction.
 
+# The slug rule itself is proven in tests/BacklogNumbering.Tests.ps1. What this file adds is
+# that the rule loads at all under a 5.1 host, which is the reason it lives in its own file.
 . (Join-Path $repoRoot 'scripts\slug.common.ps1')
 
-Assert-True ((ConvertTo-BacklogSlug -Title 'Race Safe Intake') -eq 'race-safe-intake') 'slug.common.ps1 must be dot-sourceable from a 5.1 test host'
+Assert-True ($null -ne (Get-Command ConvertTo-BacklogSlug -ErrorAction SilentlyContinue)) 'slug.common.ps1 must be dot-sourceable from a 5.1 test host'
 
-$newWorktreeText = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts\new-worktree.ps1') -Raw
-
-Assert-True ($newWorktreeText -match '(?m)\[string\]\s*\$Title') 'new-worktree.ps1 must accept -Title'
-Assert-True ($newWorktreeText -match "slug\.common\.ps1") 'new-worktree.ps1 must dot-source slug.common.ps1 for the slug rule'
-Assert-True ($newWorktreeText -notmatch 'backlog\.common\.ps1') 'new-worktree.ps1 must NOT dot-source backlog.common.ps1: it requires PowerShell 7.0 and this script supports 5.1'
-Assert-True ($newWorktreeText -match '(?m)if\s*\(\$Title\s+-and\s+\$Name\)') 'new-worktree.ps1 must refuse -Title together with -Name'
-Assert-True ($newWorktreeText -match 'wt-\$\(ConvertTo-BacklogSlug') 'new-worktree.ps1 must derive the name as wt- plus the title slug'
-
-# Unchanged from before: the branch is still derived from the name, in exactly one place.
-Assert-True (([regex]::Matches($newWorktreeText, 'ConvertTo-WorktreeBranchName')).Count -eq 1) 'Adding -Title must not add a second branch-name derivation'
+Assert-True ($newWorktreeContent -match '(?m)\[string\]\s*\$Title') 'new-worktree.ps1 must accept -Title'
+Assert-True ($newWorktreeContent -match 'slug\.common\.ps1') 'new-worktree.ps1 must dot-source slug.common.ps1 for the slug rule'
+Assert-True ($newWorktreeContent -notmatch 'backlog\.common\.ps1') 'new-worktree.ps1 must NOT dot-source backlog.common.ps1: it requires PowerShell 7.0 and this script supports 5.1'
+Assert-True ($newWorktreeContent -match '(?m)if\s*\(\$Title\s+-and\s+\$Name\)') 'new-worktree.ps1 must refuse -Title together with -Name'
+Assert-True ($newWorktreeContent -match 'wt-\$\(ConvertTo-BacklogSlug') 'new-worktree.ps1 must derive the name as wt- plus the title slug'
 
 Write-Host 'Worktree branch name tests passed.'
