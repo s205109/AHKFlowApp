@@ -1962,14 +1962,106 @@ try {
         @{ Name = 'an empty target adds nothing'
             LinkPath = 'link.md'; Target = ''
             Expected = @()
+        },
+        # The kind picks the anchors. Every case above leaves -Kind at its default, so these pin
+        # the two kinds that drop an anchor.
+        #
+        # A parentless link path is the case that has to keep the as-written form even when the
+        # kind is Symbolic. The link file sits in the WORKING DIRECTORY, so the directory holding
+        # the link and the working directory are the same one, and the as-written form is the
+        # anchor that names it. Dropping it would leave one anchor, and that one is wrong.
+        @{ Name = 'a parentless symbolic link anchors to the working directory'
+            LinkPath = 'link.md'; Target = '..\README.md'; Kind = 'Symbolic'
+            Expected = @('link.md\..\README.md', '..\README.md')
+        },
+        @{ Name = 'a nested symbolic link uses the two joined forms'
+            LinkPath = 'deep\x.md'; Target = '..\..\README.md'; Kind = 'Symbolic'
+            Expected = @('deep\x.md\..\..\README.md', 'deep\..\..\README.md')
+        },
+        @{ Name = 'a hard link uses the working-directory form only'
+            LinkPath = 'deep\x.md'; Target = '..\..\README.md'; Kind = 'Hard'
+            Expected = @('..\..\README.md')
+        },
+        @{ Name = 'a parentless hard link uses the working-directory form too'
+            LinkPath = 'link.md'; Target = '..\README.md'; Kind = 'Hard'
+            Expected = @('..\README.md')
+        },
+        @{ Name = 'an absolute target says the same thing whatever the kind'
+            LinkPath = 'link.md'; Target = 'C:\repo\README.md'; Kind = 'Symbolic'
+            Expected = @('C:\repo\README.md')
+        },
+        @{ Name = 'a blank link path keeps the target whatever the kind'
+            LinkPath = ''; Target = '..\README.md'; Kind = 'Symbolic'
+            Expected = @('..\README.md')
         }
     )
 
     foreach ($case in $linkCandidateCases) {
         Invoke-TestCase "Link candidate: $($case.Name)" {
             $sink = New-Object System.Collections.Generic.List[string]
-            Add-AgentLinkTargetCandidate -LinkPath $case.LinkPath -Target $case.Target -Sink $sink
+            if ($case.ContainsKey('Kind')) {
+                Add-AgentLinkTargetCandidate -LinkPath $case.LinkPath -Target $case.Target `
+                    -Kind $case.Kind -Sink $sink
+            }
+            else {
+                Add-AgentLinkTargetCandidate -LinkPath $case.LinkPath -Target $case.Target -Sink $sink
+            }
             Assert-Equal ($case.Expected -join '|') ($sink.ToArray() -join '|') 'Candidates'
+        }
+    }
+
+    Write-Host 'Link kind reading' -ForegroundColor Cyan
+
+    # The kind decides which anchors survive, so a misread kind is a hole in both directions: a
+    # symbolic link read as hard loses the two anchors that catch it, and a hard link read as
+    # symbolic loses the only anchor that catches it.
+    $linkKindCases = @(
+        @{ Leaf = 'ln'; Arguments = @('-s'); Expected = 'Symbolic' },
+        @{ Leaf = 'ln'; Arguments = @('-sf'); Expected = 'Symbolic' },
+        @{ Leaf = 'ln'; Arguments = @(); Expected = 'Hard' },
+        @{ Leaf = 'ln'; Arguments = @('-f'); Expected = 'Hard' },
+        @{ Leaf = 'ln'; Arguments = @('--symbolic'); Expected = 'Symbolic' },
+        # GNU accepts any unambiguous abbreviation of a long option, so an exact-match reader
+        # calls a real symbolic link hard and drops the anchors that catch it.
+        @{ Leaf = 'ln'; Arguments = @('--sym'); Expected = 'Symbolic' },
+        @{ Leaf = 'ln'; Arguments = @('--symb'); Expected = 'Symbolic' },
+        # -t carries its value ATTACHED here, so the 's' belongs to the directory name, not to a
+        # cluster. '-ts sub' is the same option with 's' as the value.
+        @{ Leaf = 'ln'; Arguments = @('-tsub'); Expected = 'Hard' },
+        @{ Leaf = 'ln'; Arguments = @('-ts', 'sub'); Expected = 'Hard' },
+        # -t takes the NEXT token here, and the cluster really does hold -s.
+        @{ Leaf = 'ln'; Arguments = @('-st', 'out'); Expected = 'Symbolic' },
+        # --relative resolves the target against the working directory before it rewrites it, so
+        # neither anchor alone is right and the reader falls back to all of them.
+        @{ Leaf = 'ln'; Arguments = @('-sr'); Expected = 'Unknown' },
+        @{ Leaf = 'ln'; Arguments = @('-s', '--relative'); Expected = 'Unknown' },
+        @{ Leaf = 'ln'; Arguments = @('-s', '--rel'); Expected = 'Unknown' },
+        # '--' ends the options, so an operand that looks like a flag is not one.
+        @{ Leaf = 'ln'; Arguments = @('--', '-s.md', 'link.md'); Expected = 'Hard' },
+        @{ Leaf = 'cp'; Arguments = @('-s'); Expected = 'Symbolic' },
+        @{ Leaf = 'cp'; Arguments = @('-l'); Expected = 'Hard' },
+        @{ Leaf = 'cp'; Arguments = @('--symbolic-link'); Expected = 'Symbolic' },
+        @{ Leaf = 'cp'; Arguments = @('--sym'); Expected = 'Symbolic' },
+        @{ Leaf = 'cp'; Arguments = @('--link'); Expected = 'Hard' },
+        @{ Leaf = 'cp'; Arguments = @('--lin'); Expected = 'Hard' },
+        # -r is RECURSIVE for cp, not relative, so it changes no kind.
+        @{ Leaf = 'cp'; Arguments = @('-rs'); Expected = 'Symbolic' },
+        @{ Leaf = 'cp'; Arguments = @('-al'); Expected = 'Hard' },
+        @{ Leaf = 'cp'; Arguments = @('-ls'); Expected = 'Unknown' },
+        # Case matters: -S is --suffix and -L is --dereference.
+        @{ Leaf = 'cp'; Arguments = @('-S', '.bak', '-l'); Expected = 'Hard' },
+        @{ Leaf = 'mklink'; Arguments = @('link.md', 'target.md'); Expected = 'Symbolic' },
+        @{ Leaf = 'mklink'; Arguments = @('/D', 'linkdir', 'targetdir'); Expected = 'Symbolic' },
+        @{ Leaf = 'mklink'; Arguments = @('/h', 'link.md', 'target.md'); Expected = 'Hard' },
+        @{ Leaf = 'mklink'; Arguments = @('/J', 'linkdir', 'targetdir'); Expected = 'Unknown' },
+        @{ Leaf = 'rm'; Arguments = @('-rf'); Expected = 'Unknown' }
+    )
+
+    foreach ($case in $linkKindCases) {
+        $spelling = ($case.Arguments -join ' ')
+        Invoke-TestCase "Link kind: $($case.Leaf) $spelling" {
+            $kind = Get-AgentLinkKind -Leaf $case.Leaf -Arguments $case.Arguments
+            Assert-Equal $case.Expected $kind 'Kind'
         }
     }
 
@@ -2039,7 +2131,9 @@ try {
         # against the directory holding the link, so a symbolic form reports the joined anchors
         # and not the target as written. A hard link resolves its source against the working
         # directory, so it reports the target as written and nothing joined.
-        @{ Command = 'ln -s a.md b.md'; Expected = @('b.md', 'b.md\a.md') },
+        # 'b.md' has no directory part, so the directory holding the link is the working
+        # directory, and the as-written form is the anchor that names it.
+        @{ Command = 'ln -s a.md b.md'; Expected = @('b.md', 'b.md\a.md', 'a.md') },
         @{ Command = 'ln a.md b.md'; Expected = @('b.md', 'a.md') },
         @{ Command = 'ln -s C:\repo\README.md b.md'; Expected = @('b.md', 'C:\repo\README.md') },
         # With -t every operand is a link target and the named directory holds the links.
@@ -2047,11 +2141,11 @@ try {
             Expected = @('out', 'a.md', 'b.md')
         },
         # The kind reads out of a cluster that also carries -t.
-        @{ Command = 'ln -st out a.md'; Expected = @('out', 'out\a.md') },
+        @{ Command = 'ln -st out a.md'; Expected = @('out', 'out\a.md', 'a.md') },
         # '--' keeps a target whose own name begins with a dash, and ends the option walk: an
         # operand named '-s.md' after it must not be read as the symbolic flag.
         @{ Command = 'ln -s -- -a.md link.md'
-            Expected = @('link.md', 'link.md\-a.md')
+            Expected = @('link.md', 'link.md\-a.md', '-a.md')
         },
         @{ Command = 'ln -- -s.md link.md'; Expected = @('link.md', '-s.md') },
         # One operand names a link in the working directory and nothing else.
@@ -2079,14 +2173,14 @@ try {
         },
         # cp --link and cp --symbolic-link create links, so they carry the same hole as ln.
         @{ Command = 'cp -l a.md b.md'; Expected = @('b.md', 'a.md') },
-        @{ Command = 'cp -s a.md b.md'; Expected = @('b.md', 'b.md\a.md') },
+        @{ Command = 'cp -s a.md b.md'; Expected = @('b.md', 'b.md\a.md', 'a.md') },
         @{ Command = 'cp --link a.md b.md'; Expected = @('b.md', 'a.md') },
         @{ Command = 'cp --symbolic-link a.md b.md'
-            Expected = @('b.md', 'b.md\a.md')
+            Expected = @('b.md', 'b.md\a.md', 'a.md')
         },
         # Short options cluster. A literal list of four spellings would miss every one of these.
         @{ Command = 'cp -al a.md b.md'; Expected = @('b.md', 'a.md') },
-        @{ Command = 'cp -rs a.md b.md'; Expected = @('b.md', 'b.md\a.md') },
+        @{ Command = 'cp -rs a.md b.md'; Expected = @('b.md', 'b.md\a.md', 'a.md') },
         # Two kind flags in one command name no single kind, so every anchor stays.
         @{ Command = 'cp -ls a.md b.md'; Expected = @('b.md', 'a.md', 'b.md\a.md') },
         # Case matters: -S is --suffix, a different option that names no link.
@@ -2147,7 +2241,7 @@ try {
         # directory holding the link, so the symbolic form joins to it once and has no parent to
         # join to as well.
         @{ Command = 'New-Item -Path deep -Name link.md -ItemType SymbolicLink -Target ..\README.md'
-            Expected = @('deep', 'deep\link.md', 'deep\..\README.md')
+            Expected = @('deep', 'deep\link.md', 'deep\..\README.md', '..\README.md')
         },
         @{ Command = 'Copy-Item a.txt -Destination b.txt'; Expected = @('b.txt') },
         @{ Command = 'rm a.txt b.txt'; Expected = @('a.txt', 'b.txt') },
@@ -3234,6 +3328,42 @@ try {
         # An item type the guard cannot expand could be any kind, so every anchor stays.
         @{ Name = 'a relative link whose kind the guard cannot read stays fail-closed'
             Command = 'New-Item -ItemType $type -Path deep\bait.md -Target ..\README.md'
+            Action = 'Deny'
+        },
+        # A link created in the working directory itself. The directory holding the link IS the
+        # working directory, so the as-written form is the anchor that names the real target, and
+        # a symbolic kind has to keep it.
+        @{ Name = 'a parentless relative symbolic link into main'
+            Command = 'ln -s ../README.md b.md'
+            Action = 'Deny'
+        },
+        @{ Name = 'a parentless relative New-Item symbolic link into main'
+            Command = 'New-Item -ItemType SymbolicLink -Path bait.md -Target ..\README.md'
+            Action = 'Deny'
+        },
+        @{ Name = 'a parentless relative mklink symbolic link into main'
+            Command = 'cmd /c mklink bait.md ..\README.md'
+            Action = 'Deny'
+        },
+        # The same command the -s spelling denies, written the way GNU also accepts.
+        @{ Name = 'an abbreviated symbolic flag is still symbolic'
+            Command = 'ln --sym ../../../../README.md deep/bait.md'
+            Action = 'Deny'
+        },
+        # -t carries its value attached, so the 's' names a directory and not a symbolic link.
+        # This is a HARD link, and only the as-written anchor catches it.
+        @{ Name = 'an attached -t value is not read as the symbolic flag'
+            Command = 'ln -tsub ../README.md'
+            Action = 'Deny'
+        },
+        @{ Name = 'a split -t value is not read as the symbolic flag'
+            Command = 'ln -ts sub ../README.md'
+            Action = 'Deny'
+        },
+        # --relative resolves the target against the working directory first, so the as-written
+        # anchor is the one that catches it.
+        @{ Name = 'a relative-mode symbolic link stays fail-closed'
+            Command = 'ln -sr ../README.md deep/bait.md'
             Action = 'Deny'
         },
         # The gate from Task 5, proved at the decision layer: content is not a path.

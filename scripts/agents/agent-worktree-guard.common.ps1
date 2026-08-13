@@ -1918,6 +1918,37 @@ function Get-AgentMoveArgumentSet {
 
 <#
 .SYNOPSIS
+True when a long option token is a spelling of one of the given option names.
+
+.DESCRIPTION
+GNU getopt_long accepts any abbreviation of a long option that is still unambiguous, so `ln
+--sym` is `ln --symbolic` and `cp --lin` is `cp --link`. An exact-match reader calls those
+options unknown, and for a kind reader that is a hole rather than a wart: a symbolic link read
+as hard loses the anchors that catch it.
+
+So a token counts when the full name STARTS WITH it. An abbreviation short enough to be
+ambiguous, such as '--s', is accepted too. The real command would refuse to run, so the only
+cost is reading a kind for a command that never executes.
+
+Case-sensitive, because long options are.
+#>
+function Test-AgentLongOptionPrefix {
+    param([string] $Token, [string[]] $Names)
+
+    # '--' alone ends the options and names nothing.
+    if ($Token.Length -le 2) { return $false }
+
+    # A leaf with no option of this kind passes an empty list, and PowerShell hands an empty
+    # array to a [string[]] parameter as $null, which @() then turns into one $null element.
+    foreach ($name in @($Names)) {
+        if ([string]::IsNullOrEmpty($name)) { continue }
+        if ($name.StartsWith($Token, [System.StringComparison]::Ordinal)) { return $true }
+    }
+    return $false
+}
+
+<#
+.SYNOPSIS
 Which kind of link a command creates: 'Symbolic', 'Hard', or 'Unknown'.
 
 .DESCRIPTION
@@ -1929,14 +1960,29 @@ guard treats as a link command carries the kind in its own arguments:
   cp       -s / --symbolic-link, or -l / --link
   mklink   /h hard, /j junction, /d or nothing symbolic
 
-'Unknown' is the fail-closed answer, and three things produce it: a junction, whose anchor this
-guard has not proved; two kind flags in one command; and any other leaf. Add-AgentLinkTargetCandidate
-keeps every anchor for 'Unknown', which is what the guard did for every kind before it could read
-one.
+'Unknown' is the fail-closed answer. Add-AgentLinkTargetCandidate keeps every anchor for it,
+which is what the guard did for every kind before it could read one. Five things produce it:
+
+  - a junction, whose anchor this guard has not proved
+  - ln's -r / --relative, which resolves the target against the working directory and THEN
+    rewrites it, so the as-written anchor is right and the joined ones are too
+  - two kind flags in one command
+  - a cp that reached this reader with no flag this walk could read
+  - any other leaf
 
 The short-option matches are case-sensitive, for the reason Test-AgentGuardHasLinkFlag is: -S is
---suffix and -L is --dereference, and neither names a link. The walk stops at '--' and steps over
-the value of -t, so an operand named '-s.md' is not read as an option.
+--suffix and -L is --dereference, and neither names a link. -r is read for ln only, because the
+same letter is --recursive for cp.
+
+Two things keep an operand out of the option walk. The walk stops at '--'. And -t names a
+directory whose value is either the next token or attached to this one, so neither is read as an
+option: `ln -tsub x` is -t with the value 'sub', not a cluster holding 's'.
+
+This walk repeats part of Get-AgentMoveArgumentSet, and it is not folded into that reader's
+Options array on purpose. That array keeps '-tsub' whole, so the attached value would still need
+stripping here, and it holds a separated -t value as its own element, so a directory named
+'-slow' would read as a cluster. The reader that decides the kind has to skip both, and a wrong
+kind removes an anchor rather than adding one.
 #>
 function Get-AgentLinkKind {
     param([string] $Leaf, [string[]] $Arguments)
@@ -1945,9 +1991,14 @@ function Get-AgentLinkKind {
 
     if ($Leaf -eq 'mklink') {
         # Matched without case: cmd accepts /H and /h alike, and a Git Bash caller writes /D.
-        $hard = @($list | Where-Object { $_ -ieq '/h' }).Count -gt 0
-        $junction = @($list | Where-Object { $_ -ieq '/j' }).Count -gt 0
-        $directory = @($list | Where-Object { $_ -ieq '/d' }).Count -gt 0
+        $hard = $false
+        $junction = $false
+        $directory = $false
+        foreach ($argument in $list) {
+            if ($argument -ieq '/h') { $hard = $true }
+            elseif ($argument -ieq '/j') { $junction = $true }
+            elseif ($argument -ieq '/d') { $directory = $true }
+        }
 
         if ($junction) { return 'Unknown' }
         if ($hard -and $directory) { return 'Unknown' }
@@ -1957,8 +2008,13 @@ function Get-AgentLinkKind {
 
     if ($Leaf -ne 'ln' -and $Leaf -ne 'cp') { return 'Unknown' }
 
+    $symbolicNames = if ($Leaf -eq 'cp') { @('--symbolic-link') } else { @('--symbolic') }
+    $hardNames = if ($Leaf -eq 'cp') { @('--link') } else { @() }
+    $relativeNames = if ($Leaf -eq 'ln') { @('--relative') } else { @() }
+
     $symbolic = $false
     $hard = $false
+    $relative = $false
     $afterDoubleDash = $false
 
     for ($i = 0; $i -lt $list.Count; $i++) {
@@ -1968,20 +2024,30 @@ function Get-AgentLinkKind {
         if ($argument -ceq '--') { $afterDoubleDash = $true; continue }
         if ($argument -notlike '-*') { continue }
 
-        # -t takes the next token as its value, so that token is not an option of its own.
+        # The cluster is what carries the kind letters. It is the whole token, unless -t took part
+        # of the token as its value.
+        $cluster = $argument
         $spelling = Read-AgentTargetDirectoryToken -Argument $argument
-        if ($null -ne $spelling -and $spelling.TakesNextToken) { $i++ }
+        if ($null -ne $spelling) {
+            if ($spelling.TakesNextToken) { $i++ }
+            elseif ($argument -cnotlike '--*' -and $argument -cmatch '^-([a-zA-Z]*?)t') {
+                $cluster = '-' + $Matches[1] + 't'
+            }
+        }
 
-        if ($argument -ceq '--symbolic' -or $argument -ceq '--symbolic-link') { $symbolic = $true; continue }
-        if ($argument -ceq '--link') { $hard = $true; continue }
+        if ($argument -clike '--*') {
+            if (Test-AgentLongOptionPrefix -Token $argument -Names $symbolicNames) { $symbolic = $true }
+            if (Test-AgentLongOptionPrefix -Token $argument -Names $hardNames) { $hard = $true }
+            if (Test-AgentLongOptionPrefix -Token $argument -Names $relativeNames) { $relative = $true }
+            continue
+        }
 
-        # Any other long option is a name, not a cluster: --suffix must not read as -s.
-        if ($argument -clike '--*') { continue }
-
-        if ($argument -cmatch '^-[a-zA-Z]*s') { $symbolic = $true }
-        if ($Leaf -eq 'cp' -and $argument -cmatch '^-[a-zA-Z]*l') { $hard = $true }
+        if ($cluster -cmatch '^-[a-zA-Z]*s') { $symbolic = $true }
+        if ($Leaf -eq 'cp' -and $cluster -cmatch '^-[a-zA-Z]*l') { $hard = $true }
+        if ($Leaf -eq 'ln' -and $cluster -cmatch '^-[a-zA-Z]*r') { $relative = $true }
     }
 
+    if ($relative) { return 'Unknown' }
     if ($symbolic -and $hard) { return 'Unknown' }
     if ($symbolic) { return 'Symbolic' }
     if ($hard) { return 'Hard' }
@@ -2007,6 +2073,11 @@ chosen here, from the kind Get-AgentLinkKind read:
              itself, which the guard cannot know. Without these anchors
              `ln -s ../../../../../README.md deep/dir/x` walks ABOVE the checkout from the
              working directory and INTO it from the link's own directory, and would be allowed.
+             A link path with no directory part is the exception that keeps the as-written form:
+             `ln -s ../README.md b.md` puts the link in the WORKING directory, so the directory
+             holding the link and the working directory are the same one, and the as-written
+             form is the anchor that names it. Split-Path returns no parent there, so dropping
+             the as-written form would leave one anchor, and that one points a level too deep.
   Hard       A hard link names an existing file when it is created, so the target resolves
              against the working directory. That is what the as-written anchor is:
              `ln ../README.md deep/bait.md` names <main>\.claude\worktrees\README.md, and only
@@ -2050,10 +2121,15 @@ function Add-AgentLinkTargetCandidate {
     # The link path names a directory the link is created inside.
     [void] $Sink.Add((Join-Path $link $target))
 
-    # The link path names the link file itself, so its parent holds the link.
+    # The link path names the link file itself, so its parent holds the link. A bare name has no
+    # parent, and its holder is the working directory: that is the as-written form, which a
+    # symbolic kind has not added yet.
     $parent = Split-Path -Parent $link
     if (-not [string]::IsNullOrWhiteSpace($parent)) {
         [void] $Sink.Add((Join-Path $parent $target))
+    }
+    elseif ($Kind -eq 'Symbolic') {
+        [void] $Sink.Add($target)
     }
 }
 
