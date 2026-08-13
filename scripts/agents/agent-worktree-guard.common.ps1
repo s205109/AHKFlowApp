@@ -2037,13 +2037,15 @@ function Add-AgentLinkTargetCandidate {
     $isAbsolute = $target -match '^([A-Za-z]:|[\\/])'
 
     $link = [string] $LinkPath
-    $hasLink = -not [string]::IsNullOrWhiteSpace($link)
 
-    if ($isAbsolute -or -not $hasLink -or $Kind -ne 'Symbolic') {
+    # Nothing to anchor to, or nothing to anchor: one candidate, whatever the kind.
+    if ($isAbsolute -or [string]::IsNullOrWhiteSpace($link)) {
         [void] $Sink.Add($target)
+        return
     }
 
-    if ($isAbsolute -or -not $hasLink -or $Kind -eq 'Hard') { return }
+    if ($Kind -ne 'Symbolic') { [void] $Sink.Add($target) }
+    if ($Kind -eq 'Hard') { return }
 
     # The link path names a directory the link is created inside.
     [void] $Sink.Add((Join-Path $link $target))
