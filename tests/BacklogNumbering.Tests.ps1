@@ -243,6 +243,56 @@ finally {
     Remove-Item -LiteralPath $tempRoot -Recurse -Force
 }
 
+# --- Case 13: the slug rule lives in slug.common.ps1 and still behaves the same ---
+#
+# new-worktree.ps1 requires PowerShell 5.1 and backlog.common.ps1 requires 7.0, so the two
+# cannot share a file. They share this one instead. A second copy of the rule would let the
+# worktree name and the backlog item file name drift apart.
+
+$slugCommonPath = Join-Path $repoRoot 'scripts/slug.common.ps1'
+Assert-True (Test-Path -LiteralPath $slugCommonPath) "Expected $slugCommonPath to exist"
+
+$slugCommonText = Get-Content -LiteralPath $slugCommonPath -Raw
+Assert-True ($slugCommonText -match '#Requires -Version 5\.1') 'slug.common.ps1 must declare #Requires -Version 5.1, or new-worktree.ps1 cannot dot-source it'
+
+$backlogCommonText = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts/backlog.common.ps1') -Raw
+Assert-True (([regex]::Matches($backlogCommonText, 'function ConvertTo-BacklogSlug')).Count -eq 0) 'backlog.common.ps1 must not define ConvertTo-BacklogSlug any more; it dot-sources slug.common.ps1'
+
+Assert-True ((ConvertTo-BacklogSlug -Title 'Race Safe Intake') -eq 'race-safe-intake') 'Slug: spaces become hyphens and the result is lower case'
+Assert-True ((ConvertTo-BacklogSlug -Title '  Downloads page: row stays disabled!  ') -eq 'downloads-page-row-stays-disabled') 'Slug: punctuation collapses and the edges are trimmed'
+Assert-True ((ConvertTo-BacklogSlug -Title 'CLI winget distribution') -eq 'cli-winget-distribution') 'Slug: an acronym lower-cases like any other word'
+
+# --- Case 14: the backlog item file name and the worktree name agree for one title ---
+#
+# Both sides call ConvertTo-BacklogSlug, so they agree by construction. This pins the
+# construction. The -Title block in tests/WorktreeBranchName.Tests.ps1 pins the worktree side
+# against the same function, so together they cover the end-to-end promise.
+#
+# $scaffoldScript is defined at tests/BacklogNumbering.Tests.ps1:19 and
+# New-TemporaryBacklogRoot at :24.
+
+$tempRoot = New-TemporaryBacklogRoot
+try {
+    $title = 'Downloads page row stays disabled'
+    & $scaffoldScript -Title $title -BacklogRoot $tempRoot | Out-Null
+
+    # New-TemporaryBacklogRoot copies the template in, so it is excluded here.
+    $written = @(Get-ChildItem -LiteralPath $tempRoot -Filter '*.md' -File |
+        Where-Object { $_.Name -ne '000-backlog-item-template.md' })
+    Assert-True ($written.Count -eq 1) "Expected one backlog item file, got $($written.Count)"
+    if ($written.Count -eq 1) {
+        # Strip the 'NNN-' prefix the script adds; what remains must be the title's slug, and
+        # 'wt-' plus that slug is exactly what new-worktree.ps1 -Title produces.
+        $fileSlug = $written[0].BaseName -replace '^\d{3}[a-z]?-', ''
+        $expectedSlug = ConvertTo-BacklogSlug -Title $title
+        Assert-True ($fileSlug -eq $expectedSlug) "The backlog item file slug '$fileSlug' must equal the title slug '$expectedSlug'"
+        Assert-True ("wt-$fileSlug" -eq "wt-$expectedSlug") "The worktree name must be 'wt-' plus that same slug"
+    }
+}
+finally {
+    Remove-Item -LiteralPath $tempRoot -Recurse -Force
+}
+
 # --- Report ---
 
 if ($failures.Count -gt 0) {
