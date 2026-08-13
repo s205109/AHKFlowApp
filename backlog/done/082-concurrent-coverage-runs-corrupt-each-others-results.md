@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: none (test scripts)
 - **Difficulty**: moderate
-- **Stage**: 1-pickup
+- **Stage**: 9-ship
 
 ## Summary
 
@@ -77,29 +77,42 @@ destroys the first's evidence mid-flight.
 
 ## Acceptance criteria
 
-- [ ] **A second concurrent run cannot start, or cannot collide — across scripts, not just
+- [x] **A second concurrent run cannot start, or cannot collide — across scripts, not just
       within one.** The lock must be shared by `run-coverage.ps1` and `test-fast.ps1`, since
       the observed collision was between them. A lock held only by `run-coverage.ps1` would
       not have prevented it.
-- [ ] The coverage gate refuses to report when its input is **incomplete**, measured in
+- [x] The coverage gate refuses to report when its input is **incomplete**, measured in
       **coverage artifacts** — the per-assembly Cobertura XML it actually consumes at
       `run-coverage.ps1:79-82` — not in TRX files, which Coverage never produces.
-- [ ] The threshold error stops claiming coverage when the cause is missing input. The
+- [x] The threshold error stops claiming coverage when the cause is missing input. The
       current text sends a reader hunting for a coverage regression that does not exist.
-- [ ] Timestamps are **not** used to prove freshness. With concurrent runs a file newer than
+- [x] Timestamps are **not** used to prove freshness. With concurrent runs a file newer than
       this run's start may have been written by the other one. Identity — expected assembly
       set, or a per-run output path — is what the check needs.
-- [ ] A test covers the incomplete-result-set path by removing one expected TRX.
-- [ ] The failure mode is documented in `docs/development/testing-workflow.md`.
+- [x] A test covers the incomplete-result-set path by removing one expected per-project
+      `coverage.cobertura.xml`. The original wording said "TRX", which contradicted the
+      criterion above it: Coverage produces no TRX files. See the plan for the correction.
+- [x] The failure mode is documented in `docs/development/testing-workflow.md`.
 
-### Open questions, not yet findings
+### Answers to the open questions
 
-- Which phase held the `AHKFlowApp.Application.dll` and `ahkflow.dll` locks seen in the
-  output. `--disable-build-servers` is already set for build and test, so the holder was
-  something else — plausibly the other run's test hosts, unverified.
-- Whether a test can ever execute against an assembly the run did not produce. If it can,
-  that is a separate and more serious item; if it cannot, the incomplete-data path above is
-  the whole defect. Answer this before designing the fix.
+Both questions are now answered by experiment. The experiment held a read-only lock on
+`tests/AHKFlowApp.UI.Blazor.Tests/bin/Release/net10.0/AHKFlowApp.Application.dll` and then ran
+only the coverage collector for that project.
+
+- **Which phase held the locks.** Neither the build nor the test execution. The **collector**
+  holds the write. coverlet instruments every module in the test output folder at test-session
+  start: it copies each module aside and writes an instrumented module back over it.
+  `coverlet.runsettings` has no `<Include>` filter, so `AHKFlowApp.Application.dll` inside
+  `AHKFlowApp.UI.Blazor.Tests\bin` is instrumented too. The other side of the collision is any
+  process holding those files open without sharing writes.
+- **Whether a test can execute against an assembly the run did not produce.** No. The run
+  either loads the correct assembly and passes, or fails to load it and reports a test failure.
+  The withdrawn false-green claim stays withdrawn, and no more serious item is needed. The
+  whole defect is **coverage-data loss**.
+
+The measured consequence: `dotnet test` exits 0, coverlet writes no coverage file for that
+project, and the merged report silently loses every assembly only that project covered.
 
 ## Out of scope
 

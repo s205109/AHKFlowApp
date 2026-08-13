@@ -8,6 +8,10 @@
 
 Set-StrictMode -Version Latest
 
+# The slug rule lives in its own file so new-worktree.ps1 can use it too. That script requires
+# PowerShell 5.1 and this one requires 7.0, so it cannot dot-source this file. See backlog 080.
+. (Join-Path $PSScriptRoot 'slug.common.ps1')
+
 function Get-BacklogItem {
     param([Parameter(Mandatory)][string] $BacklogRoot)
 
@@ -116,11 +120,4 @@ function New-BacklogFile {
     finally {
         $stream.Dispose()
     }
-}
-
-function ConvertTo-BacklogSlug {
-    param([Parameter(Mandatory)][string] $Title)
-
-    $slug = $Title.ToLowerInvariant() -replace '[^a-z0-9]+', '-'
-    return $slug.Trim('-')
 }

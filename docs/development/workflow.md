@@ -180,7 +180,7 @@ stage's Exit field above it.
 
 - **Entry** — friction, idea, or bug arrives
 - **Who** — Sonnet, default effort
-- **Technique** — `scripts/new-backlog-item.ps1`
+- **Technique** — `scripts/new-worktree.ps1 -Title`, then `scripts/new-backlog-item.ps1`
 - **Action** — file the item where the work will run (see below), set Difficulty; for bugs, attach root-cause evidence or mark it `to-be-determined`
 - **Exit** — Item filed with the script, summary written, Difficulty set
 - **Next** — `1-pickup`
@@ -195,57 +195,54 @@ stage's Exit field above it.
 | not applicable | a housekeeping round needs no item — taken once per round, at its first change; the round's commits are the record; say so | 1-pickup |
 | resume | item sat idle; revise Difficulty once, then re-check the whole exit condition — a placeholder summary keeps it here, and only a complete item takes the success edge | stay |
 
-**Where Intake writes the file.** A new item written into the main checkout cannot reach a
-worktree by itself. `git worktree add` builds the new tree from a commit, and
-`scripts/new-worktree.ps1` copies only the entries listed in `.worktreeinclude`, which is
-empty. An agent also cannot commit on `main`. So an uncommitted new item in main is
-stranded.
+**Where Intake writes the file.** A new backlog item written into the main checkout cannot
+reach a worktree by itself. `git worktree add` builds the new tree from a commit, and
+`scripts/new-worktree.ps1` copies only the entries listed in `.worktreeinclude`, which lists
+none — the file holds comments only. An agent also cannot commit on `main`. So an uncommitted
+new backlog item in main is stranded.
 
-There is a second constraint, and the two together decide the route. The worktree needs the
-item's **number before it exists**: `scripts/new-worktree.ps1:221` throws without `-Name`,
-the branch convention is `feature/wt-NNN-<topic>`, and the pre-PR discovery rule below finds
-work by its number-prefixed worktree. But `scripts/new-backlog-item.ps1` only assigns the
-next free number when it writes the file. Filing inside a worktree that is already named
-therefore needs a number nobody has assigned yet.
-
-**The route today: file and commit the item on `main` first, then create the worktree.**
-The item is committed, so `git worktree add` carries it, and its number is known before the
-worktree is named. An agent cannot commit on `main`, so this step belongs to the human, or
-to a session started with `AHKFLOW_ALLOW_MAIN=1`.
-
-The script writes the template unchanged, so it adds neither `Difficulty` nor `Stage` and
-leaves the placeholder summary in place. Fill all three in before committing, or the item
-fails its own exit condition the moment it is picked up:
+**The route: create the worktree from the title, then file the backlog item inside it.**
+The worktree is named from the title, not from the number, so nothing has to know the number
+before the worktree exists. `scripts/new-backlog-item.ps1` then assigns the next free number
+as it writes the file, inside the worktree, and the file is committed on the work branch.
+No commit lands on `main`.
 
 ```powershell
-pwsh ./scripts/new-backlog-item.ps1 -Title "..."   # prints the path, including the number
+# 1. From the main checkout. Most backlog items are features, so pass -BranchName as well:
+#    -Title alone gives the branch the 'fix/' prefix, which is the fallback, not a guess
+#    at your intent.
+pwsh ./scripts/new-worktree.ps1 -Title "Downloads page row stays disabled" `
+     -BranchName feature/wt-downloads-page-row-stays-disabled
+
+#    For a fix, -Title alone is enough:
+#    pwsh ./scripts/new-worktree.ps1 -Title "Downloads page row stays disabled"
+
+# 2. From the new worktree, with the same title.
+pwsh ./scripts/new-backlog-item.ps1 -Title "Downloads page row stays disabled"
 # then edit the new file:
 #   - replace the placeholder Summary with a real one
 #   - add "- **Difficulty**: moderate | complex | to-be-determined"
 #   - add "- **Stage**: 1-pickup"
-git -C C:\Dev\segocom-github\AHKFlowApp add backlog/<NNN>-<slug>.md
-git -C C:\Dev\segocom-github\AHKFlowApp commit -m "chore: file backlog <NNN> <title>"
+git add backlog/<NNN>-<slug>.md
+git commit -m "chore: file backlog <NNN> <title>"
 ```
 
-Backlog 072 puts `Difficulty` and `Stage` into the template and the script, which removes
-two of those three manual steps.
+Pass the same title to both commands. Both slug it with the same rule
+(`scripts/slug.common.ps1`), so the worktree name matches the backlog item file name, which
+is what the pre-PR discovery rule below relies on. Backlog 072 puts `Difficulty` and `Stage`
+into the template and the script, which removes two of those three manual edits.
 
-Backlog 071 took a different route — the worktree existed first and the item was filed
-inside it — which is why its branch had to be named before its number was known. Do not
-copy that. It worked only because the number was picked by hand, which is the thing
-`new-backlog-item.ps1` exists to prevent.
+**Two sessions can still pick the same number**, because the number is assigned when the file
+is written and neither session can see the other's unmerged branch. The duplicate check in
+`Get-BacklogProblem` catches it, and the `powershell-suites` CI job runs on every pull
+request — but not at once. Both pull requests stay green while both branches are unmerged,
+because each checkout holds only its own file. The duplicate appears when the first branch
+merges and the second refreshes against it.
 
-**Known cost, stated rather than hidden: this contaminates later branches.** A new worktree
-is created from `HEAD` unless `-BaseRef` says otherwise
-(`scripts/worktree-git.common.ps1:64`), so every Intake commit sitting unmerged on local
-`main` rides into every worktree created afterwards, and into its pull request diff. The
-more items you file before merging, the more unrelated commits each later branch carries.
+The repair is `git mv` on one file plus its heading. The branch, the worktree, and the pull
+request all keep their names, because none of them carries the number.
 
-Two ways to limit it, neither free: file an item immediately before creating its worktree
-rather than batching Intake, or merge the filing commits promptly. Backlog 080 removes the
-cause by reserving the number without a commit on `main`.
-
-A housekeeping round files no item at all, so none of this applies to it.
+A housekeeping round files no backlog item at all, so none of this applies to it.
 
 <a id="stage-1-pickup"></a>
 
@@ -253,7 +250,7 @@ A housekeeping round files no item at all, so none of this applies to it.
 
 - **Entry** — item chosen
 - **Who** — Sonnet, default effort
-- **Technique** — `scripts/new-worktree.ps1` (`-BaseRef` for stacked work), or the housekeeping worktree
+- **Technique** — `scripts/new-worktree.ps1 -BaseRef` to recreate the worktree when the base was wrong, or the housekeeping worktree
 - **Action** — choose the execution location by Difficulty: a dedicated worktree for `moderate` and `complex`, the housekeeping worktree for `trivial`. Confirm branch and base, and state both. For a tracked item: push the branch, open the draft pull request, and **only then** stamp the Stage the Difficulty jump names — publishing the next Stage before the pull request exists would claim an exit condition that is still false. Until that stamp lands the item keeps `Stage: 1-pickup`, and the worktree is the pointer. For a housekeeping round: no item, so no Stage stamp and no push here. The round worktree is the pointer, and the route is the round pull request opened at Execute close
 - **Exit** — Location chosen by Difficulty, base confirmed and stated, PR route in place
 - **Next** — `2-design/3-plan/4-execute`
@@ -709,9 +706,12 @@ an item closed while its work reopens. For a housekeeping round there is nothing
 restore: rewrite the `Stage:` line in the round pull request body, and push only if the
 recovery work itself makes a commit.
 
-**Before the draft pull request exists** — stage 0 to early stage 1 — the number-prefixed
-worktree is the live pointer. `git worktree list` or `ls .claude/worktrees/` finds it, and
-the worktree's copy of the backlog item carries the Stage field.
+**Before the draft pull request exists** — stage 0 to early stage 1 — the worktree is the
+live pointer. `git worktree list` or `ls .claude/worktrees/` finds it, and its name is the
+backlog item's slug, so `wt-downloads-page-row-stays-disabled` pairs with
+`NNN-downloads-page-row-stays-disabled.md`. The worktree's copy of that file carries the
+Stage field. When a worktree was named with `-Name` rather than `-Title` the names may not
+pair, so read the `backlog/` folder inside the worktree instead.
 
 **Terminal rule.** The Ship pull request sets `Stage: 9-ship` in the same change that moves
 the item to `backlog/done/`. After the merge, the field is never written again. Cleanup

@@ -19,7 +19,13 @@ pwsh -NoProfile -File scripts/new-worktree.ps1 -Name <name>
 
 It creates the branch, places the worktree under `.claude/worktrees/<name>/`, copies `.worktreeinclude` entries, runs local-dev isolation setup, and prints the worktree path on success.
 
-**Branch naming:** worktree branches insert `wt-` after the type prefix — `fix/wt-<topic>`, `feature/wt-NNN-<topic>` (see AGENTS.md Git Workflow). Pass it explicitly (`-BranchName fix/wt-<topic>`) or name the worktree so the derived branch matches.
+**Naming it from a backlog item title:** pass `-Title` instead of `-Name`. The worktree is named `wt-` plus the title's slug, and `scripts/new-backlog-item.ps1` slugs the same title the same way, so the worktree name and the backlog item file name agree. Pass the two together and the script throws.
+
+```bash
+pwsh -NoProfile -File scripts/new-worktree.ps1 -Title "Downloads page row stays disabled" -BranchName feature/wt-downloads-page-row-stays-disabled
+```
+
+**Branch naming:** worktree branches insert `wt-` after the type prefix — `fix/wt-<topic>`, `feature/wt-<topic>` (see AGENTS.md Git Workflow). No backlog number appears in a branch name or a worktree name; the number lives in the backlog item file. Pass the branch explicitly (`-BranchName fix/wt-<topic>`) or name the worktree so the derived branch matches. `-Title` on its own gives the branch the `fix/` prefix, which is the fallback for an untyped name, so pass `-BranchName` too when the work is a feature.
 
 **Stacking on unmerged work:** the `WorktreeCreate` hook contract carries only a worktree name, so the native Claude Code path can express no base ref and always branches from the main checkout's current HEAD. When the work builds on a branch that has not merged yet, **skip native creation** and run the script directly with `-BaseRef`:
 

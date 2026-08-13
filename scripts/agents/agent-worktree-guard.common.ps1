@@ -1178,6 +1178,32 @@ function Test-AgentGuardHasForceFlag {
 
 <#
 .SYNOPSIS
+True when a cp invocation carries a flag that makes it create a link instead of a copy.
+
+.DESCRIPTION
+cp -l / --link makes a hard link and cp -s / --symbolic-link makes a symbolic one, so a cp
+carrying either aims at a path the way ln does. Shaped exactly like Test-AgentGuardHasForceFlag
+above, and for the same reason: short options cluster, so `cp -al src dst` carries -l inside a
+token that equals neither '-l' nor '--link', and a literal list of spellings would miss it.
+
+The cluster match is deliberately loose - any cp cluster holding 'l' or 's' sends the command
+down the link branch. Every cp operand is a path, so the worst outcome is that a plain copy
+reports its sources as well as its destination, which is the same over-report mv already makes.
+
+Case-sensitive: -S is --suffix, a different option that takes a value and names no link.
+#>
+function Test-AgentGuardHasLinkFlag {
+    param([string[]] $Arguments)
+    foreach ($arg in $Arguments) {
+        if ($arg -ceq '--link') { return $true }
+        if ($arg -ceq '--symbolic-link') { return $true }
+        if ($arg -cmatch '^-[a-zA-Z]*[ls]') { return $true }
+    }
+    return $false
+}
+
+<#
+.SYNOPSIS
 True when the tokenized git invocation mutates repository state.
 
 .DESCRIPTION
@@ -1564,7 +1590,16 @@ function Test-AgentWorktreeManifest {
 $script:AgentGuardWriteEveryPositional = @(
     'rm', 'unlink', 'shred', 'truncate', 'touch', 'mkdir', 'rmdir', 'tee'
 )
-$script:AgentGuardWriteLastPositional = @('cp', 'mv', 'install', 'ln')
+$script:AgentGuardWriteLastPositional = @('cp', 'mv', 'install')
+
+# Commands that CREATE a link. Both endpoints are write targets: the path the link is created
+# at, and the path it points to. A write through the link lands on the second one, and the guard
+# would otherwise see only the first. ln leaves the last-positional table above for this reason.
+$script:AgentGuardLinkCommands = @('ln', 'mklink')
+
+# The New-Item item types that make a link. Matched without case, because -ItemType is not
+# case-sensitive.
+$script:AgentGuardLinkItemTypes = @('symboliclink', 'hardlink', 'junction')
 
 # Cmdlet name -> the parameter naming its write target. Positional fallbacks are handled below.
 $script:AgentGuardWriteCmdlets = @{
@@ -1630,6 +1665,24 @@ $script:AgentGuardMoveValueParameters = @(
     'path', 'literalpath', 'destination', 'newname', 'filter', 'include', 'exclude', 'credential'
 )
 
+# The same list for the content-writing cmdlets in AgentGuardWriteCmdlets. Every name here
+# consumes the token after it, so none of those tokens is a path the command writes. The common
+# parameters are on the list because `Set-Content -ErrorAction Stop <path>` hides a path behind
+# 'Stop' exactly as `-Encoding utf8` hides one behind 'utf8'.
+#
+# Switches are absent on purpose: -Force, -Confirm, -WhatIf, -PassThru, -Append, -NoClobber,
+# -NoNewline, -Recurse, -UseTransaction, -Verbose, -Debug. Listing one would consume the path
+# that follows it and lose the target. No full switch name here is a prefix of a listed name,
+# so the prefix match cannot confuse the two; an abbreviation short enough to match both, such
+# as -F, is ambiguous to PowerShell too and the command does not run.
+$script:AgentGuardWriteCmdletValueParameters = @(
+    'path', 'literalpath', 'filepath', 'value', 'itemtype', 'type', 'name', 'target',
+    'encoding', 'filter', 'include', 'exclude', 'stream', 'delimiter', 'inputobject',
+    'width', 'credential', 'erroraction', 'warningaction', 'informationaction',
+    'errorvariable', 'warningvariable', 'informationvariable', 'outvariable', 'outbuffer',
+    'pipelinevariable'
+)
+
 <#
 .SYNOPSIS
 An option's value, rejoined across the tokens an array value splits into.
@@ -1656,16 +1709,21 @@ function Get-AgentOptionValueSpan {
 
 <#
 .SYNOPSIS
-The true positional operands of a move cmdlet, with option values removed.
+The true positional operands of a cmdlet, with option values removed.
 
 .DESCRIPTION
 Get-AgentGitPositionals drops every '-*' token but keeps the token AFTER it, so the value of
-`-Filter *.tmp` is left behind and read as though it were a file the move touches. That
-over-reports a target and refuses ordinary in-worktree moves. This reader consumes each
-value-taking option together with its value.
+`-Filter *.tmp` is left behind and read as though it were a file the command touches. This
+reader consumes each value-taking option together with its value.
+
+The two callers fail in opposite directions without it. A move over-reports a target and
+refuses ordinary in-worktree moves. A content write does worse: `Set-Content -Encoding utf8
+<main>\README.md hello` reads 'utf8' as operand 0, so the real path is never scanned and the
+write into the main checkout is ALLOWED. So ValueParameters is per caller, and each list holds
+only parameters that consume a value - a switch such as -Force takes none and must stay out.
 #>
-function Get-AgentMoveCmdletOperand {
-    param([string[]] $Arguments)
+function Get-AgentCmdletOperand {
+    param([string[]] $Arguments, [string[]] $ValueParameters)
 
     $operands = New-Object System.Collections.Generic.List[string]
     $list = @($Arguments)
@@ -1677,7 +1735,7 @@ function Get-AgentMoveCmdletOperand {
 
         if ($argument -match '^-([A-Za-z]+)$') {
             $name = [string] $Matches[1]
-            if (Test-AgentParameterNamePrefix -Name $name -Candidates $script:AgentGuardMoveValueParameters) {
+            if (Test-AgentParameterNamePrefix -Name $name -Candidates $ValueParameters) {
                 # Consume the whole value, including the tokens an array value splits into.
                 if (($i + 1) -lt $list.Count) {
                     $i = (Get-AgentOptionValueSpan -List $list -Index ($i + 1)).LastIndex
@@ -1860,6 +1918,163 @@ function Get-AgentMoveArgumentSet {
 
 <#
 .SYNOPSIS
+Adds every path a link target could mean to a write-target list.
+
+.DESCRIPTION
+Windows resolves a RELATIVE link target against the directory holding the link, not against the
+working directory (see the CreateSymbolicLink reference, and the same note on
+Resolve-AgentSymlinkPath below). The resolver this guard uses anchors a relative write target to
+the working directory instead, so one anchor is not enough: `ln -s ../../../../../README.md
+deep/dir/x` walks ABOVE the checkout from the working directory and INTO it from the link's own
+directory. Anchoring one way only would allow that link.
+
+So a relative target is offered three ways - as written, joined to the link path, and joined to
+the link path's parent - and whichever one lands in the main checkout produces the denial. All
+three are paths, so this over-reports only paths, which is the safe direction for this grammar.
+
+The as-written anchor stays even though Windows never resolves a SYMBOLIC link that way, because
+a HARD link resolves its source exactly that way: `ln ../README.md deep/bait.md` names
+<main>\.claude\worktrees\README.md, and only the as-written anchor reaches it. Drop that anchor
+and the hard link is allowed, which hands the session a second name for a file in the main
+checkout. Reading the link kind first would let each form keep only its own anchor, and backlog
+086 holds that work.
+
+The cost of keeping all three is a real over-report, and it is not theoretical: `ln -s ../src/a.cs
+deep/bait.md` from the worktree root stays inside the worktree, and the guard still refuses it.
+The message then names a main-checkout path that no write would have landed on. Use a target with
+no '..' in it, or an absolute one. Both directions are pinned by tests.
+
+An absolute target means the same file from every directory, so it is added once.
+#>
+function Add-AgentLinkTargetCandidate {
+    param(
+        [string] $LinkPath,
+        [string] $Target,
+        [System.Collections.Generic.List[string]] $Sink
+    )
+
+    $target = [string] $Target
+    if ([string]::IsNullOrWhiteSpace($target)) { return }
+
+    [void] $Sink.Add($target)
+
+    # Tested with a pattern rather than [System.IO.Path]::IsPathRooted, which throws on Windows
+    # PowerShell 5.1 for characters that host rejects outright. A throw here would escape into the
+    # entrypoint's catch, and that catch ALLOWS the write.
+    if ($target -match '^([A-Za-z]:|[\\/])') { return }
+
+    $link = [string] $LinkPath
+    if ([string]::IsNullOrWhiteSpace($link)) { return }
+
+    # The link path names a directory the link is created inside.
+    [void] $Sink.Add((Join-Path $link $target))
+
+    # The link path names the link file itself, so its parent holds the link.
+    $parent = Split-Path -Parent $link
+    if (-not [string]::IsNullOrWhiteSpace($parent)) {
+        [void] $Sink.Add((Join-Path $parent $target))
+    }
+}
+
+<#
+.SYNOPSIS
+Every path a link-creation command would write or aim at.
+
+.DESCRIPTION
+ln has three forms - `ln TARGET LINK_NAME`, `ln TARGET... DIRECTORY`, and
+`ln -t DIRECTORY TARGET...` - and every operand of all three is a path. So every operand is
+reported, and each link target is expanded through Add-AgentLinkTargetCandidate.
+
+Get-AgentMoveArgumentSet does the option/operand split. Its name says move; its behaviour is the
+general split these commands share, including honouring '--' and consuming the -t value.
+#>
+function Get-AgentLinkWriteTarget {
+    param([string] $Leaf, [string[]] $Arguments)
+
+    $found = New-Object System.Collections.Generic.List[string]
+
+    if ($Leaf -eq 'mklink') {
+        # mklink [[/d] | [/h] | [/j]] <link> <target>. All three options are switches: none of
+        # them consumes the token that follows, so the reader drops the option and reads on. The
+        # '-*' test stays because Get-AgentGitPositionals cannot be reused here - it keeps
+        # '/'-prefixed tokens, and they would be read as the link and the target.
+        $linkOperands = @($Arguments | Where-Object { $_ -notlike '-*' -and $_ -notlike '/*' })
+        if ($linkOperands.Count -ge 1) { [void] $found.Add([string] $linkOperands[0]) }
+        if ($linkOperands.Count -ge 2) {
+            Add-AgentLinkTargetCandidate -LinkPath ([string] $linkOperands[0]) `
+                -Target ([string] $linkOperands[1]) -Sink $found
+        }
+        return $found.ToArray()
+    }
+
+    $set = Get-AgentMoveArgumentSet -Arguments $Arguments
+    $operands = @($set.Operands)
+    $targetDirectory = Get-AgentTargetDirectoryOption -Arguments $set.Options
+
+    # With -t the named directory holds every link, so no operand is the link path.
+    if ($null -ne $targetDirectory) {
+        [void] $found.Add($targetDirectory)
+        foreach ($operand in $operands) {
+            Add-AgentLinkTargetCandidate -LinkPath $targetDirectory -Target ([string] $operand) -Sink $found
+        }
+        return $found.ToArray()
+    }
+
+    if ($operands.Count -eq 0) { return $found.ToArray() }
+
+    # One operand names a link in the working directory. There is no target to expand.
+    if ($operands.Count -eq 1) {
+        [void] $found.Add([string] $operands[0])
+        return $found.ToArray()
+    }
+
+    $linkPath = [string] $operands[$operands.Count - 1]
+    [void] $found.Add($linkPath)
+    foreach ($operand in ($operands | Select-Object -SkipLast 1)) {
+        Add-AgentLinkTargetCandidate -LinkPath $linkPath -Target ([string] $operand) -Sink $found
+    }
+    return $found.ToArray()
+}
+
+<#
+.SYNOPSIS
+The path a New-Item link points at, or nothing when the command creates no link.
+
+.DESCRIPTION
+Target is an ALIAS for the Value parameter, and Type an alias for ItemType. So -Target and
+-Value are one parameter with two spellings, and the value is a path only when the item type
+says a link is being created. On a File the same value is content:
+`New-Item -ItemType File -Path notes.md -Value 'cost is $5'` would otherwise be read as a path,
+meet AgentGuardUnexpandablePattern, and be refused as an unresolved write target.
+
+Three things decide the gate. A named link kind reads the value. A named non-link kind does not.
+An ItemType the guard cannot expand - a variable - could still be a link, so it reads the value
+and fails closed. No -ItemType at all creates a file, so it reads nothing.
+#>
+function Get-AgentNewItemLinkTarget {
+    param([string[]] $Arguments, [string] $LinkPath)
+
+    $found = New-Object System.Collections.Generic.List[string]
+
+    $itemType = Get-AgentPrefixedParameterValue -Arguments $Arguments -Names @('ItemType', 'Type')
+    if ($null -eq $itemType) { return $found.ToArray() }
+
+    # The tokenizer strips quotes, so this trim only ever matters for a spelling it kept.
+    $kind = ([string] $itemType).Trim().Trim("'", '"').ToLowerInvariant()
+    $canExpand = $kind -notmatch $script:AgentGuardUnexpandablePattern
+    if ($canExpand -and ($script:AgentGuardLinkItemTypes -notcontains $kind)) {
+        return $found.ToArray()
+    }
+
+    $linkTarget = Get-AgentPrefixedParameterValue -Arguments $Arguments -Names @('Target', 'Value')
+    if ($null -eq $linkTarget) { return $found.ToArray() }
+
+    Add-AgentLinkTargetCandidate -LinkPath $LinkPath -Target $linkTarget -Sink $found
+    return $found.ToArray()
+}
+
+<#
+.SYNOPSIS
 Every path one command segment would write, move, or delete.
 
 .DESCRIPTION
@@ -1912,12 +2127,21 @@ function Get-AgentSegmentWriteTarget {
     }
     $positionals = @(Get-AgentGitPositionals -Arguments $arguments)
 
-    if ($script:AgentGuardWriteEveryPositional -contains $leaf) {
+    # First in the chain on purpose. cp is in the last-positional table below, so a link branch
+    # placed after that one would never run for a linking cp: the elseif would win every time and
+    # the rule would be dead rather than wrong.
+    if (($script:AgentGuardLinkCommands -contains $leaf) -or
+        ($leaf -eq 'cp' -and (Test-AgentGuardHasLinkFlag -Arguments $arguments))) {
+        foreach ($target in (Get-AgentLinkWriteTarget -Leaf $leaf -Arguments $arguments)) {
+            [void] $targets.Add($target)
+        }
+    }
+    elseif ($script:AgentGuardWriteEveryPositional -contains $leaf) {
         foreach ($positional in $positionals) { [void] $targets.Add($positional) }
     }
     elseif ($script:AgentGuardWriteLastPositional -contains $leaf) {
         # A move reads its own operands, because a moved file may be named '-something' and only
-        # a '--'-aware reader keeps it. cp, install and ln do not delete, so they keep the older
+        # a '--'-aware reader keeps it. cp and install do not delete, so they keep the older
         # positional reader.
         $isMove = $script:AgentGuardMoveCommands -contains $leaf
         $moveSet = if ($isMove) { Get-AgentMoveArgumentSet -Arguments $arguments } else { $null }
@@ -1954,15 +2178,48 @@ function Get-AgentSegmentWriteTarget {
         }
     }
     elseif ($script:AgentGuardWriteCmdlets.ContainsKey($leaf)) {
+        # Operands with option values removed. Reading $positionals here was a hole rather than a
+        # wart: `Set-Content -Encoding utf8 <main>\README.md hello` left 'utf8' in operand 0, so
+        # the guard reported a relative path inside the worktree, never scanned the real target,
+        # and ALLOWED a write into the main checkout.
+        $cmdletOperands = @(Get-AgentCmdletOperand -Arguments $arguments `
+                -ValueParameters $script:AgentGuardWriteCmdletValueParameters)
+
         # Prefix-aware: `Set-Content -Pa:<path>` names the same target as `-Path <path>`, and the
         # colon token is dropped as an option, so no positional fallback could recover it.
         $named = Get-AgentPrefixedParameterValue -Arguments $arguments -Names $script:AgentGuardWriteCmdlets[$leaf]
-        if ($null -ne $named) { [void] $targets.Add($named) }
-        elseif ($positionals.Count -ge 1) { [void] $targets.Add($positionals[0]) }
+        $linkPath = ''
+        if ($null -ne $named) {
+            [void] $targets.Add($named)
+            $linkPath = [string] $named
+        }
+        elseif ($cmdletOperands.Count -ge 1) {
+            [void] $targets.Add($cmdletOperands[0])
+            $linkPath = [string] $cmdletOperands[0]
+        }
+
+        if ($leaf -eq 'new-item') {
+            # -Name reads through its own call: Get-AgentPrefixedParameterValue returns the FIRST
+            # match and stops, so one call naming both Path and Name would drop whichever came
+            # second. The -Path value stays the anchor for a relative link target, because in this
+            # parameter set it is the directory holding the link.
+            $itemName = Get-AgentPrefixedParameterValue -Arguments $arguments -Names @('Name')
+            if ($null -ne $itemName -and $linkPath -ne '') {
+                [void] $targets.Add((Join-Path $linkPath $itemName))
+            }
+            elseif ($null -ne $itemName) {
+                [void] $targets.Add($itemName)
+            }
+
+            foreach ($target in (Get-AgentNewItemLinkTarget -Arguments $arguments -LinkPath $linkPath)) {
+                [void] $targets.Add($target)
+            }
+        }
     }
     elseif ($script:AgentGuardWriteDestinationCmdlets -contains $leaf) {
         # Operands with option values removed, so `-Filter *.tmp` does not look like a file.
-        $cmdletOperands = @(Get-AgentMoveCmdletOperand -Arguments $arguments)
+        $cmdletOperands = @(Get-AgentCmdletOperand -Arguments $arguments `
+                -ValueParameters $script:AgentGuardMoveValueParameters)
 
         $named = Get-AgentPrefixedParameterValue -Arguments $arguments -Names @('Destination', 'NewName')
         if ($null -ne $named) { [void] $targets.Add($named) }
@@ -2082,7 +2339,8 @@ function Test-AgentPipelineBoundSource {
     }
 
     # Option values are consumed with their option, so `-Destination x` leaves no false operand.
-    $operands = @(Get-AgentMoveCmdletOperand -Arguments $arguments)
+    $operands = @(Get-AgentCmdletOperand -Arguments $arguments `
+            -ValueParameters $script:AgentGuardMoveValueParameters)
     $needed = if ($script:AgentGuardPipelineRemoveSinks -contains $leaf) { 1 } else { 2 }
     return ($operands.Count -lt $needed)
 }
@@ -2095,10 +2353,84 @@ $script:AgentGuardInterpreterSpecs = @(
     @{ Leaf = 'zsh'; Flags = @('-c') },
     @{ Leaf = 'pwsh'; Flags = @('-command', '-c') },
     @{ Leaf = 'powershell'; Flags = @('-command', '-c') },
-    @{ Leaf = 'cmd'; Flags = @('/c', '/k') }
+    # '//c' and '//k' are how Git Bash writes these: MSYS rewrites a leading '//' to '/' on the
+    # way to cmd, and this guard reads the command text before that rewrite happens.
+    @{ Leaf = 'cmd'; Flags = @('/c', '/k', '//c', '//k') }
 )
 
 $script:AgentGuardMaxInterpreterDepth = 2
+
+<#
+.SYNOPSIS
+Write targets carried by the inner command of an interpreter invocation.
+
+.DESCRIPTION
+Two shapes reach an interpreter, and each needs its own reader.
+
+Quoted - `cmd /c "mklink /D a b"` - hands the whole inner command over as ONE token, so it is
+re-tokenized through Get-AgentCommandWriteTarget.
+
+Unquoted - `cmd /c mklink /D a b` - leaves the inner command as the rest of THIS segment, already
+split into tokens. Reading only the token after the flag would see 'mklink' and lose every
+operand. Re-joining the tokens into a string would break any path holding a space. So the slice
+travels whole, with the masks that say which characters were quoted: Get-AgentSegmentWriteTarget
+reads them to tell an unquoted '>' from a quoted one, and a regenerated mask would call quoted
+text unquoted.
+
+The two do not double-count. A quoted inner command leaves nothing after the flag, so the
+remainder slice is empty; an unquoted one leaves a first token whose leaf matches no table.
+
+This lives in one function because the policy core needs the same logic, and two copies of a
+security rule drift silently.
+#>
+function Get-AgentInterpreterInnerTarget {
+    [CmdletBinding()]
+    param([string[]] $Tokens, [string[]] $Masks, [int] $Depth)
+
+    $found = New-Object System.Collections.Generic.List[string]
+    $unresolved = $false
+    $tokens = @($Tokens)
+    $masks = @($Masks)
+
+    if ($tokens.Count -lt 3) {
+        return [pscustomobject]@{ Targets = $found.ToArray(); Unresolved = $false }
+    }
+
+    $leaf = Get-AgentCommandLeafName -Word $tokens[0]
+    $spec = $script:AgentGuardInterpreterSpecs | Where-Object { $_.Leaf -eq $leaf } | Select-Object -First 1
+    if ($null -eq $spec) {
+        return [pscustomobject]@{ Targets = $found.ToArray(); Unresolved = $false }
+    }
+
+    for ($i = 1; $i -lt $tokens.Count - 1; $i++) {
+        if ($spec.Flags -notcontains ([string] $tokens[$i]).ToLowerInvariant()) { continue }
+
+        # The depth test lives here, not at the top: a segment that is not an interpreter carrying
+        # an inner command was already scanned in full by the caller, so it must not be reported
+        # as unresolved just because the recursion budget ran out.
+        if ($Depth -ge $script:AgentGuardMaxInterpreterDepth) {
+            $unresolved = $true
+            break
+        }
+
+        $inner = Get-AgentCommandWriteTarget -Command ([string] $tokens[$i + 1]) -Depth ($Depth + 1)
+        foreach ($target in $inner.Targets) { [void] $found.Add($target) }
+        if ($inner.Unresolved) { $unresolved = $true }
+
+        $last = $tokens.Count - 1
+        if (($i + 1) -lt $last) {
+            $restTokens = @($tokens[($i + 1)..$last])
+            $maskEnd = [Math]::Min($last, $masks.Count - 1)
+            $restMasks = if (($i + 1) -le $maskEnd) { @($masks[($i + 1)..$maskEnd]) } else { @() }
+            foreach ($target in (Get-AgentSegmentWriteTarget -Tokens $restTokens -Masks $restMasks)) {
+                [void] $found.Add($target)
+            }
+        }
+        break
+    }
+
+    return [pscustomobject]@{ Targets = $found.ToArray(); Unresolved = $unresolved }
+}
 
 <#
 .SYNOPSIS
@@ -2137,29 +2469,9 @@ function Get-AgentCommandWriteTarget {
             $unresolved = $true
         }
 
-        $tokens = @($segment.Tokens)
-        if ($tokens.Count -lt 3) { continue }
-
-        $leaf = Get-AgentCommandLeafName -Word $tokens[0]
-        $spec = $script:AgentGuardInterpreterSpecs | Where-Object { $_.Leaf -eq $leaf } | Select-Object -First 1
-        if ($null -eq $spec) { continue }
-
-        for ($i = 1; $i -lt $tokens.Count - 1; $i++) {
-            if ($spec.Flags -notcontains ([string] $tokens[$i]).ToLowerInvariant()) { continue }
-
-            # The depth test lives here, not at the top of the loop: a segment that is not an
-            # interpreter carrying an inner command was already scanned in full above, so it must
-            # not be reported as unresolved just because the recursion budget ran out.
-            if ($Depth -ge $script:AgentGuardMaxInterpreterDepth) {
-                $unresolved = $true
-                break
-            }
-
-            $inner = Get-AgentCommandWriteTarget -Command ([string] $tokens[$i + 1]) -Depth ($Depth + 1)
-            foreach ($target in $inner.Targets) { [void] $targets.Add($target) }
-            if ($inner.Unresolved) { $unresolved = $true }
-            break
-        }
+        $inner = Get-AgentInterpreterInnerTarget -Tokens $segment.Tokens -Masks $segment.Masks -Depth $Depth
+        foreach ($target in $inner.Targets) { [void] $targets.Add($target) }
+        if ($inner.Unresolved) { $unresolved = $true }
     }
 
     return [pscustomobject]@{ Targets = $targets.ToArray(); Unresolved = $unresolved }
@@ -2554,23 +2866,13 @@ function Get-AgentWorktreeWriteDecision {
             if ($pipedSourceCommand -eq '') { $pipedSourceCommand = [string] $segment.Tokens[0] }
         }
 
-        # Nested interpreters: re-scan the quoted argument the tokenizer kept whole.
-        $tokens = @($segment.Tokens)
-        if ($tokens.Count -ge 3) {
-            $leaf = Get-AgentCommandLeafName -Word $tokens[0]
-            $spec = $script:AgentGuardInterpreterSpecs | Where-Object { $_.Leaf -eq $leaf } | Select-Object -First 1
-            if ($null -ne $spec) {
-                for ($i = 1; $i -lt $tokens.Count - 1; $i++) {
-                    if ($spec.Flags -notcontains ([string] $tokens[$i]).ToLowerInvariant()) { continue }
-                    $nested = Get-AgentCommandWriteTarget -Command ([string] $tokens[$i + 1]) -Depth 1
-                    $targets += @($nested.Targets)
-                    # An inner command that was never scanned is not an inner command that writes
-                    # nothing. Fail closed on it.
-                    if ($nested.Unresolved) { $unresolvedBlock = $true }
-                    break
-                }
-            }
-        }
+        # Nested interpreters, quoted and unquoted alike. Same reader as
+        # Get-AgentCommandWriteTarget uses, so the two cannot drift.
+        $nested = Get-AgentInterpreterInnerTarget -Tokens $segment.Tokens -Masks $segment.Masks -Depth 0
+        $targets += @($nested.Targets)
+        # An inner command that was never scanned is not an inner command that writes nothing.
+        # Fail closed on it.
+        if ($nested.Unresolved) { $unresolvedBlock = $true }
 
         foreach ($target in $targets) {
             # A relative target after an unexpandable cd cannot be placed. Passing no base
