@@ -1,13 +1,17 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-End-to-end tests for the agent-scoped pre-commit backstop.
+End-to-end tests for the pre-commit backstop: the agent worktree rule and the main-branch rule.
 
 .DESCRIPTION
 Each scenario builds a disposable git repository under the system temp directory, copies the
-in-development pre-commit pair and policy scripts into it, points its core.hooksPath at the copied
-.githooks, and makes a real commit attempt. The disposable repository - never the real AHKFlowApp
-checkout - is the protected repository identity.
+in-development hook files and policy scripts into it, points its core.hooksPath at the copied
+.githooks, and makes a real commit or merge attempt. The disposable repository - never the real
+AHKFlowApp checkout - is the protected repository identity.
+
+Fixtures that must not stand on 'main' pass -PrimaryBranch, because git refuses to check the same
+branch out in two working trees at once, and because a fixture standing on 'main' would meet the
+very rule some scenarios need out of the way.
 #>
 [CmdletBinding()]
 param()
@@ -83,6 +87,7 @@ function Install-GuardHooks {
 
     Copy-Item -LiteralPath (Join-Path $suiteRoot '.githooks\pre-commit') -Destination (Join-Path $RepoRoot '.githooks\pre-commit') -Force
     Copy-Item -LiteralPath (Join-Path $suiteRoot '.githooks\pre-commit.ps1') -Destination (Join-Path $RepoRoot '.githooks\pre-commit.ps1') -Force
+    Copy-Item -LiteralPath (Join-Path $suiteRoot '.githooks\pre-merge-commit') -Destination (Join-Path $RepoRoot '.githooks\pre-merge-commit') -Force
     Copy-Item -LiteralPath (Join-Path $suiteRoot 'scripts\agents\agent-worktree-guard.common.ps1') -Destination (Join-Path $RepoRoot 'scripts\agents\agent-worktree-guard.common.ps1') -Force
     Copy-Item -LiteralPath (Join-Path $suiteRoot 'scripts\worktree-git.common.ps1') -Destination (Join-Path $RepoRoot 'scripts\worktree-git.common.ps1') -Force
 
@@ -107,6 +112,8 @@ function Write-ValidManifest {
 }
 
 function New-CommitFixture {
+    param([string] $PrimaryBranch)
+
     $testRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('ahkflow-precommit-' + [guid]::NewGuid().ToString('N'))
     $main = Join-Path $testRoot 'repo'
 
@@ -118,6 +125,12 @@ function New-CommitFixture {
     Invoke-Git -C $main add seed.txt
     Invoke-Git -C $main commit -m 'seed'
 
+    # The seed commit lands before core.hooksPath is set, so it never meets either rule.
+    # A fixture that must not stand on 'main' moves off it here, before the hooks go in.
+    if (-not [string]::IsNullOrWhiteSpace($PrimaryBranch)) {
+        Invoke-Git -C $main checkout -b $PrimaryBranch
+    }
+
     Install-GuardHooks -RepoRoot $main
 
     return [pscustomobject]@{
@@ -127,11 +140,81 @@ function New-CommitFixture {
 }
 
 function Add-Worktree {
-    param([object] $Fixture, [string] $RelativePath, [string] $Branch)
+    param(
+        [object] $Fixture,
+        [string] $RelativePath,
+        [string] $Branch,
+        # Checks out a branch that already exists instead of creating one. Needed for 'main',
+        # which cannot be created twice.
+        [switch] $UseExistingBranch
+    )
 
     $path = Join-Path $Fixture.Main $RelativePath
-    Invoke-Git -C $Fixture.Main worktree add -b $Branch $path
+    if ($UseExistingBranch) {
+        Invoke-Git -C $Fixture.Main worktree add $path $Branch
+    }
+    else {
+        Invoke-Git -C $Fixture.Main worktree add -b $Branch $path
+    }
     return (Resolve-Path -LiteralPath $path).Path
+}
+
+# Adds one commit with hooks skipped. Setup history must never trip the rule under test.
+function Add-SetupCommit {
+    param([string] $RepoRoot, [string] $Message)
+
+    $file = Join-Path $RepoRoot ('setup-' + [guid]::NewGuid().ToString('N').Substring(0, 8) + '.txt')
+    Set-Content -LiteralPath $file -Value $Message -Encoding utf8
+    Invoke-Git -C $RepoRoot add ($file)
+    Invoke-Git -C $RepoRoot commit --no-verify -m $Message
+}
+
+# Runs one git command in a child PowerShell whose agent-marker and override variables are
+# cleared, so each scenario decides its own environment. Reports whether HEAD moved.
+function Invoke-IsolatedGitCommand {
+    param(
+        [string] $RepoRoot,
+        [string] $GitCommand,
+        [hashtable] $EnvOverrides = @{}
+    )
+
+    $before = (& git -C $RepoRoot rev-parse HEAD 2>$null).Trim()
+
+    $psExe = [System.Diagnostics.Process]::GetCurrentProcess().Path
+    $arguments = @('-NoProfile', '-NonInteractive', '-Command')
+    $arguments += "Set-Location -LiteralPath '$RepoRoot'; $GitCommand; exit `$LASTEXITCODE"
+
+    $stdoutFile = [System.IO.Path]::GetTempFileName()
+    $stderrFile = [System.IO.Path]::GetTempFileName()
+    $previous = @{}
+    foreach ($key in @('AHKFLOW_AGENT_SESSION', 'CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT', 'CODEX_THREAD_ID', 'AHKFLOW_ALLOW_MAIN')) {
+        $previous[$key] = [Environment]::GetEnvironmentVariable($key, 'Process')
+        [Environment]::SetEnvironmentVariable($key, '', 'Process')
+    }
+    foreach ($key in $EnvOverrides.Keys) {
+        [Environment]::SetEnvironmentVariable($key, [string] $EnvOverrides[$key], 'Process')
+    }
+
+    try {
+        $proc = Start-Process -FilePath $psExe -ArgumentList $arguments `
+            -WorkingDirectory $RepoRoot -RedirectStandardOutput $stdoutFile `
+            -RedirectStandardError $stderrFile -NoNewWindow -PassThru -Wait
+        $stderr = Get-Content -Raw -LiteralPath $stderrFile -ErrorAction SilentlyContinue
+    }
+    finally {
+        foreach ($key in $previous.Keys) {
+            [Environment]::SetEnvironmentVariable($key, $previous[$key], 'Process')
+        }
+        Remove-Item -LiteralPath $stdoutFile, $stderrFile -Force -ErrorAction SilentlyContinue
+    }
+
+    $after = (& git -C $RepoRoot rev-parse HEAD 2>$null).Trim()
+
+    return [pscustomobject]@{
+        HeadMoved = ($after -ne $before)
+        ExitCode  = $proc.ExitCode
+        Stderr    = $stderr
+    }
 }
 
 function Remove-CommitFixture {
@@ -161,43 +244,31 @@ function Invoke-CommitAttempt {
     Set-Content -LiteralPath $file -Value 'change' -Encoding utf8
     Invoke-Git -C $RepoRoot add ($file)
 
-    $before = (& git -C $RepoRoot rev-parse HEAD 2>$null).Trim()
-
-    $psExe = [System.Diagnostics.Process]::GetCurrentProcess().Path
-    $arguments = @('-NoProfile', '-NonInteractive', '-Command')
     $commitCmd = if ($NoVerify) { 'git commit --no-verify -m test' } else { 'git commit -m test' }
-    $arguments += "Set-Location -LiteralPath '$RepoRoot'; $commitCmd; exit `$LASTEXITCODE"
-
-    $stdoutFile = [System.IO.Path]::GetTempFileName()
-    $stderrFile = [System.IO.Path]::GetTempFileName()
-    $previous = @{}
-    foreach ($key in @('AHKFLOW_AGENT_SESSION', 'CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT', 'CODEX_THREAD_ID', 'AHKFLOW_ALLOW_MAIN')) {
-        $previous[$key] = [Environment]::GetEnvironmentVariable($key, 'Process')
-        [Environment]::SetEnvironmentVariable($key, '', 'Process')
-    }
-    foreach ($key in $EnvOverrides.Keys) {
-        [Environment]::SetEnvironmentVariable($key, [string] $EnvOverrides[$key], 'Process')
-    }
-
-    try {
-        $proc = Start-Process -FilePath $psExe -ArgumentList $arguments `
-            -WorkingDirectory $RepoRoot -RedirectStandardOutput $stdoutFile `
-            -RedirectStandardError $stderrFile -NoNewWindow -PassThru -Wait
-        $stderr = Get-Content -Raw -LiteralPath $stderrFile -ErrorAction SilentlyContinue
-    }
-    finally {
-        foreach ($key in $previous.Keys) {
-            [Environment]::SetEnvironmentVariable($key, $previous[$key], 'Process')
-        }
-        Remove-Item -LiteralPath $stdoutFile, $stderrFile -Force -ErrorAction SilentlyContinue
-    }
-
-    $after = (& git -C $RepoRoot rev-parse HEAD 2>$null).Trim()
+    $result = Invoke-IsolatedGitCommand -RepoRoot $RepoRoot -GitCommand $commitCmd -EnvOverrides $EnvOverrides
 
     return [pscustomobject]@{
-        Committed = ($after -ne $before)
-        ExitCode  = $proc.ExitCode
-        Stderr    = $stderr
+        Committed = $result.HeadMoved
+        ExitCode  = $result.ExitCode
+        Stderr    = $result.Stderr
+    }
+}
+
+# Merges $SourceBranch into whatever $RepoRoot has checked out, returning whether HEAD moved.
+function Invoke-MergeAttempt {
+    param(
+        [string] $RepoRoot,
+        [string] $SourceBranch,
+        [hashtable] $EnvOverrides = @{}
+    )
+
+    $result = Invoke-IsolatedGitCommand -RepoRoot $RepoRoot `
+        -GitCommand "git merge --no-edit $SourceBranch" -EnvOverrides $EnvOverrides
+
+    return [pscustomobject]@{
+        Merged   = $result.HeadMoved
+        ExitCode = $result.ExitCode
+        Stderr   = $result.Stderr
     }
 }
 
@@ -211,8 +282,19 @@ $markers = @(
 )
 
 $fixture = $null
+$humanFixture = $null
+$worktreeMainFixture = $null
+$mergeMainFixture = $null
+$mergeFeatureFixture = $null
 try {
     $fixture = New-CommitFixture
+    # Stands on a feature branch, so the branch rule never fires for its own commits.
+    $humanFixture = New-CommitFixture -PrimaryBranch 'chore/human-work'
+    # Stands off 'main' so a linked worktree can check 'main' out. Git refuses the same branch
+    # in two working trees at once.
+    $worktreeMainFixture = New-CommitFixture -PrimaryBranch 'chore/holds-no-main'
+    $mergeMainFixture = New-CommitFixture
+    $mergeFeatureFixture = New-CommitFixture
 
     # Pins that the PreToolUse layer denies commit from main before the pre-commit backstop this
     # file otherwise tests is ever reached. Uses the real AHKFlowApp checkout
@@ -225,8 +307,29 @@ try {
         Assert-Equal 'agent-main-git-mutation' $decision.Rule 'Rule'
     }
 
-    Invoke-TestCase 'Human commit in main (no agent marker) succeeds' {
+    Invoke-TestCase 'Human commit on main is blocked, and the message names the escape and the route' {
         $result = Invoke-CommitAttempt -RepoRoot $fixture.Main
+        Assert-True (-not $result.Committed) "commit should have been blocked; stderr: $($result.Stderr)"
+        Assert-True ($result.Stderr -match 'would land directly on the main branch') "expected the branch message; stderr: $($result.Stderr)"
+        Assert-True ($result.Stderr -match 'AHKFLOW_ALLOW_MAIN') "expected the override to be named; stderr: $($result.Stderr)"
+        Assert-True ($result.Stderr -match 'new-worktree\.ps1') "expected the worktree route; stderr: $($result.Stderr)"
+        Assert-True ($result.Stderr -match 'housekeeping worktree') "expected the housekeeping route; stderr: $($result.Stderr)"
+    }
+
+    Invoke-TestCase 'Human commit on main with AHKFLOW_ALLOW_MAIN=1 succeeds with a warning' {
+        $result = Invoke-CommitAttempt -RepoRoot $fixture.Main -EnvOverrides @{ AHKFLOW_ALLOW_MAIN = '1' }
+        Assert-True $result.Committed "commit should have landed; stderr: $($result.Stderr)"
+        Assert-True ($result.Stderr -match 'AHKFLOW_ALLOW_MAIN=1 overrode the main-branch rule') "expected the override warning; stderr: $($result.Stderr)"
+    }
+
+    Invoke-TestCase 'Human commit on a feature branch succeeds' {
+        $result = Invoke-CommitAttempt -RepoRoot $humanFixture.Main
+        Assert-True $result.Committed "commit should have landed; stderr: $($result.Stderr)"
+    }
+
+    Invoke-TestCase 'Human commit with a detached HEAD succeeds' {
+        Invoke-Git -C $humanFixture.Main checkout --detach HEAD
+        $result = Invoke-CommitAttempt -RepoRoot $humanFixture.Main
         Assert-True $result.Committed "commit should have landed; stderr: $($result.Stderr)"
     }
 
@@ -262,6 +365,15 @@ try {
         Assert-True (-not $result.Committed) "commit should have been blocked; stderr: $($result.Stderr)"
     }
 
+    Invoke-TestCase 'Agent commit in a managed worktree on main is blocked by the branch rule' {
+        $onMain = Add-Worktree -Fixture $worktreeMainFixture -RelativePath '.claude\worktrees\onmain' `
+            -Branch 'main' -UseExistingBranch
+        Write-ValidManifest -WorktreeRoot $onMain -Suffix 'onmain'
+        $result = Invoke-CommitAttempt -RepoRoot $onMain -EnvOverrides @{ AHKFLOW_AGENT_SESSION = '1' }
+        Assert-True (-not $result.Committed) "commit should have been blocked; stderr: $($result.Stderr)"
+        Assert-True ($result.Stderr -match 'would land directly on the main branch') "expected the branch message, not the agent message; stderr: $($result.Stderr)"
+    }
+
     Invoke-TestCase 'AHKFLOW_ALLOW_MAIN=1 lets an agent commit in main with a visible warning' {
         $result = Invoke-CommitAttempt -RepoRoot $fixture.Main -EnvOverrides @{ AHKFLOW_AGENT_SESSION = '1'; AHKFLOW_ALLOW_MAIN = '1' }
         Assert-True $result.Committed "commit should have landed; stderr: $($result.Stderr)"
@@ -272,9 +384,36 @@ try {
         $result = Invoke-CommitAttempt -RepoRoot $fixture.Main -EnvOverrides @{ AHKFLOW_AGENT_SESSION = '1' } -NoVerify
         Assert-True $result.Committed "the --no-verify bypass must succeed; stderr: $($result.Stderr)"
     }
+
+    Invoke-TestCase 'Human merge into main is blocked' {
+        # A real merge needs divergent history. The setup commits skip hooks, so building the
+        # history never trips the rule under test.
+        Invoke-Git -C $mergeMainFixture.Main checkout -b feature/merge-me
+        Add-SetupCommit -RepoRoot $mergeMainFixture.Main -Message 'source work'
+        Invoke-Git -C $mergeMainFixture.Main checkout main
+        Add-SetupCommit -RepoRoot $mergeMainFixture.Main -Message 'main side work'
+
+        $result = Invoke-MergeAttempt -RepoRoot $mergeMainFixture.Main -SourceBranch 'feature/merge-me'
+        Assert-True (-not $result.Merged) "merge should have been blocked; stderr: $($result.Stderr)"
+        Assert-True ($result.Stderr -match 'would land directly on the main branch') "expected the branch message; stderr: $($result.Stderr)"
+    }
+
+    Invoke-TestCase 'Human merge into a feature branch succeeds' {
+        Invoke-Git -C $mergeFeatureFixture.Main checkout -b feature/source
+        Add-SetupCommit -RepoRoot $mergeFeatureFixture.Main -Message 'source work'
+        Invoke-Git -C $mergeFeatureFixture.Main checkout -b feature/target main
+        Add-SetupCommit -RepoRoot $mergeFeatureFixture.Main -Message 'target work'
+
+        $result = Invoke-MergeAttempt -RepoRoot $mergeFeatureFixture.Main -SourceBranch 'feature/source'
+        Assert-True $result.Merged "merge should have landed; stderr: $($result.Stderr)"
+    }
 }
 finally {
     Remove-CommitFixture -Fixture $fixture
+    Remove-CommitFixture -Fixture $humanFixture
+    Remove-CommitFixture -Fixture $worktreeMainFixture
+    Remove-CommitFixture -Fixture $mergeMainFixture
+    Remove-CommitFixture -Fixture $mergeFeatureFixture
 }
 
 Write-Host ''

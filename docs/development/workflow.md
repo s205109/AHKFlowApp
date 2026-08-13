@@ -265,6 +265,10 @@ A housekeeping round files no backlog item at all, so none of this applies to it
 | not applicable | cannot occur: every item chooses a location | none |
 | resume | worktree exists; re-confirm branch and base, then continue at the recorded Stage for a tracked item, or from the round's commit log and PR state for a round | stay |
 
+**The worktree is not optional.** `.githooks/pre-commit` refuses a commit on `main` for every
+session, so trivial work needs the housekeeping worktree exactly as tracked work needs its own.
+`AHKFLOW_ALLOW_MAIN=1` is the deliberate escape.
+
 **Pickup makes two pushes, and they are different things.** The first publishes the branch
 so `gh pr create` has something to open a pull request against; nothing is stamped yet. The
 second carries the Stage transition commit after the pull request exists. Without that
