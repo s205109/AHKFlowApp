@@ -3,7 +3,7 @@
 ## Metadata
 
 - **Difficulty**: moderate
-- **Stage**: 6-verify
+- **Stage**: 9-ship
 
 ## Problem
 
