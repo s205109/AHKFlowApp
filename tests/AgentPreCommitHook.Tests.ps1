@@ -1,13 +1,17 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-End-to-end tests for the agent-scoped pre-commit backstop.
+End-to-end tests for the pre-commit backstop: the agent worktree rule and the main-branch rule.
 
 .DESCRIPTION
 Each scenario builds a disposable git repository under the system temp directory, copies the
-in-development pre-commit pair and policy scripts into it, points its core.hooksPath at the copied
-.githooks, and makes a real commit attempt. The disposable repository - never the real AHKFlowApp
-checkout - is the protected repository identity.
+in-development hook files and policy scripts into it, points its core.hooksPath at the copied
+.githooks, and makes a real commit or merge attempt. The disposable repository - never the real
+AHKFlowApp checkout - is the protected repository identity.
+
+Fixtures that must not stand on 'main' pass -PrimaryBranch, because git refuses to check the same
+branch out in two working trees at once, and because a fixture standing on 'main' would meet the
+very rule some scenarios need out of the way.
 #>
 [CmdletBinding()]
 param()
@@ -83,6 +87,7 @@ function Install-GuardHooks {
 
     Copy-Item -LiteralPath (Join-Path $suiteRoot '.githooks\pre-commit') -Destination (Join-Path $RepoRoot '.githooks\pre-commit') -Force
     Copy-Item -LiteralPath (Join-Path $suiteRoot '.githooks\pre-commit.ps1') -Destination (Join-Path $RepoRoot '.githooks\pre-commit.ps1') -Force
+    Copy-Item -LiteralPath (Join-Path $suiteRoot '.githooks\pre-merge-commit') -Destination (Join-Path $RepoRoot '.githooks\pre-merge-commit') -Force
     Copy-Item -LiteralPath (Join-Path $suiteRoot 'scripts\agents\agent-worktree-guard.common.ps1') -Destination (Join-Path $RepoRoot 'scripts\agents\agent-worktree-guard.common.ps1') -Force
     Copy-Item -LiteralPath (Join-Path $suiteRoot 'scripts\worktree-git.common.ps1') -Destination (Join-Path $RepoRoot 'scripts\worktree-git.common.ps1') -Force
 
@@ -249,6 +254,24 @@ function Invoke-CommitAttempt {
     }
 }
 
+# Merges $SourceBranch into whatever $RepoRoot has checked out, returning whether HEAD moved.
+function Invoke-MergeAttempt {
+    param(
+        [string] $RepoRoot,
+        [string] $SourceBranch,
+        [hashtable] $EnvOverrides = @{}
+    )
+
+    $result = Invoke-IsolatedGitCommand -RepoRoot $RepoRoot `
+        -GitCommand "git merge --no-edit $SourceBranch" -EnvOverrides $EnvOverrides
+
+    return [pscustomobject]@{
+        Merged   = $result.HeadMoved
+        ExitCode = $result.ExitCode
+        Stderr   = $result.Stderr
+    }
+}
+
 # ── Scenarios ───────────────────────────────────────────────────────────────────────────────
 
 $markers = @(
@@ -261,6 +284,8 @@ $markers = @(
 $fixture = $null
 $humanFixture = $null
 $worktreeMainFixture = $null
+$mergeMainFixture = $null
+$mergeFeatureFixture = $null
 try {
     $fixture = New-CommitFixture
     # Stands on a feature branch, so the branch rule never fires for its own commits.
@@ -268,6 +293,8 @@ try {
     # Stands off 'main' so a linked worktree can check 'main' out. Git refuses the same branch
     # in two working trees at once.
     $worktreeMainFixture = New-CommitFixture -PrimaryBranch 'chore/holds-no-main'
+    $mergeMainFixture = New-CommitFixture
+    $mergeFeatureFixture = New-CommitFixture
 
     # Pins that the PreToolUse layer denies commit from main before the pre-commit backstop this
     # file otherwise tests is ever reached. Uses the real AHKFlowApp checkout
@@ -357,11 +384,36 @@ try {
         $result = Invoke-CommitAttempt -RepoRoot $fixture.Main -EnvOverrides @{ AHKFLOW_AGENT_SESSION = '1' } -NoVerify
         Assert-True $result.Committed "the --no-verify bypass must succeed; stderr: $($result.Stderr)"
     }
+
+    Invoke-TestCase 'Human merge into main is blocked' {
+        # A real merge needs divergent history. The setup commits skip hooks, so building the
+        # history never trips the rule under test.
+        Invoke-Git -C $mergeMainFixture.Main checkout -b feature/merge-me
+        Add-SetupCommit -RepoRoot $mergeMainFixture.Main -Message 'source work'
+        Invoke-Git -C $mergeMainFixture.Main checkout main
+        Add-SetupCommit -RepoRoot $mergeMainFixture.Main -Message 'main side work'
+
+        $result = Invoke-MergeAttempt -RepoRoot $mergeMainFixture.Main -SourceBranch 'feature/merge-me'
+        Assert-True (-not $result.Merged) "merge should have been blocked; stderr: $($result.Stderr)"
+        Assert-True ($result.Stderr -match 'would land directly on the main branch') "expected the branch message; stderr: $($result.Stderr)"
+    }
+
+    Invoke-TestCase 'Human merge into a feature branch succeeds' {
+        Invoke-Git -C $mergeFeatureFixture.Main checkout -b feature/source
+        Add-SetupCommit -RepoRoot $mergeFeatureFixture.Main -Message 'source work'
+        Invoke-Git -C $mergeFeatureFixture.Main checkout -b feature/target main
+        Add-SetupCommit -RepoRoot $mergeFeatureFixture.Main -Message 'target work'
+
+        $result = Invoke-MergeAttempt -RepoRoot $mergeFeatureFixture.Main -SourceBranch 'feature/source'
+        Assert-True $result.Merged "merge should have landed; stderr: $($result.Stderr)"
+    }
 }
 finally {
     Remove-CommitFixture -Fixture $fixture
     Remove-CommitFixture -Fixture $humanFixture
     Remove-CommitFixture -Fixture $worktreeMainFixture
+    Remove-CommitFixture -Fixture $mergeMainFixture
+    Remove-CommitFixture -Fixture $mergeFeatureFixture
 }
 
 Write-Host ''
