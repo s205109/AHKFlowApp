@@ -6,7 +6,7 @@
 - **Type**: Feature
 - **Interfaces**: CLI
 - **Difficulty**: complex
-- **Stage**: 3-plan
+- **Stage**: 9-ship
 
 ## Summary
 
