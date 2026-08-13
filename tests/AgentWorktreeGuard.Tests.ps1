@@ -1705,6 +1705,233 @@ try {
         Assert-Equal 'uuuuuuuuu' $segment.Masks[1] 'Mask'
     }
 
+    Write-Host 'Heredoc delimiter reader' -ForegroundColor Cyan
+
+    # Every case starts the reader just past the '<<' or '<<-' operator, which is what the
+    # tokenizer does. Expected is the delimiter word; Rest is the text left after it.
+    $delimiterCases = @(
+        @{ Command = "<<EOF`nbody`nEOF"; Start = 2; Expected = 'EOF'; Rest = "`nbody`nEOF" },
+        @{ Command = "<<'EOF'`nbody`nEOF"; Start = 2; Expected = 'EOF'; Rest = "`nbody`nEOF" },
+        @{ Command = '<<"EOF" rest'; Start = 2; Expected = 'EOF'; Rest = ' rest' },
+        # bash keeps the body literal after <<\EOF, and the terminator is still EOF.
+        @{ Command = '<<\EOF rest'; Start = 2; Expected = 'EOF'; Rest = ' rest' },
+        # bash allows whitespace between the operator and the word.
+        @{ Command = '<<   EOF rest'; Start = 2; Expected = 'EOF'; Rest = ' rest' },
+        # A quoted delimiter may contain a space; the terminator line then contains it too.
+        @{ Command = "<<'E F' rest"; Start = 2; Expected = 'E F'; Rest = ' rest' },
+        # The word ends at a separator, so the rest of the command is still tokenized.
+        @{ Command = '<<EOF; echo x'; Start = 2; Expected = 'EOF'; Rest = '; echo x' },
+        @{ Command = '<<EOF | cat'; Start = 2; Expected = 'EOF'; Rest = ' | cat' }
+    )
+
+    foreach ($case in $delimiterCases) {
+        Invoke-TestCase "Heredoc delimiter: $($case.Command)" {
+            $read = Read-AgentHeredocDelimiter -Command $case.Command -StartIndex $case.Start
+            Assert-True ($null -ne $read) 'delimiter must be readable'
+            Assert-Equal $case.Expected $read.Word 'Delimiter word'
+            Assert-Equal $case.Rest $case.Command.Substring($read.NextIndex) 'Text after the delimiter'
+        }
+    }
+
+    $noDelimiterCases = @(
+        # bash reports a syntax error for each of these, so the guard must not invent a delimiter.
+        @{ Name = 'newline right after the operator'; Command = "<<`nEOF"; Start = 2 },
+        @{ Name = 'end of string right after the operator'; Command = '<<'; Start = 2 },
+        @{ Name = 'a separator right after the operator'; Command = '<<; echo x'; Start = 2 },
+        @{ Name = 'an unterminated quoted delimiter'; Command = "<<'EOF"; Start = 2 }
+    )
+
+    foreach ($case in $noDelimiterCases) {
+        Invoke-TestCase "Heredoc delimiter: no delimiter for $($case.Name)" {
+            $read = Read-AgentHeredocDelimiter -Command $case.Command -StartIndex $case.Start
+            Assert-True ($null -eq $read) 'reader must report no delimiter'
+        }
+    }
+
+    Write-Host 'Heredoc bodies' -ForegroundColor Cyan
+
+    # A body is data. It must produce no tokens, and the command after the terminator must be
+    # classified normally. Expected lists the tokens of every segment, segments joined by ' :: '.
+    # A Git segment drops its leading 'git' word: Get-AgentCommandSegment stores the tail
+    # (agent-worktree-guard.common.ps1:670-683).
+    $heredocCases = @(
+        @{ Name     = 'a body that reads like a pipeline'
+            Command  = "git commit -F - <<'EOF'`nGet-Item x | Remove-Item`nEOF"
+            Expected = 'commit -F - <<EOF'
+        },
+        @{ Name     = 'a body that reads like a redirect'
+            Command  = "git commit -F - <<'EOF'`nbody writes > somefile.txt`nEOF"
+            Expected = 'commit -F - <<EOF'
+        },
+        @{ Name     = 'a body that reads like a delete'
+            Command  = "git commit -F - <<'EOF'`nrm -rf src`nEOF"
+            Expected = 'commit -F - <<EOF'
+        },
+        @{ Name     = 'a command after the terminator is still tokenized'
+            Command  = "git commit -F - <<'EOF'`nharmless body`nEOF`nrm -rf src"
+            Expected = 'commit -F - <<EOF :: rm -rf src'
+        },
+        @{ Name     = 'an unquoted delimiter'
+            Command  = "cat <<EOF`nbody`nEOF"
+            Expected = 'cat <<EOF'
+        },
+        @{ Name     = 'a backslash-quoted delimiter'
+            Command  = "cat <<\EOF`nbody`nEOF"
+            Expected = 'cat <<EOF'
+        },
+        @{ Name     = 'whitespace between the operator and the delimiter'
+            Command  = "cat << EOF`nbody`nEOF"
+            Expected = 'cat <<EOF'
+        },
+        @{ Name     = 'an opener with no whitespace in front of it'
+            Command  = "echo x<<b`necho INSIDE`nb"
+            Expected = 'echo x<<b'
+        },
+        # CRLF is the subtlest path: the tokenizer reaches the separator branch at '\r' first, and
+        # consuming a body there would read the '\n' as an empty first body line.
+        @{ Name     = 'a body with CRLF line endings'
+            Command  = "cat <<EOF`r`nGet-Item x | Remove-Item`r`nEOF"
+            Expected = 'cat <<EOF'
+        },
+        @{ Name     = 'a command after a CRLF terminator is still tokenized'
+            Command  = "cat <<EOF`r`nharmless body`r`nEOF`r`nrm -rf src"
+            Expected = 'cat <<EOF :: rm -rf src'
+        },
+        @{ Name     = '<<- closes on a tab-indented terminator'
+            Command  = "cat <<-EOF`n`tbody`n`tEOF"
+            Expected = 'cat <<-EOF'
+        },
+        @{ Name     = 'two openers on one line consume both bodies in order'
+            Command  = "cat <<A <<B`nfirst`nA`nsecond`nB`necho done"
+            Expected = 'cat <<A <<B :: echo done'
+        },
+        # '<<<' is a bash here-string taking one word. It must not swallow the rest of the command.
+        @{ Name     = 'a here-string word is not a heredoc'
+            Command  = "cat <<<'zeta | Remove-Item'`necho done"
+            Expected = 'cat <<<zeta | Remove-Item :: echo done'
+        }
+    )
+
+    foreach ($case in $heredocCases) {
+        Invoke-TestCase "Heredoc body: $($case.Name)" {
+            $parsed = Get-AgentCommandSegment -Command $case.Command
+            Assert-True (-not $parsed.Ambiguous) 'parse must not be ambiguous'
+            $actual = @($parsed.Segments | ForEach-Object { ($_.Tokens -join ' ') }) -join ' :: '
+            Assert-Equal $case.Expected $actual 'Segments'
+        }
+    }
+
+    $heredocAmbiguousCases = @(
+        @{ Name = 'a body that never closes'; Command = "cat <<EOF`nbody`nnot-the-end" },
+        # bash strips tabs for <<-, never spaces, so a space-indented terminator leaves the body
+        # open. With nothing after it, the whole command is ambiguous.
+        @{ Name = 'a space-indented terminator'; Command = "cat <<EOF`nbody`n  EOF" },
+        @{ Name = 'a space-indented terminator under <<-'; Command = "cat <<-EOF`nbody`n  EOF" },
+        @{ Name = 'an opener with no delimiter'; Command = "cat <<`nEOF" },
+        # Stricter than today: this text tokenizes now and fails closed after the change, because
+        # bash calls a missing delimiter a syntax error.
+        @{ Name = 'an opener with a separator where the delimiter belongs'; Command = 'cat <<; echo x' },
+        @{ Name = 'an opener at the end of the command'; Command = 'cat <<EOF' }
+    )
+
+    foreach ($case in $heredocAmbiguousCases) {
+        Invoke-TestCase "Heredoc body: ambiguous for $($case.Name)" {
+            $parsed = Get-AgentCommandSegment -Command $case.Command
+            Assert-True ([bool] $parsed.Ambiguous) 'parse must be ambiguous'
+        }
+    }
+
+    Invoke-TestCase 'Heredoc body: a quoted delimiter never reads as a redirect' {
+        $parsed = Get-AgentCommandSegment -Command "cat <<'a>b'`nbody`na>b"
+        $segment = $parsed.Segments[0]
+        Assert-Equal 'cat <<a>b' ($segment.Tokens -join ' ') 'Tokens'
+        $targets = @(Get-AgentSegmentWriteTarget -Tokens $segment.Tokens -Masks $segment.Masks)
+        Assert-Equal '' ($targets -join '|') 'Targets'
+    }
+
+    Invoke-TestCase 'Heredoc body: an opener inside quotes is text, not an opener' {
+        $parsed = Get-AgentCommandSegment -Command "git commit -m ""see <<EOF for the format"""
+        Assert-True (-not $parsed.Ambiguous) 'parse must not be ambiguous'
+        Assert-Equal 'commit -m see <<EOF for the format' `
+            ($parsed.Segments[0].Tokens -join ' ') 'Tokens'
+    }
+
+    Write-Host 'Here-string bodies' -ForegroundColor Cyan
+
+    $hereStringCases = @(
+        @{ Name     = 'a body that reads like a pipeline'
+            Command  = "`$body = @'`nthe text says | Remove-Item`n'@`ngh pr create --body `$body"
+            Expected = '$body = @'' :: gh pr create --body $body'
+        },
+        # The apostrophe is the sharp case: it used to end the tokenizer's quoted state early.
+        @{ Name     = 'a body with an apostrophe before the pipe'
+            Command  = "`$body = @'`nit's the apostrophe | Remove-Item`n'@`necho done"
+            Expected = '$body = @'' :: echo done'
+        },
+        @{ Name     = 'a double-quoted here-string'
+            Command  = "`$body = @""`nthe text says | Remove-Item`n""@`necho done"
+            Expected = '$body = @" :: echo done'
+        },
+        # A '"@' line does not close a @' body, and the reverse holds too.
+        @{ Name     = 'the wrong terminator does not close the body'
+            Command  = "`$body = @'`n""@`n'@`necho done"
+            Expected = '$body = @'' :: echo done'
+        },
+        # PowerShell allows code after the terminator on the same line, so the guard must resume
+        # there. This one stays a real pipeline into Remove-Item.
+        @{ Name     = 'code after the terminator is still tokenized'
+            Command  = "`$body = @'`nharmless`n'@ | Remove-Item"
+            Expected = '$body = @'' :: Remove-Item'
+        },
+        @{ Name     = 'a command after the terminator line is still tokenized'
+            Command  = "`$body = @'`nharmless`n'@`nrm -rf src"
+            Expected = '$body = @'' :: rm -rf src'
+        },
+        # CRLF again: the header test must accept '\r' as whitespace, and the terminator must be
+        # found at the start of a line that a '\r\n' pair ended.
+        @{ Name     = 'a body with CRLF line endings'
+            Command  = "`$body = @'`r`nit's the apostrophe | Remove-Item`r`n'@`r`necho done"
+            Expected = '$body = @'' :: echo done'
+        },
+        # An opener with characters after the quote is not an opener. PowerShell rejects that
+        # header, so the apostrophes here are ordinary quotes around b.
+        @{ Name     = 'characters after the quote make it an ordinary argument'
+            Command  = "Write-Output a@'b'"
+            Expected = 'Write-Output a@b'
+        }
+    )
+
+    foreach ($case in $hereStringCases) {
+        Invoke-TestCase "Here-string body: $($case.Name)" {
+            $parsed = Get-AgentCommandSegment -Command $case.Command
+            Assert-True (-not $parsed.Ambiguous) 'parse must not be ambiguous'
+            $actual = @($parsed.Segments | ForEach-Object { ($_.Tokens -join ' ') }) -join ' :: '
+            Assert-Equal $case.Expected $actual 'Segments'
+        }
+    }
+
+    $hereStringAmbiguousCases = @(
+        @{ Name = 'a body that never closes'; Command = "`$body = @'`nline one`nline two" },
+        # PowerShell rejects a space before the terminator, so the body stays open.
+        @{ Name = 'an indented terminator'; Command = "`$body = @'`nline one`n '@" },
+        @{ Name = 'an opener at the end of the command'; Command = "`$body = @'" }
+    )
+
+    foreach ($case in $hereStringAmbiguousCases) {
+        Invoke-TestCase "Here-string body: ambiguous for $($case.Name)" {
+            $parsed = Get-AgentCommandSegment -Command $case.Command
+            Assert-True ([bool] $parsed.Ambiguous) 'parse must be ambiguous'
+        }
+    }
+
+    Invoke-TestCase 'Here-string body: a value argument keeps its place in the token list' {
+        $parsed = Get-AgentCommandSegment -Command "Set-Content -Path out.txt -Value @'`nbody`n'@"
+        $segment = $parsed.Segments[0]
+        Assert-Equal "Set-Content -Path out.txt -Value @'" ($segment.Tokens -join ' ') 'Tokens'
+        $targets = @(Get-AgentSegmentWriteTarget -Tokens $segment.Tokens -Masks $segment.Masks)
+        Assert-Equal 'out.txt' ($targets -join '|') 'Targets'
+    }
+
     Write-Host 'Link target candidates' -ForegroundColor Cyan
 
     # A relative link target is resolved against the directory holding the link, not the working
@@ -2626,6 +2853,134 @@ try {
             -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main -AllowMain $false
         Assert-Equal 'Deny' $decision.Action 'Action'
         Assert-Equal 'agent-main-git-mutation' $decision.Rule 'Rule'
+    }
+
+    Write-Host 'Heredoc and here-string bodies end to end' -ForegroundColor Cyan
+
+    # The backlog 084 repro: the commit message described the bug it was fixing, and the guard
+    # read the description as the command.
+    Invoke-TestCase 'Body: a heredoc commit message naming a pipeline sink is allowed' {
+        $command = "git commit -F - <<'EOF'`n" +
+        "fix: guard fails closed on pipeline-bound move sources`n`n" +
+        "Get-Item x | Move-Item -Destination y deletes a tracked file.`n" +
+        'EOF'
+        $decision = Invoke-AgentGuardPolicy -Command $command `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'Allow' $decision.Action 'Action'
+    }
+
+    # The pull request 293 repro: a recursive force delete inside markdown backticks. A backtick
+    # is an unquoted separator, so the text after it used to start a segment leading with rm.
+    Invoke-TestCase 'Body: a heredoc naming rm -rf inside backticks is allowed' {
+        # Single-quoted, so the backticks stay literal markdown and PowerShell escapes nothing.
+        $command = "gh pr create --body-file - <<'EOF'`n" +
+        'The guard denied `rm -rf src` because the body reads as a command.' + "`n" +
+        'EOF'
+        $decision = Invoke-AgentGuardPolicy -Command $command `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'Allow' $decision.Action 'Action'
+    }
+
+    Invoke-TestCase 'Body: a heredoc naming a redirect is allowed' {
+        $command = "git commit -F - <<'EOF'`nbody writes > somefile.txt`nEOF"
+        $decision = Invoke-AgentGuardPolicy -Command $command `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'Allow' $decision.Action 'Action'
+    }
+
+    Invoke-TestCase 'Body: a here-string with an apostrophe and a pipe is allowed' {
+        $command = "`$body = @'`n" +
+        "it's the apostrophe that used to end the quoted state | Remove-Item`n" +
+        "'@`ngh pr create --body `$body"
+        $decision = Invoke-AgentGuardPolicy -Command $command `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'Allow' $decision.Action 'Action'
+    }
+
+    Invoke-TestCase 'Body: a real rm -rf after a heredoc terminator is still denied' {
+        $command = "git commit -F - <<'EOF'`nharmless body`nEOF`nrm -rf src"
+        $decision = Invoke-AgentGuardPolicy -Command $command `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'Deny' $decision.Action 'Action'
+        Assert-Equal 'dangerous-rm' $decision.Rule 'Rule'
+    }
+
+    Invoke-TestCase 'Body: a real pipeline out of main after a here-string is still denied' {
+        $source = $fixture.Main.Replace('\', '/') + '/seed.txt'
+        $command = "`$body = @'`nharmless`n'@`nGet-Item $source | Remove-Item"
+        $decision = Invoke-AgentGuardPolicy -Command $command `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'Deny' $decision.Action 'Action'
+    }
+
+    Invoke-TestCase 'Body: a real pipeline on the here-string terminator line is still denied' {
+        $command = "`$body = @'`nharmless`n'@ | Remove-Item"
+        $decision = Invoke-AgentGuardPolicy -Command $command `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'Deny' $decision.Action 'Action'
+    }
+
+    Invoke-TestCase 'Body: an unterminated heredoc is refused' {
+        $command = "git commit -F - <<'EOF'`nbody that never ends"
+        $decision = Invoke-AgentGuardPolicy -Command $command `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'Deny' $decision.Action 'Action'
+    }
+
+    # Final-review finding: the opener token left behind by a skipped body can itself land in a
+    # write command's own path argument slot. Base commit 4cbcfbd2 denied every one of these,
+    # because the whole multi-line string was one write target and its embedded newline made path
+    # resolution throw. Marking the bare opener token unresolved restores that denial without
+    # reading the body as a real path.
+    Invoke-TestCase 'Body: a here-string as a positional path argument to Remove-Item is denied' {
+        $target = $fixture.Main.Replace('\', '/') + '/seed.txt'
+        $command = "Remove-Item @'`n$target`n'@"
+        $decision = Invoke-AgentGuardPolicy -Command $command `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'Deny' $decision.Action 'Action'
+    }
+
+    Invoke-TestCase 'Body: a here-string as the -Path value of Remove-Item is denied' {
+        $target = $fixture.Main.Replace('\', '/') + '/seed.txt'
+        $command = "Remove-Item -Path @'`n$target`n'@"
+        $decision = Invoke-AgentGuardPolicy -Command $command `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'Deny' $decision.Action 'Action'
+    }
+
+    Invoke-TestCase 'Body: a piped source into Remove-Item with a here-string filler body is denied' {
+        $source = $fixture.Main.Replace('\', '/') + '/seed.txt'
+        $command = "Get-Item $source | Remove-Item @'`nfiller`n'@"
+        $decision = Invoke-AgentGuardPolicy -Command $command `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'Deny' $decision.Action 'Action'
+    }
+
+    Invoke-TestCase 'Body: a heredoc opener as a positional path argument to Remove-Item is denied' {
+        $target = $fixture.Main.Replace('\', '/') + '/seed.txt'
+        $command = "Remove-Item <<EOF`n$target`nEOF"
+        $decision = Invoke-AgentGuardPolicy -Command $command `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'Deny' $decision.Action 'Action'
+    }
+
+    # A single-quoted delimiter may contain a space (Read-AgentHeredocDelimiter and the
+    # delimiter-reader suite both pin that). The opener token then carries that space too, and the
+    # opener-token pattern must still recognize it as an opener rather than an ordinary path.
+    Invoke-TestCase 'Body: a heredoc opener with a single-quoted, space-bearing delimiter as a positional path argument to Remove-Item is denied' {
+        $target = $fixture.Main.Replace('\', '/') + '/seed.txt'
+        $command = "Remove-Item <<'E F'`n$target`nE F"
+        $decision = Invoke-AgentGuardPolicy -Command $command `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'Deny' $decision.Action 'Action'
+    }
+
+    Invoke-TestCase 'Body: a heredoc opener with a double-quoted, space-bearing delimiter as a positional path argument to Remove-Item is denied' {
+        $target = $fixture.Main.Replace('\', '/') + '/seed.txt'
+        $command = "Remove-Item <<`"E F`"`n$target`nE F"
+        $decision = Invoke-AgentGuardPolicy -Command $command `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'Deny' $decision.Action 'Action'
     }
 
     Write-Host 'File-edit write isolation' -ForegroundColor Cyan
