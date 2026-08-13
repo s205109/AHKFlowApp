@@ -6,7 +6,7 @@
 - **Type**: Feature
 - **Interfaces**: CLI
 - **Difficulty**: complex
-- **Stage**: 1-pickup
+- **Stage**: 2-design
 
 ## Summary
 
