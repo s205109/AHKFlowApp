@@ -34,11 +34,13 @@ applyTo: "**"
 - second line
 '@
 
+# Writes a throwaway file and records it, so the finally block deletes every fixture a case made.
 function New-Fixture {
     param([Parameter(Mandatory)][string] $Text)
 
     $path = Join-Path ([System.IO.Path]::GetTempPath()) ('personal-defaults-' + [System.Guid]::NewGuid().ToString('N') + '.md')
     [System.IO.File]::WriteAllText($path, $Text, $utf8NoBom)
+    $script:fixtures += $path
     return $path
 }
 
@@ -59,32 +61,27 @@ function Assert-Failure {
 try {
     # Case: a file with no marker at all.
     $noMarker = New-Fixture $sampleBody
-    $fixtures += $noMarker
     $result = @(Test-PersonalDefaultsMarker -Path $noMarker)
     $failures += (Assert-Failure -Case 'No marker' -Actual $result -Expected 'has no sync marker')
 
     # Case: two markers. The hash ignores marker lines, so a second one would otherwise pass.
     $line = Get-PersonalDefaultsMarkerLine -Hash ('0' * 64) -Pasted '2026-08-13'
     $twoMarkers = New-Fixture "$line`n$line`n$sampleBody"
-    $fixtures += $twoMarkers
     $result = @(Test-PersonalDefaultsMarker -Path $twoMarkers)
     $failures += (Assert-Failure -Case 'Two markers' -Actual $result -Expected 'Keep exactly one')
 
     # Case: a marker whose hash is not 64 hex characters.
     $malformed = New-Fixture "<!-- sync-marker body-sha256=abc123 pasted-to-web=2026-08-13 -->`n$sampleBody"
-    $fixtures += $malformed
     $result = @(Test-PersonalDefaultsMarker -Path $malformed)
     $failures += (Assert-Failure -Case 'Malformed marker' -Actual $result -Expected 'malformed sync marker')
 
     # Case: a date that matches the shape but is not a real day.
     $badDate = New-Fixture ((Get-PersonalDefaultsMarkerLine -Hash ('0' * 64) -Pasted '2026-02-30') + "`n$sampleBody")
-    $fixtures += $badDate
     $result = @(Test-PersonalDefaultsMarker -Path $badDate)
     $failures += (Assert-Failure -Case 'Impossible date' -Actual $result -Expected 'not a real date')
 
     # Case: the marker records a hash, the body then changed. This is the drift the suite exists for.
     $stale = New-Fixture $sampleBody
-    $fixtures += $stale
     $staleHash = Get-PersonalDefaultsBodyHashFromText -Text $sampleBody
     $staleText = (Get-PersonalDefaultsMarkerLine -Hash $staleHash -Pasted '2026-08-13') +
         "`n$sampleBody`n- a line added after the hash was recorded`n"
@@ -102,7 +99,6 @@ try {
 
     # Case: the update script makes a file verify, and records today.
     $stamped = New-Fixture $sampleBody
-    $fixtures += $stamped
     & $updateScript -Path $stamped 6> $null
     $result = @(Test-PersonalDefaultsMarker -Path $stamped)
     if ($result.Count -gt 0) {
