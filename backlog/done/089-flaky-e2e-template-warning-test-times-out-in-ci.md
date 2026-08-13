@@ -54,7 +54,9 @@ after its 30 second wait. The click landed inside that 228 ms window.
 - [x] Name the root cause with `file:line` evidence, not a guess. Say whether the cause is a race
       in the test, a race in the UI, or state shared between tests.
 - [x] Fix the cause. A longer timeout or a retry is not a fix.
-- [x] Show the test passing on 10 runs in a row of `ShortcutWarningFlowTests`.
+- [x] Show the test passing on 10 runs in a row of `ShortcutWarningFlowTests`. Ten local runs of
+      `dotnet test tests/AHKFlowApp.E2E.Tests -c Release --filter FullyQualifiedName~ShortcutWarningFlowTests`
+      passed, 12 tests each. PR #299 and its CI run 31702215783 carry the merged result.
 - [x] Check the other tests in the class for the same pattern, and fix them in the same change.
 
 ## Out of scope
