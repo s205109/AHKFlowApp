@@ -6,7 +6,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (git hooks)
 - **Difficulty**: complex
-- **Stage**: 1-pickup
+- **Stage**: 2-design
 
 ## Summary
 
@@ -37,6 +37,8 @@ that every change reaches `main` through a pull request.
 
 ## Notes / dependencies
 
-- Spec: `docs/superpowers/specs/2026-08-10-development-process-design-071.md` §2 (P5)
-  (private plans repo). Write a dedicated spec for this item before planning it.
+- Parent spec: `docs/superpowers/specs/2026-08-10-development-process-design-071.md` §2 (P5)
+  (private plans repo).
+- Own spec: `docs/superpowers/specs/2026-08-13-pre-commit-main-branch-refusal-design.md`
+  (private plans repo).
 - Dependency of backlog 072 (wave 2).
