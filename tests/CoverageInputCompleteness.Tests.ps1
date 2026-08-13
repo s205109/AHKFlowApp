@@ -63,6 +63,33 @@ function Remove-ResultsFixture {
     }
 }
 
+# Writes a merged Cobertura report holding every threshold assembly except the excluded one.
+# Rates are set high so nothing fails on its numbers, which keeps the case about missing input.
+function New-MergedCobertura {
+    param([string] $ExcludeAssembly)
+
+    $assemblies = @(
+        'AHKFlowApp.Domain', 'AHKFlowApp.Application', 'AHKFlowApp.Infrastructure',
+        'AHKFlowApp.API', 'AHKFlowApp.UI.Blazor'
+    ) | Where-Object { $_ -ne $ExcludeAssembly }
+
+    $packages = ($assemblies | ForEach-Object {
+        "    <package name=`"$_`" line-rate=`"0.99`" branch-rate=`"0.99`" />"
+    }) -join [Environment]::NewLine
+
+    $path = Join-Path ([System.IO.Path]::GetTempPath()) ('ahkflow-cobertura-' + [guid]::NewGuid().ToString('N') + '.xml')
+    $xml = @"
+<?xml version="1.0" encoding="utf-8"?>
+<coverage line-rate="0.99" branch-rate="0.99">
+  <packages>
+$packages
+  </packages>
+</coverage>
+"@
+    Set-Content -LiteralPath $path -Value $xml -Encoding utf8
+    return $path
+}
+
 Invoke-TestCase 'A complete result set reports nothing missing' {
     $expected = @('AHKFlowApp.Domain.Tests', 'AHKFlowApp.UI.Blazor.Tests')
     $root = New-ResultsFixture -ProjectName $expected
@@ -113,6 +140,26 @@ Invoke-TestCase 'The expected project list comes from the solution and coverlet'
 
     foreach ($project in $projects) {
         Assert-True (Test-Path -LiteralPath $project.Path -PathType Leaf) "Project path does not exist: $($project.Path)"
+    }
+}
+
+Invoke-TestCase 'The gate calls a missing assembly incomplete input, not a threshold failure' {
+    $cobertura = New-MergedCobertura -ExcludeAssembly 'AHKFlowApp.UI.Blazor'
+    try {
+        $gate = Join-Path $repoRoot 'scripts\ci\check-coverage-thresholds.py'
+        $output = & python $gate --cobertura-path $cobertura 2>&1 | Out-String
+        $exitCode = $LASTEXITCODE
+
+        Assert-True ($exitCode -ne 0) "Expected a non-zero exit code. Output: $output"
+        Assert-True ($output -match 'Coverage input incomplete') `
+            "Expected the incomplete-input error title. Output: $output"
+        Assert-True ($output -match 'AHKFlowApp\.UI\.Blazor') `
+            "Expected the missing assembly to be named. Output: $output"
+        Assert-True ($output -notmatch 'failed per-assembly coverage thresholds') `
+            "Missing input must not be reported as a threshold failure. Output: $output"
+    }
+    finally {
+        Remove-Item -LiteralPath $cobertura -Force -ErrorAction SilentlyContinue
     }
 }
 
