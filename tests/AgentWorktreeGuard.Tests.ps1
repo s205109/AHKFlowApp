@@ -1856,6 +1856,82 @@ try {
             ($parsed.Segments[0].Tokens -join ' ') 'Tokens'
     }
 
+    Write-Host 'Here-string bodies' -ForegroundColor Cyan
+
+    $hereStringCases = @(
+        @{ Name     = 'a body that reads like a pipeline'
+            Command  = "`$body = @'`nthe text says | Remove-Item`n'@`ngh pr create --body `$body"
+            Expected = '$body = @'' :: gh pr create --body $body'
+        },
+        # The apostrophe is the sharp case: it used to end the tokenizer's quoted state early.
+        @{ Name     = 'a body with an apostrophe before the pipe'
+            Command  = "`$body = @'`nit's the apostrophe | Remove-Item`n'@`necho done"
+            Expected = '$body = @'' :: echo done'
+        },
+        @{ Name     = 'a double-quoted here-string'
+            Command  = "`$body = @""`nthe text says | Remove-Item`n""@`necho done"
+            Expected = '$body = @" :: echo done'
+        },
+        # A '"@' line does not close a @' body, and the reverse holds too.
+        @{ Name     = 'the wrong terminator does not close the body'
+            Command  = "`$body = @'`n""@`n'@`necho done"
+            Expected = '$body = @'' :: echo done'
+        },
+        # PowerShell allows code after the terminator on the same line, so the guard must resume
+        # there. This one stays a real pipeline into Remove-Item.
+        @{ Name     = 'code after the terminator is still tokenized'
+            Command  = "`$body = @'`nharmless`n'@ | Remove-Item"
+            Expected = '$body = @'' :: Remove-Item'
+        },
+        @{ Name     = 'a command after the terminator line is still tokenized'
+            Command  = "`$body = @'`nharmless`n'@`nrm -rf src"
+            Expected = '$body = @'' :: rm -rf src'
+        },
+        # CRLF again: the header test must accept '\r' as whitespace, and the terminator must be
+        # found at the start of a line that a '\r\n' pair ended.
+        @{ Name     = 'a body with CRLF line endings'
+            Command  = "`$body = @'`r`nit's the apostrophe | Remove-Item`r`n'@`r`necho done"
+            Expected = '$body = @'' :: echo done'
+        },
+        # An opener with characters after the quote is not an opener. PowerShell rejects that
+        # header, so the apostrophes here are ordinary quotes around b.
+        @{ Name     = 'characters after the quote make it an ordinary argument'
+            Command  = "Write-Output a@'b'"
+            Expected = 'Write-Output a@b'
+        }
+    )
+
+    foreach ($case in $hereStringCases) {
+        Invoke-TestCase "Here-string body: $($case.Name)" {
+            $parsed = Get-AgentCommandSegment -Command $case.Command
+            Assert-True (-not $parsed.Ambiguous) 'parse must not be ambiguous'
+            $actual = @($parsed.Segments | ForEach-Object { ($_.Tokens -join ' ') }) -join ' :: '
+            Assert-Equal $case.Expected $actual 'Segments'
+        }
+    }
+
+    $hereStringAmbiguousCases = @(
+        @{ Name = 'a body that never closes'; Command = "`$body = @'`nline one`nline two" },
+        # PowerShell rejects a space before the terminator, so the body stays open.
+        @{ Name = 'an indented terminator'; Command = "`$body = @'`nline one`n '@" },
+        @{ Name = 'an opener at the end of the command'; Command = "`$body = @'" }
+    )
+
+    foreach ($case in $hereStringAmbiguousCases) {
+        Invoke-TestCase "Here-string body: ambiguous for $($case.Name)" {
+            $parsed = Get-AgentCommandSegment -Command $case.Command
+            Assert-True ([bool] $parsed.Ambiguous) 'parse must be ambiguous'
+        }
+    }
+
+    Invoke-TestCase 'Here-string body: a value argument keeps its place in the token list' {
+        $parsed = Get-AgentCommandSegment -Command "Set-Content -Path out.txt -Value @'`nbody`n'@"
+        $segment = $parsed.Segments[0]
+        Assert-Equal "Set-Content -Path out.txt -Value @'" ($segment.Tokens -join ' ') 'Tokens'
+        $targets = @(Get-AgentSegmentWriteTarget -Tokens $segment.Tokens -Masks $segment.Masks)
+        Assert-Equal 'out.txt' ($targets -join '|') 'Targets'
+    }
+
     Write-Host 'Write-target extraction' -ForegroundColor Cyan
 
     $writeTargetCases = @(

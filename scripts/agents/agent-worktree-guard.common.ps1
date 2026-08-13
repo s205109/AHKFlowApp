@@ -498,6 +498,66 @@ function Read-AgentHeredocBodyEnd {
 
 <#
 .SYNOPSIS
+True when the character at $QuoteIndex opens a PowerShell here-string.
+
+.DESCRIPTION
+PowerShell allows nothing but the line ending after a here-string header: it reports "No
+characters are allowed after a here-string header but before the end of the line." So a line
+whose last non-whitespace characters are @' or @" opens a body, and anything else - such as
+Write-Output a@'b' - is an ordinary argument.
+#>
+function Test-AgentHereStringHeader {
+    [CmdletBinding()]
+    param([string] $Command, [int] $QuoteIndex)
+
+    for ($i = $QuoteIndex + 1; $i -lt $Command.Length; $i++) {
+        if ($Command[$i] -eq "`n") { return $true }
+        if (-not [char]::IsWhiteSpace($Command[$i])) { return $false }
+    }
+
+    # The header runs to the end of the command. PowerShell calls that an unterminated
+    # here-string; the caller turns it into an ambiguous parse.
+    return $true
+}
+
+<#
+.SYNOPSIS
+Finds the end of a PowerShell here-string body opened by the quote at $QuoteIndex.
+
+.DESCRIPTION
+The body ends at a line whose first two characters are the matching terminator, '@ or "@. A
+leading space disqualifies the line: PowerShell reports "White space is not allowed before the
+string terminator." Code may follow the terminator on the same line, so the returned index is
+the character right after the two terminator characters, not the next line.
+
+Returns -1 when the body never closes, which the caller turns into an ambiguous parse.
+#>
+function Read-AgentHereStringBodyEnd {
+    [CmdletBinding()]
+    param([string] $Command, [int] $QuoteIndex)
+
+    $terminator = [string] $Command[$QuoteIndex] + '@'
+
+    $lineEnd = $Command.IndexOf("`n", $QuoteIndex)
+    if ($lineEnd -lt 0) { return -1 }
+
+    $position = $lineEnd + 1
+    while ($position -lt $Command.Length) {
+        if (($position + 1) -lt $Command.Length -and
+            $Command.Substring($position, 2) -ceq $terminator) {
+            return $position + 2
+        }
+
+        $nextEnd = $Command.IndexOf("`n", $position)
+        if ($nextEnd -lt 0) { return -1 }
+        $position = $nextEnd + 1
+    }
+
+    return -1
+}
+
+<#
+.SYNOPSIS
 Splits a command string into tokenized top-level segments using a small shell-quoting model.
 
 .DESCRIPTION
@@ -508,6 +568,15 @@ rather than one opaque string. Double-quote escaping follows POSIX (a backslash 
 unless it precedes $, `, ", \, or newline), which keeps quoted Windows paths such as
 "C:\some;path" intact. Outside quotes a backslash only escapes a metacharacter or whitespace,
 so an unquoted C:\Dev\repo survives too.
+
+Two block forms carry data rather than commands, and both are skipped. A bash heredoc opener
+(<<WORD, <<-WORD) queues its delimiter; the queued bodies are consumed at the newline that ends
+that line, and each body ends at a line equal to its delimiter. A PowerShell here-string opener
+(@' or @" as the last characters on a line) skips to its terminator at the start of a later line.
+A body produces no tokens at all, so nothing inside it can be read as a redirect, a pipeline, or
+a command. Each opener still produces one token, which keeps the segment's argument count honest.
+An opener whose body never closes makes the whole parse ambiguous, exactly like an unterminated
+quote.
 
 Returns { Segments = @([pscustomobject]@{ Tokens = string[]; Masks = string[]; PipedFrom = bool });
 Ambiguous = bool }.
@@ -584,6 +653,26 @@ function Split-AgentCommandSegment {
         }
         if ($ch -eq "'") { $state = 'SingleQuoted'; $hasCurrent = $true; continue }
         if ($ch -eq '"') { $state = 'DoubleQuoted'; $hasCurrent = $true; continue }
+
+        # A PowerShell here-string opener. The body is data and produces no tokens; the opener
+        # stays as one 'q'-masked token so the segment keeps its argument count. The guard is
+        # never told which shell will run the string, so a bash line ending in @' has its body
+        # skipped too. That text is already invisible today - the tokenizer swallows it into one
+        # quoted token - so this only makes the behaviour the same every time.
+        if ($ch -eq '@' -and ($i + 1) -lt $Command.Length -and
+            ($Command[$i + 1] -eq "'" -or $Command[$i + 1] -eq '"') -and
+            (Test-AgentHereStringHeader -Command $Command -QuoteIndex ($i + 1))) {
+            $bodyEnd = Read-AgentHereStringBodyEnd -Command $Command -QuoteIndex ($i + 1)
+            if ($bodyEnd -lt 0) {
+                return [pscustomobject]@{ Segments = @(); Ambiguous = $true }
+            }
+
+            [void] $current.Append($Command.Substring($i, 2))
+            [void] $currentMask.Append('qq')
+            $hasCurrent = $true
+            $i = $bodyEnd - 1
+            continue
+        }
 
         # A heredoc opener. The third character decides: '<<<' is a bash here-string taking one
         # word, not a heredoc. All three characters of a '<<<' are consumed here, because leaving
