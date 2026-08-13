@@ -1705,6 +1705,47 @@ try {
         Assert-Equal 'uuuuuuuuu' $segment.Masks[1] 'Mask'
     }
 
+    Write-Host 'Link target candidates' -ForegroundColor Cyan
+
+    # A relative link target is resolved against the directory holding the link, not the working
+    # directory, so one target has to be offered in every form it could mean.
+    $linkCandidateCases = @(
+        @{ Name = 'an absolute target says the same thing from every directory'
+            LinkPath = 'link.md'; Target = 'C:\repo\README.md'
+            Expected = @('C:\repo\README.md')
+        },
+        @{ Name = 'a UNC target is absolute too'
+            LinkPath = 'link.md'; Target = '\\server\share\x.md'
+            Expected = @('\\server\share\x.md')
+        },
+        @{ Name = 'a relative target with a parentless link drops the parent form'
+            LinkPath = 'link.md'; Target = '..\README.md'
+            Expected = @('..\README.md', 'link.md\..\README.md')
+        },
+        @{ Name = 'a relative target with a nested link carries all three forms'
+            LinkPath = 'deep\x.md'; Target = '..\..\README.md'
+            Expected = @('..\..\README.md', 'deep\x.md\..\..\README.md', 'deep\..\..\README.md')
+        },
+        # Join-Path rewrites every separator in BOTH arguments to the OS one, so the joined forms
+        # come back fully backslashed. The raw target is added as written and keeps its slashes.
+        @{ Name = 'a forward-slash link path splits the same way'
+            LinkPath = 'deep/x.md'; Target = '../README.md'
+            Expected = @('../README.md', 'deep\x.md\..\README.md', 'deep\..\README.md')
+        },
+        @{ Name = 'an empty target adds nothing'
+            LinkPath = 'link.md'; Target = ''
+            Expected = @()
+        }
+    )
+
+    foreach ($case in $linkCandidateCases) {
+        Invoke-TestCase "Link candidate: $($case.Name)" {
+            $sink = New-Object System.Collections.Generic.List[string]
+            Add-AgentLinkTargetCandidate -LinkPath $case.LinkPath -Target $case.Target -Sink $sink
+            Assert-Equal ($case.Expected -join '|') ($sink.ToArray() -join '|') 'Candidates'
+        }
+    }
+
     Write-Host 'Write-target extraction' -ForegroundColor Cyan
 
     $writeTargetCases = @(
@@ -1764,6 +1805,89 @@ try {
         # cp, install and ln leave the source in place, so they stay destination-only.
         @{ Command = 'cp -t out a.txt'; Expected = @('out') },
         @{ Command = 'cp -tout a.txt'; Expected = @('out') },
+        # Every operand of ln is a path, so every operand is a write target: a link created at an
+        # allowed path but AIMED at the main checkout is a write into the main checkout.
+        @{ Command = 'ln -s a.md b.md'; Expected = @('b.md', 'a.md', 'b.md\a.md') },
+        @{ Command = 'ln a.md b.md'; Expected = @('b.md', 'a.md', 'b.md\a.md') },
+        @{ Command = 'ln -s C:\repo\README.md b.md'; Expected = @('b.md', 'C:\repo\README.md') },
+        # With -t every operand is a link target and the named directory holds the links.
+        @{ Command = 'ln -t out a.md b.md'
+            Expected = @('out', 'a.md', 'out\a.md', 'b.md', 'out\b.md')
+        },
+        # '--' keeps a target whose own name begins with a dash.
+        @{ Command = 'ln -s -- -a.md link.md'
+            Expected = @('link.md', '-a.md', 'link.md\-a.md')
+        },
+        # One operand names a link in the working directory and nothing else.
+        @{ Command = 'ln -s a.md'; Expected = @('a.md') },
+        # mklink puts the LINK first and the TARGET second, and its options are '/'-prefixed.
+        @{ Command = 'mklink link.md C:\repo\README.md'
+            Expected = @('link.md', 'C:\repo\README.md')
+        },
+        @{ Command = 'mklink /D linkdir C:\repo\docs'; Expected = @('linkdir', 'C:\repo\docs') },
+        @{ Command = 'mklink /H link.md C:\repo\README.md'
+            Expected = @('link.md', 'C:\repo\README.md')
+        },
+        @{ Command = 'mklink /J linkdir C:\repo\docs'; Expected = @('linkdir', 'C:\repo\docs') },
+        # Lower case spells the same switch, and a relative target needs all three forms.
+        @{ Command = 'mklink /d deep\linkdir ..\..\docs'
+            Expected = @('deep\linkdir', '..\..\docs', 'deep\linkdir\..\..\docs', 'deep\..\..\docs')
+        },
+        # cp --link and cp --symbolic-link create links, so they carry the same hole as ln.
+        @{ Command = 'cp -l a.md b.md'; Expected = @('b.md', 'a.md', 'b.md\a.md') },
+        @{ Command = 'cp -s a.md b.md'; Expected = @('b.md', 'a.md', 'b.md\a.md') },
+        @{ Command = 'cp --link a.md b.md'; Expected = @('b.md', 'a.md', 'b.md\a.md') },
+        @{ Command = 'cp --symbolic-link a.md b.md'
+            Expected = @('b.md', 'a.md', 'b.md\a.md')
+        },
+        # Short options cluster. A literal list of four spellings would miss every one of these.
+        @{ Command = 'cp -al a.md b.md'; Expected = @('b.md', 'a.md', 'b.md\a.md') },
+        @{ Command = 'cp -rs a.md b.md'; Expected = @('b.md', 'a.md', 'b.md\a.md') },
+        # Case matters: -S is --suffix, a different option that names no link.
+        @{ Command = 'cp -S .bak a.md b.md'; Expected = @('b.md') },
+        # A plain copy is untouched by the new branch and still reports its destination alone.
+        @{ Command = 'cp a.md b.md'; Expected = @('b.md') },
+        # New-Item creates every link kind Windows has, and -Target is where it aims.
+        @{ Command = 'New-Item -ItemType HardLink -Path link.md -Target C:\repo\README.md'
+            Expected = @('link.md', 'C:\repo\README.md')
+        },
+        @{ Command = 'New-Item -ItemType SymbolicLink -Path link.md -Target C:\repo\README.md'
+            Expected = @('link.md', 'C:\repo\README.md')
+        },
+        @{ Command = 'New-Item -ItemType Junction -Path linkdir -Target C:\repo\docs'
+            Expected = @('linkdir', 'C:\repo\docs')
+        },
+        # -Target IS -Value, so the -Value spelling reaches the same place.
+        @{ Command = 'New-Item -ItemType SymbolicLink -Path link.md -Value C:\repo\README.md'
+            Expected = @('link.md', 'C:\repo\README.md')
+        },
+        # -Type is an alias of -ItemType, and the kind is matched without case.
+        @{ Command = 'New-Item -Type symboliclink -Path link.md -Target C:\repo\README.md'
+            Expected = @('link.md', 'C:\repo\README.md')
+        },
+        # A relative link target needs all three forms.
+        @{ Command = 'New-Item -ItemType SymbolicLink -Path deep\link.md -Target ..\..\README.md'
+            Expected = @('deep\link.md', '..\..\README.md',
+                'deep\link.md\..\..\README.md', 'deep\..\..\README.md')
+        },
+        # The gate. On a File the same parameter is CONTENT, under either spelling, so reading it
+        # as a path would refuse an ordinary write.
+        @{ Command = 'New-Item -ItemType File -Path notes.md -Value plain-text'
+            Expected = @('notes.md')
+        },
+        @{ Command = 'New-Item -ItemType File -Path notes.md -Target plain-text'
+            Expected = @('notes.md')
+        },
+        @{ Command = 'New-Item -Path notes.md -Value plain-text'; Expected = @('notes.md') },
+        @{ Command = 'New-Item -ItemType Directory -Path sub'; Expected = @('sub') },
+        # An item type the guard cannot expand could still be a link, so it fails closed.
+        @{ Command = 'New-Item -ItemType $kind -Path link.md -Target C:\repo\README.md'
+            Expected = @('link.md', 'C:\repo\README.md')
+        },
+        # -Name puts the leaf under -Path, and the -Path value stays the anchor.
+        @{ Command = 'New-Item -Path deep -Name link.md -ItemType SymbolicLink -Target ..\README.md'
+            Expected = @('deep', 'deep\link.md', '..\README.md', 'deep\..\README.md')
+        },
         @{ Command = 'Copy-Item a.txt -Destination b.txt'; Expected = @('b.txt') },
         @{ Command = 'rm a.txt b.txt'; Expected = @('a.txt', 'b.txt') },
         @{ Command = 'tee out.txt'; Expected = @('out.txt') },
@@ -1777,6 +1901,22 @@ try {
         @{ Command = 'Copy-Item a.txt -Destination b.txt'; Expected = @('b.txt') },
         @{ Command = 'Copy-Item a.txt b.txt'; Expected = @('b.txt') },
         @{ Command = 'Remove-Item -LiteralPath out.txt'; Expected = @('out.txt') },
+        # An option value standing before the path used to become operand 0, so the path itself
+        # was never reported. The command still wrote it.
+        @{ Command = 'Set-Content -Encoding utf8 out.txt x'; Expected = @('out.txt') },
+        @{ Command = 'Set-Content -ErrorAction Stop out.txt x'; Expected = @('out.txt') },
+        @{ Command = 'Add-Content -Encoding utf8 out.txt x'; Expected = @('out.txt') },
+        @{ Command = 'Out-File -Encoding utf8 out.txt'; Expected = @('out.txt') },
+        @{ Command = 'Remove-Item -Filter *.md out'; Expected = @('out') },
+        @{ Command = 'New-Item -ItemType File -Value hello out.txt'; Expected = @('out.txt') },
+        # Same root cause, harmless face: -Name with no -Path read the -ItemType value as the
+        # link path, so the reported paths were 'SymbolicLink' and 'SymbolicLink\bait'.
+        @{ Command = 'New-Item -ItemType SymbolicLink -Name bait -Target C:\repo\README.md'
+            Expected = @('bait', 'C:\repo\README.md')
+        },
+        # A switch takes no value, so the token after it stays a path.
+        @{ Command = 'Set-Content -Force out.txt x'; Expected = @('out.txt') },
+        @{ Command = 'Remove-Item -Recurse out'; Expected = @('out') },
         # Reads produce nothing
         @{ Command = 'cat out.txt'; Expected = @() },
         @{ Command = 'Get-Content out.txt'; Expected = @() }
@@ -1876,6 +2016,23 @@ try {
         @{ Command = "sh -c 'printf x > out.txt'"; Expected = @('out.txt') },
         @{ Command = "bash -c 'rm out.txt'"; Expected = @('out.txt') },
         @{ Command = 'cmd /c "del out.txt"'; Expected = @() },
+        # mklink is a cmd builtin, so the rule only ever fires through cmd. Unquoted, the inner
+        # command is the REST of this segment, already tokenized.
+        @{ Command = 'cmd /c mklink /D linkdir C:\repo\docs'
+            Expected = @('linkdir', 'C:\repo\docs')
+        },
+        # Git Bash writes the flag '//c'; MSYS rewrites it to '/c' on the way to cmd, and the
+        # guard reads the text before that happens.
+        @{ Command = 'cmd //c mklink /H link.md C:\repo\README.md'
+            Expected = @('link.md', 'C:\repo\README.md')
+        },
+        # Quoted, the whole inner command is one token, which the existing recursion already
+        # handles. It must be reported once, not twice.
+        @{ Command = 'cmd /c "mklink /D linkdir C:\repo\docs"'
+            Expected = @('linkdir', 'C:\repo\docs')
+        },
+        # The remainder scan is general, so an unquoted inner write is now seen too.
+        @{ Command = 'sh -c rm out.txt'; Expected = @('out.txt') },
         @{ Command = 'powershell -Command "Remove-Item out.txt"'; Expected = @('out.txt') },
         # Depth 2 is reached and still scanned.
         @{ Command = 'sh -c "pwsh -Command ''Set-Content out.txt x''"'; Expected = @('out.txt') },
@@ -2104,6 +2261,33 @@ try {
         @{ Name    = 'an -Exclude value is not treated as a move source'
             Command = 'Move-Item -Path a.txt -Destination b.txt -Exclude <MAIN>/seed.txt'
             Cwd = 'Managed'; Action = 'Allow'
+        },
+        # The same reader now serves the content-writing cmdlets. Without it an option value
+        # standing before the path took the operand 0 slot, the guard scanned that value instead
+        # of the path, and every one of these writes into main was ALLOWED.
+        @{ Name    = 'an -Encoding value before a main path does not hide the write'
+            Command = 'Set-Content -Encoding utf8 <MAIN>/x.txt hello'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'a common parameter before a main path does not hide the write'
+            Command = 'Set-Content -ErrorAction Stop <MAIN>/x.txt hello'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'an -Encoding value before a main Out-File path does not hide the write'
+            Command = 'Out-File -Encoding utf8 <MAIN>/x.txt'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'a -Value before a main New-Item path does not hide the write'
+            Command = 'New-Item -ItemType File -Value hello <MAIN>/x.txt'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        @{ Name    = 'a -Filter value before a main Remove-Item path does not hide the delete'
+            Command = 'Remove-Item -Filter x.md <MAIN>/docs'; Cwd = 'Managed'; Action = 'Deny'
+        },
+        # The other direction: the option value itself is not a path the command writes.
+        @{ Name    = 'a Set-Content -Filter value is not treated as a write target'
+            Command = 'Set-Content -Path notes.tmp -Filter <MAIN>/seed.txt -Value y'
+            Cwd = 'Managed'; Action = 'Allow'
+        },
+        # A switch consumes nothing, so the path after it must still be read.
+        @{ Name    = 'a switch before a main path does not hide the write'
+            Command = 'Set-Content -Force <MAIN>/x.txt hello'; Cwd = 'Managed'; Action = 'Deny'
         },
         # A provider-qualified path names a real location, but it is not a rooted path, so it
         # would otherwise be anchored under the session worktree and wrongly allowed.
@@ -2548,6 +2732,113 @@ try {
                 -Cwd $cwd -ProtectedRepoRoot $fixture.Main -AllowMain $false
             Assert-Equal $case.Action $decision.Action 'Action'
         }
+    }
+
+    Write-Host 'Link creation aimed at the main checkout' -ForegroundColor Cyan
+
+    # A link created at an allowed path but AIMED at the main checkout is a write into the main
+    # checkout: the next Set-Content through the link lands on the protected file, and names only
+    # an allowed path while doing it.
+    $linkDecisionCases = @(
+        @{ Name = 'New-Item HardLink into main'
+            Command = 'New-Item -ItemType HardLink -Path <MANAGED>\bait.md -Target <MAIN>\README.md'
+            Action = 'Deny'
+        },
+        @{ Name = 'New-Item SymbolicLink into main'
+            Command = 'New-Item -ItemType SymbolicLink -Path <MANAGED>\bait.md -Target <MAIN>\README.md'
+            Action = 'Deny'
+        },
+        @{ Name = 'New-Item Junction into main'
+            Command = 'New-Item -ItemType Junction -Path <MANAGED>\baitdir -Target <MAIN>\docs'
+            Action = 'Deny'
+        },
+        @{ Name = 'New-Item using the -Value spelling'
+            Command = 'New-Item -ItemType SymbolicLink -Path <MANAGED>\bait.md -Value <MAIN>\README.md'
+            Action = 'Deny'
+        },
+        @{ Name = 'ln -s into main'
+            Command = 'ln -s <MAIN>\README.md <MANAGED>\bait.md'
+            Action = 'Deny'
+        },
+        @{ Name = 'ln hard link into main'
+            Command = 'ln <MAIN>\README.md <MANAGED>\bait.md'
+            Action = 'Deny'
+        },
+        @{ Name = 'mklink through cmd, unquoted'
+            Command = 'cmd /c mklink /H <MANAGED>\bait.md <MAIN>\README.md'
+            Action = 'Deny'
+        },
+        @{ Name = 'mklink through cmd, Git Bash flag spelling'
+            Command = 'cmd //c mklink /D <MANAGED>\baitdir <MAIN>\docs'
+            Action = 'Deny'
+        },
+        @{ Name = 'cp with a clustered link flag into main'
+            Command = 'cp -al <MAIN>\README.md <MANAGED>\bait.md'
+            Action = 'Deny'
+        },
+        # The regression the three-form emission exists for. Anchored to the working directory
+        # this target lands ABOVE the checkout and looks allowed; anchored to the directory
+        # holding the link, which is how Windows resolves it, it lands inside main.
+        @{ Name = 'a relative target only the parent anchor catches'
+            Command = 'ln -s ../../../../README.md deep/bait.md'
+            Action = 'Deny'
+        },
+        # A link that stays inside the session's own worktree is ordinary work.
+        @{ Name = 'a link inside the session worktree'
+            Command = 'New-Item -ItemType SymbolicLink -Path <MANAGED>\bait.md -Target <MANAGED>\src\a.cs'
+            Action = 'Allow'
+        },
+        @{ Name = 'ln inside the session worktree'
+            Command = 'ln -s <MANAGED>\src\a.cs <MANAGED>\bait.md'
+            Action = 'Allow'
+        },
+        # Every one of the three anchors has to stay inside the worktree for this to be Allow.
+        @{ Name = 'a relative link that stays inside the session worktree'
+            Command = 'ln -s src/a.cs deep/bait.md'
+            Action = 'Allow'
+        },
+        # The over-report the three anchors cost, pinned rather than left to a comment. Windows
+        # resolves this symbolic link inside the worktree, so the link is legitimate work. The
+        # as-written anchor climbs into <main>\.claude\worktrees, and Deny wins. Backlog 086
+        # reads the link kind and turns this case into Allow; until then the refusal is the
+        # documented price, and the message names a path no write would land on.
+        @{ Name = 'a relative symbolic link inside the worktree is over-reported'
+            Command = 'ln -s ../src/a.cs deep/bait.md'
+            Action = 'Deny'
+        },
+        # Why the as-written anchor cannot simply be dropped. A HARD link resolves its source
+        # against the working directory, so this one names <main>\.claude\worktrees\README.md.
+        # The two link-relative anchors both land inside the worktree and would allow it.
+        @{ Name = 'a relative hard link only the as-written anchor catches'
+            Command = 'ln ../README.md deep/bait.md'
+            Action = 'Deny'
+        },
+        # The gate from Task 5, proved at the decision layer: content is not a path.
+        @{ Name = 'an ordinary file write with a value is untouched'
+            Command = 'New-Item -ItemType File -Path <MANAGED>\notes.md -Value plain-text'
+            Action = 'Allow'
+        }
+    )
+
+    foreach ($case in $linkDecisionCases) {
+        Invoke-TestCase "Link creation: $($case.Name)" {
+            $command = $case.Command.
+            Replace('<MANAGED>', $fixture.Managed).
+            Replace('<MAIN>', $fixture.Main)
+            $decision = Invoke-AgentGuardPolicy -Command $command `
+                -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+            Assert-Equal $case.Action $decision.Action 'Action'
+        }
+    }
+
+    Invoke-TestCase 'Link creation: a refused link names the file the write would land on' {
+        $command = 'New-Item -ItemType HardLink -Path ' + $fixture.Managed +
+        '\bait.md -Target ' + $fixture.Main + '\README.md'
+        $decision = Invoke-AgentGuardPolicy -Command $command `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'agent-worktree-main-write' $decision.Rule 'Rule'
+        Assert-Match 'cannot write into the main checkout' $decision.Message 'Message'
+        Assert-Match 'README.md' $decision.Message 'Message names the target'
     }
 
     Invoke-TestCase 'File-edit isolation: a denial carries the shared write rule name' {

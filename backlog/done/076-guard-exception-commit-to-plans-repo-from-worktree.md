@@ -6,7 +6,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (agent git guard)
 - **Difficulty**: complex
-- **Stage**: 3-plan
+- **Stage**: 9-ship
 
 ## Summary
 
