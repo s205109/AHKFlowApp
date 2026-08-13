@@ -181,6 +181,36 @@ last argument.
 a move deletes the path it reads. `cp`, `install`, `ln`, and `Copy-Item` report the destination
 only. So moving a file out of main is refused wherever it is going, a worktree included.
 
+`Move-Item`, `Rename-Item`, and `Remove-Item` can take the paths they delete from the pipeline
+instead of from their own arguments. The guard reads the command text and never runs it, so it
+cannot know which paths arrive that way. A segment that follows an unquoted `|` and names no
+source of its own is therefore denied:
+
+```powershell
+Get-Item <main>\README.md | Move-Item -Destination .\README.md   # denied
+Get-ChildItem *.tmp | Remove-Item                                # denied
+Remove-Item *.tmp                                                # allowed
+```
+
+The second line is denied even though it stays inside the worktree. Nothing in the text says
+where `Get-ChildItem` looks, so the guard cannot tell it apart from the first line. Write the
+paths out as arguments, or with `-Path`, and the command is classified normally.
+
+A source that IS written out keeps working under a pipe: `Get-Content list.txt | Remove-Item
+-Path a.txt` is classified on `a.txt`. `Move-Item` and `Rename-Item` need **two** operands before
+the source counts as written out, because PowerShell binds a single positional to `-Path` and
+leaves the piped input unbound. Sinks that delete nothing they receive — `Copy-Item`,
+`Set-Content`, `Select-Object` — are unaffected, wherever the pipeline reads from. `||` is bash's
+OR, not a pipe, so it never triggers this.
+
+Every built-in alias of the three sinks is matched: `ri`, `rd`, `rmdir`, `del`, `erase`, and `rm`
+for `Remove-Item`; `mi`, `move`, and `mv` for `Move-Item`; `rni` and `ren` for `Rename-Item`.
+PowerShell resolves each one to the same cmdlet, so `Get-Item <main>\README.md | ri` deletes the
+file exactly as `| Remove-Item` does. `rm` and `mv` are on the list for that reason, even though
+coreutils `rm` reads no path from standard input — a bash pipeline into it deletes nothing, so
+denying it costs nothing. This is the one place the guard reads aliases; everywhere else it still
+classifies the command word as written.
+
 A target the guard cannot expand is denied, because the guard cannot tell where it lands. That
 covers a leading `~`, and a variable, a percent expansion, a command substitution, or a backtick
 **anywhere** in the path. A leading literal prefix does not rescue it: `./scripts/$DEST` reaches
@@ -304,6 +334,12 @@ An agent running the same command would need a prompt or override.
 - A wrapper can still hide the command inside a quoted string. The tokenizer keeps a quoted string
   as one token, so the guard cannot classify the git word inside it. `sh -c '...'` and
   `rtk run "..."` bypass the guard this way.
+- The tokenizer does not understand a heredoc or a here-string, so it reads the **body** as
+  command text. A `git commit` message body that contains `| Remove-Item`, or an apostrophe that
+  ends the tokenizer's quoted state before one, is denied by the pipeline-sink rule even though
+  nothing in it runs. The trap predates that rule — a body carrying `> file` or `rm -rf` already
+  tripped the older tiers — but the rule widens it. Pass a long message with
+  `git commit -F <file>` instead. Tracked as backlog item 085.
 - `pwsh -File custom.ps1` bypasses the guard for a different reason: it runs git from inside a
   script file, not from a quoted string. The guard only reads the command line the hook reports,
   not any file that command line points to.

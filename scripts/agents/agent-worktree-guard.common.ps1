@@ -398,10 +398,15 @@ unless it precedes $, `, ", \, or newline), which keeps quoted Windows paths suc
 "C:\some;path" intact. Outside quotes a backslash only escapes a metacharacter or whitespace,
 so an unquoted C:\Dev\repo survives too.
 
-Returns { Segments = @([pscustomobject]@{ Tokens = string[]; Masks = string[] }); Ambiguous = bool }.
+Returns { Segments = @([pscustomobject]@{ Tokens = string[]; Masks = string[]; PipedFrom = bool });
+Ambiguous = bool }.
 Each mask runs parallel to its token, one character per token character: 'u' where the character
 was unquoted, 'q' where it came from quotes or an escape. That is what lets a later scan tell a
 real redirect from a literal '>' the tokenizer already stripped the quotes from.
+
+PipedFrom is $true when an unquoted '|' separated this segment from the one before it. The
+segment boundary itself carries no other record of which separator ran, and a pipeline sink acts
+on paths that never appear in its own arguments.
 
 Ambiguous means the string ended inside an unterminated quote or escape, which makes every
 segment boundary in it untrustworthy. This is intentionally not a complete shell parser.
@@ -418,6 +423,9 @@ function Split-AgentCommandSegment {
     $hasCurrent = $false
     $state = 'None'
     $returnState = 'None'
+    # True while the segment being built follows an unquoted '|'. A pipeline sink reads its input
+    # from the segment before it, so a command that names no path of its own may still act on one.
+    $piped = $false
 
     for ($i = 0; $i -lt $Command.Length; $i++) {
         $ch = $Command[$i]
@@ -470,12 +478,17 @@ function Split-AgentCommandSegment {
                 [void] $masks.Add($currentMask.ToString())
                 [void] $current.Clear(); [void] $currentMask.Clear(); $hasCurrent = $false
             }
-            if ($tokens.Count -gt 0) {
+            # Read before the flush: it says whether this separator ended a real command. A '|'
+            # that ends one starts a pipeline; a '|' with nothing before it is the second half of
+            # a '||', which is bash's OR and hands over no objects.
+            $endedCommand = $tokens.Count -gt 0
+            if ($endedCommand) {
                 [void] $segments.Add([pscustomobject]@{
-                        Tokens = $tokens.ToArray(); Masks = $masks.ToArray()
+                        Tokens = $tokens.ToArray(); Masks = $masks.ToArray(); PipedFrom = $piped
                     })
                 $tokens.Clear(); $masks.Clear()
             }
+            $piped = ($ch -eq '|' -and $endedCommand)
             continue
         }
 
@@ -503,7 +516,7 @@ function Split-AgentCommandSegment {
     }
     if ($tokens.Count -gt 0) {
         [void] $segments.Add([pscustomobject]@{
-                Tokens = $tokens.ToArray(); Masks = $masks.ToArray()
+                Tokens = $tokens.ToArray(); Masks = $masks.ToArray(); PipedFrom = $piped
             })
     }
 
@@ -612,6 +625,9 @@ provenance, one character per token character, parallel to Tokens), and - for
 ChangeDirectory - Directory plus Unresolved. Unresolved marks a target the guard cannot expand
 literally (`cd -`, `cd $HOME`, bare `cd`), so a following mutation is treated as untargetable
 rather than silently classified against a stale directory.
+
+PipedFrom rides through from Split-AgentCommandSegment unchanged: it is $true when an unquoted
+'|' separated this segment from the one before it.
 #>
 function Get-AgentCommandSegment {
     [CmdletBinding()]
@@ -631,6 +647,7 @@ function Get-AgentCommandSegment {
     foreach ($entry in $split.Segments) {
         $tokens = @($entry.Tokens)
         $entryMasks = @($entry.Masks)
+        $pipedFrom = [bool] $entry.PipedFrom
 
         # Drop NAME=value prefixes so `AHKFLOW_ALLOW_MAIN=1 git commit` still reads as git.
         $start = 0
@@ -660,6 +677,7 @@ function Get-AgentCommandSegment {
                     Masks      = $tailMasks
                     Directory  = ''
                     Unresolved = $false
+                    PipedFrom  = $pipedFrom
                 })
             continue
         }
@@ -671,6 +689,7 @@ function Get-AgentCommandSegment {
                     Masks      = $effectiveMasks
                     Directory  = ''
                     Unresolved = $false
+                    PipedFrom  = $pipedFrom
                 })
             continue
         }
@@ -690,6 +709,7 @@ function Get-AgentCommandSegment {
                     Masks      = $effectiveMasks
                     Directory  = $directory
                     Unresolved = $unresolved
+                    PipedFrom  = $pipedFrom
                 })
             continue
         }
@@ -700,6 +720,7 @@ function Get-AgentCommandSegment {
                 Masks      = $effectiveMasks
                 Directory  = ''
                 Unresolved = $false
+                PipedFrom  = $pipedFrom
             })
     }
 
@@ -1955,6 +1976,73 @@ function Get-AgentSegmentWriteTarget {
     return $targets.ToArray()
 }
 
+# Cmdlets that DELETE whatever the pipeline hands them, and that bind that input to their own
+# source parameter, split by how many operands prove the source is written out. Copy-Item and
+# Set-Content are absent from both: they consume pipeline input too, but they leave every path
+# they receive where it is.
+#
+# Every built-in alias is listed. PowerShell resolves `Get-Item x | ri` to Remove-Item and
+# deletes x, so reading the full cmdlet names alone left every aliased spelling allowed. That
+# includes `rm` and `mv`: both are Remove-Item and Move-Item in PowerShell, whatever they mean
+# in bash. Denying a bash `... | rm` costs nothing, because coreutils rm reads no path from
+# standard input, so that pipeline deletes nothing either way.
+$script:AgentGuardPipelineRemoveSinks = @(
+    'remove-item', 'ri', 'rd', 'rmdir', 'del', 'erase', 'rm'
+)
+$script:AgentGuardPipelineMoveSinks = @(
+    'move-item', 'mi', 'move', 'mv', 'rename-item', 'rni', 'ren'
+)
+$script:AgentGuardPipelineSinkCmdlets =
+$script:AgentGuardPipelineRemoveSinks + $script:AgentGuardPipelineMoveSinks
+
+<#
+.SYNOPSIS
+True when a pipeline sink deletes paths that its own arguments never name.
+
+.DESCRIPTION
+Move-Item, Rename-Item and Remove-Item take their source from the pipeline when no -Path or
+-LiteralPath reaches them. The guard classifies one segment at a time and never runs the
+upstream command, so it cannot know which paths arrive that way. Reporting no source at all let
+`Get-Item <main>\README.md | Move-Item -Destination <worktree>\README.md` through, and that
+command deletes a tracked file in the main checkout.
+
+A named -Path or -LiteralPath, in any spelling PowerShell binds, proves the source is written
+out. Positional operands prove it too, but the count differs by cmdlet. Remove-Item takes one
+positional source. Move-Item and Rename-Item take the source first and the destination second,
+so a single operand is ambiguous under a pipe: PowerShell binds it to -Path, which then leaves
+the piped input with nowhere to go. Two operands are needed before the source is provably
+written out.
+
+The leaf is matched against every built-in alias too, because PowerShell resolves one to the same
+cmdlet: `Get-Item <main>\README.md | ri` deletes the file exactly as `| Remove-Item` does.
+#>
+function Test-AgentPipelineBoundSource {
+    param([string[]] $Tokens)
+
+    $tokens = @($Tokens)
+    if ($tokens.Count -eq 0) { return $false }
+
+    $leaf = Get-AgentCommandLeafName -Word $tokens[0]
+    if ($script:AgentGuardPipelineSinkCmdlets -notcontains $leaf) { return $false }
+
+    # Assigned in two statements, not from an `if` expression: an `if` whose branch is `@()`
+    # produces an empty pipeline, and PowerShell assigns $null from that. A bare `Remove-Item`
+    # then handed one $null element to the operand reader, which counted it as a written-out
+    # source and let the piped delete through.
+    $arguments = @()
+    if ($tokens.Count -gt 1) { $arguments = @($tokens[1..($tokens.Count - 1)]) }
+
+    foreach ($argument in $arguments) {
+        if ([string] $argument -notmatch '^-([A-Za-z]+)(:.*)?$') { continue }
+        if (Test-AgentMoveSourceParameterName -Name ([string] $Matches[1])) { return $false }
+    }
+
+    # Option values are consumed with their option, so `-Destination x` leaves no false operand.
+    $operands = @(Get-AgentMoveCmdletOperand -Arguments $arguments)
+    $needed = if ($script:AgentGuardPipelineRemoveSinks -contains $leaf) { 1 } else { 2 }
+    return ($operands.Count -lt $needed)
+}
+
 # Interpreters whose quoted argument is itself a command line. `-File` and `/k`-style script
 # paths are deliberately absent: those point at a file, and the guard never reads files.
 $script:AgentGuardInterpreterSpecs = @(
@@ -2071,6 +2159,12 @@ function Get-AgentCommandWriteTarget {
     foreach ($segment in $parsed.Segments) {
         foreach ($target in (Get-AgentSegmentWriteTarget -Tokens $segment.Tokens -Masks $segment.Masks)) {
             [void] $targets.Add($target)
+        }
+
+        # A sink that deletes what the pipeline hands it names a path this scan cannot see, so the
+        # target list is incomplete in exactly the way Unresolved reports.
+        if ($segment.PipedFrom -and (Test-AgentPipelineBoundSource -Tokens $segment.Tokens)) {
+            $unresolved = $true
         }
 
         $inner = Get-AgentInterpreterInnerTarget -Tokens $segment.Tokens -Masks $segment.Masks -Depth $Depth
@@ -2279,6 +2373,13 @@ it cannot tell whether the write lands in the main checkout.
 Write the path out literally instead of using a variable, or run the command from the main checkout.
 '@
 
+$script:AgentGuardPipedSourceMessage = @'
+BLOCKED: this session is isolated in a worktree, and {0} takes the paths it deletes from the
+pipeline. The guard reads the command text and never runs it, so it cannot tell which paths
+arrive that way, or whether any of them sit in the main checkout.
+Name the paths in the command itself, with -Path or as arguments, instead of piping them in.
+'@
+
 <#
 .SYNOPSIS
 True when a resolved path is one the session may write despite sitting under the main checkout.
@@ -2391,6 +2492,7 @@ function Get-AgentWorktreeWriteDecision {
     $directoryStack = New-Object System.Collections.Generic.List[string]
     $blockingPath = ''
     $unresolvedBlock = $false
+    $pipedSourceCommand = ''
 
     foreach ($segment in $parsed.Segments) {
         if ($segment.Kind -eq 'PopDirectory') {
@@ -2428,6 +2530,15 @@ function Get-AgentWorktreeWriteDecision {
 
         $targets = @(Get-AgentSegmentWriteTarget -Tokens $segment.Tokens -Masks $segment.Masks)
 
+        # A sink that deletes what the pipeline hands it names a source no scan of this segment
+        # can find. An empty source list is not "deletes nothing", so fail closed on it. This gets
+        # its own flag rather than reusing $unresolvedBlock: the fix is to write the paths out as
+        # arguments, not to expand a variable, so the two denials must not share a message.
+        if ($segment.PipedFrom -and (Test-AgentPipelineBoundSource -Tokens $segment.Tokens)) {
+            # The word as typed, not the lowercased leaf: the message quotes it back to the reader.
+            if ($pipedSourceCommand -eq '') { $pipedSourceCommand = [string] $segment.Tokens[0] }
+        }
+
         # Nested interpreters, quoted and unquoted alike. Same reader as
         # Get-AgentCommandWriteTarget uses, so the two cannot drift.
         $nested = Get-AgentInterpreterInnerTarget -Tokens $segment.Tokens -Masks $segment.Masks -Depth 0
@@ -2456,14 +2567,23 @@ function Get-AgentWorktreeWriteDecision {
         }
     }
 
-    if ($blockingPath -eq '' -and -not $unresolvedBlock) {
+    if ($blockingPath -eq '' -and -not $unresolvedBlock -and $pipedSourceCommand -eq '') {
         return New-AgentGuardDecision -Action Allow
     }
 
     if ($AllowMain) {
-        $overrideTarget = if ($blockingPath -ne '') { $blockingPath } else { 'an unexpandable target' }
+        $overrideTarget = if ($blockingPath -ne '') { $blockingPath }
+        elseif ($pipedSourceCommand -ne '') { "a source piped into $pipedSourceCommand" }
+        else { 'an unexpandable target' }
         return New-AgentGuardDecision -Action Warn -Rule 'agent-worktree-main-write-overridden' -Message `
         ("WARNING: AHKFLOW_ALLOW_MAIN=1 overrode the worktree write-isolation rule for: $overrideTarget")
+    }
+
+    # A named blocking path outranks both. It says exactly which file the command touches, which
+    # is more use than either "the guard could not tell".
+    if ($blockingPath -eq '' -and $pipedSourceCommand -ne '') {
+        return New-AgentGuardDecision -Action Deny -Rule 'agent-worktree-main-write' -Message `
+        ([string]::Format($script:AgentGuardPipedSourceMessage, $pipedSourceCommand))
     }
 
     if ($blockingPath -eq '') {
