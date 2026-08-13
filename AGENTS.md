@@ -289,6 +289,17 @@ Single-context — [`CONTEXT.md`](CONTEXT.md) (domain-term glossary; use its voc
 
 The AHK v2 syntax we emit — option flags, escaping, `#HotIf`, bodies per kind — is documented in [`docs/development/ahk-v2-syntax.md`](docs/development/ahk-v2-syntax.md); read it before changing an emitter.
 
+### Personal defaults
+
+[`.github/instructions/personal-defaults.md`](.github/instructions/personal-defaults.md) is the single source for personal defaults — the tech stack, coding, testing, and collaboration preferences that also apply outside this repository. GitHub Copilot reads it directly through its `applyTo: "**"` key. Repository instructions always win over it.
+
+The Claude web preferences box holds a **copy**. No tool can read that box, so no test can check it. The file carries a sync marker instead: an HTML comment with the hash of its body and the date somebody last pasted it into the box. `tests/PersonalDefaultsSyncMarker.Tests.ps1` fails when the body changed and the hash did not.
+
+After you edit the file, do both steps:
+
+1. Paste the whole file into the Claude web preferences box.
+2. Run `pwsh ./scripts/update-personal-defaults-marker.ps1`.
+
 ## Prerequisites
 
 One-time setup — Windows Developer Mode, `git config core.symlinks true`, and the symlink / cross-agent skill scripts — is in [`docs/development/prerequisites.md`](docs/development/prerequisites.md). Symlinks fail silently without it. Codex captures skills at session start, so restart Codex after skill changes.

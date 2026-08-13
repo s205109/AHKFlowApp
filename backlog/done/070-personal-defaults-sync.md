@@ -3,7 +3,7 @@
 ## Metadata
 
 - **Difficulty**: moderate
-- **Stage**: 1-pickup
+- **Stage**: 9-ship
 
 ## Problem
 
@@ -28,15 +28,15 @@ Updating the hash is the moment you also paste the file into the web box.
 
 ## Acceptance criteria
 
-- [ ] `.github/instructions/personal-defaults.md` carries a sync marker: the content hash of
+- [x] `.github/instructions/personal-defaults.md` carries a sync marker: the content hash of
       the body, and the date it was last pasted into the web preferences box.
-- [ ] `tests/PersonalDefaultsSyncMarker.Tests.ps1` fails when the body hash and the recorded
+- [x] `tests/PersonalDefaultsSyncMarker.Tests.ps1` fails when the body hash and the recorded
       hash differ. The failure message names the file and says to update the web box.
-- [ ] The suite runs under `pwsh .\scripts\test-fast.ps1 -Mode PowerShell` with the other
+- [x] The suite runs under `pwsh .\scripts\test-fast.ps1 -Mode PowerShell` with the other
       suites. No separate invocation.
-- [ ] AGENTS.md names `.github/instructions/personal-defaults.md` as the single source for
+- [x] AGENTS.md names `.github/instructions/personal-defaults.md` as the single source for
       personal defaults, and says the web box is a copy.
-- [ ] The MediatR line is gone from all copies. The repo copy is already correct — check it,
+- [x] The MediatR line is gone from all copies. The repo copy is already correct — check it,
       do not re-edit.
 
 ## Out of scope
