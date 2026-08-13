@@ -5,7 +5,7 @@
 - **Epic**: Agent guardrails
 - **Type**: Feature
 - **Interfaces**: none (agent git guard)
-- **Stage**: 9-ship
+- **Stage**: 8-review
 - **Difficulty**: moderate
 
 ## Summary
