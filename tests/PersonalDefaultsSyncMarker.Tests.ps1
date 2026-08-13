@@ -90,7 +90,12 @@ try {
     $failures += (Assert-Failure -Case 'Stale hash' -Actual $result -Expected 'still records the old body hash')
 
     # Case: the same body with CRLF endings hashes the same, so a line-ending change is not drift.
-    $lfText = "$sampleBody`n"
+    #
+    # Normalize to LF before building the CRLF copy. This file reaches a Windows CI runner with CRLF
+    # endings already, because .gitattributes carries '* text=auto' and the runner checks out native
+    # endings. Replacing "`n" in that text would produce "`r`r`n" and the case would fail on CI while
+    # it passes on a machine that checked the file out with LF.
+    $lfText = ("$sampleBody`n") -replace "`r`n", "`n"
     $lfHash = Get-PersonalDefaultsBodyHashFromText -Text $lfText
     $crlfHash = Get-PersonalDefaultsBodyHashFromText -Text ($lfText -replace "`n", "`r`n")
     if ($lfHash -ne $crlfHash) {
