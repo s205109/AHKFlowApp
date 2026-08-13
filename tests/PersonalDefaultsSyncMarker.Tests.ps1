@@ -58,6 +58,20 @@ function Assert-Failure {
     return $null
 }
 
+# Returns the lines that name MediatR as part of the stack. A line that forbids MediatR is not a
+# claim, so it does not count. Backlog 070 asks that no copy still says this repository uses
+# MediatR; it does not ask the word to disappear, and the file names it to rule it out.
+function Get-MediatRClaims {
+    param([Parameter(Mandatory)][AllowEmptyString()][string] $Text)
+
+    # The negation does not have to sit next to the name: "Never scaffold MediatR abstractions"
+    # forbids it just as "no MediatR" does. Any negation earlier in the line makes it a prohibition.
+    $lines = ($Text -replace "`r`n", "`n") -split "`n"
+    return @($lines | Where-Object {
+            $_ -match 'MediatR' -and $_ -notmatch '(?i)\b(no|not|never|without|avoid)\b.*MediatR'
+        })
+}
+
 try {
     # Case: a file with no marker at all.
     $noMarker = New-Fixture $sampleBody
@@ -142,8 +156,24 @@ try {
     }
 
     # Acceptance criterion from backlog 070: no copy still claims MediatR.
-    if ([System.IO.File]::ReadAllText($personalDefaults) -match 'MediatR') {
-        $failures += "$personalDefaults still names MediatR. This repository has no MediatR package."
+    $mediatrClaims = @(Get-MediatRClaims -Text ([System.IO.File]::ReadAllText($personalDefaults)))
+    if ($mediatrClaims.Count -gt 0) {
+        $failures += "$personalDefaults names MediatR as part of the stack: $($mediatrClaims -join ' | '). This repository has no MediatR package."
+    }
+
+    # The claim check must tell a stale claim apart from a deliberate prohibition.
+    $claimLine = '- EF Core + SQL Server, MediatR, Ardalis.Result, FluentValidation, Serilog'
+    if (@(Get-MediatRClaims -Text $claimLine).Count -ne 1) {
+        $failures += "MediatR check: the stale stack line '$claimLine' must be reported."
+    }
+
+    foreach ($allowed in @(
+            '- EF Core + SQL Server; explicit use cases — no MediatR',
+            '- Never scaffold MediatR abstractions',
+            '- Use explicit use cases, not MediatR')) {
+        if (@(Get-MediatRClaims -Text $allowed).Count -ne 0) {
+            $failures += "MediatR check: the prohibition '$allowed' must not be reported."
+        }
     }
 }
 finally {
