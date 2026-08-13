@@ -89,6 +89,10 @@ if (-not (Get-Command Resolve-PowerShellExecutable -ErrorAction SilentlyContinue
     }
 }
 
+if (-not (Get-Command New-HiddenProcessStartup -ErrorAction SilentlyContinue)) {
+    function New-HiddenProcessStartup { return $null }
+}
+
 if (-not (Get-Command Write-WorktreeLog -ErrorAction SilentlyContinue)) {
     function Write-WorktreeLog {
         param(
@@ -667,12 +671,24 @@ function Invoke-HookMode {
     $psExe = Resolve-PowerShellExecutable
     $watcherCmd = '"{0}" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{1}" -Mode Watcher -ParamFile "{2}"' -f $psExe, $watcherScript, $paramFile
 
+    # Without ProcessStartupInformation the new process gets a visible console window, and
+    # -WindowStyle Hidden above only hides it after the host starts. The user sees that gap as
+    # a black flash on every removal.
+    $cimArguments = @{
+        CommandLine      = $watcherCmd
+        CurrentDirectory = $tempDir
+    }
+    $startupInformation = New-HiddenProcessStartup
+    if ($startupInformation) {
+        $cimArguments['ProcessStartupInformation'] = $startupInformation
+    } else {
+        Write-Log 'Could not build hidden process startup information; the watcher window may flash.'
+    }
+
     $spawned = $false
     try {
-        $result = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
-            CommandLine      = $watcherCmd
-            CurrentDirectory = $tempDir
-        } -ErrorAction Stop
+        $result = Invoke-CimMethod -ClassName Win32_Process -MethodName Create `
+            -Arguments $cimArguments -ErrorAction Stop
         if ($result.ReturnValue -eq 0) {
             Write-Log "Watcher spawned via WMI. PID=$($result.ProcessId) ParamFile=$paramFile"
             $spawned = $true

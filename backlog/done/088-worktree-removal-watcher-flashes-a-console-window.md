@@ -5,8 +5,8 @@
 - **Epic**: Development process
 - **Type**: Tooling
 - **Interfaces**: none (scripts)
-- **Difficulty**: trivial
-- **Stage**: 0-intake
+- **Difficulty**: moderate
+- **Stage**: 9-ship
 
 ## Summary
 
@@ -50,20 +50,39 @@ appear, so that my typing is never interrupted.
 
 ## Acceptance criteria
 
-- [ ] Removing a worktree creates no visible window, not even for a few milliseconds.
-- [ ] The watcher still runs outside the Claude job object, so it survives the session that
+- [x] Removing a worktree creates no visible window, not even for a few milliseconds.
+- [x] The watcher still runs outside the Claude job object, so it survives the session that
       started it. This is why the script uses WMI, and it must stay true.
-- [ ] `tests/WorktreeRemoveHook.Tests.ps1` and `tests/WorktreeMergedCleanup.Tests.ps1` stay
+- [x] `tests/WorktreeRemoveHook.Tests.ps1` and `tests/WorktreeMergedCleanup.Tests.ps1` stay
       green.
 
-## Proposed fix
+## Fix that shipped
 
-Pass a second argument to `Win32_Process.Create`: a `Win32_ProcessStartup` instance with
-`CreateFlags = 0x08000000` (`CREATE_NO_WINDOW`). The process still gets a console, so it stays
-detached from the job object, but no window is ever created, so there is nothing to hide.
+`Win32_Process.Create` now receives a second argument: a `Win32_ProcessStartup` instance with
+`ShowWindow = 0` (`SW_HIDE`). The system applies that value when it creates the window, so the
+window is never shown. The process still gets a console, so the PowerShell host starts
+normally, and `WmiPrvSE.exe` still creates it, so it still escapes the job object.
 
-`ShowWindow = 0` (`SW_HIDE`) is the weaker alternative. It hides the window at creation rather
-than after the host starts, which removes the flash but still creates the window.
+`scripts/worktree-powershell.common.ps1` builds the instance in `New-HiddenProcessStartup`.
+`tests/WorktreeWatcherWindow.Tests.ps1` spawns a probe the same way and asserts that no
+visible window ever belongs to it.
+
+### Why the originally proposed fix was wrong
+
+This item first proposed `CreateFlags = 0x08000000` (`CREATE_NO_WINDOW`) and called
+`ShowWindow = 0` the weaker alternative. Measurement reversed that.
+
+| Variant | Result |
+|---|---|
+| No startup information (the old code) | Visible `PseudoConsoleWindow` about 215 ms after the spawn |
+| `ShowWindow = 0` | No visible window |
+| `CreateFlags = 8` (`Detached_Process`) | `Create` returns 0, but the child never runs: a PowerShell host with no console does nothing |
+| `CreateFlags = 0x08000000` (`CREATE_NO_WINDOW`) | `Create` returns **21**, invalid parameter, and creates no process |
+
+`CREATE_NO_WINDOW` is not in the accepted `CreateFlags` values that
+[the `Win32_ProcessStartup` documentation](https://learn.microsoft.com/windows/win32/cimwin32prov/win32-processstartup)
+lists. `ShowWindow = 0` is the
+[documented way to run a process hidden through WMI](https://learn.microsoft.com/windows/win32/wmisdk/wmi-tasks--processes).
 
 ## Out of scope
 
