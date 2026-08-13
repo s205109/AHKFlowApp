@@ -1705,6 +1705,49 @@ try {
         Assert-Equal 'uuuuuuuuu' $segment.Masks[1] 'Mask'
     }
 
+    Write-Host 'Heredoc delimiter reader' -ForegroundColor Cyan
+
+    # Every case starts the reader just past the '<<' or '<<-' operator, which is what the
+    # tokenizer does. Expected is the delimiter word; Rest is the text left after it.
+    $delimiterCases = @(
+        @{ Command = "<<EOF`nbody`nEOF"; Start = 2; Expected = 'EOF'; Rest = "`nbody`nEOF" },
+        @{ Command = "<<'EOF'`nbody`nEOF"; Start = 2; Expected = 'EOF'; Rest = "`nbody`nEOF" },
+        @{ Command = '<<"EOF" rest'; Start = 2; Expected = 'EOF'; Rest = ' rest' },
+        # bash keeps the body literal after <<\EOF, and the terminator is still EOF.
+        @{ Command = '<<\EOF rest'; Start = 2; Expected = 'EOF'; Rest = ' rest' },
+        # bash allows whitespace between the operator and the word.
+        @{ Command = '<<   EOF rest'; Start = 2; Expected = 'EOF'; Rest = ' rest' },
+        # A quoted delimiter may contain a space; the terminator line then contains it too.
+        @{ Command = "<<'E F' rest"; Start = 2; Expected = 'E F'; Rest = ' rest' },
+        # The word ends at a separator, so the rest of the command is still tokenized.
+        @{ Command = '<<EOF; echo x'; Start = 2; Expected = 'EOF'; Rest = '; echo x' },
+        @{ Command = '<<EOF | cat'; Start = 2; Expected = 'EOF'; Rest = ' | cat' }
+    )
+
+    foreach ($case in $delimiterCases) {
+        Invoke-TestCase "Heredoc delimiter: $($case.Command)" {
+            $read = Read-AgentHeredocDelimiter -Command $case.Command -StartIndex $case.Start
+            Assert-True ($null -ne $read) 'delimiter must be readable'
+            Assert-Equal $case.Expected $read.Word 'Delimiter word'
+            Assert-Equal $case.Rest $case.Command.Substring($read.NextIndex) 'Text after the delimiter'
+        }
+    }
+
+    $noDelimiterCases = @(
+        # bash reports a syntax error for each of these, so the guard must not invent a delimiter.
+        @{ Name = 'newline right after the operator'; Command = "<<`nEOF"; Start = 2 },
+        @{ Name = 'end of string right after the operator'; Command = '<<'; Start = 2 },
+        @{ Name = 'a separator right after the operator'; Command = '<<; echo x'; Start = 2 },
+        @{ Name = 'an unterminated quoted delimiter'; Command = "<<'EOF"; Start = 2 }
+    )
+
+    foreach ($case in $noDelimiterCases) {
+        Invoke-TestCase "Heredoc delimiter: no delimiter for $($case.Name)" {
+            $read = Read-AgentHeredocDelimiter -Command $case.Command -StartIndex $case.Start
+            Assert-True ($null -eq $read) 'reader must report no delimiter'
+        }
+    }
+
     Write-Host 'Write-target extraction' -ForegroundColor Cyan
 
     $writeTargetCases = @(

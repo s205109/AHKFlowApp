@@ -29,6 +29,10 @@ $script:AgentGuardDoubleQuoteEscapables = '$`"\'
 # is legal in a Windows path, so no path the guard has to classify is affected.
 $script:AgentGuardUnquotedEscapables = '$`"\;&|()<>' + "'"
 
+# Characters that end an unquoted heredoc delimiter word. These are the same separators the
+# tokenizer treats as segment boundaries, so `<<EOF; echo x` reads EOF and keeps the rest.
+$script:AgentGuardHeredocDelimiterStops = ';&|`()<>'
+
 # Commands that move the shell's working directory, so a later `git` in the same chain does not
 # run where the hook payload said it would. pushd/popd are tracked separately because they form a
 # stack: treating popd as an unrecognized command left the guard believing the shell was still in
@@ -383,6 +387,65 @@ function Get-AgentGitSafetyDecision {
     }
 
     return New-AgentGuardDecision -Action Allow
+}
+
+<#
+.SYNOPSIS
+Reads the delimiter word of a heredoc opener, starting just past '<<' or '<<-'.
+
+.DESCRIPTION
+bash allows whitespace between the operator and the word. It also allows the word to be quoted
+('EOF', "EOF") or backslash-quoted (\EOF). All four spellings name the same terminator: quoting
+only suppresses expansion inside the body, and the guard never expands anything. A backslash is
+handled here rather than through the tokenizer's own escape table, which keeps a literal
+backslash in an unquoted Windows path and would otherwise read the delimiter as \EOF.
+
+The word ends at whitespace or at one of $script:AgentGuardHeredocDelimiterStops. A newline or
+the end of the string before any character is a bash syntax error, and so is an unterminated
+quoted delimiter; both return $null so the caller can fail closed.
+
+Returns @{ Word = string; NextIndex = int }, or $null when there is no readable delimiter.
+#>
+function Read-AgentHeredocDelimiter {
+    [CmdletBinding()]
+    param([string] $Command, [int] $StartIndex)
+
+    $word = New-Object System.Text.StringBuilder
+    $i = $StartIndex
+
+    while ($i -lt $Command.Length -and ($Command[$i] -eq ' ' -or $Command[$i] -eq "`t")) { $i++ }
+
+    while ($i -lt $Command.Length) {
+        $ch = $Command[$i]
+
+        if ([char]::IsWhiteSpace($ch)) { break }
+        if ($script:AgentGuardHeredocDelimiterStops.IndexOf($ch) -ge 0) { break }
+
+        if ($ch -eq '\' -and ($i + 1) -lt $Command.Length) {
+            [void] $word.Append($Command[$i + 1])
+            $i += 2
+            continue
+        }
+
+        if ($ch -eq "'" -or $ch -eq '"') {
+            $quote = $ch
+            $i++
+            while ($i -lt $Command.Length -and $Command[$i] -ne $quote) {
+                [void] $word.Append($Command[$i])
+                $i++
+            }
+            if ($i -ge $Command.Length) { return $null }
+            $i++
+            continue
+        }
+
+        [void] $word.Append($ch)
+        $i++
+    }
+
+    if ($word.Length -eq 0) { return $null }
+
+    return @{ Word = $word.ToString(); NextIndex = $i }
 }
 
 <#
