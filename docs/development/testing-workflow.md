@@ -149,6 +149,34 @@ pwsh .\scripts\test-fast.ps1 -Mode Coverage
 
 Coverage mode delegates to `scripts/run-coverage.ps1`. Run it before you mark a PR ready; CI enforces the same coverage + threshold gate on every non-docs PR. The pre-push hook itself only runs quick checks (incremental build + fast slice, see `scripts/pre-push-quick-checks.ps1`), not this full coverage path. The local coverage script uses the same disposable shared SQL container behavior as Integration mode for the SQL-backed suites.
 
+### One test run at a time
+
+`test-fast.ps1` and `run-coverage.ps1` share one exclusive lock file, `.test-run.lock`, at the
+repository root. The second of those two scripts to start fails immediately and names the
+first run's mode and process id. This includes the pre-push hook, which runs the Fast slice.
+
+The lock only covers those two scripts. A `dotnet test` or `dotnet build` you type yourself,
+and a build started from an IDE, take no lock and can still collide with a run in progress.
+The completeness check below is what catches that case.
+
+The lock exists because two runs in one repository destroy each other's coverage data.
+coverlet instruments every assembly in a test project's output folder at test-session start.
+When another run holds one of those files open, instrumentation fails and coverlet writes **no**
+coverage file for that project — while `dotnet test` still exits 0.
+
+The old result was a coverage-threshold failure with no real cause, several hundred lines below
+the file-lock error that produced it. Two checks now stop that. `run-coverage.ps1` compares the
+coverage files each test project produced against the projects the solution names, and refuses
+to report when any are missing. The threshold gate reports a missing assembly under
+`Coverage input incomplete`, not as a threshold failure.
+
+Different worktrees do not collide. Each has its own repository root, its own `bin` folders, and
+its own lock file.
+
+If a run is killed, Windows releases the lock automatically. Never delete `.test-run.lock` to
+recover. Only a live run blocks you, and the file stays on disk between runs by design. A
+leftover `.test-run.lock.owner` file alone never blocks a run either.
+
 ## Trait contract
 
 `Application.Tests` classes using these collections must have `[Trait("Category", "Integration")]`:

@@ -103,6 +103,13 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      # tests/CoverageInputCompleteness.Tests.ps1 runs `dotnet sln list` and the coverage gate.
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       # The script runs every tests/*.Tests.ps1 as its own process, so one failing suite fails
       # this job and the rest still run. Listing the suites here let fifteen of them fail
       # silently - see backlog/done/066-ci-swallows-powershell-suite-failures-in-worktree-powershell-tests.md.
