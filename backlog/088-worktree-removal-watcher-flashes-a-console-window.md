@@ -1,4 +1,4 @@
-# 086 - Worktree removal watcher flashes a console window
+# 088 - Worktree removal watcher flashes a console window
 
 ## Metadata
 
