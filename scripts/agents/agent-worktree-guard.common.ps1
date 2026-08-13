@@ -1918,53 +1918,132 @@ function Get-AgentMoveArgumentSet {
 
 <#
 .SYNOPSIS
+Which kind of link a command creates: 'Symbolic', 'Hard', or 'Unknown'.
+
+.DESCRIPTION
+The kind decides how the operating system anchors a RELATIVE target, so
+Add-AgentLinkTargetCandidate below cannot pick its anchors without it. Every command form the
+guard treats as a link command carries the kind in its own arguments:
+
+  ln       -s, --symbolic, or a cluster holding 's'; a hard link otherwise
+  cp       -s / --symbolic-link, or -l / --link
+  mklink   /h hard, /j junction, /d or nothing symbolic
+
+'Unknown' is the fail-closed answer, and three things produce it: a junction, whose anchor this
+guard has not proved; two kind flags in one command; and any other leaf. Add-AgentLinkTargetCandidate
+keeps every anchor for 'Unknown', which is what the guard did for every kind before it could read
+one.
+
+The short-option matches are case-sensitive, for the reason Test-AgentGuardHasLinkFlag is: -S is
+--suffix and -L is --dereference, and neither names a link. The walk stops at '--' and steps over
+the value of -t, so an operand named '-s.md' is not read as an option.
+#>
+function Get-AgentLinkKind {
+    param([string] $Leaf, [string[]] $Arguments)
+
+    $list = @($Arguments)
+
+    if ($Leaf -eq 'mklink') {
+        # Matched without case: cmd accepts /H and /h alike, and a Git Bash caller writes /D.
+        $hard = @($list | Where-Object { $_ -ieq '/h' }).Count -gt 0
+        $junction = @($list | Where-Object { $_ -ieq '/j' }).Count -gt 0
+        $directory = @($list | Where-Object { $_ -ieq '/d' }).Count -gt 0
+
+        if ($junction) { return 'Unknown' }
+        if ($hard -and $directory) { return 'Unknown' }
+        if ($hard) { return 'Hard' }
+        return 'Symbolic'
+    }
+
+    if ($Leaf -ne 'ln' -and $Leaf -ne 'cp') { return 'Unknown' }
+
+    $symbolic = $false
+    $hard = $false
+    $afterDoubleDash = $false
+
+    for ($i = 0; $i -lt $list.Count; $i++) {
+        $argument = [string] $list[$i]
+
+        if ($afterDoubleDash) { continue }
+        if ($argument -ceq '--') { $afterDoubleDash = $true; continue }
+        if ($argument -notlike '-*') { continue }
+
+        # -t takes the next token as its value, so that token is not an option of its own.
+        $spelling = Read-AgentTargetDirectoryToken -Argument $argument
+        if ($null -ne $spelling -and $spelling.TakesNextToken) { $i++ }
+
+        if ($argument -ceq '--symbolic' -or $argument -ceq '--symbolic-link') { $symbolic = $true; continue }
+        if ($argument -ceq '--link') { $hard = $true; continue }
+
+        # Any other long option is a name, not a cluster: --suffix must not read as -s.
+        if ($argument -clike '--*') { continue }
+
+        if ($argument -cmatch '^-[a-zA-Z]*s') { $symbolic = $true }
+        if ($Leaf -eq 'cp' -and $argument -cmatch '^-[a-zA-Z]*l') { $hard = $true }
+    }
+
+    if ($symbolic -and $hard) { return 'Unknown' }
+    if ($symbolic) { return 'Symbolic' }
+    if ($hard) { return 'Hard' }
+
+    # ln without -s makes a hard link. cp only reaches this reader with a link flag, so no flag
+    # here means the flag was spelled in a way this walk did not read: fail closed.
+    if ($Leaf -eq 'ln') { return 'Hard' }
+    return 'Unknown'
+}
+
+<#
+.SYNOPSIS
 Adds every path a link target could mean to a write-target list.
 
 .DESCRIPTION
-Windows resolves a RELATIVE link target against the directory holding the link, not against the
-working directory (see the CreateSymbolicLink reference, and the same note on
-Resolve-AgentSymlinkPath below). The resolver this guard uses anchors a relative write target to
-the working directory instead, so one anchor is not enough: `ln -s ../../../../../README.md
-deep/dir/x` walks ABOVE the checkout from the working directory and INTO it from the link's own
-directory. Anchoring one way only would allow that link.
+A RELATIVE link target names different files for different link kinds, and the resolver this
+guard uses anchors every relative write target to the working directory. So the anchor has to be
+chosen here, from the kind Get-AgentLinkKind read:
 
-So a relative target is offered three ways - as written, joined to the link path, and joined to
-the link path's parent - and whichever one lands in the main checkout produces the denial. All
-three are paths, so this over-reports only paths, which is the safe direction for this grammar.
+  Symbolic   Windows resolves the target against the directory holding the link, so the target
+             is joined to the link path and to the link path's parent. One of the two is right,
+             and which one depends on whether the link path names a directory or the link file
+             itself, which the guard cannot know. Without these anchors
+             `ln -s ../../../../../README.md deep/dir/x` walks ABOVE the checkout from the
+             working directory and INTO it from the link's own directory, and would be allowed.
+  Hard       A hard link names an existing file when it is created, so the target resolves
+             against the working directory. That is what the as-written anchor is:
+             `ln ../README.md deep/bait.md` names <main>\.claude\worktrees\README.md, and only
+             this anchor reaches it.
+  Unknown    Every anchor, which is what the guard emitted for every kind before it read the
+             kind. It over-reports paths, which is the safe direction for this grammar.
 
-The as-written anchor stays even though Windows never resolves a SYMBOLIC link that way, because
-a HARD link resolves its source exactly that way: `ln ../README.md deep/bait.md` names
-<main>\.claude\worktrees\README.md, and only the as-written anchor reaches it. Drop that anchor
-and the hard link is allowed, which hands the session a second name for a file in the main
-checkout. Reading the link kind first would let each form keep only its own anchor, and backlog
-086 holds that work.
-
-The cost of keeping all three is a real over-report, and it is not theoretical: `ln -s ../src/a.cs
-deep/bait.md` from the worktree root stays inside the worktree, and the guard still refuses it.
-The message then names a main-checkout path that no write would have landed on. Use a target with
-no '..' in it, or an absolute one. Both directions are pinned by tests.
-
-An absolute target means the same file from every directory, so it is added once.
+Two cases stay fail-closed whatever the kind. An absolute target means the same file from every
+directory, so it is added once. A blank link path leaves nothing to join to, so the as-written
+anchor is added rather than nothing - emitting nothing would drop the target from the scan
+entirely, and an under-report silently disables the rule.
 #>
 function Add-AgentLinkTargetCandidate {
     param(
         [string] $LinkPath,
         [string] $Target,
+        [ValidateSet('Symbolic', 'Hard', 'Unknown')]
+        [string] $Kind = 'Unknown',
         [System.Collections.Generic.List[string]] $Sink
     )
 
     $target = [string] $Target
     if ([string]::IsNullOrWhiteSpace($target)) { return }
 
-    [void] $Sink.Add($target)
-
     # Tested with a pattern rather than [System.IO.Path]::IsPathRooted, which throws on Windows
     # PowerShell 5.1 for characters that host rejects outright. A throw here would escape into the
     # entrypoint's catch, and that catch ALLOWS the write.
-    if ($target -match '^([A-Za-z]:|[\\/])') { return }
+    $isAbsolute = $target -match '^([A-Za-z]:|[\\/])'
 
     $link = [string] $LinkPath
-    if ([string]::IsNullOrWhiteSpace($link)) { return }
+    $hasLink = -not [string]::IsNullOrWhiteSpace($link)
+
+    if ($isAbsolute -or -not $hasLink -or $Kind -ne 'Symbolic') {
+        [void] $Sink.Add($target)
+    }
+
+    if ($isAbsolute -or -not $hasLink -or $Kind -eq 'Hard') { return }
 
     # The link path names a directory the link is created inside.
     [void] $Sink.Add((Join-Path $link $target))
@@ -1992,6 +2071,7 @@ function Get-AgentLinkWriteTarget {
     param([string] $Leaf, [string[]] $Arguments)
 
     $found = New-Object System.Collections.Generic.List[string]
+    $kind = Get-AgentLinkKind -Leaf $Leaf -Arguments $Arguments
 
     if ($Leaf -eq 'mklink') {
         # mklink [[/d] | [/h] | [/j]] <link> <target>. All three options are switches: none of
@@ -2002,7 +2082,7 @@ function Get-AgentLinkWriteTarget {
         if ($linkOperands.Count -ge 1) { [void] $found.Add([string] $linkOperands[0]) }
         if ($linkOperands.Count -ge 2) {
             Add-AgentLinkTargetCandidate -LinkPath ([string] $linkOperands[0]) `
-                -Target ([string] $linkOperands[1]) -Sink $found
+                -Target ([string] $linkOperands[1]) -Kind $kind -Sink $found
         }
         return $found.ToArray()
     }
@@ -2015,7 +2095,8 @@ function Get-AgentLinkWriteTarget {
     if ($null -ne $targetDirectory) {
         [void] $found.Add($targetDirectory)
         foreach ($operand in $operands) {
-            Add-AgentLinkTargetCandidate -LinkPath $targetDirectory -Target ([string] $operand) -Sink $found
+            Add-AgentLinkTargetCandidate -LinkPath $targetDirectory -Target ([string] $operand) `
+                -Kind $kind -Sink $found
         }
         return $found.ToArray()
     }
@@ -2031,7 +2112,8 @@ function Get-AgentLinkWriteTarget {
     $linkPath = [string] $operands[$operands.Count - 1]
     [void] $found.Add($linkPath)
     foreach ($operand in ($operands | Select-Object -SkipLast 1)) {
-        Add-AgentLinkTargetCandidate -LinkPath $linkPath -Target ([string] $operand) -Sink $found
+        Add-AgentLinkTargetCandidate -LinkPath $linkPath -Target ([string] $operand) `
+            -Kind $kind -Sink $found
     }
     return $found.ToArray()
 }
@@ -2050,6 +2132,12 @@ meet AgentGuardUnexpandablePattern, and be refused as an unresolved write target
 Three things decide the gate. A named link kind reads the value. A named non-link kind does not.
 An ItemType the guard cannot expand - a variable - could still be a link, so it reads the value
 and fails closed. No -ItemType at all creates a file, so it reads nothing.
+
+The item type also names the anchor for a relative target. New-Item stores a SymbolicLink target
+as written - `-Target .\Notice.txt` reads back as `.\Notice.txt` - so Windows resolves it against
+the directory holding the link. A HardLink names an existing file, so its value resolves against
+the working directory. A Junction, and an item type the guard cannot expand, both fall to
+'Unknown', which keeps every anchor.
 #>
 function Get-AgentNewItemLinkTarget {
     param([string[]] $Arguments, [string] $LinkPath)
@@ -2069,7 +2157,13 @@ function Get-AgentNewItemLinkTarget {
     $linkTarget = Get-AgentPrefixedParameterValue -Arguments $Arguments -Names @('Target', 'Value')
     if ($null -eq $linkTarget) { return $found.ToArray() }
 
-    Add-AgentLinkTargetCandidate -LinkPath $LinkPath -Target $linkTarget -Sink $found
+    $linkKind = switch ($kind) {
+        'symboliclink' { 'Symbolic' }
+        'hardlink' { 'Hard' }
+        default { 'Unknown' }
+    }
+
+    Add-AgentLinkTargetCandidate -LinkPath $LinkPath -Target $linkTarget -Kind $linkKind -Sink $found
     return $found.ToArray()
 }
 

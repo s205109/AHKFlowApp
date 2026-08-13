@@ -2034,17 +2034,26 @@ try {
         @{ Command = 'cp -tout a.txt'; Expected = @('out') },
         # Every operand of ln is a path, so every operand is a write target: a link created at an
         # allowed path but AIMED at the main checkout is a write into the main checkout.
-        @{ Command = 'ln -s a.md b.md'; Expected = @('b.md', 'a.md', 'b.md\a.md') },
-        @{ Command = 'ln a.md b.md'; Expected = @('b.md', 'a.md', 'b.md\a.md') },
+        #
+        # The KIND picks the anchors for a relative target. Windows resolves a symbolic link
+        # against the directory holding the link, so a symbolic form reports the joined anchors
+        # and not the target as written. A hard link resolves its source against the working
+        # directory, so it reports the target as written and nothing joined.
+        @{ Command = 'ln -s a.md b.md'; Expected = @('b.md', 'b.md\a.md') },
+        @{ Command = 'ln a.md b.md'; Expected = @('b.md', 'a.md') },
         @{ Command = 'ln -s C:\repo\README.md b.md'; Expected = @('b.md', 'C:\repo\README.md') },
         # With -t every operand is a link target and the named directory holds the links.
         @{ Command = 'ln -t out a.md b.md'
-            Expected = @('out', 'a.md', 'out\a.md', 'b.md', 'out\b.md')
+            Expected = @('out', 'a.md', 'b.md')
         },
-        # '--' keeps a target whose own name begins with a dash.
+        # The kind reads out of a cluster that also carries -t.
+        @{ Command = 'ln -st out a.md'; Expected = @('out', 'out\a.md') },
+        # '--' keeps a target whose own name begins with a dash, and ends the option walk: an
+        # operand named '-s.md' after it must not be read as the symbolic flag.
         @{ Command = 'ln -s -- -a.md link.md'
-            Expected = @('link.md', '-a.md', 'link.md\-a.md')
+            Expected = @('link.md', 'link.md\-a.md')
         },
+        @{ Command = 'ln -- -s.md link.md'; Expected = @('link.md', '-s.md') },
         # One operand names a link in the working directory and nothing else.
         @{ Command = 'ln -s a.md'; Expected = @('a.md') },
         # mklink puts the LINK first and the TARGET second, and its options are '/'-prefixed.
@@ -2056,20 +2065,30 @@ try {
             Expected = @('link.md', 'C:\repo\README.md')
         },
         @{ Command = 'mklink /J linkdir C:\repo\docs'; Expected = @('linkdir', 'C:\repo\docs') },
-        # Lower case spells the same switch, and a relative target needs all three forms.
+        # Lower case spells the same switch. /d is symbolic, so the joined anchors carry it.
         @{ Command = 'mklink /d deep\linkdir ..\..\docs'
+            Expected = @('deep\linkdir', 'deep\linkdir\..\..\docs', 'deep\..\..\docs')
+        },
+        @{ Command = 'mklink /h deep\link.md ..\..\README.md'
+            Expected = @('deep\link.md', '..\..\README.md')
+        },
+        # A junction anchors its relative target in a way this guard has not proved, so every
+        # anchor stays.
+        @{ Command = 'mklink /j deep\linkdir ..\..\docs'
             Expected = @('deep\linkdir', '..\..\docs', 'deep\linkdir\..\..\docs', 'deep\..\..\docs')
         },
         # cp --link and cp --symbolic-link create links, so they carry the same hole as ln.
-        @{ Command = 'cp -l a.md b.md'; Expected = @('b.md', 'a.md', 'b.md\a.md') },
-        @{ Command = 'cp -s a.md b.md'; Expected = @('b.md', 'a.md', 'b.md\a.md') },
-        @{ Command = 'cp --link a.md b.md'; Expected = @('b.md', 'a.md', 'b.md\a.md') },
+        @{ Command = 'cp -l a.md b.md'; Expected = @('b.md', 'a.md') },
+        @{ Command = 'cp -s a.md b.md'; Expected = @('b.md', 'b.md\a.md') },
+        @{ Command = 'cp --link a.md b.md'; Expected = @('b.md', 'a.md') },
         @{ Command = 'cp --symbolic-link a.md b.md'
-            Expected = @('b.md', 'a.md', 'b.md\a.md')
+            Expected = @('b.md', 'b.md\a.md')
         },
         # Short options cluster. A literal list of four spellings would miss every one of these.
-        @{ Command = 'cp -al a.md b.md'; Expected = @('b.md', 'a.md', 'b.md\a.md') },
-        @{ Command = 'cp -rs a.md b.md'; Expected = @('b.md', 'a.md', 'b.md\a.md') },
+        @{ Command = 'cp -al a.md b.md'; Expected = @('b.md', 'a.md') },
+        @{ Command = 'cp -rs a.md b.md'; Expected = @('b.md', 'b.md\a.md') },
+        # Two kind flags in one command name no single kind, so every anchor stays.
+        @{ Command = 'cp -ls a.md b.md'; Expected = @('b.md', 'a.md', 'b.md\a.md') },
         # Case matters: -S is --suffix, a different option that names no link.
         @{ Command = 'cp -S .bak a.md b.md'; Expected = @('b.md') },
         # A plain copy is untouched by the new branch and still reports its destination alone.
@@ -2092,10 +2111,18 @@ try {
         @{ Command = 'New-Item -Type symboliclink -Path link.md -Target C:\repo\README.md'
             Expected = @('link.md', 'C:\repo\README.md')
         },
-        # A relative link target needs all three forms.
+        # New-Item stores a SymbolicLink target as written, so Windows anchors it to the directory
+        # holding the link. A HardLink names an existing file, so its value anchors to the working
+        # directory. A Junction keeps every anchor.
         @{ Command = 'New-Item -ItemType SymbolicLink -Path deep\link.md -Target ..\..\README.md'
-            Expected = @('deep\link.md', '..\..\README.md',
-                'deep\link.md\..\..\README.md', 'deep\..\..\README.md')
+            Expected = @('deep\link.md', 'deep\link.md\..\..\README.md', 'deep\..\..\README.md')
+        },
+        @{ Command = 'New-Item -ItemType HardLink -Path deep\link.md -Target ..\..\README.md'
+            Expected = @('deep\link.md', '..\..\README.md')
+        },
+        @{ Command = 'New-Item -ItemType Junction -Path deep\linkdir -Target ..\..\docs'
+            Expected = @('deep\linkdir', '..\..\docs',
+                'deep\linkdir\..\..\docs', 'deep\..\..\docs')
         },
         # The gate. On a File the same parameter is CONTENT, under either spelling, so reading it
         # as a path would refuse an ordinary write.
@@ -2107,13 +2134,20 @@ try {
         },
         @{ Command = 'New-Item -Path notes.md -Value plain-text'; Expected = @('notes.md') },
         @{ Command = 'New-Item -ItemType Directory -Path sub'; Expected = @('sub') },
-        # An item type the guard cannot expand could still be a link, so it fails closed.
+        # An item type the guard cannot expand could still be a link, so it fails closed. It also
+        # names no kind, so a relative target under it keeps every anchor.
         @{ Command = 'New-Item -ItemType $kind -Path link.md -Target C:\repo\README.md'
             Expected = @('link.md', 'C:\repo\README.md')
         },
-        # -Name puts the leaf under -Path, and the -Path value stays the anchor.
+        @{ Command = 'New-Item -ItemType $kind -Path deep\link.md -Target ..\..\README.md'
+            Expected = @('deep\link.md', '..\..\README.md',
+                'deep\link.md\..\..\README.md', 'deep\..\..\README.md')
+        },
+        # -Name puts the leaf under -Path, and the -Path value stays the anchor. That value is the
+        # directory holding the link, so the symbolic form joins to it once and has no parent to
+        # join to as well.
         @{ Command = 'New-Item -Path deep -Name link.md -ItemType SymbolicLink -Target ..\README.md'
-            Expected = @('deep', 'deep\link.md', '..\README.md', 'deep\..\README.md')
+            Expected = @('deep', 'deep\link.md', 'deep\..\README.md')
         },
         @{ Command = 'Copy-Item a.txt -Destination b.txt'; Expected = @('b.txt') },
         @{ Command = 'rm a.txt b.txt'; Expected = @('a.txt', 'b.txt') },
@@ -3152,20 +3186,54 @@ try {
             Command = 'ln -s src/a.cs deep/bait.md'
             Action = 'Allow'
         },
-        # The over-report the three anchors cost, pinned rather than left to a comment. Windows
-        # resolves this symbolic link inside the worktree, so the link is legitimate work. The
-        # as-written anchor climbs into <main>\.claude\worktrees, and Deny wins. Backlog 086
-        # reads the link kind and turns this case into Allow; until then the refusal is the
-        # documented price, and the message names a path no write would land on.
-        @{ Name = 'a relative symbolic link inside the worktree is over-reported'
+        # Windows resolves this symbolic link against the directory holding the link, so it stays
+        # inside the worktree and is ordinary work. Only the as-written anchor climbs into
+        # <main>\.claude\worktrees, and the guard drops that anchor once it reads the kind.
+        @{ Name = 'a relative symbolic link inside the worktree'
             Command = 'ln -s ../src/a.cs deep/bait.md'
-            Action = 'Deny'
+            Action = 'Allow'
         },
-        # Why the as-written anchor cannot simply be dropped. A HARD link resolves its source
-        # against the working directory, so this one names <main>\.claude\worktrees\README.md.
+        # Why the as-written anchor cannot be dropped for every kind. A HARD link resolves its
+        # source against the working directory, so this one names <main>\.claude\worktrees\README.md.
         # The two link-relative anchors both land inside the worktree and would allow it.
         @{ Name = 'a relative hard link only the as-written anchor catches'
             Command = 'ln ../README.md deep/bait.md'
+            Action = 'Deny'
+        },
+        # The same split, once per command form that carries a kind.
+        @{ Name = 'a relative cp symbolic link inside the worktree'
+            Command = 'cp -s ../src/a.cs deep/bait.md'
+            Action = 'Allow'
+        },
+        @{ Name = 'a relative cp hard link into main'
+            Command = 'cp -l ../README.md deep/bait.md'
+            Action = 'Deny'
+        },
+        @{ Name = 'a relative mklink symbolic link inside the worktree'
+            Command = 'cmd /c mklink deep\bait.md ..\src\a.cs'
+            Action = 'Allow'
+        },
+        @{ Name = 'a relative mklink hard link into main'
+            Command = 'cmd /c mklink /H deep\bait.md ..\README.md'
+            Action = 'Deny'
+        },
+        # A junction anchors its relative target in a way this guard has not proved, so the kind
+        # reader answers Unknown and every anchor stays. That keeps this refusal.
+        @{ Name = 'a relative mklink junction stays fail-closed'
+            Command = 'cmd /c mklink /J deep\baitdir ..\docs'
+            Action = 'Deny'
+        },
+        @{ Name = 'a relative New-Item symbolic link inside the worktree'
+            Command = 'New-Item -ItemType SymbolicLink -Path deep\bait.md -Target ..\src\a.cs'
+            Action = 'Allow'
+        },
+        @{ Name = 'a relative New-Item hard link into main'
+            Command = 'New-Item -ItemType HardLink -Path deep\bait.md -Target ..\README.md'
+            Action = 'Deny'
+        },
+        # An item type the guard cannot expand could be any kind, so every anchor stays.
+        @{ Name = 'a relative link whose kind the guard cannot read stays fail-closed'
+            Command = 'New-Item -ItemType $type -Path deep\bait.md -Target ..\README.md'
             Action = 'Deny'
         },
         # The gate from Task 5, proved at the decision layer: content is not a path.
