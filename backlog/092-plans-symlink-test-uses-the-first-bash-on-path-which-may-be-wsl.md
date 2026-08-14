@@ -5,7 +5,8 @@
 - **Epic**: Developer experience
 - **Type**: Bug
 - **Interfaces**: none (test suite)
-- **Stage**: 0-intake
+- **Difficulty**: moderate
+- **Stage**: 1-pickup
 
 ## Summary
 
