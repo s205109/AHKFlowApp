@@ -205,7 +205,25 @@ foreach ($rule in @('.claude/skills/', '.github/skills/', '.github/AGENTS.md')) 
 # C:\Windows\system32\bash.exe, whose Linux PATH has no Windows rg. So ask each candidate host
 # for rg itself, with the same non-login invocation the real run uses, and run the script with
 # the first host that answers.
+function Get-BashOnPath {
+    return @(@(Get-Command bash -All -ErrorAction SilentlyContinue) | ForEach-Object { [string] $_.Source })
+}
+
+function Get-GitExePath {
+    $git = Get-Command git -ErrorAction SilentlyContinue
+    if ($null -eq $git) { return '' }
+    return [string] $git.Source
+}
+
 function Get-BashHostCandidate {
+    param(
+        # The three inputs are injected so the suite can assert the order, the git layouts, and
+        # the de-duplication with paths that need not exist on the machine running the test.
+        [string[]] $PathBash = (Get-BashOnPath),
+        [string] $GitExe = (Get-GitExePath),
+        [scriptblock] $Exists = { param([string] $Path) Test-Path -LiteralPath $Path -PathType Leaf }
+    )
+
     $candidates = [System.Collections.Generic.List[string]]::new()
     $seen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 
@@ -213,21 +231,22 @@ function Get-BashHostCandidate {
         param([string] $Path)
 
         if ([string]::IsNullOrWhiteSpace($Path)) { return }
-        if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return }
-        $full = (Resolve-Path -LiteralPath $Path).Path
+        if (-not (& $Exists $Path)) { return }
+        # GetFullPath normalizes the separators without asking the filesystem, so a fake path
+        # de-duplicates the same way a real one does.
+        $full = [System.IO.Path]::GetFullPath($Path)
         if ($seen.Add($full)) { $candidates.Add($full) }
     }
 
     # PATH order first: that is what the picker command in .claude/settings.json resolves to.
-    foreach ($command in @(Get-Command bash -All -ErrorAction SilentlyContinue)) {
-        Add-Candidate $command.Source
+    foreach ($path in @($PathBash)) {
+        Add-Candidate $path
     }
 
     # Then the bash that ships beside git, under both layouts git.exe is installed with:
     # <root>\cmd\git.exe and <root>\mingw64\bin\git.exe.
-    $git = Get-Command git -ErrorAction SilentlyContinue
-    if ($git) {
-        $gitDir = Split-Path -Parent $git.Source
+    if (-not [string]::IsNullOrWhiteSpace($GitExe)) {
+        $gitDir = Split-Path -Parent $GitExe
         foreach ($root in @((Split-Path -Parent $gitDir), (Split-Path -Parent (Split-Path -Parent $gitDir)))) {
             if ([string]::IsNullOrWhiteSpace($root)) { continue }
             Add-Candidate (Join-Path $root 'bin\bash.exe')
@@ -238,17 +257,54 @@ function Get-BashHostCandidate {
     return $candidates.ToArray()
 }
 
-function Test-BashHostSeesRg {
+function Invoke-BashProbe {
     param([string] $BashExe)
 
-    # Returns '' when the host can run the script, otherwise the reason it was rejected.
+    # Starts one host and reports what it did. Keeping the launch here, and away from the rule
+    # that reads the result, lets the suite assert every outcome without starting a process.
+    $errorFile = [System.IO.Path]::GetTempFileName()
     try {
-        $found = (& $BashExe -c 'command -v rg' 2>$null | Out-String).Trim()
-    } catch {
-        return "cannot start ($($_.Exception.Message))"
+        try {
+            $output = (& $BashExe -c 'command -v rg' 2> $errorFile | Out-String).Trim()
+            $code = $LASTEXITCODE
+        } catch {
+            return [pscustomobject] @{ Output = ''; ExitCode = -1; StdErr = ''; Failed = $true; Message = $_.Exception.Message }
+        }
+
+        $stdErr = ''
+        if (Test-Path -LiteralPath $errorFile) {
+            $stdErr = ((Get-Content -LiteralPath $errorFile -Raw -ErrorAction SilentlyContinue) | Out-String).Trim()
+        }
+
+        return [pscustomobject] @{ Output = $output; ExitCode = $code; StdErr = $stdErr; Failed = $false; Message = '' }
+    } finally {
+        Remove-Item -LiteralPath $errorFile -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Test-BashHostSeesRg {
+    param(
+        [string] $BashExe,
+        [scriptblock] $Invoke = ${function:Invoke-BashProbe}
+    )
+
+    # Returns '' when the host can run the script, otherwise the reason it was rejected.
+    $result = & $Invoke $BashExe
+
+    if ($result.Failed) {
+        return "cannot start ($($result.Message))"
     }
 
-    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($found)) {
+    # A host can fail for a reason that has nothing to do with rg. The WSL launcher with no
+    # installed distribution is the common one: it exits non-zero and explains itself on stderr.
+    # Repeat that explanation instead of blaming rg, and keep it to one line so the skip message
+    # stays readable.
+    if ($result.ExitCode -ne 0 -and -not [string]::IsNullOrWhiteSpace($result.StdErr)) {
+        $firstLine = @($result.StdErr -split "`r?`n" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })[0]
+        return "exited $($result.ExitCode) with an error: $($firstLine.Trim())"
+    }
+
+    if ($result.ExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($result.Output)) {
         return "runs, but 'command -v rg' finds no rg on its PATH"
     }
 
@@ -322,19 +378,111 @@ Assert-True ($null -eq $noHost.BashExe) 'With no candidates there is no host to 
 Assert-True ($noHost.SkipLine.Count -eq 1) 'The no-bash case must be one line, not a header with an empty list.'
 Assert-True ($noHost.SkipLine[0] -eq 'Skipped the live @-picker checks: no bash executable was found on this host.') "The no-bash case needs its own message: '$($noHost.SkipLine[0])'."
 
-$host_ = Select-BashHost -Candidate (Get-BashHostCandidate) -Probe ${function:Test-BashHostSeesRg}
+# --- Candidate discovery: assert it with fake PATH and git locations ----------------------------
+# Discovery decides which hosts the probe ever sees. If it silently returns nothing, the live
+# check below takes the skip path and the suite still passes, so the discovery order, the
+# git-adjacent layouts, and the de-duplication all need assertions of their own.
+$existsAlways = { param([string] $Path) return $true }
+
+$underWindowsOrGit = {
+    param([string] $Path)
+
+    return ($Path -like 'X:\Windows\*' -or $Path -like 'X:\Git\*')
+}
+$ordered = @(Get-BashHostCandidate -PathBash @('X:\Windows\system32\bash.exe') -GitExe 'X:\Git\cmd\git.exe' -Exists $underWindowsOrGit)
+Assert-True ($ordered.Count -eq 3) "Discovery must find the PATH host plus both git-adjacent hosts (got $($ordered.Count): $($ordered -join ', '))."
+Assert-True ($ordered[0] -eq 'X:\Windows\system32\bash.exe') "A host on PATH must come first, because that is what a bare 'bash' resolves to (got '$($ordered[0])')."
+Assert-True ($ordered[1] -eq 'X:\Git\bin\bash.exe') "The git-adjacent hosts must follow the PATH hosts (got '$($ordered[1])')."
+Assert-True ($ordered[2] -eq 'X:\Git\usr\bin\bash.exe') "Discovery must cover both bin and usr\bin under the git root (got '$($ordered[2])')."
+
+$onlyGitUsrBin = { param([string] $Path) return ($Path -eq 'X:\Git\usr\bin\bash.exe') }
+$mingw = @(Get-BashHostCandidate -PathBash @() -GitExe 'X:\Git\mingw64\bin\git.exe' -Exists $onlyGitUsrBin)
+Assert-True ($mingw.Count -eq 1 -and $mingw[0] -eq 'X:\Git\usr\bin\bash.exe') "Discovery must walk up two levels for the mingw64 git layout (got: $($mingw -join ', '))."
+
+$anyUsrBin = { param([string] $Path) return ($Path -like 'X:\Git\usr\bin\bash.exe') }
+$deduped = @(Get-BashHostCandidate -PathBash @('X:\Git\usr\bin\bash.exe', 'x:\git\usr\bin\BASH.EXE') -GitExe 'X:\Git\cmd\git.exe' -Exists $anyUsrBin)
+Assert-True ($deduped.Count -eq 1) "One host reached by several spellings must be listed once (got: $($deduped -join ', '))."
+
+$existsNever = { param([string] $Path) return $false }
+$missing = @(Get-BashHostCandidate -PathBash @('X:\Windows\system32\bash.exe') -GitExe 'X:\Git\cmd\git.exe' -Exists $existsNever)
+Assert-True ($missing.Count -eq 0) "Discovery must drop a path that does not exist (got: $($missing -join ', '))."
+
+$blanks = @(Get-BashHostCandidate -PathBash @('', '   ') -GitExe '' -Exists $existsAlways)
+Assert-True ($blanks.Count -eq 0) "Discovery must ignore empty and whitespace entries (got: $($blanks -join ', '))."
+
+# Discovery and selection together: the exact machine shape that broke, with the WSL launcher
+# first on PATH and Git Bash behind it.
+$wslOrGitBin = {
+    param([string] $Path)
+
+    return ($Path -eq 'X:\Windows\system32\bash.exe' -or $Path -eq 'X:\Git\bin\bash.exe')
+}
+$wslFirst = @(Get-BashHostCandidate -PathBash @('X:\Windows\system32\bash.exe') -GitExe 'X:\Git\cmd\git.exe' -Exists $wslOrGitBin)
+$wslProbe = {
+    param([string] $BashExe)
+
+    if ($BashExe -eq 'X:\Windows\system32\bash.exe') { return "runs, but 'command -v rg' finds no rg on its PATH" }
+    return ''
+}
+$wslChoice = Select-BashHost -Candidate $wslFirst -Probe $wslProbe
+Assert-True ($wslChoice.BashExe -eq 'X:\Git\bin\bash.exe') "With the WSL launcher first on PATH the run must still choose Git Bash (chose '$($wslChoice.BashExe)')."
+
+# --- The real probe: assert how it reads each outcome the launcher can report -------------------
+# The launcher is injected, so every branch runs on every machine, including one with no bash.
+$seesRg = Test-BashHostSeesRg -BashExe 'X:\Git\bin\bash.exe' -Invoke {
+    param([string] $BashExe)
+
+    return [pscustomobject] @{ Output = '/c/tools/rg'; ExitCode = 0; StdErr = ''; Failed = $false; Message = '' }
+}
+Assert-True ($seesRg -eq '') "A host that prints an rg path and exits 0 must be accepted (got '$seesRg')."
+
+$noRg = Test-BashHostSeesRg -BashExe 'X:\Windows\system32\bash.exe' -Invoke {
+    param([string] $BashExe)
+
+    return [pscustomobject] @{ Output = ''; ExitCode = 1; StdErr = ''; Failed = $false; Message = '' }
+}
+Assert-True ($noRg -eq "runs, but 'command -v rg' finds no rg on its PATH") "A host that runs but finds no rg must say so (got '$noRg')."
+
+$cannotStart = Test-BashHostSeesRg -BashExe 'X:\nope\bash.exe' -Invoke {
+    param([string] $BashExe)
+
+    return [pscustomobject] @{ Output = ''; ExitCode = -1; StdErr = ''; Failed = $true; Message = 'The system cannot find the file specified.' }
+}
+Assert-True ($cannotStart -like 'cannot start (*') "A host that will not start must be reported as such (got '$cannotStart')."
+
+$brokeOnStderr = Test-BashHostSeesRg -BashExe 'X:\Windows\system32\bash.exe' -Invoke {
+    param([string] $BashExe)
+
+    return [pscustomobject] @{ Output = ''; ExitCode = 1; StdErr = "Windows Subsystem for Linux has no installed distributions.`nInstall one."; Failed = $false; Message = '' }
+}
+Assert-True ($brokeOnStderr -like '*Windows Subsystem for Linux has no installed distributions.*') "A host that fails with an error must repeat that error, not claim rg is missing (got '$brokeOnStderr')."
+Assert-True (-not ($brokeOnStderr -like '*finds no rg*')) "A startup error must not be reported as a missing rg (got '$brokeOnStderr')."
+Assert-True (-not ($brokeOnStderr -like "*`n*")) "A rejection reason must stay on one line, or the skip message breaks apart (got '$brokeOnStderr')."
+
+# The real launcher on a path that cannot run: deterministic on every machine.
+$deadPath = Test-BashHostSeesRg -BashExe (Join-Path $repoRoot 'no-such-bash.exe')
+Assert-True (-not [string]::IsNullOrWhiteSpace($deadPath)) 'The real launcher must reject a bash path that cannot run.'
+
+$host_ = Select-BashHost -Candidate @(Get-BashHostCandidate) -Probe ${function:Test-BashHostSeesRg}
 if ($host_.BashExe) {
     $bashExe = $host_.BashExe
     $suggestionUnixPath = './.claude/file-suggestion.sh'
     Push-Location $repoRoot
     try {
         $env:CLAUDE_PROJECT_DIR = $repoRoot
+        # Assert the exit code as well as the output. The script runs under 'set -uo pipefail', so
+        # a broken pipeline can still print an acceptable-looking partial list and then exit
+        # non-zero. Both queries match files in this repository, so the only correct code is 0.
         $picked = '{"query":"AGENTS.md"}' | & $bashExe $suggestionUnixPath 2>$null
+        $agentsExit = $LASTEXITCODE
+        Assert-True ($agentsExit -eq 0) "The @ picker must exit 0 for the AGENTS.md query (host: $bashExe, exit: $agentsExit)."
         $agentsHits = @($picked | Where-Object { $_.Trim() -eq 'AGENTS.md' -or $_.Trim() -eq '.github/AGENTS.md' })
         Assert-True (-not ($agentsHits -contains '.github/AGENTS.md')) 'The @ picker must not list the .github/AGENTS.md symlink mirror.'
         Assert-True ($agentsHits -contains 'AGENTS.md') "The @ picker must still list the real root AGENTS.md (host: $bashExe)."
 
         $skillPicked = '{"query":"dck-build-fix"}' | & $bashExe $suggestionUnixPath 2>$null
+        $skillExit = $LASTEXITCODE
+        Assert-True ($skillExit -eq 0) "The @ picker must exit 0 for the dck-build-fix query (host: $bashExe, exit: $skillExit)."
         $mirrorHits = @($skillPicked | Where-Object { $_ -like '.claude/skills/*' -or $_ -like '.github/skills/*' })
         Assert-True ($mirrorHits.Count -eq 0) "The @ picker must not list .claude/skills or .github/skills mirrors (got: $($mirrorHits -join ', '))."
     } finally {
