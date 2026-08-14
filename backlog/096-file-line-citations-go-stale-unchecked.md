@@ -6,7 +6,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (repo process)
 - **Difficulty**: moderate
-- **Stage**: 0-intake
+- **Stage**: 2-design
 
 ## Summary
 
@@ -86,13 +86,25 @@ a check — see the open questions below.
   line accuracy
 - The plan for 087 is `docs/superpowers/plans/2026-08-13-backlog-template-stage-field-plan.md`. It
   still carries the pre-shift numbers on purpose: it is the evidence for the root cause above
-- Spec: none yet — the three unresolved questions below decide the notation first
-- Plan: none yet — written after the spec settles the notation
+- Spec: `docs/superpowers/specs/2026-08-15-citation-freshness-check-design-096.md`
+- Plan: none yet — written after the spec review
+
+## Baseline, measured 2026-08-15
+
+Scan of every file from `git ls-files`, matching `path.ext:N` and `path.ext:N-M`:
+
+| Repository | Files | Citation-shaped | Path resolves | Does not resolve | Line past end of file |
+|---|---|---|---|---|---|
+| This one | 1451 | 257 | 109 | 148 | 0 |
+| Private plans repo | 232 | 1980 | 1312 | 668 | 13 |
+
+One citation here already carries an expected phrase, and it is stale: `docs/development/workflow.md:615`
+cites line 921 of `scripts/remove-worktree-local-dev.ps1` for text that sits on line 937.
 
 ## Unresolved questions
 
-- Notation. Line number plus an expected phrase on that line? Or drop line numbers for a quoted
-  phrase the check greps? Second is self-healing but loses the jump-to-line the terminal gives.
-- Where the expectation lives. Beside the citation, or in a manifest?
-- Scope of the first pass. Only `docs/development/workflow.md`, which has the most inbound
-  citations, or every repo file?
+The spec settles notation, expectation location, and scope. What is left:
+
+- Tier 2 stays optional. No way to detect a "new" citation, so no way to force a phrase on one.
+- Private plans repo is gitignored, so CI never sees it. Local run only — who runs it, when?
+- Fix the 13 out-of-range plan citations now, or leave them?
