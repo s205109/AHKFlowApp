@@ -101,7 +101,7 @@ function Get-BacklogProblem {
     # --- Stage field: exactly one line, a real stage name, and 9-ship for anything shipped ---
     #
     # docs/development/workflow.md:78 makes this field the durable record of where the work stands,
-    # and :481 has Ship set 9-ship in the same change that moves the item to done/. Nothing checked
+    # and :482 has Ship set 9-ship in the same change that moves the item to done/. Nothing checked
     # it before backlog 087, so an item reached done/ still reading 4-execute.
     #
     # The template is not excluded here, unlike the heading check above. It carries

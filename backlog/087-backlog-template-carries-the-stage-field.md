@@ -32,7 +32,7 @@ read it first. The template does not produce one, so items drift three ways:
 - Other items carry a Stage line that matches nothing in the template
 
 Adding the field to the template settles the spelling and the starting value. Items are filed at
-Intake, and `workflow.md:257` says an item keeps `Stage: 1-pickup` until the Difficulty stamp
+Intake, and `workflow.md:255` says an item keeps `Stage: 1-pickup` until the Difficulty stamp
 lands, so the template's own starting value needs deciding rather than guessing.
 
 ## Acceptance criteria
@@ -40,7 +40,7 @@ lands, so the template's own starting value needs deciding rather than guessing.
 - [ ] The template carries a Stage line, with a starting value the workflow document supports
 - [ ] The existing items in `backlog/`, `backlog/done/`, and `backlog/blocked/` either carry an
       accurate Stage line or are listed here as deliberately left alone
-- [ ] The rule that ships an item sets `Stage: 9-ship`, already in `workflow.md:481`, is checked
+- [ ] The rule that ships an item sets `Stage: 9-ship`, already in `workflow.md:482`, is checked
       by something other than a reviewer's eye, or the item records why it cannot be
 
 ## Stage values assigned
@@ -48,8 +48,8 @@ lands, so the template's own starting value needs deciding rather than guessing.
 Acceptance criterion 2 asks for an accurate value or a note. Every item now carries a line. These
 are the judgement calls behind the values:
 
-- **Every file in `backlog/done/` reads `9-ship`.** `docs/development/workflow.md:481` has Ship
-  set that value in the same change that moves an item into the folder, and `:720-723` freezes it
+- **Every file in `backlog/done/` reads `9-ship`.** `docs/development/workflow.md:482` has Ship
+  set that value in the same change that moves an item into the folder, and `:721-724` freezes it
   there. 69 files gained the line and one — item 080 — was corrected from `4-execute`.
 - **`backlog/blocked/058` and `backlog/blocked/068` read `4-execute`.** Both predate the field, so
   neither has a last stage to keep. Both had work executed and merged, and both stopped on one
