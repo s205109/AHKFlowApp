@@ -2080,6 +2080,52 @@ try {
         }
     }
 
+    Write-Host 'New-Item item-type resolution' -ForegroundColor Cyan
+
+    # Read through commands alone, a prefix match would pass every case in the write-target block
+    # below, and so would a different precedence. These rows fail for either. Every Expected value
+    # was read from a real New-Item run under pwsh 7.6.4.
+    $itemTypeCases = @(
+        @{ Token = 'symboliclink'; Expected = 'SymbolicLink' },
+        @{ Token = 'Sym'; Expected = 'SymbolicLink' },
+        @{ Token = 'S'; Expected = 'SymbolicLink' },
+        @{ Token = 'hardl'; Expected = 'HardLink' },
+        @{ Token = 'H'; Expected = 'HardLink' },
+        @{ Token = 'j'; Expected = 'Junction' },
+        @{ Token = 'Fi'; Expected = 'File' },
+        @{ Token = 'D'; Expected = 'Directory' },
+        # 'container' is the provider's own alias for 'directory'.
+        @{ Token = 'cont'; Expected = 'Directory' },
+        # A wildcard is honoured, which is what makes this looser than a prefix match. A prefix
+        # reader would answer $null for all four of these.
+        @{ Token = '*link'; Expected = 'SymbolicLink' },
+        @{ Token = '?ardlink'; Expected = 'HardLink' },
+        @{ Token = '[sh]ymboliclink'; Expected = 'SymbolicLink' },
+        @{ Token = 'sym*link'; Expected = 'SymbolicLink' },
+        # Precedence. Each token matches two names, and the earlier name wins.
+        @{ Token = '*'; Expected = 'Directory' },
+        @{ Token = '[dh]*'; Expected = 'Directory' },
+        @{ Token = '[fs]*'; Expected = 'File' },
+        @{ Token = '*i*l'; Expected = 'File' },
+        @{ Token = '[js]*'; Expected = 'SymbolicLink' },
+        @{ Token = '[jh]*n'; Expected = 'Junction' },
+        # A malformed pattern throws inside -like. An escaped throw would reach the entrypoint's
+        # catch, and that catch ALLOWS the write, so it has to become $null here.
+        @{ Token = '[sh*'; Expected = $null },
+        @{ Token = 'bogus'; Expected = $null },
+        @{ Token = 'directoryx'; Expected = $null },
+        # An empty item type creates a plain file whose content is the target text, not a link.
+        @{ Token = ''; Expected = 'File' }
+    )
+
+    foreach ($case in $itemTypeCases) {
+        $shown = if ($null -eq $case.Expected) { '$null' } else { $case.Expected }
+        Invoke-TestCase "Item type: '$($case.Token)' resolves to $shown" {
+            $actual = Get-AgentNewItemType -Token $case.Token
+            Assert-Equal $case.Expected $actual 'Resolved item type'
+        }
+    }
+
     Write-Host 'Write-target extraction' -ForegroundColor Cyan
 
     $writeTargetCases = @(
@@ -2197,6 +2243,19 @@ try {
         # these two walk past the link branch, so only the destination was reported.
         @{ Command = 'cp --sy a.md b.md'; Expected = @('b.md', 'b.md\a.md', 'a.md') },
         @{ Command = 'cp --lin a.md b.md'; Expected = @('b.md', 'a.md') },
+        # The shell rewrites a token before cp sees it. '--s\y' reaches cp as '--sy' and
+        # '--l${empty}in' as '--lin', so both create a link, and the guard reads neither token
+        # literally. It cuts each one at the first character a shell acts on and matches the head,
+        # so the link branch still runs. The kind reader gets no flag it can read, so the kind is
+        # Unknown and every anchor stays - the safe direction.
+        @{ Command = 'cp --s\y a.md b.md'; Expected = @('b.md', 'a.md', 'b.md\a.md') },
+        @{ Command = 'cp --l${EMPTY}in a.md b.md'; Expected = @('b.md', 'a.md', 'b.md\a.md') },
+        # A short cluster is rewritten the same way: '-a\l' reaches cp as '-al'.
+        @{ Command = 'cp -a\l a.md b.md'; Expected = @('b.md', 'a.md', 'b.md\a.md') },
+        # The head match must not swallow an ordinary option. '--sparse' shares only '--s' with
+        # '--symbolic-link', and the head here is longer than that, so this stays a plain copy.
+        @{ Command = 'cp --sparse=$WHEN a.md b.md'; Expected = @('b.md') },
+        @{ Command = 'cp --target-directory=out\sub a.md'; Expected = @('out\sub') },
         # Short options cluster. A literal list of four spellings would miss every one of these.
         @{ Command = 'cp -al a.md b.md'; Expected = @('b.md', 'a.md') },
         @{ Command = 'cp -rs a.md b.md'; Expected = @('b.md', 'b.md\a.md', 'a.md') },
@@ -2267,11 +2326,14 @@ try {
         },
         # An abbreviated NON-link kind stays a non-link kind, so the value stays content and an
         # ordinary write is not refused. 'container' is the provider's alias for 'directory'.
+        # Each row carries a -Value, so a reader that failed to resolve the item type would report
+        # it as a second path and the row would fail. Without a -Value there is nothing to read,
+        # and 'resolved to a non-link kind' and 'resolved to nothing' look identical.
         @{ Command = 'New-Item -ItemType Fi -Path notes.md -Value plain-text'
             Expected = @('notes.md')
         },
-        @{ Command = 'New-Item -ItemType D -Path sub'; Expected = @('sub') },
-        @{ Command = 'New-Item -ItemType cont -Path sub'; Expected = @('sub') },
+        @{ Command = 'New-Item -ItemType D -Path sub -Value plain-text'; Expected = @('sub') },
+        @{ Command = 'New-Item -ItemType cont -Path sub -Value plain-text'; Expected = @('sub') },
         # An item type that matches no known name creates nothing when it runs, but the guard
         # cannot tell it apart from a kind it failed to read. It fails closed.
         @{ Command = 'New-Item -ItemType bogus -Path link.md -Target C:\repo\README.md'
@@ -3439,6 +3501,20 @@ try {
         },
         @{ Name = 'an abbreviated cp link flag into main'
             Command = 'cp --lin <MAIN>\README.md <MANAGED>\bait.md'
+            Action = 'Deny'
+        },
+        # The shell rewrites the option before cp sees it, so the guard never reads the spelling
+        # that runs. Matching the literal head of the token keeps the link branch running.
+        @{ Name = 'an escaped cp symbolic flag into main'
+            Command = 'cp --s\y <MAIN>\README.md <MANAGED>\bait.md'
+            Action = 'Deny'
+        },
+        @{ Name = 'a cp link flag split by a variable into main'
+            Command = 'cp --l${EMPTY}in <MAIN>\README.md <MANAGED>\bait.md'
+            Action = 'Deny'
+        },
+        @{ Name = 'an escaped cp short cluster into main'
+            Command = 'cp -a\l <MAIN>\README.md <MANAGED>\bait.md'
             Action = 'Deny'
         },
         # The command from the backlog item. The link lands in the working directory, so the

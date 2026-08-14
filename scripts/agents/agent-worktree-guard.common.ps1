@@ -1176,6 +1176,36 @@ function Test-AgentGuardHasForceFlag {
     return $false
 }
 
+# Characters that stop a token being readable as literal text. A backslash escapes the character
+# behind it, '$' and backtick start an expansion, '%' is the cmd form, and a quote opens a run the
+# shell removes. Anything from the first of these onward is text the guard cannot predict.
+#
+# Distinct from AgentGuardUnexpandablePattern, which asks whether a PATH can be resolved. This asks
+# where a token stops being literal, and a backslash matters here while it must not matter there -
+# every Windows path holds one.
+$script:AgentGuardShellActiveChars = [char[]]@('\', '$', '`', '%', "'", '"')
+
+<#
+.SYNOPSIS
+The leading run of a token that the shell would hand over unchanged.
+
+.DESCRIPTION
+Returns everything before the first character the shell acts on, or the whole token when it holds
+none. `--s\y` gives `--s`, `--l${x}in` gives `--l`, and `--link` gives `--link`.
+
+The guard reads a command as typed, not as the shell rewrote it, so a caller that matches an
+option name has to match this head rather than the raw token. A caller that matches a PATH must
+not use this: cutting `C:\repo\README.md` at its first backslash would throw the path away.
+#>
+function Get-AgentShellLiteralHead {
+    param([string] $Token)
+
+    $token = [string] $Token
+    $cut = $token.IndexOfAny($script:AgentGuardShellActiveChars)
+    if ($cut -lt 0) { return $token }
+    return $token.Substring(0, $cut)
+}
+
 <#
 .SYNOPSIS
 True when a cp invocation carries a flag that makes it create a link instead of a copy.
@@ -1196,18 +1226,42 @@ Test-AgentLongOptionPrefix covers the long ones. GNU accepts any unambiguous abb
 '--symbolic-link' test walked past it, the link branch never ran, and only the destination was
 reported.
 
+Neither match sees the token cp sees. The shell rewrites it first, and the guard is handed the
+text as typed: `cp --s\y src dst` reaches cp as `--sy`, and `cp --l${x}in src dst` reaches it as
+`--lin`. Both create a link, and neither token matches anything above. So each token is cut at
+the first character a shell acts on, and the head is what gets matched. `--s\y` cuts to `--s`,
+which is a prefix of --symbolic-link; `-a\l` cuts to `-a`, which the cluster test then reads.
+
+The two option shapes then part company, because a cut costs them different things. A long
+option is decided by its head, so `--sparse=$WHEN` is still readable and only a head worn down
+to its dashes is not. A short cluster carries its letters one after another, so `-a\l` hides the
+very letter that names the link, and the head `-a` proves nothing. Any cut in a short cluster is
+therefore treated as a link flag rather than guessed at.
+
 Both matches over-report rather than under-report. Every cp operand is a path, so the worst
 outcome is that a plain copy reports its sources as well as its destination, which is the same
 over-report mv already makes. That is also why an ambiguous abbreviation such as '--s', which
 real cp refuses to run, is accepted here.
+
+The cut costs almost nothing in false positives, because a long option only matches when its
+head is still a prefix of one of the two names: `--sparse=$WHEN` cuts to `--sparse=`, which is a
+prefix of neither, and `--target-directory=out\sub` cuts to `--target-directory=out`.
 
 Case-sensitive: -S is --suffix, a different option that takes a value and names no link.
 #>
 function Test-AgentGuardHasLinkFlag {
     param([string[]] $Arguments)
     foreach ($arg in $Arguments) {
-        if (Test-AgentLongOptionPrefix -Token $arg -Names @('--link', '--symbolic-link')) { return $true }
-        if ($arg -cmatch '^-[a-zA-Z]*[ls]') { return $true }
+        $head = Get-AgentShellLiteralHead -Token $arg
+        if (Test-AgentLongOptionPrefix -Token $head -Names @('--link', '--symbolic-link')) { return $true }
+        if ($head -cmatch '^-[a-zA-Z]*[ls]') { return $true }
+
+        # Every operand is tested here too, and a Windows path is full of backslashes, so the
+        # rules below apply to an option only.
+        if ($arg -cnotlike '-*' -or $head.Length -eq $arg.Length) { continue }
+
+        if ($head -cnotlike '--*') { return $true }
+        if ($head -cmatch '^-+$') { return $true }
     }
     return $false
 }
@@ -2249,21 +2303,17 @@ The FileSystem provider does not compare the item type for equality. It builds t
 pattern `<token>*` and tests it, without case, against its own list of names in a fixed order.
 This reader does the same thing, so the kind it names is the kind the command would create.
 
-The behaviour was proved by running New-Item under pwsh 7.6.4 and reading back LinkType:
+So `New-Item -ItemType Sym` creates a real symbolic link, and so does `-ItemType *link`. The
+order in AgentGuardNewItemTypes above decides a token that matches two names at once: `[dh]*`
+makes a directory, not a hard link.
 
-  Sym, sym, S      a SymbolicLink        an abbreviation names the kind
-  hardl, H         a HardLink            the same for a hard link
-  Junc, JU, j      a Junction            the same for a junction
-  Fi               a plain file          an abbreviation names a non-link kind too
-  D, container     a directory           'container' is an accepted alias of 'directory'
-  *link            a SymbolicLink        a wildcard is accepted, so this is looser than a prefix
-  ?ardlink         a HardLink            '?' is honoured
-  [sh]ymboliclink  a SymbolicLink        a character class is honoured
-  x, directoryx    an error, no item     no match creates nothing
+Both the wildcard rule and the order were proved by running New-Item under pwsh 7.6.4 and reading
+back LinkType. The full result table is in
+docs/superpowers/plans/2026-08-14-guard-option-gates-abbreviations-plan.md.
 
-The order in AgentGuardNewItemTypes above was proved the same way, with patterns that match two
-names at once: '[dh]*' makes a directory, '[fs]*' and '*i*l' make a file, '[js]*' makes a
-symbolic link, and '[jh]*n' takes the junction path.
+An empty item type is the one case the wildcard rule gets wrong. '*' would name a directory, and
+the provider makes a plain FILE whose content is the target text. Either way it creates no link,
+so the answer below is 'File' and no caller behaves differently.
 
 A malformed pattern throws: `'symboliclink' -like '[sh*'` raises WildcardPatternException. The
 catch below turns that into $null. It must not escape - the entrypoint's own catch ALLOWS the
@@ -2273,6 +2323,8 @@ $null is the fail-closed answer. Every caller reads the link value for it.
 #>
 function Get-AgentNewItemType {
     param([string] $Token)
+
+    if ([string]::IsNullOrEmpty($Token)) { return 'File' }
 
     try {
         $pattern = ([string] $Token) + '*'
