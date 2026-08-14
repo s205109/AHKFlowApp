@@ -6,5 +6,11 @@
       "url": "https://learn.microsoft.com/api/mcp",
       "enabled": true
     }
+  },
+  "permission": {
+    "external_directory": {
+      "*/AHKFlowApp/docs/superpowers/**": "allow",
+      "~/.config/opencode/**": "allow"
+    }
   }
 }
