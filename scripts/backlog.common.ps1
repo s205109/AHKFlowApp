@@ -69,6 +69,14 @@ function Get-BacklogItem {
     }
 }
 
+# The eleven stage ids, in the order docs/development/workflow.md:31-43 defines them. The order
+# matters: the pointer check compares by index, never as a string, because '10-cleanup' sorts
+# below '4-execute' as a string and a finished item would slip through.
+$script:BacklogStageOrder = @(
+    '0-intake', '1-pickup', '2-design', '3-plan', '4-execute', '5-simplify',
+    '6-verify', '7-document', '8-review', '9-ship', '10-cleanup'
+)
+
 function Get-BacklogProblem {
     param([Parameter(Mandatory)][string] $BacklogRoot)
 
@@ -107,10 +115,9 @@ function Get-BacklogProblem {
     # The template is not excluded here, unlike the heading check above. It carries
     # '- **Stage**: 0-intake' and lives in backlog/ rather than done/, so it passes, and including
     # it keeps the line in the template instead of merely putting it there once.
-    $stageNames = @(
-        '0-intake', '1-pickup', '2-design', '3-plan', '4-execute', '5-simplify',
-        '6-verify', '7-document', '8-review', '9-ship', '10-cleanup'
-    )
+    # One list serves both checks. A second copy would let the two drift, and then an item could
+    # pass one stage check and fail the other on the same value. See backlog 090.
+    $stageNames = $script:BacklogStageOrder
 
     foreach ($item in $items | Where-Object { $null -ne $_.Key }) {
         if ($item.Stages.Count -ne 1) {
@@ -130,14 +137,6 @@ function Get-BacklogProblem {
 
     return $problems
 }
-
-# The eleven stage ids, in the order docs/development/workflow.md:31-43 defines them. The order
-# matters: the check compares by index, never as a string, because '10-cleanup' sorts below
-# '4-execute' as a string and a finished item would slip through.
-$script:BacklogStageOrder = @(
-    '0-intake', '1-pickup', '2-design', '3-plan', '4-execute', '5-simplify',
-    '6-verify', '7-document', '8-review', '9-ship', '10-cleanup'
-)
 
 # Stage 3's exit condition is 'Plan committed', so 4-execute is the first stage that owes a plan
 # pointer.
@@ -191,25 +190,21 @@ function Get-BacklogPointerProblem {
 
         # backlog/done/ is out of scope. The failure this check prevents happens when a session
         # picks work up, and nobody picks up a finished item. See backlog 090.
-        if ($item.RelativePath -match '/done/') { continue }
+        if ($item.Folder -eq 'done') { continue }
 
-        $lines = @(Get-Content -LiteralPath $item.Path)
-        $stageLines = @($lines | Where-Object { $_ -match '^\s*-\s+\*\*Stage\*\*:' })
+        if ($item.Stages.Count -eq 0) { continue }
 
-        if ($stageLines.Count -eq 0) { continue }
-
-        if ($stageLines.Count -gt 1) {
-            $values = ($stageLines | ForEach-Object { ($_ -replace '^\s*-\s+\*\*Stage\*\*:\s*', '').Trim() }) -join ', '
+        if ($item.Stages.Count -gt 1) {
             $problems += @"
 Backlog $($item.Key) has more than one Stage line.
   File:   $($item.RelativePath)
-  Found:  $values
+  Found:  $($item.Stages -join ', ')
   Fix:    keep exactly one '- **Stage**:' line.
 "@
             continue
         }
 
-        $stage = ($stageLines[0] -replace '^\s*-\s+\*\*Stage\*\*:\s*', '').Trim()
+        $stage = $item.Stages[0]
         $index = [array]::IndexOf($script:BacklogStageOrder, $stage)
 
         if ($index -lt 0) {
@@ -224,7 +219,7 @@ Backlog $($item.Key) has an unknown Stage value.
 
         if ($index -lt $script:BacklogPointerTriggerIndex) { continue }
 
-        $notes = @(Get-BacklogNotesLine -Line $lines)
+        $notes = @(Get-BacklogNotesLine -Line (Get-Content -LiteralPath $item.Path))
         $planLines = @($notes | Where-Object { $_ -match '^\s*-\s+Plan:' })
         $values = @($planLines | ForEach-Object { ($_ -replace '^\s*-\s+Plan:\s*', '').Trim() })
 
