@@ -52,3 +52,4 @@ source check that a written-out path gets.
   rather than a fix to the work that branch did.
 - Related: [083](083-guard-classifies-link-targets-as-write-targets.md), the other deferred
   finding from the same review.
+- Plan: none — delivered without a separate plan document.

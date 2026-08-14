@@ -28,3 +28,5 @@ As a <role>, I want <capability> so that <benefit>.
 ## Notes / dependencies
 
 - <Links to design docs, follow-up items, constraints>
+- Spec: <path, or "none — reason">
+- Plan: <path, or "none — reason">

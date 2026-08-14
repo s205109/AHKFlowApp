@@ -53,3 +53,4 @@ as running it.
   until this is fixed. Remove that bullet when it is.
 - Workaround today: pass a long message with `git commit -F <file>`.
 - Related: [083](083-guard-classifies-link-targets-as-write-targets.md), the other open guard item.
+- Plan: `docs/superpowers/plans/2026-08-13-guard-heredoc-here-string-plan.md`

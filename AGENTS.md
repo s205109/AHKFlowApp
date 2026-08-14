@@ -149,9 +149,11 @@ the narrative.
 - Prove every emitted AHK construct against [`docs/development/ahk-v2-syntax.md`](docs/development/ahk-v2-syntax.md) or the official AHK v2 docs — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
 - Prove every claim about branch or file state with a `git` or filesystem command, and keep the output — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
 - Mark anything you cannot prove **FABRICATED** in the draft. Do not delete it and do not soften it. List the fabricated items, revise, then present — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
-- Save the final spec under `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` and the final plan under `docs/superpowers/plans/YYYY-MM-DD-<topic>-plan.md` — see [workflow.md#stage-2-design](docs/development/workflow.md#stage-2-design).
+- Save the final spec under `docs/superpowers/specs/YYYY-MM-DD-<topic>-design-NNN.md` and the final plan under `docs/superpowers/plans/YYYY-MM-DD-<topic>-plan-NNN.md`, where `NNN` is the backlog number — see [workflow.md#stage-2-design](docs/development/workflow.md#stage-2-design).
 - Commit from inside the private repo with `git -C docs/superpowers commit`. `git add` from the repo root silently skips that path, so a root commit saves the plan nowhere — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
 - Commit a plan or spec to the private repo only when it relates to project improvements — code, features, infra, deployment, tests, repo tooling. Keep agent optimization, personal workflow tuning, agent housekeeping, and one-off context or config cleanups out of it — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
+- Write the plan's path back into the backlog item when you commit the plan: a `- Plan:` bullet under `## Notes / dependencies`. Use `- Plan: none — <reason>` when the item has no plan. `tests/BacklogPlanPointer.Tests.ps1` fails an open or blocked item that reaches Execute without one — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
+- Read the item's `- Plan:` bullet before you write code, and implement that plan. A plan wins over a spec. When an item carries no such bullet, glob `docs/superpowers/plans/*<NNN>*` and then list the folder — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
 
 ## Verification After Implementation
 

@@ -5,7 +5,8 @@
 - **Epic**: Development process
 - **Type**: Tooling
 - **Interfaces**: none (repo process)
-- **Stage**: 0-intake
+- **Difficulty**: complex
+- **Stage**: 9-ship
 
 ## Summary
 
@@ -79,13 +80,14 @@ step's job.
 
 ## Acceptance criteria
 
-- [ ] A session that reads a backlog item can reach that item's plan without guessing a file name
+- [x] A session that reads a backlog item can reach that item's plan without guessing a file name
       or listing a directory it was not told about.
-- [ ] `backlog/000-backlog-item-template.md` carries the slot the fix depends on, if the chosen
+- [x] `backlog/000-backlog-item-template.md` carries the slot the fix depends on, if the chosen
       fix is a template change.
-- [ ] The open items that have a plan today carry the pointer, or the item records why they are
-      left alone.
-- [ ] The rule a session must follow is written in `CLAUDE.md` or `AGENTS.md`, not only in a
+- [x] The open items that have a plan today carry the pointer, or the item records why they are
+      left alone. `071` and `087` are the only two, and both now carry it. The two blocked items
+      carry it as well.
+- [x] The rule a session must follow is written in `CLAUDE.md` or `AGENTS.md`, not only in a
       backlog item.
 
 ## Out of scope
@@ -103,3 +105,5 @@ step's job.
 - Found while implementing backlog 077 on 2026-08-13.
 - The plan that was missed:
   `docs/superpowers/plans/2026-08-13-pre-commit-main-branch-refusal-plan.md` (private plans repo).
+- Spec: `docs/superpowers/specs/2026-08-14-backlog-plan-pointer-design-090.md`
+- Plan: `docs/superpowers/plans/2026-08-14-backlog-plan-pointer-plan-090.md`

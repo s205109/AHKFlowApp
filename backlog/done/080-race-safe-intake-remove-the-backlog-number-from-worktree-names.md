@@ -68,3 +68,5 @@ inside it, so that there is no human step in the middle and no commit on `main`.
   and points here. Keep the two in step.
 - This worktree and its branch both carry `080` and keep it. The convention applies to new
   names; nothing parses the number, so an old name keeps working.
+- Plan: `docs/superpowers/plans/2026-08-13-number-free-worktree-names-plan.md`
+- Superseded plan: `docs/superpowers/plans/2026-08-13-race-safe-intake-plan.md`
