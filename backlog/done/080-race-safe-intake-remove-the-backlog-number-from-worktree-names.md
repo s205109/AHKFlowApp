@@ -39,17 +39,17 @@ inside it, so that there is no human step in the middle and no commit on `main`.
 
 ## Acceptance criteria
 
-- [ ] An agent can file a new tracked backlog item and create its worktree without any human
+- [x] An agent can file a new tracked backlog item and create its worktree without any human
       commit on `main`.
-- [ ] No backlog number appears in a worktree directory name or a branch name.
-- [ ] The worktree name and the backlog item file name are derived from one title through one
+- [x] No backlog number appears in a worktree directory name or a branch name.
+- [x] The worktree name and the backlog item file name are derived from one title through one
       slug rule, so they agree by construction.
-- [ ] Two sessions filing at the same moment may take the same number. `Get-BacklogProblem`
+- [x] Two sessions filing at the same moment may take the same number. `Get-BacklogProblem`
       and the `powershell-suites` CI job catch it once the first branch merges and the second
       refreshes, and the repair renames one file, not a branch or a worktree.
-- [ ] `docs/development/workflow.md` replaces its documented main-checkout route with the new
+- [x] `docs/development/workflow.md` replaces its documented main-checkout route with the new
       one, and the "Where Intake writes the file" note shrinks accordingly.
-- [ ] `scripts/new-worktree.ps1` keeps its PowerShell 5.1 floor.
+- [x] `scripts/new-worktree.ps1` keeps its PowerShell 5.1 floor.
 
 ## Out of scope
 
