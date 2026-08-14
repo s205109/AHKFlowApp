@@ -1176,6 +1176,36 @@ function Test-AgentGuardHasForceFlag {
     return $false
 }
 
+# Characters that stop a token being readable as literal text. A backslash escapes the character
+# behind it, '$' and backtick start an expansion, '%' is the cmd form, and a quote opens a run the
+# shell removes. Anything from the first of these onward is text the guard cannot predict.
+#
+# Distinct from AgentGuardUnexpandablePattern, which asks whether a PATH can be resolved. This asks
+# where a token stops being literal, and a backslash matters here while it must not matter there -
+# every Windows path holds one.
+$script:AgentGuardShellActiveChars = [char[]]@('\', '$', '`', '%', "'", '"')
+
+<#
+.SYNOPSIS
+The leading run of a token that the shell would hand over unchanged.
+
+.DESCRIPTION
+Returns everything before the first character the shell acts on, or the whole token when it holds
+none. `--s\y` gives `--s`, `--l${x}in` gives `--l`, and `--link` gives `--link`.
+
+The guard reads a command as typed, not as the shell rewrote it, so a caller that matches an
+option name has to match this head rather than the raw token. A caller that matches a PATH must
+not use this: cutting `C:\repo\README.md` at its first backslash would throw the path away.
+#>
+function Get-AgentShellLiteralHead {
+    param([string] $Token)
+
+    $token = [string] $Token
+    $cut = $token.IndexOfAny($script:AgentGuardShellActiveChars)
+    if ($cut -lt 0) { return $token }
+    return $token.Substring(0, $cut)
+}
+
 <#
 .SYNOPSIS
 True when a cp invocation carries a flag that makes it create a link instead of a copy.
@@ -1183,21 +1213,55 @@ True when a cp invocation carries a flag that makes it create a link instead of 
 .DESCRIPTION
 cp -l / --link makes a hard link and cp -s / --symbolic-link makes a symbolic one, so a cp
 carrying either aims at a path the way ln does. Shaped exactly like Test-AgentGuardHasForceFlag
-above, and for the same reason: short options cluster, so `cp -al src dst` carries -l inside a
-token that equals neither '-l' nor '--link', and a literal list of spellings would miss it.
+above, and for the same reason: a literal list of spellings misses too much. Both halves of that
+list are loose on purpose.
 
-The cluster match is deliberately loose - any cp cluster holding 'l' or 's' sends the command
-down the link branch. Every cp operand is a path, so the worst outcome is that a plain copy
-reports its sources as well as its destination, which is the same over-report mv already makes.
+The cluster match covers the short spellings - any cp cluster holding 'l' or 's' sends the
+command down the link branch, so `cp -al src dst` is read even though its token equals neither
+'-l' nor '--link'.
+
+Test-AgentLongOptionPrefix covers the long ones. GNU accepts any unambiguous abbreviation, so
+`cp --sy src dst` really does create a symbolic link. The cluster pattern cannot catch it:
+'[a-zA-Z]*' will not cross the second '-', so '[ls]' is tested against '-' and fails. An exact
+'--symbolic-link' test walked past it, the link branch never ran, and only the destination was
+reported.
+
+Neither match sees the token cp sees. The shell rewrites it first, and the guard is handed the
+text as typed: `cp --s\y src dst` reaches cp as `--sy`, and `cp --l${x}in src dst` reaches it as
+`--lin`. Both create a link, and neither token matches anything above. So each token is cut at
+the first character a shell acts on, and the head is what gets matched. `--s\y` cuts to `--s`,
+which is a prefix of --symbolic-link; `-a\l` cuts to `-a`, which the cluster test then reads.
+
+The two option shapes then part company, because a cut costs them different things. A long
+option is decided by its head, so `--sparse=$WHEN` is still readable and only a head worn down
+to its dashes is not. A short cluster carries its letters one after another, so `-a\l` hides the
+very letter that names the link, and the head `-a` proves nothing. Any cut in a short cluster is
+therefore treated as a link flag rather than guessed at.
+
+Both matches over-report rather than under-report. Every cp operand is a path, so the worst
+outcome is that a plain copy reports its sources as well as its destination, which is the same
+over-report mv already makes. That is also why an ambiguous abbreviation such as '--s', which
+real cp refuses to run, is accepted here.
+
+The cut costs almost nothing in false positives, because a long option only matches when its
+head is still a prefix of one of the two names: `--sparse=$WHEN` cuts to `--sparse=`, which is a
+prefix of neither, and `--target-directory=out\sub` cuts to `--target-directory=out`.
 
 Case-sensitive: -S is --suffix, a different option that takes a value and names no link.
 #>
 function Test-AgentGuardHasLinkFlag {
     param([string[]] $Arguments)
     foreach ($arg in $Arguments) {
-        if ($arg -ceq '--link') { return $true }
-        if ($arg -ceq '--symbolic-link') { return $true }
-        if ($arg -cmatch '^-[a-zA-Z]*[ls]') { return $true }
+        $head = Get-AgentShellLiteralHead -Token $arg
+        if (Test-AgentLongOptionPrefix -Token $head -Names @('--link', '--symbolic-link')) { return $true }
+        if ($head -cmatch '^-[a-zA-Z]*[ls]') { return $true }
+
+        # Every operand is tested here too, and a Windows path is full of backslashes, so the
+        # rules below apply to an option only.
+        if ($arg -cnotlike '-*' -or $head.Length -eq $arg.Length) { continue }
+
+        if ($head -cnotlike '--*') { return $true }
+        if ($head -cmatch '^-+$') { return $true }
     }
     return $false
 }
@@ -1597,9 +1661,16 @@ $script:AgentGuardWriteLastPositional = @('cp', 'mv', 'install')
 # would otherwise see only the first. ln leaves the last-positional table above for this reason.
 $script:AgentGuardLinkCommands = @('ln', 'mklink')
 
-# The New-Item item types that make a link. Matched without case, because -ItemType is not
-# case-sensitive.
-$script:AgentGuardLinkItemTypes = @('symboliclink', 'hardlink', 'junction')
+# The New-Item item types the FileSystem provider knows, in the order it tries them, paired with
+# the name each one resolves to. Get-AgentNewItemType below walks this table. 'container' is an
+# accepted alias of 'directory', which is why the two share a row.
+$script:AgentGuardNewItemTypes = @(
+    @{ Names = @('directory', 'container'); Resolved = 'Directory' },
+    @{ Names = @('file'); Resolved = 'File' },
+    @{ Names = @('symboliclink'); Resolved = 'SymbolicLink' },
+    @{ Names = @('junction'); Resolved = 'Junction' },
+    @{ Names = @('hardlink'); Resolved = 'HardLink' }
+)
 
 # Cmdlet name -> the parameter naming its write target. Positional fallbacks are handled below.
 $script:AgentGuardWriteCmdlets = @{
@@ -2225,6 +2296,54 @@ function Get-AgentLinkWriteTarget {
 
 <#
 .SYNOPSIS
+The item type a New-Item -ItemType token resolves to, or $null when it resolves to none.
+
+.DESCRIPTION
+The FileSystem provider does not compare the item type for equality. It builds the wildcard
+pattern `<token>*` and tests it, without case, against its own list of names in a fixed order.
+This reader does the same thing, so the kind it names is the kind the command would create.
+
+So `New-Item -ItemType Sym` creates a real symbolic link, and so does `-ItemType *link`. The
+order in AgentGuardNewItemTypes above decides a token that matches two names at once: `[dh]*`
+makes a directory, not a hard link.
+
+Both the wildcard rule and the order were proved by running New-Item under pwsh 7.6.4 and reading
+back LinkType. The full result table is in
+docs/superpowers/plans/2026-08-14-guard-option-gates-abbreviations-plan.md.
+
+An empty item type is the one case the wildcard rule gets wrong. '*' would name a directory, and
+the provider makes a plain FILE whose content is the target text. Either way it creates no link,
+so the answer below is 'File' and no caller behaves differently.
+
+A malformed pattern throws: `'symboliclink' -like '[sh*'` raises WildcardPatternException. The
+catch below turns that into $null. It must not escape - the entrypoint's own catch ALLOWS the
+write, so a throw here would open the gate rather than close it.
+
+$null is the fail-closed answer. Every caller reads the link value for it.
+#>
+function Get-AgentNewItemType {
+    param([string] $Token)
+
+    if ([string]::IsNullOrEmpty($Token)) { return 'File' }
+
+    try {
+        $pattern = ([string] $Token) + '*'
+        foreach ($entry in $script:AgentGuardNewItemTypes) {
+            foreach ($name in $entry.Names) {
+                # -like, not -clike: the provider matches the item type without case.
+                if ($name -like $pattern) { return $entry.Resolved }
+            }
+        }
+    }
+    catch {
+        return $null
+    }
+
+    return $null
+}
+
+<#
+.SYNOPSIS
 The path a New-Item link points at, or nothing when the command creates no link.
 
 .DESCRIPTION
@@ -2234,15 +2353,19 @@ says a link is being created. On a File the same value is content:
 `New-Item -ItemType File -Path notes.md -Value 'cost is $5'` would otherwise be read as a path,
 meet AgentGuardUnexpandablePattern, and be refused as an unresolved write target.
 
-Three things decide the gate. A named link kind reads the value. A named non-link kind does not.
-An ItemType the guard cannot expand - a variable - could still be a link, so it reads the value
-and fails closed. No -ItemType at all creates a file, so it reads nothing.
+Three things decide the gate. A link kind reads the value. A non-link kind does not. An ItemType
+the guard cannot resolve - a variable, or a spelling the provider itself would refuse - could
+still be a link, so it reads the value and fails closed. No -ItemType at all creates a file, so it
+reads nothing.
 
 The item type also names the anchor for a relative target. New-Item stores a SymbolicLink target
 as written - `-Target .\Notice.txt` reads back as `.\Notice.txt` - so Windows resolves it against
 the directory holding the link. A HardLink names an existing file, so its value resolves against
-the working directory. A Junction, and an item type the guard cannot expand, both fall to
+the working directory. A Junction, and an item type the guard cannot resolve, both fall to
 'Unknown', which keeps every anchor.
+
+Get-AgentNewItemType does the resolving, because the provider does not match the item type
+exactly: `New-Item -ItemType Sym` creates a real symbolic link.
 #>
 function Get-AgentNewItemLinkTarget {
     param([string[]] $Arguments, [string] $LinkPath)
@@ -2253,18 +2376,25 @@ function Get-AgentNewItemLinkTarget {
     if ($null -eq $itemType) { return $found.ToArray() }
 
     # The tokenizer strips quotes, so this trim only ever matters for a spelling it kept.
-    $kind = ([string] $itemType).Trim().Trim("'", '"').ToLowerInvariant()
-    $canExpand = $kind -notmatch $script:AgentGuardUnexpandablePattern
-    if ($canExpand -and ($script:AgentGuardLinkItemTypes -notcontains $kind)) {
-        return $found.ToArray()
+    $kind = ([string] $itemType).Trim().Trim("'", '"')
+
+    # A variable item type is read before the wildcard reader sees it. Its text names no kind, and
+    # the value it expands to could name any of them.
+    $resolved = if ($kind -match $script:AgentGuardUnexpandablePattern) {
+        $null
     }
+    else {
+        Get-AgentNewItemType -Token $kind
+    }
+
+    if ($resolved -eq 'Directory' -or $resolved -eq 'File') { return $found.ToArray() }
 
     $linkTarget = Get-AgentPrefixedParameterValue -Arguments $Arguments -Names @('Target', 'Value')
     if ($null -eq $linkTarget) { return $found.ToArray() }
 
-    $linkKind = switch ($kind) {
-        'symboliclink' { 'Symbolic' }
-        'hardlink' { 'Hard' }
+    $linkKind = switch ($resolved) {
+        'SymbolicLink' { 'Symbolic' }
+        'HardLink' { 'Hard' }
         default { 'Unknown' }
     }
 

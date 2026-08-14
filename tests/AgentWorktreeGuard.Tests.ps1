@@ -2055,8 +2055,10 @@ try {
         @{ Leaf = 'cp'; Arguments = @('-l'); Expected = 'Hard' },
         @{ Leaf = 'cp'; Arguments = @('--symbolic-link'); Expected = 'Symbolic' },
         @{ Leaf = 'cp'; Arguments = @('--sym'); Expected = 'Symbolic' },
+        @{ Leaf = 'cp'; Arguments = @('--sy'); Expected = 'Symbolic' },
         @{ Leaf = 'cp'; Arguments = @('--link'); Expected = 'Hard' },
         @{ Leaf = 'cp'; Arguments = @('--lin'); Expected = 'Hard' },
+        @{ Leaf = 'cp'; Arguments = @('--l'); Expected = 'Hard' },
         # -r is RECURSIVE for cp, not relative, so it changes no kind.
         @{ Leaf = 'cp'; Arguments = @('-rs'); Expected = 'Symbolic' },
         @{ Leaf = 'cp'; Arguments = @('-al'); Expected = 'Hard' },
@@ -2075,6 +2077,52 @@ try {
         Invoke-TestCase "Link kind: $($case.Leaf) $spelling" {
             $kind = Get-AgentLinkKind -Leaf $case.Leaf -Arguments $case.Arguments
             Assert-Equal $case.Expected $kind 'Kind'
+        }
+    }
+
+    Write-Host 'New-Item item-type resolution' -ForegroundColor Cyan
+
+    # Read through commands alone, a prefix match would pass every case in the write-target block
+    # below, and so would a different precedence. These rows fail for either. Every Expected value
+    # was read from a real New-Item run under pwsh 7.6.4.
+    $itemTypeCases = @(
+        @{ Token = 'symboliclink'; Expected = 'SymbolicLink' },
+        @{ Token = 'Sym'; Expected = 'SymbolicLink' },
+        @{ Token = 'S'; Expected = 'SymbolicLink' },
+        @{ Token = 'hardl'; Expected = 'HardLink' },
+        @{ Token = 'H'; Expected = 'HardLink' },
+        @{ Token = 'j'; Expected = 'Junction' },
+        @{ Token = 'Fi'; Expected = 'File' },
+        @{ Token = 'D'; Expected = 'Directory' },
+        # 'container' is the provider's own alias for 'directory'.
+        @{ Token = 'cont'; Expected = 'Directory' },
+        # A wildcard is honoured, which is what makes this looser than a prefix match. A prefix
+        # reader would answer $null for all four of these.
+        @{ Token = '*link'; Expected = 'SymbolicLink' },
+        @{ Token = '?ardlink'; Expected = 'HardLink' },
+        @{ Token = '[sh]ymboliclink'; Expected = 'SymbolicLink' },
+        @{ Token = 'sym*link'; Expected = 'SymbolicLink' },
+        # Precedence. Each token matches two names, and the earlier name wins.
+        @{ Token = '*'; Expected = 'Directory' },
+        @{ Token = '[dh]*'; Expected = 'Directory' },
+        @{ Token = '[fs]*'; Expected = 'File' },
+        @{ Token = '*i*l'; Expected = 'File' },
+        @{ Token = '[js]*'; Expected = 'SymbolicLink' },
+        @{ Token = '[jh]*n'; Expected = 'Junction' },
+        # A malformed pattern throws inside -like. An escaped throw would reach the entrypoint's
+        # catch, and that catch ALLOWS the write, so it has to become $null here.
+        @{ Token = '[sh*'; Expected = $null },
+        @{ Token = 'bogus'; Expected = $null },
+        @{ Token = 'directoryx'; Expected = $null },
+        # An empty item type creates a plain file whose content is the target text, not a link.
+        @{ Token = ''; Expected = 'File' }
+    )
+
+    foreach ($case in $itemTypeCases) {
+        $shown = if ($null -eq $case.Expected) { '$null' } else { $case.Expected }
+        Invoke-TestCase "Item type: '$($case.Token)' resolves to $shown" {
+            $actual = Get-AgentNewItemType -Token $case.Token
+            Assert-Equal $case.Expected $actual 'Resolved item type'
         }
     }
 
@@ -2191,6 +2239,23 @@ try {
         @{ Command = 'cp --symbolic-link a.md b.md'
             Expected = @('b.md', 'b.md\a.md', 'a.md')
         },
+        # GNU accepts any unambiguous abbreviation of a long option. An exact-equality gate let
+        # these two walk past the link branch, so only the destination was reported.
+        @{ Command = 'cp --sy a.md b.md'; Expected = @('b.md', 'b.md\a.md', 'a.md') },
+        @{ Command = 'cp --lin a.md b.md'; Expected = @('b.md', 'a.md') },
+        # The shell rewrites a token before cp sees it. '--s\y' reaches cp as '--sy' and
+        # '--l${empty}in' as '--lin', so both create a link, and the guard reads neither token
+        # literally. It cuts each one at the first character a shell acts on and matches the head,
+        # so the link branch still runs. The kind reader gets no flag it can read, so the kind is
+        # Unknown and every anchor stays - the safe direction.
+        @{ Command = 'cp --s\y a.md b.md'; Expected = @('b.md', 'a.md', 'b.md\a.md') },
+        @{ Command = 'cp --l${EMPTY}in a.md b.md'; Expected = @('b.md', 'a.md', 'b.md\a.md') },
+        # A short cluster is rewritten the same way: '-a\l' reaches cp as '-al'.
+        @{ Command = 'cp -a\l a.md b.md'; Expected = @('b.md', 'a.md', 'b.md\a.md') },
+        # The head match must not swallow an ordinary option. '--sparse' shares only '--s' with
+        # '--symbolic-link', and the head here is longer than that, so this stays a plain copy.
+        @{ Command = 'cp --sparse=$WHEN a.md b.md'; Expected = @('b.md') },
+        @{ Command = 'cp --target-directory=out\sub a.md'; Expected = @('out\sub') },
         # Short options cluster. A literal list of four spellings would miss every one of these.
         @{ Command = 'cp -al a.md b.md'; Expected = @('b.md', 'a.md') },
         @{ Command = 'cp -rs a.md b.md'; Expected = @('b.md', 'b.md\a.md', 'a.md') },
@@ -2241,6 +2306,39 @@ try {
         },
         @{ Command = 'New-Item -Path notes.md -Value plain-text'; Expected = @('notes.md') },
         @{ Command = 'New-Item -ItemType Directory -Path sub'; Expected = @('sub') },
+        # The FileSystem provider matches the item type as the wildcard '<token>*', so an
+        # abbreviation names a real kind. `New-Item -ItemType Sym` creates a symbolic link, and an
+        # exact-match gate read no target for it.
+        @{ Command = 'New-Item -ItemType Sym -Path link.md -Target C:\repo\README.md'
+            Expected = @('link.md', 'C:\repo\README.md')
+        },
+        @{ Command = 'New-Item -ItemType j -Path linkdir -Target C:\repo\docs'
+            Expected = @('linkdir', 'C:\repo\docs')
+        },
+        # The abbreviation has to name the KIND too, not just reach the reader. A symbolic kind
+        # drops the as-written anchor and keeps the two joined ones; a hard kind does the reverse.
+        # An 'Unknown' kind would keep all three and be visible here.
+        @{ Command = 'New-Item -ItemType Sym -Path deep\link.md -Target ..\..\README.md'
+            Expected = @('deep\link.md', 'deep\link.md\..\..\README.md', 'deep\..\..\README.md')
+        },
+        @{ Command = 'New-Item -ItemType hardl -Path deep\link.md -Target ..\..\README.md'
+            Expected = @('deep\link.md', '..\..\README.md')
+        },
+        # An abbreviated NON-link kind stays a non-link kind, so the value stays content and an
+        # ordinary write is not refused. 'container' is the provider's alias for 'directory'.
+        # Each row carries a -Value, so a reader that failed to resolve the item type would report
+        # it as a second path and the row would fail. Without a -Value there is nothing to read,
+        # and 'resolved to a non-link kind' and 'resolved to nothing' look identical.
+        @{ Command = 'New-Item -ItemType Fi -Path notes.md -Value plain-text'
+            Expected = @('notes.md')
+        },
+        @{ Command = 'New-Item -ItemType D -Path sub -Value plain-text'; Expected = @('sub') },
+        @{ Command = 'New-Item -ItemType cont -Path sub -Value plain-text'; Expected = @('sub') },
+        # An item type that matches no known name creates nothing when it runs, but the guard
+        # cannot tell it apart from a kind it failed to read. It fails closed.
+        @{ Command = 'New-Item -ItemType bogus -Path link.md -Target C:\repo\README.md'
+            Expected = @('link.md', 'C:\repo\README.md')
+        },
         # An item type the guard cannot expand could still be a link, so it fails closed. It also
         # names no kind, so a relative target under it keeps every anchor.
         @{ Command = 'New-Item -ItemType $kind -Path link.md -Target C:\repo\README.md'
@@ -3394,6 +3492,61 @@ try {
         @{ Name = 'an ordinary file write with a value is untouched'
             Command = 'New-Item -ItemType File -Path <MANAGED>\notes.md -Value plain-text'
             Action = 'Allow'
+        },
+        # Both gates in front of the link branch used to compare for equality, and both real tools
+        # accept a shorter spelling. Each row below is a command that walked past its gate.
+        @{ Name = 'an abbreviated cp symbolic flag into main'
+            Command = 'cp --sy <MAIN>\README.md <MANAGED>\bait.md'
+            Action = 'Deny'
+        },
+        @{ Name = 'an abbreviated cp link flag into main'
+            Command = 'cp --lin <MAIN>\README.md <MANAGED>\bait.md'
+            Action = 'Deny'
+        },
+        # The shell rewrites the option before cp sees it, so the guard never reads the spelling
+        # that runs. Matching the literal head of the token keeps the link branch running.
+        @{ Name = 'an escaped cp symbolic flag into main'
+            Command = 'cp --s\y <MAIN>\README.md <MANAGED>\bait.md'
+            Action = 'Deny'
+        },
+        @{ Name = 'a cp link flag split by a variable into main'
+            Command = 'cp --l${EMPTY}in <MAIN>\README.md <MANAGED>\bait.md'
+            Action = 'Deny'
+        },
+        @{ Name = 'an escaped cp short cluster into main'
+            Command = 'cp -a\l <MAIN>\README.md <MANAGED>\bait.md'
+            Action = 'Deny'
+        },
+        # The command from the backlog item. The link lands in the working directory, so the
+        # directory holding it IS the working directory and the as-written anchor names the target.
+        @{ Name = 'an abbreviated cp symbolic flag with a relative target'
+            Command = 'cp --sy ../README.md b.md'
+            Action = 'Deny'
+        },
+        @{ Name = 'an abbreviated New-Item symbolic item type into main'
+            Command = 'New-Item -ItemType Sym -Path <MANAGED>\bait.md -Target <MAIN>\README.md'
+            Action = 'Deny'
+        },
+        @{ Name = 'an abbreviated New-Item hard link item type into main'
+            Command = 'New-Item -ItemType hardl -Path <MANAGED>\bait.md -Target <MAIN>\README.md'
+            Action = 'Deny'
+        },
+        # An abbreviated item type has to name the kind it means. These two rows split on the kind:
+        # an 'Unknown' kind keeps every anchor and would turn the Allow row into a Deny, and the
+        # Deny row below is caught by the as-written anchor alone.
+        @{ Name = 'an abbreviated symbolic item type reads as symbolic'
+            Command = 'New-Item -ItemType Sym -Path deep\bait.md -Target ..\src\a.cs'
+            Action = 'Allow'
+        },
+        @{ Name = 'an abbreviated hard link item type reads as hard'
+            Command = 'New-Item -ItemType hardl -Path deep\bait.md -Target ..\README.md'
+            Action = 'Deny'
+        },
+        # An item type the guard cannot resolve to a known name fails closed, the same way a
+        # variable item type does.
+        @{ Name = 'an unknown item type stays fail-closed'
+            Command = 'New-Item -ItemType bogus -Path deep\bait.md -Target ..\README.md'
+            Action = 'Deny'
         }
     )
 
