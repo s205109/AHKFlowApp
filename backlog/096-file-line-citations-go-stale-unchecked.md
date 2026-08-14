@@ -69,6 +69,8 @@ a check — see the open questions below.
       the other is out of scope
 - [ ] A fixture proves both directions: a drifted citation fails the check, and an accurate one
       passes
+- [ ] A citation on a line the pull request adds or edits must use the checkable notation. An
+      unchanged citation is grandfathered, so no bulk rewrite is needed
 - [ ] `AGENTS.md` says how to write a citation so the check can verify it, and the rule that
       demands `file:line` proof points at that notation
 
