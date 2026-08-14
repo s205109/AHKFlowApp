@@ -5,6 +5,7 @@
 - **Epic**: Agent tooling
 - **Type**: Feature
 - **Interfaces**: UI | API | CLI (none — CI and local tooling only)
+- **Stage**: 9-ship
 
 ## Summary
 

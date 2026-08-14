@@ -5,6 +5,7 @@
 - **Epic**: Accessibility
 - **Type**: Defect
 - **Interfaces**: UI
+- **Stage**: 9-ship
 
 ## Summary
 

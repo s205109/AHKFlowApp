@@ -5,6 +5,7 @@
 - **Epic**: Hotkeys
 - **Type**: Feature
 - **Interfaces**: API
+- **Stage**: 9-ship
 
 ## Summary
 

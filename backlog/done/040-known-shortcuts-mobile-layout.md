@@ -5,6 +5,7 @@
 - **Epic**: Hotkey safety
 - **Type**: Feature
 - **Interfaces**: UI
+- **Stage**: 9-ship
 
 ## Summary
 
