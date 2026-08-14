@@ -25,7 +25,8 @@ The workflow document treats the field as required. `docs/development/workflow.m
 `Stage` field in the backlog item the durable stage record, and line 80 tells a resumed session to
 read it first. The template does not produce one, so items drift three ways:
 
-- `backlog/done/084-guard-fails-closed-on-pipeline-bound-move-sources.md` has no Stage line
+- `backlog/done/080-race-safe-intake-remove-the-backlog-number-from-worktree-names.md` reached
+  `backlog/done/` still reading `Stage: 4-execute`
 - `backlog/done/076-guard-exception-commit-to-plans-repo-from-worktree.md` reached `backlog/done/`
   still reading `Stage: 3-plan` (corrected in pull request #296)
 - Other items carry a Stage line that matches nothing in the template
@@ -39,8 +40,22 @@ lands, so the template's own starting value needs deciding rather than guessing.
 - [ ] The template carries a Stage line, with a starting value the workflow document supports
 - [ ] The existing items in `backlog/`, `backlog/done/`, and `backlog/blocked/` either carry an
       accurate Stage line or are listed here as deliberately left alone
-- [ ] The rule that ships an item sets `Stage: 9-ship`, already in `workflow.md:480`, is checked
+- [ ] The rule that ships an item sets `Stage: 9-ship`, already in `workflow.md:481`, is checked
       by something other than a reviewer's eye, or the item records why it cannot be
+
+## Stage values assigned
+
+Acceptance criterion 2 asks for an accurate value or a note. Every item now carries a line. These
+are the judgement calls behind the values:
+
+- **Every file in `backlog/done/` reads `9-ship`.** `docs/development/workflow.md:481` has Ship
+  set that value in the same change that moves an item into the folder, and `:720-723` freezes it
+  there. 69 files gained the line and one — item 080 — was corrected from `4-execute`.
+- **`backlog/blocked/058` and `backlog/blocked/068` read `4-execute`.** Both predate the field, so
+  neither has a last stage to keep. Both had work executed and merged, and both stopped on one
+  acceptance box that needs an answer from outside this repository.
+- **`backlog/071` keeps `8-review`, and the other open items keep the values they carry.** This
+  item does not re-judge another item's stage.
 
 ## Out of scope
 
