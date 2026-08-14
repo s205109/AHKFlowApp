@@ -1,4 +1,4 @@
-# 093 - File line citations go stale unchecked
+# 096 - File line citations go stale unchecked
 
 ## Metadata
 
@@ -86,6 +86,8 @@ a check — see the open questions below.
   line accuracy
 - The plan for 087 is `docs/superpowers/plans/2026-08-13-backlog-template-stage-field-plan.md`. It
   still carries the pre-shift numbers on purpose: it is the evidence for the root cause above
+- Spec: none yet — the three unresolved questions below decide the notation first
+- Plan: none yet — written after the spec settles the notation
 
 ## Unresolved questions
 
