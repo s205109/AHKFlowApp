@@ -418,12 +418,11 @@ try {
     Assert-True ($spoofSubjects -match '(?m)^commit:') 'Sanity check: GIT_REFLOG_ACTION must really have forged a "commit:" ref-log subject.'
     Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-spoof')) 'A forged "commit:" ref-log subject must not count as own commits.'
 
-    # The two signals must come from the SAME ref-log entry, or a stacked branch combines them.
-    # `new-worktree.ps1 -BaseRef <branch>` starts a branch at another branch's tip. When that base
-    # was merged with a merge commit, its tip is a non-first parent, so the 'branch: Created from'
-    # entry alone satisfies the structural half. Forging a 'commit:' subject onto a later
-    # fast-forward then satisfies the other half from a DIFFERENT entry, and an unstarted worktree
-    # gets deleted. The structural proof has to come from the 'commit'-prefixed entry itself.
+    # 'branch: Created from' must never supply the merge proof. `new-worktree.ps1 -BaseRef <branch>`
+    # starts a branch at another branch's tip. When that base was merged with a merge commit, its
+    # tip is a non-first parent, so that entry alone satisfies the structural half. Forging a
+    # 'commit:' subject onto a later fast-forward then supplies the work half, and an unstarted
+    # worktree gets deleted. Only commit entries and proven rebase entries may carry merge proof.
     $stackedPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-stacked-spoof' -NoCommits -BaseRef 'feat-done'
     Invoke-TestGitWithReflogAction -RepoDir $stackedPath -Action 'commit' -GitArgs @('merge', '--ff-only', 'main') | Out-Null
     $stackedEntries = (Invoke-TestGit $repo @('reflog', 'show', '--format=%H %gs', 'refs/heads/feat-stacked-spoof')) -join "`n"
@@ -472,6 +471,59 @@ try {
     Assert-True ($mergeParents -match [regex]::Escape($tip.Trim())) 'Sanity check: the rebased tip must really be a merge parent, or this test proves nothing.'
 
     Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-unstarted-rebase')) 'An unstarted branch rebased onto a merged branch must report no merged own work.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: a reset branch cannot borrow an unrelated rebase as merge proof -------------
+# The work proof and the merge proof are separate signals, so they must still describe the SAME
+# work. Commit, reset the commit away, then rebase the now-empty branch onto an already-merged
+# branch: the old 'commit' entry proves work that no longer exists anywhere, and the
+# 'rebase (finish)' entry lands on another branch's merged tip. No branch contains the abandoned
+# commit, so removing this worktree would take its last practical recovery path with it.
+$repo = New-TempGitRepo
+try {
+    Add-TestWorktree -RepoDir $repo -BranchName 'feat-merged-elsewhere' | Out-Null
+    $resetPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-reset' -NoCommits -BaseRef 'main^'
+
+    Set-Content -LiteralPath (Join-Path $resetPath 'abandoned.txt') -Value 'work nobody merged' -Encoding utf8
+    Invoke-TestGit $resetPath @('add', '-A') | Out-Null
+    Invoke-TestGit $resetPath @('commit', '-m', 'abandoned work') | Out-Null
+    $abandonedSha = ((Invoke-TestGit $resetPath @('rev-parse', 'HEAD')) -join '').Trim()
+    Invoke-TestGit $resetPath @('reset', '--hard', 'HEAD~1') | Out-Null
+    Invoke-TestGit $resetPath @('rebase', 'feat-merged-elsewhere') | Out-Null
+
+    $containing = ((Invoke-TestGit $repo @('branch', '--contains', $abandonedSha)) -join '').Trim()
+    Assert-True (-not $containing) 'Sanity check: no branch may contain the abandoned commit, or the test proves nothing.'
+
+    Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-reset')) 'A branch whose commit was reset away must not borrow an unrelated rebase as merge proof.'
+
+    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
+    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
+    Assert-True (-not ($keys -contains (ConvertTo-Key $resetPath))) 'A branch whose commit was reset away must never be eligible for cleanup.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: a forged 'commit (finish)' subject cannot prove work ------------------------
+# GIT_REFLOG_ACTION rewrites the FIRST word of the subject, so a rebase can be made to read
+# 'commit (finish): ...'. A prefix test on 'commit' accepts it, and the same entry carries the
+# merged tip, so both proofs come from one forged entry. Git itself only ever writes 'commit:',
+# 'commit (amend):', 'commit (merge):', 'commit (initial):' and 'commit (cherry-pick):'.
+$repo = New-TempGitRepo
+try {
+    Add-TestWorktree -RepoDir $repo -BranchName 'feat-merged-target' | Out-Null
+    $forgedPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-forged-finish' -NoCommits -BaseRef 'main^'
+    Invoke-TestGitWithReflogAction -RepoDir $forgedPath -Action 'commit' -GitArgs @('rebase', 'feat-merged-target') | Out-Null
+
+    $forgedEntries = (Invoke-TestGit $repo @('reflog', 'show', '--format=%H %gs', 'refs/heads/feat-forged-finish')) -join "`n"
+    Assert-True ($forgedEntries -match '(?m)commit \(finish\):') 'Sanity check: the rebase must really have written a forged "commit (finish):" subject.'
+
+    Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-forged-finish')) 'A forged "commit (finish):" subject must not count as own commits.'
+
+    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
+    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
+    Assert-True (-not ($keys -contains (ConvertTo-Key $forgedPath))) 'A forged "commit (finish):" subject must not make an unstarted worktree eligible.'
 } finally {
     Remove-TempTree $repo
 }
