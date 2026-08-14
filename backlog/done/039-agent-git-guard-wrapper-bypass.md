@@ -5,6 +5,7 @@
 - **Epic**: Agent tooling
 - **Type**: Bug
 - **Interfaces**: None (agent guardrails / repo tooling)
+- **Stage**: 9-ship
 
 ## Summary
 

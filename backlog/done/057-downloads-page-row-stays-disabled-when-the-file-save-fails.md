@@ -5,6 +5,7 @@
 - **Epic**: Script generation & download
 - **Type**: Defect
 - **Interfaces**: UI
+- **Stage**: 9-ship
 
 ## Summary
 

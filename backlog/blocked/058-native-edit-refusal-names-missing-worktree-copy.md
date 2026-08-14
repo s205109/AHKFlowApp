@@ -6,6 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: UI | API | CLI (none — agent tooling only)
 - **Status**: Blocked since 2026-08-07 — see the section below
+- **Stage**: 4-execute
 
 ## Blocked — waiting on an upstream report that has not been filed
 

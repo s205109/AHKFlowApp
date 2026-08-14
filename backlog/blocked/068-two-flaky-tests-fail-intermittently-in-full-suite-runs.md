@@ -6,6 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: UI | API | CLI (none — test code only)
 - **Status**: Blocked since 2026-08-10 — see the section below
+- **Stage**: 4-execute
 
 ## Blocked — waiting for flake A to fail again
 

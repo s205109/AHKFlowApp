@@ -5,6 +5,7 @@
 - **Epic**: Hotkeys
 - **Type**: Refactor
 - **Interfaces**: API
+- **Stage**: 9-ship
 
 ## Summary
 

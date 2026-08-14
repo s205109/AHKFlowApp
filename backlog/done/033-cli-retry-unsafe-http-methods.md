@@ -5,6 +5,7 @@
 - **Epic**: CLI reliability
 - **Type**: Bug
 - **Interfaces**: CLI
+- **Stage**: 9-ship
 
 ## Summary
 

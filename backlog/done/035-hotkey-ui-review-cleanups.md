@@ -5,6 +5,7 @@
 - **Epic**: Hotkey redesign
 - **Type**: Chore
 - **Interfaces**: UI | API
+- **Stage**: 9-ship
 
 ## Summary
 

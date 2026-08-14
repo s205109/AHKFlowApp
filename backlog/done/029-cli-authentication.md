@@ -6,6 +6,7 @@
 - **Type**: Feature
 - **Interfaces**: CLI
 - **Depends on**: 017-scaffold-cli-project, 012-add-authentication-authorization
+- **Stage**: 9-ship
 
 ## Summary
 

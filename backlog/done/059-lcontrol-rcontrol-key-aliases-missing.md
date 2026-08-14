@@ -5,6 +5,7 @@
 - **Epic**: Hotkeys
 - **Type**: Bug
 - **Interfaces**: API, UI, CLI
+- **Stage**: 9-ship
 
 ## Summary
 

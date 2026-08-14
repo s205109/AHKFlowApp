@@ -5,6 +5,7 @@
 - **Epic**: Hotstrings
 - **Type**: Feature
 - **Interfaces**: API | CLI
+- **Stage**: 9-ship
 
 ## Summary
 

@@ -5,6 +5,7 @@
 - **Epic**: Developer experience
 - **Type**: Fix
 - **Interfaces**: UI
+- **Stage**: 9-ship
 
 ## Summary
 

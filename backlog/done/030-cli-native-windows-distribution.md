@@ -6,6 +6,7 @@
 - **Type**: Feature
 - **Interfaces**: CLI, CI/CD
 - **Depends on**: 017-scaffold-cli-project, 029-cli-authentication
+- **Stage**: 9-ship
 
 ## Summary
 

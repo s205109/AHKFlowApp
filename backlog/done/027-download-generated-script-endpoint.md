@@ -5,6 +5,7 @@
 - **Epic**: Script generation & download
 - **Type**: Feature
 - **Interfaces**: UI | API
+- **Stage**: 9-ship
 
 ## Summary
 
