@@ -6,7 +6,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (repo process)
 - **Difficulty**: moderate
-- **Stage**: 4-execute
+- **Stage**: 5-simplify
 
 ## Summary
 
