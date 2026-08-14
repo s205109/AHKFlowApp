@@ -5,6 +5,7 @@
 - **Epic**: <Epic name>
 - **Type**: Feature
 - **Interfaces**: UI | API | CLI
+- **Stage**: 0-intake
 
 ## Summary
 

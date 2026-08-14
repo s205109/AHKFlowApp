@@ -222,15 +222,16 @@ pwsh ./scripts/new-backlog-item.ps1 -Title "Downloads page row stays disabled"
 # then edit the new file:
 #   - replace the placeholder Summary with a real one
 #   - add "- **Difficulty**: moderate | complex | to-be-determined"
-#   - add "- **Stage**: 1-pickup"
+#   - change "- **Stage**: 0-intake" to "- **Stage**: 1-pickup"
 git add backlog/<NNN>-<slug>.md
 git commit -m "chore: file backlog <NNN> <title>"
 ```
 
 Pass the same title to both commands. Both slug it with the same rule
 (`scripts/slug.common.ps1`), so the worktree name matches the backlog item file name, which
-is what the pre-PR discovery rule below relies on. Backlog 072 puts `Difficulty` and `Stage`
-into the template and the script, which removes two of those three manual edits.
+is what the pre-PR discovery rule below relies on. The template already carries `Stage`, so that
+edit is a change of value rather than a new line (backlog 087). Backlog 072 adds `Difficulty` to
+the template, which removes the second edit as well.
 
 **Two sessions can still pick the same number**, because the number is assigned when the file
 is written and neither session can see the other's unmerged branch. The duplicate check in

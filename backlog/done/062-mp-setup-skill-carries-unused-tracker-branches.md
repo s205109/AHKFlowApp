@@ -5,6 +5,7 @@
 - **Epic**: Agent tooling
 - **Type**: Chore
 - **Interfaces**: —
+- **Stage**: 9-ship
 
 ## Summary
 

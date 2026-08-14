@@ -37,6 +37,17 @@ function Assert-True {
     }
 }
 
+# Get-BacklogProblem requires a Stage line on every item (backlog 087), so a fixture file needs a
+# metadata block rather than a bare heading. Fixtures that only filter their problems can still
+# use a bare heading; the two cases that assert a zero problem count cannot.
+function New-TestItemText {
+    param(
+        [Parameter(Mandatory)][string] $Heading,
+        [string] $Stage = '1-pickup'
+    )
+    return "$Heading`n`n## Metadata`n`n- **Type**: Bug`n- **Stage**: $Stage`n"
+}
+
 # --- Case 1: the real backlog/ passes with zero problems ---
 
 $realProblems = @(Get-BacklogProblem -BacklogRoot (Join-Path $repoRoot 'backlog'))
@@ -65,8 +76,8 @@ finally {
 
 $tempRoot = New-TemporaryBacklogRoot
 try {
-    Set-Content -LiteralPath (Join-Path $tempRoot '022-parent.md') -Value "# 022 - Parent`n"
-    Set-Content -LiteralPath (Join-Path $tempRoot '022b-followup.md') -Value "# 022b - Followup`n"
+    Set-Content -LiteralPath (Join-Path $tempRoot '022-parent.md') -Value (New-TestItemText -Heading '# 022 - Parent')
+    Set-Content -LiteralPath (Join-Path $tempRoot '022b-followup.md') -Value (New-TestItemText -Heading '# 022b - Followup')
 
     $problems = @(Get-BacklogProblem -BacklogRoot $tempRoot)
     Assert-True ($problems.Count -eq 0) "022 and 022b should both pass, found: $($problems -join ' | ')"
@@ -234,7 +245,7 @@ finally {
 $tempRoot = New-TemporaryBacklogRoot
 try {
     Remove-Item -LiteralPath (Join-Path $tempRoot 'blocked') -Recurse -Force
-    Set-Content -LiteralPath (Join-Path $tempRoot '060-open.md') -Value "# 060 - Open`n"
+    Set-Content -LiteralPath (Join-Path $tempRoot '060-open.md') -Value (New-TestItemText -Heading '# 060 - Open')
 
     $problems = @(Get-BacklogProblem -BacklogRoot $tempRoot)
     Assert-True ($problems.Count -eq 0) "A root with no blocked/ folder should pass, found: $($problems -join ' | ')"
@@ -287,6 +298,98 @@ try {
         $expectedSlug = ConvertTo-BacklogSlug -Title $title
         Assert-True ($fileSlug -eq $expectedSlug) "The backlog item file slug '$fileSlug' must equal the title slug '$expectedSlug'"
     }
+}
+finally {
+    Remove-Item -LiteralPath $tempRoot -Recurse -Force
+}
+
+# --- Case 15: a scaffolded item inherits the template's Stage line ---
+#
+# new-backlog-item.ps1 copies every template line but the heading (scripts/new-backlog-item.ps1:41-43),
+# so the template is the only place the field has to be written. This proves that, rather than
+# assuming it.
+
+$tempRoot = New-TemporaryBacklogRoot
+try {
+    & $scaffoldScript -Title 'Stage line throwaway item' -BacklogRoot $tempRoot | Out-Null
+    $itemPath = Join-Path $tempRoot '001-stage-line-throwaway-item.md'
+    Assert-True (Test-Path -LiteralPath $itemPath) "Expected $itemPath to be created"
+
+    if (Test-Path -LiteralPath $itemPath) {
+        $stageLines = @(Get-Content -LiteralPath $itemPath |
+            Select-String -Pattern '^- \*\*Stage\*\*: 0-intake$')
+        Assert-True ($stageLines.Count -eq 1) "A scaffolded item must carry exactly one '- **Stage**: 0-intake' line, found $($stageLines.Count)"
+    }
+}
+finally {
+    Remove-Item -LiteralPath $tempRoot -Recurse -Force
+}
+
+# --- Cases 16 to 19: the Stage field ---
+#
+# The field is the durable record of where work stands (docs/development/workflow.md:78,634-642).
+# Before backlog 087 nothing checked it, so a shipped item reached backlog/done/ still reading
+# 'Stage: 4-execute' (backlog/done/080-race-safe-intake-remove-the-backlog-number-from-worktree-names.md).
+# These four cases replace the reviewer's eye. New-TestItemText is defined at the top of this file.
+
+# --- Case 16: an item with no Stage line fails, naming the file ---
+
+$tempRoot = New-TemporaryBacklogRoot
+try {
+    Set-Content -LiteralPath (Join-Path $tempRoot '058-no-stage.md') -Value "# 058 - No stage`n"
+
+    $problems = @(Get-BacklogProblem -BacklogRoot $tempRoot)
+    $missing = $problems | Where-Object { $_ -like '*058-no-stage.md*' -and $_ -like '*Stage field problem*' }
+    Assert-True ($null -ne $missing) "Expected a missing-Stage problem for 058-no-stage.md, got: $($problems -join ' | ')"
+}
+finally {
+    Remove-Item -LiteralPath $tempRoot -Recurse -Force
+}
+
+# --- Case 17: a shipped item that does not read 9-ship fails ---
+#
+# This is the backlog 080 regression: it reached backlog/done/ still reading 'Stage: 4-execute'.
+
+$tempRoot = New-TemporaryBacklogRoot
+try {
+    Set-Content -LiteralPath (Join-Path $tempRoot 'done/059-shipped.md') `
+        -Value (New-TestItemText -Heading '# 059 - Shipped' -Stage '4-execute')
+
+    $problems = @(Get-BacklogProblem -BacklogRoot $tempRoot)
+    $stale = $problems | Where-Object { $_ -like '*059-shipped.md*' -and $_ -like '*must read*9-ship*' }
+    Assert-True ($null -ne $stale) "Expected a shipped-item Stage problem for done/059-shipped.md, got: $($problems -join ' | ')"
+}
+finally {
+    Remove-Item -LiteralPath $tempRoot -Recurse -Force
+}
+
+# --- Case 18: a stage value that is not one of the eleven fails ---
+
+$tempRoot = New-TemporaryBacklogRoot
+try {
+    Set-Content -LiteralPath (Join-Path $tempRoot '060-bad-stage.md') `
+        -Value (New-TestItemText -Heading '# 060 - Bad stage' -Stage '4-executing')
+
+    $problems = @(Get-BacklogProblem -BacklogRoot $tempRoot)
+    $unknown = $problems | Where-Object { $_ -like "*Unknown stage '4-executing'*" -and $_ -like '*060-bad-stage.md*' }
+    Assert-True ($null -ne $unknown) "Expected an unknown-stage problem for 060-bad-stage.md, got: $($problems -join ' | ')"
+}
+finally {
+    Remove-Item -LiteralPath $tempRoot -Recurse -Force
+}
+
+# --- Case 19: a blocked item keeps its last stage, so blocked/ takes any valid value ---
+#
+# docs/development/workflow.md:649 — "A blocked item keeps its last stage". Only done/ is pinned
+# to a single value.
+
+$tempRoot = New-TemporaryBacklogRoot
+try {
+    Set-Content -LiteralPath (Join-Path $tempRoot 'blocked/061-waiting.md') `
+        -Value (New-TestItemText -Heading '# 061 - Waiting' -Stage '4-execute')
+
+    $problems = @(Get-BacklogProblem -BacklogRoot $tempRoot)
+    Assert-True ($problems.Count -eq 0) "A blocked item at 4-execute should pass, found: $($problems -join ' | ')"
 }
 finally {
     Remove-Item -LiteralPath $tempRoot -Recurse -Force

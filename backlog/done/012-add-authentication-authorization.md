@@ -5,6 +5,7 @@
 - **Epic**: Authentication and authorization
 - **Type**: Feature
 - **Interfaces**: UI | API
+- **Stage**: 9-ship
 
 ## Summary
 

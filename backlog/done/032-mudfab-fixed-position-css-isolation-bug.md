@@ -5,6 +5,7 @@
 - **Epic**: Frontend platform / bug fix
 - **Type**: Bug
 - **Interfaces**: UI
+- **Stage**: 9-ship
 
 ## Summary
 

@@ -5,6 +5,7 @@
 - **Epic**: Script generation & download
 - **Type**: Feature
 - **Interfaces**: CLI
+- **Stage**: 9-ship
 
 ## Summary
 

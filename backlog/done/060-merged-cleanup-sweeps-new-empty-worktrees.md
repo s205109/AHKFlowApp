@@ -5,6 +5,7 @@
 - **Epic**: Agent tooling
 - **Type**: Bug
 - **Interfaces**: UI | API | CLI (none — agent tooling only)
+- **Stage**: 9-ship
 
 ## Summary
 

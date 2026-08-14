@@ -5,6 +5,7 @@
 - **Epic**: Profiles
 - **Type**: Refactor
 - **Interfaces**: API
+- **Stage**: 9-ship
 
 ## Summary
 

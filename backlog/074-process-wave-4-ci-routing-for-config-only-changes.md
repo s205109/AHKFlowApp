@@ -34,9 +34,13 @@ apply to it so that I do not wait for a full .NET build to approve a one-line ch
 
 ## Notes / dependencies
 
-- Spec carrier: `backlog/078-ci-config-only-route.md`. Read that item before starting
-  here.
-- Spec: `docs/superpowers/specs/2026-08-10-development-process-design-071.md` §2 (P6) and
-  §13 (private plans repo).
+- Spec: `docs/superpowers/specs/2026-08-14-ci-config-only-route-design.md` (private plans
+  repo). Read it before starting here — it is the design this item ships.
+- Spec carrier: `backlog/done/078-ci-config-only-route.md`, closed 2026-08-14.
+- Parent spec: `docs/superpowers/specs/2026-08-10-development-process-design-071.md`
+  §2 (P6) and §13.
+- The spec leaves three questions for the plan: which workflow linter and how it is
+  pinned, the `config-validators` runner OS, and whether `Reason` names every deciding
+  file.
 - Target: CI minutes on non-.NET changes drop to near zero for qualifying paths. That is a
   direction, not a percentage: backlog 072 has no established baseline yet.

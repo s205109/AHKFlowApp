@@ -68,8 +68,8 @@ one of them can never leave the other two behind.
       design.
 - [ ] A fixture proves both directions: an unanchored top-level bullet inside a scanned
       section fails the guard, and an unanchored table row inside the same section does not.
-- [ ] `backlog/000-backlog-item-template.md` carries a `- **Difficulty**:` line and a
-      `- **Stage**:` line.
+- [ ] `backlog/000-backlog-item-template.md` carries a `- **Difficulty**:` line. Backlog 087
+      already added the `- **Stage**:` line.
 - [ ] `scripts/new-backlog-item.ps1` writes both lines into every new item.
 - [ ] `.claude/CLAUDE.md` is aligned line by line with `workflow.md`. No rule appears in
       both with different wording.

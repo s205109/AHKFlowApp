@@ -5,6 +5,7 @@
 - **Epic**: Hotkeys
 - **Type**: Tech debt
 - **Interfaces**: UI
+- **Stage**: 9-ship
 
 ## Summary
 

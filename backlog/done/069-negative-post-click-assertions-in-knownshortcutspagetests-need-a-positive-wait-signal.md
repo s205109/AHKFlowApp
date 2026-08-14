@@ -5,6 +5,7 @@
 - **Epic**: Test reliability
 - **Type**: Bug
 - **Interfaces**: UI | API | CLI (none — test code only)
+- **Stage**: 9-ship
 
 ## Summary
 

@@ -37,11 +37,20 @@ function Get-BacklogItem {
             $number = [int] $Matches.num
         }
 
+        # One read serves both the heading and the Stage field. Everything parsed out of an item's
+        # text belongs here, so a caller never opens the file a second time.
+        $lines = @(Get-Content -LiteralPath $file.FullName)
+
         $headingKey = $null
-        $firstLine = Get-Content -LiteralPath $file.FullName -TotalCount 1
-        if ($firstLine -match '^#\s*(?<head>\S+)\s*-') {
+        if ($lines.Count -gt 0 -and $lines[0] -match '^#\s*(?<head>\S+)\s*-') {
             $headingKey = $Matches.head
         }
+
+        # An array, not a single value: the Stage check has to tell a missing line from a repeated
+        # one, and both are problems with different messages.
+        $stages = @($lines |
+            Select-String -Pattern '^- \*\*Stage\*\*:\s*(?<stage>\S+)\s*$' |
+            ForEach-Object { $_.Matches[0].Groups['stage'].Value })
 
         $relativePath = $file.FullName.Substring($repoRoot.Length + 1) -replace '\\', '/'
 
@@ -50,7 +59,12 @@ function Get-BacklogItem {
             Number       = $number
             Path         = $file.FullName
             RelativePath = $relativePath
+            # 'done', 'blocked', or the backlog root's own folder name. Read from the path rather
+            # than from RelativePath, which is cut against the backlog root's parent and so starts
+            # with a temp folder's name under a test root.
+            Folder       = Split-Path -Leaf (Split-Path -Parent $file.FullName)
             HeadingKey   = $headingKey
+            Stages       = $stages
         }
     }
 }
@@ -81,6 +95,36 @@ function Get-BacklogProblem {
 
         if ($item.HeadingKey -ne $item.Key) {
             $problems += "Heading number mismatch in $($item.RelativePath): file name says '$($item.Key)' but heading says '$($item.HeadingKey)'."
+        }
+    }
+
+    # --- Stage field: exactly one line, a real stage name, and 9-ship for anything shipped ---
+    #
+    # docs/development/workflow.md:78 makes this field the durable record of where the work stands,
+    # and :482 has Ship set 9-ship in the same change that moves the item to done/. Nothing checked
+    # it before backlog 087, so an item reached done/ still reading 4-execute.
+    #
+    # The template is not excluded here, unlike the heading check above. It carries
+    # '- **Stage**: 0-intake' and lives in backlog/ rather than done/, so it passes, and including
+    # it keeps the line in the template instead of merely putting it there once.
+    $stageNames = @(
+        '0-intake', '1-pickup', '2-design', '3-plan', '4-execute', '5-simplify',
+        '6-verify', '7-document', '8-review', '9-ship', '10-cleanup'
+    )
+
+    foreach ($item in $items | Where-Object { $null -ne $_.Key }) {
+        if ($item.Stages.Count -ne 1) {
+            $problems += "Stage field problem in $($item.RelativePath): expected exactly one '- **Stage**: <stage>' line, found $($item.Stages.Count)."
+            continue
+        }
+
+        $stage = $item.Stages[0]
+
+        if ($stage -notin $stageNames) {
+            $problems += "Unknown stage '$stage' in $($item.RelativePath). Expected one of: $($stageNames -join ', ')."
+        }
+        elseif ($item.Folder -eq 'done' -and $stage -ne '9-ship') {
+            $problems += "Shipped item $($item.RelativePath) reads 'Stage: $stage'. An item in backlog/done/ must read 'Stage: 9-ship'."
         }
     }
 

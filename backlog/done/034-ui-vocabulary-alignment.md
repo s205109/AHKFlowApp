@@ -5,6 +5,7 @@
 - **Epic**: Domain model adoption
 - **Type**: Chore
 - **Interfaces**: UI
+- **Stage**: 9-ship
 
 ## Summary
 
