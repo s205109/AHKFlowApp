@@ -199,21 +199,142 @@ foreach ($rule in @('.claude/skills/', '.github/skills/', '.github/AGENTS.md')) 
     Assert-True ($ignoreLines -contains $rule) ".ignore must deny '$rule' so --follow does not duplicate it in the @ picker."
 }
 
-# End-to-end picker behavior, when the tools it needs are present. rg is required by the script
-# itself; bash and rg are not guaranteed on every runner, so assert only when both exist.
-$hasBash = [bool] (Get-Command bash -ErrorAction SilentlyContinue)
-$hasRg = [bool] (Get-Command rg -ErrorAction SilentlyContinue)
-if ($hasBash -and $hasRg) {
+# End-to-end picker behavior, when a usable bash host is present. rg is required by the script
+# itself. Asking PowerShell whether rg exists answers for the Windows PATH, but the script runs
+# inside bash -- and on Windows a bare 'bash' can be the WSL launcher at
+# C:\Windows\system32\bash.exe, whose Linux PATH has no Windows rg. So ask each candidate host
+# for rg itself, with the same non-login invocation the real run uses, and run the script with
+# the first host that answers.
+function Get-BashHostCandidate {
+    $candidates = [System.Collections.Generic.List[string]]::new()
+    $seen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+
+    function Add-Candidate {
+        param([string] $Path)
+
+        if ([string]::IsNullOrWhiteSpace($Path)) { return }
+        if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return }
+        $full = (Resolve-Path -LiteralPath $Path).Path
+        if ($seen.Add($full)) { $candidates.Add($full) }
+    }
+
+    # PATH order first: that is what the picker command in .claude/settings.json resolves to.
+    foreach ($command in @(Get-Command bash -All -ErrorAction SilentlyContinue)) {
+        Add-Candidate $command.Source
+    }
+
+    # Then the bash that ships beside git, under both layouts git.exe is installed with:
+    # <root>\cmd\git.exe and <root>\mingw64\bin\git.exe.
+    $git = Get-Command git -ErrorAction SilentlyContinue
+    if ($git) {
+        $gitDir = Split-Path -Parent $git.Source
+        foreach ($root in @((Split-Path -Parent $gitDir), (Split-Path -Parent (Split-Path -Parent $gitDir)))) {
+            if ([string]::IsNullOrWhiteSpace($root)) { continue }
+            Add-Candidate (Join-Path $root 'bin\bash.exe')
+            Add-Candidate (Join-Path $root 'usr\bin\bash.exe')
+        }
+    }
+
+    return $candidates.ToArray()
+}
+
+function Test-BashHostSeesRg {
+    param([string] $BashExe)
+
+    # Returns '' when the host can run the script, otherwise the reason it was rejected.
+    try {
+        $found = (& $BashExe -c 'command -v rg' 2>$null | Out-String).Trim()
+    } catch {
+        return "cannot start ($($_.Exception.Message))"
+    }
+
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($found)) {
+        return "runs, but 'command -v rg' finds no rg on its PATH"
+    }
+
+    return ''
+}
+
+function Select-BashHost {
+    param(
+        [string[]] $Candidate,
+        [scriptblock] $Probe
+    )
+
+    # Pure: no filesystem, no processes. The probe decides, so the suite can assert this with
+    # fake paths. Returns the chosen host, or $null plus the exact lines the skip message prints.
+    $rejected = [System.Collections.Generic.List[string]]::new()
+
+    # A function that returns an empty array hands back nothing at all, and a literal $null binds
+    # to [string[]] as one null element. Filter, or the probe is called with an empty path.
+    foreach ($path in @($Candidate | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })) {
+        $reason = & $Probe $path
+        if ([string]::IsNullOrEmpty($reason)) {
+            return [pscustomobject] @{ BashExe = $path; SkipLine = @() }
+        }
+
+        $rejected.Add("  $path - $reason")
+    }
+
+    if ($rejected.Count -eq 0) {
+        return [pscustomobject] @{
+            BashExe  = $null
+            SkipLine = @('Skipped the live @-picker checks: no bash executable was found on this host.')
+        }
+    }
+
+    return [pscustomobject] @{
+        BashExe  = $null
+        SkipLine = @('Skipped the live @-picker checks: no bash host on this machine can see rg.') + $rejected.ToArray()
+    }
+}
+
+# --- Bash host selection: assert the choice and the diagnostics without launching anything ------
+# The live check below needs a bash that can see rg. Selecting one is the part that broke on a
+# machine where the WSL launcher comes first on PATH, so the selection is asserted here with fake
+# candidates and a fake probe. These cases run on every machine, including a CI runner with no rg.
+$fakeProbe = {
+    param([string] $BashExe)
+
+    if ($BashExe -like '*good*') { return '' }
+    return "runs, but 'command -v rg' finds no rg on its PATH"
+}
+
+$selected = Select-BashHost -Candidate @('X:\wsl\bash.exe', 'X:\good\bash.exe') -Probe $fakeProbe
+Assert-True ($selected.BashExe -eq 'X:\good\bash.exe') "Selection must skip a rejected host and take the next one (chose '$($selected.BashExe)')."
+Assert-True ($selected.SkipLine.Count -eq 0) 'A chosen host must produce no skip lines.'
+
+$firstGood = Select-BashHost -Candidate @('X:\good-one\bash.exe', 'X:\good-two\bash.exe') -Probe $fakeProbe
+Assert-True ($firstGood.BashExe -eq 'X:\good-one\bash.exe') 'Selection must take the first host that answers, not a later one.'
+
+$noneGood = Select-BashHost -Candidate @('X:\wsl\bash.exe', 'X:\store\bash.exe') -Probe $fakeProbe
+Assert-True ($null -eq $noneGood.BashExe) 'No host that sees rg means no host is chosen.'
+Assert-True ($noneGood.SkipLine.Count -eq 3) "The skip message must carry a header plus one line per rejected host (got $($noneGood.SkipLine.Count))."
+Assert-True ($noneGood.SkipLine[0] -eq 'Skipped the live @-picker checks: no bash host on this machine can see rg.') "Unexpected skip header: '$($noneGood.SkipLine[0])'."
+foreach ($rejectedHost in @('X:\wsl\bash.exe', 'X:\store\bash.exe')) {
+    $line = @($noneGood.SkipLine | Where-Object { $_ -like "*$rejectedHost*" })
+    Assert-True ($line.Count -eq 1) "The skip message must name '$rejectedHost' exactly once."
+    Assert-True ($line[0] -like "*finds no rg on its PATH*") "The skip line for '$rejectedHost' must say why it was rejected: '$($line[0])'."
+}
+
+$noHost = Select-BashHost -Candidate @() -Probe $fakeProbe
+Assert-True ($null -eq $noHost.BashExe) 'With no candidates there is no host to choose.'
+Assert-True ($noHost.SkipLine.Count -eq 1) 'The no-bash case must be one line, not a header with an empty list.'
+Assert-True ($noHost.SkipLine[0] -eq 'Skipped the live @-picker checks: no bash executable was found on this host.') "The no-bash case needs its own message: '$($noHost.SkipLine[0])'."
+
+$host_ = Select-BashHost -Candidate (Get-BashHostCandidate) -Probe ${function:Test-BashHostSeesRg}
+if ($host_.BashExe) {
+    $bashExe = $host_.BashExe
     $suggestionUnixPath = './.claude/file-suggestion.sh'
     Push-Location $repoRoot
     try {
         $env:CLAUDE_PROJECT_DIR = $repoRoot
-        $picked = '{"query":"AGENTS.md"}' | & bash $suggestionUnixPath 2>$null
+        $picked = '{"query":"AGENTS.md"}' | & $bashExe $suggestionUnixPath 2>$null
         $agentsHits = @($picked | Where-Object { $_.Trim() -eq 'AGENTS.md' -or $_.Trim() -eq '.github/AGENTS.md' })
         Assert-True (-not ($agentsHits -contains '.github/AGENTS.md')) 'The @ picker must not list the .github/AGENTS.md symlink mirror.'
-        Assert-True ($agentsHits -contains 'AGENTS.md') 'The @ picker must still list the real root AGENTS.md.'
+        Assert-True ($agentsHits -contains 'AGENTS.md') "The @ picker must still list the real root AGENTS.md (host: $bashExe)."
 
-        $skillPicked = '{"query":"dck-build-fix"}' | & bash $suggestionUnixPath 2>$null
+        $skillPicked = '{"query":"dck-build-fix"}' | & $bashExe $suggestionUnixPath 2>$null
         $mirrorHits = @($skillPicked | Where-Object { $_ -like '.claude/skills/*' -or $_ -like '.github/skills/*' })
         Assert-True ($mirrorHits.Count -eq 0) "The @ picker must not list .claude/skills or .github/skills mirrors (got: $($mirrorHits -join ', '))."
     } finally {
@@ -221,7 +342,7 @@ if ($hasBash -and $hasRg) {
         Pop-Location
     }
 } else {
-    Write-Host 'Skipped the live @-picker checks: bash and/or rg not available on this host.'
+    foreach ($line in $host_.SkipLine) { Write-Host $line }
 }
 
 Write-Host 'Worktree plans symlink tests passed.'
