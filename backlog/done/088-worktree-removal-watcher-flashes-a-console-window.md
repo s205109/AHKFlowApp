@@ -97,3 +97,4 @@ lists. `ShowWindow = 0` is the
 - Found while running `scripts/run-powershell-suites.ps1` during backlog 080.
 - The five removals in one suite run come from `tests/WorktreeMergedCleanup.Tests.ps1` (four)
   and `tests/WorktreeRemoveHook.Tests.ps1` (one). Real worktree removals flash once each.
+- Plan: `docs/superpowers/plans/2026-08-13-worktree-watcher-window-flash-plan.md`

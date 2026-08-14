@@ -141,3 +141,4 @@ round does not force me out of the worktree for every artifact change.
   removed from the backlog-071 branch in `a3ec9a2c`, so do not use that branch as a base.
 - `scripts/new-worktree.ps1:106` refuses nested worktree creation, so Pickup for this item
   runs from a main-checkout session.
+- Plan: `docs/superpowers/plans/2026-08-11-plans-repo-guard-exception-plan.md`

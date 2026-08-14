@@ -179,6 +179,11 @@ finally {
     Remove-Item -LiteralPath $tempRoot -Recurse -Force
 }
 
+# --- The real backlog/ folder is clean ---
+
+$realProblems = @(Get-BacklogPointerProblem -BacklogRoot (Join-Path $repoRoot 'backlog'))
+Assert-True ($realProblems.Count -eq 0) "The real backlog/ must have no pointer problems, found:`n$($realProblems -join "`n")"
+
 # --- Report ---
 
 if ($failures.Count -gt 0) {

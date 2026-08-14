@@ -50,3 +50,4 @@ through a link it made itself.
   work that branch did.
 - Related: [084](084-guard-fails-closed-on-pipeline-bound-move-sources.md), the other deferred
   finding from the same review.
+- Plan: `docs/superpowers/plans/2026-08-12-guard-link-target-write-plan.md`

@@ -42,3 +42,4 @@ that every change reaches `main` through a pull request.
 - Own spec: `docs/superpowers/specs/2026-08-13-pre-commit-main-branch-refusal-design.md`
   (private plans repo).
 - Dependency of backlog 072 (wave 2).
+- Plan: `docs/superpowers/plans/2026-08-13-pre-commit-main-branch-refusal-plan.md`

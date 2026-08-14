@@ -123,3 +123,4 @@ check at all, and there a `PreToolUse` hook does win.
 - The probe also exposed a gap that **is** fixable here. Filed as
   `backlog/065-native-edit-isolation-misses-worktree-sessions-without-w-flag.md`. Both items share
   the one probe, so nothing needs re-running.
+- Plan: none — no plan of its own. The fix shipped elsewhere, and the one open box is a report to Anthropic.

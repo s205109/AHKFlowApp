@@ -128,3 +128,4 @@ project, and the merged report silently loses every assembly only that project c
 - The misleading part is the error text. `1 assembly(s) failed per-assembly coverage
   thresholds` points at coverage, while the real cause is a file lock several hundred lines
   earlier in the output.
+- Plan: `docs/superpowers/plans/2026-08-13-backlog-082-concurrent-coverage-runs-plan.md`

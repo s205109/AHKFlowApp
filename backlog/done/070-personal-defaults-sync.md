@@ -53,3 +53,5 @@ path under repo test control.
 
 The sync marker belongs in an HTML comment, not frontmatter. The file already carries
 `applyTo: "**"` for Copilot, and adding keys there risks changing how Copilot loads it.
+
+- Plan: `docs/superpowers/plans/2026-08-13-personal-defaults-sync-marker-plan.md`

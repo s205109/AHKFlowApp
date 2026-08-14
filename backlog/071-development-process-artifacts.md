@@ -73,3 +73,4 @@ me.
   it open for wave 2.
 - Spec: `docs/superpowers/specs/2026-08-10-development-process-design-071.md` (private plans repo)
 - Research: `docs/superpowers/research/2026-08-10-worktrees-and-linking-071.md` (private plans repo)
+- Plan: `docs/superpowers/plans/2026-08-10-development-process-plan-071.md`

@@ -218,3 +218,4 @@ diagnostic that never fires proves nothing about a fault that appeared once.
   a merge
 - Flake A is Windows-only in practice: the suite runs in the `powershell-suites` job on
   `windows-latest` (`.github/workflows/ci.yml:102-103`)
+- Plan: `docs/superpowers/plans/2026-08-08-backlog-068-flaky-tests-plan.md`

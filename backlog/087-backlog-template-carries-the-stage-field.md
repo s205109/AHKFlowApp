@@ -49,3 +49,4 @@ lands, so the template's own starting value needs deciding rather than guessing.
 ## Notes / dependencies
 
 - Found in review of pull request #296 (backlog 083 redelivery)
+- Plan: `docs/superpowers/plans/2026-08-13-backlog-template-stage-field-plan.md`
