@@ -89,4 +89,4 @@ Any fix must keep both attacks closed.
   Check this against the two attacks named above before you write it
 - Backlog 094 touches the same function. Expect a conflict, and read it before you start
 - Spec: none — single-function fix, no design needed
-- Plan: <path, or "none — reason">
+- Plan: `docs/superpowers/plans/2026-08-14-merged-worktree-sweep-rebased-branches-plan-095.md`
