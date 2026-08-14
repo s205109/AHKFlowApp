@@ -48,65 +48,79 @@ function ConvertFrom-WorktreePorcelain {
     return , $worktrees
 }
 
-# Asks whether $Upstream already holds a patch-equivalent copy of $Commit. `git cherry` prints one
-# line per commit reachable from $Commit but not from $Upstream, marked '-' when $Upstream carries
-# the same patch and '+' when it does not. A rebase rewrites the SHA and keeps the patch, so this
-# is what ties a rebased tip back to the commit it replayed.
+# Asks the question that actually decides whether removal is safe: would deleting this branch drop
+# a commit nothing else holds? Every SHA the branch ever pointed at is examined, not just its tip,
+# because a `git reset --hard` leaves work reachable only from the ref log.
 #
-# Fails closed. A pruned or unreachable SHA makes git exit non-zero, which reads as "no proof" and
-# keeps the worktree.
-function Test-PatchEquivalentInCommit {
+# `git cherry <upstream> <head>` prints one line per commit reachable from $head and not from
+# $upstream: '-' when $upstream holds a patch-equivalent copy, '+' when it does not. A rebase
+# rewrites SHAs and keeps patches, so a rebased branch reads all '-'. One '+' anywhere means the
+# branch still carries work $MainRef never received, and the worktree must stay.
+#
+# Reading every line matters. Asking only whether SOME line is '-' lets a commit that reached
+# $MainRef by another route vouch for an abandoned sibling that did not.
+#
+# Fails closed. A pruned or unreachable SHA makes git exit non-zero, which reads as "work at risk".
+function Test-NoUnmergedWorkAtRisk {
     param(
         [Parameter(Mandatory)][string] $RepoRoot,
-        [Parameter(Mandatory)][string] $Upstream,
-        [Parameter(Mandatory)][string] $Commit
+        [Parameter(Mandatory)][string] $MainRef,
+        [Parameter(Mandatory)][string[]] $Shas
     )
 
-    $lines = & git -C $RepoRoot cherry $Upstream $Commit 2>$null
-    if ($LASTEXITCODE -ne 0) { return $false }
+    foreach ($sha in $Shas) {
+        $lines = & git -C $RepoRoot cherry $MainRef $sha 2>$null
+        if ($LASTEXITCODE -ne 0) { return $false }
 
-    foreach ($line in $lines) {
-        if (([string] $line).Trim() -like '- *') { return $true }
+        foreach ($line in $lines) {
+            if (([string] $line).Trim() -like '+ *') { return $false }
+        }
     }
 
-    return $false
+    return $true
 }
 
 # Answers what `git branch --merged` cannot: did this branch's own work get merged into $MainRef?
 # A just-created worktree branch points at a commit main already had, so the merged test passes
 # for it and the sweep would delete unstarted work.
 #
-# Removal is destructive, so this returns $true only when BOTH signals agree, and $false for
+# Removal is destructive, so this returns $true only when ALL THREE signals agree, and $false for
 # anything it cannot establish -- an unclear answer keeps the worktree.
 #
-#   1. WORK. The branch ref log holds a commit subject. Git writes exactly five of them:
-#      'commit:', 'commit (amend):', 'commit (merge):', 'commit (initial):' and
-#      'commit (cherry-pick):'. The list is closed on purpose -- see the forgery note below.
-#   2. MERGE. A SHA the ref log records under one of those commit subjects is a NON-FIRST parent
-#      of a merge commit reachable from $MainRef -- what a GitHub "Merge pull request" (`--no-ff`)
-#      leaves behind. Git history, not text.
+#   1. WORK. The branch ref log holds a subject for an operation that creates a commit. Git writes
+#      'commit:', 'commit (amend):', 'commit (merge):', 'commit (initial):', 'cherry-pick:' and
+#      'revert:'. The list is closed on purpose -- see the forgery note below.
+#   2. MERGE. A SHA the ref log records under one of those subjects, or under 'rebase (finish)', is
+#      a NON-FIRST parent of a merge commit reachable from $MainRef -- what a GitHub "Merge pull
+#      request" (`--no-ff`) leaves behind. Git history, not text.
+#   3. NO LOSS. Nothing the branch ever pointed at carries a commit that $MainRef lacks, patches
+#      included. Test-NoUnmergedWorkAtRisk decides it.
 #
-# Neither signal is sufficient alone, and each covers the other's blind spot:
+# No signal is sufficient alone, and each covers the others' blind spots:
 #   - Ref-log subjects are caller-controlled text. GIT_REFLOG_ACTION and `git update-ref -m` let
 #     any caller write 'commit: Fast-forward' onto a branch that created no commit, so signal 1
 #     alone can be forged into deleting a brand-new worktree.
 #   - A branch created AT an already-merged branch's tip (the -BaseRef shape) really is a
 #     non-first parent, so signal 2 alone reads unstarted work as finished. Its ref log shows no
 #     commit, so signal 1 rejects it.
+#   - Signals 1 and 2 can describe DIFFERENT work: commit, `git reset --hard` the commit away, then
+#     rebase the emptied branch onto an unrelated merged branch. Both read as satisfied while the
+#     branch's own commit survives nowhere else. Signal 3 is what refuses that.
 #
-# A rebased branch merges under a SHA that no commit entry ever held: `git rebase` replays the work
-# and records the new tip under 'rebase (finish)', while the commit entry keeps the pre-rebase SHA,
-# which never reaches $MainRef. Reading commit entries alone kept every rebased worktree forever, so
-# signal 2 also accepts a 'rebase (finish)' SHA -- but only after proving that the rebase carried
-# THIS branch's own work, by patch equivalence against a commit entry. Two shapes need that proof:
-#   - Commit, `git reset --hard` the commit away, then rebase the emptied branch onto an unrelated
-#     merged branch. The stale commit entry and the merged rebase SHA describe different work, and
-#     no branch contains the abandoned commit any more.
-#   - Any rebase of a branch onto an already-merged branch, which lands the tip exactly on a
-#     non-first parent.
-# GIT_REFLOG_ACTION rewrites the first word only, so a forged rebase reads 'commit (finish):'. That
-# is why signal 1 matches a closed list instead of the 'commit' prefix.
-# `git rebase` and `git rebase -i` both write 'rebase (finish)'.
+# Signal 2 accepts 'rebase (finish)' because a rebased branch merges under a SHA that no commit
+# entry ever held. `git rebase` replays the work and records the new tip under that subject, while
+# the commit entry keeps the pre-rebase SHA, which never reaches $MainRef. Reading commit entries
+# alone kept every rebased worktree forever. `git rebase` and `git rebase -i` write the same
+# subject.
+#
+# Known limits, both deliberate:
+#   - Text cannot be authenticated. A caller who sets GIT_REFLOG_ACTION=commit and fast-forwards an
+#     unstarted branch onto an already-merged tip satisfies signals 1 and 2. Signal 3 still holds,
+#     so the worst case is removing a worktree that holds nothing -- never losing a commit. Nothing
+#     in git records which branch created a commit, so no stronger proof is available here.
+#   - A rebase that changes patches (squash, fixup, autosquash, a conflict resolved differently)
+#     leaves no patch-equivalent original, so signal 3 reports work at risk and the worktree stays.
+#     Support is limited to patch-preserving rebases.
 function Test-BranchOwnWorkWasMerged {
     param(
         [Parameter(Mandatory)][string] $RepoRoot,
@@ -118,18 +132,19 @@ function Test-BranchOwnWorkWasMerged {
     # after that entry. Missing ref log (core.logAllRefUpdates off, gc expired it) or an unknown
     # branch exits non-zero and reads as unstarted.
     #
-    # Two sets from one walk. $commitShas carries the work proof and is the only direct merge
-    # proof. $rebaseShas is a candidate set that still has to earn its proof below.
+    # Three sets from one walk. $commitShas carries the work proof, $mergeProofShas the SHAs allowed
+    # to satisfy signal 2, and $allShas every place the branch has been, which signal 3 examines.
     #
-    # 'branch: Created from' is in neither: a branch started at an already-merged branch's tip
-    # (`new-worktree.ps1 -BaseRef`) carries a non-first parent there, and letting that SHA count
-    # would pair it with a forged 'commit:' subject on a later fast-forward, without a single
+    # 'branch: Created from' is in $allShas only: a branch started at an already-merged branch's tip
+    # (`new-worktree.ps1 -BaseRef`) carries a non-first parent there, and letting that SHA prove a
+    # merge would pair it with a forged 'commit:' subject on a later fast-forward, without a single
     # commit ever being made.
     $entries = & git -C $RepoRoot reflog show --format='%H %gs' "refs/heads/$Branch" 2>$null
     if ($LASTEXITCODE -ne 0) { return $false }
 
     $commitShas = @{}
-    $rebaseShas = @{}
+    $mergeProofShas = @{}
+    $allShas = @{}
     foreach ($entry in $entries) {
         $text = ([string] $entry).Trim()
         if (-not $text) { continue }
@@ -137,12 +152,18 @@ function Test-BranchOwnWorkWasMerged {
         $sha, $subject = $text -split '\s+', 2
         if (-not $sha -or -not $subject) { continue }
 
-        # The closed list git itself writes. 'commit (finish):' is absent because git never writes
-        # it; only GIT_REFLOG_ACTION=commit on a rebase produces that subject.
-        if ($subject -match '^commit(:| \((amend|merge|initial|cherry-pick)\):)') { $commitShas[$sha] = $true }
+        $allShas[$sha] = $true
+
+        # The closed list of subjects git writes for an operation that creates a commit.
+        # 'commit (finish):' is absent because git never writes it; only GIT_REFLOG_ACTION=commit on
+        # a rebase produces that subject.
+        if ($subject -match '^(commit(:| \((amend|merge|initial)\):)|cherry-pick:|revert:)') {
+            $commitShas[$sha] = $true
+            $mergeProofShas[$sha] = $true
+        }
         # No '\b' after 'rebase (finish)': ')' and the ':' that follows it are both non-word
         # characters, so a word boundary never matches between them.
-        elseif ($subject -match '^rebase \(finish\)') { $rebaseShas[$sha] = $true }
+        elseif ($subject -match '^rebase \(finish\)') { $mergeProofShas[$sha] = $true }
     }
     if ($commitShas.Count -eq 0) { return $false }
 
@@ -157,29 +178,22 @@ function Test-BranchOwnWorkWasMerged {
     $parentLines = & git -C $RepoRoot rev-list --min-parents=2 --format='%P' $MainRef 2>$null
     if ($LASTEXITCODE -ne 0) { return $false }
 
-    $rebaseCandidates = @{}
+    $merged = $false
     foreach ($line in $parentLines) {
         $text = ([string] $line).Trim()
         if (-not $text -or $text -like 'commit *') { continue }
         $parents = @($text -split '\s+')
         for ($i = 1; $i -lt $parents.Count; $i++) {
-            $parent = $parents[$i]
-            # A commit the branch made is itself a merged parent: nothing to correlate.
-            if ($commitShas.ContainsKey($parent)) { return $true }
-            if ($rebaseShas.ContainsKey($parent)) { $rebaseCandidates[$parent] = $true }
+            if ($mergeProofShas.ContainsKey($parents[$i])) { $merged = $true; break }
         }
+        if ($merged) { break }
     }
+    if (-not $merged) { return $false }
 
-    # A merged rebase SHA only proves anything once it carries this branch's own work. `git cherry`
-    # answers exactly that: it lists the commits in <head> that are missing from <upstream> and
-    # marks a commit '-' when <upstream> already holds a patch-equivalent one. The rebased copy of
-    # a commit keeps its patch, so a genuine rebase matches and an unrelated one does not.
-    foreach ($candidate in $rebaseCandidates.Keys) {
-        foreach ($commitSha in $commitShas.Keys) {
-            if (Test-PatchEquivalentInCommit -RepoRoot $RepoRoot -Upstream $candidate -Commit $commitSha) {
-                return $true
-            }
-        }
+    # Signal 3. Signals 1 and 2 can be satisfied by different work, so the last question is the one
+    # that makes removal safe: does this branch still hold a commit $MainRef never received?
+    if (Test-NoUnmergedWorkAtRisk -RepoRoot $RepoRoot -MainRef $MainRef -Shas @($allShas.Keys)) {
+        return $true
     }
 
     return $false

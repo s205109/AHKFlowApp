@@ -83,24 +83,34 @@ it from the moment it exists. So two brand-new worktrees can exist side by side,
 that caught up with `main` by fast-forward. Closing a worktree yourself still removes it — this
 rule governs the automatic sweep only.
 
-The sweep removes a worktree only when one ref-log entry proves both halves at once: the entry's
-subject starts with `commit`, **and** the commit that entry points at is a non-first parent of a
-merge commit in `main` — the shape a GitHub "Merge pull request" leaves behind. Neither half is
-trusted alone. Ref-log text is caller-controlled (`GIT_REFLOG_ACTION`, `git update-ref -m`), and
-a branch created at an already-merged tip is structurally a merged parent without ever being
-committed to.
+The sweep removes a worktree only when three separate signals agree.
 
-Both halves must come from the **same** entry. A branch started with `-BaseRef <branch>` carries a
-merged commit in its `branch: Created from` entry, so reading the two halves from different entries
-would let a stacked branch look finished without a single commit.
+1. **Work.** The branch ref log holds a subject for an operation that creates a commit: `commit:`,
+   `commit (amend):`, `commit (merge):`, `commit (initial):`, `cherry-pick:` or `revert:`. The list
+   is closed, because `GIT_REFLOG_ACTION` can write anything into the first word.
+2. **Merge.** One of those SHAs, or a `rebase (finish):` SHA, is a non-first parent of a merge
+   commit in `main` — the shape a GitHub "Merge pull request" leaves behind.
+3. **No loss.** Nothing the branch ever pointed at holds a commit that `main` lacks, patches
+   included. `git cherry` decides it, and a `+` anywhere keeps the worktree.
+
+No signal is trusted alone. A branch created at an already-merged tip is structurally a merged
+parent without ever being committed to, so signal 1 rejects it. Signals 1 and 2 can describe
+different work — commit, `git reset --hard` the commit away, then rebase onto an unrelated merged
+branch — so signal 3 refuses that.
 
 The check reads the branch's whole ref-log history, not just its current tip. A finished worktree
 that runs `git merge --ff-only main` after its pull request merged moves its tip onto the merge
-commit, and it must stay sweepable.
+commit, and it must stay sweepable. A branch rebased before it merged is swept too: signal 2
+accepts the `rebase (finish):` SHA the replayed work landed on.
 
 Anything the sweep cannot establish keeps the worktree, so these are never swept and must be
-closed by hand: work merged by squash or rebase, work fast-forwarded into `main` with no merge
-commit, and any branch whose ref log was disabled or expired.
+closed by hand: work merged by squash, any rebase that changed patches (squash, fixup, autosquash,
+a conflict resolved differently), work fast-forwarded into `main` with no merge commit, and any
+branch whose ref log was disabled or expired.
+
+Ref-log text cannot be authenticated. Somebody who sets `GIT_REFLOG_ACTION=commit` and
+fast-forwards an unstarted branch onto an already-merged tip satisfies signals 1 and 2. Signal 3
+still holds, so the worst case is losing an empty worktree, never a commit.
 
 #### Claude Code in-conversation native creation: ask once, then remember
 

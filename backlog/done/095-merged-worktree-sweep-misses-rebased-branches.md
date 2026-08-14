@@ -60,9 +60,12 @@ Test-BranchOwnWorkWasMerged -RepoRoot (Get-Location).Path -Branch 'chore/wt-micr
 **Scope of the defect.** Every branch that is rebased and then merged with a merge commit is
 affected. Only a branch that never moved passes today.
 
-**Scope of the fix.** It covers a local rebase followed by a normal merge commit, which is the
-`--no-ff` shape a GitHub "Merge pull request" leaves behind. GitHub "Rebase and merge" stays
-unsupported: it creates no merge commit, so no non-first parent exists for the merge proof to find.
+**Scope of the fix.** It covers a patch-preserving rebase followed by a normal merge commit, which
+is the `--no-ff` shape a GitHub "Merge pull request" leaves behind. Two shapes stay unsupported.
+GitHub "Rebase and merge" creates no merge commit, so no non-first parent exists for the merge
+proof to find. A rebase that changes patches — squash, fixup, autosquash, or a conflict resolved
+differently — leaves no patch-equivalent original, so the sweep cannot prove the work reached
+`main` and keeps the worktree.
 
 **Why the pairing rule exists.** The comment at `:63-69` explains it. Reflog subjects are
 caller-controlled text, so a forged `commit:` subject alone could delete an unstarted worktree. A
@@ -71,7 +74,12 @@ Any fix must keep both attacks closed.
 
 ## Acceptance criteria
 
-- [x] A branch that was rebased and then merged is eligible for cleanup
+- [x] A branch that was rebased and then merged is eligible for cleanup, when the rebase preserved
+      patches. A squashing rebase leaves no patch-equivalent original, so it stays unsweepable
+- [x] A branch whose ref log still holds a commit main never received is never eligible, whatever
+      its ref-log subjects say
+- [x] A commit that reached main by another route cannot vouch for an abandoned sibling commit
+- [x] A merged branch built by `git cherry-pick` is eligible
 - [x] A branch created from an already-merged tip, with no commit of its own, is still preserved
 - [x] A forged `commit:` reflog subject on an unstarted branch still cannot make it eligible
 - [x] A branch merged without any rebase is still eligible, as it is today

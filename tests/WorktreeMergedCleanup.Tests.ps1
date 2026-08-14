@@ -505,6 +505,141 @@ try {
     Remove-TempTree $repo
 }
 
+# --- Test: an equivalent ancestor cannot stand in for abandoned work -------------------
+# The branch made two commits. A copy of the first reached main by another route, so it has a
+# patch-equivalent there; the second was reset away and exists nowhere else. Asking only whether
+# SOME commit of the branch is patch-equivalent answers yes and deletes the second one's last
+# copy. The question has to be asked of every commit the branch ever pointed at.
+$repo = New-TempGitRepo
+try {
+    $lossPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-loss' -NoCommits
+    Set-Content -LiteralPath (Join-Path $lossPath 'a.txt') -Value 'work A' -Encoding utf8
+    Invoke-TestGit $lossPath @('add', '-A') | Out-Null
+    Invoke-TestGit $lossPath @('commit', '-m', 'work A') | Out-Null
+    $shaA = ((Invoke-TestGit $lossPath @('rev-parse', 'HEAD')) -join '').Trim()
+    Set-Content -LiteralPath (Join-Path $lossPath 'b.txt') -Value 'work B' -Encoding utf8
+    Invoke-TestGit $lossPath @('add', '-A') | Out-Null
+    Invoke-TestGit $lossPath @('commit', '-m', 'work B') | Out-Null
+    $shaB = ((Invoke-TestGit $lossPath @('rev-parse', 'HEAD')) -join '').Trim()
+
+    # Main must move before the copy is made. A cherry-pick onto the SAME parent reproduces the
+    # commit byte for byte, and an identical SHA would make this test prove nothing.
+    Set-Content -LiteralPath (Join-Path $repo 'moved.txt') -Value 'main moves' -Encoding utf8
+    Invoke-TestGit $repo @('add', '-A') | Out-Null
+    Invoke-TestGit $repo @('commit', '-m', 'main moves') | Out-Null
+
+    $donePath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-copy' -NoCommits
+    Invoke-TestGit $donePath @('cherry-pick', $shaA) | Out-Null
+    Set-Content -LiteralPath (Join-Path $donePath 'c.txt') -Value 'work C' -Encoding utf8
+    Invoke-TestGit $donePath @('add', '-A') | Out-Null
+    Invoke-TestGit $donePath @('commit', '-m', 'work C') | Out-Null
+    Invoke-TestGit $repo @('merge', '--no-ff', '-m', 'Merge feat-copy', 'feat-copy') | Out-Null
+
+    Invoke-TestGit $lossPath @('reset', '--hard', 'main^') | Out-Null
+    Invoke-TestGit $lossPath @('rebase', 'feat-copy') | Out-Null
+
+    $copyOfA = ((Invoke-TestGit $repo @('rev-parse', 'refs/heads/feat-copy~1')) -join '').Trim()
+    Assert-True ($copyOfA -ne $shaA) 'Sanity check: the copy of the first commit must have its own SHA.'
+    $containing = ((Invoke-TestGit $repo @('branch', '--contains', $shaB)) -join '').Trim()
+    Assert-True (-not $containing) 'Sanity check: no branch may contain the abandoned second commit.'
+
+    Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-loss')) 'A branch holding one abandoned commit must not be proved merged by an equivalent of another commit.'
+
+    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
+    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
+    Assert-True (-not ($keys -contains (ConvertTo-Key $lossPath))) 'A branch holding an abandoned commit must never be eligible for cleanup.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: a forged commit subject cannot authorize deleting unmerged work --------------
+# GIT_REFLOG_ACTION=commit on a fast-forward to an already-merged tip writes 'commit: Fast-forward'
+# with a merged SHA, so both proofs read as satisfied. Ref-log text cannot be authenticated, so the
+# guarantee is the one that matters: work the branch holds and main does not must keep the worktree.
+$repo = New-TempGitRepo
+try {
+    Add-TestWorktree -RepoDir $repo -BranchName 'feat-ff-target' | Out-Null
+    $forgedPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-forged-ff' -NoCommits -BaseRef 'main^'
+
+    Set-Content -LiteralPath (Join-Path $forgedPath 'unmerged.txt') -Value 'work nobody merged' -Encoding utf8
+    Invoke-TestGit $forgedPath @('add', '-A') | Out-Null
+    Invoke-TestGit $forgedPath @('commit', '-m', 'work nobody merged') | Out-Null
+    $unmergedSha = ((Invoke-TestGit $forgedPath @('rev-parse', 'HEAD')) -join '').Trim()
+    Invoke-TestGit $forgedPath @('reset', '--hard', 'main^') | Out-Null
+    Invoke-TestGitWithReflogAction -RepoDir $forgedPath -Action 'commit' -GitArgs @('merge', '--ff-only', 'feat-ff-target') | Out-Null
+
+    $forgedEntries = (Invoke-TestGit $repo @('reflog', 'show', '--format=%H %gs', 'refs/heads/feat-forged-ff')) -join "`n"
+    Assert-True ($forgedEntries -match '(?m)commit: Fast-forward') 'Sanity check: the fast-forward must really have written a forged "commit:" subject.'
+    $tip = ((Invoke-TestGit $repo @('rev-parse', 'refs/heads/feat-forged-ff')) -join '').Trim()
+    $mergeParents = (Invoke-TestGit $repo @('rev-list', '--min-parents=2', '--format=%P', 'main')) -join ' '
+    Assert-True ($mergeParents -match [regex]::Escape($tip)) 'Sanity check: the forged entry must carry a merged non-first parent.'
+    $containing = ((Invoke-TestGit $repo @('branch', '--contains', $unmergedSha)) -join '').Trim()
+    Assert-True (-not $containing) 'Sanity check: no branch may contain the unmerged commit.'
+
+    Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-forged-ff')) 'A forged commit subject must not authorize deleting a branch that holds unmerged work.'
+
+    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
+    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
+    Assert-True (-not ($keys -contains (ConvertTo-Key $forgedPath))) 'A worktree holding unmerged work must never be eligible, whatever its ref-log says.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: a cherry-pick counts as the branch's own work --------------------------------
+# `git cherry-pick` writes 'cherry-pick: <subject>', not 'commit:'. It creates a commit on the
+# branch, so a branch built that way and then merged is finished work like any other.
+$repo = New-TempGitRepo
+try {
+    $srcPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-source' -Unmerged
+    $pickedSha = ((Invoke-TestGit $srcPath @('rev-parse', 'HEAD')) -join '').Trim()
+
+    $pickPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-picked' -NoCommits
+    Invoke-TestGit $pickPath @('cherry-pick', $pickedSha) | Out-Null
+    Invoke-TestGit $repo @('merge', '--no-ff', '-m', 'Merge feat-picked', 'feat-picked') | Out-Null
+
+    $pickEntries = (Invoke-TestGit $repo @('reflog', 'show', '--format=%H %gs', 'refs/heads/feat-picked')) -join "`n"
+    Assert-True ($pickEntries -match '(?m)cherry-pick:') 'Sanity check: the fixture must really have written a "cherry-pick:" subject.'
+
+    Assert-True (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-picked') 'A merged branch whose commit came from a cherry-pick must report merged own work.'
+
+    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
+    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
+    Assert-True ($keys -contains (ConvertTo-Key $pickPath)) 'A merged cherry-pick branch must be eligible for cleanup.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: a squashing rebase stays unsweepable, on purpose -----------------------------
+# An autosquash rebase replaces two commits with one whose patch matches neither. The sweep cannot
+# then prove the originals reached main, and it keeps the worktree rather than guess. Documented
+# limit, pinned here so a later change to the proof has to decide about it deliberately.
+$repo = New-TempGitRepo
+try {
+    $squashPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-squash' -NoCommits
+    Set-Content -LiteralPath (Join-Path $squashPath 's.txt') -Value 'first' -Encoding utf8
+    Invoke-TestGit $squashPath @('add', '-A') | Out-Null
+    Invoke-TestGit $squashPath @('commit', '-m', 'squash base') | Out-Null
+    Set-Content -LiteralPath (Join-Path $squashPath 's.txt') -Value 'first and second' -Encoding utf8
+    Invoke-TestGit $squashPath @('add', '-A') | Out-Null
+    Invoke-TestGit $squashPath @('commit', '-m', 'fixup! squash base') | Out-Null
+
+    Set-Content -LiteralPath (Join-Path $repo 'moved.txt') -Value 'main moves' -Encoding utf8
+    Invoke-TestGit $repo @('add', '-A') | Out-Null
+    Invoke-TestGit $repo @('commit', '-m', 'main moves') | Out-Null
+
+    $env:GIT_EDITOR = 'true'
+    try {
+        Invoke-TestGit $squashPath @('rebase', '-i', '--autosquash', 'main') | Out-Null
+    } finally {
+        Remove-Item -LiteralPath 'Env:\GIT_EDITOR' -ErrorAction SilentlyContinue
+    }
+    Invoke-TestGit $repo @('merge', '--no-ff', '-m', 'Merge feat-squash', 'feat-squash') | Out-Null
+
+    Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-squash')) 'A squashing rebase leaves no patch-equivalent original, so the sweep must keep the worktree.'
+} finally {
+    Remove-TempTree $repo
+}
+
 # --- Test: a forged 'commit (finish)' subject cannot prove work ------------------------
 # GIT_REFLOG_ACTION rewrites the FIRST word of the subject, so a rebase can be made to read
 # 'commit (finish): ...'. A prefix test on 'commit' accepts it, and the same entry carries the
