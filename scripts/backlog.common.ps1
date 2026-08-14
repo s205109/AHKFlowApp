@@ -84,6 +84,44 @@ function Get-BacklogProblem {
         }
     }
 
+    # --- Stage field: exactly one line, a real stage name, and 9-ship for anything shipped ---
+    #
+    # docs/development/workflow.md:78 makes this field the durable record of where the work stands,
+    # and :481 has Ship set 9-ship in the same change that moves the item to done/. Nothing checked
+    # it before backlog 087, so an item reached done/ still reading 4-execute.
+    #
+    # The done/ test reads the parent directory's name, not RelativePath. RelativePath is cut
+    # against the backlog root's parent (:19,46), so under a test temp root it starts with the temp
+    # folder's name rather than 'backlog'. The leaf 'done' is the same in both.
+    #
+    # The template is not excluded here, unlike the heading check above. It carries
+    # '- **Stage**: 0-intake' and lives in backlog/ rather than done/, so it passes, and including
+    # it keeps the line in the template instead of merely putting it there once.
+    $stageNames = @(
+        '0-intake', '1-pickup', '2-design', '3-plan', '4-execute', '5-simplify',
+        '6-verify', '7-document', '8-review', '9-ship', '10-cleanup'
+    )
+
+    foreach ($item in $items | Where-Object { $null -ne $_.Key }) {
+        $stageLines = @(Get-Content -LiteralPath $item.Path |
+            Select-String -Pattern '^- \*\*Stage\*\*:\s*(?<stage>\S+)\s*$')
+
+        if ($stageLines.Count -ne 1) {
+            $problems += "Stage field problem in $($item.RelativePath): expected exactly one '- **Stage**: <stage>' line, found $($stageLines.Count)."
+            continue
+        }
+
+        $stage = $stageLines[0].Matches[0].Groups['stage'].Value
+        $folder = Split-Path -Leaf (Split-Path -Parent $item.Path)
+
+        if ($stage -notin $stageNames) {
+            $problems += "Unknown stage '$stage' in $($item.RelativePath). Expected one of: $($stageNames -join ', ')."
+        }
+        elseif ($folder -eq 'done' -and $stage -ne '9-ship') {
+            $problems += "Shipped item $($item.RelativePath) reads 'Stage: $stage'. An item in backlog/done/ must read 'Stage: 9-ship'."
+        }
+    }
+
     return $problems
 }
 
