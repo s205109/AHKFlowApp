@@ -292,6 +292,28 @@ finally {
     Remove-Item -LiteralPath $tempRoot -Recurse -Force
 }
 
+# --- Case 15: a scaffolded item inherits the template's Stage line ---
+#
+# new-backlog-item.ps1 copies every template line but the heading (scripts/new-backlog-item.ps1:41-43),
+# so the template is the only place the field has to be written. This proves that, rather than
+# assuming it.
+
+$tempRoot = New-TemporaryBacklogRoot
+try {
+    & $scaffoldScript -Title 'Stage line throwaway item' -BacklogRoot $tempRoot | Out-Null
+    $itemPath = Join-Path $tempRoot '001-stage-line-throwaway-item.md'
+    Assert-True (Test-Path -LiteralPath $itemPath) "Expected $itemPath to be created"
+
+    if (Test-Path -LiteralPath $itemPath) {
+        $stageLines = @(Get-Content -LiteralPath $itemPath |
+            Select-String -Pattern '^- \*\*Stage\*\*: 0-intake$')
+        Assert-True ($stageLines.Count -eq 1) "A scaffolded item must carry exactly one '- **Stage**: 0-intake' line, found $($stageLines.Count)"
+    }
+}
+finally {
+    Remove-Item -LiteralPath $tempRoot -Recurse -Force
+}
+
 # --- Report ---
 
 if ($failures.Count -gt 0) {
