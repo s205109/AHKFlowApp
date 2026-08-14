@@ -6,7 +6,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (repo process)
 - **Difficulty**: moderate
-- **Stage**: 8-review
+- **Stage**: 9-ship
 
 ## Summary
 
@@ -37,11 +37,14 @@ lands, so the template's own starting value needs deciding rather than guessing.
 
 ## Acceptance criteria
 
-- [ ] The template carries a Stage line, with a starting value the workflow document supports
-- [ ] The existing items in `backlog/`, `backlog/done/`, and `backlog/blocked/` either carry an
-      accurate Stage line or are listed here as deliberately left alone
-- [ ] The rule that ships an item sets `Stage: 9-ship`, already in `workflow.md:482`, is checked
-      by something other than a reviewer's eye, or the item records why it cannot be
+- [x] The template carries a Stage line, with a starting value the workflow document supports.
+      `backlog/000-backlog-item-template.md:8` reads `- **Stage**: 0-intake`
+- [x] The existing items in `backlog/`, `backlog/done/`, and `backlog/blocked/` either carry an
+      accurate Stage line or are listed here as deliberately left alone. See the section below
+- [x] The rule that ships an item sets `Stage: 9-ship`, already in `workflow.md:482`, is checked
+      by something other than a reviewer's eye, or the item records why it cannot be.
+      `Get-BacklogProblem` checks it (`scripts/backlog.common.ps1:101-129`), and the
+      `powershell-suites` CI job runs it on every pull request
 
 ## Stage values assigned
 
