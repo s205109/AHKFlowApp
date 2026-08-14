@@ -74,6 +74,8 @@ function New-TempGitRepo {
 # -Unmerged keeps the commit out of main; -NoCommits leaves the branch where it was created, which
 # is what a brand-new worktree looks like; -Dirty leaves an uncommitted change. -BaseRef starts the
 # branch somewhere other than main, which is the stacked shape new-worktree.ps1 -BaseRef creates.
+# -Rebase moves main on and rebases the branch before the merge, so the branch merges under a SHA
+# that only a 'rebase (finish)' ref-log entry ever held.
 function Add-TestWorktree {
     param(
         [string] $RepoDir,
@@ -81,6 +83,7 @@ function Add-TestWorktree {
         [switch] $Unmerged,
         [switch] $Dirty,
         [switch] $NoCommits,
+        [switch] $Rebase,
         [string] $BaseRef = 'main'
     )
 
@@ -91,6 +94,13 @@ function Add-TestWorktree {
         Set-Content -LiteralPath (Join-Path $wtPath 'work.txt') -Value "work on $BranchName" -Encoding utf8
         Invoke-TestGit $wtPath @('add', '-A') | Out-Null
         Invoke-TestGit $wtPath @('commit', '-m', "work on $BranchName") | Out-Null
+        if ($Rebase) {
+            # Main must move first, or the rebase replays nothing and writes no ref-log entry.
+            Set-Content -LiteralPath (Join-Path $RepoDir "base-$BranchName.txt") -Value 'main moves on' -Encoding utf8
+            Invoke-TestGit $RepoDir @('add', '-A') | Out-Null
+            Invoke-TestGit $RepoDir @('commit', '-m', "main moves before $BranchName rebases") | Out-Null
+            Invoke-TestGit $wtPath @('rebase', 'main') | Out-Null
+        }
         if (-not $Unmerged) {
             # Merging a branch that is checked out in another worktree is allowed; only checking it
             # out twice is not. --no-ff is what a GitHub "Merge pull request" leaves behind.
@@ -424,6 +434,44 @@ try {
     # The other half of the pair: structural proof alone is fooled by a branch created AT an
     # already-merged branch tip, which really is a non-first parent of a merge commit in main.
     # feat-child above covers that; it must stay unstarted because its ref log shows no commit.
+
+    # A branch rebased before it merged (backlog 095). `git rebase` records the replayed tip under
+    # 'rebase (finish)', and the 'commit' entry keeps the pre-rebase SHA, which never reaches main.
+    # Reading 'commit' entries alone kept every such worktree forever.
+    Add-TestWorktree -RepoDir $repo -BranchName 'feat-rebased' -Rebase | Out-Null
+    $rebasedEntries = @(Invoke-TestGit $repo @('reflog', 'show', '--format=%H %gs', 'refs/heads/feat-rebased'))
+    Assert-True ((($rebasedEntries) -join "`n") -match '(?m)rebase \(finish\):') 'Sanity check: the fixture must really have rebased.'
+
+    $preRebaseSha = @($rebasedEntries | Where-Object { $_ -match '\scommit:' } | ForEach-Object { ($_ -split '\s+', 2)[0] })[0]
+    $mergeParents = (Invoke-TestGit $repo @('rev-list', '--min-parents=2', '--format=%P', 'main')) -join ' '
+    Assert-True (-not ($mergeParents -match [regex]::Escape($preRebaseSha))) 'Sanity check: the pre-rebase SHA must not be a merge parent, or the test would pass for the wrong reason.'
+
+    Assert-True (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-rebased') 'A branch rebased before it merged must report merged own work.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: an unstarted branch rebased onto an already-merged branch stays unstarted ---
+# The class that accepting 'rebase (finish)' could open. Rebasing a branch that holds no commits
+# onto an already-merged branch lands its tip exactly on a non-first parent of a merge commit, so
+# the structural proof alone says "merged". Only the missing 'commit' entry keeps the worktree.
+$repo = New-TempGitRepo
+try {
+    Add-TestWorktree -RepoDir $repo -BranchName 'feat-merged-base' | Out-Null
+    # 'main^' is the first parent of the merge commit, so this branch starts behind the merged tip
+    # and the rebase really moves it.
+    $unstartedPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-unstarted-rebase' -NoCommits -BaseRef 'main^'
+    Invoke-TestGit $unstartedPath @('rebase', 'feat-merged-base') | Out-Null
+
+    $unstartedEntries = (Invoke-TestGit $repo @('reflog', 'show', '--format=%H %gs', 'refs/heads/feat-unstarted-rebase')) -join "`n"
+    Assert-True ($unstartedEntries -match '(?m)rebase \(finish\):') 'Sanity check: the unstarted branch must really have rebased.'
+    Assert-True (-not ($unstartedEntries -match '(?m)\scommit:')) 'Sanity check: the unstarted branch must hold no commit entry.'
+
+    $tip = (Invoke-TestGit $repo @('rev-parse', 'refs/heads/feat-unstarted-rebase')) -join ''
+    $mergeParents = (Invoke-TestGit $repo @('rev-list', '--min-parents=2', '--format=%P', 'main')) -join ' '
+    Assert-True ($mergeParents -match [regex]::Escape($tip.Trim())) 'Sanity check: the rebased tip must really be a merge parent, or this test proves nothing.'
+
+    Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-unstarted-rebase')) 'An unstarted branch rebased onto a merged branch must report no merged own work.'
 } finally {
     Remove-TempTree $repo
 }
@@ -483,6 +531,24 @@ try {
     $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
 
     Assert-True ($keys -contains (ConvertTo-Key $caughtUpPath)) 'A merged worktree that fast-forwarded to main must stay eligible for cleanup.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: a rebased worktree is eligible once it merges (backlog 095) ----------------
+# Eligibility is where the deletion decision is made, so the rebase shape is pinned here too, not
+# only at the probe. An unstarted branch rebased onto the merged branch must still survive.
+$repo = New-TempGitRepo
+try {
+    $rebasedPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-rebased-eligible' -Rebase
+    $unstartedPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-unstarted-rebase-eligible' -NoCommits -BaseRef 'main^'
+    Invoke-TestGit $unstartedPath @('rebase', 'feat-rebased-eligible') | Out-Null
+
+    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
+    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
+
+    Assert-True ($keys -contains (ConvertTo-Key $rebasedPath)) 'A worktree rebased before its merge must be eligible for cleanup.'
+    Assert-True (-not ($keys -contains (ConvertTo-Key $unstartedPath))) 'An unstarted worktree rebased onto a merged branch must never be eligible.'
 } finally {
     Remove-TempTree $repo
 }

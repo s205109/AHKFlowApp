@@ -55,10 +55,11 @@ function ConvertFrom-WorktreePorcelain {
 # Removal is destructive, so this returns $true only when BOTH signals agree, and $false for
 # anything it cannot establish -- an unclear answer keeps the worktree.
 #
-#   1. The branch ref log holds a 'commit'-prefixed subject. Git writes 'commit: <subject>'
+#   1. WORK. The branch ref log holds a 'commit'-prefixed subject. Git writes 'commit: <subject>'
 #      (also 'commit (amend):', 'commit (merge):') when a commit is made on the ref.
-#   2. The branch tip is a NON-FIRST parent of a merge commit reachable from $MainRef -- what a
-#      GitHub "Merge pull request" (`--no-ff`) leaves behind. Git history, not text.
+#   2. MERGE. A SHA the ref log records under 'commit' OR 'rebase (finish)' is a NON-FIRST parent
+#      of a merge commit reachable from $MainRef -- what a GitHub "Merge pull request" (`--no-ff`)
+#      leaves behind. Git history, not text.
 #
 # Neither signal is sufficient alone, and each covers the other's blind spot:
 #   - Ref-log subjects are caller-controlled text. GIT_REFLOG_ACTION and `git update-ref -m` let
@@ -67,6 +68,11 @@ function ConvertFrom-WorktreePorcelain {
 #   - A branch created AT an already-merged branch's tip (the -BaseRef shape) really is a
 #     non-first parent, so signal 2 alone reads unstarted work as finished. Its ref log shows no
 #     commit, so signal 1 rejects it.
+#
+# Signal 2 accepts 'rebase (finish)' because a rebased branch merges under a SHA that no 'commit'
+# entry ever held. `git rebase` replays the work and records the new tip under that subject, while
+# the 'commit' entry keeps the pre-rebase SHA, which never reaches $MainRef. Reading 'commit' alone
+# kept every rebased worktree forever. `git rebase` and `git rebase -i` write the same subject.
 function Test-BranchOwnWorkWasMerged {
     param(
         [Parameter(Mandatory)][string] $RepoRoot,
@@ -78,32 +84,42 @@ function Test-BranchOwnWorkWasMerged {
     # after that entry. Missing ref log (core.logAllRefUpdates off, gc expired it) or an unknown
     # branch exits non-zero and reads as unstarted.
     #
-    # Keep only the SHAs carried by 'commit'-prefixed entries. Both halves of the proof must come
-    # from the SAME entry, or a stacked branch supplies one half from each: a branch started at an
-    # already-merged branch's tip (`new-worktree.ps1 -BaseRef`) carries a non-first parent in its
-    # 'branch: Created from' entry, and a forged 'commit:' subject on a later fast-forward would
-    # then complete the pair without a single commit ever being made.
+    # Two sets from one walk. $hasOwnCommit is the work proof. $mergeProofShas holds the SHAs the
+    # merge proof may use, and it deliberately excludes 'branch: Created from': a branch started at
+    # an already-merged branch's tip (`new-worktree.ps1 -BaseRef`) carries a non-first parent there,
+    # and letting that SHA count would pair it with a forged 'commit:' subject on a later
+    # fast-forward, without a single commit ever being made.
+    #
+    # The work proof is what keeps 'rebase (finish)' safe. Rebasing a branch that holds no commits
+    # onto an already-merged branch also lands its tip on a non-first parent, so the merge proof
+    # alone would read that unstarted worktree as finished. Such a branch has no 'commit' entry.
     $entries = & git -C $RepoRoot reflog show --format='%H %gs' "refs/heads/$Branch" 2>$null
     if ($LASTEXITCODE -ne 0) { return $false }
 
-    $committedShas = @{}
+    $hasOwnCommit = $false
+    $mergeProofShas = @{}
     foreach ($entry in $entries) {
         $text = ([string] $entry).Trim()
         if (-not $text) { continue }
 
         $sha, $subject = $text -split '\s+', 2
-        if ($sha -and $subject -and $subject -match '^commit\b') { $committedShas[$sha] = $true }
+        if (-not $sha -or -not $subject) { continue }
+
+        if ($subject -match '^commit\b') { $hasOwnCommit = $true }
+        # No '\b' after 'rebase (finish)': ')' and the ':' that follows it are both non-word
+        # characters, so a word boundary never matches between them.
+        if ($subject -match '^(commit\b|rebase \(finish\))') { $mergeProofShas[$sha] = $true }
     }
-    if ($committedShas.Count -eq 0) { return $false }
+    if (-not $hasOwnCommit) { return $false }
 
     # Signal 2. `--format=%P` emits a 'commit <sha>' header line per commit followed by that
     # commit's parents; --min-parents=2 keeps merges only, and every parent after the first is a
     # tip that was merged in.
     #
-    # Every commit the branch recorded a 'commit' entry for counts, not just its current tip. A
-    # finished worktree that runs `git merge --ff-only main` after its pull request merged moves
-    # its tip off the merge commit's second parent onto the merge commit itself. The work was
-    # still merged, and the sweep must still remove it, so the proof has to survive that move.
+    # Every SHA in $mergeProofShas counts, not just the current tip. A finished worktree that runs
+    # `git merge --ff-only main` after its pull request merged moves its tip off the merge commit's
+    # second parent onto the merge commit itself. The work was still merged, and the sweep must
+    # still remove it, so the proof has to survive that move.
     $parentLines = & git -C $RepoRoot rev-list --min-parents=2 --format='%P' $MainRef 2>$null
     if ($LASTEXITCODE -ne 0) { return $false }
 
@@ -112,7 +128,7 @@ function Test-BranchOwnWorkWasMerged {
         if (-not $text -or $text -like 'commit *') { continue }
         $parents = @($text -split '\s+')
         for ($i = 1; $i -lt $parents.Count; $i++) {
-            if ($committedShas.ContainsKey($parents[$i])) { return $true }
+            if ($mergeProofShas.ContainsKey($parents[$i])) { return $true }
         }
     }
 

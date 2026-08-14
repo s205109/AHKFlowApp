@@ -6,7 +6,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (scripts)
 - **Difficulty**: moderate
-- **Stage**: 0-intake
+- **Stage**: 9-ship
 
 ## Summary
 
@@ -67,11 +67,11 @@ Any fix must keep both attacks closed.
 
 ## Acceptance criteria
 
-- [ ] A branch that was rebased and then merged is eligible for cleanup
-- [ ] A branch created from an already-merged tip, with no commit of its own, is still preserved
-- [ ] A forged `commit:` reflog subject on an unstarted branch still cannot make it eligible
-- [ ] A branch merged without any rebase is still eligible, as it is today
-- [ ] `tests/WorktreeMergedCleanup.Tests.ps1` covers the rebase-then-merge shape with a real git
+- [x] A branch that was rebased and then merged is eligible for cleanup
+- [x] A branch created from an already-merged tip, with no commit of its own, is still preserved
+- [x] A forged `commit:` reflog subject on an unstarted branch still cannot make it eligible
+- [x] A branch merged without any rebase is still eligible, as it is today
+- [x] `tests/WorktreeMergedCleanup.Tests.ps1` covers the rebase-then-merge shape with a real git
       fixture, not a hand-written reflog
 
 ## Out of scope
@@ -87,6 +87,11 @@ Any fix must keep both attacks closed.
 - Candidate fix: widen the subject test at `:95` to `^(commit|rebase \(finish\))\b`. The
   `rebase (finish)` SHA is the post-replay tip, which is real work, and the same-entry rule stays.
   Check this against the two attacks named above before you write it
+- Shipped fix: the probe keeps two sets from one reflog walk. The work proof stays `^commit\b`. The
+  merge proof also accepts `rebase (finish)`. A branch with no `commit` entry is still unstarted,
+  which is what stops an unstarted branch rebased onto an already-merged branch from being deleted
+- The pattern is `^(commit\b|rebase \(finish\))`. `\b` cannot follow `)`: that character and the
+  `:` after it are both non-word characters, so `^(commit|rebase \(finish\))\b` matches nothing
 - Backlog 094 touches the same function. Expect a conflict, and read it before you start
 - Spec: none — single-function fix, no design needed
 - Plan: `docs/superpowers/plans/2026-08-14-merged-worktree-sweep-rebased-branches-plan-095.md`
