@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: none (test suite)
 - **Difficulty**: moderate
-- **Stage**: 3-plan
+- **Stage**: 5-simplify
 
 ## Summary
 
