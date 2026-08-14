@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: none (test suite)
 - **Difficulty**: moderate
-- **Stage**: 5-simplify
+- **Stage**: 9-ship
 
 ## Summary
 
@@ -43,10 +43,10 @@ script it exercises.
 
 ## Acceptance criteria
 
-- [ ] The test picks a bash that can see the tools the script needs, or skips the live check
-- [ ] The skip message says which host was rejected and why
-- [ ] The test passes on a machine where WSL `bash.exe` comes first on PATH
-- [ ] The test still fails when `.claude/file-suggestion.sh` really is broken
+- [x] The test picks a bash that can see the tools the script needs, or skips the live check
+- [x] The skip message says which host was rejected and why
+- [x] The test passes on a machine where WSL `bash.exe` comes first on PATH
+- [x] The test still fails when `.claude/file-suggestion.sh` really is broken
 
 ## Out of scope
 
