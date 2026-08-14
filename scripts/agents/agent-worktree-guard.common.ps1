@@ -1947,6 +1947,16 @@ function Test-AgentLongOptionPrefix {
     return $false
 }
 
+# The options of ln and cp that need a value. A value is not an option, so the kind reader has to
+# step over it: `ln -S -s x y` sets the SUFFIX to '-s' and makes a hard link, and `ln -tsub x`
+# sets the target directory to 'sub'. Reading either value as a flag names the wrong kind, and a
+# wrong kind removes an anchor.
+#
+# Case matters. -S is --suffix and -s is --symbolic. -t is --target-directory and -T is
+# --no-target-directory, which needs no value.
+$script:AgentGuardValueOptionLetters = 'St'
+$script:AgentGuardValueOptionNames = @('--suffix', '--target-directory')
+
 <#
 .SYNOPSIS
 Which kind of link a command creates: 'Symbolic', 'Hard', or 'Unknown'.
@@ -1974,9 +1984,13 @@ The short-option matches are case-sensitive, for the reason Test-AgentGuardHasLi
 --suffix and -L is --dereference, and neither names a link. -r is read for ln only, because the
 same letter is --recursive for cp.
 
-Two things keep an operand out of the option walk. The walk stops at '--'. And -t names a
-directory whose value is either the next token or attached to this one, so neither is read as an
-option: `ln -tsub x` is -t with the value 'sub', not a cluster holding 's'.
+Two things keep a token out of the option walk. The walk stops at '--'. And an option that needs
+a value takes the rest of its own token, or the whole next token, and neither is an option any
+more. That is what AgentGuardValueOptionLetters above is for:
+
+  ln -tsub x        -t with the value 'sub'. Not a cluster holding 's'.
+  ln -S -s x y      -S with the value '-s'. A HARD link, not a symbolic one.
+  ln --suffix -s x  the same, spelled long.
 
 This walk repeats part of Get-AgentMoveArgumentSet, and it is not folded into that reader's
 Options array on purpose. That array keeps '-tsub' whole, so the attached value would still need
@@ -2024,23 +2038,36 @@ function Get-AgentLinkKind {
         if ($argument -ceq '--') { $afterDoubleDash = $true; continue }
         if ($argument -notlike '-*') { continue }
 
-        # The cluster is what carries the kind letters. It is the whole token, unless -t took part
-        # of the token as its value.
-        $cluster = $argument
-        $spelling = Read-AgentTargetDirectoryToken -Argument $argument
-        if ($null -ne $spelling) {
-            if ($spelling.TakesNextToken) { $i++ }
-            elseif ($argument -cnotlike '--*' -and $argument -cmatch '^-([a-zA-Z]*?)t') {
-                $cluster = '-' + $Matches[1] + 't'
-            }
-        }
-
         if ($argument -clike '--*') {
+            # A long option that needs a value takes it attached after '=', or as the next token.
+            if ($argument -cnotlike '*=*' -and
+                (Test-AgentLongOptionPrefix -Token $argument -Names $script:AgentGuardValueOptionNames)) {
+                $i++
+            }
+
             if (Test-AgentLongOptionPrefix -Token $argument -Names $symbolicNames) { $symbolic = $true }
             if (Test-AgentLongOptionPrefix -Token $argument -Names $hardNames) { $hard = $true }
             if (Test-AgentLongOptionPrefix -Token $argument -Names $relativeNames) { $relative = $true }
             continue
         }
+
+        # Read the short cluster letter by letter. The first letter that needs a value ends it:
+        # the rest of the token is that value, and an empty rest takes the next token instead.
+        # Everything the value covers stops being an option, which is what makes `ln -S -s x y`
+        # a HARD link with the suffix '-s'.
+        $letters = $argument.Substring(1)
+        $cluster = ''
+        for ($j = 0; $j -lt $letters.Length; $j++) {
+            $letter = [string] $letters[$j]
+            if ($letter -cnotmatch '[a-zA-Z]') { break }
+
+            $cluster += $letter
+            if ($script:AgentGuardValueOptionLetters.Contains($letter)) {
+                if ($j -eq ($letters.Length - 1)) { $i++ }
+                break
+            }
+        }
+        $cluster = '-' + $cluster
 
         if ($cluster -cmatch '^-[a-zA-Z]*s') { $symbolic = $true }
         if ($Leaf -eq 'cp' -and $cluster -cmatch '^-[a-zA-Z]*l') { $hard = $true }

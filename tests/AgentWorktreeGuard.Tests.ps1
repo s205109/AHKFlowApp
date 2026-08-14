@@ -2038,6 +2038,19 @@ try {
         @{ Leaf = 'ln'; Arguments = @('-s', '--rel'); Expected = 'Unknown' },
         # '--' ends the options, so an operand that looks like a flag is not one.
         @{ Leaf = 'ln'; Arguments = @('--', '-s.md', 'link.md'); Expected = 'Hard' },
+        # -S is --suffix, and it takes a value. GNU consumes the next token whatever that token
+        # looks like, so the '-s' here is the SUFFIX and the command makes a hard link.
+        @{ Leaf = 'ln'; Arguments = @('-S', '-s'); Expected = 'Hard' },
+        @{ Leaf = 'ln'; Arguments = @('-S', '--symbolic'); Expected = 'Hard' },
+        @{ Leaf = 'ln'; Arguments = @('-S', '--sym'); Expected = 'Hard' },
+        # An attached value ends the cluster too: -Ss is -S with the suffix 's'.
+        @{ Leaf = 'ln'; Arguments = @('-Ss'); Expected = 'Hard' },
+        @{ Leaf = 'ln'; Arguments = @('-St', 'out'); Expected = 'Hard' },
+        # A consumed suffix does not hide a real flag that follows it.
+        @{ Leaf = 'ln'; Arguments = @('-S', '.bak', '-s'); Expected = 'Symbolic' },
+        # The long spelling takes its value the same two ways.
+        @{ Leaf = 'ln'; Arguments = @('--suffix', '-s'); Expected = 'Hard' },
+        @{ Leaf = 'ln'; Arguments = @('--suffix=.bak', '-s'); Expected = 'Symbolic' },
         @{ Leaf = 'cp'; Arguments = @('-s'); Expected = 'Symbolic' },
         @{ Leaf = 'cp'; Arguments = @('-l'); Expected = 'Hard' },
         @{ Leaf = 'cp'; Arguments = @('--symbolic-link'); Expected = 'Symbolic' },
@@ -3365,6 +3378,17 @@ try {
         @{ Name = 'a relative-mode symbolic link stays fail-closed'
             Command = 'ln -sr ../README.md deep/bait.md'
             Action = 'Deny'
+        },
+        # -S is --suffix and takes the next token as its value, so this '-s' is the suffix and
+        # the command makes a HARD link. Only the as-written anchor catches it.
+        @{ Name = 'a suffix value is not read as the symbolic flag'
+            Command = 'ln -S -s ../README.md deep/bait.md'
+            Action = 'Deny'
+        },
+        # The same spelling aimed inside the worktree is ordinary work.
+        @{ Name = 'a hard link behind a suffix value stays inside the worktree'
+            Command = 'ln -S -s src/a.cs deep/bait.md'
+            Action = 'Allow'
         },
         # The gate from Task 5, proved at the decision layer: content is not a path.
         @{ Name = 'an ordinary file write with a value is untouched'
