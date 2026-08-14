@@ -352,7 +352,7 @@ create a PR" as "before you mark it ready".
 - **Entry** — spec approved, or `moderate` item picked
 - **Who** — `--model opus --effort xhigh`
 - **Technique** — `superpowers:writing-plans`, then `mp-grilling` on the draft, then the fabrication check
-- **Action** — write the plan; every task lists its completion criteria and every surface that must change
+- **Action** — write the plan; every task lists its completion criteria and every surface that must change; write the plan's path back into the item as a `- Plan:` bullet
 - **Exit** — Plan committed, grilled, fabrication-checked
 - **Next** — `4-execute`
 - **Context** — clear before Execute; the plan carries the line numbers
@@ -802,7 +802,14 @@ its remaining changes and closes normally.
 
 - Backlog items track planned work. GitHub issues track external reports and discussion.
 - An issue that becomes work gets a backlog item that references the issue.
-- Every spec and every plan carries a backlog number.
+- Every spec and every plan carries a backlog number, in its file name and in its heading:
+  `docs/superpowers/specs/YYYY-MM-DD-<topic>-design-NNN.md` and
+  `docs/superpowers/plans/YYYY-MM-DD-<topic>-plan-NNN.md`. Existing files keep their names.
+- Every backlog item names its plan. The item carries a `- Plan:` bullet under
+  `## Notes / dependencies`, holding a path under `docs/superpowers/plans/`, or
+  `none — <reason>`. `tests/BacklogPlanPointer.Tests.ps1` checks it for `backlog/` and
+  `backlog/blocked/` from `4-execute` onward. It cannot check that the file exists, because
+  `.gitignore:473` keeps `docs/superpowers/` out of this repository.
 - When design starts before an item exists, [Intake](#stage-0-intake) runs first: file the
   item, then design.
 - A pull request body may use a closing keyword for a GitHub issue. It must never use a
