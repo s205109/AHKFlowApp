@@ -55,6 +55,8 @@ script it exercises.
 
 ## Notes / dependencies
 
+- Plan: `docs/superpowers/plans/2026-08-14-plans-symlink-test-bash-host-plan-092.md`
+  (private plans repo)
 - One option is to prefer the Git Bash next to `git.exe` over a bare `bash` lookup
 - Another is to ask the chosen bash for `rg` — `bash -lc 'command -v rg'` — instead of asking
   PowerShell, so the guard and the run agree about the same PATH
