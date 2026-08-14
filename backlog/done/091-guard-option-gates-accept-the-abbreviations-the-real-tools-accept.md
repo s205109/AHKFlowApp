@@ -5,7 +5,8 @@
 - **Epic**: Agent guardrails
 - **Type**: Bug
 - **Interfaces**: none (agent git guard)
-- **Stage**: 0-intake
+- **Stage**: 9-ship
+- **Plan**: `docs/superpowers/plans/2026-08-14-guard-option-gates-abbreviations-plan.md`
 
 ## Summary
 
@@ -51,11 +52,11 @@ type would also read as an unknown kind.
 
 ## Acceptance criteria
 
-- [ ] `cp --sy` and `cp --lin` reach the link branch and report the link target
-- [ ] `New-Item -ItemType Sym` and `-ItemType hardl` report the link target
-- [ ] An abbreviated item type reads as the kind it names, not as an unknown kind
-- [ ] An item type the guard cannot expand still fails closed
-- [ ] A test pins each of the four commands above at Deny when the target is in the main checkout
+- [x] `cp --sy` and `cp --lin` reach the link branch and report the link target
+- [x] `New-Item -ItemType Sym` and `-ItemType hardl` report the link target
+- [x] An abbreviated item type reads as the kind it names, not as an unknown kind
+- [x] An item type the guard cannot expand still fails closed
+- [x] A test pins each of the four commands above at Deny when the target is in the main checkout
 
 ## Out of scope
 
@@ -69,3 +70,15 @@ type would also read as an unknown kind.
   the prefix match for long options; reuse it rather than writing a second one
 - Check whether the FileSystem provider matches the item type by prefix or by something looser
   before you copy the assumption. Prove it against the running provider, not from memory
+
+## Outcome
+
+The provider match is looser than a prefix. It builds the wildcard `<item type>*` and tests it,
+without case, against its own names in a fixed order: `directory`, `container`, `file`,
+`symboliclink`, `junction`, `hardlink`. So `-ItemType *link` creates a symbolic link, and
+`-ItemType [dh]*` creates a directory. This was proved by running `New-Item` under `pwsh 7.6.4`
+and reading back `LinkType`; the full result table is in the plan.
+
+`Get-AgentNewItemType` in `scripts/agents/agent-worktree-guard.common.ps1` now does the same
+match. A malformed wildcard throws, so the reader catches it and returns `$null`, which is the
+fail-closed answer.

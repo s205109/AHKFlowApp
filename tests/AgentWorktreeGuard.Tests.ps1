@@ -2055,8 +2055,10 @@ try {
         @{ Leaf = 'cp'; Arguments = @('-l'); Expected = 'Hard' },
         @{ Leaf = 'cp'; Arguments = @('--symbolic-link'); Expected = 'Symbolic' },
         @{ Leaf = 'cp'; Arguments = @('--sym'); Expected = 'Symbolic' },
+        @{ Leaf = 'cp'; Arguments = @('--sy'); Expected = 'Symbolic' },
         @{ Leaf = 'cp'; Arguments = @('--link'); Expected = 'Hard' },
         @{ Leaf = 'cp'; Arguments = @('--lin'); Expected = 'Hard' },
+        @{ Leaf = 'cp'; Arguments = @('--l'); Expected = 'Hard' },
         # -r is RECURSIVE for cp, not relative, so it changes no kind.
         @{ Leaf = 'cp'; Arguments = @('-rs'); Expected = 'Symbolic' },
         @{ Leaf = 'cp'; Arguments = @('-al'); Expected = 'Hard' },
@@ -2191,6 +2193,10 @@ try {
         @{ Command = 'cp --symbolic-link a.md b.md'
             Expected = @('b.md', 'b.md\a.md', 'a.md')
         },
+        # GNU accepts any unambiguous abbreviation of a long option. An exact-equality gate let
+        # these two walk past the link branch, so only the destination was reported.
+        @{ Command = 'cp --sy a.md b.md'; Expected = @('b.md', 'b.md\a.md', 'a.md') },
+        @{ Command = 'cp --lin a.md b.md'; Expected = @('b.md', 'a.md') },
         # Short options cluster. A literal list of four spellings would miss every one of these.
         @{ Command = 'cp -al a.md b.md'; Expected = @('b.md', 'a.md') },
         @{ Command = 'cp -rs a.md b.md'; Expected = @('b.md', 'b.md\a.md', 'a.md') },
@@ -2241,6 +2247,36 @@ try {
         },
         @{ Command = 'New-Item -Path notes.md -Value plain-text'; Expected = @('notes.md') },
         @{ Command = 'New-Item -ItemType Directory -Path sub'; Expected = @('sub') },
+        # The FileSystem provider matches the item type as the wildcard '<token>*', so an
+        # abbreviation names a real kind. `New-Item -ItemType Sym` creates a symbolic link, and an
+        # exact-match gate read no target for it.
+        @{ Command = 'New-Item -ItemType Sym -Path link.md -Target C:\repo\README.md'
+            Expected = @('link.md', 'C:\repo\README.md')
+        },
+        @{ Command = 'New-Item -ItemType j -Path linkdir -Target C:\repo\docs'
+            Expected = @('linkdir', 'C:\repo\docs')
+        },
+        # The abbreviation has to name the KIND too, not just reach the reader. A symbolic kind
+        # drops the as-written anchor and keeps the two joined ones; a hard kind does the reverse.
+        # An 'Unknown' kind would keep all three and be visible here.
+        @{ Command = 'New-Item -ItemType Sym -Path deep\link.md -Target ..\..\README.md'
+            Expected = @('deep\link.md', 'deep\link.md\..\..\README.md', 'deep\..\..\README.md')
+        },
+        @{ Command = 'New-Item -ItemType hardl -Path deep\link.md -Target ..\..\README.md'
+            Expected = @('deep\link.md', '..\..\README.md')
+        },
+        # An abbreviated NON-link kind stays a non-link kind, so the value stays content and an
+        # ordinary write is not refused. 'container' is the provider's alias for 'directory'.
+        @{ Command = 'New-Item -ItemType Fi -Path notes.md -Value plain-text'
+            Expected = @('notes.md')
+        },
+        @{ Command = 'New-Item -ItemType D -Path sub'; Expected = @('sub') },
+        @{ Command = 'New-Item -ItemType cont -Path sub'; Expected = @('sub') },
+        # An item type that matches no known name creates nothing when it runs, but the guard
+        # cannot tell it apart from a kind it failed to read. It fails closed.
+        @{ Command = 'New-Item -ItemType bogus -Path link.md -Target C:\repo\README.md'
+            Expected = @('link.md', 'C:\repo\README.md')
+        },
         # An item type the guard cannot expand could still be a link, so it fails closed. It also
         # names no kind, so a relative target under it keeps every anchor.
         @{ Command = 'New-Item -ItemType $kind -Path link.md -Target C:\repo\README.md'
@@ -3394,6 +3430,47 @@ try {
         @{ Name = 'an ordinary file write with a value is untouched'
             Command = 'New-Item -ItemType File -Path <MANAGED>\notes.md -Value plain-text'
             Action = 'Allow'
+        },
+        # Both gates in front of the link branch used to compare for equality, and both real tools
+        # accept a shorter spelling. Each row below is a command that walked past its gate.
+        @{ Name = 'an abbreviated cp symbolic flag into main'
+            Command = 'cp --sy <MAIN>\README.md <MANAGED>\bait.md'
+            Action = 'Deny'
+        },
+        @{ Name = 'an abbreviated cp link flag into main'
+            Command = 'cp --lin <MAIN>\README.md <MANAGED>\bait.md'
+            Action = 'Deny'
+        },
+        # The command from the backlog item. The link lands in the working directory, so the
+        # directory holding it IS the working directory and the as-written anchor names the target.
+        @{ Name = 'an abbreviated cp symbolic flag with a relative target'
+            Command = 'cp --sy ../README.md b.md'
+            Action = 'Deny'
+        },
+        @{ Name = 'an abbreviated New-Item symbolic item type into main'
+            Command = 'New-Item -ItemType Sym -Path <MANAGED>\bait.md -Target <MAIN>\README.md'
+            Action = 'Deny'
+        },
+        @{ Name = 'an abbreviated New-Item hard link item type into main'
+            Command = 'New-Item -ItemType hardl -Path <MANAGED>\bait.md -Target <MAIN>\README.md'
+            Action = 'Deny'
+        },
+        # An abbreviated item type has to name the kind it means. These two rows split on the kind:
+        # an 'Unknown' kind keeps every anchor and would turn the Allow row into a Deny, and the
+        # Deny row below is caught by the as-written anchor alone.
+        @{ Name = 'an abbreviated symbolic item type reads as symbolic'
+            Command = 'New-Item -ItemType Sym -Path deep\bait.md -Target ..\src\a.cs'
+            Action = 'Allow'
+        },
+        @{ Name = 'an abbreviated hard link item type reads as hard'
+            Command = 'New-Item -ItemType hardl -Path deep\bait.md -Target ..\README.md'
+            Action = 'Deny'
+        },
+        # An item type the guard cannot resolve to a known name fails closed, the same way a
+        # variable item type does.
+        @{ Name = 'an unknown item type stays fail-closed'
+            Command = 'New-Item -ItemType bogus -Path deep\bait.md -Target ..\README.md'
+            Action = 'Deny'
         }
     )
 
