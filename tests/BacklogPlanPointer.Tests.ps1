@@ -184,6 +184,24 @@ finally {
 $realProblems = @(Get-BacklogPointerProblem -BacklogRoot (Join-Path $repoRoot 'backlog'))
 Assert-True ($realProblems.Count -eq 0) "The real backlog/ must have no pointer problems, found:`n$($realProblems -join "`n")"
 
+# --- The template carries both slots, and the check skips the template itself ---
+
+$templatePath = Join-Path $repoRoot 'backlog/000-backlog-item-template.md'
+$templateText = Get-Content -LiteralPath $templatePath -Raw
+
+Assert-True ($templateText -match '(?m)^- Spec: ') "The template must carry a '- Spec:' line"
+Assert-True ($templateText -match '(?m)^- Plan: ') "The template must carry a '- Plan:' line"
+
+$tempRoot = New-TemporaryBacklogRoot
+try {
+    Copy-Item -LiteralPath $templatePath -Destination (Join-Path $tempRoot '000-backlog-item-template.md')
+    $problems = @(Get-BacklogPointerProblem -BacklogRoot $tempRoot)
+    Assert-True ($problems.Count -eq 0) "A folder holding only the template must be clean, found: $($problems -join ' | ')"
+}
+finally {
+    Remove-Item -LiteralPath $tempRoot -Recurse -Force
+}
+
 # --- Report ---
 
 if ($failures.Count -gt 0) {
