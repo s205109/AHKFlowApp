@@ -1,5 +1,10 @@
 # 094 - Merged worktree sweep reads a stale local main
 
+<!-- citation-check:ignore-file -->
+<!-- The Detail section below is the pre-fix record: it cites the code and the workflow.md
+     wording as they were when the defect was filed, and this item's own work changed both.
+     Those citations are history, not live evidence, so the freshness check skips this file. -->
+
 ## Metadata
 
 - **Epic**: Development process

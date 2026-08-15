@@ -1,4 +1,4 @@
-# 097 - Worktree removal decides merged by ancestry so a rebase merge is refused
+# 098 - Worktree removal decides merged by ancestry so a rebase merge is refused
 
 ## Metadata
 
@@ -21,19 +21,22 @@ removed, so that the folder list holds live work only.
 
 ## Detail
 
-`scripts/remove-worktree-local-dev.ps1:368` runs
-`git merge-base --is-ancestor HEAD <base>`, and `:681` is the call site on the hook path.
+The removal script runs `git merge-base --is-ancestor HEAD <base>`
+(`scripts/remove-worktree-local-dev.ps1:368`, "'merge-base', '--is-ancestor', 'HEAD', $BaseRef"),
+called from the hook path
+(`scripts/remove-worktree-local-dev.ps1:688`, "Test-WorktreeMergedIntoMain -WorktreeFull $worktreeFull -BaseRef $baseRef").
 
 The sweep no longer works that way. Backlog 095 replaced patch likeness and ancestry with
 reachability plus a ref-log reading of the branch's own work
-(`Test-BranchOwnWorkWasMerged`, `scripts/cleanup-merged-worktrees.ps1:170`). So the two scripts
-now disagree, and the disagreement is visible: the sweep lists a rebase-merged worktree as
+(`scripts/cleanup-merged-worktrees.ps1:170`, "function Test-BranchOwnWorkWasMerged {"). So the two
+scripts now disagree, and the disagreement is visible: the sweep lists a rebase-merged worktree as
 eligible, calls the removal script, and the removal script preserves it.
 
 This repository has rebase merging enabled (`allow_rebase_merge: true`), so it happens for real.
-`docs/development/workflow.md:540-546` describes the trap and tells the reader to merge with a
-merge commit for any worktree Cleanup should remove. That warning is the workaround this item
-removes.
+The "Merge with a merge commit, not a rebase merge" warning in Stage 10 — Cleanup
+(`docs/development/workflow.md:540`, "Merge with a merge commit, not a rebase merge.") describes
+the trap and tells the reader to merge with a merge commit for any worktree Cleanup should
+remove. That warning is the workaround this item removes.
 
 Backlog 094 fixed which base both scripts read; it left the ancestry test alone on purpose.
 
@@ -45,7 +48,9 @@ Backlog 094 fixed which base both scripts read; it left the ancestry test alone 
 - [ ] A worktree whose branch is not merged is still preserved, and a worktree with uncommitted
       changes is still preserved
 - [ ] A fixture proves both directions, in `tests/WorktreeRemoveHook.Tests.ps1` or a new suite
-- [ ] `docs/development/workflow.md:540-546` no longer tells the reader to avoid rebase merges
+- [ ] The Cleanup warning
+      (`docs/development/workflow.md:540`, "Merge with a merge commit, not a rebase merge.")
+      no longer tells the reader to avoid rebase merges
 
 ## Out of scope
 
@@ -55,10 +60,11 @@ Backlog 094 fixed which base both scripts read; it left the ancestry test alone 
 ## Notes / dependencies
 
 - Found while implementing backlog 094, which needed the removal gate to read the same base
-- `docs/development/workflow.md:545` points at this item
+- The Cleanup warning points at this item
+  (`docs/development/workflow.md:547`, "backlog 098 makes the removal script use the same rule.")
 - The shared rule lives in `scripts/cleanup-merged-worktrees.ps1`. Moving it into
   `scripts/worktree-git.common.ps1` is one option; the watcher runs from a copy in `%TEMP%`, so
   check what a shared helper does to that copy first
-  (`scripts/remove-worktree-local-dev.ps1:75-107`)
+  (`scripts/remove-worktree-local-dev.ps1:75`, "$gitHelperPath = Join-Path $PSScriptRoot 'worktree-git.common.ps1'")
 - Spec: none — the defect and the fix are one rule
 - Plan: none — not planned yet; Stage 0-intake

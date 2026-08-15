@@ -539,16 +539,17 @@ Otherwise it sits in `backlog/` forever describing a blocker that cleared.
 
 **Merge with a merge commit, not a rebase merge.** The removal script decides a worktree is
 merged with `git merge-base --is-ancestor HEAD <base>`
-(`scripts/remove-worktree-local-dev.ps1:368`). A rebase merge rewrites the commits, so the
+(`scripts/remove-worktree-local-dev.ps1:368`, "'merge-base', '--is-ancestor', 'HEAD', $BaseRef").
+A rebase merge rewrites the commits, so the
 branch head that was merged is not an ancestor of the base and removal is refused even though
 the work landed. This repository has rebase merging enabled (`allow_rebase_merge: true`), so it
 is a live trap, not a theoretical one. The sweep already decides by reachability instead
-(backlog 095), so the two disagree; backlog 097 makes the removal script use the same rule.
+(backlog 095), so the two disagree; backlog 098 makes the removal script use the same rule.
 Until then, Ship uses a merge commit for any branch whose worktree you expect Cleanup to remove.
 
 **No pull is needed first.** The base both scripts decide against is the remote-tracking branch
 `origin/main`, fetched at the start of the run
-(`Resolve-MergedBaseRef`, `scripts/worktree-git.common.ps1:117`). `gh pr merge` merges on GitHub
+(`scripts/worktree-git.common.ps1:185`, "function Resolve-MergedBaseRef {"). `gh pr merge` merges on GitHub
 and advances no local ref, and that no longer hides the merge. The fetch updates one
 remote-tracking ref: it never touches local `main`, so a worktree session may run it under the
 guard.
@@ -575,7 +576,7 @@ Cleanup therefore ends in one of two ways, and the session says which:
    two only if something is left behind.
 
    Memory comes first because the watcher's success path removes both the worktree and the
-   branch (`scripts/remove-worktree-local-dev.ps1:915`). After a clean run there is no
+   branch (`scripts/remove-worktree-local-dev.ps1:922`, "'branch', '-d', '--', $branchName"). After a clean run there is no
    worktree, no branch, and no marker, so a later session has nothing to find and nothing to
    act on — which is correct, because nothing is left to do. The leftover check below exists
    for the partial-failure cases only.
@@ -583,10 +584,11 @@ Cleanup therefore ends in one of two ways, and the session says which:
    That needs a trigger, and the merged pull request cannot be one: it looks identical
    before and after the checks, and a housekeeping round has no `done/` item at all. The
    durable trigger is the leftover itself — but it must be **either** leftover, not only the
-   worktree. The watcher prunes the worktree before it deletes the branch
-   (`scripts/remove-worktree-local-dev.ps1:909-915`) and has a documented outcome that stops
-   in between, logging "worktree removed; branch preserved" (`:990`). Checking the worktree
-   alone would miss exactly that case.
+   worktree. The watcher prunes the worktree
+   (`scripts/remove-worktree-local-dev.ps1:916`, "'worktree', 'prune', '-v'") before it deletes
+   the branch, and has a documented outcome that stops in between, logging
+   (`scripts/remove-worktree-local-dev.ps1:997`, "worktree removed; branch preserved").
+   Checking the worktree alone would miss exactly that case.
 
    Two leftovers are possible and **one check does not find both**.
 
@@ -594,11 +596,14 @@ Cleanup therefore ends in one of two ways, and the session says which:
    what it reports. Use its eligibility rule rather than a hand-rolled one.
 
    *Branch still present, worktree already gone.* That sweep cannot see this case: it
-   enumerates `git worktree list` (`scripts/cleanup-merged-worktrees.ps1:292`), and the
-   watcher prunes the worktree **before** deleting the branch
-   (`scripts/remove-worktree-local-dev.ps1:909-915`), then may stop with "worktree removed;
-   branch preserved" (`:990`). So the exact partial failure the deferred route exists for is
-   invisible to it. Until backlog 098 scripts this, check it directly: a local branch other
+   enumerates `git worktree list`
+   (`scripts/cleanup-merged-worktrees.ps1:292`, "worktree list --porcelain"), and the
+   watcher prunes the worktree
+   (`scripts/remove-worktree-local-dev.ps1:916`, "'worktree', 'prune', '-v'") **before** it
+   deletes the branch, then may stop with
+   (`scripts/remove-worktree-local-dev.ps1:997`, "worktree removed; branch preserved"). So the
+   exact partial failure the deferred route exists for is
+   invisible to it. Until backlog 099 scripts this, check it directly: a local branch other
    than `main`, merged into `main`, with no registered worktree, whose tip differs from
    `main`'s tip.
 
@@ -612,20 +617,20 @@ Cleanup therefore ends in one of two ways, and the session says which:
 Neither route lets a session claim success it did not observe. All three exit conditions
 are checked, never the worktree alone. The removal script has a
 documented outcome that removes the worktree and keeps the branch
-(`scripts/remove-worktree-local-dev.ps1:990`, "worktree removed; branch preserved").
+(`scripts/remove-worktree-local-dev.ps1:997`, "worktree removed; branch preserved").
 
 Both git checks name the main checkout with `-C`, and the branch check accepts exit code 1
 only. Cleanup deletes the worktree folder, so the session may be left in no repository at
 all. There `git show-ref` exits 128 for every ref, including refs that still exist. Exit 1
 means the branch is absent. Any other non-zero code is a failed check, not a deleted
 branch. The removal script scopes its own check the same way
-(`scripts/remove-worktree-local-dev.ps1:915`).
+(`scripts/remove-worktree-local-dev.ps1:922`, "'branch', '-d', '--', $branchName").
 
 | Edge | Condition | Target |
 |---|---|---|
 | success | all three confirmed — `git -C <main-checkout> worktree list` shows no entry, `git -C <main-checkout> show-ref --verify --quiet refs/heads/<branch>` exits 1, memory updated | terminal |
 | failure | removal attempt failed — a holder process or a lock; name the holder, follow the removal log's manual guidance, retry | stay |
-| blocked | removal depends on something outside the repository, such as an upstream tooling bug. The work already merged, so the original item stays in `backlog/done/`. File a new item naming the merged PR, the worktree path, the blocker, and what would unblock it, and move it to `backlog/blocked/` — but **file it from the main checkout or a housekeeping round, never inside the worktree being removed**. Writing it there leaves the tree dirty, and committing it moves HEAD off `main`'s ancestry; the removal script rejects both (`scripts/remove-worktree-local-dev.ps1:681,686`), so filing the blocker in place would itself prevent the removal from ever succeeding | blocked/ |
+| blocked | removal depends on something outside the repository, such as an upstream tooling bug. The work already merged, so the original item stays in `backlog/done/`. File a new item naming the merged PR, the worktree path, the blocker, and what would unblock it, and move it to `backlog/blocked/` — but **file it from the main checkout or a housekeeping round, never inside the worktree being removed**. Writing it there leaves the tree dirty, and committing it moves HEAD off `main`'s ancestry; the removal script rejects both (`scripts/remove-worktree-local-dev.ps1:688`, "Test-WorktreeMergedIntoMain -WorktreeFull $worktreeFull -BaseRef $baseRef") and (`scripts/remove-worktree-local-dev.ps1:693`, "Test-WorktreeClean -WorktreeFull $worktreeFull"), so filing the blocker in place would itself prevent the removal from ever succeeding | blocked/ |
 | not applicable | cannot occur: Cleanup is entered only after a merge, and a round mid-flight never reaches it | none |
 | resume | re-check all three; worktree present → continue removal; worktree absent but branch still there → delete the branch; both gone but memory not written → update memory; all three done → take the success edge | stay |
 

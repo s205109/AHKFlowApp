@@ -1,4 +1,4 @@
-# 098 - Nothing finds a branch left behind after its worktree is gone
+# 099 - Nothing finds a branch left behind after its worktree is gone
 
 ## Metadata
 
@@ -22,15 +22,18 @@ finished cleanup does not need a check I have to remember.
 ## Detail
 
 The merged-worktree sweep enumerates `git worktree list`
-(`scripts/cleanup-merged-worktrees.ps1:292`). A branch whose worktree is already pruned appears
-nowhere in that list, so the sweep cannot see it.
+(`scripts/cleanup-merged-worktrees.ps1:292`, "worktree list --porcelain"). A branch whose worktree
+is already pruned appears nowhere in that list, so the sweep cannot see it.
 
-The watcher prunes the worktree first and deletes the branch second
-(`scripts/remove-worktree-local-dev.ps1:909-915`), and logs
-`Watcher done (worktree removed; branch preserved).` when it stops in between (`:990`). That is the
-exact partial failure the deferred cleanup route exists for, and the sweep is blind to it.
+The watcher prunes the worktree
+(`scripts/remove-worktree-local-dev.ps1:916`, "'worktree', 'prune', '-v'") first and deletes the
+branch (`scripts/remove-worktree-local-dev.ps1:922`, "'branch', '-d', '--', $branchName") second,
+and logs (`scripts/remove-worktree-local-dev.ps1:997`, "worktree removed; branch preserved") when
+it stops in between. That is the exact partial failure the deferred cleanup route exists for, and
+the sweep is blind to it.
 
-`docs/development/workflow.md:597-610` therefore hands the reader a hand-written check: a local
+Stage 10 — Cleanup therefore hands the reader a hand-written check
+(`docs/development/workflow.md:598`, "Branch still present, worktree already gone."): a local
 branch other than `main`, merged into `main`, with no registered worktree, whose tip differs from
 `main`'s tip. The tip comparison is what keeps it usable, because `git branch --merged main` alone
 also lists every branch freshly cut from `main`.
@@ -44,7 +47,9 @@ also lists every branch freshly cut from `main`.
 - [ ] The branch check decides against the same base the sweep uses, so a merge that is only on
       the remote still counts (backlog 094)
 - [ ] A fixture proves both leftovers and proves a clean repository reports nothing
-- [ ] `docs/development/workflow.md:597-610` names the command instead of the hand-written check
+- [ ] The Cleanup leftover check
+      (`docs/development/workflow.md:598`, "Branch still present, worktree already gone.")
+      names the command instead of the hand-written check
 
 ## Out of scope
 
@@ -53,8 +58,10 @@ also lists every branch freshly cut from `main`.
 
 ## Notes / dependencies
 
-- Found while implementing backlog 094, which re-pointed the claim at `workflow.md:601`
-- Backlog 073 covers cleanup experience (`backlog/073-process-wave-3-cleanup-ux.md:25-29`) and does
-  not cover this
+- Found while implementing backlog 094, which re-pointed the claim
+  (`docs/development/workflow.md:606`, "Until backlog 099 scripts this")
+- Backlog 073 covers cleanup experience
+  (`backlog/073-process-wave-3-cleanup-ux.md:25`, "Worktree removal runs without opening a terminal window.")
+  and does not cover this
 - Spec: none — one report, no design yet
 - Plan: none — not planned yet; Stage 0-intake

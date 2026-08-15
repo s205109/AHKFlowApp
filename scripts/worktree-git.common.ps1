@@ -136,6 +136,33 @@ function Stop-ProcessTree {
     }
 }
 
+# Decides whether the fetch may impose `ssh -oBatchMode=yes`, which stops ssh asking for a
+# passphrase. Returns that command, or $null when somebody else already chose the transport.
+#
+# `GIT_SSH_COMMAND` is not only a batch-mode switch: it is how a caller points git at an identity
+# file, a proxy, or a different ssh client, and git documents that it is used INSTEAD OF ssh.
+# Overwriting it makes the fetch fail for those remotes, which would leave the sweep permanently
+# unable to refresh its base -- and therefore permanently unable to remove anything. The timeout
+# already bounds a transport that hangs.
+#
+# `core.sshCommand` counts as chosen too: the environment variable wins over it, so setting one
+# silently overrides the other.
+function Resolve-BatchModeSshCommand {
+    param(
+        [Parameter(Mandatory)][string] $RepoRoot,
+        [string] $ExistingCommand
+    )
+
+    $ErrorActionPreference = 'Continue'
+
+    if ($ExistingCommand) { return $null }
+
+    $configured = "$(& git -C $RepoRoot config --get core.sshCommand 2>$null)".Trim()
+    if ($configured) { return $null }
+
+    return 'ssh -oBatchMode=yes'
+}
+
 # Resolves the base that a merged-worktree decision must be made against.
 #
 # The local branch is the wrong base. `gh pr merge` merges on GitHub and never advances a local
@@ -190,7 +217,8 @@ function Resolve-MergedBaseRef {
     $result = [pscustomobject]@{ Ref = $shortRef; Remote = $remote; Fetched = $false; Reason = 'remote-stale' }
 
     # Nothing here may wait for a human. Terminal prompting is off, git's own askpass program is
-    # cleared, and ssh runs in batch mode. `credential.helper` is deliberately LEFT ALONE: clearing
+    # cleared, and ssh runs in batch mode unless the caller chose its own transport (see
+    # Resolve-BatchModeSshCommand). `credential.helper` is deliberately LEFT ALONE: clearing
     # it would break the ordinary authenticated fetch this whole feature depends on. Git Credential
     # Manager is told not to open a window instead -- `credential.interactive` is the current
     # setting, GCM_INTERACTIVE the older one, and both are cheap to set.
@@ -207,8 +235,10 @@ function Resolve-MergedBaseRef {
         GCM_INTERACTIVE     = 'never'
         GIT_ASKPASS         = ''
         SSH_ASKPASS         = ''
-        GIT_SSH_COMMAND     = 'ssh -oBatchMode=yes'
     }
+    $batchModeSsh = Resolve-BatchModeSshCommand -RepoRoot $RepoRoot `
+        -ExistingCommand ([Environment]::GetEnvironmentVariable('GIT_SSH_COMMAND', 'Process'))
+    if ($batchModeSsh) { $suppressed['GIT_SSH_COMMAND'] = $batchModeSsh }
     foreach ($name in $suppressed.Keys) {
         $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
         [Environment]::SetEnvironmentVariable($name, $suppressed[$name], 'Process')

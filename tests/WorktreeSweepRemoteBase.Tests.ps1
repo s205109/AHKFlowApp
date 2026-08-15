@@ -256,6 +256,26 @@ try {
     Remove-Fixture $fixture.Root
 }
 
+# --- SSH transport ------------------------------------------------------------
+#
+# Batch mode stops ssh asking for a passphrase, but `GIT_SSH_COMMAND` is also how a caller points
+# git at an identity file, a proxy, or a different ssh client. Overwriting it makes the fetch fail
+# for those remotes, which leaves the sweep permanently in the stale-base, remove-nothing state.
+# So it is set only when nobody else has chosen a transport.
+$fixture = New-RemoteFixture
+try {
+    Assert-True ((Resolve-BatchModeSshCommand -RepoRoot $fixture.Repo -ExistingCommand '') -eq 'ssh -oBatchMode=yes') `
+        'With no transport configured, batch mode must be applied.'
+    Assert-True ($null -eq (Resolve-BatchModeSshCommand -RepoRoot $fixture.Repo -ExistingCommand 'ssh -i C:\keys\id_ed25519')) `
+        "A caller's GIT_SSH_COMMAND must be left alone."
+
+    Invoke-FixtureGit $fixture.Repo @('config', 'core.sshCommand', 'ssh -i C:\keys\id_ed25519') | Out-Null
+    Assert-True ($null -eq (Resolve-BatchModeSshCommand -RepoRoot $fixture.Repo -ExistingCommand '')) `
+        'A configured core.sshCommand must be left alone: the environment variable would override it.'
+} finally {
+    Remove-Fixture $fixture.Root
+}
+
 # --- The message the caller writes --------------------------------------------
 
 $fetched = [pscustomobject]@{ Ref = 'origin/main'; Remote = 'origin'; Fetched = $true; Reason = 'remote-fetched' }
