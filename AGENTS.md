@@ -143,8 +143,8 @@ the narrative.
 - End every plan with a list of unresolved questions, if any. Keep them extremely concise; sacrifice grammar — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
 - Run the fabrication check on your own draft before you present it. It is not optional — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
 - Prove every identifier defined in this repository with the `file:line` that defines it, written in the checkable form below — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
-- The checkable form is `` (`path:line`, "text from that line") ``, as in (`scripts/check-citation-freshness.ps1:1`, "#Requires -Version 7.0"). `scripts/check-citation-freshness.ps1` fails any citation on a line a pull request adds or edits when it does not use that form. An untouched citation keeps working, so no bulk rewrite is needed.
-- Suppress a citation the check must not read with `citation-check:ignore` on the same line. Suppress a whole file with `citation-check:ignore-file` alone on its own line, inside the first five non-blank lines.
+  - The checkable form is `` (`path:line`, "text from that line") ``, as in (`scripts/check-citation-freshness.ps1:1`, "#Requires -Version 7.0"). `scripts/check-citation-freshness.ps1` fails any citation on a line a pull request adds or edits when it does not use that form. An untouched citation keeps working, so no bulk rewrite is needed.
+  - Suppress a citation the check must not read with `citation-check:ignore` on the same line. Suppress a whole file with `citation-check:ignore-file` alone on its own line, inside the first five non-blank lines.
 - Prove every .NET or NuGet identifier against the official documentation for the version in `Directory.Packages.props`. Never cite an external API from memory — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
 - Prove every MudBlazor or other component parameter against that component's API for the version in `Directory.Packages.props` — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
 - Prove every CSS selector and `data-test` value with the `file:line` in the `.razor` file that renders it, written in the same checkable form — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
@@ -185,13 +185,12 @@ State the verdict either way. Naming an exemption is fine; saying nothing is not
 
 ### When manual steps are the answer
 
-Ask the user only for the cases the table sends to them — see [workflow.md#stage-6-verify](docs/development/workflow.md#stage-6-verify). Then always provide:
-
-- **Preconditions first** — what must be running, exact URL, login/profile, starting state
-- **Numbered steps, one action each** — never combine actions in one step
-- **Verbatim input in code blocks** — anything typed or pasted is given literally, never described
-- **Expected result per step** — so pass/fail is clear immediately, not only at the end
-- **Feedback labeled per step** — state exactly what to paste or screenshot back, mapped to step numbers (e.g. "reply with: step 3 screenshot, step 5 pasted output")
+- Ask the user only for the cases the table sends to them — see [workflow.md#stage-6-verify](docs/development/workflow.md#stage-6-verify). Then always provide:
+  - **Preconditions first** — what must be running, exact URL, login/profile, starting state
+  - **Numbered steps, one action each** — never combine actions in one step
+  - **Verbatim input in code blocks** — anything typed or pasted is given literally, never described
+  - **Expected result per step** — so pass/fail is clear immediately, not only at the end
+  - **Feedback labeled per step** — state exactly what to paste or screenshot back, mapped to step numbers (e.g. "reply with: step 3 screenshot, step 5 pasted output")
 
 ## Rules
 
