@@ -323,7 +323,7 @@ request exists from Pickup so it can point at the work through Design and Plan. 
 [`testing-workflow.md`](testing-workflow.md#canonical-pre-pr-gate) is therefore a
 **pre-ready** gate: it runs at [Verify](#stage-6-verify), and it must be green before
 [Ship](#stage-9-ship) flips the pull request to ready. Read every rule that says "before you
-create a PR" as "before you mark it ready".
+create a PR" as "before you mark it ready". <!-- gate-wording:ignore -->
 
 <a id="stage-2-design"></a>
 

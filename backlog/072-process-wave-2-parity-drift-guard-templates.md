@@ -88,7 +88,7 @@ one of them can never leave the other two behind.
 - [ ] `docs/adr/` gains one ADR: process canon lives in `workflow.md`.
 - [ ] The five friction counts are measured here, to the requirements below. Backlog 071 attempted this three times and withdrew every result; nothing is inherited.
 - [ ] The drift guard also checks that no document tells a reader to run the gate "before
-      opening a PR". The gate gates the pull request going **ready**, not its creation, and
+      opening a PR". <!-- gate-wording:ignore --> The gate gates the pull request going **ready**, not its creation, and
       the wording drifted back once already. Backlog 071 fixed
       `docs/development/testing-workflow.md`, `docs/development/coverage.md`, and
       `AGENTS.md`; the guard keeps them fixed.
