@@ -206,6 +206,7 @@ directory-bound commands — not as percentages against a number.
 - Spec: `docs/superpowers/specs/2026-08-15-process-wave-2-design-072.md` (private plans repo).
   It carries the 13 decisions the Design grilling settled, and closes the two gaps this item
   left open — the measurement window and the transcript scope.
+- Plan: `docs/superpowers/plans/2026-08-15-process-wave-2-plan-072.md`
 - Wave-1 spec: `docs/superpowers/specs/2026-08-10-development-process-design-071.md` §10 and
   §13 (private plans repo).
 - The parity comparison model and the drift-guard rule are already specified in §10. This
