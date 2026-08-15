@@ -1,0 +1,60 @@
+# 098 - Nothing finds a branch left behind after its worktree is gone
+
+## Metadata
+
+- **Epic**: Development process
+- **Type**: Tooling
+- **Interfaces**: none (scripts)
+- **Difficulty**: moderate
+- **Stage**: 0-intake
+
+## Summary
+
+The removal watcher prunes the worktree before it deletes the branch, and it has a documented
+outcome that stops between the two. No script finds what that leaves behind: a merged branch with
+no worktree. Only a hand-written git check does.
+
+## User story
+
+As a contributor, I want one command to report every leftover from a removal, so that a partly
+finished cleanup does not need a check I have to remember.
+
+## Detail
+
+The merged-worktree sweep enumerates `git worktree list`
+(`scripts/cleanup-merged-worktrees.ps1:292`). A branch whose worktree is already pruned appears
+nowhere in that list, so the sweep cannot see it.
+
+The watcher prunes the worktree first and deletes the branch second
+(`scripts/remove-worktree-local-dev.ps1:909-915`), and logs
+`Watcher done (worktree removed; branch preserved).` when it stops in between (`:990`). That is the
+exact partial failure the deferred cleanup route exists for, and the sweep is blind to it.
+
+`docs/development/workflow.md:597-610` therefore hands the reader a hand-written check: a local
+branch other than `main`, merged into `main`, with no registered worktree, whose tip differs from
+`main`'s tip. The tip comparison is what keeps it usable, because `git branch --merged main` alone
+also lists every branch freshly cut from `main`.
+
+## Acceptance criteria
+
+- [ ] One command reports both leftovers: a worktree still present, and a branch present with its
+      worktree already gone
+- [ ] The branch check does not report a branch that was freshly cut from the base and has no
+      commits of its own
+- [ ] The branch check decides against the same base the sweep uses, so a merge that is only on
+      the remote still counts (backlog 094)
+- [ ] A fixture proves both leftovers and proves a clean repository reports nothing
+- [ ] `docs/development/workflow.md:597-610` names the command instead of the hand-written check
+
+## Out of scope
+
+- Deleting the leftover branch automatically. Reporting first; removal is a separate decision
+- The removal watcher's own ordering. Prune-then-delete stays as it is
+
+## Notes / dependencies
+
+- Found while implementing backlog 094, which re-pointed the claim at `workflow.md:601`
+- Backlog 073 covers cleanup experience (`backlog/073-process-wave-3-cleanup-ux.md:25-29`) and does
+  not cover this
+- Spec: none — one report, no design yet
+- Plan: none — not planned yet; Stage 0-intake
