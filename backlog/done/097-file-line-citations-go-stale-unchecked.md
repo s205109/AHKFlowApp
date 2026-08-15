@@ -51,7 +51,7 @@ found it.
 
 **This is not what the backlog 072 drift guard does.** That guard checks that top-level bullets in
 the process sections carry a `docs/development/workflow.md#stage-N-name` anchor and that the anchor
-exists (`backlog/072-process-wave-2-parity-drift-guard-templates.md:61`, "docs/development/workflow.md#stage-N-name").
+exists (`backlog/072-process-wave-2-parity-drift-guard-templates.md:68`, "docs/development/workflow.md#stage-N-name").
 Anchors are stable across line shifts, which is exactly why that guard cannot see this defect. The
 two are complementary.
 

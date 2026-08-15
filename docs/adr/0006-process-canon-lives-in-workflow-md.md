@@ -21,7 +21,14 @@ so each drift becomes a discussion instead of a defect with a known fix.
 
 A change to a Stage name, an exit condition, or an Edge target must change every derived
 document in the same commit. The PDF is generated from the cheatsheet, so that change also
-means regenerating the PDF and refreshing its hash sidecar by hand; no script generates it.
+means regenerating the PDF. One script does that and writes both hash sidecars in the same run,
+so the PDF and the cheatsheet it came from cannot be updated apart. It needs a browser, so it
+runs locally; only the checks run in CI.
+
+Two hashes together prove the three files were last written by that script. They do not prove
+the PDF's rendered content matches the cheatsheet — that would mean extracting text from a
+compressed PDF, which this repository deliberately does not do. This is an enforced convention,
+not a content proof.
 
 Two guards enforce this instead of a reader. `scripts/check-process-parity.ps1` compares the
 three process documents and fails on any disagreement, naming the losing file and line. A

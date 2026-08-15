@@ -53,7 +53,7 @@ one of them can never leave the other two behind.
       for a reviewer. Extend it to the narrative fields — Action, Technique, Context — or
       state plainly that those stay manual.
       **Design round correction:** "joins the suite" alone is not achievable. The suite runs
-      in CI, and `.gitignore:473` keeps `docs/superpowers/` out of the checkout, so CI has no
+      in CI, and (`.gitignore:473`, "docs/superpowers") keeps that folder out of the checkout, so CI has no
       plan to compare. The check therefore joins in two halves: the suite runs it against
       fixture plans committed here, and `scripts/pre-push-quick-checks.ps1` runs it against
       the real plans, discovering them by `## Appendix A` rather than a hardcoded path, and

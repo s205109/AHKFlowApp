@@ -182,11 +182,11 @@ A numbered file under `backlog/` that describes one piece of tracked work, and c
 _Avoid_: ticket, issue, task, story, card
 
 **Difficulty**:
-The value a Backlog item carries — trivial, moderate, complex, or to-be-determined. It decides which Stage Pickup jumps to, and which artifacts the work needs.
+The value — trivial, moderate, complex, or to-be-determined — that decides which Stage Pickup jumps to, and which artifacts the work needs. A filed Backlog item never carries trivial, because trivial work runs as a Housekeeping round and a round files no item.
 _Avoid_: complexity, size, effort, priority, points
 
 **Wave**:
-One numbered slice of the work that builds the development process itself. Each Wave is a Backlog item, and the Waves run in order.
+One numbered slice of the work that builds the development process itself. The Waves run in order. Most are tracked by a Backlog item, but the final Wave covers personal configuration outside this repository and gets none.
 _Avoid_: phase, milestone, iteration, sprint
 
 **Housekeeping round**:
