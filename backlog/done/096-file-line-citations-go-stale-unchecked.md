@@ -6,7 +6,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (repo process)
 - **Difficulty**: moderate
-- **Stage**: 3-plan
+- **Stage**: 9-ship
 
 ## Summary
 
@@ -61,18 +61,20 @@ a check — see the open questions below.
 
 ## Acceptance criteria
 
-- [ ] The repository-wide count of `file:line` citations is measured and written down, split by
+- [x] The repository-wide count of `file:line` citations is measured and written down, split by
       whether the cited path resolves to a file in this repository. No baseline is inherited; the
       one attempt made while filing this item produced zero and was wrong
-- [ ] A check finds a citation whose cited line no longer holds what the citation claims, and it
+- [x] A check finds a citation whose cited line no longer holds what the citation claims, and it
       runs in CI on every pull request
-- [ ] The check covers both failure modes above, or the item states which one it covers and why
-      the other is out of scope
-- [ ] A fixture proves both directions: a drifted citation fails the check, and an accurate one
+- [x] The check covers both failure modes above, or the item states which one it covers and why
+      the other is out of scope. It covers both: tier 1/2 read whole-repo state, so a third-party
+      edit that breaks someone else's citation is caught the next time CI or pre-push runs, not
+      only in the commit that broke it
+- [x] A fixture proves both directions: a drifted citation fails the check, and an accurate one
       passes
-- [ ] A citation on a line the pull request adds or edits must use the checkable notation. An
+- [x] A citation on a line the pull request adds or edits must use the checkable notation. An
       unchanged citation is grandfathered, so no bulk rewrite is needed
-- [ ] `AGENTS.md` says how to write a citation so the check can verify it, and the rule that
+- [x] `AGENTS.md` says how to write a citation so the check can verify it, and the rule that
       demands `file:line` proof points at that notation
 
 ## Out of scope
