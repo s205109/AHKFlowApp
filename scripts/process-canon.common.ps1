@@ -94,10 +94,13 @@ function Get-HtmlStage {
             $word = $m.Groups[2].Value
             if ($edges.Contains($word)) { $duplicates.Add($word); continue }
             $edges[$word] = $m.Groups[3].Value.Trim()
-            $visible = ConvertTo-VisibleText -Html $m.Groups[4].Value
-            # workflow.html renders the target in a trailing "-> target" span; the cheatsheet
-            # cell holds the bare target.
-            $arrow = [regex]::Match($visible, '→\s*(.+)$')
+            # workflow.html renders the target in a trailing '<span class="target">-> target</span>';
+            # the cheatsheet cell holds the bare target. Read the span when it is there. A plain
+            # search for an arrow is wrong: a condition may itself contain one, as stage
+            # 4-execute's failure edge does, and the first arrow is then not the target's.
+            $targetSpan = [regex]::Match($m.Groups[4].Value, '<span class="target"[^>]*>(.*?)</span>', 'Singleline')
+            $visible = ConvertTo-VisibleText -Html $(if ($targetSpan.Success) { $targetSpan.Groups[1].Value } else { $m.Groups[4].Value })
+            $arrow = [regex]::Match($visible, '→\s*([^→]+)$')
             $visibleEdges[$word] = if ($arrow.Success) { $arrow.Groups[1].Value.Trim() } else { $visible }
         }
 
