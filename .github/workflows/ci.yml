@@ -103,6 +103,9 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Tier 3 of the citation check diffs against the merge base with origin/main.
+          fetch-depth: 0
       # tests/CoverageInputCompleteness.Tests.ps1 runs `dotnet sln list` and the coverage gate.
       - uses: actions/setup-dotnet@v4
         with:

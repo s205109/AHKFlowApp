@@ -612,7 +612,7 @@ Cleanup therefore ends in one of two ways, and the session says which:
 Neither route lets a session claim success it did not observe. All three exit conditions
 are checked, never the worktree alone. The removal script has a
 documented outcome that removes the worktree and keeps the branch
-(`scripts/remove-worktree-local-dev.ps1:990`, "worktree removed; branch preserved").
+(`scripts/remove-worktree-local-dev.ps1:937`, "worktree removed; branch preserved").
 
 Both git checks name the main checkout with `-C`, and the branch check accepts exit code 1
 only. Cleanup deletes the worktree folder, so the session may be left in no repository at
