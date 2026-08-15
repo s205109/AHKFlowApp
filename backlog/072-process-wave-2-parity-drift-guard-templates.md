@@ -49,9 +49,16 @@ one of them can never leave the other two behind.
       targets, and exits 1 on any difference. Added by backlog 071 in review round 6, after
       three consecutive rounds found that drift by hand. It covers the stage machine only,
       not the narrative fields.
-- [ ] The plan-versus-canon check joins the suite, so drift fails a run rather than waiting
+- [ ] The plan-versus-canon check joins the gates, so drift fails a run rather than waiting
       for a reviewer. Extend it to the narrative fields — Action, Technique, Context — or
       state plainly that those stay manual.
+      **Design round correction:** "joins the suite" alone is not achievable. The suite runs
+      in CI, and `.gitignore:473` keeps `docs/superpowers/` out of the checkout, so CI has no
+      plan to compare. The check therefore joins in two halves: the suite runs it against
+      fixture plans committed here, and `scripts/pre-push-quick-checks.ps1` runs it against
+      the real plans, discovering them by `## Appendix A` rather than a hardcoded path, and
+      skipping with a printed reason when the plans repository is absent. The narrative
+      fields stay manual.
 - [ ] A drift guard scans the process sections of `AGENTS.md`. The sections it scans are
       named explicitly: `Debugging`, `Plans`, `Verification After Implementation`, and
       `Git Workflow`, plus the `Plan before you edit` and
@@ -122,7 +129,17 @@ Two scripts that both satisfy this list must produce the same number, so each ru
 field it reads rather than describing an intention.
 
 - [ ] **Window.** Select on the record's own `timestamp` field, `>= start` and `< end`, both
-      in UTC. Never on file modification time.
+      in UTC. Never on file modification time. **The bounds are fixed at
+      2026-07-15T14:14:32Z to 2026-08-12T14:14:32Z** — four weeks ending at the moment wave 1
+      merged. The rules below forbid leaving a choice open, and this rule left the two values
+      unstated, so two compliant scripts could disagree. A window running past the wave-1
+      merge would mix old-process friction with fixed-process friction.
+- [ ] **Scope.** Every AHKFlow project directory, main and worktree. Counted on 2026-08-15:
+      205 transcripts in the main directory, 198 more across 83 worktree directories, 403 in
+      total. Worktree sessions are where handoffs, directory-bound commands, and cleanup
+      popups actually happen, so the main directory alone drops just under half the data. The
+      script reports the per-directory split next to the total. This supersedes "all 195
+      transcripts in this project" below, which meant the main directory and is already stale.
 - [ ] **Human turn.** A record counts only when `type == "user"` **and** either
       `origin.kind == "human"` **or** `promptSource` is one of `typed`,
       `suggestion_accepted`, `queued`. The two fields are alternatives, not a pair: a
@@ -186,7 +203,10 @@ directory-bound commands — not as percentages against a number.
 
 ## Notes / dependencies
 
-- Spec: `docs/superpowers/specs/2026-08-10-development-process-design-071.md` §10 and §13
-  (private plans repo).
+- Spec: `docs/superpowers/specs/2026-08-15-process-wave-2-design-072.md` (private plans repo).
+  It carries the 13 decisions the Design grilling settled, and closes the two gaps this item
+  left open — the measurement window and the transcript scope.
+- Wave-1 spec: `docs/superpowers/specs/2026-08-10-development-process-design-071.md` §10 and
+  §13 (private plans repo).
 - The parity comparison model and the drift-guard rule are already specified in §10. This
   item implements them; it does not redesign them.
