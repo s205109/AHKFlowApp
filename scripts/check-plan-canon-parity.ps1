@@ -9,23 +9,35 @@
     Reviews of backlog 071 found that drift three rounds running, each time by hand.
 
     This checks every stage on both sides for the exit string and all five edge targets.
-    It does not read the narrative fields - Action, Technique, Context - so a green result
-    means the stage machine agrees, not that every sentence does.
+
+    The narrative fields - Action, Technique, Context - are NOT compared. They are prose, and
+    a plan legitimately compresses them. A green result means the stage machine agrees, not
+    that every sentence does.
 
     Exits 1 on any difference, so it can be used as a gate step.
 
 .PARAMETER PlanPath
-    The plan to check. Defaults to the backlog-071 plan in the private plans repo.
+    A single plan to check. Defaults to the backlog-071 plan in the private plans repo when
+    neither -PlanPath nor -PlansRoot is given.
+
+.PARAMETER PlansRoot
+    A folder to search. Every '*.md' under it carrying an '## Appendix A' heading is checked.
+    An absent folder, or one with no such plan, prints a reason and exits 0: the plans
+    repository is not in the checkout in CI, and a check that cannot run must say so rather
+    than fail the run.
 
 .PARAMETER CanonPath
     The canonical process document. Defaults to docs/development/workflow.md.
 
 .EXAMPLE
     pwsh ./scripts/check-plan-canon-parity.ps1
+.EXAMPLE
+    pwsh ./scripts/check-plan-canon-parity.ps1 -PlansRoot docs/superpowers/plans
 #>
 [CmdletBinding()]
 param(
     [string] $PlanPath,
+    [string] $PlansRoot,
     [string] $CanonPath
 )
 
@@ -33,17 +45,37 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-if (-not $CanonPath) { $CanonPath = Join-Path $repoRoot 'docs\development\workflow.md' }
-if (-not $PlanPath) {
-    $PlanPath = Join-Path $repoRoot 'docs\superpowers\plans\2026-08-10-development-process-plan-071.md'
+. (Join-Path $PSScriptRoot 'process-canon.common.ps1')
+
+if (-not $CanonPath) { $CanonPath = Join-Path $repoRoot 'docs/development/workflow.md' }
+if (-not $PlanPath -and -not $PlansRoot) {
+    $PlanPath = Join-Path $repoRoot 'docs/superpowers/plans/2026-08-10-development-process-plan-071.md'
 }
 
-foreach ($path in @($CanonPath, $PlanPath)) {
-    if (-not (Test-Path -LiteralPath $path)) { throw "Not found: $path" }
+if (-not (Test-Path -LiteralPath $CanonPath)) { throw "Not found: $CanonPath" }
+
+# Discover the plans to check. A plan without an '## Appendix A' transcribes no stage machine,
+# so there is nothing for this check to compare.
+$planPaths = @()
+if ($PlansRoot) {
+    if (-not (Test-Path -LiteralPath $PlansRoot)) {
+        "RESULT: skipped - the plans folder $PlansRoot is not in this checkout"
+        exit 0
+    }
+    $planPaths = @(Get-ChildItem -LiteralPath $PlansRoot -Filter '*.md' -File -Recurse |
+            Where-Object { (Get-NormalizedText -Path $_.FullName) -match '(?m)^## Appendix A' } |
+            ForEach-Object { $_.FullName })
+    if (-not $planPaths) {
+        "RESULT: skipped - no plan under $PlansRoot carries an '## Appendix A'"
+        exit 0
+    }
+}
+else {
+    if (-not (Test-Path -LiteralPath $PlanPath)) { throw "Not found: $PlanPath" }
+    $planPaths = @($PlanPath)
 }
 
-$canon = (Get-Content -LiteralPath $CanonPath -Raw) -replace "`r`n", "`n"
-$plan = (Get-Content -LiteralPath $PlanPath -Raw) -replace "`r`n", "`n"
+$canonStages = Get-CanonStage -Path $CanonPath
 
 # Every stage must yield exactly one exit and these five edges, on both sides. Without this
 # the check fails open: a deleted row, a deleted Exit, or a duplicated edge all compare
@@ -67,38 +99,34 @@ function Assert-StageShape {
     }
 }
 
+# The canon comes from the shared parser, so a format change is handled in one place. The
+# duplicate report it carries is kept: a wrong edge row followed by a correct one passed
+# before this check existed, and sharing the parser must not drop that.
+foreach ($id in $canonStages.Keys) {
+    foreach ($word in $canonStages[$id].Duplicates) {
+        $problems.Add("canon/$id : duplicate '$word' edge")
+    }
+    Assert-StageShape -Side 'canon' -Id $id -Exit $canonStages[$id].Exit -Edges $canonStages[$id].Edges -ExitCount $canonStages[$id].ExitCount
+}
+
+# The canon's own problems belong to every plan's report, so each plan starts from them.
+$canonProblems = @($problems)
+
+$exitCode = 0
+foreach ($currentPlanPath in $planPaths) {
+    ''
+    "PLAN: $currentPlanPath"
+    $problems = New-Object System.Collections.Generic.List[string]
+    foreach ($canonProblem in $canonProblems) { $problems.Add($canonProblem) }
+    $plan = Get-NormalizedText -Path $currentPlanPath
+
 # Appendix A only. The last stage otherwise runs to end-of-file, and the greedy edge match
 # swallows Appendix B's walkthrough arrows - round 7 hid real Stage 10 drift that way.
 # Both headings are required. A lazy match with an end-of-file fallback would drop the bound
 # silently the day Appendix B is renamed, which is that same failure a second time.
-if ($plan -notmatch '(?m)^## Appendix A') { throw 'Appendix A not found in the plan. Fix this script before trusting a green result.' }
-if ($plan -notmatch '(?m)^## Appendix B') { throw 'Appendix B not found in the plan, so Appendix A has no end bound. Fix this script before trusting a green result.' }
+if ($plan -notmatch '(?m)^## Appendix A') { throw "Appendix A not found in $currentPlanPath. Fix this script before trusting a green result." }
+if ($plan -notmatch '(?m)^## Appendix B') { throw "Appendix B not found in $currentPlanPath, so Appendix A has no end bound. Fix this script before trusting a green result." }
 $plan = [regex]::Match($plan, '(?sm)^## Appendix A.*?(?=^## Appendix B)').Value
-
-# The canon carries one explicit anchor per stage, then a five-row edge table.
-$canonStages = [ordered]@{}
-$anchors = [regex]::Matches($canon, '<a id="stage-([0-9a-z-]+)"></a>')
-for ($i = 0; $i -lt $anchors.Count; $i++) {
-    $id = $anchors[$i].Groups[1].Value
-    $start = $anchors[$i].Index
-    $end = if ($i + 1 -lt $anchors.Count) { $anchors[$i + 1].Index } else { $canon.Length }
-    $block = $canon.Substring($start, $end - $start)
-
-    $edges = [ordered]@{}
-    foreach ($m in [regex]::Matches($block, '(?m)^\| (success|failure|blocked|not applicable|resume) \| [^|]+ \| ([^|]+) \|$')) {
-        $word = $m.Groups[1].Value
-        # A duplicate must be reported, never silently overwritten: a wrong row followed by
-        # a correct one passed before this check existed.
-        if ($edges.Contains($word)) { $problems.Add("canon/$id : duplicate '$word' edge") ; continue }
-        $edges[$word] = $m.Groups[2].Value.Trim()
-    }
-
-    $exitMatches = [regex]::Matches($block, '(?m)^- \*\*Exit\*\* — (.+)$')
-    $exit = if ($exitMatches.Count -ge 1) { $exitMatches[0].Groups[1].Value.Trim() } else { '' }
-    Assert-StageShape -Side 'canon' -Id $id -Exit $exit -Edges $edges -ExitCount $exitMatches.Count
-
-    $canonStages[$id] = @{ Exit = $exit; Edges = $edges }
-}
 
 # Appendix A writes each stage as prose, wrapped mid-sentence. Flatten before matching:
 # splitting the edge list on ' · ' against unflattened text silently under-reports, which
@@ -144,8 +172,9 @@ if ($problems.Count) {
     'STRUCTURE:'
     $problems | ForEach-Object { "  $_" }
     ''
-    "RESULT: $($problems.Count) structural problem(s). Nothing was compared."
-    exit 1
+    "RESULT: $($problems.Count) structural problem(s) in $currentPlanPath. Nothing was compared."
+    $exitCode = 1
+    continue
 }
 
 $differences = 0
@@ -177,8 +206,14 @@ foreach ($id in $canonStages.Keys) {
 
 ''
 if ($differences) {
-    "RESULT: $differences difference(s). workflow.md wins - fix the plan."
-    exit 1
+    "RESULT: $differences difference(s) in $currentPlanPath. workflow.md wins - fix the plan."
+    $exitCode = 1
+    continue
 }
 
-'RESULT: Appendix A matches the canon on every exit and edge target'
+"RESULT: Appendix A matches the canon on every exit and edge target in $currentPlanPath"
+}
+
+''
+"Plans checked: $($planPaths.Count). The narrative fields - Action, Technique, Context - stay manual."
+exit $exitCode
