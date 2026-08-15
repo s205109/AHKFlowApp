@@ -609,10 +609,179 @@ try {
     Remove-TempTree $repo
 }
 
-# --- Test: a squashing rebase stays unsweepable, on purpose -----------------------------
-# An autosquash rebase replaces two commits with one whose patch matches neither. The sweep cannot
-# then prove the originals reached main, and it keeps the worktree rather than guess. Documented
-# limit, pinned here so a later change to the proof has to decide about it deliberately.
+# --- Test: content that differs only in whitespace is still work ------------------------
+# `git cherry` compares patches with whitespace and line numbers removed, so 'a b' and 'ab' read as
+# the same commit. Signal 3 answers by reachability instead, and never asks whether two commits
+# look alike.
+$repo = New-TempGitRepo
+try {
+    $wsPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-whitespace' -NoCommits
+    Set-Content -LiteralPath (Join-Path $wsPath 'w.txt') -Value 'a b' -Encoding utf8
+    Invoke-TestGit $wsPath @('add', '-A') | Out-Null
+    Invoke-TestGit $wsPath @('commit', '-m', 'spaced content') | Out-Null
+    $abandonedSha = ((Invoke-TestGit $wsPath @('rev-parse', 'HEAD')) -join '').Trim()
+
+    # Main gets the same text without the space, through a different branch.
+    $otherPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-unspaced' -NoCommits
+    Set-Content -LiteralPath (Join-Path $otherPath 'w.txt') -Value 'ab' -Encoding utf8
+    Invoke-TestGit $otherPath @('add', '-A') | Out-Null
+    Invoke-TestGit $otherPath @('commit', '-m', 'spaced content') | Out-Null
+    Invoke-TestGit $repo @('merge', '--no-ff', '-m', 'Merge feat-unspaced', 'feat-unspaced') | Out-Null
+
+    Invoke-TestGit $wsPath @('reset', '--hard', 'main^') | Out-Null
+    Invoke-TestGit $wsPath @('rebase', 'feat-unspaced') | Out-Null
+
+    $cherry = ((Invoke-TestGit $repo @('cherry', 'main', $abandonedSha)) -join '').Trim()
+    Assert-True ($cherry -like '- *') 'Sanity check: git cherry must call the whitespace-different commit equivalent, or this test proves nothing.'
+    $containing = ((Invoke-TestGit $repo @('branch', '--contains', $abandonedSha)) -join '').Trim()
+    Assert-True (-not $containing) 'Sanity check: no branch may contain the abandoned commit.'
+
+    Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-whitespace')) 'Content that differs only in whitespace must still count as discarded work.'
+
+    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
+    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
+    Assert-True (-not ($keys -contains (ConvertTo-Key $wsPath))) 'A worktree holding whitespace-different discarded work must never be eligible.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: a discarded merge commit is work too -----------------------------------------
+# `git cherry` prints nothing at all for a merge commit, so a conflict resolution that exists
+# nowhere else was invisible to the old check. Reachability sees it like any other commit.
+$repo = New-TempGitRepo
+try {
+    Set-Content -LiteralPath (Join-Path $repo 'f.txt') -Value 'base' -Encoding utf8
+    Invoke-TestGit $repo @('add', '-A') | Out-Null
+    Invoke-TestGit $repo @('commit', '-m', 'base file') | Out-Null
+
+    $sideAPath = Add-TestWorktree -RepoDir $repo -BranchName 'side-a' -NoCommits
+    Set-Content -LiteralPath (Join-Path $sideAPath 'f.txt') -Value 'side A change' -Encoding utf8
+    Invoke-TestGit $sideAPath @('add', '-A') | Out-Null
+    Invoke-TestGit $sideAPath @('commit', '-m', 'side A') | Out-Null
+
+    $sideBPath = Add-TestWorktree -RepoDir $repo -BranchName 'side-b' -NoCommits
+    Set-Content -LiteralPath (Join-Path $sideBPath 'f.txt') -Value 'side B change' -Encoding utf8
+    Invoke-TestGit $sideBPath @('add', '-A') | Out-Null
+    Invoke-TestGit $sideBPath @('commit', '-m', 'side B') | Out-Null
+
+    # The worktree resolves the conflict its own way, then throws that merge commit away.
+    $mergePath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-resolver' -NoCommits -BaseRef 'side-a'
+    & git -C $mergePath merge --no-commit side-b *> $null
+    Set-Content -LiteralPath (Join-Path $mergePath 'f.txt') -Value 'unique abandoned resolution' -Encoding utf8
+    Invoke-TestGit $mergePath @('add', '-A') | Out-Null
+    Invoke-TestGit $mergePath @('commit', '-m', 'abandoned merge resolution') | Out-Null
+    $abandonedMerge = ((Invoke-TestGit $mergePath @('rev-parse', 'HEAD')) -join '').Trim()
+
+    Invoke-TestGit $repo @('merge', '--no-ff', '-m', 'Merge side-a', 'side-a') | Out-Null
+    & git -C $repo merge --no-commit side-b *> $null
+    Set-Content -LiteralPath (Join-Path $repo 'f.txt') -Value 'different main resolution' -Encoding utf8
+    Invoke-TestGit $repo @('add', '-A') | Out-Null
+    Invoke-TestGit $repo @('commit', '-m', 'Merge side-b with main resolution') | Out-Null
+
+    Invoke-TestGit $mergePath @('reset', '--hard', 'side-a') | Out-Null
+    Set-Content -LiteralPath (Join-Path $mergePath 'later.txt') -Value 'later work' -Encoding utf8
+    Invoke-TestGit $mergePath @('add', '-A') | Out-Null
+    Invoke-TestGit $mergePath @('commit', '-m', 'later work') | Out-Null
+    Invoke-TestGit $repo @('merge', '--no-ff', '-m', 'Merge feat-resolver', 'feat-resolver') | Out-Null
+
+    $cherry = ((Invoke-TestGit $repo @('cherry', 'main', $abandonedMerge)) -join '').Trim()
+    Assert-True (-not $cherry) 'Sanity check: git cherry must say nothing about the merge commit, or this test proves nothing.'
+    $containing = ((Invoke-TestGit $repo @('branch', '--contains', $abandonedMerge)) -join '').Trim()
+    Assert-True (-not $containing) 'Sanity check: no branch may contain the abandoned merge commit.'
+
+    Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-resolver')) 'A discarded merge commit holding a unique resolution must keep the worktree.'
+
+    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
+    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
+    Assert-True (-not ($keys -contains (ConvertTo-Key $mergePath))) 'A worktree holding a discarded merge commit must never be eligible.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: a clean merge counts as the branch's own work --------------------------------
+# A merge that needs no conflict resolution writes 'merge <ref>: Merge made by the ... strategy.'
+# It creates a commit on the branch, so a branch built that way and then merged is finished work.
+# A fast-forward writes 'merge <ref>: Fast-forward' and creates nothing, which must NOT count.
+$repo = New-TempGitRepo
+try {
+    Add-TestWorktree -RepoDir $repo -BranchName 'side' -Unmerged | Out-Null
+
+    $mergePath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-cleanmerge' -NoCommits
+    Invoke-TestGit $mergePath @('merge', '--no-ff', '-m', 'Merge side', 'side') | Out-Null
+    Invoke-TestGit $repo @('merge', '--no-ff', '-m', 'Merge feat-cleanmerge', 'feat-cleanmerge') | Out-Null
+
+    $mergeEntries = (Invoke-TestGit $repo @('reflog', 'show', '--format=%H %gs', 'refs/heads/feat-cleanmerge')) -join "`n"
+    Assert-True ($mergeEntries -match "(?m)merge side: Merge made by") 'Sanity check: the fixture must really have written a clean-merge subject.'
+
+    Assert-True (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-cleanmerge') 'A merged branch whose commit came from a clean merge must report merged own work.'
+
+    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
+    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
+    Assert-True ($keys -contains (ConvertTo-Key $mergePath)) 'A merged clean-merge branch must be eligible for cleanup.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: a fast-forward is not a commit ------------------------------------------------
+# The other half of the clean-merge rule. `git merge --ff-only` writes a 'merge <ref>:' subject
+# without creating anything, so an unstarted branch must not become sweepable by running it.
+$repo = New-TempGitRepo
+try {
+    Add-TestWorktree -RepoDir $repo -BranchName 'feat-ff-source' | Out-Null
+    $ffPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-ff-rider' -NoCommits -BaseRef 'main^'
+    Invoke-TestGit $ffPath @('merge', '--ff-only', 'feat-ff-source') | Out-Null
+
+    $ffEntries = (Invoke-TestGit $repo @('reflog', 'show', '--format=%H %gs', 'refs/heads/feat-ff-rider')) -join "`n"
+    Assert-True ($ffEntries -match '(?m)merge feat-ff-source: Fast-forward') 'Sanity check: the fixture must really have written a fast-forward subject.'
+
+    Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-ff-rider')) 'A fast-forward creates no commit, so it must not count as the branch own work.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: a revert counts as the branch's own work -------------------------------------
+# `git revert` writes 'revert: <subject>' and creates a commit, exactly like a cherry-pick.
+$repo = New-TempGitRepo
+try {
+    $revertPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-revert' -NoCommits
+    $target = ((Invoke-TestGit $revertPath @('rev-parse', 'HEAD')) -join '').Trim()
+    Invoke-TestGit $revertPath @('revert', '--no-edit', $target) | Out-Null
+    Invoke-TestGit $repo @('merge', '--no-ff', '-m', 'Merge feat-revert', 'feat-revert') | Out-Null
+
+    $revertEntries = (Invoke-TestGit $repo @('reflog', 'show', '--format=%H %gs', 'refs/heads/feat-revert')) -join "`n"
+    Assert-True ($revertEntries -match '(?m)revert:') 'Sanity check: the fixture must really have written a "revert:" subject.'
+
+    Assert-True (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-revert') 'A merged branch whose commit came from a revert must report merged own work.'
+
+    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
+    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
+    Assert-True ($keys -contains (ConvertTo-Key $revertPath)) 'A merged revert branch must be eligible for cleanup.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: the accepted forged-empty case, pinned ---------------------------------------
+# A documented limit, not a wish. GIT_REFLOG_ACTION=commit on a fast-forward onto an already-merged
+# tip satisfies every signal: the subject reads as a commit, the SHA really is a merged parent, and
+# an empty branch strands nothing. The worktree is removed. Backlog 096 tracks whether a stronger
+# signal exists; until then this test states the behaviour so a change to it must be deliberate.
+$repo = New-TempGitRepo
+try {
+    Add-TestWorktree -RepoDir $repo -BranchName 'feat-forge-target' | Out-Null
+    $emptyPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-forged-empty' -NoCommits -BaseRef 'main^'
+    Invoke-TestGitWithReflogAction -RepoDir $emptyPath -Action 'commit' -GitArgs @('merge', '--ff-only', 'feat-forge-target') | Out-Null
+
+    Assert-True (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-forged-empty') 'Accepted limit: a forged commit subject on an empty branch still reads as merged own work.'
+
+    $stranded = Get-StrandedCommits -RepoRoot $repo -Branch 'feat-forged-empty' -Shas @(((Invoke-TestGit $repo @('rev-parse', 'refs/heads/feat-forged-empty')) -join '').Trim())
+    Assert-Equal 0 $stranded.Count 'The accepted case must strand nothing, which is what bounds it.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: a squashing rebase is swept like any other rebase -----------------------------
+# A squash strands the originals it replaced, exactly as a plain rebase strands the commits it
+# replayed. Nothing discarded them, so the worktree goes.
 $repo = New-TempGitRepo
 try {
     $squashPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-squash' -NoCommits
@@ -635,7 +804,7 @@ try {
     }
     Invoke-TestGit $repo @('merge', '--no-ff', '-m', 'Merge feat-squash', 'feat-squash') | Out-Null
 
-    Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-squash')) 'A squashing rebase leaves no patch-equivalent original, so the sweep must keep the worktree.'
+    Assert-True (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-squash') 'A squashing rebase supersedes its originals like any rebase, so the merged worktree must be swept.'
 } finally {
     Remove-TempTree $repo
 }
@@ -644,7 +813,7 @@ try {
 # GIT_REFLOG_ACTION rewrites the FIRST word of the subject, so a rebase can be made to read
 # 'commit (finish): ...'. A prefix test on 'commit' accepts it, and the same entry carries the
 # merged tip, so both proofs come from one forged entry. Git itself only ever writes 'commit:',
-# 'commit (amend):', 'commit (merge):', 'commit (initial):' and 'commit (cherry-pick):'.
+# 'commit (amend):', 'commit (merge):' and 'commit (initial):' with that first word.
 $repo = New-TempGitRepo
 try {
     Add-TestWorktree -RepoDir $repo -BranchName 'feat-merged-target' | Out-Null

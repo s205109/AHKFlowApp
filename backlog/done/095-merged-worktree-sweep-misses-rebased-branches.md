@@ -60,12 +60,12 @@ Test-BranchOwnWorkWasMerged -RepoRoot (Get-Location).Path -Branch 'chore/wt-micr
 **Scope of the defect.** Every branch that is rebased and then merged with a merge commit is
 affected. Only a branch that never moved passes today.
 
-**Scope of the fix.** It covers a patch-preserving rebase followed by a normal merge commit, which
-is the `--no-ff` shape a GitHub "Merge pull request" leaves behind. Two shapes stay unsupported.
-GitHub "Rebase and merge" creates no merge commit, so no non-first parent exists for the merge
-proof to find. A rebase that changes patches — squash, fixup, autosquash, or a conflict resolved
-differently — leaves no patch-equivalent original, so the sweep cannot prove the work reached
-`main` and keeps the worktree.
+**Scope of the fix.** It covers any rebase followed by a normal merge commit, which is the
+`--no-ff` shape a GitHub "Merge pull request" leaves behind. Squash, fixup and autosquash rebases
+count too: the proof asks what a `git reset` discarded, not whether patches match.
+
+GitHub "Rebase and merge" and "Squash and merge" stay unsupported. Neither creates a merge commit,
+so no non-first parent exists for the merge proof to find.
 
 **Why the pairing rule exists.** The comment at `:63-69` explains it. Reflog subjects are
 caller-controlled text, so a forged `commit:` subject alone could delete an unstarted worktree. A
@@ -74,12 +74,13 @@ Any fix must keep both attacks closed.
 
 ## Acceptance criteria
 
-- [x] A branch that was rebased and then merged is eligible for cleanup, when the rebase preserved
-      patches. A squashing rebase leaves no patch-equivalent original, so it stays unsweepable
-- [x] A branch whose ref log still holds a commit main never received is never eligible, whatever
-      its ref-log subjects say
+- [x] A branch that was rebased and then merged is eligible for cleanup, squashing rebases included
+- [x] A branch holding a commit that a `git reset` discarded is never eligible, whatever its
+      ref-log subjects say, and whether that commit is an ordinary one, one that differs only in
+      whitespace, or a merge commit carrying its own conflict resolution
 - [x] A commit that reached main by another route cannot vouch for an abandoned sibling commit
-- [x] A merged branch built by `git cherry-pick` is eligible
+- [x] A merged branch built by `git cherry-pick`, `git revert` or a clean merge is eligible
+- [x] A fast-forward creates no commit, so it never counts as the branch's own work
 - [x] A branch created from an already-merged tip, with no commit of its own, is still preserved
 - [x] A forged `commit:` reflog subject on an unstarted branch still cannot make it eligible
 - [x] A branch merged without any rebase is still eligible, as it is today
@@ -101,10 +102,12 @@ Any fix must keep both attacks closed.
 - Candidate fix: widen the subject test at `:95` to `^(commit|rebase \(finish\))\b`. The
   `rebase (finish)` SHA is the post-replay tip, which is real work, and the same-entry rule stays.
   Check this against the two attacks named above before you write it
-- Shipped fix: the probe keeps two sets from one reflog walk. The work proof is the closed list git
-  writes, `^commit(:| \((amend|merge|initial|cherry-pick)\):)`. A `rebase (finish)` SHA can carry
-  the merge proof, but only after `git cherry` shows it holds a patch-equivalent copy of one of the
-  branch's own commits
+- Shipped fix: three signals. Work is the closed list of subjects git writes for an operation that
+  creates a commit. Merge is a commit or `rebase (finish)` SHA appearing as a non-first parent of a
+  merge commit on `main`. Discard asks, by reachability, whether removing the branch would strand a
+  commit that a `git reset` dropped
+- `git cherry` was tried for the third signal and rejected in review. It normalizes whitespace,
+  prints nothing at all for merge commits, and ignores author, message and signature
 - `\b` cannot follow `)`: that character and the `:` after it are both non-word characters, so
   `^(commit|rebase \(finish\))\b` matches nothing
 - A review round caught two unsafe pairings the first draft allowed. Both are pinned by tests: a

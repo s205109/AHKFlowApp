@@ -31,20 +31,23 @@ The reproduction, on git 2.55.0:
 3. The ref log reads `<merged-parent> commit: Fast-forward`.
 
 Signal 1 accepts the subject. Signal 2 accepts the SHA, because that commit really is a non-first
-parent of a merge commit on `main`. Signal 3 passes because the branch holds nothing. The probe
+parent of a merge commit on `main`. Signal 3 passes because the branch strands nothing. The probe
 returns `True` and the worktree is eligible.
 
 Nothing in git records which branch created a commit, so the current proof cannot separate this
 from a genuine merged branch. That is why backlog 095 shipped the limit rather than a fix.
 
-**What is actually at stake.** No commit is lost: signal 3 covers that, and
-`tests/WorktreeMergedCleanup.Tests.ps1` pins it. The cost is an empty worktree removed under a
-deliberately forged environment variable.
+**What is actually at stake.** In this shape the branch holds no commit of its own, so removing it
+strands nothing. That is a property of this shape, not a guarantee signal 3 makes in general:
+signal 3 only refuses to remove commits a `git reset` discarded. Superseded originals, from a
+rebase or an amend, are not protected by anything.
 
 ## Acceptance criteria
 
 - [ ] The item states whether a stronger signal exists — for example a marker written by
       `new-worktree.ps1`, or reading the reflog of every other branch to see who created a SHA
+- [ ] The claim about what signal 3 guarantees stays accurate wherever it is written: it refuses
+      work a reset discarded, and says nothing about superseded originals
 - [ ] If a stronger signal exists, the sweep uses it and the forged fast-forward stops being
       eligible
 - [ ] If no stronger signal exists, the limit is written where a reader meets it: the comment at
@@ -53,7 +56,7 @@ deliberately forged environment variable.
 
 ## Out of scope
 
-- Signal 3, the no-loss check. It already holds and must keep holding
+- Signal 3, the discarded-work check. It already holds and must keep holding
 - Squash and patch-changing rebases. Backlog 095 records those as a separate limit
 
 ## Notes / dependencies
