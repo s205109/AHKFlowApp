@@ -551,8 +551,12 @@ Until then, Ship uses a merge commit for any branch whose worktree you expect Cl
 (`Resolve-MergedBaseRef`, `scripts/worktree-git.common.ps1:117`). `gh pr merge` merges on GitHub
 and advances no local ref, and that no longer hides the merge. The fetch updates one
 remote-tracking ref: it never touches local `main`, so a worktree session may run it under the
-guard. When the fetch fails, the run says so and decides against the cached ref, which may be
-behind the remote.
+guard.
+
+**A base that could not be refreshed removes nothing.** When the fetch fails, the cached
+`origin/main` may hold a merge the remote has since dropped, so both scripts report what they see
+and stop: the sweep prints the eligible worktrees and removes none, and the removal hook preserves
+the worktree. Removal resumes on the next run that reaches the remote.
 
 **The session that starts Cleanup usually cannot finish it.** The removal hook spawns a
 detached watcher that outlives `claude.exe` and can only delete the worktree after that
