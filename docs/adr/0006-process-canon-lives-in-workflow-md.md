@@ -25,10 +25,15 @@ means regenerating the PDF. One script does that and writes both hash sidecars i
 so the PDF and the cheatsheet it came from cannot be updated apart. It needs a browser, so it
 runs locally; only the checks run in CI.
 
-Two hashes together prove the three files were last written by that script. They do not prove
-the PDF's rendered content matches the cheatsheet — that would mean extracting text from a
-compressed PDF, which this repository deliberately does not do. This is an enforced convention,
-not a content proof.
+The generator also writes the cheatsheet's digest into the PDF itself, through the title of a
+rendered copy, and reads it back before it publishes anything. That digest is what ties the
+PDF to one cheatsheet. Two hash sidecars alone would only say the three files were written
+together, and a person can refresh a sidecar by hand: edit the cheatsheet, rewrite its
+sidecar, leave the old PDF, and both pairs still agree.
+
+None of this proves the PDF's rendered content matches the cheatsheet — that would mean
+extracting text from a compressed PDF, which this repository deliberately does not do. The
+check proves which cheatsheet the PDF was rendered from, not what the pages show.
 
 Two Checks enforce this instead of a reader. `scripts/check-process-parity.ps1` compares the
 three process documents and fails on any disagreement, naming the losing file and line. A

@@ -21,6 +21,45 @@ function Get-NormalizedHash {
     return [System.BitConverter]::ToString([System.Security.Cryptography.SHA256]::HashData($bytes)).Replace('-', '')
 }
 
+# The marker the generator writes into the PDF, and the check reads back out. Two hash
+# sidecars only prove three files were written together; a person can refresh a sidecar by
+# hand. This digest travels inside the PDF, so it proves which cheatsheet produced it.
+$script:PdfSourceDigestMarker = 'AHKFLOW-SOURCE-SHA256:'
+
+function Get-PdfSourceDigestMarker {
+    param([Parameter(Mandatory)][string] $Digest)
+    return "$script:PdfSourceDigestMarker$Digest"
+}
+
+function Test-PdfSourceDigest {
+    param(
+        [Parameter(Mandatory)][byte[]] $Bytes,
+        [Parameter(Mandatory)][string] $Digest
+    )
+    $marker = Get-PdfSourceDigestMarker -Digest $Digest
+    # A PDF writer stores a string either as bytes or as UTF-16 with a byte-order mark, so
+    # read the file both ways rather than assuming one.
+    $latin1 = [System.Text.Encoding]::Latin1.GetString($Bytes)
+    if ($latin1.Contains($marker)) { return $true }
+    return ([System.Text.Encoding]::BigEndianUnicode.GetString($Bytes)).Contains($marker)
+}
+
+# A dictionary that keeps insertion order and tells 'Success' from 'success'. The default
+# [ordered]@{} is case-insensitive, so a drifted edge name matched the canon and passed.
+function New-OrdinalDictionary {
+    return [System.Collections.Specialized.OrderedDictionary]::new([System.StringComparer]::Ordinal)
+}
+
+function Get-LineNumber {
+    param(
+        [Parameter(Mandatory)][string] $Text,
+        [Parameter(Mandatory)][int] $Index
+    )
+    # Count the newlines before the value, so a message names the line the value is on
+    # rather than the line its stage starts on.
+    return ($Text.Substring(0, $Index).Split("`n").Count)
+}
+
 # Strips tags and decodes entities, so a comparison reads what a person sees.
 function ConvertTo-VisibleText {
     param([Parameter(Mandatory)][AllowEmptyString()][string] $Html)
@@ -37,7 +76,7 @@ function Get-CanonStage {
     param([Parameter(Mandatory)][string] $Path)
 
     $canon = Get-NormalizedText -Path $Path
-    $stages = [ordered]@{}
+    $stages = New-OrdinalDictionary
     $anchors = [regex]::Matches($canon, '<a id="stage-([0-9a-z-]+)"></a>')
 
     for ($i = 0; $i -lt $anchors.Count; $i++) {
@@ -46,7 +85,13 @@ function Get-CanonStage {
         $end = if ($i + 1 -lt $anchors.Count) { $anchors[$i + 1].Index } else { $canon.Length }
         $block = $canon.Substring($start, $end - $start)
 
-        $edges = [ordered]@{}
+        # A repeated stage id must be counted, never assigned over. Assigning by key left the
+        # dictionary with 11 entries while the document held 12 blocks, so every comparison
+        # passed and the second block was never read.
+        if ($stages.Contains($id)) { $stages[$id].Occurrences++; continue }
+
+        $edges = New-OrdinalDictionary
+        $edgeLines = New-OrdinalDictionary
         $duplicates = New-Object System.Collections.Generic.List[string]
         foreach ($m in [regex]::Matches($block, '(?m)^\| (success|failure|blocked|not applicable|resume) \| [^|]+ \| ([^|]+) \|$')) {
             $word = $m.Groups[1].Value
@@ -55,12 +100,23 @@ function Get-CanonStage {
             # the list here keeps that report alive after the parser was shared.
             if ($edges.Contains($word)) { $duplicates.Add($word); continue }
             $edges[$word] = $m.Groups[2].Value.Trim()
+            $edgeLines[$word] = Get-LineNumber -Text $canon -Index ($start + $m.Index)
         }
 
         $exitMatches = [regex]::Matches($block, '(?m)^- \*\*Exit\*\* — (.+)$')
         $exit = if ($exitMatches.Count -ge 1) { $exitMatches[0].Groups[1].Value.Trim() } else { '' }
+        $exitLine = if ($exitMatches.Count -ge 1) { Get-LineNumber -Text $canon -Index ($start + $exitMatches[0].Index) } else { Get-LineNumber -Text $canon -Index $start }
 
-        $stages[$id] = @{ Exit = $exit; Edges = $edges; ExitCount = $exitMatches.Count; Duplicates = $duplicates }
+        $stages[$id] = @{
+            Exit        = $exit
+            Edges       = $edges
+            ExitCount   = $exitMatches.Count
+            Duplicates  = $duplicates
+            Occurrences = 1
+            Line        = Get-LineNumber -Text $canon -Index $start
+            ExitLine    = $exitLine
+            EdgeLines   = $edgeLines
+        }
     }
 
     return $stages
@@ -70,7 +126,7 @@ function Get-HtmlStage {
     param([Parameter(Mandatory)][string] $Path)
 
     $html = Get-NormalizedText -Path $Path
-    $stages = [ordered]@{}
+    $stages = New-OrdinalDictionary
 
     $starts = [regex]::Matches($html, '<(?:section|tr) data-stage="([0-9a-z-]+)"')
     for ($i = 0; $i -lt $starts.Count; $i++) {
@@ -79,21 +135,26 @@ function Get-HtmlStage {
         $end = if ($i + 1 -lt $starts.Count) { $starts[$i + 1].Index } else { $html.Length }
         $block = $html.Substring($start, $end - $start)
 
+        if ($stages.Contains($id)) { $stages[$id].Occurrences++; continue }
+
         # Line number of the block start, so a message can name the losing line.
-        $line = ($html.Substring(0, $start) -split "`n").Count
+        $line = Get-LineNumber -Text $html -Index $start
 
         $exitAttr = [regex]::Match($block, 'data-exit="([^"]*)"')
         $exitElement = [regex]::Match($block, '<(p|td)[^>]*data-exit="[^"]*"[^>]*>(.*?)</\1>', 'Singleline')
         $visibleExit = ConvertTo-VisibleText -Html $exitElement.Groups[2].Value
         $visibleExit = ($visibleExit -replace '^Exit:\s*', '')
+        $exitLine = if ($exitAttr.Success) { Get-LineNumber -Text $html -Index ($start + $exitAttr.Index) } else { $line }
 
-        $edges = [ordered]@{}
-        $visibleEdges = [ordered]@{}
+        $edges = New-OrdinalDictionary
+        $visibleEdges = New-OrdinalDictionary
+        $edgeLines = New-OrdinalDictionary
         $duplicates = New-Object System.Collections.Generic.List[string]
         foreach ($m in [regex]::Matches($block, '<(li|td)[^>]*data-next="([^:]+):([^"]*)"[^>]*>(.*?)</\1>', 'Singleline')) {
             $word = $m.Groups[2].Value
             if ($edges.Contains($word)) { $duplicates.Add($word); continue }
             $edges[$word] = $m.Groups[3].Value.Trim()
+            $edgeLines[$word] = Get-LineNumber -Text $html -Index ($start + $m.Index)
             # workflow.html renders the target in a trailing '<span class="target">-> target</span>';
             # the cheatsheet cell holds the bare target. Read the span when it is there. A plain
             # search for an arrow is wrong: a condition may itself contain one, as stage
@@ -121,7 +182,10 @@ function Get-HtmlStage {
             VisibleEdges = $visibleEdges
             VisibleStage = $visibleStage
             Duplicates   = $duplicates
+            Occurrences  = 1
             Line         = $line
+            ExitLine     = $exitLine
+            EdgeLines    = $edgeLines
         }
     }
 

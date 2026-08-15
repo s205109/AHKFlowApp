@@ -9,12 +9,24 @@
 
     It needs a Chromium browser, so it runs locally. Only the checks run in CI.
 
-    Two hashes together prove the three files were last written by this script. They do not
-    prove the rendered PDF matches the cheatsheet; extracting text from a compressed PDF is
-    deliberately out of scope.
+    Two hashes alone would only prove the three files were written together, and a person can
+    refresh a sidecar by hand. So the render also carries the cheatsheet's digest inside the
+    PDF: the script renders a copy of the cheatsheet whose title holds the digest, and reads
+    the digest back out of the finished PDF before it publishes anything. The check reads the
+    same digest, which is what ties the PDF to one cheatsheet rather than to a sidecar.
+
+    It still does not prove the rendered pages show the cheatsheet's contents; extracting text
+    from a compressed PDF is deliberately out of scope.
+.PARAMETER BrowserPath
+    The Chromium browser to render with. Defaults to a local Edge or Chrome install.
+.PARAMETER DocsRoot
+    The folder holding the documents. Defaults to docs/development.
 #>
 [CmdletBinding()]
-param([string] $BrowserPath)
+param(
+    [string] $BrowserPath,
+    [string] $DocsRoot
+)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -22,7 +34,8 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 . (Join-Path $PSScriptRoot 'process-canon.common.ps1')
 
-$docs = Join-Path $repoRoot 'docs/development'
+if (-not $DocsRoot) { $DocsRoot = Join-Path $repoRoot 'docs/development' }
+$docs = $DocsRoot
 $sheet = Join-Path $docs 'ahkflow-workflow-cheatsheet.html'
 $pdf = Join-Path $docs 'ahk-workflow.pdf'
 
@@ -44,8 +57,21 @@ $browser = $candidates[0]
 # stale-PDF state the sidecars exist to prevent, blessed by the tool meant to prevent it.
 $temp = Join-Path ([System.IO.Path]::GetTempPath()) "ahk-workflow-$([guid]::NewGuid()).pdf"
 
+# The source digest travels inside the PDF, through the title of a rendered copy. The
+# cheatsheet on disk is never touched: the copy exists only for this render. The title is not
+# printed, because the render passes --no-pdf-header-footer.
+$sourceHash = Get-NormalizedHash -Path $sheet
+$marker = Get-PdfSourceDigestMarker -Digest $sourceHash
+$sheetText = Get-NormalizedText -Path $sheet
+$patched = [regex]::Replace($sheetText, '<title>.*?</title>', "<title>$marker</title>", 'Singleline')
+if ($patched -eq $sheetText) {
+    throw "The cheatsheet has no <title> element to carry the source digest: $sheet"
+}
+$tempHtml = Join-Path ([System.IO.Path]::GetTempPath()) "ahk-workflow-$([guid]::NewGuid()).html"
+[System.IO.File]::WriteAllText($tempHtml, $patched)
+
 Write-Host "Rendering with: $browser"
-& $browser --headless --disable-gpu --no-pdf-header-footer "--print-to-pdf=$temp" (([uri]$sheet).AbsoluteUri) | Out-Null
+& $browser --headless --disable-gpu --no-pdf-header-footer "--print-to-pdf=$temp" (([uri]$tempHtml).AbsoluteUri) | Out-Null
 $browserExit = $LASTEXITCODE
 
 try {
@@ -60,8 +86,13 @@ try {
     if ($pdfText -notmatch '/Count\s+1\b') {
         throw 'The rendered PDF is not one page. Fix the cheatsheet layout before recording its hash.'
     }
+    # Read the digest back out. Without this the claim rests on the browser having stored the
+    # title, and a browser that drops it would publish a PDF the check can never tie to a
+    # cheatsheet.
+    if (-not (Test-PdfSourceDigest -Bytes $pdfBytes -Digest $sourceHash)) {
+        throw "The rendered PDF does not carry the source digest $sourceHash. Nothing was published."
+    }
 
-    $sourceHash = Get-NormalizedHash -Path $sheet
     $pdfHash = [System.BitConverter]::ToString([System.Security.Cryptography.SHA256]::HashData($pdfBytes)).Replace('-', '')
 
     # Only now, with a validated render in hand, replace all three outputs.
@@ -75,4 +106,5 @@ try {
 }
 finally {
     Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $tempHtml -Force -ErrorAction SilentlyContinue
 }
