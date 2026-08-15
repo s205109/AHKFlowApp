@@ -6,7 +6,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (repo process)
 - **Difficulty**: moderate
-- **Stage**: 2-design
+- **Stage**: 3-plan
 
 ## Summary
 
@@ -89,7 +89,7 @@ a check — see the open questions below.
 - The plan for 087 is `docs/superpowers/plans/2026-08-13-backlog-template-stage-field-plan.md`. It
   still carries the pre-shift numbers on purpose: it is the evidence for the root cause above
 - Spec: `docs/superpowers/specs/2026-08-15-citation-freshness-check-design-096.md`
-- Plan: none yet — written after the spec review
+- Plan: `docs/superpowers/plans/2026-08-15-citation-freshness-check-plan-096.md`
 
 ## Baseline, measured 2026-08-15
 
