@@ -82,6 +82,115 @@ function Get-WorktreeAddArguments {
     return , @('worktree', 'add', $WorktreePath, '-b', $BranchName, $SourceRef)
 }
 
+# Quotes an argv array into the single string Start-Process takes on Windows PowerShell 5.1,
+# where -ArgumentList joins an array with spaces and quotes nothing. Without this, a repository
+# path containing a space would arrive at git as two arguments.
+function ConvertTo-ProcessArgumentLine {
+    param([Parameter(Mandatory)][string[]] $Arguments)
+
+    $quoted = foreach ($argument in $Arguments) {
+        # A trailing backslash would escape the closing quote, so double the run that touches it.
+        $value = [regex]::Replace($argument, '(\\*)$', '$1$1')
+        '"' + ($value -replace '"', '\"') + '"'
+    }
+
+    return ($quoted -join ' ')
+}
+
+# Resolves the base that a merged-worktree decision must be made against.
+#
+# The local branch is the wrong base. `gh pr merge` merges on GitHub and never advances a local
+# ref, so a worktree whose pull request merged an hour ago still looks unmerged locally, and stays
+# that way until a human pulls. The remote-tracking branch is the fact the decision needs.
+#
+# Returns [pscustomobject]@{ Ref; Remote; Fetched; Reason }. Reason is one of:
+#   'remote-fetched' - the tracking ref was just updated from the remote.
+#   'remote-stale'   - the fetch failed or timed out; the cached tracking ref is used anyway.
+#   'no-upstream'    - $LocalRef tracks nothing, so the local branch is the only base there is.
+#
+# The cached tracking ref beats the local branch even when the fetch fails: local $LocalRef only
+# ever moves by pulling that same ref, so it is never the fresher of the two. Both directions are
+# safe -- an older base can only make a caller keep a worktree, never remove one it should keep.
+#
+# Never throws, and never writes to stdout. Worktree creation must not fail because a network is
+# down, so every failure path returns a usable Ref.
+function Resolve-MergedBaseRef {
+    param(
+        [Parameter(Mandatory)][string] $RepoRoot,
+        [string] $LocalRef = 'main',
+        [int] $TimeoutSeconds = 15
+    )
+
+    $localOnly = [pscustomobject]@{ Ref = $LocalRef; Remote = $null; Fetched = $false; Reason = 'no-upstream' }
+
+    # "$value" rather than [string] $value: under Set-StrictMode -Version Latest a cast of the
+    # $null a failed git command returns stays $null, and .Trim() on it throws.
+    $trackingRef = "$(& git -C $RepoRoot rev-parse --symbolic-full-name "$LocalRef@{upstream}" 2>$null)".Trim()
+    if ($LASTEXITCODE -ne 0 -or -not $trackingRef.StartsWith('refs/remotes/')) { return $localOnly }
+
+    # The remote name and the remote branch name come from config rather than from splitting
+    # 'origin/main' on '/': a remote may be named with a slash in it, and a branch always may.
+    $remote = "$(& git -C $RepoRoot config --get "branch.$LocalRef.remote" 2>$null)".Trim()
+    $remoteBranchRef = "$(& git -C $RepoRoot config --get "branch.$LocalRef.merge" 2>$null)".Trim()
+    if (-not $remote -or -not $remoteBranchRef.StartsWith('refs/heads/')) { return $localOnly }
+
+    $shortRef = $trackingRef.Substring('refs/remotes/'.Length)
+    $remoteBranch = $remoteBranchRef.Substring('refs/heads/'.Length)
+    # One explicit refspec: no tags, no other branches, one small round trip. The leading '+'
+    # accepts a force-updated remote branch, which a plain refspec would reject.
+    $refspec = '+{0}:{1}' -f $remoteBranchRef, $trackingRef
+
+    $result = [pscustomobject]@{ Ref = $shortRef; Remote = $remote; Fetched = $false; Reason = 'remote-stale' }
+
+    $tempDir = [System.IO.Path]::GetTempPath()
+    $suffix = [guid]::NewGuid().ToString('N').Substring(0, 8)
+    $outFile = Join-Path $tempDir "ahkflow-fetch-$suffix.out"
+    $errFile = Join-Path $tempDir "ahkflow-fetch-$suffix.err"
+
+    # A credential prompt would wait forever, and this runs ahead of worktree creation.
+    $savedPrompt = [Environment]::GetEnvironmentVariable('GIT_TERMINAL_PROMPT', 'Process')
+    $savedInteractive = [Environment]::GetEnvironmentVariable('GCM_INTERACTIVE', 'Process')
+    [Environment]::SetEnvironmentVariable('GIT_TERMINAL_PROMPT', '0', 'Process')
+    [Environment]::SetEnvironmentVariable('GCM_INTERACTIVE', 'never', 'Process')
+    try {
+        $line = ConvertTo-ProcessArgumentLine @('-C', $RepoRoot, 'fetch', '--quiet', '--no-tags', $remote, $refspec)
+        $process = Start-Process -FilePath 'git' -ArgumentList $line -NoNewWindow -PassThru `
+            -RedirectStandardOutput $outFile -RedirectStandardError $errFile
+        if ($process.WaitForExit($TimeoutSeconds * 1000)) {
+            if ($process.ExitCode -eq 0) {
+                $result.Fetched = $true
+                $result.Reason = 'remote-fetched'
+            }
+        } else {
+            # An unresponsive host must not hold up the caller for the OS connect timeout.
+            try { $process.Kill() } catch { }
+        }
+    } catch {
+        # git missing from PATH, or the process could not start. The cached ref still answers.
+    } finally {
+        [Environment]::SetEnvironmentVariable('GIT_TERMINAL_PROMPT', $savedPrompt, 'Process')
+        [Environment]::SetEnvironmentVariable('GCM_INTERACTIVE', $savedInteractive, 'Process')
+        Remove-Item -LiteralPath $outFile, $errFile -Force -ErrorAction SilentlyContinue
+    }
+
+    return $result
+}
+
+# Describes a Resolve-MergedBaseRef result in one line, for the caller to write to stderr.
+# Separated from the resolver so the wording is testable without a repository or a network.
+function Format-MergedBaseRefMessage {
+    param(
+        [Parameter(Mandatory)][string] $Prefix,
+        [Parameter(Mandatory)][object] $Base
+    )
+
+    switch ($Base.Reason) {
+        'remote-fetched' { return "$($Prefix): base '$($Base.Ref)' (fetched from $($Base.Remote))." }
+        'remote-stale'   { return "$($Prefix): base '$($Base.Ref)' (fetch from $($Base.Remote) failed; it may be behind the remote)." }
+        default          { return "$($Prefix): base '$($Base.Ref)' (local only; no remote-tracking branch)." }
+    }
+}
+
 # AGENTS.md: worktree-born branches are '<type>/wt-<topic>'. The Claude WorktreeCreate hook
 # only ever supplies a worktree name, so an untyped name cannot express intent and falls back
 # to the 'fix/' type; a type prefix the caller did supply is preserved.

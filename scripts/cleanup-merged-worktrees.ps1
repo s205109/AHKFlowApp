@@ -10,6 +10,10 @@
     console (unset) > report-only. Invalid/duplicated config fails closed to report-only.
     In hook context (-IsHook) all output stays on stderr so the hook's stdout contract is
     preserved; when config is unset it prints the one-liner to enable cleanup.
+
+    With no -MainRef, the base is the remote-tracking branch of local main, fetched first:
+    a merge performed on GitHub never advances a local ref. An explicitly passed -MainRef is
+    the caller's choice and is used as given, with no fetch.
 #>
 
 [CmdletBinding()]
@@ -18,7 +22,8 @@ param(
     [switch] $Cleanup,
     [switch] $IsHook,
     [string] $MainRef = 'main',
-    [string] $ExcludePath
+    [string] $ExcludePath,
+    [int] $FetchTimeoutSeconds = 15
 )
 
 Set-StrictMode -Version Latest
@@ -446,7 +451,8 @@ function Set-CleanupAnswer {
 function Invoke-WorktreeRemoval {
     param(
         [Parameter(Mandatory)][string] $RepoRoot,
-        [Parameter(Mandatory)][string] $WorktreePath
+        [Parameter(Mandatory)][string] $WorktreePath,
+        [string] $MainRef = 'main'
     )
 
     $removeScript = Join-Path $RepoRoot 'scripts\remove-worktree-local-dev.ps1'
@@ -457,7 +463,10 @@ function Invoke-WorktreeRemoval {
 
     try {
         $psExe = Resolve-PowerShellExecutable
-        $output = '' | & $psExe -NoProfile -ExecutionPolicy Bypass -File $removeScript -WorktreePath $WorktreePath 2>&1
+        # -MainRef hands over the base this run already resolved. The removal script re-decides
+        # merged-ness for itself, and without this it would decide against the local branch again
+        # -- and fetch a second time when it resolved its own.
+        $output = '' | & $psExe -NoProfile -ExecutionPolicy Bypass -File $removeScript -WorktreePath $WorktreePath -MainRef $MainRef 2>&1
         foreach ($line in $output) {
             if ($line) { Write-Stderr ([string] $line) }
         }
@@ -530,7 +539,7 @@ function Invoke-MergedWorktreeCleanup {
         try {
             Write-WorktreeLog -LogPath $removalLog -Worktree (Split-Path -Leaf $wt.Path) -Message "Merged-cleanup requested removal (branch $($wt.Branch))."
         } catch { }
-        Invoke-WorktreeRemoval -RepoRoot $RepoRoot -WorktreePath $wt.Path
+        Invoke-WorktreeRemoval -RepoRoot $RepoRoot -WorktreePath $wt.Path -MainRef $MainRef
     }
 }
 
@@ -540,5 +549,15 @@ if ($MyInvocation.InvocationName -ne '.') {
     if (-not $RepoRoot) {
         $RepoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
     }
+
+    # Resolving here, not inside Invoke-MergedWorktreeCleanup, keeps the function's signature and
+    # its callers unchanged: a test that dot-sources this file and calls the function passes the
+    # base it wants, and nothing fetches behind its back.
+    if (-not $PSBoundParameters.ContainsKey('MainRef')) {
+        $base = Resolve-MergedBaseRef -RepoRoot $RepoRoot -LocalRef $MainRef -TimeoutSeconds $FetchTimeoutSeconds
+        Write-Stderr (Format-MergedBaseRefMessage -Prefix 'cleanup' -Base $base)
+        $MainRef = $base.Ref
+    }
+
     Invoke-MergedWorktreeCleanup -RepoRoot $RepoRoot -Cleanup:$Cleanup -IsHook:$IsHook -MainRef $MainRef -ExcludePath $ExcludePath | Out-Null
 }
