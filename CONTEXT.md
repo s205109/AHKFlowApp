@@ -196,3 +196,15 @@ _Avoid_: batch, sweep, chore run
 **Housekeeping worktree**:
 The shared worktree where a Housekeeping round makes its changes. Tracked work gets a worktree of its own instead.
 _Avoid_: scratch worktree, temp worktree, misc worktree
+
+**Guard**:
+The code that refuses an agent action reaching outside its own worktree, such as a write into the main checkout. There is one, so "the guard" always means it.
+_Avoid_: check, gate, hook, protection
+
+**Check**:
+A script that compares two records which must agree, and fails a run when they do not. Each Check reports one kind of disagreement.
+_Avoid_: guard, gate, validator, linter
+
+**Gate**:
+The five steps that must all pass before a pull request is marked ready: build, format, PowerShell suites, coverage, and `git diff --check`.
+_Avoid_: check, guard, pipeline, CI

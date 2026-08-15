@@ -30,8 +30,12 @@ the PDF's rendered content matches the cheatsheet — that would mean extracting
 compressed PDF, which this repository deliberately does not do. This is an enforced convention,
 not a content proof.
 
-Two guards enforce this instead of a reader. `scripts/check-process-parity.ps1` compares the
+Two Checks enforce this instead of a reader. `scripts/check-process-parity.ps1` compares the
 three process documents and fails on any disagreement, naming the losing file and line. A
-second guard requires every process rule in `AGENTS.md` and `.claude/CLAUDE.md` to link to a
+second Check requires every process rule in `AGENTS.md` and `.claude/CLAUDE.md` to link to a
 Stage anchor that exists in `workflow.md`, so a rule cannot quietly grow a second copy of the
 narrative.
+
+A Check is not the Guard. `CONTEXT.md` keeps the two apart: the Guard refuses an agent action
+reaching outside its own worktree, and there is one of it. A Check compares two records that
+must agree. Both fail a run, so a reader who cannot tell them apart cannot tell what broke.
