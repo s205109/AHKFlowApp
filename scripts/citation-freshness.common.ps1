@@ -225,3 +225,60 @@ function Get-CitationProblem {
 
     return $problems
 }
+
+# Every line the working tree adds or changes against BaseRef, as 'path:line'. The diff runs
+# against the working tree, not against HEAD, so an uncommitted edit is caught too.
+function Get-ChangedLine {
+    param(
+        [Parameter(Mandatory)][string] $Root,
+        [Parameter(Mandatory)][string] $BaseRef
+    )
+
+    $changed = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+
+    # --no-ext-diff and --no-textconv stop a configured external differ from replacing this
+    # output. -U0 asks for no context lines, so every line a hunk covers is a changed line.
+    $diff = & git -C $Root --no-pager diff -U0 --no-color --no-ext-diff --no-textconv $BaseRef
+    if ($LASTEXITCODE -ne 0) { throw "git diff against $BaseRef failed in $Root" }
+
+    # '+++ ' names the new file only inside the header block that follows 'diff --git'. Inside a
+    # hunk it is content: a source line beginning with '++ ' prints exactly that way, and reading
+    # it as a header sends every later hunk to the wrong file.
+    #
+    # A hunk header needs no such guard. Every line inside a hunk carries a one-character prefix,
+    # so a body line always starts with '+', '-', or '\', and never with '@@'.
+    $inHeader = $false
+    $file = $null
+
+    foreach ($line in $diff) {
+        if ($line.StartsWith('diff --git ')) {
+            $inHeader = $true
+            $file = $null
+            continue
+        }
+
+        if ($inHeader -and $line.StartsWith('+++ ')) {
+            $value = $line.Substring(4).Trim()
+            $file = if ($value -eq '/dev/null') { $null }
+                    else { ($value -replace '^b/', '') -replace '\\', '/' }
+            continue
+        }
+
+        if (-not $line.StartsWith('@@')) { continue }
+        $inHeader = $false
+        if (-not $file) { continue }
+
+        # A hunk header names the new file's start line and how many lines it covers. A hunk that
+        # only deletes lines reports a count of 0, and then there is nothing to force.
+        $header = [regex]::Match($line, '^@@ -\d+(?:,\d+)? \+(?<start>\d+)(?:,(?<count>\d+))? @@')
+        if (-not $header.Success) { continue }
+
+        $start = [int] $header.Groups['start'].Value
+        $count = if ($header.Groups['count'].Success) { [int] $header.Groups['count'].Value } else { 1 }
+        for ($offset = 0; $offset -lt $count; $offset++) {
+            [void] $changed.Add(('{0}:{1}' -f $file, ($start + $offset)))
+        }
+    }
+
+    return $changed
+}

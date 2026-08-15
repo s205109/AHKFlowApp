@@ -265,6 +265,89 @@ finally {
     Remove-Item -LiteralPath $fixture -Recurse -Force
 }
 
+# --- Tier 3: adoption ---
+
+$fixture = New-FixtureRepository
+try {
+    Add-FixtureFile -Root $fixture -RelativePath 'target.txt' -Lines $targetLines
+    Add-FixtureFile -Root $fixture -RelativePath 'old.md' -Lines @(
+        'grandfathered `target.txt:2` here',
+        'also grandfathered `target.txt:3` here'
+    )
+    Complete-FixtureCommit -Root $fixture -Message 'base'
+    $base = (& git -C $fixture rev-parse HEAD).Trim()
+
+    # One new file, and one edit to a line that already carried a legacy citation.
+    Add-FixtureFile -Root $fixture -RelativePath 'new.md' -Lines @(
+        'added legacy `target.txt:2` here',
+        'added near-miss `target.txt:2` "the expected text" here',
+        'added canonical (`target.txt:3`, "the expected text") here',
+        'added legacy with an unknown path `nope.txt:2` here'
+    )
+    Add-FixtureFile -Root $fixture -RelativePath 'old.md' -Lines @(
+        'grandfathered `target.txt:2` here',
+        'edited, still legacy `target.txt:3` here'
+    )
+    Complete-FixtureCommit -Root $fixture -Message 'work'
+
+    $changed = Get-ChangedLine -Root $fixture -BaseRef $base
+    $problems = @(Get-CitationProblem -ScanRoot $fixture -ResolveRoot $fixture -ChangedLine $changed)
+    $tier3 = @($problems | Where-Object { $_ -like '*tier 3*' })
+
+    Assert-True (@($tier3 | Where-Object { $_ -like 'new.md:1 *' }).Count -eq 1) `
+        'An added line carrying a legacy citation fails tier 3'
+    Assert-True (@($tier3 | Where-Object { $_ -like 'new.md:2 *' }).Count -eq 1) `
+        'An added line carrying a near-miss fails tier 3'
+    Assert-True (@($tier3 | Where-Object { $_ -like 'new.md:3 *' }).Count -eq 0) `
+        'An added line carrying a canonical citation passes tier 3'
+    Assert-True (@($tier3 | Where-Object { $_ -like 'new.md:4 *' }).Count -eq 0) `
+        'An added line citing an untracked path is not forced into the canonical form'
+    Assert-True (@($tier3 | Where-Object { $_ -like 'old.md:1 *' }).Count -eq 0) `
+        'An unchanged legacy citation stays grandfathered'
+    Assert-True (@($tier3 | Where-Object { $_ -like 'old.md:2 *' }).Count -eq 1) `
+        'Editing a line converts its grandfathered citation'
+
+    $stateOnly = @(Get-CitationProblem -ScanRoot $fixture -ResolveRoot $fixture)
+    Assert-True (@($stateOnly | Where-Object { $_ -like '*tier 3*' }).Count -eq 0) `
+        'Without a changed-line set the check reports no tier 3 problem'
+}
+finally {
+    Remove-Item -LiteralPath $fixture -Recurse -Force
+}
+
+# --- Tier 3: content that looks like a diff header ---
+
+# git prints an added line '++ b/evil.md' as '+++ b/evil.md' in the diff body. Reading that as a
+# file header sends every later hunk to the wrong file.
+$fixture = New-FixtureRepository
+try {
+    Add-FixtureFile -Root $fixture -RelativePath 'target.txt' -Lines $targetLines
+    Add-FixtureFile -Root $fixture -RelativePath 'a.md' -Lines @('base line')
+    Add-FixtureFile -Root $fixture -RelativePath 'z.md' -Lines @('base line')
+    Complete-FixtureCommit -Root $fixture -Message 'base'
+    $base = (& git -C $fixture rev-parse HEAD).Trim()
+
+    Add-FixtureFile -Root $fixture -RelativePath 'a.md' -Lines @(
+        'base line',
+        '++ b/evil.md',
+        'legacy `target.txt:2` here'
+    )
+    Add-FixtureFile -Root $fixture -RelativePath 'z.md' -Lines @(
+        'base line',
+        'legacy `target.txt:3` here'
+    )
+    Complete-FixtureCommit -Root $fixture -Message 'work'
+
+    $changed = Get-ChangedLine -Root $fixture -BaseRef $base
+    Assert-True ($changed.Contains('a.md:3')) 'The line after the fake header still belongs to a.md'
+    Assert-True ($changed.Contains('z.md:2')) 'The next file is not mistaken for evil.md'
+    Assert-True (-not ($changed | Where-Object { $_ -like 'evil.md*' })) `
+        'No changed line is attributed to the fake header path'
+}
+finally {
+    Remove-Item -LiteralPath $fixture -Recurse -Force
+}
+
 # --- Report ---
 
 if ($failures.Count -gt 0) {
