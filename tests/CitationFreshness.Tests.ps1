@@ -7,7 +7,7 @@
 #
 # A citation like docs/development/workflow.md:482 is a fragile address. An edit above line 482
 # moves the target, the citation still looks right, and nothing notices. This suite proves the
-# check that catches it. See backlog 096.
+# check that catches it. See backlog 097.
 #
 # Run it by hand with:  pwsh ./tests/CitationFreshness.Tests.ps1
 

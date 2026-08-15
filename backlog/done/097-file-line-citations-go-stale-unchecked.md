@@ -1,4 +1,4 @@
-# 096 - File line citations go stale unchecked
+# 097 - File line citations go stale unchecked
 
 ## Metadata
 
@@ -93,6 +93,9 @@ a check — see the open questions below.
   still carries the pre-shift numbers on purpose: it is the evidence for the root cause above
 - Spec: `docs/superpowers/specs/2026-08-15-citation-freshness-check-design-096.md`
 - Plan: `docs/superpowers/plans/2026-08-15-citation-freshness-check-plan-096.md`
+- Filed and built as 096. Renumbered to 097 at Ship: `main` independently filed a different item as
+  096 while this branch was in flight. The spec and plan file names keep the number they were
+  written under, on purpose, the same way 087's plan keeps its pre-shift line numbers
 
 ## Baseline, measured 2026-08-15
 

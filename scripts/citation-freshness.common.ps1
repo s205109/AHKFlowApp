@@ -3,7 +3,7 @@
 # scripts/check-citation-freshness.ps1 and tests/CitationFreshness.Tests.ps1.
 #
 # This repository proves claims with file:line citations, and a line number stops being true the
-# moment somebody edits above it. See backlog 096.
+# moment somebody edits above it. See backlog 097.
 #
 # This file mentions the ignore tokens in its own code. That is exactly why the file-level token
 # must be a standalone directive near the top of a file and not a plain substring match.
