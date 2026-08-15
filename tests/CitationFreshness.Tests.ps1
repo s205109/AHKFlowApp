@@ -414,6 +414,33 @@ finally {
     Remove-Item -LiteralPath $fixture -Recurse -Force
 }
 
+# --- The pre-push decision ---
+
+# Never test this by renaming docs/superpowers. Every worktree links to that folder, and the
+# workflow refuses renaming or deleting it (docs/development/workflow.md:691-693). Inject a
+# fixture path instead.
+. (Join-Path $repoRoot 'scripts/plans-citation-scan.common.ps1')
+
+$plansFixture = New-FixtureRepository
+$plainFolder = Join-Path ([System.IO.Path]::GetTempPath()) "citation-plain-$([guid]::NewGuid())"
+New-Item -ItemType Directory -Path $plainFolder -Force | Out-Null
+try {
+    $run = Get-PlansCitationScanPlan -PlansRoot $plansFixture -PwshPath 'C:\fake\pwsh.exe'
+    Assert-True ($run.Action -eq 'Run') "A git repository plus a pwsh path must run, got $($run.Action)"
+
+    $noRepo = Get-PlansCitationScanPlan -PlansRoot $plainFolder -PwshPath 'C:\fake\pwsh.exe'
+    Assert-True ($noRepo.Action -eq 'SkipNoRepository') "A folder that is not a repository must skip, got $($noRepo.Action)"
+    Assert-True ($noRepo.Reason -like 'Skipped:*') 'A skip must carry a reason to print'
+
+    $noPwsh = Get-PlansCitationScanPlan -PlansRoot $plansFixture -PwshPath ''
+    Assert-True ($noPwsh.Action -eq 'SkipNoPwsh') "No pwsh means skip, got $($noPwsh.Action)"
+    Assert-True ($noPwsh.Reason -like 'Skipped:*') 'A skip must carry a reason to print'
+}
+finally {
+    Remove-Item -LiteralPath $plansFixture -Recurse -Force
+    Remove-Item -LiteralPath $plainFolder -Recurse -Force
+}
+
 # --- Report ---
 
 if ($failures.Count -gt 0) {
