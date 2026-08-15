@@ -348,6 +348,59 @@ finally {
     Remove-Item -LiteralPath $fixture -Recurse -Force
 }
 
+# --- This repository ---
+
+# Tiers 1 and 2 only. Tier 3 needs a base ref, and this suite must pass on any checkout,
+# including a shallow CI clone with no merge base. The runner script owns tier 3.
+#
+# The measured baseline for this repository counted citations with a looser pattern that missed
+# hidden and extensionless paths. The engine finds more than the baseline did, so treat a new
+# failure here as a real one, not as drift in the count.
+$live = @(Get-CitationProblem -ScanRoot $repoRoot -ResolveRoot $repoRoot)
+Assert-True ($live.Count -eq 0) `
+    "This repository must hold no stale citation, found $($live.Count): $($live -join ' | ')"
+
+# --- The runner ---
+
+$runner = Join-Path $repoRoot 'scripts/check-citation-freshness.ps1'
+Assert-True (Test-Path -LiteralPath $runner) 'scripts/check-citation-freshness.ps1 must exist'
+
+# The runner calls 'exit', so it has to run as a child process. Calling it with '&' would end
+# this test process and silently drop every assertion below - see scripts/run-powershell-suites.ps1
+# lines 8 to 14, and the same pattern at tests/CiPowerShellSuiteRunner.Tests.ps1 lines 113 to 144.
+function Invoke-Runner {
+    param([Parameter(Mandatory)][string[]] $Arguments)
+
+    $hostExe = (Get-Process -Id $PID).Path
+    $output = & $hostExe -NoProfile -File $runner @Arguments 2>&1 | Out-String
+    return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = $output }
+}
+
+$fixture = New-FixtureRepository
+try {
+    Add-FixtureFile -Root $fixture -RelativePath 'target.txt' -Lines $targetLines
+    Add-FixtureFile -Root $fixture -RelativePath 'doc.md' -Lines @('broken (`target.txt:99`, "the expected text") here')
+    Complete-FixtureCommit -Root $fixture
+
+    $run = Invoke-Runner -Arguments @('-ScanRoot', $fixture, '-ResolveRoot', $fixture, '-NoAdoptionTier')
+    Assert-True ($run.ExitCode -eq 1) "The runner must exit 1 on a broken citation, exited $($run.ExitCode)"
+
+    Add-FixtureFile -Root $fixture -RelativePath 'doc.md' -Lines @('fixed (`target.txt:3`, "the expected text") here')
+    Complete-FixtureCommit -Root $fixture -Message 'fix'
+
+    $run = Invoke-Runner -Arguments @('-ScanRoot', $fixture, '-ResolveRoot', $fixture, '-NoAdoptionTier')
+    Assert-True ($run.ExitCode -eq 0) "The runner must exit 0 on a clean repository, exited $($run.ExitCode)"
+
+    # The fixture has no origin/main, so tier 3 has no merge base. The runner must say so and
+    # still exit 0, rather than pass tier 3 by assuming an empty diff.
+    $run = Invoke-Runner -Arguments @('-ScanRoot', $fixture, '-ResolveRoot', $fixture)
+    Assert-True ($run.ExitCode -eq 0) "The runner must exit 0 when tier 3 has no base ref, exited $($run.ExitCode)"
+    Assert-True ($run.Output -match 'Tier 3 skipped') "The runner must report the tier 3 skip, printed: $($run.Output)"
+}
+finally {
+    Remove-Item -LiteralPath $fixture -Recurse -Force
+}
+
 # --- Report ---
 
 if ($failures.Count -gt 0) {
