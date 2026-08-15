@@ -105,8 +105,10 @@ cites line 921 of `scripts/remove-worktree-local-dev.ps1` for text that sits on 
 
 ## Unresolved questions
 
-The spec settles notation, expectation location, and scope. What is left:
+The spec and the review settle notation, expectation location, scope, adoption, and where each
+scan runs. What is left:
 
-- Tier 2 stays optional. No way to detect a "new" citation, so no way to force a phrase on one.
-- Private plans repo is gitignored, so CI never sees it. Local run only — who runs it, when?
-- Fix the 13 out-of-range plan citations now, or leave them?
+- Plans repo runs the range and expectation tiers, not the adoption tier. Forcing a quoted phrase
+  on every citation in a new plan costs too much: the largest plan carries 65.
+- The 13 out-of-range plan citations split between fixable and historical. The split is only known
+  once the check names them.
