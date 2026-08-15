@@ -77,7 +77,7 @@ absent rather than late.
 - [x] A fixture proves both directions: a worktree merged on the remote but not into a stale local
       `main` is eligible, and an unmerged worktree is still preserved
 - [x] The fetch cannot make worktree creation fail when the network is down. Offline, the sweep
-      falls back to the local base and says so
+      says so and stops short of removing anything
 - [x] Each of the three `workflow.md` claims at `:545`, `:560`, and `:601` names the item that
       really owns it. Where no item owns one, this item records that or a new one is filed
 - [x] The manual "update local `main` before attempting removal" step at
@@ -103,6 +103,10 @@ absent rather than late.
   `-MainRef` and resolves its own base when nothing passes one
 - Where the fetch happens: inside the sweep, in `cleanup-merged-worktrees.ps1`. It has two
   callers — `new-worktree.ps1` and a session running it by hand — and both get the fix there
+- The offline criterion above was written as "falls back to the local base". A review round
+  showed that is the wrong shape: the base offline is the cached remote-tracking ref, and a cache
+  cannot be trusted for a destructive decision, because a remote can lose history. Offline the
+  sweep now reports what it sees and removes nothing. The criterion records the shipped rule
 - The three `workflow.md` claims: `:545` now names backlog 097, `:560` is gone (this item did
   that work), `:601` now names backlog 098. Backlog 073 owns none of them
 - Backlog 073 is the neighbouring item. Read its scope before widening this one

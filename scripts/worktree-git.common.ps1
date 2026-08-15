@@ -97,6 +97,45 @@ function ConvertTo-ProcessArgumentLine {
     return ($quoted -join ' ')
 }
 
+# Kills a process and everything it started, then waits for the tree to actually be gone.
+#
+# Process.Kill() asks the OS to terminate one process and returns immediately, so a caller that
+# stops there has neither killed the children nor waited for the parent. `git fetch` starts
+# children -- a credential helper, an askpass program, ssh -- and any one of them can be the thing
+# that is hung. taskkill /T walks the tree, /F skips the polite request.
+#
+# Returns $true when nothing of the tree is left within $WaitMilliseconds.
+function Stop-ProcessTree {
+    param(
+        [Parameter(Mandatory)][int] $ProcessId,
+        [int] $WaitMilliseconds = 5000
+    )
+
+    # Function-scoped, discarded on return. Windows PowerShell 5.1 turns anything a native command
+    # writes to stderr into a terminating error while the preference is 'Stop', and taskkill reports
+    # an already-dead process that way.
+    $ErrorActionPreference = 'Continue'
+
+    & taskkill.exe /PID $ProcessId /T /F *> $null
+
+    $deadline = [DateTime]::UtcNow.AddMilliseconds($WaitMilliseconds)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        try {
+            $null = [System.Diagnostics.Process]::GetProcessById($ProcessId)
+        } catch {
+            return $true
+        }
+        Start-Sleep -Milliseconds 100
+    }
+
+    try {
+        $null = [System.Diagnostics.Process]::GetProcessById($ProcessId)
+        return $false
+    } catch {
+        return $true
+    }
+}
+
 # Resolves the base that a merged-worktree decision must be made against.
 #
 # The local branch is the wrong base. `gh pr merge` merges on GitHub and never advances a local
@@ -105,12 +144,14 @@ function ConvertTo-ProcessArgumentLine {
 #
 # Returns [pscustomobject]@{ Ref; Remote; Fetched; Reason }. Reason is one of:
 #   'remote-fetched' - the tracking ref was just updated from the remote.
-#   'remote-stale'   - the fetch failed or timed out; the cached tracking ref is used anyway.
+#   'remote-stale'   - the fetch failed or timed out; the cached tracking ref is returned, and the
+#                      caller must treat it as a base it cannot trust for a destructive decision.
 #   'no-upstream'    - $LocalRef tracks nothing, so the local branch is the only base there is.
 #
-# The cached tracking ref beats the local branch even when the fetch fails: local $LocalRef only
-# ever moves by pulling that same ref, so it is never the fresher of the two. Both directions are
-# safe -- an older base can only make a caller keep a worktree, never remove one it should keep.
+# A cached tracking ref is not a safe base for removal. The remote can LOSE history -- a force
+# update, a reverted merge -- and then the cache holds a merge the remote no longer has. Deciding
+# against it would remove a worktree whose work is not on the remote at all. So 'remote-stale' is
+# good enough to report with and not good enough to delete with; callers fail closed on it.
 #
 # Never throws, and never writes to stdout. Worktree creation must not fail because a network is
 # down, so every failure path returns a usable Ref.
@@ -120,6 +161,12 @@ function Resolve-MergedBaseRef {
         [string] $LocalRef = 'main',
         [int] $TimeoutSeconds = 15
     )
+
+    # Function-scoped, discarded on return. A branch with no upstream makes `git rev-parse` write
+    # "fatal: no upstream configured" to stderr, and Windows PowerShell 5.1 turns that into a
+    # terminating error while the preference is 'Stop' -- even with 2>$null. This function must
+    # never throw, so it opts out for its own body only.
+    $ErrorActionPreference = 'Continue'
 
     $localOnly = [pscustomobject]@{ Ref = $LocalRef; Remote = $null; Fetched = $false; Reason = 'no-upstream' }
 
@@ -142,35 +189,68 @@ function Resolve-MergedBaseRef {
 
     $result = [pscustomobject]@{ Ref = $shortRef; Remote = $remote; Fetched = $false; Reason = 'remote-stale' }
 
-    $tempDir = [System.IO.Path]::GetTempPath()
-    $suffix = [guid]::NewGuid().ToString('N').Substring(0, 8)
-    $outFile = Join-Path $tempDir "ahkflow-fetch-$suffix.out"
-    $errFile = Join-Path $tempDir "ahkflow-fetch-$suffix.err"
+    # Nothing here may wait for a human. Terminal prompting is off, git's own askpass program is
+    # cleared, and ssh runs in batch mode. `credential.helper` is deliberately LEFT ALONE: clearing
+    # it would break the ordinary authenticated fetch this whole feature depends on. Git Credential
+    # Manager is told not to open a window instead -- `credential.interactive` is the current
+    # setting, GCM_INTERACTIVE the older one, and both are cheap to set.
+    $arguments = @(
+        '-c', 'core.askPass=',
+        '-c', 'credential.interactive=false',
+        '-C', $RepoRoot,
+        'fetch', '--quiet', '--no-tags', $remote, $refspec
+    )
 
-    # A credential prompt would wait forever, and this runs ahead of worktree creation.
-    $savedPrompt = [Environment]::GetEnvironmentVariable('GIT_TERMINAL_PROMPT', 'Process')
-    $savedInteractive = [Environment]::GetEnvironmentVariable('GCM_INTERACTIVE', 'Process')
-    [Environment]::SetEnvironmentVariable('GIT_TERMINAL_PROMPT', '0', 'Process')
-    [Environment]::SetEnvironmentVariable('GCM_INTERACTIVE', 'never', 'Process')
+    $savedEnvironment = @{}
+    $suppressed = @{
+        GIT_TERMINAL_PROMPT = '0'
+        GCM_INTERACTIVE     = 'never'
+        GIT_ASKPASS         = ''
+        SSH_ASKPASS         = ''
+        GIT_SSH_COMMAND     = 'ssh -oBatchMode=yes'
+    }
+    foreach ($name in $suppressed.Keys) {
+        $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
+        [Environment]::SetEnvironmentVariable($name, $suppressed[$name], 'Process')
+    }
+
+    $process = $null
     try {
-        $line = ConvertTo-ProcessArgumentLine @('-C', $RepoRoot, 'fetch', '--quiet', '--no-tags', $remote, $refspec)
-        $process = Start-Process -FilePath 'git' -ArgumentList $line -NoNewWindow -PassThru `
-            -RedirectStandardOutput $outFile -RedirectStandardError $errFile
+        # Not Start-Process: on Windows PowerShell 5.1 the object it returns without -Wait reports
+        # ExitCode as $null, so every successful fetch read as a failure. Owning the Process object
+        # gives the same answer on both hosts. The output streams are drained asynchronously,
+        # because a full pipe buffer would block the child forever.
+        $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+        $startInfo.FileName = 'git'
+        $startInfo.Arguments = ConvertTo-ProcessArgumentLine $arguments
+        $startInfo.UseShellExecute = $false
+        $startInfo.CreateNoWindow = $true
+        $startInfo.RedirectStandardOutput = $true
+        $startInfo.RedirectStandardError = $true
+
+        $process = New-Object System.Diagnostics.Process
+        $process.StartInfo = $startInfo
+        $null = $process.Start()
+        $null = $process.StandardOutput.ReadToEndAsync()
+        $null = $process.StandardError.ReadToEndAsync()
+
         if ($process.WaitForExit($TimeoutSeconds * 1000)) {
             if ($process.ExitCode -eq 0) {
                 $result.Fetched = $true
                 $result.Reason = 'remote-fetched'
             }
         } else {
-            # An unresponsive host must not hold up the caller for the OS connect timeout.
-            try { $process.Kill() } catch { }
+            # An unresponsive host must not hold up the caller for the OS connect timeout, and a
+            # hung helper must not outlive the fetch that started it.
+            $null = Stop-ProcessTree -ProcessId $process.Id
         }
     } catch {
         # git missing from PATH, or the process could not start. The cached ref still answers.
     } finally {
-        [Environment]::SetEnvironmentVariable('GIT_TERMINAL_PROMPT', $savedPrompt, 'Process')
-        [Environment]::SetEnvironmentVariable('GCM_INTERACTIVE', $savedInteractive, 'Process')
-        Remove-Item -LiteralPath $outFile, $errFile -Force -ErrorAction SilentlyContinue
+        foreach ($name in $savedEnvironment.Keys) {
+            [Environment]::SetEnvironmentVariable($name, $savedEnvironment[$name], 'Process')
+        }
+        if ($process) { $process.Dispose() }
     }
 
     return $result

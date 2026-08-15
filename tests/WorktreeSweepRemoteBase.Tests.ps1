@@ -50,7 +50,7 @@ function Invoke-FixtureGit {
 # commit on it. -Merged performs the merge, pushes it, and then rewinds BOTH local refs, which is
 # what a session sees right after `gh pr merge`: the work is on the remote and invisible locally.
 function New-RemoteFixture {
-    param([switch] $Merged)
+    param([switch] $Merged, [switch] $KeepTrackingRef, [switch] $WithScripts)
 
     $root = Join-Path ([System.IO.Path]::GetTempPath()) ('wtremote-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
     $origin = Join-Path $root 'origin.git'
@@ -65,6 +65,13 @@ function New-RemoteFixture {
     & git -C $repo config user.name 'Sweep Remote Base Test'
 
     Set-Content -LiteralPath (Join-Path $repo 'README.md') -Value 'seed' -Encoding utf8
+    if ($WithScripts) {
+        # The sweep spawns <repo>\scripts\remove-worktree-local-dev.ps1, so a fixture that must
+        # really remove something needs the worktree scripts in place. Top-level *.ps1 only.
+        $repoScripts = Join-Path $repo 'scripts'
+        New-Item -ItemType Directory -Path $repoScripts -Force | Out-Null
+        Copy-Item -Path (Join-Path $scriptsDir '*.ps1') -Destination $repoScripts -Force
+    }
     Invoke-FixtureGit $repo @('add', '-A') | Out-Null
     Invoke-FixtureGit $repo @('commit', '--quiet', '-m', 'seed') | Out-Null
     Invoke-FixtureGit $repo @('remote', 'add', 'origin', $origin) | Out-Null
@@ -78,15 +85,18 @@ function New-RemoteFixture {
     Invoke-FixtureGit $worktree @('add', '-A') | Out-Null
     Invoke-FixtureGit $worktree @('commit', '--quiet', '-m', 'work on the branch') | Out-Null
 
+    $preMerge = $null
     if ($Merged) {
         $preMerge = ([string] (Invoke-FixtureGit $repo @('rev-parse', 'main'))).Trim()
         # --no-ff is the shape a GitHub "Merge pull request" leaves behind.
         Invoke-FixtureGit $repo @('merge', '--no-ff', '-m', "Merge $branch", $branch) | Out-Null
         Invoke-FixtureGit $repo @('push', '--quiet', 'origin', 'main') | Out-Null
         Invoke-FixtureGit $repo @('reset', '--hard', '--quiet', $preMerge) | Out-Null
-        # The push updated the tracking ref too. Rewind it, or the fixture proves nothing about
-        # fetching: only the remote must hold the merge.
-        Invoke-FixtureGit $repo @('update-ref', 'refs/remotes/origin/main', $preMerge) | Out-Null
+        if (-not $KeepTrackingRef) {
+            # The push updated the tracking ref too. Rewind it, or the fixture proves nothing about
+            # fetching: only the remote must hold the merge.
+            Invoke-FixtureGit $repo @('update-ref', 'refs/remotes/origin/main', $preMerge) | Out-Null
+        }
     }
 
     return [pscustomobject]@{
@@ -95,7 +105,13 @@ function New-RemoteFixture {
         Origin   = $origin
         Worktree = (Resolve-Path -LiteralPath $worktree).Path
         Branch   = $branch
+        PreMerge = $preMerge
     }
+}
+
+function Get-RefSha {
+    param([string] $RepoDir, [string] $Ref)
+    return ([string] (& git -C $RepoDir rev-parse $Ref 2>$null)).Trim()
 }
 
 function Remove-Fixture {
@@ -152,7 +168,13 @@ function Invoke-RemoveHook {
     $stdoutFile = [System.IO.Path]::GetTempFileName()
     $stderrFile = [System.IO.Path]::GetTempFileName()
     try {
-        Set-Content -LiteralPath $stdinFile -Value (@{ worktree_path = $WorktreePath } | ConvertTo-Json -Compress) -Encoding utf8
+        # No BOM. Windows PowerShell 5.1's `Set-Content -Encoding utf8` writes one, and the hook's
+        # JSON parse rejects it with "Invalid JSON primitive", so the hook would read no path at
+        # all and the test would prove nothing. Claude Code sends BOM-less JSON.
+        [System.IO.File]::WriteAllText(
+            $stdinFile,
+            (@{ worktree_path = $WorktreePath } | ConvertTo-Json -Compress),
+            (New-Object System.Text.UTF8Encoding($false)))
         $psExe = [System.Diagnostics.Process]::GetCurrentProcess().Path
         $argList = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $removeScript, '-Mode', 'Hook') + $ExtraArgs
         $proc = Start-Process -FilePath $psExe -ArgumentList $argList `
@@ -254,9 +276,79 @@ try {
     Assert-Contains $sweep.Stderr "base 'origin/main' (fetched from origin)." 'The sweep must report the base it decided against.'
     Assert-Contains $sweep.Stderr "eligible merged worktree: $($fixture.Worktree)" 'A worktree merged on the remote must be eligible while local main is stale.'
 
-    # The same run, with the base named explicitly, is the caller's choice and must not fetch.
+} finally {
+    Remove-Fixture $fixture.Root
+}
+
+# An explicit -MainRef is the caller's choice: it must not fetch, and it must still say which base
+# it decided against. A fresh fixture, because a fetch that already ran would hide a fetch here.
+$fixture = New-RemoteFixture -Merged
+try {
+    $before = Get-RefSha $fixture.Repo 'refs/remotes/origin/main'
+
     $explicit = Invoke-Sweep -RepoDir $fixture.Repo -ExtraArgs @('-MainRef', 'main')
+    Assert-True ($explicit.ExitCode -eq 0) "The sweep must exit 0, got $($explicit.ExitCode). Stderr: $($explicit.Stderr)"
+    Assert-Contains $explicit.Stderr "base 'main' (given by the caller)." 'An explicit -MainRef must still report the base.'
     Assert-NotContains $explicit.Stderr 'fetched from origin' 'An explicit -MainRef must not trigger a fetch.'
+    Assert-True ((Get-RefSha $fixture.Repo 'refs/remotes/origin/main') -eq $before) `
+        'An explicit -MainRef must leave the remote-tracking ref where it was.'
+    Assert-Contains $explicit.Stderr 'no merged worktrees eligible for cleanup.' 'Against the stale local base nothing is eligible.'
+} finally {
+    Remove-Fixture $fixture.Root
+}
+
+# The whole handover, end to end: the sweep fetches once, decides, and passes that base to the
+# removal script. Against a stale local `main` the removal script's own gate would refuse, so a
+# worktree that actually disappears is the only proof the base really crossed the process boundary.
+$fixture = New-RemoteFixture -Merged -WithScripts
+try {
+    $sweep = Invoke-Sweep -RepoDir $fixture.Repo -ExtraArgs @('-Cleanup')
+    Assert-True ($sweep.ExitCode -eq 0) "The sweep must exit 0, got $($sweep.ExitCode). Stderr: $($sweep.Stderr)"
+    Assert-Contains $sweep.Stderr "removing merged worktree: $($fixture.Worktree)" 'The sweep must remove the eligible worktree.'
+    Assert-NotContains $sweep.Stderr 'not found; cannot remove' 'The fixture must carry the removal script.'
+    Assert-NotContains $sweep.Stderr 'is not merged into' 'The removal gate must accept the base the sweep handed it.'
+    Assert-True (Wait-ForWorktreeGone -RepoDir $fixture.Repo -WorktreePath $fixture.Worktree) `
+        'The worktree must actually be gone.'
+} finally {
+    Remove-Fixture $fixture.Root
+}
+
+# --- A stale cache must not authorize removal ---------------------------------
+#
+# The remote can lose history: a force-update, a reverted merge, an amended branch. The cached
+# tracking ref then holds a merge the remote no longer has, and deciding against it would remove a
+# worktree whose work is no longer on the remote at all. Removal is destructive, so a base that
+# could not be refreshed reports and stops.
+
+$fixture = New-RemoteFixture -Merged -KeepTrackingRef
+try {
+    # The remote drops the merge; the cached tracking ref still holds it.
+    Invoke-FixtureGit $fixture.Origin @('update-ref', 'refs/heads/main', $fixture.PreMerge) | Out-Null
+    Assert-True ((Get-RefSha $fixture.Repo 'refs/remotes/origin/main') -ne $fixture.PreMerge) `
+        'The cached tracking ref must still hold the merge, or the fixture proves nothing.'
+
+    # Reachable remote: the fetch rewinds the cached ref, and the worktree stops being eligible.
+    $fetched = Invoke-Sweep -RepoDir $fixture.Repo -ExtraArgs @('-Cleanup')
+    Assert-True ($fetched.ExitCode -eq 0) "The sweep must exit 0, got $($fetched.ExitCode). Stderr: $($fetched.Stderr)"
+    Assert-Contains $fetched.Stderr 'no merged worktrees eligible for cleanup.' 'After the fetch the dropped merge must not count.'
+    Assert-True (Test-Path -LiteralPath $fixture.Worktree) 'The worktree must survive a remote that dropped the merge.'
+} finally {
+    Remove-Fixture $fixture.Root
+}
+
+$fixture = New-RemoteFixture -Merged -KeepTrackingRef -WithScripts
+try {
+    Invoke-FixtureGit $fixture.Origin @('update-ref', 'refs/heads/main', $fixture.PreMerge) | Out-Null
+    Invoke-FixtureGit $fixture.Repo @('remote', 'set-url', 'origin', (Join-Path $fixture.Root 'no-such-origin.git')) | Out-Null
+
+    # Unreachable remote plus a cached ref that says "merged". The old code removed the worktree.
+    $offline = Invoke-Sweep -RepoDir $fixture.Repo -ExtraArgs @('-Cleanup')
+    Assert-True ($offline.ExitCode -eq 0) "The sweep must exit 0, got $($offline.ExitCode). Stderr: $($offline.Stderr)"
+    Assert-Contains $offline.Stderr "eligible merged worktree: $($fixture.Worktree)" 'A stale base still reports what it sees.'
+    Assert-Contains $offline.Stderr 'nothing removed' 'A stale base must refuse removal and say so.'
+    Assert-NotContains $offline.Stderr 'removing merged worktree' 'A stale base must not remove anything.'
+    Assert-NotContains (Get-RemovalLog $fixture.Repo) 'Merged-cleanup requested removal' 'A stale base must not ask for a removal.'
+    Assert-True (Test-Path -LiteralPath $fixture.Worktree) 'The worktree must survive an unreachable remote.'
 } finally {
     Remove-Fixture $fixture.Root
 }
@@ -304,6 +396,71 @@ try {
         'With the fetched base the gate must pass and the watcher must remove the worktree.'
 } finally {
     Remove-Fixture $fixture.Root
+}
+
+# The hook resolves its own base, so it inherits the same rule: a base it could not refresh is not
+# proof of anything, and removal is destructive.
+$fixture = New-RemoteFixture -Merged -KeepTrackingRef
+try {
+    Invoke-FixtureGit $fixture.Origin @('update-ref', 'refs/heads/main', $fixture.PreMerge) | Out-Null
+    Invoke-FixtureGit $fixture.Repo @('remote', 'set-url', 'origin', (Join-Path $fixture.Root 'no-such-origin.git')) | Out-Null
+
+    $offlineHook = Invoke-RemoveHook -WorktreePath $fixture.Worktree
+    Assert-True ($offlineHook.ExitCode -eq 0) "The hook must exit 0, got $($offlineHook.ExitCode)."
+    Assert-Contains (Get-RemovalLog $fixture.Repo) 'may be behind the remote' 'The hook must say why it refused to decide.'
+    Assert-True (Test-Path -LiteralPath $fixture.Worktree) 'A base that could not be refreshed must preserve the worktree.'
+} finally {
+    Remove-Fixture $fixture.Root
+}
+
+# --- The fetch child process ---------------------------------------------------
+
+# Windows PowerShell 5.1 is a declared target (`#Requires -Version 5.1`), and it reports
+# Start-Process -PassThru exit codes as $null when -Wait was not used. The resolver read that as a
+# failed fetch, so on 5.1 every base was reported stale — and with the rule above, that alone would
+# stop every automatic removal. The resolver must answer the same on both hosts.
+$windowsPowerShell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+if (Test-Path -LiteralPath $windowsPowerShell) {
+    $fixture = New-RemoteFixture -Merged
+    try {
+        $command = "Set-StrictMode -Version Latest; . '$scriptsDir\worktree-git.common.ps1'; " +
+            "`$b = Resolve-MergedBaseRef -RepoRoot '$($fixture.Repo)'; Write-Output `$b.Reason"
+        $reason = (& $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -Command $command 2>&1 | Select-Object -Last 1)
+        Assert-True ("$reason".Trim() -eq 'remote-fetched') `
+            "Windows PowerShell 5.1 must report a successful fetch, got '$reason'."
+    } finally {
+        Remove-Fixture $fixture.Root
+    }
+} else {
+    Write-Host "Skipped the Windows PowerShell 5.1 check: $windowsPowerShell not found."
+}
+
+# A timed-out fetch must take its helpers with it. Git starts askpass, SSH, and credential helpers
+# as children, and killing only the parent leaves whichever one is waiting for input alive.
+$parentMarker = Join-Path ([System.IO.Path]::GetTempPath()) ("wt-treekill-" + [guid]::NewGuid().ToString('N').Substring(0, 8) + '.txt')
+$childScript = "Start-Process -FilePath '$([System.Diagnostics.Process]::GetCurrentProcess().Path)' " +
+    "-ArgumentList '-NoProfile','-Command','Start-Sleep -Seconds 120' -PassThru -WindowStyle Hidden | " +
+    "ForEach-Object { Set-Content -LiteralPath '$parentMarker' -Value `$_.Id }; Start-Sleep -Seconds 120"
+$parent = Start-Process -FilePath ([System.Diagnostics.Process]::GetCurrentProcess().Path) `
+    -ArgumentList @('-NoProfile', '-Command', $childScript) -PassThru -WindowStyle Hidden
+try {
+    $deadline = (Get-Date).AddSeconds(20)
+    while (((Get-Date) -lt $deadline) -and -not (Test-Path -LiteralPath $parentMarker)) { Start-Sleep -Milliseconds 200 }
+    Assert-True (Test-Path -LiteralPath $parentMarker) 'The fixture child process never started.'
+    $childId = [int] ((Get-Content -Raw -LiteralPath $parentMarker).Trim())
+
+    Assert-True (Stop-ProcessTree -ProcessId $parent.Id -WaitMilliseconds 10000) 'Stop-ProcessTree must report the tree gone.'
+
+    foreach ($id in @($parent.Id, $childId)) {
+        $alive = $true
+        try { $null = [System.Diagnostics.Process]::GetProcessById($id) } catch { $alive = $false }
+        Assert-True (-not $alive) "Process $id survived Stop-ProcessTree."
+    }
+} finally {
+    foreach ($id in @($parent.Id)) {
+        try { (Get-Process -Id $id -ErrorAction SilentlyContinue) | Stop-Process -Force -ErrorAction SilentlyContinue } catch { }
+    }
+    Remove-Item -LiteralPath $parentMarker -Force -ErrorAction SilentlyContinue
 }
 
 Write-Host 'Worktree sweep remote-base tests passed.'

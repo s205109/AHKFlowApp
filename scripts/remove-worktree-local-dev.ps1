@@ -676,6 +676,13 @@ function Invoke-HookMode {
             $base = Resolve-MergedBaseRef -RepoRoot $mainCheckoutFromGit
             Write-Log (Format-MergedBaseRefMessage -Prefix 'merge gate' -Base $base)
             $baseRef = $base.Ref
+
+            # A base that could not be refreshed proves nothing: the remote may have dropped the
+            # merge the cached ref still shows. Removal is destructive, so preserve and say why.
+            if ($base.Reason -eq 'remote-stale') {
+                Write-UnmergedPreserveGuidance -WorktreeFull $worktreeFull -MainCheckout $mainCheckoutFromGit -BranchName $branchName -Reason "the base '$($base.Ref)' could not be refreshed, so it may be behind the remote"
+                return
+            }
         }
 
         if (-not (Test-WorktreeMergedIntoMain -WorktreeFull $worktreeFull -BaseRef $baseRef)) {
