@@ -6,7 +6,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (scripts)
 - **Difficulty**: moderate
-- **Stage**: 0-intake
+- **Stage**: 3-plan
 
 ## Summary
 
@@ -93,6 +93,9 @@ absent rather than late.
 
 ## Notes / dependencies
 
+- Plan: `docs/superpowers/plans/2026-08-15-merged-worktree-sweep-stale-local-main-plan-094.md`
+- Backlog 095 merged in pull request #310 on 2026-08-15, so the shared file
+  `scripts/cleanup-merged-worktrees.ps1` is free. This branch is based on that result
 - Found while closing backlog 087, when a manual sweep was recommended on a wrong diagnosis
 - `scripts/remove-worktree-local-dev.ps1:318-322` has the same decision on the single-worktree
   path: "merged = HEAD is an ancestor of main". Check whether it needs the same fix. The range
