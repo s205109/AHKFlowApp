@@ -6,7 +6,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (scripts)
 - **Difficulty**: moderate
-- **Stage**: 3-plan
+- **Stage**: 9-ship
 
 ## Summary
 
@@ -70,17 +70,17 @@ absent rather than late.
 
 ## Acceptance criteria
 
-- [ ] The sweep decides merged-ness against a base that reflects the remote, and the item states
+- [x] The sweep decides merged-ness against a base that reflects the remote, and the item states
       where the fetch happens: in `new-worktree.ps1` before the sweep, or inside the sweep itself
-- [ ] A stale local `main` no longer hides a merge. A worktree whose branch is merged on the remote
+- [x] A stale local `main` no longer hides a merge. A worktree whose branch is merged on the remote
       is eligible even when local `main` predates that merge
-- [ ] A fixture proves both directions: a worktree merged on the remote but not into a stale local
+- [x] A fixture proves both directions: a worktree merged on the remote but not into a stale local
       `main` is eligible, and an unmerged worktree is still preserved
-- [ ] The fetch cannot make worktree creation fail when the network is down. Offline, the sweep
+- [x] The fetch cannot make worktree creation fail when the network is down. Offline, the sweep
       falls back to the local base and says so
-- [ ] Each of the three `workflow.md` claims at `:545`, `:560`, and `:601` names the item that
+- [x] Each of the three `workflow.md` claims at `:545`, `:560`, and `:601` names the item that
       really owns it. Where no item owns one, this item records that or a new one is filed
-- [ ] The manual "update local `main` before attempting removal" step at
+- [x] The manual "update local `main` before attempting removal" step at
       `docs/development/workflow.md:548-557` is removed or rewritten to match the new behaviour
 
 ## Out of scope
@@ -97,7 +97,12 @@ absent rather than late.
 - Backlog 095 merged in pull request #310 on 2026-08-15, so the shared file
   `scripts/cleanup-merged-worktrees.ps1` is free. This branch is based on that result
 - Found while closing backlog 087, when a manual sweep was recommended on a wrong diagnosis
-- `scripts/remove-worktree-local-dev.ps1:318-322` has the same decision on the single-worktree
-  path: "merged = HEAD is an ancestor of main". Check whether it needs the same fix. The range
-  `workflow.md:549` gives for this is off by four lines, which is its own small correction
+- The single-worktree path needed the same fix, and it was not optional: the sweep delegates
+  removal to `remove-worktree-local-dev.ps1`, whose own gate read local `main` as well. Without
+  it the sweep would have reported a worktree and then preserved it. That script now takes
+  `-MainRef` and resolves its own base when nothing passes one
+- Where the fetch happens: inside the sweep, in `cleanup-merged-worktrees.ps1`. It has two
+  callers — `new-worktree.ps1` and a session running it by hand — and both get the fix there
+- The three `workflow.md` claims: `:545` now names backlog 097, `:560` is gone (this item did
+  that work), `:601` now names backlog 098. Backlog 073 owns none of them
 - Backlog 073 is the neighbouring item. Read its scope before widening this one
