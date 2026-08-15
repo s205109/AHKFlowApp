@@ -62,6 +62,9 @@ function Get-CitationOnLine {
     param([Parameter(Mandatory)][AllowEmptyString()][string] $Line)
 
     $found = [System.Collections.Generic.List[object]]::new()
+    # Neither pattern below can match without a colon, and most lines don't have one.
+    if (-not $Line.Contains(':')) { return $found }
+
     $claimed = [System.Collections.Generic.List[object]]::new()
 
     foreach ($match in [regex]::Matches($Line, $script:CanonicalPattern)) {
@@ -143,23 +146,37 @@ function Get-CitationProblem {
 
     $scanPath = (Resolve-Path -LiteralPath $ScanRoot).Path
     $resolvePath = (Resolve-Path -LiteralPath $ResolveRoot).Path
+    $sameRoot = $scanPath -eq $resolvePath
 
     # Case-insensitive: Windows resolves paths that way, and a case difference is not this
     # check's defect to report.
-    $tracked = [System.Collections.Generic.HashSet[string]]::new(
-        [string[]] (Get-TrackedFile -Root $resolvePath),
-        [System.StringComparer]::OrdinalIgnoreCase)
+    $trackedList = [string[]] (Get-TrackedFile -Root $resolvePath)
+    $tracked = [System.Collections.Generic.HashSet[string]]::new($trackedList, [System.StringComparer]::OrdinalIgnoreCase)
+
+    # git ls-files against the same root twice is redundant when ScanRoot and ResolveRoot match,
+    # which is every caller except the private plans repo scan.
+    $scanList = if ($sameRoot) { $trackedList } else { Get-TrackedFile -Root $scanPath }
 
     $targetCache = @{}
     $problems = [System.Collections.Generic.List[string]]::new()
 
-    foreach ($relative in (Get-TrackedFile -Root $scanPath)) {
+    # $where and $citation are loop variables below; a foreach loop opens no new scope in
+    # PowerShell, so this sees their live values on every call without being redefined per-citation.
+    function Add-Problem {
+        param([Parameter(Mandatory)][int] $Tier, [Parameter(Mandatory)][string] $Detail)
+        $problems.Add(('{0} tier {1}: {2} {3}' -f $where, $Tier, $citation.Text, $Detail))
+    }
+
+    foreach ($relative in $scanList) {
         if ($relative -match $script:BinaryExtension) { continue }
 
         $full = Join-Path $scanPath $relative
         if (-not (Test-Path -LiteralPath $full -PathType Leaf)) { continue }
 
         $lines = @(Get-Content -LiteralPath $full -ErrorAction SilentlyContinue)
+        # A scanned file is also a valid citation target whenever the roots match, so the content
+        # already in hand seeds the cache and saves a second read the first time something cites it.
+        if ($sameRoot) { $targetCache[$relative] = $lines }
         if (Test-CitationIgnoreFile -Lines $lines) { continue }
 
         for ($index = 0; $index -lt $lines.Count; $index++) {
@@ -174,7 +191,7 @@ function Get-CitationProblem {
 
                 if ($ChangedLine -and $ChangedLine.Contains($where) -and
                     $citation.Kind -ne 'Canonical' -and $isTracked) {
-                    $problems.Add(('{0} tier 3: {1} sits on an added or edited line, so it must use the canonical form (`path:line`, "expected text")' -f $where, $citation.Text))
+                    Add-Problem 3 'sits on an added or edited line, so it must use the canonical form (`path:line`, "expected text")'
                 }
 
                 if (-not $isTracked) {
@@ -182,7 +199,7 @@ function Get-CitationProblem {
                     # them are bare file names and invented examples. A canonical one is different,
                     # because its author claims the check can read the target.
                     if ($citation.Kind -eq 'Canonical') {
-                        $problems.Add(('{0} tier 2: {1} names a path that git does not track under {2}' -f $where, $citation.Text, $resolvePath))
+                        Add-Problem 2 ('names a path that git does not track under {0}' -f $resolvePath)
                     }
                     continue
                 }
@@ -193,15 +210,15 @@ function Get-CitationProblem {
                 $targetLines = $targetCache[$citation.Path]
 
                 if ($citation.Start -lt 1) {
-                    $problems.Add(('{0} tier 1: {1} starts below line 1' -f $where, $citation.Text))
+                    Add-Problem 1 'starts below line 1'
                     continue
                 }
                 if ($citation.End -lt $citation.Start) {
-                    $problems.Add(('{0} tier 1: {1} ends before it starts' -f $where, $citation.Text))
+                    Add-Problem 1 'ends before it starts'
                     continue
                 }
                 if ($citation.End -gt $targetLines.Count) {
-                    $problems.Add(('{0} tier 1: {1} points past the end of {2}, which has {3} lines' -f $where, $citation.Text, $citation.Path, $targetLines.Count))
+                    Add-Problem 1 ('points past the end of {0}, which has {1} lines' -f $citation.Path, $targetLines.Count)
                     continue
                 }
 
@@ -211,13 +228,13 @@ function Get-CitationProblem {
                 # contains the empty string. That is a silent hole, so reject it outright.
                 $phrase = ConvertTo-CollapsedText -Text $citation.Phrase
                 if ([string]::IsNullOrEmpty($phrase)) {
-                    $problems.Add(('{0} tier 2: {1} carries an empty expectation, which would match any line' -f $where, $citation.Text))
+                    Add-Problem 2 'carries an empty expectation, which would match any line'
                     continue
                 }
 
                 $slice = ConvertTo-CollapsedText -Text (($targetLines[($citation.Start - 1)..($citation.End - 1)]) -join ' ')
                 if (-not $slice.Contains($phrase)) {
-                    $problems.Add(('{0} tier 2: {1} does not match. The target holds: {2}' -f $where, $citation.Text, $slice))
+                    Add-Problem 2 ('does not match. The target holds: {0}' -f $slice)
                 }
             }
         }

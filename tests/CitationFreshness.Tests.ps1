@@ -350,23 +350,29 @@ finally {
 
 # --- This repository ---
 
-# Tiers 1 and 2 only. Tier 3 needs a base ref, and this suite must pass on any checkout,
-# including a shallow CI clone with no merge base. The runner script owns tier 3.
+# One scan of this repository (~1450 tracked files) covers both assertions below. Tier 3 needs a
+# base ref, and this suite must pass on any checkout, including a shallow CI clone with no merge
+# base, so ChangedLine is $null there — Get-CitationProblem then reports no tier 3 problem at all.
 #
 # The measured baseline for this repository counted citations with a looser pattern that missed
 # hidden and extensionless paths. The engine finds more than the baseline did, so treat a new
 # failure here as a real one, not as drift in the count.
-$live = @(Get-CitationProblem -ScanRoot $repoRoot -ResolveRoot $repoRoot)
-Assert-True ($live.Count -eq 0) `
-    "This repository must hold no stale citation, found $($live.Count): $($live -join ' | ')"
+$mergeBase = & git -C $repoRoot merge-base HEAD origin/main 2>$null
+$changedHere = if ($LASTEXITCODE -eq 0 -and $mergeBase) {
+    Get-ChangedLine -Root $repoRoot -BaseRef ([string] $mergeBase).Trim()
+} else {
+    $null
+}
+
+$live = @(Get-CitationProblem -ScanRoot $repoRoot -ResolveRoot $repoRoot -ChangedLine $changedHere)
+$tier12 = @($live | Where-Object { $_ -notlike '*tier 3*' })
+Assert-True ($tier12.Count -eq 0) `
+    "This repository must hold no stale citation, found $($tier12.Count): $($tier12 -join ' | ')"
 
 # Tier 3 over this repository, when a merge base exists. A shallow clone reports the skip and
 # passes, which is the documented behaviour, not a hole.
-$mergeBase = & git -C $repoRoot merge-base HEAD origin/main 2>$null
-if ($LASTEXITCODE -eq 0 -and $mergeBase) {
-    $changedHere = Get-ChangedLine -Root $repoRoot -BaseRef ([string] $mergeBase).Trim()
-    $adoption = @(Get-CitationProblem -ScanRoot $repoRoot -ResolveRoot $repoRoot -ChangedLine $changedHere)
-    $tier3Here = @($adoption | Where-Object { $_ -like '*tier 3*' })
+if ($changedHere) {
+    $tier3Here = @($live | Where-Object { $_ -like '*tier 3*' })
     Assert-True ($tier3Here.Count -eq 0) `
         "Every citation this branch adds or edits must be canonical: $($tier3Here -join ' | ')"
 } else {
