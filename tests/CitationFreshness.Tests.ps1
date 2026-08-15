@@ -360,6 +360,19 @@ $live = @(Get-CitationProblem -ScanRoot $repoRoot -ResolveRoot $repoRoot)
 Assert-True ($live.Count -eq 0) `
     "This repository must hold no stale citation, found $($live.Count): $($live -join ' | ')"
 
+# Tier 3 over this repository, when a merge base exists. A shallow clone reports the skip and
+# passes, which is the documented behaviour, not a hole.
+$mergeBase = & git -C $repoRoot merge-base HEAD origin/main 2>$null
+if ($LASTEXITCODE -eq 0 -and $mergeBase) {
+    $changedHere = Get-ChangedLine -Root $repoRoot -BaseRef ([string] $mergeBase).Trim()
+    $adoption = @(Get-CitationProblem -ScanRoot $repoRoot -ResolveRoot $repoRoot -ChangedLine $changedHere)
+    $tier3Here = @($adoption | Where-Object { $_ -like '*tier 3*' })
+    Assert-True ($tier3Here.Count -eq 0) `
+        "Every citation this branch adds or edits must be canonical: $($tier3Here -join ' | ')"
+} else {
+    Write-Host 'Tier 3 skipped: no merge base with origin/main.'
+}
+
 # --- The runner ---
 
 $runner = Join-Path $repoRoot 'scripts/check-citation-freshness.ps1'

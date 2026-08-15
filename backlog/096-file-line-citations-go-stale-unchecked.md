@@ -51,8 +51,9 @@ found it.
 
 **This is not what the backlog 072 drift guard does.** That guard checks that top-level bullets in
 the process sections carry a `docs/development/workflow.md#stage-N-name` anchor and that the anchor
-exists (`backlog/072-process-wave-2-parity-drift-guard-templates.md:61`). Anchors are stable across
-line shifts, which is exactly why that guard cannot see this defect. The two are complementary.
+exists (`backlog/072-process-wave-2-parity-drift-guard-templates.md:61`, "docs/development/workflow.md#stage-N-name").
+Anchors are stable across line shifts, which is exactly why that guard cannot see this defect. The
+two are complementary.
 
 **A line number alone cannot be checked.** `workflow.md:482` is checkable only against an
 expectation of what line 482 should say. So the item has to settle a notation before it can settle
@@ -100,8 +101,7 @@ Scan of every file from `git ls-files`, matching `path.ext:N` and `path.ext:N-M`
 | This one | 1451 | 257 | 109 | 148 | 0 |
 | Private plans repo | 232 | 1980 | 1312 | 668 | 13 |
 
-One citation here already carries an expected phrase, and it is stale: `docs/development/workflow.md:615`
-cites line 921 of `scripts/remove-worktree-local-dev.ps1` for text that sits on line 937.
+One citation here already carries an expected phrase, and it is stale: `docs/development/workflow.md:615` cites line 921 of `scripts/remove-worktree-local-dev.ps1` for text that sits on line 937 (evidence as of 2026-08-15; Task 4 of the plan fixes this citation to 937 — citation-check:ignore).
 
 ## Unresolved questions
 
