@@ -38,6 +38,31 @@ try {
         throw "Fast test slice failed. $skipHint"
     }
     Write-Success 'Fast test slice passed.'
+
+    # The private plans repository holds most of this project's citations, and CI never sees it:
+    # (`.gitignore:473`, "docs/superpowers") ignores it. Pre-push is the only gate that can reach it.
+    #
+    # Tiers 1 and 2 only. Tier 3 would force a quoted phrase on every citation in a new plan, and
+    # the largest plan carries 65 of them.
+    Write-Step 'Checking citations in the private plans repository'
+    . "$PSScriptRoot\plans-citation-scan.common.ps1"
+
+    $plansRoot = Join-Path $repoRoot 'docs/superpowers'
+    $pwshCommand = Get-Command pwsh -ErrorAction SilentlyContinue
+    $pwshPath = if ($pwshCommand) { $pwshCommand.Source } else { '' }
+    $scanPlan = Get-PlansCitationScanPlan -PlansRoot $plansRoot -PwshPath $pwshPath
+
+    if ($scanPlan.Action -ne 'Run') {
+        Write-Host $scanPlan.Reason
+    }
+    else {
+        & $pwshPath -NoProfile -File (Join-Path $PSScriptRoot 'check-citation-freshness.ps1') `
+            -ScanRoot $plansRoot -ResolveRoot $repoRoot -NoAdoptionTier
+        if ($LASTEXITCODE -ne 0) {
+            throw "Plans repository citations failed. $skipHint"
+        }
+        Write-Success 'Plans repository citations passed.'
+    }
 }
 finally {
     Pop-Location
