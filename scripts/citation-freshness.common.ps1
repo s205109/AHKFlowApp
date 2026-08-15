@@ -117,3 +117,111 @@ function Test-CitationIgnoreFile {
 
     return $false
 }
+
+# Every path git tracks in a repository, forward-slashed. Untracked files are invisible to the
+# check on both sides: they are never scanned, and they are never accepted as a citation target.
+# Without this, build output and scratch copies make two runs on one commit disagree. A path that
+# climbs out of the root with '..' is never in this set either, so it fails rather than escapes.
+function Get-TrackedFile {
+    param([Parameter(Mandatory)][string] $Root)
+
+    $output = & git -C $Root ls-files
+    if ($LASTEXITCODE -ne 0) { throw "git ls-files failed in $Root" }
+    return @($output | ForEach-Object { $_ -replace '\\', '/' })
+}
+
+$script:BinaryExtension = '\.(png|jpg|jpeg|gif|ico|svg|pdf|zip|dll|exe|pfx|snk|woff|woff2|ttf|eot|mp4|bin)$'
+
+# Walks ScanRoot and returns one string per problem. ChangedLine enables tier 3; leave it null and
+# the check reads state only.
+function Get-CitationProblem {
+    param(
+        [Parameter(Mandatory)][string] $ScanRoot,
+        [Parameter(Mandatory)][string] $ResolveRoot,
+        [System.Collections.Generic.HashSet[string]] $ChangedLine
+    )
+
+    $scanPath = (Resolve-Path -LiteralPath $ScanRoot).Path
+    $resolvePath = (Resolve-Path -LiteralPath $ResolveRoot).Path
+
+    # Case-insensitive: Windows resolves paths that way, and a case difference is not this
+    # check's defect to report.
+    $tracked = [System.Collections.Generic.HashSet[string]]::new(
+        [string[]] (Get-TrackedFile -Root $resolvePath),
+        [System.StringComparer]::OrdinalIgnoreCase)
+
+    $targetCache = @{}
+    $problems = [System.Collections.Generic.List[string]]::new()
+
+    foreach ($relative in (Get-TrackedFile -Root $scanPath)) {
+        if ($relative -match $script:BinaryExtension) { continue }
+
+        $full = Join-Path $scanPath $relative
+        if (-not (Test-Path -LiteralPath $full -PathType Leaf)) { continue }
+
+        $lines = @(Get-Content -LiteralPath $full -ErrorAction SilentlyContinue)
+        if (Test-CitationIgnoreFile -Lines $lines) { continue }
+
+        for ($index = 0; $index -lt $lines.Count; $index++) {
+            $line = $lines[$index]
+            if ($line -match 'citation-check:ignore') { continue }
+
+            $lineNumber = $index + 1
+            $where = '{0}:{1}' -f $relative, $lineNumber
+
+            foreach ($citation in (Get-CitationOnLine -Line $line)) {
+                $isTracked = $tracked.Contains($citation.Path)
+
+                if ($ChangedLine -and $ChangedLine.Contains($where) -and
+                    $citation.Kind -ne 'Canonical' -and $isTracked) {
+                    $problems.Add(('{0} tier 3: {1} sits on an added or edited line, so it must use the canonical form (`path:line`, "expected text")' -f $where, $citation.Text))
+                }
+
+                if (-not $isTracked) {
+                    # A legacy citation with an unresolved path is out of scope by design: most of
+                    # them are bare file names and invented examples. A canonical one is different,
+                    # because its author claims the check can read the target.
+                    if ($citation.Kind -eq 'Canonical') {
+                        $problems.Add(('{0} tier 2: {1} names a path that git does not track under {2}' -f $where, $citation.Text, $resolvePath))
+                    }
+                    continue
+                }
+
+                if (-not $targetCache.ContainsKey($citation.Path)) {
+                    $targetCache[$citation.Path] = @(Get-Content -LiteralPath (Join-Path $resolvePath $citation.Path) -ErrorAction SilentlyContinue)
+                }
+                $targetLines = $targetCache[$citation.Path]
+
+                if ($citation.Start -lt 1) {
+                    $problems.Add(('{0} tier 1: {1} starts below line 1' -f $where, $citation.Text))
+                    continue
+                }
+                if ($citation.End -lt $citation.Start) {
+                    $problems.Add(('{0} tier 1: {1} ends before it starts' -f $where, $citation.Text))
+                    continue
+                }
+                if ($citation.End -gt $targetLines.Count) {
+                    $problems.Add(('{0} tier 1: {1} points past the end of {2}, which has {3} lines' -f $where, $citation.Text, $citation.Path, $targetLines.Count))
+                    continue
+                }
+
+                if ($citation.Kind -ne 'Canonical') { continue }
+
+                # An empty expectation would pass against every line, because every string
+                # contains the empty string. That is a silent hole, so reject it outright.
+                $phrase = ConvertTo-CollapsedText -Text $citation.Phrase
+                if ([string]::IsNullOrEmpty($phrase)) {
+                    $problems.Add(('{0} tier 2: {1} carries an empty expectation, which would match any line' -f $where, $citation.Text))
+                    continue
+                }
+
+                $slice = ConvertTo-CollapsedText -Text (($targetLines[($citation.Start - 1)..($citation.End - 1)]) -join ' ')
+                if (-not $slice.Contains($phrase)) {
+                    $problems.Add(('{0} tier 2: {1} does not match. The target holds: {2}' -f $where, $citation.Text, $slice))
+                }
+            }
+        }
+    }
+
+    return $problems
+}
