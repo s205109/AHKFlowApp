@@ -10,6 +10,10 @@
     console (unset) > report-only. Invalid/duplicated config fails closed to report-only.
     In hook context (-IsHook) all output stays on stderr so the hook's stdout contract is
     preserved; when config is unset it prints the one-liner to enable cleanup.
+
+    With no -MainRef, the base is the remote-tracking branch of local main, fetched first:
+    a merge performed on GitHub never advances a local ref. An explicitly passed -MainRef is
+    the caller's choice and is used as given, with no fetch.
 #>
 
 [CmdletBinding()]
@@ -18,7 +22,8 @@ param(
     [switch] $Cleanup,
     [switch] $IsHook,
     [string] $MainRef = 'main',
-    [string] $ExcludePath
+    [string] $ExcludePath,
+    [int] $FetchTimeoutSeconds = 15
 )
 
 Set-StrictMode -Version Latest
@@ -401,8 +406,14 @@ function Resolve-CleanupDecision {
         [switch] $IsHook,
         [Parameter(Mandatory)][ValidateSet('true', 'false', 'unset', 'invalid')][string] $ConfigState,
         [ValidateSet('enable', 'disable', 'none')][string] $EnvOverride = 'none',
-        [bool] $Interactive
+        [bool] $Interactive,
+        [bool] $BaseIsStale
     )
+
+    # A base that could not be refreshed outranks every setting, including an explicit -Cleanup.
+    # The remote can lose history, so a stale cache can say "merged" about work the remote dropped.
+    # Reporting on it is useful; deleting on it is not recoverable.
+    if ($BaseIsStale) { return [pscustomobject]@{ Action = 'ReportOnly'; ShowHint = $false } }
 
     if ($Cleanup) { return [pscustomobject]@{ Action = 'Clean'; ShowHint = $false } }
 
@@ -446,7 +457,8 @@ function Set-CleanupAnswer {
 function Invoke-WorktreeRemoval {
     param(
         [Parameter(Mandatory)][string] $RepoRoot,
-        [Parameter(Mandatory)][string] $WorktreePath
+        [Parameter(Mandatory)][string] $WorktreePath,
+        [string] $MainRef = 'main'
     )
 
     $removeScript = Join-Path $RepoRoot 'scripts\remove-worktree-local-dev.ps1'
@@ -455,9 +467,17 @@ function Invoke-WorktreeRemoval {
         return
     }
 
+    # Function-scoped, discarded on return. The removal script reports on stderr, and Windows
+    # PowerShell 5.1 turns a native command's stderr into a terminating error while the preference
+    # is 'Stop' -- which turned every removal into "removal failed" plus the first log line.
+    $ErrorActionPreference = 'Continue'
+
     try {
         $psExe = Resolve-PowerShellExecutable
-        $output = '' | & $psExe -NoProfile -ExecutionPolicy Bypass -File $removeScript -WorktreePath $WorktreePath 2>&1
+        # -MainRef hands over the base this run already resolved. The removal script re-decides
+        # merged-ness for itself, and without this it would decide against the local branch again
+        # -- and fetch a second time when it resolved its own.
+        $output = '' | & $psExe -NoProfile -ExecutionPolicy Bypass -File $removeScript -WorktreePath $WorktreePath -MainRef $MainRef 2>&1
         foreach ($line in $output) {
             if ($line) { Write-Stderr ([string] $line) }
         }
@@ -475,7 +495,8 @@ function Invoke-MergedWorktreeCleanup {
         [switch] $Cleanup,
         [switch] $IsHook,
         [string] $MainRef = 'main',
-        [string] $ExcludePath
+        [string] $ExcludePath,
+        [switch] $BaseIsStale
     )
 
     $eligible = Get-EligibleMergedWorktrees -RepoRoot $RepoRoot -MainRef $MainRef -ExcludePath $ExcludePath
@@ -492,7 +513,7 @@ function Invoke-MergedWorktreeCleanup {
     $envOverride = if ($IsHook) { Get-EnvCleanupOverride } else { 'none' }
     $interactive = -not [Console]::IsInputRedirected
 
-    $decision = Resolve-CleanupDecision -Cleanup:$Cleanup -IsHook:$IsHook -ConfigState $configState -EnvOverride $envOverride -Interactive $interactive
+    $decision = Resolve-CleanupDecision -Cleanup:$Cleanup -IsHook:$IsHook -ConfigState $configState -EnvOverride $envOverride -Interactive $interactive -BaseIsStale $BaseIsStale
 
     switch ($decision.Action) {
         'Prompt' {
@@ -512,7 +533,9 @@ function Invoke-MergedWorktreeCleanup {
             # ReportOnly. The invalid-config warning is emitted here, not before the decision,
             # so an explicit override (-Cleanup / hook env enable) that legitimately cleans over
             # invalid config never gets a misleading "treating as report-only" line.
-            if ($configState -eq 'invalid') {
+            if ($BaseIsStale) {
+                Write-Stderr "cleanup: the base could not be refreshed, so it may be behind the remote; reporting only, nothing removed. Removal resumes once '$MainRef' can be fetched again."
+            } elseif ($configState -eq 'invalid') {
                 Write-Stderr 'cleanup: ahkflow.worktreeCleanup has an invalid or duplicated value; treating as report-only. Repair with: git config --local --unset-all ahkflow.worktreeCleanup'
             } elseif ($decision.ShowHint) {
                 Write-Stderr 'cleanup: report-only. Enable automatic cleanup for this repository with: git config --local ahkflow.worktreeCleanup true'
@@ -530,7 +553,7 @@ function Invoke-MergedWorktreeCleanup {
         try {
             Write-WorktreeLog -LogPath $removalLog -Worktree (Split-Path -Leaf $wt.Path) -Message "Merged-cleanup requested removal (branch $($wt.Branch))."
         } catch { }
-        Invoke-WorktreeRemoval -RepoRoot $RepoRoot -WorktreePath $wt.Path
+        Invoke-WorktreeRemoval -RepoRoot $RepoRoot -WorktreePath $wt.Path -MainRef $MainRef
     }
 }
 
@@ -540,5 +563,21 @@ if ($MyInvocation.InvocationName -ne '.') {
     if (-not $RepoRoot) {
         $RepoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
     }
-    Invoke-MergedWorktreeCleanup -RepoRoot $RepoRoot -Cleanup:$Cleanup -IsHook:$IsHook -MainRef $MainRef -ExcludePath $ExcludePath | Out-Null
+
+    # Resolving here, not inside Invoke-MergedWorktreeCleanup, keeps the function's signature and
+    # its callers unchanged: a test that dot-sources this file and calls the function passes the
+    # base it wants, and nothing fetches behind its back.
+    $baseIsStale = $false
+    if ($PSBoundParameters.ContainsKey('MainRef')) {
+        # The caller vouches for this base, so it is never treated as stale -- and it is still
+        # reported, because every run says which base it decided against.
+        Write-Stderr "cleanup: base '$MainRef' (given by the caller)."
+    } else {
+        $base = Resolve-MergedBaseRef -RepoRoot $RepoRoot -LocalRef $MainRef -TimeoutSeconds $FetchTimeoutSeconds
+        Write-Stderr (Format-MergedBaseRefMessage -Prefix 'cleanup' -Base $base)
+        $MainRef = $base.Ref
+        $baseIsStale = ($base.Reason -eq 'remote-stale')
+    }
+
+    Invoke-MergedWorktreeCleanup -RepoRoot $RepoRoot -Cleanup:$Cleanup -IsHook:$IsHook -MainRef $MainRef -ExcludePath $ExcludePath -BaseIsStale:$baseIsStale | Out-Null
 }

@@ -42,6 +42,12 @@ param(
 
     [string] $LogPath,
 
+    # The base the merged gate decides against. cleanup-merged-worktrees.ps1 passes the base it
+    # already resolved. Empty means resolve it here, which is what the hook path does: a merge
+    # performed on GitHub never advances local main, so deciding against it preserves finished
+    # worktrees until a human pulls.
+    [string] $MainRef,
+
     [int] $TimeoutSeconds = 300
 )
 
@@ -64,6 +70,37 @@ if (Test-Path -LiteralPath $worktreeLogHelperPath) {
 $powerShellHelperPath = Join-Path $PSScriptRoot 'worktree-powershell.common.ps1'
 if (Test-Path -LiteralPath $powerShellHelperPath) {
     . $powerShellHelperPath
+}
+
+$gitHelperPath = Join-Path $PSScriptRoot 'worktree-git.common.ps1'
+if (Test-Path -LiteralPath $gitHelperPath) {
+    . $gitHelperPath
+}
+
+# The watcher runs from a copy of this script in %TEMP%, where scripts\ does not exist. It never
+# reaches the merged gate -- that gate is on the hook path only -- but the fallback keeps the copy
+# loadable, and keeps the old local-branch behavior if the helper ever goes missing.
+if (-not (Get-Command Resolve-MergedBaseRef -ErrorAction SilentlyContinue)) {
+    function Resolve-MergedBaseRef {
+        param(
+            [Parameter(Mandatory)][string] $RepoRoot,
+            [string] $LocalRef = 'main',
+            [int] $TimeoutSeconds = 15
+        )
+
+        return [pscustomobject]@{ Ref = $LocalRef; Remote = $null; Fetched = $false; Reason = 'no-upstream' }
+    }
+}
+
+if (-not (Get-Command Format-MergedBaseRefMessage -ErrorAction SilentlyContinue)) {
+    function Format-MergedBaseRefMessage {
+        param(
+            [Parameter(Mandatory)][string] $Prefix,
+            [Parameter(Mandatory)][object] $Base
+        )
+
+        return "$($Prefix): base '$($Base.Ref)'."
+    }
 }
 
 if (-not (Get-Command Resolve-PowerShellExecutable -ErrorAction SilentlyContinue)) {
@@ -315,14 +352,21 @@ function Write-TimeoutGuidance {
     Write-Log "Details were logged to: $script:LogPath"
 }
 
-# Removability probe: merged = HEAD is an ancestor of main; clean = no working-tree
+# Removability probe: merged = HEAD is an ancestor of $BaseRef; clean = no working-tree
 # changes. Mirrors the conservatism of Get-EligibleMergedWorktrees in
 # cleanup-merged-worktrees.ps1 (branch-less worktrees skipped; clean tree required).
+#
+# $BaseRef is the fetched remote-tracking branch, not local main. Deciding against local main
+# preserved every worktree whose pull request had merged on GitHub, because nothing advances a
+# local ref there. Backlog 094.
 function Test-WorktreeMergedIntoMain {
-    param([string] $WorktreeFull)
+    param(
+        [string] $WorktreeFull,
+        [string] $BaseRef = 'main'
+    )
 
-    $result = Invoke-GitCapture @('-C', $WorktreeFull, 'merge-base', '--is-ancestor', 'HEAD', 'main')
-    Write-GitResult 'merge-base --is-ancestor HEAD main' $result
+    $result = Invoke-GitCapture @('-C', $WorktreeFull, 'merge-base', '--is-ancestor', 'HEAD', $BaseRef)
+    Write-GitResult "merge-base --is-ancestor HEAD $BaseRef" $result
     return ($result.ExitCode -eq 0)
 }
 
@@ -625,8 +669,24 @@ function Invoke-HookMode {
             return
         }
 
-        if (-not (Test-WorktreeMergedIntoMain -WorktreeFull $worktreeFull)) {
-            Write-UnmergedPreserveGuidance -WorktreeFull $worktreeFull -MainCheckout $mainCheckoutFromGit -BranchName $branchName -Reason "branch '$branchName' is not merged into main"
+        # cleanup-merged-worktrees.ps1 passes the base it resolved, so the sweep path fetches once
+        # for the whole run. A bare hook fire resolves its own.
+        $baseRef = $MainRef
+        if (-not $baseRef) {
+            $base = Resolve-MergedBaseRef -RepoRoot $mainCheckoutFromGit
+            Write-Log (Format-MergedBaseRefMessage -Prefix 'merge gate' -Base $base)
+            $baseRef = $base.Ref
+
+            # A base that could not be refreshed proves nothing: the remote may have dropped the
+            # merge the cached ref still shows. Removal is destructive, so preserve and say why.
+            if ($base.Reason -eq 'remote-stale') {
+                Write-UnmergedPreserveGuidance -WorktreeFull $worktreeFull -MainCheckout $mainCheckoutFromGit -BranchName $branchName -Reason "the base '$($base.Ref)' could not be refreshed, so it may be behind the remote"
+                return
+            }
+        }
+
+        if (-not (Test-WorktreeMergedIntoMain -WorktreeFull $worktreeFull -BaseRef $baseRef)) {
+            Write-UnmergedPreserveGuidance -WorktreeFull $worktreeFull -MainCheckout $mainCheckoutFromGit -BranchName $branchName -Reason "branch '$branchName' is not merged into $baseRef"
             return
         }
 
