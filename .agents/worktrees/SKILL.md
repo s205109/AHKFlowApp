@@ -83,24 +83,47 @@ it from the moment it exists. So two brand-new worktrees can exist side by side,
 that caught up with `main` by fast-forward. Closing a worktree yourself still removes it — this
 rule governs the automatic sweep only.
 
-The sweep removes a worktree only when one ref-log entry proves both halves at once: the entry's
-subject starts with `commit`, **and** the commit that entry points at is a non-first parent of a
-merge commit in `main` — the shape a GitHub "Merge pull request" leaves behind. Neither half is
-trusted alone. Ref-log text is caller-controlled (`GIT_REFLOG_ACTION`, `git update-ref -m`), and
-a branch created at an already-merged tip is structurally a merged parent without ever being
-committed to.
+The sweep removes a worktree only when three separate signals agree.
 
-Both halves must come from the **same** entry. A branch started with `-BaseRef <branch>` carries a
-merged commit in its `branch: Created from` entry, so reading the two halves from different entries
-would let a stacked branch look finished without a single commit.
+1. **Work.** The branch ref log holds a subject for an operation that creates a commit: `commit:`,
+   `commit (amend):`, `commit (merge):`, `commit (initial):`, `cherry-pick:`, `revert:` or
+   `merge <ref>: Merge made by …`. The list is closed, because `GIT_REFLOG_ACTION` can write
+   anything into the first word. A fast-forward writes `merge <ref>: Fast-forward` and creates
+   nothing, so it is not on the list.
+2. **Merge.** One of those SHAs, or a `rebase (finish):` SHA, is a non-first parent of a merge
+   commit in `main` — the shape a GitHub "Merge pull request" leaves behind.
+3. **Nothing discarded.** Removing the branch would strand no commit that a `git reset` dropped.
+   Stranded means reachable from somewhere the branch has been and from no other ref. This is
+   reachability, not patch comparison.
+
+No signal is trusted alone. A branch created at an already-merged tip is structurally a merged
+parent without ever being committed to, so signal 1 rejects it. Signals 1 and 2 can describe
+different work — commit, `git reset --hard` the commit away, then rebase onto an unrelated merged
+branch — so signal 3 refuses that.
+
+Signal 3 asks about discarding, not about merging. A rebase or an amend strands the commits it
+rewrote; that is what rewriting history means, and those originals are superseded work. A reset
+strands commits with nothing in their place, so a reset that stranded anything keeps the worktree.
 
 The check reads the branch's whole ref-log history, not just its current tip. A finished worktree
 that runs `git merge --ff-only main` after its pull request merged moves its tip onto the merge
-commit, and it must stay sweepable.
+commit, and it must stay sweepable. A branch rebased before it merged is swept too: signal 2
+accepts the `rebase (finish):` SHA the replayed work landed on.
 
 Anything the sweep cannot establish keeps the worktree, so these are never swept and must be
-closed by hand: work merged by squash or rebase, work fast-forwarded into `main` with no merge
-commit, and any branch whose ref log was disabled or expired.
+closed by hand: work squash-merged or rebase-merged into `main` with no merge commit, work
+fast-forwarded into `main`, any branch holding commits a `git reset` discarded, and any branch
+whose ref log was disabled or expired.
+
+Two limits are deliberate.
+
+- Ref-log text cannot be authenticated. Somebody who sets `GIT_REFLOG_ACTION=commit` and
+  fast-forwards an unstarted branch onto an already-merged tip satisfies all three signals, and
+  that worktree is removed. It holds no commit, so nothing is lost. Backlog 096 tracks it.
+- Superseded originals are not protected. A rebase or an amend leaves its old commits reachable
+  only from this ref log, and removing the branch removes that ref log too. `git branch -d` on a
+  merged branch does exactly the same, so the sweep is no more destructive than the command it
+  automates.
 
 #### Claude Code in-conversation native creation: ask once, then remember
 
