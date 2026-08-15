@@ -759,6 +759,18 @@ turns out to be trivial in size, it is still tracked work and still gets a plan.
 reverse also holds: when a change inside a round grows past the trivial test, it leaves the
 round and becomes a filed item, which is why it cannot stay `trivial`.
 
+**Closing an item whose work already merged is not a pickup.** The rule above governs work
+that still has to be done. When the pull request merged and [Ship](#stage-9-ship) never closed
+the records — the boxes are unticked, or the file never moved to `backlog/done/` — nothing is
+left to execute, so there is no pickup to classify. Ticking the boxes, setting
+`Stage: 9-ship`, and running `git mv` into `backlog/done/` is trivial work, and a housekeeping
+round carries it like any other trivial change.
+
+It gets no new backlog item. The Git Workflow rule in `AGENTS.md` forbids a separate pull
+request to mark an item done, and filing an item for the closure produces exactly that pull
+request under another name. It gets no dedicated worktree either, for the same reason every
+other trivial change does not.
+
 ### The trivial test
 
 A change is trivial when all three predicates are provably false from the planned change:
