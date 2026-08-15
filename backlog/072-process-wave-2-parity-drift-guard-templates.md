@@ -6,7 +6,7 @@
 - **Type**: Process / tooling
 - **Interfaces**: none (scripts, docs, backlog template)
 - **Difficulty**: complex
-- **Stage**: 2-design
+- **Stage**: 3-plan
 - **Depends on**: 071-development-process-artifacts, 076-guard-exception-commit-to-plans-repo-from-worktree, 077-pre-commit-refusal-of-human-commits-on-main
 
 ## Summary
