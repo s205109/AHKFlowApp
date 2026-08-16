@@ -23,10 +23,12 @@ function Assert-True {
 }
 
 function Invoke-Check {
-    param([string] $Body)
+    param([string] $Body, [string] $RelativePath = 'DOC.md')
     $root = Join-Path ([System.IO.Path]::GetTempPath()) "gate-wording-$([guid]::NewGuid())"
     New-Item -ItemType Directory -Path $root -Force | Out-Null
-    Set-Content -LiteralPath (Join-Path $root 'DOC.md') -Value $Body -Encoding utf8
+    $target = Join-Path $root $RelativePath
+    New-Item -ItemType Directory -Path (Split-Path -Parent $target) -Force | Out-Null
+    Set-Content -LiteralPath $target -Value $Body -Encoding utf8
     $output = & pwsh -NoProfile -File $script -ScanRoot $root 2>&1
     $code = $LASTEXITCODE
     Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue
@@ -59,6 +61,33 @@ Assert-True ($result.ExitCode -eq 0) "'pre-PR gate' is the gate's own anchor nam
 $result = Invoke-Check -Body "The gate must be green before you mark the pull request ready."
 Assert-True ($result.ExitCode -eq 0) 'correct wording must pass'
 
+# --- Case 7: the passive form must be caught ---
+# The pattern read verb-then-noun only, so the same claim written the other way round passed.
+$result = Invoke-Check -Body "Run the gate before a pull request is opened."
+Assert-True ($result.ExitCode -eq 1) 'the passive "before a pull request is opened" must fail'
+$result = Invoke-Check -Body "The gate runs before the PR is created."
+Assert-True ($result.ExitCode -eq 1) 'the passive "before the PR is created" must fail'
+
+# --- Case 8: an unrelated word starting with 'pr' is not a pull request ---
+# 'PR' matched the first two letters of 'profile', so an ordinary sentence failed the check.
+$result = Invoke-Check -Body "Validate the name before creating a profile."
+Assert-True ($result.ExitCode -eq 0) "'profile' must not read as 'PR':`n$($result.Output)"
+$result = Invoke-Check -Body "Read the notes before opening a preview build."
+Assert-True ($result.ExitCode -eq 0) "'preview' must not read as 'PR':`n$($result.Output)"
+
+# --- Case 9: a marker on the NEXT line does not excuse a violation ---
+# The window ran one line too far, so a marker outside the match silenced it.
+$result = Invoke-Check -Body "Run the gate before opening a pull request.`n<!-- gate-wording:ignore -->"
+Assert-True ($result.ExitCode -eq 1) 'a marker on a later line must not suppress a violation'
+
+# --- Case 10: a blocked item is active work and is scanned ---
+# backlog/blocked holds items waiting on an external prerequisite, so the wording rule applies
+# to them. Only backlog/done is a finished record.
+$result = Invoke-Check -Body "Run the gate before opening a pull request." -RelativePath 'backlog/blocked/099-x.md'
+Assert-True ($result.ExitCode -eq 1) 'a blocked item is active work and must be scanned'
+$result = Invoke-Check -Body "Run the gate before opening a pull request." -RelativePath 'backlog/done/099-x.md'
+Assert-True ($result.ExitCode -eq 0) 'a finished item is a frozen record and stays out of scope'
+
 # --- Case 6: the real repository passes ---
 $live = & pwsh -NoProfile -File $script 2>&1
 Assert-True ($LASTEXITCODE -eq 0) "the real repository must pass:`n$($live -join "`n")"
@@ -69,4 +98,4 @@ if ($failures.Count -gt 0) {
     throw "Gate wording tests failed with $($failures.Count) problem(s). See the detail above."
 }
 
-Write-Host 'Gate wording tests passed. 7 cases.'
+Write-Host 'Gate wording tests passed. 15 cases.'

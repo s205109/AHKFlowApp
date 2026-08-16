@@ -71,11 +71,14 @@ foreach ($target in $targets) {
         for ($i = $start + 1; $i -lt $lines.Count; $i++) {
             $line = $lines[$i]
 
-            # Same or higher level ends the section. A deeper sub-heading stays in scope.
-            if ($line -match '^(#{1,6})\s+' -and $Matches[1].Length -le $level) { break }
-
+            # Fence state comes first. A '## Example' inside a fenced block is sample text, not
+            # the end of the section, and testing the heading first ended the scan there and let
+            # every rule below the fence through unread.
             if ($line -match '^\s*```') { $inFence = -not $inFence; continue }
             if ($inFence) { continue }
+
+            # Same or higher level ends the section. A deeper sub-heading stays in scope.
+            if ($line -match '^(#{1,6})\s+' -and $Matches[1].Length -le $level) { break }
             if ($line -notmatch '^- ') { continue }
 
             $found = [regex]::Matches($line, 'docs/development/workflow\.md#(stage-[0-9a-z-]+)')

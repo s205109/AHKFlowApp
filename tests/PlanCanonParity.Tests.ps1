@@ -92,7 +92,30 @@ Set-Content -LiteralPath (Join-Path $empty 'ordinary-plan.md') -Value '# no appe
 $result = Invoke-Check -PlansRoot $empty
 Assert-True ($result.ExitCode -eq 0) 'a plan with no Appendix A must be skipped, not failed'
 
-Remove-Item $good, $driftExit, $driftEdge, $empty -Recurse -Force -ErrorAction SilentlyContinue
+# --- Case 6: a stage written twice fails ---
+# The plan side assigned stages by id, so a second Stage 0 block replaced the first and the
+# count still read 11. An ambiguous stage machine passed the pre-push gate.
+$twin = New-PlansRoot
+$twinFile = Join-Path $twin 'fixture-plan.md'
+$raw = Get-Content -LiteralPath $twinFile -Raw
+$firstStage = [regex]::Match($raw, '(?s)#### Stage 0 —.*?(?=#### Stage 1 —)')
+Assert-True ($firstStage.Success) 'fixture setup: the Stage 0 block must be findable'
+Set-Content -LiteralPath $twinFile -Value ($raw -replace '(?s)(## Appendix B)', ($firstStage.Value + '$1')) -NoNewline
+$result = Invoke-Check -PlansRoot $twin
+Assert-True ($result.ExitCode -eq 1) 'a stage written twice must fail'
+Assert-True ($result.Output -match 'repeat|REPEATED|twice') 'the message must say the stage repeats'
+
+# --- Case 7: an edge name the machine does not have fails ---
+# An unknown segment was skipped, so a plan could invent 'cancelled → stay' and stay green.
+$invented = New-PlansRoot
+$inventedFile = Join-Path $invented 'fixture-plan.md'
+$raw = Get-Content -LiteralPath $inventedFile -Raw
+Set-Content -LiteralPath $inventedFile -Value ($raw -replace '(?m)^(Edges: .+)$', '$1 · cancelled → `stay`') -NoNewline
+$result = Invoke-Check -PlansRoot $invented
+Assert-True ($result.ExitCode -eq 1) 'an edge name outside the five must fail'
+Assert-True ($result.Output -match 'cancelled') 'the message must name the invented edge'
+
+Remove-Item $good, $driftExit, $driftEdge, $empty, $twin, $invented -Recurse -Force -ErrorAction SilentlyContinue
 
 if ($failures.Count -gt 0) {
     foreach ($failure in $failures) { Write-Host ''; Write-Host $failure -ForegroundColor Red }
@@ -100,4 +123,4 @@ if ($failures.Count -gt 0) {
     throw "Plan canon parity tests failed with $($failures.Count) problem(s). See the detail above."
 }
 
-Write-Host 'Plan canon parity tests passed. 5 cases.'
+Write-Host 'Plan canon parity tests passed. 7 cases.'

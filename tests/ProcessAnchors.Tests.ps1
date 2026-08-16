@@ -94,11 +94,28 @@ $result = Invoke-Check -Root $dead
 Assert-True ($result.ExitCode -eq 1) 'a dead anchor must fail'
 Assert-True ($result.Output -match 'stage-99-missing') 'the message must name the dead anchor'
 
+# --- Case 7: a heading INSIDE a fence must not end the section ---
+# The heading test ran before the fence test, so a fenced '## Example' ended the scan and
+# every rule after it went unread. The check reported exit 0 on a file with an unanchored rule.
+$fenced = New-Fixture -Body @"
+## Git Workflow
+
+- A rule that carries its anchor — $anchor.
+
+``````markdown
+## Example heading inside a fence
+``````
+
+- A rule after the fence, with no anchor.
+"@
+$result = Invoke-Check -Root $fenced
+Assert-True ($result.ExitCode -eq 1) 'a heading inside a fence must not end the section'
+
 # --- Case 6: the real repository passes ---
 $live = & pwsh -NoProfile -File $script 2>&1
 Assert-True ($LASTEXITCODE -eq 0) "the real repository must pass:`n$($live -join "`n")"
 
-Remove-Item $ok, $bad, $hidden, $reference, $dead -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item $ok, $bad, $hidden, $reference, $dead, $fenced -Recurse -Force -ErrorAction SilentlyContinue
 
 if ($failures.Count -gt 0) {
     foreach ($failure in $failures) { Write-Host ''; Write-Host $failure -ForegroundColor Red }
@@ -106,4 +123,4 @@ if ($failures.Count -gt 0) {
     throw "Process anchor tests failed with $($failures.Count) problem(s). See the detail above."
 }
 
-Write-Host 'Process anchor tests passed. 6 cases.'
+Write-Host 'Process anchor tests passed. 7 cases.'

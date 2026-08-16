@@ -139,10 +139,24 @@ for ($i = 0; $i -lt $heads.Count; $i++) {
     $end = if ($i + 1 -lt $heads.Count) { $heads[$i + 1].Index } else { $plan.Length }
     $flat = ($plan.Substring($start, $end - $start) -replace "\n", ' ') -replace '\s+', ' '
 
+    if ($planStages.Contains($id)) {
+        # Assigning by id let a second block replace the first while the count still read 11,
+        # so a plan carrying two Stage 0 blocks passed with one of them never compared.
+        $problems.Add("plan/$id : the stage is written more than once; it repeats")
+        continue
+    }
+
     $edges = [ordered]@{}
     foreach ($segment in ([regex]::Match($flat, 'Edges: (.+)$').Groups[1].Value -split ' · ')) {
         $word = [regex]::Match($segment, '^\s*(not applicable|success|failure|blocked|resume)').Groups[1].Value
-        if (-not $word) { continue }
+        if (-not $word) {
+            # An unknown segment used to be skipped, so a plan could invent an edge the stage
+            # machine does not have and stay green. A segment that looks like an edge but is
+            # not one of the five is a difference, not noise.
+            $invented = [regex]::Match($segment, '^\s*([A-Za-z][A-Za-z ]*?)\s*→').Groups[1].Value
+            if ($invented) { $problems.Add("plan/$id : edge '$invented' is not one of the five") }
+            continue
+        }
         $targets = [regex]::Matches($segment, '→\s*`([^`]+)`')
         if ($targets.Count -eq 0) { continue }
         if ($edges.Contains($word)) { $problems.Add("plan/$id : duplicate '$word' edge") ; continue }
