@@ -96,7 +96,8 @@ one of them can never leave the other two behind.
       **Left unticked on purpose.** All five counts are measured and published below, and
       twelve of the thirteen requirements hold. The thirteenth does not, for one metric
       only: see the unticked "real event from discussion" requirement. Ticking this box
-      would claim a requirement is met that the item itself says is not.
+      would claim a requirement is met that the item itself says is not. Backlog 101 closes
+      the gap.
 - [x] The drift guard also checks that no document tells a reader to run the gate "before
       opening a PR". <!-- gate-wording:ignore --> The gate gates the pull request going **ready**, not its creation, and
       the wording drifted back once already. Backlog 071 fixed
@@ -280,7 +281,7 @@ field it reads rather than describing an intention.
       also under-counts, because a command handed over outside a code fence is invisible to
       it. The figure is a count of matched command lines and nothing more. Measuring its
       precision needs the same labelled sample the other two metrics got, which is a
-      follow-up, not a correction to this one.
+      follow-up, not a correction to this one. Filed as backlog 101.
 - [x] Publish the script with the numbers, so any figure can be reproduced and challenged.
       `scripts/measure-process-friction.ps1`, with a committed row-level ledger per metric.
 
