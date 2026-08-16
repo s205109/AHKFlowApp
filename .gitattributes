@@ -36,6 +36,13 @@
 # on a clean clone.
 *.html text eol=lf
 
+# Friction evidence — verbatim transcript text, so no whitespace check.
+# Every row carries a message exactly as it was written, and some of those messages end lines
+# with a space. Stripping it to satisfy `git diff --check` would edit the evidence a label was
+# written against, which is the one thing these files exist to prevent.
+docs/development/friction-samples/*.csv -whitespace
+docs/development/friction-samples/ledgers/*.csv -whitespace
+
 # Binaries — no line ending conversion
 *.png binary
 *.jpg binary

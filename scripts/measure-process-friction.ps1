@@ -28,12 +28,19 @@
       printed an exclusion count of zero that proved nothing.
     - Identity. A logical message is keyed on message.id when it has one, and on the record's
       own uuid when it does not. User records carry no message.id at all.
-    - Units. Metric 2 counts command lines inside a powershell or bash fence, deduplicated on
-      message id plus line text. Prose that mentions a command is not a handed-over command.
+    - Units. Metric 2 counts command lines inside a powershell, pwsh, bash, sh or shell fence,
+      deduplicated on message id plus line text. Prose that mentions a command is not a
+      handed-over command, and neither is a here-string body inside the fence.
+    - Metric 3 is a line rule, not a word list. Cleanup outcomes reach a transcript through
+      Write-WorktreeLog, which stamps every line. A phrase matched anywhere in a message counted
+      the script's own source, injected skill instructions, and reviews quoting an outcome.
     - Metric 5 base. CI runs on pull_request, so head_sha is a branch head, not a merge commit.
       Its first-parent diff is one commit's change, not the pull request's. The base is the
-      branch point instead: the merge that landed the work, then the merge base of that merge's
-      first parent and the head.
+      branch point instead: the merge that landed the work - taken only from origin/main's
+      first-parent chain - then the merge base of that merge's first parent and the head.
+    - Metric 5 population. The API filters on a calendar date range, which is a superset of the
+      window. Both numbers are printed, and every count comes from the window.
+    - Metric 5 zero. A pull request that lands no net change is classified, not unresolved.
 
     Every metric returns row-level ledger rows, and the script writes them next to the summary,
     so a figure can be recomputed from the rows rather than believed.
@@ -81,24 +88,49 @@ $script:MatchSets = @{
         'what do we do next', 'how do we proceed', 'what now', 'next items to pick up',
         'next backlog items', 'what do you suggest'
     )
-    # Every term here is a line the cleanup scripts print, not a word people use about them.
-    # The bare script name 'remove-worktree' produced 180 of 233 rows on 2026-08-16 - almost
-    # all of them sentences discussing the script - which made a lexical count wear an event
-    # count's label.
-    'cleanup-events' = @(
-        'worktree removed', 'watcher done', 'cleanup popup',
-        'worktree remove failed', 'cleanup blocked', 'worktree is locked',
-        'worktree is dirty', 'could not remove the worktree',
-        'is not clean, skipping', 'branch preserved', 'removing worktree'
-    )
 }
 
-# Metric 2 is a syntax rule, not a word list: a line inside a powershell or bash fence that
-# names a directory.
+# Metric 3 is not a word list at all. Every cleanup outcome reaches a transcript as a line
+# written by Write-WorktreeLog, which stamps it 'yyyy-MM-dd HH:mm:ss  <worktree>  <message>'
+# (`scripts/worktree-log.common.ps1:22`, "    $line = '{0}  {1}  {2}' -f $stamp, $Worktree, $Message").
+# Matching the wording anywhere in a message counted the
+# script's own source, injected skill instructions, and reviews quoting an outcome: measured on
+# 2026-08-16, 65 of 75 rows were one of those, and six of the eleven phrases then in use appear
+# in no script at all. So the rule is the line shape first, and the outcome second.
+$script:CleanupLogLinePattern = '^\s*\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\s\s+\S.*?\s\s+(?<message>\S.*)$'
+
+# Each entry is the start of a line one of the cleanup scripts writes, with the file and line
+# that writes it. An entry that no script writes cannot appear here.
+$script:CleanupOutcomePatterns = @(
+    '^Watcher started\.'                                        # remove-worktree-local-dev.ps1:824
+    '^Watcher done \('                                          # remove-worktree-local-dev.ps1:993,995,997,1006
+    '^Worktree was preserved \(not removed\):'                  # remove-worktree-local-dev.ps1:397
+    '^Could not remove worktree because the folder is still locked:'  # remove-worktree-local-dev.ps1:334
+    '^Worktree folder already gone \(removed elsewhere\)'       # remove-worktree-local-dev.ps1:867
+    '^Worktree folder does not exist; nothing to remove\.'      # remove-worktree-local-dev.ps1:552
+    '^REFUSING:'                                                # remove-worktree-local-dev.ps1:508,652,846
+    '^Git refused safe branch deletion'                         # remove-worktree-local-dev.ps1:423
+    '^force override: AHKFLOW_WORKTREE_FORCE_REMOVE set'        # remove-worktree-local-dev.ps1:665
+)
+
+# Metric 2 is a syntax rule, not a word list: a command line inside a shell fence that names a
+# directory. Two guards keep prose out. The line must START with a command, because
+# 'Records the `git -C docs/superpowers` form' is a sentence, not a command. And a here-string
+# body is text, so its lines are skipped: a pull request body passed as @' ... '@ inside a
+# powershell fence put two sentences in the ledger on 2026-08-16.
 $script:DirectoryLinePatterns = @(
     '^\s*(cd|chdir|pushd)\s+\S', '^\s*(Set-Location|Push-Location)\s+\S',
     '\s-C\s+\S', '-WorkingDirectory\s+\S', '[A-Za-z]:\\[^\s"'']+', '/c/[^\s"'']+'
 )
+
+# The head of a command line. A line that does not start with one of these, or with a call
+# operator, is prose however many paths it names.
+$script:CommandHeadPattern = '^\s*(&\s+)?[''"]?(cd|chdir|pushd|popd|Set-Location|Push-Location|Pop-Location|git|gh|rtk|pwsh|powershell|dotnet|npm|npx|node|python|py|docker|az|bash|sh|wsl|code|make|cargo|go|Copy-Item|Move-Item|Remove-Item|New-Item|Get-ChildItem|Get-Content|Set-Content|Test-Path|Start-Process|Invoke-Expression|Invoke-WebRequest|Resolve-Path|\.\\[\w.-]+|\./[\w./-]+)[''"]?(\s|$)'
+
+# A here-string opens with @' or @" at the end of a line and closes with '@ or "@ at the start
+# of one. Everything between is text.
+$script:HereStringOpenPattern = '@[''"]\s*$'
+$script:HereStringClosePattern = '^\s*[''"]@'
 
 function Get-RecordProperty {
     param(
@@ -279,6 +311,14 @@ function ConvertTo-LogicalMessage {
         $entry = $byKey[$key]
         if ($entry.IsHumanTurn -eq $false -and (Test-HumanTurn -Record $record)) { $entry.IsHumanTurn = $true }
 
+        # A message copied into a second transcript appears under two session names. Taking the
+        # first one read made every per-metric session total depend on enumeration order, which
+        # Get-ChildItem does not fix. The lowest name is the same answer whatever the order.
+        $session = Get-SessionName -Record $record
+        if ([string]::Compare($session, $entry.Session, [System.StringComparison]::OrdinalIgnoreCase) -lt 0) {
+            $entry.Session = $session
+        }
+
         $text = Get-RecordText -Record $record
 
         # A record copied forward into a later transcript is the same record, not a second
@@ -299,31 +339,102 @@ function ConvertTo-LogicalMessage {
 function Get-FencedBlock {
     <#
     .SYNOPSIS
-        The lines inside every powershell or bash fence in a message.
+        The command lines inside every shell fence in a message.
     .DESCRIPTION
-        A command in prose is not a command handed over. The specification says the line must
-        sit inside a ```powershell or ```bash fence, so a fence of any other language, and text
-        outside a fence, are both skipped.
+        A command in prose is not a command handed over, so the line must sit inside a shell
+        fence. Five tags open one: powershell, pwsh, bash, sh and shell. An earlier version of
+        this comment named only two of them while the code accepted all five, which is the
+        opposite of a rule that two scripts can follow to the same number.
+
+        A here-string body is skipped. It sits inside the fence but it is text: a pull request
+        body passed as @' ... '@ put two English sentences in the ledger on 2026-08-16, because
+        both contain 'git -C'.
     #>
     param([Parameter(Mandatory)][AllowEmptyString()][string] $Text)
 
     $lines = New-Object System.Collections.Generic.List[string]
     $inside = $false
+    $inHereString = $false
 
     foreach ($line in ($Text -split "`n")) {
-        if ($line -match '^\s*```\s*(powershell|pwsh|bash|sh|shell)\s*$') { $inside = $true; continue }
-        if ($line -match '^\s*```') { $inside = $false; continue }
-        if ($inside) { $lines.Add($line.TrimEnd()) }
+        if (-not $inHereString) {
+            if ($line -match '^\s*```\s*(powershell|pwsh|bash|sh|shell)\s*$') { $inside = $true; continue }
+            if ($line -match '^\s*```') { $inside = $false; continue }
+        }
+        if (-not $inside) { continue }
+
+        if ($inHereString) {
+            if ($line -match $script:HereStringClosePattern) { $inHereString = $false }
+            continue
+        }
+        if ($line -match $script:HereStringOpenPattern) { $inHereString = $true; continue }
+
+        $lines.Add($line.TrimEnd())
     }
     return @($lines)
 }
 
 function Test-DirectoryBoundLine {
+    <#
+    .SYNOPSIS
+        Whether one fenced line is a command that names a directory.
+    .DESCRIPTION
+        Both halves are needed. Without the command head, any sentence that mentions a Windows
+        path or the string ' -C ' counts; with it alone, every command counts.
+    #>
     param([Parameter(Mandatory)][AllowEmptyString()][string] $Line)
+
+    if ($Line -notmatch $script:CommandHeadPattern) { return $false }
     foreach ($pattern in $script:DirectoryLinePatterns) {
         if ($Line -match $pattern) { return $true }
     }
     return $false
+}
+
+function Get-CleanupEventLine {
+    <#
+    .SYNOPSIS
+        The cleanup log lines a message carries, with the outcome each one reports.
+    .DESCRIPTION
+        A line qualifies twice over: it has the shared log line's stamp and worktree prefix, and
+        its message part starts with something a cleanup script actually writes. Either half
+        alone counts discussion as an event.
+    #>
+    param([Parameter(Mandatory)][AllowEmptyString()][string] $Text)
+
+    $hits = New-Object System.Collections.Generic.List[object]
+    foreach ($line in ($Text -split "`n")) {
+        $trimmed = $line.TrimEnd()
+        $match = [regex]::Match($trimmed, $script:CleanupLogLinePattern)
+        if (-not $match.Success) { continue }
+        $message = $match.Groups['message'].Value
+        foreach ($pattern in $script:CleanupOutcomePatterns) {
+            if ($message -match $pattern) {
+                $hits.Add([pscustomobject]@{ Line = $trimmed.Trim(); Matched = $pattern })
+                break
+            }
+        }
+    }
+    return $hits.ToArray()
+}
+
+function Get-MatchingLine {
+    <#
+    .SYNOPSIS
+        The first line of a message that carries a given phrase.
+    .DESCRIPTION
+        The ledger stores this rather than the whole message. A row of keys and session names
+        cannot be re-read; the line that matched can.
+    #>
+    param(
+        [Parameter(Mandatory)][AllowEmptyString()][string] $Text,
+        [Parameter(Mandatory)][string] $Phrase
+    )
+
+    foreach ($line in ($Text -split "`n")) {
+        if ($line -match [regex]::Escape($Phrase)) { return $line.Trim() }
+    }
+    return ''
 }
 
 function Get-FrictionCount {
@@ -338,7 +449,15 @@ function Get-FrictionCount {
 
     $sessions = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     $rows = New-Object System.Collections.Generic.List[object]
-    $patterns = if ($Metric -eq 'directory-bound-commands') { $script:DirectoryLinePatterns } else { $script:MatchSets[$Metric] }
+    # Metric 3 alone deduplicates across messages. Its line carries a timestamp, a worktree and
+    # a process id, so two identical lines are one event echoed into two tool results. A command
+    # handed over in two messages is two handovers, so metric 2 must not do this.
+    $seenEvents = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+    $patterns = switch ($Metric) {
+        'directory-bound-commands' { $script:DirectoryLinePatterns }
+        'cleanup-events' { $script:CleanupOutcomePatterns }
+        default { $script:MatchSets[$Metric] }
+    }
 
     foreach ($message in $Messages) {
         # Which side of the conversation each metric reads. Metric 3 reads any record, per the
@@ -364,7 +483,26 @@ function Get-FrictionCount {
                 if (-not $trimmed) { continue }
                 if (-not (Test-DirectoryBoundLine -Line $trimmed)) { continue }
                 if (-not $seenLines.Add($trimmed)) { continue }
-                $rows.Add([pscustomobject]@{ Key = $message.Key; Session = $message.Session; Line = $trimmed })
+                $rows.Add([pscustomobject]@{
+                        Key = $message.Key; Session = $message.Session
+                        Timestamp = $message.Timestamp; Type = $message.Type
+                        Matched = 'command-line'; Line = $trimmed
+                    })
+                [void]$sessions.Add($message.Session)
+            }
+            continue
+        }
+
+        if ($Metric -eq 'cleanup-events') {
+            # The unit is the log line too. One tool result can carry the whole tail of the
+            # worktree log, and each stamped line in it is a separate event.
+            foreach ($hit in (Get-CleanupEventLine -Text $text)) {
+                if (-not $seenEvents.Add($hit.Line)) { continue }
+                $rows.Add([pscustomobject]@{
+                        Key = $message.Key; Session = $message.Session
+                        Timestamp = $message.Timestamp; Type = $message.Type
+                        Matched = $hit.Matched; Line = $hit.Line
+                    })
                 [void]$sessions.Add($message.Session)
             }
             continue
@@ -372,7 +510,11 @@ function Get-FrictionCount {
 
         foreach ($pattern in $patterns) {
             if ($text -match [regex]::Escape($pattern)) {
-                $rows.Add([pscustomobject]@{ Key = $message.Key; Session = $message.Session; Matched = $pattern })
+                $rows.Add([pscustomobject]@{
+                        Key = $message.Key; Session = $message.Session
+                        Timestamp = $message.Timestamp; Type = $message.Type
+                        Matched = $pattern; Line = (Get-MatchingLine -Text $text -Phrase $pattern)
+                    })
                 [void]$sessions.Add($message.Session)
                 break
             }
@@ -390,6 +532,30 @@ function Get-FrictionCount {
 function Test-DotnetPath {
     param([Parameter(Mandatory)][AllowEmptyString()][string] $Path)
     return ($Path -match '\.(cs|csproj|sln|slnx|razor|props|targets)$' -or $Path -match '^(src|tests)/')
+}
+
+$script:MainFirstParentCache = @{}
+
+function Get-MainFirstParentSet {
+    <#
+    .SYNOPSIS
+        Every commit on origin/main's first-parent chain, as a set.
+    .DESCRIPTION
+        This is the only chain that means "landed on main". Reachability is not the same test:
+        every commit inside a merged branch is reachable from main, and treating those as
+        landed is what let the first-parent fallback answer with one commit's change.
+    #>
+    param([Parameter(Mandatory)][string] $RepoRoot)
+
+    if ($script:MainFirstParentCache.ContainsKey($RepoRoot)) { return $script:MainFirstParentCache[$RepoRoot] }
+
+    $set = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($line in (& git -C $RepoRoot rev-list --first-parent origin/main 2>$null)) {
+        $trimmed = ([string]$line).Trim()
+        if ($trimmed) { [void]$set.Add($trimmed) }
+    }
+    $script:MainFirstParentCache[$RepoRoot] = $set
+    return $set
 }
 
 function Get-ChangedFileForRun {
@@ -416,10 +582,12 @@ function Get-ChangedFileForRun {
     )
 
     & git -C $RepoRoot cat-file -e "$Sha^{commit}" 2>$null
-    if ($LASTEXITCODE -ne 0) { return $null }
+    if ($LASTEXITCODE -ne 0) { return @{ Unresolved = $true; Reason = 'head-absent-from-clone' } }
 
     $parents = (& git -C $RepoRoot rev-list --parents -n 1 $Sha 2>$null) -split '\s+'
-    if ($LASTEXITCODE -ne 0 -or $parents.Count -lt 2) { return $null }
+    if ($LASTEXITCODE -ne 0 -or $parents.Count -lt 2) { return @{ Unresolved = $true; Reason = 'head-has-no-parent' } }
+
+    $mainChain = Get-MainFirstParentSet -RepoRoot $RepoRoot
 
     # The branch point is tried FIRST, even for a merge commit. A branch head is often itself a
     # merge - of main back into the branch - and its first-parent diff is then empty, which is
@@ -428,33 +596,38 @@ function Get-ChangedFileForRun {
     # For a merge that landed ON main this attempt resolves the base to the commit itself, and
     # the check below rejects it, so the first-parent rule still handles that shape.
     #
-    # The merge that landed this commit, if any. --ancestry-path keeps only merges that this
-    # commit actually reaches, and the last of them is the earliest in time.
-    $merges = @(& git -C $RepoRoot rev-list --ancestry-path --merges "$Sha..origin/main" 2>$null)
-    if ($LASTEXITCODE -eq 0 -and $merges.Count -gt 0) {
-        $merge = $merges[-1]
+    # Only merges ON origin/main's first-parent chain qualify. --ancestry-path also returns
+    # merges made on the branch, such as 'Merge branch main into feature/x'. Those are older
+    # than the landing merge, so the oldest-first pick chose one, its merge base with the head
+    # was the head itself, and the code fell through to the first-parent rule. Measured on
+    # 2026-08-16: all 8 runs that reached that fallback sat off the chain, and 2 of them changed
+    # a .cs file the one-commit diff never saw.
+    $merges = @(& git -C $RepoRoot rev-list --ancestry-path --merges "$Sha..origin/main" 2>$null |
+            Where-Object { $mainChain.Contains(([string]$_).Trim()) })
+    if ($merges.Count -gt 0) {
+        # The last is the earliest in time: the merge that landed this work, not a later one.
+        $merge = ([string]$merges[-1]).Trim()
         $base = (& git -C $RepoRoot merge-base "$merge^1" $Sha 2>$null)
         if ($LASTEXITCODE -eq 0 -and $base) {
             $base = $base.Trim()
             if ($base -ne $Sha) {
                 $files = @(& git -C $RepoRoot diff --name-only $base $Sha 2>$null)
-                if ($LASTEXITCODE -eq 0) { return @{ Files = $files; Base = $base; Kind = 'pull-request' } }
+                if ($LASTEXITCODE -eq 0) { return @{ Files = $files; Base = $base; Kind = 'pull-request'; LandingMerge = $merge } }
             }
         }
     }
 
-    # The first-parent fallback is only legitimate for a commit that actually reached main: a
-    # merge that landed there, or a commit on its chain. For anything else it answers with one
-    # commit's change and calls it a pull request. An audit on 2026-08-16 found 13 runs where
-    # that fallback fired and the real pull request did touch .NET files.
-    & git -C $RepoRoot merge-base --is-ancestor $Sha origin/main 2>$null
-    if ($LASTEXITCODE -ne 0) { return $null }
+    # The first-parent fallback is only legitimate for a commit that IS on main's first-parent
+    # chain. Reachability is the wrong test: every commit inside a merged branch is reachable
+    # from main, and for those the fallback answers with one commit's change and calls it a
+    # pull request.
+    if (-not $mainChain.Contains($Sha)) { return @{ Unresolved = $true; Reason = 'no-base-on-main-first-parent' } }
 
     $base = $parents[1]
     $kind = if ($parents.Count -ge 3) { 'merge' } else { 'single-commit' }
     $files = @(& git -C $RepoRoot diff --name-only $base $Sha 2>$null)
-    if ($LASTEXITCODE -ne 0) { return $null }
-    return @{ Files = $files; Base = $base; Kind = $kind }
+    if ($LASTEXITCODE -ne 0) { return @{ Unresolved = $true; Reason = 'diff-failed' } }
+    return @{ Files = $files; Base = $base; Kind = $kind; LandingMerge = '' }
 }
 
 function Get-CiClassification {
@@ -476,63 +649,142 @@ function Get-CiClassification {
     $rows = New-Object System.Collections.Generic.List[object]
     $seenIds = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
     $nonDotnetMs = 0
+    $nonDotnetRuns = 0
     $unresolved = 0
     $outOfWindow = 0
     $duplicateIds = 0
     $missingTiming = 0
+    $missingTimestamp = 0
     $dotnetRuns = 0
     $otherWorkflows = 0
+    $noFileChange = 0
 
     foreach ($run in $Runs) {
-        # One workflow, named. In this window the repository ran 549 workflow runs, of which
-        # 201 were CI and the rest were opencode, PR-Agent, and the two deploy workflows.
-        # Counting all of them answers a different question than "CI minutes".
-        $name = [string](Get-RecordProperty -Record $run -Name 'name')
-        if ($WorkflowName -and $name -ne $WorkflowName) { $otherWorkflows++; continue }
-
         $id = [string](Get-RecordProperty -Record $run -Name 'id')
         if (-not $seenIds.Add($id)) { $duplicateIds++; continue }
 
+        # The window comes before the workflow name. Filtering by name first counted every
+        # out-of-window run of another workflow as an 'other workflow', which is how the
+        # published population became the API's calendar range - 549 runs, 201 of them CI -
+        # instead of the window's 531 and 192.
         $created = Get-RecordTimestamp -Record $run
-        if (-not $created) { $unresolved++; continue }
+        if (-not $created) { $missingTimestamp++; continue }
         if ($created -lt $Start -or $created -ge $End) { $outOfWindow++; continue }
 
+        # One workflow, named. The rest are opencode, PR-Agent, and the two deploy workflows,
+        # and counting them answers a different question than "CI minutes".
+        $name = [string](Get-RecordProperty -Record $run -Name 'name')
+        if ($WorkflowName -and $name -ne $WorkflowName) { $otherWorkflows++; continue }
+
         $sha = [string](Get-RecordProperty -Record $run -Name 'head_sha')
+        $ms = Get-RecordProperty -Record $run -Name 'run_duration_ms'
+        $timingStatus = if ($ms) { 'reported' } else { 'missing' }
+        if (-not $ms) { $ms = 0 }
+
+        $row = [pscustomobject]@{
+            Id             = $id
+            Name           = $name
+            CreatedAt      = $created.ToString('o')
+            HeadSha        = $sha
+            Classification = 'unresolved'
+            Reason         = 'not-attempted'
+            BaseKind       = ''
+            Base           = ''
+            LandingMerge   = ''
+            FileCount      = 0
+            DurationMs     = [int64]$ms
+            TimingStatus   = $timingStatus
+            ChangedPaths   = ''
+        }
+        $rows.Add($row)
+
+        # The resolver says why it could not answer, and the ledger keeps that word. An earlier
+        # version printed one explanation for every unresolved run - 'head_sha is not in this
+        # clone' - and it was false: all 192 in-window heads were present on 2026-08-16.
         $resolved = & $Resolver $sha
-        if ($null -eq $resolved) { $unresolved++; continue }
+        if ($null -eq $resolved) { $unresolved++; $row.Reason = 'resolver-returned-null'; continue }
+        if ((Get-RecordProperty -Record $resolved -Name 'Unresolved') -eq $true) {
+            $unresolved++
+            $row.Reason = [string](Get-RecordProperty -Record $resolved -Name 'Reason')
+            continue
+        }
 
         $files = @(Get-RecordProperty -Record $resolved -Name 'Files')
-        if ($files.Count -eq 0) { $unresolved++; continue }
+        $row.BaseKind = [string](Get-RecordProperty -Record $resolved -Name 'Kind')
+        $row.Base = [string](Get-RecordProperty -Record $resolved -Name 'Base')
+        $row.LandingMerge = [string](Get-RecordProperty -Record $resolved -Name 'LandingMerge')
+        $row.FileCount = $files.Count
+        $row.ChangedPaths = ($files -join ';')
 
         $touchesDotnet = $false
         foreach ($file in $files) {
             if (Test-DotnetPath -Path $file) { $touchesDotnet = $true; break }
         }
-        if ($touchesDotnet) { $dotnetRuns++; continue }
+        if ($touchesDotnet) {
+            $dotnetRuns++
+            $row.Classification = 'dotnet'
+            $row.Reason = 'changed-dotnet-path'
+            continue
+        }
 
-        $ms = Get-RecordProperty -Record $run -Name 'run_duration_ms'
-        if (-not $ms) { $missingTiming++; $ms = 0 }
+        # A pull request can land no net change at all. It resolved, so it is classified;
+        # calling it unresolved conflated "could not resolve" with "resolved to nothing", and
+        # dropped run 30912438833 and its 153,000 ms.
+        $row.Classification = 'non-dotnet'
+        $row.Reason = if ($files.Count -eq 0) { $noFileChange++; 'no-file-change' } else { 'no-dotnet-path' }
+        if ($timingStatus -eq 'missing') { $missingTiming++ }
+        $nonDotnetRuns++
         $nonDotnetMs += [int64]$ms
-
-        $rows.Add([pscustomobject]@{
-                Id      = $id
-                HeadSha = $sha
-                Base    = [string](Get-RecordProperty -Record $resolved -Name 'Base')
-                Files   = $files.Count
-                Minutes = [math]::Round([int64]$ms / 60000, 2)
-            })
     }
 
     return @{
-        NonDotnetRuns    = $rows.Count
+        NonDotnetRuns    = $nonDotnetRuns
         DotnetRuns       = $dotnetRuns
         NonDotnetMinutes = [math]::Round($nonDotnetMs / 60000, 1)
+        NonDotnetMs      = $nonDotnetMs
         Unresolved       = $unresolved
+        NoFileChange     = $noFileChange
         OutOfWindow      = $outOfWindow
         DuplicateIds     = $duplicateIds
         MissingTiming    = $missingTiming
+        MissingTimestamp = $missingTimestamp
         OtherWorkflows   = $otherWorkflows
         Rows             = $rows
+    }
+}
+
+function Get-RunPopulationSummary {
+    <#
+    .SYNOPSIS
+        How many workflow runs the window holds, by workflow name.
+    .DESCRIPTION
+        The API is asked for a calendar range, because 'created' takes dates and the window
+        starts and ends at 14:14:32. That range is a superset, so it must be reported as one:
+        printing it as the population described 549 runs and 201 CI runs where the window holds
+        531 and 192.
+    #>
+    param(
+        [Parameter(Mandatory)][AllowEmptyCollection()][array] $Runs,
+        [Parameter(Mandatory)][datetime] $Start,
+        [Parameter(Mandatory)][datetime] $End
+    )
+
+    $byName = @{}
+    $inWindow = 0
+    foreach ($run in $Runs) {
+        $created = Get-RecordTimestamp -Record $run
+        if (-not $created) { continue }
+        if ($created -lt $Start -or $created -ge $End) { continue }
+        $inWindow++
+        $name = [string](Get-RecordProperty -Record $run -Name 'name')
+        if (-not $byName.ContainsKey($name)) { $byName[$name] = 0 }
+        $byName[$name]++
+    }
+
+    return @{
+        Returned = $Runs.Count
+        InWindow = $inWindow
+        ByName   = $byName
     }
 }
 
@@ -569,11 +821,14 @@ function Get-TranscriptFile {
             Where-Object { $_.Name -match 'AHKFlow' })
 
     $candidates = New-Object System.Collections.Generic.List[string]
-    foreach ($directory in $directories) {
-        foreach ($file in (Get-ChildItem -LiteralPath $directory.FullName -Filter '*.jsonl' -File -Recurse -ErrorAction SilentlyContinue)) {
+    foreach ($directory in ($directories | Sort-Object -Property FullName)) {
+        foreach ($file in (Get-ChildItem -LiteralPath $directory.FullName -Filter '*.jsonl' -File -Recurse -ErrorAction SilentlyContinue |
+                    Sort-Object -Property FullName)) {
             $candidates.Add($file.FullName)
         }
     }
+    # Sorted, because Get-ChildItem does not promise an order across hundreds of files and a
+    # message copied into two transcripts takes its session from whichever came first.
     return (Resolve-TranscriptFile -Candidates $candidates)
 }
 
@@ -633,7 +888,11 @@ Write-Host ''
 
 foreach ($metric in @('handoffs', 'directory-bound-commands', 'cleanup-events', 'next-step-asks')) {
     $count = Get-FrictionCount -Messages $messages -Metric $metric
-    $unit = if ($metric -eq 'directory-bound-commands') { 'command lines' } else { 'messages' }
+    $unit = switch ($metric) {
+        'directory-bound-commands' { 'command lines' }
+        'cleanup-events' { 'log lines' }
+        default { 'messages' }
+    }
     $ledger = Join-Path $LedgerRoot "$metric.csv"
     $count.Rows | Export-Csv -LiteralPath $ledger -NoTypeInformation -Encoding utf8
     Write-Host "$metric : $($count.Items) $unit across $($count.Sessions) session(s)"
@@ -670,9 +929,11 @@ $runs = @($runLines | Where-Object { $_ } | ForEach-Object {
             run_duration_ms = 0
         }
     })
-Write-Host "  workflow runs returned by the API for this window: $($runs.Count)"
-foreach ($group in ($runs | Group-Object name | Sort-Object Count -Descending)) {
-    Write-Host "    $($group.Count) $($group.Name)"
+$population = Get-RunPopulationSummary -Runs $runs -Start $script:WindowStart -End $script:WindowEnd
+Write-Host "  workflow runs returned by the API for the calendar range: $($population.Returned)"
+Write-Host "  of those, inside the window: $($population.InWindow)"
+foreach ($entry in ($population.ByName.GetEnumerator() | Sort-Object Value -Descending)) {
+    Write-Host "    $($entry.Value) $($entry.Key)"
 }
 
 # Duration comes from the timing endpoint. 'billable' reads 0 for this repository. A failed
@@ -696,12 +957,17 @@ $ci = Get-CiClassification -Runs $runs -Start $script:WindowStart -End $script:W
 $ciLedger = Join-Path $LedgerRoot 'ci-runs.csv'
 $ci.Rows | Export-Csv -LiteralPath $ciLedger -NoTypeInformation -Encoding utf8
 
+$classified = $ci.NonDotnetRuns + $ci.DotnetRuns
 Write-Host "ci-minutes on non-.NET changes : $($ci.NonDotnetMinutes) minutes across $($ci.NonDotnetRuns) run(s)"
-Write-Host "  runs of another workflow, not counted : $($ci.OtherWorkflows)"
+Write-Host "  in-window CI runs : $($ci.Rows.Count), of which $classified classified"
+Write-Host "  in-window runs of another workflow, not counted : $($ci.OtherWorkflows)"
 Write-Host "  runs that touch .NET files : $($ci.DotnetRuns)"
+Write-Host "  non-.NET runs whose pull request changed no file : $($ci.NoFileChange)"
 Write-Host "  runs outside the window : $($ci.OutOfWindow)"
 Write-Host "  repeated run ids skipped : $($ci.DuplicateIds)"
-Write-Host "  runs whose head_sha is not in this clone, so unresolved : $($ci.Unresolved)"
+# Not 'absent from this clone'. Every in-window head_sha was present on 2026-08-16; these are
+# heads with no landing merge on origin/main's first-parent chain, which is a different fact.
+Write-Host "  runs with no base on main's first-parent chain, so unresolved : $($ci.Unresolved)"
 Write-Host "  runs counted with no duration : $($ci.MissingTiming)   timing calls that failed : $timingFailures"
 Write-Host "  ledger : $ciLedger"
 Write-Host ''

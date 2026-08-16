@@ -28,13 +28,24 @@
     The random seed. Recorded in every row.
 .PARAMETER SampleSize
     How many unflagged messages to draw. 200 bounds a zero-miss result at roughly 1.5 percent.
+.PARAMETER ExistingManifest
+    A manifest whose labels must survive. Rows whose Key is still in the population keep their
+    Id and their Label, and the draw tops the sample up to SampleSize instead of replacing it.
+    Without this, re-running after the transcripts grow throws away every hand-written label.
+.NOTES
+    A seed alone does not reproduce a selection. It indexes into the ordered unflagged list, and
+    that list changes whenever a session is written - which happens while the script runs. So the
+    script also writes a selection record beside the manifest: the population count, a digest of
+    the ordered keys, the drawn positions, and the drawn keys themselves. The digest says whether
+    the positions still mean anything; the keys identify the rows either way.
 #>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][ValidateSet('handoffs', 'next-step-asks')][string] $Metric,
     [Parameter(Mandatory)][string] $OutputPath,
     [int] $Seed = 20260816,
-    [int] $SampleSize = 200
+    [int] $SampleSize = 200,
+    [string] $ExistingManifest
 )
 
 Set-StrictMode -Version Latest
@@ -72,10 +83,50 @@ foreach ($message in $population) {
 # Sort before sampling. Enumeration order over hundreds of files is not guaranteed stable, and
 # a seed only reproduces a sample when the list it indexes into is in a fixed order.
 $ordered = @($unflagged | Sort-Object -Property Key)
+
+# The digest of the ordered keys. It is what tells a later reader whether the recorded positions
+# still point at the same messages, which a seed on its own cannot say.
+$keyText = ($ordered | ForEach-Object { $_.Key }) -join "`n"
+$sha = [System.Security.Cryptography.SHA256]::Create()
+try {
+    $populationDigest = [System.BitConverter]::ToString(
+        $sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($keyText))).Replace('-', '').ToLowerInvariant()
+}
+finally { $sha.Dispose() }
+
+# Labels already written are evidence. Keep every one whose message is still in the population,
+# and top the sample up rather than drawing a fresh one.
+$existingLabels = @{}
+$existingIds = @{}
+$keptKeys = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+if ($ExistingManifest) {
+    if (-not (Test-Path -LiteralPath $ExistingManifest)) {
+        throw "ExistingManifest not found: $ExistingManifest"
+    }
+    foreach ($row in (Import-Csv -LiteralPath $ExistingManifest)) {
+        $existingLabels[$row.Key] = $row.Label
+        $existingIds[$row.Key] = $row.Id
+        if ($row.Stratum -eq 'unflagged') { [void]$keptKeys.Add($row.Key) }
+    }
+}
+
+$byKeyPosition = @{}
+for ($i = 0; $i -lt $ordered.Count; $i++) { $byKeyPosition[$ordered[$i].Key] = $i }
+
+$picked = [System.Collections.Generic.SortedSet[int]]::new()
+foreach ($key in $keptKeys) {
+    if ($byKeyPosition.ContainsKey($key)) { [void]$picked.Add($byKeyPosition[$key]) }
+}
+$carriedOver = $picked.Count
+
 $random = [System.Random]::new($Seed)
-$picked = [System.Collections.Generic.HashSet[int]]::new()
 $take = [Math]::Min($SampleSize, $ordered.Count)
-while ($picked.Count -lt $take) { [void]$picked.Add($random.Next(0, $ordered.Count)) }
+$attempts = 0
+while ($picked.Count -lt $take) {
+    [void]$picked.Add($random.Next(0, $ordered.Count))
+    $attempts++
+    if ($attempts -gt ($ordered.Count * 20)) { throw 'the draw could not reach the sample size' }
+}
 
 # A wide screen, run over the WHOLE text of every sampled message. It is deliberately far
 # wider than the metric's own match set: its job is to find every message that could possibly
@@ -103,12 +154,26 @@ function Get-ScreenHit {
     return (@($hits) -join '; ')
 }
 
+# A carried-over row keeps its Id, so a new row cannot simply be numbered by position: the
+# earlier manifest already used those numbers, and two rows sharing an Id break every reference
+# to a label. New rows are numbered above the highest one already in use.
+function Get-NextId {
+    param([Parameter(Mandatory)][string] $Prefix)
+    $script:idCounters[$Prefix]++
+    while ($script:usedIds.Contains("$Prefix$($script:idCounters[$Prefix])")) { $script:idCounters[$Prefix]++ }
+    $id = "$Prefix$($script:idCounters[$Prefix])"
+    [void]$script:usedIds.Add($id)
+    return $id
+}
+
+$script:usedIds = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+$script:idCounters = @{ 'F' = 0; 'U' = 0 }
+foreach ($id in $existingIds.Values) { [void]$script:usedIds.Add($id) }
+
 $rows = New-Object System.Collections.Generic.List[object]
-$index = 0
 foreach ($message in $flagged) {
-    $index++
     $rows.Add([pscustomobject]@{
-            Id        = "F$index"
+            Id        = if ($existingIds.ContainsKey($message.Key)) { $existingIds[$message.Key] } else { (Get-NextId -Prefix 'F') }
             Metric    = $Metric
             Seed      = $Seed
             Stratum   = 'flagged'
@@ -117,16 +182,17 @@ foreach ($message in $flagged) {
             Timestamp = $message.Timestamp
             Fragments = $message.Fragments
             Screen    = (Get-ScreenHit -Text $message.Text)
-            Label     = ''
+            Label     = if ($existingLabels.ContainsKey($message.Key)) { $existingLabels[$message.Key] } else { '' }
             Text      = $message.Text
         })
 }
-$index = 0
-foreach ($position in @($picked | Sort-Object)) {
-    $index++
+$selectedPositions = @($picked)
+$selectedKeys = New-Object System.Collections.Generic.List[string]
+foreach ($position in $selectedPositions) {
     $message = $ordered[$position]
+    $selectedKeys.Add($message.Key)
     $rows.Add([pscustomobject]@{
-            Id        = "U$index"
+            Id        = if ($existingIds.ContainsKey($message.Key)) { $existingIds[$message.Key] } else { (Get-NextId -Prefix 'U') }
             Metric    = $Metric
             Seed      = $Seed
             Stratum   = 'unflagged'
@@ -135,19 +201,42 @@ foreach ($position in @($picked | Sort-Object)) {
             Timestamp = $message.Timestamp
             Fragments = $message.Fragments
             Screen    = (Get-ScreenHit -Text $message.Text)
-            Label     = ''
+            Label     = if ($existingLabels.ContainsKey($message.Key)) { $existingLabels[$message.Key] } else { '' }
             Text      = $message.Text
         })
 }
 
 $rows | Export-Csv -LiteralPath $OutputPath -NoTypeInformation -Encoding utf8
 
+# The selection record. A seed indexes into a list that changes while the script runs, so the
+# list itself has to be described: how long it was, what it hashed to, and which positions and
+# keys came out. With it a reader can say whether a redraw is the same draw.
+$selectionPath = [System.IO.Path]::ChangeExtension($OutputPath, '.selection.json')
+[pscustomobject]@{
+    metric            = $Metric
+    seed              = $Seed
+    sampleSize        = $SampleSize
+    windowStart       = $script:WindowStart.ToString('o')
+    windowEnd         = $script:WindowEnd.ToString('o')
+    transcriptFiles   = $files.Count
+    recordsInWindow   = $selected.Count
+    populationCount   = $population.Count
+    flaggedCount      = $flagged.Count
+    unflaggedCount    = $ordered.Count
+    populationDigest  = $populationDigest
+    carriedOverLabels = $carriedOver
+    selectedPositions = $selectedPositions
+    selectedKeys      = $selectedKeys.ToArray()
+} | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $selectionPath -Encoding utf8
+
 Write-Host "metric      : $Metric"
 Write-Host "seed        : $Seed"
 Write-Host "population  : $($population.Count) logical messages"
 Write-Host "flagged     : $($flagged.Count)"
-Write-Host "unflagged   : $($ordered.Count), of which $take sampled"
+Write-Host "unflagged   : $($ordered.Count), of which $take sampled ($carriedOver carried over already labelled)"
+Write-Host "digest      : $populationDigest"
 Write-Host "manifest    : $OutputPath"
+Write-Host "selection   : $selectionPath"
 Write-Host ''
-Write-Host 'Every row carries its full text and an empty Label column. Fill each Label in, then'
-Write-Host 'commit the manifest: the labels are the evidence for the published range.'
+Write-Host 'Every row carries its full text. Fill in each empty Label, then commit the manifest'
+Write-Host 'and the selection record together: the labels are the evidence for the published range.'

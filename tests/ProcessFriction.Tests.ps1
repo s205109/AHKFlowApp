@@ -193,23 +193,86 @@ $unfencedOnly = @(ConvertTo-LogicalMessage -Records @(New-Assistant -Id 'msg_5' 
 $count = Get-FrictionCount -Messages $unfencedOnly -Metric 'directory-bound-commands'
 Assert-True ($count.Items -eq 0) "a command outside a fence is prose and must not count, got $($count.Items)"
 
+# Prose can sit INSIDE a powershell fence, inside a here-string. A pull request body passed as
+# @' ... '@ is text, not commands, and two of its sentences counted because they contain
+# 'git -C' and a Windows path. A line only counts when it is a command line: outside a
+# here-string, and beginning with a command.
+# Built line by line: the fixture contains a here-string, so it cannot itself be one.
+$hereStringText = @(
+    '```powershell'
+    'git -C C:\Dev\segocom-github\AHKFlowApp status'
+    ('$body = @' + "'")
+    'Records the `git -C docs/superpowers` form for plan and spec commits.'
+    ''
+    'Hit today while committing the spec, in C:\Dev\segocom-github\AHKFlowApp.'
+    ("'" + '@')
+    'gh pr create --body "$body"'
+    '```'
+) -join "`n"
+$hereString = @(ConvertTo-LogicalMessage -Records @(New-Assistant -Id 'msg_here' -Text $hereStringText))
+$count = Get-FrictionCount -Messages $hereString -Metric 'directory-bound-commands'
+Assert-True ($count.Items -eq 1) "only the git -C command line counts, not the here-string prose, got $($count.Items)"
+Assert-True (-not (@($count.Rows.Line) -match 'Records the')) 'a here-string sentence must never reach the ledger'
+
+# A sentence that merely names a path, with no command at the head of the line, is prose even
+# inside a fence.
+$fencedProse = @(ConvertTo-LogicalMessage -Records @(New-Assistant -Id 'msg_prose' -Text @'
+```bash
+The worktree lives under C:\Dev\segocom-github\AHKFlowApp and is not yet removed.
+```
+'@))
+$count = Get-FrictionCount -Messages $fencedProse -Metric 'directory-bound-commands'
+Assert-True ($count.Items -eq 0) "a fenced sentence that names a path is not a command, got $($count.Items)"
+
+# The published rule names five fence tags, because pwsh, sh and shell blocks are shell blocks
+# too. Naming only powershell and bash while accepting five was the documentation defect.
+$tags = @(ConvertTo-LogicalMessage -Records @(New-Assistant -Id 'msg_tags' -Text @'
+```pwsh
+cd C:\Dev\one
+```
+
+```sh
+cd /c/Dev/two
+```
+
+```shell
+cd /c/Dev/three
+```
+
+```json
+cd C:\Dev\four
+```
+'@))
+$count = Get-FrictionCount -Messages $tags -Metric 'directory-bound-commands'
+Assert-True ($count.Items -eq 3) "pwsh, sh and shell count and json does not, got $($count.Items)"
+
 # --- Metric 3: cleanup events, over ANY record ---
 # The specification says any record. Reading only type=user dropped every cleanup line the
 # agent itself reported.
+#
+# The unit is a LOG LINE, not a message. Every cleanup outcome reaches a transcript through
+# Write-WorktreeLog, which stamps each line 'yyyy-MM-dd HH:mm:ss  <worktree>  <message>'
+# (`scripts/worktree-log.common.ps1:22`, "    $line = '{0}  {1}  {2}' -f $stamp, $Worktree, $Message").
+# Matching the wording anywhere in a message instead
+# counted the script's own source, injected skill instructions, and reviews discussing a
+# cleanup: measured on 2026-08-16, 65 of 75 rows were one of those.
 $cleanup = @(ConvertTo-LogicalMessage -Records @(
         ([pscustomobject]@{ type = 'user'; timestamp = $inWindow; isSidechain = $false; uuid = 'c1'
-                sessionId = 's1'; toolUseResult = 'Watcher done (worktree removed; branch preserved).'
+                sessionId = 's1'; toolUseResult = '2026-07-20 11:02:31  wt-alpha  Watcher done (worktree removed; branch preserved).'
             })
         ([pscustomobject]@{ type = 'user'; timestamp = $inWindow; isSidechain = $false; uuid = 'c1'
-                sessionId = 's1'; toolUseResult = 'Watcher done (worktree removed; branch preserved).'
+                sessionId = 's1'; toolUseResult = '2026-07-20 11:02:31  wt-alpha  Watcher done (worktree removed; branch preserved).'
             })
         ([pscustomobject]@{ type = 'user'; timestamp = $inWindow; isSidechain = $false; uuid = 'c2'
                 sessionId = 's2'; toolUseResult = 'nothing interesting here'
             })
-        (New-Assistant -Id 'msg_cleanup' -Text 'The sweep reported: worktree removed, branch preserved.')
+        (New-Assistant -Id 'msg_cleanup' -Text "The sweep reported:`n2026-07-20 11:40:02  wt-beta  Worktree was preserved (not removed): folder is locked")
     ))
 $count = Get-FrictionCount -Messages $cleanup -Metric 'cleanup-events'
 Assert-True ($count.Items -eq 2) "cleanup must fold to 2 and must read assistant records too, got $($count.Items)"
+Assert-True ($count.Rows.Count -eq 2) 'each counted cleanup line must return its own ledger row'
+Assert-True (@($count.Rows | Where-Object { $_.Line -match 'Watcher done' }).Count -eq 1) `
+    'the ledger row must carry the log line itself as the evidence'
 
 # The metric counts events, not mentions. A sentence naming the cleanup script is discussion:
 # the bare term 'remove-worktree' produced 180 of 233 rows, which is a lexical count wearing an
@@ -219,6 +282,74 @@ $discussion = @(ConvertTo-LogicalMessage -Records @(
     ))
 $count = Get-FrictionCount -Messages $discussion -Metric 'cleanup-events'
 Assert-True ($count.Items -eq 0) "naming the cleanup script is discussion, not an event, got $($count.Items)"
+
+# Removing the bare script name was not enough. Every remaining phrase still matched anywhere in
+# a message, so the script's own source, an injected skill file, and a review that quotes an
+# outcome all counted as events. Only a stamped log line is one.
+$notEvents = @(ConvertTo-LogicalMessage -Records @(
+        New-Assistant -Id 'msg_src' -Text "    Write-Log 'Watcher done (worktree removed; branch preserved).'"
+        New-Assistant -Id 'msg_review' -Text 'Round 7: the watcher done wording is fine, and the worktree removed cleanly in every run.'
+        ([pscustomobject]@{ type = 'user'; timestamp = $inWindow; isSidechain = $false; uuid = 'c3'
+                sessionId = 's3'
+                message = [pscustomobject]@{ content = '## Your Task
+
+You need to execute the following commands, removing worktree folders that are stale.' }
+            })
+    ))
+$count = Get-FrictionCount -Messages $notEvents -Metric 'cleanup-events'
+Assert-True ($count.Items -eq 0) `
+    "source code, a review, and injected instructions are not cleanup events, got $($count.Items)"
+
+# A stamped line inside a longer message still counts, because that is how a tool result
+# carrying the worktree log arrives.
+$embedded = @(ConvertTo-LogicalMessage -Records @(
+        New-Assistant -Id 'msg_embedded' -Text "Here is the tail of the log:`n2026-07-20 09:15:44  wt-gamma  REFUSING: WorktreePath is not a registered linked worktree under MainCheckout.`nThat is the blocked run."
+    ))
+$count = Get-FrictionCount -Messages $embedded -Metric 'cleanup-events'
+Assert-True ($count.Items -eq 1) "a stamped log line inside a longer message is an event, got $($count.Items)"
+
+# The same log line echoed into two tool results is one event. The stamp, the worktree and the
+# process id are all in the line, so two identical lines cannot be two events.
+$echoed = @(ConvertTo-LogicalMessage -Records @(
+        New-Assistant -Id 'msg_echo_a' -Text '2026-07-25 14:30:54  hotkey-ui-plan  Watcher started. PID=13500 Worktree=C:\wt'
+        New-Assistant -Id 'msg_echo_b' -Text "Reading the log again:`n2026-07-25 14:30:54  hotkey-ui-plan  Watcher started. PID=13500 Worktree=C:\wt"
+    ))
+$count = Get-FrictionCount -Messages $echoed -Metric 'cleanup-events'
+Assert-True ($count.Items -eq 1) "one log line echoed twice is one event, got $($count.Items)"
+
+# Metric 2 must NOT do that. A command handed over in two messages is two handovers.
+$repeatedCommand = @(ConvertTo-LogicalMessage -Records @(
+        New-Assistant -Id 'msg_cmd_a' -Text "``````powershell`ncd C:\Dev\segocom-github\AHKFlowApp`n``````"
+        New-Assistant -Id 'msg_cmd_b' -Text "``````powershell`ncd C:\Dev\segocom-github\AHKFlowApp`n``````"
+    ))
+$count = Get-FrictionCount -Messages $repeatedCommand -Metric 'directory-bound-commands'
+Assert-True ($count.Items -eq 2) "the same command handed over twice is two handovers, got $($count.Items)"
+
+# --- Session attribution does not depend on the order the files were read ---
+# A message copied into a second transcript appears twice. Taking the session from whichever
+# copy was read first made the per-metric session totals depend on enumeration order, which
+# Get-ChildItem does not fix.
+$copyA = New-Assistant -Id 'msg_sess' -Text 'You will need to run the migration yourself.' -Session 'zzz-session'
+$copyB = New-Assistant -Id 'msg_sess' -Text 'You will need to run the migration yourself.' -Session 'aaa-session'
+$forward = @(ConvertTo-LogicalMessage -Records @($copyA, $copyB))
+$backward = @(ConvertTo-LogicalMessage -Records @($copyB, $copyA))
+Assert-True ($forward[0].Session -eq $backward[0].Session) `
+    "session attribution must not depend on read order, got $($forward[0].Session) and $($backward[0].Session)"
+Assert-True ($forward[0].Session -eq 'aaa-session') `
+    "the lowest session name is the stable choice, got $($forward[0].Session)"
+
+# --- Every transcript ledger row carries its own evidence ---
+# A ledger of keys and session names cannot be re-read. The row has to say when the message
+# was written and which line of it matched.
+$evidence = @(ConvertTo-LogicalMessage -Records @(
+        New-Assistant -Id 'msg_evidence' -Text "I checked the branch.`nYou will need to run the migration yourself.`nThen the gate is green."
+    ))
+$count = Get-FrictionCount -Messages $evidence -Metric 'handoffs'
+Assert-True ($count.Rows.Count -eq 1) 'one handoff, one row'
+Assert-True ($count.Rows[0].Timestamp -eq $inWindow) "the ledger row must carry the message timestamp, got $($count.Rows[0].Timestamp)"
+Assert-True ($count.Rows[0].Matched -eq 'you will need to run') "the ledger row must name the phrase that matched, got $($count.Rows[0].Matched)"
+Assert-True ($count.Rows[0].Line -eq 'You will need to run the migration yourself.') `
+    "the ledger row must carry the matching line as evidence, got $($count.Rows[0].Line)"
 
 # --- The sidechain count is inside the window ---
 # Counting sidechain records over every record read, while the metrics count only in-window
@@ -258,31 +389,69 @@ $runs = @(
     [pscustomobject]@{ id = 3; name = 'CI'; head_sha = 'ccc'; created_at = $outOfWindow; run_duration_ms = 999000 }
     [pscustomobject]@{ id = 4; name = 'CI'; head_sha = 'ddd'; created_at = $inWindow; run_duration_ms = 120000 }
     [pscustomobject]@{ id = 5; name = 'CI'; head_sha = 'eee'; created_at = $inWindow; run_duration_ms = 0 }       # timing missing
-    # Not the CI workflow. opencode, PR-Agent and the two deploy workflows accounted for 348 of
-    # the 549 runs in this window, and none of them is the gate this metric is about.
+    # A pull request that lands no net change. It resolves, and it changed zero files, so it is a
+    # non-.NET run. Counting it as unresolved conflated 'could not resolve' with 'resolved to
+    # nothing': run 30912438833 is exactly this shape, and it used 153,000 ms.
+    [pscustomobject]@{ id = 8; name = 'CI'; head_sha = 'fff'; created_at = $inWindow; run_duration_ms = 153000 }
+    # Not the CI workflow. opencode, PR-Agent and the two deploy workflows accounted for 339 of
+    # the 531 in-window runs, and none of them is the gate this metric is about.
     [pscustomobject]@{ id = 6; name = 'opencode'; head_sha = 'aaa'; created_at = $inWindow; run_duration_ms = 900000 }
     [pscustomobject]@{ id = 7; name = 'Deploy API'; head_sha = 'aaa'; created_at = $inWindow; run_duration_ms = 900000 }
+    # Another workflow, outside the window. It must be counted as out of window, never as an
+    # 'other workflow': the name filter ran first, so out-of-window runs of other workflows
+    # inflated the published population from 531 to 549.
+    [pscustomobject]@{ id = 9; name = 'opencode'; head_sha = 'aaa'; created_at = $outOfWindow; run_duration_ms = 900000 }
 )
 $resolver = {
     param([string] $Sha)
     switch ($Sha) {
-        'aaa' { return @{ Files = @('docs/development/workflow.md', 'AGENTS.md'); Base = 'base-aaa' } }
-        'bbb' { return @{ Files = @('src/Backend/AHKFlowApp.API/Program.cs'); Base = 'base-bbb' } }
-        'eee' { return @{ Files = @('README.md'); Base = 'base-eee' } }
-        'ddd' { return $null }
+        'aaa' { return @{ Files = @('docs/development/workflow.md', 'AGENTS.md'); Base = 'base-aaa'; Kind = 'pull-request' } }
+        'bbb' { return @{ Files = @('src/Backend/AHKFlowApp.API/Program.cs'); Base = 'base-bbb'; Kind = 'pull-request' } }
+        'eee' { return @{ Files = @('README.md'); Base = 'base-eee'; Kind = 'pull-request' } }
+        'fff' { return @{ Files = @(); Base = 'base-fff'; Kind = 'pull-request' } }
+        'ddd' { return @{ Unresolved = $true; Reason = 'no-base-on-main-first-parent' } }
         default { return $null }
     }
 }
 $ci = Get-CiClassification -Runs $runs -Start $start -End $end -Resolver $resolver -WorkflowName 'CI'
-Assert-True ($ci.OtherWorkflows -eq 2) "opencode and Deploy API are not the CI workflow, got $($ci.OtherWorkflows)"
-Assert-True ($ci.NonDotnetRuns -eq 2) "runs 1 and 5 are in-window and non-.NET, got $($ci.NonDotnetRuns)"
-Assert-True ($ci.NonDotnetMinutes -eq 10) "only run 1 has a duration, so 10 minutes, got $($ci.NonDotnetMinutes)"
-Assert-True ($ci.Unresolved -eq 1) "run 4 cannot be resolved and must be reported, got $($ci.Unresolved)"
-Assert-True ($ci.OutOfWindow -eq 1) 'run 3 is outside the window'
+Assert-True ($ci.OtherWorkflows -eq 2) "only the two in-window non-CI runs count as other workflows, got $($ci.OtherWorkflows)"
+Assert-True ($ci.NonDotnetRuns -eq 3) "runs 1, 5 and 8 are in-window and non-.NET, got $($ci.NonDotnetRuns)"
+Assert-True ($ci.NonDotnetMinutes -eq 12.6) "10 minutes plus the 153,000 ms zero-file run, got $($ci.NonDotnetMinutes)"
+Assert-True ($ci.NoFileChange -eq 1) "the zero-file run must be reported as such, got $($ci.NoFileChange)"
+Assert-True ($ci.Unresolved -eq 1) "only run 4 cannot be resolved, got $($ci.Unresolved)"
+Assert-True ($ci.OutOfWindow -eq 2) "runs 3 and 9 are outside the window, got $($ci.OutOfWindow)"
 Assert-True ($ci.DuplicateIds -eq 1) "the repeated run id must be reported, got $($ci.DuplicateIds)"
 Assert-True ($ci.MissingTiming -eq 1) "run 5 has no duration and must be reported, got $($ci.MissingTiming)"
-Assert-True ($ci.Rows.Count -eq 2) 'the classification must return one ledger row per counted run'
-Assert-True (@($ci.Rows | Where-Object { $_.Base -eq 'base-aaa' }).Count -eq 1) 'each ledger row must record the base it was classified against'
+Assert-True ($ci.Rows.Count -eq 5) "the ledger must hold every in-window CI run, not only the counted ones, got $($ci.Rows.Count)"
+
+# The ledger has to be able to reproduce every published figure on its own. Storing only the
+# selected non-.NET rows could not reproduce the population, the .NET count, or the unresolved
+# count, and a rounded minute figure could not reproduce the total.
+$row1 = @($ci.Rows | Where-Object { $_.Id -eq '1' })[0]
+Assert-True ($row1.Classification -eq 'non-dotnet') "run 1 must be recorded as non-dotnet, got $($row1.Classification)"
+Assert-True ($row1.DurationMs -eq 600000) "the ledger must keep the raw duration, got $($row1.DurationMs)"
+Assert-True ($row1.Base -eq 'base-aaa') 'each ledger row must record the base it was classified against'
+Assert-True ($row1.BaseKind -eq 'pull-request') 'each ledger row must record how the base was found'
+Assert-True ($row1.ChangedPaths -match 'AGENTS.md') 'the ledger must keep the changed paths, not only their count'
+Assert-True (@($ci.Rows | Where-Object { $_.Classification -eq 'dotnet' }).Count -eq 1) 'the .NET run must be in the ledger too'
+Assert-True (@($ci.Rows | Where-Object { $_.Classification -eq 'unresolved' }).Count -eq 1) 'the unresolved run must be in the ledger too'
+$row4 = @($ci.Rows | Where-Object { $_.Id -eq '4' })[0]
+Assert-True ($row4.Reason -eq 'no-base-on-main-first-parent') `
+    "the ledger must keep the resolver's own reason, not one explanation for every run, got $($row4.Reason)"
+$row5 = @($ci.Rows | Where-Object { $_.Id -eq '5' })[0]
+Assert-True ($row5.TimingStatus -eq 'missing') "a run with no duration must say so, got $($row5.TimingStatus)"
+$row8 = @($ci.Rows | Where-Object { $_.Id -eq '8' })[0]
+Assert-True ($row8.Reason -eq 'no-file-change') "the zero-file run must record why, got $($row8.Reason)"
+
+# --- The published population is the window's, not the calendar range's ---
+# The API is asked for 'created=2026-07-15..2026-08-12', which includes both boundary dates in
+# full and so returns more than the window holds. Printing that answer described a different
+# population: 549 runs, 201 of them CI, against the window's real 531 and 192.
+$population = Get-RunPopulationSummary -Runs $runs -Start $start -End $end
+Assert-True ($population.InWindow -eq 8) "8 of the 10 fixture runs are in the window, got $($population.InWindow)"
+Assert-True ($population.Returned -eq 10) "the returned count must still be reported, got $($population.Returned)"
+Assert-True ($population.ByName['CI'] -eq 6) "6 in-window CI runs, got $($population.ByName['CI'])"
+Assert-True ($population.ByName['opencode'] -eq 1) "the out-of-window opencode run must not be counted, got $($population.ByName['opencode'])"
 
 # --- Metric 5, live: a pull-request head resolves to the WHOLE pull request ---
 # CI runs on pull_request, so head_sha is the branch head, not a merge commit. The first-parent
@@ -305,6 +474,28 @@ else {
     Write-Host "SKIPPED: commit $prHead is not present locally, so the live resolver was not exercised."
 }
 
+# --- The base comes from origin/main's first-parent chain, never from a branch-local merge ---
+# 'rev-list --ancestry-path --merges' also returns merges made ON the branch, such as
+# 'Merge branch main into feature/x'. The oldest of those is picked before the landing merge,
+# its merge base with the head is the head itself, and the code then falls through to the
+# first-parent rule. Measured on 2026-08-16: all 8 runs that reached that fallback sat off
+# main's first-parent chain, and 2 of them changed a .cs file the fallback never saw.
+$branchLocalHead = '1644fa35edf28b85783cd360647c505b07004be1'
+& git -C $repoRoot cat-file -e "$branchLocalHead^{commit}" 2>$null
+if ($LASTEXITCODE -eq 0) {
+    $resolved = Get-ChangedFileForRun -RepoRoot $repoRoot -Sha $branchLocalHead
+    Assert-True ($null -ne $resolved) 'a head whose branch landed on main must resolve'
+    if ($resolved) {
+        Assert-True ($resolved.Kind -eq 'pull-request') "the base must come from the landing merge, got $($resolved.Kind)"
+        Assert-True ($resolved.Files.Count -eq 7) "the whole pull request changed 7 files, got $($resolved.Files.Count)"
+        $dotnet = @($resolved.Files | Where-Object { Test-DotnetPath -Path $_ })
+        Assert-True ($dotnet.Count -eq 1) "the pull request touches a .NET file the first-parent diff never saw, got $($dotnet.Count)"
+    }
+}
+else {
+    Write-Host "SKIPPED: commit $branchLocalHead is not present locally."
+}
+
 # --- A commit that never reached main is unresolved, not silently first-parented ---
 # Falling back to head^1 for any unmerged commit answers with one commit's change and calls it
 # a pull request. An audit found 13 such runs whose full pull request did touch .NET files.
@@ -312,7 +503,9 @@ $unmergedHead = (& git -C $repoRoot rev-parse HEAD).Trim()
 & git -C $repoRoot merge-base --is-ancestor $unmergedHead origin/main 2>$null
 if ($LASTEXITCODE -ne 0) {
     $resolvedUnmerged = Get-ChangedFileForRun -RepoRoot $repoRoot -Sha $unmergedHead
-    Assert-True ($null -eq $resolvedUnmerged) 'a commit that is not on main and has no landing merge must be unresolved'
+    Assert-True ($resolvedUnmerged.Unresolved -eq $true) 'a commit that is not on main and has no landing merge must be unresolved'
+    Assert-True ($resolvedUnmerged.Reason -eq 'no-base-on-main-first-parent') `
+        "the resolver must say why it could not answer, got $($resolvedUnmerged.Reason)"
 }
 else {
     Write-Host 'SKIPPED: HEAD is already on origin/main, so the unmerged case was not exercised.'
