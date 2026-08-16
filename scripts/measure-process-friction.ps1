@@ -3,33 +3,40 @@
 .SYNOPSIS
     Measures the five friction counts from this project's session transcripts.
 .DESCRIPTION
-    Three earlier attempts produced numbers that were withdrawn in review. Each fixed the
+    Four earlier attempts produced numbers that were withdrawn in review. Each fixed the
     previous defect and kept or introduced another. So every rule below names the field it
     reads, rather than describing an intention: two scripts that both follow this list must
     produce the same number.
 
+    Everything reads one shared shape. Records are normalized once into logical messages, and
+    every metric and the sampler consume that. The alternative - each metric walking raw
+    records with its own filter - is how the same defect arrived twice by different routes.
+
     What each rule exists to stop:
 
     - Window. Select on the record's own 'timestamp' field, never on file modification time.
-      A file touched today can hold records from weeks ago.
     - Human turn. type is 'user' AND (origin.kind is 'human' OR promptSource is typed,
       suggestion_accepted, or queued). The two fields are alternatives. Requiring both drops
-      every accepted suggestion, every queued prompt, and every slash command. Tool results
-      and injected skill content are also stored with type 'user', which is what inflated the
-      first two attempts. The shape of message.content separates nothing, so it is not read.
-    - Sidechain. Subagent records are excluded, and the number excluded is printed even when
-      it is zero. A missing line reads as "the rule never ran", which is a different fact.
-    - Deduplication. Assistant records carry message.id; user records do not carry it at all.
-      So assistant metrics deduplicate on message.id and user metrics on the record's own
-      top-level uuid. Using message.id for a user metric deduplicates nothing, because every
-      comparison is against a null.
-    - File list. Windows paths are case-insensitive, so one glob can match the same directory
-      twice under two spellings. Every candidate is resolved, lowercased, and deduplicated
-      before a single record is read.
-    - Units. Metric 2 counts command lines, because one message can hand over several.
+      every accepted suggestion, every queued prompt, and every slash command.
+    - Fragments. One assistant message arrives as several records sharing one message.id, and
+      the first of them often carries no text at all. Measured on 2026-08-16: 9,942 of 15,662
+      in-window message ids span more than one record, and 3,171 have an empty first record and
+      text in a later one. So text is assembled BEFORE anything is deduplicated. Deduplicating
+      first keeps the empty fragment and throws the message away.
+    - Sidechain. Subagent records are excluded, and the number excluded is printed. Their
+      transcripts live in subdirectories, so discovery is recursive; reading only the top level
+      printed an exclusion count of zero that proved nothing.
+    - Identity. A logical message is keyed on message.id when it has one, and on the record's
+      own uuid when it does not. User records carry no message.id at all.
+    - Units. Metric 2 counts command lines inside a powershell or bash fence, deduplicated on
+      message id plus line text. Prose that mentions a command is not a handed-over command.
+    - Metric 5 base. CI runs on pull_request, so head_sha is a branch head, not a merge commit.
+      Its first-parent diff is one commit's change, not the pull request's. The base is the
+      branch point instead: the merge that landed the work, then the merge base of that merge's
+      first parent and the head.
 
-    The match set for each metric is a literal list in this file and is printed with the
-    number, so any figure can be challenged rather than believed.
+    Every metric returns row-level ledger rows, and the script writes them next to the summary,
+    so a figure can be recomputed from the rows rather than believed.
 .PARAMETER AsModule
     Define the functions and return without measuring anything. The test suite uses this.
 .PARAMETER ProjectRoot
@@ -37,8 +44,9 @@
 .PARAMETER ClonePath
     The clone used to resolve a CI run's changed files. Defaults to this repository. It is not
     called RepoRoot on purpose: the suite dot-sources this file, PowerShell variable names are
-    case-insensitive, and a parameter called RepoRoot overwrites the caller's own $repoRoot
-    with an empty string.
+    case-insensitive, and a parameter called RepoRoot overwrites the caller's own $repoRoot.
+.PARAMETER LedgerRoot
+    Where the row-level ledgers are written. Defaults to the system temporary folder.
 .PARAMETER SkipCi
     Skip metric 5, which needs the gh CLI and the network.
 #>
@@ -47,49 +55,58 @@ param(
     [switch] $AsModule,
     [string] $ProjectRoot,
     [string] $ClonePath,
+    [string] $LedgerRoot,
     [switch] $SkipCi
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$PSNativeCommandUseErrorActionPreference = $false
 
-# The window is fixed: four weeks ending at the moment wave 1 merged. A window running past
-# that merge would mix old-process friction with fixed-process friction.
+# The window is fixed: four weeks ending at the moment wave 1 merged.
 $script:WindowStart = [datetime]::Parse('2026-07-15T14:14:32Z').ToUniversalTime()
 $script:WindowEnd = [datetime]::Parse('2026-08-12T14:14:32Z').ToUniversalTime()
 
 # Each match set is literal and is printed with its number.
 $script:MatchSets = @{
-    'handoffs'                 = @(
+    'handoffs'       = @(
         'i cannot reach', 'i am not able to reach', 'run this in your terminal',
-        'run it yourself', 'you will need to run', 'please run', 'you need to run',
+        'run it yourself', 'you will need to run', 'you need to run',
         'run the following yourself', 'i cannot run', 'blocked by the guard',
-        'the guard refuses', 'from the main checkout yourself'
+        'the guard refuses', 'from the main checkout yourself', 'needs a handover',
+        'so a handover', 'you will have to run', 'please run it', 'over to you'
     )
-    'next-step-asks'           = @(
+    'next-step-asks' = @(
         'next step', 'what next', "what's next", 'what should i do next',
-        'what do we do next', 'how do we proceed', 'what now'
+        'what do we do next', 'how do we proceed', 'what now', 'next items to pick up',
+        'next backlog items', 'what do you suggest'
     )
-    'cleanup-events'           = @(
+    'cleanup-events' = @(
         'worktree removed', 'watcher done', 'cleanup popup', 'remove-worktree',
-        'worktree remove failed', 'is locked', 'is dirty', 'cleanup blocked'
-    )
-    'directory-bound-commands' = @(
-        '^\s*cd\s+', '^\s*set-location\s+', '^\s*push-location\s+', '^\s*pushd\s+',
-        'git\s+-c\s+\S', '-workingdirectory\s+\S', '^\s*chdir\s+'
+        'worktree remove failed', 'cleanup blocked', 'worktree is locked',
+        'worktree is dirty', 'could not remove the worktree'
     )
 }
 
+# Metric 2 is a syntax rule, not a word list: a line inside a powershell or bash fence that
+# names a directory.
+$script:DirectoryLinePatterns = @(
+    '^\s*(cd|chdir|pushd)\s+\S', '^\s*(Set-Location|Push-Location)\s+\S',
+    '\s-C\s+\S', '-WorkingDirectory\s+\S', '[A-Za-z]:\\[^\s"'']+', '/c/[^\s"'']+'
+)
+
 function Get-RecordProperty {
-    <#
-    .SYNOPSIS
-        Reads a property that may be absent, without throwing under StrictMode.
-    #>
     param(
         [Parameter(Mandatory)][AllowNull()] $Record,
         [Parameter(Mandatory)][string] $Name
     )
     if ($null -eq $Record) { return $null }
+    # A hashtable answers to ContainsKey, not to PSObject.Properties. The CI resolver returns
+    # one, so reading it as a psobject silently returned null for every field.
+    if ($Record -is [System.Collections.IDictionary]) {
+        if ($Record.Contains($Name)) { return $Record[$Name] }
+        return $null
+    }
     if ($Record -isnot [psobject]) { return $null }
     $property = $Record.PSObject.Properties[$Name]
     if ($null -eq $property) { return $null }
@@ -97,10 +114,6 @@ function Get-RecordProperty {
 }
 
 function Test-HumanTurn {
-    <#
-    .SYNOPSIS
-        True when a record is a turn a person actually typed, accepted, or queued.
-    #>
     param([Parameter(Mandatory)][AllowNull()] $Record)
 
     if ((Get-RecordProperty -Record $Record -Name 'type') -ne 'user') { return $false }
@@ -113,10 +126,6 @@ function Test-HumanTurn {
 }
 
 function Select-FrictionRecord {
-    <#
-    .SYNOPSIS
-        Keeps the in-window records that are not subagent traffic.
-    #>
     param(
         [Parameter(Mandatory)][AllowEmptyCollection()][array] $Records,
         [Parameter(Mandatory)][datetime] $Start,
@@ -142,11 +151,7 @@ function Get-SidechainCount {
 function Get-RecordText {
     <#
     .SYNOPSIS
-        The text a record carries, flattened to one string.
-    .DESCRIPTION
-        message.content is a string on a typed prompt and an array of blocks on an assistant
-        record. A tool result carries its text in toolUseResult instead. All three are read,
-        because a metric matches on words rather than on shape.
+        The text one record carries, flattened to one string.
     #>
     param([Parameter(Mandatory)][AllowNull()] $Record)
 
@@ -172,15 +177,7 @@ function Get-RecordText {
     return ($parts -join "`n")
 }
 
-function Get-DedupKey {
-    <#
-    .SYNOPSIS
-        The identity of a record for one metric.
-    .DESCRIPTION
-        message.id exists only on assistant records. A user record carries none, so a user
-        metric deduplicates on the record's own uuid instead. This was verified against a live
-        transcript, not assumed.
-    #>
+function Get-MessageKey {
     param([Parameter(Mandatory)][AllowNull()] $Record)
 
     $message = Get-RecordProperty -Record $Record -Name 'message'
@@ -190,7 +187,6 @@ function Get-DedupKey {
     $uuid = Get-RecordProperty -Record $Record -Name 'uuid'
     if ($uuid) { return "uuid:$uuid" }
 
-    # No identity at all: fall back to the text, so two identical records do not both count.
     return "text:$(Get-RecordText -Record $Record)"
 }
 
@@ -203,84 +199,162 @@ function Get-SessionName {
     return 'unknown'
 }
 
+function ConvertTo-LogicalMessage {
+    <#
+    .SYNOPSIS
+        Folds records into one object per logical message, with the whole text assembled.
+    .DESCRIPTION
+        This is the shared representation. Every metric and the sampler read it, so a fix here
+        reaches all of them. Records that share a key are joined in the order they were read,
+        which is why an empty first fragment no longer hides the rest of the message.
+    #>
+    param([Parameter(Mandatory)][AllowEmptyCollection()][array] $Records)
+
+    $order = New-Object System.Collections.Generic.List[string]
+    $byKey = @{}
+
+    foreach ($record in $Records) {
+        $key = Get-MessageKey -Record $record
+        if (-not $byKey.ContainsKey($key)) {
+            $order.Add($key)
+            $byKey[$key] = [pscustomobject]@{
+                Key         = $key
+                Type        = [string](Get-RecordProperty -Record $record -Name 'type')
+                Timestamp   = [string](Get-RecordProperty -Record $record -Name 'timestamp')
+                Session     = Get-SessionName -Record $record
+                IsSidechain = ((Get-RecordProperty -Record $record -Name 'isSidechain') -eq $true)
+                IsHumanTurn = (Test-HumanTurn -Record $record)
+                Fragments   = 0
+                Text        = ''
+            }
+        }
+
+        $entry = $byKey[$key]
+        $entry.Fragments++
+        if ($entry.IsHumanTurn -eq $false -and (Test-HumanTurn -Record $record)) { $entry.IsHumanTurn = $true }
+
+        $text = Get-RecordText -Record $record
+        if ($text) {
+            $entry.Text = if ($entry.Text) { "$($entry.Text)`n$text" } else { $text }
+        }
+    }
+
+    return @($order | ForEach-Object { $byKey[$_] })
+}
+
+function Get-FencedBlock {
+    <#
+    .SYNOPSIS
+        The lines inside every powershell or bash fence in a message.
+    .DESCRIPTION
+        A command in prose is not a command handed over. The specification says the line must
+        sit inside a ```powershell or ```bash fence, so a fence of any other language, and text
+        outside a fence, are both skipped.
+    #>
+    param([Parameter(Mandatory)][AllowEmptyString()][string] $Text)
+
+    $lines = New-Object System.Collections.Generic.List[string]
+    $inside = $false
+
+    foreach ($line in ($Text -split "`n")) {
+        if ($line -match '^\s*```\s*(powershell|pwsh|bash|sh|shell)\s*$') { $inside = $true; continue }
+        if ($line -match '^\s*```') { $inside = $false; continue }
+        if ($inside) { $lines.Add($line.TrimEnd()) }
+    }
+    return @($lines)
+}
+
+function Test-DirectoryBoundLine {
+    param([Parameter(Mandatory)][AllowEmptyString()][string] $Line)
+    foreach ($pattern in $script:DirectoryLinePatterns) {
+        if ($Line -match $pattern) { return $true }
+    }
+    return $false
+}
+
 function Get-FrictionCount {
     <#
     .SYNOPSIS
-        Counts one metric over already-selected records.
-    .DESCRIPTION
-        Returns the item count, the session count, the match set used, and the number of
-        sidechain records the input still held. Metric 'directory-bound-commands' counts
-        command LINES; every other metric counts records.
+        Counts one metric over logical messages, and returns the rows behind the number.
     #>
     param(
-        [Parameter(Mandatory)][AllowEmptyCollection()][array] $Records,
+        [Parameter(Mandatory)][AllowEmptyCollection()][array] $Messages,
         [Parameter(Mandatory)][ValidateSet('handoffs', 'directory-bound-commands', 'cleanup-events', 'next-step-asks')][string] $Metric
     )
 
-    $patterns = $script:MatchSets[$Metric]
-    $seen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
     $sessions = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-    $items = 0
+    $rows = New-Object System.Collections.Generic.List[object]
+    $patterns = if ($Metric -eq 'directory-bound-commands') { $script:DirectoryLinePatterns } else { $script:MatchSets[$Metric] }
 
-    foreach ($record in $Records) {
-        # Metric 4 reads human turns; the other three read what the agent said or what a tool
-        # reported. Reading the wrong side is how attempt 2 counted injected content.
-        $type = Get-RecordProperty -Record $record -Name 'type'
-        if ($Metric -eq 'next-step-asks') {
-            if (-not (Test-HumanTurn -Record $record)) { continue }
-        }
-        elseif ($Metric -eq 'cleanup-events') {
-            if ($type -ne 'user') { continue }
-        }
-        else {
-            if ($type -ne 'assistant') { continue }
-        }
+    foreach ($message in $Messages) {
+        # Which side of the conversation each metric reads. Metric 3 reads any record, per the
+        # specification: the agent reports cleanup outcomes as often as a tool does.
+        #
+        # This is an if-chain on purpose. 'continue' inside a PowerShell switch leaves the
+        # switch, not the enclosing loop, so a switch here counted every message for every
+        # metric: metric 4 read assistant messages and reported 338 asks instead of 36.
+        $skip = if ($Metric -eq 'next-step-asks') { -not $message.IsHumanTurn }
+        elseif ($Metric -eq 'cleanup-events') { $false }
+        else { $message.Type -ne 'assistant' }
+        if ($skip) { continue }
 
-        $key = Get-DedupKey -Record $record
-        if (-not $seen.Add($key)) { continue }
-
-        $text = Get-RecordText -Record $record
+        $text = $message.Text
         if (-not $text) { continue }
 
         if ($Metric -eq 'directory-bound-commands') {
-            $lines = 0
-            foreach ($line in ($text -split "`n")) {
-                foreach ($pattern in $patterns) {
-                    if ($line -match $pattern) { $lines++; break }
-                }
-            }
-            if ($lines -gt 0) {
-                $items += $lines
-                [void]$sessions.Add((Get-SessionName -Record $record))
+            # One message can hand over several commands, so the unit is the line. The same
+            # line repeated inside one message is one command.
+            $seenLines = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+            foreach ($line in (Get-FencedBlock -Text $text)) {
+                $trimmed = $line.Trim()
+                if (-not $trimmed) { continue }
+                if (-not (Test-DirectoryBoundLine -Line $trimmed)) { continue }
+                if (-not $seenLines.Add($trimmed)) { continue }
+                $rows.Add([pscustomobject]@{ Key = $message.Key; Session = $message.Session; Line = $trimmed })
+                [void]$sessions.Add($message.Session)
             }
             continue
         }
 
         foreach ($pattern in $patterns) {
             if ($text -match [regex]::Escape($pattern)) {
-                $items++
-                [void]$sessions.Add((Get-SessionName -Record $record))
+                $rows.Add([pscustomobject]@{ Key = $message.Key; Session = $message.Session; Matched = $pattern })
+                [void]$sessions.Add($message.Session)
                 break
             }
         }
     }
 
     return @{
-        Items             = $items
-        Sessions          = $sessions.Count
-        MatchSet          = $patterns
-        SidechainExcluded = (Get-SidechainCount -Records $Records)
+        Items    = $rows.Count
+        Sessions = $sessions.Count
+        MatchSet = $patterns
+        Rows     = $rows
     }
 }
 
-function Get-ChangedFileFromFirstParent {
+function Test-DotnetPath {
+    param([Parameter(Mandatory)][AllowEmptyString()][string] $Path)
+    return ($Path -match '\.(cs|csproj|sln|slnx|razor|props|targets)$' -or $Path -match '^(src|tests)/')
+}
+
+function Get-ChangedFileForRun {
     <#
     .SYNOPSIS
-        The files a commit changed against its first parent, or null when it is not local.
+        The files a CI run's commit really changed, with the base it was measured against.
     .DESCRIPTION
-        The run's own base is what matters. Comparing against today's main reclassifies a run
-        every time main moves, which is why the 142.7-minute figure was never reproducible.
-        gh exposes no base for a push run, so the local first-parent diff is the resolver.
+        Three shapes, because a run's head_sha is not always the same kind of commit:
+
+        - A merge commit on main: its first-parent diff IS the pull request's net change.
+        - A commit already on main's first-parent chain: its own change.
+        - Anything else - and this is the common case, because CI runs on pull_request - is a
+          branch head. Its first-parent diff is the last commit only. Measured on 2026-08-16
+          for 1507643550b4: the first-parent diff returns 0 files while the pull request
+          changed 10, one of them a .NET file, so the run was classified non-.NET wrongly.
+
+        For a branch head the base is the branch point: find the merge that landed the work,
+        then take the merge base of that merge's first parent and the head. That is historical
+        - it does not move when main advances - and it needs no API.
     #>
     param(
         [Parameter(Mandatory)][string] $RepoRoot,
@@ -290,14 +364,38 @@ function Get-ChangedFileFromFirstParent {
     & git -C $RepoRoot cat-file -e "$Sha^{commit}" 2>$null
     if ($LASTEXITCODE -ne 0) { return $null }
 
-    $files = & git -C $RepoRoot diff --name-only "$Sha^1" $Sha 2>$null
-    if ($LASTEXITCODE -ne 0) { return $null }
-    return , @($files | Where-Object { $_ })
-}
+    $parents = (& git -C $RepoRoot rev-list --parents -n 1 $Sha 2>$null) -split '\s+'
+    if ($LASTEXITCODE -ne 0 -or $parents.Count -lt 2) { return $null }
 
-function Test-DotnetPath {
-    param([Parameter(Mandatory)][AllowEmptyString()][string] $Path)
-    return ($Path -match '\.(cs|csproj|sln|razor|props|targets)$' -or $Path -match '^(src|tests)/')
+    # The branch point is tried FIRST, even for a merge commit. A branch head is often itself a
+    # merge - of main back into the branch - and its first-parent diff is then empty, which is
+    # how run 1507643550b4 was classified as changing no files at all.
+    #
+    # For a merge that landed ON main this attempt resolves the base to the commit itself, and
+    # the check below rejects it, so the first-parent rule still handles that shape.
+    #
+    # The merge that landed this commit, if any. --ancestry-path keeps only merges that this
+    # commit actually reaches, and the last of them is the earliest in time.
+    $merges = @(& git -C $RepoRoot rev-list --ancestry-path --merges "$Sha..origin/main" 2>$null)
+    if ($LASTEXITCODE -eq 0 -and $merges.Count -gt 0) {
+        $merge = $merges[-1]
+        $base = (& git -C $RepoRoot merge-base "$merge^1" $Sha 2>$null)
+        if ($LASTEXITCODE -eq 0 -and $base) {
+            $base = $base.Trim()
+            if ($base -ne $Sha) {
+                $files = @(& git -C $RepoRoot diff --name-only $base $Sha 2>$null)
+                if ($LASTEXITCODE -eq 0) { return @{ Files = $files; Base = $base; Kind = 'pull-request' } }
+            }
+        }
+    }
+
+    # A merge that landed on main: its first-parent diff IS the pull request's net change.
+    # Anything else on main's own chain: its own change is all there is.
+    $base = $parents[1]
+    $kind = if ($parents.Count -ge 3) { 'merge' } else { 'single-commit' }
+    $files = @(& git -C $RepoRoot diff --name-only $base $Sha 2>$null)
+    if ($LASTEXITCODE -ne 0) { return $null }
+    return @{ Files = $files; Base = $base; Kind = $kind }
 }
 
 function Get-CiClassification {
@@ -305,7 +403,7 @@ function Get-CiClassification {
     .SYNOPSIS
         Splits CI runs into .NET and non-.NET, using each run's own base.
     .PARAMETER Resolver
-        Takes a head_sha, returns the changed paths, or null when the commit is not local.
+        Takes a head_sha and returns @{ Files; Base }, or null when it cannot be resolved.
         Injecting it is what lets the suite run without git or the network.
     #>
     param(
@@ -315,41 +413,57 @@ function Get-CiClassification {
         [Parameter(Mandatory)][scriptblock] $Resolver
     )
 
-    $nonDotnetRuns = 0
+    $rows = New-Object System.Collections.Generic.List[object]
+    $seenIds = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
     $nonDotnetMs = 0
     $unresolved = 0
     $outOfWindow = 0
-    $resolvedBases = New-Object System.Collections.Generic.List[string]
+    $duplicateIds = 0
+    $missingTiming = 0
+    $dotnetRuns = 0
 
     foreach ($run in $Runs) {
+        $id = [string](Get-RecordProperty -Record $run -Name 'id')
+        if (-not $seenIds.Add($id)) { $duplicateIds++; continue }
+
         $created = ([datetime]::Parse((Get-RecordProperty -Record $run -Name 'created_at'))).ToUniversalTime()
         if ($created -lt $Start -or $created -ge $End) { $outOfWindow++; continue }
 
         $sha = [string](Get-RecordProperty -Record $run -Name 'head_sha')
-        $files = & $Resolver $sha
-        if ($null -eq $files) { $unresolved++; continue }
+        $resolved = & $Resolver $sha
+        if ($null -eq $resolved) { $unresolved++; continue }
 
-        $files = @($files)
+        $files = @(Get-RecordProperty -Record $resolved -Name 'Files')
         if ($files.Count -eq 0) { $unresolved++; continue }
 
         $touchesDotnet = $false
         foreach ($file in $files) {
             if (Test-DotnetPath -Path $file) { $touchesDotnet = $true; break }
         }
-        if ($touchesDotnet) { continue }
+        if ($touchesDotnet) { $dotnetRuns++; continue }
 
-        $nonDotnetRuns++
         $ms = Get-RecordProperty -Record $run -Name 'run_duration_ms'
-        if ($ms) { $nonDotnetMs += [int64]$ms }
-        $resolvedBases.Add("$sha^1")
+        if (-not $ms) { $missingTiming++; $ms = 0 }
+        $nonDotnetMs += [int64]$ms
+
+        $rows.Add([pscustomobject]@{
+                Id      = $id
+                HeadSha = $sha
+                Base    = [string](Get-RecordProperty -Record $resolved -Name 'Base')
+                Files   = $files.Count
+                Minutes = [math]::Round([int64]$ms / 60000, 2)
+            })
     }
 
     return @{
-        NonDotnetRuns    = $nonDotnetRuns
+        NonDotnetRuns    = $rows.Count
+        DotnetRuns       = $dotnetRuns
         NonDotnetMinutes = [math]::Round($nonDotnetMs / 60000, 1)
         Unresolved       = $unresolved
         OutOfWindow      = $outOfWindow
-        ResolvedBase     = $resolvedBases
+        DuplicateIds     = $duplicateIds
+        MissingTiming    = $missingTiming
+        Rows             = $rows
     }
 }
 
@@ -357,11 +471,6 @@ function Resolve-TranscriptFile {
     <#
     .SYNOPSIS
         Deduplicates transcript paths by resolved, lowercased full path.
-    .DESCRIPTION
-        Windows paths are case-insensitive, so a glob for 'C--Dev-...' also matches a
-        lowercase 'c--dev-...' directory. Reading a file twice doubles every count it feeds,
-        which is the same double-count defect that withdrew the third attempt, arriving by a
-        different route. So deduplicate before reading a single record.
     #>
     param([Parameter(Mandatory)][AllowEmptyCollection()][string[]] $Candidates)
 
@@ -373,16 +482,33 @@ function Resolve-TranscriptFile {
         $full = (Resolve-Path -LiteralPath $candidate).Path
         if ($seen.Add($full.ToLowerInvariant())) { $kept.Add($full) }
     }
-    # The comma keeps a one-element result an array. Without it PowerShell unrolls the return
-    # value to a bare string, and the caller's .Count throws under StrictMode.
-    return , @($kept)
+    return @($kept)
+}
+
+function Get-TranscriptFile {
+    <#
+    .SYNOPSIS
+        Every AHKFlow transcript under the project root, nested ones included.
+    .DESCRIPTION
+        Subagent transcripts live in subdirectories. Reading only the top level hid all of
+        them, so the sidechain exclusion count printed zero and proved nothing. Measured on
+        2026-08-16: 392 files at the top level, 694 with the subdirectories.
+    #>
+    param([Parameter(Mandatory)][string] $ProjectRoot)
+
+    $directories = @(Get-ChildItem -LiteralPath $ProjectRoot -Directory -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match 'AHKFlow' })
+
+    $candidates = New-Object System.Collections.Generic.List[string]
+    foreach ($directory in $directories) {
+        foreach ($file in (Get-ChildItem -LiteralPath $directory.FullName -Filter '*.jsonl' -File -Recurse -ErrorAction SilentlyContinue)) {
+            $candidates.Add($file.FullName)
+        }
+    }
+    return (Resolve-TranscriptFile -Candidates $candidates)
 }
 
 function Read-TranscriptRecord {
-    <#
-    .SYNOPSIS
-        Reads one transcript file into records, stamping each with its file name.
-    #>
     param([Parameter(Mandatory)][string] $Path)
 
     $name = Split-Path -Leaf $Path
@@ -403,27 +529,19 @@ if ($AsModule) { return }
 
 if (-not $ProjectRoot) { $ProjectRoot = Join-Path $HOME '.claude/projects' }
 if (-not $ClonePath) { $ClonePath = Split-Path -Parent $PSScriptRoot }
+if (-not $LedgerRoot) { $LedgerRoot = Join-Path ([System.IO.Path]::GetTempPath()) 'friction-ledgers' }
+New-Item -ItemType Directory -Path $LedgerRoot -Force | Out-Null
 
 Write-Host ''
 Write-Host 'Friction measurement'
 Write-Host "  window : $($script:WindowStart.ToString('u')) to $($script:WindowEnd.ToString('u'))"
 Write-Host "  source : $ProjectRoot"
+Write-Host "  ledgers: $LedgerRoot"
 
-$directories = @(Get-ChildItem -LiteralPath $ProjectRoot -Directory -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -match 'AHKFlow' })
+$files = Get-TranscriptFile -ProjectRoot $ProjectRoot
+Write-Host "  files  : $($files.Count) after deduplication, subdirectories included"
 
-$candidates = New-Object System.Collections.Generic.List[string]
-foreach ($directory in $directories) {
-    foreach ($file in (Get-ChildItem -LiteralPath $directory.FullName -Filter '*.jsonl' -File -ErrorAction SilentlyContinue)) {
-        $candidates.Add($file.FullName)
-    }
-}
-
-$files = Resolve-TranscriptFile -Candidates $candidates
-Write-Host "  files  : $($files.Count) after deduplication, from $($directories.Count) project directories"
-
-# Per-directory split, so the main checkout and the worktrees are visible separately.
-$mainFiles = @($files | Where-Object { (Split-Path -Leaf (Split-Path -Parent $_)) -notmatch 'worktrees' })
+$mainFiles = @($files | Where-Object { $_ -notmatch 'worktrees' })
 Write-Host "           $($mainFiles.Count) in main project directories, $($files.Count - $mainFiles.Count) in worktree directories"
 
 $all = New-Object System.Collections.Generic.List[object]
@@ -432,17 +550,24 @@ foreach ($file in $files) {
 }
 Write-Host "  records: $($all.Count) read"
 
-$selected = Select-FrictionRecord -Records $all.ToArray() -Start $script:WindowStart -End $script:WindowEnd
 $sidechain = Get-SidechainCount -Records $all.ToArray()
-Write-Host "  in window: $($selected.Count) records"
+$selected = Select-FrictionRecord -Records $all.ToArray() -Start $script:WindowStart -End $script:WindowEnd
+$messages = ConvertTo-LogicalMessage -Records $selected
+$multiFragment = @($messages | Where-Object { $_.Fragments -gt 1 }).Count
+
+Write-Host "  in window, not sidechain: $($selected.Count) records"
 Write-Host "  sidechain records excluded: $sidechain"
+Write-Host "  logical messages: $($messages.Count), of which $multiFragment were assembled from more than one record"
 Write-Host ''
 
 foreach ($metric in @('handoffs', 'directory-bound-commands', 'cleanup-events', 'next-step-asks')) {
-    $count = Get-FrictionCount -Records $selected -Metric $metric
-    $unit = if ($metric -eq 'directory-bound-commands') { 'command lines' } else { 'records' }
+    $count = Get-FrictionCount -Messages $messages -Metric $metric
+    $unit = if ($metric -eq 'directory-bound-commands') { 'command lines' } else { 'messages' }
+    $ledger = Join-Path $LedgerRoot "$metric.csv"
+    $count.Rows | Export-Csv -LiteralPath $ledger -NoTypeInformation -Encoding utf8
     Write-Host "$metric : $($count.Items) $unit across $($count.Sessions) session(s)"
     Write-Host "  match set: $($count.MatchSet -join ' | ')"
+    Write-Host "  ledger   : $ledger"
     Write-Host ''
 }
 
@@ -453,8 +578,7 @@ if ($SkipCi) {
 
 # The runs come from the paginated API with a 'created' filter, never from
 # 'gh run list --limit N'. Measured on 2026-08-16: --limit 400 reached back only to
-# 2026-08-07, which is three weeks short of this window, and it says so nowhere. A truncated
-# list produces a smaller number that looks like a measurement.
+# 2026-08-07, three weeks short of this window, and it says so nowhere.
 $runLines = & gh api -X GET 'repos/s205109/AHKFlowApp/actions/runs' `
     -f 'created=2026-07-15..2026-08-12' -f 'per_page=100' --paginate `
     --jq '.workflow_runs[] | {id: .id, head_sha: .head_sha, created_at: .created_at} | tostring' 2>$null
@@ -475,23 +599,30 @@ $runs = @($runLines | Where-Object { $_ } | ForEach-Object {
     })
 Write-Host "  ci runs returned by the API for this window: $($runs.Count)"
 
-# Duration comes from the timing endpoint. 'billable' reads 0 for this repository.
-# One API call per run, so only in-window runs are asked: an out-of-window run is dropped by
-# the classification anyway, and its duration is never read.
+# Duration comes from the timing endpoint. 'billable' reads 0 for this repository. A failed
+# call is counted rather than left as a silent zero.
+$timingFailures = 0
 foreach ($run in $runs) {
     $created = ([datetime]::Parse($run.created_at)).ToUniversalTime()
     if ($created -lt $script:WindowStart -or $created -ge $script:WindowEnd) { continue }
     $timing = & gh api "repos/s205109/AHKFlowApp/actions/runs/$($run.id)/timing" 2>$null
-    if ($LASTEXITCODE -ne 0 -or -not $timing) { continue }
+    if ($LASTEXITCODE -ne 0 -or -not $timing) { $timingFailures++; continue }
     $parsed = $timing | ConvertFrom-Json
     $duration = Get-RecordProperty -Record $parsed -Name 'run_duration_ms'
-    if ($duration) { $run.run_duration_ms = [int64]$duration }
+    if ($duration) { $run.run_duration_ms = [int64]$duration } else { $timingFailures++ }
 }
 
-$resolver = { param([string] $Sha) Get-ChangedFileFromFirstParent -RepoRoot $ClonePath -Sha $Sha }
+$resolver = { param([string] $Sha) Get-ChangedFileForRun -RepoRoot $ClonePath -Sha $Sha }
 $ci = Get-CiClassification -Runs $runs -Start $script:WindowStart -End $script:WindowEnd -Resolver $resolver
 
+$ciLedger = Join-Path $LedgerRoot 'ci-runs.csv'
+$ci.Rows | Export-Csv -LiteralPath $ciLedger -NoTypeInformation -Encoding utf8
+
 Write-Host "ci-minutes on non-.NET changes : $($ci.NonDotnetMinutes) minutes across $($ci.NonDotnetRuns) run(s)"
+Write-Host "  runs that touch .NET files : $($ci.DotnetRuns)"
 Write-Host "  runs outside the window : $($ci.OutOfWindow)"
+Write-Host "  repeated run ids skipped : $($ci.DuplicateIds)"
 Write-Host "  runs whose head_sha is not in this clone, so unresolved : $($ci.Unresolved)"
+Write-Host "  runs counted with no duration : $($ci.MissingTiming)   timing calls that failed : $timingFailures"
+Write-Host "  ledger : $ciLedger"
 Write-Host ''

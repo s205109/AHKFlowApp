@@ -1,0 +1,1830 @@
+"Id","Metric","Seed","Stratum","Key","Session","Timestamp","Fragments","Screen","Label","Text"
+"F1","handoffs","20260816","flagged","msg:msg_011Cdbq4zJM3fZ2ZNPEzUs5X","0940cbdb-5733-475c-9445-fcbe60cee446.jsonl","08/01/2026 09:57:11","4","by hand; guard; paste; over to you; login; auth","not-a-case","Branch complete. All reviews clean.
+
+```
+9b064cf4 fix: address branch review findings for no-auth frontend startup
+e91b1113 docs: fix no-auth frontend docs after profile removal
+bbefee74 chore: remove dead http (No Auth) frontend launch profile
+7054cf4d fix: keep frontend build exit code a scalar
+666c1bce feat: add run-frontend.ps1 to replace dead no-auth launch profile
+be161fa9 docs: fix backlog 047 criterion 2, same defect as criterion 1
+1ac1462c docs: renumber backlog 039 to 047, fix wrong claims
+```
+
+The re-reviewer traced the factory instead of trusting the report: `New-FrontendBuilder` is defined once at `run-frontend.common.ps1:146`, consumed by `run-frontend.ps1:240` and by test cases 5 and 6 at `RunFrontend.Tests.ps1:95`. One function, both callers — so the tests genuinely guard the shipped line now.
+
+I kept the SDD workspace rather than deleting it. The skill says delete once the final review is clean, but your verification hasn't run, and if step 1 below fails that ledger is the recovery map.
+
+## Verification — over to you
+
+**Preconditions:** Docker running (worktree SQL container), nothing else bound to ports 5602/5603. Work from `C:\Dev\segocom-github\AHKFlowApp\.claude\worktrees\no-auth-frontend-profile`. This worktree runs no-auth already, so no Azure AD login.
+
+**Step 1 — the merge gate.** Run in PowerShell:
+
+```powershell
+cd C:\Dev\segocom-github\AHKFlowApp\.claude\worktrees\no-auth-frontend-profile
+pwsh .\scripts\run-frontend.ps1 -NoAuth
+```
+
+*Expected:* it builds, prints the no-auth mode and the URL, then starts the server. It must not print ""Frontend build failed"".
+
+**Step 2 — confirm the environment actually baked in.** In a second PowerShell window:
+
+```powershell
+Select-String -Path C:\Dev\segocom-github\AHKFlowApp\.claude\worktrees\no-auth-frontend-profile\src\Frontend\AHKFlowApp.UI.Blazor\bin\Debug\net10.0\wwwroot\_framework\dotnet.js -Pattern 'applicationEnvironment'
+```
+
+*Expected:* `""applicationEnvironment"": ""NoAuth""`. **If it says `Development`, stop — the whole branch is documentation for a command that does not work**, and the `--no-build` split needs rethinking. This is the one load-bearing assumption nothing automated covers.
+
+**Step 3 — start the API.** Third window:
+
+```powershell
+cd C:\Dev\segocom-github\AHKFlowApp\.claude\worktrees\no-auth-frontend-profile
+dotnet run --project src\Backend\AHKFlowApp.API --launch-profile ""Docker SQL (No Auth)""
+```
+
+*Expected:* API listening on `http://localhost:5602`.
+
+**Step 4 — open the app.** Browse to `http://localhost:5603`.
+
+*Expected:* no redirect to Microsoft login; the user chip reads **Test User**; the Add buttons are enabled.
+
+**Step 5 — regression suite.** Once you've stopped the servers:
+
+```powershell
+pwsh .\scripts\test-fast.ps1 -Mode E2E
+```
+
+*Expected:* green, with no changes needed.
+
+**Reply with:** step 2 pasted output, step 4 screenshot, step 5 pass/fail line.
+
+If you'd rather not drive the browser by hand, start the two servers (steps 1 and 3) and say so — I'll do step 4 with `playwright-cli` and capture the screenshot myself.
+
+One thing I left for the backlog rather than widening this diff: `nginx/default.conf` still emits a `Blazor-Environment` header that .NET 10 ignores. Two reviewers disagreed on whether it needs a comment or deletion. Want me to file it?
+Branch complete. All reviews clean.
+
+```
+9b064cf4 fix: address branch review findings for no-auth frontend startup
+e91b1113 docs: fix no-auth frontend docs after profile removal
+bbefee74 chore: remove dead http (No Auth) frontend launch profile
+7054cf4d fix: keep frontend build exit code a scalar
+666c1bce feat: add run-frontend.ps1 to replace dead no-auth launch profile
+be161fa9 docs: fix backlog 047 criterion 2, same defect as criterion 1
+1ac1462c docs: renumber backlog 039 to 047, fix wrong claims
+```
+
+The re-reviewer traced the factory instead of trusting the report: `New-FrontendBuilder` is defined once at `run-frontend.common.ps1:146`, consumed by `run-frontend.ps1:240` and by test cases 5 and 6 at `RunFrontend.Tests.ps1:95`. One function, both callers — so the tests genuinely guard the shipped line now.
+
+I kept the SDD workspace rather than deleting it. The skill says delete once the final review is clean, but your verification hasn't run, and if step 1 below fails that ledger is the recovery map.
+
+## Verification — over to you
+
+**Preconditions:** Docker running (worktree SQL container), nothing else bound to ports 5602/5603. Work from `C:\Dev\segocom-github\AHKFlowApp\.claude\worktrees\no-auth-frontend-profile`. This worktree runs no-auth already, so no Azure AD login.
+
+**Step 1 — the merge gate.** Run in PowerShell:
+
+```powershell
+cd C:\Dev\segocom-github\AHKFlowApp\.claude\worktrees\no-auth-frontend-profile
+pwsh .\scripts\run-frontend.ps1 -NoAuth
+```
+
+*Expected:* it builds, prints the no-auth mode and the URL, then starts the server. It must not print ""Frontend build failed"".
+
+**Step 2 — confirm the environment actually baked in.** In a second PowerShell window:
+
+```powershell
+Select-String -Path C:\Dev\segocom-github\AHKFlowApp\.claude\worktrees\no-auth-frontend-profile\src\Frontend\AHKFlowApp.UI.Blazor\bin\Debug\net10.0\wwwroot\_framework\dotnet.js -Pattern 'applicationEnvironment'
+```
+
+*Expected:* `""applicationEnvironment"": ""NoAuth""`. **If it says `Development`, stop — the whole branch is documentation for a command that does not work**, and the `--no-build` split needs rethinking. This is the one load-bearing assumption nothing automated covers.
+
+**Step 3 — start the API.** Third window:
+
+```powershell
+cd C:\Dev\segocom-github\AHKFlowApp\.claude\worktrees\no-auth-frontend-profile
+dotnet run --project src\Backend\AHKFlowApp.API --launch-profile ""Docker SQL (No Auth)""
+```
+
+*Expected:* API listening on `http://localhost:5602`.
+
+**Step 4 — open the app.** Browse to `http://localhost:5603`.
+
+*Expected:* no redirect to Microsoft login; the user chip reads **Test User**; the Add buttons are enabled.
+
+**Step 5 — regression suite.** Once you've stopped the servers:
+
+```powershell
+pwsh .\scripts\test-fast.ps1 -Mode E2E
+```
+
+*Expected:* green, with no changes needed.
+
+**Reply with:** step 2 pasted output, step 4 screenshot, step 5 pass/fail line.
+
+If you'd rather not drive the browser by hand, start the two servers (steps 1 and 3) and say so — I'll do step 4 with `playwright-cli` and capture the screenshot myself.
+
+One thing I left for the backlog rather than widening this diff: `nginx/default.conf` still emits a `Blazor-Environment` header that .NET 10 ignores. Two reviewers disagreed on whether it needs a comment or deletion. Want me to file it?"
+"F2","handoffs","20260816","flagged","msg:msg_011CdSi4LBJEdU5fonToqvqw","303c598f-259b-44b4-bc4c-8bc6df638b8c.jsonl","07/27/2026 14:20:07","2","yourself; terminal; paste; you run; login; auth","real","Found it. Your `gh` keyring token is **corrupted** — `gh auth token` returns 12 bytes with **null bytes** in it (`ignored null byte in input`). A real token is ~40 chars with no null bytes. Those null bytes are what make the `Authorization` header invalid. No env var is involved — it's the stored keyring token. The browser re-auth during `git push` likely clobbered it.
+
+Both my `gh` and yours read that same keyring, so neither can create the PR until you re-login. Re-auth is interactive (browser), so it has to be you.
+
+**Fix — run in your pwsh terminal:**
+```powershell
+gh auth logout --hostname github.com
+gh auth login --hostname github.com --git-protocol https --web
+gh auth status
+```
+
+Once that's clean, I can create the PR from here (title/body already drafted) — just tell me it's done. Or you run it yourself:
+```powershell
+gh pr create --base main --head chore/move-plans-private --fill
+```
+
+---
+
+**Faster fallback — skip `gh`, open the PR in the browser:**
+
+https://github.com/s205109/AHKFlowApp/pull/new/chore/move-plans-private
+
+Paste this in:
+
+**Title:**
+```
+chore: move planning docs to private repo
+```
+
+**Body:**
+```
+## What
+
+Stop tracking docs/superpowers/ in this public repo.
+
+- Add docs/superpowers/ to .gitignore.
+- Untrack the folder (git rm -r --cached), files stay on disk.
+- Update AGENTS.md so agents commit plans and specs inside the folder, which is now a separate private repo (AHKFlowApp-plans).
+
+## Why
+
+Planning docs and specs move to a separate private repo. The public repo should not carry them. Full history is preserved in the private repo (extracted with git filter-repo).
+```
+
+Either path works. Which do you want — fix `gh` and I create it, or the browser link?"
+"F3","handoffs","20260816","flagged","msg:msg_011CdmPY5Jz2XVW4uaSnjB6w","4810c39a-0bbf-4ce5-8a49-7f6567438fa7.jsonl","08/06/2026 11:08:17","1","blocked; guard","real","Filed as `backlog/060-merged-cleanup-sweeps-new-empty-worktrees.md`.
+
+Content is anchored to real lines: the sweep call at `new-worktree.ps1:252`, the merged test at `cleanup-merged-worktrees.ps1:76` and `:115`, and the `-ExcludePath` limit at `:105`. It also records that this is your script, not Claude Code, so nobody re-investigates that.
+
+The file is written but not committed. Committing from main is blocked by the guard, so it needs a worktree. Two ways:
+
+**I do it** — I create a worktree, move the file there, commit, and you get a branch ready to push.
+
+**You do it** — run in PowerShell:
+
+```powershell
+pwsh .\scripts\new-worktree.ps1 -Name ""backlog-060"" -BranchName ""chore/wt-backlog-060""
+```
+
+Then move the file into that worktree and commit:
+
+```
+git add backlog/060-merged-cleanup-sweeps-new-empty-worktrees.md
+git commit -m ""docs: file backlog 060, merged cleanup deletes empty worktrees""
+```
+
+Careful with the first option though — creating that worktree will sweep `disabled-button-tooltip` (053), the one surviving worktree, for exactly the reason this item describes.
+
+Current worktree state: only `fix/wt-disabled-button-tooltip` exists. 057's is gone."
+"F4","handoffs","20260816","flagged","msg:msg_011Cda8RQmHMi1yHQuML7EBa","7694f154-9739-4c3b-b5ac-f60f1ac93baf.jsonl","07/31/2026 12:23:43","1","cannot; blocked; guard; terminal","not-a-case","Checked. Both merged — `0e20c8ec` (#235), `dbb3ed40` (#236). Commit on main is still blocked, and that is deliberate, not a gap either PR missed.
+
+## What each PR actually did
+
+**#235 relaxed everything except commit.** It split the guard into three tiers and put `git commit` alone in Tier 1b — hard denial, never a prompt. From the source:
+
+`scripts/agents/agent-worktree-guard.common.ps1:1299-1304`
+```
+# Commit dominates regardless of scan order. ... Approving an Ask here would let the
+# earlier mutation run, then commit would die at the separate pre-commit backstop, leaving the
+# owner's index staged with the agent's files - exactly the failure mode Ask must never produce.
+$isTier1b = $commitBlocks
+```
+
+So the reason is concrete: a `PreToolUse` approval cannot reach the `.githooks/pre-commit` backstop that runs afterwards. Prompting would let `git add` through, then the commit dies at the backstop and leaves your index staged with my files. Worse than denying.
+
+What #235 *did* free up: `worktree prune`, `worktree add`/`remove` unforced, `branch -d`, plain `branch <name>`, `remote prune`. Those now run from main with no prompt. Everything else got an in-session prompt instead of a silent denial. Commit was the single exception.
+
+**#236 tightened it.** It closed the `rtk` wrapper bypass — `rtk git commit -m x` used to classify as `rtk`, find no git invocation, and slip through. So commit-on-main is now *harder* than before those PRs, not easier.
+
+## The override
+
+`AHKFLOW_ALLOW_MAIN=1`, and it is currently empty in this session. It must be set in the shell **before** the session starts — the guard runs in its own process and reads the command as text, so an inline prefix never reaches it.
+
+## One correction to what I offered last turn
+
+The `!` path I suggested probably fails too. The pre-commit backstop detects agent sessions by env marker, and this session has `CLAUDECODE=1`:
+
+`.githooks/pre-commit.ps1:24`
+```
+if ($env:CLAUDECODE -eq '1') { return $true }
+```
+
+A `!` command runs inside this session, so it inherits that marker and the backstop treats it as an agent commit. The backstop *does* honour an inline prefix, though — git spawns it, so it inherits the environment. This should work:
+
+```
+! AHKFLOW_ALLOW_MAIN=1 git add .claude/backlog/041-hotkey-window-context.md .claude/backlog/042-key-rebinds-as-first-class-rows.md .claude/backlog/043-header-snippet-library.md && AHKFLOW_ALLOW_MAIN=1 git commit -m ""docs: add backlog 041-043 for hotkey context, key rebinds, header snippets""
+```
+
+I have not verified that end to end — I cannot run it without hitting the guard myself. If it fails, the guaranteed paths are a separate terminal outside this session, or restarting the session with `AHKFLOW_ALLOW_MAIN=1` already set.
+
+Say the word and I will do it in a worktree instead — three untracked markdown files, so I would recreate them there and commit from inside."
+"F5","handoffs","20260816","flagged","msg:msg_011CdKHAvU3BBztpuHrADF8Q","a1fc5113-bdf4-4f5d-9326-0cf9a0188fd0.jsonl","07/23/2026 16:09:21","1","yourself; blocked","real","All three applied. Commit command (main checkout — agent git mutations blocked, run it yourself):
+
+```bash
+git add CONTEXT.md
+git commit -m ""docs: fix Raw options claim, separate Delivery from AHK send mode
+
+Raw derives only its Trigger; option letters are parsed for validation
+then discarded, so the stored toggles never reach the script. Glossary
+claimed they were derived.""
+```
+
+Still on `docs/ahk-syntax-flags`, so this stacks with the two `ahk-v2-syntax.md` commits — one coherent docs PR.
+
+**Grilling outcome:** 3 questions, one of which I had to reopen after finding `2026-07-21-hotkey-redesign-design.md:152-168` already schedules the hotkey vocabulary for W1. Net: one real defect fixed (glossary claimed derivation that doesn't exist), one term sharpened, hotkey terms correctly deferred. No ADR — the Raw fix records ADR-0002's existing stance rather than making a new decision."
+"F6","handoffs","20260816","flagged","msg:msg_011CdkDHYZyqirJ3CENwjEsv","a9ff7000-54fc-4479-8e59-bad3790e661f.jsonl","08/05/2026 20:13:20","2","yourself","real","Prototype built, committed (`7f4dcf78`), and I ran it. Every agreed rule holds against real header text.
+
+**Run it yourself:**
+```powershell
+dotnet run --project prototypes/HeaderKeyUsePrototype
+```
+
+**What the run proved** — 18 frames, keystrokes `2hhhkkhkkk1h2hhmaq`:
+
+| Header | Keys found | Right? |
+|---|---|---|
+| Default header only | none | Yes. `#Requires`, `SendMode`, `SetWorkingDir` all skipped |
+| `capslock-modifier-layer` preset | `CapsLock` | Yes. Both `*CapsLock::` and `*CapsLock up::` merged into one key |
+| `lock-keys-off` preset | none | Yes. It is all `SetNumLockState`-style calls, no hotkeys |
+| Hand-written `CapsLock::Send ""hello""` | `CapsLock` | Yes |
+| Hand-written `^!c::Run ""calc.exe""` | none | Yes — this is the Q8 proof |
+| Hand-written `LCtrl & RAlt::MsgBox` | none | Yes |
+
+The decisive frames:
+
+```
+key C, Games header has ^!c::        →  Warning: (none)
+key CapsLock, modifiers Ctrl         →  The header templates in Work and Games also use CapsLock.
+                                        Your hotkey may not fire.
+```
+
+The first frame is Q8 working. Key-only matching would have flagged every row with key C; reading only modifier-free lines stops it. The second is Q6 working — modifiers set to Ctrl, warning unchanged.
+
+**One gap the prototype exposed, which the grilling missed.** `Profile.FooterTemplate` also lands in the generated script, and an owner can write hotkeys there just as easily. The default footer is empty (`DefaultProfileTemplates.cs:19`), so nothing ships broken today. But the design as agreed reads the header only, and a hotkey in the footer would eclipse a row with no warning at all.
+
+The fix is small — the parser takes a string, so it runs over the footer with no change, and the sentence becomes ""The header or footer template in Work…"". I did not build it, because it changes the wording you approved in Q7.
+
+Drive the prototype, then tell me whether to cover the footer. After that: spec, plan, and a new backlog item — this still does not close 042."
+"F7","handoffs","20260816","flagged","msg:msg_011Cdmii2Rqdr7QdAoTBsyzk","acec1697-a2c2-4e91-995a-776b8cb2e6d5.jsonl","08/06/2026 15:19:51","1","yourself; blocked; refuse; guard","not-a-case","Done. Gate green.
+
+## Findings
+
+| # | Finding | Verdict | Action | Proof |
+|---|---|---|---|---|
+| 1 | Codex mirror stale, 14 files | CONFIRMED | Ran `setup-cross-agent-skills.ps1` | `plugin.json` `6f0a9916f18c` → `c5d396214af8`; parity test red→green |
+| 2 | `file://` playwright check impossible | CONFIRMED | Serve-over-HTTP step added | `mp-prototype/SKILL.md:35`, `LOGIC.md:60` |
+| 3 | LOGIC.md portable-module claim wrong for .NET | CONFIRMED | ""In this repo"" section + ATTRIBUTION corrected | `LOGIC.md:60`, `ATTRIBUTION.md:81-97` |
+| 4 | Capture step ignores worktree guard | CONFIRMED | Worktree route named | `mp-prototype/SKILL.md:41` |
+| 5a | `issue-tracker.md` says ""PRDs"" | CONFIRMED | → ""specs"" | `docs/agents/issue-tracker.md:3` |
+| 5b | mp-setup generic baggage | DEFER | Backlog 062 | `backlog/062-...md` |
+| 6 | Plain English on new prose | PARTIAL | Glossed terms, prose intact | `mp-grilling/SKILL.md:29` |
+
+**Pushback on 6.** You're right that Plain English covers skill files (`AGENTS.md:94`) and that ""frontier"" is unexplained jargon. But rewriting upstream prose breaks the fork policy at `ATTRIBUTION.md:75-79` — merge alignment is the reason the pin exists. `AGENTS.md:103` prescribes the compatible remedy: *""Keep identifiers exact… Explain the term once instead.""* So I glossed ""design tree"" and ""frontier"" in plain words and left upstream sentences alone. I did **not** shorten the long upstream sentences — that part of your finding stands unaddressed by design, and the reasoning is now recorded in `ATTRIBUTION.md:94-97`.
+
+**Deferred 5b** rather than fixed: the skill is `disable-model-invocation: true`, so it never auto-fires, and trimming upstream branches is the same policy trade — a decision, not a sync side effect.
+
+I verified finding 2 myself rather than taking it on trust: `Access to ""file:"" protocol is blocked.` reproduced, and `python -m http.server 8899` + `playwright-cli goto` confirmed working.
+
+**Gate:** `SkillParity.Tests.ps1` PASS, `SkillLayout.Tests.ps1` PASS (27 skills), `git diff --check` clean. Docs/skills only — exemption 1 in `AGENTS.md:172` applies, no compiled surface touched.
+
+**Commit is blocked** — agent `git commit` in main is always refused. Two paths:
+
+**A.** I move these changes to a worktree and commit there — say go.
+
+**B.** Run it yourself in PowerShell:
+
+```powershell
+git add .agents/ docs/agents/issue-tracker.md plugins/ backlog/062-mp-setup-skill-carries-unused-tracker-branches.md
+git commit -m ""fix: address review of mp- skills sync
+
+Regenerate Codex plugin mirror (14 stale files). Adapt prototype
+LOGIC.md to .NET and to playwright's file: block. Route prototype
+capture through a worktree. Gloss grilling's new terms. Defer
+mp-setup trim to backlog 062.""
+```"
+"F8","handoffs","20260816","flagged","msg:msg_011CdvoY29omrR5vcenwg2xj","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/11/2026 10:28:41","1","cannot; refuse; guard","not-a-case","All nine addressed and cited. Three commits, tree clean, no push (LOCAL mode).
+
+## Findings
+
+| # | Finding | Verdict | Fix | Check |
+|---|---|---|---|---|
+| 1 | Intake item cannot reach worktree | CONFIRMED | `workflow.md:181` names two legal routes; the normal one creates the location first and files the item inside it | Text check; 071 itself was filed this way (`f0efe7be`) |
+| 2 | Draft PR before mandatory gate | CONFIRMED | `workflow.md:224` declares it a **pre-ready** gate; `AGENTS.md:271` now says ""before you mark a pull request ready"" | Text check |
+| 3a | Review passes with no threads | CONFIRMED | Exit string is now `Review received, all threads resolved, gate re-green` — `workflow.md:39,362`, `workflow.html:350`, `cheatsheet:184` | `parity: all green` |
+| 3b | Findings fixed inside Review | CONFIRMED | `workflow.md:363` — only non-code fixes stay in Review; code changes take the failure edge | Text check |
+| 3c | Technique named only the consumer | PARTIAL | `workflow.md:360` splits producing from handling and states the skill cannot produce a review | Text check |
+| 4 | Exemption vs canonical gate | CONFIRMED | `workflow.md:319` — the exemption replaces the **artifact** only; the gate always runs | Gate run below |
+| 5 | Drift guard unimplementable | CONFIRMED | `backlog/072:44-56` names scanned sections, scans only top-level bullets, lists ignored forms, requires a two-direction fixture | Text check |
+| 6 | 076/077 moderate but need a spec | CONFIRMED | Both now `complex` — `076:8`, `077:8` | Text check |
+| 7 | Hash is line-ending dependent | CONFIRMED | `backlog/072:36,41` — LF-normalized hashing plus `*.html text eol=lf` | Both hashes reproduced: LF `590125CF…`, CRLF `168A95B6…` |
+| 8 | Contrast failures | CONFIRMED | Text → `--text-secondary-alt` (4.55:1); focus rings → `--action-text` (8.34:1). `workflow.html:53,85`, `design-system:74,143`, `cheatsheet:75,86,48` | Measured: was 2.45/2.56/2.05/2.15; now resolves `rgb(100,116,139)` and `rgb(30,64,175)` |
+| 9 | Cheatsheet overflows 320px | CONFIRMED | `cheatsheet:113` keyboard-reachable scroll region, `:89` wrapping below 640px, `:99` print keeps nowrap | Was 421px vs 320px; now 320 vs 320, Tab reaches the container, PDF still one page |
+
+**One extra defect found while proving finding 8.** The cheatsheet's `:root` never declared `--text-secondary-alt` or `--action-text`, so both new references silently fell back — the focus ring would have been `currentColor`. Added at `cheatsheet:36,41`.
+
+## Gate
+
+All five canonical steps, run because finding 4 established they never had been:
+
+- `dotnet build --configuration Release` — 17 projects, 0 errors, 0 warnings
+- `dotnet format --verify-no-changes` — no output
+- `test-fast.ps1 -Mode PowerShell` — all 18 suites passed
+- `test-fast.ps1 -Mode Coverage` — all per-assembly thresholds met; line 94.6%, branch 82.6%
+- `git diff --check main...HEAD` and the bare form — both clean
+
+Parity `all green`, sidecar fresh, untouched AGENTS.md/CLAUDE.md sections still byte-identical to `main`, PDF one page.
+
+## Deferred
+
+- **`testing-workflow.md` gate rename** — recorded at `backlog/072:32-38`. That file is outside the wave-1 allowlist (spec §1), so it still reads ""before opening a PR"" while the other two now say ""before ready"".
+- **`.gitattributes` `*.html text eol=lf`** — recorded at `backlog/072:41`, same reason.
+
+## Two things for you
+
+1. **The spec's spine table still carries the old Review exit string.** `docs/superpowers/specs/2026-08-10-development-process-design-071.md:71` needs the same edit, and the guard refuses my write:
+
+```powershell
+$spec = 'C:\Dev\segocom-github\AHKFlowApp\docs\superpowers\specs\2026-08-10-development-process-design-071.md'
+(Get-Content $spec -Raw).Replace('| 8 | Review | All review threads resolved, gate re-green |','| 8 | Review | Review received, all threads resolved, gate re-green |') | Set-Content $spec -NoNewline
+git -C C:\Dev\segocom-github\AHKFlowApp\docs\superpowers add specs/2026-08-10-development-process-design-071.md
+git -C C:\Dev\segocom-github\AHKFlowApp\docs\superpowers commit -m ""docs: review exit string requires a review (backlog 071)""
+```
+
+2. **Commit grouping is imperfect.** `18b0913` carries the process fixes but also the contrast edits to `workflow.html` and the cheatsheet, because both kinds of change landed in the same files before I staged. Splitting them needs hunk-level staging; I judged that churn not worth the risk. Say the word if you want it rebased.
+
+Three commits sit local and unpushed: `18b0913`, `fcfae1f`, `eda434a`. Review stays the active stage — findings needing code changes took the failure edge to Execute, exactly as the corrected `workflow.md` now requires, so 071 should read `4-execute` again before these land. Want me to make that stage change and push?"
+"F9","handoffs","20260816","flagged","msg:msg_011Cdw6mb2aMPcMR7AnvMdtb","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/11/2026 14:14:24","3","cannot","real","All five private-plan claims verified verbatim — including `plan:900` ""Ship's success is the only Ship transition that never pushes"". The Critical is real and I cannot reach it.
+
+Verifying the public-side findings."
+"F10","handoffs","20260816","flagged","msg:msg_011Cdw8zFEJQ4XemN5ToKNjZ","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/11/2026 14:43:35","1","cannot; refuse; guard","real","Round 3 handled. All 39 threads resolved (`total=39 resolved=39 unresolved=0`), fixes pushed as `df6e018`, gate green.
+
+**23 confirmed, 0 pushed back. 16 fixed here, 7 I cannot reach.**
+
+Two of the 23 were defects **my round-2 fixes introduced** — the tracked-`trivial` edges and the stale context rule. I said so in the threads rather than presenting them as fresh discoveries.
+
+**The Critical is still open and it is the one that loses data.** `plan:900` still tells a resumed Ship session not to push, so the closure records would never reach the merge. The public canon is correct; the executable plan is not. Seven fixes live in `docs/superpowers`, which the guard refuses from this worktree — the exact gap backlog 076 tracks, now blocking the highest-severity finding of the round. Every edit is listed line-by-line in the PR comment so you can work from one place.
+
+**I do not think a fourth round of this shape converges, and you should decide the shape before I spend another one.** Findings have gone 9 → 16 → 23. Most of round 3's severity came not from wrong rules but from the canon having two halves where only one is reachable from where the work happens. Grinding round 4 fixes the symptoms again and leaves that intact.
+
+Two options, and I would take the first:
+
+1. **Land backlog 076 first**, then fix both halves in one pass. It is a small guard change and it removes the structural cause.
+2. **Split wave 1** — merge what is stable (design system, cheatsheet, PDF, AGENTS.md reduction) and keep `workflow.md` open on its own branch until the stage machine settles.
+
+Tell me which, or hand me the private-repo edits as done and I will run round 4 as-is."
+"F11","handoffs","20260816","flagged","msg:msg_011CdwES58tPhr77JXhbXCa4","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/11/2026 15:54:58","2","cannot; refuse; guard; copy","not-a-case","Confirmed — you are right, and it is exactly the gap I flagged. The worktree exists at `.claude/worktrees/feature-wt-076-plans-repo-guard-exception`, its branch sits on `main` (`2cba6963`), and the item is not there:
+
+```
+fatal: path 'backlog/076-...md' does not exist in 'feature/wt-076-plans-repo-guard-exception'
+```
+
+The item was filed on 071's branch and has been edited three times since (created, Difficulty → `complex`, premise correction). It has never been on `main`.
+
+I cannot fix it from here: writing into that worktree, or running `git -C` against it, is a sibling-worktree write and the guard refuses it. Run this **in the 076 worktree**:
+
+```powershell
+cd C:\Dev\segocom-github\AHKFlowApp\.claude\worktrees\feature-wt-076-plans-repo-guard-exception
+git checkout feature/wt-071-development-process -- backlog/076-guard-exception-commit-to-plans-repo-from-worktree.md
+git commit -m ""chore: bring backlog 076 onto its own branch (backlog 076)""
+```
+
+That takes the current, corrected file verbatim — the version with the measured probe table, not the wrong original.
+
+**Then one decision, because leaving it in both places is a merge hazard.** If 076 merges first and later 071 merges while still carrying `backlog/076-...md`, git sees main with the file in `done/` and 071 adding it back under `backlog/` — you end up with two copies, or a conflict.
+
+My recommendation: **the item moves to 076 and leaves 071.** One owner, no duplicate add, and 076's PR can tick its boxes and `git mv` it to `done/` the way the process expects. The cost is small — 071's Task 1 criterion says the child items were *filed*, which stays true; only the file's final home changes.
+
+Say the word once your copy commit lands and I will remove it from 071's branch and note why in `PLAN-PROGRESS.md`. Sequence matters: copy first, delete second, or the file is briefly on neither branch.
+
+The alternative, if you would rather not touch 071: leave the item there and have 076's PR change only the guard, tests and guardrails doc. 076 then completes without closing its own item, and 071 closes it later.
+
+Still outstanding for 076 regardless of which you pick: the spec needs committing to the plans repo — draft and commands are in my earlier message — since `complex` routes through Design before any code."
+"F12","handoffs","20260816","flagged","msg:msg_011CdxF36kMeKM6pj7gwZykL","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/12/2026 04:43:36","1","yourself; blocked; guard; copy; you run","not-a-case","Seven notes for round 6.
+
+## Where everything is
+
+**Worktrees** (`git -C C:\Dev\segocom-github\AHKFlowApp worktree list`):
+
+| Path | Branch | Head |
+|---|---|---|
+| `C:\Dev\segocom-github\AHKFlowApp` | `main` | `2cba6963` |
+| `…\.claude\worktrees\071-development-process` | `feature/wt-071-development-process` | `f6e1c54d` |
+| `…\.claude\worktrees\feature-wt-076-plans-repo-guard-exception` | `feature/wt-076-plans-repo-guard-exception` | `56e47e11` |
+| `…\.claude\worktrees\microsoft-learn-mcp` | `chore/wt-microsoft-learn-mcp` | `ac6c04d4` — unrelated |
+
+**The private plans repo is not branch-local.** It is one repo at `C:\Dev\segocom-github\AHKFlowApp\docs\superpowers`, symlinked into every worktree, currently on `main` at `dc197b1`. Reading it through `071-development-process\docs\superpowers\` and through the main path gives the same files.
+
+**Files under review** — all in the 071 worktree: `docs/development/workflow.md`, `workflow.html`, `ahkflow-workflow-cheatsheet.html`, `ahk-workflow.pdf`, `ahk-workflow.pdf.source.sha256`, `ahkflow-design-system.html`, plus `AGENTS.md`, `.claude/CLAUDE.md`, `docs/development/testing-workflow.md`, `docs/development/coverage.md`, `.github/PULL_REQUEST_TEMPLATE.md`, `.gitattributes`, `backlog/`, `PLAN-PROGRESS.md`. In the plans repo: `plans/2026-08-10-development-process-plan-071.md` and `specs/2026-08-10-development-process-design-071.md`.
+
+## What is new since you reviewed `bb4e93dd`
+
+```
+git diff bb4e93dd..HEAD -- docs/development/ backlog/
+git -C C:\Dev\segocom-github\AHKFlowApp\docs\superpowers show dc197b1
+```
+
+152 insertions across 7 files, plus the plan's Appendix A. **`backlog/072` changed most (67 lines) and `workflow.md` least (35)** — the inverse of every previous round, because most of round 5 was my measurements rather than the canon.
+
+## The notes
+
+**1. `backlog/072`'s baseline section is the biggest single change and is entirely new text.** I withdrew all five numbers rather than correct them a fourth time. Check whether the seven ""what a valid measurement must do"" criteria are actually sufficient and testable — that list is now the spec for work someone will do later, and it was written by the person who got the measurement wrong three times.
+
+**2. `backlog/082` is new and asserts a mechanism.** I claim a blocked file copy lets the run continue against stale assemblies, and therefore that a **green** gate can be false. Worth attacking: the evidence is a TRX with zero failing tests, a lock error naming two DLLs, 15 `dotnet` processes with one from the previous day, and a pass after `dotnet build-server shutdown` with no repo change.
+
+**3. The Pickup rescope (`workflow.md`) is where I over-generalised last time.** Round 4's fix became a rule for every stage; round 5 killed it. It is now scoped to Pickup and compares `gh pr view --json headRefOid`. Check I have not simply moved the error.
+
+**4. Cleanup changed again — fourth round running.** Deferred removal now updates memory *before* the session ends, and the leftover check is explicitly only for partial failure. It remains the highest-churn section.
+
+**5. Rounds 4 and 5 both found the plan's Appendix A stale after I had ""aligned"" it.** Both times I fixed only the lines the review named. A systematic Appendix-A-versus-canon diff has still never been done — that is the most likely place for a sixth round to find something.
+
+**6. Do not re-report** — accepted and deliberate: the `#canonical-pre-pr-gate` slug; the two `dck-verify` skills; parity manual until wave 2; the Artifact scratchpad fragment; the allowlist widenings; CI minutes marked not reproducible.
+
+**7. Gate state, honestly:** green on a clean machine, but only after `dotnet build-server shutdown`. If you run it yourself and see a coverage-threshold error, check for held DLLs before believing the number — that is finding 082, live."
+"F13","handoffs","20260816","flagged","msg:msg_011CdxZGgte16gnHzhvhN2vn","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/12/2026 08:42:24","3","refuse; guard","not-a-case","The guard refuses variable write targets. Using the Write tool for the drift fixture instead."
+"F14","handoffs","20260816","flagged","msg:msg_011Cdwav5Q8ENPVdpb8hQdcy","a5bb315e-942f-4b05-b5a8-fc7ea0f72a95.jsonl","08/11/2026 20:23:37","1","guard; copy; handover","real","All five findings CONFIRMED and fixed. The plan needs re-committing — plans repo, so a handover again.
+
+| # | Verdict | Evidence | Fix |
+|---|---|---|---|
+| 1 Dash sources | CONFIRMED | probe: `@('--','-tracked.md','dest.md')` → `dest.md` | plan `:141-189` new `Get-AgentMoveArgumentSet`; cases `:103`, `:279` |
+| 2 Array `-Path` | CONFIRMED | probe: named reader → `safe.md,` only | plan `:220` sweeps every operand + comma split + dedupe; cases `:109-110`, `:283` |
+| 3 `-t` duplicate | CONFIRMED | probe: positionals → `out\|a.txt\|c.txt` | plan `:190` reads operands from the move set; expectation `:100` now measured |
+| 4 Two missed tests | CONFIRMED | `tests/…:2151-2158`, `:2183-2190` | plan `:466` retargets both; Files list says **five** |
+| 5 Message unproven | CONFIRMED | harness `tests/…:2004-2018` asserts `Action` only | plan `:293` asserts the source path in the message |
+
+**Gate:** the corrected logic was prototyped against the real `Get-AgentGitPositionals` and `Get-AgentTargetDirectoryOption` — 18/18 cases green on pwsh 7 and Windows PowerShell 5.1. Every expectation now in the plan is copied from that run. No test suite was executed; implementation has not started.
+
+Two things the prototype caught that the review did not, both in my own proposed fix:
+
+- `Get-AgentTargetDirectoryOption` does not stop at `--` either. `mv -- -tracked.md dest.md` made it read `-tracked.md` as a clustered `-t` and return `racked.md`. So the helper returns `Options` **and** `Operands`, and the move path reads options only from before `--`.
+- `mv -vtoutdir a.txt` resolves to `dir`, not `outdir` — the cluster regex is greedy and splits on the last `t` (`agent-worktree-guard.common.ps1:1368`). Pre-existing, fails closed, left alone and recorded in the reviewer notes so nobody ""fixes"" it mid-task.
+
+I did not touch `Get-AgentGitPositionals`. It is shared with every git rule in the file; teaching it about `--` would change git classification as a side effect.
+
+## Re-save it — PowerShell, from anywhere
+
+```powershell
+$src = 'C:\Users\btase\AppData\Local\Temp\claude\C--Dev-segocom-github-AHKFlowApp--claude-worktrees-feature-wt-076-plans-repo-guard-exception\a5bb315e-942f-4b05-b5a8-fc7ea0f72a95\scratchpad\2026-08-11-plans-repo-guard-exception-plan.md'
+$dst = 'C:\Dev\segocom-github\AHKFlowApp\docs\superpowers\plans\2026-08-11-plans-repo-guard-exception-plan.md'
+Copy-Item -LiteralPath $src -Destination $dst -Force
+git -C C:\Dev\segocom-github\AHKFlowApp\docs\superpowers diff --stat
+```
+
+Read the diff, then:
+
+```powershell
+git -C C:\Dev\segocom-github\AHKFlowApp\docs\superpowers commit -am ""docs: fix move-source gaps in the 076 plan (backlog 076)""
+```
+
+This overwrites the version in `6a3b449`; `git -C … checkout --` undoes it.
+
+Task 1 grew from 10 steps to 12 and is now the substantial one — the exception in Task 2 is still nine lines. Once the plan is committed, say the word and I will start Task 1 here in the worktree."
+"F15","handoffs","20260816","flagged","msg:msg_011CdmgivGo8nyrjGQuNnANu","438bdba1-b478-4a66-a6be-ad4c124f0fd5.jsonl","08/06/2026 14:54:05","2","cannot; refuse; guard","real","You're right, and the mistake is mine. I told you the plan *needs* updating, then handed you commands as if the edit already existed. I never made that edit — this session runs in a worktree, and the guard refuses writes to `docs/superpowers`, so the file is byte-for-byte unchanged. ""nothing to commit"" is the correct answer to what I gave you.
+
+The plan still needs the round-2 record. Run this from the **main checkout** in PowerShell — it appends a section that supersedes the parts the review invalidated:
+
+```powershell
+$section = @'
+
+## What changed after review round 2
+
+Review round 2 rejected the single-signal probe. This section supersedes **Architecture**, the
+**Which signal actually works** table, the probe body in Task 1 Step 4, and **Known limits, accepted**.
+
+1. **Ref-log subjects are not provenance.** `GIT_REFLOG_ACTION` and `git update-ref -m` let the
+   caller choose that text. Measured: with `GIT_REFLOG_ACTION=commit`, running
+   `git merge --ff-only main` on an untouched branch writes `commit: Fast-forward`. The
+   single-signal probe read that as started, so `-Cleanup` would have deleted a brand-new
+   worktree — the exact bug backlog 060 reports.
+
+2. **Removal now needs two independent signals, both true.**
+   - The branch ref log holds a `commit`-prefixed subject.
+   - The branch tip is a non-first parent of a merge commit reachable from `main`, which is what
+     a GitHub ""Merge pull request"" (`--no-ff`) leaves behind.
+
+   Each covers the other's blind spot. Ref-log text can be forged, but a merge commit in `main`
+   cannot. A branch created at an already-merged tip (the `-BaseRef` shape) is structurally a
+   merged parent, but its ref log shows no commit.
+
+3. **`Test-BranchHasOwnCommits` is renamed `Test-BranchOwnWorkWasMerged`.** The guarantee is
+   narrower than the old name claimed. It answers ""was this branch's own work merged"", not
+   ""does this branch have commits"".
+
+4. **New accepted limits.** A branch merged into `main` by fast-forward leaves no merge commit,
+   so it is no longer swept. This repository requires pull requests, which merge with `--no-ff`,
+   so the common path is unaffected. Squash and rebase merges were never swept.
+
+5. **Test trap worth keeping.** Restoring `GIT_REFLOG_ACTION` to `''` is not the same as removing
+   it: an empty value makes git write `: <msg>` instead of `commit: <msg>`, which quietly breaks
+   every later test in the file. `Invoke-TestGitWithReflogAction` always removes the variable.
+'@
+
+Add-Content -LiteralPath docs/superpowers/plans/2026-08-06-worktree-cleanup-empty-branch-plan.md -Value $section
+git -C docs/superpowers add plans/2026-08-06-worktree-cleanup-empty-branch-plan.md
+git -C docs/superpowers commit -m ""update: two-signal probe after review round 2""
+```
+
+The code and the public-repo docs are already committed on the branch (`3ba22d8`) and are not affected by this."
+"U1","handoffs","20260816","unflagged","msg:3a7dc679-bb73-4c7a-9604-6dd5f5d2a50d","87dcc6b8-9b60-40e8-b465-9e4762b3b8ed.jsonl","08/12/2026 06:55:21","1","","not-a-case","No response requested."
+"U2","handoffs","20260816","unflagged","msg:f3c8f3e1-b455-4afb-af78-a87e3dbc35e2","fe734f6c-b7f8-4b6e-a011-54c5772b9b69.jsonl","08/03/2026 20:31:30","1","","not-a-case","No response requested."
+"U3","handoffs","20260816","unflagged","msg:msg_011Cd7gKvBK1W48HhYkZWUJR","ce160b15-e964-45e1-9644-817d27f7a05c.jsonl","07/17/2026 13:05:58","1","can't","not-a-case","Both findings addressed and committed (`docs: narrow interim hotkey validation claims per review`).
+
+**Accepted — finding 1 (doc overstates the guarantee):** Reworded `docs/development/ahk-v2-syntax.md` to say validation ""rejects the known-unsafe characters"" and explicitly state it is **not** a validity guarantee — `Key` isn't whitelisted, so an invalid `vk`/`sc` spec still fails at load. Applied the same correction to the comment above `HotkeyRules.ValidKey`, which had the identical overstatement (""keep the generated line valid AHK v2"").
+
+**Pushback — finding 2 (validate on restore/revert):** Accurate observation, but the proposed fix doesn't fit this codebase. Snapshot hydration bypassing validation is an existing documented design decision (`RevertHotstringCommand.cs:62`: ""Revert bypasses validation…""), and hotstring `ContextValue` has the identical raw-embedding exposure — patching only the two hotkey handlers would create an unexplained asymmetry while leaving the same hole elsewhere. The bypass also exists for a reason: history must accept shapes that current, tighter validation rejects (the legacy Script→Raw conversion depends on it). And the exposure window is bounded — unsafe snapshots can only predate the validation (the accepted pre-v1 disposable-data class); every post-landing snapshot comes from a validated write, so these paths can't reintroduce unsafe values going forward. Instead of code, the doc now names the gap honestly. If snapshot-reactivation validation is wanted, it's a cross-cutting decision (all entity types, policy for rules that tighten over time) that belongs in a follow-up.
+
+**Assumptions:** review handled locally only — nothing pushed, no PR threads touched; pre-v1 data (including history snapshots) remains disposable per the earlier decision.
+
+**Files changed:** `docs/development/ahk-v2-syntax.md`, `src/Backend/AHKFlowApp.Application/Validation/HotkeyRules.cs` (comment only). Application build clean; no behavior changed, so no test updates needed."
+"U4","handoffs","20260816","unflagged","msg:msg_011Cd7j2wJuD5L6duBRhZxHH","5ee578a0-8d14-4a82-b235-f1d50f59c8bc.jsonl","07/17/2026 13:41:22","3","","not-a-case","Mirror repaired, no `dn-*` anywhere. Committing the LSP swap."
+"U5","handoffs","20260816","unflagged","msg:msg_011Cd7nk4vnLc1GE57uaysTe","31b846b7-8943-44b5-be99-c8d0ac7d24da.jsonl","07/17/2026 14:30:16","1","","not-a-case","I'll run the branch cleanup steps."
+"U6","handoffs","20260816","unflagged","msg:msg_011Cd7paw11ux9sFQsYE5BgQ","a3f957f2-4d7b-41d7-8716-dd7b6e801fb3.jsonl","07/17/2026 14:54:07","3","","not-a-case","Now editing all four files to fully remove frontend-design."
+"U7","handoffs","20260816","unflagged","msg:msg_011Cd7ppPkxfmNEh1vhg5Y6L","a3f957f2-4d7b-41d7-8716-dd7b6e801fb3.jsonl","07/17/2026 14:57:09","2","","not-a-case","All staged correctly — everything else is untouched. Committing now."
+"U8","handoffs","20260816","unflagged","msg:msg_011Cd7q31z8VFu5m3tMncQ5N","00ffabc6-d086-434a-87fc-cb76c1ba8a6f.jsonl","07/17/2026 15:00:25","3","","not-a-case","You're in plan mode now — let me answer the naming question and finalize. Quick check on where the coverage hook is referenced in docs first:"
+"U9","handoffs","20260816","unflagged","msg:msg_011Cd7sX3L1R1dcBEJBAxreQ","bd5d4fcf-b9ca-40c4-a28a-75988fc53437.jsonl","07/17/2026 15:32:34","2","","not-a-case","Clean revert confirmed. All verification items from the plan pass. Now committing per the user's global commit-workflow instructions (commit immediately after completing implementation, before asking for review)."
+"U10","handoffs","20260816","unflagged","msg:msg_011Cd7tCNpcj6x4tDEhNVUB9","454c5cb3-8c30-4247-840c-1635768ca66b.jsonl","07/17/2026 15:41:31","3","","not-a-case","Using superpowers:brainstorming to structure this — the user explicitly asked to brainstorm prevention options. First let me verify the skill resolution chain and understand the sync mechanism."
+"U11","handoffs","20260816","unflagged","msg:msg_011Cd7tpWJaK2YwRjM8mQj1L","bd5d4fcf-b9ca-40c4-a28a-75988fc53437.jsonl","07/17/2026 15:49:39","2","","not-a-case","Now verify. First the regression suite, then the failure path (temporarily break a test), then revert."
+"U12","handoffs","20260816","unflagged","msg:msg_011Cd7u3hmkjj6x2hwaBWbwo","454c5cb3-8c30-4247-840c-1635768ca66b.jsonl","07/17/2026 15:52:46","3","","not-a-case","The hash didn't return to the original value after revert — investigating before trusting this."
+"U13","handoffs","20260816","unflagged","msg:msg_011Cd7ut13AQ1CgxzXKuuiBj","454c5cb3-8c30-4247-840c-1635768ca66b.jsonl","07/17/2026 16:03:35","1","","not-a-case","PR opened: **https://github.com/s205109/AHKFlowApp/pull/200** — two commits (plan doc + implementation), pushed with the pre-push coverage hook passing.
+
+Everything is verified working locally: your Codex cache already contains the new `0.1.0+codex.2f97d7eeb6b0` version with `impeccable` in it, so your next Codex session will pick it up regardless of when the PR merges.
+
+Next steps:
+1. Review/merge PR #200 (CI gate will run build/test/format).
+2. Start a new Codex session and confirm `impeccable` shows up in its available skills — that's the end-to-end proof."
+"U14","handoffs","20260816","unflagged","msg:msg_011Cd81qioFKtGH8iWtcAPVb","a802198a-ed47-4a09-8eb8-824bc1a0a083.jsonl","07/17/2026 17:21:49","3","","not-a-case","The PowerShell side preserves the full path with two spaces; the bash `awk '{print $1 ""  "" $2}'` truncates at the first space. Fix: replace the delimiter without tokenizing the path."
+"U15","handoffs","20260816","unflagged","msg:msg_011Cd81wtTb8xnLZYQMCTzQj","2f57b165-4dc8-416e-97b1-705aa21b2435.jsonl","07/17/2026 17:23:06","3","","not-a-case","Now I'll implement both fixes. First the hook — nested `Join-Path` (P2) plus the graceful fallback to `run-coverage.ps1` for old worktrees (P1):"
+"U16","handoffs","20260816","unflagged","msg:msg_011CdaKaojBnzMenXK3thMPz","2f76dde1-5499-4b5a-a48a-3e0ec96bec3b.jsonl","07/31/2026 14:49:49","5","","not-a-case","Now HotkeyPreview.cs, mappings, validators, conflict messages."
+"U17","handoffs","20260816","unflagged","msg:msg_011CdaMsT3SoBWEJm1sP289Q","9e0cdcfe-035d-4a63-96bd-a2ba8e0ec003.jsonl","07/31/2026 15:19:51","3","cannot","not-a-case","Plain explanation, then I'll ask again.
+
+**What you asked for:** start backlog item 042.
+
+**Why I stopped:** item 042 tells the reader not to build it yet. Its own text says: ""Deferred on purpose. Item 043 ships composite rebinds as header snippets, which works with no code change. Do not pick this up until header snippets have been in use long enough to show that rows are actually wanted."" It also rejects the cheap way of building it (adding prefix columns to hotkey rows), and it says whoever does pick it up should start from the conflict-warning problem — which is item 044.
+
+So if I just start 042, I build the thing the document argues against, and I build it before the two items it depends on.
+
+**The three items, in plain terms:**
+
+- **042 — composite key rebinds as rows.** A composite rebind makes one key act as several modifiers at once, or lets the original key press through as well. Today that cannot be stored as a row. Making it storable needs three changes (prefix characters, key-up half, multi-modifier destination), and the item argues that storing it is not the hard part. The hard part is that the app would no longer understand which keyboard the owner has, so its shortcut-conflict warnings would be wrong. Deferred.
+
+- **043 — header snippet library.** A short list of ready-made AutoHotkey blocks the owner picks from a list and drops into the profile header. One of them is ""Caps Lock acts as several modifiers at once"" — that is the composite rebind, shipped as header text instead of as a row. This is the item 042 calls ""the accepted answer for now"". It is real work: a catalog in the Application project, a query and a controller action, a Blazor picker, insert rules, a size check, and unit tests over the catalog.
+
+- **044 — remap warnings ignore the destination.** A bug in code that already ships. `KnownShortcutWarning` checks the key a hotkey is bound *to*, never where a `Remap` row *sends* it. So remapping Caps Lock to Ctrl gives every Ctrl shortcut a second way to fire, and the app says nothing. Small, UI-only, and 044 says explicitly it must not wait for 042.
+
+**My recommendation:** 044 first, because it fixes wrong behaviour in shipped code and it is the groundwork 042 asks for. Then 043, which delivers the composite-rebind capability you were after."
+"U18","handoffs","20260816","unflagged","msg:msg_011Cdap9AevyuTaVXoSJWXZ6","dc9166b9-4216-4c15-a098-fb8675fe73c0.jsonl","07/31/2026 21:04:38","2","cannot; blocked; guard; permission; auth","not-a-case","Verified core claims on this machine. Verdict: **premise sound, boundary real, but design over-scoped and has three holes.**
+
+## What I proved
+
+| Claim | Result |
+|---|---|
+| Windows sandbox actually denies writes | **True.** `codex sandbox -P read-only ... Set-Content marker.txt` → `Access to the path ... is denied`, no file created. Probe ran inside `%TEMP%`, so temp is not implicitly writable |
+| `--sandbox read-only`, `--ephemeral`, `--ignore-user-config`, `--strict-config`, `-C` parse before `review` | True — `codex exec --sandbox read-only -C . review --help` exits 0 |
+| `codex exec review` has `--base`, `--commit`, `--uncommitted` | True |
+| Cited `file:line` evidence (AGENTS.md 274-276, guard 674/700, README 38-46, hooks.json, config.toml) | All accurate |
+| Clone cost | `.git` = 9.6 MB. `--no-hardlinks` clone cheap. Working tree 5.5 GB but that's ignored `bin/obj/node_modules` |
+
+## Real holes
+
+**1. MCP servers escape the sandbox.** `--ignore-user-config` drops only `$CODEX_HOME/config.toml`. Project `.codex/config.toml` still loads from `--cd`, and it enables MudBlazor MCP with `default_tools_approval_mode = ""auto""`. MCP server processes run outside the sandboxed shell. Design says ""no writable MCP or connector configuration"" but never says how. Needs explicit `-c mcp_servers={}` plus `--ignore-rules`, and `.codex/hooks.json` in the snapshot needs handling too (hook trust).
+
+**2. Snapshot supplies its own config — self-trust loop.** For `-Uncommitted`, the snapshot contains the author's uncommitted `.codex/config.toml` and `.codex/hooks.json`. Reviewing a branch that changes Codex config means the reviewer runs under config written by the code under review. Fix: strip or override agent config in the snapshot before start.
+
+**3. Preflight as written is not implementable.** `codex sandbox` in 0.144.5 **requires** `--permission-profile`, needs a `[permissions]` table, and has no `--ignore-user-config`. My working probe was `-P read-only -c 'permissions.read-only={sandbox_mode=""read-only""}'`. Design's preflight steps 1-6 assume flags that do not exist on that subcommand. Also 0.146.0 already released — this surface churns. Add a version floor check plus the exact preflight command.
+
+**4. `GIT_OPTIONAL_LOCKS=0` will probably not reach the reviewer.** Design says ""the process inherits"" it. Codex filters child env via `shell_environment_policy`; default inherit is not ""all"". Set it explicitly: `-c shell_environment_policy.set.GIT_OPTIONAL_LOCKS=""0""`.
+
+## Wrong claim
+
+> An ordinary subagent ... inherits the parent session's effective permissions.
+
+Not true for Claude Code subagents with an explicit `tools:` list. `cavecrew-reviewer` is `Read, Grep, Bash`. Conclusion still holds — Bash can write — but the stated reason is wrong, and it matters, because it hides the cheap fix: a reviewer agent with `Read, Grep, Glob` and no Bash cannot write at all.
+
+## Over-scoped
+
+Review classification pulls in ""review a plan or specification"" and ""investigate whether reported findings are valid"". Under this policy, **this very review** would have been illegal. Reading a markdown file and answering is not the failure mode. The failure was a write-capable agent turned loose on a worktree.
+
+Also: routing every review to `codex exec review` means Claude never reviews AHKFlowApp code again. Kills `/code-review`, `custom-review-findings`, `cavecrew-reviewer`, `superpowers:requesting-code-review`. That is a very large capability loss to fix one incident, and it moves all review load onto Codex quota.
+
+## What I'd change
+
+- Narrow the trigger: hard boundary required only when the review target is **code in a live checkout or worktree**. Doc and plan reviews stay in-session.
+- Add a **second supported tier** for Claude: reviewer subagent with `Read, Grep, Glob` only, no Bash, no Edit/Write. That is a real boundary (tool allowlist, not prompt text), cheap, and keeps Claude reviews alive. Codex read-only sandbox stays the tier for reviews that need to run commands.
+- Keep everything else — snapshot pinning, manifest compare, disposable verifier, fail-closed list, cleanup path validation. That part is good and the cleanup safety tests are the right shape.
+- Drop `--sandbox read-only` from the ""callers cannot override"" list phrasing and instead make the whole argv repository-constructed with a fixed array. Already implied; make it explicit so a future `-c sandbox_mode=...` cannot slip through `-c` passthrough. **Ban caller-supplied `-c` entirely** — right now a caller could pass `-c sandbox_mode=""danger-full-access""` and the design's blocked-flag list would not catch it.
+
+Verifier clone costs a full cold `dotnet restore` + build per review. Worth a note in the doc — reviews get slow, so verification should stay opt-in, as designed.
+
+Want me to write the revised spec, or first grill the narrow-vs-broad scope question?"
+"U19","handoffs","20260816","unflagged","msg:msg_011CdbcHRfeRsBKZwJGGqUcp","0940cbdb-5733-475c-9445-fcbe60cee446.jsonl","08/01/2026 07:09:28","4","blocked; guard; auth","missed","Plan revised, but commit blocked — guard forbids agent Git mutations in the main checkout, and plan commits must happen there per CLAUDE.md.
+
+Run in PowerShell:
+
+```powershell
+cd C:\Dev\segocom-github\AHKFlowApp\docs\superpowers
+git add plans/2026-08-01-no-auth-frontend-profile-plan.md
+git commit -m ""plan: address review on no-auth frontend plan
+
+base check, wider stale-ref sweep, exit-code gate, real launcher test""
+```
+
+## Triage
+
+| # | Finding | Verdict | Result |
+|---|---|---|---|
+| 1 | P1 worktree base | CONFIRMED | Step 1 now checks `git status -sb`, stops on `ahead N`, offers push-or-`-BaseRef origin/main` |
+| 2 | `.agents/playwright-cli/SKILL.md` missed | CONFIRMED | Added to sweep + mirror script + `SkillParity.Tests.ps1` |
+| 3 | Backlog criterion names `.claude/CLAUDE.md` | CONFIRMED | Criterion 3 rewritten to name `AGENTS.md` |
+| 4 | `configuration-strategy.md:31,32` skipped | CONFIRMED | Target widened to `30-33, 138, 188` |
+| 5 | `blazor.webassembly.js` wrong file | CONFIRMED | Backlog `:21` and `SpaHost.cs:27-32` comment added |
+| 6 | `LocalAuthModeFlowTests.cs:7` | PARTIAL | Only half stale — backend `Docker SQL (No Auth)` survives. Reword, not delete |
+| 7 | No exit-code check | CONFIRMED | `$LASTEXITCODE` gate + `$repoRoot` + `Push/Pop-Location` |
+| 8 | Test doesn't test the fix | CONFIRMED | Config guard dropped; `tests/RunFrontend.Tests.ps1` with 4 cases + CI registration |
+
+## Evidence for the two I changed shape on
+
+**#5** — both files exist, so ""wrong file name"" needed proof. `_framework/dotnet.js` holds the literal `applicationEnvironment"": ""Development""`. Same grep on `blazor.webassembly.js` returns nothing — it has the reader code, not a baked value. No `blazor.boot.json` in `_framework/` at all.
+
+**#6 → PARTIAL** — the comment says ""the 'No Auth' launch profiles"", plural. `src/Backend/AHKFlowApp.API/Properties/launchSettings.json:17` still has `Docker SQL (No Auth)`, and a real ASP.NET Core host reads its env override fine. Only the frontend profile dies. Plan says reword to name worktrees + backend profile + `run-frontend.ps1 -NoAuth`.
+
+**#4 extra** — your line 31/32 call was right, and the reason is stronger than ""same header claim"": `staticwebapp.config.json` `globalHeaders` holds only security headers, and `deploy-frontend.yml:54-56` passes `-p:WasmApplicationEnvironmentName`, it does not patch that file. Both bullets are false about mechanism, not just wording.
+
+**#8 test design** — your four assertions need a seam, since repo `.ps1` tests dot-source functions (`WorktreeBaseRef.Tests.ps1:43`) and never shell out. Plan now adds `scripts/run-frontend.common.ps1` with `Invoke-FrontendLaunch -Builder <scriptblock> -Runner <scriptblock>`. Case 4 injects a failing builder and asserts the runner never fires. Also registers the file in `ci.yml:107-121` — that list is explicit, an unlisted test never runs.
+
+Your three decisions folded in as decided. Open questions section now empty.
+
+Gate: docs-only change, exemption 1. No compiled code touched.
+
+Next: commit with the block above, then create the worktree and execute.
+Plan revised, but commit blocked — guard forbids agent Git mutations in the main checkout, and plan commits must happen there per CLAUDE.md.
+
+Run in PowerShell:
+
+```powershell
+cd C:\Dev\segocom-github\AHKFlowApp\docs\superpowers
+git add plans/2026-08-01-no-auth-frontend-profile-plan.md
+git commit -m ""plan: address review on no-auth frontend plan
+
+base check, wider stale-ref sweep, exit-code gate, real launcher test""
+```
+
+## Triage
+
+| # | Finding | Verdict | Result |
+|---|---|---|---|
+| 1 | P1 worktree base | CONFIRMED | Step 1 now checks `git status -sb`, stops on `ahead N`, offers push-or-`-BaseRef origin/main` |
+| 2 | `.agents/playwright-cli/SKILL.md` missed | CONFIRMED | Added to sweep + mirror script + `SkillParity.Tests.ps1` |
+| 3 | Backlog criterion names `.claude/CLAUDE.md` | CONFIRMED | Criterion 3 rewritten to name `AGENTS.md` |
+| 4 | `configuration-strategy.md:31,32` skipped | CONFIRMED | Target widened to `30-33, 138, 188` |
+| 5 | `blazor.webassembly.js` wrong file | CONFIRMED | Backlog `:21` and `SpaHost.cs:27-32` comment added |
+| 6 | `LocalAuthModeFlowTests.cs:7` | PARTIAL | Only half stale — backend `Docker SQL (No Auth)` survives. Reword, not delete |
+| 7 | No exit-code check | CONFIRMED | `$LASTEXITCODE` gate + `$repoRoot` + `Push/Pop-Location` |
+| 8 | Test doesn't test the fix | CONFIRMED | Config guard dropped; `tests/RunFrontend.Tests.ps1` with 4 cases + CI registration |
+
+## Evidence for the two I changed shape on
+
+**#5** — both files exist, so ""wrong file name"" needed proof. `_framework/dotnet.js` holds the literal `applicationEnvironment"": ""Development""`. Same grep on `blazor.webassembly.js` returns nothing — it has the reader code, not a baked value. No `blazor.boot.json` in `_framework/` at all.
+
+**#6 → PARTIAL** — the comment says ""the 'No Auth' launch profiles"", plural. `src/Backend/AHKFlowApp.API/Properties/launchSettings.json:17` still has `Docker SQL (No Auth)`, and a real ASP.NET Core host reads its env override fine. Only the frontend profile dies. Plan says reword to name worktrees + backend profile + `run-frontend.ps1 -NoAuth`.
+
+**#4 extra** — your line 31/32 call was right, and the reason is stronger than ""same header claim"": `staticwebapp.config.json` `globalHeaders` holds only security headers, and `deploy-frontend.yml:54-56` passes `-p:WasmApplicationEnvironmentName`, it does not patch that file. Both bullets are false about mechanism, not just wording.
+
+**#8 test design** — your four assertions need a seam, since repo `.ps1` tests dot-source functions (`WorktreeBaseRef.Tests.ps1:43`) and never shell out. Plan now adds `scripts/run-frontend.common.ps1` with `Invoke-FrontendLaunch -Builder <scriptblock> -Runner <scriptblock>`. Case 4 injects a failing builder and asserts the runner never fires. Also registers the file in `ci.yml:107-121` — that list is explicit, an unlisted test never runs.
+
+Your three decisions folded in as decided. Open questions section now empty.
+
+Gate: docs-only change, exemption 1. No compiled code touched.
+
+Next: commit with the block above, then create the worktree and execute."
+"U20","handoffs","20260816","unflagged","msg:msg_011Cdbg1RKLVhejnVDko4ncG","940f9e03-411f-4270-a092-e99c062bf446.jsonl","08/01/2026 07:58:16","3","","not-a-case","Worktree missing. Create it."
+"U21","handoffs","20260816","unflagged","msg:msg_011Cdbk7edfNt7aCYpFxuiEU","0940cbdb-5733-475c-9445-fcbe60cee446.jsonl","08/01/2026 08:52:12","2","","not-a-case","Stopped. Holding here.
+
+**State**
+
+Branch head unchanged at `666c1bce`. The fix-round agent left three files modified but uncommitted:
+
+```
+ M scripts/run-frontend.common.ps1
+ M scripts/run-frontend.ps1
+ M tests/RunFrontend.Tests.ps1
+```
+
+Nothing verified — no test run, no fix report. Those edits are partial work of unknown quality. The two Critical/Important findings are still open as far as the record goes.
+
+**Committed and reviewed so far**
+
+- `1ac1462c` + `be161fa9` — backlog 039 → 047, criteria and evidence fixed. Reviewed, approved.
+- `666c1bce` — launcher script + test + CI registration. Reviewed, **needs fixes** (build always reports failure; server output swallowed).
+
+Tasks 3 (delete dead profile) and 4 (doc sweep) not started.
+
+Ledger updated with the stop.
+
+Your call on the loose edits — I can inspect them and report what's there, discard them and restart the fix round clean, or leave them alone. Say which.
+Stopped. Holding here.
+
+**State**
+
+Branch head unchanged at `666c1bce`. The fix-round agent left three files modified but uncommitted:
+
+```
+ M scripts/run-frontend.common.ps1
+ M scripts/run-frontend.ps1
+ M tests/RunFrontend.Tests.ps1
+```
+
+Nothing verified — no test run, no fix report. Those edits are partial work of unknown quality. The two Critical/Important findings are still open as far as the record goes.
+
+**Committed and reviewed so far**
+
+- `1ac1462c` + `be161fa9` — backlog 039 → 047, criteria and evidence fixed. Reviewed, approved.
+- `666c1bce` — launcher script + test + CI registration. Reviewed, **needs fixes** (build always reports failure; server output swallowed).
+
+Tasks 3 (delete dead profile) and 4 (doc sweep) not started.
+
+Ledger updated with the stop.
+
+Your call on the loose edits — I can inspect them and report what's there, discard them and restart the fix round clean, or leave them alone. Say which."
+"U22","handoffs","20260816","unflagged","msg:msg_011CdbpV7aCmEZSkbbv35mrA","940f9e03-411f-4270-a092-e99c062bf446.jsonl","08/01/2026 09:49:29","3","","not-a-case","All five tasks complete. Final whole-branch review now."
+"U23","handoffs","20260816","unflagged","msg:msg_011CdbrtobNTrfgBqseQof4R","940f9e03-411f-4270-a092-e99c062bf446.jsonl","08/01/2026 10:21:05","2","","not-a-case","PR body:
+
+```markdown
+Backlog item 046 is complete — the E2E suite now always tests a freshly published Blazor app,
+merged in #241. All four acceptance criteria are ticked, including the manual proof that a
+broken component fails the suite.
+
+File move only, no content change.
+```"
+"U24","handoffs","20260816","unflagged","msg:msg_011CdbtYbCukd1yi9cfVZeyA","0940cbdb-5733-475c-9445-fcbe60cee446.jsonl","08/01/2026 10:42:43","2","can't","not-a-case","Relaunched. Told it to inspect whatever the interrupted agent left on disk and judge it rather than trust it — and warned it that five files are *supposed* to show as modified, so it doesn't mistake the worktree-local config for partial work.
+
+Also saved this to memory so I stop treating it as a decision: a ""stopped by the user"" notification is usually your Ctrl+C trying to clear the input line. Next time I'll lead with the state and an offer to relaunch in the same message. Worth knowing — a stopped agent genuinely can't be resumed, so it's always a fresh launch, which is why inspecting leftover edits matters.
+
+Reminder for when it lands: re-run steps 1 and 4. `wwwroot` changes need a rebuild, so the frontend you have running won't pick it up. Step 2 is already banked.
+Relaunched. Told it to inspect whatever the interrupted agent left on disk and judge it rather than trust it — and warned it that five files are *supposed* to show as modified, so it doesn't mistake the worktree-local config for partial work.
+
+Also saved this to memory so I stop treating it as a decision: a ""stopped by the user"" notification is usually your Ctrl+C trying to clear the input line. Next time I'll lead with the state and an offer to relaunch in the same message. Worth knowing — a stopped agent genuinely can't be resumed, so it's always a fresh launch, which is why inspecting leftover edits matters.
+
+Reminder for when it lands: re-run steps 1 and 4. `wwwroot` changes need a rebuild, so the frontend you have running won't pick it up. Step 2 is already banked."
+"U25","handoffs","20260816","unflagged","msg:msg_011CdbZstdyTxkyKouruYMCV","0abdb818-0b0d-4e60-b3c7-a0e9beaf0afb.jsonl","08/01/2026 06:37:56","3","","not-a-case","Locked. Creating worktree, then writing spec in main checkout."
+"U26","handoffs","20260816","unflagged","msg:msg_011CdcdMyhxE48At4zsD9JjF","25340e88-9094-4fc5-a29d-243c2033f7a4.jsonl","08/01/2026 20:04:10","3","","not-a-case","Fast slice green (2690 tests). Committing."
+"U27","handoffs","20260816","unflagged","msg:msg_011CdciiQPu77pHt33fHdNMa","78f6b473-f89c-46d1-8b15-4b18b0372e52.jsonl","08/01/2026 21:14:20","2","","not-a-case","Now the prose sections that describe the changed behaviour."
+"U28","handoffs","20260816","unflagged","msg:msg_011CdcjryKeBA3epWVU4vnTz","d159cc56-2e1c-4571-add4-44db0ab0c9b4.jsonl","08/01/2026 21:29:23","2","","not-a-case","Now the override function and dead helper."
+"U29","handoffs","20260816","unflagged","msg:msg_011CdcjuN4vhrDmHyBsi5ezk","d159cc56-2e1c-4571-add4-44db0ab0c9b4.jsonl","08/01/2026 21:29:56","2","","not-a-case","Now the four remaining writers."
+"U30","handoffs","20260816","unflagged","msg:msg_011CdCw1c5tbLYtJCLiEdv3C","876c00c8-62c0-4f4e-a4bb-86e9da32c66f.jsonl","07/20/2026 07:41:25","2","permission","missed","Denied twice — permission mode blocks `git reset --hard` outright, not just needing confirm text. Won't keep retrying same call. Options:"
+"U31","handoffs","20260816","unflagged","msg:msg_011CdCw4FqZgRsufL6WenNJP","876c00c8-62c0-4f4e-a4bb-86e9da32c66f.jsonl","07/20/2026 07:42:01","3","","not-a-case","Main reset done. Verifying, then pushing branch and opening PR."
+"U32","handoffs","20260816","unflagged","msg:msg_011CdCw5svVwQuHNJasATYyL","876c00c8-62c0-4f4e-a4bb-86e9da32c66f.jsonl","07/20/2026 07:42:25","3","","not-a-case","Verified via `rtk proxy` (bypasses the flaky caching) — `main` correctly back at `9b116f8`, matches `origin/main`. Branch `chore/wt-caveman-skill` holds commit `4b97b8e`. Pushing and opening PR."
+"U33","handoffs","20260816","unflagged","msg:msg_011CdCx2avLUu3Kyw47p8Zud","45f005c7-75ba-4112-9cf9-81d6a779f357.jsonl","07/20/2026 07:55:52","4","","not-a-case","Two files left to nail the seeding path — Oid claim resolution + how worktree DB name differs."
+"U34","handoffs","20260816","unflagged","msg:msg_011CdCx7p9Tiey6NHU2ChSVV","45f005c7-75ba-4112-9cf9-81d6a779f357.jsonl","07/20/2026 07:56:58","2","login; auth","not-a-case","Two separate mechanisms. Not one thing — two.
+
+## 1. Login disabled — worktree auth override
+
+`setup-worktree-local-dev.ps1` writes a gitignored `appsettings.Development.json` in every linked worktree with `Auth:UseTestProvider=true` (backend + frontend):
+- backend `setup-worktree-local-dev.ps1:547-560`
+- frontend `setup-worktree-local-dev.ps1:526-542`
+
+Backend then wires `TestAuthenticationHandler` instead of MSAL (`Program.cs:114-135`) — auto-authenticated synthetic user, no login. Main checkout has no such file → real Azure AD/MSAL → login button live.
+
+## 2. Missing example data — lazy per-user seed + separate database
+
+Sample hotstrings NOT in a migration. Seeded **lazily, per-user, Development-only**, on first `GET /hotstrings`:
+- `ListHotstringsQuery.cs:136` calls `EnsureHotstringsSeededAsync`
+- gate `ListHotstringsQuery.cs:264` — `if (!env.IsDevelopment) return;`
+- skip-if-done `ListHotstringsQuery.cs:269` — `UserPreference.HotstringsSeededAt`
+- 12 samples `s_lazySeed` `ListHotstringsQuery.cs:69-90`
+
+Seed keyed to **owner OID** (`ListHotstringsQuery.cs:133`). Two axes differ:
+
+| | user OID | database |
+|---|---|---|
+| main | your real Azure AD oid | `AHKFlowAppDb` |
+| worktree | synthetic `11111111-1111-1111-1111-111111111111` | `AHKFlowAppDb_<branch>_<hash8>` |
+
+- synthetic OID: `TestAuthenticationHandler.cs:17,28`; resolves fine via `HttpContextCurrentUser.cs:14-16` (reads `oid` claim) → seeding *does* run for test user.
+- per-branch DB: `worktree-database.common.ps1:58-93`, connection rewritten `setup-worktree-local-dev.ps1:494-507`.
+
+So main = your real oid seeded once on a past login, data persists in `AHKFlowAppDb`. Worktree = brand-new empty per-branch DB, different user.
+
+## Why worktree still empty
+
+Seed is **lazy** — fires only on first hotstrings-list call. Fresh per-branch DB shows nothing until then. Two cases:
+
+1. **Haven't opened hotstrings page yet** (or inspected DB directly) → open the hotstrings list in the worktree app once → 12 examples auto-seed for synthetic user.
+2. **Page loads, list works, still empty** → `HotstringsSeededAt` already set for the synthetic user in that per-branch DB (e.g. you deleted the samples in an earlier run on this same branch). Marker blocks reseed permanently. Fix: clear the row.
+
+Check which:
+```sql
+-- against the per-branch DB (name in scripts/.env.worktree, key AHKFLOW_DB_NAME)
+SELECT OwnerOid, HotstringsSeededAt FROM UserPreferences
+WHERE OwnerOid = '11111111-1111-1111-1111-111111111111';
+```
+`HotstringsSeededAt` non-null + zero hotstrings = case 2. Delete that UserPreference row (or drop the worktree DB), reload hotstrings page, examples come back.
+
+Want me to check `scripts/.env.worktree` for the exact DB name so you can query it?"
+"U35","handoffs","20260816","unflagged","msg:msg_011CdCxwKk16jc9nufQsUmgz","876c00c8-62c0-4f4e-a4bb-86e9da32c66f.jsonl","07/20/2026 08:06:42","3","copy","not-a-case","`.claude/skills/` has no caveman symlink — so the committed copy isn't what makes caveman work. Confirming the real source."
+"U36","handoffs","20260816","unflagged","msg:msg_011CdCy1YSMLQ2RGNxQHtMhY","45f005c7-75ba-4112-9cf9-81d6a779f357.jsonl","07/20/2026 08:07:45","4","","not-a-case","Reproduction task. Loading process + mechanics skills."
+"U37","handoffs","20260816","unflagged","msg:msg_011CdD22ij6zPCrPm3Xp9Xpn","876c00c8-62c0-4f4e-a4bb-86e9da32c66f.jsonl","07/20/2026 08:47:16","2","","not-a-case","Fixed — matches raw git exactly now. Confirming real `git add` still works and savings elsewhere are intact."
+"U38","handoffs","20260816","unflagged","msg:msg_011CdD2mpKuB2d7wswdJcwLy","876c00c8-62c0-4f4e-a4bb-86e9da32c66f.jsonl","07/20/2026 08:57:03","3","blocked; permission","not-a-case","`rm -rf` is blocked by permissions — leaving the probe repo in the session scratchpad (isolated, disposable). Starting the upgrade."
+"U39","handoffs","20260816","unflagged","msg:msg_011CdD2YtZ3Cx88JTYdyxkfa","45f005c7-75ba-4112-9cf9-81d6a779f357.jsonl","07/20/2026 08:54:03","2","","not-a-case","Writing the test double that interleaves the competing seeder."
+"U40","handoffs","20260816","unflagged","msg:msg_011CdD3arjpZZnQs6nrAuS6Y","876c00c8-62c0-4f4e-a4bb-86e9da32c66f.jsonl","07/20/2026 09:07:45","3","","not-a-case","Bug 3 test was invalid — that probe repo has no `.gitignore`, so no patterns to misread. Re-testing both properly in the real repo."
+"U41","handoffs","20260816","unflagged","msg:msg_011Cdd4sFh71SBZfkzr5wQCS","19d172da-1805-4bb2-b008-77ee6263526c.jsonl","08/02/2026 01:38:38","6","","not-a-case","Spec read. Now verifying source before writing plan."
+"U42","handoffs","20260816","unflagged","msg:msg_011CdDemJbfvxG5qiN6YbPQi","bf66aba0-79f3-44f6-9eb1-874aaa803175.jsonl","07/20/2026 16:49:11","3","","not-a-case","`pwsh -NoProfile -File` costs ~1.8 s before our first line runs — the plan's 650 ms candidate budget is unreachable by construction. Applying the fast-path win first, then I'll stop and report."
+"U43","handoffs","20260816","unflagged","msg:msg_011CdDhHCjGqB3FqkTtVqztn","e1595808-c30d-4ad9-ad03-11881a35e892.jsonl","07/20/2026 17:21:51","2","","not-a-case","466 pass. Commit."
+"U44","handoffs","20260816","unflagged","msg:msg_011CdDjNJbcqp46MLbscG5TC","3c87f603-e8dd-4b95-84c8-f3ee06261472.jsonl","07/20/2026 17:49:30","4","","not-a-case","Impeccable needs its context gates (PRODUCT.md/DESIGN.md). Running its read-only loader to see what brand/design context the project has — informs the color decisions. Checking for the script and context files."
+"U45","handoffs","20260816","unflagged","msg:msg_011CddRFVz2Pq2mUm1yk6rwz","d159cc56-2e1c-4571-add4-44db0ab0c9b4.jsonl","08/02/2026 06:05:55","3","","not-a-case","P2 CONFIRMED — and it duplicates `parent` too, not only `child`; `a` is lost. Now P3."
+"U46","handoffs","20260816","unflagged","msg:msg_011CddS7ugC9zEHH6b3FdJBV","d159cc56-2e1c-4571-add4-44db0ab0c9b4.jsonl","08/02/2026 06:17:30","1","cannot","not-a-case","Both findings fixed and committed (`5663f360`).
+
+| # | Finding | Verdict | What changed | Test |
+|---|---|---|---|---|
+| 1 | P2 — shared missing ancestors lose edits | CONFIRMED | New `New-JsoncMemberLiterals` merges members sharing a missing ancestor into one section, recursively | `WorktreeJsonEdit.Tests.ps1:447,472,489,499,506,510` |
+| 2 | P3 — unsupported-value errors omit path and offset | CONFIRMED (broader) | Both the replace path and the insert path now wrap writer failures with the edit label and offset | `WorktreeJsonEdit.Tests.ps1:517,522` |
+
+**Fixed**
+- P2 — `scripts/worktree-json.common.ps1:643` (`New-JsoncMemberLiterals`), wired in at `:720` and `:729`. Grouping by first name preserves edit order; a name wanted by more than one edit recurses one level deeper. Your repro now yields `{""a"":1,""b"":2}` under a single `parent.child`.
+- P3 — `scripts/worktree-json.common.ps1:825` (replace) and `:674` (insert). Message is now `Cannot apply JSON edit 'Cors.AllowedOrigins' at offset 0: ConvertTo-JsonLiteral cannot write a value of type '...'`.
+
+Two notes on your report, both in your favour:
+
+- P2 was one level worse than described. With `parent.child.a` and `parent.child.b`, the output duplicated **`parent`** as well as `child` — the whole chain was re-rendered per edit, not just the shared tail.
+- P3 was not confined to `:764`. The insert path reaches `ConvertTo-JsonLiteral` through `New-JsoncChainLiteral`, so it produced the same context-free message. I fixed both sites; a fix at `:764` alone would have left the insert path bare.
+
+One judgment call you did not ask for: I made ""same name used as both a value and a parent"" (and two edits writing the identical missing path) a hard `Conflicting JSON edits` throw rather than picking a winner. Silently choosing is what caused this bug. It matches the existing overlap check at `:837`.
+
+**Pushed back:** none.
+**Deferred:** none.
+
+**Gate** — the repo's documented gate from `docs/development/testing-workflow.md`, not a fallback: Release build 0 errors/0 warnings; `dotnet format --verify-no-changes` clean; coverage 94.4% line / 81.5% branch, all thresholds met; both PowerShell test files pass on pwsh 7 and Windows PowerShell 5.1. Worktree clean.
+
+Next: push and open the PR."
+"U47","handoffs","20260816","unflagged","msg:msg_011CddTCGN7wiq2UZSi8XXFX","62f9fdcf-c70b-4467-b84c-e35cf83c7ca7.jsonl","08/02/2026 06:31:28","4","","not-a-case","Plan read. Fresh ledger, 4 tasks."
+"U48","handoffs","20260816","unflagged","msg:msg_011CddTj4Rtn4ME5cqHqANGq","d159cc56-2e1c-4571-add4-44db0ab0c9b4.jsonl","08/02/2026 06:38:23","3","","not-a-case","Exit 0 but 26 pending — re-checking live state."
+"U49","handoffs","20260816","unflagged","msg:msg_011CddTxj2yJcnXTEQvzcefc","62f9fdcf-c70b-4467-b84c-e35cf83c7ca7.jsonl","08/02/2026 06:41:28","2","","not-a-case","Task 1 clean. Task 2 — desktop grid."
+"U50","handoffs","20260816","unflagged","msg:msg_011CdDusgk6w8AMN8kVEVcDk","3c87f603-e8dd-4b95-84c8-f3ee06261472.jsonl","07/20/2026 20:07:02","4","","not-a-case","Now the lazy-seed path."
+"U51","handoffs","20260816","unflagged","msg:msg_011CdDuyDebrmU6Z6Qf5LkzG","1ba20ce2-5726-4f45-8dcd-3082e9389118.jsonl","07/20/2026 20:08:35","3","","not-a-case","Found a real latent bug while fixing: `-contains` on a string never matches, so the escape branches never fired."
+"U52","handoffs","20260816","unflagged","msg:msg_011CddVVMTAtrJW2syC1Md7F","d159cc56-2e1c-4571-add4-44db0ab0c9b4.jsonl","08/02/2026 07:01:36","1","","not-a-case","Done. `squashMergeAllowed: false`.
+
+| Setting | Before | After |
+|---|---|---|
+| squashMergeAllowed | true | **false** |
+| mergeCommitAllowed | true | true |
+| rebaseMergeAllowed | true | true |
+| deleteBranchOnMerge | true | true |
+
+The settings now agree with the rule that was already rejecting squash merges. The squash button disappears from the PR UI instead of appearing and then failing, and `gh pr merge --squash` fails at the client with a clear reason.
+
+I left rebase enabled — you only asked about squash. Note that rebase merge has the same effect on your atomic commits as a merge commit does (it keeps all seven), so it isn't a problem for the convention; it just loses the merge commit that groups them. Say the word if you want it off too, leaving merge commit as the single path.
+
+Reverting is one command if you change your mind: `gh repo edit s205109/AHKFlowApp --enable-squash-merge`.
+
+Two loose ends from earlier:
+1. The worktree cleanup (`pwsh .\scripts\cleanup-merged-worktrees.ps1` from the main checkout) — still not run.
+2. This session edited nothing under `~/.claude`, so there's nothing to commit there."
+"U53","handoffs","20260816","unflagged","msg:msg_011CdDwqwhCFpru67RbGAiTg","3c87f603-e8dd-4b95-84c8-f3ee06261472.jsonl","07/20/2026 20:32:55","3","paste","not-a-case","Light theme confirmed — the `color-mix` against theme variables adapts correctly (light pastels + dark text here, dark tints + light text before), with no dark-mode selector needed. Edit cancelled cleanly.
+
+Testing the filtered-empty state:"
+"U54","handoffs","20260816","unflagged","msg:msg_011CddxB3mwNbMCUnBaL9qWA","8b37dfdf-212f-4f0a-a7bf-62e718e6a459.jsonl","08/02/2026 12:51:31","2","","not-a-case","Decision recorded: delete.
+
+## Design
+
+**Change** — one file, `src/Frontend/AHKFlowApp.UI.Blazor/nginx/default.conf`:
+
+1. Delete `add_header Blazor-Environment ""Local"" always;` at line 10.
+2. Rewrite the comment above it so it only states what is true — local config is baked into `appsettings.json` at image build time by the Dockerfile, which strips the env-specific files.
+3. Delete the same `add_header` at line 34, inside the long-cache `location` block.
+
+**Why line 34 is safe.** In nginx, a `location` block that declares its own `add_header` drops all inherited `add_header` values from the parent. That block already declares `Cache-Control`, so it never inherited anything from line 10 anyway. Removing line 34 only removes the header itself. `Cache-Control` on line 33 is untouched.
+
+**Nothing else changes.** No Dockerfile change, no `appsettings.Local.json` change. `WasmApplicationEnvironmentName` stays the only environment selector.
+
+**Verification** — acceptance criterion 3 wants proof the container path still serves the right configuration. Docker build plus a live check, since there is no test that covers image contents:
+
+1. `docker compose build ui` (or `docker build` on the frontend Dockerfile).
+2. Run the container, `curl` `/appsettings.json`, confirm it equals `wwwroot/appsettings.Local.json`.
+3. `curl -I` a fingerprinted `.js` asset, confirm `Cache-Control: public, max-age=604800` is still sent and no `Blazor-Environment` header appears.
+
+I capture the output in the PR.
+
+**Also in the same PR** — tick the acceptance boxes in `.claude/backlog/049-nginx-emits-dead-blazor-environment-header.md` and `git mv` it into `.claude/backlog/done/`.
+
+Look right? On approval I write the spec and plan and commit them from the main checkout."
+"U55","handoffs","20260816","unflagged","msg:msg_011CddXiQEhYVPt9tNRVyXcS","62f9fdcf-c70b-4467-b84c-e35cf83c7ca7.jsonl","08/02/2026 07:30:41","2","","not-a-case","All 4 tasks green. Final whole-branch review."
+"U56","handoffs","20260816","unflagged","msg:msg_011CdDzaCpBiADzavXot6iB7","1ba20ce2-5726-4f45-8dcd-3082e9389118.jsonl","07/20/2026 21:08:38","1","","not-a-case","`worktree-powershell-tests: pass` — the new denial-message assertion holds on a clean runner, including the line-wrap fix. Waiting on `build-test` and `Test Results`."
+"U57","handoffs","20260816","unflagged","msg:msg_011CdE23BJ2GvYu9nyPSiWCe","3c87f603-e8dd-4b95-84c8-f3ee06261472.jsonl","07/20/2026 21:27:57","3","","not-a-case","Verifying finding 3 by confirming only the one call site opts in:"
+"U58","handoffs","20260816","unflagged","msg:msg_011Cde8pCxHZpTK39cYie3Ew","8759691c-da18-45d7-9a7f-08ae325ed815.jsonl","08/02/2026 15:11:10","2","","not-a-case","Continue now. Me recommend not clearing.
+
+Reason: plan needs per-task exactness the spec summarizes but does not carry. Biggest one is `HotstringEditDialog.razor` — 48K file where me already know which ~200 lines matter (preview block 219-257, fields 380-411, methods 750-976). Fresh session re-reads that plus `HotkeyEditDialog.razor` (778 lines), both CSS files, and the two test suites to write the same steps. That re-read costs about what my current context costs. No saving, plus risk of missing a divergence me already mapped.
+
+Context not near a limit either — me read roughly 3k lines total, most of it small files.
+
+Case for clearing would be: spec fully self-contained and next step is mechanical. Spec is well-cited but the difference table is a summary, not the code.
+
+Writing the plan now."
+"U59","handoffs","20260816","unflagged","msg:msg_011CdeE5bUNTjsQd3AftimXS","0f4c0897-a458-4ba2-96ed-d894a9248282.jsonl","08/02/2026 16:20:01","2","","not-a-case","Now the pending state, with a 3s delay on the preview call."
+"U60","handoffs","20260816","unflagged","msg:msg_011CdEshsffdUMGqiKTXMuGo","8a18d6ed-18b8-45fc-a057-540738e87be3.jsonl","07/21/2026 08:19:11","2","","not-a-case","Example verified against the real API."
+"U61","handoffs","20260816","unflagged","msg:msg_011CdETieD2YV5oue5RsaC4A","e6dbc649-846e-4fbf-855f-e20024190281.jsonl","07/21/2026 03:04:38","3","","not-a-case","All new + existing pass. Confirm full green on both suites (no FAIL lines)."
+"U62","handoffs","20260816","unflagged","msg:msg_011CdEtujfQqDqNmVpj7Ktii","8a18d6ed-18b8-45fc-a057-540738e87be3.jsonl","07/21/2026 08:35:03","1","guard","missed","PR #206 open: https://github.com/s205109/AHKFlowApp/pull/206
+
+Docs-only, one line, based on current `origin/main`. CI should be quick — the Windows job now runs the guardrail Pester suites from #205, unrelated to this diff.
+
+Two loose ends from earlier, both yours to run:
+
+1. Your local `main` is still stale at `5b88857` — `git checkout main && git pull` when convenient.
+2. After that pull, `scripts/agents/setup-cross-agent-skills.ps1` to install the guard with the absolute `core.hooksPath`. Until then the guardrails aren't actually active in this checkout, despite #205 being merged."
+"U63","handoffs","20260816","unflagged","msg:msg_011CdeYusE6R3t8zEGyjNa56","0f4c0897-a458-4ba2-96ed-d894a9248282.jsonl","08/02/2026 20:27:10","3","","not-a-case","Root cause found — a pre-existing bug in the test's stub, not my changes.
+
+`StartupErrorRootTests.cs:73`:
+```csharp
+bool available = devAvailable || devCalls >= devAvailableFromCall;
+```
+With `devAvailable: false` and the default `devAvailableFromCall = 1`, the first call gives `1 >= 1` → **true**. So config becomes valid immediately, the component sets `_reloading` and swaps the markup. The test only passes when `cut.Markup` is read before the 10ms poll completes — it lost that race under the pre-push build load.
+
+Confirming it is untouched by this branch."
+"U64","handoffs","20260816","unflagged","msg:msg_011CdFhabG5pyZBoaz8NN1JU","c5c2aac3-50dd-4f6a-8450-4e8f0d3b5555.jsonl","07/21/2026 18:47:10","5","","not-a-case","Using the writing-plans skill to create the implementation plan.
+
+**Scope call first** — the skill's scope check applies here. Writing bite-sized TDD steps for W1–W4 now would mean inventing signatures for code W0 hasn't shaped yet, which the skill forbids (""references to types, functions, or methods not defined in any task""). Waves are sequential and each is its own PR, so each gets its own plan written against the code that actually landed.
+
+So: **W0 in full detail now** (what you execute next), plus a roadmap fixing W1–W4 gates. Reading the real signatures first."
+"U65","handoffs","20260816","unflagged","msg:msg_011CdFk9To29RR48Fvez1457","e7ca05da-9075-406c-aa9d-f8a93fee9251.jsonl","07/21/2026 19:20:49","2","","not-a-case","Read both files. Backlog already did design work — brainstorming would re-derive it. Recommend: **implement approach 3 directly**, TDD.
+
+**Why 3 beats 1 and 2**
+
+.NET 10 gives clean pre-send detection that backlog assumed was fuzzy:
+
+- `HttpRequestException.HttpRequestError` — `ConnectionError` / `NameResolutionError` / `SecureConnectionError` all prove request never left client.
+- 403-HTML stopped-app page — App Service front end, origin never saw it. This *is* the warm-up case, so warm-up survives for writes with zero extra latency. Approach 2 pays a probe round-trip for that same coverage.
+- Method available in predicate: `args.Outcome.Result?.RequestMessage?.Method`, and `args.Context.GetRequestMessage()` when exception (no response).
+
+Approach 1 (idempotency key) stays the durable fix but costs API + storage; not worth it while only one POST exists.
+
+**One real open decision** — which retry causes stay allowed for unsafe methods:
+
+| Cause | Safe method | Unsafe method |
+|---|---|---|
+| Connect/DNS/TLS `HttpRequestException` | retry | retry — pre-send |
+| 403-HTML stopped app | retry | retry — front end, not origin |
+| 504, 502 | retry | **no** — origin may have committed |
+| `TimeoutRejectedException` | retry | **no** — request was in flight |
+| 408 | retry | **no** — server saw request |
+| 429 | retry | ? — rejected without processing per spec, but proxies lie |
+
+429 is the only genuine coin-flip. I'd say **no retry on unsafe** — conservative, and CLI hits no rate limiter today.
+
+**Plan if you agree**
+
+1. `ShouldRetry` gains `HttpMethod?` param; split into safe-cause set vs pre-send-only set.
+2. Wire method extraction in `CliHttpClientBuilderExtensions`.
+3. Tests in `AHKFlowApp.CLI.Tests` counting requests at a stub handler: POST + 504 = 1 request; POST + stopped-app 403 then 201 = 2 requests, succeeds; GET + 504 = retries unchanged.
+
+Want me to go? Or grill the 429 call first."
+"U66","handoffs","20260816","unflagged","msg:msg_011CdFwsv42vY6hf3oCWxhjo","90253ec2-99da-406a-88f0-602322022bf3.jsonl","07/21/2026 21:54:41","1","needs you","not-a-case","Wave 0 done. All 7 tasks landed, reviewed, ledgered. Final whole-branch review (opus): **Ready to merge = Yes**, zero Critical/Important.
+
+## What landed — 9 commits on `feature/wt-hotkey-redesign`
+
+| Commit | Change |
+|---|---|
+| `54a3625` | shared `AhkEscaping` helper (backtick-first, one owner) |
+| `fc8b5c4` | `HotkeyEmitter` escapes params at emission — **closes escaping half of #195** |
+| `ed01c14` | canonical `HotkeyKeys` registry + role flags + vk/sc |
+| `64bf18e` | `HotkeyDefinition` record replaces 10-arg positional factories |
+| `87302e0` | registry-backed Key validation + canonicalize-on-write |
+| `ce35f5a` | Update-side alias-dup regression test (review fix) |
+| `da47c45` | relax param denylist — **closes #195** |
+| `4e59836` | API tests expect canonical casing (Task-5 regression fix) |
+| `6814a81` | docs: escaping + pre-Wave-1 action semantics |
+
+## Definition of Done — gate green
+- Build Release: 0 errors, 0 warnings
+- Full suite (Docker): Domain 35, Application 1005, Infrastructure 19, API 169, CLI 197, UI 476, E2E 15, TestUtilities 8 — all pass
+- `dotnet format --verify-no-changes`: clean
+- Migration diff vs main: empty (no schema change, as required)
+
+## Not done — needs you
+- **Manual AHK v2 load check** (DoD item): app never runs `.ahk`, so the #195 repro (create `^a::Send` with `he said ""hi"" 100\`%`, download profile, run in AutoHotkey v2, confirm no error dialog) is a human step.
+
+Two review notes worth a glance, both non-blocking: handlers ignore `TryCanonicalize`'s bool return (safe — validator runs first, but the invariant is invisible at the call site); dev seed rows stay non-canonical by design (cosmetic).
+
+**Next steps:**
+1. Run the manual AHK v2 load check, then
+2. Open the PR to `main` (or say the word and I'll draft it — `closes #195` is already in `da47c45`). Merge is your call from the main checkout.
+
+Want me to add the one-line invariant comment at the two `TryCanonicalize` call sites before you PR, or leave as-is?"
+"U67","handoffs","20260816","unflagged","msg:msg_011Cdfym2JTHeU3gjvNfdhAQ","c948ce81-96de-4d44-b46e-b5710a2e8ca9.jsonl","08/03/2026 14:33:31","2","by hand","not-a-case","Root cause: worktree not clean, so cleanup skips it.
+
+`cleanup-merged-worktrees.ps1:117-122` requires `git status --porcelain` empty. Worktree has one untracked file:
+
+```
+?? keep.txt
+```
+
+Content: `Placeholder file. Keeps this worktree from looking empty.` — no script in repo creates it (grep for `keep.txt` = zero hits), so it was made by hand or by an agent.
+
+Branch itself is fine: `git branch --merged main` lists `feature/wt-040-known-shortcuts-mobile-layout`. Merge check passes, clean check fails.
+
+Fix — delete the file, then rerun cleanup. PowerShell:
+
+```powershell
+Remove-Item C:\Dev\segocom-github\AHKFlowApp\.claude\worktrees\040-known-shortcuts-mobile-layout\keep.txt
+pwsh .\scripts\cleanup-merged-worktrees.ps1 -Cleanup
+```
+
+Want me do it?"
+"U68","handoffs","20260816","unflagged","msg:msg_011Cdg5NvypEfG8a2CZt59wu","a71ad773-a30c-4020-b316-ebaf96b4f2e7.jsonl","08/03/2026 15:47:08","2","","not-a-case","Now the implementation plan."
+"U69","handoffs","20260816","unflagged","msg:msg_011CdGbCzW1wYofyRs5j5M2e","7a22bbdd-55a8-43cb-92f5-5e3a3ce9bc7f.jsonl","07/22/2026 06:04:01","3","","not-a-case","All fields correct, including Parameters verbatim. Finding the commit button:"
+"U70","handoffs","20260816","unflagged","msg:msg_011CdGbgLb1N9ZJAKmsGgnat","7a22bbdd-55a8-43cb-92f5-5e3a3ce9bc7f.jsonl","07/22/2026 06:10:17","3","needs you","not-a-case","None handled. Plan untouched since `fc05aeb` — my two commits after it were the `TryCanonicalize` comment and the AHK-syntax doc, neither touching the plan.
+
+All five still open:
+
+| # | Question | Status |
+|---|---|---|
+| 1 | Two migrations vs one | open |
+| 2 | Legacy Send→Raw body escaping (O2) | open — **now has evidence** |
+| 3 | SendKeys classify in migration T-SQL (O3) | open |
+| 4 | `HotkeyAction` retirement home | open |
+| 5 | Worktree ports | open — **now answerable** |
+
+Today's work moved two of them without anyone deciding:
+
+**Q2 — evidence for your ""escaped"" default.** The download I pulled emits `^a::Send(""he said `""hi`"" 100``%"")`, and you loaded that green in AHK v2. Choosing the spec's pre-W0 unescaped text would change bytes that are now verified-working. Your default is the safe one; it just needs your yes.
+
+**Q5 — measured, not guessed.** This worktree's `launchSettings.json`: API `5602`, UI `5603`, SQL `14330`. Matches spec §11, contradicts AGENTS.md's 5600/5601. Checking whether that's a worktree offset or a stale doc:"
+"U71","handoffs","20260816","unflagged","msg:msg_011CdgD1x2uWwASdKYTKVJTy","a71ad773-a30c-4020-b316-ebaf96b4f2e7.jsonl","08/03/2026 17:28:05","3","cannot","not-a-case","All findings verified. Triage:
+
+| # | Finding | Verdict | Evidence |
+|---|---|---|---|
+| 1 | Comment/string braces bypass scanner (`; {`) | **CONFIRMED** | design §4 step 3 counts braces on every line; AHK ignores comment braces |
+| 2 | Block comments `/* */` wrongly rejected | **CONFIRMED** | official `Language.htm` — `/*` … `*/`, and `*/` only closes when alone on its line |
+| 3 | Pattern omits `Up` key-up hotkeys | **CONFIRMED** | `Hotkeys.htm`: `^!r Up::MsgBox …`, `F1 & e Up::`, `*LWin Up::` |
+| 4 | Pattern prose omits leading indentation | **PARTIAL** | draft regex had `^[ \t]*`; the design prose dropped it. Fix = write the anchored pattern out |
+| 5 | Verification omits UI flow | **CONFIRMED** | `AGENTS.md:160`; `HotkeyPreviewEndpointsTests.cs` and `HotkeysCrudFlowTests.cs` both already exist |
+| 6 | ""while the owner types"" unqualified | **CONFIRMED** | `HotkeyEditDialog.razor:613-616` — preview runs only when `_previewExpanded` |
+| 7 | Test matrix misses mutations | **CONFIRMED** | `MsgBox(""a::b"")` is not definition-shaped, so it cannot kill the line-0 rule |
+| 8 | Message wrong for a hotstring line | **CONFIRMED** | your wording adopted |
+| 9 | `(x > 1)` continuation claim contradicts `IsContinuationOpener` | **CONFIRMED** | `OpenerIsExpression` (`RawHotstringDefinitionParser.cs:326`) returns true for it — my limitation text was wrong |
+| 10 | "".NET rejects leading unescaped `]`"" is false | **CONFIRMED** | ran it: `[regex]::new('[];]')` compiled, matched `]` and `;` |
+| 11 | Missing `[GeneratedRegex]` .NET 10 citation | **CONFIRMED** | plan-proof rule requires it |
+| 12 | Commit split violates atomic-commit rule | **CONFIRMED** | `AGENTS.md:263` — ""feature + its tests = one commit"" |
+
+One correction of my own, found while verifying #5: the Raw body field's `HelperText` (`HotkeyEditDialog.razor:178`) enumerates the Raw rules — ""Braces must balance; # directives are rejected."" It becomes incomplete, so this **is** a frontend edit. My ""no frontend code change"" claim was wrong."
+"U72","handoffs","20260816","unflagged","msg:msg_011CdgJwnYjvnmXJfBHbGqgA","a71ad773-a30c-4020-b316-ebaf96b4f2e7.jsonl","08/03/2026 18:45:03","2","","not-a-case","Now the E2E test. Look at the existing CRUD flow file to match style, selectors and fixture."
+"U73","handoffs","20260816","unflagged","msg:msg_011CdGLvkFCAU5tgSk2PuH8z","58938ff6-4dbb-43d4-adef-020aa3d4d076.jsonl","07/22/2026 02:56:45","3","","not-a-case","Wrong noise — grep the target spec only."
+"U74","handoffs","20260816","unflagged","msg:msg_011CdGm8VrtVWzme9tBsHBtt","6d1c9754-f8c9-42af-b1dc-6e09b02685f7.jsonl","07/22/2026 08:14:10","3","","not-a-case","Grid mechanics confirmed: both pages hand-roll inline edit via `IsEditing(context.Item)` CellTemplate swapping, `ReadOnly=""true""` on the grid. And backend Task 6 **removes** `ParametersFilter` and the `""parameters""`/`""action""` sort keys — so the current Parameters column loses its filter and sort regardless."
+"U75","handoffs","20260816","unflagged","msg:msg_011CdGo439ubgynTFMwkxWaV","6d1c9754-f8c9-42af-b1dc-6e09b02685f7.jsonl","07/22/2026 08:39:27","3","","not-a-case","Important divergence. Only the backend plan doc differs — all source files are identical, so my code facts hold. But `feature/wt-hotkey-redesign` has moved to 718b816 with a **newer** backend plan (+257/−75) than this worktree has."
+"U76","handoffs","20260816","unflagged","msg:msg_011CdGoC5Y11mS7dAHWdKpCC","6d1c9754-f8c9-42af-b1dc-6e09b02685f7.jsonl","07/22/2026 08:41:20","3","","not-a-case","Corrected picture — 4b5a3f4 is a **merge** of origin/main into the sibling branch (not a rebase), so it carries #207 plus the reviewed backend plan. This branch has zero unique commits and is a strict ancestor, so a fast-forward is non-destructive and reversible (`git reset --hard 0909f09`). Doing it so the UI plan gets written next to the correct backend plan:"
+"U77","handoffs","20260816","unflagged","msg:msg_011CdGp2MZkLXmUvDwHo2YAJ","26e03c00-a443-4e13-8737-3022e247e6e2.jsonl","07/22/2026 08:52:22","3","permission; login","not-a-case","Got the facts. Answering, then applying.
+
+**Current frequency: no timer at all — purely event-driven.** Your script runs on session start/resume, and after that only when:
+
+- a new assistant message arrives
+- `/compact` finishes
+- permission mode changes
+- Vim mode toggles
+
+Debounced at 300ms. That's why `touch test.txt` didn't move it — no assistant message fired in between. The statusline is effectively ""updates when I speak.""
+
+**But there are two clocks**, and only one is the harness's:
+
+| Segment | Gated by | Current |
+|---|---|---|
+| dirty `*`, `↑N` ahead | nothing — computed fresh every run | live |
+| `↓N`, `⇣N·main` | my detached `git fetch` throttle | 300s |
+| usage bars | usage API cache | 60s |
+| login name | profile cache | 120s |
+
+So `↑`/`*` are already instant per render; the behind-counts can lag up to 5 min regardless of how often the script runs.
+
+The fix for the harness clock is `refreshInterval` (seconds, min 1)."
+"U78","handoffs","20260816","unflagged","msg:msg_011CdGpLijyAFMbthgjhUHhj","26e03c00-a443-4e13-8737-3022e247e6e2.jsonl","07/22/2026 08:56:23","3","","not-a-case","Baseline captured. But it now shows `↑1 ⇣1·main` where minutes ago it was clean — checking whether that's real state or a bug in my code."
+"U79","handoffs","20260816","unflagged","msg:msg_011CdGq6pZgzr78GwjdQQw3F","6d1c9754-f8c9-42af-b1dc-6e09b02685f7.jsonl","07/22/2026 09:06:17","3","","not-a-case","Caught another gap. `.add-hotkey` calls `StartAddAsync`, which today creates an **inline** row — but a new hotkey must choose a kind, and kind is dialog-only. My plan never said what Add does after the collapse. Verifying:"
+"U80","handoffs","20260816","unflagged","msg:msg_011CdGqoQvHA3TJaNHDj3PLU","8948c44b-052c-47bd-86c7-80c556b0e916.jsonl","07/22/2026 09:15:25","2","","not-a-case","```
+fix: use exec form for worktree hooks, path placeholder unsubstituted in shell form
+
+Desktop worktree checkbox failed: ${CLAUDE_PROJECT_DIR} not substituted in
+WorktreeCreate/WorktreeRemove hook commands (shell form). Docs recommend exec
+form (command+args) for hooks referencing path placeholders.
+```"
+"U81","handoffs","20260816","unflagged","msg:msg_011CdGrzQPT6pBRSrG8WeA4u","6d1c9754-f8c9-42af-b1dc-6e09b02685f7.jsonl","07/22/2026 09:31:00","2","","not-a-case","Now the same scoping bug in the dialog CSS, plus the KeyPicker not refreshing the preview:"
+"U82","handoffs","20260816","unflagged","msg:msg_011CdGtQmsZfAtFFkFe1SFnv","8948c44b-052c-47bd-86c7-80c556b0e916.jsonl","07/22/2026 09:49:37","3","","not-a-case","Both mutations caught and reverted. Registering the new suite in CI."
+"U83","handoffs","20260816","unflagged","msg:msg_011CdGueidcCQPFkwoc7UR96","8948c44b-052c-47bd-86c7-80c556b0e916.jsonl","07/22/2026 10:05:55","3","","not-a-case","Skill defers to AGENTS.md, no wider list to conflict. Restricting to the documented three — no docs expansion needed."
+"U84","handoffs","20260816","unflagged","msg:msg_011CdGYqajTVjRSrkbLfQnzF","7a22bbdd-55a8-43cb-92f5-5e3a3ce9bc7f.jsonl","07/22/2026 05:32:57","2","paste; need you","not-a-case","Two answers.
+
+**Once per Ctrl+A press — correct.** Hotkey fires one time per press. No repeat. Nothing wrong.
+
+**The backtick in output — need your exact stored value.** Two cases:
+
+- Param stored as `he said ""hi"" 100%` (no backtick) → output should be `he said ""hi"" 100%`. Backtick in output = bug.
+- Param stored *with* a literal backtick → output backtick is arguable, but see below.
+
+Paste the exact Parameters value from the UI/DB and the exact generated line from the `.ahk`.
+
+**Real gap I hit while checking** — `HotkeyEmitter` emits `Send(""..."")`, hotstrings emit `SendText ""...""`. `Send` applies a **second** parsing layer that `SendText` does not: it re-interprets `` ` `` `!` `^` `+` `#` `{` `}` in the runtime string.
+
+`AhkEscaping.EscapeStringLiteral` only covers the string-literal layer. So:
+
+| Stored param | Ctrl+A actually does |
+|---|---|
+| `a+b` | sends `a`, **Shift**, `b` |
+| `50% off!` | `!` swallowed as Alt-modifier |
+| `` 100`% `` | backtick eaten as escape, prints `100%` |
+| `{note}` | `{note}` parsed as a key name |
+
+`SendText` has none of that. #195 escaping fix is correct at the literal layer but stops one layer short for `Send` action.
+
+Two options, your call:
+
+1. Switch `HotkeyAction.Send` to emit `SendText(""..."")` — literal, matches hotstring behavior, fixes all four rows. Behavior change: users who *wanted* `^{Enter}` from a Send hotkey lose it.
+2. Keep `Send`, add a second escape pass for `!^+#{}` and document Send as key-sequence semantics, not text.
+
+Recommend 1 — ""Send"" param in this app has always read as text, and hotstrings already set that precedent. But it's a Wave 1 semantics decision, not a Wave 0 bug — Wave 0 gate stays green either way.
+
+On your earlier question: I'll add the one-line invariant comment at the two `TryCanonicalize` call sites — cheap, no behavior change. Say the word and I'll do it plus whichever Send option you pick."
+"U85","handoffs","20260816","unflagged","msg:msg_011CdHarK6NpAocTQ4tHjuTk","61f4b3ba-af8e-46eb-acde-43759212326d.jsonl","07/22/2026 18:40:00","1","","not-a-case","Task 11 review and Task 10 fixes both running. I verified the destructive parts myself first:
+
+- **Migration `Up`** — exactly two `DropColumn`s, nothing swept in.
+- **`Down`** — re-adds both columns *nullable* with an explicit note that values are unrecoverable. That's the honest choice: restored rows read as `NULL` rather than a plausible-looking `Send`/`""""` pair that older code would mistake for real data.
+- **Entity** — legacy properties gone.
+- **`HotkeySnapshot`** — both legacy members survive as optional trailing params, typed against the relocated enum, so old history JSON still deserializes.
+- **No source leftovers** — every remaining hit is a `bin/` build artifact.
+
+One thing for your deploy checklist: **this migration is irreversible in practice.** Take a database backup before it runs on TEST or PROD — `Down` restores structure, not data."
+"U86","handoffs","20260816","unflagged","msg:msg_011CdHBFfhU7J7EMDT7V4Yt4","61f4b3ba-af8e-46eb-acde-43759212326d.jsonl","07/22/2026 13:30:33","1","","not-a-case","Task 5 agent resumed from its transcript — finishing verification, format, commit. Will report when it lands, then continue to Task 6.
+
+Recap of where the plan stands:
+
+| Task | State |
+|---|---|
+| 1 enums | `e077f57` ✅ |
+| 2 registry modifiers + remap roles | `5cb7b09` ✅ |
+| 3 token grammars | `51f0c69` + `bd34df8` ✅ |
+| 4 expand: typed columns, converter, Migration A, parity | `d257b63` + `afeb163` ✅ (Critical truncation bug caught + fixed) |
+| 5 per-kind emitter | resuming, uncommitted |
+| 6–12 | pending |"
+"U87","handoffs","20260816","unflagged","msg:msg_011CdHfcuexN8qqmazvvfbLa","61f4b3ba-af8e-46eb-acde-43759212326d.jsonl","07/22/2026 19:42:29","2","","not-a-case","Both committed, tree clean. Reading the verification verdicts."
+"U88","handoffs","20260816","unflagged","msg:msg_011CdhgL8y8LAruKtaC8SfhN","3e8315af-5f45-4726-b3d3-23a6fbf0bd11.jsonl","08/04/2026 12:06:05","1","","not-a-case","Done. Worktree + branch `fix/wt-051-hotkey-raw-body-inline-error` ready, session inside it. Bug not trivial (behavior/UI change) — need brainstorm+plan next per CLAUDE.md before touching code. Want that started?"
+"U89","handoffs","20260816","unflagged","msg:msg_011CdhjXfdGQBme751QBzjTb","48f6e3f8-5ae1-4fbd-89fa-771f21e47719.jsonl","08/04/2026 12:48:16","3","","not-a-case","MudBlazor XML docs don't settle whether blur cancels the armed debounce timer. Settling it empirically — that's the only real evidence."
+"U90","handoffs","20260816","unflagged","msg:msg_011CdhkqfLmc3PVyNoDh7WEn","2c5b4ee3-ee0f-420b-8ce9-b75ee1d6200a.jsonl","08/04/2026 13:05:13","2","","not-a-case","Worktree first, plan later per project rule. Bug small, single-file scope — plan not needed here per exemption."
+"U91","handoffs","20260816","unflagged","msg:msg_011CdhLfhe78iRt2YKg4jcSa","9baa8e1a-1db9-445f-8faa-76b6f808eeae.jsonl","08/04/2026 07:48:22","2","yourself; manually; by hand; terminal","not-a-case","**prototype** — throwaway code to answer one design question, not real code, thrown away after.
+
+Two branches:
+- **LOGIC** (`LOGIC.md`) — question about state/business logic (""does this state machine handle edge case X""). Builds tiny interactive terminal loop: pure reducer/state-machine module + thin TUI shell around it. No I/O in the logic module — TUI just calls it. Answer captured, logic module lifted into real code, TUI shell thrown away.
+- **UI** (`UI.md`) — question about layout (""what should this page look like""). Renders 3 (max 5) structurally-different variants on the same route behind `?variant=`, switchable via floating bottom bar. Winner folded into real page, rest binned onto a throwaway branch.
+
+**Use in this repo:**
+- LOGIC fits a small standalone console app (`dotnet run` on a scratch project, or `dotnet script`) exercising a state model before writing it for real — e.g. sanity-check hotstring/hotkey profile-scoping legality, or `#HotIf` condition combinations, before touching the emitter. Rules already say runtime execution of `.ahk` is out of scope — this stays pure C#/state, no AHK execution, so it's fine.
+- UI fits MudBlazor page redesigns — e.g. the stale `051-hotstrings-mobile-branch-stale` mobile dashboard work. Variants render inside the real `.razor` page behind a `?variant=` query param (`NavigationManager` + `[SupplyParameterFromQuery]`), switcher gated `#if DEBUG` so it never ships. Good before committing to one MudBlazor layout.
+- Low-frequency skill — only fires when you're stuck picking between options on paper. Not every feature needs it.
+
+**research** — spins a background agent to investigate a question against primary sources only (official docs, source code, specs — not blog summaries), writes findings + citations to one Markdown file in the repo, following existing doc conventions.
+
+**Use in this repo:** this is close to what you already do manually for AHK v2 docs (`reference_ahk_docs_source` memory — 403 on autohotkey.com, pull via `gh api` on AutoHotkeyDocs repo). This skill formalizes that: e.g. ""research what `#HotIf` output syntax variants AHK v2.1 supports"" → agent reads official docs, writes `docs/development/ahk-v2-<topic>.md` with citations, you read the result instead of doing the `gh api` digging yourself. Also fits Azure/MSAL config questions, EF Core provider behavior — anywhere you'd otherwise WebFetch docs by hand mid-task. MudBlazor already has a dedicated MCP tool, so lower value there specifically.
+
+Both are low-risk adds — no overlap with anything installed, and both slot into work you already do ad hoc."
+"U92","handoffs","20260816","unflagged","msg:msg_011CdhMB6LQx9qwXJjhbGpZx","9baa8e1a-1db9-445f-8faa-76b6f808eeae.jsonl","08/04/2026 07:55:00","1","","not-a-case","Files added, nothing committed yet. Verified `plugins/ahkflowapp/skills/mp-{prototype,research}` mirror byte-for-byte matches `.agents/`. Want commit now, or add `resolving-merge-conflicts` too first?"
+"U93","handoffs","20260816","unflagged","msg:msg_011CdhPF5a86czoCB3pwwDNx","3f4cc8f3-603a-49bc-a83f-0bade9b7fe82.jsonl","08/04/2026 08:21:59","2","","not-a-case","Fix landed at e010d30. Scoped re-review."
+"U94","handoffs","20260816","unflagged","msg:msg_011CdHQkPQkYJftuMJADL9rc","61f4b3ba-af8e-46eb-acde-43759212326d.jsonl","07/22/2026 16:27:37","3","","not-a-case","Task 6 review running in background. Starting Task 7 — it closes the validation gap Task 6 opened."
+"U95","handoffs","20260816","unflagged","msg:msg_011CdhQxRBLvVsD23rGxFHVa","3f4cc8f3-603a-49bc-a83f-0bade9b7fe82.jsonl","08/04/2026 08:44:29","2","","not-a-case","Both slices green (Fast: 2814 passed, E2E: 44 passed). Detecting environment."
+"U96","handoffs","20260816","unflagged","msg:msg_011CdHXvj2Jcm8cZ2p8nTGCm","61f4b3ba-af8e-46eb-acde-43759212326d.jsonl","07/22/2026 18:01:44","3","","not-a-case","Diagnosis corrected: that test asserts `reverted.Action == HotkeyAction.Run` and `Parameters == ""wt.exe""` — the *legacy* fields, which Task 6 made vestigial and Task 8 stopped recording. Not a Task 9 regression (their conclusion was right), but not ""unrelated pre-existing"" either — it's a direct consequence of this wave, and Task 11 will break its compile entirely."
+"U97","handoffs","20260816","unflagged","msg:msg_011CdHZaWE3Mnin1U9cLWMqw","61f4b3ba-af8e-46eb-acde-43759212326d.jsonl","07/22/2026 18:23:19","3","","not-a-case","Task 10 review: two real Important findings. But Task 11 is actively editing files right now (the enum doc already shows its edits), so I won't run a concurrent editor against the same test project — I'll queue the Task 10 fix until Task 11 lands."
+"U98","handoffs","20260816","unflagged","msg:msg_011CdHZCHViBdJF5tSova3MA","61f4b3ba-af8e-46eb-acde-43759212326d.jsonl","07/22/2026 18:18:14","2","","not-a-case","Now Task 11 — the contract phase. This is the irreversible one: it drops the legacy columns and retires the enum."
+"U99","handoffs","20260816","unflagged","msg:msg_011Cdi9L3HDi5FfguxqoK5fm","3f15fef8-9ba3-45d2-9573-33dd860f9086.jsonl","08/04/2026 18:00:08","1","","not-a-case","Worktree made, switched in. Path: `.claude\worktrees\wt-043-header-snippet-library`.
+
+Next per CLAUDE.md: write spec+plan from main checkout (not here) before touching code — backlog item never trivial."
+"U100","handoffs","20260816","unflagged","msg:msg_011CdiMTScWLo7bV8a3K54v3","d081d03c-5e2b-4666-8aee-7e47920e8117.jsonl","08/04/2026 20:39:10","3","","not-a-case","Skip the task tool — it's for background task tracking, not plan todos. I'll track progress via the ledger. Proceeding to dispatch Task 1."
+"U101","handoffs","20260816","unflagged","msg:msg_011CdiUKM5UX1PisKpPnppeC","d081d03c-5e2b-4666-8aee-7e47920e8117.jsonl","08/04/2026 22:09:06","2","","not-a-case","Dispatching final whole-branch review on the most capable model, with the deferred-minors list from the ledger for triage."
+"U102","handoffs","20260816","unflagged","msg:msg_011CdJCi8ZaonhSnKoQiWy7b","08904441-5ccc-4276-8f39-2d306a9f75dc.jsonl","07/23/2026 02:30:12","3","","not-a-case","Document the migration exception in the converter (legacy spelling preserved verbatim):"
+"U103","handoffs","20260816","unflagged","msg:msg_011CdJCQ965vwJZWqKrBWjBS","08904441-5ccc-4276-8f39-2d306a9f75dc.jsonl","07/23/2026 02:26:09","3","","not-a-case","Now examine HotkeyKeys — need canonicalization helpers for SendKeys/RemapDest tokens."
+"U104","handoffs","20260816","unflagged","msg:msg_011CdJCWYdbiPReGcEj2oVux","08904441-5ccc-4276-8f39-2d306a9f75dc.jsonl","07/23/2026 02:28:06","4","","not-a-case","Check existing token/validator tests to co-locate new unit tests."
+"U105","handoffs","20260816","unflagged","msg:msg_011CdjKL2RneK99hUsk4Hsgs","d081d03c-5e2b-4666-8aee-7e47920e8117.jsonl","08/05/2026 08:51:55","3","","not-a-case","Backend commands look right. Let me check the frontend — how the hotstring editor sends the flag."
+"U106","handoffs","20260816","unflagged","msg:msg_011CdK4BzdL4gFZyQRS16dju","2e976eef-7e8e-47a6-9071-d6a97af82d79.jsonl","07/23/2026 13:19:03","1","","not-a-case","Task 4 reviewer dispatched. Awaiting, then Task 5 (typed edit model) — the mid-plan checkpoint task."
+"U107","handoffs","20260816","unflagged","msg:msg_011CdKGZdY5smc2u3zCHqFCx","a1fc5113-bdf4-4f5d-9326-0cf9a0188fd0.jsonl","07/23/2026 16:01:26","3","","not-a-case","Facts checked. Found a concrete conflict between the glossary and the code. Question 1 of the grilling:
+
+**The claim.** `CONTEXT.md` says twice that Raw *derives* its options:
+- **Raw** (line 34): ""derives its Trigger **and options** from the definition text""
+- **Options** (line 46): ""a Raw definition carries them as flag letters inside the definition text, **from which they are derived**""
+
+**What the code does.** Verified this session:
+- `CreateHotstringCommand.cs:80-81` — Raw takes **only** `Trigger` and the lifted comment from the parse.
+- `RawParseResult` (`RawHotstringDefinitionParser.cs:22-32`) *does* expose `OptionTokens`, but they're used **only** for validation (rejecting unknown tokens). Nothing maps them to `IsCaseSensitive` / `IsTriggerInsideWord` / `IsEndingCharacterRequired` / `OmitEndingCharacter`.
+- Those four booleans on a Raw hotstring come straight from `input.*` — whatever the client sent.
+- And they're **inert**: the emitter returns the stored definition verbatim (`ahk-v2-syntax.md:166`), so they never reach the script.
+
+So for Raw, options are **parsed and validated, then discarded** — not derived. The stored booleans are dead data that can silently contradict the definition text. ADR-0002's ""definition text is the single source of truth"" is what actually holds.
+
+This isn't an AHK-docs finding — it's a glossary/code contradiction the docs research surfaced. It's also the only one I'd call a genuine defect in `CONTEXT.md`."
+"U108","handoffs","20260816","unflagged","msg:msg_011CdkvnwF5VFQAkqSeFKq5r","af18a02f-2b5d-4a9d-8976-c0962967a104.jsonl","08/06/2026 05:18:24","4","","not-a-case","Triage first — reading the code each finding points at."
+"U109","handoffs","20260816","unflagged","msg:msg_011CdKVYhAqyGMAVYgwyxBYJ","23eb2980-f0b7-4596-8e48-64414a9081d3.jsonl","07/23/2026 18:51:36","3","","not-a-case","Task 11 edits are in the working tree, uncommitted — the 6 target files. Implementer died before committing. Inspecting the actual changes."
+"U110","handoffs","20260816","unflagged","msg:msg_011CdLefAsCbHPLws73rpJ7W","fa13a69a-fe78-439b-aed0-e46cf740b719.jsonl","07/24/2026 09:31:59","4","","not-a-case","Approved. First I'll ground the spec in the project's own AHK reference + the Raw-escape ADR, so the emitted syntax is airtight — then write the doc, then grill."
+"U111","handoffs","20260816","unflagged","msg:msg_011CdLeqTHhVE3k8SbQBY4pK","fa13a69a-fe78-439b-aed0-e46cf740b719.jsonl","07/24/2026 09:34:19","3","can't","missed","Plan mode is on now — I can't commit the spec yet (I'll persist the spec + plan to the repo once you approve and we exit plan mode). But grilling is just hard questions, so I can do that now. You explicitly asked for it — loading the skill."
+"U112","handoffs","20260816","unflagged","msg:msg_011CdLhcYzEfwG1CFJ5PVmni","a01c5f69-386a-477e-adea-74a22163b802.jsonl","07/24/2026 10:11:11","3","","not-a-case","All 7 findings verified against source. All target the committed spec+plan docs (the deliverable under review). Fixing docs now."
+"U113","handoffs","20260816","unflagged","msg:msg_011CdLpjYp5ZRBNwDxcC7ScW","6aff0bf6-285a-4f4b-a264-cb4bf0186ed4.jsonl","07/24/2026 11:43:47","2","","not-a-case","Push branch + open PR."
+"U114","handoffs","20260816","unflagged","msg:msg_011CdLPtRFzmLinEzz2TApu5","6d55ef97-f654-449d-bd66-ddc65efc2616.jsonl","07/24/2026 06:17:58","2","","not-a-case","Efficiency agent back: 9 findings. Waiting on reuse, simplification, altitude before applying (dedup first)."
+"U115","handoffs","20260816","unflagged","msg:msg_011CdLRbidXZs3eyrJoc42ED","6d55ef97-f654-449d-bd66-ddc65efc2616.jsonl","07/24/2026 06:40:23","2","","not-a-case","Now the dialog. Reading the regions the agents flagged:"
+"U116","handoffs","20260816","unflagged","msg:msg_011CdLRZ2KZf1cK4rYdwUscX","6d55ef97-f654-449d-bd66-ddc65efc2616.jsonl","07/24/2026 06:39:47","2","","not-a-case","Now `HotkeyEditModel` — the dictionary-of-records-of-delegates that two callers read:"
+"U117","handoffs","20260816","unflagged","msg:msg_011CdLSgpZyPT36xYEfF1kYa","6d55ef97-f654-449d-bd66-ddc65efc2616.jsonl","07/24/2026 06:54:51","1","auth","not-a-case","Done. 4 agents, 39 findings, deduped and applied.
+
+## Fixed (29339d6)
+
+**Reuse** — create/update/preview each restated the typed action as 8 loose `Func<T,…>` selectors, 6 lines of canonicalization, and a 16-arg `HotkeyDefinition` build. The three DTOs already had matching members, so an internal `IHotkeyDraft` they satisfy with zero mapping code collapses all three into one rules call plus one `ToDefinition`. Transposing two `string?` selectors no longer compiles. Also: `IsValidSendToken` replaces a double registry lookup; validate + normalize now share one SendKeys prefix split.
+
+**Dead code** — `PreviewDebounce` and every debounce branch in the hotkey dialog (all 12 call sites passed `false`; MudBlazor's `DebounceInterval` does the real work), plus the 8 test lines configuring that dead seam. `IHotkeyKeyCatalog.IsLoaded`. The `Ctrl/Alt/Shift/Win/AppliesToAllProfiles` list filters orphaned when the diff removed `BoolFilter` from the grid.
+
+**Simplification** — `FieldOwnership`'s dictionary-of-records-of-delegates → two switch expressions; the dialog's `KnownFields` now derives from them instead of hand-restating nine names.
+
+**Efficiency** — memoized the catalog's per-role projection (was re-filtering + re-sorting ~110 entries on every keystroke, per open picker); page init fetches profiles/categories/keys concurrently instead of three serial round trips; `KeyPicker` materializes matches once; chip attribute dictionaries hoisted to statics (a fresh dictionary per render reads as ""changed"" to MudChip); dropped `ISNULL` from five search columns.
+
+Verified: build 17 projects / 0 warnings, **2981 tests pass — identical to the baseline I took first**, `dotnet format` clean.
+
+## Skipped → backlog 036 (3c1aeab)
+
+- **Preview machinery extraction** (flagged by 2 agents, ~120 duplicated lines incl. byte-identical CSS) — requires refactoring `HotstringEditDialog`, outside the diff.
+- **`ApplyFieldErrors` → shared `MapFieldErrors`** — same reason.
+- **`DefaultHotkeyCatalog` authored in the retired legacy shape** — mechanical, but the honest version forces a decision about whether ""Maximize window"" should keep seeding as `SendKeys {Up}` rather than the `Window` kind.
+- **`LegacyHotkeySnapshotConverter` → migration** — large, and genuinely a judgment call.
+
+Two more I rejected rather than deferred: normalizing legacy snapshots on the wire would undo the deliberate ""Legacy"" labeling from 6972f90; and caching `ComboLabel`/`Summary` per row buys little while adding derived state to invalidate.
+
+One thing worth your eye: an agent noted the modifier checkboxes don't call `ClearSaveError` while the four field handlers do. That's a behavior question, not a cleanup one, so I left it — and it looks correct as-is, since `Ctrl/Alt/Shift/Win` aren't in `KnownFields` and never receive routed errors."
+"U118","handoffs","20260816","unflagged","msg:msg_011CdLz4ofcvVtfJJn4GVFAi","1ee46794-bcb6-41f5-9354-f9c4a6835213.jsonl","07/24/2026 13:46:13","2","guard","not-a-case","Committed `eeb92fc`.
+
+**Accepted fixes** (all 4 valid):
+
+| # | Fix |
+|---|---|
+| P1 | Spec §1/§3/Files-touched now include frontend `WindowOp.cs` mirror (`SnapLeft=5`/`SnapRight=6`); dropdown enumerates that type — domain-only change left 5/6 absent + label cases uncompilable. |
+| P3 | SnapRight width `r - (l + (r-l)//2)` — reaches right edge on odd work-area width. |
+| P2 warn | Warning scoped to **Win+Arrow** (your pick); wording Aero-Snap-specific; noted `Send ""#e""` proves injected Win fires some shortcuts. Testing bullet updated. |
+| P2 doc | `ahk-v2-syntax.md` Window row + new prose block cover the two block-bodied snap ops + primary-monitor behavior. |
+
+**Pushbacks:** none — all findings held.
+
+**Assumptions:** warning trigger = Win+Arrow only (confirmed by you). No PR/remote touched, no product code (spec governs future implementation).
+
+**Files changed:**
+- `docs/superpowers/specs/2026-07-24-window-snap-and-win-send-guardrail-design.md`
+- `docs/development/ahk-v2-syntax.md`
+
+Next: push branch + open PR when spec looks good, or start implementation from the corrected spec."
+"U119","handoffs","20260816","unflagged","msg:msg_011CdLzdtwnm5EtnW9bqd1yL","1ee46794-bcb6-41f5-9354-f9c4a6835213.jsonl","07/24/2026 13:53:38","2","","not-a-case","Committing."
+"U120","handoffs","20260816","unflagged","msg:msg_011CdLziCqRtAA98YsnQRB3P","1ee46794-bcb6-41f5-9354-f9c4a6835213.jsonl","07/24/2026 13:54:40","1","","not-a-case","Committed `ed3342e`.
+
+Added spec §5 — SendKeys was unrepresented after snap rows moved to Window/Raw. Two working no-Win samples:
+
+| Sample | Hotkey | Emits |
+|---|---|---|
+| Play / pause media | Ctrl+Alt+P | `$^!p::Send(""{Media_Play_Pause}"")` |
+| Select current line | Ctrl+Alt+K | `$^!k::Send(""{Home}+{End}"")` |
+
+Route: existing `Legacy(… HotkeyAction.Send …)` helper (valid token → `SendKeys` kind). No new helper/category. Keys P/K free of Ctrl+Alt bindings. Excluded from parity mirror.
+
+Reconciled counts: catalog 17→**19**, pagination →**24** (Testing bullet lists every affected test). Cross-referenced sibling sample spec so it isn't stale.
+
+Next: push branch + PR when spec looks good, or implement the two specs."
+"U121","handoffs","20260816","unflagged","msg:msg_011Cdm11sPyXDqpiqfTDNJR5","c2850db6-b050-4372-abc1-eaf5961f52ec.jsonl","08/06/2026 06:13:06","3","","not-a-case","Ticking criteria requires two gaps covered first: ""modifiers still warn"" and ""never blocks saving"". Adding both."
+"U122","handoffs","20260816","unflagged","msg:msg_011CdM1gZGoz9c7FB9FjQpLF","1ee46794-bcb6-41f5-9354-f9c4a6835213.jsonl","07/24/2026 14:07:23","3","","not-a-case","Building to catch compile errors, then running the seed/emit tests."
+"U123","handoffs","20260816","unflagged","msg:msg_011Cdm48MKX2ZNXVgVzEELHa","c2850db6-b050-4372-abc1-eaf5961f52ec.jsonl","08/06/2026 06:53:42","2","","not-a-case","Now the failing tests for finding 1 and 3."
+"U124","handoffs","20260816","unflagged","msg:msg_011Cdm6RNXQYQXpvfKS5MXRa","cca6f400-559a-46cf-9d0c-55560b5e8c65.jsonl","08/06/2026 07:23:46","2","","not-a-case","Red (23). Implementing the grammar."
+"U125","handoffs","20260816","unflagged","msg:msg_011Cdm7F4TYdd3Jdi8ktWMF9","c2850db6-b050-4372-abc1-eaf5961f52ec.jsonl","08/06/2026 07:34:36","3","","not-a-case","Splitting: the prototype deletion and backlog/doc housekeeping don't belong in the fix commit."
+"U126","handoffs","20260816","unflagged","msg:msg_011Cdm8Xz9gNNFJ6gSDqSjiN","cca6f400-559a-46cf-9d0c-55560b5e8c65.jsonl","08/06/2026 07:51:29","2","","not-a-case","Test needs the real repo identity — the entrypoint derives it from its own location, not the fixture."
+"U127","handoffs","20260816","unflagged","msg:msg_011CdmA3zDrEMMSoSCk7YJ31","cca6f400-559a-46cf-9d0c-55560b5e8c65.jsonl","08/06/2026 08:11:38","2","cannot; refuse; guard; copy","not-a-case","PR body, in full:
+
+```
+## What
+
+A shell command run from a worktree-isolated agent session can no longer write, move, or delete a
+path that resolves under the main checkout. Closes backlog 054.
+
+## The two-mechanism finding
+
+Backlog 054 recorded that `git` and the `Edit`/`Write` tools were both refused from a worktree, but
+a plain Bash redirect went straight through. The reason is that those are two different mechanisms.
+`Edit`/`Write` isolation belongs to Claude Code itself. Only the git half belonged to this
+repository. So there was nothing here to extend for Bash — the rule is new.
+
+## The new rule
+
+Rule name `agent-worktree-main-write`. It fires only when the session's own working directory is a
+managed worktree. A main-checkout session is unaffected and may still edit, build, test, and format
+in main.
+
+Allowed anyway:
+
+- Anything inside the session's own worktree.
+- Anything outside the protected checkout.
+- Build output and third-party content, on any path component: `bin`, `obj`, `TestResults`, `.vs`,
+  `node_modules`.
+- `<main>\.claude\worktrees\worktree-removal.log`, by exact path.
+
+A sibling worktree is refused. It is another agent's checkout.
+
+`AHKFLOW_ALLOW_MAIN=1` downgrades the denial to a warned allow, as it does for the location rules.
+
+## How a write target is found
+
+1. The tokenizer now records quote provenance per token, one character per token character. Only an
+   unquoted `>` counts as a redirect, so `printf 'a>b'` and `printf x\>y` are not writes.
+2. Redirects, plus a per-command destination table: the coreutils writers, `sed -i`, `dd of=`, and
+   the PowerShell content and item cmdlets.
+3. Nested interpreter arguments (`sh -c`, `bash -c`, `pwsh -Command`, `cmd /c`) are re-tokenized to
+   a depth of 2. `pwsh -File` is deliberately not followed — the guard never reads files.
+4. The target is resolved to an absolute path with every symlink replaced, so the `docs/superpowers`
+   link resolves back to the main checkout. Only the leading literal prefix must expand, so
+   `rm -rf ./obj/*` stays allowed. A target the guard cannot expand is denied.
+
+## The 058 split
+
+The second defect in backlog 054 was Claude Code's own `Edit` refusal text, which tells the agent to
+edit ""the worktree copy of this file"". For `docs/superpowers` no such copy can exist. That text is
+the harness's, not this repository's, so it moved to backlog 058 and stays open.
+
+## Verification
+
+- `tests/AgentWorktreeGuard.Tests.ps1` green under both pwsh 7 and Windows PowerShell 5.1. The
+  fixture gained a second managed worktree and a real `docs/superpowers` symlink; a missing symlink
+  now fails the suite rather than skipping the regression.
+- Both probes recorded in backlog 054 were re-run live from this worktree session and are refused.
+  Reads through the symlink and writes inside the worktree still work.
+- Canonical pre-PR gate green: Release build, `dotnet format --verify-no-changes`, coverage slice,
+  `git diff --check main...HEAD`.
+- `tests/AgentPreCommitHook.Tests.ps1` green.
+```"
+"U128","handoffs","20260816","unflagged","msg:msg_011CdmeBJtiEXdbLv5p649aK","438bdba1-b478-4a66-a6be-ad4c124f0fd5.jsonl","08/06/2026 14:20:13","3","","not-a-case","Review feedback → routing to `custom-review-findings`."
+"U129","handoffs","20260816","unflagged","msg:msg_011CdmJFkKwxJ9jgC3jAbeDm","34cf09e7-b361-42bf-9c5e-118c249285c4.jsonl","08/06/2026 09:58:56","2","","not-a-case","Now the regression tests."
+"U130","handoffs","20260816","unflagged","msg:msg_011CdmJQtHRcz2NU9Qaz5QAd","34cf09e7-b361-42bf-9c5e-118c249285c4.jsonl","08/06/2026 10:01:02","2","","not-a-case","Fix 3 — target-directory options."
+"U131","handoffs","20260816","unflagged","msg:msg_011CdmkoRRZwcYnM5ZzEJ7zT","acec1697-a2c2-4e91-995a-776b8cb2e6d5.jsonl","08/06/2026 15:47:10","3","","not-a-case","You're right — I left `--body-file -` dangling with no body. My mistake. Here it is properly."
+"U132","handoffs","20260816","unflagged","msg:msg_011CdmKPNyPv1wcTuVbPyAkb","244a95ed-767e-40f0-9d8f-10fd9598d962.jsonl","08/06/2026 10:13:50","1","","not-a-case","Auto Mode = harness setting, not repo config. Set in Claude Code settings, not code.
+
+Two way:
+
+1. `/config` command inside Claude Code, toggle ""Auto mode"" or similar there
+2. Settings file: add to `settings.json` (global `~/.claude/settings.json` for all projects, or project `.claude/settings.json` for this repo only)
+
+Want me check current settings.json for exact key name, or you just want `/config` route?"
+"U133","handoffs","20260816","unflagged","msg:msg_011CdmoAmh33yhZ2L5hQA8tR","972b8d3a-da73-479a-8c03-1e4aaa850473.jsonl","08/06/2026 16:18:08","2","","not-a-case","Now update ATTRIBUTION.md."
+"U134","handoffs","20260816","unflagged","msg:msg_011CdNkWcV1twAosKo6RysxW","a47c0f41-2e9b-4a1b-9be3-e864fec69ea2.jsonl","07/25/2026 12:09:38","1","","not-a-case","**Root cause**: `SeedAllCommandHandlerTests.cs` hardcoded `HotkeysCount == 17` and `HotkeyCategories == 17` — stale from before commit `8ce3e35` added two SendKeys sample hotkeys, bringing the catalog to 19. Every sibling seed-count assertion (DevSeedEndpointTests, ListHotkeysLazySeedTests, HotkeysEndpointsTests) got updated at that time; this file was missed. That's why rerunning failed identically — deterministic, not flaky.
+
+Fixed 3 occurrences (17→19), verified locally (5/5 pass), committed as `7781ded`. Ready to push."
+"U135","handoffs","20260816","unflagged","msg:msg_011CdNnsjdhTVf6zZx5XB9F6","ffb7beaf-f54a-40db-8a9d-5668be866de1.jsonl","07/25/2026 12:40:36","2","","not-a-case","Clean. Committing."
+"U136","handoffs","20260816","unflagged","msg:msg_011CdNpbUH1bpuFrd2vzBwFZ","b1afe5ae-b379-4907-b3d3-ea7a6f4a143d.jsonl","07/25/2026 13:03:10","2","","not-a-case","Now enough for design. Presenting it."
+"U137","handoffs","20260816","unflagged","msg:msg_011CdNqRf3zZ2tHJXh284Gei","b1afe5ae-b379-4907-b3d3-ea7a6f4a143d.jsonl","07/25/2026 13:14:06","3","copy","not-a-case","Verified each against codebase.
+
+**Finding 1 (P1, conflicting filters)** — checked. Confirmed: Hotstrings never actually has this conflict — its Type `TemplateColumn` sets `Filterable=""false""` (Hotstrings.razor:158), funnel fully disabled there. So ""toolbar + live funnel both active"" isn't an existing pattern anywhere in codebase; my spec invented a new interaction with no precedent, and reviewer's right that silent precedence + stale funnel UI is a real bug. This contradicts your earlier ""keep both"" answer — flagging before I change it rather than silently overriding you.
+
+**Finding 2 (P2, empty-state copy)** — checked Hotkeys.razor:142, confirmed static `""No hotkeys yet""`, no `HasActiveFilters` branch at all. But this is pre-existing: same wrong copy already shows today for search, category filter, or the existing Description/Key/Action funnel filters yielding zero rows. Not introduced by this feature — the non-goal in the spec still holds technically. Reviewer's right it makes the misleading case more likely, though.
+
+**Finding 3 (P2, test coverage)** — contingent on Finding 1's resolution. If funnel gets disabled (Hotstrings precedent), there's no interaction to test — existing three tests suffice. If both stay live, need precedence/clearing tests.
+
+**Finding 4 (P3, label duplication)** — checked. Hotstrings' own Type select *also* hardcodes labels inline rather than sourcing `HotstringKindDisplay.Label` (Hotstrings.razor:45-48 vs HotstringKindDisplay.cs:15-18) — same string, duplicated, in the established precedent. So reviewer's suggestion is a real improvement but deviates from the codebase's current convention on the analogous page.
+
+**Terminology** — correct, accepting outright. CONTEXT.md glossary (line 29) defines ""Action"", never ""type"" for hotkeys."
+"U138","handoffs","20260816","unflagged","msg:msg_011CdNtHY3SQMbKvqWtHMkZh","6dc81d7b-90bc-4bfe-8037-85e6ec21080d.jsonl","07/25/2026 13:51:34","2","","not-a-case","Fix 2 — real cross-assembly lockstep test:"
+"U139","handoffs","20260816","unflagged","msg:msg_011CdNtRiv1geqqa9PqUsQCa","6dc81d7b-90bc-4bfe-8037-85e6ec21080d.jsonl","07/25/2026 13:53:25","2","","not-a-case","Domain-side comment now points at the test that actually enforces it:"
+"U140","handoffs","20260816","unflagged","msg:msg_011CdNtzWHRNvVzT88768zwe","6dc81d7b-90bc-4bfe-8037-85e6ec21080d.jsonl","07/25/2026 14:00:58","1","","not-a-case","Applied and committed `af1d532`.
+
+- **1** — dropdown test now compares against a literal 7-op list; comment states the guarantee it actually gives (catches a narrowed source: hardcoded subset or `.Where(...)` filter) and points at the mirror test for the other failure.
+- **2** — `MirrorsDomainEnum_NameAndOrdinal` compares `DTOs.WindowOp` against `Domain.Enums.WindowOp` name-and-ordinal (domain assembly reachable transitively). Mutation-verified: injecting `SnapUp = 7` into the domain enum only turned it red (`""to contain exactly 8 items in any order, but it misses""`) while all 7 hand-table cases stayed green — the gap, demonstrated. Reverted the mutation.
+- **4** — `SendWinArrowWarningText` is now `static readonly`, composed via `WindowOpLabel(...)`; emitted text unchanged. New theory pins that the advisory names each of the four ops by its dropdown label.
+- **6** — doc drops the paraphrased `(r-l)//2` and quotes both `^!Left::{` and `^!Right::{` bodies verbatim.
+
+Verification: full suite `Failed: 0, Passed: 3017` across 8 suites (UI.Blazor 595 → 600), `dotnet format AHKFlowApp.slnx --verify-no-changes` clean.
+
+Left alone deliberately: **3** (dev-only stale seed rows — worth a line in the PR body, `reset=true` fixes), **5** (`MonitorGetPrimary()` redundancy — changing it churns two golden strings plus the doc for no behavior gain), **7** (member ordering nit).
+
+Next: push + open PR, mentioning the seeded-row note for reviewers?"
+"U141","handoffs","20260816","unflagged","msg:msg_011CdNv9BThdioa3EgHD1tc6","6dc81d7b-90bc-4bfe-8037-85e6ec21080d.jsonl","07/25/2026 14:15:59","3","","not-a-case","Warning state vs. clean state: ""Key to press"" shifts down ~41px when the alert appears. No pending click at that moment (the user is moving *toward* the picker, not clicking it), so cosmetic — leaving it.
+
+Removing the temporary probe:"
+"U142","handoffs","20260816","unflagged","msg:msg_011CdnwgPPd5a5GyAzMJrGLN","972b8d3a-da73-479a-8c03-1e4aaa850473.jsonl","08/07/2026 06:50:20","3","","not-a-case","Commit `66742641` is on the remote. Replying and resolving now."
+"U143","handoffs","20260816","unflagged","msg:msg_011Cdokyqn4rftNmVWmTJPxs","2669e4a2-2d95-40a0-831f-ac0342af616d.jsonl","08/07/2026 17:10:38","3","","not-a-case","All 3 tasks green. Final whole-branch review."
+"U144","handoffs","20260816","unflagged","msg:msg_011CdoLwYMxx9PH9Uo9eaZmo","035ab637-13a3-4408-a9c8-14afe5ed18ac.jsonl","08/07/2026 11:55:44","3","","not-a-case","All findings accepted. Rewriting the plan."
+"U145","handoffs","20260816","unflagged","msg:msg_011CdoMBLXxgWfZ8fUeYTUYB","4e1aaf78-a34e-497b-93a3-99111e8e04ec.jsonl","08/07/2026 11:58:45","3","","not-a-case","Plan mode active. Verify plan facts first via Explore, then write plan file, then ExitPlanMode."
+"U146","handoffs","20260816","unflagged","msg:msg_011CdoMdJUuhEAxSdivg2nKc","4e1aaf78-a34e-497b-93a3-99111e8e04ec.jsonl","08/07/2026 12:04:41","3","","not-a-case","Verification back. 11/13 confirmed. Two swapped inbound-ref counts found — fixed in final plan. One real decision needed before finalizing."
+"U147","handoffs","20260816","unflagged","msg:msg_011CdoRwVYdoyVavMGM6DuK3","4e1aaf78-a34e-497b-93a3-99111e8e04ec.jsonl","08/07/2026 13:00:56","2","","not-a-case","All changes staged as one diff. Now recommitting in the reviewer's order: renumber → scaffold → docs → close."
+"U148","handoffs","20260816","unflagged","msg:msg_011CdowzffRNvKqBTJQQ8jdq","b7b285a8-4b5a-42fc-8527-03574c1724d3.jsonl","08/07/2026 19:35:05","3","","not-a-case","Using the writing-plans skill."
+"U149","handoffs","20260816","unflagged","msg:msg_011CdoyuV6GaGpRGZizesppQ","29f49f1e-1c40-4587-9aa5-27a9e5ae06a4.jsonl","08/07/2026 20:00:16","2","blocked","not-a-case","You're right — push/PR was the wrong next step. Nothing left this machine. No push, no PR, no upstream issue.
+
+My mistake was earlier though: I wrote the plan, committed it, and implemented in one turn. You never got the review checkpoint. Local review is the right next step.
+
+Two surfaces to review:
+
+**The plan** — `docs/superpowers/plans/2026-08-07-backlog-pending-folder-plan.md`. The parts worth your attention are the two questions at the bottom that I answered myself:
+
+- `pending/` vs `blocked/` as the folder name
+- whether ""what would unpark it"" is a convention or something CI fails on
+
+**The diff** — one commit, `e2139ee8`:
+
+```powershell
+git -C .claude\worktrees\backlog-pending-folder show e2139ee8 --stat
+git -C .claude\worktrees\backlog-pending-folder show e2139ee8
+```
+
+If the plan changes, I edit and re-commit it from the main checkout, then redo the implementation on the same branch. The branch is local and unpushed, so nothing is locked in.
+
+One judgment call to flag while you read: I widened scope past your ""move it to a new folder pending"". The move alone would have worked, but it would have hidden number 058 from the duplicate check. If you wanted only the `git mv`, say so and I strip the tooling, test, and docs changes back out."
+"U150","handoffs","20260816","unflagged","msg:msg_011CdpTSFTyh7eX2ah6gRgLM","5e22a63e-1ad1-4b27-a561-ddbdc74a64f0.jsonl","08/08/2026 02:01:07","1","","not-a-case","Write called once. File created at worktree root: `probe-065-control.log`, content `CONTROL` + newline. No hook block, no error, no retry. Nothing else touched."
+"U151","handoffs","20260816","unflagged","msg:msg_011CdpUPfqUL1yZ4yvLFvzuf","b7b285a8-4b5a-42fc-8527-03574c1724d3.jsonl","08/08/2026 02:13:52","1","cannot; blocked; guard; terminal; copy; handover","not-a-case","Backlog 065 is done. Branch `fix/wt-065-edit-write-isolation`, 8 commits, clean tree.
+
+**Task 6 — real-session probes.** Ran them myself; no terminal handover needed. All three from `.claude/worktrees/065-edit-write-isolation`, no `-w`, Claude Code 2.1.225:
+
+| Probe | Result |
+|---|---|
+| `Write` into main | **Denied** |
+| `Write` into `docs/superpowers` | **Denied**, plans wording |
+| `Write` inside the worktree | **Succeeded** |
+
+The refusal, verbatim:
+
+```
+PreToolUse:Write hook error: [bash ""${CLAUDE_PROJECT_DIR}/.claude/hooks/pre-edit-guard.sh""]: [agent-guard:Claude] deny [agent-worktree-main-write]
+BLOCKED: this session is isolated in a worktree, so it cannot write into the main checkout at C:\Dev\segocom-github\AHKFlowApp\probe-065-writetest.log
+Read from here. Write from the main checkout.
+```
+
+And the `docs/superpowers` one — acceptance criterion 4, proving it never sends the agent hunting for a copy that cannot exist:
+
+```
+BLOCKED: this session is isolated in a worktree, so it cannot write into the main checkout at C:\Dev\segocom-github\AHKFlowApp\docs\superpowers\probe-065-plans.md
+docs/superpowers is a symlink to the main checkout. There is no worktree copy of it, so do not
+look for one. Plan and spec writes belong in the main checkout by design.
+Read the plan from here. Write and commit it from the main checkout.
+```
+
+Nothing written: no probe files, main clean, plans repo clean. Control file removed.
+
+**Task 7 — docs and closure.** `cross-agent-git-guardrails.md` gets the new hook row, a rewritten write-isolation section covering both write kinds and the symlink rule, the stale ""not covered at all"" bullet replaced, and the 058 bullet scoped to `-w` sessions. `backlog/065` ticked and `git mv`-ed into `backlog/done/`. `backlog/066` committed separately — I first swept it into the docs commit by accident and split it back out.
+
+**Gate:** 16 CI PowerShell suites in a fresh worktree-free clone at the final commit — `ALL 16 SUITES GREEN`. Guard suite green under pwsh 7 and Windows PowerShell 5.1. Release build 17 projects / 0 errors / 0 warnings, `dotnet format --verify-no-changes` clean, `git diff --check main...HEAD` clean. `test-fast.ps1 -Mode Coverage` not run — no compiled file changed on the branch.
+
+Next: push and open the PR. The body should carry the three probe transcripts and call out that reusing 054's resolver exposed three fail-open defects in it, so the Bash rule got stricter too. Say the word and I'll write it out in full here before pushing.
+
+Leftover: four scratchpad clones under `scratchpad/` (`ci-sim-*`, `main-sim-*`, `ci-sim2-*`, `ci-final-*`). The guard blocks me from deleting them."
+"U152","handoffs","20260816","unflagged","msg:msg_011CdpxWU8iaYWbSi29zvADK","39e3b203-1ebe-4f1a-9be9-cacb8a9a4e2e.jsonl","08/08/2026 08:22:24","3","guard","not-a-case","Branch touches zero C#, zero `.razor`, zero `.csproj`:
+
+```
+.github/workflows/ci.yml                           |  25 +-
+backlog/067-...md                                  |  51 ++
+backlog/done/066-...md                             |  18 +-
+docs/agents/cross-agent-git-guardrails.md          |   3 +-
+scripts/README.md                                  |   1 +
+scripts/run-powershell-suites.ps1                  | 134 ++
+tests/CiPowerShellSuiteRunner.Tests.ps1            | 301 ++
+```
+
+And the two `build-test` failures were **different tests** in the same class, both at exactly 33 s — `AHotkeyOnAKeyTheHeaderSpellsDifferently_IsWarnedAbout` then `AHotkeyOnAKeyTheProfileHeaderUses_IsWarnedAbout`. That reads as a timeout-driven flake in `ShortcutWarningFlowTests`, not a break. Re-ran the failed jobs."
+"U153","handoffs","20260816","unflagged","msg:msg_011Cdq1APHoopStHSFEYJ1WD","19e645c8-ba51-4610-9bbf-379b660780ea.jsonl","08/08/2026 08:57:12","3","","not-a-case","One unresolved thread. Read the code."
+"U154","handoffs","20260816","unflagged","msg:msg_011CdqPcaz3t6BKZBV4FpNYo","60056b41-a274-46af-b72d-abed8c414c87.jsonl","08/08/2026 13:51:44","3","","not-a-case","LOCAL mode — zero review threads on PR 280. So: fix, commit in worktree, no push until you say.
+
+Worktree needs the PR branch, but main checkout has it. Freeing it first."
+"U155","handoffs","20260816","unflagged","msg:msg_011CdqPm8w9L7o2LkEAr4NSt","60056b41-a274-46af-b72d-abed8c414c87.jsonl","08/08/2026 13:54:16","4","","not-a-case","Worktree ready at `.claude\worktrees\pr-agent-fixes` on the PR branch.
+
+**Triage — all 9 CONFIRMED, no pushbacks, no defers:**
+
+| # | Verdict | Evidence |
+|---|---|---|
+| 1 | CONFIRMED | upstream `custom_model_max_tokens=-1`; `MAX_TOKENS` has no `openrouter/`/`nemotron` key |
+| 2 | CONFIRMED | `pr_agent.py`: `action = action.lstrip(""/"").lower()` — slash optional |
+| 3 | CONFIRMED | `.pr_agent.toml:4` empty list; `PRAgent` iterates `[model] + fallback_models` |
+| 4 | CONFIRMED | upstream `max_model_tokens = 32000`, not overridden |
+| 5 | CONFIRMED | upstream defines separate `[pr_code_suggestions].extra_instructions = """"` |
+| 6 | CONFIRMED | no `concurrency`; upstream `persistent_comment=true` |
+| 7 | CONFIRMED | `opencode.yml:4-5` same trigger; fixed by #2's gate |
+| 8 | CONFIRMED | only `issue_comment`; `opencode.yml:6-7` has both |
+| 10 | CONFIRMED | `if:` lacks open-state check |"
+"U156","handoffs","20260816","unflagged","msg:msg_011CdqwGWAWFk585ZJXJf11b","65947233-2e2c-4cb9-89f8-0f068a3f7736.jsonl","08/08/2026 20:46:44","4","","not-a-case","Verifying the plan's claims before presenting (AGENTS.md draft check)."
+"U157","handoffs","20260816","unflagged","msg:msg_011Cdqyh1Pp3vCR4GCGEWuog","65947233-2e2c-4cb9-89f8-0f068a3f7736.jsonl","08/08/2026 21:18:28","3","","not-a-case","Proof pass — fresh citations, grepped now."
+"U158","handoffs","20260816","unflagged","msg:msg_011CdRBcCv1varaPhEDa57VR","9d279f6d-e6e5-4f20-99e8-8dd13c434edb.jsonl","07/26/2026 18:59:56","3","","not-a-case","No match — my cited provenance may be wrong. Digging into the actual diffs."
+"U159","handoffs","20260816","unflagged","msg:msg_011CdRKApUP7DaSALL5dombp","c9d3e6e7-26b0-4727-98c5-b42de936c028.jsonl","07/26/2026 20:39:11","2","auth","not-a-case","Full loop exercised. Report in the skill's own output format:
+
+| # | Verdict | Evidence / what changed | Test |
+|---|---|---|---|
+| 1 | **CONFIRMED** | `DateTime.Now` → `DownloadFileNames.Timestamp(TimeProvider.System)` at `Downloads.razor:158`; new pure helper `Helpers/DownloadFileNames.cs:13,16` | `DownloadFileNamesTests` 3/3, red first (`CS0103`) |
+| 2 | **PARTIAL** | Not sync-over-async — `ToProblemActionResult<T>` returns `ActionResult<T>` (`ProblemDetailsResultExtensions.cs:22`), so `.Result` was a property, not `Task.Result`. Real issue was the readability trap: moved behind `ToProblemResult` (`:42`) with the reason documented; call sites now `DownloadsController.cs:36,62` | Exemption 3, existing `DownloadsEndpointsTests` 10/10 |
+| 3 | **PUSHBACK** | `Downloads.razor:170` — `s.Length == 0 ? ""profile"" : ...` already handles the all-unsafe case, and caps at 64 | — |
+| 4 | **PUSHBACK** | `DownloadsController.cs:15` `[Authorize]`, `:16` `[RequiredScope(""access_as_user"")]` | — |
+| 5 | **PUSHBACK** | `HttpRequest.Path` excludes the query string (that's `Request.QueryString`), so `ProblemDetailsResultExtensions.cs:48` leaks nothing | — |
+
+**Gate:** build 17 projects 0 errors/0 warnings · `dotnet format --verify-no-changes` clean · Coverage all 5 assemblies over threshold (line 93.8%, branch 80.8%) · `git diff --check main...HEAD` clean.
+
+**Committed** on `fix/wt-downloads-timeprovider` in worktree `skill-dryrun`: `d1eac6d` (fix+test), `615760c` (refactor). Not pushed — LOCAL tail.
+
+**Deferred:** none.
+
+**Gap I have to name:** the exemption-3 coverage I cited covers the per-profile 404 branch (`DownloadsEndpointsTests:58,68`). The zip failure branch at `DownloadsController.cs:62` has no named test — the edit there is textually identical and the extension is covered, but that call site was not proven by a fresh run.
+
+## What this says about the skill
+
+Worked as written: PARTIAL caught a wrong diagnosis instead of implementing it, the red-before-green rule fired, exemption 3 forced me to actually name and run the covering tests, and the proof pass is what surfaced the gap above rather than leaving it for you.
+
+One wrinkle worth a tweak: for the CONFIRMED finding the red was a *compile* error, not a failing assertion. The skill says ""confirm it fails for the stated reason"" — a missing type qualifies, but it's worth saying so explicitly so a future run doesn't treat a compile break as an invalid red and waste a cycle stubbing the type first.
+
+Next:
+
+1. Apply that one-line clarification to the skill's step 3.
+2. Push `fix/wt-downloads-timeprovider` and open a PR — both commits are genuine fixes, gate is green."
+"U160","handoffs","20260816","unflagged","msg:msg_011Cds76SshhZ4wJrYfnCXCY","7adc27cd-533a-4dcc-ae78-6329fa1d7fce.jsonl","08/09/2026 11:36:17","3","","not-a-case","Full gate green. Pushing and opening the PR."
+"U161","handoffs","20260816","unflagged","msg:msg_011CdSb7LrzhTr5yapeMoFLz","5b59794d-7bf8-455b-858b-aacb16bf6c4f.jsonl","07/27/2026 12:48:43","2","","not-a-case","Parity passes. Committing the plugin mirror sync."
+"U162","handoffs","20260816","unflagged","msg:msg_011CdSFNPPPPr89bZQXWuyhV","2b642d01-fc89-4bd3-adca-6d1836e4d388.jsonl","07/27/2026 08:29:52","3","","not-a-case","Proof pass — check the section against its own rules."
+"U163","handoffs","20260816","unflagged","msg:msg_011CdSftk5xjE5wcBTtyLy5D","303c598f-259b-44b4-bc4c-8bc6df638b8c.jsonl","07/27/2026 13:51:43","2","","not-a-case","Both edits done:
+
+- **.gitignore** — added `docs/superpowers/` (with comment)
+- **AGENTS.md** — lines 150/152 now say plans live in the private `AHKFlowApp-plans` repo, commit from inside the folder, root `git add` skips the path
+
+Verdict: docs/config edit only, nothing compiled — exemption 1. No test run needed. You commit these in Phase 2 below.
+
+---
+
+## Run in this order (all yours)
+
+Decisions baked in: **purge public history = yes**, **keep `docs/superpowers/` prefix**.
+
+**Phase 0 — install**
+```bash
+pip install git-filter-repo
+git filter-repo --version
+```
+
+**Phase 1 — extract plans WITH history → private repo**
+```bash
+cd /c/Dev/segocom-github
+git clone AHKFlowApp AHKFlowApp-plans
+cd AHKFlowApp-plans
+git filter-repo --path docs/superpowers/ --force
+gh repo create AHKFlowApp-plans --private --source=. --push
+```
+
+**Phase 2 — stop tracking in public (my edits are staged here), then nest the private repo locally**
+```bash
+cd /c/Dev/segocom-github/AHKFlowApp
+git rm -r --cached docs/superpowers/
+git add .gitignore AGENTS.md
+git commit -m ""chore: move planning docs to private repo AHKFlowApp-plans""
+git push
+
+cd docs
+rm -rf superpowers
+git clone https://github.com/s205109/AHKFlowApp-plans.git superpowers
+```
+
+**Phase 3 — purge plans from public history (DESTRUCTIVE, force-push)**
+
+> One reminder: this rewrites every public commit SHA. Repo was public, so plans are already scraped/cached — purge lowers future discovery, not guaranteed erasure. Proceeding per your choice.
+
+```bash
+cd /c/Dev/segocom-github
+git clone https://github.com/s205109/AHKFlowApp.git AHKFlowApp-purge
+cd AHKFlowApp-purge
+git filter-repo --path docs/superpowers/ --invert-paths --force
+git remote add origin https://github.com/s205109/AHKFlowApp.git
+git push origin --force --all
+git push origin --force --tags
+
+cd /c/Dev/segocom-github/AHKFlowApp
+git fetch origin
+git reset --hard origin/main
+```
+
+The final `reset --hard` re-syncs your main checkout. It won't touch `docs/superpowers/` — that path is git-ignored now, so your nested private clone survives.
+
+---
+
+**Order matters:** Phase 1 before Phase 3. Once you purge, the public repo no longer holds the plans to extract from.
+
+**Cleanup after all done:** the throwaway clones are safe to delete —
+```bash
+rm -rf /c/Dev/segocom-github/AHKFlowApp-plans /c/Dev/segocom-github/AHKFlowApp-purge
+```
+
+Want me to double-check anything before you start, or are you good to run it?"
+"U164","handoffs","20260816","unflagged","msg:msg_011CdSFVne5ARLt6HgzTCAbs","2b642d01-fc89-4bd3-adca-6d1836e4d388.jsonl","07/27/2026 08:31:34","2","","not-a-case","Both fixed, committed, pushed. PR #219 now at `0dff679`.
+
+| # | Finding | Verdict | Fix |
+|---|---|---|---|
+| 1 | ""fight"" is a metaphor, rule bans metaphors | CONFIRMED | `AGENTS.md:98`, `.claude/CLAUDE.md:1` |
+| 2 | ""Never simplify an error string"" blocks improving unclear errors | CONFIRMED | `AGENTS.md:103-104` |
+
+**Fixed:**
+
+1. `AGENTS.md:98` — now ""Easy to read matters more than short. When the two conflict, use more words."" `.claude/CLAUDE.md:1` — now ""when short and easy-to-read conflict, choose easy-to-read."" I also removed ""beats"" and ""wins"" from the same two sentences. Same defect, same sentence, so they went with it. Scan for `fight|beats|wins` across both files returns nothing.
+2. `AGENTS.md:103-104` — split into two bullets. Identifier exactness stays (`IUseCaseHandler`, `Result.NotFound()`). Error strings now read: ""When you quote an existing error string, keep it exact. When you write a new error message, apply the rules above.""
+
+**Pushed back:** none.
+**Deferred:** none.
+
+**Gate:** docs only, exemption 1 in *Verification After Implementation*. Text checks and diff review done, `git diff --check` clean. The pre-push hook ran and passed. CI is re-running on the new head.
+
+**Not done:** no reply posted on GitHub. You said you did not post a review, so there are no threads to reply to or resolve. If you want the reasoning on the PR, say so and I will post one comment.
+
+Next steps:
+1. Re-check PR #219 — confirm CI green on `0dff679`, then merge.
+2. Commit your `~/.claude` folder if you have not yet: `feat: add Interaction Style + Plain English rules; retire pr-vs-commit memory`"
+"U165","handoffs","20260816","unflagged","msg:msg_011CdSGrmBxJY1JnN8RodHEB","6d694783-4014-413e-a939-16c87c109976.jsonl","07/27/2026 08:49:27","3","","not-a-case","Now verify the gate actually fails. Planting a violation."
+"U166","handoffs","20260816","unflagged","msg:msg_011CdSicfu6dn7vATEfa46SL","303c598f-259b-44b4-bc4c-8bc6df638b8c.jsonl","07/27/2026 14:27:12","3","","not-a-case","Let me verify Phase 1 and the merge landed."
+"U167","handoffs","20260816","unflagged","msg:msg_011CdSN93rLg5vJmRy6bJnsF","cb4e8fad-c4fd-4a21-885a-2fca084576be.jsonl","07/27/2026 09:58:41","2","","not-a-case","No built-in setting for auto-rename. Findings from your machine:
+
+**Where name lives:** `~/.claude/sessions/<pid>.json`
+```json
+{""pid"":27008,""sessionId"":""b5da..."",""cwd"":""C:\\Dev\\segocom-github\\AHKFlowApp"",
+ ""name"":""ahkflowapp-19"",""nameSource"":""derived"",...}
+```
+`nameSource:""derived""` = CLI auto-named it from cwd folder. `/rename` flips it to user-set. No config key controls the derived pattern.
+
+**So worktree already in name** — derived name comes from folder, and each worktree has own folder. Missing piece is branch only.
+
+Three routes:
+
+1. **Statusline (safest, zero risk).** Your `statusline.sh` runs each turn and already gets `workspace.current_dir`. `statusline.ps1` even computes `git branch --show-current` already. Branch + folder visible always. Does not change session *name* in `/resume` list though.
+
+2. **SessionStart hook patching `sessions/<pid>.json`.** Hook writes `name` = `<folder>/<branch>`, `nameSource:""user""`. Works in principle but CLI owns that file — undocumented, can break on version bump, and hook must walk parent PIDs to find claude's pid. Fragile.
+
+3. **Manual `/rename` per session.** Works today, costs one command.
+
+Branch changes mid-session anyway, so a name pinned at SessionStart goes stale — statusline stays live.
+
+Recommend 1. Want me to add branch to `statusline.sh` (the one actually wired in settings.json), or try the hook in 2?"
+"U168","handoffs","20260816","unflagged","msg:msg_011CdTAa2KcoY4KXm8nEEAXd","b8414536-3e44-4470-8bd8-a22b3c4cd715.jsonl","07/27/2026 20:07:31","3","","not-a-case","Credential helper now set for github.com — future pushes work without the override.
+
+CI on #225: `bicep-lint` pass, `build-test` pass, `codex-skills-hash-parity` pass, `worktree-powershell-tests` pending."
+"U169","handoffs","20260816","unflagged","msg:msg_011CdTAojyFch2NXjjZkoPPk","eb882452-c92b-41cc-a0ac-9936250a7765.jsonl","07/27/2026 20:10:34","2","","not-a-case","Sweep clean, build green. Running the test slice."
+"U170","handoffs","20260816","unflagged","msg:msg_011CdTBkAyRGCZLHKGuXzRkn","eb882452-c92b-41cc-a0ac-9936250a7765.jsonl","07/27/2026 20:22:54","3","","not-a-case","Confirmed: `d-flex flex-column align-start gap-1`, `flexDirection: column`, both children present, no overflow. The stack change works exactly as intended.
+
+Capturing final screenshots, then cleaning up."
+"U171","handoffs","20260816","unflagged","msg:msg_011Cdu7EqXhfaQPp7HbVizZr","c0bb6250-6aac-4998-9e0b-7d7e89ddf2e5.jsonl","08/10/2026 12:59:15","1","","not-a-case","Push hook is building and testing in Release. Waiting for it to finish, then I open the PR."
+"U172","handoffs","20260816","unflagged","msg:msg_011CdUaruEFbiuXpjQenu63Z","e8d4b31a-ab38-4bc1-98e7-13ef77ae13f2.jsonl","07/28/2026 14:06:46","1","","not-a-case","Here is the PR command in that form. Run in **PowerShell**:
+
+```powershell
+$body = @'
+## Problem
+
+Plans and specs under `docs/superpowers/` never appeared in the `@` file picker,
+even though Codex and ripgrep could find them. That folder is a second, private
+git repository, and `.gitignore` hides it from the public repo.
+
+## What was tried
+
+`respectGitignore: false` in `.claude/settings.json`. It works — the picker
+started offering gitignored files — but still skipped `docs/superpowers/`.
+The folder holds a nested `.git`, and the built-in picker skips nested
+repositories. No setting turns that off.
+
+## Fix
+
+A custom `fileSuggestion` command supplies the `@` list instead. It runs
+ripgrep with `--no-ignore-vcs`, so `.ignore` applies and `.gitignore` does not.
+
+- `.claude/file-suggestion.sh` — the suggestion script
+- `.claude/settings.json` — `fileSuggestion` plus `respectGitignore: false`
+- `.ignore` — build output and cache folders, so the picker stays small
+
+## Result
+
+- Query `2026-07-2` now returns plan and spec files first
+- Candidate pool 17,600 -> 1,482 files
+- Normal source files still resolve, for example `HotstringsController`
+- No `.git` internals leak into suggestions
+
+## Note for reviewers
+
+`.ignore` and `.gitignore` must stay in step. A new build folder added to
+`.gitignore` stays visible to the `@` picker until it is named in `.ignore`
+as well. The header comment in `.ignore` says so.
+
+`respectGitignore: false` is kept even though `fileSuggestion` overrides it.
+It costs one line and leaves a better fallback if the script ever fails to run.
+'@
+
+gh pr create --title ""chore: make private plans reachable from the @-file picker"" --body $body
+```
+
+Two rules for the here-string, both satisfied above: `@'` must be the last thing on its line, and `'@` must start its own line with nothing before it. The body contains backticks and `->` and neither needs escaping.
+
+The threshold I wrote into CLAUDE.md: `--body-file` only for an extremely long body, or if a line would ever start with `'@` and close the string early. This body is ~35 lines, comfortably inline.
+
+The scratchpad `pr-body.md` is now unused — it lives outside your repo, so ignore it.
+
+Commit the rule change in **PowerShell**:
+
+```powershell
+cd $env:USERPROFILE\.claude
+git add CLAUDE.md
+git commit -m ""docs: PR bodies inline via here-string, body-file only when huge""
+```"
+"U173","handoffs","20260816","unflagged","msg:msg_011CduL9kxk3pUH11Cu24NXc","42a7f14b-e626-40a4-be8e-e6b80bd421fb.jsonl","08/10/2026 15:48:51","6","","not-a-case","Skills loaded. Now: verify §3 facts, test PDF path, read P6 attachment, dispatch research agent."
+"U174","handoffs","20260816","unflagged","msg:msg_011CduQ2F5ujoS44cpYWGcrB","42a7f14b-e626-40a4-be8e-e6b80bd421fb.jsonl","08/10/2026 16:39:21","3","","not-a-case","Review findings received. Routing to `custom-review-findings` per skill rule."
+"U175","handoffs","20260816","unflagged","msg:msg_011CdV51748b6ssaoHSnEiZe","6c463c11-b200-4dd0-bf39-83042541fb3e.jsonl","07/28/2026 20:15:54","3","","not-a-case","Decision 1 locked: advisory only, never blocks Save.
+
+Next fork — where the curated list lives and how it reaches the UI. Existing precedents in the repo cut both ways: the key registry is a server constant served over an endpoint (`HotkeyKeys.cs` → `HotkeysController.cs:38-41` `GET keys` → `HotkeyKeyCatalog.cs`), while the two existing hotkey warnings are hardcoded browser-side strings with no server contract (`HotkeyActionDisplay.cs:18-19,31`)."
+"U176","handoffs","20260816","unflagged","msg:msg_011CdvXRsmzWbPinYFwixHJo","d4a7cdfd-90f2-43f4-b2db-1201e503a203.jsonl","08/11/2026 06:57:18","1","cannot; can't; blocked; guard","not-a-case","All five addressed, committed as `70b3254`.
+
+| # | Verdict | Fix | Where |
+|---|---|---|---|
+| 1 Ship failure can't re-enter Review | CONFIRMED | Failure edge converts PR to draft; blocked edge keeps it ready (it resumes at Ship) | plan:897, plan:906, spec:229 |
+| 2 No round path on Ship failure | CONFIRMED | Both non-success edges split tracked item vs round; round restores nothing, rewrites PR-body `Stage:`, pushes only if recovery commits | plan:899-901, plan:908, spec:224 |
+| 3 False branch-deletion report | CONFIRMED | Both checks scoped `git -C <main-checkout>`; branch check accepts exit 1 only | plan:926-936 |
+| 4 Revert doesn't remove the change | PARTIAL | Drop the commit from unpushed history (`git -C <round> rebase --onto <sha>^ <sha>`); revert kept as two named exceptions read against the final PR diff | spec:169-179 |
+| 5 PR-body writer incomplete | CONFIRMED | Full read-modify-write block: read body, exactly-one guard, replace, write back, read back | plan:739-763, spec:194 |
+
+**Finding 4 partial, why:** real defect is spec's claim ""the round pushes only trivial work"" — false with revert. Not a conflict with plan:711 ""one commit per change"", which scopes trivial round changes, and the reclassified change is no longer one.
+
+**Evidence gathered this session:**
+- `gh pr ready --help` — `--undo` exists (""convert to draft"").
+- `git show-ref --verify --quiet refs/heads/does-not-exist` — exit **1** inside repo, exit **128** outside. Reviewer's claim holds; both were non-zero.
+- Script scopes its own check the same way: `scripts/remove-worktree-local-dev.ps1:911`; preserved-branch log at `:921`.
+- `rebase --onto <sha>^ <sha>` in a scratch repo: 3 commits, dropped the middle one, file gone, history clean.
+- Stage-writer logic run in pwsh: exactly-one guard throws on 0 and 2 lines, CRLF preserved, rest of body intact, read-back returns new value.
+
+**Gate:** AGENTS.md exemption 1 — docs only, nothing compiled. Targeted text checks plus diff review. Appendix A edge structure unchanged: 5 arrows per Edges block for stages 0–3 and 5–9, and stages 4 (6) and 10 (9) match HEAD exactly. `git diff --check` clean. No `dotnet` gate run — no compiled file changed.
+
+**Not fixed, flagged:** finding 5's closing remark — Task 9's round subject is synthetic and reads a prepared record, so it still cannot exercise the writer. No live round exists in wave 1, so a real test isn't possible until a round runs. Left as-is; the read-back check inside the sequence is the runtime guard.
+
+Next step: re-run the reviewer for round 9, or start Task 0."
+"U177","handoffs","20260816","unflagged","msg:msg_011CdVyxT7UR4137wxcHTwrk","d686b406-a889-47c7-8237-96295c5e5e88.jsonl","07/29/2026 07:50:04","2","","not-a-case","Fix 1 done. Now finding 8 (manifest checklist):"
+"U178","handoffs","20260816","unflagged","msg:msg_011CdW1JC1JWd8X9hXd2jfFf","d686b406-a889-47c7-8237-96295c5e5e88.jsonl","07/29/2026 08:07:53","3","","not-a-case","**Question 2 — browser rows.** The 36 browser rows warn on plain `Ctrl`+**T, N, W, L, E, K, U, H, J, D, F, G, P, S, R** — 15 of 26 letters. An AHK user reaching for `Ctrl+<letter>` hits a warning more often than not. Each one reads roughly:
+
+> Chrome and Edge use Ctrl+T to open a new tab, but only while that application is in front. Your hotkey may take these keys over, or it may not run at all. It depends on what else is installed.
+
+With Stage 2 split off, nobody can turn that off."
+"U179","handoffs","20260816","unflagged","msg:msg_011Cdw6enQzCp3yKj3Uh1t1d","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/11/2026 14:13:15","3","cannot","missed","23 threads fetched. Before triaging, one thing needs saying: **7 of the 23 — including the Critical — live in `docs/superpowers`, which this session cannot write.** I will verify and fix the other 16 and hand you exact commands for those 7.
+
+Verifying the private-repo claims first."
+"U180","handoffs","20260816","unflagged","msg:msg_011Cdw8WWCRvWriSmkQNbtS5","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/11/2026 14:37:09","2","","not-a-case","Now replying to and resolving all 23 threads."
+"U181","handoffs","20260816","unflagged","msg:msg_011CdWb4Gr5fYSxAcRkvJQbA","88961e6b-e4a4-4937-937b-ef7271cf3ae1.jsonl","07/29/2026 15:30:24","2","","not-a-case","Now the four commands."
+"U182","handoffs","20260816","unflagged","msg:msg_011CdWbcHxh3PogBTRRjwhQ9","88961e6b-e4a4-4937-937b-ef7271cf3ae1.jsonl","07/29/2026 15:37:38","2","","not-a-case","53 pass. Running the Fast slice to catch anything Stage 1 assumed static."
+"U183","handoffs","20260816","unflagged","msg:msg_011CdWBg4DWztk7VjV4PbpnC","eed1b447-b8b9-458a-a731-fb5d64354649.jsonl","07/29/2026 10:23:46","3","","not-a-case","Now the design doc's contradictory paragraph."
+"U184","handoffs","20260816","unflagged","msg:msg_011CdwEbFpKvdL8dR8j86Eey","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/11/2026 15:56:51","2","copy","not-a-case","Copy confirmed on `232a241c`, byte-identical to 071's. Removing it from 071."
+"U185","handoffs","20260816","unflagged","msg:msg_011CdWgcutWSx1xd47t9rAyE","88961e6b-e4a4-4937-937b-ef7271cf3ae1.jsonl","07/29/2026 16:43:19","2","","not-a-case","All 23 E2E tests pass. Running the full gate."
+"U186","handoffs","20260816","unflagged","msg:msg_011CdwPZxEgPY5DgNj3PGGYa","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/11/2026 17:54:50","3","","not-a-case","Checking each finding against the current files before proposing anything."
+"U187","handoffs","20260816","unflagged","msg:msg_011CdWu8R39yBRSrhTEaPBWE","405bb824-9617-4c1d-b8d1-40cfffdf8da4.jsonl","07/29/2026 19:27:25","3","","not-a-case","Bash tool cwd persists across calls in session. Run once:"
+"U188","handoffs","20260816","unflagged","msg:msg_011CdWVhPhAcPHCecpiRe385","b1cac9a1-b29c-4fe2-b30b-12724ecc4211.jsonl","07/29/2026 14:20:05","2","","not-a-case","Now finding 3 — Protected + Normal precedence."
+"U189","handoffs","20260816","unflagged","msg:msg_011CdwVqje2wkyE6sRxgB2nH","a5bb315e-942f-4b05-b5a8-fc7ea0f72a95.jsonl","08/11/2026 19:17:03","2","cannot; guard; copy; handover","missed","Plan written and self-reviewed. It cannot be saved from here — plans repo again — so same handover.
+
+## Plan shape
+
+Three tasks, ordered so the branch never contains a commit with the hole:
+
+| Task | Deliverable |
+|---|---|
+| 1 | `Get-AgentSegmentWriteTarget` reports a move's **source**. `mv`, `Move-Item`, `Rename-Item` only; `cp`/`install`/`ln`/`Copy-Item` stay destination-only |
+| 2 | The subtree allow in `Test-AgentWriteTargetAllowed`, plus a rewritten root-refusal message |
+| 3 | Docs in `cross-agent-git-guardrails.md` and `.claude/CLAUDE.md`, tick the boxes, `git mv` into `backlog/done/` |
+
+Every step carries real code, a real command, and an expected result. Points worth your eye:
+
+- **Four existing tests change.** Three flip `Deny` → `Allow` (`tests/…:1881`, `:2083`, and the file-edit plans case). The fourth, the refusal-message test at `:2027`, is retargeted at the plans root, because the old message no longer fires for paths inside.
+- **`$script:AgentGuardPlansDenialMessage` gets rewritten.** Its current text — ""Plan and spec writes belong in the main checkout by design"" — becomes false for everything except the root.
+- **`.claude/CLAUDE.md` is in scope, beyond the item's stated doc criterion.** Two sentences there contradict the new behavior: step 4 of ""Order of work"" sends you back to main for a plan edit, and ""Treat that link as read-only"". The plan says why it went past the criterion.
+- **`Select-Object -SkipLast` checked on both hosts** — Windows PowerShell 5.1.26100.8875 and pwsh 7 — since the guard runs under both.
+- No fixture work needed. `tests/…:378-380` plus the symlink at `:382-396` already cover every case; the exception is a path compare and never asks whether the target is a Git repository.
+
+## Save it — PowerShell, from anywhere
+
+```powershell
+$src = 'C:\Users\btase\AppData\Local\Temp\claude\C--Dev-segocom-github-AHKFlowApp--claude-worktrees-feature-wt-076-plans-repo-guard-exception\a5bb315e-942f-4b05-b5a8-fc7ea0f72a95\scratchpad\2026-08-11-plans-repo-guard-exception-plan.md'
+$dst = 'C:\Dev\segocom-github\AHKFlowApp\docs\superpowers\plans\2026-08-11-plans-repo-guard-exception-plan.md'
+Copy-Item -LiteralPath $src -Destination $dst
+git -C C:\Dev\segocom-github\AHKFlowApp\docs\superpowers add plans/2026-08-11-plans-repo-guard-exception-plan.md
+git -C C:\Dev\segocom-github\AHKFlowApp\docs\superpowers commit -m ""docs: plan for the plans-repo guard exception (backlog 076)""
+```
+
+New file, so nothing is overwritten.
+
+Then execution — two options:
+
+1. **Subagent-driven** (recommended) — fresh subagent per task, I review between tasks. Three tasks, so three checkpoints.
+2. **Inline** — I run the tasks in this session with checkpoints.
+
+Which one? Task 1 is self-contained enough that either works; task 2 flips four existing tests, so a checkpoint there is worth having."
+"U190","handoffs","20260816","unflagged","msg:msg_011CdWZm8yiTo75v3QNBsuc5","88961e6b-e4a4-4937-937b-ef7271cf3ae1.jsonl","07/29/2026 15:13:24","2","","not-a-case","Writing the entities, configurations, DbSets and builders."
+"U191","handoffs","20260816","unflagged","msg:msg_011CdwZw842Ls68DNUAoaJZT","a5bb315e-942f-4b05-b5a8-fc7ea0f72a95.jsonl","08/11/2026 20:10:33","3","","not-a-case","Plan review. Routing to the review skill."
+"U192","handoffs","20260816","unflagged","msg:msg_011Cdxk2ux6KtRuokrX1X5uw","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/12/2026 11:03:37","3","","not-a-case","The text wraps mid-phrase, so my replace never matched. Testing F2 directly instead — altering Stage 10's real resume target."
+"U193","handoffs","20260816","unflagged","msg:msg_011CdxRxVeQ93TWbDC1YZ1nA","be3b76f5-32d4-4b4c-8ae8-faeb2d15c9a5.jsonl","08/12/2026 07:06:31","3","blocked; guard","not-a-case","The guard blocked its own probe — `$T` in a redirect is an unexpandable write target. Writing the path literally."
+"U194","handoffs","20260816","unflagged","msg:msg_011CdXtE8Q6PKsDrsRkD2GWT","43c49baf-9879-4532-9fb5-a538c9b1d5d0.jsonl","07/30/2026 07:56:12","2","","not-a-case","Now the shared component."
+"U195","handoffs","20260816","unflagged","msg:msg_011CdXwbbLWtoqPFpvZQtJt9","77eb5960-340a-4f5e-b26b-5d4fecb4a224.jsonl","07/30/2026 08:40:20","3","guard","not-a-case","`guard-prompt-probe` deleted. But prune didn't clear the registration, which means the directory still exists on disk — so ExitWorktree's removal was partial."
+"U196","handoffs","20260816","unflagged","msg:msg_011CdxXZ2NNm2LWaYa2NDd2k","be3b76f5-32d4-4b4c-8ae8-faeb2d15c9a5.jsonl","08/12/2026 08:19:53","2","","not-a-case","All five fixes cited. Committing."
+"U197","handoffs","20260816","unflagged","msg:msg_011CdYN9VYCRT7iVmNrJSYb2","a573bbd8-59c4-409e-a6c0-a7f4f5b24712.jsonl","07/30/2026 14:02:20","1","can't; refuse","not-a-case","Stopped. No LISTENING entries left, just closing TIME_WAIT sockets — clean.
+
+Prevention options, root cause: SQL container exits silently (crash, Docker Desktop restart, host reboot), API can't reach it, frontend spins forever with no error shown.
+
+1. **API-side timeout/fail-fast**: health probe or startup DB check already logs `ERR_CONNECTION_REFUSED` retries — cap retry count, then show real error in UI instead of infinite spinner.
+2. **Always launch via Docker SQL profile**: `dotnet run --launch-profile ""Docker SQL (Recommended)""` auto-starts the container — safer than running frontend alone, since frontend gives no hint API is down.
+3. **`docker compose up -d sqlserver`** (or `docker start ahkflowapp-sqlserver-1`) before any `dotnet run` session, as a habit.
+4. **Docker Desktop ""restart containers on start""** setting, so a host reboot doesn't leave it exited.
+
+Cheapest fix: UI bug — infinite retry with no error/timeout is a real defect. Want me to open a backlog item or fix the health-probe retry logic (add max retries + error banner) now?"
+"U198","handoffs","20260816","unflagged","msg:msg_011CdYQ45vySgb4hzesr1uip","a573bbd8-59c4-409e-a6c0-a7f4f5b24712.jsonl","07/30/2026 14:27:16","2","","not-a-case","Now finding 3 (preserve the console diagnostic):"
+"U199","handoffs","20260816","unflagged","msg:msg_011CdYTL8Q6o7dA7QDBQtgSG","b8a497e5-a5a6-49db-9580-9a94f8063dba.jsonl","07/30/2026 15:10:12","2","","not-a-case","Plan says run whole E2E slice here (other flow tests all boot through the new manual start)."
+"U200","handoffs","20260816","unflagged","msg:msg_011CdYXnk4eSRbttuukQapyC","b8a497e5-a5a6-49db-9580-9a94f8063dba.jsonl","07/30/2026 16:08:46","3","","not-a-case","Flaky — need which one."

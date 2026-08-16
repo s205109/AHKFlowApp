@@ -117,27 +117,36 @@ counts as a task with the requirements below, rather than inheriting a figure.
 
 ### Measured 2026-08-16
 
-Window 2026-07-15T14:14:32Z to 2026-08-12T14:14:32Z. 392 transcript files after
-deduplication, across 84 project directories: 202 in main project directories, 190 in worktree
-directories. 134,056 records read, 80,655 inside the window, **0 sidechain records excluded** —
-the rule is covered by fixture, not by live data. Script:
-`scripts/measure-process-friction.ps1`. Sample and labels:
-[`docs/development/friction-recall-sample.md`](../docs/development/friction-recall-sample.md).
+Window 2026-07-15T14:14:32Z to 2026-08-12T14:14:32Z. 691 transcript files after deduplication,
+subdirectories included. 154,962 records read; 80,080 in window and not sidechain; **21,040
+sidechain records excluded**. Those records fold into 60,906 logical messages, 10,872 of which
+were assembled from more than one record.
+
+Script: `scripts/measure-process-friction.ps1`, which writes a row-level ledger per metric.
+Labelled evidence: [`docs/development/friction-recall-sample.md`](../docs/development/friction-recall-sample.md)
+and the two manifests in `docs/development/friction-samples/`.
 
 | Count | Figure | What it rests on |
 |---|---|---|
-| Blocked-agent handoffs | **23 to 149**, most likely about 65 | 13 flagged across 10 sessions, of which only 2 are real. 5 misses in a 200-record sample of the 2,586 unflagged. The word list is not usable on its own; the range is the finding |
-| Directory-bound commands handed to the human | **62 command lines** across 21 sessions | Matches command syntax, not prose. Recall is not a question here; precision is unmeasured, because an example command counts like a handed-over one |
-| Cleanup popups and blocked runs | **221 records** across 85 sessions, treat as high | Two match terms, `is locked` and `is dirty`, are ordinary words. Not sampled, so this is a suspicion rather than a measurement |
-| Next-step asks | **28 to 84**, most likely about 48 | 36 flagged across 30 sessions, of which 16 are real. 6 misses in a 200-record sample of the 1,070 unflagged. The flagged figure is close by accident: 20 false positives nearly cancel about 32 misses |
-| CI minutes on non-.NET changes | **695.2 minutes** across 323 runs | 549 runs returned for the window, 13 outside it, **0 unresolved**. Each run is classified from its own `head_sha` against its own first parent, never against today's `main` |
+| Blocked-agent handoffs | **88 to 373** | 15 flagged, 8 of them real (precision 53 percent). 6 misses in a 200-message sample of 5,699 unflagged, so 80 to 365 more. The word list finds about one handoff in twenty; the range is the finding |
+| Directory-bound commands handed to the human | **214 command lines** across 34 sessions | A line inside a `powershell` or `bash` fence that names a directory, deduplicated on message and line text. Precision unmeasured: an example command counts like a handed-over one |
+| Cleanup popups and blocked runs | **233 messages** across 84 sessions | Cleanup log strings over any record, agent or tool. Not sampled, so no precision figure |
+| Next-step asks | **22 to 57** | 41 flagged, 19 of them real (precision 46 percent). 2 misses in a 200-message sample of 1,055 unflagged, so 3 to 38 more |
+| CI minutes on non-.NET changes | **551.4 minutes** across 302 runs | 549 runs returned for the window, 233 touch .NET, 13 outside the window, 1 unresolved. 11 counted with no duration after 23 timing calls failed |
 
-**No figure is called an upper bound.** Two of them are ranges because their match sets both
-over-flag and under-count, which the labelled sample measures rather than assumes.
+**No figure is called an upper bound.** Two are ranges, because their match sets both over-flag
+and under-count, which the labelled sample measures rather than assumes.
 
-**One trap worth recording.** `gh run list --limit 400` reaches back only to 2026-08-07, three
-weeks short of this window, and says so nowhere. The script pages
-`repos/{owner}/{repo}/actions/runs` with a `created` filter instead.
+**Three traps worth recording.**
+
+1. `gh run list --limit 400` reaches back only to 2026-08-07, three weeks short of this window,
+   and says so nowhere. The script pages `repos/{owner}/{repo}/actions/runs` with a `created`
+   filter instead.
+2. A CI run's `head_sha` is a branch head, not a merge commit, because CI runs on
+   `pull_request`. Its first-parent diff is one commit's change. The base is the branch point
+   instead. Correcting this moved 21 runs and 144 minutes out of the non-.NET total.
+3. An assistant message arrives as several records sharing one `message.id`, and the first often
+   carries no text. Deduplicating before assembling the text discarded 3,171 messages.
 
 ### The withdrawn figures
 
