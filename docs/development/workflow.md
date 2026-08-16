@@ -838,6 +838,18 @@ its remaining changes and closes normally.
   folder is a separate private repository, so commit from inside it with
   `git -C docs/superpowers commit`.
 
+### What a session without the plans repository can see
+
+The stage is not in the plan. The stage is in the backlog item, and the backlog item is
+public. A session with no plans repository still reads the stage correctly.
+
+What such a session cannot read is the plan's content. `tests/BacklogPlanPointer.Tests.ps1`
+checks that the `- Plan:` pointer exists. It cannot check the target, because `.gitignore`
+keeps `docs/superpowers/` out of this repository.
+
+The failure mode is a session that knows its stage and cannot see its instructions. This is
+a finding, not a gap this item closes.
+
 ---
 
 ## 7. Mandatory rules

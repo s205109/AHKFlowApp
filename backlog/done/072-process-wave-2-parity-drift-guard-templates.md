@@ -6,7 +6,7 @@
 - **Type**: Process / tooling
 - **Interfaces**: none (scripts, docs, backlog template)
 - **Difficulty**: complex
-- **Stage**: 4-execute
+- **Stage**: 9-ship
 - **Depends on**: 071-development-process-artifacts, 076-guard-exception-commit-to-plans-repo-from-worktree, 077-pre-commit-refusal-of-human-commits-on-main
 
 ## Summary
@@ -22,18 +22,18 @@ one of them can never leave the other two behind.
 
 ## Acceptance criteria
 
-- [ ] A PowerShell suite check compares `docs/development/workflow.md`,
+- [x] A PowerShell suite check compares `docs/development/workflow.md`,
       `docs/development/workflow.html`, and
       `docs/development/ahkflow-workflow-cheatsheet.html`. It compares stage names and
       order, exit conditions, and next-stage labels including failure edges. It fails on
       any disagreement and names the losing file and line. `workflow.md` wins.
-- [ ] The check builds the legal edge-target set from the 11 stage ids it extracts, plus
+- [x] The check builds the legal edge-target set from the 11 stage ids it extracts, plus
       `2-design/3-plan/4-execute`, `stay`, `terminal`, `blocked/`, and `none`. Every edge
       target must be a case-sensitive member of that set.
-- [ ] The check recomputes the SHA-256 of the cheatsheet HTML and compares it against
+- [x] The check recomputes the SHA-256 of the cheatsheet HTML and compares it against
       `docs/development/ahk-workflow.pdf.source.sha256`. A mismatch means the PDF is
       stale. It also checks that the PDF page tree contains `/Count 1`.
-- [ ] **The hash is line-ending independent.** Both the check and the sidecar generator
+- [x] **The hash is line-ending independent.** Both the check and the sidecar generator
       read the file, replace every CRLF with LF, and hash the UTF-8 bytes of that
       normalized text. Hashing raw bytes made the result depend on the checkout: before
       round 2 this repository set `core.autocrlf=true` with no `*.html` rule in
@@ -49,7 +49,7 @@ one of them can never leave the other two behind.
       targets, and exits 1 on any difference. Added by backlog 071 in review round 6, after
       three consecutive rounds found that drift by hand. It covers the stage machine only,
       not the narrative fields.
-- [ ] The plan-versus-source check joins the gates, so drift fails a run rather than waiting
+- [x] The plan-versus-source check joins the gates, so drift fails a run rather than waiting
       for a reviewer. Extend it to the narrative fields — Action, Technique, Context — or
       state plainly that those stay manual.
       **Design round correction:** "joins the suite" alone is not achievable. The suite runs
@@ -59,35 +59,45 @@ one of them can never leave the other two behind.
       the real plans, discovering them by `## Appendix A` rather than a hardcoded path, and
       skipping with a printed reason when the plans repository is absent. The narrative
       fields stay manual.
-- [ ] A drift guard scans the process sections of `AGENTS.md`. The sections it scans are
+- [x] A drift guard scans the process sections of `AGENTS.md`. The sections it scans are
       named explicitly: `Debugging`, `Plans`, `Verification After Implementation`, and
       `Git Workflow`, plus the `Plan before you edit` and
       `Create the worktree before you write the plan` sections of `.claude/CLAUDE.md`.
-- [ ] Inside those sections the guard scans **only top-level bullet lines** — a line
+- [x] Inside those sections the guard scans **only top-level bullet lines** — a line
       matching `^- ` at column 1. It fails on such a line without a
       `docs/development/workflow.md#stage-N-name` anchor, and on an anchor that does not
       exist in `workflow.md`.
-- [ ] The guard ignores every other Markdown form, because those carry reference data
+- [x] The guard ignores every other Markdown form, because those carry reference data
       rather than rules: table rows (`^|`), numbered list items (`^\d+\.`), indented or
       nested bullets (`^\s+- `), fenced code blocks, headings, and plain paragraphs. The
       verification routing table and the numbered exemption list in `AGENTS.md` are the
       reason this exclusion exists — they are process content that carries no anchor by
       design.
-- [ ] A fixture proves both directions: an unanchored top-level bullet inside a scanned
+- [x] A fixture proves both directions: an unanchored top-level bullet inside a scanned
       section fails the guard, and an unanchored table row inside the same section does not.
-- [ ] `backlog/000-backlog-item-template.md` carries a `- **Difficulty**:` line. Backlog 087
+- [x] `backlog/000-backlog-item-template.md` carries a `- **Difficulty**:` line. Backlog 087
       already added the `- **Stage**:` line.
-- [ ] `scripts/new-backlog-item.ps1` writes both lines into every new item.
-- [ ] `.claude/CLAUDE.md` is aligned line by line with `workflow.md`. No rule appears in
-      both with different wording.
-- [ ] The private-plan status visibility question is investigated and the finding is
+- [x] `scripts/new-backlog-item.ps1` writes both lines into every new item. It copies the
+      template, so both lines land without a second source to keep in step.
+- [x] `.claude/CLAUDE.md` is aligned line by line with `workflow.md`. No rule appears in
+      both with different wording. The 14 judgements are recorded in
+      `docs/development/process-alignment-checklist.md`; every row now reads `links-only`.
+- [x] The private-plan status visibility question is investigated and the finding is
       written down: how a session sees the stage of work whose plan lives in the private
-      repo.
-- [ ] `CONTEXT.md` gains the terms stage, edge, wave, difficulty, housekeeping worktree,
-      and emitter.
-- [ ] `docs/adr/` gains one ADR: process source lives in `workflow.md`.
+      repo. It is section 6 of `workflow.md`, "What a session without the plans repository
+      can see". The stage is readable because it lives in the public backlog item; the
+      plan's content is not.
+- [x] `CONTEXT.md` gains the terms stage, edge, wave, difficulty, housekeeping worktree,
+      and emitter. It also gains source, backlog item, housekeeping round, guard, check and
+      gate, because the grilling round found "guard" already carried two meanings.
+- [x] `docs/adr/` gains one ADR: process source lives in `workflow.md`.
+      `docs/adr/0006-process-source-lives-in-workflow-md.md`.
 - [ ] The five friction counts are measured here, to the requirements below. Backlog 071 attempted this three times and withdrew every result; nothing is inherited.
-- [ ] The drift guard also checks that no document tells a reader to run the gate "before
+      **Left unticked on purpose.** All five counts are measured and published below, and
+      twelve of the thirteen requirements hold. The thirteenth does not, for one metric
+      only: see the unticked "real event from discussion" requirement. Ticking this box
+      would claim a requirement is met that the item itself says is not.
+- [x] The drift guard also checks that no document tells a reader to run the gate "before
       opening a PR". <!-- gate-wording:ignore --> The gate gates the pull request going **ready**, not its creation, and
       the wording drifted back once already. Backlog 071 fixed
       `docs/development/testing-workflow.md`, `docs/development/coverage.md`, and
@@ -130,7 +140,7 @@ rows. Labelled evidence:
 | Count | Figure | What it rests on |
 |---|---|---|
 | Blocked-agent handoffs | **179 to 533** | 15 flagged, 10 real (precision 67 percent). 11 misses in a fully read 200-message sample of 5,457 unflagged, so 169 to 523 more. The flagged 15 is not an upper bound and is not close to one |
-| Directory-bound commands handed to the human | **179 command lines** across 34 sessions | A command line inside a `powershell`, `pwsh`, `bash`, `sh` or `shell` fence that names a directory, deduplicated on message and line text. The line must start with a command, and a here-string body is skipped. Precision unmeasured: an example command counts like a handed-over one |
+| Directory-bound commands handed to the human | **179 command lines** across 34 sessions | A command line inside a `powershell`, `pwsh`, `bash`, `sh` or `shell` fence that names a directory, deduplicated on message and line text. The line must start with a command, and a here-string body is skipped. Precision unmeasured: an example command counts like a handed-over one. Not an upper bound either — a command handed over outside a fence is invisible to it |
 | Cleanup popups and blocked runs | **18 log lines** across 5 sessions | A line with the shared log stamp whose message is one a cleanup script writes. The earlier 75 was 65 rows of source code, injected instructions and reviews quoting an outcome; six of its eleven phrases appear in no script at all |
 | Next-step asks | **34 to 88** | 38 flagged, 17 real (precision 45 percent). 7 misses in a fully read 200-message sample of 1,004 unflagged, so 17 to 71 more |
 | CI minutes on non-.NET changes | **293.6 minutes** across 54 runs, covering 115 of 192 in-window CI runs | 531 workflow runs in the window, of which 192 are CI; the other 339 are opencode, PR-Agent and the two deploy workflows, and are not this metric. 61 CI runs touch .NET. 77 have no landing merge on `origin/main`'s first-parent chain and are reported unresolved rather than guessed — every in-window `head_sha` was present in this clone |
@@ -189,19 +199,21 @@ requires, and a published explanation for 78 unresolved CI runs that was simply 
 Two scripts that both satisfy this list must produce the same number, so each rule names the
 field it reads rather than describing an intention.
 
-- [ ] **Window.** Select on the record's own `timestamp` field, `>= start` and `< end`, both
+- [x] **Window.** Select on the record's own `timestamp` field, `>= start` and `< end`, both
       in UTC. Never on file modification time. **The bounds are fixed at
       2026-07-15T14:14:32Z to 2026-08-12T14:14:32Z** — four weeks ending at the moment wave 1
       merged. The rules below forbid leaving a choice open, and this rule left the two values
       unstated, so two compliant scripts could disagree. A window running past the wave-1
       merge would mix old-process friction with fixed-process friction.
-- [ ] **Scope.** Every AHKFlow project directory, main and worktree. Counted on 2026-08-15:
+- [x] **Scope.** Every AHKFlow project directory, main and worktree. Counted on 2026-08-15:
       205 transcripts in the main directory, 198 more across 83 worktree directories, 403 in
       total. Worktree sessions are where handoffs, directory-bound commands, and cleanup
       popups actually happen, so the main directory alone drops just under half the data. The
       script reports the per-directory split next to the total. This supersedes "all 195
       transcripts in this project" below, which meant the main directory and is already stale.
-- [ ] **Human turn.** A record counts only when `type == "user"` **and** either
+      **The 403 above is stale too.** It counted the top level of each directory only. The
+      measurement recurses into subdirectories and reads 670 files after deduplication.
+- [x] **Human turn.** A record counts only when `type == "user"` **and** either
       `origin.kind == "human"` **or** `promptSource` is one of `typed`,
       `suggestion_accepted`, `queued`. The two fields are alternatives, not a pair: a
       conjunction drops real turns. Measured over all 195 transcripts in this project:
@@ -225,20 +237,22 @@ field it reads rather than describing an intention.
       Do **not** test the shape of `message.content`. A real typed prompt carries a string
       and injected content carries an array, but injected content also carries a
       `text`-typed block, so the array/text-block test does not separate them either.
-- [ ] **Sidechain.** Exclude any record with `isSidechain == true`. Report the excluded count
+- [x] **Sidechain.** Exclude any record with `isSidechain == true`. Report the excluded count
       alongside the result so the exclusion is visible rather than assumed.
-- [ ] **Unit of count.** State it per metric and use it consistently: directory-bound
+- [x] **Unit of count.** State it per metric and use it consistently: directory-bound
       commands count **command lines**, not messages, because one message can hand over
       several.
-- [ ] **Deduplication key.** `message.id` exists only on **assistant** records
+- [x] **Deduplication key.** `message.id` exists only on **assistant** records
       (`msg_...`); a user record carries no `message.id` at all — verified against a live
       transcript. So handoffs (assistant text) deduplicate on `message.id`; next-step asks
       (user text) deduplicate on the record's top-level `uuid` instead. Using `message.id`
       for a user-role metric silently deduplicates nothing, because the field is always
       absent and every comparison is against `null`.
-- [ ] **Grouping.** "Sessions" means distinct transcript file names after deduplication, and
-      a metric reports both the item count and the session count.
-- [ ] **CI classification.** Resolve each run's changed files from its own `headSha`
+- [x] **Grouping.** "Sessions" means distinct transcript file names after deduplication, and
+      a metric reports both the item count and the session count. The script prints both for
+      all four transcript metrics; the summary table above quotes the session count only
+      where it adds something.
+- [x] **CI classification.** Resolve each run's changed files from its own `headSha`
       against its own **run-time base**, not against current `main`:
       `gh run view <id> --json headSha,headBranch` then the merge-base of that `headSha`
       and the base branch **as it stood then** —
@@ -246,12 +260,29 @@ field it reads rather than describing an intention.
       time, so comparing against today's `main` reclassifies a run every time `main` moves.
       Record the resolved base SHA next to the result so the classification is itself
       reproducible, not only the file list.
-- [ ] **One primary result per metric.** Where this list allows a choice, the script fixes
+      **The method changed; the requirement did not.** The script resolves the base in the
+      local clone, from the landing merge on `origin/main`'s first-parent chain, because the
+      compare endpoint takes a base the caller has to know already. Traps 3 and 4 say why the
+      obvious bases are wrong. The `ci-runs.csv` ledger records `BaseKind`, `Base` and
+      `LandingMerge` per run, so every classification can be recomputed.
+- [x] **One primary result per metric.** Where this list allows a choice, the script fixes
       the choice and records it. An option that leaves two compliant scripts disagreeing is
       not a specification.
 - [ ] Separate a real event from discussion of one, or state plainly that it does not and
       treat the figure as an upper bound.
-- [ ] Publish the script with the numbers, so any figure can be reproduced and challenged.
+      **Holds for four metrics of five. Left unticked for the fifth.** Handoffs and
+      next-step asks separate the two by hand-labelling every flagged row, so their
+      precision is measured rather than assumed. Cleanup events separate them by the log
+      stamp, which discussion of an outcome never carries. CI minutes count workflow runs,
+      so the distinction does not arise.
+      Directory-bound commands do neither. The item states plainly that an example command
+      counts like a handed-over one, but 179 is not an upper bound either: the match set
+      also under-counts, because a command handed over outside a code fence is invisible to
+      it. The figure is a count of matched command lines and nothing more. Measuring its
+      precision needs the same labelled sample the other two metrics got, which is a
+      follow-up, not a correction to this one.
+- [x] Publish the script with the numbers, so any figure can be reproduced and challenged.
+      `scripts/measure-process-friction.ps1`, with a committed row-level ledger per metric.
 
 Until those hold, wave 3 to wave 5 targets are stated as directions — fewer handoffs, fewer
 directory-bound commands — not as percentages against a number.
