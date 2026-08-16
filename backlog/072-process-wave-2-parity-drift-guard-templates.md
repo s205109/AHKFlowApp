@@ -117,9 +117,9 @@ counts as a task with the requirements below, rather than inheriting a figure.
 
 ### Measured 2026-08-16
 
-Window 2026-07-15T14:14:32Z to 2026-08-12T14:14:32Z. 691 transcript files after deduplication,
-subdirectories included. 155,392 records read; 79,691 in window and not sidechain; **19,586
-in-window sidechain records excluded**. Those records fold into 60,596 logical messages, 9,656 of
+Window 2026-07-15T14:14:32Z to 2026-08-12T14:14:32Z. 670 transcript files after deduplication,
+subdirectories included. 152,847 records read; 76,683 in window and not sidechain; **19,532
+in-window sidechain records excluded**. Those records fold into 58,393 logical messages, 9,230 of
 which were assembled from more than one record.
 
 Script: `scripts/measure-process-friction.ps1`. It writes a committed row-level ledger per metric
@@ -129,17 +129,17 @@ rows. Labelled evidence:
 
 | Count | Figure | What it rests on |
 |---|---|---|
-| Blocked-agent handoffs | **60 to 655** | 15 flagged, 8 real (precision 53 percent). 2 misses in a fully read 60-message sample of 5,678 unflagged, so 52 to 647 more. The interval is wide because 60 labels cannot narrow it; what it does show is that 15 is nowhere near the top |
-| Directory-bound commands handed to the human | **214 command lines** across 34 sessions | A line inside a `powershell` or `bash` fence that names a directory, deduplicated on message and line text. Precision unmeasured: an example command counts like a handed-over one |
-| Cleanup popups and blocked runs | **75 messages** across 24 sessions | Only lines the cleanup scripts print. The earlier 233 carried 180 rows matching the bare script name `remove-worktree`, which is people discussing the script rather than an event |
-| Next-step asks | **37 to 163** | 41 flagged, 19 real (precision 46 percent). 3 misses in a fully read 60-message sample of 1,052 unflagged, so 18 to 144 more |
-| CI minutes on non-.NET changes | **291 minutes** across 53 runs, covering 114 of 192 in-window CI runs | 549 workflow runs in the window, of which 201 are CI; the other 348 are opencode, PR-Agent and the two deploy workflows, and are not this metric. 61 CI runs touch .NET, 78 have a `head_sha` that is not in this clone and are reported unresolved rather than guessed |
+| Blocked-agent handoffs | **179 to 533** | 15 flagged, 10 real (precision 67 percent). 11 misses in a fully read 200-message sample of 5,457 unflagged, so 169 to 523 more. The flagged 15 is not an upper bound and is not close to one |
+| Directory-bound commands handed to the human | **179 command lines** across 34 sessions | A command line inside a `powershell`, `pwsh`, `bash`, `sh` or `shell` fence that names a directory, deduplicated on message and line text. The line must start with a command, and a here-string body is skipped. Precision unmeasured: an example command counts like a handed-over one |
+| Cleanup popups and blocked runs | **18 log lines** across 5 sessions | A line with the shared log stamp whose message is one a cleanup script writes. The earlier 75 was 65 rows of source code, injected instructions and reviews quoting an outcome; six of its eleven phrases appear in no script at all |
+| Next-step asks | **34 to 88** | 38 flagged, 17 real (precision 45 percent). 7 misses in a fully read 200-message sample of 1,004 unflagged, so 17 to 71 more |
+| CI minutes on non-.NET changes | **293.6 minutes** across 54 runs, covering 115 of 192 in-window CI runs | 531 workflow runs in the window, of which 192 are CI; the other 339 are opencode, PR-Agent and the two deploy workflows, and are not this metric. 61 CI runs touch .NET. 77 have no landing merge on `origin/main`'s first-parent chain and are reported unresolved rather than guessed — every in-window `head_sha` was present in this clone |
 
 **No figure is called an upper bound.** Two are ranges, because their match sets both over-flag
 and under-count, which the labelled sample measures rather than assumes. The CI figure is a floor
 for the runs that could be classified, not a total for the window.
 
-**Five traps worth recording.**
+**Nine traps worth recording.**
 
 1. `gh run list --limit 400` reaches back only to 2026-08-07, three weeks short of this window,
    and says so nowhere. The script pages `repos/{owner}/{repo}/actions/runs` with a `created`
@@ -148,22 +148,41 @@ for the runs that could be classified, not a total for the window.
    then `ToUniversalTime` subtracted the local offset a second time — 10:00Z became 08:00Z — which
    moved records and runs across both window edges.
 3. A CI run's `head_sha` is a branch head, not a merge commit. Its first-parent diff is one
-   commit's change, so the base must be the branch point. Falling back to `head^1` for a commit
-   that never reached `main` classifies a pull request from its last commit alone.
-4. Most workflow runs in this repository are not CI. Counting all of them answers a different
-   question.
-5. An assistant message arrives as several records sharing one `message.id`, and the first often
+   commit's change, so the base must be the branch point. The landing merge must come from
+   `origin/main`'s first-parent chain: `rev-list --ancestry-path --merges` also returns merges
+   made **on** the branch, and picking one of those sends the base back to the head itself.
+4. Reachability is not the same test as "landed on main". Every commit inside a merged branch is
+   reachable from main, so a fallback gated on `merge-base --is-ancestor` fires for exactly the
+   commits it must not. All 8 runs that reached it sat off the chain, and 2 changed a `.cs` file
+   the one-commit diff never saw.
+5. Most workflow runs in this repository are not CI. Counting all of them answers a different
+   question — and the window filter must run **before** the name filter, or out-of-window runs of
+   other workflows inflate the population from 531 to the API's calendar range of 549.
+6. A pull request can land no net change. Counting a resolved zero-file diff as unresolved
+   conflates "could not resolve" with "resolved to nothing", and dropped a real 153,000 ms run.
+7. An assistant message arrives as several records sharing one `message.id`, and the first often
    carries no text. Deduplicating before assembling the text discarded 3,171 messages.
+8. A word list cannot count events. Cleanup outcomes are written by `Write-WorktreeLog` with a
+   timestamp; the same words appear in the script's own source, in injected skill instructions,
+   and in reviews quoting an outcome. The line's shape is the rule, not the wording.
+9. Prose lives inside code fences. A pull request body passed as a `@' … '@` here-string sits
+   inside a `powershell` fence and is still English, so a fenced line only counts when it starts
+   with a command and is not inside a here-string.
 
 ### The withdrawn figures
 
 | Count | Candidates that were withdrawn |
 |---|---|
-| Blocked-agent handoffs | 570, then 30, then 20 |
-| Directory-bound commands handed to the human | 2750, then 120, then 113 distinct |
-| Cleanup popups and blocked runs | 107, then 16, then 15 in-window |
-| Next-step asks | 163, then 59, then 18 |
-| CI minutes on non-.NET changes | 142.7 was not reproducible: it classified from each PR's *current* files, not the files at the run's own commit |
+| Blocked-agent handoffs | 570, then 30, then 20, then 60 to 655 from a 60-row sample |
+| Directory-bound commands handed to the human | 2750, then 120, then 113 distinct, then 214 |
+| Cleanup popups and blocked runs | 107, then 16, then 15 in-window, then 233, then 75 |
+| Next-step asks | 163, then 59, then 18, then 37 to 163 from a 60-row sample |
+| CI minutes on non-.NET changes | 142.7 was not reproducible: it classified from each PR's *current* files, not the files at the run's own commit. Then 291 over 114 classified runs, which counted a valid empty diff as unresolved and took its population from a calendar range |
+
+The last row of each line is the sixth attempt, withdrawn in the review of 2026-08-16. The
+pattern held again: every earlier defect stayed fixed, and new ones took their place — a cleanup
+count that was 87 percent source code and discussion, a sample a third of the size the plan
+requires, and a published explanation for 78 unresolved CI runs that was simply false.
 
 ### What a valid measurement must do
 
