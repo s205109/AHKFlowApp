@@ -115,13 +115,39 @@ The pattern is the lesson: each attempt fixed the previous flaw and introduced o
 another, and each produced a number confident enough to be used. So this item measures the
 counts as a task with the requirements below, rather than inheriting a figure.
 
-| Count | Baseline | Status |
+### Measured 2026-08-16
+
+Window 2026-07-15T14:14:32Z to 2026-08-12T14:14:32Z. 392 transcript files after
+deduplication, across 84 project directories: 202 in main project directories, 190 in worktree
+directories. 134,056 records read, 80,655 inside the window, **0 sidechain records excluded** —
+the rule is covered by fixture, not by live data. Script:
+`scripts/measure-process-friction.ps1`. Sample and labels:
+[`docs/development/friction-recall-sample.md`](../docs/development/friction-recall-sample.md).
+
+| Count | Figure | What it rests on |
 |---|---|---|
-| Blocked-agent handoffs | not established | Candidate figures 570, then 30, then 20 |
-| Directory-bound commands handed to the human | not established | Candidate figures 2750, then 120, then 113 distinct |
-| Cleanup popups and blocked runs | not established | Candidate figures 107, then 16, then 15 in-window |
-| Next-step asks | not established | Candidate figures 163, then 59, then 18 |
-| CI minutes on non-.NET changes | not established | 142.7 was not reproducible: it classified from each PR's *current* files, not the files at the run's own commit |
+| Blocked-agent handoffs | **23 to 149**, most likely about 65 | 13 flagged across 10 sessions, of which only 2 are real. 5 misses in a 200-record sample of the 2,586 unflagged. The word list is not usable on its own; the range is the finding |
+| Directory-bound commands handed to the human | **62 command lines** across 21 sessions | Matches command syntax, not prose. Recall is not a question here; precision is unmeasured, because an example command counts like a handed-over one |
+| Cleanup popups and blocked runs | **221 records** across 85 sessions, treat as high | Two match terms, `is locked` and `is dirty`, are ordinary words. Not sampled, so this is a suspicion rather than a measurement |
+| Next-step asks | **28 to 84**, most likely about 48 | 36 flagged across 30 sessions, of which 16 are real. 6 misses in a 200-record sample of the 1,070 unflagged. The flagged figure is close by accident: 20 false positives nearly cancel about 32 misses |
+| CI minutes on non-.NET changes | **695.2 minutes** across 323 runs | 549 runs returned for the window, 13 outside it, **0 unresolved**. Each run is classified from its own `head_sha` against its own first parent, never against today's `main` |
+
+**No figure is called an upper bound.** Two of them are ranges because their match sets both
+over-flag and under-count, which the labelled sample measures rather than assumes.
+
+**One trap worth recording.** `gh run list --limit 400` reaches back only to 2026-08-07, three
+weeks short of this window, and says so nowhere. The script pages
+`repos/{owner}/{repo}/actions/runs` with a `created` filter instead.
+
+### The withdrawn figures
+
+| Count | Candidates that were withdrawn |
+|---|---|
+| Blocked-agent handoffs | 570, then 30, then 20 |
+| Directory-bound commands handed to the human | 2750, then 120, then 113 distinct |
+| Cleanup popups and blocked runs | 107, then 16, then 15 in-window |
+| Next-step asks | 163, then 59, then 18 |
+| CI minutes on non-.NET changes | 142.7 was not reproducible: it classified from each PR's *current* files, not the files at the run's own commit |
 
 ### What a valid measurement must do
 
