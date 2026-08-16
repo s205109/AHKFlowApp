@@ -8,45 +8,40 @@ The evidence is committed beside it:
 
 | File | What it holds |
 |---|---|
-| `friction-samples/handoffs-sample.csv` | 15 flagged messages and 200 sampled unflagged ones, each with its full text, key, session, and label |
-| `friction-samples/next-step-asks-sample.csv` | 41 flagged and 200 sampled unflagged, same columns |
+| `friction-samples/handoffs-sample.csv` | 15 flagged messages and 60 sampled unflagged ones, each with full text, key, session and label |
+| `friction-samples/next-step-asks-sample.csv` | 41 flagged and 60 sampled unflagged, same columns |
+| `friction-samples/ledgers/*.csv` | One row per counted item for all four transcript metrics, and one row per counted CI run |
 
-Redraw either with:
+Redraw either sample with:
 
 ```powershell
-pwsh ./scripts/sample-friction-recall.ps1 -Metric handoffs -OutputPath docs/development/friction-samples/handoffs-sample.csv
+pwsh ./scripts/sample-friction-recall.ps1 -Metric handoffs -OutputPath docs/development/friction-samples/handoffs-sample.csv -SampleSize 60
 ```
 
 | Setting | Value |
 |---|---|
 | Seed | 20260816 |
-| Sample size per metric | 200 unflagged messages |
+| Sample size per metric | 60 unflagged messages |
 | Window | 2026-07-15T14:14:32Z to 2026-08-12T14:14:32Z |
 | Transcript files | 691 after deduplication, subdirectories included |
-| Records read | 154,962; 80,080 in window and not sidechain; 21,040 sidechain excluded |
-| Logical messages | 60,906, of which 10,872 were assembled from more than one record |
+| Records read | 155,392; 79,691 in window and not sidechain; 19,586 in-window sidechain records excluded |
+| Logical messages | 60,596, of which 9,656 were assembled from more than one record |
 | Measured and labelled | 2026-08-16 |
 
 ## How a label was decided
 
-Every message in the manifest carries its **full text**, not an excerpt, because the sentence
-that makes a message a handoff is often past the first line.
+**Every sampled row was read.** 60 unflagged rows per metric, plus all 15 and all 41 flagged
+ones — 176 messages in total. The sample is 60 rather than 200 because 200 could not be read
+honestly, and a row labelled from a word list is not a labelled row. That choice widens the
+interval, and the wider interval is the true state of the evidence.
 
-Labelling ran in two stages, and both are checkable:
+The manifests carry each message's **full text**, so any label can be checked. They also carry a
+`Screen` column — a wide word list, far wider than the metric's own — which is now a reading aid
+rather than a labeller.
 
-1. **A mechanical screen over the whole text.** A word list far wider than the metric's own —
-   for handoffs: `yourself`, `manually`, `cannot`, `blocked`, `guard`, `terminal`, `login`, and
-   fifteen more. The screen is in `scripts/sample-friction-recall.ps1` and its hits are stored
-   in the manifest's `Screen` column. It selected 35 of the 200 sampled handoff messages and 26
-   of the 200 sampled asks.
-2. **Reading, in full, every screened message and every flagged one.** A row labelled
-   `not-a-case` without a screen hit means no word associated with the concept appears anywhere
-   in its text, which a reviewer can check against the `Text` column rather than trust.
-
-**Definitions used.** A *handoff* is the agent saying it cannot do something and passing the
-action to the person. Working around a refusal is not a handoff. A *next-step ask* is the person
-asking what to do next; an instruction to carry on ("continue", "exec the next step") is not,
-and neither is pasted review text that contains the words.
+**Definitions.** A *handoff* is the agent saying it cannot do something and passing the action to
+the person; working around a refusal is not one. A *next-step ask* is the person asking what to do
+next; an instruction to carry on is not, and neither is pasted text that contains the words.
 
 ## Metric 1 — blocked-agent handoffs
 
@@ -54,26 +49,18 @@ and neither is pasted review text that contains the words.
 
 | Label | Items | Why |
 |---|---|---|
-| Real | F2, F3, F5, F6, F9, F10, F14, F15 | A corrupted `gh` token the agent cannot repair; an uncommitted file the guard blocks; "run it yourself" with the commands; "Run it yourself:" for a prototype; "I cannot reach" a private-repo finding, twice; "so a handover again"; "Run this from the main checkout" |
-| Not real | F1, F4, F7, F8, F11, F12 | Completion summaries and analyses that merely mention a block |
-| Not real | F13 | "The guard refuses variable write targets. Using the Write tool instead" — the agent worked around it, so nothing was handed over |
+| Real | F2, F3, F5, F6, F9, F10, F14, F15 | A corrupted `gh` token the agent cannot repair; a file the guard will not let it commit; "run it yourself" with the commands; "Run it yourself:" for a prototype; "I cannot reach" a private-repo finding, twice; "so a handover again"; "Run this from the main checkout" |
+| Not real | F1, F4, F7, F8, F11, F12 | Completion summaries and analyses that mention a block without passing anything over |
+| Not real | F13 | "The guard refuses variable write targets. Using the Write tool instead" — worked around, nothing handed over |
 
-**Unflagged sample: 200 of 5,699. Missed: 6.**
+**Unflagged sample: 60 of 5,678. Missed: 2** — U39 ("those live in the private plans repo, so
+from the main checkout") and U18 ("branched off stale `main` — rebase before the PR").
 
-| Item | What the word list missed |
-|---|---|
-| U19 | "commit blocked - guard forbids agent Git mutations… Run in PowerShell:" |
-| U30 | "Denied twice - permission mode blocks `git reset --hard` outright… Options:" |
-| U62 | "Two loose ends from earlier, both yours to run" |
-| U111 | "Plan mode is on now - I can't commit the spec yet" |
-| U179 | "7 of the 23 live in `docs/superpowers`, which this session cannot write… hand you exact commands" |
-| U189 | "It cannot be saved from here - plans repo again - so same handover" |
+2 in 60 is a 3.3 percent miss rate, 95 percent interval 0.9 to 11.4 percent. Across 5,678
+unflagged messages that is **52 to 647 missed handoffs**.
 
-6 in 200 is a 3 percent miss rate, 95 percent interval 1.4 to 6.4 percent. Across 5,699
-unflagged messages that is **80 to 365 missed handoffs**.
-
-**True count: roughly 88 to 373.** The flagged 15 is not an upper bound and not a lower one.
-The word list finds about one handoff in twenty.
+**True count: roughly 60 to 655.** The interval is wide because 60 labels cannot make it narrow.
+What it does establish: the flagged 15 is far below the real number, so it is not an upper bound.
 
 ## Metric 4 — next-step asks
 
@@ -83,40 +70,37 @@ The word list finds about one handoff in twenty.
 |---|---|
 | Real | F3, F4, F5, F6, F7, F13, F15, F17, F18, F21, F25, F27, F28, F30, F31, F35, F38, F39, F41 |
 | Not real — an instruction, not a question | F14, F19, F22, F24 |
-| Not real — pasted plan, review, memory, or handoff text containing the words | F1, F2, F8, F9, F10, F11, F12, F16, F20, F23, F26, F29, F32, F33, F34, F36, F37, F40 |
+| Not real — pasted plan, review, memory or handoff text containing the words | F1, F2, F8, F9, F10, F11, F12, F16, F20, F23, F26, F29, F32, F33, F34, F36, F37, F40 |
 
-**Unflagged sample: 200 of 1,055. Missed: 2.**
+**Unflagged sample: 60 of 1,052. Missed: 3** — U8 ("are the two things for me still relevant?"),
+U45 ("is it ready to pick up?"), U55 ("what are the options?").
 
-| Item | What the word list missed |
-|---|---|
-| U85 | "should we create a plan to resolve this bug or is it straightforward to fix?" |
-| U94 | "can you not use these findings directly? or should I ask the reviewer again" |
+3 in 60 is a 5 percent miss rate, 95 percent interval 1.7 to 13.7 percent. Across 1,052 unflagged
+messages that is **18 to 144 missed asks**.
 
-2 in 200 is a 1 percent miss rate, 95 percent interval 0.3 to 3.6 percent. Across 1,055
-unflagged messages that is **3 to 38 missed asks**.
-
-**True count: roughly 22 to 57.**
+**True count: roughly 37 to 163.**
 
 ## The other three metrics
 
-- **Metric 2, directory-bound commands (214 lines).** A syntax rule, not a word list: a line
-  inside a `powershell` or `bash` fence that names a directory. Prose that mentions `cd` does
-  not count, and a line repeated inside one message counts once. Recall is not a real question
-  for a syntax rule; precision is unmeasured, because a command shown as an example counts the
-  same as one handed over.
-- **Metric 3, cleanup events (233 messages).** Matches the cleanup scripts' own log strings over
-  any record, agent or tool. Not sampled, so no precision figure. The earlier terms `is locked`
-  and `is dirty` were replaced by `worktree is locked` and `worktree is dirty`, because the
-  short forms match ordinary sentences.
-- **Metric 5, CI minutes (551.4 across 302 runs).** No word matching at all, so no recall
-  question. Each run is classified from the files its own pull request changed.
+- **Metric 2, directory-bound commands (214 lines).** A syntax rule: a line inside a `powershell`
+  or `bash` fence that names a directory, deduplicated on message and line text. Precision is
+  unmeasured — an example command counts like a handed-over one.
+- **Metric 3, cleanup events (75 messages).** Only lines the cleanup scripts actually print. The
+  earlier 233 included 180 rows matching the bare script name `remove-worktree`, which is people
+  discussing the script. That term is gone.
+- **Metric 5, CI minutes (291 across 53 runs).** No word matching, so no recall question. It has a
+  coverage problem instead, stated below.
 
-## Two things that limit all of this
+## What limits these numbers
 
-**The transcripts are live.** Two runs twenty minutes apart read 694 and then 691 files, and the
-flagged ask count moved by one. Sessions are written, rotated, and removed while the measurement
-runs. The manifests are the frozen record; the published figures name the run that produced them.
+**Two of five figures are wide ranges.** Sixty labels bound a miss rate loosely. A tighter figure
+needs either a much larger labelled sample or — better — a classifier that reads structure rather
+than wording: a refused tool call, a session that ends on a question.
 
-**Wording is the wrong signal.** Precision is 53 and 46 percent, and recall for handoffs is about
-one in twenty. A future wave that wants tight numbers should classify by structure — a refused
-tool call, a session that ends on a question — rather than by the words people happened to use.
+**Metric 5 classifies 114 of 192 in-window CI runs.** 78 runs have a `head_sha` that is not in
+this clone: a closed pull request, or a branch whose head was never fetched. They are reported as
+unresolved rather than guessed at. The 291 minutes is therefore a floor for the classified runs,
+not a total for the window.
+
+**The transcripts are live.** Runs minutes apart read 691 and 694 files. The manifests and ledgers
+are the frozen record; every published figure names the run that produced it.

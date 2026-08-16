@@ -118,34 +118,41 @@ counts as a task with the requirements below, rather than inheriting a figure.
 ### Measured 2026-08-16
 
 Window 2026-07-15T14:14:32Z to 2026-08-12T14:14:32Z. 691 transcript files after deduplication,
-subdirectories included. 154,962 records read; 80,080 in window and not sidechain; **21,040
-sidechain records excluded**. Those records fold into 60,906 logical messages, 10,872 of which
-were assembled from more than one record.
+subdirectories included. 155,392 records read; 79,691 in window and not sidechain; **19,586
+in-window sidechain records excluded**. Those records fold into 60,596 logical messages, 9,656 of
+which were assembled from more than one record.
 
-Script: `scripts/measure-process-friction.ps1`, which writes a row-level ledger per metric.
-Labelled evidence: [`docs/development/friction-recall-sample.md`](../docs/development/friction-recall-sample.md)
-and the two manifests in `docs/development/friction-samples/`.
+Script: `scripts/measure-process-friction.ps1`. It writes a committed row-level ledger per metric
+under `docs/development/friction-samples/ledgers/`, so every figure can be recomputed from its
+rows. Labelled evidence:
+[`docs/development/friction-recall-sample.md`](../docs/development/friction-recall-sample.md).
 
 | Count | Figure | What it rests on |
 |---|---|---|
-| Blocked-agent handoffs | **88 to 373** | 15 flagged, 8 of them real (precision 53 percent). 6 misses in a 200-message sample of 5,699 unflagged, so 80 to 365 more. The word list finds about one handoff in twenty; the range is the finding |
+| Blocked-agent handoffs | **60 to 655** | 15 flagged, 8 real (precision 53 percent). 2 misses in a fully read 60-message sample of 5,678 unflagged, so 52 to 647 more. The interval is wide because 60 labels cannot narrow it; what it does show is that 15 is nowhere near the top |
 | Directory-bound commands handed to the human | **214 command lines** across 34 sessions | A line inside a `powershell` or `bash` fence that names a directory, deduplicated on message and line text. Precision unmeasured: an example command counts like a handed-over one |
-| Cleanup popups and blocked runs | **233 messages** across 84 sessions | Cleanup log strings over any record, agent or tool. Not sampled, so no precision figure |
-| Next-step asks | **22 to 57** | 41 flagged, 19 of them real (precision 46 percent). 2 misses in a 200-message sample of 1,055 unflagged, so 3 to 38 more |
-| CI minutes on non-.NET changes | **551.4 minutes** across 302 runs | 549 runs returned for the window, 233 touch .NET, 13 outside the window, 1 unresolved. 11 counted with no duration after 23 timing calls failed |
+| Cleanup popups and blocked runs | **75 messages** across 24 sessions | Only lines the cleanup scripts print. The earlier 233 carried 180 rows matching the bare script name `remove-worktree`, which is people discussing the script rather than an event |
+| Next-step asks | **37 to 163** | 41 flagged, 19 real (precision 46 percent). 3 misses in a fully read 60-message sample of 1,052 unflagged, so 18 to 144 more |
+| CI minutes on non-.NET changes | **291 minutes** across 53 runs, covering 114 of 192 in-window CI runs | 549 workflow runs in the window, of which 201 are CI; the other 348 are opencode, PR-Agent and the two deploy workflows, and are not this metric. 61 CI runs touch .NET, 78 have a `head_sha` that is not in this clone and are reported unresolved rather than guessed |
 
 **No figure is called an upper bound.** Two are ranges, because their match sets both over-flag
-and under-count, which the labelled sample measures rather than assumes.
+and under-count, which the labelled sample measures rather than assumes. The CI figure is a floor
+for the runs that could be classified, not a total for the window.
 
-**Three traps worth recording.**
+**Five traps worth recording.**
 
 1. `gh run list --limit 400` reaches back only to 2026-08-07, three weeks short of this window,
    and says so nowhere. The script pages `repos/{owner}/{repo}/actions/runs` with a `created`
    filter instead.
-2. A CI run's `head_sha` is a branch head, not a merge commit, because CI runs on
-   `pull_request`. Its first-parent diff is one commit's change. The base is the branch point
-   instead. Correcting this moved 21 runs and 144 minutes out of the non-.NET total.
-3. An assistant message arrives as several records sharing one `message.id`, and the first often
+2. `ConvertFrom-Json` already returns a UTC `DateTime`. Passing it to `[datetime]::Parse` and
+   then `ToUniversalTime` subtracted the local offset a second time — 10:00Z became 08:00Z — which
+   moved records and runs across both window edges.
+3. A CI run's `head_sha` is a branch head, not a merge commit. Its first-parent diff is one
+   commit's change, so the base must be the branch point. Falling back to `head^1` for a commit
+   that never reached `main` classifies a pull request from its last commit alone.
+4. Most workflow runs in this repository are not CI. Counting all of them answers a different
+   question.
+5. An assistant message arrives as several records sharing one `message.id`, and the first often
    carries no text. Deduplicating before assembling the text discarded 3,171 messages.
 
 ### The withdrawn figures

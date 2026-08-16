@@ -80,6 +80,24 @@ $selectedUuids = @($selected | ForEach-Object { $_.uuid })
 Assert-True (-not ($selectedUuids -contains 'u5')) 'a sidechain record must be excluded'
 Assert-True (-not ($selectedUuids -contains 'u6')) 'an out-of-window record must be excluded'
 
+# --- Timestamps keep their zone ---
+# ConvertFrom-Json turns an ISO string into a DateTime whose Kind is Utc. Handing that object
+# back to [datetime]::Parse stringifies it in local time and parses the result as Unspecified,
+# so ToUniversalTime subtracts the offset a second time. Measured on 2026-08-16: 10:00Z became
+# 08:00Z, a two-hour shift that moved records and CI runs across the window edge.
+$parsedRecord = '{"type":"user","timestamp":"2026-07-20T10:00:00.000Z","isSidechain":false,"uuid":"j1","promptSource":"typed","message":{"content":"what is the next step"}}' | ConvertFrom-Json
+Assert-True ((Get-RecordTimestamp -Record $parsedRecord).ToString('o') -eq '2026-07-20T10:00:00.0000000Z') `
+    "a DateTime from ConvertFrom-Json must stay 10:00Z, got $((Get-RecordTimestamp -Record $parsedRecord).ToString('o'))"
+
+$stringRecord = New-Record @{ type = 'user'; timestamp = '2026-07-20T10:00:00.000Z'; isSidechain = $false; uuid = 'j2' }
+Assert-True ((Get-RecordTimestamp -Record $stringRecord).ToString('o') -eq '2026-07-20T10:00:00.0000000Z') `
+    'a string timestamp must parse to the same instant'
+
+# A record one minute inside the window's first hour must survive a two-hour shift test.
+$edge = '{"type":"user","timestamp":"2026-07-15T15:00:00.000Z","isSidechain":false,"uuid":"j3","promptSource":"typed","message":{"content":"x"}}' | ConvertFrom-Json
+$edgeSelected = @(Select-FrictionRecord -Records @($edge) -Start $start -End $end)
+Assert-True ($edgeSelected.Count -eq 1) 'a record 45 minutes after the window opens must be inside it'
+
 # --- Normalization: one logical message per message.id ---
 # An assistant message arrives as several records that share one message.id, and the FIRST of
 # them often carries no text. Deduplicating before reading the text kept that empty first
@@ -102,6 +120,12 @@ Assert-True ($countSplit.Items -eq 1) "a handoff whose wording spans fragments m
 # A user record has no message.id, so it folds on its own uuid instead.
 $userLogical = @(ConvertTo-LogicalMessage -Records @($human, $human, $suggestion))
 Assert-True ($userLogical.Count -eq 2) "copied-forward user history must fold to 2, got $($userLogical.Count)"
+
+# A record copied forward is the SAME record, not a second fragment. Appending it again both
+# doubled the text and inflated the count of messages that span several records.
+Assert-True ($userLogical[0].Fragments -eq 1) "a copied-forward record must not add a fragment, got $($userLogical[0].Fragments)"
+Assert-True (@([regex]::Matches($userLogical[0].Text, 'what is the next step')).Count -eq 1) `
+    'a copied-forward record must not repeat its text inside the assembled message'
 
 # --- Metric 4: next-step asks ---
 $count = Get-FrictionCount -Messages $userLogical -Metric 'next-step-asks'
@@ -187,6 +211,23 @@ $cleanup = @(ConvertTo-LogicalMessage -Records @(
 $count = Get-FrictionCount -Messages $cleanup -Metric 'cleanup-events'
 Assert-True ($count.Items -eq 2) "cleanup must fold to 2 and must read assistant records too, got $($count.Items)"
 
+# The metric counts events, not mentions. A sentence naming the cleanup script is discussion:
+# the bare term 'remove-worktree' produced 180 of 233 rows, which is a lexical count wearing an
+# event count's label.
+$discussion = @(ConvertTo-LogicalMessage -Records @(
+        New-Assistant -Id 'msg_talk' -Text 'The hook lives in scripts/remove-worktree.ps1 and I will read it next.'
+    ))
+$count = Get-FrictionCount -Messages $discussion -Metric 'cleanup-events'
+Assert-True ($count.Items -eq 0) "naming the cleanup script is discussion, not an event, got $($count.Items)"
+
+# --- The sidechain count is inside the window ---
+# Counting sidechain records over every record read, while the metrics count only in-window
+# ones, published an exclusion figure for a different population: 21,040 against 19,586.
+$sideEarly = New-Record @{ type = 'user'; timestamp = $outOfWindow; isSidechain = $true; uuid = 's-out' }
+$sideInside = New-Record @{ type = 'user'; timestamp = $inWindow; isSidechain = $true; uuid = 's-in' }
+$excluded = Get-SidechainCount -Records @($sideEarly, $sideInside, $human) -Start $start -End $end
+Assert-True ($excluded -eq 1) "only the in-window sidechain record counts as excluded, got $excluded"
+
 # --- File discovery reads nested transcripts ---
 # Subagent transcripts live in subdirectories. Reading only the top level hid every sidechain
 # record, so the exclusion count printed zero and proved nothing.
@@ -211,12 +252,16 @@ Remove-Item $dedupRoot -Recurse -Force -ErrorAction SilentlyContinue
 
 # --- Metric 5: CI classification ---
 $runs = @(
-    [pscustomobject]@{ id = 1; head_sha = 'aaa'; created_at = $inWindow; run_duration_ms = 600000 }
-    [pscustomobject]@{ id = 1; head_sha = 'aaa'; created_at = $inWindow; run_duration_ms = 600000 }  # repeated id
-    [pscustomobject]@{ id = 2; head_sha = 'bbb'; created_at = $inWindow; run_duration_ms = 300000 }
-    [pscustomobject]@{ id = 3; head_sha = 'ccc'; created_at = $outOfWindow; run_duration_ms = 999000 }
-    [pscustomobject]@{ id = 4; head_sha = 'ddd'; created_at = $inWindow; run_duration_ms = 120000 }
-    [pscustomobject]@{ id = 5; head_sha = 'eee'; created_at = $inWindow; run_duration_ms = 0 }       # timing missing
+    [pscustomobject]@{ id = 1; name = 'CI'; head_sha = 'aaa'; created_at = $inWindow; run_duration_ms = 600000 }
+    [pscustomobject]@{ id = 1; name = 'CI'; head_sha = 'aaa'; created_at = $inWindow; run_duration_ms = 600000 }  # repeated id
+    [pscustomobject]@{ id = 2; name = 'CI'; head_sha = 'bbb'; created_at = $inWindow; run_duration_ms = 300000 }
+    [pscustomobject]@{ id = 3; name = 'CI'; head_sha = 'ccc'; created_at = $outOfWindow; run_duration_ms = 999000 }
+    [pscustomobject]@{ id = 4; name = 'CI'; head_sha = 'ddd'; created_at = $inWindow; run_duration_ms = 120000 }
+    [pscustomobject]@{ id = 5; name = 'CI'; head_sha = 'eee'; created_at = $inWindow; run_duration_ms = 0 }       # timing missing
+    # Not the CI workflow. opencode, PR-Agent and the two deploy workflows accounted for 348 of
+    # the 549 runs in this window, and none of them is the gate this metric is about.
+    [pscustomobject]@{ id = 6; name = 'opencode'; head_sha = 'aaa'; created_at = $inWindow; run_duration_ms = 900000 }
+    [pscustomobject]@{ id = 7; name = 'Deploy API'; head_sha = 'aaa'; created_at = $inWindow; run_duration_ms = 900000 }
 )
 $resolver = {
     param([string] $Sha)
@@ -228,7 +273,8 @@ $resolver = {
         default { return $null }
     }
 }
-$ci = Get-CiClassification -Runs $runs -Start $start -End $end -Resolver $resolver
+$ci = Get-CiClassification -Runs $runs -Start $start -End $end -Resolver $resolver -WorkflowName 'CI'
+Assert-True ($ci.OtherWorkflows -eq 2) "opencode and Deploy API are not the CI workflow, got $($ci.OtherWorkflows)"
 Assert-True ($ci.NonDotnetRuns -eq 2) "runs 1 and 5 are in-window and non-.NET, got $($ci.NonDotnetRuns)"
 Assert-True ($ci.NonDotnetMinutes -eq 10) "only run 1 has a duration, so 10 minutes, got $($ci.NonDotnetMinutes)"
 Assert-True ($ci.Unresolved -eq 1) "run 4 cannot be resolved and must be reported, got $($ci.Unresolved)"
@@ -257,6 +303,19 @@ if ($LASTEXITCODE -eq 0) {
 }
 else {
     Write-Host "SKIPPED: commit $prHead is not present locally, so the live resolver was not exercised."
+}
+
+# --- A commit that never reached main is unresolved, not silently first-parented ---
+# Falling back to head^1 for any unmerged commit answers with one commit's change and calls it
+# a pull request. An audit found 13 such runs whose full pull request did touch .NET files.
+$unmergedHead = (& git -C $repoRoot rev-parse HEAD).Trim()
+& git -C $repoRoot merge-base --is-ancestor $unmergedHead origin/main 2>$null
+if ($LASTEXITCODE -ne 0) {
+    $resolvedUnmerged = Get-ChangedFileForRun -RepoRoot $repoRoot -Sha $unmergedHead
+    Assert-True ($null -eq $resolvedUnmerged) 'a commit that is not on main and has no landing merge must be unresolved'
+}
+else {
+    Write-Host 'SKIPPED: HEAD is already on origin/main, so the unmerged case was not exercised.'
 }
 
 if ($failures.Count -gt 0) {

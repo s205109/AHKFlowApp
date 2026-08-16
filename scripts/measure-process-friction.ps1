@@ -81,10 +81,15 @@ $script:MatchSets = @{
         'what do we do next', 'how do we proceed', 'what now', 'next items to pick up',
         'next backlog items', 'what do you suggest'
     )
+    # Every term here is a line the cleanup scripts print, not a word people use about them.
+    # The bare script name 'remove-worktree' produced 180 of 233 rows on 2026-08-16 - almost
+    # all of them sentences discussing the script - which made a lexical count wear an event
+    # count's label.
     'cleanup-events' = @(
-        'worktree removed', 'watcher done', 'cleanup popup', 'remove-worktree',
+        'worktree removed', 'watcher done', 'cleanup popup',
         'worktree remove failed', 'cleanup blocked', 'worktree is locked',
-        'worktree is dirty', 'could not remove the worktree'
+        'worktree is dirty', 'could not remove the worktree',
+        'is not clean, skipping', 'branch preserved', 'removing worktree'
     )
 }
 
@@ -113,6 +118,27 @@ function Get-RecordProperty {
     return $property.Value
 }
 
+function Get-RecordTimestamp {
+    <#
+    .SYNOPSIS
+        A record's timestamp as a UTC DateTime, whatever shape it arrives in.
+    .DESCRIPTION
+        ConvertFrom-Json already turns an ISO string into a DateTime whose Kind is Utc. Passing
+        that object to [datetime]::Parse stringifies it in local time and parses the result as
+        Unspecified, so the following ToUniversalTime subtracts the local offset a second time.
+        Measured on 2026-08-16 in a UTC+2 session: 10:00Z came back as 08:00Z, which moved
+        records and CI runs across both edges of the window.
+    #>
+    param([Parameter(Mandatory)][AllowNull()] $Record)
+
+    $value = Get-RecordProperty -Record $Record -Name 'timestamp'
+    if (-not $value) { $value = Get-RecordProperty -Record $Record -Name 'created_at' }
+    if (-not $value) { return $null }
+
+    if ($value -is [datetime]) { return $value.ToUniversalTime() }
+    return ([datetimeoffset]::Parse([string]$value)).UtcDateTime
+}
+
 function Test-HumanTurn {
     param([Parameter(Mandatory)][AllowNull()] $Record)
 
@@ -134,9 +160,8 @@ function Select-FrictionRecord {
 
     $kept = foreach ($record in $Records) {
         if ((Get-RecordProperty -Record $record -Name 'isSidechain') -eq $true) { continue }
-        $stamp = Get-RecordProperty -Record $record -Name 'timestamp'
-        if (-not $stamp) { continue }
-        $when = ([datetime]::Parse($stamp)).ToUniversalTime()
+        $when = Get-RecordTimestamp -Record $record
+        if (-not $when) { continue }
         if ($when -lt $Start -or $when -ge $End) { continue }
         $record
     }
@@ -144,8 +169,29 @@ function Select-FrictionRecord {
 }
 
 function Get-SidechainCount {
-    param([Parameter(Mandatory)][AllowEmptyCollection()][array] $Records)
-    return @($Records | Where-Object { (Get-RecordProperty -Record $_ -Name 'isSidechain') -eq $true }).Count
+    <#
+    .SYNOPSIS
+        How many sidechain records the window holds.
+    .DESCRIPTION
+        The window is required. Counting every sidechain record ever read, while the metrics
+        count only in-window ones, publishes an exclusion figure for a different population -
+        21,040 against 19,586 - which reads as though the metrics saw more than they did.
+    #>
+    param(
+        [Parameter(Mandatory)][AllowEmptyCollection()][array] $Records,
+        [Parameter(Mandatory)][datetime] $Start,
+        [Parameter(Mandatory)][datetime] $End
+    )
+
+    $count = 0
+    foreach ($record in $Records) {
+        if ((Get-RecordProperty -Record $record -Name 'isSidechain') -ne $true) { continue }
+        $when = Get-RecordTimestamp -Record $record
+        if (-not $when) { continue }
+        if ($when -lt $Start -or $when -ge $End) { continue }
+        $count++
+    }
+    return $count
 }
 
 function Get-RecordText {
@@ -226,14 +272,22 @@ function ConvertTo-LogicalMessage {
                 IsHumanTurn = (Test-HumanTurn -Record $record)
                 Fragments   = 0
                 Text        = ''
+                Seen        = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
             }
         }
 
         $entry = $byKey[$key]
-        $entry.Fragments++
         if ($entry.IsHumanTurn -eq $false -and (Test-HumanTurn -Record $record)) { $entry.IsHumanTurn = $true }
 
         $text = Get-RecordText -Record $record
+
+        # A record copied forward into a later transcript is the same record, not a second
+        # fragment of the message. Appending it again doubled the text and inflated the count
+        # of messages said to span several records.
+        $fingerprint = "$(Get-RecordProperty -Record $record -Name 'uuid')|$text"
+        if (-not $entry.Seen.Add($fingerprint)) { continue }
+
+        $entry.Fragments++
         if ($text) {
             $entry.Text = if ($entry.Text) { "$($entry.Text)`n$text" } else { $text }
         }
@@ -389,8 +443,13 @@ function Get-ChangedFileForRun {
         }
     }
 
-    # A merge that landed on main: its first-parent diff IS the pull request's net change.
-    # Anything else on main's own chain: its own change is all there is.
+    # The first-parent fallback is only legitimate for a commit that actually reached main: a
+    # merge that landed there, or a commit on its chain. For anything else it answers with one
+    # commit's change and calls it a pull request. An audit on 2026-08-16 found 13 runs where
+    # that fallback fired and the real pull request did touch .NET files.
+    & git -C $RepoRoot merge-base --is-ancestor $Sha origin/main 2>$null
+    if ($LASTEXITCODE -ne 0) { return $null }
+
     $base = $parents[1]
     $kind = if ($parents.Count -ge 3) { 'merge' } else { 'single-commit' }
     $files = @(& git -C $RepoRoot diff --name-only $base $Sha 2>$null)
@@ -410,7 +469,8 @@ function Get-CiClassification {
         [Parameter(Mandatory)][AllowEmptyCollection()][array] $Runs,
         [Parameter(Mandatory)][datetime] $Start,
         [Parameter(Mandatory)][datetime] $End,
-        [Parameter(Mandatory)][scriptblock] $Resolver
+        [Parameter(Mandatory)][scriptblock] $Resolver,
+        [string] $WorkflowName = 'CI'
     )
 
     $rows = New-Object System.Collections.Generic.List[object]
@@ -421,12 +481,20 @@ function Get-CiClassification {
     $duplicateIds = 0
     $missingTiming = 0
     $dotnetRuns = 0
+    $otherWorkflows = 0
 
     foreach ($run in $Runs) {
+        # One workflow, named. In this window the repository ran 549 workflow runs, of which
+        # 201 were CI and the rest were opencode, PR-Agent, and the two deploy workflows.
+        # Counting all of them answers a different question than "CI minutes".
+        $name = [string](Get-RecordProperty -Record $run -Name 'name')
+        if ($WorkflowName -and $name -ne $WorkflowName) { $otherWorkflows++; continue }
+
         $id = [string](Get-RecordProperty -Record $run -Name 'id')
         if (-not $seenIds.Add($id)) { $duplicateIds++; continue }
 
-        $created = ([datetime]::Parse((Get-RecordProperty -Record $run -Name 'created_at'))).ToUniversalTime()
+        $created = Get-RecordTimestamp -Record $run
+        if (-not $created) { $unresolved++; continue }
         if ($created -lt $Start -or $created -ge $End) { $outOfWindow++; continue }
 
         $sha = [string](Get-RecordProperty -Record $run -Name 'head_sha')
@@ -463,6 +531,7 @@ function Get-CiClassification {
         OutOfWindow      = $outOfWindow
         DuplicateIds     = $duplicateIds
         MissingTiming    = $missingTiming
+        OtherWorkflows   = $otherWorkflows
         Rows             = $rows
     }
 }
@@ -529,7 +598,9 @@ if ($AsModule) { return }
 
 if (-not $ProjectRoot) { $ProjectRoot = Join-Path $HOME '.claude/projects' }
 if (-not $ClonePath) { $ClonePath = Split-Path -Parent $PSScriptRoot }
-if (-not $LedgerRoot) { $LedgerRoot = Join-Path ([System.IO.Path]::GetTempPath()) 'friction-ledgers' }
+# The ledgers are committed, not left in a temporary folder. The transcripts change under the
+# measurement, so a figure whose rows live in %TEMP% cannot be recomputed from the commit.
+if (-not $LedgerRoot) { $LedgerRoot = Join-Path (Split-Path -Parent $PSScriptRoot) 'docs/development/friction-samples/ledgers' }
 New-Item -ItemType Directory -Path $LedgerRoot -Force | Out-Null
 
 Write-Host ''
@@ -550,7 +621,7 @@ foreach ($file in $files) {
 }
 Write-Host "  records: $($all.Count) read"
 
-$sidechain = Get-SidechainCount -Records $all.ToArray()
+$sidechain = Get-SidechainCount -Records $all.ToArray() -Start $script:WindowStart -End $script:WindowEnd
 $selected = Select-FrictionRecord -Records $all.ToArray() -Start $script:WindowStart -End $script:WindowEnd
 $messages = ConvertTo-LogicalMessage -Records $selected
 $multiFragment = @($messages | Where-Object { $_.Fragments -gt 1 }).Count
@@ -581,7 +652,7 @@ if ($SkipCi) {
 # 2026-08-07, three weeks short of this window, and it says so nowhere.
 $runLines = & gh api -X GET 'repos/s205109/AHKFlowApp/actions/runs' `
     -f 'created=2026-07-15..2026-08-12' -f 'per_page=100' --paginate `
-    --jq '.workflow_runs[] | {id: .id, head_sha: .head_sha, created_at: .created_at} | tostring' 2>$null
+    --jq '.workflow_runs[] | {id: .id, name: .name, event: .event, head_sha: .head_sha, created_at: .created_at} | tostring' 2>$null
 
 if ($LASTEXITCODE -ne 0 -or -not $runLines) {
     Write-Host 'ci-minutes : skipped - gh returned nothing, so no run could be classified'
@@ -592,18 +663,25 @@ $runs = @($runLines | Where-Object { $_ } | ForEach-Object {
         $parsed = $_ | ConvertFrom-Json
         [pscustomobject]@{
             id              = $parsed.id
+            name            = $parsed.name
+            event           = $parsed.event
             head_sha        = $parsed.head_sha
             created_at      = $parsed.created_at
             run_duration_ms = 0
         }
     })
-Write-Host "  ci runs returned by the API for this window: $($runs.Count)"
+Write-Host "  workflow runs returned by the API for this window: $($runs.Count)"
+foreach ($group in ($runs | Group-Object name | Sort-Object Count -Descending)) {
+    Write-Host "    $($group.Count) $($group.Name)"
+}
 
 # Duration comes from the timing endpoint. 'billable' reads 0 for this repository. A failed
 # call is counted rather than left as a silent zero.
 $timingFailures = 0
 foreach ($run in $runs) {
-    $created = ([datetime]::Parse($run.created_at)).ToUniversalTime()
+    if ($run.name -ne 'CI') { continue }
+    $created = Get-RecordTimestamp -Record $run
+    if (-not $created) { continue }
     if ($created -lt $script:WindowStart -or $created -ge $script:WindowEnd) { continue }
     $timing = & gh api "repos/s205109/AHKFlowApp/actions/runs/$($run.id)/timing" 2>$null
     if ($LASTEXITCODE -ne 0 -or -not $timing) { $timingFailures++; continue }
@@ -619,6 +697,7 @@ $ciLedger = Join-Path $LedgerRoot 'ci-runs.csv'
 $ci.Rows | Export-Csv -LiteralPath $ciLedger -NoTypeInformation -Encoding utf8
 
 Write-Host "ci-minutes on non-.NET changes : $($ci.NonDotnetMinutes) minutes across $($ci.NonDotnetRuns) run(s)"
+Write-Host "  runs of another workflow, not counted : $($ci.OtherWorkflows)"
 Write-Host "  runs that touch .NET files : $($ci.DotnetRuns)"
 Write-Host "  runs outside the window : $($ci.OutOfWindow)"
 Write-Host "  repeated run ids skipped : $($ci.DuplicateIds)"
