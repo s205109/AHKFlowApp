@@ -32,7 +32,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-. (Join-Path $PSScriptRoot 'process-canon.common.ps1')
+. (Join-Path $PSScriptRoot 'process-workflow.common.ps1')
 
 if (-not $DocsRoot) { $DocsRoot = Join-Path $repoRoot 'docs/development' }
 $docs = $DocsRoot

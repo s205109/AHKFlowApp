@@ -28,13 +28,13 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-. (Join-Path $PSScriptRoot 'process-canon.common.ps1')
+. (Join-Path $PSScriptRoot 'process-workflow.common.ps1')
 
 if (-not $ScanRoot) { $ScanRoot = $repoRoot }
 
 # \s+ already spans a newline, so this matches a wrapped phrase in the ORIGINAL text. There
 # is no need to flatten first, and flattening then mapping the offset back by counting words
-# is both unnecessary and wrong: it reported the canon's own sentence 14 lines early, so the
+# is both unnecessary and wrong: it reported the source's own sentence 14 lines early, so the
 # ignore marker was never found and the check stayed red.
 #
 # Two shapes, because the claim is made both ways round. Active: 'before you open a PR'.
@@ -46,7 +46,7 @@ if (-not $ScanRoot) { $ScanRoot = $repoRoot }
 $noun = '(?:PRs?\b|pull\s+requests?\b)'
 $activePattern = "before\s+(?:you\s+|anyone\s+|the\s+session\s+)?(?:open|opening|opens|create|creating|creates)\s+(?:a\s+|the\s+|any\s+)?$noun"
 # The passive shape names the act of opening, never the state of existing. 'before the pull
-# request exists' is an ordinary statement about a moment in time - the canon uses it twice to
+# request exists' is an ordinary statement about a moment in time - the source uses it twice to
 # say what the durable record is until Pickup pushes - and it makes no claim about the gate.
 $passivePattern = "before\s+(?:a\s+|the\s+|any\s+)?$noun\s+(?:is\s+|are\s+|has\s+been\s+|have\s+been\s+|gets\s+)?(?:opened|created)"
 $pattern = "(?:$activePattern)|(?:$passivePattern)"

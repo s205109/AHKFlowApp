@@ -169,6 +169,10 @@ _Avoid_: trash, bin, archive
 These terms name how work moves through this repository, not what the app does. The process
 itself is written in [`docs/development/workflow.md`](docs/development/workflow.md).
 
+**Source**:
+The one document that decides a process question: [`docs/development/workflow.md`](docs/development/workflow.md). Every other place the process appears — `AGENTS.md`, `.claude/CLAUDE.md`, the two HTML views, a plan's Appendix A — repeats it and loses to it. The adjective is "canonical", spelled out: "`workflow.md` is the canonical source". Never write the clipped noun "canon" (see ADR-0006).
+_Avoid_: canon, master, truth, authority, spec
+
 **Stage**:
 One of the eleven named steps that work passes through, from Intake to Cleanup. A Backlog item records the one it stands on now.
 _Avoid_: phase, step, status, state

@@ -19,7 +19,7 @@ The lines below are rules; each links to the stage that owns the narrative.
 ### Plan before you edit
 
 - Classify the change by Difficulty before you touch code. `complex` and `to-be-determined` go to Design, `moderate` to Plan, `trivial` straight to Execute — see [workflow.md#stage-1-pickup](../docs/development/workflow.md#stage-1-pickup).
-- A change is `trivial` only when all three predicates of the canon's trivial test are provably false. Read the test there; it carries the exemptions — see [workflow.md#stage-1-pickup](../docs/development/workflow.md#stage-1-pickup).
+- A change is `trivial` only when all three predicates of the source's trivial test are provably false. Read the test there; it carries the exemptions — see [workflow.md#stage-1-pickup](../docs/development/workflow.md#stage-1-pickup).
 - Repository documentation is not app-facing text, so a docs-only change can stay `trivial` — see [workflow.md#stage-1-pickup](../docs/development/workflow.md#stage-1-pickup).
 - Picking up a `backlog/` item is never `trivial` — see [workflow.md#stage-1-pickup](../docs/development/workflow.md#stage-1-pickup).
 - Closing an item whose work already merged is not a pickup: tick the boxes, set `Stage: 9-ship`, and `git mv` it into `backlog/done/` inside a housekeeping round, with no new item and no dedicated worktree — see [workflow.md#stage-1-pickup](../docs/development/workflow.md#stage-1-pickup).

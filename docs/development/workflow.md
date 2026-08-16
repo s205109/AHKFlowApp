@@ -11,7 +11,7 @@ Artifact: https://claude.ai/code/artifact/29e1af46-2c4d-409c-9b18-ca2acc5eb497
 
 Related files:
 
-- Which tests to run, and the canonical gate:
+- Which tests to run, and the Gate:
   [`testing-workflow.md`](testing-workflow.md)
 - What an agent may and may not do in the main checkout:
   [`cross-agent-git-guardrails.md`](../agents/cross-agent-git-guardrails.md)
@@ -319,7 +319,7 @@ compare — its record is the pull request body.
 
 **The draft pull request opens before any gate has run, and that is deliberate.** The pull
 request exists from Pickup so it can point at the work through Design and Plan. It is a
-**draft**, which is not a request to merge. The canonical five-step gate in
+**draft**, which is not a request to merge. The five-step Gate in
 [`testing-workflow.md`](testing-workflow.md#canonical-pre-pr-gate) is therefore a
 **pre-ready** gate: it runs at [Verify](#stage-6-verify), and it must be green before
 [Ship](#stage-9-ship) flips the pull request to ready. Read every rule that says "before you
@@ -416,7 +416,7 @@ create a PR" as "before you mark it ready". <!-- gate-wording:ignore -->
 - **Entry** — code settled
 - **Who** — Sonnet, default effort
 - **Technique** — the AGENTS.md Verification routing table (`dck-verify`)
-- **Action** — produce the verification artifact the table names, then run the canonical five-step gate in [`testing-workflow.md`](testing-workflow.md#canonical-pre-pr-gate). A wait on the human for manual steps keeps the stage in progress; it is not an edge. An AGENTS.md exemption replaces the **artifact** only — for exemption 1, targeted text checks plus diff review stand in for a test. The gate still runs. It runs on a docs-only branch too, because CI skips its .NET steps there, so the local gate is the only .NET check that branch gets. Name the exemption, state the verdict, and take the success edge
+- **Action** — produce the verification artifact the table names, then run the five-step Gate in [`testing-workflow.md`](testing-workflow.md#canonical-pre-pr-gate). A wait on the human for manual steps keeps the stage in progress; it is not an edge. An AGENTS.md exemption replaces the **artifact** only — for exemption 1, targeted text checks plus diff review stand in for a test. The gate still runs. It runs on a docs-only branch too, because CI skips its .NET steps there, so the local gate is the only .NET check that branch gets. Name the exemption, state the verdict, and take the success edge
 - **Exit** — Verification artifact green, gate green, verdict stated
 - **Next** — `7-document`
 - **Context** — safe to clear after green

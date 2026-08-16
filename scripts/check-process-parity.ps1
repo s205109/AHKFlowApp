@@ -24,11 +24,11 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-. (Join-Path $PSScriptRoot 'process-canon.common.ps1')
+. (Join-Path $PSScriptRoot 'process-workflow.common.ps1')
 
 if (-not $DocsRoot) { $DocsRoot = Join-Path $repoRoot 'docs/development' }
 
-$canonPath = Join-Path $DocsRoot 'workflow.md'
+$workflowPath = Join-Path $DocsRoot 'workflow.md'
 $treePath = Join-Path $DocsRoot 'workflow.html'
 $sheetPath = Join-Path $DocsRoot 'ahkflow-workflow-cheatsheet.html'
 $pdfPath = Join-Path $DocsRoot 'ahk-workflow.pdf'
@@ -40,7 +40,7 @@ $expectedStageCount = 11
 
 # Preflight. Reading a file before checking it is there produced an unhandled error and no
 # RESULT: line, so a caller could not tell a missing input from a crash.
-foreach ($required in @($canonPath, $treePath, $sheetPath, $pdfPath, $sourceHashPath, $pdfHashPath)) {
+foreach ($required in @($workflowPath, $treePath, $sheetPath, $pdfPath, $sourceHashPath, $pdfHashPath)) {
     if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
         $problems.Add("missing input: $required")
     }
@@ -56,7 +56,7 @@ if ($problems.Count) {
     exit 1
 }
 
-$canon = Get-CanonStage -Path $canonPath
+$workflow = Get-WorkflowStage -Path $workflowPath
 $tree = Get-HtmlStage -Path $treePath
 $sheet = Get-HtmlStage -Path $sheetPath
 
@@ -66,20 +66,20 @@ $pdfText = [System.Text.Encoding]::Latin1.GetString($pdfBytes)
 
 # Vacuous passes are the failure this guards against: a drifted format extracts fewer
 # stages, and comparing whatever survived proves nothing.
-if ($canon.Count -ne $expectedStageCount) { $problems.Add("workflow.md: expected $expectedStageCount stages, extracted $($canon.Count)") }
+if ($workflow.Count -ne $expectedStageCount) { $problems.Add("workflow.md: expected $expectedStageCount stages, extracted $($workflow.Count)") }
 if ($tree.Count -ne $expectedStageCount) { $problems.Add("workflow.html: expected $expectedStageCount stages, extracted $($tree.Count)") }
 if ($sheet.Count -ne $expectedStageCount) { $problems.Add("cheatsheet: expected $expectedStageCount stages, extracted $($sheet.Count)") }
 
-foreach ($id in $canon.Keys) {
-    if ($canon[$id].ExitCount -ne 1) { $problems.Add("workflow.md/${id}: expected 1 Exit, found $($canon[$id].ExitCount)") }
-    if ($canon[$id].Edges.Count -ne 5) { $problems.Add("workflow.md/${id}: expected 5 edges, found $($canon[$id].Edges.Count)") }
-    if ($canon[$id].Duplicates.Count -gt 0) { $problems.Add("workflow.md/${id}: duplicate edge row(s): $($canon[$id].Duplicates -join ', ')") }
+foreach ($id in $workflow.Keys) {
+    if ($workflow[$id].ExitCount -ne 1) { $problems.Add("workflow.md/${id}: expected 1 Exit, found $($workflow[$id].ExitCount)") }
+    if ($workflow[$id].Edges.Count -ne 5) { $problems.Add("workflow.md/${id}: expected 5 edges, found $($workflow[$id].Edges.Count)") }
+    if ($workflow[$id].Duplicates.Count -gt 0) { $problems.Add("workflow.md/${id}: duplicate edge row(s): $($workflow[$id].Duplicates -join ', ')") }
 }
 
 # A stage id that appears twice is a structural fault, not a difference: the count still
 # reads 11 while one of the two blocks is never compared with anything.
 foreach ($pair in @(
-        @{ Name = 'workflow.md'; Doc = $canon }
+        @{ Name = 'workflow.md'; Doc = $workflow }
         @{ Name = 'workflow.html'; Doc = $tree }
         @{ Name = 'cheatsheet'; Doc = $sheet }
     )) {
@@ -102,7 +102,7 @@ if ($problems.Count) {
 # The legal target set is built from the stages actually found, never from a shape pattern:
 # '^[0-9]+-[a-z-]+$' would pass 99-missing.
 $legal = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
-foreach ($id in $canon.Keys) { [void]$legal.Add($id) }
+foreach ($id in $workflow.Keys) { [void]$legal.Add($id) }
 foreach ($literal in @('2-design/3-plan/4-execute', 'stay', 'terminal', 'blocked/', 'none')) { [void]$legal.Add($literal) }
 
 $differences = 0
@@ -112,20 +112,20 @@ function Add-Difference {
     Write-Host $Message
 }
 
-$canonIds = @($canon.Keys)
+$workflowIds = @($workflow.Keys)
 $treeIds = @($tree.Keys)
 $sheetIds = @($sheet.Keys)
 
-for ($i = 0; $i -lt $canonIds.Count; $i++) {
-    $id = $canonIds[$i]
+for ($i = 0; $i -lt $workflowIds.Count; $i++) {
+    $id = $workflowIds[$i]
 
-    if ($treeIds[$i] -cne $id) { Add-Difference "ORDER workflow.html position ${i}: canon=$id  html=$($treeIds[$i])" }
-    if ($sheetIds[$i] -cne $id) { Add-Difference "ORDER cheatsheet position ${i}: canon=$id  sheet=$($sheetIds[$i])" }
+    if ($treeIds[$i] -cne $id) { Add-Difference "ORDER workflow.html position ${i}: source=$id  html=$($treeIds[$i])" }
+    if ($sheetIds[$i] -cne $id) { Add-Difference "ORDER cheatsheet position ${i}: source=$id  sheet=$($sheetIds[$i])" }
 
     # Runs of white space collapse, because HTML wraps lines. Punctuation does not: trimming a
     # trailing period let one document end a sentence and another not, which is a difference
-    # the canon is supposed to settle.
-    $canonExit = ($canon[$id].Exit -replace '\s+', ' ').Trim()
+    # the source is supposed to settle.
+    $workflowExit = ($workflow[$id].Exit -replace '\s+', ' ').Trim()
 
     # The expected visible label is derived from the stage id, so a renamed heading is caught:
     # '0-intake' must render as '0 Intake'.
@@ -133,7 +133,7 @@ for ($i = 0; $i -lt $canonIds.Count; $i++) {
     $expectedLabel = "$($idParts[0]) $($idParts[1].Substring(0,1).ToUpperInvariant())$($idParts[1].Substring(1))"
 
     $pairs = @(
-        @{ Name = 'workflow.html'; Doc = $tree; Expect = @($canon[$id].Edges.Keys) }
+        @{ Name = 'workflow.html'; Doc = $tree; Expect = @($workflow[$id].Edges.Keys) }
         @{ Name = 'cheatsheet'; Doc = $sheet; Expect = @('success', 'failure') }
     )
 
@@ -154,8 +154,8 @@ for ($i = 0; $i -lt $canonIds.Count; $i++) {
         }
 
         $exit = ($node.Exit -replace '\s+', ' ').Trim()
-        if ($exit -cne $canonExit) {
-            Add-Difference "EXIT  $($pair.Name):$($node.ExitLine)  stage $id`n   canon ($canonPath`:$($canon[$id].ExitLine)): $canonExit`n   $($pair.Name): $exit"
+        if ($exit -cne $workflowExit) {
+            Add-Difference "EXIT  $($pair.Name):$($node.ExitLine)  stage $id`n   source ($workflowPath`:$($workflow[$id].ExitLine)): $workflowExit`n   $($pair.Name): $exit"
         }
 
         $visibleExit = ($node.VisibleExit -replace '\s+', ' ').Trim()
@@ -166,12 +166,12 @@ for ($i = 0; $i -lt $canonIds.Count; $i++) {
         # Compare the edge SETS before comparing values, and compare the names case-sensitively.
         # Iterating only the document's own edges means a deleted data-next simply vanishes
         # from the comparison and passes. Comparing names case-insensitively means 'Success'
-        # answers for 'success', so the attribute matched the canon while the badge beside it
+        # answers for 'success', so the attribute matched the source while the badge beside it
         # read something else.
         $nodeEdgeNames = @($node.Edges.Keys)
         foreach ($edge in $pair.Expect) {
             if ($nodeEdgeNames -cnotcontains $edge) {
-                Add-Difference "EDGE-MISSING $($pair.Name):$($node.Line)  stage $id has no '$edge' edge; the canon has one"
+                Add-Difference "EDGE-MISSING $($pair.Name):$($node.Line)  stage $id has no '$edge' edge; the source has one"
             }
         }
         foreach ($edge in $nodeEdgeNames) {
@@ -190,9 +190,9 @@ for ($i = 0; $i -lt $canonIds.Count; $i++) {
             if (-not $legal.Contains($target)) {
                 Add-Difference "TARGET $($pair.Name):$edgeLine  stage $id edge '$edge' names '$target', which is not a stage or a legal literal"
             }
-            $canonTarget = if ($canon[$id].Edges.Contains($edge)) { $canon[$id].Edges[$edge] } else { '<missing>' }
-            if ($target -cne $canonTarget) {
-                Add-Difference "EDGE  $($pair.Name):$edgeLine  stage $id / $edge   canon=$canonTarget   $($pair.Name)=$target"
+            $workflowTarget = if ($workflow[$id].Edges.Contains($edge)) { $workflow[$id].Edges[$edge] } else { '<missing>' }
+            if ($target -cne $workflowTarget) {
+                Add-Difference "EDGE  $($pair.Name):$edgeLine  stage $id / $edge   source=$workflowTarget   $($pair.Name)=$target"
             }
             $visibleTarget = $node.VisibleEdges[$edge]
             if ($visibleTarget -cne $target) {
@@ -201,9 +201,9 @@ for ($i = 0; $i -lt $canonIds.Count; $i++) {
         }
     }
 
-    foreach ($edge in @($canon[$id].Edges.Keys)) {
-        if (-not $legal.Contains($canon[$id].Edges[$edge])) {
-            Add-Difference "TARGET workflow.md:$($canon[$id].EdgeLines[$edge])  stage $id edge '$edge' names '$($canon[$id].Edges[$edge])', which is not a stage or a legal literal"
+    foreach ($edge in @($workflow[$id].Edges.Keys)) {
+        if (-not $legal.Contains($workflow[$id].Edges[$edge])) {
+            Add-Difference "TARGET workflow.md:$($workflow[$id].EdgeLines[$edge])  stage $id edge '$edge' names '$($workflow[$id].Edges[$edge])', which is not a stage or a legal literal"
         }
     }
 }

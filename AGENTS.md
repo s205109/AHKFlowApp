@@ -173,7 +173,7 @@ the narrative.
 | Domain rule, validator | Unit test | `pwsh .\scripts\test-fast.ps1 -Mode Fast` |
 | Real Azure AD login, visual judgment call | Numbered manual steps for the user | — |
 
-Which slice to run, test templates, and the canonical gate: [`docs/development/testing-workflow.md`](docs/development/testing-workflow.md).
+Which slice to run, test templates, and the Gate: [`docs/development/testing-workflow.md`](docs/development/testing-workflow.md).
 
 ### The only exemptions
 
@@ -272,7 +272,7 @@ the API URL + `/health`. SWA hostname:
 - Block a `backlog/` item by `git mv`-ing it into `backlog/blocked/` when it waits on something outside this repository. The test is whether the work is possible right now, not whether it is worth doing; a low-priority item stays in `backlog/`. It keeps its number and its unticked boxes, and says near the top what would unblock it — see [workflow.md#stage-1-pickup](docs/development/workflow.md#stage-1-pickup).
 - Never force-push to `main` — see [workflow.md#stage-9-ship](docs/development/workflow.md#stage-9-ship).
 - Do not commit on `main`. `.githooks/pre-commit` refuses it for every session, agent and human, and `.githooks/pre-merge-commit` refuses a local merge into `main`. Set `AHKFLOW_ALLOW_MAIN=1` for a deliberate one — see [workflow.md#stage-1-pickup](docs/development/workflow.md#stage-1-pickup).
-- Run the canonical five-step gate before you mark a pull request **ready**, not when you open the draft: [`docs/development/testing-workflow.md`](docs/development/testing-workflow.md#canonical-pre-pr-gate) — see [workflow.md#stage-6-verify](docs/development/workflow.md#stage-6-verify).
+- Run the five-step Gate before you mark a pull request **ready**, not when you open the draft: [`docs/development/testing-workflow.md`](docs/development/testing-workflow.md#canonical-pre-pr-gate) — see [workflow.md#stage-6-verify](docs/development/workflow.md#stage-6-verify).
 - Keep a PR focused on a single concern; split a large change into stacked PRs — see [workflow.md#stage-8-review](docs/development/workflow.md#stage-8-review).
 - Treat the main checkout as human-owned. A session in main may inspect, edit, build, test, and format. A session in a managed worktree may read main, but any shell command that writes, moves, or deletes a path under main is refused — see [workflow.md#stage-1-pickup](docs/development/workflow.md#stage-1-pickup).
 - Run a gated Git command from main, where most now get an in-session prompt. `git commit` is the exception: it always needs a worktree, or a session-wide `AHKFLOW_ALLOW_MAIN=1` set before the session starts, and it never gets a prompt. Full rules: [`docs/agents/cross-agent-git-guardrails.md`](docs/agents/cross-agent-git-guardrails.md) — see [workflow.md#stage-1-pickup](docs/development/workflow.md#stage-1-pickup).

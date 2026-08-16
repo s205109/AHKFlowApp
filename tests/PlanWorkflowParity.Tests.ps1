@@ -3,7 +3,7 @@
 # CI cannot see the plans repository (.gitignore keeps docs/superpowers out), so this suite
 # tests the checker against fixture plans. Pre-push applies it to the real plans.
 #
-# Run it by hand with:  pwsh ./tests/PlanCanonParity.Tests.ps1
+# Run it by hand with:  pwsh ./tests/PlanWorkflowParity.Tests.ps1
 
 [CmdletBinding()]
 param()
@@ -13,8 +13,8 @@ $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 
 $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
-. (Join-Path $repoRoot 'scripts/process-canon.common.ps1')
-$script = Join-Path $repoRoot 'scripts/check-plan-canon-parity.ps1'
+. (Join-Path $repoRoot 'scripts/process-workflow.common.ps1')
+$script = Join-Path $repoRoot 'scripts/check-plan-workflow-parity.ps1'
 $failures = @()
 
 function Assert-True {
@@ -22,13 +22,13 @@ function Assert-True {
     if (-not $Condition) { $script:failures += $Message }
 }
 
-$canonPath = Join-Path $repoRoot 'docs/development/workflow.md'
-$canon = Get-CanonStage -Path $canonPath
+$workflowPath = Join-Path $repoRoot 'docs/development/workflow.md'
+$workflow = Get-WorkflowStage -Path $workflowPath
 
-# Builds an Appendix A from the canon, so the fixture never drifts from what it models.
+# Builds an Appendix A from the source, so the fixture never drifts from what it models.
 function New-PlansRoot {
     param([hashtable] $Override = @{})
-    $root = Join-Path ([System.IO.Path]::GetTempPath()) "plan-canon-$([guid]::NewGuid())"
+    $root = Join-Path ([System.IO.Path]::GetTempPath()) "plan-source-$([guid]::NewGuid())"
     New-Item -ItemType Directory -Path $root -Force | Out-Null
 
     $body = New-Object System.Text.StringBuilder
@@ -37,13 +37,13 @@ function New-PlansRoot {
     [void]$body.AppendLine('## Appendix A')
     [void]$body.AppendLine()
     $n = 0
-    foreach ($id in $canon.Keys) {
-        $exit = if ($Override.ContainsKey("exit:$id")) { $Override["exit:$id"] } else { $canon[$id].Exit }
+    foreach ($id in $workflow.Keys) {
+        $exit = if ($Override.ContainsKey("exit:$id")) { $Override["exit:$id"] } else { $workflow[$id].Exit }
         [void]$body.AppendLine("#### Stage $n — Name (``stage-$id``)")
         [void]$body.AppendLine()
         [void]$body.AppendLine("Exit — $exit Next — whatever")
-        $parts = foreach ($edge in $canon[$id].Edges.Keys) {
-            $target = if ($Override.ContainsKey("edge:${id}:$edge")) { $Override["edge:${id}:$edge"] } else { $canon[$id].Edges[$edge] }
+        $parts = foreach ($edge in $workflow[$id].Edges.Keys) {
+            $target = if ($Override.ContainsKey("edge:${id}:$edge")) { $Override["edge:${id}:$edge"] } else { $workflow[$id].Edges[$edge] }
             "$edge → ``$target``"
         }
         [void]$body.AppendLine('Edges: ' + ($parts -join ' · '))
@@ -60,7 +60,7 @@ function New-PlansRoot {
 
 function Invoke-Check {
     param([string] $PlansRoot)
-    $output = & pwsh -NoProfile -File $script -PlansRoot $PlansRoot -CanonPath $canonPath 2>&1
+    $output = & pwsh -NoProfile -File $script -PlansRoot $PlansRoot -WorkflowPath $workflowPath 2>&1
     return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = ($output -join "`n") }
 }
 
@@ -80,13 +80,13 @@ Assert-True ($result.ExitCode -eq 1) 'a drifted edge target must fail'
 Assert-True ($result.Output -match '0-intake') 'the message must name the stage'
 
 # --- Case 4: an absent plans folder skips, and does not fail ---
-$missing = Join-Path ([System.IO.Path]::GetTempPath()) "plan-canon-absent-$([guid]::NewGuid())"
+$missing = Join-Path ([System.IO.Path]::GetTempPath()) "plan-source-absent-$([guid]::NewGuid())"
 $result = Invoke-Check -PlansRoot $missing
 Assert-True ($result.ExitCode -eq 0) 'an absent plans folder must skip, so CI stays green'
 Assert-True ($result.Output -match 'skip') 'the skip must be printed, never silent'
 
 # --- Case 5: a folder with no Appendix A plan skips ---
-$empty = Join-Path ([System.IO.Path]::GetTempPath()) "plan-canon-empty-$([guid]::NewGuid())"
+$empty = Join-Path ([System.IO.Path]::GetTempPath()) "plan-source-empty-$([guid]::NewGuid())"
 New-Item -ItemType Directory -Path $empty -Force | Out-Null
 Set-Content -LiteralPath (Join-Path $empty 'ordinary-plan.md') -Value '# no appendix here' -Encoding utf8
 $result = Invoke-Check -PlansRoot $empty
@@ -120,7 +120,7 @@ Remove-Item $good, $driftExit, $driftEdge, $empty, $twin, $invented -Recurse -Fo
 if ($failures.Count -gt 0) {
     foreach ($failure in $failures) { Write-Host ''; Write-Host $failure -ForegroundColor Red }
     Write-Host ''
-    throw "Plan canon parity tests failed with $($failures.Count) problem(s). See the detail above."
+    throw "Plan source parity tests failed with $($failures.Count) problem(s). See the detail above."
 }
 
-Write-Host 'Plan canon parity tests passed. 7 cases.'
+Write-Host 'Plan source parity tests passed. 7 cases.'

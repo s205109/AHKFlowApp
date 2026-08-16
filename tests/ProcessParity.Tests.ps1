@@ -30,7 +30,7 @@ function New-Fixture {
     # Both sidecars are GENERATED for the fixture, never copied. Copying them makes this
     # suite depend on Task 3 having already run, so the clean case would fail while Task 2
     # is being written - which is exactly backwards for a test-first task.
-    . (Join-Path $repoRoot 'scripts/process-canon.common.ps1')
+    . (Join-Path $repoRoot 'scripts/process-workflow.common.ps1')
     $sourceHash = Get-NormalizedHash -Path (Join-Path $root 'ahkflow-workflow-cheatsheet.html')
     Set-Content -LiteralPath (Join-Path $root 'ahk-workflow.pdf.source.sha256') -Value $sourceHash -Encoding utf8 -NoNewline
     $pdfBytes = [System.IO.File]::ReadAllBytes((Join-Path $root 'ahk-workflow.pdf'))
@@ -138,7 +138,7 @@ Assert-True ($result.Output -match 'REPEATED|repeat') 'the message must say the 
 
 # --- Case 10: an edge name changes case only ---
 # A case-insensitive dictionary read 'Success' as 'success', so the attribute agreed with the
-# canon and the badge beside it did not.
+# source and the badge beside it did not.
 $cased = New-Fixture
 $path = Join-Path $cased 'workflow.html'
 Replace-Required -Path $path -From 'data-next="success:1-pickup"' -To 'data-next="Success:1-pickup"'
@@ -169,7 +169,7 @@ Assert-True ($result.Output -notmatch 'Exception|Cannot find path') "a missing i
 $handRefreshed = New-Fixture
 $path = Join-Path $handRefreshed 'ahkflow-workflow-cheatsheet.html'
 Add-Content -LiteralPath $path -Value '<!-- edited -->'
-. (Join-Path $repoRoot 'scripts/process-canon.common.ps1')
+. (Join-Path $repoRoot 'scripts/process-workflow.common.ps1')
 Set-Content -LiteralPath (Join-Path $handRefreshed 'ahk-workflow.pdf.source.sha256') -Value (Get-NormalizedHash -Path $path) -Encoding utf8 -NoNewline
 $result = Invoke-Check -Root $handRefreshed
 Assert-True ($result.ExitCode -eq 1) 'a hand-refreshed sidecar must not make a stale PDF look current'

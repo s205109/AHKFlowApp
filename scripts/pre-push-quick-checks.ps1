@@ -66,19 +66,19 @@ try {
 
     # A plan that transcribes the stage machine is a second normative source, and reviews of
     # backlog 071 found it drifted three rounds running. CI cannot check it for the same reason
-    # as above, so pre-push is where the real plans meet the canon. tests/PlanCanonParity.Tests.ps1
+    # as above, so pre-push is where the real plans meet the source. tests/PlanWorkflowParity.Tests.ps1
     # covers the checker itself against fixtures, which is the half CI can run.
-    Write-Step 'Checking the plans against the canon'
+    Write-Step 'Checking the plans against the source'
     if ($scanPlan.Action -ne 'Run') {
         Write-Host $scanPlan.Reason
     }
     else {
-        & $pwshPath -NoProfile -File (Join-Path $PSScriptRoot 'check-plan-canon-parity.ps1') `
+        & $pwshPath -NoProfile -File (Join-Path $PSScriptRoot 'check-plan-workflow-parity.ps1') `
             -PlansRoot (Join-Path $plansRoot 'plans')
         if ($LASTEXITCODE -ne 0) {
             throw "A plan's Appendix A disagrees with workflow.md. $skipHint"
         }
-        Write-Success 'Plans agree with the canon.'
+        Write-Success 'Plans agree with the source.'
     }
 }
 finally {

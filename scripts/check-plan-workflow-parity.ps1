@@ -4,8 +4,9 @@
     Compares a plan's Appendix A against the canonical process in workflow.md.
 
 .DESCRIPTION
-    A plan that transcribes the stage machine becomes a second normative source. When the
-    canon changes and the transcription does not, a resumed session follows the stale copy.
+    A plan that transcribes the stage machine becomes a second place the rules live. When
+    `workflow.md` changes and the transcription does not, a resumed session follows the stale
+    copy.
     Reviews of backlog 071 found that drift three rounds running, each time by hand.
 
     This checks every stage on both sides for the exit string and all five edge targets.
@@ -26,33 +27,33 @@
     repository is not in the checkout in CI, and a check that cannot run must say so rather
     than fail the run.
 
-.PARAMETER CanonPath
+.PARAMETER WorkflowPath
     The canonical process document. Defaults to docs/development/workflow.md.
 
 .EXAMPLE
-    pwsh ./scripts/check-plan-canon-parity.ps1
+    pwsh ./scripts/check-plan-workflow-parity.ps1
 .EXAMPLE
-    pwsh ./scripts/check-plan-canon-parity.ps1 -PlansRoot docs/superpowers/plans
+    pwsh ./scripts/check-plan-workflow-parity.ps1 -PlansRoot docs/superpowers/plans
 #>
 [CmdletBinding()]
 param(
     [string] $PlanPath,
     [string] $PlansRoot,
-    [string] $CanonPath
+    [string] $WorkflowPath
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-. (Join-Path $PSScriptRoot 'process-canon.common.ps1')
+. (Join-Path $PSScriptRoot 'process-workflow.common.ps1')
 
-if (-not $CanonPath) { $CanonPath = Join-Path $repoRoot 'docs/development/workflow.md' }
+if (-not $WorkflowPath) { $WorkflowPath = Join-Path $repoRoot 'docs/development/workflow.md' }
 if (-not $PlanPath -and -not $PlansRoot) {
     $PlanPath = Join-Path $repoRoot 'docs/superpowers/plans/2026-08-10-development-process-plan-071.md'
 }
 
-if (-not (Test-Path -LiteralPath $CanonPath)) { throw "Not found: $CanonPath" }
+if (-not (Test-Path -LiteralPath $WorkflowPath)) { throw "Not found: $WorkflowPath" }
 
 # Discover the plans to check. A plan without an '## Appendix A' transcribes no stage machine,
 # so there is nothing for this check to compare.
@@ -75,7 +76,7 @@ else {
     $planPaths = @($PlanPath)
 }
 
-$canonStages = Get-CanonStage -Path $CanonPath
+$workflowStages = Get-WorkflowStage -Path $WorkflowPath
 
 # Every stage must yield exactly one exit and these five edges, on both sides. Without this
 # the check fails open: a deleted row, a deleted Exit, or a duplicated edge all compare
@@ -99,25 +100,25 @@ function Assert-StageShape {
     }
 }
 
-# The canon comes from the shared parser, so a format change is handled in one place. The
+# The source comes from the shared parser, so a format change is handled in one place. The
 # duplicate report it carries is kept: a wrong edge row followed by a correct one passed
 # before this check existed, and sharing the parser must not drop that.
-foreach ($id in $canonStages.Keys) {
-    foreach ($word in $canonStages[$id].Duplicates) {
-        $problems.Add("canon/$id : duplicate '$word' edge")
+foreach ($id in $workflowStages.Keys) {
+    foreach ($word in $workflowStages[$id].Duplicates) {
+        $problems.Add("source/$id : duplicate '$word' edge")
     }
-    Assert-StageShape -Side 'canon' -Id $id -Exit $canonStages[$id].Exit -Edges $canonStages[$id].Edges -ExitCount $canonStages[$id].ExitCount
+    Assert-StageShape -Side 'source' -Id $id -Exit $workflowStages[$id].Exit -Edges $workflowStages[$id].Edges -ExitCount $workflowStages[$id].ExitCount
 }
 
-# The canon's own problems belong to every plan's report, so each plan starts from them.
-$canonProblems = @($problems)
+# The source's own problems belong to every plan's report, so each plan starts from them.
+$workflowProblems = @($problems)
 
 $exitCode = 0
 foreach ($currentPlanPath in $planPaths) {
     ''
     "PLAN: $currentPlanPath"
     $problems = New-Object System.Collections.Generic.List[string]
-    foreach ($canonProblem in $canonProblems) { $problems.Add($canonProblem) }
+    foreach ($workflowProblem in $workflowProblems) { $problems.Add($workflowProblem) }
     $plan = Get-NormalizedText -Path $currentPlanPath
 
 # Appendix A only. The last stage otherwise runs to end-of-file, and the greedy edge match
@@ -171,14 +172,14 @@ for ($i = 0; $i -lt $heads.Count; $i++) {
     $planStages[$id] = @{ Exit = $exit; Edges = $edges }
 }
 
-"canon stages: $($canonStages.Count)   plan stages: $($planStages.Count)"
+"source stages: $($workflowStages.Count)   plan stages: $($planStages.Count)"
 
 # Count is asserted, not merely reported. A document whose format drifted extracts fewer
 # stages, and comparing whatever survived is how a check passes vacuously.
-if ($canonStages.Count -ne $expectedStageCount) { $problems.Add("canon: expected $expectedStageCount stages, extracted $($canonStages.Count)") }
+if ($workflowStages.Count -ne $expectedStageCount) { $problems.Add("source: expected $expectedStageCount stages, extracted $($workflowStages.Count)") }
 if ($planStages.Count -ne $expectedStageCount) { $problems.Add("plan: expected $expectedStageCount stages, extracted $($planStages.Count)") }
 foreach ($id in $planStages.Keys) {
-    if (-not $canonStages.Contains($id)) { $problems.Add("plan/$id : stage not present in the canon") }
+    if (-not $workflowStages.Contains($id)) { $problems.Add("plan/$id : stage not present in the source") }
 }
 
 if ($problems.Count) {
@@ -192,27 +193,27 @@ if ($problems.Count) {
 }
 
 $differences = 0
-foreach ($id in $canonStages.Keys) {
+foreach ($id in $workflowStages.Keys) {
     if (-not $planStages.Contains($id)) {
         "MISSING in plan: $id"
         $differences++
         continue
     }
 
-    $canonExit = ($canonStages[$id].Exit -replace '\s+', ' ').TrimEnd('.')
+    $workflowExit = ($workflowStages[$id].Exit -replace '\s+', ' ').TrimEnd('.')
     $planExit = ($planStages[$id].Exit -replace '\s+', ' ').TrimEnd('.')
-    if ($canonExit -cne $planExit) {
+    if ($workflowExit -cne $planExit) {
         "EXIT  $id"
-        "   canon: $canonExit"
+        "   source: $workflowExit"
         "   plan : $planExit"
         $differences++
     }
 
-    foreach ($edge in $canonStages[$id].Edges.Keys) {
-        $canonTarget = $canonStages[$id].Edges[$edge]
+    foreach ($edge in $workflowStages[$id].Edges.Keys) {
+        $workflowTarget = $workflowStages[$id].Edges[$edge]
         $planTarget = if ($planStages[$id].Edges.Contains($edge)) { $planStages[$id].Edges[$edge] } else { '<missing>' }
-        if ($canonTarget -cne $planTarget) {
-            "EDGE  $id / $edge   canon=$canonTarget   plan=$planTarget"
+        if ($workflowTarget -cne $planTarget) {
+            "EDGE  $id / $edge   source=$workflowTarget   plan=$planTarget"
             $differences++
         }
     }
@@ -225,7 +226,7 @@ if ($differences) {
     continue
 }
 
-"RESULT: Appendix A matches the canon on every exit and edge target in $currentPlanPath"
+"RESULT: Appendix A matches the source on every exit and edge target in $currentPlanPath"
 }
 
 ''

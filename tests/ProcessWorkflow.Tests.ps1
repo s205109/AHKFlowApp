@@ -3,7 +3,7 @@
 # One parser feeds every process check. If it silently extracts fewer stages, every check
 # passes while proving nothing - the failure mode backlog 071 review round 7 found by hand.
 #
-# Run it by hand with:  pwsh ./tests/ProcessCanon.Tests.ps1
+# Run it by hand with:  pwsh ./tests/ProcessWorkflow.Tests.ps1
 
 [CmdletBinding()]
 param()
@@ -12,7 +12,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
-. (Join-Path $repoRoot 'scripts/process-canon.common.ps1')
+. (Join-Path $repoRoot 'scripts/process-workflow.common.ps1')
 
 $failures = @()
 function Assert-True {
@@ -20,11 +20,11 @@ function Assert-True {
     if (-not $Condition) { $script:failures += $Message }
 }
 
-$canon = Get-CanonStage -Path (Join-Path $repoRoot 'docs/development/workflow.md')
-Assert-True ($canon.Count -eq 11) "canon: expected 11 stages, got $($canon.Count)"
-Assert-True ($canon.Contains('0-intake')) 'canon: 0-intake missing'
-Assert-True ($canon['0-intake'].Edges.Count -eq 5) 'canon: 0-intake should have 5 edges'
-Assert-True ($canon['0-intake'].Edges['success'] -ceq '1-pickup') 'canon: 0-intake success should target 1-pickup'
+$workflow = Get-WorkflowStage -Path (Join-Path $repoRoot 'docs/development/workflow.md')
+Assert-True ($workflow.Count -eq 11) "source: expected 11 stages, got $($workflow.Count)"
+Assert-True ($workflow.Contains('0-intake')) 'source: 0-intake missing'
+Assert-True ($workflow['0-intake'].Edges.Count -eq 5) 'source: 0-intake should have 5 edges'
+Assert-True ($workflow['0-intake'].Edges['success'] -ceq '1-pickup') 'source: 0-intake success should target 1-pickup'
 
 $tree = Get-HtmlStage -Path (Join-Path $repoRoot 'docs/development/workflow.html')
 Assert-True ($tree.Count -eq 11) "workflow.html: expected 11 stages, got $($tree.Count)"
@@ -44,10 +44,10 @@ Assert-True ($tree['0-intake'].VisibleStage -ceq '0 Intake') "workflow.html: vis
 
 # A duplicate edge row must be reported, not silently overwritten. The original checker
 # guarded this; sharing the parser must not drop it.
-foreach ($id in $canon.Keys) {
-    Assert-True ($canon[$id].Duplicates.Count -eq 0) "canon/${id}: unexpected duplicate edge rows: $($canon[$id].Duplicates -join ', ')"
+foreach ($id in $workflow.Keys) {
+    Assert-True ($workflow[$id].Duplicates.Count -eq 0) "source/${id}: unexpected duplicate edge rows: $($workflow[$id].Duplicates -join ', ')"
 }
-$dupeFile = Join-Path ([System.IO.Path]::GetTempPath()) "canon-dupe-$([guid]::NewGuid()).md"
+$dupeFile = Join-Path ([System.IO.Path]::GetTempPath()) "source-dupe-$([guid]::NewGuid()).md"
 @'
 <a id="stage-0-intake"></a>
 
@@ -62,14 +62,14 @@ $dupeFile = Join-Path ([System.IO.Path]::GetTempPath()) "canon-dupe-$([guid]::Ne
 | not applicable | x | 1-pickup |
 | resume | x | stay |
 '@ | Set-Content -LiteralPath $dupeFile -Encoding utf8
-$dupe = Get-CanonStage -Path $dupeFile
+$dupe = Get-WorkflowStage -Path $dupeFile
 Assert-True ($dupe['0-intake'].Duplicates.Count -eq 1) 'a duplicate edge row must be recorded'
 Assert-True ($dupe['0-intake'].Edges['success'] -ceq '1-pickup') 'the first row must win, so the duplicate is visible rather than silently replacing it'
 Remove-Item $dupeFile -Force
 
 # A repeated stage id must be counted, never overwritten. Assigning by key hid a second
 # 0-intake block: the dictionary still held 11 keys and every comparison passed.
-$twinFile = Join-Path ([System.IO.Path]::GetTempPath()) "canon-twin-$([guid]::NewGuid()).md"
+$twinFile = Join-Path ([System.IO.Path]::GetTempPath()) "source-twin-$([guid]::NewGuid()).md"
 @'
 <a id="stage-0-intake"></a>
 
@@ -87,22 +87,22 @@ $twinFile = Join-Path ([System.IO.Path]::GetTempPath()) "canon-twin-$([guid]::Ne
 |---|---|---|
 | success | x | 9-ship |
 '@ | Set-Content -LiteralPath $twinFile -Encoding utf8
-$twin = Get-CanonStage -Path $twinFile
+$twin = Get-WorkflowStage -Path $twinFile
 Assert-True ($twin.Count -eq 1) "a repeated stage id must not add a key, got $($twin.Count)"
 Assert-True ($twin['0-intake'].Occurrences -eq 2) "a repeated stage id must be counted, got $($twin['0-intake'].Occurrences)"
 Assert-True ($twin['0-intake'].Exit -ceq 'First block') 'the first block must win, so the repeat is visible rather than replacing it'
 Remove-Item $twinFile -Force
 
-foreach ($id in $canon.Keys) {
-    Assert-True ($canon[$id].Occurrences -eq 1) "canon/${id}: stage id appears $($canon[$id].Occurrences) times"
+foreach ($id in $workflow.Keys) {
+    Assert-True ($workflow[$id].Occurrences -eq 1) "source/${id}: stage id appears $($workflow[$id].Occurrences) times"
 }
 foreach ($id in $tree.Keys) {
     Assert-True ($tree[$id].Occurrences -eq 1) "workflow.html/${id}: stage id appears $($tree[$id].Occurrences) times"
 }
 
 # Edge names are case-sensitive. A case-insensitive dictionary reads 'Success' as 'success',
-# so a drifted attribute matched the canon and the check passed.
-$caseFile = Join-Path ([System.IO.Path]::GetTempPath()) "canon-case-$([guid]::NewGuid()).html"
+# so a drifted attribute matched the source and the check passed.
+$caseFile = Join-Path ([System.IO.Path]::GetTempPath()) "source-case-$([guid]::NewGuid()).html"
 @'
 <section data-stage="0-intake">
   <summary><span class="num">0</span>Intake</summary>
@@ -119,11 +119,11 @@ Remove-Item $caseFile -Force
 
 # Every value carries its own line, so a message names the line that is actually wrong
 # rather than the line the stage starts on.
-$canonLines = [System.IO.File]::ReadAllLines((Join-Path $repoRoot 'docs/development/workflow.md'))
-$exitLine = $canon['0-intake'].ExitLine
-Assert-True ($canonLines[$exitLine - 1] -match '^\- \*\*Exit\*\*') "canon: ExitLine $exitLine should name the Exit line, holds '$($canonLines[$exitLine - 1])'"
-$edgeLine = $canon['0-intake'].EdgeLines['success']
-Assert-True ($canonLines[$edgeLine - 1] -match '^\| success \|') "canon: EdgeLines[success] $edgeLine should name that row, holds '$($canonLines[$edgeLine - 1])'"
+$sourceLines = [System.IO.File]::ReadAllLines((Join-Path $repoRoot 'docs/development/workflow.md'))
+$exitLine = $workflow['0-intake'].ExitLine
+Assert-True ($sourceLines[$exitLine - 1] -match '^\- \*\*Exit\*\*') "source: ExitLine $exitLine should name the Exit line, holds '$($sourceLines[$exitLine - 1])'"
+$edgeLine = $workflow['0-intake'].EdgeLines['success']
+Assert-True ($sourceLines[$edgeLine - 1] -match '^\| success \|') "source: EdgeLines[success] $edgeLine should name that row, holds '$($sourceLines[$edgeLine - 1])'"
 
 $treeLines = [System.IO.File]::ReadAllLines((Join-Path $repoRoot 'docs/development/workflow.html'))
 $treeEdgeLine = $tree['0-intake'].EdgeLines['success']
@@ -132,8 +132,8 @@ $treeExitLine = $tree['0-intake'].ExitLine
 Assert-True ($treeLines[$treeExitLine - 1] -match 'data-exit=') "workflow.html: ExitLine $treeExitLine should name the exit element, holds '$($treeLines[$treeExitLine - 1])'"
 
 # Normalized hashing must ignore line endings.
-$tempLf = Join-Path ([System.IO.Path]::GetTempPath()) "canon-lf-$([guid]::NewGuid()).txt"
-$tempCrLf = Join-Path ([System.IO.Path]::GetTempPath()) "canon-crlf-$([guid]::NewGuid()).txt"
+$tempLf = Join-Path ([System.IO.Path]::GetTempPath()) "source-lf-$([guid]::NewGuid()).txt"
+$tempCrLf = Join-Path ([System.IO.Path]::GetTempPath()) "source-crlf-$([guid]::NewGuid()).txt"
 [System.IO.File]::WriteAllText($tempLf, "a`nb`n")
 [System.IO.File]::WriteAllText($tempCrLf, "a`r`nb`r`n")
 Assert-True ((Get-NormalizedHash -Path $tempLf) -eq (Get-NormalizedHash -Path $tempCrLf)) 'hash: LF and CRLF must hash the same'
@@ -152,7 +152,7 @@ Assert-True (-not (Test-PdfSourceDigest -Bytes $other -Digest $digest)) 'a diffe
 if ($failures.Count -gt 0) {
     foreach ($failure in $failures) { Write-Host ''; Write-Host $failure -ForegroundColor Red }
     Write-Host ''
-    throw "Process canon parser tests failed with $($failures.Count) problem(s). See the detail above."
+    throw "Process source parser tests failed with $($failures.Count) problem(s). See the detail above."
 }
 
-Write-Host 'Process canon parser tests passed.'
+Write-Host 'Process source parser tests passed.'

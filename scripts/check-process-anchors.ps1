@@ -12,8 +12,8 @@
 
     Only top-level bullets are rules - a line matching '^- ' at column 1. Table rows,
     numbered items, nested bullets, fenced code and paragraphs carry reference data.
-.PARAMETER CanonPath
-    The canon to read the stage list from. Defaults to docs/development/workflow.md.
+.PARAMETER WorkflowPath
+    The source to read the stage list from. Defaults to docs/development/workflow.md.
 .PARAMETER ScanFile
     Check one file instead of the built-in list. Requires -Section.
 .PARAMETER Section
@@ -21,7 +21,7 @@
 #>
 [CmdletBinding()]
 param(
-    [string] $CanonPath,
+    [string] $WorkflowPath,
     [string] $ScanFile,
     [string] $Section
 )
@@ -30,9 +30,9 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-. (Join-Path $PSScriptRoot 'process-canon.common.ps1')
+. (Join-Path $PSScriptRoot 'process-workflow.common.ps1')
 
-if (-not $CanonPath) { $CanonPath = Join-Path $repoRoot 'docs/development/workflow.md' }
+if (-not $WorkflowPath) { $WorkflowPath = Join-Path $repoRoot 'docs/development/workflow.md' }
 
 $targets = if ($ScanFile) {
     @(@{ Path = $ScanFile; Sections = @($Section) })
@@ -45,7 +45,7 @@ else {
 }
 
 $anchors = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
-foreach ($id in (Get-CanonStage -Path $CanonPath).Keys) { [void]$anchors.Add("stage-$id") }
+foreach ($id in (Get-WorkflowStage -Path $WorkflowPath).Keys) { [void]$anchors.Add("stage-$id") }
 
 $problems = New-Object System.Collections.Generic.List[string]
 

@@ -15,7 +15,7 @@ $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 
 $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
-. (Join-Path $repoRoot 'scripts/process-canon.common.ps1')
+. (Join-Path $repoRoot 'scripts/process-workflow.common.ps1')
 
 $failures = @()
 function Assert-True {

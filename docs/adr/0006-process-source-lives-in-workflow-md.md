@@ -1,4 +1,4 @@
-# Process canon lives in workflow.md
+# Process source lives in workflow.md
 
 `docs/development/workflow.md` is the only normative description of the development process.
 `docs/development/workflow.html`, `docs/development/ahkflow-workflow-cheatsheet.html`,
@@ -16,6 +16,21 @@ process narrative is long enough to swamp it.
 
 Treating the documents as equal peers was also rejected. Nothing then decides a disagreement,
 so each drift becomes a discussion instead of a defect with a known fix.
+
+## What the document is called
+
+The noun is **Source**, pinned in `CONTEXT.md`. The adjective is "canonical", spelled out:
+"`workflow.md` is the canonical source".
+
+The clipped noun "canon" was used first and is now retired. It is not a common English word,
+so it fails the **Plain English** rule in `AGENTS.md`, and it is not in the ASD-STE100 approved
+dictionary either. It also sounds like "cannon". "Canonical" survives because it is the plain
+adjective for exactly this idea, and because dropping it would leave no short way to say a
+document wins.
+
+One more use was cleaned up at the same time. "The canonical gate" became "the Gate", which
+`CONTEXT.md` already defines as the five steps. The anchor id `canonical-pre-pr-gate` did not
+change: an anchor is an address, and seven documents link to it.
 
 ## Consequences
 

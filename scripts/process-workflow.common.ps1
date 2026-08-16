@@ -3,7 +3,7 @@
 .SYNOPSIS
     Parses the process documents into one stage-machine shape.
 .DESCRIPTION
-    workflow.md is the canon. The two HTML files carry data-* markers plus visible text that
+    workflow.md is the source. The two HTML files carry data-* markers plus visible text that
     repeats the same values. Every process check reads through this file, so a format drift
     is found in one place rather than three.
 #>
@@ -45,7 +45,7 @@ function Test-PdfSourceDigest {
 }
 
 # A dictionary that keeps insertion order and tells 'Success' from 'success'. The default
-# [ordered]@{} is case-insensitive, so a drifted edge name matched the canon and passed.
+# [ordered]@{} is case-insensitive, so a drifted edge name matched the source and passed.
 function New-OrdinalDictionary {
     return [System.Collections.Specialized.OrderedDictionary]::new([System.StringComparer]::Ordinal)
 }
@@ -72,18 +72,18 @@ function ConvertTo-VisibleText {
     return (($text -replace '\s+', ' ').Trim())
 }
 
-function Get-CanonStage {
+function Get-WorkflowStage {
     param([Parameter(Mandatory)][string] $Path)
 
-    $canon = Get-NormalizedText -Path $Path
+    $workflow = Get-NormalizedText -Path $Path
     $stages = New-OrdinalDictionary
-    $anchors = [regex]::Matches($canon, '<a id="stage-([0-9a-z-]+)"></a>')
+    $anchors = [regex]::Matches($workflow, '<a id="stage-([0-9a-z-]+)"></a>')
 
     for ($i = 0; $i -lt $anchors.Count; $i++) {
         $id = $anchors[$i].Groups[1].Value
         $start = $anchors[$i].Index
-        $end = if ($i + 1 -lt $anchors.Count) { $anchors[$i + 1].Index } else { $canon.Length }
-        $block = $canon.Substring($start, $end - $start)
+        $end = if ($i + 1 -lt $anchors.Count) { $anchors[$i + 1].Index } else { $workflow.Length }
+        $block = $workflow.Substring($start, $end - $start)
 
         # A repeated stage id must be counted, never assigned over. Assigning by key left the
         # dictionary with 11 entries while the document held 12 blocks, so every comparison
@@ -100,12 +100,12 @@ function Get-CanonStage {
             # the list here keeps that report alive after the parser was shared.
             if ($edges.Contains($word)) { $duplicates.Add($word); continue }
             $edges[$word] = $m.Groups[2].Value.Trim()
-            $edgeLines[$word] = Get-LineNumber -Text $canon -Index ($start + $m.Index)
+            $edgeLines[$word] = Get-LineNumber -Text $workflow -Index ($start + $m.Index)
         }
 
         $exitMatches = [regex]::Matches($block, '(?m)^- \*\*Exit\*\* — (.+)$')
         $exit = if ($exitMatches.Count -ge 1) { $exitMatches[0].Groups[1].Value.Trim() } else { '' }
-        $exitLine = if ($exitMatches.Count -ge 1) { Get-LineNumber -Text $canon -Index ($start + $exitMatches[0].Index) } else { Get-LineNumber -Text $canon -Index $start }
+        $exitLine = if ($exitMatches.Count -ge 1) { Get-LineNumber -Text $workflow -Index ($start + $exitMatches[0].Index) } else { Get-LineNumber -Text $workflow -Index $start }
 
         $stages[$id] = @{
             Exit        = $exit
@@ -113,7 +113,7 @@ function Get-CanonStage {
             ExitCount   = $exitMatches.Count
             Duplicates  = $duplicates
             Occurrences = 1
-            Line        = Get-LineNumber -Text $canon -Index $start
+            Line        = Get-LineNumber -Text $workflow -Index $start
             ExitLine    = $exitLine
             EdgeLines   = $edgeLines
         }

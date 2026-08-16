@@ -44,12 +44,12 @@ one of them can never leave the other two behind.
       the platform. Done by backlog 071 in review round 2. The normalized hashing above
       stays regardless — it is what makes the check correct rather than merely consistent
       on one machine.
-- [x] A plan-versus-canon check exists: `scripts/check-plan-canon-parity.ps1` compares a
+- [x] A plan-versus-source check exists: `scripts/check-plan-workflow-parity.ps1` compares a
       plan's Appendix A against `workflow.md` on every stage's exit string and all five edge
       targets, and exits 1 on any difference. Added by backlog 071 in review round 6, after
       three consecutive rounds found that drift by hand. It covers the stage machine only,
       not the narrative fields.
-- [ ] The plan-versus-canon check joins the gates, so drift fails a run rather than waiting
+- [ ] The plan-versus-source check joins the gates, so drift fails a run rather than waiting
       for a reviewer. Extend it to the narrative fields — Action, Technique, Context — or
       state plainly that those stay manual.
       **Design round correction:** "joins the suite" alone is not achievable. The suite runs
@@ -85,7 +85,7 @@ one of them can never leave the other two behind.
       repo.
 - [ ] `CONTEXT.md` gains the terms stage, edge, wave, difficulty, housekeeping worktree,
       and emitter.
-- [ ] `docs/adr/` gains one ADR: process canon lives in `workflow.md`.
+- [ ] `docs/adr/` gains one ADR: process source lives in `workflow.md`.
 - [ ] The five friction counts are measured here, to the requirements below. Backlog 071 attempted this three times and withdrew every result; nothing is inherited.
 - [ ] The drift guard also checks that no document tells a reader to run the gate "before
       opening a PR". <!-- gate-wording:ignore --> The gate gates the pull request going **ready**, not its creation, and

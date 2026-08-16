@@ -32,7 +32,7 @@ function New-Fixture {
 
 function Invoke-Check {
     param([string] $Root)
-    $output = & pwsh -NoProfile -File $script -CanonPath (Join-Path $Root 'workflow.md') -ScanFile (Join-Path $Root 'SCANNED.md') -Section 'Git Workflow' 2>&1
+    $output = & pwsh -NoProfile -File $script -WorkflowPath (Join-Path $Root 'workflow.md') -ScanFile (Join-Path $Root 'SCANNED.md') -Section 'Git Workflow' 2>&1
     return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = ($output -join "`n") }
 }
 
@@ -84,7 +84,7 @@ $reference = New-Fixture -Body @"
 "@
 Assert-True ((Invoke-Check -Root $reference).ExitCode -eq 0) 'tables, numbered items and nested bullets must be ignored'
 
-# --- Case 5: an anchor that does not exist in the canon fails ---
+# --- Case 5: an anchor that does not exist in the source fails ---
 $dead = New-Fixture -Body @"
 ## Git Workflow
 
