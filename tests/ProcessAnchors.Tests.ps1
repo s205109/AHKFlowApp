@@ -144,11 +144,32 @@ $tilde = New-Fixture -Body @"
 "@
 Assert-True ((Invoke-Check -Root $tilde).ExitCode -eq 1) 'a tilde fence must hide its heading and no more'
 
+# --- Case 10: a fenced heading BEFORE the real one is not the section ---
+# The heading search ran before any fence state existed, so a fenced '## Git Workflow' became
+# the section start. The real heading then ended that section on its first line, and every real
+# rule below it went unchecked.
+$decoy = New-Fixture -Body @"
+# A document
+
+``````markdown
+## Git Workflow
+
+- A sample rule with no anchor, inside a fence.
+``````
+
+## Git Workflow
+
+- A real rule with no anchor.
+"@
+$result = Invoke-Check -Root $decoy
+Assert-True ($result.ExitCode -eq 1) 'a fenced heading must not become the section, hiding every real rule'
+Assert-True ($result.Output -match 'SCANNED\.md:11') "the message must name the real rule's line:`n$($result.Output)"
+
 # --- Case 6: the real repository passes ---
 $live = & pwsh -NoProfile -File $script 2>&1
 Assert-True ($LASTEXITCODE -eq 0) "the real repository must pass:`n$($live -join "`n")"
 
-Remove-Item $ok, $bad, $hidden, $reference, $dead, $fenced, $nested, $tilde -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item $ok, $bad, $hidden, $reference, $dead, $fenced, $nested, $tilde, $decoy -Recurse -Force -ErrorAction SilentlyContinue
 
 if ($failures.Count -gt 0) {
     foreach ($failure in $failures) { Write-Host ''; Write-Host $failure -ForegroundColor Red }
@@ -156,4 +177,4 @@ if ($failures.Count -gt 0) {
     throw "Process anchor tests failed with $($failures.Count) problem(s). See the detail above."
 }
 
-Write-Host 'Process anchor tests passed. 9 cases.'
+Write-Host 'Process anchor tests passed. 10 cases.'

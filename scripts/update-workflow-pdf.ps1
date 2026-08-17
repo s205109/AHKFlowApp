@@ -103,12 +103,16 @@ try {
     # set is the stale-PDF state these files exist to prevent, so keep the previous bytes and
     # put them back when a write fails. 'They cannot be updated apart' has to be true of a
     # failed run as well as a successful one.
+    # Three states per output, not two. 'Not a file' is its own case: a folder sitting on an
+    # output path is not something this script wrote, and treating it as absent meant the
+    # rollback deleted it.
     $previous = @{}
     foreach ($output in @($pdf, $sourceSidecar, $pdfSidecar)) {
         $previous[$output] = if (Test-Path -LiteralPath $output -PathType Leaf) {
-            [System.IO.File]::ReadAllBytes($output)
+            @{ State = 'file'; Bytes = [System.IO.File]::ReadAllBytes($output) }
         }
-        else { $null }
+        elseif (Test-Path -LiteralPath $output) { @{ State = 'not-a-file' } }
+        else { @{ State = 'absent' } }
     }
 
     try {
@@ -118,11 +122,14 @@ try {
     }
     catch {
         foreach ($output in @($pdf, $sourceSidecar, $pdfSidecar)) {
-            if ($null -eq $previous[$output]) {
-                Remove-Item -LiteralPath $output -Force -ErrorAction SilentlyContinue
-            }
-            else {
-                [System.IO.File]::WriteAllBytes($output, $previous[$output])
+            switch ($previous[$output].State) {
+                'file' { [System.IO.File]::WriteAllBytes($output, $previous[$output].Bytes) }
+                'absent' {
+                    if (Test-Path -LiteralPath $output -PathType Leaf) {
+                        Remove-Item -LiteralPath $output -Force -ErrorAction SilentlyContinue
+                    }
+                }
+                default { }
             }
         }
         throw "Publication failed and the previous PDF and sidecars were put back: $($_.Exception.Message)"

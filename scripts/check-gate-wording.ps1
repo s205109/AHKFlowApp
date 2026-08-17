@@ -46,9 +46,11 @@ if (-not $ScanRoot) { $ScanRoot = $repoRoot }
 $noun = '(?:PRs?\b|pull\s+requests?\b)'
 # The subject is whoever the sentence names, so the pattern must not list them. Naming three -
 # 'you', 'anyone', 'the session' - let 'before we open a PR' and 'before the agent opens a PR'
-# through, which is the same claim in the same shape. Up to three plain words stand in for any
-# subject; punctuation ends the run, so this cannot span a clause boundary.
-$subject = "(?:[A-Za-z'’-]+\s+){0,3}"
+# through, which is the same claim in the same shape. Three plain words is not enough either:
+# 'before the automated review agent opens a PR' is four. Any run of plain words stands in for a
+# subject, up to six of them, and a word may hold digits. Punctuation ends the run, so this
+# still cannot span a clause boundary.
+$subject = "(?:[\w'’-]+\s+){0,6}"
 $activePattern = "before\s+$subject(?:open|opening|opens|create|creating|creates)\s+(?:a\s+|the\s+|any\s+)?$noun"
 # The passive shape names the act of opening, never the state of existing. 'before the pull
 # request exists' is an ordinary statement about a moment in time - the source uses it twice to

@@ -47,6 +47,10 @@ the current 200 overlap.
       approximate" is removed rather than softened, because it no longer applies.
 - [ ] A decision is recorded on the flagged strata: those are counted whole, so nothing about
       them changes, and the item says so instead of leaving a reader to work it out.
+- [ ] The interval is either computed with a finite-population correction, or kept as Wilson
+      and labelled an approximation. A uniform draw is not enough on its own: Wilson is a
+      binomial interval and the draw takes a fixed number without replacement, which for 200
+      of 1,004 asks makes Wilson about 10 percent wider than the truth.
 
 ## Out of scope
 

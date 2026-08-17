@@ -15,6 +15,59 @@ function Get-NormalizedText {
     return ((Get-Content -LiteralPath $Path -Raw) -replace "`r`n", "`n")
 }
 
+# Which lines sit inside a fenced code block, delimiter lines included. A fence closes only on
+# the same delimiter character, at least as long as the one that opened it, so a shorter fence
+# inside a longer block does not end it.
+function Get-FenceLineMap {
+    # A blank line is a line. Without AllowEmptyString the binder rejects the first one.
+    param([Parameter(Mandatory)][AllowEmptyCollection()][AllowEmptyString()][string[]] $Lines)
+
+    $map = New-Object 'bool[]' $Lines.Count
+    $fenceChar = ''
+    $fenceLength = 0
+    for ($i = 0; $i -lt $Lines.Count; $i++) {
+        $fence = [regex]::Match($Lines[$i], '^ {0,3}(`{3,}|~{3,})(.*)$')
+        if ($fence.Success) {
+            $delimiter = $fence.Groups[1].Value
+            $info = $fence.Groups[2].Value.Trim()
+            if (-not $fenceChar) {
+                # A backtick fence may not carry a backtick in its info string, so a line such
+                # as '``` code ``` inline' opens nothing.
+                if (-not ($delimiter[0] -eq '`' -and $info.Contains('`'))) {
+                    $fenceChar = [string]$delimiter[0]
+                    $fenceLength = $delimiter.Length
+                    $map[$i] = $true
+                }
+                continue
+            }
+            $map[$i] = $true
+            if ([string]$delimiter[0] -eq $fenceChar -and $delimiter.Length -ge $fenceLength -and -not $info) {
+                $fenceChar = ''
+                $fenceLength = 0
+            }
+            continue
+        }
+        if ($fenceChar) { $map[$i] = $true }
+    }
+    return $map
+}
+
+# The same text with every fenced line emptied. Sample Markdown inside a fence is an example,
+# never a rule: a canonical table or a stage block wrapped in a fence stopped being the process
+# and every parser here still read it, so the parity check passed on a document that no longer
+# renders as a stage machine. Line count is preserved, so every reported line number still
+# names the line the reader sees.
+function Remove-FencedLine {
+    param([Parameter(Mandatory)][AllowEmptyString()][string] $Text)
+
+    $lines = $Text -split "`n"
+    $map = Get-FenceLineMap -Lines $lines
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($map[$i]) { $lines[$i] = '' }
+    }
+    return ($lines -join "`n")
+}
+
 function Get-NormalizedHash {
     param([Parameter(Mandatory)][string] $Path)
     $bytes = [System.Text.Encoding]::UTF8.GetBytes((Get-NormalizedText -Path $Path))
@@ -78,7 +131,9 @@ function ConvertTo-VisibleText {
 function Get-WorkflowStageTable {
     param([Parameter(Mandatory)][string] $Path)
 
-    $workflow = Get-NormalizedText -Path $Path
+    # Fenced lines are examples, not the source. Reading them let a table inside a fence answer
+    # for the canonical one.
+    $workflow = Remove-FencedLine -Text (Get-NormalizedText -Path $Path)
     $rows = New-Object System.Collections.Generic.List[object]
 
     # The section, not the whole file. Another table with a number in its first column is not
@@ -101,7 +156,10 @@ function Get-WorkflowStageTable {
 function Get-WorkflowStage {
     param([Parameter(Mandatory)][string] $Path)
 
-    $workflow = Get-NormalizedText -Path $Path
+    # Fenced lines are examples, not the source: a stage block wrapped in a fence stops being
+    # the process, and reading it kept every comparison green on a document that no longer
+    # renders one.
+    $workflow = Remove-FencedLine -Text (Get-NormalizedText -Path $Path)
     $stages = New-OrdinalDictionary
     $anchors = [regex]::Matches($workflow, '<a id="stage-([0-9a-z-]+)"></a>')
 

@@ -162,6 +162,9 @@ $result = Invoke-Generator -Root $partial -Mode 'good'
 Assert-True ($result.ExitCode -ne 0) 'a failed sidecar write must fail the run'
 Assert-True ([System.IO.File]::ReadAllText((Join-Path $partial 'ahk-workflow.pdf')) -eq $beforePdf) 'a failed publication must put the previous PDF back'
 Assert-True ([System.IO.File]::ReadAllText((Join-Path $partial 'ahk-workflow.pdf.source.sha256')) -eq $beforeSource) 'a failed publication must put the previous source sidecar back'
+# The rollback restores what this script wrote. Anything else on an output path it did not
+# write, and treating a folder as 'absent' meant the rollback deleted it.
+Assert-True (Test-Path -LiteralPath (Join-Path $partial 'ahk-workflow.pdf.sha256') -PathType Container) 'the rollback must not delete a folder sitting on an output path'
 
 # --- No browser at all is a loud failure, not a partial write ---
 $noBrowser = New-DocsFixture

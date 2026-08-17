@@ -95,6 +95,9 @@ foreach ($body in @(
         'Run the gate before we open a PR.'
         'The gate runs before the agent opens a pull request.'
         'Everything must be green before a reviewer creates the PR.'
+        # Four words, and a word with a digit: three alphabetic words was still a shape rule.
+        'The gate runs before the automated review agent opens a PR.'
+        'Run it before agent 2 opens a pull request.'
     )) {
     $result = Invoke-Check -Body $body
     Assert-True ($result.ExitCode -eq 1) "the timing claim must fail whoever the subject is: '$body'"
@@ -116,4 +119,4 @@ if ($failures.Count -gt 0) {
     throw "Gate wording tests failed with $($failures.Count) problem(s). See the detail above."
 }
 
-Write-Host 'Gate wording tests passed. 19 cases.'
+Write-Host 'Gate wording tests passed. 21 cases.'

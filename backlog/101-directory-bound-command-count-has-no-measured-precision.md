@@ -11,10 +11,10 @@
 
 ## Summary
 
-Backlog 072 published 179 directory-bound command lines handed to the human. Four of its
+Backlog 072 published 179 directory-bound command lines handed to the human. Three of its
 five friction counts carry a measured precision or a rule that separates a real event from
-discussion of one. This one carries neither. The figure is a count of matched command lines
-and nothing more.
+discussion of one. This one carries neither, and neither does the cleanup count, which
+backlog 103 carries. The figure is a count of matched command lines and nothing more.
 
 ## User story
 
@@ -24,9 +24,9 @@ footnote that undoes one of them.
 
 ## The defect
 
-Backlog 072 left one measurement requirement unticked for this metric alone, and said why in
-`backlog/done/072-process-wave-2-parity-drift-guard-templates.md`. Two separate problems sit
-behind it.
+Backlog 072 left one measurement requirement unticked, and said why in
+`backlog/done/072-process-wave-2-parity-drift-guard-templates.md`. Two metrics fail it: this
+one, and cleanup events, which backlog 103 carries. Two separate problems sit behind this one.
 
 **It over-counts.** A command line inside a fenced block counts whether it was handed over or
 merely used as an example. Handoffs and next-step asks measured this by hand-labelling every

@@ -51,11 +51,16 @@ $problems = New-Object System.Collections.Generic.List[string]
 
 foreach ($target in $targets) {
     $lines = (Get-NormalizedText -Path $target.Path) -split "`n"
+    # One fence map for the file, used by both loops below. Finding the section heading without
+    # it read a fenced '## Git Workflow' as the section start, and the real heading then ended
+    # that section at once, so every real rule went unchecked.
+    $fenced = Get-FenceLineMap -Lines $lines
 
     foreach ($heading in $target.Sections) {
         $start = -1
         $level = 0
         for ($i = 0; $i -lt $lines.Count; $i++) {
+            if ($fenced[$i]) { continue }
             if ($lines[$i] -match '^(#{1,6})\s+(.+?)\s*$' -and $Matches[2] -eq $heading) {
                 $start = $i
                 $level = $Matches[1].Length
@@ -67,39 +72,13 @@ foreach ($target in $targets) {
             continue
         }
 
-        # A fence is closed by the same delimiter, at least as long as the one that opened it.
-        # A single boolean toggled by any backtick run instead: a four-backtick block holding a
-        # three-backtick line closed early, and a heading inside it then ended the section, so
-        # every rule below went unread.
-        $fenceChar = ''
-        $fenceLength = 0
         for ($i = $start + 1; $i -lt $lines.Count; $i++) {
             $line = $lines[$i]
 
             # Fence state comes first. A '## Example' inside a fenced block is sample text, not
             # the end of the section, and testing the heading first ended the scan there and let
             # every rule below the fence through unread.
-            $fence = [regex]::Match($line, '^ {0,3}(`{3,}|~{3,})(.*)$')
-            if ($fence.Success) {
-                $delimiter = $fence.Groups[1].Value
-                $info = $fence.Groups[2].Value.Trim()
-                if (-not $fenceChar) {
-                    # A backtick fence may not carry a backtick in its info string, so a line
-                    # such as '``` code ``` inline' opens nothing.
-                    if (-not ($delimiter[0] -eq '`' -and $info.Contains('`'))) {
-                        $fenceChar = [string]$delimiter[0]
-                        $fenceLength = $delimiter.Length
-                    }
-                    continue
-                }
-                # A closing fence carries no info string and matches the opening delimiter.
-                if ([string]$delimiter[0] -eq $fenceChar -and $delimiter.Length -ge $fenceLength -and -not $info) {
-                    $fenceChar = ''
-                    $fenceLength = 0
-                }
-                continue
-            }
-            if ($fenceChar) { continue }
+            if ($fenced[$i]) { continue }
 
             # Same or higher level ends the section. A deeper sub-heading stays in scope.
             if ($line -match '^(#{1,6})\s+' -and $Matches[1].Length -le $level) { break }

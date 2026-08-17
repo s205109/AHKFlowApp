@@ -64,6 +64,13 @@ The sampler hashes the seed and the message key together and takes the 200 lowes
 selection, and the same rows stay selected as the transcripts grow, so a hand-written label
 survives a re-run without the label deciding the sample.
 
+**A uniform draw still does not make a Wilson interval exact.** Wilson is a binomial interval,
+and this draw takes a fixed number of rows without replacement. The true interval is narrower
+by roughly `sqrt((N - n) / (N - 1))` — 0.90 for 200 of 1,004 asks, 0.98 for 200 of 5,457
+handoffs. Wilson is therefore conservative here, never optimistic, and every range below stays
+an approximation. Backlog 102 decides between labelling the interval and computing a
+finite-population one.
+
 **The committed sample was drawn the old way, and its intervals are approximate.** The first
 sampler kept every row the previous draw had selected and filled the rest at random. The
 selection records show what that did: `carriedOverLabels` reads 57 of 200 for handoffs and 58 of

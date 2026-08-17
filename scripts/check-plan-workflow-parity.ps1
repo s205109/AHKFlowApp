@@ -28,9 +28,10 @@
     than fail the run.
 
 .PARAMETER RequirePlans
-    Fail when -PlansRoot exists but holds no plan with an '## Appendix A'. Pre-push passes
-    this: there, the plans repository IS in the checkout, so an empty result means the
-    discovery missed something rather than that there is nothing to check.
+    Fail when the run compares nothing: -PlansRoot is absent, or it holds no plan with an
+    '## Appendix A'. Pre-push passes this, because there the plans repository IS in the
+    checkout, so either outcome means the discovery missed something rather than that there is
+    nothing to check.
 
 .PARAMETER WorkflowPath
     The canonical process document. Defaults to docs/development/workflow.md.
@@ -79,6 +80,13 @@ $appendixB = '(?m)^ {0,3}## Appendix B'
 $planPaths = @()
 if ($PlansRoot) {
     if (-not (Test-Path -LiteralPath $PlansRoot)) {
+        # -RequirePlans means the caller knows the plans are here. An absent folder is then a
+        # path that moved, not a checkout without the repository, and skipping it let pre-push
+        # report agreement having read nothing - the same vacuous pass as an empty discovery.
+        if ($RequirePlans) {
+            "RESULT: the plans folder $PlansRoot is not there. -RequirePlans says it must be, so this is a broken path, not a checkout without the plans repository."
+            exit 1
+        }
         "RESULT: skipped - the plans folder $PlansRoot is not in this checkout"
         exit 0
     }
@@ -172,14 +180,17 @@ for ($i = 0; $i -lt $heads.Count; $i++) {
 
     $edges = [ordered]@{}
     foreach ($segment in ([regex]::Match($flat, 'Edges: (.+)$').Groups[1].Value -split ' · ')) {
-        # The edge word ends where the word ends. Without the boundary, 'successfully' read as
-        # 'success', so a segment that is not an edge at all answered for one that is.
-        $word = [regex]::Match($segment, '^\s*(not applicable|success|failure|blocked|resume)(?![A-Za-z])').Groups[1].Value
+        # The edge word ends where the word ends, and a word does not end inside a digit, an
+        # underscore or a hyphen. A letters-only boundary read 'successfully' correctly and
+        # still read 'success1' as 'success'.
+        $word = [regex]::Match($segment, '^\s*(not applicable|success|failure|blocked|resume)(?![\w-])').Groups[1].Value
         if (-not $word) {
             # An unknown segment used to be skipped, so a plan could invent an edge the stage
             # machine does not have and stay green. A segment that looks like an edge but is
-            # not one of the five is a difference, not noise.
-            $invented = [regex]::Match($segment, '^\s*([A-Za-z][A-Za-z ]*?)\s*→').Groups[1].Value
+            # not one of the five is a difference, not noise. The name is whatever stands
+            # before the arrow: reading letters and spaces only let 'cancelled-1' and
+            # 'success1' through the same hole a second time.
+            $invented = [regex]::Match($segment, '^\s*([^→`]+?)\s*→').Groups[1].Value
             if ($invented) { $problems.Add("plan/$id : edge '$invented' is not one of the five") }
             continue
         }

@@ -218,7 +218,35 @@ $result = Invoke-Check -Root $wording
 Assert-True ($result.Output -notmatch 'PDF is current') "the result line must not claim the PDF is current:`n$($result.Output)"
 Assert-True ($result.Output -match 'sidecars') 'the result line must say what it compared'
 
-Remove-Item $clean, $drift, $bogus, $visible, $stale, $crlf, $dropped, $relabelled, $twin, $cased, $punctuated, $incomplete, $handRefreshed, $notAPdf, $tableExit, $tableName, $headingName, $wording -Recurse -Force -ErrorAction SilentlyContinue
+# --- Case 19: the canonical table inside a code fence is an example, not the source ---
+# The parsers read the whole file, so a table wrapped in a fence still produced 11 rows. The
+# check then passed on a document that no longer renders a stage machine at all.
+$fencedTable = New-Fixture
+$path = Join-Path $fencedTable 'workflow.md'
+$raw = Get-Content -LiteralPath $path -Raw
+$table = [regex]::Match($raw, '(?sm)^\| # \| Stage \| Exit condition \|.*?\n\n')
+Assert-True ($table.Success) 'fixture setup: the canonical table must be findable'
+$open = '```markdown'
+$close = '```'
+$wrapped = $open + "`n" + $table.Value.TrimEnd() + "`n" + $close + "`n`n"
+Set-Content -LiteralPath $path -Value ($raw.Remove($table.Index, $table.Length).Insert($table.Index, $wrapped)) -NoNewline
+$result = Invoke-Check -Root $fencedTable
+Assert-True ($result.ExitCode -eq 1) 'a canonical table hidden inside a fence must fail'
+
+# --- Case 20: a stage block inside a code fence is an example too ---
+$fencedStage = New-Fixture
+$path = Join-Path $fencedStage 'workflow.md'
+$raw = Get-Content -LiteralPath $path -Raw
+$block = [regex]::Match($raw, '(?s)<a id="stage-0-intake"></a>.*?(?=<a id="stage-1-pickup"></a>)')
+Assert-True ($block.Success) 'fixture setup: the 0-intake block must be findable'
+$open = '````markdown'
+$close = '````'
+$wrapped = $open + "`n" + $block.Value.TrimEnd() + "`n" + $close + "`n`n"
+Set-Content -LiteralPath $path -Value ($raw.Remove($block.Index, $block.Length).Insert($block.Index, $wrapped)) -NoNewline
+$result = Invoke-Check -Root $fencedStage
+Assert-True ($result.ExitCode -eq 1) 'a stage block hidden inside a fence must fail'
+
+Remove-Item $clean, $drift, $bogus, $visible, $stale, $crlf, $dropped, $relabelled, $twin, $cased, $punctuated, $incomplete, $handRefreshed, $notAPdf, $tableExit, $tableName, $headingName, $wording, $fencedTable, $fencedStage -Recurse -Force -ErrorAction SilentlyContinue
 
 if ($failures.Count -gt 0) {
     foreach ($failure in $failures) { Write-Host ''; Write-Host $failure -ForegroundColor Red }
@@ -226,4 +254,4 @@ if ($failures.Count -gt 0) {
     throw "Process parity tests failed with $($failures.Count) problem(s). See the detail above."
 }
 
-Write-Host 'Process parity tests passed. 18 cases.'
+Write-Host 'Process parity tests passed. 20 cases.'

@@ -146,6 +146,27 @@ $output = & pwsh -NoProfile -File $script -PlansRoot $noAppendix -WorkflowPath $
 Assert-True ($LASTEXITCODE -eq 1) '-RequirePlans must fail when no plan carries an Appendix A'
 Assert-True ((($output -join "`n") -match 'discovery failure')) 'the message must say the discovery failed'
 
+# --- Case 12: -RequirePlans also fails when the folder itself is not there ---
+# The caller passes -RequirePlans because it knows the plans are in the checkout. An absent
+# folder is then a path that moved, and skipping it printed agreement having read nothing.
+$absent = Join-Path ([System.IO.Path]::GetTempPath()) "plan-source-gone-$([guid]::NewGuid())"
+$output = & pwsh -NoProfile -File $script -PlansRoot $absent -WorkflowPath $workflowPath -RequirePlans 2>&1
+Assert-True ($LASTEXITCODE -eq 1) '-RequirePlans must fail when the plans folder is not there'
+Assert-True ((($output -join "`n") -match 'not there|broken path')) 'the message must say the folder is missing'
+
+# --- Case 13: an edge name that starts with a real one, but is not one ---
+# The boundary excluded letters only, so 'success1' still read as the success edge.
+foreach ($name in @('success1', 'cancelled-1')) {
+    $malformed = New-PlansRoot
+    $malformedFile = Join-Path $malformed 'fixture-plan.md'
+    $raw = Get-Content -LiteralPath $malformedFile -Raw
+    Set-Content -LiteralPath $malformedFile -Value ($raw -replace '(?m)^(Edges: .+)$', ('$1 · ' + $name + ' → `stay`')) -NoNewline
+    $result = Invoke-Check -PlansRoot $malformed
+    Assert-True ($result.ExitCode -eq 1) "'$name' is not one of the five and must fail"
+    Assert-True ($result.Output -match [regex]::Escape($name)) "the message must name '$name'"
+    Remove-Item $malformed -Recurse -Force -ErrorAction SilentlyContinue
+}
+
 # --- Case 11: a trailing period on an exit string is tolerated on purpose ---
 # Appendix A writes the exit as prose, so a plan ends the sentence and the source does not.
 # Nothing else is trimmed; case 2 covers a real difference.
@@ -160,4 +181,4 @@ if ($failures.Count -gt 0) {
     throw "Plan source parity tests failed with $($failures.Count) problem(s). See the detail above."
 }
 
-Write-Host 'Plan source parity tests passed. 11 cases.'
+Write-Host 'Plan source parity tests passed. 14 cases.'

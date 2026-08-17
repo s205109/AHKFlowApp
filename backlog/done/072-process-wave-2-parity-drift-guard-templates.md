@@ -98,10 +98,10 @@ one of them can never leave the other two behind.
       `docs/adr/0006-process-source-lives-in-workflow-md.md`.
 - [ ] The five friction counts are measured here, to the requirements below. Backlog 071 attempted this three times and withdrew every result; nothing is inherited.
       **Left unticked on purpose.** All five counts are measured and published below, and
-      twelve of the thirteen requirements hold. The thirteenth does not, for one metric
-      only: see the unticked "real event from discussion" requirement. Ticking this box
-      would claim a requirement is met that the item itself says is not. Backlog 101 closes
-      the gap.
+      twelve of the thirteen requirements hold. The thirteenth does not, for two metrics:
+      see the unticked "real event from discussion" requirement. Ticking this box would
+      claim a requirement is met that the item itself says is not. Backlog 101 closes the
+      gap for directory-bound commands, backlog 103 for cleanup events.
 - [x] The drift guard also checks that no document tells a reader to run the gate "before
       opening a PR". <!-- gate-wording:ignore --> The gate gates the pull request going **ready**, not its creation, and
       the wording drifted back once already. Backlog 071 fixed

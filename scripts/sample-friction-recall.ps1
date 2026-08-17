@@ -61,7 +61,10 @@ $ErrorActionPreference = 'Stop'
 # needs both.
 #
 # It is a uniform random sample. Every unflagged message has the same chance of selection,
-# whenever it was written, so a Wilson interval over the labels means what it says.
+# whenever it was written. That is what an interval over the labels needs; it is not the whole
+# story, because the draw takes a fixed number without replacement and a Wilson interval is a
+# binomial one. Wilson is then conservative - wider than the truth - by a factor of about
+# sqrt((N-n)/(N-1)), which is 0.90 for 200 of 1,004. The doc says so rather than hiding it.
 #
 # It is stable while the transcripts grow. Keeping the previously drawn rows and topping the
 # sample up did preserve labels, but it gave a row that was in the earlier population two
