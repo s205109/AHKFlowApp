@@ -37,13 +37,14 @@ so that one private repository holds all of my planning work.
 
 ## Notes / dependencies
 
-- The exclusion rule lives in exactly one place, `AGENTS.md:156`. It links to
-  `docs/development/workflow.md#stage-3-plan`, and that section never states it. So the
-  rule has no narrative. Fixing that is part of this item.
-- `scripts/backlog.common.ps1:169` requires a `- Plan:` pointer to match
-  ``^`docs/superpowers/plans/[^/`]+\.md`\.?$``. A path with a subfolder fails.
-  `tests/BacklogPlanPointer.Tests.ps1:80` asserts that failure. So a `personal/` subfolder
-  cannot be referenced from a backlog item, which is the separation this item wants.
+- The rule now lives in two bullets, starting at (`AGENTS.md:156`, "Commit a project plan or spec to").
+  Both link to `docs/development/workflow.md#stage-3-plan`, which now carries the narrative.
+- (`scripts/backlog.common.ps1:169`, "if ($Value -notmatch '^`docs/superpowers/plans/[^/`]+\.md`\.?$') { return $false }")
+  requires a `- Plan:` pointer to match a single file directly inside
+  `docs/superpowers/plans/`. A path with a subfolder fails.
+  (`tests/BacklogPlanPointer.Tests.ps1:80`, "A path with a subfolder fails") asserts that
+  failure, and line 81 adds the `personal/` case. So a `personal/` subfolder cannot be
+  referenced from a backlog item, which is the separation this item wanted.
 - The plans repository is `s205109/AHKFlowApp-plans`, and it is already private. Privacy was
   never the reason for the exclusion, so nothing about privacy changes here.
 - Spec: none — moderate difficulty goes straight to Plan.
