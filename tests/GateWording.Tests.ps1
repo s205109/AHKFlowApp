@@ -88,6 +88,24 @@ Assert-True ($result.ExitCode -eq 1) 'a blocked item is active work and must be 
 $result = Invoke-Check -Body "Run the gate before opening a pull request." -RelativePath 'backlog/done/099-x.md'
 Assert-True ($result.ExitCode -eq 0) 'a finished item is a frozen record and stays out of scope'
 
+# --- Case 11: the subject does not decide the verdict ---
+# The pattern listed three subjects - you, anyone, the session - so the same claim about any
+# other subject passed. The claim is about when the gate runs, not about who runs it.
+foreach ($body in @(
+        'Run the gate before we open a PR.'
+        'The gate runs before the agent opens a pull request.'
+        'Everything must be green before a reviewer creates the PR.'
+    )) {
+    $result = Invoke-Check -Body $body
+    Assert-True ($result.ExitCode -eq 1) "the timing claim must fail whoever the subject is: '$body'"
+}
+
+# --- Case 12: only the directive suppresses, never the words ---
+# The window was searched for the bare substring, so a sentence that merely names the marker
+# silenced a real violation beside it.
+$result = Invoke-Check -Body "Run the gate before opening a pull request. Add gate-wording:ignore to allow a line."
+Assert-True ($result.ExitCode -eq 1) 'the bare words must not suppress a violation; only the HTML comment does'
+
 # --- Case 6: the real repository passes ---
 $live = & pwsh -NoProfile -File $script 2>&1
 Assert-True ($LASTEXITCODE -eq 0) "the real repository must pass:`n$($live -join "`n")"
@@ -98,4 +116,4 @@ if ($failures.Count -gt 0) {
     throw "Gate wording tests failed with $($failures.Count) problem(s). See the detail above."
 }
 
-Write-Host 'Gate wording tests passed. 15 cases.'
+Write-Host 'Gate wording tests passed. 19 cases.'

@@ -73,10 +73,13 @@ try {
         Write-Host $scanPlan.Reason
     }
     else {
+        # -RequirePlans, because here the plans repository is in the checkout. Without it a
+        # discovery that finds no Appendix A exits 0, and this step printed 'Plans agree with
+        # the source' having compared nothing at all.
         & $pwshPath -NoProfile -File (Join-Path $PSScriptRoot 'check-plan-workflow-parity.ps1') `
-            -PlansRoot (Join-Path $plansRoot 'plans')
+            -PlansRoot (Join-Path $plansRoot 'plans') -RequirePlans
         if ($LASTEXITCODE -ne 0) {
-            throw "A plan's Appendix A disagrees with workflow.md. $skipHint"
+            throw "A plan's Appendix A disagrees with workflow.md, or no plan carries one. $skipHint"
         }
         Write-Success 'Plans agree with the source.'
     }

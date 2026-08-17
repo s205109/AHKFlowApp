@@ -1,19 +1,22 @@
 #Requires -Version 7.0
 <#
 .SYNOPSIS
-    Compares workflow.md, workflow.html and the cheatsheet, and checks the PDF is not stale.
+    Compares workflow.md, workflow.html and the cheatsheet, and checks what the PDF carries.
 .DESCRIPTION
     workflow.md wins every disagreement. Each message names the losing file and its line.
 
-    It compares stage order, exit strings, and edge targets. It also compares every data-*
-    attribute against its own element's visible text, because metadata can agree while the
-    rendered page drifts.
+    It compares the canonical stage table in section 1 against the stage blocks below it -
+    number, name and exit condition - then stage order, exit strings, and edge targets across
+    the three documents. It also compares every data-* attribute against its own element's
+    visible text, because metadata can agree while the rendered page drifts.
 
     For the PDF it checks three things: both hash sidecars still describe their files, and the
-    PDF carries the digest of the cheatsheet it was rendered from. The digest is what makes
-    the freshness claim real; two sidecars alone can be brought back into agreement by hand
-    while the PDF stays stale. It does not check that the rendered pages show the cheatsheet's
-    contents, because reading text out of a compressed PDF is out of scope.
+    PDF carries the digest of the cheatsheet it was rendered from. That is coherence, not
+    freshness. Two sidecars alone can be brought back into agreement by hand, and the digest
+    marker is a byte string that a person can append to a stale PDF. It also does not check
+    that the rendered pages show the cheatsheet's contents, because reading text out of a
+    compressed PDF is out of scope. So the result line says what was compared and never says
+    the PDF is current.
 .PARAMETER DocsRoot
     The folder holding the documents. Defaults to docs/development.
 #>
@@ -57,6 +60,7 @@ if ($problems.Count) {
 }
 
 $workflow = Get-WorkflowStage -Path $workflowPath
+$stageTable = @(Get-WorkflowStageTable -Path $workflowPath)
 $tree = Get-HtmlStage -Path $treePath
 $sheet = Get-HtmlStage -Path $sheetPath
 
@@ -67,6 +71,7 @@ $pdfText = [System.Text.Encoding]::Latin1.GetString($pdfBytes)
 # Vacuous passes are the failure this guards against: a drifted format extracts fewer
 # stages, and comparing whatever survived proves nothing.
 if ($workflow.Count -ne $expectedStageCount) { $problems.Add("workflow.md: expected $expectedStageCount stages, extracted $($workflow.Count)") }
+if ($stageTable.Count -ne $expectedStageCount) { $problems.Add("workflow.md: the canonical stage table holds $($stageTable.Count) row(s), expected $expectedStageCount") }
 if ($tree.Count -ne $expectedStageCount) { $problems.Add("workflow.html: expected $expectedStageCount stages, extracted $($tree.Count)") }
 if ($sheet.Count -ne $expectedStageCount) { $problems.Add("cheatsheet: expected $expectedStageCount stages, extracted $($sheet.Count)") }
 
@@ -127,10 +132,25 @@ for ($i = 0; $i -lt $workflowIds.Count; $i++) {
     # the source is supposed to settle.
     $workflowExit = ($workflow[$id].Exit -replace '\s+', ' ').Trim()
 
-    # The expected visible label is derived from the stage id, so a renamed heading is caught:
-    # '0-intake' must render as '0 Intake'.
-    $idParts = $id -split '-', 2
-    $expectedLabel = "$($idParts[0]) $($idParts[1].Substring(0,1).ToUpperInvariant())$($idParts[1].Substring(1))"
+    # The canonical table first. workflow.md calls the table canonical, so its row must agree
+    # with the stage block it describes: same number, same name, same exit condition. Reading
+    # only the blocks left the table free to drift, and the table is what most people read.
+    $row = $stageTable[$i]
+    $tableExit = ($row.Exit -replace '\s+', ' ').Trim()
+    $expectedId = "$($row.Number)-$($row.Name.ToLowerInvariant())"
+    if ($expectedId -cne $id) {
+        Add-Difference "TABLE workflow.md:$($row.Line)  row $i reads '$($row.Number) $($row.Name)', which is stage id '$expectedId', but the block at that position is '$id'"
+    }
+    if ($workflow[$id].Number -ne $row.Number -or $workflow[$id].Name -cne $row.Name) {
+        Add-Difference "TABLE workflow.md:$($workflow[$id].HeadingLine)  stage $id heading reads 'Stage $($workflow[$id].Number) — $($workflow[$id].Name)', the table row reads '$($row.Number) $($row.Name)'"
+    }
+    if ($tableExit -cne $workflowExit) {
+        Add-Difference "TABLE workflow.md:$($row.Line)  stage $id exit condition differs between the table and the block`n   table: $tableExit`n   block ($workflowPath`:$($workflow[$id].ExitLine)): $workflowExit"
+    }
+
+    # The expected visible label comes from the canonical table, so a stage renamed there is
+    # a difference in every rendered document until they are renamed too.
+    $expectedLabel = "$($row.Number) $($row.Name)"
 
     $pairs = @(
         @{ Name = 'workflow.html'; Doc = $tree; Expect = @($workflow[$id].Edges.Keys) }
@@ -238,4 +258,8 @@ if ($differences) {
     exit 1
 }
 
-'RESULT: the three process documents agree, and the PDF is current'
+# What this line may claim is exactly what was compared. The PDF was never read as pages: the
+# check proves both sidecars describe their files and the PDF carries this cheatsheet's digest.
+# A PDF with the marker appended by hand and both sidecars refreshed passes, so 'current' is a
+# claim this check cannot make.
+'RESULT: the three process documents agree; the PDF matches both sidecars and carries this cheatsheet''s digest'

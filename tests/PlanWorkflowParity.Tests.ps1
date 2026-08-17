@@ -115,7 +115,44 @@ $result = Invoke-Check -PlansRoot $invented
 Assert-True ($result.ExitCode -eq 1) 'an edge name outside the five must fail'
 Assert-True ($result.Output -match 'cancelled') 'the message must name the invented edge'
 
-Remove-Item $good, $driftExit, $driftEdge, $empty, $twin, $invented -Recurse -Force -ErrorAction SilentlyContinue
+# --- Case 8: an indented Appendix A heading is still a plan ---
+# Up to three leading spaces is a Markdown heading. Anchoring at column one meant such a plan
+# was not discovered at all, and a run that compared nothing exited 0.
+$indented = New-PlansRoot -Override @{ 'exit:0-intake' = 'Something else entirely' }
+$indentedFile = Join-Path $indented 'fixture-plan.md'
+$raw = Get-Content -LiteralPath $indentedFile -Raw
+Set-Content -LiteralPath $indentedFile -Value ($raw -replace '(?m)^## Appendix', '  ## Appendix') -NoNewline
+$result = Invoke-Check -PlansRoot $indented
+Assert-True ($result.ExitCode -eq 1) 'an indented Appendix A heading must still be read, and its drift must fail'
+
+# --- Case 9: a word that starts with an edge name is not that edge ---
+# '^(success|...)' has no token boundary, so 'successfully → `stay`' read as the success edge.
+$prefix = New-PlansRoot
+$prefixFile = Join-Path $prefix 'fixture-plan.md'
+$raw = Get-Content -LiteralPath $prefixFile -Raw
+Set-Content -LiteralPath $prefixFile -Value ($raw -replace '(?m)^(Edges: .+)$', '$1 · successfully → `stay`') -NoNewline
+$result = Invoke-Check -PlansRoot $prefix
+Assert-True ($result.ExitCode -eq 1) "'successfully' must not read as the success edge"
+Assert-True ($result.Output -match 'successfully') 'the message must name the segment that is not an edge'
+
+# --- Case 10: -RequirePlans turns an empty discovery into a failure ---
+# Pre-push has the plans repository in the checkout, so finding no Appendix A there means the
+# discovery missed something. Without this the caller printed 'Plans agree with the source'
+# having compared nothing.
+$noAppendix = Join-Path ([System.IO.Path]::GetTempPath()) "plan-source-none-$([guid]::NewGuid())"
+New-Item -ItemType Directory -Path $noAppendix -Force | Out-Null
+Set-Content -LiteralPath (Join-Path $noAppendix 'ordinary-plan.md') -Value '# no appendix here' -Encoding utf8
+$output = & pwsh -NoProfile -File $script -PlansRoot $noAppendix -WorkflowPath $workflowPath -RequirePlans 2>&1
+Assert-True ($LASTEXITCODE -eq 1) '-RequirePlans must fail when no plan carries an Appendix A'
+Assert-True ((($output -join "`n") -match 'discovery failure')) 'the message must say the discovery failed'
+
+# --- Case 11: a trailing period on an exit string is tolerated on purpose ---
+# Appendix A writes the exit as prose, so a plan ends the sentence and the source does not.
+# Nothing else is trimmed; case 2 covers a real difference.
+$period = New-PlansRoot -Override @{ 'exit:0-intake' = ($workflow['0-intake'].Exit + '.') }
+Assert-True ((Invoke-Check -PlansRoot $period).ExitCode -eq 0) 'a trailing period alone must still pass'
+
+Remove-Item $good, $driftExit, $driftEdge, $empty, $twin, $invented, $indented, $prefix, $noAppendix, $period -Recurse -Force -ErrorAction SilentlyContinue
 
 if ($failures.Count -gt 0) {
     foreach ($failure in $failures) { Write-Host ''; Write-Host $failure -ForegroundColor Red }
@@ -123,4 +160,4 @@ if ($failures.Count -gt 0) {
     throw "Plan source parity tests failed with $($failures.Count) problem(s). See the detail above."
 }
 
-Write-Host 'Plan source parity tests passed. 7 cases.'
+Write-Host 'Plan source parity tests passed. 11 cases.'

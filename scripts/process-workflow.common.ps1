@@ -72,6 +72,32 @@ function ConvertTo-VisibleText {
     return (($text -replace '\s+', ' ').Trim())
 }
 
+# The canonical stage table in section 1 of workflow.md. The file calls that table canonical,
+# so a check that reads only the per-stage blocks leaves the table free to drift: a renamed
+# stage or a reworded exit condition in the table changed nothing any check could see.
+function Get-WorkflowStageTable {
+    param([Parameter(Mandatory)][string] $Path)
+
+    $workflow = Get-NormalizedText -Path $Path
+    $rows = New-Object System.Collections.Generic.List[object]
+
+    # The section, not the whole file. Another table with a number in its first column is not
+    # the stage spine, and reading one as the spine would report differences that do not exist.
+    $section = [regex]::Match($workflow, '(?sm)^## 1\. The stage spine\b.*?(?=^## )')
+    if (-not $section.Success) { return $rows.ToArray() }
+    $offset = $section.Index
+
+    foreach ($m in [regex]::Matches($section.Value, '(?m)^\| (\d+) \| ([^|]+) \| ([^|]+) \|$')) {
+        $rows.Add([pscustomobject]@{
+                Number = [int]$m.Groups[1].Value
+                Name   = $m.Groups[2].Value.Trim()
+                Exit   = $m.Groups[3].Value.Trim()
+                Line   = Get-LineNumber -Text $workflow -Index ($offset + $m.Index)
+            })
+    }
+    return $rows.ToArray()
+}
+
 function Get-WorkflowStage {
     param([Parameter(Mandatory)][string] $Path)
 
@@ -107,8 +133,16 @@ function Get-WorkflowStage {
         $exit = if ($exitMatches.Count -ge 1) { $exitMatches[0].Groups[1].Value.Trim() } else { '' }
         $exitLine = if ($exitMatches.Count -ge 1) { Get-LineNumber -Text $workflow -Index ($start + $exitMatches[0].Index) } else { Get-LineNumber -Text $workflow -Index $start }
 
+        # The heading carries the stage's number and name. Both are compared against the
+        # canonical table, so a rename in one place and not the other is a difference.
+        $heading = [regex]::Match($block, '(?m)^### Stage (\d+) — (.+?)\s*$')
+        $headingLine = if ($heading.Success) { Get-LineNumber -Text $workflow -Index ($start + $heading.Index) } else { Get-LineNumber -Text $workflow -Index $start }
+
         $stages[$id] = @{
             Exit        = $exit
+            Number      = if ($heading.Success) { [int]$heading.Groups[1].Value } else { -1 }
+            Name        = if ($heading.Success) { $heading.Groups[2].Value.Trim() } else { '' }
+            HeadingLine = $headingLine
             Edges       = $edges
             ExitCount   = $exitMatches.Count
             Duplicates  = $duplicates

@@ -184,7 +184,41 @@ Set-Content -LiteralPath (Join-Path $notAPdf 'ahk-workflow.pdf.sha256') -Value (
 $result = Invoke-Check -Root $notAPdf
 Assert-True ($result.ExitCode -eq 1) 'a file that is not a PDF must fail even when its sidecar matches'
 
-Remove-Item $clean, $drift, $bogus, $visible, $stale, $crlf, $dropped, $relabelled, $twin, $cased, $punctuated, $incomplete, $handRefreshed, $notAPdf -Recurse -Force -ErrorAction SilentlyContinue
+# --- Case 15: the canonical table's exit condition drifts from the stage block ---
+# workflow.md calls the section 1 table canonical, and no check read it. A reworded exit
+# condition there agreed with nothing and failed nothing.
+$tableExit = New-Fixture
+$path = Join-Path $tableExit 'workflow.md'
+Replace-Required -Path $path -From '| 0 | Intake | Item filed with the script, summary written, Difficulty set |' -To '| 0 | Intake | Item filed and Difficulty set |'
+$result = Invoke-Check -Root $tableExit
+Assert-True ($result.ExitCode -eq 1) 'a table exit condition that differs from its stage block must fail'
+Assert-True ($result.Output -match 'TABLE') 'the message must name the table difference'
+
+# --- Case 16: a stage renamed in the canonical table alone ---
+# The expected rendered label was derived from the anchor id, so the table could name a stage
+# something the three rendered documents never called it.
+$tableName = New-Fixture
+$path = Join-Path $tableName 'workflow.md'
+Replace-Required -Path $path -From '| 0 | Intake | Item filed' -To '| 0 | Triage | Item filed'
+$result = Invoke-Check -Root $tableName
+Assert-True ($result.ExitCode -eq 1) 'a stage renamed in the table alone must fail'
+
+# --- Case 17: a stage renamed in its block heading alone ---
+$headingName = New-Fixture
+$path = Join-Path $headingName 'workflow.md'
+Replace-Required -Path $path -From '### Stage 0 — Intake' -To '### Stage 0 — Triage'
+$result = Invoke-Check -Root $headingName
+Assert-True ($result.ExitCode -eq 1) 'a stage renamed in its heading alone must fail'
+
+# --- Case 18: the clean result claims only what was compared ---
+# The PDF is never read as pages, and the digest marker can be appended to a stale PDF by
+# hand, so 'the PDF is current' was a claim this check cannot make.
+$wording = New-Fixture
+$result = Invoke-Check -Root $wording
+Assert-True ($result.Output -notmatch 'PDF is current') "the result line must not claim the PDF is current:`n$($result.Output)"
+Assert-True ($result.Output -match 'sidecars') 'the result line must say what it compared'
+
+Remove-Item $clean, $drift, $bogus, $visible, $stale, $crlf, $dropped, $relabelled, $twin, $cased, $punctuated, $incomplete, $handRefreshed, $notAPdf, $tableExit, $tableName, $headingName, $wording -Recurse -Force -ErrorAction SilentlyContinue
 
 if ($failures.Count -gt 0) {
     foreach ($failure in $failures) { Write-Host ''; Write-Host $failure -ForegroundColor Red }
@@ -192,4 +226,4 @@ if ($failures.Count -gt 0) {
     throw "Process parity tests failed with $($failures.Count) problem(s). See the detail above."
 }
 
-Write-Host 'Process parity tests passed. 14 cases.'
+Write-Host 'Process parity tests passed. 18 cases.'

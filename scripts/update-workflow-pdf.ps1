@@ -3,9 +3,10 @@
 .SYNOPSIS
     Regenerates ahk-workflow.pdf from the cheatsheet and writes both hash sidecars.
 .DESCRIPTION
-    One command writes all three files, so they cannot be updated apart. That is what makes
-    the freshness claim true: hashing the cheatsheet alone would pass when somebody edits the
-    cheatsheet, refreshes the sidecar, and never regenerates the PDF.
+    One command writes all three files, so they cannot be updated apart. A write that fails
+    part way through puts the previous three back, so a failed run leaves no half-published
+    set. That is what makes the freshness claim true: hashing the cheatsheet alone would pass
+    when somebody edits the cheatsheet, refreshes the sidecar, and never regenerates the PDF.
 
     It needs a Chromium browser, so it runs locally. Only the checks run in CI.
 
@@ -95,10 +96,37 @@ try {
 
     $pdfHash = [System.BitConverter]::ToString([System.Security.Cryptography.SHA256]::HashData($pdfBytes)).Replace('-', '')
 
-    # Only now, with a validated render in hand, replace all three outputs.
-    Copy-Item -LiteralPath $temp -Destination $pdf -Force
-    Set-Content -LiteralPath (Join-Path $docs 'ahk-workflow.pdf.source.sha256') -Value $sourceHash -Encoding utf8 -NoNewline
-    Set-Content -LiteralPath (Join-Path $docs 'ahk-workflow.pdf.sha256') -Value $pdfHash -Encoding utf8 -NoNewline
+    $sourceSidecar = Join-Path $docs 'ahk-workflow.pdf.source.sha256'
+    $pdfSidecar = Join-Path $docs 'ahk-workflow.pdf.sha256'
+
+    # Publication is three writes, so it can fail after one or two of them. A half-published
+    # set is the stale-PDF state these files exist to prevent, so keep the previous bytes and
+    # put them back when a write fails. 'They cannot be updated apart' has to be true of a
+    # failed run as well as a successful one.
+    $previous = @{}
+    foreach ($output in @($pdf, $sourceSidecar, $pdfSidecar)) {
+        $previous[$output] = if (Test-Path -LiteralPath $output -PathType Leaf) {
+            [System.IO.File]::ReadAllBytes($output)
+        }
+        else { $null }
+    }
+
+    try {
+        Copy-Item -LiteralPath $temp -Destination $pdf -Force
+        Set-Content -LiteralPath $sourceSidecar -Value $sourceHash -Encoding utf8 -NoNewline
+        Set-Content -LiteralPath $pdfSidecar -Value $pdfHash -Encoding utf8 -NoNewline
+    }
+    catch {
+        foreach ($output in @($pdf, $sourceSidecar, $pdfSidecar)) {
+            if ($null -eq $previous[$output]) {
+                Remove-Item -LiteralPath $output -Force -ErrorAction SilentlyContinue
+            }
+            else {
+                [System.IO.File]::WriteAllBytes($output, $previous[$output])
+            }
+        }
+        throw "Publication failed and the previous PDF and sidecars were put back: $($_.Exception.Message)"
+    }
 
     Write-Host "cheatsheet: $sourceHash"
     Write-Host "pdf       : $pdfHash"

@@ -147,6 +147,22 @@ foreach ($case in @(
     Assert-True ($after.Hash -eq $before.Hash) "$($case.Why): the PDF sidecar must not change"
 }
 
+# --- A write that fails part way through publishes nothing ---
+# Publication is three writes. A failure after the first two left the new PDF beside the new
+# source sidecar and the OLD pdf sidecar, which is a half-published set the checks then read
+# as a difference nobody made. The second sidecar path is a directory here, so Set-Content
+# fails with a validated render already copied over the PDF.
+$partial = New-DocsFixture
+$fixtures += $partial
+Remove-Item -LiteralPath (Join-Path $partial 'ahk-workflow.pdf.sha256') -Force
+New-Item -ItemType Directory -Path (Join-Path $partial 'ahk-workflow.pdf.sha256') -Force | Out-Null
+$beforePdf = [System.IO.File]::ReadAllText((Join-Path $partial 'ahk-workflow.pdf'))
+$beforeSource = [System.IO.File]::ReadAllText((Join-Path $partial 'ahk-workflow.pdf.source.sha256'))
+$result = Invoke-Generator -Root $partial -Mode 'good'
+Assert-True ($result.ExitCode -ne 0) 'a failed sidecar write must fail the run'
+Assert-True ([System.IO.File]::ReadAllText((Join-Path $partial 'ahk-workflow.pdf')) -eq $beforePdf) 'a failed publication must put the previous PDF back'
+Assert-True ([System.IO.File]::ReadAllText((Join-Path $partial 'ahk-workflow.pdf.source.sha256')) -eq $beforeSource) 'a failed publication must put the previous source sidecar back'
+
 # --- No browser at all is a loud failure, not a partial write ---
 $noBrowser = New-DocsFixture
 $fixtures += $noBrowser

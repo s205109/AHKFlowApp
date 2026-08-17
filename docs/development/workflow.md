@@ -24,9 +24,10 @@ Related files:
 ## 1. The stage spine
 
 Stage names are fixed. The exit strings below are canonical. They appear word for word in
-`workflow.html`, in the cheatsheet, and in this table. **Keeping the three in step is
-manual today** — the scripted parity check is wave-2 work in backlog 072. Until it lands,
-change an exit string in all three files in the same commit, and regenerate the PDF.
+`workflow.html`, in the cheatsheet, in this table, and in the stage blocks in section 3.
+`scripts/check-process-parity.ps1` compares all of them and fails on any difference. Change
+an exit string in every place in the same commit, and regenerate the PDF with
+`scripts/update-workflow-pdf.ps1`.
 
 | # | Stage | Exit condition |
 |---|---|---|

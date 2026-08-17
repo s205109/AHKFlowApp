@@ -44,7 +44,12 @@ if (-not $ScanRoot) { $ScanRoot = $repoRoot }
 # 'PR' carries a word boundary. Without it the two letters matched the start of 'profile' and
 # 'preview', so 'before creating a profile' failed a check about pull requests.
 $noun = '(?:PRs?\b|pull\s+requests?\b)'
-$activePattern = "before\s+(?:you\s+|anyone\s+|the\s+session\s+)?(?:open|opening|opens|create|creating|creates)\s+(?:a\s+|the\s+|any\s+)?$noun"
+# The subject is whoever the sentence names, so the pattern must not list them. Naming three -
+# 'you', 'anyone', 'the session' - let 'before we open a PR' and 'before the agent opens a PR'
+# through, which is the same claim in the same shape. Up to three plain words stand in for any
+# subject; punctuation ends the run, so this cannot span a clause boundary.
+$subject = "(?:[A-Za-z'’-]+\s+){0,3}"
+$activePattern = "before\s+$subject(?:open|opening|opens|create|creating|creates)\s+(?:a\s+|the\s+|any\s+)?$noun"
 # The passive shape names the act of opening, never the state of existing. 'before the pull
 # request exists' is an ordinary statement about a moment in time - the source uses it twice to
 # say what the durable record is until Pickup pushes - and it makes no claim about the gate.
@@ -86,7 +91,10 @@ foreach ($relative in $relativePaths) {
         # do with.
         $sourceLines = $text -split "`n"
         $window = -join ($sourceLines[($startLine - 1)..([Math]::Min($endLine - 1, $sourceLines.Count - 1))])
-        if ($window -match 'gate-wording:ignore') { continue }
+        # The directive is the HTML comment, not the words inside it. Accepting the bare
+        # substring meant a sentence that merely discusses the marker silenced a real
+        # violation on the same line.
+        if ($window -match '<!--\s*gate-wording:ignore\s*-->') { continue }
 
         $shown = ($m.Value -replace '\s+', ' ')
         $problems.Add("${relative}:${startLine} says '$shown'. The gate guards the pull request going ready, not its creation.")

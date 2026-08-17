@@ -111,11 +111,44 @@ $fenced = New-Fixture -Body @"
 $result = Invoke-Check -Root $fenced
 Assert-True ($result.ExitCode -eq 1) 'a heading inside a fence must not end the section'
 
+# --- Case 8: a shorter fence inside a longer one must not close it ---
+# One boolean flipped on every backtick run, so the inner three-backtick line closed the outer
+# four-backtick block. The heading after it then ended the section, and the unanchored rule
+# below went unread.
+$nested = New-Fixture -Body @"
+## Git Workflow
+
+- A rule that carries its anchor — $anchor.
+
+````````markdown
+``````
+## Example heading inside the inner block
+``````
+````````
+
+- A rule after the fence, with no anchor.
+"@
+Assert-True ((Invoke-Check -Root $nested).ExitCode -eq 1) 'a shorter fence inside a longer one must not close it'
+
+# --- Case 9: a tilde fence is a fence too ---
+$tilde = New-Fixture -Body @"
+## Git Workflow
+
+- A rule that carries its anchor — $anchor.
+
+~~~markdown
+## Example heading inside a tilde fence
+~~~
+
+- A rule after the fence, with no anchor.
+"@
+Assert-True ((Invoke-Check -Root $tilde).ExitCode -eq 1) 'a tilde fence must hide its heading and no more'
+
 # --- Case 6: the real repository passes ---
 $live = & pwsh -NoProfile -File $script 2>&1
 Assert-True ($LASTEXITCODE -eq 0) "the real repository must pass:`n$($live -join "`n")"
 
-Remove-Item $ok, $bad, $hidden, $reference, $dead, $fenced -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item $ok, $bad, $hidden, $reference, $dead, $fenced, $nested, $tilde -Recurse -Force -ErrorAction SilentlyContinue
 
 if ($failures.Count -gt 0) {
     foreach ($failure in $failures) { Write-Host ''; Write-Host $failure -ForegroundColor Red }
@@ -123,4 +156,4 @@ if ($failures.Count -gt 0) {
     throw "Process anchor tests failed with $($failures.Count) problem(s). See the detail above."
 }
 
-Write-Host 'Process anchor tests passed. 7 cases.'
+Write-Host 'Process anchor tests passed. 9 cases.'

@@ -27,8 +27,20 @@
     repository is not in the checkout in CI, and a check that cannot run must say so rather
     than fail the run.
 
+.PARAMETER RequirePlans
+    Fail when -PlansRoot exists but holds no plan with an '## Appendix A'. Pre-push passes
+    this: there, the plans repository IS in the checkout, so an empty result means the
+    discovery missed something rather than that there is nothing to check.
+
 .PARAMETER WorkflowPath
     The canonical process document. Defaults to docs/development/workflow.md.
+
+.NOTES
+    Exit strings are compared with one deliberate tolerance: a trailing period is trimmed from
+    both sides. Appendix A writes the exit as prose - 'Exit — <text> Next —' - so a plan ends
+    the sentence and the source's bullet does not. Nothing else is trimmed, and the comparison
+    is case-sensitive. The document-to-document check in check-process-parity.ps1 has no such
+    tolerance, because those three files hold the same string rather than the same sentence.
 
 .EXAMPLE
     pwsh ./scripts/check-plan-workflow-parity.ps1
@@ -39,7 +51,8 @@
 param(
     [string] $PlanPath,
     [string] $PlansRoot,
-    [string] $WorkflowPath
+    [string] $WorkflowPath,
+    [switch] $RequirePlans
 )
 
 Set-StrictMode -Version Latest
@@ -57,6 +70,12 @@ if (-not (Test-Path -LiteralPath $WorkflowPath)) { throw "Not found: $WorkflowPa
 
 # Discover the plans to check. A plan without an '## Appendix A' transcribes no stage machine,
 # so there is nothing for this check to compare.
+#
+# Up to three leading spaces is still a Markdown heading, so the pattern allows them. Anchoring
+# at column one alone meant an indented heading was not a plan at all, and the run reported
+# nothing to check rather than a difference.
+$appendixA = '(?m)^ {0,3}## Appendix A'
+$appendixB = '(?m)^ {0,3}## Appendix B'
 $planPaths = @()
 if ($PlansRoot) {
     if (-not (Test-Path -LiteralPath $PlansRoot)) {
@@ -64,9 +83,13 @@ if ($PlansRoot) {
         exit 0
     }
     $planPaths = @(Get-ChildItem -LiteralPath $PlansRoot -Filter '*.md' -File -Recurse |
-            Where-Object { (Get-NormalizedText -Path $_.FullName) -match '(?m)^## Appendix A' } |
+            Where-Object { (Get-NormalizedText -Path $_.FullName) -match $appendixA } |
             ForEach-Object { $_.FullName })
     if (-not $planPaths) {
+        if ($RequirePlans) {
+            "RESULT: no plan under $PlansRoot carries an '## Appendix A'. The folder is here, so this is a discovery failure, not an empty job."
+            exit 1
+        }
         "RESULT: skipped - no plan under $PlansRoot carries an '## Appendix A'"
         exit 0
     }
@@ -125,9 +148,9 @@ foreach ($currentPlanPath in $planPaths) {
 # swallows Appendix B's walkthrough arrows - round 7 hid real Stage 10 drift that way.
 # Both headings are required. A lazy match with an end-of-file fallback would drop the bound
 # silently the day Appendix B is renamed, which is that same failure a second time.
-if ($plan -notmatch '(?m)^## Appendix A') { throw "Appendix A not found in $currentPlanPath. Fix this script before trusting a green result." }
-if ($plan -notmatch '(?m)^## Appendix B') { throw "Appendix B not found in $currentPlanPath, so Appendix A has no end bound. Fix this script before trusting a green result." }
-$plan = [regex]::Match($plan, '(?sm)^## Appendix A.*?(?=^## Appendix B)').Value
+if ($plan -notmatch $appendixA) { throw "Appendix A not found in $currentPlanPath. Fix this script before trusting a green result." }
+if ($plan -notmatch $appendixB) { throw "Appendix B not found in $currentPlanPath, so Appendix A has no end bound. Fix this script before trusting a green result." }
+$plan = [regex]::Match($plan, '(?sm)^ {0,3}## Appendix A.*?(?=^ {0,3}## Appendix B)').Value
 
 # Appendix A writes each stage as prose, wrapped mid-sentence. Flatten before matching:
 # splitting the edge list on ' · ' against unflattened text silently under-reports, which
@@ -149,7 +172,9 @@ for ($i = 0; $i -lt $heads.Count; $i++) {
 
     $edges = [ordered]@{}
     foreach ($segment in ([regex]::Match($flat, 'Edges: (.+)$').Groups[1].Value -split ' · ')) {
-        $word = [regex]::Match($segment, '^\s*(not applicable|success|failure|blocked|resume)').Groups[1].Value
+        # The edge word ends where the word ends. Without the boundary, 'successfully' read as
+        # 'success', so a segment that is not an edge at all answered for one that is.
+        $word = [regex]::Match($segment, '^\s*(not applicable|success|failure|blocked|resume)(?![A-Za-z])').Groups[1].Value
         if (-not $word) {
             # An unknown segment used to be skipped, so a plan could invent an edge the stage
             # machine does not have and stay green. A segment that looks like an edge but is
