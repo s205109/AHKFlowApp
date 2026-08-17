@@ -2,7 +2,7 @@
 
 ## The coverage step
 
-The canonical gate lives in [Local testing workflow](testing-workflow.md#canonical-pre-pr-gate). This page documents only its coverage step and the thresholds behind it.
+The Gate lives in [Local testing workflow](testing-workflow.md#canonical-pre-pr-gate). This page documents only its coverage step and the thresholds behind it.
 
 From the repo root, run:
 
@@ -36,9 +36,9 @@ dotnet tool install -g dotnet-reportgenerator-globaltool
 git config core.hooksPath .githooks
 ```
 
-The canonical gate also requires `python` on `PATH`.
+The Gate also requires `python` on `PATH`.
 
-That `core.hooksPath` setting enables the repo-managed `.githooks/pre-push` hook, which runs `pwsh .\scripts\pre-push-quick-checks.ps1` automatically before each push — an incremental build plus the container-free fast test slice, not full coverage. CI runs the full coverage + format gate on every non-docs PR, so the hook is a quick local sanity check rather than the authoritative gate. Coverage is step 4 of the canonical gate, so run it before you mark a PR ready — `pwsh .\scripts\test-fast.ps1 -Mode Coverage`, or `pwsh .\scripts\run-coverage.ps1` directly. It is required, not an optional extra.
+That `core.hooksPath` setting enables the repo-managed `.githooks/pre-push` hook, which runs `pwsh .\scripts\pre-push-quick-checks.ps1` automatically before each push — an incremental build plus the container-free fast test slice, not full coverage. CI runs the full coverage + format gate on every non-docs PR, so the hook is a quick local sanity check rather than the authoritative gate. Coverage is step 4 of the Gate, so run it before you mark a PR ready — `pwsh .\scripts\test-fast.ps1 -Mode Coverage`, or `pwsh .\scripts\run-coverage.ps1` directly. It is required, not an optional extra.
 
 The hook adds well under two minutes per push. Skip it for WIP pushes with either:
 

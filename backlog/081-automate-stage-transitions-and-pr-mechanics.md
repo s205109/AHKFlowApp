@@ -44,7 +44,7 @@ commit, the push, and the pull request cannot disagree with each other.
 
 - [ ] One script performs a transition end to end: set the `Stage` field to the target,
       commit with the conventional message, and push.
-- [ ] It refuses a transition the canon does not allow. The legal targets come from
+- [ ] It refuses a transition the source does not allow. The legal targets come from
       `docs/development/workflow.md`, read at run time, not from a list copied into the
       script — a copy is one more thing to drift.
 - [ ] Pickup also pushes the branch and opens the draft pull request, and stamps the Stage
@@ -53,7 +53,7 @@ commit, the push, and the pull request cannot disagree with each other.
 - [ ] A failure edge refuses to run until the red evidence and a recovery task are recorded
       in `PLAN-PROGRESS.md`, matching the Verify failure rule.
 - [ ] A housekeeping round with no item writes the `Stage:` line in its pull request body
-      instead, with the read-modify-write sequence the canon specifies, including the
+      instead, with the read-modify-write sequence the source specifies, including the
       read-back check.
 - [ ] It works from a worktree without any main-checkout handover, for the paths it touches.
 - [ ] Tests cover: each legal transition, a refused illegal one, the Pickup ordering, the

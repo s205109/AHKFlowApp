@@ -5,6 +5,7 @@
 - **Epic**: <Epic name>
 - **Type**: Feature
 - **Interfaces**: UI | API | CLI
+- **Difficulty**: <trivial | moderate | complex | to-be-determined>
 - **Stage**: 0-intake
 
 ## Summary

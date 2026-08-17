@@ -10,7 +10,7 @@ For small, unrelated doc or config tweaks — backlog notes, minor rule edits, o
 
 <a id="canonical-pre-pr-gate"></a>
 
-## The canonical gate — run it before you mark a PR ready
+## The Gate — run it before you mark a PR ready
 
 Five steps, in order. Nothing else counts as the gate.
 

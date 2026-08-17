@@ -143,8 +143,8 @@ the narrative.
 - End every plan with a list of unresolved questions, if any. Keep them extremely concise; sacrifice grammar — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
 - Run the fabrication check on your own draft before you present it. It is not optional — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
 - Prove every identifier defined in this repository with the `file:line` that defines it, written in the checkable form below — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
-- The checkable form is `` (`path:line`, "text from that line") ``, as in (`scripts/check-citation-freshness.ps1:1`, "#Requires -Version 7.0"). `scripts/check-citation-freshness.ps1` fails any citation on a line a pull request adds or edits when it does not use that form. An untouched citation keeps working, so no bulk rewrite is needed.
-- Suppress a citation the check must not read with `citation-check:ignore` on the same line. Suppress a whole file with `citation-check:ignore-file` alone on its own line, inside the first five non-blank lines.
+  - The checkable form is `` (`path:line`, "text from that line") ``, as in (`scripts/check-citation-freshness.ps1:1`, "#Requires -Version 7.0"). `scripts/check-citation-freshness.ps1` fails any citation on a line a pull request adds or edits when it does not use that form. An untouched citation keeps working, so no bulk rewrite is needed.
+  - Suppress a citation the check must not read with `citation-check:ignore` on the same line. Suppress a whole file with `citation-check:ignore-file` alone on its own line, inside the first five non-blank lines.
 - Prove every .NET or NuGet identifier against the official documentation for the version in `Directory.Packages.props`. Never cite an external API from memory — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
 - Prove every MudBlazor or other component parameter against that component's API for the version in `Directory.Packages.props` — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
 - Prove every CSS selector and `data-test` value with the `file:line` in the `.razor` file that renders it, written in the same checkable form — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
@@ -153,7 +153,8 @@ the narrative.
 - Mark anything you cannot prove **FABRICATED** in the draft. Do not delete it and do not soften it. List the fabricated items, revise, then present — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
 - Save the final spec under `docs/superpowers/specs/YYYY-MM-DD-<topic>-design-NNN.md` and the final plan under `docs/superpowers/plans/YYYY-MM-DD-<topic>-plan-NNN.md`, where `NNN` is the backlog number — see [workflow.md#stage-2-design](docs/development/workflow.md#stage-2-design).
 - Commit from inside the private repo with `git -C docs/superpowers commit`. `git add` from the repo root silently skips that path, so a root commit saves the plan nowhere — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
-- Commit a plan or spec to the private repo only when it relates to project improvements — code, features, infra, deployment, tests, repo tooling. Keep agent optimization, personal workflow tuning, agent housekeeping, and one-off context or config cleanups out of it — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
+- Commit a project plan or spec to `docs/superpowers/plans/` and `docs/superpowers/specs/`. Project work means code, features, infra, deployment, tests, and repo tooling — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
+- Commit a personal plan or spec to `docs/superpowers/personal/plans/` and `docs/superpowers/personal/specs/`. Personal work means agent tuning, personal workflow experiments, and one-off context or config cleanups. A personal file carries no backlog number and needs no backlog item — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
 - Write the plan's path back into the backlog item when you commit the plan: a `- Plan:` bullet under `## Notes / dependencies`. Use `- Plan: none — <reason>` when the item has no plan. `tests/BacklogPlanPointer.Tests.ps1` fails an open or blocked item that reaches Execute without one — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
 - Read the item's `- Plan:` bullet before you write code, and implement that plan. A plan wins over a spec. When an item carries no such bullet, glob `docs/superpowers/plans/*<NNN>*` and then list the folder — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
 
@@ -173,7 +174,7 @@ the narrative.
 | Domain rule, validator | Unit test | `pwsh .\scripts\test-fast.ps1 -Mode Fast` |
 | Real Azure AD login, visual judgment call | Numbered manual steps for the user | — |
 
-Which slice to run, test templates, and the canonical gate: [`docs/development/testing-workflow.md`](docs/development/testing-workflow.md).
+Which slice to run, test templates, and the Gate: [`docs/development/testing-workflow.md`](docs/development/testing-workflow.md).
 
 ### The only exemptions
 
@@ -185,13 +186,12 @@ State the verdict either way. Naming an exemption is fine; saying nothing is not
 
 ### When manual steps are the answer
 
-Ask the user only for the cases the table sends to them — see [workflow.md#stage-6-verify](docs/development/workflow.md#stage-6-verify). Then always provide:
-
-- **Preconditions first** — what must be running, exact URL, login/profile, starting state
-- **Numbered steps, one action each** — never combine actions in one step
-- **Verbatim input in code blocks** — anything typed or pasted is given literally, never described
-- **Expected result per step** — so pass/fail is clear immediately, not only at the end
-- **Feedback labeled per step** — state exactly what to paste or screenshot back, mapped to step numbers (e.g. "reply with: step 3 screenshot, step 5 pasted output")
+- Ask the user only for the cases the table sends to them — see [workflow.md#stage-6-verify](docs/development/workflow.md#stage-6-verify). Then always provide:
+  - **Preconditions first** — what must be running, exact URL, login/profile, starting state
+  - **Numbered steps, one action each** — never combine actions in one step
+  - **Verbatim input in code blocks** — anything typed or pasted is given literally, never described
+  - **Expected result per step** — so pass/fail is clear immediately, not only at the end
+  - **Feedback labeled per step** — state exactly what to paste or screenshot back, mapped to step numbers (e.g. "reply with: step 3 screenshot, step 5 pasted output")
 
 ## Rules
 
@@ -273,7 +273,7 @@ the API URL + `/health`. SWA hostname:
 - Block a `backlog/` item by `git mv`-ing it into `backlog/blocked/` when it waits on something outside this repository. The test is whether the work is possible right now, not whether it is worth doing; a low-priority item stays in `backlog/`. It keeps its number and its unticked boxes, and says near the top what would unblock it — see [workflow.md#stage-1-pickup](docs/development/workflow.md#stage-1-pickup).
 - Never force-push to `main` — see [workflow.md#stage-9-ship](docs/development/workflow.md#stage-9-ship).
 - Do not commit on `main`. `.githooks/pre-commit` refuses it for every session, agent and human, and `.githooks/pre-merge-commit` refuses a local merge into `main`. Set `AHKFLOW_ALLOW_MAIN=1` for a deliberate one — see [workflow.md#stage-1-pickup](docs/development/workflow.md#stage-1-pickup).
-- Run the canonical five-step gate before you mark a pull request **ready**, not when you open the draft: [`docs/development/testing-workflow.md`](docs/development/testing-workflow.md#canonical-pre-pr-gate) — see [workflow.md#stage-6-verify](docs/development/workflow.md#stage-6-verify).
+- Run the five-step Gate before you mark a pull request **ready**, not when you open the draft: [`docs/development/testing-workflow.md`](docs/development/testing-workflow.md#canonical-pre-pr-gate) — see [workflow.md#stage-6-verify](docs/development/workflow.md#stage-6-verify).
 - Keep a PR focused on a single concern; split a large change into stacked PRs — see [workflow.md#stage-8-review](docs/development/workflow.md#stage-8-review).
 - Treat the main checkout as human-owned. A session in main may inspect, edit, build, test, and format. A session in a managed worktree may read main, but any shell command that writes, moves, or deletes a path under main is refused — see [workflow.md#stage-1-pickup](docs/development/workflow.md#stage-1-pickup).
 - Run a gated Git command from main, where most now get an in-session prompt. `git commit` is the exception: it always needs a worktree, or a session-wide `AHKFLOW_ALLOW_MAIN=1` set before the session starts, and it never gets a prompt. Full rules: [`docs/agents/cross-agent-git-guardrails.md`](docs/agents/cross-agent-git-guardrails.md) — see [workflow.md#stage-1-pickup](docs/development/workflow.md#stage-1-pickup).
