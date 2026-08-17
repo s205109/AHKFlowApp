@@ -78,6 +78,7 @@ $cases = @(
     @{ Name = 'Two none bullets fail';                Stage = '4-execute';  Notes = @("- Plan: none $([char]0x2014) a", "- Plan: none $([char]0x2014) b"); Folder = ''; ShouldPass = $false }
     @{ Name = 'A path without backticks fails';       Stage = '4-execute';  Notes = @('- Plan: docs/superpowers/plans/a-plan-101.md'); Folder = ''; ShouldPass = $false }
     @{ Name = 'A path with a subfolder fails';        Stage = '4-execute';  Notes = @('- Plan: `docs/superpowers/plans/old/a-plan-101.md`'); Folder = ''; ShouldPass = $false }
+    @{ Name = 'A personal/ path fails';               Stage = '4-execute';  Notes = @('- Plan: `docs/superpowers/personal/plans/2026-08-17-a-topic-plan.md`'); Folder = ''; ShouldPass = $false }
     @{ Name = 'A specs/ path fails';                  Stage = '4-execute';  Notes = @('- Plan: `docs/superpowers/specs/a-design-101.md`'); Folder = ''; ShouldPass = $false }
     @{ Name = 'A non-md extension fails';             Stage = '4-execute';  Notes = @('- Plan: `docs/superpowers/plans/a-plan-101.txt`'); Folder = ''; ShouldPass = $false }
     @{ Name = 'Trailing text after the path fails';   Stage = '4-execute';  Notes = @('- Plan: `docs/superpowers/plans/a-plan-101.md` (superseded)'); Folder = ''; ShouldPass = $false }
