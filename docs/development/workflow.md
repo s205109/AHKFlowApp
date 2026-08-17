@@ -359,6 +359,14 @@ create a PR" as "before you mark it ready".
 - **Context** — clear before Execute; the plan carries the line numbers
 - **Review** — plan reviewed before execution
 
+**Two homes for a plan.** A plan about the product or the repository goes to
+`docs/superpowers/plans/` and carries the backlog number of the item it serves.
+A plan about the way you or your agents work goes to
+`docs/superpowers/personal/plans/` and carries no number, because no backlog
+item owns it. `docs/superpowers/personal/README.md` states the test. The split
+enforces itself: `scripts/backlog.common.ps1` rejects a `- Plan:` pointer that
+holds a folder, so a backlog item cannot name a personal plan.
+
 | Edge | Condition | Target |
 |---|---|---|
 | success | exit condition met | 4-execute |
@@ -808,9 +816,12 @@ its remaining changes and closes normally.
 
 - Backlog items track planned work. GitHub issues track external reports and discussion.
 - An issue that becomes work gets a backlog item that references the issue.
-- Every spec and every plan carries a backlog number, in its file name and in its heading:
+- Every project spec and every project plan carries a backlog number, in its file name and in its heading:
   `docs/superpowers/specs/YYYY-MM-DD-<topic>-design-NNN.md` and
   `docs/superpowers/plans/YYYY-MM-DD-<topic>-plan-NNN.md`. Existing files keep their names.
+- A personal spec or plan lives under `docs/superpowers/personal/` and carries no backlog
+  number: `docs/superpowers/personal/plans/YYYY-MM-DD-<topic>-plan.md`. No backlog item
+  names it.
 - Every backlog item names its plan. The item carries a `- Plan:` bullet under
   `## Notes / dependencies`, holding a path under `docs/superpowers/plans/`, or
   `none — <reason>`. `tests/BacklogPlanPointer.Tests.ps1` checks it for `backlog/` and
