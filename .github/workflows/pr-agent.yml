@@ -39,10 +39,14 @@ jobs:
 
     runs-on: ubuntu-latest
 
-    # PR-Agent caps each model call at 120 seconds, but nothing caps the job. A
-    # stalled pull or a connection that hangs would otherwise run to GitHub's
-    # 6-hour default. A large PR (e.g. 57 files) runs a multi-pass review that
-    # needs more than 15 minutes of model calls; 45 leaves headroom.
+    # Nothing else caps this job, so without a timeout a stalled run would go to
+    # GitHub's 6-hour default. A large PR (e.g. 57 files) runs a multi-pass
+    # review that needs more than 15 minutes of model calls; 45 leaves headroom.
+    #
+    # This value is a backstop, not a fix. PR-Agent reports ai_timeout = 120,
+    # but in run 32022710084 one model call ran 14 minutes with no completion,
+    # no error, and no fallback. Backlog 105 tracks why. Until that is answered,
+    # a stalled run holds a runner for 45 minutes instead of 15.
     timeout-minutes: 45
 
     permissions:
