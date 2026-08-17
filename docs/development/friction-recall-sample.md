@@ -23,8 +23,10 @@ pwsh ./scripts/sample-friction-recall.ps1 `
   -ExistingManifest docs/development/friction-samples/handoffs-sample.csv
 ```
 
-**Always pass `-ExistingManifest`.** Without it the draw replaces the labels instead of keeping
-them, and a hand-written label is the only thing this step produces.
+**Always pass `-ExistingManifest`.** It carries the labels and the row ids across a re-run. It
+does not change which rows are drawn — see "How the draw picks a row" — but without it every
+hand-written label is written out empty, and a hand-written label is the only thing this step
+produces.
 
 Two runs are named below, and they are not the same run. The sample was drawn first, then the
 figures were measured. The transcripts grew between them, so the populations differ slightly.
@@ -54,6 +56,28 @@ apart read 691 files, then 672.
 So each draw writes a selection record beside its manifest — the population count, a SHA-256
 digest of the ordered keys, the drawn positions, and the drawn keys. The digest says whether the
 positions still point at the same messages. The keys identify the rows either way.
+
+## How the draw picks a row
+
+The sampler hashes the seed and the message key together and takes the 200 lowest hashes
+(`scripts/sample-friction-recall.ps1`). Every unflagged message has the same chance of
+selection, and the same rows stay selected as the transcripts grow, so a hand-written label
+survives a re-run without the label deciding the sample.
+
+**The committed sample was drawn the old way, and its intervals are approximate.** The first
+sampler kept every row the previous draw had selected and filled the rest at random. The
+selection records show what that did: `carriedOverLabels` reads 57 of 200 for handoffs and 58 of
+200 for asks. A row that was already in the population when the earlier 60-row draw ran had two
+chances of selection, a row written later had one — roughly 3.7 percent against 2.6 percent, a
+factor of about 1.4. That is a probability sample with unequal inclusion probabilities, and a
+Wilson interval describes a uniform one. So read both ranges below as close to a 95 percent
+interval rather than exactly one. The bias has no measured direction: it over-represents older
+messages, and nothing says the miss rate differs between older and newer ones.
+
+Redrawing with the fixed sampler produces a different 200 rows per metric and would need those
+rows labelled by hand again. That work is filed as backlog 102, not done here: throwing away 400
+labels to redraw is a decision with a cost, and the labels themselves are still evidence for the
+rows they describe.
 
 | Metric | Population | Flagged | Unflagged | Ordered-key digest |
 |---|---|---|---|---|
@@ -132,7 +156,7 @@ unflagged messages that is **17 to 71 missed asks**.
 
 - **Metric 2, directory-bound commands (179 lines).** A syntax rule: a command line inside a
   `powershell`, `pwsh`, `bash`, `sh` or `shell` fence that names a directory, deduplicated on
-  message and line text. Two guards keep prose out — the line must start with a command, and a
+  message and line text. Two filters keep prose out — the line must start with a command, and a
   here-string body is skipped. A pull request body passed as `@' … '@` inside a `powershell`
   fence had put two English sentences in the ledger. Precision is still unmeasured: an example
   command counts like a handed-over one.
@@ -145,16 +169,22 @@ unflagged messages that is **17 to 71 missed asks**.
   message instead counted the script's own source, injected skill instructions, and reviews
   quoting an outcome — 65 of 75 rows on the first attempt. Six of the eleven phrases then in use
   appeared in no script at all; `cleanup popup` alone produced 24 rows.
+  **It does not separate a reported event from a quoted one.** A message that quotes a whole
+  stamped line carries the stamp, and the metric counts it — deliberately, because that is how a
+  tool result holding the tail of the worktree log arrives. So 18 counts stamped lines, not
+  reported events, and the 18 rows are not yet labelled. Backlog 103 carries that work.
 - **Metric 5, CI minutes.** No word matching, so no recall question. It has a coverage problem
   instead, stated below.
 
 ## What limits these numbers
 
-**Both ranges are still ranges.** 200 labels bound a miss rate far better than 60 did — the
-handoff interval went from 60–655 to 179–533, and the ask interval from 37–163 to 34–88 — but
-neither figure is a point. A point estimate needs a classifier that reads structure rather than
-wording: a refused tool call, a session that ends on a question. That is wave-3 work, not a patch
-to this script.
+**Both ranges are still ranges, and both are approximate.** 200 labels bound a miss rate far
+better than 60 did — the handoff interval went from 60–655 to 179–533, and the ask interval from
+37–163 to 35–89 — but neither figure is a point. A point estimate needs a classifier that reads
+structure rather than wording: a refused tool call, a session that ends on a question. That is
+wave-3 work, not a patch to this script. The draw that produced these 400 labels was not
+uniform either, for the reason given under "How the draw picks a row"; backlog 102 carries the
+redraw.
 
 **Metric 5 classifies 115 of 192 in-window CI runs.** The 77 unresolved runs are **not** missing
 from this clone — every in-window `head_sha` was present when this was measured. They have no

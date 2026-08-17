@@ -34,7 +34,7 @@ eligible, calls the removal script, and the removal script preserves it.
 
 This repository has rebase merging enabled (`allow_rebase_merge: true`), so it happens for real.
 The "Merge with a merge commit, not a rebase merge" warning in Stage 10 — Cleanup
-(`docs/development/workflow.md:540`, "Merge with a merge commit, not a rebase merge.") describes
+(`docs/development/workflow.md:541`, "Merge with a merge commit, not a rebase merge.") describes
 the trap and tells the reader to merge with a merge commit for any worktree Cleanup should
 remove. That warning is the workaround this item removes.
 
@@ -49,7 +49,7 @@ Backlog 094 fixed which base both scripts read; it left the ancestry test alone 
       changes is still preserved
 - [ ] A fixture proves both directions, in `tests/WorktreeRemoveHook.Tests.ps1` or a new suite
 - [ ] The Cleanup warning
-      (`docs/development/workflow.md:540`, "Merge with a merge commit, not a rebase merge.")
+      (`docs/development/workflow.md:541`, "Merge with a merge commit, not a rebase merge.")
       no longer tells the reader to avoid rebase merges
 
 ## Out of scope
@@ -61,7 +61,7 @@ Backlog 094 fixed which base both scripts read; it left the ancestry test alone 
 
 - Found while implementing backlog 094, which needed the removal gate to read the same base
 - The Cleanup warning points at this item
-  (`docs/development/workflow.md:547`, "backlog 098 makes the removal script use the same rule.")
+  (`docs/development/workflow.md:548`, "backlog 098 makes the removal script use the same rule.")
 - The shared rule lives in `scripts/cleanup-merged-worktrees.ps1`. Moving it into
   `scripts/worktree-git.common.ps1` is one option; the watcher runs from a copy in `%TEMP%`, so
   check what a shared helper does to that copy first

@@ -25,31 +25,77 @@
 .PARAMETER OutputPath
     Where to write the manifest CSV.
 .PARAMETER Seed
-    The random seed. Recorded in every row.
+    The seed that fixes the draw. Recorded in every row.
 .PARAMETER SampleSize
     How many unflagged messages to draw. 200 bounds a zero-miss result at roughly 1.5 percent.
 .PARAMETER ExistingManifest
-    A manifest whose labels must survive. Rows whose Key is still in the population keep their
-    Id and their Label, and the draw tops the sample up to SampleSize instead of replacing it.
-    Without this, re-running after the transcripts grow throws away every hand-written label.
+    A manifest whose labels must survive. A row the draw selects again keeps its Id and its
+    Label. It does not change WHICH rows are drawn - see the note below.
 .NOTES
-    A seed alone does not reproduce a selection. It indexes into the ordered unflagged list, and
-    that list changes whenever a session is written - which happens while the script runs. So the
-    script also writes a selection record beside the manifest: the population count, a digest of
-    the ordered keys, the drawn positions, and the drawn keys themselves. The digest says whether
-    the positions still mean anything; the keys identify the rows either way.
+    The draw is a deterministic function of the seed and the message key: hash the pair and take
+    the SampleSize lowest hashes. That is a uniform random sample, and it is also stable while
+    the transcripts grow, so hand-written labels survive a re-run without the labels deciding
+    the sample.
+
+    The script also writes a selection record beside the manifest: the population count, a digest
+    of the ordered keys, the drawn positions, and the drawn keys themselves. The positions are
+    only meaningful against a list of the same length and digest; the keys identify the rows
+    either way.
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][ValidateSet('handoffs', 'next-step-asks')][string] $Metric,
-    [Parameter(Mandatory)][string] $OutputPath,
-    [int] $Seed = 20260816,
-    [int] $SampleSize = 200,
-    [string] $ExistingManifest
+    [Parameter(Mandatory, ParameterSetName = 'Draw')][ValidateSet('handoffs', 'next-step-asks')][string] $Metric,
+    [Parameter(Mandatory, ParameterSetName = 'Draw')][string] $OutputPath,
+    [Parameter(ParameterSetName = 'Draw')][int] $Seed = 20260816,
+    [Parameter(ParameterSetName = 'Draw')][int] $SampleSize = 200,
+    [Parameter(ParameterSetName = 'Draw')][string] $ExistingManifest,
+    # Dot-source the selection rule without reading a transcript, so a suite can test it.
+    [Parameter(Mandatory, ParameterSetName = 'Module')][switch] $AsModule
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+# The selection is a deterministic function of the seed and the message key: hash the pair and
+# take the SampleSize lowest hashes. Two properties come from this, and the published interval
+# needs both.
+#
+# It is a uniform random sample. Every unflagged message has the same chance of selection,
+# whenever it was written, so a Wilson interval over the labels means what it says.
+#
+# It is stable while the transcripts grow. Keeping the previously drawn rows and topping the
+# sample up did preserve labels, but it gave a row that was in the earlier population two
+# chances of selection and a later row one - about 1.4 times the inclusion probability - and an
+# unequal-probability sample is not what a Wilson interval describes. Here a row selected today
+# is still selected tomorrow unless enough lower hashes arrive, so labels survive without the
+# preservation deciding anything.
+function Get-SelectionPriority {
+    param([Parameter(Mandatory)][string] $Key, [Parameter(Mandatory)][int] $Seed)
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes("$Seed`n$Key")
+    $hash = [System.Security.Cryptography.SHA256]::HashData($bytes)
+    # The first eight bytes, big-endian, is enough spread for a population of this size.
+    $value = [uint64]0
+    for ($b = 0; $b -lt 8; $b++) { $value = ($value -shl 8) -bor [uint64]$hash[$b] }
+    return $value
+}
+
+function Select-SampleKey {
+    <#
+    .SYNOPSIS
+        The keys the draw selects, lowest hash priority first, then key.
+    #>
+    param(
+        [Parameter(Mandatory)][AllowEmptyCollection()][string[]] $Keys,
+        [Parameter(Mandatory)][int] $Seed,
+        [Parameter(Mandatory)][int] $SampleSize
+    )
+    $take = [Math]::Min($SampleSize, $Keys.Count)
+    return @($Keys |
+            Sort-Object -Property @{ Expression = { Get-SelectionPriority -Key $_ -Seed $Seed } }, @{ Expression = { $_ } } |
+            Select-Object -First $take)
+}
+
+if ($AsModule) { return }
 
 . (Join-Path $PSScriptRoot 'measure-process-friction.ps1') -AsModule
 
@@ -94,11 +140,10 @@ try {
 }
 finally { $sha.Dispose() }
 
-# Labels already written are evidence. Keep every one whose message is still in the population,
-# and top the sample up rather than drawing a fresh one.
+# Labels already written are evidence. A row keeps its label and its id when the draw selects
+# it again, but a written label must never decide the selection.
 $existingLabels = @{}
 $existingIds = @{}
-$keptKeys = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
 if ($ExistingManifest) {
     if (-not (Test-Path -LiteralPath $ExistingManifest)) {
         throw "ExistingManifest not found: $ExistingManifest"
@@ -106,26 +151,24 @@ if ($ExistingManifest) {
     foreach ($row in (Import-Csv -LiteralPath $ExistingManifest)) {
         $existingLabels[$row.Key] = $row.Label
         $existingIds[$row.Key] = $row.Id
-        if ($row.Stratum -eq 'unflagged') { [void]$keptKeys.Add($row.Key) }
     }
 }
+
+$take = [Math]::Min($SampleSize, $ordered.Count)
+$selectedKeySet = [System.Collections.Generic.HashSet[string]]::new(
+    [string[]](Select-SampleKey -Keys ([string[]]($ordered | ForEach-Object { $_.Key })) -Seed $Seed -SampleSize $SampleSize),
+    [System.StringComparer]::Ordinal)
+$byPriority = @($ordered | Where-Object { $selectedKeySet.Contains($_.Key) })
 
 $byKeyPosition = @{}
 for ($i = 0; $i -lt $ordered.Count; $i++) { $byKeyPosition[$ordered[$i].Key] = $i }
 
 $picked = [System.Collections.Generic.SortedSet[int]]::new()
-foreach ($key in $keptKeys) {
-    if ($byKeyPosition.ContainsKey($key)) { [void]$picked.Add($byKeyPosition[$key]) }
-}
-$carriedOver = $picked.Count
+foreach ($message in $byPriority) { [void]$picked.Add($byKeyPosition[$message.Key]) }
 
-$random = [System.Random]::new($Seed)
-$take = [Math]::Min($SampleSize, $ordered.Count)
-$attempts = 0
-while ($picked.Count -lt $take) {
-    [void]$picked.Add($random.Next(0, $ordered.Count))
-    $attempts++
-    if ($attempts -gt ($ordered.Count * 20)) { throw 'the draw could not reach the sample size' }
+$carriedOver = 0
+foreach ($message in $byPriority) {
+    if ($existingLabels.ContainsKey($message.Key) -and $existingLabels[$message.Key]) { $carriedOver++ }
 }
 
 # A wide screen, run over the WHOLE text of every sampled message. It is deliberately far
@@ -224,6 +267,7 @@ $selectionPath = [System.IO.Path]::ChangeExtension($OutputPath, '.selection.json
     flaggedCount      = $flagged.Count
     unflaggedCount    = $ordered.Count
     populationDigest  = $populationDigest
+    selectionRule     = 'lowest-hash-priority: sha256("<seed>\n<key>"), first 8 bytes, ascending'
     carriedOverLabels = $carriedOver
     selectedPositions = $selectedPositions
     selectedKeys      = $selectedKeys.ToArray()
@@ -233,7 +277,7 @@ Write-Host "metric      : $Metric"
 Write-Host "seed        : $Seed"
 Write-Host "population  : $($population.Count) logical messages"
 Write-Host "flagged     : $($flagged.Count)"
-Write-Host "unflagged   : $($ordered.Count), of which $take sampled ($carriedOver carried over already labelled)"
+Write-Host "unflagged   : $($ordered.Count), of which $take sampled ($carriedOver already carry a label)"
 Write-Host "digest      : $populationDigest"
 Write-Host "manifest    : $OutputPath"
 Write-Host "selection   : $selectionPath"

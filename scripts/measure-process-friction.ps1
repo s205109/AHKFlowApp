@@ -114,7 +114,7 @@ $script:CleanupOutcomePatterns = @(
 )
 
 # Metric 2 is a syntax rule, not a word list: a command line inside a shell fence that names a
-# directory. Two guards keep prose out. The line must START with a command, because
+# directory. Two filters keep prose out. The line must START with a command, because
 # 'Records the `git -C docs/superpowers` form' is a sentence, not a command. And a here-string
 # body is text, so its lines are skipped: a pull request body passed as @' ... '@ inside a
 # powershell fence put two sentences in the ledger on 2026-08-16.
@@ -449,9 +449,12 @@ function Get-FrictionCount {
 
     $sessions = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     $rows = New-Object System.Collections.Generic.List[object]
-    # Metric 3 alone deduplicates across messages. Its line carries a timestamp, a worktree and
-    # a process id, so two identical lines are one event echoed into two tool results. A command
-    # handed over in two messages is two handovers, so metric 2 must not do this.
+    # Metric 3 alone deduplicates across messages, on the whole line: the same log line reaches
+    # two tool results when a session reads the log twice. The line is not a unique event id.
+    # Its stamp has one-second resolution, and only 'Watcher started.' carries a process id, so
+    # two real events in the same second, in the same worktree, with the same message collapse
+    # into one. Backlog 103 carries that. A command handed over in two messages is two
+    # handovers, so metric 2 must not deduplicate at all.
     $seenEvents = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
     $patterns = switch ($Metric) {
         'directory-bound-commands' { $script:DirectoryLinePatterns }
