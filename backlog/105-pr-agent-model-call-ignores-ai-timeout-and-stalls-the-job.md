@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: CI
 - **Difficulty**: to-be-determined
-- **Stage**: 0-intake
+- **Stage**: 1-pickup
 
 ## Summary
 
@@ -36,6 +36,53 @@ on PR #314:
 The run's own config dump printed `"ai_timeout": 120`. Only one
 `Generating prediction` line appears in the whole log, so the run did not spend
 its budget on several review passes.
+
+### The stall repeats, and it is not a size problem
+
+Two earlier `/review` runs on PR #299 stalled the same way. Both sent a diff
+small enough to skip pruning, so PR size is not the trigger.
+
+| Run | Last PR-Agent line | Job cancelled | Silence |
+| --- | --- | --- | --- |
+| `31704604168` | 13:23:19 `Prompts` | 13:38:03 | 14 min 43 s |
+| `31731784778` | 18:39:05 `Prompts` | 18:53:46 | 14 min 41 s |
+
+Both logs end with:
+
+```
+Tokens: 14657, total tokens under limit: 64000, returning full diff.
+PR diff
+Prompts
+```
+
+### Where the process stops
+
+`Prompts` is the last line PR-Agent writes before it awaits the model call, so
+the silence starts inside that await.
+
+- PR-Agent logs `Prompts` in `litellm_ai_handler.chat_completion`, then calls
+  `_get_completion`, which calls `litellm.acompletion`.
+- The call does carry the timeout:
+  `kwargs = {..., "timeout": get_settings().config.ai_timeout, ...}` in
+  `pr_agent/algo/ai_handlers/litellm_ai_handler.py` at tag `v0.41.1`.
+- litellm resolves that value to a float and hands it to the provider client
+  (`litellm/litellm_core_utils/completion_timeout.py`, `CompletionTimeout.resolve`,
+  tag `v1.93.0`). It is an HTTP timeout, not a wall-clock guard on the await.
+
+### What the missing log lines rule out
+
+A timeout that fired would have written log lines, and none appear:
+
+1. `chat_completion` catches every exception and logs
+   `Unknown error during LLM inference`.
+2. `tenacity` retries the call once (`MODEL_RETRIES = 2`).
+3. `retry_with_fallback_models` logs `Failed to generate prediction with <model>`
+   and then logs a second `Generating prediction` line for the fallback model
+   `openrouter/tencent/hy3` (`pr_agent/algo/pr_processing.py`).
+
+The logs show none of the three. So the await never returned and never raised.
+The open question is which layer holds the socket open past 120 seconds:
+litellm, the OpenAI client it wraps, or OpenRouter.
 
 ## Acceptance criteria
 
