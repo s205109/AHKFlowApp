@@ -19,6 +19,7 @@ require_security_review = true
 require_tests_review = true
 require_estimate_effort_to_review = false
 num_max_findings = 5
+persistent_comment = true
 
 extra_instructions = '''
 Focus on:
@@ -35,20 +36,20 @@ Do not invent issues.
 '''
 
 [pr_code_suggestions]
-commitable_code_suggestions = true
+commitable_code_suggestions = false
 
 # /improve reads its own extra_instructions, not the reviewer's. It writes
-# committable code onto the diff, so it needs the same limits.
+# code onto the diff, so it must not propose new files or broad rewrites.
 extra_instructions = '''
+Suggest only small, local code changes inside the diff.
 Focus on:
 - correctness
 - regressions
 - security
 - concurrency
 - error handling
-- maintainability
-- missing tests
 
-Only report actionable findings.
+Each suggestion must apply to changed lines only.
+Do not suggest new files, new tests, or refactors that span files.
 Do not invent issues.
 '''
