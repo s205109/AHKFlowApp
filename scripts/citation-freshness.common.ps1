@@ -135,6 +135,12 @@ function Get-TrackedFile {
 
 $script:BinaryExtension = '\.(png|jpg|jpeg|gif|ico|svg|pdf|zip|dll|exe|pfx|snk|woff|woff2|ttf|eot|mp4|bin)$'
 
+# A citation is a claim somebody wrote. A data file's cells are quoted records: the friction
+# sample manifests hold transcript text verbatim, and 76 of those quotes look like citations
+# that nobody is asserting. Scanning them makes the check fail on evidence rather than on prose.
+# A citation that carries weight belongs in a document, so this only ever hides quoted data.
+$script:DataExtension = '\.(csv|tsv|jsonl)$'
+
 # Walks ScanRoot and returns one string per problem. ChangedLine enables tier 3; leave it null and
 # the check reads state only.
 function Get-CitationProblem {
@@ -169,6 +175,7 @@ function Get-CitationProblem {
 
     foreach ($relative in $scanList) {
         if ($relative -match $script:BinaryExtension) { continue }
+        if ($relative -match $script:DataExtension) { continue }
 
         $full = Join-Path $scanPath $relative
         if (-not (Test-Path -LiteralPath $full -PathType Leaf)) { continue }
