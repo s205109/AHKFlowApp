@@ -80,8 +80,12 @@ one of them can never leave the other two behind.
 - [x] `scripts/new-backlog-item.ps1` writes both lines into every new item. It copies the
       template, so both lines land without a second source to keep in step.
 - [x] `.claude/CLAUDE.md` is aligned line by line with `workflow.md`. No rule appears in
-      both with different wording. The 14 judgements are recorded in
+      both with different wording. The 17 judgements are recorded in
       `docs/development/process-alignment-checklist.md`; every row now reads `links-only`.
+      Row 11 is `links-only` and still leaves one thing open: the rule it states — prefer the
+      script over the native worktree tool, because the harness refuses an edit under
+      `docs/superpowers/` — has no owning stage in `workflow.md`, and an alignment pass may
+      not edit the source. The checklist records that as an open question for Design.
 - [x] The private-plan status visibility question is investigated and the finding is
       written down: how a session sees the stage of work whose plan lives in the private
       repo. It is section 6 of `workflow.md`, "What a session without the plans repository

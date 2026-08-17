@@ -14,7 +14,11 @@ each row names the words the bullet starts with rather than a line number.
 | `conflicts` | The bullet and the linked stage disagree. `workflow.md` wins; fix the bullet. |
 | `wrong stage` | The bullet is right, but its anchor names a stage that does not own the rule. |
 
-The review is finished when every row reads `links-only`.
+The review is finished when every row reads `links-only`. All 17 rows do. One row carries more
+than its verdict: row 11 states a rule `workflow.md` does not own, which a verdict about
+wording cannot settle. The open question at the end of this file is that gap, and it is still
+open — a `links-only` verdict on row 11 says the bullet defers correctly, not that the source
+covers the case.
 
 **The test used here.** A bullet may say what to do in one sentence. It may not carry the
 reasoning from `workflow.md`, its worked examples, or a second copy of a stage's narrative. A rule is
