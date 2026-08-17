@@ -5,7 +5,7 @@
 - **Epic**: CI/CD
 - **Type**: Chore
 - **Interfaces**: CI
-- **Stage**: 0-intake
+- **Stage**: 6-verify
 
 ## Summary
 
@@ -21,33 +21,33 @@ does not silently get zero review and reviewers do not have to sort noise.
 
 ## Acceptance criteria
 
-- [ ] Root cause confirmed: run 32022710084 was killed by
+- [x] Root cause confirmed: run 32022710084 was killed by
       `.github/workflows/pr-agent.yml:45` `timeout-minutes: 15`, not by a code
       or test failure — job started 10:58:57, cancelled 11:14:07, mid model
       call after diff pruning (119k tokens over the 64000 `max_model_tokens`
       cap).
-- [ ] `timeout-minutes` in `.github/workflows/pr-agent.yml` raised to give
+- [x] `timeout-minutes` in `.github/workflows/pr-agent.yml` raised to give
       headroom for multi-pass review on large PRs (handoff txt suggests 45).
-- [ ] Every `.pr_agent.toml` key touched is confirmed against the installed
+- [x] Every `.pr_agent.toml` key touched is confirmed against the installed
       PR-Agent's own `settings/configuration.toml` before use, not against web
       docs. Unverified keys are removed, not guessed.
-- [ ] `fallback_models` keeps exactly one entry
+- [x] `fallback_models` keeps exactly one entry
       (`openrouter/tencent/hy3`) as the default.
-- [ ] `[pr_reviewer]` and `[pr_code_suggestions]` `extra_instructions` blocks
+- [x] `[pr_reviewer]` and `[pr_code_suggestions]` `extra_instructions` blocks
       differ. The `/improve` block forbids new files, new tests, and
       cross-file refactors.
-- [ ] `commitable_code_suggestions = false` set under `[pr_code_suggestions]`.
+- [x] `commitable_code_suggestions = false` set under `[pr_code_suggestions]`.
       `num_code_suggestions` does not exist in the installed 0.41.1 image's
       `[pr_code_suggestions]` (confirmed against
       `pragent/pr-agent@sha256:ec267eb168375c150d75efc024e2b10e0e2768ad0c000f15fd2378fe63abfe98`
       — that section has `num_code_suggestions_per_chunk` and
       `max_number_of_calls` instead, different semantics), so this change is
       dropped and reported open, per the handoff doc's own no-guess rule.
-- [ ] `persistent_comment = true` set under `[pr_reviewer]`, or its absence
+- [x] `persistent_comment = true` set under `[pr_reviewer]`, or its absence
       reported as an open item if the key does not exist in the installed
       version.
-- [ ] `model`, `custom_model_max_tokens`, and `max_model_tokens` unchanged.
-- [ ] `.pr_agent.toml` parses (checked with a TOML load, not by eye).
+- [x] `model`, `custom_model_max_tokens`, and `max_model_tokens` unchanged.
+- [x] `.pr_agent.toml` parses (checked with a TOML load, not by eye).
 
 ## Out of scope
 
