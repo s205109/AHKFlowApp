@@ -1,4 +1,4 @@
-# 100 - pr-agent config and timeout fix
+# 101 - pr-agent config and timeout fix
 
 ## Metadata
 
@@ -36,8 +36,13 @@ does not silently get zero review and reviewers do not have to sort noise.
 - [ ] `[pr_reviewer]` and `[pr_code_suggestions]` `extra_instructions` blocks
       differ. The `/improve` block forbids new files, new tests, and
       cross-file refactors.
-- [ ] `commitable_code_suggestions = false` and `num_code_suggestions = 5` set
-      under `[pr_code_suggestions]`.
+- [ ] `commitable_code_suggestions = false` set under `[pr_code_suggestions]`.
+      `num_code_suggestions` does not exist in the installed 0.41.1 image's
+      `[pr_code_suggestions]` (confirmed against
+      `pragent/pr-agent@sha256:ec267eb168375c150d75efc024e2b10e0e2768ad0c000f15fd2378fe63abfe98`
+      — that section has `num_code_suggestions_per_chunk` and
+      `max_number_of_calls` instead, different semantics), so this change is
+      dropped and reported open, per the handoff doc's own no-guess rule.
 - [ ] `persistent_comment = true` set under `[pr_reviewer]`, or its absence
       reported as an open item if the key does not exist in the installed
       version.
