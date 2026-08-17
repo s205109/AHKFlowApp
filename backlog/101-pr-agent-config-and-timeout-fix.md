@@ -64,5 +64,5 @@ does not silently get zero review and reviewers do not have to sort noise.
 - Source docs (local, not in repo): `pr-agent-toml-handoff.md` (target TOML
   and key-verification steps) and `pr-agent timeout.txt` (root-cause analysis
   of run 32022710084).
-- Spec: none — pending
-- Plan: none — pending
+- Spec: none — moderate difficulty, no design judgment call, straight to plan
+- Plan: docs/superpowers/plans/2026-08-17-pr-agent-config-timeout-plan-101.md
