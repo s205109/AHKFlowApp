@@ -1,17 +1,20 @@
-# 101 - pr-agent config and timeout fix
+# 104 - pr-agent config and timeout fix
 
 ## Metadata
 
 - **Epic**: CI/CD
 - **Type**: Chore
 - **Interfaces**: CI
-- **Stage**: 6-verify
+- **Stage**: 9-ship
 
 ## Summary
 
-Fix PR-Agent runs so they stop hanging past the job timeout on large PRs, and
-tighten `.pr_agent.toml` so `/review` and `/improve` return fewer, more
+Give the PR-Agent job enough wall-clock time to finish a review of a large PR,
+and tighten `.pr_agent.toml` so `/review` and `/improve` return fewer, more
 actionable findings without killing the run on a provider error.
+
+This item raises the job timeout. It does **not** fix the stalled model call
+seen in run 32022710084. Backlog 105 owns that investigation.
 
 ## User story
 
@@ -21,13 +24,21 @@ does not silently get zero review and reviewers do not have to sort noise.
 
 ## Acceptance criteria
 
-- [x] Root cause confirmed: run 32022710084 was killed by
-      `.github/workflows/pr-agent.yml:45` `timeout-minutes: 15`, not by a code
-      or test failure — job started 10:58:57, cancelled 11:14:07, mid model
-      call after diff pruning (119k tokens over the 64000 `max_model_tokens`
-      cap).
+- [x] Proximate cause confirmed: GitHub cancelled run 32022710084 at the job
+      timeout, not because of a code or test failure. The job started
+      10:58:57 and was cancelled 11:14:07. The last log line is diff pruning
+      at 10:59:50 (119k tokens over the 64000 `max_model_tokens` cap).
+- [x] Underlying cause recorded as **not** confirmed and **not** fixed here.
+      The log holds one `Generating prediction` line at 10:59:29 and no
+      completion, no error, and no fallback before the job died 14 minutes
+      later, although the same run printed `ai_timeout: 120`. Raising the job
+      timeout lets a stalled run last longer; it does not stop the stall.
+      Filed as backlog 105.
 - [x] `timeout-minutes` in `.github/workflows/pr-agent.yml` raised to give
-      headroom for multi-pass review on large PRs (handoff txt suggests 45).
+      headroom for multi-pass review on large PRs (handoff txt suggests 45)
+      (`.github/workflows/pr-agent.yml:50`, "timeout-minutes: 45").
+- [x] The comment above `timeout-minutes` does not claim PR-Agent caps each
+      model call at 120 seconds. Run 32022710084 disproves that claim.
 - [x] Every `.pr_agent.toml` key touched is confirmed against the installed
       PR-Agent's own `settings/configuration.toml` before use, not against web
       docs. Unverified keys are removed, not guessed.
@@ -58,11 +69,14 @@ does not silently get zero review and reviewers do not have to sort noise.
   timeout value.
 - Tuning `ai_timeout` or dropping review passes (`require_security_review`
   etc.) — optional follow-up noted in the timeout analysis, not required here.
+- Finding out why the single model call in run 32022710084 never returned and
+  never fell back. Backlog 105 owns it.
 
 ## Notes / dependencies
 
 - Source docs (local, not in repo): `pr-agent-toml-handoff.md` (target TOML
   and key-verification steps) and `pr-agent timeout.txt` (root-cause analysis
   of run 32022710084).
-- Spec: none — moderate difficulty, no design judgment call, straight to plan
-- Plan: docs/superpowers/plans/2026-08-17-pr-agent-config-timeout-plan-101.md
+- Follow-up: backlog 105 — the model call that never returned.
+- Spec: docs/superpowers/specs/2026-08-17-pr-agent-config-timeout-design-104.md
+- Plan: docs/superpowers/plans/2026-08-17-pr-agent-config-timeout-plan-104.md
