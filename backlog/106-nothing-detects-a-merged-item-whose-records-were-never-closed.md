@@ -1,4 +1,4 @@
-# 100 - Nothing detects a merged item whose records were never closed
+# 106 - Nothing detects a merged item whose records were never closed
 
 ## Metadata
 
