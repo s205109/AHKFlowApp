@@ -110,17 +110,23 @@ catch: the agent is refused, and the person is handed the command, the decision,
 
 ## Metric 4 — next-step asks
 
-**Flagged: 38. Real: 17. Precision: 45 percent.**
+**Flagged: 38. Real: 18. Precision: 47 percent.**
 
 Most false positives are pasted review bodies. A reviewer writes "next step" inside a findings
 list, the person pastes the whole thing, and the metric reads the paste as the person asking.
+
+A paste is only a false positive while the person adds nothing. F36 pastes an agent's report and
+then asks, in its last two lines, whether to implement, update or merge first, and for the best
+next step. That is the person asking what work to do next, so it is real. It was labelled
+not-a-case in the first round because the paste decided the label instead of the person's own
+words; the rule below the definitions says the subject decides.
 
 **Unflagged sample: 200 of 1,004. Missed: 7** — U1, U8, U45, U55, U105, U118, U150.
 
 7 in 200 is a 3.5 percent miss rate, 95 percent Wilson interval 1.7 to 7.0 percent. Across 1,004
 unflagged messages that is **17 to 71 missed asks**.
 
-**True count: roughly 34 to 88.**
+**True count: roughly 35 to 89.**
 
 ## The other three metrics
 

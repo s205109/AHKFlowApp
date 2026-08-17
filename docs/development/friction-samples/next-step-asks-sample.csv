@@ -1170,7 +1170,7 @@ Next steps: your spec review → finalize opens → writing-plans → execute W0
 
   After these corrections, I consider the five original questions resolved. No repository files were changed."
 "F35","next-step-asks","20260816","flagged","uuid:a64807df-5bdc-4b98-83b9-2187f831835a","e7ca05da-9075-406c-aa9d-f8a93fee9251.jsonl","07/21/2026 19:20:31","1","suggest; what do; pick up","real","can you pick up @.claude/backlog/033-cli-retry-unsafe-http-methods.md what do you suggest, superpowers brainstorming or grilling first or can you just implement as is?"
-"F36","next-step-asks","20260816","flagged","uuid:0244c834-4b97-4392-9aa5-276b8a8f2ccb","2e976eef-7e8e-47a6-9071-d6a97af82d79.jsonl","07/23/2026 12:12:46","1","next; order","not-a-case","Accepted fixes
+"F36","next-step-asks","20260816","flagged","uuid:0244c834-4b97-4392-9aa5-276b8a8f2ccb","2e976eef-7e8e-47a6-9071-d6a97af82d79.jsonl","07/23/2026 12:12:46","1","next; order","real","Accepted fixes
 
 Finding #1 (canonicalization) — real, fixed. Validator accepted {Esc}/{vk1}/esc/vk1 but handlers stored them raw, breaking the spec §8 storage invariant + picker round-trip.
 - Added Tokens.NormalizeSendKeysContent + Tokens.NormalizeRemapDest to HotkeyRules.cs. SendKeys keeps modifier prefix verbatim (order + case are semantic), folds braced key; bare printable char left untouched (^C ≠ ^c in Send).

@@ -30,7 +30,7 @@ behind it.
 
 **It over-counts.** A command line inside a fenced block counts whether it was handed over or
 merely used as an example. Handoffs and next-step asks measured this by hand-labelling every
-flagged row — precision came out at 67 and 45 percent. Nothing equivalent ran here.
+flagged row — precision came out at 67 and 47 percent. Nothing equivalent ran here.
 
 **It under-counts, so 179 is not an upper bound either.** The rule needs a path in the
 command line. A command that is directory-bound only because of the shell's working
