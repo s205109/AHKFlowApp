@@ -153,8 +153,15 @@ to this script.
 **Metric 5 classifies 115 of 192 in-window CI runs.** The 77 unresolved runs are **not** missing
 from this clone — every in-window `head_sha` was present when this was measured. They have no
 landing merge on `origin/main`'s first-parent chain, which is a different fact and the one the
-ledger now records per run. The 293.6 minutes is a floor over the classified runs, not a total
-for the window.
+ledger now records per run. The 456.7 minutes is a floor over the classified runs, not a total
+for the window. One of the 75 counted runs reported no duration, so it enters the sum as zero;
+the ledger's `TimingStatus` column names it.
+
+**A path counts as .NET by its file type.** The first rule also read the folder — anything under
+`src/` or `tests/` — which called a PowerShell suite and an nginx config .NET work. 21 runs
+changed no .NET file at all and were classified .NET, keeping 163.2 minutes out of a metric that
+exists to count them. The published figure was 293.6 minutes across 54 runs before the rule was
+corrected and the committed ledger reclassified from its own `ChangedPaths` column.
 
 **The transcripts are live.** Three runs on one afternoon read 691, then 672, then 670 files. The
 manifests, the selection records and the ledgers are the frozen record; every published figure

@@ -530,8 +530,16 @@ function Get-FrictionCount {
 }
 
 function Test-DotnetPath {
+    <#
+    .SYNOPSIS
+        Whether one changed path is a .NET file.
+    .DESCRIPTION
+        The file type decides, never the folder. 'anything under src/ or tests/ is .NET' also
+        caught PowerShell suites and an nginx config: 21 in-window runs changed no .NET file
+        at all and were counted as .NET work, which took 163.2 minutes out of the metric.
+    #>
     param([Parameter(Mandatory)][AllowEmptyString()][string] $Path)
-    return ($Path -match '\.(cs|csproj|sln|slnx|razor|props|targets)$' -or $Path -match '^(src|tests)/')
+    return ($Path -match '\.(cs|csproj|sln|slnx|razor|props|targets)$')
 }
 
 $script:MainFirstParentCache = @{}
@@ -570,7 +578,7 @@ function Get-ChangedFileForRun {
         - Anything else - and this is the common case, because CI runs on pull_request - is a
           branch head. Its first-parent diff is the last commit only. Measured on 2026-08-16
           for 1507643550b4: the first-parent diff returns 0 files while the pull request
-          changed 10, one of them a .NET file, so the run was classified non-.NET wrongly.
+          changed 10, so the run was classified against a change CI never ran on.
 
         For a branch head the base is the branch point: find the merge that landed the work,
         then take the merge base of that merge's first parent and the head. That is historical

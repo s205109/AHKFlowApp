@@ -443,6 +443,29 @@ Assert-True ($row5.TimingStatus -eq 'missing') "a run with no duration must say 
 $row8 = @($ci.Rows | Where-Object { $_.Id -eq '8' })[0]
 Assert-True ($row8.Reason -eq 'no-file-change') "the zero-file run must record why, got $($row8.Reason)"
 
+# --- A .NET path is decided by file type, never by folder ---
+# 'anything under src/ or tests/' called a PowerShell suite and an nginx config .NET work. 21
+# in-window runs changed no .NET file at all and were classified .NET, which kept 163.2 minutes
+# out of a metric that measures exactly that.
+foreach ($path in @(
+        'tests/TestFastPowerShellMode.Tests.ps1'
+        'tests/AgentWorktreeGuard.Tests.ps1'
+        'src/Frontend/AHKFlowApp.UI.Blazor/nginx/default.conf'
+        'scripts/test-fast.ps1'
+        'docs/development/workflow.md'
+    )) {
+    Assert-True (-not (Test-DotnetPath -Path $path)) "'$path' changes no .NET file and must not classify a run as .NET"
+}
+foreach ($path in @(
+        'src/Backend/AHKFlowApp.API/Program.cs'
+        'tests/AHKFlowApp.API.Tests/AHKFlowApp.API.Tests.csproj'
+        'src/Frontend/AHKFlowApp.UI.Blazor/Pages/Index.razor'
+        'Directory.Packages.props'
+        'AHKFlowApp.sln'
+    )) {
+    Assert-True (Test-DotnetPath -Path $path) "'$path' is a .NET file"
+}
+
 # --- The published population is the window's, not the calendar range's ---
 # The API is asked for 'created=2026-07-15..2026-08-12', which includes both boundary dates in
 # full and so returns more than the window holds. Printing that answer described a different
@@ -456,8 +479,8 @@ Assert-True ($population.ByName['opencode'] -eq 1) "the out-of-window opencode r
 # --- Metric 5, live: a pull-request head resolves to the WHOLE pull request ---
 # CI runs on pull_request, so head_sha is the branch head, not a merge commit. The first-parent
 # diff of that commit is one commit's change, not the pull request's. Measured on 2026-08-16:
-# for 15076435 the first-parent diff returns 0 files and the real pull request changed 10,
-# one of them a .NET file - so the run was classified non-.NET when it is not.
+# for 15076435 the first-parent diff returns 0 files and the real pull request changed 10, so
+# the run was classified against a change that is not the one CI ran on.
 $prHead = '1507643550b4906d8d1c165ae7626a7490286066'
 & git -C $repoRoot cat-file -e "$prHead^{commit}" 2>$null
 if ($LASTEXITCODE -eq 0) {
@@ -465,8 +488,10 @@ if ($LASTEXITCODE -eq 0) {
     Assert-True ($null -ne $resolved) 'a pull-request head that is present locally must resolve'
     if ($resolved) {
         Assert-True ($resolved.Files.Count -ge 10) "the pull request changed 10 files; got $($resolved.Files.Count)"
-        $dotnet = @($resolved.Files | Where-Object { Test-DotnetPath -Path $_ })
-        Assert-True ($dotnet.Count -ge 1) 'the pull request touches a .NET file, so the run is not a non-.NET run'
+        # Named, not counted by type: the classification rule reads file types, and asserting
+        # on it here would test that rule instead of the base this case exists to check.
+        Assert-True ($resolved.Files -contains 'scripts/cleanup-merged-worktrees.ps1') `
+            'the resolved file list must be the whole pull request, which the first-parent diff never saw'
         Assert-True ($resolved.Base -and $resolved.Base -ne $prHead) 'the resolved base must be the branch point, not the head itself'
     }
 }
@@ -488,8 +513,8 @@ if ($LASTEXITCODE -eq 0) {
     if ($resolved) {
         Assert-True ($resolved.Kind -eq 'pull-request') "the base must come from the landing merge, got $($resolved.Kind)"
         Assert-True ($resolved.Files.Count -eq 7) "the whole pull request changed 7 files, got $($resolved.Files.Count)"
-        $dotnet = @($resolved.Files | Where-Object { Test-DotnetPath -Path $_ })
-        Assert-True ($dotnet.Count -eq 1) "the pull request touches a .NET file the first-parent diff never saw, got $($dotnet.Count)"
+        Assert-True ($resolved.Files -contains 'scripts/agents/agent-worktree-guard.common.ps1') `
+            'the landing merge must give the whole pull request, not the one commit the first-parent rule sees'
     }
 }
 else {
