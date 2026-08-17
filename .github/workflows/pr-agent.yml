@@ -41,8 +41,9 @@ jobs:
 
     # PR-Agent caps each model call at 120 seconds, but nothing caps the job. A
     # stalled pull or a connection that hangs would otherwise run to GitHub's
-    # 6-hour default.
-    timeout-minutes: 15
+    # 6-hour default. A large PR (e.g. 57 files) runs a multi-pass review that
+    # needs more than 15 minutes of model calls; 45 leaves headroom.
+    timeout-minutes: 45
 
     permissions:
       contents: read
