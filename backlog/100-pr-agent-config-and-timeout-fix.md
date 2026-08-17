@@ -1,0 +1,63 @@
+# 100 - pr-agent config and timeout fix
+
+## Metadata
+
+- **Epic**: CI/CD
+- **Type**: Chore
+- **Interfaces**: CI
+- **Stage**: 0-intake
+
+## Summary
+
+Fix PR-Agent runs so they stop hanging past the job timeout on large PRs, and
+tighten `.pr_agent.toml` so `/review` and `/improve` return fewer, more
+actionable findings without killing the run on a provider error.
+
+## User story
+
+As a maintainer relying on the PR-Agent GitHub Action, I want reviews to
+finish inside the job timeout and to post focused findings, so a large PR
+does not silently get zero review and reviewers do not have to sort noise.
+
+## Acceptance criteria
+
+- [ ] Root cause confirmed: run 32022710084 was killed by
+      `.github/workflows/pr-agent.yml:45` `timeout-minutes: 15`, not by a code
+      or test failure — job started 10:58:57, cancelled 11:14:07, mid model
+      call after diff pruning (119k tokens over the 64000 `max_model_tokens`
+      cap).
+- [ ] `timeout-minutes` in `.github/workflows/pr-agent.yml` raised to give
+      headroom for multi-pass review on large PRs (handoff txt suggests 45).
+- [ ] Every `.pr_agent.toml` key touched is confirmed against the installed
+      PR-Agent's own `settings/configuration.toml` before use, not against web
+      docs. Unverified keys are removed, not guessed.
+- [ ] `fallback_models` keeps exactly one entry
+      (`openrouter/tencent/hy3`) as the default.
+- [ ] `[pr_reviewer]` and `[pr_code_suggestions]` `extra_instructions` blocks
+      differ. The `/improve` block forbids new files, new tests, and
+      cross-file refactors.
+- [ ] `commitable_code_suggestions = false` and `num_code_suggestions = 5` set
+      under `[pr_code_suggestions]`.
+- [ ] `persistent_comment = true` set under `[pr_reviewer]`, or its absence
+      reported as an open item if the key does not exist in the installed
+      version.
+- [ ] `model`, `custom_model_max_tokens`, and `max_model_tokens` unchanged.
+- [ ] `.pr_agent.toml` parses (checked with a TOML load, not by eye).
+
+## Out of scope
+
+- Changing the model or `custom_model_max_tokens` / `max_model_tokens`.
+- Adding TOML sections not present today (`[pr_description]`,
+  `[github_app]`, etc.).
+- Changing the workflow trigger, webhook config, or any action besides the
+  timeout value.
+- Tuning `ai_timeout` or dropping review passes (`require_security_review`
+  etc.) — optional follow-up noted in the timeout analysis, not required here.
+
+## Notes / dependencies
+
+- Source docs (local, not in repo): `pr-agent-toml-handoff.md` (target TOML
+  and key-verification steps) and `pr-agent timeout.txt` (root-cause analysis
+  of run 32022710084).
+- Spec: none — pending
+- Plan: none — pending
