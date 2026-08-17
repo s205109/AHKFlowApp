@@ -6,7 +6,7 @@
 - **Type**: Process / tooling
 - **Interfaces**: none (docs, plans repo layout)
 - **Difficulty**: moderate
-- **Stage**: 3-plan
+- **Stage**: 9-ship
 
 ## Summary
 
@@ -21,13 +21,13 @@ so that one private repository holds all of my planning work.
 
 ## Acceptance criteria
 
-- [ ] `docs/superpowers/personal/plans/` and `docs/superpowers/personal/specs/` exist and hold at least one file each, or a `README.md` that explains the folder.
-- [ ] `AGENTS.md` no longer tells the reader to keep personal planning work out of the plans repository. It names the two homes instead: project work in `plans/` and `specs/`, personal work in `personal/plans/` and `personal/specs/`.
-- [ ] `docs/development/workflow.md` Stage 3 carries the narrative that `AGENTS.md` links to. Today the link points at a section that never mentions this rule.
-- [ ] `docs/development/workflow.md` section 6, the linking convention, says the backlog-number naming rule applies to `plans/` and `specs/` only, not to `personal/`.
-- [ ] A personal plan needs no backlog number, no backlog item, and no `- Plan:` bullet anywhere.
-- [ ] The A/B output-style test plan moves from `C:\Users\btase\.claude\ab-style-test\PLAN.md` into `docs/superpowers/personal/plans/`, as the first resident.
-- [ ] A test proves that a backlog item cannot point at a personal plan.
+- [x] `docs/superpowers/personal/plans/` and `docs/superpowers/personal/specs/` exist and hold at least one file each, or a `README.md` that explains the folder.
+- [x] `AGENTS.md` no longer tells the reader to keep personal planning work out of the plans repository. It names the two homes instead: project work in `plans/` and `specs/`, personal work in `personal/plans/` and `personal/specs/`.
+- [x] `docs/development/workflow.md` Stage 3 carries the narrative that `AGENTS.md` links to. Today the link points at a section that never mentions this rule.
+- [x] `docs/development/workflow.md` section 6, the linking convention, says the backlog-number naming rule applies to `plans/` and `specs/` only, not to `personal/`.
+- [x] A personal plan needs no backlog number, no backlog item, and no `- Plan:` bullet anywhere.
+- [x] The A/B output-style test plan moves from `C:\Users\btase\.claude\ab-style-test\PLAN.md` into `docs/superpowers/personal/plans/`, as the first resident.
+- [x] A test proves that a backlog item cannot point at a personal plan.
 
 ## Out of scope
 

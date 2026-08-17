@@ -363,7 +363,7 @@ create a PR" as "before you mark it ready".
 `docs/superpowers/plans/` and carries the backlog number of the item it serves.
 A plan about the way you or your agents work goes to
 `docs/superpowers/personal/plans/` and carries no number, because no backlog
-item owns it. `docs/superpowers/personal/README.md` states the test. The split
+item owns it. `docs/superpowers/personal/README.md` states the rules. The split
 enforces itself: `scripts/backlog.common.ps1` rejects a `- Plan:` pointer that
 holds a folder, so a backlog item cannot name a personal plan.
 
