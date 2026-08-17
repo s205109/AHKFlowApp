@@ -14,7 +14,7 @@ and tighten `.pr_agent.toml` so `/review` and `/improve` return fewer, more
 actionable findings without killing the run on a provider error.
 
 This item raises the job timeout. It does **not** fix the stalled model call
-seen in run 32022710084. Backlog 107 owns that investigation.
+seen in run 32022710084. Backlog 108 owns that investigation.
 
 ## User story
 
@@ -33,7 +33,7 @@ does not silently get zero review and reviewers do not have to sort noise.
       completion, no error, and no fallback before the job died 14 minutes
       later, although the same run printed `ai_timeout: 120`. Raising the job
       timeout lets a stalled run last longer; it does not stop the stall.
-      Filed as backlog 107.
+      Filed as backlog 108.
 - [x] `timeout-minutes` in `.github/workflows/pr-agent.yml` raised to give
       headroom for multi-pass review on large PRs (handoff txt suggests 45)
       (`.github/workflows/pr-agent.yml:50`, "timeout-minutes: 45").
@@ -70,14 +70,14 @@ does not silently get zero review and reviewers do not have to sort noise.
 - Tuning `ai_timeout` or dropping review passes (`require_security_review`
   etc.) — optional follow-up noted in the timeout analysis, not required here.
 - Finding out why the single model call in run 32022710084 never returned and
-  never fell back. Backlog 107 owns it.
+  never fell back. Backlog 108 owns it.
 
 ## Notes / dependencies
 
 - Source docs (local, not in repo): `pr-agent-toml-handoff.md` (target TOML
   and key-verification steps) and `pr-agent timeout.txt` (root-cause analysis
   of run 32022710084).
-- Follow-up: renamed to backlog 107. See that item for the corrected reading:
+- Follow-up: renamed to backlog 108. See that item for the corrected reading:
   the call returns; `ai_timeout` is not enforced.
 - Spec: docs/superpowers/specs/2026-08-17-pr-agent-config-timeout-design-104.md
 - Plan: docs/superpowers/plans/2026-08-17-pr-agent-config-timeout-plan-104.md

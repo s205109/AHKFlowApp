@@ -1,4 +1,4 @@
-# 107 - PR-Agent ai_timeout is not enforced
+# 108 - PR-Agent ai_timeout is not enforced
 
 ## Metadata
 
@@ -80,9 +80,9 @@ that cap to 45 minutes; no run has reached the new cap yet.
       run URL and says the pull request is unreviewed.
 - [ ] The comment above `timeout-minutes` in
       `.github/workflows/pr-agent.yml` states that `ai_timeout` is not
-      enforced, and points at this item, not at backlog 105.
+      enforced, and points at this item, backlog 108.
 - [ ] The four stale references to backlog 105 in
-      `backlog/done/104-pr-agent-config-and-timeout-fix.md` name 107.
+      `backlog/done/104-pr-agent-config-and-timeout-fix.md` name 108.
 - [ ] PR #320 carries a title and body that match this framing, not the
       earlier stall reading.
 - [ ] A `/review` on PR #320 after the change either posts findings or posts
@@ -115,4 +115,4 @@ that cap to 45 minutes; no run has reached the new cap yet.
   both are out of scope here.
 - Spec: none — a grilling round with domain modelling settled the design, and
   the decisions are recorded in the plan.
-- Plan: `docs/superpowers/plans/2026-08-17-pr-agent-ai-timeout-not-enforced-plan-107.md`
+- Plan: `docs/superpowers/plans/2026-08-17-pr-agent-ai-timeout-not-enforced-plan-108.md`
