@@ -1,0 +1,289 @@
+#Requires -Version 7.0
+<#
+.SYNOPSIS
+    Writes the stratified sample manifest that measures the recall of two friction match sets.
+.DESCRIPTION
+    Metrics 1 and 4 match on wording. A closed match set gives a repeatable number, but its
+    recall is unknown, and a figure may only be called an upper bound when nothing real escapes
+    the set.
+
+    The sample is stratified. In-window there are tens of thousands of assistant messages and
+    roughly a thousand human turns, while real handoffs number in the tens. A random draw over
+    the whole population would contain almost no real cases: it would measure precision and say
+    nothing at all about recall. So each metric is split in two - every flagged message, which
+    gives exact precision, and a seeded random sample of the unflagged remainder, which bounds
+    the miss rate.
+
+    The manifest carries the FULL text of every sampled message, not an excerpt. A 160-character
+    excerpt cannot be labelled honestly: the sentence that makes a message a handoff is often
+    further in, and a reviewer cannot check a label against text that was thrown away.
+
+    It reads the same logical messages the measurement reads, through
+    scripts/measure-process-friction.ps1, so the sample cannot drift from the population.
+.PARAMETER Metric
+    'handoffs' or 'next-step-asks'.
+.PARAMETER OutputPath
+    Where to write the manifest CSV.
+.PARAMETER Seed
+    The seed that fixes the draw. Recorded in every row.
+.PARAMETER SampleSize
+    How many unflagged messages to draw. 200 bounds a zero-miss result at roughly 1.5 percent.
+.PARAMETER ExistingManifest
+    A manifest whose labels must survive. A row the draw selects again keeps its Id and its
+    Label. It does not change WHICH rows are drawn - see the note below.
+.NOTES
+    The draw is a deterministic function of the seed and the message key: hash the pair and take
+    the SampleSize lowest hashes. That is a uniform random sample, and it is also stable while
+    the transcripts grow, so hand-written labels survive a re-run without the labels deciding
+    the sample.
+
+    The script also writes a selection record beside the manifest: the population count, a digest
+    of the ordered keys, the drawn positions, and the drawn keys themselves. The positions are
+    only meaningful against a list of the same length and digest; the keys identify the rows
+    either way.
+#>
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory, ParameterSetName = 'Draw')][ValidateSet('handoffs', 'next-step-asks')][string] $Metric,
+    [Parameter(Mandatory, ParameterSetName = 'Draw')][string] $OutputPath,
+    [Parameter(ParameterSetName = 'Draw')][int] $Seed = 20260816,
+    [Parameter(ParameterSetName = 'Draw')][int] $SampleSize = 200,
+    [Parameter(ParameterSetName = 'Draw')][string] $ExistingManifest,
+    # Dot-source the selection rule without reading a transcript, so a suite can test it.
+    [Parameter(Mandatory, ParameterSetName = 'Module')][switch] $AsModule
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+# The selection is a deterministic function of the seed and the message key: hash the pair and
+# take the SampleSize lowest hashes. Two properties come from this, and the published interval
+# needs both.
+#
+# It is a uniform random sample. Every unflagged message has the same chance of selection,
+# whenever it was written. That is what an interval over the labels needs; it is not the whole
+# story, because the draw takes a fixed number without replacement and a Wilson interval is a
+# binomial one. Wilson is then conservative - wider than the truth - by a factor of about
+# sqrt((N-n)/(N-1)), which is 0.90 for 200 of 1,004. The doc says so rather than hiding it.
+#
+# It is stable while the transcripts grow. Keeping the previously drawn rows and topping the
+# sample up did preserve labels, but it gave a row that was in the earlier population two
+# chances of selection and a later row one - about 1.4 times the inclusion probability - and an
+# unequal-probability sample is not what a Wilson interval describes. Here a row selected today
+# is still selected tomorrow unless enough lower hashes arrive, so labels survive without the
+# preservation deciding anything.
+function Get-SelectionPriority {
+    param([Parameter(Mandatory)][string] $Key, [Parameter(Mandatory)][int] $Seed)
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes("$Seed`n$Key")
+    $hash = [System.Security.Cryptography.SHA256]::HashData($bytes)
+    # The first eight bytes, big-endian, is enough spread for a population of this size.
+    $value = [uint64]0
+    for ($b = 0; $b -lt 8; $b++) { $value = ($value -shl 8) -bor [uint64]$hash[$b] }
+    return $value
+}
+
+function Select-SampleKey {
+    <#
+    .SYNOPSIS
+        The keys the draw selects, lowest hash priority first, then key.
+    #>
+    param(
+        [Parameter(Mandatory)][AllowEmptyCollection()][string[]] $Keys,
+        [Parameter(Mandatory)][int] $Seed,
+        [Parameter(Mandatory)][int] $SampleSize
+    )
+    $take = [Math]::Min($SampleSize, $Keys.Count)
+    return @($Keys |
+            Sort-Object -Property @{ Expression = { Get-SelectionPriority -Key $_ -Seed $Seed } }, @{ Expression = { $_ } } |
+            Select-Object -First $take)
+}
+
+if ($AsModule) { return }
+
+. (Join-Path $PSScriptRoot 'measure-process-friction.ps1') -AsModule
+
+$files = @(Get-TranscriptFile -ProjectRoot (Join-Path $HOME '.claude/projects'))
+$all = New-Object System.Collections.Generic.List[object]
+foreach ($file in $files) {
+    foreach ($record in (Read-TranscriptRecord -Path $file)) { $all.Add($record) }
+}
+
+$selected = @(Select-FrictionRecord -Records $all.ToArray() -Start $script:WindowStart -End $script:WindowEnd)
+$messages = @(ConvertTo-LogicalMessage -Records $selected)
+$patterns = $script:MatchSets[$Metric]
+
+# The same side of the conversation the metric reads, so the unflagged remainder is exactly
+# what the metric could have missed.
+$population = @($messages | Where-Object {
+        if ($Metric -eq 'next-step-asks') { $_.IsHumanTurn } else { $_.Type -eq 'assistant' }
+    } | Where-Object { $_.Text })
+
+$flagged = New-Object System.Collections.Generic.List[object]
+$unflagged = New-Object System.Collections.Generic.List[object]
+
+foreach ($message in $population) {
+    $hit = $false
+    foreach ($pattern in $patterns) {
+        if ($message.Text -match [regex]::Escape($pattern)) { $hit = $true; break }
+    }
+    if ($hit) { $flagged.Add($message) } else { $unflagged.Add($message) }
+}
+
+# Sort before sampling. Enumeration order over hundreds of files is not guaranteed stable, and
+# a seed only reproduces a sample when the list it indexes into is in a fixed order.
+$ordered = @($unflagged | Sort-Object -Property Key)
+
+# The digest of the ordered keys. It is what tells a later reader whether the recorded positions
+# still point at the same messages, which a seed on its own cannot say.
+$keyText = ($ordered | ForEach-Object { $_.Key }) -join "`n"
+$sha = [System.Security.Cryptography.SHA256]::Create()
+try {
+    $populationDigest = [System.BitConverter]::ToString(
+        $sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($keyText))).Replace('-', '').ToLowerInvariant()
+}
+finally { $sha.Dispose() }
+
+# Labels already written are evidence. A row keeps its label and its id when the draw selects
+# it again, but a written label must never decide the selection.
+$existingLabels = @{}
+$existingIds = @{}
+if ($ExistingManifest) {
+    if (-not (Test-Path -LiteralPath $ExistingManifest)) {
+        throw "ExistingManifest not found: $ExistingManifest"
+    }
+    foreach ($row in (Import-Csv -LiteralPath $ExistingManifest)) {
+        $existingLabels[$row.Key] = $row.Label
+        $existingIds[$row.Key] = $row.Id
+    }
+}
+
+$take = [Math]::Min($SampleSize, $ordered.Count)
+$selectedKeySet = [System.Collections.Generic.HashSet[string]]::new(
+    [string[]](Select-SampleKey -Keys ([string[]]($ordered | ForEach-Object { $_.Key })) -Seed $Seed -SampleSize $SampleSize),
+    [System.StringComparer]::Ordinal)
+$byPriority = @($ordered | Where-Object { $selectedKeySet.Contains($_.Key) })
+
+$byKeyPosition = @{}
+for ($i = 0; $i -lt $ordered.Count; $i++) { $byKeyPosition[$ordered[$i].Key] = $i }
+
+$picked = [System.Collections.Generic.SortedSet[int]]::new()
+foreach ($message in $byPriority) { [void]$picked.Add($byKeyPosition[$message.Key]) }
+
+$carriedOver = 0
+foreach ($message in $byPriority) {
+    if ($existingLabels.ContainsKey($message.Key) -and $existingLabels[$message.Key]) { $carriedOver++ }
+}
+
+# A wide screen, run over the WHOLE text of every sampled message. It is deliberately far
+# wider than the metric's own match set: its job is to find every message that could possibly
+# be a case, so the ones it does not select carry evidence rather than an opinion. A label of
+# 'not a case' on an unscreened row means no word associated with the concept appears anywhere
+# in the message, which a reviewer can check against the Text column.
+$screens = @{
+    'handoffs'       = @(
+        'yourself', 'manually', 'by hand', 'cannot', "can't", 'unable', 'blocked', 'refuse',
+        'guard', 'permission', 'terminal', 'copy', 'paste', 'over to you', 'you run',
+        'please run', 'need you', 'needs you', 'handover', 'hand over', 'login', 'auth'
+    )
+    'next-step-asks' = @(
+        'next', 'suggest', 'proceed', 'what should', 'what do', 'which one', 'priority',
+        'order', 'pick up', 'shall we', 'do we', 'should i', 'should we', 'options'
+    )
+}
+$screen = $screens[$Metric]
+
+function Get-ScreenHit {
+    param([string] $Text)
+    $hits = foreach ($word in $screen) {
+        if ($Text -match [regex]::Escape($word)) { $word }
+    }
+    return (@($hits) -join '; ')
+}
+
+# A carried-over row keeps its Id, so a new row cannot simply be numbered by position: the
+# earlier manifest already used those numbers, and two rows sharing an Id break every reference
+# to a label. New rows are numbered above the highest one already in use.
+function Get-NextId {
+    param([Parameter(Mandatory)][string] $Prefix)
+    $script:idCounters[$Prefix]++
+    while ($script:usedIds.Contains("$Prefix$($script:idCounters[$Prefix])")) { $script:idCounters[$Prefix]++ }
+    $id = "$Prefix$($script:idCounters[$Prefix])"
+    [void]$script:usedIds.Add($id)
+    return $id
+}
+
+$script:usedIds = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+$script:idCounters = @{ 'F' = 0; 'U' = 0 }
+foreach ($id in $existingIds.Values) { [void]$script:usedIds.Add($id) }
+
+$rows = New-Object System.Collections.Generic.List[object]
+foreach ($message in $flagged) {
+    $rows.Add([pscustomobject]@{
+            Id        = if ($existingIds.ContainsKey($message.Key)) { $existingIds[$message.Key] } else { (Get-NextId -Prefix 'F') }
+            Metric    = $Metric
+            Seed      = $Seed
+            Stratum   = 'flagged'
+            Key       = $message.Key
+            Session   = $message.Session
+            Timestamp = $message.Timestamp
+            Fragments = $message.Fragments
+            Screen    = (Get-ScreenHit -Text $message.Text)
+            Label     = if ($existingLabels.ContainsKey($message.Key)) { $existingLabels[$message.Key] } else { '' }
+            Text      = $message.Text
+        })
+}
+$selectedPositions = @($picked)
+$selectedKeys = New-Object System.Collections.Generic.List[string]
+foreach ($position in $selectedPositions) {
+    $message = $ordered[$position]
+    $selectedKeys.Add($message.Key)
+    $rows.Add([pscustomobject]@{
+            Id        = if ($existingIds.ContainsKey($message.Key)) { $existingIds[$message.Key] } else { (Get-NextId -Prefix 'U') }
+            Metric    = $Metric
+            Seed      = $Seed
+            Stratum   = 'unflagged'
+            Key       = $message.Key
+            Session   = $message.Session
+            Timestamp = $message.Timestamp
+            Fragments = $message.Fragments
+            Screen    = (Get-ScreenHit -Text $message.Text)
+            Label     = if ($existingLabels.ContainsKey($message.Key)) { $existingLabels[$message.Key] } else { '' }
+            Text      = $message.Text
+        })
+}
+
+$rows | Export-Csv -LiteralPath $OutputPath -NoTypeInformation -Encoding utf8
+
+# The selection record. A seed indexes into a list that changes while the script runs, so the
+# list itself has to be described: how long it was, what it hashed to, and which positions and
+# keys came out. With it a reader can say whether a redraw is the same draw.
+$selectionPath = [System.IO.Path]::ChangeExtension($OutputPath, '.selection.json')
+[pscustomobject]@{
+    metric            = $Metric
+    seed              = $Seed
+    sampleSize        = $SampleSize
+    windowStart       = $script:WindowStart.ToString('o')
+    windowEnd         = $script:WindowEnd.ToString('o')
+    transcriptFiles   = $files.Count
+    recordsInWindow   = $selected.Count
+    populationCount   = $population.Count
+    flaggedCount      = $flagged.Count
+    unflaggedCount    = $ordered.Count
+    populationDigest  = $populationDigest
+    selectionRule     = 'lowest-hash-priority: sha256("<seed>\n<key>"), first 8 bytes, ascending'
+    carriedOverLabels = $carriedOver
+    selectedPositions = $selectedPositions
+    selectedKeys      = $selectedKeys.ToArray()
+} | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $selectionPath -Encoding utf8
+
+Write-Host "metric      : $Metric"
+Write-Host "seed        : $Seed"
+Write-Host "population  : $($population.Count) logical messages"
+Write-Host "flagged     : $($flagged.Count)"
+Write-Host "unflagged   : $($ordered.Count), of which $take sampled ($carriedOver already carry a label)"
+Write-Host "digest      : $populationDigest"
+Write-Host "manifest    : $OutputPath"
+Write-Host "selection   : $selectionPath"
+Write-Host ''
+Write-Host 'Every row carries its full text. Fill in each empty Label, then commit the manifest'
+Write-Host 'and the selection record together: the labels are the evidence for the published range.'

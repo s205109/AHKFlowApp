@@ -11,7 +11,7 @@ Artifact: https://claude.ai/code/artifact/29e1af46-2c4d-409c-9b18-ca2acc5eb497
 
 Related files:
 
-- Which tests to run, and the canonical gate:
+- Which tests to run, and the Gate:
   [`testing-workflow.md`](testing-workflow.md)
 - What an agent may and may not do in the main checkout:
   [`cross-agent-git-guardrails.md`](../agents/cross-agent-git-guardrails.md)
@@ -24,9 +24,10 @@ Related files:
 ## 1. The stage spine
 
 Stage names are fixed. The exit strings below are canonical. They appear word for word in
-`workflow.html`, in the cheatsheet, and in this table. **Keeping the three in step is
-manual today** — the scripted parity check is wave-2 work in backlog 072. Until it lands,
-change an exit string in all three files in the same commit, and regenerate the PDF.
+`workflow.html`, in the cheatsheet, in this table, and in the stage blocks in section 3.
+`scripts/check-process-parity.ps1` compares all of them and fails on any difference. Change
+an exit string in every place in the same commit, and regenerate the PDF with
+`scripts/update-workflow-pdf.ps1`.
 
 | # | Stage | Exit condition |
 |---|---|---|
@@ -319,11 +320,11 @@ compare — its record is the pull request body.
 
 **The draft pull request opens before any gate has run, and that is deliberate.** The pull
 request exists from Pickup so it can point at the work through Design and Plan. It is a
-**draft**, which is not a request to merge. The canonical five-step gate in
+**draft**, which is not a request to merge. The five-step Gate in
 [`testing-workflow.md`](testing-workflow.md#canonical-pre-pr-gate) is therefore a
 **pre-ready** gate: it runs at [Verify](#stage-6-verify), and it must be green before
 [Ship](#stage-9-ship) flips the pull request to ready. Read every rule that says "before you
-create a PR" as "before you mark it ready".
+create a PR" as "before you mark it ready". <!-- gate-wording:ignore -->
 
 <a id="stage-2-design"></a>
 
@@ -424,7 +425,7 @@ holds a folder, so a backlog item cannot name a personal plan.
 - **Entry** — code settled
 - **Who** — Sonnet, default effort
 - **Technique** — the AGENTS.md Verification routing table (`dck-verify`)
-- **Action** — produce the verification artifact the table names, then run the canonical five-step gate in [`testing-workflow.md`](testing-workflow.md#canonical-pre-pr-gate). A wait on the human for manual steps keeps the stage in progress; it is not an edge. An AGENTS.md exemption replaces the **artifact** only — for exemption 1, targeted text checks plus diff review stand in for a test. The gate still runs. It runs on a docs-only branch too, because CI skips its .NET steps there, so the local gate is the only .NET check that branch gets. Name the exemption, state the verdict, and take the success edge
+- **Action** — produce the verification artifact the table names, then run the five-step Gate in [`testing-workflow.md`](testing-workflow.md#canonical-pre-pr-gate). A wait on the human for manual steps keeps the stage in progress; it is not an edge. An AGENTS.md exemption replaces the **artifact** only — for exemption 1, targeted text checks plus diff review stand in for a test. The gate still runs. It runs on a docs-only branch too, because CI skips its .NET steps there, so the local gate is the only .NET check that branch gets. Name the exemption, state the verdict, and take the success edge
 - **Exit** — Verification artifact green, gate green, verdict stated
 - **Next** — `7-document`
 - **Context** — safe to clear after green
@@ -767,6 +768,18 @@ turns out to be trivial in size, it is still tracked work and still gets a plan.
 reverse also holds: when a change inside a round grows past the trivial test, it leaves the
 round and becomes a filed item, which is why it cannot stay `trivial`.
 
+**Closing an item whose work already merged is not a pickup.** The rule above governs work
+that still has to be done. When the pull request merged and [Ship](#stage-9-ship) never closed
+the records — the boxes are unticked, or the file never moved to `backlog/done/` — nothing is
+left to execute, so there is no pickup to classify. Ticking the boxes, setting
+`Stage: 9-ship`, and running `git mv` into `backlog/done/` is trivial work, and a housekeeping
+round carries it like any other trivial change.
+
+It gets no new backlog item. The Git Workflow rule in `AGENTS.md` forbids a separate pull
+request to mark an item done, and filing an item for the closure produces exactly that pull
+request under another name. It gets no dedicated worktree either, for the same reason every
+other trivial change does not.
+
 ### The trivial test
 
 A change is trivial when all three predicates are provably false from the planned change:
@@ -836,6 +849,18 @@ its remaining changes and closes normally.
 - Specs live in `docs/superpowers/specs/`. Plans live in `docs/superpowers/plans/`. That
   folder is a separate private repository, so commit from inside it with
   `git -C docs/superpowers commit`.
+
+### What a session without the plans repository can see
+
+The stage is not in the plan. The stage is in the backlog item, and the backlog item is
+public. A session with no plans repository still reads the stage correctly.
+
+What such a session cannot read is the plan's content. `tests/BacklogPlanPointer.Tests.ps1`
+checks that the `- Plan:` pointer exists. It cannot check the target, because `.gitignore`
+keeps `docs/superpowers/` out of this repository.
+
+The failure mode is a session that knows its stage and cannot see its instructions. This is
+a finding, not a gap this item closes.
 
 ---
 

@@ -325,6 +325,30 @@ finally {
     Remove-Item -LiteralPath $tempRoot -Recurse -Force
 }
 
+# --- Case 15b: a scaffolded item carries Difficulty as well as Stage (backlog 072) ---
+#
+# Difficulty decides which stage the work starts at, so an item filed without it makes the
+# classification a memory rather than a record. The scaffold script copies the template, so
+# the template is again the only place the field has to be written.
+
+$tempRoot = New-TemporaryBacklogRoot
+try {
+    & $scaffoldScript -Title 'Difficulty line throwaway item' -BacklogRoot $tempRoot | Out-Null
+    $itemPath = Join-Path $tempRoot '001-difficulty-line-throwaway-item.md'
+    Assert-True (Test-Path -LiteralPath $itemPath) "Expected $itemPath to be created"
+
+    if (Test-Path -LiteralPath $itemPath) {
+        $filedLines = Get-Content -LiteralPath $itemPath
+        $difficultyLines = @($filedLines | Where-Object { $_ -match '^- \*\*Difficulty\*\*:' })
+        Assert-True ($difficultyLines.Count -eq 1) "A scaffolded item must carry exactly one Difficulty line, found $($difficultyLines.Count)"
+        $stageLines = @($filedLines | Where-Object { $_ -match '^- \*\*Stage\*\*:' })
+        Assert-True ($stageLines.Count -eq 1) "A scaffolded item must still carry exactly one Stage line, found $($stageLines.Count)"
+    }
+}
+finally {
+    Remove-Item -LiteralPath $tempRoot -Recurse -Force
+}
+
 # --- Cases 16 to 19: the Stage field ---
 #
 # The field is the durable record of where work stands (docs/development/workflow.md:78,634-642).

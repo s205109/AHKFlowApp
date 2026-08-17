@@ -242,6 +242,14 @@ try {
         'This paragraph mentions citation-check:ignore-file in prose.',
         'broken (`target.txt:99`, "the expected text") here'
     )
+    # A data file's cells are quoted records, not claims somebody wrote. The friction sample
+    # manifests hold transcript text verbatim, and 76 of those quotes read as broken citations
+    # that nobody is asserting. A CSV cannot carry the ignore-file marker either: its first line
+    # has to be the header.
+    Add-FixtureFile -Root $fixture -RelativePath 'evidence.csv' -Lines @(
+        'Id,Text',
+        'U1,"a transcript quoted (`target.txt:99`, ""the expected text"") inside a cell"'
+    )
     Complete-FixtureCommit -Root $fixture
 
     # An untracked file must never be scanned and never be accepted as a target.
@@ -260,6 +268,8 @@ try {
         'A file that only mentions the token in prose is still checked'
     Assert-True (@($problems | Where-Object { $_ -like 'untracked.md*' }).Count -eq 0) `
         'An untracked file is not scanned'
+    Assert-True (@($problems | Where-Object { $_ -like 'evidence.csv*' }).Count -eq 0) `
+        'A data file holds quoted records, not claims, so it is not scanned'
 }
 finally {
     Remove-Item -LiteralPath $fixture -Recurse -Force
