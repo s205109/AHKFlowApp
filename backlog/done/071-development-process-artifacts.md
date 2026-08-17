@@ -6,7 +6,7 @@
 - **Type**: Process / documentation
 - **Interfaces**: none (docs, backlog, AGENTS.md, .claude/CLAUDE.md)
 - **Difficulty**: complex
-- **Stage**: 8-review
+- **Stage**: 9-ship
 
 ## Summary
 
@@ -23,23 +23,27 @@ me.
 
 ## Acceptance criteria
 
-- [ ] `docs/development/workflow.md`: 11 stage nodes with all 8 fields, transition table
+- [x] `docs/development/workflow.md`: 11 stage nodes with all 8 fields, transition table
       (success, failure, blocked, not-applicable, resume edges), current-stage field rule,
       four worked walkthroughs
-- [ ] `docs/development/workflow.html`: self-contained decision tree, prints cleanly,
+- [x] `docs/development/workflow.html`: self-contained decision tree, prints cleanly,
       keyboard reachable, colour never the only signal; published as an Artifact with the
       URL recorded
-- [ ] `docs/development/ahkflow-workflow-cheatsheet.html` and `docs/development/ahk-workflow.pdf`,
+- [x] `docs/development/ahkflow-workflow-cheatsheet.html` and `docs/development/ahk-workflow.pdf`,
       generation reproducible, source-hash sidecar committed
-- [ ] `docs/development/ahkflow-design-system.html` extracted from the insights-report
+- [x] `docs/development/ahkflow-design-system.html` extracted from the insights-report
       visual language
-- [ ] `AGENTS.md` and `.claude/CLAUDE.md` process sections reduced to links into `workflow.md`
-- [ ] Stage field stamped on open items 031, 042, 070, 071
-- [ ] Five friction counts measured (approximate) and recorded
-- [ ] Fresh-session test run against 031, 042, and active 071; results reported
-- [ ] Wave items 2–5, child items (P2 guard exception, P5 pre-commit hook, P6 CI routing),
+- [x] `AGENTS.md` and `.claude/CLAUDE.md` process sections reduced to links into `workflow.md`
+- [x] Stage field stamped on open items 031, 042, 070, 071
+- [ ] Five friction counts measured (approximate) and recorded — **not done here.** This item
+      attempted the measurement three times and withdrew every result. The criterion now
+      lives in 072, which states that nothing is inherited from this item.
+- [ ] Fresh-session test run against 031, 042, and active 071; results reported — **no
+      evidence.** No commit, no report, and no note in this item records such a run, so the
+      criterion cannot be ticked.
+- [x] Wave items 2–5, child items (P2 guard exception, P5 pre-commit hook, P6 CI routing),
       and the claude-code#30176 blocked item filed
-- [ ] Parity check and drift guard specified precisely enough to build in wave 2
+- [x] Parity check and drift guard specified precisely enough to build in wave 2
 
 ## Out of scope
 
@@ -71,6 +75,12 @@ me.
   meant a clean clone checked the cheatsheet out as CRLF, whose hash differs from the
   committed sidecar. `*.html text eol=lf` makes the criterion true here rather than leaving
   it open for wave 2.
+- **Closed after the fact.** The work merged in pull request 288, but Ship never closed the
+  records: the boxes stayed unticked and the file stayed in `backlog/`. A later housekeeping
+  round closed them. Eight of the ten criteria are true and are ticked here. Two are not, and
+  they stay unticked on purpose: criterion 7 moved to 072, and criterion 8 has no evidence
+  that the run happened. This is the first item in `backlog/done/` that carries an unticked
+  box. A false tick would have been worse than an honest gap.
 - Spec: `docs/superpowers/specs/2026-08-10-development-process-design-071.md` (private plans repo)
 - Research: `docs/superpowers/research/2026-08-10-worktrees-and-linking-071.md` (private plans repo)
 - Plan: `docs/superpowers/plans/2026-08-10-development-process-plan-071.md`
