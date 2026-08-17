@@ -1,7 +1,7 @@
 #Requires -Version 7.0
 <#
 .SYNOPSIS
-    No document may say the canonical gate runs before a pull request is opened.
+    No document may say the Gate runs before a pull request is opened.
 .DESCRIPTION
     The gate guards the pull request going ready, not its creation. The draft pull request
     opens at Pickup, long before the gate can run. This wording drifted back once already.
