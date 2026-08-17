@@ -6,7 +6,7 @@
 - **Type**: Process / tooling
 - **Interfaces**: none (docs, plans repo layout)
 - **Difficulty**: moderate
-- **Stage**: 1-pickup
+- **Stage**: 3-plan
 
 ## Summary
 
@@ -47,4 +47,4 @@ so that one private repository holds all of my planning work.
 - The plans repository is `s205109/AHKFlowApp-plans`, and it is already private. Privacy was
   never the reason for the exclusion, so nothing about privacy changes here.
 - Spec: none — moderate difficulty goes straight to Plan.
-- Plan: <path, or "none — reason">
+- Plan: `docs/superpowers/plans/2026-08-17-personal-plans-home-plan-100.md`
