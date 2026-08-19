@@ -50,4 +50,4 @@ check, so that the item does not sit in `backlog/` describing work that already 
 - The wording that made the fix route ambiguous was corrected in backlog 072:
   `workflow.md` section 5 now says closing a merged item is not a pickup.
 - Spec: none — moderate.
-- Plan: none yet.
+- Plan: `docs/superpowers/plans/2026-08-19-detect-unclosed-merged-item-plan-106.md`
