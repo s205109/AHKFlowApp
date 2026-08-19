@@ -163,6 +163,43 @@ try {
 }
 finally { Remove-Fixture $fixture.Root }
 
+# --- The cases that must stay silent, and the two that must not ---
+
+$cases = @(
+    @{ Name = 'Below the limit passes';            Stage = '4-execute'; Filler = 2; Threshold = 3; Extra = @{};                            Expect = 0 }
+    @{ Name = 'Stage 3-plan is never a candidate'; Stage = '3-plan';    Filler = 9; Threshold = 3; Extra = @{};                            Expect = 0 }
+    @{ Name = 'An unmerged stamp is in flight';    Stage = '8-review';  Filler = 9; Threshold = 3; Extra = @{ LeaveUnmerged = $true };     Expect = 0 }
+    @{ Name = 'blocked/ is parked on purpose';     Stage = '8-review';  Filler = 9; Threshold = 3; Extra = @{ Folder = 'blocked' };        Expect = 0 }
+    @{ Name = 'A bulk edit does not reset it';     Stage = '8-review';  Filler = 9; Threshold = 3; Extra = @{ TouchWithoutStage = $true }; Expect = 1 }
+    @{ Name = '9-ship in backlog/ fails at once';  Stage = '9-ship';    Filler = 0; Threshold = 3; Extra = @{};                            Expect = 1 }
+)
+
+foreach ($case in $cases) {
+    $arguments = @{ Stage = $case.Stage; Filler = $case.Filler } + $case.Extra
+    $fixture = New-StaleFixture @arguments
+    try {
+        $problems = @(Get-BacklogStaleOpenProblem -RepoRoot $fixture.Repo -Threshold $case.Threshold)
+        Assert-True ($problems.Count -eq $case.Expect) "$($case.Name): expected $($case.Expect) problem(s), got $($problems.Count): $($problems -join ' | ')"
+    }
+    finally { Remove-Fixture $fixture.Root }
+}
+
+# --- The default limit is the measured one ---
+
+$fixture = New-StaleFixture -Stage '8-review' -Filler 8
+try {
+    $problems = @(Get-BacklogStaleOpenProblem -RepoRoot $fixture.Repo)
+    Assert-True ($problems.Count -eq 0) "Eight commits must sit under the default limit of 12, got: $($problems -join ' | ')"
+}
+finally { Remove-Fixture $fixture.Root }
+
+$fixture = New-StaleFixture -Stage '8-review' -Filler 14
+try {
+    $problems = @(Get-BacklogStaleOpenProblem -RepoRoot $fixture.Repo)
+    Assert-True ($problems.Count -eq 1) "Fourteen commits must break the default limit of 12, got: $($problems -join ' | ')"
+}
+finally { Remove-Fixture $fixture.Root }
+
 # --- Report ---
 
 if ($failures.Count -gt 0) {
