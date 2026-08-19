@@ -6,7 +6,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (scripts)
 - **Difficulty**: moderate
-- **Stage**: 0-intake
+- **Stage**: 3-plan
 
 ## Summary
 
@@ -64,4 +64,4 @@ also lists every branch freshly cut from `main`.
   (`backlog/073-process-wave-3-cleanup-ux.md:25`, "Worktree removal runs without opening a terminal window.")
   and does not cover this
 - Spec: none — one report, no design yet
-- Plan: none — not planned yet; Stage 0-intake
+- Plan: `docs/superpowers/plans/2026-08-19-leftover-branch-after-worktree-gone-plan-099.md`
