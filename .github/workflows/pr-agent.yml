@@ -39,14 +39,13 @@ jobs:
 
     runs-on: ubuntu-latest
 
-    # Nothing else caps this job, so without a timeout a stalled run would go to
-    # GitHub's 6-hour default. A large PR (e.g. 57 files) runs a multi-pass
-    # review that needs more than 15 minutes of model calls; 45 leaves headroom.
-    #
-    # This value is a backstop, not a fix. PR-Agent reports ai_timeout = 120,
-    # but in run 32022710084 one model call ran 14 minutes with no completion,
-    # no error, and no fallback. Backlog 105 tracks why. Until that is answered,
-    # a stalled run holds a runner for 45 minutes instead of 15.
+    # This job cap is a backstop, not the real bound. PR-Agent reports
+    # ai_timeout = 120, but that setting is not enforced: it reaches the model
+    # call and bounds nothing. Run 31832272275 succeeded with one call that
+    # took 8 minutes 2 seconds. A review costs 8 to 15 minutes of model time,
+    # so the bound we control is the 20-minute cap on the step below. This
+    # value only stops a stuck job from running to GitHub's 6-hour default.
+    # Backlog 108 records the evidence.
     timeout-minutes: 45
 
     permissions:
@@ -55,9 +54,28 @@ jobs:
       pull-requests: write
 
     steps:
+      # A step timeout fails the step, so the step below it still runs. A job
+      # timeout cancels the whole job and runs nothing further. Keep this cap
+      # under the job cap of 45 minutes.
       - name: Run PR-Agent
+        timeout-minutes: 20
         # pragent/pr-agent:0.41.1-github_action
         uses: docker://pragent/pr-agent@sha256:ec267eb168375c150d75efc024e2b10e0e2768ad0c000f15fd2378fe63abfe98
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           openrouter__key: ${{ secrets.OPENROUTER_API_KEY }}
+
+      # A failed or cancelled run posts nothing to the pull request, and a
+      # reviewer reads that silence as a clean review. Say so on the pull
+      # request instead. This step runs only because the step above has its own
+      # timeout: a job-level cancel would kill this step too.
+      - name: Report an unfinished review
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh pr comment "$PR_NUMBER" --body \
+            "PR-Agent did not finish, so this run posted no findings. Treat this pull request as unreviewed and run \`/review\` again. The run either failed or passed its 20-minute cap. Log: $RUN_URL"

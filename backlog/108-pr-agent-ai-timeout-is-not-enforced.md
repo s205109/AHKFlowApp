@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: CI
 - **Difficulty**: moderate
-- **Stage**: 3-plan
+- **Stage**: 6-verify
 
 ## Summary
 
@@ -74,19 +74,23 @@ that cap to 45 minutes; no run has reached the new cap yet.
 
 ## Acceptance criteria
 
-- [ ] The workflow caps the PR-Agent step at 20 minutes, below the 45-minute
+- [x] The workflow caps the PR-Agent step at 20 minutes, below the 45-minute
       job cap, so an over-run fails the step instead of cancelling the job.
-- [ ] An unfinished run posts one comment on the pull request that names the
+- [x] An unfinished run posts one comment on the pull request that names the
       run URL and says the pull request is unreviewed.
-- [ ] The comment above `timeout-minutes` in
+- [x] The comment above `timeout-minutes` in
       `.github/workflows/pr-agent.yml` states that `ai_timeout` is not
       enforced, and points at this item, backlog 108.
-- [ ] The four stale references to backlog 105 in
+- [x] The four stale references to backlog 105 in
       `backlog/done/104-pr-agent-config-and-timeout-fix.md` name 108.
-- [ ] PR #320 carries a title and body that match this framing, not the
-      earlier stall reading.
-- [ ] A `/review` on PR #320 after the change either posts findings or posts
-      the unfinished-run comment, with the run URL recorded here.
+      Shipped in PR #320.
+- [x] PR #320 carries a title and body that match this framing, not the
+      earlier stall reading. PR #320 merged on 2026-08-19 under the title
+      `fix: bound the PR-Agent model call, ai_timeout is not enforced
+      (backlog 108)`.
+- [ ] A `/review` on an open pull request, after this change reaches `main`,
+      either posts findings or posts the unfinished-run comment, with the run
+      URL recorded here.
 
 ## Out of scope
 
@@ -116,3 +120,11 @@ that cap to 45 minutes; no run has reached the new cap yet.
 - Spec: none — a grilling round with domain modelling settled the design, and
   the decisions are recorded in the plan.
 - Plan: `docs/superpowers/plans/2026-08-17-pr-agent-ai-timeout-not-enforced-plan-108.md`
+- The plan aimed the live run at PR #320. That pull request merged on
+  2026-08-19, and the workflow only runs on an open one, so the run moves to
+  another open pull request.
+- The live run can only happen after this change reaches `main`. GitHub loads
+  the workflow file for an `issue_comment` event from the default branch, so a
+  `/review` on this branch's own pull request would still run the old file.
+  The last acceptance box closes in a later housekeeping round, with the run
+  URL written here.

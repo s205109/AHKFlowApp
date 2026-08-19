@@ -36,7 +36,7 @@ does not silently get zero review and reviewers do not have to sort noise.
       Filed as backlog 108.
 - [x] `timeout-minutes` in `.github/workflows/pr-agent.yml` raised to give
       headroom for multi-pass review on large PRs (handoff txt suggests 45)
-      (`.github/workflows/pr-agent.yml:50`, "timeout-minutes: 45").
+      (`.github/workflows/pr-agent.yml:49`, "timeout-minutes: 45").
 - [x] The comment above `timeout-minutes` does not claim PR-Agent caps each
       model call at 120 seconds. Run 32022710084 disproves that claim.
 - [x] Every `.pr_agent.toml` key touched is confirmed against the installed
