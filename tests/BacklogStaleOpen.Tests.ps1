@@ -200,6 +200,16 @@ try {
 }
 finally { Remove-Fixture $fixture.Root }
 
+# --- The real backlog/ is clean ---
+
+$realProblems = @(Get-BacklogStaleOpenProblem -RepoRoot $repoRoot)
+Assert-True ($realProblems.Count -eq 0) "The real backlog/ must have no stale-open items, found:`n$($realProblems -join "`n")"
+
+# --- The base ref resolves to something real ---
+
+$baseRef = Resolve-BacklogBaseRef -RepoRoot $repoRoot
+Assert-True (-not [string]::IsNullOrWhiteSpace($baseRef)) 'Resolve-BacklogBaseRef must return a ref name'
+
 # --- Report ---
 
 if ($failures.Count -gt 0) {
