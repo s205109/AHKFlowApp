@@ -6,7 +6,7 @@
 - **Type**: Process / tooling
 - **Interfaces**: none (script, CI)
 - **Difficulty**: moderate
-- **Stage**: 8-review
+- **Stage**: 4-execute
 
 ## Summary
 
