@@ -6,7 +6,7 @@
 - **Type**: Process / tooling
 - **Interfaces**: none (script, CI)
 - **Difficulty**: moderate
-- **Stage**: 3-plan
+- **Stage**: 4-execute
 
 ## Summary
 
@@ -51,3 +51,6 @@ check, so that the item does not sit in `backlog/` describing work that already 
   `workflow.md` section 5 now says closing a merged item is not a pickup.
 - Spec: none — moderate.
 - Plan: `docs/superpowers/plans/2026-08-19-detect-unclosed-merged-item-plan-106.md`
+- The `9-ship` candidate is rejected as **the** invariant, not as a signal. It misses the 071
+  shape, so it cannot be the rule; it costs one comparison, so the check keeps it as a second
+  arm with its own message. Decided at grilling on 2026-08-19.
