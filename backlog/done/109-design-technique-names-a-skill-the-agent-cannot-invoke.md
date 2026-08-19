@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: none (docs, skills, agent instructions)
 - **Difficulty**: moderate
-- **Stage**: 3-plan
+- **Stage**: 9-ship
 
 ## Summary
 
@@ -54,22 +54,26 @@ skill changes its invocation flag.
 
 ## Acceptance criteria
 
-- [ ] Stage 2 Design names a technique an agent can call. Every place that
+- [x] Stage 2 Design names a technique an agent can call. Every place that
       states the technique agrees: (`docs/development/workflow.md:335`, "mp-grill-with-docs"),
       (`docs/development/workflow.md:872`, "is the Design technique"),
       (`docs/development/workflow.html:227`, "mp-grill-with-docs"),
-      and (`.claude/CLAUDE.md:27`, "before you write code, not after").
-- [ ] `/mp-grill-with-docs` keeps working as the human's shortcut, and its
-      `disable-model-invocation` flag is unchanged.
-- [ ] (`docs/agents/domain.md:11`, "reached via") and
-      `docs/development/process-alignment-checklist.md` (lines 39 and 72) are
-      updated to match.
-- [ ] `scripts/check-process-parity.ps1` passes.
-- [ ] The workflow PDF is regenerated with `scripts/update-workflow-pdf.ps1` when
+      and (`.claude/CLAUDE.md:27`, "before you write code, not after"). All four now
+      name `mp-grilling` and `mp-domain-modeling`, run together.
+- [x] `/mp-grill-with-docs` keeps working as the human's shortcut, and its
+      `disable-model-invocation` flag is unchanged. No file under `.agents/` changed.
+- [x] (`docs/agents/domain.md:11`, "or through the") and
+      `docs/development/process-alignment-checklist.md` (row 7 of the table, and the
+      "Row 7 named the wrong Design technique" paragraph) are updated to match.
+- [x] `scripts/check-process-parity.ps1` passes.
+- [x] The workflow PDF is regenerated with `scripts/update-workflow-pdf.ps1` when
       the change touches a string the PDF carries, or the item states why no
-      regeneration is needed.
-- [ ] The mirrored copies under `plugins/ahkflowapp/skills/` stay consistent with
-      `.agents/`, or the item states why they do not need a change.
+      regeneration is needed. No regeneration: the PDF renders from
+      `docs/development/ahkflow-workflow-cheatsheet.html`, and that file holds none of
+      `mp-grill-with-docs`, `mp-grilling`, or `mp-domain-modeling`.
+- [x] The mirrored copies under `plugins/ahkflowapp/skills/` stay consistent with
+      `.agents/`, or the item states why they do not need a change. No change needed:
+      no skill file changed, and `tests/SkillParity.Tests.ps1` passes.
 
 ## Out of scope
 
