@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: none (docs, skills, agent instructions)
 - **Difficulty**: moderate
-- **Stage**: 1-pickup
+- **Stage**: 3-plan
 
 ## Summary
 
@@ -85,4 +85,4 @@ skill changes its invocation flag.
 - The same session used `mp-grilling` plus `mp-domain-modeling` together for
   105's Design, which is the behaviour this item makes official.
 - Spec: none — the decision is already made, so Design is not needed.
-- Plan: none yet — write one at Stage 3.
+- Plan: `docs/superpowers/plans/2026-08-19-design-technique-agent-invocable-plan-109.md`
