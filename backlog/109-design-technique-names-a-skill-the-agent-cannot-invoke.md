@@ -1,4 +1,4 @@
-# 106 - Design technique names a skill the agent cannot invoke
+# 109 - Design technique names a skill the agent cannot invoke
 
 ## Metadata
 
