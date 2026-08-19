@@ -6,7 +6,7 @@
 - **Type**: Process / tooling
 - **Interfaces**: none (script, CI)
 - **Difficulty**: moderate
-- **Stage**: 5-simplify
+- **Stage**: 6-verify
 
 ## Summary
 
