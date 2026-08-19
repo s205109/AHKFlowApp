@@ -24,15 +24,16 @@ skipped without anybody noticing.
 
 ## Evidence
 
-- `.agents/mp-grill-with-docs/SKILL.md:4` sets `disable-model-invocation: true`.
-  The skill therefore never appears in an agent's skill list.
-- `.agents/mp-grill-with-docs/SKILL.md:12` is the whole body: "Run a
-  `/mp-grilling` session, using the `/mp-domain-modeling` skill." It is a wrapper
-  over two other skills and adds nothing else.
-- `docs/development/workflow.md:335` sets the Stage 2 Technique to
-  `mp-grill-with-docs`. `docs/development/workflow.md:872` repeats it as a
-  mandatory rule.
-- `.claude/CLAUDE.md:27` repeats it a third time.
+- (`.agents/mp-grill-with-docs/SKILL.md:4`, "disable-model-invocation: true") sets
+  that flag. The skill therefore never appears in an agent's skill list.
+- (`.agents/mp-grill-with-docs/SKILL.md:12`, "session, using the") is the whole
+  body: "Run a `/mp-grilling` session, using the `/mp-domain-modeling` skill." It
+  is a wrapper over two other skills and adds nothing else.
+- (`docs/development/workflow.md:335`, "mp-grill-with-docs") sets the Stage 2
+  Technique. (`docs/development/workflow.md:872`, "is the Design technique")
+  repeats it as a mandatory rule.
+- (`.claude/CLAUDE.md:27`, "before you write code, not after") repeats it a third
+  time.
 - `.agents/mp-grilling/SKILL.md` mentions no docs, no ADRs, and no `CONTEXT.md`,
   so nothing in it routes an agent to the domain-modeling half.
 - `.agents/mp-domain-modeling/SKILL.md` sets no `disable-model-invocation`, so an
@@ -42,7 +43,7 @@ skipped without anybody noticing.
 
 ## The repo already has the answer
 
-`.agents/mp-triage/SKILL.md:81` states the model-invocable form: "run the
+(`.agents/mp-triage/SKILL.md:81`, "run the `/mp-grilling` and `/mp-domain-modeling` skills together") states the model-invocable form: "run the
 `/mp-grilling` and `/mp-domain-modeling` skills together — grill it into shape a
 round of questions at a time, sharpening domain terms and updating
 `CONTEXT.md`/ADRs inline as decisions land."
@@ -54,13 +55,15 @@ skill changes its invocation flag.
 ## Acceptance criteria
 
 - [ ] Stage 2 Design names a technique an agent can call. Every place that
-      states the technique agrees: `docs/development/workflow.md:335`,
-      `docs/development/workflow.md:872`, `docs/development/workflow.html:227`,
-      and `.claude/CLAUDE.md:27`.
+      states the technique agrees: (`docs/development/workflow.md:335`, "mp-grill-with-docs"),
+      (`docs/development/workflow.md:872`, "is the Design technique"),
+      (`docs/development/workflow.html:227`, "mp-grill-with-docs"),
+      and (`.claude/CLAUDE.md:27`, "before you write code, not after").
 - [ ] `/mp-grill-with-docs` keeps working as the human's shortcut, and its
       `disable-model-invocation` flag is unchanged.
-- [ ] `docs/agents/domain.md:11` and `docs/development/process-alignment-checklist.md`
-      (lines 39 and 72) are updated to match.
+- [ ] (`docs/agents/domain.md:11`, "reached via") and
+      `docs/development/process-alignment-checklist.md` (lines 39 and 72) are
+      updated to match.
 - [ ] `scripts/check-process-parity.ps1` passes.
 - [ ] The workflow PDF is regenerated with `scripts/update-workflow-pdf.ps1` when
       the change touches a string the PDF carries, or the item states why no
