@@ -186,6 +186,9 @@ runs, silently breaking the call.
    stop; do not ask on the basis of a failed detection run.
 
    - No `cleanup: eligible merged worktree: ...` line → stay silent, do not ask, do not write config.
+   - A `cleanup: leftover branch ...` line is a different report: a branch whose worktree is
+     already gone. It is not a worktree to remove, so it never makes this step ask. Pass it on
+     to the user as it is.
    - One or more `cleanup: eligible merged worktree: <path> [<branch>]` lines → ask once via
      `AskUserQuestion`: "Found N merged worktree(s) ready to clean up: `<path>` [`<branch>`], … .
      Clean them up automatically from now on? I'll remember either way." with options
