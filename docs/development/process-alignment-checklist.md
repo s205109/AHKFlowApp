@@ -36,7 +36,7 @@ of catching it.
 | 4 | Picking up a `backlog/` item is never | stage-1-pickup | `links-only` — was `restates`, fixed |
 | 5 | Closing an item whose work already merged | stage-1-pickup | `links-only` |
 | 6 | Any change to app-facing wording | stage-1-pickup | `links-only` |
-| 7 | Grill the design with `mp-grill-with-docs` | stage-2-design | `links-only` — was `conflicts`, fixed |
+| 7 | Grill the design with `mp-grilling` and `mp-domain-modeling` | stage-2-design | `links-only` — was `conflicts`, then renamed by backlog 109 |
 | 8 | Grill the draft plan with `mp-grilling` | stage-3-plan | `links-only` — split out of row 7 |
 | 9 | Give a `trivial` change an inline plan | stage-4-execute | `links-only` — was `wrong stage`, fixed |
 
@@ -69,10 +69,12 @@ home.
 why a filed item is never `trivial`. The rule stayed; the reasoning went back to the stage.
 
 **Row 7 named the wrong Design technique.** It said to run `superpowers:brainstorming` and
-`mp-grilling` before writing code. The mandatory rule in workflow.md is that `mp-grill-with-docs` is
-the Design technique and `mp-grilling` runs later, on the draft plan. A session following
-`.claude/CLAUDE.md` would have run the Plan technique at Design and never the Design one. The
-two techniques now sit in two bullets, each anchored to the stage that owns it.
+`mp-grilling` before writing code. The Design technique is `mp-grilling` with
+`mp-domain-modeling`, run together, and `mp-grilling` runs again later on the draft plan. A
+session following `.claude/CLAUDE.md` would have run the Plan technique at Design and never
+the Design one. The two techniques now sit in two bullets, each anchored to the stage that
+owns it. Backlog 109 later renamed the Design technique from `mp-grill-with-docs` to the pair
+of skills it wraps, because an agent cannot call the wrapper.
 
 **Rows 9, 12 and 15 pointed at the wrong stage.** The inline plan for trivial work was
 anchored to Plan, which trivial work skips — Execute's entry is "plan committed, or inline plan
