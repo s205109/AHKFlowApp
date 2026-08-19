@@ -39,9 +39,11 @@ function Invoke-BacklogGit {
     $PSNativeCommandUseErrorActionPreference = $false
     try {
         $output = & git -C $RepoRoot @GitArgs 2>$null
+        # Text, not the raw lines: every caller here wants one trimmed string, and three
+        # callers spelling that out three ways is three chances to spell it wrong.
         return [pscustomobject]@{
             ExitCode = $LASTEXITCODE
-            Output   = @($output)
+            Text     = ((@($output) -join "`n").Trim())
         }
     }
     finally {
@@ -83,7 +85,7 @@ function Get-BacklogStaleOpenProblem {
     if ($shallow.ExitCode -ne 0) {
         return @("Cannot read git history in $RepoRoot. The stale-open check needs a git repository.")
     }
-    if (($shallow.Output -join '').Trim() -eq 'true') {
+    if ($shallow.Text -eq 'true') {
         return @("The clone in $RepoRoot is shallow, so the stale-open check cannot read history. Fetch full history (fetch-depth: 0) and run it again.")
     }
 
@@ -121,9 +123,8 @@ Backlog $($item.Key) reads 'Stage: 9-ship' and is still open.
         # without its '+' or '-' prefix, so one pattern covers both sides of the diff.
         $stampResult = Invoke-BacklogGit -RepoRoot $RepoRoot -GitArgs @(
             'log', '-1', '--format=%H', '-G', '^- \*\*Stage\*\*:', 'HEAD', '--', $item.RelativePath)
-        $stamp = (@($stampResult.Output) | Where-Object { $_ } | Select-Object -First 1)
+        $stamp = $stampResult.Text
         if ($stampResult.ExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($stamp)) { continue }
-        $stamp = ([string] $stamp).Trim()
 
         # Work still in flight: the newest record has not reached the base branch, so nothing
         # about it is late.
@@ -133,7 +134,7 @@ Backlog $($item.Key) reads 'Stage: 9-ship' and is still open.
         $countResult = Invoke-BacklogGit -RepoRoot $RepoRoot -GitArgs @(
             'rev-list', '--count', '--first-parent', "$stamp..$BaseRef")
         if ($countResult.ExitCode -ne 0) { continue }
-        $distance = [int] (($countResult.Output -join '').Trim())
+        $distance = [int] $countResult.Text
 
         if ($distance -le $Threshold) { continue }
 
