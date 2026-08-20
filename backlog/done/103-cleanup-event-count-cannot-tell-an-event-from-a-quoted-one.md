@@ -6,7 +6,7 @@
 - **Type**: Process / tooling
 - **Interfaces**: none (scripts, docs)
 - **Difficulty**: moderate
-- **Stage**: 7-document
+- **Stage**: 9-ship
 - **Depends on**: 072-process-wave-2-parity-drift-guard-templates
 
 ## Summary
