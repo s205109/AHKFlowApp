@@ -6,8 +6,17 @@
 - **Type**: Process / tooling
 - **Interfaces**: none (scripts, docs)
 - **Difficulty**: moderate
-- **Stage**: 0-intake
+- **Stage**: 9-ship
 - **Depends on**: 072-process-wave-2-parity-drift-guard-templates
+
+## Closed without implementation (2026-08-20)
+
+The 179 figure already did its job: it justified the wave 4 direction, and that direction
+holds whatever the true precision turns out to be (see "Notes / dependencies" below). Nobody
+is blocked on a measured range, and no future decision changes shape based on the outcome.
+Hand-labelling 179 rows plus a recall sample buys a footnote-free number in a report that
+already shipped — internal consistency, not a decision input. Closing as won't-do rather than
+leaving it open indefinitely at Stage 0.
 
 ## Summary
 
