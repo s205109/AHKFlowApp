@@ -599,29 +599,26 @@ Cleanup therefore ends in one of two ways, and the session says which:
    (`scripts/remove-worktree-local-dev.ps1:997`, "worktree removed; branch preserved").
    Checking the worktree alone would miss exactly that case.
 
-   Two leftovers are possible and **one check does not find both**.
+   Two leftovers are possible, and one command reports both:
 
-   *Worktree still present.* Run `pwsh .\scripts\cleanup-merged-worktrees.ps1` and finish
-   what it reports. Use its eligibility rule rather than a hand-rolled one.
+   ```powershell
+   pwsh .\scripts\cleanup-merged-worktrees.ps1
+   ```
 
-   *Branch still present, worktree already gone.* That sweep cannot see this case: it
-   enumerates `git worktree list`
-   (`scripts/cleanup-merged-worktrees.ps1:292`, "worktree list --porcelain"), and the
-   watcher prunes the worktree
-   (`scripts/remove-worktree-local-dev.ps1:916`, "'worktree', 'prune', '-v'") **before** it
-   deletes the branch, then may stop with
-   (`scripts/remove-worktree-local-dev.ps1:997`, "worktree removed; branch preserved"). So the
-   exact partial failure the deferred route exists for is
-   invisible to it. Until backlog 099 scripts this, check it directly: a local branch other
-   than `main`, merged into `main`, with no registered worktree, whose tip differs from
-   `main`'s tip.
+   *Worktree still present.* It prints one `cleanup: eligible merged worktree:` line per
+   worktree. Finish what it reports, and use its eligibility rule rather than a hand-rolled one.
 
-   The tip comparison is what makes it usable. `git branch --merged main` alone lists `main`
-   itself and every branch freshly cut from `main` with no commits of its own — permanently
-   "merged", so it reports leftovers forever and teaches the reader to ignore it. Requiring
-   the tip to differ from `main`'s keeps only branches that contributed commits now merged.
-   Verified on this repository: the sweep-based list plus that predicate reports zero, while
-   `git branch --merged main` reports `main`.
+   *Branch still present, worktree already gone.* It prints one `cleanup: leftover branch,
+   worktree already gone:` line per branch, naming the branch and the `git branch -d` that
+   removes it. It deletes nothing for you.
+
+   Both reports decide against the same fetched base, and that is what makes the second one
+   work: right after `gh pr merge` the merge is on the remote only, local `main` still predates
+   it, and that is exactly why `git branch -d` refused and left the branch behind.
+
+   Both also require the branch's own work to be merged. A branch freshly cut from the base is
+   permanently "merged" and was never committed on, so it appears in neither report. Nothing
+   left behind prints neither line, and that is the whole answer.
 
 Neither route lets a session claim success it did not observe. All three exit conditions
 are checked, never the worktree alone. The removal script has a
