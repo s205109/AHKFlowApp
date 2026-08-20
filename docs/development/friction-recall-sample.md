@@ -167,7 +167,7 @@ unflagged messages that is **17 to 71 missed asks**.
   here-string body is skipped. A pull request body passed as `@' … '@` inside a `powershell`
   fence had put two English sentences in the ledger. Precision is still unmeasured: an example
   command counts like a handed-over one.
-- **Metric 3, cleanup events (18 log lines across 5 sessions).** Not a word list. Every cleanup outcome reaches a transcript as a
+- **Metric 3, cleanup events (18 log lines across 5 sessions, a floor on at least 201 events).** Not a word list. Every cleanup outcome reaches a transcript as a
   line written by `Write-WorktreeLog`, which stamps it `yyyy-MM-dd HH:mm:ss  <worktree>
   <message>`
   (`scripts/worktree-log.common.ps1:22`, "    $line = '{0}  {1}  {2}' -f $stamp, $Worktree, $Message").
@@ -176,10 +176,20 @@ unflagged messages that is **17 to 71 missed asks**.
   message instead counted the script's own source, injected skill instructions, and reviews
   quoting an outcome — 65 of 75 rows on the first attempt. Six of the eleven phrases then in use
   appeared in no script at all; `cleanup popup` alone produced 24 rows.
-  **It does not separate a reported event from a quoted one.** A message that quotes a whole
-  stamped line carries the stamp, and the metric counts it — deliberately, because that is how a
-  tool result holding the tail of the worktree log arrives. So 18 counts stamped lines, not
-  reported events, and the 18 rows are not yet labelled. Backlog 103 carries that work.
+  **All 18 rows are labelled, and all 18 are genuine log lines.** 14 arrived as tool results
+  reading the removal log; 4 came from one human-typed message, a process brief that pasted a
+  log tail as evidence. Nothing counted is source code, an injected instruction, or a
+  paraphrase, so the metric over-flags nothing.
+  **The split the count could not make turns out to be the wrong split.** A tool result is
+  not a live report either — it is a read of `worktree-removal.log`, and one of the 18 rows
+  arrived on 2026-07-30 carrying an event stamped 2026-07-29. Both routes quote the same
+  persistent file, and the line's own stamp is the event time in both.
+  **So 18 is a floor, not an upper bound.** The removal log itself holds 201 distinct
+  in-window outcome lines, and the transcripts witnessed 18 of them, about nine percent. The
+  rule sheet and the decision are in
+  [`cleanup-event-identity.md`](cleanup-event-identity.md); the labels are in
+  `friction-samples/cleanup-events-labelled.csv`, and the log's own rows in
+  `friction-samples/ledgers/cleanup-log-events.csv`.
 - **Metric 5, CI minutes.** No word matching, so no recall question. It has a coverage problem
   instead, stated below.
 

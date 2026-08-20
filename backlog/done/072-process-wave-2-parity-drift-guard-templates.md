@@ -97,11 +97,13 @@ one of them can never leave the other two behind.
 - [x] `docs/adr/` gains one ADR: process source lives in `workflow.md`.
       `docs/adr/0006-process-source-lives-in-workflow-md.md`.
 - [ ] The five friction counts are measured here, to the requirements below. Backlog 071 attempted this three times and withdrew every result; nothing is inherited.
-      **Left unticked on purpose.** All five counts are measured and published below, and
-      twelve of the thirteen requirements hold. The thirteenth does not, for two metrics:
-      see the unticked "real event from discussion" requirement. Ticking this box would
-      claim a requirement is met that the item itself says is not. Backlog 101 closes the
-      gap for directory-bound commands, backlog 103 for cleanup events.
+      **Left unticked on purpose, now for one metric rather than two.** All five counts are
+      measured and published below, and twelve of the thirteen requirements hold. The
+      thirteenth now holds for cleanup events: backlog 103 labelled all 18 rows on
+      2026-08-21, and every one is a genuine log line. Directory-bound commands never will
+      hold, because backlog 101 closed on 2026-08-20 without implementation, so that metric
+      has no measured precision and no plan to get one. The box stays unticked for that one
+      metric. An honest gap beats a false tick.
 - [x] The drift guard also checks that no document tells a reader to run the gate "before
       opening a PR". <!-- gate-wording:ignore --> The gate gates the pull request going **ready**, not its creation, and
       the wording drifted back once already. Backlog 071 fixed
@@ -146,13 +148,14 @@ rows. Labelled evidence:
 |---|---|---|
 | Blocked-agent handoffs | **179 to 533** | 15 flagged, 10 real (precision 67 percent). 11 misses in a fully read 200-message sample of 5,457 unflagged, so 169 to 523 more. The flagged 15 is not an upper bound and is not close to one |
 | Directory-bound commands handed to the human | **179 command lines** across 34 sessions | A command line inside a `powershell`, `pwsh`, `bash`, `sh` or `shell` fence that names a directory, deduplicated on message and line text. The line must start with a command, and a here-string body is skipped. Precision unmeasured: an example command counts like a handed-over one. Not an upper bound either — a command handed over outside a fence is invisible to it |
-| Cleanup popups and blocked runs | **18 log lines** across 5 sessions | A line with the shared log stamp whose message is one a cleanup script writes. The earlier 75 was 65 rows of source code, injected instructions and reviews quoting an outcome; six of its eleven phrases appear in no script at all. A message that quotes a stamped line still counts, so this is a count of stamped lines rather than of reported events — backlog 103 |
+| Cleanup popups and blocked runs | **at least 201**, of which 18 were witnessed in transcripts | A line with the shared log stamp whose message is one a cleanup script writes. The earlier 75 was 65 rows of source code, injected instructions and reviews quoting an outcome; six of its eleven phrases appear in no script at all. Backlog 103 labelled all 18 rows: every one is a genuine log line, 14 from tool results and 4 from one human paste. A tool result is a read of the same log, so the reported-against-quoted split does not exist. The removal log itself holds 201 distinct in-window outcome lines, so the transcript figure is a floor at about nine percent — backlog 103 |
 | Next-step asks | **35 to 89** | 38 flagged, 18 real (precision 47 percent). 7 misses in a fully read 200-message sample of 1,004 unflagged, so 17 to 71 more |
 | CI minutes on non-.NET changes | **456.7 minutes** across 75 runs, covering 115 of 192 in-window CI runs | 531 workflow runs in the window, of which 192 are CI; the other 339 are opencode, PR-Agent and the two deploy workflows, and are not this metric. A path counts as .NET by its file type, never by its folder. 40 CI runs touch .NET. 77 have no landing merge on `origin/main`'s first-parent chain and are reported unresolved rather than guessed — every in-window `head_sha` was present in this clone. One counted run reported no duration and enters the sum as zero |
 
 **No figure is called an upper bound.** Two are ranges, because their match sets both over-flag
 and under-count, which the labelled sample measures rather than assumes. The CI figure is a floor
-for the runs that could be classified, not a total for the window.
+for the runs that could be classified, not a total for the window. The cleanup figure is a floor
+too: the removal log holds 201 in-window outcome lines and the transcripts witnessed 18 of them.
 
 **Nine traps worth recording.**
 
@@ -275,21 +278,28 @@ field it reads rather than describing an intention.
       not a specification.
 - [ ] Separate a real event from discussion of one, or state plainly that it does not and
       treat the figure as an upper bound.
-      **Holds for three metrics of five. Left unticked for the other two.** Handoffs and
-      next-step asks separate the two by hand-labelling every flagged row, so their
+      **Holds for four metrics of five. Left unticked for the one that remains.** Handoffs
+      and next-step asks separate the two by hand-labelling every flagged row, so their
       precision is measured rather than assumed. CI minutes count workflow runs, so the
-      distinction does not arise.
+      distinction does not arise. Cleanup events joined them on 2026-08-21, through backlog
+      103; the paragraph below records what that labelling found.
       Directory-bound commands do neither. The item states plainly that an example command
       counts like a handed-over one, but 179 is not an upper bound either: the match set
       also under-counts, because a command handed over outside a code fence is invisible to
       it. The figure is a count of matched command lines and nothing more. Measuring its
       precision needs the same labelled sample the other two metrics got, which is a
       follow-up, not a correction to this one. Filed as backlog 101.
-      Cleanup events do not either, and this item said they did. The claim was that
+      Cleanup events now do, and this item's original claim was still wrong. It said
       discussion never carries the log stamp. A message that quotes a stamped line carries
       it, and the metric counts one on purpose — that is how a tool result holding the log
-      tail is read. So 18 is a count of stamped lines whose message starts with a cleanup
-      script's wording, reported or quoted. Labelling the 18 rows is filed as backlog 103.
+      tail is read. Backlog 103 labelled all 18 rows on 2026-08-21 and found something
+      better than the split this item asked for. Every one of the 18 is a genuine log line:
+      no source code, no injected instruction, no paraphrase. 14 arrived as tool results and
+      4 in one human-typed message. The reported-against-quoted split does not exist, because
+      a tool result is a read of the same persistent log — one row arrived on 2026-07-30
+      carrying an event stamped 2026-07-29. So the requirement holds for this metric: the
+      count separates a log line from discussion of one, and the labels prove it. The rule
+      and the decision are in `docs/development/cleanup-event-identity.md`.
 - [x] Publish the script with the numbers, so any figure can be reproduced and challenged.
       `scripts/measure-process-friction.ps1`, with a committed row-level ledger per metric.
 
