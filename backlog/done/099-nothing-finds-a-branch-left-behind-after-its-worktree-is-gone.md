@@ -22,7 +22,7 @@ finished cleanup does not need a check I have to remember.
 ## Detail
 
 The merged-worktree sweep enumerates `git worktree list`
-(`scripts/cleanup-merged-worktrees.ps1:292`, "worktree list --porcelain"). A branch whose worktree
+(`scripts/cleanup-merged-worktrees.ps1:92`, "worktree list --porcelain"). A branch whose worktree
 is already pruned appears nowhere in that list, so the sweep cannot see it.
 
 The watcher prunes the worktree
