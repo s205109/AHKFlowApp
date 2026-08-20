@@ -84,6 +84,7 @@ function Add-TestWorktree {
         [switch] $Dirty,
         [switch] $NoCommits,
         [switch] $Rebase,
+        [switch] $WorkAfterMerge,
         [string] $BaseRef = 'main'
     )
 
@@ -106,6 +107,13 @@ function Add-TestWorktree {
             # out twice is not. --no-ff is what a GitHub "Merge pull request" leaves behind.
             Invoke-TestGit $RepoDir @('merge', '--no-ff', '-m', "Merge $BranchName", $BranchName) | Out-Null
         }
+    }
+    if ($WorkAfterMerge) {
+        # A branch whose pull request merged and which then gained a commit nothing else holds.
+        # `git branch --merged` used to drop this branch, which is the protection signal 4 replaces.
+        Set-Content -LiteralPath (Join-Path $wtPath 'after.txt') -Value 'work made after the merge' -Encoding utf8
+        Invoke-TestGit $wtPath @('add', '-A') | Out-Null
+        Invoke-TestGit $wtPath @('commit', '-m', "work after $BranchName merged") | Out-Null
     }
     if ($Dirty) {
         Set-Content -LiteralPath (Join-Path $wtPath 'dirty.txt') -Value 'uncommitted' -Encoding utf8
@@ -1344,6 +1352,31 @@ try {
     $openFacts = Get-BranchRefLogFacts -RepoRoot $repo -Branch 'feat-open'
     $openProofs = Get-LocalMergeProofShas -RepoRoot $repo -MainRef 'main' -MergeProofShas $openFacts.MergeProofShas
     Assert-Equal 0 $openProofs.Count 'An unmerged branch must yield no proof.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: work made after the merge keeps the worktree (signal 4) --------------
+$repo = New-TempGitRepo
+try {
+    $wtPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-after' -WorkAfterMerge
+    $tip = (Invoke-TestGit $wtPath @('rev-parse', 'HEAD')) -join ''
+
+    $facts = Get-BranchRefLogFacts -RepoRoot $repo -Branch 'feat-after'
+    $proofs = Get-LocalMergeProofShas -RepoRoot $repo -MainRef 'main' -MergeProofShas $facts.MergeProofShas
+    Assert-Equal 1 $proofs.Count 'The merge proof must still be found.'
+    Assert-True ($proofs[0] -ne $tip) 'Sanity check: the tip must have moved past the proof.'
+
+    $after = Get-WorkAfterMergeProof -RepoRoot $repo -Branch 'feat-after' -ProofShas $proofs
+    Assert-Equal 1 $after.Count 'The commit made after the merge must be reported.'
+
+    Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-after')) `
+        'A branch that gained a commit after its merge must NOT report merged own work.'
+
+    # The idle case must keep working: merged, nothing after, removable.
+    Add-TestWorktree -RepoDir $repo -BranchName 'feat-idle' | Out-Null
+    Assert-True (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-idle') `
+        'A merged branch with no later work must still report merged own work.'
 } finally {
     Remove-TempTree $repo
 }

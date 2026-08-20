@@ -540,6 +540,44 @@ function Get-LocalMergeProofShas {
     return , @($proofs.Keys)
 }
 
+# Signal 4. The commits the branch tip reaches that no merge proof reaches and no other ref holds.
+#
+# Ancestry used to refuse this case for free: a branch that gained commits after its pull request
+# merged stopped being an ancestor of the base, so `git branch --merged` dropped it. The rule that
+# replaces ancestry has to ask the question directly, or the sweep removes a worktree holding
+# unpushed work -- and `git branch -d` then refuses the branch, leaving it orphaned.
+#
+# The proof SHAs are the boundary. Anything reachable from one of them is merged work. Anything else
+# the tip reaches is later work, unless another ref holds it -- and then removing this worktree
+# discards nothing, which is the same question Get-StrandedCommits asks.
+#
+# Returns $null when git fails or when there is no proof to measure against, which every caller must
+# read as "cannot tell" and keep the worktree.
+function Get-WorkAfterMergeProof {
+    param(
+        [Parameter(Mandatory)][string] $RepoRoot,
+        [Parameter(Mandatory)][string] $Branch,
+        [Parameter(Mandatory)][AllowEmptyCollection()][string[]] $ProofShas
+    )
+
+    if ($ProofShas.Count -eq 0) { return $null }
+
+    # Exactly ONE '--not', with every exclusion after it. '--not' TOGGLES polarity each time it
+    # appears, so '--not a --not b' excludes a and then re-includes b -- which quietly turned '--all'
+    # back into an inclusion and made a plainly merged branch look like it carried later work.
+    # '--single-worktree' is load-bearing. Without it '--all' also examines every OTHER worktree's
+    # HEAD, and this branch's own worktree has HEAD at the branch tip -- so the later work looked
+    # like something another ref held, and signal 4 reported nothing.
+    $arguments = @('-C', $RepoRoot, 'rev-list', '--single-worktree', "refs/heads/$Branch", '--not')
+    $arguments += $ProofShas
+    $arguments += @("--exclude=refs/heads/$Branch", '--all')
+
+    $after = & git @arguments 2>$null
+    if ($LASTEXITCODE -ne 0) { return $null }
+
+    return , @($after | ForEach-Object { ([string] $_).Trim() } | Where-Object { $_ })
+}
+
 function Test-BranchOwnWorkWasMerged {
     param(
         [Parameter(Mandatory)][string] $RepoRoot,
@@ -555,6 +593,10 @@ function Test-BranchOwnWorkWasMerged {
     # Signal 2.
     $proofs = Get-LocalMergeProofShas -RepoRoot $RepoRoot -MainRef $MainRef -MergeProofShas $facts.MergeProofShas
     if ($null -eq $proofs -or $proofs.Count -eq 0) { return $false }
+
+    # Signal 4. The merge proves the work that existed when it happened, and nothing after it.
+    $after = Get-WorkAfterMergeProof -RepoRoot $RepoRoot -Branch $Branch -ProofShas $proofs
+    if ($null -eq $after -or $after.Count -gt 0) { return $false }
 
     # Signal 3. Signals 1 and 2 can be satisfied by different work, so the last question is the one
     # that makes removal safe: would removing this branch discard a commit nothing else holds?
