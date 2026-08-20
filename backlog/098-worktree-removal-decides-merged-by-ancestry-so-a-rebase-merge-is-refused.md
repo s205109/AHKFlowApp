@@ -6,7 +6,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (scripts)
 - **Difficulty**: complex
-- **Stage**: 3-plan
+- **Stage**: 9-ship
 
 ## Summary
 
@@ -62,21 +62,21 @@ Backlog 094 fixed which base both scripts read; it left the ancestry test alone 
 
 ## Acceptance criteria
 
-- [ ] One decision function answers "was this branch's own work merged", and both scripts call it,
+- [x] One decision function answers "was this branch's own work merged", and both scripts call it,
       with no second rule to keep in step
-- [ ] A worktree whose pull request was merged with a rebase merge is removed
-- [ ] The pull request is bound to this branch by SHA, not by branch name: a branch name that a
+- [x] A worktree whose pull request was merged with a rebase merge is removed
+- [x] The pull request is bound to this branch by SHA, not by branch name: a branch name that a
       later worktree reuses never inherits an older pull request's merge
-- [ ] GitHub is an extra accepting signal only. When `gh` is missing, unauthenticated, offline, or
+- [x] GitHub is an extra accepting signal only. When `gh` is missing, unauthenticated, offline, or
       rate-limited, the decision falls back to local git and the log says why
-- [ ] A worktree whose branch is not merged is still preserved, a worktree with uncommitted
+- [x] A worktree whose branch is not merged is still preserved, a worktree with uncommitted
       changes is still preserved, and a worktree whose branch holds no commit of its own is still
       preserved — including on the removal hook path, which removes it today
-- [ ] A worktree whose branch was merged and then gained commits no other ref holds is preserved.
+- [x] A worktree whose branch was merged and then gained commits no other ref holds is preserved.
       `git branch --merged` gives that protection today by accident, and the fix deletes that filter
-- [ ] A fixture proves every direction without calling GitHub, and one fixture parses real `gh`
+- [x] A fixture proves every direction without calling GitHub, and one fixture parses real `gh`
       output captured from this repository
-- [ ] The Cleanup warning
+- [x] The Cleanup warning
       is gone: Stage 10 now says any merge button is fine
 
 ## Out of scope
