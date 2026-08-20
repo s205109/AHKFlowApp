@@ -20,9 +20,10 @@ Set-StrictMode -Version Latest
 # (`scripts/backlog.common.ps1:143`, "$script:BacklogPointerTriggerIndex = 4").
 $script:BacklogStaleTriggerIndex = 4
 
-# Measured on 2026-08-19 against main at 7433ca2f. The largest value a legitimately open item
-# ever reached was 7 (backlog 080, shipped over several pull requests). Backlog 071, the one
-# real defect, reached 26. Twelve sits between them.
+# Measured on 2026-08-19 against main at 7433ca2f, by replaying every item in backlog/done/
+# with the landing-based count below. Read at the last base-branch tip before each item closed:
+# backlog 086 scored 8 and backlog 080 scored 5, both healthy; backlog 071, the one real defect,
+# scored 24. Twelve sits between them, four commits clear of the largest healthy value.
 $script:BacklogStaleThreshold = 12
 
 function Invoke-BacklogGit {
@@ -33,10 +34,18 @@ function Invoke-BacklogGit {
 
     # PowerShell 7.4 turns a non-zero exit code into a terminating error when
     # $ErrorActionPreference is 'Stop'. A caller here asks git questions that legitimately
-    # answer 'no', so exit codes must stay data. run-powershell-suites.ps1 opts out the same
-    # way for the same reason.
-    $previous = $PSNativeCommandUseErrorActionPreference
-    $PSNativeCommandUseErrorActionPreference = $false
+    # answer 'no', so exit codes must stay data.
+    #
+    # Test-Path first, because this file declares the 7.0 floor and the variable only exists
+    # from 7.3. Set-StrictMode turns a read of an unset variable into a terminating error, so
+    # reading it unguarded would break the whole check on 7.0 to 7.2 - where there is nothing
+    # to opt out of anyway, because native exit codes do not throw there.
+    $hasNativePreference = Test-Path -LiteralPath 'Variable:PSNativeCommandUseErrorActionPreference'
+    $previous = $null
+    if ($hasNativePreference) {
+        $previous = $PSNativeCommandUseErrorActionPreference
+        $PSNativeCommandUseErrorActionPreference = $false
+    }
     try {
         $output = & git -C $RepoRoot @GitArgs 2>$null
         # Text, not the raw lines: every caller here wants one trimmed string, and three
@@ -47,7 +56,9 @@ function Invoke-BacklogGit {
         }
     }
     finally {
-        $PSNativeCommandUseErrorActionPreference = $previous
+        if ($hasNativePreference) {
+            $PSNativeCommandUseErrorActionPreference = $previous
+        }
     }
 }
 
@@ -55,6 +66,11 @@ function Invoke-BacklogGit {
 # origin/main first, because a merge happens on GitHub and never advances a local ref. Nothing
 # fetches here - a test suite must not touch the network - so a clone that never fetched judges
 # against a stale tip, which delays a report and never invents one.
+#
+# Returns an empty string when neither resolves. It must not fall back to HEAD: the stamp is
+# always read from HEAD, so every in-flight item would pass the merged test against its own
+# branch tip, and a single-branch clone of a feature branch would be told to close the work it
+# is doing right now.
 function Resolve-BacklogBaseRef {
     param([Parameter(Mandatory)][string] $RepoRoot)
 
@@ -63,7 +79,7 @@ function Resolve-BacklogBaseRef {
         if ($result.ExitCode -eq 0) { return $candidate }
     }
 
-    return 'HEAD'
+    return ''
 }
 
 function Get-BacklogStaleOpenProblem {
@@ -78,6 +94,10 @@ function Get-BacklogStaleOpenProblem {
     if ([string]::IsNullOrWhiteSpace($BaseRef)) { $BaseRef = Resolve-BacklogBaseRef -RepoRoot $RepoRoot }
 
     $problems = @()
+
+    if ([string]::IsNullOrWhiteSpace($BaseRef)) {
+        return @("Cannot resolve a base branch in $RepoRoot. The stale-open check judges against origin/main, or main. Fetch one of them and run it again.")
+    }
 
     # A shallow clone cannot answer the question, and a silent pass would be a false green.
     # CI checks out full history for this job (`.github/workflows/ci.yml:108`, "fetch-depth: 0").
@@ -131,10 +151,28 @@ Backlog $($item.Key) reads 'Stage: 9-ship' and is still open.
         $merged = Invoke-BacklogGit -RepoRoot $RepoRoot -GitArgs @('merge-base', '--is-ancestor', $stamp, $BaseRef)
         if ($merged.ExitCode -ne 0) { continue }
 
-        $countResult = Invoke-BacklogGit -RepoRoot $RepoRoot -GitArgs @(
-            'rev-list', '--count', '--first-parent', "$stamp..$BaseRef")
-        if ($countResult.ExitCode -ne 0) { continue }
-        $distance = [int] $countResult.Text
+        # Where the stamp LANDED on the base branch, not the stamp itself. A count that starts
+        # at the stamp also counts every commit the base gained while the branch was open, so
+        # it measures branch age: fifteen commits on main during a two-day branch would fail a
+        # healthy item on the day its first pull request merged.
+        $chainResult = Invoke-BacklogGit -RepoRoot $RepoRoot -GitArgs @('rev-list', '--first-parent', $BaseRef)
+        if ($chainResult.ExitCode -ne 0) { continue }
+        $chain = @($chainResult.Text -split "`n" | ForEach-Object { $_.Trim() })
+
+        # The chain runs newest first, so a commit's index is the number of commits after it.
+        $distance = [array]::IndexOf($chain, $stamp)
+        if ($distance -lt 0) {
+            # The usual shape: the stamp sits on a branch, and a merge carried it over. The
+            # oldest merge on the path from the stamp to the base tip is that merge.
+            $landingResult = Invoke-BacklogGit -RepoRoot $RepoRoot -GitArgs @(
+                'rev-list', '--ancestry-path', '--merges', "$stamp..$BaseRef")
+            if ($landingResult.ExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($landingResult.Text)) { continue }
+            $landing = (@($landingResult.Text -split "`n")[-1]).Trim()
+            $distance = [array]::IndexOf($chain, $landing)
+        }
+
+        # Nothing to place it against. Say nothing rather than guess a number.
+        if ($distance -lt 0) { continue }
 
         if ($distance -le $Threshold) { continue }
 

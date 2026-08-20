@@ -519,6 +519,10 @@ stage and restarts the count. The check reads the item's own Stage line and the 
 graph. It never reads a pull request title, which can name the wrong item: #312 is titled
 "backlog 096" and did item 097's work.
 
+The same check has a second, simpler arm: an item that reads `Stage: 9-ship` while it still
+sits in `backlog/` fails at once, with no merge test and no counting. Ship writes that stage
+and moves the file in one commit, so the two can only disagree when the move was forgotten.
+
 A round has no item, no progress file, and nothing extra to close at Ship. Its non-success
 edges restore no records. They rewrite the `Stage:` line in the round pull request body
 instead, and they push only if the recovery work itself makes a commit.

@@ -47,11 +47,11 @@ function Write-FixtureItem {
 }
 
 function Add-FixtureFiller {
-    param([string] $RepoDir, [int] $Count)
+    param([string] $RepoDir, [int] $Count, [string] $Prefix = 'filler')
     for ($i = 1; $i -le $Count; $i++) {
-        Set-Content -LiteralPath (Join-Path $RepoDir "filler-$i.txt") -Value "filler $i" -Encoding utf8
+        Set-Content -LiteralPath (Join-Path $RepoDir "$Prefix-$i.txt") -Value "$Prefix $i" -Encoding utf8
         Invoke-FixtureGit $RepoDir @('add', '-A') | Out-Null
-        Invoke-FixtureGit $RepoDir @('commit', '--quiet', '-m', "filler $i") | Out-Null
+        Invoke-FixtureGit $RepoDir @('commit', '--quiet', '-m', "$Prefix $i") | Out-Null
     }
 }
 
@@ -68,6 +68,8 @@ function New-StaleFixture {
         [switch] $Closed,
         [switch] $LeaveUnmerged,
         [switch] $TouchWithoutStage,
+        [int] $BaseAhead = 0,
+        [switch] $NoBase,
         [string] $Folder = ''
     )
 
@@ -113,6 +115,9 @@ function New-StaleFixture {
     }
     else {
         Invoke-FixtureGit $repo @('checkout', '--quiet', 'main') | Out-Null
+        # main moves on while the branch is open. These commits are not reachable from the
+        # stamp, so a count that starts at the stamp charges the item for them.
+        Add-FixtureFiller -RepoDir $repo -Count $BaseAhead -Prefix 'base'
         Invoke-FixtureGit $repo @('merge', '--quiet', '--no-ff', '-m', 'merge the branch', 'fix/wt-fixture') | Out-Null
 
         if ($Folder) {
@@ -128,6 +133,11 @@ function New-StaleFixture {
         }
 
         Add-FixtureFiller -RepoDir $repo -Count $Filler
+    }
+
+    if ($NoBase) {
+        # A single-branch clone of a feature branch has neither origin/main nor main.
+        Invoke-FixtureGit $repo @('branch', '-m', 'main', 'trunk') | Out-Null
     }
 
     return [pscustomobject]@{ Root = $root; Repo = (Resolve-Path -LiteralPath $repo).Path }
@@ -197,6 +207,41 @@ $fixture = New-StaleFixture -Stage '8-review' -Filler 14
 try {
     $problems = @(Get-BacklogStaleOpenProblem -RepoRoot $fixture.Repo)
     Assert-True ($problems.Count -eq 1) "Fourteen commits must break the default limit of 12, got: $($problems -join ' | ')"
+}
+finally { Remove-Fixture $fixture.Root }
+
+# --- A base that moved while the branch was open is not staleness ---
+#
+# The count must start where the stamp LANDED on the base branch, not at the stamp itself.
+# Counting from the stamp measures how long the branch was open: 15 commits on main during a
+# two-day branch put a healthy item over the limit on the day its first pull request merged.
+
+$fixture = New-StaleFixture -Stage '8-review' -BaseAhead 15 -Filler 0
+try {
+    $problems = @(Get-BacklogStaleOpenProblem -RepoRoot $fixture.Repo)
+    Assert-True ($problems.Count -eq 0) "A base that moved 15 commits while the branch was open must not count, got: $($problems -join ' | ')"
+}
+finally { Remove-Fixture $fixture.Root }
+
+# The same fixture, with the base moving past the landing, must still fail.
+
+$fixture = New-StaleFixture -Stage '8-review' -BaseAhead 15 -Filler 14
+try {
+    $problems = @(Get-BacklogStaleOpenProblem -RepoRoot $fixture.Repo)
+    Assert-True ($problems.Count -eq 1) "Fourteen commits after the landing must fail, got: $($problems -join ' | ')"
+}
+finally { Remove-Fixture $fixture.Root }
+
+# --- No base branch: refuse to guess, the way the shallow clone does ---
+
+$fixture = New-StaleFixture -Stage '8-review' -Filler 14 -NoBase
+try {
+    $problems = @(Get-BacklogStaleOpenProblem -RepoRoot $fixture.Repo)
+    Assert-True ($problems.Count -eq 1) "A repository with no base branch must report exactly one problem, got: $($problems.Count): $($problems -join ' | ')"
+    if ($problems.Count -ge 1) {
+        Assert-True ($problems[0] -like '*base branch*') "The message must say the base branch could not be resolved, got: $($problems[0])"
+        Assert-True ($problems[0] -notlike '*still open*') "It must not report the item as stale, got: $($problems[0])"
+    }
 }
 finally { Remove-Fixture $fixture.Root }
 
