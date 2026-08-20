@@ -540,6 +540,141 @@ function Get-LocalMergeProofShas {
     return , @($proofs.Keys)
 }
 
+# The branch name `gh pr list --base` needs, read from config rather than by splitting a ref.
+# 'origin/main' cannot be halved on the slash: a remote may contain one and a branch always may.
+# This is the same source Resolve-MergedBaseRef reads.
+function Resolve-BaseBranchName {
+    param(
+        [Parameter(Mandatory)][string] $RepoRoot,
+        [string] $LocalRef = 'main'
+    )
+
+    $ErrorActionPreference = 'Continue'
+
+    $remoteBranchRef = "$(& git -C $RepoRoot config --get "branch.$LocalRef.merge" 2>$null)".Trim()
+    if ($remoteBranchRef.StartsWith('refs/heads/')) {
+        return $remoteBranchRef.Substring('refs/heads/'.Length)
+    }
+
+    return $LocalRef
+}
+
+# Asks GitHub which pull requests merged into $BaseBranch, for the case local git cannot prove.
+#
+# A rebase merge writes no merge commit and rewrites the SHA, so nothing in the local repository
+# ties the branch to the base. GitHub holds that fact and nothing else does.
+#
+# Never throws, and an answer it cannot get is 'not available', never 'not merged': this signal may
+# only ACCEPT a removal, so its absence costs a removal and can never cause one.
+#
+# One call serves a whole sweep run. The caller caches the records and hands them to each decision.
+# $Limit is a real cutoff -- a pull request merged longer ago than that is not found, and its
+# worktree is kept, which is the safe direction.
+function Get-MergedPullRequestRecords {
+    param(
+        [Parameter(Mandatory)][string] $RepoRoot,
+        [Parameter(Mandatory)][string] $BaseBranch,
+        [string] $HeadBranch,
+        [int] $Limit = 100,
+        [int] $TimeoutSeconds = 15
+    )
+
+    $ErrorActionPreference = 'Continue'
+
+    $unavailable = {
+        param([string] $Reason)
+
+        [pscustomobject]@{ Available = $false; Reason = $Reason; Records = @() }
+    }
+
+    $gh = Get-Command 'gh' -ErrorAction SilentlyContinue
+    if (-not $gh -or -not $gh.Source) { return (& $unavailable 'gh-missing') }
+
+    $arguments = @('pr', 'list', '--state', 'merged', '--base', $BaseBranch,
+        '--limit', "$Limit", '--json', 'number,headRefName,headRefOid')
+    if ($HeadBranch) { $arguments += @('--head', $HeadBranch) }
+
+    try {
+        $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+        $startInfo.FileName = $gh.Source
+        $startInfo.Arguments = ConvertTo-ProcessArgumentLine $arguments
+        $startInfo.WorkingDirectory = $RepoRoot
+        $startInfo.UseShellExecute = $false
+        $startInfo.RedirectStandardOutput = $true
+        $startInfo.RedirectStandardError = $true
+        $startInfo.CreateNoWindow = $true
+
+        $process = [System.Diagnostics.Process]::Start($startInfo)
+
+        # Read to the end BEFORE waiting. A child that fills the pipe buffer blocks on the write
+        # while the parent blocks on the wait, and neither ever moves.
+        $stdout = $process.StandardOutput.ReadToEnd()
+        $null = $process.StandardError.ReadToEnd()
+
+        if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
+            $null = Stop-ProcessTree -ProcessId $process.Id
+            return (& $unavailable 'timeout')
+        }
+        if ($process.ExitCode -ne 0) { return (& $unavailable 'gh-failed') }
+
+        $records = @(ConvertFrom-GhMergedPrJson -Json $stdout)
+        $trimmed = "$stdout".Trim()
+        if ($records.Count -eq 0 -and $trimmed -and $trimmed -ne '[]') {
+            return (& $unavailable 'unparsable')
+        }
+
+        return [pscustomobject]@{ Available = $true; Reason = 'ok'; Records = $records }
+    } catch {
+        return (& $unavailable 'gh-failed')
+    }
+}
+
+# Reads `gh pr list --json number,headRefName,headRefOid` output into records.
+#
+# Pure: no process, no network, so a fixture can test it against the shape GitHub really returns.
+# Unparsable or empty input is not an error here -- it means "no records", and the caller decides
+# what that costs. A record missing either field is dropped rather than defaulted: without a head
+# SHA it cannot bind to a branch, and binding is the whole point.
+function ConvertFrom-GhMergedPrJson {
+    param([string] $Json)
+
+    if ([string]::IsNullOrWhiteSpace($Json)) { return , @() }
+
+    # ConvertFrom-Json throws ArgumentException on invalid JSON -- measured on Windows PowerShell 5.1
+    # and on pwsh 7 -- so this must be caught rather than tested for a $null return.
+    try {
+        $parsed = $Json | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+        return , @()
+    }
+
+    # Read through PSObject.Properties, never as $item.headRefOid: under Set-StrictMode -Version
+    # Latest a missing property on a PSCustomObject throws, and a record with fields missing is
+    # exactly what this function has to tolerate.
+    $readProperty = {
+        param($Item, [string] $Name)
+
+        $property = $Item.PSObject.Properties[$Name]
+        if (-not $property) { return '' }
+        return "$($property.Value)".Trim()
+    }
+
+    $records = @()
+    foreach ($item in @($parsed)) {
+        if ($null -eq $item) { continue }
+        $oid = & $readProperty $item 'headRefOid'
+        $name = & $readProperty $item 'headRefName'
+        if (-not $oid -or -not $name) { continue }
+        $records += [pscustomobject]@{
+            Number      = (& $readProperty $item 'number')
+            HeadRefName = $name
+            HeadRefOid  = $oid
+        }
+    }
+
+    return , $records
+}
+
 # Signal 4. The commits the branch tip reaches that no merge proof reaches and no other ref holds.
 #
 # Ancestry used to refuse this case for free: a branch that gained commits after its pull request

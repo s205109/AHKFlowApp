@@ -1381,4 +1381,49 @@ try {
     Remove-TempTree $repo
 }
 
+# --- Test: the parser reads real gh output --------------------------------------
+# Captured from this repository on 2026-08-19 with:
+#   gh pr list --repo s205109/AHKFlowApp --state merged --base main --limit 3 #     --json number,headRefName,headRefOid
+# and, for the pair that shares a head branch name:
+#   gh pr list --repo s205109/AHKFlowApp --state merged --base main #     --head fix/wt-design-technique-names-a-skill-the-agent-cannot-invoke #     --json number,headRefName,headRefOid
+$capturedGhJson = @'
+[{"headRefName":"fix/wt-nothing-finds-a-branch-left-behind-after-its-worktree-is-gone","headRefOid":"9bfc92bd7112bc432b54e93ce23e51725c25d353","number":325},
+ {"headRefName":"fix/wt-design-technique-names-a-skill-the-agent-cannot-invoke","headRefOid":"be250b7b06ba00a4202ae0538d441577d01e4cea","number":322},
+ {"headRefName":"fix/wt-design-technique-names-a-skill-the-agent-cannot-invoke","headRefOid":"bb8d90fed5377a3f87ec6b20d7e34c8324bbbb27","number":321}]
+'@
+
+$ghRecords = ConvertFrom-GhMergedPrJson -Json $capturedGhJson
+Assert-Equal 3 $ghRecords.Count 'Three merged pull requests must parse.'
+Assert-Equal 322 $ghRecords[1].Number 'The number must survive parsing.'
+Assert-Equal 'be250b7b06ba00a4202ae0538d441577d01e4cea' $ghRecords[1].HeadRefOid 'The head SHA must survive parsing.'
+# Two pull requests share one head branch name with different head SHAs. This is why the merge
+# proof binds by SHA and never by branch name.
+Assert-Equal $ghRecords[1].HeadRefName $ghRecords[2].HeadRefName 'The captured pair must share a branch name.'
+Assert-True ($ghRecords[1].HeadRefOid -ne $ghRecords[2].HeadRefOid) 'The captured pair must differ by SHA.'
+
+Assert-Equal 0 (ConvertFrom-GhMergedPrJson -Json 'not json').Count 'Unparsable output must read as no records.'
+Assert-Equal 0 (ConvertFrom-GhMergedPrJson -Json '').Count 'Empty output must read as no records.'
+Assert-Equal 0 (ConvertFrom-GhMergedPrJson -Json '[{"number":9}]').Count 'A record without a head SHA must be dropped.'
+
+# --- Test: an absent gh reads as "cannot tell", never as "not merged" ------------
+$repo = New-TempGitRepo
+try {
+    # A PATH holding git but not gh. The lookup must report gh-missing and stay unavailable, so the
+    # decision falls back to local history instead of treating silence as a verdict.
+    $savedPath = $env:PATH
+    $env:PATH = (Split-Path -Parent (Get-Command git).Source)
+    try {
+        $result = Get-MergedPullRequestRecords -RepoRoot $repo -BaseBranch 'main' -TimeoutSeconds 5
+        Assert-True (-not $result.Available) 'A missing gh must not be available.'
+        Assert-Equal 'gh-missing' $result.Reason 'A missing gh must say so.'
+        Assert-Equal 0 @($result.Records).Count 'A missing gh must yield no records.'
+    } finally {
+        $env:PATH = $savedPath
+    }
+
+    Assert-Equal 'main' (Resolve-BaseBranchName -RepoRoot $repo) 'With no upstream the local ref name is the base branch name.'
+} finally {
+    Remove-TempTree $repo
+}
+
 Write-Host 'Worktree merged-cleanup tests passed.'
