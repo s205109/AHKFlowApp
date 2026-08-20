@@ -6,7 +6,7 @@
 - **Type**: Process / tooling
 - **Interfaces**: none (scripts, docs)
 - **Difficulty**: moderate
-- **Stage**: 4-execute
+- **Stage**: 7-document
 - **Depends on**: 072-process-wave-2-parity-drift-guard-templates
 
 ## Summary
@@ -41,16 +41,28 @@ collapse into one.
 
 ## Acceptance criteria
 
-- [ ] Every one of the 18 rows in
-      `docs/development/friction-samples/ledgers/cleanup-events.csv` is labelled by hand as a
-      reported event or a quoted one, and the labels are committed.
-- [ ] The published figure is replaced with the labelled result, in
+- [x] Every one of the 18 rows in
+      `docs/development/friction-samples/ledgers/cleanup-events.csv` is labelled, and the
+      labels are committed.
+      **This box asked for a different label, and the wording is corrected rather than
+      stretched.** It asked for each row to be marked a reported event or a quoted one. The
+      labelling found that split does not exist: a tool result is a read of the same
+      persistent log that a human paste reads, and the line's own stamp is the event time in
+      both. So each row carries a mechanical `Route` of `tool-result` or `human-paste`, taken
+      from record fields, plus one hand-checked column `IsGenuineLogLine`. The labels are in
+      `docs/development/friction-samples/cleanup-events-labelled.csv`.
+- [x] The published figure is replaced with the labelled result, in
       `backlog/done/072-process-wave-2-parity-drift-guard-templates.md` and in
       `docs/development/friction-recall-sample.md`.
-- [ ] A decision is recorded on event identity: either a rule that tells a report from a quote,
-      or a plain statement that the count is an upper bound and why.
-- [ ] The deduplication comment in `scripts/measure-process-friction.ps1` is corrected, and the
-      collapse case is either fixed or stated.
+- [x] A decision is recorded on event identity, in
+      `docs/development/cleanup-event-identity.md`.
+      **The decision is neither of the two this box offered.** It offered a rule that tells a
+      report from a quote, or a statement that the count is an upper bound. The count is a
+      floor. The removal log holds 201 distinct in-window outcome lines and the transcripts
+      witnessed 18 of them, about nine percent.
+- [x] The deduplication comment in `scripts/measure-process-friction.ps1` is corrected, and the
+      collapse case is stated rather than fixed. The line carries no event id to fix it with,
+      and all 295 outcome lines in the log are distinct, so the collapse has never happened.
 
 ## Out of scope
 
@@ -59,10 +71,35 @@ collapse into one.
 - Changing what `Write-WorktreeLog` writes. A richer line would help, but rewriting the log
   format to make a measurement easier is a separate decision.
 
+## What the labelling found
+
+Measured on 2026-08-21. The numbers are reproducible from the two scripts named below.
+
+- **All 18 rows are genuine log lines.** None is source code, an injected instruction, or a
+  paraphrase. The metric over-flags nothing.
+- **14 arrived as tool results and 4 in one human-typed message.** The four came from a single
+  process brief that pasted a tail of the removal log as evidence.
+- **The reported-against-quoted split does not exist.** A tool result is not a live report. One
+  row arrived on 2026-07-30 carrying an event stamped 2026-07-29, because the tool read the log
+  tail. Both routes read the same persistent file.
+- **18 is a floor, not an upper bound.** The removal log holds 201 distinct in-window outcome
+  lines. The transcripts witnessed 18 of them, about nine percent. The 201 is itself a floor,
+  because the log survives back to 2026-07-26 only and the window opens on 2026-07-15.
+- **The deduplication comment was wrong about its reason.** Only `Watcher started.` lines carry
+  a process id — 134 of 134, against 0 of 130 `Watcher done (` lines. The collapse it feared is
+  real but has never happened: all 295 outcome lines in the log are distinct.
+
+Artifacts: `docs/development/cleanup-event-identity.md`,
+`docs/development/friction-samples/cleanup-events-labelled.csv`,
+`docs/development/friction-samples/ledgers/cleanup-log-events.csv`,
+`scripts/label-cleanup-events.ps1`, `scripts/measure-cleanup-log-events.ps1`,
+`tests/CleanupEventLabels.Tests.ps1`.
+
 ## Notes / dependencies
 
-- The unticked measurement requirement lives in
-  `backlog/done/072-process-wave-2-parity-drift-guard-templates.md` and now names this metric
-  as well as directory-bound commands.
+- The measurement requirement in
+  `backlog/done/072-process-wave-2-parity-drift-guard-templates.md` now holds for this metric.
+  Its box stays unticked for directory-bound commands alone, because backlog 101 closed on
+  2026-08-20 without implementation.
 - Spec: none — Design has not run.
 - Plan: `docs/superpowers/plans/2026-08-20-cleanup-event-identity-plan-103.md`
