@@ -83,7 +83,7 @@ it from the moment it exists. So two brand-new worktrees can exist side by side,
 that caught up with `main` by fast-forward. Closing a worktree yourself still removes it — this
 rule governs the automatic sweep only.
 
-The sweep removes a worktree only when three separate signals agree.
+The sweep removes a worktree only when five separate signals agree.
 
 1. **Work.** The branch ref log holds a subject for an operation that creates a commit: `commit:`,
    `commit (amend):`, `commit (merge):`, `commit (initial):`, `cherry-pick:`, `revert:` or
@@ -95,6 +95,12 @@ The sweep removes a worktree only when three separate signals agree.
 3. **Nothing discarded.** Removing the branch would strand no commit that a `git reset` dropped.
    Stranded means reachable from somewhere the branch has been and from no other ref. This is
    reachability, not patch comparison.
+4. **Nothing after the proof.** The branch tip reaches no work that the merge proof does not reach
+   and no other ref holds. A branch that gained commits after it merged is preserved.
+5. **The proof is this branch's own work.** At least one proof SHA was not reachable from the base
+   ref when the branch was created. Git supplies that position from the branch's oldest ref-log
+   entry, so no marker file is needed. This signal may only refuse. When the position cannot be
+   resolved it is skipped.
 
 No signal is trusted alone. A branch created at an already-merged tip is structurally a merged
 parent without ever being committed to, so signal 1 rejects it. Signals 1 and 2 can describe
@@ -117,9 +123,10 @@ whose ref log was disabled or expired.
 
 Two limits are deliberate.
 
-- Ref-log text cannot be authenticated. Somebody who sets `GIT_REFLOG_ACTION=commit` and
-  fast-forwards an unstarted branch onto an already-merged tip satisfies all three signals, and
-  that worktree is removed. It holds no commit, so nothing is lost. Backlog 096 tracks it.
+- Ref-log text cannot be authenticated, and signal 5 narrows that rather than ending it. Nothing in
+  git records which branch created a commit. Signal 5 refuses a forged fast-forward onto a tip the
+  base already held, which is the case backlog 096 reported. It cannot refuse one onto work that
+  reached the base after the branch was created. That branch holds no commit, so nothing is lost.
 - Superseded originals are not protected. A rebase or an amend leaves its old commits reachable
   only from this ref log, and removing the branch removes that ref log too. `git branch -d` on a
   merged branch does exactly the same, so the sweep is no more destructive than the command it

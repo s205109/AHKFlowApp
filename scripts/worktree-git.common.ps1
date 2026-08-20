@@ -461,10 +461,13 @@ function Test-StrandedWorkWasSuperseded {
 # subject.
 #
 # Known limits, both deliberate:
-#   - Text cannot be authenticated. A caller who sets GIT_REFLOG_ACTION=commit and fast-forwards an
-#     unstarted branch onto an already-merged tip satisfies signals 1 and 2, and an empty branch
-#     strands nothing, so signal 3 has nothing to refuse. The worktree goes. Nothing in git records
-#     which branch created a commit, so no stronger proof is available here. Backlog 096 tracks it.
+#   - Text cannot be authenticated, and signal 5 narrows that rather than ending it. Git records
+#     no link between a commit and the branch that created it. A caller who sets
+#     GIT_REFLOG_ACTION=commit and fast-forwards an unstarted branch onto an already-merged tip
+#     satisfies signals 1 and 2, and an empty branch gives signals 3 and 4 nothing to refuse.
+#     Signal 5 refuses that branch when the tip was already in the base before the branch existed,
+#     which is the shape backlog 096 reported. It cannot refuse a fast-forward onto work that
+#     entered the base afterwards. Such a branch still holds no commit, so nothing is lost.
 #   - Superseded originals are not protected. A rebase or an amend leaves its old commits reachable
 #     only from this ref log, and removing the branch removes that ref log with it. `git branch -d`
 #     does the same to a merged branch, so the sweep is no more destructive than the command it
