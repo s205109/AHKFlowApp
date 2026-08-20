@@ -24,11 +24,11 @@ removed, so that the folder list holds live work only.
 ## Detail
 
 The removal script runs `git merge-base --is-ancestor HEAD <base>`
-(`scripts/remove-worktree-local-dev.ps1:368`, "$result = Invoke-GitCapture @('-C', $WorktreeFull, 'merge-base', '--is-ancestor', 'HEAD', $BaseRef)").
+(`scripts/remove-worktree-local-dev.ps1:747`, "        if (-not (Test-WorktreeMergedIntoMain -WorktreeFull $worktreeFull -BranchName $branchName -BaseRef $baseRef -MainCheckout $mainCheckoutFromGit)) {").
 The sweep asks a different question: reachability plus a ref-log reading of the branch's own work
-(`scripts/worktree-git.common.ps1:581`, "function Test-BranchOwnWorkWasMerged {"), after a
+(`scripts/worktree-git.common.ps1:722`, "function Test-BranchOwnWorkWasMerged {"), after a
 first filter of `git branch --merged`
-(`scripts/cleanup-merged-worktrees.ps1:81`, "$mergedNames = & git -C $RepoRoot branch --format='%(refname:short)' --merged $MainRef 2>$null").
+(`scripts/cleanup-merged-worktrees.ps1:171`, "    $listLines = & git -C $RepoRoot worktree list --porcelain 2>$null").
 
 **Measured, not assumed.** A scratch repository reproduced a GitHub rebase merge: the branch tip
 was replayed onto main with a new committer, so main carries a different SHA for the same patch.
@@ -43,9 +43,9 @@ Both rules refused it.
 
 So the sweep does not list a rebase-merged worktree and hand it to a removal script that then
 refuses. Both keep it. The sweep's merge proof needs the branch SHA to be a non-first parent of a
-merge commit on main (`scripts/worktree-git.common.ps1:527`, "$parentLines = & git -C $RepoRoot rev-list --min-parents=2 --format='%P' $MainRef 2>$null"),
+merge commit on main (`scripts/worktree-git.common.ps1:533`, "    $parentLines = & git -C $RepoRoot rev-list --min-parents=2 --format='%P' $MainRef 2>$null"),
 and a rebase merge writes no merge commit. The sweep's existing rebase case is a **local** rebase
-followed by a merge-commit merge (`tests/WorktreeMergedCleanup.Tests.ps1:456`, "Assert-True (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-rebased') 'A branch rebased before it merged must report merged own work.'").
+followed by a merge-commit merge (`tests/WorktreeMergedCleanup.Tests.ps1:472`, "Assert-True (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-rebased') 'A branch rebased before it merged must report merged own work.'").
 
 The two rules also disagree in the destructive direction. A brand-new branch points at a commit
 the base already has, so ancestry is true and the removal hook deletes a worktree nobody has
@@ -77,8 +77,7 @@ Backlog 094 fixed which base both scripts read; it left the ancestry test alone 
 - [ ] A fixture proves every direction without calling GitHub, and one fixture parses real `gh`
       output captured from this repository
 - [ ] The Cleanup warning
-      (`docs/development/workflow.md:563`, "**Merge with a merge commit, not a rebase merge.** The removal script decides a worktree is")
-      no longer tells the reader to avoid rebase merges
+      is gone: Stage 10 now says any merge button is fine
 
 ## Out of scope
 
@@ -90,8 +89,8 @@ Backlog 094 fixed which base both scripts read; it left the ancestry test alone 
 ## Notes / dependencies
 
 - Found while implementing backlog 094, which needed the removal gate to read the same base
-- The Cleanup warning points at this item
-  (`docs/development/workflow.md:570`, "(backlog 095), so the two disagree; backlog 098 makes the removal script use the same rule.")
+- The Cleanup warning that pointed at this item is gone. Stage 10 now describes the shared rule
+  instead (`docs/development/workflow.md:563`, "**Any merge button is fine.** Both scripts decide with one rule: did this branch's own work reach")
 - The shared rule lands in `scripts/worktree-git.common.ps1`, which the removal script already
   dot-sources (`scripts/remove-worktree-local-dev.ps1:75`, "$gitHelperPath = Join-Path $PSScriptRoot 'worktree-git.common.ps1'").
   The watcher runs from a copy in `%TEMP%` where that helper is absent, so it needs a fallback
