@@ -63,21 +63,35 @@ function New-TempGitRepo {
 }
 
 # Adds a linked worktree on a new branch off main (merged + clean by default).
+# Adds a linked worktree on a new branch off main. By default the branch gets one commit and is
+# then merged into main with a merge commit -- the shape a merged pull request leaves behind.
+#
+# The default used to make NO commit at all, so 'merged + clean' ran on a branch that had never
+# committed. Ancestry accepted that, which is exactly the defect backlog 098 fixes, so the fixture
+# had to start committing before the gate could be trusted by these tests.
+#
+# -Unmerged commits without merging; -NoCommits leaves the branch where it was created, which is
+# what a brand-new worktree looks like; -Dirty leaves an uncommitted change.
 function Add-TestWorktree {
     param(
         [string] $RepoDir,
         [string] $BranchName,
         [switch] $Unmerged,
-        [switch] $Dirty
+        [switch] $Dirty,
+        [switch] $NoCommits
     )
 
     $wtPath = Join-Path (Split-Path -Parent $RepoDir) ('wt-' + $BranchName)
     Invoke-TestGit $RepoDir @('worktree', 'add', '-b', $BranchName, $wtPath, 'main') | Out-Null
 
-    if ($Unmerged) {
-        Set-Content -LiteralPath (Join-Path $wtPath 'extra.txt') -Value 'unmerged' -Encoding utf8
+    if (-not $NoCommits) {
+        Set-Content -LiteralPath (Join-Path $wtPath 'work.txt') -Value "work on $BranchName" -Encoding utf8
         Invoke-TestGit $wtPath @('add', '-A') | Out-Null
         Invoke-TestGit $wtPath @('commit', '-m', "work on $BranchName") | Out-Null
+        if (-not $Unmerged) {
+            # --no-ff is what a GitHub "Merge pull request" leaves behind.
+            Invoke-TestGit $RepoDir @('merge', '--no-ff', '-m', "Merge $BranchName", $BranchName) | Out-Null
+        }
     }
     if ($Dirty) {
         Set-Content -LiteralPath (Join-Path $wtPath 'dirty.txt') -Value 'uncommitted' -Encoding utf8
@@ -283,6 +297,51 @@ try {
     # also be removed on today's script (that assertion alone is green on old and new code).
     $log = Get-Content -Raw -LiteralPath (Get-RemovalLogPath $repo)
     Assert-True ($log -match '(?i)force override.*bypassing merge/clean gate') "Expected a force-override log line proving the gate was consulted and bypassed. Log: $log"
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: the hook gate takes the sweep's verdicts ------------------------------
+# Dot-sourcing runs no removal: the entry point is guarded on $MyInvocation.InvocationName.
+. $removeScript
+
+$repo = New-TempGitRepo
+try {
+    $mergedPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-gate-merged'
+    Assert-True (Test-WorktreeMergedIntoMain -WorktreeFull $mergedPath -BranchName 'feat-gate-merged' -BaseRef 'main' -MainCheckout $repo) `
+        'A merged branch must pass the hook gate.'
+
+    $freshPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-gate-fresh' -NoCommits
+    Assert-True (-not (Test-WorktreeMergedIntoMain -WorktreeFull $freshPath -BranchName 'feat-gate-fresh' -BaseRef 'main' -MainCheckout $repo)) `
+        'A branch with no commit of its own must NOT pass the hook gate, though ancestry calls it merged.'
+
+    $openPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-gate-open' -Unmerged
+    Assert-True (-not (Test-WorktreeMergedIntoMain -WorktreeFull $openPath -BranchName 'feat-gate-open' -BaseRef 'main' -MainCheckout $repo)) `
+        'An unmerged branch must not pass the hook gate.'
+
+    # Work made after the merge keeps the worktree, which is what signal 4 exists for.
+    $laterPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-gate-later'
+    Set-Content -LiteralPath (Join-Path $laterPath 'after.txt') -Value 'later' -Encoding utf8
+    Invoke-TestGit $laterPath @('add', '-A') | Out-Null
+    Invoke-TestGit $laterPath @('commit', '-m', 'work after the merge') | Out-Null
+    Assert-True (-not (Test-WorktreeMergedIntoMain -WorktreeFull $laterPath -BranchName 'feat-gate-later' -BaseRef 'main' -MainCheckout $repo)) `
+        'A branch that gained a commit after its merge must not pass the hook gate.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: unstarted worktree -> preserved (was removed before backlog 098) ------
+$repo = New-TempGitRepo
+try {
+    $wtPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-unstarted-hook' -NoCommits
+
+    $result = Invoke-RemoveHook -WorktreePath $wtPath
+    Assert-Equal 0 $result.ExitCode "Hook should exit 0. Stderr: $($result.Stderr)"
+
+    Assert-True (Test-Path -LiteralPath $wtPath) 'A worktree whose branch holds no commit of its own must be preserved.'
+
+    $log = Get-Content -Raw -LiteralPath (Get-RemovalLogPath $repo)
+    Assert-True ($log -match '(?i)not merged') "Expected the log to name the reason. Log: $log"
 } finally {
     Remove-TempTree $repo
 }

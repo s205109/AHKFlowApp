@@ -92,6 +92,31 @@ if (-not (Get-Command Resolve-MergedBaseRef -ErrorAction SilentlyContinue)) {
     }
 }
 
+# The shared merged decision, stubbed for the watcher copy in %TEMP% where scripts\ does not exist.
+# The watcher never reaches the merge gate -- the hook path decided before spawning it -- so this
+# only keeps the copy loadable, and answers "cannot tell" if that ever changes.
+if (-not (Get-Command Test-BranchOwnWorkWasMerged -ErrorAction SilentlyContinue)) {
+    function Test-BranchOwnWorkWasMerged {
+        param(
+            [string] $RepoRoot,
+            [string] $Branch,
+            [string] $MainRef = 'main',
+            [object[]] $MergedPullRequests,
+            [scriptblock] $MergedPullRequestLookup
+        )
+
+        return $false
+    }
+}
+
+if (-not (Get-Command Resolve-BaseBranchName -ErrorAction SilentlyContinue)) {
+    function Resolve-BaseBranchName {
+        param([string] $RepoRoot, [string] $LocalRef = 'main')
+
+        return $LocalRef
+    }
+}
+
 if (-not (Get-Command Format-MergedBaseRefMessage -ErrorAction SilentlyContinue)) {
     function Format-MergedBaseRefMessage {
         param(
@@ -352,22 +377,56 @@ function Write-TimeoutGuidance {
     Write-Log "Details were logged to: $script:LogPath"
 }
 
-# Removability probe: merged = HEAD is an ancestor of $BaseRef; clean = no working-tree
-# changes. Mirrors the conservatism of Get-EligibleMergedWorktrees in
-# cleanup-merged-worktrees.ps1 (branch-less worktrees skipped; clean tree required).
+# Removability probe: merged = the branch's own work reached the base, decided by the ONE rule the
+# sweep uses (Test-BranchOwnWorkWasMerged in worktree-git.common.ps1); clean = no working-tree
+# changes, checked separately by Test-WorktreeClean.
 #
-# $BaseRef is the fetched remote-tracking branch, not local main. Deciding against local main
-# preserved every worktree whose pull request had merged on GitHub, because nothing advances a
-# local ref there. Backlog 094.
+# Ancestry decided this before backlog 098, and it answered wrongly in both directions. It refused a
+# rebase merge, because GitHub replays the commits under new SHAs and writes no merge commit, so the
+# branch head is an ancestor of nothing. And it accepted a brand-new branch, because a branch that
+# has never committed points at a commit the base already holds -- so the hook removed worktrees
+# nobody had started. The sweep already refused both; now there is one rule instead of two.
+#
+# $BaseRef is the fetched remote-tracking branch, not local main. Backlog 094.
 function Test-WorktreeMergedIntoMain {
     param(
         [string] $WorktreeFull,
-        [string] $BaseRef = 'main'
+        [string] $BranchName,
+        [string] $BaseRef = 'main',
+        [string] $MainCheckout
     )
 
-    $result = Invoke-GitCapture @('-C', $WorktreeFull, 'merge-base', '--is-ancestor', 'HEAD', $BaseRef)
-    Write-GitResult "merge-base --is-ancestor HEAD $BaseRef" $result
-    return ($result.ExitCode -eq 0)
+    if (-not $BranchName) { return $false }
+
+    $repoRoot = if ($MainCheckout) { $MainCheckout } else { $WorktreeFull }
+
+    # The watcher runs from a copy in %TEMP% where the shared helper does not exist. It never reaches
+    # this gate, but if that ever changes, "cannot tell" must keep the worktree.
+    if (-not (Get-Command Test-BranchOwnWorkWasMerged -ErrorAction SilentlyContinue)) {
+        Write-Log 'merge gate: the shared decision is unavailable, so the worktree is preserved.'
+        return $false
+    }
+
+    # Never `Split-Path -Leaf $BaseRef`: a remote may contain a slash and a branch always may, so
+    # 'origin/main' cannot be halved safely. Resolve-BaseBranchName reads it from config instead.
+    $baseBranchName = Resolve-BaseBranchName -RepoRoot $repoRoot
+
+    # A branch that was never pushed has no pull request, so asking GitHub about it spends a network
+    # call to learn nothing. One ref lookup rules that out. The exit code is what gets read: git
+    # writes "fatal: no upstream configured" to stderr when there is none.
+    $null = & git -C $WorktreeFull rev-parse --symbolic-full-name "$BranchName@{upstream}" 2>$null
+    $hasUpstream = ($LASTEXITCODE -eq 0)
+
+    $lookup = $null
+    if ($hasUpstream) {
+        $lookup = { Get-MergedPullRequestRecords -RepoRoot $repoRoot -BaseBranch $baseBranchName -HeadBranch $BranchName }
+    } else {
+        Write-Log "merge gate: branch '$BranchName' has no upstream, so no pull request can exist; deciding on local history only."
+    }
+
+    $merged = Test-BranchOwnWorkWasMerged -RepoRoot $repoRoot -Branch $BranchName -MainRef $BaseRef -MergedPullRequestLookup $lookup
+    Write-Log "merge gate: branch '$BranchName' merged into '$BaseRef' = $merged"
+    return $merged
 }
 
 function Test-WorktreeClean {
@@ -685,7 +744,7 @@ function Invoke-HookMode {
             }
         }
 
-        if (-not (Test-WorktreeMergedIntoMain -WorktreeFull $worktreeFull -BaseRef $baseRef)) {
+        if (-not (Test-WorktreeMergedIntoMain -WorktreeFull $worktreeFull -BranchName $branchName -BaseRef $baseRef -MainCheckout $mainCheckoutFromGit)) {
             Write-UnmergedPreserveGuidance -WorktreeFull $worktreeFull -MainCheckout $mainCheckoutFromGit -BranchName $branchName -Reason "branch '$branchName' is not merged into $baseRef"
             return
         }
@@ -1060,14 +1119,19 @@ function Test-GeneratedTempArtifactPath {
 # ===========================================================================
 # Entry point
 # ===========================================================================
-try {
-    if ($Mode -eq 'Watcher') {
-        Invoke-WatcherMode
-    } else {
-        Invoke-HookMode
+# Dot-sourced by a test: $MyInvocation.InvocationName is '.', so the entry point stays put and the
+# suite can call one function without the script running a removal -- and without `exit 0` ending
+# the test host. Same guard the sweep uses.
+if ($MyInvocation.InvocationName -ne '.') {
+    try {
+        if ($Mode -eq 'Watcher') {
+            Invoke-WatcherMode
+        } else {
+            Invoke-HookMode
+        }
+    } catch {
+        try { Write-Log "UNHANDLED ERROR: $($_.Exception.Message)" } catch { }
     }
-} catch {
-    try { Write-Log "UNHANDLED ERROR: $($_.Exception.Message)" } catch { }
-}
 
-exit 0
+    exit 0
+}
