@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: CI
 - **Difficulty**: moderate
-- **Stage**: 8-review
+- **Stage**: 9-ship
 
 ## Summary
 
@@ -88,9 +88,14 @@ that cap to 45 minutes; no run has reached the new cap yet.
       earlier stall reading. PR #320 merged on 2026-08-19 under the title
       `fix: bound the PR-Agent model call, ai_timeout is not enforced
       (backlog 108)`.
-- [ ] A `/review` on an open pull request, after this change reaches `main`,
+- [x] A `/review` on an open pull request, after this change reaches `main`,
       either posts findings or posts the unfinished-run comment, with the run
-      URL recorded here.
+      URL recorded here. Run
+      `https://github.com/s205109/AHKFlowApp/actions/runs/32398853750/job/96521973552`
+      on PR #326 succeeded in 579 seconds, well under the 20-minute step cap,
+      and posted a findings comment
+      (`https://github.com/s205109/AHKFlowApp/pull/326#issuecomment-5359637726`),
+      not the unfinished-run comment.
 
 ## Out of scope
 
@@ -126,5 +131,5 @@ that cap to 45 minutes; no run has reached the new cap yet.
 - The live run can only happen after this change reaches `main`. GitHub loads
   the workflow file for an `issue_comment` event from the default branch, so a
   `/review` on this branch's own pull request would still run the old file.
-  The last acceptance box closes in a later housekeeping round, with the run
-  URL written here.
+- The live run happened on PR #326, an unrelated open pull request based on
+  `main`. See the last acceptance box for the run and comment URLs.
