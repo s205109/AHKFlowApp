@@ -509,6 +509,20 @@ not in what gets merged, so the merged `main` would carry the work without the r
 close it — and Cleanup then deletes the worktree holding the only copy. Push the closure
 commit before the ready flip. The merge adds nothing after that.
 
+**A check now confirms the closure commit happened.**
+`tests/BacklogStaleOpen.Tests.ps1` sweeps `backlog/` on every CI run. It fails an item that
+reads Stage `4-execute` or later, whose newest `- **Stage**:` change is already merged into
+the base branch, and whose stamp sits more than twelve first-parent commits behind that
+branch's tip. Work in flight stays silent, because its stamps have not merged yet. An item
+that ships over several pull requests stays silent too, because each pull request moves the
+stage and restarts the count. The check reads the item's own Stage line and the commit
+graph. It never reads a pull request title, which can name the wrong item: #312 is titled
+"backlog 096" and did item 097's work.
+
+The same check has a second, simpler arm: an item that reads `Stage: 9-ship` while it still
+sits in `backlog/` fails at once, with no merge test and no counting. Ship writes that stage
+and moves the file in one commit, so the two can only disagree when the move was forgotten.
+
 A round has no item, no progress file, and nothing extra to close at Ship. Its non-success
 edges restore no records. They rewrite the `Stage:` line in the round pull request body
 instead, and they push only if the recovery work itself makes a commit.
