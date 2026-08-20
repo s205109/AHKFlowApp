@@ -1507,4 +1507,23 @@ try {
     Remove-TempTree $repo
 }
 
+# --- Test: the sweep lists a rebase-merged worktree as eligible ------------------
+$repo = New-TempGitRepo
+try {
+    $wtPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-sweep-rebase' -RebaseMerge
+    $tip = (Invoke-TestGit $wtPath @('rev-parse', 'HEAD')) -join ''
+    $records = @([pscustomobject]@{ Number = 5; HeadRefName = 'feat-sweep-rebase'; HeadRefOid = $tip })
+
+    $eligible = @(Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main' -MergedPullRequests $records)
+    Assert-Equal 1 $eligible.Count 'A rebase-merged worktree must be eligible when GitHub proves the merge.'
+    Assert-Equal 'feat-sweep-rebase' $eligible[0].Branch 'The eligible worktree must be the rebase-merged one.'
+
+    # No @() around this call either: the function returns ', $eligible', so re-wrapping an empty
+    # result yields one element that is itself the empty array.
+    $none = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
+    Assert-Equal 0 $none.Count 'Without the GitHub records the same worktree must be preserved.'
+} finally {
+    Remove-TempTree $repo
+}
+
 Write-Host 'Worktree merged-cleanup tests passed.'

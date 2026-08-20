@@ -60,7 +60,8 @@ function Get-EligibleMergedWorktrees {
     param(
         [Parameter(Mandatory)][string] $RepoRoot,
         [string] $MainRef = 'main',
-        [string] $ExcludePath
+        [string] $ExcludePath,
+        [object[]] $MergedPullRequests
     )
 
     $repoRootFull = ([System.IO.Path]::GetFullPath($RepoRoot)).TrimEnd('\', '/')
@@ -76,19 +77,11 @@ function Get-EligibleMergedWorktrees {
         $mainBranchShortName = $mainSymbolicRef.Substring('refs/heads/'.Length)
     }
 
-    # Bare, marker-free short names. Plain `git branch --merged` prefixes '* '/'+ ',
-    # so --format is required or a naive compare skips every eligible worktree.
-    $mergedNames = & git -C $RepoRoot branch --format='%(refname:short)' --merged $MainRef 2>$null
-    if ($LASTEXITCODE -ne 0) {
-        Write-Stderr "cleanup: 'git branch --merged $MainRef' failed; skipping merged-cleanup detection."
-        return , @()
-    }
-    $mergedSet = @{}
-    foreach ($name in $mergedNames) {
-        $trimmed = ([string] $name).Trim()
-        if ($trimmed) { $mergedSet[$trimmed] = $true }
-    }
-
+    # No `git branch --merged` pre-filter any more. It is ancestry under another name, and it
+    # rejected both shapes this sweep now has to judge: a rebase-merged branch, whose replayed
+    # commits carry different SHAs, and a merged branch that later gained commits. The shared
+    # decision below answers both, so a pre-filter could only overrule it -- wrongly, in the
+    # direction that keeps finished worktrees forever.
     $listLines = & git -C $RepoRoot worktree list --porcelain 2>$null
     if ($LASTEXITCODE -ne 0) {
         Write-Stderr 'cleanup: git worktree list failed; skipping merged-cleanup detection.'
@@ -117,12 +110,13 @@ function Get-EligibleMergedWorktrees {
         # (guaranteed via new-worktree.ps1's Assert-MainCheckout, NOT guaranteed for a
         # standalone run from inside a linked worktree) so this check must not depend on it.
         if ([string]::Equals($wt.Branch, $mainBranchShortName, [System.StringComparison]::OrdinalIgnoreCase)) { continue }
-        if (-not $mergedSet.ContainsKey($wt.Branch)) { continue }
-        # A branch nobody has committed on is unstarted, not finished. It points at a commit main
-        # already had, so the merged check above always passes for it. Skipping here -- in
+        # The one merged decision, shared with remove-worktree-local-dev.ps1. It refuses a branch
+        # nobody has committed on, a branch whose work only a `git reset` still holds, and a branch
+        # that gained commits after it merged; it accepts a rebase merge when $MergedPullRequests
+        # carries a pull request whose head SHA this branch recorded. Deciding here -- in
         # eligibility, ahead of every setting -- means no flag, env override, or config value can
-        # remove a brand-new worktree, and report-only mode never lists one either.
-        if (-not (Test-BranchOwnWorkWasMerged -RepoRoot $RepoRoot -Branch $wt.Branch -MainRef $MainRef)) { continue }
+        # remove one of those, and report-only mode never lists one either.
+        if (-not (Test-BranchOwnWorkWasMerged -RepoRoot $RepoRoot -Branch $wt.Branch -MainRef $MainRef -MergedPullRequests $MergedPullRequests)) { continue }
 
         $status = & git -C $wtFull status --porcelain 2>$null
         if ($LASTEXITCODE -ne 0) {
@@ -360,10 +354,11 @@ function Invoke-MergedWorktreeCleanup {
         [switch] $IsHook,
         [string] $MainRef = 'main',
         [string] $ExcludePath,
-        [switch] $BaseIsStale
+        [switch] $BaseIsStale,
+        [object[]] $MergedPullRequests
     )
 
-    $eligible = Get-EligibleMergedWorktrees -RepoRoot $RepoRoot -MainRef $MainRef -ExcludePath $ExcludePath
+    $eligible = Get-EligibleMergedWorktrees -RepoRoot $RepoRoot -MainRef $MainRef -ExcludePath $ExcludePath -MergedPullRequests $MergedPullRequests
     foreach ($wt in $eligible) {
         Write-Stderr "cleanup: eligible merged worktree: $($wt.Path) [$($wt.Branch)]"
     }
@@ -450,5 +445,19 @@ if ($MyInvocation.InvocationName -ne '.') {
         $baseIsStale = ($base.Reason -eq 'remote-stale')
     }
 
-    Invoke-MergedWorktreeCleanup -RepoRoot $RepoRoot -Cleanup:$Cleanup -IsHook:$IsHook -MainRef $MainRef -ExcludePath $ExcludePath -BaseIsStale:$baseIsStale | Out-Null
+    # One GitHub lookup for the whole run, cached and handed to every decision. It answers the case
+    # local git cannot: a rebase merge writes no merge commit and rewrites the SHA, so nothing local
+    # ties the branch to the base. An answer that cannot be got costs a removal and never causes
+    # one, so an unusable gh is reported and the run continues on local history alone.
+    $mergedPullRequests = @()
+    $prLookup = Get-MergedPullRequestRecords -RepoRoot $RepoRoot `
+        -BaseBranch (Resolve-BaseBranchName -RepoRoot $RepoRoot) -TimeoutSeconds $FetchTimeoutSeconds
+    if ($prLookup.Available) {
+        $mergedPullRequests = $prLookup.Records
+        Write-Stderr "cleanup: GitHub reports $(@($mergedPullRequests).Count) merged pull request(s) for the base."
+    } else {
+        Write-Stderr "cleanup: GitHub lookup unavailable ($($prLookup.Reason)); deciding on local history only."
+    }
+
+    Invoke-MergedWorktreeCleanup -RepoRoot $RepoRoot -Cleanup:$Cleanup -IsHook:$IsHook -MainRef $MainRef -ExcludePath $ExcludePath -BaseIsStale:$baseIsStale -MergedPullRequests $mergedPullRequests | Out-Null
 }
