@@ -408,7 +408,7 @@ function Test-StrandedWorkWasSuperseded {
 # A just-created worktree branch points at a commit main already had, so the merged test passes
 # for it and the sweep would delete unstarted work.
 #
-# Removal is destructive, so this returns $true only when ALL THREE signals agree, and $false for
+# Removal is destructive, so this returns $true only when ALL FOUR signals agree, and $false for
 # anything it cannot establish -- an unclear answer keeps the worktree.
 #
 #   1. WORK. The branch ref log holds a subject for an operation that creates a commit. Git writes
@@ -418,8 +418,19 @@ function Test-StrandedWorkWasSuperseded {
 #   2. MERGE. A SHA the ref log records under one of those subjects, or under 'rebase (finish)', is
 #      a NON-FIRST parent of a merge commit reachable from $MainRef -- what a GitHub "Merge pull
 #      request" (`--no-ff`) leaves behind. Git history, not text.
+#
+#      A rebase merge leaves none of that: GitHub replays the commits under new SHAs and writes no
+#      merge commit, so nothing local ties the branch to the base. GitHub is then asked instead, and
+#      a merged pull request counts only when the branch's own ref log recorded its head SHA.
+#      $MergedPullRequests carries records a caller already fetched; $MergedPullRequestLookup fetches
+#      them on demand. Both are optional, and neither can turn a "keep" into anything but a "remove"
+#      -- an answer that cannot be got costs a removal and never causes one.
 #   3. NOTHING DISCARDED. Removing the branch would strand no commit that a `git reset` dropped.
 #      Get-StrandedCommits and Test-StrandedWorkWasSuperseded decide it, by reachability.
+#   4. NOTHING AFTER THE PROOF. The branch tip reaches no work that no merge proof reaches and no
+#      other ref holds. Get-WorkAfterMergeProof decides it. Ancestry used to refuse that case for
+#      free, because a branch that gained commits after its merge stopped being an ancestor of the
+#      base; the rule that replaced ancestry has to ask the question directly.
 #
 # No signal is sufficient alone, and each covers the others' blind spots:
 #   - Ref-log subjects are caller-controlled text. GIT_REFLOG_ACTION and `git update-ref -m` let
@@ -546,9 +557,85 @@ function Get-LocalMergeProofShas {
     return , @($proofs.Keys)
 }
 
+# Runs one child process, captures its stdout, and gives up after $TimeoutSeconds.
+#
+# Two rules meet here, and only one order satisfies both. A child that fills a pipe buffer blocks
+# on the write forever if nobody drains it. And a BLOCKING read of a child that never exits ignores
+# the timeout entirely, because that read only returns when the pipe closes -- which a hung process
+# never does. So the drains start first, asynchronously, and their results are read only after the
+# child has actually exited. Resolve-MergedBaseRef does the same for its fetch.
+#
+# A hung child is killed with its whole tree: a credential helper or an editor it started can be
+# the thing that is stuck.
+#
+# Never throws. Returns [pscustomobject]@{ Started; TimedOut; ExitCode; StdOut }:
+#   Started  - $false when the executable could not be launched at all.
+#   TimedOut - $true when the child outlived the timeout and was killed. ExitCode is then $null.
+function Invoke-CapturedProcess {
+    param(
+        [Parameter(Mandatory)][string] $FilePath,
+        [Parameter(Mandatory)][string[]] $Arguments,
+        [string] $WorkingDirectory,
+        [int] $TimeoutSeconds = 15
+    )
+
+    $ErrorActionPreference = 'Continue'
+
+    $failed = [pscustomobject]@{ Started = $false; TimedOut = $false; ExitCode = $null; StdOut = '' }
+
+    $process = $null
+    try {
+        $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+        $startInfo.FileName = $FilePath
+        $startInfo.Arguments = ConvertTo-ProcessArgumentLine $Arguments
+        if ($WorkingDirectory) { $startInfo.WorkingDirectory = $WorkingDirectory }
+        $startInfo.UseShellExecute = $false
+        $startInfo.CreateNoWindow = $true
+        $startInfo.RedirectStandardOutput = $true
+        $startInfo.RedirectStandardError = $true
+
+        $process = New-Object System.Diagnostics.Process
+        $process.StartInfo = $startInfo
+        $null = $process.Start()
+
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+
+        if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
+            $null = Stop-ProcessTree -ProcessId $process.Id
+            return [pscustomobject]@{ Started = $true; TimedOut = $true; ExitCode = $null; StdOut = '' }
+        }
+
+        $exitCode = $process.ExitCode
+
+        # The child exited, so both pipes are closed and these complete. The bound is belt and
+        # braces for a grandchild that inherited the handle and outlived its parent.
+        if (-not $stdoutTask.Wait($TimeoutSeconds * 1000)) {
+            return [pscustomobject]@{ Started = $true; TimedOut = $true; ExitCode = $null; StdOut = '' }
+        }
+        $null = $stderrTask.Wait(1000)
+
+        return [pscustomobject]@{
+            Started  = $true
+            TimedOut = $false
+            ExitCode = $exitCode
+            StdOut   = $stdoutTask.Result
+        }
+    } catch {
+        return $failed
+    } finally {
+        if ($process) { $process.Dispose() }
+    }
+}
+
 # The branch name `gh pr list --base` needs, read from config rather than by splitting a ref.
 # 'origin/main' cannot be halved on the slash: a remote may contain one and a branch always may.
 # This is the same source Resolve-MergedBaseRef reads.
+# $LocalRef may arrive in either shape, because a run decides against 'main' before its base is
+# resolved and against 'origin/main' afterwards. Both must produce the same answer, and callers must
+# pass the base they are really deciding against: defaulting to 'main' here asked GitHub about the
+# wrong branch whenever a run used -MainRef release, and a pull request merged into main could then
+# prove a merge that never reached release.
 function Resolve-BaseBranchName {
     param(
         [Parameter(Mandatory)][string] $RepoRoot,
@@ -557,12 +644,30 @@ function Resolve-BaseBranchName {
 
     $ErrorActionPreference = 'Continue'
 
-    $remoteBranchRef = "$(& git -C $RepoRoot config --get "branch.$LocalRef.merge" 2>$null)".Trim()
+    $candidate = $LocalRef
+
+    # A remote-tracking ref carries the remote name in front. Strip it using the remote names git
+    # actually has, never by splitting on the first slash: a remote may contain a slash, and a
+    # branch always may, so 'origin/feature/x' and a remote literally named 'origin/feature' are
+    # both possible. The longest matching remote wins.
+    $remotes = @(& git -C $RepoRoot remote 2>$null | ForEach-Object { ([string] $_).Trim() } | Where-Object { $_ })
+    if ($remotes.Count -gt 0) {
+        foreach ($remote in ($remotes | Sort-Object -Property Length -Descending)) {
+            if ($candidate.StartsWith($remote + '/')) {
+                $candidate = $candidate.Substring($remote.Length + 1)
+                break
+            }
+        }
+    }
+
+    # The local branch's configured upstream is the authority: the remote branch may be named
+    # differently from the local one.
+    $remoteBranchRef = "$(& git -C $RepoRoot config --get "branch.$candidate.merge" 2>$null)".Trim()
     if ($remoteBranchRef.StartsWith('refs/heads/')) {
         return $remoteBranchRef.Substring('refs/heads/'.Length)
     }
 
-    return $LocalRef
+    return $candidate
 }
 
 # Asks GitHub which pull requests merged into $BaseBranch, for the case local git cannot prove.
@@ -600,39 +705,20 @@ function Get-MergedPullRequestRecords {
         '--limit', "$Limit", '--json', 'number,headRefName,headRefOid')
     if ($HeadBranch) { $arguments += @('--head', $HeadBranch) }
 
-    try {
-        $startInfo = New-Object System.Diagnostics.ProcessStartInfo
-        $startInfo.FileName = $gh.Source
-        $startInfo.Arguments = ConvertTo-ProcessArgumentLine $arguments
-        $startInfo.WorkingDirectory = $RepoRoot
-        $startInfo.UseShellExecute = $false
-        $startInfo.RedirectStandardOutput = $true
-        $startInfo.RedirectStandardError = $true
-        $startInfo.CreateNoWindow = $true
+    $run = Invoke-CapturedProcess -FilePath $gh.Source -Arguments $arguments `
+        -WorkingDirectory $RepoRoot -TimeoutSeconds $TimeoutSeconds
 
-        $process = [System.Diagnostics.Process]::Start($startInfo)
+    if ($run.TimedOut) { return (& $unavailable 'timeout') }
+    if (-not $run.Started) { return (& $unavailable 'gh-failed') }
+    if ($run.ExitCode -ne 0) { return (& $unavailable 'gh-failed') }
 
-        # Read to the end BEFORE waiting. A child that fills the pipe buffer blocks on the write
-        # while the parent blocks on the wait, and neither ever moves.
-        $stdout = $process.StandardOutput.ReadToEnd()
-        $null = $process.StandardError.ReadToEnd()
-
-        if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
-            $null = Stop-ProcessTree -ProcessId $process.Id
-            return (& $unavailable 'timeout')
-        }
-        if ($process.ExitCode -ne 0) { return (& $unavailable 'gh-failed') }
-
-        $records = @(ConvertFrom-GhMergedPrJson -Json $stdout)
-        $trimmed = "$stdout".Trim()
-        if ($records.Count -eq 0 -and $trimmed -and $trimmed -ne '[]') {
-            return (& $unavailable 'unparsable')
-        }
-
-        return [pscustomobject]@{ Available = $true; Reason = 'ok'; Records = $records }
-    } catch {
-        return (& $unavailable 'gh-failed')
+    $records = @(ConvertFrom-GhMergedPrJson -Json $run.StdOut)
+    $trimmed = "$($run.StdOut)".Trim()
+    if ($records.Count -eq 0 -and $trimmed -and $trimmed -ne '[]') {
+        return (& $unavailable 'unparsable')
     }
+
+    return [pscustomobject]@{ Available = $true; Reason = 'ok'; Records = $records }
 }
 
 # Reads `gh pr list --json number,headRefName,headRefOid` output into records.

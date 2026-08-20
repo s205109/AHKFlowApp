@@ -409,7 +409,9 @@ function Test-WorktreeMergedIntoMain {
 
     # Never `Split-Path -Leaf $BaseRef`: a remote may contain a slash and a branch always may, so
     # 'origin/main' cannot be halved safely. Resolve-BaseBranchName reads it from config instead.
-    $baseBranchName = Resolve-BaseBranchName -RepoRoot $repoRoot
+    # $BaseRef is passed explicitly: this gate may decide against a base other than main, and the
+    # GitHub question has to be about that same base.
+    $baseBranchName = Resolve-BaseBranchName -RepoRoot $repoRoot -LocalRef $BaseRef
 
     # A branch that was never pushed has no pull request, so asking GitHub about it spends a network
     # call to learn nothing. One ref lookup rules that out. The exit code is what gets read: git

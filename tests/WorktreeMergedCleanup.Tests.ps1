@@ -1526,4 +1526,314 @@ try {
     Remove-TempTree $repo
 }
 
+# --- Test: a child that never exits is killed at the timeout --------------------
+# The lookup used to call ReadToEnd() on both streams BEFORE WaitForExit(). A blocking read only
+# returns when the pipe closes, which a hung child never does, so the timeout was never reached and
+# the whole sweep hung. Get-MergedPullRequestRecords now runs through Invoke-CapturedProcess, and
+# this drives that helper with a child whose behavior the test controls completely.
+$hostExe = [System.Diagnostics.Process]::GetCurrentProcess().Path
+$watch = [System.Diagnostics.Stopwatch]::StartNew()
+$hung = Invoke-CapturedProcess -FilePath $hostExe `
+    -Arguments @('-NoProfile', '-Command', 'Start-Sleep -Seconds 120') -TimeoutSeconds 3
+$watch.Stop()
+
+Assert-True $hung.Started 'The child must have started.'
+Assert-True $hung.TimedOut 'A child that outlives the timeout must report TimedOut.'
+Assert-True ($watch.Elapsed.TotalSeconds -lt 30) `
+    "The helper must give up near its timeout, not wait for the child. Took $([int]$watch.Elapsed.TotalSeconds)s."
+
+# The same helper must still return real output from a child that exits normally.
+$quick = Invoke-CapturedProcess -FilePath $hostExe `
+    -Arguments @('-NoProfile', '-Command', 'Write-Output ping-from-child') -TimeoutSeconds 30
+Assert-True $quick.Started 'A normal child must start.'
+Assert-True (-not $quick.TimedOut) 'A normal child must not report a timeout.'
+Assert-Equal 0 $quick.ExitCode 'A normal child must report its exit code.'
+Assert-True ($quick.StdOut -match 'ping-from-child') "Captured stdout must hold the child's output. Got: $($quick.StdOut)"
+
+# Output larger than one pipe buffer must not deadlock, which is what the async drain buys.
+$bulk = Invoke-CapturedProcess -FilePath $hostExe `
+    -Arguments @('-NoProfile', '-Command', "'x' * 200000") -TimeoutSeconds 60
+Assert-True (-not $bulk.TimedOut) 'A child writing more than one pipe buffer must not time out.'
+Assert-True ($bulk.StdOut.Length -ge 200000) "All of the child's output must be captured. Got $($bulk.StdOut.Length) chars."
+
+# An executable that cannot be launched is 'not started', never a silent success.
+$missing = Invoke-CapturedProcess -FilePath (Join-Path $env:TEMP 'no-such-binary-98765.exe') `
+    -Arguments @('--version') -TimeoutSeconds 5
+Assert-True (-not $missing.Started) 'A missing executable must report Started = false.'
+
+# --- Test: an absent gh reads as "cannot tell", never as "not merged" ------------
+$repo = New-TempGitRepo
+try {
+    # A PATH holding git but not gh. The lookup must report gh-missing and stay unavailable, so the
+    # decision falls back to local history instead of treating silence as a verdict.
+    $savedPath = $env:PATH
+    $env:PATH = (Split-Path -Parent (Get-Command git).Source)
+    try {
+        $result = Get-MergedPullRequestRecords -RepoRoot $repo -BaseBranch 'main' -TimeoutSeconds 5
+        Assert-True (-not $result.Available) 'A missing gh must not be available.'
+        Assert-Equal 'gh-missing' $result.Reason 'A missing gh must say so.'
+        Assert-Equal 0 @($result.Records).Count 'A missing gh must yield no records.'
+    } finally {
+        $env:PATH = $savedPath
+    }
+
+    Assert-Equal 'main' (Resolve-BaseBranchName -RepoRoot $repo) 'With no upstream the local ref name is the base branch name.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: a rebase-merged branch is merged when GitHub says so ------------------
+$repo = New-TempGitRepo
+try {
+    $wtPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-rebase-merged' -RebaseMerge
+    $tip = (Invoke-TestGit $wtPath @('rev-parse', 'HEAD')) -join ''
+
+    # Sanity: the base carries the patch under a different SHA, and no merge commit exists, so the
+    # three local signals cannot prove this merge however hard they look.
+    Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-rebase-merged')) `
+        'Local git alone must not prove a rebase merge.'
+
+    $ghSays = { [pscustomobject]@{ Available = $true; Reason = 'ok'; Records = @(
+        [pscustomobject]@{ Number = 1; HeadRefName = 'feat-rebase-merged'; HeadRefOid = $tip }) } }
+    Assert-True (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-rebase-merged' -MergedPullRequestLookup $ghSays) `
+        'A merged pull request whose head SHA the ref log holds must prove the merge.'
+
+    $ghCannotTell = { [pscustomobject]@{ Available = $false; Reason = 'gh-missing'; Records = @() } }
+    Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-rebase-merged' -MergedPullRequestLookup $ghCannotTell)) `
+        'An unavailable lookup must keep the worktree.'
+
+    # A recycled branch name: same name, a head SHA this branch never pointed at.
+    $ghWrongSha = { [pscustomobject]@{ Available = $true; Reason = 'ok'; Records = @(
+        [pscustomobject]@{ Number = 2; HeadRefName = 'feat-rebase-merged'; HeadRefOid = ('0' * 40) }) } }
+    Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-rebase-merged' -MergedPullRequestLookup $ghWrongSha)) `
+        'A pull request the ref log never recorded must not prove the merge.'
+
+    # A merge-commit merge must never spend a network call: this lookup throws if it is consulted.
+    Add-TestWorktree -RepoDir $repo -BranchName 'feat-local-proof' | Out-Null
+    $ghMustNotRun = { throw 'The lookup must not run when local git already proved the merge.' }
+    Assert-True (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-local-proof' -MergedPullRequestLookup $ghMustNotRun) `
+        'A merge-commit merge must be proved locally, without asking GitHub.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: an unstarted branch is never merged, whatever GitHub says -------------
+$repo = New-TempGitRepo
+try {
+    $wtPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-unstarted-pr' -NoCommits
+    $tip = (Invoke-TestGit $wtPath @('rev-parse', 'HEAD')) -join ''
+    $ghSays = { [pscustomobject]@{ Available = $true; Reason = 'ok'; Records = @(
+        [pscustomobject]@{ Number = 3; HeadRefName = 'feat-unstarted-pr'; HeadRefOid = $tip }) } }
+    Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-unstarted-pr' -MergedPullRequestLookup $ghSays)) `
+        'Signal 1 must refuse a branch that never committed, even with a merged pull request.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: a rebase merge followed by new work keeps the worktree ----------------
+$repo = New-TempGitRepo
+try {
+    $wtPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-rebase-then-work' -RebaseMerge
+    $mergedTip = (Invoke-TestGit $wtPath @('rev-parse', 'HEAD')) -join ''
+    Set-Content -LiteralPath (Join-Path $wtPath 'after.txt') -Value 'later' -Encoding utf8
+    Invoke-TestGit $wtPath @('add', '-A') | Out-Null
+    Invoke-TestGit $wtPath @('commit', '-m', 'work after the rebase merge') | Out-Null
+
+    $ghSays = { [pscustomobject]@{ Available = $true; Reason = 'ok'; Records = @(
+        [pscustomobject]@{ Number = 4; HeadRefName = 'feat-rebase-then-work'; HeadRefOid = $mergedTip }) } }
+    Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-rebase-then-work' -MergedPullRequestLookup $ghSays)) `
+        'Signal 4 must refuse work made after a rebase merge.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: the sweep lists a rebase-merged worktree as eligible ------------------
+$repo = New-TempGitRepo
+try {
+    $wtPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-sweep-rebase' -RebaseMerge
+    $tip = (Invoke-TestGit $wtPath @('rev-parse', 'HEAD')) -join ''
+    $records = @([pscustomobject]@{ Number = 5; HeadRefName = 'feat-sweep-rebase'; HeadRefOid = $tip })
+
+    $eligible = @(Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main' -MergedPullRequests $records)
+    Assert-Equal 1 $eligible.Count 'A rebase-merged worktree must be eligible when GitHub proves the merge.'
+    Assert-Equal 'feat-sweep-rebase' $eligible[0].Branch 'The eligible worktree must be the rebase-merged one.'
+
+    # No @() around this call either: the function returns ', $eligible', so re-wrapping an empty
+    # result yields one element that is itself the empty array.
+    $none = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
+    Assert-Equal 0 $none.Count 'Without the GitHub records the same worktree must be preserved.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: an absent gh reads as "cannot tell", never as "not merged" ------------
+$repo = New-TempGitRepo
+try {
+    # A PATH holding git but not gh. The lookup must report gh-missing and stay unavailable, so the
+    # decision falls back to local history instead of treating silence as a verdict.
+    $savedPath = $env:PATH
+    $env:PATH = (Split-Path -Parent (Get-Command git).Source)
+    try {
+        $result = Get-MergedPullRequestRecords -RepoRoot $repo -BaseBranch 'main' -TimeoutSeconds 5
+        Assert-True (-not $result.Available) 'A missing gh must not be available.'
+        Assert-Equal 'gh-missing' $result.Reason 'A missing gh must say so.'
+        Assert-Equal 0 @($result.Records).Count 'A missing gh must yield no records.'
+    } finally {
+        $env:PATH = $savedPath
+    }
+
+    Assert-Equal 'main' (Resolve-BaseBranchName -RepoRoot $repo) 'With no upstream the local ref name is the base branch name.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: a rebase-merged branch is merged when GitHub says so ------------------
+$repo = New-TempGitRepo
+try {
+    $wtPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-rebase-merged' -RebaseMerge
+    $tip = (Invoke-TestGit $wtPath @('rev-parse', 'HEAD')) -join ''
+
+    # Sanity: the base carries the patch under a different SHA, and no merge commit exists, so the
+    # three local signals cannot prove this merge however hard they look.
+    Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-rebase-merged')) `
+        'Local git alone must not prove a rebase merge.'
+
+    $ghSays = { [pscustomobject]@{ Available = $true; Reason = 'ok'; Records = @(
+        [pscustomobject]@{ Number = 1; HeadRefName = 'feat-rebase-merged'; HeadRefOid = $tip }) } }
+    Assert-True (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-rebase-merged' -MergedPullRequestLookup $ghSays) `
+        'A merged pull request whose head SHA the ref log holds must prove the merge.'
+
+    $ghCannotTell = { [pscustomobject]@{ Available = $false; Reason = 'gh-missing'; Records = @() } }
+    Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-rebase-merged' -MergedPullRequestLookup $ghCannotTell)) `
+        'An unavailable lookup must keep the worktree.'
+
+    # A recycled branch name: same name, a head SHA this branch never pointed at.
+    $ghWrongSha = { [pscustomobject]@{ Available = $true; Reason = 'ok'; Records = @(
+        [pscustomobject]@{ Number = 2; HeadRefName = 'feat-rebase-merged'; HeadRefOid = ('0' * 40) }) } }
+    Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-rebase-merged' -MergedPullRequestLookup $ghWrongSha)) `
+        'A pull request the ref log never recorded must not prove the merge.'
+
+    # A merge-commit merge must never spend a network call: this lookup throws if it is consulted.
+    Add-TestWorktree -RepoDir $repo -BranchName 'feat-local-proof' | Out-Null
+    $ghMustNotRun = { throw 'The lookup must not run when local git already proved the merge.' }
+    Assert-True (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-local-proof' -MergedPullRequestLookup $ghMustNotRun) `
+        'A merge-commit merge must be proved locally, without asking GitHub.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: an unstarted branch is never merged, whatever GitHub says -------------
+$repo = New-TempGitRepo
+try {
+    $wtPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-unstarted-pr' -NoCommits
+    $tip = (Invoke-TestGit $wtPath @('rev-parse', 'HEAD')) -join ''
+    $ghSays = { [pscustomobject]@{ Available = $true; Reason = 'ok'; Records = @(
+        [pscustomobject]@{ Number = 3; HeadRefName = 'feat-unstarted-pr'; HeadRefOid = $tip }) } }
+    Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-unstarted-pr' -MergedPullRequestLookup $ghSays)) `
+        'Signal 1 must refuse a branch that never committed, even with a merged pull request.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: a rebase merge followed by new work keeps the worktree ----------------
+$repo = New-TempGitRepo
+try {
+    $wtPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-rebase-then-work' -RebaseMerge
+    $mergedTip = (Invoke-TestGit $wtPath @('rev-parse', 'HEAD')) -join ''
+    Set-Content -LiteralPath (Join-Path $wtPath 'after.txt') -Value 'later' -Encoding utf8
+    Invoke-TestGit $wtPath @('add', '-A') | Out-Null
+    Invoke-TestGit $wtPath @('commit', '-m', 'work after the rebase merge') | Out-Null
+
+    $ghSays = { [pscustomobject]@{ Available = $true; Reason = 'ok'; Records = @(
+        [pscustomobject]@{ Number = 4; HeadRefName = 'feat-rebase-then-work'; HeadRefOid = $mergedTip }) } }
+    Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-rebase-then-work' -MergedPullRequestLookup $ghSays)) `
+        'Signal 4 must refuse work made after a rebase merge.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: the sweep lists a rebase-merged worktree as eligible ------------------
+$repo = New-TempGitRepo
+try {
+    $wtPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-sweep-rebase' -RebaseMerge
+    $tip = (Invoke-TestGit $wtPath @('rev-parse', 'HEAD')) -join ''
+    $records = @([pscustomobject]@{ Number = 5; HeadRefName = 'feat-sweep-rebase'; HeadRefOid = $tip })
+
+    $eligible = @(Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main' -MergedPullRequests $records)
+    Assert-Equal 1 $eligible.Count 'A rebase-merged worktree must be eligible when GitHub proves the merge.'
+    Assert-Equal 'feat-sweep-rebase' $eligible[0].Branch 'The eligible worktree must be the rebase-merged one.'
+
+    # No @() around this call either: the function returns ', $eligible', so re-wrapping an empty
+    # result yields one element that is itself the empty array.
+    $none = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
+    Assert-Equal 0 $none.Count 'Without the GitHub records the same worktree must be preserved.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: the GitHub query base follows the base actually being decided against ---
+# Resolve-BaseBranchName used to default to 'main' whatever base the caller chose, so a run with
+# -MainRef release asked GitHub for pull requests merged into main. One of those could then satisfy
+# the SHA lookup and allow a removal, though the branch never reached release.
+$repo = New-TempGitRepo
+try {
+    Invoke-TestGit $repo @('branch', 'release') | Out-Null
+    Invoke-TestGit $repo @('config', 'branch.release.merge', 'refs/heads/release-line') | Out-Null
+    Invoke-TestGit $repo @('config', 'branch.release.remote', 'origin') | Out-Null
+    Invoke-TestGit $repo @('config', 'branch.main.merge', 'refs/heads/main') | Out-Null
+    Invoke-TestGit $repo @('config', 'branch.main.remote', 'origin') | Out-Null
+    Invoke-TestGit $repo @('remote', 'add', 'origin', 'https://example.invalid/repo.git') | Out-Null
+
+    Assert-Equal 'main' (Resolve-BaseBranchName -RepoRoot $repo -LocalRef 'main') 'main must map to its own remote branch.'
+    Assert-Equal 'release-line' (Resolve-BaseBranchName -RepoRoot $repo -LocalRef 'release') `
+        'A non-main local base must map to ITS remote branch, not to main.'
+
+    # The base a run decides against is often the remote-tracking ref, so that form must resolve too.
+    Assert-Equal 'release-line' (Resolve-BaseBranchName -RepoRoot $repo -LocalRef 'origin/release') `
+        'A remote-tracking base must resolve through its remote name, not by splitting on the slash.'
+
+    # A base with no configuration at all still answers with something usable.
+    Assert-Equal 'topic' (Resolve-BaseBranchName -RepoRoot $repo -LocalRef 'topic') `
+        'An unconfigured base must fall back to its own name.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: a rebase-merged leftover branch is reported ---------------------------
+# Get-LeftoverMergedBranches seeded its candidates from `git branch --merged`, which never lists a
+# rebase-merged branch, and it called the decision without the run's GitHub records. So the one
+# leftover that a rebase merge produces was invisible.
+$repo = New-TempGitRepo
+try {
+    $wtPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-leftover-rebase' -RebaseMerge
+    $tip = (Invoke-TestGit $wtPath @('rev-parse', 'HEAD')) -join ''
+    # The state a half-finished removal leaves: the worktree is pruned, the branch survives.
+    Invoke-TestGit $repo @('worktree', 'remove', '--force', $wtPath) | Out-Null
+
+    $records = @([pscustomobject]@{ Number = 7; HeadRefName = 'feat-leftover-rebase'; HeadRefOid = $tip })
+
+    $leftover = Get-LeftoverMergedBranches -RepoRoot $repo -MainRef 'main' -MergedPullRequests $records
+    Assert-Equal 1 $leftover.Count 'A rebase-merged branch whose worktree is gone must be reported.'
+    Assert-Equal 'feat-leftover-rebase' $leftover[0] 'The reported branch must be the rebase-merged one.'
+
+    $withoutRecords = Get-LeftoverMergedBranches -RepoRoot $repo -MainRef 'main'
+    Assert-Equal 0 $withoutRecords.Count 'Without the GitHub records the same branch must stay unreported.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: an unstarted leftover branch is still never reported -------------------
+$repo = New-TempGitRepo
+try {
+    $wtPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-leftover-fresh' -NoCommits
+    $tip = (Invoke-TestGit $wtPath @('rev-parse', 'HEAD')) -join ''
+    Invoke-TestGit $repo @('worktree', 'remove', '--force', $wtPath) | Out-Null
+
+    $records = @([pscustomobject]@{ Number = 8; HeadRefName = 'feat-leftover-fresh'; HeadRefOid = $tip })
+    $leftover = Get-LeftoverMergedBranches -RepoRoot $repo -MainRef 'main' -MergedPullRequests $records
+    Assert-Equal 0 $leftover.Count 'A branch nobody committed on must never be reported as leftover.'
+} finally {
+    Remove-TempTree $repo
+}
+
 Write-Host 'Worktree merged-cleanup tests passed.'

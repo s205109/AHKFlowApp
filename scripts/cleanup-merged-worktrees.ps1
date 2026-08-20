@@ -145,13 +145,18 @@ function Get-EligibleMergedWorktrees {
 # The rule is the sweep's own, minus the worktree parts:
 #   - not $MainRef itself, and not checked out in any worktree -- a branch that still has one is
 #     the other leftover, and Get-EligibleMergedWorktrees already reports it;
-#   - `git branch --merged $MainRef` lists it;
 #   - Test-BranchOwnWorkWasMerged agrees, which is what keeps a branch nobody committed on out of
-#     the report. Such a branch points at the base's tip, so --merged lists it forever.
+#     the report, and what accepts a rebase merge when $MergedPullRequests proves one.
+#
+# Every local branch is a candidate. `git branch --merged $MainRef` used to seed this list, and it
+# never lists a rebase-merged branch, because those commits reached the base under different SHAs --
+# so the single leftover a rebase merge produces was invisible here. The shared decision is stricter
+# than that filter in every direction that matters, so nothing is lost by dropping it.
 function Get-LeftoverMergedBranches {
     param(
         [Parameter(Mandatory)][string] $RepoRoot,
-        [string] $MainRef = 'main'
+        [string] $MainRef = 'main',
+        [object[]] $MergedPullRequests
     )
 
     # Same resolution as Get-EligibleMergedWorktrees: the caller may pass 'main',
@@ -162,9 +167,9 @@ function Get-LeftoverMergedBranches {
         $mainBranchShortName = $mainSymbolicRef.Substring('refs/heads/'.Length)
     }
 
-    $mergedNames = & git -C $RepoRoot branch --format='%(refname:short)' --merged $MainRef 2>$null
+    $branchNames = & git -C $RepoRoot branch --format='%(refname:short)' 2>$null
     if ($LASTEXITCODE -ne 0) {
-        Write-Stderr "cleanup: 'git branch --merged $MainRef' failed; skipping leftover-branch detection."
+        Write-Stderr 'cleanup: git branch listing failed; skipping leftover-branch detection.'
         return , @()
     }
 
@@ -182,12 +187,12 @@ function Get-LeftoverMergedBranches {
     }
 
     $leftover = @()
-    foreach ($name in $mergedNames) {
+    foreach ($name in $branchNames) {
         $branch = ([string] $name).Trim()
         if (-not $branch) { continue }
         if ([string]::Equals($branch, $mainBranchShortName, [System.StringComparison]::OrdinalIgnoreCase)) { continue }
         if ($checkedOut.ContainsKey($branch)) { continue }
-        if (-not (Test-BranchOwnWorkWasMerged -RepoRoot $RepoRoot -Branch $branch -MainRef $MainRef)) { continue }
+        if (-not (Test-BranchOwnWorkWasMerged -RepoRoot $RepoRoot -Branch $branch -MainRef $MainRef -MergedPullRequests $MergedPullRequests)) { continue }
 
         $leftover += $branch
     }
@@ -366,7 +371,7 @@ function Invoke-MergedWorktreeCleanup {
     # The other leftover, reported by the same run. It comes before the early return below, because
     # a branch with no worktree is exactly the case where no worktree is eligible. It is reported
     # whatever the cleanup setting says, because a report removes nothing.
-    foreach ($branch in (Get-LeftoverMergedBranches -RepoRoot $RepoRoot -MainRef $MainRef)) {
+    foreach ($branch in (Get-LeftoverMergedBranches -RepoRoot $RepoRoot -MainRef $MainRef -MergedPullRequests $MergedPullRequests)) {
         Write-Stderr "cleanup: leftover branch, worktree already gone: $branch (delete it with: git -C '$RepoRoot' branch -d -- $branch)"
     }
 
@@ -445,13 +450,15 @@ if ($MyInvocation.InvocationName -ne '.') {
         $baseIsStale = ($base.Reason -eq 'remote-stale')
     }
 
-    # One GitHub lookup for the whole run, cached and handed to every decision. It answers the case
+    # One GitHub lookup for the whole run, cached and handed to every decision. It asks about
+    # $MainRef, never about a default: a run deciding against another base must not accept a pull
+    # request that merged somewhere else. It answers the case
     # local git cannot: a rebase merge writes no merge commit and rewrites the SHA, so nothing local
     # ties the branch to the base. An answer that cannot be got costs a removal and never causes
     # one, so an unusable gh is reported and the run continues on local history alone.
     $mergedPullRequests = @()
     $prLookup = Get-MergedPullRequestRecords -RepoRoot $RepoRoot `
-        -BaseBranch (Resolve-BaseBranchName -RepoRoot $RepoRoot) -TimeoutSeconds $FetchTimeoutSeconds
+        -BaseBranch (Resolve-BaseBranchName -RepoRoot $RepoRoot -LocalRef $MainRef) -TimeoutSeconds $FetchTimeoutSeconds
     if ($prLookup.Available) {
         $mergedPullRequests = $prLookup.Records
         Write-Stderr "cleanup: GitHub reports $(@($mergedPullRequests).Count) merged pull request(s) for the base."

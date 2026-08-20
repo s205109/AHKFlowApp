@@ -26,9 +26,9 @@ The merged-worktree sweep enumerates `git worktree list`
 is already pruned appears nowhere in that list, so the sweep cannot see it.
 
 The watcher prunes the worktree
-(`scripts/remove-worktree-local-dev.ps1:975`, "    Write-GitResult 'worktree prune -v' (Invoke-GitCapture @('-C', $mainCheckout, 'worktree', 'prune', '-v'))") first and deletes the
-branch (`scripts/remove-worktree-local-dev.ps1:981`, "        $branchDelete = Invoke-GitCapture @('-C', $mainCheckout, 'branch', '-d', '--', $branchName)") second,
-and logs (`scripts/remove-worktree-local-dev.ps1:1056`, "        Write-Log 'Watcher done (worktree removed; branch preserved).'") when
+(`scripts/remove-worktree-local-dev.ps1:977`, "    Write-GitResult 'worktree prune -v' (Invoke-GitCapture @('-C', $mainCheckout, 'worktree', 'prune', '-v'))") first and deletes the
+branch (`scripts/remove-worktree-local-dev.ps1:983`, "        $branchDelete = Invoke-GitCapture @('-C', $mainCheckout, 'branch', '-d', '--', $branchName)") second,
+and logs (`scripts/remove-worktree-local-dev.ps1:1058`, "        Write-Log 'Watcher done (worktree removed; branch preserved).'") when
 it stops in between. That is the exact partial failure the deferred cleanup route exists for, and
 the sweep is blind to it.
 
