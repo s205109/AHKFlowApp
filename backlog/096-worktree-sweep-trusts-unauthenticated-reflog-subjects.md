@@ -64,4 +64,4 @@ rebase or an amend, are not protected by anything.
 - Found in the second review round on backlog 095, pull request #310
 - Backlog 094 and 095 both touch `Test-BranchOwnWorkWasMerged`. Read them first
 - Spec: none — investigation first, no design yet
-- Plan: none — investigation item, plan follows the answer
+- Plan: `docs/superpowers/plans/2026-08-20-worktree-sweep-reflog-forgery-plan-096.md`
