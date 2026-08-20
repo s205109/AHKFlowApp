@@ -10,3 +10,4 @@ Execution: inline, checkpoints after Tasks 3, 5, 7.
 - [x] Task 5 — GitHub signal wired in, bound by SHA; rebase-merge fixture added.
 - [x] Task 6 — sweep pre-filter deleted; one cached GitHub lookup per run.
 - [x] Task 7 — hook gate calls the shared decision; hook fixture now commits and merges.
+- [x] Task 8 — Stage 10 warning replaced; every citation re-pointed; parity check green.
