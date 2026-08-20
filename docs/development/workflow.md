@@ -446,7 +446,7 @@ holds a folder, so a backlog item cannot name a personal plan.
 - **Entry** — behaviour, vocabulary, or a rule moved — or the check that none did
 - **Who** — Sonnet, default effort
 - **Technique** — docs edit plus `CONTEXT.md` and skill updates
-- **Action** — update docs, README, and skills; or state the verdict
+- **Action** — tick the item's acceptance boxes against what the branch actually does, and leave any box that is not true unticked with the reason written into the item; then update docs, README, and skills, or state the verdict. The tick happens here, and not at Ship, so that Review reads the claims next to the diff
 - **Exit** — Docs updated or verdict 'nothing to document' stated
 - **Next** — `8-review`
 - **Context** — safe to clear
@@ -457,7 +457,7 @@ holds a folder, so a backlog item cannot name a personal plan.
 | success | exit condition met | 8-review |
 | failure | docs found contradicting the change; fix | stay |
 | blocked | external doc dependency | blocked/ |
-| not applicable | entered, nothing moved — 'nothing to document'; the verdict is mandatory, silence is not | 8-review |
+| not applicable | entered, nothing moved — 'nothing to document'; the verdict is mandatory, silence is not. The acceptance boxes are still ticked here, because that half of the Action never depends on the documentation verdict | 8-review |
 | resume | diff docs against the change, continue | stay |
 
 <a id="stage-8-review"></a>
@@ -488,7 +488,7 @@ holds a folder, so a backlog item cannot name a personal plan.
 - **Entry** — review closed
 - **Who** — Sonnet, default effort
 - **Technique** — `gh pr ready`, then merge
-- **Action** — close the records, **push**, then flip the pull request to ready, wait for CI, merge. Tracked work: tick the item's boxes, `git mv` it to `backlog/done/`, delete `PLAN-PROGRESS.md`, set `Stage: 9-ship` — one commit, pushed before the ready flip. A round: nothing extra to close, so nothing to push
+- **Action** — close the records, **push**, then flip the pull request to ready, wait for CI, merge. Tracked work: `git mv` the item to `backlog/done/`, delete `PLAN-PROGRESS.md`, set `Stage: 9-ship` — one commit, pushed before the ready flip. The boxes were ticked at Document; Ship only confirms they are, and fixes any that Review changed. A round: nothing extra to close, so nothing to push
 - **Exit** — Records closed, PR ready, CI green, merged
 - **Next** — `10-cleanup`
 - **Context** — keep until the pull request description is final; safe after merge
