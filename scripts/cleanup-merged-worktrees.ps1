@@ -337,6 +337,70 @@ function Get-EligibleMergedWorktrees {
     return , $eligible
 }
 
+# Returns the branches a half-finished removal left behind: merged into $MainRef, with their own
+# work in it, and with no worktree registered for them any more.
+#
+# Get-EligibleMergedWorktrees cannot see these. It walks `git worktree list`, and the watcher
+# prunes the worktree BEFORE it deletes the branch, so this is the state where the prune succeeded
+# and `git branch -d` refused -- which is what happens whenever the merge is still only on the
+# remote.
+#
+# Report only. Nothing here deletes a branch: removal is a separate decision, and the caller's line
+# names `git branch -d`, which refuses a branch the base does not really contain.
+#
+# The rule is the sweep's own, minus the worktree parts:
+#   - not $MainRef itself, and not checked out in any worktree -- a branch that still has one is
+#     the other leftover, and Get-EligibleMergedWorktrees already reports it;
+#   - `git branch --merged $MainRef` lists it;
+#   - Test-BranchOwnWorkWasMerged agrees, which is what keeps a branch nobody committed on out of
+#     the report. Such a branch points at the base's tip, so --merged lists it forever.
+function Get-LeftoverMergedBranches {
+    param(
+        [Parameter(Mandatory)][string] $RepoRoot,
+        [string] $MainRef = 'main'
+    )
+
+    # Same resolution as Get-EligibleMergedWorktrees: the caller may pass 'main',
+    # 'refs/heads/main' or 'origin/main', and only a local branch has a short name to exclude by.
+    $mainBranchShortName = $MainRef
+    $mainSymbolicRef = & git -C $RepoRoot rev-parse --symbolic-full-name $MainRef 2>$null
+    if ($LASTEXITCODE -eq 0 -and $mainSymbolicRef -like 'refs/heads/*') {
+        $mainBranchShortName = $mainSymbolicRef.Substring('refs/heads/'.Length)
+    }
+
+    $mergedNames = & git -C $RepoRoot branch --format='%(refname:short)' --merged $MainRef 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Stderr "cleanup: 'git branch --merged $MainRef' failed; skipping leftover-branch detection."
+        return , @()
+    }
+
+    $listLines = & git -C $RepoRoot worktree list --porcelain 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Stderr 'cleanup: git worktree list failed; skipping leftover-branch detection.'
+        return , @()
+    }
+
+    # A PowerShell hashtable compares string keys without case, which is how the rest of this
+    # script compares branch names.
+    $checkedOut = @{}
+    foreach ($wt in (ConvertFrom-WorktreePorcelain $listLines)) {
+        if ($wt.Branch) { $checkedOut[$wt.Branch] = $true }
+    }
+
+    $leftover = @()
+    foreach ($name in $mergedNames) {
+        $branch = ([string] $name).Trim()
+        if (-not $branch) { continue }
+        if ([string]::Equals($branch, $mainBranchShortName, [System.StringComparison]::OrdinalIgnoreCase)) { continue }
+        if ($checkedOut.ContainsKey($branch)) { continue }
+        if (-not (Test-BranchOwnWorkWasMerged -RepoRoot $RepoRoot -Branch $branch -MainRef $MainRef)) { continue }
+
+        $leftover += $branch
+    }
+
+    return , $leftover
+}
+
 # Reads the per-repo cleanup preference at --local scope only, so a global/system value
 # can never enable cleanup here. --bool normalizes true/false/1/0/yes/no. Fail closed:
 # a duplicated (multi-line) or non-boolean (git exit 128) value reads as 'invalid'.
@@ -500,13 +564,20 @@ function Invoke-MergedWorktreeCleanup {
     )
 
     $eligible = Get-EligibleMergedWorktrees -RepoRoot $RepoRoot -MainRef $MainRef -ExcludePath $ExcludePath
+    foreach ($wt in $eligible) {
+        Write-Stderr "cleanup: eligible merged worktree: $($wt.Path) [$($wt.Branch)]"
+    }
+
+    # The other leftover, reported by the same run. It comes before the early return below, because
+    # a branch with no worktree is exactly the case where no worktree is eligible. It is reported
+    # whatever the cleanup setting says, because a report removes nothing.
+    foreach ($branch in (Get-LeftoverMergedBranches -RepoRoot $RepoRoot -MainRef $MainRef)) {
+        Write-Stderr "cleanup: leftover branch, worktree already gone: $branch (delete it with: git -C '$RepoRoot' branch -d -- $branch)"
+    }
+
     if ($eligible.Count -eq 0) {
         Write-Stderr 'cleanup: no merged worktrees eligible for cleanup.'
         return
-    }
-
-    foreach ($wt in $eligible) {
-        Write-Stderr "cleanup: eligible merged worktree: $($wt.Path) [$($wt.Branch)]"
     }
 
     $configState = Get-WorktreeCleanupConfig -RepoRoot $RepoRoot

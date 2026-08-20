@@ -6,7 +6,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (scripts)
 - **Difficulty**: moderate
-- **Stage**: 0-intake
+- **Stage**: 9-ship
 
 ## Summary
 
@@ -33,22 +33,22 @@ it stops in between. That is the exact partial failure the deferred cleanup rout
 the sweep is blind to it.
 
 Stage 10 — Cleanup therefore hands the reader a hand-written check
-(`docs/development/workflow.md:621`, "Branch still present, worktree already gone."): a local
+(`docs/development/workflow.md:611`, "Branch still present, worktree already gone."): a local
 branch other than `main`, merged into `main`, with no registered worktree, whose tip differs from
 `main`'s tip. The tip comparison is what keeps it usable, because `git branch --merged main` alone
 also lists every branch freshly cut from `main`.
 
 ## Acceptance criteria
 
-- [ ] One command reports both leftovers: a worktree still present, and a branch present with its
+- [x] One command reports both leftovers: a worktree still present, and a branch present with its
       worktree already gone
-- [ ] The branch check does not report a branch that was freshly cut from the base and has no
+- [x] The branch check does not report a branch that was freshly cut from the base and has no
       commits of its own
-- [ ] The branch check decides against the same base the sweep uses, so a merge that is only on
+- [x] The branch check decides against the same base the sweep uses, so a merge that is only on
       the remote still counts (backlog 094)
-- [ ] A fixture proves both leftovers and proves a clean repository reports nothing
-- [ ] The Cleanup leftover check
-      (`docs/development/workflow.md:621`, "Branch still present, worktree already gone.")
+- [x] A fixture proves both leftovers and proves a clean repository reports nothing
+- [x] The Cleanup leftover check
+      (`docs/development/workflow.md:611`, "Branch still present, worktree already gone.")
       names the command instead of the hand-written check
 
 ## Out of scope
@@ -58,10 +58,10 @@ also lists every branch freshly cut from `main`.
 
 ## Notes / dependencies
 
-- Found while implementing backlog 094, which re-pointed the claim
-  (`docs/development/workflow.md:629`, "Until backlog 099 scripts this")
+- Found while implementing backlog 094, which re-pointed the claim that this item's own work
+  later replaced with the command reference in Stage 10
 - Backlog 073 covers cleanup experience
   (`backlog/073-process-wave-3-cleanup-ux.md:25`, "Worktree removal runs without opening a terminal window.")
   and does not cover this
 - Spec: none — one report, no design yet
-- Plan: none — not planned yet; Stage 0-intake
+- Plan: `docs/superpowers/plans/2026-08-19-leftover-branch-after-worktree-gone-plan-099.md`
