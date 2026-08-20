@@ -69,6 +69,7 @@ function New-StaleFixture {
         [switch] $LeaveUnmerged,
         [switch] $TouchWithoutStage,
         [int] $BaseAhead = 0,
+        [switch] $BranchMergesBase,
         [switch] $NoBase,
         [string] $Folder = ''
     )
@@ -118,6 +119,17 @@ function New-StaleFixture {
         # main moves on while the branch is open. These commits are not reachable from the
         # stamp, so a count that starts at the stamp charges the item for them.
         Add-FixtureFiller -RepoDir $repo -Count $BaseAhead -Prefix 'base'
+
+        if ($BranchMergesBase) {
+            # The shape GitHub's "Update branch" button leaves, and the one a conflict
+            # resolution leaves: the branch merges the base in before it merges back. That
+            # branch-side merge is older than the landing merge and is not on the base's
+            # first-parent chain.
+            Invoke-FixtureGit $repo @('checkout', '--quiet', 'fix/wt-fixture') | Out-Null
+            Invoke-FixtureGit $repo @('merge', '--quiet', '--no-ff', '-m', 'merge main into the branch', 'main') | Out-Null
+            Invoke-FixtureGit $repo @('checkout', '--quiet', 'main') | Out-Null
+        }
+
         Invoke-FixtureGit $repo @('merge', '--quiet', '--no-ff', '-m', 'merge the branch', 'fix/wt-fixture') | Out-Null
 
         if ($Folder) {
@@ -229,6 +241,27 @@ $fixture = New-StaleFixture -Stage '8-review' -BaseAhead 15 -Filler 14
 try {
     $problems = @(Get-BacklogStaleOpenProblem -RepoRoot $fixture.Repo)
     Assert-True ($problems.Count -eq 1) "Fourteen commits after the landing must fail, got: $($problems -join ' | ')"
+}
+finally { Remove-Fixture $fixture.Root }
+
+# --- A branch that merged the base into itself is still found ---
+#
+# The branch-side merge is the oldest merge on the path from the stamp to the base tip, and it
+# never appears on the base's first-parent chain. Reading it as the landing loses the item.
+
+$fixture = New-StaleFixture -Stage '8-review' -BaseAhead 3 -Filler 14 -BranchMergesBase
+try {
+    $problems = @(Get-BacklogStaleOpenProblem -RepoRoot $fixture.Repo)
+    Assert-True ($problems.Count -eq 1) "A branch that merged the base in must still be judged, got $($problems.Count): $($problems -join ' | ')"
+}
+finally { Remove-Fixture $fixture.Root }
+
+# The same shape, freshly merged, must stay silent.
+
+$fixture = New-StaleFixture -Stage '8-review' -BaseAhead 3 -Filler 0 -BranchMergesBase
+try {
+    $problems = @(Get-BacklogStaleOpenProblem -RepoRoot $fixture.Repo)
+    Assert-True ($problems.Count -eq 0) "A branch that merged the base in and landed just now must stay silent, got: $($problems -join ' | ')"
 }
 finally { Remove-Fixture $fixture.Root }
 

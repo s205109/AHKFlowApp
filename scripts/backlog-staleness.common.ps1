@@ -163,12 +163,24 @@ Backlog $($item.Key) reads 'Stage: 9-ship' and is still open.
         $distance = [array]::IndexOf($chain, $stamp)
         if ($distance -lt 0) {
             # The usual shape: the stamp sits on a branch, and a merge carried it over. The
-            # oldest merge on the path from the stamp to the base tip is that merge.
-            $landingResult = Invoke-BacklogGit -RepoRoot $RepoRoot -GitArgs @(
-                'rev-list', '--ancestry-path', '--merges', "$stamp..$BaseRef")
-            if ($landingResult.ExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($landingResult.Text)) { continue }
-            $landing = (@($landingResult.Text -split "`n")[-1]).Trim()
-            $distance = [array]::IndexOf($chain, $landing)
+            # landing is the OLDEST commit that is both on the path from the stamp to the base
+            # tip and on the base's own first-parent chain.
+            #
+            # Not simply the oldest merge on that path. A branch that merges the base into
+            # itself first - GitHub's "Update branch" button, or a conflict resolution - puts
+            # that branch-side merge earliest on the path, and it never joins the base's
+            # first-parent chain. Reading it as the landing loses the item silently.
+            $pathResult = Invoke-BacklogGit -RepoRoot $RepoRoot -GitArgs @(
+                'rev-list', '--ancestry-path', "$stamp..$BaseRef")
+            if ($pathResult.ExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($pathResult.Text)) { continue }
+
+            $onPath = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+            foreach ($line in ($pathResult.Text -split "`n")) { [void]$onPath.Add($line.Trim()) }
+
+            # The chain runs newest first, so walking it backwards reaches the oldest first.
+            for ($i = $chain.Count - 1; $i -ge 0; $i--) {
+                if ($onPath.Contains($chain[$i])) { $distance = $i; break }
+            }
         }
 
         # Nothing to place it against. Say nothing rather than guess a number.
