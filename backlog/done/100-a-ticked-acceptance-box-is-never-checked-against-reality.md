@@ -6,7 +6,7 @@
 - **Type**: Process / tooling
 - **Interfaces**: none (backlog items, process docs)
 - **Difficulty**: moderate
-- **Stage**: 7-document
+- **Stage**: 9-ship
 - **Depends on**: none
 
 ## Summary
