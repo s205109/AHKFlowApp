@@ -6,7 +6,7 @@
 - **Type**: Process / tooling
 - **Interfaces**: none (scripts, docs)
 - **Difficulty**: moderate
-- **Stage**: 3-plan
+- **Stage**: 4-execute
 - **Depends on**: 072-process-wave-2-parity-drift-guard-templates
 
 ## Summary
@@ -65,4 +65,4 @@ collapse into one.
   `backlog/done/072-process-wave-2-parity-drift-guard-templates.md` and now names this metric
   as well as directory-bound commands.
 - Spec: none — Design has not run.
-- Plan: none — the item is at Intake.
+- Plan: `docs/superpowers/plans/2026-08-20-cleanup-event-identity-plan-103.md`
