@@ -717,7 +717,9 @@ function Test-BranchOwnWorkWasMerged {
     param(
         [Parameter(Mandatory)][string] $RepoRoot,
         [Parameter(Mandatory)][string] $Branch,
-        [string] $MainRef = 'main'
+        [string] $MainRef = 'main',
+        [object[]] $MergedPullRequests,
+        [scriptblock] $MergedPullRequestLookup
     )
 
     # Signal 1. A branch nobody has committed on is unstarted, not finished.
@@ -727,7 +729,31 @@ function Test-BranchOwnWorkWasMerged {
 
     # Signal 2.
     $proofs = Get-LocalMergeProofShas -RepoRoot $RepoRoot -MainRef $MainRef -MergeProofShas $facts.MergeProofShas
-    if ($null -eq $proofs -or $proofs.Count -eq 0) { return $false }
+    if ($null -eq $proofs) { return $false }
+
+    # Signal 2, the GitHub half. Asked LAST, and only when local git proved nothing: a merge-commit
+    # merge therefore costs no network call at all. This signal may only ACCEPT a removal, so an
+    # answer that cannot be got costs a removal and can never cause one.
+    if ($proofs.Count -eq 0) {
+        $lookupResult = $null
+        if ($MergedPullRequests) {
+            $lookupResult = [pscustomobject]@{ Available = $true; Reason = 'ok'; Records = $MergedPullRequests }
+        } elseif ($MergedPullRequestLookup) {
+            $lookupResult = & $MergedPullRequestLookup
+        }
+
+        if ($lookupResult -and $lookupResult.Available) {
+            foreach ($record in @($lookupResult.Records)) {
+                # The branch NAME is not the binding, and must never become it. Branch names repeat
+                # in this repository -- two pull requests have shared one head -- so a name match
+                # would let a recreated worktree inherit an older merge and lose live work. The head
+                # SHA the branch itself recorded cannot be borrowed that way.
+                if ($facts.MergeProofShas.ContainsKey($record.HeadRefOid)) { $proofs += $record.HeadRefOid }
+            }
+        }
+    }
+
+    if ($proofs.Count -eq 0) { return $false }
 
     # Signal 4. The merge proves the work that existed when it happened, and nothing after it.
     $after = Get-WorkAfterMergeProof -RepoRoot $RepoRoot -Branch $Branch -ProofShas $proofs

@@ -85,6 +85,7 @@ function Add-TestWorktree {
         [switch] $NoCommits,
         [switch] $Rebase,
         [switch] $WorkAfterMerge,
+        [switch] $RebaseMerge,
         [string] $BaseRef = 'main'
     )
 
@@ -102,7 +103,22 @@ function Add-TestWorktree {
             Invoke-TestGit $RepoDir @('commit', '-m', "main moves before $BranchName rebases") | Out-Null
             Invoke-TestGit $wtPath @('rebase', 'main') | Out-Null
         }
-        if (-not $Unmerged) {
+        if ($RebaseMerge) {
+            # GitHub's "Rebase and merge" replays the branch commit onto the base and re-commits it
+            # as itself, so the base carries the same patch under a DIFFERENT SHA and writes no merge
+            # commit at all. A plain cherry-pick reproduces the IDENTICAL SHA -- same tree, same
+            # parent, same author, same message -- and would hide the very case this fixture exists
+            # for, so the committer has to change.
+            Invoke-TestGit $RepoDir @('cherry-pick', $BranchName) | Out-Null
+            $env:GIT_COMMITTER_NAME = 'GitHub'
+            $env:GIT_COMMITTER_EMAIL = 'noreply@github.com'
+            $env:GIT_COMMITTER_DATE = '2030-01-01T00:00:00+00:00'
+            try {
+                Invoke-TestGit $RepoDir @('commit', '--amend', '--no-edit') | Out-Null
+            } finally {
+                Remove-Item -LiteralPath 'Env:\GIT_COMMITTER_NAME', 'Env:\GIT_COMMITTER_EMAIL', 'Env:\GIT_COMMITTER_DATE' -ErrorAction SilentlyContinue
+            }
+        } elseif (-not $Unmerged) {
             # Merging a branch that is checked out in another worktree is allowed; only checking it
             # out twice is not. --no-ff is what a GitHub "Merge pull request" leaves behind.
             Invoke-TestGit $RepoDir @('merge', '--no-ff', '-m', "Merge $BranchName", $BranchName) | Out-Null
@@ -1422,6 +1438,71 @@ try {
     }
 
     Assert-Equal 'main' (Resolve-BaseBranchName -RepoRoot $repo) 'With no upstream the local ref name is the base branch name.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: a rebase-merged branch is merged when GitHub says so ------------------
+$repo = New-TempGitRepo
+try {
+    $wtPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-rebase-merged' -RebaseMerge
+    $tip = (Invoke-TestGit $wtPath @('rev-parse', 'HEAD')) -join ''
+
+    # Sanity: the base carries the patch under a different SHA, and no merge commit exists, so the
+    # three local signals cannot prove this merge however hard they look.
+    Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-rebase-merged')) `
+        'Local git alone must not prove a rebase merge.'
+
+    $ghSays = { [pscustomobject]@{ Available = $true; Reason = 'ok'; Records = @(
+        [pscustomobject]@{ Number = 1; HeadRefName = 'feat-rebase-merged'; HeadRefOid = $tip }) } }
+    Assert-True (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-rebase-merged' -MergedPullRequestLookup $ghSays) `
+        'A merged pull request whose head SHA the ref log holds must prove the merge.'
+
+    $ghCannotTell = { [pscustomobject]@{ Available = $false; Reason = 'gh-missing'; Records = @() } }
+    Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-rebase-merged' -MergedPullRequestLookup $ghCannotTell)) `
+        'An unavailable lookup must keep the worktree.'
+
+    # A recycled branch name: same name, a head SHA this branch never pointed at.
+    $ghWrongSha = { [pscustomobject]@{ Available = $true; Reason = 'ok'; Records = @(
+        [pscustomobject]@{ Number = 2; HeadRefName = 'feat-rebase-merged'; HeadRefOid = ('0' * 40) }) } }
+    Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-rebase-merged' -MergedPullRequestLookup $ghWrongSha)) `
+        'A pull request the ref log never recorded must not prove the merge.'
+
+    # A merge-commit merge must never spend a network call: this lookup throws if it is consulted.
+    Add-TestWorktree -RepoDir $repo -BranchName 'feat-local-proof' | Out-Null
+    $ghMustNotRun = { throw 'The lookup must not run when local git already proved the merge.' }
+    Assert-True (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-local-proof' -MergedPullRequestLookup $ghMustNotRun) `
+        'A merge-commit merge must be proved locally, without asking GitHub.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: an unstarted branch is never merged, whatever GitHub says -------------
+$repo = New-TempGitRepo
+try {
+    $wtPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-unstarted-pr' -NoCommits
+    $tip = (Invoke-TestGit $wtPath @('rev-parse', 'HEAD')) -join ''
+    $ghSays = { [pscustomobject]@{ Available = $true; Reason = 'ok'; Records = @(
+        [pscustomobject]@{ Number = 3; HeadRefName = 'feat-unstarted-pr'; HeadRefOid = $tip }) } }
+    Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-unstarted-pr' -MergedPullRequestLookup $ghSays)) `
+        'Signal 1 must refuse a branch that never committed, even with a merged pull request.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: a rebase merge followed by new work keeps the worktree ----------------
+$repo = New-TempGitRepo
+try {
+    $wtPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-rebase-then-work' -RebaseMerge
+    $mergedTip = (Invoke-TestGit $wtPath @('rev-parse', 'HEAD')) -join ''
+    Set-Content -LiteralPath (Join-Path $wtPath 'after.txt') -Value 'later' -Encoding utf8
+    Invoke-TestGit $wtPath @('add', '-A') | Out-Null
+    Invoke-TestGit $wtPath @('commit', '-m', 'work after the rebase merge') | Out-Null
+
+    $ghSays = { [pscustomobject]@{ Available = $true; Reason = 'ok'; Records = @(
+        [pscustomobject]@{ Number = 4; HeadRefName = 'feat-rebase-then-work'; HeadRefOid = $mergedTip }) } }
+    Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-rebase-then-work' -MergedPullRequestLookup $ghSays)) `
+        'Signal 4 must refuse work made after a rebase merge.'
 } finally {
     Remove-TempTree $repo
 }
