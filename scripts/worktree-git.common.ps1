@@ -767,6 +767,54 @@ function ConvertFrom-GhMergedPrJson {
     return , $records
 }
 
+# The commit the base ref pointed at BEFORE $Branch was created.
+#
+# Signal 5 needs to know what the base already contained before this branch existed. Git records
+# it without any marker of ours. The branch's OLDEST ref-log entry carries its creation time, and
+# the base ref's own ref log carries every position it has held.
+#
+# STRICTLY EARLIER is the rule, and '<base>@{<time>}' cannot express it. That syntax returns the
+# newest entry AT OR BEFORE the time, so a branch created in the same second the base moved
+# resolves to the later position -- the one that already holds the branch's own work. Signal 5
+# would then refuse a legitimate merged branch. So this walks the ref log and compares stamps.
+#
+# '--date=unix' makes '%gd' print '<shortname>@{<seconds>}', which compares as an integer. No date
+# parsing, and no dependence on the local time zone.
+#
+# Returns $null for every answer that cannot be trusted, and the caller must then SKIP signal 5
+# rather than refuse -- an unanswerable question must not change today's decision. Three cases:
+#   - the branch has no ref log, or its oldest entry does not parse;
+#   - the base ref has no ref log, or no such ref;
+#   - no base entry is strictly earlier than the branch's creation. That is a branch older than
+#     the base's whole ref log, and it is also every test fixture built inside one second.
+function Get-BaseRefAtBranchCreation {
+    param(
+        [Parameter(Mandatory)][string] $RepoRoot,
+        [Parameter(Mandatory)][string] $Branch,
+        [Parameter(Mandatory)][string] $MainRef
+    )
+
+    $branchEntries = & git -C $RepoRoot reflog show --date=unix --format='%gd' "refs/heads/$Branch" 2>$null
+    if ($LASTEXITCODE -ne 0) { return $null }
+
+    # Newest first, so the branch's creation is the LAST entry.
+    $oldest = @($branchEntries | ForEach-Object { ([string] $_).Trim() } | Where-Object { $_ }) | Select-Object -Last 1
+    if (-not $oldest -or $oldest -notmatch '@\{(\d+)') { return $null }
+    $createdAt = [long] $Matches[1]
+
+    $baseEntries = & git -C $RepoRoot reflog show --date=unix --format='%H %gd' $MainRef 2>$null
+    if ($LASTEXITCODE -ne 0) { return $null }
+
+    # Newest first again, so the first strictly-earlier entry is the position the base held when
+    # this branch was created.
+    foreach ($entry in @($baseEntries | ForEach-Object { ([string] $_).Trim() } | Where-Object { $_ })) {
+        if ($entry -notmatch '^([0-9a-f]{40}) \S+@\{(\d+)') { continue }
+        if ([long] $Matches[2] -lt $createdAt) { return $Matches[1] }
+    }
+
+    return $null
+}
+
 # Signal 4. The commits the branch tip reaches that no merge proof reaches and no other ref holds.
 #
 # Ancestry used to refuse this case for free: a branch that gained commits after its pull request

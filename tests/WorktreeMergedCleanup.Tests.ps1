@@ -1836,4 +1836,51 @@ try {
     Remove-TempTree $repo
 }
 
+
+# --- Test: Get-BaseRefAtBranchCreation ---------------------------------------------------
+# The branch's oldest ref-log entry carries its creation time. The base ref's own ref log carries
+# every position it has held. The answer is the newest base position STRICTLY EARLIER than that
+# creation time. Anything it cannot establish must come back as $null, so the caller skips
+# signal 5 instead of refusing on a guess.
+$repo = New-TempGitRepo
+try {
+    # main's position before anything else happens. The sleep makes that entry strictly earlier
+    # than the branch created next; without it every stamp lands in the same second and the
+    # function correctly reports that it cannot answer.
+    $mainBefore = ((Invoke-TestGit $repo @('rev-parse', 'main')) -join '').Trim()
+    Start-Sleep -Seconds 2
+
+    Add-TestWorktree -RepoDir $repo -BranchName 'feat-base-probe' | Out-Null
+
+    $resolved = Get-BaseRefAtBranchCreation -RepoRoot $repo -Branch 'feat-base-probe' -MainRef 'main'
+    Assert-True ($resolved -eq $mainBefore) 'The base position must be where main stood before the branch was created, not after.'
+
+    # The merge that Add-TestWorktree performed came after the branch existed, so it must NOT be
+    # the answer. This is the collision that '<base>@{<time>}' gets wrong.
+    $mainAfter = ((Invoke-TestGit $repo @('rev-parse', 'main')) -join '').Trim()
+    Assert-True ($resolved -ne $mainAfter) 'A base move that happened after the branch was created must never be the base position.'
+
+    Assert-True ($null -eq (Get-BaseRefAtBranchCreation -RepoRoot $repo -Branch 'no-such-branch' -MainRef 'main')) 'An unknown branch must resolve to $null.'
+    Assert-True ($null -eq (Get-BaseRefAtBranchCreation -RepoRoot $repo -Branch 'feat-base-probe' -MainRef 'no-such-ref')) 'An unknown base ref must resolve to $null.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# A base ref with no ref log gives the function nothing to compare against, so it must report that
+# it cannot answer instead of guessing. The caller then skips signal 5.
+#
+# The base ref log is removed on purpose, and the reason matters. An earlier version of this test
+# relied on the fixture building everything inside one second. Ref-log stamps have one-second
+# resolution, so that held on a fast machine and broke on a loaded one. Removing the ref log makes
+# the unanswerable state exact. Get-BaseRefAtBranchCreation is the only function that reads the
+# base ref log, so nothing else in the suite changes.
+$repo = New-TempGitRepo
+try {
+    Add-TestWorktree -RepoDir $repo -BranchName 'feat-no-base-log' | Out-Null
+    Remove-Item -LiteralPath (Join-Path $repo '.git/logs/refs/heads/main') -Force
+    Assert-True ($null -eq (Get-BaseRefAtBranchCreation -RepoRoot $repo -Branch 'feat-no-base-log' -MainRef 'main')) 'A base ref with no ref log must report no usable base position.'
+} finally {
+    Remove-TempTree $repo
+}
+
 Write-Host 'Worktree merged-cleanup tests passed.'
