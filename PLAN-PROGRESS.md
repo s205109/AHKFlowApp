@@ -14,3 +14,5 @@ Stage 8 | review returned 6 findings; failure edge back to 4-execute. Recovery t
   R4 to triage | the 'HEAD' base fallback makes every in-flight item a candidate in a single-branch clone.
   R5 to triage | arm 2 (9-ship still open) is absent from workflow.md and scripts/README.md.
   R6 to triage | two pre-existing stale workflow.md citations in tests/, non-canonical so the checker ignores them.
+Stage 4 rerun | 9bd915bb | all six findings addressed, all CONFIRMED, none deferred. R2 and R4 got regression tests written red first.
+Stage 6 rerun | gate green: build 17 projects 0 warnings, format clean, 34/34 PowerShell suites, coverage line 94.6% branch 82.6%, git diff --check main...HEAD clean; both citation scans clean
