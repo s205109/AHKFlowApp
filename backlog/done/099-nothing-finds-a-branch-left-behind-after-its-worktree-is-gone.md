@@ -6,7 +6,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (scripts)
 - **Difficulty**: moderate
-- **Stage**: 3-plan
+- **Stage**: 9-ship
 
 ## Summary
 
@@ -40,14 +40,14 @@ also lists every branch freshly cut from `main`.
 
 ## Acceptance criteria
 
-- [ ] One command reports both leftovers: a worktree still present, and a branch present with its
+- [x] One command reports both leftovers: a worktree still present, and a branch present with its
       worktree already gone
-- [ ] The branch check does not report a branch that was freshly cut from the base and has no
+- [x] The branch check does not report a branch that was freshly cut from the base and has no
       commits of its own
-- [ ] The branch check decides against the same base the sweep uses, so a merge that is only on
+- [x] The branch check decides against the same base the sweep uses, so a merge that is only on
       the remote still counts (backlog 094)
-- [ ] A fixture proves both leftovers and proves a clean repository reports nothing
-- [ ] The Cleanup leftover check
+- [x] A fixture proves both leftovers and proves a clean repository reports nothing
+- [x] The Cleanup leftover check
       (`docs/development/workflow.md:611`, "Branch still present, worktree already gone.")
       names the command instead of the hand-written check
 
