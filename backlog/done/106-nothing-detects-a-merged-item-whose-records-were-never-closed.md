@@ -6,7 +6,7 @@
 - **Type**: Process / tooling
 - **Interfaces**: none (script, CI)
 - **Difficulty**: moderate
-- **Stage**: 8-review
+- **Stage**: 9-ship
 
 ## Summary
 
@@ -20,21 +20,21 @@ check, so that the item does not sit in `backlog/` describing work that already 
 
 ## Acceptance criteria
 
-- [ ] A check detects an item whose work merged while the item stayed in `backlog/`.
-- [ ] The check decides on the **pull request diff**, never on the pull request title.
+- [x] A check detects an item whose work merged while the item stayed in `backlog/`.
+- [x] The check decides on the **pull request diff**, never on the pull request title.
       Titles go stale: PR #312 is titled "backlog 096" but did item 097's work and closed
       097 correctly. The item was renumbered by commit `db1a7884` and the title never
       caught up. A title-based detector reports that as a defect; a diff-based one does not.
-- [ ] The check states plainly which invariant it uses, and why the rejected ones were
+- [x] The check states plainly which invariant it uses, and why the rejected ones were
       rejected. Candidates: an item in `backlog/` whose Stage is `9-ship`; a pull request
       touching `backlog/NNN-*.md` that does not move it to `backlog/done/`; a post-merge
       sweep of `main`. The first two are cheap and miss the 071 shape. The third catches it
       and needs a schedule.
-- [ ] A fixture proves both directions: a merged pull request that left its item open
+- [x] A fixture proves both directions: a merged pull request that left its item open
       fails, and one that closed its item passes.
-- [ ] Partial work on an item across several pull requests does not trigger the check.
+- [x] Partial work on an item across several pull requests does not trigger the check.
       Most items ship over more than one pull request, so a naive rule is unusable.
-- [ ] The check joins `scripts/run-powershell-suites.ps1`, which discovers
+- [x] The check joins `scripts/run-powershell-suites.ps1`, which discovers
       `tests/*.Tests.ps1` by glob and needs no wiring.
 
 ## Out of scope
@@ -54,3 +54,7 @@ check, so that the item does not sit in `backlog/` describing work that already 
 - The `9-ship` candidate is rejected as **the** invariant, not as a signal. It misses the 071
   shape, so it cannot be the rule; it costs one comparison, so the check keeps it as a second
   arm with its own message. Decided at grilling on 2026-08-19.
+- Review closed on 2026-08-19 with no code changes. The reviewer kept the threshold at 12,
+  confirmed the PowerShell 7.0 guard, checked all fourteen repointed citations, and accepted
+  the known limit: work that never stamps a stage at `4-execute` or later leaves no metadata
+  for a metadata check to read.
