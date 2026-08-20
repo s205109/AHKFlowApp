@@ -29,9 +29,15 @@ The removal decision now depends on a tool outside git. That dependency is one-d
 unusable `gh` — missing, unauthenticated, offline, rate-limited — can only cost a removal, never
 cause one. The decision falls back to local git and logs why, and the worktree stays.
 
+The proof is a SHA, so it also marks a boundary in the branch's history. Work the branch made after
+that point is reachable from the tip and from no proof, and it keeps the worktree alive. Ancestry
+used to provide that protection as a side effect: a branch that gained commits after its merge
+stopped being an ancestor of the base. The rule that replaces ancestry has to state it.
+
 The lookup is bounded. One bulk call per run, cached, capped at the 100 most recent merged pull
 requests, under the timeout the base fetch already uses. A pull request merged before that window
-is not found and its worktree is kept, which is the safe direction.
+is not found and its worktree is kept, which is the safe direction. That miss is permanent: no
+later run widens the window.
 
 Tests never call GitHub. The decision takes a lookup delegate, fixtures pass a fake, and one
 fixture parses real captured output so the parser stays honest about the shape GitHub returns.

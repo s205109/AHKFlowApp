@@ -72,6 +72,8 @@ Backlog 094 fixed which base both scripts read; it left the ancestry test alone 
 - [ ] A worktree whose branch is not merged is still preserved, a worktree with uncommitted
       changes is still preserved, and a worktree whose branch holds no commit of its own is still
       preserved — including on the removal hook path, which removes it today
+- [ ] A worktree whose branch was merged and then gained commits no other ref holds is preserved.
+      `git branch --merged` gives that protection today by accident, and the fix deletes that filter
 - [ ] A fixture proves every direction without calling GitHub, and one fixture parses real `gh`
       output captured from this repository
 - [ ] The Cleanup warning
