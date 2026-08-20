@@ -24,7 +24,7 @@ The lines below are rules; each links to the stage that owns the narrative.
 - Picking up a `backlog/` item is never `trivial` — see [workflow.md#stage-1-pickup](../docs/development/workflow.md#stage-1-pickup).
 - Closing an item whose work already merged is not a pickup: tick the boxes, set `Stage: 9-ship`, and `git mv` it into `backlog/done/` inside a housekeeping round, with no new item and no dedicated worktree — see [workflow.md#stage-1-pickup](../docs/development/workflow.md#stage-1-pickup).
 - Any change to app-facing wording, labels, or names is never `trivial`, even inside one file — see [workflow.md#stage-1-pickup](../docs/development/workflow.md#stage-1-pickup).
-- Grill the design with `mp-grill-with-docs` before you write code, not after — see [workflow.md#stage-2-design](../docs/development/workflow.md#stage-2-design).
+- Grill the design with `mp-grilling` and `mp-domain-modeling` together before you write code, not after. `/mp-grill-with-docs` is the human's shortcut for the same pair, and an agent cannot call it — see [workflow.md#stage-2-design](../docs/development/workflow.md#stage-2-design).
 - Grill the draft plan with `mp-grilling`, then run the fabrication check — see [workflow.md#stage-3-plan](../docs/development/workflow.md#stage-3-plan).
 - Give a `trivial` change an inline plan of at most ten lines in chat: files, change, verification artifact, difficulty verdict. Trivial work skips Plan, so the inline plan is what Execute enters on — see [workflow.md#stage-4-execute](../docs/development/workflow.md#stage-4-execute).
 

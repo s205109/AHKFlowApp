@@ -332,7 +332,7 @@ create a PR" as "before you mark it ready". <!-- gate-wording:ignore -->
 
 - **Entry** — Difficulty `complex` or `to-be-determined`; bugs enter only with root-cause evidence
 - **Who** — `--model opus --effort xhigh`
-- **Technique** — `mp-grill-with-docs`
+- **Technique** — `mp-grilling` and `mp-domain-modeling`, run together. `/mp-grill-with-docs` is the human's one-word shortcut for the same pair
 - **Action** — grill the design, write the spec, pin glossary terms and ADRs, write the plain summary of at most 10 lines, and get the human's confirmation
 - **Exit** — Spec committed, terms and ADRs written, plain summary confirmed
 - **Next** — `3-plan`
@@ -883,8 +883,12 @@ a finding, not a gap this item closes.
 These rules are fixed. They are not left to the judgement of the session.
 
 - **Bug gate at Design entry.** No root-cause evidence, no [Design](#stage-2-design) entry.
-- **`mp-grill-with-docs` is the Design technique.** `mp-grilling` runs again on the draft
-  plan, before the fabrication check.
+- **`mp-grilling` with `mp-domain-modeling` is the Design technique.** Run the pair
+  together: grill a round of questions at a time, and sharpen the `CONTEXT.md` terms and
+  the ADRs as decisions land. `/mp-grill-with-docs` is the human's one-word shortcut for
+  the same pair. It sets `disable-model-invocation`, so an agent cannot call it and must
+  name the two skills instead. `mp-grilling` runs again on the draft plan, before the
+  fabrication check.
 - **Plain design summary.** Every spec gets a plain-English summary of at most 10 lines,
   and the human confirms understanding before the plan is written.
 - **Completion criteria per plan task.** Every task lists each surface that must change.
