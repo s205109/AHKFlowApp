@@ -1324,4 +1324,28 @@ try {
     Remove-TempTree $repo
 }
 
+# --- Test: signal 2 reports which SHA proved the merge --------------------------
+$repo = New-TempGitRepo
+try {
+    $wtPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-proof'
+    $tip = (Invoke-TestGit $wtPath @('rev-parse', 'HEAD')) -join ''
+
+    $facts = Get-BranchRefLogFacts -RepoRoot $repo -Branch 'feat-proof'
+    Assert-True ($null -ne $facts) 'A branch with a ref log must produce facts.'
+    Assert-True ($facts.MergeProofShas.ContainsKey($tip)) 'The commit entry must be usable as merge proof.'
+
+    # No @() around the call: the function returns ', @(...)' to keep an empty result an array, and
+    # re-wrapping an empty array yields one element that is itself an empty array.
+    $proofs = Get-LocalMergeProofShas -RepoRoot $repo -MainRef 'main' -MergeProofShas $facts.MergeProofShas
+    Assert-Equal 1 $proofs.Count 'A merged branch must yield exactly one local merge proof.'
+    Assert-Equal $tip $proofs[0] 'The proof must be the SHA main merged.'
+
+    Add-TestWorktree -RepoDir $repo -BranchName 'feat-open' -Unmerged | Out-Null
+    $openFacts = Get-BranchRefLogFacts -RepoRoot $repo -Branch 'feat-open'
+    $openProofs = Get-LocalMergeProofShas -RepoRoot $repo -MainRef 'main' -MergeProofShas $openFacts.MergeProofShas
+    Assert-Equal 0 $openProofs.Count 'An unmerged branch must yield no proof.'
+} finally {
+    Remove-TempTree $repo
+}
+
 Write-Host 'Worktree merged-cleanup tests passed.'

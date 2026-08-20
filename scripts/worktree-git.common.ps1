@@ -446,27 +446,28 @@ function Test-StrandedWorkWasSuperseded {
 #     only from this ref log, and removing the branch removes that ref log with it. `git branch -d`
 #     does the same to a merged branch, so the sweep is no more destructive than the command it
 #     automates. Work a reset discarded IS protected, which is the case that matters.
-function Test-BranchOwnWorkWasMerged {
+# Everything the branch's own ref log records, read in one walk.
+#
+# '%gs' is the subject, '%H' is the commit the branch pointed at after that entry. A missing ref log
+# (core.logAllRefUpdates off, gc expired it) or an unknown branch exits non-zero, and this returns
+# $null so the caller reads it as unstarted.
+#
+# One walk produces three sets and an ordered list. CommitShas carries the work proof, MergeProofShas
+# the SHAs allowed to satisfy signal 2, AllShas every place the branch has been, and Entries keeps
+# ref-log order, which signal 3 needs to read what a reset dropped.
+#
+# 'branch: Created from' lands in AllShas only: a branch started at an already-merged branch's tip
+# (`new-worktree.ps1 -BaseRef`) carries a non-first parent there, and letting that SHA prove a merge
+# would pair it with a forged 'commit:' subject on a later fast-forward, without a single commit
+# ever being made.
+function Get-BranchRefLogFacts {
     param(
         [Parameter(Mandatory)][string] $RepoRoot,
-        [Parameter(Mandatory)][string] $Branch,
-        [string] $MainRef = 'main'
+        [Parameter(Mandatory)][string] $Branch
     )
 
-    # Walk the branch ref log once. '%gs' is the subject, '%H' is the commit the branch pointed at
-    # after that entry. Missing ref log (core.logAllRefUpdates off, gc expired it) or an unknown
-    # branch exits non-zero and reads as unstarted.
-    #
-    # One walk produces three sets and an ordered list. $commitShas carries the work proof,
-    # $mergeProofShas the SHAs allowed to satisfy signal 2, $allShas every place the branch has
-    # been, and $entryList keeps ref-log order, which signal 3 needs to read what a reset dropped.
-    #
-    # 'branch: Created from' is in $allShas only: a branch started at an already-merged branch's tip
-    # (`new-worktree.ps1 -BaseRef`) carries a non-first parent there, and letting that SHA prove a
-    # merge would pair it with a forged 'commit:' subject on a later fast-forward, without a single
-    # commit ever being made.
     $entries = & git -C $RepoRoot reflog show --format='%H %gs' "refs/heads/$Branch" 2>$null
-    if ($LASTEXITCODE -ne 0) { return $false }
+    if ($LASTEXITCODE -ne 0) { return $null }
 
     $commitShas = @{}
     $mergeProofShas = @{}
@@ -495,39 +496,70 @@ function Test-BranchOwnWorkWasMerged {
         # characters, so a word boundary never matches between them.
         elseif ($subject -match '^rebase \(finish\)') { $mergeProofShas[$sha] = $true }
     }
-    if ($commitShas.Count -eq 0) { return $false }
 
-    # Signal 2. `--format=%P` emits a 'commit <sha>' header line per commit followed by that
-    # commit's parents; --min-parents=2 keeps merges only, and every parent after the first is a
-    # tip that was merged in.
-    #
-    # Every SHA the ref log recorded counts, not just the current tip. A finished worktree that runs
-    # `git merge --ff-only main` after its pull request merged moves its tip off the merge commit's
-    # second parent onto the merge commit itself. The work was still merged, and the sweep must
-    # still remove it, so the proof has to survive that move.
+    return [pscustomobject]@{
+        CommitShas     = $commitShas
+        MergeProofShas = $mergeProofShas
+        AllShas        = $allShas
+        Entries        = $entryList
+    }
+}
+
+# Signal 2, and the SHAs that satisfied it.
+#
+# `--format=%P` emits a 'commit <sha>' header line per commit followed by that commit's parents;
+# --min-parents=2 keeps merges only, and every parent after the first is a tip that was merged in.
+#
+# Every SHA the ref log recorded counts, not just the current tip. A finished worktree that runs
+# `git merge --ff-only main` after its pull request merged moves its tip off the merge commit's
+# second parent onto the merge commit itself. The work was still merged, and the sweep must still
+# remove it, so the proof has to survive that move.
+#
+# The matched SHAs are returned rather than a bare $true, because signal 4 needs them: they are the
+# boundary between merged work and anything the branch did afterwards. Returns $null when git fails.
+function Get-LocalMergeProofShas {
+    param(
+        [Parameter(Mandatory)][string] $RepoRoot,
+        [Parameter(Mandatory)][string] $MainRef,
+        [Parameter(Mandatory)][hashtable] $MergeProofShas
+    )
+
     $parentLines = & git -C $RepoRoot rev-list --min-parents=2 --format='%P' $MainRef 2>$null
-    if ($LASTEXITCODE -ne 0) { return $false }
+    if ($LASTEXITCODE -ne 0) { return $null }
 
-    $merged = $false
+    $proofs = @{}
     foreach ($line in $parentLines) {
         $text = ([string] $line).Trim()
         if (-not $text -or $text -like 'commit *') { continue }
         $parents = @($text -split '\s+')
         for ($i = 1; $i -lt $parents.Count; $i++) {
-            if ($mergeProofShas.ContainsKey($parents[$i])) { $merged = $true; break }
+            if ($MergeProofShas.ContainsKey($parents[$i])) { $proofs[$parents[$i]] = $true }
         }
-        if ($merged) { break }
     }
-    if (-not $merged) { return $false }
+
+    return , @($proofs.Keys)
+}
+
+function Test-BranchOwnWorkWasMerged {
+    param(
+        [Parameter(Mandatory)][string] $RepoRoot,
+        [Parameter(Mandatory)][string] $Branch,
+        [string] $MainRef = 'main'
+    )
+
+    # Signal 1. A branch nobody has committed on is unstarted, not finished.
+    $facts = Get-BranchRefLogFacts -RepoRoot $RepoRoot -Branch $Branch
+    if ($null -eq $facts) { return $false }
+    if ($facts.CommitShas.Count -eq 0) { return $false }
+
+    # Signal 2.
+    $proofs = Get-LocalMergeProofShas -RepoRoot $RepoRoot -MainRef $MainRef -MergeProofShas $facts.MergeProofShas
+    if ($null -eq $proofs -or $proofs.Count -eq 0) { return $false }
 
     # Signal 3. Signals 1 and 2 can be satisfied by different work, so the last question is the one
     # that makes removal safe: would removing this branch discard a commit nothing else holds?
-    $stranded = Get-StrandedCommits -RepoRoot $RepoRoot -Branch $Branch -Shas @($allShas.Keys)
+    $stranded = Get-StrandedCommits -RepoRoot $RepoRoot -Branch $Branch -Shas @($facts.AllShas.Keys)
     if ($null -eq $stranded) { return $false }
 
-    if (Test-StrandedWorkWasSuperseded -RepoRoot $RepoRoot -Entries $entryList -Stranded $stranded) {
-        return $true
-    }
-
-    return $false
+    return (Test-StrandedWorkWasSuperseded -RepoRoot $RepoRoot -Entries $facts.Entries -Stranded $stranded)
 }
