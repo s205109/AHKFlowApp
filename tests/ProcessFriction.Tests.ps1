@@ -308,14 +308,29 @@ $embedded = @(ConvertTo-LogicalMessage -Records @(
 $count = Get-FrictionCount -Messages $embedded -Metric 'cleanup-events'
 Assert-True ($count.Items -eq 1) "a stamped log line inside a longer message is an event, got $($count.Items)"
 
-# The same log line echoed into two tool results is one event. The stamp, the worktree and the
-# process id are all in the line, so two identical lines cannot be two events.
+# The same log line echoed into two tool results is one event. Only 'Watcher started.' lines
+# carry a process id, so the stamp and the worktree are what separate two lines - and of the
+# 295 outcome lines the removal log holds, no two are identical. Backlog 103 measured that.
 $echoed = @(ConvertTo-LogicalMessage -Records @(
         New-Assistant -Id 'msg_echo_a' -Text '2026-07-25 14:30:54  hotkey-ui-plan  Watcher started. PID=13500 Worktree=C:\wt'
         New-Assistant -Id 'msg_echo_b' -Text "Reading the log again:`n2026-07-25 14:30:54  hotkey-ui-plan  Watcher started. PID=13500 Worktree=C:\wt"
     ))
 $count = Get-FrictionCount -Messages $echoed -Metric 'cleanup-events'
 Assert-True ($count.Items -eq 1) "one log line echoed twice is one event, got $($count.Items)"
+
+# A human-typed message that pastes the log counts exactly like a tool result. Four of the 18
+# published rows are this shape: a process brief that quoted the removal log as evidence. The
+# metric cannot tell the two routes apart, and docs/development/cleanup-event-identity.md says
+# why that is the right behaviour rather than a defect to patch.
+$pasted = @(ConvertTo-LogicalMessage -Records @(
+        ([pscustomobject]@{ type = 'user'; timestamp = $inWindow; isSidechain = $false; uuid = 'p1'
+                sessionId = 's9'; promptSource = 'typed'; origin = [pscustomobject]@{ kind = 'human' }
+                message = [pscustomobject]@{ content = @([pscustomobject]@{ type = 'text'
+                            text = "Here is what happened:`n2026-08-03 17:22:40  wt-fifty  Watcher done (worktree preserved).`nHow do I stop this?" }) }
+            })
+    ))
+$count = Get-FrictionCount -Messages $pasted -Metric 'cleanup-events'
+Assert-True ($count.Items -eq 1) "a pasted log line in a human turn is counted too, got $($count.Items)"
 
 # Metric 2 must NOT do that. A command handed over in two messages is two handovers.
 $repeatedCommand = @(ConvertTo-LogicalMessage -Records @(
