@@ -22,18 +22,18 @@ finished cleanup does not need a check I have to remember.
 ## Detail
 
 The merged-worktree sweep enumerates `git worktree list`
-(`scripts/cleanup-merged-worktrees.ps1:292`, "worktree list --porcelain"). A branch whose worktree
+(`scripts/cleanup-merged-worktrees.ps1:85`, "    $listLines = & git -C $RepoRoot worktree list --porcelain 2>$null"). A branch whose worktree
 is already pruned appears nowhere in that list, so the sweep cannot see it.
 
 The watcher prunes the worktree
-(`scripts/remove-worktree-local-dev.ps1:916`, "'worktree', 'prune', '-v'") first and deletes the
-branch (`scripts/remove-worktree-local-dev.ps1:922`, "'branch', '-d', '--', $branchName") second,
-and logs (`scripts/remove-worktree-local-dev.ps1:997`, "worktree removed; branch preserved") when
+(`scripts/remove-worktree-local-dev.ps1:977`, "    Write-GitResult 'worktree prune -v' (Invoke-GitCapture @('-C', $mainCheckout, 'worktree', 'prune', '-v'))") first and deletes the
+branch (`scripts/remove-worktree-local-dev.ps1:983`, "        $branchDelete = Invoke-GitCapture @('-C', $mainCheckout, 'branch', '-d', '--', $branchName)") second,
+and logs (`scripts/remove-worktree-local-dev.ps1:1058`, "        Write-Log 'Watcher done (worktree removed; branch preserved).'") when
 it stops in between. That is the exact partial failure the deferred cleanup route exists for, and
 the sweep is blind to it.
 
 Stage 10 — Cleanup therefore hands the reader a hand-written check
-(`docs/development/workflow.md:625`, "Branch still present, worktree already gone."): a local
+(`docs/development/workflow.md:628`, "Branch still present, worktree already gone."): a local
 branch other than `main`, merged into `main`, with no registered worktree, whose tip differs from
 `main`'s tip. The tip comparison is what keeps it usable, because `git branch --merged main` alone
 also lists every branch freshly cut from `main`.
@@ -48,7 +48,7 @@ also lists every branch freshly cut from `main`.
       the remote still counts (backlog 094)
 - [x] A fixture proves both leftovers and proves a clean repository reports nothing
 - [x] The Cleanup leftover check
-      (`docs/development/workflow.md:625`, "Branch still present, worktree already gone.")
+      (`docs/development/workflow.md:628`, "Branch still present, worktree already gone.")
       names the command instead of the hand-written check
 
 ## Out of scope

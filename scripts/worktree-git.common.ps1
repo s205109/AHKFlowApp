@@ -331,3 +331,530 @@ function ConvertTo-WorktreeBranchName {
 
     return "$type/$topic"
 }
+
+# Lists the commits that removing this branch would strand: reachable from somewhere the branch has
+# pointed, and reachable from no other ref. `--exclude` applies to the `--all` that follows it, so
+# the branch being judged does not shield its own history.
+#
+# Identity, not patch text. `git cherry` was used here before and answered wrongly three ways: it
+# normalizes whitespace, it skips merge commits entirely, and it ignores author, message, signature
+# and empty-commit intent. Reachability has none of those blind spots.
+#
+# Returns $null when git fails, which every caller must read as "cannot tell" and keep the worktree.
+function Get-StrandedCommits {
+    param(
+        [Parameter(Mandatory)][string] $RepoRoot,
+        [Parameter(Mandatory)][string] $Branch,
+        [Parameter(Mandatory)][string[]] $Shas
+    )
+
+    if ($Shas.Count -eq 0) { return , @() }
+
+    # '--single-worktree' keeps '--all' to this repository's refs. Without it '--all' also examines
+    # every OTHER worktree's HEAD, and this branch's own worktree has HEAD at the branch tip -- so
+    # any commit reachable from the tip was reported as held by something else, when removing the
+    # branch would take it too. Measured: a commit made after the branch merged was hidden that way.
+    # The reset case this function exists for is unaffected either way, because a commit a reset
+    # dropped is not reachable from the tip that reset created.
+    $stranded = & git -C $RepoRoot rev-list --single-worktree @Shas --not --exclude="refs/heads/$Branch" --all 2>$null
+    if ($LASTEXITCODE -ne 0) { return $null }
+
+    return , @($stranded | ForEach-Object { ([string] $_).Trim() } | Where-Object { $_ })
+}
+
+# Decides whether the stranded commits are superseded work or discarded work.
+#
+# Every rebase and every `git commit --amend` strands the commits it replaced -- that is what
+# rewriting history means, and nobody expects those originals back. A `git reset` is different: it
+# drops commits without putting anything in their place, and after it the ref log is the only thing
+# still holding them.
+#
+# So the rule is about the reset entries alone. For each one, the commits it dropped are those
+# reachable from the branch's previous position and not from where the reset moved it. If any of
+# those is stranded, this worktree still holds the last copy and must stay.
+#
+# $Entries is newest first, as `git reflog show` prints it, so entry i+1 is the position entry i
+# moved away from.
+function Test-StrandedWorkWasSuperseded {
+    param(
+        [Parameter(Mandatory)][string] $RepoRoot,
+        [Parameter(Mandatory)][AllowEmptyCollection()][object[]] $Entries,
+        [Parameter(Mandatory)][AllowEmptyCollection()][string[]] $Stranded
+    )
+
+    if ($Stranded.Count -eq 0) { return $true }
+
+    $strandedSet = @{}
+    foreach ($sha in $Stranded) { $strandedSet[$sha] = $true }
+
+    for ($i = 0; $i -lt $Entries.Count; $i++) {
+        if ($Entries[$i].Subject -notmatch '^reset:') { continue }
+        if ($i + 1 -ge $Entries.Count) { continue }
+
+        $before = $Entries[$i + 1].Sha
+        $after = $Entries[$i].Sha
+        $dropped = & git -C $RepoRoot rev-list $before --not $after 2>$null
+        if ($LASTEXITCODE -ne 0) { return $false }
+
+        foreach ($sha in $dropped) {
+            if ($strandedSet.ContainsKey(([string] $sha).Trim())) { return $false }
+        }
+    }
+
+    return $true
+}
+
+# Answers what `git branch --merged` cannot: did this branch's own work get merged into $MainRef?
+# A just-created worktree branch points at a commit main already had, so the merged test passes
+# for it and the sweep would delete unstarted work.
+#
+# Removal is destructive, so this returns $true only when ALL FOUR signals agree, and $false for
+# anything it cannot establish -- an unclear answer keeps the worktree.
+#
+#   1. WORK. The branch ref log holds a subject for an operation that creates a commit. Git writes
+#      'commit:', 'commit (amend):', 'commit (merge):', 'commit (initial):', 'cherry-pick:',
+#      'revert:' and 'merge <ref>: Merge made by ...'. The list is closed on purpose -- see the
+#      forgery note below.
+#   2. MERGE. A SHA the ref log records under one of those subjects, or under 'rebase (finish)', is
+#      a NON-FIRST parent of a merge commit reachable from $MainRef -- what a GitHub "Merge pull
+#      request" (`--no-ff`) leaves behind. Git history, not text.
+#
+#      A rebase merge leaves none of that: GitHub replays the commits under new SHAs and writes no
+#      merge commit, so nothing local ties the branch to the base. GitHub is then asked instead, and
+#      a merged pull request counts only when the branch's own ref log recorded its head SHA.
+#      $MergedPullRequests carries records a caller already fetched; $MergedPullRequestLookup fetches
+#      them on demand. Both are optional, and neither can turn a "keep" into anything but a "remove"
+#      -- an answer that cannot be got costs a removal and never causes one.
+#   3. NOTHING DISCARDED. Removing the branch would strand no commit that a `git reset` dropped.
+#      Get-StrandedCommits and Test-StrandedWorkWasSuperseded decide it, by reachability.
+#   4. NOTHING AFTER THE PROOF. The branch tip reaches no work that no merge proof reaches and no
+#      other ref holds. Get-WorkAfterMergeProof decides it. Ancestry used to refuse that case for
+#      free, because a branch that gained commits after its merge stopped being an ancestor of the
+#      base; the rule that replaced ancestry has to ask the question directly.
+#
+# No signal is sufficient alone, and each covers the others' blind spots:
+#   - Ref-log subjects are caller-controlled text. GIT_REFLOG_ACTION and `git update-ref -m` let
+#     any caller write 'commit: Fast-forward' onto a branch that created no commit, so signal 1
+#     alone can be forged into deleting a brand-new worktree.
+#   - A branch created AT an already-merged branch's tip (the -BaseRef shape) really is a
+#     non-first parent, so signal 2 alone reads unstarted work as finished. Its ref log shows no
+#     commit, so signal 1 rejects it.
+#   - Signals 1 and 2 can describe DIFFERENT work: commit, `git reset --hard` the commit away, then
+#     rebase the emptied branch onto an unrelated merged branch. Both read as satisfied while the
+#     branch's own commit survives nowhere else. Signal 3 is what refuses that.
+#
+# Signal 3 asks about discarding, not about merging. A rebase or an amend strands the commits it
+# rewrote, and those originals are superseded work nobody expects back. A reset strands commits
+# without replacing them, and after it the ref log is their last holder -- so a reset that stranded
+# anything keeps the worktree.
+#
+# Signal 2 accepts 'rebase (finish)' because a rebased branch merges under a SHA that no commit
+# entry ever held. `git rebase` replays the work and records the new tip under that subject, while
+# the commit entry keeps the pre-rebase SHA, which never reaches $MainRef. Reading commit entries
+# alone kept every rebased worktree forever. `git rebase` and `git rebase -i` write the same
+# subject.
+#
+# Known limits, both deliberate:
+#   - Text cannot be authenticated. A caller who sets GIT_REFLOG_ACTION=commit and fast-forwards an
+#     unstarted branch onto an already-merged tip satisfies signals 1 and 2, and an empty branch
+#     strands nothing, so signal 3 has nothing to refuse. The worktree goes. Nothing in git records
+#     which branch created a commit, so no stronger proof is available here. Backlog 096 tracks it.
+#   - Superseded originals are not protected. A rebase or an amend leaves its old commits reachable
+#     only from this ref log, and removing the branch removes that ref log with it. `git branch -d`
+#     does the same to a merged branch, so the sweep is no more destructive than the command it
+#     automates. Work a reset discarded IS protected, which is the case that matters.
+# Everything the branch's own ref log records, read in one walk.
+#
+# '%gs' is the subject, '%H' is the commit the branch pointed at after that entry. A missing ref log
+# (core.logAllRefUpdates off, gc expired it) or an unknown branch exits non-zero, and this returns
+# $null so the caller reads it as unstarted.
+#
+# One walk produces three sets and an ordered list. CommitShas carries the work proof, MergeProofShas
+# the SHAs allowed to satisfy signal 2, AllShas every place the branch has been, and Entries keeps
+# ref-log order, which signal 3 needs to read what a reset dropped.
+#
+# 'branch: Created from' lands in AllShas only: a branch started at an already-merged branch's tip
+# (`new-worktree.ps1 -BaseRef`) carries a non-first parent there, and letting that SHA prove a merge
+# would pair it with a forged 'commit:' subject on a later fast-forward, without a single commit
+# ever being made.
+function Get-BranchRefLogFacts {
+    param(
+        [Parameter(Mandatory)][string] $RepoRoot,
+        [Parameter(Mandatory)][string] $Branch
+    )
+
+    $entries = & git -C $RepoRoot reflog show --format='%H %gs' "refs/heads/$Branch" 2>$null
+    if ($LASTEXITCODE -ne 0) { return $null }
+
+    $commitShas = @{}
+    $mergeProofShas = @{}
+    $allShas = @{}
+    $entryList = @()
+    foreach ($entry in $entries) {
+        $text = ([string] $entry).Trim()
+        if (-not $text) { continue }
+
+        $sha, $subject = $text -split '\s+', 2
+        if (-not $sha -or -not $subject) { continue }
+
+        $allShas[$sha] = $true
+        $entryList += [pscustomobject]@{ Sha = $sha; Subject = $subject }
+
+        # The closed list of subjects git writes for an operation that creates a commit.
+        # 'commit (finish):' is absent because git never writes it; only GIT_REFLOG_ACTION=commit on
+        # a rebase produces that subject. 'merge <ref>:' is included only with the message git
+        # writes for a real merge commit -- a fast-forward writes 'merge <ref>: Fast-forward' and
+        # creates nothing, so accepting the whole 'merge' prefix would sweep unstarted worktrees.
+        if ($subject -match "^(commit(:| \((amend|merge|initial)\):)|cherry-pick:|revert:|merge [^:]+: Merge made by )") {
+            $commitShas[$sha] = $true
+            $mergeProofShas[$sha] = $true
+        }
+        # No '\b' after 'rebase (finish)': ')' and the ':' that follows it are both non-word
+        # characters, so a word boundary never matches between them.
+        elseif ($subject -match '^rebase \(finish\)') { $mergeProofShas[$sha] = $true }
+    }
+
+    return [pscustomobject]@{
+        CommitShas     = $commitShas
+        MergeProofShas = $mergeProofShas
+        AllShas        = $allShas
+        Entries        = $entryList
+    }
+}
+
+# Signal 2, and the SHAs that satisfied it.
+#
+# `--format=%P` emits a 'commit <sha>' header line per commit followed by that commit's parents;
+# --min-parents=2 keeps merges only, and every parent after the first is a tip that was merged in.
+#
+# Every SHA the ref log recorded counts, not just the current tip. A finished worktree that runs
+# `git merge --ff-only main` after its pull request merged moves its tip off the merge commit's
+# second parent onto the merge commit itself. The work was still merged, and the sweep must still
+# remove it, so the proof has to survive that move.
+#
+# The matched SHAs are returned rather than a bare $true, because signal 4 needs them: they are the
+# boundary between merged work and anything the branch did afterwards. Returns $null when git fails.
+function Get-LocalMergeProofShas {
+    param(
+        [Parameter(Mandatory)][string] $RepoRoot,
+        [Parameter(Mandatory)][string] $MainRef,
+        [Parameter(Mandatory)][hashtable] $MergeProofShas
+    )
+
+    $parentLines = & git -C $RepoRoot rev-list --min-parents=2 --format='%P' $MainRef 2>$null
+    if ($LASTEXITCODE -ne 0) { return $null }
+
+    $proofs = @{}
+    foreach ($line in $parentLines) {
+        $text = ([string] $line).Trim()
+        if (-not $text -or $text -like 'commit *') { continue }
+        $parents = @($text -split '\s+')
+        for ($i = 1; $i -lt $parents.Count; $i++) {
+            if ($MergeProofShas.ContainsKey($parents[$i])) { $proofs[$parents[$i]] = $true }
+        }
+    }
+
+    return , @($proofs.Keys)
+}
+
+# Runs one child process, captures its stdout, and gives up after $TimeoutSeconds.
+#
+# Two rules meet here, and only one order satisfies both. A child that fills a pipe buffer blocks
+# on the write forever if nobody drains it. And a BLOCKING read of a child that never exits ignores
+# the timeout entirely, because that read only returns when the pipe closes -- which a hung process
+# never does. So the drains start first, asynchronously, and their results are read only after the
+# child has actually exited. Resolve-MergedBaseRef does the same for its fetch.
+#
+# A hung child is killed with its whole tree: a credential helper or an editor it started can be
+# the thing that is stuck.
+#
+# Never throws. Returns [pscustomobject]@{ Started; TimedOut; ExitCode; StdOut }:
+#   Started  - $false when the executable could not be launched at all.
+#   TimedOut - $true when the child outlived the timeout and was killed. ExitCode is then $null.
+function Invoke-CapturedProcess {
+    param(
+        [Parameter(Mandatory)][string] $FilePath,
+        [Parameter(Mandatory)][string[]] $Arguments,
+        [string] $WorkingDirectory,
+        [int] $TimeoutSeconds = 15
+    )
+
+    $ErrorActionPreference = 'Continue'
+
+    $failed = [pscustomobject]@{ Started = $false; TimedOut = $false; ExitCode = $null; StdOut = '' }
+
+    $process = $null
+    try {
+        $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+        $startInfo.FileName = $FilePath
+        $startInfo.Arguments = ConvertTo-ProcessArgumentLine $Arguments
+        if ($WorkingDirectory) { $startInfo.WorkingDirectory = $WorkingDirectory }
+        $startInfo.UseShellExecute = $false
+        $startInfo.CreateNoWindow = $true
+        $startInfo.RedirectStandardOutput = $true
+        $startInfo.RedirectStandardError = $true
+
+        $process = New-Object System.Diagnostics.Process
+        $process.StartInfo = $startInfo
+        $null = $process.Start()
+
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+
+        if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
+            $null = Stop-ProcessTree -ProcessId $process.Id
+            return [pscustomobject]@{ Started = $true; TimedOut = $true; ExitCode = $null; StdOut = '' }
+        }
+
+        $exitCode = $process.ExitCode
+
+        # The child exited, so both pipes are closed and these complete. The bound is belt and
+        # braces for a grandchild that inherited the handle and outlived its parent.
+        if (-not $stdoutTask.Wait($TimeoutSeconds * 1000)) {
+            return [pscustomobject]@{ Started = $true; TimedOut = $true; ExitCode = $null; StdOut = '' }
+        }
+        $null = $stderrTask.Wait(1000)
+
+        return [pscustomobject]@{
+            Started  = $true
+            TimedOut = $false
+            ExitCode = $exitCode
+            StdOut   = $stdoutTask.Result
+        }
+    } catch {
+        return $failed
+    } finally {
+        if ($process) { $process.Dispose() }
+    }
+}
+
+# The branch name `gh pr list --base` needs, read from config rather than by splitting a ref.
+# 'origin/main' cannot be halved on the slash: a remote may contain one and a branch always may.
+# This is the same source Resolve-MergedBaseRef reads.
+# $LocalRef may arrive in either shape, because a run decides against 'main' before its base is
+# resolved and against 'origin/main' afterwards. Both must produce the same answer, and callers must
+# pass the base they are really deciding against: defaulting to 'main' here asked GitHub about the
+# wrong branch whenever a run used -MainRef release, and a pull request merged into main could then
+# prove a merge that never reached release.
+function Resolve-BaseBranchName {
+    param(
+        [Parameter(Mandatory)][string] $RepoRoot,
+        [string] $LocalRef = 'main'
+    )
+
+    $ErrorActionPreference = 'Continue'
+
+    $candidate = $LocalRef
+
+    # A remote-tracking ref carries the remote name in front. Strip it using the remote names git
+    # actually has, never by splitting on the first slash: a remote may contain a slash, and a
+    # branch always may, so 'origin/feature/x' and a remote literally named 'origin/feature' are
+    # both possible. The longest matching remote wins.
+    $remotes = @(& git -C $RepoRoot remote 2>$null | ForEach-Object { ([string] $_).Trim() } | Where-Object { $_ })
+    if ($remotes.Count -gt 0) {
+        foreach ($remote in ($remotes | Sort-Object -Property Length -Descending)) {
+            if ($candidate.StartsWith($remote + '/')) {
+                $candidate = $candidate.Substring($remote.Length + 1)
+                break
+            }
+        }
+    }
+
+    # The local branch's configured upstream is the authority: the remote branch may be named
+    # differently from the local one.
+    $remoteBranchRef = "$(& git -C $RepoRoot config --get "branch.$candidate.merge" 2>$null)".Trim()
+    if ($remoteBranchRef.StartsWith('refs/heads/')) {
+        return $remoteBranchRef.Substring('refs/heads/'.Length)
+    }
+
+    return $candidate
+}
+
+# Asks GitHub which pull requests merged into $BaseBranch, for the case local git cannot prove.
+#
+# A rebase merge writes no merge commit and rewrites the SHA, so nothing in the local repository
+# ties the branch to the base. GitHub holds that fact and nothing else does.
+#
+# Never throws, and an answer it cannot get is 'not available', never 'not merged': this signal may
+# only ACCEPT a removal, so its absence costs a removal and can never cause one.
+#
+# One call serves a whole sweep run. The caller caches the records and hands them to each decision.
+# $Limit is a real cutoff -- a pull request merged longer ago than that is not found, and its
+# worktree is kept, which is the safe direction.
+function Get-MergedPullRequestRecords {
+    param(
+        [Parameter(Mandatory)][string] $RepoRoot,
+        [Parameter(Mandatory)][string] $BaseBranch,
+        [string] $HeadBranch,
+        [int] $Limit = 100,
+        [int] $TimeoutSeconds = 15
+    )
+
+    $ErrorActionPreference = 'Continue'
+
+    $unavailable = {
+        param([string] $Reason)
+
+        [pscustomobject]@{ Available = $false; Reason = $Reason; Records = @() }
+    }
+
+    $gh = Get-Command 'gh' -ErrorAction SilentlyContinue
+    if (-not $gh -or -not $gh.Source) { return (& $unavailable 'gh-missing') }
+
+    $arguments = @('pr', 'list', '--state', 'merged', '--base', $BaseBranch,
+        '--limit', "$Limit", '--json', 'number,headRefName,headRefOid')
+    if ($HeadBranch) { $arguments += @('--head', $HeadBranch) }
+
+    $run = Invoke-CapturedProcess -FilePath $gh.Source -Arguments $arguments `
+        -WorkingDirectory $RepoRoot -TimeoutSeconds $TimeoutSeconds
+
+    if ($run.TimedOut) { return (& $unavailable 'timeout') }
+    if (-not $run.Started) { return (& $unavailable 'gh-failed') }
+    if ($run.ExitCode -ne 0) { return (& $unavailable 'gh-failed') }
+
+    $records = @(ConvertFrom-GhMergedPrJson -Json $run.StdOut)
+    $trimmed = "$($run.StdOut)".Trim()
+    if ($records.Count -eq 0 -and $trimmed -and $trimmed -ne '[]') {
+        return (& $unavailable 'unparsable')
+    }
+
+    return [pscustomobject]@{ Available = $true; Reason = 'ok'; Records = $records }
+}
+
+# Reads `gh pr list --json number,headRefName,headRefOid` output into records.
+#
+# Pure: no process, no network, so a fixture can test it against the shape GitHub really returns.
+# Unparsable or empty input is not an error here -- it means "no records", and the caller decides
+# what that costs. A record missing either field is dropped rather than defaulted: without a head
+# SHA it cannot bind to a branch, and binding is the whole point.
+function ConvertFrom-GhMergedPrJson {
+    param([string] $Json)
+
+    if ([string]::IsNullOrWhiteSpace($Json)) { return , @() }
+
+    # ConvertFrom-Json throws ArgumentException on invalid JSON -- measured on Windows PowerShell 5.1
+    # and on pwsh 7 -- so this must be caught rather than tested for a $null return.
+    try {
+        $parsed = $Json | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+        return , @()
+    }
+
+    # Read through PSObject.Properties, never as $item.headRefOid: under Set-StrictMode -Version
+    # Latest a missing property on a PSCustomObject throws, and a record with fields missing is
+    # exactly what this function has to tolerate.
+    $readProperty = {
+        param($Item, [string] $Name)
+
+        $property = $Item.PSObject.Properties[$Name]
+        if (-not $property) { return '' }
+        return "$($property.Value)".Trim()
+    }
+
+    $records = @()
+    foreach ($item in @($parsed)) {
+        if ($null -eq $item) { continue }
+        $oid = & $readProperty $item 'headRefOid'
+        $name = & $readProperty $item 'headRefName'
+        if (-not $oid -or -not $name) { continue }
+        $records += [pscustomobject]@{
+            Number      = (& $readProperty $item 'number')
+            HeadRefName = $name
+            HeadRefOid  = $oid
+        }
+    }
+
+    return , $records
+}
+
+# Signal 4. The commits the branch tip reaches that no merge proof reaches and no other ref holds.
+#
+# Ancestry used to refuse this case for free: a branch that gained commits after its pull request
+# merged stopped being an ancestor of the base, so `git branch --merged` dropped it. The rule that
+# replaces ancestry has to ask the question directly, or the sweep removes a worktree holding
+# unpushed work -- and `git branch -d` then refuses the branch, leaving it orphaned.
+#
+# The proof SHAs are the boundary. Anything reachable from one of them is merged work. Anything else
+# the tip reaches is later work, unless another ref holds it -- and then removing this worktree
+# discards nothing, which is the same question Get-StrandedCommits asks.
+#
+# Returns $null when git fails or when there is no proof to measure against, which every caller must
+# read as "cannot tell" and keep the worktree.
+function Get-WorkAfterMergeProof {
+    param(
+        [Parameter(Mandatory)][string] $RepoRoot,
+        [Parameter(Mandatory)][string] $Branch,
+        [Parameter(Mandatory)][AllowEmptyCollection()][string[]] $ProofShas
+    )
+
+    if ($ProofShas.Count -eq 0) { return $null }
+
+    # Exactly ONE '--not', with every exclusion after it. '--not' TOGGLES polarity each time it
+    # appears, so '--not a --not b' excludes a and then re-includes b -- which quietly turned '--all'
+    # back into an inclusion and made a plainly merged branch look like it carried later work.
+    # '--single-worktree' is load-bearing. Without it '--all' also examines every OTHER worktree's
+    # HEAD, and this branch's own worktree has HEAD at the branch tip -- so the later work looked
+    # like something another ref held, and signal 4 reported nothing.
+    $arguments = @('-C', $RepoRoot, 'rev-list', '--single-worktree', "refs/heads/$Branch", '--not')
+    $arguments += $ProofShas
+    $arguments += @("--exclude=refs/heads/$Branch", '--all')
+
+    $after = & git @arguments 2>$null
+    if ($LASTEXITCODE -ne 0) { return $null }
+
+    return , @($after | ForEach-Object { ([string] $_).Trim() } | Where-Object { $_ })
+}
+
+function Test-BranchOwnWorkWasMerged {
+    param(
+        [Parameter(Mandatory)][string] $RepoRoot,
+        [Parameter(Mandatory)][string] $Branch,
+        [string] $MainRef = 'main',
+        [object[]] $MergedPullRequests,
+        [scriptblock] $MergedPullRequestLookup
+    )
+
+    # Signal 1. A branch nobody has committed on is unstarted, not finished.
+    $facts = Get-BranchRefLogFacts -RepoRoot $RepoRoot -Branch $Branch
+    if ($null -eq $facts) { return $false }
+    if ($facts.CommitShas.Count -eq 0) { return $false }
+
+    # Signal 2.
+    $proofs = Get-LocalMergeProofShas -RepoRoot $RepoRoot -MainRef $MainRef -MergeProofShas $facts.MergeProofShas
+    if ($null -eq $proofs) { return $false }
+
+    # Signal 2, the GitHub half. Asked LAST, and only when local git proved nothing: a merge-commit
+    # merge therefore costs no network call at all. This signal may only ACCEPT a removal, so an
+    # answer that cannot be got costs a removal and can never cause one.
+    if ($proofs.Count -eq 0) {
+        $lookupResult = $null
+        if ($MergedPullRequests) {
+            $lookupResult = [pscustomobject]@{ Available = $true; Reason = 'ok'; Records = $MergedPullRequests }
+        } elseif ($MergedPullRequestLookup) {
+            $lookupResult = & $MergedPullRequestLookup
+        }
+
+        if ($lookupResult -and $lookupResult.Available) {
+            foreach ($record in @($lookupResult.Records)) {
+                # The branch NAME is not the binding, and must never become it. Branch names repeat
+                # in this repository -- two pull requests have shared one head -- so a name match
+                # would let a recreated worktree inherit an older merge and lose live work. The head
+                # SHA the branch itself recorded cannot be borrowed that way.
+                if ($facts.MergeProofShas.ContainsKey($record.HeadRefOid)) { $proofs += $record.HeadRefOid }
+            }
+        }
+    }
+
+    if ($proofs.Count -eq 0) { return $false }
+
+    # Signal 4. The merge proves the work that existed when it happened, and nothing after it.
+    $after = Get-WorkAfterMergeProof -RepoRoot $RepoRoot -Branch $Branch -ProofShas $proofs
+    if ($null -eq $after -or $after.Count -gt 0) { return $false }
+
+    # Signal 3. Signals 1 and 2 can be satisfied by different work, so the last question is the one
+    # that makes removal safe: would removing this branch discard a commit nothing else holds?
+    $stranded = Get-StrandedCommits -RepoRoot $RepoRoot -Branch $Branch -Shas @($facts.AllShas.Keys)
+    if ($null -eq $stranded) { return $false }
+
+    return (Test-StrandedWorkWasSuperseded -RepoRoot $RepoRoot -Entries $facts.Entries -Stranded $stranded)
+}

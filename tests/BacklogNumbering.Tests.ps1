@@ -404,7 +404,7 @@ finally {
 
 # --- Case 19: a blocked item keeps its last stage, so blocked/ takes any valid value ---
 #
-# (`docs/development/workflow.md:674`, "A blocked item keeps its last stage"). Only done/ is pinned
+# (`docs/development/workflow.md:677`, "A blocked item keeps its last stage"). Only done/ is pinned
 # to a single value.
 
 $tempRoot = New-TemporaryBacklogRoot
@@ -414,6 +414,35 @@ try {
 
     $problems = @(Get-BacklogProblem -BacklogRoot $tempRoot)
     Assert-True ($problems.Count -eq 0) "A blocked item at 4-execute should pass, found: $($problems -join ' | ')"
+}
+finally {
+    Remove-Item -LiteralPath $tempRoot -Recurse -Force
+}
+
+# --- Case 20: a title slug longer than 40 characters is truncated with a hash suffix ---
+#
+# ConvertTo-BacklogSlug (scripts/slug.common.ps1) caps at 40 characters by default so a long
+# backlog title cannot produce an overlong worktree directory name. Both new-worktree.ps1 and
+# new-backlog-item.ps1 call it with no length argument, so the truncated slug still agrees
+# between the worktree name and the backlog item file name (Case 14 pins the untruncated case).
+
+$longTitle = 'Worktree removal decides merged by ancestry so a rebase merge is refused'
+$longSlug = ConvertTo-BacklogSlug -Title $longTitle
+Assert-True ($longSlug.Length -le 40) "Truncated slug '$longSlug' must be at most 40 characters, was $($longSlug.Length)"
+Assert-True ($longSlug -match '-[0-9a-f]{8}$') "Truncated slug '$longSlug' must end with a '-' plus an 8-character lowercase hex hash"
+Assert-True ((ConvertTo-BacklogSlug -Title $longTitle) -eq $longSlug) 'Slug: the hash suffix is deterministic, not random, so repeated calls agree'
+
+$tempRoot = New-TemporaryBacklogRoot
+try {
+    & $scaffoldScript -Title $longTitle -BacklogRoot $tempRoot | Out-Null
+
+    $written = @(Get-ChildItem -LiteralPath $tempRoot -Filter '*.md' -File |
+        Where-Object { $_.Name -ne '000-backlog-item-template.md' })
+    Assert-True ($written.Count -eq 1) "Expected one backlog item file, got $($written.Count)"
+    if ($written.Count -eq 1) {
+        $fileSlug = $written[0].BaseName -replace '^\d{3}[a-z]?-', ''
+        Assert-True ($fileSlug -eq $longSlug) "The backlog item file slug '$fileSlug' must equal the truncated title slug '$longSlug', so a long title still keeps the worktree name and file name in agreement"
+    }
 }
 finally {
     Remove-Item -LiteralPath $tempRoot -Recurse -Force
