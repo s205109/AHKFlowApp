@@ -408,7 +408,7 @@ function Test-StrandedWorkWasSuperseded {
 # A just-created worktree branch points at a commit main already had, so the merged test passes
 # for it and the sweep would delete unstarted work.
 #
-# Removal is destructive, so this returns $true only when ALL FOUR signals agree, and $false for
+# Removal is destructive, so this returns $true only when ALL FIVE signals agree, and $false for
 # anything it cannot establish -- an unclear answer keeps the worktree.
 #
 #   1. WORK. The branch ref log holds a subject for an operation that creates a commit. Git writes
@@ -431,6 +431,12 @@ function Test-StrandedWorkWasSuperseded {
 #      other ref holds. Get-WorkAfterMergeProof decides it. Ancestry used to refuse that case for
 #      free, because a branch that gained commits after its merge stopped being an ancestor of the
 #      base; the rule that replaced ancestry has to ask the question directly.
+#   5. THE PROOF IS THIS BRANCH'S OWN WORK. At least one merge-proof SHA was NOT reachable from
+#      the base ref at the moment this branch was created. Get-BaseRefAtBranchCreation resolves
+#      that position from the branch's oldest ref-log entry. This is the only signal that refuses
+#      a forged 'commit:' subject on a branch nobody committed on, because it is the only one that
+#      looks at what the base already contained. It may only refuse: when the position cannot be
+#      resolved it is skipped.
 #
 # No signal is sufficient alone, and each covers the others' blind spots:
 #   - Ref-log subjects are caller-controlled text. GIT_REFLOG_ACTION and `git update-ref -m` let
@@ -894,6 +900,31 @@ function Test-BranchOwnWorkWasMerged {
     }
 
     if ($proofs.Count -eq 0) { return $false }
+
+    # Signal 5. The proof must point at work the base did not already have.
+    #
+    # Signals 1 and 2 are satisfiable without creating a commit: GIT_REFLOG_ACTION=commit on a
+    # fast-forward onto an already-merged tip writes 'commit: Fast-forward' carrying a SHA that
+    # really is a non-first parent. That branch strands nothing and gains nothing afterwards, so
+    # signals 3 and 4 have nothing to refuse either.
+    #
+    # This asks the question none of them ask: was that SHA already in the base before this branch
+    # existed? Work the branch can claim as its own cannot have been.
+    #
+    # Skipped, not failed, when the base at creation cannot be resolved. This signal may only
+    # REFUSE a removal, so an unanswerable question leaves the decision exactly as it was.
+    $baseAtCreation = Get-BaseRefAtBranchCreation -RepoRoot $RepoRoot -Branch $Branch -MainRef $MainRef
+    if ($baseAtCreation) {
+        $ownProof = $false
+        foreach ($proof in $proofs) {
+            & git -C $RepoRoot merge-base --is-ancestor $proof $baseAtCreation 2>$null | Out-Null
+            # Exit 1 means the proof was NOT already reachable from the base, which is the answer
+            # that makes it this branch's own work. Any other non-zero code is a failed check, and
+            # must not count as proof.
+            if ($LASTEXITCODE -eq 1) { $ownProof = $true; break }
+        }
+        if (-not $ownProof) { return $false }
+    }
 
     # Signal 4. The merge proves the work that existed when it happened, and nothing after it.
     $after = Get-WorkAfterMergeProof -RepoRoot $RepoRoot -Branch $Branch -ProofShas $proofs

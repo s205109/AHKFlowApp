@@ -1883,4 +1883,45 @@ try {
     Remove-TempTree $repo
 }
 
+
+# --- Test: a forged commit subject on a never-committed branch (backlog 096) --------------
+# The shape backlog 095 could not refuse. GIT_REFLOG_ACTION=commit on a fast-forward onto an
+# already-merged tip satisfies signal 1 with text and signal 2 with real history. The branch holds
+# no commit, so signal 3 has nothing stranded to refuse and signal 4 finds no later work.
+# Signal 5 is what refuses it: the proof SHA was already in the base before this branch existed.
+$repo = New-TempGitRepo
+try {
+    Add-TestWorktree -RepoDir $repo -BranchName 'feat-ff-donor' | Out-Null
+    $donorTip = ((Invoke-TestGit $repo @('rev-parse', 'refs/heads/feat-ff-donor')) -join '').Trim()
+
+    # The donor must already be merged, and main must already point past it, BEFORE the victim
+    # branch is created. That ordering is the whole point of signal 5.
+    $mergeParents = (Invoke-TestGit $repo @('rev-list', '--min-parents=2', '--format=%P', 'main')) -join ' '
+    Assert-True ($mergeParents -match [regex]::Escape($donorTip)) 'Sanity check: the donor branch must already be a merged non-first parent.'
+
+    # Two seconds of separation, so the victim's creation stamp is strictly later than main's move.
+    # Ref-log stamps have one-second resolution. Without this the fixture can build everything
+    # inside one second, Get-BaseRefAtBranchCreation correctly reports that it cannot answer, and
+    # signal 5 is skipped -- so the test would fail while proving nothing.
+    Start-Sleep -Seconds 2
+
+    $victimPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-ff-victim' -NoCommits -BaseRef 'main^'
+    Invoke-TestGitWithReflogAction -RepoDir $victimPath -Action 'commit' -GitArgs @('merge', '--ff-only', $donorTip) | Out-Null
+
+    $entries = (Invoke-TestGit $repo @('reflog', 'show', '--format=%H %gs', 'refs/heads/feat-ff-victim')) -join "`n"
+    Assert-True ($entries -match '(?m)commit: Fast-forward') 'Sanity check: the fast-forward must really have written a forged "commit:" subject.'
+
+    # Signal 5 must actually be engaged. Without this the test could go green because the function
+    # could not resolve a base position, which proves nothing about the forgery.
+    Assert-True ($null -ne (Get-BaseRefAtBranchCreation -RepoRoot $repo -Branch 'feat-ff-victim' -MainRef 'main')) 'Sanity check: signal 5 must have a base position to judge against, or this test proves nothing.'
+
+    Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-ff-victim' -MainRef 'main')) 'A forged "commit:" subject on a never-committed branch must not make it eligible.'
+
+    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
+    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
+    Assert-True (-not ($keys -contains (ConvertTo-Key $victimPath))) 'A worktree whose only proof is work the base already had must never be eligible.'
+} finally {
+    Remove-TempTree $repo
+}
+
 Write-Host 'Worktree merged-cleanup tests passed.'
