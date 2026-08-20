@@ -1924,4 +1924,23 @@ try {
     Remove-TempTree $repo
 }
 
+
+# --- Test: an unresolvable creation position skips signal 5, it never refuses -------------
+# Signal 5 may only refuse. When Get-BaseRefAtBranchCreation cannot answer, the decision must be
+# exactly what the other four signals say.
+#
+# The base ref log is removed to make that state exact. Relying on the fixture building inside one
+# second would work on a fast machine and break on a loaded one, because ref-log stamps have
+# one-second resolution. Get-BaseRefAtBranchCreation is the only function that reads the base ref
+# log, so removing it changes nothing else in the decision.
+$repo = New-TempGitRepo
+try {
+    Add-TestWorktree -RepoDir $repo -BranchName 'feat-skipped' | Out-Null
+    Remove-Item -LiteralPath (Join-Path $repo '.git/logs/refs/heads/main') -Force
+    Assert-True ($null -eq (Get-BaseRefAtBranchCreation -RepoRoot $repo -Branch 'feat-skipped' -MainRef 'main')) 'Sanity check: a base ref with no ref log must give no usable base position.'
+    Assert-True (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-skipped' -MainRef 'main') 'A skipped signal 5 must leave the decision to the other four signals.'
+} finally {
+    Remove-TempTree $repo
+}
+
 Write-Host 'Worktree merged-cleanup tests passed.'
