@@ -561,7 +561,7 @@ Otherwise it sits in `backlog/` forever describing a blocker that cleared.
 - **Review** — reviewed
 
 **Any merge button is fine.** Both scripts decide with one rule: did this branch's own work reach
-the base (`scripts/worktree-git.common.ps1:808`, "function Test-BranchOwnWorkWasMerged {"). A merge
+the base (`scripts/worktree-git.common.ps1:865`, "function Test-BranchOwnWorkWasMerged {"). A merge
 commit proves that locally, because the branch tip is a non-first parent of it. A rebase merge
 proves nothing locally — it replays the commits under new SHAs and writes no merge commit — so the
 decision then asks GitHub for a merged pull request whose head SHA this branch recorded. When `gh`
@@ -570,7 +570,7 @@ and never costs work.
 
 **A branch that gained commits after it merged is preserved.** The rule refuses removal while the
 branch tip reaches work no merge proof reaches and no other ref holds
-(`scripts/worktree-git.common.ps1:783`, "function Get-WorkAfterMergeProof {"). Push that work, or
+(`scripts/worktree-git.common.ps1:840`, "function Get-WorkAfterMergeProof {"). Push that work, or
 let the worktree stay.
 
 **No pull is needed first.** The base both scripts decide against is the remote-tracking branch
