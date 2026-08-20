@@ -30,7 +30,7 @@ skipped without anybody noticing.
   body: "Run a `/mp-grilling` session, using the `/mp-domain-modeling` skill." It
   is a wrapper over two other skills and adds nothing else.
 - (`docs/development/workflow.md:335`, "mp-grill-with-docs") sets the Stage 2
-  Technique. (`docs/development/workflow.md:869`, "is the Design technique")
+  Technique. (`docs/development/workflow.md:883`, "is the Design technique")
   repeats it as a mandatory rule.
 - (`.claude/CLAUDE.md:27`, "before you write code, not after") repeats it a third
   time.
@@ -56,7 +56,7 @@ skill changes its invocation flag.
 
 - [x] Stage 2 Design names a technique an agent can call. Every place that
       states the technique agrees: (`docs/development/workflow.md:335`, "mp-grill-with-docs"),
-      (`docs/development/workflow.md:869`, "is the Design technique"),
+      (`docs/development/workflow.md:883`, "is the Design technique"),
       (`docs/development/workflow.html:227`, "mp-grill-with-docs"),
       and (`.claude/CLAUDE.md:27`, "before you write code, not after"). All four now
       name `mp-grilling` and `mp-domain-modeling`, run together.
