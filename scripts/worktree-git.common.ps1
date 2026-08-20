@@ -350,7 +350,13 @@ function Get-StrandedCommits {
 
     if ($Shas.Count -eq 0) { return , @() }
 
-    $stranded = & git -C $RepoRoot rev-list @Shas --not --exclude="refs/heads/$Branch" --all 2>$null
+    # '--single-worktree' keeps '--all' to this repository's refs. Without it '--all' also examines
+    # every OTHER worktree's HEAD, and this branch's own worktree has HEAD at the branch tip -- so
+    # any commit reachable from the tip was reported as held by something else, when removing the
+    # branch would take it too. Measured: a commit made after the branch merged was hidden that way.
+    # The reset case this function exists for is unaffected either way, because a commit a reset
+    # dropped is not reachable from the tip that reset created.
+    $stranded = & git -C $RepoRoot rev-list --single-worktree @Shas --not --exclude="refs/heads/$Branch" --all 2>$null
     if ($LASTEXITCODE -ne 0) { return $null }
 
     return , @($stranded | ForEach-Object { ([string] $_).Trim() } | Where-Object { $_ })
