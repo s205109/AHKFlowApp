@@ -212,3 +212,7 @@ _Avoid_: guard, gate, validator, linter
 **Gate**:
 The five steps that must all pass before a pull request is marked ready: build, format, PowerShell suites, coverage, and `git diff --check`.
 _Avoid_: check, guard, pipeline, CI
+
+**Merge proof**:
+The evidence that a branch's own work reached the base, which is what lets a worktree be removed. Local git proves it when the branch SHA is a non-first parent of a merge commit on the base. A rebase merge leaves no such commit, so the proof then comes from a merged pull request whose head SHA the branch really pointed at.
+_Avoid_: merged check, merge test, ancestry

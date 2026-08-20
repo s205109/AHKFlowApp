@@ -96,5 +96,6 @@ Backlog 094 fixed which base both scripts read; it left the ancestry test alone 
   stub in the shape the script already uses for `Resolve-MergedBaseRef`
 - Grilled 2026-08-19. Difficulty raised from moderate to complex: the fix needs a new source of
   truth, not a shared rule
-- Spec: pending — Stage 2 Design
+- Spec: `docs/superpowers/specs/2026-08-19-worktree-merged-rule-design-098.md`
+- Terms: `CONTEXT.md` defines **Merge proof**; `docs/adr/0007-merge-proof-may-come-from-github.md` records the decision
 - Plan: none — not planned yet
