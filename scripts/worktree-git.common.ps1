@@ -331,3 +331,203 @@ function ConvertTo-WorktreeBranchName {
 
     return "$type/$topic"
 }
+
+# Lists the commits that removing this branch would strand: reachable from somewhere the branch has
+# pointed, and reachable from no other ref. `--exclude` applies to the `--all` that follows it, so
+# the branch being judged does not shield its own history.
+#
+# Identity, not patch text. `git cherry` was used here before and answered wrongly three ways: it
+# normalizes whitespace, it skips merge commits entirely, and it ignores author, message, signature
+# and empty-commit intent. Reachability has none of those blind spots.
+#
+# Returns $null when git fails, which every caller must read as "cannot tell" and keep the worktree.
+function Get-StrandedCommits {
+    param(
+        [Parameter(Mandatory)][string] $RepoRoot,
+        [Parameter(Mandatory)][string] $Branch,
+        [Parameter(Mandatory)][string[]] $Shas
+    )
+
+    if ($Shas.Count -eq 0) { return , @() }
+
+    $stranded = & git -C $RepoRoot rev-list @Shas --not --exclude="refs/heads/$Branch" --all 2>$null
+    if ($LASTEXITCODE -ne 0) { return $null }
+
+    return , @($stranded | ForEach-Object { ([string] $_).Trim() } | Where-Object { $_ })
+}
+
+# Decides whether the stranded commits are superseded work or discarded work.
+#
+# Every rebase and every `git commit --amend` strands the commits it replaced -- that is what
+# rewriting history means, and nobody expects those originals back. A `git reset` is different: it
+# drops commits without putting anything in their place, and after it the ref log is the only thing
+# still holding them.
+#
+# So the rule is about the reset entries alone. For each one, the commits it dropped are those
+# reachable from the branch's previous position and not from where the reset moved it. If any of
+# those is stranded, this worktree still holds the last copy and must stay.
+#
+# $Entries is newest first, as `git reflog show` prints it, so entry i+1 is the position entry i
+# moved away from.
+function Test-StrandedWorkWasSuperseded {
+    param(
+        [Parameter(Mandatory)][string] $RepoRoot,
+        [Parameter(Mandatory)][AllowEmptyCollection()][object[]] $Entries,
+        [Parameter(Mandatory)][AllowEmptyCollection()][string[]] $Stranded
+    )
+
+    if ($Stranded.Count -eq 0) { return $true }
+
+    $strandedSet = @{}
+    foreach ($sha in $Stranded) { $strandedSet[$sha] = $true }
+
+    for ($i = 0; $i -lt $Entries.Count; $i++) {
+        if ($Entries[$i].Subject -notmatch '^reset:') { continue }
+        if ($i + 1 -ge $Entries.Count) { continue }
+
+        $before = $Entries[$i + 1].Sha
+        $after = $Entries[$i].Sha
+        $dropped = & git -C $RepoRoot rev-list $before --not $after 2>$null
+        if ($LASTEXITCODE -ne 0) { return $false }
+
+        foreach ($sha in $dropped) {
+            if ($strandedSet.ContainsKey(([string] $sha).Trim())) { return $false }
+        }
+    }
+
+    return $true
+}
+
+# Answers what `git branch --merged` cannot: did this branch's own work get merged into $MainRef?
+# A just-created worktree branch points at a commit main already had, so the merged test passes
+# for it and the sweep would delete unstarted work.
+#
+# Removal is destructive, so this returns $true only when ALL THREE signals agree, and $false for
+# anything it cannot establish -- an unclear answer keeps the worktree.
+#
+#   1. WORK. The branch ref log holds a subject for an operation that creates a commit. Git writes
+#      'commit:', 'commit (amend):', 'commit (merge):', 'commit (initial):', 'cherry-pick:',
+#      'revert:' and 'merge <ref>: Merge made by ...'. The list is closed on purpose -- see the
+#      forgery note below.
+#   2. MERGE. A SHA the ref log records under one of those subjects, or under 'rebase (finish)', is
+#      a NON-FIRST parent of a merge commit reachable from $MainRef -- what a GitHub "Merge pull
+#      request" (`--no-ff`) leaves behind. Git history, not text.
+#   3. NOTHING DISCARDED. Removing the branch would strand no commit that a `git reset` dropped.
+#      Get-StrandedCommits and Test-StrandedWorkWasSuperseded decide it, by reachability.
+#
+# No signal is sufficient alone, and each covers the others' blind spots:
+#   - Ref-log subjects are caller-controlled text. GIT_REFLOG_ACTION and `git update-ref -m` let
+#     any caller write 'commit: Fast-forward' onto a branch that created no commit, so signal 1
+#     alone can be forged into deleting a brand-new worktree.
+#   - A branch created AT an already-merged branch's tip (the -BaseRef shape) really is a
+#     non-first parent, so signal 2 alone reads unstarted work as finished. Its ref log shows no
+#     commit, so signal 1 rejects it.
+#   - Signals 1 and 2 can describe DIFFERENT work: commit, `git reset --hard` the commit away, then
+#     rebase the emptied branch onto an unrelated merged branch. Both read as satisfied while the
+#     branch's own commit survives nowhere else. Signal 3 is what refuses that.
+#
+# Signal 3 asks about discarding, not about merging. A rebase or an amend strands the commits it
+# rewrote, and those originals are superseded work nobody expects back. A reset strands commits
+# without replacing them, and after it the ref log is their last holder -- so a reset that stranded
+# anything keeps the worktree.
+#
+# Signal 2 accepts 'rebase (finish)' because a rebased branch merges under a SHA that no commit
+# entry ever held. `git rebase` replays the work and records the new tip under that subject, while
+# the commit entry keeps the pre-rebase SHA, which never reaches $MainRef. Reading commit entries
+# alone kept every rebased worktree forever. `git rebase` and `git rebase -i` write the same
+# subject.
+#
+# Known limits, both deliberate:
+#   - Text cannot be authenticated. A caller who sets GIT_REFLOG_ACTION=commit and fast-forwards an
+#     unstarted branch onto an already-merged tip satisfies signals 1 and 2, and an empty branch
+#     strands nothing, so signal 3 has nothing to refuse. The worktree goes. Nothing in git records
+#     which branch created a commit, so no stronger proof is available here. Backlog 096 tracks it.
+#   - Superseded originals are not protected. A rebase or an amend leaves its old commits reachable
+#     only from this ref log, and removing the branch removes that ref log with it. `git branch -d`
+#     does the same to a merged branch, so the sweep is no more destructive than the command it
+#     automates. Work a reset discarded IS protected, which is the case that matters.
+function Test-BranchOwnWorkWasMerged {
+    param(
+        [Parameter(Mandatory)][string] $RepoRoot,
+        [Parameter(Mandatory)][string] $Branch,
+        [string] $MainRef = 'main'
+    )
+
+    # Walk the branch ref log once. '%gs' is the subject, '%H' is the commit the branch pointed at
+    # after that entry. Missing ref log (core.logAllRefUpdates off, gc expired it) or an unknown
+    # branch exits non-zero and reads as unstarted.
+    #
+    # One walk produces three sets and an ordered list. $commitShas carries the work proof,
+    # $mergeProofShas the SHAs allowed to satisfy signal 2, $allShas every place the branch has
+    # been, and $entryList keeps ref-log order, which signal 3 needs to read what a reset dropped.
+    #
+    # 'branch: Created from' is in $allShas only: a branch started at an already-merged branch's tip
+    # (`new-worktree.ps1 -BaseRef`) carries a non-first parent there, and letting that SHA prove a
+    # merge would pair it with a forged 'commit:' subject on a later fast-forward, without a single
+    # commit ever being made.
+    $entries = & git -C $RepoRoot reflog show --format='%H %gs' "refs/heads/$Branch" 2>$null
+    if ($LASTEXITCODE -ne 0) { return $false }
+
+    $commitShas = @{}
+    $mergeProofShas = @{}
+    $allShas = @{}
+    $entryList = @()
+    foreach ($entry in $entries) {
+        $text = ([string] $entry).Trim()
+        if (-not $text) { continue }
+
+        $sha, $subject = $text -split '\s+', 2
+        if (-not $sha -or -not $subject) { continue }
+
+        $allShas[$sha] = $true
+        $entryList += [pscustomobject]@{ Sha = $sha; Subject = $subject }
+
+        # The closed list of subjects git writes for an operation that creates a commit.
+        # 'commit (finish):' is absent because git never writes it; only GIT_REFLOG_ACTION=commit on
+        # a rebase produces that subject. 'merge <ref>:' is included only with the message git
+        # writes for a real merge commit -- a fast-forward writes 'merge <ref>: Fast-forward' and
+        # creates nothing, so accepting the whole 'merge' prefix would sweep unstarted worktrees.
+        if ($subject -match "^(commit(:| \((amend|merge|initial)\):)|cherry-pick:|revert:|merge [^:]+: Merge made by )") {
+            $commitShas[$sha] = $true
+            $mergeProofShas[$sha] = $true
+        }
+        # No '\b' after 'rebase (finish)': ')' and the ':' that follows it are both non-word
+        # characters, so a word boundary never matches between them.
+        elseif ($subject -match '^rebase \(finish\)') { $mergeProofShas[$sha] = $true }
+    }
+    if ($commitShas.Count -eq 0) { return $false }
+
+    # Signal 2. `--format=%P` emits a 'commit <sha>' header line per commit followed by that
+    # commit's parents; --min-parents=2 keeps merges only, and every parent after the first is a
+    # tip that was merged in.
+    #
+    # Every SHA the ref log recorded counts, not just the current tip. A finished worktree that runs
+    # `git merge --ff-only main` after its pull request merged moves its tip off the merge commit's
+    # second parent onto the merge commit itself. The work was still merged, and the sweep must
+    # still remove it, so the proof has to survive that move.
+    $parentLines = & git -C $RepoRoot rev-list --min-parents=2 --format='%P' $MainRef 2>$null
+    if ($LASTEXITCODE -ne 0) { return $false }
+
+    $merged = $false
+    foreach ($line in $parentLines) {
+        $text = ([string] $line).Trim()
+        if (-not $text -or $text -like 'commit *') { continue }
+        $parents = @($text -split '\s+')
+        for ($i = 1; $i -lt $parents.Count; $i++) {
+            if ($mergeProofShas.ContainsKey($parents[$i])) { $merged = $true; break }
+        }
+        if ($merged) { break }
+    }
+    if (-not $merged) { return $false }
+
+    # Signal 3. Signals 1 and 2 can be satisfied by different work, so the last question is the one
+    # that makes removal safe: would removing this branch discard a commit nothing else holds?
+    $stranded = Get-StrandedCommits -RepoRoot $RepoRoot -Branch $Branch -Shas @($allShas.Keys)
+    if ($null -eq $stranded) { return $false }
+
+    if (Test-StrandedWorkWasSuperseded -RepoRoot $RepoRoot -Entries $entryList -Stranded $stranded) {
+        return $true
+    }
+
+    return $false
+}
