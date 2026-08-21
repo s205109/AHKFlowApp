@@ -900,8 +900,8 @@ try {
     }
 
     # A quote is one of four ways a Reading becomes Ambiguous. The other three are block forms the
-    # suite already covers at (`tests/AgentWorktreeGuard.Tests.ps1:2075`, "    $heredocAmbiguousCases = @(")
-    # and (`tests/AgentWorktreeGuard.Tests.ps1:2164`, "    $hereStringAmbiguousCases = @("), and
+    # suite already covers at (`tests/AgentWorktreeGuard.Tests.ps1:2083`, "    $heredocAmbiguousCases = @(")
+    # and (`tests/AgentWorktreeGuard.Tests.ps1:2172`, "    $hereStringAmbiguousCases = @("), and
     # every one of them must reach the same refusal at every layer. Without this, the message could
     # promise "balanced quoting" to somebody whose heredoc terminator is indented.
     $unreadableCauses = @(
@@ -927,11 +927,19 @@ try {
         }
     }
 
-    Invoke-TestCase 'The refusal text names every cause, not just quoting' {
+    Invoke-TestCase 'The refusal text is accurate for every cause, not just quoting' {
+        # A heredoc opener with no delimiter word never opens a body, so "close what was left
+        # open" is false advice for it. The message must not claim something was left open for
+        # a cause where nothing was ever opened.
+        $expected = (New-AgentGuardAmbiguousDecision).Message
         $decision = Get-AgentCommandSafetyDecision -Command $unreadable -Reading Bash
-        foreach ($cause in @('quote', 'escape', 'heredoc body', 'here-string body')) {
-            Assert-Match ([regex]::Escape($cause)) $decision.Message "Message names $cause"
-        }
+        Assert-Equal $expected $decision.Message 'Message'
+
+        $noDelimiter = @($unreadableCauses | Where-Object { $_.Name -eq 'a heredoc opener with no delimiter' })[0]
+        $noDelimiterDecision = Get-AgentCommandSafetyDecision -Command $noDelimiter.Command -Reading Bash
+        Assert-Equal $expected $noDelimiterDecision.Message 'Message for the no-delimiter cause'
+        Assert-Match 'incomplete' $noDelimiterDecision.Message `
+            'The no-delimiter cause never opened a body, so the message must call the heredoc incomplete, not left open'
     }
 
     Write-Host 'Tier reclassification' -ForegroundColor Cyan

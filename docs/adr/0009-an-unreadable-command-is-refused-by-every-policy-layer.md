@@ -1,8 +1,8 @@
 # An unreadable command is refused by every policy layer
 
-The Guard's tokenizer marks a Reading **Ambiguous** when the command string ended inside a quote
-or an escape that never closed. Nothing in the command can be trusted after that: no command word,
-no write target, no `cd`.
+The Guard's tokenizer marks a Reading **Ambiguous** when a quote or an escape was left open, or
+when a heredoc or here-string is incomplete. Nothing in the command can be trusted after that: no
+command word, no write target, no `cd`.
 
 The Guard's three policy layers gave that one condition three different answers. The safety layer
 allowed it. The location layer refused it, with rule `ambiguous-git-command`. The write layer
@@ -53,7 +53,8 @@ refused before it read the override flag — and it is now pinned by a test and 
 The adapter protocol is unchanged. `ambiguous-command` is not in `$locationDecisionRules`, so a
 refusal keeps the legacy stderr and exit 2 path for Claude, exactly as a safety refusal does.
 
-The way past a refusal is to balance the quotes. There is no override, and no message advising one.
+The way past a refusal is to close the open quote or escape, or complete the heredoc or
+here-string. There is no override, and no message advising one.
 
 ADR 0008 rejected marking every unquoted backtick and parenthesis ambiguous, and one of its two
 reasons was that ambiguity "fails *open* in the write decision". That reason is now void. The other

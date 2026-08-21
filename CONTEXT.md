@@ -210,7 +210,7 @@ One interpretation of a command string under one shell's quoting rules. Every co
 _Avoid_: shell mode, parse, pass, interpretation
 
 **Ambiguous Reading**:
-A Reading that ended inside a quote or an escape that never closed, so no part of the command can be trusted. The Guard refuses the whole command.
+A Reading that ended with a quote or an escape left open, or with a heredoc or here-string left incomplete, so no part of the command can be trusted. The Guard refuses the whole command.
 _Avoid_: ambiguous parse, unparseable command, bad quoting
 
 **Policy layer**:

@@ -150,8 +150,8 @@ ever gated by location logic.
 ### A command the guard cannot read
 
 The guard reads a command as text before it decides anything. Sometimes it cannot read it at all,
-because the text ends inside a quote or an escape that never closed. Nothing in the command can be
-trusted after that: no command word, no write target, no `cd`.
+because a quote or an escape was left open, or a heredoc or here-string is incomplete. Nothing in
+the command can be trusted after that: no command word, no write target, no `cd`.
 
 Every policy layer refuses that command, with rule `ambiguous-command` and one shared message. The
 safety layer refuses it. The location layer refuses it. The write layer refuses it for a session in
@@ -164,7 +164,8 @@ The rule is named for the command and not for git, and the check cannot be narro
 A command the guard could not read cannot be shown to hold no git. It fires today on commands
 holding no git at all, from any session location.
 
-The way past it is to balance the quotes. There is no override.
+The way past it is to close the open quote or escape, or complete the heredoc or here-string.
+There is no override.
 
 ### Worktree write isolation
 

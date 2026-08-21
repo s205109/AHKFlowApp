@@ -81,9 +81,9 @@ function New-AgentGuardDecision {
 }
 
 $script:AgentGuardAmbiguousCommandMessage = @'
-BLOCKED: the guard could not read this command. A quote, an escape, a heredoc body, or a
-here-string body was left open, so the whole command is refused.
-Close what was left open, then run it again.
+BLOCKED: the guard could not read this command. A quote or an escape was left open, or a
+heredoc or here-string is incomplete, so the whole command is refused.
+Close the quote or escape, or complete the heredoc or here-string, then run it again.
 '@
 
 <#
