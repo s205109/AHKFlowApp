@@ -63,7 +63,7 @@ current.
 - `docs/development/workflow.md:601` — "Until backlog 073 scripts this", for the check that finds a
   branch left behind after its worktree is gone
 
-Backlog 073's acceptance criteria are at `backlog/073-process-wave-3-cleanup-ux.md:25-29`: no
+Backlog 073's acceptance criteria are at `backlog/done/073-process-wave-3-cleanup-ux.md:25-29`: no
 terminal window, a readable log, naming the process that holds the folder, a guard against removing
 an unimplemented plan, and honouring `git worktree lock`. None of the three claims appears. 073 is
 scoped to cleanup experience; this is a correctness defect.
