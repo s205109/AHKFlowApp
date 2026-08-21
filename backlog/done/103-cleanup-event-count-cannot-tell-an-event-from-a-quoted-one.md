@@ -58,8 +58,9 @@ collapse into one.
       `docs/development/cleanup-event-identity.md`.
       **The decision is neither of the two this box offered.** It offered a rule that tells a
       report from a quote, or a statement that the count is an upper bound. The count is a
-      floor. The removal log holds 201 distinct in-window outcome lines and the transcripts
-      witnessed 18 of them, about nine percent.
+      floor. The removal log holds 201 distinct in-window outcome lines, 15 of which a
+      transcript witnessed. The other 3 witnessed lines predate the log, so the witnessed
+      share is a ceiling of about nine percent rather than a measurement of it.
 - [x] The deduplication comment in `scripts/measure-process-friction.ps1` is corrected, and the
       collapse case is stated rather than fixed. The line carries no event id to fix it with,
       and all 295 outcome lines in the log are distinct, so the collapse has never happened.
@@ -83,8 +84,11 @@ Measured on 2026-08-21. The numbers are reproducible from the two scripts named 
   row arrived on 2026-07-30 carrying an event stamped 2026-07-29, because the tool read the log
   tail. Both routes read the same persistent file.
 - **18 is a floor, not an upper bound.** The removal log holds 201 distinct in-window outcome
-  lines. The transcripts witnessed 18 of them, about nine percent. The 201 is itself a floor,
-  because the log survives back to 2026-07-26 only and the window opens on 2026-07-15.
+  lines, and 15 of the 18 witnessed rows are among them. The other 3 are stamped 2026-07-25,
+  before the log's earliest surviving line, so they sit inside the window and outside the log.
+  The true in-window population is therefore 204 or more, 186 of the 201 log lines reached no
+  session, and the witnessed share is a ceiling of about nine percent. The 201 is itself a
+  floor, because the log survives back to 2026-07-26 only and the window opens on 2026-07-15.
 - **The deduplication comment was wrong about its reason.** Only `Watcher started.` lines carry
   a process id — 134 of 134, against 0 of 130 `Watcher done (` lines. The collapse it feared is
   real but has never happened: all 295 outcome lines in the log are distinct.

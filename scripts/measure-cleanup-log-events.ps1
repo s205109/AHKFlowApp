@@ -4,10 +4,12 @@
     Counts the cleanup outcome lines the removal log itself holds, inside the friction window.
 .DESCRIPTION
     Friction metric 3 counts the cleanup outcome lines that reached a session transcript. This
-    script counts the lines the log holds, which is the size of the real population. The two
-    numbers together say what the metric is: on 2026-08-21 the log held 201 distinct in-window
-    outcome lines and the transcripts witnessed 18 of them, so 18 is a floor and not an upper
-    bound. See docs/development/cleanup-event-identity.md.
+    script counts the lines the log holds, which is the closest thing to the size of the real
+    population. The two numbers together say what the metric is: on 2026-08-21 the log held 201
+    distinct in-window outcome lines, and 15 of the 18 witnessed rows are among them. The other
+    3 predate the log, so the true in-window population is 204 or more. That makes 18 a floor
+    rather than an upper bound, and its share a ceiling rather than a measurement. See
+    docs/development/cleanup-event-identity.md.
 
     It reuses the measurement script's line shape and outcome patterns rather than copying
     them. Two copies of one rule is how this metric went wrong before.
@@ -165,5 +167,8 @@ Write-Host ''
 Write-Host "Ledger      : $ledger"
 Write-Host "  rows written : $($rows.Count) (at the assumed UTC+$AssumedOffsetHours)"
 Write-Host ''
-Write-Host "The transcripts witnessed 18 of these $($rows.Count). The published cleanup figure is"
-Write-Host 'a floor, not an upper bound. See docs/development/cleanup-event-identity.md.'
+Write-Host "From the frozen labelling, not from this run: the transcripts witnessed 18 in-window"
+Write-Host "lines, and 15 of those are among these $($rows.Count). The other 3 predate the log, so they"
+Write-Host 'sit inside the window and outside this ledger. The published cleanup figure is a floor,'
+Write-Host 'not an upper bound, and the witnessed share is a ceiling for the same reason.'
+Write-Host 'See docs/development/cleanup-event-identity.md.'

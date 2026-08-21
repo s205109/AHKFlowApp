@@ -76,11 +76,41 @@ foreach ($row in $labelled) {
         "A row has no IsGenuineLogLine. That column is the only judgment in the file: $($row.Line)"
 }
 
-# --- 4. The decision stays a floor ---
+# --- 4. The rule sheet's overlap arithmetic matches the data ---
+
+# The witnessed rows are NOT a subset of the log's in-window rows. Three of the 18 are stamped
+# before the log's earliest surviving line, so they are in the window but not in the log. An
+# earlier draft wrote "the transcripts witnessed 18 of the 201", which silently counted three
+# rows the denominator does not hold. The numbers below are computed from the two committed
+# CSVs, so this check follows the data rather than repeating a figure.
+$ruleText = Get-Content -LiteralPath $rulePath -Raw
+$logLedgerPath = Join-Path $repoRoot 'docs/development/friction-samples/ledgers/cleanup-log-events.csv'
+Assert-True (Test-Path -LiteralPath $logLedgerPath) "The log ledger is missing: $logLedgerPath"
+
+if (Test-Path -LiteralPath $logLedgerPath) {
+    $logLedger = @(Import-Csv -LiteralPath $logLedgerPath)
+    $logLines = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+    foreach ($row in $logLedger) { [void]$logLines.Add(([string]$row.Line).TrimEnd()) }
+
+    $witnessedInLog = @($labelled | Where-Object { $logLines.Contains(([string]$_.Line).TrimEnd()) }).Count
+    $unwitnessedInLog = $logLedger.Count - $witnessedInLog
+
+    # Match against whitespace-normalised text. These phrases are prose and they wrap, so a
+    # check that forbids a line break would fail on reflowing rather than on a wrong number.
+    $ruleFlat = ($ruleText -replace '\s+', ' ')
+
+    Assert-True ($ruleFlat -match "$witnessedInLog of the $($labelled.Count)") `
+        "The rule sheet must say that $witnessedInLog of the $($labelled.Count) witnessed rows are among the log's in-window lines."
+    Assert-True ($ruleFlat -match "$unwitnessedInLog of the $($logLedger.Count)") `
+        "The rule sheet must say that $unwitnessedInLog of the $($logLedger.Count) log lines reached no transcript."
+    Assert-True ($ruleFlat -notmatch "witnessed $($labelled.Count) of them") `
+        "The rule sheet claims the transcripts witnessed all $($labelled.Count) rows out of the log's in-window lines. Only $witnessedInLog of them are in that set."
+}
+
+# --- 5. The decision stays a floor ---
 
 # The whole point of backlog 103 is that 18 is a floor and not an upper bound. A later edit that
 # quietly restores 'upper bound' would put the withdrawn claim back into the documentation.
-$ruleText = Get-Content -LiteralPath $rulePath -Raw
 Assert-True ($ruleText -match 'floor') `
     "The rule sheet no longer contains the word 'floor'. The decision is that the count is a floor."
 

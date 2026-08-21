@@ -185,7 +185,10 @@ unflagged messages that is **17 to 71 missed asks**.
   arrived on 2026-07-30 carrying an event stamped 2026-07-29. Both routes quote the same
   persistent file, and the line's own stamp is the event time in both.
   **So 18 is a floor, not an upper bound.** The removal log itself holds 201 distinct
-  in-window outcome lines, and the transcripts witnessed 18 of them, about nine percent. The
+  in-window outcome lines. The 18 are not a subset of those 201: 15 of them are, and the other
+  3 predate the log's earliest surviving line, so the true in-window population is 204 or more.
+  That makes the witnessed share **at most about nine percent**, and 186 of the 201 log lines
+  reached no session at all. The
   rule sheet and the decision are in
   [`cleanup-event-identity.md`](cleanup-event-identity.md); the labels are in
   `friction-samples/cleanup-events-labelled.csv`, and the log's own rows in

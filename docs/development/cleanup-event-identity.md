@@ -87,13 +87,24 @@ All 18 published rows read `yes`.
 
 **18 is a floor, not an upper bound.**
 
-The removal log is the size of the real population. It holds 201 distinct outcome lines inside
-the window. The transcripts witnessed 18 of them, which is about nine percent.
+The removal log is the closest thing to the size of the real population. It holds 201 distinct
+outcome lines inside the window.
+
+**The 18 witnessed rows are not a subset of those 201, so do not divide one by the other.** 15
+of the 18 are in the log. The other 3 are stamped 2026-07-25, which is before the log's earliest
+surviving line, so they are inside the window but outside the log. That puts the true in-window
+population at 204 or more: the log's 201, plus at least those 3.
+
+So the witnessed share is **at most about nine percent**, and probably less. 18 out of 204 is
+8.8 percent, and 204 is itself a floor — every event the log has since lost pushes the
+denominator up and the share down. The share is a ceiling for the same reason the count is a
+floor.
 
 The count can be wrong in two directions, and only one of them is small:
 
-1. **Events that no transcript ever carried are invisible.** This is the large one. At least
-   183 in-window outcomes never reached a session that the metric read.
+1. **Events that no transcript ever carried are invisible.** This is the large one. 186 of the
+   201 log lines reached no session that the metric read, and the true number of unwitnessed
+   events is higher still, because the log does not reach the start of the window.
 2. **Two genuine events that produced identical lines fold into one.** The line has
    one-second resolution and carries no event id, so two events in the same second, in the
    same worktree, with the same message cannot be told apart. This has never happened: all
