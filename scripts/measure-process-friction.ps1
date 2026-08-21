@@ -92,7 +92,7 @@ $script:MatchSets = @{
 
 # Metric 3 is not a word list at all. Every cleanup outcome reaches a transcript as a line
 # written by Write-WorktreeLog, which stamps it 'yyyy-MM-dd HH:mm:ss  <worktree>  <message>'
-# (`scripts/worktree-log.common.ps1:22`, "    $line = '{0}  {1}  {2}' -f $stamp, $Worktree, $Message").
+# (`scripts/worktree-log.common.ps1:92`, "    return '{0}  {1}  {2}' -f $stamp, $Worktree, $single").
 # Matching the wording anywhere in a message counted the
 # script's own source, injected skill instructions, and reviews quoting an outcome: measured on
 # 2026-08-16, 65 of 75 rows were one of those, and six of the eleven phrases then in use appear
@@ -102,15 +102,22 @@ $script:CleanupLogLinePattern = '^\s*\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\s\s+\S.
 # Each entry is the start of a line one of the cleanup scripts writes, with the file and line
 # that writes it. An entry that no script writes cannot appear here.
 $script:CleanupOutcomePatterns = @(
-    '^Watcher started\.'                                        # remove-worktree-local-dev.ps1:824
-    '^Watcher done \('                                          # remove-worktree-local-dev.ps1:993,995,997,1006
-    '^Worktree was preserved \(not removed\):'                  # remove-worktree-local-dev.ps1:397
-    '^Could not remove worktree because the folder is still locked:'  # remove-worktree-local-dev.ps1:334
-    '^Worktree folder already gone \(removed elsewhere\)'       # remove-worktree-local-dev.ps1:867
-    '^Worktree folder does not exist; nothing to remove\.'      # remove-worktree-local-dev.ps1:552
-    '^REFUSING:'                                                # remove-worktree-local-dev.ps1:508,652,846
-    '^Git refused safe branch deletion'                         # remove-worktree-local-dev.ps1:423
-    '^force override: AHKFLOW_WORKTREE_FORCE_REMOVE set'        # remove-worktree-local-dev.ps1:665
+    # --- the shape written from backlog 073 onward: one line per removal attempt ---
+    '^Removed\.'                                                # remove-worktree-local-dev.ps1, watcher terminal state
+    '^Kept: '                                                   # every deliberate refusal, hook, watcher and sweep
+    '^Failed: '                                                 # every failure that left the worktree half-removed
+
+    # --- the shape written before backlog 073. Kept so the historical part of the same file
+    # --- stays readable to this script. Do not delete these.
+    '^Watcher started\.'
+    '^Watcher done \('
+    '^Worktree was preserved \(not removed\):'
+    '^Could not remove worktree because the folder is still locked:'
+    '^Worktree folder already gone \(removed elsewhere\)'
+    '^Worktree folder does not exist; nothing to remove\.'
+    '^REFUSING:'
+    '^Git refused safe branch deletion'
+    '^force override: AHKFLOW_WORKTREE_FORCE_REMOVE set'
 )
 
 # Metric 2 is a syntax rule, not a word list: a command line inside a shell fence that names a

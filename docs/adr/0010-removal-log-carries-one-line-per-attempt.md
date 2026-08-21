@@ -19,7 +19,7 @@ with a filter, but the human still opens a file where nineteen lines out of twen
 for them. The criterion this serves asks for a readable log, not a filterable one.
 
 **Dropping the detail entirely was rejected.** `Write-DiagnosticLog`
-(`scripts/remove-worktree-local-dev.ps1:218`, "function Write-DiagnosticLog {") already sends
+(`scripts/remove-worktree-local-dev.ps1:270`, "function Write-DiagnosticLog {") already sends
 it to stderr, so the argument was that a file adds nothing. It does not hold. The watcher is
 a detached process that outlives the session that spawned it, so its stderr reaches nobody.
 The detail would be lost exactly when a failure needs explaining.
@@ -58,12 +58,13 @@ is reclaimed by nothing.
 
 **Writing one line reliably is harder than writing twenty unreliably.** A sweep removes
 several worktrees in a run and each spawns its own detached watcher, so several processes
-write both files at once. Today an append that loses a race throws, and the throw is swallowed
-(`scripts/remove-worktree-local-dev.ps1:214`, "    } catch { }"). That was survivable when the
-outcome appeared on twenty lines and one could go missing. With one line per attempt, a
-swallowed failure erases the whole record of what happened to a worktree. So appends retry,
-rotation takes a cross-process mutex, and a writer that still cannot write falls back to
-stderr and then to `%TEMP%` rather than giving up.
+write both files at once. Before this change an append that lost a race threw, and the caller
+swallowed the throw. That was survivable when the outcome appeared on twenty lines and one
+could go missing. With one line per attempt, a swallowed failure erases the whole record of
+what happened to a worktree. So appends retry
+(`scripts/worktree-log.common.ps1:58`, "function Add-WorktreeLogLine {"), rotation takes a
+cross-process lock, and a writer that still cannot write falls back to stderr and then to
+`%TEMP%` rather than giving up.
 
 Any text that reaches the line from outside — a human's lock reason, a .NET exception message
 — is stripped of carriage returns and line feeds and truncated. One line per attempt is a

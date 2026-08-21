@@ -252,7 +252,7 @@ Assert-True ($count.Items -eq 3) "pwsh, sh and shell count and json does not, go
 #
 # The unit is a LOG LINE, not a message. Every cleanup outcome reaches a transcript through
 # Write-WorktreeLog, which stamps each line 'yyyy-MM-dd HH:mm:ss  <worktree>  <message>'
-# (`scripts/worktree-log.common.ps1:22`, "    $line = '{0}  {1}  {2}' -f $stamp, $Worktree, $Message").
+# (`scripts/worktree-log.common.ps1:92`, "    return '{0}  {1}  {2}' -f $stamp, $Worktree, $single").
 # Matching the wording anywhere in a message instead
 # counted the script's own source, injected skill instructions, and reviews discussing a
 # cleanup: measured on 2026-08-16, 65 of 75 rows were one of those.
