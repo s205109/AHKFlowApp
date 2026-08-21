@@ -900,8 +900,8 @@ try {
     }
 
     # A quote is one of four ways a Reading becomes Ambiguous. The other three are block forms the
-    # suite already covers at (`tests/AgentWorktreeGuard.Tests.ps1:2077`, "    $heredocAmbiguousCases = @(")
-    # and (`tests/AgentWorktreeGuard.Tests.ps1:2166`, "    $hereStringAmbiguousCases = @("), and
+    # suite already covers at (`tests/AgentWorktreeGuard.Tests.ps1:2075`, "    $heredocAmbiguousCases = @(")
+    # and (`tests/AgentWorktreeGuard.Tests.ps1:2164`, "    $hereStringAmbiguousCases = @("), and
     # every one of them must reach the same refusal at every layer. Without this, the message could
     # promise "balanced quoting" to somebody whose heredoc terminator is indented.
     $unreadableCauses = @(
