@@ -33,8 +33,11 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'worktree-log.common.ps1')
 . (Join-Path $PSScriptRoot 'worktree-powershell.common.ps1')
 
-# Parses `git worktree list --porcelain` into { Path; Branch } records. Branch is the
+# Parses `git worktree list --porcelain` into { Path; Branch; LockReason } records. Branch is the
 # short name for a normal worktree, and $null for a detached-HEAD or bare entry.
+#
+# LockReason is $null when there is no 'locked' line, '' for a bare 'locked', and the text after
+# 'locked ' otherwise. The three states are different: '' still means locked.
 function ConvertFrom-WorktreePorcelain {
     param([string[]] $Lines)
 
@@ -43,9 +46,15 @@ function ConvertFrom-WorktreePorcelain {
     foreach ($line in $Lines) {
         if ($line -like 'worktree *') {
             if ($current) { $worktrees += $current }
-            $current = [pscustomobject]@{ Path = $line.Substring('worktree '.Length); Branch = $null }
+            $current = [pscustomobject]@{
+                Path = $line.Substring('worktree '.Length); Branch = $null; LockReason = $null
+            }
         } elseif ($current -and ($line -like 'branch refs/heads/*')) {
             $current.Branch = $line.Substring('branch refs/heads/'.Length)
+        } elseif ($current -and ($line -eq 'locked')) {
+            $current.LockReason = ''
+        } elseif ($current -and ($line -like 'locked *')) {
+            $current.LockReason = $line.Substring('locked '.Length)
         }
     }
     if ($current) { $worktrees += $current }
@@ -104,6 +113,16 @@ function Get-EligibleMergedWorktrees {
             continue
         }
         if (-not $wt.Branch) { continue }
+
+        # A human locked this worktree on purpose. Nothing here overrides that, and no environment
+        # variable clears it -- git itself demands `-f -f`.
+        if ($null -ne $wt.LockReason) {
+            $lockReason = if ($wt.LockReason) { $wt.LockReason } else { 'no reason given' }
+            Write-Stderr "cleanup: skipping locked worktree '$wtFull' ($lockReason)."
+            Write-SweepOutcome -RepoRoot $RepoRoot -WorktreePath $wtFull `
+                -Message "Kept: the worktree is locked ($(Format-WorktreeLogReason -Text $lockReason))."
+            continue
+        }
         # Belt-and-suspenders: a branch is always "merged" into itself, so the main-ref
         # worktree would otherwise pass the merged check below. The repoRootFull compare
         # above only excludes it when $RepoRoot happens to resolve to that exact worktree
@@ -379,6 +398,22 @@ function Invoke-WorktreeRemoval {
     }
 }
 
+# The worktrees a human locked. Read on its own rather than returned by Get-EligibleMergedWorktrees,
+# because a locked worktree is by definition not eligible and that function's contract is the list
+# of worktrees the sweep may act on.
+function Get-LockedWorktrees {
+    param([Parameter(Mandatory)][string] $RepoRoot)
+
+    $listLines = & git -C $RepoRoot worktree list --porcelain 2>$null
+    if ($LASTEXITCODE -ne 0) { return , @() }
+
+    $locked = @()
+    foreach ($wt in (ConvertFrom-WorktreePorcelain $listLines)) {
+        if ($wt.Path -and $null -ne $wt.LockReason) { $locked += $wt }
+    }
+    return , $locked
+}
+
 # Drives the decision matrix through Resolve-CleanupDecision. Detection/removal failures
 # are logged to stderr and skipped so worktree creation is never blocked. Emits nothing on
 # the success stream.
@@ -396,6 +431,13 @@ function Invoke-MergedWorktreeCleanup {
     $eligible = Get-EligibleMergedWorktrees -RepoRoot $RepoRoot -MainRef $MainRef -ExcludePath $ExcludePath -MergedPullRequests $MergedPullRequests
     foreach ($wt in $eligible) {
         Write-Stderr "cleanup: eligible merged worktree: $($wt.Path) [$($wt.Branch)]"
+    }
+
+    # Reported, marked, and never acted on. Hiding a locked worktree would look like the sweep
+    # never noticed it, and send a reader hunting a bug that is not there.
+    foreach ($locked in (Get-LockedWorktrees -RepoRoot $RepoRoot)) {
+        $lockReason = if ($locked.LockReason) { $locked.LockReason } else { 'no reason given' }
+        Write-Stderr "  $($locked.Path)  [locked - skipped: $lockReason]"
     }
 
     # The other leftover, reported by the same run. It comes before the early return below, because
