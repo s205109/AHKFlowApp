@@ -1089,18 +1089,34 @@ function Invoke-WatcherMode {
             break
         }
 
-        try {
-            [System.IO.Directory]::Move($worktreeFull, $tempName)
+        # `git worktree move`, not [System.IO.Directory]::Move. Git refuses a locked worktree as
+        # part of the operation, so there is no window between checking the lock and acting on it,
+        # and no administrative path to construct -- that name is not always the folder name. It
+        # also updates git's registry, so the later prune only has to clear the deleted entry.
+        $move = Invoke-GitCapture @('-C', $mainCheckout, 'worktree', 'move', $worktreeFull, $tempName)
+        if ($move.ExitCode -eq 0) {
             $renamed = $true
-            Write-DiagnosticLog "Atomic rename succeeded -> '$tempName'. Folder is free; proceeding to delete."
+            Write-DiagnosticLog "git worktree move succeeded -> '$tempName'. Folder is free; proceeding to delete."
             break
-        } catch {
-            $lastError = $_.Exception.Message
+        }
+
+        $lastError = ($move.Lines -join ' ').Trim()
+
+        # A lock is a decision, not a wait. Stop now rather than retrying for the whole timeout.
+        # The wording below is git's, measured on 2.55.0.windows.3, and is not ours to choose:
+        #   fatal: cannot move a locked working tree, lock reason: <reason>
+        #   fatal: cannot move a locked working tree;          (locked with no reason)
+        if ($lastError -match 'cannot move a locked working tree') {
+            $lockReason = if ($lastError -match 'lock reason:\s*(?<reason>.+?)\s+use ') { $Matches.reason } else { '' }
+            Write-DiagnosticLog "git refused the move: $lastError"
+            Write-Outcome ("Kept: the worktree is locked ($(Format-WorktreeLogReason -Text $lockReason)).")
+            Complete-WatcherPreserved -ParamFilePath $ParamFile -WatcherScriptPath $watcherScript
+            return
         }
 
         if ((Get-Date) -ge $nextStatus) {
             $elapsed = [int]((Get-Date) - $deadline.AddSeconds(-$timeout)).TotalSeconds
-            Write-DiagnosticLog "Waiting (${elapsed}s): rename blocked. LastError: $lastError"
+            Write-DiagnosticLog "Waiting (${elapsed}s): move blocked. LastError: $lastError"
             $nextStatus = (Get-Date).AddSeconds(5)
         }
 

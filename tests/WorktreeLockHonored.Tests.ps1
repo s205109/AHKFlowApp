@@ -9,6 +9,7 @@ $ErrorActionPreference = 'Stop'
 $suiteRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $scriptsDir = Join-Path $suiteRoot 'scripts'
 $cleanupScript = Join-Path $scriptsDir 'cleanup-merged-worktrees.ps1'
+$removeScript = Join-Path $scriptsDir 'remove-worktree-local-dev.ps1'
 
 function Assert-True {
     param($Condition, [string] $Message)
@@ -108,6 +109,40 @@ function Invoke-CleanupScript {
     }
 }
 
+# Runs remove-worktree-local-dev.ps1 in watcher mode the way the hook does: from a copy in the
+# temp folder, driven by a sidecar param file. Watcher mode reads every value from that file, so
+# passing -WorktreePath on the command line alone would not reach it.
+function Invoke-Watcher {
+    param(
+        [string] $RepoDir,
+        [string] $WorktreePath,
+        [string] $BranchName,
+        [string] $LogPath,
+        [int] $TimeoutSeconds = 10
+    )
+
+    $runId = [guid]::NewGuid().ToString('N').Substring(0, 8)
+    $tempDir = [System.IO.Path]::GetTempPath()
+    $watcherScript = Join-Path $tempDir "ahkflowapp-wt-remove-watcher-$runId.ps1"
+    $paramFile = Join-Path $tempDir "ahkflowapp-wt-remove-$runId.json"
+
+    Copy-Item -LiteralPath $removeScript -Destination $watcherScript -Force
+    $params = [ordered]@{
+        RunId          = $runId
+        WorktreePath   = $WorktreePath
+        BranchName     = $BranchName
+        MainCheckout   = $RepoDir
+        LogPath        = $LogPath
+        TimeoutSeconds = $TimeoutSeconds
+        WatcherScript  = $watcherScript
+    }
+    Set-Content -LiteralPath $paramFile -Value ($params | ConvertTo-Json) -Encoding utf8
+
+    $psExe = (Get-Process -Id $PID).Path
+    & $psExe -NoProfile -ExecutionPolicy Bypass -File $watcherScript -Mode Watcher -ParamFile $paramFile 2>&1 | Out-Null
+    Remove-Item -LiteralPath $watcherScript, $paramFile -Force -ErrorAction SilentlyContinue
+}
+
 # Import the cleanup functions (the guard keeps the standalone entrypoint from running).
 . $cleanupScript
 
@@ -194,6 +229,62 @@ try {
     Assert-True ($result.Stderr -match '\[locked - skipped: a human is using it\]') `
         "Report-only must list the locked worktree, got: $($result.Stderr)"
     Assert-True (Test-Path -LiteralPath $lockedPath) 'Report-only must leave the locked worktree alone'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: the watcher refuses a locked worktree, and force does not clear a lock ---
+# Not a source scan: only a real run proves that git's own check, and not a read-then-act check
+# this script writes, is what stops the removal.
+$repo = New-TempGitRepo
+try {
+    $lockedPath = Add-MergedWorktree -RepoDir $repo -BranchName 'feat-watcher-lock'
+    Invoke-TestGit $repo @('worktree', 'lock', '--reason', 'held by a human', $lockedPath) | Out-Null
+
+    $lockLog = Join-Path (Split-Path -Parent $repo) 'watcher-lock.log'
+    Invoke-Watcher -RepoDir $repo -WorktreePath $lockedPath -BranchName 'feat-watcher-lock' -LogPath $lockLog
+
+    Assert-True (Test-Path -LiteralPath $lockedPath) 'A locked worktree must survive the watcher'
+    $outcome = @(Get-Content -LiteralPath $lockLog)
+    Assert-Equal 1 $outcome.Count "A locked removal writes one outcome line, got $($outcome.Count)"
+    Assert-True ($outcome[0] -match 'Kept: the worktree is locked \(held by a human\)\.$') `
+        "Expected the locked line, got '$($outcome[0])'"
+
+    # The override clears the merge gate. It must NOT clear a lock. The lock check sits inside the
+    # watcher's rename loop, past the gate the override bypasses, so this needs no extra code --
+    # and if it ever fails, the fix is to find what let the flow past the lock, not to add a
+    # force branch beside the lock.
+    $forceLog = Join-Path (Split-Path -Parent $repo) 'watcher-force-lock.log'
+    $env:AHKFLOW_WORKTREE_FORCE_REMOVE = '1'
+    try {
+        Invoke-Watcher -RepoDir $repo -WorktreePath $lockedPath -BranchName 'feat-watcher-lock' -LogPath $forceLog
+        Assert-True (Test-Path -LiteralPath $lockedPath) 'Force must not remove a locked worktree'
+        $forced = @(Get-Content -LiteralPath $forceLog)
+        Assert-True ($forced[0] -match 'Kept: the worktree is locked') `
+            "Force plus lock must still write the locked line, got '$($forced[0])'"
+    } finally {
+        Remove-Item -LiteralPath 'Env:\AHKFLOW_WORKTREE_FORCE_REMOVE' -ErrorAction SilentlyContinue
+    }
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: an unlocked worktree is still removed, by git rather than by a rename ---
+# Without this case, a lock check that refused everything would pass every assertion above.
+$repo = New-TempGitRepo
+try {
+    $freePath = Add-MergedWorktree -RepoDir $repo -BranchName 'feat-watcher-free'
+    $freeLog = Join-Path (Split-Path -Parent $repo) 'watcher-free.log'
+    Invoke-Watcher -RepoDir $repo -WorktreePath $freePath -BranchName 'feat-watcher-free' -LogPath $freeLog
+
+    Assert-True (-not (Test-Path -LiteralPath $freePath)) 'An unlocked worktree must still be removed'
+    $outcome = @(Get-Content -LiteralPath $freeLog)
+    Assert-Equal 1 $outcome.Count "A successful removal writes one outcome line, got $($outcome.Count)"
+    Assert-True ($outcome[0] -match 'Removed\.$') "Expected the Removed line, got '$($outcome[0])'"
+
+    # git worktree move updates the registry as it goes, so nothing is left listed afterwards.
+    $listed = (Invoke-TestGit $repo @('worktree', 'list')) -join "`n"
+    Assert-True (-not ($listed -match 'feat-watcher-free')) "git must not still list the removed worktree: $listed"
 } finally {
     Remove-TempTree $repo
 }
