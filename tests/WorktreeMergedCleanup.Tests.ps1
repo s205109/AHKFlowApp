@@ -784,24 +784,6 @@ try {
     Remove-TempTree $repo
 }
 
-# --- Test: the accepted forged-empty case, pinned ---------------------------------------
-# A documented limit, not a wish. GIT_REFLOG_ACTION=commit on a fast-forward onto an already-merged
-# tip satisfies every signal: the subject reads as a commit, the SHA really is a merged parent, and
-# an empty branch strands nothing. The worktree is removed. Backlog 096 tracks whether a stronger
-# signal exists; until then this test states the behaviour so a change to it must be deliberate.
-$repo = New-TempGitRepo
-try {
-    Add-TestWorktree -RepoDir $repo -BranchName 'feat-forge-target' | Out-Null
-    $emptyPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-forged-empty' -NoCommits -BaseRef 'main^'
-    Invoke-TestGitWithReflogAction -RepoDir $emptyPath -Action 'commit' -GitArgs @('merge', '--ff-only', 'feat-forge-target') | Out-Null
-
-    Assert-True (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-forged-empty') 'Accepted limit: a forged commit subject on an empty branch still reads as merged own work.'
-
-    $stranded = Get-StrandedCommits -RepoRoot $repo -Branch 'feat-forged-empty' -Shas @(((Invoke-TestGit $repo @('rev-parse', 'refs/heads/feat-forged-empty')) -join '').Trim())
-    Assert-Equal 0 $stranded.Count 'The accepted case must strand nothing, which is what bounds it.'
-} finally {
-    Remove-TempTree $repo
-}
 
 # --- Test: a squashing rebase is swept like any other rebase -----------------------------
 # A squash strands the originals it replaced, exactly as a plain rebase strands the commits it
@@ -1832,6 +1814,112 @@ try {
     $records = @([pscustomobject]@{ Number = 8; HeadRefName = 'feat-leftover-fresh'; HeadRefOid = $tip })
     $leftover = Get-LeftoverMergedBranches -RepoRoot $repo -MainRef 'main' -MergedPullRequests $records
     Assert-Equal 0 $leftover.Count 'A branch nobody committed on must never be reported as leftover.'
+} finally {
+    Remove-TempTree $repo
+}
+
+
+# --- Test: Get-BaseRefAtBranchCreation ---------------------------------------------------
+# The branch's oldest ref-log entry carries its creation time. The base ref's own ref log carries
+# every position it has held. The answer is the newest base position STRICTLY EARLIER than that
+# creation time. Anything it cannot establish must come back as $null, so the caller skips
+# signal 5 instead of refusing on a guess.
+$repo = New-TempGitRepo
+try {
+    # main's position before anything else happens. The sleep makes that entry strictly earlier
+    # than the branch created next; without it every stamp lands in the same second and the
+    # function correctly reports that it cannot answer.
+    $mainBefore = ((Invoke-TestGit $repo @('rev-parse', 'main')) -join '').Trim()
+    Start-Sleep -Seconds 2
+
+    Add-TestWorktree -RepoDir $repo -BranchName 'feat-base-probe' | Out-Null
+
+    $resolved = Get-BaseRefAtBranchCreation -RepoRoot $repo -Branch 'feat-base-probe' -MainRef 'main'
+    Assert-True ($resolved -eq $mainBefore) 'The base position must be where main stood before the branch was created, not after.'
+
+    # The merge that Add-TestWorktree performed came after the branch existed, so it must NOT be
+    # the answer. This is the collision that '<base>@{<time>}' gets wrong.
+    $mainAfter = ((Invoke-TestGit $repo @('rev-parse', 'main')) -join '').Trim()
+    Assert-True ($resolved -ne $mainAfter) 'A base move that happened after the branch was created must never be the base position.'
+
+    # Signal 5's allow path, on the same fixture. The base position resolves, so signal 5 really
+    # runs, and the branch's own commit was not reachable from that position. Signal 5 may only
+    # refuse, so it must let this through. Without this assertion a signal 5 that refuses
+    # everything it can resolve would still pass the suite.
+    Assert-True (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-base-probe' -MainRef 'main') `
+        'A resolved base at creation must allow a proof that was not already reachable from that base.'
+
+    Assert-True ($null -eq (Get-BaseRefAtBranchCreation -RepoRoot $repo -Branch 'no-such-branch' -MainRef 'main')) 'An unknown branch must resolve to $null.'
+    Assert-True ($null -eq (Get-BaseRefAtBranchCreation -RepoRoot $repo -Branch 'feat-base-probe' -MainRef 'no-such-ref')) 'An unknown base ref must resolve to $null.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# The case of a base ref with no ref log at all is covered further down, by the fixture that
+# proves an unresolvable creation position skips signal 5. That one asserts the same $null and
+# then asserts what the caller does with it, so a separate fixture here would only repeat setup.
+
+
+# --- Test: a forged commit subject on a never-committed branch (backlog 096) --------------
+# The shape backlog 095 could not refuse. GIT_REFLOG_ACTION=commit on a fast-forward onto an
+# already-merged tip satisfies signal 1 with text and signal 2 with real history. The branch holds
+# no commit, so signal 3 has nothing stranded to refuse and signal 4 finds no later work.
+# Signal 5 is what refuses it: the proof SHA was already in the base before this branch existed.
+$repo = New-TempGitRepo
+try {
+    Add-TestWorktree -RepoDir $repo -BranchName 'feat-ff-donor' | Out-Null
+    $donorTip = ((Invoke-TestGit $repo @('rev-parse', 'refs/heads/feat-ff-donor')) -join '').Trim()
+
+    # The donor must already be merged, and main must already point past it, BEFORE the victim
+    # branch is created. That ordering is the whole point of signal 5.
+    $mergeParents = (Invoke-TestGit $repo @('rev-list', '--min-parents=2', '--format=%P', 'main')) -join ' '
+    Assert-True ($mergeParents -match [regex]::Escape($donorTip)) 'Sanity check: the donor branch must already be a merged non-first parent.'
+
+    # Two seconds of separation, so the victim's creation stamp is strictly later than main's move.
+    # Ref-log stamps have one-second resolution. Without this the fixture can build everything
+    # inside one second, Get-BaseRefAtBranchCreation correctly reports that it cannot answer, and
+    # signal 5 is skipped -- so the test would fail while proving nothing.
+    Start-Sleep -Seconds 2
+
+    $victimPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-ff-victim' -NoCommits -BaseRef 'main^'
+    Invoke-TestGitWithReflogAction -RepoDir $victimPath -Action 'commit' -GitArgs @('merge', '--ff-only', $donorTip) | Out-Null
+
+    $entries = (Invoke-TestGit $repo @('reflog', 'show', '--format=%H %gs', 'refs/heads/feat-ff-victim')) -join "`n"
+    Assert-True ($entries -match '(?m)commit: Fast-forward') 'Sanity check: the fast-forward must really have written a forged "commit:" subject.'
+
+    # Signal 5 must actually be engaged. Without this the test could go green because the function
+    # could not resolve a base position, which proves nothing about the forgery.
+    Assert-True ($null -ne (Get-BaseRefAtBranchCreation -RepoRoot $repo -Branch 'feat-ff-victim' -MainRef 'main')) 'Sanity check: signal 5 must have a base position to judge against, or this test proves nothing.'
+
+    Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-ff-victim' -MainRef 'main')) 'A forged "commit:" subject on a never-committed branch must not make it eligible.'
+
+    # Kept from the backlog 095 block this test replaces. It bounds what the refusal costs: the
+    # branch strands nothing, so refusing it loses no work. Signal 5 buys safety here for free.
+    $stranded = Get-StrandedCommits -RepoRoot $repo -Branch 'feat-ff-victim' -Shas @(((Invoke-TestGit $repo @('rev-parse', 'refs/heads/feat-ff-victim')) -join '').Trim())
+    Assert-Equal 0 $stranded.Count 'The forged case must strand nothing, which is what bounds it.'
+
+    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
+    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
+    Assert-True (-not ($keys -contains (ConvertTo-Key $victimPath))) 'A worktree whose only proof is work the base already had must never be eligible.'
+} finally {
+    Remove-TempTree $repo
+}
+
+
+# --- Test: an unresolvable creation position skips signal 5, it never refuses -------------
+# Signal 5 may only refuse. When Get-BaseRefAtBranchCreation cannot answer, the decision must be
+# exactly what the other four signals say.
+#
+# The base ref log is removed to make that state exact. Relying on the fixture building inside one
+# second would work on a fast machine and break on a loaded one, because ref-log stamps have
+# one-second resolution. Get-BaseRefAtBranchCreation is the only function that reads the base ref
+# log, so removing it changes nothing else in the decision.
+$repo = New-TempGitRepo
+try {
+    Add-TestWorktree -RepoDir $repo -BranchName 'feat-skipped' | Out-Null
+    Remove-Item -LiteralPath (Join-Path $repo '.git/logs/refs/heads/main') -Force
+    Assert-True ($null -eq (Get-BaseRefAtBranchCreation -RepoRoot $repo -Branch 'feat-skipped' -MainRef 'main')) 'Sanity check: a base ref with no ref log must give no usable base position.'
+    Assert-True (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-skipped' -MainRef 'main') 'A skipped signal 5 must leave the decision to the other four signals.'
 } finally {
     Remove-TempTree $repo
 }

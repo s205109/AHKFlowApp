@@ -6,7 +6,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (scripts)
 - **Difficulty**: moderate
-- **Stage**: 0-intake
+- **Stage**: 9-ship
 
 ## Summary
 
@@ -44,15 +44,20 @@ rebase or an amend, are not protected by anything.
 
 ## Acceptance criteria
 
-- [ ] The item states whether a stronger signal exists — for example a marker written by
+- [x] The item states whether a stronger signal exists — for example a marker written by
       `new-worktree.ps1`, or reading the reflog of every other branch to see who created a SHA
-- [ ] The claim about what signal 3 guarantees stays accurate wherever it is written: it refuses
+- [x] The claim about what signal 3 guarantees stays accurate wherever it is written: it refuses
       work a reset discarded, and says nothing about superseded originals
-- [ ] If a stronger signal exists, the sweep uses it and the forged fast-forward stops being
+- [x] If a stronger signal exists, the sweep uses it and the forged fast-forward stops being
       eligible
 - [ ] If no stronger signal exists, the limit is written where a reader meets it: the comment at
       `scripts/cleanup-merged-worktrees.ps1:118` and `.agents/worktrees/SKILL.md`
-- [ ] A regression pins whichever answer wins
+- [x] A regression pins whichever answer wins
+
+Box 4 stays unticked because its condition is false. A stronger signal does exist, and the sweep
+now uses it. The limit did not disappear, it became narrower, so the narrowed wording was written
+into both named places anyway: the comment in `scripts/cleanup-merged-worktrees.ps1` and the limits
+section of `.agents/worktrees/SKILL.md`.
 
 ## Out of scope
 
@@ -64,4 +69,4 @@ rebase or an amend, are not protected by anything.
 - Found in the second review round on backlog 095, pull request #310
 - Backlog 094 and 095 both touch `Test-BranchOwnWorkWasMerged`. Read them first
 - Spec: none — investigation first, no design yet
-- Plan: none — investigation item, plan follows the answer
+- Plan: `docs/superpowers/plans/2026-08-20-worktree-sweep-reflog-forgery-plan-096.md`

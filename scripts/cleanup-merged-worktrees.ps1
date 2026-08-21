@@ -111,8 +111,9 @@ function Get-EligibleMergedWorktrees {
         # standalone run from inside a linked worktree) so this check must not depend on it.
         if ([string]::Equals($wt.Branch, $mainBranchShortName, [System.StringComparison]::OrdinalIgnoreCase)) { continue }
         # The one merged decision, shared with remove-worktree-local-dev.ps1. It refuses a branch
-        # nobody has committed on, a branch whose work only a `git reset` still holds, and a branch
-        # that gained commits after it merged; it accepts a rebase merge when $MergedPullRequests
+        # nobody has committed on, a branch whose work only a `git reset` still holds, a branch
+        # that gained commits after it merged, and a branch whose only merge proof is work the base
+        # already held before the branch existed; it accepts a rebase merge when $MergedPullRequests
         # carries a pull request whose head SHA this branch recorded. Deciding here -- in
         # eligibility, ahead of every setting -- means no flag, env override, or config value can
         # remove one of those, and report-only mode never lists one either.
