@@ -1842,28 +1842,22 @@ try {
     $mainAfter = ((Invoke-TestGit $repo @('rev-parse', 'main')) -join '').Trim()
     Assert-True ($resolved -ne $mainAfter) 'A base move that happened after the branch was created must never be the base position.'
 
+    # Signal 5's allow path, on the same fixture. The base position resolves, so signal 5 really
+    # runs, and the branch's own commit was not reachable from that position. Signal 5 may only
+    # refuse, so it must let this through. Without this assertion a signal 5 that refuses
+    # everything it can resolve would still pass the suite.
+    Assert-True (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-base-probe' -MainRef 'main') `
+        'A resolved base at creation must allow a proof that was not already reachable from that base.'
+
     Assert-True ($null -eq (Get-BaseRefAtBranchCreation -RepoRoot $repo -Branch 'no-such-branch' -MainRef 'main')) 'An unknown branch must resolve to $null.'
     Assert-True ($null -eq (Get-BaseRefAtBranchCreation -RepoRoot $repo -Branch 'feat-base-probe' -MainRef 'no-such-ref')) 'An unknown base ref must resolve to $null.'
 } finally {
     Remove-TempTree $repo
 }
 
-# A base ref with no ref log gives the function nothing to compare against, so it must report that
-# it cannot answer instead of guessing. The caller then skips signal 5.
-#
-# The base ref log is removed on purpose, and the reason matters. An earlier version of this test
-# relied on the fixture building everything inside one second. Ref-log stamps have one-second
-# resolution, so that held on a fast machine and broke on a loaded one. Removing the ref log makes
-# the unanswerable state exact. Get-BaseRefAtBranchCreation is the only function that reads the
-# base ref log, so nothing else in the suite changes.
-$repo = New-TempGitRepo
-try {
-    Add-TestWorktree -RepoDir $repo -BranchName 'feat-no-base-log' | Out-Null
-    Remove-Item -LiteralPath (Join-Path $repo '.git/logs/refs/heads/main') -Force
-    Assert-True ($null -eq (Get-BaseRefAtBranchCreation -RepoRoot $repo -Branch 'feat-no-base-log' -MainRef 'main')) 'A base ref with no ref log must report no usable base position.'
-} finally {
-    Remove-TempTree $repo
-}
+# The case of a base ref with no ref log at all is covered further down, by the fixture that
+# proves an unresolvable creation position skips signal 5. That one asserts the same $null and
+# then asserts what the caller does with it, so a separate fixture here would only repeat setup.
 
 
 # --- Test: a forged commit subject on a never-committed branch (backlog 096) --------------
