@@ -209,6 +209,14 @@ _Avoid_: check, gate, hook, protection
 One interpretation of a command string under one shell's quoting rules. Every command has a bash Reading and a PowerShell Reading, and the Guard keeps the worst decision either one produces.
 _Avoid_: shell mode, parse, pass, interpretation
 
+**Ambiguous Reading**:
+A Reading that ended inside a quote or an escape that never closed, so no part of the command can be trusted. The Guard refuses the whole command.
+_Avoid_: ambiguous parse, unparseable command, bad quoting
+
+**Policy layer**:
+One of the Guard's three decision stages, in the order they run: safety, location, write. Each one runs once per Reading.
+_Avoid_: rule, stage, tier, pass
+
 **Check**:
 A script that compares two records which must agree, and fails a run when they do not. Each Check reports one kind of disagreement.
 _Avoid_: guard, gate, validator, linter
