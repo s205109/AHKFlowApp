@@ -98,6 +98,85 @@ function Select-SampleKey {
             Select-Object -First $take)
 }
 
+# The interval the labels support, and the one figure this whole exercise publishes.
+#
+# Wilson is a binomial interval: it assumes each draw is independent, which is what sampling
+# WITH replacement gives. This draw takes a fixed number of rows without replacement, so the
+# variance of the sample proportion is smaller - p(1-p)/n times (N-n)/(N-1) rather than
+# p(1-p)/n. Plain Wilson is therefore too wide here. It errs safe, but a range that is wider
+# than the evidence supports is still the wrong range.
+#
+# The fix keeps the Wilson shape and changes only what it divides by. Set the binomial variance
+# p(1-p)/n_eff equal to the true one and solve: n_eff = n(N-1)/(N-n). Feed that in as the
+# sample size while leaving the observed proportion at Hits/Drawn, and the interval comes out
+# with the right width. For 200 of 1,004 asks n_eff is 249.5, and the interval narrows from
+# 1.7-7.0 percent to 1.8-6.6 percent.
+#
+# What this does NOT fix: whether every row had the same chance of being drawn. That is a
+# property of the draw, not of the arithmetic, and only a redraw settles it.
+function Get-RecallInterval {
+    <#
+    .SYNOPSIS
+        The 95 percent interval for a miss rate, and the count it implies over the population.
+    .PARAMETER Hits
+        Labelled misses in the sample.
+    .PARAMETER Drawn
+        Rows drawn. The denominator of the observed rate.
+    .PARAMETER Population
+        The unflagged population the sample was drawn from.
+    .PARAMETER Correct
+        Apply the finite-population correction described above. Without it the result is plain
+        Wilson, which is what the first published figures used.
+    .NOTES
+        PowerShell variable names are case-insensitive, so $n and $N name one variable. The
+        parameters are spelled out for that reason; a draft written with $n and $N divided by
+        zero and reported an interval of nothing.
+    #>
+    param(
+        [Parameter(Mandatory)][ValidateRange(0, [int]::MaxValue)][int] $Hits,
+        [Parameter(Mandatory)][ValidateRange(1, [int]::MaxValue)][int] $Drawn,
+        [Parameter(Mandatory)][ValidateRange(1, [int]::MaxValue)][int] $Population,
+        [switch] $Correct
+    )
+
+    if ($Hits -gt $Drawn) { throw "Hits ($Hits) cannot exceed Drawn ($Drawn)." }
+    if ($Drawn -gt $Population) { throw "Drawn ($Drawn) cannot exceed Population ($Population)." }
+
+    # 1.959963985 is the two-sided 95 percent normal quantile. Written out rather than computed,
+    # because .NET has no inverse normal and an approximation here would move a published range.
+    $z = 1.959963985
+    $rate = $Hits / [double]$Drawn
+
+    # A census needs no interval, and the correction divides by zero on one. Drawing the whole
+    # population means the count is known exactly, so say so rather than inventing a range.
+    if ($Correct -and $Drawn -eq $Population) {
+        return [pscustomobject]@{
+            Rate = $rate; Low = $rate; High = $rate
+            LowCount = $Hits; HighCount = $Hits
+            Effective = [double]$Drawn; Corrected = $true
+        }
+    }
+
+    $effective = if ($Correct) { $Drawn * ($Population - 1.0) / ($Population - $Drawn) } else { [double]$Drawn }
+
+    $centre = ($rate + $z * $z / (2.0 * $effective)) / (1.0 + $z * $z / $effective)
+    $half = $z / (1.0 + $z * $z / $effective) *
+        [Math]::Sqrt($rate * (1.0 - $rate) / $effective + $z * $z / (4.0 * $effective * $effective))
+
+    $low = [Math]::Max(0.0, $centre - $half)
+    $high = [Math]::Min(1.0, $centre + $half)
+
+    return [pscustomobject]@{
+        Rate      = $rate
+        Low       = $low
+        High      = $high
+        LowCount  = [int][Math]::Round($low * $Population)
+        HighCount = [int][Math]::Round($high * $Population)
+        Effective = $effective
+        Corrected = [bool]$Correct
+    }
+}
+
 if ($AsModule) { return }
 
 . (Join-Path $PSScriptRoot 'measure-process-friction.ps1') -AsModule
