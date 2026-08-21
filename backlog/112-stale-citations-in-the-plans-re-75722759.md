@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: none (repo tooling)
 - **Difficulty**: moderate
-- **Stage**: 0-intake
+- **Stage**: 3-plan
 
 ## Summary
 
