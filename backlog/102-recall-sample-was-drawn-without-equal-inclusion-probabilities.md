@@ -39,23 +39,56 @@ the current 200 overlap.
 
 - [ ] Both samples are redrawn with the current sampler, and the selection records are
       committed with the new manifests.
+      **Not done, and not doable from this item.** The population is deleted on a 30-day cycle
+      and had already lost the window's first week. Handed to backlog 112, which redraws
+      against the snapshot.
 - [ ] Every unlabelled row in the new draw is labelled by hand, against the rule sheet already
       written in `docs/development/friction-recall-sample.md`.
+      **Not done.** It follows the redraw. Handed to backlog 112.
 - [ ] The two ranges are recomputed and republished in that file and in
       `backlog/done/072-process-wave-2-parity-drift-guard-templates.md`.
-- [ ] The paragraph "The committed sample was drawn the old way, and its intervals are
+      **Not done, and deliberately so.** No defensible corrected range exists for this draw —
+      see the last box. Item 072 is untouched. Handed to backlog 112, which adds its figures
+      to 072 as a dated addition rather than a substitution.
+- [x] The paragraph "The committed sample was drawn the old way, and its intervals are
       approximate" is removed rather than softened, because it no longer applies.
-- [ ] A decision is recorded on the flagged strata: those are counted whole, so nothing about
+      **Inverted, and the box is ticked on the inverted form.** The paragraph is still true, so
+      removing it would have withdrawn a caveat the figures still need. It stays, and it now
+      says why no redraw happened. `tests/FrictionRecallSample.Tests.ps1` fails if a later edit
+      deletes it while keeping the numbers. Backlog 112 removes it, after the redraw earns that.
+- [x] A decision is recorded on the flagged strata: those are counted whole, so nothing about
       them changes, and the item says so instead of leaving a reader to work it out.
-- [ ] The interval is either computed with a finite-population correction, or kept as Wilson
+      Recorded in `docs/development/friction-recall-sample.md` under "How a label was decided":
+      the flagged stratum is a census, not a sample, so no interval applies to it.
+- [x] The interval is either computed with a finite-population correction, or kept as Wilson
       and labelled an approximation. A uniform draw is not enough on its own: Wilson is a
       binomial interval and the draw takes a fixed number without replacement, which for 200
       of 1,004 asks makes Wilson about 10 percent wider than the truth.
+      **Second branch taken, and the reason the first is unavailable is written down.** A
+      finite-population correction assumes equal inclusion probabilities. This draw had none,
+      so the correction would have published 181–528 and 36–84: narrower than the truth and
+      resting on an assumption the data breaks. A design-based estimator needs the earlier
+      60-row draw's selection record and the population as it stood then, and neither survives.
+      `Get-RecallInterval` exists with the correction behind a `-Correct` switch that nothing
+      passes, for backlog 112 to use once the draw is uniform.
 
 ## Out of scope
 
-- Changing the sampler. It already draws uniformly; this item is the redraw and the relabelling.
+- Changing the sampler. It already draws uniformly.
+- The redraw and the relabelling. Both moved to backlog 112 once the population turned out to
+  be disappearing; see the finding below.
 - The other three metrics. They are not sampled.
+
+## Why this item stays open
+
+Three of its six boxes are unticked, and its user story is not satisfied: the published interval
+still does not describe the draw that happened. Ship closes an item when its boxes are ticked,
+so moving this file to `backlog/done/` would record a result that is not true.
+
+What this item did deliver is the decision and the reason behind it. The interval stays plain
+Wilson and stays labelled an approximation, the flagged stratum is recorded as a census, and the
+retention finding is written into `docs/development/friction-recall-sample.md`. The work that
+would satisfy the user story is backlog 112.
 
 ## Notes / dependencies
 

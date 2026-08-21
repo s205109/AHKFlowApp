@@ -68,8 +68,31 @@ survives a re-run without the label deciding the sample.
 and this draw takes a fixed number of rows without replacement. The true interval is narrower
 by roughly `sqrt((N - n) / (N - 1))` — 0.90 for 200 of 1,004 asks, 0.98 for 200 of 5,457
 handoffs. Wilson is therefore conservative here, never optimistic, and every range below stays
-an approximation. Backlog 102 decides between labelling the interval and computing a
-finite-population one.
+an approximation.
+
+**The decision, taken in backlog 102 on 2026-08-21: the ranges stay plain Wilson, and they stay
+labelled an approximation.** The correction was computed and then withdrawn, for a reason worth
+writing down.
+
+A finite-population correction assumes a simple random sample without replacement — every row
+with the same chance of selection. Under that design the only thing wrong with a binomial
+interval is its width, and replacing `n` with `n_eff = n(N - 1)/(N - n)` fixes exactly that.
+The committed draw is not that design. Two paragraphs below, "The committed sample was drawn
+the old way" gives the numbers: an older row had about 1.4 times the inclusion probability of a
+newer one, and changing the denominator cannot repair that. Applying the
+correction to it would have published 181–528 handoffs and 36–84 asks: narrower than the
+figures below, and resting on an assumption the data breaks. A range that looks more exact
+while being less trustworthy is a worse number, not a better one.
+
+The other honest route is a design-based estimator such as Horvitz–Thompson, which needs each
+row's actual inclusion probability. Computing those needs the earlier 60-row draw's selection
+record and the population as it stood then. Neither survives, so the route is closed.
+
+`Get-RecallInterval` in `scripts/sample-friction-recall.ps1` computes the ranges below, and
+`tests/FrictionRecallSample.Tests.ps1` checks each bound against the equation that defines a
+Wilson bound rather than against the function itself. The function carries a `-Correct` switch
+for a future equal-probability redraw. Nothing passes it today, and a test case fails the suite
+if any script starts to.
 
 **The committed sample was drawn the old way, and its intervals are approximate.** The first
 sampler kept every row the previous draw had selected and filled the rest at random. The
@@ -81,10 +104,16 @@ Wilson interval describes a uniform one. So read both ranges below as close to a
 interval rather than exactly one. The bias has no measured direction: it over-represents older
 messages, and nothing says the miss rate differs between older and newer ones.
 
-Redrawing with the fixed sampler produces a different 200 rows per metric and would need those
-rows labelled by hand again. That work is filed as backlog 102, not done here: throwing away 400
-labels to redraw is a decision with a cost, and the labels themselves are still evidence for the
-rows they describe.
+**The redraw did not happen, and it can no longer reproduce this population.** Claude Code
+deletes session transcripts older than `cleanupPeriodDays`, which defaults to 30 days. On
+2026-08-21 a dry run of the fixed sampler read 4,633 handoff messages where the 2026-08-16 draw
+read 5,472, and 890 ask messages where it read 1,042. Nine of the 38 flagged asks were gone
+altogether. Redrawing would have moved the handoff range from 179–533 to about 153–452, and the
+move would have come from the deletion rather than from the sampling defect. The full figures
+are in "What limits these numbers" below.
+
+So the labels below stay the evidence for the rows they describe, and the redraw is filed as
+follow-up work rather than done here.
 
 | Metric | Population | Flagged | Unflagged | Ordered-key digest |
 |---|---|---|---|---|
@@ -98,6 +127,14 @@ ones — 453 messages in total. The manifests carry each message's **full text**
 be checked. They also carry a `Screen` column — a wide word list, far wider than the metric's own
 — which is a reading aid, never a labeller. A row is labelled from its text, not from its screen
 hits.
+
+**The flagged stratum is a census, not a sample, and no interval applies to it.** Every message
+the match set flags is in the manifest and every one was read, so the precision figures below —
+10 real of 15, 18 real of 38 — are counted, not estimated. Nothing about the draw touches them:
+the sampling question is about the unflagged remainder, which is the only part that was sampled.
+Backlog 102 asked for this to be stated rather than left for a reader to work out, so it is
+stated here. The one thing that does threaten these counts is deletion, not sampling — see
+"What limits these numbers".
 
 **Definitions.**
 
@@ -209,8 +246,8 @@ better than 60 did — the handoff interval went from 60–655 to 179–533, and
 37–163 to 35–89 — but neither figure is a point. A point estimate needs a classifier that reads
 structure rather than wording: a refused tool call, a session that ends on a question. That is
 wave-3 work, not a patch to this script. The draw that produced these 400 labels was not
-uniform either, for the reason given under "How the draw picks a row"; backlog 102 carries the
-redraw.
+uniform either, for the reason given under "How the draw picks a row". Backlog 102 decided that
+the ranges stay plain Wilson and stay labelled approximate; backlog 112 carries the redraw.
 
 **Metric 5 classifies 115 of 192 in-window CI runs.** The 77 unresolved runs are **not** missing
 from this clone — every in-window `head_sha` was present when this was measured. They have no
@@ -228,3 +265,35 @@ corrected and the committed ledger reclassified from its own `ChangedPaths` colu
 **The transcripts are live.** Three runs on one afternoon read 691, then 672, then 670 files. The
 manifests, the selection records and the ledgers are the frozen record; every published figure
 names the run that produced it.
+
+**The window is being deleted, and this is the hard limit on everything above.** Claude Code
+deletes session files and other application data older than `cleanupPeriodDays` at startup. The
+default is 30 days and this machine does not override it. The window runs 2026-07-15 to
+2026-08-12, so it started ageing out of the transcripts on 2026-08-14 and is fully gone around
+2026-09-11.
+
+Measured on 2026-08-21, five days after the draw, by running the sampler and comparing against
+the committed selection records:
+
+| Metric | Population | Unflagged | Flagged |
+|---|---|---|---|
+| handoffs, drawn 2026-08-16 | 5,472 | 5,457 | 15 |
+| handoffs, 2026-08-21 | 4,633 | 4,618 | 15 |
+| next-step-asks, drawn 2026-08-16 | 1,042 | 1,004 | 38 |
+| next-step-asks, 2026-08-21 | 890 | 861 | 29 |
+
+The oldest surviving transcript file was stamped 2026-07-22 on that date, exactly 30 days back,
+which is what a daily 30-day deletion looks like from the inside.
+
+Three consequences, and none of them is small. The flagged ask count fell from 38 to 29, so the
+47 percent precision figure describes nine messages that can no longer be re-read — the
+committed manifest is now the only record of them. The extrapolation base N fell by 15 percent
+for handoffs and 14 percent for asks, so any re-measurement produces a smaller count for a
+reason that has nothing to do with friction. And a selection record's promise — that a reader
+can tell whether a redraw is the same draw — can from now on only ever be answered "no".
+
+The transcripts were copied to `~/AHKFlowApp-friction-snapshot-2026-08-21` on 2026-08-21, 755
+files and 445 MB, so what remained of the window at that moment stopped shrinking. The copy is
+machine-local and is in no repository. It is what makes a later redraw possible at all, and it
+covers 2026-07-22 onward only. The first week of the window is not in it, because it was already
+gone.
