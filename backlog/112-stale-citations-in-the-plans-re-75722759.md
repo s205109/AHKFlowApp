@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: none (repo tooling)
 - **Difficulty**: moderate
-- **Stage**: 3-plan
+- **Stage**: 4-execute
 
 ## Summary
 
@@ -83,5 +83,10 @@ citation at a time, is the work here.
   stopping the next 62, buys a few days. Look at whether the check can run per-branch on changed
   files, or whether finished plans should be exempt once their item ships
 - Backlog 097 built the checker and is done. This item is the debt that built up behind it
-- Spec: none — not yet at Design
-- Plan: none — not yet at Plan
+- Spec: none — `moderate` goes straight to Plan
+- Plan: `docs/superpowers/plans/2026-08-21-stale-plans-citations-plan-112.md`
+- The plan revises the first acceptance box. Measurement showed the full-corpus scan cannot be
+  clean for everybody at once: the same plans score 82 problems from this worktree and 104 from
+  the backlog-110 worktree, and the two disagree about which files are broken. A plan another
+  branch is writing cites lines that are right on that branch and wrong here. Box 1 as written
+  asks for something no repair can deliver; the plan says what to deliver instead
