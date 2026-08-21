@@ -3230,6 +3230,49 @@ try {
         Assert-Equal 1 @($parsed.Segments | Where-Object { $_.Kind -eq 'Git' }).Count 'Git segments'
     }
 
+    Write-Host 'Redirect targets carry the expression rule too' -ForegroundColor Cyan
+
+    Invoke-TestCase 'Redirect: a parenthesised target into main is denied' {
+        $decision = Invoke-AgentGuardPolicy `
+            -Command ("Write-Output x > ('" + $fixture.Main + "\probe.txt')") `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Deny' $decision.Action 'Action'
+    }
+
+    Invoke-TestCase 'Redirect: a parenthesised concatenated target into main is denied' {
+        $decision = Invoke-AgentGuardPolicy `
+            -Command ("Write-Output x > ('" + $fixture.Main + "' + '\probe.txt')") `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Deny' $decision.Action 'Action'
+    }
+
+    Invoke-TestCase 'Redirect: an attached parenthesised target into main is denied' {
+        # No space after '>', so the target is the tail of the redirect token rather than the next
+        # token. That is a separate branch of the redirect reader and needs its own case.
+        $decision = Invoke-AgentGuardPolicy `
+            -Command ("Write-Output x >('" + $fixture.Main + "\probe.txt')") `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Deny' $decision.Action 'Action'
+    }
+
+    Invoke-TestCase 'Redirect: a quoted parenthesis in a worktree filename stays allowed' {
+        # The ratchet guard. A quoted paren is an ordinary Windows file name character, and this
+        # write lands inside the session's own worktree.
+        $decision = Invoke-AgentGuardPolicy `
+            -Command ('Write-Output x > "' + $fixture.Managed + '\Copy (2).txt"') `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Allow' $decision.Action 'Action'
+    }
+
+    Invoke-TestCase 'Redirect: a parenthesised argument does not deny a clean worktree target' {
+        # Only the redirect TARGET carries the rule. A parenthesised argument elsewhere cannot
+        # change where the output lands, so it must not refuse a legal write.
+        $decision = Invoke-AgentGuardPolicy `
+            -Command ('Write-Output (1+1) > ' + $fixture.Managed + '\out.txt') `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Allow' $decision.Action 'Action'
+    }
+
     Invoke-TestCase 'Write isolation: rm -rf on a worktree glob is not a write-rule denial' {
         $decision = Get-AgentWorktreeWriteDecision -Command 'rm -rf ./obj/*' `
             -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false -Reading Bash

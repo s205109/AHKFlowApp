@@ -21,7 +21,7 @@ accurate about the tool and still wrong about the shell.
 **Refusing the ambiguity was rejected, and it would have widened the hole.** Marking every
 unquoted backtick and parenthesis ambiguous fails closed in the write-target reader, and fails
 *open* in the write decision
-(`scripts/agents/agent-worktree-guard.common.ps1:3267`, "    if ($parsed.Ambiguous) { return New-AgentGuardDecision -Action Allow }").
+(`scripts/agents/agent-worktree-guard.common.ps1:3289`, "    if ($parsed.Ambiguous) { return New-AgentGuardDecision -Action Allow }").
 It would also stop a bash subshell from splitting at all, which is the part the old behaviour got
 right.
 
@@ -47,6 +47,6 @@ a newline. That can mis-name a path, and it can never hide a command leaf. Contr
 illegal in Windows paths, so this is accepted rather than modelled.
 
 Recursion into a nested interpreter deliberately carries no shell knowledge, even though
-`AgentGuardInterpreterSpecs` (`scripts/agents/agent-worktree-guard.common.ps1:2790`, "$script:AgentGuardInterpreterSpecs = @(")
+`AgentGuardInterpreterSpecs` (`scripts/agents/agent-worktree-guard.common.ps1:2812`, "$script:AgentGuardInterpreterSpecs = @(")
 names the shell of `pwsh -c` exactly. Reading the inner text in one Reading instead of two could
 only ever read less than both Readings do.

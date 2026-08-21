@@ -22,10 +22,10 @@ Guard, so that a command the Guard admits it cannot read is not simply allowed.
 ## Detail
 
 `Get-AgentWorktreeWriteDecision` returns Allow on an ambiguous parse
-(`scripts/agents/agent-worktree-guard.common.ps1:3267`, "    if ($parsed.Ambiguous) { return New-AgentGuardDecision -Action Allow }").
+(`scripts/agents/agent-worktree-guard.common.ps1:3289`, "    if ($parsed.Ambiguous) { return New-AgentGuardDecision -Action Allow }").
 
 `Get-AgentCommandWriteTarget` sets `Unresolved` on the same condition
-(`scripts/agents/agent-worktree-guard.common.ps1:2912`, "    if ($parsed.Ambiguous) {"),
+(`scripts/agents/agent-worktree-guard.common.ps1:2934`, "    if ($parsed.Ambiguous) {"),
 and its own documentation says a caller must fail closed on that flag rather than read an empty
 list as "writes nothing".
 

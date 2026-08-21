@@ -2514,6 +2514,13 @@ function Get-AgentSegmentWriteTarget {
     $argumentHasExpression = $false
     $matchedWriteCommand = $false
 
+    # A redirect needs neither half. It is a write whatever the leading word is - `Write-Output`
+    # names no write table - and its target is one specific token rather than any operand. So it
+    # carries its own flag, set only when the TARGET itself holds an unquoted parenthesis. Scoping
+    # it to the target is what keeps `Write-Output (1+1) > out.txt` allowed: a parenthesis in some
+    # other argument cannot change where the output lands.
+    $redirectTargetHasExpression = $false
+
     # --- Redirects -------------------------------------------------------------------------
     $consumedByRedirect = @{}
     for ($i = 0; $i -lt $tokens.Count; $i++) {
@@ -2528,11 +2535,25 @@ function Get-AgentSegmentWriteTarget {
         $rest = $token.Substring($end)
 
         if (-not [string]::IsNullOrWhiteSpace($rest)) {
+            # Attached form, `>(path)`. The mask runs parallel to the token, so slice it at the
+            # same offset the token was sliced at.
             [void] $targets.Add($rest)
+            $restMask = if ($end -lt $mask.Length) { $mask.Substring($end) } else { '' }
+            if (Test-AgentTokenHasUnquotedChar -Token $rest -Mask $restMask -Chars @('(', ')')) {
+                $redirectTargetHasExpression = $true
+            }
         }
         elseif (($i + 1) -lt $tokens.Count) {
-            [void] $targets.Add([string] $tokens[$i + 1])
+            # Detached form, `> (path)`. The target is the next token, which the argument loop
+            # below then skips - so this is the only place its parenthesis can be seen.
+            $redirectTarget = [string] $tokens[$i + 1]
+            $redirectMask = if (($i + 1) -lt $masks.Count) { [string] $masks[$i + 1] } else { '' }
+            [void] $targets.Add($redirectTarget)
             $consumedByRedirect[$i + 1] = $true
+            if (Test-AgentTokenHasUnquotedChar -Token $redirectTarget -Mask $redirectMask `
+                    -Chars @('(', ')')) {
+                $redirectTargetHasExpression = $true
+            }
         }
     }
 
@@ -2713,7 +2734,8 @@ function Get-AgentSegmentWriteTarget {
 
     return [pscustomobject]@{
         Targets    = $targets.ToArray()
-        Unresolved = ($argumentHasExpression -and $matchedWriteCommand)
+        Unresolved = (($argumentHasExpression -and $matchedWriteCommand) -or
+            $redirectTargetHasExpression)
     }
 }
 
