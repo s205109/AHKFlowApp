@@ -10,9 +10,10 @@
 
 ## Summary
 
-Two parts of the Guard read the same condition and disagree. When the tokenizer cannot split a
-command safely, `Get-AgentWorktreeWriteDecision` returns Allow, and `Get-AgentCommandWriteTarget`
-reports the target list as incomplete so its callers fail closed. One of the two is wrong.
+Two parts of the Guard read the same condition and disagreed. When the tokenizer could not split a
+command safely, `Get-AgentWorktreeWriteDecision` returned Allow, while `Get-AgentCommandWriteTarget`
+reported the target list as incomplete so its callers fail closed. One of the two was wrong. This
+item made both fail closed.
 
 ## User story
 
@@ -21,17 +22,14 @@ Guard, so that a command the Guard admits it cannot read is not simply allowed.
 
 ## Detail
 
-`Get-AgentWorktreeWriteDecision` returns Allow on an ambiguous parse
+`Get-AgentWorktreeWriteDecision` returned Allow on an ambiguous parse before this item shipped; it
+now calls the shared refusal helper instead
 (`scripts/agents/agent-worktree-guard.common.ps1:3323`, "    if ($parsed.Ambiguous) { return New-AgentGuardAmbiguousDecision }").
 
 `Get-AgentCommandWriteTarget` sets `Unresolved` on the same condition
 (`scripts/agents/agent-worktree-guard.common.ps1:2963`, "    if ($parsed.Ambiguous) {"),
 and its own documentation says a caller must fail closed on that flag rather than read an empty
 list as "writes nothing".
-
-The file's architecture note says safety rules fail closed and location rules fail open, so the
-Allow may be deliberate. That has to be settled before either side changes, which is why the
-Difficulty is `to-be-determined` rather than a guess.
 
 ## Acceptance criteria
 
