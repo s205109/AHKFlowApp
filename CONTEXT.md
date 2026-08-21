@@ -214,7 +214,7 @@ A Reading that ended inside a quote or an escape that never closed, so no part o
 _Avoid_: ambiguous parse, unparseable command, bad quoting
 
 **Policy layer**:
-One of the Guard's three decision stages, in the order they run: safety, location, write. Each one runs once per Reading.
+One of the Guard's three decision stages, in the order they are consulted: safety, location, write. Each one is consulted once per Reading, and the Guard may stop at the first layer that does not allow the command.
 _Avoid_: rule, stage, tier, pass
 
 **Check**:

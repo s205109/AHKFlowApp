@@ -12,10 +12,16 @@ its callers to fail closed.
 Only the order of the layers hid the disagreement. `Invoke-AgentGuardPolicyForReading` returns the
 first layer that does not say Allow, and the location layer runs before the write layer.
 
-**An Ambiguous Reading now refuses the command at every layer.** One shared helper builds that
-decision, so the three layers cannot drift apart again, and all three return the same rule name and
-the same message. The rule is renamed `ambiguous-command`, because it fires on commands holding no
-git at all.
+**An Ambiguous Reading now refuses the command at every layer, inside the commands that layer is
+already responsible for.** One shared helper builds that decision, so the three layers cannot drift
+apart again, and all three return the same rule name and the same message. The rule is renamed
+`ambiguous-command`, because it fires on commands holding no git at all.
+
+The scope wording is load-bearing for one layer. `Get-AgentWorktreeWriteDecision` is the worktree
+write-isolation rule, and it answers Allow for any session that is not in a managed worktree,
+before it parses anything. That test stays in front of the ambiguity check. Refusing an unreadable
+command from a main-checkout session is the location layer's job, and it already does it for every
+session.
 
 ## Considered options
 
@@ -35,8 +41,10 @@ it: a command the tokenizer could not read cannot be shown to hold no git.
 
 ## Consequences
 
-Nothing a person sees changes. Every ambiguous command was already refused, and the shared message
-means the answer is identical whichever layer produces it.
+The same commands are refused before and after, and the shared message means the answer is
+identical whichever layer produces it. Two things a person sees do change: the rule name, which
+the hook prints as a diagnostic, and the wording of the refusal. The Action stays Deny and the
+adapter transport is unchanged.
 
 `AHKFLOW_ALLOW_MAIN=1` does not relax this refusal. That was already true — the location layer
 refused before it read the override flag — and it is now pinned by a test and stated in
