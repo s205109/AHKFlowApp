@@ -42,8 +42,15 @@ Difficulty is `to-be-determined` rather than a guess.
 
 ## Out of scope
 
-- The combination rule for two Readings. Backlog 093 already settled that an ambiguous Reading
-  contributes nothing, so it can never outrank the other Reading's Deny
+- The combination rule for two Readings. Backlog 093 settled it, and it already keeps the worst
+  action either Reading produced
+
+  This bullet used to say an ambiguous Reading "contributes nothing, so it can never outrank
+  the other Reading's Deny". The first half is wrong, and Design measured it: with
+  `printf x > out`"` the bash Reading is ambiguous and refuses, the PowerShell Reading is clean
+  and allows, and the combined answer is Deny. The ambiguous Reading contributed the whole
+  answer. The true claim is narrower — Deny is the top of the severity table, so an ambiguous
+  Reading can never be outranked and can never weaken the other Reading's answer
 
 ## Notes / dependencies
 
