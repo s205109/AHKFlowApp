@@ -943,3 +943,96 @@ function Test-BranchOwnWorkWasMerged {
 
     return (Test-StrandedWorkWasSuperseded -RepoRoot $RepoRoot -Entries $facts.Entries -Stranded $stranded)
 }
+
+# The backlog item a worktree records for itself. setup-worktree-local-dev.ps1 writes the key at
+# creation; a worktree made before that key existed has no manifest entry and reads as empty,
+# which Test-WorktreePlanWasImplemented treats as "nothing to judge".
+function Get-ManifestBacklogItem {
+    param([Parameter(Mandatory)][string] $WorktreePath)
+
+    $manifest = Join-Path $WorktreePath 'scripts\.env.worktree'
+    if (-not (Test-Path -LiteralPath $manifest)) { return '' }
+    foreach ($line in (Get-Content -LiteralPath $manifest -ErrorAction SilentlyContinue)) {
+        if ($line -match '^\s*AHKFLOW_BACKLOG_ITEM\s*=\s*(?<value>.*)$') { return $Matches.value.Trim() }
+    }
+    return ''
+}
+
+# Answers whether a worktree's plan was ever implemented, which is a different question from
+# whether its branch merged. Plans live in docs/superpowers, a second private repository that the
+# public branch never carries, so a branch can merge holding only its backlog stage stamps while
+# the code work never happened.
+#
+# "Never implemented" is the literal reading: NO step ticked. A plan with some steps ticked and
+# some not was implemented, and this says nothing about it. Refusing on any unticked step would
+# fire on nearly every worktree, because plans routinely keep unticked steps after the work
+# merged, and a guard that always fires gets ignored.
+#
+# Everything is read from the main checkout. By the time the watcher asks, the worktree folder may
+# already be renamed or deleted.
+function Test-WorktreePlanWasImplemented {
+    param(
+        [Parameter(Mandatory)][string] $MainCheckout,
+        [string] $ItemNumber
+    )
+
+    # No recorded number means a worktree created with -Name, or one created before the manifest
+    # carried the key. Nothing can be judged, so nothing is refused.
+    if ([string]::IsNullOrWhiteSpace($ItemNumber)) {
+        return [pscustomobject]@{ Allow = $true; Reason = 'no backlog item is recorded for this worktree' }
+    }
+
+    $itemPath = $null
+    foreach ($folder in @('backlog', 'backlog\done', 'backlog\blocked')) {
+        $directory = Join-Path $MainCheckout $folder
+        if (-not (Test-Path -LiteralPath $directory)) { continue }
+        $match = @(Get-ChildItem -LiteralPath $directory -Filter "$ItemNumber-*.md" -File -ErrorAction SilentlyContinue)
+        if ($match.Count -eq 1) { $itemPath = $match[0].FullName; break }
+    }
+
+    if (-not $itemPath) {
+        return [pscustomobject]@{ Allow = $false; Reason = "backlog item $ItemNumber could not be found" }
+    }
+
+    try {
+        $itemLines = @(Get-Content -LiteralPath $itemPath -ErrorAction Stop)
+    } catch {
+        return [pscustomobject]@{ Allow = $false; Reason = "backlog item $ItemNumber could not be read" }
+    }
+
+    $planBullet = $itemLines | Where-Object { $_ -match '^\s*-\s*Plan:\s*(?<rest>.+)$' } | Select-Object -First 1
+    if (-not $planBullet) {
+        return [pscustomobject]@{ Allow = $true; Reason = "backlog item $ItemNumber names no plan" }
+    }
+
+    $null = $planBullet -match '^\s*-\s*Plan:\s*(?<rest>.+)$'
+    $rest = $Matches.rest.Trim()
+    if ($rest -match '^none\b') {
+        return [pscustomobject]@{ Allow = $true; Reason = "backlog item $ItemNumber states it has no plan" }
+    }
+
+    # Both forms exist in the backlog today: with backticks and without.
+    $planRelative = $rest.Trim([char] 0x60).Trim()
+    $planPath = Join-Path $MainCheckout ($planRelative -replace '/', '\')
+    if (-not (Test-Path -LiteralPath $planPath)) {
+        return [pscustomobject]@{ Allow = $false; Reason = "the plan for item $ItemNumber could not be read" }
+    }
+
+    try {
+        $planText = Get-Content -Raw -LiteralPath $planPath -ErrorAction Stop
+    } catch {
+        return [pscustomobject]@{ Allow = $false; Reason = "the plan for item $ItemNumber could not be read" }
+    }
+
+    $ticked = [regex]::Matches($planText, '(?m)^\s*-\s*\[x\]', 'IgnoreCase').Count
+    $unticked = [regex]::Matches($planText, '(?m)^\s*-\s*\[ \]').Count
+
+    if ($unticked -gt 0 -and $ticked -eq 0) {
+        return [pscustomobject]@{
+            Allow = $false
+            Reason = "the plan for item $ItemNumber was never implemented ($unticked steps, none ticked)"
+        }
+    }
+
+    return [pscustomobject]@{ Allow = $true; Reason = "the plan for item $ItemNumber has $ticked ticked steps" }
+}

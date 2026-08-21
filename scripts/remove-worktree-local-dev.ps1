@@ -124,6 +124,32 @@ if (-not (Get-Command Test-BranchOwnWorkWasMerged -ErrorAction SilentlyContinue)
     }
 }
 
+# A guard that cannot run is not a guard that passes. The watcher runs from a copy in %TEMP% where
+# the shared helper does not exist, so this keeps the worktree and says why. The one asymmetry,
+# and it is deliberate: with NO recorded item the fallback still allows. A legacy worktree must not
+# become unremovable just because the watcher lost its helper.
+if (-not (Get-Command Test-WorktreePlanWasImplemented -ErrorAction SilentlyContinue)) {
+    function Test-WorktreePlanWasImplemented {
+        param([string] $MainCheckout, [string] $ItemNumber)
+        if ([string]::IsNullOrWhiteSpace($ItemNumber)) {
+            return [pscustomobject]@{ Allow = $true; Reason = 'no backlog item is recorded for this worktree' }
+        }
+        return [pscustomobject]@{ Allow = $false; Reason = 'the plan check could not run' }
+    }
+}
+
+if (-not (Get-Command Get-ManifestBacklogItem -ErrorAction SilentlyContinue)) {
+    function Get-ManifestBacklogItem {
+        param([Parameter(Mandatory)][string] $WorktreePath)
+        $manifest = Join-Path $WorktreePath 'scripts\.env.worktree'
+        if (-not (Test-Path -LiteralPath $manifest)) { return '' }
+        foreach ($line in (Get-Content -LiteralPath $manifest -ErrorAction SilentlyContinue)) {
+            if ($line -match '^\s*AHKFLOW_BACKLOG_ITEM\s*=\s*(?<value>.*)$') { return $Matches.value.Trim() }
+        }
+        return ''
+    }
+}
+
 if (-not (Get-Command Resolve-BaseBranchName -ErrorAction SilentlyContinue)) {
     function Resolve-BaseBranchName {
         param([string] $RepoRoot, [string] $LocalRef = 'main')
@@ -816,6 +842,21 @@ function Invoke-HookMode {
         if (-not $branchName) {
             Write-DiagnosticLog 'The worktree is on a detached HEAD, so there is no branch to decide about.'
             Write-UnmergedPreserveGuidance -WorktreeFull $worktreeFull -MainCheckout $mainCheckoutFromGit -BranchName $branchName -Reason 'the worktree has a detached HEAD'
+            return
+        }
+
+        # A merged branch does not prove the work happened: the plan lives in a second private
+        # repository the public branch never carries. Asked before the base is resolved, because it
+        # reads two local files and the base resolution can spend a fetch.
+        $planVerdict = Test-WorktreePlanWasImplemented -MainCheckout $mainCheckoutFromGit `
+            -ItemNumber (Get-ManifestBacklogItem -WorktreePath $worktreeFull)
+        if (-not $planVerdict.Allow) {
+            Write-DiagnosticLog "plan gate: $($planVerdict.Reason)"
+            Write-Outcome 'Kept: the plan was never implemented.'
+            # -NoOutcome: this path already wrote its line, and two lines on one attempt is the
+            # defect this whole split exists to prevent.
+            Write-UnmergedPreserveGuidance -WorktreeFull $worktreeFull -MainCheckout $mainCheckoutFromGit `
+                -BranchName $branchName -Reason $planVerdict.Reason -NoOutcome
             return
         }
 

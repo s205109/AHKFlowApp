@@ -119,6 +119,18 @@ function Get-EligibleMergedWorktrees {
         # remove one of those, and report-only mode never lists one either.
         if (-not (Test-BranchOwnWorkWasMerged -RepoRoot $RepoRoot -Branch $wt.Branch -MainRef $MainRef -MergedPullRequests $MergedPullRequests)) { continue }
 
+        # A merged branch does not prove the work happened. Plans live in a second private
+        # repository the public branch never carries, so a branch can merge holding only its
+        # backlog stage stamps while no code was ever written.
+        $planVerdict = Test-WorktreePlanWasImplemented -MainCheckout $RepoRoot -ItemNumber (Get-ManifestBacklogItem -WorktreePath $wtFull)
+        if (-not $planVerdict.Allow) {
+            Write-Stderr "cleanup: keeping '$wtFull' because $($planVerdict.Reason)."
+            # The sweep never hands this one over, so the sweep owns its outcome line.
+            Write-SweepOutcome -RepoRoot $RepoRoot -WorktreePath $wtFull `
+                -Message 'Kept: the plan was never implemented.'
+            continue
+        }
+
         $status = & git -C $wtFull status --porcelain 2>$null
         if ($LASTEXITCODE -ne 0) {
             Write-Stderr "cleanup: status check failed for '$wtFull'; skipping it."
