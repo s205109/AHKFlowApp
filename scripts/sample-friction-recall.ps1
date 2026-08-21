@@ -114,6 +114,23 @@ function Select-SampleKey {
 #
 # What this does NOT fix: whether every row had the same chance of being drawn. That is a
 # property of the draw, not of the arithmetic, and only a redraw settles it.
+#
+# So -Correct carries a precondition, and it is not a small one. The correction assumes a
+# SIMPLE RANDOM SAMPLE without replacement: every row in the population had the same inclusion
+# probability. Applied to a draw that did not, it returns a NARROWER interval resting on an
+# assumption the data breaks - more exact-looking and less true, which is worse than the wide
+# interval it replaced.
+#
+# The committed 2026-08-16 manifests are exactly such a draw. The sampler that produced them
+# kept every previously selected row and filled the rest at random, so an older row had about
+# 1.4 times the inclusion probability of a newer one; the selection records record it as
+# carriedOverLabels, 57 of 200 and 58 of 200. -Correct MUST NOT be applied to those labels.
+# Backlog 102 decided the published ranges stay plain Wilson and stay labelled approximate,
+# because repairing unequal inclusion probabilities needs a design-based estimator and the
+# records that estimator would need no longer exist.
+#
+# -Correct is here for the redraw that has not happened yet. Nothing in this repository passes
+# it today.
 function Get-RecallInterval {
     <#
     .SYNOPSIS
@@ -125,8 +142,10 @@ function Get-RecallInterval {
     .PARAMETER Population
         The unflagged population the sample was drawn from.
     .PARAMETER Correct
-        Apply the finite-population correction described above. Without it the result is plain
-        Wilson, which is what the first published figures used.
+        Apply the finite-population correction described above. Valid ONLY when every row in
+        the population had the same chance of being drawn. Never pass it for the committed
+        2026-08-16 manifests, whose draw was not uniform - see the note above the function.
+        Without it the result is plain Wilson, which is what every published figure uses.
     .NOTES
         PowerShell variable names are case-insensitive, so $n and $N name one variable. The
         parameters are spelled out for that reason; a draft written with $n and $N divided by
