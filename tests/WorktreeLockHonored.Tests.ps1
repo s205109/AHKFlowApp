@@ -109,10 +109,11 @@ function Invoke-CleanupScript {
     }
 }
 
-# Runs remove-worktree-local-dev.ps1 in watcher mode the way the hook does: from a copy in the
-# temp folder, driven by a sidecar param file. Watcher mode reads every value from that file, so
-# passing -WorktreePath on the command line alone would not reach it.
-function Invoke-Watcher {
+# Stages what the hook stages before it spawns a watcher: a copy of the removal script in the
+# temp folder, and a sidecar param file beside it. Watcher mode reads every value from that file,
+# so passing -WorktreePath on the command line alone would not reach it. Both leaf names have to
+# match the generated-artifact patterns, or the watcher refuses to clean them up afterwards.
+function New-WatcherInvocation {
     param(
         [string] $RepoDir,
         [string] $WorktreePath,
@@ -138,9 +139,26 @@ function Invoke-Watcher {
     }
     Set-Content -LiteralPath $paramFile -Value ($params | ConvertTo-Json) -Encoding utf8
 
+    return [pscustomobject]@{ WatcherScript = $watcherScript; ParamFile = $paramFile }
+}
+
+# Runs the watcher to completion and waits for it.
+function Invoke-Watcher {
+    param(
+        [string] $RepoDir,
+        [string] $WorktreePath,
+        [string] $BranchName,
+        [string] $LogPath,
+        [int] $TimeoutSeconds = 10
+    )
+
+    $staged = New-WatcherInvocation -RepoDir $RepoDir -WorktreePath $WorktreePath `
+        -BranchName $BranchName -LogPath $LogPath -TimeoutSeconds $TimeoutSeconds
+
     $psExe = (Get-Process -Id $PID).Path
-    & $psExe -NoProfile -ExecutionPolicy Bypass -File $watcherScript -Mode Watcher -ParamFile $paramFile 2>&1 | Out-Null
-    Remove-Item -LiteralPath $watcherScript, $paramFile -Force -ErrorAction SilentlyContinue
+    & $psExe -NoProfile -ExecutionPolicy Bypass -File $staged.WatcherScript `
+        -Mode Watcher -ParamFile $staged.ParamFile 2>&1 | Out-Null
+    Remove-Item -LiteralPath $staged.WatcherScript, $staged.ParamFile -Force -ErrorAction SilentlyContinue
 }
 
 # Import the cleanup functions (the guard keeps the standalone entrypoint from running).
@@ -264,6 +282,47 @@ try {
             "Force plus lock must still write the locked line, got '$($forced[0])'"
     } finally {
         Remove-Item -LiteralPath 'Env:\AHKFLOW_WORKTREE_FORCE_REMOVE' -ErrorAction SilentlyContinue
+    }
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: a lock added while the watcher is already waiting is honored ---------
+# This is the case a read-then-act lock check cannot cover. The watcher waits up to its whole
+# timeout, and a human can lock during that wait. Letting git do the move closes the window,
+# because the check happens inside each attempt.
+$repo = New-TempGitRepo
+try {
+    $racedPath = Add-MergedWorktree -RepoDir $repo -BranchName 'feat-locked-mid-wait'
+    $raceLog = Join-Path (Split-Path -Parent $repo) 'watcher-race.log'
+
+    # A process with the worktree as its current directory holds the folder, so the first move
+    # attempts fail and the watcher keeps waiting -- which is what makes the race reachable.
+    $holder = Start-Process -FilePath ((Get-Process -Id $PID).Path) -WindowStyle Hidden -PassThru `
+        -WorkingDirectory $racedPath `
+        -ArgumentList @('-NoProfile', '-Command', 'Start-Sleep -Seconds 60')
+    try {
+        Start-Sleep -Seconds 2
+        $staged = New-WatcherInvocation -RepoDir $repo -WorktreePath $racedPath `
+            -BranchName 'feat-locked-mid-wait' -LogPath $raceLog -TimeoutSeconds 60
+        $watcher = Start-Process -FilePath ((Get-Process -Id $PID).Path) -WindowStyle Hidden -PassThru `
+            -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $staged.WatcherScript,
+                '-Mode', 'Watcher', '-ParamFile', $staged.ParamFile)
+
+        # Let the watcher reach its wait loop, then lock underneath it.
+        Start-Sleep -Seconds 5
+        Invoke-TestGit $repo @('worktree', 'lock', '--reason', 'a human stepped in', $racedPath) | Out-Null
+
+        $watcher | Wait-Process -Timeout 120
+        Remove-Item -LiteralPath $staged.WatcherScript, $staged.ParamFile -Force -ErrorAction SilentlyContinue
+
+        Assert-True (Test-Path -LiteralPath $racedPath) 'A worktree locked mid-wait must survive'
+        $outcome = @(Get-Content -LiteralPath $raceLog)
+        Assert-True ($outcome[-1] -match 'Kept: the worktree is locked \(a human stepped in\)\.$') `
+            "Expected the locked line after a mid-wait lock, got '$($outcome[-1])'"
+    } finally {
+        Stop-Process -Id $holder.Id -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Milliseconds 500
     }
 } finally {
     Remove-TempTree $repo
