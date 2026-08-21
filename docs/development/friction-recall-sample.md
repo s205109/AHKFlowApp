@@ -75,24 +75,31 @@ labelled an approximation.** The correction was computed and then withdrawn, for
 writing down.
 
 A finite-population correction assumes a simple random sample without replacement — every row
-with the same chance of selection. Under that design the only thing wrong with a binomial
-interval is its width, and replacing `n` with `n_eff = n(N - 1)/(N - n)` fixes exactly that.
-The committed draw is not that design. Two paragraphs below, "The committed sample was drawn
-the old way" gives the numbers: an older row had about 1.4 times the inclusion probability of a
-newer one, and changing the denominator cannot repair that. Applying the
-correction to it would have published 181–528 handoffs and 36–84 asks: narrower than the
-figures below, and resting on an assumption the data breaks. A range that looks more exact
-while being less trustworthy is a worse number, not a better one.
+with the same chance of selection. The committed draw is not that. Two paragraphs below, "The
+committed sample was drawn the old way" gives the numbers: an older row had about 1.4 times the
+inclusion probability of a newer one, and no amount of arithmetic on the sample size repairs
+that. Applying the correction anyway would have published 164–531 handoffs and 34–85 asks:
+figures that look sharper than the ones below while resting on an assumption the data breaks.
+A range that looks more exact while being less trustworthy is a worse number, not a better one.
 
 The other honest route is a design-based estimator such as Horvitz–Thompson, which needs each
 row's actual inclusion probability. Computing those needs the earlier 60-row draw's selection
 record and the population as it stood then. Neither survives, so the route is closed.
 
-`Get-RecallInterval` in `scripts/sample-friction-recall.ps1` computes the ranges below, and
+`Get-RecallInterval` in `scripts/sample-friction-recall.ps1` computes the ranges below.
 `tests/FrictionRecallSample.Tests.ps1` checks each bound against the equation that defines a
-Wilson bound rather than against the function itself. The function carries a `-Correct` switch
-for a future equal-probability redraw. Nothing passes it today, and a test case fails the suite
-if any script starts to.
+Wilson bound rather than against the function itself, and it re-derives every published figure
+from the committed manifests, including the totals in
+[`072`](../../backlog/done/072-process-wave-2-parity-drift-guard-templates.md).
+
+The function also carries a `-Correct` switch, for a future equal-probability redraw. It
+computes the **exact hypergeometric interval** — the set of population counts the observation
+does not rule out — rather than a normal approximation. That matters at the edges: an earlier
+draft substituted an effective sample size into Wilson, and for 0 misses in 200 rows drawn from
+220 it reported that the population held 0 misses. One miss among 220 escapes a 200-row draw
+20/220 of the time, so that was a claim of certainty wrong nearly a tenth of the time it was
+made. Nothing passes `-Correct` today, and a test case parses every script to make sure — by
+syntax tree, not by text search, so a call split across lines or hidden in a splat is caught too.
 
 **The committed sample was drawn the old way, and its intervals are approximate.** The first
 sampler kept every row the previous draw had selected and filled the rest at random. The
@@ -108,9 +115,15 @@ messages, and nothing says the miss rate differs between older and newer ones.
 deletes session transcripts older than `cleanupPeriodDays`, which defaults to 30 days. On
 2026-08-21 a dry run of the fixed sampler read 4,633 handoff messages where the 2026-08-16 draw
 read 5,472, and 890 ask messages where it read 1,042. Nine of the 38 flagged asks were gone
-altogether. Redrawing would have moved the handoff range from 179–533 to about 153–452, and the
-move would have come from the deletion rather than from the sampling defect. The full figures
-are in "What limits these numbers" below.
+altogether.
+
+**What a redraw would publish is unknown, and that is the point.** A fresh draw selects
+different rows, and nobody has read them: only 8 of the 200 drawn handoff rows carry a label
+from the old draw. What can be said is what the deletion does to the base the rate multiplies.
+Holding the measured miss rate of 11 in 200 fixed and applying it to the 4,618 unflagged rows
+that survive gives 153–452 instead of 179–533. That is an illustration of the base effect, not
+a prediction of the redraw: the real figure also moves by however the new labels fall. The full
+figures are in "What limits these numbers" below.
 
 So the labels below stay the evidence for the rows they describe, and the redraw is filed as
 follow-up work rather than done here.

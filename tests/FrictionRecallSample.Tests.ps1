@@ -123,22 +123,73 @@ foreach ($case in @(@(11, 200, 5457), @(7, 200, 1004), @(3, 40, 900), @(19, 63, 
     }
 }
 
-# --- 9. The corrected bounds solve the same equation at the effective sample size ---
+# --- 9. The corrected bounds are the exact hypergeometric ones ---
 
-# This is what the correction claims to be: the same interval, computed at n_eff. If -Correct
-# ever became an ad-hoc narrowing instead, this case fails.
-foreach ($case in @(@(11, 200, 5457), @(7, 200, 1004))) {
+# -Correct answers a question about a FINITE population: how many misses are in the N rows,
+# given x of the n drawn were misses. The exact distribution of that is hypergeometric, and the
+# interval is the set of population counts the observation does not rule out at 95 percent.
+#
+# An earlier version substituted an effective sample size into Wilson instead. That is a
+# large-population approximation, and it is anti-conservative at the boundary: for 0 of 200
+# drawn from 220 it returned an upper bound of 0 population misses, which is a claim of
+# certainty. One miss among 220 escapes a 200-row draw 20/220 of the time, so 0 was wrong
+# nearly a tenth of the time it was stated. The cases below pin the exact answer.
+
+function Get-HypergeometricAtMost {
+    <#
+    .SYNOPSIS
+        P(X <= Observed) when Total holds Successes and Drawn rows are taken without replacement.
+    .DESCRIPTION
+        Written from the definition, summing C(K,i)C(N-K,n-i)/C(N,n) in log space. It shares no
+        code with Get-RecallInterval, so agreement between them is evidence.
+    #>
+    param(
+        [Parameter(Mandatory)][int] $Observed,
+        [Parameter(Mandatory)][int] $Successes,
+        [Parameter(Mandatory)][int] $Total,
+        [Parameter(Mandatory)][int] $Drawn
+    )
+    $logFactorial = New-Object 'double[]' ($Total + 1)
+    for ($i = 1; $i -le $Total; $i++) { $logFactorial[$i] = $logFactorial[$i - 1] + [Math]::Log($i) }
+    $logChoose = {
+        param([int] $a, [int] $b)
+        if ($b -lt 0 -or $b -gt $a) { return [double]::NegativeInfinity }
+        return $logFactorial[$a] - $logFactorial[$b] - $logFactorial[$a - $b]
+    }
+    $sum = 0.0
+    $denominator = & $logChoose $Total $Drawn
+    for ($i = 0; $i -le $Observed; $i++) {
+        $term = (& $logChoose $Successes $i) + (& $logChoose ($Total - $Successes) ($Drawn - $i))
+        if (-not [double]::IsNegativeInfinity($term)) { $sum += [Math]::Exp($term - $denominator) }
+    }
+    return $sum
+}
+
+# The regression case. It returned 0 before the fix.
+$tight = Get-RecallInterval -Hits 0 -Drawn 200 -Population 220 -Correct
+Assert-True ($tight.HighCount -eq 1) `
+    ("0 misses in 200 drawn from 220 must leave 1 population miss possible, got $($tight.HighCount). " +
+    'One miss escapes a 200-row draw 20/220 of the time, which is well above the 2.5 percent tail.')
+
+# Each bound is the last population count the observation does not rule out, checked against a
+# hypergeometric written separately in this file.
+foreach ($case in @(@(11, 200, 5457), @(7, 200, 1004), @(0, 200, 220), @(0, 200, 1004))) {
     $hits, $drawn, $popSize = $case
     $interval = Get-RecallInterval -Hits $hits -Drawn $drawn -Population $popSize -Correct
-    $observed = $hits / [double]$drawn
-    $effective = $drawn * ($popSize - 1.0) / ($popSize - $drawn)
-    Assert-True ([Math]::Abs($interval.Effective - $effective) -lt 1e-9) `
-        "n_eff for $drawn of $popSize must be $effective, got $($interval.Effective)"
-    foreach ($pair in @(@('lower', $interval.Low), @('upper', $interval.High))) {
-        $residual = Test-WilsonRoot -Bound $pair[1] -Observed $observed -SampleSize $effective
-        Assert-True ($residual -lt 1e-12) `
-            "the corrected $($pair[0]) bound for $hits of $drawn does not solve the Wilson equation at n_eff, residual $residual"
+
+    $atHigh = Get-HypergeometricAtMost -Observed $hits -Successes $interval.HighCount -Total $popSize -Drawn $drawn
+    Assert-True ($atHigh -gt 0.025) `
+        "the upper bound $($interval.HighCount) for $hits of $drawn from $popSize is ruled out: P(X<=$hits) = $atHigh"
+    if ($interval.HighCount -lt $popSize) {
+        $beyond = Get-HypergeometricAtMost -Observed $hits -Successes ($interval.HighCount + 1) -Total $popSize -Drawn $drawn
+        Assert-True ($beyond -le 0.025) `
+            "the upper bound is not tight: $($interval.HighCount + 1) is still possible at P(X<=$hits) = $beyond"
     }
+
+    Assert-True ($interval.LowCount -le $interval.HighCount) `
+        "the lower bound must not exceed the upper for $hits of $drawn from $popSize"
+    Assert-True ($interval.HighCount -ge $hits) `
+        "the population cannot hold fewer misses than the $hits the draw found"
 }
 
 # --- 10. Plain Wilson reproduces the figures the document already published ---
@@ -152,10 +203,28 @@ Assert-True (Test-Path -LiteralPath $docPath) "The sample document is missing: $
 if (Test-Path -LiteralPath $docPath) {
     $docFlat = ((Get-Content -LiteralPath $docPath -Raw) -replace '\s+', ' ')
 
+    # FinalNoun is the headline figure: the sampled misses PLUS the flagged rows labelled real.
+    # Checking only the unflagged sub-range left the published totals unguarded, which is the
+    # number every other document quotes.
     $specs = @(
-        [pscustomobject]@{ Name = 'handoffs'; Manifest = 'handoffs-sample'; Noun = 'missed handoffs' },
-        [pscustomobject]@{ Name = 'next-step-asks'; Manifest = 'next-step-asks-sample'; Noun = 'missed asks' }
+        [pscustomobject]@{
+            Name = 'handoffs'; Manifest = 'handoffs-sample'; Noun = 'missed handoffs'
+            FinalPattern = '\*\*True count: roughly (\d+) to (\d+)\.\*\* The flagged'
+            Row072 = '\| Blocked-agent handoffs \| \*\*(\d+) to (\d+)\*\* \|'
+        },
+        [pscustomobject]@{
+            Name = 'next-step-asks'; Manifest = 'next-step-asks-sample'; Noun = 'missed asks'
+            FinalPattern = '\*\*True count: roughly (\d+) to (\d+)\.\*\*(?! The flagged)'
+            Row072 = '\| Next-step asks \| \*\*(\d+) to (\d+)\*\* \|'
+        }
     )
+
+    $item072Path = Join-Path $repoRoot 'backlog/done/072-process-wave-2-parity-drift-guard-templates.md'
+    Assert-True (Test-Path -LiteralPath $item072Path) "Item 072 is missing: $item072Path"
+    $item072Flat = if (Test-Path -LiteralPath $item072Path) {
+        ((Get-Content -LiteralPath $item072Path -Raw) -replace '\s+', ' ')
+    }
+    else { '' }
 
     foreach ($spec in $specs) {
         $manifestPath = Join-Path $repoRoot "docs/development/friction-samples/$($spec.Manifest).csv"
@@ -198,6 +267,35 @@ if (Test-Path -LiteralPath $docPath) {
             "The document publishes $($match.Groups[4].Value) as the $($spec.Name) low count; the function computes $($interval.LowCount)."
         Assert-True ([int]$match.Groups[5].Value -eq $interval.HighCount) `
             "The document publishes $($match.Groups[5].Value) as the $($spec.Name) high count; the function computes $($interval.HighCount)."
+
+        # --- The headline figure, which is the sub-range plus the flagged rows labelled real ---
+        #
+        # This is the number 072 quotes and the number a reader remembers. Guarding only the
+        # unflagged sub-range above let the totals drift on their own.
+        $realFlagged = @($rows | Where-Object { $_.Stratum -eq 'flagged' -and $_.Label -eq 'real' }).Count
+        $expectedLow = $interval.LowCount + $realFlagged
+        $expectedHigh = $interval.HighCount + $realFlagged
+
+        $finalMatch = [regex]::Match($docFlat, $spec.FinalPattern)
+        Assert-True $finalMatch.Success `
+            "The document must publish a true count for $($spec.Name). Pattern did not match."
+        if ($finalMatch.Success) {
+            Assert-True ([int]$finalMatch.Groups[1].Value -eq $expectedLow -and [int]$finalMatch.Groups[2].Value -eq $expectedHigh) `
+                ("The document publishes a $($spec.Name) true count of " +
+                "$($finalMatch.Groups[1].Value) to $($finalMatch.Groups[2].Value); " +
+                "$($interval.LowCount) to $($interval.HighCount) missed plus $realFlagged real flagged is $expectedLow to $expectedHigh.")
+        }
+
+        # --- Item 072 quotes the same figure, and must not drift from it ---
+        $row072 = [regex]::Match($item072Flat, $spec.Row072)
+        Assert-True $row072.Success `
+            "Item 072 must carry a $($spec.Name) row with a published range. Pattern did not match."
+        if ($row072.Success) {
+            Assert-True ([int]$row072.Groups[1].Value -eq $expectedLow -and [int]$row072.Groups[2].Value -eq $expectedHigh) `
+                ("Item 072 publishes $($spec.Name) as $($row072.Groups[1].Value) to $($row072.Groups[2].Value); " +
+                "the labels give $expectedLow to $expectedHigh. A corrected figure belongs there as a dated " +
+                'addition under "The withdrawn figures", never as a silent substitution.')
+        }
     }
 
     # --- 11. The document still says the interval is an approximation ---
@@ -226,12 +324,27 @@ foreach ($hits in @(0, 200)) {
     Assert-True ($interval.Low -le $interval.High) "the lower bound must not exceed the upper for $hits in 200"
 }
 
-# --- 14. The correction narrows the interval, and never widens it ---
+# --- 14. Every interval contains the count the sample itself points at ---
 
-$plain = Get-RecallInterval -Hits 7 -Drawn 200 -Population 1004
-$corrected = Get-RecallInterval -Hits 7 -Drawn 200 -Population 1004 -Correct
-Assert-True (($corrected.High - $corrected.Low) -lt ($plain.High - $plain.Low)) `
-    'the correction must narrow the interval when the sample is a real share of the population'
+# Not "the correction is narrower". An exact interval on a discrete distribution is
+# conservative and may come out WIDER than the approximation it replaces, so asserting
+# narrowness would forbid a correct answer. What must always hold is that the interval covers
+# the population count the observed rate implies.
+foreach ($switch in @($false, $true)) {
+    foreach ($case in @(@(7, 200, 1004), @(11, 200, 5457), @(0, 200, 220))) {
+        $hits, $drawn, $popSize = $case
+        $interval = if ($switch) { Get-RecallInterval -Hits $hits -Drawn $drawn -Population $popSize -Correct }
+        else { Get-RecallInterval -Hits $hits -Drawn $drawn -Population $popSize }
+        $pointEstimate = [int][Math]::Round($hits / [double]$drawn * $popSize)
+        Assert-True ($interval.LowCount -le $pointEstimate -and $pointEstimate -ge 0) `
+            "the lower bound $($interval.LowCount) is above the point estimate $pointEstimate for $hits of $drawn from $popSize"
+        Assert-True ($interval.HighCount -ge $pointEstimate) `
+            "the upper bound $($interval.HighCount) is below the point estimate $pointEstimate for $hits of $drawn from $popSize"
+        $expectedMethod = if ($switch) { 'hypergeometric' } else { 'wilson' }
+        Assert-True ($interval.Method -eq $expectedMethod) `
+            "the interval must name its method as $expectedMethod, got $($interval.Method)"
+    }
+}
 
 # --- 15. Impossible inputs throw rather than returning a number ---
 
@@ -246,12 +359,49 @@ foreach ($bad in @(@{ Hits = 5; Drawn = 2; Population = 10 }, @{ Hits = 1; Drawn
 # -Correct is valid only for an equal-probability draw. The committed 2026-08-16 manifests are
 # not one, so a script that passed the switch would publish a narrower range resting on an
 # assumption the data breaks. Nothing passes it today, and this case keeps it that way.
+# Parsed, not grepped. A regex needing both tokens on one physical line misses a call split
+# across lines, and misses a splat entirely - `$args = @{ Correct = $true }` followed by
+# `Get-RecallInterval @args` carries no literal `-Correct` anywhere. The parser sees the real
+# call in every form.
 $scriptDir = Join-Path $repoRoot 'scripts'
-$callers = @(Get-ChildItem -LiteralPath $scriptDir -Filter '*.ps1' -Recurse |
-        Where-Object { (Get-Content -LiteralPath $_.FullName -Raw) -match 'Get-RecallInterval[^\r\n]*-Correct' })
+$callers = New-Object System.Collections.Generic.List[string]
+
+foreach ($file in (Get-ChildItem -LiteralPath $scriptDir -Filter '*.ps1' -Recurse)) {
+    $parseErrors = $null
+    $parsedTokens = $null
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile(
+        $file.FullName, [ref]$parsedTokens, [ref]$parseErrors)
+    if ($parseErrors -and $parseErrors.Count -gt 0) {
+        Assert-True $false "Could not parse $($file.Name) to check for -Correct callers: $($parseErrors[0].Message)"
+        continue
+    }
+
+    $commands = $ast.FindAll({
+            param($node)
+            $node -is [System.Management.Automation.Language.CommandAst] -and
+            $node.GetCommandName() -eq 'Get-RecallInterval'
+        }, $true)
+
+    foreach ($command in $commands) {
+        foreach ($element in $command.CommandElements) {
+            # A named switch, however the call is wrapped across lines.
+            if ($element -is [System.Management.Automation.Language.CommandParameterAst] -and
+                $element.ParameterName -like 'Correct*') {
+                $callers.Add("$($file.Name):$($element.Extent.StartLineNumber) -Correct")
+            }
+            # A splat. What it holds cannot be resolved here, so any splat onto this command is
+            # reported: a call nobody can read is not a call anybody can clear.
+            if ($element -is [System.Management.Automation.Language.VariableExpressionAst] -and
+                $element.Splatted) {
+                $callers.Add("$($file.Name):$($element.Extent.StartLineNumber) splat @$($element.VariablePath.UserPath)")
+            }
+        }
+    }
+}
+
 Assert-True ($callers.Count -eq 0) `
-    ("No script may pass -Correct while the published draw is the 2026-08-16 one: " +
-    "$(($callers | ForEach-Object { $_.Name }) -join ', ')")
+    ('No script may pass -Correct while the published draw is the 2026-08-16 one, and none may ' +
+    'splat onto Get-RecallInterval, because a splat hides whether it does: ' + ($callers -join '; '))
 
 if ($failures.Count -gt 0) {
     foreach ($failure in $failures) { Write-Host ''; Write-Host $failure -ForegroundColor Red }

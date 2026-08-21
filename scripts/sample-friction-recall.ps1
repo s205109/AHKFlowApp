@@ -131,6 +131,85 @@ function Select-SampleKey {
 #
 # -Correct is here for the redraw that has not happened yet. Nothing in this repository passes
 # it today.
+function Get-HypergeometricInterval {
+    <#
+    .SYNOPSIS
+        The 95 percent interval for how many misses a finite population holds.
+    .DESCRIPTION
+        Drawing n rows from N without replacement makes the count of misses hypergeometric, not
+        binomial. This returns the set of population counts the observation does not rule out:
+        the largest K whose P(X <= Hits) still exceeds 2.5 percent, and the smallest K whose
+        P(X >= Hits) still does.
+
+        Both tails are monotone in K, so each bound is found by bisection.
+
+        This is what a normal approximation cannot do at the edges. Substituting an effective
+        sample size into Wilson returned an upper bound of ZERO population misses for 0 of 200
+        drawn from 220 - a claim of certainty that is wrong 20/220 of the time. It was one step
+        too tight in every case measured, including 15 where the answer is 17 for 0 of 200 drawn
+        from 1,004, which is the regime backlog 112 will publish from.
+    #>
+    param(
+        [Parameter(Mandatory)][int] $Hits,
+        [Parameter(Mandatory)][int] $Drawn,
+        [Parameter(Mandatory)][int] $Population
+    )
+
+    # Log factorials up to the population size. Computing C(a,b) directly overflows a double
+    # long before N reaches a few hundred; in logs it stays exact enough to compare against a
+    # 0.025 tail.
+    $logFactorial = New-Object 'double[]' ($Population + 1)
+    for ($i = 1; $i -le $Population; $i++) { $logFactorial[$i] = $logFactorial[$i - 1] + [Math]::Log($i) }
+
+    function Get-LogChoose {
+        param([int] $Of, [int] $Take)
+        if ($Take -lt 0 -or $Take -gt $Of -or $Of -lt 0) { return [double]::NegativeInfinity }
+        return $logFactorial[$Of] - $logFactorial[$Take] - $logFactorial[$Of - $Take]
+    }
+
+    $logDenominator = Get-LogChoose -Of $Population -Take $Drawn
+
+    function Get-AtMost {
+        # P(X <= Upto) when the population holds Successes misses.
+        param([int] $Upto, [int] $Successes)
+        if ($Upto -lt 0) { return 0.0 }
+        $probability = 0.0
+        for ($i = 0; $i -le $Upto; $i++) {
+            $term = (Get-LogChoose -Of $Successes -Take $i) +
+                    (Get-LogChoose -Of ($Population - $Successes) -Take ($Drawn - $i))
+            if (-not [double]::IsNegativeInfinity($term)) { $probability += [Math]::Exp($term - $logDenominator) }
+        }
+        return $probability
+    }
+
+    # Upper bound: P(X <= Hits | K) falls as K rises, so bisect for the last K above the tail.
+    $lowSearch = $Hits
+    $highSearch = $Population
+    while ($lowSearch -lt $highSearch) {
+        $middle = [int][Math]::Ceiling(($lowSearch + $highSearch) / 2.0)
+        if ((Get-AtMost -Upto $Hits -Successes $middle) -gt 0.025) { $lowSearch = $middle }
+        else { $highSearch = $middle - 1 }
+    }
+    $upperCount = $lowSearch
+
+    # Lower bound: P(X >= Hits | K) rises with K, so bisect for the first K above the tail.
+    #
+    # The search starts at Hits and runs to the population, not from zero to Hits. A population
+    # holding fewer than Hits misses cannot yield Hits of them, and the bound usually sits far
+    # ABOVE Hits: observing 11 misses in 200 of 5,457 rows puts the population count near 300,
+    # so a search capped at 11 returned 11 and published a lower bound fifteen times too small.
+    $lowSearch = $Hits
+    $highSearch = $Population
+    while ($lowSearch -lt $highSearch) {
+        $middle = [int][Math]::Floor(($lowSearch + $highSearch) / 2.0)
+        if ((1.0 - (Get-AtMost -Upto ($Hits - 1) -Successes $middle)) -gt 0.025) { $highSearch = $middle }
+        else { $lowSearch = $middle + 1 }
+    }
+    $lowerCount = $lowSearch
+
+    return [pscustomobject]@{ LowCount = $lowerCount; HighCount = $upperCount }
+}
+
 function Get-RecallInterval {
     <#
     .SYNOPSIS
@@ -166,21 +245,22 @@ function Get-RecallInterval {
     $z = 1.959963985
     $rate = $Hits / [double]$Drawn
 
-    # A census needs no interval, and the correction divides by zero on one. Drawing the whole
-    # population means the count is known exactly, so say so rather than inventing a range.
-    if ($Correct -and $Drawn -eq $Population) {
+    if ($Correct) {
+        $exact = Get-HypergeometricInterval -Hits $Hits -Drawn $Drawn -Population $Population
         return [pscustomobject]@{
-            Rate = $rate; Low = $rate; High = $rate
-            LowCount = $Hits; HighCount = $Hits
-            Effective = [double]$Drawn; Corrected = $true
+            Rate      = $rate
+            Low       = $exact.LowCount / [double]$Population
+            High      = $exact.HighCount / [double]$Population
+            LowCount  = $exact.LowCount
+            HighCount = $exact.HighCount
+            Method    = 'hypergeometric'
+            Corrected = $true
         }
     }
 
-    $effective = if ($Correct) { $Drawn * ($Population - 1.0) / ($Population - $Drawn) } else { [double]$Drawn }
-
-    $centre = ($rate + $z * $z / (2.0 * $effective)) / (1.0 + $z * $z / $effective)
-    $half = $z / (1.0 + $z * $z / $effective) *
-        [Math]::Sqrt($rate * (1.0 - $rate) / $effective + $z * $z / (4.0 * $effective * $effective))
+    $centre = ($rate + $z * $z / (2.0 * $Drawn)) / (1.0 + $z * $z / $Drawn)
+    $half = $z / (1.0 + $z * $z / $Drawn) *
+        [Math]::Sqrt($rate * (1.0 - $rate) / $Drawn + $z * $z / (4.0 * $Drawn * $Drawn))
 
     $low = [Math]::Max(0.0, $centre - $half)
     $high = [Math]::Min(1.0, $centre + $half)
@@ -191,8 +271,8 @@ function Get-RecallInterval {
         High      = $high
         LowCount  = [int][Math]::Round($low * $Population)
         HighCount = [int][Math]::Round($high * $Population)
-        Effective = $effective
-        Corrected = [bool]$Correct
+        Method    = 'wilson'
+        Corrected = $false
     }
 }
 

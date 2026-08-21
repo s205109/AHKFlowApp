@@ -6,7 +6,7 @@
 - **Type**: Process / tooling
 - **Interfaces**: none (scripts, docs)
 - **Difficulty**: moderate
-- **Stage**: 3-plan
+- **Stage**: 8-review
 - **Depends on**: 072-process-wave-2-parity-drift-guard-templates
 
 ## Summary
@@ -51,11 +51,13 @@ the current 200 overlap.
       see the last box. Item 072 is untouched. Handed to backlog 112, which adds its figures
       to 072 as a dated addition rather than a substitution.
 - [x] The paragraph "The committed sample was drawn the old way, and its intervals are
-      approximate" is removed rather than softened, because it no longer applies.
-      **Inverted, and the box is ticked on the inverted form.** The paragraph is still true, so
-      removing it would have withdrawn a caveat the figures still need. It stays, and it now
-      says why no redraw happened. `tests/FrictionRecallSample.Tests.ps1` fails if a later edit
-      deletes it while keeping the numbers. Backlog 112 removes it, after the redraw earns that.
+      approximate" is **kept, and says why no redraw happened**, because it still applies.
+      `tests/FrictionRecallSample.Tests.ps1` fails if a later edit deletes it while keeping the
+      numbers.
+      **This criterion was rewritten, not merely annotated.** It originally required removing
+      the paragraph. That was written on the assumption a redraw would happen; without one the
+      caveat is still true, and deleting it would have withdrawn a warning the figures need.
+      Backlog 112 removes the paragraph, after its redraw earns that.
 - [x] A decision is recorded on the flagged strata: those are counted whole, so nothing about
       them changes, and the item says so instead of leaving a reader to work it out.
       Recorded in `docs/development/friction-recall-sample.md` under "How a label was decided":
@@ -66,11 +68,13 @@ the current 200 overlap.
       of 1,004 asks makes Wilson about 10 percent wider than the truth.
       **Second branch taken, and the reason the first is unavailable is written down.** A
       finite-population correction assumes equal inclusion probabilities. This draw had none,
-      so the correction would have published 181–528 and 36–84: narrower than the truth and
-      resting on an assumption the data breaks. A design-based estimator needs the earlier
-      60-row draw's selection record and the population as it stood then, and neither survives.
+      so applying it anyway would have published 164–531 and 34–85: figures resting on an
+      assumption the data breaks. A design-based estimator needs the earlier 60-row draw's
+      selection record and the population as it stood then, and neither survives.
       `Get-RecallInterval` exists with the correction behind a `-Correct` switch that nothing
-      passes, for backlog 112 to use once the draw is uniform.
+      passes, for backlog 112 to use once the draw is uniform. That switch computes the exact
+      hypergeometric interval; an earlier draft used a normal approximation that claimed
+      certainty at the boundary, and a test case now pins the exact answer.
 
 ## Out of scope
 
@@ -89,6 +93,14 @@ What this item did deliver is the decision and the reason behind it. The interva
 Wilson and stays labelled an approximation, the flagged stratum is recorded as a census, and the
 retention finding is written into `docs/development/friction-recall-sample.md`. The work that
 would satisfy the user story is backlog 112.
+
+**The Stage is `8-review`, and that is deliberate.** It was `3-plan`, which
+`tests/BacklogStaleOpen.Tests.ps1` excludes from its candidates by design — a plan may sit
+unstarted for as long as it likes. This item is not unstarted: its plan executed and merged. Had
+the Stage stayed at `3-plan`, an item whose work had shipped would have sat open in `backlog/`
+with nothing ever noticing. At `8-review` the twelve-commit stale check does apply, so if
+backlog 112 has not closed this out by then, the suite raises it rather than leaving it to
+memory.
 
 ## Notes / dependencies
 
@@ -119,9 +131,11 @@ Nine of the 38 flagged asks no longer exist, so the published precision of 47 pe
 describes messages that have been deleted. Eight of the 200 drawn handoff rows carry a label
 from the old draw; the rest would need labelling again.
 
-Redrawing today would move the handoff range from 179–533 to about 153–452, and the shift
-comes from the deletion rather than from the sampling defect this item was filed against. The
-whole window is deleted around 2026-09-11.
+What a redraw would publish is unknown: it selects different rows and only 8 of the 200 drawn
+handoff rows carry a label. What can be measured is the base the rate multiplies. Holding the
+observed 11 in 200 fixed and applying it to the 4,618 surviving unflagged rows gives 153–452
+instead of 179–533 — an illustration of the deletion's effect on the base, not a prediction of
+the redraw, whose labels are unread. The whole window is deleted around 2026-09-11.
 
 The transcripts were copied to `~/AHKFlowApp-friction-snapshot-2026-08-21` (755 files, 445 MB)
 on 2026-08-21, so what remains of the window stops shrinking.
