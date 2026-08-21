@@ -430,6 +430,51 @@ finally {
     Remove-Item -LiteralPath $fixture -Recurse -Force
 }
 
+# --- OnlyPath narrows which files are scanned ---
+
+# The plans repository is one shared working tree with a single branch, linked into every worktree.
+# So a scan of it reads plans another branch is part-way through writing, whose citations resolve
+# against that branch's files and not against these. Measured on 2026-08-21: the same plans scored
+# 82 problems from one worktree and 104 from another, and the second saw zero problems in the very
+# plan the first saw twenty in. Pre-push therefore scans only the plans this branch owns, and this
+# is the parameter that lets it (backlog 112).
+$fixture = New-FixtureRepository
+try {
+    Add-FixtureFile -Root $fixture -RelativePath 'target.txt' -Lines @('one line')
+    Add-FixtureFile -Root $fixture -RelativePath 'kept.md' -Lines @('(`target.txt:99`, "nope")')
+    Add-FixtureFile -Root $fixture -RelativePath 'skipped.md' -Lines @('(`target.txt:99`, "nope")')
+    Complete-FixtureCommit -Root $fixture
+
+    $all = @(Get-CitationProblem -ScanRoot $fixture -ResolveRoot $fixture)
+    Assert-True ($all.Count -eq 2) "No filter must read both files, got $($all.Count)"
+
+    $only = @(Get-CitationProblem -ScanRoot $fixture -ResolveRoot $fixture -OnlyPath @('kept.md'))
+    Assert-True ($only.Count -eq 1) "One path must read one file, got $($only.Count)"
+    Assert-True ($only[0] -like 'kept.md:*') "The surviving problem must be kept.md, got $($only[0])"
+
+    $absent = @(Get-CitationProblem -ScanRoot $fixture -ResolveRoot $fixture -OnlyPath @('absent.md'))
+    Assert-True ($absent.Count -eq 0) "A path matching nothing must report nothing, got $($absent.Count)"
+
+    # An empty filter must mean "no filter", not "scan nothing". A branch with no plan of its own
+    # passes an empty set, and silently scanning everything would put the whole problem back.
+    $empty = @(Get-CitationProblem -ScanRoot $fixture -ResolveRoot $fixture -OnlyPath @())
+    Assert-True ($empty.Count -eq 2) "An empty filter must mean no filter, got $($empty.Count)"
+
+    # A backslashed path must match, because a caller building paths on Windows produces them.
+    $slash = @(Get-CitationProblem -ScanRoot $fixture -ResolveRoot $fixture -OnlyPath @('KEPT.MD'))
+    Assert-True ($slash.Count -eq 1) "The filter must be case-insensitive, got $($slash.Count)"
+
+    # The filter must narrow what is scanned, never what counts as a valid citation target.
+    # target.txt is not in OnlyPath, and the citation must still resolve against it.
+    Add-FixtureFile -Root $fixture -RelativePath 'good.md' -Lines @('(`target.txt:1`, "one line")')
+    Complete-FixtureCommit -Root $fixture -Message 'good'
+    $good = @(Get-CitationProblem -ScanRoot $fixture -ResolveRoot $fixture -OnlyPath @('good.md'))
+    Assert-True ($good.Count -eq 0) "A target outside OnlyPath must still resolve, got: $($good -join ', ')"
+}
+finally {
+    Remove-Item -LiteralPath $fixture -Recurse -Force
+}
+
 # --- The pre-push decision ---
 
 # Never test this by renaming docs/superpowers. Every worktree links to that folder, and the

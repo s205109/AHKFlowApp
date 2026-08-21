@@ -28,6 +28,11 @@
 .PARAMETER NoAdoptionTier
     Turns tier 3 off.
 
+.PARAMETER OnlyPath
+    Scan only these paths, relative to ScanRoot. Leave it empty to scan everything. Pre-push passes
+    the plans this branch owns, because the plans repository is one shared working tree: another
+    branch's live plan cites lines that are right on that branch and wrong on this one.
+
 .EXAMPLE
     pwsh ./scripts/check-citation-freshness.ps1
 #>
@@ -36,7 +41,8 @@ param(
     [string] $ScanRoot,
     [string] $ResolveRoot,
     [string] $BaseRef,
-    [switch] $NoAdoptionTier
+    [switch] $NoAdoptionTier,
+    [string[]] $OnlyPath
 )
 
 Set-StrictMode -Version Latest
@@ -66,7 +72,7 @@ if ($NoAdoptionTier) {
     }
 }
 
-$problems = @(Get-CitationProblem -ScanRoot $ScanRoot -ResolveRoot $ResolveRoot -ChangedLine $changed)
+$problems = @(Get-CitationProblem -ScanRoot $ScanRoot -ResolveRoot $ResolveRoot -ChangedLine $changed -OnlyPath $OnlyPath)
 
 if ($problems.Count -gt 0) {
     ''

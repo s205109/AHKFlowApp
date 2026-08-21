@@ -52,16 +52,47 @@ try {
     $pwshPath = if ($pwshCommand) { $pwshCommand.Source } else { '' }
     $scanPlan = Get-PlansCitationScanPlan -PlansRoot $plansRoot -PwshPath $pwshPath
 
+    # The plans repository is one shared working tree with a single branch, linked into every
+    # worktree. So a whole-repository scan reads plans another branch is part-way through writing,
+    # whose citations resolve against that branch's files and not against these. Measured on
+    # 2026-08-21: the same plans scored 82 problems from one worktree and 104 from another, and the
+    # second worktree saw zero problems in the very plan the first saw twenty in. No line number is
+    # right in both trees, so no repair can make a whole-repository scan green for everybody.
+    #
+    # A branch owns the plans whose number matches a backlog item it adds or edits. Everything else
+    # is somebody else's in-flight work. Shipped plans are frozen instead, which is
+    # branch-independent - see check-archived-plan-frozen.ps1. That is backlog 112.
+    $ownedPlan = @()
+    $backlogDiff = & git -C $repoRoot diff --name-only origin/main -- backlog
+    if ($LASTEXITCODE -eq 0) {
+        $numbers = @($backlogDiff |
+            ForEach-Object { if ($_ -match '/(\d{3})-') { $Matches[1] } } |
+            Sort-Object -Unique)
+        foreach ($number in $numbers) {
+            foreach ($sub in @('plans', 'specs')) {
+                $folder = Join-Path $plansRoot $sub
+                if (-not (Test-Path -LiteralPath $folder -PathType Container)) { continue }
+                foreach ($hit in (Get-ChildItem -LiteralPath $folder -Filter "*-$number.md" -File)) {
+                    $ownedPlan += ('{0}/{1}' -f $sub, $hit.Name)
+                }
+            }
+        }
+    }
+
     if ($scanPlan.Action -ne 'Run') {
         Write-Host $scanPlan.Reason
     }
+    elseif ($ownedPlan.Count -eq 0) {
+        Write-Host 'No plan on this branch: nothing to check.'
+    }
     else {
+        Write-Host ("Checking {0}: {1}" -f $ownedPlan.Count, ($ownedPlan -join ', '))
         & $pwshPath -NoProfile -File (Join-Path $PSScriptRoot 'check-citation-freshness.ps1') `
-            -ScanRoot $plansRoot -ResolveRoot $repoRoot -NoAdoptionTier
+            -ScanRoot $plansRoot -ResolveRoot $repoRoot -NoAdoptionTier -OnlyPath $ownedPlan
         if ($LASTEXITCODE -ne 0) {
-            throw "Plans repository citations failed. $skipHint"
+            throw "This branch's plan citations failed. $skipHint"
         }
-        Write-Success 'Plans repository citations passed.'
+        Write-Success 'This branch''s plan citations passed.'
     }
 
     # A plan that transcribes the stage machine is a second normative source, and reviews of

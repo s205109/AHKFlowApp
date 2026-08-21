@@ -147,7 +147,12 @@ function Get-CitationProblem {
     param(
         [Parameter(Mandatory)][string] $ScanRoot,
         [Parameter(Mandatory)][string] $ResolveRoot,
-        [System.Collections.Generic.HashSet[string]] $ChangedLine
+        [System.Collections.Generic.HashSet[string]] $ChangedLine,
+        # Which files to read, relative to ScanRoot, forward-slashed. Null or empty reads
+        # everything, so every existing caller keeps its behaviour. Pre-push passes the plans this
+        # branch owns: the plans repository is one shared working tree with a single branch, and
+        # another branch's live plan cites lines that are right there and wrong here (backlog 112).
+        [string[]] $OnlyPath
     )
 
     $scanPath = (Resolve-Path -LiteralPath $ScanRoot).Path
@@ -162,6 +167,16 @@ function Get-CitationProblem {
     # git ls-files against the same root twice is redundant when ScanRoot and ResolveRoot match,
     # which is every caller except the private plans repo scan.
     $scanList = if ($sameRoot) { $trackedList } else { Get-TrackedFile -Root $scanPath }
+
+    # Narrows what is read, never what counts as a valid citation target. $tracked above is the
+    # target set and must stay whole: a plan legitimately cites files the filter does not name.
+    if ($OnlyPath -and $OnlyPath.Count -gt 0) {
+        # Case-insensitive for the same reason the tracked set is: Windows resolves paths that way.
+        $wanted = [System.Collections.Generic.HashSet[string]]::new(
+            [string[]] ($OnlyPath | ForEach-Object { $_ -replace '\\', '/' }),
+            [System.StringComparer]::OrdinalIgnoreCase)
+        $scanList = @($scanList | Where-Object { $wanted.Contains($_) })
+    }
 
     $targetCache = @{}
     $problems = [System.Collections.Generic.List[string]]::new()
