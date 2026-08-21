@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: none (agent git guard)
 - **Difficulty**: to-be-determined
-- **Stage**: 0-intake
+- **Stage**: 1-pickup
 
 ## Summary
 
@@ -49,6 +49,8 @@ Difficulty is `to-be-determined` rather than a guess.
 
 - Found while designing backlog 093, and deliberately scoped out of it. 093 fixes only the
   combination rule; the disagreement between these two functions predates it
-- Both citations move when 093 lands. Re-read them before starting this item
+- Both citations move when 093 lands. Re-read them before starting this item.
+  Re-read on 2026-08-21 with 093 merged: both line numbers are unchanged
+- Base: `origin/main` at f677f1bb, confirmed at Pickup
 - Spec: none — needs Design first
 - Plan: none — not yet at Plan
