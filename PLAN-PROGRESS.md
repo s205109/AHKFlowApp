@@ -8,3 +8,4 @@ One line per task: task number, deliverable commit SHA (or `-`), tests state, de
 |---|---|---|---|
 | 1 | 280d309f | guard suite green | none |
 | 2 | 2d7aad29 | guard suite green | none |
+| 3 | 97f8432e | guard suite green | none |
