@@ -48,3 +48,23 @@ human log needs no cap: one line per attempt keeps it small.
 
 Every refusal that exists today has to be given a plain-word `Kept:` reason. A refusal with no
 mapped wording would write nothing at all, which is worse than the verbose log this replaces.
+
+**The outcome line stops being best-effort.** One removal is not one action: the rename can
+succeed and the delete fail, the delete can succeed and the branch delete fail. So the design
+carries a terminal-state table deciding which partial results read `Removed.` and which read
+`Failed:`. The dividing line is the worktree folder itself, because a leftover branch,
+database, or Docker project is reclaimed later by a prune script, while a half-deleted folder
+is reclaimed by nothing.
+
+**Writing one line reliably is harder than writing twenty unreliably.** A sweep removes
+several worktrees in a run and each spawns its own detached watcher, so several processes
+write both files at once. Today an append that loses a race throws, and the throw is swallowed
+(`scripts/remove-worktree-local-dev.ps1:214`, "    } catch { }"). That was survivable when the
+outcome appeared on twenty lines and one could go missing. With one line per attempt, a
+swallowed failure erases the whole record of what happened to a worktree. So appends retry,
+rotation takes a cross-process mutex, and a writer that still cannot write falls back to
+stderr and then to `%TEMP%` rather than giving up.
+
+Any text that reaches the line from outside — a human's lock reason, a .NET exception message
+— is stripped of carriage returns and line feeds and truncated. One line per attempt is a
+promise the writer keeps, not a hope about its inputs.

@@ -226,7 +226,7 @@ One decision about one worktree, from the moment something asks for its removal 
 _Avoid_: removal run, cleanup event, removal job
 
 **Holder process**:
-A process that stops a worktree folder from being renamed, which is what a removal must do first. The usual Holder process has the folder as its current directory rather than a file open inside it.
+A process that stops a worktree folder from being renamed, which is what a removal must do first. There are two kinds, and finding one kind never finds the other: a process with the folder as its current directory, and a process with a file open below the folder.
 _Avoid_: locking process, blocker, owner
 
 **Locked worktree**:

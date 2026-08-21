@@ -61,7 +61,7 @@ also lists every branch freshly cut from `main`.
 - Found while implementing backlog 094, which re-pointed the claim that this item's own work
   later replaced with the command reference in Stage 10
 - Backlog 073 covers cleanup experience
-  (`backlog/073-process-wave-3-cleanup-ux.md:25`, "Worktree removal runs without opening a terminal window.")
+  (`backlog/073-process-wave-3-cleanup-ux.md:25`, "Worktree removal opens no terminal window when WMI startup information is available,")
   and does not cover this
 - Spec: none — one report, no design yet
 - Plan: `docs/superpowers/plans/2026-08-19-leftover-branch-after-worktree-gone-plan-099.md`

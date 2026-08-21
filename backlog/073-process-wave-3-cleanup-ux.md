@@ -22,11 +22,21 @@ that a merged branch never leaves me a popup to dismiss.
 
 ## Acceptance criteria
 
-- [ ] Worktree removal runs without opening a terminal window.
+- [ ] Worktree removal opens no terminal window when WMI startup information is available,
+      which is every removal on a healthy Windows install. The two degraded paths that can
+      still flash a window each log that they took it. See "Criterion 1, and how far it
+      goes" below.
 - [ ] The removal log is readable: one line per attempt, the outcome named in plain words.
+      Every path that decides about a worktree writes that line, including a sweep that
+      refuses one without ever starting the removal script.
 - [ ] When a removal fails because a process holds the folder, the log names that process.
+      Both kinds of holder count: a process with the folder as its current directory, and a
+      process with a file open below the folder.
 - [ ] A guard refuses to remove a worktree whose plan was never implemented, and says so.
-- [ ] The merged-cleanup sweep honors `git worktree lock` and skips a locked worktree.
+      A worktree created before this change records no item number, so the guard cannot
+      judge it and allows the removal. That exception is named here on purpose.
+- [ ] The merged-cleanup sweep honors `git worktree lock` and skips a locked worktree. The
+      detached watcher honors it too, including a lock added while it is already waiting.
 
 ## Out of scope
 
@@ -40,17 +50,34 @@ that a merged branch never leaves me a popup to dismiss.
 - Design: `docs/superpowers/specs/2026-08-21-cleanup-ux-design-073.md` (private plans repo).
 - The sweep deletes the worktree folder directly today
   (`scripts/remove-worktree-local-dev.ps1`), so a git-level lock alone protects nothing.
-  The lock must be read by the sweep itself. Proved on 2026-08-21 in a scratch repository:
-  `git worktree remove` exits 128 on a locked worktree, and `[System.IO.Directory]::Move`
-  on the same folder succeeds.
+  Proved on 2026-08-21 in a scratch repository: `git worktree remove` exits 128 on a locked
+  worktree, and `[System.IO.Directory]::Move` on the same folder succeeds.
+- The fix is not to read the lock file. Two worktrees whose folders share a basename get
+  administrative names `shared` and `shared1`, so a path built from the folder name reads
+  the wrong worktree's lock — measured in the same probe. And a read-then-act check races a
+  human who locks during the watcher's 300-second wait. Instead the rename becomes
+  `git worktree move`, which git refuses on a locked worktree at the moment of the
+  operation: `fatal: cannot move a locked working tree`. Verified: it moves a dirty
+  worktree, updates git's registry, and `prune -v` cleans up after the delete.
 - Target: cleanup popups and blocked runs drop to zero. That is a direction, not a
   percentage: backlog 072 has no established baseline yet.
 
-### Criterion 1 is already met
+### Criterion 1, and how far it goes
 
 Backlog 088 shipped it. `New-HiddenProcessStartup` passes `ShowWindow = 0` to
 `Win32_Process.Create`, and `tests/WorktreeWatcherWindow.Tests.ps1` covers it. This item
-adds no code for that criterion; it runs that test and ticks the box with the output.
+adds no code for that criterion; it runs that test and ticks the narrowed box above.
+
+The criterion was narrowed because the original wording claimed more than the code delivers.
+Two paths can still show a window, and both already say so in the log:
+
+- `New-HiddenProcessStartup` returns `$null` when the CIM class is unavailable, and the
+  caller then logs "the watcher window may flash".
+- When the WMI spawn fails, the script falls back to `Start-Process -WindowStyle Hidden`,
+  which hides the window only after the host starts.
+
+The existing test covers the successful WMI path only. Ticking the original wording would
+have been a false tick.
 
 ### Scope this design widens, deliberately
 
@@ -63,3 +90,14 @@ adds no code for that criterion; it runs that test and ticks the box with the ou
 - `AHKFLOW_WORKTREE_FORCE_REMOVE=1` clears the new plan guard and does **not** clear a lock.
   A lock is aimed at one worktree by a human on purpose, and git itself demands
   `remove -f -f` for one.
+- `scripts/.env.worktree` gains one key, `AHKFLOW_BACKLOG_ITEM`. Without a recorded item
+  number the plan guard has to guess from the folder name, and that guess already misses:
+  `wt-recall-sample-was-drawn-without-9d48aac4` has no item with that slug. The manifest
+  guard ignores keys it does not know, so adding one changes nothing else.
+- The removal log's append becomes reliable rather than best-effort: it retries on a sharing
+  violation, rotation takes a cross-process mutex, and a write that still fails falls back
+  to stderr and `%TEMP%`. Today a failed append is swallowed. That was survivable across
+  twenty lines and is not survivable when one line is the whole record.
+- The holder probe reads open-file holders through the Restart Manager API as well as
+  current-directory holders. The criterion says "the log names that process", and an editor
+  holding a file below the worktree is that process just as often.
