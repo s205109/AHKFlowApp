@@ -114,6 +114,24 @@ try {
         }
         Write-Success 'Plans agree with the source.'
     }
+
+    # Stage 9 freezes a shipped plan against the citation check. Nothing else can check that it
+    # happened: CI cannot see the plans repository, and the citation check itself only reports the
+    # rot, never the missing freeze. Without this step the archive fills with re-audited history
+    # again, one shipped item at a time - which is how backlog 112 started, with 52 stale citations
+    # across 18 shipped files. tests/ArchivedPlanFrozen.Tests.ps1 covers the rule against fixtures,
+    # which is the half CI can run.
+    Write-Step 'Checking that shipped plans are frozen'
+    if ($scanPlan.Action -ne 'Run') {
+        Write-Host $scanPlan.Reason
+    }
+    else {
+        & $pwshPath -NoProfile -File (Join-Path $PSScriptRoot 'check-archived-plan-frozen.ps1')
+        if ($LASTEXITCODE -ne 0) {
+            throw "A shipped plan or spec is still open to the citation check. $skipHint"
+        }
+        Write-Success 'Shipped plans are frozen.'
+    }
 }
 finally {
     Pop-Location
