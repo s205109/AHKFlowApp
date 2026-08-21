@@ -944,6 +944,11 @@ function Test-BranchOwnWorkWasMerged {
     return (Test-StrandedWorkWasSuperseded -RepoRoot $RepoRoot -Entries $facts.Entries -Stranded $stranded)
 }
 
+# Returned when the manifest is there but cannot be read, usually because another process holds
+# it. This is NOT the same answer as empty: empty means "no item to judge" and allows removal,
+# so a read failure that returned empty would let the guard pass without ever checking a plan.
+$WorktreeBacklogItemUnreadable = '<manifest-unreadable>'
+
 # The backlog item a worktree records for itself. setup-worktree-local-dev.ps1 writes the key at
 # creation; a worktree made before that key existed has no manifest entry and reads as empty,
 # which Test-WorktreePlanWasImplemented treats as "nothing to judge".
@@ -952,10 +957,51 @@ function Get-ManifestBacklogItem {
 
     $manifest = Join-Path $WorktreePath 'scripts\.env.worktree'
     if (-not (Test-Path -LiteralPath $manifest)) { return '' }
-    foreach ($line in (Get-Content -LiteralPath $manifest -ErrorAction SilentlyContinue)) {
+
+    try {
+        $lines = @(Get-Content -LiteralPath $manifest -ErrorAction Stop)
+    } catch {
+        return $WorktreeBacklogItemUnreadable
+    }
+
+    foreach ($line in $lines) {
         if ($line -match '^\s*AHKFLOW_BACKLOG_ITEM\s*=\s*(?<value>.*)$') { return $Matches.value.Trim() }
     }
     return ''
+}
+
+# The path out of a "- Plan:" bullet. scripts/backlog.common.ps1 holds the canonical rule that
+# CI enforces on new items; it demands backticks, which older items do not all have. So this
+# reads the same shape leniently: an optional full stop, then optional backticks.
+function Get-BacklogPlanRelativePath {
+    param([Parameter(Mandatory)][string] $BulletRest)
+
+    $value = $BulletRest.Trim()
+    if ($value.EndsWith('.') -and $value.Length -gt 1) { $value = $value.Substring(0, $value.Length - 1) }
+    return $value.Trim([char] 0x60).Trim()
+}
+
+# The lines of a backlog item, read from a git ref rather than from disk. The merge gate decides
+# against the resolved base, so the plan gate must read the same base: an item filed on the branch
+# and merged on GitHub lives in that ref long before a local pull puts it on disk.
+# Returns $null when the ref does not carry the item, or when git could not answer.
+function Get-BacklogItemLinesFromRef {
+    param(
+        [Parameter(Mandatory)][string] $MainCheckout,
+        [Parameter(Mandatory)][string] $BaseRef,
+        [Parameter(Mandatory)][string] $ItemNumber
+    )
+
+    $listed = & git -C $MainCheckout ls-tree -r --name-only $BaseRef -- backlog 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $listed) { return $null }
+
+    $pattern = '^backlog/(done/|blocked/)?' + [regex]::Escape($ItemNumber) + '-[^/]*\.md$'
+    $matched = @(@($listed) | Where-Object { $_ -match $pattern })
+    if ($matched.Count -ne 1) { return $null }
+
+    $content = & git -C $MainCheckout show "$($BaseRef):$($matched[0])" 2>$null
+    if ($LASTEXITCODE -ne 0 -or $null -eq $content) { return $null }
+    return @($content)
 }
 
 # Answers whether a worktree's plan was ever implemented, which is a different question from
@@ -973,8 +1019,15 @@ function Get-ManifestBacklogItem {
 function Test-WorktreePlanWasImplemented {
     param(
         [Parameter(Mandatory)][string] $MainCheckout,
-        [string] $ItemNumber
+        [string] $ItemNumber,
+        [string] $BaseRef
     )
+
+    # A manifest that is there but could not be read is not a worktree with nothing to judge. The
+    # guard has no answer, and a guard with no answer refuses.
+    if ($ItemNumber -eq $WorktreeBacklogItemUnreadable) {
+        return [pscustomobject]@{ Allow = $false; Reason = 'the worktree manifest could not be read' }
+    }
 
     # No recorded number means a worktree created with -Name, or one created before the manifest
     # carried the key. Nothing can be judged, so nothing is refused.
@@ -982,22 +1035,32 @@ function Test-WorktreePlanWasImplemented {
         return [pscustomobject]@{ Allow = $true; Reason = 'no backlog item is recorded for this worktree' }
     }
 
-    $itemPath = $null
-    foreach ($folder in @('backlog', 'backlog\done', 'backlog\blocked')) {
-        $directory = Join-Path $MainCheckout $folder
-        if (-not (Test-Path -LiteralPath $directory)) { continue }
-        $match = @(Get-ChildItem -LiteralPath $directory -Filter "$ItemNumber-*.md" -File -ErrorAction SilentlyContinue)
-        if ($match.Count -eq 1) { $itemPath = $match[0].FullName; break }
+    # The base ref first, so a merge that happened on GitHub is judged against what merged rather
+    # than against whatever a local pull last left on disk. The working tree is the fallback: an
+    # item can legitimately be uncommitted, and it is the only source when no base was resolved.
+    $itemLines = $null
+    if ($BaseRef) {
+        $itemLines = Get-BacklogItemLinesFromRef -MainCheckout $MainCheckout -BaseRef $BaseRef -ItemNumber $ItemNumber
     }
 
-    if (-not $itemPath) {
-        return [pscustomobject]@{ Allow = $false; Reason = "backlog item $ItemNumber could not be found" }
-    }
+    if ($null -eq $itemLines) {
+        $itemPath = $null
+        foreach ($folder in @('backlog', 'backlog\done', 'backlog\blocked')) {
+            $directory = Join-Path $MainCheckout $folder
+            if (-not (Test-Path -LiteralPath $directory)) { continue }
+            $match = @(Get-ChildItem -LiteralPath $directory -Filter "$ItemNumber-*.md" -File -ErrorAction SilentlyContinue)
+            if ($match.Count -eq 1) { $itemPath = $match[0].FullName; break }
+        }
 
-    try {
-        $itemLines = @(Get-Content -LiteralPath $itemPath -ErrorAction Stop)
-    } catch {
-        return [pscustomobject]@{ Allow = $false; Reason = "backlog item $ItemNumber could not be read" }
+        if (-not $itemPath) {
+            return [pscustomobject]@{ Allow = $false; Reason = "backlog item $ItemNumber could not be found" }
+        }
+
+        try {
+            $itemLines = @(Get-Content -LiteralPath $itemPath -ErrorAction Stop)
+        } catch {
+            return [pscustomobject]@{ Allow = $false; Reason = "backlog item $ItemNumber could not be read" }
+        }
     }
 
     $planBullet = $itemLines | Where-Object { $_ -match '^\s*-\s*Plan:\s*(?<rest>.+)$' } | Select-Object -First 1
@@ -1011,8 +1074,9 @@ function Test-WorktreePlanWasImplemented {
         return [pscustomobject]@{ Allow = $true; Reason = "backlog item $ItemNumber states it has no plan" }
     }
 
-    # Both forms exist in the backlog today: with backticks and without.
-    $planRelative = $rest.Trim([char] 0x60).Trim()
+    # Both forms exist in the backlog today: with backticks and without, and with or without a
+    # closing full stop.
+    $planRelative = Get-BacklogPlanRelativePath -BulletRest $rest
     $planPath = Join-Path $MainCheckout ($planRelative -replace '/', '\')
     if (-not (Test-Path -LiteralPath $planPath)) {
         return [pscustomobject]@{ Allow = $false; Reason = "the plan for item $ItemNumber could not be read" }

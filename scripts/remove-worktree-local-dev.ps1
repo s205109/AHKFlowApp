@@ -128,9 +128,18 @@ if (-not (Get-Command Test-BranchOwnWorkWasMerged -ErrorAction SilentlyContinue)
 # the shared helper does not exist, so this keeps the worktree and says why. The one asymmetry,
 # and it is deliberate: with NO recorded item the fallback still allows. A legacy worktree must not
 # become unremovable just because the watcher lost its helper.
+if (-not (Get-Variable -Name WorktreeBacklogItemUnreadable -Scope Script -ErrorAction SilentlyContinue)) {
+    $WorktreeBacklogItemUnreadable = '<manifest-unreadable>'
+}
+
 if (-not (Get-Command Test-WorktreePlanWasImplemented -ErrorAction SilentlyContinue)) {
     function Test-WorktreePlanWasImplemented {
-        param([string] $MainCheckout, [string] $ItemNumber)
+        param([string] $MainCheckout, [string] $ItemNumber, [string] $BaseRef)
+        # An unreadable manifest is checked before the empty case, so a read failure never borrows
+        # the legacy worktree's free pass.
+        if ($ItemNumber -eq $WorktreeBacklogItemUnreadable) {
+            return [pscustomobject]@{ Allow = $false; Reason = 'the worktree manifest could not be read' }
+        }
         if ([string]::IsNullOrWhiteSpace($ItemNumber)) {
             return [pscustomobject]@{ Allow = $true; Reason = 'no backlog item is recorded for this worktree' }
         }
@@ -143,7 +152,12 @@ if (-not (Get-Command Get-ManifestBacklogItem -ErrorAction SilentlyContinue)) {
         param([Parameter(Mandatory)][string] $WorktreePath)
         $manifest = Join-Path $WorktreePath 'scripts\.env.worktree'
         if (-not (Test-Path -LiteralPath $manifest)) { return '' }
-        foreach ($line in (Get-Content -LiteralPath $manifest -ErrorAction SilentlyContinue)) {
+        try {
+            $lines = @(Get-Content -LiteralPath $manifest -ErrorAction Stop)
+        } catch {
+            return $WorktreeBacklogItemUnreadable
+        }
+        foreach ($line in $lines) {
             if ($line -match '^\s*AHKFLOW_BACKLOG_ITEM\s*=\s*(?<value>.*)$') { return $Matches.value.Trim() }
         }
         return ''
@@ -845,21 +859,6 @@ function Invoke-HookMode {
             return
         }
 
-        # A merged branch does not prove the work happened: the plan lives in a second private
-        # repository the public branch never carries. Asked before the base is resolved, because it
-        # reads two local files and the base resolution can spend a fetch.
-        $planVerdict = Test-WorktreePlanWasImplemented -MainCheckout $mainCheckoutFromGit `
-            -ItemNumber (Get-ManifestBacklogItem -WorktreePath $worktreeFull)
-        if (-not $planVerdict.Allow) {
-            Write-DiagnosticLog "plan gate: $($planVerdict.Reason)"
-            Write-Outcome 'Kept: the plan was never implemented.'
-            # -NoOutcome: this path already wrote its line, and two lines on one attempt is the
-            # defect this whole split exists to prevent.
-            Write-UnmergedPreserveGuidance -WorktreeFull $worktreeFull -MainCheckout $mainCheckoutFromGit `
-                -BranchName $branchName -Reason $planVerdict.Reason -NoOutcome
-            return
-        }
-
         # cleanup-merged-worktrees.ps1 passes the base it resolved, so the sweep path fetches once
         # for the whole run. A bare hook fire resolves its own.
         $baseRef = $MainRef
@@ -887,6 +886,22 @@ function Invoke-HookMode {
             Write-UnmergedPreserveGuidance -WorktreeFull $worktreeFull -MainCheckout $mainCheckoutFromGit -BranchName $branchName -Reason 'the worktree has uncommitted changes'
             return
         }
+
+        # A merged branch does not prove the work happened: the plan lives in a second private
+        # repository the public branch never carries. Asked last, and handed $baseRef, so it reads
+        # the item from the same base the merge gate just decided against. Reading the working tree
+        # instead would refuse a branch that merged on GitHub while the local checkout is behind.
+        $planVerdict = Test-WorktreePlanWasImplemented -MainCheckout $mainCheckoutFromGit `
+            -ItemNumber (Get-ManifestBacklogItem -WorktreePath $worktreeFull) -BaseRef $baseRef
+        if (-not $planVerdict.Allow) {
+            Write-DiagnosticLog "plan gate: $($planVerdict.Reason)"
+            Write-Outcome 'Kept: the plan was never implemented.'
+            # -NoOutcome: this path already wrote its line, and two lines on one attempt is the
+            # defect this whole split exists to prevent.
+            Write-UnmergedPreserveGuidance -WorktreeFull $worktreeFull -MainCheckout $mainCheckoutFromGit `
+                -BranchName $branchName -Reason $planVerdict.Reason -NoOutcome
+            return
+        }
     }
 
     # --- snapshot watcher script + sidecar params outside the worktree ------
@@ -900,6 +915,19 @@ function Invoke-HookMode {
         Write-DiagnosticLog "Failed to snapshot watcher script: $($_.Exception.Message). Aborting (worktree left intact)."
         Write-Outcome 'Failed: the watcher could not be prepared.'
         return
+    }
+
+    # The reliable logger travels with the watcher. Without it the watcher falls back to a
+    # single-attempt append, and one sweep starts several watchers at once -- exactly the
+    # collision the retrying writer was built for. A copy that fails is not fatal: the inline
+    # fallback still writes, it just cannot retry.
+    try {
+        $logSource = Join-Path $PSScriptRoot 'worktree-log.common.ps1'
+        if (Test-Path -LiteralPath $logSource) {
+            Copy-Item -LiteralPath $logSource -Destination (Join-Path $tempDir 'worktree-log.common.ps1') -Force
+        }
+    } catch {
+        Write-DiagnosticLog "Could not copy the log helper beside the watcher: $($_.Exception.Message). The watcher will append without retrying."
     }
 
     # The holder probe travels with the watcher, so a timed-out removal can still name the

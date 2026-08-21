@@ -141,7 +141,10 @@ function Get-EligibleMergedWorktrees {
         # A merged branch does not prove the work happened. Plans live in a second private
         # repository the public branch never carries, so a branch can merge holding only its
         # backlog stage stamps while no code was ever written.
-        $planVerdict = Test-WorktreePlanWasImplemented -MainCheckout $RepoRoot -ItemNumber (Get-ManifestBacklogItem -WorktreePath $wtFull)
+        # -BaseRef is the same base the merged check just used, so the item is read from what
+        # merged rather than from whatever a local pull last left on disk.
+        $planVerdict = Test-WorktreePlanWasImplemented -MainCheckout $RepoRoot `
+            -ItemNumber (Get-ManifestBacklogItem -WorktreePath $wtFull) -BaseRef $MainRef
         if (-not $planVerdict.Allow) {
             Write-Stderr "cleanup: keeping '$wtFull' because $($planVerdict.Reason)."
             # The sweep never hands this one over, so the sweep owns its outcome line.
@@ -491,10 +494,14 @@ function Invoke-MergedWorktreeCleanup {
 
     # Reached only for Clean or an accepted Prompt.
     $removalLog = Join-Path $RepoRoot '.claude\worktrees\worktree-removal.log'
+    $diagnosticsLog = Get-WorktreeDiagnosticsPath -OutcomeLogPath $removalLog
     foreach ($wt in $eligible) {
         Write-Stderr "cleanup: removing merged worktree: $($wt.Path) [$($wt.Branch)]"
+        # Diagnostics, not an outcome. The watcher this hands over to writes "Removed." or
+        # "Failed: ..." for the same attempt, and two outcome lines on one attempt is the defect
+        # the two-file split exists to prevent.
         try {
-            Write-WorktreeLog -LogPath $removalLog -Worktree (Split-Path -Leaf $wt.Path) -Message "Merged-cleanup requested removal (branch $($wt.Branch))."
+            Write-WorktreeDiagnostic -LogPath $diagnosticsLog -Worktree (Split-Path -Leaf $wt.Path) -Message "Merged-cleanup requested removal (branch $($wt.Branch))."
         } catch { }
         Invoke-WorktreeRemoval -RepoRoot $RepoRoot -WorktreePath $wt.Path -MainRef $MainRef
     }

@@ -107,6 +107,73 @@ try {
     Assert-True (-not (Test-WorktreePlanWasImplemented -MainCheckout $root -ItemNumber '073').Allow) `
         'A Plan bullet without backticks is read the same way'
 
+    # --- a Plan bullet that ends with a full stop reads the same ------------
+    # backlog/031 writes it that way, and scripts/backlog.common.ps1 accepts it, so the guard
+    # must not refuse a plan it can plainly see.
+    $root = New-Scenario -ItemBody "# 073 - probe`n`n- Plan: ``docs/superpowers/plans/probe-plan-073.md``." `
+                         -PlanBody "- [x] Step 1"
+    $verdict = Test-WorktreePlanWasImplemented -MainCheckout $root -ItemNumber '073'
+    Assert-True $verdict.Allow "A Plan bullet ending with a full stop must be read, got '$($verdict.Reason)'"
+
+    # --- an unreadable manifest must never read as a legacy worktree --------
+    # Get-ManifestBacklogItem returns the sentinel when the file is there but cannot be read.
+    # Treating that as "nothing to judge" would remove the worktree without checking its plan.
+    $root = New-Scenario -ItemBody $null -PlanBody $null
+    $verdict = Test-WorktreePlanWasImplemented -MainCheckout $root -ItemNumber $WorktreeBacklogItemUnreadable
+    Assert-True (-not $verdict.Allow) 'An unreadable manifest must keep the worktree'
+    Assert-True ($verdict.Reason -match 'could not be read') "Reason must say the manifest could not be read, got '$($verdict.Reason)'"
+
+    $manifestRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("ahkflow-planguard-m-" + [Guid]::NewGuid().ToString('N').Substring(0, 8))
+    $scenarios += $manifestRoot
+    New-Item -ItemType Directory -Path (Join-Path $manifestRoot 'scripts') -Force | Out-Null
+    $manifestFile = Join-Path $manifestRoot 'scripts\.env.worktree'
+    Set-Content -LiteralPath $manifestFile -Value 'AHKFLOW_BACKLOG_ITEM=073'
+    Assert-Equal '073' (Get-ManifestBacklogItem -WorktreePath $manifestRoot) 'A readable manifest returns its recorded item'
+
+    $held = [System.IO.File]::Open($manifestFile, 'Open', 'Read', 'None')
+    try {
+        Assert-Equal $WorktreeBacklogItemUnreadable (Get-ManifestBacklogItem -WorktreePath $manifestRoot) `
+            'A manifest another process holds must read as unreadable, not as empty'
+    } finally {
+        $held.Dispose()
+    }
+
+    # --- the base ref decides, not a stale working tree ---------------------
+    # The merge gate asks about the resolved base. An item filed on the branch and merged on
+    # GitHub is in that ref long before a local pull puts it on disk.
+    $refRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("ahkflow-planguard-r-" + [Guid]::NewGuid().ToString('N').Substring(0, 8))
+    $scenarios += $refRoot
+    New-Item -ItemType Directory -Path (Join-Path $refRoot 'backlog') -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $refRoot 'docs\superpowers\plans') -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $refRoot 'docs\superpowers\plans\probe-plan-073.md') -Value "- [ ] Step 1"
+    & git -C $refRoot init *> $null
+    & git -C $refRoot symbolic-ref HEAD refs/heads/main *> $null
+    & git -C $refRoot config user.email 'test@example.com' *> $null
+    & git -C $refRoot config user.name 'Plan Guard Test' *> $null
+    Set-Content -LiteralPath (Join-Path $refRoot 'backlog\073-probe.md') `
+        -Value "# 073 - probe`n`n- Plan: ``docs/superpowers/plans/probe-plan-073.md``"
+    & git -C $refRoot add -A *> $null
+    & git -C $refRoot commit -m 'file 073' *> $null
+    # The stale local checkout: the item never landed on disk.
+    Remove-Item -LiteralPath (Join-Path $refRoot 'backlog\073-probe.md') -Force
+
+    $verdict = Test-WorktreePlanWasImplemented -MainCheckout $refRoot -ItemNumber '073'
+    Assert-True (-not $verdict.Allow) 'Without a base ref the working tree still decides'
+
+    $verdict = Test-WorktreePlanWasImplemented -MainCheckout $refRoot -ItemNumber '073' -BaseRef 'main'
+    Assert-True (-not $verdict.Allow) 'The item read from the base ref names an unimplemented plan'
+    Assert-True ($verdict.Reason -match 'never implemented') `
+        "The base ref must supply the item, got '$($verdict.Reason)'"
+
+    # --- the hook gate asks the guard only after the merge gate -------------
+    # Asking first made an unmerged worktree fail with the plan guard's wording, and read the
+    # working tree while the merge gate read the resolved base.
+    $removeSource = Get-Content -Raw -LiteralPath (Join-Path $scriptsDir 'remove-worktree-local-dev.ps1')
+    Assert-True ($removeSource -match '(?s)Test-WorktreeClean.*plan gate:') `
+        'remove-worktree-local-dev.ps1 must run the plan gate after the merge and clean gates'
+    Assert-True ($removeSource -match '-BaseRef \$baseRef') `
+        'The hook gate must hand the resolved base to the plan guard'
+
     # --- the sweep carries the guard ----------------------------------------
     $sweepSource = Get-Content -Raw -LiteralPath (Join-Path $scriptsDir 'cleanup-merged-worktrees.ps1')
     Assert-True ($sweepSource -match 'Test-WorktreePlanWasImplemented') 'The sweep must call the plan guard'

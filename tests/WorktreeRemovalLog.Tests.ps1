@@ -119,6 +119,33 @@ try {
     Assert-True ($source -match 'Kept: the folder is still in use, and no holding process could be identified\.') `
         'The no-holder outcome must exist'
 
+    # --- the sweep writes no outcome line for a removal it hands over ------
+    # Ownership is positional. The sweep owns what it decides itself; once a watcher is spawned
+    # the watcher owns the line. A "requested removal" line here plus the watcher's "Removed."
+    # puts two lines on one attempt, which is the defect the split exists to prevent.
+    $sweepSource = Get-Content -Raw -LiteralPath (Join-Path $scriptsDir 'cleanup-merged-worktrees.ps1')
+    Assert-True ($sweepSource -match 'Write-WorktreeDiagnostic[^\r\n]*Merged-cleanup requested removal') `
+        'The hand-over line must go to diagnostics, not to the outcome log'
+    # Write-SweepOutcome is the sweep's only door to the outcome log. Its own body holds the one
+    # legitimate Write-WorktreeLog call, so drop that body and expect nothing left: any other call
+    # site would bypass the vocabulary check below.
+    $outsideHelper = $sweepSource -replace '(?s)function Write-SweepOutcome \{.*?\r?\n\}', ''
+    $bareOutcomeCalls = [regex]::Matches($outsideHelper, '(?m)^\s*Write-WorktreeLog\b')
+    Assert-Equal 0 $bareOutcomeCalls.Count `
+        'Only Write-SweepOutcome may write the outcome log; found a bare Write-WorktreeLog call'
+    foreach ($call in [regex]::Matches($sweepSource, "(?m)^\s*Write-SweepOutcome\b[\s\S]*?-Message\s+'([^']+)'")) {
+        $text = $call.Groups[1].Value
+        Assert-True ($text -match '^(Removed\.|Kept: |Failed: )') "Sweep outcome '$text' must start with Removed., Kept: or Failed:"
+    }
+
+    # --- the watcher's snapshot carries the reliable logger ----------------
+    # The watcher runs from a temp copy. Without this file beside it, it falls back to a
+    # single-attempt append and a collision between two watchers loses the outcome line -- the
+    # exact case the retrying logger was written for.
+    $removeSource = Get-Content -Raw -LiteralPath (Join-Path $scriptsDir 'remove-worktree-local-dev.ps1')
+    Assert-True ($removeSource -match "Copy-Item -LiteralPath \`$logSource") `
+        'The watcher snapshot must copy worktree-log.common.ps1 beside the watcher script'
+
     Write-Host 'Worktree removal log tests passed.'
 } finally {
     Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
