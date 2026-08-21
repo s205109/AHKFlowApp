@@ -1,4 +1,4 @@
-# 112 - Redraw the friction recall samples before retention deletes the window
+# 113 - Redraw the friction recall samples before retention deletes the window
 
 ## Metadata
 
@@ -49,6 +49,10 @@ actually happened, so that the range means what a 95 percent interval means.
 - Deleting the snapshot before the redraw ships.
 
 ## Notes / dependencies
+
+- **This item was filed as 112 and renumbered to 113 on 2026-08-21.** PR #337 had already taken
+  112 for `backlog/112-stale-citations-in-the-plans-re-75722759.md` on an unmerged branch, so
+  `ls` on `backlog/` could not see the clash. CI fails when two files share a number.
 
 - **The clock has stopped, but only because of the snapshot.**
   `~/AHKFlowApp-friction-snapshot-2026-08-21` holds 755 files and 445 MB, copied on 2026-08-21.

@@ -63,8 +63,10 @@ $ErrorActionPreference = 'Stop'
 # It is a uniform random sample. Every unflagged message has the same chance of selection,
 # whenever it was written. That is what an interval over the labels needs; it is not the whole
 # story, because the draw takes a fixed number without replacement and a Wilson interval is a
-# binomial one. Wilson is then conservative - wider than the truth - by a factor of about
-# sqrt((N-n)/(N-1)), which is 0.90 for 200 of 1,004. The doc says so rather than hiding it.
+# binomial one. For a draw with equal inclusion probabilities Wilson is then conservative -
+# wider than the truth - by a factor of about sqrt((N-n)/(N-1)), which is 0.90 for 200 of 1,004.
+# The doc says so rather than hiding it. That conclusion needs the equal probabilities: it
+# describes THIS sampler, not the 2026-08-16 draw the published figures came from.
 #
 # It is stable while the transcripts grow. Keeping the previously drawn rows and topping the
 # sample up did preserve labels, but it gave a row that was in the earlier population two
@@ -103,8 +105,11 @@ function Select-SampleKey {
 # Wilson is a binomial interval: it assumes each draw is independent, which is what sampling
 # WITH replacement gives. This draw takes a fixed number of rows without replacement, so the
 # variance of the sample proportion is smaller - p(1-p)/n times (N-n)/(N-1) rather than
-# p(1-p)/n. Plain Wilson is therefore too wide here. It errs safe, but a range that is wider
-# than the evidence supports is still the wrong range.
+# p(1-p)/n. For an equal-probability draw plain Wilson is therefore too wide: it errs safe, but
+# a range wider than the evidence supports is still the wrong range. Where the inclusion
+# probabilities are unequal, as in the committed draw, even that much cannot be claimed - the
+# bias runs in whichever direction the over-represented rows happen to lean, and nobody measured
+# it.
 #
 # An earlier fix kept the Wilson shape and changed only what it divides by: set the binomial
 # variance p(1-p)/n_eff equal to the true one, solve n_eff = n(N-1)/(N-n), and feed that in as
@@ -152,7 +157,7 @@ function Get-HypergeometricInterval {
 
         For 0 of 200 drawn from 1,004 the exact answer is 16: a population of 16 misses hides
         from the draw with probability 0.0278, which the 0.025 tail does not rule out, while 17
-        gives 0.0221, which it does. That is the regime backlog 112 will publish from.
+        gives 0.0221, which it does. That is the regime backlog 113 will publish from.
     #>
     param(
         [Parameter(Mandatory)][int] $Hits,
@@ -160,39 +165,56 @@ function Get-HypergeometricInterval {
         [Parameter(Mandatory)][int] $Population
     )
 
-    # Log factorials up to the population size. Computing C(a,b) directly overflows a double
-    # long before N reaches a few hundred; in logs it stays exact enough to compare against a
-    # 0.025 tail.
-    $logFactorial = New-Object 'double[]' ($Population + 1)
-    for ($i = 1; $i -le $Population; $i++) { $logFactorial[$i] = $logFactorial[$i - 1] + [Math]::Log($i) }
-
-    function Get-LogChoose {
+    # Every comparison below is exact integer arithmetic, and that is not a preference.
+    #
+    # An earlier version summed the terms as doubles rebuilt from log factorials. It was wrong on
+    # any tail that lands exactly on the threshold. For 2 hits in a draw of 2 from 16, the tail
+    # P(X >= 2 | K = 3) is C(3,2)/C(16,2) = 3/120 = 1/40, which is 0.025 to the last digit. The
+    # rule is strict, so 3 is ruled out and the bound is 4. Through logs the same tail returned
+    # 0.025000000000000012, cleared the strict comparison by one part in 10^17, and the bound came
+    # back as 3. Widening the comparison with a tolerance only moves the tie somewhere else.
+    #
+    # So the tail is never turned into a probability at all. A count is admitted when
+    #
+    #     numerator / C(N, n) > 1/40      which is      40 * numerator > C(N, n)
+    #
+    # and both sides are BigIntegers. C(5472, 200) is about 960 bits, which BigInteger holds
+    # exactly and a double cannot hold at all.
+    function Get-Choose {
         param([int] $Of, [int] $Take)
-        if ($Take -lt 0 -or $Take -gt $Of -or $Of -lt 0) { return [double]::NegativeInfinity }
-        return $logFactorial[$Of] - $logFactorial[$Take] - $logFactorial[$Of - $Take]
-    }
-
-    $logDenominator = Get-LogChoose -Of $Population -Take $Drawn
-
-    function Get-AtMost {
-        # P(X <= Upto) when the population holds Successes misses.
-        param([int] $Upto, [int] $Successes)
-        if ($Upto -lt 0) { return 0.0 }
-        $probability = 0.0
-        for ($i = 0; $i -le $Upto; $i++) {
-            $term = (Get-LogChoose -Of $Successes -Take $i) +
-                    (Get-LogChoose -Of ($Population - $Successes) -Take ($Drawn - $i))
-            if (-not [double]::IsNegativeInfinity($term)) { $probability += [Math]::Exp($term - $logDenominator) }
+        if ($Take -lt 0 -or $Of -lt 0 -or $Take -gt $Of) { return [System.Numerics.BigInteger]::Zero }
+        if ($Take -gt ($Of - $Take)) { $Take = $Of - $Take }
+        $result = [System.Numerics.BigInteger]::One
+        for ($i = 1; $i -le $Take; $i++) {
+            $result = $result * [System.Numerics.BigInteger]($Of - $Take + $i) / [System.Numerics.BigInteger]$i
         }
-        return $probability
+        return $result
     }
+
+    $denominator = Get-Choose -Of $Population -Take $Drawn
+
+    function Get-AtMostNumerator {
+        # The count of draws yielding at most Upto misses, when the population holds Successes.
+        # Divided by $denominator this is P(X <= Upto); it is left undivided so it stays exact.
+        param([int] $Upto, [int] $Successes)
+        $total = [System.Numerics.BigInteger]::Zero
+        if ($Upto -lt 0) { return $total }
+        for ($i = 0; $i -le $Upto; $i++) {
+            $total += (Get-Choose -Of $Successes -Take $i) *
+                      (Get-Choose -Of ($Population - $Successes) -Take ($Drawn - $i))
+        }
+        return $total
+    }
+
+    $forty = [System.Numerics.BigInteger]40
 
     # Upper bound: P(X <= Hits | K) falls as K rises, so bisect for the last K above the tail.
     $lowSearch = $Hits
     $highSearch = $Population
     while ($lowSearch -lt $highSearch) {
         $middle = [int][Math]::Ceiling(($lowSearch + $highSearch) / 2.0)
-        if ((Get-AtMost -Upto $Hits -Successes $middle) -gt 0.025) { $lowSearch = $middle }
+        $numerator = Get-AtMostNumerator -Upto $Hits -Successes $middle
+        if (($forty * $numerator) -gt $denominator) { $lowSearch = $middle }
         else { $highSearch = $middle - 1 }
     }
     $upperCount = $lowSearch
@@ -207,7 +229,9 @@ function Get-HypergeometricInterval {
     $highSearch = $Population
     while ($lowSearch -lt $highSearch) {
         $middle = [int][Math]::Floor(($lowSearch + $highSearch) / 2.0)
-        if ((1.0 - (Get-AtMost -Upto ($Hits - 1) -Successes $middle)) -gt 0.025) { $highSearch = $middle }
+        # P(X >= Hits) = 1 - P(X <= Hits - 1), kept as a count so nothing rounds.
+        $atOrAbove = $denominator - (Get-AtMostNumerator -Upto ($Hits - 1) -Successes $middle)
+        if (($forty * $atOrAbove) -gt $denominator) { $highSearch = $middle }
         else { $lowSearch = $middle + 1 }
     }
     $lowerCount = $lowSearch

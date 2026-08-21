@@ -208,6 +208,30 @@ foreach ($case in @(@(11, 200, 5457), @(7, 200, 1004), @(0, 200, 220), @(0, 200,
         "the population cannot hold fewer misses than the $hits the draw found, so neither can the lower bound"
 }
 
+# --- A tail that lands exactly on 0.025 ---
+#
+# This case is here because the log-based oracle above cannot catch it, and neither could the
+# implementation while it shared that arithmetic. The numbers are small enough to settle by hand
+# with no floating point anywhere:
+#
+#   P(X >= 2 | N = 16, n = 2, K = 3) = C(3,2) / C(16,2) = 3 / 120 = 1/40 = 0.025 exactly.
+#
+# The rule is strict: a count is ruled out unless its tail EXCEEDS 0.025. Three is therefore
+# ruled out, and the lower bound is 4. Rebuilt through logarithms the same tail comes back as
+# 0.025000000000000012, which clears a strict comparison by one part in 10^17, so the bound came
+# back as 3. Exact integer arithmetic is the only fix that does not just move the threshold.
+$tie = Get-RecallInterval -Hits 2 -Drawn 2 -Population 16 -Correct
+Assert-True ($tie.LowCount -eq 4) `
+    ('P(X>=2 | K=3) is exactly 3/120 = 0.025, which a strict tail does not admit, so the lower ' +
+    "bound for 2 of 2 from 16 must be 4, got $($tie.LowCount)")
+
+# The mirror of the same tie on the upper tail: P(X <= 0 | N = 16, n = 2, K = 13) =
+# C(3,2) / C(16,2) = 3/120 = 0.025 exactly, so 13 is ruled out and the upper bound is 12.
+$tieHigh = Get-RecallInterval -Hits 0 -Drawn 2 -Population 16 -Correct
+Assert-True ($tieHigh.HighCount -eq 12) `
+    ('P(X<=0 | K=13) is exactly 3/120 = 0.025, which a strict tail does not admit, so the upper ' +
+    "bound for 0 of 2 from 16 must be 12, got $($tieHigh.HighCount)")
+
 # A census answers exactly. Drawing every row makes both tails degenerate, so the interval must
 # collapse onto the count that was seen rather than widening around it.
 $whole = Get-RecallInterval -Hits 4 -Drawn 30 -Population 30 -Correct
@@ -383,8 +407,23 @@ foreach ($bad in @(@{ Hits = 5; Drawn = 2; Population = 10 }, @{ Hits = 1; Drawn
 # assumption the data breaks. Nothing passes it today, and this case keeps it that way.
 # Parsed, not grepped. A regex needing both tokens on one physical line misses a call split
 # across lines, and misses a splat entirely - `$args = @{ Correct = $true }` followed by
-# `Get-RecallInterval @args` carries no literal `-Correct` anywhere. The parser sees the real
-# call in every form.
+# `Get-RecallInterval @args` carries no literal `-Correct` anywhere. The parser sees those.
+#
+# What it CANNOT see, and what this case therefore does not promise:
+#
+#   Set-Alias gri Get-RecallInterval ; gri -Hits 1 -Drawn 2 -Population 3 -Correct
+#   $name = 'Get-RecallInterval' ; & $name -Correct
+#   Invoke-Expression 'Get-RecallInterval -Correct'
+#
+# A command name is only known statically when it is written literally, so each of these reaches
+# the switch with the scan reporting nothing. The three shapes are reported below wherever they
+# appear in a file that also names Get-RecallInterval, which turns a silent bypass into a
+# failure a human has to clear. That is narrower than a proof: a script could still build the
+# name from pieces, or reach the function through a module loaded at run time.
+#
+# So the claim this case supports is the modest one. Nothing in this repository passes -Correct
+# today, and no ordinary edit can start doing so without failing here. It is not a guarantee
+# that the switch is unreachable.
 function Test-BindsToCorrect {
     <#
     .SYNOPSIS
@@ -427,6 +466,40 @@ foreach ($file in (Get-ChildItem -LiteralPath $scriptDir -Filter '*.ps1' -Recurs
         continue
     }
 
+    # Only a file that names the function can reach it by any of the shapes below. Scanning every
+    # script for a dynamic invocation would report Invoke-Expression across the whole repository,
+    # which is a different rule and not this one.
+    $mentionsFunction = (Get-Content -LiteralPath $file.FullName -Raw) -match 'Get-RecallInterval'
+
+    if ($mentionsFunction) {
+        # `& $name` and `. $name`, where the command is held in a variable. Reported because the
+        # name could be Get-RecallInterval and nothing here can tell.
+        #
+        # A dot-source of a computed PATH is not this. `. (Join-Path $PSScriptRoot 'x.ps1')` also
+        # hides its command name from the parser, and this file uses it at line 305 to load a
+        # sibling script. Loading a file is not invoking the function, so flagging it would
+        # report a pattern the repository depends on and teach the reader to ignore the failure.
+        $opaque = $ast.FindAll({
+                param($node)
+                $node -is [System.Management.Automation.Language.CommandAst] -and
+                $null -eq $node.GetCommandName() -and
+                $node.CommandElements.Count -gt 0 -and
+                $node.CommandElements[0] -is [System.Management.Automation.Language.VariableExpressionAst]
+            }, $true)
+        foreach ($command in $opaque) {
+            $callers.Add("$($file.Name):$($command.Extent.StartLineNumber) command name held in a variable")
+        }
+
+        $named = $ast.FindAll({
+                param($node)
+                $node -is [System.Management.Automation.Language.CommandAst] -and
+                $node.GetCommandName() -in @('Set-Alias', 'New-Alias', 'Invoke-Expression', 'iex')
+            }, $true)
+        foreach ($command in $named) {
+            $callers.Add("$($file.Name):$($command.Extent.StartLineNumber) $($command.GetCommandName()) in a file that names Get-RecallInterval")
+        }
+    }
+
     $commands = $ast.FindAll({
             param($node)
             $node -is [System.Management.Automation.Language.CommandAst] -and
@@ -452,8 +525,10 @@ foreach ($file in (Get-ChildItem -LiteralPath $scriptDir -Filter '*.ps1' -Recurs
 }
 
 Assert-True ($callers.Count -eq 0) `
-    ('No script may pass -Correct while the published draw is the 2026-08-16 one, and none may ' +
-    'splat onto Get-RecallInterval, because a splat hides whether it does: ' + ($callers -join '; '))
+    ('No script may pass -Correct while the published draw is the 2026-08-16 one. Also reported: ' +
+    'a splat onto Get-RecallInterval, a command name held in a variable, and Set-Alias, New-Alias ' +
+    'or Invoke-Expression in a file that names the function - each hides whether the switch is ' +
+    'passed, and a call nobody can read is not a call anybody can clear: ' + ($callers -join '; '))
 
 if ($failures.Count -gt 0) {
     foreach ($failure in $failures) { Write-Host ''; Write-Host $failure -ForegroundColor Red }
@@ -461,4 +536,4 @@ if ($failures.Count -gt 0) {
     throw "Friction recall sample tests failed with $($failures.Count) problem(s). See the detail above."
 }
 
-Write-Host 'Friction recall sample tests passed. 7 selection cases, 9 interval cases.'
+Write-Host 'Friction recall sample tests passed. 7 selection cases, 11 interval cases.'

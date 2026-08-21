@@ -65,10 +65,21 @@ selection, and the same rows stay selected as the transcripts grow, so a hand-wr
 survives a re-run without the label deciding the sample.
 
 **A uniform draw still does not make a Wilson interval exact.** Wilson is a binomial interval,
-and this draw takes a fixed number of rows without replacement. The true interval is narrower
-by roughly `sqrt((N - n) / (N - 1))` — 0.90 for 200 of 1,004 asks, 0.98 for 200 of 5,457
-handoffs. Wilson is therefore conservative here, never optimistic, and every range below stays
-an approximation.
+and this draw takes a fixed number of rows without replacement. For a draw where every row has
+the same chance of selection, the true interval is narrower by roughly
+`sqrt((N - n) / (N - 1))` — 0.90 for 200 of 1,004 asks, 0.98 for 200 of 5,457 handoffs. Under
+that condition Wilson is conservative: too wide, never too narrow.
+
+**That condition does not hold for the ranges published below.** They come from the 2026-08-16
+draw, which was not a simple random sample: an older row had about 1.4 times the inclusion
+probability of a newer one. Unequal inclusion probabilities can bias the estimate in either
+direction, depending on whether the over-represented rows carry misses more or less often than
+the rest. Nobody has measured which way it runs here, and the labels that would answer it
+describe messages that no longer exist.
+
+So the ranges below are an approximation of unknown direction. They are not a guaranteed
+over-estimate, and this document does not claim they are. That is the reason the caveat under
+"The committed sample was drawn the old way" stays, and the reason backlog 113 exists.
 
 **The decision, taken in backlog 102 on 2026-08-21: the ranges stay plain Wilson, and they stay
 labelled an approximation.** The correction was computed and then withdrawn, for a reason worth
@@ -260,7 +271,7 @@ better than 60 did — the handoff interval went from 60–655 to 179–533, and
 structure rather than wording: a refused tool call, a session that ends on a question. That is
 wave-3 work, not a patch to this script. The draw that produced these 400 labels was not
 uniform either, for the reason given under "How the draw picks a row". Backlog 102 decided that
-the ranges stay plain Wilson and stay labelled approximate; backlog 112 carries the redraw.
+the ranges stay plain Wilson and stay labelled approximate; backlog 113 carries the redraw.
 
 **Metric 5 classifies 115 of 192 in-window CI runs.** The 77 unresolved runs are **not** missing
 from this clone — every in-window `head_sha` was present when this was measured. They have no

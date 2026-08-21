@@ -26,7 +26,7 @@ supports.
 a reader of the friction figures, I want the published interval to describe the draw that
 actually happened, so that the range means what a 95 percent interval means." That needs a
 redraw and about 386 fresh hand labels. The population those labels would read is being deleted
-on a 30-day cycle, so the redraw became its own piece of work with its own deadline. Backlog 112
+on a 30-day cycle, so the redraw became its own piece of work with its own deadline. Backlog 113
 carries the original user story and the three criteria that serve it. What is left here is the
 decision, which is finished.
 
@@ -53,7 +53,7 @@ the current 200 overlap.
       **This criterion was rewritten, not merely annotated.** It originally required removing
       the paragraph. That was written on the assumption a redraw would happen; without one the
       caveat is still true, and deleting it would have withdrawn a warning the figures need.
-      Backlog 112 removes the paragraph, after its redraw earns that.
+      Backlog 113 removes the paragraph, after its redraw earns that.
 - [x] A decision is recorded on the flagged strata: those are counted whole, so nothing about
       them changes, and the item says so instead of leaving a reader to work it out.
       Recorded in `docs/development/friction-recall-sample.md` under "How a label was decided":
@@ -68,17 +68,17 @@ the current 200 overlap.
       assumption the data breaks. A design-based estimator needs the earlier 60-row draw's
       selection record and the population as it stood then, and neither survives.
       `Get-RecallInterval` exists with the correction behind a `-Correct` switch that nothing
-      passes, for backlog 112 to use once the draw is uniform. That switch computes the exact
+      passes, for backlog 113 to use once the draw is uniform. That switch computes the exact
       hypergeometric interval; an earlier draft used a normal approximation that claimed
       certainty at the boundary, and a test case now pins the exact answer.
 - [x] The population's retention deadline is measured and written down, and the transcripts are
       copied before more of them age out. See the finding at the end of this file.
 
-### The three criteria that moved to backlog 112
+### The three criteria that moved to backlog 113
 
 These are **not ticked and not abandoned**. They were removed from this item's list on
 2026-08-21 rather than left unticked here, because leaving them here would have parked a
-deadline in a closed item. Backlog 112 carries them verbatim, and its own deadline is the
+deadline in a closed item. Backlog 113 carries them verbatim, and its own deadline is the
 2026-09-11 date on which the last of the window is deleted.
 
 1. Both samples are redrawn with the current sampler, and the selection records are committed
@@ -87,19 +87,19 @@ deadline in a closed item. Backlog 112 carries them verbatim, and its own deadli
    written in `docs/development/friction-recall-sample.md`.
 3. The two ranges are recomputed and republished in that file and in
    `backlog/done/072-process-wave-2-parity-drift-guard-templates.md`. Item 072 is untouched by
-   this item, and 112 adds its figures there as a dated addition, never a substitution.
+   this item, and 113 adds its figures there as a dated addition, never a substitution.
 
 ## Out of scope
 
 - Changing the sampler. It already draws uniformly.
-- The redraw and the relabelling. Both moved to backlog 112 once the population turned out to
+- The redraw and the relabelling. Both moved to backlog 113 once the population turned out to
   be disappearing; see the finding below.
 - The other three metrics. They are not sampled.
 
 ## Why this item closes here
 
 Its list above is complete, and no box was ticked that is not true. The three criteria that
-would need the redraw were moved out rather than ticked, and backlog 112 now holds them with the
+would need the redraw were moved out rather than ticked, and backlog 113 now holds them with the
 retention deadline attached.
 
 What this item delivered is the decision and the reason behind it. The interval stays plain
@@ -109,13 +109,13 @@ a test that walks every script's syntax tree to prove nothing calls it while the
 the non-uniform one. The retention finding and the snapshot are written into
 `docs/development/friction-recall-sample.md`.
 
-The narrower user story above is what closes. The original one is backlog 112's, and it stays
+The narrower user story above is what closes. The original one is backlog 113's, and it stays
 open there until the redraw earns it.
 
 ## Notes / dependencies
 
 - The labelling cost, roughly 386 rows read in full across the two metrics, moved to backlog
-  112 with the redraw.
+  113 with the redraw.
 - `tests/FrictionRecallSample.Tests.ps1` covers the draw's uniformity and its stability.
 - Spec: none — Design has not run.
 - Plan: `docs/superpowers/plans/2026-08-21-friction-recall-interval-plan-102.md`
