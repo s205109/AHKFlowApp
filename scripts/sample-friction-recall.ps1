@@ -106,11 +106,13 @@ function Select-SampleKey {
 # p(1-p)/n. Plain Wilson is therefore too wide here. It errs safe, but a range that is wider
 # than the evidence supports is still the wrong range.
 #
-# The fix keeps the Wilson shape and changes only what it divides by. Set the binomial variance
-# p(1-p)/n_eff equal to the true one and solve: n_eff = n(N-1)/(N-n). Feed that in as the
-# sample size while leaving the observed proportion at Hits/Drawn, and the interval comes out
-# with the right width. For 200 of 1,004 asks n_eff is 249.5, and the interval narrows from
-# 1.7-7.0 percent to 1.8-6.6 percent.
+# An earlier fix kept the Wilson shape and changed only what it divides by: set the binomial
+# variance p(1-p)/n_eff equal to the true one, solve n_eff = n(N-1)/(N-n), and feed that in as
+# the sample size. It was withdrawn. Matching the variance is still a normal approximation, and
+# it fails where the counts are small - see the note on Get-HypergeometricInterval below.
+#
+# What -Correct does instead is invert the hypergeometric tails directly, with no approximation
+# at any step. Get-HypergeometricInterval holds that code and explains the arithmetic.
 #
 # What this does NOT fix: whether every row had the same chance of being drawn. That is a
 # property of the draw, not of the arithmetic, and only a redraw settles it.
@@ -145,9 +147,12 @@ function Get-HypergeometricInterval {
 
         This is what a normal approximation cannot do at the edges. Substituting an effective
         sample size into Wilson returned an upper bound of ZERO population misses for 0 of 200
-        drawn from 220 - a claim of certainty that is wrong 20/220 of the time. It was one step
-        too tight in every case measured, including 15 where the answer is 17 for 0 of 200 drawn
-        from 1,004, which is the regime backlog 112 will publish from.
+        drawn from 220 - a claim of certainty that is wrong 20/220 of the time, because one miss
+        among 220 escapes a 200-row draw 20/220 of the time. The exact answer there is 1.
+
+        For 0 of 200 drawn from 1,004 the exact answer is 16: a population of 16 misses hides
+        from the draw with probability 0.0278, which the 0.025 tail does not rule out, while 17
+        gives 0.0221, which it does. That is the regime backlog 112 will publish from.
     #>
     param(
         [Parameter(Mandatory)][int] $Hits,

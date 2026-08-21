@@ -173,7 +173,7 @@ Assert-True ($tight.HighCount -eq 1) `
 
 # Each bound is the last population count the observation does not rule out, checked against a
 # hypergeometric written separately in this file.
-foreach ($case in @(@(11, 200, 5457), @(7, 200, 1004), @(0, 200, 220), @(0, 200, 1004))) {
+foreach ($case in @(@(11, 200, 5457), @(7, 200, 1004), @(0, 200, 220), @(0, 200, 1004), @(200, 200, 400), @(5, 5, 60))) {
     $hits, $drawn, $popSize = $case
     $interval = Get-RecallInterval -Hits $hits -Drawn $drawn -Population $popSize -Correct
 
@@ -186,11 +186,33 @@ foreach ($case in @(@(11, 200, 5457), @(7, 200, 1004), @(0, 200, 220), @(0, 200,
             "the upper bound is not tight: $($interval.HighCount + 1) is still possible at P(X<=$hits) = $beyond"
     }
 
+    # The lower bound gets the same treatment from the other tail, and it needs it. Checking
+    # only that it sits below the upper bound would accept the observed count itself: for 11 of
+    # 200 from 5,457 the answer is 154, and a bound of 11 satisfies every ordering rule while
+    # being fourteen times too small. P(X >= Hits) rises with the population count, so the bound
+    # is the FIRST count the observation does not rule out.
+    $atLow = 1.0 - (Get-HypergeometricAtMost -Observed ($hits - 1) -Successes $interval.LowCount -Total $popSize -Drawn $drawn)
+    Assert-True ($atLow -gt 0.025) `
+        "the lower bound $($interval.LowCount) for $hits of $drawn from $popSize is ruled out: P(X>=$hits) = $atLow"
+    if ($interval.LowCount -gt 0) {
+        $under = 1.0 - (Get-HypergeometricAtMost -Observed ($hits - 1) -Successes ($interval.LowCount - 1) -Total $popSize -Drawn $drawn)
+        Assert-True ($under -le 0.025) `
+            "the lower bound is not tight: $($interval.LowCount - 1) is still possible at P(X>=$hits) = $under"
+    }
+
     Assert-True ($interval.LowCount -le $interval.HighCount) `
         "the lower bound must not exceed the upper for $hits of $drawn from $popSize"
     Assert-True ($interval.HighCount -ge $hits) `
         "the population cannot hold fewer misses than the $hits the draw found"
+    Assert-True ($interval.LowCount -ge $hits) `
+        "the population cannot hold fewer misses than the $hits the draw found, so neither can the lower bound"
 }
+
+# A census answers exactly. Drawing every row makes both tails degenerate, so the interval must
+# collapse onto the count that was seen rather than widening around it.
+$whole = Get-RecallInterval -Hits 4 -Drawn 30 -Population 30 -Correct
+Assert-True ($whole.LowCount -eq 4 -and $whole.HighCount -eq 4) `
+    "drawing the whole population must return exactly 4, got $($whole.LowCount) to $($whole.HighCount)"
 
 # --- 10. Plain Wilson reproduces the figures the document already published ---
 
@@ -363,6 +385,35 @@ foreach ($bad in @(@{ Hits = 5; Drawn = 2; Population = 10 }, @{ Hits = 1; Drawn
 # across lines, and misses a splat entirely - `$args = @{ Correct = $true }` followed by
 # `Get-RecallInterval @args` carries no literal `-Correct` anywhere. The parser sees the real
 # call in every form.
+function Test-BindsToCorrect {
+    <#
+    .SYNOPSIS
+        Whether a written parameter name binds to -Correct.
+    .DESCRIPTION
+        PowerShell binds any unambiguous prefix, so -C, -Co, -Cor and -Corr all reach -Correct:
+        it is the only parameter of Get-RecallInterval that starts with C. A check for the whole
+        word lets every one of those through, which is a guard that reads as if it works.
+
+        Both directions are tested. A name that is a prefix of 'Correct' binds to it, and a name
+        that starts with 'Correct' is either the parameter itself or a longer name that no longer
+        binds - reported anyway, because a name that close to the prohibited switch is worth a
+        human look.
+    #>
+    param([Parameter(Mandatory)][AllowEmptyString()][string] $Name)
+    if ([string]::IsNullOrEmpty($Name)) { return $false }
+    return 'Correct'.StartsWith($Name, [System.StringComparison]::OrdinalIgnoreCase) -or
+    $Name.StartsWith('Correct', [System.StringComparison]::OrdinalIgnoreCase)
+}
+
+# The guard's own rule, checked before it is trusted to read the scripts. Each of these binds
+# to -Correct when written at a call site; the earlier whole-word check caught only the first.
+foreach ($name in @('Correct', 'correct', 'CORRECT', 'C', 'c', 'Co', 'Cor', 'Corr', 'Correctly')) {
+    Assert-True (Test-BindsToCorrect -Name $name) "-$name reaches -Correct, so the guard must catch it"
+}
+foreach ($name in @('Hits', 'Drawn', 'Population', 'D', 'Population2', '')) {
+    Assert-True (-not (Test-BindsToCorrect -Name $name)) "-$name does not reach -Correct, so the guard must not report it"
+}
+
 $scriptDir = Join-Path $repoRoot 'scripts'
 $callers = New-Object System.Collections.Generic.List[string]
 
@@ -384,10 +435,11 @@ foreach ($file in (Get-ChildItem -LiteralPath $scriptDir -Filter '*.ps1' -Recurs
 
     foreach ($command in $commands) {
         foreach ($element in $command.CommandElements) {
-            # A named switch, however the call is wrapped across lines.
+            # A named switch, however the call is wrapped across lines, and however far it is
+            # abbreviated. -C is enough to bind, so the whole word is not what to look for.
             if ($element -is [System.Management.Automation.Language.CommandParameterAst] -and
-                $element.ParameterName -like 'Correct*') {
-                $callers.Add("$($file.Name):$($element.Extent.StartLineNumber) -Correct")
+                (Test-BindsToCorrect -Name $element.ParameterName)) {
+                $callers.Add("$($file.Name):$($element.Extent.StartLineNumber) -$($element.ParameterName)")
             }
             # A splat. What it holds cannot be resolved here, so any splat onto this command is
             # reported: a call nobody can read is not a call anybody can clear.
