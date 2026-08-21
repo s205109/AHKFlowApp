@@ -784,24 +784,6 @@ try {
     Remove-TempTree $repo
 }
 
-# --- Test: the accepted forged-empty case, pinned ---------------------------------------
-# A documented limit, not a wish. GIT_REFLOG_ACTION=commit on a fast-forward onto an already-merged
-# tip satisfies every signal: the subject reads as a commit, the SHA really is a merged parent, and
-# an empty branch strands nothing. The worktree is removed. Backlog 096 tracks whether a stronger
-# signal exists; until then this test states the behaviour so a change to it must be deliberate.
-$repo = New-TempGitRepo
-try {
-    Add-TestWorktree -RepoDir $repo -BranchName 'feat-forge-target' | Out-Null
-    $emptyPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-forged-empty' -NoCommits -BaseRef 'main^'
-    Invoke-TestGitWithReflogAction -RepoDir $emptyPath -Action 'commit' -GitArgs @('merge', '--ff-only', 'feat-forge-target') | Out-Null
-
-    Assert-True (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-forged-empty') 'Accepted limit: a forged commit subject on an empty branch still reads as merged own work.'
-
-    $stranded = Get-StrandedCommits -RepoRoot $repo -Branch 'feat-forged-empty' -Shas @(((Invoke-TestGit $repo @('rev-parse', 'refs/heads/feat-forged-empty')) -join '').Trim())
-    Assert-Equal 0 $stranded.Count 'The accepted case must strand nothing, which is what bounds it.'
-} finally {
-    Remove-TempTree $repo
-}
 
 # --- Test: a squashing rebase is swept like any other rebase -----------------------------
 # A squash strands the originals it replaced, exactly as a plain rebase strands the commits it
@@ -1916,6 +1898,11 @@ try {
     Assert-True ($null -ne (Get-BaseRefAtBranchCreation -RepoRoot $repo -Branch 'feat-ff-victim' -MainRef 'main')) 'Sanity check: signal 5 must have a base position to judge against, or this test proves nothing.'
 
     Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-ff-victim' -MainRef 'main')) 'A forged "commit:" subject on a never-committed branch must not make it eligible.'
+
+    # Kept from the backlog 095 block this test replaces. It bounds what the refusal costs: the
+    # branch strands nothing, so refusing it loses no work. Signal 5 buys safety here for free.
+    $stranded = Get-StrandedCommits -RepoRoot $repo -Branch 'feat-ff-victim' -Shas @(((Invoke-TestGit $repo @('rev-parse', 'refs/heads/feat-ff-victim')) -join '').Trim())
+    Assert-Equal 0 $stranded.Count 'The forged case must strand nothing, which is what bounds it.'
 
     $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
     $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
