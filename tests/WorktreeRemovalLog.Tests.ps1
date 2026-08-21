@@ -100,6 +100,18 @@ try {
     Assert-True (-not ($source -match '(?m)^function Write-Log \{')) 'Write-Log must be gone; use Write-Outcome or Write-DiagnosticLog'
     Assert-True (-not ($source -match '(?m)^\s*Write-Log ')) 'No call site may still call Write-Log'
 
+    # --- exactly one outcome line, and it is one of the three shapes -------
+    $source = Get-Content -Raw -LiteralPath (Join-Path $scriptsDir 'remove-worktree-local-dev.ps1')
+    # Only the single-quoted literal call sites. The two that build their text from an
+    # expression are covered by the runtime cases above. A double-quoted PowerShell string
+    # holding single quotes needs no escaping, which keeps this pattern readable.
+    $outcomeCalls = [regex]::Matches($source, "(?m)^\s*Write-Outcome\s+'([^']+)'")
+    Assert-True ($outcomeCalls.Count -ge 9) "Expected at least 9 literal Write-Outcome call sites, got $($outcomeCalls.Count)"
+    foreach ($call in $outcomeCalls) {
+        $text = $call.Groups[1].Value
+        Assert-True ($text -match '^(Removed\.|Kept: |Failed: )') "Outcome '$text' must start with Removed., Kept: or Failed:"
+    }
+
     Write-Host 'Worktree removal log tests passed.'
 } finally {
     Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue

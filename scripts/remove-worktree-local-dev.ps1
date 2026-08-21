@@ -944,6 +944,9 @@ function Invoke-WatcherMode {
                 Reason       = 'main checkout path is unknown'
                 GitResult    = $null
             })
+        # The folder was never touched, so this is a Kept line and not the Failed one the
+        # post-delete path writes for the same missing value.
+        Write-Outcome 'Kept: the main checkout could not be resolved.'
         Complete-WatcherPreserved -ParamFilePath $ParamFile -WatcherScriptPath $watcherScript
         return
     }
@@ -953,6 +956,7 @@ function Invoke-WatcherMode {
     # from the param file and is where the destructive rename + delete happen.
     if (Test-SamePath $worktreeFull $mainCheckout) {
         Write-DiagnosticLog "REFUSING: WorktreePath ($worktreeFull) equals MainCheckout. Will not rename/delete the main checkout."
+        Write-Outcome 'Kept: the path is the main checkout, not a worktree.'
         Remove-WatcherArtifacts -ParamFilePath $ParamFile -WatcherScriptPath $watcherScript
         return
     }
@@ -960,6 +964,7 @@ function Invoke-WatcherMode {
     $registration = Test-RegisteredLinkedWorktree -WorktreeFull $worktreeFull -MainCheckout $mainCheckout
     if (-not $registration.IsRegistered) {
         Write-UnregisteredWorktreeRefusal $worktreeFull $mainCheckout $registration
+        Write-Outcome 'Kept: the path is not a registered worktree of this repository.'
         Complete-WatcherPreserved -ParamFilePath $ParamFile -WatcherScriptPath $watcherScript
         return
     }
@@ -968,6 +973,7 @@ function Invoke-WatcherMode {
     $deadline = (Get-Date).AddSeconds($timeout)
     $renamed = $false
     $alreadyGone = $false
+    $removalFailure = $null   # set to a plain-word reason when a step makes the removal a failure
     $lastError = ''
     $nextStatus = Get-Date
 
@@ -1012,17 +1018,23 @@ function Invoke-WatcherMode {
             Write-DiagnosticLog "Remove-Item reported an error: $($_.Exception.Message)"
             if (Test-Path -LiteralPath $tempName) {
                 Write-DiagnosticLog "Remnant left at '$tempName' (clearly-marked; the original worktree path is already gone)."
+                $removalFailure = 'the worktree folder was renamed but not fully deleted'
             }
         }
     }
 
     if (-not $mainCheckout) {
         Write-DiagnosticLog 'Main checkout unknown; cannot prune git or delete branch.'
+        Write-Outcome 'Failed: the main checkout could not be resolved.'
         Remove-WatcherArtifacts -ParamFilePath $ParamFile -WatcherScriptPath $watcherScript
         return
     }
 
-    Write-GitResult 'worktree prune -v' (Invoke-GitCapture @('-C', $mainCheckout, 'worktree', 'prune', '-v'))
+    $pruneResult = Invoke-GitCapture @('-C', $mainCheckout, 'worktree', 'prune', '-v')
+    Write-GitResult 'worktree prune -v' $pruneResult
+    if ($pruneResult.ExitCode -ne 0 -and -not $removalFailure) {
+        $removalFailure = "the folder is gone but git's registry still lists it"
+    }
 
     $branchDeleteSucceeded = $false
     $branchDeleteAttempted = $false
@@ -1088,14 +1100,14 @@ function Invoke-WatcherMode {
         Write-DiagnosticLog 'Skipping database drop and Docker teardown: branch was not confirmed deleted (scripts/prune-worktree-databases.ps1 and scripts/prune-worktree-docker.ps1 reclaim them later).'
     }
 
-    # --- verify + log final state -------------------------------------------
+    # --- verify + record the one outcome ------------------------------------
+    $folderGone = -not (Test-Path -LiteralPath $worktreeFull)
     Write-DiagnosticLog 'Final state:'
-    Write-DiagnosticLog "  worktree folder exists: $([bool](Test-Path -LiteralPath $worktreeFull))"
+    Write-DiagnosticLog "  worktree folder exists: $(-not $folderGone)"
     if ($branchName) {
         $branchRef = "refs/heads/$branchName"
         $branchCheck = Invoke-GitCapture @('-C', $mainCheckout, 'show-ref', '--verify', '--quiet', $branchRef)
-        $stillThere = $branchCheck.ExitCode -eq 0
-        Write-DiagnosticLog "  branch '$branchName' still present: $stillThere"
+        Write-DiagnosticLog "  branch '$branchName' still present: $($branchCheck.ExitCode -eq 0)"
     }
     Write-GitResult '  worktree list' (Invoke-GitCapture @('-C', $mainCheckout, 'worktree', 'list'))
     if (-not $branchDeleteAttempted) {
@@ -1104,6 +1116,12 @@ function Invoke-WatcherMode {
         Write-DiagnosticLog 'Watcher done (worktree + branch removed).'
     } else {
         Write-DiagnosticLog 'Watcher done (worktree removed; branch preserved).'
+    }
+
+    if ($removalFailure) {
+        Write-Outcome ('Failed: ' + (Format-WorktreeLogReason -Text $removalFailure) + '.')
+    } else {
+        Write-Outcome 'Removed.'
     }
 
     Remove-WatcherArtifacts -ParamFilePath $ParamFile -WatcherScriptPath $watcherScript
