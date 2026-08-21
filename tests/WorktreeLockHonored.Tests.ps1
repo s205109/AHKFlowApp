@@ -36,7 +36,17 @@ function ConvertTo-Key {
 
 function Invoke-TestGit {
     param([string] $RepoDir, [string[]] $GitArgs)
-    $out = & git -C $RepoDir @GitArgs 2>&1
+    # Windows PowerShell turns a native command's stderr into error records, and the file-wide
+    # 'Stop' preference makes them terminating. Git writes progress to stderr on success, so
+    # 'worktree add' would fail this suite under powershell.exe while passing under pwsh. The
+    # exit code is the only success signal that means anything here.
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $out = & git -C $RepoDir @GitArgs 2>&1
+    } finally {
+        $ErrorActionPreference = $previous
+    }
     if ($LASTEXITCODE -ne 0) {
         throw "git $($GitArgs -join ' ') failed: $out"
     }
@@ -156,8 +166,16 @@ function Invoke-Watcher {
         -BranchName $BranchName -LogPath $LogPath -TimeoutSeconds $TimeoutSeconds
 
     $psExe = (Get-Process -Id $PID).Path
-    & $psExe -NoProfile -ExecutionPolicy Bypass -File $staged.WatcherScript `
-        -Mode Watcher -ParamFile $staged.ParamFile 2>&1 | Out-Null
+    # Same reason as Invoke-TestGit: the watcher writes its diagnostics to stderr, and Windows
+    # PowerShell would turn them into a terminating error. The outcome log is what this asserts on.
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & $psExe -NoProfile -ExecutionPolicy Bypass -File $staged.WatcherScript `
+            -Mode Watcher -ParamFile $staged.ParamFile 2>&1 | Out-Null
+    } finally {
+        $ErrorActionPreference = $previous
+    }
     Remove-Item -LiteralPath $staged.WatcherScript, $staged.ParamFile -Force -ErrorAction SilentlyContinue
 }
 
