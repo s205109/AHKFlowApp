@@ -814,9 +814,7 @@ try {
             Assert-Equal 'Deny' $decision.Action 'Action'
             Assert-Equal 'ambiguous-command' $decision.Rule 'Rule'
         }
-    }
 
-    foreach ($reading in @('Bash', 'PowerShell')) {
         Invoke-TestCase "Location layer refuses an unreadable command ($reading Reading)" {
             $decision = Get-AgentWorktreeGuardDecision -Command $unreadable `
                 -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false `
