@@ -1924,4 +1924,10 @@ try {
     Remove-TempTree $repo
 }
 
+# A handover that cannot start must still say what happened to the worktree.
+$sweepSource = Get-Content -Raw -LiteralPath (Join-Path $scriptsDir 'cleanup-merged-worktrees.ps1')
+Assert-True ($sweepSource -match '(?m)^function Write-SweepOutcome \{') 'cleanup-merged-worktrees.ps1 must define Write-SweepOutcome'
+Assert-True ($sweepSource -match "Failed: the removal script could not be found\.") 'A missing removal script writes a Failed outcome'
+Assert-True ($sweepSource -match "Failed: the removal script could not be started\.") 'A spawn failure writes a Failed outcome'
+
 Write-Host 'Worktree merged-cleanup tests passed.'
