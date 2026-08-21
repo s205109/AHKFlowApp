@@ -233,13 +233,18 @@ needle - is no longer mistaken for an invocation.
 #>
 function Get-AgentCommandSafetyDecision {
     [CmdletBinding()]
-    param([string] $Command)
+    param(
+        [string] $Command,
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('Bash', 'PowerShell')]
+        [string] $Reading
+    )
 
     if ([string]::IsNullOrWhiteSpace($Command)) {
         return New-AgentGuardDecision -Action Allow
     }
 
-    $gitDecision = Get-AgentGitSafetyDecision -Command $Command
+    $gitDecision = Get-AgentGitSafetyDecision -Command $Command -Reading $Reading
     if ($gitDecision.Action -ne 'Allow') { return $gitDecision }
 
     # rm/dotnet are classified from the same parsed segments, so a pattern that only appears inside
@@ -247,7 +252,7 @@ function Get-AgentCommandSafetyDecision {
     # read as an invocation. Only a segment's leading command word is inspected. A wrapped
     # `sudo rm -rf` hides exactly the way `sh -c 'git ...'` already does: the documented wrapper
     # gap, not a new one.
-    $segments = @((Get-AgentCommandSegment -Command $Command).Segments)
+    $segments = @((Get-AgentCommandSegment -Command $Command -Reading $Reading).Segments)
 
     foreach ($segment in $segments) {
         if ((Get-AgentOtherCommandLeaf -Segment $segment) -ne 'rm') { continue }
@@ -338,9 +343,14 @@ with the ambiguous-git-command rule, so nothing slips through by returning Allow
 #>
 function Get-AgentGitSafetyDecision {
     [CmdletBinding()]
-    param([string] $Command)
+    param(
+        [string] $Command,
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('Bash', 'PowerShell')]
+        [string] $Reading
+    )
 
-    $parsed = Get-AgentGitInvocation -Command $Command
+    $parsed = Get-AgentGitInvocation -Command $Command -Reading $Reading
     if ($parsed.Ambiguous) { return New-AgentGuardDecision -Action Allow }
 
     foreach ($tokens in $parsed.Invocations) {
@@ -593,7 +603,12 @@ segment boundary in it untrustworthy. This is intentionally not a complete shell
 #>
 function Split-AgentCommandSegment {
     [CmdletBinding()]
-    param([string] $Command)
+    param(
+        [string] $Command,
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('Bash', 'PowerShell')]
+        [string] $Reading
+    )
 
     $segments = New-Object System.Collections.Generic.List[object]
     $tokens = New-Object System.Collections.Generic.List[string]
@@ -655,10 +670,11 @@ function Split-AgentCommandSegment {
         if ($ch -eq '"') { $state = 'DoubleQuoted'; $hasCurrent = $true; continue }
 
         # A PowerShell here-string opener. The body is data and produces no tokens; the opener
-        # stays as one 'q'-masked token so the segment keeps its argument count. The guard is
-        # never told which shell will run the string, so a bash line ending in @' has its body
-        # skipped too. That text is already invisible today - the tokenizer swallows it into one
-        # quoted token - so this only makes the behaviour the same every time.
+        # stays as one 'q'-masked token so the segment keeps its argument count. Every Reading
+        # skips BOTH block forms rather than only its own, so a bash line ending in @' has its
+        # body skipped too. That is now a deliberate choice, not a forced one: splitting the two
+        # forms by Reading would change behaviour on strings unrelated to this rule, and every
+        # difference it makes is a new refusal.
         if ($ch -eq '@' -and ($i + 1) -lt $Command.Length -and
             ($Command[$i + 1] -eq "'" -or $Command[$i + 1] -eq '"') -and
             (Test-AgentHereStringHeader -Command $Command -QuoteIndex ($i + 1))) {
@@ -714,8 +730,23 @@ function Split-AgentCommandSegment {
             continue
         }
 
-        if ($ch -eq "`n" -or $ch -eq "`r" -or $ch -eq ';' -or $ch -eq '&' -or $ch -eq '|' -or
-            $ch -eq '`' -or $ch -eq '(' -or $ch -eq ')') {
+        # PowerShell's backtick escapes the next character. Reuse the Escaped state so the
+        # character is masked 'q', exactly as a backslash escape is in the bash Reading. A
+        # trailing backtick leaves the machine in Escaped, which the end-of-string check already
+        # reports as ambiguous.
+        if ($Reading -eq 'PowerShell' -and $ch -eq '`') {
+            $returnState = 'None'
+            $state = 'Escaped'
+            continue
+        }
+
+        $isSeparator = $ch -eq "`n" -or $ch -eq "`r" -or $ch -eq ';' -or $ch -eq '&' -or $ch -eq '|'
+        if (-not $isSeparator -and $Reading -eq 'Bash') {
+            # A backtick is command substitution in bash and a parenthesis opens a subshell. In
+            # PowerShell a backtick escapes and parentheses group, so neither ends a command there.
+            $isSeparator = $ch -eq '`' -or $ch -eq '(' -or $ch -eq ')'
+        }
+        if ($isSeparator) {
             if ($hasCurrent) {
                 [void] $tokens.Add($current.ToString())
                 [void] $masks.Add($currentMask.ToString())
@@ -889,13 +920,18 @@ PipedFrom rides through from Split-AgentCommandSegment unchanged: it is $true wh
 #>
 function Get-AgentCommandSegment {
     [CmdletBinding()]
-    param([string] $Command)
+    param(
+        [string] $Command,
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('Bash', 'PowerShell')]
+        [string] $Reading
+    )
 
     if ([string]::IsNullOrWhiteSpace($Command)) {
         return [pscustomobject]@{ Segments = @(); Ambiguous = $false }
     }
 
-    $split = Split-AgentCommandSegment -Command $Command
+    $split = Split-AgentCommandSegment -Command $Command -Reading $Reading
     if ($split.Ambiguous) {
         return [pscustomobject]@{ Segments = @(); Ambiguous = $true }
     }
@@ -999,9 +1035,14 @@ tokenize safely.
 #>
 function Get-AgentGitInvocation {
     [CmdletBinding()]
-    param([string] $Command)
+    param(
+        [string] $Command,
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('Bash', 'PowerShell')]
+        [string] $Reading
+    )
 
-    $parsed = Get-AgentCommandSegment -Command $Command
+    $parsed = Get-AgentCommandSegment -Command $Command -Reading $Reading
     if ($parsed.Ambiguous) {
         return [pscustomobject]@{ Invocations = @(); Ambiguous = $true }
     }
@@ -1032,10 +1073,13 @@ function Get-AgentWorktreeGuardDecision {
         [string] $Command,
         [string] $Cwd,
         [string] $ProtectedRepoRoot,
-        [bool] $AllowMain = $false
+        [bool] $AllowMain = $false,
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('Bash', 'PowerShell')]
+        [string] $Reading
     )
 
-    $parsed = Get-AgentCommandSegment -Command $Command
+    $parsed = Get-AgentCommandSegment -Command $Command -Reading $Reading
 
     if ($parsed.Ambiguous) {
         return New-AgentGuardDecision -Action Deny -Rule 'ambiguous-git-command' -Message `
@@ -2714,7 +2758,14 @@ security rule drift silently.
 #>
 function Get-AgentInterpreterInnerTarget {
     [CmdletBinding()]
-    param([string[]] $Tokens, [string[]] $Masks, [int] $Depth)
+    param(
+        [string[]] $Tokens,
+        [string[]] $Masks,
+        [int] $Depth,
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('Bash', 'PowerShell')]
+        [string] $Reading
+    )
 
     $found = New-Object System.Collections.Generic.List[string]
     $unresolved = $false
@@ -2742,7 +2793,11 @@ function Get-AgentInterpreterInnerTarget {
             break
         }
 
-        $inner = Get-AgentCommandWriteTarget -Command ([string] $tokens[$i + 1]) -Depth ($Depth + 1)
+        # The recursion carries this Reading down and never consults AgentGuardInterpreterSpecs to
+        # learn the inner shell. Reading the inner text one way instead of two could only ever
+        # read less than both Readings do.
+        $inner = Get-AgentCommandWriteTarget -Command ([string] $tokens[$i + 1]) `
+            -Depth ($Depth + 1) -Reading $Reading
         foreach ($target in $inner.Targets) { [void] $found.Add($target) }
         if ($inner.Unresolved) { $unresolved = $true }
 
@@ -2776,11 +2831,17 @@ nested command as opaque, which stays a documented accepted limitation of this g
 #>
 function Get-AgentCommandWriteTarget {
     [CmdletBinding()]
-    param([string] $Command, [int] $Depth = 0)
+    param(
+        [string] $Command,
+        [int] $Depth = 0,
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('Bash', 'PowerShell')]
+        [string] $Reading
+    )
 
     $targets = New-Object System.Collections.Generic.List[string]
 
-    $parsed = Get-AgentCommandSegment -Command $Command
+    $parsed = Get-AgentCommandSegment -Command $Command -Reading $Reading
     if ($parsed.Ambiguous) {
         return [pscustomobject]@{ Targets = $targets.ToArray(); Unresolved = $true }
     }
@@ -2798,7 +2859,8 @@ function Get-AgentCommandWriteTarget {
             $unresolved = $true
         }
 
-        $inner = Get-AgentInterpreterInnerTarget -Tokens $segment.Tokens -Masks $segment.Masks -Depth $Depth
+        $inner = Get-AgentInterpreterInnerTarget -Tokens $segment.Tokens -Masks $segment.Masks `
+            -Depth $Depth -Reading $Reading
         foreach ($target in $inner.Targets) { [void] $targets.Add($target) }
         if ($inner.Unresolved) { $unresolved = $true }
     }
@@ -3124,13 +3186,16 @@ function Get-AgentWorktreeWriteDecision {
         [string] $Command,
         [string] $Cwd,
         [string] $ProtectedRepoRoot,
-        [bool] $AllowMain = $false
+        [bool] $AllowMain = $false,
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('Bash', 'PowerShell')]
+        [string] $Reading
     )
 
     $sessionState = Get-ManagedWorktreeState -Cwd $Cwd -ProtectedRepoRoot $ProtectedRepoRoot
     if ($sessionState -ne 'ManagedWorktree') { return New-AgentGuardDecision -Action Allow }
 
-    $parsed = Get-AgentCommandSegment -Command $Command
+    $parsed = Get-AgentCommandSegment -Command $Command -Reading $Reading
     if ($parsed.Ambiguous) { return New-AgentGuardDecision -Action Allow }
 
     $protectedCommonDir = Invoke-AgentGuardGitProbe @(
@@ -3197,7 +3262,8 @@ function Get-AgentWorktreeWriteDecision {
 
         # Nested interpreters, quoted and unquoted alike. Same reader as
         # Get-AgentCommandWriteTarget uses, so the two cannot drift.
-        $nested = Get-AgentInterpreterInnerTarget -Tokens $segment.Tokens -Masks $segment.Masks -Depth 0
+        $nested = Get-AgentInterpreterInnerTarget -Tokens $segment.Tokens -Masks $segment.Masks `
+            -Depth 0 -Reading $Reading
         $targets += @($nested.Targets)
         # An inner command that was never scanned is not an inner command that writes nothing.
         # Fail closed on it.
@@ -3561,17 +3627,20 @@ Single orchestration point: safety rules fail closed, location rules fail open.
 Kept here rather than in the adapter entrypoint so both the entrypoint and the focused tests
 exercise the same precedence, and so tests can shadow either policy function to inject a fault.
 #>
-function Invoke-AgentGuardPolicy {
+function Invoke-AgentGuardPolicyForReading {
     [CmdletBinding()]
     param(
         [string] $Command,
         [string] $Cwd,
         [string] $ProtectedRepoRoot,
-        [bool] $AllowMain = $false
+        [bool] $AllowMain = $false,
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('Bash', 'PowerShell')]
+        [string] $Reading
     )
 
     try {
-        $safety = Get-AgentCommandSafetyDecision -Command $Command
+        $safety = Get-AgentCommandSafetyDecision -Command $Command -Reading $Reading
     }
     catch {
         # Fail closed: an evaluator fault must not silently drop destructive-command protection.
@@ -3583,7 +3652,7 @@ function Invoke-AgentGuardPolicy {
 
     try {
         $location = Get-AgentWorktreeGuardDecision -Command $Command -Cwd $Cwd `
-            -ProtectedRepoRoot $ProtectedRepoRoot -AllowMain $AllowMain
+            -ProtectedRepoRoot $ProtectedRepoRoot -AllowMain $AllowMain -Reading $Reading
     }
     catch {
         # Fail open: keep the shell usable, but say so loudly.
@@ -3595,7 +3664,7 @@ function Invoke-AgentGuardPolicy {
 
     try {
         $write = Get-AgentWorktreeWriteDecision -Command $Command -Cwd $Cwd `
-            -ProtectedRepoRoot $ProtectedRepoRoot -AllowMain $AllowMain
+            -ProtectedRepoRoot $ProtectedRepoRoot -AllowMain $AllowMain -Reading $Reading
     }
     catch {
         # Fail open, same as the location rule: keep the shell usable, but say so loudly.
@@ -3606,4 +3675,26 @@ function Invoke-AgentGuardPolicy {
     if ($write.Action -ne 'Allow') { return $write }
 
     return $safety
+}
+
+<#
+.SYNOPSIS
+Runs every Reading of one command and keeps the worst decision.
+
+.DESCRIPTION
+The guard is never told which shell will run a command, and the tool name does not answer it:
+Copilot and Codex both send 'shell', and an agent can run `pwsh -c` through a bash tool. So both
+Readings run and the worst action wins.
+#>
+function Invoke-AgentGuardPolicy {
+    [CmdletBinding()]
+    param(
+        [string] $Command,
+        [string] $Cwd,
+        [string] $ProtectedRepoRoot,
+        [bool] $AllowMain = $false
+    )
+
+    return (Invoke-AgentGuardPolicyForReading -Command $Command -Cwd $Cwd `
+            -ProtectedRepoRoot $ProtectedRepoRoot -AllowMain $AllowMain -Reading Bash)
 }
