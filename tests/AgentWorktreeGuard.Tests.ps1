@@ -789,11 +789,11 @@ try {
         Assert-Equal 'Allow' $decision.Action 'Action'
     }
 
-    Invoke-TestCase 'An unbalanced quote is an explicit ambiguous-git-command denial' {
+    Invoke-TestCase 'An unbalanced quote is an explicit ambiguous-command denial' {
         $decision = Invoke-AgentGuardPolicy -Command 'git -C "C:\unbalanced;path commit -m test' `
             -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
         Assert-Equal 'Deny' $decision.Action 'Action'
-        Assert-Equal 'ambiguous-git-command' $decision.Rule 'Rule'
+        Assert-Equal 'ambiguous-command' $decision.Rule 'Rule'
     }
 
     Write-Host 'Tier reclassification' -ForegroundColor Cyan

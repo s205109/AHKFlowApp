@@ -197,7 +197,7 @@ switch ($Adapter) {
     default {
         # Claude. Ask and Deny outcomes from the three location rules use the JSON
         # hookSpecificOutput protocol (this is what makes Ask possible at all); everything else
-        # (safety-rule Deny, ambiguous-git-command Deny) keeps the legacy stderr + exit 2 protocol.
+        # (safety-rule Deny, ambiguous-command Deny) keeps the legacy stderr + exit 2 protocol.
         if ($decision.Rule -in $locationDecisionRules -and $decision.Action -in @('Ask', 'Deny')) {
             $permissionDecision = if ($decision.Action -eq 'Ask') { 'ask' } else { 'deny' }
             @{

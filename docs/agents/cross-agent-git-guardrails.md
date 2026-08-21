@@ -144,8 +144,8 @@ alone would only need a prompt.
 
 Two more hard denials exist outside the tier system entirely. This change does not touch them: a
 destructive-command safety-rule match (force-push, `reset --hard`, `clean -f`, `checkout .`, a
-dangerous `rm -rf`), and an unparseable `ambiguous-git-command`. Neither was ever gated by
-location logic.
+dangerous `rm -rf`), and a command the guard could not read (`ambiguous-command`). Neither was
+ever gated by location logic.
 
 ### Worktree write isolation
 

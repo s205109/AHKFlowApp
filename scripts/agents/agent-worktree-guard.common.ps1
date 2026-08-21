@@ -80,6 +80,32 @@ function New-AgentGuardDecision {
     }
 }
 
+$script:AgentGuardAmbiguousCommandMessage = @'
+BLOCKED: the guard could not read this command. A quote, an escape, a heredoc body, or a
+here-string body was left open, so the whole command is refused.
+Close what was left open, then run it again.
+'@
+
+<#
+.SYNOPSIS
+The one refusal every policy layer returns for an Ambiguous Reading.
+
+.DESCRIPTION
+Every policy layer calls this, so the rule name and the message cannot drift apart again. The rule
+is named for the command and not for git: the tokenizer could not read the command, so nothing in
+it can be shown to be a git invocation, and the refusal fires on commands holding no git at all.
+
+Deliberately parameterless. The note naming which Reading refused is added later, by
+Add-AgentPowerShellReadingNote, for every rule alike.
+#>
+function New-AgentGuardAmbiguousDecision {
+    [CmdletBinding()]
+    param()
+
+    return New-AgentGuardDecision -Action Deny -Rule 'ambiguous-command' -Message `
+        $script:AgentGuardAmbiguousCommandMessage
+}
+
 <#
 .SYNOPSIS
 Runs a git probe and returns its trimmed stdout, or '' when the probe fails.
@@ -345,7 +371,7 @@ Applies the destructive git rules to every parsed git invocation in a command.
 
 .DESCRIPTION
 An unparseable command yields Allow here; Get-AgentWorktreeGuardDecision denies it separately
-with the ambiguous-git-command rule, so nothing slips through by returning Allow.
+with the ambiguous-command rule, so nothing slips through by returning Allow.
 #>
 function Get-AgentGitSafetyDecision {
     [CmdletBinding()]
@@ -1085,11 +1111,7 @@ function Get-AgentWorktreeGuardDecision {
 
     $parsed = Get-AgentCommandSegment -Command $Command -Reading $Reading
 
-    if ($parsed.Ambiguous) {
-        return New-AgentGuardDecision -Action Deny -Rule 'ambiguous-git-command' -Message `
-        ('BLOCKED: the git command could not be parsed safely (unbalanced quote). ' +
-            'Rewrite it with balanced quoting.')
-    }
+    if ($parsed.Ambiguous) { return New-AgentGuardAmbiguousDecision }
 
     if (@($parsed.Segments | Where-Object { $_.Kind -eq 'Git' }).Count -eq 0) {
         return New-AgentGuardDecision -Action Allow
