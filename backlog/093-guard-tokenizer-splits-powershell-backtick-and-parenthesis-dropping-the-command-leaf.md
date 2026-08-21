@@ -56,12 +56,12 @@ and `rm` examples above carry no item type and no link, and they fail the same w
 
 ## Acceptance criteria
 
-- [ ] A PowerShell command holding a backtick is read as one command, or refused
-- [ ] A PowerShell command holding a parenthesised expression is read as one command, or refused
-- [ ] `rm` and `Set-Content` with a backtick before a main-checkout path report Deny
-- [ ] `New-Item -ItemType` with a backtick or a parenthesised expression reports Deny
-- [ ] A bash subshell `( ... )` and a bash backtick substitution still split into segments
-- [ ] A test pins each command in the Detail section above at Deny
+- [x] A PowerShell command holding a backtick is read as one command, or refused
+- [x] A PowerShell command holding a parenthesised expression is read as one command, or refused
+- [x] `rm` and `Set-Content` with a backtick before a main-checkout path report Deny
+- [x] `New-Item -ItemType` with a backtick or a parenthesised expression reports Deny
+- [x] A bash subshell `( ... )` and a bash backtick substitution still split into segments
+- [x] A test pins each command in the Detail section above at Deny
 
 ## Out of scope
 
