@@ -5,7 +5,7 @@
 - **Epic**: Agent guardrails
 - **Type**: Bug
 - **Interfaces**: none (agent git guard)
-- **Difficulty**: to-be-determined
+- **Difficulty**: moderate
 - **Stage**: 2-design
 
 ## Summary
