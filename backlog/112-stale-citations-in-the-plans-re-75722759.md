@@ -61,7 +61,8 @@ citation at a time, is the work here.
 
 ## Acceptance criteria
 
-- [ ] `pwsh ./scripts/check-citation-freshness.ps1 -ScanRoot ./docs/superpowers -ResolveRoot . -NoAdoptionTier` reports `every citation checks out`
+- [ ] `pwsh ./scripts/check-citation-freshness.ps1 -ScanRoot ./docs/superpowers -ResolveRoot . -NoAdoptionTier` reports no problem in any shipped plan or spec, and no problem in any plan this branch owns. Every remaining problem names a live branch, and the recap lists them
+  - Revised at plan review on 2026-08-21. The original text asked the full scan to report `every citation checks out`. That is unreachable by design, not by neglect: the same plan files score 82 problems from this worktree and 104 from the backlog-110 worktree, and the two disagree about which files are broken. A plan another branch is writing cites lines that are right there and wrong here, so no line number satisfies both
 - [ ] `git push` completes with the pre-push hook enabled, without `SKIP_PUSH_HOOK=1` and without `--no-verify`
 - [ ] Every citation that quotes text the source no longer holds carries `citation-check:ignore` with the reason on the same line, rather than a line number that happens to exist
 - [ ] The repository records what keeps the count from growing back, or states that nothing does and why
