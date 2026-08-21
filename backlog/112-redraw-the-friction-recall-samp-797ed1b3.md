@@ -72,6 +72,11 @@ actually happened, so that the range means what a 95 percent interval means.
 - **`cleanupPeriodDays` is a machine setting, not a repository one.** Raising it would slow
   future loss but recovers nothing already deleted, and it changes the human's machine. State
   it as an option; do not change it as part of this item.
+- **This item carries backlog 102's original user story.** That item closed on 2026-08-21 on a
+  narrower one: which interval the published ranges can honestly carry, and why. Its first three
+  acceptance criteria - the redraw, the relabelling, and the republishing - were moved here rather
+  than left unticked in a closed file, and they are the first four criteria above. Closing this
+  item is what finally satisfies the story 102 was filed for.
 - `Get-RecallInterval` already exists in `scripts/sample-friction-recall.ps1` and carries the
   `-Correct` switch this item will be the first to use.
 - Spec: none — Design has not run.
