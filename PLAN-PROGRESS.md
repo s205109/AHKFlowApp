@@ -7,3 +7,4 @@ One line per task: task number, deliverable commit SHA (or `-`), tests state, de
 | Task | Commit | Tests | Deferrals |
 |---|---|---|---|
 | 1 + 2 | 6de89dd9 | guard suite green | Merged into one commit. Separate commits break the agent's own shell: the hook loads this file, so a mandatory `-Reading` with no caller passing it fails every Bash call closed. The plan was wrong to split them. |
+| 3 | (see below) | guard suite green | none |
