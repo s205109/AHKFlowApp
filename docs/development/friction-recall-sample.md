@@ -167,7 +167,10 @@ unflagged messages that is **17 to 71 missed asks**.
   here-string body is skipped. A pull request body passed as `@' … '@` inside a `powershell`
   fence had put two English sentences in the ledger. Precision is still unmeasured: an example
   command counts like a handed-over one.
-- **Metric 3, cleanup events (18 log lines across 5 sessions, a floor on at least 201 events).** Not a word list. Every cleanup outcome reaches a transcript as a
+- **Metric 3, cleanup outcome log lines (18 log lines across 5 sessions, a floor on at least
+  204 in-window log lines).** Counts log lines, never cleanup runs: one removal writes several,
+  and 91 of the log's 201 in-window lines are `Watcher started.` against 87 `Watcher done (`.
+  Not a word list. Every cleanup outcome reaches a transcript as a
   line written by `Write-WorktreeLog`, which stamps it `yyyy-MM-dd HH:mm:ss  <worktree>
   <message>`
   (`scripts/worktree-log.common.ps1:22`, "    $line = '{0}  {1}  {2}' -f $stamp, $Worktree, $Message").
@@ -179,14 +182,17 @@ unflagged messages that is **17 to 71 missed asks**.
   **All 18 rows are labelled, and all 18 are genuine log lines.** 14 arrived as tool results
   reading the removal log; 4 came from one human-typed message, a process brief that pasted a
   log tail as evidence. Nothing counted is source code, an injected instruction, or a
-  paraphrase, so the metric over-flags nothing.
+  paraphrase, so the metric over-flags nothing. That is all the labels prove. The record fields
+  are the same whether a line was read as it was written or quoted later, so they cannot
+  separate an original read from a quotation.
   **The split the count could not make turns out to be the wrong split.** A tool result is
   not a live report either — it is a read of `worktree-removal.log`, and one of the 18 rows
   arrived on 2026-07-30 carrying an event stamped 2026-07-29. Both routes quote the same
   persistent file, and the line's own stamp is the event time in both.
   **So 18 is a floor, not an upper bound.** The removal log itself holds 201 distinct
-  in-window outcome lines. The 18 are not a subset of those 201: 15 of them are, and the other
-  3 predate the log's earliest surviving line, so the true in-window population is 204 or more.
+  in-window outcome log lines. The 18 are not a subset of those 201: 15 of them are, and the
+  other 3 predate the log's earliest surviving line, so the true in-window population is 204
+  log lines or more.
   That makes the witnessed share **at most about nine percent**, and 186 of the 201 log lines
   reached no session at all. The
   rule sheet and the decision are in
