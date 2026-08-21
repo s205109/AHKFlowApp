@@ -398,7 +398,9 @@ function Get-CleanupEventLine {
     .DESCRIPTION
         A line qualifies twice over: it has the shared log line's stamp and worktree prefix, and
         its message part starts with something a cleanup script actually writes. Either half
-        alone counts discussion as an event.
+        alone counts discussion as an event. Both halves together do not separate a line a
+        tool read from a line a person pasted, and they are not meant to: both are reads of
+        the same persistent log. See docs/development/cleanup-event-identity.md.
     #>
     param([Parameter(Mandatory)][AllowEmptyString()][string] $Text)
 
@@ -451,10 +453,15 @@ function Get-FrictionCount {
     $rows = New-Object System.Collections.Generic.List[object]
     # Metric 3 alone deduplicates across messages, on the whole line: the same log line reaches
     # two tool results when a session reads the log twice. The line is not a unique event id.
-    # Its stamp has one-second resolution, and only 'Watcher started.' carries a process id, so
-    # two real events in the same second, in the same worktree, with the same message collapse
-    # into one. Backlog 103 carries that. A command handed over in two messages is two
-    # handovers, so metric 2 must not deduplicate at all.
+    # Its stamp has one-second resolution, and the process id is not the safeguard an earlier
+    # comment claimed. Counted over the whole of worktree-removal.log on 2026-08-21: 134 of
+    # 134 'Watcher started.' lines carry PID=, while 0 of 130 'Watcher done (' lines do, and
+    # 0 of the 24 lock failures. So two genuine events in the same second, in the same worktree,
+    # with the same message would fold into one. That has never happened: all 295 outcome
+    # lines in the log are distinct. The collapse is stated rather than fixed, because the
+    # line carries no event id to fix it with, and counting occurrences instead would break
+    # the rule above - the same line read twice is one event. A command handed over in two
+    # messages is two handovers, so metric 2 must not deduplicate at all.
     $seenEvents = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
     $patterns = switch ($Metric) {
         'directory-bound-commands' { $script:DirectoryLinePatterns }
