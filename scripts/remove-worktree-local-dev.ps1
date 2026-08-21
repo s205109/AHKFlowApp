@@ -492,12 +492,17 @@ function Test-WorktreeClean {
     return $true
 }
 
+# The gate's refusal: guidance in diagnostics, one Kept line in the outcome log.
+#
+# -NoOutcome is for a caller that already wrote its own outcome line and wants only the
+# guidance. Two lines on one attempt is the defect this whole split exists to prevent.
 function Write-UnmergedPreserveGuidance {
     param(
         [string] $WorktreeFull,
         [string] $MainCheckout,
         [string] $BranchName,
-        [string] $Reason
+        [string] $Reason,
+        [switch] $NoOutcome
     )
 
     Write-DiagnosticLog "Worktree was preserved (not removed): $Reason"
@@ -516,7 +521,11 @@ function Write-UnmergedPreserveGuidance {
         }
     }
     Write-DiagnosticLog 'To bypass this gate and remove now regardless of merge/clean status, set AHKFLOW_WORKTREE_FORCE_REMOVE=1 before exiting Claude Code.'
-    Write-DiagnosticLog "Details were logged to: $script:LogPath"
+    Write-DiagnosticLog "Details were logged to: $script:DiagnosticsPath"
+
+    if (-not $NoOutcome) {
+        Write-Outcome ('Kept: ' + (Format-WorktreeLogReason -Text $Reason) + '.')
+    }
 }
 
 function Write-BranchDeleteGuidance {
@@ -656,6 +665,7 @@ function Invoke-HookMode {
         if ($stdinError) { Write-DiagnosticLog $stdinError }
         Write-DiagnosticLog "WorktreePath = $worktreeFull"
         Write-DiagnosticLog 'Worktree folder does not exist; nothing to remove.'
+        Write-Outcome 'Kept: the worktree folder does not exist.'
         return
     }
 
@@ -730,6 +740,7 @@ function Invoke-HookMode {
                 Reason       = 'target git metadata could not resolve a main checkout'
                 GitResult    = $null
             })
+        Write-Outcome 'Kept: the path is not a registered worktree of this repository.'
         return
     }
 
@@ -756,12 +767,14 @@ function Invoke-HookMode {
     # repo. Refuse: this is not a linked worktree.
     if (Test-SamePath $worktreeFull $mainCheckoutFromGit) {
         Write-DiagnosticLog "REFUSING: WorktreePath resolves to the main checkout ($worktreeFull). This is not a linked worktree; nothing to remove."
+        Write-Outcome 'Kept: the path is the main checkout, not a worktree.'
         return
     }
 
     $registration = Test-RegisteredLinkedWorktree -WorktreeFull $worktreeFull -MainCheckout $mainCheckoutFromGit
     if (-not $registration.IsRegistered) {
         Write-UnregisteredWorktreeRefusal $worktreeFull $mainCheckoutFromGit $registration
+        Write-Outcome 'Kept: the path is not a registered worktree of this repository.'
         return
     }
 
@@ -771,7 +784,8 @@ function Invoke-HookMode {
         Write-DiagnosticLog 'force override: AHKFLOW_WORKTREE_FORCE_REMOVE set; bypassing merge/clean gate.'
     } else {
         if (-not $branchName) {
-            Write-UnmergedPreserveGuidance -WorktreeFull $worktreeFull -MainCheckout $mainCheckoutFromGit -BranchName $branchName -Reason 'detached HEAD (no branch) is not eligible for automatic removal'
+            Write-DiagnosticLog 'The worktree is on a detached HEAD, so there is no branch to decide about.'
+            Write-UnmergedPreserveGuidance -WorktreeFull $worktreeFull -MainCheckout $mainCheckoutFromGit -BranchName $branchName -Reason 'the worktree has a detached HEAD'
             return
         }
 
@@ -786,18 +800,20 @@ function Invoke-HookMode {
             # A base that could not be refreshed proves nothing: the remote may have dropped the
             # merge the cached ref still shows. Removal is destructive, so preserve and say why.
             if ($base.Reason -eq 'remote-stale') {
-                Write-UnmergedPreserveGuidance -WorktreeFull $worktreeFull -MainCheckout $mainCheckoutFromGit -BranchName $branchName -Reason "the base '$($base.Ref)' could not be refreshed, so it may be behind the remote"
+                Write-DiagnosticLog "The base '$($base.Ref)' could not be refreshed, so it may be behind the remote."
+                Write-UnmergedPreserveGuidance -WorktreeFull $worktreeFull -MainCheckout $mainCheckoutFromGit -BranchName $branchName -Reason 'the base branch could not be refreshed'
                 return
             }
         }
 
         if (-not (Test-WorktreeMergedIntoMain -WorktreeFull $worktreeFull -BranchName $branchName -BaseRef $baseRef -MainCheckout $mainCheckoutFromGit)) {
-            Write-UnmergedPreserveGuidance -WorktreeFull $worktreeFull -MainCheckout $mainCheckoutFromGit -BranchName $branchName -Reason "branch '$branchName' is not merged into $baseRef"
+            Write-DiagnosticLog "Branch '$branchName' is not merged into $baseRef."
+            Write-UnmergedPreserveGuidance -WorktreeFull $worktreeFull -MainCheckout $mainCheckoutFromGit -BranchName $branchName -Reason 'the branch is not merged'
             return
         }
 
         if (-not (Test-WorktreeClean -WorktreeFull $worktreeFull)) {
-            Write-UnmergedPreserveGuidance -WorktreeFull $worktreeFull -MainCheckout $mainCheckoutFromGit -BranchName $branchName -Reason 'worktree has uncommitted changes'
+            Write-UnmergedPreserveGuidance -WorktreeFull $worktreeFull -MainCheckout $mainCheckoutFromGit -BranchName $branchName -Reason 'the worktree has uncommitted changes'
             return
         }
     }
@@ -811,6 +827,7 @@ function Invoke-HookMode {
         Copy-Item -LiteralPath $PSCommandPath -Destination $watcherScript -Force
     } catch {
         Write-DiagnosticLog "Failed to snapshot watcher script: $($_.Exception.Message). Aborting (worktree left intact)."
+        Write-Outcome 'Failed: the watcher could not be prepared.'
         return
     }
 
@@ -829,6 +846,7 @@ function Invoke-HookMode {
         [System.IO.File]::WriteAllText($paramFile, ($payload | ConvertTo-Json -Depth 5), [System.Text.Encoding]::UTF8)
     } catch {
         Write-DiagnosticLog "Failed to write sidecar param file: $($_.Exception.Message). Aborting (worktree left intact)."
+        Write-Outcome 'Failed: the watcher could not be prepared.'
         Remove-WatcherArtifacts -ParamFilePath $paramFile -WatcherScriptPath $watcherScript
         return
     }
@@ -878,9 +896,12 @@ function Invoke-HookMode {
     }
 
     if ($spawned) {
+        # No outcome line here. The watcher now owns it, and a second writer would put two
+        # lines on one attempt.
         Write-DiagnosticLog 'Hook returning 0 (worktree untouched; watcher owns removal).'
     } else {
         Remove-WatcherArtifacts -ParamFilePath $paramFile -WatcherScriptPath $watcherScript
+        Write-Outcome 'Failed: the watcher could not be started.'
         Write-DiagnosticLog 'Hook returning 0 (worktree untouched; watcher was not launched).'
     }
 }

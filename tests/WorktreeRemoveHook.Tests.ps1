@@ -123,9 +123,16 @@ function Remove-TempTree {
     }
 }
 
+# The outcome log. From backlog 073 it carries one line per removal attempt and nothing else.
 function Get-RemovalLogPath {
     param([string] $RepoDir)
     return Join-Path $RepoDir '.claude\worktrees\worktree-removal.log'
+}
+
+# The diagnostics log beside it. Every reason, guidance line, and git result lands here.
+function Get-RemovalDiagnosticsPath {
+    param([string] $RepoDir)
+    return Join-Path $RepoDir '.claude\worktrees\worktree-removal-diagnostics.log'
 }
 
 # Invokes the hook by piping {"worktree_path":"<path>"} JSON to remove-worktree-local-dev.ps1,
@@ -243,9 +250,15 @@ try {
 
     Assert-True (Test-Path -LiteralPath $wtPath) 'Unmerged worktree must be preserved (no watcher removal).'
 
-    $log = Get-Content -Raw -LiteralPath (Get-RemovalLogPath $repo)
-    Assert-True ($log -match '(?i)not merged') "Expected the log to name the unmerged reason. Log: $log"
-    Assert-True ($log -match 'AHKFLOW_WORKTREE_FORCE_REMOVE') "Expected the log to mention the force override opt-out. Log: $log"
+    # The reason and the guidance are diagnostics now.
+    $diagnostics = Get-Content -Raw -LiteralPath (Get-RemovalDiagnosticsPath $repo)
+    Assert-True ($diagnostics -match '(?i)not merged') "Expected the diagnostics to name the unmerged reason. Log: $diagnostics"
+    Assert-True ($diagnostics -match 'AHKFLOW_WORKTREE_FORCE_REMOVE') "Expected the diagnostics to mention the force override opt-out. Log: $diagnostics"
+
+    # The hook refuses an unmerged worktree before it spawns anything, so the hook owns the line.
+    $outcomeLines = @(Get-Content -LiteralPath (Get-RemovalLogPath $repo))
+    Assert-Equal 1 $outcomeLines.Count "An unmerged refusal writes exactly one outcome line, got $($outcomeLines.Count)"
+    Assert-True ($outcomeLines[0] -match 'Kept: the branch is not merged\.$') "Expected the not-merged line, got '$($outcomeLines[0])'"
 } finally {
     Remove-TempTree $repo
 }
@@ -260,8 +273,12 @@ try {
 
     Assert-True (Test-Path -LiteralPath $wtPath) 'Merged but dirty worktree must be preserved.'
 
-    $log = Get-Content -Raw -LiteralPath (Get-RemovalLogPath $repo)
-    Assert-True ($log -match '(?i)uncommitted') "Expected the log to name the dirty-tree reason. Log: $log"
+    $diagnostics = Get-Content -Raw -LiteralPath (Get-RemovalDiagnosticsPath $repo)
+    Assert-True ($diagnostics -match '(?i)uncommitted') "Expected the diagnostics to name the dirty-tree reason. Log: $diagnostics"
+
+    $outcomeLines = @(Get-Content -LiteralPath (Get-RemovalLogPath $repo))
+    Assert-Equal 1 $outcomeLines.Count "A dirty-tree refusal writes exactly one outcome line, got $($outcomeLines.Count)"
+    Assert-True ($outcomeLines[0] -match 'Kept: the worktree has uncommitted changes\.$') "Expected the dirty line, got '$($outcomeLines[0])'"
 } finally {
     Remove-TempTree $repo
 }
@@ -276,8 +293,12 @@ try {
 
     Assert-True (Test-Path -LiteralPath $wtPath) 'Detached HEAD worktree must be preserved even though it is clean and an ancestor of main.'
 
-    $log = Get-Content -Raw -LiteralPath (Get-RemovalLogPath $repo)
-    Assert-True ($log -match '(?i)detached') "Expected the log to name the detached-HEAD reason. Log: $log"
+    $diagnostics = Get-Content -Raw -LiteralPath (Get-RemovalDiagnosticsPath $repo)
+    Assert-True ($diagnostics -match '(?i)detached') "Expected the diagnostics to name the detached-HEAD reason. Log: $diagnostics"
+
+    $outcomeLines = @(Get-Content -LiteralPath (Get-RemovalLogPath $repo))
+    Assert-Equal 1 $outcomeLines.Count "A detached-HEAD refusal writes exactly one outcome line, got $($outcomeLines.Count)"
+    Assert-True ($outcomeLines[0] -match 'Kept: the worktree has a detached HEAD\.$') "Expected the detached line, got '$($outcomeLines[0])'"
 } finally {
     Remove-TempTree $repo
 }
@@ -295,8 +316,13 @@ try {
 
     # The genuine proof this test exercises the gate: without it, an unmerged worktree would
     # also be removed on today's script (that assertion alone is green on old and new code).
-    $log = Get-Content -Raw -LiteralPath (Get-RemovalLogPath $repo)
-    Assert-True ($log -match '(?i)force override.*bypassing merge/clean gate') "Expected a force-override log line proving the gate was consulted and bypassed. Log: $log"
+    $diagnostics = Get-Content -Raw -LiteralPath (Get-RemovalDiagnosticsPath $repo)
+    Assert-True ($diagnostics -match '(?i)force override.*bypassing merge/clean gate') "Expected a force-override diagnostic proving the gate was consulted and bypassed. Log: $diagnostics"
+
+    # The watcher owns the line on this path, and it removed the folder.
+    $outcomeLines = @(Get-Content -LiteralPath (Get-RemovalLogPath $repo))
+    Assert-Equal 1 $outcomeLines.Count "A forced removal writes exactly one outcome line, got $($outcomeLines.Count)"
+    Assert-True ($outcomeLines[0] -match 'Removed\.$') "Expected the removed line, got '$($outcomeLines[0])'"
 } finally {
     Remove-TempTree $repo
 }
@@ -340,8 +366,12 @@ try {
 
     Assert-True (Test-Path -LiteralPath $wtPath) 'A worktree whose branch holds no commit of its own must be preserved.'
 
-    $log = Get-Content -Raw -LiteralPath (Get-RemovalLogPath $repo)
-    Assert-True ($log -match '(?i)not merged') "Expected the log to name the reason. Log: $log"
+    $diagnostics = Get-Content -Raw -LiteralPath (Get-RemovalDiagnosticsPath $repo)
+    Assert-True ($diagnostics -match '(?i)not merged') "Expected the diagnostics to name the reason. Log: $diagnostics"
+
+    $outcomeLines = @(Get-Content -LiteralPath (Get-RemovalLogPath $repo))
+    Assert-Equal 1 $outcomeLines.Count "An unstarted worktree writes exactly one outcome line, got $($outcomeLines.Count)"
+    Assert-True ($outcomeLines[0] -match 'Kept: the branch is not merged\.$') "Expected the not-merged line, got '$($outcomeLines[0])'"
 } finally {
     Remove-TempTree $repo
 }
