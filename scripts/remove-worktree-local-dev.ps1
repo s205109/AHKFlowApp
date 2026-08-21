@@ -61,6 +61,7 @@ $ErrorActionPreference = 'Continue'
 # ---------------------------------------------------------------------------
 $script:RunId = $null
 $script:WorktreeLogName = 'unknown'
+$script:DiagnosticsPath = $null
 
 $worktreeLogHelperPath = Join-Path $PSScriptRoot 'worktree-log.common.ps1'
 if (Test-Path -LiteralPath $worktreeLogHelperPath) {
@@ -179,6 +180,42 @@ if (-not (Get-Command Write-WorktreeLog -ErrorAction SilentlyContinue)) {
     }
 }
 
+if (-not (Get-Command Format-WorktreeLogReason -ErrorAction SilentlyContinue)) {
+    function Format-WorktreeLogReason {
+        param([string] $Text)
+        if ([string]::IsNullOrWhiteSpace($Text)) { return 'no reason given' }
+        $flat = (($Text -replace '[\r\n\t]+', ' ') -replace '\s{2,}', ' ').Trim()
+        if ($flat.Length -gt 300) { $flat = $flat.Substring(0, 299) + [char] 0x2026 }
+        return $flat
+    }
+}
+
+if (-not (Get-Command Get-WorktreeDiagnosticsPath -ErrorAction SilentlyContinue)) {
+    function Get-WorktreeDiagnosticsPath {
+        param([Parameter(Mandatory)][string] $OutcomeLogPath)
+        $directory = Split-Path -Parent $OutcomeLogPath
+        $leaf = [System.IO.Path]::GetFileNameWithoutExtension($OutcomeLogPath)
+        $extension = [System.IO.Path]::GetExtension($OutcomeLogPath)
+        return Join-Path $directory ($leaf + '-diagnostics' + $extension)
+    }
+}
+
+if (-not (Get-Command Write-WorktreeDiagnostic -ErrorAction SilentlyContinue)) {
+    function Write-WorktreeDiagnostic {
+        param(
+            [Parameter(Mandatory)][string] $LogPath,
+            [Parameter(Mandatory)][string] $Worktree,
+            [Parameter(Mandatory)][string] $Message
+        )
+        try {
+            $stamp = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
+            $single = $Message -replace '[\r\n]+', ' '
+            $line = '{0}  {1}  {2}' -f $stamp, $Worktree, $single
+            [System.IO.File]::AppendAllText($LogPath, $line + [Environment]::NewLine, (New-Object System.Text.UTF8Encoding($false)))
+        } catch { }
+    }
+}
+
 function Get-RemovalTempDir {
     return [System.IO.Path]::GetTempPath()
 }
@@ -192,35 +229,43 @@ function Set-ProductionLogPath {
 
     if ($MainCheckout) {
         $script:LogPath = Join-Path $MainCheckout '.claude\worktrees\worktree-removal.log'
+        $script:DiagnosticsPath = $null
         return
     }
 
     $script:LogPath = Join-Path (Get-RemovalTempDir) 'worktree-removal.log'
+    $script:DiagnosticsPath = $null
 }
 
-function Write-Log {
+# The one outcome line for this removal attempt. Called exactly once per attempt, by whichever
+# process reached the decision. It is mirrored into diagnostics so that file tells the whole
+# story of an attempt without a reader holding two files side by side.
+function Write-Outcome {
     param([string] $Message)
 
     if (-not $script:LogPath) {
         Set-ProductionLogPath $null
     }
 
-    try {
-        $dir = Split-Path -Parent $script:LogPath
-        if ($dir -and -not (Test-Path -LiteralPath $dir)) {
-            New-Item -ItemType Directory -Path $dir -Force | Out-Null
-        }
-        Write-WorktreeLog -LogPath $script:LogPath -Worktree $script:WorktreeLogName -Message $Message
-    } catch { }
-    Write-DiagnosticLog $Message
+    Write-WorktreeLog -LogPath $script:LogPath -Worktree $script:WorktreeLogName -Message $Message
+    Write-DiagnosticLog "OUTCOME $Message"
 }
 
+# Everything that is not the outcome. Goes to the diagnostics file and to stderr. Stderr alone
+# is not enough: the watcher is detached, so its stderr reaches nobody.
 function Write-DiagnosticLog {
     param([string] $Message)
 
     $prefix = if ($script:RunId) { "[$script:RunId] $Mode" } else { $Mode }
     $line = "{0} {1} {2}" -f [DateTimeOffset]::Now.ToString('O'), $prefix, $Message
     try { [Console]::Error.WriteLine($line) } catch { }
+
+    if (-not $script:DiagnosticsPath) {
+        if (-not $script:LogPath) { Set-ProductionLogPath $null }
+        $script:DiagnosticsPath = Get-WorktreeDiagnosticsPath -OutcomeLogPath $script:LogPath
+    }
+
+    Write-WorktreeDiagnostic -LogPath $script:DiagnosticsPath -Worktree $script:WorktreeLogName -Message "[$script:RunId] $Message"
 }
 
 function Set-WorktreeLogName {
@@ -356,25 +401,25 @@ function Write-TimeoutGuidance {
         [string] $LastError
     )
 
-    Write-Log "Could not remove worktree because the folder is still locked: $WorktreeFull"
+    Write-DiagnosticLog "Could not remove worktree because the folder is still locked: $WorktreeFull"
     if ($LastError) {
-        Write-Log "Last rename error: $LastError"
+        Write-DiagnosticLog "Last rename error: $LastError"
     }
-    Write-Log 'The worktree was preserved. Close terminals, editors, shells, or Claude sessions opened inside that folder, then run:'
+    Write-DiagnosticLog 'The worktree was preserved. Close terminals, editors, shells, or Claude sessions opened inside that folder, then run:'
     if ($MainCheckout) {
-        Write-Log ('  ' + (Format-GitCommand $MainCheckout @('worktree', 'remove', $WorktreeFull)))
-        Write-Log ('  ' + (Format-GitCommand $MainCheckout @('worktree', 'prune')))
+        Write-DiagnosticLog ('  ' + (Format-GitCommand $MainCheckout @('worktree', 'remove', $WorktreeFull)))
+        Write-DiagnosticLog ('  ' + (Format-GitCommand $MainCheckout @('worktree', 'prune')))
         if ($BranchName) {
-            Write-Log ('  ' + (Format-GitCommand $MainCheckout @('branch', '-d', '--', $BranchName)))
+            Write-DiagnosticLog ('  ' + (Format-GitCommand $MainCheckout @('branch', '-d', '--', $BranchName)))
         }
     } else {
-        Write-Log '  git worktree remove <worktree-path>'
-        Write-Log '  git worktree prune'
+        Write-DiagnosticLog '  git worktree remove <worktree-path>'
+        Write-DiagnosticLog '  git worktree prune'
         if ($BranchName) {
-            Write-Log ('  ' + (Format-GitCommand $null @('branch', '-d', '--', $BranchName)))
+            Write-DiagnosticLog ('  ' + (Format-GitCommand $null @('branch', '-d', '--', $BranchName)))
         }
     }
-    Write-Log "Details were logged to: $script:LogPath"
+    Write-DiagnosticLog "Details were logged to: $script:LogPath"
 }
 
 # Removability probe: merged = the branch's own work reached the base, decided by the ONE rule the
@@ -403,7 +448,7 @@ function Test-WorktreeMergedIntoMain {
     # The watcher runs from a copy in %TEMP% where the shared helper does not exist. It never reaches
     # this gate, but if that ever changes, "cannot tell" must keep the worktree.
     if (-not (Get-Command Test-BranchOwnWorkWasMerged -ErrorAction SilentlyContinue)) {
-        Write-Log 'merge gate: the shared decision is unavailable, so the worktree is preserved.'
+        Write-DiagnosticLog 'merge gate: the shared decision is unavailable, so the worktree is preserved.'
         return $false
     }
 
@@ -423,11 +468,11 @@ function Test-WorktreeMergedIntoMain {
     if ($hasUpstream) {
         $lookup = { Get-MergedPullRequestRecords -RepoRoot $repoRoot -BaseBranch $baseBranchName -HeadBranch $BranchName }
     } else {
-        Write-Log "merge gate: branch '$BranchName' has no upstream, so no pull request can exist; deciding on local history only."
+        Write-DiagnosticLog "merge gate: branch '$BranchName' has no upstream, so no pull request can exist; deciding on local history only."
     }
 
     $merged = Test-BranchOwnWorkWasMerged -RepoRoot $repoRoot -Branch $BranchName -MainRef $BaseRef -MergedPullRequestLookup $lookup
-    Write-Log "merge gate: branch '$BranchName' merged into '$BaseRef' = $merged"
+    Write-DiagnosticLog "merge gate: branch '$BranchName' merged into '$BaseRef' = $merged"
     return $merged
 }
 
@@ -455,23 +500,23 @@ function Write-UnmergedPreserveGuidance {
         [string] $Reason
     )
 
-    Write-Log "Worktree was preserved (not removed): $Reason"
-    Write-Log 'To remove it manually once ready, run:'
+    Write-DiagnosticLog "Worktree was preserved (not removed): $Reason"
+    Write-DiagnosticLog 'To remove it manually once ready, run:'
     if ($MainCheckout) {
-        Write-Log ('  ' + (Format-GitCommand $MainCheckout @('worktree', 'remove', $WorktreeFull)))
-        Write-Log ('  ' + (Format-GitCommand $MainCheckout @('worktree', 'prune')))
+        Write-DiagnosticLog ('  ' + (Format-GitCommand $MainCheckout @('worktree', 'remove', $WorktreeFull)))
+        Write-DiagnosticLog ('  ' + (Format-GitCommand $MainCheckout @('worktree', 'prune')))
         if ($BranchName) {
-            Write-Log ('  ' + (Format-GitCommand $MainCheckout @('branch', '-d', '--', $BranchName)))
+            Write-DiagnosticLog ('  ' + (Format-GitCommand $MainCheckout @('branch', '-d', '--', $BranchName)))
         }
     } else {
-        Write-Log '  git worktree remove <worktree-path>'
-        Write-Log '  git worktree prune'
+        Write-DiagnosticLog '  git worktree remove <worktree-path>'
+        Write-DiagnosticLog '  git worktree prune'
         if ($BranchName) {
-            Write-Log ('  ' + (Format-GitCommand $null @('branch', '-d', '--', $BranchName)))
+            Write-DiagnosticLog ('  ' + (Format-GitCommand $null @('branch', '-d', '--', $BranchName)))
         }
     }
-    Write-Log 'To bypass this gate and remove now regardless of merge/clean status, set AHKFLOW_WORKTREE_FORCE_REMOVE=1 before exiting Claude Code.'
-    Write-Log "Details were logged to: $script:LogPath"
+    Write-DiagnosticLog 'To bypass this gate and remove now regardless of merge/clean status, set AHKFLOW_WORKTREE_FORCE_REMOVE=1 before exiting Claude Code.'
+    Write-DiagnosticLog "Details were logged to: $script:LogPath"
 }
 
 function Write-BranchDeleteGuidance {
@@ -480,12 +525,12 @@ function Write-BranchDeleteGuidance {
         [string] $BranchName
     )
 
-    Write-Log "Branch was not deleted: $BranchName"
-    Write-Log 'Git refused safe branch deletion, usually because the branch contains unmerged commits.'
-    Write-Log 'Inspect or merge the branch, then retry:'
-    Write-Log ('  ' + (Format-GitCommand $MainCheckout @('branch', '-d', '--', $BranchName)))
-    Write-Log 'Only if you intentionally want to discard that branch, run:'
-    Write-Log ('  ' + (Format-GitCommand $MainCheckout @('branch', '-D', '--', $BranchName)))
+    Write-DiagnosticLog "Branch was not deleted: $BranchName"
+    Write-DiagnosticLog 'Git refused safe branch deletion, usually because the branch contains unmerged commits.'
+    Write-DiagnosticLog 'Inspect or merge the branch, then retry:'
+    Write-DiagnosticLog ('  ' + (Format-GitCommand $MainCheckout @('branch', '-d', '--', $BranchName)))
+    Write-DiagnosticLog 'Only if you intentionally want to discard that branch, run:'
+    Write-DiagnosticLog ('  ' + (Format-GitCommand $MainCheckout @('branch', '-D', '--', $BranchName)))
 }
 
 function Get-RegisteredWorktreePaths {
@@ -566,7 +611,7 @@ function Write-UnregisteredWorktreeRefusal {
     )
 
     $reason = if ($Validation -and $Validation.Reason) { $Validation.Reason } else { 'validation failed' }
-    Write-Log "REFUSING: WorktreePath is not a registered linked worktree under MainCheckout. WorktreePath=$WorktreeFull MainCheckout=$MainCheckout Reason=$reason"
+    Write-DiagnosticLog "REFUSING: WorktreePath is not a registered linked worktree under MainCheckout. WorktreePath=$WorktreeFull MainCheckout=$MainCheckout Reason=$reason"
     if ($Validation -and $Validation.GitResult) {
         Write-GitResult 'worktree list --porcelain' $Validation.GitResult
     }
@@ -594,10 +639,10 @@ function Invoke-HookMode {
 
     if (-not $WorktreePath) {
         Set-ProductionLogPath (Resolve-MainCheckoutFromScriptRoot)
-        Write-Log '====================================================================='
-        Write-Log "WorktreeRemove hook fired. PID=$PID ScriptPath=$PSCommandPath"
-        if ($stdinError) { Write-Log $stdinError }
-        Write-Log 'No worktree_path provided; nothing to do.'
+        Write-DiagnosticLog '====================================================================='
+        Write-DiagnosticLog "WorktreeRemove hook fired. PID=$PID ScriptPath=$PSCommandPath"
+        if ($stdinError) { Write-DiagnosticLog $stdinError }
+        Write-DiagnosticLog 'No worktree_path provided; nothing to do.'
         return
     }
 
@@ -606,11 +651,11 @@ function Invoke-HookMode {
 
     if (-not (Test-Path -LiteralPath $worktreeFull)) {
         Set-ProductionLogPath (Resolve-MainCheckoutFromScriptRoot)
-        Write-Log '====================================================================='
-        Write-Log "WorktreeRemove hook fired. PID=$PID ScriptPath=$PSCommandPath"
-        if ($stdinError) { Write-Log $stdinError }
-        Write-Log "WorktreePath = $worktreeFull"
-        Write-Log 'Worktree folder does not exist; nothing to remove.'
+        Write-DiagnosticLog '====================================================================='
+        Write-DiagnosticLog "WorktreeRemove hook fired. PID=$PID ScriptPath=$PSCommandPath"
+        if ($stdinError) { Write-DiagnosticLog $stdinError }
+        Write-DiagnosticLog "WorktreePath = $worktreeFull"
+        Write-DiagnosticLog 'Worktree folder does not exist; nothing to remove.'
         return
     }
 
@@ -665,19 +710,19 @@ function Invoke-HookMode {
         }
     }
     Set-ProductionLogPath $logCheckout
-    Write-Log '====================================================================='
-    Write-Log "WorktreeRemove hook fired. PID=$PID ScriptPath=$PSCommandPath"
-    if ($stdinError) { Write-Log $stdinError }
-    Write-Log "WorktreePath = $worktreeFull"
+    Write-DiagnosticLog '====================================================================='
+    Write-DiagnosticLog "WorktreeRemove hook fired. PID=$PID ScriptPath=$PSCommandPath"
+    if ($stdinError) { Write-DiagnosticLog $stdinError }
+    Write-DiagnosticLog "WorktreePath = $worktreeFull"
     Write-GitResult 'rev-parse --abbrev-ref HEAD' $branchResult
     Write-GitResult 'rev-parse --git-common-dir' $commonResult
     if (-not $branchName -and $branchResult.ExitCode -eq 0 -and $branchResult.Lines.Count -gt 0 -and (($branchResult.Lines[0]).Trim() -eq 'HEAD')) {
-        Write-Log 'Detached HEAD detected; branch deletion will be skipped.'
+        Write-DiagnosticLog 'Detached HEAD detected; branch deletion will be skipped.'
     }
-    if ($logCheckoutFallbackMessage) { Write-Log $logCheckoutFallbackMessage }
-    Write-Log "BranchName=$branchName MainCheckout=$mainCheckoutFromGit LogPath=$script:LogPath"
-    Write-Log "DatabaseName=$dbName"
-    Write-Log "ComposeProject=$composeProject"
+    if ($logCheckoutFallbackMessage) { Write-DiagnosticLog $logCheckoutFallbackMessage }
+    Write-DiagnosticLog "BranchName=$branchName MainCheckout=$mainCheckoutFromGit LogPath=$script:LogPath"
+    Write-DiagnosticLog "DatabaseName=$dbName"
+    Write-DiagnosticLog "ComposeProject=$composeProject"
 
     if (-not $mainCheckoutFromGit) {
         Write-UnregisteredWorktreeRefusal $worktreeFull $mainCheckoutFromGit ([pscustomobject]@{
@@ -698,9 +743,9 @@ function Invoke-HookMode {
             . (Join-Path $PSScriptRoot 'worktree-database.common.ps1')
             $fallbackBase = (Get-WorktreeDatabaseConfig -RepoRoot $mainCheckoutFromGit).BaseName
             $dbName = Get-WorktreeDatabaseNameForBranch -BaseName $fallbackBase -Branch $branchName
-            Write-Log "DatabaseName missing from manifest; derived from branch '$branchName': $dbName"
+            Write-DiagnosticLog "DatabaseName missing from manifest; derived from branch '$branchName': $dbName"
         } catch {
-            Write-Log "DatabaseName missing from manifest and could not derive from branch '$branchName': $($_.Exception.Message)"
+            Write-DiagnosticLog "DatabaseName missing from manifest and could not derive from branch '$branchName': $($_.Exception.Message)"
         }
     }
 
@@ -710,7 +755,7 @@ function Invoke-HookMode {
     # path), spawning the watcher would rename + recursively delete the main
     # repo. Refuse: this is not a linked worktree.
     if (Test-SamePath $worktreeFull $mainCheckoutFromGit) {
-        Write-Log "REFUSING: WorktreePath resolves to the main checkout ($worktreeFull). This is not a linked worktree; nothing to remove."
+        Write-DiagnosticLog "REFUSING: WorktreePath resolves to the main checkout ($worktreeFull). This is not a linked worktree; nothing to remove."
         return
     }
 
@@ -723,7 +768,7 @@ function Invoke-HookMode {
     # --- gate: only remove when merged into main AND clean, unless forced ---
     $forceRemove = Test-EnvironmentFlagEnabled -Name 'AHKFLOW_WORKTREE_FORCE_REMOVE'
     if ($forceRemove) {
-        Write-Log 'force override: AHKFLOW_WORKTREE_FORCE_REMOVE set; bypassing merge/clean gate.'
+        Write-DiagnosticLog 'force override: AHKFLOW_WORKTREE_FORCE_REMOVE set; bypassing merge/clean gate.'
     } else {
         if (-not $branchName) {
             Write-UnmergedPreserveGuidance -WorktreeFull $worktreeFull -MainCheckout $mainCheckoutFromGit -BranchName $branchName -Reason 'detached HEAD (no branch) is not eligible for automatic removal'
@@ -735,7 +780,7 @@ function Invoke-HookMode {
         $baseRef = $MainRef
         if (-not $baseRef) {
             $base = Resolve-MergedBaseRef -RepoRoot $mainCheckoutFromGit
-            Write-Log (Format-MergedBaseRefMessage -Prefix 'merge gate' -Base $base)
+            Write-DiagnosticLog (Format-MergedBaseRefMessage -Prefix 'merge gate' -Base $base)
             $baseRef = $base.Ref
 
             # A base that could not be refreshed proves nothing: the remote may have dropped the
@@ -765,7 +810,7 @@ function Invoke-HookMode {
     try {
         Copy-Item -LiteralPath $PSCommandPath -Destination $watcherScript -Force
     } catch {
-        Write-Log "Failed to snapshot watcher script: $($_.Exception.Message). Aborting (worktree left intact)."
+        Write-DiagnosticLog "Failed to snapshot watcher script: $($_.Exception.Message). Aborting (worktree left intact)."
         return
     }
 
@@ -783,7 +828,7 @@ function Invoke-HookMode {
     try {
         [System.IO.File]::WriteAllText($paramFile, ($payload | ConvertTo-Json -Depth 5), [System.Text.Encoding]::UTF8)
     } catch {
-        Write-Log "Failed to write sidecar param file: $($_.Exception.Message). Aborting (worktree left intact)."
+        Write-DiagnosticLog "Failed to write sidecar param file: $($_.Exception.Message). Aborting (worktree left intact)."
         Remove-WatcherArtifacts -ParamFilePath $paramFile -WatcherScriptPath $watcherScript
         return
     }
@@ -803,7 +848,7 @@ function Invoke-HookMode {
     if ($startupInformation) {
         $cimArguments['ProcessStartupInformation'] = $startupInformation
     } else {
-        Write-Log 'Could not build hidden process startup information; the watcher window may flash.'
+        Write-DiagnosticLog 'Could not build hidden process startup information; the watcher window may flash.'
     }
 
     $spawned = $false
@@ -811,13 +856,13 @@ function Invoke-HookMode {
         $result = Invoke-CimMethod -ClassName Win32_Process -MethodName Create `
             -Arguments $cimArguments -ErrorAction Stop
         if ($result.ReturnValue -eq 0) {
-            Write-Log "Watcher spawned via WMI. PID=$($result.ProcessId) ParamFile=$paramFile"
+            Write-DiagnosticLog "Watcher spawned via WMI. PID=$($result.ProcessId) ParamFile=$paramFile"
             $spawned = $true
         } else {
-            Write-Log "WMI Win32_Process.Create returned $($result.ReturnValue); will fall back to Start-Process."
+            Write-DiagnosticLog "WMI Win32_Process.Create returned $($result.ReturnValue); will fall back to Start-Process."
         }
     } catch {
-        Write-Log "WMI spawn failed: $($_.Exception.Message); will fall back to Start-Process."
+        Write-DiagnosticLog "WMI spawn failed: $($_.Exception.Message); will fall back to Start-Process."
     }
 
     if (-not $spawned) {
@@ -825,18 +870,18 @@ function Invoke-HookMode {
             $p = Start-Process -FilePath $psExe -WindowStyle Hidden -PassThru -WorkingDirectory $tempDir -ArgumentList @(
                 '-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden',
                 '-File', $watcherScript, '-Mode', 'Watcher', '-ParamFile', $paramFile)
-            Write-Log "Watcher spawned via Start-Process (fallback; may be killed if claude uses a kill-on-close job). PID=$($p.Id)"
+            Write-DiagnosticLog "Watcher spawned via Start-Process (fallback; may be killed if claude uses a kill-on-close job). PID=$($p.Id)"
             $spawned = $true
         } catch {
-            Write-Log "Failed to spawn watcher at all: $($_.Exception.Message). Worktree left intact."
+            Write-DiagnosticLog "Failed to spawn watcher at all: $($_.Exception.Message). Worktree left intact."
         }
     }
 
     if ($spawned) {
-        Write-Log 'Hook returning 0 (worktree untouched; watcher owns removal).'
+        Write-DiagnosticLog 'Hook returning 0 (worktree untouched; watcher owns removal).'
     } else {
         Remove-WatcherArtifacts -ParamFilePath $paramFile -WatcherScriptPath $watcherScript
-        Write-Log 'Hook returning 0 (worktree untouched; watcher was not launched).'
+        Write-DiagnosticLog 'Hook returning 0 (worktree untouched; watcher was not launched).'
     }
 }
 
@@ -849,7 +894,7 @@ function Invoke-WatcherMode {
 
     if (-not $ParamFile -or -not (Test-Path -LiteralPath $ParamFile)) {
         $script:RunId = 'watcher-noparams'
-        Write-Log "ParamFile missing: $ParamFile. Cannot proceed."
+        Write-DiagnosticLog "ParamFile missing: $ParamFile. Cannot proceed."
         Remove-WatcherArtifacts -ParamFilePath $ParamFile -WatcherScriptPath $PSCommandPath
         return
     }
@@ -862,13 +907,16 @@ function Invoke-WatcherMode {
         $cfg = Get-Content -LiteralPath $ParamFile -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
     } catch {
         $script:RunId = 'watcher-badparams'
-        Write-Log "Failed to read/parse ParamFile '$ParamFile': $($_.Exception.Message). Cannot proceed."
+        Write-DiagnosticLog "Failed to read/parse ParamFile '$ParamFile': $($_.Exception.Message). Cannot proceed."
         Remove-WatcherArtifacts -ParamFilePath $ParamFile -WatcherScriptPath $PSCommandPath
         return
     }
 
     $script:RunId = [string] $cfg.RunId
-    if ($cfg.LogPath) { $script:LogPath = [string] $cfg.LogPath }
+    if ($cfg.LogPath) {
+        $script:LogPath = [string] $cfg.LogPath
+        $script:DiagnosticsPath = $null
+    }
     $worktreeFull = ConvertTo-NormalizedPath ([string] $cfg.WorktreePath)
     Set-WorktreeLogName $worktreeFull
     $branchName = [string] $cfg.BranchName
@@ -881,11 +929,11 @@ function Invoke-WatcherMode {
     Set-ProductionLogPath $mainCheckout
 
     # First watcher log line == proof the watcher survived claude's exit.
-    Write-Log '---------------------------------------------------------------------'
-    Write-Log "Watcher started. PID=$PID Worktree=$worktreeFull Branch=$branchName Timeout=${timeout}s"
+    Write-DiagnosticLog '---------------------------------------------------------------------'
+    Write-DiagnosticLog "Watcher started. PID=$PID Worktree=$worktreeFull Branch=$branchName Timeout=${timeout}s"
 
     if (-not $worktreeFull) {
-        Write-Log 'No worktree path in params; nothing to do.'
+        Write-DiagnosticLog 'No worktree path in params; nothing to do.'
         Remove-WatcherArtifacts -ParamFilePath $ParamFile -WatcherScriptPath $watcherScript
         return
     }
@@ -904,7 +952,7 @@ function Invoke-WatcherMode {
     # The hook already refuses this, but the watcher reads paths independently
     # from the param file and is where the destructive rename + delete happen.
     if (Test-SamePath $worktreeFull $mainCheckout) {
-        Write-Log "REFUSING: WorktreePath ($worktreeFull) equals MainCheckout. Will not rename/delete the main checkout."
+        Write-DiagnosticLog "REFUSING: WorktreePath ($worktreeFull) equals MainCheckout. Will not rename/delete the main checkout."
         Remove-WatcherArtifacts -ParamFilePath $ParamFile -WatcherScriptPath $watcherScript
         return
     }
@@ -925,7 +973,7 @@ function Invoke-WatcherMode {
 
     while ((Get-Date) -lt $deadline) {
         if (-not (Test-Path -LiteralPath $worktreeFull)) {
-            Write-Log 'Worktree folder already gone (removed elsewhere); proceeding to prune + branch cleanup.'
+            Write-DiagnosticLog 'Worktree folder already gone (removed elsewhere); proceeding to prune + branch cleanup.'
             $alreadyGone = $true
             $renamed = $true
             break
@@ -934,7 +982,7 @@ function Invoke-WatcherMode {
         try {
             [System.IO.Directory]::Move($worktreeFull, $tempName)
             $renamed = $true
-            Write-Log "Atomic rename succeeded -> '$tempName'. Folder is free; proceeding to delete."
+            Write-DiagnosticLog "Atomic rename succeeded -> '$tempName'. Folder is free; proceeding to delete."
             break
         } catch {
             $lastError = $_.Exception.Message
@@ -959,17 +1007,17 @@ function Invoke-WatcherMode {
     if (-not $alreadyGone) {
         try {
             Remove-Item -LiteralPath $tempName -Recurse -Force -ErrorAction Stop
-            Write-Log "Deleted '$tempName'."
+            Write-DiagnosticLog "Deleted '$tempName'."
         } catch {
-            Write-Log "Remove-Item reported an error: $($_.Exception.Message)"
+            Write-DiagnosticLog "Remove-Item reported an error: $($_.Exception.Message)"
             if (Test-Path -LiteralPath $tempName) {
-                Write-Log "Remnant left at '$tempName' (clearly-marked; the original worktree path is already gone)."
+                Write-DiagnosticLog "Remnant left at '$tempName' (clearly-marked; the original worktree path is already gone)."
             }
         }
     }
 
     if (-not $mainCheckout) {
-        Write-Log 'Main checkout unknown; cannot prune git or delete branch.'
+        Write-DiagnosticLog 'Main checkout unknown; cannot prune git or delete branch.'
         Remove-WatcherArtifacts -ParamFilePath $ParamFile -WatcherScriptPath $watcherScript
         return
     }
@@ -989,7 +1037,7 @@ function Invoke-WatcherMode {
             $branchDeleteSucceeded = $true
         }
     } else {
-        Write-Log 'Branch name unknown; skipping branch delete.'
+        Write-DiagnosticLog 'Branch name unknown; skipping branch delete.'
     }
 
     if ($branchDeleteSucceeded) {
@@ -1004,17 +1052,17 @@ function Invoke-WatcherMode {
                 $masterConnectionString = Get-WorktreeMasterConnectionString $dbConfig.ConnectionString
                 $dropResult = Remove-WorktreeDatabaseByName -DbName $dbName -BaseName $dbConfig.BaseName -MasterConnectionString $masterConnectionString
                 if ($dropResult.Dropped) {
-                    Write-Log "Dropped database [$dbName]."
+                    Write-DiagnosticLog "Dropped database [$dbName]."
                 } elseif ($dropResult.Skipped) {
-                    Write-Log "No worktree database to drop, or unexpected name (name='$dbName')."
+                    Write-DiagnosticLog "No worktree database to drop, or unexpected name (name='$dbName')."
                 } else {
-                    Write-Log "Could not drop database [$dbName]: $($dropResult.Error). It is likely still in use (a running API, SSMS, or test host). The database was left intact; reclaim it with 'scripts\prune-worktree-databases.ps1' or drop it manually after closing connections. Details in this log: $script:LogPath"
+                    Write-DiagnosticLog "Could not drop database [$dbName]: $($dropResult.Error). It is likely still in use (a running API, SSMS, or test host). The database was left intact; reclaim it with 'scripts\prune-worktree-databases.ps1' or drop it manually after closing connections. Details in this log: $script:LogPath"
                 }
             } catch {
-                Write-Log "Could not resolve database settings from the main checkout to drop [$dbName]: $($_.Exception.Message). The database was left intact; reclaim it with 'scripts\prune-worktree-databases.ps1'."
+                Write-DiagnosticLog "Could not resolve database settings from the main checkout to drop [$dbName]: $($_.Exception.Message). The database was left intact; reclaim it with 'scripts\prune-worktree-databases.ps1'."
             }
         } else {
-            Write-Log 'No database name recorded; skipping database drop (prune reclaims any orphan later).'
+            Write-DiagnosticLog 'No database name recorded; skipping database drop (prune reclaims any orphan later).'
         }
 
         $composeProject = [string] $cfg.ComposeProject
@@ -1024,38 +1072,38 @@ function Invoke-WatcherMode {
                 $composeFile = Join-Path $mainCheckout 'docker-compose.yml'
                 $removeResult = Remove-WorktreeDockerProject -Name $composeProject -ComposeFilePath $composeFile
                 if ($removeResult.Removed) {
-                    Write-Log "Removed Docker compose project [$composeProject]."
+                    Write-DiagnosticLog "Removed Docker compose project [$composeProject]."
                 } elseif ($removeResult.Skipped) {
-                    Write-Log "No Docker compose project to remove, or unexpected name (name='$composeProject')."
+                    Write-DiagnosticLog "No Docker compose project to remove, or unexpected name (name='$composeProject')."
                 } else {
-                    Write-Log "Could not remove Docker compose project [$composeProject]: $($removeResult.Error). It was left intact; reclaim it with 'scripts\prune-worktree-docker.ps1'."
+                    Write-DiagnosticLog "Could not remove Docker compose project [$composeProject]: $($removeResult.Error). It was left intact; reclaim it with 'scripts\prune-worktree-docker.ps1'."
                 }
             } catch {
-                Write-Log "Could not remove Docker compose project [$composeProject]: $($_.Exception.Message). Reclaim it with 'scripts\prune-worktree-docker.ps1'."
+                Write-DiagnosticLog "Could not remove Docker compose project [$composeProject]: $($_.Exception.Message). Reclaim it with 'scripts\prune-worktree-docker.ps1'."
             }
         } else {
-            Write-Log 'No compose project recorded; skipping Docker teardown (prune reclaims any orphan later).'
+            Write-DiagnosticLog 'No compose project recorded; skipping Docker teardown (prune reclaims any orphan later).'
         }
     } else {
-        Write-Log 'Skipping database drop and Docker teardown: branch was not confirmed deleted (scripts/prune-worktree-databases.ps1 and scripts/prune-worktree-docker.ps1 reclaim them later).'
+        Write-DiagnosticLog 'Skipping database drop and Docker teardown: branch was not confirmed deleted (scripts/prune-worktree-databases.ps1 and scripts/prune-worktree-docker.ps1 reclaim them later).'
     }
 
     # --- verify + log final state -------------------------------------------
-    Write-Log 'Final state:'
-    Write-Log "  worktree folder exists: $([bool](Test-Path -LiteralPath $worktreeFull))"
+    Write-DiagnosticLog 'Final state:'
+    Write-DiagnosticLog "  worktree folder exists: $([bool](Test-Path -LiteralPath $worktreeFull))"
     if ($branchName) {
         $branchRef = "refs/heads/$branchName"
         $branchCheck = Invoke-GitCapture @('-C', $mainCheckout, 'show-ref', '--verify', '--quiet', $branchRef)
         $stillThere = $branchCheck.ExitCode -eq 0
-        Write-Log "  branch '$branchName' still present: $stillThere"
+        Write-DiagnosticLog "  branch '$branchName' still present: $stillThere"
     }
     Write-GitResult '  worktree list' (Invoke-GitCapture @('-C', $mainCheckout, 'worktree', 'list'))
     if (-not $branchDeleteAttempted) {
-        Write-Log 'Watcher done (worktree removed; branch skipped).'
+        Write-DiagnosticLog 'Watcher done (worktree removed; branch skipped).'
     } elseif ($branchDeleteSucceeded) {
-        Write-Log 'Watcher done (worktree + branch removed).'
+        Write-DiagnosticLog 'Watcher done (worktree + branch removed).'
     } else {
-        Write-Log 'Watcher done (worktree removed; branch preserved).'
+        Write-DiagnosticLog 'Watcher done (worktree removed; branch preserved).'
     }
 
     Remove-WatcherArtifacts -ParamFilePath $ParamFile -WatcherScriptPath $watcherScript
@@ -1064,7 +1112,7 @@ function Invoke-WatcherMode {
 function Complete-WatcherPreserved {
     param([string] $ParamFilePath, [string] $WatcherScriptPath)
 
-    Write-Log 'Watcher done (worktree preserved).'
+    Write-DiagnosticLog 'Watcher done (worktree preserved).'
     Remove-WatcherArtifacts -ParamFilePath $ParamFilePath -WatcherScriptPath $WatcherScriptPath
 }
 
@@ -1086,14 +1134,14 @@ function Remove-GeneratedTempArtifact {
     }
 
     if (-not (Test-GeneratedTempArtifactPath -Path $Path -LeafPattern $LeafPattern)) {
-        Write-Log "Skipping deletion of non-generated $Description '$Path'."
+        Write-DiagnosticLog "Skipping deletion of non-generated $Description '$Path'."
         return
     }
 
     try {
         Remove-Item -LiteralPath $Path -Force -ErrorAction Stop
     } catch {
-        Write-Log "Could not delete temp artifact '$Path': $($_.Exception.Message)"
+        Write-DiagnosticLog "Could not delete temp artifact '$Path': $($_.Exception.Message)"
     }
 }
 
@@ -1132,7 +1180,7 @@ if ($MyInvocation.InvocationName -ne '.') {
             Invoke-HookMode
         }
     } catch {
-        try { Write-Log "UNHANDLED ERROR: $($_.Exception.Message)" } catch { }
+        try { Write-DiagnosticLog "UNHANDLED ERROR: $($_.Exception.Message)" } catch { }
     }
 
     exit 0

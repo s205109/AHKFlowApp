@@ -93,6 +93,13 @@ try {
     $written = @(Get-Content -LiteralPath $concurrentLog)
     Assert-Equal 100 $written.Count "Four writers of 25 lines must produce 100 lines, got $($written.Count)"
 
+    # --- the removal script exposes Write-Outcome and splits the two files ---
+    $removeScript = Join-Path $scriptsDir 'remove-worktree-local-dev.ps1'
+    $source = Get-Content -Raw -LiteralPath $removeScript
+    Assert-True ($source -match '(?m)^function Write-Outcome \{') 'remove-worktree-local-dev.ps1 must define Write-Outcome'
+    Assert-True (-not ($source -match '(?m)^function Write-Log \{')) 'Write-Log must be gone; use Write-Outcome or Write-DiagnosticLog'
+    Assert-True (-not ($source -match '(?m)^\s*Write-Log ')) 'No call site may still call Write-Log'
+
     Write-Host 'Worktree removal log tests passed.'
 } finally {
     Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
