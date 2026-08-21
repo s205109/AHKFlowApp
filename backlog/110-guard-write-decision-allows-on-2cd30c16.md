@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: none (agent git guard)
 - **Difficulty**: moderate
-- **Stage**: 3-plan
+- **Stage**: 7-document
 
 ## Summary
 
@@ -35,10 +35,14 @@ Difficulty is `to-be-determined` rather than a guess.
 
 ## Acceptance criteria
 
-- [ ] The repository states, in one place, what an ambiguous parse means for each policy layer
-- [ ] The write decision and the write-target reader agree on that meaning
-- [ ] A command that no Reading can parse produces one documented outcome, and a test pins it
-- [ ] The decision is recorded as an ADR when it changes the fail-open architecture note
+- [x] The repository states, in one place, what an ambiguous parse means for each policy layer
+      — `docs/agents/cross-agent-git-guardrails.md`, the "A command the guard cannot read"
+      subsection
+- [x] The write decision and the write-target reader agree on that meaning — both fail closed
+- [x] A command that no Reading can parse produces one documented outcome, and a test pins it
+      — `tests/AgentWorktreeGuard.Tests.ps1`, the cross-layer section
+- [x] The decision is recorded as an ADR when it changes the fail-open architecture note
+      — `docs/adr/0009-an-unreadable-command-is-refused-by-every-policy-layer.md`
 
 ## Out of scope
 
