@@ -6,7 +6,7 @@
 - **Type**: Process / tooling
 - **Interfaces**: none (scripts)
 - **Difficulty**: complex
-- **Stage**: 2-design
+- **Stage**: 3-plan
 - **Depends on**: 072-process-wave-2-parity-drift-guard-templates
 
 ## Summary
@@ -48,6 +48,7 @@ that a merged branch never leaves me a popup to dismiss.
 - Spec: `docs/superpowers/specs/2026-08-10-development-process-design-071.md` §13
   (private plans repo).
 - Design: `docs/superpowers/specs/2026-08-21-cleanup-ux-design-073.md` (private plans repo).
+- Plan: `docs/superpowers/plans/2026-08-21-cleanup-ux-plan-073.md`
 - The sweep deletes the worktree folder directly today
   (`scripts/remove-worktree-local-dev.ps1`), so a git-level lock alone protects nothing.
   Proved on 2026-08-21 in a scratch repository: `git worktree remove` exits 128 on a locked
