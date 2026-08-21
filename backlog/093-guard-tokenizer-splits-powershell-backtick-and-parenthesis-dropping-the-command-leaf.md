@@ -79,5 +79,5 @@ and `rm` examples above carry no item type and no link, and they fail the same w
 - Refusing is allowed. `Get-AgentCommandSegment` already returns `Ambiguous = $true` for an
   unterminated quote (`scripts/agents/agent-worktree-guard.common.ps1:767-768`), and that path
   fails closed
-- Spec: docs/superpowers/specs/2026-08-20-guard-both-shell-readings-design-093.md
-- Plan: docs/superpowers/plans/2026-08-21-guard-both-shell-readings-plan-093.md
+- Spec: `docs/superpowers/specs/2026-08-20-guard-both-shell-readings-design-093.md`
+- Plan: `docs/superpowers/plans/2026-08-21-guard-both-shell-readings-plan-093.md`
