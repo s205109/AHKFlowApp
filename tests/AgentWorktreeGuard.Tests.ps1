@@ -816,6 +816,39 @@ try {
         }
     }
 
+    foreach ($reading in @('Bash', 'PowerShell')) {
+        Invoke-TestCase "Location layer refuses an unreadable command ($reading Reading)" {
+            $decision = Get-AgentWorktreeGuardDecision -Command $unreadable `
+                -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false `
+                -Reading $reading
+            Assert-Equal 'Deny' $decision.Action 'Action'
+            Assert-Equal 'ambiguous-command' $decision.Rule 'Rule'
+        }
+
+        Invoke-TestCase "Write layer refuses an unreadable command from a managed worktree ($reading Reading)" {
+            $decision = Get-AgentWorktreeWriteDecision -Command $unreadable `
+                -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false `
+                -Reading $reading
+            Assert-Equal 'Deny' $decision.Action 'Action'
+            Assert-Equal 'ambiguous-command' $decision.Rule 'Rule'
+        }
+    }
+
+    # The scope test stays in front of the ambiguity check. These two cases fail if a later change
+    # hoists the ambiguity check above it, which would give the write layer the location layer's
+    # job and make its own documentation false.
+    $writeScopeCases = @(
+        @{ Name = 'the main checkout'; Cwd = $fixture.Main },
+        @{ Name = 'an unrelated repository'; Cwd = $fixture.Unrelated }
+    )
+    foreach ($scopeCase in $writeScopeCases) {
+        Invoke-TestCase "Write layer allows an unreadable command from $($scopeCase.Name)" {
+            $decision = Get-AgentWorktreeWriteDecision -Command $unreadable `
+                -Cwd $scopeCase.Cwd -ProtectedRepoRoot $fixture.Main -AllowMain $false -Reading Bash
+            Assert-Equal 'Allow' $decision.Action 'Action'
+        }
+    }
+
     Write-Host 'Tier reclassification' -ForegroundColor Cyan
 
     $somewhere = Join-Path $fixture.TestRoot 'somewhere'

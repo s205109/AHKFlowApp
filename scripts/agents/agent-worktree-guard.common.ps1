@@ -3298,6 +3298,11 @@ Only fires when the session's own working directory is a managed worktree. A mai
 session is unaffected, which keeps the AGENTS.md rule that agents may edit, build, test, and
 format in main. Segments are walked in order so an earlier cd moves where a later write lands,
 matching Get-AgentGitLocationDecision.
+
+An Ambiguous Reading is refused, with the same rule and message every policy layer returns. That
+check sits behind the managed-worktree test above, so it never fires for a session this layer does
+not govern. Refusing an unreadable command from any other session is the location layer's job, and
+it already does that for every session.
 #>
 function Get-AgentWorktreeWriteDecision {
     [CmdletBinding()]
@@ -3315,7 +3320,7 @@ function Get-AgentWorktreeWriteDecision {
     if ($sessionState -ne 'ManagedWorktree') { return New-AgentGuardDecision -Action Allow }
 
     $parsed = Get-AgentCommandSegment -Command $Command -Reading $Reading
-    if ($parsed.Ambiguous) { return New-AgentGuardDecision -Action Allow }
+    if ($parsed.Ambiguous) { return New-AgentGuardAmbiguousDecision }
 
     $protectedCommonDir = Invoke-AgentGuardGitProbe @(
         '-C', $ProtectedRepoRoot, 'rev-parse', '--path-format=absolute', '--git-common-dir')
