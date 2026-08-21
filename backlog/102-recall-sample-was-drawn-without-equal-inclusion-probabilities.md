@@ -63,3 +63,32 @@ the current 200 overlap.
 - `tests/FrictionRecallSample.Tests.ps1` covers the draw's uniformity and its stability.
 - Spec: none — Design has not run.
 - Plan: none — the item is at Intake.
+
+## Finding, 2026-08-21: the population is being deleted
+
+The redraw this item asks for cannot reproduce the population the published figures describe.
+Claude Code deletes session transcripts older than `cleanupPeriodDays`, which defaults to 30
+days and is not set in this machine's `settings.json`. The window runs 2026-07-15 to
+2026-08-12, so its first week is already gone. The oldest surviving transcript file is stamped
+2026-07-22, which is exactly 30 days before the measurement below.
+
+A dry run of `scripts/sample-friction-recall.ps1` on 2026-08-21, against the committed
+selection records:
+
+| Metric | Population | Unflagged | Flagged |
+|---|---|---|---|
+| handoffs, published 2026-08-16 | 5,472 | 5,457 | 15 |
+| handoffs, 2026-08-21 | 4,633 | 4,618 | 15 |
+| next-step-asks, published 2026-08-16 | 1,042 | 1,004 | 38 |
+| next-step-asks, 2026-08-21 | 890 | 861 | 29 |
+
+Nine of the 38 flagged asks no longer exist, so the published precision of 47 percent
+describes messages that have been deleted. Eight of the 200 drawn handoff rows carry a label
+from the old draw; the rest would need labelling again.
+
+Redrawing today would move the handoff range from 179–533 to about 153–452, and the shift
+comes from the deletion rather than from the sampling defect this item was filed against. The
+whole window is deleted around 2026-09-11.
+
+The transcripts were copied to `C:\Users\btase\AHKFlowApp-friction-snapshot-2026-08-21`
+(755 files, 445 MB) on 2026-08-21, so what remains of the window stops shrinking.
