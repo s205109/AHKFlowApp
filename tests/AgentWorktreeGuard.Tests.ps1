@@ -3148,6 +3148,35 @@ try {
         Assert-Match 'a source piped into Remove-Item' $decision.Message 'Override target'
     }
 
+    Write-Host 'Both Readings run, worst action wins' -ForegroundColor Cyan
+
+    # A single backtick, built here so no enclosing string escapes it.
+    $tick = [string][char]96
+
+    Invoke-TestCase 'Both Readings: a backtick before a main-checkout path is denied' {
+        $decision = Invoke-AgentGuardPolicy `
+            -Command ("Set-Content -Path $tick" + $fixture.Main + '\README.md -Value x') `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Deny' $decision.Action 'Action'
+    }
+
+    Invoke-TestCase 'Both Readings: the bash message is kept when the bash Reading wins' {
+        $decision = Invoke-AgentGuardPolicy `
+            -Command ('Set-Content -Path ' + $fixture.Main + '\README.md -Value x') `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Deny' $decision.Action 'Action'
+        Assert-True ($decision.Message -notmatch 'PowerShell reads this command differently') `
+            'A bash-Reading denial must not gain the PowerShell note'
+    }
+
+    Invoke-TestCase 'Both Readings: a PowerShell-Reading denial names the Reading' {
+        $decision = Invoke-AgentGuardPolicy `
+            -Command ("Set-Content -Path $tick" + $fixture.Main + '\README.md -Value x') `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Deny' $decision.Action 'Action'
+        Assert-Match 'PowerShell reads this command differently from bash' $decision.Message 'Message'
+    }
+
     Invoke-TestCase 'Write isolation: rm -rf on a worktree glob is not a write-rule denial' {
         $decision = Get-AgentWorktreeWriteDecision -Command 'rm -rf ./obj/*' `
             -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false -Reading Bash

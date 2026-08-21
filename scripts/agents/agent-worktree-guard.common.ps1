@@ -3116,7 +3116,8 @@ Write inside docs/superpowers instead, or run this from the main checkout.
 $script:AgentGuardUnresolvedWriteMessage = @'
 BLOCKED: this session is isolated in a worktree, and the guard cannot expand this write target, so
 it cannot tell whether the write lands in the main checkout.
-Write the path out literally instead of using a variable, or run the command from the main checkout.
+Write the path out literally instead of using a variable or an expression, or run the command from
+the main checkout.
 '@
 
 $script:AgentGuardPipedSourceMessage = @'
@@ -3649,6 +3650,38 @@ function Get-AgentGitLocationDecision {
     return New-AgentGuardDecision -Action Ask -Rule 'agent-main-git-mutation' -Message $message
 }
 
+$script:AgentGuardPowerShellReadingNote = @'
+PowerShell reads this command differently from bash: a backtick escapes the next character, and
+parentheses group an expression. Read that way, this command writes to the path above. The guard
+reads every command both ways, and refuses when either way reaches the main checkout.
+'@
+
+function Add-AgentPowerShellReadingNote {
+    param([object] $Decision)
+
+    # An Allow carries no message worth explaining, and appending to one would put a refusal
+    # notice on a command that was not refused.
+    if ($Decision.Action -eq 'Allow') { return $Decision }
+
+    return (New-AgentGuardDecision -Action $Decision.Action -Rule $Decision.Rule -Message `
+        ($Decision.Message + "`n" + $script:AgentGuardPowerShellReadingNote))
+}
+
+# Higher is worse. The combination keeps the worst action any Reading produced, which is what
+# makes two Readings a one-way ratchet rather than a vote.
+$script:AgentGuardActionSeverity = @{ Allow = 0; Warn = 1; Ask = 2; Deny = 3 }
+
+function Get-AgentGuardActionSeverity {
+    param([string] $Action)
+
+    if ($script:AgentGuardActionSeverity.ContainsKey($Action)) {
+        return $script:AgentGuardActionSeverity[$Action]
+    }
+    # An action this table does not know is ranked worst, so an action added later cannot be
+    # silently treated as weaker than Deny.
+    return 3
+}
+
 <#
 .SYNOPSIS
 Single orchestration point: safety rules fail closed, location rules fail open.
@@ -3725,6 +3758,17 @@ function Invoke-AgentGuardPolicy {
         [bool] $AllowMain = $false
     )
 
-    return (Invoke-AgentGuardPolicyForReading -Command $Command -Cwd $Cwd `
-            -ProtectedRepoRoot $ProtectedRepoRoot -AllowMain $AllowMain -Reading Bash)
+    $bash = Invoke-AgentGuardPolicyForReading -Command $Command -Cwd $Cwd `
+        -ProtectedRepoRoot $ProtectedRepoRoot -AllowMain $AllowMain -Reading Bash
+    $powershell = Invoke-AgentGuardPolicyForReading -Command $Command -Cwd $Cwd `
+        -ProtectedRepoRoot $ProtectedRepoRoot -AllowMain $AllowMain -Reading PowerShell
+
+    # -ge, not -gt: a tie goes to bash. That keeps today's messages, and today's tests, unchanged
+    # for every command the two Readings agree on.
+    if ((Get-AgentGuardActionSeverity $bash.Action) -ge
+        (Get-AgentGuardActionSeverity $powershell.Action)) {
+        return $bash
+    }
+
+    return (Add-AgentPowerShellReadingNote -Decision $powershell)
 }
