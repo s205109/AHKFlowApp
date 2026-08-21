@@ -33,6 +33,12 @@ $script:AgentGuardUnquotedEscapables = '$`"\;&|()<>' + "'"
 # tokenizer treats as segment boundaries, so `<<EOF; echo x` reads EOF and keeps the rest.
 $script:AgentGuardHeredocDelimiterStops = ';&|`()<>'
 
+# The only characters the two Readings disagree about. A backtick separates in bash and escapes in
+# PowerShell; a parenthesis opens a subshell in bash and groups an expression in PowerShell. Keep
+# this in step with the Reading branches in Split-AgentCommandSegment: it is what lets
+# Invoke-AgentGuardPolicy skip a second Reading that could not have reached a different answer.
+$script:AgentGuardReadingSensitiveChars = [char[]]@('`', '(', ')')
+
 # Commands that move the shell's working directory, so a later `git` in the same chain does not
 # run where the hook payload said it would. pushd/popd are tracked separately because they form a
 # stack: treating popd as an unrecognized command left the guard believing the shell was still in
@@ -740,12 +746,10 @@ function Split-AgentCommandSegment {
             continue
         }
 
-        $isSeparator = $ch -eq "`n" -or $ch -eq "`r" -or $ch -eq ';' -or $ch -eq '&' -or $ch -eq '|'
-        if (-not $isSeparator -and $Reading -eq 'Bash') {
-            # A backtick is command substitution in bash and a parenthesis opens a subshell. In
-            # PowerShell a backtick escapes and parentheses group, so neither ends a command there.
-            $isSeparator = $ch -eq '`' -or $ch -eq '(' -or $ch -eq ')'
-        }
+        # A backtick is command substitution in bash and a parenthesis opens a subshell. In
+        # PowerShell a backtick escapes and parentheses group, so neither ends a command there.
+        $isSeparator = $ch -eq "`n" -or $ch -eq "`r" -or $ch -eq ';' -or $ch -eq '&' -or
+            $ch -eq '|' -or ($Reading -eq 'Bash' -and ($ch -eq '`' -or $ch -eq '(' -or $ch -eq ')'))
         if ($isSeparator) {
             if ($hasCurrent) {
                 [void] $tokens.Add($current.ToString())
@@ -1911,6 +1915,30 @@ function Find-AgentUnquotedRedirectIndex {
 
 <#
 .SYNOPSIS
+True when the token holds one of these characters at a position the mask does not call quoted.
+
+.DESCRIPTION
+Same token/mask walk as Find-AgentUnquotedRedirectIndex above, over a set of characters rather
+than just '>'. The two are deliberately NOT one function, because they disagree about a character
+past the end of the mask. A mask always runs parallel to its token, so that cannot happen from
+Split-AgentCommandSegment - but the two callers want opposite answers if it ever did. The redirect
+reader treats a missing mask entry as "not a redirect", which keeps a malformed pair from
+inventing a write target. This one treats it as unquoted, which denies. Each default fails in the
+direction its caller needs.
+#>
+function Test-AgentTokenHasUnquotedChar {
+    param([string] $Token, [string] $Mask, [char[]] $Chars)
+
+    for ($i = 0; $i -lt $Token.Length; $i++) {
+        if ($Chars -notcontains $Token[$i]) { continue }
+        if ($i -lt $Mask.Length -and $Mask[$i] -eq 'q') { continue }
+        return $true
+    }
+    return $false
+}
+
+<#
+.SYNOPSIS
 Lowercased leaf of a command word, with any .exe/.cmd/.bat suffix removed.
 #>
 function Get-AgentCommandLeafName {
@@ -2454,6 +2482,20 @@ Every path one command segment would write, move, or delete.
 Two independent sources are scanned. Redirects are read from the token/mask pair, so only an
 unquoted '>' counts. Destination arguments are read from the leading command word using the
 tables above. A segment can produce both, for example `cp a b > log.txt`.
+
+Returns { Targets = string[]; Unresolved = bool }. Unresolved means an operand carried syntax the
+shell would evaluate, so the caller must fail closed rather than read the target list as complete.
+
+This function takes no -Reading, and that rests on an invariant it cannot check locally: under the
+bash Reading, Split-AgentCommandSegment already treats an unquoted '(' or ')' as a separator, so
+one can only survive into a token when the segment was built under the PowerShell Reading. Widen
+the bash separator set and this rule starts firing on bash segments too.
+
+The Unresolved flag is deliberately NOT folded into AgentGuardUnexpandablePattern. That pattern
+asks whether one already-selected path string can be expanded. This asks whether ANY argument on a
+write command's line carried evaluated syntax, which is a question that has to be answered before
+target selection: `Copy-Item a.txt (Get-Thing) dest.txt` names a parenthesised operand that is
+never the reported target. Collapsing the two would narrow the check.
 #>
 function Get-AgentSegmentWriteTarget {
     [CmdletBinding()]
@@ -2509,11 +2551,8 @@ function Get-AgentSegmentWriteTarget {
         # An unquoted parenthesis means PowerShell would evaluate this operand rather than pass it
         # through, and the guard never evaluates. A quoted parenthesis is an ordinary Windows file
         # name character - "Copy (2).txt" - so it must stay resolvable.
-        for ($c = 0; $c -lt $token.Length; $c++) {
-            if ($token[$c] -ne '(' -and $token[$c] -ne ')') { continue }
-            if ($c -lt $mask.Length -and $mask[$c] -eq 'q') { continue }
+        if (Test-AgentTokenHasUnquotedChar -Token $token -Mask $mask -Chars @('(', ')')) {
             $argumentHasExpression = $true
-            break
         }
     }
     $positionals = @(Get-AgentGitPositionals -Arguments $arguments)
@@ -3760,6 +3799,18 @@ function Invoke-AgentGuardPolicy {
 
     $bash = Invoke-AgentGuardPolicyForReading -Command $Command -Cwd $Cwd `
         -ProtectedRepoRoot $ProtectedRepoRoot -AllowMain $AllowMain -Reading Bash
+
+    # The two Readings differ in exactly one place: how Split-AgentCommandSegment treats these
+    # three characters. A command that holds none of them anywhere tokenizes identically both
+    # ways, so the second Reading would spawn the same git probes to reach the same answer. This
+    # test reads the raw string and ignores quoting on purpose: it is a superset check, so it can
+    # only skip work that was provably redundant, never a Reading that would have denied.
+    if ($Command.IndexOfAny($script:AgentGuardReadingSensitiveChars) -lt 0) { return $bash }
+
+    # Deny is the top of the severity table, and a tie goes to bash, so nothing the PowerShell
+    # Reading could return would change this answer.
+    if ($bash.Action -eq 'Deny') { return $bash }
+
     $powershell = Invoke-AgentGuardPolicyForReading -Command $Command -Cwd $Cwd `
         -ProtectedRepoRoot $ProtectedRepoRoot -AllowMain $AllowMain -Reading PowerShell
 

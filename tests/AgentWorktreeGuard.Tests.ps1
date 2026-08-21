@@ -3169,6 +3169,29 @@ try {
             'A bash-Reading denial must not gain the PowerShell note'
     }
 
+    Invoke-TestCase 'Both Readings: skipping the second Reading never changes the answer' {
+        # Invoke-AgentGuardPolicy skips the PowerShell Reading when the command holds no backtick
+        # and no parenthesis. Prove the skip is a pure optimisation: for a spread of commands with
+        # none of those characters, the combined decision equals the bash Reading run alone.
+        $skipCases = @(
+            'git status',
+            ('Set-Content -Path ' + $fixture.Main + '\README.md -Value x'),
+            ('rm -rf ' + $fixture.Main + '/docs'),
+            'dotnet build',
+            ('Copy-Item a.txt ' + $fixture.Main + '\b.txt'),
+            'Get-ChildItem *.tmp | Remove-Item'
+        )
+
+        foreach ($skipCase in $skipCases) {
+            $combined = Invoke-AgentGuardPolicy -Command $skipCase `
+                -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
+            $bashOnly = Invoke-AgentGuardPolicyForReading -Command $skipCase `
+                -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -Reading Bash
+            Assert-Equal $bashOnly.Action $combined.Action "Action for: $skipCase"
+            Assert-Equal $bashOnly.Rule $combined.Rule "Rule for: $skipCase"
+        }
+    }
+
     Invoke-TestCase 'Both Readings: a PowerShell-Reading denial names the Reading' {
         $decision = Invoke-AgentGuardPolicy `
             -Command ("Set-Content -Path $tick" + $fixture.Main + '\README.md -Value x') `
