@@ -129,8 +129,24 @@ function Get-SessionRecord {
                 if (-not $line.Trim()) { continue }
                 $record = try { $line | ConvertFrom-Json } catch { $null }
                 if (-not $record) { continue }
+
+                # Subagent records are excluded from the measurement, so no ledger row can come
+                # from one. Indexing them would let a sidechain record win the uuid and hand back
+                # the wrong route. The measurement script drops them the same way.
+                if ((Get-RecordProperty -Record $record -Name 'isSidechain') -eq $true) { continue }
+
                 $id = Get-RecordProperty -Record $record -Name 'uuid'
-                if ($id -and -not $index.ContainsKey([string]$id)) { $index[[string]$id] = $record }
+                if (-not $id) { continue }
+                $id = [string]$id
+
+                # One session file name can appear under more than one project directory. First
+                # one read wins, which is arbitrary, so say when the choice was ever made rather
+                # than resolving it in silence.
+                if ($index.ContainsKey($id)) {
+                    Write-Warning "uuid $id appears more than once under $SessionFile. Keeping the first record read."
+                    continue
+                }
+                $index[$id] = $record
             }
         }
         $recordBySession[$SessionFile] = $index
@@ -139,6 +155,25 @@ function Get-SessionRecord {
     $byUuid = $recordBySession[$SessionFile]
     if ($byUuid.ContainsKey($Uuid)) { return $byUuid[$Uuid] }
     return $null
+}
+
+function Format-RecordStamp {
+    <#
+    .SYNOPSIS
+        A record timestamp as a culture-independent ISO 8601 string.
+    #>
+    param([AllowNull()] $Value)
+
+    if ($null -eq $Value) { return '' }
+    if ($Value -is [datetime]) { return $Value.ToString('o', [cultureinfo]::InvariantCulture) }
+
+    $text = [string]$Value
+    $parsed = [datetime]::MinValue
+    if ([datetime]::TryParse($text, [cultureinfo]::InvariantCulture,
+            [System.Globalization.DateTimeStyles]::RoundtripKind, [ref]$parsed)) {
+        return $parsed.ToString('o', [cultureinfo]::InvariantCulture)
+    }
+    return $text
 }
 
 function Get-RecordRoute {
@@ -168,7 +203,10 @@ $labelled = foreach ($row in $rows) {
         Session          = $row.Session
         Route            = Get-RecordRoute -Record $record
         EventStamp       = if ($line.Length -ge 19) { $line.Substring(0, 19) } else { '' }
-        MessageStamp     = if ($record) { [string](Get-RecordProperty -Record $record -Name 'timestamp') } else { '' }
+        # ConvertFrom-Json turns an ISO timestamp into a [datetime], and casting that to a string
+        # uses the current culture. A committed artifact must not change shape with the machine
+        # that wrote it, so the round-trip format is written explicitly.
+        MessageStamp     = if ($record) { Format-RecordStamp -Value (Get-RecordProperty -Record $record -Name 'timestamp') } else { '' }
         InCurrentLog     = $inLog
         CheckedOn        = $checkedOn
         IsGenuineLogLine = if ($carried.ContainsKey("$($row.Key)|$($row.Line)")) { $carried["$($row.Key)|$($row.Line)"] } else { '' }
