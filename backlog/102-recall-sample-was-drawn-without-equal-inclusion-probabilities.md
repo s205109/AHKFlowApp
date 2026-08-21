@@ -6,7 +6,7 @@
 - **Type**: Process / tooling
 - **Interfaces**: none (scripts, docs)
 - **Difficulty**: moderate
-- **Stage**: 0-intake
+- **Stage**: 3-plan
 - **Depends on**: 072-process-wave-2-parity-drift-guard-templates
 
 ## Summary
@@ -62,7 +62,7 @@ the current 200 overlap.
 - The labelling cost is the whole item: roughly 386 rows read in full across the two metrics.
 - `tests/FrictionRecallSample.Tests.ps1` covers the draw's uniformity and its stability.
 - Spec: none — Design has not run.
-- Plan: none — the item is at Intake.
+- Plan: `docs/superpowers/plans/2026-08-21-friction-recall-interval-plan-102.md`
 
 ## Finding, 2026-08-21: the population is being deleted
 
@@ -90,5 +90,5 @@ Redrawing today would move the handoff range from 179–533 to about 153–452, 
 comes from the deletion rather than from the sampling defect this item was filed against. The
 whole window is deleted around 2026-09-11.
 
-The transcripts were copied to `C:\Users\btase\AHKFlowApp-friction-snapshot-2026-08-21`
-(755 files, 445 MB) on 2026-08-21, so what remains of the window stops shrinking.
+The transcripts were copied to `~/AHKFlowApp-friction-snapshot-2026-08-21` (755 files, 445 MB)
+on 2026-08-21, so what remains of the window stops shrinking.
