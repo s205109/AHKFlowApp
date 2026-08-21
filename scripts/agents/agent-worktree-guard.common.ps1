@@ -2462,7 +2462,15 @@ function Get-AgentSegmentWriteTarget {
     $targets = New-Object System.Collections.Generic.List[string]
     $tokens = @($Tokens)
     $masks = @($Masks)
-    if ($tokens.Count -eq 0) { return @() }
+    if ($tokens.Count -eq 0) {
+        return [pscustomobject]@{ Targets = @(); Unresolved = $false }
+    }
+
+    # Set when an operand holds a parenthesis the shell would act on, and when the leading word
+    # actually named a command that writes. Both halves are needed: the first alone would refuse
+    # an ordinary bash subshell such as `(cd repo && git status)`, whose leading token is '(cd'.
+    $argumentHasExpression = $false
+    $matchedWriteCommand = $false
 
     # --- Redirects -------------------------------------------------------------------------
     $consumedByRedirect = @{}
@@ -2497,6 +2505,16 @@ function Get-AgentSegmentWriteTarget {
         $mask = if ($i -lt $masks.Count) { [string] $masks[$i] } else { '' }
         if ((Find-AgentUnquotedRedirectIndex -Token $token -Mask $mask) -ge 0) { continue }
         $arguments += $token
+
+        # An unquoted parenthesis means PowerShell would evaluate this operand rather than pass it
+        # through, and the guard never evaluates. A quoted parenthesis is an ordinary Windows file
+        # name character - "Copy (2).txt" - so it must stay resolvable.
+        for ($c = 0; $c -lt $token.Length; $c++) {
+            if ($token[$c] -ne '(' -and $token[$c] -ne ')') { continue }
+            if ($c -lt $mask.Length -and $mask[$c] -eq 'q') { continue }
+            $argumentHasExpression = $true
+            break
+        }
     }
     $positionals = @(Get-AgentGitPositionals -Arguments $arguments)
 
@@ -2505,14 +2523,17 @@ function Get-AgentSegmentWriteTarget {
     # the rule would be dead rather than wrong.
     if (($script:AgentGuardLinkCommands -contains $leaf) -or
         ($leaf -eq 'cp' -and (Test-AgentGuardHasLinkFlag -Arguments $arguments))) {
+        $matchedWriteCommand = $true
         foreach ($target in (Get-AgentLinkWriteTarget -Leaf $leaf -Arguments $arguments)) {
             [void] $targets.Add($target)
         }
     }
     elseif ($script:AgentGuardWriteEveryPositional -contains $leaf) {
+        $matchedWriteCommand = $true
         foreach ($positional in $positionals) { [void] $targets.Add($positional) }
     }
     elseif ($script:AgentGuardWriteLastPositional -contains $leaf) {
+        $matchedWriteCommand = $true
         # A move reads its own operands, because a moved file may be named '-something' and only
         # a '--'-aware reader keeps it. cp and install do not delete, so they keep the older
         # positional reader.
@@ -2536,6 +2557,7 @@ function Get-AgentSegmentWriteTarget {
         }
     }
     elseif ($leaf -eq 'sed') {
+        $matchedWriteCommand = $true
         $inPlace = @($arguments | Where-Object { $_ -ceq '-i' -or $_ -clike '-i*' -or $_ -ceq '--in-place' }).Count -gt 0
         if ($inPlace) {
             # With -e or -f the script is an option value, so every positional is a file.
@@ -2546,11 +2568,13 @@ function Get-AgentSegmentWriteTarget {
         }
     }
     elseif ($leaf -eq 'dd') {
+        $matchedWriteCommand = $true
         foreach ($argument in $arguments) {
             if ($argument -ilike 'of=*') { [void] $targets.Add($argument.Substring(3)) }
         }
     }
     elseif ($script:AgentGuardWriteCmdlets.ContainsKey($leaf)) {
+        $matchedWriteCommand = $true
         # Operands with option values removed. Reading $positionals here was a hole rather than a
         # wart: `Set-Content -Encoding utf8 <main>\README.md hello` left 'utf8' in operand 0, so
         # the guard reported a relative path inside the worktree, never scanned the real target,
@@ -2590,6 +2614,7 @@ function Get-AgentSegmentWriteTarget {
         }
     }
     elseif ($script:AgentGuardWriteDestinationCmdlets -contains $leaf) {
+        $matchedWriteCommand = $true
         # Operands with option values removed, so `-Filter *.tmp` does not look like a file.
         $cmdletOperands = @(Get-AgentCmdletOperand -Arguments $arguments `
                 -ValueParameters $script:AgentGuardMoveValueParameters)
@@ -2647,7 +2672,10 @@ function Get-AgentSegmentWriteTarget {
         }
     }
 
-    return $targets.ToArray()
+    return [pscustomobject]@{
+        Targets    = $targets.ToArray()
+        Unresolved = ($argumentHasExpression -and $matchedWriteCommand)
+    }
 }
 
 # Cmdlets that DELETE whatever the pipeline hands them, and that bind that input to their own
@@ -2806,9 +2834,9 @@ function Get-AgentInterpreterInnerTarget {
             $restTokens = @($tokens[($i + 1)..$last])
             $maskEnd = [Math]::Min($last, $masks.Count - 1)
             $restMasks = if (($i + 1) -le $maskEnd) { @($masks[($i + 1)..$maskEnd]) } else { @() }
-            foreach ($target in (Get-AgentSegmentWriteTarget -Tokens $restTokens -Masks $restMasks)) {
-                [void] $found.Add($target)
-            }
+            $rest = Get-AgentSegmentWriteTarget -Tokens $restTokens -Masks $restMasks
+            foreach ($target in $rest.Targets) { [void] $found.Add($target) }
+            if ($rest.Unresolved) { $unresolved = $true }
         }
         break
     }
@@ -2849,9 +2877,9 @@ function Get-AgentCommandWriteTarget {
     $unresolved = $false
 
     foreach ($segment in $parsed.Segments) {
-        foreach ($target in (Get-AgentSegmentWriteTarget -Tokens $segment.Tokens -Masks $segment.Masks)) {
-            [void] $targets.Add($target)
-        }
+        $segmentTargets = Get-AgentSegmentWriteTarget -Tokens $segment.Tokens -Masks $segment.Masks
+        foreach ($target in $segmentTargets.Targets) { [void] $targets.Add($target) }
+        if ($segmentTargets.Unresolved) { $unresolved = $true }
 
         # A sink that deletes what the pipeline hands it names a path this scan cannot see, so the
         # target list is incomplete in exactly the way Unresolved reports.
@@ -3249,7 +3277,9 @@ function Get-AgentWorktreeWriteDecision {
             continue
         }
 
-        $targets = @(Get-AgentSegmentWriteTarget -Tokens $segment.Tokens -Masks $segment.Masks)
+        $segmentTargets = Get-AgentSegmentWriteTarget -Tokens $segment.Tokens -Masks $segment.Masks
+        $targets = @($segmentTargets.Targets)
+        if ($segmentTargets.Unresolved) { $unresolvedBlock = $true }
 
         # A sink that deletes what the pipeline hands it names a source no scan of this segment
         # can find. An empty source list is not "deletes nothing", so fail closed on it. This gets

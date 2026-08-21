@@ -1698,6 +1698,33 @@ try {
         Assert-Equal 'uuuuuuuuu' $segment.Masks[1] 'Mask'
     }
 
+    Write-Host 'A parenthesised write operand is unexpandable' -ForegroundColor Cyan
+
+    Invoke-TestCase 'A parenthesised path operand is unresolved' {
+        $parsed = Get-AgentCommandSegment -Command "Set-Content -Path ('C:\repo' + '\a.md') -Value x" `
+            -Reading PowerShell
+        $result = Get-AgentSegmentWriteTarget -Tokens $parsed.Segments[0].Tokens `
+            -Masks $parsed.Segments[0].Masks
+        Assert-Equal $true $result.Unresolved 'Unresolved'
+    }
+
+    Invoke-TestCase 'A quoted parenthesis in a filename stays resolvable' {
+        $parsed = Get-AgentCommandSegment -Command 'Set-Content -Path "Copy (2).txt" -Value x' `
+            -Reading PowerShell
+        $result = Get-AgentSegmentWriteTarget -Tokens $parsed.Segments[0].Tokens `
+            -Masks $parsed.Segments[0].Masks
+        Assert-Equal $false $result.Unresolved 'Unresolved'
+        Assert-Equal 'Copy (2).txt' (@($result.Targets) -join '|') 'Targets'
+    }
+
+    Invoke-TestCase 'A non-write command with a parenthesis is untouched' {
+        # A bash subshell holds '(cd'. The narrow rule must not drag it in.
+        $parsed = Get-AgentCommandSegment -Command '(cd C:\repo && git status)' -Reading PowerShell
+        $result = Get-AgentSegmentWriteTarget -Tokens $parsed.Segments[0].Tokens `
+            -Masks $parsed.Segments[0].Masks
+        Assert-Equal $false $result.Unresolved 'Unresolved'
+    }
+
     Write-Host 'Every parse site demands a Reading' -ForegroundColor Cyan
 
     $readingParameterNames = @(
@@ -1911,7 +1938,7 @@ try {
         $parsed = Get-AgentCommandSegment -Command "cat <<'a>b'`nbody`na>b" -Reading Bash
         $segment = $parsed.Segments[0]
         Assert-Equal 'cat <<a>b' ($segment.Tokens -join ' ') 'Tokens'
-        $targets = @(Get-AgentSegmentWriteTarget -Tokens $segment.Tokens -Masks $segment.Masks)
+        $targets = @((Get-AgentSegmentWriteTarget -Tokens $segment.Tokens -Masks $segment.Masks).Targets)
         Assert-Equal '' ($targets -join '|') 'Targets'
     }
 
@@ -1994,7 +2021,7 @@ try {
         $parsed = Get-AgentCommandSegment -Command "Set-Content -Path out.txt -Value @'`nbody`n'@" -Reading Bash
         $segment = $parsed.Segments[0]
         Assert-Equal "Set-Content -Path out.txt -Value @'" ($segment.Tokens -join ' ') 'Tokens'
-        $targets = @(Get-AgentSegmentWriteTarget -Tokens $segment.Tokens -Masks $segment.Masks)
+        $targets = @((Get-AgentSegmentWriteTarget -Tokens $segment.Tokens -Masks $segment.Masks).Targets)
         Assert-Equal 'out.txt' ($targets -join '|') 'Targets'
     }
 
@@ -2459,7 +2486,7 @@ try {
             $parsed = Get-AgentCommandSegment -Command $case.Command -Reading Bash
             $actual = @()
             foreach ($segment in $parsed.Segments) {
-                $actual += @(Get-AgentSegmentWriteTarget -Tokens $segment.Tokens -Masks $segment.Masks)
+                $actual += @((Get-AgentSegmentWriteTarget -Tokens $segment.Tokens -Masks $segment.Masks).Targets)
             }
             Assert-Equal ($case.Expected -join '|') ($actual -join '|') 'Targets'
         }
