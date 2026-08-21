@@ -6,7 +6,7 @@
 - **Type**: Process / tooling
 - **Interfaces**: none (scripts)
 - **Difficulty**: complex
-- **Stage**: 1-pickup
+- **Stage**: 2-design
 - **Depends on**: 072-process-wave-2-parity-drift-guard-templates
 
 ## Summary
