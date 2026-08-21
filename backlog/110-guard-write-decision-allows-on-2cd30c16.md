@@ -52,5 +52,5 @@ Difficulty is `to-be-determined` rather than a guess.
 - Both citations move when 093 lands. Re-read them before starting this item.
   Re-read on 2026-08-21 with 093 merged: both line numbers are unchanged
 - Base: `origin/main` at f677f1bb, confirmed at Pickup
-- Spec: none — needs Design first
+- Spec: `docs/superpowers/specs/2026-08-21-guard-ambiguous-parse-design-110.md`
 - Plan: none — not yet at Plan
