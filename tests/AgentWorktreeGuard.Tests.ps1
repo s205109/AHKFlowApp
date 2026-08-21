@@ -3177,6 +3177,36 @@ try {
         Assert-Match 'PowerShell reads this command differently from bash' $decision.Message 'Message'
     }
 
+    Write-Host 'Backlog 093 acceptance' -ForegroundColor Cyan
+
+    $readingCases = @(
+        @{ Name = 'Set-Content, plain'; Command = 'Set-Content -Path {MAIN}\README.md -Value x' }
+        @{ Name = 'Set-Content, backtick'; Command = 'Set-Content -Path {TICK}{MAIN}\README.md -Value x' }
+        @{ Name = 'Set-Content, parens'; Command = "Set-Content -Path ('{MAIN}' + '\README.md') -Value x" }
+        @{ Name = 'Remove-Item, backtick'; Command = 'Remove-Item -LiteralPath {TICK}{MAIN}\README.md' }
+        @{ Name = 'rm, backtick'; Command = 'rm {TICK}{MAIN}/README.md' }
+        @{ Name = 'New-Item, backtick item type'; Command = 'New-Item -ItemType {TICK}Sym -Path {WT}\bait.md -Target {MAIN}\README.md' }
+        @{ Name = 'New-Item, parenthesised item type'; Command = "New-Item -ItemType ('Sym'+'bolicLink') -Path {WT}\bait.md -Target {MAIN}\README.md" }
+        @{ Name = 'bash subshell'; Command = '(cd {MAIN} && git commit -m x)' }
+    )
+
+    foreach ($readingCase in $readingCases) {
+        Invoke-TestCase "Backlog 093 denies: $($readingCase.Name)" {
+            $resolved = $readingCase.Command.
+            Replace('{TICK}', $tick).
+            Replace('{MAIN}', $fixture.Main).
+            Replace('{WT}', $fixture.Managed)
+            $decision = Invoke-AgentGuardPolicy -Command $resolved `
+                -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
+            Assert-Equal 'Deny' $decision.Action 'Action'
+        }
+    }
+
+    Invoke-TestCase 'Backlog 093: a bash backtick substitution still exposes git' {
+        $parsed = Get-AgentCommandSegment -Command "echo ${tick}git rev-parse HEAD${tick}" -Reading Bash
+        Assert-Equal 1 @($parsed.Segments | Where-Object { $_.Kind -eq 'Git' }).Count 'Git segments'
+    }
+
     Invoke-TestCase 'Write isolation: rm -rf on a worktree glob is not a write-rule denial' {
         $decision = Get-AgentWorktreeWriteDecision -Command 'rm -rf ./obj/*' `
             -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false -Reading Bash
