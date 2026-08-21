@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: none (agent git guard)
 - **Difficulty**: moderate
-- **Stage**: 2-design
+- **Stage**: 3-plan
 
 ## Summary
 
@@ -60,4 +60,4 @@ Difficulty is `to-be-determined` rather than a guess.
   Re-read on 2026-08-21 with 093 merged: both line numbers are unchanged
 - Base: `origin/main` at f677f1bb, confirmed at Pickup
 - Spec: `docs/superpowers/specs/2026-08-21-guard-ambiguous-parse-design-110.md`
-- Plan: none — not yet at Plan
+- Plan: `docs/superpowers/plans/2026-08-21-guard-ambiguous-parse-plan-110.md`
