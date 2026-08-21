@@ -47,6 +47,6 @@ a newline. That can mis-name a path, and it can never hide a command leaf. Contr
 illegal in Windows paths, so this is accepted rather than modelled.
 
 Recursion into a nested interpreter deliberately carries no shell knowledge, even though
-`AgentGuardInterpreterSpecs` (`scripts/agents/agent-worktree-guard.common.ps1:2812`, "$script:AgentGuardInterpreterSpecs = @(")
+`AgentGuardInterpreterSpecs` (`scripts/agents/agent-worktree-guard.common.ps1:2841`, "$script:AgentGuardInterpreterSpecs = @(")
 names the shell of `pwsh -c` exactly. Reading the inner text in one Reading instead of two could
 only ever read less than both Readings do.
