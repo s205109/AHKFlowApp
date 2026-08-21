@@ -37,7 +37,7 @@ so that one private repository holds all of my planning work.
 
 ## Notes / dependencies
 
-- The rule now lives in two bullets, starting at (`AGENTS.md:156`, "Commit a project plan or spec to").
+- The rule now lives in two bullets, starting at (`AGENTS.md:159`, "Commit a project plan or spec to").
   Both link to `docs/development/workflow.md#stage-3-plan`, which now carries the narrative.
 - (`scripts/backlog.common.ps1:169`, "if ($Value -notmatch '^`docs/superpowers/plans/[^/`]+\.md`\.?$') { return $false }")
   requires a `- Plan:` pointer to match a single file directly inside
