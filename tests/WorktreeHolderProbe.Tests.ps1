@@ -67,6 +67,24 @@ try {
     Assert-True (@($fileHolders | Where-Object { $_.ProcessId -eq $fileProc.Id }).Count -eq 1) `
         "The open-file holder (PID $($fileProc.Id)) must be named"
 
+    # --- a sibling folder with the same prefix is not a holder --------------
+    # Every worktree sits in one parent folder, so wt-feature and wt-feature-extra are siblings.
+    # A plain StartsWith on the root would report the second as holding the first, and the human
+    # would go and close the wrong window.
+    $sibling = $cwdDir + '-extra'
+    New-Item -ItemType Directory -Path $sibling -Force | Out-Null
+    $siblingProc = Start-Process -FilePath 'powershell.exe' -WindowStyle Hidden -PassThru `
+        -WorkingDirectory $sibling `
+        -ArgumentList @('-NoProfile', '-Command', 'Start-Sleep -Seconds 60')
+    $processes += $siblingProc
+    Start-Sleep -Seconds 2
+    $siblingHolders = @(Get-WorktreeFolderHolder -Path $cwdDir)
+    Assert-Equal 0 (@($siblingHolders | Where-Object { $_.ProcessId -eq $siblingProc.Id })).Count `
+        "A process in '$sibling' must not be reported as holding '$cwdDir'"
+    # The real holder is still found, so the fix narrowed the match rather than breaking it.
+    Assert-True (@($siblingHolders | Where-Object { $_.ProcessId -eq $cwdProc.Id }).Count -eq 1) `
+        "The real current-directory holder (PID $($cwdProc.Id)) must still be named"
+
     # --- deduplication by PID ---------------------------------------------
     $allIds = @(Get-WorktreeFolderHolder -Path $cwdDir | ForEach-Object { $_.ProcessId })
     Assert-Equal $allIds.Count (@($allIds | Sort-Object -Unique)).Count 'Holders must be deduplicated by process ID'
