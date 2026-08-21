@@ -276,6 +276,12 @@ function Get-AgentCommandSafetyDecision {
         return New-AgentGuardDecision -Action Allow
     }
 
+    # Parsed once here and reused below. A command the guard could not read is refused before any
+    # classification runs: the git, rm and dotnet rules all read tokens this parse never produced,
+    # so falling through to them would read an empty token list as "holds nothing dangerous".
+    $parsed = Get-AgentCommandSegment -Command $Command -Reading $Reading
+    if ($parsed.Ambiguous) { return New-AgentGuardAmbiguousDecision }
+
     $gitDecision = Get-AgentGitSafetyDecision -Command $Command -Reading $Reading
     if ($gitDecision.Action -ne 'Allow') { return $gitDecision }
 
@@ -284,7 +290,7 @@ function Get-AgentCommandSafetyDecision {
     # read as an invocation. Only a segment's leading command word is inspected. A wrapped
     # `sudo rm -rf` hides exactly the way `sh -c 'git ...'` already does: the documented wrapper
     # gap, not a new one.
-    $segments = @((Get-AgentCommandSegment -Command $Command -Reading $Reading).Segments)
+    $segments = @($parsed.Segments)
 
     foreach ($segment in $segments) {
         if ((Get-AgentOtherCommandLeaf -Segment $segment) -ne 'rm') { continue }
@@ -370,8 +376,9 @@ function Test-AgentDangerousRmArguments {
 Applies the destructive git rules to every parsed git invocation in a command.
 
 .DESCRIPTION
-An unparseable command yields Allow here; Get-AgentWorktreeGuardDecision denies it separately
-with the ambiguous-command rule, so nothing slips through by returning Allow.
+An Ambiguous Reading is refused here, with the same rule and message every policy layer returns.
+Get-AgentCommandSafetyDecision refuses it before this function is reached, so this check is for a
+direct caller and for any future caller that skips the layer entry point.
 #>
 function Get-AgentGitSafetyDecision {
     [CmdletBinding()]
@@ -383,7 +390,7 @@ function Get-AgentGitSafetyDecision {
     )
 
     $parsed = Get-AgentGitInvocation -Command $Command -Reading $Reading
-    if ($parsed.Ambiguous) { return New-AgentGuardDecision -Action Allow }
+    if ($parsed.Ambiguous) { return New-AgentGuardAmbiguousDecision }
 
     foreach ($tokens in $parsed.Invocations) {
         $parts = Get-AgentGitParts -Tokens $tokens

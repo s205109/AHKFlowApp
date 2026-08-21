@@ -796,6 +796,26 @@ try {
         Assert-Equal 'ambiguous-command' $decision.Rule 'Rule'
     }
 
+    Write-Host 'An unreadable command is refused by every policy layer' -ForegroundColor Cyan
+
+    # Ends inside a double quote, so both Readings of it are Ambiguous. It holds no git at all,
+    # which is why the rule is named for the command and not for git.
+    $unreadable = 'printf x > "somewhere.txt'
+
+    foreach ($reading in @('Bash', 'PowerShell')) {
+        Invoke-TestCase "Safety layer refuses an unreadable command ($reading Reading)" {
+            $decision = Get-AgentCommandSafetyDecision -Command $unreadable -Reading $reading
+            Assert-Equal 'Deny' $decision.Action 'Action'
+            Assert-Equal 'ambiguous-command' $decision.Rule 'Rule'
+        }
+
+        Invoke-TestCase "Git safety classifier refuses an unreadable command ($reading Reading)" {
+            $decision = Get-AgentGitSafetyDecision -Command $unreadable -Reading $reading
+            Assert-Equal 'Deny' $decision.Action 'Action'
+            Assert-Equal 'ambiguous-command' $decision.Rule 'Rule'
+        }
+    }
+
     Write-Host 'Tier reclassification' -ForegroundColor Cyan
 
     $somewhere = Join-Path $fixture.TestRoot 'somewhere'
