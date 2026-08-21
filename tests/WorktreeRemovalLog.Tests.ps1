@@ -112,6 +112,13 @@ try {
         Assert-True ($text -match '^(Removed\.|Kept: |Failed: )') "Outcome '$text' must start with Removed., Kept: or Failed:"
     }
 
+    # --- the timeout path names holders, or says it could not -------------
+    $source = Get-Content -Raw -LiteralPath (Join-Path $scriptsDir 'remove-worktree-local-dev.ps1')
+    Assert-True ($source -match 'Get-WorktreeFolderHolder') 'The timeout path must run the holder probe'
+    Assert-True ($source -match 'Kept: the folder is still in use by ') 'The named-holder outcome must exist'
+    Assert-True ($source -match 'Kept: the folder is still in use, and no holding process could be identified\.') `
+        'The no-holder outcome must exist'
+
     Write-Host 'Worktree removal log tests passed.'
 } finally {
     Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue

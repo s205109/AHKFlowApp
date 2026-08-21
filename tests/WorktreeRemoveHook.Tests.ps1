@@ -195,6 +195,19 @@ function Wait-ForCondition {
     return & $Condition
 }
 
+# The outcome line the WATCHER owns arrives after the folder is gone: the watcher deletes, prunes,
+# deletes the branch, and writes its one line last. So a test that saw the folder disappear must
+# still wait for the line, or it reads a log file that does not exist yet.
+function Wait-ForOutcomeLine {
+    param([string] $RepoDir, [int] $TimeoutSeconds = 20)
+
+    $path = Get-RemovalLogPath $RepoDir
+    $null = Wait-ForCondition -TimeoutSeconds $TimeoutSeconds -Condition {
+        (Test-Path -LiteralPath $path) -and (@(Get-Content -LiteralPath $path)).Count -ge 1
+    }
+    return @(Get-Content -LiteralPath $path -ErrorAction SilentlyContinue)
+}
+
 # --- Test: Assert-True names the call site when handed a non-boolean -----------
 # Backlog 068 saw an array reach Assert-True once, and never found which line sent it. A typed
 # [bool] parameter fails during parameter binding, and a binding failure names no line. This test
@@ -320,7 +333,7 @@ try {
     Assert-True ($diagnostics -match '(?i)force override.*bypassing merge/clean gate') "Expected a force-override diagnostic proving the gate was consulted and bypassed. Log: $diagnostics"
 
     # The watcher owns the line on this path, and it removed the folder.
-    $outcomeLines = @(Get-Content -LiteralPath (Get-RemovalLogPath $repo))
+    $outcomeLines = @(Wait-ForOutcomeLine -RepoDir $repo)
     Assert-Equal 1 $outcomeLines.Count "A forced removal writes exactly one outcome line, got $($outcomeLines.Count)"
     Assert-True ($outcomeLines[0] -match 'Removed\.$') "Expected the removed line, got '$($outcomeLines[0])'"
 } finally {

@@ -78,6 +78,20 @@ if (Test-Path -LiteralPath $gitHelperPath) {
     . $gitHelperPath
 }
 
+# The holder probe. The watcher copies this file into its own temp folder beside the watcher
+# script, so $PSScriptRoot finds it in both modes.
+$holderHelperPath = Join-Path $PSScriptRoot 'worktree-holder.common.ps1'
+if (Test-Path -LiteralPath $holderHelperPath) { . $holderHelperPath }
+
+# The watcher runs from a temp snapshot where this helper may not exist. It must still be able
+# to write its outcome line, so the fallback returns no holders rather than failing.
+if (-not (Get-Command Get-WorktreeFolderHolder -ErrorAction SilentlyContinue)) {
+    function Get-WorktreeFolderHolder { param([string] $Path) return @() }
+}
+if (-not (Get-Command Format-HolderSummary -ErrorAction SilentlyContinue)) {
+    function Format-HolderSummary { param([object[]] $Holder) return '' }
+}
+
 # The watcher runs from a copy of this script in %TEMP%, where scripts\ does not exist. It never
 # reaches the merged gate -- that gate is on the hook path only -- but the fallback keeps the copy
 # loadable, and keeps the old local-branch behavior if the helper ever goes missing.
@@ -405,6 +419,15 @@ function Write-TimeoutGuidance {
     if ($LastError) {
         Write-DiagnosticLog "Last rename error: $LastError"
     }
+
+    # Run once, here. The retry loop attempts a rename every 750 ms for up to 300 seconds, and
+    # enumerating processes, opening a Restart Manager session and reading PEBs on every attempt
+    # would cost far more than it explains.
+    $holders = @(Get-WorktreeFolderHolder -Path $WorktreeFull)
+    foreach ($holder in $holders) {
+        Write-DiagnosticLog "Holder: $($holder.Name) (PID $($holder.ProcessId)) found by $($holder.Layer) - $($holder.Path)"
+    }
+
     Write-DiagnosticLog 'The worktree was preserved. Close terminals, editors, shells, or Claude sessions opened inside that folder, then run:'
     if ($MainCheckout) {
         Write-DiagnosticLog ('  ' + (Format-GitCommand $MainCheckout @('worktree', 'remove', $WorktreeFull)))
@@ -419,7 +442,14 @@ function Write-TimeoutGuidance {
             Write-DiagnosticLog ('  ' + (Format-GitCommand $null @('branch', '-d', '--', $BranchName)))
         }
     }
-    Write-DiagnosticLog "Details were logged to: $script:LogPath"
+    Write-DiagnosticLog "Details were logged to: $script:DiagnosticsPath"
+
+    $summary = Format-HolderSummary -Holder $holders
+    if ($summary) {
+        Write-Outcome "Kept: the folder is still in use by $summary."
+    } else {
+        Write-Outcome 'Kept: the folder is still in use, and no holding process could be identified.'
+    }
 }
 
 # Removability probe: merged = the branch's own work reached the base, decided by the ONE rule the
@@ -829,6 +859,18 @@ function Invoke-HookMode {
         Write-DiagnosticLog "Failed to snapshot watcher script: $($_.Exception.Message). Aborting (worktree left intact)."
         Write-Outcome 'Failed: the watcher could not be prepared.'
         return
+    }
+
+    # The holder probe travels with the watcher, so a timed-out removal can still name the
+    # process holding the folder. A copy that fails is not fatal: the inline fallback above
+    # takes over and the outcome line degrades to the no-holder wording.
+    try {
+        $holderSource = Join-Path $PSScriptRoot 'worktree-holder.common.ps1'
+        if (Test-Path -LiteralPath $holderSource) {
+            Copy-Item -LiteralPath $holderSource -Destination (Join-Path $tempDir 'worktree-holder.common.ps1') -Force
+        }
+    } catch {
+        Write-DiagnosticLog "Could not copy the holder probe beside the watcher: $($_.Exception.Message). A timed-out removal will not name the holder."
     }
 
     $payload = [ordered]@{
