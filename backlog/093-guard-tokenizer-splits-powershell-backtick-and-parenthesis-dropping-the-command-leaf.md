@@ -5,7 +5,8 @@
 - **Epic**: Agent guardrails
 - **Type**: Bug
 - **Interfaces**: none (agent git guard)
-- **Stage**: 0-intake
+- **Difficulty**: complex
+- **Stage**: 8-review
 
 ## Summary
 
@@ -55,12 +56,12 @@ and `rm` examples above carry no item type and no link, and they fail the same w
 
 ## Acceptance criteria
 
-- [ ] A PowerShell command holding a backtick is read as one command, or refused
-- [ ] A PowerShell command holding a parenthesised expression is read as one command, or refused
-- [ ] `rm` and `Set-Content` with a backtick before a main-checkout path report Deny
-- [ ] `New-Item -ItemType` with a backtick or a parenthesised expression reports Deny
-- [ ] A bash subshell `( ... )` and a bash backtick substitution still split into segments
-- [ ] A test pins each command in the Detail section above at Deny
+- [x] A PowerShell command holding a backtick is read as one command, or refused
+- [x] A PowerShell command holding a parenthesised expression is read as one command, or refused
+- [x] `rm` and `Set-Content` with a backtick before a main-checkout path report Deny
+- [x] `New-Item -ItemType` with a backtick or a parenthesised expression reports Deny
+- [x] A bash subshell `( ... )` and a bash backtick substitution still split into segments
+- [x] A test pins each command in the Detail section above at Deny
 
 ## Out of scope
 
@@ -78,3 +79,5 @@ and `rm` examples above carry no item type and no link, and they fail the same w
 - Refusing is allowed. `Get-AgentCommandSegment` already returns `Ambiguous = $true` for an
   unterminated quote (`scripts/agents/agent-worktree-guard.common.ps1:767-768`), and that path
   fails closed
+- Spec: `docs/superpowers/specs/2026-08-20-guard-both-shell-readings-design-093.md`
+- Plan: `docs/superpowers/plans/2026-08-21-guard-both-shell-readings-plan-093.md`

@@ -205,6 +205,10 @@ _Avoid_: scratch worktree, temp worktree, misc worktree
 The code that refuses an agent action reaching outside its own worktree, such as a write into the main checkout. There is one, so "the guard" always means it.
 _Avoid_: check, gate, hook, protection
 
+**Reading**:
+One interpretation of a command string under one shell's quoting rules. Every command has a bash Reading and a PowerShell Reading, and the Guard keeps the worst decision either one produces.
+_Avoid_: shell mode, parse, pass, interpretation
+
 **Check**:
 A script that compares two records which must agree, and fails a run when they do not. Each Check reports one kind of disagreement.
 _Avoid_: guard, gate, validator, linter

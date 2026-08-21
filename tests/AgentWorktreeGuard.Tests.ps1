@@ -628,7 +628,7 @@ try {
 
     foreach ($case in $safetyCases) {
         Invoke-TestCase "Safety rule: $($case.Command)" {
-            $decision = Get-AgentCommandSafetyDecision -Command $case.Command
+            $decision = Get-AgentCommandSafetyDecision -Command $case.Command -Reading Bash
             Assert-Equal $case.Action $decision.Action 'Action'
             Assert-Equal $case.Rule $decision.Rule 'Rule'
         }
@@ -657,7 +657,7 @@ try {
 
     foreach ($case in $indirectSafetyCases) {
         Invoke-TestCase "Safety rule survives indirection: $($case.Command)" {
-            $decision = Get-AgentCommandSafetyDecision -Command $case.Command
+            $decision = Get-AgentCommandSafetyDecision -Command $case.Command -Reading Bash
             Assert-Equal 'Deny' $decision.Action 'Action'
             Assert-Equal $case.Rule $decision.Rule 'Rule'
         }
@@ -695,7 +695,7 @@ try {
 
     foreach ($case in $rmDotnetCases) {
         Invoke-TestCase "Segment safety: $($case.Command)" {
-            $decision = Get-AgentCommandSafetyDecision -Command $case.Command
+            $decision = Get-AgentCommandSafetyDecision -Command $case.Command -Reading Bash
             Assert-Equal $case.Action $decision.Action 'Action'
             Assert-Equal $case.Rule $decision.Rule 'Rule'
         }
@@ -1192,7 +1192,7 @@ try {
     )
     foreach ($command in $mutatingCommands) {
         Invoke-TestCase "Mutation detected: $command" {
-            $parsed = Get-AgentGitInvocation -Command $command
+            $parsed = Get-AgentGitInvocation -Command $command -Reading Bash
             $anyMutation = @($parsed.Invocations | Where-Object { Test-AgentGitMutation -Tokens $_ }).Count -gt 0
             Assert-True $anyMutation 'expected a mutation'
         }
@@ -1215,7 +1215,7 @@ try {
     )
     foreach ($command in $readOnlyCommands) {
         Invoke-TestCase "No mutation: $command" {
-            $parsed = Get-AgentGitInvocation -Command $command
+            $parsed = Get-AgentGitInvocation -Command $command -Reading Bash
             if ($parsed.Ambiguous) { throw 'unexpected ambiguous parse' }
             $anyMutation = @($parsed.Invocations | Where-Object { Test-AgentGitMutation -Tokens $_ }).Count -gt 0
             Assert-True (-not $anyMutation) 'expected no mutation'
@@ -1676,7 +1676,7 @@ try {
 
     foreach ($case in $maskCases) {
         Invoke-TestCase "Mask: $($case.Command)" {
-            $parsed = Get-AgentCommandSegment -Command $case.Command
+            $parsed = Get-AgentCommandSegment -Command $case.Command -Reading Bash
             $segment = $parsed.Segments[0]
             Assert-Equal $case.ExpectedToken $segment.Tokens[$case.Token] 'Token'
             Assert-Equal $case.ExpectedMask $segment.Masks[$case.Token] 'Mask'
@@ -1684,22 +1684,115 @@ try {
     }
 
     Invoke-TestCase 'Mask: an escaped redirect character is quoted, not a redirect' {
-        $parsed = Get-AgentCommandSegment -Command 'printf x\>y'
+        $parsed = Get-AgentCommandSegment -Command 'printf x\>y' -Reading Bash
         $segment = $parsed.Segments[0]
         Assert-Equal 'x>y' $segment.Tokens[1] 'Token'
         Assert-Equal 'uqu' $segment.Masks[1] 'Mask'
     }
 
     Invoke-TestCase 'Mask: masks stay aligned after an rtk wrapper is stripped' {
-        $parsed = Get-AgentCommandSegment -Command 'rtk proxy printf x>out.txt'
+        $parsed = Get-AgentCommandSegment -Command 'rtk proxy printf x>out.txt' -Reading Bash
         $segment = $parsed.Segments[0]
         Assert-Equal 'printf' $segment.Tokens[0] 'Leading token'
         Assert-Equal 'x>out.txt' $segment.Tokens[1] 'Target token'
         Assert-Equal 'uuuuuuuuu' $segment.Masks[1] 'Mask'
     }
 
+    Write-Host 'A parenthesised write operand is unexpandable' -ForegroundColor Cyan
+
+    Invoke-TestCase 'A parenthesised path operand is unresolved' {
+        $parsed = Get-AgentCommandSegment -Command "Set-Content -Path ('C:\repo' + '\a.md') -Value x" `
+            -Reading PowerShell
+        $result = Get-AgentSegmentWriteTarget -Tokens $parsed.Segments[0].Tokens `
+            -Masks $parsed.Segments[0].Masks
+        Assert-Equal $true $result.Unresolved 'Unresolved'
+    }
+
+    Invoke-TestCase 'A quoted parenthesis in a filename stays resolvable' {
+        $parsed = Get-AgentCommandSegment -Command 'Set-Content -Path "Copy (2).txt" -Value x' `
+            -Reading PowerShell
+        $result = Get-AgentSegmentWriteTarget -Tokens $parsed.Segments[0].Tokens `
+            -Masks $parsed.Segments[0].Masks
+        Assert-Equal $false $result.Unresolved 'Unresolved'
+        Assert-Equal 'Copy (2).txt' (@($result.Targets) -join '|') 'Targets'
+    }
+
+    Invoke-TestCase 'A non-write command with a parenthesis is untouched' {
+        # A bash subshell holds '(cd'. The narrow rule must not drag it in.
+        $parsed = Get-AgentCommandSegment -Command '(cd C:\repo && git status)' -Reading PowerShell
+        $result = Get-AgentSegmentWriteTarget -Tokens $parsed.Segments[0].Tokens `
+            -Masks $parsed.Segments[0].Masks
+        Assert-Equal $false $result.Unresolved 'Unresolved'
+    }
+
+    Write-Host 'Every parse site demands a Reading' -ForegroundColor Cyan
+
+    $readingParameterNames = @(
+        'Split-AgentCommandSegment', 'Get-AgentCommandSegment',
+        'Get-AgentCommandSafetyDecision', 'Get-AgentGitSafetyDecision',
+        'Get-AgentGitInvocation', 'Get-AgentWorktreeGuardDecision',
+        'Get-AgentInterpreterInnerTarget', 'Get-AgentCommandWriteTarget',
+        'Get-AgentWorktreeWriteDecision', 'Invoke-AgentGuardPolicyForReading'
+    )
+
+    foreach ($readingName in $readingParameterNames) {
+        Invoke-TestCase "$readingName takes a mandatory -Reading" {
+            $parameter = (Get-Command $readingName).Parameters['Reading']
+            Assert-True ($null -ne $parameter) "$readingName has no -Reading parameter"
+            $mandatory = @($parameter.Attributes | Where-Object {
+                    $_ -is [System.Management.Automation.ParameterAttribute] -and $_.Mandatory
+                })
+            Assert-True ($mandatory.Count -gt 0) "$readingName lets -Reading default silently"
+        }
+    }
+
+    Write-Host 'Two Readings of one command' -ForegroundColor Cyan
+
+    Invoke-TestCase 'PowerShell Reading: a backtick escapes, it does not separate' {
+        $parsed = Get-AgentCommandSegment -Command 'Set-Content -Path `C:\repo\a.md -Value x' `
+            -Reading PowerShell
+        Assert-Equal $false $parsed.Ambiguous 'Ambiguous'
+        Assert-Equal 1 @($parsed.Segments).Count 'Segment count'
+        Assert-Equal 'Set-Content|-Path|C:\repo\a.md|-Value|x' `
+        (@($parsed.Segments[0].Tokens) -join '|') 'Tokens'
+    }
+
+    Invoke-TestCase 'PowerShell Reading: the escaped character is masked quoted' {
+        $parsed = Get-AgentCommandSegment -Command 'rm `C:\repo\a.md' -Reading PowerShell
+        # Token 1 is C:\repo\a.md. The escaped 'C' is masked 'q'; the other 11 stay unquoted.
+        Assert-Equal 'quuuuuuuuuuu' ([string] $parsed.Segments[0].Masks[1]) 'Mask'
+    }
+
+    Invoke-TestCase 'PowerShell Reading: a parenthesis does not separate' {
+        $parsed = Get-AgentCommandSegment -Command "Set-Content -Path ('C:\repo' + '\a.md') -Value x" `
+            -Reading PowerShell
+        Assert-Equal 1 @($parsed.Segments).Count 'Segment count'
+        Assert-Equal 'Set-Content|-Path|(C:\repo|+|\a.md)|-Value|x' `
+        (@($parsed.Segments[0].Tokens) -join '|') 'Tokens'
+    }
+
+    Invoke-TestCase 'PowerShell Reading: separators both shells share still split' {
+        $parsed = Get-AgentCommandSegment -Command 'cd C:\repo; git status' -Reading PowerShell
+        Assert-Equal 2 @($parsed.Segments).Count 'Segment count'
+    }
+
+    Invoke-TestCase 'PowerShell Reading: a trailing backtick is ambiguous' {
+        $parsed = Get-AgentCommandSegment -Command 'rm C:\repo\a.md `' -Reading PowerShell
+        Assert-Equal $true $parsed.Ambiguous 'Ambiguous'
+    }
+
+    Invoke-TestCase 'Bash Reading: a subshell still splits' {
+        $parsed = Get-AgentCommandSegment -Command '(cd C:\repo && git commit -m x)' -Reading Bash
+        Assert-Equal 2 @($parsed.Segments).Count 'Segment count'
+    }
+
+    Invoke-TestCase 'Bash Reading: a backtick substitution still exposes git' {
+        $parsed = Get-AgentCommandSegment -Command 'echo `git rev-parse HEAD`' -Reading Bash
+        Assert-Equal 1 @($parsed.Segments | Where-Object { $_.Kind -eq 'Git' }).Count 'Git segments'
+    }
+
     Invoke-TestCase 'Mask: masks stay aligned after a NAME=value prefix is stripped' {
-        $parsed = Get-AgentCommandSegment -Command 'FOO=1 printf x>out.txt'
+        $parsed = Get-AgentCommandSegment -Command 'FOO=1 printf x>out.txt' -Reading Bash
         $segment = $parsed.Segments[0]
         Assert-Equal 'printf' $segment.Tokens[0] 'Leading token'
         Assert-Equal 'uuuuuuuuu' $segment.Masks[1] 'Mask'
@@ -1814,7 +1907,7 @@ try {
 
     foreach ($case in $heredocCases) {
         Invoke-TestCase "Heredoc body: $($case.Name)" {
-            $parsed = Get-AgentCommandSegment -Command $case.Command
+            $parsed = Get-AgentCommandSegment -Command $case.Command -Reading Bash
             Assert-True (-not $parsed.Ambiguous) 'parse must not be ambiguous'
             $actual = @($parsed.Segments | ForEach-Object { ($_.Tokens -join ' ') }) -join ' :: '
             Assert-Equal $case.Expected $actual 'Segments'
@@ -1836,21 +1929,21 @@ try {
 
     foreach ($case in $heredocAmbiguousCases) {
         Invoke-TestCase "Heredoc body: ambiguous for $($case.Name)" {
-            $parsed = Get-AgentCommandSegment -Command $case.Command
+            $parsed = Get-AgentCommandSegment -Command $case.Command -Reading Bash
             Assert-True ([bool] $parsed.Ambiguous) 'parse must be ambiguous'
         }
     }
 
     Invoke-TestCase 'Heredoc body: a quoted delimiter never reads as a redirect' {
-        $parsed = Get-AgentCommandSegment -Command "cat <<'a>b'`nbody`na>b"
+        $parsed = Get-AgentCommandSegment -Command "cat <<'a>b'`nbody`na>b" -Reading Bash
         $segment = $parsed.Segments[0]
         Assert-Equal 'cat <<a>b' ($segment.Tokens -join ' ') 'Tokens'
-        $targets = @(Get-AgentSegmentWriteTarget -Tokens $segment.Tokens -Masks $segment.Masks)
+        $targets = @((Get-AgentSegmentWriteTarget -Tokens $segment.Tokens -Masks $segment.Masks).Targets)
         Assert-Equal '' ($targets -join '|') 'Targets'
     }
 
     Invoke-TestCase 'Heredoc body: an opener inside quotes is text, not an opener' {
-        $parsed = Get-AgentCommandSegment -Command "git commit -m ""see <<EOF for the format"""
+        $parsed = Get-AgentCommandSegment -Command "git commit -m ""see <<EOF for the format""" -Reading Bash
         Assert-True (-not $parsed.Ambiguous) 'parse must not be ambiguous'
         Assert-Equal 'commit -m see <<EOF for the format' `
             ($parsed.Segments[0].Tokens -join ' ') 'Tokens'
@@ -1903,7 +1996,7 @@ try {
 
     foreach ($case in $hereStringCases) {
         Invoke-TestCase "Here-string body: $($case.Name)" {
-            $parsed = Get-AgentCommandSegment -Command $case.Command
+            $parsed = Get-AgentCommandSegment -Command $case.Command -Reading Bash
             Assert-True (-not $parsed.Ambiguous) 'parse must not be ambiguous'
             $actual = @($parsed.Segments | ForEach-Object { ($_.Tokens -join ' ') }) -join ' :: '
             Assert-Equal $case.Expected $actual 'Segments'
@@ -1919,16 +2012,16 @@ try {
 
     foreach ($case in $hereStringAmbiguousCases) {
         Invoke-TestCase "Here-string body: ambiguous for $($case.Name)" {
-            $parsed = Get-AgentCommandSegment -Command $case.Command
+            $parsed = Get-AgentCommandSegment -Command $case.Command -Reading Bash
             Assert-True ([bool] $parsed.Ambiguous) 'parse must be ambiguous'
         }
     }
 
     Invoke-TestCase 'Here-string body: a value argument keeps its place in the token list' {
-        $parsed = Get-AgentCommandSegment -Command "Set-Content -Path out.txt -Value @'`nbody`n'@"
+        $parsed = Get-AgentCommandSegment -Command "Set-Content -Path out.txt -Value @'`nbody`n'@" -Reading Bash
         $segment = $parsed.Segments[0]
         Assert-Equal "Set-Content -Path out.txt -Value @'" ($segment.Tokens -join ' ') 'Tokens'
-        $targets = @(Get-AgentSegmentWriteTarget -Tokens $segment.Tokens -Masks $segment.Masks)
+        $targets = @((Get-AgentSegmentWriteTarget -Tokens $segment.Tokens -Masks $segment.Masks).Targets)
         Assert-Equal 'out.txt' ($targets -join '|') 'Targets'
     }
 
@@ -2390,10 +2483,10 @@ try {
 
     foreach ($case in $writeTargetCases) {
         Invoke-TestCase "Write target: $($case.Command)" {
-            $parsed = Get-AgentCommandSegment -Command $case.Command
+            $parsed = Get-AgentCommandSegment -Command $case.Command -Reading Bash
             $actual = @()
             foreach ($segment in $parsed.Segments) {
-                $actual += @(Get-AgentSegmentWriteTarget -Tokens $segment.Tokens -Masks $segment.Masks)
+                $actual += @((Get-AgentSegmentWriteTarget -Tokens $segment.Tokens -Masks $segment.Masks).Targets)
             }
             Assert-Equal ($case.Expected -join '|') ($actual -join '|') 'Targets'
         }
@@ -2417,7 +2510,7 @@ try {
 
     foreach ($case in $pipedFromCases) {
         Invoke-TestCase "PipedFrom: $($case.Command)" {
-            $parsed = Get-AgentCommandSegment -Command $case.Command
+            $parsed = Get-AgentCommandSegment -Command $case.Command -Reading Bash
             $actual = @($parsed.Segments | ForEach-Object { [bool] $_.PipedFrom })
             Assert-Equal ($case.Expected -join '|') ($actual -join '|') 'PipedFrom flags'
         }
@@ -2469,7 +2562,7 @@ try {
 
     foreach ($case in $pipelineSinkCases) {
         Invoke-TestCase "Pipeline sink: $($case.Command)" {
-            $parsed = Get-AgentCommandSegment -Command $case.Command
+            $parsed = Get-AgentCommandSegment -Command $case.Command -Reading Bash
             $actual = Test-AgentPipelineBoundSource -Tokens $parsed.Segments[0].Tokens
             Assert-Equal $case.Expected $actual 'Pipeline-bound source'
         }
@@ -2508,25 +2601,25 @@ try {
 
     foreach ($case in $nestedCases) {
         Invoke-TestCase "Nested: $($case.Command)" {
-            $result = Get-AgentCommandWriteTarget -Command $case.Command
+            $result = Get-AgentCommandWriteTarget -Command $case.Command -Reading Bash
             Assert-Equal ($case.Expected -join '|') (@($result.Targets) -join '|') 'Targets'
             Assert-True (-not $result.Unresolved) 'Must resolve'
         }
     }
 
     Invoke-TestCase 'Nested: pwsh -File is deliberately not followed' {
-        $result = Get-AgentCommandWriteTarget -Command 'pwsh -File build.ps1'
+        $result = Get-AgentCommandWriteTarget -Command 'pwsh -File build.ps1' -Reading Bash
         Assert-Equal '' (@($result.Targets) -join '|') 'Targets'
         Assert-True (-not $result.Unresolved) 'Must resolve'
     }
 
     Invoke-TestCase 'Nested: nesting past the cap reports unresolved, not an empty target list' {
-        $result = Get-AgentCommandWriteTarget -Command 'sh -c "sh -c \"sh -c ''rm out.txt''\""'
+        $result = Get-AgentCommandWriteTarget -Command 'sh -c "sh -c \"sh -c ''rm out.txt''\""' -Reading Bash
         Assert-True $result.Unresolved 'Must be unresolved'
     }
 
     Invoke-TestCase 'Nested: an untokenizable inner command reports unresolved' {
-        $result = Get-AgentCommandWriteTarget -Command 'sh -c "rm ''out.txt"'
+        $result = Get-AgentCommandWriteTarget -Command 'sh -c "rm ''out.txt"' -Reading Bash
         Assert-True $result.Unresolved 'Must be unresolved'
     }
 
@@ -3050,14 +3143,139 @@ try {
 
     Invoke-TestCase 'Write isolation: AHKFLOW_ALLOW_MAIN overrides a piped source denial' {
         $decision = Get-AgentWorktreeWriteDecision -Command 'Get-ChildItem *.tmp | Remove-Item' `
-            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $true
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $true -Reading Bash
         Assert-Equal 'Warn' $decision.Action 'Action'
         Assert-Match 'a source piped into Remove-Item' $decision.Message 'Override target'
     }
 
+    Write-Host 'Both Readings run, worst action wins' -ForegroundColor Cyan
+
+    # A single backtick, built here so no enclosing string escapes it.
+    $tick = [string][char]96
+
+    Invoke-TestCase 'Both Readings: a backtick before a main-checkout path is denied' {
+        $decision = Invoke-AgentGuardPolicy `
+            -Command ("Set-Content -Path $tick" + $fixture.Main + '\README.md -Value x') `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Deny' $decision.Action 'Action'
+    }
+
+    Invoke-TestCase 'Both Readings: the bash message is kept when the bash Reading wins' {
+        $decision = Invoke-AgentGuardPolicy `
+            -Command ('Set-Content -Path ' + $fixture.Main + '\README.md -Value x') `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Deny' $decision.Action 'Action'
+        Assert-True ($decision.Message -notmatch 'PowerShell reads this command differently') `
+            'A bash-Reading denial must not gain the PowerShell note'
+    }
+
+    Invoke-TestCase 'Both Readings: skipping the second Reading never changes the answer' {
+        # Invoke-AgentGuardPolicy skips the PowerShell Reading when the command holds no backtick
+        # and no parenthesis. Prove the skip is a pure optimisation: for a spread of commands with
+        # none of those characters, the combined decision equals the bash Reading run alone.
+        $skipCases = @(
+            'git status',
+            ('Set-Content -Path ' + $fixture.Main + '\README.md -Value x'),
+            ('rm -rf ' + $fixture.Main + '/docs'),
+            'dotnet build',
+            ('Copy-Item a.txt ' + $fixture.Main + '\b.txt'),
+            'Get-ChildItem *.tmp | Remove-Item'
+        )
+
+        foreach ($skipCase in $skipCases) {
+            $combined = Invoke-AgentGuardPolicy -Command $skipCase `
+                -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
+            $bashOnly = Invoke-AgentGuardPolicyForReading -Command $skipCase `
+                -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -Reading Bash
+            Assert-Equal $bashOnly.Action $combined.Action "Action for: $skipCase"
+            Assert-Equal $bashOnly.Rule $combined.Rule "Rule for: $skipCase"
+        }
+    }
+
+    Invoke-TestCase 'Both Readings: a PowerShell-Reading denial names the Reading' {
+        $decision = Invoke-AgentGuardPolicy `
+            -Command ("Set-Content -Path $tick" + $fixture.Main + '\README.md -Value x') `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Deny' $decision.Action 'Action'
+        Assert-Match 'PowerShell reads this command differently from bash' $decision.Message 'Message'
+    }
+
+    Write-Host 'Backlog 093 acceptance' -ForegroundColor Cyan
+
+    $readingCases = @(
+        @{ Name = 'Set-Content, plain'; Command = 'Set-Content -Path {MAIN}\README.md -Value x' }
+        @{ Name = 'Set-Content, backtick'; Command = 'Set-Content -Path {TICK}{MAIN}\README.md -Value x' }
+        @{ Name = 'Set-Content, parens'; Command = "Set-Content -Path ('{MAIN}' + '\README.md') -Value x" }
+        @{ Name = 'Remove-Item, backtick'; Command = 'Remove-Item -LiteralPath {TICK}{MAIN}\README.md' }
+        @{ Name = 'rm, backtick'; Command = 'rm {TICK}{MAIN}/README.md' }
+        @{ Name = 'New-Item, backtick item type'; Command = 'New-Item -ItemType {TICK}Sym -Path {WT}\bait.md -Target {MAIN}\README.md' }
+        @{ Name = 'New-Item, parenthesised item type'; Command = "New-Item -ItemType ('Sym'+'bolicLink') -Path {WT}\bait.md -Target {MAIN}\README.md" }
+        @{ Name = 'bash subshell'; Command = '(cd {MAIN} && git commit -m x)' }
+    )
+
+    foreach ($readingCase in $readingCases) {
+        Invoke-TestCase "Backlog 093 denies: $($readingCase.Name)" {
+            $resolved = $readingCase.Command.
+            Replace('{TICK}', $tick).
+            Replace('{MAIN}', $fixture.Main).
+            Replace('{WT}', $fixture.Managed)
+            $decision = Invoke-AgentGuardPolicy -Command $resolved `
+                -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
+            Assert-Equal 'Deny' $decision.Action 'Action'
+        }
+    }
+
+    Invoke-TestCase 'Backlog 093: a bash backtick substitution still exposes git' {
+        $parsed = Get-AgentCommandSegment -Command "echo ${tick}git rev-parse HEAD${tick}" -Reading Bash
+        Assert-Equal 1 @($parsed.Segments | Where-Object { $_.Kind -eq 'Git' }).Count 'Git segments'
+    }
+
+    Write-Host 'Redirect targets carry the expression rule too' -ForegroundColor Cyan
+
+    Invoke-TestCase 'Redirect: a parenthesised target into main is denied' {
+        $decision = Invoke-AgentGuardPolicy `
+            -Command ("Write-Output x > ('" + $fixture.Main + "\probe.txt')") `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Deny' $decision.Action 'Action'
+    }
+
+    Invoke-TestCase 'Redirect: a parenthesised concatenated target into main is denied' {
+        $decision = Invoke-AgentGuardPolicy `
+            -Command ("Write-Output x > ('" + $fixture.Main + "' + '\probe.txt')") `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Deny' $decision.Action 'Action'
+    }
+
+    Invoke-TestCase 'Redirect: an attached parenthesised target into main is denied' {
+        # No space after '>', so the target is the tail of the redirect token rather than the next
+        # token. That is a separate branch of the redirect reader and needs its own case.
+        $decision = Invoke-AgentGuardPolicy `
+            -Command ("Write-Output x >('" + $fixture.Main + "\probe.txt')") `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Deny' $decision.Action 'Action'
+    }
+
+    Invoke-TestCase 'Redirect: a quoted parenthesis in a worktree filename stays allowed' {
+        # The ratchet guard. A quoted paren is an ordinary Windows file name character, and this
+        # write lands inside the session's own worktree.
+        $decision = Invoke-AgentGuardPolicy `
+            -Command ('Write-Output x > "' + $fixture.Managed + '\Copy (2).txt"') `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Allow' $decision.Action 'Action'
+    }
+
+    Invoke-TestCase 'Redirect: a parenthesised argument does not deny a clean worktree target' {
+        # Only the redirect TARGET carries the rule. A parenthesised argument elsewhere cannot
+        # change where the output lands, so it must not refuse a legal write.
+        $decision = Invoke-AgentGuardPolicy `
+            -Command ('Write-Output (1+1) > ' + $fixture.Managed + '\out.txt') `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Allow' $decision.Action 'Action'
+    }
+
     Invoke-TestCase 'Write isolation: rm -rf on a worktree glob is not a write-rule denial' {
         $decision = Get-AgentWorktreeWriteDecision -Command 'rm -rf ./obj/*' `
-            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false -Reading Bash
         Assert-Equal 'Allow' $decision.Action 'Action'
     }
 

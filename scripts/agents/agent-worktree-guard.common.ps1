@@ -33,6 +33,12 @@ $script:AgentGuardUnquotedEscapables = '$`"\;&|()<>' + "'"
 # tokenizer treats as segment boundaries, so `<<EOF; echo x` reads EOF and keeps the rest.
 $script:AgentGuardHeredocDelimiterStops = ';&|`()<>'
 
+# The only characters the two Readings disagree about. A backtick separates in bash and escapes in
+# PowerShell; a parenthesis opens a subshell in bash and groups an expression in PowerShell. Keep
+# this in step with the Reading branches in Split-AgentCommandSegment: it is what lets
+# Invoke-AgentGuardPolicy skip a second Reading that could not have reached a different answer.
+$script:AgentGuardReadingSensitiveChars = [char[]]@('`', '(', ')')
+
 # Commands that move the shell's working directory, so a later `git` in the same chain does not
 # run where the hook payload said it would. pushd/popd are tracked separately because they form a
 # stack: treating popd as an unrecognized command left the guard believing the shell was still in
@@ -233,13 +239,18 @@ needle - is no longer mistaken for an invocation.
 #>
 function Get-AgentCommandSafetyDecision {
     [CmdletBinding()]
-    param([string] $Command)
+    param(
+        [string] $Command,
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('Bash', 'PowerShell')]
+        [string] $Reading
+    )
 
     if ([string]::IsNullOrWhiteSpace($Command)) {
         return New-AgentGuardDecision -Action Allow
     }
 
-    $gitDecision = Get-AgentGitSafetyDecision -Command $Command
+    $gitDecision = Get-AgentGitSafetyDecision -Command $Command -Reading $Reading
     if ($gitDecision.Action -ne 'Allow') { return $gitDecision }
 
     # rm/dotnet are classified from the same parsed segments, so a pattern that only appears inside
@@ -247,7 +258,7 @@ function Get-AgentCommandSafetyDecision {
     # read as an invocation. Only a segment's leading command word is inspected. A wrapped
     # `sudo rm -rf` hides exactly the way `sh -c 'git ...'` already does: the documented wrapper
     # gap, not a new one.
-    $segments = @((Get-AgentCommandSegment -Command $Command).Segments)
+    $segments = @((Get-AgentCommandSegment -Command $Command -Reading $Reading).Segments)
 
     foreach ($segment in $segments) {
         if ((Get-AgentOtherCommandLeaf -Segment $segment) -ne 'rm') { continue }
@@ -338,9 +349,14 @@ with the ambiguous-git-command rule, so nothing slips through by returning Allow
 #>
 function Get-AgentGitSafetyDecision {
     [CmdletBinding()]
-    param([string] $Command)
+    param(
+        [string] $Command,
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('Bash', 'PowerShell')]
+        [string] $Reading
+    )
 
-    $parsed = Get-AgentGitInvocation -Command $Command
+    $parsed = Get-AgentGitInvocation -Command $Command -Reading $Reading
     if ($parsed.Ambiguous) { return New-AgentGuardDecision -Action Allow }
 
     foreach ($tokens in $parsed.Invocations) {
@@ -593,7 +609,12 @@ segment boundary in it untrustworthy. This is intentionally not a complete shell
 #>
 function Split-AgentCommandSegment {
     [CmdletBinding()]
-    param([string] $Command)
+    param(
+        [string] $Command,
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('Bash', 'PowerShell')]
+        [string] $Reading
+    )
 
     $segments = New-Object System.Collections.Generic.List[object]
     $tokens = New-Object System.Collections.Generic.List[string]
@@ -655,10 +676,11 @@ function Split-AgentCommandSegment {
         if ($ch -eq '"') { $state = 'DoubleQuoted'; $hasCurrent = $true; continue }
 
         # A PowerShell here-string opener. The body is data and produces no tokens; the opener
-        # stays as one 'q'-masked token so the segment keeps its argument count. The guard is
-        # never told which shell will run the string, so a bash line ending in @' has its body
-        # skipped too. That text is already invisible today - the tokenizer swallows it into one
-        # quoted token - so this only makes the behaviour the same every time.
+        # stays as one 'q'-masked token so the segment keeps its argument count. Every Reading
+        # skips BOTH block forms rather than only its own, so a bash line ending in @' has its
+        # body skipped too. That is now a deliberate choice, not a forced one: splitting the two
+        # forms by Reading would change behaviour on strings unrelated to this rule, and every
+        # difference it makes is a new refusal.
         if ($ch -eq '@' -and ($i + 1) -lt $Command.Length -and
             ($Command[$i + 1] -eq "'" -or $Command[$i + 1] -eq '"') -and
             (Test-AgentHereStringHeader -Command $Command -QuoteIndex ($i + 1))) {
@@ -714,8 +736,21 @@ function Split-AgentCommandSegment {
             continue
         }
 
-        if ($ch -eq "`n" -or $ch -eq "`r" -or $ch -eq ';' -or $ch -eq '&' -or $ch -eq '|' -or
-            $ch -eq '`' -or $ch -eq '(' -or $ch -eq ')') {
+        # PowerShell's backtick escapes the next character. Reuse the Escaped state so the
+        # character is masked 'q', exactly as a backslash escape is in the bash Reading. A
+        # trailing backtick leaves the machine in Escaped, which the end-of-string check already
+        # reports as ambiguous.
+        if ($Reading -eq 'PowerShell' -and $ch -eq '`') {
+            $returnState = 'None'
+            $state = 'Escaped'
+            continue
+        }
+
+        # A backtick is command substitution in bash and a parenthesis opens a subshell. In
+        # PowerShell a backtick escapes and parentheses group, so neither ends a command there.
+        $isSeparator = $ch -eq "`n" -or $ch -eq "`r" -or $ch -eq ';' -or $ch -eq '&' -or
+            $ch -eq '|' -or ($Reading -eq 'Bash' -and ($ch -eq '`' -or $ch -eq '(' -or $ch -eq ')'))
+        if ($isSeparator) {
             if ($hasCurrent) {
                 [void] $tokens.Add($current.ToString())
                 [void] $masks.Add($currentMask.ToString())
@@ -889,13 +924,18 @@ PipedFrom rides through from Split-AgentCommandSegment unchanged: it is $true wh
 #>
 function Get-AgentCommandSegment {
     [CmdletBinding()]
-    param([string] $Command)
+    param(
+        [string] $Command,
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('Bash', 'PowerShell')]
+        [string] $Reading
+    )
 
     if ([string]::IsNullOrWhiteSpace($Command)) {
         return [pscustomobject]@{ Segments = @(); Ambiguous = $false }
     }
 
-    $split = Split-AgentCommandSegment -Command $Command
+    $split = Split-AgentCommandSegment -Command $Command -Reading $Reading
     if ($split.Ambiguous) {
         return [pscustomobject]@{ Segments = @(); Ambiguous = $true }
     }
@@ -999,9 +1039,14 @@ tokenize safely.
 #>
 function Get-AgentGitInvocation {
     [CmdletBinding()]
-    param([string] $Command)
+    param(
+        [string] $Command,
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('Bash', 'PowerShell')]
+        [string] $Reading
+    )
 
-    $parsed = Get-AgentCommandSegment -Command $Command
+    $parsed = Get-AgentCommandSegment -Command $Command -Reading $Reading
     if ($parsed.Ambiguous) {
         return [pscustomobject]@{ Invocations = @(); Ambiguous = $true }
     }
@@ -1032,10 +1077,13 @@ function Get-AgentWorktreeGuardDecision {
         [string] $Command,
         [string] $Cwd,
         [string] $ProtectedRepoRoot,
-        [bool] $AllowMain = $false
+        [bool] $AllowMain = $false,
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('Bash', 'PowerShell')]
+        [string] $Reading
     )
 
-    $parsed = Get-AgentCommandSegment -Command $Command
+    $parsed = Get-AgentCommandSegment -Command $Command -Reading $Reading
 
     if ($parsed.Ambiguous) {
         return New-AgentGuardDecision -Action Deny -Rule 'ambiguous-git-command' -Message `
@@ -1867,6 +1915,30 @@ function Find-AgentUnquotedRedirectIndex {
 
 <#
 .SYNOPSIS
+True when the token holds one of these characters at a position the mask does not call quoted.
+
+.DESCRIPTION
+Same token/mask walk as Find-AgentUnquotedRedirectIndex above, over a set of characters rather
+than just '>'. The two are deliberately NOT one function, because they disagree about a character
+past the end of the mask. A mask always runs parallel to its token, so that cannot happen from
+Split-AgentCommandSegment - but the two callers want opposite answers if it ever did. The redirect
+reader treats a missing mask entry as "not a redirect", which keeps a malformed pair from
+inventing a write target. This one treats it as unquoted, which denies. Each default fails in the
+direction its caller needs.
+#>
+function Test-AgentTokenHasUnquotedChar {
+    param([string] $Token, [string] $Mask, [char[]] $Chars)
+
+    for ($i = 0; $i -lt $Token.Length; $i++) {
+        if ($Chars -notcontains $Token[$i]) { continue }
+        if ($i -lt $Mask.Length -and $Mask[$i] -eq 'q') { continue }
+        return $true
+    }
+    return $false
+}
+
+<#
+.SYNOPSIS
 Lowercased leaf of a command word, with any .exe/.cmd/.bat suffix removed.
 #>
 function Get-AgentCommandLeafName {
@@ -2410,6 +2482,20 @@ Every path one command segment would write, move, or delete.
 Two independent sources are scanned. Redirects are read from the token/mask pair, so only an
 unquoted '>' counts. Destination arguments are read from the leading command word using the
 tables above. A segment can produce both, for example `cp a b > log.txt`.
+
+Returns { Targets = string[]; Unresolved = bool }. Unresolved means an operand carried syntax the
+shell would evaluate, so the caller must fail closed rather than read the target list as complete.
+
+This function takes no -Reading, and that rests on an invariant it cannot check locally: under the
+bash Reading, Split-AgentCommandSegment already treats an unquoted '(' or ')' as a separator, so
+one can only survive into a token when the segment was built under the PowerShell Reading. Widen
+the bash separator set and this rule starts firing on bash segments too.
+
+The Unresolved flag is deliberately NOT folded into AgentGuardUnexpandablePattern. That pattern
+asks whether one already-selected path string can be expanded. This asks whether ANY argument on a
+write command's line carried evaluated syntax, which is a question that has to be answered before
+target selection: `Copy-Item a.txt (Get-Thing) dest.txt` names a parenthesised operand that is
+never the reported target. Collapsing the two would narrow the check.
 #>
 function Get-AgentSegmentWriteTarget {
     [CmdletBinding()]
@@ -2418,7 +2504,22 @@ function Get-AgentSegmentWriteTarget {
     $targets = New-Object System.Collections.Generic.List[string]
     $tokens = @($Tokens)
     $masks = @($Masks)
-    if ($tokens.Count -eq 0) { return @() }
+    if ($tokens.Count -eq 0) {
+        return [pscustomobject]@{ Targets = @(); Unresolved = $false }
+    }
+
+    # Set when an operand holds a parenthesis the shell would act on, and when the leading word
+    # actually named a command that writes. Both halves are needed: the first alone would refuse
+    # an ordinary bash subshell such as `(cd repo && git status)`, whose leading token is '(cd'.
+    $argumentHasExpression = $false
+    $matchedWriteCommand = $false
+
+    # A redirect needs neither half. It is a write whatever the leading word is - `Write-Output`
+    # names no write table - and its target is one specific token rather than any operand. So it
+    # carries its own flag, set only when the TARGET itself holds an unquoted parenthesis. Scoping
+    # it to the target is what keeps `Write-Output (1+1) > out.txt` allowed: a parenthesis in some
+    # other argument cannot change where the output lands.
+    $redirectTargetHasExpression = $false
 
     # --- Redirects -------------------------------------------------------------------------
     $consumedByRedirect = @{}
@@ -2434,11 +2535,25 @@ function Get-AgentSegmentWriteTarget {
         $rest = $token.Substring($end)
 
         if (-not [string]::IsNullOrWhiteSpace($rest)) {
+            # Attached form, `>(path)`. The mask runs parallel to the token, so slice it at the
+            # same offset the token was sliced at.
             [void] $targets.Add($rest)
+            $restMask = if ($end -lt $mask.Length) { $mask.Substring($end) } else { '' }
+            if (Test-AgentTokenHasUnquotedChar -Token $rest -Mask $restMask -Chars @('(', ')')) {
+                $redirectTargetHasExpression = $true
+            }
         }
         elseif (($i + 1) -lt $tokens.Count) {
-            [void] $targets.Add([string] $tokens[$i + 1])
+            # Detached form, `> (path)`. The target is the next token, which the argument loop
+            # below then skips - so this is the only place its parenthesis can be seen.
+            $redirectTarget = [string] $tokens[$i + 1]
+            $redirectMask = if (($i + 1) -lt $masks.Count) { [string] $masks[$i + 1] } else { '' }
+            [void] $targets.Add($redirectTarget)
             $consumedByRedirect[$i + 1] = $true
+            if (Test-AgentTokenHasUnquotedChar -Token $redirectTarget -Mask $redirectMask `
+                    -Chars @('(', ')')) {
+                $redirectTargetHasExpression = $true
+            }
         }
     }
 
@@ -2453,6 +2568,13 @@ function Get-AgentSegmentWriteTarget {
         $mask = if ($i -lt $masks.Count) { [string] $masks[$i] } else { '' }
         if ((Find-AgentUnquotedRedirectIndex -Token $token -Mask $mask) -ge 0) { continue }
         $arguments += $token
+
+        # An unquoted parenthesis means PowerShell would evaluate this operand rather than pass it
+        # through, and the guard never evaluates. A quoted parenthesis is an ordinary Windows file
+        # name character - "Copy (2).txt" - so it must stay resolvable.
+        if (Test-AgentTokenHasUnquotedChar -Token $token -Mask $mask -Chars @('(', ')')) {
+            $argumentHasExpression = $true
+        }
     }
     $positionals = @(Get-AgentGitPositionals -Arguments $arguments)
 
@@ -2461,14 +2583,17 @@ function Get-AgentSegmentWriteTarget {
     # the rule would be dead rather than wrong.
     if (($script:AgentGuardLinkCommands -contains $leaf) -or
         ($leaf -eq 'cp' -and (Test-AgentGuardHasLinkFlag -Arguments $arguments))) {
+        $matchedWriteCommand = $true
         foreach ($target in (Get-AgentLinkWriteTarget -Leaf $leaf -Arguments $arguments)) {
             [void] $targets.Add($target)
         }
     }
     elseif ($script:AgentGuardWriteEveryPositional -contains $leaf) {
+        $matchedWriteCommand = $true
         foreach ($positional in $positionals) { [void] $targets.Add($positional) }
     }
     elseif ($script:AgentGuardWriteLastPositional -contains $leaf) {
+        $matchedWriteCommand = $true
         # A move reads its own operands, because a moved file may be named '-something' and only
         # a '--'-aware reader keeps it. cp and install do not delete, so they keep the older
         # positional reader.
@@ -2492,6 +2617,7 @@ function Get-AgentSegmentWriteTarget {
         }
     }
     elseif ($leaf -eq 'sed') {
+        $matchedWriteCommand = $true
         $inPlace = @($arguments | Where-Object { $_ -ceq '-i' -or $_ -clike '-i*' -or $_ -ceq '--in-place' }).Count -gt 0
         if ($inPlace) {
             # With -e or -f the script is an option value, so every positional is a file.
@@ -2502,11 +2628,13 @@ function Get-AgentSegmentWriteTarget {
         }
     }
     elseif ($leaf -eq 'dd') {
+        $matchedWriteCommand = $true
         foreach ($argument in $arguments) {
             if ($argument -ilike 'of=*') { [void] $targets.Add($argument.Substring(3)) }
         }
     }
     elseif ($script:AgentGuardWriteCmdlets.ContainsKey($leaf)) {
+        $matchedWriteCommand = $true
         # Operands with option values removed. Reading $positionals here was a hole rather than a
         # wart: `Set-Content -Encoding utf8 <main>\README.md hello` left 'utf8' in operand 0, so
         # the guard reported a relative path inside the worktree, never scanned the real target,
@@ -2546,6 +2674,7 @@ function Get-AgentSegmentWriteTarget {
         }
     }
     elseif ($script:AgentGuardWriteDestinationCmdlets -contains $leaf) {
+        $matchedWriteCommand = $true
         # Operands with option values removed, so `-Filter *.tmp` does not look like a file.
         $cmdletOperands = @(Get-AgentCmdletOperand -Arguments $arguments `
                 -ValueParameters $script:AgentGuardMoveValueParameters)
@@ -2603,7 +2732,11 @@ function Get-AgentSegmentWriteTarget {
         }
     }
 
-    return $targets.ToArray()
+    return [pscustomobject]@{
+        Targets    = $targets.ToArray()
+        Unresolved = (($argumentHasExpression -and $matchedWriteCommand) -or
+            $redirectTargetHasExpression)
+    }
 }
 
 # Cmdlets that DELETE whatever the pipeline hands them, and that bind that input to their own
@@ -2714,7 +2847,14 @@ security rule drift silently.
 #>
 function Get-AgentInterpreterInnerTarget {
     [CmdletBinding()]
-    param([string[]] $Tokens, [string[]] $Masks, [int] $Depth)
+    param(
+        [string[]] $Tokens,
+        [string[]] $Masks,
+        [int] $Depth,
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('Bash', 'PowerShell')]
+        [string] $Reading
+    )
 
     $found = New-Object System.Collections.Generic.List[string]
     $unresolved = $false
@@ -2742,7 +2882,11 @@ function Get-AgentInterpreterInnerTarget {
             break
         }
 
-        $inner = Get-AgentCommandWriteTarget -Command ([string] $tokens[$i + 1]) -Depth ($Depth + 1)
+        # The recursion carries this Reading down and never consults AgentGuardInterpreterSpecs to
+        # learn the inner shell. Reading the inner text one way instead of two could only ever
+        # read less than both Readings do.
+        $inner = Get-AgentCommandWriteTarget -Command ([string] $tokens[$i + 1]) `
+            -Depth ($Depth + 1) -Reading $Reading
         foreach ($target in $inner.Targets) { [void] $found.Add($target) }
         if ($inner.Unresolved) { $unresolved = $true }
 
@@ -2751,9 +2895,9 @@ function Get-AgentInterpreterInnerTarget {
             $restTokens = @($tokens[($i + 1)..$last])
             $maskEnd = [Math]::Min($last, $masks.Count - 1)
             $restMasks = if (($i + 1) -le $maskEnd) { @($masks[($i + 1)..$maskEnd]) } else { @() }
-            foreach ($target in (Get-AgentSegmentWriteTarget -Tokens $restTokens -Masks $restMasks)) {
-                [void] $found.Add($target)
-            }
+            $rest = Get-AgentSegmentWriteTarget -Tokens $restTokens -Masks $restMasks
+            foreach ($target in $rest.Targets) { [void] $found.Add($target) }
+            if ($rest.Unresolved) { $unresolved = $true }
         }
         break
     }
@@ -2776,11 +2920,17 @@ nested command as opaque, which stays a documented accepted limitation of this g
 #>
 function Get-AgentCommandWriteTarget {
     [CmdletBinding()]
-    param([string] $Command, [int] $Depth = 0)
+    param(
+        [string] $Command,
+        [int] $Depth = 0,
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('Bash', 'PowerShell')]
+        [string] $Reading
+    )
 
     $targets = New-Object System.Collections.Generic.List[string]
 
-    $parsed = Get-AgentCommandSegment -Command $Command
+    $parsed = Get-AgentCommandSegment -Command $Command -Reading $Reading
     if ($parsed.Ambiguous) {
         return [pscustomobject]@{ Targets = $targets.ToArray(); Unresolved = $true }
     }
@@ -2788,9 +2938,9 @@ function Get-AgentCommandWriteTarget {
     $unresolved = $false
 
     foreach ($segment in $parsed.Segments) {
-        foreach ($target in (Get-AgentSegmentWriteTarget -Tokens $segment.Tokens -Masks $segment.Masks)) {
-            [void] $targets.Add($target)
-        }
+        $segmentTargets = Get-AgentSegmentWriteTarget -Tokens $segment.Tokens -Masks $segment.Masks
+        foreach ($target in $segmentTargets.Targets) { [void] $targets.Add($target) }
+        if ($segmentTargets.Unresolved) { $unresolved = $true }
 
         # A sink that deletes what the pipeline hands it names a path this scan cannot see, so the
         # target list is incomplete in exactly the way Unresolved reports.
@@ -2798,7 +2948,8 @@ function Get-AgentCommandWriteTarget {
             $unresolved = $true
         }
 
-        $inner = Get-AgentInterpreterInnerTarget -Tokens $segment.Tokens -Masks $segment.Masks -Depth $Depth
+        $inner = Get-AgentInterpreterInnerTarget -Tokens $segment.Tokens -Masks $segment.Masks `
+            -Depth $Depth -Reading $Reading
         foreach ($target in $inner.Targets) { [void] $targets.Add($target) }
         if ($inner.Unresolved) { $unresolved = $true }
     }
@@ -3026,7 +3177,8 @@ Write inside docs/superpowers instead, or run this from the main checkout.
 $script:AgentGuardUnresolvedWriteMessage = @'
 BLOCKED: this session is isolated in a worktree, and the guard cannot expand this write target, so
 it cannot tell whether the write lands in the main checkout.
-Write the path out literally instead of using a variable, or run the command from the main checkout.
+Write the path out literally instead of using a variable or an expression, or run the command from
+the main checkout.
 '@
 
 $script:AgentGuardPipedSourceMessage = @'
@@ -3124,13 +3276,16 @@ function Get-AgentWorktreeWriteDecision {
         [string] $Command,
         [string] $Cwd,
         [string] $ProtectedRepoRoot,
-        [bool] $AllowMain = $false
+        [bool] $AllowMain = $false,
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('Bash', 'PowerShell')]
+        [string] $Reading
     )
 
     $sessionState = Get-ManagedWorktreeState -Cwd $Cwd -ProtectedRepoRoot $ProtectedRepoRoot
     if ($sessionState -ne 'ManagedWorktree') { return New-AgentGuardDecision -Action Allow }
 
-    $parsed = Get-AgentCommandSegment -Command $Command
+    $parsed = Get-AgentCommandSegment -Command $Command -Reading $Reading
     if ($parsed.Ambiguous) { return New-AgentGuardDecision -Action Allow }
 
     $protectedCommonDir = Invoke-AgentGuardGitProbe @(
@@ -3184,7 +3339,9 @@ function Get-AgentWorktreeWriteDecision {
             continue
         }
 
-        $targets = @(Get-AgentSegmentWriteTarget -Tokens $segment.Tokens -Masks $segment.Masks)
+        $segmentTargets = Get-AgentSegmentWriteTarget -Tokens $segment.Tokens -Masks $segment.Masks
+        $targets = @($segmentTargets.Targets)
+        if ($segmentTargets.Unresolved) { $unresolvedBlock = $true }
 
         # A sink that deletes what the pipeline hands it names a source no scan of this segment
         # can find. An empty source list is not "deletes nothing", so fail closed on it. This gets
@@ -3197,7 +3354,8 @@ function Get-AgentWorktreeWriteDecision {
 
         # Nested interpreters, quoted and unquoted alike. Same reader as
         # Get-AgentCommandWriteTarget uses, so the two cannot drift.
-        $nested = Get-AgentInterpreterInnerTarget -Tokens $segment.Tokens -Masks $segment.Masks -Depth 0
+        $nested = Get-AgentInterpreterInnerTarget -Tokens $segment.Tokens -Masks $segment.Masks `
+            -Depth 0 -Reading $Reading
         $targets += @($nested.Targets)
         # An inner command that was never scanned is not an inner command that writes nothing.
         # Fail closed on it.
@@ -3553,6 +3711,38 @@ function Get-AgentGitLocationDecision {
     return New-AgentGuardDecision -Action Ask -Rule 'agent-main-git-mutation' -Message $message
 }
 
+$script:AgentGuardPowerShellReadingNote = @'
+PowerShell reads this command differently from bash: a backtick escapes the next character, and
+parentheses group an expression. Read that way, this command writes to the path above. The guard
+reads every command both ways, and refuses when either way reaches the main checkout.
+'@
+
+function Add-AgentPowerShellReadingNote {
+    param([object] $Decision)
+
+    # An Allow carries no message worth explaining, and appending to one would put a refusal
+    # notice on a command that was not refused.
+    if ($Decision.Action -eq 'Allow') { return $Decision }
+
+    return (New-AgentGuardDecision -Action $Decision.Action -Rule $Decision.Rule -Message `
+        ($Decision.Message + "`n" + $script:AgentGuardPowerShellReadingNote))
+}
+
+# Higher is worse. The combination keeps the worst action any Reading produced, which is what
+# makes two Readings a one-way ratchet rather than a vote.
+$script:AgentGuardActionSeverity = @{ Allow = 0; Warn = 1; Ask = 2; Deny = 3 }
+
+function Get-AgentGuardActionSeverity {
+    param([string] $Action)
+
+    if ($script:AgentGuardActionSeverity.ContainsKey($Action)) {
+        return $script:AgentGuardActionSeverity[$Action]
+    }
+    # An action this table does not know is ranked worst, so an action added later cannot be
+    # silently treated as weaker than Deny.
+    return 3
+}
+
 <#
 .SYNOPSIS
 Single orchestration point: safety rules fail closed, location rules fail open.
@@ -3561,17 +3751,20 @@ Single orchestration point: safety rules fail closed, location rules fail open.
 Kept here rather than in the adapter entrypoint so both the entrypoint and the focused tests
 exercise the same precedence, and so tests can shadow either policy function to inject a fault.
 #>
-function Invoke-AgentGuardPolicy {
+function Invoke-AgentGuardPolicyForReading {
     [CmdletBinding()]
     param(
         [string] $Command,
         [string] $Cwd,
         [string] $ProtectedRepoRoot,
-        [bool] $AllowMain = $false
+        [bool] $AllowMain = $false,
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('Bash', 'PowerShell')]
+        [string] $Reading
     )
 
     try {
-        $safety = Get-AgentCommandSafetyDecision -Command $Command
+        $safety = Get-AgentCommandSafetyDecision -Command $Command -Reading $Reading
     }
     catch {
         # Fail closed: an evaluator fault must not silently drop destructive-command protection.
@@ -3583,7 +3776,7 @@ function Invoke-AgentGuardPolicy {
 
     try {
         $location = Get-AgentWorktreeGuardDecision -Command $Command -Cwd $Cwd `
-            -ProtectedRepoRoot $ProtectedRepoRoot -AllowMain $AllowMain
+            -ProtectedRepoRoot $ProtectedRepoRoot -AllowMain $AllowMain -Reading $Reading
     }
     catch {
         # Fail open: keep the shell usable, but say so loudly.
@@ -3595,7 +3788,7 @@ function Invoke-AgentGuardPolicy {
 
     try {
         $write = Get-AgentWorktreeWriteDecision -Command $Command -Cwd $Cwd `
-            -ProtectedRepoRoot $ProtectedRepoRoot -AllowMain $AllowMain
+            -ProtectedRepoRoot $ProtectedRepoRoot -AllowMain $AllowMain -Reading $Reading
     }
     catch {
         # Fail open, same as the location rule: keep the shell usable, but say so loudly.
@@ -3606,4 +3799,49 @@ function Invoke-AgentGuardPolicy {
     if ($write.Action -ne 'Allow') { return $write }
 
     return $safety
+}
+
+<#
+.SYNOPSIS
+Runs every Reading of one command and keeps the worst decision.
+
+.DESCRIPTION
+The guard is never told which shell will run a command, and the tool name does not answer it:
+Copilot and Codex both send 'shell', and an agent can run `pwsh -c` through a bash tool. So both
+Readings run and the worst action wins.
+#>
+function Invoke-AgentGuardPolicy {
+    [CmdletBinding()]
+    param(
+        [string] $Command,
+        [string] $Cwd,
+        [string] $ProtectedRepoRoot,
+        [bool] $AllowMain = $false
+    )
+
+    $bash = Invoke-AgentGuardPolicyForReading -Command $Command -Cwd $Cwd `
+        -ProtectedRepoRoot $ProtectedRepoRoot -AllowMain $AllowMain -Reading Bash
+
+    # The two Readings differ in exactly one place: how Split-AgentCommandSegment treats these
+    # three characters. A command that holds none of them anywhere tokenizes identically both
+    # ways, so the second Reading would spawn the same git probes to reach the same answer. This
+    # test reads the raw string and ignores quoting on purpose: it is a superset check, so it can
+    # only skip work that was provably redundant, never a Reading that would have denied.
+    if ($Command.IndexOfAny($script:AgentGuardReadingSensitiveChars) -lt 0) { return $bash }
+
+    # Deny is the top of the severity table, and a tie goes to bash, so nothing the PowerShell
+    # Reading could return would change this answer.
+    if ($bash.Action -eq 'Deny') { return $bash }
+
+    $powershell = Invoke-AgentGuardPolicyForReading -Command $Command -Cwd $Cwd `
+        -ProtectedRepoRoot $ProtectedRepoRoot -AllowMain $AllowMain -Reading PowerShell
+
+    # -ge, not -gt: a tie goes to bash. That keeps today's messages, and today's tests, unchanged
+    # for every command the two Readings agree on.
+    if ((Get-AgentGuardActionSeverity $bash.Action) -ge
+        (Get-AgentGuardActionSeverity $powershell.Action)) {
+        return $bash
+    }
+
+    return (Add-AgentPowerShellReadingNote -Decision $powershell)
 }
