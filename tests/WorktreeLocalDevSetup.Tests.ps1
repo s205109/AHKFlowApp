@@ -518,4 +518,44 @@ try {
     Remove-TempTree $repo
 }
 
+# --- backlog 073: the manifest records which backlog item this worktree serves ---
+# The plan guard reads this key at removal time. By then the folder may already be renamed, and
+# the slug match already misses for at least one live worktree, so the number is captured once
+# here, at creation, while both names still exist.
+$repo = New-TempMainCheckout
+try {
+    # The item number is derived by matching the worktree slug against the backlog file name.
+    Write-SeedFile (Join-Path $repo 'backlog\073-planguard-probe.md') @('# 073 - planguard probe')
+    Invoke-TestGit $repo @('add', '-A') | Out-Null
+    Invoke-TestGit $repo @('commit', '-m', 'seed backlog item') | Out-Null
+
+    $wtPath = Add-TestWorktree -RepoDir $repo -BranchName 'planguard-probe'
+    & $setupScript -RepoRoot $wtPath -Quiet
+
+    $manifestPath = Join-Path $wtPath 'scripts\.env.worktree'
+    $manifestText = Get-Content -Raw -LiteralPath $manifestPath
+    Assert-True ($manifestText -match '(?m)^AHKFLOW_BACKLOG_ITEM=') 'The manifest must carry AHKFLOW_BACKLOG_ITEM'
+    Assert-Equal '073' (Get-ManifestPort $manifestPath 'AHKFLOW_BACKLOG_ITEM') 'The manifest must record the matching item number.'
+
+    # A second run must not change the recorded number.
+    & $setupScript -RepoRoot $wtPath -Quiet
+    Assert-Equal '073' (Get-ManifestPort $manifestPath 'AHKFLOW_BACKLOG_ITEM') 'A second setup run must keep the recorded item number.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- backlog 073: a worktree with no matching backlog item still gets the key, left empty ---
+# An absent key and an empty key mean different things to the plan guard: empty says "nothing to
+# judge", absent would be a worktree the setup script never touched.
+$repo = New-TempMainCheckout
+try {
+    $wtPath = Add-TestWorktree -RepoDir $repo -BranchName 'no-item-here'
+    & $setupScript -RepoRoot $wtPath -Quiet
+
+    $manifestText = Get-Content -Raw -LiteralPath (Join-Path $wtPath 'scripts\.env.worktree')
+    Assert-True ($manifestText -match '(?m)^AHKFLOW_BACKLOG_ITEM=\s*$') 'A worktree with no backlog item records an empty value.'
+} finally {
+    Remove-TempTree $repo
+}
+
 Write-Host 'Worktree local-dev setup no-auth tests passed.'
