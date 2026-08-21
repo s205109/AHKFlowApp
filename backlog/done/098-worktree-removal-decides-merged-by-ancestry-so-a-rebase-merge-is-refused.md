@@ -26,7 +26,7 @@ removed, so that the folder list holds live work only.
 The removal script runs `git merge-base --is-ancestor HEAD <base>`
 (`scripts/remove-worktree-local-dev.ps1:749`, "        if (-not (Test-WorktreeMergedIntoMain -WorktreeFull $worktreeFull -BranchName $branchName -BaseRef $baseRef -MainCheckout $mainCheckoutFromGit)) {").
 The sweep asks a different question: reachability plus a ref-log reading of the branch's own work
-(`scripts/worktree-git.common.ps1:865`, "function Test-BranchOwnWorkWasMerged {"), after a
+(`scripts/worktree-git.common.ps1:868`, "function Test-BranchOwnWorkWasMerged {"), after a
 first filter of `git branch --merged`. That filter is gone now: the shared decision is the only
 gate (`scripts/cleanup-merged-worktrees.ps1:120`, "        if (-not (Test-BranchOwnWorkWasMerged -RepoRoot $RepoRoot -Branch $wt.Branch -MainRef $MainRef -MergedPullRequests $MergedPullRequests)) { continue }").
 
@@ -43,7 +43,7 @@ Both rules refused it.
 
 So the sweep does not list a rebase-merged worktree and hand it to a removal script that then
 refuses. Both keep it. The sweep's merge proof needs the branch SHA to be a non-first parent of a
-merge commit on main (`scripts/worktree-git.common.ps1:553`, "    $parentLines = & git -C $RepoRoot rev-list --min-parents=2 --format='%P' $MainRef 2>$null"),
+merge commit on main (`scripts/worktree-git.common.ps1:556`, "    $parentLines = & git -C $RepoRoot rev-list --min-parents=2 --format='%P' $MainRef 2>$null"),
 and a rebase merge writes no merge commit. The sweep's existing rebase case is a **local** rebase
 followed by a merge-commit merge (`tests/WorktreeMergedCleanup.Tests.ps1:472`, "Assert-True (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-rebased') 'A branch rebased before it merged must report merged own work.'").
 

@@ -125,8 +125,11 @@ Two limits are deliberate.
 
 - Ref-log text cannot be authenticated, and signal 5 narrows that rather than ending it. Nothing in
   git records which branch created a commit. Signal 5 refuses a forged fast-forward onto a tip the
-  base already held, which is the case backlog 096 reported. It cannot refuse one onto work that
-  reached the base after the branch was created. That branch holds no commit, so nothing is lost.
+  base already held, which is the case backlog 096 reported. Two windows stay open. It cannot
+  refuse one onto work that reached the base after the branch was created. It also cannot refuse
+  one whose base move shares a second with the branch's creation, because ref-log stamps hold
+  whole seconds and the rule is strictly earlier. Either branch holds no commit, so nothing is
+  lost.
 - Superseded originals are not protected. A rebase or an amend leaves its old commits reachable
   only from this ref log, and removing the branch removes that ref log too. `git branch -d` on a
   merged branch does exactly the same, so the sweep is no more destructive than the command it

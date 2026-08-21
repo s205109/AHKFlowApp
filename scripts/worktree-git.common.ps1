@@ -466,8 +466,11 @@ function Test-StrandedWorkWasSuperseded {
 #     GIT_REFLOG_ACTION=commit and fast-forwards an unstarted branch onto an already-merged tip
 #     satisfies signals 1 and 2, and an empty branch gives signals 3 and 4 nothing to refuse.
 #     Signal 5 refuses that branch when the tip was already in the base before the branch existed,
-#     which is the shape backlog 096 reported. It cannot refuse a fast-forward onto work that
-#     entered the base afterwards. Such a branch still holds no commit, so nothing is lost.
+#     which is the shape backlog 096 reported. Two windows stay open. It cannot refuse a
+#     fast-forward onto work that entered the base afterwards. It also cannot refuse one whose
+#     base move shares a second with the branch's creation: ref-log stamps hold whole seconds,
+#     and the rule is STRICTLY earlier, so that move is skipped and an older base position is
+#     used. Such a branch still holds no commit, so nothing is lost.
 #   - Superseded originals are not protected. A rebase or an amend leaves its old commits reachable
 #     only from this ref log, and removing the branch removes that ref log with it. `git branch -d`
 #     does the same to a merged branch, so the sweep is no more destructive than the command it
