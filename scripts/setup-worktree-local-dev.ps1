@@ -679,13 +679,14 @@ function Get-WorktreeBacklogItemNumber {
 }
 
 # Single source of truth, same shape as Resolve-WorktreeDatabaseName: reuse the recorded value;
-# otherwise derive and backfill. An empty recorded value is a real answer ("nothing to judge"),
-# so the key's presence decides, not its truthiness.
+# otherwise derive and backfill. An empty recorded value is retried rather than kept, because the
+# usual order writes it: intake creates the worktree before it files the backlog item, so the first
+# run has nothing to match. Re-deriving costs one directory scan and picks the number up later.
 function Resolve-WorktreeBacklogItem {
     param([string] $Root, [string] $ManifestPath, [string] $MainCheckoutRoot)
 
-    $values = Read-ManifestValues $ManifestPath
-    if ($values.ContainsKey($BacklogItemKey)) { return [string] $values[$BacklogItemKey] }
+    $recorded = [string] (Read-ManifestValues $ManifestPath)[$BacklogItemKey]
+    if ($recorded) { return $recorded }
 
     $number = Get-WorktreeBacklogItemNumber -WorktreeRoot $Root -MainCheckoutRoot $MainCheckoutRoot
     Set-ManifestValue $ManifestPath $BacklogItemKey $number
@@ -700,8 +701,7 @@ function Write-WorktreeConfig {
         [string] $DbName,
         [string] $ConfigRoot,
         [int] $SqlPort,
-        [string] $ComposeProject,
-        [string] $BacklogItem
+        [string] $ComposeProject
     )
 
     $apiUrl = "http://localhost:$ApiPort"
@@ -729,7 +729,8 @@ function Write-Manifest {
         [int] $UiPort,
         [string] $DbName,
         [int] $SqlPort,
-        [string] $ComposeProject
+        [string] $ComposeProject,
+        [string] $BacklogItem
     )
 
     New-Item -ItemType Directory -Path (Split-Path -Parent $Path) -Force | Out-Null

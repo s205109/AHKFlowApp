@@ -558,4 +558,59 @@ try {
     Remove-TempTree $repo
 }
 
+# --- backlog 073 review: filing the item after the worktree exists records its number ---
+# The documented intake order creates the worktree first and files the backlog item inside it, so
+# setup always runs before the item exists. The number therefore has to be recorded when the item
+# is filed. Without that, every normally created worktree keeps the empty value setup wrote and
+# the plan guard has nothing to judge.
+$repo = New-TempMainCheckout
+try {
+    Write-SeedFile (Join-Path $repo 'backlog\000-backlog-item-template.md') @('# 000 - template', '', '- **Stage**: 0-intake')
+    Invoke-TestGit $repo @('add', '-A') | Out-Null
+    Invoke-TestGit $repo @('commit', '-m', 'seed backlog template') | Out-Null
+
+    $wtPath = Add-TestWorktree -RepoDir $repo -BranchName 'late-item'
+    & $setupScript -RepoRoot $wtPath -Quiet
+
+    $manifestPath = Join-Path $wtPath 'scripts\.env.worktree'
+    $beforeText = Get-Content -Raw -LiteralPath $manifestPath
+    Assert-True ($beforeText -match '(?m)^AHKFLOW_BACKLOG_ITEM=\s*$') 'Before the item is filed the recorded value is empty.'
+
+    $newItemScript = Join-Path (Split-Path -Parent $PSScriptRoot) 'scripts\new-backlog-item.ps1'
+    & $newItemScript -Title 'late item' -BacklogRoot (Join-Path $wtPath 'backlog') | Out-Null
+
+    $created = @(Get-ChildItem -LiteralPath (Join-Path $wtPath 'backlog') -Filter '*-late-item.md' -File)
+    Assert-Equal 1 $created.Count 'new-backlog-item.ps1 wrote exactly one item file.'
+    $expectedNumber = $created[0].BaseName.Substring(0, 3)
+    Assert-Equal $expectedNumber (Get-ManifestPort $manifestPath 'AHKFLOW_BACKLOG_ITEM') `
+        'Filing a backlog item inside a worktree records its number in the manifest.'
+
+    # A worktree serves one item. A second filing must not steal the recorded number from the first.
+    & $newItemScript -Title 'second item' -BacklogRoot (Join-Path $wtPath 'backlog') | Out-Null
+    Assert-Equal $expectedNumber (Get-ManifestPort $manifestPath 'AHKFLOW_BACKLOG_ITEM') `
+        'A second filing must not overwrite the recorded item number.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- backlog 073 review: setup re-derives a recorded value that is still empty ---
+# Setup runs again on the reuse path. An empty value is not an answer worth keeping when the
+# backlog item has appeared in the meantime.
+$repo = New-TempMainCheckout
+try {
+    $wtPath = Add-TestWorktree -RepoDir $repo -BranchName 'planguard-late'
+    & $setupScript -RepoRoot $wtPath -Quiet
+
+    $manifestPath = Join-Path $wtPath 'scripts\.env.worktree'
+    Assert-True ((Get-Content -Raw -LiteralPath $manifestPath) -match '(?m)^AHKFLOW_BACKLOG_ITEM=\s*$') `
+        'No matching item yet, so the recorded value is empty.'
+
+    Write-SeedFile (Join-Path $repo 'backlog\074-planguard-late.md') @('# 074 - planguard late')
+    & $setupScript -RepoRoot $wtPath -Quiet
+    Assert-Equal '074' (Get-ManifestPort $manifestPath 'AHKFLOW_BACKLOG_ITEM') `
+        'A later setup run fills in a number that was empty before.'
+} finally {
+    Remove-TempTree $repo
+}
+
 Write-Host 'Worktree local-dev setup no-auth tests passed.'
