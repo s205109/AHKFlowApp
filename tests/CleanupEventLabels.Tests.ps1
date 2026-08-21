@@ -43,20 +43,77 @@ if ($failures.Count -gt 0) {
 $ledger = @(Import-Csv -LiteralPath $ledgerPath)
 $labelled = @(Import-Csv -LiteralPath $labelledPath)
 
-# --- 1. Every ledger row is labelled, and no row was invented ---
+function Assert-Schema {
+    <#
+    .SYNOPSIS
+        A committed artifact's columns, in order.
+    .DESCRIPTION
+        Every check below reads columns by name. A renamed or dropped column would make those
+        checks read $null and pass, so the schema is asserted before anything reads it.
+    #>
+    param(
+        [Parameter(Mandatory)][AllowEmptyCollection()][array] $Rows,
+        [Parameter(Mandatory)][string[]] $Expected,
+        [Parameter(Mandatory)][string] $What
+    )
+
+    if ($Rows.Count -eq 0) {
+        Assert-True $false "$What has no rows, so its schema cannot be checked."
+        return
+    }
+    $actual = @($Rows[0].PSObject.Properties.Name)
+    Assert-True (($actual -join ',') -eq ($Expected -join ',')) `
+        "$What schema changed. Expected '$($Expected -join ',')', got '$($actual -join ',')'."
+}
+
+# --- 1. Both files have the schema every check below reads ---
+
+Assert-Schema -Rows $ledger -What 'The frozen ledger' -Expected @(
+    'Key', 'Session', 'Timestamp', 'Type', 'Matched', 'Line')
+Assert-Schema -Rows $labelled -What 'The labelled file' -Expected @(
+    'Key', 'Session', 'Route', 'EventStamp', 'MessageStamp', 'InCurrentLog', 'CheckedOn',
+    'IsGenuineLogLine', 'Matched', 'Line')
+
+# --- 2. Every ledger row is labelled, paired on its whole identity ---
 
 Assert-True ($labelled.Count -eq $ledger.Count) `
     "The labelled file has $($labelled.Count) rows and the ledger has $($ledger.Count). They must pair one to one."
 
-$labelledLines = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
-foreach ($row in $labelled) { [void]$labelledLines.Add([string]$row.Line) }
-
-foreach ($row in $ledger) {
-    Assert-True ($labelledLines.Contains([string]$row.Line)) `
-        "A ledger line has no labelled row: $($row.Line)"
+# Pair on Key and Line together, not on Line alone. One key carries several lines and one line
+# appears under several keys, so matching on either half lets a row swap its key and still pass.
+function Get-RowIdentity {
+    param([Parameter(Mandatory)] $Row)
+    return "$([string]$Row.Key)|$(([string]$Row.Line).TrimEnd())"
 }
 
-# --- 2. Route is decided on every row, and only from the two mechanical values ---
+$labelledIdentities = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+foreach ($row in $labelled) {
+    $identity = Get-RowIdentity -Row $row
+    Assert-True ($labelledIdentities.Add($identity)) `
+        "The labelled file holds the same key and line twice: $identity"
+}
+
+foreach ($row in $ledger) {
+    Assert-True ($labelledIdentities.Contains((Get-RowIdentity -Row $row))) `
+        "A ledger row has no labelled row with the same key and line: $(Get-RowIdentity -Row $row)"
+}
+
+# The ledger is frozen and its rows are distinct events. A repeat means the same event was
+# counted twice, which is the defect backlog 103 was filed against.
+$ledgerIdentities = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+foreach ($row in $ledger) {
+    Assert-True ($ledgerIdentities.Add((Get-RowIdentity -Row $row))) `
+        "The frozen ledger holds the same key and line twice: $(Get-RowIdentity -Row $row)"
+}
+
+# Every Key must be an identity the labeller can look up. Get-MessageKey also writes a 'text:'
+# fallback, and a row carrying one can never be resolved to a record.
+foreach ($row in $labelled) {
+    Assert-True ([string]$row.Key -match '^(?:msg|uuid):.+$') `
+        "A Key names no record. Only 'msg:' and 'uuid:' can be looked up: '$($row.Key)'"
+}
+
+# --- 3. Route is decided on every row, and the published split still holds ---
 
 # 'unresolved' means the script could not find the record. It is a real output of the labelling
 # script and it must never survive into the committed file: an unresolved row is a row nobody
@@ -69,14 +126,28 @@ foreach ($row in $labelled) {
         "Route must be 'tool-result' or 'human-paste', not '$route': $($row.Line)"
 }
 
-# --- 3. The one hand-written column is filled in on every row ---
-
-foreach ($row in $labelled) {
-    Assert-True ([bool][string]$row.IsGenuineLogLine) `
-        "A row has no IsGenuineLogLine. That column is the only judgment in the file: $($row.Line)"
+# The ledger is frozen, so these two totals are fixed. They are the figures backlog 072, backlog
+# 103 and friction-recall-sample.md all publish, and a change to either without a change to
+# those documents would leave the published split describing data that no longer exists.
+$expectedRouteTotals = @{ 'tool-result' = 14; 'human-paste' = 4 }
+foreach ($route in ($expectedRouteTotals.Keys | Sort-Object)) {
+    $actual = @($labelled | Where-Object { [string]$_.Route -eq $route }).Count
+    Assert-True ($actual -eq $expectedRouteTotals[$route]) `
+        "The published split is $($expectedRouteTotals[$route]) '$route' rows. The file has $actual."
 }
 
-# --- 4. The rule sheet's overlap arithmetic matches the data ---
+# --- 4. The one hand-written column says the line is genuine, on every row ---
+
+# Not 'is filled in'. The published claim is that all 18 rows are genuine log lines, so a row
+# reading 'no' would withdraw that claim in silence while this suite stayed green.
+foreach ($row in $labelled) {
+    Assert-True ([string]$row.IsGenuineLogLine -eq 'yes') `
+        ("IsGenuineLogLine must read 'yes'. It reads '$($row.IsGenuineLogLine)' for: $($row.Line). " +
+        'The published result is that every row is a genuine log line; a row that is not ' +
+        'withdraws that claim, and the documents that quote it have to change with it.')
+}
+
+# --- 5. The rule sheet's overlap arithmetic matches the data ---
 
 # The witnessed rows are NOT a subset of the log's in-window rows. Three of the 18 are stamped
 # before the log's earliest surviving line, so they are in the window but not in the log. An
@@ -107,12 +178,28 @@ if (Test-Path -LiteralPath $logLedgerPath) {
         "The rule sheet claims the transcripts witnessed all $($labelled.Count) rows out of the log's in-window lines. Only $witnessedInLog of them are in that set."
 }
 
-# --- 5. The decision stays a floor ---
+# --- 6. The decision stays a floor ---
 
 # The whole point of backlog 103 is that 18 is a floor and not an upper bound. A later edit that
 # quietly restores 'upper bound' would put the withdrawn claim back into the documentation.
 Assert-True ($ruleText -match 'floor') `
     "The rule sheet no longer contains the word 'floor'. The decision is that the count is a floor."
+
+# --- 7. The rule sheet still names the unit ---
+
+# 201 and 204 are counts of outcome log lines, never of cleanup runs. One removal writes several
+# lines, so the two units differ by more than a factor of two, and the earlier wording called
+# them 'popups and blocked runs'.
+if (Test-Path -LiteralPath $logLedgerPath) {
+    $logLedger = @(Import-Csv -LiteralPath $logLedgerPath)
+    $startedCount = @($logLedger | Where-Object { ([string]$_.Line) -match 'Watcher started\.' }).Count
+
+    Assert-True (($ruleText -replace '\s+', ' ') -match 'not a count of cleanup runs') `
+        "The rule sheet must say the figure is not a count of cleanup runs. One removal writes several lines."
+    Assert-True (($ruleText -replace '\s+', ' ') -match "$startedCount of the $($logLedger.Count)") `
+        ("The rule sheet must say that $startedCount of the $($logLedger.Count) log lines are " +
+        "'Watcher started.', which is what shows the unit is a line and not a run.")
+}
 
 # --- Report ---
 

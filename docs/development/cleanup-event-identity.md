@@ -1,7 +1,7 @@
 # What the cleanup event count measures
 
-Friction metric 3 counts cleanup events. Backlog 103 labelled every row it published and
-recorded the rule below. Read this before you quote the figure, change the metric, or add a
+Friction metric 3 counts cleanup outcome log lines. Backlog 103 labelled every row it published
+and recorded the rule below. Read this before you quote the figure, change the metric, or add a
 row to the ledger.
 
 The measured artifacts are:
@@ -11,11 +11,27 @@ The measured artifacts are:
 - `friction-samples/cleanup-events-labelled.csv` — the same 18 rows with their labels.
 - `friction-samples/ledgers/cleanup-log-events.csv` — the removal log's own in-window rows.
 
+**All three are dated snapshots, not figures a second machine can regenerate.** They were
+measured on 2026-08-21. The two inputs behind them are machine-local and gitignored: the session
+transcripts under `~/.claude/projects`, and `.claude/worktrees/worktree-removal.log`
+(`.gitignore:451`, ".claude/worktrees/"). Each records only what happened on that machine, and
+the removal log does not reach back to the start of the window. Re-running either script on
+another machine measures that machine, and prints different numbers. The committed rows are
+what makes the published figures auditable; re-running is not.
+
 ## 1. What the metric counts
 
 **A distinct cleanup outcome log line that appears in an in-window session transcript.**
 
-It is not a count of cleanup events, and it is not a count of messages.
+It is not a count of cleanup events, it is not a count of cleanup runs, and it is not a count
+of messages.
+
+**One removal writes several lines, so the figure is larger than the number of removals behind
+it.** In `friction-samples/ledgers/cleanup-log-events.csv`, 91 of the 201 rows are
+`Watcher started.` and 87 are `Watcher done (`, across 64 named worktrees. Those two lines
+bracket one removal. So a reader who takes 201 as a count of popups, blocked runs, or removals
+over-states the real number by more than a factor of two. Every published figure in this file
+counts lines.
 
 Each of those three words carries weight:
 
@@ -56,17 +72,30 @@ therefore counts both, and that is deliberate rather than a defect to patch.
 ## 3. The route label that is worth keeping
 
 The split that does survive is how the line entered the transcript. It is decided from record
-fields, never from reading the text:
+fields, never from reading the text. The first rule that matches wins, so a record that answers
+to both is a tool result:
 
-| Label | How the record is recognised |
-|---|---|
-| `human-paste` | `promptSource` is `typed`, or `origin.kind` is `human` |
-| `tool-result` | the record has a `toolUseResult` field and a `tool_result` content block |
+| Order | Label | How the record is recognised |
+|---|---|---|
+| 1 | `tool-result` | the record has a `toolUseResult` field |
+| 2 | `human-paste` | `Test-HumanTurn` says so: `type` is `user`, **and** either `origin.kind` is `human` or `promptSource` is `typed`, `suggestion_accepted` or `queued` |
+| 3 | `unresolved` | neither rule matched, or no record answers to the row's `Key` |
 
-Those are the same fields the metric's own human-turn rule reads
+The precedence is
+(`scripts/label-cleanup-events.ps1:218`, "function Get-RecordRoute {"),
+and the second rule is the metric's own human-turn rule, called rather than copied
 (`scripts/measure-process-friction.ps1:174`, "function Test-HumanTurn {"),
 so the two agree by construction. Because the rule is mechanical,
 `scripts/label-cleanup-events.ps1` computes the label instead of a person judging it.
+
+`unresolved` is a real output of the script. It must never reach the committed file, because an
+unresolved row is a row nobody labelled, and `tests/CleanupEventLabels.Tests.ps1` fails one.
+
+A row's `Key` is the identity the metric wrote for its record: `msg:<message.id>` when the
+record carries a message id, `uuid:<uuid>` otherwise
+(`scripts/measure-process-friction.ps1:258`, "function Get-MessageKey {").
+The labeller looks up both. Its third form, `text:<text>`, names no record and cannot be
+resolved; the same test fails a ledger row that carries one.
 
 The label answers a real question — how cleanup outcomes reach a conversation — without
 claiming one route is more real than the other.
@@ -82,6 +111,13 @@ It is checked against `.claude/worktrees/worktree-removal.log` where the log sti
 back, and by reading the record where it does not.
 
 All 18 published rows read `yes`.
+
+**What `yes` proves, and what it does not.** It proves the text is real `Write-WorktreeLog`
+output rather than invented text or a paraphrase. It does not say when the line was read. The
+same genuine line can arrive the moment it is written, or in a log tail read weeks later, or in
+a quotation inside a later review, and the record fields are identical in all three. So the
+labels rule out fabrication. They do not separate an original read from a later quotation, and
+section 2 explains why that separation would draw a line the data does not have.
 
 ## 5. The decision: the count is a floor
 

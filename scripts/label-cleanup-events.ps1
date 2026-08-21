@@ -9,11 +9,16 @@
     own stamp, which is the event time. See docs/development/cleanup-event-identity.md.
 
     So this script computes the split that does survive - how the line entered the transcript -
-    and it computes it from record fields, never from reading the text:
+    and it computes it from record fields, never from reading the text. The first rule that
+    matches wins:
 
       tool-result   the record has a toolUseResult field
-      human-paste   promptSource is 'typed', or origin.kind is 'human'
-      unresolved    the record was not found
+      human-paste   Test-HumanTurn says so: type is 'user', and either origin.kind is 'human'
+                    or promptSource is 'typed', 'suggestion_accepted' or 'queued'
+      unresolved    neither rule matched, or no record answers to the row's Key
+
+    A row's Key is the identity the metric wrote for its record: msg:<message.id> when the
+    record carries a message id, uuid:<uuid> otherwise. Both are looked up.
 
     One column is not computed here. IsGenuineLogLine is filled in by hand, and a re-run
     carries the existing value forward rather than blanking it.
@@ -115,10 +120,24 @@ if (Test-Path -LiteralPath $output) {
 # One index per session file, built once. Seven records are wanted across five sessions, and
 # each transcript is thousands of lines.
 $recordBySession = @{}
+
+# A message id is shared by every fragment of one message, so a repeat is the normal case and
+# not a conflict. Counting them keeps the count visible without burying a real clash: on the
+# committed ledger there are 291 such repeats and no repeated uuid.
+$script:FragmentRepeats = 0
 function Get-SessionRecord {
+    <#
+    .SYNOPSIS
+        The record a ledger Key names, from the session file that carries it.
+    .DESCRIPTION
+        Get-MessageKey in measure-process-friction.ps1 writes 'msg:<message.id>' when the record
+        carries a message id and 'uuid:<uuid>' otherwise, so a ledger holds both kinds. Indexing
+        uuids alone marked every 'msg:' row 'unresolved', which reads as a missing record rather
+        than as a key this script never looked for.
+    #>
     param(
         [Parameter(Mandatory)][string] $SessionFile,
-        [Parameter(Mandatory)][string] $Uuid
+        [Parameter(Mandatory)][string] $Identity
     )
 
     if (-not $recordBySession.ContainsKey($SessionFile)) {
@@ -131,29 +150,49 @@ function Get-SessionRecord {
                 if (-not $record) { continue }
 
                 # Subagent records are excluded from the measurement, so no ledger row can come
-                # from one. Indexing them would let a sidechain record win the uuid and hand back
-                # the wrong route. The measurement script drops them the same way.
+                # from one. Indexing them would let a sidechain record win the identity and hand
+                # back the wrong route. The measurement script drops them the same way.
                 if ((Get-RecordProperty -Record $record -Name 'isSidechain') -eq $true) { continue }
 
-                $id = Get-RecordProperty -Record $record -Name 'uuid'
-                if (-not $id) { continue }
-                $id = [string]$id
+                # Both identity kinds, keyed exactly as the ledger writes them. A record can
+                # answer to both, and indexing both is what lets one ledger hold a mix.
+                $identities = New-Object System.Collections.Generic.List[string]
+                $message = Get-RecordProperty -Record $record -Name 'message'
+                $messageId = Get-RecordProperty -Record $message -Name 'id'
+                if ($messageId) { $identities.Add("msg:$messageId") }
+                $uuid = Get-RecordProperty -Record $record -Name 'uuid'
+                if ($uuid) { $identities.Add("uuid:$uuid") }
 
-                # One session file name can appear under more than one project directory. First
-                # one read wins, which is arbitrary, so say when the choice was ever made rather
-                # than resolving it in silence.
-                if ($index.ContainsKey($id)) {
-                    Write-Warning "uuid $id appears more than once under $SessionFile. Keeping the first record read."
-                    continue
+                # Not $identity: PowerShell variable names are case-insensitive, so a loop
+                # variable by that name is the $Identity parameter, and the loop would leave the
+                # lookup below asking for the last key indexed instead of the one requested.
+                foreach ($indexKey in $identities) {
+                    if (-not $index.ContainsKey($indexKey)) {
+                        $index[$indexKey] = $record
+                        continue
+                    }
+
+                    # First record read wins either way, which is what ConvertTo-LogicalMessage
+                    # in measure-process-friction.ps1 does with the fields it keeps per key.
+                    if ($indexKey.StartsWith('msg:')) {
+                        # Every fragment of one message carries that message's id. This is the
+                        # rule working, so count it rather than warning 291 times.
+                        $script:FragmentRepeats++
+                        continue
+                    }
+
+                    # A repeated uuid is a real clash. One session file name can appear under
+                    # more than one project directory, so say when the choice was made rather
+                    # than resolving it in silence.
+                    Write-Warning "$indexKey appears more than once under $SessionFile. Keeping the first record read."
                 }
-                $index[$id] = $record
             }
         }
         $recordBySession[$SessionFile] = $index
     }
 
-    $byUuid = $recordBySession[$SessionFile]
-    if ($byUuid.ContainsKey($Uuid)) { return $byUuid[$Uuid] }
+    $byIdentity = $recordBySession[$SessionFile]
+    if ($byIdentity.ContainsKey($Identity)) { return $byIdentity[$Identity] }
     return $null
 }
 
@@ -189,9 +228,16 @@ function Get-RecordRoute {
     return 'unresolved'
 }
 
+$unknownKeyKinds = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+
 $labelled = foreach ($row in $rows) {
-    $uuid = if ($row.Key -match '^uuid:(?<id>.+)$') { $Matches['id'] } else { '' }
-    $record = if ($uuid) { Get-SessionRecord -SessionFile $row.Session -Uuid $uuid } else { $null }
+    # 'msg:' and 'uuid:' are the two kinds Get-MessageKey writes for a record it can identify.
+    # 'text:' is its fallback for a record with neither, and it is not an identity this script
+    # can look up, so it is named rather than passed silently through as 'unresolved'.
+    $key = [string]$row.Key
+    $identity = if ($key -match '^(?:msg|uuid):.+$') { $key } else { '' }
+    if (-not $identity) { [void]$unknownKeyKinds.Add(($key -split ':', 2)[0]) }
+    $record = if ($identity) { Get-SessionRecord -SessionFile $row.Session -Identity $identity } else { $null }
     $line = $row.Line.TrimEnd()
 
     $inLog = if (-not (Test-Path -LiteralPath $removalLog)) { 'unknown' }
@@ -223,6 +269,7 @@ Write-Host "Labelled    : $output"
 Write-Host "  rows              : $($labelled.Count)"
 Write-Host "  distinct keys     : $(@($labelled.Key | Select-Object -Unique).Count)"
 Write-Host "  distinct sessions : $(@($labelled.Session | Select-Object -Unique).Count)"
+Write-Host "  message fragments : $script:FragmentRepeats repeat of an already-indexed message id"
 Write-Host "  checked on        : $checkedOn"
 Write-Host ''
 foreach ($group in ($labelled | Group-Object Route | Sort-Object Name)) {
@@ -230,6 +277,13 @@ foreach ($group in ($labelled | Group-Object Route | Sort-Object Name)) {
 }
 foreach ($group in ($labelled | Group-Object InCurrentLog | Sort-Object Name)) {
     Write-Host ("  in log {0,-12} {1,3}" -f $group.Name, $group.Count)
+}
+
+if ($unknownKeyKinds.Count -gt 0) {
+    $kinds = ($unknownKeyKinds | Sort-Object) -join ', '
+    Write-Host ''
+    Write-Warning ("Ledger key kinds that name no record: $kinds. Only msg: and uuid: can be " +
+        'looked up, so those rows read Route=unresolved.')
 }
 
 $missing = @($labelled | Where-Object { -not $_.IsGenuineLogLine })
