@@ -18,12 +18,12 @@ already lists both shells, but Copilot and Codex both send `shell`, which names 
 agent can also run a PowerShell command through a bash tool with `pwsh -c`, so the hint can be
 accurate about the tool and still wrong about the shell.
 
-**Refusing the ambiguity was rejected, and it would have widened the hole.** Marking every
-unquoted backtick and parenthesis ambiguous fails closed in the write-target reader, and fails
-*open* in the write decision
-(`scripts/agents/agent-worktree-guard.common.ps1:3289`, "    if ($parsed.Ambiguous) { return New-AgentGuardDecision -Action Allow }").
-It would also stop a bash subshell from splitting at all, which is the part the old behaviour got
-right.
+**Refusing the ambiguity was rejected.** Marking every unquoted backtick and parenthesis ambiguous
+would stop a bash subshell from splitting at all, which is the part the old behaviour got right.
+
+That rejection once carried a second reason: ambiguity failed closed in the write-target reader and
+failed *open* in the write decision. Backlog 110 removed that disagreement, so the second reason is
+void. See [ADR 0009](0009-an-unreadable-command-is-refused-by-every-policy-layer.md).
 
 **Merging the two segment lists was rejected.** The write and location decisions walk segments in
 order while tracking an effective working directory, a directory stack, and a pipeline source.
