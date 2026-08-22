@@ -3853,11 +3853,15 @@ function Resolve-AgentGuardLayerDecision {
 
 <#
 .SYNOPSIS
-Single orchestration point: safety rules fail closed, location rules fail open.
+Single orchestration point: safety rules fail closed, location rules fail open, strongest wins.
 
 .DESCRIPTION
 Kept here rather than in the adapter entrypoint so both the entrypoint and the focused tests
 exercise the same precedence, and so tests can shadow either policy function to inject a fault.
+
+The three layers answer independently. Severity decides between them, not position: see
+Resolve-AgentGuardLayerDecision. Position still decides one thing, which is how far the run
+gets, because a Deny short-circuits the layers after it.
 #>
 function Invoke-AgentGuardPolicyForReading {
     [CmdletBinding()]
@@ -3876,23 +3880,37 @@ function Invoke-AgentGuardPolicyForReading {
     }
     catch {
         # Fail closed: an evaluator fault must not silently drop destructive-command protection.
-        return New-AgentGuardDecision -Action Deny -Rule 'safety-guard-error' -Message `
+        # This is a Deny from the safety layer like any other, so it takes the same exit below and
+        # gets named the same way.
+        $safety = New-AgentGuardDecision -Action Deny -Rule 'safety-guard-error' -Message `
         ("BLOCKED: the agent command safety guard failed to evaluate this command: $($_.Exception.Message)")
     }
 
-    if ($safety.Action -eq 'Deny') { return $safety }
+    # A safety Deny wins outright. Deny is the top of the severity table, so no later layer could
+    # change the answer, and the later layers must not spend git probes on a refused command.
+    if ($safety.Action -eq 'Deny') {
+        return (Resolve-AgentGuardLayerDecision -Layers @(
+                [pscustomobject]@{ Name = 'safety'; Decision = $safety }))
+    }
 
     try {
         $location = Get-AgentWorktreeGuardDecision -Command $Command -Cwd $Cwd `
             -ProtectedRepoRoot $ProtectedRepoRoot -AllowMain $AllowMain -Reading $Reading
     }
     catch {
-        # Fail open: keep the shell usable, but say so loudly.
-        return New-AgentGuardDecision -Action Warn -Rule 'location-guard-error' -Message `
+        # Fail open: keep the shell usable, but say so loudly. The write layer still runs below,
+        # so a location fault cannot take the write refusal down with it.
+        $location = New-AgentGuardDecision -Action Warn -Rule 'location-guard-error' -Message `
         ("WARNING: the agent worktree location guard could not evaluate this command: $($_.Exception.Message)")
     }
 
-    if ($location.Action -ne 'Allow') { return $location }
+    # Same reason as the safety short-circuit: a Deny is already the strongest possible answer,
+    # and this is what keeps the write layer's git probes off the common refusal path.
+    if ($location.Action -eq 'Deny') {
+        return (Resolve-AgentGuardLayerDecision -Layers @(
+                [pscustomobject]@{ Name = 'safety'; Decision = $safety },
+                [pscustomobject]@{ Name = 'location'; Decision = $location }))
+    }
 
     try {
         $write = Get-AgentWorktreeWriteDecision -Command $Command -Cwd $Cwd `
@@ -3900,13 +3918,14 @@ function Invoke-AgentGuardPolicyForReading {
     }
     catch {
         # Fail open, same as the location rule: keep the shell usable, but say so loudly.
-        return New-AgentGuardDecision -Action Warn -Rule 'write-guard-error' -Message `
+        $write = New-AgentGuardDecision -Action Warn -Rule 'write-guard-error' -Message `
         ("WARNING: the agent worktree write guard could not evaluate this command: $($_.Exception.Message)")
     }
 
-    if ($write.Action -ne 'Allow') { return $write }
-
-    return $safety
+    return (Resolve-AgentGuardLayerDecision -Layers @(
+            [pscustomobject]@{ Name = 'safety'; Decision = $safety },
+            [pscustomobject]@{ Name = 'location'; Decision = $location },
+            [pscustomobject]@{ Name = 'write'; Decision = $write }))
 }
 
 <#

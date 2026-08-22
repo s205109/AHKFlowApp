@@ -744,6 +744,7 @@ try {
             -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
         Assert-Equal 'Deny' $decision.Action 'Action'
         Assert-Equal 'safety-guard-error' $decision.Rule 'Rule'
+        Assert-Match 'safety layer' $decision.Message 'A fault is still a safety-layer answer'
     }
 
     Write-Host 'Layer severity resolution' -ForegroundColor Cyan
@@ -877,6 +878,72 @@ try {
         Assert-Match 'write layer' $decision.Message 'Message names the winning layer'
         Assert-Match 'location' $decision.Message 'Message names the suppressed layer'
         Assert-Match 'Ask' $decision.Message 'Message names the suppressed action'
+    }
+
+    Write-Host 'Backlog 111 acceptance' -ForegroundColor Cyan
+
+    Invoke-TestCase 'A write-layer Deny is not hidden by a location-layer Ask' {
+        # The command backlog 111 measured. The git half asks; the Set-Content half denies.
+        $command = 'git -C ' + $fixture.Main + ' add . ; Set-Content -Path ' +
+        $fixture.Main + '\probe.txt -Value x'
+        $decision = Invoke-AgentGuardPolicy -Command $command `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'Deny' $decision.Action 'Action'
+        Assert-Equal 'agent-worktree-main-write' $decision.Rule 'Rule'
+    }
+
+    Invoke-TestCase 'The winning layer is named, and the suppressed Ask is reported' {
+        $command = 'git -C ' + $fixture.Main + ' add . ; Set-Content -Path ' +
+        $fixture.Main + '\probe.txt -Value x'
+        $decision = Invoke-AgentGuardPolicy -Command $command `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Match 'write layer' $decision.Message 'Message names the winning layer'
+        Assert-Match 'location answered Ask' $decision.Message 'Message reports the weaker objection'
+    }
+
+    Invoke-TestCase 'A command whose only objection is an Ask still reports Ask' {
+        $command = 'git -C ' + $fixture.Main + ' add .'
+        $decision = Invoke-AgentGuardPolicy -Command $command `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'Ask' $decision.Action 'Action'
+        Assert-Equal 'agent-main-git-mutation' $decision.Rule 'Rule'
+        Assert-True ($decision.Message -notmatch 'also objected') `
+            'One objection means nothing else to report'
+    }
+
+    Invoke-TestCase 'A safety Deny still wins outright over a location Ask' {
+        $command = 'git -C ' + $fixture.Main + ' add . ; rm -rf ' + $fixture.Main + '/docs'
+        $decision = Invoke-AgentGuardPolicy -Command $command `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'Deny' $decision.Action 'Action'
+        Assert-Equal 'dangerous-rm' $decision.Rule 'Rule'
+        Assert-Match 'safety layer' $decision.Message 'Message names the safety layer'
+    }
+
+    Invoke-TestCase 'Two Warn layers still return the location rule' {
+        # Measured for backlog 111 review: with the override set, this command makes the location
+        # layer and the write layer both answer Warn. Today the location rule reaches the human,
+        # and this change must not move that.
+        $command = 'git -C ' + $fixture.Main + ' commit -m x ; Set-Content -Path ' +
+        $fixture.Main + '\probe.txt -Value x'
+        $decision = Invoke-AgentGuardPolicy -Command $command `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $true
+        Assert-Equal 'Warn' $decision.Action 'Action'
+        Assert-Equal 'agent-main-git-mutation-overridden' $decision.Rule 'Rule'
+        Assert-Match 'location layer' $decision.Message 'Message names the winning layer'
+        Assert-Match 'write answered Warn' $decision.Message 'The equal objection is reported'
+        Assert-True ($decision.Message -notmatch 'more weakly') `
+            'An equal answer must not be described as weaker'
+    }
+
+    Invoke-TestCase 'A location fault no longer disables the write layer' {
+        function Get-AgentWorktreeGuardDecision { param($Command, $Cwd, $ProtectedRepoRoot, $AllowMain, $Reading) throw 'injected location fault' }
+        $command = 'Set-Content -Path ' + $fixture.Main + '\probe.txt -Value x'
+        $decision = Invoke-AgentGuardPolicy -Command $command `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
+        Assert-Equal 'Deny' $decision.Action 'Action'
+        Assert-Equal 'agent-worktree-main-write' $decision.Rule 'Rule'
+        Assert-Match 'location answered Warn' $decision.Message 'The fault is still reported'
     }
 
     Write-Host 'Location policy' -ForegroundColor Cyan
@@ -1033,8 +1100,8 @@ try {
     }
 
     # A quote is one of four ways a Reading becomes Ambiguous. The other three are block forms the
-    # suite already covers at (`tests/AgentWorktreeGuard.Tests.ps1:2083`, "    $heredocAmbiguousCases = @(")
-    # and (`tests/AgentWorktreeGuard.Tests.ps1:2172`, "    $hereStringAmbiguousCases = @("), and
+    # suite already covers at (`tests/AgentWorktreeGuard.Tests.ps1:2283`, "    $heredocAmbiguousCases = @(")
+    # and (`tests/AgentWorktreeGuard.Tests.ps1:2372`, "    $hereStringAmbiguousCases = @("), and
     # every one of them must reach the same refusal at every layer. Without this, the message could
     # promise "balanced quoting" to somebody whose heredoc terminator is indented.
     $unreadableCauses = @(
