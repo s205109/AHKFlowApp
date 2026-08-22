@@ -6,7 +6,7 @@
 - **Type**: Process / tooling
 - **Interfaces**: none (scripts, docs)
 - **Difficulty**: complex
-- **Stage**: 0-intake
+- **Stage**: 1-pickup
 - **Depends on**: 102-recall-sample-was-drawn-without-equal-inclusion-probabilities
 
 ## Summary
@@ -83,5 +83,8 @@ actually happened, so that the range means what a 95 percent interval means.
   item is what finally satisfies the story 102 was filed for.
 - `Get-RecallInterval` already exists in `scripts/sample-friction-recall.ps1` and carries the
   `-Correct` switch this item will be the first to use.
+- Base: `origin/main` at e65a5b9c, confirmed at Pickup. The snapshot directory
+  `~/AHKFlowApp-friction-snapshot-2026-08-21` was re-checked on 2026-08-22 and still holds
+  106 top-level project folders.
 - Spec: none — Design has not run.
 - Plan: none — the item is at Intake.
