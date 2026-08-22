@@ -41,7 +41,17 @@ function Assert-NotContains {
 
 function Invoke-FixtureGit {
     param([string] $RepoDir, [string[]] $GitArgs)
-    $out = & git -C $RepoDir @GitArgs 2>&1
+    # Windows PowerShell turns a native command's stderr into error records, and the file-wide
+    # 'Stop' preference makes them terminating. Git writes progress to stderr on success, so a
+    # call without '--quiet' would fail this suite under powershell.exe while passing under
+    # pwsh. The exit code is the only success signal that means anything here.
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $out = & git -C $RepoDir @GitArgs 2>&1
+    } finally {
+        $ErrorActionPreference = $previous
+    }
     if ($LASTEXITCODE -ne 0) { throw "git $($GitArgs -join ' ') failed: $out" }
     return $out
 }

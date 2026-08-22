@@ -1,4 +1,13 @@
-#Requires -Version 5.1
+# 7.0, not 5.1. Two separate defects put this suite out of reach of Windows PowerShell.
+# First, Invoke-TestGit below runs `& git ... 2>&1`, and under Windows PowerShell a native
+# command's stderr becomes an error record that this file's 'Stop' preference turns terminating --
+# so `git worktree add`, which reports progress on stderr, ends the suite.
+# Second, the watcher this suite drives is spawned with the current host, so under powershell.exe
+# remove-worktree-local-dev.ps1 runs in Watcher mode under 5.1 and never removes the worktree.
+# The second one is the real bug and is tracked separately; until it is fixed the floor here says
+# what it really is. scripts/run-powershell-suites.ps1 runs every suite under pwsh, so nothing
+# changes in CI.
+#Requires -Version 7.0
 
 [CmdletBinding()]
 param()
