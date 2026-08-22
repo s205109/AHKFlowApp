@@ -86,5 +86,5 @@ actually happened, so that the range means what a 95 percent interval means.
 - Base: `origin/main` at e65a5b9c, confirmed at Pickup. The snapshot directory
   `~/AHKFlowApp-friction-snapshot-2026-08-21` was re-checked on 2026-08-22 and still holds
   106 top-level project folders.
-- Spec: none — Design has not run.
+- Spec: `docs/superpowers/specs/2026-08-22-friction-recall-redraw-design-113.md`
 - Plan: none — the item is at Intake.
