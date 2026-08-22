@@ -21,9 +21,11 @@ that an approvable prompt never stands in for a refusal.
 
 ## Detail
 
-`Invoke-AgentGuardPolicyForReading` returns the location decision whenever it is not Allow, and
-never reaches the write layer
-(`scripts/agents/agent-worktree-guard.common.ps1:3821`, "    if ($location.Action -ne 'Allow') { return $location }").
+`Invoke-AgentGuardPolicyForReading` used to return the location decision whenever it was not
+Allow, and never reached the write layer. Fixed on this branch: the orchestrator now hands all
+three layer answers to `Resolve-AgentGuardLayerDecision`
+(`scripts/agents/agent-worktree-guard.common.ps1:3812`, "function Resolve-AgentGuardLayerDecision {"),
+which returns the strongest one.
 
 Measured from a managed worktree, with the protected root set to the main checkout:
 
@@ -45,13 +47,13 @@ still ordered by position, not by severity, which is the gap this item closes.
 
 ## Acceptance criteria
 
-- [ ] One Reading returns the strongest action any of its three layers produced, not the first
+- [x] One Reading returns the strongest action any of its three layers produced, not the first
       non-Allow one
-- [ ] `git -C <main> add . ; Set-Content -Path <main>\probe.txt -Value x` reports Deny
-- [ ] The message names the layer that produced the winning action
-- [ ] A command whose only objection is an Ask still reports Ask
-- [ ] The safety layer still fails closed and still wins outright when it denies
-- [ ] A test pins the measured command above at Deny
+- [x] `git -C <main> add . ; Set-Content -Path <main>\probe.txt -Value x` reports Deny
+- [x] The message names the layer that produced the winning action
+- [x] A command whose only objection is an Ask still reports Ask
+- [x] The safety layer still fails closed and still wins outright when it denies
+- [x] A test pins the measured command above at Deny
 
 ## Out of scope
 
@@ -67,4 +69,4 @@ still ordered by position, not by severity, which is the gap this item closes.
 - Running the later layers changes cost: the write layer spawns git probes. Measure before
   assuming every layer must always run
 - Spec: none — Difficulty is `moderate`, so Pickup jumps straight to Plan and no spec is written
-- Plan: docs/superpowers/plans/2026-08-22-guard-layer-severity-plan-111.md
+- Plan: `docs/superpowers/plans/2026-08-22-guard-layer-severity-plan-111.md`

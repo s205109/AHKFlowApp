@@ -158,6 +158,13 @@ safety layer refuses it. The location layer refuses it. The write layer refuses 
 a managed worktree, which is the only kind of session that layer governs. Refusing it for any other
 session is the location layer's job, and that layer does it for every session.
 
+The three layers answer one command independently, and the strongest answer decides it. The
+severity order is `Deny > Ask > Warn > Allow`. When two layers answer the same, the location layer
+decides, then the write layer, then the safety layer. That is the order the guard has always
+resolved a tie in, so a command that was already answered correctly keeps the same message. A
+refusal names the layer it came from, and reports any other objection it replaced. A `Deny` stops
+the run, so the layers after it never spend the time to answer.
+
 `AHKFLOW_ALLOW_MAIN=1` does not relax this refusal at any layer.
 
 The rule is named for the command and not for git, and the check cannot be narrowed to git commands.
@@ -397,7 +404,9 @@ An agent running the same command would need a prompt or override.
 - The transparent-wrapper list is hard-coded and narrow on purpose. Any wrapper that is not on the
   list hides its child git calls exactly as before.
 - Adapter parse errors and unexpected location-policy errors **fail open** with a warning; only an
-  explicit safety-rule match (or a safety-rule evaluation fault) **fails closed**.
+  explicit safety-rule match (or a safety-rule evaluation fault) **fails closed**. A location-policy
+  fault no longer ends the run: the write layer still gets to answer, and a `Deny` from it still
+  refuses the command.
 - Main-tree edits, builds, tests, and formatters are allowed and can dirty the working tree. The
   guard prevents Git mutation, not a dirty tree.
 - The command tokenizer is not a full Bash/PowerShell parser. Representative chains, redirects,
