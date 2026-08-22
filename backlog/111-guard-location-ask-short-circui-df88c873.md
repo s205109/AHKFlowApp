@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: none (agent git guard)
 - **Difficulty**: moderate
-- **Stage**: 4-execute
+- **Stage**: 5-simplify
 
 ## Summary
 
