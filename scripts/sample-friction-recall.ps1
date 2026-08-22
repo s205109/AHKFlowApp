@@ -63,8 +63,10 @@ $ErrorActionPreference = 'Stop'
 # It is a uniform random sample. Every unflagged message has the same chance of selection,
 # whenever it was written. That is what an interval over the labels needs; it is not the whole
 # story, because the draw takes a fixed number without replacement and a Wilson interval is a
-# binomial one. Wilson is then conservative - wider than the truth - by a factor of about
-# sqrt((N-n)/(N-1)), which is 0.90 for 200 of 1,004. The doc says so rather than hiding it.
+# binomial one. For a draw with equal inclusion probabilities Wilson is then conservative -
+# wider than the truth - by a factor of about sqrt((N-n)/(N-1)), which is 0.90 for 200 of 1,004.
+# The doc says so rather than hiding it. That conclusion needs the equal probabilities: it
+# describes THIS sampler, not the 2026-08-16 draw the published figures came from.
 #
 # It is stable while the transcripts grow. Keeping the previously drawn rows and topping the
 # sample up did preserve labels, but it gave a row that was in the earlier population two
@@ -96,6 +98,211 @@ function Select-SampleKey {
     return @($Keys |
             Sort-Object -Property @{ Expression = { Get-SelectionPriority -Key $_ -Seed $Seed } }, @{ Expression = { $_ } } |
             Select-Object -First $take)
+}
+
+# The interval the labels support, and the one figure this whole exercise publishes.
+#
+# Wilson is a binomial interval: it assumes each draw is independent, which is what sampling
+# WITH replacement gives. This draw takes a fixed number of rows without replacement, so the
+# variance of the sample proportion is smaller - p(1-p)/n times (N-n)/(N-1) rather than
+# p(1-p)/n. For an equal-probability draw plain Wilson is therefore too wide: it errs safe, but
+# a range wider than the evidence supports is still the wrong range. Where the inclusion
+# probabilities are unequal, as in the committed draw, even that much cannot be claimed - the
+# bias runs in whichever direction the over-represented rows happen to lean, and nobody measured
+# it.
+#
+# An earlier fix kept the Wilson shape and changed only what it divides by: set the binomial
+# variance p(1-p)/n_eff equal to the true one, solve n_eff = n(N-1)/(N-n), and feed that in as
+# the sample size. It was withdrawn. Matching the variance is still a normal approximation, and
+# it fails where the counts are small - see the note on Get-HypergeometricInterval below.
+#
+# What -Correct does instead is invert the hypergeometric tails directly, with no approximation
+# at any step. Get-HypergeometricInterval holds that code and explains the arithmetic.
+#
+# What this does NOT fix: whether every row had the same chance of being drawn. That is a
+# property of the draw, not of the arithmetic, and only a redraw settles it.
+#
+# So -Correct carries a precondition, and it is not a small one. The correction assumes a
+# SIMPLE RANDOM SAMPLE without replacement: every row in the population had the same inclusion
+# probability. Applied to a draw that did not, it returns a NARROWER interval resting on an
+# assumption the data breaks - more exact-looking and less true, which is worse than the wide
+# interval it replaced.
+#
+# The committed 2026-08-16 manifests are exactly such a draw. The sampler that produced them
+# kept every previously selected row and filled the rest at random, so an older row had about
+# 1.4 times the inclusion probability of a newer one; the selection records record it as
+# carriedOverLabels, 57 of 200 and 58 of 200. -Correct MUST NOT be applied to those labels.
+# Backlog 102 decided the published ranges stay plain Wilson and stay labelled approximate,
+# because repairing unequal inclusion probabilities needs a design-based estimator and the
+# records that estimator would need no longer exist.
+#
+# -Correct is here for the redraw that has not happened yet. Nothing in this repository passes
+# it today.
+function Get-HypergeometricInterval {
+    <#
+    .SYNOPSIS
+        The 95 percent interval for how many misses a finite population holds.
+    .DESCRIPTION
+        Drawing n rows from N without replacement makes the count of misses hypergeometric, not
+        binomial. This returns the set of population counts the observation does not rule out:
+        the largest K whose P(X <= Hits) still exceeds 2.5 percent, and the smallest K whose
+        P(X >= Hits) still does.
+
+        Both tails are monotone in K, so each bound is found by bisection.
+
+        This is what a normal approximation cannot do at the edges. Substituting an effective
+        sample size into Wilson returned an upper bound of ZERO population misses for 0 of 200
+        drawn from 220 - a claim of certainty that is wrong 20/220 of the time, because one miss
+        among 220 escapes a 200-row draw 20/220 of the time. The exact answer there is 1.
+
+        For 0 of 200 drawn from 1,004 the exact answer is 16: a population of 16 misses hides
+        from the draw with probability 0.0278, which the 0.025 tail does not rule out, while 17
+        gives 0.0221, which it does. That is the regime backlog 113 will publish from.
+    #>
+    param(
+        [Parameter(Mandatory)][int] $Hits,
+        [Parameter(Mandatory)][int] $Drawn,
+        [Parameter(Mandatory)][int] $Population
+    )
+
+    # Every comparison below is exact integer arithmetic, and that is not a preference.
+    #
+    # An earlier version summed the terms as doubles rebuilt from log factorials. It was wrong on
+    # any tail that lands exactly on the threshold. For 2 hits in a draw of 2 from 16, the tail
+    # P(X >= 2 | K = 3) is C(3,2)/C(16,2) = 3/120 = 1/40, which is 0.025 to the last digit. The
+    # rule is strict, so 3 is ruled out and the bound is 4. Through logs the same tail returned
+    # 0.025000000000000012, cleared the strict comparison by one part in 10^17, and the bound came
+    # back as 3. Widening the comparison with a tolerance only moves the tie somewhere else.
+    #
+    # So the tail is never turned into a probability at all. A count is admitted when
+    #
+    #     numerator / C(N, n) > 1/40      which is      40 * numerator > C(N, n)
+    #
+    # and both sides are BigIntegers. C(5472, 200) is about 960 bits, which BigInteger holds
+    # exactly and a double cannot hold at all.
+    function Get-Choose {
+        param([int] $Of, [int] $Take)
+        if ($Take -lt 0 -or $Of -lt 0 -or $Take -gt $Of) { return [System.Numerics.BigInteger]::Zero }
+        if ($Take -gt ($Of - $Take)) { $Take = $Of - $Take }
+        $result = [System.Numerics.BigInteger]::One
+        for ($i = 1; $i -le $Take; $i++) {
+            $result = $result * [System.Numerics.BigInteger]($Of - $Take + $i) / [System.Numerics.BigInteger]$i
+        }
+        return $result
+    }
+
+    $denominator = Get-Choose -Of $Population -Take $Drawn
+
+    function Get-AtMostNumerator {
+        # The count of draws yielding at most Upto misses, when the population holds Successes.
+        # Divided by $denominator this is P(X <= Upto); it is left undivided so it stays exact.
+        param([int] $Upto, [int] $Successes)
+        $total = [System.Numerics.BigInteger]::Zero
+        if ($Upto -lt 0) { return $total }
+        for ($i = 0; $i -le $Upto; $i++) {
+            $total += (Get-Choose -Of $Successes -Take $i) *
+                      (Get-Choose -Of ($Population - $Successes) -Take ($Drawn - $i))
+        }
+        return $total
+    }
+
+    $forty = [System.Numerics.BigInteger]40
+
+    # Upper bound: P(X <= Hits | K) falls as K rises, so bisect for the last K above the tail.
+    $lowSearch = $Hits
+    $highSearch = $Population
+    while ($lowSearch -lt $highSearch) {
+        $middle = [int][Math]::Ceiling(($lowSearch + $highSearch) / 2.0)
+        $numerator = Get-AtMostNumerator -Upto $Hits -Successes $middle
+        if (($forty * $numerator) -gt $denominator) { $lowSearch = $middle }
+        else { $highSearch = $middle - 1 }
+    }
+    $upperCount = $lowSearch
+
+    # Lower bound: P(X >= Hits | K) rises with K, so bisect for the first K above the tail.
+    #
+    # The search starts at Hits and runs to the population, not from zero to Hits. A population
+    # holding fewer than Hits misses cannot yield Hits of them, and the bound usually sits far
+    # ABOVE Hits: observing 11 misses in 200 of 5,457 rows puts the population count near 300,
+    # so a search capped at 11 returned 11 and published a lower bound fifteen times too small.
+    $lowSearch = $Hits
+    $highSearch = $Population
+    while ($lowSearch -lt $highSearch) {
+        $middle = [int][Math]::Floor(($lowSearch + $highSearch) / 2.0)
+        # P(X >= Hits) = 1 - P(X <= Hits - 1), kept as a count so nothing rounds.
+        $atOrAbove = $denominator - (Get-AtMostNumerator -Upto ($Hits - 1) -Successes $middle)
+        if (($forty * $atOrAbove) -gt $denominator) { $highSearch = $middle }
+        else { $lowSearch = $middle + 1 }
+    }
+    $lowerCount = $lowSearch
+
+    return [pscustomobject]@{ LowCount = $lowerCount; HighCount = $upperCount }
+}
+
+function Get-RecallInterval {
+    <#
+    .SYNOPSIS
+        The 95 percent interval for a miss rate, and the count it implies over the population.
+    .PARAMETER Hits
+        Labelled misses in the sample.
+    .PARAMETER Drawn
+        Rows drawn. The denominator of the observed rate.
+    .PARAMETER Population
+        The unflagged population the sample was drawn from.
+    .PARAMETER Correct
+        Apply the finite-population correction described above. Valid ONLY when every row in
+        the population had the same chance of being drawn. Never pass it for the committed
+        2026-08-16 manifests, whose draw was not uniform - see the note above the function.
+        Without it the result is plain Wilson, which is what every published figure uses.
+    .NOTES
+        PowerShell variable names are case-insensitive, so $n and $N name one variable. The
+        parameters are spelled out for that reason; a draft written with $n and $N divided by
+        zero and reported an interval of nothing.
+    #>
+    param(
+        [Parameter(Mandatory)][ValidateRange(0, [int]::MaxValue)][int] $Hits,
+        [Parameter(Mandatory)][ValidateRange(1, [int]::MaxValue)][int] $Drawn,
+        [Parameter(Mandatory)][ValidateRange(1, [int]::MaxValue)][int] $Population,
+        [switch] $Correct
+    )
+
+    if ($Hits -gt $Drawn) { throw "Hits ($Hits) cannot exceed Drawn ($Drawn)." }
+    if ($Drawn -gt $Population) { throw "Drawn ($Drawn) cannot exceed Population ($Population)." }
+
+    # 1.959963985 is the two-sided 95 percent normal quantile. Written out rather than computed,
+    # because .NET has no inverse normal and an approximation here would move a published range.
+    $z = 1.959963985
+    $rate = $Hits / [double]$Drawn
+
+    if ($Correct) {
+        $exact = Get-HypergeometricInterval -Hits $Hits -Drawn $Drawn -Population $Population
+        return [pscustomobject]@{
+            Rate      = $rate
+            Low       = $exact.LowCount / [double]$Population
+            High      = $exact.HighCount / [double]$Population
+            LowCount  = $exact.LowCount
+            HighCount = $exact.HighCount
+            Method    = 'hypergeometric'
+            Corrected = $true
+        }
+    }
+
+    $centre = ($rate + $z * $z / (2.0 * $Drawn)) / (1.0 + $z * $z / $Drawn)
+    $half = $z / (1.0 + $z * $z / $Drawn) *
+        [Math]::Sqrt($rate * (1.0 - $rate) / $Drawn + $z * $z / (4.0 * $Drawn * $Drawn))
+
+    $low = [Math]::Max(0.0, $centre - $half)
+    $high = [Math]::Min(1.0, $centre + $half)
+
+    return [pscustomobject]@{
+        Rate      = $rate
+        Low       = $low
+        High      = $high
+        LowCount  = [int][Math]::Round($low * $Population)
+        HighCount = [int][Math]::Round($high * $Population)
+        Method    = 'wilson'
+        Corrected = $false
+    }
 }
 
 if ($AsModule) { return }
