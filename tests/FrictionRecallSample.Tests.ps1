@@ -530,6 +530,64 @@ Assert-True ($callers.Count -eq 0) `
     'or Invoke-Expression in a file that names the function - each hides whether the switch is ' +
     'passed, and a call nobody can read is not a call anybody can clear: ' + ($callers -join '; '))
 
+# --- 17. -ProjectRoot is honoured, not merely accepted ---
+#
+# The script returns at `if ($AsModule) { return }` before it reads a transcript, so a
+# module-mode test cannot reach the parameter's only use. This one runs the script as a script
+# against a fixture directory. If the parameter were ignored the run would read the live
+# transcripts, and neither assertion below would hold.
+#
+# Get-TranscriptFile keeps only directories whose name matches 'AHKFlow', so the fixture folder
+# is named accordingly. The timestamps sit inside the fixed window.
+
+$fixtureRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("friction-fixture-" + [guid]::NewGuid().ToString('n'))
+$fixtureProject = Join-Path $fixtureRoot 'C--fixture-AHKFlowApp'
+New-Item -ItemType Directory -Path $fixtureProject -Force | Out-Null
+
+$fixtureRows = @(
+    '{"type":"assistant","timestamp":"2026-08-01T10:00:00.000Z","uuid":"f0000000-0000-0000-0000-000000000001","sessionId":"fixture-a","message":{"id":"msg_fixture_001","content":[{"type":"text","text":"The token is corrupt, so please run it yourself in your terminal."}]}}'
+    '{"type":"assistant","timestamp":"2026-08-01T10:01:00.000Z","uuid":"f0000000-0000-0000-0000-000000000002","sessionId":"fixture-a","message":{"id":"msg_fixture_002","content":[{"type":"text","text":"Fixture message two. It carries no handoff wording at all."}]}}'
+    '{"type":"assistant","timestamp":"2026-08-01T10:02:00.000Z","uuid":"f0000000-0000-0000-0000-000000000003","sessionId":"fixture-a","message":{"id":"msg_fixture_003","content":[{"type":"text","text":"Fixture message three. It carries no handoff wording either."}]}}'
+    '{"type":"assistant","timestamp":"2026-08-01T10:03:00.000Z","uuid":"f0000000-0000-0000-0000-000000000004","sessionId":"fixture-a","message":{"id":"msg_fixture_004","content":[{"type":"text","text":"Fixture message four. Also plain, also inside the window."}]}}'
+)
+Set-Content -LiteralPath (Join-Path $fixtureProject 'fixture-a.jsonl') -Value $fixtureRows -Encoding utf8
+
+$fixtureManifest = Join-Path $fixtureRoot 'fixture-sample.csv'
+$fixtureSelection = Join-Path $fixtureRoot 'fixture-sample.selection.json'
+
+try {
+    & (Join-Path $repoRoot 'scripts/sample-friction-recall.ps1') `
+        -Metric handoffs `
+        -ProjectRoot $fixtureRoot `
+        -OutputPath $fixtureManifest `
+        -SampleSize 2 | Out-Null
+
+    Assert-True (Test-Path -LiteralPath $fixtureManifest) `
+        "the sampler must write a manifest when -ProjectRoot names a fixture directory: $fixtureManifest"
+
+    if (Test-Path -LiteralPath $fixtureManifest) {
+        $fixtureRowsRead = @(Import-Csv -LiteralPath $fixtureManifest)
+        $foreign = @($fixtureRowsRead | Where-Object { $_.Key -notlike 'msg:msg_fixture_*' })
+        Assert-True ($foreign.Count -eq 0) `
+        ("every row must come from the fixture, so -ProjectRoot was read rather than ignored. " +
+            "Foreign keys: $(@($foreign | ForEach-Object { $_.Key }) -join ', ')")
+        Assert-True ($fixtureRowsRead.Count -eq 3) `
+            "the fixture holds 1 flagged and 3 unflagged rows, so a 2-row draw gives 3 rows, got $($fixtureRowsRead.Count)"
+    }
+
+    Assert-True (Test-Path -LiteralPath $fixtureSelection) `
+        "the sampler must write a selection record beside the fixture manifest: $fixtureSelection"
+
+    if (Test-Path -LiteralPath $fixtureSelection) {
+        $fixtureRecord = Get-Content -LiteralPath $fixtureSelection -Raw | ConvertFrom-Json
+        Assert-True ($fixtureRecord.transcriptRoot -eq $fixtureRoot) `
+            "the selection record must name the transcript root it read, expected $fixtureRoot, got $($fixtureRecord.transcriptRoot)"
+    }
+}
+finally {
+    Remove-Item -LiteralPath $fixtureRoot -Recurse -Force -ErrorAction SilentlyContinue
+}
+
 if ($failures.Count -gt 0) {
     foreach ($failure in $failures) { Write-Host ''; Write-Host $failure -ForegroundColor Red }
     Write-Host ''

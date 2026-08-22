@@ -31,6 +31,9 @@
 .PARAMETER ExistingManifest
     A manifest whose labels must survive. A row the draw selects again keeps its Id and its
     Label. It does not change WHICH rows are drawn - see the note below.
+.PARAMETER ProjectRoot
+    Where the session transcripts live. Defaults to ~/.claude/projects. Point it at a copy of
+    the transcripts to draw from a population that retention has stopped deleting.
 .NOTES
     The draw is a deterministic function of the seed and the message key: hash the pair and take
     the SampleSize lowest hashes. That is a uniform random sample, and it is also stable while
@@ -49,6 +52,7 @@ param(
     [Parameter(ParameterSetName = 'Draw')][int] $Seed = 20260816,
     [Parameter(ParameterSetName = 'Draw')][int] $SampleSize = 200,
     [Parameter(ParameterSetName = 'Draw')][string] $ExistingManifest,
+    [Parameter(ParameterSetName = 'Draw')][string] $ProjectRoot,
     # Dot-source the selection rule without reading a transcript, so a suite can test it.
     [Parameter(Mandatory, ParameterSetName = 'Module')][switch] $AsModule
 )
@@ -307,9 +311,16 @@ function Get-RecallInterval {
 
 if ($AsModule) { return }
 
+# measure-process-friction.ps1 declares its own $ProjectRoot parameter, and a dot-source runs in
+# this scope, so the line below blanks ours. Keep the value under another name first. Written the
+# obvious way, the run fails with "Cannot bind argument to parameter 'ProjectRoot' because it is
+# an empty string."
+$transcriptRoot = $ProjectRoot
+
 . (Join-Path $PSScriptRoot 'measure-process-friction.ps1') -AsModule
 
-$files = @(Get-TranscriptFile -ProjectRoot (Join-Path $HOME '.claude/projects'))
+if (-not $transcriptRoot) { $transcriptRoot = Join-Path $HOME '.claude/projects' }
+$files = @(Get-TranscriptFile -ProjectRoot $transcriptRoot)
 $all = New-Object System.Collections.Generic.List[object]
 foreach ($file in $files) {
     foreach ($record in (Read-TranscriptRecord -Path $file)) { $all.Add($record) }
@@ -472,6 +483,7 @@ $selectionPath = [System.IO.Path]::ChangeExtension($OutputPath, '.selection.json
     windowStart       = $script:WindowStart.ToString('o')
     windowEnd         = $script:WindowEnd.ToString('o')
     transcriptFiles   = $files.Count
+    transcriptRoot    = $transcriptRoot
     recordsInWindow   = $selected.Count
     populationCount   = $population.Count
     flaggedCount      = $flagged.Count
