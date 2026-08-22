@@ -265,6 +265,44 @@ if (Test-Path -LiteralPath $docPath) {
         }
     )
 
+    # --- The 2026-08-16 draw is archived, not overwritten ---
+    #
+    # Nine flagged ask rows survive only here. Three are labelled real: F28, F30 and F35. A file
+    # that exists but was emptied would pass a bare Test-Path, so the rows are counted too.
+    $archiveExpectations = @(
+        [pscustomobject]@{ Name = 'handoffs-sample-2026-08-16'; FlaggedRows = 15; RealFlagged = 10 },
+        [pscustomobject]@{ Name = 'next-step-asks-sample-2026-08-16'; FlaggedRows = 38; RealFlagged = 18 }
+    )
+
+    foreach ($archive in $archiveExpectations) {
+        $archiveCsv = Join-Path $repoRoot "docs/development/friction-samples/$($archive.Name).csv"
+        $archiveJson = Join-Path $repoRoot "docs/development/friction-samples/$($archive.Name).selection.json"
+
+        Assert-True (Test-Path -LiteralPath $archiveCsv) "The archived manifest is missing: $archiveCsv"
+        Assert-True (Test-Path -LiteralPath $archiveJson) "The archived selection record is missing: $archiveJson"
+        if (-not (Test-Path -LiteralPath $archiveCsv)) { continue }
+
+        $archiveRows = @(Import-Csv -LiteralPath $archiveCsv)
+        $archiveFlagged = @($archiveRows | Where-Object { $_.Stratum -eq 'flagged' })
+        $archiveReal = @($archiveFlagged | Where-Object { $_.Label -eq 'real' })
+
+        Assert-True ($archiveFlagged.Count -eq $archive.FlaggedRows) `
+            "$($archive.Name) must keep all $($archive.FlaggedRows) flagged rows, got $($archiveFlagged.Count)."
+        Assert-True ($archiveReal.Count -eq $archive.RealFlagged) `
+            "$($archive.Name) must keep $($archive.RealFlagged) flagged rows labelled real, got $($archiveReal.Count)."
+    }
+
+    # The three real flagged asks the transcript snapshot lost. They exist in the archive alone.
+    $lostAskPath = Join-Path $repoRoot 'docs/development/friction-samples/next-step-asks-sample-2026-08-16.csv'
+    if (Test-Path -LiteralPath $lostAskPath) {
+        $lostAskRows = @(Import-Csv -LiteralPath $lostAskPath)
+        foreach ($lostId in @('F28', 'F30', 'F35')) {
+            $lostRow = @($lostAskRows | Where-Object { $_.Id -eq $lostId -and $_.Label -eq 'real' })
+            Assert-True ($lostRow.Count -eq 1) `
+                "$lostId must survive in the archive labelled real. It is deleted from the transcripts and exists nowhere else."
+        }
+    }
+
     $item072Path = Join-Path $repoRoot 'backlog/done/072-process-wave-2-parity-drift-guard-templates.md'
     Assert-True (Test-Path -LiteralPath $item072Path) "Item 072 is missing: $item072Path"
     $item072Flat = if (Test-Path -LiteralPath $item072Path) {
