@@ -3751,15 +3751,21 @@ parentheses group an expression. Read that way, this command writes to the path 
 reads every command both ways, and refuses when either way reaches the main checkout.
 '@
 
-function Add-AgentPowerShellReadingNote {
-    param([object] $Decision)
+function Add-AgentGuardDecisionNote {
+    param([object] $Decision, [string] $Note)
 
     # An Allow carries no message worth explaining, and appending to one would put a refusal
     # notice on a command that was not refused.
     if ($Decision.Action -eq 'Allow') { return $Decision }
 
     return (New-AgentGuardDecision -Action $Decision.Action -Rule $Decision.Rule -Message `
-        ($Decision.Message + "`n" + $script:AgentGuardPowerShellReadingNote))
+        ($Decision.Message + "`n" + $Note))
+}
+
+function Add-AgentPowerShellReadingNote {
+    param([object] $Decision)
+
+    return (Add-AgentGuardDecisionNote -Decision $Decision -Note $script:AgentGuardPowerShellReadingNote)
 }
 
 # Higher is worse. The combination keeps the worst action any Reading produced, which is what
@@ -3777,13 +3783,89 @@ function Get-AgentGuardActionSeverity {
     return 3
 }
 
+# Lower wins a tie. This is not the order the layers run in; it is the order the ordered
+# short-circuit this resolver replaces actually returned. The location layer returned before the
+# write layer, and the safety answer was only the fallback, so safety loses every tie it can
+# reach. A safety Deny never reaches one: it returns before the location layer runs.
+$script:AgentGuardLayerTieRank = @{ location = 1; write = 2; safety = 3 }
+
+$script:AgentGuardWinningLayerNote = 'This answer comes from the guard''s {0} layer.'
+
+# "also objected", not "objected more weakly": a tie is an equal answer, not a weaker one, and
+# two layers answering Warn is a reachable case.
+$script:AgentGuardOtherLayerNote = @'
+Other layers also objected: {0}. The strongest answer decides the command.
+'@
+
 <#
 .SYNOPSIS
-Single orchestration point: safety rules fail closed, location rules fail open.
+Returns the strongest decision the policy layers produced for one Reading.
+
+.DESCRIPTION
+The layers answer independently, so run position must not decide. Backlog 111 measured the gap:
+'git -C <main> add . ; Set-Content -Path <main>\probe.txt -Value x' made the location layer
+answer Ask and the write layer answer Deny, and the caller returned the Ask, which a human
+could approve.
+
+A tie goes to the layer with the lowest AgentGuardLayerTieRank, which reproduces what the old
+ordered short-circuit returned. So every command that is not the defect keeps today's exact
+action, rule, and message.
+
+Layers are passed in the order they ran, because that is the order the message lists them in.
+The caller may pass fewer than three when an early return already holds a Deny, because nothing
+can beat the top of the severity table.
+#>
+function Resolve-AgentGuardLayerDecision {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [object[]] $Layers
+    )
+
+    $winner = $Layers[0]
+    foreach ($layer in $Layers) {
+        $severity = Get-AgentGuardActionSeverity $layer.Decision.Action
+        $best = Get-AgentGuardActionSeverity $winner.Decision.Action
+        if ($severity -gt $best) {
+            $winner = $layer
+            continue
+        }
+        if ($severity -eq $best -and
+            $script:AgentGuardLayerTieRank[$layer.Name] -lt
+            $script:AgentGuardLayerTieRank[$winner.Name]) {
+            $winner = $layer
+        }
+    }
+
+    $decision = Add-AgentGuardDecisionNote -Decision $winner.Decision `
+        -Note ([string]::Format($script:AgentGuardWinningLayerNote, $winner.Name))
+
+    # An Allow carries no message worth explaining, and Add-AgentGuardDecisionNote already left it
+    # unchanged above. Naming a suppressed objection on it would put a refusal notice on a command
+    # that was not refused.
+    if ($decision.Action -eq 'Allow') { return $decision }
+
+    $others = @($Layers |
+        Where-Object { $_.Name -ne $winner.Name -and $_.Decision.Action -ne 'Allow' } |
+        ForEach-Object { "$($_.Name) answered $($_.Decision.Action)" })
+
+    if ($others.Count -eq 0) { return $decision }
+
+    return (Add-AgentGuardDecisionNote -Decision $decision `
+            -Note ([string]::Format($script:AgentGuardOtherLayerNote, ($others -join '; '))))
+}
+
+<#
+.SYNOPSIS
+Single orchestration point: safety rules fail closed, location rules fail open, strongest wins.
 
 .DESCRIPTION
 Kept here rather than in the adapter entrypoint so both the entrypoint and the focused tests
 exercise the same precedence, and so tests can shadow either policy function to inject a fault.
+
+The three layers answer independently. Severity decides between them, not position: see
+Resolve-AgentGuardLayerDecision. Position still decides one thing, which is how far the run
+gets, because a Deny short-circuits the layers after it.
 #>
 function Invoke-AgentGuardPolicyForReading {
     [CmdletBinding()]
@@ -3802,23 +3884,37 @@ function Invoke-AgentGuardPolicyForReading {
     }
     catch {
         # Fail closed: an evaluator fault must not silently drop destructive-command protection.
-        return New-AgentGuardDecision -Action Deny -Rule 'safety-guard-error' -Message `
+        # This is a Deny from the safety layer like any other, so it takes the same exit below and
+        # gets named the same way.
+        $safety = New-AgentGuardDecision -Action Deny -Rule 'safety-guard-error' -Message `
         ("BLOCKED: the agent command safety guard failed to evaluate this command: $($_.Exception.Message)")
     }
 
-    if ($safety.Action -eq 'Deny') { return $safety }
+    # A safety Deny wins outright. Deny is the top of the severity table, so no later layer could
+    # change the answer, and the later layers must not spend git probes on a refused command.
+    if ($safety.Action -eq 'Deny') {
+        return (Resolve-AgentGuardLayerDecision -Layers @(
+                [pscustomobject]@{ Name = 'safety'; Decision = $safety }))
+    }
 
     try {
         $location = Get-AgentWorktreeGuardDecision -Command $Command -Cwd $Cwd `
             -ProtectedRepoRoot $ProtectedRepoRoot -AllowMain $AllowMain -Reading $Reading
     }
     catch {
-        # Fail open: keep the shell usable, but say so loudly.
-        return New-AgentGuardDecision -Action Warn -Rule 'location-guard-error' -Message `
+        # Fail open: keep the shell usable, but say so loudly. The write layer still runs below,
+        # so a location fault cannot take the write refusal down with it.
+        $location = New-AgentGuardDecision -Action Warn -Rule 'location-guard-error' -Message `
         ("WARNING: the agent worktree location guard could not evaluate this command: $($_.Exception.Message)")
     }
 
-    if ($location.Action -ne 'Allow') { return $location }
+    # Same reason as the safety short-circuit: a Deny is already the strongest possible answer,
+    # and this is what keeps the write layer's git probes off the common refusal path.
+    if ($location.Action -eq 'Deny') {
+        return (Resolve-AgentGuardLayerDecision -Layers @(
+                [pscustomobject]@{ Name = 'safety'; Decision = $safety },
+                [pscustomobject]@{ Name = 'location'; Decision = $location }))
+    }
 
     try {
         $write = Get-AgentWorktreeWriteDecision -Command $Command -Cwd $Cwd `
@@ -3826,13 +3922,14 @@ function Invoke-AgentGuardPolicyForReading {
     }
     catch {
         # Fail open, same as the location rule: keep the shell usable, but say so loudly.
-        return New-AgentGuardDecision -Action Warn -Rule 'write-guard-error' -Message `
+        $write = New-AgentGuardDecision -Action Warn -Rule 'write-guard-error' -Message `
         ("WARNING: the agent worktree write guard could not evaluate this command: $($_.Exception.Message)")
     }
 
-    if ($write.Action -ne 'Allow') { return $write }
-
-    return $safety
+    return (Resolve-AgentGuardLayerDecision -Layers @(
+            [pscustomobject]@{ Name = 'safety'; Decision = $safety },
+            [pscustomobject]@{ Name = 'location'; Decision = $location },
+            [pscustomobject]@{ Name = 'write'; Decision = $write }))
 }
 
 <#
