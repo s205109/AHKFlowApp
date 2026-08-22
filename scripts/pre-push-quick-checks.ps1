@@ -62,19 +62,31 @@ try {
     # A branch owns the plans whose number matches a backlog item it adds or edits. Everything else
     # is somebody else's in-flight work. Shipped plans are frozen instead, which is
     # branch-independent - see check-archived-plan-frozen.ps1. That is backlog 112.
+    # Compare against the merge base, never against the moving origin/main tip. A tip comparison
+    # is two-way: it also reports every backlog file main gained since this branch left. Measured
+    # on 2026-08-22, after a day of merges, that turned this branch's 2 owned numbers into 10.
+    $mergeBase = & git -C $repoRoot merge-base HEAD origin/main
+    if ($LASTEXITCODE -ne 0 -or -not $mergeBase) {
+        throw "Could not resolve the merge base with origin/main, so which plans this branch owns is unknown. Fetch the remote and retry. $skipHint"
+    }
+
+    $backlogDiff = & git -C $repoRoot diff --name-only ([string] $mergeBase).Trim() -- backlog
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not read the backlog diff against the merge base, so which plans this branch owns is unknown. $skipHint"
+    }
+
+    # Fail closed on both commands above. Leaving $ownedPlan empty would print 'No plan on this
+    # branch' and pass, so a broken remote ref would silently switch the whole check off.
     $ownedPlan = @()
-    $backlogDiff = & git -C $repoRoot diff --name-only origin/main -- backlog
-    if ($LASTEXITCODE -eq 0) {
-        $numbers = @($backlogDiff |
-            ForEach-Object { if ($_ -match '/(\d{3})-') { $Matches[1] } } |
-            Sort-Object -Unique)
-        foreach ($number in $numbers) {
-            foreach ($sub in @('plans', 'specs')) {
-                $folder = Join-Path $plansRoot $sub
-                if (-not (Test-Path -LiteralPath $folder -PathType Container)) { continue }
-                foreach ($hit in (Get-ChildItem -LiteralPath $folder -Filter "*-$number.md" -File)) {
-                    $ownedPlan += ('{0}/{1}' -f $sub, $hit.Name)
-                }
+    $numbers = @($backlogDiff |
+        ForEach-Object { if ($_ -match '/(\d{3})-') { $Matches[1] } } |
+        Sort-Object -Unique)
+    foreach ($number in $numbers) {
+        foreach ($sub in @('plans', 'specs')) {
+            $folder = Join-Path $plansRoot $sub
+            if (-not (Test-Path -LiteralPath $folder -PathType Container)) { continue }
+            foreach ($hit in (Get-ChildItem -LiteralPath $folder -Filter "*-$number.md" -File)) {
+                $ownedPlan += ('{0}/{1}' -f $sub, $hit.Name)
             }
         }
     }
@@ -87,11 +99,23 @@ try {
     }
     else {
         Write-Host ("Checking {0}: {1}" -f $ownedPlan.Count, ($ownedPlan -join ', '))
-        & $pwshPath -NoProfile -File (Join-Path $PSScriptRoot 'check-citation-freshness.ps1') `
-            -ScanRoot $plansRoot -ResolveRoot $repoRoot -NoAdoptionTier -OnlyPath $ownedPlan
-        if ($LASTEXITCODE -ne 0) {
-            throw "This branch's plan citations failed. $skipHint"
+
+        # The list goes through a file, not the command line. `pwsh -File` cannot carry an array:
+        # with two paths the second binds to the wrong parameter and is dropped without a word,
+        # and with three the child process dies on "A positional parameter cannot be found".
+        $manifest = [System.IO.Path]::GetTempFileName()
+        try {
+            Set-Content -LiteralPath $manifest -Value $ownedPlan -Encoding utf8
+            & $pwshPath -NoProfile -File (Join-Path $PSScriptRoot 'check-citation-freshness.ps1') `
+                -ScanRoot $plansRoot -ResolveRoot $repoRoot -NoAdoptionTier -OnlyPathFile $manifest
+            if ($LASTEXITCODE -ne 0) {
+                throw "This branch's plan citations failed. $skipHint"
+            }
         }
+        finally {
+            Remove-Item -LiteralPath $manifest -Force -ErrorAction SilentlyContinue
+        }
+
         Write-Success 'This branch''s plan citations passed.'
     }
 
