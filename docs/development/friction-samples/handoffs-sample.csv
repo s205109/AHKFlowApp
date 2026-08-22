@@ -479,11 +479,11 @@ git -C docs/superpowers commit -m ""update: two-signal probe after review round 
 ```
 
 The code and the public-repo docs are already committed on the branch (`3ba22d8`) and are not affected by this."
-"U1","handoffs","20260816","unflagged","msg:1d84fc13-8a26-41f1-b397-df7143f1be0f","ed8367cd-a5fc-4a3c-9700-44ef84d3dea4.jsonl","08/07/2026 14:43:26","1","","","You've hit your monthly spend limit · raise it at claude.ai/settings/usage?from=cc_cli_limit_message"
-"U2","handoffs","20260816","unflagged","msg:f3c8f3e1-b455-4afb-af78-a87e3dbc35e2","fe734f6c-b7f8-4b6e-a011-54c5772b9b69.jsonl","08/03/2026 20:31:30","1","","","No response requested."
-"U3","handoffs","20260816","unflagged","msg:msg_011CdafpR6NntwWucLnkjE5r","903d7856-380a-46ac-8f01-ecbf866d897e.jsonl","07/31/2026 19:15:12","2","","","Gate, then commit."
-"U204","handoffs","20260816","unflagged","msg:msg_011CdahGHejyZdS12oEc2C3d","903d7856-380a-46ac-8f01-ecbf866d897e.jsonl","07/31/2026 19:34:17","3","","","All my review fixes vanished — working tree clean, no new commits. Third time. Finding the culprit before redoing anything."
-"U205","handoffs","20260816","unflagged","msg:msg_011CdaiF61M9Qmnz81cgHPjs","903d7856-380a-46ac-8f01-ecbf866d897e.jsonl","07/31/2026 19:47:10","1","cannot","","Mystery closed, no damage. Branch state verified: 9 files, all expected, tree clean, gate green.
+"U1","handoffs","20260816","unflagged","msg:1d84fc13-8a26-41f1-b397-df7143f1be0f","ed8367cd-a5fc-4a3c-9700-44ef84d3dea4.jsonl","08/07/2026 14:43:26","1","","missed","You've hit your monthly spend limit · raise it at claude.ai/settings/usage?from=cc_cli_limit_message"
+"U2","handoffs","20260816","unflagged","msg:f3c8f3e1-b455-4afb-af78-a87e3dbc35e2","fe734f6c-b7f8-4b6e-a011-54c5772b9b69.jsonl","08/03/2026 20:31:30","1","","not-a-case","No response requested."
+"U3","handoffs","20260816","unflagged","msg:msg_011CdafpR6NntwWucLnkjE5r","903d7856-380a-46ac-8f01-ecbf866d897e.jsonl","07/31/2026 19:15:12","2","","not-a-case","Gate, then commit."
+"U204","handoffs","20260816","unflagged","msg:msg_011CdahGHejyZdS12oEc2C3d","903d7856-380a-46ac-8f01-ecbf866d897e.jsonl","07/31/2026 19:34:17","3","","not-a-case","All my review fixes vanished — working tree clean, no new commits. Third time. Finding the culprit before redoing anything."
+"U205","handoffs","20260816","unflagged","msg:msg_011CdaiF61M9Qmnz81cgHPjs","903d7856-380a-46ac-8f01-ecbf866d897e.jsonl","07/31/2026 19:47:10","1","cannot","missed","Mystery closed, no damage. Branch state verified: 9 files, all expected, tree clean, gate green.
 
 Saved the lesson to memory — reviewer subagents get their own temporary worktree at the reviewed SHA, never the live one. Commit your `~/.claude` changes when convenient: `docs: reviewers get an isolated worktree`.
 
@@ -499,11 +499,11 @@ One item still open — **finding #1**, the only thing between here and a PR:
 Either way I add a component test for ""catalog null + Remap to a modifier"" — nothing covers that today.
 
 Say (a) or (b) and I'll finish it, then push and open the PR against `docs/wt-backlog-041-043`."
-"U206","handoffs","20260816","unflagged","msg:msg_011CdaiVgc729tS8kuRU81fd","903d7856-380a-46ac-8f01-ecbf866d897e.jsonl","07/31/2026 19:50:23","3","","","Both new findings confirmed. Checking how tests switch action kind."
-"U207","handoffs","20260816","unflagged","msg:msg_011CdaJLG8QG1SuhVoG7mjVc","2f76dde1-5499-4b5a-a48a-3e0ec96bec3b.jsonl","07/31/2026 14:33:27","6","","","Using executing-plans skill. Worktree exists, branch correct. Starting."
-"U208","handoffs","20260816","unflagged","msg:msg_011CdaKjxotJFxdXGZDcbq6x","2f76dde1-5499-4b5a-a48a-3e0ec96bec3b.jsonl","07/31/2026 14:51:53","5","","","Now conflict sites in create/update/restore/revert."
-"U209","handoffs","20260816","unflagged","msg:msg_011CdaNfeXnP24BJZUDqqtGP","2f76dde1-5499-4b5a-a48a-3e0ec96bec3b.jsonl","07/31/2026 15:30:16","2","","","Now the model tests and list tests."
-"U210","handoffs","20260816","unflagged","msg:msg_011CdanybbicuuhYh1vYBTmF","903d7856-380a-46ac-8f01-ecbf866d897e.jsonl","07/31/2026 20:49:10","1","","","Both done.
+"U206","handoffs","20260816","unflagged","msg:msg_011CdaiVgc729tS8kuRU81fd","903d7856-380a-46ac-8f01-ecbf866d897e.jsonl","07/31/2026 19:50:23","3","","not-a-case","Both new findings confirmed. Checking how tests switch action kind."
+"U207","handoffs","20260816","unflagged","msg:msg_011CdaJLG8QG1SuhVoG7mjVc","2f76dde1-5499-4b5a-a48a-3e0ec96bec3b.jsonl","07/31/2026 14:33:27","6","","not-a-case","Using executing-plans skill. Worktree exists, branch correct. Starting."
+"U208","handoffs","20260816","unflagged","msg:msg_011CdaKjxotJFxdXGZDcbq6x","2f76dde1-5499-4b5a-a48a-3e0ec96bec3b.jsonl","07/31/2026 14:51:53","5","","not-a-case","Now conflict sites in create/update/restore/revert."
+"U209","handoffs","20260816","unflagged","msg:msg_011CdaNfeXnP24BJZUDqqtGP","2f76dde1-5499-4b5a-a48a-3e0ec96bec3b.jsonl","07/31/2026 15:30:16","2","","not-a-case","Now the model tests and list tests."
+"U210","handoffs","20260816","unflagged","msg:msg_011CdanybbicuuhYh1vYBTmF","903d7856-380a-46ac-8f01-ecbf866d897e.jsonl","07/31/2026 20:49:10","1","","missed","Both done.
 
 **1 — Spec amended.** `2987d83` in the private `docs/superpowers` repo, committed from inside that folder. The ""say nothing on failure"" sentence is replaced with the split that now applies: the source notice stays silent during an outage, the destination notice is still decided, and a blank source key outranks both. Marked as an amendment with the date and the reason, rather than quietly rewritten.
 
@@ -513,11 +513,11 @@ I'll update the PR body to point at 046 instead of saying ""not filed yet"" once
 
 Left with you: commit `~/.claude` with `docs: reviewers get an isolated worktree`."
 "U68","handoffs","20260816","unflagged","msg:msg_011CdaPZQV8vTWBEaQhWxb1R","9e0cdcfe-035d-4a63-96bd-a2ba8e0ec003.jsonl","07/31/2026 15:42:06","4","","not-a-case","LOCAL mode. 5 findings + 4 answers. Triage first — verifying each claim before touching the design."
-"U211","handoffs","20260816","unflagged","msg:msg_011CdaQLSZAKUKfa5BuTbQvt","9e0cdcfe-035d-4a63-96bd-a2ba8e0ec003.jsonl","07/31/2026 15:52:16","3","","","Spec committed: `docs/superpowers/specs/2026-07-31-remap-destination-shortcut-warning-design.md` (plans repo commit `9dda006`). Worktree ready at `.claude/worktrees/remap-dest-warning`, branch `fix/wt-remap-destination-warning`, stacked on `docs/wt-backlog-041-043` at `ecfc652b`.
+"U211","handoffs","20260816","unflagged","msg:msg_011CdaQLSZAKUKfa5BuTbQvt","9e0cdcfe-035d-4a63-96bd-a2ba8e0ec003.jsonl","07/31/2026 15:52:16","3","","not-a-case","Spec committed: `docs/superpowers/specs/2026-07-31-remap-destination-shortcut-warning-design.md` (plans repo commit `9dda006`). Worktree ready at `.claude/worktrees/remap-dest-warning`, branch `fix/wt-remap-destination-warning`, stacked on `docs/wt-backlog-041-043` at `ecfc652b`.
 
 Writing the implementation plan next so both documents land before you review — say the word if the spec needs changes and I redo the plan on top."
-"U212","handoffs","20260816","unflagged","msg:msg_011CdaWzQA3sBV1yDNXKLTP4","2de3309e-426f-44e2-946e-85e605c0e386.jsonl","07/31/2026 17:19:25","3","","","Worktree already exist at `.claude/worktrees/remap-dest-warning`, branch `fix/wt-remap-destination-warning` @ ecfc652b (base correct)."
-"U213","handoffs","20260816","unflagged","msg:msg_011CdbbAxTztraPHMFHUCB63","0abdb818-0b0d-4e60-b3c7-a0e9beaf0afb.jsonl","08/01/2026 06:54:55","2","copy","","Spec written and committed.
+"U212","handoffs","20260816","unflagged","msg:msg_011CdaWzQA3sBV1yDNXKLTP4","2de3309e-426f-44e2-946e-85e605c0e386.jsonl","07/31/2026 17:19:25","3","","not-a-case","Worktree already exist at `.claude/worktrees/remap-dest-warning`, branch `fix/wt-remap-destination-warning` @ ecfc652b (base correct)."
+"U213","handoffs","20260816","unflagged","msg:msg_011CdbbAxTztraPHMFHUCB63","0abdb818-0b0d-4e60-b3c7-a0e9beaf0afb.jsonl","08/01/2026 06:54:55","2","copy","not-a-case","Spec written and committed.
 
 **`docs/superpowers/specs/2026-08-01-e2e-stale-publish-design.md`** — commit `511bbc7` in the private plans repo.
 
@@ -530,7 +530,7 @@ Design in one paragraph: strip `Inputs`/`Outputs` from `PublishBlazorForE2E` so 
 One thing I deliberately did **not** commit to: a timestamp assertion comparing the published `.wasm` against `bin/.../AHKFlowApp.UI.Blazor.dll`. It rests on `Copy` preserving source timestamps *and* the `obj/` trim step rerunning — two assumed behaviors. Spec says try it during implementation across three run shapes and drop it if flaky, recording why. Say if you'd rather it just be left out.
 
 Review the spec and tell me if anything needs changing. Then I'll run `writing-plans` and move into the worktree to implement."
-"U214","handoffs","20260816","unflagged","msg:msg_011CdbjiqoEComKLGZSBzzeP","0940cbdb-5733-475c-9445-fcbe60cee446.jsonl","08/01/2026 08:47:03","1","auth","","Fix round 1 running on Task 2.
+"U214","handoffs","20260816","unflagged","msg:msg_011CdbjiqoEComKLGZSBzzeP","0940cbdb-5733-475c-9445-fcbe60cee446.jsonl","08/01/2026 08:47:03","1","auth","not-a-case","Fix round 1 running on Task 2.
 
 **What the review caught**
 
@@ -545,11 +545,11 @@ Second finding shares the root cause — `| Out-Null` at the call site swallows 
 By construction. The brief forbade shelling out to `dotnet`, so the fakes return a clean scalar and never reproduce the stream leak. I authorized a test against `cmd /c` — a noisy native command with a controlled exit code. Not `dotnet`, so the rule holds, and it covers the real wiring.
 
 Ledger has both findings, the deferred minor (duplicated project path), and the ruling."
-"U215","handoffs","20260816","unflagged","msg:msg_011CdbkD1bNTft8ZcuiSMJPP","0940cbdb-5733-475c-9445-fcbe60cee446.jsonl","08/01/2026 08:53:24","3","can't","","That agent can't be resumed once stopped. Launching a fresh implementer to finish the round — same brief and report file, and it'll inspect the partial edits on disk."
-"U216","handoffs","20260816","unflagged","msg:msg_011Cdbn4JDjBoTWaW5hCYt3S","0940cbdb-5733-475c-9445-fcbe60cee446.jsonl","08/01/2026 09:17:46","3","","","Need to adjudicate this myself — the port change may be worktree tooling, not implementer error."
-"U217","handoffs","20260816","unflagged","msg:msg_011CdcASii3qE5ZVX2E2ezuP","db0d6b56-a595-4fa8-aa94-35f3798c0c9e.jsonl","08/01/2026 14:11:12","3","","","Using `custom-review-findings` skill (review feedback routing rule). Point 4 excluded."
-"U218","handoffs","20260816","unflagged","msg:msg_011CdcATcH8MkVpppUm6cXp7","db0d6b56-a595-4fa8-aa94-35f3798c0c9e.jsonl","08/01/2026 14:11:22","4","","","LOCAL mode. Triage first — no edits until all findings have verdicts."
-"U219","handoffs","20260816","unflagged","msg:msg_011CdcdW2coPzGxzHSD9d64A","d4f12a4b-fa1c-43a7-aaf3-be819b426669.jsonl","08/01/2026 20:06:10","2","blocked; guard; copy","","Blocked. The classifier denied both writing `.claude/CLAUDE.md` inside the worktree and copying it there. I stopped rather than looking for another way around.
+"U215","handoffs","20260816","unflagged","msg:msg_011CdbkD1bNTft8ZcuiSMJPP","0940cbdb-5733-475c-9445-fcbe60cee446.jsonl","08/01/2026 08:53:24","3","can't","not-a-case","That agent can't be resumed once stopped. Launching a fresh implementer to finish the round — same brief and report file, and it'll inspect the partial edits on disk."
+"U216","handoffs","20260816","unflagged","msg:msg_011Cdbn4JDjBoTWaW5hCYt3S","0940cbdb-5733-475c-9445-fcbe60cee446.jsonl","08/01/2026 09:17:46","3","","not-a-case","Need to adjudicate this myself — the port change may be worktree tooling, not implementer error."
+"U217","handoffs","20260816","unflagged","msg:msg_011CdcASii3qE5ZVX2E2ezuP","db0d6b56-a595-4fa8-aa94-35f3798c0c9e.jsonl","08/01/2026 14:11:12","3","","not-a-case","Using `custom-review-findings` skill (review feedback routing rule). Point 4 excluded."
+"U218","handoffs","20260816","unflagged","msg:msg_011CdcATcH8MkVpppUm6cXp7","db0d6b56-a595-4fa8-aa94-35f3798c0c9e.jsonl","08/01/2026 14:11:22","4","","not-a-case","LOCAL mode. Triage first — no edits until all findings have verdicts."
+"U219","handoffs","20260816","unflagged","msg:msg_011CdcdW2coPzGxzHSD9d64A","d4f12a4b-fa1c-43a7-aaf3-be819b426669.jsonl","08/01/2026 20:06:10","2","blocked; guard; copy","missed","Blocked. The classifier denied both writing `.claude/CLAUDE.md` inside the worktree and copying it there. I stopped rather than looking for another way around.
 
 ## State
 
@@ -600,8 +600,8 @@ git worktree remove .claude\worktrees\plan-commit-guard-note
 ```
 
 Tell me which and I'll pick up from there. Backlog 048 spec is committed (`98ae214`) and unaffected either way."
-"U220","handoffs","20260816","unflagged","msg:msg_011CdcFhgvQ9dtptC4sQnMsy","1b5c4f40-e5cf-4850-816f-e7d1b5acfcde.jsonl","08/01/2026 15:20:07","1","","","Both committed on `chore/wt-backlog-housekeeping`, 2 commits, working tree clean. Rule now says commit immediately — followed it here too."
-"U221","handoffs","20260816","unflagged","msg:msg_011CdcFM4XaY1Pp9wLJ76typ","1b5c4f40-e5cf-4850-816f-e7d1b5acfcde.jsonl","08/01/2026 15:15:30","1","","","Main checkout is clean. Change now lives only in worktree `chore/wt-backlog-housekeeping` at `.claude/worktrees/backlog-housekeeping`. Not committed — per your ask, this worktree stays open and accumulates more small changes until it's worth a PR.
+"U220","handoffs","20260816","unflagged","msg:msg_011CdcFhgvQ9dtptC4sQnMsy","1b5c4f40-e5cf-4850-816f-e7d1b5acfcde.jsonl","08/01/2026 15:20:07","1","","not-a-case","Both committed on `chore/wt-backlog-housekeeping`, 2 commits, working tree clean. Rule now says commit immediately — followed it here too."
+"U221","handoffs","20260816","unflagged","msg:msg_011CdcFM4XaY1Pp9wLJ76typ","1b5c4f40-e5cf-4850-816f-e7d1b5acfcde.jsonl","08/01/2026 15:15:30","1","","not-a-case","Main checkout is clean. Change now lives only in worktree `chore/wt-backlog-housekeeping` at `.claude/worktrees/backlog-housekeeping`. Not committed — per your ask, this worktree stays open and accumulates more small changes until it's worth a PR.
 
 Wording for your dev-process docs:
 
@@ -612,14 +612,14 @@ Wording for your dev-process docs:
 ---
 
 Want this dropped into an actual docs file (e.g. `docs/development/testing-workflow.md` or a new `docs/development/worktree-conventions.md`), or is chat-only fine for now?"
-"U222","handoffs","20260816","unflagged","msg:msg_011CdcFZWvfXG9KRodktWT4U","1b5c4f40-e5cf-4850-816f-e7d1b5acfcde.jsonl","08/01/2026 15:18:16","2","guard","","Rule updated. Now committing the two pending changes, each on its own, since worktree commits are unguarded."
-"U223","handoffs","20260816","unflagged","msg:msg_011CdciQpsJhjquQLQB96qR1","78f6b473-f89c-46d1-8b15-4b18b0372e52.jsonl","08/01/2026 21:10:32","3","","","Red proven, matching the reviewer's predicted output exactly. Now transplanting the fixed code into the plan."
-"U224","handoffs","20260816","unflagged","msg:msg_011CdckuKUGqJRGZ9USM5G25","27bf849a-e041-4c63-b840-8345bc110e70.jsonl","08/01/2026 21:43:02","2","","","The stale sentence at :236 survived my edit — removing it now."
-"U225","handoffs","20260816","unflagged","msg:msg_011CddcBcy8qecmX3V3MNL1N","8e27dcae-7f13-4d22-af81-6cc48a51d7d5.jsonl","08/02/2026 08:29:19","2","","","30 passed. Committing Task 1."
-"U226","handoffs","20260816","unflagged","msg:msg_011CddfBCVaayrC2i2AXMsLT","8e27dcae-7f13-4d22-af81-6cc48a51d7d5.jsonl","08/02/2026 09:08:32","2","","","No clash. Ticking the boxes and moving it."
-"U227","handoffs","20260816","unflagged","msg:msg_011CddRGeQZNyGTkibYa41ic","d159cc56-2e1c-4571-add4-44db0ab0c9b4.jsonl","08/02/2026 06:06:36","3","","","Both CONFIRMED. P3 is broader than reported — it also hits the insert path (`New-JsoncChainLiteral` at :659/:671), not only :764. Writing regression tests first."
-"U228","handoffs","20260816","unflagged","msg:msg_011Cddsd6AhA9RbwWgpvoG4k","8e27dcae-7f13-4d22-af81-6cc48a51d7d5.jsonl","08/02/2026 11:51:49","3","","","Yes — twice over. First in the plan (`51ae715`), then implemented in code. The review's closing note is stale: the worktree is no longer just `keep.txt`."
-"U229","handoffs","20260816","unflagged","msg:msg_011CdduWgzEuSpxtEvk5NPeR","1c30b2fc-a48f-4401-96b6-c0346c2455bf.jsonl","08/02/2026 12:16:42","2","","","PR body, for the history:
+"U222","handoffs","20260816","unflagged","msg:msg_011CdcFZWvfXG9KRodktWT4U","1b5c4f40-e5cf-4850-816f-e7d1b5acfcde.jsonl","08/01/2026 15:18:16","2","guard","not-a-case","Rule updated. Now committing the two pending changes, each on its own, since worktree commits are unguarded."
+"U223","handoffs","20260816","unflagged","msg:msg_011CdciQpsJhjquQLQB96qR1","78f6b473-f89c-46d1-8b15-4b18b0372e52.jsonl","08/01/2026 21:10:32","3","","not-a-case","Red proven, matching the reviewer's predicted output exactly. Now transplanting the fixed code into the plan."
+"U224","handoffs","20260816","unflagged","msg:msg_011CdckuKUGqJRGZ9USM5G25","27bf849a-e041-4c63-b840-8345bc110e70.jsonl","08/01/2026 21:43:02","2","","not-a-case","The stale sentence at :236 survived my edit — removing it now."
+"U225","handoffs","20260816","unflagged","msg:msg_011CddcBcy8qecmX3V3MNL1N","8e27dcae-7f13-4d22-af81-6cc48a51d7d5.jsonl","08/02/2026 08:29:19","2","","not-a-case","30 passed. Committing Task 1."
+"U226","handoffs","20260816","unflagged","msg:msg_011CddfBCVaayrC2i2AXMsLT","8e27dcae-7f13-4d22-af81-6cc48a51d7d5.jsonl","08/02/2026 09:08:32","2","","not-a-case","No clash. Ticking the boxes and moving it."
+"U227","handoffs","20260816","unflagged","msg:msg_011CddRGeQZNyGTkibYa41ic","d159cc56-2e1c-4571-add4-44db0ab0c9b4.jsonl","08/02/2026 06:06:36","3","","not-a-case","Both CONFIRMED. P3 is broader than reported — it also hits the insert path (`New-JsoncChainLiteral` at :659/:671), not only :764. Writing regression tests first."
+"U228","handoffs","20260816","unflagged","msg:msg_011Cddsd6AhA9RbwWgpvoG4k","8e27dcae-7f13-4d22-af81-6cc48a51d7d5.jsonl","08/02/2026 11:51:49","3","","not-a-case","Yes — twice over. First in the plan (`51ae715`), then implemented in code. The review's closing note is stale: the worktree is no longer just `keep.txt`."
+"U229","handoffs","20260816","unflagged","msg:msg_011CdduWgzEuSpxtEvk5NPeR","1c30b2fc-a48f-4401-96b6-c0346c2455bf.jsonl","08/02/2026 12:16:42","2","","not-a-case","PR body, for the history:
 
 ```
 ## Summary
@@ -671,7 +671,7 @@ No E2E change needed. `HotkeysCrudFlowTests.cs:121` selects the picker by
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 ```"
-"U230","handoffs","20260816","unflagged","msg:msg_011CddwV46feDgAdvWdt8prQ","8e27dcae-7f13-4d22-af81-6cc48a51d7d5.jsonl","08/02/2026 12:42:33","1","","","Both fixed, and both now on `origin/main`.
+"U230","handoffs","20260816","unflagged","msg:msg_011CddwV46feDgAdvWdt8prQ","8e27dcae-7f13-4d22-af81-6cc48a51d7d5.jsonl","08/02/2026 12:42:33","1","","not-a-case","Both fixed, and both now on `origin/main`.
 
 | Bug | Fix | Where |
 |---|---|---|
@@ -687,12 +687,12 @@ One thing changed since my last message: **PR #248 is now merged.** I reported C
 
 The worktree at `.claude/worktrees/040-known-shortcuts-mobile-layout` is now merged work. Want me to remove it and delete the local branch?"
 "U16","handoffs","20260816","unflagged","msg:msg_011Cde8FyCuaCXj5CSMUdq79","ef9d8053-4e44-4c43-9857-9a3184b1dc2b.jsonl","08/02/2026 15:03:41","4","","not-a-case","Using executing-plans skill. Worktree already exists, on branch."
-"U231","handoffs","20260816","unflagged","msg:msg_011CdeAKC8bZV93Wn8FUtXgh","0f4c0897-a458-4ba2-96ed-d894a9248282.jsonl","08/02/2026 15:30:39","2","","","InternalsVisibleTo present. Now step 2 — confirm the test fails."
-"U232","handoffs","20260816","unflagged","msg:msg_011CdeAtAXXeUkozHugV4uA3","0f4c0897-a458-4ba2-96ed-d894a9248282.jsonl","08/02/2026 15:38:05","2","","","Markup matches plan. Writing the panel test first."
+"U231","handoffs","20260816","unflagged","msg:msg_011CdeAKC8bZV93Wn8FUtXgh","0f4c0897-a458-4ba2-96ed-d894a9248282.jsonl","08/02/2026 15:30:39","2","","not-a-case","InternalsVisibleTo present. Now step 2 — confirm the test fails."
+"U232","handoffs","20260816","unflagged","msg:msg_011CdeAtAXXeUkozHugV4uA3","0f4c0897-a458-4ba2-96ed-d894a9248282.jsonl","08/02/2026 15:38:05","2","","not-a-case","Markup matches plan. Writing the panel test first."
 "U98","handoffs","20260816","unflagged","msg:msg_011CdeBeoP3mg4FqgDY1wh7r","0f4c0897-a458-4ba2-96ed-d894a9248282.jsonl","08/02/2026 15:48:11","2","","not-a-case","Step 6 — trim the scoped CSS."
-"U233","handoffs","20260816","unflagged","msg:msg_011CdeBhp3pG6CDLLSEPL9wi","0f4c0897-a458-4ba2-96ed-d894a9248282.jsonl","08/02/2026 15:48:52","2","","","73 passed, no existing test edited. Commit."
-"U234","handoffs","20260816","unflagged","msg:msg_011CdeYqeMpgCbyYkVnDYjzo","0f4c0897-a458-4ba2-96ed-d894a9248282.jsonl","08/02/2026 20:26:03","3","","","Push reported exit 0, but `ls-remote` shows no remote branch and `status -sb` shows no upstream. Verifying directly rather than trusting the wrapper."
-"U235","handoffs","20260816","unflagged","msg:msg_011Cdg4PzQbhj83iNFBCHqkS","0ece391f-6a12-4f81-a553-17ce9c3e018c.jsonl","08/03/2026 15:34:33","2","cannot","","Shared understanding, consolidated. Confirm before I write the spec.
+"U233","handoffs","20260816","unflagged","msg:msg_011CdeBhp3pG6CDLLSEPL9wi","0f4c0897-a458-4ba2-96ed-d894a9248282.jsonl","08/02/2026 15:48:52","2","","not-a-case","73 passed, no existing test edited. Commit."
+"U234","handoffs","20260816","unflagged","msg:msg_011CdeYqeMpgCbyYkVnDYjzo","0f4c0897-a458-4ba2-96ed-d894a9248282.jsonl","08/02/2026 20:26:03","3","","not-a-case","Push reported exit 0, but `ls-remote` shows no remote branch and `status -sb` shows no upstream. Verifying directly rather than trusting the wrapper."
+"U235","handoffs","20260816","unflagged","msg:msg_011Cdg4PzQbhj83iNFBCHqkS","0ece391f-6a12-4f81-a553-17ce9c3e018c.jsonl","08/03/2026 15:34:33","2","cannot","not-a-case","Shared understanding, consolidated. Confirm before I write the spec.
 
 **1 — Mobile double announcement. Real defect, code change.**
 `HotkeyMobileList.razor:68` — add `aria-hidden=""@(expanded ? ""true"" : null)""` to the span. Blazor omits an attribute whose value is null, so the collapsed row is untouched. The icon stays visible; only its accessible name goes away while the panel below repeats the sentence as text.
@@ -722,8 +722,8 @@ Accepted. One `MudPopover` per marked row, content deferred until open, one JS `
 **One open item, deliberately unresolved:** the `.trigger-cell` width value. It comes out of the 375px measurement during implementation, not from guessing now.
 
 Confirm and I write the spec to `docs/superpowers/specs/2026-08-03-known-shortcut-marker-followups-design.md` and commit it from the main checkout."
-"U236","handoffs","20260816","unflagged","msg:msg_011CdgaadATd1JJa5aSCJ8Ms","e8419a08-b4ba-4304-91ed-af06a812b8a8.jsonl","08/03/2026 22:10:05","2","","","Pushing in background — pre-push hook runs build + tests first."
-"U237","handoffs","20260816","unflagged","msg:msg_011CdgJ5bzM92dkazq2yePw3","0ece391f-6a12-4f81-a553-17ce9c3e018c.jsonl","08/03/2026 18:33:47","1","cannot","","Plan written and committed: `docs/superpowers/plans/2026-08-03-known-shortcut-marker-followups.md` (plans repo `fdc2eae`, 733 lines).
+"U236","handoffs","20260816","unflagged","msg:msg_011CdgaadATd1JJa5aSCJ8Ms","e8419a08-b4ba-4304-91ed-af06a812b8a8.jsonl","08/03/2026 22:10:05","2","","not-a-case","Pushing in background — pre-push hook runs build + tests first."
+"U237","handoffs","20260816","unflagged","msg:msg_011CdgJ5bzM92dkazq2yePw3","0ece391f-6a12-4f81-a553-17ce9c3e018c.jsonl","08/03/2026 18:33:47","1","cannot","not-a-case","Plan written and committed: `docs/superpowers/plans/2026-08-03-known-shortcut-marker-followups.md` (plans repo `fdc2eae`, 733 lines).
 
 Four tasks, each with its own test cycle and commit:
 
@@ -740,10 +740,10 @@ Next step is your call:
 
 1. **Subagent-driven** (recommended) — fresh subagent per task, I review between each.
 2. **Inline** — I execute the tasks here with checkpoints."
-"U238","handoffs","20260816","unflagged","msg:msg_011CdgJLLsBF5JQyT7JtzpCe","a71ad773-a30c-4020-b316-ebaf96b4f2e7.jsonl","08/03/2026 18:37:02","2","","","All 2060 Application tests green, no regressions. Task 2 done. Now Task 3 — API contract tests."
-"U239","handoffs","20260816","unflagged","msg:msg_011CdgKAYfBXijAfs9sqFUEB","fe734f6c-b7f8-4b6e-a011-54c5772b9b69.jsonl","08/03/2026 18:47:56","3","","","Task 1 done, commit `8ee3567c`. Generating review package now."
-"U240","handoffs","20260816","unflagged","msg:msg_011CdGky5oHJEc3nA2ie5iKN","6d1c9754-f8c9-42af-b1dc-6e09b02685f7.jsonl","07/22/2026 08:12:13","3","","","Q3 — scope-defining."
-"U241","handoffs","20260816","unflagged","msg:msg_011CdGn6rTwU63dbET2BcSMC","26e03c00-a443-4e13-8737-3022e247e6e2.jsonl","07/22/2026 08:26:56","2","by hand; cannot; blocked; guard","","All four findings verified against real code before touching anything. All valid. Committed `718b816`.
+"U238","handoffs","20260816","unflagged","msg:msg_011CdgJLLsBF5JQyT7JtzpCe","a71ad773-a30c-4020-b316-ebaf96b4f2e7.jsonl","08/03/2026 18:37:02","2","","not-a-case","All 2060 Application tests green, no regressions. Task 2 done. Now Task 3 — API contract tests."
+"U239","handoffs","20260816","unflagged","msg:msg_011CdgKAYfBXijAfs9sqFUEB","fe734f6c-b7f8-4b6e-a011-54c5772b9b69.jsonl","08/03/2026 18:47:56","3","","not-a-case","Task 1 done, commit `8ee3567c`. Generating review package now."
+"U240","handoffs","20260816","unflagged","msg:msg_011CdGky5oHJEc3nA2ie5iKN","6d1c9754-f8c9-42af-b1dc-6e09b02685f7.jsonl","07/22/2026 08:12:13","3","","not-a-case","Q3 — scope-defining."
+"U241","handoffs","20260816","unflagged","msg:msg_011CdGn6rTwU63dbET2BcSMC","26e03c00-a443-4e13-8737-3022e247e6e2.jsonl","07/22/2026 08:26:56","2","by hand; cannot; blocked; guard","not-a-case","All four findings verified against real code before touching anything. All valid. Committed `718b816`.
 
 ## Accepted
 
@@ -771,23 +771,23 @@ So: wrote an explicit cutover procedure instead of claiming atomicity. Corrected
 **Files:** `docs/superpowers/plans/2026-07-22-hotkey-redesign-w1-backend-plan.md` (+256/−76).
 
 Next: re-run the reviewer over the amended plan, or start Task 1 — W0 has landed, so Tasks 1–3 are unblocked."
-"U242","handoffs","20260816","unflagged","msg:msg_011CdgNnZsDLrRQNgMULdHdF","a71ad773-a30c-4020-b316-ebaf96b4f2e7.jsonl","08/03/2026 19:35:25","2","","","Run it."
-"U243","handoffs","20260816","unflagged","msg:msg_011CdGo9vGLkLCYVSjsnNnL8","26e03c00-a443-4e13-8737-3022e247e6e2.jsonl","07/22/2026 08:41:18","3","","","Found it. Your statusline reads `symbolic-ref` and `status --porcelain` only — branch name and a dirty `*`. It never computes ahead/behind, so there was nothing to see. Adding it."
-"U244","handoffs","20260816","unflagged","msg:msg_011CdgPcmhCRXrwKmBzd2T3p","a71ad773-a30c-4020-b316-ebaf96b4f2e7.jsonl","08/03/2026 19:46:19","2","","","Format clean. Now the canonical pre-PR gate."
-"U245","handoffs","20260816","unflagged","msg:msg_011CdGq38anib3hvNgnVDwut","ac1f0d72-64d3-4636-84c1-85f8eb5d1769.jsonl","07/22/2026 09:05:24","1","","","That checkbox: toggle for ""open this session in isolated git worktree"" instead of main checkout.
+"U242","handoffs","20260816","unflagged","msg:msg_011CdgNnZsDLrRQNgMULdHdF","a71ad773-a30c-4020-b316-ebaf96b4f2e7.jsonl","08/03/2026 19:35:25","2","","not-a-case","Run it."
+"U243","handoffs","20260816","unflagged","msg:msg_011CdGo9vGLkLCYVSjsnNnL8","26e03c00-a443-4e13-8737-3022e247e6e2.jsonl","07/22/2026 08:41:18","3","","not-a-case","Found it. Your statusline reads `symbolic-ref` and `status --porcelain` only — branch name and a dirty `*`. It never computes ahead/behind, so there was nothing to see. Adding it."
+"U244","handoffs","20260816","unflagged","msg:msg_011CdgPcmhCRXrwKmBzd2T3p","a71ad773-a30c-4020-b316-ebaf96b4f2e7.jsonl","08/03/2026 19:46:19","2","","not-a-case","Format clean. Now the canonical pre-PR gate."
+"U245","handoffs","20260816","unflagged","msg:msg_011CdGq38anib3hvNgnVDwut","ac1f0d72-64d3-4636-84c1-85f8eb5d1769.jsonl","07/22/2026 09:05:24","1","","not-a-case","That checkbox: toggle for ""open this session in isolated git worktree"" instead of main checkout.
 
 Checked = new session run in separate worktree, own branch, own working dir — safe for commits/pushes without touching main. Matches your repo rule: agents must branch/commit/push only from managed worktree, main checkout stays human-owned for git mutations.
 
 Uncheck = session works directly in main checkout (no branch isolation)."
-"U246","handoffs","20260816","unflagged","msg:msg_011CdGqDGkT79Jb7Wdb2WQDQ","6d1c9754-f8c9-42af-b1dc-6e09b02685f7.jsonl","07/22/2026 09:07:41","3","","","Clean — every remaining `GroupBy` hit is a deliberate ""this does not exist"" note, and `StartEditAsync` is the real method name. Plan is 2704 lines (I estimated ~1300; the full dialog markup ran larger)."
-"U247","handoffs","20260816","unflagged","msg:msg_011CdgRmTKdTiTtmC3mqZiRC","fe734f6c-b7f8-4b6e-a011-54c5772b9b69.jsonl","08/03/2026 20:14:32","2","","","Task 4 done, full gate green. Generating review package and dispatching reviewer."
-"U248","handoffs","20260816","unflagged","msg:msg_011CdgSJRxe8cFNwzEvh4oD7","a71ad773-a30c-4020-b316-ebaf96b4f2e7.jsonl","08/03/2026 20:21:30","2","","","Also add a validator-level test for finding 3."
-"U249","handoffs","20260816","unflagged","msg:msg_011CdgSXjTiQpAiThu8ToN5R","a71ad773-a30c-4020-b316-ebaf96b4f2e7.jsonl","08/03/2026 20:24:31","2","","","Now finding 4 — fix the stale reference in backlog 051 and the stale comment in `HotkeyPreviewEndpointsTests.cs`."
-"U250","handoffs","20260816","unflagged","msg:msg_011CdGtAMWDa3xqAm3mrm5ke","8948c44b-052c-47bd-86c7-80c556b0e916.jsonl","07/22/2026 09:46:21","2","","","Now the branch-name test suite covering the four cases the reviewer named."
-"U251","handoffs","20260816","unflagged","msg:msg_011CdGtMXSZmu3LprRtHdXHJ","8948c44b-052c-47bd-86c7-80c556b0e916.jsonl","07/22/2026 09:48:52","3","","","Quoting collision with bash — using a script file instead."
-"U252","handoffs","20260816","unflagged","msg:msg_011CdGu92gy8XjLGpspCuHzA","6d1c9754-f8c9-42af-b1dc-6e09b02685f7.jsonl","07/22/2026 09:59:10","2","","","173/173 green. **Step 9** — format, then fold the finding back into the plan:"
+"U246","handoffs","20260816","unflagged","msg:msg_011CdGqDGkT79Jb7Wdb2WQDQ","6d1c9754-f8c9-42af-b1dc-6e09b02685f7.jsonl","07/22/2026 09:07:41","3","","not-a-case","Clean — every remaining `GroupBy` hit is a deliberate ""this does not exist"" note, and `StartEditAsync` is the real method name. Plan is 2704 lines (I estimated ~1300; the full dialog markup ran larger)."
+"U247","handoffs","20260816","unflagged","msg:msg_011CdgRmTKdTiTtmC3mqZiRC","fe734f6c-b7f8-4b6e-a011-54c5772b9b69.jsonl","08/03/2026 20:14:32","2","","not-a-case","Task 4 done, full gate green. Generating review package and dispatching reviewer."
+"U248","handoffs","20260816","unflagged","msg:msg_011CdgSJRxe8cFNwzEvh4oD7","a71ad773-a30c-4020-b316-ebaf96b4f2e7.jsonl","08/03/2026 20:21:30","2","","not-a-case","Also add a validator-level test for finding 3."
+"U249","handoffs","20260816","unflagged","msg:msg_011CdgSXjTiQpAiThu8ToN5R","a71ad773-a30c-4020-b316-ebaf96b4f2e7.jsonl","08/03/2026 20:24:31","2","","not-a-case","Now finding 4 — fix the stale reference in backlog 051 and the stale comment in `HotkeyPreviewEndpointsTests.cs`."
+"U250","handoffs","20260816","unflagged","msg:msg_011CdGtAMWDa3xqAm3mrm5ke","8948c44b-052c-47bd-86c7-80c556b0e916.jsonl","07/22/2026 09:46:21","2","","not-a-case","Now the branch-name test suite covering the four cases the reviewer named."
+"U251","handoffs","20260816","unflagged","msg:msg_011CdGtMXSZmu3LprRtHdXHJ","8948c44b-052c-47bd-86c7-80c556b0e916.jsonl","07/22/2026 09:48:52","3","","not-a-case","Quoting collision with bash — using a script file instead."
+"U252","handoffs","20260816","unflagged","msg:msg_011CdGu92gy8XjLGpspCuHzA","6d1c9754-f8c9-42af-b1dc-6e09b02685f7.jsonl","07/22/2026 09:59:10","2","","not-a-case","173/173 green. **Step 9** — format, then fold the finding back into the plan:"
 "U117","handoffs","20260816","unflagged","msg:msg_011CdGw83R5Tepbf2T38ZzaD","61f4b3ba-af8e-46eb-acde-43759212326d.jsonl","07/22/2026 10:25:16","3","","not-a-case","Switching to continuous. Will run Tasks 3–12 end to end, per-task review gate still on, report at end."
-"U253","handoffs","20260816","unflagged","msg:msg_011CdGxswtHoGuZYsNG5jmqg","70b3b8ec-cd96-4dc4-a57f-e5663fbed473.jsonl","07/22/2026 10:48:16","2","","","Not sure — and I was wrong. Checked.
+"U253","handoffs","20260816","unflagged","msg:msg_011CdGxswtHoGuZYsNG5jmqg","70b3b8ec-cd96-4dc4-a57f-e5663fbed473.jsonl","07/22/2026 10:48:16","2","","not-a-case","Not sure — and I was wrong. Checked.
 
 `v1.36.6`'s own wizard (released 2026-04-07) already told the agent to write the literal placeholder:
 
@@ -801,15 +801,15 @@ And config-side expansion has existed since the initial commit (`8f5e7f7`), not 
 So the plugin never instructed absolute versioned paths. Your dead `1.36.6` paths came from whoever last ran `/settings` — an agent that resolved `${CLAUDE_PLUGIN_ROOT}` to a concrete path instead of writing it literally. Agent error, not upstream bug. Drop step 1.
 
 Residual upstream-worthy gap, weaker and worth verifying before filing: config load does no existence check on sound paths, so a stale path yields silent notifications with no warning. Want me to confirm whether a missing sound file logs anything?"
-"U254","handoffs","20260816","unflagged","msg:msg_011CdHBm6Q5YHbb9BcdHFyB9","61f4b3ba-af8e-46eb-acde-43759212326d.jsonl","07/22/2026 13:37:16","4","","","Task 5 committed (`7268b04`) but flagged a real plan contradiction. Verifying it myself before asking."
-"U255","handoffs","20260816","unflagged","msg:msg_011CdHeCTSLGqT8wkTRJx5co","61f4b3ba-af8e-46eb-acde-43759212326d.jsonl","07/22/2026 19:23:51","2","","","Task 12 committed (`57369a6`), tree clean. Extracting the surviving findings and final verdicts."
-"U256","handoffs","20260816","unflagged","msg:msg_011CdHenbC7GaW6a9S9ofRzi","61f4b3ba-af8e-46eb-acde-43759212326d.jsonl","07/22/2026 19:31:38","3","","","Recorded. Migration B stays in this merge; I'll document the window durably rather than only in the PR text."
-"U257","handoffs","20260816","unflagged","msg:msg_011CdhgKwyartcAQytDcCyho","3e8315af-5f45-4726-b3d3-23a6fbf0bd11.jsonl","08/04/2026 12:06:01","2","","","Worktree made, path printed. Enter it now."
-"U258","handoffs","20260816","unflagged","msg:msg_011CdhhD811b3RBL1yH38uAR","48f6e3f8-5ae1-4fbd-89fa-771f21e47719.jsonl","08/04/2026 12:17:45","3","","","Adding an E2E repro test — bUnit does not reproduce this bug, so browser evidence is needed."
-"U259","handoffs","20260816","unflagged","msg:msg_011CdhhoWFAunMUDXyunc9E8","48f6e3f8-5ae1-4fbd-89fa-771f21e47719.jsonl","08/04/2026 12:25:25","3","","","All 3 E2E tests pass — including the Save path. Item is not reproducible end to end."
-"U260","handoffs","20260816","unflagged","msg:msg_011CdhJg714SCFWLDKEQsti7","a29c484f-7aa9-4e39-9ec2-ec1f72e442f8.jsonl","08/04/2026 07:22:07","3","","","Miscounted in that edit — ten call sites across nine methods, not nine. Correcting."
-"U261","handoffs","20260816","unflagged","msg:msg_011CdhjTBisNB5MUqdbiHkt5","48f6e3f8-5ae1-4fbd-89fa-771f21e47719.jsonl","08/04/2026 12:47:34","4","","","Triage first — no edits yet."
-"U262","handoffs","20260816","unflagged","msg:msg_011CdhJW9GCwSvo9MhWFefMr","9baa8e1a-1db9-445f-8faa-76b6f808eeae.jsonl","08/04/2026 07:20:03","2","copy","","Worktree ready: `chore/wt-mattpocock-plugin-migration`.
+"U254","handoffs","20260816","unflagged","msg:msg_011CdHBm6Q5YHbb9BcdHFyB9","61f4b3ba-af8e-46eb-acde-43759212326d.jsonl","07/22/2026 13:37:16","4","","not-a-case","Task 5 committed (`7268b04`) but flagged a real plan contradiction. Verifying it myself before asking."
+"U255","handoffs","20260816","unflagged","msg:msg_011CdHeCTSLGqT8wkTRJx5co","61f4b3ba-af8e-46eb-acde-43759212326d.jsonl","07/22/2026 19:23:51","2","","not-a-case","Task 12 committed (`57369a6`), tree clean. Extracting the surviving findings and final verdicts."
+"U256","handoffs","20260816","unflagged","msg:msg_011CdHenbC7GaW6a9S9ofRzi","61f4b3ba-af8e-46eb-acde-43759212326d.jsonl","07/22/2026 19:31:38","3","","not-a-case","Recorded. Migration B stays in this merge; I'll document the window durably rather than only in the PR text."
+"U257","handoffs","20260816","unflagged","msg:msg_011CdhgKwyartcAQytDcCyho","3e8315af-5f45-4726-b3d3-23a6fbf0bd11.jsonl","08/04/2026 12:06:01","2","","not-a-case","Worktree made, path printed. Enter it now."
+"U258","handoffs","20260816","unflagged","msg:msg_011CdhhD811b3RBL1yH38uAR","48f6e3f8-5ae1-4fbd-89fa-771f21e47719.jsonl","08/04/2026 12:17:45","3","","not-a-case","Adding an E2E repro test — bUnit does not reproduce this bug, so browser evidence is needed."
+"U259","handoffs","20260816","unflagged","msg:msg_011CdhhoWFAunMUDXyunc9E8","48f6e3f8-5ae1-4fbd-89fa-771f21e47719.jsonl","08/04/2026 12:25:25","3","","not-a-case","All 3 E2E tests pass — including the Save path. Item is not reproducible end to end."
+"U260","handoffs","20260816","unflagged","msg:msg_011CdhJg714SCFWLDKEQsti7","a29c484f-7aa9-4e39-9ec2-ec1f72e442f8.jsonl","08/04/2026 07:22:07","3","","not-a-case","Miscounted in that edit — ten call sites across nine methods, not nine. Correcting."
+"U261","handoffs","20260816","unflagged","msg:msg_011CdhjTBisNB5MUqdbiHkt5","48f6e3f8-5ae1-4fbd-89fa-771f21e47719.jsonl","08/04/2026 12:47:34","4","","not-a-case","Triage first — no edits yet."
+"U262","handoffs","20260816","unflagged","msg:msg_011CdhJW9GCwSvo9MhWFefMr","9baa8e1a-1db9-445f-8faa-76b6f808eeae.jsonl","08/04/2026 07:20:03","2","copy","not-a-case","Worktree ready: `chore/wt-mattpocock-plugin-migration`.
 
 Findings, not just guess — checked repo, catalog, and upstream:
 
@@ -826,8 +826,8 @@ Findings, not just guess — checked repo, catalog, and upstream:
 **Verdict**: not worth full swap. Curated pinned fork with collision-safe naming beats vanilla plugin here — real cost (rename every hardcoded reference, resolve `code-review` collision, lose adaptations) for no real gain (same 7 skills either way, since you're not using the other 14). If you want, worth reconsidering only if you actually want those extra 14 skills — then it's ""add plugin alongside,"" not ""remove and replace.""
 
 Want a plan for either path, or drop this?"
-"U263","handoffs","20260816","unflagged","msg:msg_011CdhL27Wz4dsvKSSSrrxLq","3f4cc8f3-603a-49bc-a83f-0bade9b7fe82.jsonl","08/04/2026 07:39:43","3","","","Task 1 clean. Ledger update, move to Task 2."
-"U264","handoffs","20260816","unflagged","msg:msg_011CdhMWrWmaQcjqn2Wy3cnw","9baa8e1a-1db9-445f-8faa-76b6f808eeae.jsonl","08/04/2026 07:59:20","1","","","Committed: `03df2890` on `fix/wt-chore/wt-mattpocock-plugin-migration`. 17 files."
+"U263","handoffs","20260816","unflagged","msg:msg_011CdhL27Wz4dsvKSSSrrxLq","3f4cc8f3-603a-49bc-a83f-0bade9b7fe82.jsonl","08/04/2026 07:39:43","3","","not-a-case","Task 1 clean. Ledger update, move to Task 2."
+"U264","handoffs","20260816","unflagged","msg:msg_011CdhMWrWmaQcjqn2Wy3cnw","9baa8e1a-1db9-445f-8faa-76b6f808eeae.jsonl","08/04/2026 07:59:20","1","","not-a-case","Committed: `03df2890` on `fix/wt-chore/wt-mattpocock-plugin-migration`. 17 files."
 "U25","handoffs","20260816","unflagged","msg:msg_011CdhoVp5fuWDuFRnFvZkvs","3ccd1cb6-fe5f-4adb-a740-c7cfa0605d8a.jsonl","08/04/2026 13:40:10","1","cannot; guard","not-a-case","Done. Committed `07dd9d3b`.
 
 **Fix** — `HotstringMobileList.razor:42-44`, three classes onto the header cells:
@@ -851,11 +851,11 @@ Reverted the razor to check the tests actually bite: chevron measured **114px** 
 Backlog file ticked and `git mv`'d into `.claude/backlog/done/`.
 
 Next: push and open a PR."
-"U265","handoffs","20260816","unflagged","msg:msg_011CdhPPhXZgXyoAUoDKCq1q","3f4cc8f3-603a-49bc-a83f-0bade9b7fe82.jsonl","08/04/2026 08:23:56","1","","","Final review running on Opus. Waiting."
-"U266","handoffs","20260816","unflagged","msg:msg_011CdhQyas2pUpG5p7Wc18id","3f4cc8f3-603a-49bc-a83f-0bade9b7fe82.jsonl","08/04/2026 08:44:44","2","","","Named-branch worktree — standard 3-option menu. Base branch is `main` per plan."
-"U267","handoffs","20260816","unflagged","msg:msg_011CdHT6bdkVJmxEtrSfn1P1","61f4b3ba-af8e-46eb-acde-43759212326d.jsonl","07/22/2026 16:58:16","2","","","Task 7 approved, no Critical or Important. The stale `HotkeyActionKind.Raw` doc it flagged contradicts decision 26 — fixing directly, since Task 12 shouldn't inherit a doc comment that describes retired behavior."
-"U268","handoffs","20260816","unflagged","msg:msg_011CdhUdix7Vkbu4rurvV7Yx","c1823b89-3c5e-433e-bba6-c894cc1632cc.jsonl","08/04/2026 09:32:41","2","","","Finding 5 — I invented an exemption that `AGENTS.md` does not have. Replacing it with a real requirement."
-"U269","handoffs","20260816","unflagged","msg:msg_011CdHYQfXVdqNJHfd3FmwqL","61f4b3ba-af8e-46eb-acde-43759212326d.jsonl","07/22/2026 18:07:58","1","","","Task 9 closed. Waiting on Task 10, then Tasks 11–12.
+"U265","handoffs","20260816","unflagged","msg:msg_011CdhPPhXZgXyoAUoDKCq1q","3f4cc8f3-603a-49bc-a83f-0bade9b7fe82.jsonl","08/04/2026 08:23:56","1","","not-a-case","Final review running on Opus. Waiting."
+"U266","handoffs","20260816","unflagged","msg:msg_011CdhQyas2pUpG5p7Wc18id","3f4cc8f3-603a-49bc-a83f-0bade9b7fe82.jsonl","08/04/2026 08:44:44","2","","not-a-case","Named-branch worktree — standard 3-option menu. Base branch is `main` per plan."
+"U267","handoffs","20260816","unflagged","msg:msg_011CdHT6bdkVJmxEtrSfn1P1","61f4b3ba-af8e-46eb-acde-43759212326d.jsonl","07/22/2026 16:58:16","2","","not-a-case","Task 7 approved, no Critical or Important. The stale `HotkeyActionKind.Raw` doc it flagged contradicts decision 26 — fixing directly, since Task 12 shouldn't inherit a doc comment that describes retired behavior."
+"U268","handoffs","20260816","unflagged","msg:msg_011CdhUdix7Vkbu4rurvV7Yx","c1823b89-3c5e-433e-bba6-c894cc1632cc.jsonl","08/04/2026 09:32:41","2","","not-a-case","Finding 5 — I invented an exemption that `AGENTS.md` does not have. Replacing it with a real requirement."
+"U269","handoffs","20260816","unflagged","msg:msg_011CdHYQfXVdqNJHfd3FmwqL","61f4b3ba-af8e-46eb-acde-43759212326d.jsonl","07/22/2026 18:07:58","1","","not-a-case","Task 9 closed. Waiting on Task 10, then Tasks 11–12.
 
 That hook finding was the most valuable catch of the run — a weakened pre-commit check would have silently degraded every future commit in the repo, not just this branch. Worth noting it came from a *bundled out-of-scope commit*; if the implementer hadn't disclosed it, I wouldn't have pointed a reviewer at it.
 
@@ -866,12 +866,12 @@ That hook finding was the most valuable catch of the run — a weakened pre-comm
 | 10 API goldens | — | implementing |
 | 11 contract (drop legacy) | — | pending |
 | 12 docs | — | pending |"
-"U270","handoffs","20260816","unflagged","msg:msg_011CdiTBowAPMyn9wUWtHX4n","d081d03c-5e2b-4666-8aee-7e47920e8117.jsonl","08/04/2026 21:54:18","2","","","Task 8 clean. Ledger, on to Task 9."
-"U271","handoffs","20260816","unflagged","msg:msg_011CdiTEM5U9vLgN28gyMCBt","d081d03c-5e2b-4666-8aee-7e47920e8117.jsonl","08/04/2026 21:54:51","1","","","Task 9 implementer running."
-"U272","handoffs","20260816","unflagged","msg:msg_011CdJCdha4SkJ86bjyk4NZY","08904441-5ccc-4276-8f39-2d306a9f75dc.jsonl","07/23/2026 02:29:11","2","","","Update handler:"
-"U273","handoffs","20260816","unflagged","msg:msg_011CdjK5FAaseRkHK64DuD2A","d081d03c-5e2b-4666-8aee-7e47920e8117.jsonl","08/05/2026 08:48:39","3","","","Existing test mixes all-profiles + profile-specific. User's case is *only* all-profiles. Let me write that exact repro."
-"U274","handoffs","20260816","unflagged","msg:msg_011CdJy94gFSUo3RXdAAy2Ni","2e976eef-7e8e-47a6-9071-d6a97af82d79.jsonl","07/23/2026 12:12:50","3","","","Research first. Look at backlog + plans for UI hotkey."
-"U275","handoffs","20260816","unflagged","msg:msg_011Cdk4aohFQm2Ku598ku7LL","d081d03c-5e2b-4666-8aee-7e47920e8117.jsonl","08/05/2026 18:19:15","2","","","Skip the backlog item. It'd be created and moved to `done/` in the same PR — that's bookkeeping with no reader. The backlog earns its keep for work that sits *pending*; this work starts the moment #263 merges. The spec already holds the decisions and the reasoning.
+"U270","handoffs","20260816","unflagged","msg:msg_011CdiTBowAPMyn9wUWtHX4n","d081d03c-5e2b-4666-8aee-7e47920e8117.jsonl","08/04/2026 21:54:18","2","","not-a-case","Task 8 clean. Ledger, on to Task 9."
+"U271","handoffs","20260816","unflagged","msg:msg_011CdiTEM5U9vLgN28gyMCBt","d081d03c-5e2b-4666-8aee-7e47920e8117.jsonl","08/04/2026 21:54:51","1","","not-a-case","Task 9 implementer running."
+"U272","handoffs","20260816","unflagged","msg:msg_011CdJCdha4SkJ86bjyk4NZY","08904441-5ccc-4276-8f39-2d306a9f75dc.jsonl","07/23/2026 02:29:11","2","","not-a-case","Update handler:"
+"U273","handoffs","20260816","unflagged","msg:msg_011CdjK5FAaseRkHK64DuD2A","d081d03c-5e2b-4666-8aee-7e47920e8117.jsonl","08/05/2026 08:48:39","3","","not-a-case","Existing test mixes all-profiles + profile-specific. User's case is *only* all-profiles. Let me write that exact repro."
+"U274","handoffs","20260816","unflagged","msg:msg_011CdJy94gFSUo3RXdAAy2Ni","2e976eef-7e8e-47a6-9071-d6a97af82d79.jsonl","07/23/2026 12:12:50","3","","not-a-case","Research first. Look at backlog + plans for UI hotkey."
+"U275","handoffs","20260816","unflagged","msg:msg_011Cdk4aohFQm2Ku598ku7LL","d081d03c-5e2b-4666-8aee-7e47920e8117.jsonl","08/05/2026 18:19:15","2","","not-a-case","Skip the backlog item. It'd be created and moved to `done/` in the same PR — that's bookkeeping with no reader. The backlog earns its keep for work that sits *pending*; this work starts the moment #263 merges. The spec already holds the decisions and the reasoning.
 
 The plan is a closer call, and it's your rule, not mine: `.claude/CLAUDE.md` says plan before editing for anything non-trivial, and exempts only single-file no-behavior changes, typos, questions, and read-only commands. This is four-ish files with new user-facing behavior, so by that rule it plans first.
 
@@ -882,7 +882,7 @@ My recommendation: **implement straight from the spec.** Treat its §5 test list
 The one thing I'd keep from the plan workflow is the review after implementation — that's what caught the wrong `EndChars` comment, and it costs one round.
 
 If you'd rather stay strict to your own rule, say so and I'll write a short plan first; it'd be maybe 15 minutes of work and mostly transcription from the spec. Otherwise I'll start implementing as soon as #263 merges."
-"U276","handoffs","20260816","unflagged","msg:msg_011CdK4BwR6yqkyP2HiBkZL9","a1fc5113-bdf4-4f5d-9326-0cf9a0188fd0.jsonl","07/23/2026 13:19:09","2","can't","","Done. Line 119-122 now lists `S`/`S0`, `Pn`, `Kn` too.
+"U276","handoffs","20260816","unflagged","msg:msg_011CdK4BwR6yqkyP2HiBkZL9","a1fc5113-bdf4-4f5d-9326-0cf9a0188fd0.jsonl","07/23/2026 13:19:09","2","can't","missed","Done. Line 119-122 now lists `S`/`S0`, `Pn`, `Kn` too.
 
 Change is in main checkout (agents can't commit here). To land it:
 
@@ -896,14 +896,14 @@ git commit -m ""docs: note S/Pn/Kn in never-emitted AHK flag list""
 ```
 
 Which?"
-"U277","handoffs","20260816","unflagged","msg:msg_011CdK4McqBqgZsdgEBLs8Jp","2e976eef-7e8e-47a6-9071-d6a97af82d79.jsonl","07/23/2026 13:21:27","3","","","Task 4: spec ✅, code verified correct both directions — but reviewer flags **Important**: concurrency gate + no-cache-on-failure are untested (brief only specified the 17 happy-path/optimism/rejection tests). Adding 2 regression tests augments the plan (doesn't contradict it), so no human escalation — dispatch a fix subagent."
-"U278","handoffs","20260816","unflagged","msg:msg_011Cdk6CA2TTi21zbF1884fx","3cdbcc48-4bd4-4b80-8461-f22bdf00ed4d.jsonl","08/05/2026 18:40:41","3","blocked; copy","","Spec lives in `docs/superpowers/` — a symlink to the main checkout. This worktree session is blocked from writing there (by design: plan writes belong in the main checkout). Revised file written to scratchpad; copy command below."
-"U279","handoffs","20260816","unflagged","msg:msg_011CdK6KNCnqaKrfxFZvr81k","2e976eef-7e8e-47a6-9071-d6a97af82d79.jsonl","07/23/2026 13:47:00","3","","","Clone test is substantive (all fields set, `BeEquivalentTo`, mutates clone collections, asserts original unchanged). Task 5 solid. Ledger it, then **stop at the checkpoint**."
-"U280","handoffs","20260816","unflagged","msg:msg_011CdKdg1FuTnXWbYazmuA7U","27d4e07f-a02d-420a-913d-bc4af9e1c560.jsonl","07/23/2026 20:38:09","2","","","Confirmed. Backend allows 4000, UI caps at 500. Bug confirmed.
+"U277","handoffs","20260816","unflagged","msg:msg_011CdK4McqBqgZsdgEBLs8Jp","2e976eef-7e8e-47a6-9071-d6a97af82d79.jsonl","07/23/2026 13:21:27","3","","not-a-case","Task 4: spec ✅, code verified correct both directions — but reviewer flags **Important**: concurrency gate + no-cache-on-failure are untested (brief only specified the 17 happy-path/optimism/rejection tests). Adding 2 regression tests augments the plan (doesn't contradict it), so no human escalation — dispatch a fix subagent."
+"U278","handoffs","20260816","unflagged","msg:msg_011Cdk6CA2TTi21zbF1884fx","3cdbcc48-4bd4-4b80-8461-f22bdf00ed4d.jsonl","08/05/2026 18:40:41","3","blocked; copy","missed","Spec lives in `docs/superpowers/` — a symlink to the main checkout. This worktree session is blocked from writing there (by design: plan writes belong in the main checkout). Revised file written to scratchpad; copy command below."
+"U279","handoffs","20260816","unflagged","msg:msg_011CdK6KNCnqaKrfxFZvr81k","2e976eef-7e8e-47a6-9071-d6a97af82d79.jsonl","07/23/2026 13:47:00","3","","not-a-case","Clone test is substantive (all fields set, `BeEquivalentTo`, mutates clone collections, asserts original unchanged). Task 5 solid. Ledger it, then **stop at the checkpoint**."
+"U280","handoffs","20260816","unflagged","msg:msg_011CdKdg1FuTnXWbYazmuA7U","27d4e07f-a02d-420a-913d-bc4af9e1c560.jsonl","07/23/2026 20:38:09","2","","not-a-case","Confirmed. Backend allows 4000, UI caps at 500. Bug confirmed.
 
 Now check finding #4 (Description preview staleness) and preview query, and finding #3 already visually confirmed missing `ClearSaveError` at line 480-484 vs pattern at 216-217/473-478."
-"U281","handoffs","20260816","unflagged","msg:msg_011CdKEVmqJb9nrxN1e2uPY3","23eb2980-f0b7-4596-8e48-64414a9081d3.jsonl","07/23/2026 15:34:12","2","","","Task 6 ✅. Task 7 — KeyPicker."
-"U282","handoffs","20260816","unflagged","msg:msg_011CdkFeGwCss7LQm1AyK8CV","a9ff7000-54fc-4479-8e59-bad3790e661f.jsonl","08/05/2026 20:44:32","3","cannot","","All 11 findings verified against code. No UNCLEAR — proceeding to fixes.
+"U281","handoffs","20260816","unflagged","msg:msg_011CdKEVmqJb9nrxN1e2uPY3","23eb2980-f0b7-4596-8e48-64414a9081d3.jsonl","07/23/2026 15:34:12","2","","not-a-case","Task 6 ✅. Task 7 — KeyPicker."
+"U282","handoffs","20260816","unflagged","msg:msg_011CdkFeGwCss7LQm1AyK8CV","a9ff7000-54fc-4479-8e59-bad3790e661f.jsonl","08/05/2026 20:44:32","3","cannot","not-a-case","All 11 findings verified against code. No UNCLEAR — proceeding to fixes.
 
 | # | Finding | Verdict | Evidence |
 |---|---|---|---|
@@ -922,7 +922,7 @@ Now check finding #4 (Description preview staleness) and preview query, and find
 **On finding 10** — I am not citing `doggy8088.github.io`. That is a third-party mirror; `AGENTS.md` requires the repo's syntax reference or the official docs. Official URLs go in instead. Second correction: `docs/development/ahk-v2-syntax.md` cannot be cited for these claims — `~` appears nowhere in it, and `*`, `up::`, `{Blind}`, `DownR` appear only once inside a table at line 76, with no prose. Extending that doc becomes a task in the plan.
 
 Fixing the prototype's two pure modules first, so the spec and the code it points at agree."
-"U283","handoffs","20260816","unflagged","msg:msg_011CdkFxaxfkwN3GRUX2SbJu","a9ff7000-54fc-4479-8e59-bad3790e661f.jsonl","08/05/2026 20:48:17","3","","","Four sentence forms produced, including the two the review asked for:
+"U283","handoffs","20260816","unflagged","msg:msg_011CdkFxaxfkwN3GRUX2SbJu","a9ff7000-54fc-4479-8e59-bad3790e661f.jsonl","08/05/2026 20:48:17","3","","not-a-case","Four sentence forms produced, including the two the review asked for:
 
 ```
 The header template in Work also uses CapsLock. Your hotkey may not fire.
@@ -931,7 +931,7 @@ The header and footer templates in Work and the footer template in Games also us
 ```
 
 The overflow branch (`and N more`) is not exercised — the TUI has three profiles, so it never trips the cap."
-"U284","handoffs","20260816","unflagged","msg:msg_011CdKH53GeazPHj8BSS4Tvb","a1fc5113-bdf4-4f5d-9326-0cf9a0188fd0.jsonl","07/23/2026 16:08:05","2","paste","","Shared understanding reached. Final change set — two edits, exact text:
+"U284","handoffs","20260816","unflagged","msg:msg_011CdKH53GeazPHj8BSS4Tvb","a1fc5113-bdf4-4f5d-9326-0cf9a0188fd0.jsonl","07/23/2026 16:08:05","2","paste","not-a-case","Shared understanding reached. Final change set — two edits, exact text:
 
 **Edit 1 — `Raw` (line 34), drop the false ""and options"":**
 ```
@@ -959,9 +959,9 @@ for typed delivery)
 Out of scope, confirmed: hotkey vocabulary (W1), no ADR (Q1 fix records existing ADR-0002 reality — fails the ""hard to reverse / surprising / real trade-off"" test).
 
 Confirm and I apply all three + commit."
-"U285","handoffs","20260816","unflagged","msg:msg_011CdKJ5W7oKs31W29jw9A3S","23eb2980-f0b7-4596-8e48-64414a9081d3.jsonl","07/23/2026 16:21:10","2","","","Task 8 fix pass running. Waiting on it before Task 9 (same files)."
+"U285","handoffs","20260816","unflagged","msg:msg_011CdKJ5W7oKs31W29jw9A3S","23eb2980-f0b7-4596-8e48-64414a9081d3.jsonl","07/23/2026 16:21:10","2","","not-a-case","Task 8 fix pass running. Waiting on it before Task 9 (same files)."
 "U32","handoffs","20260816","unflagged","msg:msg_011CdLcz1iaQTX1bU6fGEJcc","fa13a69a-fe78-439b-aed0-e46cf740b719.jsonl","07/24/2026 09:10:53","3","","not-a-case","Read validation rules — confirm Raw allows multi-line bodies and how Remap/Window validate."
-"U286","handoffs","20260816","unflagged","msg:msg_011CdLffcskK7uwVSrm76ojX","fa13a69a-fe78-439b-aed0-e46cf740b719.jsonl","07/24/2026 09:45:37","2","","","**Q4 locked:** (a) unified list.
+"U286","handoffs","20260816","unflagged","msg:msg_011CdLffcskK7uwVSrm76ojX","fa13a69a-fe78-439b-aed0-e46cf740b719.jsonl","07/24/2026 09:45:37","2","","not-a-case","**Q4 locked:** (a) unified list.
 
 **Q5 — the 4 ""native snap"" samples I said were out of scope. I need to walk that back.**
 
@@ -976,7 +976,7 @@ Fix stays SendKeys (no kind change): change the Send content `{Up}` → `#{Up}`,
 Note: this means two minimize-ish samples coexist — existing `#Down` (Aero minimize) and my new `^!M::WinMinimize(""A"")` (typed). Fine — different mechanism, different trigger, both teach.
 
 Fix all 4 snaps too, or leave them out of scope as you originally framed?"
-"U287","handoffs","20260816","unflagged","msg:msg_011CdLfHZ6AxDeuRSHz3Js1C","fa13a69a-fe78-439b-aed0-e46cf740b719.jsonl","07/24/2026 09:40:02","2","","","**Q1 locked:** bare `F9`/`F10`, tradeoff noted in each Description.
+"U287","handoffs","20260816","unflagged","msg:msg_011CdLfHZ6AxDeuRSHz3Js1C","fa13a69a-fe78-439b-aed0-e46cf740b719.jsonl","07/24/2026 09:40:02","2","","not-a-case","**Q1 locked:** bare `F9`/`F10`, tradeoff noted in each Description.
 
 **Q2 — the second remap.**
 
@@ -985,7 +985,7 @@ Fix all 4 snaps too, or leave them out of scope as you originally framed?"
 **My recommendation:** `F9::Volume_Up`. Adjacent to F10, reads as a coherent volume pair, stays in the mute/volume flavor you already liked. Variety is nice but two samples of the *same* kind teach the kind fine; the coherence wins.
 
 `F9::Volume_Up`, or `F12::Media_Play_Pause`?"
-"U288","handoffs","20260816","unflagged","msg:msg_011CdLfQE5sb5A9VAezogMo2","fa13a69a-fe78-439b-aed0-e46cf740b719.jsonl","07/24/2026 09:41:34","2","","","**Q2 locked:** `F9::Volume_Up`.
+"U288","handoffs","20260816","unflagged","msg:msg_011CdLfQE5sb5A9VAezogMo2","fa13a69a-fe78-439b-aed0-e46cf740b719.jsonl","07/24/2026 09:41:34","2","","not-a-case","**Q2 locked:** `F9::Volume_Up`.
 
 **Q3 — categories for the 3 keyboard/media samples** (F9/F10 remaps + F1-disable). No ""Media"" or ""System"" category exists.
 
@@ -994,7 +994,7 @@ Precedent: `App Launcher` already holds non-launchers — **Lock workstation** a
 **My recommendation:** put all three in **App Launcher**, following that existing precedent. Keeps every sample discoverable under a filter chip, adds no new category. Loose, but consistent with what the seed already does. (Alternative: leave them uncategorized — cleaner semantics, but they'd only show in the unfiltered list.)
 
 App Launcher, or uncategorized?"
-"U289","handoffs","20260816","unflagged","msg:msg_011CdLfZnQopEM9fX43nTrsC","fa13a69a-fe78-439b-aed0-e46cf740b719.jsonl","07/24/2026 09:43:42","2","auth","","**Q3 locked:** App Launcher.
+"U289","handoffs","20260816","unflagged","msg:msg_011CdLfZnQopEM9fX43nTrsC","fa13a69a-fe78-439b-aed0-e46cf740b719.jsonl","07/24/2026 09:43:42","2","auth","not-a-case","**Q3 locked:** App Launcher.
 
 **Q4 — catalog restructure shape.**
 
@@ -1006,7 +1006,7 @@ Two ways to let the catalog hold typed rows:
 **My recommendation: (a).** One authoritative list, one seed-loop shape, no duplicated iteration. Migration parity survives because legacy rows still route through `FromLegacy` via the helper; only the doc-comment needs a note that new typed rows don't mirror `LegacyHotkeyFixtures`.
 
 (a) unified, or (b) two lists?"
-"U290","handoffs","20260816","unflagged","msg:msg_011CdLgV6zz26dqbtUR9nXRw","303c598f-259b-44b4-bc4c-8bc6df638b8c.jsonl","07/24/2026 09:55:43","2","cannot","","Good catches. Let me correct my own earlier claims — the nested-repo solution changes both answers.
+"U290","handoffs","20260816","unflagged","msg:msg_011CdLgV6zz26dqbtUR9nXRw","303c598f-259b-44b4-bc4c-8bc6df638b8c.jsonl","07/24/2026 09:55:43","2","cannot","not-a-case","Good catches. Let me correct my own earlier claims — the nested-repo solution changes both answers.
 
 **Q1: History purge still necessary?**
 
@@ -1029,8 +1029,8 @@ So AGENTS.md should say: *plans/specs live in `docs/superpowers/`, which is its 
 Net: gitignore already prevents leaks; AGENTS.md edit is about making sure plans still get **committed** (to the private repo), not about preventing re-adds.
 
 Want me to draft the AGENTS.md edit?"
-"U291","handoffs","20260816","unflagged","msg:msg_011CdLm9t2RpRdkS8Q39dNQA","6aff0bf6-285a-4f4b-a264-cb4bf0186ed4.jsonl","07/24/2026 10:57:08","3","paste","","Now add the dedicated catalog-seeded case to AhkScriptGeneratorIntegrationTests. Confirm generator emits body verbatim (paste block spans lines) — check how hotkey lines are joined."
-"U292","handoffs","20260816","unflagged","msg:msg_011CdLnKaPvV1BFkwZRiPd2F","6aff0bf6-285a-4f4b-a264-cb4bf0186ed4.jsonl","07/24/2026 11:12:12","1","paste","","Committed. All 8 test projects green, format clean.
+"U291","handoffs","20260816","unflagged","msg:msg_011CdLm9t2RpRdkS8Q39dNQA","6aff0bf6-285a-4f4b-a264-cb4bf0186ed4.jsonl","07/24/2026 10:57:08","3","paste","not-a-case","Now add the dedicated catalog-seeded case to AhkScriptGeneratorIntegrationTests. Confirm generator emits body verbatim (paste block spans lines) — check how hotkey lines are joined."
+"U292","handoffs","20260816","unflagged","msg:msg_011CdLnKaPvV1BFkwZRiPd2F","6aff0bf6-285a-4f4b-a264-cb4bf0186ed4.jsonl","07/24/2026 11:12:12","1","paste","not-a-case","Committed. All 8 test projects green, format clean.
 
 **Done.** Plan implemented:
 - `DefaultHotkeyCatalog` restructured to typed `HotkeyDefinition` rows (`Legacy`/`Raw`/`Typed` helpers); both seed sites now call `Hotkey.Create(ownerOid, sample.Definition, clock)`.
@@ -1047,12 +1047,12 @@ Committed `73d1559` on `feature/wt-hotkey-ui-plan`.
 4. Discard
 
 Which? Step 3 verification (run API + download `.ahk`, Playwright UI smoke) still pending — do that before PR if you want the manual pass."
-"U293","handoffs","20260816","unflagged","msg:msg_011CdLRbidXZs3eyrJoc42ED","6d55ef97-f654-449d-bd66-ddc65efc2616.jsonl","07/24/2026 06:40:23","2","","","Now the dialog. Reading the regions the agents flagged:"
-"U294","handoffs","20260816","unflagged","msg:msg_011CdLRH2fhoXMj1ar6yDJmW","6d55ef97-f654-449d-bd66-ddc65efc2616.jsonl","07/24/2026 06:36:30","4","","","Applying frontend fixes. Catalog first — per-role projection was recomputed on every keystroke:"
-"U295","handoffs","20260816","unflagged","msg:msg_011CdLRvF1tAoiGiG3hV5Cwj","6d55ef97-f654-449d-bd66-ddc65efc2616.jsonl","07/24/2026 06:44:34","3","","","Now the last backend item — checking whether the EF `?? """"` removal is actually behavior-safe:"
-"U296","handoffs","20260816","unflagged","msg:msg_011CdLRy7y4XSGn7CCw8Bcnm","6d55ef97-f654-449d-bd66-ddc65efc2616.jsonl","07/24/2026 06:45:13","2","","","Full build and test run:"
-"U297","handoffs","20260816","unflagged","msg:msg_011CdLuPs5T41V6TpLKU1vEK","b81010c6-08d8-47f5-b789-5d2f823e5769.jsonl","07/24/2026 12:45:27","3","","","This is a design decision. Invoking brainstorming skill first."
-"U298","handoffs","20260816","unflagged","msg:msg_011CdLzoHcoR5c32gzezvcXS","1ee46794-bcb6-41f5-9354-f9c4a6835213.jsonl","07/24/2026 13:55:58","2","","","Line-select already in §5 last turn:
+"U293","handoffs","20260816","unflagged","msg:msg_011CdLRbidXZs3eyrJoc42ED","6d55ef97-f654-449d-bd66-ddc65efc2616.jsonl","07/24/2026 06:40:23","2","","not-a-case","Now the dialog. Reading the regions the agents flagged:"
+"U294","handoffs","20260816","unflagged","msg:msg_011CdLRH2fhoXMj1ar6yDJmW","6d55ef97-f654-449d-bd66-ddc65efc2616.jsonl","07/24/2026 06:36:30","4","","not-a-case","Applying frontend fixes. Catalog first — per-role projection was recomputed on every keystroke:"
+"U295","handoffs","20260816","unflagged","msg:msg_011CdLRvF1tAoiGiG3hV5Cwj","6d55ef97-f654-449d-bd66-ddc65efc2616.jsonl","07/24/2026 06:44:34","3","","not-a-case","Now the last backend item — checking whether the EF `?? """"` removal is actually behavior-safe:"
+"U296","handoffs","20260816","unflagged","msg:msg_011CdLRy7y4XSGn7CCw8Bcnm","6d55ef97-f654-449d-bd66-ddc65efc2616.jsonl","07/24/2026 06:45:13","2","","not-a-case","Full build and test run:"
+"U297","handoffs","20260816","unflagged","msg:msg_011CdLuPs5T41V6TpLKU1vEK","b81010c6-08d8-47f5-b789-5d2f823e5769.jsonl","07/24/2026 12:45:27","3","","not-a-case","This is a design decision. Invoking brainstorming skill first."
+"U298","handoffs","20260816","unflagged","msg:msg_011CdLzoHcoR5c32gzezvcXS","1ee46794-bcb6-41f5-9354-f9c4a6835213.jsonl","07/24/2026 13:55:58","2","","not-a-case","Line-select already in §5 last turn:
 
 | Select current line | Ctrl+Alt+K | `{Home}+{End}` | `$^!k::Send(""{Home}+{End}"")` | Code |
 
@@ -1061,14 +1061,14 @@ Which? Step 3 verification (run API + download `.ahk`, Playwright UI smoke) stil
 Want something different? Two things I can adjust:
 - **Token**: `{Home}+{End}` selects start→end of the *visual* line. For a full logical line incl. trailing newline, `{Home}+{Down}`. Which behavior?
 - **Location**: it's in the spec only (specs unimplemented). Want it written into the actual `DefaultHotkeyCatalog.cs` now too?"
-"U299","handoffs","20260816","unflagged","msg:msg_011CdM19awQMYetWJ9CZKrsM","1ee46794-bcb6-41f5-9354-f9c4a6835213.jsonl","07/24/2026 14:00:21","3","","","No. Only edited specs. Catalog code untouched. Verifying."
-"U300","handoffs","20260816","unflagged","msg:msg_011Cdm5jYbma7CSxGkaFJxbP","cca6f400-559a-46cf-9d0c-55560b5e8c65.jsonl","08/06/2026 07:14:45","2","","","Now `Get-AgentCommandSegment`."
-"U301","handoffs","20260816","unflagged","msg:msg_011CdmdPDcRi4aYWh9RCTp3D","6cffae9b-a251-4407-a181-c75f96cf34fe.jsonl","08/06/2026 14:09:48","3","","","Both E2E tests red too, error propagates as expected. Task 2 done, moving to fix."
-"U302","handoffs","20260816","unflagged","msg:msg_011CdmfC5cPpyJuicaxSWExN","6cffae9b-a251-4407-a181-c75f96cf34fe.jsonl","08/06/2026 14:33:30","2","","","Clean. Gate fully passed. Committing."
-"U303","handoffs","20260816","unflagged","msg:msg_011CdmfEV18CS6nUo4MJrA5y","438bdba1-b478-4a66-a6be-ad4c124f0fd5.jsonl","08/06/2026 14:34:03","2","","","Finding 2 — the contradictory backlog note:"
-"U304","handoffs","20260816","unflagged","msg:msg_011Cdmg5c7sPy41J4t2pdsa1","438bdba1-b478-4a66-a6be-ad4c124f0fd5.jsonl","08/06/2026 14:45:09","2","","","Step 7 — commit:"
-"U305","handoffs","20260816","unflagged","msg:msg_011CdmiWZyZeTT5twdu6N2oK","acec1697-a2c2-4e91-995a-776b8cb2e6d5.jsonl","08/06/2026 15:17:02","2","","","Finding 5a — the generated doc."
-"U306","handoffs","20260816","unflagged","msg:msg_011CdmjjQYkZx2m3rjqHuRDo","acec1697-a2c2-4e91-995a-776b8cb2e6d5.jsonl","08/06/2026 15:33:36","3","","","Answering your question first, with evidence.
+"U299","handoffs","20260816","unflagged","msg:msg_011CdM19awQMYetWJ9CZKrsM","1ee46794-bcb6-41f5-9354-f9c4a6835213.jsonl","07/24/2026 14:00:21","3","","not-a-case","No. Only edited specs. Catalog code untouched. Verifying."
+"U300","handoffs","20260816","unflagged","msg:msg_011Cdm5jYbma7CSxGkaFJxbP","cca6f400-559a-46cf-9d0c-55560b5e8c65.jsonl","08/06/2026 07:14:45","2","","not-a-case","Now `Get-AgentCommandSegment`."
+"U301","handoffs","20260816","unflagged","msg:msg_011CdmdPDcRi4aYWh9RCTp3D","6cffae9b-a251-4407-a181-c75f96cf34fe.jsonl","08/06/2026 14:09:48","3","","not-a-case","Both E2E tests red too, error propagates as expected. Task 2 done, moving to fix."
+"U302","handoffs","20260816","unflagged","msg:msg_011CdmfC5cPpyJuicaxSWExN","6cffae9b-a251-4407-a181-c75f96cf34fe.jsonl","08/06/2026 14:33:30","2","","not-a-case","Clean. Gate fully passed. Committing."
+"U303","handoffs","20260816","unflagged","msg:msg_011CdmfEV18CS6nUo4MJrA5y","438bdba1-b478-4a66-a6be-ad4c124f0fd5.jsonl","08/06/2026 14:34:03","2","","not-a-case","Finding 2 — the contradictory backlog note:"
+"U304","handoffs","20260816","unflagged","msg:msg_011Cdmg5c7sPy41J4t2pdsa1","438bdba1-b478-4a66-a6be-ad4c124f0fd5.jsonl","08/06/2026 14:45:09","2","","not-a-case","Step 7 — commit:"
+"U305","handoffs","20260816","unflagged","msg:msg_011CdmiWZyZeTT5twdu6N2oK","acec1697-a2c2-4e91-995a-776b8cb2e6d5.jsonl","08/06/2026 15:17:02","2","","not-a-case","Finding 5a — the generated doc."
+"U306","handoffs","20260816","unflagged","msg:msg_011CdmjjQYkZx2m3rjqHuRDo","acec1697-a2c2-4e91-995a-776b8cb2e6d5.jsonl","08/06/2026 15:33:36","3","","not-a-case","Answering your question first, with evidence.
 
 **The setup skill is spent.** It is a one-time bootstrapper. It ran in Wave 2 of the adoption plan (`docs/superpowers/plans/2026-07-16-mp-skills-adoption-plan.md:57`) and produced three files:
 
@@ -1081,7 +1081,7 @@ Those three files are what agents actually read. The skill that generated them h
 So it costs you a slot in every agent's skill roster, plus space in the Codex plugin payload, and returns nothing.
 
 GitLab specifically: your remote is GitHub, and `docs/agents/issue-tracker.md:1` records GitHub. The GitLab branch was never reachable."
-"U307","handoffs","20260816","unflagged","msg:msg_011Cdmk28tQ2yndut32RbQMg","438bdba1-b478-4a66-a6be-ad4c124f0fd5.jsonl","08/06/2026 15:36:58","1","cannot; guard","","Done. No unresolved threads remain on PR #270.
+"U307","handoffs","20260816","unflagged","msg:msg_011Cdmk28tQ2yndut32RbQMg","438bdba1-b478-4a66-a6be-ad4c124f0fd5.jsonl","08/06/2026 15:36:58","1","cannot; guard","not-a-case","Done. No unresolved threads remain on PR #270.
 
 | Finding | Verdict | Fix | Test |
 |---|---|---|---|
@@ -1100,7 +1100,7 @@ Red-first held: the probe test failed with *""A merged branch that then fast-for
 **Gate** (documented, not a fallback): worktree + skill suites green, build 17 projects 0 errors 0 warnings, format clean, coverage 94.6% line / 82.7% branch.
 
 Branch now at `a2faefb`, pushed. Next: wait for CI on the new commit, then merge — or I can watch checks and report."
-"U308","handoffs","20260816","unflagged","msg:msg_011CdmnRgjwBHrkbWnfibqLM","8e1a908a-755b-4790-b317-1bd7592ee0db.jsonl","08/06/2026 16:08:24","3","","","Not your code. Both failures = GitHub infra outage.
+"U308","handoffs","20260816","unflagged","msg:msg_011CdmnRgjwBHrkbWnfibqLM","8e1a908a-755b-4790-b317-1bd7592ee0db.jsonl","08/06/2026 16:08:24","3","","not-a-case","Not your code. Both failures = GitHub infra outage.
 
 ```
 ##[error]Service Unavailable
@@ -1110,7 +1110,7 @@ Branch now at `a2faefb`, pushed. Next: wait for CI on the new commit, then merge
 `codex-skills-hash-parity` and `bicep-lint` never got past ""Prepare all required actions"" — GitHub's action-download service returned 503 three times, job died before checkout. `Test Results` passed; `build-test` + `worktree-powershell-tests` still running.
 
 Fix: rerun failed jobs once the run finishes."
-"U309","handoffs","20260816","unflagged","msg:msg_011CdmNSPScGJEfLLZjEJhUQ","4810c39a-0bbf-4ce5-8a49-7f6567438fa7.jsonl","08/06/2026 10:53:49","1","copy","","No priority field set. Item files, oldest number lowest:
+"U309","handoffs","20260816","unflagged","msg:msg_011CdmNSPScGJEfLLZjEJhUQ","4810c39a-0bbf-4ce5-8a49-7f6567438fa7.jsonl","08/06/2026 10:53:49","1","copy","not-a-case","No priority field set. Item files, oldest number lowest:
 
 - 031 cli winget distribution
 - 042 key rebinds as first-class rows
@@ -1121,16 +1121,16 @@ Fix: rerun failed jobs once the run finishes."
 - 059 lcontrol/rcontrol key aliases missing
 
 No priority marked in any file. Highest number = newest = 059 (lcontrol/rcontrol key aliases missing), likely most recent bug found. Want me pick one, or you choose?"
-"U310","handoffs","20260816","unflagged","msg:msg_011CdMPxBm1JBaAz5mJwgWmo","8a0ad1ac-d363-4fea-b477-c901377bbef9.jsonl","07/24/2026 18:59:24","2","","","Both approved. Applying."
-"U311","handoffs","20260816","unflagged","msg:msg_011CdMQ1sL6QQJoMtDpmkiz7","8a0ad1ac-d363-4fea-b477-c901377bbef9.jsonl","07/24/2026 19:00:13","2","","","Now the AGENTS.md trim."
-"U312","handoffs","20260816","unflagged","msg:msg_011CdNktvGTfjB39XVmpEvLf","ffb7beaf-f54a-40db-8a9d-5668be866de1.jsonl","07/25/2026 12:14:39","1","","","In `window-snap-spec`, branch `fix/wt-window-snap-spec`, based on `feature/wt-hotkey-ui-plan`. Ready for snap plan."
-"U313","handoffs","20260816","unflagged","msg:msg_011CdNnkAfd2dPq72dFE3UyP","ffb7beaf-f54a-40db-8a9d-5668be866de1.jsonl","07/25/2026 12:38:53","2","","","Task 3: replacing the dropdown test with a real one."
-"U314","handoffs","20260816","unflagged","msg:msg_011CdNnpTMKu6Wur7299HksP","ffb7beaf-f54a-40db-8a9d-5668be866de1.jsonl","07/25/2026 12:39:52","2","","","Task 6: fixing the format command; Task 5 no longer needs a spec-amendment step (already done)."
-"U315","handoffs","20260816","unflagged","msg:msg_011CdNpLK5wyQFXJxsSU3ozk","7072b1f6-e2c7-4f56-b60e-4595df3b8f95.jsonl","07/25/2026 12:59:43","1","","","Codex review started in the background. Check `/codex:status` for progress."
-"U316","handoffs","20260816","unflagged","msg:msg_011CdNqg5FBHh1LniqVVHNfe","b1afe5ae-b379-4907-b3d3-ea7a6f4a143d.jsonl","07/25/2026 13:17:20","3","","","Self-review clean — no placeholders, precedence contradiction gone (funnel disabled outright), empty-state port explicit. Committing."
-"U317","handoffs","20260816","unflagged","msg:msg_011CdNrjXxy6EgW8GSd5ePBu","d35ff527-d574-4b03-8939-4877138def3f.jsonl","07/25/2026 13:31:13","2","","","Fix 3 (scope negative assertion):"
-"U318","handoffs","20260816","unflagged","msg:msg_011CdNtHVc6fps3FMWPkZgZR","55bc3be0-7244-4f67-a7e0-3042eb19d0d2.jsonl","07/25/2026 13:51:32","2","","","Task 1 done. **Task 2 — Step 1: failing tests**"
-"U319","handoffs","20260816","unflagged","msg:msg_011CdNvW8Gny92wHNPbG136d","55bc3be0-7244-4f67-a7e0-3042eb19d0d2.jsonl","07/25/2026 14:20:44","1","copy; auth","","Manual verification passed end-to-end against the running app (worktree no-auth, API 5604 / frontend 5605).
+"U310","handoffs","20260816","unflagged","msg:msg_011CdMPxBm1JBaAz5mJwgWmo","8a0ad1ac-d363-4fea-b477-c901377bbef9.jsonl","07/24/2026 18:59:24","2","","not-a-case","Both approved. Applying."
+"U311","handoffs","20260816","unflagged","msg:msg_011CdMQ1sL6QQJoMtDpmkiz7","8a0ad1ac-d363-4fea-b477-c901377bbef9.jsonl","07/24/2026 19:00:13","2","","not-a-case","Now the AGENTS.md trim."
+"U312","handoffs","20260816","unflagged","msg:msg_011CdNktvGTfjB39XVmpEvLf","ffb7beaf-f54a-40db-8a9d-5668be866de1.jsonl","07/25/2026 12:14:39","1","","not-a-case","In `window-snap-spec`, branch `fix/wt-window-snap-spec`, based on `feature/wt-hotkey-ui-plan`. Ready for snap plan."
+"U313","handoffs","20260816","unflagged","msg:msg_011CdNnkAfd2dPq72dFE3UyP","ffb7beaf-f54a-40db-8a9d-5668be866de1.jsonl","07/25/2026 12:38:53","2","","not-a-case","Task 3: replacing the dropdown test with a real one."
+"U314","handoffs","20260816","unflagged","msg:msg_011CdNnpTMKu6Wur7299HksP","ffb7beaf-f54a-40db-8a9d-5668be866de1.jsonl","07/25/2026 12:39:52","2","","not-a-case","Task 6: fixing the format command; Task 5 no longer needs a spec-amendment step (already done)."
+"U315","handoffs","20260816","unflagged","msg:msg_011CdNpLK5wyQFXJxsSU3ozk","7072b1f6-e2c7-4f56-b60e-4595df3b8f95.jsonl","07/25/2026 12:59:43","1","","not-a-case","Codex review started in the background. Check `/codex:status` for progress."
+"U316","handoffs","20260816","unflagged","msg:msg_011CdNqg5FBHh1LniqVVHNfe","b1afe5ae-b379-4907-b3d3-ea7a6f4a143d.jsonl","07/25/2026 13:17:20","3","","not-a-case","Self-review clean — no placeholders, precedence contradiction gone (funnel disabled outright), empty-state port explicit. Committing."
+"U317","handoffs","20260816","unflagged","msg:msg_011CdNrjXxy6EgW8GSd5ePBu","d35ff527-d574-4b03-8939-4877138def3f.jsonl","07/25/2026 13:31:13","2","","not-a-case","Fix 3 (scope negative assertion):"
+"U318","handoffs","20260816","unflagged","msg:msg_011CdNtHVc6fps3FMWPkZgZR","55bc3be0-7244-4f67-a7e0-3042eb19d0d2.jsonl","07/25/2026 13:51:32","2","","not-a-case","Task 1 done. **Task 2 — Step 1: failing tests**"
+"U319","handoffs","20260816","unflagged","msg:msg_011CdNvW8Gny92wHNPbG136d","55bc3be0-7244-4f67-a7e0-3042eb19d0d2.jsonl","07/25/2026 14:20:44","1","copy; auth","not-a-case","Manual verification passed end-to-end against the running app (worktree no-auth, API 5604 / frontend 5605).
 
 **Desktop (1400×900)**
 - `Action` dropdown in toolbar, placeholder `All`, all 7 labels: Send text / Send keys / Run / Window / Remap / Disable / Raw
@@ -1148,8 +1148,8 @@ No priority marked in any file. Highest number = newest = 059 (lcontrol/rcontrol
 Console: 65 messages, **0 errors, 0 warnings**. Browser closed, servers stopped, scratch artifacts removed — tree clean.
 
 Next: push `fix/wt-hotkey-type-filter2` and open the PR (7 commits: 4 docs + 3 feat). Say the word and I'll run it — note the pre-push hook runs build+tests, so it takes ~1 min in the background."
-"U320","handoffs","20260816","unflagged","msg:msg_011CdojDT21TR2jTL17ErEho","2669e4a2-2d95-40a0-831f-ac0342af616d.jsonl","08/07/2026 16:47:29","1","","","Task 3 running — backlog close plus the full gate, so the coverage run will take a while."
-"U321","handoffs","20260816","unflagged","msg:msg_011CdokCwGDUiwbXVY81u6iT","ed8367cd-a5fc-4a3c-9700-44ef84d3dea4.jsonl","08/07/2026 17:00:29","2","","","Build clean. Pushing."
+"U320","handoffs","20260816","unflagged","msg:msg_011CdojDT21TR2jTL17ErEho","2669e4a2-2d95-40a0-831f-ac0342af616d.jsonl","08/07/2026 16:47:29","1","","not-a-case","Task 3 running — backlog close plus the full gate, so the coverage run will take a while."
+"U321","handoffs","20260816","unflagged","msg:msg_011CdokCwGDUiwbXVY81u6iT","ed8367cd-a5fc-4a3c-9700-44ef84d3dea4.jsonl","08/07/2026 17:00:29","2","","not-a-case","Build clean. Pushing."
 "U44","handoffs","20260816","unflagged","msg:msg_011CdoLCFBA8iatgMGTRHESp","e06c7340-0e8d-4341-b471-0c388ee075b3.jsonl","08/07/2026 11:45:52","1","login","not-a-case","All four fixed and committed — `eba6bfc` on the plans repo.
 
 | # | Verdict | Fix | Proof |
@@ -1177,7 +1177,7 @@ Gate: not run — these are plan and spec documents, nothing compiled. Everythin
 One flag on Task 2 Step 2: watching the E2E test go red only works if it is written before Task 1 lands. Executed in order the component is already fixed, so the plan says to skip that step and rely on Task 1's bUnit red instead. If you want a true red for the E2E test, Task 2 Step 1 has to run first.
 
 Ready to execute — subagent-driven or inline?"
-"U322","handoffs","20260816","unflagged","msg:msg_011Cdomb5cVR857Uc1vuoaXT","2669e4a2-2d95-40a0-831f-ac0342af616d.jsonl","08/07/2026 17:18:49","1","cannot; blocked; auth","","No fix wave dispatched — every finding is Minor and the reviewer triaged all of them ship-as-is. Keeping the workspace instead of deleting it: the plan document needs a correction, and `final-review.md` is the source for that.
+"U322","handoffs","20260816","unflagged","msg:msg_011Cdomb5cVR857Uc1vuoaXT","2669e4a2-2d95-40a0-831f-ac0342af616d.jsonl","08/07/2026 17:18:49","1","cannot; blocked; auth","not-a-case","No fix wave dispatched — every finding is Minor and the reviewer triaged all of them ship-as-is. Keeping the workspace instead of deleting it: the plan document needs a correction, and `final-review.md` is the source for that.
 
 ## Plan implemented — 3 commits, branch ready
 
@@ -1208,17 +1208,17 @@ This cost a blocked implementer and an Opus debugging pass. Worth correcting in 
 2. Correct the plan document from the main checkout (`git -C docs/superpowers commit`), and optionally add the frontend `CLAUDE.md` rule.
 
 Want me to push and open the PR?"
-"U323","handoffs","20260816","unflagged","msg:msg_011CdoNr4choX3XTTDCWVSkf","ed8367cd-a5fc-4a3c-9700-44ef84d3dea4.jsonl","08/07/2026 12:20:21","2","","","Now remove the duplicate declaration further down in the file."
-"U324","handoffs","20260816","unflagged","msg:msg_011CdoPYSKnNGJWzqeVjAwFg","ed8367cd-a5fc-4a3c-9700-44ef84d3dea4.jsonl","08/07/2026 12:29:29","2","","","Run both halves."
-"U325","handoffs","20260816","unflagged","msg:msg_011CdoQ7ff8uB9DKLRrg4p3a","ed8367cd-a5fc-4a3c-9700-44ef84d3dea4.jsonl","08/07/2026 12:37:00","2","","","Insert the new fact right after that method, before the private helpers."
-"U326","handoffs","20260816","unflagged","msg:msg_011CdoRmyEVDx8tG9myuGwd1","4e1aaf78-a34e-497b-93a3-99111e8e04ec.jsonl","08/07/2026 12:58:48","2","","","Green. Now re-run the live smoke test to confirm the scaffold script still works end to end with the atomic writer."
-"U327","handoffs","20260816","unflagged","msg:msg_011CdoRpz9PoCNh6nYWZWAnv","4e1aaf78-a34e-497b-93a3-99111e8e04ec.jsonl","08/07/2026 12:59:47","3","","","Now fixing commit 2 (bad intermediate state). Rewriting history without `-i`: soft-reset to before these commits, then recommit cleanly in the reviewer's suggested order."
-"U328","handoffs","20260816","unflagged","msg:msg_011CdoRwVYdoyVavMGM6DuK3","4e1aaf78-a34e-497b-93a3-99111e8e04ec.jsonl","08/07/2026 13:00:56","2","","","All changes staged as one diff. Now recommitting in the reviewer's order: renumber → scaffold → docs → close."
-"U329","handoffs","20260816","unflagged","msg:msg_011Cdp2oQQBDnZG123FY8zag","29f49f1e-1c40-4587-9aa5-27a9e5ae06a4.jsonl","08/07/2026 20:38:38","3","","","Green. Proof pass — fresh citations for each finding."
-"U330","handoffs","20260816","unflagged","msg:msg_011CdPPdoeUs7MFaqCs7HLFB","b9d979dd-0e95-4ebd-94c5-16c22df1118d.jsonl","07/25/2026 20:16:28","3","","","PR created: **https://github.com/s205109/AHKFlowApp/pull/214**
+"U323","handoffs","20260816","unflagged","msg:msg_011CdoNr4choX3XTTDCWVSkf","ed8367cd-a5fc-4a3c-9700-44ef84d3dea4.jsonl","08/07/2026 12:20:21","2","","not-a-case","Now remove the duplicate declaration further down in the file."
+"U324","handoffs","20260816","unflagged","msg:msg_011CdoPYSKnNGJWzqeVjAwFg","ed8367cd-a5fc-4a3c-9700-44ef84d3dea4.jsonl","08/07/2026 12:29:29","2","","not-a-case","Run both halves."
+"U325","handoffs","20260816","unflagged","msg:msg_011CdoQ7ff8uB9DKLRrg4p3a","ed8367cd-a5fc-4a3c-9700-44ef84d3dea4.jsonl","08/07/2026 12:37:00","2","","not-a-case","Insert the new fact right after that method, before the private helpers."
+"U326","handoffs","20260816","unflagged","msg:msg_011CdoRmyEVDx8tG9myuGwd1","4e1aaf78-a34e-497b-93a3-99111e8e04ec.jsonl","08/07/2026 12:58:48","2","","not-a-case","Green. Now re-run the live smoke test to confirm the scaffold script still works end to end with the atomic writer."
+"U327","handoffs","20260816","unflagged","msg:msg_011CdoRpz9PoCNh6nYWZWAnv","4e1aaf78-a34e-497b-93a3-99111e8e04ec.jsonl","08/07/2026 12:59:47","3","","not-a-case","Now fixing commit 2 (bad intermediate state). Rewriting history without `-i`: soft-reset to before these commits, then recommit cleanly in the reviewer's suggested order."
+"U328","handoffs","20260816","unflagged","msg:msg_011CdoRwVYdoyVavMGM6DuK3","4e1aaf78-a34e-497b-93a3-99111e8e04ec.jsonl","08/07/2026 13:00:56","2","","not-a-case","All changes staged as one diff. Now recommitting in the reviewer's order: renumber → scaffold → docs → close."
+"U329","handoffs","20260816","unflagged","msg:msg_011Cdp2oQQBDnZG123FY8zag","29f49f1e-1c40-4587-9aa5-27a9e5ae06a4.jsonl","08/07/2026 20:38:38","3","","not-a-case","Green. Proof pass — fresh citations for each finding."
+"U330","handoffs","20260816","unflagged","msg:msg_011CdPPdoeUs7MFaqCs7HLFB","b9d979dd-0e95-4ebd-94c5-16c22df1118d.jsonl","07/25/2026 20:16:28","3","","not-a-case","PR created: **https://github.com/s205109/AHKFlowApp/pull/214**
 
 Updating the handoff doc — it still lists the `.env` gap as open, which is now wrong."
-"U331","handoffs","20260816","unflagged","msg:msg_011Cdpwc5zFuwz6cVMEhUc1f","39e3b203-1ebe-4f1a-9be9-cacb8a9a4e2e.jsonl","08/08/2026 08:10:36","4","","","Proof captured. Job conclusion **failure**, and thirteen suites after the failing one still ran:
+"U331","handoffs","20260816","unflagged","msg:msg_011Cdpwc5zFuwz6cVMEhUc1f","39e3b203-1ebe-4f1a-9be9-cacb8a9a4e2e.jsonl","08/08/2026 08:10:36","4","","not-a-case","Proof captured. Job conclusion **failure**, and thirteen suites after the failing one still ran:
 
 ```
 Running 18 PowerShell suite(s) from D:\a\AHKFlowApp\AHKFlowApp\tests
@@ -1233,7 +1233,7 @@ Running 18 PowerShell suite(s) from D:\a\AHKFlowApp\AHKFlowApp\tests
 `build-test` on that commit failed on one E2E test, `ShortcutWarningFlowTests.AHotkeyOnAKeyTheHeaderSpellsDifferently_IsWarnedAbout` — exactly one failure, and the previous commit was green. Not caused by this branch.
 
 Reverting and closing 066."
-"U332","handoffs","20260816","unflagged","msg:msg_011CdQbaz6799PxGXf79ijBd","9d279f6d-e6e5-4f20-99e8-8dd13c434edb.jsonl","07/26/2026 11:33:49","2","guard","","Report read. Answer:
+"U332","handoffs","20260816","unflagged","msg:msg_011CdQbaz6799PxGXf79ijBd","9d279f6d-e6e5-4f20-99e8-8dd13c434edb.jsonl","07/26/2026 11:33:49","2","guard","missed","Report read. Answer:
 
 **Run `claude doctor` first** — takes seconds, and you just installed `commit-commands` + reloaded 13 plugins/10 hooks. Report itself flags past friction from slow hooks and a culprit plugin. Cheap sanity check before you start layering more config on.
 
@@ -1261,8 +1261,8 @@ Real gaps (grepped AGENTS.md: zero hits for root cause / Release build / laptop 
 Ambitious items (review swarm, overnight backlog burndown) — defer. You already have `/code-review ultra` and worktree scripts; those are the 80%.
 
 Next step: pick gaps 1–3 (docs-only, one commit) or 1–5 (adds script + skill changes). Say which and I'll branch a worktree."
-"U333","handoffs","20260816","unflagged","msg:msg_011CdQfbxphUdbkBM1fqTGue","9d279f6d-e6e5-4f20-99e8-8dd13c434edb.jsonl","07/26/2026 12:26:27","2","","","Task 1 committed `21a38a9`. Task 2 — `dck-verify`."
-"U334","handoffs","20260816","unflagged","msg:msg_011CdqNbdMXzQaEQbLv9A9ES","60056b41-a274-46af-b72d-abed8c414c87.jsonl","08/08/2026 13:38:29","2","permission; terminal","","Verified: `lstrip(""/"")` — slash optional, not required. `max_model_tokens = 32000`, `custom_model_max_tokens = -1`. `opencode.yml` exists on the same `issue_comment` trigger, gated on body (`.github/workflows/opencode.yml:11-15`).
+"U333","handoffs","20260816","unflagged","msg:msg_011CdQfbxphUdbkBM1fqTGue","9d279f6d-e6e5-4f20-99e8-8dd13c434edb.jsonl","07/26/2026 12:26:27","2","","not-a-case","Task 1 committed `21a38a9`. Task 2 — `dck-verify`."
+"U334","handoffs","20260816","unflagged","msg:msg_011CdqNbdMXzQaEQbLv9A9ES","60056b41-a274-46af-b72d-abed8c414c87.jsonl","08/08/2026 13:38:29","2","permission; terminal","not-a-case","Verified: `lstrip(""/"")` — slash optional, not required. `max_model_tokens = 32000`, `custom_model_max_tokens = -1`. `opencode.yml` exists on the same `issue_comment` trigger, gated on body (`.github/workflows/opencode.yml:11-15`).
 
 **Correction to my earlier message.** I said an unmatched comment just logs `Unknown command` — cost-only. Wrong in the case that matters. PR-Agent strips the slash rather than requiring it, so a plain English comment whose first word is a command name fires that command. Severity is data loss, not wasted minutes.
 
@@ -1307,8 +1307,8 @@ Next step: pick gaps 1–3 (docs-only, one commit) or 1–5 (adds script + skill
 - `restricted_mode` is real but narrow: it only makes `is_supported(""push_code"")` return `False`. The PR body's ""limited repository permissions"" overstates it.
 
 Next: fixes 1-4 plus the body gate are a tight, mechanical set. Want me to take a worktree and push them to the branch, or post all of this as PR review comments first?"
-"U335","handoffs","20260816","unflagged","msg:msg_011CdqNZX2yRYBNRv36bsY5U","60056b41-a274-46af-b72d-abed8c414c87.jsonl","08/08/2026 13:37:57","5","","","Reviewer agent landed. Confirms blocker, adds sharper findings. Verifying its three highest-impact new claims before relaying."
-"U336","handoffs","20260816","unflagged","msg:msg_011CdQrdPqf44Brnm1gVqjS9","9d279f6d-e6e5-4f20-99e8-8dd13c434edb.jsonl","07/26/2026 14:51:14","1","","","Done. Session is genuinely *in* the worktree — `pwd` is `.claude/worktrees/worktree-base-ref`, not `git -C` from outside.
+"U335","handoffs","20260816","unflagged","msg:msg_011CdqNZX2yRYBNRv36bsY5U","60056b41-a274-46af-b72d-abed8c414c87.jsonl","08/08/2026 13:37:57","5","","not-a-case","Reviewer agent landed. Confirms blocker, adds sharper findings. Verifying its three highest-impact new claims before relaying."
+"U336","handoffs","20260816","unflagged","msg:msg_011CdQrdPqf44Brnm1gVqjS9","9d279f6d-e6e5-4f20-99e8-8dd13c434edb.jsonl","07/26/2026 14:51:14","1","","not-a-case","Done. Session is genuinely *in* the worktree — `pwd` is `.claude/worktrees/worktree-base-ref`, not `git -C` from outside.
 
 ## What shipped — `de50543` on `feature/wt-worktree-base-ref`
 
@@ -1347,20 +1347,20 @@ Unlike the docs-only branch, this one has script changes, so CI's `paths-filter`
 `AGENTS.md` now carries the base-branch rule — and unlike a docs-only version of this fix, the rule is now obeyable.
 
 Three branches open, none pushed: this one, `docs/wt-verification-routing` (9 commits), `docs/wt-insights-rules` (`4a846d1`). `git worktree prune` still outstanding. Want me to push and open PRs, or `ExitWorktree` first?"
-"U337","handoffs","20260816","unflagged","msg:msg_011CdQrMXfWF3EEHG7pLMWFB","9d279f6d-e6e5-4f20-99e8-8dd13c434edb.jsonl","07/26/2026 14:47:36","3","","","Better shape: extract the decision as a pure function in the shared helper so it's unit-testable, matching how `ConvertTo-WorktreeBranchName` is tested."
-"U338","handoffs","20260816","unflagged","msg:msg_011Cdqyj11JScpEyZoYx3ZDq","65947233-2e2c-4cb9-89f8-0f068a3f7736.jsonl","08/08/2026 21:18:57","3","","","One leftover instance of the imprecise wording (pre-existing, same file, same claim)."
-"U339","handoffs","20260816","unflagged","msg:msg_011CdqyRkLXZAR4WNBrVmikq","65947233-2e2c-4cb9-89f8-0f068a3f7736.jsonl","08/08/2026 21:15:05","3","blocked; guard","","Guard blocked it — the shell drifted into the worktree. Returning to main."
-"U340","handoffs","20260816","unflagged","msg:msg_011CdrhD4xjJq6bC5u2F3ozL","65947233-2e2c-4cb9-89f8-0f068a3f7736.jsonl","08/09/2026 06:22:56","2","","","Both green. Running the full gate, then committing."
-"U341","handoffs","20260816","unflagged","msg:msg_011CdRHvxnw6uHKHwyddGmYZ","c9d3e6e7-26b0-4727-98c5-b42de936c028.jsonl","07/26/2026 20:23:03","4","","","Hunting genuine defects first (read-only), then running the full loop in a worktree so commits are legal."
-"U342","handoffs","20260816","unflagged","msg:msg_011Cdrjtoa7xq1cVMTeh71H7","65947233-2e2c-4cb9-89f8-0f068a3f7736.jsonl","08/09/2026 06:58:12","2","","","`powershell-suites` **pass** on `windows-latest` — the required check, green with the new diagnostic in place. Flake A did not trip there, which is expected and closes nothing.
+"U337","handoffs","20260816","unflagged","msg:msg_011CdQrMXfWF3EEHG7pLMWFB","9d279f6d-e6e5-4f20-99e8-8dd13c434edb.jsonl","07/26/2026 14:47:36","3","","not-a-case","Better shape: extract the decision as a pure function in the shared helper so it's unit-testable, matching how `ConvertTo-WorktreeBranchName` is tested."
+"U338","handoffs","20260816","unflagged","msg:msg_011Cdqyj11JScpEyZoYx3ZDq","65947233-2e2c-4cb9-89f8-0f068a3f7736.jsonl","08/08/2026 21:18:57","3","","not-a-case","One leftover instance of the imprecise wording (pre-existing, same file, same claim)."
+"U339","handoffs","20260816","unflagged","msg:msg_011CdqyRkLXZAR4WNBrVmikq","65947233-2e2c-4cb9-89f8-0f068a3f7736.jsonl","08/08/2026 21:15:05","3","blocked; guard","not-a-case","Guard blocked it — the shell drifted into the worktree. Returning to main."
+"U340","handoffs","20260816","unflagged","msg:msg_011CdrhD4xjJq6bC5u2F3ozL","65947233-2e2c-4cb9-89f8-0f068a3f7736.jsonl","08/09/2026 06:22:56","2","","not-a-case","Both green. Running the full gate, then committing."
+"U341","handoffs","20260816","unflagged","msg:msg_011CdRHvxnw6uHKHwyddGmYZ","c9d3e6e7-26b0-4727-98c5-b42de936c028.jsonl","07/26/2026 20:23:03","4","","not-a-case","Hunting genuine defects first (read-only), then running the full loop in a worktree so commits are legal."
+"U342","handoffs","20260816","unflagged","msg:msg_011Cdrjtoa7xq1cVMTeh71H7","65947233-2e2c-4cb9-89f8-0f068a3f7736.jsonl","08/09/2026 06:58:12","2","","not-a-case","`powershell-suites` **pass** on `windows-latest` — the required check, green with the new diagnostic in place. Flake A did not trip there, which is expected and closes nothing.
 
 Only `build-test` left; that is the Blazor slice."
-"U343","handoffs","20260816","unflagged","msg:msg_011CdRKXkoD41zcSFQRGxJDM","c9d3e6e7-26b0-4727-98c5-b42de936c028.jsonl","07/26/2026 20:43:51","1","need you","","Applied. Stopping here.
+"U343","handoffs","20260816","unflagged","msg:msg_011CdRKXkoD41zcSFQRGxJDM","c9d3e6e7-26b0-4727-98c5-b42de936c028.jsonl","07/26/2026 20:43:51","1","need you","missed","Applied. Stopping here.
 
 State left behind:
 - Skill: `~/.claude/skills/custom-review-findings/` — `SKILL.md` (now ~141 lines) + `references/github-threads.md`. **Uncommitted** — `~/.claude` changes need your commit, e.g. `feat: add custom-review-findings skill`.
 - Worktree `skill-dryrun`, branch `fix/wt-downloads-timeprovider`, 2 commits, gate green, unpushed."
-"U344","handoffs","20260816","unflagged","msg:msg_011CdS5w82figYPf5d8cGxKi","5c7748e8-ae22-4483-bd6b-e8e41ec3d6ab.jsonl","07/27/2026 06:26:07","2","","","Committed `62b218a`.
+"U344","handoffs","20260816","unflagged","msg:msg_011CdS5w82figYPf5d8cGxKi","5c7748e8-ae22-4483-bd6b-e8e41ec3d6ab.jsonl","07/27/2026 06:26:07","2","","not-a-case","Committed `62b218a`.
 
 | # | Finding | Verdict | Result |
 |---|---|---|---|
@@ -1381,13 +1381,13 @@ State left behind:
 **Skill-design point from your report** — separate concern, no code touched. Agree: LOCAL/PR conditionality belongs in one skill, and canonical home here is `.agents/review-findings/SKILL.md`. Say the word and I'll move it.
 
 Next: push and open PR, or tackle the skill relocation."
-"U345","handoffs","20260816","unflagged","msg:msg_011CdSbEA4oPFims5Q6t5519","5b59794d-7bf8-455b-858b-aacb16bf6c4f.jsonl","07/27/2026 12:50:15","2","","","All green: skill layout, skill parity, hash bump, clean worktree, no diff-check whitespace issues."
-"U346","handoffs","20260816","unflagged","msg:msg_011CdScZw6s8n3QtVvFan7mp","e499a249-5343-4a1b-a3c1-6a599e7bd743.jsonl","07/27/2026 13:07:54","1","","","Caveman mode off — back to normal style. What would you like to work on?"
-"U347","handoffs","20260816","unflagged","msg:msg_011CdSGisvo7TPxYCmhi1u1W","6d694783-4014-413e-a939-16c87c109976.jsonl","07/27/2026 08:47:38","3","","","Worktree: `C:\Dev\segocom-github\AHKFlowApp\.claude\worktrees\retire-dead-skill-refs`, branch `fix/wt-retire-dead-skill-refs`, based on `88932e8` (includes the Plain English merge)."
-"U348","handoffs","20260816","unflagged","msg:msg_011CdSGxhEkDsLXEcyjkW4E9","6d694783-4014-413e-a939-16c87c109976.jsonl","07/27/2026 08:50:44","2","","","Both parsers work. Reverting the temporary edit."
-"U349","handoffs","20260816","unflagged","msg:msg_011CdSH13ZgHYo2QdqrafS8b","6d694783-4014-413e-a939-16c87c109976.jsonl","07/27/2026 08:51:15","2","","","Now the README section."
-"U350","handoffs","20260816","unflagged","msg:msg_011CdSZ1tjFd6J2QXAEuPBTf","5b59794d-7bf8-455b-858b-aacb16bf6c4f.jsonl","07/27/2026 12:21:15","2","","","Now let me verify the whole file renders correctly (no orphaned fences)."
-"U351","handoffs","20260816","unflagged","msg:msg_011CdT3bpHZY1BHHHpN7zKPF","eb882452-c92b-41cc-a0ac-9936250a7765.jsonl","07/27/2026 18:36:19","3","","","Decision 4 locked: **`Typed`**.
+"U345","handoffs","20260816","unflagged","msg:msg_011CdSbEA4oPFims5Q6t5519","5b59794d-7bf8-455b-858b-aacb16bf6c4f.jsonl","07/27/2026 12:50:15","2","","not-a-case","All green: skill layout, skill parity, hash bump, clean worktree, no diff-check whitespace issues."
+"U346","handoffs","20260816","unflagged","msg:msg_011CdScZw6s8n3QtVvFan7mp","e499a249-5343-4a1b-a3c1-6a599e7bd743.jsonl","07/27/2026 13:07:54","1","","not-a-case","Caveman mode off — back to normal style. What would you like to work on?"
+"U347","handoffs","20260816","unflagged","msg:msg_011CdSGisvo7TPxYCmhi1u1W","6d694783-4014-413e-a939-16c87c109976.jsonl","07/27/2026 08:47:38","3","","not-a-case","Worktree: `C:\Dev\segocom-github\AHKFlowApp\.claude\worktrees\retire-dead-skill-refs`, branch `fix/wt-retire-dead-skill-refs`, based on `88932e8` (includes the Plain English merge)."
+"U348","handoffs","20260816","unflagged","msg:msg_011CdSGxhEkDsLXEcyjkW4E9","6d694783-4014-413e-a939-16c87c109976.jsonl","07/27/2026 08:50:44","2","","not-a-case","Both parsers work. Reverting the temporary edit."
+"U349","handoffs","20260816","unflagged","msg:msg_011CdSH13ZgHYo2QdqrafS8b","6d694783-4014-413e-a939-16c87c109976.jsonl","07/27/2026 08:51:15","2","","not-a-case","Now the README section."
+"U350","handoffs","20260816","unflagged","msg:msg_011CdSZ1tjFd6J2QXAEuPBTf","5b59794d-7bf8-455b-858b-aacb16bf6c4f.jsonl","07/27/2026 12:21:15","2","","not-a-case","Now let me verify the whole file renders correctly (no orphaned fences)."
+"U351","handoffs","20260816","unflagged","msg:msg_011CdT3bpHZY1BHHHpN7zKPF","eb882452-c92b-41cc-a0ac-9936250a7765.jsonl","07/27/2026 18:36:19","3","","not-a-case","Decision 4 locked: **`Typed`**.
 
 Next, the one the backlog flagged as ""verify wording, no rename forced."" Here is what I found, and it is more interesting than the backlog implies.
 
@@ -1404,16 +1404,16 @@ It is not a flat violation: the *Avoid* list bans ""expansion"" as a noun for `R
 **Plain English** (`AGENTS.md`) says use common words for a reader who may not be a native English speaker. ""Expand"" describes a text expansion more intuitively than ""fire"" does.
 
 Changing it also ripples to five more strings: the glyph legend and its aria-label (`Hotstrings.razor:162,165`), the row tooltips (`:1030,:1033`), and a code comment (`HotstringEditModel.cs:46`)."
-"U352","handoffs","20260816","unflagged","msg:msg_011CdT3jeh5jKe5Woqxj8oFX","eb882452-c92b-41cc-a0ac-9936250a7765.jsonl","07/27/2026 18:37:55","4","","","Decision 6 locked: **full sweep** — which makes the visual check mandatory, since scoped-CSS renames fail silently. Finding every definition site now."
-"U353","handoffs","20260816","unflagged","msg:msg_011CdTAA1ijfBRB4GbvpQb9g","eb882452-c92b-41cc-a0ac-9936250a7765.jsonl","07/27/2026 20:02:03","3","","","Plan repo now lives in the worktree with `54bd78e` and the correct origin. Verifying the worktree's own git ignores it before switching in."
-"U354","handoffs","20260816","unflagged","msg:msg_011CdttCEM3xn8CakH8yCk8z","c584b762-92e2-4f0b-9849-84d34f2def66.jsonl","08/10/2026 10:08:10","2","","","Gate: docs only, exemption 1 (nothing compiled). Running the PowerShell suite anyway since PR touches backlog numbering."
-"U355","handoffs","20260816","unflagged","msg:msg_011CdUa3wcouTjXRast1ASVx","eb882452-c92b-41cc-a0ac-9936250a7765.jsonl","07/28/2026 13:56:02","3","","","Label now wraps to ""All / profiles"" — fully readable, nothing clipped. Verifying Hotstrings didn't regress and read-mode chips are still clean on both grids."
-"U356","handoffs","20260816","unflagged","msg:msg_011CdUDq3y7VpcN8LntfLsjT","eb882452-c92b-41cc-a0ac-9936250a7765.jsonl","07/28/2026 09:30:55","2","","","Running these two to watch them fail before I fix anything."
-"U357","handoffs","20260816","unflagged","msg:msg_011CdUEzvR5sXSfFTkdnotQ9","eb882452-c92b-41cc-a0ac-9936250a7765.jsonl","07/28/2026 09:46:09","3","","","All three delivery cases pass. Getting the promote button failure detail."
-"U358","handoffs","20260816","unflagged","msg:msg_011Cdui9fRfs4Wi8yb8Yxv5S","42a7f14b-e626-40a4-be8e-e6b80bd421fb.jsonl","08/10/2026 20:37:08","2","paste","","That message is my own round-4 summary pasted back — it carries no verdict and no new findings, so I have not started anything.
+"U352","handoffs","20260816","unflagged","msg:msg_011CdT3jeh5jKe5Woqxj8oFX","eb882452-c92b-41cc-a0ac-9936250a7765.jsonl","07/27/2026 18:37:55","4","","not-a-case","Decision 6 locked: **full sweep** — which makes the visual check mandatory, since scoped-CSS renames fail silently. Finding every definition site now."
+"U353","handoffs","20260816","unflagged","msg:msg_011CdTAA1ijfBRB4GbvpQb9g","eb882452-c92b-41cc-a0ac-9936250a7765.jsonl","07/27/2026 20:02:03","3","","not-a-case","Plan repo now lives in the worktree with `54bd78e` and the correct origin. Verifying the worktree's own git ignores it before switching in."
+"U354","handoffs","20260816","unflagged","msg:msg_011CdttCEM3xn8CakH8yCk8z","c584b762-92e2-4f0b-9849-84d34f2def66.jsonl","08/10/2026 10:08:10","2","","not-a-case","Gate: docs only, exemption 1 (nothing compiled). Running the PowerShell suite anyway since PR touches backlog numbering."
+"U355","handoffs","20260816","unflagged","msg:msg_011CdUa3wcouTjXRast1ASVx","eb882452-c92b-41cc-a0ac-9936250a7765.jsonl","07/28/2026 13:56:02","3","","not-a-case","Label now wraps to ""All / profiles"" — fully readable, nothing clipped. Verifying Hotstrings didn't regress and read-mode chips are still clean on both grids."
+"U356","handoffs","20260816","unflagged","msg:msg_011CdUDq3y7VpcN8LntfLsjT","eb882452-c92b-41cc-a0ac-9936250a7765.jsonl","07/28/2026 09:30:55","2","","not-a-case","Running these two to watch them fail before I fix anything."
+"U357","handoffs","20260816","unflagged","msg:msg_011CdUEzvR5sXSfFTkdnotQ9","eb882452-c92b-41cc-a0ac-9936250a7765.jsonl","07/28/2026 09:46:09","3","","not-a-case","All three delivery cases pass. Getting the promote button failure detail."
+"U358","handoffs","20260816","unflagged","msg:msg_011Cdui9fRfs4Wi8yb8Yxv5S","42a7f14b-e626-40a4-be8e-e6b80bd421fb.jsonl","08/10/2026 20:37:08","2","paste","not-a-case","That message is my own round-4 summary pasted back — it carries no verdict and no new findings, so I have not started anything.
 
 Still waiting on one input: your go or no-go on the plan at `795a972`. On go, Task 0 (preflight push + draft PR) runs first, then I ask the pacing question before the task chain starts."
-"U359","handoffs","20260816","unflagged","msg:msg_011CduRJBVBHe2koCysNU565","42a7f14b-e626-40a4-be8e-e6b80bd421fb.jsonl","08/10/2026 16:56:09","2","","","Plan written and committed. Recap:
+"U359","handoffs","20260816","unflagged","msg:msg_011CduRJBVBHe2koCysNU565","42a7f14b-e626-40a4-be8e-e6b80bd421fb.jsonl","08/10/2026 16:56:09","2","","not-a-case","Plan written and committed. Recap:
 
 - 071 stamped `2-design` → `3-plan` in the worktree (commit `1dabc27`).
 - Plan: `docs/superpowers/plans/2026-08-10-development-process-plan-071.md`, committed to the plans repo (`5a67e10`).
@@ -1422,7 +1422,7 @@ Still waiting on one input: your go or no-go on the plan at `795a972`. On go, Ta
 - Plan grilling found no open decision; fabrication check lists every proven identifier, with one stated execution-time check (transcript directory, with fallback).
 
 Next: review the committed plan. On your go I start Task 1; at that point I ask the pacing question (run through vs checkpoint per task), since execution auto-chains from there."
-"U360","handoffs","20260816","unflagged","msg:msg_011CdUWqmuEG4EiNHfNog6Jx","e8d4b31a-ab38-4bc1-98e7-13ef77ae13f2.jsonl","07/28/2026 13:14:02","2","","","`.ignore` is a **ripgrep** file, not a git file. Two different consumers here.
+"U360","handoffs","20260816","unflagged","msg:msg_011CdUWqmuEG4EiNHfNog6Jx","e8d4b31a-ab38-4bc1-98e7-13ef77ae13f2.jsonl","07/28/2026 13:14:02","2","","not-a-case","`.ignore` is a **ripgrep** file, not a git file. Two different consumers here.
 
 **Codex** — file search built on Rust `ignore` crate (same as ripgrep). That crate reads `.ignore`, and `.ignore` outranks `.gitignore`. So `!docs/superpowers/**` un-hides plans. Works.
 
@@ -1440,13 +1440,13 @@ Workarounds:
 3. Un-ignore in `.gitignore` — do not. Nested repo would show as untracked embedded repo, and root `git add` would make a gitlink.
 
 Option 1 cheapest. Want me to check whether a `.claude/settings.json` key exposes gitignored files to the picker?"
-"U361","handoffs","20260816","unflagged","msg:msg_011Cdvd6GjGKEu1M6j2gbsF3","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/11/2026 08:11:22","3","","","Plan read. Spec read. Worktree clean, no upstream, no PR. Starting Task 0."
-"U362","handoffs","20260816","unflagged","msg:msg_011CdvfhbTrKsAHnXncqGyKQ","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/11/2026 08:45:32","2","","","Regenerating the PDF and sidecar from the changed cheatsheet."
-"U363","handoffs","20260816","unflagged","msg:msg_011CdvgLe4tw6Nv4d53YhNR3","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/11/2026 08:53:54","2","","","Steps 2 and 3: prove untouched sections, and check every anchor."
-"U364","handoffs","20260816","unflagged","msg:msg_011CdvgRAvtj3FD2x2eptkxQ","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/11/2026 08:54:56","2","","","Committing Task 7."
-"U365","handoffs","20260816","unflagged","msg:msg_011CdvhbwDK2uGeqbqs3qyP9","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/11/2026 09:10:30","2","","","Step 2: sidecar freshness."
-"U366","handoffs","20260816","unflagged","msg:msg_011CdvhkdvkFwYD6BGNsQPtW","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/11/2026 09:12:26","2","","","Re-running every affected check after the fixes."
-"U367","handoffs","20260816","unflagged","msg:msg_011CdvmNkBdxuRTTXrH7wDbH","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/11/2026 10:00:26","3","cannot; guard","","All nine findings verified against the code. No UNCLEAR, no PUSHBACK.
+"U361","handoffs","20260816","unflagged","msg:msg_011Cdvd6GjGKEu1M6j2gbsF3","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/11/2026 08:11:22","3","","not-a-case","Plan read. Spec read. Worktree clean, no upstream, no PR. Starting Task 0."
+"U362","handoffs","20260816","unflagged","msg:msg_011CdvfhbTrKsAHnXncqGyKQ","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/11/2026 08:45:32","2","","not-a-case","Regenerating the PDF and sidecar from the changed cheatsheet."
+"U363","handoffs","20260816","unflagged","msg:msg_011CdvgLe4tw6Nv4d53YhNR3","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/11/2026 08:53:54","2","","not-a-case","Steps 2 and 3: prove untouched sections, and check every anchor."
+"U364","handoffs","20260816","unflagged","msg:msg_011CdvgRAvtj3FD2x2eptkxQ","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/11/2026 08:54:56","2","","not-a-case","Committing Task 7."
+"U365","handoffs","20260816","unflagged","msg:msg_011CdvhbwDK2uGeqbqs3qyP9","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/11/2026 09:10:30","2","","not-a-case","Step 2: sidecar freshness."
+"U366","handoffs","20260816","unflagged","msg:msg_011CdvhkdvkFwYD6BGNsQPtW","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/11/2026 09:12:26","2","","not-a-case","Re-running every affected check after the fixes."
+"U367","handoffs","20260816","unflagged","msg:msg_011CdvmNkBdxuRTTXrH7wDbH","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/11/2026 10:00:26","3","cannot; guard","not-a-case","All nine findings verified against the code. No UNCLEAR, no PUSHBACK.
 
 **Step 2 — triage**
 
@@ -1469,19 +1469,19 @@ Two sub-parts fall outside the wave-1 file allowlist (spec §1) and become DEFER
 Finding 4 also means my earlier wave-1 verdict was wrong — the canonical five-step gate was never run. I will run it.
 
 Starting fixes."
-"U368","handoffs","20260816","unflagged","msg:msg_011CdvmZUTtUoqWd2BPn3Qsx","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/11/2026 10:02:23","3","","","I duplicated the Entry line. Fixing."
-"U369","handoffs","20260816","unflagged","msg:msg_011CdW3a31VSekFoAWoai9kM","d686b406-a889-47c7-8237-96295c5e5e88.jsonl","07/29/2026 08:37:30","2","","","Now the Stage 1 preamble:"
-"U370","handoffs","20260816","unflagged","msg:msg_011CdW4J1PgMiZjAL36nNFLt","d686b406-a889-47c7-8237-96295c5e5e88.jsonl","07/29/2026 08:46:59","2","","","Now Task 6 — adding the list-indicator backlog item, and the tail sections:"
-"U371","handoffs","20260816","unflagged","msg:msg_011CdW4Ri85ec9icFV7jjzDP","d686b406-a889-47c7-8237-96295c5e5e88.jsonl","07/29/2026 08:48:46","3","","","Two fixes in the Stage 2 doc — my own line 39 refers to a ""Task 1"" that does not exist there:"
-"U372","handoffs","20260816","unflagged","msg:msg_011CdW6VCaAtDrbeuKtbC2Vg","83c67e21-c88e-448a-89a2-672a031cb098.jsonl","07/29/2026 09:15:42","2","","","Now the closing strings — four places in Stage 1."
-"U373","handoffs","20260816","unflagged","msg:msg_011CdW9vTXPa3zT7LUswMgYb","eed1b447-b8b9-458a-a731-fb5d64354649.jsonl","07/29/2026 10:00:48","2","","","Confirmed: the trailing-slash gitignore pattern does not match a symlink, so `docs/superpowers` shows up as untracked in every worktree. That's a real bug I missed in the design — need to fix `.gitignore` too."
-"U374","handoffs","20260816","unflagged","msg:msg_011CdWasKW1tMTce9cidvboC","88961e6b-e4a4-4937-937b-ef7271cf3ae1.jsonl","07/29/2026 15:27:54","2","","","Now the queries and commands."
-"U375","handoffs","20260816","unflagged","msg:msg_011CdWgEwmkMaedNbQq1dFg5","88961e6b-e4a4-4937-937b-ef7271cf3ae1.jsonl","07/29/2026 16:38:30","3","","","Published Release bundle is stale — it lacks the dialog hook. Rebuilding the frontend in Release, then rerunning."
-"U376","handoffs","20260816","unflagged","msg:msg_011CdWs6DzMLnEyc4RPTBKPs","9014aa28-4bed-4020-959b-c7ab17a44722.jsonl","07/29/2026 19:00:42","3","","","Merged + clean, all 6 gone. Removing worktrees via project script first."
-"U377","handoffs","20260816","unflagged","msg:msg_011CdWsgGcYwDYjMn4CirCoj","9014aa28-4bed-4020-959b-c7ab17a44722.jsonl","07/29/2026 19:08:26","3","blocked; guard","","Inline override blocked by design. Retrying the removal script (its watcher runs outside guard)."
-"U378","handoffs","20260816","unflagged","msg:msg_011CdwTneTg7G2HrcHnVmFQL","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/11/2026 18:49:55","3","","","Line 6's memory is now provably wrong — this session showed `git -C docs/superpowers commit` **is** allowed. Correcting it."
-"U379","handoffs","20260816","unflagged","msg:msg_011Cdx397nPCTcWjpdyYLJU5","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/12/2026 02:07:16","2","","","All five verified — each new string present once, the superseded move-route string gone. Committing."
-"U380","handoffs","20260816","unflagged","msg:msg_011Cdx3DLNn8Lc8hpvVd8ZiS","2a320f20-71ed-41af-830a-8e8ee4605a5d.jsonl","08/12/2026 02:08:16","1","","","Ledger updated. Waiting on the re-review agent.
+"U368","handoffs","20260816","unflagged","msg:msg_011CdvmZUTtUoqWd2BPn3Qsx","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/11/2026 10:02:23","3","","not-a-case","I duplicated the Entry line. Fixing."
+"U369","handoffs","20260816","unflagged","msg:msg_011CdW3a31VSekFoAWoai9kM","d686b406-a889-47c7-8237-96295c5e5e88.jsonl","07/29/2026 08:37:30","2","","not-a-case","Now the Stage 1 preamble:"
+"U370","handoffs","20260816","unflagged","msg:msg_011CdW4J1PgMiZjAL36nNFLt","d686b406-a889-47c7-8237-96295c5e5e88.jsonl","07/29/2026 08:46:59","2","","not-a-case","Now Task 6 — adding the list-indicator backlog item, and the tail sections:"
+"U371","handoffs","20260816","unflagged","msg:msg_011CdW4Ri85ec9icFV7jjzDP","d686b406-a889-47c7-8237-96295c5e5e88.jsonl","07/29/2026 08:48:46","3","","not-a-case","Two fixes in the Stage 2 doc — my own line 39 refers to a ""Task 1"" that does not exist there:"
+"U372","handoffs","20260816","unflagged","msg:msg_011CdW6VCaAtDrbeuKtbC2Vg","83c67e21-c88e-448a-89a2-672a031cb098.jsonl","07/29/2026 09:15:42","2","","not-a-case","Now the closing strings — four places in Stage 1."
+"U373","handoffs","20260816","unflagged","msg:msg_011CdW9vTXPa3zT7LUswMgYb","eed1b447-b8b9-458a-a731-fb5d64354649.jsonl","07/29/2026 10:00:48","2","","not-a-case","Confirmed: the trailing-slash gitignore pattern does not match a symlink, so `docs/superpowers` shows up as untracked in every worktree. That's a real bug I missed in the design — need to fix `.gitignore` too."
+"U374","handoffs","20260816","unflagged","msg:msg_011CdWasKW1tMTce9cidvboC","88961e6b-e4a4-4937-937b-ef7271cf3ae1.jsonl","07/29/2026 15:27:54","2","","not-a-case","Now the queries and commands."
+"U375","handoffs","20260816","unflagged","msg:msg_011CdWgEwmkMaedNbQq1dFg5","88961e6b-e4a4-4937-937b-ef7271cf3ae1.jsonl","07/29/2026 16:38:30","3","","not-a-case","Published Release bundle is stale — it lacks the dialog hook. Rebuilding the frontend in Release, then rerunning."
+"U376","handoffs","20260816","unflagged","msg:msg_011CdWs6DzMLnEyc4RPTBKPs","9014aa28-4bed-4020-959b-c7ab17a44722.jsonl","07/29/2026 19:00:42","3","","not-a-case","Merged + clean, all 6 gone. Removing worktrees via project script first."
+"U377","handoffs","20260816","unflagged","msg:msg_011CdWsgGcYwDYjMn4CirCoj","9014aa28-4bed-4020-959b-c7ab17a44722.jsonl","07/29/2026 19:08:26","3","blocked; guard","not-a-case","Inline override blocked by design. Retrying the removal script (its watcher runs outside guard)."
+"U378","handoffs","20260816","unflagged","msg:msg_011CdwTneTg7G2HrcHnVmFQL","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/11/2026 18:49:55","3","","not-a-case","Line 6's memory is now provably wrong — this session showed `git -C docs/superpowers commit` **is** allowed. Correcting it."
+"U379","handoffs","20260816","unflagged","msg:msg_011Cdx397nPCTcWjpdyYLJU5","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/12/2026 02:07:16","2","","not-a-case","All five verified — each new string present once, the superseded move-route string gone. Committing."
+"U380","handoffs","20260816","unflagged","msg:msg_011Cdx3DLNn8Lc8hpvVd8ZiS","2a320f20-71ed-41af-830a-8e8ee4605a5d.jsonl","08/12/2026 02:08:16","1","","not-a-case","Ledger updated. Waiting on the re-review agent.
 
 Branch state so far:
 
@@ -1495,7 +1495,7 @@ Branch state so far:
 The final review caught a real security hole the three task reviews missed: `Move-Item -Path:<main>/tracked-file -Destination:<main>/docs/superpowers/...` was allowed, deleting a tracked file in main. Fixed and covered by a regression test.
 
 Once the re-review verdicts come back clean, the remaining steps are: delete the SDD workspace, then `superpowers:finishing-a-development-branch` — which will likely mean push + PR."
-"U381","handoffs","20260816","unflagged","msg:msg_011Cdx3Jxy69yWVTmBYP5DxX","2a320f20-71ed-41af-830a-8e8ee4605a5d.jsonl","08/12/2026 02:09:54","3","guard","","Verified the regression myself — reviewer is right. Traced it:
+"U381","handoffs","20260816","unflagged","msg:msg_011Cdx3Jxy69yWVTmBYP5DxX","2a320f20-71ed-41af-830a-8e8ee4605a5d.jsonl","08/12/2026 02:09:54","3","guard","not-a-case","Verified the regression myself — reviewer is right. Traced it:
 
 - `-Confirm:$false` matches the new harvest regex at `agent-worktree-guard.common.ps1:1546`, captures `$false`
 - `$false` contains `$`, so `:1751` classifies it Unresolved
@@ -1504,11 +1504,11 @@ Once the re-review verdicts come back clean, the remaining steps are: delete the
 So a benign in-worktree `Move-Item x y -Confirm:$false` is now wrongly denied. My fix instruction caused this — I specified the fully-generic regex.
 
 Precise fix: PowerShell's colon form on a *switch* parameter only ever takes `$true`/`$false`; a path parameter's value never does. Excluding those two literals from the harvest kills every switch false-positive and keeps the source detection intact. Dispatching that."
-"U382","handoffs","20260816","unflagged","msg:msg_011Cdx3M1HJLw6XEEVKMVUA8","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/12/2026 02:10:03","3","","","The plans repo is in sync, but **071 is still ahead 1** — `152dd61f`, the round-5 repo-side fixes, never left. You pushed the plans repo only. Pushing it now, since that has been the pattern every round."
-"U383","handoffs","20260816","unflagged","msg:msg_011Cdxk4exkLJSHUsAN4e927","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/12/2026 11:04:02","3","","","Injection failed again — backtick and arrow escaping. Building the strings from character codes."
-"U384","handoffs","20260816","unflagged","msg:msg_011CdXLgkksPCVBu8Hszdy4C","77eb5960-340a-4f5e-b26b-5d4fecb4a224.jsonl","07/30/2026 01:02:29","1","","","Task 3 fix round 1 running. Waiting on it, then scoped re-review."
-"U385","handoffs","20260816","unflagged","msg:msg_011CdxnG3B2CKAnimFvq7wv9","be3b76f5-32d4-4b4c-8ae8-faeb2d15c9a5.jsonl","08/12/2026 11:33:21","3","","","Second review round. Routing to the same skill; it's already loaded, so I'll follow it directly. Triage first — verifying each claim before touching anything."
-"U386","handoffs","20260816","unflagged","msg:msg_011CdxomKGa1tDbYG7zL2v23","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/12/2026 11:52:35","1","blocked","","Both clean, both pushed.
+"U382","handoffs","20260816","unflagged","msg:msg_011Cdx3M1HJLw6XEEVKMVUA8","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/12/2026 02:10:03","3","","not-a-case","The plans repo is in sync, but **071 is still ahead 1** — `152dd61f`, the round-5 repo-side fixes, never left. You pushed the plans repo only. Pushing it now, since that has been the pattern every round."
+"U383","handoffs","20260816","unflagged","msg:msg_011Cdxk4exkLJSHUsAN4e927","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/12/2026 11:04:02","3","","not-a-case","Injection failed again — backtick and arrow escaping. Building the strings from character codes."
+"U384","handoffs","20260816","unflagged","msg:msg_011CdXLgkksPCVBu8Hszdy4C","77eb5960-340a-4f5e-b26b-5d4fecb4a224.jsonl","07/30/2026 01:02:29","1","","not-a-case","Task 3 fix round 1 running. Waiting on it, then scoped re-review."
+"U385","handoffs","20260816","unflagged","msg:msg_011CdxnG3B2CKAnimFvq7wv9","be3b76f5-32d4-4b4c-8ae8-faeb2d15c9a5.jsonl","08/12/2026 11:33:21","3","","not-a-case","Second review round. Routing to the same skill; it's already loaded, so I'll follow it directly. Triage first — verifying each claim before touching anything."
+"U386","handoffs","20260816","unflagged","msg:msg_011CdxomKGa1tDbYG7zL2v23","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/12/2026 11:52:35","1","blocked","not-a-case","Both clean, both pushed.
 
 Round 7 done. 9 findings, all CONFIRMED, all fixed and pushed.
 
@@ -1537,8 +1537,8 @@ Plan finding 9 (Stage 9 blocker commit+push): 2-line fix, matches unit-contract 
 
 Gate green (build-server shutdown first, per 082's own lesson)."
 "U58","handoffs","20260816","unflagged","msg:msg_011CdXtHsZj2BH9rVRSVJt5T","43c49baf-9879-4532-9fb5-a538c9b1d5d0.jsonl","07/30/2026 07:56:57","2","","not-a-case","Now swap the dialog over to the component and add it to the inline row."
-"U387","handoffs","20260816","unflagged","msg:msg_011CdxWtmbKNiZUcyZCuT1xh","be3b76f5-32d4-4b4c-8ae8-faeb2d15c9a5.jsonl","08/12/2026 08:11:14","2","","","Now watch them fail, and confirm each fails for the stated reason."
-"U388","handoffs","20260816","unflagged","msg:msg_011CdxXFkp2L9oh9AfHsmRRv","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/12/2026 08:16:06","1","blocked","","Round 6 fully closed — 7 findings, all confirmed, both repos committed.
+"U387","handoffs","20260816","unflagged","msg:msg_011CdxWtmbKNiZUcyZCuT1xh","be3b76f5-32d4-4b4c-8ae8-faeb2d15c9a5.jsonl","08/12/2026 08:11:14","2","","not-a-case","Now watch them fail, and confirm each fails for the stated reason."
+"U388","handoffs","20260816","unflagged","msg:msg_011CdxXFkp2L9oh9AfHsmRRv","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/12/2026 08:16:06","1","blocked","not-a-case","Round 6 fully closed — 7 findings, all confirmed, both repos committed.
 
 | Repo | Commit | State |
 |---|---|---|
@@ -1556,7 +1556,7 @@ The comparison script is the check `backlog/072` is missing. It would have caugh
 And both repos need a push when you are ready.
 
 One honest note on where this stands: six rounds, 80 findings, none pushed back. Rounds 5 and 6 were dominated by defects in text I wrote the round before, and by my own measurements rather than by the canon. `workflow.md` itself is now stable enough that the diff finds nothing; the risk has migrated to the surrounding artifacts."
-"U389","handoffs","20260816","unflagged","msg:msg_011CdXYQ3dZ2h58nR3drjqmF","77eb5960-340a-4f5e-b26b-5d4fecb4a224.jsonl","07/30/2026 03:36:12","1","guard; permission; paste; needs you","","Fix wave dispatched (one agent, three commits' worth of grouped work). Summary of where things stand:
+"U389","handoffs","20260816","unflagged","msg:msg_011CdXYQ3dZ2h58nR3drjqmF","77eb5960-340a-4f5e-b26b-5d4fecb4a224.jsonl","07/30/2026 03:36:12","1","guard; permission; paste; needs you","missed","Fix wave dispatched (one agent, three commits' worth of grouped work). Summary of where things stand:
 
 **Guard core: correct.** Reviewer traced commit dominance, the Codex `Ask`→`deny` fold, the subagent downgrade, fail-closed adapter defaults, and safety-rule precedence. No Critical findings.
 
@@ -1568,7 +1568,7 @@ One thing needs you, not an agent — finding 4: the `Ask` path has never been s
 2. Run `git branch -D <some-gone-branch>` → expect: a permission prompt showing the guard's reason; approve it, branch deletes.
 
 Reply with a screenshot of the prompt from step 2 and the pasted output of both. If you'd rather accept the in-process JSON assertions as sufficient and skip that, say so and I'll record the decision in the ledger instead."
-"U390","handoffs","20260816","unflagged","msg:msg_011CdxZoEsaKVDWvMFgAM9Af","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/12/2026 08:49:28","1","by hand; cannot","","Done. Both repos in sync, nothing outstanding.
+"U390","handoffs","20260816","unflagged","msg:msg_011CdxZoEsaKVDWvMFgAM9Af","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/12/2026 08:49:28","1","by hand; cannot","not-a-case","Done. Both repos in sync, nothing outstanding.
 
 | Repo | Head | State |
 |---|---|---|
@@ -1591,5 +1591,5 @@ This was the **fourth allowlist widening**, and the first `scripts/` change in a
 **Where 071 stands:** `8-review`. Six rounds, 80 findings, none pushed back. The canon itself is now stable — the diff finds nothing structural — and the last two rounds were dominated by my own follow-up text and measurements rather than by `workflow.md`.
 
 Next would be round 7, and the useful question for it is narrower than before: whether the round-6 fixes hold, and whether the two open questions in `backlog/082` can be answered or should be closed as unknowable."
-"U391","handoffs","20260816","unflagged","msg:msg_011CdYBQNCZgCn8LNqSf92Ct","7ee36a1c-9009-4ba7-bfc8-dde4b3678ae0.jsonl","07/30/2026 11:41:27","4","","","`rtk --help` check turned up a plan gap: `err`, `summary`, and `test` also take a raw command (`Usage: rtk.exe err [OPTIONS] [COMMAND]...`), so `rtk err git commit -m x` still bypasses. Plan only listed `proxy`/`run`. Folding those into task 2 — adding them can only expose more segments, never permit more."
-"U392","handoffs","20260816","unflagged","msg:msg_011CdYMvcBByk1VJNwT9oDN2","a573bbd8-59c4-409e-a6c0-a7f4f5b24712.jsonl","07/30/2026 13:59:19","2","","","Loaded. Check snapshot and console for hang at 99%."
+"U391","handoffs","20260816","unflagged","msg:msg_011CdYBQNCZgCn8LNqSf92Ct","7ee36a1c-9009-4ba7-bfc8-dde4b3678ae0.jsonl","07/30/2026 11:41:27","4","","not-a-case","`rtk --help` check turned up a plan gap: `err`, `summary`, and `test` also take a raw command (`Usage: rtk.exe err [OPTIONS] [COMMAND]...`), so `rtk err git commit -m x` still bypasses. Plan only listed `proxy`/`run`. Folding those into task 2 — adding them can only expose more segments, never permit more."
+"U392","handoffs","20260816","unflagged","msg:msg_011CdYMvcBByk1VJNwT9oDN2","a573bbd8-59c4-409e-a6c0-a7f4f5b24712.jsonl","07/30/2026 13:59:19","2","","not-a-case","Loaded. Check snapshot and console for hang at 99%."
