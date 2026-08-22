@@ -653,9 +653,14 @@ function Write-BackendWorktreeDockerProfile {
 }
 
 # The backlog item this worktree serves, found once at creation time while both names exist.
-# Returns '' when the worktree was created with -Name and has no item. The plan guard reads this
-# rather than re-deriving it later: by removal time the folder may be gone, and the slug match
-# already misses for at least one live worktree.
+# Returns '' when the worktree was created with -Name, or when no open item matches its slug. The
+# plan guard reads the recorded value rather than re-deriving it later: by removal time the folder
+# may be gone, and the slug match already misses for at least one live worktree.
+#
+# Only backlog/ is searched, never backlog/done or backlog/blocked. A worktree is created either to
+# pick up an open item, whose number this finds, or to file a new one, which does not exist yet and
+# whose number new-backlog-item.ps1 records instead. Reaching into done/ meant that reusing a title
+# recorded a finished item's number, and the guard then judged that old item's plan.
 function Get-WorktreeBacklogItemNumber {
     param(
         [Parameter(Mandatory)][string] $WorktreeRoot,
@@ -666,13 +671,11 @@ function Get-WorktreeBacklogItemNumber {
     if (-not $leaf.StartsWith('wt-')) { return '' }
     $slug = $leaf.Substring(3)
 
-    foreach ($folder in @('backlog', 'backlog\done', 'backlog\blocked')) {
-        $directory = Join-Path $MainCheckoutRoot $folder
-        if (-not (Test-Path -LiteralPath $directory)) { continue }
-        $match = @(Get-ChildItem -LiteralPath $directory -Filter "*-$slug.md" -File -ErrorAction SilentlyContinue)
-        if ($match.Count -eq 1 -and $match[0].BaseName -match '^(?<num>\d{3})-') {
-            return $Matches.num
-        }
+    $directory = Join-Path $MainCheckoutRoot 'backlog'
+    if (-not (Test-Path -LiteralPath $directory)) { return '' }
+    $match = @(Get-ChildItem -LiteralPath $directory -Filter "*-$slug.md" -File -ErrorAction SilentlyContinue)
+    if ($match.Count -eq 1 -and $match[0].BaseName -match '^(?<num>\d{3})-') {
+        return $Matches.num
     }
 
     return ''

@@ -24,6 +24,8 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 . (Join-Path $PSScriptRoot 'backlog.common.ps1')
+# Set-ManifestBacklogItem lives beside Get-ManifestBacklogItem, the reader the plan guard uses.
+. (Join-Path $PSScriptRoot 'worktree-git.common.ps1')
 
 $templatePath = Join-Path $BacklogRoot '000-backlog-item-template.md'
 if (-not (Test-Path -LiteralPath $templatePath)) {
@@ -44,38 +46,24 @@ $content = ($templateLines -join "`n") + "`n"
 
 New-BacklogFile -Path $targetPath -Content $content
 
-# Intake creates the worktree first and files the item inside it, so setup-worktree-local-dev.ps1
-# always ran before this file existed and recorded an empty item number. The plan guard reads that
-# number at removal time, so the number has to be written here or no normal worktree ever gets one.
-# Only an empty or absent value is filled: a worktree serves one item, and a second filing must not
-# take the recorded number away from the first.
-$worktreeRoot = Split-Path -Parent $BacklogRoot
-$manifestPath = Join-Path $worktreeRoot 'scripts\.env.worktree'
-if (Test-Path -LiteralPath $manifestPath) {
-    $key = 'AHKFLOW_BACKLOG_ITEM'
-    try {
-        $lines = @(Get-Content -LiteralPath $manifestPath -ErrorAction Stop)
-        $recorded = ''
-        foreach ($line in $lines) {
-            if ($line -match "^\s*$key\s*=\s*(?<value>.*)$") { $recorded = $Matches.value.Trim(); break }
-        }
+Write-Host "Created $targetPath"
 
-        if (-not $recorded) {
-            $updated = @()
-            $replaced = $false
-            foreach ($line in $lines) {
-                if ($line -match "^\s*$key\s*=") { $updated += "$key=$number"; $replaced = $true }
-                else { $updated += $line }
-            }
-            if (-not $replaced) { $updated += "$key=$number" }
-            [System.IO.File]::WriteAllText($manifestPath, ($updated -join [Environment]::NewLine) + [Environment]::NewLine, [System.Text.Encoding]::UTF8)
-            Write-Host "Recorded backlog item $number in $manifestPath"
-        }
-    } catch {
-        # The item file is written and that is the job. A manifest that could not be updated leaves
-        # the plan guard with nothing to judge, which keeps the worktree rather than removing it.
-        Write-Warning "Could not record the item number in $manifestPath : $($_.Exception.Message)"
+# Intake creates the worktree first and files the item inside it, so setup-worktree-local-dev.ps1
+# always ran before this file existed and could not record a number. The plan guard reads that
+# number at removal time, so it has to be written here or no normal worktree ever gets one.
+#
+# The newest filing wins. Keeping an older value is what let a finished item with the same title
+# bind this worktree to a plan that was never its own.
+$worktreeRoot = Split-Path -Parent $BacklogRoot
+if (Test-Path -LiteralPath (Join-Path $worktreeRoot 'scripts\.env.worktree')) {
+    if (Set-ManifestBacklogItem -WorktreePath $worktreeRoot -ItemNumber $number) {
+        Write-Host "Recorded backlog item $number for the worktree at $worktreeRoot"
+    } else {
+        # Not a warning. An unrecorded number reads as empty at removal time, and empty ALLOWS
+        # removal, so a silent failure here is the plan guard quietly switching itself off for
+        # this worktree. The item file above is written and kept; only the filing command fails.
+        throw ("Created $targetPath, but could not record item $number in " +
+            "$worktreeRoot\scripts\.env.worktree. Close whatever holds that file and run this again, " +
+            'or the worktree cleanup guard will never check this item''s plan.')
     }
 }
-
-Write-Host "Created $targetPath"
