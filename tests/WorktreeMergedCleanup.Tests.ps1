@@ -1,4 +1,10 @@
-#Requires -Version 5.1
+# 7.0, not 5.1. This suite dot-sources scripts/cleanup-merged-worktrees.ps1 and calls it in
+# process. That script makes bare native git calls, and under Windows PowerShell a native
+# command's stderr becomes an error record that this file's 'Stop' preference turns terminating --
+# so a git error the sweep handles on purpose ends the suite instead. Making those nine call sites
+# host-independent is tracked separately; until then the floor here says what it really is.
+# scripts/run-powershell-suites.ps1 runs every suite under pwsh, so nothing changes in CI.
+#Requires -Version 7.0
 
 [CmdletBinding()]
 param()
@@ -1920,6 +1926,60 @@ try {
     Remove-Item -LiteralPath (Join-Path $repo '.git/logs/refs/heads/main') -Force
     Assert-True ($null -eq (Get-BaseRefAtBranchCreation -RepoRoot $repo -Branch 'feat-skipped' -MainRef 'main')) 'Sanity check: a base ref with no ref log must give no usable base position.'
     Assert-True (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-skipped' -MainRef 'main') 'A skipped signal 5 must leave the decision to the other four signals.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: a real sweep writes exactly one outcome line per worktree it removes ---
+# The source scans elsewhere check call sites. This checks the thing itself: two merged worktrees,
+# one sweep, two detached watchers running at the same time, and afterwards one outcome line each.
+#
+# It covers two defects at once. The sweep used to write "Merged-cleanup requested removal" to the
+# outcome log and then hand over to a watcher that wrote "Removed.", which is two lines for one
+# attempt. And the watcher's temp copy had no reliable logger, so two watchers colliding on the
+# same file could drop a line entirely.
+$repo = New-WorktreeToolingRepo -ScriptsSource $scriptsDir
+try {
+    $first = Add-TestWorktree -RepoDir $repo -BranchName 'feat-outcome-one'
+    $second = Add-TestWorktree -RepoDir $repo -BranchName 'feat-outcome-two'
+
+    $res = Invoke-CleanupChild -RepoDir $repo -ExtraArgs @('-Cleanup')
+    Assert-True (Wait-ForWorktreeCleaned -RepoDir $repo -WorktreePath $first) "The first worktree must be removed. Stderr: $($res.Stderr)"
+    Assert-True (Wait-ForWorktreeCleaned -RepoDir $repo -WorktreePath $second) "The second worktree must be removed. Stderr: $($res.Stderr)"
+
+    # The watcher writes its outcome after the folder is gone, so waiting on the folder is not
+    # waiting on the line. Poll until both leaves have one, then read once.
+    $outcomeLog = Join-Path $repo '.claude\worktrees\worktree-removal.log'
+    $leaves = @((Split-Path -Leaf $first), (Split-Path -Leaf $second))
+    $deadline = [DateTime]::UtcNow.AddSeconds(30)
+    $outcomeLines = @()
+    while ([DateTime]::UtcNow -lt $deadline) {
+        if (Test-Path -LiteralPath $outcomeLog) {
+            $outcomeLines = @(Get-Content -LiteralPath $outcomeLog -ErrorAction SilentlyContinue | Where-Object { $_.Trim() })
+            $covered = @($leaves | Where-Object { $leaf = $_; @($outcomeLines | Where-Object { $_ -match ('\s' + [regex]::Escape($leaf) + '\s') }).Count -ge 1 })
+            if ($covered.Count -eq $leaves.Count) { break }
+        }
+        Start-Sleep -Milliseconds 250
+    }
+
+    Assert-True (Test-Path -LiteralPath $outcomeLog) 'The sweep must write an outcome log.'
+    foreach ($leaf in $leaves) {
+        $mine = @($outcomeLines | Where-Object { $_ -match ('\s' + [regex]::Escape($leaf) + '\s') })
+        Assert-Equal 1 $mine.Count "'$leaf' must have exactly one outcome line, got $($mine.Count): $($mine -join ' || ')"
+        Assert-True ($mine[0] -match '\sRemoved\.$') "'$leaf' must end with the Removed. outcome, got '$($mine[0])'"
+    }
+
+    # Every line in this file is an outcome. Anything else belongs in the diagnostics file beside it.
+    foreach ($line in $outcomeLines) {
+        Assert-True ($line -match '\s(Removed\.|Kept: |Failed: )') `
+            "The outcome log may hold only outcomes, found '$line'"
+    }
+
+    # And the diagnostics really did land somewhere, so the split is not just an empty promise.
+    $diagnosticsLog = Join-Path $repo '.claude\worktrees\worktree-removal-diagnostics.log'
+    Assert-True (Test-Path -LiteralPath $diagnosticsLog) 'The diagnostics log must sit beside the outcome log.'
+    Assert-True ((Get-Content -Raw -LiteralPath $diagnosticsLog) -match 'Merged-cleanup requested removal') `
+        'The hand-over line belongs in diagnostics, not in the outcome log.'
 } finally {
     Remove-TempTree $repo
 }
