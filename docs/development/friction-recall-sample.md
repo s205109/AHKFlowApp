@@ -9,8 +9,9 @@ The evidence is committed beside it:
 | File | What it holds |
 |---|---|
 | `friction-samples/handoffs-sample.csv` | 15 flagged messages and 200 sampled unflagged ones, each with full text, key, session and label |
-| `friction-samples/next-step-asks-sample.csv` | 38 flagged and 200 sampled unflagged, same columns |
-| `friction-samples/*-sample.selection.json` | The selection record for each draw: population size, ordered-key digest, drawn positions, drawn keys |
+| `friction-samples/next-step-asks-sample.csv` | 29 flagged and 200 sampled unflagged, same columns |
+| `friction-samples/*-sample.selection.json` | The selection record for each draw: the transcript root, population size, ordered-key digest, drawn positions, drawn keys |
+| `friction-samples/*-sample-2026-08-16.csv` and `.selection.json` | The earlier draw, kept whole. It is the only record of nine flagged asks the transcripts no longer hold |
 | `friction-samples/ledgers/*.csv` | One row per counted item for the four transcript metrics, and one row per in-window CI run |
 
 Redraw either sample with:
@@ -18,6 +19,7 @@ Redraw either sample with:
 ```powershell
 pwsh ./scripts/sample-friction-recall.ps1 `
   -Metric handoffs `
+  -ProjectRoot "$HOME/AHKFlowApp-friction-snapshot-2026-08-21" `
   -OutputPath docs/development/friction-samples/handoffs-sample.csv `
   -SampleSize 200 `
   -ExistingManifest docs/development/friction-samples/handoffs-sample.csv
@@ -28,34 +30,59 @@ does not change which rows are drawn — see "How the draw picks a row" — but 
 hand-written label is written out empty, and a hand-written label is the only thing this step
 produces.
 
-Two runs are named below, and they are not the same run. The sample was drawn first, then the
-figures were measured. The transcripts grew between them, so the populations differ slightly.
-Neither number is adjusted to match the other.
+**`-ProjectRoot` decides which copy of the transcripts the draw reads.** It defaults to
+`~/.claude/projects`, which is the live folder that retention deletes from. The published figures
+below read the copy named in the next section.
 
-| Setting | The draw | The measurement |
+## What changed since 2026-08-16
+
+Three things changed at the same time. A reader comparing the two sets of figures needs all
+three, because two of them move the numbers for reasons that have nothing to do with friction.
+
+| What changed | Then | Now |
 |---|---|---|
-| Seed | 20260816 | — |
-| Sample size per metric | 200 unflagged messages | — |
-| Window | 2026-07-15T14:14:32Z to 2026-08-12T14:14:32Z | same |
-| Transcript files | 672 after deduplication | 670 after deduplication |
-| Records read | 152,664; 77,001 in window and not sidechain | 152,847; 76,683 in window and not sidechain |
-| Sidechain records excluded | 19,532 | 19,532 |
-| Logical messages | 58,616, of which 9,273 span more than one record | 58,393, of which 9,230 span more than one record |
-| Flagged, handoffs / asks | 15 / 38 | 15 / 38 |
-| Date | 2026-08-16 | 2026-08-16 |
+| The population | 5,472 handoff and 1,042 ask messages | 4,633 and 890. Claude Code deleted the window's first week before the transcripts were copied |
+| The draw | Kept every row the previous draw had selected, so an older row had about 1.4 times the inclusion probability of a newer one | Uniform. Every row has the same chance, whenever it was written |
+| The method | Wilson, a binomial interval, labelled an approximation | The exact hypergeometric interval, which is what a fixed-size draw without replacement supports |
 
-The flagged counts agree, which is what matters: the precision figures below are counted over the
-same 15 and 38 messages the ledgers hold.
+The earlier figures are kept, dated, under "The 2026-08-16 draw, and why it was replaced".
+
+## The run behind the published figures
+
+| Setting | Value |
+|---|---|
+| Seed | 20260816 |
+| Sample size per metric | 200 unflagged messages |
+| Window | 2026-07-15T14:14:32Z to 2026-08-12T14:14:32Z |
+| Transcript root | `~/AHKFlowApp-friction-snapshot-2026-08-21` |
+| Transcript files | 674 after deduplication |
+| Records read | 166,852 |
+| In-window logical messages | 50,989 |
+| Flagged, handoffs / asks | 15 / 29 |
+| Date | 2026-08-22 |
+
+**The first week of the window is missing from the copy, and that is why the population fell.**
+The copy was taken on 2026-08-21. By then Claude Code had already deleted everything older than
+30 days, so the earliest surviving in-window message is stamped 2026-07-22 08:06:05. The window
+still runs from 2026-07-15, and the three weeks it covers are complete to 2026-08-12 14:14:23.
+A smaller count below is partly that missing week, not less friction.
+
+| Metric | Population | Flagged | Unflagged | Ordered-key digest |
+|---|---|---|---|---|
+| handoffs | 4,633 | 15 | 4,618 | `a58c1426…1bcf2b` |
+| next-step-asks | 890 | 29 | 861 | `05e7c7ed…3db705` |
 
 ## Why the seed is not the record
 
 A seed reproduces a draw only when the list it indexes into has not moved. This list moves: the
-population is the live session transcripts, and they grow while the script runs. Two runs minutes
-apart read 691 files, then 672.
+population is the session transcripts, and the live ones both grow and get deleted. Two runs
+minutes apart read 691 files, then 672.
 
-So each draw writes a selection record beside its manifest — the population count, a SHA-256
-digest of the ordered keys, the drawn positions, and the drawn keys. The digest says whether the
-positions still point at the same messages. The keys identify the rows either way.
+So each draw writes a selection record beside its manifest — the transcript root it read, the
+population count, a SHA-256 digest of the ordered keys, the drawn positions, and the drawn keys.
+The digest says whether the positions still point at the same messages. The keys identify the
+rows either way. The root says which copy of the transcripts produced the draw, which a count on
+its own cannot.
 
 ## How the draw picks a row
 
@@ -64,101 +91,62 @@ The sampler hashes the seed and the message key together and takes the 200 lowes
 selection, and the same rows stay selected as the transcripts grow, so a hand-written label
 survives a re-run without the label deciding the sample.
 
-**A uniform draw still does not make a Wilson interval exact.** Wilson is a binomial interval,
-and this draw takes a fixed number of rows without replacement. For a draw where every row has
-the same chance of selection, the true interval is narrower by roughly
-`sqrt((N - n) / (N - 1))` — 0.90 for 200 of 1,004 asks, 0.98 for 200 of 5,457 handoffs. Under
-that condition Wilson is conservative: too wide, never too narrow.
-
-**That condition does not hold for the ranges published below.** They come from the 2026-08-16
-draw, which was not a simple random sample: an older row had about 1.4 times the inclusion
-probability of a newer one. Unequal inclusion probabilities can bias the estimate in either
-direction, depending on whether the over-represented rows carry misses more or less often than
-the rest. Nobody has measured which way it runs here, and the labels that would answer it
-describe messages that no longer exist.
-
-So the ranges below are an approximation of unknown direction. They are not a guaranteed
-over-estimate, and this document does not claim they are. That is the reason the caveat under
-"The committed sample was drawn the old way" stays, and the reason backlog 113 exists.
-
-**The decision, taken in backlog 102 on 2026-08-21: the ranges stay plain Wilson, and they stay
-labelled an approximation.** The correction was computed and then withdrawn, for a reason worth
-writing down.
-
-A finite-population correction assumes a simple random sample without replacement — every row
-with the same chance of selection. The committed draw is not that. Two paragraphs below, "The
-committed sample was drawn the old way" gives the numbers: an older row had about 1.4 times the
-inclusion probability of a newer one, and no amount of arithmetic on the sample size repairs
-that. Applying the correction anyway would have published 164–531 handoffs and 34–85 asks:
-figures that look sharper than the ones below while resting on an assumption the data breaks.
-A range that looks more exact while being less trustworthy is a worse number, not a better one.
-
-The other honest route is a design-based estimator such as Horvitz–Thompson, which needs each
-row's actual inclusion probability. Computing those needs the earlier 60-row draw's selection
-record and the population as it stood then. Neither survives, so the route is closed.
+**The draw is uniform, so the interval can be exact.** A Wilson interval is a binomial one: it
+assumes each draw is independent, which is what sampling with replacement gives. This draw takes
+a fixed number of rows without replacement, so the variance of the sample proportion is smaller.
+`Get-RecallInterval -Correct` inverts the hypergeometric tails directly, with no approximation at
+any step. That switch has a precondition — every row in the population must have had the same
+chance of being drawn — and this draw is the first one in this repository to meet it.
 
 `Get-RecallInterval` in `scripts/sample-friction-recall.ps1` computes the ranges below.
-`tests/FrictionRecallSample.Tests.ps1` checks each bound against the equation that defines a
-Wilson bound rather than against the function itself, and it re-derives every published figure
-from the committed manifests, including the totals in
+`tests/FrictionRecallSample.Tests.ps1` checks each bound against the definition rather than
+against the function itself, and it re-derives every published figure from the committed
+manifests, including the totals in
 [`072`](../../backlog/done/072-process-wave-2-parity-drift-guard-templates.md).
 
-The function also carries a `-Correct` switch, for a future equal-probability redraw. It
-computes the **exact hypergeometric interval** — the set of population counts the observation
-does not rule out — rather than a normal approximation. That matters at the edges: an earlier
-draft substituted an effective sample size into Wilson, and for 0 misses in 200 rows drawn from
-220 it reported that the population held 0 misses. One miss among 220 escapes a 200-row draw
-20/220 of the time, so that was a claim of certainty wrong nearly a tenth of the time it was
-made. Nothing passes `-Correct` today, and a test case parses every script to make sure — by
-syntax tree, not by text search, so a call split across lines or hidden in a splat is caught too.
+**The plain Wilson value is stated once beside each range.** Both the population and the method
+changed since 2026-08-16, and a reader who only sees one number cannot tell which change moved
+it. Wilson is the wider of the two here, which is what a normal approximation to a
+finite-population problem usually is.
 
-**The committed sample was drawn the old way, and its intervals are approximate.** The first
-sampler kept every row the previous draw had selected and filled the rest at random. The
-selection records show what that did: `carriedOverLabels` reads 57 of 200 for handoffs and 58 of
-200 for asks. A row that was already in the population when the earlier 60-row draw ran had two
-chances of selection, a row written later had one — roughly 3.7 percent against 2.6 percent, a
-factor of about 1.4. That is a probability sample with unequal inclusion probabilities, and a
-Wilson interval describes a uniform one. So read both ranges below as close to a 95 percent
-interval rather than exactly one. The bias has no measured direction: it over-represents older
-messages, and nothing says the miss rate differs between older and newer ones.
+## Reading a row id
 
-**The redraw did not happen, and it can no longer reproduce this population.** Claude Code
-deletes session transcripts older than `cleanupPeriodDays`, which defaults to 30 days. On
-2026-08-21 a dry run of the fixed sampler read 4,633 handoff messages where the 2026-08-16 draw
-read 5,472, and 890 ask messages where it read 1,042. Nine of the 38 flagged asks were gone
-altogether.
+Ids carry across draws. A row the 2026-08-16 draw also selected keeps the id it had then.
 
-**What a redraw would publish is unknown, and that is the point.** A fresh draw selects
-different rows, and nobody has read them: only 8 of the 200 drawn handoff rows carry a label
-from the old draw. What can be said is what the deletion does to the base the rate multiplies.
-Holding the measured miss rate of 11 in 200 fixed and applying it to the 4,618 unflagged rows
-that survive gives 153–452 instead of 179–533. That is an illustration of the base effect, not
-a prediction of the redraw: the real figure also moves by however the new labels fall. The full
-figures are in "What limits these numbers" below.
+- In `handoffs-sample.csv`, an id above **U203** is a row that draw never selected.
+- In `next-step-asks-sample.csv`, an id above **U202** is a row that draw never selected.
 
-So the labels below stay the evidence for the rows they describe, and the redraw is filed as
-follow-up work rather than done here.
+Eight handoff rows and 46 ask rows carry an id from the earlier draw. Every other unflagged row
+in both files was read and labelled for the first time on 2026-08-22.
 
-| Metric | Population | Flagged | Unflagged | Ordered-key digest |
-|---|---|---|---|---|
-| handoffs | 5,472 | 15 | 5,457 | `649fdf9f…2da7c57` |
-| next-step-asks | 1,042 | 38 | 1,004 | `05f383ef…67f6a31` |
+## How much the two labelling rounds agree
+
+Two checks were run, and neither is strong. Both are reported with what they cannot show.
+
+**Against the 2026-08-16 round: 54 of 54.** The 54 rows both draws selected were labelled again
+without reading the committed label, and every label matched. 53 of those 54 are `not-a-case`, so
+the check shows the two rounds agree about negatives and says almost nothing about catching
+misses.
+
+**Within this round: 20 of 20.** Twenty already-labelled rows were re-derived from the rule sheet
+and compared. All twenty matched. This is weaker than it sounds for two reasons. The re-derivation
+ran in the same session that wrote the labels, so it is a consistency check and not a blind one.
+And all twenty drew negatives, so again nothing about misses was tested.
 
 ## How a label was decided
 
-**Every sampled row was read.** 200 unflagged rows per metric, plus all 15 and all 38 flagged
-ones — 453 messages in total. The manifests carry each message's **full text**, so any label can
-be checked. They also carry a `Screen` column — a wide word list, far wider than the metric's own
-— which is a reading aid, never a labeller. A row is labelled from its text, not from its screen
-hits.
+**Every sampled row was read.** 200 unflagged rows per metric, plus all 15 and all 29 flagged
+ones — 444 messages in total, of which 346 were labelled for the first time. The manifests carry
+each message's **full text**, so any label can be checked. They also carry a `Screen` column — a
+wide word list, far wider than the metric's own — which is a reading aid, never a labeller. A row
+is labelled from its text, not from its screen hits.
 
 **The flagged stratum is a census, not a sample, and no interval applies to it.** Every message
 the match set flags is in the manifest and every one was read, so the precision figures below —
-10 real of 15, 18 real of 38 — are counted, not estimated. Nothing about the draw touches them:
+10 real of 15, 15 real of 29 — are counted, not estimated. Nothing about the draw touches them:
 the sampling question is about the unflagged remainder, which is the only part that was sampled.
-Backlog 102 asked for this to be stated rather than left for a reader to work out, so it is
-stated here. The one thing that does threaten these counts is deletion, not sampling — see
-"What limits these numbers".
+The one thing that does threaten these counts is deletion, not sampling — see "What limits these
+numbers".
 
 **Definitions.**
 
@@ -191,34 +179,38 @@ readers get two different counts from the same rows.
 | Real | F2, F3, F4, F5, F7, F8, F10, F11, F14, F15 | A corrupted `gh` token the agent cannot repair; a file the guard will not let it commit; commands handed over after a refusal, with the reason and the expected output |
 | Not real | F1, F6, F9, F12, F13 | F6 invites the person to re-run something the agent already ran; F9 names a block and carries on; the rest are completion summaries that mention a block without passing anything over |
 
-**Unflagged sample: 200 of 5,457. Missed: 11** — U14, U18, U94, U141, U162, U167, U169, U179,
-U188, U195, U202. Every one of them is the same shape the match set was built for and did not
-catch: the agent is refused, and the person is handed the command, the decision, or the queue.
+**Unflagged sample: 200 of 4,618. Missed: 9** — U1, U205, U210, U219, U276, U278, U332, U343,
+U389. Every one of them is the same shape the match set was built for and did not catch: the
+agent is refused, and the person is handed the command, the decision, or the queue. U1 is the
+plainest of them — the monthly spend limit is reached, and only the person can raise it.
 
-11 in 200 is a 5.5 percent miss rate, 95 percent Wilson interval 3.1 to 9.6 percent. Across
-5,457 unflagged messages that is **169 to 523 missed handoffs**.
+9 in 200 is a 4.5 percent miss rate, 95 percent hypergeometric interval 2.1 to 8.3 percent.
+Across 4,618 unflagged messages that is **98 to 382 missed handoffs**. For comparison, plain
+Wilson would give 110 to 385 missed handoffs on the same labels.
 
-**True count: roughly 179 to 533.** The flagged 15 is not an upper bound and is not close to one.
+**True count: roughly 108 to 392.** The flagged 15 is not an upper bound and is not close to one.
 
 ## Metric 4 — next-step asks
 
-**Flagged: 38. Real: 18. Precision: 47 percent.**
+**Flagged: 29. Real: 15. Precision: 52 percent.**
 
 Most false positives are pasted review bodies. A reviewer writes "next step" inside a findings
 list, the person pastes the whole thing, and the metric reads the paste as the person asking.
 
-A paste is only a false positive while the person adds nothing. F36 pastes an agent's report and
-then asks, in its last two lines, whether to implement, update or merge first, and for the best
-next step. That is the person asking what work to do next, so it is real. It was labelled
-not-a-case in the first round because the paste decided the label instead of the person's own
-words; the rule below the definitions says the subject decides.
+**That precision rises because messages were deleted, not because the match set improved.** The
+2026-08-16 census was 18 real of 38, which is 47 percent. Nine of those 38 flagged rows are gone
+from the transcripts, and only three of the nine were real, so the survivors are a higher share
+by chance. The nine live on in
+`friction-samples/next-step-asks-sample-2026-08-16.csv` and nowhere else.
 
-**Unflagged sample: 200 of 1,004. Missed: 7** — U1, U8, U45, U55, U105, U118, U150.
+**Unflagged sample: 200 of 861. Missed: 7** — U45, U203, U209, U225, U276, U281, U334. U281 is
+the plainest: "committed, whats next".
 
-7 in 200 is a 3.5 percent miss rate, 95 percent Wilson interval 1.7 to 7.0 percent. Across 1,004
-unflagged messages that is **17 to 71 missed asks**.
+7 in 200 is a 3.5 percent miss rate, 95 percent hypergeometric interval 1.6 to 6.6 percent.
+Across 861 unflagged messages that is **14 to 57 missed asks**. For comparison, plain Wilson
+would give 15 to 61 missed asks on the same labels.
 
-**True count: roughly 35 to 89.**
+**True count: roughly 29 to 72.**
 
 ## The other three metrics
 
@@ -263,15 +255,45 @@ unflagged messages that is **17 to 71 missed asks**.
 - **Metric 5, CI minutes.** No word matching, so no recall question. It has a coverage problem
   instead, stated below.
 
+These three were measured on 2026-08-16 against the live transcripts and are not redrawn here.
+They are not sampled, so the draw does not touch them.
+
+## The 2026-08-16 draw, and why it was replaced
+
+The figures published until 2026-08-22 were **179 to 533 missed handoffs** and **35 to 89 missed
+asks**. They are kept in
+[`072`](../../backlog/done/072-process-wave-2-parity-drift-guard-templates.md) under
+`### Measured 2026-08-16`, and their manifests are committed beside the current ones with a dated
+name.
+
+They rest on a draw that was not uniform. The first sampler kept every row the previous draw had
+selected and filled the rest at random. The selection records show what that did:
+`carriedOverLabels` reads 57 of 200 for handoffs and 58 of 200 for asks. A row that was already
+in the population when the earlier 60-row draw ran had two chances of selection, a row written
+later had one — roughly 3.7 percent against 2.6 percent, a factor of about 1.4. A Wilson interval
+describes a uniform draw, so those two ranges were close to a 95 percent interval rather than
+exactly one, and the bias had no measured direction.
+
+Backlog 102 could not repair that. A finite-population correction assumes equal inclusion
+probabilities, and applying it anyway would have published 164–531 and 34–85: figures that look
+sharper while resting on an assumption the data breaks. A design-based estimator such as
+Horvitz–Thompson needs each row's actual inclusion probability, which needs the earlier 60-row
+draw's selection record and the population as it stood then. Neither survives. So 102 decided the
+ranges stay plain Wilson and stay labelled approximate, and filed the redraw as backlog 113.
+
+Backlog 113 is what this file now publishes. The redraw was only possible because the transcripts
+were copied on 2026-08-21, five days after the first draw.
+
 ## What limits these numbers
 
-**Both ranges are still ranges, and both are approximate.** 200 labels bound a miss rate far
-better than 60 did — the handoff interval went from 60–655 to 179–533, and the ask interval from
-37–163 to 35–89 — but neither figure is a point. A point estimate needs a classifier that reads
-structure rather than wording: a refused tool call, a session that ends on a question. That is
-wave-3 work, not a patch to this script. The draw that produced these 400 labels was not
-uniform either, for the reason given under "How the draw picks a row". Backlog 102 decided that
-the ranges stay plain Wilson and stay labelled approximate; backlog 113 carries the redraw.
+**Both ranges are still ranges.** 200 labels bound a miss rate far better than 60 did, but
+neither figure is a point. A point estimate needs a classifier that reads structure rather than
+wording: a refused tool call, a session that ends on a question. That is wave-3 work, not a patch
+to this script.
+
+**The three-week population is not the four-week one.** The window is unchanged, but its first
+week is not in the copy, so every count below is over a smaller base than the 2026-08-16 figures.
+Comparing 108–392 against 179–533 measures deletion at least as much as it measures friction.
 
 **Metric 5 classifies 115 of 192 in-window CI runs.** The 77 unresolved runs are **not** missing
 from this clone — every in-window `head_sha` was present when this was measured. They have no
@@ -286,38 +308,29 @@ changed no .NET file at all and were classified .NET, keeping 163.2 minutes out 
 exists to count them. The published figure was 293.6 minutes across 54 runs before the rule was
 corrected and the committed ledger reclassified from its own `ChangedPaths` column.
 
-**The transcripts are live.** Three runs on one afternoon read 691, then 672, then 670 files. The
-manifests, the selection records and the ledgers are the frozen record; every published figure
-names the run that produced it.
+**The transcripts are live, and the copy is not.** Three runs on one afternoon read 691, then
+672, then 670 files. The manifests, the selection records and the ledgers are the frozen record;
+every published figure names the run that produced it.
 
-**The window is being deleted, and this is the hard limit on everything above.** Claude Code
-deletes session files and other application data older than `cleanupPeriodDays` at startup. The
-default is 30 days and this machine does not override it. The window runs 2026-07-15 to
-2026-08-12, so it started ageing out of the transcripts on 2026-08-14 and is fully gone around
-2026-09-11.
-
-Measured on 2026-08-21, five days after the draw, by running the sampler and comparing against
-the committed selection records:
+**What deletion took, measured on 2026-08-21.** This is the loss the copy stopped.
 
 | Metric | Population | Unflagged | Flagged |
 |---|---|---|---|
 | handoffs, drawn 2026-08-16 | 5,472 | 5,457 | 15 |
-| handoffs, 2026-08-21 | 4,633 | 4,618 | 15 |
+| handoffs, in the copy | 4,633 | 4,618 | 15 |
 | next-step-asks, drawn 2026-08-16 | 1,042 | 1,004 | 38 |
-| next-step-asks, 2026-08-21 | 890 | 861 | 29 |
+| next-step-asks, in the copy | 890 | 861 | 29 |
 
-The oldest surviving transcript file was stamped 2026-07-22 on that date, exactly 30 days back,
-which is what a daily 30-day deletion looks like from the inside.
+The flagged ask count fell from 38 to 29, so nine messages can no longer be re-read. Three of
+them were labelled real. The archived 2026-08-16 manifest is the only record of all nine.
 
-Three consequences, and none of them is small. The flagged ask count fell from 38 to 29, so the
-47 percent precision figure describes nine messages that can no longer be re-read — the
-committed manifest is now the only record of them. The extrapolation base N fell by 15 percent
-for handoffs and 14 percent for asks, so any re-measurement produces a smaller count for a
-reason that has nothing to do with friction. And a selection record's promise — that a reader
-can tell whether a redraw is the same draw — can from now on only ever be answered "no".
+**The copy has a deletion date.** `~/AHKFlowApp-friction-snapshot-2026-08-21` holds 755 files and
+445 MB. It is machine-local and is in no repository. It is kept until **2026-12-31** and then
+deleted. After that the manifests are the only evidence for these figures, which is exactly where
+the 2026-08-16 draw already stands.
 
-The transcripts were copied to `~/AHKFlowApp-friction-snapshot-2026-08-21` on 2026-08-21, 755
-files and 445 MB, so what remained of the window at that moment stopped shrinking. The copy is
-machine-local and is in no repository. It is what makes a later redraw possible at all, and it
-covers 2026-07-22 onward only. The first week of the window is not in it, because it was already
-gone.
+**A window this long cannot be measured twice.** Claude Code deletes session files older than
+`cleanupPeriodDays`, which defaults to 30 days. A four-week window plus the time it takes to
+draw, label and publish is already past that. The rule that follows from it is
+[ADR 0011](../adr/0011-a-friction-window-fits-inside-transcript-retention.md): a friction window
+is at most 21 days, and the draw runs at most 7 days after the window closes.

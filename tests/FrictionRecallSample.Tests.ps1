@@ -325,7 +325,7 @@ if (Test-Path -LiteralPath $docPath) {
         # The document states its own inputs. If the manifest and the prose disagree about how
         # many rows were drawn or how many were missed, the range describes neither.
         $pattern = "$($missed.Count) in $($unflagged.Count) is a [\d.]+ percent miss rate, " +
-        '95 percent Wilson interval ([\d.]+) to ([\d.]+) percent\. Across ([\d,]+) ' +
+        '95 percent hypergeometric interval ([\d.]+) to ([\d.]+) percent\. Across ([\d,]+) ' +
         "unflagged messages that is \*\*(\d+) to (\d+) $([regex]::Escape($spec.Noun))\*\*"
 
         $match = [regex]::Match($docFlat, $pattern)
@@ -338,7 +338,9 @@ if (Test-Path -LiteralPath $docPath) {
         Assert-True ($statedPopulation -eq $population) `
             "The document says $statedPopulation unflagged $($spec.Name) messages; the selection record says $population."
 
-        $interval = Get-RecallInterval -Hits $missed.Count -Drawn $unflagged.Count -Population $population
+        # Backlog 113 redrew both samples uniformly, so -Correct's precondition holds and the
+        # published range is the exact hypergeometric interval.
+        $interval = Get-RecallInterval -Hits $missed.Count -Drawn $unflagged.Count -Population $population -Correct
 
         $statedLowRate = [double]$match.Groups[1].Value
         $statedHighRate = [double]$match.Groups[2].Value
@@ -351,6 +353,31 @@ if (Test-Path -LiteralPath $docPath) {
             "The document publishes $($match.Groups[4].Value) as the $($spec.Name) low count; the function computes $($interval.LowCount)."
         Assert-True ([int]$match.Groups[5].Value -eq $interval.HighCount) `
             "The document publishes $($match.Groups[5].Value) as the $($spec.Name) high count; the function computes $($interval.HighCount)."
+
+        # --- The companion Wilson value, stated once ---
+        #
+        # The document publishes the hypergeometric range and states the Wilson one beside it, so
+        # a reader comparing against the 2026-08-16 figures can separate the method change from
+        # the population change. Stated twice, nobody can tell which number is published.
+        $wilson = Get-RecallInterval -Hits $missed.Count -Drawn $unflagged.Count -Population $population
+        $wilsonPattern = "plain Wilson would give $($wilson.LowCount) to $($wilson.HighCount) $([regex]::Escape($spec.Noun))"
+        $wilsonHits = @([regex]::Matches($docFlat, $wilsonPattern))
+        Assert-True ($wilsonHits.Count -eq 1) `
+            ("The document must state the $($spec.Name) Wilson value exactly once, as " +
+            "'plain Wilson would give $($wilson.LowCount) to $($wilson.HighCount) $($spec.Noun)'. Found $($wilsonHits.Count).")
+
+        # --- Precision, derived from the flagged census rather than trusted as prose ---
+        #
+        # Precision is counted over every flagged row, which is a census and not a sample. It was
+        # prose only until backlog 113, so 67 percent and 52 percent could drift from the labels
+        # with nothing failing.
+        $flaggedRows = @($rows | Where-Object { $_.Stratum -eq 'flagged' })
+        $realFlaggedCount = @($flaggedRows | Where-Object { $_.Label -eq 'real' }).Count
+        $precision = [int][Math]::Round($realFlaggedCount / [double]$flaggedRows.Count * 100)
+        $precisionPattern = "Flagged: $($flaggedRows.Count)\. Real: $realFlaggedCount\. Precision: $precision percent\."
+        Assert-True ($docFlat -match $precisionPattern) `
+            ("The document must publish $($spec.Name) precision as " +
+            "'Flagged: $($flaggedRows.Count). Real: $realFlaggedCount. Precision: $precision percent.'")
 
         # --- The headline figure, which is the sub-range plus the flagged rows labelled real ---
         #
@@ -382,14 +409,21 @@ if (Test-Path -LiteralPath $docPath) {
         }
     }
 
-    # --- 11. The document still says the interval is an approximation ---
+    # --- 11. The document says where the draw came from, and what it is missing ---
 
-    # Backlog 102 decided the ranges stay plain Wilson and stay labelled approximate, because
-    # the draw had unequal inclusion probabilities and the records a design-based estimator
-    # would need are deleted. An edit that dropped this sentence while keeping the numbers
-    # would publish a figure that looks exact and is not.
-    Assert-True ($docFlat -match 'drawn the old way, and its intervals are approximate') `
-        'The document must still say the committed sample was drawn the old way and its intervals are approximate.'
+    # Backlog 113 redrew both samples from a copy of the transcripts. Three things changed at
+    # once: the population shrank because messages were deleted, the draw became uniform, and the
+    # method became the exact hypergeometric interval. A document that publishes the new numbers
+    # without saying so invites a reader to read a smaller count as less friction.
+
+    Assert-True ($docFlat -match 'AHKFlowApp-friction-snapshot-2026-08-21') `
+        'The document must name the transcript snapshot the draw read.'
+
+    Assert-True ($docFlat -match 'first week of the window') `
+        "The document must say the window's first week is absent, or the smaller population reads as a fall in friction."
+
+    Assert-True ($docFlat -match 'precision rises because messages were deleted') `
+        'The document must attribute the ask precision change to deletion, not to a better match set.'
 }
 
 # --- 12. A census is exact, and does not divide by zero ---
@@ -438,135 +472,19 @@ foreach ($bad in @(@{ Hits = 5; Drawn = 2; Population = 10 }, @{ Hits = 1; Drawn
     Assert-True $threw "Get-RecallInterval must throw for Hits=$($bad.Hits) Drawn=$($bad.Drawn) Population=$($bad.Population)"
 }
 
-# --- 16. No script applies the correction to the committed draw ---
-
-# -Correct is valid only for an equal-probability draw. The committed 2026-08-16 manifests are
-# not one, so a script that passed the switch would publish a narrower range resting on an
-# assumption the data breaks. Nothing passes it today, and this case keeps it that way.
-# Parsed, not grepped. A regex needing both tokens on one physical line misses a call split
-# across lines, and misses a splat entirely - `$args = @{ Correct = $true }` followed by
-# `Get-RecallInterval @args` carries no literal `-Correct` anywhere. The parser sees those.
+# --- 16. Removed by backlog 113 ---
 #
-# What it CANNOT see, and what this case therefore does not promise:
+# This case forbade any script passing -Correct. It existed because the committed draw kept the
+# rows an earlier draw had selected, so an older row had about 1.4 times the inclusion
+# probability of a newer one, and the correction assumes every row had the same chance.
 #
-#   Set-Alias gri Get-RecallInterval ; gri -Hits 1 -Drawn 2 -Population 3 -Correct
-#   $name = 'Get-RecallInterval' ; & $name -Correct
-#   Invoke-Expression 'Get-RecallInterval -Correct'
+# The committed draw is now uniform, so the ban forbade the correct thing. No script computes a
+# published figure either - this file does - so there was nothing left in scripts/ to scan in
+# either direction.
 #
-# A command name is only known statically when it is written literally, so each of these reaches
-# the switch with the scan reporting nothing. The three shapes are reported below wherever they
-# appear in a file that also names Get-RecallInterval, which turns a silent bypass into a
-# failure a human has to clear. That is narrower than a proof: a script could still build the
-# name from pieces, or reach the function through a module loaded at run time.
-#
-# So the claim this case supports is the modest one. Nothing in this repository passes -Correct
-# today, and no ordinary edit can start doing so without failing here. It is not a guarantee
-# that the switch is unreachable.
-function Test-BindsToCorrect {
-    <#
-    .SYNOPSIS
-        Whether a written parameter name binds to -Correct.
-    .DESCRIPTION
-        PowerShell binds any unambiguous prefix, so -C, -Co, -Cor and -Corr all reach -Correct:
-        it is the only parameter of Get-RecallInterval that starts with C. A check for the whole
-        word lets every one of those through, which is a guard that reads as if it works.
-
-        Both directions are tested. A name that is a prefix of 'Correct' binds to it, and a name
-        that starts with 'Correct' is either the parameter itself or a longer name that no longer
-        binds - reported anyway, because a name that close to the prohibited switch is worth a
-        human look.
-    #>
-    param([Parameter(Mandatory)][AllowEmptyString()][string] $Name)
-    if ([string]::IsNullOrEmpty($Name)) { return $false }
-    return 'Correct'.StartsWith($Name, [System.StringComparison]::OrdinalIgnoreCase) -or
-    $Name.StartsWith('Correct', [System.StringComparison]::OrdinalIgnoreCase)
-}
-
-# The guard's own rule, checked before it is trusted to read the scripts. Each of these binds
-# to -Correct when written at a call site; the earlier whole-word check caught only the first.
-foreach ($name in @('Correct', 'correct', 'CORRECT', 'C', 'c', 'Co', 'Cor', 'Corr', 'Correctly')) {
-    Assert-True (Test-BindsToCorrect -Name $name) "-$name reaches -Correct, so the guard must catch it"
-}
-foreach ($name in @('Hits', 'Drawn', 'Population', 'D', 'Population2', '')) {
-    Assert-True (-not (Test-BindsToCorrect -Name $name)) "-$name does not reach -Correct, so the guard must not report it"
-}
-
-$scriptDir = Join-Path $repoRoot 'scripts'
-$callers = New-Object System.Collections.Generic.List[string]
-
-foreach ($file in (Get-ChildItem -LiteralPath $scriptDir -Filter '*.ps1' -Recurse)) {
-    $parseErrors = $null
-    $parsedTokens = $null
-    $ast = [System.Management.Automation.Language.Parser]::ParseFile(
-        $file.FullName, [ref]$parsedTokens, [ref]$parseErrors)
-    if ($parseErrors -and $parseErrors.Count -gt 0) {
-        Assert-True $false "Could not parse $($file.Name) to check for -Correct callers: $($parseErrors[0].Message)"
-        continue
-    }
-
-    # Only a file that names the function can reach it by any of the shapes below. Scanning every
-    # script for a dynamic invocation would report Invoke-Expression across the whole repository,
-    # which is a different rule and not this one.
-    $mentionsFunction = (Get-Content -LiteralPath $file.FullName -Raw) -match 'Get-RecallInterval'
-
-    if ($mentionsFunction) {
-        # `& $name` and `. $name`, where the command is held in a variable. Reported because the
-        # name could be Get-RecallInterval and nothing here can tell.
-        #
-        # A dot-source of a computed PATH is not this. `. (Join-Path $PSScriptRoot 'x.ps1')` also
-        # hides its command name from the parser, and this file uses it at line 305 to load a
-        # sibling script. Loading a file is not invoking the function, so flagging it would
-        # report a pattern the repository depends on and teach the reader to ignore the failure.
-        $opaque = $ast.FindAll({
-                param($node)
-                $node -is [System.Management.Automation.Language.CommandAst] -and
-                $null -eq $node.GetCommandName() -and
-                $node.CommandElements.Count -gt 0 -and
-                $node.CommandElements[0] -is [System.Management.Automation.Language.VariableExpressionAst]
-            }, $true)
-        foreach ($command in $opaque) {
-            $callers.Add("$($file.Name):$($command.Extent.StartLineNumber) command name held in a variable")
-        }
-
-        $named = $ast.FindAll({
-                param($node)
-                $node -is [System.Management.Automation.Language.CommandAst] -and
-                $node.GetCommandName() -in @('Set-Alias', 'New-Alias', 'Invoke-Expression', 'iex')
-            }, $true)
-        foreach ($command in $named) {
-            $callers.Add("$($file.Name):$($command.Extent.StartLineNumber) $($command.GetCommandName()) in a file that names Get-RecallInterval")
-        }
-    }
-
-    $commands = $ast.FindAll({
-            param($node)
-            $node -is [System.Management.Automation.Language.CommandAst] -and
-            $node.GetCommandName() -eq 'Get-RecallInterval'
-        }, $true)
-
-    foreach ($command in $commands) {
-        foreach ($element in $command.CommandElements) {
-            # A named switch, however the call is wrapped across lines, and however far it is
-            # abbreviated. -C is enough to bind, so the whole word is not what to look for.
-            if ($element -is [System.Management.Automation.Language.CommandParameterAst] -and
-                (Test-BindsToCorrect -Name $element.ParameterName)) {
-                $callers.Add("$($file.Name):$($element.Extent.StartLineNumber) -$($element.ParameterName)")
-            }
-            # A splat. What it holds cannot be resolved here, so any splat onto this command is
-            # reported: a call nobody can read is not a call anybody can clear.
-            if ($element -is [System.Management.Automation.Language.VariableExpressionAst] -and
-                $element.Splatted) {
-                $callers.Add("$($file.Name):$($element.Extent.StartLineNumber) splat @$($element.VariablePath.UserPath)")
-            }
-        }
-    }
-}
-
-Assert-True ($callers.Count -eq 0) `
-    ('No script may pass -Correct while the published draw is the 2026-08-16 one. Also reported: ' +
-    'a splat onto Get-RecallInterval, a command name held in a variable, and Set-Alias, New-Alias ' +
-    'or Invoke-Expression in a file that names the function - each hides whether the switch is ' +
-    'passed, and a call nobody can read is not a call anybody can clear: ' + ($callers -join '; '))
+# What replaced it is case 10 above. It computes the published range with -Correct, so a plain
+# Wilson number republished as the corrected one no longer matches, and it asserts the companion
+# Wilson value appears exactly once.
 
 # --- 17. -ProjectRoot is honoured, not merely accepted ---
 #
