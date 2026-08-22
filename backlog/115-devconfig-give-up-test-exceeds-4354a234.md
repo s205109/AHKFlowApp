@@ -54,7 +54,7 @@ deliberately.
 
 ### The question to answer first
 
-Read `tests/AHKFlowApp.UI.Blazor.Tests/Startup/DevConfigTests.cs:42` together with the give-up
+Read (`tests/AHKFlowApp.UI.Blazor.Tests/Startup/DevConfigTests.cs:42`, "await act.Should().CompleteWithinAsync(TimeSpan.FromSeconds(5));") together with the give-up
 timeout in the production code it exercises. If the code's own budget is at or near five seconds,
 the assertion has no headroom at all, and any scheduling delay under load pushes it over. That
 would make the test's budget wrong rather than the code slow.
@@ -72,7 +72,7 @@ Decide between three outcomes, with a measurement behind the choice:
 
 - [ ] This item records the production give-up budget and the measured completion time under load,
       so the chosen assertion budget is derived from both
-- [ ] `tests/AHKFlowApp.UI.Blazor.Tests/Startup/DevConfigTests.cs:42` passes in a full
+- [ ] (`tests/AHKFlowApp.UI.Blazor.Tests/Startup/DevConfigTests.cs:42`, "await act.Should().CompleteWithinAsync(TimeSpan.FromSeconds(5));") passes in a full
       `pwsh ./scripts/test-fast.ps1 -Mode Fast` run and under `-Mode Coverage`
 - [ ] The assertion's timeout is stated next to the production budget it is measured against, so a
       reader can see the headroom rather than infer it
