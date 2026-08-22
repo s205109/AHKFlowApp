@@ -10,3 +10,4 @@ looks like.
 - [x] Task 2 — four 2026-08-16 records archived; suite red until Task 3
 - [x] Task 3 — both samples redrawn, 192 and 154 rows unlabelled
 - [x] Task 4 — blind check on the 54 shared rows: agreement 54 of 54 (53 negatives, 1 missed: ask U45)
+- [x] Task 5 — 192 handoff rows labelled, 9 missed of 200
