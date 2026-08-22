@@ -3751,15 +3751,21 @@ parentheses group an expression. Read that way, this command writes to the path 
 reads every command both ways, and refuses when either way reaches the main checkout.
 '@
 
-function Add-AgentPowerShellReadingNote {
-    param([object] $Decision)
+function Add-AgentGuardDecisionNote {
+    param([object] $Decision, [string] $Note)
 
     # An Allow carries no message worth explaining, and appending to one would put a refusal
     # notice on a command that was not refused.
     if ($Decision.Action -eq 'Allow') { return $Decision }
 
     return (New-AgentGuardDecision -Action $Decision.Action -Rule $Decision.Rule -Message `
-        ($Decision.Message + "`n" + $script:AgentGuardPowerShellReadingNote))
+        ($Decision.Message + "`n" + $Note))
+}
+
+function Add-AgentPowerShellReadingNote {
+    param([object] $Decision)
+
+    return (Add-AgentGuardDecisionNote -Decision $Decision -Note $script:AgentGuardPowerShellReadingNote)
 }
 
 # Higher is worse. The combination keeps the worst action any Reading produced, which is what
@@ -3831,24 +3837,22 @@ function Resolve-AgentGuardLayerDecision {
         }
     }
 
-    # An Allow carries no message worth explaining, and naming a layer on one would put a
-    # refusal notice on a command that was not refused.
-    if ($winner.Decision.Action -eq 'Allow') { return $winner.Decision }
+    $decision = Add-AgentGuardDecisionNote -Decision $winner.Decision `
+        -Note ([string]::Format($script:AgentGuardWinningLayerNote, $winner.Name))
 
-    $message = $winner.Decision.Message + "`n" +
-    [string]::Format($script:AgentGuardWinningLayerNote, $winner.Name)
+    # An Allow carries no message worth explaining, and Add-AgentGuardDecisionNote already left it
+    # unchanged above. Naming a suppressed objection on it would put a refusal notice on a command
+    # that was not refused.
+    if ($decision.Action -eq 'Allow') { return $decision }
 
     $others = @($Layers |
         Where-Object { $_.Name -ne $winner.Name -and $_.Decision.Action -ne 'Allow' } |
         ForEach-Object { "$($_.Name) answered $($_.Decision.Action)" })
 
-    if ($others.Count -gt 0) {
-        $message = $message + "`n" +
-        [string]::Format($script:AgentGuardOtherLayerNote, ($others -join '; '))
-    }
+    if ($others.Count -eq 0) { return $decision }
 
-    return (New-AgentGuardDecision -Action $winner.Decision.Action -Rule $winner.Decision.Rule `
-            -Message $message)
+    return (Add-AgentGuardDecisionNote -Decision $decision `
+            -Note ([string]::Format($script:AgentGuardOtherLayerNote, ($others -join '; '))))
 }
 
 <#

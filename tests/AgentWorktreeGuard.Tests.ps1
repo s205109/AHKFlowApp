@@ -758,79 +758,114 @@ try {
         }
     }
 
-    Invoke-TestCase 'Resolver: a stronger later layer beats a weaker earlier one' {
-        $decision = Resolve-AgentGuardLayerDecision -Layers @(
-            (New-LayerCase -Name 'safety' -Action 'Allow'),
-            (New-LayerCase -Name 'location' -Action 'Ask' -Rule 'agent-main-git-mutation' -Message 'ask text'),
-            (New-LayerCase -Name 'write' -Action 'Deny' -Rule 'agent-worktree-main-write' -Message 'deny text')
-        )
-        Assert-Equal 'Deny' $decision.Action 'Action'
-        Assert-Equal 'agent-worktree-main-write' $decision.Rule 'Rule'
-        Assert-Match 'deny text' $decision.Message 'The winning layer keeps its own message'
-    }
+    $resolverCases = @(
+        @{
+            # Also the exact command backlog 111 measured, so this pins the winning layer's own
+            # message and the suppressed one in a single case, rather than reconstructing the same
+            # three layers twice to check each half separately.
+            Name            = 'a stronger later layer beats a weaker earlier one, and names both'
+            Layers          = @(
+                (New-LayerCase -Name 'safety' -Action 'Allow'),
+                (New-LayerCase -Name 'location' -Action 'Ask' -Rule 'agent-main-git-mutation' -Message 'ask text'),
+                (New-LayerCase -Name 'write' -Action 'Deny' -Rule 'agent-worktree-main-write' -Message 'deny text')
+            )
+            ExpectedAction  = 'Deny'
+            ExpectedRule    = 'agent-worktree-main-write'
+            MessageContains = @('deny text', 'write layer', 'location', 'Ask')
+        },
+        @{
+            Name           = 'a stronger earlier layer beats a weaker later one'
+            Layers         = @(
+                (New-LayerCase -Name 'safety' -Action 'Allow'),
+                (New-LayerCase -Name 'location' -Action 'Ask' -Rule 'agent-main-git-mutation' -Message 'ask text'),
+                (New-LayerCase -Name 'write' -Action 'Warn' -Rule 'agent-worktree-main-write-overridden' -Message 'warn text')
+            )
+            ExpectedAction = 'Ask'
+            ExpectedRule   = 'agent-main-git-mutation'
+        },
+        @{
+            Name            = 'location wins a tie against write, as the old order did'
+            Layers          = @(
+                (New-LayerCase -Name 'safety' -Action 'Allow'),
+                (New-LayerCase -Name 'location' -Action 'Warn' -Rule 'agent-main-git-mutation-overridden' -Message 'location warn'),
+                (New-LayerCase -Name 'write' -Action 'Warn' -Rule 'agent-worktree-main-write-overridden' -Message 'write warn')
+            )
+            ExpectedAction  = 'Warn'
+            ExpectedRule    = 'agent-main-git-mutation-overridden'
+            MessageContains = @('location layer')
+            MessageExcludes = @('more weakly')
+        },
+        @{
+            Name           = 'location wins a tie against safety, as the old order did'
+            Layers         = @(
+                (New-LayerCase -Name 'safety' -Action 'Warn' -Rule 'dotnet-run' -Message 'safety warn'),
+                (New-LayerCase -Name 'location' -Action 'Warn' -Rule 'agent-main-git-mutation-overridden' -Message 'location warn'),
+                (New-LayerCase -Name 'write' -Action 'Allow')
+            )
+            ExpectedAction = 'Warn'
+            ExpectedRule   = 'agent-main-git-mutation-overridden'
+        },
+        @{
+            Name           = 'write wins a tie against safety, as the old order did'
+            Layers         = @(
+                (New-LayerCase -Name 'safety' -Action 'Warn' -Rule 'dotnet-run' -Message 'safety warn'),
+                (New-LayerCase -Name 'location' -Action 'Allow'),
+                (New-LayerCase -Name 'write' -Action 'Warn' -Rule 'agent-worktree-main-write-overridden' -Message 'write warn')
+            )
+            ExpectedAction = 'Warn'
+            ExpectedRule   = 'agent-worktree-main-write-overridden'
+        },
+        @{
+            Name           = 'three Allows stay an Allow'
+            Layers         = @(
+                (New-LayerCase -Name 'safety' -Action 'Allow'),
+                (New-LayerCase -Name 'location' -Action 'Allow'),
+                (New-LayerCase -Name 'write' -Action 'Allow')
+            )
+            ExpectedAction = 'Allow'
+            ExpectedRule   = 'none'
+        },
+        @{
+            Name            = 'a lone objection still names its layer'
+            Layers          = @(
+                (New-LayerCase -Name 'safety' -Action 'Deny' -Rule 'dangerous-rm' -Message 'BLOCKED: rm')
+            )
+            ExpectedAction  = 'Deny'
+            ExpectedRule    = 'dangerous-rm'
+            MessageContains = @('safety layer')
+            MessageExcludes = @('also objected')
+        }
+    )
 
-    Invoke-TestCase 'Resolver: a stronger earlier layer beats a weaker later one' {
-        $decision = Resolve-AgentGuardLayerDecision -Layers @(
-            (New-LayerCase -Name 'safety' -Action 'Allow'),
-            (New-LayerCase -Name 'location' -Action 'Ask' -Rule 'agent-main-git-mutation' -Message 'ask text'),
-            (New-LayerCase -Name 'write' -Action 'Warn' -Rule 'agent-worktree-main-write-overridden' -Message 'warn text')
-        )
-        Assert-Equal 'Ask' $decision.Action 'Action'
-        Assert-Equal 'agent-main-git-mutation' $decision.Rule 'Rule'
-    }
+    foreach ($case in $resolverCases) {
+        Invoke-TestCase "Resolver: $($case.Name)" {
+            $decision = Resolve-AgentGuardLayerDecision -Layers $case.Layers
+            Assert-Equal $case.ExpectedAction $decision.Action 'Action'
+            Assert-Equal $case.ExpectedRule $decision.Rule 'Rule'
 
-    Invoke-TestCase 'Resolver: location wins a tie against write, as the old order did' {
-        $decision = Resolve-AgentGuardLayerDecision -Layers @(
-            (New-LayerCase -Name 'safety' -Action 'Allow'),
-            (New-LayerCase -Name 'location' -Action 'Warn' -Rule 'agent-main-git-mutation-overridden' -Message 'location warn'),
-            (New-LayerCase -Name 'write' -Action 'Warn' -Rule 'agent-worktree-main-write-overridden' -Message 'write warn')
-        )
-        Assert-Equal 'Warn' $decision.Action 'Action'
-        Assert-Equal 'agent-main-git-mutation-overridden' $decision.Rule 'Rule'
-        Assert-Match 'location layer' $decision.Message 'Message names the winning layer'
-        Assert-True ($decision.Message -notmatch 'more weakly') `
-            'An equal answer must not be described as weaker'
-    }
+            # An Allow decision must always stay silent, so this is checked for every case rather
+            # than as one case's special assertion.
+            if ($decision.Action -eq 'Allow') {
+                Assert-Equal '' $decision.Message 'An Allow must stay silent'
+            }
 
-    Invoke-TestCase 'Resolver: location wins a tie against safety, as the old order did' {
-        $decision = Resolve-AgentGuardLayerDecision -Layers @(
-            (New-LayerCase -Name 'safety' -Action 'Warn' -Rule 'dotnet-run' -Message 'safety warn'),
-            (New-LayerCase -Name 'location' -Action 'Warn' -Rule 'agent-main-git-mutation-overridden' -Message 'location warn'),
-            (New-LayerCase -Name 'write' -Action 'Allow')
-        )
-        Assert-Equal 'Warn' $decision.Action 'Action'
-        Assert-Equal 'agent-main-git-mutation-overridden' $decision.Rule 'Rule'
-    }
+            # An empty array is falsy in PowerShell, same as a missing key, so this skips cleanly
+            # either way. Wrapping a possibly-$null value in @(...) instead would iterate once
+            # with $fragment = $null, which is not the same as zero fragments to check.
+            $contains = $case['MessageContains']
+            if ($contains) {
+                foreach ($fragment in $contains) {
+                    Assert-Match $fragment $decision.Message "Message should contain: $fragment"
+                }
+            }
 
-    Invoke-TestCase 'Resolver: write wins a tie against safety, as the old order did' {
-        $decision = Resolve-AgentGuardLayerDecision -Layers @(
-            (New-LayerCase -Name 'safety' -Action 'Warn' -Rule 'dotnet-run' -Message 'safety warn'),
-            (New-LayerCase -Name 'location' -Action 'Allow'),
-            (New-LayerCase -Name 'write' -Action 'Warn' -Rule 'agent-worktree-main-write-overridden' -Message 'write warn')
-        )
-        Assert-Equal 'Warn' $decision.Action 'Action'
-        Assert-Equal 'agent-worktree-main-write-overridden' $decision.Rule 'Rule'
-    }
-
-    Invoke-TestCase 'Resolver: three Allows stay an Allow and gain no message' {
-        $decision = Resolve-AgentGuardLayerDecision -Layers @(
-            (New-LayerCase -Name 'safety' -Action 'Allow'),
-            (New-LayerCase -Name 'location' -Action 'Allow'),
-            (New-LayerCase -Name 'write' -Action 'Allow')
-        )
-        Assert-Equal 'Allow' $decision.Action 'Action'
-        Assert-Equal 'none' $decision.Rule 'Rule'
-        Assert-Equal '' $decision.Message 'An Allow must stay silent'
-    }
-
-    Invoke-TestCase 'Resolver: a lone objection still names its layer' {
-        $decision = Resolve-AgentGuardLayerDecision -Layers @(
-            (New-LayerCase -Name 'safety' -Action 'Deny' -Rule 'dangerous-rm' -Message 'BLOCKED: rm')
-        )
-        Assert-Equal 'Deny' $decision.Action 'Action'
-        Assert-Match 'safety layer' $decision.Message 'Message names the layer'
-        Assert-True ($decision.Message -notmatch 'also objected') `
-            'With one objection there is nothing else to report'
+            $excludes = $case['MessageExcludes']
+            if ($excludes) {
+                foreach ($fragment in $excludes) {
+                    Assert-True ($decision.Message -notmatch $fragment) "Message must not contain: $fragment"
+                }
+            }
+        }
     }
 
     Invoke-TestCase 'Resolver: no combination of layer answers comes out weaker than before' {
@@ -867,17 +902,6 @@ try {
                 }
             }
         }
-    }
-
-    Invoke-TestCase 'Resolver: a suppressed objection is reported, not dropped' {
-        $decision = Resolve-AgentGuardLayerDecision -Layers @(
-            (New-LayerCase -Name 'safety' -Action 'Allow'),
-            (New-LayerCase -Name 'location' -Action 'Ask' -Rule 'agent-main-git-mutation' -Message 'ask text'),
-            (New-LayerCase -Name 'write' -Action 'Deny' -Rule 'agent-worktree-main-write' -Message 'deny text')
-        )
-        Assert-Match 'write layer' $decision.Message 'Message names the winning layer'
-        Assert-Match 'location' $decision.Message 'Message names the suppressed layer'
-        Assert-Match 'Ask' $decision.Message 'Message names the suppressed action'
     }
 
     Write-Host 'Backlog 111 acceptance' -ForegroundColor Cyan
@@ -1100,8 +1124,8 @@ try {
     }
 
     # A quote is one of four ways a Reading becomes Ambiguous. The other three are block forms the
-    # suite already covers at (`tests/AgentWorktreeGuard.Tests.ps1:2283`, "    $heredocAmbiguousCases = @(")
-    # and (`tests/AgentWorktreeGuard.Tests.ps1:2372`, "    $hereStringAmbiguousCases = @("), and
+    # suite already covers at (`tests/AgentWorktreeGuard.Tests.ps1:2307`, "    $heredocAmbiguousCases = @(")
+    # and (`tests/AgentWorktreeGuard.Tests.ps1:2396`, "    $hereStringAmbiguousCases = @("), and
     # every one of them must reach the same refusal at every layer. Without this, the message could
     # promise "balanced quoting" to somebody whose heredoc terminator is indented.
     $unreadableCauses = @(

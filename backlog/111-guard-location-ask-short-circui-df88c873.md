@@ -24,7 +24,7 @@ that an approvable prompt never stands in for a refusal.
 `Invoke-AgentGuardPolicyForReading` used to return the location decision whenever it was not
 Allow, and never reached the write layer. Fixed on this branch: the orchestrator now hands all
 three layer answers to `Resolve-AgentGuardLayerDecision`
-(`scripts/agents/agent-worktree-guard.common.ps1:3812`, "function Resolve-AgentGuardLayerDecision {"),
+(`scripts/agents/agent-worktree-guard.common.ps1:3818`, "function Resolve-AgentGuardLayerDecision {"),
 which returns the strongest one.
 
 Measured from a managed worktree, with the protected root set to the main checkout:
@@ -41,7 +41,7 @@ The same shape with `git -C <main> commit` returns Deny, because that command ma
 layer deny rather than ask. Only the Ask tier is affected.
 
 Backlog 093 added a severity order — `Deny > Ask > Warn > Allow` — and a helper that ranks two
-decisions (`scripts/agents/agent-worktree-guard.common.ps1:3769`, "function Get-AgentGuardActionSeverity {").
+decisions (`scripts/agents/agent-worktree-guard.common.ps1:3775`, "function Get-AgentGuardActionSeverity {").
 That helper ranks the two Readings against each other. The three layers inside one Reading are
 still ordered by position, not by severity, which is the gap this item closes.
 
