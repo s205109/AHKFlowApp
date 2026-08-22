@@ -55,8 +55,14 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 # files those items name in their own '- Plan:' and '- Spec:' bullets.
 #
 # A pointer beats a file name, because the two disagree. Item 107 shipped the work in
-# 2026-08-17-personal-plans-home-plan-105.md. Its pointer, though, names a plan-107 file that does
-# not exist, so the fall-back to the trailing number has to keep working as well.
+# 2026-08-17-personal-plans-home-plan-105.md, and no item 105 ever existed.
+#
+# Read the pointer defensively rather than trusting it. Item 107's own bullet named a plan-107 file
+# that never existed until pull request 341 repaired it, and while it was wrong this check could
+# not place the real plan at all.
+#
+# The trailing number stays as the fall-back and carries most of the load: only 30 of the 104 items
+# in backlog/done/ name a plan at all.
 function Get-ShippedRecord {
     param([Parameter(Mandatory)][string] $BacklogRoot)
 

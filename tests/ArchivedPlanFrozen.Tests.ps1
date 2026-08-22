@@ -121,8 +121,8 @@ $hits = Get-Hit (New-Fixture -Files @{ 'plans/a-plan-205.md' = $plain } -OpenIte
 Assert-True ($hits.Count -eq 0) `
     "a reopened item's plan must not be demanded frozen, got: $($hits -join ', ')"
 
-# 11. A pointer that names a missing file must not break the number fall-back. Item 107's real
-#     pointer names a plan-107 file that does not exist.
+# 11. A pointer that names a missing file must not break the number fall-back. Item 107's bullet
+#     named a plan-107 file that never existed, until pull request 341 repaired it.
 $hits = Get-Hit (New-Fixture -Files @{ 'plans/a-plan-201.md' = $plain } `
     -DoneItems @('201-thing.md') -DonePointers @{ '201-thing.md' = 'nowhere-plan-201.md' })
 Assert-True ($hits.Count -eq 1) `
