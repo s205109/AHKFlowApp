@@ -12,6 +12,27 @@ This file replaces backlog 093's copy, which shipped without being deleted at St
 | 4 — Enforce the freeze at pre-push | `964a1857` | `ArchivedPlanFrozen.Tests.ps1`, 9 cases | Done. The suite caught two real PowerShell unrolling bugs before the check shipped |
 | 5 — Verify against the acceptance boxes | `ad6d8749` | full gate green | Done. All four boxes ticked with evidence |
 
+## Review round 1 outcome, 2026-08-22
+
+All five fixed in `7ec006c9`, then `main` was merged in (`f2fb63e3`).
+
+| Task | Fix | Proof |
+|---|---|---|
+| R1 | Ownership diffs `git merge-base HEAD origin/main`, not the tip | Tip gave 10 numbers, merge base gives the correct 2 |
+| R2 | The owned list crosses the process boundary in a temp manifest file, via a new `-OnlyPathFile` | New suite case runs the real runner with three paths and asserts the output never says "positional parameter" |
+| R3 | Archived means "the item is visible in this worktree's `backlog/done/`". Unknown is skipped, never shipped | The command that reported 6 live plans as shipped now reports none. Case 5 of the suite locks it |
+| R4 | Ownership resolves through the `- Plan:` and `- Spec:` pointers first, the trailing number second | Cases 9, 10, 11, 12 cover pointer, reopen, dangling pointer, and `none` |
+| R5 | Both git calls fail closed and throw | The empty-manifest and missing-manifest cases also fail closed |
+
+**The new check immediately earned its keep.** After merging today's `main`, it reported exactly the
+five records the reviewer predicted — 073, 102 and 110 had shipped and their plans were still open
+to the citation check. All five are now frozen.
+
+**The full-corpus scan currently reads `every citation checks out`.** That is the original box 1
+wording, and it passes right now only because no other branch has a live plan at this moment. The
+revised wording is still the one to keep, because the next plan written on another branch puts the
+count back above zero through nobody's fault.
+
 ## Recovery tasks from review round 1, 2026-08-22
 
 Review found five defects. All five reproduced against this worktree. Stage went back to

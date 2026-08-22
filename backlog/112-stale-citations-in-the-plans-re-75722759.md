@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: none (repo tooling)
 - **Difficulty**: moderate
-- **Stage**: 4-execute
+- **Stage**: 8-review
 
 ## Summary
 
@@ -63,12 +63,13 @@ citation at a time, is the work here.
 
 - [x] `pwsh ./scripts/check-citation-freshness.ps1 -ScanRoot ./docs/superpowers -ResolveRoot . -NoAdoptionTier` reports no problem in any shipped plan or spec, and no problem in any plan this branch owns. Every remaining problem names a live branch, and the recap lists them
   - Revised at plan review on 2026-08-21. The original text asked the full scan to report `every citation checks out`. That is unreachable by design, not by neglect: the same plan files score 82 problems from this worktree and 104 from the backlog-110 worktree, and the two disagree about which files are broken. A plan another branch is writing cites lines that are right there and wrong here, so no line number satisfies both
-  - Measured on 2026-08-21 after the work: 42 problems, all in live files — 19 in backlog 073 (`fix/wt-process-wave-3-cleanup-ux`), 12 in backlog 102 (`fix/wt-recall-sample-was-drawn-without-9d48aac4`), 22 in backlog 110 (`fix/wt-guard-write-decision-allows-on-ambiguous-parse`). Zero in any shipped file, down from 52. Zero in any file this branch owns
-- [ ] `git push` completes with the pre-push hook enabled, without `SKIP_PUSH_HOOK=1` and without `--no-verify`
+  - Measured on 2026-08-21 after the first pass: 42 problems, all in live files — 19 in backlog 073, 12 in 102, 22 in 110. Zero in any shipped file, down from 52
+  - Re-measured on 2026-08-22, after review round 1 and after merging that day's `main`: **`RESULT: every citation checks out`**. Backlog 073, 102 and 110 all shipped that day, and `scripts/check-archived-plan-frozen.ps1` found their five records still open to the check and demanded the freeze. That is the original box-1 wording passing, but it passes only because no branch has a live plan at this instant. The revised wording above is the one to keep: the next plan written on another branch puts the count back above zero through nobody's fault
+- [x] `git push` completes with the pre-push hook enabled, without `SKIP_PUSH_HOOK=1` and without `--no-verify`
   - Proven on 2026-08-21. All five hook steps green, ending `Pre-push quick checks passed.` and `2df740fe..ad6d8749`. The citation step printed `Checking 1: plans/2026-08-21-stale-plans-citations-plan-112.md`
 - [x] Every citation that quotes text the source no longer holds carries `citation-check:ignore` with the reason on the same line, rather than a line number that happens to exist
   - True for every file this branch owns. A shipped file uses the stronger `citation-check:ignore-file`, which states the same thing once for the whole file rather than 180 times. The rule for the per-line case is now written down in `AGENTS.md`, including the forward-reference case the original item did not name
-- [ ] The repository records what keeps the count from growing back, or states that nothing does and why
+- [x] The repository records what keeps the count from growing back, or states that nothing does and why
   - Four things. The Ship rule in `docs/development/workflow.md` freezes a plan when its item ships. Three bullets in `AGENTS.md` carry the freeze rule, the forward-reference rule, and the shared-tree rule. `scripts/check-archived-plan-frozen.ps1` fails the push when a shipped plan is left unfrozen, covered by `tests/ArchivedPlanFrozen.Tests.ps1`. The pre-push citation step now scans only this branch's plans, so another branch's live work cannot turn this push red
   - What still does not hold it back is written in the plan, under "What this plan does not fix"
 
