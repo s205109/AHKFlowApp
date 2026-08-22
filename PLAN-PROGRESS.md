@@ -6,3 +6,4 @@ One line per task: task number, deliverable commit SHA (or `-`), tests state, de
 
 1. 392e631d — green (10/10 new cases pass, full suite green) — none
 2. 8e1eaf81 — green (real command probe re-run, confirmed Deny; full PowerShell slice 42/42 green) — none
+3. 1fe5d5bd — green (42/42 PowerShell suites, citation freshness clean in both repos, boxes ticked) — none
