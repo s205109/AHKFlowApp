@@ -66,5 +66,5 @@ still ordered by position, not by severity, which is the gap this item closes.
 - Found by a reviewer of the pull request for backlog 093, who correctly scoped it out of that PR
 - Running the later layers changes cost: the write layer spawns git probes. Measure before
   assuming every layer must always run
-- Spec: none — needs Design first
-- Plan: none — not yet at Plan
+- Spec: none — Difficulty is `moderate`, so Pickup jumps straight to Plan and no spec is written
+- Plan: docs/superpowers/plans/2026-08-22-guard-layer-severity-plan-111.md
