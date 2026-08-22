@@ -992,9 +992,9 @@ Next: coordinate joint merge with the UI wave branch (finding #2 blocker lives t
 "F38","next-step-asks","20260816","flagged","uuid:54e72755-9599-4fe9-b12f-4176a03348ff","9d279f6d-e6e5-4f20-99e8-8dd13c434edb.jsonl","07/26/2026 12:17:14","1","next","real","what is the next step?"
 "F39","next-step-asks","20260816","flagged","uuid:82737384-7d2d-4764-9cda-eb5f99ebb7ab","7adc27cd-533a-4dcc-ae78-6329fa1d7fce.jsonl","08/09/2026 11:23:42","1","next","real","rebased, next step(s)"
 "U61","next-step-asks","20260816","unflagged","uuid:012905b4-37a9-448f-a88e-e2d49cd4d082","303c598f-259b-44b4-bc4c-8bc6df638b8c.jsonl","07/24/2026 09:52:33","1","","not-a-case","I to want to keep track of the changes in the plans locally, is there an alternative to using gitignore?"
-"U10","next-step-asks","20260816","unflagged","uuid:0170f0f1-4013-4e6b-90f8-0d6c21b48ef9","0940cbdb-5733-475c-9445-fcbe60cee446.jsonl","08/01/2026 07:46:36","1","","","implement the plan subagent driven, continue"
-"U40","next-step-asks","20260816","unflagged","uuid:01d707ca-2872-4721-8597-920dc96bd63b","d159cc56-2e1c-4571-add4-44db0ab0c9b4.jsonl","08/02/2026 06:31:10","1","","","watch and merge when done"
-"U203","next-step-asks","20260816","unflagged","uuid:025763bd-f339-45d6-95da-e9b18d03a548","b5daf7ef-e3c8-490d-b82e-31cd26490530.jsonl","07/27/2026 08:51:38","1","","","C:\Dev\segocom-github\AHKFlowApp\old_project_reference\report.html, Front-load the adversarial grilling
+"U10","next-step-asks","20260816","unflagged","uuid:0170f0f1-4013-4e6b-90f8-0d6c21b48ef9","0940cbdb-5733-475c-9445-fcbe60cee446.jsonl","08/01/2026 07:46:36","1","","not-a-case","implement the plan subagent driven, continue"
+"U40","next-step-asks","20260816","unflagged","uuid:01d707ca-2872-4721-8597-920dc96bd63b","d159cc56-2e1c-4571-add4-44db0ab0c9b4.jsonl","08/02/2026 06:31:10","1","","not-a-case","watch and merge when done"
+"U203","next-step-asks","20260816","unflagged","uuid:025763bd-f339-45d6-95da-e9b18d03a548","b5daf7ef-e3c8-490d-b82e-31cd26490530.jsonl","07/27/2026 08:51:38","1","","missed","C:\Dev\segocom-github\AHKFlowApp\old_project_reference\report.html, Front-load the adversarial grilling
 Your best sessions all involved a 'grilling' pass on specs and plans before implementation. Make that a standing first step rather than a rescue after defects surface.
 The hotkey redesign spec, the W0 plan, and the UI plan all reached 'fully_achieved' only after structured Q&A and adversarial review caught fabricated MudAutocomplete GroupBy params, non-existent data-test selectors, and obsolete sibling-branch claims. When you skipped grilling, defects surfaced later as user-pasted review findings — which became your #3 goal at 25 sessions. Since 1637 of your file lines are Markdown, most of your Claude time is spec/plan authoring, so plan quality is the highest-leverage lever you have. Grilling at plan time is far cheaper than fixing shipped code.
 
@@ -1002,15 +1002,15 @@ The hotkey redesign spec, the W0 plan, and the UI plan all reached 'fully_achiev
 Paste into Claude Code:
 Before I approve this plan, run an adversarial review of your own draft. For every API, component parameter, CSS selector, and data-test hook you referenced: grep the repo and paste the file:line proving it exists, or mark it FABRICATED. Then list every assumption about branch state, merged work, or existing files, and verify each with a git or filesystem command. Report the defect list before revising. is this part still relevant after the recents pull requests for this report and the changes is the current retire-dead-skill-refs worktree"
 "U62","next-step-asks","20260816","unflagged","uuid:0408a83a-838b-473a-a647-6cbede1a25d9","0940cbdb-5733-475c-9445-fcbe60cee446.jsonl","08/01/2026 13:01:23","1","","not-a-case","commit your changes, and why is the a unstaged file on the main brain?"
-"U204","next-step-asks","20260816","unflagged","uuid:07ed638f-cfdf-4412-a56f-49e36ed3900c","cb4e8fad-c4fd-4a21-885a-2fca084576be.jsonl","07/27/2026 10:00:42","1","","","do 1"
+"U204","next-step-asks","20260816","unflagged","uuid:07ed638f-cfdf-4412-a56f-49e36ed3900c","cb4e8fad-c4fd-4a21-885a-2fca084576be.jsonl","07/27/2026 10:00:42","1","","not-a-case","do 1"
 "U65","next-step-asks","20260816","unflagged","uuid:0a3bda35-36ba-4b83-872f-e43bc73e2acf","fa13a69a-fe78-439b-aed0-e46cf740b719.jsonl","07/24/2026 09:39:47","1","","not-a-case","use recommendation"
 "U66","next-step-asks","20260816","unflagged","uuid:0a82159e-4785-40fa-8239-29b845cb667b","ac1f0d72-64d3-4636-84c1-85f8eb5d1769.jsonl","07/22/2026 09:05:20","1","","not-a-case","the one in the screenshot, option 1 maybe?"
-"U205","next-step-asks","20260816","unflagged","uuid:0b77c616-7285-42c0-84e6-fe09372b131a","405bb824-9617-4c1d-b8d1-40cfffdf8da4.jsonl","07/29/2026 19:24:47","1","","","do I have a skill or memory for running e2e testing with playwright when an implementation phase has been completed?"
-"U206","next-step-asks","20260816","unflagged","uuid:0d91e178-8202-471a-99c2-d20e259ae20d","27d4e07f-a02d-420a-913d-bc4af9e1c560.jsonl","07/24/2026 02:14:29","1","","","commit"
-"U207","next-step-asks","20260816","unflagged","uuid:10bdd41c-221b-4239-ae01-3607c5237e5d","405bb824-9617-4c1d-b8d1-40cfffdf8da4.jsonl","07/29/2026 19:31:22","1","","","can you give the the ! command I can run inline now"
-"U208","next-step-asks","20260816","unflagged","uuid:110f6547-d99a-4cf2-8dda-d75db0c35606","29f49f1e-1c40-4587-9aa5-27a9e5ae06a4.jsonl","08/07/2026 19:22:52","1","pick up","","pick up @backlog/058-native-edit-refusal-names-missing-worktree-copy.md"
-"U209","next-step-asks","20260816","unflagged","uuid:11d82875-de64-455c-93d0-958edacfadc0","26e03c00-a443-4e13-8737-3022e247e6e2.jsonl","07/22/2026 08:32:25","1","","","can I merge the PR"
-"U210","next-step-asks","20260816","unflagged","uuid:12dd665d-b3ef-48a0-89c9-5f859f8f5a27","9d279f6d-e6e5-4f20-99e8-8dd13c434edb.jsonl","07/26/2026 18:34:44","1","","","Address all comments in the pasted local review: for each comment, push back if the current code already handles it, otherwise implement the valid fix; keep changes minimal and consistent with existing style, do not assume any PR/GitHub threads/commits/remotes, and summarize accepted fixes, pushbacks, assumptions, and files changed. Verdict: NEEDS FIXES. The core $sourceRef wiring is correct, but I found three gaps.
+"U205","next-step-asks","20260816","unflagged","uuid:0b77c616-7285-42c0-84e6-fe09372b131a","405bb824-9617-4c1d-b8d1-40cfffdf8da4.jsonl","07/29/2026 19:24:47","1","","not-a-case","do I have a skill or memory for running e2e testing with playwright when an implementation phase has been completed?"
+"U206","next-step-asks","20260816","unflagged","uuid:0d91e178-8202-471a-99c2-d20e259ae20d","27d4e07f-a02d-420a-913d-bc4af9e1c560.jsonl","07/24/2026 02:14:29","1","","not-a-case","commit"
+"U207","next-step-asks","20260816","unflagged","uuid:10bdd41c-221b-4239-ae01-3607c5237e5d","405bb824-9617-4c1d-b8d1-40cfffdf8da4.jsonl","07/29/2026 19:31:22","1","","not-a-case","can you give the the ! command I can run inline now"
+"U208","next-step-asks","20260816","unflagged","uuid:110f6547-d99a-4cf2-8dda-d75db0c35606","29f49f1e-1c40-4587-9aa5-27a9e5ae06a4.jsonl","08/07/2026 19:22:52","1","pick up","not-a-case","pick up @backlog/058-native-edit-refusal-names-missing-worktree-copy.md"
+"U209","next-step-asks","20260816","unflagged","uuid:11d82875-de64-455c-93d0-958edacfadc0","26e03c00-a443-4e13-8737-3022e247e6e2.jsonl","07/22/2026 08:32:25","1","","missed","can I merge the PR"
+"U210","next-step-asks","20260816","unflagged","uuid:12dd665d-b3ef-48a0-89c9-5f859f8f5a27","9d279f6d-e6e5-4f20-99e8-8dd13c434edb.jsonl","07/26/2026 18:34:44","1","","not-a-case","Address all comments in the pasted local review: for each comment, push back if the current code already handles it, otherwise implement the valid fix; keep changes minimal and consistent with existing style, do not assume any PR/GitHub threads/commits/remotes, and summarize accepted fixes, pushbacks, assumptions, and files changed. Verdict: NEEDS FIXES. The core $sourceRef wiring is correct, but I found three gaps.
 
   1. [P1] Claude’s sanctioned creation path still cannot supply -BaseRef.
      The new rule requires -BaseRef (/C:/Dev/segocom-github/AHKFlowApp/.claude/worktrees/worktree-base-ref/AGENTS.md:203), while the mandatory
@@ -1040,12 +1040,12 @@ Before I approve this plan, run an adversarial review of your own draft. For eve
   - git diff --check main...HEAD passed.
   - .NET build skipped because this review covered PowerShell tooling and documentation only.
   - No files changed during review."
-"U211","next-step-asks","20260816","unflagged","uuid:14136f45-5ab1-43f1-a8b0-03aad04622cd","940f9e03-411f-4270-a092-e99c062bf446.jsonl","08/01/2026 07:58:00","1","","","@docs/superpowers/plans/2026-08-01-e2e-stale-publish-plan.md exec subagent driven"
-"U212","next-step-asks","20260816","unflagged","uuid:1748d7ef-eab1-4ebb-bfab-fc3b018d323a","c2850db6-b050-4372-abc1-eaf5961f52ec.jsonl","08/06/2026 07:40:52","1","","","push and open the PR"
-"U213","next-step-asks","20260816","unflagged","uuid:1ad60d0c-0d37-494b-b7f8-114b0cf0d213","af18a02f-2b5d-4a9d-8976-c0962967a104.jsonl","08/06/2026 05:38:21","1","","","push both branches and open the two PRs"
-"U214","next-step-asks","20260816","unflagged","uuid:202001f2-40ac-41aa-8a10-07298d80693d","438bdba1-b478-4a66-a6be-ad4c124f0fd5.jsonl","08/06/2026 13:44:02","1","","","implement @docs/superpowers/plans/2026-08-06-worktree-cleanup-empty-branch-plan.md"
-"U215","next-step-asks","20260816","unflagged","uuid:2310967b-9341-4ffd-b031-4351a2db7935","43c49baf-9879-4532-9fb5-a538c9b1d5d0.jsonl","07/29/2026 19:34:17","1","","","@docs/superpowers/plans/2026-07-29-hotkey-shortcut-warnings-plan.md and @docs/superpowers/plans/2026-07-29-hotkey-shortcut-warnings-stage2-plan.md can you review the implementations using E2E tesing and playwright? I want to to test everything first and then tell me how to test this manually"
-"U216","next-step-asks","20260816","unflagged","uuid:24e5a8ef-2819-4602-9ad1-81f5a084d90b","a9ff7000-54fc-4479-8e59-bad3790e661f.jsonl","08/05/2026 20:00:56","1","","","A"
+"U211","next-step-asks","20260816","unflagged","uuid:14136f45-5ab1-43f1-a8b0-03aad04622cd","940f9e03-411f-4270-a092-e99c062bf446.jsonl","08/01/2026 07:58:00","1","","not-a-case","@docs/superpowers/plans/2026-08-01-e2e-stale-publish-plan.md exec subagent driven"
+"U212","next-step-asks","20260816","unflagged","uuid:1748d7ef-eab1-4ebb-bfab-fc3b018d323a","c2850db6-b050-4372-abc1-eaf5961f52ec.jsonl","08/06/2026 07:40:52","1","","not-a-case","push and open the PR"
+"U213","next-step-asks","20260816","unflagged","uuid:1ad60d0c-0d37-494b-b7f8-114b0cf0d213","af18a02f-2b5d-4a9d-8976-c0962967a104.jsonl","08/06/2026 05:38:21","1","","not-a-case","push both branches and open the two PRs"
+"U214","next-step-asks","20260816","unflagged","uuid:202001f2-40ac-41aa-8a10-07298d80693d","438bdba1-b478-4a66-a6be-ad4c124f0fd5.jsonl","08/06/2026 13:44:02","1","","not-a-case","implement @docs/superpowers/plans/2026-08-06-worktree-cleanup-empty-branch-plan.md"
+"U215","next-step-asks","20260816","unflagged","uuid:2310967b-9341-4ffd-b031-4351a2db7935","43c49baf-9879-4532-9fb5-a538c9b1d5d0.jsonl","07/29/2026 19:34:17","1","","not-a-case","@docs/superpowers/plans/2026-07-29-hotkey-shortcut-warnings-plan.md and @docs/superpowers/plans/2026-07-29-hotkey-shortcut-warnings-stage2-plan.md can you review the implementations using E2E tesing and playwright? I want to to test everything first and then tell me how to test this manually"
+"U216","next-step-asks","20260816","unflagged","uuid:24e5a8ef-2819-4602-9ad1-81f5a084d90b","a9ff7000-54fc-4479-8e59-bad3790e661f.jsonl","08/05/2026 20:00:56","1","","not-a-case","A"
 "U7","next-step-asks","20260816","unflagged","uuid:2baef849-3949-4f84-b098-2c2533571236","5c7748e8-ae22-4483-bd6b-e8e41ec3d6ab.jsonl","07/27/2026 07:26:49","1","","not-a-case","tackle the skill relocation, explain this"
 "U87","next-step-asks","20260816","unflagged","uuid:2bef63e2-1a2f-4a64-9827-ac3c47fd4837","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/11/2026 17:54:30","1","","not-a-case","I already asked for a review on the old backlog item: Findings
 1. High: The sibling-link criterion cannot work with the specified predicate.  
@@ -1071,9 +1071,9 @@ The item was not previously a standalone plan. Its history is:
 - No dedicated 076 implementation plan exists.
 - The private plans repository is shared through symlinks. Its documents are not branch-local to feature/wt-071-development-process.
 I recommend revising the backlog and dedicated spec before implementation, especially the sibling-link contradiction. No files were changed and no test suite was required for this review. in the feature-wt-076-plans-repo-guard-exception worktree, can you check if this is still relevant? after the check, before addressing the review, give me step-by-step instruction to correct the files"
-"U217","next-step-asks","20260816","unflagged","uuid:2c18a22d-500f-465e-a678-30ac6d9b779e","fa13a69a-fe78-439b-aed0-e46cf740b719.jsonl","07/24/2026 09:50:02","1","","","write it"
-"U218","next-step-asks","20260816","unflagged","uuid:2c79edcc-9e16-4821-912d-37472f64506f","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/11/2026 16:03:30","1","","","docs: spec for the plans-repo guard exception (backlog 076)commit is already there"
-"U219","next-step-asks","20260816","unflagged","uuid:3009a27d-6fa7-4f01-836a-6c1423205c2f","c1823b89-3c5e-433e-bba6-c894cc1632cc.jsonl","08/04/2026 09:30:00","1","order","","Verdict: request changes on PR 257 at 6fcf5cae.
+"U217","next-step-asks","20260816","unflagged","uuid:2c18a22d-500f-465e-a678-30ac6d9b779e","fa13a69a-fe78-439b-aed0-e46cf740b719.jsonl","07/24/2026 09:50:02","1","","not-a-case","write it"
+"U218","next-step-asks","20260816","unflagged","uuid:2c79edcc-9e16-4821-912d-37472f64506f","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/11/2026 16:03:30","1","","not-a-case","docs: spec for the plans-repo guard exception (backlog 076)commit is already there"
+"U219","next-step-asks","20260816","unflagged","uuid:3009a27d-6fa7-4f01-836a-6c1423205c2f","c1823b89-3c5e-433e-bba6-c894cc1632cc.jsonl","08/04/2026 09:30:00","1","order","not-a-case","Verdict: request changes on PR 257 at 6fcf5cae.
 
   ### Findings
 
@@ -1146,8 +1146,8 @@ I recommend revising the backlog and dedicated spec before implementation, espec
     After these cases ship, docs/development/ahk-v2-syntax.md will still state that Window emits only the five existing one-line operations.
     Because the implementation adds block-bodied snap output to this maintained AHK contract, include that document in the change inventory and
     describe the two new operations and their primary-monitor behavior."
-"U220","next-step-asks","20260816","unflagged","uuid:3101c38c-1d2c-43e7-8036-6da73400fd41","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/11/2026 15:56:30","1","","","Say the word once your copy commit lands, it landed, remove it"
-"U221","next-step-asks","20260816","unflagged","uuid:341d820b-a5e5-4a33-8691-fdc315f1b484","ffb7beaf-f54a-40db-8a9d-5668be866de1.jsonl","07/25/2026 12:34:55","1","next","","## Verdict
+"U220","next-step-asks","20260816","unflagged","uuid:3101c38c-1d2c-43e7-8036-6da73400fd41","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/11/2026 15:56:30","1","","not-a-case","Say the word once your copy commit lands, it landed, remove it"
+"U221","next-step-asks","20260816","unflagged","uuid:341d820b-a5e5-4a33-8691-fdc315f1b484","ffb7beaf-f54a-40db-8a9d-5668be866de1.jsonl","07/25/2026 12:34:55","1","next","not-a-case","## Verdict
 
   Strong and mostly executable, but I’d revise it before implementation. I found five material gaps and three smaller inconsistencies.
 
@@ -1206,10 +1206,10 @@ I recommend revising the backlog and dedicated spec before implementation, espec
 
   For eventual execution, I’d use inline/executing-plans rather than a fresh subagent per task: the tasks are small, sequential, and repeatedly
   touch the same files. Address all comments in the pasted local review: for each comment, push back if the current code already handles it, otherwise implement the valid fix; keep changes minimal and consistent with existing style, do not assume any PR/GitHub threads/commits/remotes, and summarize accepted fixes, pushbacks, assumptions, and files changed."
-"U222","next-step-asks","20260816","unflagged","uuid:349bf66d-fec4-4ab5-bc2b-24e840b324d8","244a95ed-767e-40f0-9d8f-10fd9598d962.jsonl","08/06/2026 10:18:46","1","","","do it"
+"U222","next-step-asks","20260816","unflagged","uuid:349bf66d-fec4-4ab5-bc2b-24e840b324d8","244a95ed-767e-40f0-9d8f-10fd9598d962.jsonl","08/06/2026 10:18:46","1","","not-a-case","do it"
 "U94","next-step-asks","20260816","unflagged","uuid:351fa4b1-c2ec-42f4-90ca-c3670601317e","b8414536-3e44-4470-8bd8-a22b3c4cd715.jsonl","07/27/2026 20:01:46","1","","not-a-case","do it"
-"U223","next-step-asks","20260816","unflagged","uuid:352d9836-a594-43f8-b15e-536f4a27b5c1","42a7f14b-e626-40a4-be8e-e6b80bd421fb.jsonl","08/10/2026 16:05:48","1","","","Q1 A, Q2 A, Q3 2 per stage table - no fable, Q4 use recommendations, Q5 use recommendations, Q6 use recocommenation, Q7 use recocommenation, Q8 A"
-"U224","next-step-asks","20260816","unflagged","uuid:3748f0ea-458f-4fb2-bfac-20973cd247a1","4e1aaf78-a34e-497b-93a3-99111e8e04ec.jsonl","08/07/2026 12:17:45","1","","","implement it now"
+"U223","next-step-asks","20260816","unflagged","uuid:352d9836-a594-43f8-b15e-536f4a27b5c1","42a7f14b-e626-40a4-be8e-e6b80bd421fb.jsonl","08/10/2026 16:05:48","1","","not-a-case","Q1 A, Q2 A, Q3 2 per stage table - no fable, Q4 use recommendations, Q5 use recommendations, Q6 use recocommenation, Q7 use recocommenation, Q8 A"
+"U224","next-step-asks","20260816","unflagged","uuid:3748f0ea-458f-4fb2-bfac-20973cd247a1","4e1aaf78-a34e-497b-93a3-99111e8e04ec.jsonl","08/07/2026 12:17:45","1","","not-a-case","implement it now"
 "U97","next-step-asks","20260816","unflagged","uuid:387fbb96-38ef-4a86-8458-f7e4ca03fec6","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/11/2026 18:42:27","1","","not-a-case","these manual actions are too much, this will be addressed by the process improvement I hope!"
 "U13","next-step-asks","20260816","unflagged","uuid:390d6430-e830-464e-8937-4153b043c517","b5daf7ef-e3c8-490d-b82e-31cd26490530.jsonl","07/27/2026 11:33:05","1","","not-a-case","## Findings
 
@@ -1233,20 +1233,20 @@ I recommend revising the backlog and dedicated spec before implementation, espec
   Verdict: NEEDS FIXES. No files changed during review."
 "U14","next-step-asks","20260816","unflagged","uuid:39da2224-34e2-45ad-bb52-9c81a8b9ec35","8948c44b-052c-47bd-86c7-80c556b0e916.jsonl","07/22/2026 10:11:42","1","","not-a-case","push and update the table"
 "U98","next-step-asks","20260816","unflagged","uuid:3a1460bb-9681-4be1-82a4-00abe93272f2","1f95f33f-8a9e-4043-8a4f-d188d2191ee1.jsonl","07/23/2026 12:49:56","1","","not-a-case","do it"
-"U225","next-step-asks","20260816","unflagged","uuid:3a3479ab-b96b-4aa6-a07f-733e7f89f98f","e8d4b31a-ab38-4bc1-98e7-13ef77ae13f2.jsonl","07/28/2026 13:46:13","1","","","committed, are the changes in the previous commit still relevent or should some of these changes be reverted? otherwise give me the push + PR commands"
-"U226","next-step-asks","20260816","unflagged","uuid:3c96a83b-5ddb-4277-b079-58a8b2c26b42","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/12/2026 11:32:14","1","","","continue"
-"U227","next-step-asks","20260816","unflagged","uuid:3df38ba5-8f4b-47b5-9cca-2d059fc42c10","850574ff-2dc9-4495-9b61-9c6b74a223e7.jsonl","07/31/2026 21:02:31","1","","","what is the status of this branch?"
-"U228","next-step-asks","20260816","unflagged","uuid:3ed14bd6-53f9-442c-9525-a110482602ff","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/11/2026 12:03:08","1","","","1. relabled it, then nothing to simplify"
+"U225","next-step-asks","20260816","unflagged","uuid:3a3479ab-b96b-4aa6-a07f-733e7f89f98f","e8d4b31a-ab38-4bc1-98e7-13ef77ae13f2.jsonl","07/28/2026 13:46:13","1","","missed","committed, are the changes in the previous commit still relevent or should some of these changes be reverted? otherwise give me the push + PR commands"
+"U226","next-step-asks","20260816","unflagged","uuid:3c96a83b-5ddb-4277-b079-58a8b2c26b42","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/12/2026 11:32:14","1","","not-a-case","continue"
+"U227","next-step-asks","20260816","unflagged","uuid:3df38ba5-8f4b-47b5-9cca-2d059fc42c10","850574ff-2dc9-4495-9b61-9c6b74a223e7.jsonl","07/31/2026 21:02:31","1","","not-a-case","what is the status of this branch?"
+"U228","next-step-asks","20260816","unflagged","uuid:3ed14bd6-53f9-442c-9525-a110482602ff","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/11/2026 12:03:08","1","","not-a-case","1. relabled it, then nothing to simplify"
 "U100","next-step-asks","20260816","unflagged","uuid:3edd3a44-19cb-4556-bafe-71cb47eeb31c","146c148c-90f7-4a50-8a0d-7635bb2360d3.jsonl","08/08/2026 17:41:57","1","","not-a-case","1"
-"U229","next-step-asks","20260816","unflagged","uuid:3f8c9ebf-9e9f-430c-b2f2-670aa28d2214","940f9e03-411f-4270-a092-e99c062bf446.jsonl","08/01/2026 12:24:27","1","","","merged"
-"U230","next-step-asks","20260816","unflagged","uuid:40d5ae87-8669-4353-9cae-11a62222a2f4","eed1b447-b8b9-458a-a731-fb5d64354649.jsonl","07/29/2026 09:44:09","1","","","when I create a new worktree the plans and spec from the docs superpowers folder are not copied over, they are in a separate git repo now, but I guess the new worktree script has not been updated yet. also a separate file referencer was added to detect these plans with the @-sign which did not work out of the box. Can you use a brainstorming session to start with a plan to fix this"
-"U231","next-step-asks","20260816","unflagged","uuid:414a372c-3c67-487e-b34c-aa1da52da42b","7072b1f6-e2c7-4f56-b60e-4595df3b8f95.jsonl","07/25/2026 13:27:37","1","","","can you investigate why its stuck?"
-"U232","next-step-asks","20260816","unflagged","uuid:439967a1-cfb0-40ce-917f-ecc97c3f1d3c","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/11/2026 16:00:37","1","","","commit"
-"U233","next-step-asks","20260816","unflagged","uuid:4561e42a-0ca7-4982-8268-3d19a0aa1ddc","0f4c0897-a458-4ba2-96ed-d894a9248282.jsonl","08/02/2026 15:28:53","1","","","Execute docs/superpowers/plans/2026-08-02-hotkey-preview-legacy-shim.md"
-"U234","next-step-asks","20260816","unflagged","uuid:46679577-e3b0-425f-8032-42f5c20124c5","90adb6e3-f83a-4e8f-8c58-5a8c6d48fa74.jsonl","07/30/2026 15:03:48","1","","","how can we prevent the collision and prefer mine?"
+"U229","next-step-asks","20260816","unflagged","uuid:3f8c9ebf-9e9f-430c-b2f2-670aa28d2214","940f9e03-411f-4270-a092-e99c062bf446.jsonl","08/01/2026 12:24:27","1","","not-a-case","merged"
+"U230","next-step-asks","20260816","unflagged","uuid:40d5ae87-8669-4353-9cae-11a62222a2f4","eed1b447-b8b9-458a-a731-fb5d64354649.jsonl","07/29/2026 09:44:09","1","","not-a-case","when I create a new worktree the plans and spec from the docs superpowers folder are not copied over, they are in a separate git repo now, but I guess the new worktree script has not been updated yet. also a separate file referencer was added to detect these plans with the @-sign which did not work out of the box. Can you use a brainstorming session to start with a plan to fix this"
+"U231","next-step-asks","20260816","unflagged","uuid:414a372c-3c67-487e-b34c-aa1da52da42b","7072b1f6-e2c7-4f56-b60e-4595df3b8f95.jsonl","07/25/2026 13:27:37","1","","not-a-case","can you investigate why its stuck?"
+"U232","next-step-asks","20260816","unflagged","uuid:439967a1-cfb0-40ce-917f-ecc97c3f1d3c","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/11/2026 16:00:37","1","","not-a-case","commit"
+"U233","next-step-asks","20260816","unflagged","uuid:4561e42a-0ca7-4982-8268-3d19a0aa1ddc","0f4c0897-a458-4ba2-96ed-d894a9248282.jsonl","08/02/2026 15:28:53","1","","not-a-case","Execute docs/superpowers/plans/2026-08-02-hotkey-preview-legacy-shim.md"
+"U234","next-step-asks","20260816","unflagged","uuid:46679577-e3b0-425f-8032-42f5c20124c5","90adb6e3-f83a-4e8f-8c58-5a8c6d48fa74.jsonl","07/30/2026 15:03:48","1","","not-a-case","how can we prevent the collision and prefer mine?"
 "U103","next-step-asks","20260816","unflagged","uuid:46d7d8f1-acd4-4d8d-a4e0-c11984b60a81","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/11/2026 11:49:00","1","","not-a-case","done 1, 2 skip it"
 "U104","next-step-asks","20260816","unflagged","uuid:474aee06-379b-49ea-a0f0-a848aea1733f","c948ce81-96de-4d44-b46e-b5710a2e8ca9.jsonl","08/03/2026 14:32:34","1","","not-a-case","why is the worktree for @.claude/backlog/done/040-known-shortcuts-mobile-layout.md not being cleanup up when I run the worktree cleanup script? the work has been merged"
-"U235","next-step-asks","20260816","unflagged","uuid:48a93461-fe0e-4fc3-8b60-a2c6676d2316","d49170f6-c590-46fd-a3a9-3f89e90a9f29.jsonl","07/30/2026 08:59:49","1","pick up","","can you pick up @.claude/backlog/039-agent-git-guard-wrapper-bypass.md using superpowers and grilling"
+"U235","next-step-asks","20260816","unflagged","uuid:48a93461-fe0e-4fc3-8b60-a2c6676d2316","d49170f6-c590-46fd-a3a9-3f89e90a9f29.jsonl","07/30/2026 08:59:49","1","pick up","not-a-case","can you pick up @.claude/backlog/039-agent-git-guard-wrapper-bypass.md using superpowers and grilling"
 "U19","next-step-asks","20260816","unflagged","uuid:4a5b67f9-6786-4265-8b5a-089599273d86","b1afe5ae-b379-4907-b3d3-ea7a6f4a143d.jsonl","07/25/2026 13:13:23","1","","not-a-case"," ## Findings
 
   1. [P1] Conflicting filters can visibly lie to users. The spec allows the toolbar to ignore an active funnel while leaving that funnel displayed,
@@ -1279,16 +1279,16 @@ I recommend revising the backlog and dedicated spec before implementation, espec
   - Filtered-empty state in scope? how is the funnel/dropdown issue solved in the hotstrings page?"
 "U106","next-step-asks","20260816","unflagged","uuid:4a62f080-a396-4a66-95da-4ce5c003edf0","0f4c0897-a458-4ba2-96ed-d894a9248282.jsonl","08/02/2026 20:24:14","1","","not-a-case","push and open PR"
 "U107","next-step-asks","20260816","unflagged","uuid:4aaa138e-aa9d-4eb0-a313-48b20809907a","244a95ed-767e-40f0-9d8f-10fd9598d962.jsonl","08/06/2026 10:15:47","1","","not-a-case","check the settings.json"
-"U236","next-step-asks","20260816","unflagged","uuid:4c7c3fc2-a195-4458-bb6c-9db0bafa5e5c","303c598f-259b-44b4-bc4c-8bc6df638b8c.jsonl","07/24/2026 09:38:28","1","","","I'm thinking of gitignoring all specs and plans in this git repo and only keep them locally for myself, do you think this is accepable or would other developers really need this history. It containers some sensitive info and I also would like to purge them form the history on github. What is your opinion?"
-"U237","next-step-asks","20260816","unflagged","uuid:4d4b8c5b-e2da-41bf-baeb-eee2f5da11f9","0940cbdb-5733-475c-9445-fcbe60cee446.jsonl","08/01/2026 08:48:36","1","","","✻ Waiting for 1 background agent to finish can you make the color of these * messages like recap bold and yellow always?"
-"U238","next-step-asks","20260816","unflagged","uuid:4edf59d7-10f0-4f4f-913c-9c2196fa8572","52ff6008-8aa2-44c5-8673-6dab4b6e4b9d.jsonl","07/29/2026 21:00:50","1","","","B"
-"U239","next-step-asks","20260816","unflagged","uuid:4f14792f-89ad-4016-b10b-5a9cf2c51fd5","4e1aaf78-a34e-497b-93a3-99111e8e04ec.jsonl","08/07/2026 12:15:35","1","","","but why did you update the original plan, was what even necessary? what changes did you make?"
-"U240","next-step-asks","20260816","unflagged","uuid:4f88ed9e-1868-4879-8534-7e92f564aead","8759691c-da18-45d7-9a7f-08ae325ed815.jsonl","08/02/2026 15:13:06","1","","","Writing the plan now. You said this, but didn't task any task"
-"U241","next-step-asks","20260816","unflagged","uuid:4f9ae966-4c33-4b15-9266-e19baeffcc20","438bdba1-b478-4a66-a6be-ad4c124f0fd5.jsonl","08/06/2026 15:19:45","1","","","can you address the review comments on PR 270?"
-"U242","next-step-asks","20260816","unflagged","uuid:51e4de8e-c0b5-45b0-a4ba-8625cac649f8","52ff6008-8aa2-44c5-8673-6dab4b6e4b9d.jsonl","07/29/2026 21:01:29","1","","","a"
-"U243","next-step-asks","20260816","unflagged","uuid:54908065-244f-46bd-be58-5c0e88b24ad1","9e0cdcfe-035d-4a63-96bd-a2ba8e0ec003.jsonl","07/31/2026 14:35:10","1","","","@.claude/backlog/042-key-rebinds-as-first-class-rows.md start with this backlog item using superpowers"
-"U244","next-step-asks","20260816","unflagged","uuid:54b7b343-a379-4fdb-addb-3f58920968f8","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/11/2026 08:10:25","1","","","@docs/superpowers/plans/2026-08-10-development-process-plan-071.md start implementing this plan"
-"U245","next-step-asks","20260816","unflagged","uuid:55c2681a-65b4-4fc4-8e1c-aafa036142df","b9d979dd-0e95-4ebd-94c5-16c22df1118d.jsonl","07/25/2026 20:06:05","1","order","","are these review findings useful? No blocking findings. The trim is reviewable as-is; I left the branch local and unchanged.
+"U236","next-step-asks","20260816","unflagged","uuid:4c7c3fc2-a195-4458-bb6c-9db0bafa5e5c","303c598f-259b-44b4-bc4c-8bc6df638b8c.jsonl","07/24/2026 09:38:28","1","","not-a-case","I'm thinking of gitignoring all specs and plans in this git repo and only keep them locally for myself, do you think this is accepable or would other developers really need this history. It containers some sensitive info and I also would like to purge them form the history on github. What is your opinion?"
+"U237","next-step-asks","20260816","unflagged","uuid:4d4b8c5b-e2da-41bf-baeb-eee2f5da11f9","0940cbdb-5733-475c-9445-fcbe60cee446.jsonl","08/01/2026 08:48:36","1","","not-a-case","✻ Waiting for 1 background agent to finish can you make the color of these * messages like recap bold and yellow always?"
+"U238","next-step-asks","20260816","unflagged","uuid:4edf59d7-10f0-4f4f-913c-9c2196fa8572","52ff6008-8aa2-44c5-8673-6dab4b6e4b9d.jsonl","07/29/2026 21:00:50","1","","not-a-case","B"
+"U239","next-step-asks","20260816","unflagged","uuid:4f14792f-89ad-4016-b10b-5a9cf2c51fd5","4e1aaf78-a34e-497b-93a3-99111e8e04ec.jsonl","08/07/2026 12:15:35","1","","not-a-case","but why did you update the original plan, was what even necessary? what changes did you make?"
+"U240","next-step-asks","20260816","unflagged","uuid:4f88ed9e-1868-4879-8534-7e92f564aead","8759691c-da18-45d7-9a7f-08ae325ed815.jsonl","08/02/2026 15:13:06","1","","not-a-case","Writing the plan now. You said this, but didn't task any task"
+"U241","next-step-asks","20260816","unflagged","uuid:4f9ae966-4c33-4b15-9266-e19baeffcc20","438bdba1-b478-4a66-a6be-ad4c124f0fd5.jsonl","08/06/2026 15:19:45","1","","not-a-case","can you address the review comments on PR 270?"
+"U242","next-step-asks","20260816","unflagged","uuid:51e4de8e-c0b5-45b0-a4ba-8625cac649f8","52ff6008-8aa2-44c5-8673-6dab4b6e4b9d.jsonl","07/29/2026 21:01:29","1","","not-a-case","a"
+"U243","next-step-asks","20260816","unflagged","uuid:54908065-244f-46bd-be58-5c0e88b24ad1","9e0cdcfe-035d-4a63-96bd-a2ba8e0ec003.jsonl","07/31/2026 14:35:10","1","","not-a-case","@.claude/backlog/042-key-rebinds-as-first-class-rows.md start with this backlog item using superpowers"
+"U244","next-step-asks","20260816","unflagged","uuid:54b7b343-a379-4fdb-addb-3f58920968f8","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/11/2026 08:10:25","1","","not-a-case","@docs/superpowers/plans/2026-08-10-development-process-plan-071.md start implementing this plan"
+"U245","next-step-asks","20260816","unflagged","uuid:55c2681a-65b4-4fc4-8e1c-aafa036142df","b9d979dd-0e95-4ebd-94c5-16c22df1118d.jsonl","07/25/2026 20:06:05","1","order","not-a-case","are these review findings useful? No blocking findings. The trim is reviewable as-is; I left the branch local and unchanged.
 
   ## Where the work is
 
@@ -1380,8 +1380,8 @@ I recommend revising the backlog and dedicated spec before implementation, espec
 
   No credentials or personal data were included. The branch remains local, ready either for reviewer handoff or an explicitly authorized push and
   PR."
-"U246","next-step-asks","20260816","unflagged","uuid:583bc398-f16e-4a4e-8a7b-07a0d19f9a2c","b81010c6-08d8-47f5-b789-5d2f823e5769.jsonl","07/24/2026 12:05:04","1","","","1"
-"U247","next-step-asks","20260816","unflagged","uuid:5846c245-7782-4e06-bb5e-d122f5529df3","2669e4a2-2d95-40a0-831f-ac0342af616d.jsonl","08/07/2026 18:36:55","1","","","do both and give me the commands if you cannot do it yourself"
+"U246","next-step-asks","20260816","unflagged","uuid:583bc398-f16e-4a4e-8a7b-07a0d19f9a2c","b81010c6-08d8-47f5-b789-5d2f823e5769.jsonl","07/24/2026 12:05:04","1","","not-a-case","1"
+"U247","next-step-asks","20260816","unflagged","uuid:5846c245-7782-4e06-bb5e-d122f5529df3","2669e4a2-2d95-40a0-831f-ac0342af616d.jsonl","08/07/2026 18:36:55","1","","not-a-case","do both and give me the commands if you cannot do it yourself"
 "U20","next-step-asks","20260816","unflagged","uuid:5ab7216c-9699-449b-9f87-e673b90429a3","b8a497e5-a5a6-49db-9580-9a94f8063dba.jsonl","07/30/2026 15:58:19","1","","not-a-case"," ## Finding
 
   [P2] Do not treat every uncaught boot-time error as a download failure — /C:/Dev/segocom-github/AHKFlowApp/.claude/worktrees/blazor-boot-failure/
@@ -1422,9 +1422,9 @@ I recommend revising the backlog and dedicated spec before implementation, espec
   Verdict: NEEDS FIXES. After fixing this path, update both the plan and spec because their .catch()-only state machine no longer describes the
   shipped design."
 "U116","next-step-asks","20260816","unflagged","uuid:5b887d9c-e1a3-4d72-8798-2bf7a26668cd","27d4e07f-a02d-420a-913d-bc4af9e1c560.jsonl","07/24/2026 05:26:16","1","","not-a-case","push and create PR"
-"U248","next-step-asks","20260816","unflagged","uuid:5ba1c395-21bd-4829-80fb-640429ee06b2","2b642d01-fc89-4bd3-adca-6d1836e4d388.jsonl","07/27/2026 07:38:17","1","","","C"
-"U249","next-step-asks","20260816","unflagged","uuid:5cfc3385-bab6-461e-930a-37fdd4b8089e","fe734f6c-b7f8-4b6e-a011-54c5772b9b69.jsonl","08/03/2026 20:31:33","1","","","continue"
-"U250","next-step-asks","20260816","unflagged","uuid:5f51eb70-0979-42ec-941f-67c22acf2d51","a47c0f41-2e9b-4a1b-9be3-e864fec69ea2.jsonl","07/25/2026 11:39:38","1","","","has this review already been adressed? The design omits the frontend enum required by the numeric UI contract, so implementation as inventoried cannot expose the new operations
+"U248","next-step-asks","20260816","unflagged","uuid:5ba1c395-21bd-4829-80fb-640429ee06b2","2b642d01-fc89-4bd3-adca-6d1836e4d388.jsonl","07/27/2026 07:38:17","1","","not-a-case","C"
+"U249","next-step-asks","20260816","unflagged","uuid:5cfc3385-bab6-461e-930a-37fdd4b8089e","fe734f6c-b7f8-4b6e-a011-54c5772b9b69.jsonl","08/03/2026 20:31:33","1","","not-a-case","continue"
+"U250","next-step-asks","20260816","unflagged","uuid:5f51eb70-0979-42ec-941f-67c22acf2d51","a47c0f41-2e9b-4a1b-9be3-e864fec69ea2.jsonl","07/25/2026 11:39:38","1","","not-a-case","has this review already been adressed? The design omits the frontend enum required by the numeric UI contract, so implementation as inventoried cannot expose the new operations
   correctly. It also overgeneralizes Win-key Send failures, contains an odd-width positioning defect, and leaves the maintained emission
   documentation stale.
 
@@ -1459,11 +1459,11 @@ I recommend revising the backlog and dedicated spec before implementation, espec
 if not: Address all comments in the pasted local review: for each comment, push back if the current code already handles it, otherwise implement the valid fix; keep changes minimal and consistent with existing style, do not assume any PR/GitHub threads/commits/remotes, and summarize accepted fixes, pushbacks, assumptions, and files changed."
 "U22","next-step-asks","20260816","unflagged","uuid:61a17faa-064f-4cbd-94af-a2c1a8c83231","a9ff7000-54fc-4479-8e59-bad3790e661f.jsonl","08/05/2026 19:59:41","1","","not-a-case","A"
 "U119","next-step-asks","20260816","unflagged","uuid:61ec6e2d-3d33-48c0-a499-d109ecae67d9","43c49baf-9879-4532-9fb5-a538c9b1d5d0.jsonl","07/29/2026 20:04:30","1","","not-a-case","try again"
-"U251","next-step-asks","20260816","unflagged","uuid:63cb1342-b40d-4e47-ac24-3ad48abe1f6d","d081d03c-5e2b-4666-8aee-7e47920e8117.jsonl","08/05/2026 18:01:20","1","","","run the gate, then push and open the PR"
+"U251","next-step-asks","20260816","unflagged","uuid:63cb1342-b40d-4e47-ac24-3ad48abe1f6d","d081d03c-5e2b-4666-8aee-7e47920e8117.jsonl","08/05/2026 18:01:20","1","","not-a-case","run the gate, then push and open the PR"
 "U120","next-step-asks","20260816","unflagged","uuid:645a3791-c2ea-423a-898d-f42daf87bbba","b454daa1-354c-4a32-8f4b-96229ab16f13.jsonl","08/04/2026 15:09:10","1","","not-a-case","i tried to rebase this on main after a merge on main, can you resolve the conflicts?"
-"U252","next-step-asks","20260816","unflagged","uuid:6800f059-ee91-4610-9100-f7e1e6d774fd","af18a02f-2b5d-4a9d-8976-c0962967a104.jsonl","08/05/2026 19:48:33","1","","","@docs/superpowers/plans/2026-08-05-profiles-page-download-plan.md implement this plan"
-"U253","next-step-asks","20260816","unflagged","uuid:68f060b8-ad25-49a0-96e0-ac79fe80d560","146c148c-90f7-4a50-8a0d-7635bb2360d3.jsonl","08/08/2026 19:54:29","1","","","ran and verified it"
-"U254","next-step-asks","20260816","unflagged","uuid:6a317122-0bdb-4f06-9f5d-2ed6aebf8d1d","b1985d7c-4bc9-4bb5-960d-e3387c24ff18.jsonl","08/04/2026 17:55:53","1","","","where can I see the output of earlier runs?"
+"U252","next-step-asks","20260816","unflagged","uuid:6800f059-ee91-4610-9100-f7e1e6d774fd","af18a02f-2b5d-4a9d-8976-c0962967a104.jsonl","08/05/2026 19:48:33","1","","not-a-case","@docs/superpowers/plans/2026-08-05-profiles-page-download-plan.md implement this plan"
+"U253","next-step-asks","20260816","unflagged","uuid:68f060b8-ad25-49a0-96e0-ac79fe80d560","146c148c-90f7-4a50-8a0d-7635bb2360d3.jsonl","08/08/2026 19:54:29","1","","not-a-case","ran and verified it"
+"U254","next-step-asks","20260816","unflagged","uuid:6a317122-0bdb-4f06-9f5d-2ed6aebf8d1d","b1985d7c-4bc9-4bb5-960d-e3387c24ff18.jsonl","08/04/2026 17:55:53","1","","not-a-case","where can I see the output of earlier runs?"
 "U130","next-step-asks","20260816","unflagged","uuid:6c76c96b-e59c-4365-9271-0ecd1905ec9a","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/12/2026 07:00:09","1","next; options","not-a-case","Findings
 1. High: Cleanup’s leftover scan always finds false candidates. workflow.md:564-567 treats any worktree on a branch merged into main as unfinished Cleanup. That includes the main worktree itself and unstarted branches created from main. The existing cleanup script explicitly excludes both cases and requires proof that the branch’s own work merged at scripts/cleanup-merged-worktrees.ps1:51-69 and :179-191. On this checkout, git branch --merged main currently returns main, so the documented check is already permanently positive.
 2. High: The Pickup crash window remains open. Pickup advances the local Stage before the second push at workflow.md:271-279. The new OID check runs only when resuming Pickup at :281-283. However, resume follows the recorded local Stage at :78-80, and the field wins when records disagree at :633-635. After the named crash, the item says Design, Plan, or Execute, so the next session never re-enters Pickup to run the check.
@@ -1477,8 +1477,8 @@ if not: Address all comments in the pasted local review: for each comment, push 
 6. Medium: Backlog 082 does not establish its claimed causal sequence. It says a failed build copy continues into tests at backlog/082-gate-can-measure-stale-assemblies-when-build-servers-hold-output-files.md:13-19. The coverage build already disables build servers and shared compilation, then stops on a nonzero build exit at scripts/run-coverage.ps1:49-53. A nonzero test exit also stops before report generation at :63-77. The evidence proves a lock and a later successful run, but not which phase held the lock or that stale code executed. The false-green claim therefore remains a hypothesis.
 7. Medium: Backlog 082’s acceptance criteria do not cover its overlapping-run trigger. Concurrent invocations share and delete TestResults, CoverageReport, and normal project outputs at scripts/run-coverage.ps1:24-26, :43-52. A timestamp newer than one run’s start, proposed at backlog/082-gate-can-measure-stale-assemblies-when-build-servers-hold-output-files.md:56-57, may have been produced by the other run. Build-server shutdown also does not stop an active test host. The criterion needs run isolation or serialization and assembly identity, not timestamps.
 No accepted deliberate points were re-reported. No files were changed. git diff --check bb4e93dd..HEAD and the private-plan commit check both passed."
-"U255","next-step-asks","20260816","unflagged","uuid:6fda8c4a-4132-41e8-9e4d-ec49d2e78f88","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/12/2026 04:42:41","1","","","any notes for the reviewer? include the file locations, includies worktrees"
-"U256","next-step-asks","20260816","unflagged","uuid:703b6792-118b-45da-a65f-f45498851a55","ffb7beaf-f54a-40db-8a9d-5668be866de1.jsonl","07/25/2026 12:07:21","1","next; options","","Status:
+"U255","next-step-asks","20260816","unflagged","uuid:6fda8c4a-4132-41e8-9e4d-ec49d2e78f88","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/12/2026 04:42:41","1","","not-a-case","any notes for the reviewer? include the file locations, includies worktrees"
+"U256","next-step-asks","20260816","unflagged","uuid:703b6792-118b-45da-a65f-f45498851a55","ffb7beaf-f54a-40db-8a9d-5668be866de1.jsonl","07/25/2026 12:07:21","1","next; options","not-a-case","Status:
 
 - Spec: yes — docs/superpowers/specs/2026-07-24-window-snap-and-win-send-guardrail-design.md, review-addressed (eeb92fc).
 - Plan: no — plans folder has 2026-07-24-hotkey-sample-examples-plan.md only; no snap plan.
@@ -1494,8 +1494,8 @@ Options for the drift:
 
 Which? Otherwise say the word and I write the snap plan + implement it on a new branch. can you create a separate worktree and branch for the new spec?"
 "U135","next-step-asks","20260816","unflagged","uuid:71302730-0fae-431f-85d3-a47602ad4669","1b5c4f40-e5cf-4850-816f-e7d1b5acfcde.jsonl","08/01/2026 15:13:56","1","","not-a-case","create a worktree for this change, but expect it to have various small changes like this, I always want to have a worktree like this until there are more items, then create a PR. can you reword this for me for my development process docs? general worktree name"
-"U257","next-step-asks","20260816","unflagged","uuid:71381317-8924-48b4-adc4-1f6f92fc2a78","c6b097c6-e220-4489-8c46-8617d77eba3a.jsonl","08/02/2026 15:11:45","1","","","3. 038 — feature, known-shortcut flag on hotkeys list. Dependency (Stage 1 catalog) confirmed merged. Small UI addition, high value (visibility gap today). what is the state of this backlog item?"
-"U258","next-step-asks","20260816","unflagged","uuid:71dfe222-977d-4bd3-b2a2-5a1c5d567102","903d7856-380a-46ac-8f01-ecbf866d897e.jsonl","07/31/2026 19:49:35","1","","","Verdict: NEEDS FIXES. The main design is implemented correctly, but one user-visible edge case and several promised regression guards remain.
+"U257","next-step-asks","20260816","unflagged","uuid:71381317-8924-48b4-adc4-1f6f92fc2a78","c6b097c6-e220-4489-8c46-8617d77eba3a.jsonl","08/02/2026 15:11:45","1","","not-a-case","3. 038 — feature, known-shortcut flag on hotkeys list. Dependency (Stage 1 catalog) confirmed merged. Small UI addition, high value (visibility gap today). what is the state of this backlog item?"
+"U258","next-step-asks","20260816","unflagged","uuid:71dfe222-977d-4bd3-b2a2-5a1c5d567102","903d7856-380a-46ac-8f01-ecbf866d897e.jsonl","07/31/2026 19:49:35","1","","not-a-case","Verdict: NEEDS FIXES. The main design is implemented correctly, but one user-visible edge case and several promised regression guards remain.
 
   ### Findings
 
@@ -1548,10 +1548,10 @@ Which? Otherwise say the word and I write the snap plan + implement it on a new 
   ────────────────  ────────  ──────────────────────────────
    Packages          PASS      No vulnerable packages
   refresh two linked-worktree status entries after line-ending normalization, so git status may temporarily show them as modified despite no content diff."
-"U259","next-step-asks","20260816","unflagged","uuid:72ac2f16-dafb-4f05-a01f-d4b657fc9288","2b642d01-fc89-4bd3-adca-6d1836e4d388.jsonl","07/27/2026 07:53:10","1","","","B"
-"U260","next-step-asks","20260816","unflagged","uuid:72e9105d-90e8-4961-b965-8abfaace0eb3","a1fc5113-bdf4-4f5d-9326-0cf9a0188fd0.jsonl","07/23/2026 13:33:52","1","","","go"
-"U261","next-step-asks","20260816","unflagged","uuid:75fd95ae-a69d-4450-b4c3-2291cac02b97","4e1aaf78-a34e-497b-93a3-99111e8e04ec.jsonl","08/07/2026 12:14:23","1","","","create a memory that when I ask to implement a plan, then I really mean implement a plan, even when I'm in plan mode, just ask me to switch"
-"U262","next-step-asks","20260816","unflagged","uuid:7713b23c-89da-4a4f-b979-7f6201f5641b","d35ff527-d574-4b03-8939-4877138def3f.jsonl","07/25/2026 13:30:50","1","","","## Findings
+"U259","next-step-asks","20260816","unflagged","uuid:72ac2f16-dafb-4f05-a01f-d4b657fc9288","2b642d01-fc89-4bd3-adca-6d1836e4d388.jsonl","07/27/2026 07:53:10","1","","not-a-case","B"
+"U260","next-step-asks","20260816","unflagged","uuid:72e9105d-90e8-4961-b965-8abfaace0eb3","a1fc5113-bdf4-4f5d-9326-0cf9a0188fd0.jsonl","07/23/2026 13:33:52","1","","not-a-case","go"
+"U261","next-step-asks","20260816","unflagged","uuid:75fd95ae-a69d-4450-b4c3-2291cac02b97","4e1aaf78-a34e-497b-93a3-99111e8e04ec.jsonl","08/07/2026 12:14:23","1","","not-a-case","create a memory that when I ask to implement a plan, then I really mean implement a plan, even when I'm in plan mode, just ask me to switch"
+"U262","next-step-asks","20260816","unflagged","uuid:7713b23c-89da-4a4f-b979-7f6201f5641b","d35ff527-d574-4b03-8939-4877138def3f.jsonl","07/25/2026 13:30:50","1","","not-a-case","## Findings
 
   1. High — Clear-filters test can pass without clearing or reloading.
      The assertion at docs/superpowers/plans/2026-07-25-hotkey-action-filter-plan.md:342 matches the page’s initial unfiltered ListAsync call.
@@ -1604,13 +1604,13 @@ Or push main directly if you'd rather skip the PR for a docs-only change:
 
 git push origin main this is a but confusing, I think the body is missing the ending quote"
 "U141","next-step-asks","20260816","unflagged","uuid:7a847cde-3b2c-4dfc-8a51-c6dc55165b82","6d694783-4014-413e-a939-16c87c109976.jsonl","07/27/2026 09:37:42","1","","not-a-case","do it, ignore the sessions script"
-"U263","next-step-asks","20260816","unflagged","uuid:7d6c8309-85a7-4ad4-9cd0-07a000b3b576","e8d4b31a-ab38-4bc1-98e7-13ef77ae13f2.jsonl","07/28/2026 13:30:21","1","","","done this: git switch -c chore/plans-picker-visibility
+"U263","next-step-asks","20260816","unflagged","uuid:7d6c8309-85a7-4ad4-9cd0-07a000b3b576","e8d4b31a-ab38-4bc1-98e7-13ef77ae13f2.jsonl","07/28/2026 13:30:21","1","","not-a-case","done this: git switch -c chore/plans-picker-visibility
 git add .ignore .claude/settings.json
 git commit -m ""chore: show private plans in @-file picker
 
 respectGitignore off; .ignore now carries build-output denies"""
-"U264","next-step-asks","20260816","unflagged","uuid:7da69a06-b992-4596-8782-f96642cb0e73","926137da-6604-452e-b655-0de9bc0f3b6a.jsonl","08/03/2026 22:02:31","1","","","push"
-"U265","next-step-asks","20260816","unflagged","uuid:80702d26-d199-4e7b-91a9-32cb59dbc490","a71ad773-a30c-4020-b316-ebaf96b4f2e7.jsonl","08/03/2026 17:24:10","1","","","## Verdict
+"U264","next-step-asks","20260816","unflagged","uuid:7da69a06-b992-4596-8782-f96642cb0e73","926137da-6604-452e-b655-0de9bc0f3b6a.jsonl","08/03/2026 22:02:31","1","","not-a-case","push"
+"U265","next-step-asks","20260816","unflagged","uuid:80702d26-d199-4e7b-91a9-32cb59dbc490","a71ad773-a30c-4020-b316-ebaf96b4f2e7.jsonl","08/03/2026 17:24:10","1","","not-a-case","## Verdict
 
   Not ready for Task 1. The direction is good, but three execution blockers remain.
 
@@ -1705,7 +1705,7 @@ respectGitignore off; .ignore now carries build-output denies"""
 
   The cited branch, base, private commit, stale context-field claim, three validator call sites, UI field-error binding, seed body, and CLI scope all checked out. I made no edits. The private plans
   repo remains clean; the worktree currently has an untracked .claude/settings.local.json."
-"U266","next-step-asks","20260816","unflagged","uuid:8103aa98-3a31-4f28-882e-2a42fde9430f","c1823b89-3c5e-433e-bba6-c894cc1632cc.jsonl","08/04/2026 08:48:54","1","suggest","","The link and plugin projection are correct, but I would not approve the skills yet. Four content and metadata issues remain.
+"U266","next-step-asks","20260816","unflagged","uuid:8103aa98-3a31-4f28-882e-2a42fde9430f","c1823b89-3c5e-433e-bba6-c894cc1632cc.jsonl","08/04/2026 08:48:54","1","suggest","not-a-case","The link and plugin projection are correct, but I would not approve the skills yet. Four content and metadata issues remain.
 
   ## Findings
 
@@ -1762,13 +1762,13 @@ respectGitignore off; .ignore now carries build-output denies"""
   the setup script from the main checkout and restart Codex.
 
   No files were changed during this review. address these review findings"
-"U267","next-step-asks","20260816","unflagged","uuid:81b8eafe-ccb7-41d8-ad9a-fad7e13802fd","7ee36a1c-9009-4ba7-bfc8-dde4b3678ae0.jsonl","07/30/2026 13:31:42","1","","","push and open the PR"
-"U268","next-step-asks","20260816","unflagged","uuid:8203035c-21de-4013-b19f-55bc6225ad68","5f5efe83-8ea9-4d93-a191-e1b6d2404565.jsonl","07/23/2026 17:58:40","1","","","would you recommend changing it for long implementation sessions?"
-"U269","next-step-asks","20260816","unflagged","uuid:821ea272-2bbf-4084-8570-97550533a99f","2a320f20-71ed-41af-830a-8e8ee4605a5d.jsonl","08/11/2026 20:26:00","1","","","@docs/superpowers/plans/2026-08-11-plans-repo-guard-exception-plan.md implement the plan"
-"U270","next-step-asks","20260816","unflagged","uuid:85e570e0-975d-4eec-9db4-af3ae9a4f25f","6dc81d7b-90bc-4bfe-8037-85e6ec21080d.jsonl","07/25/2026 13:33:18","1","","","implement the plan @docs/superpowers/plans/2026-07-25-window-snap-ops-plan.md"
+"U267","next-step-asks","20260816","unflagged","uuid:81b8eafe-ccb7-41d8-ad9a-fad7e13802fd","7ee36a1c-9009-4ba7-bfc8-dde4b3678ae0.jsonl","07/30/2026 13:31:42","1","","not-a-case","push and open the PR"
+"U268","next-step-asks","20260816","unflagged","uuid:8203035c-21de-4013-b19f-55bc6225ad68","5f5efe83-8ea9-4d93-a191-e1b6d2404565.jsonl","07/23/2026 17:58:40","1","","not-a-case","would you recommend changing it for long implementation sessions?"
+"U269","next-step-asks","20260816","unflagged","uuid:821ea272-2bbf-4084-8570-97550533a99f","2a320f20-71ed-41af-830a-8e8ee4605a5d.jsonl","08/11/2026 20:26:00","1","","not-a-case","@docs/superpowers/plans/2026-08-11-plans-repo-guard-exception-plan.md implement the plan"
+"U270","next-step-asks","20260816","unflagged","uuid:85e570e0-975d-4eec-9db4-af3ae9a4f25f","6dc81d7b-90bc-4bfe-8037-85e6ec21080d.jsonl","07/25/2026 13:33:18","1","","not-a-case","implement the plan @docs/superpowers/plans/2026-07-25-window-snap-ops-plan.md"
 "U32","next-step-asks","20260816","unflagged","uuid:86543261-cba0-4f6a-8ee4-c17b6ff84f86","0940cbdb-5733-475c-9445-fcbe60cee446.jsonl","08/01/2026 08:53:07","1","","not-a-case","I did not mean stop stop the bg task, pressed ctrl+c, thinking it would clear my text in the terminal like this one, can pick the task?"
-"U271","next-step-asks","20260816","unflagged","uuid:86bc8bd7-d685-4993-9548-ca2eb5794c4a","d9d41c23-734d-44cc-819c-4fd0750c64ae.jsonl","08/11/2026 14:29:01","1","","","can you join two separate windows terminal on the taskbar together again, how?"
-"U272","next-step-asks","20260816","unflagged","uuid:87003713-6d99-472f-b1ca-792ec20d11b8","8e27dcae-7f13-4d22-af81-6cc48a51d7d5.jsonl","08/02/2026 07:56:00","1","order","","The plan’s architecture is sound, but I would not start implementation yet. Make these changes first.
+"U271","next-step-asks","20260816","unflagged","uuid:86bc8bd7-d685-4993-9548-ca2eb5794c4a","d9d41c23-734d-44cc-819c-4fd0750c64ae.jsonl","08/11/2026 14:29:01","1","","not-a-case","can you join two separate windows terminal on the taskbar together again, how?"
+"U272","next-step-asks","20260816","unflagged","uuid:87003713-6d99-472f-b1ca-792ec20d11b8","8e27dcae-7f13-4d22-af81-6cc48a51d7d5.jsonl","08/02/2026 07:56:00","1","order","not-a-case","The plan’s architecture is sound, but I would not start implementation yet. Make these changes first.
 
   ## Required changes
 
@@ -1846,8 +1846,8 @@ respectGitignore off; .ignore now carries build-output denies"""
 
   I made no file changes and ran no build or test commands. The target worktree exists at the stated base commit; it only contains the pre-existing
   untracked keep.txt."
-"U273","next-step-asks","20260816","unflagged","uuid:87213d57-7f9d-48cb-8bea-cb6b2bcbfddb","be3b76f5-32d4-4b4c-8ae8-faeb2d15c9a5.jsonl","08/12/2026 11:58:08","1","what do","","Both are holes in main today, not just this branch — worth knowing they outlive this PR. what does this mean?"
-"U274","next-step-asks","20260816","unflagged","uuid:87655e8b-851e-4659-95f8-97944d6c2b5b","a29c484f-7aa9-4e39-9ec2-ec1f72e442f8.jsonl","08/04/2026 07:18:12","1","","","The plan is not ready to implement yet. I found two blocking issues and one smaller correction.
+"U273","next-step-asks","20260816","unflagged","uuid:87213d57-7f9d-48cb-8bea-cb6b2bcbfddb","be3b76f5-32d4-4b4c-8ae8-faeb2d15c9a5.jsonl","08/12/2026 11:58:08","1","what do","not-a-case","Both are holes in main today, not just this branch — worth knowing they outlive this PR. what does this mean?"
+"U274","next-step-asks","20260816","unflagged","uuid:87655e8b-851e-4659-95f8-97944d6c2b5b","a29c484f-7aa9-4e39-9ec2-ec1f72e442f8.jsonl","08/04/2026 07:18:12","1","","not-a-case","The plan is not ready to implement yet. I found two blocking issues and one smaller correction.
 
   ## Findings
 
@@ -1882,12 +1882,12 @@ respectGitignore off; .ignore now carries build-output denies"""
 
   Otherwise, the three bUnit snippets, helper names, selectors, mutation sites, and double-clear cleanup all match the live branch. The private-doc
   commit f525dcb passes git diff --check. No files were changed."
-"U275","next-step-asks","20260816","unflagged","uuid:89cd7da5-060c-41a6-a5c0-f6bd97969b4b","0ece391f-6a12-4f81-a553-17ce9c3e018c.jsonl","08/03/2026 15:34:13","1","","","A"
-"U276","next-step-asks","20260816","unflagged","uuid:8ac272bf-76ba-4939-b029-42a0ee0e574e","0abdb818-0b0d-4e60-b3c7-a0e9beaf0afb.jsonl","08/01/2026 06:30:02","1","pick up","","can you pick up @.claude/backlog/046-e2e-publish-serves-stale-build.md, should this be planned first, or coded immediately"
-"U277","next-step-asks","20260816","unflagged","uuid:8ae7a5f7-7d47-4777-9812-043da27dc02a","647065f6-a7b2-4e7a-87a9-1b20214d9568.jsonl","07/28/2026 19:26:43","1","","","FIND A BUG IN THIS CODEBASE"
-"U278","next-step-asks","20260816","unflagged","uuid:8b2f0daa-b464-4f63-bc0a-2f7708e8bdb0","90adb6e3-f83a-4e8f-8c58-5a8c6d48fa74.jsonl","07/30/2026 15:09:07","1","","","Still open from last turn: yours has no path for a finding you don't understand. Superpowers stops and asks; your four verdicts all assume comprehension. Want a fifth verdict (UNCLEAR — halt, ask, don't fix neighbours meanwhile)? Say the word. Do this"
-"U279","next-step-asks","20260816","unflagged","uuid:8c77062c-6b0e-4880-bde4-a0f2a2a24d2a","62f9fdcf-c70b-4467-b84c-e35cf83c7ca7.jsonl","08/02/2026 12:42:49","1","","","can you add this as a single backlog item on the housekeeping worktree and commit"
-"U280","next-step-asks","20260816","unflagged","uuid:8c8c2a5b-620e-465e-8156-87b6625b8c94","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/11/2026 19:41:01","1","next","","Findings
+"U275","next-step-asks","20260816","unflagged","uuid:89cd7da5-060c-41a6-a5c0-f6bd97969b4b","0ece391f-6a12-4f81-a553-17ce9c3e018c.jsonl","08/03/2026 15:34:13","1","","not-a-case","A"
+"U276","next-step-asks","20260816","unflagged","uuid:8ac272bf-76ba-4939-b029-42a0ee0e574e","0abdb818-0b0d-4e60-b3c7-a0e9beaf0afb.jsonl","08/01/2026 06:30:02","1","pick up","missed","can you pick up @.claude/backlog/046-e2e-publish-serves-stale-build.md, should this be planned first, or coded immediately"
+"U277","next-step-asks","20260816","unflagged","uuid:8ae7a5f7-7d47-4777-9812-043da27dc02a","647065f6-a7b2-4e7a-87a9-1b20214d9568.jsonl","07/28/2026 19:26:43","1","","not-a-case","FIND A BUG IN THIS CODEBASE"
+"U278","next-step-asks","20260816","unflagged","uuid:8b2f0daa-b464-4f63-bc0a-2f7708e8bdb0","90adb6e3-f83a-4e8f-8c58-5a8c6d48fa74.jsonl","07/30/2026 15:09:07","1","","not-a-case","Still open from last turn: yours has no path for a finding you don't understand. Superpowers stops and asks; your four verdicts all assume comprehension. Want a fifth verdict (UNCLEAR — halt, ask, don't fix neighbours meanwhile)? Say the word. Do this"
+"U279","next-step-asks","20260816","unflagged","uuid:8c77062c-6b0e-4880-bde4-a0f2a2a24d2a","62f9fdcf-c70b-4467-b84c-e35cf83c7ca7.jsonl","08/02/2026 12:42:49","1","","not-a-case","can you add this as a single backlog item on the housekeeping worktree and commit"
+"U280","next-step-asks","20260816","unflagged","uuid:8c8c2a5b-620e-465e-8156-87b6625b8c94","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/11/2026 19:41:01","1","next","not-a-case","Findings
 1. High: Intake contaminates later branches with unrelated items. docs/development/workflow.md:210-226 requires committing each new item directly on local main. New worktrees default to HEAD in scripts/worktree-git.common.ps1:40-64. Until earlier items merge, every later worktree inherits those unrelated Intake commits.
 2. High: The private plan remains a conflicting normative source. docs/superpowers/plans/2026-08-10-development-process-plan-071.md:26-28 declares Appendix A normative. It still says Ship does not push at :664-673, omits Intake’s summary at :768-778, stamps Pickup before PR creation at :780-796, and permits tracked items to become trivial at :806-822. These contradict the corrected canon.
 3. High: Verify failure cannot recover a housekeeping round. Rounds have no PLAN-PROGRESS.md under docs/development/workflow.md:325, but Verify failure unconditionally appends recovery evidence to that file at :376. A round that fails verification has no valid failure edge.
@@ -1906,9 +1906,9 @@ Independent Checks
 - Difficulty values for 031, 042, and 070 are reasonable. No finding.
 - None of the accepted items in note 4 were re-reported.
 - Reviewed public head 710c0553; worktree remained clean. The later private-repository commit 6a3b449 concerns backlog 076 and did not change the reviewed 071 plan or spec. address review findings"
-"U281","next-step-asks","20260816","unflagged","uuid:8fd7a625-49e3-478c-a555-5fc3aa0574e7","0940cbdb-5733-475c-9445-fcbe60cee446.jsonl","08/01/2026 07:37:57","1","next","","committed, whats next"
+"U281","next-step-asks","20260816","unflagged","uuid:8fd7a625-49e3-478c-a555-5fc3aa0574e7","0940cbdb-5733-475c-9445-fcbe60cee446.jsonl","08/01/2026 07:37:57","1","next","missed","committed, whats next"
 "U154","next-step-asks","20260816","unflagged","uuid:92bd589b-409c-4537-8965-680ce00aff3f","f0a572be-0391-4439-b177-3b91cf56332a.jsonl","08/12/2026 13:15:25","1","","not-a-case","logout"
-"U282","next-step-asks","20260816","unflagged","uuid:92db062d-335d-46d1-8ad0-c5884be5bd25","421c142d-e0d3-4e84-a18d-8ea8c9282e3d.jsonl","08/10/2026 10:22:46","1","","","1. Required checks unchanged — still only build-test and powershell-suites. The script adding bicep-lint and codex-skills-hash-parity has not been run. I exectuted this:  btase@BARTM16  C:\Dev\segocom-github\AHKFlowApp  main ≡                                             12:15:13 
+"U282","next-step-asks","20260816","unflagged","uuid:92db062d-335d-46d1-8ad0-c5884be5bd25","421c142d-e0d3-4e84-a18d-8ea8c9282e3d.jsonl","08/10/2026 10:22:46","1","","not-a-case","1. Required checks unchanged — still only build-test and powershell-suites. The script adding bicep-lint and codex-skills-hash-parity has not been run. I exectuted this:  btase@BARTM16  C:\Dev\segocom-github\AHKFlowApp  main ≡                                             12:15:13 
  pwsh  gh api repos/s205109/AHKFlowApp/branches/main/protection/required_status_checks `
 >     --jq '{strict: .strict, checks: .checks}'
 {
@@ -1979,9 +1979,9 @@ build-test  app_id=15368
 powershell-suites  app_id=15368
 bicep-lint  app_id=15368
 codex-skills-hash-parity  app_id=15368"
-"U283","next-step-asks","20260816","unflagged","uuid:94359e74-953c-4a17-9b2e-ff6f0e127a73","d4f12a4b-fa1c-43a7-aaf3-be819b426669.jsonl","08/01/2026 15:21:31","1","","","pick @.claude/backlog/048-worktree-setup-rewrites-lose-json-comments.md using superpowers"
-"U284","next-step-asks","20260816","unflagged","uuid:9520c671-005f-4b2a-b5cd-6b339d6c08f4","27d4e07f-a02d-420a-913d-bc4af9e1c560.jsonl","07/24/2026 02:20:34","1","","","mprovement opportunities (combo-formatting centralization, action-field descriptor unification, IsInEnum on the nullable ActionKind filter, a11y labels on icon-only controls) — these are optional refactors/backlog items, not defects in the touched surface. Flagging for backlog rather than bundling into this fix, per ""keep changes minimal."" where did you flag this?"
-"U285","next-step-asks","20260816","unflagged","uuid:953c5763-265c-4792-a55e-730457931bcd","61f4b3ba-af8e-46eb-acde-43759212326d.jsonl","07/22/2026 13:29:31","1","","","continue"
+"U283","next-step-asks","20260816","unflagged","uuid:94359e74-953c-4a17-9b2e-ff6f0e127a73","d4f12a4b-fa1c-43a7-aaf3-be819b426669.jsonl","08/01/2026 15:21:31","1","","not-a-case","pick @.claude/backlog/048-worktree-setup-rewrites-lose-json-comments.md using superpowers"
+"U284","next-step-asks","20260816","unflagged","uuid:9520c671-005f-4b2a-b5cd-6b339d6c08f4","27d4e07f-a02d-420a-913d-bc4af9e1c560.jsonl","07/24/2026 02:20:34","1","","not-a-case","mprovement opportunities (combo-formatting centralization, action-field descriptor unification, IsInEnum on the nullable ActionKind filter, a11y labels on icon-only controls) — these are optional refactors/backlog items, not defects in the touched surface. Flagging for backlog rather than bundling into this fix, per ""keep changes minimal."" where did you flag this?"
+"U285","next-step-asks","20260816","unflagged","uuid:953c5763-265c-4792-a55e-730457931bcd","61f4b3ba-af8e-46eb-acde-43759212326d.jsonl","07/22/2026 13:29:31","1","","not-a-case","continue"
 "U155","next-step-asks","20260816","unflagged","uuid:95888bcc-0a82-4116-9ef6-d552b41015df","62f9fdcf-c70b-4467-b84c-e35cf83c7ca7.jsonl","08/02/2026 08:26:19","1","order","not-a-case","The plan’s architecture is sound, but I would not start implementation yet. Make these changes first.
 
   ## Required changes
@@ -2060,9 +2060,9 @@ codex-skills-hash-parity  app_id=15368"
 
   I made no file changes and ran no build or test commands. The target worktree exists at the stated base commit; it only contains the pre-existing
   untracked keep.txt."
-"U286","next-step-asks","20260816","unflagged","uuid:95cfcde7-eef4-4460-bb8a-a67267e66088","a1fc5113-bdf4-4f5d-9326-0cf9a0188fd0.jsonl","07/23/2026 13:17:35","1","","","do it"
-"U287","next-step-asks","20260816","unflagged","uuid:95edf94f-cdc1-4fc2-a33c-2362d2ff4c61","60056b41-a274-46af-b72d-abed8c414c87.jsonl","08/08/2026 13:28:28","1","","","review PR 280, do some online research"
-"U288","next-step-asks","20260816","unflagged","uuid:9747d77d-40a2-45fb-9fa1-df55d9a2f884","9d279f6d-e6e5-4f20-99e8-8dd13c434edb.jsonl","07/26/2026 19:34:22","1","","","merged, can you do the memory edit only?"
+"U286","next-step-asks","20260816","unflagged","uuid:95cfcde7-eef4-4460-bb8a-a67267e66088","a1fc5113-bdf4-4f5d-9326-0cf9a0188fd0.jsonl","07/23/2026 13:17:35","1","","not-a-case","do it"
+"U287","next-step-asks","20260816","unflagged","uuid:95edf94f-cdc1-4fc2-a33c-2362d2ff4c61","60056b41-a274-46af-b72d-abed8c414c87.jsonl","08/08/2026 13:28:28","1","","not-a-case","review PR 280, do some online research"
+"U288","next-step-asks","20260816","unflagged","uuid:9747d77d-40a2-45fb-9fa1-df55d9a2f884","9d279f6d-e6e5-4f20-99e8-8dd13c434edb.jsonl","07/26/2026 19:34:22","1","","not-a-case","merged, can you do the memory edit only?"
 "U156","next-step-asks","20260816","unflagged","uuid:97f953fe-b02d-4384-bbf9-3c90e8480f47","9b2de477-2a33-4a72-b532-82b722f78981.jsonl","07/27/2026 09:48:49","1","","not-a-case","Verdict: NEEDS FIXES. PR 221 is coherent overall, but two issues should block merging.
 
   ### Findings
@@ -2107,13 +2107,13 @@ codex-skills-hash-parity  app_id=15368"
   - Issue #220 exists and matches the deferred template-drift scope.
 
   No files were changed during this review."
-"U289","next-step-asks","20260816","unflagged","uuid:9a16d3e1-3eab-4984-98ab-647d9b38d3fb","a2ca5df8-cdf8-461c-8361-5a9df1136224.jsonl","07/29/2026 10:18:59","1","","","// settings.json
+"U289","next-step-asks","20260816","unflagged","uuid:9a16d3e1-3eab-4984-98ab-647d9b38d3fb","a2ca5df8-cdf8-461c-8361-5a9df1136224.jsonl","07/29/2026 10:18:59","1","","not-a-case","// settings.json
 {
   ""respondToBashCommands"": false
 }, can you add this setting to my global user settings?"
-"U290","next-step-asks","20260816","unflagged","uuid:9a3962af-6f5e-4ead-90a9-6f54a5255b8f","7ee36a1c-9009-4ba7-bfc8-dde4b3678ae0.jsonl","07/30/2026 13:27:07","1","","","Option A"
-"U291","next-step-asks","20260816","unflagged","uuid:9a877abd-a908-452a-bc8c-35aaff4cede5","acec1697-a2c2-4e91-995a-776b8cb2e6d5.jsonl","08/06/2026 14:34:53","1","","","commit"
-"U292","next-step-asks","20260816","unflagged","uuid:9cd84061-1b72-49c6-8916-176c1f68432c","a5bb315e-942f-4b05-b5a8-fc7ea0f72a95.jsonl","08/11/2026 18:16:35","1","","","Findings
+"U290","next-step-asks","20260816","unflagged","uuid:9a3962af-6f5e-4ead-90a9-6f54a5255b8f","7ee36a1c-9009-4ba7-bfc8-dde4b3678ae0.jsonl","07/30/2026 13:27:07","1","","not-a-case","Option A"
+"U291","next-step-asks","20260816","unflagged","uuid:9a877abd-a908-452a-bc8c-35aaff4cede5","acec1697-a2c2-4e91-995a-776b8cb2e6d5.jsonl","08/06/2026 14:34:53","1","","not-a-case","commit"
+"U292","next-step-asks","20260816","unflagged","uuid:9cd84061-1b72-49c6-8916-176c1f68432c","a5bb315e-942f-4b05-b5a8-fc7ea0f72a95.jsonl","08/11/2026 18:16:35","1","","not-a-case","Findings
 1. High: Allowing moves creates a main-checkout deletion bypass.  
 The design allows moves into the plans repository and says only Test-AgentWriteTargetAllowed must change (backlog/...:57-59,91-95). However, mv and Move-Item expose only their destination to the guard (agent-worktree-guard.common.ps1:1276,1287,1430-1436,1457-1460).
 This command would therefore be allowed after the proposed predicate change:
@@ -2141,12 +2141,12 @@ Identity probe    PARTIAL
 Approve spec    PUSHBACK
 Both repositories are clean. The revisions are already committed as 2d30f47a and cab4b94. git diff --check HEAD^..HEAD passed in both repositories. I made no changes and did not create another commit. address there findings and then set the status to approved"
 "U163","next-step-asks","20260816","unflagged","uuid:a161af14-f268-496e-b5f9-1828b8d5eee5","8e27dcae-7f13-4d22-af81-6cc48a51d7d5.jsonl","08/02/2026 07:59:57","1","","not-a-case","go"
-"U293","next-step-asks","20260816","unflagged","uuid:a180790c-9c16-4b35-85e2-ae00b12cd3f0","25340e88-9094-4fc5-a29d-243c2033f7a4.jsonl","08/01/2026 19:40:24","1","pick up","","can you pick up @.claude/backlog/045-modifier-label-drift-guard.md"
-"U294","next-step-asks","20260816","unflagged","uuid:a63da431-1274-4c05-acbb-450dc372853d","58867050-67a3-46f4-9550-edd093b6740b.jsonl","07/24/2026 11:29:16","1","","","give me the commit message and I'll do it"
-"U295","next-step-asks","20260816","unflagged","uuid:a77f9129-6ca8-4405-8f61-ecebe9966078","a9ff7000-54fc-4479-8e59-bad3790e661f.jsonl","08/05/2026 20:19:08","1","","","prototyping done, continue"
-"U296","next-step-asks","20260816","unflagged","uuid:a7861658-25a0-4c53-b823-64b9263e35e8","8a0ad1ac-d363-4fea-b477-c901377bbef9.jsonl","07/24/2026 19:56:37","1","","","disble at the user scope"
-"U297","next-step-asks","20260816","unflagged","uuid:a9d16764-5979-4b6d-a619-3c6ec9ccfe89","9baa8e1a-1db9-445f-8faa-76b6f808eeae.jsonl","08/04/2026 07:43:09","1","","","which matt pocock still would you recommended adding to this repo?"
-"U298","next-step-asks","20260816","unflagged","uuid:aa90b7bc-9c3a-42c6-bf83-dcf2f0e7339c","a573bbd8-59c4-409e-a6c0-a7f4f5b24712.jsonl","07/30/2026 14:08:39","1","","","contentscript.js:14083 MaxListenersExceededWarning: Possible EventEmitter memory leak detected. 11 close listeners added. Use emitter.setMaxListeners() to increase limit
+"U293","next-step-asks","20260816","unflagged","uuid:a180790c-9c16-4b35-85e2-ae00b12cd3f0","25340e88-9094-4fc5-a29d-243c2033f7a4.jsonl","08/01/2026 19:40:24","1","pick up","not-a-case","can you pick up @.claude/backlog/045-modifier-label-drift-guard.md"
+"U294","next-step-asks","20260816","unflagged","uuid:a63da431-1274-4c05-acbb-450dc372853d","58867050-67a3-46f4-9550-edd093b6740b.jsonl","07/24/2026 11:29:16","1","","not-a-case","give me the commit message and I'll do it"
+"U295","next-step-asks","20260816","unflagged","uuid:a77f9129-6ca8-4405-8f61-ecebe9966078","a9ff7000-54fc-4479-8e59-bad3790e661f.jsonl","08/05/2026 20:19:08","1","","not-a-case","prototyping done, continue"
+"U296","next-step-asks","20260816","unflagged","uuid:a7861658-25a0-4c53-b823-64b9263e35e8","8a0ad1ac-d363-4fea-b477-c901377bbef9.jsonl","07/24/2026 19:56:37","1","","not-a-case","disble at the user scope"
+"U297","next-step-asks","20260816","unflagged","uuid:a9d16764-5979-4b6d-a619-3c6ec9ccfe89","9baa8e1a-1db9-445f-8faa-76b6f808eeae.jsonl","08/04/2026 07:43:09","1","","not-a-case","which matt pocock still would you recommended adding to this repo?"
+"U298","next-step-asks","20260816","unflagged","uuid:aa90b7bc-9c3a-42c6-bf83-dcf2f0e7339c","a573bbd8-59c4-409e-a6c0-a7f4f5b24712.jsonl","07/30/2026 14:08:39","1","","not-a-case","contentscript.js:14083 MaxListenersExceededWarning: Possible EventEmitter memory leak detected. 11 close listeners added. Use emitter.setMaxListeners() to increase limit
 n @ contentscript.js:14083
 contentscript.js:14083 MaxListenersExceededWarning: Possible EventEmitter memory leak detected. 11 end listeners added. Use emitter.setMaxListeners() to increase limit
 n @ contentscript.js:14083
@@ -2198,9 +2198,9 @@ dotnet.js:4 Uncaught (in promise) TypeError: Failed to fetch. SRI's integrity ch
     at dotnet.js:4:31886
 (index):1 Uncaught (in promise) Error: download 'http://localhost:5601/_framework/AHKFlowApp.UI.Blazor.jr1hcjqm3i.wasm' for AHKFlowApp.UI.Blazor.jr1hcjqm3i.wasm failed 0 TypeError: Failed to fetch
  still the 99% error, this is the console[Image #2]"
-"U299","next-step-asks","20260816","unflagged","uuid:ac58ca07-b7e7-4cab-b8ff-c00f3425bf0a","1f95f33f-8a9e-4043-8a4f-d188d2191ee1.jsonl","07/23/2026 12:58:53","1","","","To prevent Windows Defender from locking files and degrading container performance, add specific Docker directories and processes to the exclusion list. The most actionable steps for your Docker setup are detailed below.Recommended ExclusionsTo optimize Docker for Windows (especially when using WSL2 or Hyper-V backends), exclude the following specific folders and processes in Windows Defender:Folders:C:\Program Files\DockerC:\ProgramData\DockerC:\ProgramData\DockerDesktopC:\Users\YOUR_USERNAME\AppData\Local\DockerWSL2 virtual disk: C:\Users\YOUR_USERNAME\AppData\Local\Docker\wsl (or the specific path to your ext4.vhdx file for your WSL distribution)Processes:C:\Program Files\Docker\Docker\resources\bin\docker.exeC:\Program Files\Docker\Docker\resources\bin\com.docker.backend.exeC:\Program Files\Docker\Docker\resources\bin\com.docker.proxy.exeC:\Program Files\Docker\Docker\resources\bin\docker-compose.exe These accoring to gemini, do you recommend adding more exclusions?"
-"U300","next-step-asks","20260816","unflagged","uuid:accd3be3-4bf1-45ee-8930-18940e06a3a2","d159cc56-2e1c-4571-add4-44db0ab0c9b4.jsonl","08/02/2026 07:04:32","1","","","where exacly did you change the settings? did you commit?"
-"U301","next-step-asks","20260816","unflagged","uuid:ad52c14b-9486-49fa-9da9-de95124e386b","e8d4b31a-ab38-4bc1-98e7-13ef77ae13f2.jsonl","07/28/2026 13:53:04","1","","","==> Running AHKFlowApp.UI.Blazor.Tests (all tests)
+"U299","next-step-asks","20260816","unflagged","uuid:ac58ca07-b7e7-4cab-b8ff-c00f3425bf0a","1f95f33f-8a9e-4043-8a4f-d188d2191ee1.jsonl","07/23/2026 12:58:53","1","","not-a-case","To prevent Windows Defender from locking files and degrading container performance, add specific Docker directories and processes to the exclusion list. The most actionable steps for your Docker setup are detailed below.Recommended ExclusionsTo optimize Docker for Windows (especially when using WSL2 or Hyper-V backends), exclude the following specific folders and processes in Windows Defender:Folders:C:\Program Files\DockerC:\ProgramData\DockerC:\ProgramData\DockerDesktopC:\Users\YOUR_USERNAME\AppData\Local\DockerWSL2 virtual disk: C:\Users\YOUR_USERNAME\AppData\Local\Docker\wsl (or the specific path to your ext4.vhdx file for your WSL distribution)Processes:C:\Program Files\Docker\Docker\resources\bin\docker.exeC:\Program Files\Docker\Docker\resources\bin\com.docker.backend.exeC:\Program Files\Docker\Docker\resources\bin\com.docker.proxy.exeC:\Program Files\Docker\Docker\resources\bin\docker-compose.exe These accoring to gemini, do you recommend adding more exclusions?"
+"U300","next-step-asks","20260816","unflagged","uuid:accd3be3-4bf1-45ee-8930-18940e06a3a2","d159cc56-2e1c-4571-add4-44db0ab0c9b4.jsonl","08/02/2026 07:04:32","1","","not-a-case","where exacly did you change the settings? did you commit?"
+"U301","next-step-asks","20260816","unflagged","uuid:ad52c14b-9486-49fa-9da9-de95124e386b","e8d4b31a-ab38-4bc1-98e7-13ef77ae13f2.jsonl","07/28/2026 13:53:04","1","","not-a-case","==> Running AHKFlowApp.UI.Blazor.Tests (all tests)
 Test run for C:\Dev\segocom-github\AHKFlowApp\tests\AHKFlowApp.UI.Blazor.Tests\bin\Release\net10.0\AHKFlowApp.UI.Blazor.Tests.dll (.NETCoreApp,Version=v10.0)
 A total of 1 test files matched the specified pattern.
 [xUnit.net 00:00:12.98]     AHKFlowApp.UI.Blazor.Tests.Pages.HotstringsPageTests.Page_WhenAnyToggleIsReenabled_ClearsSpecificProfilesBeforeCreate [FAIL]
@@ -2239,16 +2239,16 @@ Line |
 error: failed to push some refs to 'https://github.com/s205109/AHKFlowApp.git' analyze this pre push error"
 "U45","next-step-asks","20260816","unflagged","uuid:ae26e747-b985-4cd0-a077-20e4e2685aea","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/11/2026 15:40:28","1","pick up","missed","have @backlog/076-guard-exception-commit-to-plans-repo-from-worktree.md been properly reviewed and is ready to pick up?"
 "U168","next-step-asks","20260816","unflagged","uuid:af16187d-70eb-4f47-b547-7becf86cf36a","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/11/2026 11:53:00","1","what do","not-a-case","carry it through Document, what do you mean by this?"
-"U302","next-step-asks","20260816","unflagged","uuid:b096a3e1-a347-43d6-af23-338b2c29f76a","61f4b3ba-af8e-46eb-acde-43759212326d.jsonl","07/22/2026 12:15:33","1","","","continue"
-"U303","next-step-asks","20260816","unflagged","uuid:b0b988f0-7c3f-4ac5-96db-0eed7b813844","26e03c00-a443-4e13-8737-3022e247e6e2.jsonl","07/22/2026 08:50:49","1","","","is it possible to make the statusline update more frequently? what is the frequency now?"
-"U304","next-step-asks","20260816","unflagged","uuid:b16449ce-cbbb-42a4-9946-df79e9a039f4","9baa8e1a-1db9-445f-8faa-76b6f808eeae.jsonl","08/04/2026 07:39:26","1","","","when using a plugin with multiple skills is it not possible to only install a subset, or disabled a subset? can you check the claude docs?"
+"U302","next-step-asks","20260816","unflagged","uuid:b096a3e1-a347-43d6-af23-338b2c29f76a","61f4b3ba-af8e-46eb-acde-43759212326d.jsonl","07/22/2026 12:15:33","1","","not-a-case","continue"
+"U303","next-step-asks","20260816","unflagged","uuid:b0b988f0-7c3f-4ac5-96db-0eed7b813844","26e03c00-a443-4e13-8737-3022e247e6e2.jsonl","07/22/2026 08:50:49","1","","not-a-case","is it possible to make the statusline update more frequently? what is the frequency now?"
+"U304","next-step-asks","20260816","unflagged","uuid:b16449ce-cbbb-42a4-9946-df79e9a039f4","9baa8e1a-1db9-445f-8faa-76b6f808eeae.jsonl","08/04/2026 07:39:26","1","","not-a-case","when using a plugin with multiple skills is it not possible to only install a subset, or disabled a subset? can you check the claude docs?"
 "U171","next-step-asks","20260816","unflagged","uuid:b30cca6f-4bf4-4cb1-8c5a-ee1e19d3bf7a","19d172da-1805-4bb2-b008-77ee6263526c.jsonl","08/02/2026 01:38:08","1","","not-a-case","Spec is at docs/superpowers/specs/2026-08-01-known-shortcut-list-marker-design.md, three commits on the plans repo. Say the word and I'll invoke superpowers:writing-plans for the implementation plan. write the implementation plan"
-"U305","next-step-asks","20260816","unflagged","uuid:b5283c70-a2f8-40c0-a9c5-dfd22f633667","8e27dcae-7f13-4d22-af81-6cc48a51d7d5.jsonl","08/02/2026 08:26:54","1","","","go"
-"U306","next-step-asks","20260816","unflagged","uuid:b564ec7f-bf7d-41cf-85fc-3851714f16f3","9f22b0f1-9222-443a-91e9-b40d208b6648.jsonl","08/10/2026 15:43:04","1","","","Read C:\Users\btase\Desktop\PROCESS IMPROVEMENTS\FABLE-PROMPT.md and execute it.
+"U305","next-step-asks","20260816","unflagged","uuid:b5283c70-a2f8-40c0-a9c5-dfd22f633667","8e27dcae-7f13-4d22-af81-6cc48a51d7d5.jsonl","08/02/2026 08:26:54","1","","not-a-case","go"
+"U306","next-step-asks","20260816","unflagged","uuid:b564ec7f-bf7d-41cf-85fc-3851714f16f3","9f22b0f1-9222-443a-91e9-b40d208b6648.jsonl","08/10/2026 15:43:04","1","","not-a-case","Read C:\Users\btase\Desktop\PROCESS IMPROVEMENTS\FABLE-PROMPT.md and execute it.
 Start with §5 — grill me on P1 through P7 before writing anything.
 
 Context is safe to clear after you read the file. Nothing here is unrecorded. is this still up-to-date?"
-"U307","next-step-asks","20260816","unflagged","uuid:bc1bd457-463d-4b08-afbc-88bd556ec9d0","a9ff7000-54fc-4479-8e59-bad3790e661f.jsonl","08/05/2026 20:42:28","1","order","","Changes requested before writing the implementation plan. Footer inclusion and the split to backlog 053 are correct, but the spec has two
+"U307","next-step-asks","20260816","unflagged","uuid:bc1bd457-463d-4b08-afbc-88bd556ec9d0","a9ff7000-54fc-4479-8e59-bad3790e661f.jsonl","08/05/2026 20:42:28","1","order","not-a-case","Changes requested before writing the implementation plan. Footer inclusion and the split to backlog 053 are correct, but the spec has two
   execution blockers.
 
   1. P1: Inline editing is missing from scope.
@@ -2301,9 +2301,9 @@ Context is safe to clear after you read the file. Nothing here is unrecorded. is
   Backlog 053 exists, 042 remains deferred, and 043 is merged. The deterministic UI scan was unavailable because npx could not fetch its package;
   that is “not scanned,” not a clean result. No browser review was possible because the notice is not implemented. No tracked files were changed
   during this review"
-"U308","next-step-asks","20260816","unflagged","uuid:bc61f042-a375-4d53-9788-eed7d2ef0d25","cca6f400-559a-46cf-9d0c-55560b5e8c65.jsonl","08/06/2026 07:08:45","1","","","@docs/superpowers/plans/2026-08-06-worktree-guard-bash-writes-plan.md, implement it"
-"U309","next-step-asks","20260816","unflagged","uuid:bd35ee74-79cd-4f80-9bfe-cd8517d714c9","6dc81d7b-90bc-4bfe-8037-85e6ec21080d.jsonl","07/25/2026 14:05:07","1","","","both"
-"U310","next-step-asks","20260816","unflagged","uuid:bd9c80e6-2b5e-4f95-ad31-6905ff728854","27bf849a-e041-4c63-b840-8345bc110e70.jsonl","08/01/2026 21:39:43","1","","","Yes. I want three corrections before the implementation plan.
+"U308","next-step-asks","20260816","unflagged","uuid:bc61f042-a375-4d53-9788-eed7d2ef0d25","cca6f400-559a-46cf-9d0c-55560b5e8c65.jsonl","08/06/2026 07:08:45","1","","not-a-case","@docs/superpowers/plans/2026-08-06-worktree-guard-bash-writes-plan.md, implement it"
+"U309","next-step-asks","20260816","unflagged","uuid:bd35ee74-79cd-4f80-9bfe-cd8517d714c9","6dc81d7b-90bc-4bfe-8037-85e6ec21080d.jsonl","07/25/2026 14:05:07","1","","not-a-case","both"
+"U310","next-step-asks","20260816","unflagged","uuid:bd9c80e6-2b5e-4f95-ad31-6905ff728854","27bf849a-e041-4c63-b840-8345bc110e70.jsonl","08/01/2026 21:39:43","1","","not-a-case","Yes. I want three corrections before the implementation plan.
 
   1. High: the proposed accessibility attributes will not work as stated. The spec puts aria-label on MudIcon, but MudBlazor 9.3.0 renders the icon
      with aria-hidden=""true"". Screen readers therefore ignore it. MudIcon 9.3.0 source
@@ -2335,10 +2335,10 @@ Context is safe to clear after you read the file. Nothing here is unrecorded. is
 
   The injection correction is confirmed. I found no other design blockers. Both documentation commits pass git show --check, and tracked files
   remained unchanged. This was a docs-only review, so no runtime verification was required."
-"U311","next-step-asks","20260816","unflagged","uuid:bdcfbd3a-a6d0-4adb-b9cc-2a363c8e47cd","1ee46794-bcb6-41f5-9354-f9c4a6835213.jsonl","07/24/2026 14:21:43","1","","","push and update PR"
-"U312","next-step-asks","20260816","unflagged","uuid:bdd34ff8-2c19-4779-966e-405d85dbc382","77eb5960-340a-4f5e-b26b-5d4fecb4a224.jsonl","07/30/2026 08:37:46","1","","","cleanup and park 039"
-"U313","next-step-asks","20260816","unflagged","uuid:be5da6d9-0d73-4560-91ca-90af07686618","a9ff7000-54fc-4479-8e59-bad3790e661f.jsonl","08/05/2026 19:54:47","1","","","hotkey side"
-"U314","next-step-asks","20260816","unflagged","uuid:c191b430-cd44-43c0-b97f-773a362c7c6a","234f2091-d8af-44b7-ad5b-bcc1127b790f.jsonl","08/01/2026 06:21:29","1","","","can you check all done backlog items that don't have all their checkboxes checked and verify if the work for those is actually done?"
+"U311","next-step-asks","20260816","unflagged","uuid:bdcfbd3a-a6d0-4adb-b9cc-2a363c8e47cd","1ee46794-bcb6-41f5-9354-f9c4a6835213.jsonl","07/24/2026 14:21:43","1","","not-a-case","push and update PR"
+"U312","next-step-asks","20260816","unflagged","uuid:bdd34ff8-2c19-4779-966e-405d85dbc382","77eb5960-340a-4f5e-b26b-5d4fecb4a224.jsonl","07/30/2026 08:37:46","1","","not-a-case","cleanup and park 039"
+"U313","next-step-asks","20260816","unflagged","uuid:be5da6d9-0d73-4560-91ca-90af07686618","a9ff7000-54fc-4479-8e59-bad3790e661f.jsonl","08/05/2026 19:54:47","1","","not-a-case","hotkey side"
+"U314","next-step-asks","20260816","unflagged","uuid:c191b430-cd44-43c0-b97f-773a362c7c6a","234f2091-d8af-44b7-ad5b-bcc1127b790f.jsonl","08/01/2026 06:21:29","1","","not-a-case","can you check all done backlog items that don't have all their checkboxes checked and verify if the work for those is actually done?"
 "U176","next-step-asks","20260816","unflagged","uuid:c1ca6410-8e33-40cb-a3fd-0f75080c4cbb","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/11/2026 09:53:39","1","","not-a-case","Findings
 1. High: Intake cannot transfer a new item into its worktree. docs/development/workflow.md:164-188 files the item before Pickup creates a worktree. scripts/new-backlog-item.ps1:39-45 writes it into main, while scripts/new-worktree.ps1:266-275 copies only committed state and .worktreeinclude. Agents cannot commit it on main. New tracked work therefore has no legal path into its branch.
 2. High: Draft PR timing contradicts the mandatory gate. Pickup opens the PR at docs/development/workflow.md:188,446-450, before implementation or verification. AGENTS.md:271 and docs/development/testing-workflow.md:3,11-25 require the gate before PR creation. Rename this as a pre-ready gate or delay PR creation.
@@ -2353,7 +2353,7 @@ Verdict
 Not ready to merge. PR head 089af2e has green GitHub checks and a clean git diff --check, but the process-blocking contradictions and reproducibility defect need fixes.
 The linked worktree also has unpushed edits that revert backlog 071 from Stage 5 to Stage 4 and remove Task 10 progress. I excluded those edits and reviewed the published PR head. No GitHub comments were posted."
 "U177","next-step-asks","20260816","unflagged","uuid:c27c8728-3b9f-4019-ba6a-078bed872a05","77eb5960-340a-4f5e-b26b-5d4fecb4a224.jsonl","07/29/2026 21:07:00","1","","not-a-case","@docs/superpowers/plans/2026-07-29-agent-git-guard-scope-plan.md implement"
-"U315","next-step-asks","20260816","unflagged","uuid:c2f8c6f1-6262-4089-ac52-3b217753029c","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/11/2026 14:44:07","1","","","1"
+"U315","next-step-asks","20260816","unflagged","uuid:c2f8c6f1-6262-4089-ac52-3b217753029c","86ce271a-b645-4206-aa09-4cd71758cdd3.jsonl","08/11/2026 14:44:07","1","","not-a-case","1"
 "U178","next-step-asks","20260816","unflagged","uuid:c35e0ada-c9fc-46d3-a463-2457c8b21a85","d4f12a4b-fa1c-43a7-aaf3-be819b426669.jsonl","08/01/2026 20:13:19","1","","not-a-case","The core diagnosis is correct, but I would revise the design before implementation.
 
   ## Findings
@@ -2409,7 +2409,7 @@ The linked worktree also has unpushed edits that revert backlog 071 from Stage 5
   state statement is currently proven.
 
   Verdict: revise before implementation. No files were changed, and no tests were run because this was a read-only design review."
-"U316","next-step-asks","20260816","unflagged","uuid:c62a62e1-c624-4ca2-8bbf-7484902747aa","b7b285a8-4b5a-42fc-8527-03574c1724d3.jsonl","08/07/2026 21:14:09","1","",""," ## Findings
+"U316","next-step-asks","20260816","unflagged","uuid:c62a62e1-c624-4ca2-8bbf-7484902747aa","b7b285a8-4b5a-42fc-8527-03574c1724d3.jsonl","08/07/2026 21:14:09","1","","not-a-case"," ## Findings
 
   - [P1] Relative symlinks can bypass main-checkout isolation. The new policy calls the shared resolver at scripts/agents/agent-worktree-
     guard.common.ps1:1900. That resolver treats a relative symlink target as relative to the process directory, not the link’s parent. It also
@@ -2476,19 +2476,19 @@ Line |
    1 |  … private plans reachable from the @-file picker"" --body ""$(cat <<'EOF'
      |                                                                   ~
      | Missing file specification after redirection operator. fix the PR script first"
-"U317","next-step-asks","20260816","unflagged","uuid:cc7726c5-8abb-44c0-b3bf-0edc7e3c5257","9baa8e1a-1db9-445f-8faa-76b6f808eeae.jsonl","08/04/2026 07:47:20","1","what do","","what do the prototype and research skill do? how and when can I use them in this app?"
-"U318","next-step-asks","20260816","unflagged","uuid:ce2bc237-f975-4118-931f-0aaded4ec775","ad82153c-3250-4427-8db9-d5f53f366ee5.jsonl","08/07/2026 12:51:29","1","","","Q1 b, Q2 Any clear pointer, Q3 Object test. Q4 Keep ask-to-switch, Q5 Keep one"
-"U319","next-step-asks","20260816","unflagged","uuid:cf646cfe-8b78-4274-b322-93310b8d49f0","5c7748e8-ae22-4483-bd6b-e8e41ec3d6ab.jsonl","07/27/2026 07:41:31","1","",""," push and PR"
-"U320","next-step-asks","20260816","unflagged","uuid:d03587f2-c7d3-4de0-ae04-a7054c6faf5e","7694f154-9739-4c3b-b5ac-f60f1ac93baf.jsonl","07/31/2026 11:37:01","1","","","@old_project_reference/AHK_Combined.ahk these are my current hotstrings and hotkeys, can you extract one example for each distinct type of hotstring and hotkey and tell me if and how the example can be added to AHKFlow? If not, then why not?"
-"U321","next-step-asks","20260816","unflagged","uuid:d195251c-dd09-428d-973f-1613359d1f7f","2b642d01-fc89-4bd3-adca-6d1836e4d388.jsonl","07/27/2026 07:40:57","1","","","B"
-"U322","next-step-asks","20260816","unflagged","uuid:d1b99872-0e00-40da-8ada-3796ee21d5e5","480956d0-4e46-49dc-9b5f-6c073786334e.jsonl","07/26/2026 19:18:44","1","","","Fix PR217 merge conflicts"
-"U323","next-step-asks","20260816","unflagged","uuid:d1f8fe23-5ab9-49c0-9316-370a1c97879b","dc9166b9-4216-4c15-a098-fb8675fe73c0.jsonl","07/31/2026 20:59:17","1","","","@docs/superpowers/specs/2026-07-31-read-only-review-execution-design.md can you review this Codex plan? is it compatible/a good idea?"
+"U317","next-step-asks","20260816","unflagged","uuid:cc7726c5-8abb-44c0-b3bf-0edc7e3c5257","9baa8e1a-1db9-445f-8faa-76b6f808eeae.jsonl","08/04/2026 07:47:20","1","what do","not-a-case","what do the prototype and research skill do? how and when can I use them in this app?"
+"U318","next-step-asks","20260816","unflagged","uuid:ce2bc237-f975-4118-931f-0aaded4ec775","ad82153c-3250-4427-8db9-d5f53f366ee5.jsonl","08/07/2026 12:51:29","1","","not-a-case","Q1 b, Q2 Any clear pointer, Q3 Object test. Q4 Keep ask-to-switch, Q5 Keep one"
+"U319","next-step-asks","20260816","unflagged","uuid:cf646cfe-8b78-4274-b322-93310b8d49f0","5c7748e8-ae22-4483-bd6b-e8e41ec3d6ab.jsonl","07/27/2026 07:41:31","1","","not-a-case"," push and PR"
+"U320","next-step-asks","20260816","unflagged","uuid:d03587f2-c7d3-4de0-ae04-a7054c6faf5e","7694f154-9739-4c3b-b5ac-f60f1ac93baf.jsonl","07/31/2026 11:37:01","1","","not-a-case","@old_project_reference/AHK_Combined.ahk these are my current hotstrings and hotkeys, can you extract one example for each distinct type of hotstring and hotkey and tell me if and how the example can be added to AHKFlow? If not, then why not?"
+"U321","next-step-asks","20260816","unflagged","uuid:d195251c-dd09-428d-973f-1613359d1f7f","2b642d01-fc89-4bd3-adca-6d1836e4d388.jsonl","07/27/2026 07:40:57","1","","not-a-case","B"
+"U322","next-step-asks","20260816","unflagged","uuid:d1b99872-0e00-40da-8ada-3796ee21d5e5","480956d0-4e46-49dc-9b5f-6c073786334e.jsonl","07/26/2026 19:18:44","1","","not-a-case","Fix PR217 merge conflicts"
+"U323","next-step-asks","20260816","unflagged","uuid:d1f8fe23-5ab9-49c0-9316-370a1c97879b","dc9166b9-4216-4c15-a098-fb8675fe73c0.jsonl","07/31/2026 20:59:17","1","","not-a-case","@docs/superpowers/specs/2026-07-31-read-only-review-execution-design.md can you review this Codex plan? is it compatible/a good idea?"
 "U53","next-step-asks","20260816","unflagged","uuid:d22c6144-75ae-476f-ac0d-ea0566b9ac00","33527fc4-45c1-4453-a922-cbed1906234f.jsonl","08/04/2026 06:47:09","1","","not-a-case","can you create a new worktree for @.claude/backlog/051-hotstrings-mobile-branch-stale-after-desktop-mutation.md and switch to it using path?"
-"U324","next-step-asks","20260816","unflagged","uuid:d339ad83-2ae0-4b67-aae9-0586da1692ec","d159cc56-2e1c-4571-add4-44db0ab0c9b4.jsonl","08/02/2026 07:06:02","1","","","That also means it isn't versioned or reviewable. The only record is GitHub's audit log. If you want repo settings under version control, that needs something like Terraform or a settings-as-code app; this repo has neither today. could you explain Terraform or a settings-as-code app and how it could be applied to this app? pros and cons?"
-"U325","next-step-asks","20260816","unflagged","uuid:d4445196-cc71-4a75-948c-bbed4d6f5599","d159cc56-2e1c-4571-add4-44db0ab0c9b4.jsonl","08/02/2026 07:00:33","1","","","can you update to setting local to not allow it"
-"U326","next-step-asks","20260816","unflagged","uuid:d4bf8320-9f0c-48b7-b424-19a11c3a3636","3cdbcc48-4bd4-4b80-8461-f22bdf00ed4d.jsonl","08/05/2026 19:45:10","1","","","make it 055"
-"U327","next-step-asks","20260816","unflagged","uuid:d50816d2-b813-4e84-a6aa-91dc01da6e76","b454daa1-354c-4a32-8f4b-96229ab16f13.jsonl","08/04/2026 13:47:33","1","","","push + PR"
-"U328","next-step-asks","20260816","unflagged","uuid:d663545c-fa58-4488-b371-b9a96688efae","8e27dcae-7f13-4d22-af81-6cc48a51d7d5.jsonl","08/02/2026 11:51:42","1","order","","The plan’s architecture is sound, but I would not start implementation yet. Make these changes first.
+"U324","next-step-asks","20260816","unflagged","uuid:d339ad83-2ae0-4b67-aae9-0586da1692ec","d159cc56-2e1c-4571-add4-44db0ab0c9b4.jsonl","08/02/2026 07:06:02","1","","not-a-case","That also means it isn't versioned or reviewable. The only record is GitHub's audit log. If you want repo settings under version control, that needs something like Terraform or a settings-as-code app; this repo has neither today. could you explain Terraform or a settings-as-code app and how it could be applied to this app? pros and cons?"
+"U325","next-step-asks","20260816","unflagged","uuid:d4445196-cc71-4a75-948c-bbed4d6f5599","d159cc56-2e1c-4571-add4-44db0ab0c9b4.jsonl","08/02/2026 07:00:33","1","","not-a-case","can you update to setting local to not allow it"
+"U326","next-step-asks","20260816","unflagged","uuid:d4bf8320-9f0c-48b7-b424-19a11c3a3636","3cdbcc48-4bd4-4b80-8461-f22bdf00ed4d.jsonl","08/05/2026 19:45:10","1","","not-a-case","make it 055"
+"U327","next-step-asks","20260816","unflagged","uuid:d50816d2-b813-4e84-a6aa-91dc01da6e76","b454daa1-354c-4a32-8f4b-96229ab16f13.jsonl","08/04/2026 13:47:33","1","","not-a-case","push + PR"
+"U328","next-step-asks","20260816","unflagged","uuid:d663545c-fa58-4488-b371-b9a96688efae","8e27dcae-7f13-4d22-af81-6cc48a51d7d5.jsonl","08/02/2026 11:51:42","1","order","not-a-case","The plan’s architecture is sound, but I would not start implementation yet. Make these changes first.
 
   ## Required changes
 
@@ -2569,9 +2569,9 @@ Line |
 
   I made no file changes and ran no build or test commands. The target worktree exists at the stated base commit; it only contains the pre-
   existing untracked keep.txt. did you address this already?"
-"U329","next-step-asks","20260816","unflagged","uuid:d6a68730-d90d-4131-9aa4-74cc6e53e36d","8948c44b-052c-47bd-86c7-80c556b0e916.jsonl","07/22/2026 09:55:20","1","","","push and update PR descr."
-"U330","next-step-asks","20260816","unflagged","uuid:d6e47b78-7cf8-42c8-8d30-fc64752b33b8","2669e4a2-2d95-40a0-831f-ac0342af616d.jsonl","08/07/2026 14:52:04","1","","","continue"
-"U331","next-step-asks","20260816","unflagged","uuid:d9c85ff2-d5f6-46d3-b418-f7500a9e20c0","9baa8e1a-1db9-445f-8faa-76b6f808eeae.jsonl","08/04/2026 07:15:06","1","","","I want to remove all matt pocock stills that I copied manually to my skills folders stand start using the official matt pocock stills plugins instead can you create a worktree for this and give me a summary of what this would entail and if its worth doing?"
+"U329","next-step-asks","20260816","unflagged","uuid:d6a68730-d90d-4131-9aa4-74cc6e53e36d","8948c44b-052c-47bd-86c7-80c556b0e916.jsonl","07/22/2026 09:55:20","1","","not-a-case","push and update PR descr."
+"U330","next-step-asks","20260816","unflagged","uuid:d6e47b78-7cf8-42c8-8d30-fc64752b33b8","2669e4a2-2d95-40a0-831f-ac0342af616d.jsonl","08/07/2026 14:52:04","1","","not-a-case","continue"
+"U331","next-step-asks","20260816","unflagged","uuid:d9c85ff2-d5f6-46d3-b418-f7500a9e20c0","9baa8e1a-1db9-445f-8faa-76b6f808eeae.jsonl","08/04/2026 07:15:06","1","","not-a-case","I want to remove all matt pocock stills that I copied manually to my skills folders stand start using the official matt pocock stills plugins instead can you create a worktree for this and give me a summary of what this would entail and if its worth doing?"
 "U187","next-step-asks","20260816","unflagged","uuid:da67d4b0-7ed0-475d-8b46-27f9f6aadb4d","ebdf7d07-eb35-4336-b04b-cad35acd9627.jsonl","08/06/2026 13:32:36","1","","not-a-case","Verdict: changes required. Do not start Task 1 yet.
 
   ### Findings
@@ -2683,9 +2683,9 @@ Line |
   3. One PR. Code, tests, skill documentation, plugin version, and backlog completion form one bug fix.
 
   The plan is already committed in the private repo as cdc7d5c; do not rerun the supplied copy/commit block."
-"U332","next-step-asks","20260816","unflagged","uuid:db0cf1e9-2a00-406a-a9a9-edff2704fd24","2669e4a2-2d95-40a0-831f-ac0342af616d.jsonl","08/07/2026 11:47:52","1","","","implement @docs/superpowers/plans/2026-08-07-disabled-action-button-tooltip-plan.md"
+"U332","next-step-asks","20260816","unflagged","uuid:db0cf1e9-2a00-406a-a9a9-edff2704fd24","2669e4a2-2d95-40a0-831f-ac0342af616d.jsonl","08/07/2026 11:47:52","1","","not-a-case","implement @docs/superpowers/plans/2026-08-07-disabled-action-button-tooltip-plan.md"
 "U189","next-step-asks","20260816","unflagged","uuid:e024fa8a-4604-4620-aa99-f89b5492f8a0","0abdb818-0b0d-4e60-b3c7-a0e9beaf0afb.jsonl","08/01/2026 07:49:57","1","","not-a-case","write plan"
-"U333","next-step-asks","20260816","unflagged","uuid:e1773226-0aae-468f-9005-fcad3ee07cbc","0940cbdb-5733-475c-9445-fcbe60cee446.jsonl","08/01/2026 13:19:19","1","","","[Image #6] pwsh  pwsh .\scripts\test-fast.ps1 -Mode E2E
+"U333","next-step-asks","20260816","unflagged","uuid:e1773226-0aae-468f-9005-fcad3ee07cbc","0940cbdb-5733-475c-9445-fcbe60cee446.jsonl","08/01/2026 13:19:19","1","","not-a-case","[Image #6] pwsh  pwsh .\scripts\test-fast.ps1 -Mode E2E
 
 ==> Starting shared SQL test container
   + Shared SQL test container ready in 9458.04 ms.
@@ -2731,9 +2731,9 @@ Project              Filter    Tests TrxPath
 -------              ------    ----- -------
 AHKFlowApp.E2E.Tests all tests    35 C:\Dev\segocom-github\AHKFlowApp\.claude\worktrees\no-auth-frontend-profile\TestResults\test-fast\E2E\AHKFlo…"
 "U190","next-step-asks","20260816","unflagged","uuid:e198fc00-c631-4090-9f76-5fb5cd7b8a6c","4810c39a-0bbf-4ce5-8a49-7f6567438fa7.jsonl","08/06/2026 10:57:55","1","","not-a-case","create a worktree for 057 and 053 with good branch names and then stop"
-"U334","next-step-asks","20260816","unflagged","uuid:e465aba7-a9bb-47ef-99b0-5b24f1c1b0e0","e06c7340-0e8d-4341-b471-0c388ee075b3.jsonl","08/07/2026 11:13:07","1","pick up","","pick up @backlog/053-title-tooltip-dead-on-disabled-action-buttons.md, should be make a plan first?"
-"U335","next-step-asks","20260816","unflagged","uuid:e59bcffe-e87a-4e68-b594-22d36c358dd9","3e8315af-5f45-4726-b3d3-23a6fbf0bd11.jsonl","08/04/2026 12:04:54","1","","","@.claude/backlog/051-hotkey-raw-body-inline-error-not-rendering.md can you creeate a new worktree and branch for this ?"
-"U336","next-step-asks","20260816","unflagged","uuid:e75831fb-7a49-448e-ad71-a39c20ceaf94","42a7f14b-e626-40a4-be8e-e6b80bd421fb.jsonl","08/10/2026 18:36:54","1","next","","Verdict: still no-go, but much closer. Commit 2cfa169 is present, both worktrees are clean, and the feature branch still has no upstream or PR, as Task 0 expects.
+"U334","next-step-asks","20260816","unflagged","uuid:e465aba7-a9bb-47ef-99b0-5b24f1c1b0e0","e06c7340-0e8d-4341-b471-0c388ee075b3.jsonl","08/07/2026 11:13:07","1","pick up","missed","pick up @backlog/053-title-tooltip-dead-on-disabled-action-buttons.md, should be make a plan first?"
+"U335","next-step-asks","20260816","unflagged","uuid:e59bcffe-e87a-4e68-b594-22d36c358dd9","3e8315af-5f45-4726-b3d3-23a6fbf0bd11.jsonl","08/04/2026 12:04:54","1","","not-a-case","@.claude/backlog/051-hotkey-raw-body-inline-error-not-rendering.md can you creeate a new worktree and branch for this ?"
+"U336","next-step-asks","20260816","unflagged","uuid:e75831fb-7a49-448e-ad71-a39c20ceaf94","42a7f14b-e626-40a4-be8e-e6b80bd421fb.jsonl","08/10/2026 18:36:54","1","next","not-a-case","Verdict: still no-go, but much closer. Commit 2cfa169 is present, both worktrees are clean, and the feature branch still has no upstream or PR, as Task 0 expects.
 
   Prior findings 1, 4, 5, 6, both drift corrections, and the test-subject clarification are addressed. Findings 2, 3, 7, and 8 are only partly addressed.
 
@@ -2816,13 +2816,13 @@ AHKFlowApp.E2E.Tests all tests    35 C:\Dev\segocom-github\AHKFlowApp\.claude\wo
 
   I used the /C:/Users/btase/.codex/plugins/cache/openai-curated-remote/superpowers/6.2.0/skills/writing-plans/SKILL.md:36 and the /C:/Users/btase/.codex/plugins/cache/openai-curated-remote/
   superpowers/6.2.0/skills/executing-plans/SKILL.md:18. No files were changed. address findings, push back on low value ones"
-"U337","next-step-asks","20260816","unflagged","uuid:e76af683-2f0b-49be-a571-dc3125ee0f12","58867050-67a3-46f4-9550-edd093b6740b.jsonl","07/24/2026 11:31:28","1","","","does removing the ""Bash(curl *)"" not just allow all bash curl commands again?"
+"U337","next-step-asks","20260816","unflagged","uuid:e76af683-2f0b-49be-a571-dc3125ee0f12","58867050-67a3-46f4-9550-edd093b6740b.jsonl","07/24/2026 11:31:28","1","","not-a-case","does removing the ""Bash(curl *)"" not just allow all bash curl commands again?"
 "U195","next-step-asks","20260816","unflagged","uuid:eb6d6a51-cdfa-4041-ac23-4b4ce86bcabd","2a320f20-71ed-41af-830a-8e8ee4605a5d.jsonl","08/12/2026 02:07:40","1","","not-a-case","continue when ready, ask questions later"
-"U338","next-step-asks","20260816","unflagged","uuid:eb821c0c-6e1d-4f22-a3c1-69c31b72ca9a","2e976eef-7e8e-47a6-9071-d6a97af82d79.jsonl","07/23/2026 12:18:03","1","","","integrate the branches, there will be merge conficts to fix"
-"U339","next-step-asks","20260816","unflagged","uuid:edb105ca-65d4-4675-a2d2-4f436c1a7ad1","52ff6008-8aa2-44c5-8673-6dab4b6e4b9d.jsonl","07/29/2026 21:00:13","1","","","1a"
-"U340","next-step-asks","20260816","unflagged","uuid:efee61a1-413c-4ee8-ba43-902ddc6476ee","303c598f-259b-44b4-bc4c-8bc6df638b8c.jsonl","07/27/2026 14:17:32","1","","","pushed, but create failed:   pwsh  gh pr create --fill
+"U338","next-step-asks","20260816","unflagged","uuid:eb821c0c-6e1d-4f22-a3c1-69c31b72ca9a","2e976eef-7e8e-47a6-9071-d6a97af82d79.jsonl","07/23/2026 12:18:03","1","","not-a-case","integrate the branches, there will be merge conficts to fix"
+"U339","next-step-asks","20260816","unflagged","uuid:edb105ca-65d4-4675-a2d2-4f436c1a7ad1","52ff6008-8aa2-44c5-8673-6dab4b6e4b9d.jsonl","07/29/2026 21:00:13","1","","not-a-case","1a"
+"U340","next-step-asks","20260816","unflagged","uuid:efee61a1-413c-4ee8-ba43-902ddc6476ee","303c598f-259b-44b4-bc4c-8bc6df638b8c.jsonl","07/27/2026 14:17:32","1","","not-a-case","pushed, but create failed:   pwsh  gh pr create --fill
 Post ""https://api.github.com/graphql"": net/http: invalid header field value for ""Authorization"" fill it properly"
-"U341","next-step-asks","20260816","unflagged","uuid:f1fc9c9b-d018-4d6a-9e9a-85b3d035849d","d081d03c-5e2b-4666-8aee-7e47920e8117.jsonl","08/05/2026 14:55:51","1","","","hanges requested before the implementation plan. The core approach is sound, but five details need tightening.
+"U341","next-step-asks","20260816","unflagged","uuid:f1fc9c9b-d018-4d6a-9e9a-85b3d035849d","d081d03c-5e2b-4666-8aee-7e47920e8117.jsonl","08/05/2026 14:55:51","1","","not-a-case","hanges requested before the implementation plan. The core approach is sound, but five details need tightening.
 
   1. High: edit-mode behavior conflicts with the current markup.
      The spec places the button in the normal action group, then requires it to remain visible and disabled during editing (/C:/Dev/segocom-github/AHKFlowApp/docs/superpowers/specs/2026-08-05-
@@ -2858,14 +2858,14 @@ Post ""https://api.github.com/graphql"": net/http: invalid header field value fo
   On branch sequencing: push and open the header-preset PR first, but create the download worktree from main only after that PR merges. The header branch is 11 commits ahead and changes both
   Profiles.razor and ProfilesPageTests.cs, which this work also changes. Several spec line references currently match that branch rather than today’s main. Waiting for the merge keeps the concerns
   separate without creating an avoidable rebase conflict."
-"U342","next-step-asks","20260816","unflagged","uuid:f2e87b94-3190-4d1a-9f2d-a44f7d46af74","a1fc5113-bdf4-4f5d-9326-0cf9a0188fd0.jsonl","07/23/2026 13:15:11","1","","","use option 3 and store that in mem if it works"
+"U342","next-step-asks","20260816","unflagged","uuid:f2e87b94-3190-4d1a-9f2d-a44f7d46af74","a1fc5113-bdf4-4f5d-9326-0cf9a0188fd0.jsonl","07/23/2026 13:15:11","1","","not-a-case","use option 3 and store that in mem if it works"
 "U199","next-step-asks","20260816","unflagged","uuid:f4d3bff8-1d67-458a-9d11-451bc82d7dbf","1b5c4f40-e5cf-4850-816f-e7d1b5acfcde.jsonl","08/01/2026 15:18:02","1","","not-a-case","update the rule to always commit these kind an changes to the housekeeping worktree immediately, I want to see it in the git history"
-"U343","next-step-asks","20260816","unflagged","uuid:f64524c7-9cff-4083-b7da-3e9d3e8a9351","c9d3e6e7-26b0-4727-98c5-b42de936c028.jsonl","07/26/2026 20:43:27","1","","","1 then stop"
-"U344","next-step-asks","20260816","unflagged","uuid:f773d01d-5f10-4080-aa65-cfbcc8994bbb","146c148c-90f7-4a50-8a0d-7635bb2360d3.jsonl","08/08/2026 19:32:24","1","","","https://github.com/s205109/AHKFlowApp/pull/280/changes, in PR280 PR-agent reviews were added. I tried to use it in PR281 https://github.com/s205109/AHKFlowApp/pull/281, see comments @-openrouter review PR, why does this not trigger the openrouter review?"
-"U345","next-step-asks","20260816","unflagged","uuid:f7da9b2a-255d-4c91-b145-9753a0970d1d","303c598f-259b-44b4-bc4c-8bc6df638b8c.jsonl","07/27/2026 15:08:11","1","","","force delete this worktree-wt-hotkey-type-filter worktree"
-"U346","next-step-asks","20260816","unflagged","uuid:f8acf66c-df90-4da0-b822-d5fd4900c3a3","a9ff7000-54fc-4479-8e59-bad3790e661f.jsonl","08/05/2026 18:57:43","1","","","start with @backlog/042-key-rebinds-as-first-class-rows.md using superpowers?"
-"U347","next-step-asks","20260816","unflagged","uuid:f9f39522-1fdd-4216-ac3b-498f42239493","a573bbd8-59c4-409e-a6c0-a7f4f5b24712.jsonl","07/30/2026 14:01:56","1","","","stop them, how can this be prevented in the future?"
-"U348","next-step-asks","20260816","unflagged","uuid:f9fca8ef-1a82-402d-bc74-58963f9548a8","3cdbcc48-4bd4-4b80-8461-f22bdf00ed4d.jsonl","08/05/2026 18:53:35","1","suggest","","No. Path form not the thing that blocks it.
+"U343","next-step-asks","20260816","unflagged","uuid:f64524c7-9cff-4083-b7da-3e9d3e8a9351","c9d3e6e7-26b0-4727-98c5-b42de936c028.jsonl","07/26/2026 20:43:27","1","","not-a-case","1 then stop"
+"U344","next-step-asks","20260816","unflagged","uuid:f773d01d-5f10-4080-aa65-cfbcc8994bbb","146c148c-90f7-4a50-8a0d-7635bb2360d3.jsonl","08/08/2026 19:32:24","1","","not-a-case","https://github.com/s205109/AHKFlowApp/pull/280/changes, in PR280 PR-agent reviews were added. I tried to use it in PR281 https://github.com/s205109/AHKFlowApp/pull/281, see comments @-openrouter review PR, why does this not trigger the openrouter review?"
+"U345","next-step-asks","20260816","unflagged","uuid:f7da9b2a-255d-4c91-b145-9753a0970d1d","303c598f-259b-44b4-bc4c-8bc6df638b8c.jsonl","07/27/2026 15:08:11","1","","not-a-case","force delete this worktree-wt-hotkey-type-filter worktree"
+"U346","next-step-asks","20260816","unflagged","uuid:f8acf66c-df90-4da0-b822-d5fd4900c3a3","a9ff7000-54fc-4479-8e59-bad3790e661f.jsonl","08/05/2026 18:57:43","1","","not-a-case","start with @backlog/042-key-rebinds-as-first-class-rows.md using superpowers?"
+"U347","next-step-asks","20260816","unflagged","uuid:f9f39522-1fdd-4216-ac3b-498f42239493","a573bbd8-59c4-409e-a6c0-a7f4f5b24712.jsonl","07/30/2026 14:01:56","1","","not-a-case","stop them, how can this be prevented in the future?"
+"U348","next-step-asks","20260816","unflagged","uuid:f9fca8ef-1a82-402d-bc74-58963f9548a8","3cdbcc48-4bd4-4b80-8461-f22bdf00ed4d.jsonl","08/05/2026 18:53:35","1","suggest","not-a-case","No. Path form not the thing that blocks it.
 
 Session isolation is a property of the session, fixed when it starts. This session started in the worktree. Switching path mid-session — cd, absolute path, resolved path — does not move that boundary.
 
@@ -2880,10 +2880,10 @@ Extra catch: there is no worktree copy to fall back to. The public repo gitignor
 What would have worked: starting a session in the main checkout. Then no worktree isolation, and CLAUDE.md's rule is satisfied too — plan writes and plan commits belong in main.
 
 One honest limit: I only ever had Edit refused on that path. I never tried a plain Bash write to it, so I cannot say from evidence whether Bash would refuse the same way. The session-level reasoning says it should, but I did not test it. can you test it using bash first?"
-"U349","next-step-asks","20260816","unflagged","uuid:fa3eb5ad-2198-42e7-90ea-dfd60a9ed0f4","0ff84554-56e7-4888-9b00-2814d947d047.jsonl","07/27/2026 11:26:29","1","","","cd 'C:\Dev\segocom-github\AHKFlowApp' ; claude --resume b5daf7ef-e3c8-490d-b82e-31cd26490530"
-"U350","next-step-asks","20260816","unflagged","uuid:fa9f9b42-b99e-4133-be41-8290fc3caf2c","2f76dde1-5499-4b5a-a48a-3e0ec96bec3b.jsonl","07/31/2026 15:57:20","1","","","do it"
-"U351","next-step-asks","20260816","unflagged","uuid:faba4234-27a8-486f-ad55-f4324a150194","fa13a69a-fe78-439b-aed0-e46cf740b719.jsonl","07/24/2026 09:48:03","1","","","use rec."
-"U352","next-step-asks","20260816","unflagged","uuid:fc2f4524-a58f-4717-a6ad-c50b720262b1","e09db8b5-ae49-416f-b2ab-290cc5742258.jsonl","07/30/2026 14:52:03","1","options","","@docs/superpowers/plans/2026-07-30-blazor-boot-failure-surface-plan.md Verdict: changes requested. The production design is sound, and the branch/base claims match. The plan is not execution-ready yet.
+"U349","next-step-asks","20260816","unflagged","uuid:fa3eb5ad-2198-42e7-90ea-dfd60a9ed0f4","0ff84554-56e7-4888-9b00-2814d947d047.jsonl","07/27/2026 11:26:29","1","","not-a-case","cd 'C:\Dev\segocom-github\AHKFlowApp' ; claude --resume b5daf7ef-e3c8-490d-b82e-31cd26490530"
+"U350","next-step-asks","20260816","unflagged","uuid:fa9f9b42-b99e-4133-be41-8290fc3caf2c","2f76dde1-5499-4b5a-a48a-3e0ec96bec3b.jsonl","07/31/2026 15:57:20","1","","not-a-case","do it"
+"U351","next-step-asks","20260816","unflagged","uuid:faba4234-27a8-486f-ad55-f4324a150194","fa13a69a-fe78-439b-aed0-e46cf740b719.jsonl","07/24/2026 09:48:03","1","","not-a-case","use rec."
+"U352","next-step-asks","20260816","unflagged","uuid:fc2f4524-a58f-4717-a6ad-c50b720262b1","e09db8b5-ae49-416f-b2ab-290cc5742258.jsonl","07/30/2026 14:52:03","1","options","not-a-case","@docs/superpowers/plans/2026-07-30-blazor-boot-failure-surface-plan.md Verdict: changes requested. The production design is sound, and the branch/base claims match. The plan is not execution-ready yet.
 
   1. High — Task 4’s fallback stops testing blocked sessionStorage.
      The fallback at /C:/Dev/segocom-github/AHKFlowApp/.claude/worktrees/blazor-boot-failure/docs/superpowers/plans/2026-07-30-blazor-boot-failure-
@@ -2928,7 +2928,7 @@ One honest limit: I only ever had Edit refused on that path. I never tried a pla
     (https://learn.microsoft.com/en-us/aspnet/core/blazor/fundamentals/startup?view=aspnetcore-10.0)
 
   No repository files were changed. The worktree remains clean at c5ad62b6; private-plan commit 02932f1 is present."
-"U353","next-step-asks","20260816","unflagged","uuid:fc591faf-e5ae-4c8a-9ba9-3ac56a2c673d","303c598f-259b-44b4-bc4c-8bc6df638b8c.jsonl","07/27/2026 14:30:07","1","","","$ git pull --ff-only
+"U353","next-step-asks","20260816","unflagged","uuid:fc591faf-e5ae-4c8a-9ba9-3ac56a2c673d","303c598f-259b-44b4-bc4c-8bc6df638b8c.jsonl","07/27/2026 14:30:07","1","","not-a-case","$ git pull --ff-only
 Your configuration specifies to merge with the ref 'refs/heads/chore/move-plans-private'
 from the remote, but no such ref was fetched."
-"U354","next-step-asks","20260816","unflagged","uuid:fe317ceb-e9ef-41c1-b781-144e3a1e1327","a9ff7000-54fc-4479-8e59-bad3790e661f.jsonl","08/05/2026 20:55:44","1","","","committed, write the plan"
+"U354","next-step-asks","20260816","unflagged","uuid:fe317ceb-e9ef-41c1-b781-144e3a1e1327","a9ff7000-54fc-4479-8e59-bad3790e661f.jsonl","08/05/2026 20:55:44","1","","not-a-case","committed, write the plan"
