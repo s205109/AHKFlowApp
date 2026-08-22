@@ -6,3 +6,4 @@ One line per finished task. A task with no line here is not finished, whatever t
 looks like.
 
 - [x] Task 0 — progress file started
+- [x] Task 1 — sampler takes -ProjectRoot, selection record names it
