@@ -3777,6 +3777,80 @@ function Get-AgentGuardActionSeverity {
     return 3
 }
 
+# Lower wins a tie. This is not the order the layers run in; it is the order the ordered
+# short-circuit this resolver replaces actually returned. The location layer returned before the
+# write layer, and the safety answer was only the fallback, so safety loses every tie it can
+# reach. A safety Deny never reaches one: it returns before the location layer runs.
+$script:AgentGuardLayerTieRank = @{ location = 1; write = 2; safety = 3 }
+
+$script:AgentGuardWinningLayerNote = 'This answer comes from the guard''s {0} layer.'
+
+# "also objected", not "objected more weakly": a tie is an equal answer, not a weaker one, and
+# two layers answering Warn is a reachable case.
+$script:AgentGuardOtherLayerNote = @'
+Other layers also objected: {0}. The strongest answer decides the command.
+'@
+
+<#
+.SYNOPSIS
+Returns the strongest decision the policy layers produced for one Reading.
+
+.DESCRIPTION
+The layers answer independently, so run position must not decide. Backlog 111 measured the gap:
+'git -C <main> add . ; Set-Content -Path <main>\probe.txt -Value x' made the location layer
+answer Ask and the write layer answer Deny, and the caller returned the Ask, which a human
+could approve.
+
+A tie goes to the layer with the lowest AgentGuardLayerTieRank, which reproduces what the old
+ordered short-circuit returned. So every command that is not the defect keeps today's exact
+action, rule, and message.
+
+Layers are passed in the order they ran, because that is the order the message lists them in.
+The caller may pass fewer than three when an early return already holds a Deny, because nothing
+can beat the top of the severity table.
+#>
+function Resolve-AgentGuardLayerDecision {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [object[]] $Layers
+    )
+
+    $winner = $Layers[0]
+    foreach ($layer in $Layers) {
+        $severity = Get-AgentGuardActionSeverity $layer.Decision.Action
+        $best = Get-AgentGuardActionSeverity $winner.Decision.Action
+        if ($severity -gt $best) {
+            $winner = $layer
+            continue
+        }
+        if ($severity -eq $best -and
+            $script:AgentGuardLayerTieRank[$layer.Name] -lt
+            $script:AgentGuardLayerTieRank[$winner.Name]) {
+            $winner = $layer
+        }
+    }
+
+    # An Allow carries no message worth explaining, and naming a layer on one would put a
+    # refusal notice on a command that was not refused.
+    if ($winner.Decision.Action -eq 'Allow') { return $winner.Decision }
+
+    $message = $winner.Decision.Message + "`n" +
+    [string]::Format($script:AgentGuardWinningLayerNote, $winner.Name)
+
+    $others = @($Layers |
+        Where-Object { $_.Name -ne $winner.Name -and $_.Decision.Action -ne 'Allow' } |
+        ForEach-Object { "$($_.Name) answered $($_.Decision.Action)" })
+
+    if ($others.Count -gt 0) {
+        $message = $message + "`n" +
+        [string]::Format($script:AgentGuardOtherLayerNote, ($others -join '; '))
+    }
+
+    return (New-AgentGuardDecision -Action $winner.Decision.Action -Rule $winner.Decision.Rule `
+            -Message $message)
+}
+
 <#
 .SYNOPSIS
 Single orchestration point: safety rules fail closed, location rules fail open.

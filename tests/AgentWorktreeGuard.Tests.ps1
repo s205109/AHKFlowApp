@@ -746,6 +746,139 @@ try {
         Assert-Equal 'safety-guard-error' $decision.Rule 'Rule'
     }
 
+    Write-Host 'Layer severity resolution' -ForegroundColor Cyan
+
+    # A small builder so each case below reads as a table of layer answers, not as ceremony.
+    function New-LayerCase {
+        param([string] $Name, [string] $Action, [string] $Rule = 'none', [string] $Message = '')
+        return [pscustomobject]@{
+            Name     = $Name
+            Decision = (New-AgentGuardDecision -Action $Action -Rule $Rule -Message $Message)
+        }
+    }
+
+    Invoke-TestCase 'Resolver: a stronger later layer beats a weaker earlier one' {
+        $decision = Resolve-AgentGuardLayerDecision -Layers @(
+            (New-LayerCase -Name 'safety' -Action 'Allow'),
+            (New-LayerCase -Name 'location' -Action 'Ask' -Rule 'agent-main-git-mutation' -Message 'ask text'),
+            (New-LayerCase -Name 'write' -Action 'Deny' -Rule 'agent-worktree-main-write' -Message 'deny text')
+        )
+        Assert-Equal 'Deny' $decision.Action 'Action'
+        Assert-Equal 'agent-worktree-main-write' $decision.Rule 'Rule'
+        Assert-Match 'deny text' $decision.Message 'The winning layer keeps its own message'
+    }
+
+    Invoke-TestCase 'Resolver: a stronger earlier layer beats a weaker later one' {
+        $decision = Resolve-AgentGuardLayerDecision -Layers @(
+            (New-LayerCase -Name 'safety' -Action 'Allow'),
+            (New-LayerCase -Name 'location' -Action 'Ask' -Rule 'agent-main-git-mutation' -Message 'ask text'),
+            (New-LayerCase -Name 'write' -Action 'Warn' -Rule 'agent-worktree-main-write-overridden' -Message 'warn text')
+        )
+        Assert-Equal 'Ask' $decision.Action 'Action'
+        Assert-Equal 'agent-main-git-mutation' $decision.Rule 'Rule'
+    }
+
+    Invoke-TestCase 'Resolver: location wins a tie against write, as the old order did' {
+        $decision = Resolve-AgentGuardLayerDecision -Layers @(
+            (New-LayerCase -Name 'safety' -Action 'Allow'),
+            (New-LayerCase -Name 'location' -Action 'Warn' -Rule 'agent-main-git-mutation-overridden' -Message 'location warn'),
+            (New-LayerCase -Name 'write' -Action 'Warn' -Rule 'agent-worktree-main-write-overridden' -Message 'write warn')
+        )
+        Assert-Equal 'Warn' $decision.Action 'Action'
+        Assert-Equal 'agent-main-git-mutation-overridden' $decision.Rule 'Rule'
+        Assert-Match 'location layer' $decision.Message 'Message names the winning layer'
+        Assert-True ($decision.Message -notmatch 'more weakly') `
+            'An equal answer must not be described as weaker'
+    }
+
+    Invoke-TestCase 'Resolver: location wins a tie against safety, as the old order did' {
+        $decision = Resolve-AgentGuardLayerDecision -Layers @(
+            (New-LayerCase -Name 'safety' -Action 'Warn' -Rule 'dotnet-run' -Message 'safety warn'),
+            (New-LayerCase -Name 'location' -Action 'Warn' -Rule 'agent-main-git-mutation-overridden' -Message 'location warn'),
+            (New-LayerCase -Name 'write' -Action 'Allow')
+        )
+        Assert-Equal 'Warn' $decision.Action 'Action'
+        Assert-Equal 'agent-main-git-mutation-overridden' $decision.Rule 'Rule'
+    }
+
+    Invoke-TestCase 'Resolver: write wins a tie against safety, as the old order did' {
+        $decision = Resolve-AgentGuardLayerDecision -Layers @(
+            (New-LayerCase -Name 'safety' -Action 'Warn' -Rule 'dotnet-run' -Message 'safety warn'),
+            (New-LayerCase -Name 'location' -Action 'Allow'),
+            (New-LayerCase -Name 'write' -Action 'Warn' -Rule 'agent-worktree-main-write-overridden' -Message 'write warn')
+        )
+        Assert-Equal 'Warn' $decision.Action 'Action'
+        Assert-Equal 'agent-worktree-main-write-overridden' $decision.Rule 'Rule'
+    }
+
+    Invoke-TestCase 'Resolver: three Allows stay an Allow and gain no message' {
+        $decision = Resolve-AgentGuardLayerDecision -Layers @(
+            (New-LayerCase -Name 'safety' -Action 'Allow'),
+            (New-LayerCase -Name 'location' -Action 'Allow'),
+            (New-LayerCase -Name 'write' -Action 'Allow')
+        )
+        Assert-Equal 'Allow' $decision.Action 'Action'
+        Assert-Equal 'none' $decision.Rule 'Rule'
+        Assert-Equal '' $decision.Message 'An Allow must stay silent'
+    }
+
+    Invoke-TestCase 'Resolver: a lone objection still names its layer' {
+        $decision = Resolve-AgentGuardLayerDecision -Layers @(
+            (New-LayerCase -Name 'safety' -Action 'Deny' -Rule 'dangerous-rm' -Message 'BLOCKED: rm')
+        )
+        Assert-Equal 'Deny' $decision.Action 'Action'
+        Assert-Match 'safety layer' $decision.Message 'Message names the layer'
+        Assert-True ($decision.Message -notmatch 'also objected') `
+            'With one objection there is nothing else to report'
+    }
+
+    Invoke-TestCase 'Resolver: no combination of layer answers comes out weaker than before' {
+        # The whole point of this change is that an answer may only get stronger. Enumerate every
+        # combination of three layer answers, compare against what the old ordered short-circuit
+        # returned, and fail on any that got weaker. The backlog 111 review caught a tie rule that
+        # changed a reachable result. This case is what stops that class of error shipping again.
+        $severity = @{ Allow = 0; Warn = 1; Ask = 2; Deny = 3 }
+        $actions = @('Allow', 'Warn', 'Ask', 'Deny')
+
+        foreach ($s in $actions) {
+            foreach ($l in $actions) {
+                foreach ($w in $actions) {
+                    # The old orchestration, written out so this compares against behaviour and
+                    # not against the new code restated.
+                    $wasAction = if ($s -eq 'Deny') { $s }
+                    elseif ($l -ne 'Allow') { $l }
+                    elseif ($w -ne 'Allow') { $w }
+                    else { $s }
+
+                    # The orchestrator stops at a Deny, so the resolver never sees the layers
+                    # after one. Mirror that, or this tests a shape that cannot happen.
+                    $layers = @((New-LayerCase -Name 'safety' -Action $s -Rule 'safety-rule'))
+                    if ($s -ne 'Deny') {
+                        $layers += (New-LayerCase -Name 'location' -Action $l -Rule 'location-rule')
+                        if ($l -ne 'Deny') {
+                            $layers += (New-LayerCase -Name 'write' -Action $w -Rule 'write-rule')
+                        }
+                    }
+
+                    $now = Resolve-AgentGuardLayerDecision -Layers $layers
+                    Assert-True ($severity[$now.Action] -ge $severity[$wasAction]) `
+                    ("safety=$s location=$l write=$w gave '$($now.Action)', weaker than '$wasAction'")
+                }
+            }
+        }
+    }
+
+    Invoke-TestCase 'Resolver: a suppressed objection is reported, not dropped' {
+        $decision = Resolve-AgentGuardLayerDecision -Layers @(
+            (New-LayerCase -Name 'safety' -Action 'Allow'),
+            (New-LayerCase -Name 'location' -Action 'Ask' -Rule 'agent-main-git-mutation' -Message 'ask text'),
+            (New-LayerCase -Name 'write' -Action 'Deny' -Rule 'agent-worktree-main-write' -Message 'deny text')
+        )
+        Assert-Match 'write layer' $decision.Message 'Message names the winning layer'
+        Assert-Match 'location' $decision.Message 'Message names the suppressed layer'
+        Assert-Match 'Ask' $decision.Message 'Message names the suppressed action'
+    }
+
     Write-Host 'Location policy' -ForegroundColor Cyan
 
     Invoke-TestCase 'Mutating git in the protected main checkout is denied' {
