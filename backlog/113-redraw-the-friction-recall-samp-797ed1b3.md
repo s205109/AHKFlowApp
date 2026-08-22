@@ -6,7 +6,7 @@
 - **Type**: Process / tooling
 - **Interfaces**: none (scripts, docs)
 - **Difficulty**: complex
-- **Stage**: 3-plan
+- **Stage**: 4-execute
 - **Depends on**: 102-recall-sample-was-drawn-without-equal-inclusion-probabilities
 
 ## Summary
