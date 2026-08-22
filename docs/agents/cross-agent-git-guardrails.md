@@ -144,8 +144,28 @@ alone would only need a prompt.
 
 Two more hard denials exist outside the tier system entirely. This change does not touch them: a
 destructive-command safety-rule match (force-push, `reset --hard`, `clean -f`, `checkout .`, a
-dangerous `rm -rf`), and an unparseable `ambiguous-git-command`. Neither was ever gated by
-location logic.
+dangerous `rm -rf`), and a command the guard could not read (`ambiguous-command`). Neither was
+ever gated by location logic.
+
+### A command the guard cannot read
+
+The guard reads a command as text before it decides anything. Sometimes it cannot read it at all,
+because a quote or an escape was left open, or a heredoc or here-string is incomplete. Nothing in
+the command can be trusted after that: no command word, no write target, no `cd`.
+
+Every policy layer refuses that command, with rule `ambiguous-command` and one shared message. The
+safety layer refuses it. The location layer refuses it. The write layer refuses it for a session in
+a managed worktree, which is the only kind of session that layer governs. Refusing it for any other
+session is the location layer's job, and that layer does it for every session.
+
+`AHKFLOW_ALLOW_MAIN=1` does not relax this refusal at any layer.
+
+The rule is named for the command and not for git, and the check cannot be narrowed to git commands.
+A command the guard could not read cannot be shown to hold no git. It fires today on commands
+holding no git at all, from any session location.
+
+The way past it is to close the open quote or escape, or complete the heredoc or here-string.
+There is no override.
 
 ### Worktree write isolation
 

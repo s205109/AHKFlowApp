@@ -80,6 +80,32 @@ function New-AgentGuardDecision {
     }
 }
 
+$script:AgentGuardAmbiguousCommandMessage = @'
+BLOCKED: the guard could not read this command. A quote or an escape was left open, or a
+heredoc or here-string is incomplete, so the whole command is refused.
+Close the quote or escape, or complete the heredoc or here-string, then run it again.
+'@
+
+<#
+.SYNOPSIS
+The one refusal every policy layer returns for an Ambiguous Reading.
+
+.DESCRIPTION
+Every policy layer calls this, so the rule name and the message cannot drift apart again. The rule
+is named for the command and not for git: the tokenizer could not read the command, so nothing in
+it can be shown to be a git invocation, and the refusal fires on commands holding no git at all.
+
+Deliberately parameterless. The note naming which Reading refused is added later, by
+Add-AgentPowerShellReadingNote, for every rule alike.
+#>
+function New-AgentGuardAmbiguousDecision {
+    [CmdletBinding()]
+    param()
+
+    return New-AgentGuardDecision -Action Deny -Rule 'ambiguous-command' -Message `
+        $script:AgentGuardAmbiguousCommandMessage
+}
+
 <#
 .SYNOPSIS
 Runs a git probe and returns its trimmed stdout, or '' when the probe fails.
@@ -250,6 +276,12 @@ function Get-AgentCommandSafetyDecision {
         return New-AgentGuardDecision -Action Allow
     }
 
+    # Parsed once here and reused below. A command the guard could not read is refused before any
+    # classification runs: the git, rm and dotnet rules all read tokens this parse never produced,
+    # so falling through to them would read an empty token list as "holds nothing dangerous".
+    $parsed = Get-AgentCommandSegment -Command $Command -Reading $Reading
+    if ($parsed.Ambiguous) { return New-AgentGuardAmbiguousDecision }
+
     $gitDecision = Get-AgentGitSafetyDecision -Command $Command -Reading $Reading
     if ($gitDecision.Action -ne 'Allow') { return $gitDecision }
 
@@ -258,7 +290,7 @@ function Get-AgentCommandSafetyDecision {
     # read as an invocation. Only a segment's leading command word is inspected. A wrapped
     # `sudo rm -rf` hides exactly the way `sh -c 'git ...'` already does: the documented wrapper
     # gap, not a new one.
-    $segments = @((Get-AgentCommandSegment -Command $Command -Reading $Reading).Segments)
+    $segments = @($parsed.Segments)
 
     foreach ($segment in $segments) {
         if ((Get-AgentOtherCommandLeaf -Segment $segment) -ne 'rm') { continue }
@@ -344,8 +376,9 @@ function Test-AgentDangerousRmArguments {
 Applies the destructive git rules to every parsed git invocation in a command.
 
 .DESCRIPTION
-An unparseable command yields Allow here; Get-AgentWorktreeGuardDecision denies it separately
-with the ambiguous-git-command rule, so nothing slips through by returning Allow.
+An Ambiguous Reading is refused here, with the same rule and message every policy layer returns.
+Get-AgentCommandSafetyDecision refuses it before this function is reached, so this check is for a
+direct caller and for any future caller that skips the layer entry point.
 #>
 function Get-AgentGitSafetyDecision {
     [CmdletBinding()]
@@ -357,7 +390,7 @@ function Get-AgentGitSafetyDecision {
     )
 
     $parsed = Get-AgentGitInvocation -Command $Command -Reading $Reading
-    if ($parsed.Ambiguous) { return New-AgentGuardDecision -Action Allow }
+    if ($parsed.Ambiguous) { return New-AgentGuardAmbiguousDecision }
 
     foreach ($tokens in $parsed.Invocations) {
         $parts = Get-AgentGitParts -Tokens $tokens
@@ -1085,11 +1118,7 @@ function Get-AgentWorktreeGuardDecision {
 
     $parsed = Get-AgentCommandSegment -Command $Command -Reading $Reading
 
-    if ($parsed.Ambiguous) {
-        return New-AgentGuardDecision -Action Deny -Rule 'ambiguous-git-command' -Message `
-        ('BLOCKED: the git command could not be parsed safely (unbalanced quote). ' +
-            'Rewrite it with balanced quoting.')
-    }
+    if ($parsed.Ambiguous) { return New-AgentGuardAmbiguousDecision }
 
     if (@($parsed.Segments | Where-Object { $_.Kind -eq 'Git' }).Count -eq 0) {
         return New-AgentGuardDecision -Action Allow
@@ -3269,6 +3298,11 @@ Only fires when the session's own working directory is a managed worktree. A mai
 session is unaffected, which keeps the AGENTS.md rule that agents may edit, build, test, and
 format in main. Segments are walked in order so an earlier cd moves where a later write lands,
 matching Get-AgentGitLocationDecision.
+
+An Ambiguous Reading is refused, with the same rule and message every policy layer returns. That
+check sits behind the managed-worktree test above, so it never fires for a session this layer does
+not govern. Refusing an unreadable command from any other session is the location layer's job, and
+it already does that for every session.
 #>
 function Get-AgentWorktreeWriteDecision {
     [CmdletBinding()]
@@ -3286,7 +3320,7 @@ function Get-AgentWorktreeWriteDecision {
     if ($sessionState -ne 'ManagedWorktree') { return New-AgentGuardDecision -Action Allow }
 
     $parsed = Get-AgentCommandSegment -Command $Command -Reading $Reading
-    if ($parsed.Ambiguous) { return New-AgentGuardDecision -Action Allow }
+    if ($parsed.Ambiguous) { return New-AgentGuardAmbiguousDecision }
 
     $protectedCommonDir = Invoke-AgentGuardGitProbe @(
         '-C', $ProtectedRepoRoot, 'rev-parse', '--path-format=absolute', '--git-common-dir')

@@ -789,11 +789,157 @@ try {
         Assert-Equal 'Allow' $decision.Action 'Action'
     }
 
-    Invoke-TestCase 'An unbalanced quote is an explicit ambiguous-git-command denial' {
+    Invoke-TestCase 'An unbalanced quote is an explicit ambiguous-command denial' {
         $decision = Invoke-AgentGuardPolicy -Command 'git -C "C:\unbalanced;path commit -m test' `
             -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
         Assert-Equal 'Deny' $decision.Action 'Action'
-        Assert-Equal 'ambiguous-git-command' $decision.Rule 'Rule'
+        Assert-Equal 'ambiguous-command' $decision.Rule 'Rule'
+    }
+
+    Write-Host 'An unreadable command is refused by every policy layer' -ForegroundColor Cyan
+
+    # Ends inside a double quote, so both Readings of it are Ambiguous. It holds no git at all,
+    # which is why the rule is named for the command and not for git.
+    $unreadable = 'printf x > "somewhere.txt'
+
+    foreach ($reading in @('Bash', 'PowerShell')) {
+        Invoke-TestCase "Safety layer refuses an unreadable command ($reading Reading)" {
+            $decision = Get-AgentCommandSafetyDecision -Command $unreadable -Reading $reading
+            Assert-Equal 'Deny' $decision.Action 'Action'
+            Assert-Equal 'ambiguous-command' $decision.Rule 'Rule'
+        }
+
+        Invoke-TestCase "Git safety classifier refuses an unreadable command ($reading Reading)" {
+            $decision = Get-AgentGitSafetyDecision -Command $unreadable -Reading $reading
+            Assert-Equal 'Deny' $decision.Action 'Action'
+            Assert-Equal 'ambiguous-command' $decision.Rule 'Rule'
+        }
+
+        Invoke-TestCase "Location layer refuses an unreadable command ($reading Reading)" {
+            $decision = Get-AgentWorktreeGuardDecision -Command $unreadable `
+                -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false `
+                -Reading $reading
+            Assert-Equal 'Deny' $decision.Action 'Action'
+            Assert-Equal 'ambiguous-command' $decision.Rule 'Rule'
+        }
+
+        Invoke-TestCase "Write layer refuses an unreadable command from a managed worktree ($reading Reading)" {
+            $decision = Get-AgentWorktreeWriteDecision -Command $unreadable `
+                -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false `
+                -Reading $reading
+            Assert-Equal 'Deny' $decision.Action 'Action'
+            Assert-Equal 'ambiguous-command' $decision.Rule 'Rule'
+        }
+    }
+
+    # The scope test stays in front of the ambiguity check. These two cases fail if a later change
+    # hoists the ambiguity check above it, which would give the write layer the location layer's
+    # job and make its own documentation false.
+    $writeScopeCases = @(
+        @{ Name = 'the main checkout'; Cwd = $fixture.Main },
+        @{ Name = 'an unrelated repository'; Cwd = $fixture.Unrelated }
+    )
+    foreach ($scopeCase in $writeScopeCases) {
+        Invoke-TestCase "Write layer allows an unreadable command from $($scopeCase.Name)" {
+            $decision = Get-AgentWorktreeWriteDecision -Command $unreadable `
+                -Cwd $scopeCase.Cwd -ProtectedRepoRoot $fixture.Main -AllowMain $false -Reading Bash
+            Assert-Equal 'Allow' $decision.Action 'Action'
+        }
+    }
+
+    Invoke-TestCase 'Every policy layer returns the identical refusal' {
+        $safety = Get-AgentCommandSafetyDecision -Command $unreadable -Reading Bash
+        $location = Get-AgentWorktreeGuardDecision -Command $unreadable `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false -Reading Bash
+        # Compared from a managed worktree, which is the write layer's scope. From any other session
+        # this would compare against its scope test, not against its answer to an Ambiguous Reading.
+        $write = Get-AgentWorktreeWriteDecision -Command $unreadable `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false -Reading Bash
+
+        foreach ($other in @($location, $write)) {
+            Assert-Equal $safety.Action $other.Action 'Action'
+            Assert-Equal $safety.Rule $other.Rule 'Rule'
+            Assert-Equal $safety.Message $other.Message 'Message'
+        }
+    }
+
+    Invoke-TestCase 'AHKFLOW_ALLOW_MAIN does not relax an unreadable-command refusal' {
+        $combined = Invoke-AgentGuardPolicy -Command $unreadable `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $true
+        Assert-Equal 'Deny' $combined.Action 'Combined Action'
+        Assert-Equal 'ambiguous-command' $combined.Rule 'Combined Rule'
+
+        $location = Get-AgentWorktreeGuardDecision -Command $unreadable `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $true -Reading Bash
+        Assert-Equal 'Deny' $location.Action 'Location Action'
+
+        $write = Get-AgentWorktreeWriteDecision -Command $unreadable `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $true -Reading Bash
+        Assert-Equal 'Deny' $write.Action 'Write Action'
+    }
+
+    Invoke-TestCase 'One ambiguous Reading is enough to refuse' {
+        # A backtick then a double quote. Bash ends inside the quote, so its Reading is Ambiguous.
+        # PowerShell reads the backtick as an escape, so its Reading is clean and allows.
+        $oneSided = 'printf x > out' + [string][char]96 + '"'
+
+        $bashReading = Get-AgentWorktreeGuardDecision -Command $oneSided `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false -Reading Bash
+        Assert-Equal 'Deny' $bashReading.Action 'Bash Reading Action'
+        Assert-Equal 'ambiguous-command' $bashReading.Rule 'Bash Reading Rule'
+
+        $powershellReading = Get-AgentWorktreeGuardDecision -Command $oneSided `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false `
+            -Reading PowerShell
+        Assert-Equal 'Allow' $powershellReading.Action 'PowerShell Reading Action'
+
+        $combined = Invoke-AgentGuardPolicy -Command $oneSided `
+            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
+        Assert-Equal 'Deny' $combined.Action 'Combined Action'
+        Assert-Equal 'ambiguous-command' $combined.Rule 'Combined Rule'
+    }
+
+    # A quote is one of four ways a Reading becomes Ambiguous. The other three are block forms the
+    # suite already covers at (`tests/AgentWorktreeGuard.Tests.ps1:2083`, "    $heredocAmbiguousCases = @(")
+    # and (`tests/AgentWorktreeGuard.Tests.ps1:2172`, "    $hereStringAmbiguousCases = @("), and
+    # every one of them must reach the same refusal at every layer. Without this, the message could
+    # promise "balanced quoting" to somebody whose heredoc terminator is indented.
+    $unreadableCauses = @(
+        @{ Name = 'an unclosed quote'; Command = 'printf x > "somewhere.txt' },
+        @{ Name = 'an unclosed heredoc body'; Command = "cat <<EOF`nbody`nnot-the-end" },
+        @{ Name = 'a heredoc opener with no delimiter'; Command = "cat <<`nEOF" },
+        @{ Name = 'an unclosed here-string body'; Command = "`$body = @'`nline one`nline two" }
+    )
+    foreach ($cause in $unreadableCauses) {
+        Invoke-TestCase "Every layer refuses $($cause.Name)" {
+            $safety = Get-AgentCommandSafetyDecision -Command $cause.Command -Reading Bash
+            $location = Get-AgentWorktreeGuardDecision -Command $cause.Command `
+                -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false `
+                -Reading Bash
+            $write = Get-AgentWorktreeWriteDecision -Command $cause.Command `
+                -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false `
+                -Reading Bash
+
+            foreach ($decision in @($safety, $location, $write)) {
+                Assert-Equal 'Deny' $decision.Action 'Action'
+                Assert-Equal 'ambiguous-command' $decision.Rule 'Rule'
+            }
+        }
+    }
+
+    Invoke-TestCase 'The refusal text is accurate for every cause, not just quoting' {
+        # A heredoc opener with no delimiter word never opens a body, so "close what was left
+        # open" is false advice for it. The message must not claim something was left open for
+        # a cause where nothing was ever opened.
+        $expected = (New-AgentGuardAmbiguousDecision).Message
+        $decision = Get-AgentCommandSafetyDecision -Command $unreadable -Reading Bash
+        Assert-Equal $expected $decision.Message 'Message'
+
+        $noDelimiter = @($unreadableCauses | Where-Object { $_.Name -eq 'a heredoc opener with no delimiter' })[0]
+        $noDelimiterDecision = Get-AgentCommandSafetyDecision -Command $noDelimiter.Command -Reading Bash
+        Assert-Equal $expected $noDelimiterDecision.Message 'Message for the no-delimiter cause'
+        Assert-Match 'incomplete' $noDelimiterDecision.Message `
+            'The no-delimiter cause never opened a body, so the message must call the heredoc incomplete, not left open'
     }
 
     Write-Host 'Tier reclassification' -ForegroundColor Cyan
@@ -1473,6 +1619,26 @@ try {
         $result = Invoke-Entrypoint -StdIn (New-ClaudePayload 'git reset --hard' $script:RealMainCheckout) -Adapter 'Claude'
         Assert-Equal 2 $result.ExitCode 'ExitCode'
         Assert-Match 'BLOCKED: git reset --hard' $result.StdErr 'StdErr'
+    }
+
+    Invoke-TestCase 'Claude unreadable-command denial uses the legacy stderr + exit 2 protocol' {
+        # ambiguous-command is not in $locationDecisionRules, so it must not take the JSON
+        # permission protocol. The rename is exactly the change that could move it into that list.
+        $result = Invoke-Entrypoint `
+            -StdIn (New-ClaudePayload 'printf x > "somewhere.txt' $script:RealMainCheckout) `
+            -Adapter 'Claude'
+        Assert-Equal 2 $result.ExitCode 'ExitCode'
+        Assert-Equal '' $result.StdOut.Trim() 'StdOut'
+        Assert-Match 'ambiguous-command' $result.StdErr 'Diagnostic rule'
+
+        # Every line of the refusal reaches the user, not only the first. Read from the helper, so
+        # the literal text lives in one place and a reworded message cannot silently half-ship.
+        $expected = (New-AgentGuardAmbiguousDecision).Message
+        $expectedLines = @($expected -split "`r?`n" | Where-Object { $_.Trim() -ne '' })
+        Assert-True ($expectedLines.Count -ge 3) 'The refusal must carry at least three lines'
+        foreach ($line in $expectedLines) {
+            Assert-Match ([regex]::Escape($line.Trim())) $result.StdErr "Refusal line: $line"
+        }
     }
 
     Invoke-TestCase 'Codex denial emits hookSpecificOutput and exits 0' {
