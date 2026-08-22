@@ -6,7 +6,7 @@
 - **Type**: Process / tooling
 - **Interfaces**: none (scripts, docs)
 - **Difficulty**: complex
-- **Stage**: 1-pickup
+- **Stage**: 2-design
 - **Depends on**: 102-recall-sample-was-drawn-without-equal-inclusion-probabilities
 
 ## Summary
