@@ -7,3 +7,4 @@ looks like.
 
 - [x] Task 0 — progress file started
 - [x] Task 1 — sampler takes -ProjectRoot, selection record names it
+- [x] Task 2 — four 2026-08-16 records archived; suite red until Task 3
